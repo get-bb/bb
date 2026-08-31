@@ -980,7 +980,7 @@ ACTS ON what you return — the opposite of `bb.events`, whose handlers are told
 what already happened. There is ONE hook today, `"message.dispatch"`, the
 admission checkpoint every message passes through exactly once per attempt: a
 thread's first message, a follow-up, a steer, a drained queue row, a retry of a
-failed turn. Two members: `on` answers the question, and `recheck()` asks
+failed turn. Two members: `on` answers the question, and `recheck("message.dispatch")` asks
 core to ask it again.
 
 ```ts
@@ -1017,14 +1017,14 @@ model or the user reads back.
 
 **How a wait clears.** You never release a row — you ask core to re-decide it.
 It clears when the row's `sendAt` comes due, when any plugin calls
-`bb.experimental_hooks.recheck()`, when the user sends it now, or when the
+`bb.experimental_hooks.recheck("message.dispatch")`, when the user sends it now, or when the
 orphan sweep clears a wait whose plugin stopped running. Every one of those
 re-runs the full pass, including your own handler, so a message that is still
 blocked simply re-queues.
 
 ```ts
 // The condition your waits depend on changed. Ask core to re-ask.
-await bb.experimental_hooks.recheck();
+await bb.experimental_hooks.recheck("message.dispatch");
 ```
 
 **`on` answers core's question; `recheck` asks core to ask it again.**
@@ -1032,7 +1032,7 @@ That is the whole division of labour: core owns the re-draining and the clock �
 `sendAt` due, the thread's own turn ending, the workspace becoming ready, an
 interaction settling — and YOU own every other condition your waits depend on.
 Watch for it however suits you (a lifecycle event, a webhook route, a poll in a
-background service) and call `recheck()` when it changes.
+background service) and call `recheck("message.dispatch")` when it changes.
 
 The walk re-attempts every plugin-queued row in queue order, running the full
 hook pass over each — every plugin's handler, not just yours. That is why an
@@ -1044,7 +1044,7 @@ finishes — it is fire-and-forget, and a failed re-attempt lands on the row it
 failed.
 
 Waiting on an external event you cannot observe at all is still polling: set a
-`sendAt` you can live with and answer again on the re-attempt. `recheck()`
+`sendAt` you can live with and answer again on the re-attempt. `recheck("message.dispatch")`
 is for the events you CAN observe, and it is strictly better than polling for
 them — no latency floor, no wasted passes.
 
@@ -1121,7 +1121,7 @@ so watching for it is your job — the other half of a limiter, and four lines:
 for (const event of ["thread.idle", "thread.failed",
                      "thread.archived", "thread.deleted"] as const) {
   bb.events.on(event, async () => {
-    await bb.experimental_hooks.recheck();
+    await bb.experimental_hooks.recheck("message.dispatch");
   });
 }
 ```

@@ -461,7 +461,7 @@ above:
 
 - **Core owns the re-draining and the clock; plugins own every other wait
   condition and tell core when to re-ask —
-  `bb.experimental_hooks.recheck()`.** The freed-capacity signal is
+  `bb.experimental_hooks.recheck("message.dispatch")`.** The freed-capacity signal is
   deleted: `freed-capacity-signal.ts`, its four call sites in the thread
   lifecycle fanout (archive, delete, idle, error) and the `createApp`
   registration. Core no longer derives "a slot freed" at all, because a slot is
@@ -478,7 +478,7 @@ above:
   that was deleted), workspace-ready, interaction-settled, send-now and the
   orphan sweep.
 
-  `recheck()` lives in the hooks namespace because it pairs with `on`:
+  `recheck("message.dispatch")` lives in the hooks namespace because it pairs with `on`:
   `on` answers core's question, `recheck` asks core to ask it again. It
   names no row, takes no arguments and resolves when the walk is SCHEDULED, not
   when it finishes — the walk has no caller to report to (a failed re-attempt
@@ -488,7 +488,7 @@ above:
 
   `concurrency-limit` gained the four lines this costs: it subscribes to
   `thread.idle`/`thread.failed`/`thread.archived`/`thread.deleted` — exactly
-  the set the deleted fanout covered — and calls `recheck()`. Its hook is
+  the set the deleted fanout covered — and calls `recheck("message.dispatch")`. Its hook is
   unchanged, and it still keeps no tally and no registry of the rows it queued,
   because the wake is still a re-ask and not a release: an unwarranted wake
   re-queues. The `sendAt`/time half of the proposal that produced this

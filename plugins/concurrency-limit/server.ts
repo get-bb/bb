@@ -29,7 +29,7 @@
 //     that lock releases, so inside a handler the answer already includes every
 //     admission granted ahead of this one. No in-flight bookkeeping, no
 //     reseeding, no drift to reconcile.
-//   * `bb.experimental_hooks.recheck()` asks core to re-attempt every
+//   * `bb.experimental_hooks.recheck("message.dispatch")` asks core to re-attempt every
 //     plugin-queued row. A queued row is re-decided by this very handler, so a
 //     request that is not warranted simply re-queues — which is why the plugin
 //     never needed to choose *which* row to release, or to track what it had
@@ -138,7 +138,7 @@ export default async function concurrencyLimitPlugin(
       // and re-runs the hook below on each, so a row that is still over the
       // limit simply re-queues. Nothing here has to work out which row earned
       // the slot, or whether one freed at all.
-      await bb.experimental_hooks.recheck();
+      await bb.experimental_hooks.recheck("message.dispatch");
     });
   }
 

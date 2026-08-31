@@ -1879,7 +1879,7 @@ function createFakePluginHostInternal(
       }
       storePluginHook(hooks, hook, handler);
     },
-    async recheck() {
+    async recheck(_hook) {
       assertLive();
       // The real host schedules a background walk and resolves; there is no
       // queue here to walk, so the fake records the ask. Asserting on the

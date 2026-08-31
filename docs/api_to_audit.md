@@ -169,7 +169,7 @@ pass runs under a single server-wide async lock. A handler that throws or
 exceeds a 10s decision box fails the attempt with the plugin named
 (fail-closed, the `deriveProviderOptions` precedent).
 
-`bb.experimental_hooks.recheck()` is the second member and the pair to
+`bb.experimental_hooks.recheck("message.dispatch")` is the second member and the pair to
 `on`: `on` answers the question core asks, `recheck` asks core to ask it
 again. It schedules a walk that re-attempts every plugin-queued row in queue
 order — claim-CAS exactly-once, full hook pass per row, still-blocked rows
@@ -186,7 +186,7 @@ the `sendAt` due sweep, thread-idle, workspace-ready, interaction-settled,
 send-now and the orphan sweep — all of them queue mechanics or core waits.
 Capacity is not one of them: `concurrency-limit` subscribes to
 `thread.idle`/`thread.failed`/`thread.archived`/`thread.deleted` and calls
-`recheck()` itself. That retires the future `clearWait` need for
+`recheck("message.dispatch")` itself. That retires the future `clearWait` need for
 external-event waits: a plugin does not release a row, it wakes core and core
 re-asks, so a wake that was not warranted is safe by construction.
 
@@ -204,13 +204,13 @@ now, or when the orphan sweep clears a wait whose plugin is no longer running.
   correlates by ordering or re-queries `threads.queue.list({ waitHolder })`.
   Decide whether the decision should be able to name a correlation key.
 - **A wait has no plugin-driven release, only a plugin-driven re-ask.**
-  `recheck()` names no row, so a plugin whose one condition resolved wakes
+  `recheck("message.dispatch")` names no row, so a plugin whose one condition resolved wakes
   every plugin-queued row in the server and every handler re-decides. That is
   what makes an unwarranted wake safe, and it is also its cost. Confirm the
   whole-queue walk is still right when there are many plugin waits and many
   waiters, and decide then whether a scoped variant is worth the correlation
   problem it reintroduces (see the row-id bullet above).
-- **`recheck()` is unauthenticated in both directions.** Any plugin can
+- **`recheck("message.dispatch")` is unauthenticated in both directions.** Any plugin can
   wake rows held by any other, and core does not tell a handler why it is being
   re-asked. Both are deliberate — a wait is a decision, not a lease — but
   confirm before stabilizing that no plugin needs to distinguish "core's clock"

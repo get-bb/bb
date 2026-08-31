@@ -481,7 +481,7 @@ export interface PluginHooks {
    * awaiting a full hook pass from inside whatever called this, which for a
    * handler holding the evaluation lock could not complete. Fire and forget.
    */
-  recheck(): Promise<void>;
+  recheck(hook: PluginHookName): Promise<void>;
 }
 
 // ---------------------------------------------------------------------------
