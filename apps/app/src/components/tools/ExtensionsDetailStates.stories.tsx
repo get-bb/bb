@@ -355,6 +355,7 @@ const PLUGIN: PluginListItem = {
   rootDir: "/Users/you/.bb/plugins/github",
   version: "1.4.0",
   enabled: true,
+  agentCliExposed: true,
   status: "running",
   statusDetail: null,
   description: "Browse GitHub issues and pull requests without leaving bb.",

@@ -63,6 +63,7 @@ import {
   listPluginSchedules,
   markInstalledPluginRemoved,
   recordPluginScheduleResult,
+  setInstalledPluginAgentCliExposed,
   setInstalledPluginEnabled,
   type InstalledPluginRow,
 } from "@bb/db";
@@ -202,6 +203,10 @@ export interface PluginService {
   setEnabled(
     id: string,
     enabled: boolean,
+  ): Promise<PluginListEntry | undefined>;
+  setAgentCliExposed(
+    id: string,
+    exposed: boolean,
   ): Promise<PluginListEntry | undefined>;
   reload(id?: string): Promise<PluginReloadOutcome>;
   getApi(id: string): BbPluginApi | undefined;
@@ -984,10 +989,18 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
   }
 
   function cliContributions(): PluginCliContribution[] {
+    // A plugin the user marked agent-hidden keeps its working CLI but is
+    // omitted from the generated plugin-commands skill agents read.
+    const agentHidden = new Set(
+      listInstalledPlugins(deps.db)
+        .filter((row) => !row.agentCliExposed)
+        .map((row) => row.id),
+    );
     const contributions: PluginCliContribution[] = [];
     for (const [id, plugin] of [...loaded.entries()]) {
       const registration = plugin.handle.cli.registration;
       if (!registration) continue;
+      if (agentHidden.has(id)) continue;
       contributions.push({
         pluginId: id,
         name: registration.name,
@@ -1178,6 +1191,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
           sourceDisplay: sourceDisplayForRow(row),
           updateState: updateStateForRow(row),
           enabled: row.enabled,
+          agentCliExposed: row.agentCliExposed,
           description:
             loadedPlugin?.manifest.description ??
             identity?.manifest.description ??
@@ -1587,6 +1601,17 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
               setStatus(id, "disabled");
             }
           });
+        }
+        await syncCliSkill();
+        notifyPluginsChanged();
+        return list().find((p) => p.id === id);
+      });
+    },
+
+    async setAgentCliExposed(id, exposed) {
+      return withPluginOperationLock(REGISTRATION_MUTATION_KEY, async () => {
+        if (!setInstalledPluginAgentCliExposed(deps.db, id, exposed)) {
+          return undefined;
         }
         await syncCliSkill();
         notifyPluginsChanged();

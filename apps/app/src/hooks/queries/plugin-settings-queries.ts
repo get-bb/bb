@@ -33,6 +33,7 @@ export interface PluginListItem {
   rootDir: string;
   version: string;
   enabled: boolean;
+  agentCliExposed: boolean;
   status: InstalledPlugin["status"];
   statusDetail: string | null;
   description: string | null;
@@ -89,6 +90,7 @@ export function toPluginListItem(plugin: InstalledPlugin): PluginListItem {
     rootDir: plugin.rootDir,
     version: plugin.version,
     enabled: plugin.enabled,
+    agentCliExposed: plugin.agentCliExposed,
     status: plugin.status,
     statusDetail: plugin.statusDetail,
     description: plugin.description,
@@ -178,6 +180,17 @@ export async function setPluginEnabled(
   const plugins = createPluginsClient(fetchImpl);
   if (enabled) await plugins.enable({ pluginId });
   else await plugins.disable({ pluginId });
+}
+
+export async function setPluginAgentCliExposed(
+  fetchImpl: FetchLike,
+  pluginId: string,
+  exposed: boolean,
+): Promise<void> {
+  await createPluginsClient(fetchImpl).setAgentCliExposed({
+    pluginId,
+    exposed,
+  });
 }
 
 export async function reloadPlugin(

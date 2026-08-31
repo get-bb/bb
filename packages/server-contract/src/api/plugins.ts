@@ -160,6 +160,11 @@ export const installedPluginSchema = z.object({
   sourceDisplay: z.string(),
   updateState: pluginUpdateStateSchema,
   enabled: z.boolean(),
+  /**
+   * Whether the plugin's CLI commands are listed in the generated
+   * `plugin-commands` skill agents read. The commands stay runnable either way.
+   */
+  agentCliExposed: z.boolean().default(true),
   description: z.string().nullable(),
   name: z.string().nullable(),
   icon: z.string().nullable(),
@@ -296,6 +301,10 @@ export type PluginSettingsResponse = z.infer<
 
 export const pluginSettingsUpdateRequestSchema = z
   .object({ values: z.record(z.string(), jsonValueSchema) })
+  .strict();
+
+export const pluginAgentCliRequestSchema = z
+  .object({ exposed: z.boolean() })
   .strict();
 
 export const pluginTokenRequestSchema = z

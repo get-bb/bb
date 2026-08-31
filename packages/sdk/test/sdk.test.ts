@@ -1332,6 +1332,7 @@ describe("@bb/sdk", () => {
       sourceDisplay: "npm · @bb/notes · tracks compatible",
       updateState: {},
       enabled: true,
+      agentCliExposed: true,
       description: "Notes",
       name: "Notes",
       icon: null,

@@ -203,6 +203,7 @@ function rowPlugin(
     rootDir: "/plugins/linear",
     version: "0.1.0",
     enabled: true,
+    agentCliExposed: true,
     status,
     statusDetail: null,
     description: null,

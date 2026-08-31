@@ -252,6 +252,14 @@ export const installedPlugins = sqliteTable("plugins", {
   rootDir: text("root_dir").notNull(),
   version: text("version").notNull(),
   enabled: integer("enabled", { mode: "boolean" }).notNull().default(true),
+  /**
+   * Whether the plugin's registered CLI commands are listed in the generated
+   * `plugin-commands` skill agents see. The commands themselves keep working
+   * either way; this only controls agent-facing discovery.
+   */
+  agentCliExposed: integer("agent_cli_exposed", { mode: "boolean" })
+    .notNull()
+    .default(true),
   removedAt: integer("removed_at"),
   installedAt: integer("installed_at").notNull(),
   updatedAt: integer("updated_at").notNull(),

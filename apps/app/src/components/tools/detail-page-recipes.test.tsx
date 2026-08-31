@@ -116,6 +116,7 @@ const PLUGIN: PluginListItem = {
   rootDir: "/managed/plugins/github",
   version: "0.1.0",
   enabled: true,
+  agentCliExposed: true,
   status: "running",
   statusDetail: null,
   description: "Browse GitHub issues and pull requests in BB.",
