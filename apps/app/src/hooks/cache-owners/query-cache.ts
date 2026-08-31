@@ -11,6 +11,7 @@ import {
   iterateThreadListCacheEntries,
 } from "./thread-list-cache-data";
 import { bumpDiffPatchEvictionGeneration } from "./environment-diff-patch-cache-owner";
+import { readCachedSidebarBootstrap } from "@/lib/sidebar-bootstrap-cache";
 import type {
   SidebarBootstrapResponse,
   ThreadResponse,
@@ -363,6 +364,27 @@ export function getCachedSidebarNavigationThreads(
     return [];
   }
   return listSidebarNavigationThreads(navigation);
+}
+
+export function findSidebarNavigationThreadPlaceholder(
+  queryClient: QueryClient,
+  threadId: string,
+): ThreadListEntry | undefined {
+  if (!threadId) {
+    return undefined;
+  }
+  const cached = getCachedSidebarNavigationThreads(queryClient).find(
+    (thread) => thread.id === threadId,
+  );
+  if (cached !== undefined) {
+    return cached;
+  }
+  const persisted = readCachedSidebarBootstrap();
+  return persisted === null
+    ? undefined
+    : listSidebarNavigationThreads(persisted).find(
+        (thread) => thread.id === threadId,
+      );
 }
 
 export function snapshotCachedSidebarNavigation(

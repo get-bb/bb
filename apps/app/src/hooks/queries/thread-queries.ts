@@ -38,6 +38,7 @@ import {
 import {
   getCachedSidebarNavigationThreads,
   getCachedThreadListPlaceholder,
+  findSidebarNavigationThreadPlaceholder,
 } from "../cache-owners/query-cache";
 import { useSidebarNavigationThreadSelection } from "./sidebar-navigation-query";
 import {
@@ -630,7 +631,8 @@ export function useThread(id: string, options?: QueryOptions) {
     placeholderData: (previousData, previousQuery) =>
       resolveThreadPlaceholder(previousData, previousQuery?.queryKey, id) ??
       liftThreadListPlaceholder(
-        getCachedThreadListPlaceholder(queryClient, id),
+        getCachedThreadListPlaceholder(queryClient, id) ??
+          findSidebarNavigationThreadPlaceholder(queryClient, id),
       ),
   });
 }
