@@ -93,8 +93,9 @@ export function AppPageHeader({
         )}
         {actions ? (
           <div
+            data-app-page-header-actions=""
             className={cn(
-              "flex shrink-0 items-center gap-1",
+              "flex shrink-0 items-center gap-1 group-data-[panel-shelf=open]/page-inset:invisible group-data-[panel-shelf=shelf]/page-inset:invisible",
               usesDesktopChrome && MACOS_WINDOW_NO_DRAG_CLASS,
             )}
           >

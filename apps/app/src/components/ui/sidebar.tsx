@@ -1920,7 +1920,7 @@ const SidebarInset = React.forwardRef<
           : undefined
       }
       className={cn(
-        "relative flex h-full min-h-0 min-w-0 flex-1 flex-col bg-background max-md:z-30",
+        "group/page-inset relative flex h-full min-h-0 min-w-0 flex-1 flex-col bg-background max-md:z-30",
         SIDEBAR_MOBILE_SHELF_INSET_TRANSITION_CLASS,
         "data-[sidebar-shelf=open]:translate-x-(--sidebar-width-mobile) data-[sidebar-shelf=open]:overflow-hidden data-[sidebar-shelf=open]:rounded-xl data-[sidebar-shelf=open]:shadow-xl data-[sidebar-shelf]:will-change-[translate]",
         "data-[panel-shelf=open]:-translate-x-(--secondary-panel-width-mobile) data-[panel-shelf=open]:overflow-hidden data-[panel-shelf=open]:rounded-xl data-[panel-shelf=open]:shadow-xl data-[panel-shelf]:will-change-[translate]",
