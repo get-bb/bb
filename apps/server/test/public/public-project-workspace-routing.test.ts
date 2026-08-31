@@ -430,4 +430,55 @@ describe("public project workspace routing", () => {
       );
     });
   });
+
+  it("serves project file previews inline and downloads as attachments", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, session } = seedHostSession(harness.deps, {
+        id: "host-project-file-disposition",
+      });
+      seedPrimaryHost(harness.deps, host.id);
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+        path: "/project/disposition",
+      });
+      registerHostRpcResponder(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+        handle: (request) => {
+          if (request.command.type !== "host.read_file") {
+            throw new Error(
+              `Unexpected project file RPC ${request.command.type}`,
+            );
+          }
+          return {
+            ok: true,
+            result: {
+              path: request.command.path,
+              content: "# Guide\n",
+              contentEncoding: "utf8",
+              mimeType: "text/markdown",
+              sizeBytes: 8,
+              sha256: "2".repeat(64),
+            },
+          };
+        },
+      });
+
+      const preview = await harness.app.request(
+        `/api/v1/projects/${project.id}/files/preview?path=docs%2Fguide.md`,
+      );
+      const download = await harness.app.request(
+        `/api/v1/projects/${project.id}/files/download?path=docs%2Fguide.md`,
+      );
+
+      expect(preview.status).toBe(200);
+      expect(preview.headers.get("content-type")).toBe("text/markdown");
+      expect(preview.headers.get("content-disposition")).toContain("inline;");
+      expect(download.status).toBe(200);
+      expect(download.headers.get("content-type")).toBe("text/markdown");
+      expect(download.headers.get("content-disposition")).toContain(
+        'attachment; filename="guide.md";',
+      );
+    });
+  });
 });

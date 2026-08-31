@@ -1,5 +1,6 @@
 import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, join, resolve, sep } from "node:path";
+import { filePreviewContentSecurityPolicy } from "@bb/server-contract";
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import type { Attachment, TasksStore } from "../db";
 import {
@@ -209,12 +210,6 @@ function isInlineRasterMime(mime: string): boolean {
   return INLINE_RASTER_MIMES.has(
     mime.split(";", 1)[0]?.trim().toLowerCase() ?? "",
   );
-}
-
-function previewContentSecurityPolicy(mime: string): string | undefined {
-  return mime === "text/html" || mime === "image/svg+xml"
-    ? "sandbox; default-src 'none'; img-src data:; media-src data:; style-src 'unsafe-inline'"
-    : undefined;
 }
 
 function bytesMatch(
@@ -560,7 +555,7 @@ export function registerAttachments(
     }
     const mime = canonicalAttachmentMime(attachment.mime, attachment.fileName);
     const contentSecurityPolicy =
-      disposition === "inline" ? previewContentSecurityPolicy(mime) : undefined;
+      disposition === "inline" ? filePreviewContentSecurityPolicy(mime) : null;
     return new Response(new Uint8Array(await readFile(absolutePath)), {
       headers: {
         "Content-Type": mime,
@@ -570,7 +565,7 @@ export function registerAttachments(
           attachment.fileName,
         ),
         "X-Content-Type-Options": "nosniff",
-        ...(contentSecurityPolicy === undefined
+        ...(contentSecurityPolicy === null
           ? {}
           : { "Content-Security-Policy": contentSecurityPolicy }),
       },

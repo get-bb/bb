@@ -49,6 +49,36 @@ describe("file response policy", () => {
     expect(html.get("content-security-policy")).toBe("sandbox allow-scripts");
   });
 
+  it.each([
+    ["text/html", "text/html; charset=utf-8"],
+    ["application/xhtml+xml", "application/xhtml+xml"],
+    ["application/rdf+xml", "application/rdf+xml"],
+    ["application/xml", "application/xml"],
+    ["text/xml", "text/xml"],
+    ["text/mathml", "text/mathml"],
+    ["image/svg+xml", "image/svg+xml"],
+  ])(
+    "sandboxes %s previews without changing their safe MIME type",
+    (mimeType, expectedContentType) => {
+      const preview = buildFileResponseHeaders({
+        disposition: "inline",
+        fileName: "active-content.xml",
+        mimeType,
+      });
+      const download = buildFileResponseHeaders({
+        disposition: "attachment",
+        fileName: "active-content.xml",
+        mimeType,
+      });
+
+      expect(preview.get("content-type")).toBe(expectedContentType);
+      expect(preview.get("content-security-policy")).toBe(
+        "sandbox allow-scripts",
+      );
+      expect(download.get("content-security-policy")).toBeNull();
+    },
+  );
+
   it("forces unknown preview types to octet-stream and preserves download MIME", () => {
     expect(
       buildFileResponseHeaders({

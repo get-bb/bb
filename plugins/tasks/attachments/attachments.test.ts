@@ -1,4 +1,4 @@
-import { readFile, stat } from "node:fs/promises";
+import { readFile, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { createFakePluginHost } from "@get-bb/plugin-sdk/testing";
 import { describe, expect, it } from "vitest";
@@ -8,7 +8,9 @@ import {
   buildAttachmentUrl,
   deleteAttachmentById,
   MAX_ATTACHMENT_SIZE_BYTES,
+  readAttachmentContent,
   registerAttachments,
+  saveAttachmentFromBytes,
 } from ".";
 
 function setup(options?: Parameters<typeof registerAttachments>[2]) {
@@ -30,7 +32,7 @@ function setup(options?: Parameters<typeof registerAttachments>[2]) {
     .all()
     .find((entry) => entry.name === "main");
   if (!database) throw new Error("test database path is missing");
-  return { bb, harness, store, task, root: dirname(database.file) };
+  return { bb, db, harness, store, task, root: dirname(database.file) };
 }
 
 async function upload(
@@ -249,6 +251,97 @@ describe("task attachments", () => {
       );
       expect(download.headers.get("content-security-policy")).toBeNull();
     } finally {
+      await harness.dispose();
+    }
+  });
+
+  it.each([
+    ["unsafe.html", "text/html"],
+    ["unsafe.xhtml", "application/xhtml+xml"],
+    ["unsafe.rdf", "application/rdf+xml"],
+    ["unsafe.xml", "application/xml"],
+    ["unsafe.txt", "text/xml"],
+    ["unsafe.mathml", "text/mathml"],
+    ["unsafe.svg", "image/svg+xml"],
+  ])("applies the shared sandbox policy to %s", async (fileName, mime) => {
+    const { harness, task } = setup();
+    try {
+      const uploaded = await upload(
+        harness,
+        task.id,
+        new TextEncoder().encode("<script>parent.document</script>"),
+        fileName,
+        mime,
+      );
+      const { attachmentId } = (await uploaded.json()) as {
+        attachmentId: string;
+      };
+      const preview = await harness.fetchHttp(
+        "GET",
+        `/attachments/preview?attachmentId=${attachmentId}`,
+      );
+      const download = await harness.fetchHttp(
+        "GET",
+        `/attachments/download?attachmentId=${attachmentId}`,
+      );
+
+      expect(preview.headers.get("content-type")).toBe(mime);
+      expect(preview.headers.get("content-security-policy")).toBe(
+        "sandbox allow-scripts",
+      );
+      expect(download.headers.get("content-security-policy")).toBeNull();
+    } finally {
+      await harness.dispose();
+    }
+  });
+
+  it("sanitizes filenames supplied through direct byte saves", async () => {
+    const { harness, store, task } = setup();
+    try {
+      const attachment = await saveAttachmentFromBytes(
+        store,
+        new TextEncoder().encode("unsafe name"),
+        {
+          taskId: task.id,
+          fileName: "../../unsafe?.txt",
+          mime: "text/plain",
+        },
+      );
+
+      expect(attachment.fileName).toBe("unsafe_.txt");
+      expect(attachment.blobPath).toBe(
+        join("blobs", attachment.id, "unsafe_.txt"),
+      );
+    } finally {
+      await harness.dispose();
+    }
+  });
+
+  it("refuses stored blob paths outside the plugin data directory", async () => {
+    const { db, harness, root, store, task } = setup();
+    const outsideName = `outside-${task.id}.txt`;
+    const outsidePath = join(root, "..", outsideName);
+    try {
+      const attachment = await saveAttachmentFromBytes(
+        store,
+        new TextEncoder().encode("inside"),
+        {
+          taskId: task.id,
+          fileName: "inside.txt",
+          mime: "text/plain",
+        },
+      );
+      await writeFile(outsidePath, "outside");
+      db.prepare<[string, string]>(
+        "UPDATE attachments SET blob_path = ? WHERE id = ?",
+      ).run(join("..", outsideName), attachment.id);
+
+      await expect(readAttachmentContent(store, attachment.id)).rejects.toThrow(
+        "Attachment blob path escapes the plugin data directory",
+      );
+      await expect(readFile(outsidePath, "utf8")).resolves.toBe("outside");
+    } finally {
+      await rm(outsidePath, { force: true });
       await harness.dispose();
     }
   });

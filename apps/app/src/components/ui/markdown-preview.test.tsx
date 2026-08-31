@@ -291,6 +291,21 @@ describe("MarkdownPreview", () => {
     ).toBe("file:///workspace/src/app.ts");
   });
 
+  it("keeps common dotted code tokens inert", () => {
+    const tokens = ["Array.from", "user.name", "os.path", "self.value"];
+    render(
+      <MarkdownPreview
+        content={tokens.map((token) => `\`${token}\``).join(" ")}
+        linkRouting={workspaceLinkRouting}
+      />,
+    );
+
+    for (const token of tokens) {
+      expect(screen.queryByRole("link", { name: token })).toBeNull();
+      expect(screen.getByText(token).tagName).toBe("CODE");
+    }
+  });
+
   it("shows a context menu on local file links when the context provides items", () => {
     const openBuiltin = vi.fn();
     const openFinder = vi.fn();

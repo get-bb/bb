@@ -1,3 +1,5 @@
+import { mkdir, writeFile } from "node:fs/promises";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { uploadedPromptAttachmentSchema } from "@bb/server-contract";
 import { readJson } from "../helpers/json.js";
@@ -184,6 +186,35 @@ describe("public project attachments", () => {
       expect(download.status).toBe(200);
       expect(disposition).toContain("attachment;");
       expect(decodeURIComponent(encodedName)).toBe(fileName);
+    });
+  });
+
+  it("rejects encoded and decoded paths outside the project attachment root", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps, {
+        id: "host-project-attachment-containment",
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const attachmentRoot = join(harness.deps.config.dataDir, "attachments");
+      await mkdir(attachmentRoot, { recursive: true });
+      await writeFile(join(attachmentRoot, "outside.txt"), "outside");
+
+      for (const path of [
+        "../outside.txt",
+        "..%2Foutside.txt",
+        "%2e%2e%2foutside.txt",
+      ]) {
+        const response = await harness.app.request(
+          `/api/v1/projects/${project.id}/attachments/preview?path=${path}`,
+        );
+        expect(response.status, path).toBe(400);
+        await expect(readJson(response)).resolves.toEqual({
+          code: "invalid_request",
+          message: "Attachment path escapes project directory",
+        });
+      }
     });
   });
 

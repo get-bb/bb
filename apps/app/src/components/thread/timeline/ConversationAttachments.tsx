@@ -95,7 +95,12 @@ function fileIdentity({
     };
   }
   if (/^https?:/iu.test(path)) {
-    const url = new URL(path);
+    let url: URL;
+    try {
+      url = new URL(path);
+    } catch {
+      return null;
+    }
     return {
       source: { store: "remote", ownerId: url.origin, url: path },
       displayName,

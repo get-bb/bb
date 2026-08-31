@@ -3,6 +3,7 @@ export * from "./api-types.js";
 export * from "./api/thread-tabs.js";
 export * from "./common.js";
 export * from "./errors.js";
+export * from "./file-response-policy.js";
 export * from "./public-api.js";
 export * from "./thread-timeline.js";
 

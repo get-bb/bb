@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import type { ExperimentalFileIdentity } from "@get-bb/plugin-sdk";
-import { resolveFileInteraction } from "./file-resolver";
+import {
+  byteFileTabFromIdentity,
+  resolveFileInteraction,
+} from "./file-resolver";
 
 function identity(
   source: ExperimentalFileIdentity["source"],
@@ -75,6 +78,62 @@ describe("resolveFileInteraction", () => {
       openAction: "preview",
       previewUrl:
         "/api/v1/environments/environment-1/files/preview?path=src%2Fapp.ts",
+    });
+  });
+
+  it("maps thread-host files to thread routes", () => {
+    expect(
+      resolveFileInteraction(
+        identity({
+          store: "thread-host",
+          ownerId: "thread-1",
+          path: "/tmp/report.md",
+        }),
+      ),
+    ).toEqual({
+      downloadUrl:
+        "/api/v1/threads/thread-1/host-files/download?path=%2Ftmp%2Freport.md",
+      openAction: "preview",
+      previewUrl:
+        "/api/v1/threads/thread-1/host-files/preview?path=%2Ftmp%2Freport.md",
+    });
+  });
+
+  it("uses distinct Tasks preview and download routes", () => {
+    expect(
+      resolveFileInteraction(
+        identity({
+          store: "tasks-attachment",
+          ownerId: "task-1",
+          attachmentId: "attachment % # 资料",
+        }),
+      ),
+    ).toEqual({
+      downloadUrl:
+        "/api/v1/plugins/tasks/http/attachments/download?attachmentId=attachment%20%25%20%23%20%E8%B5%84%E6%96%99",
+      openAction: "preview",
+      previewUrl:
+        "/api/v1/plugins/tasks/http/attachments/preview?attachmentId=attachment%20%25%20%23%20%E8%B5%84%E6%96%99",
+    });
+  });
+
+  it("creates a Tasks byte tab without losing identity or line range", () => {
+    expect(
+      byteFileTabFromIdentity(
+        identity({
+          store: "tasks-attachment",
+          ownerId: "task-1",
+          attachmentId: "attachment-1",
+        }),
+      ),
+    ).toEqual({
+      displayName: "资料 100%#final.md",
+      lineRange: { startLineNumber: 2, endLineNumber: 7 },
+      mimeType: "text/markdown",
+      ownerId: "task-1",
+      resourceId: "attachment-1",
+      sizeBytes: 42,
+      source: "tasks-attachment",
     });
   });
 });

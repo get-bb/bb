@@ -563,6 +563,18 @@ function hasFileExtension(path: string): boolean {
   return /\.[A-Za-z0-9][A-Za-z0-9+_-]{0,31}$/u.test(path);
 }
 
+function isLikelyFileReferencePath(
+  reference: string,
+  resolvedPath: string,
+): boolean {
+  return (
+    hasFileExtension(resolvedPath) &&
+    (reference.includes("/") ||
+      reference.includes("\\") ||
+      /\.(?:md|markdown)$/iu.test(resolvedPath))
+  );
+}
+
 function resolveInlineCodeMarkdownFileHref({
   codeText,
   localFileRouting,
@@ -585,7 +597,9 @@ function resolveInlineCodeMarkdownFileHref({
     href: codeText,
   });
   if (absoluteLink !== null) {
-    return hasFileExtension(absoluteLink.path) ? codeText : null;
+    return isLikelyFileReferencePath(codeText, absoluteLink.path)
+      ? codeText
+      : null;
   }
 
   if (localFileRouting.relativeLinks === undefined) {
@@ -604,7 +618,8 @@ function resolveInlineCodeMarkdownFileHref({
     absoluteLinks: localFileRouting.absoluteLinks,
     href: resolvedHref,
   });
-  return resolvedLink !== null && hasFileExtension(resolvedLink.path)
+  return resolvedLink !== null &&
+    isLikelyFileReferencePath(codeText, resolvedLink.path)
     ? resolvedHref
     : null;
 }

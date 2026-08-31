@@ -1,12 +1,11 @@
 import { Buffer } from "node:buffer";
+import { filePreviewContentSecurityPolicy } from "@bb/server-contract";
 
 const BIDI_CONTROL_PATTERN = /[\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/gu;
 const MIME_TYPE_PATTERN =
   /^(?:application|audio|font|image|message|model|multipart|text|video)\/[!#$&^_.+\-A-Za-z0-9]+$/u;
 const OCTET_STREAM_MIME_TYPE = "application/octet-stream";
 const HTML_MIME_TYPE = "text/html";
-const SVG_MIME_TYPE = "image/svg+xml";
-const ACTIVE_CONTENT_CSP = "sandbox allow-scripts";
 
 type FileResponseDisposition = "attachment" | "inline";
 
@@ -79,6 +78,7 @@ function safeInlineMimeType(mimeType: string | null | undefined): string {
     normalized.startsWith("video/") ||
     normalized === "application/pdf" ||
     normalized === "application/json" ||
+    normalized === "application/xml" ||
     normalized.endsWith("+json") ||
     normalized.endsWith("+xml")
   ) {
@@ -105,12 +105,12 @@ export function buildFileResponseHeaders({
   if (cacheControl !== undefined) {
     headers.set("cache-control", cacheControl);
   }
-  if (
-    disposition === "inline" &&
-    (contentType.startsWith(`${HTML_MIME_TYPE};`) ||
-      contentType === SVG_MIME_TYPE)
-  ) {
-    headers.set("content-security-policy", ACTIVE_CONTENT_CSP);
+  const contentSecurityPolicy =
+    disposition === "inline"
+      ? filePreviewContentSecurityPolicy(contentType)
+      : null;
+  if (contentSecurityPolicy !== null) {
+    headers.set("content-security-policy", contentSecurityPolicy);
   }
   return headers;
 }

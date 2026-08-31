@@ -84,6 +84,48 @@ describe("conversation attachment contract", () => {
     expect(download.getAttribute("download")).toBe("资料 100%.pdf");
   });
 
+  it("renders Download for byte-backed images", () => {
+    const items = buildAttachmentItems({
+      attachments: {
+        webImages: 0,
+        localImages: 1,
+        localFiles: 0,
+        imageUrls: [],
+        localImagePaths: ["stored/diagram.png"],
+        localFilePaths: [],
+      },
+      projectId: "proj_1",
+      threadId: "thr_1",
+    });
+    render(<ConversationAttachments {...items} />);
+
+    const download = screen.getByRole("link", {
+      name: "Download diagram.png",
+    });
+    expect(download.getAttribute("href")).toContain("/attachments/download?");
+    expect(download.getAttribute("download")).toBe("diagram.png");
+  });
+
+  it("renders malformed URL-like paths as inert controls", () => {
+    const items = buildAttachmentItems({
+      attachments: {
+        webImages: 0,
+        localImages: 0,
+        localFiles: 1,
+        imageUrls: [],
+        localImagePaths: [],
+        localFilePaths: ["https:"],
+      },
+      projectId: "proj_1",
+      threadId: "thr_1",
+    });
+    render(<ConversationAttachments {...items} />);
+
+    expect(screen.getByText("https:")).not.toBeNull();
+    expect(screen.queryByRole("button")).toBeNull();
+    expect(screen.queryByRole("link")).toBeNull();
+  });
+
   it("leaves unresolved controls inert and visible", () => {
     const items = buildAttachmentItems({
       attachments: {
