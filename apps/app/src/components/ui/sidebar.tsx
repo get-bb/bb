@@ -15,9 +15,14 @@ import {
   TooltipTrigger,
 } from "@bb/shared-ui/tooltip";
 import { setCompactSidebarDrawerShowing } from "./sidebar-mobile-drawer-visibility.js";
+import {
+  isCompactSecondaryPanelShelfShowing,
+  subscribeCompactSecondaryPanelShelfShowing,
+} from "./secondary-panel-shelf-visibility.js";
 
 const SIDEBAR_WIDTH = "16rem";
-const SIDEBAR_WIDTH_MOBILE = "min(90vw, 320px)";
+const SIDEBAR_MOBILE_VIEWPORT_FRACTION = 0.76;
+const SIDEBAR_WIDTH_MOBILE = `min(${SIDEBAR_MOBILE_VIEWPORT_FRACTION * 100}vw, 320px)`;
 const SIDEBAR_WIDTH_ICON = "3rem";
 const SIDEBAR_MOBILE_SWIPE_BROWSER_EDGE_GUARD_PX = 24;
 const SIDEBAR_MOBILE_SWIPE_OPEN_EDGE_ZONE_PX = 72;
@@ -28,16 +33,16 @@ const SIDEBAR_MOBILE_SWIPE_OPEN_FLING_VELOCITY_PX_PER_SEC = 450;
 const SIDEBAR_MOBILE_DRAG_SETTLE_MS = 220;
 const SIDEBAR_MOBILE_REALIZE_TIMEOUT_MS = 1000;
 const SIDEBAR_MOBILE_DRAG_SETTLE_EASING = "cubic-bezier(0.32, 0.72, 0, 1)";
-const SIDEBAR_MOBILE_PANEL_SETTLE_TRANSITION = `translate ${SIDEBAR_MOBILE_DRAG_SETTLE_MS}ms ${SIDEBAR_MOBILE_DRAG_SETTLE_EASING}`;
-const SIDEBAR_MOBILE_BACKDROP_SETTLE_TRANSITION = `opacity ${SIDEBAR_MOBILE_DRAG_SETTLE_MS}ms ${SIDEBAR_MOBILE_DRAG_SETTLE_EASING}`;
+const SIDEBAR_MOBILE_SHELF_SETTLE_TRANSITION = `translate ${SIDEBAR_MOBILE_DRAG_SETTLE_MS}ms ${SIDEBAR_MOBILE_DRAG_SETTLE_EASING}`;
+const SIDEBAR_MOBILE_SHELF_BACKDROP_SETTLE_TRANSITION = `opacity ${SIDEBAR_MOBILE_DRAG_SETTLE_MS}ms ${SIDEBAR_MOBILE_DRAG_SETTLE_EASING}, translate ${SIDEBAR_MOBILE_DRAG_SETTLE_MS}ms ${SIDEBAR_MOBILE_DRAG_SETTLE_EASING}`;
 const SIDEBAR_MOBILE_WHEEL_SWIPE_OPEN_DISTANCE_PX = 90;
 const SIDEBAR_MOBILE_WHEEL_SWIPE_RESET_MS = 250;
 const SIDEBAR_MOBILE_DRAG_CLOSE_RATIO = 0.25;
 const SIDEBAR_MOBILE_DRAG_CLOSE_FLING_VELOCITY_PX_PER_SEC = 450;
-const SIDEBAR_MOBILE_PANEL_TRANSITION_CLASS =
-  "[transition:translate_220ms_cubic-bezier(0.32,0.72,0,1)]";
+const SIDEBAR_MOBILE_SHELF_INSET_TRANSITION_CLASS =
+  "max-md:[transition:translate_220ms_cubic-bezier(0.32,0.72,0,1)]";
 const SIDEBAR_MOBILE_BACKDROP_TRANSITION_CLASS =
-  "[transition:opacity_220ms_cubic-bezier(0.32,0.72,0,1)]";
+  "[transition:opacity_220ms_cubic-bezier(0.32,0.72,0,1),translate_220ms_cubic-bezier(0.32,0.72,0,1)]";
 const SIDEBAR_GROUP_LABEL_BASE_CLASS =
   "duration-200 flex shrink-0 items-center rounded-md px-1 text-xs font-medium text-sidebar-foreground/75 outline-none ring-sidebar-ring transition-[margin,opa] ease-linear focus-visible:ring-2 [&>svg]:size-4 [&>svg]:shrink-0";
 const SIDEBAR_GROUP_LABEL_COLLAPSED_CLASS =
@@ -72,7 +77,7 @@ function getSidebarMobilePanelWidth(): number {
     return 320;
   }
 
-  return Math.min(window.innerWidth * 0.9, 320);
+  return Math.min(window.innerWidth * SIDEBAR_MOBILE_VIEWPORT_FRACTION, 320);
 }
 
 function clampSidebarMobileSwipeProgress(value: number): number {
@@ -82,25 +87,27 @@ function clampSidebarMobileSwipeProgress(value: number): number {
 function getSidebarMobileMotionNodes(): {
   panel: HTMLElement | null;
   backdrop: HTMLElement | null;
+  inset: HTMLElement | null;
 } {
   if (typeof document === "undefined") {
-    return { panel: null, backdrop: null };
+    return { panel: null, backdrop: null, inset: null };
   }
 
   const panel = document.querySelector(
     '[data-sidebar="panel"][data-vaul-drawer-direction]',
   );
   const backdrop = document.querySelector("[data-sidebar-mobile-backdrop]");
+  const inset = document.querySelector('[data-sidebar="inset"]');
 
   return {
     panel: panel instanceof HTMLElement ? panel : null,
     backdrop: backdrop instanceof HTMLElement ? backdrop : null,
+    inset: inset instanceof HTMLElement ? inset : null,
   };
 }
 
-function getSidebarMobilePanelTranslate(progress: number): string {
-  const hiddenPercent = (1 - progress) * 100;
-  return `-${hiddenPercent}%`;
+function getSidebarShelfRevealTranslate(progress: number): string {
+  return `${Math.round(getSidebarMobilePanelWidth() * progress)}px`;
 }
 
 function applySidebarMobileDragStyles({
@@ -110,43 +117,51 @@ function applySidebarMobileDragStyles({
   progress: number;
   settling: boolean;
 }) {
-  const { panel, backdrop } = getSidebarMobileMotionNodes();
+  const { panel, backdrop, inset } = getSidebarMobileMotionNodes();
+  const translate = getSidebarShelfRevealTranslate(progress);
 
-  if (panel !== null) {
-    panel.setAttribute("data-vaul-animate", "false");
-    panel.style.translate = getSidebarMobilePanelTranslate(progress);
-    panel.style.transition = settling
-      ? SIDEBAR_MOBILE_PANEL_SETTLE_TRANSITION
+  panel?.setAttribute("data-vaul-animate", "false");
+
+  if (inset !== null) {
+    inset.setAttribute("data-vaul-animate", "false");
+    inset.style.translate = translate;
+    inset.style.transition = settling
+      ? SIDEBAR_MOBILE_SHELF_SETTLE_TRANSITION
       : "none";
   }
 
   if (backdrop !== null) {
     backdrop.setAttribute("data-vaul-animate", "false");
+    backdrop.style.translate = translate;
     backdrop.style.opacity = String(progress);
     backdrop.style.transition = settling
-      ? SIDEBAR_MOBILE_BACKDROP_SETTLE_TRANSITION
+      ? SIDEBAR_MOBILE_SHELF_BACKDROP_SETTLE_TRANSITION
       : "none";
     backdrop.style.pointerEvents = progress > 0 ? "auto" : "";
   }
 }
 
 function clearSidebarMobileDragAttributes() {
-  const { panel, backdrop } = getSidebarMobileMotionNodes();
+  const { panel, backdrop, inset } = getSidebarMobileMotionNodes();
   panel?.removeAttribute("data-vaul-animate");
   backdrop?.removeAttribute("data-vaul-animate");
+  inset?.removeAttribute("data-vaul-animate");
 }
 
 function clearSidebarMobileDragStyles() {
-  const { panel, backdrop } = getSidebarMobileMotionNodes();
+  const { panel, backdrop, inset } = getSidebarMobileMotionNodes();
 
-  if (panel !== null) {
-    panel.removeAttribute("data-vaul-animate");
-    panel.style.translate = "";
-    panel.style.transition = "";
+  panel?.removeAttribute("data-vaul-animate");
+
+  if (inset !== null) {
+    inset.removeAttribute("data-vaul-animate");
+    inset.style.translate = "";
+    inset.style.transition = "";
   }
 
   if (backdrop !== null) {
     backdrop.removeAttribute("data-vaul-animate");
+    backdrop.style.translate = "";
     backdrop.style.opacity = "";
     backdrop.style.transition = "";
     backdrop.style.pointerEvents = "";
@@ -653,11 +668,12 @@ const SidebarProvider = React.forwardRef<
                 style={
                   {
                     "--sidebar-width-icon": SIDEBAR_WIDTH_ICON,
+                    ...sidebarMobileWidthStyle,
                     ...style,
                   } as React.CSSProperties
                 }
                 className={cn(
-                  "group/sidebar-wrapper flex h-full min-h-0 w-full has-[[data-variant=inset]]:bg-sidebar",
+                  "group/sidebar-wrapper flex h-full min-h-0 w-full has-[[data-variant=inset]]:bg-sidebar max-md:overflow-clip",
                   className,
                 )}
                 ref={ref}
@@ -707,24 +723,13 @@ const Sidebar = React.forwardRef<HTMLDivElement, React.ComponentProps<"div">>(
     );
     const shouldSuppressMobileCloseAnimation =
       !openMobile && suppressMobileCloseAnimation;
-    const mobilePanelMotionStyle = React.useMemo<
-      React.CSSProperties | undefined
-    >(() => {
-      if (shouldSuppressMobileCloseAnimation) {
-        return {
-          translate: "-100%",
-          transition: "none",
-        };
-      }
-
-      return undefined;
-    }, [shouldSuppressMobileCloseAnimation]);
     const mobileBackdropStyle = React.useMemo<
       React.CSSProperties | undefined
     >(() => {
       if (shouldSuppressMobileCloseAnimation) {
         return {
           opacity: 0,
+          translate: "0px",
           pointerEvents: "none",
           transition: "none",
         };
@@ -741,7 +746,6 @@ const Sidebar = React.forwardRef<HTMLDivElement, React.ComponentProps<"div">>(
           onOpenChange={handleOpenMobileChange}
           onDismiss={closeMobileSidebar}
           suppressOpenAnimation={suppressMobileOpenAnimation}
-          panelMotionStyle={mobilePanelMotionStyle}
           backdropStyle={mobileBackdropStyle}
           className={className}
           style={style}
@@ -833,7 +837,6 @@ interface SidebarMobilePanelProps extends React.ComponentProps<"div"> {
   onOpenChange: (open: boolean) => void;
   onDismiss: () => void;
   suppressOpenAnimation: boolean;
-  panelMotionStyle?: React.CSSProperties;
   backdropStyle?: React.CSSProperties;
 }
 
@@ -874,7 +877,6 @@ const SidebarMobilePanel = React.forwardRef<
       onOpenChange,
       onDismiss,
       suppressOpenAnimation,
-      panelMotionStyle,
       backdropStyle,
       className,
       style,
@@ -1300,7 +1302,8 @@ const SidebarMobilePanel = React.forwardRef<
           data-testid="sidebar-mobile-backdrop"
           data-state={open ? "open" : "closed"}
           className={cn(
-            "fixed inset-0 z-40 bg-black/80 will-change-[opacity]",
+            "fixed inset-0 z-40 bg-transparent will-change-[opacity,translate]",
+            "data-[state=open]:translate-x-(--sidebar-width-mobile)",
             SIDEBAR_MOBILE_BACKDROP_TRANSITION_CLASS,
             "data-[state=closed]:pointer-events-none data-[state=closed]:opacity-0",
           )}
@@ -1322,9 +1325,7 @@ const SidebarMobilePanel = React.forwardRef<
           data-side="left"
           data-vaul-drawer-direction="left"
           className={cn(
-            "group fixed inset-y-0 z-40 flex h-(--bb-shell-height) w-(--sidebar-width-mobile) touch-pan-y select-none flex-col bg-sidebar text-sidebar-foreground outline-none will-change-[translate]",
-            SIDEBAR_MOBILE_PANEL_TRANSITION_CLASS,
-            "left-0 data-[state=closed]:-translate-x-full",
+            "group fixed inset-y-0 left-0 z-0 flex h-(--bb-shell-height) w-(--sidebar-width-mobile) touch-pan-y select-none flex-col bg-sidebar text-sidebar-foreground outline-none",
             "border-border-seam data-[side=left]:border-r data-[side=right]:border-l",
             className,
           )}
@@ -1332,8 +1333,6 @@ const SidebarMobilePanel = React.forwardRef<
             {
               ...sidebarMobileWidthStyle,
               ...style,
-              ...suppressedOpenTransitionStyle,
-              ...panelMotionStyle,
             } as SidebarMobileWidthStyle
           }
           onPointerDown={handlePanelPointerDown}
@@ -1393,6 +1392,7 @@ const SidebarInset = React.forwardRef<
     openMobile,
     setOpenMobile,
     openMobileSidebar,
+    suppressMobileOpenAnimation,
     setSuppressMobileOpenAnimation,
     setSuppressMobileCloseAnimation,
   } = useSidebar();
@@ -1891,12 +1891,39 @@ const SidebarInset = React.forwardRef<
     }
   }, [clearSwipeSession, isCompactViewport, openMobile]);
 
+  const secondaryPanelShelfShowing = React.useSyncExternalStore(
+    subscribeCompactSecondaryPanelShelfShowing,
+    isCompactSecondaryPanelShelfShowing,
+    () => false,
+  );
+  const shelfState = isCompactViewport
+    ? openMobile
+      ? "open"
+      : "closed"
+    : undefined;
+  const panelShelfState =
+    isCompactViewport && !openMobile
+      ? secondaryPanelShelfShowing
+        ? "open"
+        : "closed"
+      : undefined;
+
   return (
     <main
       ref={ref}
       data-sidebar="inset"
+      data-sidebar-shelf={shelfState}
+      data-panel-shelf={panelShelfState}
+      style={
+        openMobile && suppressMobileOpenAnimation
+          ? { transition: "none" }
+          : undefined
+      }
       className={cn(
-        "relative flex h-full min-h-0 min-w-0 flex-1 flex-col bg-background",
+        "relative flex h-full min-h-0 min-w-0 flex-1 flex-col bg-background max-md:z-30",
+        SIDEBAR_MOBILE_SHELF_INSET_TRANSITION_CLASS,
+        "data-[sidebar-shelf=open]:translate-x-(--sidebar-width-mobile) data-[sidebar-shelf=open]:rounded-l-xl data-[sidebar-shelf=open]:shadow-xl data-[sidebar-shelf]:will-change-[translate]",
+        "data-[panel-shelf=open]:-translate-x-(--secondary-panel-width-mobile) data-[panel-shelf=open]:rounded-r-xl data-[panel-shelf=open]:shadow-xl data-[panel-shelf]:will-change-[translate]",
         "md:peer-data-[variant=inset]:m-2 md:peer-data-[variant=inset]:ml-0 md:peer-data-[variant=inset]:rounded-xl md:peer-data-[variant=inset]:shadow",
         className,
       )}

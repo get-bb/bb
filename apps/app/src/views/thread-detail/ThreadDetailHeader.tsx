@@ -12,7 +12,6 @@ import { useAtomValue } from "jotai";
 import { COARSE_POINTER_TOOLBAR_ACTION_BUTTON_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
 import { Icon } from "@bb/shared-ui/icon";
 import { Pill } from "@bb/shared-ui/pill";
-import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { SplitButton } from "@/components/ui/split-button.js";
 import {
   AppPageHeader,
@@ -32,7 +31,7 @@ import { useInlineThreadTitle } from "@/components/thread/InlineThreadTitle";
 import { useThreadActions } from "@/components/thread/ThreadActionsProvider";
 import { ThreadTitleMentions } from "@/components/thread/ThreadTitleMentions";
 import { SecondaryPanelHostLayoutContext } from "@/components/secondary-panel/SecondaryPanelHostLayoutContext";
-import { getRightPanelToggleIconName } from "@/components/secondary-panel/panelToggleControlState";
+import { RIGHT_PANEL_TOGGLE_ICON_NAME } from "@/components/secondary-panel/panelToggleControlState";
 import { CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS } from "@bb/shared-ui/chrome-style-tokens";
 import { dimInactiveSplitsAtom } from "@/lib/split-layout/atoms";
 import {
@@ -89,7 +88,6 @@ export function ThreadDetailHeader({
     resetKey: threadId,
     title: threadTitle,
   });
-  const renderAsDrawer = useIsCompactViewport();
   const [desktopInfo] = useState(getBbDesktopInfo);
   const dimsInactiveSplits = useAtomValue(dimInactiveSplitsAtom);
   const panelShortcut = useAppCommandShortcut("panel.toggle");
@@ -147,7 +145,7 @@ export function ThreadDetailHeader({
   const rightPanelLabel = isSecondaryPanelOpen
     ? "Hide right panel"
     : "Show right panel";
-  const rightPanelIconName = getRightPanelToggleIconName(renderAsDrawer);
+  const rightPanelIconName = RIGHT_PANEL_TOGGLE_ICON_NAME;
   const showRightPanelToggle =
     secondaryPanelHost === null && !isSecondaryPanelOpen;
 

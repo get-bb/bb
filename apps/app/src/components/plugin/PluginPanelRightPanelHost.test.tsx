@@ -615,14 +615,14 @@ describe("PluginPanelRightPanelHost", () => {
     cleanup();
   });
 
-  it("shows the drawer glyph on the trigger for a compact viewport", async () => {
+  it("shows the side-panel glyph on the trigger for a compact viewport", async () => {
     viewportState.isCompactViewport = true;
     renderHost();
 
     const showButton = await screen.findByRole("button", {
       name: "Show right panel",
     });
-    expect(showButton.querySelector('[data-icon="PanelBottom"]')).toBeTruthy();
+    expect(showButton.querySelector('[data-icon="PanelRight"]')).toBeTruthy();
   });
 
   it("shows the side-panel glyph on the trigger for a wide viewport", async () => {

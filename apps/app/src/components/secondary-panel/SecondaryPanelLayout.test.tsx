@@ -66,12 +66,10 @@ vi.mock("react-resizable-panels", async () => {
   return { Panel, PanelGroup };
 });
 
-vi.mock("@bb/shared-ui/responsive-overlay", async (importOriginal) => {
+vi.mock("./CompactSecondaryPanelShelf", async () => {
   const React = await import("react");
-  const actual =
-    await importOriginal<typeof import("@bb/shared-ui/responsive-overlay")>();
 
-  const PersistentResponsiveDrawerShell = ({
+  const CompactSecondaryPanelShelf = ({
     children,
     onContentAnimationEnd,
     open,
@@ -91,7 +89,7 @@ vi.mock("@bb/shared-ui/responsive-overlay", async (importOriginal) => {
     );
   };
 
-  return { ...actual, PersistentResponsiveDrawerShell };
+  return { CompactSecondaryPanelShelf };
 });
 
 interface QueuedAnimationFrames {

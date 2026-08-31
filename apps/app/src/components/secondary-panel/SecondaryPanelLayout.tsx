@@ -15,11 +15,9 @@ import {
   type ImperativePanelGroupHandle,
 } from "react-resizable-panels";
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
-import {
-  PersistentResponsiveDrawerShell,
-  useResponsiveDrawerRealization,
-} from "@bb/shared-ui/responsive-overlay";
+import { useResponsiveDrawerRealization } from "@bb/shared-ui/responsive-overlay";
 import { cn } from "@bb/shared-ui/lib/utils";
+import { CompactSecondaryPanelShelf } from "./CompactSecondaryPanelShelf";
 import type { PluginComposerHost } from "@/components/plugin/plugin-composer-host";
 import { dispatchBrowserViewBoundsSync } from "@/lib/browser-view-bounds-sync";
 import {
@@ -345,21 +343,14 @@ export function SecondaryPanelLayout({
         </PanelGroup>
       </div>
       {renderAsDrawer ? (
-        <PersistentResponsiveDrawerShell
+        <CompactSecondaryPanelShelf
           open={open}
-          onOpenChange={(nextOpen) => {
-            if (!nextOpen) {
-              onClose();
-            }
-          }}
+          onClose={onClose}
           srLabel={drawerLabel}
-          contentClassName="h-[92dvh] max-h-[92dvh]"
           onContentAnimationEnd={handleDrawerContentAnimationEnd}
         >
-          <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-            {isPanelRealized ? drawerPanel : drawerFallback}
-          </div>
-        </PersistentResponsiveDrawerShell>
+          {isPanelRealized ? drawerPanel : drawerFallback}
+        </CompactSecondaryPanelShelf>
       ) : null}
     </>
   );

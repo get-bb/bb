@@ -37,7 +37,7 @@ import {
   THREAD_SECONDARY_PANEL_MIN_SIZE_PERCENT,
 } from "./secondaryPanelSizing";
 import {
-  getRightPanelToggleIconName,
+  RIGHT_PANEL_TOGGLE_ICON_NAME,
   resolveConversationCollapseControl,
 } from "./panelToggleControlState";
 import { SecondaryPanelHostLayoutContext } from "./SecondaryPanelHostLayoutContext";
@@ -253,7 +253,7 @@ export function ThreadSecondaryPanel({
     [tabs],
   );
   const hasActiveRenderableTab = activeRenderableTab !== undefined;
-  const hidePanelIconName = getRightPanelToggleIconName(renderAsDrawer);
+  const hidePanelIconName = RIGHT_PANEL_TOGGLE_ICON_NAME;
   const conversationCollapseControl =
     renderAsDrawer || !showConversationCollapseControl
       ? null

@@ -100,15 +100,17 @@ function createStoryFileTab(path: string): HostFilePreviewFixedPanelTab {
 function PanelStage({
   children,
   height = "compact",
+  width = "wide",
 }: {
   children: ReactNode;
   height?: "compact" | "info";
+  width?: "wide" | "shelf";
 }) {
   return (
     <div
-      className={`flex w-full max-w-[640px] min-w-0 flex-col overflow-hidden rounded-md border border-border bg-background ${
-        height === "info" ? "h-[520px]" : "h-[160px]"
-      }`}
+      className={`flex min-w-0 flex-col overflow-hidden rounded-md border border-border bg-background ${
+        width === "shelf" ? "w-[299px]" : "w-full max-w-[640px]"
+      } ${height === "info" ? "h-[520px]" : "h-[160px]"}`}
     >
       <PanelGroup direction="horizontal">{children}</PanelGroup>
     </div>
@@ -311,16 +313,41 @@ function RepresentativeTerminalContent({
   );
 }
 
+const MANY_TAB_FILENAMES: string[] = [
+  "ThreadSecondaryPanel.tsx",
+  "SecondaryPanelTabStrip.tsx",
+  "CompactSecondaryPanelShelf.tsx",
+  "useGitDiffPanelState.ts",
+  "api.ts",
+  "ThreadDetailHeader.tsx",
+  "ThreadStorageBrowser.tsx",
+  "RootComposeMobileRecents.tsx",
+  "sidebar.tsx",
+  "theme.css",
+  "app.css",
+  "package.json",
+  "README.md",
+  "use-compact-viewport.ts",
+  "provider-registry.ts",
+  "schema.sql",
+  "an-unusually-long-component-filename-that-must-truncate.tsx",
+  "index.ts",
+];
+
 interface FileTabsShellRowProps {
   filenames: string[];
   initialActiveFilename: string | null;
   pinnedFilename?: string;
+  renderAsDrawer?: boolean;
+  stage?: "wide" | "shelf";
 }
 
 function FileTabsShellInner({
   filenames,
   initialActiveFilename,
   pinnedFilename,
+  renderAsDrawer = false,
+  stage = "wide",
 }: FileTabsShellRowProps) {
   const [activeFixedTab, setActiveFixedTab] = useState<SecondaryFixedPanelTab>(
     createThreadInfoFixedPanelTab(),
@@ -365,7 +392,10 @@ function FileTabsShellInner({
   );
 
   return (
-    <PanelStage>
+    <PanelStage
+      width={stage}
+      height={stage === "shelf" ? "info" : "compact"}
+    >
       <ThreadSecondaryPanel
         activeTab={activeTab}
         canUseGitUi
@@ -385,7 +415,7 @@ function FileTabsShellInner({
         onOpenNewTab={noop}
         isConversationCollapsed={false}
         onToggleConversationCollapse={noop}
-        renderAsDrawer={false}
+        renderAsDrawer={renderAsDrawer}
         inlinePanelToggle="hidden"
         showConversationCollapseControl={false}
       />
@@ -617,6 +647,67 @@ export function SplitPanes() {
         hint="real right-panel tabs, pane focus, arrangement, maximize, close, and inner divider behavior"
       >
         <ProductionSplitPanesStory />
+      </StoryRow>
+    </StoryCard>
+  );
+}
+
+export function CompactShelfTabs() {
+  return (
+    <StoryCard>
+      <StoryRow
+        label="compact shelf — many tabs"
+        hint="phone-width shelf (299px, the --secondary-panel-width-mobile value at 393px); the tab row scrolls horizontally while Info and Diff stay fixed"
+      >
+        <FileTabsShellRow
+          filenames={MANY_TAB_FILENAMES}
+          initialActiveFilename="ThreadSecondaryPanel.tsx"
+          renderAsDrawer
+          stage="shelf"
+        />
+      </StoryRow>
+      <StoryRow
+        label="compact shelf — active tab far down the row"
+        hint="the strip should scroll the selected tab into view rather than leaving it offscreen"
+      >
+        <FileTabsShellRow
+          filenames={MANY_TAB_FILENAMES}
+          initialActiveFilename="an-unusually-long-component-filename-that-must-truncate.tsx"
+          renderAsDrawer
+          stage="shelf"
+        />
+      </StoryRow>
+      <StoryRow
+        label="compact shelf — pinned first tab"
+        hint="pinned tab keeps its slot with no close affordance while the rest scroll past it"
+      >
+        <FileTabsShellRow
+          filenames={MANY_TAB_FILENAMES}
+          pinnedFilename="ThreadSecondaryPanel.tsx"
+          initialActiveFilename="theme.css"
+          renderAsDrawer
+          stage="shelf"
+        />
+      </StoryRow>
+      <StoryRow
+        label="compact shelf — no file tab selected"
+        hint="Info stays active while the file tabs sit alongside as inactive pills"
+      >
+        <FileTabsShellRow
+          filenames={MANY_TAB_FILENAMES}
+          initialActiveFilename={null}
+          renderAsDrawer
+          stage="shelf"
+        />
+      </StoryRow>
+      <StoryRow
+        label="wide — the same tabs for comparison"
+        hint="same fixture at desktop width, so shelf-only truncation and scroll behavior is obvious"
+      >
+        <FileTabsShellRow
+          filenames={MANY_TAB_FILENAMES}
+          initialActiveFilename="ThreadSecondaryPanel.tsx"
+        />
       </StoryRow>
     </StoryCard>
   );

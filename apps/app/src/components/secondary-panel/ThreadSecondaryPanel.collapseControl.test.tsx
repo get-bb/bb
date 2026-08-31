@@ -650,7 +650,7 @@ describe("ThreadSecondaryPanel Diff eligibility", () => {
 });
 
 describe("ThreadSecondaryPanel hide control glyph", () => {
-  it("shows the drawer glyph while the panel renders as a bottom drawer", () => {
+  it("shows the side-panel glyph while the panel renders as a shelf", () => {
     const view = renderPanel({
       isConversationCollapsed: false,
       onToggleConversationCollapse: noop,
@@ -658,7 +658,7 @@ describe("ThreadSecondaryPanel hide control glyph", () => {
     });
 
     const hideControl = view.getByRole("button", { name: "Hide right panel" });
-    expect(hideControl.querySelector('[data-icon="PanelBottom"]')).toBeTruthy();
+    expect(hideControl.querySelector('[data-icon="PanelRight"]')).toBeTruthy();
   });
 
   it("shows the side-panel glyph on a wide viewport", () => {
