@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 export const experimentKeys = [
+  "browserAutomation",
   "changelogPreview",
   "editMessages",
   "mobileApp",
@@ -14,6 +15,7 @@ export const experimentsSchema = z.record(experimentKeySchema, z.boolean());
 export type Experiments = z.infer<typeof experimentsSchema>;
 
 export const defaultExperiments: Experiments = {
+  browserAutomation: false,
   changelogPreview: false,
   editMessages: true,
   mobileApp: false,

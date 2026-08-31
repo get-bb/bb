@@ -28,3 +28,13 @@ export const BB_DESKTOP_BROWSER_STOP_FIND_IN_PAGE_CHANNEL =
   "bb-desktop:browser:stop-find-in-page";
 export const BB_DESKTOP_BROWSER_FIND_RESULT_CHANNEL =
   "bb-desktop:browser:find-result";
+export const BB_DESKTOP_BROWSER_RESERVE_AUTOMATION_TARGET_CHANNEL =
+  "bb-desktop:browser:reserve-automation-target";
+export const BB_DESKTOP_BROWSER_REGISTER_AUTOMATION_TARGET_CHANNEL =
+  "bb-desktop:browser:register-automation-target";
+export const BB_DESKTOP_BROWSER_UNREGISTER_AUTOMATION_TARGET_CHANNEL =
+  "bb-desktop:browser:unregister-automation-target";
+export const BB_DESKTOP_BROWSER_RUN_AUTOMATION_COMMAND_CHANNEL =
+  "bb-desktop:browser:run-automation-command";
+export const BB_DESKTOP_BROWSER_CANCEL_AUTOMATION_COMMAND_CHANNEL =
+  "bb-desktop:browser:cancel-automation-command";

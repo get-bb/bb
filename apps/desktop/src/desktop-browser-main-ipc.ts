@@ -1,6 +1,9 @@
 import { BrowserWindow, ipcMain, type IpcMainEvent } from "electron";
 import {
   bbDesktopBrowserAttachRequestSchema,
+  bbDesktopBrowserAutomationCommandRequestSchema,
+  bbDesktopBrowserAutomationTargetRefSchema,
+  bbDesktopBrowserAutomationTargetSchema,
   bbDesktopBrowserFindInPageRequestSchema,
   bbDesktopBrowserNavigateRequestSchema,
   bbDesktopBrowserSetBoundsRequestSchema,
@@ -10,6 +13,7 @@ import {
 } from "@bb/desktop-contract";
 import {
   BB_DESKTOP_BROWSER_ATTACH_CHANNEL,
+  BB_DESKTOP_BROWSER_CANCEL_AUTOMATION_COMMAND_CHANNEL,
   BB_DESKTOP_BROWSER_DETACH_CHANNEL,
   BB_DESKTOP_BROWSER_FOCUS_CHANNEL,
   BB_DESKTOP_BROWSER_FIND_IN_PAGE_CHANNEL,
@@ -17,12 +21,17 @@ import {
   BB_DESKTOP_BROWSER_GO_FORWARD_CHANNEL,
   BB_DESKTOP_BROWSER_NAVIGATE_CHANNEL,
   BB_DESKTOP_BROWSER_RELOAD_CHANNEL,
+  BB_DESKTOP_BROWSER_RESERVE_AUTOMATION_TARGET_CHANNEL,
+  BB_DESKTOP_BROWSER_REGISTER_AUTOMATION_TARGET_CHANNEL,
+  BB_DESKTOP_BROWSER_RUN_AUTOMATION_COMMAND_CHANNEL,
   BB_DESKTOP_BROWSER_SET_BOUNDS_CHANNEL,
   BB_DESKTOP_BROWSER_SET_VISIBLE_CHANNEL,
   BB_DESKTOP_BROWSER_SET_VISIBLE_WITHOUT_FOCUS_CHANNEL,
   BB_DESKTOP_BROWSER_STOP_CHANNEL,
   BB_DESKTOP_BROWSER_STOP_FIND_IN_PAGE_CHANNEL,
+  BB_DESKTOP_BROWSER_UNREGISTER_AUTOMATION_TARGET_CHANNEL,
 } from "./desktop-browser-ipc.js";
+import { classifyDesktopBrowserAutomationError } from "./desktop-browser-automation.js";
 import type { DesktopBrowserViewManager } from "./desktop-browser-view.js";
 
 interface DesktopBrowserTabCommandArgs {
@@ -38,7 +47,7 @@ interface RegisterDesktopBrowserTabCommandArgs {
 }
 
 function hostWindowFromBrowserIpcEvent(
-  event: IpcMainEvent,
+  event: Pick<IpcMainEvent, "sender">,
 ): BrowserWindow | null {
   return BrowserWindow.fromWebContents(event.sender);
 }
@@ -60,6 +69,89 @@ function registerTabCommand(args: RegisterDesktopBrowserTabCommandArgs): void {
 export function registerDesktopBrowserIpc(
   manager: DesktopBrowserViewManager,
 ): void {
+  ipcMain.handle(
+    BB_DESKTOP_BROWSER_RUN_AUTOMATION_COMMAND_CHANNEL,
+    async (event, payload: unknown) => {
+      const hostWindow = hostWindowFromBrowserIpcEvent(event);
+      const parsed = bbDesktopBrowserAutomationCommandRequestSchema.safeParse(payload);
+      if (hostWindow === null || !parsed.success) {
+        return {
+          ok: false,
+          code: "native_operation_failed",
+          detail: "Invalid Browser automation command",
+        };
+      }
+      try {
+        const result = await manager.runAutomationCommand({
+          hostWindow,
+          ...parsed.data,
+        });
+        return { ok: true, result };
+      } catch (error) {
+        const detail = error instanceof Error ? error.message.slice(0, 512) : "Browser automation command failed";
+        const code = classifyDesktopBrowserAutomationError(error);
+        const state = manager.getAutomationPageState({
+          hostWindow,
+          targetId: parsed.data.targetId,
+        });
+        return {
+          ok: false,
+          code,
+          detail,
+          ...(state === null ? {} : { state }),
+        };
+      }
+    },
+  );
+
+  ipcMain.handle(
+    BB_DESKTOP_BROWSER_CANCEL_AUTOMATION_COMMAND_CHANNEL,
+    (event, payload: unknown) => {
+      const hostWindow = hostWindowFromBrowserIpcEvent(event);
+      const parsed = bbDesktopBrowserAutomationTargetRefSchema.safeParse(payload);
+      if (hostWindow === null || !parsed.success) return;
+      manager.cancelAutomationCommand({ hostWindow, ...parsed.data });
+    },
+  );
+
+  ipcMain.handle(
+    BB_DESKTOP_BROWSER_RESERVE_AUTOMATION_TARGET_CHANNEL,
+    (event, payload: unknown) => {
+      const hostWindow = hostWindowFromBrowserIpcEvent(event);
+      if (hostWindow === null) return false;
+      const parsed = bbDesktopBrowserAutomationTargetSchema.safeParse(payload);
+      if (!parsed.success) return false;
+      return manager.reserveAutomationTarget({ hostWindow, ...parsed.data });
+    },
+  );
+
+  ipcMain.handle(
+    BB_DESKTOP_BROWSER_REGISTER_AUTOMATION_TARGET_CHANNEL,
+    (event, payload: unknown) => {
+      const hostWindow = hostWindowFromBrowserIpcEvent(event);
+      if (hostWindow === null) return false;
+      const parsed = bbDesktopBrowserAutomationTargetSchema.safeParse(payload);
+      if (!parsed.success) return false;
+      try {
+        manager.registerAutomationTarget({ hostWindow, ...parsed.data });
+        return true;
+      } catch {
+        return false;
+      }
+    },
+  );
+
+  ipcMain.handle(
+    BB_DESKTOP_BROWSER_UNREGISTER_AUTOMATION_TARGET_CHANNEL,
+    (event, payload: unknown) => {
+      const hostWindow = hostWindowFromBrowserIpcEvent(event);
+      if (hostWindow === null) return;
+      const parsed = bbDesktopBrowserAutomationTargetRefSchema.safeParse(payload);
+      if (!parsed.success) return;
+      manager.unregisterAutomationTarget({ hostWindow, ...parsed.data });
+    },
+  );
+
   ipcMain.on(BB_DESKTOP_BROWSER_ATTACH_CHANNEL, (event, payload: unknown) => {
     const hostWindow = hostWindowFromBrowserIpcEvent(event);
     if (hostWindow === null) {

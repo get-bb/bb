@@ -49,6 +49,8 @@ import { HostSharedPortCoordinator } from "../../../apps/server/src/ws/host-shar
 import { NotificationHub } from "../../../apps/server/src/ws/hub.js";
 import { WatchInterestCoordinator } from "../../../apps/server/src/ws/watch-interests.js";
 import { WorkspaceReadCaches } from "../../../apps/server/src/services/environments/workspace-read-cache.js";
+import { BrowserAutomationService } from "../../../apps/server/src/services/browser/browser-automation.js";
+import { BrowserArtifactStore } from "../../../apps/server/src/services/browser/browser-artifacts.js";
 import { createPublicApiClient } from "@bb/server-contract";
 import { waitForHostConnected } from "./assertions.js";
 import { createIntegrationFetch } from "./fetch.js";
@@ -108,6 +110,7 @@ export interface IntegrationHarness {
 export interface CreateHarnessOptions {
   serverPort?: number;
   bindHost?: "127.0.0.1" | "0.0.0.0";
+  hostDaemonPort?: number;
   staticDir?: string;
 }
 
@@ -283,6 +286,12 @@ async function startIntegrationServer(
     {
       appVersion,
       bbAppManagedConfig,
+      browserArtifacts: new BrowserArtifactStore(config.dataDir),
+      browserAutomation: new BrowserAutomationService({
+        db,
+        hub,
+        logger: testLogger,
+      }),
       providerRegistry,
       providerNativeRoots: createProviderNativeRootsCache(),
       pluginHostArtifacts,
@@ -370,7 +379,15 @@ async function startHarnessDaemon(
       hostName: identity.hostName,
       hostType: "persistent",
       instanceId: randomUUID(),
-      localApiConfig: null,
+      localApiConfig:
+        options.hostDaemonPort === undefined
+          ? null
+          : {
+              bindHost: "127.0.0.1",
+              healthPath: "/health",
+              healthValue: "ok",
+              port: options.hostDaemonPort,
+            },
       logger: testLogger,
       releaseLock,
       serverUrl: server.baseUrl,

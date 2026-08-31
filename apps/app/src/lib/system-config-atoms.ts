@@ -21,6 +21,7 @@ const unavailableSystemConfig: SystemConfigResponse = {
   defaultKeybindings: [],
   keybindingOverrides: [],
   experiments: {
+    browserAutomation: false,
     changelogPreview: false,
     editMessages: false,
     mobileApp: false,

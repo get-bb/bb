@@ -204,6 +204,7 @@ describe("desktop preload browser API", () => {
 
     expect(Object.keys(api.browser).sort()).toEqual([
       "attach",
+      "cancelAutomationCommand",
       "detach",
       "findInPage",
       "focus",
@@ -216,12 +217,16 @@ describe("desktop preload browser API", () => {
       "onScopedOpenTab",
       "onSnapshot",
       "onState",
+      "registerAutomationTarget",
       "reload",
+      "reserveAutomationTarget",
+      "runAutomationCommand",
       "setBounds",
       "setVisible",
       "setVisibleWithoutFocus",
       "stop",
       "stopFindInPage",
+      "unregisterAutomationTarget",
     ]);
     expect(api.browser).not.toHaveProperty("send");
     expect(api.browser).not.toHaveProperty("invoke");

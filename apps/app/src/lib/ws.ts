@@ -1,5 +1,9 @@
 import ReconnectingWebSocket from "partysocket/ws";
 import {
+  browserAutomationCancelMessageLenientSchema,
+  browserAutomationCloseMessageLenientSchema,
+  browserAutomationCommandMessageLenientSchema,
+  browserAutomationOpenMessageLenientSchema,
   changedMessageLenientSchema,
   pluginSignalLenientSchema,
   pongMessageLenientSchema,
@@ -8,6 +12,17 @@ import {
   threadPaneActionSignalLenientSchema,
 } from "@bb/server-contract";
 import type {
+  BrowserAutomationCapabilityMessage,
+  BrowserAutomationCancelMessage,
+  BrowserAutomationCancelRequestMessage,
+  BrowserAutomationCloseMessage,
+  BrowserAutomationCommandFailedMessage,
+  BrowserAutomationCommandMessage,
+  BrowserAutomationCommandResultMessage,
+  BrowserAutomationOpenFailedMessage,
+  BrowserAutomationOpenMessage,
+  BrowserAutomationOpenReadyMessage,
+  BrowserAutomationTargetClosedMessage,
   ClientMessage,
   ChangedMessage,
   PluginSignal,
@@ -26,6 +41,25 @@ type ChangeCallback = (message: ChangedMessage) => void;
 type ThreadOpenCallback = (signal: ThreadOpenSignal) => void;
 type ThreadPaneActionCallback = (signal: ThreadPaneActionSignal) => void;
 type PluginSignalCallback = (signal: PluginSignal) => void;
+type BrowserAutomationOpenCallback = (
+  message: BrowserAutomationOpenMessage,
+) => void;
+type BrowserAutomationCloseCallback = (
+  message: BrowserAutomationCloseMessage,
+) => void;
+type BrowserAutomationCommandCallback = (
+  message: BrowserAutomationCommandMessage,
+) => void;
+type BrowserAutomationCancelCallback = (
+  message: BrowserAutomationCancelMessage,
+) => void;
+export type BrowserAutomationClientReply =
+  | BrowserAutomationOpenReadyMessage
+  | BrowserAutomationOpenFailedMessage
+  | BrowserAutomationTargetClosedMessage
+  | BrowserAutomationCommandResultMessage
+  | BrowserAutomationCommandFailedMessage
+  | BrowserAutomationCancelRequestMessage;
 export type WebSocketConnectedEvent =
   | { reconnected: false }
   | {
@@ -33,6 +67,7 @@ export type WebSocketConnectedEvent =
       disconnectedAt: number;
     };
 type ConnectedCallback = (event: WebSocketConnectedEvent) => void;
+type DisconnectedCallback = () => void;
 type ConnectionStateCallback = () => void;
 export type WebSocketConnectionState =
   | "connecting"
@@ -76,8 +111,19 @@ export class WebSocketManager {
   private threadOpenCallbacks = new Set<ThreadOpenCallback>();
   private threadPaneActionCallbacks = new Set<ThreadPaneActionCallback>();
   private pluginSignalCallbacks = new Set<PluginSignalCallback>();
+  private browserAutomationOpenCallbacks =
+    new Set<BrowserAutomationOpenCallback>();
+  private browserAutomationCloseCallbacks =
+    new Set<BrowserAutomationCloseCallback>();
+  private browserAutomationCommandCallbacks =
+    new Set<BrowserAutomationCommandCallback>();
+  private browserAutomationCancelCallbacks =
+    new Set<BrowserAutomationCancelCallback>();
+  private browserAutomationCapability: BrowserAutomationCapabilityMessage | null =
+    null;
   private pendingOpenFileByThreadId = new Map<string, ThreadOpenFile>();
   private connectedCallbacks = new Set<ConnectedCallback>();
+  private disconnectedCallbacks = new Set<DisconnectedCallback>();
   private connectionStateCallbacks = new Set<ConnectionStateCallback>();
   private hasConnected = false;
   private connectionState: WebSocketConnectionState = "connecting";
@@ -118,6 +164,9 @@ export class WebSocketManager {
       this.startPingLoop();
       for (const subscription of this.subscriptions.values()) {
         this.sendMessage({ type: "subscribe", target: subscription.target });
+      }
+      if (this.browserAutomationCapability !== null) {
+        this.sendMessage(this.browserAutomationCapability);
       }
       const event: WebSocketConnectedEvent = reconnected
         ? { reconnected, disconnectedAt: disconnectedAt ?? Date.now() }
@@ -263,8 +312,10 @@ export class WebSocketManager {
 
   private markSocketLost(at: number): void {
     this.stopPingLoop();
-    if (this.hasConnected && this.disconnectedAt === null) {
+    const newlyDisconnected = this.hasConnected && this.disconnectedAt === null;
+    if (newlyDisconnected) {
       this.disconnectedAt = at;
+      for (const callback of this.disconnectedCallbacks) callback();
     }
     this.setConnectionState(this.hasConnected ? "reconnecting" : "connecting");
   }
@@ -312,6 +363,42 @@ export class WebSocketManager {
       return;
     }
 
+    const browserAutomationOpen =
+      browserAutomationOpenMessageLenientSchema.safeParse(parsed);
+    if (browserAutomationOpen.success) {
+      for (const cb of this.browserAutomationOpenCallbacks) {
+        cb(browserAutomationOpen.data);
+      }
+      return;
+    }
+
+    const browserAutomationClose =
+      browserAutomationCloseMessageLenientSchema.safeParse(parsed);
+    if (browserAutomationClose.success) {
+      for (const cb of this.browserAutomationCloseCallbacks) {
+        cb(browserAutomationClose.data);
+      }
+      return;
+    }
+
+    const browserAutomationCommand =
+      browserAutomationCommandMessageLenientSchema.safeParse(parsed);
+    if (browserAutomationCommand.success) {
+      for (const cb of this.browserAutomationCommandCallbacks) {
+        cb(browserAutomationCommand.data);
+      }
+      return;
+    }
+
+    const browserAutomationCancel =
+      browserAutomationCancelMessageLenientSchema.safeParse(parsed);
+    if (browserAutomationCancel.success) {
+      for (const cb of this.browserAutomationCancelCallbacks) {
+        cb(browserAutomationCancel.data);
+      }
+      return;
+    }
+
     const msg = changedMessageLenientSchema.safeParse(parsed);
     if (msg.success) {
       for (const cb of this.callbacks) {
@@ -323,10 +410,7 @@ export class WebSocketManager {
   }
 
   disconnect(): void {
-    this.stopPingLoop();
-    if (this.hasConnected && this.disconnectedAt === null) {
-      this.disconnectedAt = Date.now();
-    }
+    this.markSocketLost(Date.now());
     if (this.unsubscribeBrowserEvents) {
       this.unsubscribeBrowserEvents();
       this.unsubscribeBrowserEvents = null;
@@ -397,6 +481,60 @@ export class WebSocketManager {
     };
   }
 
+  onBrowserAutomationOpen(callback: BrowserAutomationOpenCallback): () => void {
+    this.browserAutomationOpenCallbacks.add(callback);
+    return () => {
+      this.browserAutomationOpenCallbacks.delete(callback);
+    };
+  }
+
+  onBrowserAutomationClose(
+    callback: BrowserAutomationCloseCallback,
+  ): () => void {
+    this.browserAutomationCloseCallbacks.add(callback);
+    return () => {
+      this.browserAutomationCloseCallbacks.delete(callback);
+    };
+  }
+
+  onBrowserAutomationCommand(
+    callback: BrowserAutomationCommandCallback,
+  ): () => void {
+    this.browserAutomationCommandCallbacks.add(callback);
+    return () => {
+      this.browserAutomationCommandCallbacks.delete(callback);
+    };
+  }
+
+  onBrowserAutomationCancel(
+    callback: BrowserAutomationCancelCallback,
+  ): () => void {
+    this.browserAutomationCancelCallbacks.add(callback);
+    return () => {
+      this.browserAutomationCancelCallbacks.delete(callback);
+    };
+  }
+
+  setBrowserAutomationCapability(windowId: string): void {
+    this.browserAutomationCapability = {
+      type: "browser-automation.capability",
+      windowId,
+    };
+    this.sendMessage(this.browserAutomationCapability);
+  }
+
+  clearBrowserAutomationCapability(): void {
+    if (this.browserAutomationCapability === null) {
+      return;
+    }
+    this.browserAutomationCapability = null;
+    this.sendMessage({ type: "browser-automation.capability-unavailable" });
+  }
+
+  sendBrowserAutomationReply(message: BrowserAutomationClientReply): void {
+    this.sendMessage(message);
+  }
+
   consumePendingOpenFile(threadId: string): ThreadOpenFile | null {
     const pending = this.pendingOpenFileByThreadId.get(threadId);
     if (!pending) {
@@ -410,6 +548,13 @@ export class WebSocketManager {
     this.connectedCallbacks.add(callback);
     return () => {
       this.connectedCallbacks.delete(callback);
+    };
+  }
+
+  onDisconnected(callback: DisconnectedCallback): () => void {
+    this.disconnectedCallbacks.add(callback);
+    return () => {
+      this.disconnectedCallbacks.delete(callback);
     };
   }
 

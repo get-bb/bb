@@ -10,6 +10,7 @@ import {
 } from "@bb/desktop-contract";
 import {
   BB_DESKTOP_BROWSER_ATTACH_CHANNEL,
+  BB_DESKTOP_BROWSER_CANCEL_AUTOMATION_COMMAND_CHANNEL,
   BB_DESKTOP_BROWSER_DETACH_CHANNEL,
   BB_DESKTOP_BROWSER_FOCUS_CHANNEL,
   BB_DESKTOP_BROWSER_FIND_IN_PAGE_CHANNEL,
@@ -17,12 +18,17 @@ import {
   BB_DESKTOP_BROWSER_GO_FORWARD_CHANNEL,
   BB_DESKTOP_BROWSER_NAVIGATE_CHANNEL,
   BB_DESKTOP_BROWSER_RELOAD_CHANNEL,
+  BB_DESKTOP_BROWSER_RESERVE_AUTOMATION_TARGET_CHANNEL,
+  BB_DESKTOP_BROWSER_REGISTER_AUTOMATION_TARGET_CHANNEL,
+  BB_DESKTOP_BROWSER_RUN_AUTOMATION_COMMAND_CHANNEL,
   BB_DESKTOP_BROWSER_SET_BOUNDS_CHANNEL,
   BB_DESKTOP_BROWSER_SET_VISIBLE_CHANNEL,
   BB_DESKTOP_BROWSER_SET_VISIBLE_WITHOUT_FOCUS_CHANNEL,
   BB_DESKTOP_BROWSER_STOP_CHANNEL,
   BB_DESKTOP_BROWSER_STOP_FIND_IN_PAGE_CHANNEL,
+  BB_DESKTOP_BROWSER_UNREGISTER_AUTOMATION_TARGET_CHANNEL,
 } from "../src/desktop-browser-ipc.js";
+import { DesktopBrowserAutomationError } from "../src/desktop-browser-automation.js";
 import { registerDesktopBrowserIpc } from "../src/desktop-browser-main-ipc.js";
 import type { DesktopBrowserViewManager } from "../src/desktop-browser-view.js";
 
@@ -39,12 +45,14 @@ const electronMock = vi.hoisted(() => {
     sender: FakeWebContents;
   }
 
-  type FakeIpcListener = (event: FakeIpcEvent, payload: unknown) => void;
+  type FakeIpcListener = (event: FakeIpcEvent, payload: unknown) => unknown;
 
   const listeners = new Map<string, FakeIpcListener>();
+  const handlers = new Map<string, FakeIpcListener>();
   const windowsBySender = new Map<FakeWebContents, FakeBrowserWindow>();
 
   return {
+    handlers,
     listeners,
     windowsBySender,
     BrowserWindow: {
@@ -53,6 +61,9 @@ const electronMock = vi.hoisted(() => {
       },
     },
     ipcMain: {
+      handle(channel: string, listener: FakeIpcListener): void {
+        handlers.set(channel, listener);
+      },
       on(channel: string, listener: FakeIpcListener): void {
         listeners.set(channel, listener);
       },
@@ -100,6 +111,13 @@ interface SendBrowserIpcArgs {
 
 class RecordingDesktopBrowserViewManager implements DesktopBrowserViewManager {
   public readonly attachCalls: AttachCall[] = [];
+  public readonly automationCancelCalls: Array<Parameters<DesktopBrowserViewManager["cancelAutomationCommand"]>[0]> = [];
+  public readonly automationRegisterCalls: Array<Parameters<DesktopBrowserViewManager["registerAutomationTarget"]>[0]> = [];
+  public readonly automationReserveCalls: Array<Parameters<DesktopBrowserViewManager["reserveAutomationTarget"]>[0]> = [];
+  public readonly automationRunCalls: Array<Parameters<DesktopBrowserViewManager["runAutomationCommand"]>[0]> = [];
+  public readonly automationUnregisterCalls: Array<Parameters<DesktopBrowserViewManager["unregisterAutomationTarget"]>[0]> = [];
+  public automationError: Error | null = null;
+  public automationPageState: { navigationEpoch: number; ready: boolean; url: string } | null = { navigationEpoch: 2, ready: true, url: "https://example.test/next" };
   public readonly beginWindowResizeCalls: WindowResizeCall[] = [];
   public readonly destroyAllCalls: string[] = [];
   public readonly detachCalls: DetachCall[] = [];
@@ -119,6 +137,10 @@ class RecordingDesktopBrowserViewManager implements DesktopBrowserViewManager {
 
   attach(args: AttachCall): void {
     this.attachCalls.push(args);
+  }
+
+  cancelAutomationCommand(args: Parameters<DesktopBrowserViewManager["cancelAutomationCommand"]>[0]): void {
+    this.automationCancelCalls.push(args);
   }
 
   beginWindowResize(hostWindow: WindowResizeCall): void {
@@ -143,6 +165,10 @@ class RecordingDesktopBrowserViewManager implements DesktopBrowserViewManager {
     this.focusCalls.push(args);
   }
 
+  getAutomationPageState() {
+    return this.automationPageState;
+  }
+
   findInPage(args: FindInPageCall): void {
     this.findInPageCalls.push(args);
   }
@@ -163,8 +189,27 @@ class RecordingDesktopBrowserViewManager implements DesktopBrowserViewManager {
     this.navigateCalls.push(args);
   }
 
+  reserveAutomationTarget(args: Parameters<DesktopBrowserViewManager["reserveAutomationTarget"]>[0]): boolean {
+    this.automationReserveCalls.push(args);
+    return true;
+  }
+
+  registerAutomationTarget(args: Parameters<DesktopBrowserViewManager["registerAutomationTarget"]>[0]): void {
+    this.automationRegisterCalls.push(args);
+  }
+
   releaseWindow(hostWebContentsId: number): void {
     this.releaseWindowCalls.push(hostWebContentsId);
+  }
+
+  async runAutomationCommand(args: Parameters<DesktopBrowserViewManager["runAutomationCommand"]>[0]) {
+    this.automationRunCalls.push(args);
+    if (this.automationError !== null) throw this.automationError;
+    return { kind: "state" as const, navigationEpoch: 2, ready: true, url: "https://example.test/next" };
+  }
+
+  unregisterAutomationTarget(args: Parameters<DesktopBrowserViewManager["unregisterAutomationTarget"]>[0]): void {
+    this.automationUnregisterCalls.push(args);
   }
 
   reload(args: TabCommandCall): void {
@@ -191,6 +236,7 @@ class RecordingDesktopBrowserViewManager implements DesktopBrowserViewManager {
 let nextWebContentsId = 1;
 
 beforeEach(() => {
+  electronMock.handlers.clear();
   electronMock.listeners.clear();
   electronMock.windowsBySender.clear();
   nextWebContentsId = 1;
@@ -223,7 +269,100 @@ function oversizedBrowserUrl(): string {
   return `https://example.com/${"a".repeat(BB_DESKTOP_BROWSER_MAX_URL_LENGTH)}`;
 }
 
+async function invokeBrowserIpc(channel: string, sender: FakeWebContents, payload: unknown): Promise<unknown> {
+  const handler = electronMock.handlers.get(channel);
+  expect(handler).toBeDefined();
+  return handler?.({ sender }, payload);
+}
+
 describe("registerDesktopBrowserIpc", () => {
+  it("validates and maps scoped automation execute and cancel requests", async () => {
+    const manager = new RecordingDesktopBrowserViewManager();
+    registerDesktopBrowserIpc(manager);
+    const renderer = createTrustedRenderer("main-window");
+    const untrusted = createUntrustedSender();
+    const request = {
+      targetId: "bt_1",
+      navigationEpoch: 1,
+      timeoutMs: 1_000,
+      command: { kind: "press", key: "Enter" },
+    };
+
+    await expect(invokeBrowserIpc(BB_DESKTOP_BROWSER_RUN_AUTOMATION_COMMAND_CHANNEL, renderer.sender, request)).resolves.toEqual({
+      ok: true,
+      result: { kind: "state", navigationEpoch: 2, ready: true, url: "https://example.test/next" },
+    });
+    expect(manager.automationRunCalls).toEqual([{ hostWindow: renderer.hostWindow, ...request }]);
+    await expect(invokeBrowserIpc(BB_DESKTOP_BROWSER_RUN_AUTOMATION_COMMAND_CHANNEL, untrusted, request)).resolves.toMatchObject({ ok: false });
+    await invokeBrowserIpc(BB_DESKTOP_BROWSER_CANCEL_AUTOMATION_COMMAND_CHANNEL, renderer.sender, { targetId: "bt_1" });
+    expect(manager.automationCancelCalls).toEqual([{ hostWindow: renderer.hostWindow, targetId: "bt_1" }]);
+    await expect(invokeBrowserIpc(
+      BB_DESKTOP_BROWSER_RESERVE_AUTOMATION_TARGET_CHANNEL,
+      renderer.sender,
+      { targetId: "bt_1", tabId: "browser:agent" },
+    )).resolves.toBe(true);
+    expect(manager.automationReserveCalls).toEqual([{
+      hostWindow: renderer.hostWindow,
+      targetId: "bt_1",
+      tabId: "browser:agent",
+    }]);
+    await expect(invokeBrowserIpc(
+      BB_DESKTOP_BROWSER_REGISTER_AUTOMATION_TARGET_CHANNEL,
+      renderer.sender,
+      { targetId: "bt_1", tabId: "browser:agent" },
+    )).resolves.toBe(true);
+    expect(manager.automationRegisterCalls).toEqual([{
+      hostWindow: renderer.hostWindow,
+      targetId: "bt_1",
+      tabId: "browser:agent",
+    }]);
+    await invokeBrowserIpc(
+      BB_DESKTOP_BROWSER_UNREGISTER_AUTOMATION_TARGET_CHANNEL,
+      renderer.sender,
+      { targetId: "bt_1" },
+    );
+    expect(manager.automationUnregisterCalls).toEqual([{
+      hostWindow: renderer.hostWindow,
+      targetId: "bt_1",
+    }]);
+  });
+  it("classifies typed automation errors without trusting message substrings or fabricating state", async () => {
+    const manager = new RecordingDesktopBrowserViewManager();
+    registerDesktopBrowserIpc(manager);
+    const renderer = createTrustedRenderer("main-window");
+    const request = {
+      targetId: "bt_1",
+      navigationEpoch: 1,
+      timeoutMs: 1_000,
+      command: { kind: "snapshot" },
+    };
+
+    manager.automationError = new Error("page reported stale content");
+    manager.automationPageState = null;
+    await expect(invokeBrowserIpc(
+      BB_DESKTOP_BROWSER_RUN_AUTOMATION_COMMAND_CHANNEL,
+      renderer.sender,
+      request,
+    )).resolves.toEqual({
+      ok: false,
+      code: "native_operation_failed",
+      detail: "page reported stale content",
+    });
+
+    manager.automationError = new DesktopBrowserAutomationError(
+      "stale_revision",
+      "Browser automation revision is stale",
+    );
+    await expect(invokeBrowserIpc(
+      BB_DESKTOP_BROWSER_RUN_AUTOMATION_COMMAND_CHANNEL,
+      renderer.sender,
+      request,
+    )).resolves.toMatchObject({
+      ok: false,
+      code: "stale_revision",
+    });
+  });
+
   it("dispatches valid browser commands only from BrowserWindow-owned senders", () => {
     const manager = new RecordingDesktopBrowserViewManager();
     registerDesktopBrowserIpc(manager);

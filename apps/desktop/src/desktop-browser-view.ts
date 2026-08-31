@@ -32,6 +32,12 @@ import {
   isAllowedBrowserUrl,
   resolveWindowOpenAction,
 } from "./desktop-browser-policy.js";
+import {
+  DesktopBrowserAutomationDriver,
+  type BrowserAutomationCommand,
+  type BrowserAutomationCommandResult,
+  type BrowserAutomationPageState,
+} from "./desktop-browser-automation.js";
 
 const POPUP_RATE_WINDOW_MS = 10_000;
 const POPUP_RATE_MAX_IN_WINDOW = 3;
@@ -40,6 +46,8 @@ const RESIZE_SNAPSHOT_HIDE_CAP_MS = 80;
 const RESIZE_SNAPSHOT_JPEG_QUALITY = 70;
 const RENDERER_RECOVERY_DELAY_MS = 250;
 const RENDERER_RECOVERY_MAX_ATTEMPTS = 2;
+const AUTOMATION_RESERVATION_TTL_MS = 30_000;
+const MAX_AUTOMATION_RESERVATIONS_PER_WINDOW = 4;
 
 function truncate(value: string, max: number): string {
   return value.length > max ? value.slice(0, max) : value;
@@ -50,6 +58,7 @@ const BB_BROWSER_PARTITION = "persist:bb-browser";
 const ERR_ABORTED = -3;
 
 interface BrowserViewEntry {
+  automationReservationTargetId: string | null;
   view: WebContentsView;
   lastErrorText: string | null;
   desiredBounds: BbDesktopBrowserViewBounds;
@@ -99,6 +108,7 @@ interface DispatchDesktopBrowserAppCommandArgs {
 }
 
 export interface CreateDesktopBrowserViewManagerArgs {
+  activateHostWindow: (hostWebContentsId: number) => void;
   dispatchAppCommand: (args: DispatchDesktopBrowserAppCommandArgs) => void;
   focusHostWebContents: (hostWebContentsId: number) => void;
   partition?: string;
@@ -113,6 +123,21 @@ interface HostScopedRequestArgs<TRequest> {
 interface HostScopedTabArgs {
   hostWindow: DesktopBrowserHostWindow;
   tabId: string;
+}
+
+interface RegisterAutomationTargetArgs extends HostScopedTabArgs {
+  targetId: string;
+}
+
+interface AutomationTargetArgs {
+  hostWindow: DesktopBrowserHostWindow;
+  targetId: string;
+}
+
+interface RunAutomationCommandArgs extends AutomationTargetArgs {
+  command: BrowserAutomationCommand;
+  navigationEpoch: number;
+  timeoutMs: number;
 }
 
 interface CreateEntryArgs {
@@ -133,8 +158,10 @@ interface SetEntryDesiredBoundsArgs {
 
 export interface DesktopBrowserViewManager {
   attach(args: HostScopedRequestArgs<BbDesktopBrowserAttachRequest>): void;
+  cancelAutomationCommand(args: AutomationTargetArgs): void;
   detach(args: HostScopedTabArgs): void;
   focus(args: HostScopedTabArgs): void;
+  getAutomationPageState(args: AutomationTargetArgs): BrowserAutomationPageState | null;
   navigate(args: HostScopedRequestArgs<BbDesktopBrowserNavigateRequest>): void;
   goBack(args: HostScopedTabArgs): void;
   goForward(args: HostScopedTabArgs): void;
@@ -158,7 +185,13 @@ export interface DesktopBrowserViewManager {
   beginWindowResize(hostWindow: DesktopBrowserHostWindow): void;
   endWindowResize(hostWindow: DesktopBrowserHostWindow): void;
   prepareWindowReload(hostWindow: DesktopBrowserHostWindow): void;
+  reserveAutomationTarget(args: RegisterAutomationTargetArgs): boolean;
+  registerAutomationTarget(args: RegisterAutomationTargetArgs): void;
   releaseWindow(hostWebContentsId: number): void;
+  runAutomationCommand(
+    args: RunAutomationCommandArgs,
+  ): Promise<BrowserAutomationCommandResult>;
+  unregisterAutomationTarget(args: AutomationTargetArgs): void;
   destroyAll(): void;
 }
 
@@ -242,6 +275,8 @@ export function createDesktopBrowserViewManager(
   const partition = args.partition ?? BB_BROWSER_PARTITION;
   const entries = new Map<string, BrowserViewEntry>();
   const entriesByWebContentsId = new Map<number, BrowserViewEntry>();
+  const automation = new DesktopBrowserAutomationDriver();
+  const automationReservations = new Map<string, { createdAt: number; targetId: string }>();
   const resizingHostIds = new Set<number>();
   let hardenedSession: Session | null = null;
 
@@ -528,13 +563,18 @@ export function createDesktopBrowserViewManager(
     webContents.on("did-stop-loading", refresh);
     webContents.on("did-navigate", () => {
       entry.lastErrorText = null;
+      automation.didNavigate(webContents);
       refresh();
     });
-    webContents.on("did-navigate-in-page", () => {
+    webContents.on("did-navigate-in-page", (_event, _url, isMainFrame) => {
+      if (!isMainFrame) return;
+      automation.didNavigate(webContents);
       refresh();
     });
-    webContents.on("did-start-navigation", () => {
+    webContents.on("did-start-navigation", (_event, _url, _isInPlace, isMainFrame) => {
+      if (!isMainFrame) return;
       entry.lastErrorText = null;
+      automation.didStartNavigation(webContents);
       refresh();
     });
     webContents.on("page-title-updated", refresh);
@@ -565,7 +605,14 @@ export function createDesktopBrowserViewManager(
         allowRunningInsecureContent: false,
       },
     });
+    const reservationKey = browserViewKey(args.hostWindow, args.tabId);
+    const reservation = automationReservations.get(reservationKey);
+    const validReservation = reservation !== undefined && Date.now() - reservation.createdAt <= AUTOMATION_RESERVATION_TTL_MS
+      ? reservation
+      : null;
+    if (reservation !== undefined && validReservation === null) automationReservations.delete(reservationKey);
     const entry: BrowserViewEntry = {
+      automationReservationTargetId: validReservation?.targetId ?? null,
       view,
       lastErrorText: null,
       desiredBounds: args.desiredBounds,
@@ -607,7 +654,9 @@ export function createDesktopBrowserViewManager(
       return;
     }
     entries.delete(key);
+    automationReservations.delete(key);
     entriesByWebContentsId.delete(entry.view.webContents.id);
+    automation.unregisterWebContents(entry.view.webContents);
     clearEntryRendererRecoveryTimer(entry);
     if (!hostWindow.isDestroyed()) {
       hostWindow.contentView.removeChildView(entry.view);
@@ -700,11 +749,17 @@ export function createDesktopBrowserViewManager(
       loadIfNeeded(entry, request.url);
       pushState(hostWindow, request.tabId);
     },
+    cancelAutomationCommand({ hostWindow, targetId }) {
+      automation.cancel(targetId, hostWindow.webContents.id);
+    },
     detach({ hostWindow, tabId }) {
       destroyEntry(hostWindow, browserViewKey(hostWindow, tabId));
     },
     focus({ hostWindow, tabId }) {
       withEntry({ hostWindow, tabId }, focusEntryWithoutNotifying);
+    },
+    getAutomationPageState({ hostWindow, targetId }) {
+      return automation.getPageState(targetId, hostWindow.webContents.id);
     },
     navigate({ hostWindow, request }) {
       withEntry({ hostWindow, tabId: request.tabId }, (entry) => {
@@ -817,23 +872,86 @@ export function createDesktopBrowserViewManager(
         applyEntryVisibility(entry, hostWindow);
       }
     },
+    reserveAutomationTarget({ hostWindow, tabId, targetId }) {
+      const key = browserViewKey(hostWindow, tabId);
+      if (entries.has(key) || automationReservations.has(key)) return false;
+      const prefix = `${hostWindow.webContents.id}:`;
+      let reservations = 0;
+      for (const [reservationKey, reservation] of [...automationReservations]) {
+        if (Date.now() - reservation.createdAt > AUTOMATION_RESERVATION_TTL_MS) {
+          automationReservations.delete(reservationKey);
+        } else if (reservationKey.startsWith(prefix)) {
+          reservations += 1;
+        }
+      }
+      if (reservations >= MAX_AUTOMATION_RESERVATIONS_PER_WINDOW) return false;
+      automationReservations.set(key, { createdAt: Date.now(), targetId });
+      return true;
+    },
+    registerAutomationTarget({ hostWindow, tabId, targetId }) {
+      const key = browserViewKey(hostWindow, tabId);
+      const entry = entries.get(key);
+      if (
+        entry === undefined ||
+        entry.view.webContents.isDestroyed() ||
+        entry.automationReservationTargetId !== targetId
+      ) {
+        throw new Error("Browser automation tab is unavailable");
+      }
+      entry.automationReservationTargetId = null;
+      automationReservations.delete(key);
+      automation.register({
+        activate: () => {
+          args.activateHostWindow(hostWindow.webContents.id);
+          focusEntryWithoutNotifying(entry);
+        },
+        hostWebContentsId: hostWindow.webContents.id,
+        tabId,
+        targetId,
+        webContents: entry.view.webContents,
+      });
+    },
     releaseWindow(hostWebContentsId) {
       resizingHostIds.delete(hostWebContentsId);
       const prefix = `${hostWebContentsId}:`;
+      for (const key of [...automationReservations.keys()]) {
+        if (key.startsWith(prefix)) automationReservations.delete(key);
+      }
       for (const [key, entry] of [...entries.entries()]) {
         if (!key.startsWith(prefix)) {
           continue;
         }
         entries.delete(key);
         entriesByWebContentsId.delete(entry.view.webContents.id);
+        automation.unregisterWebContents(entry.view.webContents);
         clearEntryRendererRecoveryTimer(entry);
         if (!entry.view.webContents.isDestroyed()) {
           entry.view.webContents.close();
         }
       }
     },
+    runAutomationCommand({
+      hostWindow,
+      targetId,
+      command,
+      navigationEpoch,
+      timeoutMs,
+    }) {
+      return automation.run(
+        targetId,
+        command,
+        hostWindow.webContents.id,
+        navigationEpoch,
+        timeoutMs,
+      );
+    },
+    unregisterAutomationTarget({ hostWindow, targetId }) {
+      automation.unregister(targetId, hostWindow.webContents.id);
+    },
     destroyAll() {
       resizingHostIds.clear();
+      automationReservations.clear();
+      automation.destroy();
       for (const [key, entry] of [...entries.entries()]) {
         entries.delete(key);
         entriesByWebContentsId.delete(entry.view.webContents.id);

@@ -8,6 +8,16 @@ import { createMockHubSocket } from "../helpers/mock-hub-socket.js";
 
 function createProtocolDeps(hub: NotificationHub) {
   return {
+    browserAutomation: {
+      recordCancelRequest: vi.fn(),
+      recordCommandFailed: vi.fn(),
+      recordCommandResult: vi.fn(),
+      recordOpenFailed: vi.fn(),
+      recordOpenReady: vi.fn(),
+      recordTargetClosed: vi.fn(),
+      registerConnection: vi.fn(),
+      releaseConnection: vi.fn(),
+    },
     hub,
     watchInterests: {
       releaseSocket: vi.fn(),
@@ -18,6 +28,21 @@ function createProtocolDeps(hub: NotificationHub) {
 }
 
 describe("client websocket protocol", () => {
+  it("rejects an over-depth Browser snapshot socket-locally without throwing", () => {
+    const hub = new NotificationHub();
+    const deps = createProtocolDeps(hub);
+    const socket = createMockHubSocket();
+    const nodeStart = '{"children":[';
+    const nodeEnd = '],"name":"node","role":"group","visible":true}';
+    const deepTree = nodeStart.repeat(5_000) +
+      '{"children":[],"name":"leaf","role":"group","visible":true}' +
+      nodeEnd.repeat(5_000);
+    const raw = '{"type":"browser-automation.command-result","commandId":"bc_1","targetId":"bt_1","windowId":"window-a","tabId":"tab-a","result":{"kind":"snapshot","generation":1,"navigationEpoch":0,"ready":true,"url":"https://example.test/","nodes":[' + deepTree + ']}}';
+
+    expect(() => onClientSocketMessage(deps, socket, raw)).not.toThrow();
+    expect(socket.closed).toEqual([{ code: 1008, reason: "invalid-message" }]);
+    expect(deps.browserAutomation.recordCommandResult).not.toHaveBeenCalled();
+  });
   it("subscribes valid client messages parsed through the shared schema", () => {
     const hub = new NotificationHub();
     const deps = createProtocolDeps(hub);
@@ -171,6 +196,35 @@ describe("client websocket protocol", () => {
       kind: "environment-detail",
       environmentId: "env-1",
     });
+  });
+
+  it("registers and withdraws Browser automation capability on the same socket", () => {
+    const hub = new NotificationHub();
+    const deps = createProtocolDeps(hub);
+    const socket = createMockHubSocket();
+
+    onClientSocketOpen(hub, socket);
+    onClientSocketMessage(
+      deps,
+      socket,
+      JSON.stringify({
+        type: "browser-automation.capability",
+        windowId: "window-a",
+      }),
+    );
+    onClientSocketMessage(
+      deps,
+      socket,
+      JSON.stringify({ type: "browser-automation.capability-unavailable" }),
+    );
+
+    expect(deps.browserAutomation.registerConnection).toHaveBeenCalledWith(
+      socket,
+      { type: "browser-automation.capability", windowId: "window-a" },
+    );
+    expect(deps.browserAutomation.releaseConnection).toHaveBeenCalledWith(
+      socket,
+    );
   });
 
   it("answers a ping with a pong on the same socket only", () => {

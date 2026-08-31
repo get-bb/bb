@@ -141,6 +141,31 @@ jobs:
       - name: Test
         run: pnpm exec turbo run test ${{ matrix.filter }} --cache-dir=.turbo/cache --output-logs=new-only --concurrency=4 ${{ matrix.args }}
 
+  browser-electron:
+    name: Browser Electron Gates (macOS, Node 22.x)
+    runs-on: blacksmith-6vcpu-macos-15
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup workspace
+        uses: ./.github/actions/setup-workspace
+        with:
+          node-version: ${{ env.PRIMARY_NODE_VERSION }}
+          pnpm-version: ${{ env.PNPM_VERSION }}
+          cache-prefix: browser-electron
+          turbo-cache: "false"
+
+      - name: Test native Browser automation
+        timeout-minutes: 10
+        run: pnpm exec turbo run test:browser-automation-electron --filter=@bb/desktop --force --output-logs=full
+
+      - name: Test Browser CLI boundary journey
+        timeout-minutes: 15
+        run: pnpm exec turbo run test:browser-cli-electron --filter=@bb/integration-tests --force --output-logs=full
+
   # The macOS legs run without the Turbo cache. Blacksmith's transparent cache
   # only backs their Linux runners, so on macOS the cache moves over GitHub's
   # own service at ~50 MB/s: restoring and saving the ~2 GB directory cost about

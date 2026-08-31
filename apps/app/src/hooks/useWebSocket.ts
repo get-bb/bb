@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { createRealtimeCacheEffects } from "./realtime-cache-effects";
 import { useDeletedResourceRouteOwner } from "./cache-owners/resource-route-owner";
+import { browserAutomationClient } from "../lib/browser-automation-client";
 import { wsManager } from "../lib/ws";
 
 export function useWebSocket(): void {
@@ -22,9 +23,11 @@ export function useWebSocket(): void {
       deletedResourceRouteChangeRef.current(message);
     });
 
+    const stopBrowserAutomation = browserAutomationClient.start();
     wsManager.connect();
 
     return () => {
+      stopBrowserAutomation();
       cacheEffects.dispose();
       unsubscribeConnected();
       unsubscribe();

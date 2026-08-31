@@ -33,6 +33,8 @@ import { NotificationHub as NotificationHubImpl } from "../../src/ws/hub.js";
 import { WatchInterestCoordinator } from "../../src/ws/watch-interests.js";
 import { HostSharedPortCoordinator } from "../../src/ws/host-shared-ports.js";
 import { WorkspaceReadCaches } from "../../src/services/environments/workspace-read-cache.js";
+import { BrowserAutomationService } from "../../src/services/browser/browser-automation.js";
+import { BrowserArtifactStore } from "../../src/services/browser/browser-artifacts.js";
 
 const TEST_MACHINE_KEY_PREFIX = "test-daemon-key";
 const TEST_SERVER_HOST = "127.0.0.1";
@@ -146,6 +148,12 @@ export async function createTestAppHarness(
   const watchInterests = new WatchInterestCoordinator({ db, hub });
   const sharedPorts = new HostSharedPortCoordinator({ db, hub });
   const workspaceReadCaches = new WorkspaceReadCaches({ hub });
+  const browserAutomation = new BrowserAutomationService({
+    db,
+    hub,
+    logger: testLogger,
+  });
+  const browserArtifacts = new BrowserArtifactStore(dataDir);
   const providerRegistry = createProviderRegistryService({});
   const pluginHostArtifacts = new PluginHostArtifactRegistry();
   const providerNativeRoots = createProviderNativeRootsCache(
@@ -251,6 +259,8 @@ export async function createTestAppHarness(
   const deps: ServerAppDeps = {
     appVersion,
     bbAppManagedConfig,
+    browserArtifacts,
+    browserAutomation,
     config,
     db,
     hub,

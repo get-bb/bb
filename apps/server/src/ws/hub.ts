@@ -38,7 +38,7 @@ const THREAD_LIST_EVENTS_APPENDED_COALESCE_MS = 1_000;
 const LIST_RELEVANT_THREAD_EVENT_TYPES: ReadonlySet<ThreadEventType> =
   new Set<ThreadEventType>(["client/turn/requested", "turn/completed"]);
 
-interface HubSocket {
+export interface HubSocket {
   close(code?: number, reason?: string): void;
   raw?: { bufferedAmount: number };
   send(data: string): void;
@@ -481,6 +481,19 @@ export class NotificationHub implements DbNotifier {
     if (sockets.size === 0) {
       this.clientSocketsByKey.delete(key);
     }
+  }
+
+  hasClientSubscription(
+    socket: HubSocket,
+    target: RealtimeSubscriptionTarget,
+  ): boolean {
+    return (
+      this.clientKeysBySocket.get(socket)?.has(subscriptionKey(target)) ?? false
+    );
+  }
+
+  countClientSubscriptions(target: RealtimeSubscriptionTarget): number {
+    return this.clientSocketsByKey.get(subscriptionKey(target))?.size ?? 0;
   }
 
   recordDaemonSessionPlatform(sessionId: string, platform: HostPlatform): void {

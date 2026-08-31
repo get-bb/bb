@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   BB_DESKTOP_BROWSER_MAX_URL_LENGTH,
   bbDesktopBrowserAttachRequestSchema,
+  bbDesktopBrowserAutomationCommandRequestSchema,
+  bbDesktopBrowserAutomationTargetSchema,
   bbDesktopBrowserSetBoundsRequestSchema,
   bbDesktopBrowserStateSchema,
   clampBbDesktopBrowserViewBounds,
@@ -55,6 +57,53 @@ describe("desktop browser bounds containment", () => {
 });
 
 describe("desktop browser IPC schemas", () => {
+  it("bounds exact automation target bindings", () => {
+    expect(
+      bbDesktopBrowserAutomationTargetSchema.safeParse({
+        targetId: "bt_1",
+        tabId: "browser:agent",
+      }).success,
+    ).toBe(true);
+    expect(
+      bbDesktopBrowserAutomationTargetSchema.safeParse({
+        targetId: "bt_1",
+        tabId: "browser:agent",
+        userTabIds: ["browser:user"],
+      }).success,
+    ).toBe(false);
+    expect(
+      bbDesktopBrowserAutomationTargetSchema.safeParse({
+        targetId: "x".repeat(129),
+        tabId: "browser:agent",
+      }).success,
+    ).toBe(false);
+  });
+
+  it("requires bounded command timeouts at the desktop boundary", () => {
+    const request = {
+      targetId: "bt_1",
+      navigationEpoch: 0,
+      timeoutMs: 1_000,
+      command: { kind: "screenshot" },
+    };
+    expect(
+      bbDesktopBrowserAutomationCommandRequestSchema.safeParse(request).success,
+    ).toBe(true);
+    expect(
+      bbDesktopBrowserAutomationCommandRequestSchema.safeParse({
+        ...request,
+        timeoutMs: 0,
+      }).success,
+    ).toBe(false);
+    expect(
+      bbDesktopBrowserAutomationCommandRequestSchema.safeParse({
+        targetId: request.targetId,
+        navigationEpoch: request.navigationEpoch,
+        command: request.command,
+      }).success,
+    ).toBe(false);
+  });
+
   it("accepts a well-formed attach request and rejects bad shapes", () => {
     expect(
       bbDesktopBrowserAttachRequestSchema.safeParse({

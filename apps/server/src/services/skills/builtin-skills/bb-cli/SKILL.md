@@ -41,6 +41,7 @@ BB_HOST_DAEMON_PORT only for an intentional non-default target.
 - Read references/plugins.md for plugin discovery, install, build, update,
   configuration, runtime, and contributed commands.
 - Read references/app-settings.md for complete app setting keys and effects.
+- Read the `bb-browser` skill before visible Browser QA or web interaction.
 
 ## Command habits
 
@@ -62,6 +63,7 @@ bb machine list --json
 bb provider list --environment "$BB_ENVIRONMENT_ID" --json
 bb thread show "$BB_THREAD_ID" --json
 bb environment status "$BB_ENVIRONMENT_ID" --json
+bb browser list --json
 bb plugin list --json
 bb skill list --environment "$BB_ENVIRONMENT_ID" --json
 ```

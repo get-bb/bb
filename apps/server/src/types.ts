@@ -18,6 +18,8 @@ import type { ProviderRegistryService } from "./services/providers/provider-regi
 import type { AiServiceRegistry } from "./services/ai/ai-service-registry.js";
 import type { PluginHostArtifactRegistry } from "./services/plugins/plugin-host-artifact-registry.js";
 import type { ProviderNativeRootsCache } from "./services/providers/native-roots.js";
+import type { BrowserAutomationService } from "./services/browser/browser-automation.js";
+import type { BrowserArtifactStore } from "./services/browser/browser-artifacts.js";
 
 export type ServerLogger = Pick<Logger, "debug" | "error" | "info" | "warn">;
 
@@ -44,6 +46,8 @@ export interface ServerRuntimeConfig {
 }
 
 export interface AppDeps {
+  browserArtifacts: BrowserArtifactStore;
+  browserAutomation: BrowserAutomationService;
   config: ServerRuntimeConfig;
   db: DbConnection;
   hub: NotificationHub;

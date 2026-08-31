@@ -14,6 +14,7 @@ describe("experiments settings", () => {
       expect(response.status).toBe(200);
       const body = systemConfigResponseSchema.parse(await readJson(response));
       expect(body.experiments).toEqual({
+        browserAutomation: false,
         changelogPreview: false,
         editMessages: true,
         mobileApp: false,
@@ -29,6 +30,7 @@ describe("experiments settings", () => {
         method: "PUT",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
+          browserAutomation: true,
           changelogPreview: true,
           editMessages: true,
           mobileApp: true,
@@ -38,6 +40,7 @@ describe("experiments settings", () => {
       });
       expect(put.status).toBe(200);
       expect(experimentsSchema.parse(await readJson(put))).toEqual({
+        browserAutomation: true,
         changelogPreview: true,
         editMessages: true,
         mobileApp: true,
@@ -45,6 +48,7 @@ describe("experiments settings", () => {
         timelineWindowing: true,
       });
       expect(getExperiments(harness.db)).toEqual({
+        browserAutomation: true,
         changelogPreview: true,
         editMessages: true,
         mobileApp: true,
@@ -56,6 +60,7 @@ describe("experiments settings", () => {
       expect(
         systemConfigResponseSchema.parse(await readJson(config)).experiments,
       ).toEqual({
+        browserAutomation: true,
         changelogPreview: true,
         editMessages: true,
         mobileApp: true,
@@ -83,6 +88,7 @@ describe("experiments settings", () => {
         method: "PUT",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
+          browserAutomation: false,
           changelogPreview: false,
           editMessages: true,
           mobileApp: false,
@@ -108,6 +114,7 @@ describe("experiments settings", () => {
         method: "PUT",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
+          browserAutomation: false,
           changelogPreview: false,
           editMessages: false,
           mobileApp: false,

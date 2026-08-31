@@ -1,3 +1,4 @@
+import { getExperiments } from "@bb/db";
 import type { LoggedWorkSessionDeps } from "../../types.js";
 import { getPluginSkillRootContributions } from "../plugins/plugin-agent-contributions.js";
 import { generatedSkillsRootPath } from "../plugins/plugin-commands-skill.js";
@@ -15,10 +16,10 @@ interface ResolveSkillCatalogSourcesArgs {
 }
 
 export function resolveSkillCatalog(
-  deps: Pick<LoggedWorkSessionDeps, "config" | "logger" | "skillTreeRegistry">,
+  deps: Pick<LoggedWorkSessionDeps, "config" | "db" | "logger" | "skillTreeRegistry">,
   args: ResolveSkillCatalogSourcesArgs = {},
 ): ResolvedSkillCatalogEntry[] {
-  return resolveSkillCatalogEntries(deps.logger, {
+  const entries = resolveSkillCatalogEntries(deps.logger, {
     additionalSkillsRootPaths: [
       ...deps.config.inheritedSkillsRootPaths,
       generatedSkillsRootPath(deps.config.dataDir),
@@ -37,4 +38,10 @@ export function resolveSkillCatalog(
       : {}),
     skillTreeRegistry: deps.skillTreeRegistry,
   });
+  if (getExperiments(deps.db).browserAutomation) return entries;
+  return entries.filter(
+    (entry) =>
+      entry.provenance.kind !== "builtin" ||
+      entry.runtimeSource.name !== "bb-browser",
+  );
 }
