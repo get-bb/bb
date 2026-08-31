@@ -645,6 +645,7 @@ export function NewThreadComposer({
   } = useScopedBranchSelection({
     environmentValue: effectiveEnvironmentValue,
     projectId,
+    selectionScope,
   });
   const selectedBranch =
     pickedBranch ??
