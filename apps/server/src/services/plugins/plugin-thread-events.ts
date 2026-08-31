@@ -57,7 +57,7 @@ export function emitPluginTurnFailed(threadId: string): void {
  *
  * These, plus archive and delete above, are the fanout a plugin whose waits
  * depend on capacity subscribes to; it answers by calling
- * `bb.experimental_hooks.requestDrain()`. Core deliberately does not derive
+ * `bb.experimental_hooks.recheck()`. Core deliberately does not derive
  * "a slot freed" here itself: the wait is the plugin's, and so is the
  * condition that ends it.
  */

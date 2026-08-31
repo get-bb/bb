@@ -385,7 +385,7 @@ export function createPluginApi(options: {
   reportAgentToolProblem: (message: string) => void;
   /**
    * Schedules a re-attempt of every plugin-queued row
-   * (`bb.experimental_hooks.requestDrain`). Coalescing, pacing and the walk
+   * (`bb.experimental_hooks.recheck`). Coalescing, pacing and the walk
    * itself belong to the queue; this only asks for it.
    */
   requestQueueDrain: () => void;
@@ -1319,7 +1319,7 @@ export function createPluginApi(options: {
       }
       storePluginHook(hooks, hook, handler);
     },
-    async requestDrain() {
+    async recheck() {
       assertLive();
       // Resolves on SCHEDULING. The walk runs on a later macrotask, and the
       // caller is not the one it reports to — a failed re-attempt lands on the

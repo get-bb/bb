@@ -235,7 +235,7 @@ above:
     longer release their own waits when capacity frees; `clearWait` is now for
     "my own condition resolved" only. The orphan sweep is unchanged. (The
     *trigger* for this walk later moved back to the plugin — see
-    "`requestDrain`" below. The walk itself is exactly as described here.)
+    "`recheck`" below. The walk itself is exactly as described here.)
 
   The limiter plugin collapsed to settings-parse + `listRunning` + compare:
   `tally.ts`, `scope.ts`, `parked-rows.ts`, their tests, the
@@ -301,7 +301,7 @@ above:
     expandable rendering went with it — a queued row's body is now its
     schedule and the queued message, and `detail` is always null. A wait
     clears only via `sendAt`, the requested drain (then core's freed-capacity
-    signal, now `requestDrain` — see the last entry in this document),
+    signal, now `recheck` — see the last entry in this document),
     Send-now and the orphan sweep; the authoring skill says exactly that.
   - **`pluginInputs`.** The side channel is gone end to end: the domain
     schema and 8KB cap, the create/send/queued-message request fields, the
@@ -461,7 +461,7 @@ above:
 
 - **Core owns the re-draining and the clock; plugins own every other wait
   condition and tell core when to re-ask —
-  `bb.experimental_hooks.requestDrain()`.** The freed-capacity signal is
+  `bb.experimental_hooks.recheck()`.** The freed-capacity signal is
   deleted: `freed-capacity-signal.ts`, its four call sites in the thread
   lifecycle fanout (archive, delete, idle, error) and the `createApp`
   registration. Core no longer derives "a slot freed" at all, because a slot is
@@ -478,8 +478,8 @@ above:
   that was deleted), workspace-ready, interaction-settled, send-now and the
   orphan sweep.
 
-  `requestDrain()` lives in the hooks namespace because it pairs with `on`:
-  `on` answers core's question, `requestDrain` asks core to ask it again. It
+  `recheck()` lives in the hooks namespace because it pairs with `on`:
+  `on` answers core's question, `recheck` asks core to ask it again. It
   names no row, takes no arguments and resolves when the walk is SCHEDULED, not
   when it finishes — the walk has no caller to report to (a failed re-attempt
   lands on its row, as the due sweep's does), and resolving on completion would
@@ -488,7 +488,7 @@ above:
 
   `concurrency-limit` gained the four lines this costs: it subscribes to
   `thread.idle`/`thread.failed`/`thread.archived`/`thread.deleted` — exactly
-  the set the deleted fanout covered — and calls `requestDrain()`. Its hook is
+  the set the deleted fanout covered — and calls `recheck()`. Its hook is
   unchanged, and it still keeps no tally and no registry of the rows it queued,
   because the wake is still a re-ask and not a release: an unwarranted wake
   re-queues. The `sendAt`/time half of the proposal that produced this

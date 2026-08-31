@@ -458,7 +458,7 @@ export interface PluginHooks {
   /**
    * Ask core to re-attempt the messages queued behind plugin waits.
    *
-   * **The pair to `on`.** `on` answers the question core asks; `requestDrain`
+   * **The pair to `on`.** `on` answers the question core asks; `recheck`
    * asks core to ask it again. Core owns the re-draining and the clock — the
    * `sendAt` due sweep is still core's — and a plugin owns every other
    * condition its own waits depend on. When that condition changes, say so
@@ -481,7 +481,7 @@ export interface PluginHooks {
    * awaiting a full hook pass from inside whatever called this, which for a
    * handler holding the evaluation lock could not complete. Fire and forget.
    */
-  requestDrain(): Promise<void>;
+  recheck(): Promise<void>;
 }
 
 // ---------------------------------------------------------------------------

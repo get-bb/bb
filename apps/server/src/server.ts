@@ -579,7 +579,7 @@ export function createApp(
         },
       );
     },
-    // `bb.experimental_hooks.requestDrain()`: a plugin whose wait condition
+    // `bb.experimental_hooks.recheck()`: a plugin whose wait condition
     // may have changed asks core to re-attempt the plugin-queued rows. Core
     // owns the walk, the coalescing and the pacing; the plugin owns knowing
     // when to ask.

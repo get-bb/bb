@@ -362,7 +362,7 @@ describe("the wake path", () => {
       settings: { maxConcurrentThreads: "1" },
       running: [running()],
     });
-    expect(harness.requestedDrainCount).toBe(0);
+    expect(harness.recheckCount).toBe(0);
     return harness;
   }
 
@@ -376,14 +376,14 @@ describe("the wake path", () => {
       lastAssistantText: null,
     });
     expect(idle.errors).toEqual([]);
-    expect(harness.requestedDrainCount).toBe(1);
+    expect(harness.recheckCount).toBe(1);
 
     const failed = await harness.emitThreadEvent("thread.failed", {
       thread: freedThread,
       error: null,
     });
     expect(failed.errors).toEqual([]);
-    expect(harness.requestedDrainCount).toBe(2);
+    expect(harness.recheckCount).toBe(2);
   });
 
   it("asks when a running thread is archived or deleted", async () => {
@@ -392,10 +392,10 @@ describe("the wake path", () => {
     const harness = await freed();
 
     await harness.emitThreadEvent("thread.archived", { thread: freedThread });
-    expect(harness.requestedDrainCount).toBe(1);
+    expect(harness.recheckCount).toBe(1);
 
     await harness.emitThreadEvent("thread.deleted", { thread: freedThread });
-    expect(harness.requestedDrainCount).toBe(2);
+    expect(harness.recheckCount).toBe(2);
   });
 
   it("does not ask when a thread TAKES a slot", async () => {
@@ -410,6 +410,6 @@ describe("the wake path", () => {
       thread: makeThreadResponse({ id: "thr_2", status: "pending" }),
     });
 
-    expect(harness.requestedDrainCount).toBe(0);
+    expect(harness.recheckCount).toBe(0);
   });
 });

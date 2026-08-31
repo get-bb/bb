@@ -216,7 +216,7 @@ let requestedDrainPending = false;
 
 /**
  * Schedules the requested drain. This is what backs
- * `bb.experimental_hooks.requestDrain()`: core owns the re-draining, a plugin
+ * `bb.experimental_hooks.recheck()`: core owns the re-draining, a plugin
  * owns the condition and asks for the re-ask.
  *
  * Bursts coalesce into one pass: five turns completing together free five

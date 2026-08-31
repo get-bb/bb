@@ -274,10 +274,10 @@ export interface FakePluginInspectionState {
   readonly needsConfigurationMessages: string[];
   /**
    * How many times the plugin called
-   * `bb.experimental_hooks.requestDrain()` — the wake it asks core for when a
+   * `bb.experimental_hooks.recheck()` — the wake it asks core for when a
    * condition its own waits depend on has changed.
    */
-  readonly requestedDrainCount: number;
+  readonly recheckCount: number;
   /** Recorded `bb.sdk` calls + stub control. */
   readonly sdk: FakeSdkHarness;
   readonly registrations: FakePluginRegistrations;
@@ -1562,7 +1562,7 @@ function createFakePluginHostInternal(
   };
 
   // --- hooks ---
-  /** How many times `bb.experimental_hooks.requestDrain()` was called. */
+  /** How many times `bb.experimental_hooks.recheck()` was called. */
   let requestedDrains = 0;
 
   // --- status ---
@@ -1879,7 +1879,7 @@ function createFakePluginHostInternal(
       }
       storePluginHook(hooks, hook, handler);
     },
-    async requestDrain() {
+    async recheck() {
       assertLive();
       // The real host schedules a background walk and resolves; there is no
       // queue here to walk, so the fake records the ask. Asserting on the
@@ -1965,7 +1965,7 @@ function createFakePluginHostInternal(
     logEntries,
     realtimeSignals,
     needsConfigurationMessages,
-    get requestedDrainCount() {
+    get recheckCount() {
       return requestedDrains;
     },
     sharedPortDeclarations,

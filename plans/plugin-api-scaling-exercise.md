@@ -50,7 +50,7 @@ retry chain.
 And one call that asks core to re-ask the question:
 
 ```ts
-await bb.experimental_hooks.requestDrain();   // re-attempt every plugin-queued
+await bb.experimental_hooks.recheck();   // re-attempt every plugin-queued
                                               // row, in queue order, full pass
                                               // per row; resolves on SCHEDULE
 ```
@@ -81,7 +81,7 @@ hooks.on("message.dispatch", async (ctx) => {
 // ...and its whole other half: capacity is ITS condition, so it watches for it
 for (const e of ["thread.idle", "thread.failed",
                  "thread.archived", "thread.deleted"] as const)
-  events.on(e, () => hooks.requestDrain());
+  events.on(e, () => hooks.recheck());
 
 // provider-retry: the entire policy
 events.on("turn.failed", (e) => {
@@ -100,7 +100,7 @@ plugins own every other wait condition and tell core when to re-ask.**
   interaction settled · user Send-now · orphan sweep (owning plugin gone).
   Every one is queue mechanics or a core wait — a condition core is the only
   one that can see.
-- Plugin-driven: `hooks.requestDrain()`, which schedules exactly the same walk.
+- Plugin-driven: `hooks.recheck()`, which schedules exactly the same walk.
   Capacity is the shipped example: core does not derive "a slot freed" at all
   any more, the limiter does.
 
@@ -135,17 +135,17 @@ hooks.on("message.dispatch", async (ctx) => {
 });
 
 // "run after thread X" is observable — no poll needed
-bb.events.on("thread.idle", () => hooks.requestDrain());
+bb.events.on("thread.idle", () => hooks.recheck());
 // a CI webhook is too
 bb.http.route("POST", "ci-done", async () => {
-  await hooks.requestDrain();
+  await hooks.recheck();
   return Response.json({ ok: true });
 });
 ```
 
 Polling through the hook — `wait(reason, now() + 30_000)` and re-check on the
 re-attempt — remains the *designed* fallback for a condition nothing in the
-plugin can observe. Latency = poll interval. `requestDrain()` is the wake for
+plugin can observe. Latency = poll interval. `recheck()` is the wake for
 everything else, and it has no latency floor.
 
 ### Needs addition #1: amendments (`proceed` gains `amend`)
@@ -175,11 +175,11 @@ re-decide: whether amendments compose across the handlers in a pass (they did
 — last writer per field, which forces per-handler context rebuilds and
 ordering questions).
 
-### Shipped instead of addition #2: `requestDrain()` — external events
+### Shipped instead of addition #2: `recheck()` — external events
 
 This was "needs addition #2: plugin-initiated wake (`clearWait`)". It is no
 longer an addition, and it is not `clearWait`. **Plugin-initiated wake ships
-as `bb.experimental_hooks.requestDrain()`**, and the external-event half of
+as `bb.experimental_hooks.recheck()`**, and the external-event half of
 the sandbox case works today:
 
 ```ts
@@ -191,14 +191,14 @@ hooks.on("message.dispatch", (ctx) => {
 
 // background service, minutes later:
 await createVm().then(enrollViaJoinCode);                      // existing SDK
-await bb.experimental_hooks.requestDrain();  // re-ask; the handler above now
+await bb.experimental_hooks.recheck();  // re-ask; the handler above now
                                              // proceeds, and the limiter and
                                              // every other handler still apply
 ```
 
 **`clearWait` is retired, not deferred.** It named a row and released it, which
 made ownership the authorization model and forced a plugin to correlate rows it
-had queued. `requestDrain` names nothing: it asks core to re-run the full pass
+had queued. `recheck` names nothing: it asks core to re-run the full pass
 over every plugin-queued row, and the handler that queued a row is the thing
 that decides whether it still should be queued. Re-ask-not-send and
 refuse-before-settle — the two properties `clearWait` was valued for — come
@@ -225,7 +225,7 @@ The API scales on exactly three axes, and every use case above lands on one:
 
 | Axis | Mechanism | Cost when needed |
 |---|---|---|
-| New *policies* | compose `wait`/`proceed`/`reject` + sdk facts + `requestDrain` wakes + `sendAt` polling | zero — write a plugin |
+| New *policies* | compose `wait`/`proceed`/`reject` + sdk facts + `recheck` wakes + `sendAt` polling | zero — write a plugin |
 | New *powers* | `amend` on proceed; `report` for progress on the row | revive from history against the real consumer |
 | New *conditions* | `waitingOn` arms + core-owned drain triggers | additive core change |
 
@@ -233,6 +233,6 @@ The bet, stated plainly: everything cut was cut *because* it re-adds
 cleanly. The verdict union extends without breaking handlers; queue rows
 carry new wait kinds without schema surgery; and the fallback
 (sendAt polling) means no use case is ever *impossible* before its
-addition lands — only slower. `requestDrain` is the first draw on that bet
+addition lands — only slower. `recheck` is the first draw on that bet
 and it came back cheap: one member, no row ids, no ownership model, and the
 core signal it replaced deleted outright.
