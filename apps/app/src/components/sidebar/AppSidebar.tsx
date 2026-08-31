@@ -20,6 +20,7 @@ import { useThreadListReplacement } from "./threadListProvider";
 import { PluginNavSidebarItems } from "@/components/plugin/PluginNavSidebarItems";
 import { PluginSidebarFooterActions } from "@/components/plugin/PluginSidebarFooterActions";
 import { SidebarPluginAttentionGlyph } from "./SidebarPluginAttentionGlyph";
+import { SidebarServerIndicator } from "./SidebarServerIndicator";
 import { SidebarUpdatesBadge } from "./SidebarUpdatesBadge";
 import { SidebarHistoryNavigationControls } from "./SidebarHistoryNavigationControls";
 import { useQuickCreateProjectController } from "@/hooks/useQuickCreateProject";
@@ -304,6 +305,7 @@ export function AppSidebar({
             onNavigate={closeOnMobile}
           />
           <SidebarUpdatesBadge onNavigate={closeOnMobile} />
+          <SidebarServerIndicator />
         </SidebarMenu>
       </SidebarFooter>
       <div

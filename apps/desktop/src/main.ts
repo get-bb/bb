@@ -10,7 +10,6 @@ import {
   ipcMain,
   nativeImage,
   nativeTheme,
-  net,
   safeStorage,
   session,
   shell,
@@ -28,6 +27,7 @@ import type { AppKeybindings } from "@bb/domain";
 import {
   bbDesktopThemeSchema,
   type BbDesktopInfo,
+  type BbDesktopServerTarget,
   type BbDesktopWindowState,
 } from "@bb/desktop-contract";
 import {
@@ -53,7 +53,10 @@ import {
   stopForeignRuntime,
 } from "./foreign-runtime.js";
 import { createLocalViewUrl } from "./local-view.js";
-import { installApplicationMenu } from "./menu.js";
+import {
+  installApplicationMenu,
+  type ApplicationMenuServerItem,
+} from "./menu.js";
 import {
   DEFAULT_APPLICATION_MENU_ACCELERATORS,
   resolveApplicationMenuAccelerators,
@@ -70,13 +73,28 @@ import {
   type ServerProbeResult,
 } from "./server-probe.js";
 import { loadRemoteServerPage } from "./remote-server-load.js";
+import { isBuiltinServerOrigin } from "./connect-target-origin.js";
 import {
-  BUILTIN_SERVER_NAME,
+  BUILTIN_SERVER_ID,
+  connectServerHandleFromId,
   createServerTargetStore,
   SERVER_TARGET_FILE_NAME,
   type ConnectServerRef,
   type ServerTargetStore,
 } from "./server-target.js";
+import {
+  buildServerTargetOptions,
+  shouldAuthenticateCustomWithConnect,
+} from "./server-target-options.js";
+import {
+  addCustomServerRequestSchema,
+  BB_DESKTOP_ADD_CUSTOM_SERVER_CHANNEL,
+  BB_DESKTOP_GET_SERVER_TARGET_CHANNEL,
+  BB_DESKTOP_REMOVE_CUSTOM_SERVER_CHANNEL,
+  BB_DESKTOP_SERVER_TARGET_CHANGED_CHANNEL,
+  BB_DESKTOP_SET_CONNECT_TRUSTED_CHANNEL,
+  BB_DESKTOP_SET_SERVER_TARGET_CHANNEL,
+} from "./server-target-ipc.js";
 import { openServerUrlDialog } from "./server-url-dialog.js";
 import {
   createConnectServerSync,
@@ -196,7 +214,6 @@ const OWNED_RUNTIME_STOP_TIMEOUT_MS = 6_000;
 const OWNED_RUNTIME_KILL_TIMEOUT_MS = 1_000;
 const FOREIGN_RUNTIME_STOP_TIMEOUT_MS = 15_000;
 const FOREIGN_RUNTIME_KILL_TIMEOUT_MS = 3_000;
-const REMOTE_SYSTEM_CONFIG_POLL_INTERVAL_MS = 5 * 60 * 1000;
 
 interface DesktopRuntime {
   bbProcess: BbAppProcess | null;
@@ -313,7 +330,6 @@ let logViewerTailer: LogTailer | null = null;
 let logViewerWindow: BrowserWindow | null = null;
 let systemConfigSync: SystemConfigSync | null = null;
 let systemConfigRefreshToken = 0;
-let refreshRemoteSystemConfig: (() => void) | null = null;
 const applicationWindowWebContentsIds = new Set<number>();
 let bbAppLoaded = false;
 let stoppingForQuit = false;
@@ -323,11 +339,17 @@ let connectServerSync: ConnectServerSync | null = null;
 let connectCredentialCache: ConnectCredentialCache | null = null;
 let cachedConnectCredential: ConnectCredential | null = null;
 let enrollingDesktopMachine: Promise<void> | null = null;
-let connectSessionRenewal: ConnectSessionRenewal | null = null;
-let serverTargetGeneration = 0;
+let remoteSessionRenewalFactory: (() => ConnectSessionRenewal) | null = null;
+const remoteWindowTargets = new Map<number, RemoteWindowAttachment>();
+const pendingRemoteOpens = new Set<string>();
+const remoteSessionRenewals = new Map<
+  string,
+  { refs: number; renewal: ConnectSessionRenewal }
+>();
 let connectAccountServers: ConnectAccountServer[] = [];
 let connectServerSyncSkipReason: ConnectServerSyncSkipReason | null = null;
 let builtinServerUrl: string = DEFAULT_BB_SERVER_URL;
+let builtinWindowUrl: string = DEFAULT_BB_SERVER_URL;
 let desktopBridgePath: string | null = null;
 let desktopUserDataPath: string | null = null;
 let serverUrlDialogPreloadPath: string | null = null;
@@ -643,20 +665,10 @@ function getFocusedApplicationWindow(): BrowserWindow | null {
   return null;
 }
 
-function formatCustomServerName(url: string): string {
-  try {
-    const parsed = new URL(url);
-    return parsed.host.length > 0 ? parsed.host : url;
-  } catch {
-    return url;
-  }
-}
-
-function connectServerMenuId(handle: string): string {
-  return `connect:${handle}`;
-}
-
 function listMenuConnectServers(): ConnectServerRef[] {
+  if (serverTargetStore !== null && !serverTargetStore.getConnectTrusted()) {
+    return [];
+  }
   const servers: ConnectServerRef[] = connectAccountServers.map((server) => ({
     handle: server.handle,
     name: server.name,
@@ -672,46 +684,112 @@ function listMenuConnectServers(): ConnectServerRef[] {
   return servers;
 }
 
-function buildMenuServerItems(connectServers: ConnectServerRef[]): Array<{
-  checked: boolean;
-  id: string;
-  name: string;
-}> {
-  const target = serverTargetStore?.getTarget() ?? { kind: "builtin" as const };
-  const items = [
-    {
-      checked: target.kind === "builtin",
-      id: "builtin",
-      name: BUILTIN_SERVER_NAME,
-    },
-  ];
-  for (const server of connectServers) {
-    items.push({
-      checked:
-        target.kind === "connect" && target.server.handle === server.handle,
-      id: connectServerMenuId(server.handle),
+function buildMenuServerItems(
+  connectServers: ConnectServerRef[],
+): ApplicationMenuServerItem[] {
+  return buildServerOptions(connectServers, menuSelectedServerId()).map(
+    (server) => ({
+      checked: server.selected,
+      id: server.id,
+      kind: server.kind,
       name: server.name,
-    });
+    }),
+  );
+}
+
+function windowSelectedServerId(webContentsId: number): string {
+  return remoteWindowTargets.get(webContentsId)?.serverId ?? BUILTIN_SERVER_ID;
+}
+
+function menuSelectedServerId(): string {
+  const focused = getFocusedApplicationWindow();
+  return focused === null
+    ? BUILTIN_SERVER_ID
+    : windowSelectedServerId(focused.webContents.id);
+}
+
+function buildServerOptions(
+  connectServers: ConnectServerRef[],
+  selectedServerId: string,
+): BbDesktopServerTarget["servers"] {
+  return buildServerTargetOptions({
+    connectServers,
+    connectTrusted: serverTargetStore?.getConnectTrusted() ?? true,
+    customServers: serverTargetStore?.getCustomServers() ?? [],
+    selectedServerId,
+  });
+}
+
+function resolveConnectServersSkipReason(
+  connectServers: ConnectServerRef[],
+): ConnectServerSyncSkipReason | null {
+  return connectServers.length === 0 ? connectServerSyncSkipReason : null;
+}
+
+function buildServerTargetState(
+  canManageServers: boolean,
+  selectedServerId: string,
+): BbDesktopServerTarget | null {
+  if (serverTargetStore === null) {
+    return null;
   }
-  const customUrl = serverTargetStore?.getCustomServerUrl() ?? null;
-  if (customUrl !== null) {
-    items.push({
-      checked: target.kind === "custom",
-      id: "custom",
-      name: formatCustomServerName(customUrl),
-    });
+  const connectServers = listMenuConnectServers();
+  return {
+    canManageServers,
+    connectServersSkipReason: resolveConnectServersSkipReason(connectServers),
+    connectTrusted: serverTargetStore.getConnectTrusted(),
+    servers: buildServerOptions(connectServers, selectedServerId),
+  };
+}
+
+function sendServerTargetChanged(): void {
+  for (const browserWindow of BrowserWindow.getAllWindows()) {
+    const state = buildServerTargetState(
+      isBuiltinServerOrigin(
+        browserWindow.webContents.getURL(),
+        localServerUrls(),
+      ),
+      windowSelectedServerId(browserWindow.webContents.id),
+    );
+    if (state === null) {
+      return;
+    }
+    if (isRegisteredApplicationWindow(browserWindow)) {
+      sendToApplicationRenderer(
+        browserWindow,
+        BB_DESKTOP_SERVER_TARGET_CHANGED_CHANNEL,
+        state,
+      );
+    } else {
+      browserWindow.webContents.send(
+        BB_DESKTOP_SERVER_TARGET_CHANGED_CHANNEL,
+        state,
+      );
+    }
   }
-  return items;
 }
 
 function installCurrentApplicationMenu(): void {
   const connectServers = listMenuConnectServers();
   installApplicationMenu({
     accelerators: currentApplicationMenuAccelerators,
-    connectServersSkipReason:
-      connectServers.length === 0 ? connectServerSyncSkipReason : null,
+    connectServersSkipReason: resolveConnectServersSkipReason(connectServers),
     isMac: process.platform === "darwin",
     createNewWindow() {
+      const focused = getFocusedApplicationWindow();
+      const attachment =
+        focused === null
+          ? undefined
+          : remoteWindowTargets.get(focused.webContents.id);
+      if (attachment !== undefined) {
+        void openRemoteServerWindow({
+          name: attachment.name,
+          serverId: attachment.serverId,
+          url: attachment.url,
+          useConnectAuth: attachment.useConnectAuth,
+        });
+        return;
+      }
       void createApplicationWindow({
         initialUrl: currentWindowUrl,
         stateKey: null,
@@ -809,6 +887,7 @@ function installCurrentApplicationMenu(): void {
 
 function refreshApplicationMenu(): void {
   installCurrentApplicationMenu();
+  sendServerTargetChanged();
 }
 
 function setCurrentRuntime(runtime: DesktopRuntime | null): void {
@@ -896,7 +975,10 @@ function createSystemConfigSync(serverUrl: string): SystemConfigSync {
         parsed.data.entity === "system" &&
         parsed.data.changes.includes("config-changed")
       ) {
-        void refreshSystemConfig({ fetchImpl: fetch, serverUrl });
+        void refreshSystemConfig({
+          fetchImpl: fetch,
+          serverUrl,
+        });
       }
     } catch {
       return;
@@ -910,7 +992,10 @@ function createSystemConfigSync(serverUrl: string): SystemConfigSync {
     socket = new WebSocket(realtimeUrl);
     socket.addEventListener("open", () => {
       socket?.send(JSON.stringify(subscribeMessage));
-      void refreshSystemConfig({ fetchImpl: fetch, serverUrl });
+      void refreshSystemConfig({
+        fetchImpl: fetch,
+        serverUrl,
+      });
     });
     socket.addEventListener("message", handleMessage);
     socket.addEventListener("close", scheduleReconnect);
@@ -958,31 +1043,6 @@ async function refreshSystemConfig(
   }
 }
 
-function createRemoteSystemConfigSync(serverUrl: string): SystemConfigSync {
-  function refresh(): void {
-    void refreshSystemConfig({
-      fetchImpl: (input, init) =>
-        net.fetch(input as string | Request, {
-          ...init,
-          credentials: "include",
-        }),
-      serverUrl,
-    });
-  }
-
-  const timer = setInterval(refresh, REMOTE_SYSTEM_CONFIG_POLL_INTERVAL_MS);
-  timer.unref();
-  refreshRemoteSystemConfig = refresh;
-  refresh();
-
-  return {
-    stop(): void {
-      clearInterval(timer);
-      refreshRemoteSystemConfig = null;
-    },
-  };
-}
-
 function stopSystemConfigSync(): void {
   systemConfigSync?.stop();
   systemConfigSync = null;
@@ -991,12 +1051,10 @@ function stopSystemConfigSync(): void {
 function startSystemConfigSync(serverUrl: string): void {
   systemConfigSync?.stop();
   systemConfigSync = createSystemConfigSync(serverUrl);
-  void refreshSystemConfig({ fetchImpl: fetch, serverUrl });
-}
-
-function startRemoteSystemConfigSync(serverUrl: string): void {
-  systemConfigSync?.stop();
-  systemConfigSync = createRemoteSystemConfigSync(serverUrl);
+  void refreshSystemConfig({
+    fetchImpl: fetch,
+    serverUrl,
+  });
 }
 
 function registerApplicationWindow(browserWindow: DesktopBrowserWindow): void {
@@ -1152,152 +1210,270 @@ function ensureDesktopMachineEnrolled(): void {
   });
 }
 
-async function applyServerTarget(): Promise<void> {
+function localServerUrls(): string[] {
+  const urls = [builtinServerUrl, builtinWindowUrl];
+  if (currentRuntime !== null) {
+    urls.push(currentRuntime.serverUrl);
+  }
+  return urls;
+}
+
+function senderFrameUrl(event: IpcMainInvokeEvent): string | null {
+  const frameUrl = event.senderFrame?.url;
+  return frameUrl === undefined || frameUrl === "" ? null : frameUrl;
+}
+
+function isBuiltinServerTargetSender(event: IpcMainInvokeEvent): boolean {
+  const frameUrl = senderFrameUrl(event);
+  if (frameUrl === null) {
+    return false;
+  }
+  return isBuiltinServerOrigin(frameUrl, localServerUrls());
+}
+
+interface RemoteServerTarget {
+  name: string;
+  serverId: string;
+  url: string;
+  useConnectAuth: boolean;
+}
+
+interface RemoteWindowAttachment extends RemoteServerTarget {
+  sessionRetained: boolean;
+}
+
+function resolveRemoteServerTarget(
+  serverId: string,
+): RemoteServerTarget | null {
   if (serverTargetStore === null) {
+    return null;
+  }
+  const handle = connectServerHandleFromId(serverId);
+  if (handle !== null) {
+    const server = listMenuConnectServers().find(
+      (candidate) => candidate.handle === handle,
+    );
+    return server === undefined
+      ? null
+      : { name: server.name, serverId, url: server.url, useConnectAuth: true };
+  }
+  const custom = serverTargetStore
+    .getCustomServers()
+    .find((server) => server.id === serverId);
+  if (custom === undefined) {
+    return null;
+  }
+  return {
+    name: custom.name,
+    serverId,
+    url: custom.url,
+    useConnectAuth: shouldAuthenticateCustomWithConnect({
+      connectTrusted: serverTargetStore.getConnectTrusted(),
+      url: custom.url,
+    }),
+  };
+}
+
+function findRemoteServerWindow(serverId: string): BrowserWindow | null {
+  for (const browserWindow of BrowserWindow.getAllWindows()) {
+    if (
+      !browserWindow.isDestroyed() &&
+      remoteWindowTargets.get(browserWindow.webContents.id)?.serverId ===
+        serverId
+    ) {
+      return browserWindow;
+    }
+  }
+  return null;
+}
+
+function retainRemoteSessionRenewal(url: string, expiresAt: number): void {
+  const existing = remoteSessionRenewals.get(url);
+  if (existing !== undefined) {
+    existing.refs += 1;
     return;
   }
-  const target = serverTargetStore.getTarget();
-  connectSessionRenewal?.stop();
-  serverTargetGeneration += 1;
-  const generation = serverTargetGeneration;
-  const isCurrent = (): boolean => serverTargetGeneration === generation;
+  if (remoteSessionRenewalFactory === null) {
+    return;
+  }
+  const renewal = remoteSessionRenewalFactory();
+  renewal.start({ expiresAt, remoteServerUrl: url });
+  remoteSessionRenewals.set(url, { refs: 1, renewal });
+}
 
-  if (target.kind === "builtin") {
-    const attached = await ensureBuiltinRuntimeAttached();
-    if (!isCurrent()) {
-      return;
-    }
-    if (!attached) {
-      await loadStartupError({
-        details:
-          "Could not connect to the local bb server on this Mac. Check that the port is free or that a compatible bb server is running.",
-        logs: "",
-        title: "Could not connect",
-      });
-      refreshApplicationMenu();
-      return;
-    }
-    const localServerUrl = currentRuntime?.serverUrl ?? builtinServerUrl;
-    startSystemConfigSync(localServerUrl);
-    await loadBbApp(
-      resolveDesktopWindowUrl({
-        env: process.env,
-        serverUrl: localServerUrl,
-      }),
-    );
-  } else if (target.kind === "connect") {
-    const result = await authenticateConnectTarget(
-      target.server.url,
-      isCurrent,
-    );
-    if (!isCurrent()) {
-      return;
-    }
-    if (!result.ok) {
-      createDesktopLogger().warn(
-        `[desktop] Connect authentication failed (${result.code}): ${result.detail}`,
-      );
-      await loadStartupError({
-        details:
-          "The desktop app could not establish a session for this Connect server. " +
-          `Try switching servers again. (${result.code}: ${result.detail})`,
-        logs: "",
-        title: "Could not authenticate with bb Connect",
-      });
-      refreshApplicationMenu();
-      return;
-    }
-    connectSessionRenewal?.start({
-      expiresAt: result.expiresAt,
-      remoteServerUrl: target.server.url,
-    });
-    const loaded = await loadRemoteServerTarget(target.server.url, isCurrent);
-    if (!isCurrent()) {
-      return;
-    }
-    if (!loaded) {
-      connectSessionRenewal?.stop();
-    }
-  } else {
-    await loadRemoteServerTarget(target.url, isCurrent);
-    if (!isCurrent()) {
-      return;
-    }
+function releaseRemoteSessionRenewal(url: string): void {
+  const entry = remoteSessionRenewals.get(url);
+  if (entry === undefined) {
+    return;
+  }
+  entry.refs -= 1;
+  if (entry.refs <= 0) {
+    entry.renewal.stop();
+    remoteSessionRenewals.delete(url);
+  }
+}
+
+function detachRemoteWindow(webContentsId: number): void {
+  const attachment = remoteWindowTargets.get(webContentsId);
+  if (attachment === undefined) {
+    return;
+  }
+  remoteWindowTargets.delete(webContentsId);
+  if (attachment.sessionRetained) {
+    releaseRemoteSessionRenewal(attachment.url);
   }
   refreshApplicationMenu();
 }
 
-async function loadRemoteServerTarget(
-  serverUrl: string,
-  isCurrent: () => boolean,
-): Promise<boolean> {
-  const loaded = await loadRemoteServerPage({
+async function openRemoteServerWindow(
+  target: RemoteServerTarget,
+): Promise<void> {
+  const browserWindow = await createApplicationWindow({
+    initialUrl: createLocalViewUrl({
+      viewModel: {
+        kind: "loading",
+        message: `Connecting to ${target.name}.`,
+        title: `Opening ${target.name}`,
+      },
+    }),
+    stateKey: null,
+  });
+  if (browserWindow === null) {
+    return;
+  }
+  const attachment: RemoteWindowAttachment = {
+    ...target,
+    sessionRetained: false,
+  };
+  const webContentsId = browserWindow.webContents.id;
+  remoteWindowTargets.set(webContentsId, attachment);
+  browserWindow.on("closed", () => {
+    detachRemoteWindow(webContentsId);
+  });
+  refreshApplicationMenu();
+  const isCurrent = (): boolean =>
+    remoteWindowTargets.get(webContentsId) === attachment;
+  if (target.useConnectAuth) {
+    const result = await authenticateConnectTarget(target.url, isCurrent);
+    if (!isCurrent()) {
+      return;
+    }
+    if (result.ok) {
+      attachment.sessionRetained = true;
+      retainRemoteSessionRenewal(target.url, result.expiresAt);
+    } else {
+      createDesktopLogger().warn(
+        `[desktop] Connect authentication failed (${result.code}: ${result.detail}) — loading the server so it can ask for sign-in`,
+      );
+    }
+  }
+  await loadRemoteServerPage({
     isCurrent,
-    loadStartupError,
-    loadUrl: loadWindowUrl,
+    loadStartupError: (errorArgs) =>
+      loadStartupErrorIntoWindow(browserWindow, errorArgs),
+    loadUrl: (loadArgs) => loadUrlIntoAppWindow(browserWindow, loadArgs.url),
     logWarning: (message) => {
       createDesktopLogger().warn(message);
     },
-    serverUrl,
+    serverUrl: target.url,
   });
-  if (!loaded || !isCurrent()) {
-    return loaded;
+}
+
+async function switchFocusedWindowToBuiltin(): Promise<void> {
+  const browserWindow = getFocusedApplicationWindow();
+  if (
+    browserWindow === null ||
+    !remoteWindowTargets.has(browserWindow.webContents.id)
+  ) {
+    return;
   }
-  bbAppLoaded = true;
-  startRemoteSystemConfigSync(serverUrl);
-  return true;
+  detachRemoteWindow(browserWindow.webContents.id);
+  const attached = await ensureBuiltinRuntimeAttached();
+  if (browserWindow.isDestroyed()) {
+    return;
+  }
+  if (!attached) {
+    await loadStartupErrorIntoWindow(browserWindow, {
+      details:
+        "Could not connect to the local bb server on this Mac. Check that the port is free or that a compatible bb server is running.",
+      logs: "",
+      title: "Could not connect",
+    });
+    return;
+  }
+  try {
+    await loadUrlIntoAppWindow(
+      browserWindow,
+      resolveDesktopWindowUrl({
+        env: process.env,
+        serverUrl: currentRuntime?.serverUrl ?? builtinServerUrl,
+      }),
+    );
+  } catch {
+    await loadStartupErrorIntoWindow(browserWindow, {
+      details: "Could not load the bb app from the local server.",
+      logs: "",
+      title: "Could not connect",
+    });
+  }
 }
 
 async function setActiveServerTarget(serverId: string): Promise<void> {
-  if (serverTargetStore === null) {
+  if (serverId === BUILTIN_SERVER_ID) {
+    await switchFocusedWindowToBuiltin();
     return;
   }
-  if (serverId.startsWith("connect:")) {
-    const handle = serverId.slice("connect:".length);
-    const server = listMenuConnectServers().find(
-      (candidate) => candidate.handle === handle,
-    );
-    if (server === undefined) {
-      refreshApplicationMenu();
-      return;
+  const existing = findRemoteServerWindow(serverId);
+  if (existing !== null) {
+    if (existing.isMinimized()) {
+      existing.restore();
     }
-    await serverTargetStore.setConnectServer(server);
-    await applyServerTarget();
+    existing.focus();
     return;
   }
-  if (serverId !== "builtin" && serverId !== "custom") {
+  if (pendingRemoteOpens.has(serverId)) {
     return;
   }
-  const switched = await serverTargetStore.setTarget(serverId);
-  if (!switched) {
+  const target = resolveRemoteServerTarget(serverId);
+  if (target === null) {
     refreshApplicationMenu();
     return;
   }
-  await applyServerTarget();
+  pendingRemoteOpens.add(serverId);
+  try {
+    await openRemoteServerWindow(target);
+  } finally {
+    pendingRemoteOpens.delete(serverId);
+  }
 }
 
 async function openSetServerUrlDialog(): Promise<void> {
   if (serverTargetStore === null || serverUrlDialogPreloadPath === null) {
     return;
   }
+  const target = serverTargetStore.getTarget();
+  const selectedCustom = target.kind === "custom" ? target.server : null;
   const result = await openServerUrlDialog({
-    initialUrl: serverTargetStore.getCustomServerUrl(),
+    initialUrl: selectedCustom?.url ?? null,
     parentWindow: getFocusedApplicationWindow(),
     preloadPath: serverUrlDialogPreloadPath,
   });
   if (result.kind === "cancelled") {
     return;
   }
-  if (
-    result.kind === "clear" &&
-    serverTargetStore.getCustomServerUrl() === null
-  ) {
+  if (result.kind === "clear") {
+    if (selectedCustom === null) {
+      return;
+    }
+    await serverTargetStore.removeCustomServer(selectedCustom.id);
+    refreshApplicationMenu();
     return;
   }
-  await serverTargetStore.setCustomServerUrl(
-    result.kind === "set" ? result.url : null,
-  );
-  await applyServerTarget();
+  const added = await serverTargetStore.addCustomServer("", result.url);
+  if (added === null) {
+    return;
+  }
+  await setActiveServerTarget(added.id);
 }
 
 function sendLogViewerSnapshot(args: SendLogViewerSnapshotArgs): void {
@@ -1487,6 +1663,43 @@ async function loadStartupError(args: LoadStartupErrorArgs): Promise<void> {
   });
 }
 
+interface AppWindowLoadTarget {
+  loadURL(url: string): Promise<void>;
+  webContents: { setZoomFactor(factor: number): void };
+}
+
+async function loadUrlIntoAppWindow(
+  browserWindow: AppWindowLoadTarget,
+  url: string,
+): Promise<void> {
+  browserWindow.webContents.setZoomFactor(1);
+  try {
+    await browserWindow.loadURL(url);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (!message.includes("ERR_ABORTED")) {
+      throw error;
+    }
+  }
+}
+
+async function loadStartupErrorIntoWindow(
+  browserWindow: AppWindowLoadTarget,
+  args: LoadStartupErrorArgs,
+): Promise<void> {
+  await loadUrlIntoAppWindow(
+    browserWindow,
+    createLocalViewUrl({
+      viewModel: {
+        details: `${args.details} Logs are under ${formatLogDirectory()}/.`,
+        kind: "error",
+        logText: args.logs,
+        title: args.title,
+      },
+    }),
+  );
+}
+
 async function loadBbApp(serverUrl: string): Promise<void> {
   bbAppLoaded = true;
   await loadWindowUrl({ url: serverUrl });
@@ -1554,7 +1767,10 @@ function handleBeforeQuit(event: Event): void {
 
 async function finishQuit(): Promise<void> {
   stopSystemConfigSync();
-  connectSessionRenewal?.stop();
+  for (const entry of remoteSessionRenewals.values()) {
+    entry.renewal.stop();
+  }
+  remoteSessionRenewals.clear();
   desktopUpdateService?.stop();
   desktopAutoUpdateService?.stop();
   desktopBrowserViewManager?.destroyAll();
@@ -1602,6 +1818,83 @@ function registerDesktopUpdateIpc(): void {
     await finishQuit();
     desktopAutoUpdateService.installUpdate();
   });
+  ipcMain.handle(BB_DESKTOP_GET_SERVER_TARGET_CHANNEL, (event) => {
+    return buildServerTargetState(
+      isBuiltinServerTargetSender(event),
+      windowSelectedServerId(event.sender.id),
+    );
+  });
+  ipcMain.handle(
+    BB_DESKTOP_SET_SERVER_TARGET_CHANNEL,
+    (event, payload: unknown) => {
+      if (!isBuiltinServerTargetSender(event)) {
+        return false;
+      }
+      if (typeof payload !== "string") {
+        return false;
+      }
+      const state = buildServerTargetState(false, BUILTIN_SERVER_ID);
+      if (
+        state === null ||
+        !state.servers.some((server) => server.id === payload)
+      ) {
+        return false;
+      }
+      void setActiveServerTarget(payload);
+      return true;
+    },
+  );
+  ipcMain.handle(
+    BB_DESKTOP_ADD_CUSTOM_SERVER_CHANNEL,
+    async (event, payload: unknown) => {
+      if (!isBuiltinServerTargetSender(event) || serverTargetStore === null) {
+        return false;
+      }
+      const parsed = addCustomServerRequestSchema.safeParse(payload);
+      if (!parsed.success) {
+        return false;
+      }
+      const added = await serverTargetStore.addCustomServer(
+        parsed.data.name,
+        parsed.data.url,
+      );
+      if (added === null) {
+        return false;
+      }
+      refreshApplicationMenu();
+      return true;
+    },
+  );
+  ipcMain.handle(
+    BB_DESKTOP_REMOVE_CUSTOM_SERVER_CHANNEL,
+    async (event, payload: unknown) => {
+      if (!isBuiltinServerTargetSender(event) || serverTargetStore === null) {
+        return false;
+      }
+      if (typeof payload !== "string") {
+        return false;
+      }
+      if (!(await serverTargetStore.removeCustomServer(payload))) {
+        return false;
+      }
+      refreshApplicationMenu();
+      return true;
+    },
+  );
+  ipcMain.handle(
+    BB_DESKTOP_SET_CONNECT_TRUSTED_CHANNEL,
+    async (event, payload: unknown) => {
+      if (!isBuiltinServerTargetSender(event) || serverTargetStore === null) {
+        return false;
+      }
+      if (typeof payload !== "boolean") {
+        return false;
+      }
+      await serverTargetStore.setConnectTrusted(payload);
+      refreshApplicationMenu();
+      return true;
+    },
+  );
   ipcMain.on(BB_DESKTOP_SET_THEME_CHANNEL, (_event, payload: unknown) => {
     const parsed = bbDesktopThemeSchema.safeParse(payload);
     if (!parsed.success) {
@@ -1985,11 +2278,15 @@ async function runDesktopApp(): Promise<void> {
       });
     }
   });
+  app.on("browser-window-focus", () => {
+    refreshApplicationMenu();
+  });
   app.on("did-become-active", () => {
     void desktopUpdateService?.checkAfterActive();
     void desktopAutoUpdateService?.checkAfterActive();
-    refreshRemoteSystemConfig?.();
-    connectSessionRenewal?.renewIfDue();
+    for (const entry of remoteSessionRenewals.values()) {
+      entry.renewal.renewIfDue();
+    }
   });
   app.on("browser-window-created", (_event, browserWindow) => {
     if (desktopBrowserViewManager === null) {
@@ -2044,6 +2341,7 @@ async function runDesktopApp(): Promise<void> {
   );
   const serverUrl = resolveDesktopServerUrl({ env: process.env });
   builtinServerUrl = serverUrl;
+  builtinWindowUrl = resolveDesktopWindowUrl({ env: process.env, serverUrl });
   desktopBridgePath = bridgePath;
   const desktopVersion = getDesktopVersion(process.env.BB_DESKTOP_VERSION);
   const desktopPlatform = resolveBbDesktopPlatform(process.platform);
@@ -2124,20 +2422,21 @@ async function runDesktopApp(): Promise<void> {
     },
   });
   connectServerSync.start();
-  connectSessionRenewal = createConnectSessionRenewal({
-    async authenticate(remoteServerUrl, isCurrent) {
-      const result = await authenticateConnectTarget(
-        remoteServerUrl,
-        isCurrent,
-      );
-      return result.ok
-        ? result
-        : { detail: `${result.code}: ${result.detail}`, ok: false };
-    },
-    log: (message) => {
-      logger.warn(`[desktop] ${message}`);
-    },
-  });
+  remoteSessionRenewalFactory = () =>
+    createConnectSessionRenewal({
+      async authenticate(remoteServerUrl, isCurrent) {
+        const result = await authenticateConnectTarget(
+          remoteServerUrl,
+          isCurrent,
+        );
+        return result.ok
+          ? result
+          : { detail: `${result.code}: ${result.detail}`, ok: false };
+      },
+      log: (message) => {
+        logger.warn(`[desktop] ${message}`);
+      },
+    });
 
   const desktopUpdateSupport = resolveDesktopUpdateSupport({
     canReplaceAppImage,
@@ -2260,12 +2559,8 @@ async function runDesktopApp(): Promise<void> {
   for (const browserWindow of restoredWindows) {
     registerApplicationWindow(browserWindow);
   }
-  if (serverTargetStore.getTarget().kind === "builtin") {
-    await initializeRuntime({ bridgePath, serverUrl, userDataPath });
-  } else {
-    await applyServerTarget();
-    connectServerSync.syncNow().catch(() => {});
-  }
+  await serverTargetStore.setSelectedServerId(BUILTIN_SERVER_ID);
+  await initializeRuntime({ bridgePath, serverUrl, userDataPath });
 }
 
 void runDesktopApp().catch((error) => {

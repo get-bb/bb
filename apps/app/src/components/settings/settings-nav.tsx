@@ -3,6 +3,9 @@ import type { IconName } from "@bb/shared-ui/icon";
 import { useHostDaemon, useLocalHostDaemonAccess } from "@/hooks/useHostDaemon";
 import { usePluginSlots } from "@/lib/plugin-slots";
 import { usePluginList } from "@/hooks/queries/plugin-settings-queries";
+import { useSystemConfig } from "@/hooks/queries/system-queries";
+import { useServerTarget } from "@/hooks/useServerTarget";
+import { isDesktopServerTargetAvailable } from "@/lib/bb-desktop";
 import {
   SETTINGS_MACHINE_ROUTE_PATH,
   SETTINGS_PLUGIN_ROUTE_PATH,
@@ -17,6 +20,7 @@ export const SETTINGS_NAV_SECTIONS = [
   { icon: "ChartColumn", id: "usage", label: "Usage limits" },
   { icon: "Folder", id: "files", label: "Files" },
   { icon: "Laptop", id: "machines", label: "Machines" },
+  { icon: "Cloud", id: "connection", label: "Connection" },
   { icon: "PackageReceive", id: "updates", label: "Updates" },
   { icon: "Puzzle", id: "marketplaces", label: "Plugin marketplaces" },
   { icon: "Beaker", id: "experiments", label: "Experiments" },
@@ -50,6 +54,8 @@ export function useSettingsNavState(): SettingsNavState {
   const { accessState } = useLocalHostDaemonAccess();
   const { fileOpeners, settingsSections } = usePluginSlots();
   const pluginListQuery = usePluginList({ enabled: true });
+  const remoteUiEnabled = useSystemConfig().data?.experiments.remoteUi ?? false;
+  const { canManageServers } = useServerTarget();
 
   const sectionMatch = matchPath(
     SETTINGS_SECTION_ROUTE_PATH,
@@ -78,6 +84,11 @@ export function useSettingsNavState(): SettingsNavState {
     if (section.id === "files") {
       return (
         hasDaemon || accessState !== "unavailable" || fileOpeners.length > 0
+      );
+    }
+    if (section.id === "connection") {
+      return (
+        remoteUiEnabled && isDesktopServerTargetAvailable() && canManageServers
       );
     }
     return true;

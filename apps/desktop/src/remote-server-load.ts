@@ -1,5 +1,3 @@
-import { BUILTIN_SERVER_NAME } from "./server-target.js";
-
 const ELECTRON_LOAD_ERROR_CODE = /\bERR_[A-Z_]+ \(-?\d+\)/u;
 
 interface RemoteServerStartupError {
@@ -48,9 +46,8 @@ export async function loadRemoteServerPage(
     await args.loadStartupError({
       details:
         `${label.charAt(0).toUpperCase()}${label.slice(1)} did not answer. ` +
-        "Check that the machine is awake and reachable, then choose " +
-        "Window ▸ Server to retry this server or switch to " +
-        `${BUILTIN_SERVER_NAME}.`,
+        "Check that the machine is awake and reachable, then close this " +
+        "window and pick the server again from Window ▸ Server.",
       logs: "",
       title: "Could not reach this bb server",
     });

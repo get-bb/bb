@@ -41,7 +41,9 @@ function menuArgs(
     reloadWindow,
     selectServer: () => {},
     serverDaemonLogsMenuEnabled: false,
-    servers: [{ checked: true, id: "builtin", name: "This Mac" }],
+    servers: [
+      { checked: true, id: "builtin", kind: "builtin", name: "This Mac" },
+    ],
     setServerUrl: () => {},
     ...overrides,
   };
@@ -141,8 +143,8 @@ describe("application menu", () => {
       menuArgs(() => {}, {
         selectServer,
         servers: [
-          { checked: false, id: "builtin", name: "This Mac" },
-          { checked: true, id: "custom", name: "example.com" },
+          { checked: false, id: "builtin", kind: "builtin", name: "This Mac" },
+          { checked: true, id: "custom", kind: "custom", name: "example.com" },
         ],
         setServerUrl,
       }),
@@ -162,15 +164,41 @@ describe("application menu", () => {
     expect(setServerUrl).toHaveBeenCalledTimes(1);
   });
 
-  it("explains an empty Connect list with a disabled row when the sync was skipped", () => {
+  it("explains an empty Connect list with a disabled row when only the builtin server is selectable", () => {
     const template = buildApplicationMenuTemplate(
       menuArgs(() => {}, {
         connectServersSkipReason: "no-credential",
         servers: [
-          { checked: false, id: "builtin", name: "This Mac" },
+          { checked: true, id: "builtin", kind: "builtin", name: "This Mac" },
+        ],
+      }),
+    );
+    const serverSubmenu = findServerSubmenu(template);
+
+    expect(serverSubmenu.map((item) => item.label ?? `<${item.type}>`)).toEqual(
+      [
+        "This Mac",
+        CONNECT_SERVERS_SKIPPED_MENU_LABELS["no-credential"],
+        "<separator>",
+        SET_SERVER_URL_MENU_LABEL,
+      ],
+    );
+    const note = serverSubmenu[1];
+    expect(note?.enabled).toBe(false);
+    expect(note?.type).toBeUndefined();
+    expect(note?.click).toBeUndefined();
+  });
+
+  it("omits the skip reason row when a custom server is already selectable", () => {
+    const template = buildApplicationMenuTemplate(
+      menuArgs(() => {}, {
+        connectServersSkipReason: "not-paired",
+        servers: [
+          { checked: false, id: "builtin", kind: "builtin", name: "This Mac" },
           {
             checked: true,
             id: "custom",
+            kind: "custom",
             name: "old-host.tailnet.ts.net:38886",
           },
         ],
@@ -182,16 +210,36 @@ describe("application menu", () => {
       [
         "This Mac",
         "old-host.tailnet.ts.net:38886",
-        CONNECT_SERVERS_SKIPPED_MENU_LABELS["no-credential"],
         "<separator>",
         SET_SERVER_URL_MENU_LABEL,
       ],
     );
-    const note = serverSubmenu[2];
-    expect(note?.enabled).toBe(false);
-    expect(note?.type).toBeUndefined();
-    expect(note?.click).toBeUndefined();
-    expect(note?.label).toMatch(/sign in to bb Connect/u);
+  });
+
+  it("omits the skip reason row when a connect server is already selectable", () => {
+    const template = buildApplicationMenuTemplate(
+      menuArgs(() => {}, {
+        connectServersSkipReason: "unavailable",
+        servers: [
+          { checked: true, id: "builtin", kind: "builtin", name: "This Mac" },
+          {
+            checked: false,
+            id: "connect:studio",
+            kind: "connect",
+            name: "studio",
+          },
+        ],
+      }),
+    );
+    const serverSubmenu = findServerSubmenu(template);
+
+    expect(
+      serverSubmenu.some((item) =>
+        Object.values(CONNECT_SERVERS_SKIPPED_MENU_LABELS).includes(
+          item.label ?? "",
+        ),
+      ),
+    ).toBe(false);
   });
 
   it("builds a native Linux menu with the Linux DevTools accelerator", () => {

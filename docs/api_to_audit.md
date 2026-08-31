@@ -1887,3 +1887,87 @@ other pane's copy (or release its owned state). The thread-list slot omits it
 deliberately: it mounts once, and a crash there should disable it everywhere.
 Confirm that split before stabilizing, and decide whether other multi-mount
 slots need the same treatment.
+
+## `BbDesktopApi.experimental_getServerTarget` / `experimental_setServerTarget` / `experimental_onServerTargetChange`
+
+**What it does.** Exposes the desktop app's server target (which bb server the
+window points at) to the renderer. `experimental_getServerTarget` returns the
+selectable servers (`This Mac`, every bb Connect server on the account while bb
+Connect is trusted, and every server the user added to the allowlist) with the
+selected one flagged, plus `connectTrusted` and `canManageServers`.
+`experimental_setServerTarget` switches to a server by id, returns whether the
+request was accepted, and then reloads the window against the new server.
+`experimental_onServerTargetChange` pushes the same snapshot whenever the main
+process refreshes its application menu. Before this, the switcher was reachable
+only from the native "Window > Server" menu, and `@bb/desktop-contract` exposed
+nothing about it. Settings > Connection is the first consumer.
+
+**Audit before stabilizing.**
+
+1. **Surface ownership.** `BbDesktopApi` is a desktop/renderer contract, not a
+   plugin API, so the `experimental_` rule in AGENTS.md does not strictly cover
+   it. Decide whether desktop contract members should carry the prefix at all,
+   or whether this should follow the unprefixed style of the members beside it
+   (`getWindowState`, `openServerDaemonLogs`).
+2. **Optionality.** All four are optional so the web renderer and older desktop
+   builds can omit them. Confirm feature detection on one member
+   (`experimental_getServerTarget`, which the Settings nav uses to decide
+   whether to show the section) is the contract we want, rather than a single
+   capability flag on `BbDesktopInfo`.
+3. **Boolean returns.** The setters resolve `true` before the window navigates,
+   and `false` on a rejected id or unparseable URL. Decide whether callers need
+   a reason instead of a boolean, especially for the add path where the only
+   failure today is "not a http(s) URL".
+4. **Server ids.** Ids are the native menu's ids: `builtin`, `connect:<handle>`,
+   and an opaque generated id per user-added server. Confirm that string shape
+   is a contract we want to publish rather than a menu implementation detail.
+5. **Custom + Connect auth.** A user-added server on a `getbb.app` host
+   authenticates through bb Connect while `connectTrusted` is on. Confirm the
+   apex allowlist belongs in the desktop app, and how it should behave for
+   self-hosted Connect deployments and for the `BB_DEV_CONNECT_BASE_URL` dev
+   origin.
+6. **`connectServersSkipReason`.** The snapshot carries why the bb Connect
+   server sync produced nothing (`no-credential`, `not-paired`,
+   `plugin-disabled`, `unauthorized`, `unavailable`) so the renderer can show
+   the same guidance the native menu shows. Both surfaces render it only when
+   no server beyond `This Mac` is selectable. Decide whether the renderer
+   should receive a raw reason code it has to map to copy, or a resolved
+   message owned by the main process.
+
+## `BbDesktopApi.experimental_addCustomServer` / `experimental_removeCustomServer` / `experimental_setConnectTrusted`
+
+**What it does.** Lets the renderer curate the desktop app's trusted-server
+allowlist. `experimental_addCustomServer(name, url)` appends a server (the name
+falls back to the host, the URL goes through the same normalization the native
+"Set Server URL…" dialog uses, and an existing entry with the same URL is
+reused), `experimental_removeCustomServer(id)` drops one (falling back to
+`This Mac` when the removed server was selected), and
+`experimental_setConnectTrusted(trusted)` turns the bb Connect (`getbb.app`)
+default on or off, which both hides the auto-synced Connect servers and stops
+the automatic Connect sign-in for `getbb.app` addresses. Before this, the
+renderer could only save one custom URL. Settings > Connection is the only
+consumer.
+
+**Audit before stabilizing.**
+
+1. **Trust root.** These three are the *editing* surface and the main process
+   accepts them only from a builtin/local frame origin
+   (`isBuiltinServerOrigin`), whereas `experimental_setServerTarget` is the
+   *switching* surface and also accepts an already-trusted remote origin
+   (`isTrustedSwitchOrigin`). The renderer mirrors that split through
+   `canManageServers`. Confirm the split is the model we want before publishing
+   it, and decide whether a remote page should be able to see the allowlist at
+   all.
+2. **Rejection is silent.** A remote caller gets `false` with no reason, which a
+   renderer cannot distinguish from an invalid URL. Decide whether the untrusted
+   case deserves a distinct result.
+3. **`canManageServers` freshness.** The value is computed per receiving window
+   from its current URL when the snapshot is built or pushed. Confirm that
+   matches the origin check the handlers actually apply at invoke time.
+4. **Naming and dedupe.** Names are free text with no uniqueness rule, and
+   duplicate URLs silently return the existing entry rather than failing.
+   Decide whether callers need rename support and an explicit duplicate signal.
+5. **`connectTrusted` scope.** Turning it off hides Connect servers and blocks
+   the automatic sign-in, but leaves the remembered Connect server and any
+   cached Connect credential in place. Decide whether untrusting should also
+   clear the credential cache and the stored server.

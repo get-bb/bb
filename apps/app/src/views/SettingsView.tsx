@@ -50,6 +50,7 @@ import { CommunitySettingsSection } from "@/components/settings/CommunitySetting
 import { UpdatesSettingsSection } from "@/components/settings/UpdatesSettingsSection";
 import { KeyboardSettingsSection } from "@/components/settings/KeyboardSettingsSection";
 import { MachinesSettingsSection } from "@/components/settings/MachinesSettingsSection";
+import { ConnectionSettingsSection } from "@/components/settings/ConnectionSettingsSection";
 import { ArchivedThreadsSettingsSection } from "@/components/settings/ArchivedThreadsSettingsSection";
 import { CliSkillsSettingsSection } from "@/components/settings/CliSkillsSettingsSection";
 import { MarketplacesSettingsSection } from "@/components/settings/MarketplacesSettingsSection";
@@ -184,11 +185,13 @@ interface ExperimentsSettingsSectionProps {
   editMessagesEnabled: boolean;
   mobileAppEnabled: boolean;
   providerSessionReapingEnabled: boolean;
+  remoteUiEnabled: boolean;
   timelineWindowingEnabled: boolean;
   onChangelogPreviewEnabledChange: (enabled: boolean) => void;
   onEditMessagesEnabledChange: (enabled: boolean) => void;
   onMobileAppEnabledChange: (enabled: boolean) => void;
   onProviderSessionReapingEnabledChange: (enabled: boolean) => void;
+  onRemoteUiEnabledChange: (enabled: boolean) => void;
   onTimelineWindowingEnabledChange: (enabled: boolean) => void;
 }
 
@@ -860,6 +863,7 @@ const EDIT_MESSAGES_EXPERIMENT_LABEL = "Edit messages";
 const MOBILE_APP_EXPERIMENT_LABEL = "Mobile app";
 const PROVIDER_SESSION_REAPING_EXPERIMENT_LABEL =
   "Idle provider session release";
+const REMOTE_UI_EXPERIMENT_LABEL = "Remote UI";
 const TIMELINE_WINDOWING_EXPERIMENT_LABEL = "Timeline windowing";
 export function ExperimentsSettingsSection({
   changelogPreviewEnabled,
@@ -867,11 +871,13 @@ export function ExperimentsSettingsSection({
   editMessagesEnabled,
   mobileAppEnabled,
   providerSessionReapingEnabled,
+  remoteUiEnabled,
   timelineWindowingEnabled,
   onChangelogPreviewEnabledChange,
   onEditMessagesEnabledChange,
   onMobileAppEnabledChange,
   onProviderSessionReapingEnabledChange,
+  onRemoteUiEnabledChange,
   onTimelineWindowingEnabledChange,
 }: ExperimentsSettingsSectionProps) {
   return (
@@ -929,6 +935,18 @@ export function ExperimentsSettingsSection({
         </SettingsWithControl>
 
         <SettingsWithControl
+          label={REMOTE_UI_EXPERIMENT_LABEL}
+          description="Choose which bb server this app renders from: this Mac or one of your remote servers. Adds a Connection settings page and a server switcher in the sidebar."
+        >
+          <Switch
+            checked={remoteUiEnabled}
+            disabled={disabled}
+            onCheckedChange={onRemoteUiEnabledChange}
+            aria-label={REMOTE_UI_EXPERIMENT_LABEL}
+          />
+        </SettingsWithControl>
+
+        <SettingsWithControl
           label={TIMELINE_WINDOWING_EXPERIMENT_LABEL}
           description="Mount only nearby rows in long timelines and expanded timeline details."
         >
@@ -972,7 +990,7 @@ export function SettingsView() {
   const updateGeneralSettingsMutation = useUpdateGeneralSettings();
   const appearance = systemConfigQuery.data?.appearance ?? defaultAppTheme;
   const updateAppearanceMutation = useUpdateAppearance();
-  const { activePluginId, activeSection, hasUnknownSection } =
+  const { activePluginId, activeSection, hasUnknownSection, pluginEntries } =
     useSettingsNavState();
   if (hasUnknownSection) {
     return <Navigate to={SETTINGS_ROUTE_PATH} replace />;
@@ -1051,6 +1069,15 @@ export function SettingsView() {
     );
   } else if (activeSection === "machines") {
     content = <MachinesSettingsSection />;
+  } else if (activeSection === "connection") {
+    content = (
+      <ConnectionSettingsSection
+        remoteAccessPluginId={
+          pluginEntries.find((entry) => entry.label === "Remote access")?.id ??
+          null
+        }
+      />
+    );
   } else if (activeSection === "updates") {
     content = (
       <UpdatesSettingsSection
@@ -1090,6 +1117,13 @@ export function SettingsView() {
           updateExperimentsMutation.mutate({
             ...experiments,
             providerSessionReaping: enabled,
+          })
+        }
+        remoteUiEnabled={experiments.remoteUi}
+        onRemoteUiEnabledChange={(enabled) =>
+          updateExperimentsMutation.mutate({
+            ...experiments,
+            remoteUi: enabled,
           })
         }
         timelineWindowingEnabled={experiments.timelineWindowing}

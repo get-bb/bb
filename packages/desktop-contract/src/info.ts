@@ -34,6 +34,50 @@ export type BbDesktopWindowState = z.infer<typeof bbDesktopWindowStateSchema>;
 export const bbDesktopThemeSchema = z.enum(["system", "light", "dark"]);
 export type BbDesktopTheme = z.infer<typeof bbDesktopThemeSchema>;
 
+export const bbDesktopServerKindSchema = z.enum([
+  "builtin",
+  "connect",
+  "custom",
+]);
+export type BbDesktopServerKind = z.infer<typeof bbDesktopServerKindSchema>;
+
+export const bbDesktopServerOptionSchema = z
+  .object({
+    id: z.string().min(1),
+    kind: bbDesktopServerKindSchema,
+    name: z.string().min(1),
+    selected: z.boolean(),
+    url: z.string().min(1).nullable(),
+  })
+  .strict();
+export type BbDesktopServerOption = z.infer<typeof bbDesktopServerOptionSchema>;
+
+export const bbDesktopConnectServersSkipReasonSchema = z.enum([
+  "no-credential",
+  "not-paired",
+  "plugin-disabled",
+  "unauthorized",
+  "unavailable",
+]);
+export type BbDesktopConnectServersSkipReason = z.infer<
+  typeof bbDesktopConnectServersSkipReasonSchema
+>;
+
+export const bbDesktopServerTargetSchema = z
+  .object({
+    canManageServers: z.boolean(),
+    connectServersSkipReason:
+      bbDesktopConnectServersSkipReasonSchema.nullable(),
+    connectTrusted: z.boolean(),
+    servers: z.array(bbDesktopServerOptionSchema),
+  })
+  .strict();
+export type BbDesktopServerTarget = z.infer<typeof bbDesktopServerTargetSchema>;
+
+export type BbDesktopServerTargetChangeHandler = (
+  target: BbDesktopServerTarget,
+) => void;
+
 export type BbDesktopInfoChangeHandler = (info: BbDesktopInfo) => void;
 export type BbDesktopInfoUnsubscribe = () => void;
 export type BbDesktopWindowStateChangeHandler = (
@@ -61,4 +105,12 @@ export interface BbDesktopApi extends BbDesktopInfo {
   openExternalUrl(url: string): void;
   openServerDaemonLogs?(): Promise<void>;
   setTheme(theme: BbDesktopTheme): void;
+  experimental_getServerTarget?(): Promise<BbDesktopServerTarget | null>;
+  experimental_setServerTarget?(serverId: string): Promise<boolean>;
+  experimental_addCustomServer?(name: string, url: string): Promise<boolean>;
+  experimental_removeCustomServer?(serverId: string): Promise<boolean>;
+  experimental_setConnectTrusted?(trusted: boolean): Promise<boolean>;
+  experimental_onServerTargetChange?(
+    listener: BbDesktopServerTargetChangeHandler,
+  ): BbDesktopInfoUnsubscribe;
 }

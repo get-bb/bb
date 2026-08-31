@@ -5,6 +5,7 @@ export const experimentKeys = [
   "editMessages",
   "mobileApp",
   "providerSessionReaping",
+  "remoteUi",
   "timelineWindowing",
 ] as const;
 export const experimentKeySchema = z.enum(experimentKeys);
@@ -18,5 +19,6 @@ export const defaultExperiments: Experiments = {
   editMessages: true,
   mobileApp: false,
   providerSessionReaping: false,
+  remoteUi: false,
   timelineWindowing: false,
 };

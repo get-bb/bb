@@ -8,6 +8,7 @@ import {
   bbDesktopBrowserSnapshotSchema,
   bbDesktopBrowserStateSchema,
   bbDesktopInfoSchema,
+  bbDesktopServerTargetSchema,
   bbDesktopWindowStateSchema,
   type BbDesktopApi,
   type BbDesktopAppCommandHandler,
@@ -25,6 +26,8 @@ import {
   type BbDesktopInfoChangeHandler,
   type BbDesktopInfoUnsubscribe,
   type BbDesktopOpenNewTabHandler,
+  type BbDesktopServerTarget,
+  type BbDesktopServerTargetChangeHandler,
   type BbDesktopTheme,
   type BbDesktopWindowState,
   type BbDesktopWindowStateChangeHandler,
@@ -37,6 +40,14 @@ import {
   BB_DESKTOP_OPEN_EXTERNAL_URL_CHANNEL,
   BB_DESKTOP_SET_THEME_CHANNEL,
 } from "./desktop-update-ipc.js";
+import {
+  BB_DESKTOP_ADD_CUSTOM_SERVER_CHANNEL,
+  BB_DESKTOP_GET_SERVER_TARGET_CHANNEL,
+  BB_DESKTOP_REMOVE_CUSTOM_SERVER_CHANNEL,
+  BB_DESKTOP_SERVER_TARGET_CHANGED_CHANNEL,
+  BB_DESKTOP_SET_CONNECT_TRUSTED_CHANNEL,
+  BB_DESKTOP_SET_SERVER_TARGET_CHANNEL,
+} from "./server-target-ipc.js";
 import {
   BB_DESKTOP_BROWSER_ATTACH_CHANNEL,
   BB_DESKTOP_BROWSER_DETACH_CHANNEL,
@@ -152,6 +163,31 @@ async function invokeDesktopWindowState(): Promise<BbDesktopWindowState> {
     return applyDesktopWindowStatePayload(payload) ?? currentWindowState;
   } catch {
     return currentWindowState;
+  }
+}
+
+const serverTargetListeners = new Set<BbDesktopServerTargetChangeHandler>();
+
+async function invokeServerTarget(): Promise<BbDesktopServerTarget | null> {
+  try {
+    const payload: unknown = await ipcRenderer.invoke(
+      BB_DESKTOP_GET_SERVER_TARGET_CHANNEL,
+    );
+    const parsed = bbDesktopServerTargetSchema.safeParse(payload);
+    return parsed.success ? parsed.data : null;
+  } catch {
+    return null;
+  }
+}
+
+async function invokeServerTargetMutation(
+  channel: string,
+  payload: unknown,
+): Promise<boolean> {
+  try {
+    return (await ipcRenderer.invoke(channel, payload)) === true;
+  } catch {
+    return false;
   }
 }
 
@@ -356,7 +392,55 @@ const bbDesktopApi: BbDesktopApi = {
   setTheme(theme: BbDesktopTheme): void {
     ipcRenderer.send(BB_DESKTOP_SET_THEME_CHANNEL, theme);
   },
+  experimental_getServerTarget(): Promise<BbDesktopServerTarget | null> {
+    return invokeServerTarget();
+  },
+  experimental_setServerTarget(serverId: string): Promise<boolean> {
+    return invokeServerTargetMutation(
+      BB_DESKTOP_SET_SERVER_TARGET_CHANNEL,
+      serverId,
+    );
+  },
+  experimental_addCustomServer(name: string, url: string): Promise<boolean> {
+    return invokeServerTargetMutation(BB_DESKTOP_ADD_CUSTOM_SERVER_CHANNEL, {
+      name,
+      url,
+    });
+  },
+  experimental_removeCustomServer(serverId: string): Promise<boolean> {
+    return invokeServerTargetMutation(
+      BB_DESKTOP_REMOVE_CUSTOM_SERVER_CHANNEL,
+      serverId,
+    );
+  },
+  experimental_setConnectTrusted(trusted: boolean): Promise<boolean> {
+    return invokeServerTargetMutation(
+      BB_DESKTOP_SET_CONNECT_TRUSTED_CHANNEL,
+      trusted,
+    );
+  },
+  experimental_onServerTargetChange(
+    listener: BbDesktopServerTargetChangeHandler,
+  ): BbDesktopInfoUnsubscribe {
+    serverTargetListeners.add(listener);
+    return () => {
+      serverTargetListeners.delete(listener);
+    };
+  },
 };
+
+ipcRenderer.on(
+  BB_DESKTOP_SERVER_TARGET_CHANGED_CHANNEL,
+  (_event, payload: unknown) => {
+    const parsed = bbDesktopServerTargetSchema.safeParse(payload);
+    if (!parsed.success) {
+      return;
+    }
+    for (const listener of serverTargetListeners) {
+      listener(parsed.data);
+    }
+  },
+);
 
 ipcRenderer.on(BB_DESKTOP_INFO_CHANGED_CHANNEL, (_event, payload: unknown) => {
   applyDesktopInfoPayload(payload);

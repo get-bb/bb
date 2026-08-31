@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, renderHook } from "@testing-library/react";
+import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -10,11 +10,18 @@ import { useSettingsNavState } from "./settings-nav";
 
 const mocks = vi.hoisted(() => ({
   accessState: "unavailable",
+  remoteUi: true,
 }));
 
 vi.mock("@/hooks/useHostDaemon", () => ({
   useHostDaemon: () => ({ hasDaemon: false }),
   useLocalHostDaemonAccess: () => ({ accessState: mocks.accessState }),
+}));
+
+vi.mock("@/hooks/queries/system-queries", () => ({
+  useSystemConfig: () => ({
+    data: { experiments: { remoteUi: mocks.remoteUi } },
+  }),
 }));
 
 function wrapperFor(path: string) {
@@ -31,7 +38,9 @@ function wrapperFor(path: string) {
 afterEach(() => {
   cleanup();
   resetPluginSlotStoreForTest();
+  vi.unstubAllGlobals();
   mocks.accessState = "unavailable";
+  mocks.remoteUi = true;
 });
 
 describe("useSettingsNavState", () => {
@@ -83,6 +92,78 @@ describe("useSettingsNavState", () => {
 
     expect(result.current.sections.map((section) => section.id)).not.toContain(
       "plugins",
+    );
+  });
+
+  it("hides Connection when the desktop server switcher is unavailable", () => {
+    const { result } = renderHook(() => useSettingsNavState(), {
+      wrapper: wrapperFor("/settings"),
+    });
+
+    expect(result.current.sections.map((section) => section.id)).not.toContain(
+      "connection",
+    );
+  });
+
+  it("shows Connection when the desktop exposes the server switcher", async () => {
+    vi.stubGlobal("bbDesktop", {
+      experimental_getServerTarget: () =>
+        Promise.resolve({
+          canManageServers: true,
+          connectServersSkipReason: null,
+          connectTrusted: true,
+          servers: [],
+        }),
+      experimental_onServerTargetChange: () => () => {},
+    });
+
+    const { result } = renderHook(() => useSettingsNavState(), {
+      wrapper: wrapperFor("/settings/connection"),
+    });
+
+    expect(result.current.activeSection).toBe("connection");
+    await waitFor(() => {
+      expect(result.current.sections.map((section) => section.id)).toContain(
+        "connection",
+      );
+    });
+  });
+
+  it("hides Connection in a window viewing a remote server", async () => {
+    vi.stubGlobal("bbDesktop", {
+      experimental_getServerTarget: () =>
+        Promise.resolve({
+          canManageServers: false,
+          connectServersSkipReason: null,
+          connectTrusted: true,
+          servers: [],
+        }),
+      experimental_onServerTargetChange: () => () => {},
+    });
+
+    const { result } = renderHook(() => useSettingsNavState(), {
+      wrapper: wrapperFor("/settings/connection"),
+    });
+
+    await act(async () => {});
+    await act(async () => {});
+    expect(result.current.sections.map((section) => section.id)).not.toContain(
+      "connection",
+    );
+  });
+
+  it("hides Connection when the remoteUi experiment is off", () => {
+    mocks.remoteUi = false;
+    vi.stubGlobal("bbDesktop", {
+      experimental_getServerTarget: () => Promise.resolve(null),
+    });
+
+    const { result } = renderHook(() => useSettingsNavState(), {
+      wrapper: wrapperFor("/settings/connection"),
+    });
+
+    expect(result.current.sections.map((section) => section.id)).not.toContain(
+      "connection",
     );
   });
 });

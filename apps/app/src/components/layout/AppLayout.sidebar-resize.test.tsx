@@ -43,6 +43,7 @@ vi.mock("@/hooks/queries/system-queries", () => ({
       experiments: {
         editMessages: false,
         providerSessionReaping: false,
+        remoteUi: false,
       },
     },
   }),

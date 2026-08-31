@@ -4,6 +4,7 @@ import {
   listAccountServers,
   type ConnectCredential,
 } from "@bb/connect-client";
+import type { BbDesktopConnectServersSkipReason } from "@bb/desktop-contract";
 
 const connectAccountServerSchema = z
   .object({
@@ -43,12 +44,7 @@ const rpcFailureSchema = z
   })
   .passthrough();
 
-export type ConnectServerSyncSkipReason =
-  | "no-credential"
-  | "plugin-disabled"
-  | "not-paired"
-  | "unauthorized"
-  | "unavailable";
+export type ConnectServerSyncSkipReason = BbDesktopConnectServersSkipReason;
 
 export type FetchConnectAccountServersResult =
   | { ok: true; result: ConnectListAccountServersResult }
