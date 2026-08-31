@@ -208,7 +208,7 @@ async function listInstalledPluginProviderInfos(
         }
         return (await installed) ? registration.info : null;
       } catch (error) {
-        deps.providerRegistry.forgetInstalled(registration.info.id);
+        deps.providerRegistry.forgetInstalledKey(cacheKey);
         if (!canOmitProviderDiscoveryForError(error)) {
           throw error;
         }

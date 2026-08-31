@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createProviderRegistryService } from "../../src/services/providers/provider-registry.js";
+import { providerHealthCacheKey } from "../../src/services/providers/provider-health-cache.js";
 import { minimalProviderRegistration } from "../helpers/provider-registry.js";
 
 const CURSOR_LIKE_INFO = {
@@ -331,7 +332,10 @@ describe("installed-state cache", () => {
   it("serves a remembered answer and dedupes concurrent probes", async () => {
     const registry = createProviderRegistryService({});
     registerProvider(registry, "codex", "provider-codex");
-    const key = "host_1 codex";
+    const key = providerHealthCacheKey({
+      hostId: "host_1",
+      providerId: "codex",
+    });
 
     expect(registry.lookupInstalled(key)).toBeUndefined();
 
@@ -351,7 +355,10 @@ describe("installed-state cache", () => {
   it("drops the answer when the registration revision moves", async () => {
     const registry = createProviderRegistryService({});
     registerProvider(registry, "codex", "provider-codex");
-    const key = "host_1 codex";
+    const key = providerHealthCacheKey({
+      hostId: "host_1",
+      providerId: "codex",
+    });
     registry.rememberInstalled(key, Promise.resolve(true));
     expect(await registry.lookupInstalled(key)).toBe(true);
 
@@ -360,17 +367,35 @@ describe("installed-state cache", () => {
     expect(registry.lookupInstalled(key)).toBeUndefined();
   });
 
-  it("forgets one provider or all of them", async () => {
+  it("forgets one host-provider answer, one provider, or all answers", async () => {
     const registry = createProviderRegistryService({});
     registerProvider(registry, "codex", "provider-codex");
-    registry.rememberInstalled("host_1 codex", Promise.resolve(true));
-    registry.rememberInstalled("host_1 pi", Promise.resolve(false));
+    const hostOneCodex = providerHealthCacheKey({
+      hostId: "host_1",
+      providerId: "codex",
+    });
+    const hostTwoCodex = providerHealthCacheKey({
+      hostId: "host_2",
+      providerId: "codex",
+    });
+    const hostOnePi = providerHealthCacheKey({
+      hostId: "host_1",
+      providerId: "pi",
+    });
+    registry.rememberInstalled(hostOneCodex, Promise.resolve(true));
+    registry.rememberInstalled(hostTwoCodex, Promise.resolve(false));
+    registry.rememberInstalled(hostOnePi, Promise.resolve(false));
 
-    registry.forgetInstalled("codex");
-    expect(registry.lookupInstalled("host_1 codex")).toBeUndefined();
-    expect(await registry.lookupInstalled("host_1 pi")).toBe(false);
+    registry.forgetInstalledKey(hostOneCodex);
+    expect(registry.lookupInstalled(hostOneCodex)).toBeUndefined();
+    expect(await registry.lookupInstalled(hostTwoCodex)).toBe(false);
+    expect(await registry.lookupInstalled(hostOnePi)).toBe(false);
 
-    registry.forgetInstalled();
-    expect(registry.lookupInstalled("host_1 pi")).toBeUndefined();
+    registry.forgetInstalledProvider("codex");
+    expect(registry.lookupInstalled(hostTwoCodex)).toBeUndefined();
+    expect(await registry.lookupInstalled(hostOnePi)).toBe(false);
+
+    registry.forgetAllInstalled();
+    expect(registry.lookupInstalled(hostOnePi)).toBeUndefined();
   });
 });

@@ -1,6 +1,10 @@
-export function providerHealthCacheKey(args: {
+export interface ProviderHealthCacheKey {
   hostId: string;
   providerId: string;
-}): string {
-  return `${args.hostId} ${args.providerId}`;
+}
+
+export function providerHealthCacheKey(
+  args: ProviderHealthCacheKey,
+): ProviderHealthCacheKey {
+  return args;
 }

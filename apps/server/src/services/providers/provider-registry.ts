@@ -14,6 +14,7 @@ import type {
   PluginProviderOptionsContext,
 } from "@get-bb/plugin-sdk";
 import { providerAlreadyRegisteredMessage } from "@get-bb/plugin-sdk/internal/host-policy";
+import type { ProviderHealthCacheKey } from "./provider-health-cache.js";
 
 export interface ProviderServerCapabilities {
   reasoningLevels: readonly ReasoningLevel[];
@@ -62,9 +63,14 @@ export interface ProviderRegistryService {
    * bridge (~3s measured), and the provider list runs one per installed
    * provider on every request.
    */
-  lookupInstalled(key: string): Promise<boolean> | undefined;
-  rememberInstalled(key: string, value: Promise<boolean>): void;
-  forgetInstalled(providerId?: string): void;
+  lookupInstalled(key: ProviderHealthCacheKey): Promise<boolean> | undefined;
+  rememberInstalled(
+    key: ProviderHealthCacheKey,
+    value: Promise<boolean>,
+  ): void;
+  forgetInstalledKey(key: ProviderHealthCacheKey): void;
+  forgetInstalledProvider(providerId: string): void;
+  forgetAllInstalled(): void;
   getServerCapabilities(providerId: string): ProviderServerCapabilities | null;
   getSupportedPermissionModes(
     providerId: string,
@@ -105,14 +111,16 @@ export function createProviderRegistryService(
   >();
   const providerRegistrationWaiters = new Map<string, Set<() => void>>();
   let registrationRevision = 0;
-  const installedByKey = new Map<
+  const installedByHostId = new Map<
     string,
-    {
-      providerId: string;
-      registrationRevision: number;
-      expiresAt: number;
-      value: Promise<boolean>;
-    }
+    Map<
+      string,
+      {
+        registrationRevision: number;
+        expiresAt: number;
+        value: Promise<boolean>;
+      }
+    >
   >();
   let registrationSequence = 0;
 
@@ -222,35 +230,49 @@ export function createProviderRegistryService(
     },
 
     lookupInstalled(key) {
-      const entry = installedByKey.get(key);
+      const hostEntries = installedByHostId.get(key.hostId);
+      const entry = hostEntries?.get(key.providerId);
       if (entry === undefined) return undefined;
       if (
         entry.registrationRevision !== registrationRevision ||
         entry.expiresAt <= Date.now()
       ) {
-        installedByKey.delete(key);
+        hostEntries.delete(key.providerId);
+        if (hostEntries.size === 0) installedByHostId.delete(key.hostId);
         return undefined;
       }
       return entry.value;
     },
 
     rememberInstalled(key, value) {
-      installedByKey.set(key, {
-        providerId: key.slice(key.indexOf(" ") + 1),
+      let hostEntries = installedByHostId.get(key.hostId);
+      if (hostEntries === undefined) {
+        hostEntries = new Map();
+        installedByHostId.set(key.hostId, hostEntries);
+      }
+      hostEntries.set(key.providerId, {
         registrationRevision,
         expiresAt: Date.now() + PROVIDER_INSTALLED_CACHE_TTL_MS,
         value,
       });
     },
 
-    forgetInstalled(providerId) {
-      if (providerId === undefined) {
-        installedByKey.clear();
-        return;
+    forgetInstalledKey(key) {
+      const hostEntries = installedByHostId.get(key.hostId);
+      if (hostEntries === undefined) return;
+      hostEntries.delete(key.providerId);
+      if (hostEntries.size === 0) installedByHostId.delete(key.hostId);
+    },
+
+    forgetInstalledProvider(providerId) {
+      for (const [hostId, hostEntries] of installedByHostId) {
+        hostEntries.delete(providerId);
+        if (hostEntries.size === 0) installedByHostId.delete(hostId);
       }
-      for (const [key, entry] of installedByKey) {
-        if (entry.providerId === providerId) installedByKey.delete(key);
-      }
+    },
+
+    forgetAllInstalled() {
+      installedByHostId.clear();
     },
 
     getServerCapabilities(providerId) {

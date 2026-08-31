@@ -561,7 +561,7 @@ export function createApp(
     disposePluginHost: (args) => disposePluginHostWorkers(deps, args),
     onSettingsChanged: (pluginId) => {
       deps.providerNativeRoots.invalidate(pluginId);
-      deps.providerRegistry.forgetInstalled();
+      deps.providerRegistry.forgetAllInstalled();
     },
     watchBuiltinPluginSources:
       process.env.BB_MANAGED_DEV_BUILTIN_PLUGIN_HOT_RELOAD === "1",
