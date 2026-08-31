@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { CompactSecondaryPanelShelf } from "./CompactSecondaryPanelShelf";
 import { isCompactSecondaryPanelShelfShowing } from "@/components/ui/secondary-panel-shelf-visibility";
@@ -96,7 +97,7 @@ describe("CompactSecondaryPanelShelf", () => {
 
   it("closes on Escape only while open", () => {
     const { onClose, rerender } = renderShelf(false);
-    fireEvent.keyDown(window, { key: "Escape" });
+    fireEvent.keyDown(document, { key: "Escape" });
     expect(onClose).not.toHaveBeenCalled();
 
     rerender(
@@ -104,8 +105,63 @@ describe("CompactSecondaryPanelShelf", () => {
         <div data-testid="panel-body" />
       </CompactSecondaryPanelShelf>,
     );
-    fireEvent.keyDown(window, { key: "Escape" });
+    fireEvent.keyDown(document, { key: "Escape" });
     expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("contains focus, yields to nested overlays, and restores the trigger", () => {
+    function FocusShelf() {
+      const [open, setOpen] = useState(false);
+      return (
+        <>
+          <button type="button" onClick={() => setOpen(true)}>
+            Open right panel
+          </button>
+          <CompactSecondaryPanelShelf
+            open={open}
+            onClose={() => setOpen(false)}
+            srLabel="Right panel"
+          >
+            <button type="button">First action</button>
+            <button type="button">Last action</button>
+          </CompactSecondaryPanelShelf>
+        </>
+      );
+    }
+
+    render(<FocusShelf />);
+    const trigger = screen.getByRole("button", { name: "Open right panel" });
+    trigger.focus();
+    fireEvent.click(trigger);
+    const shelf = screen.getByRole("dialog", { name: "Right panel" });
+    expect(document.activeElement).toBe(shelf);
+
+    fireEvent.keyDown(document, { key: "Tab" });
+    expect(document.activeElement).toBe(
+      screen.getByRole("button", { name: "First action" }),
+    );
+    fireEvent.keyDown(document, { key: "Tab", shiftKey: true });
+    expect(document.activeElement).toBe(
+      screen.getByRole("button", { name: "Last action" }),
+    );
+
+    const nestedAction = document.createElement("button");
+    nestedAction.setAttribute("data-bb-portaled-overlay", "");
+    nestedAction.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") event.preventDefault();
+    });
+    document.body.appendChild(nestedAction);
+    nestedAction.focus();
+    fireEvent.keyDown(nestedAction, { key: "Tab" });
+    expect(document.activeElement).toBe(nestedAction);
+    fireEvent.keyDown(nestedAction, { key: "Escape" });
+    expect(screen.getByRole("dialog", { name: "Right panel" })).not.toBeNull();
+    nestedAction.remove();
+
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(shelf.getAttribute("data-state")).toBe("closed");
+    expect(shelf.hasAttribute("inert")).toBe(true);
+    expect(document.activeElement).toBe(trigger);
   });
 
   it("renders outside the transformed page so it does not slide with it", () => {
