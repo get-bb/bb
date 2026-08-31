@@ -1,6 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { QueryClient } from "@tanstack/react-query";
-import { fetchFrontendCandidates } from "@/lib/plugin-frontend";
+import {
+  createPluginFrontendPageLifecycle,
+  fetchFrontendCandidates,
+} from "@/lib/plugin-frontend";
+import { markEnabledPluginListStale } from "@/hooks/cache-owners/plugin-cache-owner";
 import { pluginListQueryKey } from "./query-keys";
 import {
   fetchInstalledPlugins,
@@ -59,27 +63,31 @@ const ROW = {
   logoDarkUrl: null,
 };
 
+function pluginWithBundle(hash: string) {
+  return {
+    ...ROW,
+    app: {
+      hasApp: true,
+      bundle: {
+        jsUrl: `/api/v1/plugins/linear/assets/app.js?h=${hash}`,
+        cssUrl: null,
+        jsBytes: 1_000,
+        hash,
+        sdkMajor: 0,
+        sdkVersion: "0.4.27",
+        compatible: true,
+      },
+    },
+  };
+}
+
 afterEach(() => {
   vi.unstubAllGlobals();
 });
 
 describe("fetchPluginList envelope", () => {
   it("lets the frontend loader reuse the app plugin list", async () => {
-    const plugin = {
-      ...ROW,
-      app: {
-        hasApp: true,
-        bundle: {
-          jsUrl: "/api/v1/plugins/linear/assets/app.js?h=abc",
-          cssUrl: null,
-          jsBytes: 1_000,
-          hash: "abc",
-          sdkMajor: 0,
-          sdkVersion: "0.4.27",
-          compatible: true,
-        },
-      },
-    };
+    const plugin = pluginWithBundle("abc");
     const queryClient = new QueryClient();
     queryClient.setQueryData(
       pluginListQueryKey(true),
@@ -92,6 +100,45 @@ describe("fetchPluginList envelope", () => {
       expect.objectContaining({ pluginId: "linear" }),
     ]);
     expect(networkFetch).not.toHaveBeenCalled();
+  });
+
+  it("refreshes a warm plugin inventory after a persisted page restore", async () => {
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    queryClient.setQueryData(
+      pluginListQueryKey(true),
+      await fetchInstalledPlugins(
+        fetchReturning({ plugins: [pluginWithBundle("old")] }),
+      ),
+    );
+    const networkFetch = vi.fn(
+      fetchReturning({ plugins: [pluginWithBundle("new")] }),
+    );
+    vi.stubGlobal("fetch", networkFetch);
+    const reconciledHashes: string[] = [];
+    const deps = {
+      isTornDown: () => false,
+      refreshInventory: () => {
+        markEnabledPluginListStale({ queryClient });
+      },
+      reboot: vi.fn(),
+      reconcile: () => {
+        void fetchFrontendCandidates(queryClient).then((candidates) => {
+          reconciledHashes.push(
+            ...candidates.map((candidate) => candidate.bundle.hash),
+          );
+        });
+      },
+      teardown: vi.fn(),
+    };
+
+    createPluginFrontendPageLifecycle(deps).onPageShow({ persisted: true });
+
+    await vi.waitFor(() => {
+      expect(reconciledHashes).toEqual(["new"]);
+    });
+    expect(networkFetch).toHaveBeenCalledTimes(1);
   });
 
   it("binds browser fetch before the SDK invokes it", async () => {

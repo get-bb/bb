@@ -49,6 +49,15 @@ export function invalidatePluginList(args: {
   });
 }
 
+export function markEnabledPluginListStale(args: {
+  queryClient: QueryClient;
+}): void {
+  void args.queryClient.invalidateQueries({
+    queryKey: pluginListQueryKey(true),
+    refetchType: "none",
+  });
+}
+
 export function invalidatePluginCatalogSearch(args: {
   queryClient: QueryClient;
 }): void {

@@ -1133,8 +1133,11 @@ function dirtyHostAvailabilityQueries(): QueryKey[] {
   return [hostsQueryKey(), allHostQueryKeyPrefix()];
 }
 
-function dirtySystemConfigQueries(): QueryKey[] {
-  return [systemConfigQueryKey()];
+function dirtySystemConfigQueries({ queryClient }: RealtimeDirtyContext): void {
+  void queryClient.invalidateQueries(
+    { queryKey: systemConfigQueryKey() },
+    { cancelRefetch: false },
+  );
 }
 
 function dirtyAllThreadTimelineQueries(): QueryKey[] {

@@ -1,4 +1,6 @@
 import { createStore } from "jotai";
+import { QueryObserver } from "@tanstack/react-query";
+import type { ChangedMessage } from "@bb/domain";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
@@ -12,7 +14,8 @@ const mocks = vi.hoisted(() => ({
     ) =>
       () => {},
   ),
-  fetchSdkSystemConfig: vi.fn(async () => ({
+  onChanged: vi.fn((_listener: (message: ChangedMessage) => void) => () => {}),
+  fetchSdkSystemConfig: vi.fn(async (_options?: { signal?: AbortSignal }) => ({
     hostDaemonPort: 38_887,
     localHelperPorts: [38_887, 38_888],
   })),
@@ -55,7 +58,7 @@ vi.mock("./bb-desktop", () => ({
 vi.mock("./ws", () => ({
   wsManager: {
     getConnectionState: () => "connected",
-    onChanged: () => () => {},
+    onChanged: mocks.onChanged,
     onConnected: mocks.onConnected,
   },
 }));
@@ -69,12 +72,19 @@ import {
 import { appQueryClient } from "./app-query-client";
 import { sdk } from "./sdk";
 import { systemConfigQueryKey } from "@/hooks/queries/query-keys";
+import { systemConfigQueryOptions } from "@/hooks/queries/system-queries";
+import { createRealtimeCacheEffects } from "@/hooks/realtime-cache-effects";
 
 beforeEach(() => {
   appQueryClient.clear();
   mocks.fetchHostStatus.mockReset();
   mocks.onConnected.mockClear();
-  mocks.fetchSdkSystemConfig.mockClear();
+  mocks.onChanged.mockClear();
+  mocks.fetchSdkSystemConfig.mockReset();
+  mocks.fetchSdkSystemConfig.mockResolvedValue({
+    hostDaemonPort: 38_887,
+    localHelperPorts: [38_887, 38_888],
+  });
   mocks.fetchSystemConfig.mockClear();
   vi.stubGlobal("window", {
     location: {
@@ -112,6 +122,87 @@ describe("local host daemon access atoms", () => {
         mocks.fetchSystemConfig.mock.calls.length,
     ).toBe(1);
   });
+
+  it.each(["atom-first", "realtime-first"] as const)(
+    "issues one config refresh when the %s listener runs first",
+    async (listenerOrder) => {
+      const cachedConfig = {
+        hostDaemonPort: 38_887,
+        localHelperPorts: [38_887, 38_888],
+      };
+      appQueryClient.setQueryData(systemConfigQueryKey(), cachedConfig);
+      const store = createStore();
+      const unsubscribeAtom = store.sub(
+        localHostDaemonAccessStateAtom,
+        () => {},
+      );
+      const observer = new QueryObserver(
+        appQueryClient,
+        systemConfigQueryOptions(),
+      );
+      const unsubscribeQuery = observer.subscribe(() => {});
+      const effects = createRealtimeCacheEffects({
+        queryClient: appQueryClient,
+        visibility: {
+          isDocumentVisible: () => true,
+          subscribe: () => () => {},
+        },
+      });
+      const requests: Array<{
+        resolve: (config: typeof cachedConfig) => void;
+      }> = [];
+      let abortCount = 0;
+
+      try {
+        await store.get(localHostDaemonAccessStateAtom);
+        expect(mocks.fetchSdkSystemConfig).not.toHaveBeenCalled();
+        mocks.fetchSdkSystemConfig.mockImplementation(
+          ({ signal } = {}) =>
+            new Promise((resolve) => {
+              requests.push({ resolve });
+              signal?.addEventListener(
+                "abort",
+                () => {
+                  abortCount += 1;
+                },
+                { once: true },
+              );
+            }),
+        );
+        const message = {
+          type: "changed",
+          entity: "system",
+          changes: ["config-changed"],
+        } satisfies ChangedMessage;
+        const atomListener = mocks.onChanged.mock.calls.at(-1)?.[0];
+        expect(atomListener).toBeDefined();
+        const notifyAtom = () => atomListener?.(message);
+        const notifyRealtime = () => effects.handleChanged(message);
+        const [first, second] =
+          listenerOrder === "atom-first"
+            ? [notifyAtom, notifyRealtime]
+            : [notifyRealtime, notifyAtom];
+
+        first();
+        await vi.waitFor(() => {
+          expect(requests).toHaveLength(1);
+        });
+        second();
+        await new Promise((resolve) => setTimeout(resolve, 0));
+
+        expect(requests).toHaveLength(1);
+        expect(abortCount).toBe(0);
+      } finally {
+        for (const request of requests) {
+          request.resolve(cachedConfig);
+        }
+        effects.dispose();
+        unsubscribeQuery();
+        unsubscribeAtom();
+      }
+    },
+    5_000,
+  );
 
   it("does not restart status discovery on the initial server connection", async () => {
     vi.stubGlobal("navigator", {

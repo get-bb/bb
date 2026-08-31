@@ -22,6 +22,7 @@ import * as classVarianceAuthority from "class-variance-authority";
 import * as sharedUiIcon from "@bb/shared-ui/icon";
 import { createDebouncedCallbackScheduler } from "@bb/domain";
 import type { QueryClient } from "@tanstack/react-query";
+import { markEnabledPluginListStale } from "@/hooks/cache-owners/plugin-cache-owner";
 import { pluginListQueryOptions } from "@/hooks/queries/plugin-settings-queries";
 import { appQueryClient } from "./app-query-client";
 import type {
@@ -891,6 +892,7 @@ interface PluginFrontendPageLifecycleDeps {
   isTornDown: () => boolean;
   reboot: () => void;
   reconcile: () => void;
+  refreshInventory: () => void;
   teardown: () => void;
 }
 
@@ -907,6 +909,7 @@ export function createPluginFrontendPageLifecycle(
     },
     onPageShow(event) {
       if (!event.persisted) return;
+      deps.refreshInventory();
       if (deps.isTornDown()) {
         deps.reboot();
         return;
@@ -929,6 +932,9 @@ function installPluginFrontendPageLifecycle(): void {
       void bootPluginFrontends();
     },
     reconcile: () => schedulePluginFrontendReconcile(),
+    refreshInventory: () => {
+      markEnabledPluginListStale({ queryClient: appQueryClient });
+    },
     teardown: () => {
       void teardownPluginFrontends();
     },

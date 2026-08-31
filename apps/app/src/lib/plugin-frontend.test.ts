@@ -214,6 +214,7 @@ describe("createPluginFrontendPageLifecycle", () => {
       isTornDown: vi.fn(() => tornDown),
       reboot: vi.fn(),
       reconcile: vi.fn(),
+      refreshInventory: vi.fn(),
       teardown: vi.fn(),
     };
   }
