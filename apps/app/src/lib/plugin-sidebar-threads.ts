@@ -35,11 +35,9 @@ export function toPluginSidebarThread(
     isRuntimeActive: isRuntimeBusyThread(entry),
     isWorkflowActive: hasActiveWorkflowActivity(entry),
   });
-  // The queued-work arms have no counterpart in the plugin contract yet, and
-  // adding one is an SDK surface change; a plugin row reads a thread with
-  // queued work as plain until then.
   const indicator: PluginSidebarThreadIndicator =
-    resolvedIndicator === "queued-waiting" || resolvedIndicator === "queued-failed"
+    resolvedIndicator === "queued-waiting" ||
+    resolvedIndicator === "queued-failed"
       ? "none"
       : resolvedIndicator;
 

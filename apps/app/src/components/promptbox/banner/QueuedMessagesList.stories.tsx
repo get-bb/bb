@@ -24,8 +24,6 @@ interface PromptStageProps {
 }
 
 function PromptStage({ children, size }: PromptStageProps) {
-  // The surface carries a -mb-5 so it can tuck under the composer; the pb-5
-  // neutralizes it here so stacked story rows do not overlap.
   return (
     <div
       data-promptbox-shell=""
@@ -47,22 +45,13 @@ function ResponsivePromptStage({ children }: { children: ReactNode }) {
   );
 }
 
-// ---------------------------------------------------------------------------
-// Realistic bb-flavored fixtures
-// ---------------------------------------------------------------------------
-
 const MINUTE_MS = 60 * 1000;
 const HOUR_MS = 60 * MINUTE_MS;
 
-// The wait line reads the real clock through `useSecondTick`, so every
-// scheduled instant is derived from an anchor taken when the story module
-// loads. A fixed epoch would render "Scheduled for Jan 1 1970" and no
-// countdown at all.
 const STORY_NOW = Date.now();
 
 type QueuedMessageFixture = Partial<ThreadQueuedMessage> & {
   id: string;
-  /** Convenience for the common single text block; ignored if `content` is set. */
   text?: string;
   attachments?: number;
 };
@@ -100,9 +89,6 @@ function makeQueuedMessage({
   };
 }
 
-// Ordinary follow-ups behind a running turn carry `thread-busy`, the wait the
-// server records for them and the one wait that deliberately renders no line —
-// these rows must stay exactly one line tall.
 const threadBusy = { kind: "thread-busy" } as const;
 
 const oneMessage: readonly ThreadQueuedMessage[] = [
@@ -237,10 +223,6 @@ const groupedMessages: readonly ThreadQueuedMessage[] = multipleMessages.map(
   }),
 );
 
-// ---------------------------------------------------------------------------
-// Wait states: one fixture per condition that can queue a row.
-// ---------------------------------------------------------------------------
-
 const waitingForWorkspace: readonly ThreadQueuedMessage[] = [
   makeQueuedMessage({
     id: "q_provisioning",
@@ -307,9 +289,6 @@ const pluginWaitStale: readonly ThreadQueuedMessage[] = [
   }),
 ];
 
-// A retry carries the original blocks agent-only, so the row has no message to
-// quote and prints its origin instead. It is never editable, and its wait is
-// always the retry policy's.
 const retry: readonly ThreadQueuedMessage[] = [
   makeQueuedMessage({
     id: "q_retry",
@@ -354,10 +333,6 @@ const failed: readonly ThreadQueuedMessage[] = [
   }),
 ];
 
-// ---------------------------------------------------------------------------
-// Layout
-// ---------------------------------------------------------------------------
-
 interface StaticQueuedMessagesListProps {
   queuedMessages: readonly ThreadQueuedMessage[];
   sendDisabled?: boolean;
@@ -366,10 +341,6 @@ interface StaticQueuedMessagesListProps {
   processingAction?: "send" | "edit" | "delete";
 }
 
-/**
- * Trims the prop boilerplate for every story row that does not keep local
- * reorder state.
- */
 function StaticQueuedMessagesList({
   queuedMessages,
   sendDisabled = false,
@@ -501,10 +472,6 @@ function applyStoryGroupBoundary(
     groupWithNext: index < boundaryIndex,
   }));
 }
-
-// ---------------------------------------------------------------------------
-// Stories
-// ---------------------------------------------------------------------------
 
 export function Overview() {
   return (
@@ -804,9 +771,7 @@ export function InFlightStates() {
           />
         </ResponsivePromptStage>
       </StoryRow>
-      {/* Inline editing is omitted: the editor slot takes live composer wiring
-          (draft state, typeahead, attachment upload) that a faked stand-in
-          would misrepresent. */}
+      {}
     </StoryCard>
   );
 }

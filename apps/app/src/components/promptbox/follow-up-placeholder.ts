@@ -17,10 +17,6 @@ export function getFollowUpPromptPlaceholder(
       return "Waiting for host to reconnect...";
     case "error":
       return "Retry by sending a follow-up message";
-    // A pending thread's composer is not blocked — it accepts and queues
-    // messages exactly as an idle one does, and the queued rows sitting
-    // directly above it already say what is waiting. The first message is
-    // queued, not rejected, and another message simply queues behind it.
     case "pending":
     case "idle":
     case "active":

@@ -25,10 +25,7 @@ import { useRouteNavigate } from "@/components/ui/app-route-anchor";
 import { toPluginSidebarThread } from "./plugin-sidebar-threads";
 import { useSetRootComposeProjectId } from "./root-compose-selection";
 import { openThreadInSplit } from "./split-layout/openThreadInSplit";
-import {
-  getRootComposeRoutePath,
-  getThreadRoutePath,
-} from "./route-paths";
+import { getRootComposeRoutePath, getThreadRoutePath } from "./route-paths";
 
 const EMPTY_THREADS: readonly PluginSidebarThread[] = [];
 const EMPTY_PROJECTS: readonly PluginSidebarProject[] = [];

@@ -534,12 +534,7 @@ export function RootComposeView() {
         isForkDraft: forkSeed !== null,
         navigateToThreadAfterCreate,
       });
-      const {
-        // Applied once below so a scheduled fork queues too: the fork branch
-        // builds its request from the seed and would otherwise drop it.
-        sendAt,
-        ...requestFields
-      } = request;
+      const { sendAt, ...requestFields } = request;
       const createRequest =
         forkSeed === null
           ? {

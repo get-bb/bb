@@ -83,8 +83,6 @@ export function useSettingsNavState(): SettingsNavState {
     }
     return true;
   });
-  // A plugin earns a Settings row by actually having configuration: a
-  // declarative settings form or a mounted settingsSection slot.
   const pluginEntries = installedPlugins
     .filter(
       (plugin) =>

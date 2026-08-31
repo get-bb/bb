@@ -174,8 +174,6 @@ export function useSendThreadMessage() {
         serviceTier,
         reasoningLevel,
         permissionMode,
-        // Present ⇒ the server queues the send as a user-releasable queued row
-        // and answers `delivery: "queued"`, whatever `mode` says.
         ...(sendAt === undefined ? {} : { sendAt }),
         executionInputSources,
         mode,

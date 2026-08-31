@@ -647,8 +647,6 @@ function liftThreadListPlaceholder(
     ...thread,
     activeBackgroundAgentCount: thread.activity.activeBackgroundAgentCount,
     canSpawnChild: false,
-    // Placeholder-only, like canSpawnChild above: the list row does not carry
-    // queue counts, and the real response lands moments later.
     queuedMessageCount: 0,
   };
 }

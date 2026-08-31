@@ -377,10 +377,7 @@ export const REALTIME_THREAD_CHANGE_REGISTRY = {
   },
   "queue-changed": {
     flush: "debounced",
-    dirty: [
-      dirtyThreadQueueContentQueries, // Composer queue and recall include queued messages.
-      dirtyActiveThreadListQueries, // List rows render `queuedWork`; archived pages only go stale.
-    ],
+    dirty: [dirtyThreadQueueContentQueries, dirtyActiveThreadListQueries],
   },
   "archived-changed": {
     flush: "debounced",

@@ -290,11 +290,7 @@ interface SystemRowArgs extends RowBaseOverrideArgs {
 
 interface NonOperationSystemRowArgs extends Omit<
   SystemRowArgs,
-  | "completedAt"
-  | "durationMs"
-  | "parentChange"
-  | "operationKind"
-  | "systemKind"
+  "completedAt" | "durationMs" | "parentChange" | "operationKind" | "systemKind"
 > {
   systemKind: TimelineNonOperationSystemRow["systemKind"];
 }

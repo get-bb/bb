@@ -936,9 +936,6 @@ describe("thread runtime cache owner", () => {
     ).toEqual([]);
   });
   it("drops the optimistic turn when a send joins the queue", async () => {
-    // The queued row above the composer is what renders a queued message, so
-    // the optimistic row must go: keeping it would show the message twice and
-    // imply it had already been sent.
     const queryClient = createAppQueryClient({
       defaultOptions: { queries: { gcTime: Infinity, retry: false } },
       showMutationErrorToasts: false,
@@ -980,17 +977,13 @@ describe("thread runtime cache owner", () => {
         threadTimelineQueryKey("thread-1"),
       )?.rows,
     ).toEqual([]);
-    // No turn started, so the working indicator must not mount.
     expect(queryClient.getQueryData(threadQueryKey("thread-1"))).toMatchObject({
       status: "idle",
       runtime: { displayStatus: "idle" },
     });
-    // The draft is gone, so up-arrow recall is the only way back to the text.
     expect(
       queryClient.getQueryData(threadPromptHistoryQueryKey("thread-1")),
     ).toMatchObject([{ input: request.input }]);
-    // Unconditional even with realtime up: a `queue-changed` that crosses the
-    // response is a queued row that never appears.
     expect(
       queryClient.getQueryState(threadQueuedMessagesQueryKey("thread-1"))
         ?.isInvalidated,

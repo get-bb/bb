@@ -892,9 +892,6 @@ describe("ThreadRow", () => {
         .getAttribute("data-icon"),
     ).toBe("Clock");
 
-    // The queue fact is independent of the runtime, so the row has to resolve
-    // the overlap: a running thread says what it is DOING, and the queued row
-    // is narrated by the queue above its composer instead.
     rerenderThreadRow(
       createThread({
         queuedWork: "waiting",
@@ -904,14 +901,12 @@ describe("ThreadRow", () => {
     expect(
       screen.queryByLabelText("Thread has a message waiting to send"),
     ).toBeNull();
-    expect(screen.getByLabelText("Thread working").getAttribute("data-icon")).toBe(
-      "Loading",
-    );
+    expect(
+      screen.getByLabelText("Thread working").getAttribute("data-icon"),
+    ).toBe("Loading");
   });
 
   it("gives a failed queued row the same glyph a failed thread gets", () => {
-    // One error vocabulary: the two states differ in what they name, never in
-    // how loudly they say it, so this pins the glyph AND the colour together.
     renderThreadRow({ thread: createThread({ queuedWork: "failed" }) });
     const queueFailure = screen.getByLabelText("Queued message failed to send");
 

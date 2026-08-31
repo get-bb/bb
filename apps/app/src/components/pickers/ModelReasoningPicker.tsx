@@ -211,7 +211,6 @@ interface ModelReasoningPickerProps {
   fastModeLabel?: string;
   muted?: boolean;
   defaultOpen?: boolean;
-  /** Whether the popover blocks page interaction. Defaults to true. */
   modal?: boolean;
   align?: "start" | "center" | "end";
   disabled?: boolean;
@@ -773,10 +772,6 @@ export function ModelReasoningPicker({
     triggerReasoningLabel ? ` · ${triggerReasoningLabel} reasoning` : "",
     showSelectedFastMode ? " (Fast mode)" : "",
   ].join("");
-  // The trigger renders identically whether interactive or disabled — the only
-  // difference is the `disabled` button state and a dropped chevron — so fully
-  // read-only surfaces show the same model label in the same position as their
-  // editable counterpart.
   const trigger = (
     <Button
       ref={triggerRef}

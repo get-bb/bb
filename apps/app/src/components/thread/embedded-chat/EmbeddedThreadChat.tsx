@@ -76,15 +76,6 @@ import { useComposerTypeahead } from "./useComposerTypeahead";
 import { useInlineQueuedMessageEditing } from "./useInlineQueuedMessageEditing";
 import { useQueuedMessageActions } from "./useQueuedMessageActions";
 
-/**
- * A send that could not dispatch is queued as a row and delivers itself
- * once whatever blocks it clears (#1650). The message is accepted, not lost,
- * and resending it would double-send — say so, because nothing in the timeline
- * runs yet.
- *
- * Collapsed from the old `deferred` arm: every non-dispatching outcome is now
- * one `queued` row, so there is no longer a reason-specific case to single out.
- */
 function reportQueuedSendDelivery(delivery: SendMessageDelivery): void {
   if (delivery !== "queued") {
     return;
@@ -338,8 +329,6 @@ function EmbeddedThreadChatWithComposer({
       setInlineComposerFocusNonce((nonce) => nonce + 1);
     },
   });
-  // The embedded chat has one inline editor (the queued-message one); the
-  // thread detail composer has two and picks between them.
   const inlineDraftSessionRef = useLatestRef(queuedMessageDraftSession);
   const {
     promptDraft,

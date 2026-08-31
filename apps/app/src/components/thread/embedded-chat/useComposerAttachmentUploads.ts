@@ -8,7 +8,6 @@ import type { InlineComposerDraftSession } from "./useActiveComposerDraft";
 interface UseComposerAttachmentUploadsArgs {
   projectId: string;
   addDraftAttachment: (attachment: PromptDraftAttachment) => void;
-  /** The open inline editor's session id, or null when none is open. */
   inlineEditSessionId: number | null;
   inlineSessionRef: React.RefObject<InlineComposerDraftSession | null>;
 }

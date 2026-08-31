@@ -1254,11 +1254,6 @@ describe("useComposer", () => {
   });
 
   it("routes experimental_submit to the composer that owns the submission, and refuses where none does", async () => {
-    // The whole point of the surface: a scheduled submission must reach the
-    // mounted composer's own pipeline. A composer with no schedulable submit
-    // (a queued-message editor) must say so rather than quietly doing nothing,
-    // because a picker that believes it scheduled a message is worse than one
-    // that reports it could not.
     const submit = vi.fn(async () => {});
     let captured: PluginComposerApi | null = null;
     registerComposerProbe("submit", (composer) => {
@@ -1301,8 +1296,6 @@ describe("useComposer", () => {
     });
     expect(submit).toHaveBeenCalledWith({ sendAt });
 
-    // A time already in the past would be released on the server's next sweep
-    // — an immediate send nobody asked for — so it never reaches the composer.
     await expect(
       captured!.experimental_submit({ sendAt: Date.now() - 1 }),
     ).rejects.toThrow(/future/);
@@ -1314,9 +1307,9 @@ describe("useComposer", () => {
         <Harness withSubmit={false} />
       </MemoryRouter>,
     );
-    await expect(
-      captured!.experimental_submit({ sendAt }),
-    ).rejects.toThrow(/cannot schedule/);
+    await expect(captured!.experimental_submit({ sendAt })).rejects.toThrow(
+      /cannot schedule/,
+    );
     expect(submit).toHaveBeenCalledTimes(1);
   });
 });

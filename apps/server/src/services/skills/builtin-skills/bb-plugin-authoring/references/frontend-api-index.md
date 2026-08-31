@@ -123,6 +123,7 @@ Read the installed SDK declarations for the exact current signatures.
 - `ComposerCustomization`
 - `ComposerPlusMenuItem`
 - `ComposerView`
+- `ExperimentalComposerSubmitOptions`
 - `ComposerRichTextSpec`
 - `ComposerStructuredDraft`
 - `PluginComposerTextEffect`

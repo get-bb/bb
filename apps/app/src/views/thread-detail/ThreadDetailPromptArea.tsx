@@ -282,7 +282,6 @@ function isInlineQueuedMessageEditSession(
 
 const ENDED_EDIT_SESSION_DRAFT = emptyPromptDraftState();
 
-/** Plugin composer-host accessors for the queued-message inline editor (see below). */
 function readInlineQueuedMessageDraft(
   editStateRef: RefObject<InlineQueuedMessageEditState | null>,
   session: InlineQueuedMessageEditSession,
@@ -729,14 +728,6 @@ export function ThreadDetailPromptArea({
   const compactPromptPlaceholder = isStopRequested
     ? "Stopping thread..."
     : getCompactFollowUpPromptPlaceholder(runtimeDisplayStatus);
-  // Identity-stable across keystrokes: the published host is held by large
-  // non-draft subscribers (the secondary-content body, the hosted-panel
-  // registry), so a per-keystroke host identity re-rendered the whole thread
-  // shell per character. The live draft flows through getCurrent/subscribeDraft.
-  // Indirection so the host object stays identity-stable: the scheduled submit
-  // closes over the live execution selection, which changes whenever the user
-  // touches a picker, and a host identity that changed with it would re-render
-  // the whole thread shell on every model change.
   const submitScheduledRef = useRef<
     (options: { sendAt: number }) => Promise<void>
   >(async () => {});
@@ -855,16 +846,6 @@ export function ThreadDetailPromptArea({
     thread.id,
     runtimeDisplayStatus,
   ]);
-  /**
-   * `handleSend` for a submission that is being scheduled rather than sent.
-   *
-   * Deliberately NOT `handleSend`'s queue/send fork: the server queues a
-   * `sendAt` send whether or not the thread is busy, so scheduling while a
-   * turn runs must produce a queued row, not a queued message that dispatches
-   * the moment the turn ends. Everything else is shared — the same draft, the
-   * same resolved attachments and @-mentions, the same frozen execution tuple,
-   * the same clear-and-restore-on-failure.
-   */
   const submitScheduled = useCallback(
     async ({ sendAt }: { sendAt: number }) => {
       if (isDefaultExecutionOptionsLoading) {
@@ -888,8 +869,6 @@ export function ThreadDetailPromptArea({
         if (clearedSubmittedDraft) {
           promptDraft.restoreIfEmpty(submittedDraft);
         }
-        // The caller is a plugin surface with the user's attention on it, so it
-        // presents this instead of a toast landing behind the picker.
         throw new Error(
           getMutationErrorMessage({
             error: scheduleError,
@@ -1416,11 +1395,6 @@ export function ThreadDetailPromptArea({
     thread.id,
     typeaheadConfig,
   ]);
-  // The published value only ever flips between stable host identities (per
-  // thread / per edit session): keystrokes do not notify the pane scope. While
-  // an inline editor cannot render (execution/permission configs still
-  // loading), the bottom composer is what is on screen, so its host stays
-  // published.
   usePublishPluginComposerHost(
     queuedMessageEditor
       ? queuedMessagePluginComposerHost

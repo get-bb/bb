@@ -159,18 +159,9 @@ const GROUP_DIVIDER_ID = "__queued_message_group_divider__";
 const COLLAPSED_HEIGHT = 44;
 const DRAWER_HEIGHT = 174;
 const DRAWER_MAX_VISIBLE_MESSAGES = 3;
-// The drawer's own chrome, above and below the scrolling list: the card's top
-// border, the `h-8` header, the card's `pb-3`, and the two 1px sentinels the
-// scroller keeps around the list to drive the overflow fades — they are inside
-// the scrolling box, so the list only fits when they do too.
 const DRAWER_CHROME_HEIGHT = 1 + 32 + 12 + 2;
-// The list's `py-1`.
 const DRAWER_LIST_PADDING = 8;
-// A one-line row: an `h-7` control plus the row's `py-0.5` and bottom border.
 const DRAWER_ROW_HEIGHT = 33;
-// What a row grows by when it also renders a wait/failure or processing line:
-// the `text-2xs` line plus the `mt-0.5` above it and the extra row padding a
-// two-line row switches to (`py-1.5` rather than `py-1`).
 const DRAWER_SECOND_LINE_HEIGHT = 16;
 const WORKSPACE_MIN_HEIGHT = 240;
 const WORKSPACE_MAX_HEIGHT = 360;
@@ -178,30 +169,10 @@ const WORKSPACE_CHROME_HEIGHT = 56;
 const WORKSPACE_ROW_HEIGHT = 40;
 const TYPEAHEAD_MENU_GAP = 8;
 const SURFACE_DRAG_THRESHOLD = 72;
-// Shared with the held-dispatch rows so both halves of the pending region fade
-// their text under the same action takeover.
 const QUEUED_MESSAGE_ACTION_TAKEOVER_CLASS =
   PROMPT_STACK_ROW_ACTION_TAKEOVER_CLASS;
 type QueueSurfaceMode = "collapsed" | "drawer" | "workspace";
 
-/**
- * How tall the docked drawer has to be to show its rows whole.
- *
- * Rows are not one height. A row that says what it is waiting on — a typed
- * wait, a failure, a retry payload's attempt count — or that is mid-send
- * renders a second line under its text, and an estimate of one row height
- * apiece cut that line off under the bottom scroll fade on a queue small
- * enough to have no overflow at all. So the estimate asks each row which it
- * is, using the same predicate the row itself renders on.
- *
- * It stays an estimate rather than a measurement because the surface's height
- * is an animated inline pixel value that drag also offsets from, so it has to
- * be known during render; the constants are the row's own Tailwind steps and
- * are verified against the browser in the queue stories.
- *
- * `DRAWER_HEIGHT` still caps it: past three two-line rows the drawer is a
- * scrolling summary and the workspace is where the whole queue is read.
- */
 function getDrawerHeight({
   queuedMessages,
   processingMessageId,
@@ -617,12 +588,6 @@ function buildQueuedMessagePreviewText(
   return { text, mentions };
 }
 
-/**
- * The title of a row that has no message to show.
- *
- * Its own component so that only such rows — retries, in practice — subscribe
- * to the shared ticker for the `now` the title's time formatting needs.
- */
 function QueuedMessageFallbackTitle({
   compact,
   queuedMessage,
@@ -664,11 +629,6 @@ function QueuedMessagePreview({
     [queuedMessage.content],
   );
 
-  // A retry has no message of its own to show: it carries the original blocks
-  // marked agent-only so the timeline does not print the user's message twice.
-  // The generic preview would call that "(empty message)", which is true of
-  // the blocks and useless to a reader, so such a row states its origin
-  // instead of quoting nothing.
   if (queuedMessage.payload.kind === "retry") {
     return (
       <div className="min-w-0 flex-1 overflow-hidden text-foreground">
@@ -698,24 +658,6 @@ function QueuedMessagePreview({
   );
 }
 
-/**
- * A queued row's status line: what it is waiting for, plus a live countdown
- * when it is waiting on the clock.
- *
- * Split into its own component so that only rows with something to say
- * subscribe to the shared 1 Hz ticker — an ordinary queue of plain messages
- * re-renders no more than it does today. The ticker also supplies `now`, which
- * is why the label is built here rather than in the row: reading the clock
- * during render is impure, and the ticker is the app's sanctioned way to have
- * a current time that React knows about.
- *
- * The countdown disappears once the instant is due: the row is then waiting on
- * the drain, not on the clock.
- *
- * A failed row reuses this line rather than adding a second one. The failure
- * and the wait answer the same reader question — "why is this still here?" —
- * and stacking both would let a row contradict itself in two typefaces.
- */
 function QueuedMessageWaitLine({
   pluginDisplayName,
   queuedMessage,
@@ -760,20 +702,17 @@ function QueuedMessageWaitLine({
   );
 }
 
-/**
- * The transient line a row shows while its own send/edit/delete is in flight.
- *
- * It replaces the wait line rather than joining it: the row is no longer
- * waiting for anything, it is being acted on, and the spinner is what says the
- * app has the request.
- */
 function QueuedMessageProcessingLine({ label }: { label: string }) {
   return (
     <div
       data-queued-message-processing=""
       className="mt-0.5 flex min-w-0 items-center gap-1 text-2xs text-muted-foreground"
     >
-      <Icon name="Spinner" className="size-3 shrink-0 animate-spin" aria-hidden />
+      <Icon
+        name="Spinner"
+        className="size-3 shrink-0 animate-spin"
+        aria-hidden
+      />
       <span className="min-w-0 truncate">{label}</span>
     </div>
   );
@@ -861,8 +800,7 @@ const QueuedMessageRow = memo(function QueuedMessageRow({
             aria-hidden="true"
           />
         </Button>
-        {/* Today's one-line row stays exactly as tall as it is until a real
-            wait or in-flight action needs a second line to explain it. */}
+        {}
         <div
           className={cn(
             "min-w-0 flex-1 py-1",
@@ -929,7 +867,7 @@ const QueuedMessageRow = memo(function QueuedMessageRow({
                         )}
                         disabled={actionDisabled || sendDisabled}
                         onClick={() => onSendImmediately(queuedMessage.id)}
-                        aria-label={`Send queued message ${index + 1} now`}
+                        aria-label={`Send follow-up ${index + 1} now`}
                       >
                         <Icon name="Sent" className="size-4" aria-hidden />
                       </Button>
@@ -955,7 +893,7 @@ const QueuedMessageRow = memo(function QueuedMessageRow({
                             queuedMessageIndex: index,
                           })
                         }
-                        aria-label={`Edit queued message ${index + 1}`}
+                        aria-label={`Edit follow-up ${index + 1}`}
                       >
                         <Icon name="Edit" className="size-4" aria-hidden />
                       </Button>
@@ -1713,7 +1651,9 @@ export function QueuedMessagesList({
         data-queued-messages-mode={mode}
       >
         <div className="flex min-w-16 items-baseline gap-1.5 pl-1">
-          <span className="text-xs font-medium text-foreground">Queue</span>
+          <span className="text-xs font-medium text-foreground">
+            Follow-ups
+          </span>
           <span className="text-2xs tabular-nums text-subtle-foreground">
             {queuedMessages.length}
           </span>

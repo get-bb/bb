@@ -407,10 +407,6 @@ function buildOptimisticQueuedMessage({
     serviceTier:
       request.serviceTier ?? defaultExecutionOptions?.serviceTier ?? "default",
     groupWithNext: false,
-    // An optimistic row is a plain queued send: it has no schedule, is not
-    // waiting on anything, has not been attempted yet so nothing can have gone
-    // wrong with it, carries its own input, and the user may still edit it.
-    // The server's row replaces this the moment it lands.
     sendAt: null,
     waitingOn: null,
     failureReason: null,
@@ -859,16 +855,6 @@ export function applySendThreadMessageSuccess({
   transaction,
 }: ApplySendThreadMessageSuccessArgs): void {
   if (delivery === "queued" && transaction?.kind === "accepted-turn") {
-    // Collapsed from the old "held"/"deferred"/"queued" three-way fork: every
-    // reason a send does not dispatch immediately now lands on one queued row
-    // in the message queue, so there is one undo to do.
-    //
-    // No turn started and nothing enters the transcript until the row sends,
-    // so undo the whole optimistic accepted-turn — both the working thread
-    // state and the message row. The message is still visible: the queue
-    // renders the queued row off the `queue-changed` notification the server
-    // sends. Leaving the optimistic row would show the message twice and imply
-    // it had already been sent.
     if (transaction.optimisticRowId) {
       removeOptimisticTimelineRow(
         queryClient,
@@ -890,9 +876,6 @@ export function applySendThreadMessageSuccess({
         input: request.input,
       }),
     );
-    // Unconditional, unlike the queued branch: the queue list is what renders
-    // this message now, and a `queue-changed` that crosses the response is a
-    // queued row that never appears.
     invalidateThreadQueueQueries({ queryClient, threadId: request.id });
     return;
   }

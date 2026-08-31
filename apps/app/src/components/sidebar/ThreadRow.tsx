@@ -298,10 +298,6 @@ export function ThreadStatusGlyph({
   });
 
   switch (kind) {
-    // One error vocabulary: a thread that failed and a thread whose queued
-    // message failed to go out share this arm outright, so the row cannot grow
-    // a second, softer way of saying "something went wrong". Only the label
-    // differs, because only the label knows which of the two it is.
     case "unread-error":
     case "queued-failed":
       return (
@@ -397,9 +393,6 @@ export function ThreadStatusGlyph({
         />
       );
     case "queued-waiting":
-      // Badge only, by design: the reason lives on the thread's queued rows,
-      // so this row says "waiting" without competing with the working glyphs
-      // for meaning.
       return (
         <Icon
           name="Clock"
@@ -446,9 +439,6 @@ export function CollapsedThreadStatusGlyph({
     isBackgroundAgentActive: activity.backgroundAgent,
     isBackgroundCommandActive: activity.backgroundCommand,
     isGoalActive: activity.goal,
-    // Collapsed parents roll up work, not waiting: a child's queue is
-    // its own row's business, and the parent row has no glyph slot to spare
-    // for a non-working state.
     queuedWork: "none",
     isPlanModeActive: activity.planMode,
     isRuntimeActive: activity.runtimeWorking,

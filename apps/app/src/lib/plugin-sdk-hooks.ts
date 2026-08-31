@@ -818,14 +818,10 @@ export function useComposer(): PluginComposerApi {
   const hostSubmit = composerHost?.submit;
   const experimental_submit = useCallback(
     async (options: ExperimentalComposerSubmitOptions) => {
-      // Scoped like every other write: a slot that has been replaced must not
-      // submit into a composer it no longer belongs to.
       if (!scopeOwnership.isActive()) {
         throw new Error("This composer is no longer active.");
       }
       if (hostSubmit === undefined) {
-        // The route-draft fallback and the scopes with no dispatch of their own
-        // land here. Saying so beats seeding a draft the user never sees sent.
         throw new Error("This composer cannot schedule a submission.");
       }
       if (!Number.isFinite(options.sendAt) || options.sendAt <= Date.now()) {

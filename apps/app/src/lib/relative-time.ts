@@ -39,17 +39,10 @@ export function formatRelativeTime({
 }
 
 interface FormatScheduledTimeArgs {
-  /** The future instant being described, in epoch milliseconds. */
   timestamp: number;
-  /** The reference "now", in epoch milliseconds. Passed in for testability. */
   now: number;
 }
 
-/**
- * Formats a scheduled instant as a clock time ("9:00"), qualified by day once
- * it is not today ("Tomorrow 9:00", "Mar 4 9:00"). The counterpart to
- * {@link formatRelativeTime}, which describes the past.
- */
 export function formatScheduledTime({
   timestamp,
   now,

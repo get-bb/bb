@@ -157,8 +157,8 @@ describe("QueuedMessagesList", () => {
     const surface = container.querySelector<HTMLElement>(
       'section[aria-label="Follow-ups"]',
     );
-    const heading = getByText("Follow-ups");
 
+    expect(getByText("Follow-ups")).not.toBeNull();
     expect(header?.getAttribute("data-queued-messages-mode")).toBe("drawer");
     expect(surface?.style.height).toBe("121px");
     expect(
@@ -182,15 +182,11 @@ describe("QueuedMessagesList", () => {
   });
 
   it("gives a row that renders a wait line room for it", () => {
-    // The drawer's height is an estimate made during render, so a row that
-    // says what it is waiting on has to be counted as the two-line row it is.
-    // Estimating one row height apiece cut the wait line off under the bottom
-    // scroll fade on a single-row queue that had nothing to scroll.
     const plain = renderQueuedMessages([
       makeQueuedMessage("q_one", "First queued message"),
     ]);
     const plainHeight = plain.container.querySelector<HTMLElement>(
-      'section[aria-label="Queued messages"]',
+      'section[aria-label="Follow-ups"]',
     )?.style.height;
     cleanup();
 
@@ -206,7 +202,7 @@ describe("QueuedMessagesList", () => {
       },
     ]);
     const waitingHeight = waiting.container.querySelector<HTMLElement>(
-      'section[aria-label="Queued messages"]',
+      'section[aria-label="Follow-ups"]',
     )?.style.height;
 
     expect(plainHeight).toBe("88px");
@@ -347,9 +343,7 @@ describe("QueuedMessagesList", () => {
       name: "Delete follow-up 1",
     });
 
-    expect(
-      getByRole("button", { name: "Follow-up 1 actions" }),
-    ).toBeTruthy();
+    expect(getByRole("button", { name: "Follow-up 1 actions" })).toBeTruthy();
     expect(editButton).toBeTruthy();
     expect(deleteButton).toBeTruthy();
     expect(container.querySelector('[data-icon="Sent"]')).not.toBeNull();
@@ -435,9 +429,7 @@ describe("QueuedMessagesList", () => {
     ).not.toBeNull();
     expect(getByTestId("inline-queue-editor")).toBeTruthy();
 
-    fireEvent.click(
-      getByRole("button", { name: "Stop editing follow-up" }),
-    );
+    fireEvent.click(getByRole("button", { name: "Stop editing follow-up" }));
     expect(onDismiss).toHaveBeenCalledOnce();
   });
 
@@ -1582,11 +1574,9 @@ describe("queued row affordances", () => {
     ]);
 
     expect(getByText("Waiting for workspace")).toBeDefined();
-    // The manifest is not loaded in this fixture, so attribution falls back to
-    // the plugin id rather than going unattributed.
-    expect(getByText("Held by concurrency-limit · 4 of 4 running")).toBeDefined();
-    // An ordinary queued row gets no line at all, so a deep queue is not a wall
-    // of "waiting for the current turn".
+    expect(
+      getByText("Held by concurrency-limit · 4 of 4 running"),
+    ).toBeDefined();
     expect(queryByText("Waiting for the current turn")).toBeNull();
     expect(
       container.querySelectorAll("[data-queued-message-wait]"),
@@ -1600,8 +1590,7 @@ describe("queued row affordances", () => {
         waitingOn: { kind: "thread-busy" },
       },
     ]);
-    // The ordinary queued row keeps the affordance it has always had.
-    expect(queryByLabelText("Send queued message 1 now")).not.toBeNull();
+    expect(queryByLabelText("Send follow-up 1 now")).not.toBeNull();
 
     cleanup();
     const queued = renderQueuedMessages([
@@ -1610,12 +1599,10 @@ describe("queued row affordances", () => {
         waitingOn: { kind: "interaction" },
       },
     ]);
-    expect(queued.queryByLabelText("Send queued message 1 now")).toBeNull();
+    expect(queued.queryByLabelText("Send follow-up 1 now")).toBeNull();
   });
 
   it("names the absent machine on a host-offline row and hides Send now", () => {
-    // The host name rides the wait precisely so this row can name it: a user
-    // with two enrolled machines cannot act on "waiting for the host".
     const { getByText, queryByLabelText } = renderQueuedMessages([
       {
         ...makeQueuedMessage("q_offline", "Capture the Safari trace"),
@@ -1623,14 +1610,10 @@ describe("queued row affordances", () => {
       },
     ]);
     expect(getByText("Waiting for M4 to reconnect")).toBeDefined();
-    // Send-now cannot conjure a machine that is not connected.
-    expect(queryByLabelText("Send queued message 1 now")).toBeNull();
+    expect(queryByLabelText("Send follow-up 1 now")).toBeNull();
   });
 
   it("lets a drain failure take over the line the wait would have used", () => {
-    // A failed drain leaves the row on its original wait, so both facts
-    // are true at once — but only one of them belongs on a one-line row, and
-    // it is the one that says the message did not go.
     const { getByText, queryByText, container } = renderQueuedMessages([
       {
         ...makeQueuedMessage("q_failed", "Post the summary"),
@@ -1648,9 +1631,6 @@ describe("queued row affordances", () => {
   });
 
   it("gives a retry row a title of its own when it has no message to show", () => {
-    // A retry stores the original blocks as agent-only so the timeline does
-    // not print the user's message twice, which leaves this row with nothing
-    // to quote — an untitled blank row would be unreadable.
     const { getByText } = renderQueuedMessages([
       {
         ...makeQueuedMessage("q_retry_title", ""),
@@ -1674,7 +1654,9 @@ describe("queued row affordances", () => {
       },
     ]);
     expect(getByText(/^Retry failed turn from /u)).toBeDefined();
-    expect(getByText(/^Rate limited · retrying at .* · attempt 2$/u)).toBeDefined();
+    expect(
+      getByText(/^Rate limited · retrying at .* · attempt 2$/u),
+    ).toBeDefined();
   });
 
   it("offers no edit on a row the server says is not editable", () => {
@@ -1692,8 +1674,7 @@ describe("queued row affordances", () => {
         sendAt: 0,
       },
     ]);
-    expect(queryByLabelText("Edit queued message 1")).toBeNull();
-    // A retry names its attempt rather than its wait; it has no message text.
-    expect(queryByLabelText("Delete queued message 1")).not.toBeNull();
+    expect(queryByLabelText("Edit follow-up 1")).toBeNull();
+    expect(queryByLabelText("Delete follow-up 1")).not.toBeNull();
   });
 });

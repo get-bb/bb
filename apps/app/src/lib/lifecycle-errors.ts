@@ -421,13 +421,6 @@ function describeParentThreadInvalid({
   }
 }
 
-/**
- * A gate's `reject` verdict. The plugin wrote the refusal for this user, so it
- * is the body verbatim; we only say which plugin it came from, because the
- * title is replaced by the operation ("Failed to send message") whenever the
- * caller passes one. Treated like the other refusals a user can act on and
- * retry rather than as a failure.
- */
 function describeDispatchRejected({
   error,
   operation,
@@ -439,11 +432,6 @@ function describeDispatchRejected({
   });
 }
 
-/**
- * A hook handler that threw or timed out, failing closed. The server message
- * already names the plugin and the hook, so it is passed through rather than
- * rebuilt, and the recovery hint says "that plugin" to avoid naming it twice.
- */
 function describeDispatchHookFailed({
   error,
   operation,

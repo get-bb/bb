@@ -2126,10 +2126,7 @@ export function PromptBoxInternal({
   }, [reportQueuedEditorTypeaheadLayout, showTypeaheadMenu]);
 
   useEffect(() => {
-    if (
-      selectedSuggestionKey !== null &&
-      selectedSuggestionIndex === -1
-    ) {
+    if (selectedSuggestionKey !== null && selectedSuggestionIndex === -1) {
       setSelectedSuggestionKey(null);
     }
   }, [selectedSuggestionIndex, selectedSuggestionKey]);

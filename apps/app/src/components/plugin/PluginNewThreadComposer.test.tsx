@@ -136,9 +136,6 @@ vi.mock("@/hooks/queries/system-queries", () => ({
   useSystemProviderStates: () => ({ data: undefined, isPending: false }),
   useKnownProviderModelCatalogScope: () => undefined,
   useHostProviderCliStatus: () => ({ data: undefined }),
-  // `generalSettings` is required on SystemConfigResponse and the server
-  // always sends it, so the fixture carries it rather than letting readers
-  // defend against a shape the wire never produces.
   useSystemConfig: () => ({
     data: { primaryHostId: "host_1", generalSettings: defaultAppSettings },
   }),

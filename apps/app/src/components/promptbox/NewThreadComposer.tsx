@@ -161,21 +161,7 @@ export interface NewThreadComposerState {
   renderPromptBox: (options: NewThreadComposerPromptOptions) => ReactNode;
 }
 
-/**
- * What bb's own root compose emits — `NewThreadRequest` plus the facts only bb
- * can act on.
- *
- * Deliberately an app-local superset rather than a widening of the SDK's
- * `NewThreadRequest`: that type exists so a plugin can forward it verbatim to
- * `threads.spawn`, and these fields are bb's create request alone.
- */
 export interface NewThreadComposerSubmission extends NewThreadRequest {
-  /**
-   * Epoch ms the first turn should dispatch at. Present only for a scheduled
-   * submission (`useComposer().experimental_submit`); its absence is what
-   * makes an ordinary submission start work immediately, so this is not a
-   * default the composer could fill in.
-   */
   sendAt?: number;
 }
 
@@ -1007,9 +993,6 @@ export function NewThreadComposer({
     () => promptDraftToInput(currentDraft),
     [currentDraft],
   );
-  // Indirection so the host stays identity-stable: the scheduled submit closes
-  // over every picker selection, and a host identity that moved with them
-  // would republish on every provider/model/environment change.
   const submitScheduledRef = useRef<
     (options: { sendAt: number }) => Promise<void>
   >(async () => {});
@@ -1017,8 +1000,6 @@ export function NewThreadComposer({
     (options: { sendAt: number }) => submitScheduledRef.current(options),
     [],
   );
-  // Identity-stable across keystrokes; the live draft flows through
-  // getCurrent/subscribeDraft (see PluginComposerHost).
   const pluginComposerHost = useMemo<PluginComposerHost>(
     () => ({
       scope: { kind: "new-thread", projectId },
@@ -1090,21 +1071,6 @@ export function NewThreadComposer({
     selectedThreadModel,
     submissionEnvironmentUnavailable: submissionEnvironment === null,
   });
-  /**
-   * The one submission path, shared by the Enter key and by a plugin's
-   * `useComposer().experimental_submit`.
-   *
-   * `sendAt` is the only difference between them: everything the user chose
-   * on screen — provider, model, reasoning level, service tier, permission
-   * mode, environment, attachments, @-mentions — is
-   * resolved here and travels with a scheduled create exactly as it does with
-   * an immediate one. That is the whole reason scheduling goes through the
-   * composer instead of a plugin calling `threads.spawn` itself: none of this
-   * tuple is visible outside this component.
-   *
-   * Unlike `handleSubmit` this throws rather than returning quietly, so a
-   * programmatic caller can tell "scheduled" from "refused".
-   */
   const submitDraft = useCallback(
     async (blockedReason: string | null, sendAt: number | null) => {
       const submittedDraft = promptDraft.getCurrent();
@@ -1153,8 +1119,6 @@ export function NewThreadComposer({
         await onSubmit(request);
         clearReuseEnvironment();
       } catch (submitError) {
-        // Restore the submitted draft only when the optimistic clear succeeded
-        // and nothing replaced it while the request was pending.
         if (clearedSubmittedDraft) {
           promptDraft.restoreIfEmpty(submittedDraft);
         }
@@ -1188,10 +1152,7 @@ export function NewThreadComposer({
     async (blockedReason: string | null) => {
       try {
         await submitDraft(blockedReason, null);
-      } catch {
-        // Unchanged interactive behaviour: a refusal is a no-op, and the
-        // caller that owns the create mutation presents request failures.
-      }
+      } catch {}
     },
     [submitDraft],
   );

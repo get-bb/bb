@@ -64,10 +64,7 @@ import {
 } from "./thread-create-request.js";
 import { deriveTitleFallback } from "./title-generation.js";
 import type { ThreadProvisionEnvironmentIntent } from "./thread-provisioning-context.js";
-import {
-  resolveManagedDefaultBaseBranchSpec,
-  resolveManagedNamedBaseBranchSpec,
-} from "../projects/worktree-base-branch.js";
+import { resolveManagedDefaultBaseBranchSpec } from "../projects/worktree-base-branch.js";
 import { applyLoggedEnvironmentLifecycleEvent } from "../environments/lifecycle-outcome.js";
 import { resolveSystemProviderModels } from "../system/execution-options.js";
 
@@ -819,7 +816,6 @@ export async function createThreadFromRequest(
           baseBranch: await resolveManagedBaseBranchForCreate(deps, {
             baseBranch: workspace.baseBranch,
             hostId,
-            originKind,
             sourcePath: managedSource.path,
           }),
           workspaceProvisionType: workspace.type,

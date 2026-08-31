@@ -92,9 +92,7 @@ export function useScopedBranchSelection(
       const branchName = selectedBranch?.name ?? currentBranch;
       setSelectionState({
         scopeKey,
-        selectedBranch: branchName
-          ? { name: branchName, isNew: true }
-          : null,
+        selectedBranch: branchName ? { name: branchName, isNew: true } : null,
       });
     },
     [scopeKey, scopeUsable, selectedBranch?.name, setSelectionState],

@@ -3204,10 +3204,7 @@ describe("PromptBoxInternal mention triggers", () => {
 
     view.rerender(
       <Harness
-        mentionSuggestions={[
-          ...initialSuggestions,
-          delayedExactSuggestion,
-        ]}
+        mentionSuggestions={[...initialSuggestions, delayedExactSuggestion]}
       />,
     );
     await screen.findByRole("button", { name: "Atlas" });
