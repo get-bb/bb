@@ -34,6 +34,7 @@ import { ThreadTitleMentions } from "@/components/thread/ThreadTitleMentions";
 import { SecondaryPanelHostLayoutContext } from "@/components/secondary-panel/SecondaryPanelHostLayoutContext";
 import { RIGHT_PANEL_TOGGLE_ICON_NAME } from "@/components/secondary-panel/panelToggleControlState";
 import { CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS } from "@bb/shared-ui/chrome-style-tokens";
+import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { dimInactiveSplitsAtom } from "@/lib/split-layout/atoms";
 import {
   CONTEXT_INACTIVE_TEXT_CLASS,
@@ -76,6 +77,7 @@ export function ThreadDetailHeader({
   threadTitle,
   workspaceOpenButton,
 }: ThreadDetailHeaderProps) {
+  const isCompactViewport = useIsCompactViewport();
   const [primaryAction, ...secondaryActions] = threadHeaderGitActions;
   const { renameThread } = useThreadActions();
   const handleRename = useCallback(
@@ -148,7 +150,8 @@ export function ThreadDetailHeader({
     : "Show right panel";
   const rightPanelIconName = RIGHT_PANEL_TOGGLE_ICON_NAME;
   const showRightPanelToggle =
-    secondaryPanelHost === null && !isSecondaryPanelOpen;
+    secondaryPanelHost === null &&
+    (!isSecondaryPanelOpen || isCompactViewport);
 
   const center = (
     <>

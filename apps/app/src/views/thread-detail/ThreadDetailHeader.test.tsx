@@ -101,6 +101,30 @@ describe("ThreadDetailHeader", () => {
     ).toBeNull();
   });
 
+  it("retains the compact trigger while the open shelf hides page actions", () => {
+    viewportState.isCompactViewport = true;
+
+    render(
+      <PaneContext.Provider value={PANE_CONTEXT}>
+        <ThreadDetailHeader
+          actionsMenu={null}
+          childPillLabel={null}
+          isSecondaryPanelOpen
+          onOpenThreadGitAction={vi.fn()}
+          onToggleSecondaryPanel={vi.fn()}
+          threadHeaderGitActions={[]}
+          threadId={THREAD_ID}
+          threadTitle="Panel state"
+        />
+      </PaneContext.Provider>,
+    );
+
+    const trigger = screen.getByRole("button", {
+      name: "Hide right panel",
+    });
+    expect(trigger.closest("[data-app-page-header-actions]")).not.toBeNull();
+  });
+
   it.each([
     { expectedIcon: "PanelRight", isCompactViewport: true },
     { expectedIcon: "PanelRight", isCompactViewport: false },

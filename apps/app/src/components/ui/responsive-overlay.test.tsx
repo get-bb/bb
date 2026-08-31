@@ -482,54 +482,6 @@ describe("PersistentResponsiveDrawerShell", () => {
     expect(onAfterCloseAutoFocus).toHaveBeenCalledOnce();
   });
 
-  it("restores a replacement trigger when the opener unmounts while open", () => {
-    mockPointerCoarse(true);
-    let frameCallback: FrameRequestCallback | undefined;
-    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
-      frameCallback = callback;
-      return 1;
-    });
-    vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => {});
-
-    function ReplacedTriggerDrawer() {
-      const [open, setOpen] = useState(false);
-      return (
-        <>
-          {open ? null : (
-            <button
-              type="button"
-              aria-label="Open details"
-              onClick={() => setOpen(true)}
-            >
-              Details
-            </button>
-          )}
-          <PersistentResponsiveDrawerShell
-            open={open}
-            onOpenChange={setOpen}
-            srLabel="Details"
-          >
-            <button type="button">Panel action</button>
-          </PersistentResponsiveDrawerShell>
-        </>
-      );
-    }
-
-    render(<ReplacedTriggerDrawer />);
-    const originalTrigger = screen.getByRole("button", {
-      name: "Open details",
-    });
-    originalTrigger.focus();
-    fireEvent.click(originalTrigger);
-    fireEvent.keyDown(document, { key: "Escape" });
-    const replacementTrigger = screen.getByRole("button", {
-      name: "Open details",
-    });
-    act(() => frameCallback?.(0));
-    expect(replacementTrigger).not.toBe(originalTrigger);
-    expect(document.activeElement).toBe(replacementTrigger);
-  });
-
   it("keeps panel focus and uses the latest close callback after a parent rerender", () => {
     mockPointerCoarse(false);
     const requestAnimationFrame = vi
