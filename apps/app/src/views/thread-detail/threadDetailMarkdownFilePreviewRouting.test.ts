@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
-  buildThreadHostFileContentUrl,
-  buildThreadStorageContentUrl,
+  buildThreadHostFilePreviewUrl,
+  buildThreadStoragePreviewUrl,
   buildThreadWorktreeRawContentUrl,
 } from "@/lib/file-content-urls";
 import { buildThreadDetailMarkdownFilePreviewRouting } from "./threadDetailMarkdownFilePreviewRouting";
@@ -65,7 +65,7 @@ describe("buildThreadDetailMarkdownFilePreviewRouting", () => {
       "/storage/thread-1",
     );
     expect(resolveSibling(routing)).toBe(
-      buildThreadHostFileContentUrl(
+      buildThreadHostFilePreviewUrl(
         "thread-1",
         "/storage/thread-1/current/docs/asset space-资料%.png",
       ),
@@ -89,7 +89,7 @@ describe("buildThreadDetailMarkdownFilePreviewRouting", () => {
       rootPath: "/storage/thread-1",
     });
     expect(resolveSibling(routing)).toBe(
-      buildThreadStorageContentUrl(
+      buildThreadStoragePreviewUrl(
         "thread-1",
         "current/docs/asset space-资料%.png",
       ),

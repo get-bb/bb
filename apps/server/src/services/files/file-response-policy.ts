@@ -78,6 +78,7 @@ function safeInlineMimeType(mimeType: string | null | undefined): string {
     normalized.startsWith("video/") ||
     normalized === "application/pdf" ||
     normalized === "application/json" ||
+    normalized === "application/typescript" ||
     normalized === "application/xml" ||
     normalized.endsWith("+json") ||
     normalized.endsWith("+xml")

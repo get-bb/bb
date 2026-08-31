@@ -628,7 +628,6 @@ export const GeneratedConversationMessage = memo(
         messageText,
         messageMentions,
         onOpenLocalFileLink,
-        projectId,
         resolveSegmentLinkHref,
         resolveMentionLink,
         sourceKind,

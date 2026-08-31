@@ -33,6 +33,8 @@ describe("byte file preview tab equivalence", () => {
     for (const changed of [
       { ...second, displayName: "other.pdf" },
       { ...second, mimeType: "application/octet-stream" },
+      { ...second, ownerId: "task-2" },
+      { ...second, resourceId: "attachment-2" },
       { ...second, sizeBytes: 43 },
       {
         ...second,

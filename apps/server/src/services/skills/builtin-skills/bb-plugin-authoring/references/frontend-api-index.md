@@ -140,8 +140,11 @@ Read the installed SDK declarations for the exact current signatures.
 - `MarkdownProps`
 - `UrlLinkProps`
 - `ExperimentalLiveFileTarget`
+- `ExperimentalFileSource`
 - `ExperimentalFileLocation`
+- `ExperimentalFileIdentity`
 - `ExperimentalFileOpenOptions`
+- `ExperimentalResolvedFileOpenOptions`
 - `ExperimentalFileLinkProps`
 - `ExperimentalAppPanelSurface`
 - `ExperimentalFixedTabTargetState`

@@ -1,8 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  FILE_PREVIEW_ACTIVE_CONTENT_SECURITY_POLICY,
-  filePreviewContentSecurityPolicy,
-} from "../src/file-response-policy.js";
+import { filePreviewContentSecurityPolicy } from "../src/file-response-policy.js";
 
 describe("file preview response policy", () => {
   it.each([
@@ -16,7 +13,7 @@ describe("file preview response policy", () => {
     "image/svg+xml",
   ])("sandboxes active content for %s", (mimeType) => {
     expect(filePreviewContentSecurityPolicy(mimeType)).toBe(
-      FILE_PREVIEW_ACTIVE_CONTENT_SECURITY_POLICY,
+      "sandbox allow-scripts",
     );
   });
 
