@@ -30,11 +30,12 @@ bb.cli.register({
 
 Agents discover plugin commands through the server-generated
 `plugin-commands` skill, which lists each command's `summary` and the
-`commands` usage lines — fill both in. Combined stdout and stderr must fit
+`commands` usage lines — fill both in. Buffered stdout and stderr must fit
 `PLUGIN_CLI_OUTPUT_MAX_BYTES` from `@get-bb/plugin-sdk` (1,048,576 UTF-8 bytes).
-The host rejects a larger result atomically as `plugin_cli_output_too_large`;
-it never clips it. Page growing collections, cap verbose fields, and use
-file/streaming commands for large content. Caveat: under the workspace
+The host rejects a larger buffered result atomically as
+`plugin_cli_output_too_large`; it never clips it. For larger stdout, return
+`experimental_stdout` as an `AsyncIterable<string>`; the CLI streams it with
+backpressure without requiring a different command. Caveat: under the workspace
 sandbox (Accept Edits / Approve for me), Claude's macOS sandbox permits
 loopback, so `bb` CLI calls (including plugin commands) work sandboxed;
 Linux and other provider sandboxes may still block loopback, in which case

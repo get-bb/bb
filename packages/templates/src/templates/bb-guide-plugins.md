@@ -76,11 +76,9 @@ settings, configurable with `bb plugin config workflows set <key> <value>`:
 each new run. Settings changes do not require a plugin reload.
 
 `status` is a bounded polling summary, and `list` returns only compact run
-summaries. Detailed run and call records are paged JSONL: redirect `history`
-into `$BB_THREAD_STORAGE` before inspecting it, and continue with the final
-page record's `nextCursor`. The invoking shell writes
-that file on the thread's execution host, so this works the same on local and
-remote hosts without granting the plugin arbitrary filesystem access. Use `bb
+summaries. `bb workflows history "$run"` automatically returns the full JSONL
+history. Use explicit `--cursor` and `--limit` only when compatibility requires
+a bounded page. Use `bb
 provider list --environment "$BB_ENVIRONMENT_ID" --json` and then `bb provider
 models <provider-id> --environment "$BB_ENVIRONMENT_ID" --json` before writing
 an explicit selection; never guess ACP model IDs.
@@ -635,11 +633,11 @@ threads the generated `plugin-commands` skill lists the available plugin command
 
 Settings changes do not auto-reload a plugin — run `bb plugin reload <id>`
 after configuring. Add --json to plugin commands for machine-readable output.
-Plugin CLI stdout plus stderr is capped at 1,048,576 UTF-8 bytes from the
-shared `@get-bb/plugin-sdk` constant. Results above the ceiling are rejected in
-full with a structured `plugin_cli_output_too_large` error; output is never
-silently clipped. Page growing collections and use file/streaming commands for
-large content.
+Buffered plugin CLI stdout plus stderr is capped at 1,048,576 UTF-8 bytes from
+the shared `@get-bb/plugin-sdk` constant. Results above the ceiling are
+rejected in full with a structured `plugin_cli_output_too_large` error; output
+is never silently clipped. Commands can use the experimental streamed stdout
+result for larger output without requiring a different user command.
 
 Authoring a plugin
 

@@ -22,6 +22,7 @@ const LIST_ERROR_MAX_BYTES = 256;
 const DEFAULT_HISTORY_LIMIT = 10;
 const MAX_HISTORY_LIMIT = 100;
 const MAX_LIST_LIMIT = 50;
+const HISTORY_STREAM_CHUNK_MAX_BYTES = 64 * 1024;
 
 function success(value: unknown): PluginCliResult {
   return { exitCode: 0, stdout: `${JSON.stringify(value)}\n` };
@@ -153,6 +154,25 @@ function utf8CodePointBytes(value: string): number {
   return 4;
 }
 
+function* utf8Chunks(value: string): Generator<string> {
+  let start = 0;
+  let end = 0;
+  let bytes = 0;
+  while (end < value.length) {
+    const codePoint = value.codePointAt(end)!;
+    const width = codePoint > 0xffff ? 2 : 1;
+    const characterBytes = utf8CodePointBytes(value.slice(end, end + width));
+    if (bytes + characterBytes > HISTORY_STREAM_CHUNK_MAX_BYTES) {
+      yield value.slice(start, end);
+      start = end;
+      bytes = 0;
+    }
+    bytes += characterBytes;
+    end += width;
+  }
+  if (start < end) yield value.slice(start, end);
+}
+
 function boundedText(
   value: string | null,
   maximumBytes: number,
@@ -267,8 +287,8 @@ function statusSummary(page: WorkflowRunInspectionPage) {
     finishedAt: run.finishedAt,
     history: {
       format: "jsonl",
-      pageUsage: `bb workflows history ${run.id} --cursor 0 --limit ${DEFAULT_HISTORY_LIMIT}`,
-      fileUsage: `mkdir -p "$BB_THREAD_STORAGE/workflows" && bb workflows history ${run.id} --cursor 0 --limit ${DEFAULT_HISTORY_LIMIT} > "$BB_THREAD_STORAGE/workflows/${run.id}.jsonl"`,
+      pageUsage: `bb workflows history ${run.id}`,
+      fileUsage: `mkdir -p "$BB_THREAD_STORAGE/workflows" && bb workflows history ${run.id} > "$BB_THREAD_STORAGE/workflows/${run.id}.jsonl"`,
     },
   };
 }
@@ -373,7 +393,7 @@ export function registerWorkflowCli(
       },
       {
         name: "history",
-        summary: "Read one JSONL page of workflow run and call history",
+        summary: "Stream complete workflow history as JSONL",
         usage:
           "bb workflows history <run-id> [--cursor <call-index>] [--limit <1-100>]",
       },
@@ -465,11 +485,65 @@ export function registerWorkflowCli(
             MAX_HISTORY_LIMIT,
           );
           const context = requireContext(ctx);
-          const page = service.inspectPage(runId, cursor - 1, limit + 1);
+          const complete = !options.has("--cursor") && !options.has("--limit");
+          const pageLimit = complete ? MAX_HISTORY_LIMIT : limit;
+          const page = service.inspectPage(runId, cursor - 1, pageLimit + 1);
           if (page === null || page.run.projectId !== context.projectId) {
             throw new Error(`Unknown workflow run ${runId}`);
           }
           const exportedAt = Date.now();
+          if (complete) {
+            return {
+              exitCode: 0,
+              experimental_stdout: (async function* () {
+                let currentPage = page;
+                let currentCursor = cursor;
+                while (true) {
+                  ctx.signal?.throwIfAborted();
+                  const calls = currentPage.calls.slice(0, pageLimit);
+                  const hasMore = currentPage.calls.length > pageLimit;
+                  const nextCursor = hasMore
+                    ? calls.at(-1)!.callIndex + 1
+                    : null;
+                  const records = [
+                    currentCursor === 0
+                      ? runLogRecord(currentPage.run, exportedAt)
+                      : runReferenceLogRecord(currentPage.run, exportedAt),
+                    ...calls.map((call) => callLogRecord(call, exportedAt)),
+                    {
+                      type: "page",
+                      logVersion: 1,
+                      runId,
+                      cursor: currentCursor,
+                      limit: pageLimit,
+                      returned: calls.length,
+                      totalCalls: currentPage.callCounts.total,
+                      hasMore,
+                      nextCursor,
+                      exportedAt,
+                    },
+                  ];
+                  for (const record of records) {
+                    yield* utf8Chunks(`${JSON.stringify(record)}\n`);
+                  }
+                  if (nextCursor === null) return;
+                  currentCursor = nextCursor;
+                  const nextPage = service.inspectPage(
+                    runId,
+                    currentCursor - 1,
+                    pageLimit + 1,
+                  );
+                  if (
+                    nextPage === null ||
+                    nextPage.run.projectId !== context.projectId
+                  ) {
+                    throw new Error(`Unknown workflow run ${runId}`);
+                  }
+                  currentPage = nextPage;
+                }
+              })(),
+            };
+          }
           const calls = page.calls.slice(0, limit);
           const hasMore = page.calls.length > limit;
           const nextCursor = hasMore ? calls.at(-1)!.callIndex + 1 : null;

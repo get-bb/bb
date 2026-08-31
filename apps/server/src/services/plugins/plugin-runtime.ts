@@ -68,6 +68,7 @@ import {
   createPluginApi,
   isNeedsConfigurationError,
   type BbPluginApi,
+  type PluginApiHandle,
   type PluginThreadEventName,
   type PluginThreadEventPayloads,
 } from "./plugin-api.js";
@@ -607,7 +608,12 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     return false;
   }
 
-  const pendingInvocations = new Map<string, Set<Promise<void>>>();
+  interface PendingInvocation {
+    cancel?: () => Promise<void>;
+    settled: Promise<void>;
+  }
+
+  const pendingInvocations = new Map<string, Set<PendingInvocation>>();
 
   async function invokeWrapped<T>(
     id: string,
@@ -616,18 +622,22 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
   ): Promise<
     { ok: true; value: T } | { ok: false; error: string; cause: unknown }
   > {
+    if (disposingPluginIds.has(id)) {
+      const error = new Error(`plugin "${id}" is disposing`);
+      return { ok: false, error: error.message, cause: error };
+    }
     const stats = statsFor(id);
     const startedAt = performance.now();
     let settle!: () => void;
     const marker = new Promise<void>((resolveMarker) => {
       settle = resolveMarker;
     });
-    let pending = pendingInvocations.get(id);
-    if (!pending) {
-      pending = new Set();
+    const pending = pendingInvocations.get(id) ?? new Set<PendingInvocation>();
+    if (!pendingInvocations.has(id)) {
       pendingInvocations.set(id, pending);
     }
-    pending.add(marker);
+    const invocation = { settled: marker };
+    pending.add(invocation);
     try {
       return {
         ok: true,
@@ -646,29 +656,126 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
       stats.count += 1;
       stats.totalMs += elapsedMs;
       if (elapsedMs > stats.maxMs) stats.maxMs = elapsedMs;
-      pending.delete(marker);
+      pending.delete(invocation);
       settle();
     }
   }
 
-  async function drainInvocations(id: string): Promise<void> {
-    const pending = pendingInvocations.get(id);
-    if (!pending || pending.size === 0) return;
-    let timer: NodeJS.Timeout | undefined;
-    const drained = await Promise.race([
-      Promise.all([...pending]).then(() => true),
-      new Promise<boolean>((resolveTimeout) => {
-        timer = setTimeout(() => resolveTimeout(false), serviceStopTimeoutMs);
-        timer.unref?.();
-      }),
-    ]);
-    if (timer !== undefined) clearTimeout(timer);
-    if (!drained) {
-      logger.warn(
-        `plugin ${id}: ${pending.size} in-flight invocation(s) did not settle before dispose; proceeding`,
+  async function drainInvocations(id: string): Promise<boolean> {
+    const deadline = performance.now() + serviceStopTimeoutMs;
+    while (true) {
+      const pending = pendingInvocations.get(id);
+      if (!pending || pending.size === 0) return true;
+      for (const invocation of pending) {
+        void invocation.cancel?.().catch(() => undefined);
+      }
+      const drained = await settledWithin(
+        Promise.all([...pending].map((invocation) => invocation.settled)),
+        Math.max(0, deadline - performance.now()),
       );
+      if (!drained) {
+        logger.warn(
+          `plugin ${id}: ${pending.size} in-flight invocation(s) did not settle within ${serviceStopTimeoutMs}ms after cancellation`,
+        );
+        return false;
+      }
     }
-    if (pending.size === 0) pendingInvocations.delete(id);
+  }
+
+  function retainInvocationStream(
+    id: string,
+    label: string,
+    stream: AsyncIterable<string>,
+    controller?: AbortController,
+  ): AsyncIterable<string> {
+    const iterator = stream[Symbol.asyncIterator]();
+    let settle!: () => void;
+    const marker = new Promise<void>((resolveMarker) => {
+      settle = resolveMarker;
+    });
+    const pending = pendingInvocations.get(id) ?? new Set<PendingInvocation>();
+    if (!pendingInvocations.has(id)) {
+      pendingInvocations.set(id, pending);
+    }
+    let settled = false;
+    function finish() {
+      if (settled) return;
+      settled = true;
+      pending.delete(invocation);
+      settle();
+      if (pending.size === 0) pendingInvocations.delete(id);
+    }
+    const closedMarker = Symbol("closed");
+    let close!: () => void;
+    const closed = new Promise<typeof closedMarker>((resolveClosed) => {
+      close = () => resolveClosed(closedMarker);
+    });
+    let cancelPromise: Promise<void> | undefined;
+    let cancelled = false;
+    let activeNext: Promise<IteratorResult<string>> | null = null;
+    const invocation: PendingInvocation = {
+      settled: marker,
+      cancel() {
+        if (cancelPromise !== undefined) return cancelPromise;
+        cancelled = true;
+        close();
+        controller?.abort();
+        const currentNext = activeNext;
+        let returned: Promise<unknown>;
+        try {
+          returned = Promise.resolve(iterator.return?.());
+        } catch (error) {
+          returned = Promise.reject(error);
+        }
+        cancelPromise = Promise.allSettled([
+          ...(currentNext === null ? [] : [currentNext]),
+          returned,
+        ]).then(() => finish());
+        return cancelPromise;
+      },
+    };
+    pending.add(invocation);
+    const retained = (async function* () {
+      try {
+        while (true) {
+          if (cancelled) return;
+          const nextPromise = Promise.resolve(iterator.next());
+          activeNext = nextPromise;
+          const next = await Promise.race([nextPromise, closed]);
+          if (activeNext === nextPromise && next !== closedMarker) {
+            activeNext = null;
+          }
+          if (next === closedMarker || cancelled) return;
+          if (next.done) return;
+          yield next.value;
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        statsFor(id).errorCount += 1;
+        logger.warn(`[plugin:${id}] ${label} failed: ${message}`);
+        if (statuses.get(id)?.status === "running") {
+          setStatus(id, "running", `${label} failed: ${message}`);
+        }
+        throw error;
+      } finally {
+        void invocation.cancel!().catch(() => undefined);
+      }
+    })();
+    const retainedStream: AsyncIterableIterator<string> = {
+      [Symbol.asyncIterator]() {
+        return this;
+      },
+      next() {
+        return retained.next();
+      },
+      return() {
+        return invocation.cancel!().then(() => ({
+          done: true,
+          value: undefined,
+        }));
+      },
+    };
+    return retainedStream;
   }
 
   function emitThreadEvent<E extends PluginThreadEventName>(
@@ -1416,12 +1523,7 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
       );
     } catch (error) {
       rollbackGeneration?.();
-      for (const database of handle.databaseHandles.splice(0)) {
-        try {
-          database.close();
-        } catch {}
-      }
-      handle.invalidate();
+      await disposePluginHandle(row.id, handle);
       let message = error instanceof Error ? error.message : String(error);
       if (/ERR_DLOPEN_FAILED|\.node/.test(message)) {
         message += " (native dependencies are not supported in BB plugins)";
@@ -1440,10 +1542,12 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     }
     if (hostArtifactProblem !== null) {
       rollbackGeneration?.();
+      const providerDeclarations = handle.listProviderDeclarations();
+      await disposePluginHandle(row.id, handle);
       try {
         replaceUnavailableProviderRegistrations(
           row,
-          handle.listProviderDeclarations(),
+          providerDeclarations,
           handle.settings.descriptors,
           brandingAssetCandidate,
         );
@@ -1452,12 +1556,6 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
           error instanceof Error ? error.message : String(error)
         }`;
       }
-      for (const database of handle.databaseHandles.splice(0)) {
-        try {
-          database.close();
-        } catch {}
-      }
-      handle.invalidate();
       setStatus(row.id, "error", hostArtifactProblem);
       logger.warn(`plugin ${row.id} failed to load: ${hostArtifactProblem}`);
       return hostArtifactProblem;
@@ -1477,68 +1575,164 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
       })),
     };
     if (previous !== undefined) {
-      await disposePluginInstance(row.id, previous);
+      const disposeProblem = await disposePluginInstance(row.id, previous);
+      if (disposeProblem !== null) {
+        rollbackGeneration?.();
+        await disposePluginHandle(row.id, handle);
+        setStatus(row.id, "running", `reload failed: ${disposeProblem}`);
+        return `${disposeProblem} (${PREVIOUS_INSTANCE_KEPT})`;
+      }
       const hungAfterDispose = hungServices.get(row.id);
       if (hungAfterDispose !== undefined && hungAfterDispose.size > 0) {
+        rollbackGeneration?.();
         loaded.delete(row.id);
         deps.sharedPorts?.clearDeclarationsForOwner(row.id);
-        for (const database of handle.databaseHandles.splice(0)) {
-          try {
-            database.close();
-          } catch {}
-        }
-        handle.invalidate();
+        await disposePluginHandle(row.id, handle);
         return hungServicesDetail(hungAfterDispose);
       }
     }
-    disposeUnavailableProviderRegistrations(row.id);
-    loaded.set(row.id, plugin);
-    appBundles.set(row.id, appBundleCandidate.snapshot);
-    if (hostArtifactCandidate === null) hostArtifacts.delete(row.id);
-    else hostArtifacts.set(row.id, hostArtifactCandidate);
-    brandingAssets.set(row.id, brandingAssetCandidate);
-    needsConfiguration.delete(row.id);
-    agentToolProblems.delete(row.id);
-    handle.activate();
-    const now = Date.now();
-    prunePluginSchedules(
-      deps.db,
-      row.id,
-      handle.schedules.map((schedule) => schedule.name),
-    );
-    for (const schedule of handle.schedules) {
-      upsertPluginSchedule(deps.db, {
-        pluginId: row.id,
-        name: schedule.name,
-        cron: schedule.cron,
-        nextRunAt: nextCronRunAt(schedule.cron, now),
-      });
-    }
-    for (const service of plugin.services) {
-      runService(row.id, service);
-    }
-    if (!needsConfiguration.has(row.id)) {
-      const details = [
-        agentToolProblems.get(row.id),
-        appBundleCandidate.problem,
-      ].filter((detail): detail is string => typeof detail === "string");
-      setStatus(
+    try {
+      disposeUnavailableProviderRegistrations(row.id);
+      loaded.set(row.id, plugin);
+      appBundles.set(row.id, appBundleCandidate.snapshot);
+      if (hostArtifactCandidate === null) hostArtifacts.delete(row.id);
+      else hostArtifacts.set(row.id, hostArtifactCandidate);
+      brandingAssets.set(row.id, brandingAssetCandidate);
+      needsConfiguration.delete(row.id);
+      agentToolProblems.delete(row.id);
+      handle.activate();
+      const now = Date.now();
+      prunePluginSchedules(
+        deps.db,
         row.id,
-        "running",
-        details.length > 0 ? details.join("; ") : null,
+        handle.schedules.map((schedule) => schedule.name),
       );
+      for (const schedule of handle.schedules) {
+        upsertPluginSchedule(deps.db, {
+          pluginId: row.id,
+          name: schedule.name,
+          cron: schedule.cron,
+          nextRunAt: nextCronRunAt(schedule.cron, now),
+        });
+      }
+      for (const service of plugin.services) {
+        runService(row.id, service);
+      }
+      if (!needsConfiguration.has(row.id)) {
+        const details = [
+          agentToolProblems.get(row.id),
+          appBundleCandidate.problem,
+        ].filter((detail): detail is string => typeof detail === "string");
+        setStatus(
+          row.id,
+          "running",
+          details.length > 0 ? details.join("; ") : null,
+        );
+      }
+    } catch (error) {
+      rollbackGeneration?.();
+      const detail = error instanceof Error ? error.message : String(error);
+      try {
+        await disposePluginInstance(
+          row.id,
+          plugin,
+          hostArtifactCandidate ?? undefined,
+          false,
+        );
+      } catch (cleanupError) {
+        logger.warn(
+          `plugin ${row.id} candidate cleanup failed: ${cleanupError instanceof Error ? cleanupError.message : String(cleanupError)}`,
+        );
+      }
+      if (loaded.get(row.id) === plugin) loaded.delete(row.id);
+      appBundles.delete(row.id);
+      if (
+        hostArtifactCandidate !== null &&
+        hostArtifacts.get(row.id)?.generation === hostArtifactCandidate.generation
+      ) {
+        hostArtifacts.delete(row.id);
+      }
+      brandingAssets.delete(row.id);
+      needsConfiguration.delete(row.id);
+      agentToolProblems.delete(row.id);
+      try {
+        deps.sharedPorts?.clearDeclarationsForOwner(row.id);
+      } catch (cleanupError) {
+        logger.warn(
+          `plugin ${row.id} shared-port cleanup failed: ${cleanupError instanceof Error ? cleanupError.message : String(cleanupError)}`,
+        );
+      }
+      try {
+        prunePluginSchedules(deps.db, row.id, []);
+      } catch (cleanupError) {
+        logger.warn(
+          `plugin ${row.id} schedule cleanup failed: ${cleanupError instanceof Error ? cleanupError.message : String(cleanupError)}`,
+        );
+      }
+      const hungAfterFailure = hungServices.get(row.id);
+      if (hungAfterFailure !== undefined && hungAfterFailure.size > 0) {
+        setStatus(
+          row.id,
+          "degraded",
+          `activation failed: ${detail}; ${hungServicesDetail(hungAfterFailure)}`,
+        );
+      } else {
+        setStatus(row.id, "error", `activation failed: ${detail}`);
+      }
+      logger.warn(`plugin ${row.id} failed to activate: ${detail}`);
+      return detail;
     }
     logger.info(`plugin ${row.id}@${manifest.version} loaded`);
     return null;
   }
 
+  async function disposePluginHandle(
+    id: string,
+    handle: PluginApiHandle,
+  ): Promise<void> {
+    for (const hook of handle.disposeHooks.splice(0).reverse()) {
+      try {
+        await hook();
+      } catch (error) {
+        logger.warn(
+          `plugin ${id} dispose hook failed: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+    }
+    for (const database of handle.databaseHandles.splice(0)) {
+      try {
+        database.close();
+      } catch (error) {
+        logger.warn(
+          `plugin ${id} database close failed: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+    }
+    handle.invalidate();
+  }
+
   async function disposePluginInstance(
     id: string,
     plugin: LoadedPlugin,
-  ): Promise<void> {
+    hostArtifact: PluginHostArtifactSnapshot | undefined = hostArtifacts.get(
+      id,
+    ),
+    preserveOnDrainTimeout = true,
+  ): Promise<string | null> {
     disposingPluginIds.add(id);
     try {
-      const hostArtifact = hostArtifacts.get(id);
+      try {
+        deps.pendingInteractions?.interruptPluginInteractions(id);
+      } catch (error) {
+        logger.warn(
+          `plugin ${id} interaction cleanup failed: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+      if (!(await drainInvocations(id))) {
+        const detail = `in-flight plugin work did not settle within ${serviceStopTimeoutMs}ms after cancellation`;
+        if (preserveOnDrainTimeout) return detail;
+        logger.warn(`plugin ${id}: ${detail}; forcing candidate cleanup`);
+      }
       if (hostArtifact !== undefined && deps.disposePluginHost) {
         try {
           await deps.disposePluginHost({
@@ -1552,44 +1746,26 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
         }
       }
       try {
-        deps.pendingInteractions?.interruptPluginInteractions(id);
-      } catch (error) {
-        logger.warn(
-          `plugin ${id} interaction cleanup failed: ${error instanceof Error ? error.message : String(error)}`,
-        );
+        await stopServices(id, plugin);
+      } finally {
+        await disposePluginHandle(id, plugin.handle);
       }
-      await stopServices(id, plugin);
-      for (const hook of [...plugin.handle.disposeHooks].reverse()) {
-        try {
-          await hook();
-        } catch (error) {
-          logger.warn(
-            `plugin ${id} dispose hook failed: ${error instanceof Error ? error.message : String(error)}`,
-          );
-        }
-      }
-      await drainInvocations(id);
-      for (const database of plugin.handle.databaseHandles.splice(0)) {
-        try {
-          database.close();
-        } catch (error) {
-          logger.warn(
-            `plugin ${id} database close failed: ${error instanceof Error ? error.message : String(error)}`,
-          );
-        }
-      }
+      return null;
     } finally {
-      plugin.handle.invalidate();
       disposingPluginIds.delete(id);
     }
   }
 
   async function disposeOne(id: string): Promise<void> {
-    disposeUnavailableProviderRegistrations(id);
     const plugin = loaded.get(id);
-    if (!plugin) return;
+    if (!plugin) {
+      disposeUnavailableProviderRegistrations(id);
+      return;
+    }
+    const problem = await disposePluginInstance(id, plugin);
+    if (problem !== null) throw new Error(problem);
     loaded.delete(id);
-    await disposePluginInstance(id, plugin);
+    disposeUnavailableProviderRegistrations(id);
     hostArtifacts.delete(id);
     deps.sharedPorts?.clearDeclarationsForOwner(id);
   }
@@ -1658,6 +1834,7 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     handleUncaughtException,
     hungServices,
     invokeWrapped,
+    retainInvocationStream,
     isBuiltinPluginId,
     identities,
     isPackagedBuiltinEntry,

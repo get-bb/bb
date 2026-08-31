@@ -1,6 +1,6 @@
 import { readFile, mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PLUGIN_CLI_OUTPUT_MAX_BYTES } from "@get-bb/plugin-sdk";
 import {
   generatedSkillsRootPath,
@@ -39,6 +39,56 @@ const CLI_SOURCE = `
             };
           }
           return { exitCode: 0, stdout: "x".repeat(size) };
+        }
+        if (argv[0] === "stream") {
+          const chunks = Number(argv[1]);
+          if (argv[2] === "pending") {
+            let emitted = false;
+            let resolveNext: ((result: IteratorResult<string>) => void) | undefined;
+            ctx.signal?.addEventListener("abort", () => {
+              globalThis.__acmeStreamAborted = true;
+            }, { once: true });
+            return {
+              exitCode: 0,
+              experimental_stdout: {
+                [Symbol.asyncIterator]() { return this; },
+                next() {
+                  if (!emitted) {
+                    emitted = true;
+                    return Promise.resolve({ done: false, value: "before" });
+                  }
+                  globalThis.__acmeStreamNextPending = true;
+                  return new Promise((resolve) => { resolveNext = resolve; });
+                },
+                return() {
+                  globalThis.__acmeStreamReturned = true;
+                  resolveNext?.({ done: true, value: undefined });
+                  return Promise.resolve({ done: true, value: undefined });
+                },
+              },
+            };
+          }
+          return {
+            exitCode: 0,
+            experimental_stdout: (async function* () {
+              try {
+                if (argv[2] === "invalid") {
+                  yield 1;
+                  return;
+                }
+                if (argv[2] === "oversized") {
+                  yield "🌌".repeat(100_000);
+                  return;
+                }
+                for (let index = 0; index < chunks; index += 1) {
+                  yield "x".repeat(64 * 1024);
+                  if (argv[2] === "throw") throw new Error("stream kaboom");
+                }
+              } finally {
+                globalThis.__acmeStreamClosed = true;
+              }
+            })(),
+          };
         }
         const { signal, ...requestContext } = ctx;
         return {
@@ -221,6 +271,187 @@ describe("plugin CLI commands (bb.cli.register + endpoints + skill + logs)", () 
     }
   });
 
+  it("streams output larger than the buffered byte ceiling without clipping", async () => {
+    const response = await harness.app.request(
+      `${BASE}/api/v1/plugins/acme/cli`,
+      {
+        method: "POST",
+        headers: {
+          accept: "application/octet-stream",
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ argv: ["stream", "17"] }),
+      },
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toBe(
+      "application/octet-stream",
+    );
+    expect(response.headers.get("x-bb-plugin-cli-exit-code")).toBe("0");
+    expect(Buffer.byteLength(await response.text(), "utf8")).toBe(
+      17 * 64 * 1024,
+    );
+  });
+
+  it("byte-bounds streamed HTTP chunks without changing UTF-8 output", async () => {
+    const expected = "🌌".repeat(100_000);
+    const response = await harness.app.request(
+      `${BASE}/api/v1/plugins/acme/cli`,
+      {
+        method: "POST",
+        headers: {
+          accept: "application/octet-stream",
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ argv: ["stream", "1", "oversized"] }),
+      },
+    );
+    const reader = response.body!.getReader();
+    const chunks: Uint8Array[] = [];
+    while (true) {
+      const next = await reader.read();
+      if (next.done) break;
+      chunks.push(next.value);
+    }
+
+    expect(
+      Math.max(...chunks.map((chunk) => chunk.byteLength)),
+    ).toBeLessThanOrEqual(64 * 1024);
+    expect(Buffer.concat(chunks).toString("utf8")).toBe(expected);
+  });
+
+  it("keeps the buffered limit for clients that do not request streaming", async () => {
+    const result = (await (
+      await runCli(harness, "acme", { argv: ["stream", "17"] })
+    ).json()) as {
+      exitCode: number;
+      stdout: string;
+      error: { code: string; totalBytes: number };
+    };
+
+    expect(result).toMatchObject({
+      exitCode: 1,
+      stdout: "",
+      error: {
+        code: "plugin_cli_output_too_large",
+        totalBytes: 17 * 64 * 1024,
+      },
+    });
+  });
+
+  it("buffers a short stream for clients that do not request streaming", async () => {
+    const result = (await (
+      await runCli(harness, "acme", { argv: ["stream", "1"] })
+    ).json()) as { exitCode: number; stdout: string; stderr: string };
+
+    expect(result).toEqual({
+      exitCode: 0,
+      stdout: "x".repeat(64 * 1024),
+      stderr: "",
+    });
+  });
+
+  it("records a generator failure in plugin handler statistics", async () => {
+    const response = await harness.app.request(
+      `${BASE}/api/v1/plugins/acme/cli`,
+      {
+        method: "POST",
+        headers: {
+          accept: "application/octet-stream",
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ argv: ["stream", "2", "throw"] }),
+      },
+    );
+
+    await expect(response.text()).rejects.toThrow("stream kaboom");
+    expect(
+      harness.pluginService.list().find((plugin) => plugin.id === "acme")
+        ?.handlerStats.errorCount,
+    ).toBe(1);
+  });
+
+  it("closes the plugin iterator when the response consumer cancels", async () => {
+    delete (globalThis as { __acmeStreamClosed?: boolean }).__acmeStreamClosed;
+    const response = await harness.app.request(
+      `${BASE}/api/v1/plugins/acme/cli`,
+      {
+        method: "POST",
+        headers: {
+          accept: "application/octet-stream",
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ argv: ["stream", "100"] }),
+      },
+    );
+    const reader = response.body!.getReader();
+    await reader.read();
+    await reader.cancel();
+
+    expect(
+      (globalThis as { __acmeStreamClosed?: boolean }).__acmeStreamClosed,
+    ).toBe(true);
+  });
+
+  it("cancels a plugin iterator while its next call is pending", async () => {
+    const globals = globalThis as {
+      __acmeStreamAborted?: boolean;
+      __acmeStreamNextPending?: boolean;
+      __acmeStreamReturned?: boolean;
+    };
+    delete globals.__acmeStreamAborted;
+    delete globals.__acmeStreamNextPending;
+    delete globals.__acmeStreamReturned;
+    const response = await harness.app.request(
+      `${BASE}/api/v1/plugins/acme/cli`,
+      {
+        method: "POST",
+        headers: {
+          accept: "application/octet-stream",
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ argv: ["stream", "0", "pending"] }),
+      },
+    );
+    const reader = response.body!.getReader();
+    await reader.read();
+    const pendingRead = reader.read();
+    await vi.waitFor(() => expect(globals.__acmeStreamNextPending).toBe(true));
+
+    const cancellation = reader.cancel();
+    await vi.waitFor(() => {
+      expect(globals.__acmeStreamAborted).toBe(true);
+      expect(globals.__acmeStreamReturned).toBe(true);
+    });
+    await cancellation;
+
+    await expect(pendingRead).resolves.toEqual({
+      done: true,
+      value: undefined,
+    });
+  });
+
+  it("closes a malformed plugin iterator after rejecting its chunk", async () => {
+    delete (globalThis as { __acmeStreamClosed?: boolean }).__acmeStreamClosed;
+    const response = await harness.app.request(
+      `${BASE}/api/v1/plugins/acme/cli`,
+      {
+        method: "POST",
+        headers: {
+          accept: "application/octet-stream",
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ argv: ["stream", "1", "invalid"] }),
+      },
+    );
+
+    await expect(response.text()).rejects.toThrow("must yield strings");
+    expect(
+      (globalThis as { __acmeStreamClosed?: boolean }).__acmeStreamClosed,
+    ).toBe(true);
+  });
+
   it("propagates nonzero exit codes and stderr", async () => {
     const result = await (
       await runCli(harness, "acme", { argv: ["fail"] })
@@ -349,6 +580,7 @@ describe("plugin CLI commands (bb.cli.register + endpoints + skill + logs)", () 
     const content = await readFile(skillFile, "utf8");
     expect(content).toContain("name: plugin-commands");
     expect(content).toContain("capped at 1048576 UTF-8 bytes");
+    expect(content).toContain("advertise streaming");
     expect(content).toContain("plugin_cli_output_too_large");
     expect(content).toContain("## bb acme — Acme tools");
     expect(content).toContain("bb acme issues [--json]");

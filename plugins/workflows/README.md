@@ -171,7 +171,7 @@ bb workflows run --script '<javascript>' --args '<json>'
 bb workflows run --file .bb/workflows/review.js --resume <run-id>
 bb workflows run --name review
 bb workflows status <run-id>
-bb workflows history <run-id> --cursor 0 --limit 100
+bb workflows history <run-id>
 bb workflows list --limit 20
 bb workflows stop <run-id>
 bb provider list --environment "$BB_ENVIRONMENT_ID" --json
@@ -185,24 +185,24 @@ and call history so polling cannot be truncated into invalid JSON.
 or result bodies. Untrusted names, phases, and errors are capped by UTF-8 bytes;
 the adjacent `*Truncated` fields report when a displayed value was shortened.
 
-`history` returns one strict JSONL snapshot page ordered by call index. Redirect
-it before inspecting it so large prompts and results never enter the agent
-transcript:
+`history` streams strict JSONL ordered by call index and follows its bounded
+database pages automatically. Redirect it before inspecting it so large prompts
+and results never enter the agent transcript:
 
 ```bash
 run=<run-id>
 mkdir -p "$BB_THREAD_STORAGE/workflows"
-bb workflows history "$run" --cursor 0 --limit 100 \
+bb workflows history "$run" \
   > "$BB_THREAD_STORAGE/workflows/$run.jsonl"
 ```
 
-The final `page` record reports `hasMore` and `nextCursor`. Fetch the next page
-with that cursor and append it to the same file. A full `run` record appears on
-the first page, later pages include a small `run-reference`, and every call
-record includes requested options, resolved provider/model/reasoning/permission,
-cache/live state, child thread ID, repairs, result, and error. Pages are
-snapshots; while a run is active, rewrite the file from cursor `0` when a fresh
-detailed view is needed.
+Each `page` record reports `hasMore` and `nextCursor`; the command follows them
+until the final `hasMore: false` record. A full `run` record appears on the first
+page, later pages include a small `run-reference`, and every call record includes
+requested options, resolved provider/model/reasoning/permission, cache/live
+state, child thread ID, repairs, result, and error. Pass `--cursor` or `--limit`
+to request one bounded page explicitly. Pages are snapshots; while a run is
+active, rerun the command when a fresh detailed view is needed.
 
 This redirection intentionally happens in the invoking agent's shell. The
 canonical state remains in the plugin's server-side SQLite database, while the

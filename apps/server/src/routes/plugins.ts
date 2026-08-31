@@ -27,6 +27,8 @@ import {
   pluginTokenRequestSchema,
   pluginUpdateCheckRequestSchema,
 } from "@bb/server-contract";
+import { PLUGIN_CLI_OUTPUT_MAX_BYTES } from "@get-bb/plugin-sdk";
+import { enforcePluginCliOutputLimit } from "@get-bb/plugin-sdk/internal/host-policy";
 
 interface PluginRoutesDeps {
   config: Pick<ServerRuntimeConfig, "serverPort" | "appUrl" | "devAppPort">;
@@ -250,6 +252,76 @@ export function registerPluginRoutes(
       argv,
       ctx,
     );
+    if (
+      result.experimental_stdout !== undefined &&
+      context.req.header("accept")?.includes("application/octet-stream")
+    ) {
+      const iterator = result.experimental_stdout[Symbol.asyncIterator]();
+      const encoder = new TextEncoder();
+      const maximumChunkBytes = 64 * 1024;
+      let encoded = new Uint8Array();
+      let encodedOffset = 0;
+      const body = new ReadableStream<Uint8Array>({
+        async pull(controller) {
+          try {
+            while (encodedOffset >= encoded.byteLength) {
+              const next = await iterator.next();
+              if (next.done) {
+                controller.close();
+                return;
+              }
+              if (typeof next.value !== "string") {
+                throw new Error(
+                  "plugin CLI experimental_stdout must yield strings",
+                );
+              }
+              encoded = encoder.encode(next.value);
+              encodedOffset = 0;
+            }
+            const end = Math.min(
+              encodedOffset + maximumChunkBytes,
+              encoded.byteLength,
+            );
+            controller.enqueue(encoded.slice(encodedOffset, end));
+            encodedOffset = end;
+          } catch (error) {
+            await iterator.return?.().catch(() => undefined);
+            controller.error(error);
+          }
+        },
+        async cancel() {
+          await iterator.return?.();
+        },
+      });
+      return new Response(body, {
+        headers: {
+          "content-type": "application/octet-stream",
+          "x-bb-plugin-cli-exit-code": String(result.exitCode),
+        },
+      });
+    }
+    if (result.experimental_stdout !== undefined) {
+      let stdout = "";
+      for await (const chunk of result.experimental_stdout) {
+        if (typeof chunk !== "string") {
+          throw new Error("plugin CLI experimental_stdout must yield strings");
+        }
+        stdout += chunk;
+        if (
+          Buffer.byteLength(stdout, "utf8") +
+            Buffer.byteLength(result.stderr, "utf8") >
+          PLUGIN_CLI_OUTPUT_MAX_BYTES
+        ) {
+          break;
+        }
+      }
+      return context.json(
+        enforcePluginCliOutputLimit(
+          { exitCode: result.exitCode, stdout, stderr: result.stderr },
+          argv.includes("--json"),
+        ),
+      );
+    }
     return context.json(result);
   });
 

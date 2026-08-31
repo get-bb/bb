@@ -29,6 +29,7 @@ import {
 import {
   assertNoRecursiveJsonSchemaReferences,
   enforcePluginCliOutputLimit,
+  normalizePluginCliResult,
   PLUGIN_AGENT_DYNAMIC_INSTRUCTIONS_MAX_CHARS,
   PLUGIN_AGENT_SELECTION_MAX_IDS,
   PLUGIN_AGENT_TOOL_PARAMETERS_MAX_BYTES,
@@ -822,6 +823,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     hostArtifacts,
     identities,
     invokeWrapped,
+    retainInvocationStream,
     isBuiltinPluginId,
     isPackagedBuiltinEntry,
     loadAll,
@@ -1400,7 +1402,6 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
               const problem = await withLifecycleLock(row.id, async () => {
                 const current = getInstalledPlugin(deps.db, row.id);
                 if (current === undefined) return null;
-                await disposeOne(row.id);
                 return loadOne(current);
               });
               await syncCliSkill();
@@ -1581,12 +1582,22 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
             await withLifecycleLock(id, () => loadOne(row));
           }
         } else {
-          await withLifecycleLock(id, async () => {
-            await disposeOne(id);
-            if ((hungServices.get(id)?.size ?? 0) === 0) {
-              setStatus(id, "disabled");
-            }
-          });
+          try {
+            await withLifecycleLock(id, async () => {
+              await disposeOne(id);
+              if ((hungServices.get(id)?.size ?? 0) === 0) {
+                setStatus(id, "disabled");
+              }
+            });
+          } catch (error) {
+            setInstalledPluginEnabled(deps.db, id, true);
+            setStatus(
+              id,
+              "running",
+              `disable failed: ${error instanceof Error ? error.message : String(error)}`,
+            );
+            throw error;
+          }
         }
         await syncCliSkill();
         notifyPluginsChanged();
@@ -1766,10 +1777,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
         if (statuses.get(id)?.status === "needs-configuration") {
           const row = getInstalledPlugin(deps.db, id);
           if (row) {
-            await withLifecycleLock(id, async () => {
-              await disposeOne(id);
-              await loadOne(row);
-            });
+            await withLifecycleLock(id, () => loadOne(row));
             notifyPluginsChanged();
           }
         }
@@ -1870,27 +1878,43 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       if (!registration) {
         return fail(`plugin "${id}" registers no CLI command`);
       }
+      const controller = new AbortController();
+      const signal =
+        ctx.signal === undefined
+          ? controller.signal
+          : AbortSignal.any([ctx.signal, controller.signal]);
       const outcome = await invokeWrapped(
         id,
         `cli ${registration.name}`,
         async () => {
-          const result = await registration.run(argv, ctx);
+          const result = await registration.run(argv, { ...ctx, signal });
           if (typeof result?.exitCode !== "number") {
             throw new Error(
               "cli run() must return { exitCode: number, stdout?, stderr? }",
             );
           }
-          return enforcePluginCliOutputLimit(
-            {
-              exitCode: result.exitCode,
-              stdout: typeof result.stdout === "string" ? result.stdout : "",
-              stderr: typeof result.stderr === "string" ? result.stderr : "",
-            },
+          const normalized = normalizePluginCliResult(
+            result,
             argv.includes("--json"),
           );
+          const stream = normalized.experimental_stdout;
+          if (stream === undefined) {
+            controller.abort();
+            return normalized;
+          }
+          return {
+            ...normalized,
+            experimental_stdout: retainInvocationStream(
+              id,
+              `cli ${registration.name}`,
+              stream,
+              controller,
+            ),
+          };
         },
       );
       if (outcome.ok) return outcome.value;
+      controller.abort();
       return fail(`bb ${registration.name} failed: ${outcome.error}`);
     },
 

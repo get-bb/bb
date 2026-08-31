@@ -20,6 +20,25 @@ the wire are unchanged); on `@get-bb/plugin-sdk` the tool type
 `PluginAgentToolExperimentalStatusLabels` is `PluginAgentToolLabels`, the
 type of `presentation.label`.
 
+## `PluginCliResult.experimental_stdout`
+
+Added for successful plugin commands whose complete stdout cannot safely fit
+the buffered 1 MiB result. It accepts an `AsyncIterable<string>`, requires exit
+code zero and empty stderr, and is mutually exclusive with `stdout`; the server
+applies HTTP backpressure, keeps the invocation alive through iteration, and
+cancels the iterator when the caller disconnects.
+Before stabilization, audit whether streamed stderr or binary chunks are needed,
+whether exit status needs an in-band terminal frame, and whether legacy clients
+have received enough time with the buffered compatibility fallback.
+
+## `PluginCliExecutionResult.experimental_stdout`
+
+Added as the normalized host/testing counterpart to
+`PluginCliResult.experimental_stdout`. It carries the retained stdout iterator
+through the server boundary instead of forcing streamed output into the
+buffered result fields. Audit and stabilize it together with
+`PluginCliResult.experimental_stdout`.
+
 ## One-release compatibility windows (removal target: bb 0.42)
 
 - The app runtime keeps deprecated aliases for plugin bundles compiled

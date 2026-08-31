@@ -19,7 +19,7 @@ Plugin-bundled workflow discovery is not supported.
 
 `bb_workflow_run` also accepts optional JSON `args` and optional `resumeRunId`.
 It returns a durable run ID immediately. Use the compact `bb workflows status`
-summary, paged `bb workflows history`, `bb workflows list`, and
+summary, complete `bb workflows history`, `bb workflows list`, and
 `bb workflows stop` afterward. Completion is sent back as an agent-only input:
 it steers an active origin immediately or starts a turn when the origin is idle,
 without rendering a user-facing message. Delivery is duplicate-tolerant
@@ -30,22 +30,24 @@ remains authoritative.
 substitute for the redirected detailed history.
 
 Detailed history can contain every prompt, critique, result, and call record,
-so never print it directly into the agent transcript. Materialize one bounded
-JSONL page on the execution host, then use normal file-navigation tools:
+so never print it directly into the agent transcript. Redirect the complete
+lossless JSONL history on the execution host, then use normal file-navigation
+tools:
 
 ```bash
 run=<run-id>
 mkdir -p "$BB_THREAD_STORAGE/workflows"
-bb workflows history "$run" --cursor 0 --limit 100 \
+bb workflows history "$run" \
   > "$BB_THREAD_STORAGE/workflows/$run.jsonl"
-jq -c 'select(.type == "page")' "$BB_THREAD_STORAGE/workflows/$run.jsonl"
+jq -c 'select(.type == "call")' "$BB_THREAD_STORAGE/workflows/$run.jsonl"
 ```
 
-The last `page` record supplies `nextCursor`; fetch that cursor and append the
-next page. Pages are snapshots, so rewrite from cursor `0` to refresh an active
-run. Redirection is performed by your shell, which places the file in the
-correct local or remote thread storage without giving the plugin arbitrary
-host filesystem access.
+Normal `bb workflows history "$run"` automatically streams every page. Explicit
+`--cursor` and `--limit` request one bounded page only and remain available for
+compatibility callers. Rewrite the redirected file to refresh an active run.
+Redirection is performed by your shell, which places the file in the correct
+local or remote thread storage without giving the plugin arbitrary host
+filesystem access.
 
 To resume after a pause, stop, restart, or script edit, relaunch with the same
 current source and `resumeRunId`. Resume requires a terminal prior run in the
@@ -80,12 +82,16 @@ bb workflows run --script '<javascript>' --args '<json>'
 bb workflows run --file .bb/workflows/review-change.js --resume <run-id>
 bb workflows run --name review-change
 bb workflows status <run-id>
-bb workflows history <run-id> --cursor 0 --limit 100
+bb workflows history <run-id>
 bb workflows list --limit 20
 bb workflows stop <run-id>
 bb provider list --environment "$BB_ENVIRONMENT_ID" --json
 bb provider models <provider-id> --environment "$BB_ENVIRONMENT_ID" --json
 ```
+
+`bb workflows history "$run"` automatically follows every page and exports the
+complete lossless JSONL history. Explicit `--cursor` and `--limit` remain the
+bounded compatibility option for callers that need one page at a time.
 
 The CLI's `--file` maps to the agent tool's `scriptPath`, but a relative CLI
 path starts at the invoking CLI's current directory. Both that directory and
@@ -104,5 +110,6 @@ temporary Workflow folder.
 `maxActiveRuns` is live plugin-global dispatch policy. Shared parent/child agent
 concurrency and call count, total run timeout, retention, and UTF-8
 completion-message size are snapshotted per run. `status` is bounded
-to compact progress and call counts. Paged JSONL `history` carries ordered
+to compact progress and call counts. Complete lossless JSONL `history` carries
+ordered
 call-level execution, cache, child-thread, repair, result, and error details.

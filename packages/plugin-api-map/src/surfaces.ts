@@ -506,7 +506,11 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Receive the thread and project it was invoked from, when bb knows them",
           "Make the plugin usable from scripts and automations, not only from the UI",
         ],
-        apiSymbols: ["PluginCli"],
+        apiSymbols: [
+          "PluginCli",
+          "PluginCliExecutionResult",
+          "PluginCliResult",
+        ],
         firstParty: [
           "Automations",
           "Custom instructions",

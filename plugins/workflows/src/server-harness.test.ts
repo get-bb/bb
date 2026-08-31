@@ -1,3 +1,4 @@
+import { PLUGIN_CLI_OUTPUT_MAX_BYTES } from "@get-bb/plugin-sdk";
 import { createFakePluginHost } from "@get-bb/plugin-sdk/testing";
 import { afterEach, describe, expect, it } from "vitest";
 import { getCall, getRunRequired, migrations } from "./data.js";
@@ -395,12 +396,16 @@ describe("workflows plugin", () => {
         resultAvailable: true,
         calls: { total: 1, succeeded: 1 },
       });
-      await expect(
-        harness.runCli(["status", started.runId], {
-          threadId: "thread-test",
-          projectId: "project-test",
-        }),
-      ).resolves.toMatchObject({ exitCode: 0 });
+      const statusResult = await harness.runCli(["status", started.runId], {
+        threadId: "thread-test",
+        projectId: "project-test",
+      });
+      expect(statusResult).toMatchObject({ exitCode: 0 });
+      expect(JSON.parse(statusResult.stdout!)).toMatchObject({
+        history: {
+          pageUsage: `bb workflows history ${started.runId}`,
+        },
+      });
       const listResult = await harness.runCli(["list", "--limit", "1"], {
         threadId: "thread-test",
         projectId: "project-test",
@@ -452,6 +457,76 @@ describe("workflows plugin", () => {
         hasMore: false,
         nextCursor: null,
       });
+
+      const duplicateCall = bb.storage.database().prepare(
+        `INSERT INTO workflow_calls (
+           id, run_id, call_index, cache_key, prompt, options_json,
+           resolved_provider, resolved_model, resolved_reasoning_level,
+           resolved_permission_mode, status, child_thread_id, repair_attempts,
+           provider_retry_attempts, result_json, error, replayed_from_call_id,
+           replay_source, created_at, last_activity_at, started_at, finished_at
+         ) SELECT ?, run_id, ?, cache_key || ?, prompt, options_json,
+           resolved_provider, resolved_model, resolved_reasoning_level,
+           resolved_permission_mode, status, NULL, repair_attempts,
+           provider_retry_attempts, result_json, error, replayed_from_call_id,
+           replay_source, created_at, last_activity_at, started_at, finished_at
+         FROM workflow_calls WHERE run_id = ? AND call_index = 0`,
+      );
+      for (let callIndex = 1; callIndex <= 100; callIndex += 1) {
+        duplicateCall.run(
+          `call-${callIndex}`,
+          callIndex,
+          `-${callIndex}`,
+          started.runId,
+        );
+      }
+      const largePrompt = "🌌".repeat(175_000);
+      const largeResult = "R".repeat(700_000);
+      bb.storage
+        .database()
+        .prepare(
+          `UPDATE workflow_calls SET prompt = ?, result_json = ?
+           WHERE run_id = ? AND call_index = 100`,
+        )
+        .run(largePrompt, JSON.stringify(largeResult), started.runId);
+      const completeHistory = await harness.runCli(["history", started.runId], {
+        threadId: "thread-test",
+        projectId: "project-test",
+      });
+      expect(completeHistory.experimental_stdout).toBeDefined();
+      const completeChunks: string[] = [];
+      for await (const chunk of completeHistory.experimental_stdout ?? []) {
+        completeChunks.push(chunk);
+      }
+      expect(
+        Math.max(
+          ...completeChunks.map((chunk) => Buffer.byteLength(chunk, "utf8")),
+        ),
+      ).toBeLessThanOrEqual(64 * 1024);
+      const completeRecords = completeChunks
+        .join("")
+        .trimEnd()
+        .split("\n")
+        .map((line) => JSON.parse(line)) as Array<Record<string, unknown>>;
+      const callRecords = completeRecords.filter(
+        (record) => record.type === "call",
+      );
+      const pageRecords = completeRecords.filter(
+        (record) => record.type === "page",
+      );
+      expect(callRecords).toHaveLength(101);
+      expect(callRecords.at(-1)).toMatchObject({
+        callIndex: 100,
+        prompt: largePrompt,
+        result: largeResult,
+      });
+      expect(
+        Buffer.byteLength(completeChunks.join(""), "utf8"),
+      ).toBeGreaterThan(PLUGIN_CLI_OUTPUT_MAX_BYTES);
+      expect(pageRecords).toMatchObject([
+        { cursor: 0, returned: 100, hasMore: true, nextCursor: 100 },
+        { cursor: 100, returned: 1, hasMore: false, nextCursor: null },
+      ]);
 
       const oversizedPhase = "🌌".repeat(500_000);
       const oversizedProvider = "🛰".repeat(500_000);
