@@ -434,6 +434,54 @@ describe("PersistentResponsiveDrawerShell", () => {
     expect(onAfterCloseAutoFocus).toHaveBeenCalledWith(trigger);
   });
 
+  it("retries focus restoration after closing chrome becomes visible", () => {
+    mockPointerCoarse(true);
+    const onAfterCloseAutoFocus = vi.fn();
+    let frameCallback: FrameRequestCallback | undefined;
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+      frameCallback = callback;
+      return 1;
+    });
+    vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => {});
+
+    function FocusDrawer() {
+      const [open, setOpen] = useState(false);
+      return (
+        <>
+          <button type="button" onClick={() => setOpen(true)}>
+            Open details
+          </button>
+          <PersistentResponsiveDrawerShell
+            open={open}
+            onOpenChange={setOpen}
+            onAfterCloseAutoFocus={onAfterCloseAutoFocus}
+            srLabel="Details"
+          >
+            <button type="button">Panel action</button>
+          </PersistentResponsiveDrawerShell>
+        </>
+      );
+    }
+
+    render(<FocusDrawer />);
+    const trigger = screen.getByRole("button", { name: "Open details" });
+    trigger.focus();
+    fireEvent.click(trigger);
+    const nativeFocus = trigger.focus.bind(trigger);
+    let restoreAttempts = 0;
+    vi.spyOn(trigger, "focus").mockImplementation((options) => {
+      restoreAttempts += 1;
+      if (restoreAttempts > 1) nativeFocus(options);
+    });
+
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(document.activeElement).not.toBe(trigger);
+    expect(onAfterCloseAutoFocus).not.toHaveBeenCalled();
+    act(() => frameCallback?.(0));
+    expect(document.activeElement).toBe(trigger);
+    expect(onAfterCloseAutoFocus).toHaveBeenCalledOnce();
+  });
+
   it("keeps panel focus and uses the latest close callback after a parent rerender", () => {
     mockPointerCoarse(false);
     const requestAnimationFrame = vi

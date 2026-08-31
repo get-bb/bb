@@ -456,6 +456,7 @@ export function usePersistentOverlayFocus({
 
   const previousOpenRef = React.useRef(open);
   React.useLayoutEffect(() => {
+    let cancelDeferredFocus: (() => void) | undefined;
     if (previousOpenRef.current && !open) {
       onBeforeCloseAutoFocus?.();
       const returnFocus = returnFocusRef.current;
@@ -464,11 +465,29 @@ export function usePersistentOverlayFocus({
         returnFocus.closest('[aria-hidden="true"], [inert]') === null
       ) {
         returnFocus.focus({ preventScroll: true });
+        if (returnFocus.ownerDocument.activeElement !== returnFocus) {
+          const ownerWindow = returnFocus.ownerDocument.defaultView;
+          if (ownerWindow !== null) {
+            const frame = ownerWindow.requestAnimationFrame(() => {
+              if (
+                returnFocus.isConnected &&
+                returnFocus.closest('[aria-hidden="true"], [inert]') === null
+              ) {
+                returnFocus.focus({ preventScroll: true });
+              }
+              onAfterCloseAutoFocus?.();
+            });
+            cancelDeferredFocus = () => ownerWindow.cancelAnimationFrame(frame);
+          }
+        }
       }
       returnFocusRef.current = null;
-      onAfterCloseAutoFocus?.();
+      if (cancelDeferredFocus === undefined) {
+        onAfterCloseAutoFocus?.();
+      }
     }
     previousOpenRef.current = open;
+    return cancelDeferredFocus;
   }, [onAfterCloseAutoFocus, onBeforeCloseAutoFocus, open]);
 }
 
