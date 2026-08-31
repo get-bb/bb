@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   definePluginApp,
   experimental_Diff as Diff,
@@ -483,6 +490,7 @@ function GithubResourceSearch({
 }: {
   onSelect: (item: Item) => void;
 }) {
+  const inputLabelId = useId();
   const [query, setQuery] = useState("");
   const { state, retry } = useGithubSearch(query);
 
@@ -491,11 +499,14 @@ function GithubResourceSearch({
       shouldFilter={false}
       className="min-h-0 rounded-lg border border-border bg-card"
     >
+      <span id={inputLabelId} className="sr-only">
+        Search GitHub issues and pull requests
+      </span>
       <CommandInput
         value={query}
         onValueChange={setQuery}
         placeholder="Search title, number, repository, or author"
-        aria-label="Search GitHub issues and pull requests"
+        aria-labelledby={inputLabelId}
         autoFocus
       />
       <CommandList
