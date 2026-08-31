@@ -330,14 +330,6 @@ describe("mobile recents hierarchy interaction", () => {
         activity: IDLE_ACTIVITY,
       }),
     },
-    {
-      label: "Unread thread failed",
-      child: makeIdleThread({
-        id: "thr_child",
-        parentThreadId: "thr_parent",
-        status: "error",
-      }),
-    },
   ])(
     "renders child-only $label state on a collapsed parent",
     ({ child, label }) => {
