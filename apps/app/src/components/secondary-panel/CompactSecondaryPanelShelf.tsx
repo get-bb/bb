@@ -10,6 +10,7 @@ import {
 import { createPortal } from "react-dom";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { usePersistentOverlayFocus } from "@bb/shared-ui/responsive-overlay";
+import { APP_OVERLAY_LAYER } from "@/components/ui/app-overlay-layers";
 import { setCompactSecondaryPanelShelfShowing } from "@/components/ui/secondary-panel-shelf-visibility";
 
 const SHELF_TRANSITION_CLASS =
@@ -74,8 +75,9 @@ export function CompactSecondaryPanelShelf({
         data-testid="secondary-panel-shelf-dismiss"
         data-state={open ? "open" : "closed"}
         aria-hidden="true"
+        style={{ zIndex: APP_OVERLAY_LAYER.secondaryPanelDismiss }}
         className={cn(
-          "fixed inset-0 z-40 bg-transparent",
+          "fixed inset-0 bg-transparent",
           "data-[state=open]:-translate-x-(--secondary-panel-width-mobile)",
           SHELF_TRANSITION_CLASS,
           "data-[state=closed]:pointer-events-none",
@@ -93,8 +95,9 @@ export function CompactSecondaryPanelShelf({
         data-secondary-panel-shelf=""
         data-testid="secondary-panel-shelf"
         data-state={open ? "open" : "closed"}
+        style={{ zIndex: APP_OVERLAY_LAYER.secondaryPanel }}
         className={cn(
-          "fixed inset-y-0 right-0 z-0 flex h-(--bb-shell-height) w-(--secondary-panel-width-mobile) select-none flex-col overflow-hidden border-l border-border-seam bg-background outline-none",
+          "fixed inset-y-0 right-0 flex h-(--bb-shell-height) w-(--secondary-panel-width-mobile) select-none flex-col overflow-hidden border-l border-border-seam bg-background outline-none",
           "[transition:visibility_0s_linear_0s] data-[state=closed]:invisible data-[state=closed]:[transition:visibility_0s_linear_220ms]",
         )}
       >

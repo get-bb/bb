@@ -5,6 +5,7 @@ import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { CompactSecondaryPanelShelf } from "./CompactSecondaryPanelShelf";
 import { isCompactSecondaryPanelShelfShowing } from "@/components/ui/secondary-panel-shelf-visibility";
+import { APP_OVERLAY_LAYER } from "@/components/ui/app-overlay-layers";
 
 afterEach(() => {
   cleanup();
@@ -31,7 +32,7 @@ describe("CompactSecondaryPanelShelf", () => {
     const shelf = screen.getByTestId("secondary-panel-shelf");
     expect(shelf.className).toContain("right-0");
     expect(shelf.className).toContain("inset-y-0");
-    expect(shelf.className).toContain("z-0");
+    expect(shelf.style.zIndex).toBe(String(APP_OVERLAY_LAYER.secondaryPanel));
     expect(shelf.className).toContain("w-(--secondary-panel-width-mobile)");
     expect(shelf.className).not.toContain("bottom-0");
     expect(shelf.className).not.toContain("rounded-t-xl");
@@ -41,6 +42,12 @@ describe("CompactSecondaryPanelShelf", () => {
     const { onClose } = renderShelf(true);
 
     const dismiss = screen.getByTestId("secondary-panel-shelf-dismiss");
+    expect(dismiss.style.zIndex).toBe(
+      String(APP_OVERLAY_LAYER.secondaryPanelDismiss),
+    );
+    expect(APP_OVERLAY_LAYER.sidebarTrigger).toBeGreaterThan(
+      APP_OVERLAY_LAYER.secondaryPanelDismiss,
+    );
     expect(dismiss.className).toContain("bg-transparent");
     expect(dismiss.className).toContain(
       "data-[state=open]:-translate-x-(--secondary-panel-width-mobile)",

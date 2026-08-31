@@ -5,6 +5,7 @@ import type { ReactNode } from "react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AppLayout } from "./AppLayout";
+import { APP_OVERLAY_LAYER } from "@/components/ui/app-overlay-layers";
 
 const viewportState = vi.hoisted(() => ({ compact: false }));
 
@@ -181,5 +182,18 @@ describe("AppLayout plugin panel header", () => {
     renderPluginPanelRoute();
 
     expect(screen.queryByTestId("app-page-header")).toBeNull();
+  });
+
+  it("keeps the fixed sidebar trigger above the compact shelf dismiss layer", () => {
+    viewportState.compact = true;
+    renderPluginPanelRoute();
+
+    const trigger = screen.getByTestId("app-sidebar-trigger-overlay");
+    expect(trigger.style.zIndex).toBe(
+      String(APP_OVERLAY_LAYER.sidebarTrigger),
+    );
+    expect(APP_OVERLAY_LAYER.sidebarTrigger).toBeGreaterThan(
+      APP_OVERLAY_LAYER.secondaryPanelDismiss,
+    );
   });
 });
