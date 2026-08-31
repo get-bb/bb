@@ -59,6 +59,7 @@ import {
 } from "../interactive-requests.js";
 import { parseModelsResponse } from "../models.js";
 import { macOsPermissionPresentation } from "../presentation.js";
+import { codexTurnSchema } from "../schemas.js";
 import {
   resolveCodexInstructionOverrides,
   toCodexDynamicTools,
@@ -1292,6 +1293,40 @@ async function requireLiveSessionForTurn(
   return { session, connection: session.connection };
 }
 
+const codexTurnStartResultSchema = z
+  .object({ turn: codexTurnSchema })
+  .passthrough();
+
+function settleAcceptedDispatch(args: {
+  clientRequestId: TurnStartParamsShape["clientRequestId"];
+  prepared: PreparedProviderCommandDispatch | null;
+  session: CodexBridgeSession;
+  result: unknown;
+}): void {
+  const { clientRequestId, prepared, session, result } = args;
+  const parsed = codexTurnStartResultSchema.safeParse(result);
+  if (!parsed.success) {
+    scheduleZeroWorkTurnSettlement({ clientRequestId, prepared, session });
+    return;
+  }
+  if (prepared === null) {
+    return;
+  }
+  const live = currentSession(session.bbThreadId, session.serial);
+  if (!live || live.codexThreadId === null) {
+    return;
+  }
+  sendThreadDeltas(
+    live,
+    live.translator.openTurnFromStartResponse({
+      providerThreadId: live.codexThreadId,
+      turn: parsed.data.turn,
+      clientRequestId,
+      turnAlreadyOpen: live.openCodexTurnIds.has(parsed.data.turn.id),
+    }),
+  );
+}
+
 const ZERO_WORK_SETTLEMENT_GRACE_MS = 250;
 
 let syntheticZeroWorkTurnCounter = 0;
@@ -1356,8 +1391,9 @@ async function handleTurnStart(
   });
 
   try {
+    let result: unknown;
     if (isStandaloneBuiltinCompactCommand(input)) {
-      await connection.request({
+      result = await connection.request({
         method: "thread/compact/start",
         params: { threadId: codexThreadId },
         resultSchema: ignoredChildResultSchema,
@@ -1371,7 +1407,7 @@ async function handleTurnStart(
         ),
         options: decoded.sessionOptions,
       });
-      await connection.request({
+      result = await connection.request({
         method: "turn/start",
         params: {
           threadId: codexThreadId,
@@ -1387,10 +1423,11 @@ async function handleTurnStart(
       });
     }
     sendResult(id, { threadId: params.threadId });
-    scheduleZeroWorkTurnSettlement({
+    settleAcceptedDispatch({
       clientRequestId: params.clientRequestId,
       prepared,
       session,
+      result,
     });
   } catch (error) {
     prepared?.rollback();
