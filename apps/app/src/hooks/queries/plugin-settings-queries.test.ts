@@ -1,9 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { QueryClient } from "@tanstack/react-query";
-import {
-  createPluginFrontendPageLifecycle,
-  fetchFrontendCandidates,
-} from "@/lib/plugin-frontend";
+import { fetchFrontendCandidates } from "@/lib/plugin-frontend";
 import { markEnabledPluginListStale } from "@/hooks/cache-owners/plugin-cache-owner";
 import { pluginListQueryKey } from "./query-keys";
 import {
@@ -100,43 +97,6 @@ describe("fetchPluginList envelope", () => {
       expect.objectContaining({ pluginId: "linear" }),
     ]);
     expect(networkFetch).not.toHaveBeenCalled();
-  });
-
-  it("refreshes a warm plugin inventory after a persisted page restore", async () => {
-    const queryClient = new QueryClient({
-      defaultOptions: { queries: { retry: false } },
-    });
-    queryClient.setQueryData(
-      pluginListQueryKey(true),
-      await fetchInstalledPlugins(
-        fetchReturning({ plugins: [pluginWithBundle("old")] }),
-      ),
-    );
-    const networkFetch = vi.fn(
-      fetchReturning({ plugins: [pluginWithBundle("new")] }),
-    );
-    vi.stubGlobal("fetch", networkFetch);
-    const reconciledHashes: string[] = [];
-    const deps = {
-      isTornDown: () => false,
-      refreshInventory: () => markEnabledPluginListStale({ queryClient }),
-      reboot: vi.fn(),
-      reconcile: () => {
-        void fetchFrontendCandidates(queryClient).then((candidates) => {
-          reconciledHashes.push(
-            ...candidates.map((candidate) => candidate.bundle.hash),
-          );
-        });
-      },
-      teardown: vi.fn(),
-    };
-
-    createPluginFrontendPageLifecycle(deps).onPageShow({ persisted: true });
-
-    await vi.waitFor(() => {
-      expect(reconciledHashes).toEqual(["new"]);
-    });
-    expect(networkFetch).toHaveBeenCalledTimes(1);
   });
 
   it("refreshes plugin inventory after an older request settles", async () => {

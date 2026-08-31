@@ -902,10 +902,7 @@ function teardownPluginFrontends(): Promise<void> {
 }
 
 interface PluginFrontendPageLifecycleDeps {
-  isTornDown: () => boolean;
-  reboot: () => void;
-  reconcile: () => void;
-  refreshInventory: () => Promise<void>;
+  restore: () => void;
   teardown: () => void;
 }
 
@@ -922,13 +919,7 @@ export function createPluginFrontendPageLifecycle(
     },
     onPageShow(event) {
       if (!event.persisted) return;
-      void deps.refreshInventory().then(() => {
-        if (deps.isTornDown()) {
-          deps.reboot();
-          return;
-        }
-        deps.reconcile();
-      });
+      deps.restore();
     },
   };
 }
@@ -939,15 +930,7 @@ function installPluginFrontendPageLifecycle(): void {
   if (pageLifecycleListenersInstalled) return;
   pageLifecycleListenersInstalled = true;
   const lifecycle = createPluginFrontendPageLifecycle({
-    isTornDown: () => state.tornDown,
-    reboot: () => {
-      state.tornDown = false;
-      bootPromise = null;
-      void bootPluginFrontends();
-    },
-    reconcile: () => schedulePluginFrontendReconcile(),
-    refreshInventory: () =>
-      markEnabledPluginListStale({ queryClient: appQueryClient }),
+    restore: () => schedulePluginFrontendReconcile(),
     teardown: () => {
       void teardownPluginFrontends();
     },
@@ -972,6 +955,13 @@ export function bootPluginFrontends(): Promise<void> {
 async function runLiveReconcile(): Promise<void> {
   try {
     await bootPromise;
+    await markEnabledPluginListStale({ queryClient: appQueryClient });
+    if (state.tornDown) {
+      state.tornDown = false;
+      bootPromise = null;
+      await bootPluginFrontends();
+      return;
+    }
     await reconcilePluginFrontends(state, browserReconcileDeps);
   } catch (error) {
     console.warn(
