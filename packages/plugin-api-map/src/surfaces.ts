@@ -52,6 +52,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         bullets: [
           "Render any React you write across that whole area",
           "Get its own URL, so the page can be linked to and bb's back and forward buttons work",
+          "Add expandable child links to its sidebar row, with optional icons and live accessories",
           "Register tabs in the panel to the right of its page, beside bb's own Browser and Terminal tabs",
         ],
         apiSymbols: ["PluginNavPanelRegistration"],

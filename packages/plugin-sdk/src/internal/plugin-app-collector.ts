@@ -37,6 +37,33 @@ type PluginNavPanelFixedTabRegistration = NonNullable<
   PluginNavPanelRegistration["fixedTabs"]
 >[number];
 
+type PluginNavPanelSidebarSubItemRegistration = NonNullable<
+  PluginNavPanelRegistration["experimental_sidebarSubItems"]
+>[number];
+
+const NAV_PANEL_SIDEBAR_SUB_ITEM_KEYS: ReadonlySet<string> = new Set([
+  "id",
+  "title",
+  "icon",
+  "subPath",
+  "experimental_sidebarAccessory",
+]);
+
+function requireSidebarSubPath(kind: string, value: unknown): string {
+  const subPath = requireNonEmptyString(kind, "subPath", value);
+  const segments = subPath.split("/");
+  if (
+    subPath.includes("?") ||
+    subPath.includes("#") ||
+    segments.some(
+      (segment) => segment.length === 0 || segment === "." || segment === "..",
+    )
+  ) {
+    throw new Error(`${kind}: "subPath" must be a relative route remainder`);
+  }
+  return subPath;
+}
+
 /**
  * The keys a navPanel registration may carry, pinned to the contract so a
  * renamed or removed field cannot drift out of this list unnoticed.
@@ -50,6 +77,7 @@ const NAV_PANEL_REGISTRATION_KEYS: ReadonlySet<string> = new Set(
     component: true,
     fixedTabs: true,
     experimental_sidebarAccessory: true,
+    experimental_sidebarSubItems: true,
     headerContent: true,
   } satisfies Record<keyof PluginNavPanelRegistration, true>),
 );
@@ -215,6 +243,77 @@ export function collectPluginAppRegistrations(
             `${kind}: "experimental_sidebarAccessory" must be a React component function when set`,
           );
         }
+        const sidebarSubItems: PluginNavPanelSidebarSubItemRegistration[] =
+          (() => {
+            const values = registration.experimental_sidebarSubItems;
+            if (values === undefined) return [];
+            const sidebarSubItemsKind = `${kind}.experimental_sidebarSubItems`;
+            if (!Array.isArray(values) || values.length === 0) {
+              throw new Error(
+                `${sidebarSubItemsKind} must be a non-empty array when set`,
+              );
+            }
+            const seenIds = new Set<string>();
+            const seenSubPaths = new Set<string>();
+            return values.map((value, index) => {
+              const sidebarSubItemKind = `${sidebarSubItemsKind}[${index}]`;
+              const sidebarSubItem = value as Record<string, unknown> | null;
+              for (const key of Object.keys(sidebarSubItem ?? {})) {
+                if (
+                  key.startsWith("experimental_") &&
+                  !NAV_PANEL_SIDEBAR_SUB_ITEM_KEYS.has(key)
+                ) {
+                  throw new Error(
+                    `${sidebarSubItemKind}: unknown field ${JSON.stringify(key)}`,
+                  );
+                }
+              }
+              const id = requireSlotId(sidebarSubItemKind, sidebarSubItem?.id);
+              requireUniqueId(sidebarSubItemKind, seenIds, id);
+              const subPath = requireSidebarSubPath(
+                sidebarSubItemKind,
+                sidebarSubItem?.subPath,
+              );
+              if (seenSubPaths.has(subPath)) {
+                throw new Error(
+                  `${sidebarSubItemKind}: duplicate subPath ${JSON.stringify(subPath)}`,
+                );
+              }
+              seenSubPaths.add(subPath);
+              const icon = requireOptionalString(
+                sidebarSubItemKind,
+                "icon",
+                sidebarSubItem?.icon,
+              );
+              if (icon === "") {
+                throw new Error(
+                  `${sidebarSubItemKind}: "icon" must be a non-empty string when set`,
+                );
+              }
+              const accessory = sidebarSubItem?.experimental_sidebarAccessory;
+              if (accessory !== undefined && typeof accessory !== "function") {
+                throw new Error(
+                  `${sidebarSubItemKind}: "experimental_sidebarAccessory" must be a React component function when set`,
+                );
+              }
+              return {
+                id,
+                title: requireNonEmptyString(
+                  sidebarSubItemKind,
+                  "title",
+                  sidebarSubItem?.title,
+                ),
+                ...(icon === undefined ? {} : { icon }),
+                subPath,
+                ...(accessory === undefined
+                  ? {}
+                  : {
+                      experimental_sidebarAccessory:
+                        accessory as PluginNavPanelSidebarSubItemRegistration["experimental_sidebarAccessory"],
+                    }),
+              };
+            });
+          })();
         const fixedTabs: PluginNavPanelFixedTabRegistration[] = (() => {
           if (registration.fixedTabs === undefined) return [];
           if (!Array.isArray(registration.fixedTabs)) {
@@ -287,6 +386,9 @@ export function collectPluginAppRegistrations(
           path,
           component: requireComponent(kind, registration.component),
           ...(fixedTabs.length > 0 ? { fixedTabs } : {}),
+          ...(sidebarSubItems.length > 0
+            ? { experimental_sidebarSubItems: sidebarSubItems }
+            : {}),
           ...(registration.experimental_sidebarAccessory !== undefined
             ? {
                 experimental_sidebarAccessory:

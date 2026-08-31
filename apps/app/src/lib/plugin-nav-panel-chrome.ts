@@ -7,12 +7,23 @@ import {
 } from "@/lib/plugin-frontend-boot-state";
 import { usePluginSlots, type PluginNavPanelSlot } from "@/lib/plugin-slots";
 
+const pluginNavPanelSidebarSubItemChromeSchema = z.object({
+  id: z.string().min(1),
+  title: z.string(),
+  icon: z.string().min(1).optional(),
+  subPath: z.string().min(1),
+});
+
 const pluginNavPanelChromeSchema = z.object({
   pluginId: z.string().min(1),
   id: z.string().min(1),
   path: z.string().min(1),
   title: z.string(),
   icon: z.string(),
+  experimental_sidebarSubItems: z
+    .array(pluginNavPanelSidebarSubItemChromeSchema)
+    .min(1)
+    .optional(),
 });
 
 export type PluginNavPanelChrome = z.infer<typeof pluginNavPanelChromeSchema>;
@@ -24,7 +35,7 @@ interface PluginNavPanelChromeEntry {
 
 const chromeCache = createLastKnownCache({
   prefix: "bb.plugin-nav-panels",
-  version: "1",
+  version: "2",
   schema: z.array(pluginNavPanelChromeSchema),
 });
 const CHROME_CACHE_KEY = chromeCache.key("all");
@@ -38,6 +49,18 @@ function pluginNavPanelChromeOf(
     path: panel.path,
     title: panel.title,
     icon: panel.icon,
+    ...(panel.experimental_sidebarSubItems === undefined
+      ? {}
+      : {
+          experimental_sidebarSubItems: panel.experimental_sidebarSubItems.map(
+            ({ id, title, icon, subPath }) => ({
+              id,
+              title,
+              ...(icon === undefined ? {} : { icon }),
+              subPath,
+            }),
+          ),
+        }),
   };
 }
 

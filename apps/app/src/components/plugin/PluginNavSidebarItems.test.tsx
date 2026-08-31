@@ -9,7 +9,7 @@ import {
 } from "@testing-library/react";
 import { useEffect, type ComponentType } from "react";
 import { createStore, Provider } from "jotai";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CompactViewportOverrideProvider } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { SidebarProvider } from "@/components/ui/sidebar.js";
@@ -24,6 +24,12 @@ import {
 } from "./PluginSlotMount";
 import { PluginNavSidebarItems } from "./PluginNavSidebarItems";
 import { pluginNavPanelOrderAtom } from "./pluginNavSidebarAtoms";
+import { splitLayoutAtom } from "@/lib/split-layout/atoms";
+import { findPaneByContent } from "@/lib/split-layout";
+import {
+  resetPluginLogoStoreForTest,
+  setPluginLogoUrls,
+} from "@/lib/plugin-logos";
 
 function registrationSet(
   overrides: Partial<PluginRegistrationSet>,
@@ -44,6 +50,7 @@ function registerPanel(
   pluginId: string,
   title: string,
   experimentalSidebarAccessory?: ComponentType,
+  experimentalSidebarSubItems?: PluginRegistrationSet["navPanels"][number]["experimental_sidebarSubItems"],
 ) {
   setPluginSlotRegistrations(
     pluginId,
@@ -60,6 +67,11 @@ function registerPanel(
             : {
                 experimental_sidebarAccessory: experimentalSidebarAccessory,
               }),
+          ...(experimentalSidebarSubItems === undefined
+            ? {}
+            : {
+                experimental_sidebarSubItems: experimentalSidebarSubItems,
+              }),
         },
       ],
     }),
@@ -71,25 +83,46 @@ function renderSidebarItems(
     toolsRoutePath?: string;
     storedOrder?: string[];
     compactViewport?: boolean;
+    initialPath?: string;
+    splitEnabled?: boolean;
   } = {},
 ) {
   const store = createStore();
   if (options.storedOrder) {
     store.set(pluginNavPanelOrderAtom, options.storedOrder);
   }
-  return render(
+  if (options.splitEnabled) {
+    store.set(splitLayoutAtom, {
+      focusedPaneId: "pane-root",
+      root: {
+        type: "pane",
+        paneId: "pane-root",
+        content: { kind: "new-thread" },
+      },
+    });
+  }
+  const view = render(
     <CompactViewportOverrideProvider
       isCompactViewport={options.compactViewport ?? false}
     >
       <Provider store={store}>
-        <MemoryRouter initialEntries={["/"]}>
+        <MemoryRouter initialEntries={[options.initialPath ?? "/"]}>
           <SidebarProvider>
-            <PluginNavSidebarItems toolsRoutePath={options.toolsRoutePath} />
+            <PluginNavSidebarItems
+              toolsRoutePath={options.toolsRoutePath}
+              splitEnabled={options.splitEnabled}
+            />
+            <LocationProbe />
           </SidebarProvider>
         </MemoryRouter>
       </Provider>
     </CompactViewportOverrideProvider>,
   );
+  return Object.assign(view, { store });
+}
+
+function LocationProbe() {
+  return <output data-testid="location-path">{useLocation().pathname}</output>;
 }
 
 const ROW_LABELS = new Set(["Extensions", "Docs", "GitHub"]);
@@ -103,6 +136,7 @@ function panelRowNames(): string[] {
 
 beforeEach(() => {
   window.localStorage.clear();
+  resetPluginLogoStoreForTest();
   resetAllCrashedPluginSlotsForTest();
   vi.spyOn(console, "error").mockImplementation(() => {});
   vi.spyOn(console, "warn").mockImplementation(() => {});
@@ -111,6 +145,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   resetPluginSlotStoreForTest();
+  resetPluginLogoStoreForTest();
   resetAllCrashedPluginSlotsForTest();
   vi.restoreAllMocks();
   window.localStorage.clear();
@@ -137,6 +172,263 @@ describe("PluginNavSidebarItems", () => {
     expect(
       view.container.querySelector("[data-plugin-nav-sidebar-accessory]"),
     ).toBeNull();
+  });
+
+  it("expands sidebar sub-items and navigates without changing the parent target", () => {
+    function IssueCount() {
+      return <span>12</span>;
+    }
+    registerPanel("lens", "Lens", undefined, [
+      {
+        id: "issues",
+        title: "Issues",
+        icon: "Circle",
+        subPath: "issues",
+        experimental_sidebarAccessory: IssueCount,
+      },
+      { id: "reviews", title: "Reviews", subPath: "reviews" },
+    ]);
+    setPluginLogoUrls(
+      new Map([
+        [
+          "lens",
+          {
+            displayName: "Lens",
+            icon: "Beaker",
+            compactIconUrl: null,
+            logoUrl: null,
+            logoDarkUrl: null,
+            icons: new Map(),
+          },
+        ],
+      ]),
+    );
+
+    const view = renderSidebarItems();
+    const disclosure = screen.getByRole("button", { name: "Expand Lens" });
+    expect(disclosure.getAttribute("aria-expanded")).toBe("false");
+    expect(disclosure.classList.contains("w-7")).toBe(true);
+
+    fireEvent.click(disclosure);
+
+    expect(disclosure.getAttribute("aria-expanded")).toBe("true");
+    expect(screen.getByRole("button", { name: "Issues" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Reviews" })).toBeTruthy();
+    const subItemGroup = view.container.querySelector(
+      "[data-plugin-nav-sidebar-sub-items]",
+    );
+    expect(subItemGroup).not.toBeNull();
+    for (const className of [
+      "ml-3.5",
+      "mt-0.5",
+      "space-y-0.5",
+      "border-l",
+      "pl-1.5",
+      "py-1",
+    ]) {
+      expect(subItemGroup?.classList.contains(className), className).toBe(true);
+    }
+    expect(
+      screen
+        .getByRole("button", { name: "Reviews" })
+        .classList.contains("text-subtle-foreground"),
+    ).toBe(true);
+    expect(
+      screen
+        .getByRole("button", { name: "Reviews" })
+        .classList.contains("[&>svg]:text-muted-foreground"),
+    ).toBe(true);
+    expect(
+      screen
+        .getByRole("button", { name: "Issues" })
+        .querySelector('[data-icon="Circle"]'),
+    ).toBeTruthy();
+    expect(
+      screen
+        .getByRole("button", { name: "Reviews" })
+        .querySelector("[data-plugin-nav-sidebar-sub-item-icon-placeholder]"),
+    ).toBeTruthy();
+    expect(
+      view.container.querySelector(
+        "[data-plugin-nav-sidebar-sub-item-accessory]",
+      )?.textContent,
+    ).toBe("12");
+    expect(
+      window.localStorage.getItem("bb.sidebar.expandedPluginPanels"),
+    ).toContain("lens/main");
+    expect(
+      screen.queryByRole("button", { name: "Issues panel options" }),
+    ).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Issues" }));
+    expect(screen.getByTestId("location-path").textContent).toBe(
+      "/plugins/lens/main/issues",
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Lens" }));
+    expect(screen.getByTestId("location-path").textContent).toBe(
+      "/plugins/lens/main",
+    );
+  });
+
+  it("reveals the active deep sub-item without matching a shared prefix", () => {
+    registerPanel("lens", "Lens", undefined, [
+      { id: "issues", title: "Issues", subPath: "issues" },
+    ]);
+
+    const active = renderSidebarItems({
+      initialPath: "/plugins/lens/main/issues/123",
+    });
+
+    expect(screen.getByRole("button", { name: "Collapse Lens" })).toBeTruthy();
+    expect(
+      screen
+        .getByRole("button", { name: "Issues" })
+        .getAttribute("aria-current"),
+    ).toBe("page");
+    expect(
+      screen
+        .getByRole("button", { name: "Issues" })
+        .classList.contains("font-medium"),
+    ).toBe(true);
+    const activeSubItemRow = screen.getByRole("button", {
+      name: "Issues",
+    }).parentElement;
+    for (const className of [
+      "before:absolute",
+      "before:-left-1.5",
+      "before:inset-y-1.5",
+      "before:w-0.5",
+      "before:rounded-full",
+      "before:bg-sidebar-foreground",
+    ]) {
+      expect(activeSubItemRow?.classList.contains(className), className).toBe(
+        true,
+      );
+    }
+    expect(
+      screen.getByRole("button", { name: "Lens" }).getAttribute("aria-current"),
+    ).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Collapse Lens" }));
+    expect(screen.getByRole("button", { name: "Expand Lens" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Issues" })).toBeNull();
+
+    active.unmount();
+    renderSidebarItems({ initialPath: "/plugins/lens/main/issues-old" });
+    expect(screen.getByRole("button", { name: "Expand Lens" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Issues" })).toBeNull();
+  });
+
+  it("selects only the most specific nested sub-item", () => {
+    registerPanel("lens", "Lens", undefined, [
+      { id: "issues", title: "Issues", subPath: "issues" },
+      { id: "open", title: "Open issues", subPath: "issues/open" },
+    ]);
+
+    renderSidebarItems({
+      initialPath: "/plugins/lens/main/issues/open/123",
+    });
+
+    expect(
+      screen
+        .getByRole("button", { name: "Open issues" })
+        .getAttribute("aria-current"),
+    ).toBe("page");
+    expect(
+      screen
+        .getByRole("button", { name: "Issues" })
+        .getAttribute("aria-current"),
+    ).toBeNull();
+  });
+
+  it("opens a sidebar sub-item in a split with its subpath", () => {
+    registerPanel("lens", "Lens", undefined, [
+      { id: "issues", title: "Issues", subPath: "issues" },
+    ]);
+    const view = renderSidebarItems({ splitEnabled: true });
+    fireEvent.click(screen.getByRole("button", { name: "Expand Lens" }));
+
+    fireEvent.click(screen.getByRole("button", { name: "Issues" }), {
+      metaKey: true,
+    });
+
+    const layout = view.store.get(splitLayoutAtom);
+    expect(layout).not.toBeNull();
+    expect(
+      findPaneByContent(layout!.root, {
+        kind: "plugin-panel",
+        pluginId: "lens",
+        panelPath: "main",
+        subPath: "issues",
+      }),
+    ).not.toBeNull();
+  });
+
+  it("does not mount sidebar sub-item accessories on compact viewports", () => {
+    let mounts = 0;
+    registerPanel("lens", "Lens", undefined, [
+      {
+        id: "issues",
+        title: "Issues",
+        subPath: "issues",
+        experimental_sidebarAccessory: () => {
+          mounts += 1;
+          return <span>12</span>;
+        },
+      },
+    ]);
+    window.localStorage.setItem(
+      "bb.sidebar.expandedPluginPanels",
+      JSON.stringify(["lens/main"]),
+    );
+
+    const view = renderSidebarItems({ compactViewport: true });
+
+    expect(screen.getByRole("button", { name: "Issues" })).toBeTruthy();
+    expect(mounts).toBe(0);
+    expect(
+      view.container.querySelector(
+        "[data-plugin-nav-sidebar-sub-item-accessory]",
+      ),
+    ).toBeNull();
+  });
+
+  it("isolates a crashed sidebar sub-item accessory and retries after reload", () => {
+    function CrashingAccessory(): never {
+      throw new Error("sub-item accessory crashed");
+    }
+    registerPanel("lens", "Lens", undefined, [
+      {
+        id: "issues",
+        title: "Issues",
+        subPath: "issues",
+        experimental_sidebarAccessory: CrashingAccessory,
+      },
+    ]);
+    const view = renderSidebarItems();
+    fireEvent.click(screen.getByRole("button", { name: "Expand Lens" }));
+
+    expect(screen.queryByText("plugin lens crashed")).toBeNull();
+    expect(
+      view.container.querySelector(
+        "[data-plugin-nav-sidebar-sub-item-accessory]",
+      ),
+    ).not.toBeNull();
+
+    resetCrashedPluginSlots("lens");
+    act(() =>
+      registerPanel("lens", "Lens", undefined, [
+        {
+          id: "issues",
+          title: "Issues",
+          subPath: "issues",
+          experimental_sidebarAccessory: () => <span>18</span>,
+        },
+      ]),
+    );
+
+    expect(screen.getByText("18")).toBeTruthy();
   });
 
   it("keeps the panel options trigger visible on mobile", () => {

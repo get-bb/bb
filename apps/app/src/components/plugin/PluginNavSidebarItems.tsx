@@ -31,7 +31,7 @@ import {
 } from "@bb/shared-ui/dropdown-menu";
 import { COARSE_POINTER_ICON_SIZE_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
-import { PluginIcon } from "@/components/plugin/PluginIcon";
+import { PluginIcon, pluginIconName } from "@/components/plugin/PluginIcon";
 import { PluginSlotMount } from "@/components/plugin/PluginSlotMount";
 import { PROJECT_LIST_ACTION_BUTTON_CLASS } from "@/components/sidebar/ProjectList";
 import { getPluginPanelRoutePath } from "@/lib/route-paths";
@@ -56,6 +56,7 @@ import { useSidebarSortable } from "@/components/sidebar/sortableMotion";
 import { useSidebarReorderDnd } from "@/components/sidebar/useSidebarReorderDnd";
 import type { SidebarSortableDragBindings } from "@/components/sidebar/sortableMotion";
 import {
+  expandedPluginNavPanelsAtom,
   hiddenPluginNavPanelsAtom,
   pluginNavPanelOrderAtom,
 } from "./pluginNavSidebarAtoms";
@@ -393,6 +394,8 @@ function PluginNavSidebarItem({
   pathname,
   onNavigate,
   splitEnabled,
+  rowRef,
+  rowStyle,
   ...props
 }: Omit<SidebarNavRowItemProps, "row"> & {
   row: Extract<SidebarNavRow, { kind: "plugin" }>;
@@ -416,6 +419,37 @@ function PluginNavSidebarItem({
     label: chrome.title,
   });
   const splitIndicator = usePaneContentSplitIndicator(content, splitEnabled);
+  const [expandedPanelKeys, setExpandedPanelKeys] = useAtom(
+    expandedPluginNavPanelsAtom,
+  );
+  const [isActiveSubItemCollapsed, setIsActiveSubItemCollapsed] =
+    useState(false);
+  const rowKey = getPluginNavPanelKey(row);
+  const subItems = chrome.experimental_sidebarSubItems;
+  const activeSubItemId =
+    subItems?.reduce<{ id: string; pathLength: number } | null>(
+      (active, subItem) => {
+        const subItemPath = getPluginPanelRoutePath({
+          pluginId: chrome.pluginId,
+          path: chrome.path,
+          subPath: subItem.subPath,
+        });
+        if (
+          pathname !== subItemPath &&
+          !pathname.startsWith(`${subItemPath}/`)
+        ) {
+          return active;
+        }
+        return active === null || subItemPath.length > active.pathLength
+          ? { id: subItem.id, pathLength: subItemPath.length }
+          : active;
+      },
+      null,
+    )?.id ?? null;
+  const hasActiveSubItem = activeSubItemId !== null;
+  const isExpanded =
+    expandedPanelKeys.includes(rowKey) ||
+    (hasActiveSubItem && !isActiveSubItemCollapsed);
   const SidebarAccessory = panel?.experimental_sidebarAccessory;
   const sidebarAccessory =
     panel !== null && !isCompactViewport && SidebarAccessory !== undefined ? (
@@ -430,15 +464,51 @@ function PluginNavSidebarItem({
       </PluginSlotMount>
     ) : null;
 
-  return (
+  const parentRow = (
     <SidebarNavRowChrome
       {...props}
-      rowKey={getPluginNavPanelKey(row)}
+      rowRef={subItems === undefined ? rowRef : undefined}
+      rowStyle={subItems === undefined ? rowStyle : undefined}
+      rowKey={rowKey}
       title={chrome.title}
       icon={<PluginIcon pluginId={chrome.pluginId} icon={chrome.icon} />}
-      isActive={pathname === path || pathname.startsWith(`${path}/`)}
+      isActive={
+        pathname === path ||
+        (subItems === undefined && pathname.startsWith(`${path}/`))
+      }
       splitMiniMap={splitIndicator.miniMap}
       accessory={sidebarAccessory}
+      disclosure={
+        subItems === undefined ? undefined : (
+          <Button
+            type="button"
+            size="icon"
+            variant="ghost"
+            aria-label={`${isExpanded ? "Collapse" : "Expand"} ${chrome.title}`}
+            aria-expanded={isExpanded}
+            className="absolute inset-y-0 left-0 z-10 h-auto w-7 rounded-md p-0 text-muted-foreground"
+            onClick={() => {
+              setIsActiveSubItemCollapsed(isExpanded && hasActiveSubItem);
+              setExpandedPanelKeys((current) =>
+                isExpanded
+                  ? current.filter((key) => key !== rowKey)
+                  : current.includes(rowKey)
+                    ? current
+                    : [...current, rowKey],
+              );
+            }}
+          >
+            <Icon
+              name="ChevronRight"
+              className={cn(
+                "size-3 transition-transform duration-150",
+                isExpanded && "rotate-90",
+              )}
+              aria-hidden="true"
+            />
+          </Button>
+        )
+      }
       onPointerDown={onPointerDown}
       onSelect={(event) => {
         onNavigate?.();
@@ -449,6 +519,158 @@ function PluginNavSidebarItem({
         void navigate(path);
       }}
     />
+  );
+
+  if (subItems === undefined) {
+    return parentRow;
+  }
+
+  return (
+    <div ref={rowRef} style={rowStyle}>
+      {parentRow}
+      {isExpanded ? (
+        <div
+          data-plugin-nav-sidebar-sub-items=""
+          className="ml-3.5 mt-0.5 space-y-0.5 border-l border-sidebar-border/70 py-1 pl-1.5"
+        >
+          {subItems.map((subItem) => (
+            <PluginNavSidebarSubItem
+              key={subItem.id}
+              chrome={chrome}
+              panel={panel}
+              subItem={subItem}
+              isActive={activeSubItemId === subItem.id}
+              onNavigate={onNavigate}
+              splitEnabled={splitEnabled}
+            />
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+type PluginNavSidebarSubItemChrome = NonNullable<
+  PluginNavPanelChrome["experimental_sidebarSubItems"]
+>[number];
+
+function PluginNavSidebarSubItem({
+  chrome,
+  panel,
+  subItem,
+  isActive,
+  onNavigate,
+  splitEnabled,
+}: {
+  chrome: PluginNavPanelChrome;
+  panel: PluginNavPanelSlot | null;
+  subItem: PluginNavSidebarSubItemChrome;
+  isActive: boolean;
+  onNavigate?: () => void;
+  splitEnabled: boolean;
+}) {
+  const navigate = useNavigate();
+  const isCompactViewport = useIsCompactViewport();
+  const path = getPluginPanelRoutePath({
+    pluginId: chrome.pluginId,
+    path: chrome.path,
+    subPath: subItem.subPath,
+  });
+  const content = {
+    kind: "plugin-panel",
+    pluginId: chrome.pluginId,
+    panelPath: chrome.path,
+    subPath: subItem.subPath,
+  } as const;
+  const { onPointerDown, openInSplit } = usePaneContentSplitDrag({
+    content,
+    enabled: splitEnabled,
+    label: subItem.title,
+  });
+  const splitIndicator = usePaneContentSplitIndicator(content, splitEnabled);
+  const liveSubItem = panel?.experimental_sidebarSubItems?.find(
+    (candidate) => candidate.id === subItem.id,
+  );
+  const SidebarAccessory = liveSubItem?.experimental_sidebarAccessory;
+  const accessory =
+    panel !== null && !isCompactViewport && SidebarAccessory !== undefined ? (
+      <PluginSlotMount
+        key={`${panel.pluginId}/${panel.id}/${subItem.id}/${panel.generation}`}
+        pluginId={panel.pluginId}
+        slotKind="navPanelSidebarAccessory"
+        slotId={`${panel.id}/${subItem.id}`}
+        crashFallback={<></>}
+      >
+        <SidebarAccessory />
+      </PluginSlotMount>
+    ) : null;
+  return (
+    <div
+      className={cn(
+        SIDEBAR_HOVER_ACTIONS_ROW_CLASS,
+        "relative",
+        isActive &&
+          "before:absolute before:inset-y-1.5 before:-left-1.5 before:w-0.5 before:rounded-full before:bg-sidebar-foreground",
+      )}
+    >
+      <Button
+        type="button"
+        size="sm"
+        variant="ghost"
+        className={cn(
+          PROJECT_LIST_ACTION_BUTTON_CLASS,
+          "w-full pl-2 pr-2",
+          accessory && "pr-18",
+          isActive
+            ? "bg-sidebar-accent font-medium text-sidebar-foreground"
+            : "text-subtle-foreground hover:text-sidebar-foreground [&>svg]:text-muted-foreground hover:[&>svg]:text-sidebar-foreground",
+        )}
+        aria-current={isActive ? "page" : undefined}
+        onPointerDown={onPointerDown}
+        onClick={(event) => {
+          onNavigate?.();
+          if (event.metaKey || event.ctrlKey) {
+            openInSplit();
+            return;
+          }
+          void navigate(path);
+        }}
+      >
+        {subItem.icon === undefined ? (
+          <span
+            data-plugin-nav-sidebar-sub-item-icon-placeholder=""
+            className="size-4 shrink-0"
+            aria-hidden="true"
+          />
+        ) : (
+          <Icon
+            name={pluginIconName(subItem.icon)}
+            className="size-4 shrink-0"
+            aria-hidden="true"
+          />
+        )}
+        <span className="flex min-w-0 flex-1 items-center gap-1.5 text-left">
+          <span className="min-w-0 truncate">{subItem.title}</span>
+          {splitIndicator.miniMap ? (
+            <SplitPaneMiniMap
+              slots={splitIndicator.miniMap}
+              label={`${subItem.title} — open in split`}
+            />
+          ) : null}
+        </span>
+      </Button>
+      {accessory ? (
+        <span
+          data-plugin-nav-sidebar-sub-item-accessory=""
+          className={cn(
+            SIDEBAR_HOVER_ACTIONS_FADE_CLASS,
+            "pointer-events-none absolute right-1 top-1/2 block min-w-5 max-h-5 max-w-16 -translate-y-1/2 overflow-hidden text-xs text-ellipsis whitespace-nowrap text-center leading-5",
+          )}
+        >
+          {accessory}
+        </span>
+      ) : null}
+    </div>
   );
 }
 
@@ -461,6 +683,7 @@ interface SidebarNavRowChromeProps {
   onPointerDown?: PointerEventHandler<HTMLElement>;
   splitMiniMap?: MiniMapSlot[] | null;
   accessory?: ReactNode;
+  disclosure?: ReactNode;
   isHidden?: boolean;
   onHide?: (key: string) => void;
   onShow?: (key: string) => void;
@@ -478,6 +701,7 @@ function SidebarNavRowChrome({
   onPointerDown,
   splitMiniMap = null,
   accessory,
+  disclosure,
   isHidden = false,
   onHide,
   onShow,
@@ -504,6 +728,7 @@ function SidebarNavRowChrome({
           style={rowStyle}
           className={cn(SIDEBAR_HOVER_ACTIONS_ROW_CLASS, "relative")}
         >
+          {disclosure}
           <Button
             type="button"
             size="sm"
@@ -511,6 +736,7 @@ function SidebarNavRowChrome({
             className={cn(
               PROJECT_LIST_ACTION_BUTTON_CLASS,
               "w-full pr-7",
+              disclosure && "pl-7",
               accessory && "pr-18",
               isActive && "bg-sidebar-accent text-sidebar-foreground",
               isHidden && "text-subtle-foreground",

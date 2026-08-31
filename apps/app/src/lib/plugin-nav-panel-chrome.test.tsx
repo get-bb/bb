@@ -140,6 +140,59 @@ describe("usePluginNavPanelChrome", () => {
 });
 
 describe("useRememberPluginNavPanelChrome", () => {
+  it("persists sidebar sub-item chrome without live accessories", () => {
+    function IssueCount() {
+      return null;
+    }
+    act(() =>
+      setPluginSlotRegistrations(
+        "tasks",
+        registrations([
+          {
+            id: "tasks",
+            path: "tasks",
+            title: "Tasks",
+            icon: "ListTodo",
+            component: Body,
+            experimental_sidebarSubItems: [
+              {
+                id: "issues",
+                title: "Issues",
+                icon: "CircleDot",
+                subPath: "issues",
+                experimental_sidebarAccessory: IssueCount,
+              },
+            ],
+          },
+        ]),
+      ),
+    );
+    const { result } = renderHook(() => {
+      useRememberPluginNavPanelChrome();
+      return usePluginNavPanelChrome();
+    });
+
+    act(() => markPluginFrontendsSettled());
+
+    expect(readLastKnownPluginNavPanelChrome()).toEqual([
+      {
+        ...TASKS,
+        experimental_sidebarSubItems: [
+          {
+            id: "issues",
+            title: "Issues",
+            icon: "CircleDot",
+            subPath: "issues",
+          },
+        ],
+      },
+    ]);
+    expect(
+      result.current[0]?.panel?.experimental_sidebarSubItems?.[0]
+        ?.experimental_sidebarAccessory,
+    ).toBe(IssueCount);
+  });
+
   it("writes the live panels only after frontends have settled, and follows later changes", () => {
     act(() =>
       setPluginSlotRegistrations(

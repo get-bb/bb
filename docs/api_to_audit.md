@@ -824,6 +824,32 @@ the `experimental_fixedTabOpenCalls` inspection list.
 10. Keep core and plugin destinations on the same resolver and verify the
     controller never learns Changes, file, task, or document target shapes.
 
+## `PluginNavPanelRegistration.experimental_sidebarSubItems`
+
+**Added experimental (2026-08-30).** No stabilization evidence yet.
+
+**What it does.** Lets a nav panel add an ordered, expandable list of child
+links beneath its existing sidebar row. Each child owns a stable id, title,
+relative panel subpath, optional icon, and optional
+`experimental_sidebarAccessory`. The parent remains independently navigable,
+sortable, hideable, and able to render its own accessory. Expansion is stored
+per client; active child routes reveal themselves automatically, while an
+explicit collapse remains respected for the current sidebar session.
+
+**Audit before stabilizing.**
+
+1. Confirm child links cover real plugin information architectures without
+   requiring nested descendants, dynamic registration, badges as values, or
+   child-specific menus.
+2. Audit keyboard, screen-reader, compact-drawer, zoom, long-title, and large
+   child-list behavior, including the separate disclosure and parent targets.
+3. Confirm the relative-subpath validation and exact segment-aware active
+   matching are sufficient for panel routers and encoded paths.
+4. Measure startup and sidebar rendering with many cached child rows and live
+   accessories, including plugin reloads and accessory crashes.
+5. Decide whether expansion should remain per-client local state and whether
+   hidden or reordered parent groups need additional policy.
+
 ## `PluginNavPanelRegistration.experimental_sidebarAccessory`
 
 **Kept experimental (2026-08-22).** one consumer (the tasks plugin); item 1 below (a narrower value/badge contract) would change the API shape.
