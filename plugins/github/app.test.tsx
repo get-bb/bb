@@ -1,9 +1,19 @@
 // @vitest-environment jsdom
 
 import { fireEvent } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { act } from "react";
 import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
+
+class ResizeObserverStub implements ResizeObserver {
+  observe: ResizeObserver["observe"] = vi.fn();
+  unobserve: ResizeObserver["unobserve"] = vi.fn();
+  disconnect: ResizeObserver["disconnect"] = vi.fn();
+}
+
+vi.stubGlobal("ResizeObserver", ResizeObserverStub);
+
+afterEach(() => vi.useRealTimers());
 
 const app = await loadPluginApp(() => import("./app"));
 
