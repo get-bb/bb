@@ -186,23 +186,26 @@ async function listInstalledPluginProviderInfos(
         providerId: registration.info.id,
       });
       const cached = deps.providerRegistry.lookupInstalled(cacheKey);
-      if (cached !== undefined) {
-        return (await cached) ? registration.info : null;
-      }
       try {
-        const installed = (async () => {
-          const result = await callHostRetryableOnlineRpc(deps, {
-            hostId,
-            timeoutMs: budget.remainingMs(),
-            command: {
-              type: "provider.health",
-              providerId: registration.info.id,
-              bridgeLaunch,
-            },
-          });
-          return result.supported && result.health.status !== "not_installed";
-        })();
-        deps.providerRegistry.rememberInstalled(cacheKey, installed);
+        const installed =
+          cached ??
+          (async () => {
+            const result = await callHostRetryableOnlineRpc(deps, {
+              hostId,
+              timeoutMs: budget.remainingMs(),
+              command: {
+                type: "provider.health",
+                providerId: registration.info.id,
+                bridgeLaunch,
+              },
+            });
+            return (
+              result.supported && result.health.status !== "not_installed"
+            );
+          })();
+        if (cached === undefined) {
+          deps.providerRegistry.rememberInstalled(cacheKey, installed);
+        }
         return (await installed) ? registration.info : null;
       } catch (error) {
         deps.providerRegistry.forgetInstalled(registration.info.id);

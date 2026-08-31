@@ -247,9 +247,14 @@ export function useSystemProviders(args: UseSystemProvidersArgs = {}) {
     staleTime: 60_000,
     placeholderData: () => {
       const remembered = readCachedProviderList(providersCacheKey);
-      return remembered !== null && remembered.length > 0
-        ? remembered
-        : undefined;
+      if (remembered === null) return undefined;
+      const eligible =
+        capability === null
+          ? remembered
+          : remembered.filter(
+              (provider) => provider.maintenance[capability],
+            );
+      return eligible.length > 0 ? eligible : undefined;
     },
   });
 }

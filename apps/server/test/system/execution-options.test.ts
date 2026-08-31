@@ -15,6 +15,7 @@ import { availableModelFixture } from "../helpers/available-models.js";
 import {
   registerHostRpcResponder,
   registerProviderHostRpcResponder,
+  type HostRpcHandlerResult,
 } from "../helpers/host-rpc.js";
 import {
   seedEnvironment,
@@ -710,6 +711,58 @@ describe("resolveSystemExecutionOptions", () => {
       );
     },
   );
+
+  it("applies the provider discovery fallback to every concurrent reader", async () => {
+    await withTestHarness({}, async (harness) => {
+      const warn = vi.fn();
+      harness.deps.logger = { ...harness.deps.logger, warn };
+      const { host, session } = seedHostSession(harness.deps, {
+        id: "host-execution-options-shared-provider-fallback",
+      });
+      let releaseHealthFailure = (): void => {};
+      const healthFailure = new Promise<HostRpcHandlerResult>((resolve) => {
+        releaseHealthFailure = () =>
+          resolve({
+            ok: false,
+            errorCode: "host_unavailable",
+            errorMessage: "Host is not connected",
+          });
+      });
+      const responder = registerHostRpcResponder(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+        handle: (request) => {
+          if (request.command.type !== "provider.health") {
+            throw new Error(`Unexpected RPC command ${request.command.type}`);
+          }
+          return healthFailure;
+        },
+      });
+
+      const first = listSystemProviderInfos(harness.deps, { hostId: host.id });
+      await vi.waitFor(() => {
+        expect(responder.requests.length).toBeGreaterThan(0);
+      });
+      const second = listSystemProviderInfos(harness.deps, {
+        hostId: host.id,
+      });
+      releaseHealthFailure();
+
+      const [firstProviders, secondProviders] = await Promise.all([
+        first,
+        second,
+      ]);
+      expect(secondProviders).toEqual(firstProviders);
+      const healthProviderIds = responder.requests.map((request) => {
+        if (request.command.type !== "provider.health") {
+          throw new Error(`Unexpected RPC command ${request.command.type}`);
+        }
+        return request.command.providerId;
+      });
+      expect(new Set(healthProviderIds).size).toBe(healthProviderIds.length);
+      expect(warn).toHaveBeenCalled();
+    });
+  });
 
   it("keeps configured providers and custom models when no host can be resolved", async () => {
     await withTestHarness(
