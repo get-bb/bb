@@ -47,6 +47,10 @@ describe("getCompactPanelPresentation", () => {
     expect(getCompactPanelPresentation(undefined)).toBe("shelf");
   });
 
+  it("uses the rendered fallback tab while active state catches up", () => {
+    expect(getCompactPanelPresentation(undefined, "terminal")).toBe("full");
+  });
+
   it.each([
     "git-diff",
     "terminal",

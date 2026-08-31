@@ -974,7 +974,11 @@ export function PluginPanelRightPanelHost({
         mainPanelId={`plugin-panel-main-${panelHostId}`}
         main={children}
         composerHost={null}
-        compactPresentation={getCompactPanelPresentation(activeTab?.kind)}
+        compactPresentation={getCompactPanelPresentation(
+          activeTab?.kind,
+          fixedTabs[0]?.tab.kind ??
+            panelTabs.find((tab) => tab.isHidden !== true)?.tab.kind,
+        )}
         renderPanel={renderPanel}
       />
     </div>

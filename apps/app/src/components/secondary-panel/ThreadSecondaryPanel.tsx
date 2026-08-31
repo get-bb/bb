@@ -247,11 +247,15 @@ export function ThreadSecondaryPanel({
   const newTabShortcut = useAppCommandShortcut("panel.newTab");
   const togglePanelShortcut = useAppCommandShortcut("panel.toggle");
   const diffShortcut = useAppCommandShortcut("diff.toggle");
-  const activeRenderableTab = tabs.find((tab) => tab.tab.id === activeTab?.id);
   const visibleTabs = useMemo(
     () => tabs.filter((tab) => tab.isHidden !== true),
     [tabs],
   );
+  const activeRenderableTab =
+    tabs.find((tab) => tab.tab.id === activeTab?.id) ??
+    (activeTab === null && fixedTabs.length === 0
+      ? visibleTabs[0]
+      : undefined);
   const hasActiveRenderableTab = activeRenderableTab !== undefined;
   const hidePanelIconName = RIGHT_PANEL_TOGGLE_ICON_NAME;
   const conversationCollapseControl =

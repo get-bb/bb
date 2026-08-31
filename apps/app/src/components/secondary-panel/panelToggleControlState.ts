@@ -52,8 +52,10 @@ export const RIGHT_PANEL_TOGGLE_ICON_NAME = "PanelRight";
 
 export function getCompactPanelPresentation(
   activeTabKind: string | undefined,
+  fallbackTabKind?: string,
 ): "shelf" | "full" {
-  return activeTabKind === undefined || activeTabKind === "thread-info"
+  const resolvedTabKind = activeTabKind ?? fallbackTabKind;
+  return resolvedTabKind === undefined || resolvedTabKind === "thread-info"
     ? "shelf"
     : "full";
 }
