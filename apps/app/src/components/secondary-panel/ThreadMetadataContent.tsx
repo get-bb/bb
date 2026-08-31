@@ -30,8 +30,6 @@ import { formatWorkspaceCheckoutDisplay } from "@/lib/workspace-checkout-display
 import { Button } from "@bb/shared-ui/button";
 import {
   COARSE_POINTER_COMPACT_ICON_BUTTON_CLASS,
-  COARSE_POINTER_COMPACT_ICON_SIZE_SHRINK_CLASS,
-  COARSE_POINTER_ICON_SIZE_CLASS,
   COARSE_POINTER_TEXT_SM_CLASS,
 } from "@bb/shared-ui/coarse-pointer-sizing";
 import { CopyableInlineLabel } from "@/components/ui/copy-button.js";
@@ -43,13 +41,6 @@ import {
 } from "@/components/ui/detail-card.js";
 import { CHROME_SECTION_LABEL_CLASS } from "@bb/shared-ui/chrome-style-tokens";
 import { useCreateThreadInWorktree } from "@/hooks/useCreateThreadInWorktree";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuTrigger,
-} from "@bb/shared-ui/dropdown-menu";
 import { Icon } from "@bb/shared-ui/icon";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@bb/shared-ui/tooltip";
 import {
@@ -82,6 +73,7 @@ import {
 } from "@/components/pull-request/PullRequestStatusPill";
 import { GithubFaviconIcon } from "@/components/pull-request/GithubFaviconIcon";
 import { useUrlAnchorClickHandler } from "@/lib/url-open-routing";
+import { ParentThreadPicker } from "@/components/pickers/ParentThreadPicker";
 
 interface ParentSelectorRowProps {
   thread: Thread;
@@ -175,71 +167,19 @@ export function ParentSelectorRow({
           </Button>
         </div>
       ) : (
-        <DropdownMenu
-          defaultOpen={defaultOpen}
+        <ParentThreadPicker
+          value={parentSelectorValue}
+          options={parentSelectorOptions}
+          isLoading={isLoadingParentThreads}
+          isError={isParentThreadsError}
+          disabled={updateThreadPending}
+          onChange={(value) => {
+            onAssignParent(value === "none" ? null : value);
+          }}
           onOpenChange={onParentSelectorOpenChange}
-        >
-          <DropdownMenuTrigger asChild>
-            <div
-              role="button"
-              tabIndex={updateThreadPending ? -1 : 0}
-              className={cn(
-                "-mx-1 inline-flex h-5 w-fit max-w-full min-w-0 items-center gap-1 rounded-sm px-1 leading-tight text-foreground outline-none ring-sidebar-ring transition-colors hover:bg-state-hover data-[state=open]:bg-state-hover focus-visible:ring-2",
-                COARSE_POINTER_TEXT_SM_CLASS,
-              )}
-            >
-              <span
-                className={cn(
-                  "min-w-0 truncate text-foreground",
-                  COARSE_POINTER_TEXT_SM_CLASS,
-                )}
-              >
-                {selectedParentOptionLabel ?? "None"}
-              </span>
-              <Icon
-                name="ChevronDown"
-                className={cn(
-                  COARSE_POINTER_COMPACT_ICON_SIZE_SHRINK_CLASS,
-                  "text-muted-foreground",
-                )}
-              />
-            </div>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="start" className="min-w-40 max-w-72">
-            <DropdownMenuLabel>Assign parent thread</DropdownMenuLabel>
-            {isLoadingParentThreads ? (
-              <DropdownMenuItem disabled>Loading threads…</DropdownMenuItem>
-            ) : isParentThreadsError ? (
-              <DropdownMenuItem onSelect={onRetryParentThreads}>
-                Retry loading threads
-              </DropdownMenuItem>
-            ) : (
-              parentSelectorOptions.map((option) => (
-                <DropdownMenuItem
-                  key={option.value}
-                  onSelect={() => {
-                    onAssignParent(
-                      option.value === "none" ? null : option.value,
-                    );
-                  }}
-                  className="flex items-center justify-between gap-3"
-                >
-                  <span className="truncate" title={option.label}>
-                    {option.label}
-                  </span>
-                  <Icon
-                    name="Check"
-                    className={
-                      parentSelectorValue === option.value
-                        ? cn("opacity-100", COARSE_POINTER_ICON_SIZE_CLASS)
-                        : cn("opacity-0", COARSE_POINTER_ICON_SIZE_CLASS)
-                    }
-                  />
-                </DropdownMenuItem>
-              ))
-            )}
-          </DropdownMenuContent>
-        </DropdownMenu>
+          onRetry={onRetryParentThreads}
+          defaultOpen={defaultOpen}
+        />
       )}
     </DetailRow>
   );
