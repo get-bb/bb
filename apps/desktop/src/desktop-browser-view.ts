@@ -1,4 +1,13 @@
-import { Menu, WebContentsView, session, type Session } from "electron";
+import {
+  BrowserWindow,
+  Menu,
+  WebContentsView,
+  session,
+  type BrowserWindowConstructorOptions,
+  type Session,
+  type WebContents,
+  type WebPreferences,
+} from "electron";
 import {
   BB_DESKTOP_BROWSER_MAX_TITLE_LENGTH,
   BB_DESKTOP_BROWSER_MAX_URL_LENGTH,
@@ -242,6 +251,7 @@ export function createDesktopBrowserViewManager(
   const partition = args.partition ?? BB_BROWSER_PARTITION;
   const entries = new Map<string, BrowserViewEntry>();
   const entriesByWebContentsId = new Map<number, BrowserViewEntry>();
+  const popupWindows = new Set<BrowserWindow>();
   const resizingHostIds = new Set<number>();
   let hardenedSession: Session | null = null;
 
@@ -374,6 +384,59 @@ export function createDesktopBrowserViewManager(
     );
   }
 
+  function hardenedPopupWebPreferences(
+    webPreferences: WebPreferences | undefined,
+  ): WebPreferences {
+    const inheritedPreferences = { ...webPreferences };
+    delete inheritedPreferences.preload;
+    return {
+      ...inheritedPreferences,
+      allowRunningInsecureContent: false,
+      contextIsolation: true,
+      nodeIntegration: false,
+      nodeIntegrationInSubFrames: false,
+      nodeIntegrationInWorker: false,
+      partition,
+      sandbox: true,
+      webSecurity: true,
+      webviewTag: false,
+    };
+  }
+
+  function createHardenedPopupWindow(
+    options: BrowserWindowConstructorOptions,
+  ): WebContents {
+    options.show = true;
+    options.webPreferences = hardenedPopupWebPreferences(
+      options.webPreferences,
+    );
+    const popupWindow = new BrowserWindow(options);
+    popupWindows.add(popupWindow);
+    popupWindow.once("closed", () => {
+      popupWindows.delete(popupWindow);
+    });
+    const popupContents = popupWindow.webContents;
+    const isAllowedPopupNavigationUrl = (url: string): boolean =>
+      url === "about:blank" || isAllowedBrowserUrl(url);
+    popupContents.on("will-frame-navigate", (event) => {
+      if (event.isMainFrame && !isAllowedPopupNavigationUrl(event.url)) {
+        event.preventDefault();
+      }
+    });
+    popupContents.on("will-navigate", (event, url) => {
+      if (!isAllowedPopupNavigationUrl(url)) {
+        event.preventDefault();
+      }
+    });
+    popupContents.on("will-redirect", (event, url, _isInPlace, isMainFrame) => {
+      if (isMainFrame && !isAllowedPopupNavigationUrl(url)) {
+        event.preventDefault();
+      }
+    });
+    popupContents.setWindowOpenHandler(() => ({ action: "deny" }));
+    return popupContents;
+  }
+
   function wireWebContents(
     hostWindow: DesktopBrowserHostWindow,
     tabId: string,
@@ -436,24 +499,39 @@ export function createDesktopBrowserViewManager(
 
     webContents.setWindowOpenHandler((details) => {
       const { openTabUrl } = resolveWindowOpenAction(details.url);
-      if (openTabUrl !== null) {
-        const decision = evaluatePopupRate({
-          timestamps: entry.popupTimestamps,
-          now: Date.now(),
-          windowMs: POPUP_RATE_WINDOW_MS,
-          maxInWindow: POPUP_RATE_MAX_IN_WINDOW,
-        });
-        entry.popupTimestamps = decision.timestamps;
-        if (decision.allowed) {
-          send(hostWindow, BB_DESKTOP_BROWSER_OPEN_TAB_CHANNEL, {
-            url: openTabUrl,
-          });
-          send(hostWindow, BB_DESKTOP_BROWSER_SCOPED_OPEN_TAB_CHANNEL, {
-            tabId,
-            url: openTabUrl,
-          });
-        }
+      if (openTabUrl === null) {
+        return { action: "deny" };
       }
+      const decision = evaluatePopupRate({
+        timestamps: entry.popupTimestamps,
+        now: Date.now(),
+        windowMs: POPUP_RATE_WINDOW_MS,
+        maxInWindow: POPUP_RATE_MAX_IN_WINDOW,
+      });
+      entry.popupTimestamps = decision.timestamps;
+      if (!decision.allowed) {
+        return { action: "deny" };
+      }
+      const opensNamedPopup =
+        details.features.length > 0 ||
+        (details.frameName.length > 0 && details.frameName !== "_blank");
+      if (opensNamedPopup) {
+        return {
+          action: "allow",
+          createWindow: createHardenedPopupWindow,
+          overrideBrowserWindowOptions: {
+            show: true,
+            webPreferences: hardenedPopupWebPreferences(undefined),
+          },
+        };
+      }
+      send(hostWindow, BB_DESKTOP_BROWSER_OPEN_TAB_CHANNEL, {
+        url: openTabUrl,
+      });
+      send(hostWindow, BB_DESKTOP_BROWSER_SCOPED_OPEN_TAB_CHANNEL, {
+        tabId,
+        url: openTabUrl,
+      });
       return { action: "deny" };
     });
 
@@ -834,6 +912,12 @@ export function createDesktopBrowserViewManager(
     },
     destroyAll() {
       resizingHostIds.clear();
+      for (const popupWindow of [...popupWindows]) {
+        if (!popupWindow.isDestroyed()) {
+          popupWindow.close();
+        }
+      }
+      popupWindows.clear();
       for (const [key, entry] of [...entries.entries()]) {
         entries.delete(key);
         entriesByWebContentsId.delete(entry.view.webContents.id);

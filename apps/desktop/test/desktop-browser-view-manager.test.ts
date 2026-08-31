@@ -173,11 +173,38 @@ type FakePermissionCheckHandler = (
 ) => boolean;
 
 interface FakeWindowOpenDetails {
+  features: string;
+  frameName: string;
   url: string;
 }
 
+interface FakeBrowserWindowOptions {
+  show?: boolean;
+  webPreferences?: {
+    allowRunningInsecureContent?: boolean;
+    contextIsolation?: boolean;
+    nodeIntegration?: boolean;
+    nodeIntegrationInSubFrames?: boolean;
+    nodeIntegrationInWorker?: boolean;
+    partition?: string;
+    preload?: string;
+    sandbox?: boolean;
+    webSecurity?: boolean;
+    webviewTag?: boolean;
+  };
+}
+
+interface FakePopupWebContents {
+  emitWindowOpen(
+    url: string,
+    details?: Partial<Omit<FakeWindowOpenDetails, "url">>,
+  ): FakeWindowOpenDecision;
+}
+
 interface FakeWindowOpenDecision {
-  action: "deny";
+  action: "allow" | "deny";
+  createWindow?: (options: FakeBrowserWindowOptions) => FakePopupWebContents;
+  overrideBrowserWindowOptions?: FakeBrowserWindowOptions;
 }
 
 type FakeWindowOpenHandler = (
@@ -471,11 +498,19 @@ const electronMock = vi.hoisted(() => {
       return event.defaultPrevented;
     }
 
-    emitWindowOpen(url: string): FakeWindowOpenDecision {
+    emitWindowOpen(
+      url: string,
+      details: Partial<Omit<FakeWindowOpenDetails, "url">> = {},
+    ): FakeWindowOpenDecision {
       if (this.windowOpenHandler === null) {
         throw new Error("Expected a window open handler to be registered.");
       }
-      return this.windowOpenHandler({ url });
+      return this.windowOpenHandler({
+        features: "",
+        frameName: "",
+        ...details,
+        url,
+      });
     }
   }
 
@@ -500,6 +535,19 @@ const electronMock = vi.hoisted(() => {
     }
   }
 
+  class FakeBrowserWindow {
+    public readonly options: FakeBrowserWindowOptions;
+    public readonly webContents: FakeWebContents;
+
+    constructor(options: FakeBrowserWindowOptions) {
+      this.options = options;
+      this.webContents = new FakeWebContents(nextWebContentsId);
+      nextWebContentsId += 1;
+    }
+
+    once(_eventName: "closed", _listener: () => void): void {}
+  }
+
   class FakeSession {
     public readonly willDownloadListeners: FakeSessionListener[] = [];
     public permissionCheckHandler: FakePermissionCheckHandler | null = null;
@@ -519,11 +567,19 @@ const electronMock = vi.hoisted(() => {
 
   const fakeSessions: FakeSession[] = [];
   const fakeViews: FakeWebContentsView[] = [];
+  const fakeWindows: FakeBrowserWindow[] = [];
 
   return {
     fakeCapturedImage,
     fakeSessions,
     fakeViews,
+    fakeWindows,
+    FakeBrowserWindow: class extends FakeBrowserWindow {
+      constructor(options: FakeBrowserWindowOptions) {
+        super(options);
+        fakeWindows.push(this);
+      }
+    },
     FakeWebContentsView: class extends FakeWebContentsView {
       constructor() {
         super();
@@ -541,6 +597,7 @@ const electronMock = vi.hoisted(() => {
 });
 
 vi.mock("electron", () => ({
+  BrowserWindow: electronMock.FakeBrowserWindow,
   WebContentsView: electronMock.FakeWebContentsView,
   session: electronMock.session,
 }));
@@ -607,6 +664,7 @@ beforeEach(() => {
   vi.useRealTimers();
   electronMock.fakeSessions.length = 0;
   electronMock.fakeViews.length = 0;
+  electronMock.fakeWindows.length = 0;
 });
 
 async function settlePendingCaptures(
@@ -934,7 +992,11 @@ describe("DesktopBrowserViewManager", () => {
     });
     const view = requireFakeView(0);
 
-    expect(view.webContents.emitWindowOpen("http://localhost:38886/")).toEqual({
+    expect(
+      view.webContents.emitWindowOpen("http://localhost:38886/", {
+        frameName: "_blank",
+      }),
+    ).toEqual({
       action: "deny",
     });
     expect(openTabPushesOf(hostWindow)).toEqual(["http://localhost:38886/"]);
@@ -960,11 +1022,13 @@ describe("DesktopBrowserViewManager", () => {
     });
     const view = requireFakeView(0);
 
-    expect(view.webContents.emitWindowOpen("https://example.com/docs")).toEqual(
-      {
-        action: "deny",
-      },
-    );
+    expect(
+      view.webContents.emitWindowOpen("https://example.com/docs", {
+        frameName: "_blank",
+      }),
+    ).toEqual({
+      action: "deny",
+    });
     expect(openTabPushesOf(hostWindow)).toEqual(["https://example.com/docs"]);
     expect(scopedOpenTabPushesOf(hostWindow)).toEqual([
       {
@@ -972,6 +1036,88 @@ describe("DesktopBrowserViewManager", () => {
         url: "https://example.com/docs",
       },
     ]);
+  });
+
+  it("opens named popup flows in a hardened native window", () => {
+    const manager = createDesktopBrowserViewManager({
+      partition: "persist:test",
+    });
+    const hostWindow = new FakeHostWindow({
+      contentBounds: { width: 700, height: 450 },
+      webContentsId: 62,
+    });
+
+    attachBrowserTab({
+      manager,
+      hostWindow,
+      tabId: "browser:a",
+      url: "https://www.notion.so/",
+    });
+    const view = requireFakeView(0);
+    const decision = view.webContents.emitWindowOpen(
+      "https://accounts.google.com/o/oauth2/auth",
+      {
+        features: "width=520,height=700",
+        frameName: "oauth",
+      },
+    );
+
+    expect(decision.action).toBe("allow");
+    expect(openTabPushesOf(hostWindow)).toEqual([]);
+    expect(scopedOpenTabPushesOf(hostWindow)).toEqual([]);
+    expect(decision.overrideBrowserWindowOptions).toEqual({
+      show: true,
+      webPreferences: {
+        allowRunningInsecureContent: false,
+        contextIsolation: true,
+        nodeIntegration: false,
+        nodeIntegrationInSubFrames: false,
+        nodeIntegrationInWorker: false,
+        partition: "persist:test",
+        sandbox: true,
+        webSecurity: true,
+        webviewTag: false,
+      },
+    });
+    if (decision.createWindow === undefined) {
+      throw new Error("Expected the popup decision to create a window.");
+    }
+
+    const options: FakeBrowserWindowOptions = {
+      show: false,
+      webPreferences: {
+        allowRunningInsecureContent: true,
+        contextIsolation: false,
+        nodeIntegration: true,
+        partition: "persist:untrusted",
+        preload: "/tmp/untrusted-preload.cjs",
+        sandbox: false,
+        webSecurity: false,
+      },
+    };
+    const popupContents = decision.createWindow(options);
+    const popupWindow = electronMock.fakeWindows[0];
+    expect(popupWindow).toBeDefined();
+    if (popupWindow === undefined) {
+      throw new Error("Expected a popup window to be created.");
+    }
+
+    expect(popupWindow.options).toBe(options);
+    expect(options.show).toBe(true);
+    expect(options.webPreferences).toEqual({
+      allowRunningInsecureContent: false,
+      contextIsolation: true,
+      nodeIntegration: false,
+      nodeIntegrationInSubFrames: false,
+      nodeIntegrationInWorker: false,
+      partition: "persist:test",
+      sandbox: true,
+      webSecurity: true,
+      webviewTag: false,
+    });
+    expect(popupContents.emitWindowOpen("https://example.com/nested")).toEqual({
+      action: "deny",
+    });
   });
 
   it("snapshots then hides visible views on resize, revealing them clamped to the shrunken window", async () => {
