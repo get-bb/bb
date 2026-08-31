@@ -1,5 +1,10 @@
-import type { ExperimentalFileLocation } from "@get-bb/plugin-sdk";
+import type {
+  ExperimentalFileIdentity,
+  ExperimentalFileLocation,
+  ExperimentalLiveFileTarget,
+} from "@get-bb/plugin-sdk";
 export {
+  normalizeExperimentalFileIdentity,
   normalizeExperimentalFileOpenOptions,
   normalizeExperimentalLiveFileTarget,
 } from "@get-bb/plugin-sdk/internal/file-navigation-validation";
@@ -24,4 +29,32 @@ export function toFilePreviewLineRange(
       location.kind === "line" ? location.line : location.startLine,
     endLineNumber: location.kind === "line" ? location.line : location.endLine,
   };
+}
+
+export function liveFileTargetFromIdentity(
+  identity: ExperimentalFileIdentity,
+): ExperimentalLiveFileTarget | null {
+  const { source } = identity;
+  switch (source.store) {
+    case "workspace":
+      return {
+        kind: "workspace",
+        environmentId: source.ownerId,
+        path: source.path,
+      };
+    case "host":
+      return { kind: "host", hostId: source.ownerId, path: source.path };
+    case "thread-host":
+      return null;
+    case "thread-storage":
+      return {
+        kind: "thread-storage",
+        threadId: source.ownerId,
+        path: source.path,
+      };
+    case "project-attachment":
+    case "tasks-attachment":
+    case "remote":
+      return null;
+  }
 }

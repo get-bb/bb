@@ -488,12 +488,17 @@ function FileIntentButtons() {
         type="button"
         onClick={() =>
           navigation.openFilePreview({
-            target: {
-              kind: "workspace",
-              environmentId: "env-explicit",
-              path: "src/example.ts",
+            identity: {
+              source: {
+                store: "workspace",
+                ownerId: "env-explicit",
+                path: "src/example.ts",
+              },
+              displayName: "example.ts",
+              mimeType: null,
+              sizeBytes: null,
+              location: { kind: "line", line: 7, column: null },
             },
-            location: { kind: "line", line: 7, column: null },
           })
         }
       >
@@ -503,12 +508,17 @@ function FileIntentButtons() {
         type="button"
         onClick={() =>
           navigation.openFilePreview({
-            target: {
-              kind: "host",
-              hostId: "host-explicit",
-              path: "/tmp/example.log",
+            identity: {
+              source: {
+                store: "host",
+                ownerId: "host-explicit",
+                path: "/tmp/example.log",
+              },
+              displayName: "example.log",
+              mimeType: null,
+              sizeBytes: null,
+              location: null,
             },
-            location: null,
           })
         }
       >
@@ -518,12 +528,17 @@ function FileIntentButtons() {
         type="button"
         onClick={() =>
           navigation.openFilePreview({
-            target: {
-              kind: "thread-storage",
-              threadId: "thr-explicit",
-              path: "reports/result.md",
+            identity: {
+              source: {
+                store: "thread-storage",
+                ownerId: "thr-explicit",
+                path: "reports/result.md",
+              },
+              displayName: "result.md",
+              mimeType: null,
+              sizeBytes: null,
+              location: { kind: "range", startLine: 2, endLine: 4 },
             },
-            location: { kind: "range", startLine: 2, endLine: 4 },
           })
         }
       >

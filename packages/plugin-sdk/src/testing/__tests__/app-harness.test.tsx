@@ -257,12 +257,17 @@ function UrlNavigationProbe() {
 }
 
 const fileIntent = {
-  target: {
-    kind: "workspace" as const,
-    environmentId: "env_42",
-    path: "src/example.ts",
+  identity: {
+    source: {
+      store: "workspace" as const,
+      ownerId: "env_42",
+      path: "src/example.ts",
+    },
+    displayName: "example.ts",
+    mimeType: null,
+    sizeBytes: null,
+    location: { kind: "line" as const, line: 12, column: 4 },
   },
-  location: { kind: "line" as const, line: 12, column: 4 },
 };
 
 function FileNavigationProbe() {
@@ -1316,12 +1321,17 @@ describe("renderSlot", () => {
       {
         method: "experimental_openFilePreview",
         options: {
-          target: {
-            kind: "workspace",
-            environmentId: "env_42",
-            path: "vscode:foo",
+          identity: {
+            source: {
+              store: "workspace",
+              ownerId: "env_42",
+              path: "vscode:foo",
+            },
+            displayName: "vscode:foo",
+            mimeType: null,
+            sizeBytes: null,
+            location: null,
           },
-          location: null,
         },
       },
     ]);

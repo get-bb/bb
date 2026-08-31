@@ -38,6 +38,7 @@ function shouldHandleFileClick(
 }
 
 export function ExperimentalFileLink({
+  identity,
   target,
   location = null,
   onClick,
@@ -46,8 +47,11 @@ export function ExperimentalFileLink({
   const navigation = useAppNavigationHost();
   const [isMenuOpen, setMenuOpen] = useState(false);
   const intent = useMemo(
-    () => normalizeExperimentalFileOpenOptions({ target, location }),
-    [location, target],
+    () =>
+      normalizeExperimentalFileOpenOptions(
+        identity === undefined ? { target, location } : { identity },
+      ),
+    [identity, location, target],
   );
   const handleClick = useCallback(
     (event: ReactMouseEvent<HTMLAnchorElement>) => {
@@ -60,8 +64,20 @@ export function ExperimentalFileLink({
     },
     [intent, navigation, onClick],
   );
+  const resource =
+    intent === null
+      ? null
+      : intent.identity.source.store === "tasks-attachment"
+        ? intent.identity.source.attachmentId
+        : intent.identity.source.store === "remote"
+          ? intent.identity.source.url
+          : intent.identity.source.path;
   const href =
-    intent === null ? undefined : `./${encodeURIComponent(intent.target.path)}`;
+    resource === null
+      ? undefined
+      : intent?.identity.source.store === "remote"
+        ? resource
+        : `./${encodeURIComponent(resource)}`;
   const anchor = (
     <RouteAnchor {...anchorProps} href={href} onClick={handleClick} />
   );

@@ -59,6 +59,7 @@ type FilePreviewState =
   | { kind: "empty" }
   | { kind: "not-found" }
   | { kind: "error"; message?: string }
+  | { kind: "audio"; url: string }
   | { kind: "image"; url: string }
   | { kind: "video"; url: string }
   | ({ kind: "iframe" } & IframeFilePreviewTarget)
@@ -80,6 +81,7 @@ interface FilePreviewProps {
   state: FilePreviewState;
   path: string;
   copyPath?: string | null;
+  downloadUrl?: string | null;
   headerMode?: FilePreviewHeaderMode;
   onSelectionAddToChat?: (text: string) => void;
   onOpenInEditor?: (path: string) => void;
@@ -110,6 +112,7 @@ interface FilePreviewHeaderProps {
   copyPath: string | null;
   rawContents: string | null;
   externalUrl: string | null;
+  downloadUrl: string | null;
   onOpenInEditor?: (path: string) => void;
   onRefresh?: () => void;
   isRefreshing: boolean;
@@ -151,6 +154,11 @@ interface FilePreviewImageProps {
 }
 
 interface FilePreviewVideoProps {
+  url: string;
+  title: string;
+}
+
+interface FilePreviewAudioProps {
   url: string;
   title: string;
 }
@@ -214,6 +222,19 @@ function getFilePreviewExternalUrl(state: FilePreviewState): string | null {
     return state.iframe.url;
   }
   return null;
+}
+
+function getFilePreviewDownloadName(path: string): string {
+  return path.replaceAll("\\", "/").split("/").at(-1) ?? path;
+}
+
+function isSessionBoundPreviewUrl(url: string): boolean {
+  if (typeof window === "undefined") return true;
+  try {
+    return new URL(url, window.location.href).origin === window.location.origin;
+  } catch {
+    return true;
+  }
 }
 
 function toAbsolutePreviewUrl(url: string): string {
@@ -423,6 +444,7 @@ export function FilePreview({
   state,
   path,
   copyPath = null,
+  downloadUrl = null,
   headerMode = "file",
   onSelectionAddToChat,
   onOpenInEditor,
@@ -434,7 +456,12 @@ export function FilePreview({
   const toggleKind = getFilePreviewToggleKind(state);
   const filePreviewLineRange = getFilePreviewLineRange(state);
   const rawContents = getRawFilePreviewContents(state);
-  const externalUrl = getFilePreviewExternalUrl(state);
+  const candidateExternalUrl = getFilePreviewExternalUrl(state);
+  const externalUrl =
+    candidateExternalUrl === null ||
+    isSessionBoundPreviewUrl(candidateExternalUrl)
+      ? null
+      : candidateExternalUrl;
   const [viewMode, setViewMode] = useState<FilePreviewViewMode>(
     getInitialFilePreviewViewMode({
       lineRange: filePreviewLineRange,
@@ -489,6 +516,7 @@ export function FilePreview({
           copyPath={copyPath}
           rawContents={rawContents}
           externalUrl={externalUrl}
+          downloadUrl={downloadUrl}
           onOpenInEditor={onOpenInEditor}
           onRefresh={onRefresh}
           isRefreshing={isRefreshing}
@@ -534,12 +562,15 @@ function FilePreviewBody({
     return (
       <FilePreviewMessage
         message={state.message ?? "Failed to load file"}
-        role={state.message === undefined ? "alert" : undefined}
+        role="alert"
       />
     );
   }
   if (state.kind === "image") {
     return <FilePreviewImage url={state.url} alt={path} />;
+  }
+  if (state.kind === "audio") {
+    return <FilePreviewAudio url={state.url} title={path} />;
   }
   if (state.kind === "video") {
     return <FilePreviewVideo url={state.url} title={path} />;
@@ -597,6 +628,7 @@ function FilePreviewHeader({
   copyPath,
   rawContents,
   externalUrl,
+  downloadUrl,
   onOpenInEditor,
   onRefresh,
   isRefreshing,
@@ -673,6 +705,30 @@ function FilePreviewHeader({
                 <TooltipContent side="bottom">
                   {copyFileContentsLabel}
                 </TooltipContent>
+              </Tooltip>
+            )}
+            {downloadUrl === null ? null : (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    asChild
+                    variant="ghost"
+                    size="icon"
+                    className={cn(
+                      FILE_PREVIEW_HEADER_ICON_BUTTON_CLASS,
+                      "shrink-0 text-muted-foreground hover:bg-state-hover hover:text-foreground",
+                    )}
+                  >
+                    <a
+                      href={downloadUrl}
+                      download={getFilePreviewDownloadName(path)}
+                      aria-label="Download file"
+                    >
+                      <Icon name="Download" aria-hidden />
+                    </a>
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">Download file</TooltipContent>
               </Tooltip>
             )}
             {externalUrl === null ? null : (
@@ -1057,6 +1113,14 @@ function FilePreviewVideo({ url, title }: FilePreviewVideoProps) {
         controls
         preload="metadata"
       />
+    </div>
+  );
+}
+
+function FilePreviewAudio({ url, title }: FilePreviewAudioProps) {
+  return (
+    <div className="flex min-h-52 items-center justify-center p-4">
+      <audio controls preload="metadata" src={url} aria-label={title} />
     </div>
   );
 }

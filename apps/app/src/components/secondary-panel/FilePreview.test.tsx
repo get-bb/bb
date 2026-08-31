@@ -16,6 +16,7 @@ import {
 } from "./FilePreview";
 import { SOURCE_CODE_MAX_LINES } from "@/components/code/source-code-budget";
 import { SecondaryPanelFilePreview } from "./ThreadStorageFilePreview";
+import { HttpError } from "@/lib/api";
 import {
   PierreWorkerPoolGateContext,
   type PierreWorkerPoolGate,
@@ -511,7 +512,7 @@ describe("FilePreview", () => {
     expect(screen.queryByRole("button", { name: "Load full file" })).toBeNull();
   });
 
-  it("opens a rendered HTML preview in the external browser", () => {
+  it("keeps a session-bound rendered HTML preview inside BB", () => {
     const openSpy = vi.spyOn(window, "open").mockReturnValue(null);
 
     render(
@@ -530,19 +531,14 @@ describe("FilePreview", () => {
       />,
     );
 
-    fireEvent.click(
-      screen.getByRole("button", { name: "Open in external browser" }),
-    );
-
-    expect(openSpy).toHaveBeenCalledWith(
-      `${window.location.origin}/api/v1/threads/thr_1/worktree/files/docs/progress-vis.html`,
-      "_blank",
-      "noopener,noreferrer",
-    );
+    expect(
+      screen.queryByRole("button", { name: "Open in external browser" }),
+    ).toBeNull();
+    expect(openSpy).not.toHaveBeenCalled();
     openSpy.mockRestore();
   });
 
-  it("hands the desktop shell an absolute preview url", () => {
+  it("does not hand a session-bound preview to the desktop shell", () => {
     const openExternalUrl = vi.fn();
     (window as unknown as { bbDesktop: unknown }).bbDesktop = {
       openExternalUrl,
@@ -561,13 +557,10 @@ describe("FilePreview", () => {
         />,
       );
 
-      fireEvent.click(
-        screen.getByRole("button", { name: "Open in external browser" }),
-      );
-
-      expect(openExternalUrl).toHaveBeenCalledWith(
-        `${window.location.origin}/api/v1/threads/thr_1/worktree/files/docs/progress-vis.html`,
-      );
+      expect(
+        screen.queryByRole("button", { name: "Open in external browser" }),
+      ).toBeNull();
+      expect(openExternalUrl).not.toHaveBeenCalled();
     } finally {
       delete (window as unknown as { bbDesktop?: unknown }).bbDesktop;
     }
@@ -589,6 +582,23 @@ describe("FilePreview", () => {
     expect(
       screen.queryByRole("button", { name: "Open in external browser" }),
     ).toBeNull();
+  });
+
+  it("offers Download for every byte-backed preview, including images", () => {
+    render(
+      <FilePreview
+        path="images/資料 100%.png"
+        downloadUrl="/api/v1/files/download?path=images%2F%E8%B3%87%E6%96%99%20100%25.png"
+        state={{
+          kind: "image",
+          url: "/api/v1/files/preview?path=images%2F%E8%B3%87%E6%96%99%20100%25.png",
+        }}
+      />,
+    );
+
+    const download = screen.getByRole("link", { name: "Download file" });
+    expect(download.getAttribute("download")).toBe("資料 100%.png");
+    expect(download.getAttribute("href")).toContain("/files/download?");
   });
 
   it("toggles source line wrap from the header button", async () => {
@@ -806,6 +816,34 @@ describe("FilePreview", () => {
     ).not.toBeNull();
     expect(screen.getByRole("cell", { name: "Ada" })).not.toBeNull();
     expect(screen.getByRole("cell", { name: "10" })).not.toBeNull();
+  });
+
+  it.each([
+    [401, "You do not have access to this file."],
+    [409, "The file source is disconnected or unavailable."],
+    [413, "This file exceeds the preview size limit."],
+  ])("shows the canonical HTTP %s file error", (status, message) => {
+    render(
+      <SecondaryPanelFilePreview
+        activePath="report.bin"
+        error={new HttpError({ status, message: "request failed" })}
+        filePreview={undefined}
+        isLoading={false}
+      />,
+    );
+    expect(screen.getByRole("alert").textContent).toContain(message);
+  });
+
+  it("shows missing files with the canonical not-found state", () => {
+    render(
+      <SecondaryPanelFilePreview
+        activePath="missing.txt"
+        error={new HttpError({ status: 404, message: "missing" })}
+        filePreview={undefined}
+        isLoading={false}
+      />,
+    );
+    expect(screen.getByRole("alert").textContent).toContain("File not found.");
   });
 
   it("does not show the file preview actions menu for non-text previews", () => {

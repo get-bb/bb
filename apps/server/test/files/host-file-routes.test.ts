@@ -2,7 +2,12 @@ import type { HostDaemonOnlineRpcRequestMessage } from "@bb/host-daemon-contract
 import { describe, expect, it } from "vitest";
 import { registerHostRpcResponder } from "../helpers/host-rpc.js";
 import { readJson } from "../helpers/json.js";
-import { seedHostSession, seedPrimaryHost } from "../helpers/seed.js";
+import {
+  seedEnvironment,
+  seedHostSession,
+  seedPrimaryHost,
+  seedProjectWithSource,
+} from "../helpers/seed.js";
 import { withTestHarness } from "../helpers/test-app.js";
 
 const WRITTEN_RESULT = {
@@ -327,6 +332,95 @@ describe("host file routes", () => {
         }),
       );
       expect(missingResponse.status).toBe(404);
+    });
+  });
+
+  it("serves separate host preview and download responses", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, session } = seedHostSession(harness.deps);
+      registerHostRpcResponder(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+        handle: () => ({ ok: true, result: READ_RESULT }),
+      });
+      const query = new URLSearchParams({
+        hostId: host.id,
+        path: READ_RESULT.path,
+        rootPath: "/home/me/notes",
+      });
+
+      const preview = await harness.app.request(
+        `/api/v1/files/preview?${query}`,
+      );
+      const download = await harness.app.request(
+        `/api/v1/files/download?${query}`,
+      );
+
+      expect(preview.status).toBe(200);
+      expect(preview.headers.get("content-type")).toBe("text/markdown");
+      expect(preview.headers.get("content-disposition")).toContain(
+        `inline; filename="note.md";`,
+      );
+      expect(download.status).toBe(200);
+      expect(download.headers.get("content-disposition")).toContain(
+        `attachment; filename="note.md";`,
+      );
+      expect(download.headers.get("x-content-type-options")).toBe("nosniff");
+      await expect(download.text()).resolves.toBe("# Hi");
+    });
+  });
+
+  it("serves contained environment preview and download responses", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, session } = seedHostSession(harness.deps);
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+        path: "/workspace/project",
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+        path: "/workspace/project",
+      });
+      registerHostRpcResponder(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+        handle: (request) => {
+          expect(request.command).toMatchObject({
+            type: "host.read_file",
+            path: "/workspace/project/docs/資料 100%.md",
+            rootPath: "/workspace/project",
+          });
+          return {
+            ok: true,
+            result: {
+              ...READ_RESULT,
+              path: "/workspace/project/docs/資料 100%.md",
+            },
+          };
+        },
+      });
+      const query = new URLSearchParams({ path: "docs/資料 100%.md" });
+
+      const preview = await harness.app.request(
+        `/api/v1/environments/${environment.id}/files/preview?${query}`,
+      );
+      const download = await harness.app.request(
+        `/api/v1/environments/${environment.id}/files/download?${query}`,
+      );
+
+      expect(preview.status).toBe(200);
+      expect(preview.headers.get("content-disposition")).toContain("inline;");
+      const disposition = download.headers.get("content-disposition") ?? "";
+      expect(disposition).toContain("attachment;");
+      expect(
+        decodeURIComponent(disposition.split("filename*=UTF-8''")[1] ?? ""),
+      ).toBe("資料 100%.md");
+
+      const traversal = await harness.app.request(
+        `/api/v1/environments/${environment.id}/files/preview?path=${encodeURIComponent("../secret.txt")}`,
+      );
+      expect(traversal.status).toBe(400);
     });
   });
 

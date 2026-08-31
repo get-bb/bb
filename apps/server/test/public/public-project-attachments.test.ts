@@ -35,12 +35,14 @@ describe("public project attachments", () => {
           bytes: new TextEncoder().encode("alpha\nβeta\n"),
           filename: "notes.txt",
           mimeType: "text/plain;charset=utf-8",
+          responseMimeType: "text/plain",
           type: "localFile" as const,
         },
         {
           bytes: new Uint8Array([0, 255, 1, 128, 13, 10]),
           filename: "payload.bin",
           mimeType: "application/x-bb-binary",
+          responseMimeType: "application/octet-stream",
           type: "localFile" as const,
         },
       ];
@@ -63,6 +65,7 @@ describe("public project attachments", () => {
           mimeType: fixture.mimeType,
           sizeBytes: fixture.bytes.byteLength,
         });
+        expect(uploaded.path.endsWith(`/${fixture.filename}`)).toBe(true);
 
         const contentUrl = `/api/v1/projects/${project.id}/attachments/content?path=${encodeURIComponent(uploaded.path)}`;
         const content = await harness.app.request(contentUrl);
@@ -76,6 +79,7 @@ describe("public project attachments", () => {
         expect(content.headers.get("content-length")).toBe(
           String(fixture.bytes.byteLength),
         );
+        expect(content.headers.get("content-disposition")).toContain("inline;");
         const etag = content.headers.get("etag");
         expect(etag).toMatch(/^"[^"]+"$/u);
         const revalidated = await harness.app.request(contentUrl, {
@@ -84,6 +88,22 @@ describe("public project attachments", () => {
         expect(revalidated.status).toBe(304);
         expect(revalidated.headers.get("etag")).toBe(etag);
         expect((await revalidated.arrayBuffer()).byteLength).toBe(0);
+
+        const preview = await harness.app.request(
+          `/api/v1/projects/${project.id}/attachments/preview?path=${encodeURIComponent(uploaded.path)}`,
+        );
+        const download = await harness.app.request(
+          `/api/v1/projects/${project.id}/attachments/download?path=${encodeURIComponent(uploaded.path)}`,
+        );
+        expect(preview.status).toBe(200);
+        expect(preview.headers.get("content-disposition")).toContain("inline;");
+        expect(download.status).toBe(200);
+        expect(download.headers.get("content-disposition")).toContain(
+          `attachment; filename="${fixture.filename}";`,
+        );
+        expect(download.headers.get("content-type")).toBe(
+          fixture.responseMimeType,
+        );
       }
     });
   });
@@ -134,6 +154,36 @@ describe("public project attachments", () => {
         message:
           'Attachment upload accepts exactly one multipart field named "file"',
       });
+    });
+  });
+
+  it("preserves safe Unicode, spaces, percent, and hash characters in download names", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps, {
+        id: "host-project-attachment-name",
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const fileName = "資料 100%# final.md";
+      const uploadedResponse = await upload(
+        harness.app,
+        project.id,
+        new File(["# Notes"], fileName, { type: "text/markdown" }),
+      );
+      const uploaded = uploadedPromptAttachmentSchema.parse(
+        await readJson(uploadedResponse),
+      );
+      expect(uploaded.path.endsWith(`/${fileName}`)).toBe(true);
+
+      const download = await harness.app.request(
+        `/api/v1/projects/${project.id}/attachments/download?path=${encodeURIComponent(uploaded.path)}`,
+      );
+      const disposition = download.headers.get("content-disposition") ?? "";
+      const encodedName = disposition.split("filename*=UTF-8''")[1] ?? "";
+      expect(download.status).toBe(200);
+      expect(disposition).toContain("attachment;");
+      expect(decodeURIComponent(encodedName)).toBe(fileName);
     });
   });
 

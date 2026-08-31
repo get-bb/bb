@@ -5,6 +5,7 @@ import type { BrowserWindowConstructorOptions } from "electron";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   createDesktopWindowFactory,
+  isInternalDesktopWindowUrl,
   type DesktopBrowserWindow,
   type DesktopBrowserWindowCreator,
   type DesktopWindowOpenHandler,
@@ -213,6 +214,27 @@ class FakeDesktopWindow implements DesktopBrowserWindow {
 }
 
 describe("desktop window factory", () => {
+  it("recognizes authenticated app URLs by origin", () => {
+    expect(
+      isInternalDesktopWindowUrl(
+        "https://onyx.getbb.app/api/v1/projects/p/attachments/a/download",
+        "https://onyx.getbb.app/threads/thr_1",
+      ),
+    ).toBe(true);
+    expect(
+      isInternalDesktopWindowUrl(
+        "https://example.com/file",
+        "https://onyx.getbb.app/threads/thr_1",
+      ),
+    ).toBe(false);
+    expect(
+      isInternalDesktopWindowUrl(
+        "javascript:alert(1)",
+        "https://onyx.getbb.app/threads/thr_1",
+      ),
+    ).toBe(false);
+  });
+
   it("creates distinct windows against the existing runtime URL", async () => {
     const tempDir = await createTempDir();
     const createdWindows: FakeDesktopWindow[] = [];
@@ -425,6 +447,50 @@ describe("desktop window factory", () => {
     expect(createdWindows).toHaveLength(1);
     expect(openedExternalUrls).toEqual(["https://example.com/from-markdown"]);
     expect(result).toEqual({ action: "deny" });
+  });
+
+  it("keeps authenticated blank-target URLs in the existing window", async () => {
+    const tempDir = await createTempDir();
+    const createdWindows: FakeDesktopWindow[] = [];
+    const openedExternalUrls: string[] = [];
+    const factory = createDesktopWindowFactory({
+      browserWindowCreator: {
+        create(options) {
+          const browserWindow = new FakeDesktopWindow({ options });
+          createdWindows.push(browserWindow);
+          return browserWindow;
+        },
+      },
+      createWindowStateKey: () => "window-connect-test",
+      displayWorkAreas: [{ height: 900, width: 1440, x: 0, y: 0 }],
+      icon: undefined,
+      isMac: false,
+      isLinuxTransparent: false,
+      isLinuxFrameless: false,
+      isQuitting: () => false,
+      openExternalUrl: ({ url }) => openedExternalUrls.push(url),
+      preloadPath: "/tmp/preload.cjs",
+      userDataPath: tempDir.path,
+    });
+    await factory.createWindow({
+      initialUrl: "https://onyx.getbb.app/threads/thr_1",
+      stateKey: null,
+    });
+    const browserWindow = createdWindows[0];
+    if (!browserWindow) throw new Error("Expected desktop window");
+    const handler = browserWindow.webContents.windowOpenHandler;
+    if (!handler) throw new Error("Expected window open handler");
+    const internalUrl =
+      "https://onyx.getbb.app/api/v1/projects/p/attachments/a/download";
+
+    expect(handler({ url: internalUrl })).toEqual({ action: "deny" });
+    await Promise.resolve();
+
+    expect(openedExternalUrls).toEqual([]);
+    expect(browserWindow.loadedUrls).toEqual([
+      "https://onyx.getbb.app/threads/thr_1",
+      internalUrl,
+    ]);
   });
 
   it("loads and focuses an existing first window when navigating by URL", async () => {

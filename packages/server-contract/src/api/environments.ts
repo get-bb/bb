@@ -39,6 +39,13 @@ export const environmentPathsQuerySchema = z.object({
 });
 export type EnvironmentPathsQuery = z.infer<typeof environmentPathsQuerySchema>;
 
+export const environmentFileContentQuerySchema = z.object({
+  path: z.string().min(1),
+});
+export type EnvironmentFileContentQuery = z.infer<
+  typeof environmentFileContentQuerySchema
+>;
+
 export const environmentDiffBranchesQuerySchema = branchListQuerySchema.extend({
   selectedBranch: gitBranchNameSchema.optional(),
 });

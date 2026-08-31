@@ -1,4 +1,4 @@
-import { buildProjectAttachmentContentUrl } from "./file-content-urls";
+import { buildProjectAttachmentPreviewUrl } from "./file-content-urls";
 
 export function toUserAttachmentImageSrc(
   pathOrUrl: string,
@@ -7,10 +7,6 @@ export function toUserAttachmentImageSrc(
   if (/^(https?:|data:|blob:)/i.test(pathOrUrl)) {
     return pathOrUrl;
   }
-  if (projectId) {
-    return buildProjectAttachmentContentUrl(projectId, pathOrUrl);
-  }
-
   if (/^file:/i.test(pathOrUrl)) {
     return pathOrUrl;
   }
@@ -20,6 +16,9 @@ export function toUserAttachmentImageSrc(
   }
   if (normalized.startsWith("/")) {
     return `file://${encodeURI(normalized)}`;
+  }
+  if (projectId) {
+    return buildProjectAttachmentPreviewUrl(projectId, pathOrUrl);
   }
   return pathOrUrl;
 }

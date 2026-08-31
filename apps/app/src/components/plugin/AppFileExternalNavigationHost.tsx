@@ -7,7 +7,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import type { ExperimentalFileOpenOptions } from "@get-bb/plugin-sdk";
+import type { ExperimentalResolvedFileOpenOptions } from "@get-bb/plugin-sdk";
 import { AppNavigationHostProvider } from "@/lib/app-navigation-host";
 
 const MAX_PENDING_EXTERNAL_FILE_INTENTS = 32;
@@ -21,7 +21,7 @@ const LazyAppFileExternalNavigationDispatcher = lazy(() =>
 
 interface ExternalFileIntentRequest {
   id: number;
-  intent: ExperimentalFileOpenOptions;
+  intent: ExperimentalResolvedFileOpenOptions;
 }
 
 export function AppFileExternalNavigationHost({
@@ -37,7 +37,7 @@ export function AppFileExternalNavigationHost({
     setQueue(next);
   }, []);
   const openFileExternally = useCallback(
-    (intent: ExperimentalFileOpenOptions): boolean => {
+    (intent: ExperimentalResolvedFileOpenOptions): boolean => {
       if (queueRef.current.length >= MAX_PENDING_EXTERNAL_FILE_INTENTS) {
         return false;
       }

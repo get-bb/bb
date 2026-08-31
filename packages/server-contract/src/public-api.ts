@@ -69,6 +69,7 @@ import type {
   EnvironmentDiffFileQuery,
   EnvironmentDiffFileResponse,
   EnvironmentDiffFilesResponse,
+  EnvironmentFileContentQuery,
   EnvironmentDiffPatchRequest,
   EnvironmentDiffPatchResponse,
   EnvironmentDiffQuery,
@@ -234,6 +235,7 @@ import {
   environmentActionRequestSchema,
   environmentDiffBranchesQuerySchema,
   environmentDiffFileQuerySchema,
+  environmentFileContentQuerySchema,
   environmentDiffPatchRequestSchema,
   environmentDiffQuerySchema,
   environmentPathsQuerySchema,
@@ -422,6 +424,22 @@ export const publicApiRoutes = {
       ),
       response: binaryResponse<Uint8Array>(),
     }),
+    filePreview: defineRoute({
+      path: "/projects/:id/files/preview",
+      method: "get",
+      request: queryRequest<PathProjectId, ProjectFileContentQuery>(
+        projectFileContentQuerySchema,
+      ),
+      response: binaryResponse<Uint8Array>(),
+    }),
+    fileDownload: defineRoute({
+      path: "/projects/:id/files/download",
+      method: "get",
+      request: queryRequest<PathProjectId, ProjectFileContentQuery>(
+        projectFileContentQuerySchema,
+      ),
+      response: binaryResponse<Uint8Array>(),
+    }),
     paths: defineRoute({
       path: "/projects/:id/paths",
       method: "get",
@@ -508,6 +526,22 @@ export const publicApiRoutes = {
       ),
       response: binaryResponse<Uint8Array>(),
     }),
+    attachmentPreview: defineRoute({
+      path: "/projects/:id/attachments/preview",
+      method: "get",
+      request: queryRequest<PathProjectId, ProjectAttachmentContentQuery>(
+        projectAttachmentContentQuerySchema,
+      ),
+      response: binaryResponse<Uint8Array>(),
+    }),
+    attachmentDownload: defineRoute({
+      path: "/projects/:id/attachments/download",
+      method: "get",
+      request: queryRequest<PathProjectId, ProjectAttachmentContentQuery>(
+        projectAttachmentContentQuerySchema,
+      ),
+      response: binaryResponse<Uint8Array>(),
+    }),
   },
 
   files: {
@@ -518,6 +552,22 @@ export const publicApiRoutes = {
         hostFileReadRequestSchema,
       ),
       response: jsonResponse<HostFileReadResponse>(),
+    }),
+    preview: defineRoute({
+      path: "/files/preview",
+      method: "get",
+      request: queryRequest<EmptyInput, HostFileReadRequest>(
+        hostFileReadRequestSchema,
+      ),
+      response: binaryResponse<Uint8Array>(),
+    }),
+    download: defineRoute({
+      path: "/files/download",
+      method: "get",
+      request: queryRequest<EmptyInput, HostFileReadRequest>(
+        hostFileReadRequestSchema,
+      ),
+      response: binaryResponse<Uint8Array>(),
     }),
     write: defineRoute({
       path: "/files/write",
@@ -771,6 +821,22 @@ export const publicApiRoutes = {
         updateEnvironmentRequestSchema,
       ),
       response: jsonResponse<Environment>(),
+    }),
+    filePreview: defineRoute({
+      path: "/environments/:id/files/preview",
+      method: "get",
+      request: queryRequest<PathId, EnvironmentFileContentQuery>(
+        environmentFileContentQuerySchema,
+      ),
+      response: binaryResponse<Uint8Array>(),
+    }),
+    fileDownload: defineRoute({
+      path: "/environments/:id/files/download",
+      method: "get",
+      request: queryRequest<PathId, EnvironmentFileContentQuery>(
+        environmentFileContentQuerySchema,
+      ),
+      response: binaryResponse<Uint8Array>(),
     }),
     status: defineRoute({
       path: "/environments/:id/status",
@@ -1268,6 +1334,22 @@ export const publicApiRoutes = {
       ),
       response: binaryResponse<Uint8Array>(),
     }),
+    storagePreview: defineRoute({
+      path: "/threads/:id/thread-storage/preview",
+      method: "get",
+      request: queryRequest<PathId, ThreadStorageContentQuery>(
+        threadStorageContentQuerySchema,
+      ),
+      response: binaryResponse<Uint8Array>(),
+    }),
+    storageDownload: defineRoute({
+      path: "/threads/:id/thread-storage/download",
+      method: "get",
+      request: queryRequest<PathId, ThreadStorageContentQuery>(
+        threadStorageContentQuerySchema,
+      ),
+      response: binaryResponse<Uint8Array>(),
+    }),
     hostFileContent: defineRoute({
       path: "/threads/:id/host-files/content",
       method: "get",
@@ -1276,8 +1358,30 @@ export const publicApiRoutes = {
       ),
       response: binaryResponse<Uint8Array>(),
     }),
+    hostFilePreview: defineRoute({
+      path: "/threads/:id/host-files/preview",
+      method: "get",
+      request: queryRequest<PathId, ThreadHostFileContentQuery>(
+        threadHostFileContentQuerySchema,
+      ),
+      response: binaryResponse<Uint8Array>(),
+    }),
+    hostFileDownload: defineRoute({
+      path: "/threads/:id/host-files/download",
+      method: "get",
+      request: queryRequest<PathId, ThreadHostFileContentQuery>(
+        threadHostFileContentQuerySchema,
+      ),
+      response: binaryResponse<Uint8Array>(),
+    }),
     worktreeFile: defineRoute({
       path: "/threads/:id/worktree/files/:filePath{.+}",
+      method: "get",
+      request: noRequest<PathThreadAndFilePath>(),
+      response: binaryResponse<Uint8Array>(),
+    }),
+    worktreeFileDownload: defineRoute({
+      path: "/threads/:id/worktree/download/:filePath{.+}",
       method: "get",
       request: noRequest<PathThreadAndFilePath>(),
       response: binaryResponse<Uint8Array>(),

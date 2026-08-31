@@ -1923,15 +1923,43 @@ export type ExperimentalLiveFileTarget =
   | { kind: "host"; hostId: string; path: string }
   | { kind: "thread-storage"; threadId: string; path: string };
 
+export type ExperimentalFileSource =
+  | { store: "workspace"; ownerId: string; path: string }
+  | { store: "host"; ownerId: string; path: string }
+  | { store: "thread-host"; ownerId: string; path: string }
+  | { store: "thread-storage"; ownerId: string; path: string }
+  | { store: "project-attachment"; ownerId: string; path: string }
+  | { store: "tasks-attachment"; ownerId: string; attachmentId: string }
+  | { store: "remote"; ownerId: string; url: string };
+
 /** One-based location to reveal after a live file opens. */
 export type ExperimentalFileLocation =
   | { kind: "line"; line: number; column: number | null }
   | { kind: "range"; startLine: number; endLine: number };
 
-/** Options shared by BB's preview and preferred-external file intents. */
-export interface ExperimentalFileOpenOptions {
-  target: ExperimentalLiveFileTarget;
+export interface ExperimentalFileIdentity {
+  source: ExperimentalFileSource;
+  displayName: string;
+  mimeType: string | null;
+  sizeBytes: number | null;
   location: ExperimentalFileLocation | null;
+}
+
+/** Options shared by BB's preview and preferred-external file intents. */
+export type ExperimentalFileOpenOptions =
+  | {
+      identity: ExperimentalFileIdentity;
+      location?: never;
+      target?: never;
+    }
+  | {
+      identity?: never;
+      target: ExperimentalLiveFileTarget;
+      location: ExperimentalFileLocation | null;
+    };
+
+export interface ExperimentalResolvedFileOpenOptions {
+  identity: ExperimentalFileIdentity;
 }
 
 /**
@@ -1939,13 +1967,22 @@ export interface ExperimentalFileOpenOptions {
  * scheme-safe anchor href; traversal paths, ill-formed Unicode, and other
  * malformed runtime targets remain inert.
  */
-export interface ExperimentalFileLinkProps extends Omit<
+export type ExperimentalFileLinkProps = Omit<
   ComponentPropsWithoutRef<"a">,
   "href" | "target"
-> {
-  target: ExperimentalLiveFileTarget;
-  location?: ExperimentalFileLocation | null;
-}
+> &
+  (
+    | {
+        identity: ExperimentalFileIdentity;
+        location?: never;
+        target?: never;
+      }
+    | {
+        identity?: never;
+        target: ExperimentalLiveFileTarget;
+        location?: ExperimentalFileLocation | null;
+      }
+  );
 
 /** The panel surface resolved by the component making the request. */
 export type ExperimentalAppPanelSurface = { kind: "current" };

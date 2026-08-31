@@ -92,6 +92,7 @@ export function isSecondaryFileTab(
     case "workspace-file-preview":
     case "host-file-preview":
     case "thread-storage-file-preview":
+    case "byte-file-preview":
     case "browser":
     case "terminal":
     case "new-tab":
@@ -479,6 +480,7 @@ export function buildOrderedSecondaryPanelFileTabs({
       case "terminal":
       case "new-tab":
       case "thread-storage-file-preview":
+      case "byte-file-preview":
       case "plugin-panel":
         displayable.push(tab);
         break;

@@ -76,6 +76,21 @@ describe("file-preview", () => {
     });
   });
 
+  it.each([
+    ["image/svg+xml", "diagram.svg", "image"],
+    ["audio/ogg", "sound.ogg", "audio"],
+    ["application/pdf", "report.pdf", "document"],
+    ["video/webm", "clip.webm", "video"],
+  ] as const)("builds %s previews as %s", (mimeType, path, expectedKind) => {
+    const preview = buildFilePreview({
+      contentBytes: Uint8Array.from([0, 1, 2, 3]),
+      mimeType,
+      path,
+      url: `/files/${path}`,
+    });
+    expect(preview.kind).toBe(expectedKind);
+  });
+
   it("prefers UTF-8 text over ambiguous video mime types", () => {
     const preview = buildFilePreview({
       contentBytes: new TextEncoder().encode("export const value = 1;\n"),

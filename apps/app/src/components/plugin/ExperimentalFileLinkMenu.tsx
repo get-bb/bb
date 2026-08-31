@@ -1,4 +1,4 @@
-import type { ExperimentalFileOpenOptions } from "@get-bb/plugin-sdk";
+import type { ExperimentalResolvedFileOpenOptions } from "@get-bb/plugin-sdk";
 import {
   ContextMenuItem,
   ContextMenuSeparator,
@@ -10,7 +10,10 @@ import { useLocalOpenTargets } from "@/hooks/useLocalOpenTargets";
 import { useResolvedLiveFileTarget } from "@/hooks/useResolvedLiveFileTarget";
 import { useAppNavigationHost } from "@/lib/app-navigation-host";
 import { copyToClipboardWithToast } from "@/lib/clipboard";
-import { getExperimentalFileLocationStart } from "@/lib/live-file-navigation";
+import {
+  getExperimentalFileLocationStart,
+  liveFileTargetFromIdentity,
+} from "@/lib/live-file-navigation";
 import { usePluginSlots } from "@/lib/plugin-slots";
 
 function getFileBasename(path: string): string {
@@ -29,10 +32,11 @@ function getFileExtension(path: string): string | null {
 export function ExperimentalFileLinkMenu({
   intent,
 }: {
-  intent: ExperimentalFileOpenOptions;
+  intent: ExperimentalResolvedFileOpenOptions;
 }) {
   const navigation = useAppNavigationHost();
-  const resolved = useResolvedLiveFileTarget(intent.target, { enabled: true });
+  const liveTarget = liveFileTargetFromIdentity(intent.identity);
+  const resolved = useResolvedLiveFileTarget(liveTarget, { enabled: true });
   const localTargets = useLocalOpenTargets({
     enabled: resolved.status === "available",
     ...(resolved.status === "available"
@@ -40,12 +44,12 @@ export function ExperimentalFileLinkMenu({
       : {}),
   });
   const { fileOpeners } = usePluginSlots();
-  const extension = getFileExtension(intent.target.path);
+  const extension = getFileExtension(intent.identity.displayName);
   const matchingOpeners =
     extension === null
       ? []
       : fileOpeners.filter((opener) => opener.extensions.includes(extension));
-  const location = getExperimentalFileLocationStart(intent.location);
+  const location = getExperimentalFileLocationStart(intent.identity.location);
 
   return (
     <>
@@ -122,7 +126,7 @@ export function ExperimentalFileLinkMenu({
           void copyToClipboardWithToast(
             resolved.status === "available"
               ? resolved.absolutePath
-              : intent.target.path,
+              : (liveTarget?.path ?? intent.identity.displayName),
             {
               successMessage: "File path copied",
               errorMessage: "Failed to copy file path",
@@ -134,7 +138,7 @@ export function ExperimentalFileLinkMenu({
       </ContextMenuItem>
       <ContextMenuItem
         onSelect={() => {
-          void copyToClipboardWithToast(getFileBasename(intent.target.path), {
+          void copyToClipboardWithToast(intent.identity.displayName, {
             successMessage: "File name copied",
             errorMessage: "Failed to copy file name",
           });

@@ -3,9 +3,34 @@ import type { Attachment } from "../../shared/contract.js";
 import { formatFileSize } from "../activity/time.js";
 import { ConfirmDialog } from "../../components/confirm-dialog.js";
 import { Icon } from "@bb/shared-ui/icon";
+import { useBbNavigate } from "@get-bb/plugin-sdk/app";
+import type { ExperimentalFileIdentity } from "@get-bb/plugin-sdk";
+import { canonicalAttachmentMime } from "../../shared/attachment-mime.js";
+
+export function attachmentPreviewUrl(attachmentId: string): string {
+  return `/api/v1/plugins/tasks/http/attachments/preview?attachmentId=${encodeURIComponent(attachmentId)}`;
+}
 
 export function attachmentDownloadUrl(attachmentId: string): string {
   return `/api/v1/plugins/tasks/http/attachments/download?attachmentId=${encodeURIComponent(attachmentId)}`;
+}
+
+export function attachmentIdentity(
+  attachment: Attachment,
+): ExperimentalFileIdentity | null {
+  const ownerId = attachment.taskId ?? attachment.commentId;
+  if (ownerId === null) return null;
+  return {
+    source: {
+      store: "tasks-attachment",
+      ownerId,
+      attachmentId: attachment.id,
+    },
+    displayName: attachment.fileName,
+    mimeType: canonicalAttachmentMime(attachment.mime, attachment.fileName),
+    sizeBytes: attachment.sizeBytes,
+    location: null,
+  };
 }
 
 let tokenPromise: Promise<string> | null = null;
@@ -91,7 +116,7 @@ export function Lightbox({
       onClick={onClose}
     >
       <img
-        src={attachmentDownloadUrl(attachment.id)}
+        src={attachmentPreviewUrl(attachment.id)}
         alt={attachment.fileName}
         className="max-h-full max-w-full rounded-md shadow-md"
         onClick={(event) => event.stopPropagation()}
@@ -102,6 +127,16 @@ export function Lightbox({
           {formatFileSize(attachment.sizeBytes)}
         </span>
       </div>
+      <a
+        href={attachmentDownloadUrl(attachment.id)}
+        download={attachment.fileName}
+        aria-label={`Download ${attachment.fileName}`}
+        className="absolute bottom-3 right-3 flex items-center gap-1 rounded-md bg-popover/90 px-2 py-1.5 text-xs text-popover-foreground shadow-md hover:bg-popover"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <Icon name="Download" className="size-3.5" />
+        Download
+      </a>
       <button
         type="button"
         aria-label="Close"
@@ -136,6 +171,7 @@ export function AttachmentsGrid({
   const [lightbox, setLightbox] = useState<Attachment | null>(null);
   const [confirm, setConfirm] = useState<Attachment | null>(null);
   const [pending, setPending] = useState<ReadonlySet<string>>(new Set());
+  const navigate = useBbNavigate();
   const removable = onRemove !== undefined;
 
   const requestRemove = (attachment: Attachment) => setConfirm(attachment);
@@ -186,29 +222,54 @@ export function AttachmentsGrid({
     );
   };
 
-  const fileCard = (attachment: Attachment) => (
-    <div
-      key={attachment.id}
-      className="flex items-center gap-2 rounded-md border border-border bg-card px-2.5 py-1.5 text-sm shadow-2xs"
-    >
-      <a
-        href={attachmentDownloadUrl(attachment.id)}
-        download={attachment.fileName}
-        className="flex min-w-0 items-center gap-2 rounded-sm hover:bg-state-hover"
+  const fileCard = (attachment: Attachment) => {
+    const identity = attachmentIdentity(attachment);
+    return (
+      <div
+        key={attachment.id}
+        className="flex items-center gap-2 rounded-md border border-border bg-card px-2.5 py-1.5 text-sm shadow-2xs"
       >
-        <span className="flex size-6 shrink-0 items-center justify-center rounded-sm bg-secondary text-muted-foreground">
-          <Icon name="File" className="size-3.5" />
-        </span>
-        <span className="min-w-0">
-          <span className="block max-w-48 truncate">{attachment.fileName}</span>
-          <span className="block text-2xs text-muted-foreground">
-            {formatFileSize(attachment.sizeBytes)}
+        {identity === null ? (
+          <span className="flex min-w-0 items-center gap-2 rounded-sm">
+            <span className="flex size-6 shrink-0 items-center justify-center rounded-sm bg-secondary text-muted-foreground">
+              <Icon name="File" className="size-3.5" />
+            </span>
+            <span className="block max-w-48 truncate">
+              {attachment.fileName}
+            </span>
           </span>
-        </span>
-      </a>
-      {removeButton(attachment, "file")}
-    </div>
-  );
+        ) : (
+          <button
+            type="button"
+            aria-label={`Open ${attachment.fileName}`}
+            className="flex min-w-0 items-center gap-2 rounded-sm hover:bg-state-hover"
+            onClick={() => navigate.experimental_openFilePreview({ identity })}
+          >
+            <span className="flex size-6 shrink-0 items-center justify-center rounded-sm bg-secondary text-muted-foreground">
+              <Icon name="File" className="size-3.5" />
+            </span>
+            <span className="min-w-0">
+              <span className="block max-w-48 truncate">
+                {attachment.fileName}
+              </span>
+              <span className="block text-2xs text-muted-foreground">
+                {formatFileSize(attachment.sizeBytes)}
+              </span>
+            </span>
+          </button>
+        )}
+        <a
+          href={attachmentDownloadUrl(attachment.id)}
+          download={attachment.fileName}
+          aria-label={`Download ${attachment.fileName}`}
+          className="shrink-0 rounded p-0.5 text-muted-foreground hover:bg-state-hover hover:text-foreground"
+        >
+          <Icon name="Download" className="size-3.5" />
+        </a>
+        {removeButton(attachment, "file")}
+      </div>
+    );
+  };
 
   const imageTile = (attachment: Attachment) => (
     <div
@@ -222,7 +283,7 @@ export function AttachmentsGrid({
         onClick={() => setLightbox(attachment)}
       >
         <img
-          src={attachmentDownloadUrl(attachment.id)}
+          src={attachmentPreviewUrl(attachment.id)}
           alt={attachment.fileName}
           className="block h-24 w-36 object-cover transition-opacity group-hover:opacity-90"
         />
@@ -236,6 +297,14 @@ export function AttachmentsGrid({
           {attachment.fileName}
         </span>
       </button>
+      <a
+        href={attachmentDownloadUrl(attachment.id)}
+        download={attachment.fileName}
+        aria-label={`Download ${attachment.fileName}`}
+        className="absolute bottom-1 right-1 rounded-full bg-black/55 p-1 text-white transition-colors hover:bg-black/70"
+      >
+        <Icon name="Download" className="size-3" />
+      </a>
       {removeButton(attachment, "image")}
     </div>
   );

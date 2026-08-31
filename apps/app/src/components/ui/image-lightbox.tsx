@@ -36,6 +36,8 @@ interface WrappedImageIndexInput {
 }
 
 interface ImageLightboxProps {
+  downloadName?: string;
+  downloadUrl?: string | null;
   hasMultipleImages?: boolean;
   imageAlt: string;
   imageSrc: string | null;
@@ -92,6 +94,8 @@ export function getWrappedImageIndex({
 }
 
 export function ImageLightbox({
+  downloadName,
+  downloadUrl = null,
   hasMultipleImages = false,
   imageAlt,
   imageSrc,
@@ -165,6 +169,19 @@ export function ImageLightbox({
           style={IMAGE_TRANSPARENCY_CHECKER_STYLE}
           className="max-h-[82vh] max-w-[90vw] rounded object-contain"
         />
+
+        {downloadUrl === null ? null : (
+          <Button
+            asChild
+            variant="ghost"
+            className="absolute bottom-2 right-2 bg-black/45 text-white hover:bg-black/60 hover:text-white"
+          >
+            <a href={downloadUrl} download={downloadName}>
+              <Icon name="Download" className="size-4" aria-hidden />
+              Download
+            </a>
+          </Button>
+        )}
 
         {hasNavigation ? (
           <>

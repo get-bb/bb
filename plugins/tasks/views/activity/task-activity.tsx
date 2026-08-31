@@ -23,7 +23,9 @@ import {
   useTasksRpc,
 } from "../../shell/data.js";
 import {
+  attachmentIdentity,
   attachmentDownloadUrl,
+  attachmentPreviewUrl,
   Lightbox,
   uploadAttachment,
 } from "../detail/attachments.js";
@@ -110,23 +112,42 @@ function UserAvatar({ name }: { name: string }) {
 }
 
 function FileAttachmentCard({ attachment }: { attachment: Attachment }) {
+  const navigate = useBbNavigate();
+  const identity = attachmentIdentity(attachment);
   return (
-    <a
-      href={attachmentDownloadUrl(attachment.id)}
-      download={attachment.fileName}
+    <span
       title={`${attachment.fileName} · ${formatFileSize(attachment.sizeBytes)}`}
       className="inline-flex min-w-0 max-w-60 items-center gap-2 rounded-md border border-border bg-card px-2.5 py-1.5 text-xs shadow-2xs hover:border-input hover:bg-state-hover focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
     >
-      <span className="flex size-6 shrink-0 items-center justify-center rounded-sm bg-secondary text-muted-foreground">
-        <HugeiconsIcon icon={File01Icon} className="size-3.5" />
-      </span>
-      <span className="min-w-0">
-        <span className="block truncate">{attachment.fileName}</span>
-        <small className="block text-2xs text-muted-foreground">
-          {formatFileSize(attachment.sizeBytes)}
-        </small>
-      </span>
-    </a>
+      {identity === null ? (
+        <span className="min-w-0 truncate">{attachment.fileName}</span>
+      ) : (
+        <button
+          type="button"
+          aria-label={`Open ${attachment.fileName}`}
+          className="flex min-w-0 items-center gap-2"
+          onClick={() => navigate.experimental_openFilePreview({ identity })}
+        >
+          <span className="flex size-6 shrink-0 items-center justify-center rounded-sm bg-secondary text-muted-foreground">
+            <HugeiconsIcon icon={File01Icon} className="size-3.5" />
+          </span>
+          <span className="min-w-0">
+            <span className="block truncate">{attachment.fileName}</span>
+            <small className="block text-2xs text-muted-foreground">
+              {formatFileSize(attachment.sizeBytes)}
+            </small>
+          </span>
+        </button>
+      )}
+      <a
+        href={attachmentDownloadUrl(attachment.id)}
+        download={attachment.fileName}
+        aria-label={`Download ${attachment.fileName}`}
+        className="shrink-0 rounded p-0.5 text-muted-foreground hover:text-foreground"
+      >
+        <HugeiconsIcon icon={AttachmentIcon} className="size-3.5" />
+      </a>
+    </span>
   );
 }
 
@@ -147,11 +168,19 @@ function ImageAttachmentFigure({
         onClick={() => onOpenImage(attachment)}
       >
         <img
-          src={attachmentDownloadUrl(attachment.id)}
+          src={attachmentPreviewUrl(attachment.id)}
           alt={attachment.fileName}
           className="h-24 w-auto min-w-15 max-w-full cursor-zoom-in rounded-md border border-border bg-muted object-cover hover:border-input @2xl:h-32 @2xl:min-w-20"
         />
       </button>
+      <a
+        href={attachmentDownloadUrl(attachment.id)}
+        download={attachment.fileName}
+        aria-label={`Download ${attachment.fileName}`}
+        className="absolute right-1 top-1 rounded-full bg-black/55 p-1 text-white hover:bg-black/70"
+      >
+        <HugeiconsIcon icon={AttachmentIcon} className="size-3" />
+      </a>
       {}
       <figcaption
         title={attachment.fileName}

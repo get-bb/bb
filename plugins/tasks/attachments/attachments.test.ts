@@ -4,6 +4,7 @@ import { createFakePluginHost } from "@get-bb/plugin-sdk/testing";
 import { describe, expect, it } from "vitest";
 import { createTasksStore } from "../db";
 import {
+  buildAttachmentDownloadUrl,
   buildAttachmentUrl,
   deleteAttachmentById,
   MAX_ATTACHMENT_SIZE_BYTES,
@@ -136,7 +137,7 @@ describe("task attachments", () => {
     }
   });
 
-  it("downloads with image-aware headers", async () => {
+  it("serves separate preview and download headers for raster images", async () => {
     const { harness, task } = setup();
     try {
       const uploaded = await upload(
@@ -147,18 +148,106 @@ describe("task attachments", () => {
       const { attachmentId } = (await uploaded.json()) as {
         attachmentId: string;
       };
-      const response = await harness.fetchHttp(
+      const preview = await harness.fetchHttp(
+        "GET",
+        `/attachments/preview?attachmentId=${attachmentId}`,
+      );
+      const download = await harness.fetchHttp(
         "GET",
         `/attachments/download?attachmentId=${attachmentId}`,
       );
 
-      expect(response.status).toBe(200);
-      expect(response.headers.get("content-type")).toBe("image/png");
-      expect(response.headers.get("content-disposition")).toBe(
+      expect(buildAttachmentUrl(attachmentId)).toContain(
+        "/attachments/preview?",
+      );
+      expect(buildAttachmentDownloadUrl(attachmentId)).toContain(
+        "/attachments/download?",
+      );
+      expect(preview.status).toBe(200);
+      expect(preview.headers.get("content-type")).toBe("image/png");
+      expect(preview.headers.get("content-disposition")).toBe(
         `inline; filename="image.png"; filename*=UTF-8''image.png`,
       );
-      expect(response.headers.get("x-content-type-options")).toBe("nosniff");
-      await expect(response.text()).resolves.toBe("image");
+      expect(download.headers.get("content-disposition")).toBe(
+        `attachment; filename="image.png"; filename*=UTF-8''image.png`,
+      );
+      expect(preview.headers.get("x-content-type-options")).toBe("nosniff");
+      await expect(preview.text()).resolves.toBe("image");
+    } finally {
+      await harness.dispose();
+    }
+  });
+
+  it("uses a supported filename MIME for generic stored metadata", async () => {
+    const { harness, store, task } = setup();
+    try {
+      const uploaded = await upload(
+        harness,
+        task.id,
+        new TextEncoder().encode("pdf bytes"),
+        "report.pdf",
+        "application/octet-stream",
+      );
+      const { attachmentId } = (await uploaded.json()) as {
+        attachmentId: string;
+      };
+      expect(store.getAttachment(attachmentId)?.mime).toBe("application/pdf");
+
+      store.updateAttachment(attachmentId, {
+        mime: "application/octet-stream",
+      });
+      const preview = await harness.fetchHttp(
+        "GET",
+        `/attachments/preview?attachmentId=${attachmentId}`,
+      );
+      const download = await harness.fetchHttp(
+        "GET",
+        `/attachments/download?attachmentId=${attachmentId}`,
+      );
+
+      expect(preview.headers.get("content-type")).toBe("application/pdf");
+      expect(download.headers.get("content-type")).toBe("application/pdf");
+      expect(preview.headers.get("content-disposition")).toContain("inline;");
+      expect(download.headers.get("content-disposition")).toContain(
+        "attachment;",
+      );
+    } finally {
+      await harness.dispose();
+    }
+  });
+
+  it("sandboxes active preview MIME types without weakening download headers", async () => {
+    const { harness, task } = setup();
+    try {
+      const uploaded = await upload(
+        harness,
+        task.id,
+        new TextEncoder().encode(
+          "<script>parent.postMessage('x','*')</script>",
+        ),
+        "unsafe.html",
+        "text/html",
+      );
+      const { attachmentId } = (await uploaded.json()) as {
+        attachmentId: string;
+      };
+      const preview = await harness.fetchHttp(
+        "GET",
+        `/attachments/preview?attachmentId=${attachmentId}`,
+      );
+      const download = await harness.fetchHttp(
+        "GET",
+        `/attachments/download?attachmentId=${attachmentId}`,
+      );
+
+      expect(preview.headers.get("content-disposition")).toContain("inline;");
+      expect(preview.headers.get("content-security-policy")).toContain(
+        "sandbox",
+      );
+      expect(download.headers.get("content-disposition")).toContain(
+        "attachment;",
+      );
+      expect(download.headers.get("content-security-policy")).toBeNull();
     } finally {
       await harness.dispose();
     }

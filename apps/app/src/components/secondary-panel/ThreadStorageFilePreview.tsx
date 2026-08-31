@@ -24,6 +24,7 @@ const GENERIC_HTML_IFRAME_SANDBOX = "allow-scripts";
 interface FilePreviewBaseProps {
   activePath: string;
   copyPath?: string | null;
+  downloadUrl?: string | null;
   error?: Error | null;
   filePreview: FilePreview | undefined;
   isLoading: boolean;
@@ -89,6 +90,7 @@ function getTextPreviewKind(
 export function SecondaryPanelFilePreview({
   activePath,
   copyPath = null,
+  downloadUrl = null,
   error,
   filePreview,
   htmlPreviewUrl = null,
@@ -103,6 +105,15 @@ export function SecondaryPanelFilePreview({
 }: SecondaryPanelFilePreviewProps) {
   if (error) {
     const isNotFound = error instanceof HttpError && error.status === 404;
+    const message =
+      error instanceof HttpError &&
+      (error.status === 401 || error.status === 403)
+        ? "You do not have access to this file."
+        : error instanceof HttpError && error.status === 409
+          ? "The file source is disconnected or unavailable."
+          : error instanceof HttpError && error.status === 413
+            ? "This file exceeds the preview size limit."
+            : undefined;
     return (
       <FilePreviewSurface
         path={activePath}
@@ -112,7 +123,11 @@ export function SecondaryPanelFilePreview({
         onRefresh={onRefresh}
         isRefreshing={isRefreshing}
         statusLabel={statusLabel}
-        state={{ kind: isNotFound ? "not-found" : "error" }}
+        state={
+          isNotFound
+            ? { kind: "not-found" }
+            : { kind: "error", ...(message === undefined ? {} : { message }) }
+        }
       />
     );
   }
@@ -138,6 +153,7 @@ export function SecondaryPanelFilePreview({
         <FilePreviewSurface
           path={activePath}
           copyPath={copyPath}
+          downloadUrl={downloadUrl}
           onSelectionAddToChat={onSelectionAddToChat}
           onOpenInEditor={onOpenInEditor}
           onRefresh={onRefresh}
@@ -157,6 +173,7 @@ export function SecondaryPanelFilePreview({
       <FilePreviewSurface
         path={activePath}
         copyPath={copyPath}
+        downloadUrl={downloadUrl}
         onSelectionAddToChat={onSelectionAddToChat}
         onOpenInEditor={onOpenInEditor}
         onRefresh={onRefresh}
@@ -187,6 +204,7 @@ export function SecondaryPanelFilePreview({
           onRefresh={onRefresh}
           isRefreshing={isRefreshing}
           statusLabel={statusLabel}
+          downloadUrl={downloadUrl}
           state={{ kind: "empty" }}
         />
       );
@@ -201,6 +219,7 @@ export function SecondaryPanelFilePreview({
         isRefreshing={isRefreshing}
         markdownLinkRouting={markdownLinkRouting}
         statusLabel={statusLabel}
+        downloadUrl={downloadUrl}
         state={{
           kind: "ready",
           lineRange,
@@ -221,6 +240,7 @@ export function SecondaryPanelFilePreview({
         onRefresh={onRefresh}
         isRefreshing={isRefreshing}
         statusLabel={statusLabel}
+        downloadUrl={downloadUrl}
         state={{ kind: "image", url: filePreview.url }}
       />
     );
@@ -236,7 +256,45 @@ export function SecondaryPanelFilePreview({
         onRefresh={onRefresh}
         isRefreshing={isRefreshing}
         statusLabel={statusLabel}
+        downloadUrl={downloadUrl}
         state={{ kind: "video", url: filePreview.url }}
+      />
+    );
+  }
+
+  if (filePreview.kind === "audio") {
+    return (
+      <FilePreviewSurface
+        path={activePath}
+        copyPath={copyPath}
+        downloadUrl={downloadUrl}
+        onSelectionAddToChat={onSelectionAddToChat}
+        onOpenInEditor={onOpenInEditor}
+        onRefresh={onRefresh}
+        isRefreshing={isRefreshing}
+        statusLabel={statusLabel}
+        state={{ kind: "audio", url: filePreview.url }}
+      />
+    );
+  }
+
+  if (filePreview.kind === "document") {
+    return (
+      <FilePreviewSurface
+        path={activePath}
+        copyPath={copyPath}
+        downloadUrl={downloadUrl}
+        onSelectionAddToChat={onSelectionAddToChat}
+        onOpenInEditor={onOpenInEditor}
+        onRefresh={onRefresh}
+        isRefreshing={isRefreshing}
+        statusLabel={statusLabel}
+        state={{
+          kind: "iframe",
+          sandbox: null,
+          title: activePath,
+          url: filePreview.url,
+        }}
       />
     );
   }
@@ -250,6 +308,7 @@ export function SecondaryPanelFilePreview({
       onRefresh={onRefresh}
       isRefreshing={isRefreshing}
       statusLabel={statusLabel}
+      downloadUrl={downloadUrl}
       state={{
         kind: "error",
         message: `Preview not available for ${filePreview.mimeType}.`,
@@ -261,6 +320,7 @@ export function SecondaryPanelFilePreview({
 export function ThreadStorageFilePreview({
   activePath,
   copyPath,
+  downloadUrl,
   error,
   filePreview,
   isLoading,
@@ -276,6 +336,7 @@ export function ThreadStorageFilePreview({
     <SecondaryPanelFilePreview
       activePath={activePath}
       copyPath={copyPath}
+      downloadUrl={downloadUrl}
       error={error}
       filePreview={filePreview}
       htmlPreviewUrl={buildThreadStorageRawContentUrl(threadId, activePath)}

@@ -1,8 +1,9 @@
 import type { EnvironmentFilePreviewSource } from "@bb/client-core";
 import {
-  buildProjectFileContentUrl,
-  buildThreadHostFileContentUrl,
-  buildThreadStorageContentUrl,
+  buildProjectFilePreviewUrl,
+  buildProjectAttachmentPreviewUrl,
+  buildThreadHostFilePreviewUrl,
+  buildThreadStoragePreviewUrl,
   buildThreadWorktreeRawContentUrl,
 } from "@/lib/file-content-urls";
 import {
@@ -34,6 +35,7 @@ export type MarkdownFilePreviewContentSource =
       kind: "project";
       projectId: string;
     }
+  | { kind: "project-attachment"; projectId: string }
   | { kind: "host"; threadId: string }
   | { kind: "thread-storage"; threadId: string };
 
@@ -69,7 +71,7 @@ function buildContentUrl(
   rootPath: string,
 ): string | null {
   if (contentSource.kind === "host") {
-    return `${buildThreadHostFileContentUrl(
+    return `${buildThreadHostFilePreviewUrl(
       contentSource.threadId,
       link.path,
     )}${buildLineRangeFragment(link)}`;
@@ -102,7 +104,7 @@ function buildContentUrl(
       ) {
         return null;
       }
-      contentUrl = buildProjectFileContentUrl(
+      contentUrl = buildProjectFilePreviewUrl(
         contentSource.projectId,
         relativePath,
         { environmentId: contentSource.environmentId },
@@ -110,7 +112,7 @@ function buildContentUrl(
       break;
     }
     case "project":
-      contentUrl = buildProjectFileContentUrl(
+      contentUrl = buildProjectFilePreviewUrl(
         contentSource.projectId,
         relativePath,
         {
@@ -122,8 +124,14 @@ function buildContentUrl(
         },
       );
       break;
+    case "project-attachment":
+      contentUrl = buildProjectAttachmentPreviewUrl(
+        contentSource.projectId,
+        relativePath,
+      );
+      break;
     case "thread-storage":
-      contentUrl = buildThreadStorageContentUrl(
+      contentUrl = buildThreadStoragePreviewUrl(
         contentSource.threadId,
         relativePath,
       );

@@ -390,17 +390,31 @@ function TestUrlLink({
 
 /** Anchor-faithful file-link stand-in backed by the navigation recorder. */
 function TestFileLink({
+  identity,
   target,
   location = null,
   onClick,
   ...anchorProps
 }: ExperimentalFileLinkProps) {
   const navigate = useSlotEnv("experimental_FileLink").navigate;
-  const options = normalizeExperimentalFileOpenOptions({ target, location });
+  const options = normalizeExperimentalFileOpenOptions(
+    identity === undefined ? { target, location } : { identity },
+  );
+  const source = options?.identity.source;
+  const resource =
+    source === undefined
+      ? null
+      : source.store === "tasks-attachment"
+        ? source.attachmentId
+        : source.store === "remote"
+          ? source.url
+          : source.path;
   const href =
-    options === null
+    resource === null
       ? undefined
-      : `./${encodeURIComponent(options.target.path)}`;
+      : source?.store === "remote"
+        ? resource
+        : `./${encodeURIComponent(resource)}`;
   return (
     <a
       {...anchorProps}

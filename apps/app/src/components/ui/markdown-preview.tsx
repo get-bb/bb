@@ -33,7 +33,10 @@ import type {
   UrlTransform,
 } from "react-markdown";
 import rehypeRaw from "rehype-raw";
-import rehypeSanitize from "rehype-sanitize";
+import rehypeSanitize, {
+  defaultSchema as defaultMarkdownSanitizeSchema,
+  type Options as MarkdownSanitizeSchema,
+} from "rehype-sanitize";
 import remarkBreaks from "remark-breaks";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
@@ -264,9 +267,45 @@ const MARKDOWN_TABLE_BREAKOUT_WIDTH = `max(100%, min(1100px, 100cqw - 2rem, var(
 const MARKDOWN_CONTENT_WIDTH_VARIABLE = "--md-content-w";
 const MARKDOWN_SOURCE_COLOR_SCHEME_MEDIA_PATTERN =
   /^\(\s*prefers-color-scheme\s*:\s*(dark|light)\s*\)$/iu;
+const MARKDOWN_HTML_SANITIZE_SCHEMA: MarkdownSanitizeSchema = {
+  ...defaultMarkdownSanitizeSchema,
+  attributes: {
+    ...defaultMarkdownSanitizeSchema.attributes,
+    audio: [
+      ...(defaultMarkdownSanitizeSchema.attributes?.audio ?? []),
+      "controls",
+      "preload",
+      "src",
+    ],
+    source: [
+      ...(defaultMarkdownSanitizeSchema.attributes?.source ?? []),
+      "src",
+      "type",
+    ],
+    video: [
+      ...(defaultMarkdownSanitizeSchema.attributes?.video ?? []),
+      "controls",
+      "height",
+      "poster",
+      "preload",
+      "src",
+      "width",
+    ],
+  },
+  protocols: {
+    ...defaultMarkdownSanitizeSchema.protocols,
+    poster: ["http", "https"],
+    src: ["http", "https"],
+  },
+  tagNames: [
+    ...(defaultMarkdownSanitizeSchema.tagNames ?? []),
+    "audio",
+    "video",
+  ],
+};
 const MARKDOWN_HTML_REHYPE_PLUGINS: MarkdownRehypePlugins = [
   rehypeRaw,
-  rehypeSanitize,
+  [rehypeSanitize, MARKDOWN_HTML_SANITIZE_SCHEMA],
 ];
 
 const MARKDOWN_PLAIN_REHYPE_PLUGINS: MarkdownRehypePlugins = [];
@@ -520,8 +559,8 @@ function buildLocalAwareUrlTransform({
   };
 }
 
-function hasMarkdownFileExtension(path: string): boolean {
-  return /\.(?:md|markdown)$/iu.test(path);
+function hasFileExtension(path: string): boolean {
+  return /\.[A-Za-z0-9][A-Za-z0-9+_-]{0,31}$/u.test(path);
 }
 
 function resolveInlineCodeMarkdownFileHref({
@@ -546,7 +585,7 @@ function resolveInlineCodeMarkdownFileHref({
     href: codeText,
   });
   if (absoluteLink !== null) {
-    return hasMarkdownFileExtension(absoluteLink.path) ? codeText : null;
+    return hasFileExtension(absoluteLink.path) ? codeText : null;
   }
 
   if (localFileRouting.relativeLinks === undefined) {
@@ -565,7 +604,7 @@ function resolveInlineCodeMarkdownFileHref({
     absoluteLinks: localFileRouting.absoluteLinks,
     href: resolvedHref,
   });
-  return resolvedLink !== null && hasMarkdownFileExtension(resolvedLink.path)
+  return resolvedLink !== null && hasFileExtension(resolvedLink.path)
     ? resolvedHref
     : null;
 }

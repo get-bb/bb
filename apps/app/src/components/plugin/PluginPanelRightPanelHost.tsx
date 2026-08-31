@@ -25,6 +25,7 @@ import { getRightPanelToggleIconName } from "@/components/secondary-panel/panelT
 import { SecondaryPanelLayout } from "@/components/secondary-panel/SecondaryPanelLayout";
 import {
   LazyBrowserTabDeck,
+  LazyByteFilePreviewTabContent,
   LazyHostScopedFilePreviewTabContent,
   LazyNewTabPage,
   LazyThreadSecondaryPanel,
@@ -78,6 +79,10 @@ import {
   type AppFixedTabDestination,
   type AppFixedTabTargetState,
 } from "@/lib/app-fixed-tab-navigation";
+import {
+  byteFileTabFromIdentity,
+  identityFromByteFileTab,
+} from "@/lib/file-resolver";
 import {
   normalizeExperimentalFileOpenOptions,
   toFilePreviewLineRange,
@@ -414,40 +419,54 @@ export function PluginPanelRightPanelHost({
     (intent: AppFilePreviewIntent) => {
       const normalized = normalizeExperimentalFileOpenOptions(intent);
       if (normalized === null || panel === null) return false;
-      const lineRange = toFilePreviewLineRange(normalized.location);
-      const { target } = normalized;
+      const lineRange = toFilePreviewLineRange(normalized.identity.location);
+      const { source } = normalized.identity;
       const tab =
-        target.kind === "workspace"
+        source.store === "workspace"
           ? openTab(
               {
                 kind: "workspace-file-preview",
-                environmentId: target.environmentId,
+                environmentId: source.ownerId,
                 tab: {
                   lineRange,
-                  path: target.path,
+                  path: source.path,
                   source: { kind: "working-tree" },
                   statusLabel: null,
                 },
               },
               { viewer: intent.viewer },
             )
-          : target.kind === "host"
+          : source.store === "host"
             ? openTab(
                 {
                   kind: "host-file-preview",
-                  hostId: target.hostId,
-                  tab: { lineRange, path: target.path },
+                  hostId: source.ownerId,
+                  tab: { lineRange, path: source.path },
                 },
                 { viewer: intent.viewer },
               )
-            : openTab(
-                {
-                  kind: "thread-storage-file-preview",
-                  threadId: target.threadId,
-                  tab: { lineRange, path: target.path },
-                },
-                { viewer: intent.viewer },
-              );
+            : source.store === "thread-storage"
+              ? openTab(
+                  {
+                    kind: "thread-storage-file-preview",
+                    threadId: source.ownerId,
+                    tab: { lineRange, path: source.path },
+                  },
+                  { viewer: intent.viewer },
+                )
+              : source.store === "project-attachment" ||
+                  source.store === "tasks-attachment"
+                ? (() => {
+                    const byteTab = byteFileTabFromIdentity(
+                      normalized.identity,
+                    );
+                    return byteTab === null
+                      ? null
+                      : openTab({ kind: "byte-file-preview", tab: byteTab });
+                  })()
+                : source.store === "remote"
+                  ? openTab({ kind: "browser", url: source.url })
+                  : null;
       if (tab === null) return false;
       revealPanel();
       return true;
@@ -743,6 +762,13 @@ export function PluginPanelRightPanelHost({
               threadId={tab.threadId}
             />
           );
+        case "byte-file-preview":
+          return (
+            <LazyByteFilePreviewTabContent
+              identity={identityFromByteFileTab(tab)}
+              isPanelOpen={isOpen}
+            />
+          );
         case "plugin-panel": {
           const originalTab = createFileOpenerOriginalTab(tab);
           return (
@@ -826,12 +852,16 @@ export function PluginPanelRightPanelHost({
           case "workspace-file-preview":
           case "host-file-preview":
           case "thread-storage-file-preview":
+          case "byte-file-preview":
             return [
               {
                 ...shared,
                 isPinned:
                   tab.kind === "thread-storage-file-preview" && tab.isPinned,
-                label: tab.path.split(/[\\/]/u).at(-1) ?? tab.path,
+                label:
+                  tab.kind === "byte-file-preview"
+                    ? tab.displayName
+                    : (tab.path.split(/[\\/]/u).at(-1) ?? tab.path),
                 leadingVisual: <Icon name="File" className="size-3.5" />,
                 statusLabel:
                   tab.kind === "workspace-file-preview"

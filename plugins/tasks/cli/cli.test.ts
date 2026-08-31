@@ -1665,7 +1665,7 @@ describe("bb tasks CLI", () => {
       ).attachment;
       expect(attachment).toMatchObject({
         fileName: "renamed.txt",
-        mime: "application/octet-stream",
+        mime: "text/plain",
         sizeBytes: 26,
         isImage: false,
       });
@@ -1704,7 +1704,7 @@ describe("bb tasks CLI", () => {
           "update",
           "FILE-1",
           "--description",
-          `![pixel](/api/v1/plugins/tasks/http/attachments/download?attachmentId=${pngAttachment.id})`,
+          `![pixel](/api/v1/plugins/tasks/http/attachments/preview?attachmentId=${pngAttachment.id})`,
         ]),
       );
       const signalsBeforeReferencedRemove = harness.realtimeSignals.length;

@@ -128,6 +128,7 @@ import {
   type AppFixedTabOpenIntent,
 } from "@/lib/app-navigation-host";
 import { openAppFixedTabFromDestinations } from "@/lib/app-fixed-tab-navigation";
+import { byteFileTabFromIdentity } from "@/lib/file-resolver";
 import {
   normalizeExperimentalFileOpenOptions,
   toFilePreviewLineRange,
@@ -1194,18 +1195,19 @@ function RootComposeSurface({
     (intent: AppFilePreviewIntent): boolean => {
       const normalized = normalizeExperimentalFileOpenOptions(intent);
       if (normalized === null) return false;
-      const lineRange = toFilePreviewLineRange(normalized.location);
+      const lineRange = toFilePreviewLineRange(normalized.identity.location);
       const options =
         intent.viewer === undefined ? undefined : { viewer: intent.viewer };
-      switch (normalized.target.kind) {
+      const { source } = normalized.identity;
+      switch (source.store) {
         case "workspace":
-          if (normalized.target.environmentId !== rootPanelEnvironmentId) {
+          if (source.ownerId !== rootPanelEnvironmentId) {
             return false;
           }
           openWorkspaceFile(
             {
               lineRange,
-              path: normalized.target.path,
+              path: source.path,
               source: { kind: "working-tree" },
               statusLabel: null,
             },
@@ -1215,22 +1217,44 @@ function RootComposeSurface({
         case "host":
           if (
             rootPanelThreadId === null ||
-            normalized.target.hostId !== rootPanelEnvironment?.hostId
+            source.ownerId !== rootPanelEnvironment?.hostId
           ) {
             return false;
           }
-          openHostFile({ lineRange, path: normalized.target.path }, options);
+          openHostFile({ lineRange, path: source.path }, options);
+          return true;
+        case "thread-host":
+          if (source.ownerId !== rootPanelThreadId) return false;
+          openHostFile({ lineRange, path: source.path }, options);
           return true;
         case "thread-storage":
-          if (normalized.target.threadId !== rootPanelThreadId) return false;
-          openStorageFile({ lineRange, path: normalized.target.path }, options);
+          if (source.ownerId !== rootPanelThreadId) return false;
+          openStorageFile({ lineRange, path: source.path }, options);
+          return true;
+        case "project-attachment":
+          if (source.ownerId !== projectId) return false;
+          break;
+        case "tasks-attachment":
+          break;
+        case "remote":
+          if (rootPanelThreadId === null) return false;
+          openTab({ kind: "browser", url: source.url });
+          openCompactDrawer();
           return true;
       }
+      const byteTab = byteFileTabFromIdentity(normalized.identity);
+      return (
+        byteTab !== null &&
+        openTab({ kind: "byte-file-preview", tab: byteTab }) !== null
+      );
     },
     [
       openHostFile,
       openStorageFile,
       openWorkspaceFile,
+      openCompactDrawer,
+      openTab,
+      projectId,
       rootPanelEnvironment?.hostId,
       rootPanelEnvironmentId,
       rootPanelThreadId,
@@ -1731,6 +1755,14 @@ function RootComposeSurface({
               label: filenameOf(tab.path),
               isPinned: tab.isPinned,
               leadingVisual: <RightPanelFileTabIcon path={tab.path} />,
+              statusLabel: null,
+              onSelect: () => handleActivateFileTab(tab.id),
+            };
+          case "byte-file-preview":
+            return {
+              ...shared,
+              label: tab.displayName,
+              leadingVisual: <RightPanelFileTabIcon path={tab.displayName} />,
               statusLabel: null,
               onSelect: () => handleActivateFileTab(tab.id),
             };

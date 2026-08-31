@@ -208,11 +208,35 @@ async function loadUrlIntoWindow(args: LoadUrlIntoWindowArgs): Promise<void> {
   }
 }
 
+export function isInternalDesktopWindowUrl(
+  targetUrl: string,
+  currentUrl: string,
+): boolean {
+  try {
+    const target = new URL(targetUrl);
+    const current = new URL(currentUrl);
+    return (
+      (target.protocol === "http:" || target.protocol === "https:") &&
+      target.origin === current.origin
+    );
+  } catch {
+    return false;
+  }
+}
+
 export function createDesktopWindowFactory(
   args: CreateDesktopWindowFactoryArgs,
 ): DesktopWindowFactory {
   const activeWindows = new Map<WindowStateKey, DesktopBrowserWindow>();
   const pendingStateKeys = new Set<WindowStateKey>();
+  const currentWindowUrls = new WeakMap<DesktopBrowserWindow, string>();
+
+  async function loadTrackedUrl(
+    loadArgs: LoadUrlIntoWindowArgs,
+  ): Promise<void> {
+    currentWindowUrls.set(loadArgs.browserWindow, loadArgs.url);
+    await loadUrlIntoWindow(loadArgs);
+  }
 
   async function createWindow(
     createArgs: CreateDesktopWindowArgs,
@@ -265,12 +289,20 @@ export function createDesktopWindowFactory(
         }
       });
       browserWindow.webContents.setWindowOpenHandler((details) => {
+        const currentUrl = currentWindowUrls.get(browserWindow);
+        if (
+          currentUrl !== undefined &&
+          isInternalDesktopWindowUrl(details.url, currentUrl)
+        ) {
+          void loadTrackedUrl({ browserWindow, url: details.url });
+          return { action: "deny" };
+        }
         args.openExternalUrl({ url: details.url });
         return { action: "deny" };
       });
 
       if (createArgs.initialUrl !== null) {
-        await loadUrlIntoWindow({
+        await loadTrackedUrl({
           browserWindow,
           url: createArgs.initialUrl,
         });
@@ -313,7 +345,7 @@ export function createDesktopWindowFactory(
     const loadPromises: Promise<void>[] = [];
     for (const browserWindow of activeWindows.values()) {
       loadPromises.push(
-        loadUrlIntoWindow({
+        loadTrackedUrl({
           browserWindow,
           url: args.url,
         }),
@@ -340,7 +372,7 @@ export function createDesktopWindowFactory(
       if (browserWindow.isMinimized()) {
         browserWindow.restore();
       }
-      await loadUrlIntoWindow({
+      await loadTrackedUrl({
         browserWindow,
         url: loadArgs.url,
       });

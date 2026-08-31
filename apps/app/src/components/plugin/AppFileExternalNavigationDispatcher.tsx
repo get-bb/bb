@@ -1,21 +1,27 @@
 import { useEffect, useRef } from "react";
-import type { ExperimentalFileOpenOptions } from "@get-bb/plugin-sdk";
+import type { ExperimentalResolvedFileOpenOptions } from "@get-bb/plugin-sdk";
 import { appToast } from "@/components/ui/app-toast";
 import { useLocalOpenTargets } from "@/hooks/useLocalOpenTargets";
 import { useResolvedLiveFileTarget } from "@/hooks/useResolvedLiveFileTarget";
-import { getExperimentalFileLocationStart } from "@/lib/live-file-navigation";
+import {
+  getExperimentalFileLocationStart,
+  liveFileTargetFromIdentity,
+} from "@/lib/live-file-navigation";
 
 export function AppFileExternalNavigationDispatcher({
   intent,
   onSettled,
 }: {
-  intent: ExperimentalFileOpenOptions;
+  intent: ExperimentalResolvedFileOpenOptions;
   onSettled: () => void;
 }) {
   const didSettleRef = useRef(false);
-  const resolvedTarget = useResolvedLiveFileTarget(intent.target, {
-    enabled: true,
-  });
+  const resolvedTarget = useResolvedLiveFileTarget(
+    liveFileTargetFromIdentity(intent.identity),
+    {
+      enabled: true,
+    },
+  );
   const { isLoading: areLocalTargetsLoading, openPathInPreferredFileTarget } =
     useLocalOpenTargets({
       enabled: resolvedTarget.status === "available",
@@ -40,14 +46,14 @@ export function AppFileExternalNavigationDispatcher({
       });
       return;
     }
-    const location = getExperimentalFileLocationStart(intent.location);
+    const location = getExperimentalFileLocationStart(intent.identity.location);
     void openPathInPreferredFileTarget({
       columnNumber: location.columnNumber,
       lineNumber: location.lineNumber,
       path: resolvedTarget.absolutePath,
     });
   }, [
-    intent.location,
+    intent.identity.location,
     areLocalTargetsLoading,
     openPathInPreferredFileTarget,
     onSettled,

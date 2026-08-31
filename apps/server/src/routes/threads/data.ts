@@ -82,6 +82,7 @@ import { resolveProviderPlanCommand } from "../../services/providers/provider-pl
 import { parsePathKindInclusion } from "../path-list-inclusion.js";
 import { parseFileListLimit } from "../file-list-query.js";
 import { parseSafeRelativeRoutePath } from "../relative-route-path.js";
+import { buildFileResponseHeaders } from "../../services/files/file-response-policy.js";
 
 function resolveThreadProviderDisplayName(
   deps: Pick<AppDeps, "providerRegistry">,
@@ -109,11 +110,7 @@ interface RequireThreadStorageTargetArgs {
   threadId: string;
 }
 
-const RAW_FILE_NO_STORE_CACHE_CONTROL = "no-store";
-const RAW_FILE_HTML_CONTENT_TYPE = "text/html; charset=utf-8";
-const RAW_FILE_CONTENT_TYPE_OPTIONS = "nosniff";
 const HTML_PREVIEW_MAX_BYTES = 5 * 1024 * 1024;
-const GENERIC_HTML_PREVIEW_CSP = "sandbox allow-scripts";
 
 function parseThreadEventTypes(
   value: string | undefined,
@@ -226,16 +223,17 @@ function assertHtmlPreviewSize(relativePath: string, sizeBytes: number): void {
 function createRawFilePreviewResponse(
   result: DaemonFileReadResult,
   relativePath: string,
+  disposition: "attachment" | "inline",
 ): Response {
-  assertHtmlPreviewSize(relativePath, result.sizeBytes);
-  const headers = new Headers({
-    "cache-control": RAW_FILE_NO_STORE_CACHE_CONTROL,
-    "x-content-type-options": RAW_FILE_CONTENT_TYPE_OPTIONS,
-  });
-  if (isHtmlPreviewPath(relativePath)) {
-    headers.set("content-security-policy", GENERIC_HTML_PREVIEW_CSP);
-    headers.set("content-type", RAW_FILE_HTML_CONTENT_TYPE);
+  if (disposition === "inline") {
+    assertHtmlPreviewSize(relativePath, result.sizeBytes);
   }
+  const headers = buildFileResponseHeaders({
+    cacheControl: "no-store",
+    disposition,
+    fileName: relativePath,
+    mimeType: result.mimeType,
+  });
   return createDaemonFileContentResponse(result, { headers });
 }
 
@@ -243,6 +241,7 @@ async function serveThreadStorageRawFile(
   deps: LoggedWorkSessionDeps,
   threadId: string,
   rawPath: string,
+  disposition: "attachment" | "inline" = "inline",
 ): Promise<Response> {
   const filePath = parseSafeRelativeRoutePath(rawPath);
   const target = await requireThreadStorageTarget(deps, { threadId });
@@ -257,7 +256,11 @@ async function serveThreadStorageRawFile(
         rootPath: target.storagePath,
       },
     });
-    return createRawFilePreviewResponse(result, filePath.relativePath);
+    return createRawFilePreviewResponse(
+      result,
+      filePath.relativePath,
+      disposition,
+    );
   } catch (error) {
     return remapDaemonFileRouteError(error);
   }
@@ -267,6 +270,7 @@ async function serveThreadWorktreeRawFile(
   deps: LoggedWorkSessionDeps,
   threadId: string,
   rawPath: string,
+  disposition: "attachment" | "inline" = "inline",
 ): Promise<Response> {
   const filePath = parseSafeRelativeRoutePath(rawPath);
   const thread = requirePublicThread(deps.db, threadId);
@@ -285,7 +289,79 @@ async function serveThreadWorktreeRawFile(
         rootPath: environment.path,
       },
     });
-    return createRawFilePreviewResponse(result, filePath.relativePath);
+    return createRawFilePreviewResponse(
+      result,
+      filePath.relativePath,
+      disposition,
+    );
+  } catch (error) {
+    return remapDaemonFileRouteError(error);
+  }
+}
+
+async function serveThreadStorageContent(
+  deps: LoggedWorkSessionDeps,
+  threadId: string,
+  filePath: string,
+  disposition: "attachment" | "inline",
+  ifNoneMatch: string | undefined,
+): Promise<Response> {
+  validateFilePath(filePath);
+  const target = await requireThreadStorageTarget(deps, { threadId });
+  try {
+    const result = await callHostRetryableOnlineRpc(deps, {
+      hostId: target.hostId,
+      timeoutMs: COMMAND_TIMEOUT_MS,
+      command: {
+        type: "host.read_file",
+        path: path.join(target.storagePath, filePath),
+        rootPath: target.storagePath,
+      },
+    });
+    return createDaemonFileContentResponse(result, {
+      headers: buildFileResponseHeaders({
+        disposition,
+        fileName: filePath,
+        mimeType: result.mimeType,
+      }),
+      ifNoneMatch,
+    });
+  } catch (error) {
+    return remapDaemonFileRouteError(error);
+  }
+}
+
+async function serveThreadHostFileContent(
+  deps: LoggedWorkSessionDeps,
+  threadId: string,
+  filePath: string,
+  disposition: "attachment" | "inline",
+  ifNoneMatch: string | undefined,
+): Promise<Response> {
+  const thread = requirePublicThread(deps.db, threadId);
+  if (!thread.environmentId) {
+    throwThreadEnvironmentUnavailable(
+      threadEnvironmentUnavailableDetails("never_attached", null),
+    );
+  }
+  const environment = requireEnvironment(deps.db, thread.environmentId);
+  try {
+    const result = await callHostRetryableOnlineRpc(deps, {
+      hostId: environment.hostId,
+      timeoutMs: COMMAND_TIMEOUT_MS,
+      command: {
+        type: "host.read_file",
+        path: filePath,
+      },
+    });
+    return createDaemonFileContentResponse(result, {
+      headers: buildFileResponseHeaders({
+        disposition,
+        fileName: filePath,
+        mimeType: result.mimeType,
+      }),
+      ifNoneMatch,
+    });
   } catch (error) {
     return remapDaemonFileRouteError(error);
   }
@@ -551,6 +627,15 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
     ),
   );
 
+  get(routes.worktreeFileDownload, async (context) =>
+    serveThreadWorktreeRawFile(
+      deps,
+      context.req.param("id"),
+      context.req.param("filePath"),
+      "attachment",
+    ),
+  );
+
   get(routes.storageFiles, async (context, query) => {
     const target = await requireThreadStorageTarget(deps, {
       threadId: context.req.param("id"),
@@ -643,53 +728,35 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
     }
   });
 
-  get(routes.storageContent, async (context, query) => {
-    validateFilePath(query.path);
-    const target = await requireThreadStorageTarget(deps, {
-      threadId: context.req.param("id"),
-    });
+  for (const [route, disposition] of [
+    [routes.storageContent, "inline"],
+    [routes.storagePreview, "inline"],
+    [routes.storageDownload, "attachment"],
+  ] as const) {
+    get(route, (context, query) =>
+      serveThreadStorageContent(
+        deps,
+        context.req.param("id"),
+        query.path,
+        disposition,
+        context.req.header("if-none-match"),
+      ),
+    );
+  }
 
-    try {
-      const result = await callHostRetryableOnlineRpc(deps, {
-        hostId: target.hostId,
-        timeoutMs: COMMAND_TIMEOUT_MS,
-        command: {
-          type: "host.read_file",
-          path: path.join(target.storagePath, query.path),
-          rootPath: target.storagePath,
-        },
-      });
-      return createDaemonFileContentResponse(result, {
-        ifNoneMatch: context.req.header("if-none-match"),
-      });
-    } catch (error) {
-      return remapDaemonFileRouteError(error);
-    }
-  });
-
-  get(routes.hostFileContent, async (context, query) => {
-    const thread = requirePublicThread(deps.db, context.req.param("id"));
-    if (!thread.environmentId) {
-      throwThreadEnvironmentUnavailable(
-        threadEnvironmentUnavailableDetails("never_attached", null),
-      );
-    }
-    const environment = requireEnvironment(deps.db, thread.environmentId);
-
-    try {
-      const result = await callHostRetryableOnlineRpc(deps, {
-        hostId: environment.hostId,
-        timeoutMs: COMMAND_TIMEOUT_MS,
-        command: {
-          type: "host.read_file",
-          path: query.path,
-        },
-      });
-      return createDaemonFileContentResponse(result, {
-        ifNoneMatch: context.req.header("if-none-match"),
-      });
-    } catch (error) {
-      return remapDaemonFileRouteError(error);
-    }
-  });
+  for (const [route, disposition] of [
+    [routes.hostFileContent, "inline"],
+    [routes.hostFilePreview, "inline"],
+    [routes.hostFileDownload, "attachment"],
+  ] as const) {
+    get(route, (context, query) =>
+      serveThreadHostFileContent(
+        deps,
+        context.req.param("id"),
+        query.path,
+        disposition,
+        context.req.header("if-none-match"),
+      ),
+    );
+  }
 }

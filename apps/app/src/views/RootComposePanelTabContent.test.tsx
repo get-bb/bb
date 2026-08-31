@@ -398,19 +398,19 @@ describe("RootComposePanelTabContent", () => {
       {
         expectedRoot: "/workspace/env-current",
         expectedUrl:
-          "/api/v1/projects/project-current/files/content?path=docs%2Fasset+space-%E8%B5%84%E6%96%99%25.png&environmentId=env-current",
+          "/api/v1/projects/project-current/files/preview?path=docs%2Fasset+space-%E8%B5%84%E6%96%99%25.png&environmentId=env-current",
         testId: "project-docs/project.md",
       },
       {
         expectedRoot: "/workspace/env-current",
         expectedUrl:
-          "/api/v1/threads/thread-current/host-files/content?path=%2Fworkspace%2Fenv-current%2Fdocs%2Fasset+space-%E8%B5%84%E6%96%99%25.png",
+          "/api/v1/threads/thread-current/host-files/preview?path=%2Fworkspace%2Fenv-current%2Fdocs%2Fasset+space-%E8%B5%84%E6%96%99%25.png",
         testId: "host-/workspace/env-current/docs/host.md",
       },
       {
         expectedRoot: "/storage/thread-current",
         expectedUrl:
-          "/api/v1/threads/thread-current/thread-storage/content?path=docs%2Fasset+space-%E8%B5%84%E6%96%99%25.png",
+          "/api/v1/threads/thread-current/thread-storage/preview?path=docs%2Fasset+space-%E8%B5%84%E6%96%99%25.png",
         testId: "storage-docs/storage.md",
       },
     ];

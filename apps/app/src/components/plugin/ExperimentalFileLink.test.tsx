@@ -14,6 +14,17 @@ const target = {
   environmentId: "env_1",
   path: "src/example.ts",
 };
+const identity = {
+  source: {
+    store: "workspace" as const,
+    ownerId: "env_1",
+    path: "src/example.ts",
+  },
+  displayName: "example.ts",
+  mimeType: null,
+  sizeBytes: null,
+  location: null,
+};
 
 describe("ExperimentalFileLink", () => {
   it("sends ordinary activation to the shared preview host", () => {
@@ -34,8 +45,10 @@ describe("ExperimentalFileLink", () => {
     );
     fireEvent.click(screen.getByRole("link", { name: "example.ts:12" }));
     expect(openFilePreview).toHaveBeenCalledWith({
-      target,
-      location: { kind: "line", line: 12, column: 4 },
+      identity: {
+        ...identity,
+        location: { kind: "line", line: 12, column: 4 },
+      },
     });
   });
 
@@ -72,8 +85,11 @@ describe("ExperimentalFileLink", () => {
 
     fireEvent.click(link);
     expect(openFilePreview).toHaveBeenCalledWith({
-      target: { ...target, path: "vscode:foo" },
-      location: null,
+      identity: {
+        ...identity,
+        source: { ...identity.source, path: "vscode:foo" },
+        displayName: "vscode:foo",
+      },
     });
   });
 

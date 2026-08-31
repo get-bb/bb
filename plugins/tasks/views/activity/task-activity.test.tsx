@@ -20,7 +20,10 @@ import {
   CommentComposer,
 } from "./task-activity.js";
 
-const { rpcCall } = vi.hoisted(() => ({ rpcCall: vi.fn() }));
+const { openFilePreview, rpcCall } = vi.hoisted(() => ({
+  openFilePreview: vi.fn(() => true),
+  rpcCall: vi.fn(),
+}));
 
 vi.mock("../../shell/data.js", () => ({
   useMentionItems: () => [],
@@ -29,7 +32,10 @@ vi.mock("../../shell/data.js", () => ({
 }));
 
 vi.mock("@get-bb/plugin-sdk/app", () => ({
-  useBbNavigate: () => ({ toThread: vi.fn() }),
+  useBbNavigate: () => ({
+    experimental_openFilePreview: openFilePreview,
+    toThread: vi.fn(),
+  }),
 }));
 
 vi.mock("../../editor/tasks-editor.js", () => ({
@@ -56,6 +62,7 @@ vi.mock("../../editor/tasks-editor.js", () => ({
 afterEach(() => {
   cleanup();
   rpcCall.mockReset();
+  openFilePreview.mockClear();
 });
 
 function comment(
@@ -123,6 +130,22 @@ describe("AttachmentTracks", () => {
     const figure = screen.getByRole("figure");
     expect(figure.contains(screen.getByAltText("shot.png"))).toBe(true);
     expect(figure.contains(screen.getByText("shot.png"))).toBe(true);
+  });
+
+  it("opens files inside BB and keeps explicit download actions", () => {
+    const file = attachment("01HZZZZZZZZZZZZZZZZZZZZ1F1", "notes.md", false);
+    render(<AttachmentTracks attachments={[file]} onOpenImage={() => {}} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Open notes.md" }));
+    expect(openFilePreview).toHaveBeenCalledWith({
+      identity: expect.objectContaining({
+        displayName: "notes.md",
+        source: expect.objectContaining({ store: "tasks-attachment" }),
+      }),
+    });
+    expect(
+      screen.getByRole("link", { name: "Download notes.md" }),
+    ).not.toBeNull();
   });
 });
 

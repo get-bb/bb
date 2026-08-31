@@ -1,9 +1,7 @@
 // oxlint-disable-next-line no-restricted-imports
 import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import {
-  basename,
   dirname,
-  extname,
   isAbsolute,
   join,
   normalize,
@@ -15,6 +13,7 @@ import type { PromptInput } from "@bb/domain";
 import type { UploadedPromptAttachment } from "@bb/server-contract";
 import mimeTypes from "mime-types";
 import { ApiError } from "../../errors.js";
+import { sanitizeFileResponseName } from "../files/file-response-policy.js";
 
 const IMAGE_LIMIT_BYTES = 10 * 1024 * 1024;
 const FILE_LIMIT_BYTES = 25 * 1024 * 1024;
@@ -37,17 +36,9 @@ interface ValidatePromptAttachmentReferencesArgs {
   projectId: string;
 }
 
-function sanitizeFilename(name: string): string {
-  const base = basename(name).replace(/[^a-zA-Z0-9._-]+/gu, "-");
-  return base.length > 0 ? base : "attachment";
-}
-
 function buildStoredFilename(originalName: string): string {
-  const sanitized = sanitizeFilename(originalName);
-  const extension = extname(sanitized);
-  const stem =
-    extension.length > 0 ? sanitized.slice(0, -extension.length) : sanitized;
-  return `${stem}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}${extension}`;
+  const sanitized = sanitizeFileResponseName(originalName);
+  return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}/${sanitized}`;
 }
 
 function projectAttachmentDir(dataDir: string, projectId: string): string {
@@ -175,6 +166,7 @@ export async function storeAttachment(
   const storedName = buildStoredFilename(file.name);
   const outputPath = join(dir, storedName);
   const bytes = Buffer.from(await file.arrayBuffer());
+  await mkdir(dirname(outputPath), { recursive: true });
   await writeFile(outputPath, bytes);
 
   return {

@@ -148,7 +148,7 @@ export async function request<T>(
   return JSON.parse(text) as T;
 }
 
-async function loadFilePreview(
+export async function loadFilePreview(
   target: FilePreviewTarget,
   signal?: AbortSignal,
 ): Promise<FilePreview> {
@@ -161,12 +161,29 @@ async function loadFilePreview(
       }),
     ),
   );
+  const mimeType = normalizeFilePreviewMimeType(
+    response.headers.get("content-type"),
+  );
+  const metadataPreview = buildFilePreview({
+    contentBytes: new Uint8Array(),
+    mimeType,
+    name: target.name,
+    path: target.path,
+    url: target.url,
+  });
+  if (
+    metadataPreview.kind === "audio" ||
+    metadataPreview.kind === "document" ||
+    metadataPreview.kind === "image" ||
+    metadataPreview.kind === "video"
+  ) {
+    await response.body?.cancel();
+    return metadataPreview;
+  }
   const contentBytes = new Uint8Array(await response.arrayBuffer());
   return buildFilePreview({
     contentBytes,
-    mimeType: normalizeFilePreviewMimeType(
-      response.headers.get("content-type"),
-    ),
+    mimeType,
     name: target.name,
     path: target.path,
     url: target.url,

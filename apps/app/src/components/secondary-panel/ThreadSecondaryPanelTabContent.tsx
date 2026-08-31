@@ -1,4 +1,5 @@
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
 import type { DiffPresentation } from "@/components/code/code-rendering";
 import type { WorkspaceDiffTarget } from "@bb/domain";
 import type { MarkdownLinkRouting } from "@/components/ui/markdown-link-routing.js";
@@ -14,8 +15,24 @@ import {
   useThreadStorageFilePreview,
 } from "@/hooks/queries/thread-queries";
 import { useHostFilePreview } from "@/hooks/queries/host-file-preview-query";
+import { loadFilePreview } from "@/lib/api";
+import { resolveFileInteraction } from "@/lib/file-resolver";
+import { useAppNavigationHost } from "@/lib/app-navigation-host";
 import {
+  getAbsoluteDirname,
+  resolveRootRelativeFilePath,
+} from "@/lib/absolute-file-path";
+import { fileNameFromPath } from "@bb/thread-view";
+import type { ExperimentalFileIdentity } from "@get-bb/plugin-sdk";
+import {
+  buildHostFileDownloadUrl,
+  buildEnvironmentFileDownloadUrl,
+  buildEnvironmentFilePreviewUrl,
+  buildProjectFileDownloadUrl,
   buildRawFilesystemHtmlContentUrl,
+  buildThreadHostFileDownloadUrl,
+  buildThreadStorageDownloadUrl,
+  buildThreadWorktreeDownloadUrl,
   buildThreadWorktreeRawContentUrl,
 } from "@/lib/file-content-urls";
 import type {
@@ -32,6 +49,7 @@ import {
   SecondaryPanelFilePreview,
   ThreadStorageFilePreview,
 } from "./ThreadStorageFilePreview";
+import { buildMarkdownFilePreviewRouting } from "./markdown-file-preview-routing";
 
 const GIT_DIFF_SKELETON_FILE_COUNT = 3;
 const PANEL_SCROLL_SLOT_CLASS =
@@ -107,6 +125,13 @@ interface ThreadStorageFilePreviewTabContentProps {
   onSelectionAddToChat?: (text: string) => void;
   onOpenInEditor?: (path: string) => void;
   threadId: string;
+}
+
+interface ByteFilePreviewTabContentProps {
+  identity: ExperimentalFileIdentity;
+  isPanelOpen: boolean;
+  markdownLinkRouting?: MarkdownLinkRouting;
+  onSelectionAddToChat?: (text: string) => void;
 }
 
 function ThreadDiffSkeleton() {
@@ -324,12 +349,21 @@ export function WorkspaceFilePreviewTabContent({
     <SecondaryPanelFilePreview
       activePath={activePath}
       copyPath={copyPath}
+      downloadUrl={
+        threadId && source?.kind === "working-tree"
+          ? buildThreadWorktreeDownloadUrl(threadId, activePath)
+          : environmentId && source?.kind === "working-tree"
+            ? buildEnvironmentFileDownloadUrl(environmentId, activePath)
+            : null
+      }
       error={workspaceFilePreviewError}
       filePreview={workspaceFilePreview}
       htmlPreviewUrl={
         threadId && source?.kind === "working-tree"
           ? buildThreadWorktreeRawContentUrl(threadId, activePath)
-          : null
+          : environmentId && source?.kind === "working-tree"
+            ? buildEnvironmentFilePreviewUrl(environmentId, activePath)
+            : null
       }
       isLoading={isWorkspaceFilePreviewLoading}
       isRefreshing={isWorkspaceFilePreviewFetching}
@@ -372,6 +406,13 @@ export function ProjectFilePreviewTabContent({
     <SecondaryPanelFilePreview
       activePath={activePath}
       copyPath={copyPath}
+      downloadUrl={buildProjectFileDownloadUrl(projectId, activePath, {
+        ...(environmentId !== null
+          ? { environmentId }
+          : hostId !== null
+            ? { hostId }
+            : {}),
+      })}
       error={projectFilePreviewError}
       filePreview={projectFilePreview}
       isLoading={isProjectFilePreviewLoading}
@@ -411,6 +452,7 @@ export function HostFilePreviewTabContent({
     <SecondaryPanelFilePreview
       activePath={activePath}
       copyPath={copyPath}
+      downloadUrl={buildThreadHostFileDownloadUrl(threadId, activePath)}
       error={hostFilePreviewError}
       filePreview={hostFilePreview}
       htmlPreviewUrl={buildRawFilesystemHtmlContentUrl(threadId, activePath)}
@@ -444,6 +486,7 @@ export function HostScopedFilePreviewTabContent({
     <SecondaryPanelFilePreview
       activePath={activePath}
       copyPath={activePath}
+      downloadUrl={buildHostFileDownloadUrl(hostId, activePath)}
       error={error}
       filePreview={hostFilePreview}
       htmlPreviewUrl={hostFilePreview?.url ?? null}
@@ -481,6 +524,7 @@ export function ThreadStorageFilePreviewTabContent({
     <ThreadStorageFilePreview
       activePath={activePath}
       copyPath={copyPath}
+      downloadUrl={buildThreadStorageDownloadUrl(threadId, activePath)}
       error={threadStorageFilePreviewError}
       filePreview={threadStorageFilePreview}
       isLoading={isThreadStorageFilePreviewLoading}
@@ -491,6 +535,108 @@ export function ThreadStorageFilePreviewTabContent({
       onOpenInEditor={onOpenInEditor}
       onRefresh={() => void refetchThreadStorageFilePreview()}
       threadId={threadId}
+    />
+  );
+}
+
+export function ByteFilePreviewTabContent({
+  identity,
+  isPanelOpen,
+  markdownLinkRouting,
+  onSelectionAddToChat,
+}: ByteFilePreviewTabContentProps) {
+  const navigation = useAppNavigationHost();
+  const interaction = resolveFileInteraction(identity);
+  const previewUrl = interaction.previewUrl;
+  const previewQuery = useQuery({
+    queryKey: ["byte-file-preview", previewUrl, identity.displayName],
+    queryFn: ({ signal }) => {
+      if (previewUrl === null) {
+        throw new Error("File preview context is missing.");
+      }
+      return loadFilePreview(
+        {
+          name: identity.displayName,
+          path: identity.displayName,
+          url: previewUrl,
+        },
+        signal,
+      );
+    },
+    enabled: isPanelOpen && previewUrl !== null,
+  });
+  const projectAttachmentMarkdownLinkRouting = useMemo(() => {
+    if (identity.source.store !== "project-attachment") return undefined;
+    const attachmentPath = identity.source.path.replace(/^\/+/, "");
+    const source = identity.source;
+    return buildMarkdownFilePreviewRouting({
+      baseDir: getAbsoluteDirname({ path: `/${attachmentPath}` }),
+      contentSource: {
+        kind: "project-attachment",
+        projectId: source.ownerId,
+      },
+      onOpenLink: ({ href }) => navigation.openUrl({ url: href }),
+      onOpenLocalFileLink: (link) => {
+        const path = resolveRootRelativeFilePath({
+          path: link.path,
+          rootPath: "/",
+        });
+        if (path === null) return false;
+        return navigation.openFilePreview({
+          identity: {
+            source: { ...source, path },
+            displayName: fileNameFromPath(path),
+            mimeType: null,
+            sizeBytes: null,
+            location:
+              link.lineRange === null
+                ? null
+                : {
+                    kind: "range",
+                    startLine: link.lineRange.startLineNumber,
+                    endLine: link.lineRange.endLineNumber,
+                  },
+          },
+        });
+      },
+      rootPath: "/",
+    });
+  }, [identity.source, navigation]);
+
+  return (
+    <SecondaryPanelFilePreview
+      activePath={identity.displayName}
+      copyPath={identity.displayName}
+      downloadUrl={interaction.downloadUrl}
+      error={
+        previewUrl === null
+          ? new Error("File preview context is missing.")
+          : previewQuery.error
+      }
+      filePreview={previewQuery.data}
+      htmlPreviewUrl={previewUrl}
+      isLoading={previewQuery.isLoading}
+      isRefreshing={previewQuery.isFetching}
+      lineRange={
+        identity.location === null
+          ? null
+          : {
+              startLineNumber:
+                identity.location.kind === "line"
+                  ? identity.location.line
+                  : identity.location.startLine,
+              endLineNumber:
+                identity.location.kind === "line"
+                  ? identity.location.line
+                  : identity.location.endLine,
+            }
+      }
+      markdownLinkRouting={
+        markdownLinkRouting ?? projectAttachmentMarkdownLinkRouting
+      }
+      onSelectionAddToChat={onSelectionAddToChat}
+      onRefresh={() => void previewQuery.refetch()}
+      statusLabel={null}
     />
   );
 }

@@ -98,7 +98,9 @@ interface ConversationMessageContentUserProps extends ConversationMessageContent
   senderIsPluginSideChat: boolean;
   systemMessageKind: TimelineUserConversationRow["systemMessageKind"];
   systemMessageSubject: TimelineUserConversationRow["systemMessageSubject"];
+  threadId?: string;
   turnRequest: TimelineUserConversationRow["turnRequest"];
+  workspaceRootPath?: string;
 }
 
 type AssistantMessageRowIdentity = Pick<
@@ -164,7 +166,9 @@ interface UserConversationMessageProps {
   systemMessageKind: TimelineUserConversationRow["systemMessageKind"];
   systemMessageSubject: TimelineUserConversationRow["systemMessageSubject"];
   text: string;
+  threadId?: string;
   turnRequest: TimelineUserConversationRow["turnRequest"];
+  workspaceRootPath?: string;
 }
 
 interface AssistantConversationMessageProps extends AssistantMessageRowIdentity {
@@ -188,19 +192,19 @@ interface AssistantConversationMessageProps extends AssistantMessageRowIdentity 
 }
 
 interface CollapsibleMessageTextProps {
+  linkRouting?: MarkdownLinkRouting;
   mentions: readonly PromptTextMention[];
   resolveMentionLink?: PromptMentionLinkResolver;
   resolveSegmentLinkHref?: TimelineTitleLinkResolver;
-  onOpenLink?: ThreadTimelineLinkHandler;
   text: string;
   mutePrefixLength?: number;
 }
 
 function CollapsibleMessageText({
+  linkRouting,
   mentions,
   resolveMentionLink,
   resolveSegmentLinkHref,
-  onOpenLink,
   text,
   mutePrefixLength,
 }: CollapsibleMessageTextProps) {
@@ -244,11 +248,6 @@ function CollapsibleMessageText({
     }),
     [body.mentions],
   );
-  const linkRouting = useMemo<MarkdownLinkRouting | undefined>(
-    () => (onOpenLink ? { onOpenLink } : undefined),
-    [onOpenLink],
-  );
-
   const isOverflowing = useIsOverflowing({
     elementRef: bodyRef,
     enabled: !isExpanded,
@@ -301,6 +300,48 @@ function CollapsibleMessageText({
   );
 }
 
+function buildConversationMarkdownLinkRouting({
+  onOpenLink,
+  onOpenLocalFileLink,
+  threadId,
+  workspaceRootPath,
+}: {
+  onOpenLink: ThreadTimelineLinkHandler | undefined;
+  onOpenLocalFileLink: ThreadTimelineLocalFileLinkHandler | undefined;
+  threadId: string | undefined;
+  workspaceRootPath: string | undefined;
+}): MarkdownLinkRouting | undefined {
+  const routing: MarkdownLinkRouting = {};
+  if (onOpenLink !== undefined) {
+    routing.onOpenLink = onOpenLink;
+  }
+  if (onOpenLocalFileLink !== undefined) {
+    routing.localFile = {
+      absoluteLinks: { kind: "trusted-host" },
+      onOpenLink: onOpenLocalFileLink,
+    };
+    if (workspaceRootPath !== undefined) {
+      routing.localFile.relativeLinks = {
+        baseDir: workspaceRootPath,
+        rootPath: workspaceRootPath,
+      };
+    }
+  }
+  if (threadId !== undefined) {
+    routing.localImage = {
+      absolutePaths: { kind: "trusted-host" },
+      resolveSrc: ({ path }) => buildThreadHostFileContentUrl(threadId, path),
+    };
+    if (workspaceRootPath !== undefined) {
+      routing.localImage.relativePaths = {
+        baseDir: workspaceRootPath,
+        rootPath: workspaceRootPath,
+      };
+    }
+  }
+  return Object.keys(routing).length === 0 ? undefined : routing;
+}
+
 function buildAddToChatAttachments(
   attachments: TimelineConversationAttachments | null,
 ): PromptDraftAttachment[] {
@@ -347,8 +388,20 @@ function UserConversationMessage({
   systemMessageKind,
   systemMessageSubject,
   text,
+  threadId,
   turnRequest,
+  workspaceRootPath,
 }: UserConversationMessageProps) {
+  const linkRouting = useMemo(
+    () =>
+      buildConversationMarkdownLinkRouting({
+        onOpenLink,
+        onOpenLocalFileLink,
+        threadId,
+        workspaceRootPath,
+      }),
+    [onOpenLink, onOpenLocalFileLink, threadId, workspaceRootPath],
+  );
   if (initiator === "agent" && senderThreadId !== null) {
     const body = generatedConversationBodySlice({ initiator, text });
     const bodyMentions = shiftMentionsToTextRange({
@@ -359,9 +412,9 @@ function UserConversationMessage({
     return (
       <GeneratedConversationMessage
         attachmentItems={attachmentItems}
+        linkRouting={linkRouting}
         originKind={originKind}
         mentions={bodyMentions}
-        onOpenLink={onOpenLink}
         onOpenLocalFileLink={onOpenLocalFileLink}
         projectId={projectId}
         resolveMentionLink={resolveMentionLink}
@@ -392,9 +445,9 @@ function UserConversationMessage({
     return (
       <GeneratedConversationMessage
         attachmentItems={attachmentItems}
+        linkRouting={linkRouting}
         originKind={null}
         mentions={bodyMentions}
-        onOpenLink={onOpenLink}
         onOpenLocalFileLink={onOpenLocalFileLink}
         projectId={projectId}
         resolveMentionLink={resolveMentionLink}
@@ -433,10 +486,10 @@ function UserConversationMessage({
           <div className="max-w-full rounded-xl border border-border-seam bg-surface-recessed px-4 py-2.5 text-sm leading-relaxed text-foreground">
             {messageText ? (
               <CollapsibleMessageText
+                linkRouting={linkRouting}
                 mentions={mentions}
                 resolveMentionLink={resolveMentionLink}
                 resolveSegmentLinkHref={resolveSegmentLinkHref}
-                onOpenLink={onOpenLink}
                 text={text}
                 mutePrefixLength={mutePrefixLength || undefined}
               />
@@ -445,10 +498,9 @@ function UserConversationMessage({
             )}
             <ConversationAttachments
               align="end"
-              filePaths={attachmentItems.filePaths}
+              fileItems={attachmentItems.fileItems}
               imageItems={attachmentItems.imageItems}
               onOpenLocalFileLink={onOpenLocalFileLink}
-              projectId={projectId}
             />
           </div>
           {}
@@ -615,10 +667,9 @@ function AssistantConversationMessage({
         )}
       </SelectableMessageProse>
       <ConversationAttachments
-        filePaths={attachmentItems.filePaths}
+        fileItems={attachmentItems.fileItems}
         imageItems={attachmentItems.imageItems}
         onOpenLocalFileLink={onOpenLocalFileLink}
-        projectId={projectId}
       />
       {showActions ? (
         <MessageActionBar
@@ -647,6 +698,7 @@ export function ConversationMessageContent(
     projectId,
     resolveUserAttachmentImageSrc,
     text,
+    threadId,
   } = props;
   const attachmentItems = useMemo(
     () =>
@@ -654,8 +706,9 @@ export function ConversationMessageContent(
         attachments,
         projectId,
         resolveUserAttachmentImageSrc,
+        threadId,
       }),
-    [attachments, projectId, resolveUserAttachmentImageSrc],
+    [attachments, projectId, resolveUserAttachmentImageSrc, threadId],
   );
   const addToChatAttachments = useMemo(
     () => buildAddToChatAttachments(attachments),
@@ -687,7 +740,9 @@ export function ConversationMessageContent(
         systemMessageKind={props.systemMessageKind}
         systemMessageSubject={props.systemMessageSubject}
         text={text}
+        threadId={threadId}
         turnRequest={props.turnRequest}
+        workspaceRootPath={props.workspaceRootPath}
       />
     );
   }

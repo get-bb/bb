@@ -32,8 +32,16 @@ export interface FilePreviewTarget {
 }
 
 interface FilePreviewBase extends FilePreviewTarget {
-  kind: "image" | "text" | "unsupported" | "video";
+  kind: "audio" | "document" | "image" | "text" | "unsupported" | "video";
   mimeType: string;
+}
+
+interface AudioFilePreview extends FilePreviewBase {
+  kind: "audio";
+}
+
+interface DocumentFilePreview extends FilePreviewBase {
+  kind: "document";
 }
 
 interface ImageFilePreview extends FilePreviewBase {
@@ -54,6 +62,8 @@ interface UnsupportedFilePreview extends FilePreviewBase {
 }
 
 export type FilePreview =
+  | AudioFilePreview
+  | DocumentFilePreview
   | ImageFilePreview
   | VideoFilePreview
   | TextFilePreview
@@ -100,6 +110,16 @@ export interface HostFileTabState {
 export interface ThreadStorageFileTabState {
   lineRange: FilePreviewLineRange | null;
   path: string;
+}
+
+export interface ByteFileTabState {
+  displayName: string;
+  lineRange: FilePreviewLineRange | null;
+  mimeType: string | null;
+  ownerId: string;
+  resourceId: string;
+  sizeBytes: number | null;
+  source: "project-attachment" | "tasks-attachment";
 }
 
 export function createFilePreviewLineRange({
@@ -244,6 +264,20 @@ export function buildFilePreview(args: BuildFilePreviewArgs): FilePreview {
   if (args.mimeType.startsWith("image/")) {
     return {
       kind: "image",
+      ...base,
+    };
+  }
+
+  if (args.mimeType.startsWith("audio/")) {
+    return {
+      kind: "audio",
+      ...base,
+    };
+  }
+
+  if (args.mimeType === "application/pdf") {
+    return {
+      kind: "document",
       ...base,
     };
   }

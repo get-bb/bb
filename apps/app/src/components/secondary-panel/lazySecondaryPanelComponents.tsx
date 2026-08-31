@@ -84,6 +84,13 @@ const ThreadStorageFilePreviewTabContentChunk = lazy(() =>
     }),
   ),
 );
+const ByteFilePreviewTabContentChunk = lazy(() =>
+  import("./ThreadSecondaryPanelTabContent").then(
+    ({ ByteFilePreviewTabContent }) => ({
+      default: ByteFilePreviewTabContent,
+    }),
+  ),
+);
 
 function SecondaryPanelContentSkeleton() {
   return (
@@ -280,6 +287,18 @@ export function LazyThreadStorageFilePreviewTabContent(
   return (
     <Suspense fallback={<SecondaryPanelContentSkeleton />}>
       <ThreadStorageFilePreviewTabContentChunk {...props} />
+    </Suspense>
+  );
+}
+
+export function LazyByteFilePreviewTabContent(
+  props: ComponentProps<
+    ThreadSecondaryPanelTabContentModule["ByteFilePreviewTabContent"]
+  >,
+) {
+  return (
+    <Suspense fallback={<SecondaryPanelContentSkeleton />}>
+      <ByteFilePreviewTabContentChunk {...props} />
     </Suspense>
   );
 }

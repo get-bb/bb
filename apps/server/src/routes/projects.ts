@@ -26,6 +26,8 @@ import {
   publicApiRoutes,
   typedRoutes,
   type ProjectListIncludeOption,
+  type ProjectAttachmentContentQuery,
+  type ProjectFileContentQuery,
   type ProjectListQuery,
   type ProjectResponse,
   type ProjectWithThreadsResponse,
@@ -60,9 +62,11 @@ import {
 } from "../services/skills/skill-listing.js";
 import {
   createDaemonFileContentResponse,
+  type DaemonFileReadResult,
   remapDaemonFileRouteError,
   requestMatchesEntityTag,
 } from "../services/hosts/daemon-file-response.js";
+import { buildFileResponseHeaders } from "../services/files/file-response-policy.js";
 import { parseBoundedPositiveOptionalInteger } from "../services/lib/validation.js";
 import {
   buildCommandListResponse,
@@ -97,6 +101,46 @@ import {
 type ProjectResponseProjectFields = Omit<ProjectResponse, "sources">;
 const PROJECT_CLONE_TIMEOUT_MS = 20 * 60 * 1000;
 const ATTACHMENT_CONTENT_CACHE_CONTROL = "private, immutable, max-age=31536000";
+
+async function readProjectWorkspaceFile(
+  deps: AppDeps,
+  projectId: string,
+  query: ProjectFileContentQuery,
+): Promise<DaemonFileReadResult> {
+  requirePublicStandardProject(deps.db, projectId);
+  const target = resolveProjectWorkspaceTarget(deps, {
+    projectId,
+    ...(query.environmentId !== undefined
+      ? { environmentId: query.environmentId }
+      : {}),
+    ...(query.hostId !== undefined ? { hostId: query.hostId } : {}),
+  });
+  const filePath = parseSafeRelativeRoutePath(query.path);
+  return callHostRetryableOnlineRpc(deps, {
+    hostId: target.hostId,
+    timeoutMs: COMMAND_TIMEOUT_MS,
+    command: {
+      type: "host.read_file",
+      path: path.join(target.path, filePath.relativePath),
+      rootPath: target.path,
+    },
+  });
+}
+
+function createProjectWorkspaceFileResponse(
+  result: DaemonFileReadResult,
+  fileName: string,
+  disposition: "attachment" | "inline",
+  ifNoneMatch: string | undefined,
+): Response {
+  const headers = buildFileResponseHeaders({
+    disposition,
+    fileName,
+    mimeType: result.mimeType,
+  });
+  headers.set("x-bb-content-encoding", result.contentEncoding);
+  return createDaemonFileContentResponse(result, { headers, ifNoneMatch });
+}
 
 function toProjectResponseProjectFields(
   project: ProjectResponseProjectFields,
@@ -620,36 +664,49 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
     return context.json({ files: result.files, truncated: result.truncated });
   });
 
-  get(routes.fileContent, async (context, query) => {
-    const projectId = context.req.param("id");
-    requirePublicStandardProject(deps.db, projectId);
-    const target = resolveProjectWorkspaceTarget(deps, {
-      projectId,
-      ...(query.environmentId !== undefined
-        ? { environmentId: query.environmentId }
-        : {}),
-      ...(query.hostId !== undefined ? { hostId: query.hostId } : {}),
-    });
-    const filePath = parseSafeRelativeRoutePath(query.path);
-
+  const serveProjectFile = async (
+    projectId: string,
+    query: ProjectFileContentQuery,
+    disposition: "attachment" | "inline",
+    ifNoneMatch: string | undefined,
+  ): Promise<Response> => {
     try {
-      const result = await callHostRetryableOnlineRpc(deps, {
-        hostId: target.hostId,
-        timeoutMs: COMMAND_TIMEOUT_MS,
-        command: {
-          type: "host.read_file",
-          path: path.join(target.path, filePath.relativePath),
-          rootPath: target.path,
-        },
-      });
-      return createDaemonFileContentResponse(result, {
-        headers: { "x-bb-content-encoding": result.contentEncoding },
-        ifNoneMatch: context.req.header("if-none-match"),
-      });
+      const result = await readProjectWorkspaceFile(deps, projectId, query);
+      return createProjectWorkspaceFileResponse(
+        result,
+        query.path,
+        disposition,
+        ifNoneMatch,
+      );
     } catch (error) {
       return remapDaemonFileRouteError(error);
     }
-  });
+  };
+
+  get(routes.fileContent, (context, query) =>
+    serveProjectFile(
+      context.req.param("id"),
+      query,
+      "inline",
+      context.req.header("if-none-match"),
+    ),
+  );
+  get(routes.filePreview, (context, query) =>
+    serveProjectFile(
+      context.req.param("id"),
+      query,
+      "inline",
+      context.req.header("if-none-match"),
+    ),
+  );
+  get(routes.fileDownload, (context, query) =>
+    serveProjectFile(
+      context.req.param("id"),
+      query,
+      "attachment",
+      context.req.header("if-none-match"),
+    ),
+  );
 
   get(routes.paths, async (context, query) => {
     const projectId = context.req.param("id");
@@ -917,24 +974,26 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
     return context.json({ ok: true as const });
   });
 
-  get(routes.attachmentContent, async (context, query) => {
-    requirePublicProject(deps.db, context.req.param("id"));
+  const serveAttachment = async (
+    projectId: string,
+    query: ProjectAttachmentContentQuery,
+    disposition: "attachment" | "inline",
+    ifNoneMatch: string | undefined,
+  ): Promise<Response> => {
+    requirePublicProject(deps.db, projectId);
     const attachment = await readAttachment(
       deps.config.dataDir,
-      context.req.param("id"),
+      projectId,
       query.path,
     );
-    const headers = new Headers({
-      "cache-control": ATTACHMENT_CONTENT_CACHE_CONTROL,
-      "content-type": attachment.mimeType ?? "application/octet-stream",
-      etag: attachment.etag,
+    const headers = buildFileResponseHeaders({
+      cacheControl: ATTACHMENT_CONTENT_CACHE_CONTROL,
+      disposition,
+      fileName: query.path,
+      mimeType: attachment.mimeType,
     });
-    if (
-      requestMatchesEntityTag(
-        context.req.header("if-none-match"),
-        attachment.etag,
-      )
-    ) {
+    headers.set("etag", attachment.etag);
+    if (requestMatchesEntityTag(ifNoneMatch, attachment.etag)) {
       return new Response(null, { status: 304, headers });
     }
     headers.set("content-length", String(attachment.content.byteLength));
@@ -942,5 +1001,30 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
       status: 200,
       headers,
     });
-  });
+  };
+
+  get(routes.attachmentContent, (context, query) =>
+    serveAttachment(
+      context.req.param("id"),
+      query,
+      "inline",
+      context.req.header("if-none-match"),
+    ),
+  );
+  get(routes.attachmentPreview, (context, query) =>
+    serveAttachment(
+      context.req.param("id"),
+      query,
+      "inline",
+      context.req.header("if-none-match"),
+    ),
+  );
+  get(routes.attachmentDownload, (context, query) =>
+    serveAttachment(
+      context.req.param("id"),
+      query,
+      "attachment",
+      context.req.header("if-none-match"),
+    ),
+  );
 }

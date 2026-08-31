@@ -27,10 +27,7 @@ import type {
   TimelineTitleActionResolver,
   TimelineTitleLinkResolver,
 } from "./TimelineTitleView.js";
-import type {
-  ThreadTimelineLinkHandler,
-  ThreadTimelineLocalFileLinkHandler,
-} from "./types.js";
+import type { ThreadTimelineLocalFileLinkHandler } from "./types.js";
 import { turnRequestLabel } from "@bb/client-core";
 import { TurnRequestLabel } from "./TurnRequestLabel.js";
 import { useOverflowMeasurement } from "./conversation-message-overflow.js";
@@ -46,9 +43,9 @@ import {
 
 interface GeneratedConversationMessageProps {
   attachmentItems: ConversationAttachmentItems;
+  linkRouting?: MarkdownLinkRouting;
   originKind: ThreadOriginKind | null;
   mentions: readonly PromptTextMention[];
-  onOpenLink?: ThreadTimelineLinkHandler;
   onOpenLocalFileLink?: ThreadTimelineLocalFileLinkHandler;
   projectId?: string;
   resolveMentionLink?: PromptMentionLinkResolver;
@@ -431,9 +428,9 @@ const COLLAPSED_MARKDOWN_PREVIEW_CLASS = cn(
 export const GeneratedConversationMessage = memo(
   function GeneratedConversationMessage({
     attachmentItems,
+    linkRouting,
     originKind,
     mentions,
-    onOpenLink,
     onOpenLocalFileLink,
     projectId,
     resolveMentionLink,
@@ -461,9 +458,6 @@ export const GeneratedConversationMessage = memo(
       [mentions, messageText.length, trimStartLength],
     );
     const requestLabel = turnRequestLabel(turnRequest);
-    const linkRouting = useMemo<MarkdownLinkRouting | undefined>(() => {
-      return onOpenLink === undefined ? undefined : { onOpenLink };
-    }, [onOpenLink]);
     const title = useMemo(
       () =>
         generatedConversationTitle({
@@ -504,7 +498,7 @@ export const GeneratedConversationMessage = memo(
     );
     const titleOnly = systemMessageIsTitleOnly(sourceKind, systemMessageKind);
     const hasExpandedOnlyContent =
-      attachmentItems.filePaths.length > 0 ||
+      attachmentItems.fileItems.length > 0 ||
       attachmentItems.imageItems.length > 0 ||
       requestLabel !== null;
     const collapsedPreviewSource =
@@ -615,10 +609,9 @@ export const GeneratedConversationMessage = memo(
             )}
             <ConversationAttachments
               align="start"
-              filePaths={attachmentItems.filePaths}
+              fileItems={attachmentItems.fileItems}
               imageItems={attachmentItems.imageItems}
               onOpenLocalFileLink={onOpenLocalFileLink}
-              projectId={projectId}
             />
             {requestLabel ? (
               <div className="mt-1 flex items-center justify-start gap-2">
@@ -629,7 +622,7 @@ export const GeneratedConversationMessage = memo(
         </div>
       ),
       [
-        attachmentItems.filePaths,
+        attachmentItems.fileItems,
         attachmentItems.imageItems,
         linkRouting,
         messageText,

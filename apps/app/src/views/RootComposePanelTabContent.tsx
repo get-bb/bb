@@ -10,6 +10,7 @@ import type {
 import type { SecondaryPanelPaneRenderContext } from "@/components/secondary-panel/ThreadSecondaryPanel";
 import {
   LazyFilePreview,
+  LazyByteFilePreviewTabContent,
   LazyHostFilePreviewTabContent,
   LazyNewTabPage,
   LazyProjectFilePreviewTabContent,
@@ -43,6 +44,7 @@ import {
 import { useAppCommandHandler } from "@/components/commands/AppCommandProvider";
 import type { MarkdownPreviewLinkHandler } from "@/components/ui/markdown-link";
 import type { MarkdownPreviewLocalFileLinkHandler } from "@/components/ui/markdown-local-file-link";
+import { identityFromByteFileTab } from "@/lib/file-resolver";
 import {
   buildMarkdownFilePreviewRouting,
   resolveMarkdownFilePreviewRootPath,
@@ -226,6 +228,14 @@ export function RootComposePanelTabContent({
           }
           pluginActions={pluginActions}
           showFileSearch={!isProjectless}
+        />
+      );
+    case "byte-file-preview":
+      return (
+        <LazyByteFilePreviewTabContent
+          identity={identityFromByteFileTab(tab)}
+          isPanelOpen={isPanelOpen}
+          onSelectionAddToChat={onSelectionAddToChat}
         />
       );
     case "workspace-file-preview":

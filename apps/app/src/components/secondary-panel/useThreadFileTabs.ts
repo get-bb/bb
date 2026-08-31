@@ -15,12 +15,14 @@ import {
 } from "@/lib/fixed-panel-tabs";
 import {
   createBrowserFixedPanelTab,
+  createByteFilePreviewFixedPanelTab,
   createHostFilePreviewFixedPanelTab,
   createNewTabFixedPanelTab,
   createPluginPanelFixedPanelTab,
   createThreadStorageFilePreviewFixedPanelTab,
   createWorkspaceFilePreviewFixedPanelTab,
   type BrowserFixedPanelTab,
+  type ByteFilePreviewFixedPanelTab,
   type FixedPanelTab,
   type FixedPanelTabsState,
   type HostFilePreviewFixedPanelTab,
@@ -41,6 +43,7 @@ import type { FileOpenerOverride } from "@/lib/plugin-slot-resolvers";
 import type { OpenPluginPanelArgs } from "@/components/plugin/PluginPanelActions";
 import type {
   HostFileTabState,
+  ByteFileTabState,
   ThreadStorageFileTabState,
   WorkspaceFileTabState,
 } from "@bb/client-core";
@@ -106,6 +109,10 @@ export interface UpdateBrowserTabArgs {
 
 export type OpenSecondaryPanelTabRequest =
   | {
+      kind: "byte-file-preview";
+      tab: ByteFileTabState;
+    }
+  | {
       kind: "workspace-file-preview";
       tab: WorkspaceFileTabState;
       environmentId?: string;
@@ -136,6 +143,7 @@ interface PruneSecondaryTabsArgs {
 }
 
 type SecondaryPanelTab =
+  | ByteFilePreviewFixedPanelTab
   | WorkspaceFilePreviewFixedPanelTab
   | HostFilePreviewFixedPanelTab
   | ThreadStorageFilePreviewFixedPanelTab
@@ -195,6 +203,7 @@ function isReopenableSecondaryPanelTab(
 ): tab is ReopenableSecondaryPanelTab {
   switch (tab.kind) {
     case "workspace-file-preview":
+    case "byte-file-preview":
     case "host-file-preview":
     case "thread-storage-file-preview":
     case "browser":
@@ -253,6 +262,10 @@ function isReopenablePanelTabOwnedByContext({
       : null;
   const tab = originalTab ?? reopenableTab;
   switch (tab.kind) {
+    case "byte-file-preview":
+      return (
+        tab.source === "tasks-attachment" || tab.ownerId === context.projectId
+      );
     case "workspace-file-preview":
       return (
         tab.environmentId === context.environmentId &&
@@ -349,6 +362,8 @@ function createTabForOpenRequest({
   threadId,
 }: CreateTabForOpenRequestArgs): SecondaryPanelTab | null {
   switch (request.kind) {
+    case "byte-file-preview":
+      return createByteFilePreviewFixedPanelTab({ tab: request.tab });
     case "workspace-file-preview":
       if (
         request.environmentId === undefined &&
@@ -678,16 +693,19 @@ export function useThreadFileTabs({
       behavior: OpenResolvedTabBehavior,
       viewer?: FileOpenerOverride,
     ): SecondaryPanelTab | null => {
-      const openerTab = createFileOpenerTabForRequest({
-        fileOpeners,
-        preference: fileOpenerPreference,
-        projectHostId,
-        projectId,
-        request,
-        resolvedEnvironmentId,
-        threadId: resolvedFileOwnerThreadId,
-        ...(viewer !== undefined ? { viewer } : {}),
-      });
+      const openerTab =
+        request.kind === "byte-file-preview"
+          ? null
+          : createFileOpenerTabForRequest({
+              fileOpeners,
+              preference: fileOpenerPreference,
+              projectHostId,
+              projectId,
+              request,
+              resolvedEnvironmentId,
+              threadId: resolvedFileOwnerThreadId,
+              ...(viewer !== undefined ? { viewer } : {}),
+            });
       const tab =
         openerTab ??
         createTabForOpenRequest({

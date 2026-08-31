@@ -64,3 +64,17 @@ export function isExternallyOpenable(url: string): boolean {
     return false;
   }
 }
+
+export type ShellWindowOpenAction =
+  | { kind: "external"; url: string }
+  | { kind: "reject" }
+  | { kind: "shell"; url: string };
+
+export function resolveShellWindowOpen(
+  url: string,
+  serverUrl: string,
+): ShellWindowOpenAction {
+  if (isShellNavigation(url, serverUrl)) return { kind: "shell", url };
+  if (isExternallyOpenable(url)) return { kind: "external", url };
+  return { kind: "reject" };
+}

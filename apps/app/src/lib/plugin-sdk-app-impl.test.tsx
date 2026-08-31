@@ -180,12 +180,17 @@ describe("plugin SDK navigation components", () => {
     );
     fireEvent.click(screen.getByRole("link", { name: "result.md" }));
     expect(openFilePreview).toHaveBeenCalledWith({
-      target: {
-        kind: "thread-storage",
-        threadId: "thr_1",
-        path: "reports/result.md",
+      identity: {
+        source: {
+          store: "thread-storage",
+          ownerId: "thr_1",
+          path: "reports/result.md",
+        },
+        displayName: "result.md",
+        mimeType: null,
+        sizeBytes: null,
+        location: null,
       },
-      location: null,
     });
   });
 });

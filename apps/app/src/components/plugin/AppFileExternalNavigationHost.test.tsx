@@ -38,12 +38,17 @@ function Probe() {
         type="button"
         onClick={() =>
           navigation.openFileExternally({
-            target: {
-              kind: "workspace",
-              environmentId: "env_1",
-              path: "src/example.ts",
+            identity: {
+              source: {
+                store: "workspace",
+                ownerId: "env_1",
+                path: "src/example.ts",
+              },
+              displayName: "example.ts",
+              mimeType: null,
+              sizeBytes: null,
+              location: { kind: "line", line: 12, column: 3 },
             },
-            location: { kind: "line", line: 12, column: 3 },
           })
         }
       >
@@ -53,20 +58,30 @@ function Probe() {
         type="button"
         onClick={() => {
           const firstAccepted = navigation.openFileExternally({
-            target: {
-              kind: "workspace",
-              environmentId: "env_1",
-              path: "src/first.ts",
+            identity: {
+              source: {
+                store: "workspace",
+                ownerId: "env_1",
+                path: "src/first.ts",
+              },
+              displayName: "first.ts",
+              mimeType: null,
+              sizeBytes: null,
+              location: { kind: "line", line: 10, column: 2 },
             },
-            location: { kind: "line", line: 10, column: 2 },
           });
           const secondAccepted = navigation.openFileExternally({
-            target: {
-              kind: "workspace",
-              environmentId: "env_1",
-              path: "src/second.ts",
+            identity: {
+              source: {
+                store: "workspace",
+                ownerId: "env_1",
+                path: "src/second.ts",
+              },
+              displayName: "second.ts",
+              mimeType: null,
+              sizeBytes: null,
+              location: { kind: "line", line: 20, column: 4 },
             },
-            location: { kind: "line", line: 20, column: 4 },
           });
           recordAccepted(firstAccepted, secondAccepted);
         }}

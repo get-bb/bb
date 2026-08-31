@@ -4326,10 +4326,36 @@ describe("public thread data routes", () => {
       const fileResponse = await filePromise;
       expect(fileResponse.status).toBe(200);
       expect(fileResponse.headers.get("content-type")).toBe("image/png");
+      expect(fileResponse.headers.get("content-disposition")).toContain(
+        `inline; filename="diagram.png";`,
+      );
       expect(fileResponse.headers.get("x-bb-content-encoding")).toBeNull();
       expect(fileResponse.headers.get("x-bb-size-bytes")).toBeNull();
       expect(new Uint8Array(await fileResponse.arrayBuffer())).toEqual(
         pngBytes,
+      );
+
+      const downloadPromise = harness.app.request(
+        `/api/v1/threads/${thread.id}/thread-storage/download?path=${encodeURIComponent("images/diagram.png")}`,
+      );
+      const downloadCommand = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "host.read_file" &&
+          command.path === threadStorageFilePath,
+      );
+      await reportQueuedCommandSuccess(harness, downloadCommand, {
+        path: threadStorageFilePath,
+        content: Buffer.from(pngBytes).toString("base64"),
+        contentEncoding: "base64",
+        mimeType: "image/png",
+        sizeBytes: pngBytes.byteLength,
+        sha256: "1".repeat(64),
+      });
+      const downloadResponse = await downloadPromise;
+      expect(downloadResponse.status).toBe(200);
+      expect(downloadResponse.headers.get("content-disposition")).toContain(
+        `attachment; filename="diagram.png";`,
       );
     });
   });
@@ -4650,6 +4676,9 @@ describe("public thread data routes", () => {
       const fileResponse = await filePromise;
       expect(fileResponse.status).toBe(200);
       expect(fileResponse.headers.get("content-type")).toBe("text/markdown");
+      expect(fileResponse.headers.get("content-disposition")).toContain(
+        `inline; filename="plan.md";`,
+      );
       expect(new Uint8Array(await fileResponse.arrayBuffer())).toEqual(
         fileBytes,
       );

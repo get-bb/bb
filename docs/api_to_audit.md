@@ -648,10 +648,13 @@ unterminated line is emitted before it.
 
 ## Live-file navigation (`experimental_FileLink`, `BbNavigate.experimental_openFilePreview`, `BbNavigate.experimental_openFileExternally`, and `PluginFileOpenerSource.experimental_hostId`)
 
-**Kept experimental (2026-08-22).** `experimental_hostId` is persisted inside opener-tab `paramsJson` (a rename needs a read-compat shim), Windows/UNC paths were never verified, and `experimental_openFilePreview` has no consumer.
+**Kept experimental (2026-08-31).** `experimental_hostId` is persisted inside opener-tab `paramsJson` (a rename needs a read-compat shim), Windows/UNC paths need device verification, and the canonical identity now crosses all built-in file stores.
 
 **What it does.** Gives plugin UI explicit, source-safe references to live
-workspace, host, and thread-storage files. Ordinary `experimental_FileLink`
+workspace, host, thread-storage, project-attachment, Tasks-attachment, and
+remote files. `ExperimentalFileIdentity` carries the store owner, resource,
+display name, MIME, byte size, and optional line target. Ordinary
+`experimental_FileLink`
 activation and the preview method use the current surface's shared file-tab
 controller, including extension preferences and plugin file openers. The
 external method resolves the current client's preferred file target, absolute
@@ -664,8 +667,8 @@ malformed runtime targets remain inert in both the app and SDK test runtime.
 
 **Audit before stabilizing.**
 
-1. Verify strict target/path/location validation on POSIX, Windows drive, and
-   UNC paths, including stale environment, host, and thread identities.
+1. Verify strict identity/path/location validation on POSIX, Windows drive,
+   and UNC paths, including stale store owners and attachment identifiers.
 2. Confirm preview identity, persistence, opener preference, one-off Open with,
    disabled opener fallback, and explicit-host migration on Thread, New-thread,
    Settings, and plugin-page surfaces.
@@ -676,8 +679,8 @@ malformed runtime targets remain inert in both the app and SDK test runtime.
    rather than become plugin-selectable API.
 5. Measure the lazy boundary: mounting a file link must not start file reads,
    preview imports, editor discovery, or panel-destination loading.
-6. Decide whether Git snapshots or deleted working-tree files merit separate
-   target variants; do not weaken live-file guarantees to accommodate them.
+6. Decide whether Git snapshots, deleted working-tree files, or new attachment
+   stores merit separate source variants. Do not weaken live-file guarantees.
 7. Confirm `PluginFileOpenerSource.experimental_hostId` can become a stable
    required `hostId` field without breaking older opener implementations.
 

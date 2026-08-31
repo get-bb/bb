@@ -124,6 +124,19 @@ export const threadTabSchema = z.discriminatedUnion("kind", [
     .strict(),
   z
     .object({
+      displayName: z.string().min(1).max(THREAD_TAB_TITLE_MAX_LENGTH),
+      id: threadTabIdSchema,
+      kind: z.literal("byte-file-preview"),
+      lineRange: threadTabLineRangeSchema.nullable(),
+      mimeType: z.string().min(1).max(THREAD_TAB_TITLE_MAX_LENGTH).nullable(),
+      ownerId: z.string().min(1).max(THREAD_TAB_PATH_MAX_LENGTH),
+      resourceId: threadTabPathSchema,
+      sizeBytes: z.number().int().nonnegative().nullable(),
+      source: z.enum(["project-attachment", "tasks-attachment"]),
+    })
+    .strict(),
+  z
+    .object({
       environmentId: z.string().min(1).nullable(),
       id: threadTabIdSchema,
       isPinned: z.boolean(),

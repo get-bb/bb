@@ -4,8 +4,19 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Attachment } from "../../shared/contract.js";
 import { AttachmentsGrid } from "./attachments.js";
 
+const { openFilePreview } = vi.hoisted(() => ({
+  openFilePreview: vi.fn(() => true),
+}));
+
+vi.mock("@get-bb/plugin-sdk/app", () => ({
+  useBbNavigate: () => ({
+    experimental_openFilePreview: openFilePreview,
+  }),
+}));
+
 afterEach(() => {
   cleanup();
+  openFilePreview.mockClear();
 });
 
 function imageAttachment(overrides: Partial<Attachment> = {}): Attachment {
@@ -44,6 +55,43 @@ describe("AttachmentsGrid layout", () => {
       fileCard.compareDocumentPosition(image) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
+  });
+
+  it("provides canonical Open and Download actions for files and images", () => {
+    const file = imageAttachment({
+      id: "01JFILE00000000000000000A1",
+      fileName: "report.pdf",
+      mime: "application/octet-stream",
+      isImage: false,
+    });
+    const image = imageAttachment();
+    const screen = render(<AttachmentsGrid attachments={[file, image]} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Open report.pdf" }));
+    expect(openFilePreview).toHaveBeenCalledWith({
+      identity: {
+        source: {
+          store: "tasks-attachment",
+          ownerId: file.taskId,
+          attachmentId: file.id,
+        },
+        displayName: file.fileName,
+        mimeType: "application/pdf",
+        sizeBytes: file.sizeBytes,
+        location: null,
+      },
+    });
+    expect(
+      screen
+        .getByRole("link", { name: "Download report.pdf" })
+        .getAttribute("href"),
+    ).toContain("/attachments/download?attachmentId=");
+    expect(screen.getByAltText("diagram.png").getAttribute("src")).toContain(
+      "/attachments/preview?attachmentId=",
+    );
+    expect(
+      screen.getByRole("link", { name: "Download diagram.png" }),
+    ).not.toBeNull();
   });
 });
 

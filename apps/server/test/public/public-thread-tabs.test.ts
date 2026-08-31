@@ -63,6 +63,17 @@ const ALL_TAB_KINDS: readonly ThreadTab[] = [
     threadId: "thr_child",
   },
   {
+    displayName: "report.pdf",
+    id: "byte-file",
+    kind: "byte-file-preview",
+    lineRange: null,
+    mimeType: "application/pdf",
+    ownerId: "prj_1",
+    resourceId: "attachment_1",
+    sizeBytes: 4096,
+    source: "project-attachment",
+  },
+  {
     environmentId: "env_1",
     id: "browser",
     kind: "browser",

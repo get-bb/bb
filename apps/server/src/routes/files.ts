@@ -20,6 +20,7 @@ import {
   type DaemonFileReadResult,
   remapDaemonFileRouteError,
 } from "../services/hosts/daemon-file-response.js";
+import { buildFileResponseHeaders } from "../services/files/file-response-policy.js";
 import {
   assertUsableHostId,
   requirePrimaryHostId,
@@ -29,10 +30,7 @@ import { requirePublicThreadEnvironment } from "../services/lib/entity-lookup.js
 const HOST_FILE_LIST_LIMIT_DEFAULT = 1000;
 
 const HTML_PREVIEW_MAX_BYTES = 5 * 1024 * 1024;
-const HTML_PREVIEW_CONTENT_TYPE = "text/html; charset=utf-8";
-const HTML_PREVIEW_CSP = "sandbox allow-scripts";
 const NO_STORE_CACHE_CONTROL = "no-store";
-const NOSNIFF_CONTENT_TYPE_OPTIONS = "nosniff";
 const HTML_MIME_TYPE = "text/html";
 const FILE_PREVIEW_TTL_MS = 10 * 60 * 1000;
 
@@ -115,12 +113,12 @@ function createRawFilesystemHtmlPreviewResponse(
 ): Response {
   assertRawFilesystemHtmlPreviewResult(result);
   return createDaemonFileContentResponse(result, {
-    headers: {
-      "cache-control": NO_STORE_CACHE_CONTROL,
-      "content-security-policy": HTML_PREVIEW_CSP,
-      "content-type": HTML_PREVIEW_CONTENT_TYPE,
-      "x-content-type-options": NOSNIFF_CONTENT_TYPE_OPTIONS,
-    },
+    headers: buildFileResponseHeaders({
+      cacheControl: NO_STORE_CACHE_CONTROL,
+      disposition: "inline",
+      fileName: result.path,
+      mimeType: result.mimeType,
+    }),
   });
 }
 
@@ -226,6 +224,48 @@ export function registerFileRoutes(app: Hono, deps: AppDeps): void {
       return remapDaemonFileRouteError(error);
     }
   });
+
+  const serveHostFile = async (
+    payload: { hostId?: string; path: string; rootPath?: string },
+    disposition: "attachment" | "inline",
+    ifNoneMatch: string | undefined,
+  ): Promise<Response> => {
+    const hostId = resolveHostId(payload.hostId);
+    try {
+      const result = await callHostRetryableOnlineRpc(deps, {
+        hostId,
+        timeoutMs: COMMAND_TIMEOUT_MS,
+        command: {
+          type: "host.read_file",
+          path: payload.path,
+          ...(payload.rootPath !== undefined
+            ? { rootPath: payload.rootPath }
+            : {}),
+        },
+      });
+      if (disposition === "inline" && isHtmlMimeType(result.mimeType)) {
+        assertRawFilesystemHtmlPreviewResult(result);
+      }
+      return createDaemonFileContentResponse(result, {
+        headers: buildFileResponseHeaders({
+          cacheControl: "no-store",
+          disposition,
+          fileName: payload.path,
+          mimeType: result.mimeType,
+        }),
+        ifNoneMatch,
+      });
+    } catch (error) {
+      return remapDaemonFileRouteError(error);
+    }
+  };
+
+  get(fileRoutes.preview, (context, query) =>
+    serveHostFile(query, "inline", context.req.header("if-none-match")),
+  );
+  get(fileRoutes.download, (context, query) =>
+    serveHostFile(query, "attachment", context.req.header("if-none-match")),
+  );
 
   post(fileRoutes.write, async (context, payload) => {
     const hostId = resolveHostId(payload.hostId);
@@ -419,14 +459,14 @@ export function registerFileRoutes(app: Hono, deps: AppDeps): void {
           rootPath: lease.rootPath,
         },
       });
-      const headers = new Headers({
-        "cache-control": "no-store",
-        "x-content-type-options": "nosniff",
+      const headers = buildFileResponseHeaders({
+        cacheControl: "no-store",
+        disposition: "inline",
+        fileName: segments.at(-1) ?? "preview",
+        mimeType: result.mimeType,
       });
       if (isHtmlMimeType(result.mimeType)) {
         assertRawFilesystemHtmlPreviewResult(result);
-        headers.set("content-security-policy", HTML_PREVIEW_CSP);
-        headers.set("content-type", HTML_PREVIEW_CONTENT_TYPE);
       }
       return createDaemonFileContentResponse(result, { headers });
     } catch (error) {

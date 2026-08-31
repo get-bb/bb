@@ -12,6 +12,7 @@ import {
   type DiffPatchEntry,
   type EnvironmentDiffFileQuery,
   type EnvironmentDiffQuery,
+  type EnvironmentFileContentQuery,
   type PublicApiSchema,
 } from "@bb/server-contract";
 import type { Hono } from "hono";
@@ -30,6 +31,11 @@ import {
 } from "../services/lib/entity-lookup.js";
 import { runLiveCommandAndWait } from "../services/hosts/live-command-wait.js";
 import { callHostRetryableOnlineRpc } from "../services/hosts/online-rpc.js";
+import {
+  createDaemonFileContentResponse,
+  remapDaemonFileRouteError,
+} from "../services/hosts/daemon-file-response.js";
+import { buildFileResponseHeaders } from "../services/files/file-response-policy.js";
 import { generateCommitMessage } from "../services/ai/commit-message.js";
 import { archiveEnvironmentThreads } from "../services/threads/thread-archive.js";
 import {
@@ -52,6 +58,7 @@ import {
   rawDiffFileStatToEntry,
   selectInitialPatchPaths,
 } from "./diff-tiering.js";
+import { parseSafeRelativeRoutePath } from "./relative-route-path.js";
 
 const COMMIT_FALLBACK_MESSAGE = "bb: automated commit";
 const SQUASH_MERGE_FALLBACK_MESSAGE = "bb: squash merge";
@@ -269,6 +276,54 @@ export function registerEnvironmentRoutes(app: Hono, deps: AppDeps): void {
     onValidationError: (msg) => new ApiError(400, "invalid_request", msg),
   });
   const routes = publicApiRoutes.environments;
+
+  const serveEnvironmentFile = async (
+    environmentId: string,
+    query: EnvironmentFileContentQuery,
+    disposition: "attachment" | "inline",
+    ifNoneMatch: string | undefined,
+  ): Promise<Response> => {
+    const environment = requireReadyEnvironment(deps.db, environmentId);
+    const filePath = parseSafeRelativeRoutePath(query.path);
+    try {
+      const result = await callHostRetryableOnlineRpc(deps, {
+        hostId: environment.hostId,
+        timeoutMs: COMMAND_TIMEOUT_MS,
+        command: {
+          type: "host.read_file",
+          path: path.join(environment.path, filePath.relativePath),
+          rootPath: environment.path,
+        },
+      });
+      return createDaemonFileContentResponse(result, {
+        headers: buildFileResponseHeaders({
+          disposition,
+          fileName: filePath.relativePath,
+          mimeType: result.mimeType,
+        }),
+        ifNoneMatch,
+      });
+    } catch (error) {
+      return remapDaemonFileRouteError(error);
+    }
+  };
+
+  get(routes.filePreview, (context, query) =>
+    serveEnvironmentFile(
+      context.req.param("id"),
+      query,
+      "inline",
+      context.req.header("if-none-match"),
+    ),
+  );
+  get(routes.fileDownload, (context, query) =>
+    serveEnvironmentFile(
+      context.req.param("id"),
+      query,
+      "attachment",
+      context.req.header("if-none-match"),
+    ),
+  );
 
   get(routes.get, (context) =>
     context.json(requireEnvironment(deps.db, context.req.param("id"))),

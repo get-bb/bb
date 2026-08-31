@@ -3,8 +3,10 @@ export {
   isExternallyOpenable,
   isShellNavigation,
   parseServerUrl,
+  resolveShellWindowOpen,
   shellPathFromUrl,
   type ServerOrigin,
+  type ShellWindowOpenAction,
 } from "./shell-url";
 export {
   resolveShellScreenState,

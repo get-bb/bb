@@ -2,6 +2,7 @@ import { createContext, useContext, useMemo, type ReactNode } from "react";
 import type {
   ExperimentalAppPanelSurface,
   ExperimentalFileOpenOptions,
+  ExperimentalResolvedFileOpenOptions,
   JsonValue,
 } from "@get-bb/plugin-sdk";
 import type { FileOpenerOverride } from "@/lib/plugin-slot-resolvers";
@@ -10,9 +11,9 @@ interface AppUrlOpenIntent {
   url: string;
 }
 
-export interface AppFilePreviewIntent extends ExperimentalFileOpenOptions {
+export type AppFilePreviewIntent = ExperimentalFileOpenOptions & {
   viewer?: FileOpenerOverride;
-}
+};
 
 export interface AppFixedTabReference {
   ownerId: string;
@@ -26,14 +27,14 @@ export interface AppFixedTabOpenIntent {
 }
 
 interface AppNavigationHostCapabilities {
-  openFileExternally?: (intent: ExperimentalFileOpenOptions) => boolean;
+  openFileExternally?: (intent: ExperimentalResolvedFileOpenOptions) => boolean;
   openFilePreview?: (intent: AppFilePreviewIntent) => boolean;
   openFixedTab?: (intent: AppFixedTabOpenIntent) => boolean;
   openUrl?: (intent: AppUrlOpenIntent) => boolean;
 }
 
 interface ResolvedAppNavigationHostCapabilities {
-  openFileExternally: (intent: ExperimentalFileOpenOptions) => boolean;
+  openFileExternally: (intent: ExperimentalResolvedFileOpenOptions) => boolean;
   openFilePreview: (intent: AppFilePreviewIntent) => boolean;
   openFixedTab: (intent: AppFixedTabOpenIntent) => boolean;
   openUrl: (intent: AppUrlOpenIntent) => boolean;

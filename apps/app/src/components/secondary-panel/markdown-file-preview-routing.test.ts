@@ -1,8 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 import {
-  buildProjectFileContentUrl,
-  buildThreadHostFileContentUrl,
-  buildThreadStorageContentUrl,
+  buildProjectFilePreviewUrl,
+  buildProjectAttachmentPreviewUrl,
+  buildThreadHostFilePreviewUrl,
+  buildThreadStoragePreviewUrl,
   buildThreadWorktreeRawContentUrl,
 } from "@/lib/file-content-urls";
 import {
@@ -73,7 +74,7 @@ describe("buildMarkdownFilePreviewRouting", () => {
         threadId: null,
       }),
     ).toBe(
-      buildProjectFileContentUrl("project-1", "docs/asset space-图%.png", {
+      buildProjectFilePreviewUrl("project-1", "docs/asset space-图%.png", {
         environmentId: "env-1",
       }),
     );
@@ -110,7 +111,7 @@ describe("buildMarkdownFilePreviewRouting", () => {
       projectId: "project-1",
     } satisfies MarkdownFilePreviewContentSource;
     expect(resolveResource(projectSource)).toBe(
-      buildProjectFileContentUrl("project-1", "docs/asset space-图%.png", {
+      buildProjectFilePreviewUrl("project-1", "docs/asset space-图%.png", {
         hostId: "host-1",
       }),
     );
@@ -122,12 +123,36 @@ describe("buildMarkdownFilePreviewRouting", () => {
         },
       ),
     ).toBe(
-      `${buildThreadHostFileContentUrl("thread-1", resourcePath)}#L12-L14`,
+      `${buildThreadHostFilePreviewUrl("thread-1", resourcePath)}#L12-L14`,
     );
     expect(
       resolveResource({ kind: "thread-storage", threadId: "thread-1" }),
     ).toBe(
-      buildThreadStorageContentUrl("thread-1", "docs/asset space-图%.png"),
+      buildThreadStoragePreviewUrl("thread-1", "docs/asset space-图%.png"),
+    );
+  });
+
+  it("resolves project attachment resources beside the Markdown attachment", () => {
+    const routing = buildMarkdownFilePreviewRouting({
+      baseDir: "/uploads/01ABC",
+      contentSource: {
+        kind: "project-attachment",
+        projectId: "project-1",
+      },
+      onOpenLink,
+      onOpenLocalFileLink,
+      rootPath: "/",
+    });
+    expect(
+      routing.localImage?.resolveSrc({
+        lineRange: null,
+        path: "/uploads/01ABC/asset space-图%23.png",
+      }),
+    ).toBe(
+      buildProjectAttachmentPreviewUrl(
+        "project-1",
+        "uploads/01ABC/asset space-图%23.png",
+      ),
     );
   });
 

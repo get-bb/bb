@@ -1,12 +1,16 @@
 import type {
+  ExperimentalFileIdentity,
   ExperimentalFileLocation,
-  ExperimentalFileOpenOptions,
+  ExperimentalFileSource,
   ExperimentalLiveFileTarget,
+  ExperimentalResolvedFileOpenOptions,
 } from "../app-contract.js";
 
 const FILE_PATH_MAX_LENGTH = 32_768;
 const WINDOWS_DRIVE_ABSOLUTE_PATH = /^[A-Za-z]:[\\/]/u;
 const WINDOWS_UNC_ABSOLUTE_PATH = /^\\\\/u;
+const MIME_TYPE_PATTERN =
+  /^(?:application|audio|font|image|message|model|multipart|text|video)\/[!#$&^_.+\-A-Za-z0-9]+$/u;
 
 function isJsonObject(value: unknown): value is Record<string, unknown> {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
@@ -65,6 +69,40 @@ function isValidPathSegment(segment: string): boolean {
 
 function isPositiveSafeInteger(value: unknown): value is number {
   return typeof value === "number" && Number.isSafeInteger(value) && value > 0;
+}
+
+function isNonNegativeSafeInteger(value: unknown): value is number {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
+}
+
+function isValidDisplayName(value: unknown): value is string {
+  return (
+    typeof value === "string" &&
+    value.length > 0 &&
+    value.length <= FILE_PATH_MAX_LENGTH &&
+    value.trim() === value &&
+    !hasControlCharacter(value) &&
+    !hasUnpairedSurrogate(value)
+  );
+}
+
+function isValidMimeType(value: unknown): value is string | null {
+  return (
+    value === null ||
+    (typeof value === "string" && MIME_TYPE_PATTERN.test(value))
+  );
+}
+
+function isValidRemoteUrl(value: unknown): value is string {
+  if (typeof value !== "string" || value.length > FILE_PATH_MAX_LENGTH) {
+    return false;
+  }
+  try {
+    const url = new URL(value);
+    return url.protocol === "http:" || url.protocol === "https:";
+  } catch {
+    return false;
+  }
 }
 
 function isValidRelativeFilePath(value: unknown): value is string {
@@ -193,14 +231,125 @@ export function normalizeExperimentalFileLocation(
   }
 }
 
-export function normalizeExperimentalFileOpenOptions(
+export function normalizeExperimentalFileSource(
   value: unknown,
-): ExperimentalFileOpenOptions | null {
-  if (!isJsonObject(value) || !hasExactKeys(value, ["target", "location"])) {
+): ExperimentalFileSource | null {
+  if (!isJsonObject(value) || typeof value.store !== "string") return null;
+  switch (value.store) {
+    case "workspace":
+    case "thread-storage":
+    case "project-attachment":
+      if (
+        !hasExactKeys(value, ["store", "ownerId", "path"]) ||
+        !isNonEmptyIdentity(value.ownerId) ||
+        !isValidRelativeFilePath(value.path)
+      ) {
+        return null;
+      }
+      return { store: value.store, ownerId: value.ownerId, path: value.path };
+    case "host":
+    case "thread-host":
+      if (
+        !hasExactKeys(value, ["store", "ownerId", "path"]) ||
+        !isNonEmptyIdentity(value.ownerId) ||
+        !isValidAbsoluteHostFilePath(value.path)
+      ) {
+        return null;
+      }
+      return { store: value.store, ownerId: value.ownerId, path: value.path };
+    case "tasks-attachment":
+      if (
+        !hasExactKeys(value, ["store", "ownerId", "attachmentId"]) ||
+        !isNonEmptyIdentity(value.ownerId) ||
+        !isNonEmptyIdentity(value.attachmentId)
+      ) {
+        return null;
+      }
+      return {
+        store: value.store,
+        ownerId: value.ownerId,
+        attachmentId: value.attachmentId,
+      };
+    case "remote":
+      if (
+        !hasExactKeys(value, ["store", "ownerId", "url"]) ||
+        !isNonEmptyIdentity(value.ownerId) ||
+        !isValidRemoteUrl(value.url)
+      ) {
+        return null;
+      }
+      return { store: value.store, ownerId: value.ownerId, url: value.url };
+    default:
+      return null;
+  }
+}
+
+export function normalizeExperimentalFileIdentity(
+  value: unknown,
+): ExperimentalFileIdentity | null {
+  if (
+    !isJsonObject(value) ||
+    !hasExactKeys(value, [
+      "source",
+      "displayName",
+      "mimeType",
+      "sizeBytes",
+      "location",
+    ])
+  ) {
     return null;
   }
+  const source = normalizeExperimentalFileSource(value.source);
+  const location = normalizeExperimentalFileLocation(value.location);
+  if (
+    source === null ||
+    !isValidDisplayName(value.displayName) ||
+    !isValidMimeType(value.mimeType) ||
+    (value.sizeBytes !== null && !isNonNegativeSafeInteger(value.sizeBytes)) ||
+    location === undefined
+  ) {
+    return null;
+  }
+  return {
+    source,
+    displayName: value.displayName,
+    mimeType: value.mimeType,
+    sizeBytes: value.sizeBytes,
+    location,
+  };
+}
+
+function identityFromLegacyTarget(
+  target: ExperimentalLiveFileTarget,
+  location: ExperimentalFileLocation | null,
+): ExperimentalFileIdentity {
+  const path = target.path;
+  const source: ExperimentalFileSource =
+    target.kind === "workspace"
+      ? { store: "workspace", ownerId: target.environmentId, path }
+      : target.kind === "host"
+        ? { store: "host", ownerId: target.hostId, path }
+        : { store: "thread-storage", ownerId: target.threadId, path };
+  return {
+    source,
+    displayName: path.replaceAll("\\", "/").split("/").at(-1) ?? path,
+    mimeType: null,
+    sizeBytes: null,
+    location,
+  };
+}
+
+export function normalizeExperimentalFileOpenOptions(
+  value: unknown,
+): ExperimentalResolvedFileOpenOptions | null {
+  if (!isJsonObject(value)) return null;
+  if (hasExactKeys(value, ["identity"])) {
+    const identity = normalizeExperimentalFileIdentity(value.identity);
+    return identity === null ? null : { identity };
+  }
+  if (!hasExactKeys(value, ["target", "location"])) return null;
   const target = normalizeExperimentalLiveFileTarget(value.target);
   const location = normalizeExperimentalFileLocation(value.location);
   if (target === null || location === undefined) return null;
-  return { target, location };
+  return { identity: identityFromLegacyTarget(target, location) };
 }

@@ -104,9 +104,7 @@ import {
   useCreateThreadTerminal,
   useThreadTerminals,
 } from "@/hooks/queries/thread-terminal-queries";
-import {
-  getEnvironmentWorkspaceSummaryDisplay,
-} from "@/lib/environment-workspace-display";
+import { getEnvironmentWorkspaceSummaryDisplay } from "@/lib/environment-workspace-display";
 import { formatWorkspaceCheckoutDisplay } from "@/lib/workspace-checkout-display";
 import { resolveAbsoluteFilePath } from "@/lib/absolute-file-path";
 import { getGitStatusDisplay } from "@/components/workspace/workspace-status";
@@ -166,6 +164,7 @@ import { getThreadConversationCollapsedAtom } from "@/components/secondary-panel
 import { BrowserTabLifecycleObserver } from "@/components/secondary-panel/BrowserTabDeck";
 import {
   LazyBrowserTabDeck,
+  LazyByteFilePreviewTabContent,
   LazyHostFilePreviewTabContent,
   LazyNewTabPage,
   LazyThreadStorageFilePreviewTabContent,
@@ -212,6 +211,10 @@ import {
   type AppFixedTabOpenIntent,
 } from "@/lib/app-navigation-host";
 import { openAppFixedTabFromDestinations } from "@/lib/app-fixed-tab-navigation";
+import {
+  byteFileTabFromIdentity,
+  identityFromByteFileTab,
+} from "@/lib/file-resolver";
 import {
   normalizeExperimentalFileOpenOptions,
   toFilePreviewLineRange,
@@ -609,6 +612,7 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
     panelStateId: threadId,
     syncThreadId: threadId,
     environmentId: thread?.environmentId,
+    projectId,
     retainedTerminalId,
     storageFileExists: checkThreadStorageFileExists,
     storageFiles: threadStorageFiles,
@@ -1243,18 +1247,19 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
     (intent: AppFilePreviewIntent): boolean => {
       const normalized = normalizeExperimentalFileOpenOptions(intent);
       if (normalized === null || thread === undefined) return false;
-      const lineRange = toFilePreviewLineRange(normalized.location);
+      const lineRange = toFilePreviewLineRange(normalized.identity.location);
       const options =
         intent.viewer === undefined ? undefined : { viewer: intent.viewer };
-      switch (normalized.target.kind) {
+      const { source } = normalized.identity;
+      switch (source.store) {
         case "workspace":
-          if (normalized.target.environmentId !== thread.environmentId) {
+          if (source.ownerId !== thread.environmentId) {
             return false;
           }
           openWorkspaceFile(
             {
               lineRange,
-              path: normalized.target.path,
+              path: source.path,
               source: { kind: "working-tree" },
               statusLabel: null,
             },
@@ -1262,20 +1267,42 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
           );
           return true;
         case "host":
-          if (normalized.target.hostId !== environment?.hostId) return false;
-          openHostFile({ lineRange, path: normalized.target.path }, options);
+          if (source.ownerId !== environment?.hostId) return false;
+          openHostFile({ lineRange, path: source.path }, options);
+          return true;
+        case "thread-host":
+          if (source.ownerId !== thread.id) return false;
+          openHostFile({ lineRange, path: source.path }, options);
           return true;
         case "thread-storage":
-          if (normalized.target.threadId !== thread.id) return false;
-          openStorageFile({ lineRange, path: normalized.target.path }, options);
+          if (source.ownerId !== thread.id) return false;
+          openStorageFile({ lineRange, path: source.path }, options);
+          return true;
+        case "project-attachment":
+          if (source.ownerId !== projectId) return false;
+          break;
+        case "tasks-attachment":
+          break;
+        case "remote":
+          openBrowserTab(source.url);
+          openCompactDrawer();
           return true;
       }
+      const byteTab = byteFileTabFromIdentity(normalized.identity);
+      return (
+        byteTab !== null &&
+        openTab({ kind: "byte-file-preview", tab: byteTab }) !== null
+      );
     },
     [
       environment?.hostId,
       openHostFile,
       openStorageFile,
       openWorkspaceFile,
+      openBrowserTab,
+      openCompactDrawer,
+      openTab,
+      projectId,
       thread,
     ],
   );
@@ -2594,6 +2621,14 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
           />
         );
       }
+      case "byte-file-preview":
+        return (
+          <LazyByteFilePreviewTabContent
+            identity={identityFromByteFileTab(tab)}
+            isPanelOpen={isSecondaryPanelOpen}
+            onSelectionAddToChat={handleSelectionAddToChat}
+          />
+        );
       case "plugin-panel": {
         const originalTab = createFileOpenerOriginalTab(tab);
         const fileOpenerOriginal =
@@ -2697,6 +2732,14 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
             label: filenameOfPanelTab(tab.path),
             isPinned: tab.isPinned,
             leadingVisual: <RightPanelFileTabIcon path={tab.path} />,
+            statusLabel: null,
+            onSelect: () => handleActivateFileTab(tab.id),
+          };
+        case "byte-file-preview":
+          return {
+            ...shared,
+            label: tab.displayName,
+            leadingVisual: <RightPanelFileTabIcon path={tab.displayName} />,
             statusLabel: null,
             onSelect: () => handleActivateFileTab(tab.id),
           };

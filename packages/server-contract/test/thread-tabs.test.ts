@@ -103,6 +103,24 @@ describe("thread tab file-opener owner", () => {
   });
 });
 
+describe("thread tab byte file preview", () => {
+  it("round-trips a project attachment preview", () => {
+    const tab: ThreadTab = {
+      displayName: "資料 report.pdf",
+      id: "byte-file-preview:project",
+      kind: "byte-file-preview",
+      lineRange: null,
+      mimeType: "application/pdf",
+      ownerId: "proj_docs",
+      resourceId: "attachments/report%25.pdf",
+      sizeBytes: 4096,
+      source: "project-attachment",
+    };
+
+    expect(threadTabsSchema.parse([tab])).toEqual([tab]);
+  });
+});
+
 const TERMINAL_TAB_BASE = {
   id: "terminal:term_abc:none",
   kind: "terminal",

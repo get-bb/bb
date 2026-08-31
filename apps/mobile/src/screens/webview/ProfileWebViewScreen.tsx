@@ -16,6 +16,7 @@ import {
   isExternallyOpenable,
   isShellNavigation,
   resolveShellScreenState,
+  resolveShellWindowOpen,
   shellPathFromUrl,
   shouldReloadForSession,
   subscribeToShellCommands,
@@ -266,6 +267,20 @@ export function ProfileWebViewScreen() {
             void Linking.openURL(request.url).catch(() => undefined);
           }
           return false;
+        }}
+        onOpenWindow={(event) => {
+          const action = resolveShellWindowOpen(
+            event.nativeEvent.targetUrl,
+            profile.serverUrl,
+          );
+          if (action.kind === "shell") {
+            webViewRef.current?.injectJavaScript(
+              `window.location.assign(${JSON.stringify(action.url)}); true;`,
+            );
+          }
+          if (action.kind === "external") {
+            void Linking.openURL(action.url).catch(() => undefined);
+          }
         }}
         onNavigationStateChange={(state) => {
           const path = shellPathFromUrl(state.url, profile.serverUrl);

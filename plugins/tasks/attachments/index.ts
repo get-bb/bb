@@ -2,6 +2,10 @@ import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, join, resolve, sep } from "node:path";
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import type { Attachment, TasksStore } from "../db";
+import {
+  canonicalAttachmentMime,
+  inferAttachmentMimeFromFileName,
+} from "../shared/attachment-mime.js";
 
 export const MAX_ATTACHMENT_SIZE_BYTES = 25 * 1024 * 1024;
 
@@ -13,16 +17,8 @@ const INLINE_RASTER_MIMES = new Set([
   "image/avif",
 ]);
 
-const RASTER_MIME_BY_EXTENSION: Readonly<Record<string, string>> = {
-  ".png": "image/png",
-  ".jpg": "image/jpeg",
-  ".jpeg": "image/jpeg",
-  ".gif": "image/gif",
-  ".webp": "image/webp",
-  ".avif": "image/avif",
-};
-
 const UPLOAD_PATH = "/attachments/upload";
+const PREVIEW_PATH = "/attachments/preview";
 const DOWNLOAD_PATH = "/attachments/download";
 const DELETE_PATH = "/attachments/delete";
 const MIME_PATTERN =
@@ -83,8 +79,13 @@ function removeAttachmentDescriptionReferences(
   markdown: string,
   attachmentId: string,
 ): string {
-  const url = escapeRegExp(buildAttachmentUrl(attachmentId));
-  return markdown.replace(new RegExp(`!\\[[^\\]]*\\]\\(${url}\\)`, "g"), "");
+  return [
+    buildAttachmentUrl(attachmentId),
+    buildAttachmentDownloadUrl(attachmentId),
+  ].reduce((value, attachmentUrl) => {
+    const url = escapeRegExp(attachmentUrl);
+    return value.replace(new RegExp(`!\\[[^\\]]*\\]\\(${url}\\)`, "g"), "");
+  }, markdown);
 }
 
 function pluginDataDirectory(bb: BbPluginApi): string {
@@ -210,6 +211,12 @@ function isInlineRasterMime(mime: string): boolean {
   );
 }
 
+function previewContentSecurityPolicy(mime: string): string | undefined {
+  return mime === "text/html" || mime === "image/svg+xml"
+    ? "sandbox; default-src 'none'; img-src data:; media-src data:; style-src 'unsafe-inline'"
+    : undefined;
+}
+
 function bytesMatch(
   bytes: Uint8Array,
   offset: number,
@@ -248,10 +255,8 @@ function sniffRasterMime(bytes: Uint8Array): string | undefined {
 function inferMimeFromBytes(bytes: Uint8Array, fileName: string): string {
   const sniffed = sniffRasterMime(bytes.subarray(0, 12));
   if (sniffed) return sniffed;
-  const extension = fileName.toLowerCase().match(/\.[^.]+$/u)?.[0];
   return (
-    (extension && RASTER_MIME_BY_EXTENSION[extension]) ??
-    "application/octet-stream"
+    inferAttachmentMimeFromFileName(fileName) ?? "application/octet-stream"
   );
 }
 
@@ -351,7 +356,7 @@ async function persistAttachment(
     throw new AttachmentRequestError(413, "attachment exceeds the 25 MB limit");
   }
   const safeFileName = sanitizeFileName(fileName);
-  const safeMime = normalizeMime(mime);
+  const safeMime = canonicalAttachmentMime(normalizeMime(mime), safeFileName);
   const attachment = store.createAttachment({
     ...owner,
     fileName: safeFileName,
@@ -377,6 +382,10 @@ async function persistAttachment(
 }
 
 export function buildAttachmentUrl(attachmentId: string): string {
+  return `/api/v1/plugins/tasks/http${PREVIEW_PATH}?attachmentId=${encodeURIComponent(attachmentId)}`;
+}
+
+export function buildAttachmentDownloadUrl(attachmentId: string): string {
   return `/api/v1/plugins/tasks/http${DOWNLOAD_PATH}?attachmentId=${encodeURIComponent(attachmentId)}`;
 }
 
@@ -437,7 +446,13 @@ export async function deleteAttachmentById(
       : undefined);
   const ownerTask = taskId ? store.getTask(taskId) : undefined;
   let nextDescription: string | undefined;
-  if (ownerTask?.description.includes(buildAttachmentUrl(attachment.id))) {
+  if (
+    ownerTask &&
+    [
+      buildAttachmentUrl(attachment.id),
+      buildAttachmentDownloadUrl(attachment.id),
+    ].some((url) => ownerTask.description.includes(url))
+  ) {
     if (!options.removeDescriptionReferences) {
       throw new AttachmentReferencedError(attachment);
     }
@@ -526,7 +541,10 @@ export function registerAttachments(
     { auth: "token" },
   );
 
-  bb.http.route("GET", DOWNLOAD_PATH, async (context) => {
+  const serveAttachment = async (
+    context: PluginHttpContext,
+    disposition: "attachment" | "inline",
+  ): Promise<Response> => {
     const attachmentId = context.req.query("attachmentId")?.trim();
     const attachment = attachmentId
       ? store.getAttachment(attachmentId)
@@ -540,21 +558,32 @@ export function registerAttachments(
     } catch {
       return context.json({ error: "attachment not found" }, 404);
     }
-    const disposition = isInlineRasterMime(attachment.mime)
-      ? "inline"
-      : "attachment";
+    const mime = canonicalAttachmentMime(attachment.mime, attachment.fileName);
+    const contentSecurityPolicy =
+      disposition === "inline" ? previewContentSecurityPolicy(mime) : undefined;
     return new Response(new Uint8Array(await readFile(absolutePath)), {
       headers: {
-        "Content-Type": attachment.mime,
+        "Content-Type": mime,
         "Content-Length": String(attachment.sizeBytes),
         "Content-Disposition": buildContentDisposition(
           disposition,
           attachment.fileName,
         ),
         "X-Content-Type-Options": "nosniff",
+        ...(contentSecurityPolicy === undefined
+          ? {}
+          : { "Content-Security-Policy": contentSecurityPolicy }),
       },
     });
-  });
+  };
+
+  bb.http.route("GET", PREVIEW_PATH, (context) =>
+    serveAttachment(context, "inline"),
+  );
+
+  bb.http.route("GET", DOWNLOAD_PATH, (context) =>
+    serveAttachment(context, "attachment"),
+  );
 
   bb.http.route("DELETE", DELETE_PATH, async (context) => {
     const attachmentId = context.req.query("attachmentId")?.trim();

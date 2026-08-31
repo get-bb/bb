@@ -3,6 +3,7 @@ import {
   buildShellUrl,
   isExternallyOpenable,
   isShellNavigation,
+  resolveShellWindowOpen,
   shellPathFromUrl,
 } from "./shell-url";
 
@@ -102,5 +103,31 @@ describe("isExternallyOpenable", () => {
     ]) {
       expect(isExternallyOpenable(url), url).toBe(false);
     }
+  });
+});
+
+describe("resolveShellWindowOpen", () => {
+  it("keeps authenticated preview and download URLs inside the shell", () => {
+    for (const path of [
+      "/api/v1/projects/proj_1/attachments/a/preview",
+      "/api/v1/projects/proj_1/attachments/a/download",
+      "/api/v1/plugins/tasks/http/attachments/preview?attachmentId=att_1",
+    ]) {
+      const url = `${ROOT}${path}`;
+      expect(resolveShellWindowOpen(url, ROOT)).toEqual({
+        kind: "shell",
+        url,
+      });
+    }
+  });
+
+  it("opens safe external URLs and rejects unsafe schemes", () => {
+    expect(resolveShellWindowOpen("https://example.com/file", ROOT)).toEqual({
+      kind: "external",
+      url: "https://example.com/file",
+    });
+    expect(resolveShellWindowOpen("javascript:alert(1)", ROOT)).toEqual({
+      kind: "reject",
+    });
   });
 });

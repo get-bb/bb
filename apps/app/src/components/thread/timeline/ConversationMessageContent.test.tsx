@@ -2,7 +2,7 @@
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import type { ThreadListEntry } from "@bb/domain";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 import { ThreadTitleMentionResourcesProvider } from "@/components/thread/ThreadTitleMentions";
 import { RouteNavigationProvider } from "@/components/ui/app-route-anchor";
@@ -87,6 +87,57 @@ describe("ConversationMessageContent assistant images", () => {
         .getAttribute("src"),
     ).toBe(
       "/api/v1/threads/thr_image/host-files/content?path=%2Fworkspace%2Foutput%2Fdiagram.png",
+    );
+  });
+});
+
+describe("ConversationMessageContent user file references", () => {
+  it("routes links, inline references, and images through local file handling", () => {
+    const onOpenLocalFileLink = vi.fn(() => true);
+
+    render(
+      <MemoryRouter>
+        <RouteNavigationProvider>
+          <ConversationMessageContent
+            role="user"
+            attachments={null}
+            initiator="user"
+            mentions={[]}
+            onOpenLocalFileLink={onOpenLocalFileLink}
+            originKind={null}
+            senderThreadId={null}
+            senderThreadTitle={null}
+            senderIsPluginSideChat={false}
+            systemMessageKind="unlabeled"
+            systemMessageSubject={null}
+            text={
+              "[Space file](/workspace/space%20name.md#L2-L4) `data/table.csv:3` ![Plot](assets/plot.png)"
+            }
+            threadId="thr_user"
+            turnRequest={{
+              isGrouped: false,
+              kind: "message",
+              status: "accepted",
+            }}
+            workspaceRootPath="/workspace"
+          />
+        </RouteNavigationProvider>
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(screen.getByRole("link", { name: /Space file/u }));
+    fireEvent.click(screen.getByRole("link", { name: "data/table.csv:3" }));
+
+    expect(onOpenLocalFileLink).toHaveBeenNthCalledWith(1, {
+      lineRange: { endLineNumber: 4, startLineNumber: 2 },
+      path: "/workspace/space name.md",
+    });
+    expect(onOpenLocalFileLink).toHaveBeenNthCalledWith(2, {
+      lineRange: { endLineNumber: 3, startLineNumber: 3 },
+      path: "/workspace/data/table.csv",
+    });
+    expect(screen.getByRole("img", { name: "Plot" }).getAttribute("src")).toBe(
+      "/api/v1/threads/thr_user/host-files/content?path=%2Fworkspace%2Fassets%2Fplot.png",
     );
   });
 });

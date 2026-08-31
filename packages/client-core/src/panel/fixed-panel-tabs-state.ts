@@ -13,6 +13,7 @@ import {
   areFilePreviewLineRangesEqual,
   areEnvironmentFilePreviewSourcesEqual,
   type EnvironmentFilePreviewSource,
+  type ByteFileTabState,
   type FilePreviewLineRange,
   type HostFileTabState,
   type ThreadStorageFileTabState,
@@ -112,6 +113,19 @@ const threadStorageFilePreviewFixedPanelTabSchema = z
     threadId: z.string().min(1).nullable().default(null),
   })
   .strict();
+const byteFilePreviewFixedPanelTabSchema = z
+  .object({
+    displayName: z.string().min(1),
+    id: z.string().min(1),
+    kind: z.literal("byte-file-preview"),
+    lineRange: filePreviewLineRangeSchema.nullable().default(null),
+    mimeType: z.string().min(1).nullable(),
+    ownerId: z.string().min(1),
+    resourceId: z.string().min(1),
+    sizeBytes: z.number().int().nonnegative().nullable(),
+    source: z.enum(["project-attachment", "tasks-attachment"]),
+  })
+  .strict();
 const browserFixedPanelTabSchema = z
   .object({
     environmentId: z.string().min(1).nullable().default(null),
@@ -158,6 +172,7 @@ const secondaryFixedPanelTabSchema = z.union([
   workspaceFilePreviewFixedPanelTabSchema,
   hostFilePreviewFixedPanelTabSchema,
   threadStorageFilePreviewFixedPanelTabSchema,
+  byteFilePreviewFixedPanelTabSchema,
   browserFixedPanelTabSchema,
   newTabFixedPanelTabSchema,
   terminalFixedPanelTabSchema,
@@ -255,6 +270,11 @@ export interface ThreadStorageFilePreviewFixedPanelTab {
   threadId: string | null;
 }
 
+export interface ByteFilePreviewFixedPanelTab extends ByteFileTabState {
+  id: string;
+  kind: "byte-file-preview";
+}
+
 export interface BrowserFixedPanelTab {
   environmentId: string | null;
   id: string;
@@ -283,6 +303,7 @@ export type SecondaryFixedPanelTab =
   | WorkspaceFilePreviewFixedPanelTab
   | HostFilePreviewFixedPanelTab
   | ThreadStorageFilePreviewFixedPanelTab
+  | ByteFilePreviewFixedPanelTab
   | BrowserFixedPanelTab
   | NewTabFixedPanelTab
   | TerminalFixedPanelTab;
@@ -291,6 +312,7 @@ export type SecondaryFileFixedPanelTab =
   | WorkspaceFilePreviewFixedPanelTab
   | HostFilePreviewFixedPanelTab
   | ThreadStorageFilePreviewFixedPanelTab
+  | ByteFilePreviewFixedPanelTab
   | BrowserFixedPanelTab
   | NewTabFixedPanelTab
   | TerminalFixedPanelTab
@@ -361,6 +383,10 @@ interface CreateThreadStorageFilePreviewFixedPanelTabArgs {
   threadId: string;
 }
 
+interface CreateByteFilePreviewFixedPanelTabArgs {
+  tab: ByteFileTabState;
+}
+
 interface CreateHostFilePreviewFixedPanelTabArgs {
   environmentId: string | null;
   hostId?: string | null;
@@ -414,6 +440,12 @@ interface BuildHostFilePreviewTabIdArgs {
 interface BuildThreadStorageFilePreviewTabIdArgs {
   path: string;
   threadId: string | null;
+}
+
+interface BuildByteFilePreviewTabIdArgs {
+  ownerId: string;
+  resourceId: string;
+  source: ByteFileTabState["source"];
 }
 
 interface NormalizeFixedPanelTabGroupStateResult {
@@ -494,6 +526,18 @@ function buildThreadStorageFilePreviewTabId({
     environmentId: threadId === null ? null : `thread:${threadId}`,
     kind: "thread-storage-file-preview",
     path,
+  });
+}
+
+function buildByteFilePreviewTabId({
+  ownerId,
+  resourceId,
+  source,
+}: BuildByteFilePreviewTabIdArgs): string {
+  return buildFixedPanelTabId({
+    environmentId: `${source}:${ownerId}`,
+    kind: "byte-file-preview",
+    path: resourceId,
   });
 }
 
@@ -612,6 +656,16 @@ export function createThreadStorageFilePreviewFixedPanelTab({
   };
 }
 
+export function createByteFilePreviewFixedPanelTab({
+  tab,
+}: CreateByteFilePreviewFixedPanelTabArgs): ByteFilePreviewFixedPanelTab {
+  return {
+    ...tab,
+    id: buildByteFilePreviewTabId(tab),
+    kind: "byte-file-preview",
+  };
+}
+
 export function createNewTabFixedPanelTab(): NewTabFixedPanelTab {
   return {
     id: NEW_TAB_TAB_ID,
@@ -718,6 +772,10 @@ function normalizeFixedPanelTabId(tab: FixedPanelTab): FixedPanelTab {
       });
       return tab.id === id ? tab : { ...tab, id };
     }
+    case "byte-file-preview": {
+      const id = buildByteFilePreviewTabId(tab);
+      return tab.id === id ? tab : { ...tab, id };
+    }
     case "browser": {
       const idSegments = tab.id.split(":");
       const browserPath =
@@ -810,6 +868,7 @@ function stripTransientFixedPanelTabForStorage(
     case "workspace-file-preview":
     case "host-file-preview":
     case "thread-storage-file-preview":
+    case "byte-file-preview":
       return {
         ...tab,
         lineRange: null,
@@ -1031,6 +1090,17 @@ export function areFixedPanelTabsEquivalent(
         a.pluginId === b.pluginId &&
         a.pageId === b.pageId &&
         a.fixedTabId === b.fixedTabId
+      );
+    case "byte-file-preview":
+      return (
+        b.kind === "byte-file-preview" &&
+        a.displayName === b.displayName &&
+        a.mimeType === b.mimeType &&
+        a.ownerId === b.ownerId &&
+        a.resourceId === b.resourceId &&
+        a.sizeBytes === b.sizeBytes &&
+        a.source === b.source &&
+        areFilePreviewLineRangesEqual({ a: a.lineRange, b: b.lineRange })
       );
     case "plugin-panel":
       return (
