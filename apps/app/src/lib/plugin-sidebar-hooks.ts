@@ -27,7 +27,6 @@ import { useSetRootComposeProjectId } from "./root-compose-selection";
 import { openThreadInSplit } from "./split-layout/openThreadInSplit";
 import {
   getRootComposeRoutePath,
-  getProjectComposeRoutePath,
   getThreadRoutePath,
 } from "./route-paths";
 
@@ -163,12 +162,7 @@ export function useSidebarThreadActions(): PluginSidebarThreadActions {
           setRootComposeProjectId(projectId);
         }
         const state = options?.focusPrompt ? { focusPrompt: true } : undefined;
-        navigate(
-          projectId === undefined
-            ? getRootComposeRoutePath()
-            : getProjectComposeRoutePath(projectId),
-          state ? { state } : undefined,
-        );
+        navigate(getRootComposeRoutePath(), state ? { state } : undefined);
       },
       async setPinned(threadId, pinned) {
         const entry = requireEntry(threadId);
