@@ -267,7 +267,7 @@ function MobileRecentThreadRow({
       >
         <span
           className={cn(
-            "mt-1 flex size-7 shrink-0 items-center justify-center self-start rounded-md border border-border-seam bg-surface-raised",
+            "flex size-7 shrink-0 items-center justify-center rounded-md border border-border-seam bg-surface-raised",
             depth > 0 && "opacity-60",
           )}
         >
