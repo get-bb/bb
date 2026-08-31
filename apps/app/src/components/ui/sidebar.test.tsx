@@ -14,6 +14,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { CompactViewportOverrideProvider } from "@bb/shared-ui/hooks/use-compact-viewport";
 import {
   Sidebar,
+  SidebarContent,
   SidebarInset,
   SidebarProvider,
   SidebarTrigger,
@@ -209,6 +210,14 @@ describe("SidebarTrigger", () => {
     expect(markup).not.toContain('data-icon="AlignLeft"');
     expect(markup).toContain('aria-expanded="true"');
     expect(markup).not.toContain('aria-pressed="');
+  });
+});
+
+describe("SidebarContent", () => {
+  it("owns the sidebar surface used behind transparent and sticky rows", () => {
+    render(<SidebarContent data-testid="content">Rows</SidebarContent>);
+
+    expect(screen.getByTestId("content").classList).toContain("bg-sidebar");
   });
 });
 
