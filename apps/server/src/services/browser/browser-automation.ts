@@ -425,9 +425,9 @@ export class BrowserAutomationService {
     socket: HubSocket,
     message: BrowserAutomationCancelRequestMessage,
   ): void {
-    const correlated = this.correlatedPendingCommand(socket, message);
-    if (correlated === null) return;
-    this.cancelRecordCommand(correlated.record);
+    const record = this.correlatedPendingCommandRecord(socket, message);
+    if (record === null) return;
+    this.cancelRecordCommand(record);
   }
 
   open(args: OpenBrowserAutomationTargetArgs): Promise<BrowserAutomationTarget> {
@@ -658,14 +658,13 @@ export class BrowserAutomationService {
     return record;
   }
 
-  private correlatedPendingCommand(
+  private correlatedPendingCommandRecord(
     socket: HubSocket,
     message: { commandId: string; targetId: string; windowId: string; tabId: string },
-  ): { pending: PendingCommand; record: BrowserAutomationTargetRecord } | null {
+  ): BrowserAutomationTargetRecord | null {
     const record = this.correlatedCommandRecord(socket, message);
-    const pending = record?.pendingCommand;
-    if (record === null || pending === null || pending === undefined || pending.commandId !== message.commandId) return null;
-    return { pending, record };
+    if (record === null || record.pendingCommand?.commandId !== message.commandId) return null;
+    return record;
   }
 
   private cancelRecordCommand(record: BrowserAutomationTargetRecord): void {

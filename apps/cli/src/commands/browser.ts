@@ -72,7 +72,7 @@ async function resolveOwner(opts: BrowserOptions, getContext: () => ContextSnaps
 }
 
 function commandAction(args: {
-  build(opts: BrowserOptions): BrowserAutomationCommand;
+  build(): BrowserAutomationCommand;
   getContext(): ContextSnapshot;
   getUrl(): string;
   message: string;
@@ -82,7 +82,7 @@ function commandAction(args: {
   return async (): Promise<void> => {
     const result = await browserSdk(args.getUrl()).browser.run({
       ...(await resolveOwner(args.opts, args.getContext)),
-      command: args.build(args.opts),
+      command: args.build(),
       targetId: args.targetId,
       timeoutMs: timeoutMs(args.opts.timeout),
     });
