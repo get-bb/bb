@@ -785,7 +785,7 @@ const QueuedMessageRow = memo(function QueuedMessageRow({
             !dragDisabled && "cursor-grab active:cursor-grabbing",
           )}
           disabled={dragDisabled}
-          aria-label={`Reorder follow-up ${index + 1}`}
+          aria-label={`Reorder queued message ${index + 1}`}
           {...attributes}
           {...listeners}
         >
@@ -867,7 +867,7 @@ const QueuedMessageRow = memo(function QueuedMessageRow({
                         )}
                         disabled={actionDisabled || sendDisabled}
                         onClick={() => onSendImmediately(queuedMessage.id)}
-                        aria-label={`Send follow-up ${index + 1} now`}
+                        aria-label={`Send queued message ${index + 1} now`}
                       >
                         <Icon name="Sent" className="size-4" aria-hidden />
                       </Button>
@@ -893,7 +893,7 @@ const QueuedMessageRow = memo(function QueuedMessageRow({
                             queuedMessageIndex: index,
                           })
                         }
-                        aria-label={`Edit follow-up ${index + 1}`}
+                        aria-label={`Edit queued message ${index + 1}`}
                       >
                         <Icon name="Edit" className="size-4" aria-hidden />
                       </Button>
@@ -913,7 +913,7 @@ const QueuedMessageRow = memo(function QueuedMessageRow({
                       )}
                       disabled={actionDisabled}
                       onClick={() => onDelete(queuedMessage.id)}
-                      aria-label={`Delete follow-up ${index + 1}`}
+                      aria-label={`Delete queued message ${index + 1}`}
                     >
                       <Icon name="Trash2" className="size-4" aria-hidden />
                     </Button>
@@ -938,7 +938,7 @@ const QueuedMessageRow = memo(function QueuedMessageRow({
                     compact ? "size-7" : "size-8",
                   )}
                   disabled={actionDisabled}
-                  aria-label={`Follow-up ${index + 1} actions`}
+                  aria-label={`Queued message ${index + 1} actions`}
                 >
                   <Icon name="MoreHorizontal" className="size-4" aria-hidden />
                 </Button>
@@ -1066,8 +1066,8 @@ function QueuedMessageInlineEditorSlot({
     >
       <OverflowFade placement="above" tone="surface-raised" className="z-10" />
       <InlineMessageEditorFrame
-        cancelLabel="Stop editing follow-up"
-        label={`Editing follow-up ${editor.queuedMessageIndex + 1}`}
+        cancelLabel="Stop editing queued message"
+        label={`Editing queued message ${editor.queuedMessageIndex + 1}`}
         onCancel={editor.onDismiss}
       >
         <QueuedEditorTypeaheadLayoutContext.Provider value={setTypeaheadLayout}>
@@ -1615,10 +1615,10 @@ export function QueuedMessagesList({
   const caretWillCollapse =
     mode === "workspace" || (mode === "drawer" && queueFitsDrawer);
   const caretLabel = caretWillCollapse
-    ? "Collapse follow-ups"
+    ? "Collapse queued messages"
     : mode === "collapsed" && queueFitsDrawer
-      ? "Show follow-ups"
-      : "Expand follow-ups";
+      ? "Show queued messages"
+      : "Expand queued messages";
   const handleCaretClick = () => {
     if (caretWillCollapse) {
       collapseDrawer();
@@ -1632,7 +1632,7 @@ export function QueuedMessagesList({
   return (
     <PromptStackCard
       rootRef={surfaceRef}
-      ariaLabel="Follow-ups"
+      ariaLabel="Queued messages"
       style={{ height: surfaceHeight }}
       className={cn(
         "relative z-10 flex min-h-0 flex-col overflow-hidden bg-surface-raised-solid shadow-lift",
@@ -1651,9 +1651,7 @@ export function QueuedMessagesList({
         data-queued-messages-mode={mode}
       >
         <div className="flex min-w-16 items-baseline gap-1.5 pl-1">
-          <span className="text-xs font-medium text-foreground">
-            Follow-ups
-          </span>
+          <span className="text-xs font-medium text-foreground">Queue</span>
           <span className="text-2xs tabular-nums text-subtle-foreground">
             {queuedMessages.length}
           </span>
@@ -1666,8 +1664,8 @@ export function QueuedMessagesList({
           )}
           aria-label={
             mode === "workspace"
-              ? "Drag down to dock follow-ups"
-              : "Drag up to open the follow-up workspace"
+              ? "Drag down to dock the queue"
+              : "Drag up to open the queue workspace"
           }
           onPointerDown={handleSurfacePointerDown}
           onPointerMove={handleSurfacePointerMove}
