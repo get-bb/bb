@@ -14,10 +14,9 @@
 // duplicates.
 //
 // The + menu row cannot render a form (rows are host-rendered), so the row
-// opens the host's `experimental_Dialog`: a centred dialog on wide viewports
-// and bb's shared persistent responsive drawer on compact ones. A module-level
-// store connects the two — they are separate components mounted by the host,
-// and both identify the composer they belong to by scope.
+// opens the same responsive shared-ui dialog the other builtin plugins use. A
+// module-level store connects the two — they are separate components mounted
+// by the host, and both identify the composer they belong to by scope.
 import {
   useCallback,
   useEffect,
@@ -27,6 +26,13 @@ import {
 } from "react";
 import { toast } from "sonner";
 import { Button } from "@bb/shared-ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@bb/shared-ui/dialog";
 import { Input } from "@bb/shared-ui/input";
 import { Label } from "@bb/shared-ui/label";
 import {
@@ -38,7 +44,6 @@ import {
 } from "@bb/shared-ui/select";
 import {
   definePluginApp,
-  experimental_Dialog as Dialog,
   useComposer,
   useComposerView,
   type ComposerView,
@@ -215,121 +220,128 @@ function SendLaterPicker() {
 
   return (
     <Dialog
-      description={
-        view.scope.kind === "new-thread"
-          ? "Choose when this thread should start. It will use the model and environment selected in the composer."
-          : "Choose when this message should send."
-      }
       onOpenChange={(next) => {
         if (!next && !busy) closeSendLater();
       }}
       open={isOpen}
-      title="Send later"
     >
-      <form
-        className="flex flex-col gap-4 text-sm"
-        onSubmit={(event) => {
-          event.preventDefault();
-          submitSelection();
-        }}
-      >
-        <div className="flex flex-col gap-2">
-          <Label htmlFor={whenId}>When</Label>
-          <Select
-            disabled={busy}
-            onValueChange={(value) => {
-              if (!isScheduleOptionId(value)) return;
-              setSelectedOption(value);
-              setError(null);
-            }}
-            value={selectedOption}
-          >
-            <SelectTrigger aria-label="When to send" id={whenId}>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {presets.map((preset) => (
-                <SelectItem key={preset.id} value={preset.id}>
-                  {preset.label}
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Send later</DialogTitle>
+          <DialogDescription>
+            {view.scope.kind === "new-thread"
+              ? "Choose when this thread should start. It will use the model and environment selected in the composer."
+              : "Choose when this message should send."}
+          </DialogDescription>
+        </DialogHeader>
+        <form
+          className="flex flex-col gap-4 text-sm"
+          onSubmit={(event) => {
+            event.preventDefault();
+            submitSelection();
+          }}
+        >
+          <div className="flex flex-col gap-2">
+            <Label htmlFor={whenId}>When</Label>
+            <Select
+              disabled={busy}
+              onValueChange={(value) => {
+                if (!isScheduleOptionId(value)) return;
+                setSelectedOption(value);
+                setError(null);
+              }}
+              value={selectedOption}
+            >
+              <SelectTrigger aria-label="When to send" id={whenId}>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {presets.map((preset) => (
+                  <SelectItem key={preset.id} value={preset.id}>
+                    {preset.label}
+                  </SelectItem>
+                ))}
+                <SelectItem value={CUSTOM_SCHEDULE_OPTION_ID}>
+                  Custom date and time
                 </SelectItem>
-              ))}
-              <SelectItem value={CUSTOM_SCHEDULE_OPTION_ID}>
-                Custom date and time
-              </SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-
-        {selectedOption === CUSTOM_SCHEDULE_OPTION_ID ? (
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <div className="flex flex-col gap-2">
-              <Label htmlFor={customDateId}>Date</Label>
-              <Input
-                disabled={busy}
-                id={customDateId}
-                max={formatDateInputValue(now + MAX_SCHEDULE_AHEAD_MS)}
-                min={formatDateInputValue(now)}
-                onChange={(event) => {
-                  setCustom((current) => ({
-                    ...current,
-                    date: event.target.value,
-                  }));
-                  setError(null);
-                }}
-                type="date"
-                value={custom.date}
-              />
-            </div>
-            <div className="flex flex-col gap-2">
-              <Label htmlFor={customTimeId}>Time</Label>
-              <Input
-                disabled={busy}
-                id={customTimeId}
-                onChange={(event) => {
-                  setCustom((current) => ({
-                    ...current,
-                    time: event.target.value,
-                  }));
-                  setError(null);
-                }}
-                type="time"
-                value={custom.time}
-              />
-            </div>
+              </SelectContent>
+            </Select>
           </div>
-        ) : null}
 
-        {preview.ok ? (
-          <div aria-live="polite" className="rounded-md bg-muted/50 px-3 py-2">
-            <p className="font-medium">
-              Sends {formatScheduleTime(preview.at, now)}
+          {selectedOption === CUSTOM_SCHEDULE_OPTION_ID ? (
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div className="flex flex-col gap-2">
+                <Label htmlFor={customDateId}>Date</Label>
+                <Input
+                  disabled={busy}
+                  id={customDateId}
+                  max={formatDateInputValue(now + MAX_SCHEDULE_AHEAD_MS)}
+                  min={formatDateInputValue(now)}
+                  onChange={(event) => {
+                    setCustom((current) => ({
+                      ...current,
+                      date: event.target.value,
+                    }));
+                    setError(null);
+                  }}
+                  type="date"
+                  value={custom.date}
+                />
+              </div>
+              <div className="flex flex-col gap-2">
+                <Label htmlFor={customTimeId}>Time</Label>
+                <Input
+                  disabled={busy}
+                  id={customTimeId}
+                  onChange={(event) => {
+                    setCustom((current) => ({
+                      ...current,
+                      time: event.target.value,
+                    }));
+                    setError(null);
+                  }}
+                  type="time"
+                  value={custom.time}
+                />
+              </div>
+            </div>
+          ) : null}
+
+          {preview.ok ? (
+            <div
+              aria-live="polite"
+              className="rounded-md bg-muted/50 px-3 py-2"
+            >
+              <p className="font-medium">
+                Sends {formatScheduleTime(preview.at, now)}
+              </p>
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                {formatScheduleTimeZone(preview.at)}
+              </p>
+            </div>
+          ) : null}
+
+          {visibleError === null ? null : (
+            <p className="text-destructive" role="alert">
+              {visibleError}
             </p>
-            <p className="mt-0.5 text-xs text-muted-foreground">
-              {formatScheduleTimeZone(preview.at)}
-            </p>
+          )}
+
+          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            <Button
+              disabled={busy}
+              onClick={() => closeSendLater()}
+              type="button"
+              variant="outline"
+            >
+              Cancel
+            </Button>
+            <Button disabled={busy || !preview.ok} type="submit">
+              {busy ? "Scheduling…" : "Schedule send"}
+            </Button>
           </div>
-        ) : null}
-
-        {visibleError === null ? null : (
-          <p className="text-destructive" role="alert">
-            {visibleError}
-          </p>
-        )}
-
-        <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-          <Button
-            disabled={busy}
-            onClick={() => closeSendLater()}
-            type="button"
-            variant="outline"
-          >
-            Cancel
-          </Button>
-          <Button disabled={busy || !preview.ok} type="submit">
-            {busy ? "Scheduling…" : "Schedule send"}
-          </Button>
-        </div>
-      </form>
+        </form>
+      </DialogContent>
     </Dialog>
   );
 }

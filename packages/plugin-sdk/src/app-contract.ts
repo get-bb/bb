@@ -2084,37 +2084,6 @@ export interface BbNavigate {
 }
 
 // ---------------------------------------------------------------------------
-// experimental_Dialog — the host-owned overlay.
-// ---------------------------------------------------------------------------
-
-/**
- * Props of the host-owned `experimental_Dialog`.
- *
- * This is the one component a plugin cannot usefully vendor. BB's overlays are
- * a centred dialog on wide viewports and a single shared *persistent*
- * responsive drawer on compact ones — a drawer that never marks the app root
- * `inert`/`aria-hidden` (iOS Safari restyles the whole app tree when it does),
- * starts its transform before its content is realized, and coordinates focus
- * trapping and Escape with any other open drawer through one per-document
- * stack. A vendored copy gets its own stack and its own idea of what is on
- * top, so plugin overlays stop cooperating with BB's. Rendering it host-side
- * is what makes a plugin overlay behave like a native one.
- *
- * Controlled only: the plugin owns `open`, so the same state can drive whatever
- * opened it (a `+` menu row, a composer action) without a hidden trigger.
- */
-export interface ExperimentalDialogProps {
-  open: boolean;
-  /** Called with `false` on Escape, backdrop press, or drawer drag-dismiss. */
-  onOpenChange(open: boolean): void;
-  /** Heading; also the drawer's accessible name on compact viewports. */
-  title: string;
-  /** Supporting line under the heading. Omit for a heading-only overlay. */
-  description?: string;
-  children: ReactNode;
-}
-
-// ---------------------------------------------------------------------------
 // The whole runtime surface. Declaration-versus-runtime parity is tested
 // against the actual `@get-bb/plugin-sdk/app` module namespace.
 //
@@ -2266,11 +2235,5 @@ export interface PluginSdkApp {
    * docs/api_to_audit.md.
    */
   experimental_Diff: ComponentType<DiffProps>;
-  /**
-   * The host-owned overlay (see {@link ExperimentalDialogProps}) — a centred
-   * dialog on wide viewports and BB's shared persistent responsive drawer on
-   * compact ones. Experimental: see docs/api_to_audit.md.
-   */
-  experimental_Dialog: ComponentType<ExperimentalDialogProps>;
   useComposerView(): ComposerView;
 }

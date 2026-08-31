@@ -93,8 +93,8 @@ describe("registration", () => {
         plusMenu: [
           { id: "send-later", label: "Send later…", icon: "Calendar" },
         ],
-        // The picker is the host's portalled dialog, so the mount point wears
-        // no card chrome.
+        // The picker is a portalled dialog, so the mount point wears no card
+        // chrome.
         banners: [{ id: "send-later", chrome: "bare" }],
       },
     ]);

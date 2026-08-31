@@ -61,7 +61,6 @@ import {
   type ExperimentalFileLinkProps,
   type ExperimentalFileOpenOptions,
   type ExperimentalAppPanel,
-  type ExperimentalDialogProps,
   type ExperimentalFixedTabTargetState,
   type ExperimentalOpenFixedTabOptions,
   type ExperimentalPluginFixedTabReference,
@@ -680,31 +679,6 @@ function TestSourceCode({
  * Stand-in for the host-owned diff viewer: emits the raw patch in a
  * recognizable wrapper carrying the resolved presentation.
  */
-/**
- * Stand-in for the host overlay. Renders children inline when open so a test
- * can drive the picker inside it without a portal, viewport or animation
- * frames; `data-open` is there for the closed case.
- */
-function TestDialog({
-  children,
-  description,
-  onOpenChange,
-  open,
-  title,
-}: ExperimentalDialogProps) {
-  if (!open) return <div data-testid="bb-dialog" data-open="false" />;
-  return (
-    <div aria-label={title} data-open="true" data-testid="bb-dialog" role="dialog">
-      <h2>{title}</h2>
-      {description === undefined ? null : <p>{description}</p>}
-      <button onClick={() => onOpenChange(false)} type="button">
-        Close
-      </button>
-      {children}
-    </div>
-  );
-}
-
 function TestDiff({
   patch,
   path,
@@ -833,7 +807,6 @@ const testPluginSdkApp = {
   experimental_PermissionModePicker: TestPermissionModePicker,
   experimental_SourceCode: TestSourceCode,
   experimental_Diff: TestDiff,
-  experimental_Dialog: TestDialog,
   experimental_useSidebarThreads(): PluginSidebarThreadsState {
     return useSlotEnv("experimental_useSidebarThreads").sidebarThreads;
   },

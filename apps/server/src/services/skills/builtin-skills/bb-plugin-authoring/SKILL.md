@@ -2513,24 +2513,6 @@ className? }` —
   not, so code there renders unhighlighted rather than broken.
   Experimental: see `docs/api_to_audit.md`.
 
-- `experimental_Dialog` — bb's overlay. Props:
-  `{ open, onOpenChange, title, description?, children }` — controlled only,
-  so the state that opened it (a `+` menu row, a composer action) also closes
-  it. `title` is required: it is the accessible name, and on compact viewports
-  it labels the drawer. Alias it on import like the viewers above
-  (`experimental_Dialog as Dialog`), or JSX reads the lowercase initial as an
-  intrinsic element.
-
-  Use this instead of vendoring a dialog. It is a centred dialog on a wide
-  window and bb's shared *persistent* responsive drawer on a compact one — a
-  drawer that never marks the app root `inert`/`aria-hidden` (iOS Safari
-  restyles the whole app tree when it does), starts its transform before its
-  content is realized, and coordinates focus trapping, Escape and z-order with
-  every other open drawer through one per-document stack. A vendored copy is
-  bundled into your plugin and gets its own stack, so it stops cooperating with
-  bb's overlays. Reference: `plugins/scheduled-send/app.tsx`.
-  Experimental: see `docs/api_to_audit.md`.
-
 - `Markdown` — bb's chat-message markdown renderer (same typography,
   spacing, and code styling as timeline messages). Props:
   `{ content, className? }`. Use it wherever plugin UI quotes or previews
