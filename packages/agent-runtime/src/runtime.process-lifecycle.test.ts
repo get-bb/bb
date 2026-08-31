@@ -272,6 +272,43 @@ describe("createAgentRuntime process lifecycle", () => {
     await manager.shutdown();
   });
 
+  it("waits for provider retirement before starting a same-key replacement", async () => {
+    const manager = createProviderProcessManager({
+      onProcessExit: vi.fn(),
+      workspacePath: tmpDir,
+    });
+
+    await manager.ensureProvider({
+      bridgeLaunch: MANAGER_BRIDGE_LAUNCH,
+      processKey: "fake",
+      providerId: "fake",
+    });
+    const retiringProcess = manager.requireProviderProcess({
+      processKey: "fake",
+      providerId: "fake",
+    });
+
+    const retirement = manager.shutdownProvider({
+      processKey: "fake",
+      providerId: "fake",
+    });
+    await manager.ensureProvider({
+      bridgeLaunch: MANAGER_BRIDGE_LAUNCH,
+      processKey: "fake",
+      providerId: "fake",
+    });
+    await retirement;
+
+    const replacementProcess = manager.requireProviderProcess({
+      processKey: "fake",
+      providerId: "fake",
+    });
+    expect(replacementProcess).not.toBe(retiringProcess);
+    expect(retiringProcess.child.killed).toBe(true);
+
+    await manager.shutdown();
+  });
+
   it("bounds provider stderr while data arrives without a newline", async () => {
     const exitInfo = vi.fn<NonNullable<AgentRuntimeOptions["onProcessExit"]>>();
     const stderrLines: string[] = [];

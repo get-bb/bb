@@ -134,6 +134,7 @@ export class RuntimeProviderProcessManager {
   private readonly args: RuntimeProviderProcessManagerArgs;
   private readonly processes = new Map<string, RuntimeProviderProcess>();
   private readonly providerStarting = new Map<string, Promise<void>>();
+  private readonly providerRetiring = new Map<string, Promise<void>>();
   private readonly currentProcessKeyByProviderId = new Map<string, string>();
   private shuttingDown = false;
 
@@ -142,6 +143,11 @@ export class RuntimeProviderProcessManager {
   }
 
   async ensureProvider(args: EnsureRuntimeProviderArgs): Promise<void> {
+    const retirement = this.providerRetiring.get(args.processKey);
+    if (retirement !== undefined) {
+      await retirement;
+    }
+
     const existing = this.providerStarting.get(args.processKey);
     if (existing) {
       await existing;
@@ -279,6 +285,12 @@ export class RuntimeProviderProcessManager {
   }
 
   async shutdownProvider(args: ShutdownRuntimeProviderArgs): Promise<void> {
+    const existingRetirement = this.providerRetiring.get(args.processKey);
+    if (existingRetirement !== undefined) {
+      await existingRetirement;
+      return;
+    }
+
     const providerProcess = this.processes.get(args.processKey);
     if (!providerProcess) {
       return;
@@ -290,12 +302,22 @@ export class RuntimeProviderProcessManager {
     }
 
     providerProcess.expectedShutdownExpectations += 1;
-    await this.terminateProviderProcess({
-      providerProcess,
-      timeoutMs: args.timeoutMs,
-    });
-    if (hasChildProcessExited(providerProcess.child)) {
-      await providerProcess.exitFinalized;
+    const retirement = (async () => {
+      await this.terminateProviderProcess({
+        providerProcess,
+        timeoutMs: args.timeoutMs,
+      });
+      if (hasChildProcessExited(providerProcess.child)) {
+        await providerProcess.exitFinalized;
+      }
+    })();
+    this.providerRetiring.set(args.processKey, retirement);
+    try {
+      await retirement;
+    } finally {
+      if (this.providerRetiring.get(args.processKey) === retirement) {
+        this.providerRetiring.delete(args.processKey);
+      }
     }
   }
 
