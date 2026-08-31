@@ -36,11 +36,13 @@ function trackedThreads(store: TasksApiStore, threadId?: string): TaskThread[] {
   return tracked;
 }
 
-function terminalCommentBody(
+function statusCommentBody(
   thread: TaskThread,
   liveStatus: Extract<TaskThreadLiveStatus, "completed" | "failed">,
 ): string {
-  return `Thread "${thread.title}" ${liveStatus} — final message posted · ${thread.threadId}`;
+  const outcome =
+    liveStatus === "completed" ? "completed — final message posted" : "failed";
+  return `Thread "${thread.title}" ${outcome} · ${thread.threadId}`;
 }
 
 function sdkErrorCode(error: unknown): string | undefined {
@@ -70,7 +72,7 @@ function transitionThread(
         taskId: thread.taskId,
         presetName: thread.presetName,
         threadId: thread.threadId,
-        body: terminalCommentBody(thread, liveStatus),
+        body: statusCommentBody(thread, liveStatus),
       });
     }
   });

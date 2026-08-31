@@ -95,7 +95,7 @@ describe("task thread lifecycle", () => {
     await fixture.harness.dispose();
   });
 
-  it("moves a working thread to failed, comments, and publishes", async () => {
+  it("recovers a failed thread without recording failure as terminal", async () => {
     const fixture = trackedThreadFixture("working", "active");
     await registerLifecycle(fixture.bb, fixture.store);
 
@@ -111,35 +111,19 @@ describe("task thread lifecycle", () => {
     expect(
       fixture.store.tasks.getTaskThread(fixture.taskThreadId)?.liveStatus,
     ).toBe("failed");
-    expect(fixture.store.tasks.listComments(fixture.taskId)).toContainEqual(
+    const commentsAfterFailure = fixture.store.tasks.listComments(
+      fixture.taskId,
+    );
+    expect(commentsAfterFailure).toContainEqual(
       expect.objectContaining({
         kind: "system",
-        body: 'Thread "Lifecycle worker" failed — final message posted · thr_worker',
+        body: 'Thread "Lifecycle worker" failed · thr_worker',
       }),
     );
     expect(fixture.harness.realtimeSignals).toEqual([
       { channel: "threads:changed", payload: { taskId: fixture.taskId } },
       { channel: "comments:changed", payload: { taskId: fixture.taskId } },
     ]);
-
-    await fixture.harness.dispose();
-  });
-
-  it("restores activity after a failed turn", async () => {
-    const fixture = trackedThreadFixture("working", "active");
-    await registerLifecycle(fixture.bb, fixture.store);
-
-    await fixture.harness.emitThreadEvent("thread.failed", {
-      thread: makeThreadResponse({
-        id: "thr_worker",
-        title: "Lifecycle worker",
-        status: "error",
-      }),
-      error: "provider exited",
-    });
-    expect(
-      fixture.store.tasks.getTaskThread(fixture.taskThreadId)?.liveStatus,
-    ).toBe("failed");
 
     await fixture.harness.emitThreadEvent("thread.active", {
       thread: makeThreadResponse({
@@ -151,6 +135,9 @@ describe("task thread lifecycle", () => {
     expect(
       fixture.store.tasks.getTaskThread(fixture.taskThreadId)?.liveStatus,
     ).toBe("working");
+    expect(fixture.store.tasks.listComments(fixture.taskId)).toEqual(
+      commentsAfterFailure,
+    );
 
     await fixture.harness.dispose();
   });
