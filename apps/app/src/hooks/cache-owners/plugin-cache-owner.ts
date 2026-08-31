@@ -1,5 +1,8 @@
 import type { QueryClient } from "@tanstack/react-query";
-import { type PluginSettingsView } from "../queries/plugin-settings-queries";
+import {
+  pluginListQueryOptions,
+  type PluginSettingsView,
+} from "../queries/plugin-settings-queries";
 import type { InstalledPlugin } from "@bb/server-contract";
 import {
   allPluginCatalogSearchQueryKeyPrefix,
@@ -49,11 +52,20 @@ export function invalidatePluginList(args: {
   });
 }
 
-export function markEnabledPluginListStale(args: {
+export async function markEnabledPluginListStale(args: {
   queryClient: QueryClient;
-}): void {
-  void args.queryClient.invalidateQueries({
-    queryKey: pluginListQueryKey(true),
+}): Promise<void> {
+  const queryKey = pluginListQueryKey(true);
+  if (args.queryClient.getQueryState(queryKey)?.fetchStatus === "fetching") {
+    try {
+      await args.queryClient.fetchQuery(
+        pluginListQueryOptions({ enabled: true }),
+      );
+    } catch {}
+  }
+  await args.queryClient.invalidateQueries({
+    exact: true,
+    queryKey,
     refetchType: "none",
   });
 }

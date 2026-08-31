@@ -5,6 +5,7 @@ import type { WorkspaceOpenTarget } from "@bb/host-daemon-contract";
 import type { HostDaemonStatusSnapshot } from "./api-host-daemon";
 import type { SystemConfigResponse } from "@bb/server-contract";
 import { systemConfigQueryOptions } from "@/hooks/queries/system-queries";
+import { markSystemConfigStale } from "@/hooks/cache-owners/system-config-cache-owner";
 import { appQueryClient } from "./app-query-client";
 import { fetchHostStatus, fetchWorkspaceOpenTargets } from "./api-host-daemon";
 import { getBbDesktopInfo } from "./bb-desktop";
@@ -79,15 +80,9 @@ function didLastSystemConfigLoadFail(): boolean {
   return lastSystemConfigLoadStatus === "failed";
 }
 
-async function loadSystemConfig(
-  refresh: boolean,
-): Promise<SystemConfigResponse> {
+async function loadSystemConfig(): Promise<SystemConfigResponse> {
   try {
-    const options = systemConfigQueryOptions();
-    const config = await appQueryClient.fetchQuery({
-      ...options,
-      staleTime: refresh ? 0 : options.staleTime,
-    });
+    const config = await appQueryClient.fetchQuery(systemConfigQueryOptions());
     markSystemConfigLoadSucceeded();
     return config;
   } catch {
@@ -165,10 +160,17 @@ async function fetchLocalHostConnectionWithRetry({
 
 const systemConfigRefreshTickAtom = atom(0);
 systemConfigRefreshTickAtom.onMount = (setRefreshTick) => {
+  const queryKey = systemConfigQueryOptions().queryKey;
+  let observedConfig =
+    appQueryClient.getQueryData<SystemConfigResponse>(queryKey);
+  const invalidateSystemConfig = () => {
+    markSystemConfigStale(appQueryClient);
+  };
   const unsubscribeConnected = wsManager.onConnected(({ reconnected }) => {
     if (!reconnected && !didLastSystemConfigLoadFail()) {
       return;
     }
+    invalidateSystemConfig();
     setRefreshTick((count) => count + 1);
   });
   const unsubscribeChanged = wsManager.onChanged((message) => {
@@ -177,18 +179,43 @@ systemConfigRefreshTickAtom.onMount = (setRefreshTick) => {
       (message.entity === "system" &&
         message.changes.includes("config-changed"))
     ) {
+      if (message.entity === "host") {
+        invalidateSystemConfig();
+      }
       setRefreshTick((count) => count + 1);
     }
   });
+  const unsubscribeConfig = appQueryClient
+    .getQueryCache()
+    .subscribe((event) => {
+      if (
+        event.type === "updated" &&
+        event.action.type === "success" &&
+        event.query.queryKey[0] === queryKey[0]
+      ) {
+        const nextConfig =
+          appQueryClient.getQueryData<SystemConfigResponse>(queryKey);
+        if (observedConfig === undefined) {
+          observedConfig = nextConfig;
+          return;
+        }
+        if (nextConfig === observedConfig) {
+          return;
+        }
+        observedConfig = nextConfig;
+        setRefreshTick((count) => count + 1);
+      }
+    });
   return () => {
     unsubscribeConnected();
     unsubscribeChanged();
+    unsubscribeConfig();
   };
 };
 
 const systemConfigAtom = atom(async (get) => {
-  const refreshTick = get(systemConfigRefreshTickAtom);
-  return loadSystemConfig(refreshTick > 0);
+  get(systemConfigRefreshTickAtom);
+  return loadSystemConfig();
 });
 
 const localHostStatusRefreshTickAtom = atom(0);

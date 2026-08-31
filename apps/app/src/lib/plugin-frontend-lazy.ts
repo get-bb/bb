@@ -2,6 +2,8 @@ import {
   markPluginFrontendBootStarted,
   markPluginFrontendsSettled,
 } from "./plugin-frontend-boot-state";
+import { markEnabledPluginListStale } from "@/hooks/cache-owners/plugin-cache-owner";
+import { appQueryClient } from "./app-query-client";
 
 type PluginFrontendModule = typeof import("./plugin-frontend");
 
@@ -43,6 +45,7 @@ export function schedulePluginFrontendReconcile(): void {
   if (!bootRequested) return;
   void (async () => {
     try {
+      await markEnabledPluginListStale({ queryClient: appQueryClient });
       const pluginFrontend = await loadPluginFrontend();
       await pluginFrontend.bootPluginFrontends();
       pluginFrontend.schedulePluginFrontendReconcile();

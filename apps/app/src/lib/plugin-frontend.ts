@@ -21,6 +21,7 @@ import * as tailwindMerge from "tailwind-merge";
 import * as classVarianceAuthority from "class-variance-authority";
 import * as sharedUiIcon from "@bb/shared-ui/icon";
 import { createDebouncedCallbackScheduler } from "@bb/domain";
+import { BbHttpError } from "@bb/sdk/browser";
 import type { QueryClient } from "@tanstack/react-query";
 import { markEnabledPluginListStale } from "@/hooks/cache-owners/plugin-cache-owner";
 import { pluginListQueryOptions } from "@/hooks/queries/plugin-settings-queries";
@@ -234,9 +235,21 @@ export function installPluginRuntime(): void {
 export async function fetchFrontendCandidates(
   queryClient: QueryClient = appQueryClient,
 ): Promise<PluginFrontendCandidate[]> {
-  const plugins = await queryClient.fetchQuery(
-    pluginListQueryOptions({ enabled: true }),
-  );
+  let plugins;
+  try {
+    plugins = await queryClient.fetchQuery(
+      pluginListQueryOptions({ enabled: true }),
+    );
+  } catch (error) {
+    if (
+      error instanceof BbHttpError &&
+      (error.status === 401 || error.status === 403)
+    ) {
+      setPluginLogoUrls(new Map());
+      return [];
+    }
+    throw error;
+  }
   const candidates: PluginFrontendCandidate[] = [];
   const logoUrls = new Map<string, PluginLogoUrls>();
   for (const plugin of plugins) {
@@ -892,7 +905,7 @@ interface PluginFrontendPageLifecycleDeps {
   isTornDown: () => boolean;
   reboot: () => void;
   reconcile: () => void;
-  refreshInventory: () => void;
+  refreshInventory: () => Promise<void>;
   teardown: () => void;
 }
 
@@ -909,12 +922,13 @@ export function createPluginFrontendPageLifecycle(
     },
     onPageShow(event) {
       if (!event.persisted) return;
-      deps.refreshInventory();
-      if (deps.isTornDown()) {
-        deps.reboot();
-        return;
-      }
-      deps.reconcile();
+      void deps.refreshInventory().then(() => {
+        if (deps.isTornDown()) {
+          deps.reboot();
+          return;
+        }
+        deps.reconcile();
+      });
     },
   };
 }
@@ -932,9 +946,8 @@ function installPluginFrontendPageLifecycle(): void {
       void bootPluginFrontends();
     },
     reconcile: () => schedulePluginFrontendReconcile(),
-    refreshInventory: () => {
-      markEnabledPluginListStale({ queryClient: appQueryClient });
-    },
+    refreshInventory: () =>
+      markEnabledPluginListStale({ queryClient: appQueryClient }),
     teardown: () => {
       void teardownPluginFrontends();
     },

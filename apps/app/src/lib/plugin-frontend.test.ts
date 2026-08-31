@@ -214,30 +214,34 @@ describe("createPluginFrontendPageLifecycle", () => {
       isTornDown: vi.fn(() => tornDown),
       reboot: vi.fn(),
       reconcile: vi.fn(),
-      refreshInventory: vi.fn(),
+      refreshInventory: vi.fn(async () => {}),
       teardown: vi.fn(),
     };
   }
 
-  it("keeps frontends mounted when the page enters the back/forward cache", () => {
+  it("keeps frontends mounted when the page enters the back/forward cache", async () => {
     const deps = createDeps(false);
     const lifecycle = createPluginFrontendPageLifecycle(deps);
     lifecycle.onPageHide({ persisted: true });
     expect(deps.teardown).not.toHaveBeenCalled();
 
     lifecycle.onPageShow({ persisted: true });
-    expect(deps.reconcile).toHaveBeenCalledTimes(1);
+    await vi.waitFor(() => {
+      expect(deps.reconcile).toHaveBeenCalledTimes(1);
+    });
     expect(deps.reboot).not.toHaveBeenCalled();
   });
 
-  it("tears down on a real unload and reboots if a persisted restore follows a teardown", () => {
+  it("tears down on a real unload and reboots if a persisted restore follows a teardown", async () => {
     const deps = createDeps(true);
     const lifecycle = createPluginFrontendPageLifecycle(deps);
     lifecycle.onPageHide({ persisted: false });
     expect(deps.teardown).toHaveBeenCalledTimes(1);
 
     lifecycle.onPageShow({ persisted: true });
-    expect(deps.reboot).toHaveBeenCalledTimes(1);
+    await vi.waitFor(() => {
+      expect(deps.reboot).toHaveBeenCalledTimes(1);
+    });
     expect(deps.reconcile).not.toHaveBeenCalled();
   });
 

@@ -1134,10 +1134,10 @@ function dirtyHostAvailabilityQueries(): QueryKey[] {
 }
 
 function dirtySystemConfigQueries({ queryClient }: RealtimeDirtyContext): void {
-  void queryClient.invalidateQueries(
-    { queryKey: systemConfigQueryKey() },
-    { cancelRefetch: false },
-  );
+  invalidateQueryKeysWithoutCancelingActiveFetches({
+    queryClient,
+    queryKeys: [systemConfigQueryKey()],
+  });
 }
 
 function dirtyAllThreadTimelineQueries(): QueryKey[] {

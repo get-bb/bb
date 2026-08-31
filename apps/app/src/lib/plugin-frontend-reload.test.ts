@@ -114,8 +114,8 @@ function makeDeps(initial: PluginFrontendCandidate[] = []): TestReconcileDeps {
     fetchCandidates: vi.fn(
       async (): Promise<PluginFrontendCandidate[]> => initial,
     ),
-    importModule: vi.fn(async (_url: string): Promise<unknown> =>
-      pluginModule("hello"),
+    importModule: vi.fn(
+      async (_url: string): Promise<unknown> => pluginModule("hello"),
     ),
     applyCss: vi.fn(),
     retainCss: vi.fn(() => vi.fn()),
@@ -412,6 +412,42 @@ describe("reconcilePluginFrontends", () => {
     expect(state.records.has("hello")).toBe(false);
     expect(state.appliedHashes.has("hello")).toBe(false);
   });
+
+  it.each([401, 403])(
+    "removes active frontends when plugin inventory access fails with %s",
+    async (status) => {
+      const state = createPluginFrontendReconcileState();
+      const deps = makeDeps([candidate("hello", "v1")]);
+      await reconcilePluginFrontends(state, deps);
+      deps.removeRegistrations.mockClear();
+      vi.mocked(deps.applyCss).mockClear();
+
+      const queryClient = new QueryClient({
+        defaultOptions: { queries: { retry: false } },
+      });
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(
+          async () =>
+            new Response(
+              JSON.stringify({ code: "unauthorized", message: "Unauthorized" }),
+              {
+                status,
+                headers: { "content-type": "application/json" },
+              },
+            ),
+        ),
+      );
+      deps.fetchCandidates = vi.fn(() => fetchFrontendCandidates(queryClient));
+
+      await reconcilePluginFrontends(state, deps);
+
+      expect(deps.removeRegistrations).toHaveBeenCalledWith("hello");
+      expect(deps.applyCss).toHaveBeenLastCalledWith("hello", null);
+      expect(state.records.has("hello")).toBe(false);
+      expect(state.appliedHashes.has("hello")).toBe(false);
+    },
+  );
 
   it("preserves active frontends when the plugin inventory request fails", async () => {
     const state = createPluginFrontendReconcileState();

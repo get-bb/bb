@@ -184,13 +184,11 @@ describe("local host daemon access atoms", () => {
             : [notifyRealtime, notifyAtom];
 
         first();
+        second();
         await vi.waitFor(() => {
           expect(requests).toHaveLength(1);
         });
-        second();
-        await new Promise((resolve) => setTimeout(resolve, 0));
 
-        expect(requests).toHaveLength(1);
         expect(abortCount).toBe(0);
       } finally {
         for (const request of requests) {
@@ -203,6 +201,83 @@ describe("local host daemon access atoms", () => {
     },
     5_000,
   );
+
+  it("applies a config event that arrives during an older refresh", async () => {
+    const olderConfig = {
+      hostDaemonPort: 38_887,
+      localHelperPorts: [38_887, 38_888],
+    };
+    const newerConfig = {
+      hostDaemonPort: 39_999,
+      localHelperPorts: [],
+    };
+    appQueryClient.setQueryData(systemConfigQueryKey(), olderConfig);
+    const store = createStore();
+    const unsubscribeAtom = store.sub(localHostDaemonAccessStateAtom, () => {});
+    const observer = new QueryObserver(
+      appQueryClient,
+      systemConfigQueryOptions(),
+    );
+    const unsubscribeQuery = observer.subscribe(() => {});
+    const effects = createRealtimeCacheEffects({
+      queryClient: appQueryClient,
+      visibility: {
+        isDocumentVisible: () => true,
+        subscribe: () => () => {},
+      },
+    });
+    const requests: Array<{
+      resolve: (config: typeof olderConfig) => void;
+    }> = [];
+
+    try {
+      await store.get(localHostDaemonAccessStateAtom);
+      mocks.fetchSdkSystemConfig.mockImplementation(
+        () =>
+          new Promise((resolve) => {
+            requests.push({ resolve });
+          }),
+      );
+      const message = {
+        type: "changed",
+        entity: "system",
+        changes: ["config-changed"],
+      } satisfies ChangedMessage;
+      const atomListener = mocks.onChanged.mock.calls.at(-1)?.[0];
+      expect(atomListener).toBeDefined();
+      const notify = () => {
+        atomListener?.(message);
+        effects.handleChanged(message);
+      };
+
+      notify();
+      await vi.waitFor(() => {
+        expect(requests).toHaveLength(1);
+      });
+      notify();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(requests).toHaveLength(1);
+
+      requests[0]?.resolve(olderConfig);
+      await vi.waitFor(() => {
+        expect(requests).toHaveLength(2);
+      });
+      requests[1]?.resolve(newerConfig);
+
+      await vi.waitFor(async () => {
+        await expect(store.get(localHostDaemonAccessStateAtom)).resolves.toBe(
+          "unavailable",
+        );
+      });
+    } finally {
+      for (const request of requests) {
+        request.resolve(newerConfig);
+      }
+      effects.dispose();
+      unsubscribeQuery();
+      unsubscribeAtom();
+    }
+  });
 
   it("does not restart status discovery on the initial server connection", async () => {
     vi.stubGlobal("navigator", {

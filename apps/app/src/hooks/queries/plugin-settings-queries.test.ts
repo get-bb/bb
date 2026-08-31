@@ -119,9 +119,7 @@ describe("fetchPluginList envelope", () => {
     const reconciledHashes: string[] = [];
     const deps = {
       isTornDown: () => false,
-      refreshInventory: () => {
-        markEnabledPluginListStale({ queryClient });
-      },
+      refreshInventory: () => markEnabledPluginListStale({ queryClient }),
       reboot: vi.fn(),
       reconcile: () => {
         void fetchFrontendCandidates(queryClient).then((candidates) => {
@@ -139,6 +137,47 @@ describe("fetchPluginList envelope", () => {
       expect(reconciledHashes).toEqual(["new"]);
     });
     expect(networkFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("refreshes plugin inventory after an older request settles", async () => {
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    let resolveOlderRequest = (_response: Response): void => {};
+    const networkFetch = vi
+      .fn<typeof fetch>()
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveOlderRequest = resolve;
+          }),
+      )
+      .mockImplementationOnce(
+        fetchReturning({ plugins: [pluginWithBundle("new")] }),
+      );
+    vi.stubGlobal("fetch", networkFetch);
+
+    const olderCandidates = fetchFrontendCandidates(queryClient);
+    await vi.waitFor(() => {
+      expect(networkFetch).toHaveBeenCalledTimes(1);
+    });
+    const refresh = markEnabledPluginListStale({ queryClient });
+    resolveOlderRequest(
+      await fetchReturning({ plugins: [pluginWithBundle("old")] })(""),
+    );
+
+    await expect(olderCandidates).resolves.toEqual([
+      expect.objectContaining({
+        bundle: expect.objectContaining({ hash: "old" }),
+      }),
+    ]);
+    await refresh;
+    await expect(fetchFrontendCandidates(queryClient)).resolves.toEqual([
+      expect.objectContaining({
+        bundle: expect.objectContaining({ hash: "new" }),
+      }),
+    ]);
+    expect(networkFetch).toHaveBeenCalledTimes(2);
   });
 
   it("binds browser fetch before the SDK invokes it", async () => {
