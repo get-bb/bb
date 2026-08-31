@@ -76,7 +76,7 @@ function providerIconSnapshot(args: {
   pluginId: string;
   icon: string | undefined;
   icons: ReadonlyMap<string, string>;
-}): { bytes: Uint8Array; contentType: string } | null {
+}): { bytes: Uint8Array; contentType: string; hash: string } | null {
   const namespaced =
     args.icon === undefined ? null : parseNamespacedGlyph(args.icon);
   const asset =
@@ -122,6 +122,7 @@ export async function registerFirstPartyProviders(
           available: !unavailable.has(pluginId),
           pluginId,
           declaration,
+          iconHash: null,
           readSettings: NO_PLUGIN_SETTINGS,
         }),
         ...(icon === null ? {} : { icon }),
@@ -293,6 +294,7 @@ export async function registerFakeProviders(
     const pluginId = `provider-${providerId}`;
     registry.register({
       ...buildPluginProviderRegistration({
+        iconHash: null,
         available: true,
         pluginId,
         declaration: validatePluginProviderDeclaration({
@@ -366,6 +368,7 @@ export async function registerConfiguredAcpProvider(
         available: true,
         pluginId,
         declaration,
+        iconHash: null,
         readSettings: NO_PLUGIN_SETTINGS,
       }),
       pluginId,

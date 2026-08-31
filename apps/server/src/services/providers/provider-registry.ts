@@ -45,15 +45,26 @@ export interface ProviderRegistration {
   deriveProviderOptions: (
     context: Omit<PluginProviderOptionsContext, "settings">,
   ) => Readonly<Record<string, JsonValue>>;
-  icon?: { bytes: Uint8Array; contentType: string };
+  icon?: { bytes: Uint8Array; contentType: string; hash: string };
   iconNames: ReadonlySet<string>;
 }
+
+const PROVIDER_INSTALLED_CACHE_TTL_MS = 5 * 60_000;
 
 export interface ProviderRegistryService {
   list(): ProviderRegistration[];
   getUserDefaultProviderId(): string | null;
   get(providerId: string): ProviderRegistration | null;
   getRegistrationRevision(): number;
+  /**
+   * Installed-state answer for a provider on a host, cached against the
+   * registration revision. Probing costs a host RPC that spawns the provider
+   * bridge (~3s measured), and the provider list runs one per installed
+   * provider on every request.
+   */
+  lookupInstalled(key: string): Promise<boolean> | undefined;
+  rememberInstalled(key: string, value: Promise<boolean>): void;
+  forgetInstalled(providerId?: string): void;
   getServerCapabilities(providerId: string): ProviderServerCapabilities | null;
   getSupportedPermissionModes(
     providerId: string,
@@ -94,6 +105,15 @@ export function createProviderRegistryService(
   >();
   const providerRegistrationWaiters = new Map<string, Set<() => void>>();
   let registrationRevision = 0;
+  const installedByKey = new Map<
+    string,
+    {
+      providerId: string;
+      registrationRevision: number;
+      expiresAt: number;
+      value: Promise<boolean>;
+    }
+  >();
   let registrationSequence = 0;
 
   function compareInstallRank(
@@ -199,6 +219,38 @@ export function createProviderRegistryService(
 
     getRegistrationRevision() {
       return registrationRevision;
+    },
+
+    lookupInstalled(key) {
+      const entry = installedByKey.get(key);
+      if (entry === undefined) return undefined;
+      if (
+        entry.registrationRevision !== registrationRevision ||
+        entry.expiresAt <= Date.now()
+      ) {
+        installedByKey.delete(key);
+        return undefined;
+      }
+      return entry.value;
+    },
+
+    rememberInstalled(key, value) {
+      installedByKey.set(key, {
+        providerId: key.slice(key.indexOf(" ") + 1),
+        registrationRevision,
+        expiresAt: Date.now() + PROVIDER_INSTALLED_CACHE_TTL_MS,
+        value,
+      });
+    },
+
+    forgetInstalled(providerId) {
+      if (providerId === undefined) {
+        installedByKey.clear();
+        return;
+      }
+      for (const [key, entry] of installedByKey) {
+        if (entry.providerId === providerId) installedByKey.delete(key);
+      }
     },
 
     getServerCapabilities(providerId) {

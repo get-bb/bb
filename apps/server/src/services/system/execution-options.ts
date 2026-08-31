@@ -23,6 +23,7 @@ import { getHostPermissionCeiling } from "../hosts/permission-ceiling.js";
 import { requireEnvironment } from "../lib/entity-lookup.js";
 import { createProviderListingBudget } from "../providers/native-roots.js";
 import type { ProviderRegistryService } from "../providers/provider-registry.js";
+import { providerHealthCacheKey } from "../providers/provider-health-cache.js";
 import { getSupportedReasoningLevelsForProvider } from "../threads/thread-reasoning-policy.js";
 import { resolveSystemLookupHostId } from "./host-lookup.js";
 import {
@@ -180,20 +181,31 @@ async function listInstalledPluginProviderInfos(
         registration.info.id,
       );
       if (bridgeLaunch === null) return null;
+      const cacheKey = providerHealthCacheKey({
+        hostId,
+        providerId: registration.info.id,
+      });
+      const cached = deps.providerRegistry.lookupInstalled(cacheKey);
+      if (cached !== undefined) {
+        return (await cached) ? registration.info : null;
+      }
       try {
-        const result = await callHostRetryableOnlineRpc(deps, {
-          hostId,
-          timeoutMs: budget.remainingMs(),
-          command: {
-            type: "provider.health",
-            providerId: registration.info.id,
-            bridgeLaunch,
-          },
-        });
-        return result.supported && result.health.status !== "not_installed"
-          ? registration.info
-          : null;
+        const installed = (async () => {
+          const result = await callHostRetryableOnlineRpc(deps, {
+            hostId,
+            timeoutMs: budget.remainingMs(),
+            command: {
+              type: "provider.health",
+              providerId: registration.info.id,
+              bridgeLaunch,
+            },
+          });
+          return result.supported && result.health.status !== "not_installed";
+        })();
+        deps.providerRegistry.rememberInstalled(cacheKey, installed);
+        return (await installed) ? registration.info : null;
       } catch (error) {
+        deps.providerRegistry.forgetInstalled(registration.info.id);
         if (!canOmitProviderDiscoveryForError(error)) {
           throw error;
         }

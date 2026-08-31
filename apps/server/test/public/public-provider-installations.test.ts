@@ -27,6 +27,7 @@ function registerInstallationProviders(
     const pluginId = `provider-${providerId}`;
     harness.deps.providerRegistry.register({
       ...buildPluginProviderRegistration({
+        iconHash: null,
         available: true,
         pluginId,
         declaration: validatePluginProviderDeclaration({

@@ -326,3 +326,51 @@ describe("provider registry", () => {
     expect(registry.get("acp-opencode")).not.toBeNull();
   });
 });
+
+describe("installed-state cache", () => {
+  it("serves a remembered answer and dedupes concurrent probes", async () => {
+    const registry = createProviderRegistryService({});
+    registerProvider(registry, "codex", "provider-codex");
+    const key = "host_1 codex";
+
+    expect(registry.lookupInstalled(key)).toBeUndefined();
+
+    let probes = 0;
+    const probe = () => {
+      probes += 1;
+      return Promise.resolve(true);
+    };
+    const inFlight = probe();
+    registry.rememberInstalled(key, inFlight);
+
+    expect(await registry.lookupInstalled(key)).toBe(true);
+    expect(await registry.lookupInstalled(key)).toBe(true);
+    expect(probes).toBe(1);
+  });
+
+  it("drops the answer when the registration revision moves", async () => {
+    const registry = createProviderRegistryService({});
+    registerProvider(registry, "codex", "provider-codex");
+    const key = "host_1 codex";
+    registry.rememberInstalled(key, Promise.resolve(true));
+    expect(await registry.lookupInstalled(key)).toBe(true);
+
+    registerProvider(registry, "claude-code", "provider-claude-code");
+
+    expect(registry.lookupInstalled(key)).toBeUndefined();
+  });
+
+  it("forgets one provider or all of them", async () => {
+    const registry = createProviderRegistryService({});
+    registerProvider(registry, "codex", "provider-codex");
+    registry.rememberInstalled("host_1 codex", Promise.resolve(true));
+    registry.rememberInstalled("host_1 pi", Promise.resolve(false));
+
+    registry.forgetInstalled("codex");
+    expect(registry.lookupInstalled("host_1 codex")).toBeUndefined();
+    expect(await registry.lookupInstalled("host_1 pi")).toBe(false);
+
+    registry.forgetInstalled();
+    expect(registry.lookupInstalled("host_1 pi")).toBeUndefined();
+  });
+});

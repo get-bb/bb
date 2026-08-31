@@ -45,6 +45,7 @@ import {
 } from "@bb/db";
 import { toThreadResponseFromThread } from "../threads/thread-runtime-display.js";
 import {
+  brandingAssetHash,
   loadPluginAppBundle,
   loadPluginBrandingAssets,
   parsePluginAppBundleMeta,
@@ -166,7 +167,7 @@ const PROVIDER_ICON_CONTENT_TYPES: Record<string, string> = {
 export function readPluginProviderIcon(
   rootDir: string,
   icon: string | undefined,
-): { bytes: Uint8Array; contentType: string } | null {
+): { bytes: Uint8Array; contentType: string; hash: string } | null {
   if (icon === undefined || !isPluginOwnedIconPath(icon)) {
     return null;
   }
@@ -180,7 +181,8 @@ export function readPluginProviderIcon(
     return null;
   }
   try {
-    return { bytes: new Uint8Array(readFileSync(resolved)), contentType };
+    const bytes = new Uint8Array(readFileSync(resolved));
+    return { bytes, contentType, hash: brandingAssetHash(bytes) };
   } catch {
     return null;
   }
@@ -1102,7 +1104,7 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
       args.declaration.icon === undefined
         ? null
         : parseNamespacedGlyph(args.declaration.icon);
-    let icon: { bytes: Uint8Array; contentType: string } | null;
+    let icon: { bytes: Uint8Array; contentType: string; hash: string } | null;
     if (declaredIcon !== null) {
       const asset =
         declaredIcon.pluginId === args.row.id
@@ -1113,7 +1115,11 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
           `provider "${args.declaration.id}" icon "${args.declaration.icon}" is not an icon declared by plugin "${args.row.id}"`,
         );
       }
-      icon = { bytes: asset.bytes, contentType: asset.contentType };
+      icon = {
+        bytes: asset.bytes,
+        contentType: asset.contentType,
+        hash: asset.hash,
+      };
     } else {
       icon = readPluginProviderIcon(args.row.rootDir, args.declaration.icon);
     }
@@ -1122,6 +1128,7 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
         available: args.available,
         pluginId: args.row.id,
         declaration: args.declaration,
+        iconHash: icon?.hash ?? null,
         readSettings: () =>
           readPluginSettingsValuesSync({
             db: deps.db,

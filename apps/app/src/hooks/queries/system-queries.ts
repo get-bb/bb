@@ -219,36 +219,38 @@ export function useSystemProviders(args: UseSystemProvidersArgs = {}) {
   const hostId = args.hostId ?? null;
   const enabled = args.enabled ?? true;
   useSystemRealtimeSubscription({ enabled });
+  const providersCacheKey = providerListCacheKey({ environmentId, hostId });
   return useQuery<ProviderInfo[]>({
     queryKey: systemProvidersQueryKey({ capability, environmentId, hostId }),
-    queryFn: ({ signal }) => {
-      if (args.environmentId !== undefined) {
-        return sdk.providers.list({
-          ...(args.capability === undefined
-            ? {}
-            : { capability: args.capability }),
-          environmentId: args.environmentId,
-          signal,
-        });
+    queryFn: async ({ signal }) => {
+      const capabilityFilter =
+        args.capability === undefined ? {} : { capability: args.capability };
+      const providers = await (args.environmentId !== undefined
+        ? sdk.providers.list({
+            ...capabilityFilter,
+            environmentId: args.environmentId,
+            signal,
+          })
+        : args.hostId !== undefined
+          ? sdk.providers.list({
+              ...capabilityFilter,
+              hostId: args.hostId,
+              signal,
+            })
+          : sdk.providers.list({ ...capabilityFilter, signal }));
+      if (capability === null) {
+        writeCachedProviderList(providersCacheKey, providers);
       }
-      if (args.hostId !== undefined) {
-        return sdk.providers.list({
-          ...(args.capability === undefined
-            ? {}
-            : { capability: args.capability }),
-          hostId: args.hostId,
-          signal,
-        });
-      }
-      return sdk.providers.list({
-        ...(args.capability === undefined
-          ? {}
-          : { capability: args.capability }),
-        signal,
-      });
+      return providers;
     },
     enabled,
     staleTime: 60_000,
+    placeholderData: () => {
+      const remembered = readCachedProviderList(providersCacheKey);
+      return remembered !== null && remembered.length > 0
+        ? remembered
+        : undefined;
+    },
   });
 }
 

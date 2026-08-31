@@ -559,8 +559,10 @@ export function createApp(
       ),
     callPluginHost: (args) => callPluginHostRpc(deps, args),
     disposePluginHost: (args) => disposePluginHostWorkers(deps, args),
-    onSettingsChanged: (pluginId) =>
-      deps.providerNativeRoots.invalidate(pluginId),
+    onSettingsChanged: (pluginId) => {
+      deps.providerNativeRoots.invalidate(pluginId);
+      deps.providerRegistry.forgetInstalled();
+    },
     watchBuiltinPluginSources:
       process.env.BB_MANAGED_DEV_BUILTIN_PLUGIN_HOT_RELOAD === "1",
   });

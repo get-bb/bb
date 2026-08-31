@@ -285,7 +285,13 @@ export function registerSystemRoutes(
     const providerId = context.req.param("id");
     const registration = deps.providerRegistry.get(providerId);
     if (registration?.icon !== undefined) {
-      return pluginImageResponse(context, registration.icon, "no-store");
+      return pluginImageResponse(
+        context,
+        registration.icon,
+        context.req.query("h") === registration.icon.hash
+          ? "public, max-age=31536000, immutable"
+          : "no-store",
+      );
     }
     throw new ApiError(
       404,
