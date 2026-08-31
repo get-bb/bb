@@ -102,9 +102,6 @@ export const SF_SYMBOL_MAP = {
   Info: "info.circle",
   Laptop: "laptopcomputer",
   Layers: "square.3.layers.3d",
-  // The queue's "held by <plugin>" wait. A raised hand is the platform's
-  // idiom for "stopped by someone", which is what a policy hold is; SF
-  // Symbols has no throttle/limiter glyph to match the web set's.
   Limitation: "hand.raised",
   ListView: "list.bullet",
   SectionAdd: "text.badge.plus",
