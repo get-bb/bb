@@ -253,24 +253,6 @@ export class RuntimeProviderProcessManager {
     }
   }
 
-  async retireSupersededBridgeProcessIfIdle(
-    providerProcess: RuntimeProviderProcess,
-  ): Promise<void> {
-    if (providerProcess.identity.threadIds.size > 0) {
-      return;
-    }
-    const currentKey = this.currentProcessKeyByProviderId.get(
-      providerProcess.providerId,
-    );
-    if (currentKey === undefined || currentKey === providerProcess.processKey) {
-      return;
-    }
-    await this.shutdownProvider({
-      processKey: providerProcess.processKey,
-      providerId: providerProcess.providerId,
-    });
-  }
-
   requireProviderProcess(
     args: RequireRuntimeProviderProcessArgs,
   ): RuntimeProviderProcess {

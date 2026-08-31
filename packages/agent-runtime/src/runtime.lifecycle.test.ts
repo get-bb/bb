@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ThreadEvent } from "@bb/domain";
 import { promptTextInput } from "./test/prompt-input.js";
 import {
+  createScriptedEchoLaunch,
   createScriptedEchoRequestRecord,
   createScriptedEchoRuntime,
   fullRuntimeOptions,
@@ -219,9 +220,14 @@ describe("createAgentRuntime lifecycle", () => {
           intent: "release",
         });
 
-        await expect(runtime.resumeThread(resume)).resolves.toEqual({
-          providerThreadId: "old-prov-123",
-        });
+        await expect(
+          runtime.resumeThread({
+            ...resume,
+            bridgeLaunch: createScriptedEchoLaunch({
+              digest: "resume-success",
+            }),
+          }),
+        ).resolves.toEqual({ providerThreadId: "old-prov-123" });
         expect(runtime.hasThread("t1")).toBe(true);
       } finally {
         await runtime.shutdown();
@@ -855,7 +861,7 @@ describe("createAgentRuntime lifecycle", () => {
       await runtime.shutdown();
     });
 
-    it("keeps the provider running after thread stop", async () => {
+    it("retires the provider after thread stop and starts it for resume", async () => {
       const events: ThreadEvent[] = [];
       const runtime = createScriptedEchoRuntime({
         runtime: {
@@ -879,7 +885,7 @@ describe("createAgentRuntime lifecycle", () => {
       });
 
       await runtime.stopThread({ threadId: "t1" });
-      expect(runtime.listRunningProviders()).toEqual(["fake"]);
+      expect(runtime.listRunningProviders()).toEqual([]);
       expect(runtime.hasThread("t1")).toBe(false);
       expect(runtime.getProviderSession("t1")).toBeNull();
       expect(runtime.getActiveTurnId("t1")).toBeNull();

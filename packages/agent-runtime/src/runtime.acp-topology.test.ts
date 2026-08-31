@@ -89,6 +89,6 @@ describe("acp process topology", () => {
       timeoutMs: 10_000,
     });
     expect(readFileSync(signalFile, "utf8")).toContain("SIGTERM");
-    expect(runtime.listRunningProviders()).toEqual(["acp"]);
+    expect(runtime.listRunningProviders()).toEqual([]);
   }, 30_000);
 });

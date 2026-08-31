@@ -377,7 +377,13 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
   async function releaseIdleProviderProcess(
     proc: ProviderProcess,
   ): Promise<void> {
-    await providerProcesses.retireSupersededBridgeProcessIfIdle(proc);
+    if (proc.identity.threadIds.size > 0) {
+      return;
+    }
+    await providerProcesses.shutdownProvider({
+      processKey: proc.processKey,
+      providerId: proc.providerId,
+    });
   }
 
   async function abandonFailedSessionConstruction(args: {

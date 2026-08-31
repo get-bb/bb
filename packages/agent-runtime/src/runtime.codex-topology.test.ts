@@ -281,8 +281,8 @@ describe("codex process topology", () => {
       predicate: () => topology.exited() === 1,
       timeoutMs: 5_000,
     });
-    expect(runtime.listRunningProviders()).toEqual(["codex"]);
-    expect(topology.bridgeExits).toEqual([]);
+    expect(runtime.listRunningProviders()).toEqual([]);
+    expect(topology.bridgeExits).toEqual([{ expected: true }]);
   }, 30_000);
 
   it("releases the thread on the bridge when a construction times out on the runtime's side", async () => {
@@ -298,7 +298,8 @@ describe("codex process topology", () => {
       predicate: () => topology.spawned() === 1 && topology.exited() === 1,
       timeoutMs: 10_000,
     });
-    expect(runtime.listRunningProviders()).toEqual(["codex"]);
+    expect(runtime.listRunningProviders()).toEqual([]);
+    expect(topology.bridgeExits).toEqual([{ expected: true }]);
   }, 30_000);
 
   it("sweeps every app-server child when the bridge dies unexpectedly", async () => {
