@@ -53,6 +53,28 @@ function makeThread(overrides: Partial<ThreadListEntry> = {}): ThreadListEntry {
   };
 }
 
+const IDLE_ACTIVITY: ThreadListEntry["activity"] = {
+  activeWorkflowCount: 0,
+  activeBackgroundAgentCount: 0,
+  activeBackgroundCommandCount: 0,
+  activePlanModeCount: 0,
+  activeGoalCount: 0,
+};
+
+function makeIdleThread(
+  overrides: Partial<ThreadListEntry> = {},
+): ThreadListEntry {
+  return makeThread({
+    status: "idle",
+    runtime: {
+      displayStatus: "idle",
+      hostReconnectGraceExpiresAt: null,
+    },
+    activity: IDLE_ACTIVITY,
+    ...overrides,
+  });
+}
+
 afterEach(() => {
   cleanup();
   window.localStorage.clear();
@@ -258,7 +280,9 @@ describe("mobile recents hierarchy interaction", () => {
   }
 
   it("collapses and expands children from the parent row chevron", () => {
-    renderTree();
+    const { container } = renderTree();
+
+    expect(container.querySelector("a button")).toBeNull();
 
     expect(screen.getByText("Audit folder query paths")).not.toBeNull();
     const collapse = screen.getByRole("button", {
@@ -277,6 +301,78 @@ describe("mobile recents hierarchy interaction", () => {
     fireEvent.click(expand);
     expect(screen.getByText("Audit folder query paths")).not.toBeNull();
   });
+
+  it.each([
+    {
+      label: "Thread needs user input",
+      child: makeIdleThread({
+        id: "thr_child",
+        parentThreadId: "thr_parent",
+        hasPendingInteraction: true,
+      }),
+    },
+    {
+      label: "Plan mode active",
+      child: makeIdleThread({
+        id: "thr_child",
+        parentThreadId: "thr_parent",
+        activity: {
+          ...IDLE_ACTIVITY,
+          activePlanModeCount: 1,
+        },
+      }),
+    },
+    {
+      label: "Thread working",
+      child: makeThread({
+        id: "thr_child",
+        parentThreadId: "thr_parent",
+        activity: IDLE_ACTIVITY,
+      }),
+    },
+    {
+      label: "Unread thread failed",
+      child: makeIdleThread({
+        id: "thr_child",
+        parentThreadId: "thr_parent",
+        status: "error",
+      }),
+    },
+  ])(
+    "renders child-only $label state on a collapsed parent",
+    ({ child, label }) => {
+      window.localStorage.setItem(
+        "bb.sidebar.collapsedThreads",
+        JSON.stringify(["thr_parent"]),
+      );
+
+      render(
+        <MemoryRouter>
+          <RootComposeMobileRecents
+            highlightedThreadId={null}
+            projectNamesById={new Map()}
+            providersById={new Map()}
+            showCreatingRow={false}
+            threads={[
+              makeIdleThread({
+                id: "thr_parent",
+                lastReadAt: 10,
+                latestAttentionAt: 5,
+              }),
+              child,
+            ]}
+          />
+        </MemoryRouter>,
+      );
+
+      expect(screen.getByLabelText(label)).not.toBeNull();
+      expect(
+        screen.getByRole("link", {
+          name: `Open Mobile activity — ${label}`,
+        }),
+      ).not.toBeNull();
+    },
+  );
 
   it("reveals a highlighted thread whose parent is collapsed", () => {
     window.localStorage.setItem(

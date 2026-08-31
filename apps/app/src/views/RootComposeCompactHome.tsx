@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { OverflowFade } from "@/components/ui/overflow-fade";
 import {
   MOBILE_RECENT_LABEL_HEIGHT_PX,
@@ -42,7 +42,7 @@ function useCompactHomeMetrics() {
     composerHeight: 0,
   });
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const region = regionRef.current;
     const composer = composerRef.current;
     if (!region || !composer) return;

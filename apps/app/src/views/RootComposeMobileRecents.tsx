@@ -250,8 +250,13 @@ function MobileRecentThreadRow({
   const providerIcon = getProviderIconInfo(thread.providerId, provider);
   const ProviderMark = providerIcon?.icon;
   return (
-    <li>
-      {}
+    <li
+      className={cn(
+        "flex items-center rounded-md pr-2",
+        MOBILE_RECENT_ROW_HEIGHT_CLASS,
+        highlighted && "bg-surface-selected",
+      )}
+    >
       <RouteAnchor
         href={getThreadRoutePath({
           projectId: thread.projectId,
@@ -260,9 +265,8 @@ function MobileRecentThreadRow({
         aria-label={`Open ${threadTitle}${indicatorLabel ? ` — ${indicatorLabel}` : ""}`}
         style={{ paddingLeft: getSidebarThreadRowPaddingLeft(depth) }}
         className={cn(
-          "flex items-center gap-2.5 rounded-md pr-2 text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
+          "flex min-w-0 flex-1 items-center gap-2.5 rounded-md text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
           MOBILE_RECENT_ROW_HEIGHT_CLASS,
-          highlighted && "bg-surface-selected",
         )}
       >
         <span
@@ -291,14 +295,6 @@ function MobileRecentThreadRow({
             >
               {threadTitle}
             </span>
-            {hasChildren ? (
-              <SidebarChildToggleChevron
-                isCollapsed={isCollapsed}
-                expandLabel={`Show threads under ${threadTitle}`}
-                collapseLabel={`Hide threads under ${threadTitle}`}
-                onToggle={() => onToggleCollapsed(thread.id)}
-              />
-            ) : null}
           </span>
           <span
             className={cn(
@@ -319,10 +315,18 @@ function MobileRecentThreadRow({
         </span>
         {indicatorKind !== "none" ? (
           <span className="flex size-6 shrink-0 items-center justify-center">
-            <ThreadStatusGlyph {...indicatorState} />
+            <ThreadStatusGlyph {...trailingIndicatorState} />
           </span>
         ) : null}
       </RouteAnchor>
+      {hasChildren ? (
+        <SidebarChildToggleChevron
+          isCollapsed={isCollapsed}
+          expandLabel={`Show threads under ${threadTitle}`}
+          collapseLabel={`Hide threads under ${threadTitle}`}
+          onToggle={() => onToggleCollapsed(thread.id)}
+        />
+      ) : null}
     </li>
   );
 }
