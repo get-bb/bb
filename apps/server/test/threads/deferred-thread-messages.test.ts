@@ -486,9 +486,9 @@ describe("messages to a thread that awaits user interaction (#1650)", () => {
     });
   });
 
-  it("leaves a held message alone while the thread sits in error instead of re-failing it on every sweep", async () => {
+  it("starts a held steer-if-active message when the thread settles in error", async () => {
     await withTestHarness(async (harness) => {
-      const { interactionId, thread } = seedBlockedThread(harness, {
+      const { thread } = seedBlockedThread(harness, {
         hostId: "host-1650-errored",
       });
       await holdSteerMessage(harness, {
@@ -509,32 +509,19 @@ describe("messages to a thread that awaits user interaction (#1650)", () => {
       expect(getThread(harness.db, thread.id)?.status).toBe("error");
 
       const warnings = recordServerWarnings(harness);
-      await drainSettleFlush();
-      const afterSettle = warnings.length;
-      expect(afterSettle).toBeLessThanOrEqual(1);
+      const delivered = await waitFor(() => {
+        const requests = listTurnRequests(harness.db, thread.id);
+        return requests.length === 2 ? requests.at(-1) : undefined;
+      });
 
       for (let tick = 0; tick < 5; tick += 1) {
         await runDeferredThreadMessageSweep(harness.deps);
       }
-      expect(warnings).toHaveLength(afterSettle);
-      expect(listDeferredThreadMessages(harness.db, thread.id)).toHaveLength(1);
-      expect(listTurnRequests(harness.db, thread.id)).toHaveLength(1);
-      expect(getThread(harness.db, thread.id)?.status).toBe("error");
-
-      applyLoggedThreadLifecycleEvent(harness.deps, {
-        event: { type: "run.preparing" },
-        threadId: thread.id,
-      });
-      applyLoggedThreadLifecycleEvent(harness.deps, {
-        event: { type: "run.started" },
-        threadId: thread.id,
-      });
-      await runDeferredThreadMessageSweep(harness.deps);
-      expect(listTurnRequests(harness.db, thread.id).at(-1)?.target.kind).toBe(
-        "steer",
-      );
+      expect(warnings).toHaveLength(0);
+      expect(delivered.target.kind).toBe("new-turn");
+      expect(listTurnRequests(harness.db, thread.id)).toHaveLength(2);
       expect(listDeferredThreadMessages(harness.db, thread.id)).toHaveLength(0);
-      expect(interactionId).toBeTruthy();
+      expect(getThread(harness.db, thread.id)?.status).toBe("active");
     });
   });
 
