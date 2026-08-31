@@ -14,6 +14,17 @@ export function createNoopDesktopBrowserApi(): BbDesktopBrowserApi {
     reload() {},
     stop() {},
     focus() {},
+    async reserveAutomationTarget() {
+      return true;
+    },
+    async registerAutomationTarget() {
+      return true;
+    },
+    async unregisterAutomationTarget() {},
+    async runAutomationCommand() {
+      throw new Error("not implemented");
+    },
+    async cancelAutomationCommand() {},
     setBounds() {},
     setVisible() {},
     setVisibleWithoutFocus() {},

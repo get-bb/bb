@@ -35,6 +35,7 @@ describe("experiments", () => {
           .all()
           .map((row) => row.key),
       ).toEqual([
+        "browserAutomation",
         "changelogPreview",
         "editMessages",
         "futureExperiment",

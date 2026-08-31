@@ -146,7 +146,8 @@ export function typedRoutes<Schema>(
         } else {
           try {
             input = await c.req.json();
-          } catch {
+          } catch (error) {
+            if (!(error instanceof SyntaxError)) throw error;
             throw makeError("Invalid JSON request body");
           }
         }

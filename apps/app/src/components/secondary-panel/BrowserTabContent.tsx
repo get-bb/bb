@@ -5,6 +5,7 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
   type FormEvent,
   type RefObject,
 } from "react";
@@ -51,6 +52,7 @@ import {
 import type { AppShortcutPresentation } from "@/lib/app-keybindings";
 import { CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS } from "@bb/shared-ui/chrome-style-tokens";
 import { isLocalOnlyUrl } from "@/lib/loopback-hostname";
+import { browserAutomationClient } from "@/lib/browser-automation-client";
 
 interface BrowserTabContentProps {
   tabId: string;
@@ -87,6 +89,8 @@ interface BrowserChromeProps {
   onOpenExternal: () => void;
   locationShortcut: AppShortcutPresentation | null;
   reloadShortcut: AppShortcutPresentation | null;
+  automation: { active: boolean; threadId: string } | null;
+  onStopAutomation: () => void;
 }
 
 interface NavButtonProps {
@@ -203,6 +207,34 @@ function NavButton({
   );
 }
 
+export function BrowserAutomationIndicator({
+  active,
+  onStop,
+  threadId,
+}: {
+  active: boolean;
+  onStop: () => void;
+  threadId: string;
+}) {
+  return (
+    <div className="flex shrink-0 items-center gap-2 rounded-md border border-border bg-background/70 px-2 py-1 text-xs text-muted-foreground">
+      <span>
+        <span className="font-medium text-foreground">Agent using this tab</span>
+        {` · Thread ${threadId}`}
+      </span>
+      <button
+        type="button"
+        disabled={!active}
+        onClick={onStop}
+        aria-label="Stop agent Browser automation"
+        className="rounded px-1.5 py-0.5 font-medium text-foreground hover:bg-state-hover disabled:opacity-40"
+      >
+        Stop
+      </button>
+    </div>
+  );
+}
+
 function BrowserChrome({
   addressDraft,
   isEditing,
@@ -219,6 +251,8 @@ function BrowserChrome({
   onOpenExternal,
   locationShortcut,
   reloadShortcut,
+  automation,
+  onStopAutomation,
 }: BrowserChromeProps) {
   const isLoading = state?.isLoading ?? false;
   const security = getBrowserUrlSecurity(currentUrl);
@@ -312,6 +346,13 @@ function BrowserChrome({
             />
           </div>
         </form>
+        {automation !== null ? (
+          <BrowserAutomationIndicator
+            active={automation.active}
+            onStop={onStopAutomation}
+            threadId={automation.threadId}
+          />
+        ) : null}
         <NavButton
           icon="ExternalLink"
           label="Open in external browser"
@@ -424,6 +465,11 @@ export function BrowserTabContent({
   const desktopBrowser = useMemo<BbDesktopBrowserApi | null>(
     () => getDesktopBrowserApi(),
     [],
+  );
+  const automationUsage = useSyncExternalStore(
+    browserAutomationClient.subscribeTabUsage,
+    () => browserAutomationClient.getTabUsage(tabId),
+    () => null,
   );
   const contentRef = useRef<HTMLDivElement>(null);
   const addressInputRef = useRef<HTMLInputElement>(null);
@@ -869,6 +915,8 @@ export function BrowserTabContent({
         onOpenExternal={handleOpenExternal}
         locationShortcut={locationShortcut}
         reloadShortcut={reloadShortcut}
+        automation={automationUsage}
+        onStopAutomation={() => browserAutomationClient.stopTab(tabId)}
       />
       {isFindOpen ? (
         <BrowserFindBar

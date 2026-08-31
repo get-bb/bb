@@ -102,6 +102,42 @@ function createFetchQueue(
 }
 
 describe("@bb/sdk", () => {
+  it("maps Browser owner context and commands onto typed public routes", async () => {
+    const target = {
+      createdAt: 1,
+      hostId: "host_test",
+      navigating: false,
+      navigationEpoch: 0,
+      status: "ready",
+      targetId: "bt_test",
+      threadId: "thr_test",
+      updatedAt: 1,
+      url: "https://example.test",
+      visible: true,
+    };
+    const queue = createFetchQueue([
+      { body: target },
+      { body: { kind: "state", navigationEpoch: 1, ready: true, url: "https://example.test/next" } },
+    ]);
+    const sdk = createBbSdk({
+      transport: createHttpTransport({ baseUrl: "http://bb.test", fetch: queue.fetch, runtime: "node" }),
+    });
+    await expect(sdk.browser.open({ callerHostId: "host_test", threadId: "thr_test", url: "https://example.test" })).resolves.toEqual(target);
+    await expect(sdk.browser.run({ callerHostId: "host_test", command: { kind: "navigate", url: "https://example.test/next" }, targetId: "bt_test", threadId: "thr_test" })).resolves.toMatchObject({ kind: "state" });
+    expect(queue.requests).toEqual([
+      {
+        bodyText: JSON.stringify({ callerHostId: "host_test", threadId: "thr_test", url: "https://example.test" }),
+        method: "POST",
+        url: "http://bb.test/api/v1/browser/targets",
+      },
+      {
+        bodyText: JSON.stringify({ callerHostId: "host_test", threadId: "thr_test", command: { kind: "navigate", url: "https://example.test/next" } }),
+        method: "POST",
+        url: "http://bb.test/api/v1/browser/targets/bt_test/commands",
+      },
+    ]);
+  });
+
   it("sends thread pane presentation actions through the typed transport", async () => {
     const queue = createFetchQueue([{ body: { delivered: 3 } }]);
     const sdk = createBbSdk({

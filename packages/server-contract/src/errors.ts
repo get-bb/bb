@@ -1,5 +1,7 @@
 import { z } from "zod";
 import {
+  browserAutomationClientUnavailableReasonSchema,
+  browserAutomationOpenFailureCodeSchema,
   environmentStatusSchema,
   hostStatusSchema,
   threadStatusSchema,
@@ -155,3 +157,107 @@ export const lifecycleApiErrorSchema = z.discriminatedUnion("code", [
   parentThreadInvalidApiErrorSchema,
 ]);
 export type LifecycleApiError = z.infer<typeof lifecycleApiErrorSchema>;
+
+export const browserClientUnavailableErrorDetailsSchema = z.object({
+  reason: browserAutomationClientUnavailableReasonSchema,
+});
+export type BrowserClientUnavailableErrorDetails = z.infer<
+  typeof browserClientUnavailableErrorDetailsSchema
+>;
+
+export const browserTargetLimitErrorDetailsSchema = z.object({
+  limit: z.number().int().positive(),
+});
+export type BrowserTargetLimitErrorDetails = z.infer<
+  typeof browserTargetLimitErrorDetailsSchema
+>;
+
+export const browserOpenTimeoutErrorDetailsSchema = z.object({
+  timeoutMs: z.number().int().positive(),
+});
+export type BrowserOpenTimeoutErrorDetails = z.infer<
+  typeof browserOpenTimeoutErrorDetailsSchema
+>;
+
+export const browserOpenFailedErrorDetailsSchema = z.object({
+  reason: browserAutomationOpenFailureCodeSchema,
+});
+export type BrowserOpenFailedErrorDetails = z.infer<
+  typeof browserOpenFailedErrorDetailsSchema
+>;
+
+export const browserClientUnavailableApiErrorSchema = apiErrorSchema.extend({
+  code: z.literal("browser_client_unavailable"),
+  details: browserClientUnavailableErrorDetailsSchema,
+});
+
+export const browserTargetLimitApiErrorSchema = apiErrorSchema.extend({
+  code: z.literal("browser_target_limit"),
+  details: browserTargetLimitErrorDetailsSchema,
+});
+
+export const browserTargetNotFoundApiErrorSchema = apiErrorSchema.extend({
+  code: z.literal("browser_target_not_found"),
+});
+
+export const browserTargetClosedApiErrorSchema = apiErrorSchema.extend({
+  code: z.literal("browser_target_closed"),
+});
+
+export const browserOpenTimeoutApiErrorSchema = apiErrorSchema.extend({
+  code: z.literal("browser_open_timeout"),
+  details: browserOpenTimeoutErrorDetailsSchema,
+});
+
+export const browserOpenFailedApiErrorSchema = apiErrorSchema.extend({
+  code: z.literal("browser_open_failed"),
+  details: browserOpenFailedErrorDetailsSchema,
+});
+
+export const browserTargetBusyApiErrorSchema = apiErrorSchema.extend({
+  code: z.literal("browser_target_busy"),
+});
+
+export const browserCommandTimeoutApiErrorSchema = apiErrorSchema.extend({
+  code: z.literal("browser_command_timeout"),
+  details: browserOpenTimeoutErrorDetailsSchema,
+});
+
+export const browserCommandCancelledApiErrorSchema = apiErrorSchema.extend({
+  code: z.literal("browser_command_cancelled"),
+});
+
+export const browserStaleRevisionApiErrorSchema = apiErrorSchema.extend({
+  code: z.literal("browser_stale_revision"),
+});
+
+export const browserNativeOperationFailedApiErrorSchema = apiErrorSchema.extend({
+  code: z.literal("browser_native_operation_failed"),
+});
+
+export const browserHostMismatchApiErrorSchema = apiErrorSchema.extend({
+  code: z.literal("browser_host_mismatch"),
+});
+
+export const browserArtifactNotFoundApiErrorSchema = apiErrorSchema.extend({
+  code: z.literal("browser_artifact_not_found"),
+});
+
+export const browserAutomationApiErrorSchema = z.discriminatedUnion("code", [
+  browserClientUnavailableApiErrorSchema,
+  browserTargetLimitApiErrorSchema,
+  browserTargetNotFoundApiErrorSchema,
+  browserTargetClosedApiErrorSchema,
+  browserOpenTimeoutApiErrorSchema,
+  browserOpenFailedApiErrorSchema,
+  browserTargetBusyApiErrorSchema,
+  browserCommandTimeoutApiErrorSchema,
+  browserCommandCancelledApiErrorSchema,
+  browserStaleRevisionApiErrorSchema,
+  browserNativeOperationFailedApiErrorSchema,
+  browserHostMismatchApiErrorSchema,
+  browserArtifactNotFoundApiErrorSchema,
+]);
+export type BrowserAutomationApiError = z.infer<
+  typeof browserAutomationApiErrorSchema
+>;

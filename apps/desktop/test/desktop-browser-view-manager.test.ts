@@ -17,6 +17,7 @@ function createDesktopBrowserViewManager(
   args: Partial<CreateDesktopBrowserViewManagerArgs> = {},
 ): DesktopBrowserViewManager {
   return createProductionDesktopBrowserViewManager({
+    activateHostWindow: () => undefined,
     dispatchAppCommand: () => undefined,
     focusHostWebContents: () => undefined,
     resolveAppCommand: () => null,
@@ -245,6 +246,17 @@ const electronMock = vi.hoisted(() => {
 
   class FakeWebContents {
     public activeHistoryIndex = 0;
+    public readonly debugger = {
+      attached: false,
+      attach: (): void => {
+        this.debugger.attached = true;
+      },
+      detach: (): void => {
+        this.debugger.attached = false;
+      },
+      isAttached: (): boolean => this.debugger.attached,
+      sendCommand: async (): Promise<unknown> => ({}),
+    };
     public canGoBackResult = false;
     public canGoForwardResult = false;
     public destroyed = false;
@@ -424,6 +436,13 @@ const electronMock = vi.hoisted(() => {
       this.url = url;
       for (const listener of this.listeners["did-navigate"]) {
         listener(fakeWebContentsEvent, url);
+      }
+    }
+
+    emitDidNavigateInPage(url: string, isMainFrame: boolean): void {
+      this.url = url;
+      for (const listener of this.listeners["did-navigate-in-page"]) {
+        listener(fakeWebContentsEvent, url, isMainFrame);
       }
     }
 
@@ -712,6 +731,61 @@ function scopedOpenTabPushesOf(
 }
 
 describe("DesktopBrowserViewManager", () => {
+  it("registers only a one-time reservation consumed by a fresh tab attach", () => {
+    const manager = createDesktopBrowserViewManager({ partition: "persist:test" });
+    const hostWindow = new FakeHostWindow({
+      contentBounds: { width: 700, height: 450 },
+      webContentsId: 49,
+    });
+    attachBrowserTab({
+      manager,
+      hostWindow,
+      tabId: "browser:user",
+      url: "https://example.com/user",
+    });
+
+    expect(manager.reserveAutomationTarget({
+      hostWindow,
+      tabId: "browser:user",
+      targetId: "bt_user",
+    })).toBe(false);
+    expect(() => manager.registerAutomationTarget({
+      hostWindow,
+      tabId: "browser:user",
+      targetId: "bt_user",
+    })).toThrow("unavailable");
+
+    expect(manager.reserveAutomationTarget({
+      hostWindow,
+      tabId: "browser:fresh",
+      targetId: "bt_fresh",
+    })).toBe(true);
+    attachBrowserTab({
+      manager,
+      hostWindow,
+      tabId: "browser:fresh",
+      url: "https://example.com/fresh",
+    });
+    expect(() => manager.registerAutomationTarget({
+      hostWindow,
+      tabId: "browser:fresh",
+      targetId: "bt_fresh",
+    })).not.toThrow();
+    const freshWebContents = requireFakeView(1).webContents;
+    expect(freshWebContents.debugger.isAttached()).toBe(true);
+    freshWebContents.emitDidNavigateInPage("https://example.com/frame#one", false);
+    expect(manager.getAutomationPageState({ hostWindow, targetId: "bt_fresh" })?.navigationEpoch).toBe(0);
+    freshWebContents.emitDidNavigateInPage("https://example.com/fresh#one", true);
+    expect(manager.getAutomationPageState({ hostWindow, targetId: "bt_fresh" })?.navigationEpoch).toBe(1);
+
+    manager.unregisterAutomationTarget({ hostWindow, targetId: "bt_fresh" });
+    expect(() => manager.registerAutomationTarget({
+      hostWindow,
+      tabId: "browser:fresh",
+      targetId: "bt_fresh",
+    })).toThrow("unavailable");
+  });
+
   it("forwards resolved browser shortcuts and suppresses the untrusted page", () => {
     const dispatchAppCommand = vi.fn();
     const focusHostWebContents = vi.fn();

@@ -30,6 +30,9 @@ import { createLifecycleDedupers } from "./lifecycle-dedupers.js";
 import { MANAGED_ENVIRONMENT_RETIRE_GRACE_MS } from "./constants.js";
 import type { ServerRuntimeConfig } from "./types.js";
 import { NotificationHub } from "./ws/hub.js";
+import { BrowserAutomationService } from "./services/browser/browser-automation.js";
+import { BrowserArtifactStore } from "./services/browser/browser-artifacts.js";
+import { createBrowserMetricsRecorder } from "./services/browser/browser-metrics.js";
 import { WatchInterestCoordinator } from "./ws/watch-interests.js";
 import { WorkspaceReadCaches } from "./services/environments/workspace-read-cache.js";
 import { HostSharedPortCoordinator } from "./ws/host-shared-ports.js";
@@ -129,6 +132,14 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
     logger,
   });
 
+  const browserAutomation = new BrowserAutomationService({
+    db,
+    hub,
+    logger,
+    metrics: createBrowserMetricsRecorder(telemetry),
+  });
+  const browserArtifacts = new BrowserArtifactStore(serverConfig.BB_DATA_DIR);
+
   const machineAuth = await createMachineAuthService({
     dataDir: serverConfig.BB_DATA_DIR,
     db,
@@ -169,6 +180,8 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
     {
       appVersion,
       bbAppManagedConfig,
+      browserArtifacts,
+      browserAutomation,
       config: runtimeConfig,
       db,
       hub,

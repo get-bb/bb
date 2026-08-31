@@ -191,6 +191,18 @@
       "outputs": [],
       "passThroughEnv": ["*"]
     },
+    "@bb/desktop#test:browser-automation-electron": {
+      "dependsOn": ["topo"],
+      "cache": false,
+      "outputs": [],
+      "passThroughEnv": ["*"]
+    },
+    "@bb/integration-tests#test:browser-cli-electron": {
+      "dependsOn": ["@bb/cli#build", "topo"],
+      "cache": false,
+      "outputs": [],
+      "passThroughEnv": ["*"]
+    },
     "@bb/desktop#smoke:appimage-lifecycle": {
       "cache": false,
       "outputs": [],

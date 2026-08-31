@@ -1,4 +1,11 @@
 import { z } from "zod";
+import {
+  BROWSER_AUTOMATION_MAX_TIMEOUT_MS,
+  browserAutomationCommandResultSchema,
+  browserAutomationCommandSchema,
+  browserAutomationPageStateSchema,
+  type BrowserAutomationCommandResult,
+} from "@bb/domain";
 
 export const BB_DESKTOP_BROWSER_MAX_URL_LENGTH = 4096;
 export const BB_DESKTOP_BROWSER_MAX_TITLE_LENGTH = 1024;
@@ -120,6 +127,56 @@ export type BbDesktopBrowserTabRef = z.infer<
   typeof bbDesktopBrowserTabRefSchema
 >;
 
+export const bbDesktopBrowserAutomationTargetRefSchema = z
+  .object({
+    targetId: z.string().min(1).max(128),
+  })
+  .strict();
+export type BbDesktopBrowserAutomationTargetRef = z.infer<
+  typeof bbDesktopBrowserAutomationTargetRefSchema
+>;
+
+export const bbDesktopBrowserAutomationTargetSchema =
+  bbDesktopBrowserAutomationTargetRefSchema
+    .extend({
+      tabId: z.string().min(1).max(256),
+    })
+    .strict();
+export type BbDesktopBrowserAutomationTarget = z.infer<
+  typeof bbDesktopBrowserAutomationTargetSchema
+>;
+
+export const bbDesktopBrowserAutomationCommandRequestSchema =
+  bbDesktopBrowserAutomationTargetRefSchema.extend({
+    navigationEpoch: z.number().int().nonnegative(),
+    timeoutMs: z.number().int().positive().max(BROWSER_AUTOMATION_MAX_TIMEOUT_MS),
+    command: browserAutomationCommandSchema,
+  }).strict();
+export type BbDesktopBrowserAutomationCommandRequest = z.infer<
+  typeof bbDesktopBrowserAutomationCommandRequestSchema
+>;
+
+export const bbDesktopBrowserAutomationCommandResultSchema =
+  browserAutomationCommandResultSchema;
+export type BbDesktopBrowserAutomationCommandResult =
+  BrowserAutomationCommandResult;
+
+export const bbDesktopBrowserAutomationCommandOutcomeSchema = z.union([
+  z.object({
+    ok: z.literal(true),
+    result: bbDesktopBrowserAutomationCommandResultSchema,
+  }).strict(),
+  z.object({
+    ok: z.literal(false),
+    code: z.enum(["cancelled", "stale_revision", "native_operation_failed"]),
+    detail: z.string().min(1).max(512),
+    state: browserAutomationPageStateSchema.optional(),
+  }).strict(),
+]);
+export type BbDesktopBrowserAutomationCommandOutcome = z.infer<
+  typeof bbDesktopBrowserAutomationCommandOutcomeSchema
+>;
+
 export const bbDesktopBrowserStateSchema = z
   .object({
     tabId: z.string().min(1),
@@ -231,6 +288,17 @@ export interface BbDesktopBrowserApi {
   reload(tabId: string): void;
   stop(tabId: string): void;
   focus?(tabId: string): void;
+  reserveAutomationTarget?(
+    target: BbDesktopBrowserAutomationTarget,
+  ): Promise<boolean>;
+  registerAutomationTarget?(
+    target: BbDesktopBrowserAutomationTarget,
+  ): Promise<boolean>;
+  unregisterAutomationTarget?(targetId: string): Promise<void>;
+  runAutomationCommand?(
+    request: BbDesktopBrowserAutomationCommandRequest,
+  ): Promise<BbDesktopBrowserAutomationCommandOutcome>;
+  cancelAutomationCommand?(targetId: string): Promise<void>;
   setBounds(request: BbDesktopBrowserSetBoundsRequest): void;
   setVisible(request: BbDesktopBrowserSetVisibleRequest): void;
   setVisibleWithoutFocus?(request: BbDesktopBrowserSetVisibleRequest): void;

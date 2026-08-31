@@ -8,6 +8,7 @@
     "test": "vitest run --config vitest.config.ts",
     "test:smoke": "vitest run --config vitest.config.ts fake/smoke",
     "test:integration": "vitest run --config vitest.real-provider.config.ts",
+    "test:browser-cli-electron": "node --conditions=source --import tsx scripts/run-browser-cli-electron.ts",
     "e2e:mobile-backend": "cross-env NODE_ENV=test node --conditions=source --import tsx mobile-e2e/backend.ts",
     "e2e:mobile-connect-stub": "node --import tsx mobile-e2e/connect-stub.ts"
   },
@@ -29,6 +30,8 @@
     "@bb/tsconfig": "workspace:*",
     "@types/node": "^22.0.0",
     "@types/ws": "^8.18.1",
+    "esbuild": "^0.28.0",
+    "tsx": "^4.23.1",
     "typescript": "npm:@typescript/typescript6@^6.0.2",
     "typescript-7": "npm:typescript@^7.0.2",
     "vitest": "^4.1.1"

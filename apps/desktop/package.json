@@ -25,6 +25,7 @@
     "start": "pnpm run package && node scripts/run-packaged-app.mjs",
     "start:linux": "pnpm run package:linux && node scripts/run-packaged-app.mjs",
     "test": "vitest run --config vitest.config.ts",
+    "test:browser-automation-electron": "node scripts/run-browser-automation-electron.mjs",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

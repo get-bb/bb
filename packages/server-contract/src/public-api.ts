@@ -2,6 +2,7 @@ import type { Hono } from "hono";
 import type {
   AppTheme,
   AppThemeSelection,
+  BrowserAutomationTarget,
   AppSettings,
   AppKeybindingOverrides,
   Environment,
@@ -43,6 +44,16 @@ import type {
   PathTerminal,
 } from "./common.js";
 import type {
+  BrowserArtifactPath,
+  BrowserArtifactQuery,
+  BrowserCloseRequest,
+  BrowserCommandRequest,
+  BrowserListQuery,
+  BrowserOpenRequest,
+  BrowserPublicCommandResult,
+  BrowserScreenshotArtifact,
+  BrowserTargetListResponse,
+  BrowserTargetPath,
   CloseTerminalRequest,
   CommandListResponse,
   CopyProjectAttachmentsRequest,
@@ -216,6 +227,11 @@ import type {
 } from "./api/thread-tabs.js";
 import { updateThreadTabsRequestSchema } from "./api/thread-tabs.js";
 import {
+  browserArtifactQuerySchema,
+  browserCloseRequestSchema,
+  browserCommandRequestSchema,
+  browserListQuerySchema,
+  browserOpenRequestSchema,
   closeTerminalRequestSchema,
   copyProjectAttachmentsRequestSchema,
   createFilePreviewRequestSchema,
@@ -678,6 +694,45 @@ export const publicApiRoutes = {
         hostProviderCliInstallRequestSchema,
       ),
       response: textResponse<HostProviderCliInstallEvent>(),
+    }),
+  },
+
+  browser: {
+    open: defineRoute({
+      path: "/browser/targets",
+      method: "post",
+      request: jsonRequest<EmptyInput, BrowserOpenRequest>(browserOpenRequestSchema),
+      response: jsonResponse<BrowserAutomationTarget>({ status: 201 }),
+    }),
+    list: defineRoute({
+      path: "/browser/targets",
+      method: "get",
+      request: queryRequest<EmptyInput, BrowserListQuery>(browserListQuerySchema),
+      response: jsonResponse<BrowserTargetListResponse>(),
+    }),
+    command: defineRoute({
+      path: "/browser/targets/:targetId/commands",
+      method: "post",
+      request: jsonRequest<BrowserTargetPath, BrowserCommandRequest>(browserCommandRequestSchema),
+      response: jsonResponse<BrowserPublicCommandResult>(),
+    }),
+    close: defineRoute({
+      path: "/browser/targets/:targetId/close",
+      method: "post",
+      request: jsonRequest<BrowserTargetPath, BrowserCloseRequest>(browserCloseRequestSchema),
+      response: jsonResponse<BrowserAutomationTarget>(),
+    }),
+    artifactMetadata: defineRoute({
+      path: "/browser/artifacts/:artifactId",
+      method: "get",
+      request: queryRequest<BrowserArtifactPath, BrowserArtifactQuery>(browserArtifactQuerySchema),
+      response: jsonResponse<BrowserScreenshotArtifact>(),
+    }),
+    artifactContent: defineRoute({
+      path: "/browser/artifacts/:artifactId/content",
+      method: "get",
+      request: queryRequest<BrowserArtifactPath, BrowserArtifactQuery>(browserArtifactQuerySchema),
+      response: binaryResponse<Uint8Array>(),
     }),
   },
 

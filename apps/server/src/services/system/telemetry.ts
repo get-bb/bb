@@ -12,6 +12,12 @@ const telemetryAppSurfaceStorage = new AsyncLocalStorage<RequestAppSurface>();
 export type TelemetryEvent =
   | { name: "app_started" }
   | {
+      name: "browser_automation";
+      properties:
+        | { command: "click" | "navigate" | "press" | "screenshot" | "select" | "snapshot" | "type" | "wait"; latency_ms: number; outcome: "cancelled" | "failed" | "success" | "timeout"; size_bytes: number; metric: "command" }
+        | { count: number; metric: "target_closed_after_success" | "target_leak" };
+    }
+  | {
       name: "thread_created";
       properties: {
         is_child_thread: boolean;

@@ -233,6 +233,8 @@ import {
 } from "@/components/secondary-panel/useThreadFileTabs";
 import { isSecondaryFileTab } from "@bb/client-core";
 import { useThreadOpenFileSignal } from "@/components/secondary-panel/useThreadOpenFileSignal";
+import { useBrowserAutomationThreadHost } from "@/components/secondary-panel/useBrowserAutomationThreadHost";
+import { browserAutomationClient } from "@/lib/browser-automation-client";
 import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
 import type {
   SecondaryPanelFixedTab,
@@ -1403,6 +1405,15 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
     },
     [openBrowserTab, openCompactDrawer],
   );
+  useBrowserAutomationThreadHost({
+    browserTabs,
+    client: browserAutomationClient,
+    closeTab,
+    enabled: thread !== undefined && desktopBrowserAvailable,
+    openTab,
+    reveal: openCompactDrawer,
+    threadId,
+  });
   const handleOpenUrlByPreference = useCallback(
     (url: string) =>
       openUrlByPreference({

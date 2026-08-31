@@ -71,3 +71,21 @@ available through the CLI:
 
 Writes remain strict. Run, pause, and resume reject damaged records; update
 succeeds only when the resulting complete record is canonical.
+
+Visible Browser QA uses the experiment-gated core Browser commands, not an
+automation script or arbitrary page evaluation:
+
+  bb browser open <http-or-https-url> --json
+  bb browser wait <target> --text <text> --json
+  bb browser snapshot <target> --json
+  bb browser click <target> --ref <current-ref> --json
+  bb browser type <target> --ref <current-ref> --text <text> --json
+  bb browser press <target> --key <key> --json
+  bb browser select <target> --ref <current-ref> --value <value> --json
+  bb browser navigate <target> <http-or-https-url> --json
+  bb browser screenshot <target> --json
+  bb browser close <target> --json
+
+Targets are always visible and owned by `BB_THREAD_ID` unless `--thread` is
+passed. Snapshot again after page changes, use screenshots only for visual
+evidence, and close targets in cleanup.

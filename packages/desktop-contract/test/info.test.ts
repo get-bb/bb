@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { bbDesktopInfoSchema } from "../src/info.js";
+import {
+  bbDesktopInfoSchema,
+  bbDesktopWindowIdentitySchema,
+} from "../src/info.js";
 
 const baseInfo = {
   lastCheckedAt: null,
@@ -45,6 +48,23 @@ describe("bbDesktopInfoSchema", () => {
       bbDesktopInfoSchema.safeParse({
         ...baseInfo,
         platform: "win32",
+      }).success,
+    ).toBe(false);
+  });
+});
+
+describe("bbDesktopWindowIdentitySchema", () => {
+  it("accepts exactly one bounded window id and nothing else", () => {
+    expect(
+      bbDesktopWindowIdentitySchema.safeParse({ windowId: "window-1" }).success,
+    ).toBe(true);
+    expect(bbDesktopWindowIdentitySchema.safeParse({ windowId: "" }).success).toBe(
+      false,
+    );
+    expect(
+      bbDesktopWindowIdentitySchema.safeParse({
+        windowId: "window-1",
+        tabIds: ["browser:user-tab"],
       }).success,
     ).toBe(false);
   });

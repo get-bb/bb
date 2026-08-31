@@ -5,9 +5,11 @@ import {
   bbDesktopBrowserOpenTabRequestSchema,
   bbDesktopBrowserScopedOpenTabRequestSchema,
   bbDesktopBrowserTabRefSchema,
+  bbDesktopBrowserAutomationCommandOutcomeSchema,
   bbDesktopBrowserSnapshotSchema,
   bbDesktopBrowserStateSchema,
   bbDesktopInfoSchema,
+  bbDesktopWindowIdentitySchema,
   bbDesktopWindowStateSchema,
   type BbDesktopApi,
   type BbDesktopAppCommandHandler,
@@ -26,6 +28,7 @@ import {
   type BbDesktopInfoUnsubscribe,
   type BbDesktopOpenNewTabHandler,
   type BbDesktopTheme,
+  type BbDesktopWindowIdentity,
   type BbDesktopWindowState,
   type BbDesktopWindowStateChangeHandler,
 } from "@bb/desktop-contract";
@@ -39,6 +42,7 @@ import {
 } from "./desktop-update-ipc.js";
 import {
   BB_DESKTOP_BROWSER_ATTACH_CHANNEL,
+  BB_DESKTOP_BROWSER_CANCEL_AUTOMATION_COMMAND_CHANNEL,
   BB_DESKTOP_BROWSER_DETACH_CHANNEL,
   BB_DESKTOP_BROWSER_FOCUS_CHANNEL,
   BB_DESKTOP_BROWSER_FOCUSED_CHANNEL,
@@ -49,6 +53,9 @@ import {
   BB_DESKTOP_BROWSER_NAVIGATE_CHANNEL,
   BB_DESKTOP_BROWSER_OPEN_TAB_CHANNEL,
   BB_DESKTOP_BROWSER_RELOAD_CHANNEL,
+  BB_DESKTOP_BROWSER_RESERVE_AUTOMATION_TARGET_CHANNEL,
+  BB_DESKTOP_BROWSER_REGISTER_AUTOMATION_TARGET_CHANNEL,
+  BB_DESKTOP_BROWSER_RUN_AUTOMATION_COMMAND_CHANNEL,
   BB_DESKTOP_BROWSER_SCOPED_OPEN_TAB_CHANNEL,
   BB_DESKTOP_BROWSER_SET_BOUNDS_CHANNEL,
   BB_DESKTOP_BROWSER_SET_VISIBLE_CHANNEL,
@@ -57,11 +64,13 @@ import {
   BB_DESKTOP_BROWSER_STATE_CHANNEL,
   BB_DESKTOP_BROWSER_STOP_CHANNEL,
   BB_DESKTOP_BROWSER_STOP_FIND_IN_PAGE_CHANNEL,
+  BB_DESKTOP_BROWSER_UNREGISTER_AUTOMATION_TARGET_CHANNEL,
 } from "./desktop-browser-ipc.js";
 import {
   BB_DESKTOP_APP_COMMAND_CHANNEL,
   BB_DESKTOP_CLOSE_WINDOW_REQUEST_CHANNEL,
   BB_DESKTOP_CLOSE_WINDOW_RESPONSE_CHANNEL,
+  BB_DESKTOP_GET_WINDOW_IDENTITY_CHANNEL,
   BB_DESKTOP_GET_WINDOW_STATE_CHANNEL,
   BB_DESKTOP_OPEN_NEW_TAB_CHANNEL,
   BB_DESKTOP_OPEN_SERVER_DAEMON_LOGS_CHANNEL,
@@ -155,6 +164,18 @@ async function invokeDesktopWindowState(): Promise<BbDesktopWindowState> {
   }
 }
 
+async function invokeDesktopWindowIdentity(): Promise<BbDesktopWindowIdentity | null> {
+  try {
+    const payload: unknown = await ipcRenderer.invoke(
+      BB_DESKTOP_GET_WINDOW_IDENTITY_CHANNEL,
+    );
+    const parsed = bbDesktopWindowIdentitySchema.safeParse(payload);
+    return parsed.success ? parsed.data : null;
+  } catch {
+    return null;
+  }
+}
+
 async function invokeInstallUpdate(): Promise<void> {
   try {
     await ipcRenderer.invoke(BB_DESKTOP_INSTALL_UPDATE_CHANNEL);
@@ -221,6 +242,39 @@ const bbBrowserApi: BbDesktopBrowserApi = {
   },
   focus(tabId): void {
     ipcRenderer.send(BB_DESKTOP_BROWSER_FOCUS_CHANNEL, { tabId });
+  },
+  async reserveAutomationTarget(target): Promise<boolean> {
+    const result: unknown = await ipcRenderer.invoke(
+      BB_DESKTOP_BROWSER_RESERVE_AUTOMATION_TARGET_CHANNEL,
+      target,
+    );
+    return result === true;
+  },
+  async registerAutomationTarget(target): Promise<boolean> {
+    const result: unknown = await ipcRenderer.invoke(
+      BB_DESKTOP_BROWSER_REGISTER_AUTOMATION_TARGET_CHANNEL,
+      target,
+    );
+    return result === true;
+  },
+  async unregisterAutomationTarget(targetId): Promise<void> {
+    await ipcRenderer.invoke(
+      BB_DESKTOP_BROWSER_UNREGISTER_AUTOMATION_TARGET_CHANNEL,
+      { targetId },
+    );
+  },
+  async runAutomationCommand(request) {
+    const payload: unknown = await ipcRenderer.invoke(
+      BB_DESKTOP_BROWSER_RUN_AUTOMATION_COMMAND_CHANNEL,
+      request,
+    );
+    return bbDesktopBrowserAutomationCommandOutcomeSchema.parse(payload);
+  },
+  async cancelAutomationCommand(targetId): Promise<void> {
+    await ipcRenderer.invoke(
+      BB_DESKTOP_BROWSER_CANCEL_AUTOMATION_COMMAND_CHANNEL,
+      { targetId },
+    );
   },
   setBounds(request): void {
     ipcRenderer.send(BB_DESKTOP_BROWSER_SET_BOUNDS_CHANNEL, {
@@ -311,6 +365,9 @@ const bbDesktopApi: BbDesktopApi = {
   },
   getWindowState() {
     return invokeDesktopWindowState();
+  },
+  getWindowIdentity() {
+    return invokeDesktopWindowIdentity();
   },
   installUpdate() {
     return invokeInstallUpdate();
