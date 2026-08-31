@@ -1574,9 +1574,14 @@ export function listDueScheduledQueuedThreadMessages(
 }
 
 /**
- * Every live row a given wait owner holds. This is the query `wait_holder`
- * exists for: the orphan sweep asks it per uninstalled plugin, and a plugin
- * clearing its wait asks it for its own id.
+ * Every live row a given wait owner holds, in queue order. This is the query
+ * `wait_holder` exists for: the orphan sweep asks it per uninstalled plugin,
+ * and `bb provider-retry status` lists a holder's rows for the user.
+ *
+ * Ordered by `createdAt` for the same reason as
+ * {@link listQueuedThreadMessagesWithPluginWait}: `id` is a random suffix, so
+ * it sorts nothing, and one holder's rows span threads so `sortKey` alone
+ * cannot order them either.
  */
 export function listQueuedThreadMessagesByWaitHolder(
   db: DbQueryConnection,
@@ -1591,17 +1596,29 @@ export function listQueuedThreadMessagesByWaitHolder(
         liveQueuedThreadMessage(),
       ),
     )
-    .orderBy(asc(queuedThreadMessages.id))
+    .orderBy(
+      asc(queuedThreadMessages.createdAt),
+      asc(queuedThreadMessages.sortKey),
+      asc(queuedThreadMessages.id),
+    )
     .all();
 }
 
 /**
- * Every live row on SOME plugin's wait, across every thread.
+ * Every live row on SOME plugin's wait, across every thread, in queue order.
  *
  * The orphan sweep asks this once per tick and then filters by which plugins
  * are loaded, rather than asking per plugin: the set of holders is not known
  * up front (it is whichever plugins happen to be holding something), and the
  * partial wait index covers exactly these rows, so one range scan answers it.
+ *
+ * Ordered by `createdAt` and NOT by `id`: row ids are random suffixes, so
+ * sorting by them is sorting by nothing. It matters because the requested
+ * drain re-offers these rows to the dispatch hook in this order, and a full
+ * pool is supposed to drain in the order it filled. `sortKey` cannot do the
+ * job either — its fractional keys are seeded per thread, so they order a
+ * thread's own rows and are meaningless between threads; it breaks a
+ * same-millisecond tie within one thread, and `id` makes the sort total.
  */
 export function listQueuedThreadMessagesWithPluginWait(
   db: DbQueryConnection,
@@ -1615,7 +1632,11 @@ export function listQueuedThreadMessagesWithPluginWait(
         liveQueuedThreadMessage(),
       ),
     )
-    .orderBy(asc(queuedThreadMessages.id))
+    .orderBy(
+      asc(queuedThreadMessages.createdAt),
+      asc(queuedThreadMessages.sortKey),
+      asc(queuedThreadMessages.id),
+    )
     .all();
 }
 

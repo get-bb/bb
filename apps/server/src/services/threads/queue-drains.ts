@@ -212,50 +212,52 @@ async function clearDueWaitAndAttempt(
   });
 }
 
-let freedCapacityDrainPending = false;
+let requestedDrainPending = false;
 
 /**
- * Schedules the freed-capacity drain. This is what createApp registers as the
- * {@link noteThreadCapacityFreed} listener.
+ * Schedules the requested drain. This is what backs
+ * `bb.experimental_hooks.requestDrain()`: core owns the re-draining, a plugin
+ * owns the condition and asks for the re-ask.
  *
  * Bursts coalesce into one pass: five turns completing together free five
  * slots, and one walk of the queued rows fills as many of them as the gates
- * allow. The flag clears when the walk starts, so a thread that frees while a
+ * allow. The flag clears when the walk starts, so a request arriving while a
  * walk is in progress still gets its own pass.
  */
-export function requestFreedCapacityQueueDrain(deps: QueueDrainDeps): void {
-  if (freedCapacityDrainPending) return;
-  freedCapacityDrainPending = true;
+export function requestQueueDrain(deps: QueueDrainDeps): void {
+  if (requestedDrainPending) return;
+  requestedDrainPending = true;
   deferAfterResponse({
     config: deps.config,
     context: {},
     logger: deps.logger,
-    name: "Freed-capacity queue drain",
+    name: "Requested queue drain",
     work: async () => {
-      freedCapacityDrainPending = false;
-      await runFreedCapacityQueueDrain(deps);
+      requestedDrainPending = false;
+      await runRequestedQueueDrain(deps);
     },
   });
 }
 
 /**
- * Re-attempts every plugin-queued row, oldest first, because a thread left the
- * occupying set.
+ * Re-attempts every plugin-queued row, oldest first, because a plugin said a
+ * condition it holds waits on may have changed.
  *
- * Deliberately global rather than scoped to the freed thread's host or
- * project: a limit can be expressed over any grouping and core does not know
- * which one a plugin used. A row that is still blocked simply re-queues, which
- * costs one gate pass and is exactly what makes the release safe — no plugin
- * has to decide whether its own release was warranted.
+ * Deliberately global rather than scoped to whatever the caller had in mind: a
+ * wait can be expressed over any condition and core does not know which one a
+ * plugin used — it does not even know which plugin asked. A row that is still
+ * blocked simply re-queues, which costs one gate pass and is exactly what
+ * makes the request safe: no plugin has to decide whether its own release was
+ * warranted, or whether it was the last thing a message was waiting on.
  *
  * Only plugin waits: core waits (`time`, `thread-busy`, `provisioning`,
  * `interaction`, `host-offline`) each have their own release signal and are
- * unaffected by somebody else's slot freeing. Rows are walked in queue order
- * so a full pool drains in the order it filled, and the existing re-queue
- * pacing (`isDispatchRequeuedRecently`, one second per thread) is what keeps a
- * plugin that re-queues everything from being re-asked on every completion.
+ * core's to clear. Rows are walked in queue order so a full pool drains in the
+ * order it filled, and the existing re-queue pacing
+ * (`isDispatchRequeuedRecently`, one second per thread) is what keeps a plugin
+ * that re-queues everything from being re-asked in a loop.
  */
-export async function runFreedCapacityQueueDrain(
+export async function runRequestedQueueDrain(
   deps: QueueDrainDeps,
 ): Promise<void> {
   for (const row of listQueuedThreadMessagesWithPluginWait(deps.db)) {
@@ -274,7 +276,7 @@ export async function runFreedCapacityQueueDrain(
           threadId: row.threadId,
           ...runtimeErrorLogFields(deps.config, error),
         },
-        "Failed to re-attempt a plugin-queued message after capacity freed",
+        "Failed to re-attempt a plugin-queued message on a requested drain",
       );
     }
   }

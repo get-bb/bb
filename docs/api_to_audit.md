@@ -140,7 +140,7 @@ and reads nothing under that method, so the constant names a lane that no
 longer exists. Kept because 0.4.x published it; remove at the next major
 version.
 
-## `bb.experimental_hooks` (`on`)
+## `bb.experimental_hooks` (`on`, `requestDrain`)
 
 **What it does.** The one plugin surface that *decides* rather than observes.
 `bb.experimental_hooks.on(hook, handler)` registers this plugin's answer to a
@@ -169,10 +169,30 @@ pass runs under a single server-wide async lock. A handler that throws or
 exceeds a 10s decision box fails the attempt with the plugin named
 (fail-closed, the `deriveProviderOptions` precedent).
 
-A plugin's wait clears without the plugin doing anything: the row's `sendAt`
-comes due, a thread leaves the running set and core re-attempts every
-plugin-queued row, the user sends it now, or the orphan sweep clears a wait
-whose plugin is no longer running.
+`bb.experimental_hooks.requestDrain()` is the second member and the pair to
+`on`: `on` answers the question core asks, `requestDrain` asks core to ask it
+again. It schedules a walk that re-attempts every plugin-queued row in queue
+order — claim-CAS exactly-once, full hook pass per row, still-blocked rows
+re-queue, the per-thread re-queue pacing bounding the churn — and bursts
+coalesce into one walk. It resolves when the walk is SCHEDULED, not when it
+finishes: the walk has no caller to report to (a failed re-attempt lands on its
+row, like the due sweep's), and resolving on completion would mean awaiting a
+full hook pass from inside whatever asked, which for a handler holding the
+evaluation lock could never complete.
+
+The split it draws: **core owns the re-draining and the clock; plugins own
+every other wait condition and tell core when to re-ask.** Core's own wakes are
+the `sendAt` due sweep, thread-idle, workspace-ready, interaction-settled,
+send-now and the orphan sweep — all of them queue mechanics or core waits.
+Capacity is not one of them: `concurrency-limit` subscribes to
+`thread.idle`/`thread.failed`/`thread.archived`/`thread.deleted` and calls
+`requestDrain()` itself. That retires the future `clearWait` need for
+external-event waits: a plugin does not release a row, it wakes core and core
+re-asks, so a wake that was not warranted is safe by construction.
+
+A plugin's wait therefore clears when the row's `sendAt` comes due, when some
+plugin requests a drain and this handler now proceeds, when the user sends it
+now, or when the orphan sweep clears a wait whose plugin is no longer running.
 
 **Audit before stabilizing.**
 
@@ -183,10 +203,22 @@ whose plugin is no longer running.
   on `message.queued`. Every plugin that must act on its own wait therefore
   correlates by ordering or re-queries `threads.queue.list({ waitHolder })`.
   Decide whether the decision should be able to name a correlation key.
-- **A wait has no plugin-driven release.** The only ways out are `sendAt`,
-  the freed-capacity drain, the user, and the orphan sweep. A plugin whose
-  condition resolves early can only shorten the wait by having set a `sendAt`
-  it can live with. Confirm that is enough before stabilizing.
+- **A wait has no plugin-driven release, only a plugin-driven re-ask.**
+  `requestDrain()` names no row, so a plugin whose one condition resolved wakes
+  every plugin-queued row in the server and every handler re-decides. That is
+  what makes an unwarranted wake safe, and it is also its cost. Confirm the
+  whole-queue walk is still right when there are many plugin waits and many
+  waiters, and decide then whether a scoped variant is worth the correlation
+  problem it reintroduces (see the row-id bullet above).
+- **`requestDrain()` is unauthenticated in both directions.** Any plugin can
+  wake rows held by any other, and core does not tell a handler why it is being
+  re-asked. Both are deliberate — a wait is a decision, not a lease — but
+  confirm before stabilizing that no plugin needs to distinguish "core's clock"
+  from "somebody asked".
+- **Resolving on schedule is a contract, not an implementation detail.** A
+  caller cannot await the walk, so it cannot observe whether its own row went.
+  Confirm the alternative (resolve on completion, with the lock-reentrancy
+  hazard) is genuinely unwanted rather than merely unbuilt.
 - **A handler's `sendAt` and a user's `--send-at` are the same column.** A
   plugin wait with a `sendAt` sets the row's `sendAt`, which is also what
   `--send-at` sets. Confirm nothing renders a plugin's instant as a user's

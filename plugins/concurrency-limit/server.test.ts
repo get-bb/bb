@@ -330,18 +330,86 @@ describe("the message.dispatch hook", () => {
     });
   });
 
-  it("registers nothing but the hook", async () => {
-    // No lifecycle subscriptions, no queue subscriptions, no background
-    // service: a freed slot is core's signal to re-attempt, not the plugin's.
+  it("registers nothing but the hook and its wake listeners", async () => {
+    // No queue subscriptions, no registry of the rows it queued, no background
+    // service. The four listeners are the whole of the plugin's other half:
+    // core owns the re-drain, this owns knowing when to ask for one.
     const { harness } = await setup({
       settings: { maxConcurrentThreads: "1" },
     });
 
-    expect(
-      Object.values(harness.registrations.threadEventHandlers).filter(
-        (count) => count > 0,
-      ),
-    ).toEqual([]);
+    expect(harness.registrations.threadEventHandlers).toEqual({
+      "thread.created": 0,
+      "thread.active": 0,
+      "thread.idle": 1,
+      "thread.failed": 1,
+      "thread.archived": 1,
+      "thread.deleted": 1,
+      "message.queued": 0,
+      "message.dispatched": 0,
+      "turn.failed": 0,
+    });
     expect(harness.registrations.services).toEqual([]);
+  });
+});
+
+describe("the wake path", () => {
+  // The amendment this plugin exists to demonstrate: core no longer derives
+  // "a slot freed" from the lifecycle fanout. The plugin whose waits depend on
+  // capacity watches for it and asks core to re-ask the hook.
+  async function freed() {
+    const { harness } = await setup({
+      settings: { maxConcurrentThreads: "1" },
+      running: [running()],
+    });
+    expect(harness.requestedDrainCount).toBe(0);
+    return harness;
+  }
+
+  const freedThread = makeThreadResponse({ id: "thr_freed", status: "idle" });
+
+  it("asks core to re-attempt queued rows when a turn ends", async () => {
+    const harness = await freed();
+
+    const idle = await harness.emitThreadEvent("thread.idle", {
+      thread: freedThread,
+      lastAssistantText: null,
+    });
+    expect(idle.errors).toEqual([]);
+    expect(harness.requestedDrainCount).toBe(1);
+
+    const failed = await harness.emitThreadEvent("thread.failed", {
+      thread: freedThread,
+      error: null,
+    });
+    expect(failed.errors).toEqual([]);
+    expect(harness.requestedDrainCount).toBe(2);
+  });
+
+  it("asks when a running thread is archived or deleted", async () => {
+    // Stopping a running thread frees its slot as surely as its turn ending —
+    // the case a limiter watching only `thread.idle` would miss.
+    const harness = await freed();
+
+    await harness.emitThreadEvent("thread.archived", { thread: freedThread });
+    expect(harness.requestedDrainCount).toBe(1);
+
+    await harness.emitThreadEvent("thread.deleted", { thread: freedThread });
+    expect(harness.requestedDrainCount).toBe(2);
+  });
+
+  it("does not ask when a thread TAKES a slot", async () => {
+    // `thread.active` is a thread entering the occupying set. Re-asking there
+    // would walk the whole queue on every dispatch the limiter just admitted.
+    const harness = await freed();
+
+    await harness.emitThreadEvent("thread.active", {
+      thread: makeThreadResponse({ id: "thr_1", status: "active" }),
+    });
+    await harness.emitThreadEvent("thread.created", {
+      thread: makeThreadResponse({ id: "thr_2", status: "pending" }),
+    });
+
+    expect(harness.requestedDrainCount).toBe(0);
   });
 });

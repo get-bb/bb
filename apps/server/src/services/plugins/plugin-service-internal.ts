@@ -82,6 +82,13 @@ export interface PluginServiceDeps {
    * rows waiting on it) is cleared here instead of waiting for a sweep.
    */
   onPluginUnregistered?: (pluginId: string) => void;
+  /**
+   * Backs `bb.experimental_hooks.requestDrain()`: schedules a re-attempt of
+   * every plugin-queued row. Omitted only by isolated plugin tests, which have
+   * no thread queue — the call is then a no-op, exactly as it was when core
+   * drove this signal itself and no app had registered a listener.
+   */
+  requestQueueDrain?: () => void;
   /** Per-handler hook decision box; tests shrink it to exercise the timeout path. */
   pluginHookTimeoutMs?: number;
   /** Thread DTO assembly for lifecycle events + plugin-signal broadcast +

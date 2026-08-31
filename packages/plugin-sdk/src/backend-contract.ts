@@ -454,6 +454,34 @@ export interface PluginHooks {
    * nothing and throws.
    */
   on<K extends PluginHookName>(hook: K, handler: PluginHookHandler<K>): void;
+
+  /**
+   * Ask core to re-attempt the messages queued behind plugin waits.
+   *
+   * **The pair to `on`.** `on` answers the question core asks; `requestDrain`
+   * asks core to ask it again. Core owns the re-draining and the clock — the
+   * `sendAt` due sweep is still core's — and a plugin owns every other
+   * condition its own waits depend on. When that condition changes, say so
+   * here and answer the hook again on the re-attempt; there is no way to
+   * release a specific row, and there does not need to be.
+   *
+   * The walk re-attempts every plugin-queued row IN QUEUE ORDER, each one
+   * claimed exactly once, running the full `message.dispatch` pass over it —
+   * every plugin's handler, not just the caller's. A row that is still blocked
+   * simply re-queues, which is what makes an unwarranted request safe: nobody
+   * has to work out whether their own condition was the last one the message
+   * was waiting on. The existing per-thread re-queue pacing bounds the churn,
+   * so a plugin that stays full is not re-asked in a loop.
+   *
+   * Bursts coalesce: several calls before the walk starts produce one walk.
+   *
+   * **Resolves when the walk is SCHEDULED, not when it finishes.** The walk is
+   * a background pass with no caller to report to — its failures land on the
+   * rows, exactly as the due sweep's do. Awaiting completion would also mean
+   * awaiting a full hook pass from inside whatever called this, which for a
+   * handler holding the evaluation lock could not complete. Fire and forget.
+   */
+  requestDrain(): Promise<void>;
 }
 
 // ---------------------------------------------------------------------------

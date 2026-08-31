@@ -1,8 +1,10 @@
 // bb-plugin-concurrency-limit — admission control for thread dispatches.
 //
 // One handler at the dispatch checkpoint makes an attempt WAIT when the pool it
-// would join is full. That is the entire plugin: parse the settings, ask the
-// server what is running, compare, answer.
+// would join is full, and four lifecycle listeners tell core to re-ask that
+// handler when a thread stops occupying capacity. That is the entire plugin:
+// parse the settings, ask the server what is running, compare, answer — and
+// say when the answer might have changed.
 //
 // The limit is uniform: every running thread counts and every start-turn
 // dispatch is hooked, with no carve-out for child threads or plugin-spawned
@@ -27,10 +29,11 @@
 //     that lock releases, so inside a handler the answer already includes every
 //     admission granted ahead of this one. No in-flight bookkeeping, no
 //     reseeding, no drift to reconcile.
-//   * Core re-attempts every plugin-queued row whenever a thread leaves the
-//     occupying set. A queued row is re-decided by this very handler, so a
-//     release that is not warranted simply re-queues — which is why the plugin
-//     never needed to choose *which* row to release.
+//   * `bb.experimental_hooks.requestDrain()` asks core to re-attempt every
+//     plugin-queued row. A queued row is re-decided by this very handler, so a
+//     request that is not warranted simply re-queues — which is why the plugin
+//     never needed to choose *which* row to release, or to track what it had
+//     queued at all.
 //
 // What remains, deliberately: unparseable settings report through
 // `needsConfiguration` and leave that limit unenforced (a handler that threw on a
@@ -38,7 +41,11 @@
 // an already-running thread proceeds unconditionally — it holds its slot
 // already.
 
-import type { BbPluginApi, MessageDispatchHookDecision } from "@get-bb/plugin-sdk";
+import type {
+  BbPluginApi,
+  MessageDispatchHookDecision,
+  PluginThreadEventName,
+} from "@get-bb/plugin-sdk";
 import {
   isFullyUnlimited,
   resolveLimits,
@@ -48,6 +55,22 @@ import {
 
 /** Reason strings are capped by the queued-row contract; host names are user-set. */
 export const MAX_REASON_LENGTH = 200;
+
+/**
+ * The moments a thread stops occupying capacity. That is this plugin's wait
+ * condition, so watching it is this plugin's job: core owns the re-drain and
+ * the clock, and everything else that ends a wait is owned by whoever set it.
+ *
+ * `thread.idle` and `thread.failed` are turns ending; archiving or deleting a
+ * running thread stops it, which frees its slot just as surely — the case a
+ * limiter watching only `thread.idle` would miss.
+ */
+const CAPACITY_FREED_EVENTS = [
+  "thread.idle",
+  "thread.failed",
+  "thread.archived",
+  "thread.deleted",
+] as const satisfies readonly PluginThreadEventName[];
 
 /**
  * "N of N running on <scope>". The count shown is the limit itself, so a
@@ -108,6 +131,16 @@ export default async function concurrencyLimitPlugin(
   settings.onChange(() => {
     void applySettings();
   });
+
+  for (const event of CAPACITY_FREED_EVENTS) {
+    bb.events.on(event, async () => {
+      // Not a release: core re-attempts every plugin-queued row in queue order
+      // and re-runs the hook below on each, so a row that is still over the
+      // limit simply re-queues. Nothing here has to work out which row earned
+      // the slot, or whether one freed at all.
+      await bb.experimental_hooks.requestDrain();
+    });
+  }
 
   bb.experimental_hooks.on("message.dispatch", async (context) => {
     // A thread that is already occupying its slot is not asking for a new one.

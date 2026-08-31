@@ -980,7 +980,8 @@ ACTS ON what you return — the opposite of `bb.events`, whose handlers are told
 what already happened. There is ONE hook today, `"message.dispatch"`, the
 admission checkpoint every message passes through exactly once per attempt: a
 thread's first message, a follow-up, a steer, a drained queue row, a retry of a
-failed turn.
+failed turn. Two members: `on` answers the question, and `requestDrain()` asks
+core to ask it again.
 
 ```ts
 bb.experimental_hooks.on("message.dispatch", (ctx) => {
@@ -1014,13 +1015,38 @@ sidebar row shows the same failure glyph a failed thread gets. Queueing appends
 no thread event, so a `wait` never writes anything into the transcript the
 model or the user reads back.
 
-**How a wait clears.** You do not release it yourself. It clears when the row's
-`sendAt` comes due, when a thread leaves the running set and core re-attempts
-every plugin-queued row, when the user sends it now, or when the orphan sweep
-clears a wait whose plugin stopped running. Every one of those re-runs the full
-pass, including your own handler, so a message that is still blocked simply
-re-queues. Waiting on an external event you cannot predict means polling: set a
-`sendAt` you can live with and answer again on the re-attempt.
+**How a wait clears.** You never release a row — you ask core to re-decide it.
+It clears when the row's `sendAt` comes due, when any plugin calls
+`bb.experimental_hooks.requestDrain()`, when the user sends it now, or when the
+orphan sweep clears a wait whose plugin stopped running. Every one of those
+re-runs the full pass, including your own handler, so a message that is still
+blocked simply re-queues.
+
+```ts
+// The condition your waits depend on changed. Ask core to re-ask.
+await bb.experimental_hooks.requestDrain();
+```
+
+**`on` answers core's question; `requestDrain` asks core to ask it again.**
+That is the whole division of labour: core owns the re-draining and the clock —
+`sendAt` due, the thread's own turn ending, the workspace becoming ready, an
+interaction settling — and YOU own every other condition your waits depend on.
+Watch for it however suits you (a lifecycle event, a webhook route, a poll in a
+background service) and call `requestDrain()` when it changes.
+
+The walk re-attempts every plugin-queued row in queue order, running the full
+hook pass over each — every plugin's handler, not just yours. That is why an
+unwarranted call is safe: nobody has to work out whether their own condition was
+the last thing a message was waiting on. Bursts coalesce into one walk, the
+per-thread re-queue pacing keeps a plugin that stays blocked from being re-asked
+in a loop, and the promise resolves when the walk is SCHEDULED, not when it
+finishes — it is fire-and-forget, and a failed re-attempt lands on the row it
+failed.
+
+Waiting on an external event you cannot observe at all is still polling: set a
+`sendAt` you can live with and answer again on the re-attempt. `requestDrain()`
+is for the events you CAN observe, and it is strictly better than polling for
+them — no latency floor, no wasted passes.
 
 **A handler cannot rewrite the dispatch.** There is no amendment arm: the model,
 reasoning level, service tier, permission mode, environment and prompt blocks a
@@ -1088,11 +1114,25 @@ like `threads.count`. One boundary: a follow-up admitted on an already-live
 lock, so a burst of follow-ups to distinct idle threads can momentarily
 under-report.
 
-You do NOT need to release your own waits — there is no way to. When a thread
-leaves the occupying set — idle, failed, archived, deleted — core re-attempts
-every plugin-queued row in queue order, which re-runs your handler; rows still
-over the limit re-queue, and core paces the retries. Subscribing to lifecycle
-events to chase the same moment duplicates that and races it.
+**Then say when the answer changed.** Capacity is your condition, not core's,
+so watching for it is your job — the other half of a limiter, and four lines:
+
+```ts
+for (const event of ["thread.idle", "thread.failed",
+                     "thread.archived", "thread.deleted"] as const) {
+  bb.events.on(event, async () => {
+    await bb.experimental_hooks.requestDrain();
+  });
+}
+```
+
+Those four are the moments a thread stops occupying capacity: a turn ending,
+and a running thread being stopped by an archive or a delete — the two a
+limiter watching only `thread.idle` would miss. You still do not release your
+own rows and there is no way to; core re-attempts every plugin-queued row in
+queue order and re-runs your handler, rows still over the limit re-queue, and
+core paces the retries. Do not add a tally, a registry of rows or a
+reconciliation service on top: they would only race the re-decision.
 
 `bb.sdk.threads.count({ status, hostId, providerId, projectId,
 parentThreadId, groupBy })` is still there for headline numbers — a real

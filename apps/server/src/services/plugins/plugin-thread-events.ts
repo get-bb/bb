@@ -1,7 +1,6 @@
 import type { ApplyThreadLifecycleEventOutcome } from "@bb/db";
 import type { Thread } from "@bb/domain";
 import type { ThreadQueuedMessage } from "@bb/domain";
-import { noteThreadCapacityFreed } from "../threads/freed-capacity-signal.js";
 import type { PluginThreadEventEmitter } from "./plugin-service.js";
 
 let emitter: PluginThreadEventEmitter | undefined;
@@ -17,22 +16,15 @@ export function emitPluginThreadCreated(thread: Thread): void {
 }
 
 /**
- * Called after a thread is archived (archiveThreadWithLifecycleEffects).
- *
- * Also core's own signal that a slot may have freed — archiving a running
- * thread stops it. These four functions are already THE fanout for "a thread
- * stopped occupying capacity", which is precisely the set the concurrency
- * limiter used to subscribe to; core consumes the signal here instead of
- * asking every limiter to re-derive it and call back in.
+ * Called after a thread is archived (archiveThreadWithLifecycleEffects),
+ * including cascade archives.
  */
 export function emitPluginThreadArchived(thread: Thread): void {
   emitter?.emitThreadArchived(thread);
-  noteThreadCapacityFreed();
 }
 
 export function emitPluginThreadDeleted(thread: Thread): void {
   emitter?.emitThreadDeleted(thread);
-  noteThreadCapacityFreed();
 }
 
 /** Called after a dispatch attempt is queued as a row (recordQueuedMessageWait). */
@@ -59,10 +51,15 @@ export function emitPluginTurnFailed(threadId: string): void {
 
 /**
  * Called with every lifecycle-event outcome; forwards applied transitions
- * into `active`/`idle`/`error` as their curated plugin lifecycle events, and
- * tells core when one of them freed capacity.
+ * into `active`/`idle`/`error` as their curated plugin lifecycle events.
  * Those statuses have no self-transitions in THREAD_LIFECYCLE, so an applied
  * outcome landing there always means the thread just entered the state.
+ *
+ * These, plus archive and delete above, are the fanout a plugin whose waits
+ * depend on capacity subscribes to; it answers by calling
+ * `bb.experimental_hooks.requestDrain()`. Core deliberately does not derive
+ * "a slot freed" here itself: the wait is the plugin's, and so is the
+ * condition that ends it.
  */
 export function emitPluginThreadLifecycleOutcome(
   outcome: ApplyThreadLifecycleEventOutcome,
@@ -72,9 +69,7 @@ export function emitPluginThreadLifecycleOutcome(
     emitter?.emitThreadActive(outcome.thread);
   } else if (outcome.thread.status === "idle") {
     emitter?.emitThreadIdle(outcome.thread);
-    noteThreadCapacityFreed();
   } else if (outcome.thread.status === "error") {
     emitter?.emitThreadFailed(outcome.thread);
-    noteThreadCapacityFreed();
   }
 }

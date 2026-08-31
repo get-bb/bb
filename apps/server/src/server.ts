@@ -31,10 +31,9 @@ import { setPluginThreadEventEmitter } from "./services/plugins/plugin-thread-ev
 import { setPluginHookProvider } from "./services/plugins/plugin-hook-registry.js";
 import {
   clearQueueWaitsForUnregisteredPlugin,
-  requestFreedCapacityQueueDrain,
+  requestQueueDrain,
   requestThreadQueueDrainForSettledInteraction,
 } from "./services/threads/queue-drains.js";
-import { setFreedThreadCapacityListener } from "./services/threads/freed-capacity-signal.js";
 import { registerInternalEventRoutes } from "./internal/events.js";
 import { registerInternalHostRoutes } from "./internal/hosts.js";
 import { registerInternalInteractiveRequestRoutes } from "./internal/interactive-requests.js";
@@ -580,6 +579,13 @@ export function createApp(
         },
       );
     },
+    // `bb.experimental_hooks.requestDrain()`: a plugin whose wait condition
+    // may have changed asks core to re-attempt the plugin-queued rows. Core
+    // owns the walk, the coalescing and the pacing; the plugin owns knowing
+    // when to ask.
+    requestQueueDrain: () => {
+      requestQueueDrain(deps);
+    },
     watchBuiltinPluginSources:
       process.env.BB_MANAGED_DEV_BUILTIN_PLUGIN_HOT_RELOAD === "1",
   });
@@ -589,12 +595,6 @@ export function createApp(
     requestThreadQueueDrainForSettledInteraction(deps, threadId);
   });
   setPluginThreadEventEmitter(pluginService.events);
-  // Bridge "a thread stopped running" to the queue: a freed slot re-attempts
-  // every plugin-queued row, which is how a limiter's waits clear without the
-  // plugin tracking capacity itself.
-  setFreedThreadCapacityListener(() => {
-    requestFreedCapacityQueueDrain(deps);
-  });
   // Bridge the dispatch pipeline to this service's hooks. Until this runs
   // there are no hooks, which is exactly the zero-overhead path.
   setPluginHookProvider(pluginService.hooks);

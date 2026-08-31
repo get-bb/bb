@@ -233,7 +233,9 @@ above:
     not know which one. Rows still blocked re-queue, and the existing
     `DISPATCH_REQUEUE_MIN_INTERVAL_MS` pacing bounds the churn. Plugins no
     longer release their own waits when capacity frees; `clearWait` is now for
-    "my own condition resolved" only. The orphan sweep is unchanged.
+    "my own condition resolved" only. The orphan sweep is unchanged. (The
+    *trigger* for this walk later moved back to the plugin — see
+    "`requestDrain`" below. The walk itself is exactly as described here.)
 
   The limiter plugin collapsed to settings-parse + `listRunning` + compare:
   `tally.ts`, `scope.ts`, `parked-rows.ts`, their tests, the
@@ -298,8 +300,9 @@ above:
     `entries` transcript, so the field, its projection, its merge and its
     expandable rendering went with it — a queued row's body is now its
     schedule and the queued message, and `detail` is always null. A wait
-    clears only via `sendAt`, the freed-capacity drain, Send-now and the
-    orphan sweep; the authoring skill says exactly that.
+    clears only via `sendAt`, the requested drain (then core's freed-capacity
+    signal, now `requestDrain` — see the last entry in this document),
+    Send-now and the orphan sweep; the authoring skill says exactly that.
   - **`pluginInputs`.** The side channel is gone end to end: the domain
     schema and 8KB cap, the create/send/queued-message request fields, the
     `plugin_inputs` column, `ctx.pluginInput`, `--plugin-input`,
@@ -455,3 +458,59 @@ above:
   and acts on public queue surfaces (`threads.queue.list` filtered by wait
   holder, `threads.queuedMessages.delete/send`), so it is unchanged and its
   tests now cover the cancel path the RPC test used to.
+
+- **Core owns the re-draining and the clock; plugins own every other wait
+  condition and tell core when to re-ask —
+  `bb.experimental_hooks.requestDrain()`.** The freed-capacity signal is
+  deleted: `freed-capacity-signal.ts`, its four call sites in the thread
+  lifecycle fanout (archive, delete, idle, error) and the `createApp`
+  registration. Core no longer derives "a slot freed" at all, because a slot is
+  not a core fact — the limit that makes it matter is a plugin's.
+
+  The WALK survives unchanged and becomes what the new member invokes:
+  `runFreedCapacityQueueDrain` → `runRequestedQueueDrain`,
+  `requestFreedCapacityQueueDrain` → `requestQueueDrain`. Same queue order,
+  same claim-CAS exactly-once, same `DISPATCH_REQUEUE_MIN_INTERVAL_MS` pacing
+  on re-queue, same burst coalescing, same plugin-waits-only scope. Core's
+  remaining self-driven wakes are untouched and are all queue mechanics or core
+  waits: the `sendAt` due sweep, the thread-idle drain (thread-busy is a core
+  wait on the thread's *own* turn — deliberately NOT part of the capacity path
+  that was deleted), workspace-ready, interaction-settled, send-now and the
+  orphan sweep.
+
+  `requestDrain()` lives in the hooks namespace because it pairs with `on`:
+  `on` answers core's question, `requestDrain` asks core to ask it again. It
+  names no row, takes no arguments and resolves when the walk is SCHEDULED, not
+  when it finishes — the walk has no caller to report to (a failed re-attempt
+  lands on its row, as the due sweep's does), and resolving on completion would
+  mean awaiting a full hook pass from inside whatever asked, which for a
+  handler holding the evaluation lock could never complete.
+
+  `concurrency-limit` gained the four lines this costs: it subscribes to
+  `thread.idle`/`thread.failed`/`thread.archived`/`thread.deleted` — exactly
+  the set the deleted fanout covered — and calls `requestDrain()`. Its hook is
+  unchanged, and it still keeps no tally and no registry of the rows it queued,
+  because the wake is still a re-ask and not a release: an unwarranted wake
+  re-queues. The `sendAt`/time half of the proposal that produced this
+  amendment is deliberately rejected — scheduling stays exactly as it was,
+  core's clock and core's due sweep.
+
+  **The walk's "queue order" was a lie, and is now true.** Writing the test
+  for it found that `listQueuedThreadMessagesWithPluginWait` ordered by
+  `asc(id)`, and queued-message ids are `qmsg_<random nanoid>` — so the drain
+  re-offered rows to the hook in arbitrary order, and under a full pool the
+  row that went was whichever id sorted first. Both cross-thread wait queries
+  (that one and `listQueuedThreadMessagesByWaitHolder`, which also backs
+  `bb provider-retry status`) now order by `createdAt`, then `sortKey`, then
+  `id`. `sortKey` cannot carry this alone — its fractional keys are seeded per
+  thread, so they order a thread's own rows and mean nothing between threads —
+  but it correctly breaks a same-millisecond tie within one thread, with `id`
+  making the sort total. No new index: the predicate already selects a small
+  set through the partial wait index, and the sort is over what that returns.
+
+  This also retires the future `clearWait` need for external-event waits
+  (`plans/plugin-api-scaling-exercise.md`, previously "needs addition #2"): a
+  plugin does not release a row it owns, it wakes core and every handler
+  re-decides, so ownership-as-authorization and the row-correlation problem
+  both stop existing. The sandbox case still needs the other half,
+  `amend.environment`, which remains hypothetical.

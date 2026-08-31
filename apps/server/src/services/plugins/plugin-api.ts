@@ -383,6 +383,18 @@ export function createPluginApi(options: {
   reportNeedsConfiguration: (message: string) => void;
   isAgentToolNameTaken: (name: string) => string | undefined;
   reportAgentToolProblem: (message: string) => void;
+  /**
+   * Schedules a re-attempt of every plugin-queued row
+   * (`bb.experimental_hooks.requestDrain`). Coalescing, pacing and the walk
+   * itself belong to the queue; this only asks for it.
+   */
+  requestQueueDrain: () => void;
+  /**
+   * The names this plugin's manifest declares under
+   * `bb.branding.experimental_icons`: what a namespaced glyph
+   * (`"<pluginId>/<name>"`) in a tool presentation or a provider icon must
+   * name. Empty when the manifest declares none.
+   */
   declaredIconNames: ReadonlySet<string>;
   requestInteraction: (args: {
     threadId: string;
@@ -438,6 +450,7 @@ export function createPluginApi(options: {
     reportNeedsConfiguration,
     isAgentToolNameTaken,
     reportAgentToolProblem,
+    requestQueueDrain,
     declaredIconNames,
     requestInteraction,
     ensureSharedPortTunnel,
@@ -1305,6 +1318,13 @@ export function createPluginApi(options: {
         throw new Error(pluginHookAlreadyRegisteredMessage(hook));
       }
       storePluginHook(hooks, hook, handler);
+    },
+    async requestDrain() {
+      assertLive();
+      // Resolves on SCHEDULING. The walk runs on a later macrotask, and the
+      // caller is not the one it reports to — a failed re-attempt lands on the
+      // row it failed, like every other background drain.
+      requestQueueDrain();
     },
   };
 

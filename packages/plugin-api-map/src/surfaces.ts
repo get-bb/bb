@@ -631,7 +631,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         bullets: [
           "Let a dispatch proceed, queue it with a user-visible reason, or refuse it outright",
           "See the thread, project, machine, prompt and resolved execution tuple before the turn runs",
-          "Hold work until a moment it names, or until capacity frees and core re-asks",
+          "Hold work until a moment it names, then ask core to re-decide every queued message when its condition changes",
         ],
         apiSymbols: [
           "PluginHooks",

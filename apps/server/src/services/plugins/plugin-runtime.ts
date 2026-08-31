@@ -1309,6 +1309,11 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
       reportAgentToolProblem: (message) => {
         reportAgentToolProblem(row.id, message);
       },
+      requestQueueDrain: () => {
+        // Unwired in isolated plugin-runtime tests, which have no thread
+        // queue to walk; asking for a drain there is honestly a no-op.
+        deps.requestQueueDrain?.();
+      },
       requestInteraction: (args) => {
         if (!deps.pendingInteractions) {
           throw new Error("Plugin interactions are unavailable in this host");

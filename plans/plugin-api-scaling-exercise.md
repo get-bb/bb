@@ -47,6 +47,14 @@ either way it runs the `message.dispatch` hook like any other send. Core
 allows one live retry per original turn and computes `attemptNumber` from the
 retry chain.
 
+And one call that asks core to re-ask the question:
+
+```ts
+await bb.experimental_hooks.requestDrain();   // re-attempt every plugin-queued
+                                              // row, in queue order, full pass
+                                              // per row; resolves on SCHEDULE
+```
+
 Facts and signals:
 
 ```ts
@@ -70,6 +78,10 @@ hooks.on("message.dispatch", async (ctx) => {
   if (running.length >= max) return wait(`${max} of ${max} running`);
   return proceed;
 });
+// ...and its whole other half: capacity is ITS condition, so it watches for it
+for (const e of ["thread.idle", "thread.failed",
+                 "thread.archived", "thread.deleted"] as const)
+  events.on(e, () => hooks.requestDrain());
 
 // provider-retry: the entire policy
 events.on("turn.failed", (e) => {
@@ -81,9 +93,16 @@ events.on("turn.failed", (e) => {
 // scheduled-send: no hook at all — a dialog that submits with sendAt
 ```
 
-How a queued message wakes (all core-driven): `sendAt` due · any thread
-leaves the running set · workspace ready · interaction settled · user
-Send-now · orphan sweep (owning plugin gone).
+How a queued message wakes. **Core owns the re-draining and the clock;
+plugins own every other wait condition and tell core when to re-ask.**
+
+- Core-driven: `sendAt` due · the thread's own turn ending · workspace ready ·
+  interaction settled · user Send-now · orphan sweep (owning plugin gone).
+  Every one is queue mechanics or a core wait — a condition core is the only
+  one that can see.
+- Plugin-driven: `hooks.requestDrain()`, which schedules exactly the same walk.
+  Capacity is the shipped example: core does not derive "a slot freed" at all
+  any more, the limiter does.
 
 ## Future use cases
 
@@ -104,22 +123,30 @@ hooks.on("message.dispatch", () =>
   spentThisWindow() > cap ? wait("Budget cap hit", windowEnd()) : proceed);
 ```
 
-**Dependency ordering ("run after thread X") / CI-aware dispatch** — works
-today by polling: wait with a short `sendAt`, and the re-attempted hook
-re-checks the condition:
+**Dependency ordering ("run after thread X") / CI-aware dispatch** — the hook
+states the condition, and whatever can observe it wakes core:
 
 ```ts
 hooks.on("message.dispatch", async (ctx) => {
   const blocker = blockerFor(ctx.thread);
   if (blocker && !(await isDone(blocker)))
-    return wait(`After ${blocker.title}`, now() + 30_000);   // poll via sendAt
+    return wait(`After ${blocker.title}`);
   return proceed;
+});
+
+// "run after thread X" is observable — no poll needed
+bb.events.on("thread.idle", () => hooks.requestDrain());
+// a CI webhook is too
+bb.http.route("POST", "ci-done", async () => {
+  await hooks.requestDrain();
+  return Response.json({ ok: true });
 });
 ```
 
-Polling through the hook is the *designed* degraded mode for any
-external-event wait. Latency = poll interval. Good enough until a consumer
-proves it isn't.
+Polling through the hook — `wait(reason, now() + 30_000)` and re-check on the
+re-attempt — remains the *designed* fallback for a condition nothing in the
+plugin can observe. Latency = poll interval. `requestDrain()` is the wake for
+everything else, and it has no latency floor.
 
 ### Needs addition #1: amendments (`proceed` gains `amend`)
 
@@ -148,33 +175,41 @@ re-decide: whether amendments compose across the handlers in a pass (they did
 — last writer per field, which forces per-handler context rebuilds and
 ordering questions).
 
-### Needs addition #2: plugin-initiated wake (`clearWait`) — external events
+### Shipped instead of addition #2: `requestDrain()` — external events
 
-For **custom environment provisioning** (the sandbox), human-approval
-waits, webhook-driven dispatch — waits whose end only the plugin observes:
+This was "needs addition #2: plugin-initiated wake (`clearWait`)". It is no
+longer an addition, and it is not `clearWait`. **Plugin-initiated wake ships
+as `bb.experimental_hooks.requestDrain()`**, and the external-event half of
+the sandbox case works today:
 
 ```ts
 hooks.on("message.dispatch", (ctx) => {
   if (!wantsSandbox(ctx)) return proceed;
-  startProvisioning(ctx.queuedMessage?.id ?? "inline", ctx);   // background
+  startProvisioning(ctx);                                      // background
   return wait("Provisioning sandbox…");                        // no sendAt
 });
 
 // background service, minutes later:
-const host = await createVm().then(enrollViaJoinCode);         // existing SDK
-await bb.experimental_hooks.clearWait(rowId, {                 // hypothetical
-  amend: { environment: { type: "host", hostId: host.id, workspace } },
-});
-// clearWait re-runs the FULL pass (limiter still applies), and a refused
-// amendment leaves the row queued — both properties were shipped and tested
+await createVm().then(enrollViaJoinCode);                      // existing SDK
+await bb.experimental_hooks.requestDrain();  // re-ask; the handler above now
+                                             // proceeds, and the limiter and
+                                             // every other handler still apply
 ```
 
-`clearWait` shipped and was cut (consumers absorbed by core drains /
-deleted). Its design is the best-preserved of the cuts: ownership as the
-authorization model, re-ask-not-send, refuse-before-settle. The sandbox
-also wants **`report()`** back (progress steps + ETA on the queue row) —
-same story, same commit history. Note the sandbox needs BOTH additions:
-`clearWait` to wake, `amend.environment` to land the thread on the new host.
+**`clearWait` is retired, not deferred.** It named a row and released it, which
+made ownership the authorization model and forced a plugin to correlate rows it
+had queued. `requestDrain` names nothing: it asks core to re-run the full pass
+over every plugin-queued row, and the handler that queued a row is the thing
+that decides whether it still should be queued. Re-ask-not-send and
+refuse-before-settle — the two properties `clearWait` was valued for — come
+free, because the only way a row moves is a handler answering `proceed` again.
+The correlation problem, the ownership check, and "a stale release safely
+re-queues" all stop being design questions.
+
+What the sandbox still needs is the OTHER half: **`amend.environment`** (see
+addition #1) to land the thread on the host it just created. That one remains
+hypothetical. `report()` (progress steps + ETA on the queue row) is likewise
+still cut and still recoverable from history.
 
 ### Needs addition #3: new wait kinds / wake sources (core-side, additive)
 
@@ -190,12 +225,14 @@ The API scales on exactly three axes, and every use case above lands on one:
 
 | Axis | Mechanism | Cost when needed |
 |---|---|---|
-| New *policies* | compose `wait`/`proceed`/`reject` + sdk facts + `sendAt` polling | zero — write a plugin |
-| New *powers* | `amend` on proceed; `clearWait`/`report` for external wakes | revive from history against the real consumer |
-| New *conditions* | `waitingOn` arms + drain triggers in core | additive core change |
+| New *policies* | compose `wait`/`proceed`/`reject` + sdk facts + `requestDrain` wakes + `sendAt` polling | zero — write a plugin |
+| New *powers* | `amend` on proceed; `report` for progress on the row | revive from history against the real consumer |
+| New *conditions* | `waitingOn` arms + core-owned drain triggers | additive core change |
 
 The bet, stated plainly: everything cut was cut *because* it re-adds
 cleanly. The verdict union extends without breaking handlers; queue rows
-carry new wait kinds without schema surgery; and the degraded mode
+carry new wait kinds without schema surgery; and the fallback
 (sendAt polling) means no use case is ever *impossible* before its
-addition lands — only slower.
+addition lands — only slower. `requestDrain` is the first draw on that bet
+and it came back cheap: one member, no row ids, no ownership model, and the
+core signal it replaced deleted outright.

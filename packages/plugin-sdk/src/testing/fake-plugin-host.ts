@@ -272,6 +272,12 @@ export interface FakePluginInspectionState {
   readonly realtimeSignals: FakeRealtimeSignal[];
   /** Every `bb.status.needsConfiguration` message, in order. */
   readonly needsConfigurationMessages: string[];
+  /**
+   * How many times the plugin called
+   * `bb.experimental_hooks.requestDrain()` — the wake it asks core for when a
+   * condition its own waits depend on has changed.
+   */
+  readonly requestedDrainCount: number;
   /** Recorded `bb.sdk` calls + stub control. */
   readonly sdk: FakeSdkHarness;
   readonly registrations: FakePluginRegistrations;
@@ -1555,6 +1561,10 @@ function createFakePluginHostInternal(
     },
   };
 
+  // --- hooks ---
+  /** How many times `bb.experimental_hooks.requestDrain()` was called. */
+  let requestedDrains = 0;
+
   // --- status ---
   const needsConfigurationMessages: string[] = [];
   const status: PluginStatusApi = {
@@ -1869,6 +1879,14 @@ function createFakePluginHostInternal(
       }
       storePluginHook(hooks, hook, handler);
     },
+    async requestDrain() {
+      assertLive();
+      // The real host schedules a background walk and resolves; there is no
+      // queue here to walk, so the fake records the ask. Asserting on the
+      // count is how a test pins the wake path — the condition the plugin
+      // watches changed, so it told core to re-ask.
+      requestedDrains += 1;
+    },
   };
 
   const bb: BbPluginApi = {
@@ -1947,6 +1965,9 @@ function createFakePluginHostInternal(
     logEntries,
     realtimeSignals,
     needsConfigurationMessages,
+    get requestedDrainCount() {
+      return requestedDrains;
+    },
     sharedPortDeclarations,
     experimental_hostRpcCalls: hostRpcCalls,
     sdk: sdkHarness,
