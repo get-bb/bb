@@ -337,22 +337,23 @@ describe("mobile recents hierarchy interaction", () => {
 
     for (const tile of [parentTile, childTile]) {
       expect(tile.className).toContain("size-7");
-      expect(tile.className).toContain("self-start");
-      expect(tile.className).toContain("mt-1");
       expect(tile.className).toContain("border");
     }
   });
 
-  it("anchors the provider tile to the title line, not the text block", () => {
+  it("centers provider tiles against the title and metadata block", () => {
     renderTree();
 
-    const [parentRow] = screen.getAllByRole("link");
-    const tile = parentRow?.firstElementChild;
-    if (!(tile instanceof HTMLElement)) {
-      throw new Error("Expected a leading provider tile");
+    const rows = screen.getAllByRole("link");
+    for (const row of rows) {
+      const tile = row.firstElementChild;
+      if (!(tile instanceof HTMLElement)) {
+        throw new Error("Expected a leading provider tile");
+      }
+      expect(row.className).toContain("items-center");
+      expect(tile.className).not.toContain("self-start");
+      expect(tile.className).not.toContain("mt-1");
     }
-    expect(tile.className).toContain("self-start");
-    expect(tile.className).toContain("mt-1");
   });
 
   it("gives only the parent a toggle and indents the child", () => {
