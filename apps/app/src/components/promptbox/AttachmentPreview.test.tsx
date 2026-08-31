@@ -81,4 +81,57 @@ describe("AttachmentPreview", () => {
     expect(onRemoveAttachment).toHaveBeenCalledWith("photo-1-abc.png");
     expect(revoked).toEqual(["blob:local-1"]);
   });
+
+  it("separates compact touch targets from attachment remove visuals", () => {
+    const { getByRole } = render(
+      <AttachmentPreview
+        attachments={[
+          {
+            type: "localImage",
+            path: "screenshot.png",
+            name: "screenshot.png",
+            mimeType: "image/png",
+            sizeBytes: 3,
+          },
+          {
+            type: "localFile",
+            path: "diff.patch",
+            name: "diff.patch",
+            mimeType: "text/plain",
+            sizeBytes: 3,
+          },
+        ]}
+        expandedImageIndex={null}
+        onExpandedImageIndexChange={() => {}}
+        onRemoveAttachment={() => {}}
+      />,
+    );
+
+    const imageRemoveButton = getByRole("button", {
+      name: "Remove screenshot.png",
+    });
+    expect(
+      imageRemoveButton.classList.contains("max-md:pointer-coarse:size-7"),
+    ).toBe(true);
+    expect(imageRemoveButton.classList.contains("bg-black/55")).toBe(false);
+    expect(
+      imageRemoveButton.firstElementChild?.classList.contains("size-4"),
+    ).toBe(true);
+    expect(
+      imageRemoveButton.firstElementChild?.classList.contains("bg-black/55"),
+    ).toBe(true);
+
+    const fileRemoveButton = getByRole("button", {
+      name: "Remove diff.patch",
+    });
+    expect(
+      fileRemoveButton.classList.contains("max-md:pointer-coarse:size-7"),
+    ).toBe(true);
+    expect(fileRemoveButton.parentElement?.classList.contains("size-4")).toBe(
+      true,
+    );
+    expect(
+      fileRemoveButton.firstElementChild?.classList.contains("size-4"),
+    ).toBe(true);
+  });
 });

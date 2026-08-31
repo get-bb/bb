@@ -542,6 +542,42 @@ describe("FilePreview", () => {
     openSpy.mockRestore();
   });
 
+  it("enlarges the HTML file actions for narrow coarse pointers", () => {
+    render(
+      <FilePreview
+        path="docs/progress-vis.html"
+        onOpenInEditor={vi.fn()}
+        state={{
+          kind: "html",
+          file: { name: "progress-vis.html", contents: "<p>chart</p>" },
+          iframe: {
+            sandbox: "allow-scripts",
+            title: "docs/progress-vis.html",
+            url: "/api/v1/threads/thr_1/worktree/files/docs/progress-vis.html",
+          },
+          lineRange: null,
+        }}
+      />,
+    );
+
+    const actionButtons = [
+      screen.getByRole("button", { name: "Copy HTML source" }),
+      screen.getByRole("button", { name: /Open in editor/ }),
+    ];
+
+    for (const actionButton of actionButtons) {
+      expect(actionButton.classList.contains("max-md:pointer-coarse:h-9")).toBe(
+        true,
+      );
+      expect(actionButton.classList.contains("max-md:pointer-coarse:w-9")).toBe(
+        true,
+      );
+      expect(
+        actionButton.classList.contains("max-md:pointer-coarse:[&_svg]:size-5"),
+      ).toBe(true);
+    }
+  });
+
   it("hands the desktop shell an absolute preview url", () => {
     const openExternalUrl = vi.fn();
     (window as unknown as { bbDesktop: unknown }).bbDesktop = {

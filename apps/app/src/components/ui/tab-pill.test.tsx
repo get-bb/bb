@@ -69,4 +69,30 @@ describe("TabPill", () => {
     expect(onClose).toHaveBeenCalledOnce();
     expect(onSelect).not.toHaveBeenCalled();
   });
+
+  it("enlarges the close target for narrow coarse pointers", () => {
+    render(
+      <TabPill
+        label="File preview"
+        title="File preview"
+        isActive
+        onSelect={vi.fn()}
+        enlargeCloseTargetOnCoarsePointer
+        closeAction={{
+          closeLabel: "Close File preview",
+          onClose: vi.fn(),
+        }}
+      />,
+    );
+
+    const closeButton = screen.getByRole("button", {
+      name: "Close File preview",
+    });
+    expect(
+      closeButton.classList.contains("max-md:pointer-coarse:min-h-9"),
+    ).toBe(true);
+    expect(
+      closeButton.classList.contains("max-md:pointer-coarse:min-w-9"),
+    ).toBe(true);
+  });
 });
