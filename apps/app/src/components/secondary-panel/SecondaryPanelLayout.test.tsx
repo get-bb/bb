@@ -5,6 +5,7 @@ import { act, cleanup, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CompactViewportOverrideProvider } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { dispatchBrowserViewBoundsSync } from "@/lib/browser-view-bounds-sync";
+import { setCompactSidebarDrawerShowing } from "@/components/ui/sidebar-mobile-drawer-visibility";
 import {
   PaneContext,
   type PaneContextValue,
@@ -101,7 +102,9 @@ interface QueuedAnimationFrames {
 
 interface RenderLayoutArgs {
   collapseActive?: boolean;
+  compactPresentation?: "shelf" | "full";
   isCompactViewport: boolean;
+  onClose?: () => void;
   isFocusedHosted?: boolean;
   open: boolean;
   panelGroupKey?: string;
@@ -154,7 +157,7 @@ function renderLayout(args: RenderLayoutArgs) {
         <SecondaryPanelLayout
           open={renderArgs.open}
           onToggle={noop}
-          onClose={noop}
+          onClose={renderArgs.onClose ?? noop}
           panelGroupKey={renderArgs.panelGroupKey}
           resetKey={renderArgs.resetKey}
           contentKey={renderArgs.resetKey}
@@ -169,6 +172,7 @@ function renderLayout(args: RenderLayoutArgs) {
           }
           renderPanel={renderArgs.renderPanel}
           composerHost={null}
+          compactPresentation={renderArgs.compactPresentation ?? "shelf"}
         />
       </CompactViewportOverrideProvider>,
       renderArgs.isFocusedHosted,
@@ -666,5 +670,57 @@ describe("SecondaryPanelLayout", () => {
 
     expect(unmountFrames.cancelAnimationFrame).toHaveBeenCalledWith(3);
     expect(dispatchBrowserViewBoundsSync).not.toHaveBeenCalled();
+  });
+});
+
+describe("compact sidebar and right panel", () => {
+  it("closes the right panel when the sidebar drawer opens so only one shelf is engaged", () => {
+    const onClose = vi.fn();
+    renderLayout({
+      isCompactViewport: true,
+      onClose,
+      open: true,
+      renderPanel: createPanelRenderer(),
+      resetKey: "thread-1",
+    });
+
+    expect(onClose).not.toHaveBeenCalled();
+
+    act(() => setCompactSidebarDrawerShowing(true));
+    expect(onClose).toHaveBeenCalledTimes(1);
+
+    act(() => setCompactSidebarDrawerShowing(false));
+  });
+
+  it("leaves a closed right panel alone when the sidebar drawer opens", () => {
+    const onClose = vi.fn();
+    renderLayout({
+      isCompactViewport: true,
+      onClose,
+      open: false,
+      renderPanel: createPanelRenderer(),
+      resetKey: "thread-1",
+    });
+
+    act(() => setCompactSidebarDrawerShowing(true));
+    expect(onClose).not.toHaveBeenCalled();
+
+    act(() => setCompactSidebarDrawerShowing(false));
+  });
+
+  it("keeps the desktop panel open when the sidebar drawer flag flips", () => {
+    const onClose = vi.fn();
+    renderLayout({
+      isCompactViewport: false,
+      onClose,
+      open: true,
+      renderPanel: createPanelRenderer(),
+      resetKey: "thread-1",
+    });
+
+    act(() => setCompactSidebarDrawerShowing(true));
+    expect(onClose).not.toHaveBeenCalled();
+
+    act(() => setCompactSidebarDrawerShowing(false));
   });
 });

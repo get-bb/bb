@@ -16,6 +16,7 @@ import {
 import { DETAIL_GRID_CLASS } from "@/components/ui/detail-card.js";
 import { useThreads } from "@/hooks/queries/thread-queries";
 import { ThreadTimelinePane } from "./ThreadTimelinePane";
+import { getCompactPanelPresentation } from "@/components/secondary-panel/panelToggleControlState";
 
 type ThreadTimelinePaneProps = Omit<
   ComponentProps<typeof ThreadTimelinePane>,
@@ -130,6 +131,9 @@ function ThreadDetailSecondaryContentBody({
           onToggle: onToggleConversationCollapse,
         }}
         composerHost={composerHost}
+        compactPresentation={getCompactPanelPresentation(
+          threadSecondaryPanelProps.activeTab?.kind,
+        )}
         renderHostedPanel={renderHostedPanel}
         renderPanel={({
           presentation,

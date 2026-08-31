@@ -14,6 +14,7 @@ import {
 import type { ThreadSecondaryPanel as ThreadSecondaryPanelTab } from "@/lib/thread-secondary-panel";
 import { Icon } from "@bb/shared-ui/icon";
 import { TooltipProvider } from "@bb/shared-ui/tooltip";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import {
   createGitDiffFixedPanelTab,
@@ -42,6 +43,8 @@ import {
 } from "./ThreadMetadataContent.fixtures";
 import { resolveRightPanelFileVisual } from "./rightPanelFileVisuals";
 import { useThreadStorageBrowser } from "./useThreadStorageBrowser";
+import { FilePreview } from "./FilePreview";
+import { threadListQueryKey } from "@/hooks/queries/query-keys";
 
 export default {
   title: "right-panel/Tabbed shell",
@@ -229,8 +232,27 @@ function RepresentativeInfoContent() {
     },
     onCommitClick: noop,
   };
+  const [queryClient] = useState(() => {
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false, staleTime: Infinity } },
+    });
+    client.setQueryData(
+      threadListQueryKey({
+        projectId: props.thread.projectId,
+        sourceThreadId: props.thread.id,
+        originKind: "fork",
+        archived: false,
+      }),
+      [],
+    );
+    return client;
+  });
 
-  return <ThreadMetadataContent {...props} />;
+  return (
+    <QueryClientProvider client={queryClient}>
+      <ThreadMetadataContent {...props} />
+    </QueryClientProvider>
+  );
 }
 
 interface ShellArgs {
@@ -274,14 +296,27 @@ function ShellRow({
   );
 }
 
-const representativeFileContent = (
-  <div className="space-y-3 px-4 py-3 font-mono text-xs text-foreground">
-    <p className="text-muted-foreground">ThreadSecondaryPanel.tsx</p>
-    <pre className="whitespace-pre-wrap">{`export function ThreadSecondaryPanel() {
+const REPRESENTATIVE_FILE_SOURCE = `export function ThreadSecondaryPanel() {
   return <Panel className="bg-sidebar">…</Panel>;
-}`}</pre>
-  </div>
-);
+}`;
+
+function RepresentativeFileContent({ path }: { path: string }) {
+  return (
+    <FilePreview
+      path={path}
+      state={{
+        kind: "ready",
+        lineRange: null,
+        textPreviewKind: null,
+        file: {
+          cacheKey: `thread-secondary-panel-story:${path}`,
+          name: path.split("/").at(-1) ?? path,
+          contents: REPRESENTATIVE_FILE_SOURCE,
+        },
+      }}
+    />
+  );
+}
 
 interface TerminalTabFixture {
   terminalId: string;
@@ -384,7 +419,7 @@ function FileTabsShellInner({
           statusLabel: null,
           onSelect: () => setActiveFilename(filename),
           onClose: () => handleCloseFile(filename),
-          renderContent: () => representativeFileContent,
+          renderContent: () => <RepresentativeFileContent path={filename} />,
           tab,
         };
       }),
@@ -599,7 +634,7 @@ function ProductionSplitPanesStory() {
           tab.kind === "terminal" ? (
             <RepresentativeTerminalContent title="pnpm dev" />
           ) : (
-            representativeFileContent
+            <RepresentativeFileContent path="ThreadSecondaryPanel.tsx" />
           ),
         tab,
       })),
@@ -652,12 +687,12 @@ export function SplitPanes() {
   );
 }
 
-export function CompactShelfTabs() {
+export function PhoneWidthTabs() {
   return (
     <StoryCard>
       <StoryRow
-        label="compact shelf — many tabs"
-        hint="phone-width shelf (299px, the --secondary-panel-width-mobile value at 393px); the tab row scrolls horizontally while Info and Diff stay fixed"
+        label="phone-width panel — many tabs"
+        hint="the panel body at 299px, the --secondary-panel-width-mobile value at a 393px viewport. Shelf and full-page geometry live in right-panel/Compact shelf; this row isolates the tab strip, which scrolls horizontally while Info and Diff stay fixed"
       >
         <FileTabsShellRow
           filenames={MANY_TAB_FILENAMES}
@@ -667,7 +702,7 @@ export function CompactShelfTabs() {
         />
       </StoryRow>
       <StoryRow
-        label="compact shelf — active tab far down the row"
+        label="phone-width panel — active tab far down the row"
         hint="the strip should scroll the selected tab into view rather than leaving it offscreen"
       >
         <FileTabsShellRow
@@ -678,7 +713,7 @@ export function CompactShelfTabs() {
         />
       </StoryRow>
       <StoryRow
-        label="compact shelf — pinned first tab"
+        label="phone-width panel — pinned first tab"
         hint="pinned tab keeps its slot with no close affordance while the rest scroll past it"
       >
         <FileTabsShellRow
@@ -690,7 +725,7 @@ export function CompactShelfTabs() {
         />
       </StoryRow>
       <StoryRow
-        label="compact shelf — no file tab selected"
+        label="phone-width panel — no file tab selected"
         hint="Info stays active while the file tabs sit alongside as inactive pills"
       >
         <FileTabsShellRow

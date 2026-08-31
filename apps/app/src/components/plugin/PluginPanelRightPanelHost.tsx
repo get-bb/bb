@@ -21,7 +21,10 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@bb/shared-ui/tooltip";
 import { useAppCommandHandler } from "@/components/commands/AppCommandProvider";
 import { PluginIcon } from "@/components/plugin/PluginIcon";
 import { PluginSlotMount } from "@/components/plugin/PluginSlotMount";
-import { RIGHT_PANEL_TOGGLE_ICON_NAME } from "@/components/secondary-panel/panelToggleControlState";
+import {
+  getCompactPanelPresentation,
+  RIGHT_PANEL_TOGGLE_ICON_NAME,
+} from "@/components/secondary-panel/panelToggleControlState";
 import { SecondaryPanelLayout } from "@/components/secondary-panel/SecondaryPanelLayout";
 import {
   LazyBrowserTabDeck,
@@ -971,6 +974,7 @@ export function PluginPanelRightPanelHost({
         mainPanelId={`plugin-panel-main-${panelHostId}`}
         main={children}
         composerHost={null}
+        compactPresentation={getCompactPanelPresentation(activeTab?.kind)}
         renderPanel={renderPanel}
       />
     </div>

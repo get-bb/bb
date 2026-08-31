@@ -435,17 +435,17 @@ describe("mobile sidebar shelf stacking", () => {
     expect(inset.className).not.toContain(
       "data-[sidebar-shelf=open]:rounded",
     );
-    expect(inset.className).not.toContain("data-[panel-shelf=open]:rounded");
+    expect(inset.className).not.toContain("data-[panel-shelf=shelf]:rounded");
     expect(inset.className).not.toContain(
       "data-[sidebar-shelf=open]:overflow-hidden",
     );
     expect(inset.className).not.toContain(
-      "data-[panel-shelf=open]:overflow-hidden",
+      "data-[panel-shelf=shelf]:overflow-hidden",
     );
     expect(inset.className).not.toContain(
       "data-[sidebar-shelf=open]:shadow",
     );
-    expect(inset.className).not.toContain("data-[panel-shelf=open]:shadow");
+    expect(inset.className).not.toContain("data-[panel-shelf=shelf]:shadow");
   });
 
   it("leaves the page untouched by the shelf on desktop", () => {

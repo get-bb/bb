@@ -5,6 +5,7 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
   type Key,
   type ReactNode,
 } from "react";
@@ -31,6 +32,10 @@ import {
   usePanelCollapseTransitionsReady,
 } from "./panelTransitionTokens";
 import { secondaryPanelWidthPercentAtom } from "./threadSecondaryPanelAtoms";
+import {
+  isCompactSidebarDrawerShowing,
+  subscribeCompactSidebarDrawerShowing,
+} from "@/components/ui/sidebar-mobile-drawer-visibility";
 
 const FULL_PANEL_SIZE_PERCENT = 100;
 const MAIN_PANEL_MIN_SIZE_PERCENT = 30;
@@ -64,6 +69,7 @@ interface SecondaryPanelLayoutProps {
   renderPanel: (args: SecondaryPanelRenderArgs) => ReactNode;
   renderHostedPanel?: (panel: ReactNode) => ReactNode;
   composerHost: PluginComposerHost | null;
+  compactPresentation: "shelf" | "full";
 }
 
 export function SecondaryPanelLayout({
@@ -82,10 +88,20 @@ export function SecondaryPanelLayout({
   renderPanel,
   renderHostedPanel,
   composerHost,
+  compactPresentation,
 }: SecondaryPanelLayoutProps) {
   const paneContext = useOptionalPaneContext();
   const secondaryPanelHost = paneContext?.secondaryPanelHost ?? null;
   const renderAsDrawer = useIsCompactViewport();
+  const sidebarDrawerShowing = useSyncExternalStore(
+    subscribeCompactSidebarDrawerShowing,
+    isCompactSidebarDrawerShowing,
+    () => false,
+  );
+  useEffect(() => {
+    if (!renderAsDrawer || !open || !sidebarDrawerShowing) return;
+    onClose();
+  }, [onClose, open, renderAsDrawer, sidebarDrawerShowing]);
   const transitionsReady = usePanelCollapseTransitionsReady(
     resetKey,
     !renderAsDrawer,
@@ -346,6 +362,7 @@ export function SecondaryPanelLayout({
         <CompactSecondaryPanelShelf
           open={open}
           onClose={onClose}
+          presentation={compactPresentation}
           srLabel={drawerLabel}
           onContentAnimationEnd={handleDrawerContentAnimationEnd}
         >

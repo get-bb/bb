@@ -11,10 +11,13 @@ import { createPortal } from "react-dom";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { usePersistentOverlayFocus } from "@bb/shared-ui/responsive-overlay";
 import { APP_OVERLAY_LAYER } from "@/components/ui/app-overlay-layers";
-import { setCompactSecondaryPanelShelfShowing } from "@/components/ui/secondary-panel-shelf-visibility";
+import {
+  setCompactSecondaryPanelPresentation,
+  type CompactSecondaryPanelPresentation,
+} from "@/components/ui/secondary-panel-shelf-visibility";
 
 const SHELF_TRANSITION_CLASS =
-  "[transition:translate_220ms_cubic-bezier(0.32,0.72,0,1)]";
+  "[transition:translate_220ms_cubic-bezier(0.32,0.72,0,1),width_220ms_cubic-bezier(0.32,0.72,0,1)]";
 const SHELF_SETTLE_MS = 220;
 
 interface CompactSecondaryPanelShelfProps {
@@ -22,6 +25,7 @@ interface CompactSecondaryPanelShelfProps {
   onClose: () => void;
   onContentAnimationEnd?: (open: boolean) => void;
   open: boolean;
+  presentation: Exclude<CompactSecondaryPanelPresentation, "closed">;
   srLabel?: string;
 }
 
@@ -30,10 +34,12 @@ export function CompactSecondaryPanelShelf({
   onClose,
   onContentAnimationEnd,
   open,
+  presentation,
   srLabel,
 }: CompactSecondaryPanelShelfProps) {
   const labelId = useId();
   const panelRef = useRef<HTMLDivElement | null>(null);
+  const state = !open ? "closed" : presentation;
   const onCloseRef = useRef(onClose);
   useLayoutEffect(() => {
     onCloseRef.current = onClose;
@@ -51,9 +57,9 @@ export function CompactSecondaryPanelShelf({
   });
 
   useEffect(() => {
-    setCompactSecondaryPanelShelfShowing(open);
-    return () => setCompactSecondaryPanelShelfShowing(false);
-  }, [open]);
+    setCompactSecondaryPanelPresentation(state);
+    return () => setCompactSecondaryPanelPresentation("closed");
+  }, [state]);
 
   useEffect(() => {
     if (onContentAnimationEnd === undefined) return;
@@ -73,14 +79,15 @@ export function CompactSecondaryPanelShelf({
       <div
         data-secondary-panel-shelf-dismiss=""
         data-testid="secondary-panel-shelf-dismiss"
-        data-state={open ? "open" : "closed"}
+        data-state={state}
         aria-hidden="true"
         style={{ zIndex: APP_OVERLAY_LAYER.secondaryPanelDismiss }}
         className={cn(
           "fixed inset-0 bg-transparent",
-          "data-[state=open]:-translate-x-(--secondary-panel-width-mobile)",
+          "data-[state=shelf]:-translate-x-(--secondary-panel-width-mobile)",
+          "data-[state=full]:-translate-x-full",
           SHELF_TRANSITION_CLASS,
-          "data-[state=closed]:pointer-events-none",
+          "data-[state=closed]:pointer-events-none data-[state=full]:pointer-events-none",
         )}
         onClick={requestClose}
       />
@@ -94,11 +101,18 @@ export function CompactSecondaryPanelShelf({
         inert={!open}
         data-secondary-panel-shelf=""
         data-testid="secondary-panel-shelf"
-        data-state={open ? "open" : "closed"}
-        style={{ zIndex: APP_OVERLAY_LAYER.secondaryPanel }}
+        data-state={state}
+        style={{
+          zIndex:
+            state === "full"
+              ? APP_OVERLAY_LAYER.secondaryPanelFullPage
+              : APP_OVERLAY_LAYER.secondaryPanel,
+        }}
         className={cn(
-          "fixed inset-y-0 right-0 flex h-(--bb-shell-height) w-(--secondary-panel-width-mobile) select-none flex-col overflow-hidden border-l border-border-seam bg-background outline-none",
-          "[transition:visibility_0s_linear_0s] data-[state=closed]:invisible data-[state=closed]:[transition:visibility_0s_linear_220ms]",
+          "fixed inset-y-0 right-0 flex h-(--bb-shell-height) select-none flex-col overflow-hidden border-l border-border-seam bg-background outline-none",
+          "w-(--secondary-panel-width-mobile) data-[state=full]:w-full data-[state=full]:border-l-0",
+          SHELF_TRANSITION_CLASS,
+          "data-[state=closed]:invisible data-[state=closed]:[transition:visibility_0s_linear_220ms]",
         )}
       >
         {srLabel === undefined ? null : (

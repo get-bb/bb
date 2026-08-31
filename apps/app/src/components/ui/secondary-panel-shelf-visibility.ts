@@ -1,15 +1,24 @@
-let compactSecondaryPanelShelfShowing = false;
+export type CompactSecondaryPanelPresentation = "closed" | "shelf" | "full";
+
+let compactSecondaryPanelPresentation: CompactSecondaryPanelPresentation =
+  "closed";
 const listeners = new Set<() => void>();
 
-export function isCompactSecondaryPanelShelfShowing(): boolean {
-  return compactSecondaryPanelShelfShowing;
+export function getCompactSecondaryPanelPresentation(): CompactSecondaryPanelPresentation {
+  return compactSecondaryPanelPresentation;
 }
 
-export function setCompactSecondaryPanelShelfShowing(showing: boolean): void {
-  if (compactSecondaryPanelShelfShowing === showing) {
+export function isCompactSecondaryPanelShelfShowing(): boolean {
+  return compactSecondaryPanelPresentation !== "closed";
+}
+
+export function setCompactSecondaryPanelPresentation(
+  presentation: CompactSecondaryPanelPresentation,
+): void {
+  if (compactSecondaryPanelPresentation === presentation) {
     return;
   }
-  compactSecondaryPanelShelfShowing = showing;
+  compactSecondaryPanelPresentation = presentation;
   for (const listener of listeners) {
     listener();
   }

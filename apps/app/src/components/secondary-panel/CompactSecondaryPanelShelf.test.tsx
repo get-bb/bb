@@ -4,19 +4,24 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { CompactSecondaryPanelShelf } from "./CompactSecondaryPanelShelf";
-import { isCompactSecondaryPanelShelfShowing } from "@/components/ui/secondary-panel-shelf-visibility";
 import { APP_OVERLAY_LAYER } from "@/components/ui/app-overlay-layers";
+import { getCompactSecondaryPanelPresentation } from "@/components/ui/secondary-panel-shelf-visibility";
 
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
 });
 
-function renderShelf(open: boolean, onClose = vi.fn()) {
+function renderShelf(
+  open: boolean,
+  presentation: "shelf" | "full" = "shelf",
+  onClose = vi.fn(),
+) {
   const view = render(
     <CompactSecondaryPanelShelf
       open={open}
       onClose={onClose}
+      presentation={presentation}
       srLabel="Right panel"
     >
       <div data-testid="panel-body" />
@@ -35,7 +40,52 @@ describe("CompactSecondaryPanelShelf", () => {
     expect(shelf.style.zIndex).toBe(String(APP_OVERLAY_LAYER.secondaryPanel));
     expect(shelf.className).toContain("w-(--secondary-panel-width-mobile)");
     expect(shelf.className).not.toContain("bottom-0");
-    expect(shelf.className).not.toContain("rounded-t-xl");
+  });
+
+  it("fills the viewport for a full-page tab and keeps the shelf width otherwise", () => {
+    const { rerender } = renderShelf(true, "shelf");
+    const shelf = screen.getByTestId("secondary-panel-shelf");
+    expect(shelf.dataset.state).toBe("shelf");
+    expect(shelf.className).toContain("data-[state=full]:w-full");
+
+    rerender(
+      <CompactSecondaryPanelShelf
+        open
+        onClose={vi.fn()}
+        presentation="full"
+        srLabel="Right panel"
+      >
+        <div data-testid="panel-body" />
+      </CompactSecondaryPanelShelf>,
+    );
+    expect(screen.getByTestId("secondary-panel-shelf").dataset.state).toBe(
+      "full",
+    );
+  });
+
+  it("stacks the full page panel above app chrome and below shared overlays", () => {
+    renderShelf(true, "full");
+
+    const shelf = screen.getByTestId("secondary-panel-shelf");
+    expect(shelf.style.zIndex).toBe(
+      String(APP_OVERLAY_LAYER.secondaryPanelFullPage),
+    );
+    expect(APP_OVERLAY_LAYER.secondaryPanelFullPage).toBeGreaterThan(
+      APP_OVERLAY_LAYER.sidebarTrigger,
+    );
+    expect(APP_OVERLAY_LAYER.sharedPortaledOverlay).toBeGreaterThan(
+      APP_OVERLAY_LAYER.secondaryPanelFullPage,
+    );
+  });
+
+  it("stops the dismiss layer from swallowing taps once the panel is full page", () => {
+    renderShelf(true, "full");
+
+    const dismiss = screen.getByTestId("secondary-panel-shelf-dismiss");
+    expect(dismiss.className).toContain(
+      "data-[state=full]:pointer-events-none",
+    );
+    expect(dismiss.className).toContain("data-[state=full]:-translate-x-full");
   });
 
   it("leaves the page undimmed and dismisses from the exposed strip", () => {
@@ -50,7 +100,7 @@ describe("CompactSecondaryPanelShelf", () => {
     );
     expect(dismiss.className).toContain("bg-transparent");
     expect(dismiss.className).toContain(
-      "data-[state=open]:-translate-x-(--secondary-panel-width-mobile)",
+      "data-[state=shelf]:-translate-x-(--secondary-panel-width-mobile)",
     );
 
     fireEvent.click(dismiss);
@@ -61,6 +111,7 @@ describe("CompactSecondaryPanelShelf", () => {
     renderShelf(false);
 
     const shelf = screen.getByTestId("secondary-panel-shelf");
+    expect(shelf.dataset.state).toBe("closed");
     expect(shelf.className).toContain("data-[state=closed]:invisible");
     expect(shelf.className).toContain(
       "data-[state=closed]:[transition:visibility_0s_linear_220ms]",
@@ -74,7 +125,12 @@ describe("CompactSecondaryPanelShelf", () => {
     ).toBe(true);
 
     rerender(
-      <CompactSecondaryPanelShelf open onClose={vi.fn()} srLabel="Right panel">
+      <CompactSecondaryPanelShelf
+        open
+        onClose={vi.fn()}
+        presentation="shelf"
+        srLabel="Right panel"
+      >
         <div data-testid="panel-body" />
       </CompactSecondaryPanelShelf>,
     );
@@ -83,23 +139,38 @@ describe("CompactSecondaryPanelShelf", () => {
     ).toBe(false);
   });
 
-  it("publishes open state so the page knows to displace", () => {
-    const { rerender, unmount } = renderShelf(true);
+  it("publishes the presentation so the page knows how far to displace", () => {
+    const { rerender, unmount } = renderShelf(true, "shelf");
+    expect(getCompactSecondaryPanelPresentation()).toBe("shelf");
     expect(isCompactSecondaryPanelShelfShowing()).toBe(true);
 
     rerender(
       <CompactSecondaryPanelShelf
-        open={false}
+        open
         onClose={vi.fn()}
+        presentation="full"
         srLabel="Right panel"
       >
         <div data-testid="panel-body" />
       </CompactSecondaryPanelShelf>,
     );
+    expect(getCompactSecondaryPanelPresentation()).toBe("full");
+
+    rerender(
+      <CompactSecondaryPanelShelf
+        open={false}
+        onClose={vi.fn()}
+        presentation="full"
+        srLabel="Right panel"
+      >
+        <div data-testid="panel-body" />
+      </CompactSecondaryPanelShelf>,
+    );
+    expect(getCompactSecondaryPanelPresentation()).toBe("closed");
     expect(isCompactSecondaryPanelShelfShowing()).toBe(false);
 
     unmount();
-    expect(isCompactSecondaryPanelShelfShowing()).toBe(false);
+    expect(getCompactSecondaryPanelPresentation()).toBe("closed");
   });
 
   it("closes on Escape only while open", () => {
@@ -108,7 +179,12 @@ describe("CompactSecondaryPanelShelf", () => {
     expect(onClose).not.toHaveBeenCalled();
 
     rerender(
-      <CompactSecondaryPanelShelf open onClose={onClose} srLabel="Right panel">
+      <CompactSecondaryPanelShelf
+        open
+        onClose={onClose}
+        presentation="shelf"
+        srLabel="Right panel"
+      >
         <div data-testid="panel-body" />
       </CompactSecondaryPanelShelf>,
     );
