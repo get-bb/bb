@@ -36,7 +36,7 @@ import { getEnvironmentWorkspaceDisplayIconName } from "@/lib/environment-worksp
 import { getProviderIconInfo } from "@/lib/provider-icon";
 import { ProviderIconMark } from "@/components/settings/ProviderIconMark";
 import { cn } from "@bb/shared-ui/lib/utils";
-import { usePromptDraftHasInput } from "@/hooks/usePromptDraftStorage";
+import { usePromptDraftInputThreadIds } from "@/hooks/usePromptDraftStorage";
 import { collapsedThreadIdsAtom } from "@/components/sidebar/sidebarCollapsedAtoms";
 
 export const MOBILE_RECENT_ROW_HEIGHT_PX = 60;
@@ -51,6 +51,7 @@ type ThreadListEntryComparator = (
 
 interface GetMobileRecentThreadsArgs {
   collapsedThreadIds: ReadonlySet<string>;
+  draftThreadIds: ReadonlySet<string>;
   threads: readonly ThreadListEntry[];
 }
 
@@ -109,16 +110,19 @@ export interface MobileRecentThreadRow {
   thread: ThreadListEntry;
   depth: number;
   childActivity: CollapsedChildActivity;
+  hasUnsubmittedDraft: boolean;
   hasChildren: boolean;
   isCollapsed: boolean;
 }
 
 function flattenMobileRecentNodes({
   collapsedThreadIds,
+  draftThreadIds,
   items,
   rows,
 }: {
   collapsedThreadIds: ReadonlySet<string>;
+  draftThreadIds: ReadonlySet<string>;
   items: readonly ProjectThreadItem[];
   rows: MobileRecentThreadRow[];
 }): void {
@@ -131,12 +135,14 @@ function flattenMobileRecentNodes({
       thread: node.thread,
       depth: node.depth,
       childActivity: node.stats.childActivity,
+      hasUnsubmittedDraft: draftThreadIds.has(node.thread.id),
       hasChildren,
       isCollapsed,
     });
     if (hasChildren && !isCollapsed) {
       flattenMobileRecentNodes({
         collapsedThreadIds,
+        draftThreadIds,
         items: node.children,
         rows,
       });
@@ -174,12 +180,18 @@ export function getMobileRecentAncestorIds({
 
 export function getMobileRecentThreads({
   collapsedThreadIds,
+  draftThreadIds,
   threads,
 }: GetMobileRecentThreadsArgs): MobileRecentThreadRow[] {
   const rows: MobileRecentThreadRow[] = [];
   flattenMobileRecentNodes({
     collapsedThreadIds,
-    items: buildChronologicalThreadList(threads, compareMobileRecentThreads),
+    draftThreadIds,
+    items: buildChronologicalThreadList(
+      threads,
+      compareMobileRecentThreads,
+      draftThreadIds,
+    ),
     rows,
   });
   return rows;
@@ -192,15 +204,17 @@ function MobileRecentThreadRow({
   provider,
   row,
 }: MobileRecentThreadRowProps) {
-  const { thread, depth, childActivity, hasChildren, isCollapsed } = row;
+  const {
+    thread,
+    depth,
+    childActivity,
+    hasUnsubmittedDraft,
+    hasChildren,
+    isCollapsed,
+  } = row;
   const threadTitle = getThreadDisplayTitle(thread);
   const isUnreadDone = isUnreadDoneThread(thread);
   const isUnreadError = isUnreadDone && thread.status === "error";
-  const hasUnsubmittedDraft = usePromptDraftHasInput({
-    kind: "thread",
-    projectId: thread.projectId,
-    threadId: thread.id,
-  });
   const indicatorState: ThreadListIndicatorState = {
     hasPendingInteraction: thread.hasPendingInteraction,
     hasUnsubmittedDraft,
@@ -345,6 +359,7 @@ export function RootComposeMobileRecents({
     () => new Set(collapsedThreadIdList),
     [collapsedThreadIdList],
   );
+  const draftThreadIds = usePromptDraftInputThreadIds(threads);
   const toggleCollapsed = useCallback(
     (threadId: string) => {
       setCollapsedThreadIdList((current) =>
@@ -368,8 +383,13 @@ export function RootComposeMobileRecents({
     });
   }, [highlightedThreadId, setCollapsedThreadIdList, threads]);
   const recentThreads = useMemo(
-    () => getMobileRecentThreads({ collapsedThreadIds, threads }),
-    [collapsedThreadIds, threads],
+    () =>
+      getMobileRecentThreads({
+        collapsedThreadIds,
+        draftThreadIds,
+        threads,
+      }),
+    [collapsedThreadIds, draftThreadIds, threads],
   );
 
   if (!showCreatingRow && recentThreads.length === 0) {

@@ -94,6 +94,7 @@ describe("getMobileRecentThreads", () => {
 
     const rows = getMobileRecentThreads({
       collapsedThreadIds: NONE,
+      draftThreadIds: NONE,
       threads,
     });
 
@@ -118,6 +119,7 @@ describe("getMobileRecentThreads", () => {
   it("nests a child under its parent instead of listing it as a peer", () => {
     const rows = getMobileRecentThreads({
       collapsedThreadIds: NONE,
+      draftThreadIds: NONE,
       threads: [
         makeThread({ id: "thr_parent", latestAttentionAt: 10 }),
         makeThread({
@@ -155,6 +157,7 @@ describe("getMobileRecentThreads", () => {
 
     const rows = getMobileRecentThreads({
       collapsedThreadIds: new Set(["thr_parent"]),
+      draftThreadIds: NONE,
       threads,
     });
 
@@ -166,6 +169,7 @@ describe("getMobileRecentThreads", () => {
   it("promotes a child whose parent is absent to the top level", () => {
     const rows = getMobileRecentThreads({
       collapsedThreadIds: NONE,
+      draftThreadIds: NONE,
       threads: [
         makeThread({
           id: "thr_orphan",
@@ -183,6 +187,7 @@ describe("getMobileRecentThreads", () => {
   it("does not group worktree threads into environment rows", () => {
     const rows = getMobileRecentThreads({
       collapsedThreadIds: NONE,
+      draftThreadIds: NONE,
       threads: [
         makeThread({
           id: "thr_wt_a",
@@ -365,6 +370,46 @@ describe("mobile recents hierarchy interaction", () => {
       ).not.toBeNull();
     },
   );
+
+  it("renders a child-only draft state on a collapsed parent", () => {
+    window.localStorage.setItem(
+      "bb.promptbox.contents-proj_mobile-thr_child-3",
+      JSON.stringify({ text: "Continue child work", attachments: [] }),
+    );
+    window.localStorage.setItem(
+      "bb.sidebar.collapsedThreads",
+      JSON.stringify(["thr_parent"]),
+    );
+
+    render(
+      <MemoryRouter>
+        <RootComposeMobileRecents
+          highlightedThreadId={null}
+          projectNamesById={new Map()}
+          providersById={new Map()}
+          showCreatingRow={false}
+          threads={[
+            makeIdleThread({
+              id: "thr_parent",
+              lastReadAt: 10,
+              latestAttentionAt: 5,
+            }),
+            makeIdleThread({
+              id: "thr_child",
+              parentThreadId: "thr_parent",
+            }),
+          ]}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByLabelText("Thread has unsubmitted draft")).not.toBeNull();
+    expect(
+      screen.getByRole("link", {
+        name: "Open Mobile activity — Thread has unsubmitted draft",
+      }),
+    ).not.toBeNull();
+  });
 
   it("reveals a highlighted thread whose parent is collapsed", () => {
     window.localStorage.setItem(
