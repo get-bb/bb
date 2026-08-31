@@ -39,7 +39,6 @@ describe("experiments", () => {
         "editMessages",
         "futureExperiment",
         "mobileApp",
-        "providerSessionReaping",
         "timelineWindowing",
       ]);
     } finally {

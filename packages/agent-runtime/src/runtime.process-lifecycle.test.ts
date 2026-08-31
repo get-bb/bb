@@ -44,7 +44,10 @@ interface CreateProviderProcessManagerArgs {
   workspacePath: string;
 }
 
-const CODEX_SCRIPT: ScriptedEchoLaunchScript = { identifyProcess: true };
+const CODEX_SCRIPT: ScriptedEchoLaunchScript = {
+  identifyProcess: true,
+  sessionRestorable: true,
+};
 
 const MANAGER_BRIDGE_LAUNCH = createScriptedEchoLaunch();
 
@@ -929,7 +932,6 @@ describe("createAgentRuntime process lifecycle", () => {
       const result = await runtime.reapIdleProviderSessions({
         idleForMs: 0,
         nowMs: Date.now() + 60 * 60 * 1000,
-        providerSessionReapingEnabled: false,
       });
       expect(result.reapedSessions).toEqual([
         expect.objectContaining({
@@ -980,7 +982,6 @@ describe("createAgentRuntime process lifecycle", () => {
       const belowThresholdResult = await runtime.reapIdleProviderSessions({
         idleForMs: 30 * 60 * 1000,
         nowMs: Date.now() + 29 * 60 * 1000,
-        providerSessionReapingEnabled: false,
       });
       expect(belowThresholdResult.reapedSessions).toEqual([]);
       expect(runtime.hasThread("t1")).toBe(true);
@@ -991,7 +992,6 @@ describe("createAgentRuntime process lifecycle", () => {
       const result = await runtime.reapIdleProviderSessions({
         idleForMs: 30 * 60 * 1000,
         nowMs: Date.now() + 31 * 60 * 1000,
-        providerSessionReapingEnabled: false,
       });
       const reapedSession = result.reapedSessions[0];
       if (!reapedSession) {
@@ -1075,12 +1075,10 @@ describe("createAgentRuntime process lifecycle", () => {
       const firstResult = await runtime.reapIdleProviderSessions({
         idleForMs: 0,
         nowMs: Date.now() + 60 * 60 * 1000,
-        providerSessionReapingEnabled: false,
       });
       const secondResult = await runtime.reapIdleProviderSessions({
         idleForMs: 0,
         nowMs: Date.now() + 60 * 60 * 1000,
-        providerSessionReapingEnabled: false,
       });
       expect(firstResult.reapedSessions).toEqual([]);
       expect(secondResult.reapedSessions).toEqual([]);
@@ -1093,7 +1091,7 @@ describe("createAgentRuntime process lifecycle", () => {
     }
   });
 
-  it("reaps a restorable non-Codex session only when the experiment is on", async () => {
+  it("reaps a restorable non-Codex session", async () => {
     const events: ThreadEvent[] = [];
     const runtime = createScriptedEchoRuntime({
       runtime: {
@@ -1113,18 +1111,9 @@ describe("createAgentRuntime process lifecycle", () => {
         providerId: "claude-code",
         options: fullRuntimeOptions,
       });
-      await expect(
-        runtime.reapIdleProviderSessions({
-          idleForMs: 0,
-          nowMs: Date.now(),
-          providerSessionReapingEnabled: false,
-        }),
-      ).resolves.toEqual({ reapedSessions: [] });
-      expect(runtime.hasThread("t1")).toBe(true);
       const result = await runtime.reapIdleProviderSessions({
         idleForMs: 0,
         nowMs: Date.now(),
-        providerSessionReapingEnabled: true,
       });
       expect(result.reapedSessions).toEqual([
         expect.objectContaining({
@@ -1159,7 +1148,6 @@ describe("createAgentRuntime process lifecycle", () => {
       const result = await runtime.reapIdleProviderSessions({
         idleForMs: 0,
         nowMs: Date.now(),
-        providerSessionReapingEnabled: true,
       });
       expect(result.reapedSessions).toEqual([
         expect.objectContaining({ providerId: "claude-code", threadId: "t1" }),
@@ -1191,7 +1179,6 @@ describe("createAgentRuntime process lifecycle", () => {
         runtime.reapIdleProviderSessions({
           idleForMs: 0,
           nowMs: Date.now(),
-          providerSessionReapingEnabled: true,
         }),
       ).resolves.toEqual({ reapedSessions: [] });
       expect(runtime.hasThread("t1")).toBe(true);
@@ -1228,7 +1215,6 @@ describe("createAgentRuntime process lifecycle", () => {
       const result = await runtime.reapIdleProviderSessions({
         idleForMs: 0,
         nowMs: Date.now(),
-        providerSessionReapingEnabled: true,
       });
       expect(result.reapedSessions).toEqual([
         expect.objectContaining({ threadId: "t2" }),

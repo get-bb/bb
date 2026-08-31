@@ -77,8 +77,7 @@ every window and client sees the same value.
 
 ## Provider session release
 
-- The `providerSessionReaping` experiment defaults to false. When enabled, BB
-  releases restorable provider sessions after 30 idle minutes.
+- BB releases restorable provider sessions after 30 idle minutes.
 - Active turns, commands, agents, workflows, and monitors keep sessions loaded.
 
 ## Mobile app

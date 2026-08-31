@@ -119,11 +119,9 @@ client-local; submitting stops and settles a running thread, then replaces the
 selected turn and all later conversation history while retaining workspace side
 effects. Grouped multi-message requests are not yet editable.
 
-The default-off `providerSessionReaping` experiment extends idle release to
-every restorable provider. BB releases those sessions after 30 idle minutes.
-The daemon applies a changed value within five minutes. Active turns, commands,
-agents, workflows, and monitors keep their sessions loaded. BB releases idle
-Codex sessions with the experiment off as well.
+BB releases restorable provider sessions after 30 idle minutes. The daemon
+checks for these sessions every five minutes. Active turns, commands, agents,
+workflows, and monitors keep their sessions loaded.
 
 The default-off `timelineWindowing` experiment mounts only nearby rows in long
 timelines and large expanded timeline details. Enable it with

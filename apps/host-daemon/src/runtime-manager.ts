@@ -205,7 +205,6 @@ export interface RuntimeManagerOptions {
 export interface RuntimeManagerReapIdleProviderSessionsArgs {
   idleForMs: number;
   nowMs: number;
-  providerSessionReapingEnabled: boolean;
 }
 
 interface RuntimeManagerReapedIdleProviderSession extends ReapedIdleProviderSession {

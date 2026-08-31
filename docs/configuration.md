@@ -646,12 +646,9 @@ The `mobileApp` experiment turns on pairing for the bb mobile app: the
 `bb connect machine-code` command (see "Pairing the bb mobile app" above). It
 is off by default while the app is in early access.
 
-The `providerSessionReaping` experiment extends idle session release to every
-restorable provider. BB releases those sessions after 30 idle minutes. The
-daemon reads the setting before each five-minute maintenance pass. Active
-turns, commands, agents, workflows, and monitors keep their sessions loaded.
-The experiment does not gate release: BB releases idle Codex sessions with the
-experiment off, which is the behavior it had before this setting.
+BB releases restorable provider sessions after 30 idle minutes. The daemon
+checks for these sessions every five minutes. Active turns, commands, agents,
+workflows, and monitors keep their sessions loaded.
 
 The `timelineWindowing` experiment is off by default. When enabled, long
 timelines and large expanded timeline details retain stable height-preserving
