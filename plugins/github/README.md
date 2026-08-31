@@ -22,8 +22,12 @@ bb plugin install github
 - **Homepage section**: recent open issues with the same Send agent buttons.
 - **Mentions**: `@` or `#` in any composer completes GitHub issues and PRs; the
   selected item's title/body/state is attached as agent context at send time.
-- **`bb github` CLI**: `repos`, `issues [repo]`, `prs [repo]`, `sync` — also
-  discoverable by agents through the plugin-commands skill.
+- **Search and attach**: the composer action and New thread panel provide a
+  debounced, keyboard-navigable search across cached issues and pull requests.
+  Selecting a result adds the existing durable GitHub mention to the prompt so
+  it can be used with any skill.
+- **`bb github` CLI**: `repos`, `issues [repo]`, `prs [repo]`, `search <query>`,
+  `sync` — also discoverable by agents through the plugin-commands skill.
 
 ## Auth
 

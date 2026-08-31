@@ -145,6 +145,7 @@ export const githubRpcContract = defineRpcContract({
         query: z.string().optional(),
         state: z.enum(["open", "closed"]).optional(),
         mine: z.boolean().optional(),
+        limit: z.number().int().min(1).max(50).optional(),
       })
       .strict(),
     output: z.object({ items: z.array(itemSchema) }).strict(),
@@ -398,20 +399,30 @@ export function parsePaginatedGhApi(raw: string): Record<string, unknown>[] {
 
 export function validateGithubCliArgs(argv: string[]): string | null {
   const [sub, arg, ...rest] = argv;
-  if (rest.length > 0) return `Unexpected argument "${rest[0]}".`;
   if (sub === undefined) return null;
   if (sub === "help" || sub === "--help") {
-    return arg === undefined ? null : `Unexpected argument "${arg}".`;
+    const unexpected = arg ?? rest[0];
+    return unexpected === undefined
+      ? null
+      : `Unexpected argument "${unexpected}".`;
   }
   if (sub === "repos" || sub === "sync") {
-    return arg === undefined
+    const unexpected = arg ?? rest[0];
+    return unexpected === undefined
       ? null
       : `Subcommand "${sub}" does not accept arguments.`;
   }
-  if ((sub === "issues" || sub === "prs") && arg !== undefined) {
-    return isRepoName(arg)
+  if (sub === "issues" || sub === "prs") {
+    if (rest.length > 0) return `Unexpected argument "${rest[0]}".`;
+    if (arg !== undefined && !isRepoName(arg)) {
+      return `Invalid repository "${arg}"; expected owner/repo.`;
+    }
+    return null;
+  }
+  if (sub === "search") {
+    return argv.slice(1).join(" ").trim().length > 0
       ? null
-      : `Invalid repository "${arg}"; expected owner/repo.`;
+      : "Search requires a query.";
   }
   return null;
 }
@@ -700,6 +711,7 @@ export default async function plugin(bb: BbPluginApi) {
     query?: string;
     state?: "open" | "closed";
     assignee?: string;
+    limit?: number;
   }): CachedItem[] {
     const clauses: string[] = [];
     const params: unknown[] = [];
@@ -723,14 +735,16 @@ export default async function plugin(bb: BbPluginApi) {
     const query = options.query?.trim() ?? "";
     if (query.length > 0) {
       clauses.push(
-        "(title LIKE ? OR CAST(number AS TEXT) LIKE ? OR repo LIKE ?)",
+        "(title LIKE ? OR CAST(number AS TEXT) LIKE ? OR repo LIKE ? OR author LIKE ?)",
       );
       const like = `%${query.replace(/^#/, "")}%`;
-      params.push(like, like, like);
+      params.push(like, like, like, like);
     }
     const where = clauses.length > 0 ? `WHERE ${clauses.join(" AND ")}` : "";
+    const limit = options.limit === undefined ? "" : " LIMIT ?";
+    if (options.limit !== undefined) params.push(options.limit);
     const rows = db
-      .prepare(`SELECT * FROM items ${where} ORDER BY updated_at DESC`)
+      .prepare(`SELECT * FROM items ${where} ORDER BY updated_at DESC${limit}`)
       .all(...params) as Record<string, unknown>[];
     return rows.map(rowToItem);
   }
@@ -1074,6 +1088,7 @@ export default async function plugin(bb: BbPluginApi) {
           query: input.query,
           state: input.state,
           assignee: input.mine === true ? await getViewer() : undefined,
+          limit: input.limit,
         }),
       };
     },
@@ -1506,8 +1521,7 @@ export default async function plugin(bb: BbPluginApi) {
   });
 
   function mentionItems(kind: "issue" | "pr", query: string) {
-    return listCachedItems({ kind, query, state: "open" })
-      .slice(0, 8)
+    return listCachedItems({ kind, query, state: "open", limit: 8 })
       .map((item) => ({
         id: `${item.repo}#${item.number}`,
         title: `#${item.number} ${item.title}`,
@@ -1611,6 +1625,7 @@ export default async function plugin(bb: BbPluginApi) {
     "  bb github repos              List tracked repositories",
     "  bb github issues [repo]      List cached open issues",
     "  bb github prs [repo]         List cached open pull requests",
+    "  bb github search <query>     Search cached issues and pull requests",
     "  bb github sync               Refresh the cache from GitHub now",
   ].join("\n");
 
@@ -1632,6 +1647,11 @@ export default async function plugin(bb: BbPluginApi) {
         name: "prs",
         summary: "List cached open pull requests",
         usage: "bb github prs [owner/repo]",
+      },
+      {
+        name: "search",
+        summary: "Search cached issues and pull requests",
+        usage: "bb github search <query>",
       },
       {
         name: "sync",
@@ -1692,6 +1712,25 @@ export default async function plugin(bb: BbPluginApi) {
               .map(
                 (item) =>
                   `${item.repo}#${item.number}\t[${item.state}]\t${item.title}`,
+              )
+              .join("\n"),
+          };
+        }
+        if (sub === "search") {
+          const query = argv.slice(1).join(" ");
+          const items = listCachedItems({ query, limit: 50 });
+          if (items.length === 0) {
+            return {
+              exitCode: 0,
+              stdout: `No cached GitHub items match "${query}".`,
+            };
+          }
+          return {
+            exitCode: 0,
+            stdout: items
+              .map(
+                (item) =>
+                  `${item.kind}\t${item.repo}#${item.number}\t[${item.state}]\t${item.title}\t@${item.author}`,
               )
               .join("\n"),
           };

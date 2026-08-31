@@ -23,6 +23,11 @@ interface SlotRegistration {
   headerContent?: unknown;
 }
 
+interface ComposerRegistration {
+  id: string;
+  actions?: { id: string; component: unknown }[];
+}
+
 describe("GitHub official plugin frontend bundle", () => {
   let root: string;
 
@@ -61,8 +66,10 @@ describe("GitHub official plugin frontend bundle", () => {
       homepageSection: [],
       navPanel: [],
       threadPanelAction: [],
+      experimental_newThreadPanelAction: [],
       sidebarFooterAction: [],
     };
+    const composerCustomizations: ComposerRegistration[] = [];
     const componentStub: unknown = new Proxy(function stub() {}, {
       get: (target, prop) =>
         prop === "prototype"
@@ -84,8 +91,10 @@ describe("GitHub official plugin frontend bundle", () => {
       },
       sonner: componentStub,
       vaul: componentStub,
+      radixDialog: componentStub,
       radixDropdownMenu: componentStub,
       radixSelect: componentStub,
+      radixTooltip: componentStub,
       pierreDiffs: componentStub,
       pierreDiffsReact: componentStub,
       clsx: componentStub,
@@ -100,6 +109,9 @@ describe("GitHub official plugin frontend bundle", () => {
         __bbPluginApp: boolean;
         setup: (app: {
           slots: Record<string, (registration: SlotRegistration) => void>;
+          composer: {
+            customize(registration: ComposerRegistration): void;
+          };
         }) => void;
       };
     };
@@ -109,7 +121,13 @@ describe("GitHub official plugin frontend bundle", () => {
         homepageSection: (r) => registered.homepageSection.push(r),
         navPanel: (r) => registered.navPanel.push(r),
         threadPanelAction: (r) => registered.threadPanelAction.push(r),
+        experimental_newThreadPanelAction: (r) =>
+          registered.experimental_newThreadPanelAction.push(r),
         sidebarFooterAction: (r) => registered.sidebarFooterAction.push(r),
+      },
+      composer: {
+        customize: (registration) =>
+          composerCustomizations.push(registration),
       },
     });
 
@@ -123,13 +141,31 @@ describe("GitHub official plugin frontend bundle", () => {
     expect(typeof registered.navPanel[0]?.component).toBe("function");
     expect(typeof registered.navPanel[0]?.headerContent).toBe("function");
 
-    expect(registered.threadPanelAction).toHaveLength(1);
+    expect(registered.threadPanelAction).toHaveLength(2);
     expect(registered.threadPanelAction[0]).toMatchObject({
       id: "pull",
       title: "GitHub PR",
       icon: "Github",
     });
     expect(typeof registered.threadPanelAction[0]?.component).toBe("function");
+    expect(registered.threadPanelAction[1]).toMatchObject({
+      id: "add-item",
+      title: "Add GitHub item",
+      icon: "Github",
+    });
+
+    expect(registered.experimental_newThreadPanelAction).toHaveLength(1);
+    expect(registered.experimental_newThreadPanelAction[0]).toMatchObject({
+      id: "add-item",
+      title: "Add GitHub item",
+      icon: "Github",
+    });
+
+    expect(composerCustomizations).toHaveLength(1);
+    expect(composerCustomizations[0]).toMatchObject({
+      id: "github-item",
+      actions: [{ id: "add", component: expect.any(Function) }],
+    });
 
     expect(registered.homepageSection).toHaveLength(0);
     expect(registered.sidebarFooterAction).toHaveLength(0);

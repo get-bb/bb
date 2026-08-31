@@ -1,12 +1,118 @@
 // @vitest-environment jsdom
 
-import { describe, expect, it } from "vitest";
+import { fireEvent } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
 import { act } from "react";
 import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
 
 const app = await loadPluginApp(() => import("./app"));
 
 describe("GitHub app navigation", () => {
+  it("debounces GitHub search and adds a keyboard-selected result to the composer", async () => {
+    vi.useFakeTimers();
+    const listItems = vi.fn(() => ({
+      items: [
+        {
+          repo: "get-bb/bb",
+          number: 694,
+          kind: "pr" as const,
+          title: "Accessible GitHub search",
+          state: "OPEN",
+          author: "octocat",
+          labels: [],
+          assignees: [],
+          url: "https://github.com/get-bb/bb/pull/694",
+          body: "",
+          updatedAt: "2026-08-20T00:00:00.000Z",
+        },
+      ],
+    }));
+    const slot = renderSlot(
+      app.newThreadPanelActions[0]!,
+      { projectId: "proj-1", params: null },
+      {
+        composer: {
+          text: "/slop-cop ",
+          scope: { kind: "new-thread", projectId: "proj-1" },
+        },
+        rpc: { listItems },
+      },
+    );
+
+    try {
+      const input = slot.getByRole("combobox", {
+        name: "Search GitHub issues and pull requests",
+      });
+      fireEvent.change(input, { target: { value: "accessible" } });
+      expect(
+        slot.getByRole("status", { name: "Searching GitHub" }),
+      ).toBeTruthy();
+
+      await act(async () => vi.advanceTimersByTimeAsync(249));
+      expect(listItems).not.toHaveBeenCalled();
+      await act(async () => vi.advanceTimersByTimeAsync(1));
+
+      expect(listItems).toHaveBeenCalledWith({
+        query: "accessible",
+        limit: 12,
+      });
+      expect(slot.getByText("Accessible GitHub search")).toBeTruthy();
+      expect(slot.getByText("get-bb/bb")).toBeTruthy();
+      expect(slot.getByText("#694")).toBeTruthy();
+      expect(slot.getByText("open")).toBeTruthy();
+      expect(slot.getByText("@octocat")).toBeTruthy();
+
+      fireEvent.keyDown(input, { key: "ArrowDown" });
+      fireEvent.keyDown(input, { key: "Enter" });
+      expect(slot.composer.mentions).toEqual([
+        {
+          provider: "pr",
+          id: "get-bb/bb#694",
+          label: "get-bb/bb#694",
+        },
+      ]);
+      expect(slot.composer.text).toBe("/slop-cop get-bb/bb#694 ");
+    } finally {
+      slot.lifecycle.unmount();
+      vi.useRealTimers();
+    }
+  });
+
+  it("shows a recoverable error and an actionable empty search state", async () => {
+    vi.useFakeTimers();
+    const listItems = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("GitHub is unavailable"))
+      .mockResolvedValueOnce({ items: [] });
+    const slot = renderSlot(
+      app.newThreadPanelActions[0]!,
+      { projectId: null, params: null },
+      { rpc: { listItems } },
+    );
+
+    try {
+      fireEvent.change(
+        slot.getByRole("combobox", {
+          name: "Search GitHub issues and pull requests",
+        }),
+        { target: { value: "missing" } },
+      );
+      await act(async () => vi.advanceTimersByTimeAsync(250));
+      expect(slot.getByRole("alert").textContent).toContain(
+        "GitHub search failed: GitHub is unavailable",
+      );
+
+      fireEvent.click(slot.getByRole("button", { name: "Try again" }));
+      await act(async () => vi.advanceTimersByTimeAsync(250));
+      expect(slot.getByRole("status").textContent).toContain(
+        "No cached items match",
+      );
+    } finally {
+      slot.lifecycle.unmount();
+      vi.useRealTimers();
+    }
+  });
+
   it("opens issue details in the URL-backed page instead of a fixed tab", async () => {
     const panel = app.navPanels[0]!;
     expect(panel.fixedTabs).toBeUndefined();

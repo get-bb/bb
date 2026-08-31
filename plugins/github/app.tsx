@@ -5,9 +5,12 @@ import {
   experimental_FileLink as FileLink,
   UrlLink as UrlLink,
   useBbNavigate,
+  useComposer,
   useRealtime,
   useRpc,
+  type PluginComposerApi,
   type PluginNavPanelProps,
+  type PluginNewThreadPanelProps,
   type PluginThreadPanelProps,
 } from "@get-bb/plugin-sdk/app";
 import {
@@ -25,7 +28,21 @@ import type { githubRpcContract } from "./server.js";
 import { toast } from "sonner";
 import { Badge } from "@bb/shared-ui/badge";
 import { Button } from "@bb/shared-ui/button";
+import {
+  Command,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@bb/shared-ui/command";
 import { DelayedLoading } from "@bb/shared-ui/delayed-loading";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@bb/shared-ui/dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -36,6 +53,7 @@ import {
   DropdownMenuTrigger,
 } from "@bb/shared-ui/dropdown-menu";
 import { Input } from "@bb/shared-ui/input";
+import { Icon } from "@bb/shared-ui/icon";
 import {
   Select,
   SelectContent,
@@ -46,6 +64,11 @@ import {
 import { Skeleton } from "@bb/shared-ui/skeleton";
 import { Tabs, TabsList, TabsTrigger } from "@bb/shared-ui/tabs";
 import { Textarea } from "@bb/shared-ui/textarea";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@bb/shared-ui/tooltip";
 import { EmptyState } from "@/components/empty-state";
 import { Markdown } from "@/components/markdown-lite";
 
@@ -337,6 +360,259 @@ function StateBadge({ kind, state }: { kind: "issue" | "pr"; state: string }) {
       <StateDot kind={kind} state={state} />
       {state.toLowerCase()}
     </Badge>
+  );
+}
+
+type GithubSearchState =
+  | { status: "idle"; items: Item[] }
+  | { status: "loading"; items: Item[] }
+  | { status: "ready"; items: Item[] }
+  | { status: "error"; items: Item[]; message: string };
+
+const GITHUB_SEARCH_DEBOUNCE_MS = 250;
+
+function useGithubSearch(query: string): {
+  state: GithubSearchState;
+  retry: () => void;
+} {
+  const rpc = useRpc<typeof githubRpcContract>();
+  const requestId = useRef(0);
+  const [revision, setRevision] = useState(0);
+  const [state, setState] = useState<GithubSearchState>({
+    status: "idle",
+    items: [],
+  });
+
+  useEffect(() => {
+    const trimmed = query.trim();
+    const currentRequestId = ++requestId.current;
+    if (trimmed.length === 0) {
+      setState({ status: "idle", items: [] });
+      return;
+    }
+    setState({ status: "loading", items: [] });
+    const timeout = window.setTimeout(() => {
+      rpc.call("listItems", { query: trimmed, limit: 12 }).then(
+        (result) => {
+          if (requestId.current !== currentRequestId) return;
+          setState({ status: "ready", items: asItems(result) });
+        },
+        (error: unknown) => {
+          if (requestId.current !== currentRequestId) return;
+          setState({
+            status: "error",
+            items: [],
+            message: errorText(error),
+          });
+        },
+      );
+    }, GITHUB_SEARCH_DEBOUNCE_MS);
+    return () => window.clearTimeout(timeout);
+  }, [query, revision, rpc]);
+
+  return {
+    state,
+    retry: () => setRevision((current) => current + 1),
+  };
+}
+
+function GithubSearchLoading() {
+  return (
+    <div
+      className="space-y-3 px-3 py-4"
+      role="status"
+      aria-label="Searching GitHub"
+    >
+      {[0, 1, 2].map((row) => (
+        <div key={row} className="space-y-2">
+          <Skeleton className="h-4 w-4/5" />
+          <Skeleton className="h-3 w-2/5" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function GithubSearchMessage({
+  children,
+  role = "status",
+}: {
+  children: React.ReactNode;
+  role?: "status" | "alert";
+}) {
+  return (
+    <div
+      className="flex min-h-32 flex-col items-center justify-center gap-3 px-6 py-8 text-center text-sm text-muted-foreground"
+      role={role}
+    >
+      {children}
+    </div>
+  );
+}
+
+function GithubSearchResult({ item }: { item: Item }) {
+  const noun = item.kind === "pr" ? "Pull request" : "Issue";
+  return (
+    <div className="flex min-w-0 flex-1 items-start gap-3 py-1">
+      <Icon
+        name={item.kind === "pr" ? "GitPullRequest" : "Circle"}
+        className="mt-0.5 size-4 shrink-0 text-muted-foreground"
+        aria-hidden="true"
+      />
+      <span className="min-w-0 flex-1 space-y-1">
+        <span className="block truncate font-medium text-foreground">
+          {item.title}
+        </span>
+        <span className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-muted-foreground">
+          <span>{item.repo}</span>
+          <span aria-hidden="true">·</span>
+          <span>#{item.number}</span>
+          <span aria-hidden="true">·</span>
+          <span>{noun}</span>
+          <span aria-hidden="true">·</span>
+          <span>@{item.author}</span>
+        </span>
+      </span>
+      <StateBadge kind={item.kind} state={item.state} />
+    </div>
+  );
+}
+
+function GithubResourceSearch({
+  onSelect,
+}: {
+  onSelect: (item: Item) => void;
+}) {
+  const [query, setQuery] = useState("");
+  const { state, retry } = useGithubSearch(query);
+
+  return (
+    <Command
+      shouldFilter={false}
+      className="min-h-0 rounded-lg border border-border bg-card"
+    >
+      <CommandInput
+        value={query}
+        onValueChange={setQuery}
+        placeholder="Search title, number, repository, or author"
+        aria-label="Search GitHub issues and pull requests"
+        autoFocus
+      />
+      <CommandList
+        className="max-h-[min(26rem,55dvh)]"
+        aria-busy={state.status === "loading"}
+        aria-label="GitHub search results"
+      >
+        {state.status === "idle" ? (
+          <GithubSearchMessage>
+            Search issues and pull requests in tracked repositories.
+          </GithubSearchMessage>
+        ) : null}
+        {state.status === "loading" ? <GithubSearchLoading /> : null}
+        {state.status === "error" ? (
+          <GithubSearchMessage role="alert">
+            <span>GitHub search failed: {state.message}</span>
+            <Button type="button" size="sm" variant="outline" onClick={retry}>
+              Try again
+            </Button>
+          </GithubSearchMessage>
+        ) : null}
+        {state.status === "ready" && state.items.length === 0 ? (
+          <GithubSearchMessage>
+            No cached items match. Try another title, number, repository, or
+            author.
+          </GithubSearchMessage>
+        ) : null}
+        {state.status === "ready" && state.items.length > 0 ? (
+          <CommandGroup heading={`${state.items.length} results`}>
+            {state.items.map((item) => (
+              <CommandItem
+                key={`${item.kind}:${item.repo}#${item.number}`}
+                value={`${item.kind}:${item.repo}#${item.number}`}
+                className="px-3 py-2.5"
+                onSelect={() => onSelect(item)}
+              >
+                <GithubSearchResult item={item} />
+              </CommandItem>
+            ))}
+          </CommandGroup>
+        ) : null}
+      </CommandList>
+    </Command>
+  );
+}
+
+function addGithubItemToComposer(composer: PluginComposerApi, item: Item) {
+  composer.insertMention({
+    provider: item.kind,
+    id: `${item.repo}#${item.number}`,
+    label: `${item.repo}#${item.number}`,
+  });
+}
+
+function GithubSearchPanel(
+  _props: PluginThreadPanelProps | PluginNewThreadPanelProps,
+) {
+  const composer = useComposer();
+  return (
+    <div className="space-y-4">
+      <div className="space-y-1">
+        <h2 className="text-base font-semibold text-foreground">
+          Add GitHub item
+        </h2>
+        <p className="text-sm text-muted-foreground">
+          Select an issue or pull request to add it to the current prompt, then
+          choose any skill in the composer.
+        </p>
+      </div>
+      <GithubResourceSearch
+        onSelect={(item) => {
+          addGithubItemToComposer(composer, item);
+          toast.success(`Added ${item.repo}#${item.number} to the prompt`);
+        }}
+      />
+    </div>
+  );
+}
+
+function GithubSearchComposerAction() {
+  const composer = useComposer();
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            type="button"
+            size="icon"
+            variant="ghost"
+            aria-label="Add GitHub issue or pull request"
+            onClick={() => setOpen(true)}
+          >
+            <Icon name="Github" className="size-4" aria-hidden="true" />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>Add GitHub item</TooltipContent>
+      </Tooltip>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="gap-4 p-4 sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Add GitHub item</DialogTitle>
+            <DialogDescription>
+              Search tracked repositories and add an issue or pull request to
+              this prompt.
+            </DialogDescription>
+          </DialogHeader>
+          <GithubResourceSearch
+            onSelect={(item) => {
+              addGithubItemToComposer(composer, item);
+              setOpen(false);
+              toast.success(`Added ${item.repo}#${item.number} to the prompt`);
+            }}
+          />
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
 
@@ -644,6 +920,7 @@ function StatusCell({ item }: { item: Item }) {
 
 function RowMenu({ item }: { item: Item }) {
   const navigate = useBbNavigate();
+  const composer = useComposer();
   const viewer = useViewer();
   const { setIssueState, setAssignees } = useIssueMutations();
   const assignedToMe = viewer !== null && item.assignees.includes(viewer);
@@ -695,7 +972,15 @@ function RowMenu({ item }: { item: Item }) {
             {item.state === "OPEN" ? "Close issue" : "Reopen issue"}
           </DropdownMenuItem>
         ) : null}
-        {item.kind === "issue" ? <DropdownMenuSeparator /> : null}
+        <DropdownMenuItem
+          onSelect={() => {
+            addGithubItemToComposer(composer, item);
+            navigate.toCompose({ focusPrompt: true });
+          }}
+        >
+          Add to agent prompt
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
         <DropdownMenuItem
           onSelect={() => {
             navigate.openUrl(item.url);
@@ -2345,6 +2630,11 @@ function GithubPanelBody({
 }
 
 export default definePluginApp((app) => {
+  app.composer.customize({
+    id: "github-item",
+    scopes: ["new-thread", "thread", "queued-message", "side-chat"],
+    actions: [{ id: "add", component: GithubSearchComposerAction }],
+  });
   app.slots.navPanel({
     id: "github",
     title: "GitHub",
@@ -2358,5 +2648,17 @@ export default definePluginApp((app) => {
     title: "GitHub PR",
     icon: "Github",
     component: PullPanelTab,
+  });
+  app.slots.threadPanelAction({
+    id: "add-item",
+    title: "Add GitHub item",
+    icon: "Github",
+    component: GithubSearchPanel,
+  });
+  app.slots.experimental_newThreadPanelAction({
+    id: "add-item",
+    title: "Add GitHub item",
+    icon: "Github",
+    component: GithubSearchPanel,
   });
 });

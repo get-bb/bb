@@ -161,6 +161,10 @@ describe("GitHub RPC contract", () => {
     expect(validateGithubCliArgs(["repos", "--json"])).toContain(
       "does not accept arguments",
     );
+    expect(
+      validateGithubCliArgs(["search", "cache", "mutation"]),
+    ).toBeNull();
+    expect(validateGithubCliArgs(["search"])).toContain("requires a query");
   });
 
   it("infers parsed handler inputs and frontend results", () => {

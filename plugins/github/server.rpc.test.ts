@@ -315,6 +315,13 @@ describe("github plugin RPC behavior", () => {
       stdout: "acme/widgets#7\t[OPEN]\tCache mutations",
       stderr: "",
     });
+    await expect(harness.runCli(["search", "cache", "mutations"]))
+      .resolves.toEqual({
+        exitCode: 0,
+        stdout:
+          "issue\tacme/widgets#7\t[OPEN]\tCache mutations\t@alice",
+        stderr: "",
+      });
     const issueProvider = harness.registrations.mentionProviders.find(
       (provider) => provider.id === "issue",
     );
