@@ -217,6 +217,7 @@ const THREAD_EVENT_PAYLOAD_FIELDS = {
     "requestId",
     "turnId",
     "errorInfo",
+    "inputAccepted",
     "rateLimits",
     "attemptNumber",
   ],

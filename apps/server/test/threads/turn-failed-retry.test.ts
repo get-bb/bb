@@ -203,6 +203,57 @@ function seedRateLimitFailure(
   });
 }
 
+/**
+ * The provider's acceptance record for a request, as the assembler stores it.
+ * Its presence is what makes a later failure "accepted-then-failed".
+ */
+function seedInputAccepted(
+  harness: TestAppHarness,
+  args: { environmentId: string; threadId: string; requestId: string },
+) {
+  const providerThreadId = "provider-session";
+  seedEvent(harness.deps, {
+    threadId: args.threadId,
+    environmentId: args.environmentId,
+    providerThreadId,
+    sequence: getLatestThreadSequence(harness.db, { threadId: args.threadId }) + 1,
+    type: "turn/input/accepted",
+    scope: { kind: "turn", turnId: "turn-1" },
+    data: {
+      providerThreadId,
+      clientRequestId: args.requestId,
+    },
+  });
+}
+
+/**
+ * The rejection row the command-failure settlement writes when a dispatch dies
+ * at the door: `reason` carries the daemon's error code verbatim, which for a
+ * runtime-typed rejection is `rate_limited` or `auth_required`.
+ */
+function seedDoorRejection(
+  harness: TestAppHarness,
+  args: {
+    environmentId: string;
+    threadId: string;
+    requestId: string;
+    reason: string;
+  },
+) {
+  seedEvent(harness.deps, {
+    threadId: args.threadId,
+    environmentId: args.environmentId,
+    sequence: getLatestThreadSequence(harness.db, { threadId: args.threadId }) + 1,
+    type: "client/turn/rejected",
+    scope: { kind: "thread" },
+    data: {
+      requestId: args.requestId,
+      reason: args.reason,
+      message: "Command turn.submit failed",
+    },
+  });
+}
+
 function failThread(harness: TestAppHarness, threadId: string): void {
   applyLoggedThreadLifecycleEvent(harness.deps, {
     event: { type: "run.failed" },
@@ -284,6 +335,72 @@ describe("the turn.failed announcement", () => {
     });
   });
 
+  it("labels a typed door rejection and reports the input as never accepted", async () => {
+    await withTestHarness(async (harness) => {
+      const { environment, requestId, thread } = seedFailableThread(
+        harness,
+        "host-door",
+      );
+      seedDoorRejection(harness, {
+        environmentId: environment.id,
+        threadId: thread.id,
+        requestId,
+        reason: "rate_limited",
+      });
+      failThread(harness, thread.id);
+
+      const event = buildTurnFailedEvent(harness.db, thread.id);
+      // The rejection never reached a provider turn, so the typed code on the
+      // rejection row is the failure's only classification — without this
+      // mapping a door-rejected rate limit is invisible to a retry policy.
+      expect(event?.errorInfo).toEqual({
+        category: "rate-limit",
+        providerCode: null,
+        httpStatusCode: null,
+      });
+      expect(event?.turnId).toBeNull();
+      expect(event?.inputAccepted).toBe(false);
+
+      const unmapped = seedFailableThread(harness, "host-door-unmapped");
+      seedDoorRejection(harness, {
+        environmentId: unmapped.environment.id,
+        threadId: unmapped.thread.id,
+        requestId: unmapped.requestId,
+        reason: "stale_turn",
+      });
+      failThread(harness, unmapped.thread.id);
+      // A reason without a typed classification stays null rather than
+      // guessing a category.
+      expect(
+        buildTurnFailedEvent(harness.db, unmapped.thread.id)?.errorInfo,
+      ).toBeNull();
+    });
+  });
+
+  it("reports acceptance when the provider took the input before failing", async () => {
+    await withTestHarness(async (harness) => {
+      const { environment, requestId, thread } = seedFailableThread(
+        harness,
+        "host-accepted",
+      );
+      seedInputAccepted(harness, {
+        environmentId: environment.id,
+        threadId: thread.id,
+        requestId,
+      });
+      seedRateLimitFailure(harness, {
+        environmentId: environment.id,
+        threadId: thread.id,
+        resetsAtMs: Date.now() + 3_600_000,
+      });
+      failThread(harness, thread.id);
+
+      expect(buildTurnFailedEvent(harness.db, thread.id)?.inputAccepted).toBe(
+        true,
+      );
+    });
+  });
+
   it("is announced for a failure and for nothing else", async () => {
     await withTestHarness(async (harness) => {
       const announced = recordTurnFailedAnnouncements();
@@ -359,6 +476,42 @@ describe("retrying a failed turn", () => {
       expect(userRequests).toHaveLength(1);
       // The row was consumed by the dispatch rather than left on the queue.
       expect(listQueuedThreadMessages(harness.db, thread.id)).toEqual([]);
+    });
+  });
+
+  it("continues an accepted turn instead of re-asking it", async () => {
+    await withTestHarness(async (harness) => {
+      const { environment, requestId, thread } = seedFailableThread(
+        harness,
+        "host-continue",
+      );
+      seedInputAccepted(harness, {
+        environmentId: environment.id,
+        threadId: thread.id,
+        requestId,
+      });
+      failThread(harness, thread.id);
+
+      const result = await retryFailedTurn(harness.deps, {
+        thread: requireThread(harness, thread.id),
+        request: { turnRequestId: requestId, sendAt: null, reason: "Rate limited" },
+      });
+      expect(result.delivery).toBe("sent");
+
+      const requests = turnRequests(harness, thread.id);
+      expect(requests).toHaveLength(2);
+      const retryRequest = requests[1];
+      if (retryRequest === undefined) throw new Error("expected a retry turn");
+      const data = turnRequestData(retryRequest);
+      // The provider accepted "Do the thing" into its conversation before the
+      // failure, and nothing rolls that back — so re-sending it would ask the
+      // same question twice in a row. The retry nudges the accepted turn
+      // forward instead, still marked as the same attempt chain.
+      expect(data.retryOfRequestId).toBe(requestId);
+      expect(data.retryAttempt).toBe(2);
+      expect(data.input).toHaveLength(1);
+      expect(data.input[0]?.text).toBe("Please continue.");
+      expect(data.input[0]?.visibility).toBe("agent-only");
     });
   });
 

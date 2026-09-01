@@ -5,7 +5,12 @@ import { ApiError } from "../../errors.js";
 import type { LoggedPendingInteractionWorkSessionDeps } from "../../types.js";
 import { attemptDispatch } from "./dispatch-attempt.js";
 import { toThreadQueuedMessage } from "./thread-queued-messages.js";
-import { loadFailedTurn, retryChain } from "./turn-failed.js";
+import {
+  loadFailedTurn,
+  retryChain,
+  wasFailedTurnInputAccepted,
+  type FailedTurnRecord,
+} from "./turn-failed.js";
 
 type TurnRetryDeps = LoggedPendingInteractionWorkSessionDeps;
 
@@ -77,6 +82,43 @@ export interface RetryFailedTurnArgs {
   request: RetryTurnRequest;
 }
 
+const CONTINUE_ACCEPTED_TURN_TEXT = "Please continue.";
+
+/**
+ * What the re-attempt sends, decided by the provider's own acceptance record.
+ *
+ * An input the provider never accepted must be re-sent verbatim: the request
+ * died at the door, the provider has no record of it, and the retry asks the
+ * original question for the first time the provider will hear it. An input
+ * the provider DID accept is already in its conversation — the failed attempt
+ * left the message (and possibly partial output) in the provider session,
+ * which no provider rolls back — so re-sending it would ask the same question
+ * twice in a row; a continuation nudge is the honest re-attempt there.
+ *
+ * Either way the blocks are `agent-only`: the user's message stays where it
+ * was, on the attempt that failed, using the same projection rule that has
+ * always hidden system continuations.
+ */
+function retryInputBlocks(
+  deps: Pick<TurnRetryDeps, "db">,
+  args: { threadId: string; failed: FailedTurnRecord },
+) {
+  if (wasFailedTurnInputAccepted(deps.db, args)) {
+    return [
+      {
+        type: "text" as const,
+        text: CONTINUE_ACCEPTED_TURN_TEXT,
+        mentions: [],
+        visibility: "agent-only" as const,
+      },
+    ];
+  }
+  return args.failed.request.input.map((block) => ({
+    ...block,
+    visibility: "agent-only" as const,
+  }));
+}
+
 /**
  * Re-submits a failed turn.
  *
@@ -85,15 +127,7 @@ export interface RetryFailedTurnArgs {
  * it on the clock, a busy thread queues it behind the running turn, and the
  * `message.dispatch` hook still gets to hold it — so a retry coming back after
  * a rate-limit window respects a limiter that is at capacity instead of jumping
- * the queue.
- *
- * The re-attempt carries the ORIGINAL blocks verbatim, so the provider is asked
- * the same question the failed attempt asked rather than being nudged with a
- * synthetic "please continue" whose meaning depends on what it remembers. Their
- * VISIBILITY is the one thing that changes: `agent-only` is what keeps the
- * timeline from showing the user's message a second time, using the same
- * projection rule that has always hidden system continuations. The user's
- * message stays where it was, on the attempt that failed.
+ * the queue. What the attempt carries is `retryInputBlocks`' decision.
  */
 export async function retryFailedTurn(
   deps: TurnRetryDeps,
@@ -120,10 +154,7 @@ export async function retryFailedTurn(
       // A retry never steers: it re-runs a turn, so a thread that is busy again
       // is something to wait behind rather than to interrupt.
       mode: "queue-if-active",
-      input: failed.request.input.map((block) => ({
-        ...block,
-        visibility: "agent-only" as const,
-      })),
+      input: retryInputBlocks(deps, { threadId: thread.id, failed }),
       ...(request.sendAt === null ? {} : { sendAt: request.sendAt }),
     },
     source: { kind: "inline" },

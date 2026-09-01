@@ -316,9 +316,12 @@ Lifecycle:
     --send-at <when>                       Dispatch at an ISO 8601 timestamp or a duration from now (30s, 10m, 2h, 7d)
     --reason <text>                        Why it is being retried, shown on the queued row
 
-  Retry re-submits the failed turn by reference: the same prompt blocks, no
-  duplicated user message in the timeline, and an attempt number that increments
-  (2 is the first retry). With no --turn it retries the most recent turn, the
+  Retry re-submits the failed turn by reference: no duplicated user message in
+  the timeline, and an attempt number that increments (2 is the first retry).
+  What the provider is sent follows its own acceptance record — an input it
+  never accepted is re-sent verbatim, while an accepted turn (already in the
+  provider's conversation) is continued with a nudge rather than asked twice.
+  With no --turn it retries the most recent turn, the
   one whose failure put the thread in error; --turn asserts which turn you mean
   and fails when the thread has moved on, as does retrying a thread that has not
   failed or a turn that already has a retry queued. Without --send-at the retry

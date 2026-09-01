@@ -3,6 +3,8 @@ import {
   getLatestStoredRateLimitsEventForProvider,
   getLatestStoredThreadEventOfTypes,
   getThread,
+  listStoredTurnInputAcceptedRowsByClientRequestIds,
+  listStoredTurnRejectedRowsByClientRequestIds,
   type DbConnection,
   type StoredThreadEventDataRow,
 } from "@bb/db";
@@ -29,6 +31,10 @@ const rateLimitsDataSchema = z.object({
   rateLimits: providerRateLimitStateSchema,
 });
 
+const rejectedReasonDataSchema = z.object({
+  reason: z.string(),
+});
+
 function parseRowData(row: StoredThreadEventDataRow): unknown {
   try {
     return JSON.parse(row.data);
@@ -37,7 +43,7 @@ function parseRowData(row: StoredThreadEventDataRow): unknown {
   }
 }
 
-interface FailedTurnRecord {
+export interface FailedTurnRecord {
   request: TurnRequestEventData;
   requestSequence: number;
 }
@@ -86,6 +92,69 @@ export function retryChain(request: TurnRequestEventData): {
 }
 
 /**
+ * Whether the provider accepted the failed turn's input before the failure.
+ *
+ * Acceptance is the provider's own statement that the input entered its
+ * conversation, recorded as the mandatory `turn/input/accepted` event keyed by
+ * the request id. It is the fact that splits a failure into its two shapes:
+ * accepted-then-failed means the provider holds the message (and possibly
+ * partial output) that no provider rolls back, while never-accepted means the
+ * request died at the door and the provider has no record of it.
+ */
+export function wasFailedTurnInputAccepted(
+  db: DbConnection,
+  args: { threadId: string; failed: FailedTurnRecord },
+): boolean {
+  return (
+    listStoredTurnInputAcceptedRowsByClientRequestIds(db, {
+      threadId: args.threadId,
+      clientRequestIds: [args.failed.request.requestId],
+      afterSequence: args.failed.requestSequence,
+    }).length > 0
+  );
+}
+
+/**
+ * The structured classification of a request the provider refused at the door.
+ *
+ * A rejected dispatch never produces a `provider/error` event — no provider
+ * turn existed to carry one — so the typed code the runtime attached to the
+ * `client/turn/rejected` row is the failure's only classification. Mapping it
+ * here is what lets a retry policy see a door-rejected rate limit as the same
+ * category a mid-stream one reports; unmapped reasons stay null, exactly as
+ * before.
+ */
+function doorRejectionErrorInfo(
+  db: DbConnection,
+  args: { threadId: string; failed: FailedTurnRecord },
+): ProviderErrorInfo | null {
+  const row = listStoredTurnRejectedRowsByClientRequestIds(db, {
+    threadId: args.threadId,
+    clientRequestIds: [args.failed.request.requestId],
+    afterSequence: args.failed.requestSequence,
+  })[0];
+  if (row === undefined) return null;
+  const reason = rejectedReasonDataSchema.safeParse(parseRowData(row)).data
+    ?.reason;
+  switch (reason) {
+    case "rate_limited":
+      return {
+        category: "rate-limit",
+        providerCode: null,
+        httpStatusCode: null,
+      };
+    case "auth_required":
+      return {
+        category: "unauthorized",
+        providerCode: null,
+        httpStatusCode: null,
+      };
+    default:
+      return null;
+  }
+}
+
+/**
  * The `turn.failed` payload: ids and failure facts, assembled from the failed
  * turn's own records so a listener never replays the event log itself.
  *
@@ -115,7 +184,7 @@ export function buildTurnFailedEvent(
     types: ["provider/error"],
     afterSequence: failed.requestSequence,
   });
-  const errorInfo: ProviderErrorInfo | null =
+  const providerErrorInfo: ProviderErrorInfo | null =
     providerError === null
       ? null
       : (providerErrorDataSchema.safeParse(parseRowData(providerError)).data
@@ -124,7 +193,9 @@ export function buildTurnFailedEvent(
     threadId,
     requestId: failed.request.requestId,
     turnId: providerError?.turnId ?? null,
-    errorInfo,
+    errorInfo:
+      providerErrorInfo ?? doorRejectionErrorInfo(db, { threadId, failed }),
+    inputAccepted: wasFailedTurnInputAccepted(db, { threadId, failed }),
     rateLimits: latestRateLimits(db, thread),
     attemptNumber: retryChain(failed.request).attemptNumber,
   };

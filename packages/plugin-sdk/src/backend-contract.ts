@@ -187,11 +187,21 @@ export interface PluginTurnFailedEvent {
   /** The provider turn, when the failure happened inside one. */
   turnId: string | null;
   /**
-   * The provider's structured classification, when it reported one. Null for a
-   * command that never reached the provider, so a retry policy must handle
-   * null rather than assume.
+   * The failure's structured classification: the provider's own report when
+   * the failure happened inside a turn, or the typed rejection code (a rate
+   * limit, an auth failure) when the provider refused the request at the
+   * door. Null when neither carried one, so a retry policy must handle null
+   * rather than assume.
    */
   errorInfo: ProviderErrorInfo | null;
+  /**
+   * Whether the provider accepted the turn's input before failing. True is a
+   * mid-stream failure — the input is already part of the provider's
+   * conversation, so core's retry continues it instead of re-sending the
+   * blocks. False is a request the provider never took, which a retry
+   * re-sends verbatim.
+   */
+  inputAccepted: boolean;
   /**
    * The most recent rate-limit snapshot this thread's provider reported, or
    * null when the provider reports no windows.

@@ -89,6 +89,7 @@ export function makeTurnFailedEvent(
     requestId: "creq_2222222222",
     turnId: "turn-1",
     errorInfo: null,
+    inputAccepted: true,
     rateLimits: null,
     attemptNumber: 1,
     ...overrides,

@@ -30,11 +30,14 @@ moved from one wait to another is news to whoever was waiting on the old one.
 `turn.failed` fires after a turn failed and the thread has already landed in
 `error`. Its payload (`PluginTurnFailedEvent`) is ids and failure facts only —
 `threadId`, the failed turn's `requestId`, the provider `turnId` (null when the
-failure never reached a turn), `errorInfo` (the provider's `ProviderErrorInfo`,
-null when it reported none), `rateLimits` (the latest `ProviderRateLimitState`,
-null when the provider reports no windows) and `attemptNumber` (1 on a first
-failure, 2 on the first retry's). There is no thread DTO and no copy of the
-message, because a retry is asked for BY REFERENCE:
+failure never reached a turn), `errorInfo` (the failure's `ProviderErrorInfo`:
+the provider's own report, or the typed code of a request the provider rejected
+at the door; null when neither carried one), `inputAccepted` (whether the
+provider took the input into its conversation before failing), `rateLimits`
+(the latest `ProviderRateLimitState`, null when the provider reports no
+windows) and `attemptNumber` (1 on a first failure, 2 on the first retry's).
+There is no thread DTO and no copy of the message, because a retry is asked for
+BY REFERENCE:
 
 ```ts
 bb.events.on("turn.failed", async (event) => {
@@ -53,9 +56,12 @@ bb.events.on("turn.failed", async (event) => {
 });
 ```
 
-`threads.retry` re-submits the failed turn: the user's message is not appended
-again, the provider is asked the identical question, and the new attempt carries
-a retry marker so the next failure's `attemptNumber` is right. A future `sendAt`
+`threads.retry` re-submits the failed turn: the user's message never re-enters
+the timeline, and what the provider is sent follows `inputAccepted` — an input
+the provider never took is re-sent verbatim, while an accepted turn (already in
+the provider's conversation) is continued with a nudge rather than asked twice.
+The new attempt carries a retry marker so the next failure's `attemptNumber` is
+right. A future `sendAt`
 queues it on the clock; without one it is attempted now. Either way it is an
 ordinary dispatch attempt, so it still passes the `message.dispatch` hook. Core
 allows one live retry per original turn and enforces no ceiling beyond that —
