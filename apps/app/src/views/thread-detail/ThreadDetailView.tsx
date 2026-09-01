@@ -597,6 +597,7 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
   const removeFixedTerminalTab = useRemoveFixedRightTerminalTab(
     threadId,
     threadId,
+    secondaryPanelDrawerVisibility.closeDrawer,
   );
   const updateFixedPanelTabsState = useUpdateFixedPanelTabsState(
     threadId,
@@ -692,6 +693,7 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
     panelStateId: threadId,
     syncThreadId: threadId,
     environmentId: thread?.environmentId,
+    onCloseLastTab: secondaryPanelDrawerVisibility.closeDrawer,
     retainedTerminalId,
     storageFileExists: checkThreadStorageFileExists,
     storageFiles: threadStorageFiles,
