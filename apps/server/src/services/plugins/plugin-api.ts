@@ -3,7 +3,6 @@ import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import Database from "better-sqlite3";
 import { CronExpressionParser } from "cron-parser";
-import { z } from "zod";
 import {
   deletePluginKvValue,
   getPluginKvValue,
@@ -90,6 +89,7 @@ import {
   undeclaredIconProblem,
   validatePluginAiServiceDeclaration,
   validatePluginProviderDeclaration,
+  zodSchemaToJsonSchema,
 } from "@get-bb/plugin-sdk/internal/host-policy";
 import type {
   AiServiceHostBinding,
@@ -1000,9 +1000,7 @@ export function createPluginApi(options: {
       let parse: PluginAgentToolRecord["parse"];
       if (isZodSchemaLike(parameters)) {
         try {
-          inputSchema = z.toJSONSchema(parameters as z.ZodType, {
-            io: "input",
-          });
+          inputSchema = zodSchemaToJsonSchema(parameters);
         } catch (error) {
           throw new Error(
             `tool "${name}" parameters look like a zod schema but could not be converted to JSON Schema (${
@@ -1011,7 +1009,7 @@ export function createPluginApi(options: {
           );
         }
         parse = (input) => {
-          const result = (parameters as z.ZodType).safeParse(input);
+          const result = parameters.safeParse(input);
           if (result.success) return { ok: true, value: result.data };
           return { ok: false, error: summarizeParseIssues(result.error) };
         };
