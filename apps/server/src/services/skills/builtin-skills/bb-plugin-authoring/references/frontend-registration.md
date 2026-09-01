@@ -161,9 +161,10 @@ surface them here instead, filtering `experimental_useSidebarThreads()` by
 ### Replacing the sidebar navigation
 
 `app.slots.experimental_sidebarNavigation` replaces the navigation controls
-above the thread list. The component receives semantic items for New thread,
-Search threads, Extensions, and plugin panels. BB keeps the drawer, thread
-list, footer, resize handle, and hidden-body shortcut policy.
+above the thread list. The component receives `items`, `activeItemId`, and
+`isCompactViewport`. The items represent New thread, Search threads,
+Extensions, and plugin panels. BB keeps the drawer, thread list, footer,
+resize handle, and hidden-body shortcut policy.
 
 Each item has an `id`, `label`, semantic `icon`, host `action`, disabled state,
 shortcut metadata, and `experimental_splitProps`. Spread the split props onto

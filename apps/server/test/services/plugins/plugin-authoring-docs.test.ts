@@ -27,6 +27,7 @@ import {
   type PluginSettingDescriptor,
   type PluginSettingsSectionProps,
   type PluginSidebarFooterActionProps,
+  type ExperimentalSidebarNavigationProps,
   type PluginSourceCodeRendererProps,
   type PluginThreadHeaderActionProps,
   type PluginThreadListProps,
@@ -244,6 +245,7 @@ type SlotPropsByName = {
   experimental_newThreadPanelAction: PluginNewThreadPanelProps;
   pendingInteraction: PluginPendingInteractionProps;
   sidebarFooterAction: PluginSidebarFooterActionProps;
+  experimental_sidebarNavigation: ExperimentalSidebarNavigationProps;
   experimental_threadList: PluginThreadListProps;
   experimental_threadHeaderAction: PluginThreadHeaderActionProps;
   fileOpener: PluginFileOpenerProps;
@@ -313,6 +315,13 @@ const FRONTEND_SLOT_PROP_FIELDS = {
   experimental_newThreadPanelAction: ["projectId", "params"],
   pendingInteraction: ["interaction", "submit", "cancel"],
   sidebarFooterAction: [],
+  experimental_sidebarNavigation: [
+    "items",
+    "activeItemId",
+    "isCompactViewport",
+    "experimental_activate",
+    "experimental_Original",
+  ],
   experimental_threadList: [
     "activeThreadId",
     "activeProjectId",
