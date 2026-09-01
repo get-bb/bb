@@ -36,6 +36,11 @@ const bucket = bucketOf({
     etag: "v1",
     contentType: "application/json",
   },
+  "v2/marketplace.json": {
+    body: '{"schemaVersion":2}',
+    etag: "v2",
+    contentType: "application/json",
+  },
   "icons/widgets.svg": { body: "<svg/>", etag: "icon-1" },
 });
 
@@ -51,6 +56,9 @@ describe("marketplaceObjectKey", () => {
     expect(marketplaceObjectKey("/marketplace/v1/icons/a.svg")).toBe(
       "icons/a.svg",
     );
+    expect(marketplaceObjectKey("/marketplace/v2/marketplace.json")).toBe(
+      "v2/marketplace.json",
+    );
   });
 
   it("refuses traversal, empty segments, and other paths", () => {
@@ -58,6 +66,7 @@ describe("marketplaceObjectKey", () => {
     expect(marketplaceObjectKey("/marketplace/v1/../secrets")).toBe(null);
     expect(marketplaceObjectKey("/marketplace/v1/icons//a.svg")).toBe(null);
     expect(marketplaceObjectKey("/marketplace/v1/%2e%2e/secrets")).toBe(null);
+    expect(marketplaceObjectKey("/marketplace/v2/%2e%2e/secrets")).toBe(null);
     expect(marketplaceObjectKey("/marketplace/v1/icons/%broken.svg")).toBe(
       null,
     );

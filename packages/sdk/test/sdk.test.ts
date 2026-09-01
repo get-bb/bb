@@ -1492,6 +1492,8 @@ describe("@bb/sdk", () => {
       enabled: true,
       description: "Notes",
       name: "Notes",
+      screenshots: [],
+      collections: [],
       icon: null,
       iconUrl: null,
       status: "running" as const,

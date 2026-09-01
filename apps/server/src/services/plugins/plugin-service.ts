@@ -57,6 +57,7 @@ import {
   deleteInstalledPlugin,
   deletePluginSchedules,
   getInstalledPlugin,
+  getPluginMarketplace,
   listDuePluginSchedules,
   listInstalledPlugins,
   listPendingGitPluginArtifacts,
@@ -66,6 +67,13 @@ import {
   setInstalledPluginEnabled,
   type InstalledPluginRow,
 } from "@bb/db";
+import {
+  CURATED_MARKETPLACE_NAME,
+  entryScreenshotUrls,
+  marketplaceEntryCategory,
+  marketplaceEntryCollections,
+  parseMarketplaceManifestJson,
+} from "../plugin-catalog/marketplace-manifest.js";
 import {
   getLastThreadErrorMessage,
   getLastThreadOutput,
@@ -79,7 +87,10 @@ import {
   recoverInterruptedGitPluginPromotion,
 } from "./install-sources.js";
 import { readPluginManifest, type PluginManifest } from "./manifest.js";
-import { listBundledPluginRegistrations } from "./builtin-registry.js";
+import {
+  listBundledPluginRegistrations,
+  PLUGIN_CATALOG_CATEGORIES as LEGACY_PLUGIN_CATALOG_CATEGORIES,
+} from "./builtin-registry.js";
 import {
   type BbPluginApi,
   type PluginAgentConfigurationContext,
@@ -1188,6 +1199,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
         const cliRegistration = loadedPlugin?.handle.cli.registration;
         const identity =
           loadedPlugin === undefined ? identities.get(row.id) : undefined;
+        const catalogMetadata = installedCatalogMetadata(row);
         return {
           id: row.id,
           source: row.source,
@@ -1219,6 +1231,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
             identity?.manifest.description ??
             null,
           name: loadedPlugin?.manifest.name ?? identity?.manifest.name ?? null,
+          ...catalogMetadata,
           icon:
             loadedPlugin?.manifest.branding.icon ??
             identity?.manifest.branding.icon ??
@@ -1285,6 +1298,96 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
           ),
         };
       });
+  }
+
+  function installedCatalogMetadata(
+    row: InstalledPluginRow,
+  ): Pick<
+    PluginListEntry,
+    | "categoryId"
+    | "category"
+    | "screenshots"
+    | "collections"
+    | "publishedAt"
+    | "updatedAt"
+  > {
+    const empty = { screenshots: [], collections: [] };
+    if (row.catalogMarketplaceName === null || row.catalogEntryId === null) {
+      return empty;
+    }
+    const marketplace = getPluginMarketplace(
+      deps.db,
+      row.catalogMarketplaceName,
+    );
+    if (marketplace === undefined) return empty;
+    try {
+      const manifest = parseMarketplaceManifestJson(
+        marketplace.manifestJson,
+        `stored "${marketplace.name}" marketplace catalog`,
+      );
+      const entry = manifest.plugins.find(
+        (candidate) => candidate.id === row.catalogEntryId,
+      );
+      if (entry === undefined) return empty;
+      const category = marketplaceEntryCategory(manifest, entry);
+      const legacyCategory =
+        manifest.schemaVersion === 1
+          ? installedLegacyCategory(
+              entry.tags ?? [],
+              marketplace.name === CURATED_MARKETPLACE_NAME,
+            )
+          : undefined;
+      return {
+        ...(category === undefined
+          ? legacyCategory === undefined
+            ? {}
+            : { category: legacyCategory }
+          : { categoryId: category.id, category: category.displayName }),
+        screenshots: entryScreenshotUrls(
+          entry,
+          marketplace.sourceKind === "https"
+            ? { kind: "url", manifestUrl: marketplace.manifestUrl }
+            : { kind: "dir", root: marketplace.manifestUrl },
+        ),
+        collections: marketplaceEntryCollections(manifest, entry.id),
+        ...("publishedAt" in entry && typeof entry.publishedAt === "string"
+          ? { publishedAt: entry.publishedAt }
+          : {}),
+        ...("updatedAt" in entry && typeof entry.updatedAt === "string"
+          ? { updatedAt: entry.updatedAt }
+          : {}),
+      };
+    } catch {
+      return empty;
+    }
+  }
+
+  function installedLegacyCategory(
+    tags: readonly string[],
+    official: boolean,
+  ): string | undefined {
+    const first = tags[0];
+    if (first === undefined) return "Other";
+    if (!official) {
+      return first
+        .split("-")
+        .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+        .join(" ");
+    }
+    const normalized = new Map(
+      LEGACY_PLUGIN_CATALOG_CATEGORIES.map((category) => [
+        category
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/gu, "-")
+          .replace(/^-+|-+$/gu, ""),
+        category,
+      ]),
+    );
+    for (const tag of tags) {
+      const category = normalized.get(tag);
+      if (category !== undefined) return category;
+    }
+    return "Other";
   }
 
   return {

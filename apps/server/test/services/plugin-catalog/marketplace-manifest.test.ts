@@ -2,8 +2,11 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import {
+  entryScreenshotUrls,
   entryRepositoryUrl,
   entrySourceDisplay,
+  marketplaceEntryCategory,
+  marketplaceEntryCollections,
   parseMarketplaceManifest,
   resolveEntryIcon,
   resolvedEntrySource,
@@ -12,6 +15,7 @@ import {
 import { BUNDLED_CURATED_MARKETPLACE } from "../../../src/services/plugin-catalog/curated-marketplace.js";
 
 const MANIFEST_URL = "https://getbb.app/marketplace/v1/marketplace.json";
+const MANIFEST_V2_URL = "https://getbb.app/marketplace/v2/marketplace.json";
 
 const publishedSchemaShape = z.object({
   $defs: z.object({
@@ -65,6 +69,19 @@ function manifest(plugins: unknown[]): unknown {
   };
 }
 
+function manifestV2(
+  plugins: unknown[],
+  overrides: Record<string, unknown> = {},
+): unknown {
+  return {
+    schemaVersion: 2,
+    name: "bb-community",
+    displayName: "BB Community",
+    plugins,
+    ...overrides,
+  };
+}
+
 function parse(plugins: unknown[]) {
   return parseMarketplaceManifest(manifest(plugins), "manifest");
 }
@@ -76,8 +93,8 @@ function firstEntry(plugins: unknown[]): MarketplaceEntry {
 }
 
 describe("marketplace manifest schema", () => {
-  it("accepts a fully populated entry", () => {
-    const parsed = parse([
+  it("parses a fully populated v1 fixture without changes", () => {
+    const fixture = manifest([
       entry({
         icon: { url: "./icons/widgets.svg" },
         tags: ["interface", "threads"],
@@ -88,16 +105,125 @@ describe("marketplace manifest schema", () => {
         },
       }),
     ]);
-    expect(parsed.plugins).toHaveLength(1);
+    expect(parseMarketplaceManifest(fixture, "manifest")).toEqual(fixture);
   });
 
   it("rejects a schemaVersion it does not implement", () => {
     expect(() =>
       parseMarketplaceManifest(
-        { ...(manifest([entry()]) as object), schemaVersion: 2 },
+        { ...(manifest([entry()]) as object), schemaVersion: 3 },
         "manifest",
       ),
-    ).toThrow(/unknown schemaVersion 2/);
+    ).toThrow(/unknown schemaVersion 3/);
+  });
+
+  describe("version 2", () => {
+    it("parses all discovery fields", () => {
+      const parsed = parseMarketplaceManifest(
+        manifestV2(
+          [
+            entry({
+              category: "thread-content",
+              screenshots: ["./screenshots/widgets.png"],
+              publishedAt: "2026-08-20T11:47:04-07:00",
+              updatedAt: "2026-08-27T16:12:00Z",
+            }),
+          ],
+          {
+            categories: [
+              {
+                id: "thread-content",
+                displayName: "Document thread tools",
+                description: "Tools for an open thread.",
+              },
+            ],
+            collections: [
+              {
+                id: "new-and-notable",
+                displayName: "New & notable",
+                pluginIds: ["missing-plugin", "widgets"],
+              },
+            ],
+          },
+        ),
+        "manifest",
+      );
+      const parsedEntry = parsed.plugins[0];
+      if (parsedEntry === undefined) throw new Error("entry missing");
+      expect(marketplaceEntryCategory(parsed, parsedEntry)).toMatchObject({
+        id: "thread-content",
+        displayName: "Document thread tools",
+      });
+      expect(marketplaceEntryCollections(parsed, parsedEntry.id)).toEqual([
+        { id: "new-and-notable", rank: 0 },
+      ]);
+      expect(marketplaceEntryCollections(parsed, "missing-plugin")).toEqual([]);
+      expect(
+        entryScreenshotUrls(parsedEntry, {
+          kind: "url",
+          manifestUrl: MANIFEST_V2_URL,
+        }),
+      ).toEqual(["https://getbb.app/marketplace/v2/screenshots/widgets.png"]);
+    });
+
+    it("accepts omitted discovery fields and ignores unknown keys", () => {
+      const parsed = parseMarketplaceManifest(
+        manifestV2(
+          [
+            entry({
+              futureEntryField: true,
+              icon: { url: "./icons/widgets.svg", futureIconField: true },
+              author: { name: "Acme", futureAuthorField: true },
+              source: {
+                git: {
+                  url: "https://github.com/acme/plugins.git",
+                  ref: "v1.0.0",
+                  futureGitField: true,
+                },
+                futureSourceField: true,
+              },
+            }),
+          ],
+          { futureManifestField: true },
+        ),
+        "manifest",
+      );
+      expect(parsed).not.toHaveProperty("futureManifestField");
+      expect(parsed).not.toHaveProperty("categories");
+      expect(parsed).not.toHaveProperty("collections");
+      expect(parsed.plugins[0]).not.toHaveProperty("futureEntryField");
+      expect(parsed.plugins[0]?.icon).toEqual({ url: "./icons/widgets.svg" });
+      expect(parsed.plugins[0]?.author).toEqual({ name: "Acme" });
+      expect(parsed.plugins[0]?.source).toEqual({
+        git: {
+          url: "https://github.com/acme/plugins.git",
+          ref: "v1.0.0",
+        },
+      });
+    });
+
+    it("leaves an unknown category uncategorized", () => {
+      const parsed = parseMarketplaceManifest(
+        manifestV2([entry({ category: "unknown-category" })]),
+        "manifest",
+      );
+      const parsedEntry = parsed.plugins[0];
+      if (parsedEntry === undefined) throw new Error("entry missing");
+      expect(marketplaceEntryCategory(parsed, parsedEntry)).toBeUndefined();
+    });
+
+    it("uses a built-in category after document categories", () => {
+      const parsed = parseMarketplaceManifest(
+        manifestV2([entry({ category: "security" })], { categories: [] }),
+        "manifest",
+      );
+      const parsedEntry = parsed.plugins[0];
+      if (parsedEntry === undefined) throw new Error("entry missing");
+      expect(marketplaceEntryCategory(parsed, parsedEntry)).toMatchObject({
+        id: "security",
+        displayName: "Security",
+      });
+    });
   });
 
   it("rejects unknown fields anywhere in the document", () => {

@@ -5,20 +5,35 @@ import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { parseMarketplaceManifest } from "../../../src/services/plugin-catalog/marketplace-manifest.js";
 
-const SCHEMA_PATH = fileURLToPath(
-  new URL(
-    "../../../../web/public/schemas/marketplace.schema.json",
-    import.meta.url,
+const SCHEMA_PATHS = {
+  1: fileURLToPath(
+    new URL(
+      "../../../../web/public/schemas/marketplace.schema.json",
+      import.meta.url,
+    ),
   ),
-);
+  2: fileURLToPath(
+    new URL(
+      "../../../../web/public/schemas/marketplace-v2.schema.json",
+      import.meta.url,
+    ),
+  ),
+} as const;
 
 const publishedSchemaSchema = z.record(z.string(), z.unknown());
 
-async function compilePublishedSchema(): Promise<(value: unknown) => boolean> {
+async function compilePublishedSchema(
+  version: keyof typeof SCHEMA_PATHS,
+): Promise<(value: unknown) => boolean> {
   const schema = publishedSchemaSchema.parse(
-    JSON.parse(await readFile(SCHEMA_PATH, "utf8")),
+    JSON.parse(await readFile(SCHEMA_PATHS[version], "utf8")),
   );
-  return new Ajv2020({ strict: false }).compile(schema);
+  const ajv = new Ajv2020({ strict: false });
+  ajv.addFormat(
+    "date-time",
+    (value) => z.iso.datetime({ offset: true }).safeParse(value).success,
+  );
+  return ajv.compile(schema);
 }
 
 interface Fixture {
@@ -168,9 +183,105 @@ const fixtures: readonly Fixture[] = [
   },
 ];
 
+function manifestV2With(
+  entry: Record<string, unknown>,
+  manifestFields: Record<string, unknown> = {},
+): Record<string, unknown> {
+  return {
+    ...manifestWith(entry),
+    schemaVersion: 2,
+    ...manifestFields,
+  };
+}
+
+const v2Fixtures: readonly Fixture[] = [
+  {
+    label: "minimal v2 entry",
+    valid: true,
+    manifest: manifestV2With({}),
+  },
+  {
+    label: "all v2 fields",
+    valid: true,
+    manifest: manifestV2With(
+      {
+        category: "acme-tools",
+        screenshots: ["https://cdn.example.com/acme.webp"],
+        publishedAt: "2026-08-20T11:47:04-07:00",
+        updatedAt: "2026-08-27T16:12:00Z",
+      },
+      {
+        $schema: "https://getbb.app/schemas/marketplace-v2.schema.json",
+        categories: [
+          {
+            id: "acme-tools",
+            displayName: "Acme tools",
+            description: "Tools from Acme.",
+          },
+        ],
+        collections: [
+          {
+            id: "featured",
+            displayName: "Featured",
+            pluginIds: ["acme-plugin"],
+          },
+        ],
+      },
+    ),
+  },
+  {
+    label: "unknown v2 category reference",
+    valid: true,
+    manifest: manifestV2With({ category: "unknown-category" }),
+  },
+  {
+    label: "invalid v2 category pattern",
+    valid: false,
+    manifest: manifestV2With({ category: "Acme tools" }),
+  },
+  {
+    label: "too many screenshots",
+    valid: false,
+    manifest: manifestV2With({
+      screenshots: Array.from(
+        { length: 7 },
+        (_value, index) => `https://cdn.example.com/${index}.png`,
+      ),
+    }),
+  },
+  {
+    label: "http screenshot",
+    valid: false,
+    manifest: manifestV2With({
+      screenshots: ["http://cdn.example.com/acme.png"],
+    }),
+  },
+  {
+    label: "date without time or offset",
+    valid: false,
+    manifest: manifestV2With({ publishedAt: "2026-08-20" }),
+  },
+  {
+    label: "duplicate collection plugin id",
+    valid: false,
+    manifest: manifestV2With(
+      {},
+      {
+        collections: [
+          {
+            id: "featured",
+            displayName: "Featured",
+            pluginIds: ["acme-plugin", "acme-plugin"],
+          },
+        ],
+      },
+    ),
+  },
+];
+
 describe("published marketplace schema parity", () => {
   it("agrees with the runtime parser on every fixture", async () => {
-    const validate = await compilePublishedSchema();
+    const validate = await compilePublishedSchema(1);
 
     const disagreements = fixtures.flatMap((fixture) => {
       const published = validate(fixture.manifest);
@@ -190,25 +301,63 @@ describe("published marketplace schema parity", () => {
     expect(disagreements).toEqual([]);
   });
 
-  it("caps the entry count in both contracts", async () => {
-    const validate = await compilePublishedSchema();
-    const oversize = {
-      schemaVersion: 1,
-      name: "acme",
-      displayName: "Acme plugins",
-      plugins: Array.from({ length: 257 }, (_unused, index) => ({
-        id: `acme-plugin-${index}`,
-        displayName: "Acme",
-        description: "An Acme plugin.",
-        icon: "ZoomIn",
-        author: { name: "Acme" },
-        source: { npm: { package: `bb-plugin-acme-${index}` } },
-      })),
-    };
+  it("agrees with the v2 runtime parser on known fields", async () => {
+    const validate = await compilePublishedSchema(2);
+    const disagreements = v2Fixtures.flatMap((fixture) => {
+      const published = validate(fixture.manifest);
+      let runtime = true;
+      try {
+        parseMarketplaceManifest(fixture.manifest, "fixture");
+      } catch {
+        runtime = false;
+      }
+      return published === fixture.valid && runtime === fixture.valid
+        ? []
+        : [
+            `${fixture.label}: expected ${fixture.valid ? "valid" : "invalid"}, published schema said ${published}, runtime parser said ${runtime}`,
+          ];
+    });
 
-    expect(validate(oversize)).toBe(false);
-    expect(() => parseMarketplaceManifest(oversize, "fixture")).toThrow(
-      /at most 256 plugins/u,
+    expect(disagreements).toEqual([]);
+  });
+
+  it("keeps the v2 publisher strict and the consumer tolerant", async () => {
+    const validate = await compilePublishedSchema(2);
+    const manifest = manifestV2With(
+      {
+        futureEntryField: true,
+        author: { name: "Acme", futureAuthorField: true },
+      },
+      { futureManifestField: true },
     );
+
+    expect(validate(manifest)).toBe(false);
+    expect(parseMarketplaceManifest(manifest, "fixture")).toEqual(
+      manifestV2With({}),
+    );
+  });
+
+  it("caps the entry count in both contracts", async () => {
+    for (const version of [1, 2] as const) {
+      const validate = await compilePublishedSchema(version);
+      const oversize = {
+        schemaVersion: version,
+        name: "acme",
+        displayName: "Acme plugins",
+        plugins: Array.from({ length: 257 }, (_unused, index) => ({
+          id: `acme-plugin-${index}`,
+          displayName: "Acme",
+          description: "An Acme plugin.",
+          icon: "ZoomIn",
+          author: { name: "Acme" },
+          source: { npm: { package: `bb-plugin-acme-${index}` } },
+        })),
+      };
+
+      expect(validate(oversize)).toBe(false);
+      expect(() => parseMarketplaceManifest(oversize, "fixture")).toThrow(
+        /at most 256 plugins/u,
+      );
+    }
   });
 });

@@ -1,4 +1,7 @@
-const MARKETPLACE_PATH_PREFIX = "/marketplace/v1/";
+const MARKETPLACE_PATHS = [
+  { prefix: "/marketplace/v1/", objectPrefix: "" },
+  { prefix: "/marketplace/v2/", objectPrefix: "v2/" },
+] as const;
 
 const MANIFEST_CACHE_CONTROL = "public, max-age=300, must-revalidate";
 const ICON_CACHE_CONTROL = "public, max-age=31536000, immutable";
@@ -11,10 +14,13 @@ const CONTENT_TYPES: Record<string, string> = {
 };
 
 export function marketplaceObjectKey(pathname: string): string | null {
-  if (!pathname.startsWith(MARKETPLACE_PATH_PREFIX)) return null;
+  const route = MARKETPLACE_PATHS.find(({ prefix }) =>
+    pathname.startsWith(prefix),
+  );
+  if (route === undefined) return null;
   let key: string;
   try {
-    key = decodeURIComponent(pathname.slice(MARKETPLACE_PATH_PREFIX.length));
+    key = decodeURIComponent(pathname.slice(route.prefix.length));
   } catch {
     return null;
   }
@@ -24,7 +30,7 @@ export function marketplaceObjectKey(pathname: string): string | null {
   if (segments.some((segment) => segment.length === 0 || segment === "..")) {
     return null;
   }
-  return key;
+  return `${route.objectPrefix}${key}`;
 }
 
 function contentTypeFor(key: string): string {

@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { mkdir, readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { isDeepStrictEqual } from "node:util";
+import { PLUGIN_CATALOG_CATEGORIES as BUILTIN_DISCOVERY_CATEGORIES } from "@bb/domain";
 import {
   deletePluginMarketplace,
   getInstalledPlugin,
@@ -30,7 +31,7 @@ import type {
 import {
   builtinPluginSource,
   listBundledPluginRegistrations,
-  PLUGIN_CATALOG_CATEGORIES,
+  PLUGIN_CATALOG_CATEGORIES as LEGACY_PLUGIN_CATALOG_CATEGORIES,
   type BundledPluginRegistration,
 } from "../plugins/builtin-registry.js";
 import {
@@ -60,8 +61,12 @@ import {
   entryIconName,
   entryIconTinted,
   entryRepositoryUrl,
+  entryScreenshotUrls,
   entrySourceDisplay,
+  curatedMarketplaceManifestUrls,
   CURATED_MARKETPLACE_NAME,
+  marketplaceEntryCategory,
+  marketplaceEntryCollections,
   parseMarketplaceManifestJson,
   resolvedEntrySource,
   type MarketplaceEntry,
@@ -148,11 +153,17 @@ export function createPluginCatalogService(deps: {
     ...plugin,
     category: plugin.category ?? "Other",
   }));
+  const curatedManifestUrls = curatedMarketplaceManifestUrls(
+    deps.marketplaceUrl,
+  );
   const categoryOrder = new Map<string, number>(
-    PLUGIN_CATALOG_CATEGORIES.map((category, index) => [category, index]),
+    [
+      ...LEGACY_PLUGIN_CATALOG_CATEGORIES,
+      ...BUILTIN_DISCOVERY_CATEGORIES.map((category) => category.displayName),
+    ].map((category, index) => [category, index]),
   );
   const categoryByTag = new Map<string, string>(
-    PLUGIN_CATALOG_CATEGORIES.map((category) => [
+    LEGACY_PLUGIN_CATALOG_CATEGORIES.map((category) => [
       category
         .toLowerCase()
         .replace(/[^a-z0-9]+/gu, "-")
@@ -208,7 +219,7 @@ export function createPluginCatalogService(deps: {
     if (
       existing !== undefined &&
       existing.sourceKind === "https" &&
-      existing.manifestUrl === deps.marketplaceUrl
+      existing.manifestUrl === curatedManifestUrls.primary
     ) {
       try {
         parseMarketplaceManifestJson(
@@ -225,7 +236,7 @@ export function createPluginCatalogService(deps: {
     upsertPluginMarketplace(deps.db, {
       name: CURATED_MARKETPLACE_NAME,
       sourceKind: "https",
-      manifestUrl: deps.marketplaceUrl,
+      manifestUrl: curatedManifestUrls.primary,
       sourceGitRef: null,
       sourceGitCommit: null,
       manifestJson: JSON.stringify(BUNDLED_CURATED_MARKETPLACE),
@@ -352,6 +363,8 @@ export function createPluginCatalogService(deps: {
           : entryIconAssetUrl(CURATED_MARKETPLACE_NAME, entry.name, iconHash),
       iconTinted: iconHash !== null,
       category: entry.category,
+      screenshots: [],
+      collections: [],
       source: builtinPluginSource(entry.name),
       repositoryUrl: null,
       marketplace: CURATED_MARKETPLACE_NAME,
@@ -367,7 +380,10 @@ export function createPluginCatalogService(deps: {
     };
   }
 
-  function entryCategory(entry: MarketplaceEntry, official: boolean): string {
+  function legacyEntryCategory(
+    entry: MarketplaceEntry,
+    official: boolean,
+  ): string {
     const tags = entry.tags ?? [];
     if (official) {
       for (const tag of tags) {
@@ -410,6 +426,13 @@ export function createPluginCatalogService(deps: {
   }): PluginCatalogSearchResult {
     const { entry, row, catalog } = args;
     const official = row.name === CURATED_MARKETPLACE_NAME;
+    const category = marketplaceEntryCategory(catalog, entry);
+    const screenshots = entryScreenshotUrls(
+      entry,
+      row.sourceKind === "https"
+        ? { kind: "url", manifestUrl: row.manifestUrl }
+        : { kind: "dir", root: row.manifestUrl },
+    );
     return {
       entryId: entry.id,
       pluginId: entry.id,
@@ -417,7 +440,19 @@ export function createPluginCatalogService(deps: {
       description: entry.description,
       icon: entryIconName(entry),
       ...entryIconAsset(row.name, entry.id),
-      category: entryCategory(entry, official),
+      ...(catalog.schemaVersion === 1
+        ? { category: legacyEntryCategory(entry, official) }
+        : category === undefined
+          ? {}
+          : { categoryId: category.id, category: category.displayName }),
+      screenshots,
+      collections: marketplaceEntryCollections(catalog, entry.id),
+      ...("publishedAt" in entry && typeof entry.publishedAt === "string"
+        ? { publishedAt: entry.publishedAt }
+        : {}),
+      ...("updatedAt" in entry && typeof entry.updatedAt === "string"
+        ? { updatedAt: entry.updatedAt }
+        : {}),
       source: entrySourceDisplay(entry),
       repositoryUrl: entryRepositoryUrl(entry),
       marketplace: row.name,
@@ -465,7 +500,7 @@ export function createPluginCatalogService(deps: {
     }
     try {
       const stats = await fetchMarketplaceStats({
-        manifestUrl: row.manifestUrl,
+        manifestUrl: curatedManifestUrls.fallback ?? row.manifestUrl,
         fetch: fetchMarketplace,
       });
       return stats === null ? null : JSON.stringify(stats);
@@ -493,6 +528,11 @@ export function createPluginCatalogService(deps: {
       },
       stagingDir,
       fetch: fetchMarketplace,
+      ...(row.name === CURATED_MARKETPLACE_NAME &&
+      row.sourceKind === "https" &&
+      curatedManifestUrls.fallback !== null
+        ? { fallbackManifestUrl: curatedManifestUrls.fallback }
+        : {}),
     });
     try {
       if (materialized.catalog.name !== row.name) {
@@ -1068,7 +1108,7 @@ export function createPluginCatalogService(deps: {
               entry.pluginId,
               entry.result.displayName,
               entry.result.description,
-              entry.result.category,
+              entry.result.category ?? "",
               entry.result.marketplaceDisplayName,
               ...entry.tags,
             ]
@@ -1080,12 +1120,14 @@ export function createPluginCatalogService(deps: {
           const marketplaceDifference =
             left.marketplaceRank - right.marketplaceRank;
           if (marketplaceDifference !== 0) return marketplaceDifference;
+          const leftCategory = left.result.category ?? "";
+          const rightCategory = right.result.category ?? "";
           const categoryDifference =
-            (categoryOrder.get(left.result.category) ?? categoryOrder.size) -
-            (categoryOrder.get(right.result.category) ?? categoryOrder.size);
+            (categoryOrder.get(leftCategory) ?? categoryOrder.size) -
+            (categoryOrder.get(rightCategory) ?? categoryOrder.size);
           return (
             categoryDifference ||
-            left.result.category.localeCompare(right.result.category) ||
+            leftCategory.localeCompare(rightCategory) ||
             left.result.displayName.localeCompare(right.result.displayName)
           );
         })

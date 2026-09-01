@@ -18,6 +18,8 @@ const searchResult = {
   iconUrl: null,
   iconTinted: false,
   category: "Developer tools",
+  screenshots: [],
+  collections: [],
   source: "builtin:linear",
   repositoryUrl: null,
   marketplace: "bb-community",
@@ -81,6 +83,8 @@ const installedPlugin = {
   enabled: true,
   description: "Linear issue tools",
   name: "Linear",
+  screenshots: [],
+  collections: [],
   icon: null,
   iconUrl: null,
   status: "running",
@@ -117,6 +121,8 @@ describe("bb plugin catalog", () => {
 
     const output = collectLogPayloads(vi.mocked(console.log)).join("\n");
     expect(output).toContain("Linear issue tools");
+    expect(output).toContain("Category");
+    expect(output).toContain("Developer tools");
     expect(output).toContain("compatible");
     expect(output).not.toContain("Marketplace");
   });

@@ -13,6 +13,7 @@ import {
   type MarketplaceFetch,
 } from "./marketplace-http.js";
 import {
+  entryScreenshotUrls,
   parseMarketplaceManifest,
   parseMarketplaceManifestJson,
   type MarketplaceIconBase,
@@ -137,9 +138,15 @@ export async function materializeMarketplace(args: {
   } | null;
   stagingDir: string;
   fetch: MarketplaceFetch;
+  fallbackManifestUrl?: string;
 }): Promise<MaterializedMarketplace> {
   if (args.source.kind === "https") {
-    return materializeHttps(args.source, args.cached, args.fetch);
+    return materializeHttps(
+      args.source,
+      args.cached,
+      args.fetch,
+      args.fallbackManifestUrl,
+    );
   }
   if (args.source.kind === "path") {
     return materializeLocal(args.source.directory, null, async () => {});
@@ -155,18 +162,53 @@ async function materializeHttps(
     lastModified: string | null;
   } | null,
   fetchMarketplace: MarketplaceFetch,
+  fallbackManifestUrl: string | undefined,
 ): Promise<MaterializedMarketplace> {
-  const headers = new Headers({ accept: "application/json" });
-  if (cached?.etag != null) headers.set("if-none-match", cached.etag);
-  if (cached?.lastModified != null) {
-    headers.set("if-modified-since", cached.lastModified);
+  const cachedCatalog =
+    cached === null
+      ? null
+      : parseMarketplaceManifestJson(
+          cached.manifestJson,
+          "stored marketplace catalog",
+        );
+
+  async function requestManifest(
+    manifestUrl: string,
+    useCache: boolean,
+    preferJson: boolean,
+  ): Promise<Response> {
+    const headers = new Headers(
+      preferJson ? { accept: "application/json" } : undefined,
+    );
+    if (useCache && cached?.etag != null) {
+      headers.set("if-none-match", cached.etag);
+    }
+    if (useCache && cached?.lastModified != null) {
+      headers.set("if-modified-since", cached.lastModified);
+    }
+    return fetchMarketplace(manifestUrl, {
+      method: "GET",
+      headers,
+      redirect: "error",
+      signal: AbortSignal.timeout(MARKETPLACE_FETCH_TIMEOUT_MS),
+    });
   }
-  const response = await fetchMarketplace(source.manifestUrl, {
-    method: "GET",
-    headers,
-    redirect: "error",
-    signal: AbortSignal.timeout(MARKETPLACE_FETCH_TIMEOUT_MS),
-  });
+
+  let manifestUrl = source.manifestUrl;
+  let response = await requestManifest(
+    manifestUrl,
+    fallbackManifestUrl === undefined || cachedCatalog?.schemaVersion === 2,
+    fallbackManifestUrl === undefined,
+  );
+  if (response.status === 404 && fallbackManifestUrl !== undefined) {
+    await response.body?.cancel();
+    manifestUrl = fallbackManifestUrl;
+    response = await requestManifest(
+      manifestUrl,
+      cachedCatalog?.schemaVersion === 1,
+      true,
+    );
+  }
   const unchanged = response.status === 304 && cached !== null;
   if (!unchanged && !response.ok) {
     await response.body?.cancel();
@@ -192,6 +234,8 @@ async function materializeHttps(
     catalog = parseMarketplaceManifestJson(raw, "marketplace manifest");
     manifestJson = JSON.stringify(catalog);
   }
+  const iconBase = { kind: "url", manifestUrl } as const;
+  for (const entry of catalog.plugins) entryScreenshotUrls(entry, iconBase);
   return {
     catalog,
     manifestJson,
@@ -201,7 +245,7 @@ async function materializeHttps(
       response.headers.get("last-modified") ??
       (unchanged ? cached.lastModified : null),
     commit: null,
-    iconBase: { kind: "url", manifestUrl: source.manifestUrl },
+    iconBase,
     dispose: async () => {},
   };
 }
@@ -234,6 +278,8 @@ async function materializeLocal(
       JSON.parse(raw) as unknown,
       "marketplace manifest",
     );
+    const iconBase = { kind: "dir", root } as const;
+    for (const entry of catalog.plugins) entryScreenshotUrls(entry, iconBase);
     return {
       catalog,
       manifestJson: JSON.stringify(catalog),
@@ -241,7 +287,7 @@ async function materializeLocal(
       etag: null,
       lastModified: null,
       commit,
-      iconBase: { kind: "dir", root },
+      iconBase,
       dispose,
     };
   } catch (error) {

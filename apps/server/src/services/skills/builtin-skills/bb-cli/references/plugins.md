@@ -14,7 +14,8 @@
 - **BB plugin catalog** (store under `/api/v1/plugin-catalog`):
   - The store lists the **BB Community marketplace** catalog: a manifest
     the server re-reads at startup and every two hours from
-    `https://getbb.app/marketplace/v1/marketplace.json`
+    `https://getbb.app/marketplace/v2/marketplace.json`. A 404 response causes
+    one fallback request to `https://getbb.app/marketplace/v1/marketplace.json`
     (override with `BB_MARKETPLACE_URL`, which the server reads only at
     startup). Its entries install from their listed
     git or npm source through the normal install pipeline. A refresh only
@@ -22,7 +23,8 @@
     plugin code, and a failed refresh keeps the last catalog bb validated.
   - `bb plugin search <query> [--json]` — search the catalog by id,
     name, description, category, or tag; status shows installed / compatible /
-    requires newer bb. An **Installs** column appears once the curated
+    requires newer bb. The table includes a **Category** column. An
+    **Installs** column appears once the curated
     marketplace's `stats.json` sidecar has been read (`installs` in `--json`,
     null when unknown): anonymous-telemetry install counts for published
     entries.
@@ -35,6 +37,8 @@
     marketplace installs nothing.** The manifest's own `name` is the
     marketplace's identity, so a name collision is refused; `bb-community` is
     reserved and can be neither added nor removed.
+    A third-party manifest can use v1 or v2. The server serves its icons.
+    The detail page loads screenshots from the declared URLs.
   - `bb marketplace list [--json]` — name, source, entry count, last refresh.
   - `bb marketplace refresh [name] [--json]` — re-read one catalog or every
     one of them. Discovery metadata and icons only. A failed refresh keeps the

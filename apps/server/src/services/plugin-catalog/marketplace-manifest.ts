@@ -1,5 +1,12 @@
 import { join } from "node:path";
 import {
+  marketplaceEntryV2Schema as domainMarketplaceEntryV2Schema,
+  PLUGIN_CATALOG_CATEGORIES,
+  pluginMarketplaceCategorySchema,
+  pluginMarketplaceCollectionSchema,
+  type PluginMarketplaceCategory,
+} from "@bb/domain";
+import {
   CURATED_PLUGIN_MARKETPLACE_NAME,
   pluginMarketplaceNameSchema,
   ROOT_PLUGIN_SOURCE_SELECTION,
@@ -16,8 +23,15 @@ import {
   parsePluginSource,
 } from "../plugins/install-sources.js";
 
-const MARKETPLACE_SCHEMA_URL =
+export const MARKETPLACE_V1_SCHEMA_URL =
   "https://getbb.app/schemas/marketplace.schema.json";
+export const MARKETPLACE_V2_SCHEMA_URL =
+  "https://getbb.app/schemas/marketplace-v2.schema.json";
+
+export const CURATED_MARKETPLACE_V1_URL =
+  "https://getbb.app/marketplace/v1/marketplace.json";
+export const CURATED_MARKETPLACE_V2_URL =
+  "https://getbb.app/marketplace/v2/marketplace.json";
 
 export const CURATED_MARKETPLACE_NAME = CURATED_PLUGIN_MARKETPLACE_NAME;
 
@@ -211,7 +225,7 @@ const gitSourceSchema = z.union([
     .strict(),
 ]);
 
-const entrySchema = z
+const marketplaceEntryV1Schema = z
   .object({
     id: z.string().regex(NAME_PATTERN),
     displayName: z.string().min(1),
@@ -223,15 +237,49 @@ const entrySchema = z
   })
   .strict();
 
-const marketplaceManifestSchema = z
+function uniqueIds(
+  values: readonly { id: string }[],
+  ctx: z.RefinementCtx,
+): void {
+  const seen = new Set<string>();
+  values.forEach((value, index) => {
+    if (seen.has(value.id)) {
+      ctx.addIssue({
+        code: "custom",
+        path: [index, "id"],
+        message: `duplicate id "${value.id}"`,
+      });
+    }
+    seen.add(value.id);
+  });
+}
+
+const marketplaceEntryV2Schema = domainMarketplaceEntryV2Schema.superRefine(
+  (entry, ctx) => {
+    const {
+      category: _category,
+      screenshots: _screenshots,
+      publishedAt: _publishedAt,
+      updatedAt: _updatedAt,
+      ...v1Fields
+    } = entry;
+    const parsed = marketplaceEntryV1Schema.safeParse(v1Fields);
+    if (parsed.success) return;
+    for (const issue of parsed.error.issues) {
+      ctx.addIssue({ ...issue, path: [...issue.path] });
+    }
+  },
+);
+
+const marketplaceManifestV1Schema = z
   .object({
-    $schema: z.literal(MARKETPLACE_SCHEMA_URL).optional(),
+    $schema: z.literal(MARKETPLACE_V1_SCHEMA_URL).optional(),
     schemaVersion: z.literal(1),
     name: manifestNameSchema,
     displayName: z.string().min(1),
     description: z.string().min(1).optional(),
     plugins: z
-      .array(entrySchema)
+      .array(marketplaceEntryV1Schema)
       .max(
         MARKETPLACE_MAX_ENTRIES,
         `a marketplace may list at most ${MARKETPLACE_MAX_ENTRIES} plugins`,
@@ -252,8 +300,64 @@ const marketplaceManifestSchema = z
   })
   .strict();
 
-export type MarketplaceManifest = z.infer<typeof marketplaceManifestSchema>;
-export type MarketplaceEntry = MarketplaceManifest["plugins"][number];
+const marketplaceManifestV2Schema = z.object({
+  $schema: z.literal(MARKETPLACE_V2_SCHEMA_URL).optional(),
+  schemaVersion: z.literal(2),
+  name: manifestNameSchema,
+  displayName: z.string().min(1),
+  description: z.string().min(1).optional(),
+  categories: z
+    .array(pluginMarketplaceCategorySchema)
+    .superRefine(uniqueIds)
+    .optional(),
+  collections: z
+    .array(pluginMarketplaceCollectionSchema)
+    .superRefine(uniqueIds)
+    .optional(),
+  plugins: z
+    .array(marketplaceEntryV2Schema)
+    .max(
+      MARKETPLACE_MAX_ENTRIES,
+      `a marketplace may list at most ${MARKETPLACE_MAX_ENTRIES} plugins`,
+    )
+    .superRefine((entries, ctx) => uniqueIds(entries, ctx)),
+});
+
+export type MarketplaceManifestV1 = z.infer<typeof marketplaceManifestV1Schema>;
+export type MarketplaceManifestV2 = z.infer<typeof marketplaceManifestV2Schema>;
+export type MarketplaceManifest = MarketplaceManifestV1 | MarketplaceManifestV2;
+export type MarketplaceEntryV1 = MarketplaceManifestV1["plugins"][number];
+export type MarketplaceEntryV2 = MarketplaceManifestV2["plugins"][number];
+export type MarketplaceEntry = MarketplaceEntryV1 | MarketplaceEntryV2;
+
+export interface MarketplaceCollectionMembership {
+  id: string;
+  rank: number;
+}
+
+export function curatedMarketplaceManifestUrls(configuredUrl: string): {
+  primary: string;
+  fallback: string | null;
+} {
+  const url = new URL(configuredUrl);
+  if (url.pathname.endsWith("/marketplace/v1/marketplace.json")) {
+    const primary = new URL(url);
+    primary.pathname = primary.pathname.replace(
+      /\/marketplace\/v1\/marketplace\.json$/u,
+      "/marketplace/v2/marketplace.json",
+    );
+    return { primary: primary.toString(), fallback: url.toString() };
+  }
+  if (url.pathname.endsWith("/marketplace/v2/marketplace.json")) {
+    const fallback = new URL(url);
+    fallback.pathname = fallback.pathname.replace(
+      /\/marketplace\/v2\/marketplace\.json$/u,
+      "/marketplace/v1/marketplace.json",
+    );
+    return { primary: url.toString(), fallback: fallback.toString() };
+  }
+  return { primary: url.toString(), fallback: null };
+}
 
 export function parseMarketplaceManifest(
   input: unknown,
@@ -263,17 +367,56 @@ export function parseMarketplaceManifest(
     typeof input === "object" &&
     input !== null &&
     "schemaVersion" in input &&
-    input.schemaVersion !== 1
+    input.schemaVersion !== 1 &&
+    input.schemaVersion !== 2
   ) {
     throw new Error(
-      `invalid ${location}: unknown schemaVersion ${JSON.stringify(input.schemaVersion)}; supported value is 1`,
+      `invalid ${location}: unknown schemaVersion ${JSON.stringify(input.schemaVersion)}; supported values are 1 and 2`,
     );
   }
-  const parsed = marketplaceManifestSchema.safeParse(input);
+  const schema =
+    typeof input === "object" &&
+    input !== null &&
+    "schemaVersion" in input &&
+    input.schemaVersion === 2
+      ? marketplaceManifestV2Schema
+      : marketplaceManifestV1Schema;
+  const parsed = schema.safeParse(input);
   if (!parsed.success) {
     throw new Error(`invalid ${location}: ${formatIssues(parsed.error)}`);
   }
   return parsed.data;
+}
+
+export function marketplaceEntryCategory(
+  manifest: MarketplaceManifest,
+  entry: MarketplaceEntry,
+): PluginMarketplaceCategory | undefined {
+  if (manifest.schemaVersion !== 2 || !("category" in entry)) return undefined;
+  const categoryId = entry.category;
+  if (categoryId === undefined) return undefined;
+  const declared = manifest.categories?.find(
+    (category) => category.id === categoryId,
+  );
+  if (declared !== undefined) return declared;
+  return PLUGIN_CATALOG_CATEGORIES.find(
+    (category) => category.id === categoryId,
+  );
+}
+
+export function marketplaceEntryCollections(
+  manifest: MarketplaceManifest,
+  entryId: string,
+): MarketplaceCollectionMembership[] {
+  if (manifest.schemaVersion !== 2) return [];
+  const entryIds = new Set(manifest.plugins.map((entry) => entry.id));
+  if (!entryIds.has(entryId)) return [];
+  return (manifest.collections ?? []).flatMap((collection) => {
+    const rank = collection.pluginIds
+      .filter((candidate) => entryIds.has(candidate))
+      .indexOf(entryId);
+    return rank === -1 ? [] : [{ id: collection.id, rank }];
+  });
 }
 
 export function parseMarketplaceManifestJson(
@@ -293,6 +436,31 @@ export function parseMarketplaceManifestJson(
 
 export function entryIconName(entry: MarketplaceEntry): string | null {
   return typeof entry.icon === "string" ? entry.icon : null;
+}
+
+export function entryScreenshotUrls(
+  entry: MarketplaceEntry,
+  base: MarketplaceIconBase,
+): string[] {
+  if (!("screenshots" in entry) || entry.screenshots === undefined) return [];
+  return entry.screenshots.map((declared) => {
+    const absolute = /^[A-Za-z][A-Za-z0-9+.-]*:/u.test(declared);
+    if (!absolute && base.kind !== "url") {
+      throw new Error(
+        `relative screenshot URL ${JSON.stringify(declared)} requires an https marketplace manifest`,
+      );
+    }
+    const resolved = new URL(
+      declared,
+      base.kind === "url" ? base.manifestUrl : "https://marketplace.invalid/",
+    );
+    if (resolved.protocol !== "https:") {
+      throw new Error(
+        `screenshot URL ${JSON.stringify(declared)} resolves to a non-https URL`,
+      );
+    }
+    return resolved.toString();
+  });
 }
 
 export function entryIconTinted(contentType: string): boolean {
