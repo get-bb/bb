@@ -51,7 +51,7 @@ import { getThreadDisplayTitle } from "@/lib/thread-title";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { APP_OVERLAY_LAYER } from "@/components/ui/app-overlay-layers";
 import {
-  getCompactSecondaryPanelPresentation,
+  isCompactSecondaryPanelShelfShowing,
   subscribeCompactSecondaryPanelShelfShowing,
 } from "@/components/ui/secondary-panel-shelf-visibility";
 import { ProjectPathDialog } from "@/components/dialogs/ProjectPathDialog";
@@ -212,16 +212,13 @@ function SidebarTriggerOverlay({
   usesDesktopChrome,
 }: SidebarTriggerOverlayProps) {
   const isCompactViewport = useIsCompactViewport();
-  const compactSecondaryPanelPresentation = useSyncExternalStore(
+  const compactSecondaryPanelShelfShowing = useSyncExternalStore(
     subscribeCompactSecondaryPanelShelfShowing,
-    getCompactSecondaryPanelPresentation,
-    () => "closed",
+    isCompactSecondaryPanelShelfShowing,
+    () => false,
   );
   const shortcut = useAppCommandShortcut("sidebar.toggle");
-  if (
-    isCompactViewport &&
-    compactSecondaryPanelPresentation !== "closed"
-  ) {
+  if (isCompactViewport && compactSecondaryPanelShelfShowing) {
     return null;
   }
   const triggerProps = {

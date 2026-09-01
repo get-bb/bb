@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AppLayout } from "./AppLayout";
 import { APP_OVERLAY_LAYER } from "@/components/ui/app-overlay-layers";
 import {
-  setCompactSecondaryPanelPresentation,
+  setCompactSecondaryPanelShelfShowing,
 } from "@/components/ui/secondary-panel-shelf-visibility";
 
 const viewportState = vi.hoisted(() => ({ compact: false }));
@@ -167,12 +167,12 @@ function renderPluginPanelRoute(): void {
 describe("AppLayout plugin panel header", () => {
   beforeEach(() => {
     viewportState.compact = false;
-    setCompactSecondaryPanelPresentation("closed");
+    setCompactSecondaryPanelShelfShowing(false);
   });
 
   afterEach(() => {
     cleanup();
-    setCompactSecondaryPanelPresentation("closed");
+    setCompactSecondaryPanelShelfShowing(false);
     vi.clearAllMocks();
   });
 
@@ -198,13 +198,10 @@ describe("AppLayout plugin panel header", () => {
       String(APP_OVERLAY_LAYER.sidebarTrigger),
     );
 
-    act(() => setCompactSecondaryPanelPresentation("shelf"));
+    act(() => setCompactSecondaryPanelShelfShowing(true));
     expect(screen.queryByTestId("app-sidebar-trigger-overlay")).toBeNull();
 
-    act(() => setCompactSecondaryPanelPresentation("full"));
-    expect(screen.queryByTestId("app-sidebar-trigger-overlay")).toBeNull();
-
-    act(() => setCompactSecondaryPanelPresentation("closed"));
+    act(() => setCompactSecondaryPanelShelfShowing(false));
     expect(screen.getByTestId("app-sidebar-trigger-overlay")).not.toBeNull();
   });
 });
