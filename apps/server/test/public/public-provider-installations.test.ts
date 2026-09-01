@@ -2,6 +2,7 @@ import type {
   HostDaemonOnlineRpcRequestMessage,
   ProviderCliStatusResponse,
 } from "@bb/host-daemon-contract";
+import { systemProviderInfoSchema } from "@bb/server-contract";
 import { DEFAULT_BB_REQUEST_TIMEOUT_MS } from "@bb/sdk";
 import { validatePluginProviderDeclaration } from "@get-bb/plugin-sdk/internal/host-policy";
 import { describe, expect, it, vi } from "vitest";
@@ -18,6 +19,7 @@ const API = "/api/v1";
 function registerInstallationProviders(
   harness: TestAppHarness,
   providerIds: readonly string[],
+  visibility: "always" | "installed" = "always",
 ): void {
   const bridgeArtifact = harness.deps.pluginHostArtifacts.get("provider-acp");
   if (bridgeArtifact === undefined) {
@@ -33,7 +35,12 @@ function registerInstallationProviders(
         declaration: validatePluginProviderDeclaration({
           id: providerId,
           displayName: providerId,
-          maintenance: { health: false, usage: false, installation: true },
+          experimental_visibility: visibility,
+          maintenance: {
+            health: visibility === "installed",
+            usage: false,
+            installation: true,
+          },
           capabilities: {
             supportsServiceTier: false,
             supportsNativeUserQuestion: false,
@@ -86,6 +93,7 @@ function installationStatus(providerId: string) {
 
 function handleProviderInstallationRpc(
   request: HostDaemonOnlineRpcRequestMessage,
+  installed = false,
 ) {
   const { command } = request;
   if (command.type === "provider.health") {
@@ -94,7 +102,7 @@ function handleProviderInstallationRpc(
       result: {
         supported: true as const,
         health: {
-          status: "not_installed" as const,
+          status: installed ? ("ready" as const) : ("not_installed" as const),
           statusMessage: null,
           accountEmail: null,
           planLabel: null,
@@ -366,6 +374,62 @@ describe("public provider installation routes", () => {
       expect(await readJson(unsupported)).toMatchObject({
         code: "provider_installation_unavailable",
       });
+    });
+  });
+
+  it("refreshes an installed-only provider after a successful install", async () => {
+    await withTestHarness(async (harness) => {
+      registerInstallationProviders(
+        harness,
+        ["installable-agent"],
+        "installed",
+      );
+      const { host, session } = seedHostSession(harness.deps, {
+        id: "provider-installation-refresh-host",
+      });
+      let installed = false;
+      const responder = registerHostRpcResponder(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+        handle: (request) => {
+          if (request.command.type === "provider.installation.run") {
+            installed = true;
+          }
+          return handleProviderInstallationRpc(request, installed);
+        },
+      });
+      const listProviderIds = async (): Promise<string[]> => {
+        const response = await harness.app.request(
+          `${API}/system/providers?hostId=${host.id}`,
+        );
+        expect(response.status).toBe(200);
+        return systemProviderInfoSchema
+          .array()
+          .parse(await readJson(response))
+          .map((provider) => provider.id);
+      };
+      const installProvider = () =>
+        harness.app.request(`${API}/hosts/${host.id}/provider-clis/install`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            provider: "installable-agent",
+            actionKind: "install",
+          }),
+        });
+      const providerHealthRequests = () =>
+        responder.requests.filter(
+          (request) =>
+            request.command.type === "provider.health" &&
+            request.command.providerId === "installable-agent",
+        );
+
+      expect(await listProviderIds()).not.toContain("installable-agent");
+      const installResponse = await installProvider();
+      expect(installResponse.status).toBe(200);
+      expect(await installResponse.text()).toContain('"success":true');
+      expect(await listProviderIds()).toContain("installable-agent");
+      expect(providerHealthRequests()).toHaveLength(2);
     });
   });
 });
