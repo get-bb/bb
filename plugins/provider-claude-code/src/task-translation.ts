@@ -68,6 +68,15 @@ export function hasCompletionBlockingClaudeTasks(
   return false;
 }
 
+export function hasPendingClaudeTasks(tasks: ClaudeTaskMap): boolean {
+  for (const task of tasks.values()) {
+    if (!task.terminal) {
+      return true;
+    }
+  }
+  return false;
+}
+
 function buildClaudeTaskItemKey(taskId: string, generation: number): string {
   return generation > 1 ? `task:${taskId}#${generation}` : `task:${taskId}`;
 }

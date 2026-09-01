@@ -202,16 +202,15 @@ interface ClaudeSessionPermissionGrantCoverageArgs {
 
 interface ThreadSession {
   session: SdkSession;
-  sessionConstructionConfig: SessionConstructionConfig;
-  sessionOptions: SdkSessionOptions;
+  attachment: ThreadAttachment;
   sessionSerial: number;
   closing: boolean;
+  pendingForwardedToolCalls: number;
   restartBeforeNextTurnReason: string | null;
   recoveryHintRaisedThisTurn: "authRequired" | "rateLimited" | null;
   streamEnded: boolean;
   translator: ClaudeDeltaTranslator;
   pendingInteractiveRequests: Map<string | number, PendingInteractiveRequest>;
-  permissionEscalation: PermissionEscalation | null;
   permissionEscalationByAgentId: Map<string, PermissionEscalation | null>;
   permissionEscalationByPromptId: Map<string, PermissionEscalation | null>;
   permissionEscalationBySubagentParentToolUseId: Map<
@@ -219,6 +218,17 @@ interface ThreadSession {
     PermissionEscalation | null
   >;
   permissionEscalationByToolUseId: Map<string, PermissionEscalation | null>;
+}
+
+interface ThreadAttachment {
+  sessionConstructionConfig: SessionConstructionConfig;
+  sessionOptions: SdkSessionOptions;
+  closing: boolean;
+  residentSession: ThreadSession | null;
+  idleTimer: ReturnType<typeof setTimeout> | null;
+  residencyGeneration: number;
+  wakePromise: Promise<ThreadSession | undefined> | null;
+  permissionEscalation: PermissionEscalation | null;
   permissionMode: ClaudePermissionMode;
   liveSettings: ClaudeLiveSessionSettings;
   approvedPlanPermissionMode: ClaudePermissionMode;
@@ -227,7 +237,7 @@ interface ThreadSession {
   threadIdRef: ThreadIdRef;
 }
 
-interface CreateThreadSessionArgs {
+interface CreateThreadAttachmentArgs {
   permissionEscalation: PermissionEscalation | null;
   permissionMode: ClaudePermissionMode;
   liveSettings: ClaudeLiveSessionSettings;
@@ -274,14 +284,15 @@ type SessionConstructionParams =
   | ThreadForkParams;
 
 interface ReplaceThreadSessionArgs {
+  attachment: ThreadAttachment;
   providerThreadId: string;
-  replacementSession: ThreadSession;
   reason: string;
   threadId: string;
   threadSession: ThreadSession;
 }
 
 interface ReplaceThreadSessionBeforeNextTurnArgs {
+  attachment: ThreadAttachment;
   reason: string;
   threadId: string;
   threadSession: ThreadSession;
@@ -370,12 +381,13 @@ function requireSkillPluginsRoot(): string {
 }
 
 const THREAD_STOP_CLOSE_TIMEOUT_MS = 4_000;
+export const CLAUDE_IDLE_QUERY_GRACE_MS = 30_000;
 
 const { send, sendResult, sendError } = createBridgeIo<
   SdkMessageNotification | BridgeEventNotification | BridgeToolCallRequest
 >();
 
-const sessions = new Map<string, ThreadSession>();
+const threadAttachments = new Map<string, ThreadAttachment>();
 const closingSessions = new Map<string, Promise<void>>();
 const toolCallTracker = createPendingToolCallTracker({ sendToolCall: send });
 const { forwardToolCall, handleToolCallResponse } = toolCallTracker;
@@ -388,22 +400,96 @@ function resolvePendingSessionWork(
   resolvePendingInteractiveRequests(threadSession, message);
 }
 
+function cancelIdleQueryRelease(attachment: ThreadAttachment): void {
+  attachment.residencyGeneration += 1;
+  if (attachment.idleTimer !== null) {
+    clearTimeout(attachment.idleTimer);
+    attachment.idleTimer = null;
+  }
+}
+
+function isThreadSessionQuiescent(
+  threadSession: ThreadSession,
+  threadId: string,
+): boolean {
+  return (
+    !threadSession.translator.hasOpenSessionWork(threadId) &&
+    threadSession.pendingForwardedToolCalls === 0 &&
+    threadSession.pendingInteractiveRequests.size === 0
+  );
+}
+
+function scheduleIdleQueryRelease(
+  threadSession: ThreadSession,
+  threadId: string,
+): void {
+  const attachment = threadSession.attachment;
+  if (
+    attachment.closing ||
+    threadSession.closing ||
+    attachment.residentSession !== threadSession
+  ) {
+    return;
+  }
+  cancelIdleQueryRelease(attachment);
+  const generation = attachment.residencyGeneration;
+  attachment.idleTimer = setTimeout(() => {
+    attachment.idleTimer = null;
+    if (
+      attachment.closing ||
+      attachment.residencyGeneration !== generation ||
+      threadAttachments.get(threadId) !== attachment ||
+      attachment.residentSession !== threadSession ||
+      threadSession.closing
+    ) {
+      return;
+    }
+    if (!isThreadSessionQuiescent(threadSession, threadId)) {
+      scheduleIdleQueryRelease(threadSession, threadId);
+      return;
+    }
+    threadSession.closing = true;
+    attachment.residentSession = null;
+    attachment.residencyGeneration += 1;
+    threadSession.session.stop();
+  }, CLAUDE_IDLE_QUERY_GRACE_MS);
+}
+
+function refreshIdleQueryRelease(
+  threadSession: ThreadSession,
+  threadId: string,
+): void {
+  if (threadSession.attachment.idleTimer !== null) {
+    scheduleIdleQueryRelease(threadSession, threadId);
+  }
+}
+
 function createForwardToolCall(getThreadId: () => string): ToolCallForwarder {
   return (toolName, args) => {
     const threadId = getThreadId();
-    const threadSession = sessions.get(threadId);
-    if (!threadSession || threadSession.closing) {
+    const attachment = threadAttachments.get(threadId);
+    const threadSession = attachment?.residentSession;
+    if (
+      !attachment ||
+      attachment.closing ||
+      !threadSession ||
+      threadSession.closing
+    ) {
       return Promise.resolve({
         content: "Thread session not found",
         isError: true,
       });
     }
+    threadSession.pendingForwardedToolCalls += 1;
     return forwardToolCall({
       arguments: args,
-      providerThreadId: threadSession.providerThreadId ?? threadId,
+      providerThreadId: attachment.providerThreadId ?? threadId,
       scope: threadSession,
       threadId,
       toolName,
+    }).finally(() => {
+      threadSession.pendingForwardedToolCalls -= 1;
+      refreshIdleQueryRelease(threadSession, threadId);
     });
   };
 }
@@ -418,20 +504,34 @@ async function closeThreadSession(args: {
     return existingClose;
   }
 
-  const threadSession = sessions.get(args.threadId);
-  if (!threadSession) {
+  const attachment = threadAttachments.get(args.threadId);
+  if (!attachment) {
     return;
   }
 
-  threadSession.closing = true;
-  resolvePendingSessionWork(threadSession, args.message);
+  attachment.closing = true;
+  cancelIdleQueryRelease(attachment);
+  const threadSession = attachment.residentSession;
+  if (threadSession) {
+    threadSession.closing = true;
+    resolvePendingSessionWork(threadSession, args.message);
+  }
   const closePromise = Promise.resolve()
-    .then(() =>
-      closeClaudeThreadSession(threadSession, args.graceful !== false),
-    )
+    .then(async () => {
+      await attachment.wakePromise;
+      const residentSession = attachment.residentSession;
+      if (residentSession) {
+        residentSession.closing = true;
+        resolvePendingSessionWork(residentSession, args.message);
+        await closeClaudeThreadSession(
+          residentSession,
+          args.graceful !== false,
+        );
+      }
+    })
     .finally(() => {
-      if (sessions.get(args.threadId) === threadSession) {
-        sessions.delete(args.threadId);
+      if (threadAttachments.get(args.threadId) === attachment) {
+        threadAttachments.delete(args.threadId);
       }
       closingSessions.delete(args.threadId);
     });
@@ -441,7 +541,7 @@ async function closeThreadSession(args: {
 
 async function closeThreadSessionsGracefully(message: string): Promise<void> {
   await Promise.all(
-    Array.from(sessions.keys()).map((threadId) =>
+    Array.from(threadAttachments.keys()).map((threadId) =>
       closeThreadSession({ graceful: true, message, threadId }),
     ),
   );
@@ -563,7 +663,7 @@ async function applyLiveSessionSettings(
   threadId: string,
   next: ClaudeLiveSessionSettings,
 ): Promise<void> {
-  const current = threadSession.liveSettings;
+  const current = threadSession.attachment.liveSettings;
   if (current.model !== next.model) {
     await threadSession.session.setModel(next.model);
     seedModelContextWindowHint(threadSession, threadId, next.model);
@@ -587,7 +687,33 @@ async function applyLiveSessionSettings(
     });
   }
 
-  threadSession.liveSettings = next;
+  threadSession.attachment.liveSettings = next;
+}
+
+function applyDormantLiveSessionSettings(
+  attachment: ThreadAttachment,
+  next: ClaudeLiveSessionSettings,
+): void {
+  attachment.sessionOptions.model = next.model;
+  attachment.sessionOptions.effort =
+    next.reasoningLevel === undefined
+      ? undefined
+      : toSdkEffort(next.reasoningLevel);
+  const mutableSettings = buildMutableFlagSettings({
+    memoryEnabled: next.memoryEnabled,
+    reasoningLevel: next.reasoningLevel,
+    workflowsEnabled: next.workflowsEnabled,
+  });
+  const { effortLevel: _effortLevel, ...sessionSettings } = mutableSettings;
+  const currentSettings =
+    typeof attachment.sessionOptions.settings === "object"
+      ? attachment.sessionOptions.settings
+      : {};
+  attachment.sessionOptions.settings = {
+    ...currentSettings,
+    ...sessionSettings,
+  };
+  attachment.liveSettings = next;
 }
 
 const MODEL_LIST_MEMO_TTL_MS = 2 * 60_000;
@@ -644,6 +770,9 @@ function emitForSession(
     }
     if (delta.kind === "turn.boundary" || delta.kind === "session.reset") {
       threadSession.recoveryHintRaisedThisTurn = null;
+    }
+    if (delta.kind === "turn.boundary") {
+      scheduleIdleQueryRelease(threadSession, threadId);
     }
   }
 }
@@ -714,7 +843,7 @@ function emitSessionError(
     method: BRIDGE_NOTIFICATION_METHODS.error,
     params: {
       threadId,
-      providerThreadId: threadSession.providerThreadId ?? threadId,
+      providerThreadId: threadSession.attachment.providerThreadId ?? threadId,
       message,
     },
   });
@@ -828,7 +957,9 @@ function withTrackedPermissionEscalation(
     ...toSessionConstructionConfig(params).sessionOptions,
     ...toInitialLiveSessionSettings(params),
     getPermissionEscalation: (context) => {
-      const threadSession = sessions.get(threadIdRef.current);
+      const threadSession = threadAttachments.get(
+        threadIdRef.current,
+      )?.residentSession;
       return threadSession
         ? resolvePermissionEscalationForWork(threadSession, context)
         : null;
@@ -847,47 +978,18 @@ function seedModelContextWindowHint(
   threadSession.translator.setClaudeModelContextWindowHint(threadId, model);
 }
 
-function createThreadSession(args: CreateThreadSessionArgs): ThreadSession {
-  const sessionSerial = nextSessionSerial();
-  const session = new SdkSession(
-    args.sessionOptions,
-    createOnSdkMessage({
-      sessionSerial,
-      threadIdRef: args.threadIdRef,
-    }),
-    createOnSdkDone({
-      sessionSerial,
-      threadIdRef: args.threadIdRef,
-    }),
-  );
-
-  const translator = createClaudeDeltaTranslator({
-    cwd: args.sessionConstructionConfig.sessionOptions.cwd,
-  });
-  translator.configureInjectedTools(
-    (args.sessionConstructionConfig.dynamicTools ?? []).map((tool) => ({
-      name: tool.name,
-      ...(tool.presentation === undefined
-        ? {}
-        : { presentation: tool.presentation }),
-    })),
-  );
-  const threadSession: ThreadSession = {
-    session,
+function createThreadAttachment(
+  args: CreateThreadAttachmentArgs,
+): ThreadAttachment {
+  const attachment: ThreadAttachment = {
     sessionConstructionConfig: args.sessionConstructionConfig,
     sessionOptions: args.sessionOptions,
-    sessionSerial,
     closing: false,
-    restartBeforeNextTurnReason: null,
-    recoveryHintRaisedThisTurn: null,
-    streamEnded: false,
-    translator,
-    pendingInteractiveRequests: new Map(),
+    residentSession: null,
+    idleTimer: null,
+    residencyGeneration: 0,
+    wakePromise: null,
     permissionEscalation: args.permissionEscalation,
-    permissionEscalationByAgentId: new Map(),
-    permissionEscalationByPromptId: new Map(),
-    permissionEscalationBySubagentParentToolUseId: new Map(),
-    permissionEscalationByToolUseId: new Map(),
     permissionMode: args.permissionMode,
     liveSettings: args.liveSettings,
     approvedPlanPermissionMode: args.approvedPlanPermissionMode,
@@ -897,11 +999,74 @@ function createThreadSession(args: CreateThreadSessionArgs): ThreadSession {
     sessionPermissionGrants: [...(args.sessionPermissionGrants ?? [])],
     threadIdRef: args.threadIdRef,
   };
+  attachment.residentSession = createThreadSession(attachment);
+  return attachment;
+}
+
+function createThreadSession(attachment: ThreadAttachment): ThreadSession {
+  const sessionSerial = nextSessionSerial();
+  const session = new SdkSession(
+    attachment.sessionOptions,
+    createOnSdkMessage({
+      sessionSerial,
+      threadIdRef: attachment.threadIdRef,
+    }),
+    createOnSdkDone({
+      sessionSerial,
+      threadIdRef: attachment.threadIdRef,
+    }),
+  );
+
+  const translator = createClaudeDeltaTranslator({
+    cwd: attachment.sessionConstructionConfig.sessionOptions.cwd,
+  });
+  translator.configureInjectedTools(
+    (attachment.sessionConstructionConfig.dynamicTools ?? []).map((tool) => ({
+      name: tool.name,
+      ...(tool.presentation === undefined
+        ? {}
+        : { presentation: tool.presentation }),
+    })),
+  );
+  const threadSession: ThreadSession = {
+    session,
+    attachment,
+    sessionSerial,
+    closing: false,
+    pendingForwardedToolCalls: 0,
+    restartBeforeNextTurnReason: null,
+    recoveryHintRaisedThisTurn: null,
+    streamEnded: false,
+    translator,
+    pendingInteractiveRequests: new Map(),
+    permissionEscalationByAgentId: new Map(),
+    permissionEscalationByPromptId: new Map(),
+    permissionEscalationBySubagentParentToolUseId: new Map(),
+    permissionEscalationByToolUseId: new Map(),
+  };
   seedModelContextWindowHint(
     threadSession,
-    args.threadIdRef.current,
-    args.liveSettings.model,
+    attachment.threadIdRef.current,
+    attachment.liveSettings.model,
   );
+  return threadSession;
+}
+
+function startResidentThreadSession(
+  attachment: ThreadAttachment,
+  resumeProviderThreadId?: string,
+): ThreadSession {
+  const threadSession = attachment.residentSession;
+  if (!threadSession) {
+    throw new Error("Claude thread attachment has no resident session");
+  }
+  try {
+    threadSession.session.start(resumeProviderThreadId);
+  } catch (error) {
+    threadSession.closing = true;
+    attachment.residentSession = null;
+    throw error;
+  }
   return threadSession;
 }
 
@@ -940,7 +1105,7 @@ function resolvePermissionEscalationForWork(
     context.promptId,
   );
   return promptPermissionEscalation === undefined
-    ? threadSession.permissionEscalation
+    ? threadSession.attachment.permissionEscalation
     : promptPermissionEscalation;
 }
 
@@ -959,7 +1124,7 @@ function trackSdkAssistantPermissionEscalation(
   );
   const permissionEscalation =
     parentPermissionEscalation === undefined
-      ? threadSession.permissionEscalation
+      ? threadSession.attachment.permissionEscalation
       : parentPermissionEscalation;
 
   for (const content of message.message.content) {
@@ -989,7 +1154,9 @@ function buildPermissionEscalationTrackingHooks(
     ) {
       return { continue: true };
     }
-    const threadSession = sessions.get(threadIdRef.current);
+    const threadSession = threadAttachments.get(
+      threadIdRef.current,
+    )?.residentSession;
     if (threadSession) {
       threadSession.permissionEscalationByToolUseId.set(
         toolUseId,
@@ -1008,7 +1175,9 @@ function buildPermissionEscalationTrackingHooks(
     if (input.hook_event_name !== "PreToolUse") {
       return { continue: true };
     }
-    const threadSession = sessions.get(threadIdRef.current);
+    const threadSession = threadAttachments.get(
+      threadIdRef.current,
+    )?.residentSession;
     if (threadSession) {
       const permissionEscalation = resolvePermissionEscalationForWork(
         threadSession,
@@ -1030,7 +1199,7 @@ function buildPermissionEscalationTrackingHooks(
         );
       }
       if (
-        !threadSession.liveSettings.providerSubagentsEnabled &&
+        !threadSession.attachment.liveSettings.providerSubagentsEnabled &&
         CLAUDE_PROVIDER_SUBAGENT_TOOL_NAMES.has(input.tool_name)
       ) {
         return {
@@ -1044,7 +1213,7 @@ function buildPermissionEscalationTrackingHooks(
         };
       }
       if (
-        !threadSession.liveSettings.workflowsEnabled &&
+        !threadSession.attachment.liveSettings.workflowsEnabled &&
         input.tool_name === CLAUDE_WORKFLOW_TOOL_NAME
       ) {
         return {
@@ -1065,7 +1234,9 @@ function buildPermissionEscalationTrackingHooks(
     if (input.hook_event_name !== "SubagentStart") {
       return { continue: true };
     }
-    const threadSession = sessions.get(threadIdRef.current);
+    const threadSession = threadAttachments.get(
+      threadIdRef.current,
+    )?.residentSession;
     if (threadSession) {
       threadSession.permissionEscalationByAgentId.set(
         input.agent_id,
@@ -1081,9 +1252,9 @@ function buildPermissionEscalationTrackingHooks(
 
   const clearSubagent: HookCallback = async (input) => {
     if (input.hook_event_name === "SubagentStop") {
-      sessions
+      threadAttachments
         .get(threadIdRef.current)
-        ?.permissionEscalationByAgentId.delete(input.agent_id);
+        ?.residentSession?.permissionEscalationByAgentId.delete(input.agent_id);
     }
     return { continue: true };
   };
@@ -1094,9 +1265,11 @@ function buildPermissionEscalationTrackingHooks(
       input.hook_event_name === "PostToolUseFailure" ||
       input.hook_event_name === "PermissionDenied"
     ) {
-      sessions
+      threadAttachments
         .get(threadIdRef.current)
-        ?.permissionEscalationByToolUseId.delete(input.tool_use_id);
+        ?.residentSession?.permissionEscalationByToolUseId.delete(
+          input.tool_use_id,
+        );
     }
     return { continue: true };
   };
@@ -1165,7 +1338,7 @@ function buildTrackedSessionOptions(
   return sessionOptions;
 }
 
-function replaceThreadSession(args: ReplaceThreadSessionArgs): void {
+function replaceThreadSession(args: ReplaceThreadSessionArgs): ThreadSession {
   args.threadSession.closing = true;
   resolvePendingSessionWork(args.threadSession, args.reason);
   emitSessionReplacement({
@@ -1177,65 +1350,116 @@ function replaceThreadSession(args: ReplaceThreadSessionArgs): void {
   });
   args.threadSession.session.stop();
 
-  sessions.set(args.threadId, args.replacementSession);
-  args.replacementSession.session.start(args.providerThreadId);
+  const replacementSession = createThreadSession(args.attachment);
+  args.attachment.residentSession = replacementSession;
+  startResidentThreadSession(args.attachment, args.providerThreadId);
   sendThreadIdentity(args.threadId, args.providerThreadId);
   sendSessionReset(args.threadId);
+  return replacementSession;
 }
 
 function replaceThreadSessionBeforeNextTurn(
   args: ReplaceThreadSessionBeforeNextTurnArgs,
 ): ThreadSession | undefined {
   const providerThreadId =
-    args.threadSession.providerThreadId ??
+    args.attachment.providerThreadId ??
     args.threadSession.session.getSessionId();
   if (!providerThreadId) {
     return undefined;
   }
 
-  const replacementSession = createThreadSession({
-    liveSettings: args.threadSession.liveSettings,
-    permissionEscalation: args.threadSession.permissionEscalation,
-    permissionMode: args.threadSession.permissionMode,
-    approvedPlanPermissionMode: args.threadSession.approvedPlanPermissionMode,
+  args.attachment.providerThreadId = providerThreadId;
+  return replaceThreadSession({
+    attachment: args.attachment,
     providerThreadId,
-    sessionConstructionConfig: args.threadSession.sessionConstructionConfig,
-    sessionOptions: args.threadSession.sessionOptions,
-    sessionPermissionGrants: args.threadSession.sessionPermissionGrants,
-    threadIdRef: args.threadSession.threadIdRef,
-  });
-
-  replaceThreadSession({
-    providerThreadId,
-    replacementSession,
     reason: args.reason,
     threadId: args.threadId,
     threadSession: args.threadSession,
   });
-  return replacementSession;
 }
 
-function getWritableThreadSession(
+async function getWritableThreadSession(
   threadId: string,
   intent: "new-turn" | "steer",
-): ThreadSession | undefined {
-  const threadSession = sessions.get(threadId);
-  if (!threadSession || threadSession.closing) {
+): Promise<ThreadSession | undefined> {
+  const attachment = threadAttachments.get(threadId);
+  if (!attachment || attachment.closing) {
     return undefined;
   }
-  const replacementReason = threadSession.streamEnded
-    ? "Thread session replaced after Claude SDK stream ended"
-    : intent === "new-turn"
-      ? threadSession.restartBeforeNextTurnReason
-      : null;
-  if (replacementReason === null) {
+  cancelIdleQueryRelease(attachment);
+
+  const existingWake = attachment.wakePromise;
+  if (existingWake) {
+    return existingWake;
+  }
+
+  const threadSession = attachment.residentSession;
+  const replacementReason = !threadSession
+    ? "Claude query resumed after idle release"
+    : threadSession.streamEnded
+      ? "Thread session replaced after Claude SDK stream ended"
+      : intent === "new-turn"
+        ? threadSession.restartBeforeNextTurnReason
+        : null;
+  if (threadSession && replacementReason === null) {
     return threadSession;
   }
-  return replaceThreadSessionBeforeNextTurn({
-    reason: replacementReason,
-    threadId,
-    threadSession,
+
+  if (!threadSession && intent === "steer") {
+    return undefined;
+  }
+
+  const wakePromise = Promise.resolve().then(() => {
+    if (attachment.closing || threadAttachments.get(threadId) !== attachment) {
+      return undefined;
+    }
+
+    const currentSession = attachment.residentSession;
+    if (currentSession) {
+      const currentReason = currentSession.streamEnded
+        ? "Thread session replaced after Claude SDK stream ended"
+        : intent === "new-turn"
+          ? currentSession.restartBeforeNextTurnReason
+          : null;
+      return currentReason === null
+        ? currentSession
+        : replaceThreadSessionBeforeNextTurn({
+            attachment,
+            reason: currentReason,
+            threadId,
+            threadSession: currentSession,
+          });
+    }
+
+    const providerThreadId = attachment.providerThreadId;
+    if (!providerThreadId) {
+      return undefined;
+    }
+    const replacementSession = createThreadSession(attachment);
+    attachment.residentSession = replacementSession;
+    startResidentThreadSession(attachment, providerThreadId);
+    send({
+      jsonrpc: "2.0",
+      method: BRIDGE_NOTIFICATION_METHODS.sessionReplaced,
+      params: {
+        threadId,
+        providerThreadId,
+        reason: "Claude query resumed after idle release",
+        contextLost: false,
+      },
+    });
+    sendThreadIdentity(threadId, providerThreadId);
+    sendSessionReset(threadId);
+    return replacementSession;
   });
+  attachment.wakePromise = wakePromise;
+  try {
+    return await wakePromise;
+  } finally {
+    if (attachment.wakePromise === wakePromise) {
+      attachment.wakePromise = null;
+    }
+  }
 }
 
 function getAuthenticationFailureRestartReason(
@@ -1257,7 +1481,7 @@ function getAuthenticationFailureRestartReason(
 function getCurrentThreadSession(
   args: CurrentThreadSessionArgs,
 ): ThreadSession | undefined {
-  const threadSession = sessions.get(args.threadId);
+  const threadSession = threadAttachments.get(args.threadId)?.residentSession;
   if (
     !threadSession ||
     threadSession.closing ||
@@ -1280,9 +1504,9 @@ function createOnSdkMessage(
     const providerThreadId = message.session_id?.trim() ?? "";
     if (
       providerThreadId.length > 0 &&
-      threadSession.providerThreadId !== providerThreadId
+      threadSession.attachment.providerThreadId !== providerThreadId
     ) {
-      threadSession.providerThreadId = providerThreadId;
+      threadSession.attachment.providerThreadId = providerThreadId;
       sendThreadIdentity(args.threadIdRef.current, providerThreadId);
     }
     const authenticationFailureRestartReason =
@@ -1305,6 +1529,7 @@ function createOnSdkMessage(
         getAssistantMessageErrorText(message),
       );
     }
+    refreshIdleQueryRelease(threadSession, args.threadIdRef.current);
   };
 }
 
@@ -1335,9 +1560,10 @@ function createOnSdkDone(
 function findSessionByPendingInteractiveRequest(
   id: string | number,
 ): ThreadSession | undefined {
-  for (const session of sessions.values()) {
-    if (session.pendingInteractiveRequests.has(id)) {
-      return session;
+  for (const attachment of threadAttachments.values()) {
+    const threadSession = attachment.residentSession;
+    if (threadSession?.pendingInteractiveRequests.has(id)) {
+      return threadSession;
     }
   }
 
@@ -1513,7 +1739,9 @@ function createForwardInteractiveRequest(
 ): (args: ForwardInteractiveRequestArgs) => Promise<PermissionResult> {
   return (args) =>
     new Promise<PermissionResult>((resolve) => {
-      const threadSession = sessions.get(threadIdRef.current);
+      const threadSession = threadAttachments.get(
+        threadIdRef.current,
+      )?.residentSession;
       if (!threadSession) {
         resolve({
           behavior: "deny",
@@ -1540,6 +1768,7 @@ function createForwardInteractiveRequest(
       const finish = (result: PermissionResult): void => {
         args.signal.removeEventListener("abort", onAbort);
         resolve(result);
+        refreshIdleQueryRelease(threadSession, threadIdRef.current);
       };
 
       const onAbort = (): void => {
@@ -1586,7 +1815,9 @@ function createForwardUserQuestionRequest(
 ): (args: ForwardUserQuestionRequestArgs) => Promise<PermissionResult> {
   return (args) =>
     new Promise<PermissionResult>((resolve) => {
-      const threadSession = sessions.get(threadIdRef.current);
+      const threadSession = threadAttachments.get(
+        threadIdRef.current,
+      )?.residentSession;
       if (!threadSession) {
         resolve({
           behavior: "deny",
@@ -1602,6 +1833,7 @@ function createForwardUserQuestionRequest(
       const finish = (result: PermissionResult): void => {
         args.signal.removeEventListener("abort", onAbort);
         resolve(result);
+        refreshIdleQueryRelease(threadSession, threadIdRef.current);
       };
 
       const onAbort = (): void => {
@@ -1646,23 +1878,25 @@ async function enterPlanModeIfRequested(
 ): Promise<void> {
   if (
     params.claudeCodePermissionMode !== "plan" ||
-    threadSession.permissionMode === "plan"
+    threadSession.attachment.permissionMode === "plan"
   ) {
     return;
   }
   await threadSession.session.setPermissionMode("plan");
-  threadSession.permissionMode = "plan";
+  threadSession.attachment.permissionMode = "plan";
 }
 
 function restoreApprovedPlanPermissionMode(threadSession: ThreadSession): void {
   if (
-    threadSession.permissionMode === threadSession.approvedPlanPermissionMode
+    threadSession.attachment.permissionMode ===
+    threadSession.attachment.approvedPlanPermissionMode
   ) {
     return;
   }
-  threadSession.permissionMode = threadSession.approvedPlanPermissionMode;
+  threadSession.attachment.permissionMode =
+    threadSession.attachment.approvedPlanPermissionMode;
   void threadSession.session
-    .setPermissionMode(threadSession.approvedPlanPermissionMode)
+    .setPermissionMode(threadSession.attachment.approvedPlanPermissionMode)
     .catch((error: unknown) => {
       logBridgeError(
         `Failed to leave Plan mode: ${error instanceof Error ? error.message : String(error)}`,
@@ -1679,7 +1913,9 @@ function createCanUseTool(threadIdRef: ThreadIdRef): CanUseTool {
   return async (toolName, input, options) => {
     await new Promise<void>((resolve) => setImmediate(resolve));
 
-    const threadSession = sessions.get(threadIdRef.current);
+    const threadSession = threadAttachments.get(
+      threadIdRef.current,
+    )?.residentSession;
     if (!threadSession) {
       return {
         behavior: "deny",
@@ -1699,7 +1935,8 @@ function createCanUseTool(threadIdRef: ThreadIdRef): CanUseTool {
       }
       return forwardUserQuestionRequest({
         threadId: threadIdRef.current,
-        providerThreadId: threadSession.providerThreadId ?? threadIdRef.current,
+        providerThreadId:
+          threadSession.attachment.providerThreadId ?? threadIdRef.current,
         toolUseId: options.toolUseID,
         input: parsedInput.data,
         signal: options.signal,
@@ -1716,7 +1953,8 @@ function createCanUseTool(threadIdRef: ThreadIdRef): CanUseTool {
       }
       return forwardInteractiveRequest({
         threadId: threadIdRef.current,
-        providerThreadId: threadSession.providerThreadId ?? threadIdRef.current,
+        providerThreadId:
+          threadSession.attachment.providerThreadId ?? threadIdRef.current,
         toolName,
         toolUseId: options.toolUseID,
         input,
@@ -1762,7 +2000,7 @@ function createCanUseTool(threadIdRef: ThreadIdRef): CanUseTool {
     }
     if (
       hasClaudeSessionPermissionGrant({
-        grants: threadSession.sessionPermissionGrants,
+        grants: threadSession.attachment.sessionPermissionGrants,
         permissions: requestedPermissions,
         toolName,
       })
@@ -1777,8 +2015,8 @@ function createCanUseTool(threadIdRef: ThreadIdRef): CanUseTool {
 
     if (
       toolName === "Bash" &&
-      (threadSession.permissionMode === "default" ||
-        threadSession.permissionMode === "dontAsk")
+      (threadSession.attachment.permissionMode === "default" ||
+        threadSession.attachment.permissionMode === "dontAsk")
     ) {
       const updatedInput = buildReadonlyBashUpdatedInput(input);
       if (updatedInput) {
@@ -1802,7 +2040,7 @@ function createCanUseTool(threadIdRef: ThreadIdRef): CanUseTool {
       };
     }
 
-    if (threadSession.permissionMode === "bypassPermissions") {
+    if (threadSession.attachment.permissionMode === "bypassPermissions") {
       return {
         behavior: "allow",
         updatedInput: input,
@@ -1812,11 +2050,11 @@ function createCanUseTool(threadIdRef: ThreadIdRef): CanUseTool {
 
     if (
       shouldAutoDenyInteractiveRequest(interactiveRequestPolicy) ||
-      threadSession.permissionMode === "dontAsk"
+      threadSession.attachment.permissionMode === "dontAsk"
     ) {
       const policyMessage =
-        threadSession.permissionMode === "acceptEdits" ||
-        threadSession.permissionMode === "auto"
+        threadSession.attachment.permissionMode === "acceptEdits" ||
+        threadSession.attachment.permissionMode === "auto"
           ? buildWorkspaceWriteDenialMessage()
           : buildReadonlyDenialMessage();
       return {
@@ -1828,7 +2066,8 @@ function createCanUseTool(threadIdRef: ThreadIdRef): CanUseTool {
 
     return forwardInteractiveRequest({
       threadId: threadIdRef.current,
-      providerThreadId: threadSession.providerThreadId ?? threadIdRef.current,
+      providerThreadId:
+        threadSession.attachment.providerThreadId ?? threadIdRef.current,
       toolName,
       toolUseId: options.toolUseID,
       input,
@@ -1935,7 +2174,7 @@ async function handleThreadStart(
 ): Promise<void> {
   const threadIdRef = { current: params.threadId };
 
-  const existing = sessions.get(threadIdRef.current);
+  const existing = threadAttachments.get(threadIdRef.current);
   if (existing) {
     await closeThreadSession({
       graceful: false,
@@ -1958,7 +2197,7 @@ async function handleThreadStart(
     sessionOptions.allowedTools = getAllowedToolNames(params.dynamicTools);
   }
 
-  const threadSession = createThreadSession({
+  const attachment = createThreadAttachment({
     liveSettings: toInitialLiveSessionSettings(params),
     permissionEscalation: params.permissionEscalation,
     permissionMode: params.permissionMode,
@@ -1969,8 +2208,8 @@ async function handleThreadStart(
     sessionPermissionGrants: [],
     threadIdRef,
   });
-  sessions.set(threadIdRef.current, threadSession);
-  threadSession.session.start();
+  threadAttachments.set(threadIdRef.current, attachment);
+  startResidentThreadSession(attachment);
 
   sendThreadIdentity(threadIdRef.current, providerThreadId);
   sendSessionReset(threadIdRef.current);
@@ -1983,25 +2222,40 @@ async function handleThreadResume(
 ): Promise<void> {
   const threadId = params.threadId;
   const requestedProviderThreadId = params.providerThreadId ?? undefined;
+  if (requestedProviderThreadId === undefined) {
+    sendError(
+      id,
+      BRIDGE_JSON_RPC_ERRORS.INVALID_PARAMS,
+      "thread/resume requires a providerThreadId",
+    );
+    return;
+  }
   const sessionConstructionConfig = toSessionConstructionConfig(params);
 
-  const existing = sessions.get(threadId);
+  const existing = threadAttachments.get(threadId);
+  const existingSession = existing?.residentSession;
   if (
     existing &&
     requestedProviderThreadId &&
     !existing.closing &&
-    !existing.streamEnded &&
+    !existingSession?.streamEnded &&
     existing.providerThreadId === requestedProviderThreadId &&
     isDeepStrictEqual(
       existing.sessionConstructionConfig,
       sessionConstructionConfig,
     )
   ) {
-    await applyLiveSessionSettings(
-      existing,
-      params.threadId,
-      toInitialLiveSessionSettings(params),
-    );
+    const liveSettings = toInitialLiveSessionSettings(params);
+    if (existingSession) {
+      await applyLiveSessionSettings(
+        existingSession,
+        params.threadId,
+        liveSettings,
+      );
+      scheduleIdleQueryRelease(existingSession, threadId);
+    } else {
+      applyDormantLiveSessionSettings(existing, liveSettings);
+    }
     existing.permissionEscalation = params.permissionEscalation;
     sendResult(id, {
       providerThreadId: requestedProviderThreadId,
@@ -2011,14 +2265,14 @@ async function handleThreadResume(
   }
 
   if (existing) {
-    if (!existing.closing) {
+    if (!existing.closing && existingSession) {
       emitSessionReplacement({
         contextLost: false,
         providerThreadId: requestedProviderThreadId ?? null,
         reason:
           "Claude session restarted: construction-scoped settings changed",
         threadId,
-        threadSession: existing,
+        threadSession: existingSession,
       });
     }
     await closeThreadSession({
@@ -2040,7 +2294,7 @@ async function handleThreadResume(
     sessionOptions.mcpServers = { [BRIDGE_MCP_SERVER_NAME]: mcpServer };
     sessionOptions.allowedTools = getAllowedToolNames(params.dynamicTools);
   }
-  const threadSession = createThreadSession({
+  const attachment = createThreadAttachment({
     liveSettings: toInitialLiveSessionSettings(params),
     permissionEscalation: params.permissionEscalation,
     permissionMode: params.permissionMode,
@@ -2053,17 +2307,13 @@ async function handleThreadResume(
     sessionPermissionGrants: [],
     threadIdRef,
   });
-  sessions.set(threadId, threadSession);
-  threadSession.session.start(requestedProviderThreadId);
+  threadAttachments.set(threadId, attachment);
+  const residentSession = startResidentThreadSession(
+    attachment,
+    requestedProviderThreadId,
+  );
+  scheduleIdleQueryRelease(residentSession, threadId);
 
-  if (requestedProviderThreadId === undefined) {
-    sendError(
-      id,
-      BRIDGE_JSON_RPC_ERRORS.INVALID_PARAMS,
-      "thread/resume requires a providerThreadId",
-    );
-    return;
-  }
   sendThreadIdentity(threadId, requestedProviderThreadId);
   sendSessionReset(threadId);
   sendResult(id, {
@@ -2078,7 +2328,7 @@ async function handleThreadFork(
 ): Promise<void> {
   const threadId = params.threadId;
 
-  const existing = sessions.get(threadId);
+  const existing = threadAttachments.get(threadId);
   if (existing) {
     await closeThreadSession({
       graceful: false,
@@ -2114,7 +2364,7 @@ async function handleThreadFork(
     sessionOptions.mcpServers = { [BRIDGE_MCP_SERVER_NAME]: mcpServer };
     sessionOptions.allowedTools = getAllowedToolNames(params.dynamicTools);
   }
-  const threadSession = createThreadSession({
+  const attachment = createThreadAttachment({
     liveSettings: toInitialLiveSessionSettings(params),
     permissionEscalation: params.permissionEscalation,
     permissionMode: params.permissionMode,
@@ -2125,8 +2375,12 @@ async function handleThreadFork(
     sessionPermissionGrants: [],
     threadIdRef,
   });
-  sessions.set(threadId, threadSession);
-  threadSession.session.start(forkedProviderThreadId);
+  threadAttachments.set(threadId, attachment);
+  const residentSession = startResidentThreadSession(
+    attachment,
+    forkedProviderThreadId,
+  );
+  scheduleIdleQueryRelease(residentSession, threadId);
 
   sendThreadIdentity(threadId, forkedProviderThreadId);
   sendSessionReset(threadId);
@@ -2161,13 +2415,17 @@ async function runTurnStart(
     return;
   }
 
-  const threadSession = getWritableThreadSession(params.threadId, "new-turn");
+  const threadSession = await getWritableThreadSession(
+    params.threadId,
+    "new-turn",
+  );
   if (!threadSession) {
     sendError(id, -32000, "No active session");
     return;
   }
 
   if (!threadSession.session.canPushInput()) {
+    scheduleIdleQueryRelease(threadSession, params.threadId);
     sendError(id, -32000, "Claude SDK input stream is closed");
     return;
   }
@@ -2175,10 +2433,14 @@ async function runTurnStart(
     await applyLiveSessionSettings(
       threadSession,
       params.threadId,
-      withTurnLiveSessionSettings(threadSession.liveSettings, params),
+      withTurnLiveSessionSettings(
+        threadSession.attachment.liveSettings,
+        params,
+      ),
     );
     await enterPlanModeIfRequested(threadSession, params);
   } catch (error) {
+    scheduleIdleQueryRelease(threadSession, params.threadId);
     const message = error instanceof Error ? error.message : String(error);
     sendError(id, -32000, message);
     return;
@@ -2191,9 +2453,10 @@ async function runTurnStart(
       params.permissionEscalation,
     );
     emitCanonicalTurnInputAccepted(threadSession, acceptance, params.threadId);
-    threadSession.permissionEscalation = params.permissionEscalation;
+    threadSession.attachment.permissionEscalation = params.permissionEscalation;
     sendResult(id, { threadId: params.threadId });
   } catch (error) {
+    scheduleIdleQueryRelease(threadSession, params.threadId);
     const message = error instanceof Error ? error.message : String(error);
     sendError(id, -32000, message);
   }
@@ -2231,13 +2494,17 @@ async function runTurnSteer(
     return;
   }
 
-  const threadSession = getWritableThreadSession(params.threadId, "steer");
+  const threadSession = await getWritableThreadSession(
+    params.threadId,
+    "steer",
+  );
   if (!threadSession) {
     sendError(id, -32000, "No active session");
     return;
   }
 
   if (!threadSession.session.canPushInput()) {
+    scheduleIdleQueryRelease(threadSession, params.threadId);
     sendError(id, -32000, "Claude SDK input stream is closed");
     return;
   }
@@ -2245,10 +2512,14 @@ async function runTurnSteer(
     await applyLiveSessionSettings(
       threadSession,
       params.threadId,
-      withTurnLiveSessionSettings(threadSession.liveSettings, params),
+      withTurnLiveSessionSettings(
+        threadSession.attachment.liveSettings,
+        params,
+      ),
     );
     await enterPlanModeIfRequested(threadSession, params);
   } catch (error) {
+    scheduleIdleQueryRelease(threadSession, params.threadId);
     const message = error instanceof Error ? error.message : String(error);
     sendError(id, -32000, message);
     return;
@@ -2261,9 +2532,10 @@ async function runTurnSteer(
       params.permissionEscalation,
     );
     emitCanonicalTurnInputAccepted(threadSession, acceptance, params.threadId);
-    threadSession.permissionEscalation = params.permissionEscalation;
+    threadSession.attachment.permissionEscalation = params.permissionEscalation;
     sendResult(id, { threadId: params.threadId });
   } catch (error) {
+    scheduleIdleQueryRelease(threadSession, params.threadId);
     const message = error instanceof Error ? error.message : String(error);
     sendError(id, -32000, message);
   }
@@ -2306,10 +2578,10 @@ async function handleThreadStop(
   id: string | number,
   params: ThreadStopParams,
 ): Promise<void> {
-  const threadSession = sessions.get(params.threadId);
+  const threadSession = threadAttachments.get(params.threadId)?.residentSession;
   if (
     params.intent === "interrupt" &&
-    threadSession !== undefined &&
+    threadSession != null &&
     !threadSession.closing
   ) {
     sendThreadDeltas(
@@ -2408,7 +2680,7 @@ function handleParsedMessage(parsed: unknown): void {
       pending.kind === "permission_request" &&
       shouldCacheClaudeSessionPermission(interactiveResponse)
     ) {
-      threadSession.sessionPermissionGrants.push({
+      threadSession.attachment.sessionPermissionGrants.push({
         permissions: pending.permissions,
         toolName: pending.toolName,
       });

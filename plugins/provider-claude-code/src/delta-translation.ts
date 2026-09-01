@@ -57,6 +57,7 @@ import {
 import {
   hasCompletionBlockingClaudeTasks,
   buildInterruptedClaudeTaskDeltas,
+  hasPendingClaudeTasks,
   translateClaudeTaskMessage,
   type ClaudeTaskMap,
 } from "./task-translation.js";
@@ -1276,6 +1277,14 @@ export function createClaudeDeltaTranslator(
     return statesByThreadId.get(threadId)?.mirror.turnOpen === true;
   }
 
+  function hasOpenSessionWork(threadId: string): boolean {
+    const state = statesByThreadId.get(threadId);
+    return (
+      state?.mirror.turnOpen === true ||
+      (state !== undefined && hasPendingClaudeTasks(state.tasksById))
+    );
+  }
+
   function setClaudeModelContextWindowHint(
     threadId: string,
     model: string,
@@ -1288,6 +1297,7 @@ export function createClaudeDeltaTranslator(
     acceptInput,
     buildSessionSettlementDeltas,
     configureInjectedTools,
+    hasOpenSessionWork,
     hasOpenTurn,
     setClaudeModelContextWindowHint,
     translate,
