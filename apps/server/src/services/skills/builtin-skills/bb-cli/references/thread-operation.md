@@ -71,6 +71,9 @@
   agent can finish its current work first. Steer is especially important for a
   wrong direction, hard stop, or critical clarification.
   Example: `bb thread tell <thread-id> "Stop and use approach B" --mode steer`.
+- Input sent while a turn is starting stays queued with
+  `waitingOn.kind: "turn-starting"`. The `turn/started` event wakes it and
+  steers it into that turn. Do not resend it.
 - If the target thread is awaiting user interaction (an open question or
   approval), `bb thread tell` cannot interrupt it. The message joins the
   thread's queue with `waitingOn.kind: "interaction"` and dispatches once the

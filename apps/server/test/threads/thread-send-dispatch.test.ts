@@ -13,12 +13,16 @@ import {
   type Thread,
   type ThreadChangedMessage,
 } from "@bb/domain";
+import { groupHostDaemonEvents } from "@bb/host-daemon-contract";
 import { describe, expect, it, vi } from "vitest";
 import type { TelemetryService } from "../../src/services/system/telemetry.js";
 import { sendQueuedMessage } from "../../src/services/threads/queued-messages.js";
+import { queueParentSystemMessage } from "../../src/services/threads/parent-system-messages.js";
+import { acceptThreadSendRequest } from "../../src/services/threads/thread-send-request.js";
 import { handleUpdateEnvironmentDirectoryToolCall } from "../../src/services/threads/thread-environment-directory.js";
 import { sendThreadMessage } from "../../src/services/threads/thread-send.js";
 import {
+  internalAuthHeaders,
   listQueuedThreadCommands,
   reportQueuedCommandError,
   waitForQueuedCommand,
@@ -39,6 +43,7 @@ import { withTestHarness, type TestAppHarness } from "../helpers/test-app.js";
 
 interface IdleThreadFixture {
   environment: Environment;
+  sessionId: string;
   thread: Thread;
 }
 
@@ -54,7 +59,7 @@ interface SeedProviderThreadFixtureArgs extends SeedIdleThreadFixtureArgs {
 function seedProviderThreadFixture(
   args: SeedProviderThreadFixtureArgs,
 ): IdleThreadFixture {
-  const { host } = seedHostSession(args.harness.deps, {
+  const { host, session } = seedHostSession(args.harness.deps, {
     id: `host-send-dispatch-${args.value}`,
   });
   const { project } = seedProjectWithSource(args.harness.deps, {
@@ -78,13 +83,13 @@ function seedProviderThreadFixture(
     threadId: thread.id,
   });
 
-  return { environment, thread };
+  return { environment, sessionId: session.id, thread };
 }
 
 function seedColdIdleThreadFixture(
   args: SeedIdleThreadFixtureArgs,
 ): IdleThreadFixture {
-  const { host } = seedHostSession(args.harness.deps, {
+  const { host, session } = seedHostSession(args.harness.deps, {
     id: `host-send-dispatch-${args.value}`,
   });
   const { project } = seedProjectWithSource(args.harness.deps, {
@@ -103,7 +108,7 @@ function seedColdIdleThreadFixture(
     status: "idle",
   });
 
-  return { environment, thread };
+  return { environment, sessionId: session.id, thread };
 }
 
 function installTelemetryCaptureSpy(harness: TestAppHarness) {
@@ -291,6 +296,196 @@ describe("user message telemetry", () => {
       });
 
       expect(capture).not.toHaveBeenCalled();
+    });
+  });
+});
+
+describe("turn-starting queue wait", () => {
+  it("parks a steer until turn/started and then steers it into that turn", async () => {
+    await withTestHarness(async (harness) => {
+      const { sessionId, thread } = seedProviderThreadFixture({
+        harness,
+        status: "active",
+        value: 6,
+      });
+      const input = textInput("steer when ready");
+      const secondInput = textInput("also steer when ready");
+
+      await expect(
+        acceptThreadSendRequest(harness.deps, {
+          payload: {
+            input,
+            mode: "steer",
+            model: "gpt-5",
+            permissionMode: "full",
+            reasoningLevel: "medium",
+            serviceTier: "default",
+          },
+          thread,
+        }),
+      ).resolves.toMatchObject({
+        delivery: "queued",
+        waitingOn: { kind: "turn-starting" },
+      });
+      await expect(
+        acceptThreadSendRequest(harness.deps, {
+          payload: {
+            input: secondInput,
+            mode: "auto",
+            model: "gpt-5",
+            permissionMode: "full",
+            reasoningLevel: "medium",
+            serviceTier: "default",
+          },
+          thread,
+        }),
+      ).resolves.toMatchObject({
+        delivery: "queued",
+        waitingOn: { kind: "turn-starting" },
+      });
+      expect(
+        listQueuedThreadCommands(harness, "turn.submit", thread.id),
+      ).toHaveLength(0);
+
+      expect(
+        listQueuedThreadMessages(harness.db, thread.id).map((row) => ({
+          content: JSON.parse(row.content),
+          waitingOn: JSON.parse(row.waitingOn!),
+        })),
+      ).toEqual([
+        { content: input, waitingOn: { kind: "turn-starting" } },
+        { content: secondInput, waitingOn: { kind: "turn-starting" } },
+      ]);
+      const busy = seedQueuedMessage(harness.deps, {
+        content: textInput("wait for idle"),
+        threadId: thread.id,
+        waitingOn: { kind: "thread-busy" },
+      });
+
+      const response = await harness.app.request("/internal/session/events", {
+        method: "POST",
+        headers: internalAuthHeaders(harness),
+        body: JSON.stringify({
+          sessionId,
+          eventGroups: groupHostDaemonEvents([
+            {
+              threadId: thread.id,
+              event: {
+                type: "turn/started",
+                threadId: thread.id,
+                providerThreadId: "provider-send-dispatch-6",
+                scope: turnScope("turn-ready"),
+              },
+            },
+          ]),
+        }),
+      });
+      expect(response.status).toBe(200);
+
+      await vi.waitFor(() => {
+        expect(
+          listQueuedThreadCommands(harness, "turn.submit", thread.id),
+        ).toHaveLength(2);
+      });
+      expect(
+        listQueuedThreadCommands(harness, "turn.submit", thread.id),
+      ).toEqual([
+        expect.objectContaining({
+          input,
+          target: { mode: "auto", expectedTurnId: "turn-ready" },
+        }),
+        expect.objectContaining({
+          input: secondInput,
+          target: { mode: "auto", expectedTurnId: "turn-ready" },
+        }),
+      ]);
+      expect(
+        listQueuedThreadMessages(harness.db, thread.id).map((row) => row.id),
+      ).toEqual([busy.id]);
+      expect(
+        JSON.parse(
+          listQueuedThreadMessages(harness.db, thread.id)[0]!.waitingOn!,
+        ),
+      ).toEqual({ kind: "thread-busy" });
+    });
+  });
+
+  it("parks a parent system notice with its taxonomy while a turn starts", async () => {
+    await withTestHarness(async (harness) => {
+      const { sessionId, thread } = seedProviderThreadFixture({
+        harness,
+        status: "active",
+        value: 62,
+      });
+      const input = textInput("child finished");
+
+      await expect(
+        queueParentSystemMessage(harness.deps, {
+          input,
+          parentThreadId: thread.id,
+          systemMessageKind: "child-completed",
+          systemMessageSubject: {
+            kind: "thread",
+            threadId: "child-1",
+            threadName: "Child",
+          },
+        }),
+      ).resolves.toBe(true);
+
+      expect(
+        listQueuedThreadCommands(harness, "turn.submit", thread.id),
+      ).toHaveLength(0);
+      const parked = listQueuedThreadMessages(harness.db, thread.id)[0]!;
+      expect(JSON.parse(parked.content)).toEqual(input);
+      expect(JSON.parse(parked.waitingOn!)).toEqual({
+        kind: "turn-starting",
+      });
+      expect(JSON.parse(parked.systemNotice!)).toEqual({
+        kind: "child-completed",
+        subject: {
+          kind: "thread",
+          threadId: "child-1",
+          threadName: "Child",
+        },
+      });
+
+      const response = await harness.app.request("/internal/session/events", {
+        method: "POST",
+        headers: internalAuthHeaders(harness),
+        body: JSON.stringify({
+          sessionId,
+          eventGroups: groupHostDaemonEvents([
+            {
+              threadId: thread.id,
+              event: {
+                type: "turn/started",
+                threadId: thread.id,
+                providerThreadId: "provider-send-dispatch-62",
+                scope: turnScope("turn-system-notice-ready"),
+              },
+            },
+          ]),
+        }),
+      });
+      expect(response.status).toBe(200);
+
+      await vi.waitFor(() => {
+        expect(
+          listQueuedThreadCommands(harness, "turn.submit", thread.id),
+        ).toHaveLength(1);
+      });
+      expect(
+        listQueuedThreadCommands(harness, "turn.submit", thread.id),
+      ).toEqual([
+        expect.objectContaining({
+          input,
+          target: {
+            mode: "auto",
+            expectedTurnId: "turn-system-notice-ready",
+          },
+        }),
+      ]);
+      expect(listQueuedThreadMessages(harness.db, thread.id)).toEqual([]);
     });
   });
 });

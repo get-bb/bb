@@ -46,6 +46,7 @@ import {
   LIVE_DAEMON_COMMAND_TIMEOUT_MS,
   startLiveHostCommand,
 } from "../hosts/live-command.js";
+import { queueInputForStartingTurn } from "./thread-turn-starting.js";
 
 const PARENT_SYSTEM_MESSAGE_SOURCE = "tell";
 
@@ -243,6 +244,22 @@ async function queueActiveParentSystemMessage(
   args: QueueReadyParentSystemMessageArgs,
 ): Promise<boolean> {
   const expectedSteerTurnId = getActiveTurnId(deps, args.thread.id);
+  if (expectedSteerTurnId === null) {
+    queueInputForStartingTurn(deps, {
+      input: {
+        content: args.input,
+        execution: args.execution,
+        payload: { kind: "inline" },
+        senderThreadId: null,
+        systemNotice: {
+          kind: args.systemMessageKind,
+          subject: args.systemMessageSubject,
+        },
+      },
+      threadId: args.thread.id,
+    });
+    return true;
+  }
   const permissionEscalation = resolvePermissionEscalation({
     initiator: "system",
   });

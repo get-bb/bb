@@ -43,7 +43,7 @@ import {
 } from "./queue-waits.js";
 import { applyLoggedThreadLifecycleEventInTransaction } from "./lifecycle-outcome.js";
 import { buildExecutionOptions } from "./thread-commands.js";
-import { isManualCompactionActive } from "./thread-events.js";
+import { getActiveTurnId, isManualCompactionActive } from "./thread-events.js";
 import { requireThreadCommandEnvironment } from "./thread-command-environment.js";
 import {
   advanceThreadProvisioning,
@@ -326,6 +326,14 @@ async function runDispatchAttempt(
   }
   if (payload.mode !== "start" && isManualCompactionActive(deps, thread)) {
     return waitOn({ kind: "thread-busy" }, null);
+  }
+  const currentThread = getThread(deps.db, thread.id);
+  if (
+    currentThread?.status === "active" &&
+    resolveDispatchAttemptKind(currentThread, payload.mode) === "join-turn" &&
+    getActiveTurnId(deps, thread.id) === null
+  ) {
+    return waitOn({ kind: "turn-starting" }, null);
   }
   if (!firstDispatch && isPreStartThreadStatus(thread.status)) {
     // A follow-up or steer sent while the workspace is being (re)provisioned.

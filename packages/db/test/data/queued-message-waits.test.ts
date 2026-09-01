@@ -383,6 +383,7 @@ describe("wait lookups", () => {
     for (const kind of [
       "time",
       "thread-busy",
+      "turn-starting",
       "provisioning",
       "interaction",
       "plugin",

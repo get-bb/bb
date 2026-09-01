@@ -208,7 +208,10 @@ Messaging:
 
   Tell steers by default, delivering the message immediately into the active
   turn. Use --mode queue for non-urgent follow-ups that can wait until the agent
-  is free. A target that is awaiting user interaction (an open question or
+  is free; --mode auto steers a live turn and starts a new one on an idle
+  thread. Input sent while a turn is starting stays in the queue with
+  `waitingOn: turn-starting`; `turn/started` wakes it and steers it into that
+  turn. A target that is awaiting user interaction (an open question or
   approval) cannot take a prompt; tell then adds the message to the thread's
   queue and dispatches it once the interaction settles. That outcome is not a
   failure, so do not resend. `--json` reports `delivery` as `sent` or `queued`,

@@ -490,7 +490,7 @@ describe("message.dispatch hook admission visibility", () => {
         },
       });
       installHooks(registry);
-      const { thread } = seedRunnableThread(harness, {
+      const { environment, thread } = seedRunnableThread(harness, {
         hostId: "host-warm-admission",
         status: "idle",
       });
@@ -507,6 +507,12 @@ describe("message.dispatch hook admission visibility", () => {
       expect(listRunningThreads(harness.db).map((row) => row.id)).toEqual([
         thread.id,
       ]);
+      seedTurnStarted(harness.deps, {
+        environmentId: environment.id,
+        providerThreadId: "provider-host-warm-admission",
+        threadId: thread.id,
+        turnId: "turn-host-warm-admission",
+      });
 
       await acceptThreadSendRequest(harness.deps, {
         payload: { input: textInput("a steer"), mode: "steer" },

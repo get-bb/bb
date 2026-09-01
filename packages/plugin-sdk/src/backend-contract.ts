@@ -245,7 +245,8 @@ export interface PluginThreadEventPayloads {
   /**
    * Fired after a dispatch attempt is queued as a row — by a `message.dispatch`
    * hook's `wait` decision, by a `sendAt` in the future, or by a core wait (the
-   * thread is busy, provisioning, or awaiting an interaction).
+   * thread is busy, its turn is still starting, provisioning, or awaiting an
+   * interaction).
    *
    * Every listener sees every queued row, not just the ones it is holding: an
    * observer that only wants its own filters on

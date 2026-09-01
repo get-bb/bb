@@ -4,6 +4,7 @@ import {
   deriveStoredEventItemFields,
   getThread,
   listCompletedTurnsByThreadIds,
+  listQueuedThreadMessagesWaitingOnKind,
   listThreadEnvironmentAssignmentsOnHost,
   MissingStoredTurnStartedError,
   events as storedEvents,
@@ -39,7 +40,10 @@ import {
 } from "../services/system/event-pruning.js";
 import { queueChildThreadTurnNotificationBestEffort } from "../services/threads/child-thread-notifications.js";
 import { isParentNotifiableChildThread } from "../services/threads/thread-parent.js";
-import { runQueuedMessageAutoSendForThread } from "../services/threads/queued-messages.js";
+import {
+  runQueuedMessageAutoSendForThread,
+  sendQueuedMessage,
+} from "../services/threads/queued-messages.js";
 import { deferAfterResponse } from "../services/lib/response-deferral.js";
 import {
   isCommandTimeoutError,
@@ -194,9 +198,16 @@ interface QueuedMessageAutoSendFollowUp {
   threadId: string;
 }
 
+interface TurnStartingQueuedMessagesFollowUp {
+  kind: "turn-starting-queued-messages";
+  queuedMessageIds: string[];
+  threadId: string;
+}
+
 type EventEffectFollowUp =
   | ParentTurnNotificationFollowUp
-  | QueuedMessageAutoSendFollowUp;
+  | QueuedMessageAutoSendFollowUp
+  | TurnStartingQueuedMessagesFollowUp;
 
 function isRootTurnStartedEvent(
   event: Extract<HostDaemonEventEnvelope["event"], { type: "turn/started" }>,
@@ -358,10 +369,24 @@ async function applyEventEffects(
         ) {
           continue;
         }
-        if (hasThreadAlreadyStartedRun(deps, entry.threadId)) {
+        if (!isRootTurnStartedEvent(event)) {
           continue;
         }
-        if (!isRootTurnStartedEvent(event)) {
+        const queuedMessageIds = listQueuedThreadMessagesWaitingOnKind(
+          deps.db,
+          {
+            kind: "turn-starting",
+            threadId: entry.threadId,
+          },
+        ).map((row) => row.id);
+        if (queuedMessageIds.length > 0) {
+          followUps.push({
+            kind: "turn-starting-queued-messages",
+            queuedMessageIds,
+            threadId: entry.threadId,
+          });
+        }
+        if (hasThreadAlreadyStartedRun(deps, entry.threadId)) {
           continue;
         }
         applyLoggedThreadLifecycleEvent(deps, {
@@ -483,6 +508,27 @@ async function executeEventFollowUpBestEffort(
         await runQueuedMessageAutoSendForThread(deps, {
           threadId: followUp.threadId,
         });
+        return;
+      case "turn-starting-queued-messages":
+        for (const queuedMessageId of followUp.queuedMessageIds) {
+          try {
+            await sendQueuedMessage(deps, {
+              mode: "auto",
+              queuedMessageId,
+              sendNow: false,
+              threadId: followUp.threadId,
+            });
+          } catch (error) {
+            deps.logger.warn(
+              {
+                queuedMessageId,
+                threadId: followUp.threadId,
+                ...runtimeErrorLogFields(deps.config, error),
+              },
+              "Failed to dispatch a message waiting for its turn to start",
+            );
+          }
+        }
         return;
     }
   } catch (error) {

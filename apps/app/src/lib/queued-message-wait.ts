@@ -30,6 +30,7 @@ export function isQueuedMessageSendNowAllowed(
     case "provisioning":
     case "host-offline":
     case "interaction":
+    case "turn-starting":
       return false;
     case "time":
     case "plugin":
@@ -60,6 +61,8 @@ export function queuedMessageWaitIcon(args: {
   switch (args.waitingOn.kind) {
     case "thread-busy":
       return null;
+    case "turn-starting":
+      return "TimeSchedule";
     case "time":
       return "TimeSchedule";
     case "provisioning":
@@ -120,6 +123,8 @@ export function describeQueuedMessageWait(
   switch (args.waitingOn.kind) {
     case "thread-busy":
       return null;
+    case "turn-starting":
+      return "Waiting for turn to start";
     case "time":
       return args.sendAt === null
         ? "Scheduled"

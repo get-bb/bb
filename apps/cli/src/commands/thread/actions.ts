@@ -441,7 +441,10 @@ export function registerActionsCommands(
       "Reasoning level: low, medium, high, xhigh, max (provider-dependent)",
     )
     .option("--permission-mode <mode>", PERMISSION_MODE_HELP)
-    .option("--mode <mode>", "Message mode: steer (default), queue, or auto")
+    .option(
+      "--mode <mode>",
+      "Message mode: steer (default), queue, or auto (steer a live turn, else start one)",
+    )
     .option("--send-at <when>", SEND_AT_HELP)
     .option("--plan", PLAN_HELP)
     .option(
@@ -642,6 +645,8 @@ export function describeQueueWait(row: {
         : `scheduled for ${new Date(row.sendAt).toLocaleString()}`;
     case "thread-busy":
       return "waiting for the current turn to finish";
+    case "turn-starting":
+      return "waiting for the current turn to start";
     case "provisioning":
       return "waiting for the workspace";
     case "host-offline":

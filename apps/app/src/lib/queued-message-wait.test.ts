@@ -47,6 +47,9 @@ describe("describeQueuedMessageWait", () => {
   });
 
   it("names each core wait a reader cannot otherwise explain", () => {
+    expect(describeWait({ kind: "turn-starting" })).toBe(
+      "Waiting for turn to start",
+    );
     expect(describeWait({ kind: "provisioning" })).toBe(
       "Waiting for workspace",
     );
@@ -151,6 +154,7 @@ describe("queuedMessageWaitIcon", () => {
       });
 
     expect(icon({ kind: "time" })).toBe("TimeSchedule");
+    expect(icon({ kind: "turn-starting" })).toBe("TimeSchedule");
     expect(icon({ kind: "provisioning" })).toBe("Folder");
     expect(icon({ kind: "host-offline", hostName: "M4" })).toBe("CloudOff");
     expect(icon({ kind: "interaction" })).toBe("CircleQuestion");
@@ -206,6 +210,9 @@ describe("isQueuedMessageSendNowAllowed", () => {
       }),
     ).toBe(true);
     expect(isQueuedMessageSendNowAllowed({ kind: "thread-busy" })).toBe(true);
+    expect(isQueuedMessageSendNowAllowed({ kind: "turn-starting" })).toBe(
+      false,
+    );
     expect(isQueuedMessageSendNowAllowed(null)).toBe(true);
     expect(isQueuedMessageSendNowAllowed({ kind: "provisioning" })).toBe(false);
     expect(isQueuedMessageSendNowAllowed({ kind: "interaction" })).toBe(false);
