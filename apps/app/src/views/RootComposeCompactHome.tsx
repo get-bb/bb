@@ -97,7 +97,7 @@ export function RootComposeCompactHome({
       }
       scrollViewport.removeAttribute("data-scrollbar-scrolling");
     };
-  }, []);
+  }, [scrollViewportRef]);
 
   return (
     <div
