@@ -241,8 +241,16 @@ describe("Theme Preview", () => {
         expect(found).not.toBeNull();
         return found as HTMLElement;
       });
-      expect(within(welcome).getByRole("button", { name: /New thread Start a new conversation/i })).toBeDefined();
-      expect(within(welcome).getByRole("button", { name: /Learn what bb can do Get a tour/i })).toBeDefined();
+      expect(
+        within(welcome).getByRole("button", {
+          name: /New thread\s*Start a new conversation/i,
+        }),
+      ).toBeDefined();
+      expect(
+        within(welcome).getByRole("button", {
+          name: /Learn what bb can do\s*Get a tour/i,
+        }),
+      ).toBeDefined();
       expect(within(welcome).queryByText("What are we building?")).toBeNull();
 
       cleanup();
@@ -608,7 +616,9 @@ describe("Theme Preview", () => {
       expect(components?.style.rowGap).toBe("16px");
       expect(document.querySelector<HTMLElement>("[data-tp-button-grid]")?.style.gridTemplateColumns).toBe("repeat(3, minmax(0, 1fr))");
       for (const block of document.querySelectorAll<HTMLElement>("[data-tp-block=switch], [data-tp-block=checkbox]")) {
-        expect(block.style.paddingBlock).toBe("12px");
+        expect(block.style.paddingBlock).toBe(
+          "calc(var(--spacing, 0.25rem) * 3)",
+        );
         expect(block.style.paddingInline).toBe("");
         expect(block.querySelector<HTMLElement>("[data-tp-toggle-controls]")?.style.paddingInline).toBe("");
       }
@@ -735,10 +745,18 @@ describe("Theme Preview", () => {
       const ratios = await waitFor(() => {
         const found = document.querySelectorAll("[data-tp-contrast-ratio]");
         expect(found).toHaveLength(13);
+        expect(
+          document.querySelector(
+            "[data-tp-specimen='color:ink'] [data-tp-contrast-ratio]",
+          )?.textContent,
+        ).toMatch(/^\d+\.\d{2}:1$/);
+        expect(
+          document.querySelector(
+            "[data-tp-specimen='color:readback-foreground'] [data-tp-contrast-ratio]",
+          )?.textContent,
+        ).toMatch(/^\d+\.\d{2}:1$/);
         return found;
       });
-      expect(document.querySelector("[data-tp-specimen='color:ink'] [data-tp-contrast-ratio]")?.textContent).toMatch(/^\d+\.\d{2}:1$/);
-      expect(document.querySelector("[data-tp-specimen='color:readback-foreground'] [data-tp-contrast-ratio]")?.textContent).toMatch(/^\d+\.\d{2}:1$/);
       expect([...ratios].some((ratio) => ratio.textContent?.includes("Pass") || ratio.textContent?.includes("Fail"))).toBe(false);
       expect(sheet?.querySelector("[data-tp-validation]")).toBeNull();
       expect(slot.inspection.rpcCalls.map((call) => call.method)).toEqual(["themeCatalog"]);

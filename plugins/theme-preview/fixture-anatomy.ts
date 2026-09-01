@@ -143,7 +143,7 @@ export const VIEW_FIXTURE_ANCHORS = {
       because: "The Appearance projection uses BB's settings navigation hierarchy and selected-row state.",
     },
     {
-      file: "apps/app/src/components/settings/settings-nav.tsx",
+      file: "apps/app/src/components/settings/settings-sections.ts",
       mustContain: ['{ icon: "Palette", id: "appearance", label: "Appearance" }'],
       because: "The settings navigation keeps Appearance as a first-class BB settings destination.",
     },
