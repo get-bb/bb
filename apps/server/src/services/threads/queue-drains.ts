@@ -1,10 +1,10 @@
 import {
   getThread,
   listDueScheduledQueuedThreadMessages,
+  listQueuedThreadMessagePluginWaitRefs,
   listQueuedThreadMessagesByWaitHolder,
   listQueuedThreadMessagesWaitingOnKind,
-  listQueuedThreadMessagesWithPluginWait,
-  type QueuedThreadMessageRow,
+  listThreadIdsWithHostOfflineQueueWaits,
 } from "@bb/db";
 import {
   QUEUED_MESSAGE_PLUGIN_WAIT_HOLDER_PREFIX,
@@ -93,6 +93,30 @@ export function clearThreadQueueProvisioningWaits(
 }
 
 /**
+ * Host-reconnect drain: the release signal for `host-offline` waits. A drain
+ * whose dispatch arrived at a disconnected machine parked its row on that
+ * wait with no schedule — an offline host is not a clock — so the daemon
+ * socket opening for the machine is the one event that can move those rows,
+ * and this is where it does.
+ */
+export function drainThreadQueueOnHostReconnect(
+  deps: QueueDrainDeps,
+  hostId: string,
+): void {
+  for (const threadId of listThreadIdsWithHostOfflineQueueWaits(
+    deps.db,
+    hostId,
+  )) {
+    const cleared = clearThreadQueueWaitsOfKind(deps, {
+      threadId,
+      kind: "host-offline",
+    });
+    if (cleared === 0) continue;
+    requestThreadQueueDrain(deps, threadId, "host-reconnected");
+  }
+}
+
+/**
  * Interaction-settled drain. Replaces the `deferred_thread_messages` flush:
  * messages sent while the thread was awaiting an answer stop waiting here.
  */
@@ -157,9 +181,15 @@ export async function runDueScheduledQueueSweep(
   }
 }
 
+/** The columns a re-attempt needs; both sweeps act strictly by reference. */
+interface QueuedMessageDispatchRef {
+  id: string;
+  threadId: string;
+}
+
 async function dispatchDueQueuedMessage(
   deps: QueueDrainDeps,
-  row: QueuedThreadMessageRow,
+  row: QueuedMessageDispatchRef,
 ): Promise<void> {
   if (isDispatchRequeuedRecently(row.threadId)) {
     // This thread turned an attempt straight back into a queue moments ago.
@@ -196,7 +226,7 @@ async function dispatchDueQueuedMessage(
 
 async function clearDueWaitAndAttempt(
   deps: QueueDrainDeps,
-  row: QueuedThreadMessageRow,
+  row: QueuedMessageDispatchRef,
 ): Promise<void> {
   clearQueuedMessageWait(deps, {
     queuedMessageId: row.id,
@@ -250,17 +280,19 @@ export function requestQueueDrain(deps: QueueDrainDeps): void {
  * makes the request safe: no plugin has to decide whether its own release was
  * warranted, or whether it was the last thing a message was waiting on.
  *
- * Only plugin waits: core waits (`time`, `thread-busy`, `provisioning`,
- * `interaction`, `host-offline`) each have their own release signal and are
- * core's to clear. Rows are walked in queue order so a full pool drains in the
- * order it filled, and the existing re-queue pacing
+ * Only plugin waits: core waits each have their own release signal and are
+ * core's to clear — the due sweep for `time`, the idle drain for
+ * `thread-busy`, the workspace-ready drain for `provisioning`, the
+ * interaction-settled drain for `interaction`, and the host-reconnect drain
+ * for `host-offline`. Rows are walked in queue order so a full pool drains in
+ * the order it filled, and the existing re-queue pacing
  * (`isDispatchRequeuedRecently`, one second per thread) is what keeps a plugin
  * that re-queues everything from being re-asked in a loop.
  */
 export async function runRequestedQueueDrain(
   deps: QueueDrainDeps,
 ): Promise<void> {
-  for (const row of listQueuedThreadMessagesWithPluginWait(deps.db)) {
+  for (const row of listQueuedThreadMessagePluginWaitRefs(deps.db)) {
     if (isDispatchRequeuedRecently(row.threadId)) continue;
     const thread = getThread(deps.db, row.threadId);
     if (!thread || thread.deletedAt !== null) continue;
@@ -295,9 +327,8 @@ export async function runOrphanedQueueWaitSweep(
   plugins: QueueWaitPluginDirectory,
 ): Promise<void> {
   const threadIds = new Set<string>();
-  for (const row of listQueuedThreadMessagesWithPluginWait(deps.db)) {
+  for (const row of listQueuedThreadMessagePluginWaitRefs(deps.db)) {
     const holder = row.waitHolder;
-    if (holder === null) continue;
     const pluginId = holder.slice(
       QUEUED_MESSAGE_PLUGIN_WAIT_HOLDER_PREFIX.length,
     );

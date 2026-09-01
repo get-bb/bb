@@ -19,6 +19,7 @@ import {
   notifyDaemonEnvironmentChange,
   recordDaemonEnvironmentMetadataChange,
 } from "../internal/environment-changes.js";
+import { drainThreadQueueOnHostReconnect } from "../services/threads/queue-drains.js";
 import { runEventLoopWorkSync } from "../services/system/event-loop-work.js";
 import { decodeSocketPayload } from "./decode-payload.js";
 import type { PluginService } from "../services/plugins/plugin-service.js";
@@ -85,11 +86,11 @@ export function onDaemonSocketOpen(
     daemonSessionId: args.sessionId,
     hostId: args.hostId,
   });
-  // A dispatch that could not reach an absent host is waiting on the queue like
-  // any other blocked dispatch, and the periodic drain re-attempts it — so
-  // there is nothing host-specific to kick here. Reconnect used to release
-  // `core:host-offline` holds; the queue's own sweep covers the same case
-  // without a second queueing mechanism keyed to one signal.
+  // A dispatch that arrived while this machine was away parked its row on a
+  // `host-offline` wait with no schedule, so no sweep can see it — the
+  // machine coming back is that wait's release signal, and this socket
+  // opening is where core hears it.
+  drainThreadQueueOnHostReconnect(deps, args.hostId);
 }
 
 export function onDaemonSocketMessage(

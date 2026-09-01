@@ -1,7 +1,6 @@
 import {
   setQueuedThreadMessageFailureReason,
   setQueuedThreadMessageWaitingOn,
-  type QueuedThreadMessageRow,
 } from "@bb/db";
 import {
   QUEUED_MESSAGE_FAILURE_REASON_MAX_LENGTH,
@@ -37,8 +36,8 @@ export function describeDispatchFailure(error: unknown): string {
  * than by pattern-matching the error: if the thread's host has no live daemon
  * session *right now*, the attempt did not fail so much as arrive at a machine
  * that is not there, and the row re-queues on a `host-offline` wait that the
- * periodic drain will clear when the machine comes back. Any other failure is
- * recorded as the row's failure reason, leaving its existing wait alone —
+ * host-reconnect drain clears when the machine comes back. Any other failure
+ * is recorded as the row's failure reason, leaving its existing wait alone —
  * the row is still waiting on whatever it was waiting on, and what went wrong
  * last time is a different fact from what it is waiting for.
  *
@@ -48,7 +47,11 @@ export function describeDispatchFailure(error: unknown): string {
  */
 export function recordQueuedMessageDrainFailure(
   deps: QueueDrainFailureDeps,
-  args: { error: unknown; row: QueuedThreadMessageRow; thread: Thread },
+  args: {
+    error: unknown;
+    row: { id: string; threadId: string };
+    thread: Thread;
+  },
 ): void {
   const { host } = dispatchEnvironmentAndHost(deps, args.thread.environmentId);
   if (host !== null && host.status === "disconnected") {

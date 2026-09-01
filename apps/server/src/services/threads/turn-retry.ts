@@ -1,6 +1,16 @@
 import { listQueuedThreadMessages } from "@bb/db";
-import type { ClientTurnRequestId, Thread } from "@bb/domain";
-import type { RetryTurnRequest, RetryTurnResponse } from "@bb/server-contract";
+import { permissionModeSchema } from "@bb/domain";
+import type {
+  ClientTurnRequestId,
+  PermissionMode,
+  PromptInput,
+  Thread,
+} from "@bb/domain";
+import type {
+  RetryTurnRequest,
+  RetryTurnResponse,
+  SendMessageRequest,
+} from "@bb/server-contract";
 import { ApiError } from "../../errors.js";
 import type { LoggedPendingInteractionWorkSessionDeps } from "../../types.js";
 import { attemptDispatch } from "./dispatch-attempt.js";
@@ -99,24 +109,61 @@ const CONTINUE_ACCEPTED_TURN_TEXT = "Please continue.";
  * was, on the attempt that failed, using the same projection rule that has
  * always hidden system continuations.
  */
-function retryInputBlocks(
+function retryInput(
   deps: Pick<TurnRetryDeps, "db">,
   args: { threadId: string; failed: FailedTurnRecord },
-) {
+): { input: PromptInput[]; inputGroups?: PromptInput[][] } {
   if (wasFailedTurnInputAccepted(deps.db, args)) {
-    return [
-      {
-        type: "text" as const,
-        text: CONTINUE_ACCEPTED_TURN_TEXT,
-        mentions: [],
-        visibility: "agent-only" as const,
-      },
-    ];
+    return {
+      input: [
+        {
+          type: "text",
+          text: CONTINUE_ACCEPTED_TURN_TEXT,
+          mentions: [],
+          visibility: "agent-only",
+        },
+      ],
+    };
   }
-  return args.failed.request.input.map((block) => ({
+  const agentOnly = (block: PromptInput): PromptInput => ({
     ...block,
-    visibility: "agent-only" as const,
-  }));
+    visibility: "agent-only",
+  });
+  const groups = args.failed.request.inputGroups;
+  return {
+    input: args.failed.request.input.map(agentOnly),
+    ...(groups === undefined
+      ? {}
+      : { inputGroups: groups.map((group) => group.map(agentOnly)) }),
+  };
+}
+
+/**
+ * The failed attempt's own execution tuple, replayed explicitly.
+ *
+ * A retry re-runs a turn the user already sent, so it runs the way that turn
+ * ran — not the way the thread would resolve a NEW message today. Without
+ * this, a thread-level model override changed between the failure and the
+ * retry would silently swap the model under a turn nobody re-composed. A
+ * legacy-recorded permission mode that the request schema no longer accepts
+ * is the one field left to re-resolution.
+ */
+function retryExecution(failed: FailedTurnRecord): {
+  model: string;
+  reasoningLevel: SendMessageRequest["reasoningLevel"];
+  serviceTier: SendMessageRequest["serviceTier"];
+  permissionMode?: PermissionMode;
+} {
+  const { execution } = failed.request;
+  const permissionMode = permissionModeSchema.safeParse(
+    execution.permissionMode,
+  ).data;
+  return {
+    model: execution.model,
+    reasoningLevel: execution.reasoningLevel,
+    serviceTier: execution.serviceTier,
+    ...(permissionMode === undefined ? {} : { permissionMode }),
+  };
 }
 
 /**
@@ -129,6 +176,16 @@ function retryInputBlocks(
  * a rate-limit window respects a limiter that is at capacity instead of jumping
  * the queue. What the attempt carries is `retryInputBlocks`' decision.
  */
+/**
+ * Originals with a retry currently being decided in this process.
+ *
+ * The queued-row check below cannot see a concurrent call that has passed it
+ * but not yet written anything — two clients clicking Retry together would
+ * both dispatch. One failure earns one retry, so the second caller gets the
+ * same 409 a queued duplicate gets.
+ */
+const retriesInFlight = new Set<string>();
+
 export async function retryFailedTurn(
   deps: TurnRetryDeps,
   args: RetryFailedTurnArgs,
@@ -140,54 +197,64 @@ export async function retryFailedTurn(
   });
   const chain = retryChain(failed.request);
   const originalRequestId = chain.originalRequestId;
-  if (hasQueuedRetryFor(deps, { threadId: thread.id, originalRequestId })) {
+  const inFlightKey = `${thread.id}:${originalRequestId}`;
+  if (
+    retriesInFlight.has(inFlightKey) ||
+    hasQueuedRetryFor(deps, { threadId: thread.id, originalRequestId })
+  ) {
     throw new ApiError(
       409,
       "retry_already_queued",
       `Turn ${originalRequestId} already has a retry waiting on thread ${thread.id}.`,
     );
   }
-  const attempt = chain.attemptNumber + 1;
-  const outcome = await attemptDispatch(deps, {
-    thread,
-    payload: {
-      // A retry never steers: it re-runs a turn, so a thread that is busy again
-      // is something to wait behind rather than to interrupt.
-      mode: "queue-if-active",
-      input: retryInputBlocks(deps, { threadId: thread.id, failed }),
-      ...(request.sendAt === null ? {} : { sendAt: request.sendAt }),
-    },
-    source: { kind: "inline" },
-    queuePayload: {
-      kind: "retry",
-      retryOfTurnRequestId: originalRequestId,
-      attempt,
-      reason: request.reason,
-    },
-    retryOf: { requestId: originalRequestId, attempt },
-    origin: null,
-    originPluginId: null,
-    startedOnBehalfOf: null,
-    trigger: "user",
-  });
-  if (outcome.kind === "dispatched") {
+  retriesInFlight.add(inFlightKey);
+  try {
+    const attempt = chain.attemptNumber + 1;
+    const outcome = await attemptDispatch(deps, {
+      thread,
+      payload: {
+        // A retry never steers: it re-runs a turn, so a thread that is busy
+        // again is something to wait behind rather than to interrupt.
+        mode: "queue-if-active",
+        ...retryInput(deps, { threadId: thread.id, failed }),
+        ...retryExecution(failed),
+        ...(request.sendAt === null ? {} : { sendAt: request.sendAt }),
+      },
+      source: { kind: "inline" },
+      queuePayload: {
+        kind: "retry",
+        retryOfTurnRequestId: originalRequestId,
+        attempt,
+        reason: request.reason,
+      },
+      retryOf: { requestId: originalRequestId, attempt },
+      origin: null,
+      originPluginId: null,
+      startedOnBehalfOf: null,
+      trigger: "user",
+    });
+    if (outcome.kind === "dispatched") {
+      return {
+        ok: true,
+        delivery: "sent",
+        turnRequestId: originalRequestId,
+        attempt,
+      };
+    }
     return {
       ok: true,
-      delivery: "sent",
+      delivery: "queued",
       turnRequestId: originalRequestId,
       attempt,
+      queuedMessageId: outcome.entry.id,
+      // A queued row's `waitingOn` is null only when a drain cleared its wait
+      // and is about to re-attempt it — a state this row, just written by the
+      // attempt above, cannot be in. The fallback narrows the type honestly.
+      waitingOn: outcome.entry.waitingOn ?? { kind: "thread-busy" },
+      sendAt: outcome.entry.sendAt,
     };
+  } finally {
+    retriesInFlight.delete(inFlightKey);
   }
-  return {
-    ok: true,
-    delivery: "queued",
-    turnRequestId: originalRequestId,
-    attempt,
-    queuedMessageId: outcome.entry.id,
-    // A queued row always has a wait; `waitingOn` is nullable on the DTO only
-    // for rows written by the plain queue route before any attempt ran, which
-    // are ordinary "behind the running turn" rows.
-    waitingOn: outcome.entry.waitingOn ?? { kind: "thread-busy" },
-    sendAt: outcome.entry.sendAt,
-  };
 }

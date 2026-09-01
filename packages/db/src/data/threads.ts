@@ -1177,13 +1177,12 @@ export interface CountThreadsResult {
 }
 
 /**
- * `SELECT count(*)` over threads, optionally grouped.
- *
- * This exists because the concurrency-limiting gates the dispatch pipeline
- * serves must answer "how many are running" without materializing rows: a
- * `listThreads` + filter would page every matching thread into memory on every
- * single dispatch. The host filter and the `host` grouping both need the
+ * `SELECT count(*)` over threads, optionally grouped. Backs `bb thread count`,
+ * which answers "how many" in the database instead of paging threads into
+ * memory to count them. The host filter and the `host` grouping both need the
  * environment row, so they join it; every other shape reads `threads` alone.
+ * (Limiters do not use this: reconciling several pools needs the rows, which
+ * is `listRunningThreads`' job.)
  */
 export function countThreads(
   db: DbQueryConnection,
@@ -1896,10 +1895,11 @@ export interface SetThreadPendingStartContextInput {
  * Records (or clears) how a `pending` thread will be established.
  *
  * Deliberately not folded into the lifecycle transition that leaves `pending`:
- * the context is written when a first message QUEUES, which is not a transition
- * at all, and clearing it is a separate fact from the status change — a thread
- * that fails to start still wants its status moved without losing the context
- * a later attempt would start from.
+ * creation writes the context unconditionally BEFORE the first dispatch
+ * attempt — an attempt that queues is not a transition at all — and clearing
+ * it is a separate fact from the status change: a thread that fails to start
+ * still wants its status moved without losing the context a later attempt
+ * would start from.
  */
 export function setThreadPendingStartContext(
   db: ThreadWriteConnection,
@@ -1918,7 +1918,7 @@ export function setThreadPendingStartContext(
   );
 }
 
-/** The stored JSON, or null for a thread that never queued its first message. */
+/** The stored JSON; null once the thread was admitted, or never was pending. */
 export function getThreadPendingStartContext(
   db: DbQueryConnection,
   threadId: string,

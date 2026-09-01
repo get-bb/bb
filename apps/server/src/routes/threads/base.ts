@@ -3,7 +3,6 @@ import {
   THREAD_SEARCH_LIMIT_PER_GROUP_MAX,
   countNonDeletedAssignedChildThreads,
   countThreads,
-  listRunningThreads,
   getEnvironment,
   getThreadSectionById,
   listThreadMentionRowsByIds,
@@ -44,6 +43,7 @@ import {
   requirePublicProject,
   requirePublicThread,
 } from "../../services/lib/entity-lookup.js";
+import { listRunningThreadsWithIntendedHosts } from "../../services/threads/dispatch-attempt.js";
 import { dispatchThreadRenameCommand } from "../../services/threads/thread-commands.js";
 import {
   finalizeStoppedThread,
@@ -251,7 +251,7 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
 
   get(routes.running, (context) => {
     return context.json(
-      listRunningThreads(deps.db) satisfies ThreadRunningResponse,
+      listRunningThreadsWithIntendedHosts(deps) satisfies ThreadRunningResponse,
     );
   });
 

@@ -221,6 +221,44 @@ function collectLeadGroupIds(
   return ids;
 }
 
+/**
+ * A thread's live queue split into its groups: each maximal `groupWithNext`
+ * chain with a matching envelope, in queue order.
+ *
+ * Grouping is computed over ALL live rows, never over an eligibility-filtered
+ * subset. A filtered list has holes, and walking `groupWithNext` across a hole
+ * either splits a group (dispatching a tail without the head that a re-queue
+ * left waiting) or staples an unrelated later row onto it. Membership is one
+ * question, eligibility another; callers apply eligibility to whole groups.
+ */
+function partitionQueuedMessageGroups(
+  queuedMessages: readonly QueuedThreadMessageRow[],
+): QueuedThreadMessageRow[][] {
+  const groups: QueuedThreadMessageRow[][] = [];
+  let index = 0;
+  while (index < queuedMessages.length) {
+    const size = collectLeadGroupIds(queuedMessages.slice(index)).length;
+    groups.push(queuedMessages.slice(index, index + size));
+    index += size;
+  }
+  return groups;
+}
+
+/**
+ * The JS mirror of {@link drainableQueuedThreadMessage}'s wait condition, for
+ * deciding whole-group eligibility over rows already in hand. Kept next to a
+ * pointer at the SQL so the two cannot drift silently.
+ */
+function isIdleDrainableQueuedMessage(row: QueuedThreadMessageRow): boolean {
+  if (row.waitingOn === null) return true;
+  try {
+    const parsed = JSON.parse(row.waitingOn) as { kind?: unknown };
+    return parsed.kind === "thread-busy";
+  } catch {
+    return false;
+  }
+}
+
 function stringArraysEqual(
   left: readonly string[],
   right: readonly string[],
@@ -750,29 +788,30 @@ export function claimQueuedThreadMessageGroup(
         return null;
       }
 
-      // Grouping is computed over the DRAINABLE rows, because a group is a
-      // batch that dispatches together and a queued row cannot. Send-now on a
-      // queued row is therefore always a claim of that row alone, which is
-      // also the honest answer: the user asked for that message, not for
-      // whatever happens to sit next to it.
-      const queuedMessages = listDrainableQueuedThreadMessages(
-        tx,
-        existing.threadId,
-      );
-      const existingIndex = queuedMessages.findIndex(
-        (queuedMessage) => queuedMessage.id === id,
-      );
-
-      const ids =
-        existingIndex === 0
-          ? collectLeadGroupIds(queuedMessages)
-          : [existing.id];
-      if (existingIndex !== 0) {
+      // A group is a batch that dispatches together, so claiming its head
+      // claims all of it — including members still carrying a wait, because
+      // an explicit claim of the head (send-now, a due schedule, a cleared
+      // plugin wait) is a claim on the batch. Claiming a member that is NOT
+      // its group's head takes that row alone and severs its edges: the user
+      // asked for that message, not for whatever happens to sit around it.
+      const queuedMessages = listQueuedThreadMessages(tx, existing.threadId);
+      const group =
+        partitionQueuedMessageGroups(queuedMessages).find((rows) =>
+          rows.some((row) => row.id === id),
+        ) ?? null;
+      if (group === null) {
+        return null;
+      }
+      if (group[0]?.id !== id) {
         const now = Date.now();
         clearPreviousQueuedMessageGroupEdgeInTransaction(tx, existing, now);
         clearQueuedMessageGroupEdgeInTransaction(tx, existing, now);
+        return claimQueuedThreadMessageIdsInTransaction(tx, [existing.id]);
       }
-      return claimQueuedThreadMessageIdsInTransaction(tx, ids);
+      return claimQueuedThreadMessageIdsInTransaction(
+        tx,
+        group.map((row) => row.id),
+      );
     },
     { behavior: "immediate" },
   );
@@ -792,13 +831,22 @@ export function claimNextQueuedThreadMessageGroup(
 ): ClaimedQueuedThreadMessageRow[] | null {
   const claimedQueuedMessages = db.transaction(
     (tx) => {
-      const queuedMessages = listDrainableQueuedThreadMessages(tx, threadId);
-      if (queuedMessages.length === 0) {
+      // The idle drain takes the first group whose EVERY member it may act
+      // on. A group with one waiting member is skipped whole — dispatching
+      // its drainable tail alone would split a batch the sender composed as
+      // one prompt — and skipping it does not block the independent rows
+      // behind it: the queue is a queue, not a pipeline.
+      const queuedMessages = listQueuedThreadMessages(tx, threadId);
+      const group =
+        partitionQueuedMessageGroups(queuedMessages).find((rows) =>
+          rows.every(isIdleDrainableQueuedMessage),
+        ) ?? null;
+      if (group === null) {
         return null;
       }
       return claimQueuedThreadMessageIdsInTransaction(
         tx,
-        collectLeadGroupIds(queuedMessages),
+        group.map((row) => row.id),
       );
     },
     { behavior: "immediate" },
@@ -1277,25 +1325,6 @@ function drainableQueuedThreadMessage() {
   );
 }
 
-/**
- * A thread's drainable rows in queue order. This is what the claim paths read;
- * {@link listQueuedThreadMessages} keeps showing everything, because a queued
- * row is still on the user's queue even when no drain will touch it yet.
- */
-export function listDrainableQueuedThreadMessages(
-  db: DbQueryConnection,
-  threadId: string,
-): QueuedThreadMessageRow[] {
-  return db
-    .select()
-    .from(queuedThreadMessages)
-    .where(
-      and(eq(queuedThreadMessages.threadId, threadId), drainableQueuedThreadMessage()),
-    )
-    .orderBy(asc(queuedThreadMessages.sortKey), asc(queuedThreadMessages.id))
-    .all();
-}
-
 export interface ListQueuedThreadMessagesForApiArgs {
   threadId?: string;
   waitHolder?: QueuedMessageWaitHolder;
@@ -1574,9 +1603,10 @@ export function listDueScheduledQueuedThreadMessages(
 }
 
 /**
- * Every live row a given wait owner holds, in queue order. This is the query
- * `wait_holder` exists for: the orphan sweep asks it per uninstalled plugin,
- * and `bb provider-retry status` lists a holder's rows for the user.
+ * Every live row a given wait owner holds, in queue order. Asked when one
+ * plugin's waits must be cleared at once, on its disable or uninstall —
+ * clearing by holder is what `wait_holder`'s indexed equality lookup exists
+ * for.
  *
  * Ordered by `createdAt` for the same reason as
  * {@link listQueuedThreadMessagesWithPluginWait}: `id` is a random suffix, so
@@ -1604,6 +1634,13 @@ export function listQueuedThreadMessagesByWaitHolder(
     .all();
 }
 
+/** The columns the plugin-wait walkers act on; see the query below. */
+export interface QueuedThreadMessagePluginWaitRef {
+  id: string;
+  threadId: string;
+  waitHolder: QueuedMessageWaitHolder;
+}
+
 /**
  * Every live row on SOME plugin's wait, across every thread, in queue order.
  *
@@ -1611,6 +1648,10 @@ export function listQueuedThreadMessagesByWaitHolder(
  * are loaded, rather than asking per plugin: the set of holders is not known
  * up front (it is whichever plugins happen to be holding something), and the
  * partial wait index covers exactly these rows, so one range scan answers it.
+ *
+ * Deliberately a projection, not full rows: both walkers only clear waits or
+ * re-attempt by id, so returning prompt bodies here would ship every held
+ * message's content on a ten-second timer for nothing.
  *
  * Ordered by `createdAt` and NOT by `id`: row ids are random suffixes, so
  * sorting by them is sorting by nothing. It matters because the requested
@@ -1620,11 +1661,15 @@ export function listQueuedThreadMessagesByWaitHolder(
  * thread's own rows and are meaningless between threads; it breaks a
  * same-millisecond tie within one thread, and `id` makes the sort total.
  */
-export function listQueuedThreadMessagesWithPluginWait(
+export function listQueuedThreadMessagePluginWaitRefs(
   db: DbQueryConnection,
-): QueuedThreadMessageRow[] {
+): QueuedThreadMessagePluginWaitRef[] {
   return db
-    .select()
+    .select({
+      id: queuedThreadMessages.id,
+      threadId: queuedThreadMessages.threadId,
+      waitHolder: queuedThreadMessages.waitHolder,
+    })
     .from(queuedThreadMessages)
     .where(
       and(
@@ -1637,7 +1682,10 @@ export function listQueuedThreadMessagesWithPluginWait(
       asc(queuedThreadMessages.sortKey),
       asc(queuedThreadMessages.id),
     )
-    .all();
+    .all()
+    .flatMap((row) =>
+      row.waitHolder === null ? [] : [{ ...row, waitHolder: row.waitHolder }],
+    );
 }
 
 /**
@@ -1662,6 +1710,34 @@ export function listQueuedThreadMessagesWaitingOnKind(
     )
     .orderBy(asc(queuedThreadMessages.sortKey), asc(queuedThreadMessages.id))
     .all();
+}
+
+/**
+ * Threads on one host with live rows parked on a `host-offline` wait.
+ *
+ * Joined through the thread's environment by host ID rather than matched on
+ * the wait's stored `hostName`: the name on the wait is display text captured
+ * at failure time, and a renamed host would orphan every row that matched on
+ * it.
+ */
+export function listThreadIdsWithHostOfflineQueueWaits(
+  db: DbQueryConnection,
+  hostId: string,
+): string[] {
+  return db
+    .selectDistinct({ threadId: queuedThreadMessages.threadId })
+    .from(queuedThreadMessages)
+    .innerJoin(threads, eq(threads.id, queuedThreadMessages.threadId))
+    .innerJoin(environments, eq(environments.id, threads.environmentId))
+    .where(
+      and(
+        eq(environments.hostId, hostId),
+        sql`json_extract(${queuedThreadMessages.waitingOn}, '$.kind') = 'host-offline'`,
+        liveQueuedThreadMessage(),
+      ),
+    )
+    .all()
+    .map((row) => row.threadId);
 }
 
 export function deleteQueuedThreadMessage(

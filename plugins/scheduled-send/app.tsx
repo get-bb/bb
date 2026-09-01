@@ -9,8 +9,8 @@
 // plugin-side `threads.send`/`threads.spawn` cannot see those selections and
 // would silently schedule a different message than the one being composed.
 //
-// Everything after the schedule — the held card above the composer, the
-// countdown, Release now, Cancel — is core's hold UI, which this plugin never
+// Everything after the schedule — the queued card above the composer, the
+// countdown, Send now, Delete — is core's queue UI, which this plugin never
 // duplicates.
 //
 // The + menu row cannot render a form (rows are host-rendered), so the row
@@ -184,7 +184,7 @@ function SendLaterPicker() {
   async function schedule(at: number): Promise<void> {
     // The picker's clock ticks every 30s and a preset can be that stale, so
     // re-check against the real one rather than submitting a time that has
-    // just passed (which the server would release on its next sweep — an
+    // just passed (which the server dispatches inline, no wait taken — an
     // instant send nobody asked for).
     if (at <= Date.now()) {
       setError("That time has just passed. Pick another.");

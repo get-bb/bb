@@ -3,6 +3,7 @@ import {
   getThread,
   listEvents,
   listQueuedThreadMessages,
+  setThreadExecutionOverride,
 } from "@bb/db";
 import type { ThreadQueuedMessage } from "@bb/domain";
 import type { PluginHookName } from "@get-bb/plugin-sdk";
@@ -530,6 +531,64 @@ describe("retrying a failed turn", () => {
       expect(result.delivery).toBe("sent");
       expect(listQueuedThreadMessages(harness.db, thread.id)).toEqual([]);
       expect(turnRequests(harness, thread.id)).toHaveLength(2);
+    });
+  });
+
+  it("replays the failed attempt's execution instead of re-resolving today's", async () => {
+    await withTestHarness(async (harness) => {
+      const { requestId, thread } = seedFailableThread(harness, "host-exec");
+      failThread(harness, thread.id);
+      // The user moved the thread's sticky model AFTER the failure. The retry
+      // re-runs a turn that was already composed against gpt-5, so the new
+      // override must not silently swap the model under it — and replaying the
+      // tuple must not overwrite the override the user just set, either.
+      setThreadExecutionOverride(harness.db, {
+        threadId: thread.id,
+        modelOverride: "gpt-6-pro",
+      });
+
+      await retryFailedTurn(harness.deps, {
+        thread: requireThread(harness, thread.id),
+        request: { turnRequestId: requestId, sendAt: null, reason: "Retry" },
+      });
+
+      const requests = turnRequests(harness, thread.id);
+      const retryRequest = requests[1];
+      if (retryRequest === undefined) throw new Error("expected a retry turn");
+      expect(turnRequestData(retryRequest).execution.model).toBe("gpt-5");
+      expect(requireThread(harness, thread.id).modelOverride).toBe("gpt-6-pro");
+    });
+  });
+
+  it("refuses the second of two concurrent retries of one failure", async () => {
+    await withTestHarness(async (harness) => {
+      const { requestId, thread } = seedFailableThread(harness, "host-race");
+      failThread(harness, thread.id);
+      const retry = () =>
+        retryFailedTurn(harness.deps, {
+          thread: requireThread(harness, thread.id),
+          request: {
+            turnRequestId: requestId,
+            sendAt: Date.now() + 60_000,
+            reason: "Rate limited",
+          },
+        });
+
+      // Two clients click Retry together. The queued-row check alone cannot
+      // see a concurrent call that has passed it but written nothing yet, so
+      // without the in-flight guard both would queue the same turn.
+      const outcomes = await Promise.allSettled([retry(), retry()]);
+
+      expect(
+        outcomes.filter((outcome) => outcome.status === "fulfilled"),
+      ).toHaveLength(1);
+      const rejected = outcomes.find(
+        (outcome) => outcome.status === "rejected",
+      );
+      expect(
+        (rejected as PromiseRejectedResult | undefined)?.reason,
+      ).toMatchObject({ body: { code: "retry_already_queued" } });
+      expect(queuedRows(harness, thread.id)).toHaveLength(1);
     });
   });
 

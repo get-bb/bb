@@ -1,9 +1,12 @@
 import {
   deleteClaimedQueuedThreadMessageBatchInTransaction,
+  getEnvironment,
   getThread,
   getThreadPendingStartContext,
+  listRunningThreads,
   setThreadPendingStartContext,
   type ClaimedQueuedThreadMessageRow,
+  type RunningThreadRow,
 } from "@bb/db";
 import {
   promptInputSchema,
@@ -51,6 +54,7 @@ import {
   threadForkDescriptorSchema,
   threadProvisionEnvironmentIntentSchema,
 } from "./thread-provisioning-context.js";
+import { getActiveThreadProvisionContext } from "./thread-provisioning-active-context.js";
 import { toThreadResponseFromThread } from "./thread-runtime-display.js";
 import { toThreadQueuedMessage } from "./thread-queued-messages.js";
 import { isPreStartThreadStatus } from "./thread-status.js";
@@ -91,6 +95,51 @@ export function readPendingThreadStartContext(
   const stored = getThreadPendingStartContext(deps.db, threadId);
   if (stored === null) return null;
   return pendingThreadStartContextSchema.parse(JSON.parse(stored));
+}
+
+function hostIdForEnvironmentIntent(
+  deps: Pick<LoggedPendingInteractionWorkSessionDeps, "db">,
+  intent: PendingThreadStartContext["environmentIntent"],
+): string | null {
+  if (intent.type === "reuse") {
+    return getEnvironment(deps.db, intent.environmentId)?.hostId ?? null;
+  }
+  return intent.hostId;
+}
+
+/**
+ * The machine a not-yet-attached thread was admitted toward.
+ *
+ * Before provisioning attaches an environment, the thread's host exists only
+ * in its start intent — in the pending context creation wrote, then in the
+ * in-memory provisioning context once admission consumed it. Resolving it
+ * here is what lets a per-host admission policy count a cold start against
+ * the pool it is about to occupy instead of against no pool at all.
+ */
+export function intendedThreadHostId(
+  deps: Pick<LoggedPendingInteractionWorkSessionDeps, "db">,
+  threadId: string,
+): string | null {
+  const intent =
+    getActiveThreadProvisionContext(threadId)?.request.environmentIntent ??
+    readPendingThreadStartContext(deps, threadId)?.environmentIntent ??
+    null;
+  return intent === null ? null : hostIdForEnvironmentIntent(deps, intent);
+}
+
+/**
+ * `listRunningThreads` with the intent-derived host filled in for rows whose
+ * environment is not attached yet, so one starting cold thread and one active
+ * warm one count against the same machine's pool the same way.
+ */
+export function listRunningThreadsWithIntendedHosts(
+  deps: Pick<LoggedPendingInteractionWorkSessionDeps, "db">,
+): RunningThreadRow[] {
+  return listRunningThreads(deps.db).map((row) =>
+    row.hostId !== null
+      ? row
+      : { ...row, hostId: intendedThreadHostId(deps, row.id) },
+  );
 }
 
 /**
@@ -164,7 +213,10 @@ export function resolveDispatchAttemptKind(
  *
  * Every message on its way to a provider passes through here exactly once per
  * attempt, whether it was just sent, was queued and became eligible again, or
- * is a retry of a turn that failed. The shape is the plan's three steps:
+ * is a retry of a turn that failed. Two named exceptions skip the plugin pass
+ * by design: a user's Send-now (an explicit override of policy waits), and the
+ * conversation operations — compaction, an edit's re-send — that never come
+ * through here at all. The shape is the plan's three steps:
  *
  * 1. **Core waits.** A future `sendAt`, a thread already running a turn this
  *    message did not ask to join, a workspace still provisioning, an
@@ -288,6 +340,10 @@ export async function attemptDispatch(
       threadResponse: toThreadResponseFromThread(deps, { thread }),
       project: requirePublicProject(deps.db, thread.projectId),
       environmentId: thread.environmentId,
+      intendedHostId:
+        thread.environmentId !== null
+          ? null
+          : intendedThreadHostId(deps, thread.id),
       input: payload.input,
       requestedExecution: {
         providerId: thread.providerId,

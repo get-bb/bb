@@ -42,9 +42,9 @@ export async function acceptThreadSendRequest(
     ok: true,
     delivery: "queued",
     queuedMessageId: outcome.entry.id,
-    // A queued row always has a wait; `waitingOn` is nullable on the DTO only
-    // for rows written by the plain queue route before any attempt ran, which
-    // are ordinary "behind the running turn" rows.
+    // A queued row's `waitingOn` is null only when a drain cleared its wait
+    // and is about to re-attempt it — a state this row, just written by the
+    // attempt above, cannot be in. The fallback narrows the type honestly.
     waitingOn: outcome.entry.waitingOn ?? { kind: "thread-busy" },
     sendAt: outcome.entry.sendAt,
   };

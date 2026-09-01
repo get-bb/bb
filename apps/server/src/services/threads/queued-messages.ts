@@ -468,7 +468,10 @@ async function sendClaimedQueuedMessageForIdleProviderThread(
   );
   const initiator: ThreadTurnInitiator =
     senderThreadId === null ? "user" : "agent";
-  if (initiator === "user") {
+  // A retry row's model is provenance — the failed attempt's tuple, replayed —
+  // not a model the user picked for this row, so it must not become the
+  // thread's sticky override the way a composed queued message's choice does.
+  if (initiator === "user" && queuedMessage.payload.kind !== "retry") {
     await recoverThreadModelOverride(deps, {
       model: payload.model,
       modelSource: "explicit",

@@ -85,6 +85,12 @@ export interface MessageDispatchHookPassRequest {
   threadResponse: ThreadResponse;
   project: Project;
   environmentId: string | null;
+  /**
+   * The machine the start intent names, for a thread with no environment yet.
+   * It becomes the context's `host` so a per-host policy sees a cold start's
+   * pool; null when an environment answers instead, or nothing names one.
+   */
+  intendedHostId: string | null;
   input: PromptInput[];
   requestedExecution: PluginDispatchExecution;
   executionSources: PluginDispatchExecutionSources;
@@ -331,7 +337,11 @@ function buildHookContext(
     attempt: request.attempt,
     project: request.project,
     environment,
-    host,
+    host:
+      host ??
+      (request.intendedHostId === null
+        ? null
+        : getNonDestroyedHostWithStatus(deps, request.intendedHostId)),
     input: {
       blocks: [...request.input],
       text: dispatchInputText(request.input),

@@ -22,7 +22,8 @@ export const RESET_JITTER_MS = 30_000;
 export const DEFAULT_MAXIMUM_WAIT_MS = 6 * 60 * 60 * 1_000;
 
 /**
- * How many times one turn may be retried before the plugin gives up.
+ * The cap on a turn's TOTAL attempts: the original dispatch plus at most four
+ * retries, since `attemptNumber` counts from 1 on the original.
  *
  * A provider that keeps reporting a window that never moves would otherwise
  * retry forever, one queued row at a time. The old scheduler prevented that by

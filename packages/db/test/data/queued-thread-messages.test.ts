@@ -5,6 +5,7 @@ import {
   claimNextQueuedThreadMessageGroup,
   claimQueuedThreadMessage,
   claimQueuedThreadMessageGroup,
+  clearQueuedThreadMessageWaitingOn,
   createQueuedThreadMessage,
   deleteClaimedQueuedThreadMessageBatchInTransaction,
   deleteQueuedThreadMessage,
@@ -13,6 +14,7 @@ import {
   releaseQueuedMessageClaim,
   releaseStaleQueuedMessageClaims,
   reorderQueuedThreadMessage,
+  requeueClaimedQueuedThreadMessages,
   setQueuedThreadMessageGroupBoundary,
   updateQueuedThreadMessage,
 } from "../../src/data/queued-thread-messages.js";
@@ -741,6 +743,139 @@ describe("queued thread messages", () => {
     expect(listQueuedThreadMessages(db, thread.id).map((queuedMessage) => queuedMessage.id)).toEqual([
       thirdQueuedMessage.id,
     ]);
+  });
+
+  it("does not split a requeued group: the tail waits with its blocked lead", () => {
+    const { db, thread } = setup();
+    const lead = createQueuedThreadMessage(db, noopNotifier, {
+      threadId: thread.id,
+      content: defaultInput,
+      model: "gpt-5",
+      reasoningLevel: "medium",
+      permissionMode: "full",
+      serviceTier: "default",
+      waitingOn: null,
+      sendAt: null,
+      payload: { kind: "inline" },
+      systemNotice: null,
+    });
+    const tail = createQueuedThreadMessage(db, noopNotifier, {
+      threadId: thread.id,
+      content: altInput,
+      model: "gpt-5",
+      reasoningLevel: "medium",
+      permissionMode: "full",
+      serviceTier: "default",
+      waitingOn: null,
+      sendAt: null,
+      payload: { kind: "inline" },
+      systemNotice: null,
+    });
+    setQueuedThreadMessageGroupBoundary({
+      db,
+      notifier: noopNotifier,
+      threadId: thread.id,
+      expectedGroupedPrefixQueuedMessageIds: [lead.id, tail.id],
+      groupBoundaryQueuedMessageId: tail.id,
+    });
+    const claimed = claimNextQueuedThreadMessageGroup(
+      db,
+      noopNotifier,
+      thread.id,
+    );
+    expect(claimed?.map((queuedMessage) => queuedMessage.id)).toEqual([
+      lead.id,
+      tail.id,
+    ]);
+    requeueClaimedQueuedThreadMessages(db, noopNotifier, {
+      claims: claimed!.map(({ id, claimToken }) => ({ id, claimToken })),
+      threadId: thread.id,
+      waitingOn: { kind: "plugin", pluginId: "limits", reason: "At capacity" },
+      sendAt: null,
+    });
+
+    // The requeue wrote the wait on the lead only; the tail must not be
+    // claimable alone, or the drain would dispatch half a composed prompt.
+    expect(
+      claimNextQueuedThreadMessageGroup(db, noopNotifier, thread.id),
+    ).toBeNull();
+
+    // An independent row behind the blocked group still drains past it.
+    const independent = createQueuedThreadMessage(db, noopNotifier, {
+      threadId: thread.id,
+      content: textInput("independent"),
+      model: "gpt-5",
+      reasoningLevel: "medium",
+      permissionMode: "full",
+      serviceTier: "default",
+      waitingOn: null,
+      sendAt: null,
+      payload: { kind: "inline" },
+      systemNotice: null,
+    });
+    expect(
+      claimNextQueuedThreadMessageGroup(db, noopNotifier, thread.id)?.map(
+        (queuedMessage) => queuedMessage.id,
+      ),
+    ).toEqual([independent.id]);
+  });
+
+  it("claiming a cleared lead takes its still-grouped tail with it", () => {
+    const { db, thread } = setup();
+    const lead = createQueuedThreadMessage(db, noopNotifier, {
+      threadId: thread.id,
+      content: defaultInput,
+      model: "gpt-5",
+      reasoningLevel: "medium",
+      permissionMode: "full",
+      serviceTier: "default",
+      waitingOn: null,
+      sendAt: null,
+      payload: { kind: "inline" },
+      systemNotice: null,
+    });
+    const tail = createQueuedThreadMessage(db, noopNotifier, {
+      threadId: thread.id,
+      content: altInput,
+      model: "gpt-5",
+      reasoningLevel: "medium",
+      permissionMode: "full",
+      serviceTier: "default",
+      waitingOn: null,
+      sendAt: null,
+      payload: { kind: "inline" },
+      systemNotice: null,
+    });
+    setQueuedThreadMessageGroupBoundary({
+      db,
+      notifier: noopNotifier,
+      threadId: thread.id,
+      expectedGroupedPrefixQueuedMessageIds: [lead.id, tail.id],
+      groupBoundaryQueuedMessageId: tail.id,
+    });
+    const claimed = claimNextQueuedThreadMessageGroup(
+      db,
+      noopNotifier,
+      thread.id,
+    );
+    requeueClaimedQueuedThreadMessages(db, noopNotifier, {
+      claims: claimed!.map(({ id, claimToken }) => ({ id, claimToken })),
+      threadId: thread.id,
+      waitingOn: { kind: "plugin", pluginId: "limits", reason: "At capacity" },
+      sendAt: null,
+    });
+    clearQueuedThreadMessageWaitingOn(db, noopNotifier, {
+      id: lead.id,
+      threadId: thread.id,
+    });
+
+    // The requested drain clears the lead's wait and claims by id; the claim
+    // is a claim on the batch, so the tail dispatches with it.
+    expect(
+      claimQueuedThreadMessageGroup(db, noopNotifier, lead.id)?.map(
+        (queuedMessage) => queuedMessage.id,
+      ),
+    ).toEqual([lead.id, tail.id]);
   });
 
   it("claims only the selected message when sending outside the lead group", () => {

@@ -23,13 +23,13 @@ function textQueuedRetry(queued: QueuedRetry): string {
 }
 
 /**
- * A view over the queue rows this plugin is holding.
+ * A view over the queued retries this plugin asked for.
  *
- * Every subcommand is now `bb thread queue list --wait-holder plugin:provider-retry`
- * narrowed to retries, which is why there is no state here to consult: the
- * server owns the schedule, and this reads and acts on it. `retry` is a release
- * and `cancel` is a cancel, so both do exactly what the thread view's buttons
- * do.
+ * Every subcommand reads the queue itself — rows whose payload is `retry`,
+ * because a scheduled retry waits on the clock, not on a wait this plugin
+ * holds — which is why there is no state here to consult: the server owns the
+ * schedule, and this reads and acts on it. `retry` is a Send-now and `cancel`
+ * is a cancel, so both do exactly what the queued card's buttons do.
  */
 export function registerProviderRetryCli(bb: BbPluginApi): void {
   bb.cli.register({

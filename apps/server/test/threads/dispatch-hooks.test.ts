@@ -189,6 +189,51 @@ async function expectApiError(
   throw new Error("expected the operation to fail");
 }
 
+describe("message.dispatch hook context", () => {
+  it("hands the hook the start intent's host before an environment exists", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, project } = seedDispatchFixture(harness, "host-intent");
+      const seen: { environment: unknown; hostId: string | null }[] = [];
+      installHooks({
+        "message.dispatch": [
+          {
+            pluginId: "limits",
+            handler: (context) => {
+              seen.push({
+                environment: context.environment,
+                hostId: context.host?.id ?? null,
+              });
+              return { action: "wait", reason: "Inspecting" };
+            },
+          },
+        ],
+      });
+
+      // A workspace path with no environment row yet: the environment is only
+      // provisioned at admission, so the hook decides about a thread that has
+      // none — the exact state a per-host limiter must still see a host in.
+      const thread = await createThreadFromRequest(harness.deps, {
+        environment: {
+          type: "host",
+          hostId: host.id,
+          workspace: { type: "unmanaged", path: "/tmp/dispatch-hooks-cold" },
+        },
+        input: textInput("Do the thing"),
+        origin: "app",
+        projectId: project.id,
+        providerId: "codex",
+        startedOnBehalfOf: null,
+      });
+
+      // A cold start has no environment yet, but its start intent already
+      // names the machine it will occupy — a per-host limiter that saw null
+      // here would wave every cold start past its pool.
+      expect(seen).toEqual([{ environment: null, hostId: host.id }]);
+      expect(queuedRows(harness, thread.id)).toHaveLength(1);
+    });
+  });
+});
+
 describe("message.dispatch hook composition", () => {
   it("runs every handler in install order and freezes the resolved tuple", async () => {
     await withTestHarness(async (harness) => {

@@ -134,9 +134,10 @@ export type ThreadCountResult = ThreadCountResponse;
 /**
  * The threads occupying capacity right now — canonical status `starting` or
  * `active`, archived and deleted excluded, hidden included (a hidden thread
- * burns a real slot). Each row carries only what an admission policy acts on:
- * `hostId` (null until an environment is chosen), `projectId`,
- * `parentThreadId` and `originPluginId`.
+ * burns a real slot). Each row is just `id` and `hostId` — the machine whose
+ * pool the thread occupies, from its environment or, before one is attached,
+ * from the start intent it was admitted with; null only when neither names
+ * one. Anything else a policy needs it fetches by id.
  *
  * **Exact inside the `message.dispatch` hook, a snapshot everywhere else.**
  * Hook passes are serialized under one server-wide lock and a cleared first

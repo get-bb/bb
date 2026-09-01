@@ -6,6 +6,7 @@ import {
 import { describe, expect, it } from "vitest";
 import { ApiError } from "../../src/errors.js";
 import { recordQueuedMessageDrainFailure } from "../../src/services/threads/queue-drain-failure.js";
+import { drainThreadQueueOnHostReconnect } from "../../src/services/threads/queue-drains.js";
 import { toThreadQueuedMessage } from "../../src/services/threads/thread-queued-messages.js";
 import { textInput } from "../helpers/prompt-input.js";
 import {
@@ -62,6 +63,39 @@ function reread(harness: TestAppHarness, queuedMessageId: string) {
   if (row === null) throw new Error("the queued row vanished");
   return toThreadQueuedMessage(row);
 }
+
+describe("drainThreadQueueOnHostReconnect", () => {
+  it("releases exactly the returning machine's host-offline rows", async () => {
+    await withTestHarness(async (harness) => {
+      const away = seedQueuedRow(harness, {
+        hostConnected: false,
+        hostName: "M4",
+      });
+      const otherAway = seedQueuedRow(harness, {
+        hostConnected: false,
+        hostName: "M2",
+      });
+      for (const seeded of [away, otherAway]) {
+        recordQueuedMessageDrainFailure(harness.deps, {
+          error: new ApiError(502, "host_unavailable", "Host is not connected"),
+          row: seeded.row,
+          thread: seeded.thread,
+        });
+      }
+
+      drainThreadQueueOnHostReconnect(harness.deps, away.host.id);
+
+      // The returning machine's row is an ordinary queued row again, eligible
+      // at the next drain; the other machine is still away and its row still
+      // says so — a reconnect is one host's signal, not an amnesty.
+      expect(reread(harness, away.row.id).waitingOn).toBeNull();
+      expect(reread(harness, otherAway.row.id).waitingOn).toEqual({
+        kind: "host-offline",
+        hostName: "M2",
+      });
+    });
+  });
+});
 
 describe("recordQueuedMessageDrainFailure", () => {
   it("re-queues on the named host when the machine is the thing that is missing", async () => {

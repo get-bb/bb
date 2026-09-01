@@ -355,8 +355,10 @@ export interface PluginDispatchInput {
 export type PluginDispatchAttemptKind = "start-turn" | "join-turn";
 
 /**
- * What core hands a `message.dispatch` hook: the one checkpoint, run before
- * any message reaches a provider.
+ * What core hands a `message.dispatch` hook: the one checkpoint, run before a
+ * message reaches a provider. The exception is a user's explicit Send-now on a
+ * queued row, which bypasses the pass by design — it is the user overriding
+ * policy, and a policy that could veto its own override would not be one.
  *
  * It runs identically whether the attempt is inline (someone just sent) or
  * from a drain (a queued row became eligible again), and whether the message
@@ -372,9 +374,14 @@ export interface MessageDispatchHookContext {
    */
   thread: ThreadResponse;
   project: Project;
-  /** Null until an environment is chosen (a held or not-yet-provisioned thread). */
+  /** Null until an environment is chosen (a queued or not-yet-provisioned thread). */
   environment: Environment | null;
-  /** The machine the work will run on; null whenever `environment` is. */
+  /**
+   * The machine the work will run on. Resolved from the environment when one
+   * is attached, and before that from the start intent the thread was created
+   * with — so a per-host policy counts a cold start against the pool it is
+   * about to occupy. Null only when neither names a machine.
+   */
   host: Host | null;
   input: PluginDispatchInput;
   requestedExecution: PluginDispatchExecution;
@@ -1539,8 +1546,9 @@ export interface BbPluginApi {
   readonly events: PluginEvents;
   /**
    * Questions core asks and acts on the answer to. Today: the dispatch
-   * checkpoint every message on its way to a provider passes through, which a
-   * handler may let go, queue with a reason, or refuse.
+   * checkpoint messages pass through on their way to a provider (a user's
+   * Send-now bypasses it by design), which a handler may let go, queue with a
+   * reason, or refuse.
    */
   readonly experimental_hooks: PluginHooks;
   /** Plugin-reported status (needs-configuration). */

@@ -481,7 +481,10 @@ export async function sendThreadMessage(
     mode === "auto" || mode === "steer"
       ? getActiveTurnId(deps, thread.id)
       : null;
-  if (senderThreadId === null) {
+  // A retry's model is provenance — the failed attempt's tuple, replayed —
+  // not a fresh model choice, so it must not rewrite the thread's sticky
+  // override the way an explicit user send's model does.
+  if (senderThreadId === null && args.retryOf === undefined) {
     await recoverThreadModelOverride(deps, {
       model: payload.model,
       modelSource:
@@ -494,10 +497,11 @@ export async function sendThreadMessage(
   const execution = await buildExecutionOptions(deps, payload, {
     threadId: thread.id,
   });
-  // No gate pass here. Admission is decided ONCE, at the dispatch checkpoint
-  // in `attemptDispatch`, which is this function's only caller — so a steer, a
-  // drained queue row and a fresh send are all decided by the same pass rather
-  // than by whichever branch happened to reach this file.
+  // No hook pass here. User messages are decided ONCE, at the dispatch
+  // checkpoint in `attemptDispatch`, before they reach this function. The two
+  // other callers bypass the checkpoint deliberately: a manual compaction turn
+  // and an edited message's re-send are operations on the thread's existing
+  // conversation, not new work a limiter admits.
   const permissionEscalation = resolvePermissionEscalation({
     initiator,
   });

@@ -54,6 +54,7 @@ import {
   runOrphanedQueueWaitSweep,
   type QueueWaitPluginDirectory,
 } from "../threads/queue-drains.js";
+import { deliverLegacyDeferredThreadMessages } from "../threads/legacy-deferred-messages.js";
 import { LIVE_DAEMON_COMMAND_TIMEOUT_MS } from "../hosts/live-command.js";
 import { runEventLoopWork, runEventLoopWorkSync } from "./event-loop-work.js";
 
@@ -598,6 +599,7 @@ const PERIODIC_SWEEP_JOBS: PeriodicSweepJob[] = [
 export async function runStartupRecoverySweep(
   deps: LoggedPendingInteractionWorkSessionDeps,
 ): Promise<void> {
+  await deliverLegacyDeferredThreadMessages(deps);
   await runEnvironmentProvisioningSweep(deps);
   await runThreadLifecycleSweep(deps);
   recoverOrphanedEnvironmentDestroyRequests(deps, {

@@ -1,3 +1,11 @@
+CREATE TABLE IF NOT EXISTS `deferred_thread_messages_legacy` (
+	`id` text PRIMARY KEY,
+	`thread_id` text NOT NULL,
+	`kind` text NOT NULL,
+	`payload` text NOT NULL,
+	`created_at` integer NOT NULL
+);--> statement-breakpoint
+INSERT OR IGNORE INTO `deferred_thread_messages_legacy` SELECT `id`, `thread_id`, `kind`, `payload`, `created_at` FROM `deferred_thread_messages`;--> statement-breakpoint
 DROP TABLE `deferred_thread_messages`;--> statement-breakpoint
 ALTER TABLE `queued_thread_messages` ADD `system_notice` text;--> statement-breakpoint
 ALTER TABLE `queued_thread_messages` ADD `send_at` integer;--> statement-breakpoint
