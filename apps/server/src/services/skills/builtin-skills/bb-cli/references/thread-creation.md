@@ -10,11 +10,8 @@
 - Select a target with `--environment`, `--new-environment`, `--base-branch`,
   or `--machine`. Select execution with `--provider`, `--model`,
   `--reasoning-level`, `--service-tier`, and `--permission-mode`.
-- For a managed worktree, omit `--base-branch` to use bb's smart project
-  default, which prefers the origin default branch when safe. An explicit
-  `--base-branch` is an exact Git ref: `main` means the local ref, while
-  `origin/main` fetches and selects the remote-tracking ref. Preserve explicit
-  remote intent from the task instead of shortening `origin/<branch>`.
+- Omit `--base-branch` for bb's default. Explicit values are exact; use
+  `origin/<branch>` for a remote ref.
 - Spawn also accepts `--title`, `--origin-kind`, `--source-thread`,
   `--source-seq-end`, `--agent-context-seed`, and `--json`.
 - Add repeatable `--file <path>` / `--image <path>` flags for structured prompt

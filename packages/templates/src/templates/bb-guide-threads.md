@@ -60,11 +60,8 @@ Spawning:
   workspace. It cannot be combined with an existing environment ID because that
   environment already selects its machine. Without the flag, local/primary
   machine resolution is unchanged.
-  Omit --base-branch to let bb choose the project's default worktree base,
-  preferring its origin branch when safe. An explicit value is exact:
-  --base-branch main selects the local ref, while --base-branch origin/main
-  fetches and selects the remote-tracking ref. When a task requires the latest
-  remote branch, preserve that intent by passing origin/<branch>.
+  Omit --base-branch for bb's default. Explicit values are exact; use
+  origin/<branch> for a remote ref.
 
 Forking:
 
