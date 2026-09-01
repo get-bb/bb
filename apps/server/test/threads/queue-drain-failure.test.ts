@@ -1,12 +1,19 @@
 import {
+  claimQueuedThreadMessageGroup,
   getQueuedThreadMessage,
   listEvents,
   setQueuedThreadMessageFailureReason,
 } from "@bb/db";
+import type { PluginHookName } from "@get-bb/plugin-sdk";
 import { describe, expect, it } from "vitest";
 import { ApiError } from "../../src/errors.js";
+import {
+  setPluginHookProvider,
+  type PluginHookRegistration,
+} from "../../src/services/plugins/plugin-hook-registry.js";
 import { recordQueuedMessageDrainFailure } from "../../src/services/threads/queue-drain-failure.js";
 import { drainThreadQueueOnHostReconnect } from "../../src/services/threads/queue-drains.js";
+import { runQueuedMessageAutoSendSweep } from "../../src/services/threads/queued-messages.js";
 import { toThreadQueuedMessage } from "../../src/services/threads/thread-queued-messages.js";
 import { textInput } from "../helpers/prompt-input.js";
 import {
@@ -20,6 +27,10 @@ import {
 import { withTestHarness, type TestAppHarness } from "../helpers/test-app.js";
 
 const WORKSPACE_PATH = "/tmp/queue-drain-failure-project";
+
+type HookRegistry = {
+  [K in PluginHookName]: PluginHookRegistration<K>[];
+};
 
 /**
  * A thread with a queued row on a host that is either connected or not.
@@ -98,6 +109,50 @@ describe("drainThreadQueueOnHostReconnect", () => {
 });
 
 describe("recordQueuedMessageDrainFailure", () => {
+  it("does not automatically re-attempt a terminally failed row", async () => {
+    await withTestHarness(async (harness) => {
+      let attempts = 0;
+      const registry: HookRegistry = { "message.dispatch": [] };
+      registry["message.dispatch"].push({
+        pluginId: "rejector",
+        handler: () => {
+          attempts += 1;
+          return { action: "reject", message: "Rejected for testing" } as const;
+        },
+      });
+      setPluginHookProvider({
+        listHooks: (hook) => registry[hook],
+        invokeHook: async (_pluginId, _label, run) => ({
+          ok: true,
+          value: await run(),
+        }),
+        decisionTimeoutMs: 10_000,
+      });
+
+      try {
+        const { row } = seedQueuedRow(harness, {
+          hostConnected: true,
+          hostName: "M4",
+        });
+
+        await runQueuedMessageAutoSendSweep(harness.deps);
+        expect(reread(harness, row.id).failureReason).toBe(
+          "Rejected for testing",
+        );
+
+        await runQueuedMessageAutoSendSweep(harness.deps);
+        await runQueuedMessageAutoSendSweep(harness.deps);
+
+        expect(attempts).toBe(1);
+        expect(
+          claimQueuedThreadMessageGroup(harness.db, harness.deps.hub, row.id),
+        ).not.toBeNull();
+      } finally {
+        setPluginHookProvider(undefined);
+      }
+    });
+  });
+
   it("re-queues on the named host when the machine is the thing that is missing", async () => {
     await withTestHarness(async (harness) => {
       const { thread, row } = seedQueuedRow(harness, {
@@ -115,7 +170,10 @@ describe("recordQueuedMessageDrainFailure", () => {
       });
 
       const queued = reread(harness, row.id);
-      expect(queued.waitingOn).toEqual({ kind: "host-offline", hostName: "M4" });
+      expect(queued.waitingOn).toEqual({
+        kind: "host-offline",
+        hostName: "M4",
+      });
       expect(queued.sendAt).toBeNull();
       // An absent machine is a wait, not a failure: the row recovers by itself
       // when the host comes back, so presenting it as an error would be wrong.
@@ -192,7 +250,10 @@ describe("recordQueuedMessageDrainFailure", () => {
       // fresh statement of why the row is waiting supersedes the stale failure
       // instead of showing the reader two contradictory explanations.
       const queued = reread(harness, row.id);
-      expect(queued.waitingOn).toEqual({ kind: "host-offline", hostName: "M4" });
+      expect(queued.waitingOn).toEqual({
+        kind: "host-offline",
+        hostName: "M4",
+      });
       expect(queued.failureReason).toBeNull();
     });
   });

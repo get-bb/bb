@@ -183,6 +183,12 @@ export const OFFICIAL_PLUGINS = [
     defaultEnabled: true,
     category: "Workflow management",
   },
+  {
+    name: "theme-preview",
+    pluginId: "theme-preview",
+    defaultEnabled: true,
+    category: "Interface",
+  },
 ].map((plugin): BundledPluginDefinition => ({
   ...plugin,
   autoInstall: false,

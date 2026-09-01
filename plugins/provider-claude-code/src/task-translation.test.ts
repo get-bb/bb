@@ -335,6 +335,7 @@ describe("claude-code background task translation", () => {
     );
 
     expect(started).toEqual([]);
+    expect(harness.translator.hasOpenSessionWork(context.threadId)).toBe(true);
 
     const completed = harness.translate(
       {
@@ -351,6 +352,7 @@ describe("claude-code background task translation", () => {
     );
 
     expect(completed).toEqual([]);
+    expect(harness.translator.hasOpenSessionWork(context.threadId)).toBe(false);
   });
 
   it("preserves skip_transcript on the item", () => {

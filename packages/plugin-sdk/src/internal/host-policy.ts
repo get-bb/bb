@@ -118,6 +118,13 @@ const settingsBaseFields = {
   description: z.string().min(1).optional(),
 };
 
+const stringSettingSchemaSchema = z.custom<StandardSchemaV1<string, string>>(
+  (value) => isStandardSchema(value),
+);
+const booleanSettingSchemaSchema = z.custom<StandardSchemaV1<boolean, boolean>>(
+  (value) => isStandardSchema(value),
+);
+
 const settingDescriptorSchema = z.discriminatedUnion("type", [
   z
     .object({
@@ -125,6 +132,7 @@ const settingDescriptorSchema = z.discriminatedUnion("type", [
       ...settingsBaseFields,
       secret: z.literal(true).optional(),
       experimental_multiline: z.boolean().optional(),
+      experimental_schema: stringSettingSchemaSchema.optional(),
       default: z.string().optional(),
     })
     .strict()
@@ -145,6 +153,7 @@ const settingDescriptorSchema = z.discriminatedUnion("type", [
     .object({
       type: z.literal("boolean"),
       ...settingsBaseFields,
+      experimental_schema: booleanSettingSchemaSchema.optional(),
       default: z.boolean().optional(),
     })
     .strict(),
@@ -153,6 +162,7 @@ const settingDescriptorSchema = z.discriminatedUnion("type", [
       type: z.literal("select"),
       ...settingsBaseFields,
       options: z.array(z.string().min(1)).min(1),
+      experimental_schema: stringSettingSchemaSchema.optional(),
       default: z.string().optional(),
     })
     .strict(),
@@ -160,6 +170,7 @@ const settingDescriptorSchema = z.discriminatedUnion("type", [
     .object({
       type: z.literal("project"),
       ...settingsBaseFields,
+      experimental_schema: stringSettingSchemaSchema.optional(),
       default: z.string().optional(),
     })
     .strict(),
@@ -202,10 +213,46 @@ export function registerSettingDescriptors(
         `default for setting "${key}" must be one of its options`,
       );
     }
+    if (descriptor.default !== undefined) {
+      const errors = validateSettingsUpdate(
+        { [key]: descriptor },
+        { [key]: descriptor.default },
+      );
+      if (errors.length > 0) {
+        throw new Error(`invalid default for setting "${key}": ${errors[0]}`);
+      }
+    }
     validated[key] = descriptor;
   }
   Object.assign(target, validated);
   return validated;
+}
+
+function settingSchemaError<T extends string | boolean>(
+  key: string,
+  schema: StandardSchemaV1<T, T> | undefined,
+  value: T,
+): string | null {
+  if (schema === undefined) return null;
+  try {
+    const result = schema["~standard"].validate(value);
+    if (result instanceof Promise) {
+      return `schema for setting "${key}" must validate synchronously`;
+    }
+    if (result.issues !== undefined) {
+      return (
+        result.issues[0]?.message ??
+        `schema for setting "${key}" rejected the value`
+      );
+    }
+    if (result.value !== value) {
+      return `schema for setting "${key}" must not transform its value`;
+    }
+    return null;
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    return `schema for setting "${key}" failed: ${detail}`;
+  }
 }
 
 /** Validate a settings update. `null` means unset. */
@@ -224,6 +271,15 @@ export function validateSettingsUpdate(
     if (descriptor.type === "boolean") {
       if (typeof value !== "boolean") {
         errors.push(`setting "${key}" expects a boolean`);
+        continue;
+      }
+      const validationError = settingSchemaError(
+        key,
+        descriptor.experimental_schema,
+        value,
+      );
+      if (validationError !== null) {
+        errors.push(validationError);
       }
       continue;
     }
@@ -235,6 +291,15 @@ export function validateSettingsUpdate(
       errors.push(
         `setting "${key}" must be one of: ${descriptor.options.join(", ")}`,
       );
+      continue;
+    }
+    const validationError = settingSchemaError(
+      key,
+      descriptor.experimental_schema,
+      value,
+    );
+    if (validationError !== null) {
+      errors.push(validationError);
     }
   }
   return errors;
@@ -2038,6 +2103,8 @@ export function storePluginHook<K extends PluginHookName>(
 }
 
 /** The refusal a second handler for one hook from one plugin gets. */
-export function pluginHookAlreadyRegisteredMessage(hook: PluginHookName): string {
+export function pluginHookAlreadyRegisteredMessage(
+  hook: PluginHookName,
+): string {
   return `a "${hook}" hook handler is already registered by this plugin`;
 }

@@ -11,10 +11,12 @@ import {
   lt,
   lte,
   min,
+  notExists,
   notInArray,
   or,
   sql,
 } from "drizzle-orm";
+import { alias } from "drizzle-orm/sqlite-core";
 import { QUEUED_MESSAGE_PLUGIN_WAIT_HOLDER_PREFIX } from "@bb/domain";
 import type {
   PermissionMode,
@@ -31,7 +33,12 @@ import type {
   DbTransaction,
 } from "../connection.js";
 import type { DbNotifier } from "../notifier.js";
-import { environments, queuedThreadMessages, threads } from "../schema.js";
+import {
+  environments,
+  events,
+  queuedThreadMessages,
+  threads,
+} from "../schema.js";
 import { createQueuedThreadMessageClaimToken, createQueuedThreadMessageId } from "../ids.js";
 import {
   createOrderKeyAfter,
@@ -250,6 +257,7 @@ function partitionQueuedMessageGroups(
  * pointer at the SQL so the two cannot drift silently.
  */
 function isIdleDrainableQueuedMessage(row: QueuedThreadMessageRow): boolean {
+  if (row.failureReason !== null) return false;
   if (row.waitingOn === null) return true;
   try {
     const parsed = JSON.parse(row.waitingOn) as { kind?: unknown };
@@ -652,6 +660,58 @@ export function hasQueuedThreadMessages(
   );
 }
 
+function manuallyStoppedQueuePauseQuery(
+  db: DbQueryConnection,
+  threadId: string | typeof threads.id,
+) {
+  const interruption = alias(events, "queue_pause_interruption");
+  const laterInterruption = alias(events, "queue_pause_later_interruption");
+  const laterRootTurnStart = alias(events, "queue_pause_later_turn_start");
+  return db
+    .select({ sequence: interruption.sequence })
+    .from(interruption)
+    .where(
+      and(
+        sql`${interruption.threadId} = ${threadId}`,
+        eq(interruption.type, "system/thread/interrupted"),
+        sql`json_extract(${interruption.data}, '$.reason') = 'manual-stop'`,
+        notExists(
+          db
+            .select({ sequence: laterInterruption.sequence })
+            .from(laterInterruption)
+            .where(
+              and(
+                eq(laterInterruption.threadId, interruption.threadId),
+                eq(laterInterruption.type, "system/thread/interrupted"),
+                sql`${laterInterruption.sequence} > ${interruption.sequence}`,
+              ),
+            ),
+        ),
+        notExists(
+          db
+            .select({ sequence: laterRootTurnStart.sequence })
+            .from(laterRootTurnStart)
+            .where(
+              and(
+                eq(laterRootTurnStart.threadId, interruption.threadId),
+                eq(laterRootTurnStart.type, "turn/started"),
+                isNull(laterRootTurnStart.parentToolCallId),
+                sql`${laterRootTurnStart.sequence} > ${interruption.sequence}`,
+              ),
+            ),
+        ),
+      ),
+    )
+    .limit(1);
+}
+
+export function isThreadQueueAutoSendPaused(
+  db: DbQueryConnection,
+  threadId: string,
+): boolean {
+  return manuallyStoppedQueuePauseQuery(db, threadId).get() !== undefined;
+}
+
 /**
  * Threads a drain could move right now.
  *
@@ -676,6 +736,7 @@ export function listIdleThreadsWithQueuedMessages(
         inArray(threads.status, ["idle", "pending"]),
         isNull(threads.archivedAt),
         isNull(threads.deletedAt),
+        notExists(manuallyStoppedQueuePauseQuery(db, threads.id)),
         // A gone environment (destroying/destroyed) is never reprovisioned, so
         // its queued rows can never drain. Leave them out of the sweep instead
         // of failing the same send every cycle (#1789). A thread with NO
@@ -797,7 +858,11 @@ export function claimQueuedThreadMessageGroup(
       if (group === null) {
         return null;
       }
-      if (isGroupEligible && !isGroupEligible(group)) {
+      if (
+        isGroupEligible &&
+        (!group.every((row) => row.failureReason === null) ||
+          !isGroupEligible(group))
+      ) {
         return null;
       }
       if (!isGroupEligible && group[0]?.id !== id) {
@@ -1293,6 +1358,13 @@ function liveQueuedThreadMessage() {
   );
 }
 
+function automaticallyDrainableQueuedThreadMessage() {
+  return and(
+    liveQueuedThreadMessage(),
+    isNull(queuedThreadMessages.failureReason),
+  );
+}
+
 /**
  * Rows the IDLE drain may claim: a row with no wait at all, or one waiting
  * only on the thread being busy — which is exactly the wait an idle thread
@@ -1309,7 +1381,7 @@ function liveQueuedThreadMessage() {
  */
 function drainableQueuedThreadMessage() {
   return and(
-    liveQueuedThreadMessage(),
+    automaticallyDrainableQueuedThreadMessage(),
     or(
       isNull(queuedThreadMessages.waitingOn),
       sql`json_extract(${queuedThreadMessages.waitingOn}, '$.kind') = 'thread-busy'`,
@@ -1575,7 +1647,7 @@ export function listDueScheduledQueuedThreadMessages(
       and(
         isNotNull(queuedThreadMessages.sendAt),
         lte(queuedThreadMessages.sendAt, now),
-        liveQueuedThreadMessage(),
+        automaticallyDrainableQueuedThreadMessage(),
         exists(
           db
             .select({ live: sql`1` })
@@ -1615,7 +1687,7 @@ export function listQueuedThreadMessagesByWaitHolder(
     .where(
       and(
         eq(queuedThreadMessages.waitHolder, waitHolder),
-        liveQueuedThreadMessage(),
+        automaticallyDrainableQueuedThreadMessage(),
       ),
     )
     .orderBy(
@@ -1666,7 +1738,7 @@ export function listQueuedThreadMessagePluginWaitRefs(
     .where(
       and(
         isNotNull(queuedThreadMessages.waitHolder),
-        liveQueuedThreadMessage(),
+        automaticallyDrainableQueuedThreadMessage(),
       ),
     )
     .orderBy(
@@ -1697,7 +1769,7 @@ export function listQueuedThreadMessagesWaitingOnKind(
       and(
         eq(queuedThreadMessages.threadId, args.threadId),
         sql`json_extract(${queuedThreadMessages.waitingOn}, '$.kind') = ${args.kind}`,
-        liveQueuedThreadMessage(),
+        automaticallyDrainableQueuedThreadMessage(),
       ),
     )
     .orderBy(asc(queuedThreadMessages.sortKey), asc(queuedThreadMessages.id))
@@ -1753,7 +1825,7 @@ export function listThreadIdsWithHostOfflineQueueWaits(
       and(
         eq(environments.hostId, hostId),
         sql`json_extract(${queuedThreadMessages.waitingOn}, '$.kind') = 'host-offline'`,
-        liveQueuedThreadMessage(),
+        automaticallyDrainableQueuedThreadMessage(),
       ),
     )
     .all()

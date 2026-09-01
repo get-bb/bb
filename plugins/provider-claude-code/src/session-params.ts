@@ -72,6 +72,7 @@ export type ClaudeSessionExecutionOptions = RuntimePermissionPolicy & {
   envVars?: Record<string, string> | undefined;
   claudeCodePermissionMode?: "plan" | undefined;
   workflowsEnabled: boolean;
+  idleQueryReleaseEnabled: boolean;
   memoryEnabled?: boolean | undefined;
   providerSubagentsEnabled?: boolean | undefined;
   skillRoots?: readonly ClaudeCodeSkillRoot[] | undefined;
@@ -130,6 +131,7 @@ function buildInternalSessionParams(
       ? { reasoningLevel: args.options.reasoningLevel }
       : {}),
     workflowsEnabled: args.options.workflowsEnabled,
+    idleQueryReleaseEnabled: args.options.idleQueryReleaseEnabled,
     memoryEnabled: args.options.memoryEnabled,
     providerSubagentsEnabled: args.options.providerSubagentsEnabled,
     ...(dynamicTools && dynamicTools.length > 0 ? { dynamicTools } : {}),
@@ -143,6 +145,7 @@ const claudeProviderOptionsSchema = z
   .object({
     claudeCodePermissionMode: z.literal("plan").optional(),
     workflowsEnabled: z.boolean().optional(),
+    idleQueryReleaseEnabled: z.boolean().optional(),
     memoryEnabled: z.boolean().optional(),
     providerSubagentsEnabled: z.boolean().optional(),
     additionalWorkspaceWriteRoots: z.array(z.string()).optional(),
@@ -186,6 +189,7 @@ export function buildClaudeSessionParams(
       skillRoots: args.skillRoots,
       claudeCodePermissionMode: providerOptions.claudeCodePermissionMode,
       workflowsEnabled: providerOptions.workflowsEnabled ?? false,
+      idleQueryReleaseEnabled: providerOptions.idleQueryReleaseEnabled ?? false,
       memoryEnabled: providerOptions.memoryEnabled,
       providerSubagentsEnabled: providerOptions.providerSubagentsEnabled,
     },
@@ -234,6 +238,7 @@ export function buildClaudeTurnParams(
       ? { reasoningLevel: args.options.reasoningLevel }
       : {}),
     workflowsEnabled: providerOptions.workflowsEnabled,
+    idleQueryReleaseEnabled: providerOptions.idleQueryReleaseEnabled,
     memoryEnabled: providerOptions.memoryEnabled,
     providerSubagentsEnabled: providerOptions.providerSubagentsEnabled,
     permissionEscalation: args.options.permissionEscalation,

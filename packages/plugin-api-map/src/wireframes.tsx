@@ -1719,9 +1719,16 @@ export function SettingsWireframe() {
                 <span className="ml-auto size-3.5 rounded-full bg-background" />
               </span>
             </span>
-            <span className="flex justify-end pt-2">
-              <span className="flex h-6 items-center rounded-md border border-border bg-card px-2 text-foreground">
-                Save settings
+            <span className="block py-1.5">
+              <span className="block text-foreground">Custom instructions</span>
+              <span className="block pt-1 leading-relaxed">
+                Added to every agent task on this host.
+              </span>
+              <span
+                aria-hidden
+                className="mt-2 block h-12 rounded-md border border-border bg-card px-2 py-1.5 text-subtle-foreground"
+              >
+                Keep answers concise and run focused tests.
               </span>
             </span>
           </Mark>

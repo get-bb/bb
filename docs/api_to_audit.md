@@ -140,9 +140,31 @@ and reads nothing under that method, so the constant names a lane that no
 longer exists. Kept because 0.4.x published it; remove at the next major
 version.
 
+## Settings schemas and server writes
+
+**What it does.** A `PluginSettingDescriptor` can declare an
+`experimental_schema` Standard Schema validator that runs on the server for
+every proposed value; Zod schemas qualify. Settings schemas must validate
+synchronously without transforming their primitive value. The generated form
+autosaves one field at a time and displays the first validation issue beneath
+that field. A `PluginSettingsHandle` can call `experimental_set` to validate
+and persist its own fields, receive the effective values, fire `onChange`, and
+notify settings consumers just like a settings route or `bb plugin config`
+write.
+
+**Audit before stabilizing.**
+
+- Confirm synchronous, non-transforming validation remains sufficient.
+- Decide whether settings errors need structured issue paths in addition to
+  the first user-facing message.
+- Confirm schemas should continue running for defaults at registration.
+- Exercise concurrent route, CLI, and plugin-owned writes, including secret
+  values and unsets, before stabilizing `experimental_set`.
+- Decide whether schemas and server-side writes stabilize independently.
+
 ## `bb.experimental_hooks` (`on`, `recheck`)
 
-**What it does.** The one plugin surface that *decides* rather than observes.
+**What it does.** The one plugin surface that _decides_ rather than observes.
 `bb.experimental_hooks.on(hook, handler)` registers this plugin's answer to a
 hook — a question core stops to ask and then acts on the answer to. Its
 counterpart is `bb.events.on`, whose handlers are told what already happened
@@ -2088,9 +2110,9 @@ too, after the host has restored the draft. Sole consumer:
    "unsupported here" from "no composer mounted". Decide whether
    `ComposerView` should advertise submit capability so a `+` menu row can
    disable itself instead of failing on click.
-3. **Double error reporting on the create path.** A failed scheduled *send*
+3. **Double error reporting on the create path.** A failed scheduled _send_
    is reported only through the rejection (`useSendThreadMessage` sets
-   `showErrorToast: false`). A failed scheduled *create* is also toasted by
+   `showErrorToast: false`). A failed scheduled _create_ is also toasted by
    the create mutation's default error handling, so the user sees the reason
    twice — once in the plugin's picker and once in a toast. Decide whether the
    host should suppress its toast for programmatic submissions.

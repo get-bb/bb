@@ -987,10 +987,9 @@ function createFakePluginHostInternal(
         );
       }
       const rows = database
-        .prepare<
-          [],
-          { id: number; statement_hash: string | null }
-        >("SELECT id, statement_hash FROM _bb_migrations ORDER BY id")
+        .prepare<[], { id: number; statement_hash: string | null }>(
+          "SELECT id, statement_hash FROM _bb_migrations ORDER BY id",
+        )
         .all();
       const applied = new Map<number, string | null>();
       for (const row of rows) applied.set(row.id, row.statement_hash);
@@ -1040,10 +1039,40 @@ function createFakePluginHostInternal(
   > = [];
   const storedSettings = persistentState.storedSettings;
 
+  async function setSettingsValues(
+    values: Record<string, unknown>,
+  ): Promise<void> {
+    const errors = validateSettingsUpdate(settingsDescriptors, values);
+    if (errors.length > 0) {
+      throw new Error(errors.join("; "));
+    }
+    const prev = readSettingsValues(settingsDescriptors, storedSettings);
+    for (const [key, value] of Object.entries(values)) {
+      if (value === null) storedSettings.delete(key);
+      else if (typeof value === "string" || typeof value === "boolean") {
+        storedSettings.set(key, value);
+      } else {
+        throw new Error(`setting "${key}" has an unsupported value`);
+      }
+    }
+    const next = readSettingsValues(settingsDescriptors, storedSettings);
+    if (JSON.stringify(next) === JSON.stringify(prev)) return;
+    for (const listener of settingsListeners) {
+      try {
+        listener(next, prev);
+      } catch (error) {
+        emitLog(
+          "warn",
+          `settings onChange listener failed: ${errorMessage(error)}`,
+        );
+      }
+    }
+  }
+
   const settings: PluginSettings = {
     define(descriptors) {
       assertLive();
-      registerSettingDescriptors(
+      const validated = registerSettingDescriptors(
         settingsDescriptors,
         descriptors as Record<string, unknown>,
       );
@@ -1051,10 +1080,20 @@ function createFakePluginHostInternal(
       return {
         async get() {
           assertLive();
-          return readSettingsValues(
-            settingsDescriptors,
-            storedSettings,
-          ) as Values;
+          return readSettingsValues(validated, storedSettings) as Values;
+        },
+        async experimental_set(values) {
+          assertLive();
+          const rawValues: Record<string, unknown> = {};
+          for (const [key, value] of Object.entries(values)) {
+            rawValues[key] = value;
+          }
+          const errors = validateSettingsUpdate(validated, rawValues);
+          if (errors.length > 0) {
+            throw new Error(errors.join("; "));
+          }
+          await setSettingsValues(rawValues);
+          return readSettingsValues(validated, storedSettings) as Values;
         },
         onChange(listener) {
           assertLive();
@@ -2061,27 +2100,7 @@ function createFakePluginHostInternal(
     },
 
     async setSettings(values) {
-      const errors = validateSettingsUpdate(settingsDescriptors, values);
-      if (errors.length > 0) {
-        throw new Error(errors.join("; "));
-      }
-      const prev = readSettingsValues(settingsDescriptors, storedSettings);
-      for (const [key, value] of Object.entries(values)) {
-        if (value === null) storedSettings.delete(key);
-        else storedSettings.set(key, value);
-      }
-      const next = readSettingsValues(settingsDescriptors, storedSettings);
-      if (JSON.stringify(next) === JSON.stringify(prev)) return;
-      for (const listener of settingsListeners) {
-        try {
-          listener(next, prev);
-        } catch (error) {
-          emitLog(
-            "warn",
-            `settings onChange listener failed: ${errorMessage(error)}`,
-          );
-        }
-      }
+      await setSettingsValues(values);
     },
 
     async callRpc(method, input) {

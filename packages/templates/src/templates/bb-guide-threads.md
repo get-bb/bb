@@ -151,7 +151,6 @@ Inspecting:
     --diff-target <type>                   Diff scope: uncommitted, branch_committed, all, commit
     --diff-sha <sha>                       Commit SHA (for --diff-target commit)
     --diff-merge-base <branch>             Override merge-base branch for diff
-    --merge-base-branches                  List available local and remote merge-base branches
 
   Shows pull request status for the attached environment branch when available.
 

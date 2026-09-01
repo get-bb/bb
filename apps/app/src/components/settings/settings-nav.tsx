@@ -23,6 +23,7 @@ export interface SettingsNavState {
   activeSection: SettingsSectionId | null;
   hasUnknownSection: boolean;
   activePluginId: string | null;
+  otherPluginEntries: readonly PluginSettingsEntry[];
   pluginEntries: readonly PluginSettingsEntry[];
   sections: readonly SettingsNavSection[];
 }
@@ -76,7 +77,7 @@ export function useSettingsNavState(): SettingsNavState {
           : "general";
 
   const installedPlugins = pluginListQuery.data?.plugins ?? [];
-  const pluginEntries = buildPluginSettingsEntries({
+  const pluginEntryGroups = buildPluginSettingsEntries({
     installedPlugins,
     settingsSections,
   });
@@ -85,7 +86,8 @@ export function useSettingsNavState(): SettingsNavState {
     activePluginId,
     activeSection,
     hasUnknownSection,
-    pluginEntries,
+    otherPluginEntries: pluginEntryGroups.other,
+    pluginEntries: pluginEntryGroups.configurable,
     sections,
   };
 }

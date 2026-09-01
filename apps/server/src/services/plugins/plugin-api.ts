@@ -88,6 +88,7 @@ import {
   providerAlreadyRegisteredMessage,
   providerIconRefusalMessage,
   undeclaredIconProblem,
+  validateSettingsUpdate,
   validatePluginAiServiceDeclaration,
   validatePluginProviderDeclaration,
 } from "@get-bb/plugin-sdk/internal/host-policy";
@@ -100,7 +101,10 @@ import type { ServerLogger } from "../../types.js";
 import type { PluginInteractionResult } from "../interactions/pending-interactions.js";
 import { appendPluginLogLine } from "./plugin-log.js";
 import type { PluginHostArtifactSnapshot } from "./plugin-service-internal.js";
-import { readPluginSettingsValues } from "./plugin-settings.js";
+import {
+  readPluginSettingsValues,
+  writePluginSettingsUpdate,
+} from "./plugin-settings.js";
 
 const LEGACY_UNKNOWN_MIGRATION_HASH = "legacy-unknown";
 
@@ -380,6 +384,7 @@ export function createPluginApi(options: {
   getSdk: () => BbSdk | undefined;
   getLoopbackBaseUrl: () => string | undefined;
   publishSignal: (channel: string, payload: unknown) => void;
+  settingsChanged: () => void;
   reportNeedsConfiguration: (message: string) => void;
   isAgentToolNameTaken: (name: string) => string | undefined;
   reportAgentToolProblem: (message: string) => void;
@@ -447,6 +452,7 @@ export function createPluginApi(options: {
     getSdk,
     getLoopbackBaseUrl,
     publishSignal,
+    settingsChanged,
     reportNeedsConfiguration,
     isAgentToolNameTaken,
     reportAgentToolProblem,
@@ -647,10 +653,9 @@ export function createPluginApi(options: {
         );
       }
       const rows = database
-        .prepare<
-          [],
-          { id: number; statement_hash: string | null }
-        >("SELECT id, statement_hash FROM _bb_migrations ORDER BY id")
+        .prepare<[], { id: number; statement_hash: string | null }>(
+          "SELECT id, statement_hash FROM _bb_migrations ORDER BY id",
+        )
         .all();
       const applied = new Map<number, string | null>();
       for (const row of rows) applied.set(row.id, row.statement_hash);
@@ -701,6 +706,45 @@ export function createPluginApi(options: {
       return {
         async get() {
           assertLive();
+          return (await readPluginSettingsValues({
+            db,
+            dataDir,
+            pluginId,
+            descriptors: validated,
+          })) as Values;
+        },
+        async experimental_set(values) {
+          assertLive();
+          const rawValues: Record<string, unknown> = {};
+          for (const [key, value] of Object.entries(values)) {
+            rawValues[key] = value;
+          }
+          const errors = validateSettingsUpdate(validated, rawValues);
+          if (errors.length > 0) {
+            throw new Error(errors.join("; "));
+          }
+          const storeArgs = {
+            db,
+            dataDir,
+            pluginId,
+            descriptors: settingsRecord.descriptors,
+          };
+          const prev = await readPluginSettingsValues(storeArgs);
+          await writePluginSettingsUpdate({ ...storeArgs, values: rawValues });
+          const next = await readPluginSettingsValues(storeArgs);
+          if (JSON.stringify(next) !== JSON.stringify(prev)) {
+            for (const listener of settingsRecord.listeners) {
+              try {
+                listener(next, prev);
+              } catch (error) {
+                emitLog(
+                  "warn",
+                  `settings onChange listener failed: ${error instanceof Error ? error.message : String(error)}`,
+                );
+              }
+            }
+            if (activated) settingsChanged();
+          }
           return (await readPluginSettingsValues({
             db,
             dataDir,

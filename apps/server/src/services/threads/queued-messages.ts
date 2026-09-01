@@ -6,6 +6,7 @@ import {
   getQueuedThreadMessage,
   getEnvironment,
   getThread,
+  isThreadQueueAutoSendPaused,
   listIdleThreadsWithQueuedMessages,
   releaseQueuedMessageClaim,
   releaseStaleQueuedMessageClaims,
@@ -262,13 +263,15 @@ interface QueuedMessageAutoSendRequestArgs {
 }
 
 function isQueuedMessageAutoSendCandidate(
+  db: DbQueryConnection,
   thread: Thread | null,
 ): thread is Thread {
   return (
     thread !== null &&
     thread.archivedAt === null &&
     thread.deletedAt === null &&
-    thread.status !== "stopping"
+    thread.status !== "stopping" &&
+    !isThreadQueueAutoSendPaused(db, thread.id)
   );
 }
 
@@ -727,7 +730,13 @@ export async function sendQueuedMessage(
     return toThreadQueuedMessage(existing);
   }
   const thread = getThread(deps.db, args.threadId);
-  if (thread && isManualCompactionActive(deps, thread)) {
+  if (
+    thread &&
+    (isManualCompactionActive(deps, thread) ||
+      (args.mode === "auto" &&
+        !args.sendNow &&
+        isThreadQueueAutoSendPaused(deps.db, thread.id)))
+  ) {
     releaseQueuedMessageClaims(deps, queuedMessages);
     return toThreadQueuedMessage(queuedMessages[0]!);
   }
@@ -750,7 +759,12 @@ export async function sendNextQueuedMessageIfPresent(
   deps: LoggedPendingInteractionWorkSessionDeps,
   args: { threadId: string },
 ): Promise<boolean> {
-  if (!isQueuedMessageAutoSendCandidate(getThread(deps.db, args.threadId))) {
+  if (
+    !isQueuedMessageAutoSendCandidate(
+      deps.db,
+      getThread(deps.db, args.threadId),
+    )
+  ) {
     return false;
   }
 
@@ -765,7 +779,7 @@ export async function sendNextQueuedMessageIfPresent(
 
   const thread = getThread(deps.db, args.threadId);
   if (
-    !isQueuedMessageAutoSendCandidate(thread) ||
+    !isQueuedMessageAutoSendCandidate(deps.db, thread) ||
     isManualCompactionActive(deps, thread)
   ) {
     releaseQueuedMessageClaims(deps, nextQueuedMessages);

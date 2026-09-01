@@ -1,4 +1,9 @@
-import { listEvents, listQueuedThreadMessages, setQueuedThreadMessageGroupBoundary } from "@bb/db";
+import {
+  listEvents,
+  listQueuedThreadMessages,
+  setQueuedThreadMessageFailureReason,
+  setQueuedThreadMessageGroupBoundary,
+} from "@bb/db";
 import type { PluginHookName } from "@get-bb/plugin-sdk";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
@@ -91,14 +96,40 @@ describe("the requested queue drain", () => {
     await withTestHarness(async (harness) => {
       vi.useFakeTimers();
       let attempts = 0;
-      installHooks({ "message.dispatch": [{ pluginId: "limiter", handler: () => ++attempts === 1 ? ({ action: "wait", reason: "At capacity" } as const) : { action: "proceed" } }] });
+      installHooks({
+        "message.dispatch": [
+          {
+            pluginId: "limiter",
+            handler: () =>
+              ++attempts === 1
+                ? ({ action: "wait", reason: "At capacity" } as const)
+                : { action: "proceed" },
+          },
+        ],
+      });
       const { thread } = seedRunnableThread(harness, {
         hostId: "host-scheduled-group",
         status: "idle",
       });
-      const lead = seedQueuedMessage(harness.deps, { threadId: thread.id, content: textInput("lead"), waitingOn: { kind: "time" }, sendAt: Date.now() - 2_000 });
-      const tail = seedQueuedMessage(harness.deps, { threadId: thread.id, content: textInput("tail"), waitingOn: { kind: "time" }, sendAt: Date.now() - 1_000 });
-      setQueuedThreadMessageGroupBoundary({ db: harness.db, notifier: harness.deps.hub, threadId: thread.id, expectedGroupedPrefixQueuedMessageIds: [lead.id, tail.id], groupBoundaryQueuedMessageId: tail.id });
+      const lead = seedQueuedMessage(harness.deps, {
+        threadId: thread.id,
+        content: textInput("lead"),
+        waitingOn: { kind: "time" },
+        sendAt: Date.now() - 2_000,
+      });
+      const tail = seedQueuedMessage(harness.deps, {
+        threadId: thread.id,
+        content: textInput("tail"),
+        waitingOn: { kind: "time" },
+        sendAt: Date.now() - 1_000,
+      });
+      setQueuedThreadMessageGroupBoundary({
+        db: harness.db,
+        notifier: harness.deps.hub,
+        threadId: thread.id,
+        expectedGroupedPrefixQueuedMessageIds: [lead.id, tail.id],
+        groupBoundaryQueuedMessageId: tail.id,
+      });
 
       await runDueScheduledQueueSweep(harness.deps, Date.now());
       vi.advanceTimersByTime(1_001);
@@ -120,7 +151,10 @@ describe("the requested queue drain", () => {
         pluginId: "limiter",
         handler: () =>
           full
-            ? ({ action: "wait", reason: "1 of 1 running on all hosts" } as const)
+            ? ({
+                action: "wait",
+                reason: "1 of 1 running on all hosts",
+              } as const)
             : ({ action: "proceed" } as const),
       });
       installHooks(registry);
@@ -145,6 +179,70 @@ describe("the requested queue drain", () => {
     });
   });
 
+  it.each(["scheduled", "plugin"] as const)(
+    "does not dispatch a %s group containing a failed row",
+    async (drain) => {
+      await withTestHarness(async (harness) => {
+        let attempts = 0;
+        installHooks({
+          "message.dispatch": [
+            {
+              pluginId: "limiter",
+              handler: () => {
+                attempts += 1;
+                return { action: "wait", reason: "At capacity" } as const;
+              },
+            },
+          ],
+        });
+        const { thread } = seedRunnableThread(harness, {
+          hostId: `host-failed-${drain}-group`,
+          status: "idle",
+        });
+        const waitingOn =
+          drain === "scheduled"
+            ? ({ kind: "time" } as const)
+            : ({
+                kind: "plugin",
+                pluginId: "limiter",
+                reason: "At capacity",
+              } as const);
+        const sendAt = drain === "scheduled" ? Date.now() - 1_000 : null;
+        const lead = seedQueuedMessage(harness.deps, {
+          threadId: thread.id,
+          content: textInput("lead"),
+          waitingOn,
+          sendAt,
+        });
+        const failed = seedQueuedMessage(harness.deps, {
+          threadId: thread.id,
+          content: textInput("failed"),
+          waitingOn,
+          sendAt,
+        });
+        setQueuedThreadMessageGroupBoundary({
+          db: harness.db,
+          notifier: harness.deps.hub,
+          threadId: thread.id,
+          expectedGroupedPrefixQueuedMessageIds: [lead.id, failed.id],
+          groupBoundaryQueuedMessageId: failed.id,
+        });
+        setQueuedThreadMessageFailureReason(harness.db, harness.deps.hub, {
+          id: failed.id,
+          threadId: thread.id,
+          failureReason: "Terminal failure",
+        });
+
+        if (drain === "scheduled")
+          await runDueScheduledQueueSweep(harness.deps, Date.now());
+        else await runRequestedQueueDrain(harness.deps);
+
+        expect(attempts).toBe(0);
+        expect(listQueuedThreadMessages(harness.db, thread.id)).toHaveLength(2);
+      });
+    },
+  );
+
   it("leaves rows on core waits alone", async () => {
     // A `thread-busy` row is waiting on its own thread's turn ending, not on
     // somebody else's slot. Re-attempting it on every completion in the server
@@ -157,7 +255,10 @@ describe("the requested queue drain", () => {
         status: "active",
       });
       await acceptThreadSendRequest(harness.deps, {
-        payload: { input: textInput("after this turn"), mode: "queue-if-active" },
+        payload: {
+          input: textInput("after this turn"),
+          mode: "queue-if-active",
+        },
         thread,
       });
       const queued = listQueuedThreadMessages(harness.db, thread.id);

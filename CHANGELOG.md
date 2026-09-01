@@ -1,5 +1,109 @@
 # Changelog
 
+## 0.41.0
+
+This release adds a dispatch queue. You can schedule a send for later and limit how much work runs at the same time. The mobile app is now the bb web app in a native shell, and the new Plugin Guide maps every public plugin API.
+
+### New features
+
+- Send a message later. The bundled **Send later** plugin holds the message and dispatches it when it is due.
+- Limit how many threads run at the same time. The bundled **Concurrency limit** plugin defaults to the processor count of your machine.
+- Choose Queue or Steer for the Enter key in Settings > General. Each option describes what Enter and Command+Enter do. New installs use Steer.
+- Search your threads from the quick palette. The palette also opens Settings pages.
+- Reopen a closed tab with a keyboard shortcut.
+- Snap split panes to an equal grid.
+- Copy a link to a thread.
+- Search the parent thread picker. bb ranks parent threads that have children first.
+- Sort Browse Plugins by install count. This is the new default order.
+- Use a transparent or a frameless window on Linux.
+- Add a `.bb-env-teardown.sh` script to your repository. bb runs it before it removes a managed worktree.
+
+### Mobile app
+
+The mobile app is now a WebView shell around the bb web app. One implementation serves the phone and the desktop, so new features arrive on both at the same time.
+
+- Compact layouts use persistent shelves. The page stays visible behind the shelf.
+- The compact home page and the recents list are new.
+- Tool tabs open as full-page surfaces.
+- Navigation responds immediately.
+- Swipe to dismiss the sidebar again.
+
+### Built-in plugin updates
+
+- **Plugin Guide.** Enable this new plugin from Extensions > Installed Plugins. It maps every public plugin API surface over the real bb UI. Use **Copy for agent** to paste a surface reference into the composer.
+- **File Editor.** The Monaco editor uses your bb code theme. You can resize its file tree.
+- **Tasks.** Markdown tables render correctly, and a paste keeps the table content.
+- **Automations.** A degraded automation recovers instead of failing to load.
+- **Workflows.** The panel surface is cleaner, and worker threads archive when retention deletes their run.
+
+### Agent providers
+
+- Claude Code offers Fable 5.1.
+- The model picker shows the models that Pi gives you access to.
+- bb releases a restorable provider session after 30 idle minutes. This is no longer an experiment.
+- bb retires a provider bridge after its final thread ends.
+- bb retries a provider overload failure with the same conversation. It no longer sends a synthetic message.
+
+### CLI
+
+- `bb thread spawn --help` describes `--base-branch` correctly. Every named base is an exact Git ref.
+- `bb environment branches` keeps local and remote branch choices discoverable with query and limit controls.
+- `bb plugin new` creates a scaffold with a test that runs and a correct SDK example.
+- Command help and search results honor each command's help metadata.
+
+### Performance
+
+- Conversation outlines load much faster on large threads.
+- A cold load makes fewer duplicate network requests.
+- bb caches provider discovery and provider logos.
+- Plugin builds skip metafiles that nothing reads.
+
+### Notable fixes
+
+- A group of queued follow-ups stays together.
+- A steer queues correctly while a turn starts.
+- A thread keeps its execution model through the first dispatch.
+- Terminal OSC 8 links work, and a wrapped selection copies correctly.
+- macOS terminals no longer leak pty file descriptors.
+- Codex subagents relink after a session resume.
+- Codex spend controls report the correct rate limits.
+- Pi accepts a prompt that contains only an image.
+- Cursor plugin skills appear in the composer.
+- bb keeps a shared port while its host is offline.
+- The sidebar shows Offline when host capacity is unknown.
+- A large directory tree lists without a stack overflow.
+- Archived thread names resolve in sidebar mentions.
+- The Linux AppImage mounts and unmounts its runtime correctly.
+- Native module ABI failures no longer recur.
+
+### Plugin API changes
+
+- `bb.experimental_hooks.on("message.dispatch", handler)` gives one checkpoint for every send. Your handler can proceed, wait, or reject.
+- `bb.experimental_hooks.recheck(hook)` asks bb to pose the same question again.
+- New events report the queue: `message.queued`, `message.dispatched`, and `turn.failed`.
+- `sendAt` schedules a send, and `threads.retry()` dispatches a turn again.
+- `app.slots.experimental_sidebarNavigation` replaces the sidebar navigation with your own.
+- A plugin migration cannot reuse a migration index.
+
+### Thanks
+
+Twelve people outside the core team added code to this release. Thank you:
+
+- [@smsunarto](https://github.com/smsunarto)
+- [@wy3z](https://github.com/wy3z)
+- [@Danielalnajjar](https://github.com/Danielalnajjar)
+- [@fdx-peter](https://github.com/fdx-peter)
+- [@fgrehm](https://github.com/fgrehm)
+- [@hemaaanth](https://github.com/hemaaanth)
+- [@jonolee-kr](https://github.com/jonolee-kr)
+- [@peterfotinis](https://github.com/peterfotinis)
+- [@salemsayed](https://github.com/salemsayed)
+- [@sujeito-operator](https://github.com/sujeito-operator)
+- [@t1mdurden](https://github.com/t1mdurden)
+- [@yazydzhi](https://github.com/yazydzhi)
+
+Thank you also to everyone who reported an issue that this release fixes: **[@ariofrio](https://github.com/ariofrio)**, **[@bradhallett](https://github.com/bradhallett)**, **[@kongenpei](https://github.com/kongenpei)**, **[@markasoftware-tc](https://github.com/markasoftware-tc)**, **[@MGrin](https://github.com/MGrin)**, **[@MisterMunchkin](https://github.com/MisterMunchkin)**, **[@MPIsaac-Per](https://github.com/MPIsaac-Per)**, **[@nick8cyber](https://github.com/nick8cyber)**, **[@omar-quesada](https://github.com/omar-quesada)**, **[@pixexid](https://github.com/pixexid)**, **[@ryanbbrown](https://github.com/ryanbbrown)**, **[@Techno911](https://github.com/Techno911)**, **[@yurilaguardia](https://github.com/yurilaguardia)**, and **[@yusuf8834](https://github.com/yusuf8834)**.
+
 ## 0.40.0
 
 This release adds the File Editor and a quick command palette. It also makes bb faster across all devices.
