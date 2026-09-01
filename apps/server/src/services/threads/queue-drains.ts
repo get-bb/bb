@@ -228,14 +228,13 @@ async function dispatchDueQueuedMessage(
 async function attemptEligibleQueuedMessage(
   deps: QueueDrainDeps,
   row: QueuedMessageDispatchRef,
-  eligibility: number | "plugin",
+  now: number,
 ): Promise<void> {
   await sendQueuedMessage(deps, {
     isGroupEligible: (group) =>
       group.every((member) =>
-        eligibility === "plugin"
-          ? member.waitHolder !== null
-          : member.sendAt !== null && member.sendAt <= eligibility,
+        member.waitHolder !== null ||
+        (member.sendAt !== null && member.sendAt <= now),
       ),
     mode: "auto",
     queuedMessageId: row.id,
@@ -301,7 +300,7 @@ export async function runRequestedQueueDrain(
     const thread = getThread(deps.db, row.threadId);
     if (!thread || thread.deletedAt !== null) continue;
     try {
-      await attemptEligibleQueuedMessage(deps, row, "plugin");
+      await attemptEligibleQueuedMessage(deps, row, Date.now());
     } catch (error) {
       // Same posture as the due sweep: nobody is listening, so the outcome
       // lands on the row rather than propagating and stopping the walk.

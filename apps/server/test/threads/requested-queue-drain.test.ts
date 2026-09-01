@@ -140,6 +140,65 @@ describe("the requested queue drain", () => {
     });
   });
 
+  it("drains a group after its mixed plugin and timer waits clear", async () => {
+    await withTestHarness(async (harness) => {
+      vi.useFakeTimers();
+      let released = false;
+      let attempts = 0;
+      installHooks({
+        "message.dispatch": [
+          {
+            pluginId: "limiter",
+            handler: () => {
+              attempts += 1;
+              return released
+                ? ({ action: "proceed" } as const)
+                : ({ action: "wait", reason: "At capacity" } as const);
+            },
+          },
+        ],
+      });
+      const { thread } = seedRunnableThread(harness, {
+        hostId: "host-mixed-group",
+        status: "idle",
+      });
+      await acceptThreadSendRequest(harness.deps, {
+        payload: { input: textInput("plugin-held lead"), mode: "auto" },
+        thread,
+      });
+      await acceptThreadSendRequest(harness.deps, {
+        payload: {
+          input: textInput("scheduled tail"),
+          mode: "auto",
+          sendAt: Date.now() + 1_000,
+        },
+        thread,
+      });
+      const queued = listQueuedThreadMessages(harness.db, thread.id);
+      setQueuedThreadMessageGroupBoundary({
+        db: harness.db,
+        notifier: harness.deps.hub,
+        threadId: thread.id,
+        expectedGroupedPrefixQueuedMessageIds: queued.map((row) => row.id),
+        groupBoundaryQueuedMessageId: queued[1]!.id,
+      });
+      const turnsBefore = turnRequests(harness, thread.id).length;
+
+      released = true;
+      await runRequestedQueueDrain(harness.deps);
+
+      expect(attempts).toBe(1);
+      expect(listQueuedThreadMessages(harness.db, thread.id)).toHaveLength(2);
+
+      vi.advanceTimersByTime(1_000);
+      await runDueScheduledQueueSweep(harness.deps, Date.now());
+
+      expect(attempts).toBe(2);
+      expect(listQueuedThreadMessages(harness.db, thread.id)).toHaveLength(0);
+      expect(turnRequests(harness, thread.id)).toHaveLength(turnsBefore + 1);
+    });
+  });
+
   it("re-attempts a plugin-queued row once the hook lets it through", async () => {
     // The release path that replaced a plugin releasing its own wait: core
     // re-attempts, the hook re-decides, and a row that is still blocked simply
