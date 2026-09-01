@@ -1730,9 +1730,6 @@ export function SettingsWireframe() {
               >
                 Keep answers concise and run focused tests.
               </span>
-              <span className="flex justify-end pt-1 text-subtle-foreground">
-                <span>43 / 4,096</span>
-              </span>
             </span>
           </Mark>
 
