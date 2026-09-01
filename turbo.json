@@ -230,7 +230,7 @@
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/vitest.shared.ts",
         "$TURBO_ROOT$/apps/app/src/components/ui/theme.css",
-        "$TURBO_ROOT$/packages/domain/src/app-theme-css/**"
+        "$TURBO_ROOT$/apps/app/src/lib/themes/**"
       ]
     },
     "@bb/mobile#dev": {

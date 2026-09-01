@@ -3,14 +3,14 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Preview and inspect bb themes against a maintained fixture of the product UI.",
+  "description": "Preview and validate bb themes across representative app screens, components, overlays, style tokens, and contrast checks.",
   "engines": {
     "bb": ">=0.0",
     "bbPluginSdk": ">=0.4.6"
   },
   "bb": {
     "name": "Theme Preview",
-    "description": "Preview and inspect bb themes against a maintained fixture of the product UI.",
+    "description": "Preview and validate bb themes across representative app screens, components, overlays, style tokens, and contrast checks.",
     "branding": {
       "icon": "Palette"
     },

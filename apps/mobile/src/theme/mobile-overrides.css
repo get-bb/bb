@@ -3,7 +3,7 @@
  *
  * scripts/generate-native-theme.ts replays this file AFTER
  * apps/app/src/components/ui/theme.css and BEFORE every built-in palette's
- * CSS (packages/domain/src/app-theme-css/*.ts). It re-tunes the DEFAULT palette to the
+ * CSS (apps/app/src/lib/themes/*.ts). It re-tunes the DEFAULT palette to the
  * iOS system look; a palette that sets its own anchors and literals (Nord,
  * Dracula, …) still wins because it cascades last. The web app never loads
  * this file, and only these parts of it are read:

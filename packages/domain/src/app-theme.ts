@@ -4,18 +4,6 @@ import {
   resolvedCodeThemeSchema,
 } from "./code-theme.js";
 
-/**
- * App color palette ("theme"), distinct from light/dark *mode* (which stays a
- * per-client localStorage preference). The palette is a set of CSS
- * custom-property overrides applied app-wide, persisted server-side so the CLI
- * and Settings can both set it and every open window stays in sync.
- *
- * A palette is either a built-in id (CSS bundled in the shared theme registry)
- * or a custom theme discovered on disk under
- * `<data-dir>/theme/<name>/theme.css`. For a custom palette `themeId` is the
- * theme's directory name and the resolved CSS is read from that file by the
- * server.
- */
 const builtInThemeIdSchema = z.enum([
   "default",
   "nord",
@@ -32,11 +20,6 @@ interface BuiltInThemeMeta {
   description: string;
 }
 
-/**
- * Built-in palette metadata, shared by the CLI (`bb theme list`) and the
- * Settings picker. The actual CSS strings live alongside this domain contract;
- * this is the id/name/description list the server validates against.
- */
 export const builtInThemes: readonly BuiltInThemeMeta[] = [
   { id: "default", name: "Default", description: "The standard bb look" },
   { id: "nord", name: "Nord", description: "Cool, muted arctic blues" },

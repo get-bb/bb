@@ -897,7 +897,7 @@ Beta App Review and another build of the same version usually does not.
 
 `src/theme/theme.native.ts` is generated from the web app's
 `apps/app/src/components/ui/theme.css` plus the built-in palettes in
-`packages/domain/src/app-theme-css/*.ts`: every color token per palette × light/dark as a
+`apps/app/src/lib/themes/*.ts`: every color token per palette × light/dark as a
 plain RN color string, with `nativeRadii` and the touch (`pointer: coarse`)
 `nativeTypography` scale. Do not edit it by hand. After changing theme.css or a
 palette, run `pnpm --filter @bb/mobile theme:generate` and commit the result;

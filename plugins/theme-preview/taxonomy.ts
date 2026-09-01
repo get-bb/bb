@@ -1,26 +1,3 @@
-/**
- * The plugin's content taxonomy: four high-level areas, each with the minimum
- * representative inventory a user needs to prototype a bb theme at ~80%
- * fidelity — every major theme token family (canvas/ink-derived surfaces and
- * text, accents, status, lines, typography, corner radius, interactive
- * states) is visibly exercised in at least one area.
- *
- * 1. `mock`       — the mock bb app surface, with toggles between views.
- *                   Judges tokens in real product composition.
- * 2. `overlays`   — components whose theming only shows under interaction
- *                   (menus, dialogs, popovers, tooltips, hover cards, toasts).
- * 3. `components` — live component specimens for hover, focus, pressed,
- *                   checked, editable, and disabled states. This stays a
- *                   compact sibling directly below overlays.
- * 4. `stylesheet` — the compact live theme editor. Essential and advanced
- *                   direct values are real bb controls (`data-tp-specimen`);
- *                   the product fixture above is their visual evidence.
- *
- * The app renders sections from this manifest and the coverage test asserts
- * every inventoried specimen actually reaches the DOM, so adding a specimen
- * is: add it here, render it via the shared layout primitives, done.
- */
-
 export type AreaId = "mock" | "overlays" | "components" | "stylesheet";
 
 export const AREA_TITLES: Record<AreaId, string> = {
@@ -30,57 +7,81 @@ export const AREA_TITLES: Record<AreaId, string> = {
   stylesheet: "Style sheet",
 };
 
-// ---------------------------------------------------------------------------
-// Area 1 — Mock surface. Views the toggle can show; each names the token
-// families it is responsible for exercising in composition.
-// ---------------------------------------------------------------------------
-
 export const MOCK_VIEWS = [
-  { id: "thread", label: "Thread", exercises: "sidebar row states + scoped overrides, held-open table-of-contents popover, bubbles on surface-recessed, seam/hairline borders, diff washes, file/timeline accents, verification badges, composer ring, primary send" },
-  { id: "new", label: "New thread", exercises: "empty state, focused composer ring, suggestion chips" },
-  { id: "split", label: "Split", exercises: "pane seam, active-pane primary marker, two distinct transcripts" },
-  { id: "settings", label: "Settings", exercises: "appearance rows mirroring the live selection, secondary→accent hero gradient, tab underline, cards + switches" },
+  { id: "thread", label: "Thread", exercises: "sidebar row states + scoped overrides, held-open table-of-contents popover, bubbles on surface-recessed, seam/hairline borders, diff washes, file/timeline accents, metadata panel, verification badges, composer ring, primary send" },
+  { id: "new", label: "New thread", exercises: "empty welcome hierarchy, action-row hover and focus, muted supporting copy" },
+  { id: "split", label: "Split", exercises: "pane seam, focused and inactive panes, background scrim, two distinct transcripts" },
+  { id: "settings", label: "Settings", exercises: "settings navigation selection, appearance section card, responsive label and description hierarchy, outline controls, active theme and mode, switch" },
 ] as const;
 
-// ---------------------------------------------------------------------------
-// Area 4 — Style sheet. Direct controls only; fixture evidence lives above.
-// `data-tp-specimen` values are `<kind>:<id>` from these tables.
-// ---------------------------------------------------------------------------
-
-/** The active mode's directly editable colour controls. */
-export const DIRECT_COLOR_CONTROLS = [
-  { id: "canvas", label: "Canvas", token: "canvas", family: "anchors" },
-  { id: "ink", label: "Ink", token: "ink", family: "anchors" },
-  { id: "sidebar", label: "Sidebar", token: "sidebar", family: "sidebar" },
-  { id: "sidebar-foreground", label: "Sidebar ink", token: "sidebar-foreground", family: "sidebar" },
-  { id: "primary", label: "Primary", token: "primary", family: "primary" },
-  { id: "timeline-accent", label: "Timeline / files", token: "timeline-accent", family: "timeline" },
-  { id: "success", label: "Success", token: "success", family: "status" },
-  { id: "warning", label: "Warning", token: "warning", family: "status" },
-  { id: "attention", label: "Attention / pending", token: "attention", family: "status" },
-  { id: "destructive", label: "Destructive", token: "destructive", family: "status" },
-  { id: "pr-merged", label: "Merged", token: "pr-merged", family: "status" },
+export const COLOR_GROUPS = [
+  {
+    id: "surfaces",
+    title: "Surfaces",
+    band: "palette",
+    contrast: "none",
+    tokens: ["canvas", "sidebar", "card", "popover", "secondary", "muted", "surface-recessed-solid", "surface-scrim"],
+  },
+  {
+    id: "ink",
+    title: "Ink",
+    band: "palette",
+    contrast: "vs-surface",
+    tokens: ["ink", "foreground", "muted-foreground", "subtle-foreground", "readback-foreground", "sidebar-foreground"],
+  },
+  {
+    id: "accent",
+    title: "Accent",
+    band: "palette",
+    contrast: "none",
+    tokens: ["primary", "file-accent", "timeline-accent", "surface-selected", "state-hover", "state-active"],
+  },
+  {
+    id: "status",
+    title: "Status",
+    band: "palette",
+    contrast: "as-painted",
+    tokens: ["success", "warning", "attention", "destructive", "pr-merged", "diff-added", "diff-removed"],
+  },
+  {
+    id: "lines",
+    title: "Lines",
+    band: "foundation",
+    contrast: "none",
+    tokens: ["border", "border-hairline", "border-seam", "sidebar-border", "input", "ring"],
+  },
 ] as const;
 
-/** Typography controls. */
 export const TYPE_SPECIMENS = [
   { id: "font-sans", title: "Sans", token: "font-sans" },
   { id: "font-mono", title: "Mono", token: "font-mono" },
-  { id: "text-scale", title: "Text scale", token: "tp-text-scale" },
-  { id: "line-height", title: "Line height", token: "tp-line-height" },
+  { id: "text-scale", title: "Text size", token: "text-sm" },
+  { id: "line-height", title: "Line height", token: "text-sm--line-height" },
 ] as const;
 
-/** Radius tokens measured to seed the one direct base control. */
+export const RHYTHM_SPECIMENS = [
+  { id: "density", title: "Density", token: "spacing", unit: "px" },
+  { id: "tracking", title: "Tracking", token: "tracking-normal", unit: "em" },
+  { id: "row-height", title: "Sidebar row", token: "bb-sidebar-row-height", unit: "px" },
+  { id: "icon-stroke", title: "Icon stroke", token: "icon-stroke-width", unit: "" },
+] as const;
+
 export const RADIUS_SPECIMENS = [
-  { id: "radius-sm", title: "Small", source: "var(--radius-sm)" },
-  { id: "radius-md", title: "Medium", source: "var(--radius-md)" },
-  { id: "radius-lg", title: "Large", source: "var(--radius-lg)" },
-  { id: "radius-xl", title: "Extra large", source: "var(--radius-xl)" },
+  { id: "radius", title: "Base", source: "var(--radius)" },
+  { id: "radius-sm", title: "Small", source: "calc(var(--radius) - 4px)" },
+  { id: "radius-md", title: "Medium", source: "calc(var(--radius) - 2px)" },
+  { id: "radius-lg", title: "Large", source: "var(--radius)" },
+  { id: "radius-xl", title: "Extra large", source: "calc(var(--radius) + 4px)" },
 ] as const;
 
-// ---------------------------------------------------------------------------
-// Area 3 — Live components (all vendored @bb/shared-ui, never lookalikes).
-// ---------------------------------------------------------------------------
+export const SHADOW_SPECIMENS = [
+  { id: "y", title: "Y", token: "shadow-y" },
+  { id: "blur", title: "Blur", token: "shadow-blur" },
+  { id: "x", title: "X", token: "shadow-x" },
+  { id: "spread", title: "Spread", token: "shadow-spread" },
+  { id: "color", title: "Color", token: "tp-shadow-color" },
+  { id: "opacity", title: "Opacity", token: "tp-shadow-opacity-percent" },
+] as const;
 
 export const COMPONENT_SPECIMENS = [
   { id: "buttons", title: "Buttons", vendored: "@bb/shared-ui/button" },
@@ -89,12 +90,6 @@ export const COMPONENT_SPECIMENS = [
   { id: "switch", title: "Switch", vendored: "@bb/shared-ui/switch" },
   { id: "checkbox", title: "Checkbox", vendored: "@bb/shared-ui/checkbox" },
 ] as const;
-
-// ---------------------------------------------------------------------------
-// Area 2 — Interactive overlays (all vendored; opened deliberately, one at a
-// time). The theme picker in the header additionally exercises
-// @bb/shared-ui/select live.
-// ---------------------------------------------------------------------------
 
 export const OVERLAY_SPECIMENS = [
   { id: "menu", label: "Menu", vendored: "@bb/shared-ui/dropdown-menu" },
@@ -105,19 +100,10 @@ export const OVERLAY_SPECIMENS = [
   { id: "toast", label: "Toast", vendored: "sonner via the app-mounted Toaster" },
 ] as const;
 
-/** Every `data-tp-specimen` value the style sheet must render. */
 export const STYLESHEET_SPECIMEN_IDS: readonly string[] = [
-  ...DIRECT_COLOR_CONTROLS.map((control) => `color:${control.id}`),
+  ...COLOR_GROUPS.flatMap((group) => group.tokens.map((token) => `color:${token}`)),
   ...TYPE_SPECIMENS.map((specimen) => `type:${specimen.id}`),
-  "rhythm:density",
-  "rhythm:tracking",
-  "rhythm:row-height",
-  "rhythm:icon-stroke",
-  "radius:base",
-  "shadow:y",
-  "shadow:blur",
-  "shadow:x",
-  "shadow:spread",
-  "shadow:color",
-  "shadow:opacity",
+  ...RHYTHM_SPECIMENS.map((specimen) => `rhythm:${specimen.id}`),
+  ...RADIUS_SPECIMENS.map((specimen) => `radius:${specimen.id}`),
+  ...SHADOW_SPECIMENS.map((specimen) => `shadow:${specimen.id}`),
 ];

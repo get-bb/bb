@@ -1,11 +1,10 @@
-import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { describe, expect, it, vi } from "vitest";
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import plugin, { buildCatalog, classifySelector, createCatalogLoader, parseThemeSwatches } from "./server";
-import type { ThemeEditInput } from "./theme-editor";
 
 describe("classifySelector", () => {
   it("accepts the mode roots and rejects element-scoped blocks", () => {
@@ -38,7 +37,7 @@ describe("parseThemeSwatches", () => {
     expect(dark?.sidebar).toBe("#0a0a0a");
   });
 
-  it("keeps managed light overrides out of the dark swatch", () => {
+  it("keeps light-only overrides out of the dark swatch", () => {
     const parsed = parseThemeSwatches(`
       :root, .light { --canvas: #eeeeee; }
       .dark { --canvas: #222222; }
@@ -299,7 +298,7 @@ describe("createCatalogLoader", () => {
     await rm(directory, { recursive: true, force: true });
   });
 
-  it("increments once for an editor write, deduplicates its watcher echo, then increments for an external write", async () => {
+  it("reapplies the active theme and increments the revision after an external write", async () => {
     const directory = await mkdtemp(join(tmpdir(), "theme-preview-revision-"));
     const themeDirectory = join(directory, "theme-a");
     const filePath = join(themeDirectory, "theme.css");
@@ -321,13 +320,9 @@ describe("createCatalogLoader", () => {
       const loader = createCatalogLoader(bb);
       expect((await loader.catalog()).revision).toBe(0);
 
-      await writeFile(filePath, ":root { --canvas: #eeeeee; }\n/* editor */");
-      expect((await loader.applyEditedTheme("theme-a", filePath)).revision).toBe(1);
-      expect((await loader.catalog()).revision).toBe(1);
-
       await writeFile(filePath, ":root { --canvas: #dddddd; }\n/* external and longer */");
-      expect((await loader.catalog()).revision).toBe(2);
-      expect(setCalls).toEqual(["theme-a", "theme-a"]);
+      expect((await loader.catalog()).revision).toBe(1);
+      expect(setCalls).toEqual(["theme-a"]);
     } finally {
       await rm(directory, { recursive: true, force: true });
     }
@@ -372,98 +367,22 @@ describe("theme watcher", () => {
   });
 });
 
-describe("editTheme RPC", () => {
-  it("forks a built-in, selects the durable custom theme, and returns its refreshed catalog", async () => {
-    const directory = await mkdtemp(join(tmpdir(), "theme-preview-rpc-"));
-    let activeThemeId = "default";
-    const setCalls: string[] = [];
-    let handlers!: {
-      editTheme(input: ThemeEditInput): Promise<{
-        catalog: { activeThemeId: string | null; themes: Array<{ id: string; source: string; links: { sidebarRow: string } }>; revision: number };
-        themeId: string;
-        forkedFrom: string | null;
-        undoToken: string | null;
-        committedEdit: ThemeEditInput["edit"];
-        adjustments: Array<{ control: string }>;
-        links: { sidebarRow: string };
-      }>;
-      undoThemeFork(input: { undoToken: string }): Promise<{
-        activeThemeId: string | null;
-        themes: Array<{ id: string; source: string }>;
-      }>;
-    };
+describe("RPC registration", () => {
+  it("exposes only catalog loading and theme selection", async () => {
+    let handlerNames: string[] = [];
     const bb = {
       background: { service() {} },
-      sdk: {
-        theme: {
-          catalog: async () => {
-            const entries = await readdir(directory, { withFileTypes: true });
-            return {
-              active: { themeId: activeThemeId },
-              custom: entries.filter((entry) => entry.isDirectory()).map((entry) => entry.name),
-              plugins: [],
-              dir: directory,
-            };
-          },
-          set: async (themeId: string) => {
-            setCalls.push(themeId);
-            activeThemeId = themeId;
-          },
-        },
-        plugins: { list: async () => ({ plugins: [] }) },
-      },
       rpc: {
-        register(_contract: unknown, registered: typeof handlers) {
-          handlers = registered;
+        register(_contract: unknown, handlers: object) {
+          handlerNames = Object.keys(handlers).sort();
         },
       },
       log: { info() {}, warn() {} },
     } as unknown as BbPluginApi;
 
-    try {
-      await plugin(bb);
-      const result = await handlers.editTheme({
-        themeId: "default",
-        mode: "light",
-        edit: {
-          kind: "colors",
-          target: "primary",
-          canvas: "#ffffff",
-          ink: "#222222",
-          sidebar: "#f8f8f8",
-          sidebarForeground: "#222222",
-          primary: "#2255cc",
-          timelineAccent: "#3366dd",
-          success: "#238636",
-          warning: "#b26a00",
-          attention: "#c69000",
-          destructive: "#cf222e",
-          prMerged: "#8250df",
-        },
-      });
+    await plugin(bb);
 
-      expect(result.themeId).toBe("default-copy");
-      expect(result.forkedFrom).toBe("default");
-      expect(result.undoToken).toEqual(expect.any(String));
-      expect(result.committedEdit).toMatchObject({ kind: "colors", target: "primary", primary: "#2255cc" });
-      expect(result.adjustments).toEqual([]);
-      expect(result.links).toEqual(expect.objectContaining({ sidebarRow: expect.any(String) }));
-      expect(result.catalog.activeThemeId).toBe("default-copy");
-      expect(result.catalog.revision).toBe(1);
-      expect(result.catalog.themes.find((theme) => theme.id === "default-copy")?.links).toEqual(result.links);
-      expect(result.catalog.themes.find((theme) => theme.id === "default-copy")?.source).toBe("custom");
-      expect(setCalls).toEqual(["default-copy"]);
-      expect(await readFile(join(directory, "default-copy", "theme.css"), "utf8"))
-        .toContain("--primary: #2255cc;");
-
-      const undone = await handlers.undoThemeFork({ undoToken: result.undoToken! });
-      expect(undone.activeThemeId).toBe("default");
-      expect(undone.themes.some((theme) => theme.id === "default-copy")).toBe(false);
-      expect(setCalls).toEqual(["default-copy", "default"]);
-      expect((await readdir(directory)).includes("default-copy")).toBe(false);
-    } finally {
-      await rm(directory, { recursive: true, force: true });
-    }
+    expect(handlerNames).toEqual(["setTheme", "themeCatalog"]);
   });
 });
 
@@ -486,41 +405,12 @@ describe("buildCatalog", () => {
     );
     expect(out.activeThemeId).toBe("default");
     expect(out.themes.map((t) => t.id).slice(0, 3)).toEqual(["endless", "plugin:endless:endless-color", "default"]);
-    expect(out.themes.map((t) => t.source).slice(0, 3)).toEqual(["custom", "plugin", "builtin"]);
     // bundled palettes carry swatches extracted from bb's source
     const nord = out.themes.find((t) => t.id === "nord");
     expect(nord?.dark?.primary).toBe("#88c0d0");
     expect(nord?.light?.canvas).toBe("#eceff4");
     expect(out.themes[0].light?.canvas).toBe("#f4f4f4");
     expect(out.themes[1].light).toBeNull();
-    expect(out.themes[0].links).toEqual({ sidebarRow: "linked", shadowColor: { light: "linked", dark: "linked" } });
     expect(out.revision).toBe(0);
-  });
-
-  it("uses the durable fork label embedded by Theme Preview", async () => {
-    const encodedName = Buffer.from("Nord copy", "utf8").toString("base64url");
-    const out = await buildCatalog(
-      { active: { themeId: "nord-copy" }, custom: ["nord-copy"], plugins: [] },
-      async () => `:root { --canvas: #eceff4; }\n/* theme-preview:fork-name:${encodedName} */\n`,
-    );
-
-    expect(out.themes.find((theme) => theme.id === "nord-copy")?.name).toBe("Nord copy");
-  });
-
-  it("reloads durable linked and custom relationship state from theme CSS", async () => {
-    const out = await buildCatalog(
-      { active: { themeId: "linked" }, custom: ["linked", "custom"], plugins: [] },
-      async (id) => id === "linked"
-        ? `/* theme-preview:managed:start */
-:root { --bb-sidebar-row-height: calc(20px + var(--spacing) + var(--spacing)); }
-:root:not(.dark), .light:not(.dark) { --tp-shadow-color: var(--ink); }
-/* theme-preview:managed:end */`
-        : ":root { --bb-sidebar-row-height: 31px; --shadow-color: #222222; }",
-    );
-
-    expect(out.themes.find(({ id }) => id === "linked")?.links)
-      .toEqual({ sidebarRow: "linked", shadowColor: { light: "linked", dark: "linked" } });
-    expect(out.themes.find(({ id }) => id === "custom")?.links)
-      .toEqual({ sidebarRow: "custom", shadowColor: { light: "custom", dark: "custom" } });
   });
 });

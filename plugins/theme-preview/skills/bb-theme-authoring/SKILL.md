@@ -7,9 +7,15 @@ description: Create or edit a bb theme (the app's colour palette) as a custom CS
 
 A bb theme is one CSS file that overrides the app's CSS custom properties. bb
 discovers custom themes on disk and the **Theme Preview** panel shows every
-token, its contrast, and an app mock that repaints as you edit. Work in a
-split: your thread on one side, Theme Preview on the other. Nothing needs a
-restart.
+resolved token, its validation state, and an app mock that repaints as you
+edit. Work in a split: your agent thread on one side, Theme Preview on the
+other. Nothing needs a restart.
+
+Theme Preview is visualization and validation only. It never creates, writes,
+forks, repairs, or deletes a theme resource. Create and update `theme.css` from
+the separate agent thread; use the existing `bb theme` commands to locate,
+inspect, and activate themes. Validation reports inconsistent or inaccessible
+results, but it never changes authored values.
 
 ## Where themes live
 
@@ -25,7 +31,7 @@ One directory per theme, one file inside it:
 
 `<name>` is the theme id: lowercase, letters, digits and dashes, a single path
 segment. Create the directory and the file and it is listed immediately — the
-Theme Preview dropdown picks it up within a couple of seconds while the panel
+Theme Preview dropdown picks it up on its next catalog refresh while the panel
 is open, and `bb theme list` shows it at once.
 
 ## File shape
@@ -83,23 +89,27 @@ bb theme set <name>   # activate it app-wide
 bb theme show         # what is active now
 ```
 
-Or pick it from the Theme Preview dropdown, which switches palette and
-light/dark mode together. Once active, **every save of `theme.css` repaints
-the app and the preview automatically** while the panel is open (the plugin
-watches the active theme's file and re-applies it). Edit, glance at the split,
-edit again.
+Or activate it from the Theme Preview dropdown and use the adjacent mode
+control to check light and dark. Once active, **every save of `theme.css`
+repaints the app and the preview automatically** while the panel is open (the
+plugin watches the active theme's file and re-applies it). Edit in the agent
+thread, glance at the split, edit again.
 
 ## Verify before you call it done
 
-In Theme Preview, read the right-hand rail:
+In Theme Preview, read the Style sheet measurements:
 
 - **Ink rows show a WCAG ratio** against the surface they sit on; the floor is
-  4.5:1 for body text. Red numbers are failures — fix them.
-- **Status rows** show their ratio against the canvas.
+  4.5:1 for body text. The ratios are representative measurements, not a theme-level accessibility verdict.
+- **Status rows** show their ratio against the tinted surface where they are
+  painted.
 - **Surfaces** with an amber outline are overridden inside the sidebar scope —
   make sure that is intentional.
 - Check both modes with the dropdown, and the Split and Settings views, not
   just Thread.
+
+Treat failures as authoring guidance. Fix them in `theme.css` from the agent
+thread; Theme Preview does not block or automatically adjust the theme.
 
 Keep dark-mode text below ~12:1 on near-black surfaces; higher blooms on OLED.
 

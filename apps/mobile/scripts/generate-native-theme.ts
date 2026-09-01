@@ -6,16 +6,9 @@ import { BUILTIN_THEME_IDS, type BuiltInThemeId } from "@bb/domain";
 import { converter, parse, type Color, type Oklab, type Oklch } from "culori";
 
 const MOBILE_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
-const REPO_ROOT = join(MOBILE_ROOT, "..", "..");
 const APP_ROOT = join(MOBILE_ROOT, "..", "app");
 const THEME_CSS_PATH = join(APP_ROOT, "src", "components", "ui", "theme.css");
-const PALETTES_DIR = join(
-  REPO_ROOT,
-  "packages",
-  "domain",
-  "src",
-  "app-theme-css",
-);
+const PALETTES_DIR = join(APP_ROOT, "src", "lib", "themes");
 export const MOBILE_OVERRIDES_CSS_PATH = join(
   MOBILE_ROOT,
   "src",
@@ -714,7 +707,7 @@ export function renderNativeThemeSource(model: NativeThemeModel): string {
     " *",
     " * Source: apps/app/src/components/ui/theme.css, then the mobile-only override",
     " * layer apps/mobile/src/theme/mobile-overrides.css, then the built-in palettes",
-    " * in packages/domain/src/app-theme-css/*.ts, replayed through the web cascade per",
+    " * in apps/app/src/lib/themes/*.ts, replayed through the web cascade per",
     " * palette and mode by apps/mobile/scripts/generate-native-theme.ts. The",
     " * mobile layer re-tunes the default palette to the iOS system look; palettes",
     " * cascade after it, so their anchors and literals still win.",

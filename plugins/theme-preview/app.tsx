@@ -2,7 +2,12 @@ import { definePluginApp, useBbNavigate, useRealtime, useRpc } from "@get-bb/plu
 import { Badge as BbBadge } from "@bb/shared-ui/badge";
 import { Button as BbButton } from "@bb/shared-ui/button";
 import { Checkbox as BbCheckbox } from "@bb/shared-ui/checkbox";
-import { Moon02Icon, Notification02Icon, Sun03Icon } from "@hugeicons/core-free-icons";
+import { CHROME_SECTION_LABEL_CLASS } from "@bb/shared-ui/chrome-style-tokens";
+import {
+  COARSE_POINTER_ICON_SIZE_CLASS,
+  COARSE_POINTER_ROW_HEIGHT_CLASS,
+} from "@bb/shared-ui/coarse-pointer-sizing";
+import { Moon02Icon, Sun03Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
   Dialog,
@@ -27,7 +32,7 @@ import {
   HoverCardContent,
   HoverCardTrigger,
 } from "@bb/shared-ui/hover-card";
-import { Icon } from "@bb/shared-ui/icon";
+import { Icon, type IconName } from "@bb/shared-ui/icon";
 import { Input as BbInput } from "@bb/shared-ui/input";
 import {
   Popover,
@@ -41,7 +46,6 @@ import {
   SelectItem,
   SelectTrigger,
 } from "@bb/shared-ui/select";
-import { Slider } from "@bb/shared-ui/slider";
 import { Switch as BbSwitch } from "@bb/shared-ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@bb/shared-ui/tabs";
 import {
@@ -62,11 +66,6 @@ import {
   type ReactNode,
 } from "react";
 import type { rpcContract } from "./server";
-import type {
-  ThemeEditAdjustment,
-  ThemeEditInput,
-  ThemeLinkStates,
-} from "./theme-editor";
 import {
   contentInsetForWidth,
   SURFACE_RAIL_WIDTH,
@@ -79,12 +78,15 @@ import {
   type FrameComposition,
   type LayoutBand,
 } from "./responsive-layout";
-import { LatestRequest } from "./theme-utils";
+import { LatestRequest, contrastRatio } from "./theme-utils";
 import {
   AREA_TITLES,
-  DIRECT_COLOR_CONTROLS,
+  COLOR_GROUPS,
   MOCK_VIEWS,
   RADIUS_SPECIMENS,
+  RHYTHM_SPECIMENS,
+  SHADOW_SPECIMENS,
+  TYPE_SPECIMENS,
 } from "./taxonomy";
 
 // ---------------------------------------------------------------------------
@@ -103,9 +105,7 @@ const space = (units: number): string => `calc(var(--spacing, 0.25rem) * ${units
 const RADIUS_MD = v("radius-md", "calc(var(--radius, 0.5rem) - 2px)");
 const RADIUS_LG = v("radius-lg", v("radius", "0.5rem"));
 
-// Measured off the running app: thread rows 10px, composer and messages 16px,
-// code blocks 10px.
-const R_ROW = 10;
+// Measured off the running app: composer and messages 16px, code blocks 10px.
 const R_BUBBLE = 16;
 const R_BLOCK = 10;
 
@@ -134,26 +134,7 @@ function withRpcTimeout<T>(operation: Promise<T>, label: string): Promise<T> {
 }
 
 type Mode = "light" | "dark";
-const DEFAULT_LINK_STATES: ThemeLinkStates = {
-  sidebarRow: "linked",
-  shadowColor: { light: "linked", dark: "linked" },
-};
 type ThemeSelection = { themeId: string; mode: Mode };
-type ForkNotice = {
-  copyName: string;
-  sourceName: string;
-  themeId: string;
-  undoToken: string;
-};
-type EditFeedback =
-  | { state: "idle" }
-  | { state: "saving" }
-  | { state: "saved" }
-  | { state: "adjusted"; adjustments: ThemeEditAdjustment[] }
-  | { state: "failed"; edit: ThemeEditInput["edit"]; message: string };
-type EditEvent =
-  | { id: number; state: "committed"; edit: ThemeEditInput["edit"]; links: ThemeLinkStates; mode: Mode }
-  | { id: number; state: "failed"; edit: ThemeEditInput["edit"] };
 
 // ---------------------------------------------------------------------------
 // Primitives
@@ -231,50 +212,60 @@ const sidebarScope: CSSProperties = { position: "relative", inset: "auto", zInde
 // (CONTEXT_SELECTION_SURFACE_CLASS); open-in-split resolves sidebar-accent 50%
 // against the sidebar unless the theme overrides the variable.
 type RowState = "rest" | "hover" | "selected" | "split";
-function rowStyle(state: RowState): CSSProperties {
-  switch (state) {
-    case "hover": return { background: v("sidebar-accent"), color: v("sidebar-accent-foreground") };
-    case "selected": return { background: v("state-active") };
-    case "split": return { background: v("bb-sidebar-open-in-split-background", `color-mix(in oklch, ${v("sidebar-accent")} 50%, ${v("sidebar")})`) };
-    default: return {};
-  }
+const MOCK_SIDEBAR_ROW_CLASS = cn(COARSE_POINTER_ROW_HEIGHT_CLASS, "w-full min-w-0 justify-start gap-2 overflow-hidden rounded-md px-2 text-sm font-normal text-sidebar-foreground/85 ring-sidebar-ring hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 dark:text-sidebar-foreground");
+
+function MockSidebarPanel({ children, side = "left", width = SIDEBAR_WIDTH, scoped = true, dataAttribute }: { children: ReactNode; side?: "left" | "right"; width?: number; scoped?: boolean; dataAttribute?: string }) {
+  return (
+    <aside
+      className={cn(scoped && "fixed", "bg-sidebar flex min-h-0 shrink-0 flex-col text-sidebar-foreground", side === "left" ? "border-r border-border-seam" : "border-l border-border-seam")}
+      data-tp-mock-sidebar={dataAttribute ?? side}
+      style={{ ...sidebarScope, width, fontFamily: SANS }}
+    >
+      {children}
+    </aside>
+  );
 }
 
-// The dots bb actually draws: a 5px foreground dot for unread, a muted dot for
-// working status (SIDEBAR_UNREAD_DOT_CLASS / SIDEBAR_SUCCESS_STATUS_DOT_CLASS).
-function Row({ label, state = "rest", dot }: { label: string; state?: RowState; dot?: "unread" | "status" }) {
-  return (
-    <div style={{ display: "flex", alignItems: "center", gap: 8, height: v("bb-sidebar-row-height", "28px"), padding: "0 10px", borderRadius: R_ROW, fontSize: 13, color: v("sidebar-foreground"), ...rowStyle(state) }}>
-      <span style={{ flex: 1, overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{label}</span>
-      {dot === "unread" ? <Dot color={v("foreground")} size={5} /> : dot === "status" ? <Dot color={`color-mix(in srgb, ${v("muted-foreground")} 60%, transparent)`} size={5} /> : null}
-    </div>
+function MockSidebarLabel({ children, roomy = false }: { children: ReactNode; roomy?: boolean }) {
+  return <div className={cn(CHROME_SECTION_LABEL_CLASS, "pl-2", roomy ? "mt-3" : "mt-1")}>{children}</div>;
+}
+
+function MockSidebarRow({ label, state = "rest", dot, icon, interactive = false }: { label: string; state?: RowState; dot?: "unread" | "status"; icon?: IconName; interactive?: boolean }) {
+  const content = (
+    <>
+      {icon ? <Icon name={icon} className={cn(COARSE_POINTER_ICON_SIZE_CLASS, "shrink-0 text-subtle-foreground")} /> : null}
+      <span className="min-w-0 flex-1 truncate text-left">{label}</span>
+      {dot === "unread" ? <Dot color={v("foreground")} size={5} /> : dot === "status" ? <Dot color={`color-mix(in oklab, ${v("muted-foreground")} 60%, transparent)`} size={5} /> : null}
+    </>
   );
+  const className = cn(
+    MOCK_SIDEBAR_ROW_CLASS,
+    state === "hover" && "bg-sidebar-accent text-sidebar-accent-foreground",
+    state === "selected" && "bb-sidebar-selected-row bg-state-active text-sidebar-foreground",
+    state === "split" && "bb-sidebar-open-in-split-row",
+  );
+  if (interactive) {
+    return <BbButton type="button" size="sm" variant="ghost" aria-current={state === "selected" ? "page" : undefined} data-tp-sidebar-row="" data-tp-sidebar-state={state} className={className}>{content}</BbButton>;
+  }
+  return <BbButton asChild size="sm" variant="ghost" className={cn(className, "pointer-events-none cursor-default")}><div data-tp-sidebar-row="" data-tp-sidebar-state={state}>{content}</div></BbButton>;
 }
 
 function Sidebar({ selected, split, hover }: { selected?: boolean; split?: boolean; hover?: boolean }) {
   return (
-    <div
-      className="fixed bg-sidebar"
-      style={{
-        ...sidebarScope, width: SIDEBAR_WIDTH, flex: "none", background: v("sidebar"), color: v("sidebar-foreground"),
-        // bb's sidebar divider is border-border-seam; a theme's scoped seam
-        // (blacklight's orange line) still arrives via the element class.
-        borderRight: `1px solid ${v("border-seam", v("border"))}`, display: "flex", flexDirection: "column", padding: "10px 8px", boxSizing: "border-box", fontFamily: SANS,
-      }}
-    >
-      <div style={{ display: "flex", alignItems: "center", height: 30, padding: "0 10px", fontSize: 13, fontWeight: 600 }}>bb-plugins</div>
-      {/* bb renders New thread as a ghost row, not a filled button. */}
-      <Row label="New thread" />
-      <div style={{ fontSize: 11, color: v("muted-foreground"), padding: "6px 10px 4px" }}>Today</div>
-      <Row label="Endless theme family — blacklight" state={selected ? "selected" : "rest"} dot="unread" />
-      <Row label="Specimen sheets + social grid" state={split ? "split" : "rest"} dot="status" />
-      <Row label="theme-preview plugin" state={hover ? "hover" : "rest"} />
-      <Row label="Crit: endless-color light foil" dot="unread" />
-      <div style={{ fontSize: 11, color: v("muted-foreground"), padding: "12px 10px 4px" }}>Yesterday</div>
-      <Row label="Fix pink split row (oklch mix)" dot="status" />
-      <Row label="Hue census battery" />
-      <div style={{ flex: 1 }} />
-    </div>
+    <MockSidebarPanel>
+      <div className="flex min-h-0 flex-1 flex-col px-2 py-2">
+        <div className="flex h-8 items-center px-2 text-sm font-semibold">bb-plugins</div>
+        <MockSidebarRow label="New thread" />
+        <MockSidebarLabel>Today</MockSidebarLabel>
+        <MockSidebarRow label="Endless theme family — blacklight" state={selected ? "selected" : "rest"} dot="unread" />
+        <MockSidebarRow label="Specimen sheets + social grid" state={split ? "split" : "rest"} dot="status" />
+        <MockSidebarRow label="theme-preview plugin" state={hover ? "hover" : "rest"} />
+        <MockSidebarRow label="Crit: endless-color light foil" dot="unread" />
+        <MockSidebarLabel roomy>Yesterday</MockSidebarLabel>
+        <MockSidebarRow label="Fix pink split row (oklch mix)" dot="status" />
+        <MockSidebarRow label="Hue census battery" />
+      </div>
+    </MockSidebarPanel>
   );
 }
 
@@ -408,25 +399,36 @@ function ThreadTocFixture() {
   );
 }
 
-function Thread({ title = "Endless theme family — blacklight pass", active = true, narrow = false, brief = false, empty = false, marker = false, showToc = false, story = "blacklight" }: { title?: string; active?: boolean; narrow?: boolean; brief?: boolean; empty?: boolean; marker?: boolean; showToc?: boolean; story?: "blacklight" | "specimen" }) {
+const NEW_THREAD_ACTIONS = [
+  { icon: "MessageSquarePlus", title: "New thread", description: "Start a new conversation" },
+  { icon: "FolderGit", title: "Automatically import my projects", description: "Find repos touched in the last 30 days" },
+  { icon: "FolderPlus", title: "New project", description: "Create one from a local folder" },
+  { icon: "Explore", title: "Learn what bb can do", description: "Get a tour of its capabilities" },
+] as const;
+
+function Thread({ title = "Endless theme family — blacklight pass", active = true, narrow = false, brief = false, empty = false, showToc = false, story = "blacklight" }: { title?: string; active?: boolean; narrow?: boolean; brief?: boolean; empty?: boolean; showToc?: boolean; story?: "blacklight" | "specimen" }) {
   const pad = narrow ? 20 : 30;
   const canvasColor = v("canvas", v("background"));
   return (
     <div style={{ flex: 1, minWidth: 0, minHeight: 0, background: v("canvas", v("background")), color: v("foreground"), display: "flex", flexDirection: "column", fontFamily: SANS, position: "relative" }}>
       {empty ? (
-        <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 20, padding: `0 ${pad}px` }}>
-          <div style={{ fontSize: 21, fontWeight: 600, letterSpacing: "-0.01em" }}>What are we building?</div>
-          <div style={{ width: "100%", maxWidth: 620 }}><Composer focused text="make the blacklight variant feel like the reference" /></div>
-          <div style={{ display: "flex", gap: 8 }}>
-            {["Fix the failing build", "Review open PRs"].map((s) => (
-              <span key={s} style={{ fontSize: 12.5, padding: "6px 12px", borderRadius: 999, boxShadow: `inset 0 0 0 1px ${v("border")}`, color: v("muted-foreground") }}>{s}</span>
+        <div data-tp-new-welcome="" style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: narrow ? 22 : 34, padding: `0 ${pad}px` }}>
+          <div role="img" aria-label="bb" style={{ fontSize: narrow ? 28 : 34, lineHeight: 1, fontWeight: 700, letterSpacing: "-0.08em", color: v("foreground") }}>bb</div>
+          <div style={{ width: "100%", maxWidth: 360, display: "flex", flexDirection: "column", gap: 4 }}>
+            {NEW_THREAD_ACTIONS.map((action) => (
+              <BbButton key={action.title} type="button" variant="ghost" className="h-auto w-full cursor-pointer justify-start gap-3 px-3 py-2.5 text-left">
+                <Icon name={action.icon} className="size-5 shrink-0 text-subtle-foreground" />
+                <span style={{ minWidth: 0, display: "flex", flexDirection: "column", alignItems: "flex-start" }}>
+                  <span style={{ fontSize: 13, fontWeight: 500, color: v("foreground") }}>{action.title}</span>
+                  <span style={{ fontSize: 12, color: v("muted-foreground") }}>{action.description}</span>
+                </span>
+              </BbButton>
             ))}
           </div>
         </div>
       ) : (
         <>
           <div style={{ height: 48, display: "flex", alignItems: "center", gap: 10, padding: `0 ${pad}px`, flex: "none", position: "relative" }}>
-            {marker && active ? <span style={{ position: "absolute", left: 0, right: 0, top: 0, height: 2, background: v("primary") }} /> : null}
             <span style={{ fontSize: 13.5, fontWeight: 600, overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{title}</span>
             <Badge tone="success"><Dot color={v("success")} size={6} /> Running</Badge>
             {narrow ? null : <Badge tone="outline">bb/endless-theme-plugin</Badge>}
@@ -501,77 +503,103 @@ function InfoPanel() {
     </div>
   );
   return (
-    <div
-      // The real right panel is `bg-sidebar` WITHOUT `fixed` (probe: no seam, no
-      // scoped overrides), so it must not carry the class the sidebar rule targets.
-      className="bg-sidebar"
-      style={{ ...sidebarScope, width: INFO_PANEL_WIDTH, flex: "none", background: v("sidebar"), color: v("sidebar-foreground"), borderLeft: `1px solid ${v("border-seam", v("border"))}`, fontFamily: SANS, display: "flex", flexDirection: "column" }}
-    >
-      <div style={{ height: 48, display: "flex", alignItems: "center", gap: 14, padding: "0 16px", fontSize: 12.5 }}>
-        {["Info", "Files", "Changes"].map((t, i) => (
-          <span key={t} style={{ color: i === 0 ? v("foreground") : v("muted-foreground"), fontWeight: i === 0 ? 600 : 400 }}>{t}</span>
-        ))}
-      </div>
-      <div style={{ padding: "14px 16px", display: "flex", flexDirection: "column", gap: 14 }}>
-        <div>
-          {kv("Status", <Badge tone="success">Running</Badge>)}
-          {kv("Agent", "Claude Fable 5")}
-          {kv("Branch", <span style={{ fontFamily: MONO, fontSize: 12 }}>bb/endless-theme</span>)}
-          {kv("Pull request", <Badge tone="merged">Merged #42</Badge>)}
-        </div>
-        <div>
-          <Eyebrow style={{ marginBottom: 4 }}>Files</Eyebrow>
-          {["themes/endless-color.css", "build-color.py"].map((f) => (
-            <div key={f} style={{ height: 24, fontSize: 12.5, fontFamily: MONO, color: v("file-accent", v("foreground")), overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{f}</div>
+    <MockSidebarPanel side="right" width={INFO_PANEL_WIDTH} scoped={false} dataAttribute="right">
+      <div data-tp-thread-info="" className="flex min-h-0 flex-1 flex-col">
+        <div className="flex h-12 items-center gap-3 px-4 text-xs">
+          {["Info", "Diff"].map((t, i) => (
+            <span key={t} className={cn(i === 0 ? "font-semibold text-foreground" : "font-normal text-muted-foreground")}>{t}</span>
           ))}
         </div>
-        <div style={{ borderRadius: R_BLOCK, background: v("surface-recessed-soft-solid", v("card")), boxShadow: `inset 0 0 0 1px ${v("border-hairline", v("border"))}`, padding: "10px 12px", fontSize: 12.5, color: v("readback-foreground", v("muted-foreground")), lineHeight: "18px" }}>
-          Sidebar reads true black with the orange seam; blue selection at .20.
+        <div className="flex flex-col gap-3.5 px-4 py-3.5">
+          <div>
+            {kv("Environment", "Worktree")}
+            {kv("Directory", <span style={{ fontFamily: MONO, fontSize: 12 }}>~/Code/bb</span>)}
+            {kv("Branch", <span style={{ fontFamily: MONO, fontSize: 12 }}>bb/endless-theme</span>)}
+            {kv("Compare to", <span style={{ fontFamily: MONO, fontSize: 12 }}>main</span>)}
+            {kv("Status", <Badge tone="success">Clean</Badge>)}
+            {kv("Pull request", <Badge tone="merged">Merged #42</Badge>)}
+          </div>
+          <div>
+            <Eyebrow style={{ marginBottom: 4 }}>Files</Eyebrow>
+            {["themes/endless-color.css", "build-color.py"].map((f) => (
+              <div key={f} style={{ height: 24, fontSize: 12.5, fontFamily: MONO, color: v("file-accent", v("foreground")), overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{f}</div>
+            ))}
+          </div>
+          <div style={{ borderRadius: R_BLOCK, background: v("surface-recessed-soft-solid", v("card")), boxShadow: `inset 0 0 0 1px ${v("border-hairline", v("border"))}`, padding: "10px 12px", fontSize: 12.5, color: v("readback-foreground", v("muted-foreground")), lineHeight: "18px" }}>
+            Sidebar reads true black with the orange seam; blue selection at .20.
+          </div>
         </div>
+      </div>
+    </MockSidebarPanel>
+  );
+}
+
+function SettingsPage({ narrow = false, themeName, mode }: { narrow?: boolean; themeName: string; mode: Mode }) {
+  const control = (label: string, value: ReactNode) => (
+    <BbButton type="button" variant="outline" size="sm" aria-label={label} className="h-7 w-full min-w-0 cursor-pointer justify-between border-border/60 bg-card px-2 text-xs sm:w-36">
+      <span style={{ minWidth: 0, overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{value}</span>
+      <Icon name="ChevronDown" className="size-3.5 shrink-0 text-muted-foreground" />
+    </BbButton>
+  );
+  const row = (label: string, description: string | null, child: ReactNode) => (
+    <div key={label} style={{ display: "flex", flexDirection: narrow ? "column" : "row", alignItems: narrow ? "stretch" : description ? "flex-start" : "center", justifyContent: "space-between", gap: narrow ? 10 : 20 }}>
+      <div style={{ minWidth: 0, flex: 1 }}>
+        <div style={{ fontSize: 13, lineHeight: "20px", color: v("foreground") }}>{label}</div>
+        {description ? <div style={{ marginTop: 2, fontSize: 12, lineHeight: "16px", color: `color-mix(in oklab, ${v("subtle-foreground", v("muted-foreground"))} 75%, transparent)` }}>{description}</div> : null}
+      </div>
+      <div style={{ flex: "none", display: "flex", justifyContent: narrow ? "stretch" : "flex-end" }}>{child}</div>
+    </div>
+  );
+  return (
+    <div data-tp-settings-content="appearance" style={{ flex: 1, minWidth: 0, minHeight: 0, background: v("canvas", v("background")), color: v("foreground"), fontFamily: SANS, overflow: "auto" }}>
+      <div style={{ width: "100%", maxWidth: 768, margin: "0 auto", padding: narrow ? "22px 16px" : "26px 28px", boxSizing: "border-box" }}>
+        <section style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          <h2 style={{ margin: 0, fontSize: 13, lineHeight: "20px", fontWeight: 600 }}>Appearance</h2>
+          <div style={{ borderRadius: RADIUS_LG, border: `1px solid ${v("border")}`, background: v("card"), padding: "14px 16px" }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+              {row("Theme", null, control("Theme", mode === "light" ? "Light" : "Dark"))}
+              {row("Palette", "Palettes change bb's colors, including syntax colors in diffs and file previews. Choose a built-in palette or create one from a prompt.", control("Palette", themeName))}
+              {row("Favicon color", "Tint browser tabs to tell instances apart.", control("Favicon color", <span style={{ display: "flex", alignItems: "center", gap: 8 }}><span aria-hidden style={{ width: 12, height: 12, borderRadius: 3, background: v("foreground") }} />Default</span>))}
+              {row("Fade inactive splits", "Fade out splits that do not have focus.", <BbSwitch checked aria-label="Fade inactive splits" />)}
+            </div>
+          </div>
+        </section>
       </div>
     </div>
   );
 }
 
-function SettingsPage({ narrow = false, themeName, mode }: { narrow?: boolean; themeName: string; mode: Mode }) {
+const SETTINGS_NAV_ITEMS = [
+  { icon: "Settings", label: "General" },
+  { icon: "Bot", label: "Providers" },
+  { icon: "Palette", label: "Appearance" },
+  { icon: "SlidersHorizontal", label: "Keyboard" },
+  { icon: "ChartColumn", label: "Usage limits" },
+  { icon: "Folder", label: "Files" },
+  { icon: "Laptop", label: "Machines" },
+] as const;
+
+function SettingsSidebarFixture() {
   return (
-    <div style={{ flex: 1, minWidth: 0, minHeight: 0, background: v("canvas", v("background")), color: v("foreground"), fontFamily: SANS, overflow: "hidden" }}>
-      <div style={{ maxWidth: 720, margin: "0 auto", padding: narrow ? "22px 16px" : "30px 32px" }}>
-        {/* Appearance is the settings surface theming actually lives on, and
-            these rows mirror the live selection — the picker and Settings
-            stay visibly in sync. */}
-        <div style={{ borderRadius: 12, marginBottom: 18, background: v("card"), boxShadow: `inset 0 0 0 1px ${v("border")}, ${v("shadow-xs", "none")}`, padding: "12px 14px" }}>
-          <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>Appearance</div>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", minHeight: 28, fontSize: 12.5, borderBottom: `1px solid ${v("border-hairline", v("border"))}` }}>
-            <span style={{ color: v("muted-foreground") }}>Theme</span>
-            <span style={{ fontWeight: 600 }}>{themeName}</span>
-          </div>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", minHeight: 28, fontSize: 12.5 }}>
-            <span style={{ color: v("muted-foreground") }}>Mode</span>
-            <span style={{ fontWeight: 600, textTransform: "capitalize" }}>{mode}</span>
-          </div>
-        </div>
-        <div style={{ borderRadius: 14, padding: narrow ? "18px 18px" : "20px 26px", marginBottom: 18, background: `linear-gradient(135deg, ${v("secondary")} 0%, ${v("accent")} 100%)`, boxShadow: `inset 0 0 0 1px ${v("border-hairline", v("border"))}` }}>
-          <div style={{ fontSize: 21, fontWeight: 600, letterSpacing: "-0.01em", marginBottom: 6 }}>Extensions</div>
-          <div style={{ fontSize: 13.5, color: v("muted-foreground"), maxWidth: 440, lineHeight: "20px" }}>Plugins add surfaces, agents and themes to bb.</div>
-        </div>
-        <div style={{ display: "flex", gap: 18, borderBottom: `1px solid ${v("border")}`, marginBottom: 18, fontSize: 13 }}>
-          {["Installed", "Marketplace", "Themes"].map((t, i) => (
-            <span key={t} style={{ padding: "0 0 8px", color: i === 0 ? v("foreground") : v("muted-foreground"), fontWeight: i === 0 ? 600 : 400, boxShadow: i === 0 ? `inset 0 -2px 0 0 ${v("primary")}` : undefined }}>{t}</span>
-          ))}
-        </div>
-        <div style={{ display: "grid", gridTemplateColumns: narrow ? "minmax(0, 1fr)" : "1fr 1fr", gap: 12 }}>
-          {["Endless", "Endless Color", "Theme Preview", "Plugin Guide"].map((name, i) => (
-            <div key={name} style={{ borderRadius: 12, background: v("card"), boxShadow: `inset 0 0 0 1px ${v("border")}, ${v("shadow-xs", "none")}`, padding: "12px 14px", display: "flex", gap: 12, alignItems: "center" }}>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 13, fontWeight: 600 }}>{name}</div>
-                <div style={{ fontSize: 12, color: v("muted-foreground") }}>v0.1.{i}</div>
-              </div>
-              <Switch on={i !== 3} />
-            </div>
+    <MockSidebarPanel dataAttribute="settings">
+      <div data-tp-settings-sidebar="" className="flex min-h-0 flex-1 flex-col overflow-hidden px-2 py-2">
+        <MockSidebarRow label="Back to app" icon="ChevronLeft" interactive />
+        <MockSidebarLabel roomy>Settings</MockSidebarLabel>
+        <div className="mt-1 flex flex-col gap-0.5">
+          {SETTINGS_NAV_ITEMS.map((item) => (
+            <MockSidebarRow key={item.label} label={item.label} icon={item.icon} state={item.label === "Appearance" ? "selected" : "rest"} interactive />
           ))}
         </div>
       </div>
+    </MockSidebarPanel>
+  );
+}
+
+function SplitPaneFixture({ focused, children }: { focused: boolean; children: ReactNode }) {
+  return (
+    <div data-tp-split-pane="" data-focused={focused ? "true" : "false"} style={{ position: "relative", display: "flex", flex: 1, minWidth: 0, minHeight: 0, overflow: "hidden" }}>
+      {children}
+      <div data-pane-focus-scrim="" aria-hidden style={{ pointerEvents: "none", position: "absolute", inset: 0, zIndex: 20, background: focused ? "transparent" : `color-mix(in oklab, ${v("background", v("canvas"))} 30%, transparent)` }} />
     </div>
   );
 }
@@ -605,16 +633,16 @@ function FrameView({ view, composition, themeName, mode }: { view: View; composi
         <>
           {sidebar ? <Sidebar selected split /> : null}
           <div style={{ flex: 1, minWidth: 0, minHeight: 0, display: "flex", flexDirection: splitColumns ? "row" : "column" }}>
-            <Thread narrow marker brief={!splitColumns} />
+            <SplitPaneFixture focused><Thread narrow brief={!splitColumns} /></SplitPaneFixture>
             <div style={{ flex: "none", alignSelf: "stretch", width: splitColumns ? 1 : undefined, height: splitColumns ? undefined : 1, background: v("border-seam-vertical", v("border-seam", v("border"))) }} />
-            <Thread title="Specimen sheets + social grid" active={false} narrow marker brief={!splitColumns} story="specimen" />
+            <SplitPaneFixture focused={false}><Thread title="Specimen sheets + social grid" active={false} narrow brief={!splitColumns} story="specimen" /></SplitPaneFixture>
           </div>
         </>
       );
     case "settings":
       return (
         <>
-          {sidebar ? <Sidebar /> : null}
+          {sidebar ? <SettingsSidebarFixture /> : null}
           <SettingsPage narrow={narrow} themeName={themeName} mode={mode} />
         </>
       );
@@ -651,33 +679,49 @@ function Frame({ view, themeName, mode }: { view: View; themeName: string; mode:
 }
 
 // ---------------------------------------------------------------------------
-// Area 4 — Style sheet. The specimen inventory lives in taxonomy.ts. Direct
-// values are compact shared controls with contextual previews beside the
-// controls that produce them.
-// ---------------------------------------------------------------------------
-
-// Direct editor values, picker preview colours, and the private metadata
-// written by the editor-managed typography/shadow families.
 const ALL_TOKENS = [
-  ...DIRECT_COLOR_CONTROLS.map((control) => control.token),
-  "card", "file-accent", "foreground",
-  "font-sans", "font-mono", "text-sm", "tp-text-scale", "tp-line-height",
+  ...COLOR_GROUPS.flatMap((group) => group.tokens),
+  "warning-text", "destructive-text",
+  "font-sans", "font-mono", "text-sm", "text-sm--line-height",
   "spacing", "tracking-normal", "bb-sidebar-row-height", "icon-stroke-width",
-  "radius", "shadow-x", "shadow-y", "shadow-blur", "shadow-spread",
+  "radius", "radius-sm", "radius-md", "radius-lg", "radius-xl",
+  "shadow-x", "shadow-y", "shadow-blur", "shadow-spread",
   "shadow-color", "shadow-opacity", "tp-shadow-color", "tp-shadow-opacity-percent",
 ];
+
+type ContrastSpec = { fgToken: string; fgFallbackToken?: string; washToken: string; washAlpha: number };
+const STATUS_CONTRAST: Record<string, ContrastSpec> = {
+  success: { fgToken: "success", washToken: "success", washAlpha: 0.15 },
+  warning: { fgToken: "warning-text", fgFallbackToken: "warning", washToken: "warning", washAlpha: 0.15 },
+  attention: { fgToken: "attention", washToken: "attention", washAlpha: 0.15 },
+  destructive: { fgToken: "destructive-text", fgFallbackToken: "destructive", washToken: "destructive", washAlpha: 0.15 },
+  "pr-merged": { fgToken: "pr-merged", washToken: "pr-merged", washAlpha: 0.15 },
+  "diff-added": { fgToken: "foreground", washToken: "diff-added", washAlpha: 0.18 },
+  "diff-removed": { fgToken: "foreground", washToken: "diff-removed", washAlpha: 0.18 },
+};
+
+function atAlpha(rgb: string, alpha: number): string {
+  const match = /rgba?\((\d+),\s*(\d+),\s*(\d+)/.exec(rgb);
+  if (!match) return rgb;
+  return `rgba(${match[1]}, ${match[2]}, ${match[3]}, ${alpha})`;
+}
 
 type Computed = Record<string, { value: string; hex: string; rgb: string; sidebar: string | null }>;
 
 function resolveColor(color: string): { rgb: string; hex: string } {
-  const m = /rgba?\(([^)]+)\)/.exec(color);
+  const match = /rgba?\(([^)]+)\)/.exec(color);
+  const hexMatch = /^#([0-9a-f]{6})([0-9a-f]{2})?$/i.exec(color.trim());
   let channels: readonly number[] | null = null;
-  if (m) {
-    channels = m[1].split(",").map((p) => parseFloat(p.trim()));
+  if (match) {
+    channels = match[1].split(",").map((part) => Number.parseFloat(part.trim()));
+  } else if (hexMatch) {
+    channels = [
+      Number.parseInt(hexMatch[1].slice(0, 2), 16),
+      Number.parseInt(hexMatch[1].slice(2, 4), 16),
+      Number.parseInt(hexMatch[1].slice(4, 6), 16),
+      hexMatch[2] ? Number.parseInt(hexMatch[2], 16) / 255 : 1,
+    ];
   } else if (color) {
-    // Chrome may preserve authored oklch()/oklab()/color-mix() syntax in
-    // computed styles. Painting one pixel asks the browser's color engine for
-    // the actual sRGB result without duplicating its conversion math here.
     const canvas = document.createElement("canvas");
     canvas.width = 1;
     canvas.height = 1;
@@ -693,7 +737,7 @@ function resolveColor(color: string): { rgb: string; hex: string } {
   if (!channels || channels.length < 3 || channels.some((channel) => !Number.isFinite(channel))) return { rgb: "", hex: "—" };
   const [r, g, b, a] = channels;
   const rounded = [r, g, b].map((channel) => Math.round(channel));
-  const baseHex = "#" + rounded.map((channel) => channel.toString(16).padStart(2, "0")).join("");
+  const baseHex = `#${rounded.map((channel) => channel.toString(16).padStart(2, "0")).join("")}`;
   const alpha = a === undefined ? 1 : a;
   return {
     rgb: alpha < 1 ? `rgba(${rounded.join(", ")}, ${alpha})` : `rgb(${rounded.join(", ")})`,
@@ -705,10 +749,6 @@ function useComputedTokens(names: readonly string[], revision: string): Computed
   const [out, setOut] = useState<Computed>({});
   const acceptedFingerprint = useRef<string | null>(null);
   useEffect(() => {
-    // The active stylesheet is swapped asynchronously after the RPC response.
-    // Keep optimistic editor values in place until a changed token set has
-    // settled for two reads; accepting the previous sheet makes a successful
-    // slider edit visibly snap back before repainting again.
     const previousFingerprint = acceptedFingerprint.current;
     const deadline = Date.now() + 4_000;
     let candidateFingerprint: string | null = null;
@@ -729,7 +769,6 @@ function useComputedTokens(names: readonly string[], revision: string): Computed
           return;
         }
       }
-
       const probe = document.createElement("div");
       probe.className = "fixed bg-sidebar";
       probe.style.cssText = "position:fixed;left:-9999px;top:-9999px;width:0;height:0;pointer-events:none";
@@ -744,13 +783,10 @@ function useComputedTokens(names: readonly string[], revision: string): Computed
         const scoped = sidebarStyle.getPropertyValue(`--${name}`).trim();
         swatch.style.backgroundColor = "";
         swatch.style.backgroundColor = `var(--${name})`;
-        const resolved = value ? resolveColor(getComputedStyle(swatch).backgroundColor) : { rgb: "", hex: "—" };
-        next[name] = {
-          value,
-          hex: resolved.hex,
-          rgb: resolved.rgb,
-          sidebar: scoped && scoped !== value ? scoped : null,
-        };
+        const painted = getComputedStyle(swatch).backgroundColor;
+        const authoredColor = value ? resolveColor(value) : { rgb: "", hex: "—" };
+        const resolved = value && !authoredColor.rgb ? resolveColor(painted) : authoredColor;
+        next[name] = { value, hex: resolved.hex, rgb: resolved.rgb, sidebar: scoped && scoped !== value ? scoped : null };
       }
       probe.remove();
       swatch.remove();
@@ -763,8 +799,6 @@ function useComputedTokens(names: readonly string[], revision: string): Computed
   return out;
 }
 
-/** Resolve CSS length expressions to painted pixels, the way a design tool
- * reports them. Re-measured whenever the theme changes. */
 function useResolvedRadii(revision: string): Record<string, string> {
   const [out, setOut] = useState<Record<string, string>>({});
   useEffect(() => {
@@ -777,7 +811,7 @@ function useResolvedRadii(revision: string): Record<string, string> {
         probe.style.borderTopLeftRadius = "";
         probe.style.borderTopLeftRadius = specimen.source;
         const resolved = getComputedStyle(probe).borderTopLeftRadius;
-        next[specimen.id] = resolved ? `${Math.round(parseFloat(resolved))}` : "";
+        next[specimen.id] = resolved ? `${Math.round(Number.parseFloat(resolved))}` : "";
       }
       probe.remove();
       setOut(next);
@@ -787,420 +821,215 @@ function useResolvedRadii(revision: string): Record<string, string> {
   return out;
 }
 
-// ---------------------------------------------------------------------------
-// Layout system, level 1: inside a content area.
-//
-// Typographic hierarchy is explicit and shared, so every surface differentiates
-// the same six roles: section > category > control label > value > sublabel >
-// support. The first three stay anchored to foreground; values and explanation
-// recede without dropping below the theme's own readable ink ladder.
-// ---------------------------------------------------------------------------
-
 const TEXT_SECTION: CSSProperties = { margin: 0, fontSize: 14, lineHeight: "20px", fontWeight: 650, letterSpacing: "-0.01em", color: v("foreground") };
 const TEXT_CATEGORY: CSSProperties = { margin: 0, fontSize: 10.5, lineHeight: "16px", fontWeight: 650, letterSpacing: "0.065em", textTransform: "uppercase", color: v("foreground") };
 const TEXT_LABEL: CSSProperties = { fontSize: 12.5, lineHeight: "18px", fontWeight: 550, color: v("foreground") };
 const TEXT_VALUE: CSSProperties = { fontFamily: MONO, fontSize: 11.5, lineHeight: "17px", fontVariantNumeric: "tabular-nums", color: v("readback-foreground", v("muted-foreground")) };
-const TEXT_SUBLABEL: CSSProperties = { fontSize: 10.5, lineHeight: "16px", fontWeight: 600, letterSpacing: "0.045em", textTransform: "uppercase", color: v("readback-foreground", v("muted-foreground")) };
 const TEXT_SUPPORT: CSSProperties = { fontSize: 11.5, lineHeight: "17px", color: v("muted-foreground") };
-
-// The sheet has one compact sizing ladder. Editable controls stay larger than
-// their read-only previews. Keeping these roles shared avoids independent
-// pixel tuning by family.
-const SHEET_SPACE = { inline: 4, control: 6, group: 12, section: 16 } as const;
-const SHEET_SIZE = { field: 28, fontRow: 30, colorRow: 28 } as const;
-const COLOR_CONTROL_LAYOUT: CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "minmax(0, max-content) 24px max-content",
-  alignItems: "center",
-  justifyContent: "start",
-  columnGap: SHEET_SPACE.control,
-  minWidth: 0,
-  minHeight: SHEET_SIZE.colorRow,
-};
-
-const EDITOR_COLOR_INPUT_CLASS = cn(
-  "h-4 w-6 cursor-pointer rounded border-0 bg-transparent p-0 shadow-none transition-shadow",
-  "enabled:hover:ring-2 enabled:hover:ring-ring enabled:hover:ring-offset-1 enabled:hover:ring-offset-background",
-  "disabled:cursor-not-allowed disabled:opacity-100",
-  "[&::-webkit-color-swatch-wrapper]:p-0 [&::-webkit-color-swatch]:rounded [&::-webkit-color-swatch]:border-0",
-  "[&::-moz-color-swatch]:rounded [&::-moz-color-swatch]:border-0",
-);
-
-/** The label rail is capped at 86px; known longer labels get BB tooltips. */
-function TruncatedControlLabel({ children, truncated }: { children: string; truncated: boolean }) {
-  const label = (
-    <span
-      data-tp-color-label=""
-      data-tp-truncated={truncated || undefined}
-      data-tp-role="label"
-      tabIndex={truncated ? 0 : undefined}
-      className={cn(truncated && "rounded-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring")}
-      style={{ ...TEXT_LABEL, display: "block", flex: "0 1 auto", minWidth: 0, maxWidth: 86, overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}
-    >
-      {children}
-    </span>
-  );
-  if (!truncated) return label;
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>{label}</TooltipTrigger>
-      <TooltipContent data-tp-color-tooltip="" side="top" sideOffset={4}>{children}</TooltipContent>
-    </Tooltip>
-  );
-}
+const SHEET_SPACE = { block: 6, inline: 10, control: 8, group: 16, section: 20 } as const;
 
 function AreaHeading({ area }: { area: "overlays" | "components" | "stylesheet" }) {
   return <h2 id={`tp-${area}-heading`} data-tp-role="section" style={TEXT_SECTION}>{AREA_TITLES[area]}</h2>;
 }
 
-/** First family of a CSS font list, unquoted — what the sheet reports. */
 function firstFamily(value: string | undefined): string {
   if (!value) return "";
   return value.split(",")[0]?.trim().replace(/^["']|["']$/g, "") ?? "";
 }
 
-/** CSS custom properties preserve author formatting; RPC font stacks do not. */
-function normalizeFontStack(value: string | undefined, fallback: string): string {
-  return value?.replace(/\s+/g, " ").trim() || fallback;
+function formatValue(value: string | undefined, suffix = ""): string {
+  if (!value) return "—";
+  const trimmed = value.trim();
+  if (!/^-?(?:\d+|\d*\.\d+)$/.test(trimmed)) return trimmed;
+  const number = Number.parseFloat(trimmed);
+  if (!Number.isFinite(number)) return value;
+  return `${Number(number.toFixed(2))}${suffix}`;
 }
 
-type ThemeEdit = ThemeEditInput["edit"];
-type ColorEdit = Extract<ThemeEdit, { kind: "colors" }>;
-type ColorTarget = ColorEdit["target"];
-type DirectColors = Omit<ColorEdit, "kind" | "target">;
-type TypographyEdit = Extract<ThemeEdit, { kind: "typography" }>;
-type TypographyTarget = TypographyEdit["target"];
-type TypographyValues = Omit<TypographyEdit, "kind" | "target">;
-type RhythmEdit = Extract<ThemeEdit, { kind: "rhythm" }>;
-type RhythmTarget = RhythmEdit["target"];
-type RhythmValues = Omit<RhythmEdit, "kind" | "target">;
-type ShadowEdit = Extract<ThemeEdit, { kind: "shadow" }>;
-type ShadowTarget = ShadowEdit["target"];
-type ShadowValues = Omit<ShadowEdit, "kind" | "target">;
-type EditorValues = {
-  colors: DirectColors;
-  typography: TypographyValues;
-  rhythm: RhythmValues;
-  radius: number;
-  shadow: ShadowValues;
-};
-const DEFAULT_SANS = '"Inter Variable", Inter, ui-sans-serif, system-ui, sans-serif';
-const SYSTEM_SANS = 'ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
-const DEFAULT_MONO = 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace';
-const SYSTEM_MONO = "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace";
-
-const DEFAULT_EDITOR_VALUES: EditorValues = {
-  colors: {
-    canvas: "#ffffff", ink: "#333333", sidebar: "#f8f8f8", sidebarForeground: "#333333",
-    primary: "#444444", timelineAccent: "#4779a8", success: "#3b966c", warning: "#b56b2c",
-    attention: "#c49a32", destructive: "#b6383f", prMerged: "#7550a8",
-  },
-  typography: { fontSans: DEFAULT_SANS, fontMono: DEFAULT_MONO, textScale: 1, lineHeight: 1 },
-  rhythm: { density: 4, tracking: 0, rowHeight: 28, iconStroke: 1.75 },
-  radius: 8,
-  shadow: { x: 0, y: 2, blur: 0, spread: 0, color: "#333333", opacity: 15 },
-};
-
-const COLOR_STATE_KEYS: Record<(typeof DIRECT_COLOR_CONTROLS)[number]["id"], keyof DirectColors> = {
-  canvas: "canvas",
-  ink: "ink",
-  sidebar: "sidebar",
-  "sidebar-foreground": "sidebarForeground",
-  primary: "primary",
-  "timeline-accent": "timelineAccent",
-  success: "success",
-  warning: "warning",
-  attention: "attention",
-  destructive: "destructive",
-  "pr-merged": "prMerged",
-};
-const TRUNCATED_COLOR_LABELS = new Set<(typeof DIRECT_COLOR_CONTROLS)[number]["id"]>([
-  "timeline-accent",
-  "attention",
-]);
-
-function clamp(value: number, min: number, max: number): number {
-  return Math.min(max, Math.max(min, value));
+function formatLineHeight(value: string | undefined): string {
+  if (!value) return "—";
+  const division = /^calc\(\s*([\d.]+)\s*\/\s*([\d.]+)\s*\)$/.exec(value.trim());
+  if (!division) return formatValue(value);
+  const numerator = Number.parseFloat(division[1]);
+  const denominator = Number.parseFloat(division[2]);
+  if (!Number.isFinite(numerator) || !Number.isFinite(denominator) || denominator === 0) return value;
+  return `${Number((numerator / denominator).toFixed(2))}`;
 }
 
-function px(value: string | undefined): number | null {
-  if (!value) return null;
-  const amount = Number.parseFloat(value);
-  if (!Number.isFinite(amount)) return null;
-  if (value.trim().endsWith("rem")) return amount * 16;
-  if (value.trim().endsWith("em")) return amount * 16;
-  return amount;
-}
-
-function numberValue(value: string | undefined): number | null {
-  if (!value) return null;
-  const parsed = Number.parseFloat(value);
-  return Number.isFinite(parsed) ? parsed : null;
-}
-
-function rgbToHex(value: string | undefined): string | null {
-  if (!value) return null;
-  const match = /rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*([\d.]+))?\)/.exec(value);
-  if (!match) return null;
-  const channels = [match[1], match[2], match[3]].map((channel) => Number(channel).toString(16).padStart(2, "0"));
-  const alpha = match[4] === undefined ? "" : Math.round(Number(match[4]) * 255).toString(16).padStart(2, "0");
-  return `#${channels.join("")}${alpha}`;
-}
-
-function valuesFromComputed(computed: Computed, resolvedRadii: Record<string, string>): EditorValues {
-  const color = (token: string, fallback: string) => {
-    const raw = computed[token]?.value.trim();
-    if (raw && /^#[0-9a-fA-F]{6}(?:[0-9a-fA-F]{2})?$/.test(raw)) return raw.toLowerCase();
-    return rgbToHex(computed[token]?.rgb)?.slice(0, 7) ?? fallback;
-  };
-  const textScale = numberValue(computed["tp-text-scale"]?.value)
-    ?? clamp((px(computed["text-sm"]?.value) ?? 13) / 13, 0.9, 1.1);
-  const lineHeight = numberValue(computed["tp-line-height"]?.value) ?? 1;
-  const shadowOpacity = numberValue(computed["tp-shadow-opacity-percent"]?.value)
-    ?? (numberValue(computed["shadow-opacity"]?.value) ?? 0.15) * 100;
-  return {
-    colors: {
-      canvas: color("canvas", DEFAULT_EDITOR_VALUES.colors.canvas),
-      ink: color("ink", DEFAULT_EDITOR_VALUES.colors.ink),
-      sidebar: color("sidebar", DEFAULT_EDITOR_VALUES.colors.sidebar),
-      sidebarForeground: color("sidebar-foreground", DEFAULT_EDITOR_VALUES.colors.sidebarForeground),
-      primary: color("primary", DEFAULT_EDITOR_VALUES.colors.primary),
-      timelineAccent: color("timeline-accent", DEFAULT_EDITOR_VALUES.colors.timelineAccent),
-      success: color("success", DEFAULT_EDITOR_VALUES.colors.success),
-      warning: color("warning", DEFAULT_EDITOR_VALUES.colors.warning),
-      attention: color("attention", DEFAULT_EDITOR_VALUES.colors.attention),
-      destructive: color("destructive", DEFAULT_EDITOR_VALUES.colors.destructive),
-      prMerged: color("pr-merged", DEFAULT_EDITOR_VALUES.colors.prMerged),
-    },
-    typography: {
-      fontSans: normalizeFontStack(computed["font-sans"]?.value, DEFAULT_SANS),
-      fontMono: normalizeFontStack(computed["font-mono"]?.value, DEFAULT_MONO),
-      textScale: clamp(textScale, 0.9, 1.1),
-      lineHeight: clamp(lineHeight, 0.9, 1.15),
-    },
-    rhythm: {
-      density: clamp(px(computed.spacing?.value) ?? 4, 3, 5),
-      tracking: clamp(numberValue(computed["tracking-normal"]?.value) ?? 0, -0.04, 0.08),
-      rowHeight: clamp(px(computed["bb-sidebar-row-height"]?.value) ?? 28, 24, 40),
-      iconStroke: clamp(numberValue(computed["icon-stroke-width"]?.value) ?? 1.75, 1, 2.5),
-    },
-    radius: clamp(px(computed.radius?.value) ?? numberValue(resolvedRadii["radius-lg"]) ?? 8, 0, 20),
-    shadow: {
-      x: clamp(px(computed["shadow-x"]?.value) ?? 0, -24, 24),
-      y: clamp(px(computed["shadow-y"]?.value) ?? 2, -24, 24),
-      blur: clamp(px(computed["shadow-blur"]?.value) ?? 0, 0, 48),
-      spread: clamp(px(computed["shadow-spread"]?.value) ?? 0, -24, 24),
-      // Core's `--shadow-color` is already translucent. The editor owns color
-      // and opacity separately, so seed an unmanaged shadow from the solid ink
-      // anchor and only prefer the explicit editor color once one exists.
-      color: color("tp-shadow-color", color("ink", DEFAULT_EDITOR_VALUES.shadow.color)),
-      opacity: clamp(shadowOpacity, 0, 80),
-    },
-  };
-}
-
-/** Apply the server's authoritative response without disturbing unrelated controls. */
-function applyCommittedEdit(values: EditorValues, edit: ThemeEdit): EditorValues {
-  switch (edit.kind) {
-    case "colors": {
-      const { kind: _kind, target: _target, ...colors } = edit;
-      return { ...values, colors };
-    }
-    case "typography": {
-      const { kind: _kind, target: _target, ...typography } = edit;
-      return { ...values, typography };
-    }
-    case "rhythm": {
-      const { kind: _kind, target: _target, ...rhythm } = edit;
-      return { ...values, rhythm };
-    }
-    case "radius":
-      return { ...values, radius: edit.value };
-    case "shadow": {
-      const { kind: _kind, target: _target, ...shadow } = edit;
-      return { ...values, shadow };
-    }
-    case "restore-link":
-      return edit.target === "sidebar-row"
-        ? { ...values, rhythm: { ...values.rhythm, rowHeight: 20 + values.rhythm.density * 2 } }
-        : { ...values, shadow: { ...values.shadow, color: values.colors.ink } };
+function colorRatio(name: string, policy: string, computed: Computed): number | null {
+  const color = computed[name];
+  if (policy === "vs-surface") {
+    const surface = name === "sidebar-foreground" ? "sidebar" : "canvas";
+    if (!color?.rgb || !computed[surface]?.rgb) return null;
+    return contrastRatio(color.rgb, computed[surface].rgb, surface === "canvas" ? undefined : computed.canvas?.rgb);
   }
-}
-
-/** A failed request restores only the control the user just changed. */
-function rollbackFailedEdit(values: EditorValues, committed: EditorValues, edit: ThemeEdit): EditorValues {
-  switch (edit.kind) {
-    case "colors": {
-      const key = COLOR_STATE_KEYS[edit.target];
-      return { ...values, colors: { ...values.colors, [key]: committed.colors[key] } };
-    }
-    case "typography":
-      switch (edit.target) {
-        case "font-sans": return { ...values, typography: { ...values.typography, fontSans: committed.typography.fontSans } };
-        case "font-mono": return { ...values, typography: { ...values.typography, fontMono: committed.typography.fontMono } };
-        case "text-scale": return { ...values, typography: { ...values.typography, textScale: committed.typography.textScale } };
-        case "line-height": return { ...values, typography: { ...values.typography, lineHeight: committed.typography.lineHeight } };
-      }
-    case "rhythm":
-      switch (edit.target) {
-        case "density": return { ...values, rhythm: { ...values.rhythm, density: committed.rhythm.density } };
-        case "tracking": return { ...values, rhythm: { ...values.rhythm, tracking: committed.rhythm.tracking } };
-        case "sidebar-row": return { ...values, rhythm: { ...values.rhythm, rowHeight: committed.rhythm.rowHeight } };
-        case "icon-stroke": return { ...values, rhythm: { ...values.rhythm, iconStroke: committed.rhythm.iconStroke } };
-      }
-    case "radius":
-      return { ...values, radius: committed.radius };
-    case "shadow":
-      switch (edit.target) {
-        case "x": return { ...values, shadow: { ...values.shadow, x: committed.shadow.x } };
-        case "y": return { ...values, shadow: { ...values.shadow, y: committed.shadow.y } };
-        case "blur": return { ...values, shadow: { ...values.shadow, blur: committed.shadow.blur } };
-        case "spread": return { ...values, shadow: { ...values.shadow, spread: committed.shadow.spread } };
-        case "color": return { ...values, shadow: { ...values.shadow, color: committed.shadow.color } };
-        case "opacity": return { ...values, shadow: { ...values.shadow, opacity: committed.shadow.opacity } };
-      }
-    case "restore-link":
-      return values;
+  if (policy === "as-painted") {
+    const spec = STATUS_CONTRAST[name];
+    if (!spec) return null;
+    const foreground = computed[spec.fgToken]?.rgb || (spec.fgFallbackToken ? computed[spec.fgFallbackToken]?.rgb : "");
+    const wash = computed[spec.washToken]?.rgb;
+    const canvas = computed.canvas?.rgb;
+    return foreground && wash && canvas ? contrastRatio(foreground, atAlpha(wash, spec.washAlpha), canvas) : null;
   }
+  return null;
 }
 
-function SliderField({ specimen, label, value, min, max, step, unit, displayValue, disabled, relationship, resetLabel, onReset, onChange, onCommit }: {
-  specimen: string;
-  label: string;
-  value: number;
-  min: number;
-  max: number;
-  step: number;
-  unit: string;
-  displayValue?: (value: number) => string;
-  disabled: boolean;
-  relationship?: string;
-  resetLabel?: string;
-  onReset?: () => void;
-  onChange: (value: number) => void;
-  onCommit: (value: number) => void;
-}) {
-  const formatted = displayValue?.(value) ?? `${Number.isInteger(value) ? value : Number(value.toFixed(3))}${unit}`;
-  return (
-    <div data-tp-specimen={specimen} style={{ display: "grid", gridTemplateRows: `18px ${SHEET_SIZE.field}px`, minWidth: 0, padding: "2px 0" }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-        <span data-tp-role="label" style={{ ...TEXT_LABEL, flex: 1, minWidth: 0 }}>{label}</span>
-        {relationship ? <span data-tp-link-state="" style={TEXT_SUPPORT}>{relationship}</span> : null}
-        {onReset ? (
-          <BbButton
-            type="button"
-            variant="ghost"
-            size="sm"
-            aria-label={resetLabel ?? `Reset ${label}`}
-            className="h-5 cursor-pointer px-1.5 text-xs"
-            disabled={disabled}
-            onClick={onReset}
-          >
-            Reset
-          </BbButton>
-        ) : null}
-        <span data-tp-role="value" style={TEXT_VALUE}>{formatted}</span>
-      </div>
-      <Slider
-        aria-label={label}
-        min={min}
-        max={max}
-        step={step}
-        value={[value]}
-        disabled={disabled}
-        className="h-7 cursor-pointer disabled:cursor-not-allowed disabled:opacity-100"
-        onValueChange={(next) => onChange(next[0] ?? value)}
-        onValueCommit={(next) => onCommit(next[0] ?? value)}
-      />
-    </div>
-  );
-}
-
-function FontField({ specimen, label, value, options, disabled, onChange }: {
+type StyleSegmentProps = {
   specimen: string;
   label: string;
   value: string;
-  options: ReadonlyArray<{ label: string; value: string }>;
-  disabled: boolean;
-  onChange: (value: string) => void;
-}) {
-  const selectedLabel = options.find((option) => option.value === value)?.label ?? (firstFamily(value) || "Current");
+  leading?: ReactNode;
+  reserveLeading?: boolean;
+  trailing?: ReactNode;
+  labelStyle?: CSSProperties;
+};
+
+function styleSegmentColumns(hasLeading: boolean, hasTrailing: boolean): string {
+  return [
+    ...(hasLeading ? ["24px"] : []),
+    "minmax(72px, 1fr)",
+    `minmax(58px, ${hasTrailing ? "0.72fr" : "1fr"})`,
+    ...(hasTrailing ? ["minmax(92px, 0.95fr)"] : []),
+  ].join(" ");
+}
+
+function StyleSegment({ specimen, label, value, leading, reserveLeading = false, trailing, labelStyle }: StyleSegmentProps) {
+  const hasLeading = leading !== undefined || reserveLeading;
+  const columns = styleSegmentColumns(hasLeading, trailing !== undefined);
   return (
-    <div data-tp-specimen={specimen} style={{ display: "grid", gridTemplateColumns: "52px minmax(0, 1fr)", alignItems: "center", gap: SHEET_SPACE.control, minHeight: SHEET_SIZE.fontRow }}>
-      <span data-tp-role="label" style={TEXT_LABEL}>{label}</span>
-      <Select value={value} onValueChange={onChange} disabled={disabled}>
-        <SelectTrigger aria-label={label} className="h-7 min-w-0 px-2 text-xs disabled:opacity-100" style={{ fontFamily: value }}>
-          <span style={{ overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{selectedLabel}</span>
-        </SelectTrigger>
-        <SelectContent>
-          {options.map((option) => <SelectItem key={option.label} value={option.value}>{option.label}</SelectItem>)}
-        </SelectContent>
-      </Select>
+    <div data-tp-style-segment="" data-tp-specimen={specimen} style={{ display: "grid", gridTemplateColumns: columns, gridColumn: "1 / -1", columnGap: SHEET_SPACE.control, alignItems: "center", minHeight: 32, minWidth: 0, boxSizing: "border-box", padding: `${SHEET_SPACE.block}px ${SHEET_SPACE.inline}px`, borderTop: `1px solid ${v("border-hairline", v("border"))}` }}>
+      {hasLeading ? <span data-tp-role="preview" style={{ width: 24, minWidth: 0, display: "flex", alignItems: "center", justifyContent: "flex-start" }}>{leading}</span> : null}
+      <span data-tp-role="label" title={label} style={{ ...TEXT_LABEL, ...labelStyle, minWidth: 0, overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{label}</span>
+      <span data-tp-role="value" title={value || "—"} style={{ ...TEXT_VALUE, minWidth: 0, textAlign: "right", overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{value || "—"}</span>
+      {trailing !== undefined ? <span data-tp-role="meta" style={{ minWidth: 0, overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis", textAlign: "right" }}>{trailing}</span> : null}
     </div>
   );
 }
 
-function ColorEditor({ controls, values, disabled, onChange, onCommit }: {
-  controls: readonly (typeof DIRECT_COLOR_CONTROLS)[number][];
-  values: DirectColors;
-  disabled: boolean;
-  onChange: (values: DirectColors) => void;
-  onCommit: (target: ColorTarget, values: DirectColors) => void;
-}) {
-  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  const pending = useRef<{ target: ColorTarget; values: DirectColors } | null>(null);
-  const flush = () => {
-    if (timer.current !== undefined) clearTimeout(timer.current);
-    timer.current = undefined;
-    const next = pending.current;
-    pending.current = null;
-    if (next) onCommit(next.target, next.values);
-  };
-  const schedule = (target: ColorTarget, next: DirectColors) => {
-    if (timer.current !== undefined) clearTimeout(timer.current);
-    pending.current = { target, values: next };
-    timer.current = setTimeout(flush, 120);
-  };
-  useEffect(() => () => {
-    if (timer.current !== undefined) clearTimeout(timer.current);
-  }, []);
+function ColorSegment({ name, policy, computed }: { name: string; policy: string; computed: Computed }) {
+  const color = computed[name];
+  const hasContrast = policy !== "none";
+  const ratio = hasContrast ? colorRatio(name, policy, computed) : null;
+  const title = color?.sidebar ? `${color.value}\nSidebar override: ${color.sidebar}` : color?.value;
+  const ratioLabel = ratio === null ? "—" : `${ratio.toFixed(2)}:1`;
   return (
-    <div data-tp-block="colors">
-      <TooltipProvider delayDuration={300}>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(196px, 1fr))", columnGap: SHEET_SPACE.group, rowGap: SHEET_SPACE.inline }}>
-          {controls.map((control) => {
-            const key = COLOR_STATE_KEYS[control.id];
-            return (
-              <div
-                key={control.id}
-                data-tp-specimen={`color:${control.id}`}
-                style={COLOR_CONTROL_LAYOUT}
-              >
-                <TruncatedControlLabel truncated={TRUNCATED_COLOR_LABELS.has(control.id)}>{control.label}</TruncatedControlLabel>
-                <BbInput
-                  type="color"
-                  aria-label={`${control.label} color`}
-                  value={values[key].slice(0, 7)}
-                  disabled={disabled}
-                  className={EDITOR_COLOR_INPUT_CLASS}
-                  onChange={(event) => {
-                    const next = { ...values, [key]: event.target.value };
-                    onChange(next);
-                    schedule(control.id, next);
-                  }}
-                  onBlur={flush}
-                />
-                <span data-tp-role="value" style={TEXT_VALUE}>{values[key].slice(0, 7)}</span>
-              </div>
-            );
-          })}
-        </div>
-      </TooltipProvider>
+    <StyleSegment
+      specimen={`color:${name}`}
+      label={name}
+      value={color?.hex ?? "—"}
+      labelStyle={{ ...TEXT_VALUE, color: v("foreground") }}
+      leading={<span aria-label={`${name} swatch${color?.sidebar ? ", has a sidebar override" : ""}`} title={title} style={{ width: 24, height: 16, borderRadius: 5, background: color?.value ? v(name) : "transparent", boxShadow: `inset 0 0 0 1px ${color?.sidebar ? v("warning") : v("border-hairline", v("border"))}` }} />}
+      trailing={hasContrast ? (
+        <span data-tp-contrast-ratio="" aria-label={`${name} contrast ratio: ${ratioLabel}`} style={{ ...TEXT_VALUE, textAlign: "right", whiteSpace: "nowrap" }}>
+          {ratioLabel}
+        </span>
+      ) : undefined}
+    />
+  );
+}
+
+function SystemBlock({ id, title, trailingLabel, children }: { id: string; title: string; trailingLabel?: string; children: ReactNode }) {
+  const hasTrailingLabel = trailingLabel !== undefined;
+  return (
+    <div data-tp-block={id} data-tp-grid="" style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr)", gridAutoRows: "minmax(32px, auto)", alignItems: "center", alignContent: "start", minWidth: 0, overflow: "hidden", border: `1px solid ${v("border-hairline", v("border"))}`, borderRadius: RADIUS_MD, background: v("card") }}>
+      <h3 data-tp-role="category" style={{ ...TEXT_CATEGORY, gridColumn: "1 / -1", gridTemplateColumns: hasTrailingLabel ? styleSegmentColumns(true, true) : undefined, columnGap: hasTrailingLabel ? SHEET_SPACE.control : undefined, minHeight: 32, minWidth: 0, boxSizing: "border-box", display: hasTrailingLabel ? "grid" : "flex", alignItems: "center", padding: `${SHEET_SPACE.block}px ${SHEET_SPACE.inline}px`, background: v("surface-recessed-soft-solid", v("secondary")) }}>
+        <span style={{ gridColumn: hasTrailingLabel ? "1 / 4" : undefined, minWidth: 0 }}>{title}</span>
+        {trailingLabel ? <span data-tp-column="contrast" style={{ gridColumn: "4", minWidth: 0, textAlign: "right", color: v("muted-foreground"), overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{trailingLabel}</span> : null}
+      </h3>
+      {children}
     </div>
   );
 }
 
-// ---------------------------------------------------------------------------
+function TypographySheet({ computed }: { computed: Computed }) {
+  const values: Record<string, string> = {
+    "font-sans": firstFamily(computed["font-sans"]?.value),
+    "font-mono": firstFamily(computed["font-mono"]?.value),
+    "text-scale": computed["text-sm"]?.value ?? "—",
+    "line-height": formatLineHeight(computed["text-sm--line-height"]?.value),
+  };
+  return (
+    <SystemBlock id="typography" title="Typography">
+      {TYPE_SPECIMENS.map((specimen) => (
+        <StyleSegment key={specimen.id} specimen={`type:${specimen.id}`} label={specimen.title} value={values[specimen.id] ?? "—"} leading={<span aria-hidden style={{ fontFamily: specimen.id === "font-mono" ? MONO : SANS, fontSize: 12.5, color: v("foreground") }}>Aa</span>} />
+      ))}
+    </SystemBlock>
+  );
+}
+
+function RhythmSheet({ computed }: { computed: Computed }) {
+  return (
+    <SystemBlock id="rhythm" title="Rhythm">
+      {RHYTHM_SPECIMENS.map((specimen) => <StyleSegment key={specimen.id} specimen={`rhythm:${specimen.id}`} label={specimen.title} value={formatValue(computed[specimen.token]?.value, specimen.unit)} />)}
+    </SystemBlock>
+  );
+}
+
+function RadiusSheet({ resolved }: { resolved: Record<string, string> }) {
+  return (
+    <SystemBlock id="radius" title="Corner radius">
+      {RADIUS_SPECIMENS.map((specimen) => (
+        <StyleSegment key={specimen.id} specimen={`radius:${specimen.id}`} label={specimen.title} value={resolved[specimen.id] ? `${resolved[specimen.id]}px` : "—"} leading={<span aria-hidden style={{ width: 18, height: 18, borderTopLeftRadius: specimen.source, borderTop: `2px solid ${v("foreground")}`, borderLeft: `2px solid ${v("foreground")}`, opacity: 0.65 }} />} />
+      ))}
+    </SystemBlock>
+  );
+}
+
+function ShadowSheet({ computed }: { computed: Computed }) {
+  const managedShadowColor = computed["tp-shadow-color"];
+  const shadowColor = managedShadowColor?.rgb ? managedShadowColor : computed["shadow-color"];
+  const opacity = computed["tp-shadow-opacity-percent"]?.value
+    ? `${formatValue(computed["tp-shadow-opacity-percent"]?.value)}%`
+    : computed["shadow-opacity"]?.value
+      ? `${Math.round(Number.parseFloat(computed["shadow-opacity"].value) * 100)}%`
+      : "—";
+  const values: Record<string, string> = {
+    y: formatValue(computed["shadow-y"]?.value, "px"),
+    blur: formatValue(computed["shadow-blur"]?.value, "px"),
+    x: formatValue(computed["shadow-x"]?.value, "px"),
+    spread: formatValue(computed["shadow-spread"]?.value, "px"),
+    color: shadowColor?.hex ?? "—",
+    opacity,
+  };
+  return (
+    <SystemBlock id="shadow" title="Shadow">
+      <div data-tp-shadow-preview="" style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 54px", gridColumn: "1 / -1", alignItems: "center", columnGap: SHEET_SPACE.control, minHeight: 40, boxSizing: "border-box", padding: `${SHEET_SPACE.block}px ${SHEET_SPACE.inline}px`, borderTop: `1px solid ${v("border-hairline", v("border"))}` }}>
+        <span style={TEXT_LABEL}>Live shadow</span>
+        <span aria-hidden style={{ width: 54, height: 26, borderRadius: RADIUS_MD, background: v("card"), boxShadow: v("shadow-md", v("shadow")) }} />
+      </div>
+      {SHADOW_SPECIMENS.map((specimen) => (
+        <StyleSegment key={specimen.id} specimen={`shadow:${specimen.id}`} label={specimen.title} value={values[specimen.id] ?? "—"} reserveLeading leading={specimen.id === "color" ? <span aria-hidden style={{ width: 24, height: 16, borderRadius: 5, background: shadowColor?.rgb || "transparent", boxShadow: `inset 0 0 0 1px ${v("border-hairline", v("border"))}` }} /> : undefined} />
+      ))}
+    </SystemBlock>
+  );
+}
+
+function StyleSheetSection({ computed, radii }: { computed: Computed; radii: Record<string, string> }) {
+  const paletteGroups = COLOR_GROUPS.filter((group) => group.band === "palette");
+  const foundationGroups = COLOR_GROUPS.filter((group) => group.band === "foundation");
+  return (
+    <div data-tp-style-readonly="">
+      <div data-tp-style-colors="" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 292px), 1fr))", alignItems: "start", gap: SHEET_SPACE.group }}>
+        {paletteGroups.map((group) => (
+          <SystemBlock key={group.id} id={group.id} title={group.title} trailingLabel={group.contrast !== "none" ? "Contrast" : undefined}>
+            {group.tokens.map((token) => <ColorSegment key={token} name={token} policy={group.contrast} computed={computed} />)}
+          </SystemBlock>
+        ))}
+      </div>
+      <div data-tp-style-systems="" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 210px), 1fr))", alignItems: "start", gap: SHEET_SPACE.group, marginTop: SHEET_SPACE.section }}>
+        {foundationGroups.map((group) => (
+          <SystemBlock key={group.id} id={group.id} title={group.title} trailingLabel={group.contrast !== "none" ? "Contrast" : undefined}>
+            {group.tokens.map((token) => <ColorSegment key={token} name={token} policy={group.contrast} computed={computed} />)}
+          </SystemBlock>
+        ))}
+        <TypographySheet computed={computed} />
+        <RhythmSheet computed={computed} />
+        <RadiusSheet resolved={radii} />
+        <ShadowSheet computed={computed} />
+      </div>
+    </div>
+  );
+}
 // Area 2 — interactive overlays. Every launcher is a real button that opens a
 // real bb surface, so it carries a full affordance set: pointer cursor, hover
 // fill, focus ring, and an open (selected) state. Radix triggers publish
@@ -1387,270 +1216,6 @@ function OverlaySpecimens({ vertical = false }: { vertical?: boolean }) {
   );
 }
 
-function SystemBlock({ id, title, children }: { id: string; title: string; children: ReactNode }) {
-  return (
-    <div data-tp-block={id} style={{ minWidth: 0 }}>
-      <h3 data-tp-role="category" style={{ ...TEXT_CATEGORY, minHeight: 16, marginBottom: SHEET_SPACE.control }}>{title}</h3>
-      {children}
-    </div>
-  );
-}
-
-function TypographyEditor({ value, disabled, onChange, onCommit }: {
-  value: TypographyValues;
-  disabled: boolean;
-  onChange: (value: TypographyValues) => void;
-  onCommit: (target: TypographyTarget, value: TypographyValues) => void;
-}) {
-  const update = <K extends keyof TypographyValues>(target: TypographyTarget, key: K, next: TypographyValues[K], commit: boolean) => {
-    const updated = { ...value, [key]: next };
-    onChange(updated);
-    if (commit) onCommit(target, updated);
-  };
-  return (
-    <SystemBlock id="typography" title="Typography">
-      <FontField
-        specimen="type:font-sans"
-        label="Sans"
-        value={value.fontSans}
-        disabled={disabled}
-        options={[{ label: "BB default", value: DEFAULT_SANS }, { label: "System sans", value: SYSTEM_SANS }]}
-        onChange={(next) => update("font-sans", "fontSans", next, true)}
-      />
-      <FontField
-        specimen="type:font-mono"
-        label="Mono"
-        value={value.fontMono}
-        disabled={disabled}
-        options={[{ label: "BB default", value: DEFAULT_MONO }, { label: "System mono", value: SYSTEM_MONO }]}
-        onChange={(next) => update("font-mono", "fontMono", next, true)}
-      />
-      <SliderField specimen="type:text-scale" label="Text scale" value={value.textScale} min={0.9} max={1.1} step={0.01} unit="" displayValue={(next) => `${Math.round(next * 100)}%`} disabled={disabled} onChange={(next) => update("text-scale", "textScale", next, false)} onCommit={(next) => update("text-scale", "textScale", next, true)} />
-      <SliderField specimen="type:line-height" label="Line height" value={value.lineHeight} min={0.9} max={1.15} step={0.01} unit="" displayValue={(next) => `${Math.round(next * 100)}%`} disabled={disabled} onChange={(next) => update("line-height", "lineHeight", next, false)} onCommit={(next) => update("line-height", "lineHeight", next, true)} />
-    </SystemBlock>
-  );
-}
-
-function RhythmEditor({ tier, value, links, disabled, onChange, onCommit, onRestoreRowLink }: {
-  tier: "essential" | "advanced";
-  value: RhythmValues;
-  links: ThemeLinkStates;
-  disabled: boolean;
-  onChange: (value: RhythmValues) => void;
-  onCommit: (target: RhythmTarget, value: RhythmValues) => void;
-  onRestoreRowLink: () => void;
-}) {
-  const update = <K extends keyof RhythmValues>(target: RhythmTarget, key: K, next: RhythmValues[K], commit: boolean) => {
-    const updated = { ...value, [key]: next };
-    onChange(updated);
-    if (commit) onCommit(target, updated);
-  };
-  if (tier === "essential") {
-    return (
-      <SystemBlock id="rhythm" title="Rhythm">
-        <SliderField specimen="rhythm:density" label="Density" value={value.density} min={3} max={5} step={0.25} unit="px" disabled={disabled} onChange={(next) => update("density", "density", next, false)} onCommit={(next) => update("density", "density", next, true)} />
-      </SystemBlock>
-    );
-  }
-  return (
-    <SystemBlock id="rhythm-advanced" title="Rhythm details">
-      <SliderField specimen="rhythm:tracking" label="Tracking" value={value.tracking} min={-0.04} max={0.08} step={0.005} unit="em" disabled={disabled} onChange={(next) => update("tracking", "tracking", next, false)} onCommit={(next) => update("tracking", "tracking", next, true)} />
-      <SliderField
-        specimen="rhythm:row-height"
-        label="Sidebar row"
-        value={value.rowHeight}
-        min={24}
-        max={40}
-        step={1}
-        unit="px"
-        disabled={disabled}
-        relationship={links.sidebarRow === "linked" ? "Linked to Density" : "Custom"}
-        resetLabel="Reset Sidebar row to Density"
-        onReset={links.sidebarRow === "custom" ? onRestoreRowLink : undefined}
-        onChange={(next) => update("sidebar-row", "rowHeight", next, false)}
-        onCommit={(next) => update("sidebar-row", "rowHeight", next, true)}
-      />
-      <SliderField specimen="rhythm:icon-stroke" label="Icon stroke" value={value.iconStroke} min={1} max={2.5} step={0.05} unit="" disabled={disabled} onChange={(next) => update("icon-stroke", "iconStroke", next, false)} onCommit={(next) => update("icon-stroke", "iconStroke", next, true)} />
-    </SystemBlock>
-  );
-}
-
-function RadiusEditor({ value, disabled, onChange, onCommit }: {
-  value: number;
-  disabled: boolean;
-  onChange: (value: number) => void;
-  onCommit: (value: number) => void;
-}) {
-  return (
-    <SystemBlock id="radius" title="Corner radius">
-      <SliderField specimen="radius:base" label="Base" value={value} min={0} max={20} step={1} unit="px" disabled={disabled} onChange={onChange} onCommit={onCommit} />
-    </SystemBlock>
-  );
-}
-
-function ShadowEditor({ tier, value, mode, links, disabled, onChange, onCommit, onRestoreColorLink }: {
-  tier: "essential" | "advanced";
-  value: ShadowValues;
-  mode: Mode;
-  links: ThemeLinkStates;
-  disabled: boolean;
-  onChange: (value: ShadowValues) => void;
-  onCommit: (target: ShadowTarget, value: ShadowValues) => void;
-  onRestoreColorLink: () => void;
-}) {
-  const colorTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  const pendingColor = useRef<ShadowValues | null>(null);
-  const flushColor = () => {
-    if (colorTimer.current !== undefined) clearTimeout(colorTimer.current);
-    colorTimer.current = undefined;
-    const next = pendingColor.current;
-    pendingColor.current = null;
-    if (next) onCommit("color", next);
-  };
-  useEffect(() => () => {
-    if (colorTimer.current !== undefined) clearTimeout(colorTimer.current);
-  }, []);
-  const update = <K extends keyof ShadowValues>(target: ShadowTarget, key: K, next: ShadowValues[K], commit: boolean) => {
-    const updated = { ...value, [key]: next };
-    onChange(updated);
-    if (commit) onCommit(target, updated);
-  };
-  if (tier === "essential") {
-    return (
-      <SystemBlock id="shadow" title="Shadow">
-        <SliderField specimen="shadow:y" label="Y" value={value.y} min={-24} max={24} step={1} unit="px" disabled={disabled} onChange={(next) => update("y", "y", next, false)} onCommit={(next) => update("y", "y", next, true)} />
-        <SliderField specimen="shadow:blur" label="Blur" value={value.blur} min={0} max={48} step={1} unit="px" disabled={disabled} onChange={(next) => update("blur", "blur", next, false)} onCommit={(next) => update("blur", "blur", next, true)} />
-        <SliderField specimen="shadow:opacity" label="Opacity" value={value.opacity} min={0} max={80} step={1} unit="%" disabled={disabled} onChange={(next) => update("opacity", "opacity", next, false)} onCommit={(next) => update("opacity", "opacity", next, true)} />
-      </SystemBlock>
-    );
-  }
-  const colorLink = links.shadowColor[mode];
-  return (
-    <SystemBlock id="shadow-advanced" title="Shadow details">
-      <div data-tp-specimen="shadow:color" style={COLOR_CONTROL_LAYOUT}>
-        <span data-tp-role="label" style={TEXT_LABEL}>Color</span>
-        <BbInput
-          type="color"
-          aria-label="Shadow color"
-          value={value.color.slice(0, 7)}
-          disabled={disabled}
-          className={EDITOR_COLOR_INPUT_CLASS}
-          onChange={(event) => {
-            const next = { ...value, color: event.target.value };
-            onChange(next);
-            pendingColor.current = next;
-            if (colorTimer.current !== undefined) clearTimeout(colorTimer.current);
-            colorTimer.current = setTimeout(flushColor, 120);
-          }}
-          onBlur={flushColor}
-        />
-        <span data-tp-role="value" style={TEXT_VALUE}>{value.color.slice(0, 7)}</span>
-      </div>
-      <div data-tp-shadow-link="" style={{ display: "flex", alignItems: "center", gap: 6, minHeight: 24, marginTop: 2 }}>
-        <span data-tp-link-state="" style={{ ...TEXT_SUPPORT, flex: 1 }}>{colorLink === "linked" ? `Linked to Ink · ${mode}` : `Custom · ${mode}`}</span>
-        {colorLink === "custom" ? (
-          <BbButton type="button" variant="ghost" size="sm" aria-label="Reset Shadow color to Ink" className="h-5 cursor-pointer px-1.5 text-xs" disabled={disabled} onClick={onRestoreColorLink}>Reset</BbButton>
-        ) : null}
-      </div>
-      <SliderField specimen="shadow:x" label="X" value={value.x} min={-24} max={24} step={1} unit="px" disabled={disabled} onChange={(next) => update("x", "x", next, false)} onCommit={(next) => update("x", "x", next, true)} />
-      <SliderField specimen="shadow:spread" label="Spread" value={value.spread} min={-24} max={24} step={1} unit="px" disabled={disabled} onChange={(next) => update("spread", "spread", next, false)} onCommit={(next) => update("spread", "spread", next, true)} />
-    </SystemBlock>
-  );
-}
-
-const ESSENTIAL_COLOR_CONTROLS = DIRECT_COLOR_CONTROLS.filter(({ family }) => family !== "status");
-const ADVANCED_COLOR_CONTROLS = DIRECT_COLOR_CONTROLS.filter(({ family }) => family === "status");
-
-/** Area 4 — essential decisions first; advanced direct controls remain visible below. */
-function StyleSheetSection({ computed, radii, mode, links, busy, editEvent, onCommit }: {
-  computed: Computed;
-  radii: Record<string, string>;
-  mode: Mode;
-  links: ThemeLinkStates;
-  busy: boolean;
-  editEvent: EditEvent | null;
-  onCommit: (edit: ThemeEdit) => void;
-}) {
-  const [values, setValues] = useState<EditorValues>(DEFAULT_EDITOR_VALUES);
-  const [linkStates, setLinkStates] = useState(links);
-  const committedValues = useRef(DEFAULT_EDITOR_VALUES);
-  const ready = Boolean(computed.canvas?.value && computed.ink?.value);
-  const radiiRef = useRef(radii);
-  radiiRef.current = radii;
-  useLayoutEffect(() => {
-    if (ready) {
-      const next = valuesFromComputed(computed, radiiRef.current);
-      committedValues.current = next;
-      setValues(next);
-    }
-    // Resolved radius specimens update on their own timer. Their identity is
-    // not an editor-value revision and must not overwrite an optimistic edit.
-  }, [computed, ready]);
-  useEffect(() => setLinkStates(links), [links]);
-  useEffect(() => {
-    if (!editEvent) return;
-    if (editEvent.state === "committed") {
-      setValues((current) => {
-        let next = applyCommittedEdit(current, editEvent.edit);
-        // A linked shadow color is the active mode's Ink value. Keep that
-        // visible relationship authoritative immediately after any projected
-        // color response instead of waiting for the stylesheet readback.
-        if (editEvent.edit.kind === "colors" && editEvent.links.shadowColor[editEvent.mode] === "linked") {
-          next = { ...next, shadow: { ...next.shadow, color: next.colors.ink } };
-        }
-        committedValues.current = next;
-        return next;
-      });
-      setLinkStates(editEvent.links);
-    } else {
-      setValues((current) => rollbackFailedEdit(current, committedValues.current, editEvent.edit));
-    }
-  }, [editEvent]);
-  const disabled = busy || !ready;
-  const setTypography = (typography: TypographyValues) => setValues((current) => ({ ...current, typography }));
-  const setRhythm = (rhythm: RhythmValues) => setValues((current) => ({ ...current, rhythm }));
-  const setShadow = (shadow: ShadowValues) => setValues((current) => ({ ...current, shadow }));
-  const tierStyle = (advanced = false): CSSProperties => ({
-    minWidth: 0,
-    marginTop: advanced ? SHEET_SPACE.section : 0,
-    paddingTop: advanced ? SHEET_SPACE.section : 0,
-    borderTop: advanced ? `1px solid ${v("border-seam", v("border"))}` : undefined,
-  });
-  const systemGrid: CSSProperties = {
-    display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(225px, 1fr))",
-    columnGap: 18, rowGap: SHEET_SPACE.section, alignItems: "start", marginTop: SHEET_SPACE.group,
-  };
-  return (
-    <div aria-busy={busy || undefined}>
-      <div data-tp-editor-tier="essential" style={tierStyle()}>
-        <h3 data-tp-role="category" style={{ ...TEXT_CATEGORY, marginBottom: SHEET_SPACE.inline }}>Essentials</h3>
-        <div data-tp-role="sublabel" style={{ ...TEXT_SUBLABEL, marginBottom: SHEET_SPACE.control }}>Active mode colors</div>
-        <ColorEditor controls={ESSENTIAL_COLOR_CONTROLS} values={values.colors} disabled={disabled} onChange={(colors) => setValues((current) => ({ ...current, colors }))} onCommit={(target, colors) => onCommit({ kind: "colors", target, ...colors })} />
-        <div data-tp-block="systems" style={systemGrid}>
-          <TypographyEditor value={values.typography} disabled={disabled} onChange={setTypography} onCommit={(target, typography) => onCommit({ kind: "typography", target, ...typography })} />
-          <RhythmEditor tier="essential" value={values.rhythm} links={linkStates} disabled={disabled} onChange={setRhythm} onCommit={(target, rhythm) => onCommit({ kind: "rhythm", target, ...rhythm })} onRestoreRowLink={() => onCommit({ kind: "restore-link", target: "sidebar-row" })} />
-          <RadiusEditor value={values.radius} disabled={disabled} onChange={(radius) => setValues((current) => ({ ...current, radius }))} onCommit={(value) => onCommit({ kind: "radius", target: "base", value })} />
-          <ShadowEditor tier="essential" value={values.shadow} mode={mode} links={linkStates} disabled={disabled} onChange={setShadow} onCommit={(target, shadow) => onCommit({ kind: "shadow", target, ...shadow })} onRestoreColorLink={() => onCommit({ kind: "restore-link", target: "shadow-color" })} />
-        </div>
-      </div>
-      <div data-tp-editor-tier="advanced" style={tierStyle(true)}>
-        <h3 data-tp-role="category" style={{ ...TEXT_CATEGORY, marginBottom: SHEET_SPACE.inline, color: v("muted-foreground") }}>Advanced</h3>
-        <div data-tp-role="sublabel" style={{ ...TEXT_SUBLABEL, marginBottom: SHEET_SPACE.control }}>Status colors</div>
-        <ColorEditor controls={ADVANCED_COLOR_CONTROLS} values={values.colors} disabled={disabled} onChange={(colors) => setValues((current) => ({ ...current, colors }))} onCommit={(target, colors) => onCommit({ kind: "colors", target, ...colors })} />
-        <div style={systemGrid}>
-          <RhythmEditor tier="advanced" value={values.rhythm} links={linkStates} disabled={disabled} onChange={setRhythm} onCommit={(target, rhythm) => onCommit({ kind: "rhythm", target, ...rhythm })} onRestoreRowLink={() => onCommit({ kind: "restore-link", target: "sidebar-row" })} />
-          <ShadowEditor tier="advanced" value={values.shadow} mode={mode} links={linkStates} disabled={disabled} onChange={setShadow} onCommit={(target, shadow) => onCommit({ kind: "shadow", target, ...shadow })} onRestoreColorLink={() => onCommit({ kind: "restore-link", target: "shadow-color" })} />
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/**
- * Area 3 — components. Every control here is live: a theme is judged by how it
- * paints hover, focus, pressed, checked, disabled and expanded, which a static
- * picture cannot show.
- */
 function ComponentsSection() {
   const [search, setSearch] = useState("");
   const [notify, setNotify] = useState(true);
@@ -1658,7 +1223,7 @@ function ComponentsSection() {
   const [checked, setChecked] = useState(true);
   const [agreed, setAgreed] = useState(false);
   const compactBlock = (wide = false): CSSProperties => ({ minWidth: 0, gridColumn: wide ? "1 / -1" : undefined });
-  const toggleBlock: CSSProperties = { ...compactBlock(), paddingBlock: SHEET_SPACE.group };
+  const toggleBlock: CSSProperties = { ...compactBlock(), paddingBlock: space(3) };
   const toggleControls: CSSProperties = { display: "flex", flexDirection: "column", gap: 8 };
   const compactLabel: CSSProperties = { ...TEXT_LABEL, minWidth: 0, fontSize: 11.5, lineHeight: "16px" };
   return (
@@ -1754,10 +1319,8 @@ type Swatch = {
 type ThemeEntry = {
   id: string;
   name: string;
-  source: "builtin" | "custom" | "plugin";
   light: Swatch | null;
   dark: Swatch | null;
-  links: ThemeLinkStates;
 };
 type Catalog = { activeThemeId: string | null; themes: ThemeEntry[]; revision: number };
 
@@ -1861,157 +1424,11 @@ function ModeSwitch({ mode, disabled, onPick }: { mode: Mode; disabled: boolean;
   );
 }
 
-// BB keeps reversible lifecycle feedback available for ten seconds. The bell
-// is a compact, temporary locus for the automatic fork notice; its tooltip
-// opens immediately, then remains keyboard- and pointer-discoverable until the
-// exact fork-only undo token expires from this surface.
-const FORK_NOTICE_DURATION_MS = 10_000;
-
-function ThemeForkNotice({
-  notice,
-  busy,
-  error,
-  onExpire,
-  onUndo,
-}: {
-  notice: ForkNotice;
-  busy: boolean;
-  error: string | null;
-  onExpire: () => void;
-  onUndo: () => void;
-}) {
-  const [open, setOpen] = useState(true);
-  const expireRef = useRef(onExpire);
-  expireRef.current = onExpire;
-
-  useEffect(() => {
-    setOpen(true);
-  }, [notice.undoToken, error]);
-
-  useEffect(() => {
-    if (busy) return;
-    const timer = setTimeout(() => expireRef.current(), FORK_NOTICE_DURATION_MS);
-    return () => clearTimeout(timer);
-  }, [notice.undoToken, busy]);
-
-  const accessibleName = `Theme copy created: ${notice.copyName}. Press Enter or Space to undo`;
-  return (
-    <TooltipProvider delayDuration={HOVER_OPEN_DELAY_MS}>
-      <Tooltip open={open} onOpenChange={setOpen}>
-        <TooltipTrigger asChild>
-          <BbButton
-            data-tp-fork-notice=""
-            type="button"
-            size="icon"
-            variant="ghost"
-            aria-label={accessibleName}
-            className="relative size-8 shrink-0 cursor-pointer"
-            onClick={(event) => {
-              // Native keyboard and assistive-technology activation produces
-              // a click with detail 0. Keep the compact bell's keyboard intent
-              // explicit because an interactive tooltip is not a reliable Tab
-              // stop; pointer activation still reveals or dismisses its detail.
-              if (event.detail === 0) {
-                onUndo();
-                return;
-              }
-              setOpen((current) => !current);
-            }}
-          >
-            <HugeiconsIcon icon={Notification02Icon} className="size-4" />
-            <span aria-hidden className="absolute right-1.5 top-1.5 size-1.5 rounded-full bg-success" />
-          </BbButton>
-        </TooltipTrigger>
-        <TooltipContent
-          data-tp-fork-tooltip=""
-          side="bottom"
-          align="end"
-          className="w-64 p-3"
-          onPointerEnter={() => setOpen(true)}
-        >
-          <div className="text-xs font-medium">Created {notice.copyName}</div>
-          <div className="mt-1 text-xs opacity-80">Now editing the copy. {notice.sourceName} is unchanged.</div>
-          <BbButton
-            type="button"
-            variant="secondary"
-            size="sm"
-            className="mt-2 h-7 cursor-pointer px-2 text-xs"
-            disabled={busy}
-            onClick={onUndo}
-          >
-            {busy ? "Undoing…" : "Undo"}
-          </BbButton>
-          {error ? <div role="alert" className="mt-2 text-xs">{error}</div> : null}
-        </TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
-  );
-}
-
-function EditSaveFeedback({ feedback, onRetry }: { feedback: EditFeedback; onRetry: () => void }) {
-  if (feedback.state === "idle") return null;
-  if (feedback.state === "failed") {
-    return (
-      <div data-tp-save-feedback="failed" role="alert" title={feedback.message} style={{ display: "flex", alignItems: "center", gap: 6, minHeight: 32, color: v("destructive-text", v("destructive")) }}>
-        <span style={TEXT_SUPPORT}>Couldn’t save.</span>
-        <span className="sr-only">{feedback.message}</span>
-        <BbButton type="button" variant="ghost" size="sm" className="h-7 cursor-pointer px-2 text-xs" onClick={onRetry}>Retry</BbButton>
-      </div>
-    );
-  }
-  if (feedback.state === "adjusted") {
-    return (
-      <>
-        <span role="status" aria-live="polite" className="sr-only">
-          Saved with {feedback.adjustments.length} automatic {feedback.adjustments.length === 1 ? "adjustment" : "adjustments"}. Details are available.
-        </span>
-        <Popover>
-          <PopoverTrigger asChild>
-            <BbButton
-              data-tp-save-feedback="adjusted"
-              type="button"
-              variant="ghost"
-              size="sm"
-              aria-label={`Saved with ${feedback.adjustments.length} automatic ${feedback.adjustments.length === 1 ? "adjustment" : "adjustments"}. Show details`}
-              className="h-8 cursor-pointer px-2 text-xs"
-            >
-              Saved · adjusted {feedback.adjustments.length}
-            </BbButton>
-          </PopoverTrigger>
-          <PopoverContent data-tp-adjustment-details="" align="end" className="w-80 p-3">
-            <div className="text-xs font-medium">Adjusted to keep the theme consistent</div>
-            <div className="mt-2 grid gap-2">
-              {feedback.adjustments.map((adjustment, index) => (
-                <div key={`${adjustment.control}:${adjustment.scope}:${index}`} className="rounded-md bg-muted/50 p-2">
-                  <div className="text-xs font-medium">{adjustment.label}</div>
-                  <div className="mt-0.5 font-mono text-xs text-muted-foreground">{adjustment.from} → {adjustment.to}</div>
-                  <div className="mt-1 text-xs text-muted-foreground">{adjustment.invariant}</div>
-                </div>
-              ))}
-            </div>
-          </PopoverContent>
-        </Popover>
-      </>
-    );
-  }
-  return (
-    <div
-      data-tp-save-feedback={feedback.state}
-      role="status"
-      aria-live="polite"
-      style={{ minHeight: 32, display: "flex", alignItems: "center", ...TEXT_SUPPORT }}
-    >
-      {feedback.state === "saving" ? "Saving…" : "Saved"}
-    </div>
-  );
-}
-
 function ThemePicker({
   catalog,
   computed,
   mode,
   pendingSelection,
-  editing,
   selectionSlow,
   selectionFailed,
   onPick,
@@ -2021,7 +1438,6 @@ function ThemePicker({
   computed: Computed;
   mode: Mode;
   pendingSelection: ThemeSelection | null;
-  editing: boolean;
   selectionSlow: boolean;
   selectionFailed: boolean;
   onPick: (themeId: string, mode: Mode) => void;
@@ -2045,12 +1461,10 @@ function ThemePicker({
       }
     : diskSwatch;
   const pending = pendingSelection !== null;
-  const unavailable = pending || editing;
+  const unavailable = pending;
   const loading = catalog.themes.length === 0;
   const accessibleName = loading
     ? "Loading themes"
-    : editing
-    ? `Saving ${current?.name ?? "theme"}`
     : pending
     ? `${selectionSlow ? "Still applying" : "Applying"} ${current?.name ?? "theme"} ${displayMode}`
     : `${current?.name ?? "Theme"} ${displayMode}`;
@@ -2152,24 +1566,10 @@ function PreviewPage({ subPath }: { subPath: string }) {
   const [pendingSelection, setPendingSelection] = useState<ThemeSelection | null>(null);
   const [failedSelection, setFailedSelection] = useState<ThemeSelection | null>(null);
   const [selectionSlow, setSelectionSlow] = useState(false);
-  const [editBusy, setEditBusy] = useState(false);
-  const [editFeedback, setEditFeedback] = useState<EditFeedback>({ state: "idle" });
-  const [editEvent, setEditEvent] = useState<EditEvent | null>(null);
-  const [forkNotice, setForkNotice] = useState<ForkNotice | null>(null);
-  const [forkUndoPending, setForkUndoPending] = useState(false);
-  const [forkUndoError, setForkUndoError] = useState<string | null>(null);
-  const [forkAnnouncement, setForkAnnouncement] = useState("");
   const catalogRequests = useRef(new LatestRequest());
   const selectionPending = useRef(false);
-  const editingPending = useRef(false);
   const catalogLoadPending = useRef(false);
   const catalogLoadQueued = useRef(false);
-  const editEventId = useRef(0);
-  const savedTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-
-  useEffect(() => () => {
-    if (savedTimer.current !== undefined) clearTimeout(savedTimer.current);
-  }, []);
 
   const view = useMemo<View>(() => {
     const first = subPath.split("/").filter(Boolean)[0] ?? "";
@@ -2183,7 +1583,7 @@ function PreviewPage({ subPath }: { subPath: string }) {
   useEffect(() => {
     let cancelled = false;
     const load = () => {
-      if (selectionPending.current || editingPending.current || catalogLoadPending.current) {
+      if (selectionPending.current || catalogLoadPending.current) {
         catalogLoadQueued.current = true;
         return;
       }
@@ -2254,13 +1654,7 @@ function PreviewPage({ subPath }: { subPath: string }) {
 
   const applySelection = (selection: ThemeSelection) => {
     if (selectionPending.current) return;
-    if (forkNotice && selection.themeId !== forkNotice.themeId) {
-      setForkNotice(null);
-      setForkUndoError(null);
-    }
     setMode(selection.mode);
-    if (savedTimer.current !== undefined) clearTimeout(savedTimer.current);
-    setEditFeedback({ state: "idle" });
     // Always send the explicit choice. The catalog reflects the last completed
     // apply, so it can be stale while a slower selection is still in flight.
     selectionPending.current = true;
@@ -2289,90 +1683,6 @@ function PreviewPage({ subPath }: { subPath: string }) {
   const pick = (themeId: string, nextMode: Mode) => applySelection({ themeId, mode: nextMode });
   const retrySelection = () => { if (failedSelection) applySelection(failedSelection); };
 
-  const commitEdit = (edit: ThemeEdit) => {
-    const themeId = catalog.activeThemeId;
-    if (!themeId || selectionPending.current || editingPending.current) return;
-    if (forkNotice?.themeId === themeId) {
-      setForkNotice(null);
-      setForkUndoError(null);
-    }
-    editingPending.current = true;
-    setEditBusy(true);
-    if (savedTimer.current !== undefined) clearTimeout(savedTimer.current);
-    setEditFeedback({ state: "saving" });
-    setError(null);
-    const request = catalogRequests.current.begin();
-    withRpcTimeout(rpc.call("editTheme", { themeId, mode, edit }), "Theme edit")
-      .then((result) => {
-        if (!catalogRequests.current.isLatest(request)) return;
-        commitCatalog(result.catalog, setCatalog);
-        setEditEvent({ id: ++editEventId.current, state: "committed", edit: result.committedEdit, links: result.links, mode });
-        if (result.adjustments.length > 0) {
-          setEditFeedback({ state: "adjusted", adjustments: result.adjustments });
-        } else {
-          setEditFeedback({ state: "saved" });
-          savedTimer.current = setTimeout(() => setEditFeedback({ state: "idle" }), 2_000);
-        }
-        if (result.forkedFrom && result.undoToken) {
-          const copy = result.catalog.themes.find((theme) => theme.id === result.themeId);
-          const source = catalog.themes.find((theme) => theme.id === result.forkedFrom);
-          const copyName = copy?.name ?? "theme copy";
-          const sourceName = source?.name ?? "The source theme";
-          setForkUndoError(null);
-          setForkNotice({
-            copyName,
-            sourceName,
-            themeId: result.themeId,
-            undoToken: result.undoToken,
-          });
-          setForkAnnouncement(`Created ${copyName}. ${sourceName} is unchanged. Undo is available from the notification button.`);
-        }
-      })
-      .catch((cause) => {
-        if (!catalogRequests.current.isLatest(request)) return;
-        const message = cause instanceof Error ? cause.message : String(cause);
-        setEditEvent({ id: ++editEventId.current, state: "failed", edit });
-        setEditFeedback({ state: "failed", edit, message });
-      })
-      .finally(() => {
-        if (!catalogRequests.current.isLatest(request)) return;
-        editingPending.current = false;
-        setEditBusy(false);
-        if (catalogLoadQueued.current) loadRef.current();
-      });
-  };
-
-  const undoFork = () => {
-    const notice = forkNotice;
-    if (!notice || forkUndoPending || selectionPending.current || editingPending.current) return;
-    editingPending.current = true;
-    setForkUndoPending(true);
-    setEditBusy(true);
-    setForkUndoError(null);
-    const request = catalogRequests.current.begin();
-    withRpcTimeout(rpc.call("undoThemeFork", { undoToken: notice.undoToken }), "Undo theme copy")
-      .then((next) => {
-        if (!catalogRequests.current.isLatest(request)) return;
-        commitCatalog(next, setCatalog);
-        setEditFeedback({ state: "idle" });
-        setForkNotice(null);
-        setForkAnnouncement(`Removed ${notice.copyName}. Restored ${notice.sourceName}.`);
-      })
-      .catch((cause) => {
-        if (!catalogRequests.current.isLatest(request)) return;
-        const message = cause instanceof Error ? cause.message : String(cause);
-        setForkUndoError(message);
-        setForkAnnouncement(`Could not undo ${notice.copyName}. ${message}`);
-      })
-      .finally(() => {
-        if (!catalogRequests.current.isLatest(request)) return;
-        editingPending.current = false;
-        setForkUndoPending(false);
-        setEditBusy(false);
-        if (catalogLoadQueued.current) loadRef.current();
-      });
-  };
-
   const revision = `${mode}:${catalog.activeThemeId ?? ""}:${catalog.revision}`;
   const computed = useComputedTokens(ALL_TOKENS, revision);
   const radii = useResolvedRadii(revision);
@@ -2381,7 +1691,6 @@ function PreviewPage({ subPath }: { subPath: string }) {
   const contentInset = contentInsetForWidth(layout.width);
   const displayThemeId = pendingSelection?.themeId ?? catalog.activeThemeId;
   const displayThemeName = catalog.themes.find((theme) => theme.id === displayThemeId)?.name ?? "Current theme";
-  const activeLinks = catalog.themes.find((theme) => theme.id === catalog.activeThemeId)?.links ?? DEFAULT_LINK_STATES;
 
   return (
     <div ref={rootRef} data-tp-root data-tp-band={layout.band} style={{ height: "100%", overflowY: "auto", overflowX: "hidden", background: v("canvas", v("background")), color: v("foreground"), fontFamily: SANS, letterSpacing: v("tracking-normal", "0em") }}>
@@ -2404,31 +1713,14 @@ function PreviewPage({ subPath }: { subPath: string }) {
               computed={computed}
               mode={mode}
               pendingSelection={pendingSelection}
-              editing={editBusy}
               selectionSlow={selectionSlow}
               selectionFailed={failedSelection !== null}
               onPick={pick}
               onRetry={retrySelection}
             />
-            <EditSaveFeedback
-              feedback={editFeedback}
-              onRetry={() => {
-                if (editFeedback.state === "failed") commitEdit(editFeedback.edit);
-              }}
-            />
-            {forkNotice ? (
-              <ThemeForkNotice
-                notice={forkNotice}
-                busy={forkUndoPending}
-                error={forkUndoError}
-                onExpire={() => { setForkNotice(null); setForkUndoError(null); }}
-                onUndo={undoFork}
-              />
-            ) : null}
           </div>
         </div>
       </div>
-      <div data-tp-fork-status="" role="status" aria-live="polite" className="sr-only">{forkAnnouncement}</div>
 
       {/* Layout system, level 2: the plugin window. One stage zone (mock +
           at-a-glance rail on wider bands), then flow sections in taxonomy
@@ -2476,7 +1768,7 @@ function PreviewPage({ subPath }: { subPath: string }) {
           <div style={{ marginTop: space(3) }}>
             {area === "overlays" ? <OverlaySpecimens vertical />
               : area === "components" ? <ComponentsSection />
-              : <StyleSheetSection computed={computed} radii={radii} mode={mode} links={activeLinks} busy={editBusy} editEvent={editEvent} onCommit={commitEdit} />}
+              : <StyleSheetSection computed={computed} radii={radii} />}
           </div>
         </section>
       ))}

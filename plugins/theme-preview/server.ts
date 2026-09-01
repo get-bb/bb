@@ -3,34 +3,6 @@ import { readFile, stat } from "node:fs/promises";
 import { resolve } from "node:path";
 import { defineRpcContract, type BbPluginApi } from "@get-bb/plugin-sdk";
 import { z } from "zod";
-import { BUILTIN_THEME_CSS } from "./builtin-theme-sources";
-import {
-  classifyThemeLinks,
-  createThemeEditor,
-  editThemeInputSchema,
-  readThemePreviewForkName,
-  themeEditSchema,
-  undoThemeForkInputSchema,
-  type EditableThemeResource,
-} from "./theme-editor";
-
-const themeLinksSchema = z
-  .object({
-    sidebarRow: z.enum(["linked", "custom"]),
-    shadowColor: z.object({ light: z.enum(["linked", "custom"]), dark: z.enum(["linked", "custom"]) }).strict(),
-  })
-  .strict();
-
-const editAdjustmentSchema = z
-  .object({
-    control: z.string().min(1),
-    label: z.string().min(1),
-    scope: z.enum(["shared", "light", "dark"]),
-    from: z.string(),
-    to: z.string(),
-    invariant: z.string().min(1),
-  })
-  .strict();
 
 const swatchSchema = z
   .object({
@@ -49,10 +21,8 @@ const themeSchema = z
   .object({
     id: z.string(),
     name: z.string(),
-    source: z.enum(["builtin", "custom", "plugin"]),
     light: swatchSchema.nullable(),
     dark: swatchSchema.nullable(),
-    links: themeLinksSchema,
   })
   .strict();
 
@@ -60,7 +30,6 @@ const catalogSchema = z
   .object({
     activeThemeId: z.string().nullable(),
     themes: z.array(themeSchema),
-    /** Monotonic version of applied theme CSS, including editor and watcher writes. */
     revision: z.number().int().nonnegative(),
   })
   .strict();
@@ -68,21 +37,6 @@ const catalogSchema = z
 export const rpcContract = defineRpcContract({
   themeCatalog: { input: z.object({}).strict(), output: catalogSchema },
   setTheme: { input: z.object({ themeId: z.string().min(1) }).strict(), output: catalogSchema },
-  editTheme: {
-    input: editThemeInputSchema,
-    output: z
-      .object({
-        catalog: catalogSchema,
-        themeId: z.string().min(1),
-        forkedFrom: z.string().nullable(),
-        undoToken: z.string().uuid().nullable(),
-        committedEdit: themeEditSchema,
-        adjustments: z.array(editAdjustmentSchema),
-        links: themeLinksSchema,
-      })
-      .strict(),
-  },
-  undoThemeFork: { input: undoThemeForkInputSchema, output: catalogSchema },
 });
 
 export type ThemeSwatch = z.infer<typeof swatchSchema>;
@@ -362,35 +316,29 @@ export async function buildCatalog(
   const active = c.active as Record<string, unknown> | undefined;
   const activeThemeId = typeof active?.themeId === "string" ? active.themeId : null;
 
-  const entries: Array<{ id: string; name: string; source: "builtin" | "custom" | "plugin" }> = [];
+  const entries: Array<{ id: string; name: string }> = [];
   for (const id of Array.isArray(c.custom) ? c.custom : []) {
-    if (typeof id === "string") entries.push({ id, name: id, source: "custom" });
+    if (typeof id === "string") entries.push({ id, name: id });
   }
   for (const plugin of Array.isArray(c.plugins) ? c.plugins : []) {
     const entry = plugin as Record<string, unknown>;
     if (typeof entry.id === "string") {
-      entries.push({ id: entry.id, name: typeof entry.name === "string" ? entry.name : entry.id, source: "plugin" });
+      entries.push({ id: entry.id, name: typeof entry.name === "string" ? entry.name : entry.id });
     }
   }
   for (const builtin of BUILTIN_THEMES) {
-    if (!entries.some((entry) => entry.id === builtin.id)) entries.push({ ...builtin, source: "builtin" });
+    if (!entries.some((entry) => entry.id === builtin.id)) entries.push(builtin);
   }
   // Anything active but unknown (a newer builtin, say) still has to be listed.
   if (activeThemeId && !entries.some((entry) => entry.id === activeThemeId)) {
-    entries.unshift({
-      id: activeThemeId,
-      name: activeThemeId,
-      source: activeThemeId.startsWith("plugin:") ? "plugin" : "builtin",
-    });
+    entries.unshift({ id: activeThemeId, name: activeThemeId });
   }
 
   const themes = await Promise.all(
     entries.map(async (entry) => {
       const css = await readCss(entry.id);
-      const sourceCss = css ?? BUILTIN_THEME_CSS[entry.id] ?? "";
       const swatches = css ? parseThemeSwatches(css) : (BUILTIN_SWATCHES[entry.id] ?? { light: null, dark: null });
-      const name = entry.source === "custom" && css ? (readThemePreviewForkName(css) ?? entry.name) : entry.name;
-      return { ...entry, name, light: swatches.light, dark: swatches.dark, links: classifyThemeLinks(sourceCss) };
+      return { ...entry, light: swatches.light, dark: swatches.dark };
     }),
   );
   return { activeThemeId, themes, revision: 0 };
@@ -459,68 +407,6 @@ async function activeThemePath(
     }
   }
   return null;
-}
-
-/** Resolve one catalog entry to the independent CSS resource an edit starts from. */
-export async function resolveEditableTheme(bb: BbPluginApi, themeId: string): Promise<EditableThemeResource> {
-  const raw = (await bb.sdk.theme.catalog()) as {
-    custom?: unknown;
-    dir?: unknown;
-    plugins?: unknown;
-  };
-  const themeDirectory = typeof raw.dir === "string" ? raw.dir : null;
-  if (!themeDirectory) throw new Error("Theme Preview cannot edit themes because the custom-theme directory is unavailable");
-
-  const customIds = Array.isArray(raw.custom)
-    ? raw.custom.filter((id): id is string => typeof id === "string")
-    : [];
-  if (customIds.includes(themeId)) {
-    for (const filePath of [resolve(themeDirectory, themeId, "theme.css"), resolve(themeDirectory, `${themeId}.css`)]) {
-      try {
-        const css = await readFile(filePath, "utf8");
-        return { id: themeId, name: readThemePreviewForkName(css) ?? themeId, source: "custom", css, filePath, themeDirectory };
-      } catch {
-        // Catalog discovery can race a file move. Try the other supported layout.
-      }
-    }
-    throw new Error(`Custom theme '${themeId}' no longer has a readable theme.css`);
-  }
-
-  if (themeId.startsWith("plugin:")) {
-    const pluginEntries = Array.isArray(raw.plugins) ? raw.plugins : [];
-    const metadata = pluginEntries
-      .map((entry) => entry as Record<string, unknown>)
-      .find((entry) => entry.id === themeId);
-    if (!metadata) throw new Error(`Plugin theme '${themeId}' is not in the current theme catalog`);
-
-    const rootDirs = new Map<string, string>();
-    const listed = (await bb.sdk.plugins.list()) as { plugins?: Array<{ id?: string; rootDir?: string }> };
-    for (const entry of listed.plugins ?? []) {
-      if (typeof entry.id === "string" && typeof entry.rootDir === "string") rootDirs.set(entry.id, entry.rootDir);
-    }
-    const css = await readPluginThemeCss(bb, themeId, rootDirs);
-    if (css === null) throw new Error(`Plugin theme '${themeId}' has no readable source CSS`);
-    return {
-      id: themeId,
-      name: typeof metadata.name === "string" ? metadata.name : themeId,
-      source: "plugin",
-      css,
-      filePath: null,
-      themeDirectory,
-    };
-  }
-
-  const builtinCss = BUILTIN_THEME_CSS[themeId];
-  const builtin = BUILTIN_THEMES.find((entry) => entry.id === themeId);
-  if (builtinCss === undefined || !builtin) throw new Error(`Theme '${themeId}' is not editable`);
-  return {
-    id: themeId,
-    name: builtin.name,
-    source: "builtin",
-    css: builtinCss,
-    filePath: null,
-    themeDirectory,
-  };
 }
 
 /**
@@ -650,7 +536,7 @@ export function createCatalogLoader(bb: BbPluginApi) {
     return promise;
   };
 
-  const setTheme = async (themeId: string, refreshCatalog: boolean, editedFilePath?: string) => {
+  const setTheme = async (themeId: string) => {
     selectionGeneration += 1;
     const generation = selectionGeneration;
     // Theme application is global and not cancellable. Preserve click order
@@ -660,24 +546,6 @@ export function createCatalogLoader(bb: BbPluginApi) {
     });
     selectionQueue = apply.catch(() => undefined);
     await apply;
-
-    if (editedFilePath !== undefined) {
-      // The editor has already committed this file atomically. Own the state
-      // transition here, then remember its exact stamp before enrichment so
-      // the filesystem watcher echo cannot count the same write twice.
-      revision += 1;
-      try {
-        const info = await stat(editedFilePath);
-        stamps.set(editedFilePath, `${editedFilePath}:${info.mtimeMs}:${info.size}`);
-      } catch (error) {
-        // The successful edit still owns one revision. With no baseline, the
-        // next watcher pass observes (rather than reapplies) this file.
-        stamps.delete(editedFilePath);
-        bb.log.warn(`theme-preview: could not record edited theme stamp: ${String(error)}`);
-      }
-    }
-
-    if (refreshCatalog) return catalog();
 
     // The picker already has the enriched catalog it selected from. Confirm
     // the global mutation from that snapshot so a slow CSS/plugin scan cannot
@@ -692,13 +560,7 @@ export function createCatalogLoader(bb: BbPluginApi) {
   return {
     catalog,
     setTheme(themeId: string) {
-      return setTheme(themeId, false);
-    },
-    applyEditedTheme(themeId: string, filePath: string) {
-      // Editing can introduce a newly forked catalog entry and always changes
-      // swatches, so return a fresh enrichment rather than the picker's prior
-      // snapshot.
-      return setTheme(themeId, true, filePath);
+      return setTheme(themeId);
     },
   };
 }
@@ -713,12 +575,6 @@ export default async function plugin(bb: BbPluginApi) {
   // CSS and push it to every client.
   const catalogLoader = createCatalogLoader(bb);
   const catalog = catalogLoader.catalog;
-  const themeEditor = createThemeEditor({
-    resolveTheme: (themeId) => resolveEditableTheme(bb, themeId),
-    applyTheme: (themeId, filePath) => catalogLoader.applyEditedTheme(themeId, filePath),
-    selectTheme: async (themeId) => { await catalogLoader.setTheme(themeId); },
-    loadCatalog: () => catalogLoader.catalog(),
-  });
 
   // Instant path. Watch the custom-theme directory (new themes, edits) and push
   // a signal to every open panel; the panel refetches on the signal, so a new
@@ -772,12 +628,6 @@ export default async function plugin(bb: BbPluginApi) {
     },
     async setTheme({ themeId }) {
       return catalogLoader.setTheme(themeId);
-    },
-    async editTheme(input) {
-      return themeEditor.editTheme(input);
-    },
-    async undoThemeFork(input) {
-      return themeEditor.undoThemeFork(input);
     },
   });
 
