@@ -669,5 +669,12 @@ function resolveExecutionIntoPayload(
     reasoningLevel: execution.reasoningLevel,
     serviceTier: execution.serviceTier,
     permissionMode: execution.permissionMode,
+    executionInputSources: {
+      ...(payload.executionInputSources ?? {}),
+      model: "explicit",
+      reasoningLevel: "explicit",
+      serviceTier: "explicit",
+      permissionMode: "explicit",
+    },
   };
 }

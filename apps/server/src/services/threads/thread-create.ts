@@ -445,13 +445,16 @@ async function createPendingThreadAndAttemptFirstDispatch(
         sourceThreadId: args.fork.sourceThreadId,
       });
     }
-    execution = await buildExecutionOptions(deps, args.request, {
-      ...(args.executionDefaults
-        ? { projectDefaults: args.executionDefaults }
-        : {}),
+    const executionPlanArgs = {
+      projectDefaults: args.executionDefaults,
       hostId: intentHostId(deps, args.environmentIntent),
       threadId: thread.id,
-    });
+    };
+    execution = await buildExecutionOptions(
+      deps,
+      args.request,
+      executionPlanArgs,
+    );
 
     const startContext: PendingThreadStartContext = {
       environmentIntent: args.environmentIntent,
@@ -488,6 +491,7 @@ async function createPendingThreadAndAttemptFirstDispatch(
       source: { kind: "inline" },
       queuePayload: { kind: "inline" },
       startContext,
+      executionDefaults: executionPlanArgs,
       origin: args.request.origin,
       originPluginId: args.request.originPluginId ?? null,
       startedOnBehalfOf: args.request.startedOnBehalfOf,
