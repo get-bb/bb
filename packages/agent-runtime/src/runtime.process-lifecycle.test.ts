@@ -298,9 +298,10 @@ describe("createAgentRuntime process lifecycle", () => {
 
   it("does not wait for stalled replacement initialization during full shutdown", async () => {
     const stalledBridge = join(tmpDir, "stalled-provider.cjs");
+    const stalledBridgeStarted = join(tmpDir, "stalled-provider-started");
     writeFileSync(
       stalledBridge,
-      `require("readline").createInterface({input:process.stdin}).once("line",line=>setTimeout(()=>console.log(JSON.stringify({jsonrpc:"2.0",id:JSON.parse(line).id,result:{protocolVersion:2,capabilities:{grammarVersions:[3,3]}}})),3000));`,
+      `require("readline").createInterface({input:process.stdin}).once("line",line=>{require("fs").writeFileSync(${JSON.stringify(stalledBridgeStarted)},"");setTimeout(()=>console.log(JSON.stringify({jsonrpc:"2.0",id:JSON.parse(line).id,result:{protocolVersion:2,capabilities:{grammarVersions:[3,3]}}})),3000)});`,
     );
     let starts = 0;
     const manager = createProviderProcessManager({
@@ -312,21 +313,37 @@ describe("createAgentRuntime process lifecycle", () => {
       workspacePath: tmpDir,
     });
     await manager.ensureProvider(MANAGER_PROVIDER);
+    const retirement = manager.shutdownProvider(MANAGER_PROVIDER);
+    const replacementStart = manager.ensureProvider(MANAGER_PROVIDER);
+    await waitForRuntimeState({
+      label: "the replacement bridge to begin initialization",
+      predicate: () => existsSync(stalledBridgeStarted),
+      timeoutMs: 1_000,
+    });
+    expect(starts).toBe(2);
+    const replacementProcess = manager.requireProviderProcess(MANAGER_PROVIDER);
+    const fullShutdown = manager.shutdown();
     const operations = Promise.all([
-      manager.shutdownProvider(MANAGER_PROVIDER),
-      manager.ensureProvider(MANAGER_PROVIDER),
-      manager.shutdown(),
+      retirement,
+      replacementStart,
+      fullShutdown,
     ]);
+    let completionTimer: ReturnType<typeof setTimeout> | undefined;
     const completedPromptly = await Promise.race([
       operations.then(() => true),
-      new Promise<false>((resolve) => setTimeout(() => resolve(false), 1000)),
+      new Promise<false>((resolve) => {
+        completionTimer = setTimeout(() => resolve(false), 1_000);
+        completionTimer.unref();
+      }),
     ]);
+    if (completionTimer !== undefined) clearTimeout(completionTimer);
     await expect(operations).resolves.toEqual([
       undefined,
       undefined,
       undefined,
     ]);
     expect(completedPromptly).toBe(true);
+    expect(replacementProcess.child.killed).toBe(true);
     await manager.ensureProvider(MANAGER_PROVIDER);
     expect(manager.listRunningProviders()).toEqual([]);
   });
