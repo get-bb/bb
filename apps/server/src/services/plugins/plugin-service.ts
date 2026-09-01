@@ -869,7 +869,12 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     withArtifactLock,
     withLifecycleLock,
     withPluginOperationLock,
-  } = createPluginRuntime({ deps, nextCronRunAt, settledWithin });
+  } = createPluginRuntime({
+    deps,
+    nextCronRunAt,
+    settingsChanged: notifyPluginsChanged,
+    settledWithin,
+  });
 
   let managedValidateInstallDir!: (
     args: RegisterInstalledArgs,

@@ -51,7 +51,29 @@ const settings = bb.settings.define({
     type: "string",
     label: "Agents",
     experimental_multiline: true,
+    experimental_validate(value) {
+      try {
+        return Array.isArray(JSON.parse(value))
+          ? null
+          : "Agents must be a JSON array";
+      } catch {
+        return "Agents must be valid JSON";
+      }
+    },
     default: "[]",
+  },
+  retries: {
+    type: "string",
+    label: "Retries",
+    experimental_validate: (value) =>
+      /^[1-5]$/.test(value) ? null : "Retries must be from 1 through 5",
+    default: "3",
+  },
+  notes: {
+    type: "string",
+    label: "Notes",
+    experimental_maxLength: 4096,
+    default: "",
   },
   mode: {
     type: "select",
@@ -63,6 +85,7 @@ const settings = bb.settings.define({
   project: { type: "project", label: "Project" }, // project picker, stores a proj_* id
 });
 const { apiKey, teamKey } = await settings.get(); // load-safe; re-read inside handlers for freshness
+await settings.experimental_set({ teamKey: "ENG" });
 settings.onChange((next, prev) => {
   /* fires after effective values change */
 });
@@ -71,6 +94,14 @@ settings.onChange((next, prev) => {
 Typing rule: a descriptor **with** `default` yields a non-optional value
 from `get()`; without one the value is `string | boolean | undefined` — so
 give non-secrets defaults and handle missing secrets explicitly.
+
+`experimental_validate` runs on the server for settings-page autosaves,
+`bb plugin config`, `experimental_set`, and fake-host writes. Return a concise
+user-facing error or `null`; thrown errors are also rejected. The function is
+not sent to the browser. `experimental_maxLength` is enforced at the input and
+server boundaries. `experimental_set` accepts only the fields defined by that
+handle, accepts `null` to unset one, fires `onChange`, and returns the handle's
+effective values.
 
 ### bb.storage
 

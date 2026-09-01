@@ -214,6 +214,53 @@ describe("plugin settings + storage", () => {
       ).toBe(false);
     });
 
+    it("lets plugin server code validate and persist its own settings", async () => {
+      const rootDir = await writePlugin(workDir, {
+        name: "bb-plugin-self-configuring",
+        serverSource: `
+          export default async function plugin(bb: any) {
+            const settings = bb.settings.define({
+              notes: {
+                type: "string",
+                label: "Notes",
+                experimental_maxLength: 4,
+                default: "",
+              },
+            });
+            const g = globalThis as any;
+            g.__selfConfiguring = { changes: [], settings };
+            settings.onChange((next: any) => g.__selfConfiguring.changes.push(next));
+          }
+        `,
+      });
+      const entry = await service.installPath(rootDir);
+      expect(entry.status).toBe("running");
+      const state = (globalThis as Record<string, unknown>)
+        .__selfConfiguring as {
+        changes: Array<{ notes: string }>;
+        settings: {
+          experimental_set(values: {
+            notes: string;
+          }): Promise<{ notes: string }>;
+          get(): Promise<{ notes: string }>;
+        };
+      };
+      systemBroadcasts.length = 0;
+
+      await expect(
+        state.settings.experimental_set({ notes: "test" }),
+      ).resolves.toEqual({ notes: "test" });
+      expect(state.changes).toEqual([{ notes: "test" }]);
+      await expect(state.settings.get()).resolves.toEqual({ notes: "test" });
+      expect(
+        systemBroadcasts.filter((kinds) => kinds.includes("plugins-changed")),
+      ).toHaveLength(1);
+      await expect(
+        state.settings.experimental_set({ notes: "longer" }),
+      ).rejects.toThrow("at most 4 characters");
+      await expect(state.settings.get()).resolves.toEqual({ notes: "test" });
+    });
+
     it("rejects unknown keys and type mismatches", async () => {
       await installConfigurable();
       await expect(

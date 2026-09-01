@@ -1,6 +1,5 @@
-import { useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { appToast } from "@/components/ui/app-toast.js";
 import { PluginSettingsSections } from "@/components/plugin/PluginSettingsSections";
 import { Button } from "@bb/shared-ui/button";
 import {
@@ -37,6 +36,7 @@ import {
 } from "@/hooks/queries/plugin-settings-queries";
 import { useSidebarNavigation } from "@/hooks/queries/sidebar-navigation-query";
 import { usePluginSlots } from "@/lib/plugin-slots";
+import { getMutationErrorMessage } from "@/lib/mutation-errors";
 
 const DROPDOWN_TRIGGER_CLASS =
   "h-7 w-full justify-between border-border/60 bg-card px-2 text-xs sm:w-44";
@@ -47,7 +47,6 @@ const MULTILINE_MIN_ROWS = 6;
 const MULTILINE_MAX_ROWS = 24;
 const MULTILINE_TEXTAREA_CLASS =
   "max-h-96 min-h-32 w-full resize-y overflow-y-auto font-mono text-xs field-sizing-content";
-
 function multilineRows(value: string): number {
   const lines = value.split("\n").length;
   return Math.min(MULTILINE_MAX_ROWS, Math.max(MULTILINE_MIN_ROWS, lines + 1));
@@ -62,6 +61,8 @@ function isMultilineSetting(descriptor: PluginSettingFieldDescriptor): boolean {
 }
 
 interface SettingOptionPickerProps {
+  ariaDescribedBy: string | undefined;
+  ariaInvalid: boolean;
   ariaLabel: string;
   onSelect: (value: string) => void;
   options: readonly { label: string; value: string }[];
@@ -69,6 +70,8 @@ interface SettingOptionPickerProps {
 }
 
 function SettingOptionPicker({
+  ariaDescribedBy,
+  ariaInvalid,
   ariaLabel,
   onSelect,
   options,
@@ -82,6 +85,8 @@ function SettingOptionPicker({
           size="sm"
           className={DROPDOWN_TRIGGER_CLASS}
           aria-label={ariaLabel}
+          aria-describedby={ariaDescribedBy}
+          aria-invalid={ariaInvalid}
         >
           <span className="min-w-0 truncate">{valueLabel}</span>
           <Icon name="ChevronDown" className="size-3.5 text-muted-foreground" />
@@ -102,15 +107,21 @@ function SettingOptionPicker({
 }
 
 interface PluginSettingFieldProps {
+  ariaDescribedBy: string | undefined;
+  ariaInvalid: boolean;
   descriptor: PluginSettingFieldDescriptor;
-  draft: unknown;
+  draft: string | boolean;
+  onBlur: () => void;
   onChange: (value: string | boolean) => void;
   storedValue: unknown;
 }
 
 function PluginSettingField({
+  ariaDescribedBy,
+  ariaInvalid,
   descriptor,
   draft,
+  onBlur,
   onChange,
   storedValue,
 }: PluginSettingFieldProps) {
@@ -130,6 +141,8 @@ function PluginSettingField({
         checked={checked}
         onCheckedChange={onChange}
         aria-label={descriptor.label}
+        aria-describedby={ariaDescribedBy}
+        aria-invalid={ariaInvalid}
       />
     );
   }
@@ -143,6 +156,8 @@ function PluginSettingField({
           : "";
     return (
       <SettingOptionPicker
+        ariaDescribedBy={ariaDescribedBy}
+        ariaInvalid={ariaInvalid}
         ariaLabel={descriptor.label}
         valueLabel={value.length > 0 ? value : "Select…"}
         options={descriptor.options.map((option) => ({
@@ -179,6 +194,8 @@ function PluginSettingField({
       (value.length > 0 ? value : "Select a project…");
     return (
       <SettingOptionPicker
+        ariaDescribedBy={ariaDescribedBy}
+        ariaInvalid={ariaInvalid}
         ariaLabel={descriptor.label}
         valueLabel={valueLabel}
         options={options}
@@ -192,7 +209,8 @@ function PluginSettingField({
     isSecret &&
     typeof storedValue === "object" &&
     storedValue !== null &&
-    (storedValue as { set?: unknown }).set === true;
+    "set" in storedValue &&
+    storedValue.set === true;
   const value =
     typeof draft === "string"
       ? draft
@@ -200,111 +218,164 @@ function PluginSettingField({
         ? storedValue
         : "";
   if (isMultilineSetting(descriptor)) {
+    const maximumLength = descriptor.experimental_maxLength;
     return (
-      <Textarea
-        value={value}
-        aria-label={descriptor.label}
-        rows={multilineRows(value)}
-        spellCheck={false}
-        autoCapitalize="off"
-        autoCorrect="off"
-        onChange={(event) => onChange(event.target.value)}
-        className={MULTILINE_TEXTAREA_CLASS}
-      />
+      <div className="space-y-1">
+        <Textarea
+          value={value}
+          aria-label={descriptor.label}
+          aria-describedby={ariaDescribedBy}
+          aria-invalid={ariaInvalid}
+          rows={multilineRows(value)}
+          spellCheck={false}
+          autoCapitalize="off"
+          autoCorrect="off"
+          maxLength={maximumLength}
+          onChange={(event) => onChange(event.target.value)}
+          onBlur={onBlur}
+          className={MULTILINE_TEXTAREA_CLASS}
+        />
+        {maximumLength !== undefined ? (
+          <div className="text-right text-xs text-muted-foreground">
+            {value.length.toLocaleString()} / {maximumLength.toLocaleString()}
+          </div>
+        ) : null}
+      </div>
     );
   }
+  const maximumLength = descriptor.experimental_maxLength;
   return (
     <Input
       type={isSecret ? "password" : "text"}
       value={value}
       aria-label={descriptor.label}
+      aria-describedby={ariaDescribedBy}
+      aria-invalid={ariaInvalid}
+      maxLength={maximumLength}
       placeholder={isSecret ? (secretIsSet ? "[set]" : "[not set]") : undefined}
       onChange={(event) => onChange(event.target.value)}
+      onBlur={onBlur}
       className="h-7 w-full text-xs sm:w-64"
     />
   );
 }
 
-export function PluginSettingsForm({ pluginId }: { pluginId: string }) {
+function initialSettingDraft(
+  descriptor: PluginSettingFieldDescriptor,
+  storedValue: unknown,
+): string | boolean {
+  if (descriptor.type === "boolean") {
+    return typeof storedValue === "boolean" ? storedValue : false;
+  }
+  if (descriptor.type === "string" && descriptor.secret === true) return "";
+  return typeof storedValue === "string" ? storedValue : "";
+}
+
+interface AutosavingPluginSettingProps {
+  descriptor: PluginSettingFieldDescriptor;
+  pluginId: string;
+  settingKey: string;
+  storedValue: unknown;
+}
+
+function AutosavingPluginSetting({
+  descriptor,
+  pluginId,
+  settingKey,
+  storedValue,
+}: AutosavingPluginSettingProps) {
   const queryClient = useQueryClient();
-  const viewQuery = usePluginSettingsView(pluginId, { enabled: true });
-  const [drafts, setDrafts] = useState<Record<string, string | boolean>>({});
+  const messageId = useId();
+  const initialDraft = initialSettingDraft(descriptor, storedValue);
+  const [draft, setDraft] = useState<string | boolean>(initialDraft);
   const save = useMutation({
-    mutationFn: (values: Record<string, unknown>) =>
-      updatePluginSettings(fetch, pluginId, values),
-    onSuccess: (view) => {
+    scope: { id: `plugin-setting:${pluginId}:${settingKey}` },
+    mutationFn: (value: string | boolean) =>
+      updatePluginSettings(fetch, pluginId, {
+        [settingKey]: value,
+      }),
+    onSuccess: (view, value) => {
       applyPluginSettingsView({ queryClient, pluginId, view });
-      setDrafts({});
-      appToast.success("Plugin settings saved");
-    },
-    onError: (error) => {
-      appToast.error("Saving plugin settings failed", {
-        description: error instanceof Error ? error.message : String(error),
-      });
+      if (descriptor.type === "string" && descriptor.secret === true) {
+        setDraft((current) => (current === value ? "" : current));
+      }
     },
   });
 
+  useEffect(() => {
+    if (!save.isPending && !save.isError) setDraft(initialDraft);
+  }, [initialDraft, save.isError, save.isPending]);
+
+  function changeDraft(value: string | boolean): void {
+    setDraft(value);
+    save.reset();
+    if (descriptor.type !== "string") {
+      save.mutate(value);
+    }
+  }
+
+  function saveDraft(): void {
+    if (descriptor.type !== "string" || draft === storedValue) return;
+    if (descriptor.secret === true && draft === "") return;
+    save.mutate(draft);
+  }
+
+  const saveError = save.isError
+    ? getMutationErrorMessage({
+        error: save.error,
+        fallbackMessage: "Could not save this setting",
+      })
+    : null;
+  return (
+    <SettingsWithControl
+      label={descriptor.label}
+      labelBadge={
+        descriptor.type === "string" && descriptor.secret === true
+          ? "secret"
+          : undefined
+      }
+      controlPlacement={isMultilineSetting(descriptor) ? "below" : "inline"}
+      {...(descriptor.description !== undefined
+        ? { description: descriptor.description }
+        : {})}
+    >
+      <div className="space-y-1">
+        <PluginSettingField
+          ariaDescribedBy={saveError !== null ? messageId : undefined}
+          ariaInvalid={saveError !== null}
+          descriptor={descriptor}
+          storedValue={storedValue}
+          draft={draft}
+          onBlur={saveDraft}
+          onChange={changeDraft}
+        />
+        {saveError !== null ? (
+          <p id={messageId} className="text-xs text-destructive" role="alert">
+            {saveError}
+          </p>
+        ) : null}
+      </div>
+    </SettingsWithControl>
+  );
+}
+
+export function PluginSettingsForm({ pluginId }: { pluginId: string }) {
+  const viewQuery = usePluginSettingsView(pluginId, { enabled: true });
   const view = viewQuery.data ?? null;
   if (view === null || Object.keys(view.schema).length === 0) return null;
 
-  const changedValues: Record<string, unknown> = {};
-  for (const [key, draft] of Object.entries(drafts)) {
-    const descriptor = view.schema[key];
-    if (descriptor === undefined) continue;
-    const isSecret = descriptor.type === "string" && descriptor.secret === true;
-    if (isSecret && draft === "") continue;
-    if (!isSecret && draft === view.values[key]) continue;
-    changedValues[key] = draft;
-  }
-  const hasChanges = Object.keys(changedValues).length > 0;
-
   return (
-    <form
-      className="space-y-4"
-      onSubmit={(event) => {
-        event.preventDefault();
-        if (hasChanges) save.mutate(changedValues);
-      }}
-    >
+    <div className="space-y-4">
       {Object.entries(view.schema).map(([key, descriptor]) => (
-        <SettingsWithControl
+        <AutosavingPluginSetting
           key={key}
-          label={descriptor.label}
-          labelBadge={
-            descriptor.type === "string" && descriptor.secret === true
-              ? "secret"
-              : undefined
-          }
-          controlPlacement={isMultilineSetting(descriptor) ? "below" : "inline"}
-          {...(descriptor.description !== undefined
-            ? { description: descriptor.description }
-            : {})}
-        >
-          <PluginSettingField
-            descriptor={descriptor}
-            storedValue={view.values[key]}
-            draft={drafts[key]}
-            onChange={(value) => {
-              setDrafts((current) => ({ ...current, [key]: value }));
-            }}
-          />
-        </SettingsWithControl>
+          descriptor={descriptor}
+          pluginId={pluginId}
+          settingKey={key}
+          storedValue={view.values[key]}
+        />
       ))}
-      <div className="flex justify-end">
-        <Button
-          type="submit"
-          size="sm"
-          variant="outline"
-          disabled={!hasChanges || save.isPending}
-          aria-busy={save.isPending}
-        >
-          {save.isPending ? (
-            <Icon name="Spinner" className="animate-spin" />
-          ) : null}
-          Save settings
-        </Button>
-      </div>
-    </form>
+    </div>
   );
 }
 

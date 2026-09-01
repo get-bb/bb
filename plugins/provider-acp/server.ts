@@ -48,6 +48,24 @@ export default async function acpProvidersPlugin(
       label: "Custom agents",
       description: CUSTOM_AGENTS_SETTING_DESCRIPTION,
       experimental_multiline: true,
+      experimental_validate(value) {
+        const { warnings } = resolveConfiguredAcpAgents({
+          settingValue: value,
+          legacyEntries: [],
+          reservedProviderIds: RESERVED_ACP_PROVIDER_IDS,
+          shippedAgents: KNOWN_ACP_AGENTS,
+        });
+        const errors = warnings.map((warning) => {
+          if (warning.includes("not valid JSON")) {
+            return "Custom agents must be valid JSON.";
+          }
+          if (warning.includes("must be a JSON array")) {
+            return "Custom agents must be a JSON array.";
+          }
+          return warning.replace(/^ACP custom agent setting: /u, "");
+        });
+        return errors.length === 0 ? null : errors.join(" ");
+      },
       default: "",
     },
   });

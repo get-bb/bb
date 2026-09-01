@@ -140,6 +140,30 @@ and reads nothing under that method, so the constant names a lane that no
 longer exists. Kept because 0.4.x published it; remove at the next major
 version.
 
+## Settings validation, text limits, and server writes
+
+**What it does.** A `PluginSettingDescriptor` can declare an
+`experimental_validate` function that runs on the server for every proposed
+value and returns a field error or `null`. String settings can also declare
+`experimental_maxLength`, which limits the generated input and is enforced by
+the server and fake plugin host. The generated form autosaves one field at a
+time and displays rejected writes beneath that field. A `PluginSettingsHandle`
+can call `experimental_set` to validate and persist its own fields, receive the
+effective values, fire `onChange`, and notify settings consumers just like a
+settings route or `bb plugin config` write.
+
+**Audit before stabilizing.**
+
+- Confirm synchronous server validation is sufficient or define an async
+  validator contract.
+- Decide whether validator failures need structured error metadata in addition
+  to a user-facing string.
+- Confirm JavaScript string length is the intended character-count contract.
+- Confirm validators should continue running for defaults at registration.
+- Exercise concurrent route, CLI, and plugin-owned writes, including secret
+  values and unsets, before stabilizing `experimental_set`.
+- Decide whether validation and server-side writes stabilize independently.
+
 ## `bb.experimental_hooks` (`on`, `recheck`)
 
 **What it does.** The one plugin surface that *decides* rather than observes.

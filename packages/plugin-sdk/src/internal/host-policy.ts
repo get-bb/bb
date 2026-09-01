@@ -118,6 +118,19 @@ const settingsBaseFields = {
   description: z.string().min(1).optional(),
 };
 
+const safeIntegerSchema = z
+  .number()
+  .int()
+  .min(Number.MIN_SAFE_INTEGER)
+  .max(Number.MAX_SAFE_INTEGER);
+
+const stringSettingValidatorSchema = z.custom<(value: string) => string | null>(
+  (value) => typeof value === "function",
+);
+const booleanSettingValidatorSchema = z.custom<
+  (value: boolean) => string | null
+>((value) => typeof value === "function");
+
 const settingDescriptorSchema = z.discriminatedUnion("type", [
   z
     .object({
@@ -125,6 +138,8 @@ const settingDescriptorSchema = z.discriminatedUnion("type", [
       ...settingsBaseFields,
       secret: z.literal(true).optional(),
       experimental_multiline: z.boolean().optional(),
+      experimental_maxLength: safeIntegerSchema.positive().optional(),
+      experimental_validate: stringSettingValidatorSchema.optional(),
       default: z.string().optional(),
     })
     .strict()
@@ -145,6 +160,7 @@ const settingDescriptorSchema = z.discriminatedUnion("type", [
     .object({
       type: z.literal("boolean"),
       ...settingsBaseFields,
+      experimental_validate: booleanSettingValidatorSchema.optional(),
       default: z.boolean().optional(),
     })
     .strict(),
@@ -153,6 +169,7 @@ const settingDescriptorSchema = z.discriminatedUnion("type", [
       type: z.literal("select"),
       ...settingsBaseFields,
       options: z.array(z.string().min(1)).min(1),
+      experimental_validate: stringSettingValidatorSchema.optional(),
       default: z.string().optional(),
     })
     .strict(),
@@ -160,6 +177,7 @@ const settingDescriptorSchema = z.discriminatedUnion("type", [
     .object({
       type: z.literal("project"),
       ...settingsBaseFields,
+      experimental_validate: stringSettingValidatorSchema.optional(),
       default: z.string().optional(),
     })
     .strict(),
@@ -202,10 +220,35 @@ export function registerSettingDescriptors(
         `default for setting "${key}" must be one of its options`,
       );
     }
+    if (descriptor.default !== undefined) {
+      const errors = validateSettingsUpdate(
+        { [key]: descriptor },
+        { [key]: descriptor.default },
+      );
+      if (errors.length > 0) {
+        throw new Error(`invalid default for setting "${key}": ${errors[0]}`);
+      }
+    }
     validated[key] = descriptor;
   }
   Object.assign(target, validated);
   return validated;
+}
+
+function settingValidatorError<T>(
+  key: string,
+  validate: ((value: T) => string | null) | undefined,
+  value: T,
+): string | null {
+  if (validate === undefined) return null;
+  try {
+    const result = validate(value);
+    if (result === null) return null;
+    if (typeof result === "string" && result.trim().length > 0) return result;
+    return `validator for setting "${key}" must return a non-empty error or null`;
+  } catch (error) {
+    return error instanceof Error ? error.message : String(error);
+  }
 }
 
 /** Validate a settings update. `null` means unset. */
@@ -224,6 +267,15 @@ export function validateSettingsUpdate(
     if (descriptor.type === "boolean") {
       if (typeof value !== "boolean") {
         errors.push(`setting "${key}" expects a boolean`);
+        continue;
+      }
+      const validationError = settingValidatorError(
+        key,
+        descriptor.experimental_validate,
+        value,
+      );
+      if (validationError !== null) {
+        errors.push(validationError);
       }
       continue;
     }
@@ -235,6 +287,25 @@ export function validateSettingsUpdate(
       errors.push(
         `setting "${key}" must be one of: ${descriptor.options.join(", ")}`,
       );
+      continue;
+    }
+    if (
+      descriptor.type === "string" &&
+      descriptor.experimental_maxLength !== undefined &&
+      value.length > descriptor.experimental_maxLength
+    ) {
+      errors.push(
+        `${descriptor.label} must be at most ${descriptor.experimental_maxLength} characters`,
+      );
+      continue;
+    }
+    const validationError = settingValidatorError(
+      key,
+      descriptor.experimental_validate,
+      value,
+    );
+    if (validationError !== null) {
+      errors.push(validationError);
     }
   }
   return errors;
@@ -2038,6 +2109,8 @@ export function storePluginHook<K extends PluginHookName>(
 }
 
 /** The refusal a second handler for one hook from one plugin gets. */
-export function pluginHookAlreadyRegisteredMessage(hook: PluginHookName): string {
+export function pluginHookAlreadyRegisteredMessage(
+  hook: PluginHookName,
+): string {
   return `a "${hook}" hook handler is already registered by this plugin`;
 }

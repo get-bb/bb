@@ -60,11 +60,6 @@ export interface PluginLogger {
 // Settings (design §4.2).
 // ---------------------------------------------------------------------------
 
-/**
- * Declarative settings descriptors (`bb.settings.define`). Deliberately plain
- * data — not zod — so the host can render settings forms and the CLI can
- * parse values without executing plugin code.
- */
 export type PluginSettingDescriptor =
   | {
       type: "string";
@@ -77,17 +72,37 @@ export type PluginSettingDescriptor =
        * be multi-line.
        */
       experimental_multiline?: boolean;
+      /** Limit text input length in the default settings UI and at write time. */
+      experimental_maxLength?: number;
+      /** Validate a proposed value on the server; return a field error or null. */
+      experimental_validate?: (value: string) => string | null;
       default?: string;
     }
-  | { type: "boolean"; label: string; description?: string; default?: boolean }
+  | {
+      type: "boolean";
+      label: string;
+      description?: string;
+      /** Validate a proposed value on the server; return a field error or null. */
+      experimental_validate?: (value: boolean) => string | null;
+      default?: boolean;
+    }
   | {
       type: "select";
       label: string;
       description?: string;
       options: string[];
+      /** Validate a proposed value on the server; return a field error or null. */
+      experimental_validate?: (value: string) => string | null;
       default?: string;
     }
-  | { type: "project"; label: string; description?: string; default?: string };
+  | {
+      type: "project";
+      label: string;
+      description?: string;
+      /** Validate a proposed value on the server; return a field error or null. */
+      experimental_validate?: (value: string) => string | null;
+      default?: string;
+    };
 
 export type PluginSettingDescriptors = Record<string, PluginSettingDescriptor>;
 
@@ -113,7 +128,13 @@ export interface PluginSettingsHandle<
 > {
   /** Load-safe: callable inside the factory. */
   get(): Promise<PluginSettingsValues<Ds>>;
-  /** Fires after values change through the settings route/CLI. */
+  /** Validate and persist this handle's fields; `null` unsets a stored value. */
+  experimental_set(
+    values: Partial<{
+      [K in keyof Ds]: PluginSettingValueOf<Ds[K]> | null;
+    }>,
+  ): Promise<PluginSettingsValues<Ds>>;
+  /** Fires after effective values change through any settings write. */
   onChange(
     listener: (
       next: PluginSettingsValues<Ds>,
