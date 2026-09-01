@@ -41,7 +41,7 @@ import {
   recordQueuedMessageWait,
   settleQueueRowDispatched,
 } from "./queue-waits.js";
-import { applyLoggedThreadLifecycleEvent } from "./lifecycle-outcome.js";
+import { applyLoggedThreadLifecycleEventInTransaction } from "./lifecycle-outcome.js";
 import { buildExecutionOptions } from "./thread-commands.js";
 import { isManualCompactionActive } from "./thread-events.js";
 import { requireThreadCommandEnvironment } from "./thread-command-environment.js";
@@ -55,7 +55,10 @@ import {
   threadProvisionEnvironmentIntentSchema,
 } from "./thread-provisioning-context.js";
 import { getActiveThreadProvisionContext } from "./thread-provisioning-active-context.js";
-import { toThreadResponseFromThread } from "./thread-runtime-display.js";
+import {
+  buildThreadStatusChangeMetadata,
+  toThreadResponseFromThread,
+} from "./thread-runtime-display.js";
 import { toThreadQueuedMessage } from "./thread-queued-messages.js";
 import { isPreStartThreadStatus } from "./thread-status.js";
 import {
@@ -232,9 +235,21 @@ export function resolveDispatchAttemptKind(
  * When nothing blocks it, no queued row is ever created and the path is the
  * one that existed before the queue did.
  */
-export async function attemptDispatch(
+export function attemptDispatch(
   deps: LoggedPendingInteractionWorkSessionDeps,
   args: DispatchAttemptArgs,
+): Promise<DispatchAttemptOutcome> {
+  return runDispatchAttempt(deps, args, false);
+}
+
+/**
+ * `reattempted` is true on the one re-entry a lost pending admission makes,
+ * against the re-read thread; a second loss is a bug, not a race.
+ */
+async function runDispatchAttempt(
+  deps: LoggedPendingInteractionWorkSessionDeps,
+  args: DispatchAttemptArgs,
+  reattempted: boolean,
 ): Promise<DispatchAttemptOutcome> {
   const { payload, thread } = args;
   ensureThreadIsWritable(thread);
@@ -332,7 +347,10 @@ export async function attemptDispatch(
    * lock. A holder rather than a bare `let` because the write happens in a
    * callback, which narrowing cannot see.
    */
-  const admitted: { value: PendingThreadAdmission | null } = { value: null };
+  const admitted: { ran: boolean; value: PendingThreadAdmission | null } = {
+    ran: false,
+    value: null,
+  };
 
   if (!sendNow && hasMessageDispatchHooks()) {
     const outcome = await runMessageDispatchHookPass(deps, {
@@ -369,6 +387,7 @@ export async function attemptDispatch(
       ...(firstDispatch
         ? {
             commitAdmission: async () => {
+              admitted.ran = true;
               admitted.value = await admitPendingThread(deps, {
                 claimed,
                 payload: resolvedPayload,
@@ -399,17 +418,35 @@ export async function attemptDispatch(
   if (firstDispatch) {
     // Already admitted under the lock when a hook pass ran; admitted here when
     // no handler is installed or send-now skipped the pass entirely.
-    const admission =
-      admitted.value ??
-      (await admitPendingThread(deps, {
-        claimed,
-        payload: resolvedPayload,
-        startContext: args.startContext ?? null,
-        thread,
-      }));
-    if (admission !== null) {
-      await launchAdmittedThread(deps, admission);
+    const admission = admitted.ran
+      ? admitted.value
+      : await admitPendingThread(deps, {
+          claimed,
+          payload: resolvedPayload,
+          startContext: args.startContext ?? null,
+          thread,
+        });
+    if (admission === null) {
+      // The thread left `pending` underneath this attempt — a concurrent
+      // attempt admitted it, or it was archived. Nothing was consumed and
+      // nothing was sent, so the message is re-decided against the thread as
+      // it is now: it queues behind the winner's cold start, or is refused
+      // for a thread that is gone. Reporting a dispatch here would tell the
+      // caller their message went when it went nowhere.
+      if (reattempted) {
+        throw new ApiError(
+          500,
+          "internal_error",
+          `Thread ${thread.id} left pending twice under one dispatch attempt`,
+        );
+      }
+      const current = getThread(deps.db, thread.id);
+      if (!current) {
+        throw new ApiError(404, "thread_not_found", "Thread not found");
+      }
+      return runDispatchAttempt(deps, { ...args, thread: current }, true);
     }
+    await launchAdmittedThread(deps, admission);
     return { kind: "dispatched" };
   }
 
@@ -483,12 +520,19 @@ interface PendingThreadAdmission {
  * from `listRunning()` instead of tracking its own in-flight `proceed`s.
  *
  * Everything that can legitimately refuse the admission therefore happens
- * before the flip, in this order and deliberately: a missing start context,
- * the execution tuple, then the row consumption whose claim CAS can be lost. A
- * failure at any of those leaves the thread in `pending`, exactly as it did
- * when this ran unlocked. Returns null when the thread moved on underneath the
- * attempt.
+ * before or with the flip: a missing start context and the execution tuple
+ * before it, and the row consumption inside the same transaction as it, so
+ * that a lost claim CAS or a lost flip leaves both the thread and the row
+ * exactly as they were. Returns null when the thread moved on underneath the
+ * attempt; the caller re-decides the message rather than calling it sent.
  */
+class PendingThreadAdmissionLost extends Error {
+  constructor() {
+    super("The thread left pending under the attempt");
+    this.name = "PendingThreadAdmissionLost";
+  }
+}
+
 async function admitPendingThread(
   deps: LoggedPendingInteractionWorkSessionDeps,
   args: AdmitPendingThreadArgs,
@@ -496,6 +540,13 @@ async function admitPendingThread(
   const startContext =
     args.startContext ?? readPendingThreadStartContext(deps, args.thread.id);
   if (startContext === null) {
+    // Admission clears the context, so a thread that has none and is no
+    // longer pending was admitted by a concurrent attempt: this one lost, and
+    // the caller re-decides its message. A thread still pending with no
+    // context is a broken row, not a race.
+    if (getThread(deps.db, args.thread.id)?.status !== "pending") {
+      return null;
+    }
     throw new ApiError(
       500,
       "internal_error",
@@ -506,37 +557,52 @@ async function admitPendingThread(
     threadId: args.thread.id,
   });
   const claimedRow = args.claimed?.[0] ?? null;
-  if (args.claimed !== null && args.claimed.length > 0) {
-    // Consume the queued row before anything else: the claim CAS already
-    // picked this drain as the winner, and provisioning is driven off this
-    // stack, so there is no later transaction to fold the delete into.
-    deps.db.transaction(
-      (tx) => consumeClaimedRows(args.claimed!)({ tx }),
+  let startingThread: Thread | null;
+  try {
+    startingThread = deps.db.transaction(
+      (tx) => {
+        // The row is consumed and the thread flipped in ONE transaction: a
+        // flip that loses to a concurrent attempt rolls the consumption back,
+        // so the row stays claimed for the caller to hand back rather than
+        // being deleted under a message that never dispatched.
+        if (args.claimed !== null && args.claimed.length > 0) {
+          consumeClaimedRows(args.claimed)({ tx });
+        }
+        const prepared = applyLoggedThreadLifecycleEventInTransaction(
+          { db: tx, logger: deps.logger },
+          { threadId: args.thread.id, event: { type: "run.preparing" } },
+        );
+        if (!prepared.applied) {
+          throw new PendingThreadAdmissionLost();
+        }
+        setThreadPendingStartContext(tx, {
+          threadId: args.thread.id,
+          pendingStartContext: null,
+        });
+        return getThread(tx, args.thread.id);
+      },
       { behavior: "immediate" },
     );
-  }
-
-  const prepared = applyLoggedThreadLifecycleEvent(deps, {
-    threadId: args.thread.id,
-    event: { type: "run.preparing" },
-  });
-  if (!prepared.applied) {
-    // Archived, deleted or already started under the attempt. Re-dispatching
-    // into a thread that moved on would be worse than dropping the turn.
+  } catch (error) {
+    if (!(error instanceof PendingThreadAdmissionLost)) {
+      throw error;
+    }
+    // Archived, deleted or already started under the attempt. The caller
+    // re-decides the message against the thread as it is now.
     deps.logger.warn(
       { threadId: args.thread.id, status: args.thread.status },
       "A cleared first dispatch could not move its thread out of pending",
     );
     return null;
   }
-  const startingThread = getThread(deps.db, args.thread.id);
   if (!startingThread) {
     return null;
   }
-  setThreadPendingStartContext(deps.db, {
-    threadId: args.thread.id,
-    pendingStartContext: null,
-  });
+  deps.hub.notifyThread(
+    startingThread.id,
+    ["status-changed"],
+    buildThreadStatusChangeMetadata(deps, startingThread),
+  );
   return {
     claimedRow,
     execution,

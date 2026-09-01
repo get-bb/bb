@@ -18,8 +18,8 @@ import { acceptThreadSendRequest } from "./thread-send-request.js";
  *
  * The queue rework replaced the deferral mechanism, but its rows were users'
  * held messages — a migration that dropped them would delete words somebody
- * wrote. Migration 0111 renames the table to this name instead of dropping
- * it, because the rows cannot be transferred in SQL: a queued row carries a
+ * wrote. Migration 0111 copies the rows into this table before dropping the
+ * original, because they cannot be transferred in SQL: a queued row carries a
  * resolved execution tuple and a typed wait, both of which only the running
  * server can compute. This module finishes the job on startup and drops the
  * table once nothing is left in it.
@@ -90,6 +90,14 @@ function toSendPayload(
  * delivery call returned. A row that fails is kept for the next startup, and
  * the table survives with it; an empty table is dropped, which is what makes
  * this a no-op on every later boot.
+ *
+ * Delivery and the delete are deliberately NOT atomic, because they cannot
+ * be: delivery has effects outside the database (a dispatched turn, a host
+ * command), so no transaction can span both. That leaves a choice of failure
+ * for a crash between the two — delete-first loses the message silently,
+ * delete-after delivers it twice on the next boot. For a table whose whole
+ * purpose is not losing what a user wrote, the rare duplicate is the right
+ * failure, so this is at-least-once on purpose.
  */
 export async function deliverLegacyDeferredThreadMessages(
   deps: LoggedPendingInteractionWorkSessionDeps,

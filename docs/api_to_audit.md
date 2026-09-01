@@ -2026,9 +2026,10 @@ slots need the same treatment.
 
 **What it does.** Runs the composer's own submit pipeline with the draft that
 is on screen, queueing the result until `sendAt` instead of dispatching it.
-In a thread composer that is a send that is held rather than sent or queued; in
-the new-thread composer the thread is created idle and its first turn becomes
-the hold. The point is that everything the user selected travels with the
+In a thread composer that is a queued row waiting on the clock; in the
+new-thread composer the thread is created `pending` and its first message is
+the queued row, so nothing provisions until the row comes due. The point is
+that everything the user selected travels with the
 submission — attachments, @-mentions, and for a create the provider, model,
 reasoning level, service tier, permission mode and environment — none of
 which is reachable from a plugin backend, so a
@@ -2063,15 +2064,15 @@ too, after the host has restored the draft. Sole consumer:
    twice — once in the plugin's picker and once in a toast. Decide whether the
    host should suppress its toast for programmatic submissions.
 4. **Freshness of `sendAt`.** The host rejects a non-future `sendAt` at
-   call time and the server accepts any non-negative timestamp, releasing a
-   past one on its next sweep. The only guard against a time that goes stale
+   call time and the server accepts any non-negative timestamp, dispatching a
+   past one inline at once. The only guard against a time that goes stale
    between the plugin computing it and the request landing is that window
    being small. Decide whether the send/create routes should refuse a
    `sendAt` in the past outright.
 5. **No submission identity is returned.** The method resolves with nothing, so
-   a plugin cannot address the hold it just created (to amend or cancel it)
-   without listing the thread's holds. Confirm whether the hold id belongs in
-   the result.
+   a plugin cannot address the queued row it just created (to edit or delete
+   it) without listing the thread's queue. Confirm whether the queued message
+   id belongs in the result.
 6. **`NewThreadRequest.sendAt`.** The same field is now visible to plugins
    hosting `experimental_NewThreadComposer`: a scheduled submission there
    reaches the plugin's `onSubmit` carrying `sendAt`, which the plugin must

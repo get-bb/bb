@@ -1,4 +1,5 @@
 import {
+  claimQueuedThreadMessageGroup,
   getLatestThreadSequence,
   getThread,
   listEvents,
@@ -706,6 +707,19 @@ describe("retrying a failed turn", () => {
         body: { code: "retry_already_queued" },
       });
       expect(queuedRows(harness, thread.id)).toHaveLength(1);
+
+      // The due sweep has claimed the retry and is deciding about it: it
+      // vanishes from the live queue, but it is still the one live retry of
+      // this turn.
+      const claimed = claimQueuedThreadMessageGroup(
+        harness.db,
+        harness.deps.hub,
+        onlyQueuedRow(harness, thread.id).id,
+      );
+      expect(claimed).toHaveLength(1);
+      await expect(retry(requestId)).rejects.toMatchObject({
+        body: { code: "retry_already_queued" },
+      });
     });
   });
 });

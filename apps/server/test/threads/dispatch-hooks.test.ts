@@ -18,6 +18,7 @@ import {
   sendNextQueuedMessageIfPresent,
 } from "../../src/services/threads/queued-messages.js";
 import { acceptThreadSendRequest } from "../../src/services/threads/thread-send-request.js";
+import { attemptDispatch } from "../../src/services/threads/dispatch-attempt.js";
 import { createThreadFromRequest } from "../../src/services/threads/thread-create.js";
 import { toThreadQueuedMessage } from "../../src/services/threads/thread-queued-messages.js";
 import { textInput } from "../helpers/prompt-input.js";
@@ -230,6 +231,57 @@ describe("message.dispatch hook context", () => {
       // here would wave every cold start past its pool.
       expect(seen).toEqual([{ environment: null, hostId: host.id }]);
       expect(queuedRows(harness, thread.id)).toHaveLength(1);
+    });
+  });
+});
+
+describe("pending admission races", () => {
+  it("re-decides a first message that lost the admission instead of calling it sent", async () => {
+    await withTestHarness(async (harness) => {
+      // Park the thread in `pending` with its first message queued, then take
+      // the hook away so the next attempts admit freely.
+      const registry = emptyRegistry();
+      registry["message.dispatch"].push({
+        pluginId: "limiter",
+        handler: () => ({ action: "wait", reason: "at capacity" }) as const,
+      });
+      installHooks(registry);
+      const { host, project } = seedDispatchFixture(harness, "host-race");
+      const created = await createHookedThread(harness, {
+        hostId: host.id,
+        projectId: project.id,
+      });
+      setPluginHookProvider(undefined);
+      const stale = getThread(harness.db, created.id);
+      if (!stale) throw new Error("expected the pending thread");
+      expect(stale.status).toBe("pending");
+      const attempt = (text: string) =>
+        attemptDispatch(harness.deps, {
+          thread: stale,
+          payload: { input: textInput(text), mode: "start" },
+          source: { kind: "inline" },
+          queuePayload: { kind: "inline" },
+          origin: null,
+          originPluginId: null,
+          startedOnBehalfOf: null,
+          trigger: "user",
+        });
+
+      // The first attempt wins the admission; the second holds a thread row
+      // captured before that flip — exactly what a concurrent sender holds.
+      expect((await attempt("Winner")).kind).toBe("dispatched");
+      const loser = await attempt("Loser");
+
+      // Reporting `dispatched` here is what used to lose the message. The
+      // thread is starting now, so the loser queues behind its cold start.
+      expect(loser.kind).toBe("queued");
+      if (loser.kind !== "queued") throw new Error("expected a queued outcome");
+      expect(loser.entry.waitingOn).toEqual({ kind: "provisioning" });
+      expect(
+        loser.entry.content.flatMap((block) =>
+          block.type === "text" ? [block.text] : [],
+        ),
+      ).toEqual(["Loser"]);
     });
   });
 });

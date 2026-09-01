@@ -380,6 +380,7 @@ export {
   deleteClaimedQueuedThreadMessageBatchInTransaction,
   deleteQueuedThreadMessage,
   getQueuedThreadMessage,
+  hasQueuedRetryOfTurnRequest,
   hasQueuedThreadMessages,
   listDueScheduledQueuedThreadMessages,
   listIdleThreadsWithQueuedMessages,

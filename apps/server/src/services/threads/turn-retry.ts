@@ -1,4 +1,4 @@
-import { listQueuedThreadMessages } from "@bb/db";
+import { hasQueuedRetryOfTurnRequest } from "@bb/db";
 import { permissionModeSchema } from "@bb/domain";
 import type {
   ClientTurnRequestId,
@@ -14,7 +14,6 @@ import type {
 import { ApiError } from "../../errors.js";
 import type { LoggedPendingInteractionWorkSessionDeps } from "../../types.js";
 import { attemptDispatch } from "./dispatch-attempt.js";
-import { toThreadQueuedMessage } from "./thread-queued-messages.js";
 import {
   loadFailedTurn,
   retryChain,
@@ -25,7 +24,7 @@ import {
 type TurnRetryDeps = LoggedPendingInteractionWorkSessionDeps;
 
 /**
- * True when this original request already has a queued retry row.
+ * True when this original request already has a retry row, waiting or claimed.
  *
  * One failure earns at most one live retry: a second row would re-submit the
  * same turn twice, which the user would see as two identical retry cards and
@@ -35,12 +34,9 @@ function hasQueuedRetryFor(
   deps: Pick<TurnRetryDeps, "db">,
   args: { threadId: string; originalRequestId: string },
 ): boolean {
-  return listQueuedThreadMessages(deps.db, args.threadId).some((row) => {
-    const payload = toThreadQueuedMessage(row).payload;
-    return (
-      payload.kind === "retry" &&
-      payload.retryOfTurnRequestId === args.originalRequestId
-    );
+  return hasQueuedRetryOfTurnRequest(deps.db, {
+    threadId: args.threadId,
+    retryOfTurnRequestId: args.originalRequestId,
   });
 }
 
@@ -167,16 +163,6 @@ function retryExecution(failed: FailedTurnRecord): {
 }
 
 /**
- * Re-submits a failed turn.
- *
- * The retry is an ordinary dispatch attempt carrying a `retry` payload, which
- * is what makes it behave like everything else: a `sendAt` in the future queues
- * it on the clock, a busy thread queues it behind the running turn, and the
- * `message.dispatch` hook still gets to hold it — so a retry coming back after
- * a rate-limit window respects a limiter that is at capacity instead of jumping
- * the queue. What the attempt carries is `retryInputBlocks`' decision.
- */
-/**
  * Originals with a retry currently being decided in this process.
  *
  * The queued-row check below cannot see a concurrent call that has passed it
@@ -186,6 +172,16 @@ function retryExecution(failed: FailedTurnRecord): {
  */
 const retriesInFlight = new Set<string>();
 
+/**
+ * Re-submits a failed turn.
+ *
+ * The retry is an ordinary dispatch attempt carrying a `retry` payload, which
+ * is what makes it behave like everything else: a `sendAt` in the future queues
+ * it on the clock, a busy thread queues it behind the running turn, and the
+ * `message.dispatch` hook still gets to hold it — so a retry coming back after
+ * a rate-limit window respects a limiter that is at capacity instead of jumping
+ * the queue. What the attempt carries is `retryInput` and `retryExecution` decide.
+ */
 export async function retryFailedTurn(
   deps: TurnRetryDeps,
   args: RetryFailedTurnArgs,

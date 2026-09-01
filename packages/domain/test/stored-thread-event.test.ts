@@ -65,6 +65,41 @@ describe("parseStoredThreadEvent", () => {
     });
   });
 
+  it("rejects a retry marker carrying one of its two keys", () => {
+    const base = {
+      direction: "outbound",
+      requestId: "creq_23456789ab",
+      source: "tell",
+      initiator: "system",
+      input: [{ type: "text", text: "retry" }],
+      target: { kind: "new-turn" },
+      request: { method: "turn/start", params: {} },
+      execution: {
+        model: "gpt-5",
+        serviceTier: "default",
+        reasoningLevel: "medium",
+        permissionMode: "full",
+        source: "client/turn/requested",
+      },
+    };
+    const parse = (marker: Record<string, unknown>) =>
+      parseStoredThreadEvent({
+        type: "client/turn/requested",
+        threadId: "thread-1",
+        scope: threadScope(),
+        data: { ...base, ...marker },
+      });
+
+    // The marker is one fact in two keys: an attempt number without the
+    // request it re-runs (or vice versa) misstates retry ancestry.
+    expect(() => parse({ retryAttempt: 2 })).toThrow();
+    expect(() => parse({ retryOfRequestId: "creq_23456789cd" })).toThrow();
+    expect(
+      parse({ retryOfRequestId: "creq_23456789cd", retryAttempt: 2 }),
+    ).toMatchObject({ retryOfRequestId: "creq_23456789cd", retryAttempt: 2 });
+    expect(parse({})).toMatchObject({ initiator: "system" });
+  });
+
   it.each(["workspace-write", "readonly"] as const)(
     "preserves the legacy %s mode on stored history",
     (permissionMode) => {

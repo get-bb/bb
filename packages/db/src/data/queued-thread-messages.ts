@@ -1713,6 +1713,34 @@ export function listQueuedThreadMessagesWaitingOnKind(
 }
 
 /**
+ * Whether a retry of this original turn request already exists on the queue.
+ *
+ * Claimed rows count on purpose: a retry a drain has claimed and is deciding
+ * about is as live as a waiting one, and the window between its claim and its
+ * dispatch is exactly when a second retry of the same turn would otherwise
+ * slip past. Targeted on the retry column rather than loading the thread's
+ * rows to inspect their payloads.
+ */
+export function hasQueuedRetryOfTurnRequest(
+  db: DbQueryConnection,
+  args: { threadId: string; retryOfTurnRequestId: string },
+): boolean {
+  return (
+    db
+      .select({ id: queuedThreadMessages.id })
+      .from(queuedThreadMessages)
+      .where(
+        and(
+          eq(queuedThreadMessages.threadId, args.threadId),
+          eq(queuedThreadMessages.retryOfTurnRequestId, args.retryOfTurnRequestId),
+        ),
+      )
+      .limit(1)
+      .get() !== undefined
+  );
+}
+
+/**
  * Threads on one host with live rows parked on a `host-offline` wait.
  *
  * Joined through the thread's environment by host ID rather than matched on

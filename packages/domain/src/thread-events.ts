@@ -102,6 +102,26 @@ export const turnRequestEventDataSchema = z.object({
 });
 export type TurnRequestEventData = z.infer<typeof turnRequestEventDataSchema>;
 
+/**
+ * The retry marker is one fact in two keys, so a stored request that carries
+ * one without the other is malformed — it would misstate which turn a retry
+ * re-runs, or which attempt it is. Applied where persisted events are parsed,
+ * since the discriminated unions the base schema feeds cannot carry a
+ * refinement themselves.
+ */
+export function refineTurnRequestRetryMarker(
+  data: Pick<TurnRequestEventData, "retryOfRequestId" | "retryAttempt">,
+  ctx: z.RefinementCtx,
+): void {
+  if ((data.retryOfRequestId === undefined) !== (data.retryAttempt === undefined)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message:
+        "retryOfRequestId and retryAttempt must be present together or absent together",
+    });
+  }
+}
+
 export const turnRequestRejectedEventDataSchema = z.object({
   requestId: clientTurnRequestIdSchema,
   reason: z.string().min(1),
