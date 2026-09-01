@@ -71,6 +71,10 @@ interface ThreadIdCacheArgs {
   threadId: string;
 }
 
+interface PrefetchThreadQueuedMessagesArgs extends ThreadIdCacheArgs {
+  load: (signal: AbortSignal) => Promise<ThreadQueuedMessageListResponse>;
+}
+
 type ThreadBannerActivityKind = "goal" | "plan";
 
 interface BeginCreateThreadTransactionArgs {
@@ -728,6 +732,17 @@ export async function beginCreateThreadTransaction({
   queryClient,
 }: BeginCreateThreadTransactionArgs): Promise<void> {
   await queryClient.cancelQueries({ queryKey: threadsQueryKey() });
+}
+
+export function prefetchThreadQueuedMessages({
+  load,
+  queryClient,
+  threadId,
+}: PrefetchThreadQueuedMessagesArgs): Promise<void> {
+  return queryClient.prefetchQuery<ThreadQueuedMessageListResponse>({
+    queryKey: threadQueuedMessagesQueryKey(threadId),
+    queryFn: ({ signal }) => load(signal),
+  });
 }
 
 export function applyCreateThreadResult({

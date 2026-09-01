@@ -35,6 +35,7 @@ import {
   beginSendThreadMessageTransaction,
   beginStopThreadTransaction,
   beginUpdateQueuedMessageTransaction,
+  prefetchThreadQueuedMessages,
   rollbackCreateQueuedMessageTransaction,
   rollbackRemoveQueuedMessageTransaction,
   rollbackReorderQueuedMessageTransaction,
@@ -53,7 +54,6 @@ import {
   invalidateThreadBannerQueries,
   invalidateThreadHistoryRewriteQueries,
 } from "../cache-owners/mutation-cache-effects";
-import { threadQueuedMessagesQueryKey } from "../queries/query-keys";
 
 interface CreateThreadQueuedMessageMutationRequest extends CreateQueuedMessageRequest {
   id: string;
@@ -139,9 +139,10 @@ export function useCreateThread() {
     onMutate: async () => beginCreateThreadTransaction({ queryClient }),
     onSuccess: (thread, variables) => {
       if (thread.queuedMessageCount > 0) {
-        void queryClient.prefetchQuery<ThreadQueuedMessageListResponse>({
-          queryKey: threadQueuedMessagesQueryKey(thread.id),
-          queryFn: ({ signal }) =>
+        void prefetchThreadQueuedMessages({
+          queryClient,
+          threadId: thread.id,
+          load: (signal) =>
             sdk.threads.queuedMessages.list({
               threadId: thread.id,
               signal,
