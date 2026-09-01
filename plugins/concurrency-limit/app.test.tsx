@@ -84,7 +84,7 @@ describe("Concurrency limit settings", () => {
       slot.getByText("Auto uses half the available processors, up to 8."),
     ).toBeTruthy();
     expect(slot.getByText("8 processors")).toBeTruthy();
-    expect(slot.getByText("Detect when connected")).toBeTruthy();
+    expect(slot.getByText("Offline")).toBeTruthy();
     expect(
       slot
         .getByRole("spinbutton", { name: "Laptop thread limit" })

@@ -212,13 +212,13 @@ function ConcurrencyLimitSettings() {
                       {host.name}
                     </div>
                     <div className="text-xs text-muted-foreground">
-                      {host.availableParallelism === null
-                        ? host.status === "connected"
+                      {host.status === "disconnected"
+                        ? host.availableParallelism === null
+                          ? "Offline"
+                          : `${host.availableParallelism} processors · Offline`
+                        : host.availableParallelism === null
                           ? "Detecting processors…"
-                          : "Detect when connected"
-                        : host.status === "connected"
-                          ? `${host.availableParallelism} processors`
-                          : `${host.availableParallelism} processors · Offline`}
+                          : `${host.availableParallelism} processors`}
                     </div>
                   </div>
                   <Input
