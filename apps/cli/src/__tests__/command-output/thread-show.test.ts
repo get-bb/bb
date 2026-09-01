@@ -248,49 +248,6 @@ describe("bb thread show command output", () => {
     });
   });
 
-  it("bb thread show lists local and remote merge-base branches", async () => {
-    const thread: domain.Thread = fixtures.makeThread({
-      id: "thread-show-merge-bases",
-      projectId: "proj-1",
-      providerId: "codex",
-      environmentId: "env-show-merge-bases",
-    });
-    const environment = fixtures.makeEnvironment({
-      id: "env-show-merge-bases",
-      projectId: "proj-1",
-      hostId: "host-1",
-    });
-    const branchGet = vi.fn(async () => ({
-      branches: ["main"],
-      branchesTruncated: false,
-      remoteBranches: ["origin/main"],
-      remoteBranchesTruncated: false,
-      selectedBranch: null,
-    }));
-    stubServerApi({
-      "v1.environments.:id.$get": vi.fn(async () => environment),
-      "v1.environments.:id.diff.branches.$get": branchGet,
-      "v1.environments.:id.pull-request.$get": vi.fn(async () => ({
-        outcome: "absent",
-      })),
-      "v1.threads.:id.$get": vi.fn(async () => thread),
-      "v1.threads.:id.timeline.$get": fixtures.makeEmptyTimelineGetMock(),
-    });
-
-    await runCommand(
-      ["thread", "show", "thread-show-merge-bases", "--merge-base-branches"],
-      register,
-    );
-
-    expect(branchGet).toHaveBeenCalledWith({
-      param: { id: "env-show-merge-bases" },
-      query: {},
-    });
-    expect(collectLogLines(vi.mocked(console.log))).toEqual(
-      expect.arrayContaining(["  main", "  origin/main"]),
-    );
-  });
-
   it("bb thread show --git-diff renders an available uncommitted diff response", async () => {
     const thread: domain.Thread = fixtures.makeThread({
       id: "thread-show-uncommitted-diff",

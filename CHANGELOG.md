@@ -47,7 +47,7 @@ The mobile app is now a WebView shell around the bb web app. One implementation 
 ### CLI
 
 - `bb thread spawn --help` describes `--base-branch` correctly. Every named base is an exact Git ref.
-- `bb thread show --merge-base-branches` keeps remote branch options.
+- `bb environment branches` keeps local and remote branch choices discoverable with query and limit controls.
 - `bb plugin new` creates a scaffold with a test that runs and a correct SDK example.
 - Command help and search results honor each command's help metadata.
 
