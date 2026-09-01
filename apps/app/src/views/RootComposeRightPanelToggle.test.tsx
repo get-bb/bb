@@ -48,17 +48,21 @@ describe("RootComposeRightPanelToggle", () => {
 
   it("warms the panel chunk while the browser is idle", () => {
     const cancelIdleCallback = vi.fn();
-    vi.stubGlobal("cancelIdleCallback", cancelIdleCallback);
-    vi.stubGlobal(
-      "requestIdleCallback",
+    const requestIdleCallback = vi.fn(
       (callback: IdleRequestCallback): number => {
         callback({ didTimeout: false, timeRemaining: () => 50 });
         return 7;
       },
     );
+    vi.stubGlobal("cancelIdleCallback", cancelIdleCallback);
+    vi.stubGlobal("requestIdleCallback", requestIdleCallback);
 
     render(<RootComposeRightPanelToggle isOpen={false} onToggle={vi.fn()} />);
 
+    expect(requestIdleCallback).toHaveBeenCalledWith(
+      preloadThreadSecondaryPanel,
+      { timeout: 1000 },
+    );
     expect(preloadThreadSecondaryPanel).toHaveBeenCalledOnce();
     cleanup();
     expect(cancelIdleCallback).toHaveBeenCalledWith(7);

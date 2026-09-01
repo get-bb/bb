@@ -278,6 +278,7 @@ export function RootComposeRightPanelToggle({
     if (typeof window.requestIdleCallback === "function") {
       const idleCallback = window.requestIdleCallback(
         preloadThreadSecondaryPanel,
+        { timeout: 1000 },
       );
       return () => window.cancelIdleCallback(idleCallback);
     }
