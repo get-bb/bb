@@ -112,9 +112,7 @@ environment pull-request show <id>`. Diff commands require an explicit target
 - `bb environment pull-request ready|draft|merge` manages pull-request state;
   `bb environment archive-threads` bulk-archives an environment's threads.
 - Use `bb environment show|update|commit|squash-merge` for environment metadata
-  and Git changes. Human `show` output distinguishes the stored base, any
-  merge-base override, and the effective merge base. Check live help before a
-  commit or merge.
+  and Git changes. Check live help before a commit or merge.
 - Spawned child threads inherit permission from explicit flags, then the
   parent thread's last execution, then project defaults. The parent's mode is
   a hard ceiling: an explicit flag can lower it but never exceed it.

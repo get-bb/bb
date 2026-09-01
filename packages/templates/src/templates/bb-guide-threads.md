@@ -156,8 +156,7 @@ Inspecting:
     --diff-merge-base <branch>             Override merge-base branch for diff
     --merge-base-branches                  List available local and remote merge-base branches
 
-  Shows the attached environment's stored base and effective merge base, plus
-  pull request status for its branch when available.
+  Shows pull request status for the attached environment branch when available.
 
   bb thread log [id]                       Show thread event log
     --self                                 Target current thread

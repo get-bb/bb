@@ -96,31 +96,6 @@ describe("bb environment command output", () => {
     expect(help).toContain("pull-request");
   });
 
-  it("bb environment show distinguishes the stored and effective merge bases", async () => {
-    const environment = fixtures.makeEnvironment({
-      id: "env-show-merge-base",
-      projectId: "proj-1",
-      hostId: "host-1",
-      baseBranch: "main",
-      defaultBranch: "main",
-      mergeBaseBranch: "origin/main",
-    });
-    stubServerApi({
-      "v1.environments.:id.$get": vi.fn(async () => environment),
-    });
-
-    await runCommand(["environment", "show", "env-show-merge-base"], register);
-
-    expect(collectLogLines(vi.mocked(console.log))).toEqual(
-      expect.arrayContaining([
-        "  Default branch: main",
-        "  Base branch: main",
-        "  Merge-base override: origin/main",
-        "  Effective merge base: origin/main",
-      ]),
-    );
-  });
-
   it("bb environment status inspects an arbitrary environment id", async () => {
     const get = vi.fn(async () => ({
       outcome: "available",

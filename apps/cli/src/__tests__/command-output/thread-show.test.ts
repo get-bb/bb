@@ -259,8 +259,6 @@ describe("bb thread show command output", () => {
       id: "env-show-merge-bases",
       projectId: "proj-1",
       hostId: "host-1",
-      baseBranch: "origin/main",
-      defaultBranch: "main",
     });
     const branchGet = vi.fn(async () => ({
       branches: ["main"],
@@ -289,12 +287,7 @@ describe("bb thread show command output", () => {
       query: {},
     });
     expect(collectLogLines(vi.mocked(console.log))).toEqual(
-      expect.arrayContaining([
-        "    Base branch: origin/main",
-        "    Effective merge base: origin/main",
-        "  main",
-        "  origin/main",
-      ]),
+      expect.arrayContaining(["  main", "  origin/main"]),
     );
   });
 
