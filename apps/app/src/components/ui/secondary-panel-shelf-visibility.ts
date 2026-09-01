@@ -8,10 +8,6 @@ export function getCompactSecondaryPanelPresentation(): CompactSecondaryPanelPre
   return compactSecondaryPanelPresentation;
 }
 
-export function isCompactSecondaryPanelShelfShowing(): boolean {
-  return compactSecondaryPanelPresentation !== "closed";
-}
-
 export function setCompactSecondaryPanelPresentation(
   presentation: CompactSecondaryPanelPresentation,
 ): void {

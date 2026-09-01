@@ -142,7 +142,6 @@ describe("CompactSecondaryPanelShelf", () => {
   it("publishes the presentation so the page knows how far to displace", () => {
     const { rerender, unmount } = renderShelf(true, "shelf");
     expect(getCompactSecondaryPanelPresentation()).toBe("shelf");
-    expect(isCompactSecondaryPanelShelfShowing()).toBe(true);
 
     rerender(
       <CompactSecondaryPanelShelf
@@ -167,7 +166,6 @@ describe("CompactSecondaryPanelShelf", () => {
       </CompactSecondaryPanelShelf>,
     );
     expect(getCompactSecondaryPanelPresentation()).toBe("closed");
-    expect(isCompactSecondaryPanelShelfShowing()).toBe(false);
 
     unmount();
     expect(getCompactSecondaryPanelPresentation()).toBe("closed");
