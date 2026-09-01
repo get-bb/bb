@@ -1206,7 +1206,7 @@ function SecondaryPanelResizeHandle({
             "pointer-events-none absolute inset-y-0 left-full z-10 w-px transition-colors",
             isResizing
               ? "bg-accent-foreground/50"
-              : "bg-transparent group-hover:bg-accent-foreground/35",
+              : "bg-border-seam group-hover:bg-accent-foreground/35",
           )}
         />
       )}
