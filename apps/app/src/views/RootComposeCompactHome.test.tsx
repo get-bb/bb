@@ -1,12 +1,6 @@
 // @vitest-environment jsdom
 
-import {
-  act,
-  cleanup,
-  fireEvent,
-  render,
-  screen,
-} from "@testing-library/react";
+import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   getCompactHomeScrollViewportTop,
@@ -44,27 +38,6 @@ describe("RootComposeCompactHome", () => {
     expect(composer.className).toContain("z-10");
     expect(composer.contains(screen.getByTestId("composer"))).toBe(true);
     expect(viewport.contains(screen.getByTestId("recents"))).toBe(true);
-  });
-
-  it("hides the transient scrollbar shortly after scrolling stops", () => {
-    vi.useFakeTimers();
-    renderCompactHome();
-
-    const viewport = screen.getByTestId("root-compose-compact-scroll-viewport");
-    expect(viewport.className).toContain("transient-scrollbar");
-
-    fireEvent.scroll(viewport);
-    expect(viewport.dataset.scrollbarScrolling).toBe("true");
-
-    act(() => {
-      vi.advanceTimersByTime(179);
-    });
-    expect(viewport.dataset.scrollbarScrolling).toBe("true");
-
-    act(() => {
-      vi.advanceTimersByTime(1);
-    });
-    expect(viewport.hasAttribute("data-scrollbar-scrolling")).toBe(false);
   });
 
   it("pins the scroll viewport so 5.5 rows show once the label sticks", () => {

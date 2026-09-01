@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, type ReactNode } from "react";
+import { useLayoutEffect, useRef, type ReactNode } from "react";
 import { OverflowFade } from "@/components/ui/overflow-fade";
 import {
   MOBILE_RECENT_LABEL_HEIGHT_PX,
@@ -15,7 +15,6 @@ const COMPACT_HOME_SCROLLED_BAND_PX =
 const COMPACT_HOME_REST_OFFSET_PX =
   (COMPACT_HOME_SCROLLED_VISIBLE_ROWS - COMPACT_HOME_REST_VISIBLE_ROWS) *
   MOBILE_RECENT_ROW_HEIGHT_PX;
-const COMPACT_HOME_SCROLLBAR_IDLE_DELAY_MS = 180;
 
 export function getCompactHomeScrollViewportTop({
   regionHeight,
@@ -73,32 +72,6 @@ export function RootComposeCompactHome({
   const { regionRef, composerRef, scrollViewportRef, bottomSpacerRef } =
     useCompactHomeMetrics();
 
-  useEffect(() => {
-    const scrollViewport = scrollViewportRef.current;
-    if (scrollViewport === null) return;
-
-    let idleTimeout: number | null = null;
-    const handleScroll = () => {
-      scrollViewport.dataset.scrollbarScrolling = "true";
-      if (idleTimeout !== null) {
-        window.clearTimeout(idleTimeout);
-      }
-      idleTimeout = window.setTimeout(() => {
-        idleTimeout = null;
-        scrollViewport.removeAttribute("data-scrollbar-scrolling");
-      }, COMPACT_HOME_SCROLLBAR_IDLE_DELAY_MS);
-    };
-
-    scrollViewport.addEventListener("scroll", handleScroll, { passive: true });
-    return () => {
-      scrollViewport.removeEventListener("scroll", handleScroll);
-      if (idleTimeout !== null) {
-        window.clearTimeout(idleTimeout);
-      }
-      scrollViewport.removeAttribute("data-scrollbar-scrolling");
-    };
-  }, [scrollViewportRef]);
-
   return (
     <div
       ref={regionRef}
@@ -108,7 +81,7 @@ export function RootComposeCompactHome({
       <div
         ref={scrollViewportRef}
         data-testid="root-compose-compact-scroll-viewport"
-        className="transient-scrollbar absolute inset-x-0 bottom-0 overflow-y-auto overscroll-contain"
+        className="absolute inset-x-0 bottom-0 overflow-y-auto overscroll-contain"
         style={{ top: COMPACT_HOME_CHROME_OFFSET_PX }}
       >
         <div
