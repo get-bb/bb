@@ -257,6 +257,7 @@ function partitionQueuedMessageGroups(
  * pointer at the SQL so the two cannot drift silently.
  */
 function isIdleDrainableQueuedMessage(row: QueuedThreadMessageRow): boolean {
+  if (row.failureReason !== null) return false;
   if (row.waitingOn === null) return true;
   try {
     const parsed = JSON.parse(row.waitingOn) as { kind?: unknown };
@@ -1353,6 +1354,13 @@ function liveQueuedThreadMessage() {
   );
 }
 
+function automaticallyDrainableQueuedThreadMessage() {
+  return and(
+    liveQueuedThreadMessage(),
+    isNull(queuedThreadMessages.failureReason),
+  );
+}
+
 /**
  * Rows the IDLE drain may claim: a row with no wait at all, or one waiting
  * only on the thread being busy — which is exactly the wait an idle thread
@@ -1369,7 +1377,7 @@ function liveQueuedThreadMessage() {
  */
 function drainableQueuedThreadMessage() {
   return and(
-    liveQueuedThreadMessage(),
+    automaticallyDrainableQueuedThreadMessage(),
     or(
       isNull(queuedThreadMessages.waitingOn),
       sql`json_extract(${queuedThreadMessages.waitingOn}, '$.kind') = 'thread-busy'`,
@@ -1635,7 +1643,7 @@ export function listDueScheduledQueuedThreadMessages(
       and(
         isNotNull(queuedThreadMessages.sendAt),
         lte(queuedThreadMessages.sendAt, now),
-        liveQueuedThreadMessage(),
+        automaticallyDrainableQueuedThreadMessage(),
         exists(
           db
             .select({ live: sql`1` })
@@ -1675,7 +1683,7 @@ export function listQueuedThreadMessagesByWaitHolder(
     .where(
       and(
         eq(queuedThreadMessages.waitHolder, waitHolder),
-        liveQueuedThreadMessage(),
+        automaticallyDrainableQueuedThreadMessage(),
       ),
     )
     .orderBy(
@@ -1726,7 +1734,7 @@ export function listQueuedThreadMessagePluginWaitRefs(
     .where(
       and(
         isNotNull(queuedThreadMessages.waitHolder),
-        liveQueuedThreadMessage(),
+        automaticallyDrainableQueuedThreadMessage(),
       ),
     )
     .orderBy(
@@ -1757,7 +1765,7 @@ export function listQueuedThreadMessagesWaitingOnKind(
       and(
         eq(queuedThreadMessages.threadId, args.threadId),
         sql`json_extract(${queuedThreadMessages.waitingOn}, '$.kind') = ${args.kind}`,
-        liveQueuedThreadMessage(),
+        automaticallyDrainableQueuedThreadMessage(),
       ),
     )
     .orderBy(asc(queuedThreadMessages.sortKey), asc(queuedThreadMessages.id))
@@ -1813,7 +1821,7 @@ export function listThreadIdsWithHostOfflineQueueWaits(
       and(
         eq(environments.hostId, hostId),
         sql`json_extract(${queuedThreadMessages.waitingOn}, '$.kind') = 'host-offline'`,
-        liveQueuedThreadMessage(),
+        automaticallyDrainableQueuedThreadMessage(),
       ),
     )
     .all()
