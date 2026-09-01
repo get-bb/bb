@@ -209,7 +209,7 @@ export function registerShowCommand(
     )
     .option(
       "--merge-base-branches",
-      "Include available merge-base branches in output",
+      "Include available local and remote merge-base branches in output",
     )
     .action(
       action(async (id: string | undefined, opts: ThreadShowCommandOptions) => {
@@ -307,7 +307,10 @@ export function registerShowCommand(
           const branchResponse = await sdk.environments.diffBranches({
             environmentId: thread.environmentId,
           });
-          mergeBaseBranches = branchResponse.branches;
+          mergeBaseBranches = [
+            ...branchResponse.branches,
+            ...branchResponse.remoteBranches,
+          ];
         }
 
         const fetchedPullRequest = thread.environmentId

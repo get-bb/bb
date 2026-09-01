@@ -47,6 +47,8 @@ BB_HOST_DAEMON_PORT only for an intentional non-default target.
 - Resolve names and IDs with a list or show command before mutation.
 - Pass an explicit project when a command can act across projects.
 - Pass an environment or machine selector when the default host is uncertain.
+- Omit `--base-branch` for bb's smart project default. An explicit value is an
+  exact Git ref, so pass `origin/<branch>` when the remote ref is required.
 - Query provider models on the machine that will run the thread.
 - Prefer non-interactive commands and machine-readable output for automation.
 - Pass `--yes` for a confirmed destructive command in a non-interactive shell.

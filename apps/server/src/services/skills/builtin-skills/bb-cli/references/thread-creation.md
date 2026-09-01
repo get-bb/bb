@@ -10,6 +10,11 @@
 - Select a target with `--environment`, `--new-environment`, `--base-branch`,
   or `--machine`. Select execution with `--provider`, `--model`,
   `--reasoning-level`, `--service-tier`, and `--permission-mode`.
+- For a managed worktree, omit `--base-branch` to use bb's smart project
+  default, which prefers the origin default branch when safe. An explicit
+  `--base-branch` is an exact Git ref: `main` means the local ref, while
+  `origin/main` fetches and selects the remote-tracking ref. Preserve explicit
+  remote intent from the task instead of shortening `origin/<branch>`.
 - Spawn also accepts `--title`, `--origin-kind`, `--source-thread`,
   `--source-seq-end`, `--agent-context-seed`, and `--json`.
 - Add repeatable `--file <path>` / `--image <path>` flags for structured prompt
@@ -107,7 +112,9 @@ environment pull-request show <id>`. Diff commands require an explicit target
 - `bb environment pull-request ready|draft|merge` manages pull-request state;
   `bb environment archive-threads` bulk-archives an environment's threads.
 - Use `bb environment show|update|commit|squash-merge` for environment metadata
-  and Git changes. Check live help before a commit or merge.
+  and Git changes. Human `show` output distinguishes the stored base, any
+  merge-base override, and the effective merge base. Check live help before a
+  commit or merge.
 - Spawned child threads inherit permission from explicit flags, then the
   parent thread's last execution, then project defaults. The parent's mode is
   a hard ceiling: an explicit flag can lower it but never exceed it.

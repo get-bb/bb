@@ -343,6 +343,10 @@ describe("bb thread spawn command output", () => {
     const helpOutput = await getHelpOutput(["thread", "spawn"], register);
     expect(helpOutput).toContain("--permission-mode <mode>");
     expect(helpOutput).toContain("--visibility <visibility>");
+    expect(helpOutput).toContain("Exact Git ref for new managed worktrees");
+    expect(helpOutput).toContain(
+      "pass origin/<branch> to require the remote ref",
+    );
     expect(helpOutput).toMatch(/Permission mode: accept-edits, auto, or full/);
   });
 

@@ -1,4 +1,5 @@
 import { Command } from "commander";
+import { resolveEnvironmentMergeBaseBranch } from "@bb/domain";
 import type {
   CommitActionResponse,
   SquashMergeActionResponse,
@@ -331,8 +332,15 @@ export function registerEnvironmentCommands(
         if (env.defaultBranch) {
           console.log(`  Default branch: ${env.defaultBranch}`);
         }
+        if (env.baseBranch) {
+          console.log(`  Base branch: ${env.baseBranch}`);
+        }
         if (env.mergeBaseBranch) {
-          console.log(`  Merge base: ${env.mergeBaseBranch}`);
+          console.log(`  Merge-base override: ${env.mergeBaseBranch}`);
+        }
+        const effectiveMergeBaseBranch = resolveEnvironmentMergeBaseBranch(env);
+        if (effectiveMergeBaseBranch) {
+          console.log(`  Effective merge base: ${effectiveMergeBaseBranch}`);
         }
         console.log(`  Git repo: ${env.isGitRepo}`);
         console.log(`  Worktree: ${env.isWorktree}`);

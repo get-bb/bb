@@ -71,7 +71,7 @@ Making your repo work with bb:
   For files that customize agent instructions and skills (AGENTS.md,
   .bb/AGENTS.md, .bb/skills/), run `bb guide agent-configuration`.
 
-  bb environment show <id>                Show environment details (path, branch, status)
+  bb environment show <id>                Show details, including stored base and effective merge base
 
   bb environment status <id>              Show workspace status
     --merge-base-branch <branch>          Include merge-base status

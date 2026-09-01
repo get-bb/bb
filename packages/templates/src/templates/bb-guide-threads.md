@@ -23,7 +23,7 @@ Spawning:
     --reasoning-level <level>      Reasoning level: low, medium, high, xhigh, max (provider-dependent)
     --environment <id-or-path>     Attach to an existing environment (ID or workspace path)
     --new-environment <kind>       Create a new environment (worktree)
-    --base-branch <branch>         Base branch for a new managed worktree
+    --base-branch <branch>         Exact Git ref for a new managed worktree
     --machine <id-or-name>         Run on a machine (--host is an alias)
     --service-tier <tier>          Service tier: fast, default
     --permission-mode <mode>       Permission mode: accept-edits, auto, or full
@@ -60,6 +60,11 @@ Spawning:
   workspace. It cannot be combined with an existing environment ID because that
   environment already selects its machine. Without the flag, local/primary
   machine resolution is unchanged.
+  Omit --base-branch to let bb choose the project's default worktree base,
+  preferring its origin branch when safe. An explicit value is exact:
+  --base-branch main selects the local ref, while --base-branch origin/main
+  fetches and selects the remote-tracking ref. When a task requires the latest
+  remote branch, preserve that intent by passing origin/<branch>.
 
 Forking:
 
@@ -149,9 +154,10 @@ Inspecting:
     --diff-target <type>                   Diff scope: uncommitted, branch_committed, all, commit
     --diff-sha <sha>                       Commit SHA (for --diff-target commit)
     --diff-merge-base <branch>             Override merge-base branch for diff
-    --merge-base-branches                  List available merge-base branches
+    --merge-base-branches                  List available local and remote merge-base branches
 
-  Shows pull request status for the attached environment branch when available.
+  Shows the attached environment's stored base and effective merge base, plus
+  pull request status for its branch when available.
 
   bb thread log [id]                       Show thread event log
     --self                                 Target current thread
