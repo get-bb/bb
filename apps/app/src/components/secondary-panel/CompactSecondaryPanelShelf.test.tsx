@@ -7,6 +7,36 @@ import { CompactSecondaryPanelShelf } from "./CompactSecondaryPanelShelf";
 import { APP_OVERLAY_LAYER } from "@/components/ui/app-overlay-layers";
 import { getCompactSecondaryPanelPresentation } from "@/components/ui/secondary-panel-shelf-visibility";
 
+function createTouch(clientX: number, clientY: number): Touch {
+  return { identifier: 1, clientX, clientY } as Touch;
+}
+
+function createTouchList(...touches: Touch[]): TouchList {
+  const touchList = {
+    length: touches.length,
+    item: (index: number) => touches[index] ?? null,
+  };
+  touches.forEach((touch, index) => {
+    Object.defineProperty(touchList, index, { value: touch });
+  });
+  return touchList as unknown as TouchList;
+}
+
+function fireTouch(
+  target: Element | Window,
+  type: "touchstart" | "touchmove" | "touchend",
+  touch: Touch,
+) {
+  const event = new Event(type, { bubbles: true, cancelable: true });
+  Object.defineProperties(event, {
+    touches: {
+      value: type === "touchend" ? createTouchList() : createTouchList(touch),
+    },
+    changedTouches: { value: createTouchList(touch) },
+  });
+  fireEvent(target, event);
+}
+
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
@@ -105,6 +135,32 @@ describe("CompactSecondaryPanelShelf", () => {
 
     fireEvent.click(dismiss);
     expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("closes from a right swipe that starts on the exposed main content", () => {
+    const { onClose } = renderShelf(true);
+    const shelf = screen.getByTestId("secondary-panel-shelf");
+    const dismiss = screen.getByTestId("secondary-panel-shelf-dismiss");
+    Object.defineProperty(shelf, "clientWidth", { value: 300 });
+
+    fireTouch(dismiss, "touchstart", createTouch(60, 160));
+    fireTouch(window, "touchmove", createTouch(240, 164));
+    fireTouch(window, "touchend", createTouch(240, 164));
+
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("ignores a closing swipe from the left browser edge", () => {
+    const { onClose } = renderShelf(true);
+    const shelf = screen.getByTestId("secondary-panel-shelf");
+    const dismiss = screen.getByTestId("secondary-panel-shelf-dismiss");
+    Object.defineProperty(shelf, "clientWidth", { value: 300 });
+
+    fireTouch(dismiss, "touchstart", createTouch(12, 160));
+    fireTouch(window, "touchmove", createTouch(180, 164));
+    fireTouch(window, "touchend", createTouch(180, 164));
+
+    expect(onClose).not.toHaveBeenCalled();
   });
 
   it("hides the closed shelf so it cannot cover the sidebar shelf", () => {
