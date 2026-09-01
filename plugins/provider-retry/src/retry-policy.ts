@@ -21,6 +21,8 @@ export const RESET_JITTER_MS = 30_000;
 
 export const DEFAULT_MAXIMUM_WAIT_MS = 6 * 60 * 60 * 1_000;
 
+export const OVERLOAD_RETRY_BASE_MS = 5_000;
+
 /**
  * The cap on a turn's TOTAL attempts: the original dispatch plus at most four
  * retries, since `attemptNumber` counts from 1 on the original.
@@ -33,7 +35,7 @@ export const DEFAULT_MAXIMUM_WAIT_MS = 6 * 60 * 60 * 1_000;
 export const MAX_RETRY_ATTEMPTS = 5;
 
 export type RetryDeclineReason =
-  | "not-rate-limited"
+  | "not-retryable"
   | "no-rate-limit-state"
   | "not-resettable"
   | "beyond-maximum-wait"
@@ -41,7 +43,11 @@ export type RetryDeclineReason =
 
 export type RetryDecision =
   | { kind: "decline"; reason: RetryDeclineReason }
-  | { kind: "retry"; sendAt: number };
+  | {
+      kind: "retry";
+      sendAt: number;
+      reason: "Rate limited" | "Provider overloaded";
+    };
 
 export interface RetryPolicyInput {
   failure: PluginTurnFailedEvent;
@@ -82,6 +88,15 @@ export function sendAtMs(args: {
   return base + RESET_BUFFER_MS + Math.floor(args.random * RESET_JITTER_MS);
 }
 
+export function overloadedSendAtMs(args: {
+  attemptNumber: number;
+  now: number;
+  random: number;
+}): number {
+  const delay = OVERLOAD_RETRY_BASE_MS * 2 ** (args.attemptNumber - 1);
+  return args.now + delay + Math.floor(args.random * delay);
+}
+
 /**
  * Whether this failure earns a retry, and when.
  *
@@ -100,8 +115,19 @@ export function decideRetry(input: RetryPolicyInput): RetryDecision {
   if (failure.attemptNumber >= MAX_RETRY_ATTEMPTS) {
     return { kind: "decline", reason: "attempts-exhausted" };
   }
+  if (failure.errorInfo?.category === "overloaded") {
+    return {
+      kind: "retry",
+      sendAt: overloadedSendAtMs({
+        attemptNumber: failure.attemptNumber,
+        now: input.now,
+        random: input.random,
+      }),
+      reason: "Provider overloaded",
+    };
+  }
   if (failure.errorInfo?.category !== "rate-limit") {
-    return { kind: "decline", reason: "not-rate-limited" };
+    return { kind: "decline", reason: "not-retryable" };
   }
   const rateLimits = failure.rateLimits;
   if (rateLimits === null || rateLimits.status !== "blocked") {
@@ -129,5 +155,6 @@ export function decideRetry(input: RetryPolicyInput): RetryDecision {
       now: input.now,
       random: input.random,
     }),
+    reason: "Rate limited",
   };
 }

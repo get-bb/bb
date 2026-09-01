@@ -48,7 +48,7 @@ export function registerProviderRetryCli(bb: BbPluginApi): void {
       },
       {
         name: "retry",
-        summary: "Retry a rate-limited turn now instead of waiting",
+        summary: "Send a pending provider retry now instead of waiting",
         usage: "bb provider-retry retry <thread-id> [--json]",
       },
     ],

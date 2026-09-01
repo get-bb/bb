@@ -40,21 +40,24 @@ removes the native Task tool. The preferences default off and apply
 when a provider thread is started, resumed, or forked; they do not modify the
 provider's global configuration.
 
-Subscription limit recovery
+Provider failure recovery
 
 The builtin Provider retry plugin is enabled on fresh installations and
-recognizes structured Codex and Claude Code subscription windows. When a turn
-fails on one, the plugin queues that turn to be re-sent after the reported reset
-plus a short buffer and some jitter. The retry re-sends the original message
-verbatim, marked agent-only so the timeline does not show it twice. Prior output
-or tool activity does not block recovery. Provider-native retries remain
-authoritative while the provider reports that it will retry on its own.
+recognizes structured Codex and Claude Code subscription windows and provider
+overloads. Subscription limits wait for the reported reset plus a short buffer
+and jitter. Overloads use exponential backoff and jitter, starting after 5–10
+seconds. If the provider accepted the failed input, core sends an agent-only
+continuation; if it rejected the input before starting, core re-sends the
+original message as agent-only. Prior output or tool activity does not block
+recovery. Provider-native retries remain authoritative while the provider
+reports that it will retry on its own.
 
 The plugin never blocks a send. It only reacts to a failure, because a
 remembered rate limit is a stale picture of the provider's state: if you raised
 your plan or the window opened early, the next send simply works. Several
 threads on one exhausted subscription therefore each fail once, then each
-schedule their own jittered retry.
+schedule their own jittered retry. Automatic recovery stops after five total
+attempts for the turn.
 
 Automatic waits default to a maximum of six hours. Longer reset windows are not
 scheduled. Set `maximumWait` to `24 hours` or `No limit` under the plugin

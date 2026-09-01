@@ -796,10 +796,12 @@ the plugin so it can be surfaced as needing attention.
 
 The builtin Provider retry plugin is enabled on fresh installations. When a turn
 fails on a structured Codex or Claude Code subscription-window limit that
-reports a reset time, it queues that turn to be re-sent after the window opens.
-Prior output or tool activity does not block recovery. The retry re-sends the
-original message verbatim, marked agent-only so the timeline does not show it
-twice. Disable it under Extensions → Plugins or with
+reports a reset time, it queues that turn after the window opens. It also
+retries structured provider overloads with exponential backoff and jitter.
+Prior output or tool activity does not block recovery. If the provider accepted
+the failed input, core sends an agent-only continuation; if it rejected the
+input before starting, core re-sends the original message as agent-only. Disable
+the plugin under Extensions → Plugins or with
 `bb plugin disable provider-retry`.
 
 It never blocks a send. A remembered rate limit is a stale picture of the
@@ -807,7 +809,8 @@ provider's state, so the plugin never refuses a dispatch on one — if you raise
 your plan or the window opened early, the next send simply works. The cost is
 that several threads on one exhausted subscription each fail once before each
 schedules its own retry; the retries are jittered so they do not all wake in the
-same instant.
+same instant. Overload retries start after 5–10 seconds, double their delay
+after each failure, and share the five-total-attempt cap with limit retries.
 The `maximumWait` setting defaults to `6 hours`; resets beyond that horizon are
 not scheduled. Choose `24 hours` or `No limit` under the plugin settings, or
 configure it from the CLI:

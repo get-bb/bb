@@ -51,12 +51,12 @@ bb concurrency-limit global [unlimited|<limit>] [--json]
 bb concurrency-limit host <host-id> [auto|<limit>] [--json]
 ```
 
-The builtin Provider retry plugin is enabled on fresh installations. It
-continues Codex and Claude Code turns after a structured subscription window
-resets. A pending retry is a queued row on the thread, so a server restart does
-not lose it, and that row — on the queue card above the composer, with its
-reason, its time and its own Cancel — is the only place the wait is narrated.
-Inspect it with `bb provider-retry status`. See
+The builtin Provider retry plugin is enabled on fresh installations. It retries
+Codex and Claude Code turns after structured provider overloads and subscription
+window limits. A pending retry is a queued row on the thread, so a server
+restart does not lose it, and that row — on the queue card above the composer,
+with its reason, its time and its own Cancel — is the only place the wait is
+narrated. Inspect it with `bb provider-retry status`. See
 `bb guide providers` for the eligibility rules. The plugin only reacts to a
 failed turn — it never blocks a send. Prior output or tool activity does not
 block recovery. Its `maximumWait` setting defaults to `6 hours`; choose

@@ -9,6 +9,7 @@ import type { PluginTurnFailedEvent } from "@get-bb/plugin-sdk";
 import plugin from "./server.js";
 import {
   MAX_RETRY_ATTEMPTS,
+  OVERLOAD_RETRY_BASE_MS,
   RESET_BUFFER_MS,
   RESET_JITTER_MS,
   decideRetry,
@@ -57,6 +58,20 @@ function failure(
       httpStatusCode: 429,
     },
     rateLimits: rateLimits(),
+    ...overrides,
+  });
+}
+
+function overloadedFailure(
+  overrides: Partial<PluginTurnFailedEvent> = {},
+): PluginTurnFailedEvent {
+  return failure({
+    errorInfo: {
+      category: "overloaded",
+      providerCode: "serverOverloaded",
+      httpStatusCode: 529,
+    },
+    rateLimits: null,
     ...overrides,
   });
 }
@@ -155,6 +170,7 @@ describe("provider retry policy", () => {
     expect(earliest).toEqual({
       kind: "retry",
       sendAt: RESET_AT_MS + RESET_BUFFER_MS,
+      reason: "Rate limited",
     });
     expect(latest.kind).toBe("retry");
     if (latest.kind !== "retry") return;
@@ -185,6 +201,7 @@ describe("provider retry policy", () => {
     expect(decision).toEqual({
       kind: "retry",
       sendAt: NOW_MS + RESET_BUFFER_MS,
+      reason: "Rate limited",
     });
   });
 
@@ -216,6 +233,7 @@ describe("provider retry policy", () => {
     expect(decision).toEqual({
       kind: "retry",
       sendAt: weekly + RESET_BUFFER_MS,
+      reason: "Rate limited",
     });
   });
 
@@ -239,7 +257,34 @@ describe("provider retry policy", () => {
     ).toBe("retry");
   });
 
-  it("declines failures that are not rate limits, and limits that do not reset", () => {
+  it("retries overloads with exponential backoff and bounded jitter", () => {
+    const overloaded = overloadedFailure();
+    expect(
+      decideRetry({
+        failure: overloaded,
+        maximumWaitMs: null,
+        now: NOW_MS,
+        random: 0,
+      }),
+    ).toEqual({
+      kind: "retry",
+      sendAt: NOW_MS + OVERLOAD_RETRY_BASE_MS,
+      reason: "Provider overloaded",
+    });
+    const fourthAttempt = decideRetry({
+      failure: { ...overloaded, attemptNumber: 4 },
+      maximumWaitMs: null,
+      now: NOW_MS,
+      random: 0.999_999,
+    });
+    expect(fourthAttempt.kind).toBe("retry");
+    if (fourthAttempt.kind !== "retry") return;
+    const fourthDelay = OVERLOAD_RETRY_BASE_MS * 2 ** 3;
+    expect(fourthAttempt.sendAt).toBeGreaterThan(NOW_MS + fourthDelay);
+    expect(fourthAttempt.sendAt).toBeLessThan(NOW_MS + fourthDelay * 2);
+  });
+
+  it("declines failures that are not retryable, and limits that do not reset", () => {
     expect(
       decideRetry({
         failure: failure({
@@ -253,7 +298,7 @@ describe("provider retry policy", () => {
         now: NOW_MS,
         random: 0,
       }),
-    ).toEqual({ kind: "decline", reason: "not-rate-limited" });
+    ).toEqual({ kind: "decline", reason: "not-retryable" });
     expect(
       decideRetry({
         failure: failure({ rateLimits: null }),
@@ -290,6 +335,14 @@ describe("provider retry policy", () => {
         random: 0,
       }).kind,
     ).toBe("retry");
+    expect(
+      decideRetry({
+        failure: overloadedFailure({ attemptNumber: MAX_RETRY_ATTEMPTS }),
+        maximumWaitMs: null,
+        now: NOW_MS,
+        random: 0,
+      }),
+    ).toEqual({ kind: "decline", reason: "attempts-exhausted" });
   });
 });
 
@@ -317,12 +370,14 @@ describe("provider retry plugin", () => {
         type: "select",
         label: "Maximum automatic wait",
         description:
-          "Do not schedule a retry when the reported reset is farther away than this.",
+          "Do not schedule a subscription-limit retry when its reset is farther away than this.",
         options: ["6 hours", "24 hours", "No limit"],
         default: "6 hours",
       },
     });
-    expect(host.harness.registrations.threadEventHandlers["turn.failed"]).toBe(1);
+    expect(host.harness.registrations.threadEventHandlers["turn.failed"]).toBe(
+      1,
+    );
     expect(host.harness.registrations.hooks["message.dispatch"]).toBeNull();
     expect(
       host.harness.registrations.cli?.commands.map((command) => command.name),
@@ -350,6 +405,31 @@ describe("provider retry plugin", () => {
     // Just the cause, no time: every surface renders the row's `sendAt`
     // itself, so a time here shows up twice on the card and in the queue list.
     expect(retry?.reason).toBe("Rate limited");
+    await host.harness.dispose();
+  });
+
+  it("asks core to retry an overloaded turn after backoff", async () => {
+    const host = createHost();
+    await plugin(host.bb);
+
+    const { errors } = await host.harness.behavior.emitThreadEvent(
+      "turn.failed",
+      overloadedFailure(),
+    );
+
+    expect(errors).toEqual([]);
+    expect(host.retries).toHaveLength(1);
+    expect(host.retries[0]).toMatchObject({
+      threadId: THREAD_ID,
+      turnRequestId: REQUEST_ID,
+      reason: "Provider overloaded",
+    });
+    expect(host.retries[0]?.sendAt).toBeGreaterThanOrEqual(
+      NOW_MS + OVERLOAD_RETRY_BASE_MS,
+    );
+    expect(host.retries[0]?.sendAt).toBeLessThan(
+      NOW_MS + OVERLOAD_RETRY_BASE_MS * 2,
+    );
     await host.harness.dispose();
   });
 
