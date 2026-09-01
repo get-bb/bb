@@ -179,6 +179,18 @@ bb keep-awake hosts all
 bb keep-awake hosts <host-id>...
 ```
 
+The builtin Concurrency limit plugin has an autosaving page under Extensions
+→ Plugins. Its overall limit is unlimited by default. Each host defaults to
+Auto: half its available processors, from 1 to 8. A blank host field restores
+Auto, and 0 pauses new work for that scope. Configure it from an agent or
+terminal with:
+
+```sh
+bb concurrency-limit status [--json]
+bb concurrency-limit global [unlimited|<limit>] [--json]
+bb concurrency-limit host <host-id> [auto|<limit>] [--json]
+```
+
 The "Show unhandled provider events" toggle in Settings → General exposes raw
 provider events that bb does not yet understand. It defaults to off in packaged
 builds because these diagnostic payloads are noisy. Development builds continue

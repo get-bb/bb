@@ -39,6 +39,18 @@ It reconciles when the plugin starts, a host connects, its configuration
 changes, or a worker exits unexpectedly. Disabling the plugin disposes its host
 workers and their child processes.
 
+The builtin Concurrency limit plugin controls how many threads run at once.
+Its settings page has an optional overall limit and one limit per host. Host
+limits default to Auto: half the host's available processors, from 1 to 8.
+Leave an override blank to return it to Auto; use 0 to pause new work. The CLI
+equivalents are:
+
+```
+bb concurrency-limit status [--json]
+bb concurrency-limit global [unlimited|<limit>] [--json]
+bb concurrency-limit host <host-id> [auto|<limit>] [--json]
+```
+
 The builtin Provider retry plugin is enabled on fresh installations. It
 continues Codex and Claude Code turns after a structured subscription window
 resets. A pending retry is a queued row on the thread, so a server restart does

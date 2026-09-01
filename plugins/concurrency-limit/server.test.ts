@@ -1,20 +1,14 @@
-// The hook's decision table, driven through the fake plugin host: settings in,
-// `listRunning` stubbed, decisions out.
-//
-// The plugin is now settings-parse + one query + a comparison, so the table
-// below IS the plugin. Settings parsing itself is covered by limits.test.ts.
-
 import type {
   BbPluginApi,
-  PluginDispatchAttemptKind,
   MessageDispatchHookContext,
+  PluginDispatchAttemptKind,
   PluginThreadEventPayloads,
 } from "@get-bb/plugin-sdk";
 import {
   createFakePluginHost,
   makeThreadResponse,
 } from "@get-bb/plugin-sdk/testing";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import plugin from "./server.js";
 
 type ThreadResponse = PluginThreadEventPayloads["thread.created"]["thread"];
@@ -24,23 +18,19 @@ type HostRecord = Awaited<
 type RunningThread = Awaited<
   ReturnType<BbPluginApi["sdk"]["threads"]["listRunning"]>
 >[number];
+type SdkSubscription = Parameters<BbPluginApi["sdk"]["subscribe"]>[0];
+type HostChangedSubscription = Extract<
+  SdkSubscription,
+  { event: "host:changed" }
+>;
 
-const PLUGIN_ID = "concurrency-limit";
-
-function hostRecord(id: string, name = id): HostRecord {
-  return {
-    id,
-    name,
-    type: "persistent",
-    status: "connected",
-    maxPermissionMode: "full",
-    lastSeenAt: null,
-    lastRejectedProtocolVersion: null,
-    createdAt: 1,
-    updatedAt: 1,
-  };
+function isHostChangedSubscription(
+  subscription: SdkSubscription,
+): subscription is HostChangedSubscription {
+  return subscription.event === "host:changed";
 }
 
+const PLUGIN_ID = "concurrency-limit";
 const PROJECT = {
   id: "proj_1",
   kind: "standard" as const,
@@ -50,7 +40,24 @@ const PROJECT = {
   updatedAt: 1,
 };
 
-/** A row of `threads.listRunning()`. */
+function hostRecord(
+  id: string,
+  status: HostRecord["status"] = "connected",
+  name = id,
+): HostRecord {
+  return {
+    id,
+    name,
+    type: "persistent",
+    status,
+    maxPermissionMode: "full",
+    lastSeenAt: null,
+    lastRejectedProtocolVersion: null,
+    createdAt: 1,
+    updatedAt: 1,
+  };
+}
+
 function running(overrides: Partial<RunningThread> = {}): RunningThread {
   return { id: "thr_running", hostId: "host-a", ...overrides };
 }
@@ -66,19 +73,20 @@ function dispatchContext(
   overrides: GateContextOverrides = {},
 ): MessageDispatchHookContext {
   const hostId = overrides.hostId === undefined ? "host-a" : overrides.hostId;
-  const thread = makeThreadResponse({
-    id: "thr_1",
-    status: "pending",
-    ...overrides.thread,
-  });
   return {
-    thread,
+    thread: makeThreadResponse({
+      id: "thr_1",
+      status: "pending",
+      ...overrides.thread,
+    }),
     attempt: overrides.attempt ?? "start-turn",
     queuedMessage: null,
     project: PROJECT,
     environment: null,
     host:
-      hostId === null ? null : hostRecord(hostId, overrides.hostName ?? hostId),
+      hostId === null
+        ? null
+        : hostRecord(hostId, "connected", overrides.hostName ?? hostId),
     input: { blocks: [], text: "go" },
     requestedExecution: {
       providerId: "codex",
@@ -102,314 +110,370 @@ function dispatchContext(
 }
 
 interface SetupOptions {
-  settings?: Record<string, string>;
+  configuration?: {
+    globalLimit: number | null;
+    hostOverrides: Array<{ hostId: string; limit: number }>;
+  };
+  capacities?: Array<{ hostId: string; availableParallelism: number }>;
+  hosts?: HostRecord[] | (() => HostRecord[]);
   running?: RunningThread[];
+  detectedParallelism?: number;
+  subscribe?: BbPluginApi["sdk"]["subscribe"];
 }
 
 async function setup(options: SetupOptions = {}) {
-  const { bb, harness } = createFakePluginHost({
+  const subscribe: BbPluginApi["sdk"]["subscribe"] = () => () => {};
+  const fake = createFakePluginHost({
     pluginId: PLUGIN_ID,
-    settings: options.settings ?? {},
     sdk: {
+      subscribe: options.subscribe ?? subscribe,
+      hosts: {
+        list: async () =>
+          typeof options.hosts === "function"
+            ? options.hosts()
+            : (options.hosts ?? []),
+      },
       threads: { listRunning: async () => options.running ?? [] },
     },
+    experimental_callHostRpc: () => ({
+      availableParallelism: options.detectedParallelism ?? 8,
+    }),
   });
-  await plugin(bb);
-  const hook = harness.registrations.hooks["message.dispatch"];
-  if (hook === null) throw new Error("the message.dispatch hook was not registered");
-  return { bb, harness, hook };
+  if (options.configuration !== undefined) {
+    await fake.bb.storage.kv.set("configuration", options.configuration);
+  }
+  if (options.capacities !== undefined) {
+    await fake.bb.storage.kv.set("host-capacities", options.capacities);
+  }
+  await plugin(fake.bb);
+  const hook = fake.harness.registrations.hooks["message.dispatch"];
+  if (hook === null) throw new Error("message.dispatch was not registered");
+  return { ...fake, hook };
 }
 
-describe("registration", () => {
-  it("changes nothing until a limit is configured", async () => {
-    const { harness, hook } = await setup({
-      running: [running({ id: "a" }), running({ id: "b" })],
-    });
+function hostChanges(): {
+  emitHostConnected(hostId: string): void;
+  subscribe: BbPluginApi["sdk"]["subscribe"];
+} {
+  let callback: HostChangedSubscription["callback"] | null = null;
+  return {
+    emitHostConnected(hostId) {
+      callback?.({
+        type: "changed",
+        entity: "host",
+        id: hostId,
+        changes: ["host-connected"],
+      });
+    },
+    subscribe(subscription) {
+      if (isHostChangedSubscription(subscription)) {
+        callback = subscription.callback;
+      }
+      return () => {
+        if (isHostChangedSubscription(subscription)) callback = null;
+      };
+    },
+  };
+}
 
-    await expect(hook(dispatchContext())).resolves.toEqual({
-      action: "proceed",
-    });
-    // Unconfigured means it must not even ask: installing this plugin cannot
-    // put a query on every dispatch in the server.
-    expect(harness.sdk.callsTo("threads.listRunning")).toHaveLength(0);
+describe("configuration", () => {
+  it("uses a custom settings section rather than generic setting descriptors", async () => {
+    const { harness } = await setup();
+
+    expect(harness.registrations.settingsDescriptors).toEqual({});
+    expect(harness.registrations.rpcMethods).toEqual([
+      "getConfiguration",
+      "setConfiguration",
+    ]);
+    expect(
+      harness.registrations.services.map((service) => service.name),
+    ).toEqual(["capacity-detector"]);
   });
 
-  it("reports an unparseable limit instead of throwing, and enforces the good one", async () => {
-    const { harness, hook } = await setup({
-      settings: {
-        maxConcurrentThreads: "lots",
-        maxConcurrentThreadsPerHost: "1",
-      },
-      running: [running()],
+  it("returns each host's detected automatic limit and retained offline capacity", async () => {
+    const { harness } = await setup({
+      hosts: [
+        hostRecord("host-a", "connected", "Laptop"),
+        hostRecord("host-b", "disconnected", "Studio"),
+      ],
+      capacities: [
+        { hostId: "host-a", availableParallelism: 8 },
+        { hostId: "host-b", availableParallelism: 16 },
+      ],
     });
 
-    expect(harness.needsConfigurationMessages).toEqual([
-      'Max concurrent threads must be a whole number of threads (for example 4), or empty for no limit. Got "lots".',
+    await expect(harness.behavior.callRpc("getConfiguration")).resolves.toEqual(
+      {
+        globalLimit: null,
+        hostOverrides: [],
+        hosts: [
+          {
+            id: "host-a",
+            name: "Laptop",
+            status: "connected",
+            availableParallelism: 8,
+            automaticLimit: 4,
+            effectiveLimit: 4,
+            override: null,
+          },
+          {
+            id: "host-b",
+            name: "Studio",
+            status: "disconnected",
+            availableParallelism: 16,
+            automaticLimit: 8,
+            effectiveLimit: 8,
+            override: null,
+          },
+        ],
+      },
+    );
+  });
+
+  it("rejects invalid and duplicate limits at the RPC boundary", async () => {
+    const { harness } = await setup();
+
+    await expect(
+      harness.behavior.callRpc("setConfiguration", {
+        globalLimit: 1.5,
+        hostOverrides: [],
+      }),
+    ).rejects.toThrow();
+    await expect(
+      harness.behavior.callRpc("setConfiguration", {
+        globalLimit: null,
+        hostOverrides: [
+          { hostId: "host-a", limit: 1 },
+          { hostId: "host-a", limit: 2 },
+        ],
+      }),
+    ).rejects.toThrow(/rpc input validation failed/u);
+  });
+
+  it("persists validated configuration and rechecks waiting dispatches", async () => {
+    const { bb, harness } = await setup({ hosts: [hostRecord("host-a")] });
+
+    await harness.behavior.callRpc("setConfiguration", {
+      globalLimit: 3,
+      hostOverrides: [{ hostId: "host-a", limit: 0 }],
+    });
+
+    await expect(bb.storage.kv.get("configuration")).resolves.toEqual({
+      globalLimit: 3,
+      hostOverrides: [{ hostId: "host-a", limit: 0 }],
+    });
+    expect(harness.recheckCount).toBe(1);
+  });
+
+  it("detects connected host capacity in the background", async () => {
+    const { bb, harness } = await setup({
+      hosts: [hostRecord("host-a")],
+      detectedParallelism: 12,
+    });
+    const service = harness.behavior.runService("capacity-detector");
+
+    await vi.waitFor(() => {
+      expect(harness.experimental_hostRpcCalls).toHaveLength(1);
+    });
+    await expect(bb.storage.kv.get("host-capacities")).resolves.toEqual([
+      { hostId: "host-a", availableParallelism: 12 },
     ]);
+    await expect(
+      harness.behavior.callRpc("getConfiguration"),
+    ).resolves.toMatchObject({
+      hosts: [
+        {
+          id: "host-a",
+          availableParallelism: 12,
+          automaticLimit: 6,
+          effectiveLimit: 6,
+        },
+      ],
+    });
+
+    service.controller.abort();
+    await service.done;
+  });
+
+  it("detects a host when it connects after startup", async () => {
+    const changes = hostChanges();
+    let status: HostRecord["status"] = "disconnected";
+    const { harness } = await setup({
+      hosts: () => [hostRecord("host-a", status)],
+      subscribe: changes.subscribe,
+    });
+    const service = harness.behavior.runService("capacity-detector");
+    await vi.waitFor(() => {
+      expect(harness.inspection.sdk.callsTo("hosts.list")).toHaveLength(1);
+    });
+    expect(harness.experimental_hostRpcCalls).toHaveLength(0);
+
+    status = "connected";
+    changes.emitHostConnected("host-a");
+    await vi.waitFor(() => {
+      expect(harness.experimental_hostRpcCalls).toHaveLength(1);
+    });
+
+    service.controller.abort();
+    await service.done;
+  });
+
+  it("provides CLI parity for global and host overrides", async () => {
+    const { harness } = await setup({
+      hosts: [hostRecord("host-a", "connected", "Laptop")],
+      capacities: [{ hostId: "host-a", availableParallelism: 8 }],
+    });
+
+    await expect(
+      harness.behavior.runCli(["global", "3"]),
+    ).resolves.toMatchObject({
+      exitCode: 0,
+      stdout: "3",
+    });
+    await expect(
+      harness.behavior.runCli(["host", "host-a", "0"]),
+    ).resolves.toMatchObject({
+      exitCode: 0,
+      stdout: "Laptop: 0 (8 processors, connected)",
+    });
+    await expect(
+      harness.behavior.runCli(["host", "host-a", "auto"]),
+    ).resolves.toMatchObject({
+      exitCode: 0,
+      stdout: "Laptop: auto, 4 (8 processors, connected)",
+    });
+    await expect(
+      harness.behavior.runCli(["global", "1.5"]),
+    ).resolves.toMatchObject({ exitCode: 1 });
+  });
+});
+
+describe("message.dispatch", () => {
+  it("uses a conservative limit of one until a host is detected", async () => {
+    const { hook } = await setup({ running: [running()] });
+
     await expect(hook(dispatchContext())).resolves.toEqual({
       action: "wait",
       reason: "1 of 1 running on host host-a",
     });
   });
-});
 
-describe("the message.dispatch hook", () => {
-  it("waits once the running set has filled the global pool", async () => {
+  it("uses each host's detected automatic limit", async () => {
     const { hook } = await setup({
-      settings: { maxConcurrentThreads: "2" },
-      running: [running({ id: "a" }), running({ id: "b" })],
+      capacities: [{ hostId: "host-a", availableParallelism: 8 }],
+      running: [
+        running({ id: "a" }),
+        running({ id: "b" }),
+        running({ id: "c" }),
+        running({ id: "d" }),
+      ],
     });
 
     await expect(hook(dispatchContext())).resolves.toEqual({
       action: "wait",
-      reason: "2 of 2 running on all hosts",
+      reason: "4 of 4 running on host host-a",
     });
   });
 
-  it("holds at the limit, not one past it", async () => {
+  it("keeps host pools separate and honors explicit overrides", async () => {
     const { hook } = await setup({
-      settings: { maxConcurrentThreads: "2" },
-      running: [running({ id: "a" })],
+      configuration: {
+        globalLimit: null,
+        hostOverrides: [{ hostId: "host-a", limit: 1 }],
+      },
+      running: [running({ hostId: "host-a" })],
     });
 
-    await expect(hook(dispatchContext())).resolves.toEqual({
-      action: "proceed",
-    });
-  });
-
-  it("pauses everything at a limit of zero", async () => {
-    const { hook } = await setup({
-      settings: { maxConcurrentThreads: "0" },
-      running: [],
-    });
-
-    await expect(hook(dispatchContext())).resolves.toEqual({
-      action: "wait",
-      reason: "0 of 0 running on all hosts",
-    });
-  });
-
-  it("hooks a child and a plugin-spawned thread like any other", async () => {
-    // The limit is uniform in both directions: provenance changes neither what
-    // the pool contains nor who has to wait for it. The user asked for N
-    // threads, so N is what runs — a workflow's children queue like everyone
-    // else, and a tight limit can wedge a parent that waits on them.
-    const { hook } = await setup({
-      settings: { maxConcurrentThreads: "1" },
-      running: [running({ id: "a" })],
-    });
-
-    for (const thread of [
-      { parentThreadId: "thr_parent" },
-      { originPluginId: "workflows" },
-    ]) {
-      await expect(hook(dispatchContext({ thread }))).resolves.toEqual({
-        action: "wait",
-        reason: "1 of 1 running on all hosts",
-      });
-    }
-  });
-
-  it("keeps separate host pools separate", async () => {
-    const { hook } = await setup({
-      settings: { maxConcurrentThreadsPerHost: "1" },
-      running: [running({ id: "a", hostId: "host-a" })],
-    });
-
-    await expect(hook(dispatchContext({ hostId: "host-b" }))).resolves.toEqual({
-      action: "proceed",
-    });
     await expect(hook(dispatchContext({ hostId: "host-a" }))).resolves.toEqual({
       action: "wait",
       reason: "1 of 1 running on host host-a",
     });
+    await expect(hook(dispatchContext({ hostId: "host-b" }))).resolves.toEqual({
+      action: "proceed",
+    });
   });
 
-  it("skips the host limit entirely when no host is chosen yet", async () => {
+  it("applies the overall limit before a host limit", async () => {
     const { hook } = await setup({
-      settings: { maxConcurrentThreadsPerHost: "1" },
-      running: [running({ id: "a", hostId: "host-a" })],
+      configuration: { globalLimit: 1, hostOverrides: [] },
+      running: [running()],
     });
+
+    await expect(hook(dispatchContext())).resolves.toEqual({
+      action: "wait",
+      reason: "1 of 1 running on all hosts",
+    });
+  });
+
+  it("treats zero as a pause rather than as unlimited", async () => {
+    const global = await setup({
+      configuration: { globalLimit: 0, hostOverrides: [] },
+    });
+    await expect(
+      global.hook(dispatchContext({ hostId: null })),
+    ).resolves.toEqual({
+      action: "wait",
+      reason: "0 of 0 running on all hosts",
+    });
+
+    const host = await setup({
+      configuration: {
+        globalLimit: null,
+        hostOverrides: [{ hostId: "host-a", limit: 0 }],
+      },
+    });
+    await expect(host.hook(dispatchContext())).resolves.toEqual({
+      action: "wait",
+      reason: "0 of 0 running on host host-a",
+    });
+  });
+
+  it("skips host enforcement when no host has been selected", async () => {
+    const { harness, hook } = await setup({ running: [running()] });
 
     await expect(hook(dispatchContext({ hostId: null }))).resolves.toEqual({
       action: "proceed",
     });
+    expect(harness.inspection.sdk.callsTo("threads.listRunning")).toHaveLength(
+      0,
+    );
   });
 
-  it("reports the global limit when both are full", async () => {
+  it("does not re-admit running threads or join-turn attempts", async () => {
     const { hook } = await setup({
-      settings: {
-        maxConcurrentThreads: "1",
-        maxConcurrentThreadsPerHost: "1",
-      },
-      running: [running({ id: "a", hostId: "host-a" })],
-    });
-
-    await expect(hook(dispatchContext())).resolves.toEqual({
-      action: "wait",
-      reason: "1 of 1 running on all hosts",
-    });
-  });
-
-  it("names the host by its display name, falling back to its id", async () => {
-    const { hook } = await setup({
-      settings: { maxConcurrentThreadsPerHost: "1" },
-      running: [running({ id: "a", hostId: "host-a" })],
+      configuration: { globalLimit: 0, hostOverrides: [] },
     });
 
     await expect(
-      hook(dispatchContext({ hostName: "Michael's Mac" })),
-    ).resolves.toEqual({
-      action: "wait",
-      reason: "1 of 1 running on host Michael's Mac",
-    });
-    await expect(hook(dispatchContext({ hostName: "   " }))).resolves.toEqual({
-      action: "wait",
-      reason: "1 of 1 running on host host-a",
-    });
-  });
-
-  it("does not re-admit a thread that is already running", async () => {
-    const { hook } = await setup({
-      settings: { maxConcurrentThreads: "1" },
-      running: [running({ id: "thr_1" })],
-    });
-
-    for (const status of ["active", "starting"] as const) {
-      await expect(
-        hook(dispatchContext({ thread: { status } })),
-      ).resolves.toEqual({ action: "proceed" });
-    }
-  });
-
-  it("lets a join-turn attempt through even when the pool is full", async () => {
-    const { hook } = await setup({
-      settings: { maxConcurrentThreads: "1" },
-      running: [running({ id: "a" })],
-    });
-
-    await expect(
-      hook(dispatchContext({ attempt: "join-turn", thread: { status: "idle" } })),
+      hook(dispatchContext({ thread: { status: "active" } })),
     ).resolves.toEqual({ action: "proceed" });
-  });
-
-  it("queues a start-turn attempt on an idle thread when the pool is full", async () => {
-    const { hook } = await setup({
-      settings: { maxConcurrentThreads: "1" },
-      running: [running({ id: "a" })],
-    });
-
     await expect(
-      hook(dispatchContext({ thread: { status: "idle" } })),
-    ).resolves.toEqual({
-      action: "wait",
-      reason: "1 of 1 running on all hosts",
-    });
-  });
-
-  it("re-reads the running set on every pass rather than caching it", async () => {
-    // The whole point of the collapse: no tally survives between passes, so a
-    // thread that finished between two attempts is visible immediately.
-    let rows: RunningThread[] = [running({ id: "a" })];
-    const { bb, harness } = createFakePluginHost({
-      pluginId: PLUGIN_ID,
-      settings: { maxConcurrentThreads: "1" },
-      sdk: { threads: { listRunning: async () => rows } },
-    });
-    await plugin(bb);
-    const hook = harness.registrations.hooks["message.dispatch"];
-    if (hook === null)
-      throw new Error("the message.dispatch hook was not registered");
-
-    await expect(hook(dispatchContext())).resolves.toMatchObject({
-      action: "wait",
-    });
-    rows = [];
-    await expect(hook(dispatchContext())).resolves.toEqual({
-      action: "proceed",
-    });
-  });
-
-  it("registers nothing but the hook and its wake listeners", async () => {
-    // No queue subscriptions, no registry of the rows it queued, no background
-    // service. The four listeners are the whole of the plugin's other half:
-    // core owns the re-drain, this owns knowing when to ask for one.
-    const { harness } = await setup({
-      settings: { maxConcurrentThreads: "1" },
-    });
-
-    expect(harness.registrations.threadEventHandlers).toEqual({
-      "thread.created": 0,
-      "thread.active": 0,
-      "thread.idle": 1,
-      "thread.failed": 1,
-      "thread.archived": 1,
-      "thread.deleted": 1,
-      "message.queued": 0,
-      "message.dispatched": 0,
-      "turn.failed": 0,
-    });
-    expect(harness.registrations.services).toEqual([]);
+      hook(
+        dispatchContext({
+          attempt: "join-turn",
+          thread: { status: "idle" },
+        }),
+      ),
+    ).resolves.toEqual({ action: "proceed" });
   });
 });
 
-describe("the wake path", () => {
-  // The amendment this plugin exists to demonstrate: core no longer derives
-  // "a slot freed" from the lifecycle fanout. The plugin whose waits depend on
-  // capacity watches for it and asks core to re-ask the hook.
-  async function freed() {
-    const { harness } = await setup({
-      settings: { maxConcurrentThreads: "1" },
-      running: [running()],
-    });
-    expect(harness.recheckCount).toBe(0);
-    return harness;
-  }
+describe("capacity wake events", () => {
+  it("rechecks queued work when a running thread stops occupying capacity", async () => {
+    const { harness } = await setup();
+    const thread = makeThreadResponse({ id: "thr_freed", status: "idle" });
 
-  const freedThread = makeThreadResponse({ id: "thr_freed", status: "idle" });
-
-  it("asks core to re-attempt queued rows when a turn ends", async () => {
-    const harness = await freed();
-
-    const idle = await harness.emitThreadEvent("thread.idle", {
-      thread: freedThread,
+    await harness.behavior.emitThreadEvent("thread.idle", {
+      thread,
       lastAssistantText: null,
     });
-    expect(idle.errors).toEqual([]);
-    expect(harness.recheckCount).toBe(1);
-
-    const failed = await harness.emitThreadEvent("thread.failed", {
-      thread: freedThread,
+    await harness.behavior.emitThreadEvent("thread.failed", {
+      thread,
       error: null,
     });
-    expect(failed.errors).toEqual([]);
-    expect(harness.recheckCount).toBe(2);
-  });
+    await harness.behavior.emitThreadEvent("thread.archived", { thread });
+    await harness.behavior.emitThreadEvent("thread.deleted", { thread });
 
-  it("asks when a running thread is archived or deleted", async () => {
-    // Stopping a running thread frees its slot as surely as its turn ending —
-    // the case a limiter watching only `thread.idle` would miss.
-    const harness = await freed();
-
-    await harness.emitThreadEvent("thread.archived", { thread: freedThread });
-    expect(harness.recheckCount).toBe(1);
-
-    await harness.emitThreadEvent("thread.deleted", { thread: freedThread });
-    expect(harness.recheckCount).toBe(2);
-  });
-
-  it("does not ask when a thread TAKES a slot", async () => {
-    // `thread.active` is a thread entering the occupying set. Re-asking there
-    // would walk the whole queue on every dispatch the limiter just admitted.
-    const harness = await freed();
-
-    await harness.emitThreadEvent("thread.active", {
-      thread: makeThreadResponse({ id: "thr_1", status: "active" }),
-    });
-    await harness.emitThreadEvent("thread.created", {
-      thread: makeThreadResponse({ id: "thr_2", status: "pending" }),
-    });
-
-    expect(harness.recheckCount).toBe(0);
+    expect(harness.recheckCount).toBe(4);
   });
 });

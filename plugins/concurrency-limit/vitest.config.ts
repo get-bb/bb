@@ -4,7 +4,7 @@ export default defineWorkspaceTestConfig({
   test: {
     silent: "passed-only",
     name: "bb-plugin-concurrency-limit",
-    include: ["**/*.test.ts"],
-    exclude: ["node_modules/**"],
+    include: ["**/*.test.{ts,tsx}"],
+    exclude: ["dist/**", "node_modules/**"],
   },
 });
