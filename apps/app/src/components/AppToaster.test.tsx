@@ -1,13 +1,13 @@
 // @vitest-environment jsdom
 
-import { cleanup, render } from "@testing-library/react";
+import { cleanup, render, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { CompactViewportOverrideProvider } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { AppToaster } from "./AppToaster";
 
 afterEach(cleanup);
 
-function renderToaster(isCompactViewport: boolean) {
+async function renderToaster(isCompactViewport: boolean) {
   render(
     <CompactViewportOverrideProvider
       isCompactViewport={isCompactViewport}
@@ -16,18 +16,22 @@ function renderToaster(isCompactViewport: boolean) {
     </CompactViewportOverrideProvider>,
   );
 
-  return document.querySelector("[data-sonner-toaster]");
+  return waitFor(() => {
+    const toaster = document.querySelector("[data-sonner-toaster]");
+    expect(toaster).not.toBeNull();
+    return toaster;
+  });
 }
 
 describe("AppToaster", () => {
-  it("places compact viewport toasts at the top center", () => {
-    const toaster = renderToaster(true);
+  it("places compact viewport toasts at the top center", async () => {
+    const toaster = await renderToaster(true);
     expect(toaster?.getAttribute("data-x-position")).toBe("center");
     expect(toaster?.getAttribute("data-y-position")).toBe("top");
   });
 
-  it("preserves the configured desktop toast position", () => {
-    const toaster = renderToaster(false);
+  it("preserves the configured desktop toast position", async () => {
+    const toaster = await renderToaster(false);
     expect(toaster?.getAttribute("data-x-position")).toBe("right");
     expect(toaster?.getAttribute("data-y-position")).toBe("bottom");
   });
