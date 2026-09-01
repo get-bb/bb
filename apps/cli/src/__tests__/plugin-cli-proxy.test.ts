@@ -1,5 +1,6 @@
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
+import { Writable } from "node:stream";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Agent, getGlobalDispatcher, setGlobalDispatcher } from "undici";
 import { RESERVED_BB_CLI_COMMANDS } from "@bb/domain/plugin-cli";
@@ -494,6 +495,30 @@ describe("runPluginCliCommand", () => {
       { channel: "stdout", value: `${stdout}\n` },
       { channel: "stderr", value: "warning\n" },
     ]);
+  });
+
+  it("treats a downstream broken pipe as successful output termination", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(JSON.stringify({ exitCode: 0, stdout: "output" }), {
+            status: 200,
+          }),
+      ),
+    );
+    const brokenPipe = new Writable({
+      write(_chunk, _encoding, callback) {
+        callback(Object.assign(new Error("write EPIPE"), { code: "EPIPE" }));
+      },
+    });
+
+    await expect(
+      runPluginCliCommand("http://localhost", "fixture", [], {
+        stdout: brokenPipe,
+        stderr: brokenPipe,
+      }),
+    ).resolves.toBe(0);
   });
 
   it("outlives the global fetch headers timeout while a plugin command waits on a human", async () => {
