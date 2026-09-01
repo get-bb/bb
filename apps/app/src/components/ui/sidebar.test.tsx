@@ -410,8 +410,8 @@ describe("mobile sidebar shelf stacking", () => {
     }
 
     expect(panel.className).toContain("z-0");
-    expect(panel.className).not.toContain("border-r");
-    expect(panel.className).not.toContain("border-l");
+    expect(panel.className).toContain("data-[side=left]:border-r");
+    expect(panel.className).toContain("data-[side=right]:border-l");
     expect(inset.className).toContain("max-md:z-30");
     expect(inset.dataset.sidebarShelf).toBe("closed");
 
@@ -422,7 +422,7 @@ describe("mobile sidebar shelf stacking", () => {
     expect(getMobilePanel()?.style.translate).toBe("");
   });
 
-  it("rounds and clips the center pane for both shelves", () => {
+  it("keeps the center pane square for both shelves", () => {
     vi.useFakeTimers();
     renderCompactSidebarHarness();
     settleMobileRealization();
@@ -432,17 +432,20 @@ describe("mobile sidebar shelf stacking", () => {
       throw new Error("Expected a page inset");
     }
 
-    expect(inset.className).toContain("data-[sidebar-shelf=open]:rounded-xl");
-    expect(inset.className).toContain("data-[panel-shelf=open]:rounded-xl");
-    expect(inset.className).toContain(
+    expect(inset.className).not.toContain(
+      "data-[sidebar-shelf=open]:rounded",
+    );
+    expect(inset.className).not.toContain("data-[panel-shelf=open]:rounded");
+    expect(inset.className).not.toContain(
       "data-[sidebar-shelf=open]:overflow-hidden",
     );
-    expect(inset.className).toContain(
+    expect(inset.className).not.toContain(
       "data-[panel-shelf=open]:overflow-hidden",
     );
-    expect(inset.className).toContain("data-[sidebar-shelf=open]:shadow-xl");
-    expect(inset.className).toContain("data-[panel-shelf=open]:shadow-xl");
-    expect(inset.className).not.toContain("shadow-2xl");
+    expect(inset.className).not.toContain(
+      "data-[sidebar-shelf=open]:shadow",
+    );
+    expect(inset.className).not.toContain("data-[panel-shelf=open]:shadow");
   });
 
   it("leaves the page untouched by the shelf on desktop", () => {

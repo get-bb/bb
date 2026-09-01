@@ -1322,6 +1322,7 @@ const SidebarMobilePanel = React.forwardRef<
           data-vaul-drawer-direction="left"
           className={cn(
             "group fixed inset-y-0 left-0 z-0 flex h-(--bb-shell-height) w-(--sidebar-width-mobile) touch-pan-y select-none flex-col bg-sidebar text-sidebar-foreground outline-none",
+            "border-border-seam data-[side=left]:border-r data-[side=right]:border-l",
             className,
           )}
           style={
@@ -1917,8 +1918,8 @@ const SidebarInset = React.forwardRef<
       className={cn(
         "group/page-inset relative flex h-full min-h-0 min-w-0 flex-1 flex-col bg-background max-md:z-30",
         SIDEBAR_MOBILE_SHELF_INSET_TRANSITION_CLASS,
-        "data-[sidebar-shelf=open]:translate-x-(--sidebar-width-mobile) data-[sidebar-shelf=open]:overflow-hidden data-[sidebar-shelf=open]:rounded-xl data-[sidebar-shelf=open]:shadow-xl data-[sidebar-shelf]:will-change-[translate]",
-        "data-[panel-shelf=open]:-translate-x-(--secondary-panel-width-mobile) data-[panel-shelf=open]:overflow-hidden data-[panel-shelf=open]:rounded-xl data-[panel-shelf=open]:shadow-xl data-[panel-shelf]:will-change-[translate]",
+        "data-[sidebar-shelf=open]:translate-x-(--sidebar-width-mobile) data-[sidebar-shelf]:will-change-[translate]",
+        "data-[panel-shelf=open]:-translate-x-(--secondary-panel-width-mobile) data-[panel-shelf]:will-change-[translate]",
         "md:peer-data-[variant=inset]:m-2 md:peer-data-[variant=inset]:ml-0 md:peer-data-[variant=inset]:rounded-xl md:peer-data-[variant=inset]:shadow",
         className,
       )}
