@@ -82,12 +82,6 @@ export const BUILTIN_PLUGINS = [
     category: "Interface",
   },
   {
-    name: "theme-preview",
-    pluginId: "theme-preview",
-    defaultEnabled: true,
-    category: "Interface",
-  },
-  {
     name: "provider-codex",
     pluginId: "provider-codex",
     defaultEnabled: true,
@@ -176,6 +170,12 @@ export const OFFICIAL_PLUGINS = [
     pluginId: "tasks",
     defaultEnabled: true,
     category: "Workflow management",
+  },
+  {
+    name: "theme-preview",
+    pluginId: "theme-preview",
+    defaultEnabled: true,
+    category: "Interface",
   },
 ].map((plugin): BundledPluginDefinition => ({
   ...plugin,
