@@ -12,13 +12,14 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ThreadQueuedMessage } from "@bb/domain";
 import type { Active, DroppableContainer } from "@dnd-kit/core";
 import {
-  QueuedMessagesList,
+  QueuedMessagesList as QueuedMessagesListComponent,
   clampQueuedMessageDragTransform,
   getInlineEditorSurfaceMaxHeight,
   queuedMessageCollisionDetection,
   queuedMessageSortingStrategy,
   resolveQueuedMessageDrag,
   snapGroupBoundaryDragTransform,
+  type QueuedMessagesListProps,
 } from "./QueuedMessagesList";
 import {
   QueuedEditorTypeaheadLayoutContext,
@@ -28,6 +29,20 @@ import {
 const bottomAnchorMocks = vi.hoisted(() => ({
   scrollElement: null as HTMLElement | null,
 }));
+
+function QueuedMessagesList({
+  attachedToComposer = true,
+  ...props
+}: Omit<QueuedMessagesListProps, "attachedToComposer"> & {
+  attachedToComposer?: boolean;
+}) {
+  return (
+    <QueuedMessagesListComponent
+      {...props}
+      attachedToComposer={attachedToComposer}
+    />
+  );
+}
 
 vi.mock("@/components/ui/bottom-anchored-scroll-body", () => ({
   useBottomAnchoredScroll: () =>
@@ -100,9 +115,13 @@ function rect({ top, bottom }: { top: number; bottom: number }) {
   return new DOMRect(0, top, 100, bottom - top);
 }
 
-function renderQueuedMessages(queuedMessages: readonly ThreadQueuedMessage[]) {
+function renderQueuedMessages(
+  queuedMessages: readonly ThreadQueuedMessage[],
+  attachedToComposer = true,
+) {
   return render(
     <QueuedMessagesList
+      attachedToComposer={attachedToComposer}
       queuedMessages={queuedMessages}
       sendDisabled={false}
       actionDisabled={false}
@@ -123,6 +142,7 @@ function renderQueuedMessagesWithOptions(
 ) {
   return render(
     <QueuedMessagesList
+      attachedToComposer={true}
       queuedMessages={queuedMessages}
       resolveMentionLink={options.resolveMentionLink}
       sendDisabled={false}
@@ -146,6 +166,21 @@ afterEach(() => {
 });
 
 describe("QueuedMessagesList", () => {
+  it("renders as a standalone card when it is not attached to the composer", () => {
+    const { container } = renderQueuedMessages(
+      [makeQueuedMessage("q_one", "First queued message")],
+      false,
+    );
+    const surface = container.querySelector<HTMLElement>(
+      'section[aria-label="Queued messages"]',
+    );
+
+    expect(surface?.classList.contains("mb-0")).toBe(true);
+    expect(surface?.classList.contains("-mb-5")).toBe(false);
+    expect(surface?.classList.contains("rounded-b-none")).toBe(false);
+    expect(surface?.classList.contains("border-b-0")).toBe(false);
+  });
+
   it("toggles a few messages between the fitted drawer and collapsed modes", () => {
     const { container, getByRole, getByText } = renderQueuedMessages([
       makeQueuedMessage("q_one", "First queued message"),

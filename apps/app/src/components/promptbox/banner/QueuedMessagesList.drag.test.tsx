@@ -46,6 +46,7 @@ describe("QueuedMessagesList group-handle drag", () => {
     ];
     const { container, getByLabelText } = render(
       <QueuedMessagesList
+        attachedToComposer={true}
         queuedMessages={queuedMessages}
         sendDisabled={false}
         actionDisabled={false}

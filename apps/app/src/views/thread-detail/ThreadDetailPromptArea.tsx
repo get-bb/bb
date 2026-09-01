@@ -1600,6 +1600,7 @@ export function ThreadDetailPromptArea({
           <QueuedMessagesPendingCard queuedMessageCount={queuedMessageCount} />
         ) : (
           <QueuedMessagesList
+            attachedToComposer={true}
             queuedMessages={queuedMessages}
             resolveMentionLink={resolveMentionLink}
             inlineEditor={queuedMessageEditor ?? undefined}

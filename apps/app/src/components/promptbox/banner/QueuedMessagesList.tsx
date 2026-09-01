@@ -120,6 +120,7 @@ export interface QueuedMessageInlineEditor {
 }
 
 export interface QueuedMessagesListProps {
+  attachedToComposer: boolean;
   queuedMessages: readonly ThreadQueuedMessage[];
   resolveMentionLink?: PromptMentionLinkResolver;
   sendDisabled: boolean;
@@ -1126,6 +1127,7 @@ export function QueuedMessagesPendingCard({
 }
 
 export function QueuedMessagesList({
+  attachedToComposer,
   queuedMessages,
   resolveMentionLink,
   sendDisabled,
@@ -1677,7 +1679,7 @@ export function QueuedMessagesList({
       style={{ height: surfaceHeight }}
       className={cn(
         "relative z-10 flex min-h-0 flex-col overflow-hidden bg-surface-raised-solid shadow-lift",
-        inlineEditor
+        inlineEditor || !attachedToComposer
           ? "mb-0 rounded-xl pb-4"
           : "-mb-5 rounded-xl rounded-b-none border-b-0 pb-3",
         !surfaceDragging &&

@@ -772,6 +772,7 @@ function Row({
   const queueElement =
     initialQueuedMessages === undefined ? null : (
       <QueuedMessagesList
+        attachedToComposer={true}
         queuedMessages={storyQueuedMessages}
         inlineEditor={inlineEditor}
         sendDisabled={false}

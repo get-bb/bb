@@ -350,6 +350,7 @@ function StaticQueuedMessagesList({
 }: StaticQueuedMessagesListProps) {
   return (
     <QueuedMessagesList
+      attachedToComposer={true}
       queuedMessages={queuedMessages}
       sendDisabled={sendDisabled}
       actionDisabled={actionDisabled}
@@ -386,6 +387,7 @@ function ReorderableQueuedMessagesList() {
 
   return (
     <QueuedMessagesList
+      attachedToComposer={true}
       queuedMessages={queuedMessages}
       sendDisabled={false}
       actionDisabled={false}

@@ -60,6 +60,7 @@ vi.mock("@/components/promptbox/FollowUpPromptBox", async () => {
   return {
     FollowUpPromptBox: ({
       composer,
+      pendingInteraction,
       stack,
       pluginComposerHost,
     }: {
@@ -67,13 +68,16 @@ vi.mock("@/components/promptbox/FollowUpPromptBox", async () => {
         FollowUpComposerProps,
         "message" | "onChangeMessage" | "onSubmit"
       >;
+      pendingInteraction?: ReactNode;
       stack: ReactNode;
       pluginComposerHost?: PluginComposerHost | null;
     }) => (
       <div>
         {stack}
+        {pendingInteraction}
         <input
           data-testid="embedded-chat-composer"
+          hidden={pendingInteraction !== undefined && pendingInteraction !== null}
           value={composer.message}
           onChange={(event) => composer.onChangeMessage(event.target.value, [])}
         />
@@ -88,11 +92,19 @@ vi.mock("@/components/promptbox/FollowUpPromptBox", async () => {
 
 vi.mock("@/components/promptbox/banner/QueuedMessagesList", () => ({
   QueuedMessagesList: ({
+    attachedToComposer,
     queuedMessages,
+    sendDisabled,
   }: {
+    attachedToComposer: boolean;
     queuedMessages: readonly unknown[];
+    sendDisabled: boolean;
   }) => (
-    <div data-testid="embedded-chat-queued-messages">
+    <div
+      data-testid="embedded-chat-queued-messages"
+      data-attached-to-composer={String(attachedToComposer)}
+      data-send-disabled={sendDisabled ? "" : undefined}
+    >
       <span data-testid="queued-count">{queuedMessages.length}</span>
     </div>
   ),
@@ -496,7 +508,7 @@ describe("EmbeddedThreadChat", () => {
     expect(screen.getByTestId("queued-count").textContent).toBe("2");
   });
 
-  it("swaps the composer for a pending approval so it can be answered", () => {
+  it("shows a pending approval in place of the composer", () => {
     mocks.pendingInteractions = [
       { id: "int_1", createdAt: 1, payload: { kind: "approval" } },
     ];
@@ -506,7 +518,30 @@ describe("EmbeddedThreadChat", () => {
     expect(screen.getByTestId("pending-interaction-banner").textContent).toBe(
       "thr_side_chat",
     );
-    expect(screen.queryByTestId("embedded-chat-composer")).toBeNull();
+    expect(screen.getByTestId("embedded-chat-composer").hidden).toBe(true);
+  });
+
+  it("keeps held messages visible beside a pending side-chat question", () => {
+    mocks.pendingInteractions = [
+      { id: "int_1", createdAt: 1, payload: { kind: "user_question" } },
+    ];
+    mocks.queuedMessages = [{ id: "q1" }];
+
+    renderEmbeddedChat({ threadId: "thr_side_chat" });
+
+    expect(screen.getByTestId("pending-interaction-banner")).toBeTruthy();
+    expect(screen.getByTestId("queued-count").textContent).toBe("1");
+    expect(
+      screen
+        .getByTestId("embedded-chat-queued-messages")
+        .hasAttribute("data-send-disabled"),
+    ).toBe(true);
+    expect(
+      screen
+        .getByTestId("embedded-chat-queued-messages")
+        .getAttribute("data-attached-to-composer"),
+    ).toBe("false");
+    expect(screen.getByTestId("embedded-chat-composer").hidden).toBe(true);
   });
 
   it("keeps the composer for a plugin-owned interaction", () => {

@@ -219,6 +219,7 @@ function EmbeddedThreadChatWithComposer({
   const activePendingInteraction = getLatestPendingInteraction(
     pendingInteractionsQuery.data,
   );
+  const hasPendingInteraction = activePendingInteraction !== null;
   useThreadReadTracking({
     markThreadRead,
     thread: threadQuery.data,
@@ -1028,10 +1029,15 @@ function EmbeddedThreadChatWithComposer({
     () =>
       queuedMessages.length > 0 ? (
         <QueuedMessagesList
+          attachedToComposer={!hasPendingInteraction}
           queuedMessages={queuedMessages}
           resolveMentionLink={resolveMentionLink}
           inlineEditor={inlineEditor}
-          sendDisabled={isProvisioning || queuedMessageActionPending}
+          sendDisabled={
+            isProvisioning ||
+            queuedMessageActionPending ||
+            hasPendingInteraction
+          }
           actionDisabled={queuedMessageActionPending}
           processingMessageId={processingQueuedMessage?.id ?? null}
           processingAction={processingQueuedMessage?.action ?? null}
@@ -1044,6 +1050,7 @@ function EmbeddedThreadChatWithComposer({
       ) : null,
     [
       beginEditQueuedMessage,
+      hasPendingInteraction,
       handleDeleteQueuedMessage,
       handleReorderQueuedMessage,
       handleSendQueuedImmediately,
@@ -1072,30 +1079,29 @@ function EmbeddedThreadChatWithComposer({
     <div className={cn("relative", surfaceClassName)}>
       <OverflowFade placement="above" tone={surfaceTone} />
       <div className="px-4 pb-4 pt-2">
-        {pendingInteractionBanner ?? (
-          <FollowUpPromptBox
-            attachments={bottomAttachmentsConfig}
-            stack={queuedMessagesStack}
-            composer={bottomComposerConfig}
-            pluginComposerHost={activeBottomPluginComposerHost}
-            pluginComposerScope={activeBottomPluginComposerHost?.scope ?? null}
-            textEffects={bottomComposerTextEffects}
-            environmentSummary={composer.environmentSummary}
-            contextWindowUsage={null}
-            execution={bottomExecutionConfig}
-            permission={bottomPermissionConfig}
-            permissionReadOnly={composer.permissionPolicy === "snapshot"}
-            typeahead={typeaheadConfig}
-            promptActions={promptActions}
-            collapseResetKey={surfaceKey}
-            focusEndKey={
-              composer.focusRequestKey === undefined
-                ? composerFocusNonce
-                : `${composerFocusNonce}:${composer.focusRequestKey}`
-            }
-            isPrimaryComposer={false}
-          />
-        )}
+        <FollowUpPromptBox
+          attachments={bottomAttachmentsConfig}
+          stack={queuedMessagesStack}
+          pendingInteraction={pendingInteractionBanner}
+          composer={bottomComposerConfig}
+          pluginComposerHost={activeBottomPluginComposerHost}
+          pluginComposerScope={activeBottomPluginComposerHost?.scope ?? null}
+          textEffects={bottomComposerTextEffects}
+          environmentSummary={composer.environmentSummary}
+          contextWindowUsage={null}
+          execution={bottomExecutionConfig}
+          permission={bottomPermissionConfig}
+          permissionReadOnly={composer.permissionPolicy === "snapshot"}
+          typeahead={typeaheadConfig}
+          promptActions={promptActions}
+          collapseResetKey={surfaceKey}
+          focusEndKey={
+            composer.focusRequestKey === undefined
+              ? composerFocusNonce
+              : `${composerFocusNonce}:${composer.focusRequestKey}`
+          }
+          isPrimaryComposer={false}
+        />
       </div>
     </div>
   );
