@@ -139,7 +139,7 @@ function publicSettingDescriptor(
   descriptor: PluginSettingDescriptor,
 ): PublicPluginSettingDescriptor {
   const publicDescriptor = { ...descriptor };
-  delete publicDescriptor.experimental_validate;
+  delete publicDescriptor.experimental_schema;
   return publicDescriptor;
 }
 

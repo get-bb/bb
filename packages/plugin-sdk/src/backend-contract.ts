@@ -74,16 +74,16 @@ export type PluginSettingDescriptor =
       experimental_multiline?: boolean;
       /** Limit text input length in the default settings UI and at write time. */
       experimental_maxLength?: number;
-      /** Validate a proposed value on the server; return a field error or null. */
-      experimental_validate?: (value: string) => string | null;
+      /** Synchronously validate without transforming a proposed value. */
+      experimental_schema?: StandardSchemaV1<string, string>;
       default?: string;
     }
   | {
       type: "boolean";
       label: string;
       description?: string;
-      /** Validate a proposed value on the server; return a field error or null. */
-      experimental_validate?: (value: boolean) => string | null;
+      /** Synchronously validate without transforming a proposed value. */
+      experimental_schema?: StandardSchemaV1<boolean, boolean>;
       default?: boolean;
     }
   | {
@@ -91,16 +91,16 @@ export type PluginSettingDescriptor =
       label: string;
       description?: string;
       options: string[];
-      /** Validate a proposed value on the server; return a field error or null. */
-      experimental_validate?: (value: string) => string | null;
+      /** Synchronously validate without transforming a proposed value. */
+      experimental_schema?: StandardSchemaV1<string, string>;
       default?: string;
     }
   | {
       type: "project";
       label: string;
       description?: string;
-      /** Validate a proposed value on the server; return a field error or null. */
-      experimental_validate?: (value: string) => string | null;
+      /** Synchronously validate without transforming a proposed value. */
+      experimental_schema?: StandardSchemaV1<string, string>;
       default?: string;
     };
 

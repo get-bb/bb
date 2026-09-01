@@ -2,6 +2,7 @@ import type {
   BbPluginApi,
   PluginProviderDeclaration,
 } from "@get-bb/plugin-sdk";
+import { z } from "zod";
 import { type AcpAgentDefinition } from "./src/agents.js";
 import { resolveConfiguredAcpAgents } from "./src/configured-agents.js";
 import { acpHostContract, type AcpProbeResult } from "./src/contract.js";
@@ -48,7 +49,7 @@ export default async function acpProvidersPlugin(
       label: "Custom agents",
       description: CUSTOM_AGENTS_SETTING_DESCRIPTION,
       experimental_multiline: true,
-      experimental_validate(value) {
+      experimental_schema: z.string().superRefine((value, context) => {
         const { warnings } = resolveConfiguredAcpAgents({
           settingValue: value,
           legacyEntries: [],
@@ -64,8 +65,10 @@ export default async function acpProvidersPlugin(
           }
           return warning.replace(/^ACP custom agent setting: /u, "");
         });
-        return errors.length === 0 ? null : errors.join(" ");
-      },
+        if (errors.length > 0) {
+          context.addIssue({ code: "custom", message: errors.join(" ") });
+        }
+      }),
       default: "",
     },
   });

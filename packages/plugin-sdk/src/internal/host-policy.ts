@@ -124,12 +124,12 @@ const safeIntegerSchema = z
   .min(Number.MIN_SAFE_INTEGER)
   .max(Number.MAX_SAFE_INTEGER);
 
-const stringSettingValidatorSchema = z.custom<(value: string) => string | null>(
-  (value) => typeof value === "function",
+const stringSettingSchemaSchema = z.custom<StandardSchemaV1<string, string>>(
+  (value) => isStandardSchema(value),
 );
-const booleanSettingValidatorSchema = z.custom<
-  (value: boolean) => string | null
->((value) => typeof value === "function");
+const booleanSettingSchemaSchema = z.custom<StandardSchemaV1<boolean, boolean>>(
+  (value) => isStandardSchema(value),
+);
 
 const settingDescriptorSchema = z.discriminatedUnion("type", [
   z
@@ -139,7 +139,7 @@ const settingDescriptorSchema = z.discriminatedUnion("type", [
       secret: z.literal(true).optional(),
       experimental_multiline: z.boolean().optional(),
       experimental_maxLength: safeIntegerSchema.positive().optional(),
-      experimental_validate: stringSettingValidatorSchema.optional(),
+      experimental_schema: stringSettingSchemaSchema.optional(),
       default: z.string().optional(),
     })
     .strict()
@@ -160,7 +160,7 @@ const settingDescriptorSchema = z.discriminatedUnion("type", [
     .object({
       type: z.literal("boolean"),
       ...settingsBaseFields,
-      experimental_validate: booleanSettingValidatorSchema.optional(),
+      experimental_schema: booleanSettingSchemaSchema.optional(),
       default: z.boolean().optional(),
     })
     .strict(),
@@ -169,7 +169,7 @@ const settingDescriptorSchema = z.discriminatedUnion("type", [
       type: z.literal("select"),
       ...settingsBaseFields,
       options: z.array(z.string().min(1)).min(1),
-      experimental_validate: stringSettingValidatorSchema.optional(),
+      experimental_schema: stringSettingSchemaSchema.optional(),
       default: z.string().optional(),
     })
     .strict(),
@@ -177,7 +177,7 @@ const settingDescriptorSchema = z.discriminatedUnion("type", [
     .object({
       type: z.literal("project"),
       ...settingsBaseFields,
-      experimental_validate: stringSettingValidatorSchema.optional(),
+      experimental_schema: stringSettingSchemaSchema.optional(),
       default: z.string().optional(),
     })
     .strict(),
@@ -235,19 +235,30 @@ export function registerSettingDescriptors(
   return validated;
 }
 
-function settingValidatorError<T>(
+function settingSchemaError<T extends string | boolean>(
   key: string,
-  validate: ((value: T) => string | null) | undefined,
+  schema: StandardSchemaV1<T, T> | undefined,
   value: T,
 ): string | null {
-  if (validate === undefined) return null;
+  if (schema === undefined) return null;
   try {
-    const result = validate(value);
-    if (result === null) return null;
-    if (typeof result === "string" && result.trim().length > 0) return result;
-    return `validator for setting "${key}" must return a non-empty error or null`;
+    const result = schema["~standard"].validate(value);
+    if (result instanceof Promise) {
+      return `schema for setting "${key}" must validate synchronously`;
+    }
+    if (result.issues !== undefined) {
+      return (
+        result.issues[0]?.message ??
+        `schema for setting "${key}" rejected the value`
+      );
+    }
+    if (result.value !== value) {
+      return `schema for setting "${key}" must not transform its value`;
+    }
+    return null;
   } catch (error) {
-    return error instanceof Error ? error.message : String(error);
+    const detail = error instanceof Error ? error.message : String(error);
+    return `schema for setting "${key}" failed: ${detail}`;
   }
 }
 
@@ -269,9 +280,9 @@ export function validateSettingsUpdate(
         errors.push(`setting "${key}" expects a boolean`);
         continue;
       }
-      const validationError = settingValidatorError(
+      const validationError = settingSchemaError(
         key,
-        descriptor.experimental_validate,
+        descriptor.experimental_schema,
         value,
       );
       if (validationError !== null) {
@@ -299,9 +310,9 @@ export function validateSettingsUpdate(
       );
       continue;
     }
-    const validationError = settingValidatorError(
+    const validationError = settingSchemaError(
       key,
-      descriptor.experimental_validate,
+      descriptor.experimental_schema,
       value,
     );
     if (validationError !== null) {

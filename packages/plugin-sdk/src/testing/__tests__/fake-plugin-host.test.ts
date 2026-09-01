@@ -314,16 +314,22 @@ describe("settings", () => {
       payload: {
         type: "string",
         label: "Payload",
-        experimental_validate(value) {
-          if (value.length === 0) return null;
+        experimental_schema: z.string().superRefine((value, context) => {
+          if (value.length === 0) return;
           try {
-            return Array.isArray(JSON.parse(value))
-              ? null
-              : "Payload must be a JSON array";
+            if (!Array.isArray(JSON.parse(value))) {
+              context.addIssue({
+                code: "custom",
+                message: "Payload must be a JSON array",
+              });
+            }
           } catch {
-            return "Payload must be valid JSON";
+            context.addIssue({
+              code: "custom",
+              message: "Payload must be valid JSON",
+            });
           }
-        },
+        }),
         default: "",
       },
     });
@@ -376,15 +382,35 @@ describe("settings", () => {
         payload: {
           type: "string",
           label: "Payload",
-          experimental_validate(value) {
-            return value === "{}" ? null : "Payload must be a JSON object";
-          },
+          experimental_schema: z
+            .string()
+            .regex(/^\{\}$/u, "Payload must be a JSON object"),
           default: "[]",
         },
       }),
     ).toThrow(
       'invalid default for setting "payload": Payload must be a JSON object',
     );
+    expect(() =>
+      bb.settings.define({
+        normalized: {
+          type: "string",
+          label: "Normalized",
+          experimental_schema: z.string().transform((value) => value.trim()),
+          default: " padded ",
+        },
+      }),
+    ).toThrow('schema for setting "normalized" must not transform its value');
+    expect(() =>
+      bb.settings.define({
+        remote: {
+          type: "string",
+          label: "Remote",
+          experimental_schema: z.string().refine(async () => true),
+          default: "value",
+        },
+      }),
+    ).toThrow(/schema for setting "remote".*synchron/u);
   });
 });
 

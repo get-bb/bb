@@ -44,7 +44,11 @@ async function countOpenFdsFor(file: string): Promise<number> {
 
 async function writePlugin(
   dir: string,
-  options: { name: string; serverSource: string },
+  options: {
+    name: string;
+    serverSource: string;
+    dependencies?: Record<string, string>;
+  },
 ): Promise<string> {
   const rootDir = join(dir, options.name);
   await mkdir(rootDir, { recursive: true });
@@ -53,6 +57,7 @@ async function writePlugin(
     JSON.stringify({
       name: options.name,
       version: "0.1.0",
+      dependencies: options.dependencies,
       bb: {
         name: "Settings storage fixture",
         description: "Settings and storage plugin fixture.",
@@ -217,13 +222,17 @@ describe("plugin settings + storage", () => {
     it("lets plugin server code validate and persist its own settings", async () => {
       const rootDir = await writePlugin(workDir, {
         name: "bb-plugin-self-configuring",
+        dependencies: { zod: "^4.3.6" },
         serverSource: `
+          import { z } from "zod";
+
           export default async function plugin(bb: any) {
             const settings = bb.settings.define({
               notes: {
                 type: "string",
                 label: "Notes",
                 experimental_maxLength: 4,
+                experimental_schema: z.string().regex(/^[a-z]*$/, "Notes must contain lowercase letters only"),
                 default: "",
               },
             });
@@ -258,6 +267,27 @@ describe("plugin settings + storage", () => {
       await expect(
         state.settings.experimental_set({ notes: "longer" }),
       ).rejects.toThrow("at most 4 characters");
+      await expect(
+        state.settings.experimental_set({ notes: "1234" }),
+      ).rejects.toThrow("lowercase letters only");
+
+      const app = new Hono();
+      registerPluginRoutes(app, { config: { serverPort: 3334 }, db }, service);
+      const got = await app.request("/plugins/self-configuring/settings");
+      const body = (await got.json()) as {
+        schema: Record<string, Record<string, unknown>>;
+      };
+      expect(body.schema.notes).not.toHaveProperty("experimental_schema");
+
+      const invalid = await app.request("/plugins/self-configuring/settings", {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ values: { notes: "1234" } }),
+      });
+      expect(invalid.status).toBe(400);
+      expect(((await invalid.json()) as { error: string }).error).toContain(
+        "lowercase letters only",
+      );
       await expect(state.settings.get()).resolves.toEqual({ notes: "test" });
     });
 

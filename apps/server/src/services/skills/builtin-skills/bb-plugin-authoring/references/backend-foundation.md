@@ -37,11 +37,13 @@ are additive, so registering multiple listeners is supported.
 
 ### bb.settings
 
-`bb.settings.define(descriptors)` declares plain-data descriptors (rendered
+`bb.settings.define(descriptors)` declares settings descriptors (rendered
 in Extensions → Plugins and editable via `bb plugin config <id> set <key>
 <value>`). Four descriptor types:
 
 ```ts
+import { z } from "zod";
+
 const settings = bb.settings.define({
   apiKey: { type: "string", label: "API key", secret: true }, // 0600 file, never in db or frontend
   teamKey: { type: "string", label: "Team", default: "" },
@@ -51,22 +53,21 @@ const settings = bb.settings.define({
     type: "string",
     label: "Agents",
     experimental_multiline: true,
-    experimental_validate(value) {
+    experimental_schema: z.string().refine((value) => {
       try {
-        return Array.isArray(JSON.parse(value))
-          ? null
-          : "Agents must be a JSON array";
+        return Array.isArray(JSON.parse(value));
       } catch {
-        return "Agents must be valid JSON";
+        return false;
       }
-    },
+    }, "Agents must be a valid JSON array"),
     default: "[]",
   },
   retries: {
     type: "string",
     label: "Retries",
-    experimental_validate: (value) =>
-      /^[1-5]$/.test(value) ? null : "Retries must be from 1 through 5",
+    experimental_schema: z
+      .string()
+      .regex(/^[1-5]$/, "Retries must be from 1 through 5"),
     default: "3",
   },
   notes: {
@@ -95,13 +96,14 @@ Typing rule: a descriptor **with** `default` yields a non-optional value
 from `get()`; without one the value is `string | boolean | undefined` — so
 give non-secrets defaults and handle missing secrets explicitly.
 
-`experimental_validate` runs on the server for settings-page autosaves,
-`bb plugin config`, `experimental_set`, and fake-host writes. Return a concise
-user-facing error or `null`; thrown errors are also rejected. The function is
-not sent to the browser. `experimental_maxLength` is enforced at the input and
-server boundaries. `experimental_set` accepts only the fields defined by that
-handle, accepts `null` to unset one, fires `onChange`, and returns the handle's
-effective values.
+`experimental_schema` accepts a synchronous, non-transforming Standard Schema
+validator; Zod schemas qualify. It runs on the server for settings-page
+autosaves, `bb plugin config`, `experimental_set`, and fake-host writes. The
+first validation issue is shown beneath the field, and the schema is not sent
+to the browser. `experimental_maxLength` remains explicit because it also
+drives the generated input and character counter. `experimental_set` accepts
+only the fields defined by that handle, accepts `null` to unset one, fires
+`onChange`, and returns the handle's effective values.
 
 ### bb.storage
 
