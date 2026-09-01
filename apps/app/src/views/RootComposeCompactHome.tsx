@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, type ReactNode } from "react";
 import { OverflowFade } from "@/components/ui/overflow-fade";
 import {
   MOBILE_RECENT_LABEL_HEIGHT_PX,
@@ -15,6 +15,7 @@ const COMPACT_HOME_SCROLLED_BAND_PX =
 const COMPACT_HOME_REST_OFFSET_PX =
   (COMPACT_HOME_SCROLLED_VISIBLE_ROWS - COMPACT_HOME_REST_VISIBLE_ROWS) *
   MOBILE_RECENT_ROW_HEIGHT_PX;
+const COMPACT_HOME_SCROLLBAR_IDLE_DELAY_MS = 180;
 
 export function getCompactHomeScrollViewportTop({
   regionHeight,
@@ -37,25 +38,22 @@ interface RootComposeCompactHomeProps {
 function useCompactHomeMetrics() {
   const regionRef = useRef<HTMLDivElement>(null);
   const composerRef = useRef<HTMLDivElement>(null);
-  const [metrics, setMetrics] = useState({
-    regionHeight: 0,
-    composerHeight: 0,
-  });
+  const scrollViewportRef = useRef<HTMLDivElement>(null);
+  const bottomSpacerRef = useRef<HTMLDivElement>(null);
 
   useLayoutEffect(() => {
     const region = regionRef.current;
     const composer = composerRef.current;
-    if (!region || !composer) return;
+    const scrollViewport = scrollViewportRef.current;
+    const bottomSpacer = bottomSpacerRef.current;
+    if (!region || !composer || !scrollViewport || !bottomSpacer) return;
     const measure = () => {
-      setMetrics((previous) =>
-        previous.regionHeight === region.offsetHeight &&
-        previous.composerHeight === composer.offsetHeight
-          ? previous
-          : {
-              regionHeight: region.offsetHeight,
-              composerHeight: composer.offsetHeight,
-            },
-      );
+      const composerHeight = composer.offsetHeight;
+      scrollViewport.style.top = `${getCompactHomeScrollViewportTop({
+        regionHeight: region.offsetHeight,
+        composerHeight,
+      })}px`;
+      bottomSpacer.style.height = `${composerHeight}px`;
     };
     measure();
     if (typeof ResizeObserver === "undefined") return;
@@ -65,15 +63,41 @@ function useCompactHomeMetrics() {
     return () => observer.disconnect();
   }, []);
 
-  return { regionRef, composerRef, ...metrics };
+  return { regionRef, composerRef, scrollViewportRef, bottomSpacerRef };
 }
 
 export function RootComposeCompactHome({
   children,
   composer,
 }: RootComposeCompactHomeProps) {
-  const { regionRef, composerRef, regionHeight, composerHeight } =
+  const { regionRef, composerRef, scrollViewportRef, bottomSpacerRef } =
     useCompactHomeMetrics();
+
+  useEffect(() => {
+    const scrollViewport = scrollViewportRef.current;
+    if (scrollViewport === null) return;
+
+    let idleTimeout: number | null = null;
+    const handleScroll = () => {
+      scrollViewport.dataset.scrollbarScrolling = "true";
+      if (idleTimeout !== null) {
+        window.clearTimeout(idleTimeout);
+      }
+      idleTimeout = window.setTimeout(() => {
+        idleTimeout = null;
+        scrollViewport.removeAttribute("data-scrollbar-scrolling");
+      }, COMPACT_HOME_SCROLLBAR_IDLE_DELAY_MS);
+    };
+
+    scrollViewport.addEventListener("scroll", handleScroll, { passive: true });
+    return () => {
+      scrollViewport.removeEventListener("scroll", handleScroll);
+      if (idleTimeout !== null) {
+        window.clearTimeout(idleTimeout);
+      }
+      scrollViewport.removeAttribute("data-scrollbar-scrolling");
+    };
+  }, []);
 
   return (
     <div
@@ -82,14 +106,10 @@ export function RootComposeCompactHome({
       className="relative min-h-0 flex-1"
     >
       <div
+        ref={scrollViewportRef}
         data-testid="root-compose-compact-scroll-viewport"
-        className="absolute inset-x-0 bottom-0 overflow-y-auto overscroll-contain"
-        style={{
-          top: getCompactHomeScrollViewportTop({
-            regionHeight,
-            composerHeight,
-          }),
-        }}
+        className="transient-scrollbar absolute inset-x-0 bottom-0 overflow-y-auto overscroll-contain"
+        style={{ top: COMPACT_HOME_CHROME_OFFSET_PX }}
       >
         <div
           aria-hidden
@@ -97,7 +117,7 @@ export function RootComposeCompactHome({
           style={{ height: COMPACT_HOME_REST_OFFSET_PX }}
         />
         <div className={COMPACT_HOME_COLUMN_CLASS}>{children}</div>
-        <div aria-hidden style={{ height: composerHeight }} />
+        <div ref={bottomSpacerRef} aria-hidden />
       </div>
       <div
         ref={composerRef}

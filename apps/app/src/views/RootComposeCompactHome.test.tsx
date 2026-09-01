@@ -1,6 +1,12 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, screen } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   getCompactHomeScrollViewportTop,
@@ -40,6 +46,27 @@ describe("RootComposeCompactHome", () => {
     expect(viewport.contains(screen.getByTestId("recents"))).toBe(true);
   });
 
+  it("hides the transient scrollbar shortly after scrolling stops", () => {
+    vi.useFakeTimers();
+    renderCompactHome();
+
+    const viewport = screen.getByTestId("root-compose-compact-scroll-viewport");
+    expect(viewport.className).toContain("transient-scrollbar");
+
+    fireEvent.scroll(viewport);
+    expect(viewport.dataset.scrollbarScrolling).toBe("true");
+
+    act(() => {
+      vi.advanceTimersByTime(179);
+    });
+    expect(viewport.dataset.scrollbarScrolling).toBe("true");
+
+    act(() => {
+      vi.advanceTimersByTime(1);
+    });
+    expect(viewport.hasAttribute("data-scrollbar-scrolling")).toBe(false);
+  });
+
   it("pins the scroll viewport so 5.5 rows show once the label sticks", () => {
     const scrolledBandPx =
       5.5 * MOBILE_RECENT_ROW_HEIGHT_PX + MOBILE_RECENT_LABEL_HEIGHT_PX;
@@ -50,6 +77,28 @@ describe("RootComposeCompactHome", () => {
         composerHeight: 188,
       }),
     ).toBe(852 - 188 - scrolledBandPx);
+  });
+
+  it("writes measured geometry directly before the compact home paints", () => {
+    vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockImplementation(
+      function (this: HTMLElement) {
+        if (this.dataset.testid === "root-compose-compact-home") return 852;
+        if (this.dataset.testid === "root-compose-compact-composer") {
+          return 188;
+        }
+        return 0;
+      },
+    );
+
+    renderCompactHome();
+
+    const viewport = screen.getByTestId("root-compose-compact-scroll-viewport");
+    const bottomSpacer = viewport.lastElementChild;
+    if (!(bottomSpacer instanceof HTMLElement)) {
+      throw new Error("Expected a trailing composer spacer");
+    }
+    expect(viewport.style.top).toBe("310px");
+    expect(bottomSpacer.style.height).toBe("188px");
   });
 
   it("never lifts the scroll viewport above the app chrome row", () => {
