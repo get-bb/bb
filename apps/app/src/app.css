@@ -28,8 +28,6 @@
    */
   :root {
     --bb-shell-height: 100dvh;
-    /* Width of the compact right-panel shelf. Mirrors --sidebar-width-mobile
-       so the page displaces by the same amount whichever side opens. */
     --secondary-panel-width-mobile: min(76vw, 320px);
   }
 
@@ -649,16 +647,6 @@
     background-color: color-mix(in oklab, var(--foreground) 40%, transparent);
   }
 
-  /*
-   * Keep the compact sidebar drawer's scrollbar hidden at rest and reveal it
-   * on hover. Same shape as `.transient-scrollbar` above, but keyed to pointer
-   * hover instead of a scroll event: the drawer sits over an undimmed page, so
-   * a thumb at rest reads as chrome rather than an affordance. Scoped to the
-   * compact drawer only (the desktop panel has no `data-vaul-drawer-direction`)
-   * so the persistent sidebar keeps its resting scrollbar. Colors are all that
-   * change, so the scroll container, its hit area, and its width never move and
-   * content never reflows when the thumb appears.
-   */
   [data-vaul-drawer-direction] [data-sidebar="content"] {
     scrollbar-color: transparent transparent;
   }

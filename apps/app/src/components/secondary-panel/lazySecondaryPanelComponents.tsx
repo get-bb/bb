@@ -21,8 +21,22 @@ type NewTabPageModule = typeof import("./NewTabPage");
 type FilePreviewModule = typeof import("./FilePreview");
 type ThreadStorageFileTreeModule = typeof import("./ThreadStorageFileTree");
 
+let threadSecondaryPanelModulePromise: Promise<ThreadSecondaryPanelModule> | null =
+  null;
+
+function loadThreadSecondaryPanel(): Promise<ThreadSecondaryPanelModule> {
+  threadSecondaryPanelModulePromise ??= import("./ThreadSecondaryPanel");
+  return threadSecondaryPanelModulePromise;
+}
+
+export function preloadThreadSecondaryPanel(): void {
+  void loadThreadSecondaryPanel().catch(() => {
+    threadSecondaryPanelModulePromise = null;
+  });
+}
+
 const ThreadSecondaryPanelChunk = lazy(() =>
-  import("./ThreadSecondaryPanel").then(({ ThreadSecondaryPanel }) => ({
+  loadThreadSecondaryPanel().then(({ ThreadSecondaryPanel }) => ({
     default: ThreadSecondaryPanel,
   })),
 );
