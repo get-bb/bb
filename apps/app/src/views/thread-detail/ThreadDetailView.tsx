@@ -2531,6 +2531,7 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
       }
       pendingInteractions={pendingInteractions}
       pendingInteractionsInitialLoading={pendingInteractionsInitialLoading}
+      queuedMessageCount={thread.queuedMessageCount}
       pendingTodos={pendingTodos}
       activePromptMode={activePromptMode}
       goal={goal}

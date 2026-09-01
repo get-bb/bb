@@ -387,6 +387,7 @@ function buildPromptArea({
         parentThreadSection={null}
         pendingInteractions={pendingInteractions}
         pendingInteractionsInitialLoading={false}
+        queuedMessageCount={0}
         pendingTodos={null}
         projectId={PROJECT_ID}
         pullRequest={null}
