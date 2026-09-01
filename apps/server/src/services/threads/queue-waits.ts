@@ -103,10 +103,6 @@ export function recordQueuedMessageWait(
       { behavior: "immediate" },
     );
   } else {
-    // Hand every claimed row back AND write the lead's wait in one
-    // transaction. Doing it in two would leave the group unclaimed and with no
-    // wait in between, which is exactly the window where the idle drain could
-    // pick up a message a hook has just said must wait.
     row = requeueClaimedQueuedThreadMessages(deps.db, deps.hub, {
       claims: claimed.map((claim) => ({
         id: claim.id,

@@ -780,6 +780,7 @@ export function claimQueuedThreadMessageGroup(
   db: DbConnection,
   notifier: DbNotifier,
   id: string,
+  isGroupEligible?: (rows: readonly QueuedThreadMessageRow[]) => boolean,
 ): ClaimedQueuedThreadMessageRow[] | null {
   const claimedQueuedMessages = db.transaction(
     (tx) => {
@@ -788,12 +789,6 @@ export function claimQueuedThreadMessageGroup(
         return null;
       }
 
-      // A group is a batch that dispatches together, so claiming its head
-      // claims all of it — including members still carrying a wait, because
-      // an explicit claim of the head (send-now, a due schedule, a cleared
-      // plugin wait) is a claim on the batch. Claiming a member that is NOT
-      // its group's head takes that row alone and severs its edges: the user
-      // asked for that message, not for whatever happens to sit around it.
       const queuedMessages = listQueuedThreadMessages(tx, existing.threadId);
       const group =
         partitionQueuedMessageGroups(queuedMessages).find((rows) =>
@@ -802,7 +797,10 @@ export function claimQueuedThreadMessageGroup(
       if (group === null) {
         return null;
       }
-      if (group[0]?.id !== id) {
+      if (isGroupEligible && !isGroupEligible(group)) {
+        return null;
+      }
+      if (!isGroupEligible && group[0]?.id !== id) {
         const now = Date.now();
         clearPreviousQueuedMessageGroupEdgeInTransaction(tx, existing, now);
         clearQueuedMessageGroupEdgeInTransaction(tx, existing, now);
@@ -1074,20 +1072,6 @@ export interface RequeueClaimedQueuedThreadMessagesArgs {
   sendAt: number | null;
 }
 
-/**
- * Hands a claimed group back to the queue and writes the lead row's wait, in
- * ONE transaction.
- *
- * Two statements would leave the rows unclaimed and with no wait in between, which
- * is a window where the idle drain can pick up a message that a gate has just
- * said must wait. Doing both under one immediate transaction closes it: from
- * every other reader's view the group goes straight from "being dispatched" to
- * "waiting on this reason".
- *
- * Returns the queued lead row, or null when the claim no longer holds (the row
- * was deleted, or a stale-claim sweep already reclaimed it) — in which case the
- * caller has nothing left to queue.
- */
 export function requeueClaimedQueuedThreadMessages(
   db: DbConnection,
   notifier: DbNotifier,
@@ -1100,7 +1084,15 @@ export function requeueClaimedQueuedThreadMessages(
       const now = Date.now();
       for (const claim of args.claims) {
         tx.update(queuedThreadMessages)
-          .set({ claimedAt: null, claimToken: null, updatedAt: now })
+          .set({
+            claimedAt: null,
+            claimToken: null,
+            waitingOn: JSON.stringify(args.waitingOn),
+            waitHolder: waitHolderFor(args.waitingOn),
+            sendAt: args.sendAt,
+            failureReason: null,
+            updatedAt: now,
+          })
           .where(
             and(
               eq(queuedThreadMessages.id, claim.id),

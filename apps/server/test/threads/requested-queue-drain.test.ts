@@ -1,4 +1,4 @@
-import { listEvents, listQueuedThreadMessages } from "@bb/db";
+import { listEvents, listQueuedThreadMessages, setQueuedThreadMessageGroupBoundary } from "@bb/db";
 import type { PluginHookName } from "@get-bb/plugin-sdk";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
@@ -7,6 +7,7 @@ import {
 } from "../../src/services/plugins/plugin-hook-registry.js";
 import {
   requestQueueDrain,
+  runDueScheduledQueueSweep,
   runRequestedQueueDrain,
 } from "../../src/services/threads/queue-drains.js";
 import { acceptThreadSendRequest } from "../../src/services/threads/thread-send-request.js";
@@ -15,6 +16,7 @@ import {
   seedEnvironment,
   seedHostSession,
   seedProjectWithSource,
+  seedQueuedMessage,
   seedThread,
   seedThreadRuntimeState,
   seedTurnStarted,
@@ -40,6 +42,7 @@ function installHooks(registry: HookRegistry): void {
 
 afterEach(() => {
   setPluginHookProvider(undefined);
+  vi.useRealTimers();
 });
 
 function seedRunnableThread(
@@ -84,6 +87,28 @@ function turnRequests(harness: TestAppHarness, threadId: string) {
 }
 
 describe("the requested queue drain", () => {
+  it("does not dispatch a scheduled group tail while its lead is postponed", async () => {
+    await withTestHarness(async (harness) => {
+      vi.useFakeTimers();
+      let attempts = 0;
+      installHooks({ "message.dispatch": [{ pluginId: "limiter", handler: () => ++attempts === 1 ? ({ action: "wait", reason: "At capacity" } as const) : { action: "proceed" } }] });
+      const { thread } = seedRunnableThread(harness, {
+        hostId: "host-scheduled-group",
+        status: "idle",
+      });
+      const lead = seedQueuedMessage(harness.deps, { threadId: thread.id, content: textInput("lead"), waitingOn: { kind: "time" }, sendAt: Date.now() - 2_000 });
+      const tail = seedQueuedMessage(harness.deps, { threadId: thread.id, content: textInput("tail"), waitingOn: { kind: "time" }, sendAt: Date.now() - 1_000 });
+      setQueuedThreadMessageGroupBoundary({ db: harness.db, notifier: harness.deps.hub, threadId: thread.id, expectedGroupedPrefixQueuedMessageIds: [lead.id, tail.id], groupBoundaryQueuedMessageId: tail.id });
+
+      await runDueScheduledQueueSweep(harness.deps, Date.now());
+      vi.advanceTimersByTime(1_001);
+      await runDueScheduledQueueSweep(harness.deps, Date.now());
+
+      expect(attempts).toBe(1);
+      expect(listQueuedThreadMessages(harness.db, thread.id)).toHaveLength(2);
+    });
+  });
+
   it("re-attempts a plugin-queued row once the hook lets it through", async () => {
     // The release path that replaced a plugin releasing its own wait: core
     // re-attempts, the hook re-decides, and a row that is still blocked simply

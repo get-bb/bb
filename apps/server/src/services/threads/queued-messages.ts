@@ -85,6 +85,7 @@ import {
 import { validatePromptAttachmentReferences } from "../projects/attachments.js";
 
 interface SendQueuedMessageArgs {
+  isGroupEligible?: Parameters<typeof claimQueuedThreadMessageGroup>[3];
   mode: SendQueuedMessageMode;
   queuedMessageId: string;
   /**
@@ -355,10 +356,12 @@ function claimQueuedThreadMessageForSend(
     deps.db,
     deps.hub,
     args.queuedMessageId,
+    args.isGroupEligible,
   );
   if (claimedQueuedMessages) {
     return claimedQueuedMessages;
   }
+  if (args.isGroupEligible) return [];
 
   const latestQueuedMessage = getQueuedThreadMessage(
     deps.db,
@@ -715,6 +718,12 @@ export async function sendQueuedMessage(
   args: SendQueuedMessageArgs,
 ): Promise<ThreadQueuedMessage> {
   const queuedMessages = claimQueuedThreadMessageForSend(deps, args);
+  if (queuedMessages.length === 0) {
+    const existing = getQueuedThreadMessage(deps.db, args.queuedMessageId);
+    if (!existing)
+      throw new ApiError(404, "invalid_request", "Queued message not found");
+    return toThreadQueuedMessage(existing);
+  }
   const thread = getThread(deps.db, args.threadId);
   if (thread && isManualCompactionActive(deps, thread)) {
     releaseQueuedMessageClaims(deps, queuedMessages);
