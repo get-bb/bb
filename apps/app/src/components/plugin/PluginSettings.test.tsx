@@ -1,13 +1,19 @@
 // @vitest-environment jsdom
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { InstalledPlugin } from "@bb/server-contract";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import {
   resetPluginSlotStoreForTest,
   setPluginSlotRegistrations,
 } from "@/lib/plugin-slots";
-import { PluginSettingsDetail, PluginSettingsForm } from "./PluginSettings";
+import {
+  PluginSettingsDetail,
+  PluginSettingsForm,
+  PluginSettingsPage,
+} from "./PluginSettings";
 import {
   EMPTY_PLUGIN_UPDATE_STATE,
   type PluginListItem,
@@ -226,6 +232,154 @@ function rowPlugin(
     updateState: EMPTY_PLUGIN_UPDATE_STATE,
   };
 }
+
+function installedPlugin(
+  enabled: boolean,
+  hasSettings: boolean = enabled,
+): InstalledPlugin {
+  return {
+    id: "linear",
+    source: "path:/plugins/linear",
+    rootDir: "/plugins/linear",
+    version: "0.1.0",
+    enabled,
+    status: enabled ? "running" : "disabled",
+    statusDetail: null,
+    description: "Linear integration",
+    name: "Linear",
+    icon: null,
+    iconUrl: null,
+    logoUrl: null,
+    logoDarkUrl: null,
+    hasSettings,
+    handlerStats: { count: 0, totalMs: 0, maxMs: 0, errorCount: 0 },
+    services: [],
+    schedules: [],
+    cliCommand: null,
+    capabilities: [],
+    app: { hasApp: false, bundle: null },
+    provenance: "direct",
+    isOrphanedBuiltin: false,
+    publisherLabel: null,
+    sourceDisplay: "path · /plugins/linear",
+    updateState: {},
+    providerIds: [],
+    icons: {},
+  };
+}
+
+describe("PluginSettingsPage", () => {
+  it("lets users disable and enable a plugin from the settings header", async () => {
+    const requests: RecordedRequest[] = [];
+    let enabled = true;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init?: RequestInit) => {
+        requests.push({ url, init });
+        if (url === "/api/v1/plugins/linear/disable") {
+          enabled = false;
+          return jsonOk({ ok: true, plugin: installedPlugin(enabled) });
+        }
+        if (url === "/api/v1/plugins/linear/enable") {
+          enabled = true;
+          return jsonOk({ ok: true, plugin: installedPlugin(enabled) });
+        }
+        if (url === "/api/v1/plugins/linear/settings") {
+          return jsonOk(SETTINGS_VIEW);
+        }
+        return jsonOk({ plugins: [installedPlugin(enabled)] });
+      }),
+    );
+
+    const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
+    const { container } = render(
+      <MemoryRouter>
+        <QueryClientWrapper>
+          <PluginSettingsPage pluginId="linear" />
+        </QueryClientWrapper>
+      </MemoryRouter>,
+    );
+
+    const disable = await screen.findByRole("switch", {
+      name: "Disable linear",
+    });
+    expect(screen.getByRole("heading", { name: "Linear" }).closest("header"))
+      .toContain(disable);
+    expect(
+      screen.getByRole("heading", { name: "Configuration" }),
+    ).toBeTruthy();
+
+    fireEvent.click(disable);
+
+    await vi.waitFor(() => {
+      expect(
+        requests.some(
+          (request) =>
+            request.url === "/api/v1/plugins/linear/disable" &&
+            request.init?.method === "POST",
+        ),
+      ).toBe(true);
+    });
+    const enable = await screen.findByRole("switch", {
+      name: "Enable linear",
+    });
+    expect(
+      screen.queryByRole("heading", { name: "Configuration" }),
+    ).toBeNull();
+    expect(
+      container.querySelector('[data-resource-detail-section="configuration"]'),
+    ).toBeNull();
+    expect(
+      container.querySelectorAll("[data-resource-detail-section]"),
+    ).toHaveLength(1);
+
+    fireEvent.click(enable);
+
+    await vi.waitFor(() => {
+      expect(
+        requests.some(
+          (request) =>
+            request.url === "/api/v1/plugins/linear/enable" &&
+            request.init?.method === "POST",
+        ),
+      ).toBe(true);
+    });
+    expect(
+      await screen.findByRole("switch", { name: "Disable linear" }),
+    ).toBeTruthy();
+    expect(
+      await screen.findByRole("heading", { name: "Configuration" }),
+    ).toBeTruthy();
+  });
+
+  it("omits Configuration for an enabled plugin with no available settings", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        jsonOk({ plugins: [installedPlugin(true, false)] }),
+      ),
+    );
+
+    const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
+    const { container } = render(
+      <MemoryRouter>
+        <QueryClientWrapper>
+          <PluginSettingsPage pluginId="linear" />
+        </QueryClientWrapper>
+      </MemoryRouter>,
+    );
+
+    expect(
+      await screen.findByRole("switch", { name: "Disable linear" }),
+    ).toBeTruthy();
+    expect(
+      screen.queryByRole("heading", { name: "Configuration" }),
+    ).toBeNull();
+    expect(
+      container.querySelectorAll("[data-resource-detail-section]"),
+    ).toHaveLength(1);
+  });
+});
 
 describe("PluginSettingsDetail settings gating", () => {
   it("clears plugin-scoped drafts and isolates an in-flight save after navigation", async () => {

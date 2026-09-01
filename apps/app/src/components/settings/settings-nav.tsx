@@ -48,7 +48,7 @@ export function useSettingsNavSections(
 
 export function useSettingsNavState(): SettingsNavState {
   const location = useLocation();
-  const { fileOpeners, settingsSections } = usePluginSlots();
+  const { fileOpeners } = usePluginSlots();
   const sections = useSettingsNavSections(fileOpeners);
   const pluginListQuery = usePluginList({ enabled: true });
 
@@ -78,7 +78,6 @@ export function useSettingsNavState(): SettingsNavState {
   const installedPlugins = pluginListQuery.data?.plugins ?? [];
   const pluginEntries = buildPluginSettingsEntries({
     installedPlugins,
-    settingsSections,
   });
 
   return {

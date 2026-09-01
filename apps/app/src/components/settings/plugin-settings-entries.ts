@@ -1,13 +1,7 @@
 export interface PluginSettingsCandidate {
-  enabled: boolean;
-  hasSettings: boolean;
   icon: string | null;
   id: string;
   name: string | null;
-}
-
-interface PluginSettingsSectionOwner {
-  pluginId: string;
 }
 
 export interface PluginSettingsEntry {
@@ -18,21 +12,12 @@ export interface PluginSettingsEntry {
 
 interface BuildPluginSettingsEntriesArgs {
   installedPlugins: readonly PluginSettingsCandidate[];
-  settingsSections: readonly PluginSettingsSectionOwner[];
 }
 
 export function buildPluginSettingsEntries(
   args: BuildPluginSettingsEntriesArgs,
 ): PluginSettingsEntry[] {
-  const pluginsWithCustomSettings = new Set(
-    args.settingsSections.map((section) => section.pluginId),
-  );
   return args.installedPlugins
-    .filter(
-      (plugin) =>
-        plugin.enabled &&
-        (plugin.hasSettings || pluginsWithCustomSettings.has(plugin.id)),
-    )
     .map((plugin) => ({
       id: plugin.id,
       label: plugin.name ?? plugin.id,
