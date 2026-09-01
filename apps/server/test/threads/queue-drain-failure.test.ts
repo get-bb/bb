@@ -170,7 +170,10 @@ describe("recordQueuedMessageDrainFailure", () => {
       });
 
       const queued = reread(harness, row.id);
-      expect(queued.waitingOn).toEqual({ kind: "host-offline", hostName: "M4" });
+      expect(queued.waitingOn).toEqual({
+        kind: "host-offline",
+        hostName: "M4",
+      });
       expect(queued.sendAt).toBeNull();
       // An absent machine is a wait, not a failure: the row recovers by itself
       // when the host comes back, so presenting it as an error would be wrong.
@@ -247,7 +250,10 @@ describe("recordQueuedMessageDrainFailure", () => {
       // fresh statement of why the row is waiting supersedes the stale failure
       // instead of showing the reader two contradictory explanations.
       const queued = reread(harness, row.id);
-      expect(queued.waitingOn).toEqual({ kind: "host-offline", hostName: "M4" });
+      expect(queued.waitingOn).toEqual({
+        kind: "host-offline",
+        hostName: "M4",
+      });
       expect(queued.failureReason).toBeNull();
     });
   });
