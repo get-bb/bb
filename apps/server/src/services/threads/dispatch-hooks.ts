@@ -172,16 +172,6 @@ export function isDispatchRequeuedRecently(threadId: string): boolean {
  * checks this first: with no handler the dispatch path must be byte-for-byte
  * what it was before hooks existed — no lock, no context assembly, no queued
  * row.
- *
- * That is not a hypothetical — it is what a stock install actually does.
- * Exactly one bundled plugin answers the hook, `concurrency-limit`, and it
- * ships `defaultEnabled: false`; a disabled plugin never loads, so it never
- * reaches `listHooks`. (`provider-retry` ships enabled but answers no hook at
- * all: it listens for `turn.failed` and deliberately never intercepts a send,
- * because a remembered rate limit is a stale cache of provider state.) So on a
- * fresh install every send takes the untouched pre-hooks path, and a user pays
- * for admission control only by asking for it.
- * `builtin-plugins.test.ts` pins both halves.
  */
 export function hasMessageDispatchHooks(): boolean {
   const provider = pluginHookProvider();

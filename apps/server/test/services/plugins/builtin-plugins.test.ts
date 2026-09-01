@@ -519,19 +519,20 @@ describe("builtin plugin reconciliation", () => {
     ]);
   });
 
-  it("ships the only message.dispatch hook disabled on a fresh database", async () => {
-    // `concurrency-limit` is the sole bundled plugin that answers the
-    // `message.dispatch` hook, and `provider-retry` only listens for the
-    // `turn.failed` event. So this flag is what makes
-    // `hasMessageDispatchHooks()` false on a stock install, which is what keeps
-    // every send on the untouched pre-hooks path. Flipping it to true would
-    // silently put a hook pass, and its server-wide evaluation lock, in front
-    // of every dispatch on every fresh machine.
+  it("ships Concurrency limit enabled on a fresh database", () => {
     const limiter = BUILTIN_PLUGINS.find(
       (builtin) => builtin.name === "concurrency-limit",
     );
     expect(limiter).toBeDefined();
-    expect(limiter?.defaultEnabled).toBe(false);
+    expect(limiter?.defaultEnabled).toBe(true);
+  });
+
+  it("ships Send later enabled on a fresh database", () => {
+    const scheduledSend = BUILTIN_PLUGINS.find(
+      (builtin) => builtin.name === "scheduled-send",
+    );
+    expect(scheduledSend).toBeDefined();
+    expect(scheduledSend?.defaultEnabled).toBe(true);
   });
 
   it("ships Provider retry enabled on a fresh database", async () => {
