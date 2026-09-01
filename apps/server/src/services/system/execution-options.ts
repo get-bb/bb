@@ -22,8 +22,10 @@ import { callHostRetryableOnlineRpc } from "../hosts/online-rpc.js";
 import { getHostPermissionCeiling } from "../hosts/permission-ceiling.js";
 import { requireEnvironment } from "../lib/entity-lookup.js";
 import { createProviderListingBudget } from "../providers/native-roots.js";
-import type { ProviderRegistryService } from "../providers/provider-registry.js";
-import { providerHealthCacheKey } from "../providers/provider-health-cache.js";
+import type {
+  ProviderHealthCacheKey,
+  ProviderRegistryService,
+} from "../providers/provider-registry.js";
 import { getSupportedReasoningLevelsForProvider } from "../threads/thread-reasoning-policy.js";
 import { resolveSystemLookupHostId } from "./host-lookup.js";
 import {
@@ -181,10 +183,10 @@ async function listInstalledPluginProviderInfos(
         registration.info.id,
       );
       if (bridgeLaunch === null) return null;
-      const cacheKey = providerHealthCacheKey({
+      const cacheKey: ProviderHealthCacheKey = {
         hostId,
         providerId: registration.info.id,
-      });
+      };
       const cached = deps.providerRegistry.lookupInstalled(cacheKey);
       try {
         const installed =

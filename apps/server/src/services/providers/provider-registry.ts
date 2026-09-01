@@ -14,7 +14,11 @@ import type {
   PluginProviderOptionsContext,
 } from "@get-bb/plugin-sdk";
 import { providerAlreadyRegisteredMessage } from "@get-bb/plugin-sdk/internal/host-policy";
-import type { ProviderHealthCacheKey } from "./provider-health-cache.js";
+
+export interface ProviderHealthCacheKey {
+  hostId: string;
+  providerId: string;
+}
 
 export interface ProviderServerCapabilities {
   reasoningLevels: readonly ReasoningLevel[];
@@ -57,12 +61,6 @@ export interface ProviderRegistryService {
   getUserDefaultProviderId(): string | null;
   get(providerId: string): ProviderRegistration | null;
   getRegistrationRevision(): number;
-  /**
-   * Installed-state answer for a provider on a host, cached against the
-   * registration revision. Probing costs a host RPC that spawns the provider
-   * bridge (~3s measured), and the provider list runs one per installed
-   * provider on every request.
-   */
   lookupInstalled(key: ProviderHealthCacheKey): Promise<boolean> | undefined;
   rememberInstalled(
     key: ProviderHealthCacheKey,
