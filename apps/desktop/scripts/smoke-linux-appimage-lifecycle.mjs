@@ -71,26 +71,83 @@ async function waitFor({
   throw new Error(`Timed out waiting for ${describe}.${detail}`);
 }
 
-async function allocateTcpPort() {
-  const server = createServer();
-  await new Promise((resolvePromise, rejectPromise) => {
-    server.once("error", rejectPromise);
-    server.listen(0, "127.0.0.1", resolvePromise);
-  });
-  const address = server.address();
-  if (address === null || typeof address === "string") {
-    throw new Error("Expected an ephemeral TCP listener");
+function parseEphemeralTcpPortRange(rawRange) {
+  const ports = rawRange.trim().split(/\s+/u).map(Number);
+  const [firstPort, lastPort] = ports;
+  if (
+    ports.length !== 2 ||
+    !Number.isInteger(firstPort) ||
+    !Number.isInteger(lastPort) ||
+    firstPort < 1 ||
+    lastPort > 65_535 ||
+    firstPort > lastPort
+  ) {
+    throw new Error("Invalid Linux ephemeral TCP port range");
   }
-  await new Promise((resolvePromise, rejectPromise) => {
-    server.close((error) => {
-      if (error) {
-        rejectPromise(error);
+  return { firstPort, lastPort };
+}
+
+async function reserveTcpPort(port) {
+  const server = createServer();
+  const reserved = await new Promise((resolvePromise, rejectPromise) => {
+    const handleError = (error) => {
+      if (error.code === "EADDRINUSE") {
+        resolvePromise(null);
         return;
       }
-      resolvePromise();
+      rejectPromise(error);
+    };
+    server.once("error", handleError);
+    server.listen(port, "127.0.0.1", () => {
+      server.off("error", handleError);
+      resolvePromise(server);
     });
   });
-  return address.port;
+  return reserved;
+}
+
+async function allocateNonEphemeralTcpPorts(count) {
+  const range = parseEphemeralTcpPortRange(
+    await readFile("/proc/sys/net/ipv4/ip_local_port_range", "utf8"),
+  );
+  const candidateRanges = [
+    { firstPort: 65_535, lastPort: range.lastPort + 1 },
+    { firstPort: range.firstPort - 1, lastPort: 1_024 },
+  ];
+  const reservations = [];
+  try {
+    for (const candidateRange of candidateRanges) {
+      for (
+        let port = candidateRange.firstPort;
+        port >= candidateRange.lastPort && reservations.length < count;
+        port -= 1
+      ) {
+        const server = await reserveTcpPort(port);
+        if (server !== null) {
+          reservations.push({ port, server });
+        }
+      }
+    }
+    if (reservations.length !== count) {
+      throw new Error(`Unable to reserve ${String(count)} non-ephemeral ports`);
+    }
+    return reservations.map((reservation) => reservation.port);
+  } finally {
+    await Promise.all(
+      reservations.map(
+        (reservation) =>
+          new Promise((resolvePromise, rejectPromise) => {
+            reservation.server.close((error) => {
+              if (error) {
+                rejectPromise(error);
+                return;
+              }
+              resolvePromise();
+            });
+          }),
+      ),
+    );
+  }
 }
 
 async function resolveAppImage() {
@@ -455,11 +512,7 @@ async function smokeLinuxAppImageLifecycle() {
   let runtime = null;
 
   try {
-    const serverPort = await allocateTcpPort();
-    let daemonPort = await allocateTcpPort();
-    while (serverPort === daemonPort) {
-      daemonPort = await allocateTcpPort();
-    }
+    const [serverPort, daemonPort] = await allocateNonEphemeralTcpPorts(2);
 
     const childEnv = {
       ...process.env,
