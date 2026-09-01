@@ -1,5 +1,6 @@
 import { useEffect, useId, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { appToast } from "@/components/ui/app-toast.js";
 import { PluginSettingsSections } from "@/components/plugin/PluginSettingsSections";
 import { Button } from "@bb/shared-ui/button";
 import {
