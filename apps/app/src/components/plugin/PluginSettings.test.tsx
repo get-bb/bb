@@ -446,11 +446,10 @@ describe("PluginSettingsPage", () => {
     const disable = await screen.findByRole("switch", {
       name: "Disable linear",
     });
-    expect(screen.getByRole("heading", { name: "Linear" }).closest("header"))
-      .toContain(disable);
     expect(
-      screen.getByRole("heading", { name: "Configuration" }),
-    ).toBeTruthy();
+      screen.getByRole("heading", { name: "Linear" }).closest("header"),
+    ).toContain(disable);
+    expect(screen.getByRole("heading", { name: "Configuration" })).toBeTruthy();
 
     fireEvent.click(disable);
 
@@ -466,9 +465,7 @@ describe("PluginSettingsPage", () => {
     const enable = await screen.findByRole("switch", {
       name: "Enable linear",
     });
-    expect(
-      screen.queryByRole("heading", { name: "Configuration" }),
-    ).toBeNull();
+    expect(screen.queryByRole("heading", { name: "Configuration" })).toBeNull();
     expect(
       container.querySelector('[data-resource-detail-section="configuration"]'),
     ).toBeNull();
@@ -498,9 +495,7 @@ describe("PluginSettingsPage", () => {
   it("omits Configuration for an enabled plugin with no available settings", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () =>
-        jsonOk({ plugins: [installedPlugin(true, false)] }),
-      ),
+      vi.fn(async () => jsonOk({ plugins: [installedPlugin(true, false)] })),
     );
 
     const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
@@ -515,9 +510,7 @@ describe("PluginSettingsPage", () => {
     expect(
       await screen.findByRole("switch", { name: "Disable linear" }),
     ).toBeTruthy();
-    expect(
-      screen.queryByRole("heading", { name: "Configuration" }),
-    ).toBeNull();
+    expect(screen.queryByRole("heading", { name: "Configuration" })).toBeNull();
     expect(
       container.querySelectorAll("[data-resource-detail-section]"),
     ).toHaveLength(1);
