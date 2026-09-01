@@ -11,10 +11,12 @@ import {
   lt,
   lte,
   min,
+  notExists,
   notInArray,
   or,
   sql,
 } from "drizzle-orm";
+import { alias } from "drizzle-orm/sqlite-core";
 import { QUEUED_MESSAGE_PLUGIN_WAIT_HOLDER_PREFIX } from "@bb/domain";
 import type {
   PermissionMode,
@@ -31,7 +33,12 @@ import type {
   DbTransaction,
 } from "../connection.js";
 import type { DbNotifier } from "../notifier.js";
-import { environments, queuedThreadMessages, threads } from "../schema.js";
+import {
+  environments,
+  events,
+  queuedThreadMessages,
+  threads,
+} from "../schema.js";
 import { createQueuedThreadMessageClaimToken, createQueuedThreadMessageId } from "../ids.js";
 import {
   createOrderKeyAfter,
@@ -652,6 +659,58 @@ export function hasQueuedThreadMessages(
   );
 }
 
+function manuallyStoppedQueuePauseQuery(
+  db: DbQueryConnection,
+  threadId: string | typeof threads.id,
+) {
+  const interruption = alias(events, "queue_pause_interruption");
+  const laterInterruption = alias(events, "queue_pause_later_interruption");
+  const laterRootTurnStart = alias(events, "queue_pause_later_turn_start");
+  return db
+    .select({ sequence: interruption.sequence })
+    .from(interruption)
+    .where(
+      and(
+        sql`${interruption.threadId} = ${threadId}`,
+        eq(interruption.type, "system/thread/interrupted"),
+        sql`json_extract(${interruption.data}, '$.reason') = 'manual-stop'`,
+        notExists(
+          db
+            .select({ sequence: laterInterruption.sequence })
+            .from(laterInterruption)
+            .where(
+              and(
+                eq(laterInterruption.threadId, interruption.threadId),
+                eq(laterInterruption.type, "system/thread/interrupted"),
+                sql`${laterInterruption.sequence} > ${interruption.sequence}`,
+              ),
+            ),
+        ),
+        notExists(
+          db
+            .select({ sequence: laterRootTurnStart.sequence })
+            .from(laterRootTurnStart)
+            .where(
+              and(
+                eq(laterRootTurnStart.threadId, interruption.threadId),
+                eq(laterRootTurnStart.type, "turn/started"),
+                isNull(laterRootTurnStart.parentToolCallId),
+                sql`${laterRootTurnStart.sequence} > ${interruption.sequence}`,
+              ),
+            ),
+        ),
+      ),
+    )
+    .limit(1);
+}
+
+export function isThreadQueueAutoSendPaused(
+  db: DbQueryConnection,
+  threadId: string,
+): boolean {
+  return manuallyStoppedQueuePauseQuery(db, threadId).get() !== undefined;
+}
+
 /**
  * Threads a drain could move right now.
  *
@@ -676,6 +735,7 @@ export function listIdleThreadsWithQueuedMessages(
         inArray(threads.status, ["idle", "pending"]),
         isNull(threads.archivedAt),
         isNull(threads.deletedAt),
+        notExists(manuallyStoppedQueuePauseQuery(db, threads.id)),
         // A gone environment (destroying/destroyed) is never reprovisioned, so
         // its queued rows can never drain. Leave them out of the sweep instead
         // of failing the same send every cycle (#1789). A thread with NO
