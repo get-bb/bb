@@ -1641,7 +1641,146 @@ describe("events", () => {
       listStoredConversationOutlineEventRows(db, {
         threadId: thread.id,
       }).map((row) => row.sequence),
-    ).toEqual([1, 2, 6, 7]);
+    ).toEqual([1, 2, 6]);
+  });
+
+  it("omits redundant structural completions and unused payload fields", () => {
+    const { db, thread } = setup();
+
+    insertEvents(db, noopNotifier, [
+      {
+        threadId: thread.id,
+        sequence: 1,
+        scope: turnScope("turn-1"),
+        type: "item/started",
+        itemId: "tool-1",
+        itemKind: "toolCall",
+        parentToolCallId: null,
+        data: JSON.stringify({
+          item: {
+            type: "toolCall",
+            id: "tool-1",
+            tool: "fixture",
+            arguments: { prompt: "large input" },
+            status: "pending",
+          },
+        }),
+      },
+      {
+        threadId: thread.id,
+        sequence: 2,
+        scope: turnScope("turn-1"),
+        type: "item/completed",
+        itemId: "tool-1",
+        itemKind: "toolCall",
+        parentToolCallId: null,
+        data: JSON.stringify({
+          item: {
+            type: "toolCall",
+            id: "tool-1",
+            tool: "fixture",
+            status: "completed",
+            result: "large output",
+          },
+        }),
+      },
+      {
+        threadId: thread.id,
+        sequence: 3,
+        scope: turnScope("turn-1"),
+        type: "item/completed",
+        itemId: "tool-2",
+        itemKind: "toolCall",
+        parentToolCallId: null,
+        data: JSON.stringify({
+          item: {
+            type: "toolCall",
+            id: "tool-2",
+            tool: "fixture",
+            status: "completed",
+            result: "completion without a start",
+          },
+        }),
+      },
+      {
+        threadId: thread.id,
+        sequence: 4,
+        scope: turnScope("turn-1"),
+        type: "item/started",
+        itemId: "tool-3",
+        itemKind: "toolCall",
+        parentToolCallId: null,
+        data: JSON.stringify({
+          item: {
+            type: "toolCall",
+            id: "tool-3",
+            tool: "fixture",
+            arguments: { prompt: "failing input" },
+            status: "pending",
+          },
+        }),
+      },
+      {
+        threadId: thread.id,
+        sequence: 5,
+        scope: turnScope("turn-1"),
+        type: "item/completed",
+        itemId: "tool-3",
+        itemKind: "toolCall",
+        parentToolCallId: null,
+        data: JSON.stringify({
+          item: {
+            type: "toolCall",
+            id: "tool-3",
+            tool: "fixture",
+            status: "failed",
+            error: "large failure output",
+          },
+        }),
+      },
+    ]);
+
+    const rows = listStoredConversationOutlineEventRows(db, {
+      threadId: thread.id,
+    });
+
+    expect(rows.map((row) => row.sequence)).toEqual([1, 3, 4, 5]);
+    expect(rows.map((row) => JSON.parse(row.data))).toEqual([
+      {
+        item: {
+          type: "toolCall",
+          id: "tool-1",
+          tool: "fixture",
+          status: "pending",
+        },
+      },
+      {
+        item: {
+          type: "toolCall",
+          id: "tool-2",
+          tool: "fixture",
+          status: "completed",
+        },
+      },
+      {
+        item: {
+          type: "toolCall",
+          id: "tool-3",
+          tool: "fixture",
+          status: "pending",
+        },
+      },
+      {
+        item: {
+          type: "toolCall",
+          id: "tool-3",
+          tool: "fixture",
+          status: "failed",
+        },
+      },
+    ]);
+
+    db.$client.close();
   });
 
   it("lists accepted input rows for requested client turn sequences", () => {

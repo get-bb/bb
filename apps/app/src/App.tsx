@@ -10,6 +10,7 @@ import { AppLayout } from "./components/layout/AppLayout";
 import { AuthCallbackView } from "./views/AuthCallbackView";
 import { QuickCreateProjectProvider } from "./hooks/useQuickCreateProject";
 import { RouteNavigationProvider } from "./components/ui/app-route-anchor";
+import { RouteNavigationIndicator } from "./components/ui/route-navigation-indicator";
 import { AppNavigationUrlHost } from "./lib/url-open-routing";
 import { NativeShellReporter } from "./lib/native-shell";
 import { AppFileExternalNavigationHost } from "./components/plugin/AppFileExternalNavigationHost";
@@ -339,6 +340,7 @@ export function App() {
     <QuickCreateProjectProvider>
       <AppCommandProvider>
         <RouteNavigationProvider>
+          <RouteNavigationIndicator />
           <AppNavigationUrlHost>
             <AppFileExternalNavigationHost>
               <HashNavigationScroll />

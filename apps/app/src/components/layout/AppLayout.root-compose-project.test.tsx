@@ -36,11 +36,15 @@ vi.mock("@/hooks/queries/system-queries", () => ({
         changelogPreview: false,
         editMessages: false,
         mobileApp: false,
-        providerSessionReaping: false,
         timelineWindowing: false,
       },
     },
   }),
+}));
+
+vi.mock("@/hooks/useHostDaemon", () => ({
+  useHostDaemon: () => ({ hasDaemon: false }),
+  useLocalHostDaemonAccess: () => ({ accessState: "unavailable" }),
 }));
 
 vi.mock("@/components/project/ProjectActionsProvider", () => ({

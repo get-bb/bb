@@ -12,6 +12,7 @@ import {
   AGENT_TOOL_NAME_PATTERN,
   agentToolIconRefusalMessage,
   aiServiceAlreadyRegisteredMessage,
+  pluginHookAlreadyRegisteredMessage,
   assertAiServiceRegistrable,
   assertNoRecursiveJsonSchemaReferences,
   BACKGROUND_NAME_PATTERN,
@@ -19,6 +20,7 @@ import {
   enforcePluginCliOutputLimit,
   isStandardSchema,
   isZodSchemaLike,
+  storePluginHook,
   KV_VALUE_MAX_BYTES,
   MENTION_PROVIDER_ID_PATTERN,
   normalizeMentionProviderTriggers,
@@ -58,6 +60,9 @@ import type {
   PluginCliContext,
   PluginCliExecutionResult,
   PluginCliResult,
+  PluginHookHandler,
+  PluginHookName,
+  PluginHooks,
   PluginEvents,
   PluginHttp,
   PluginHttpAuthMode,
@@ -245,6 +250,10 @@ export interface FakePluginRegistrations {
     | ((ctx: { threadId: string; projectId: string }) => string | null)
     | null;
   threadEventHandlers: Record<PluginThreadEventName, number>;
+  /** The handler registered per hook by `bb.experimental_hooks.on`. */
+  hooks: {
+    [K in PluginHookName]: PluginHookHandler<K> | null;
+  };
   mentionProviders: FakeMentionProviderRecord[];
   /** Live provider registrations from `bb.providers.register`
    * (normalized declarations, registration order; dispose removes). */
@@ -263,6 +272,12 @@ export interface FakePluginInspectionState {
   readonly realtimeSignals: FakeRealtimeSignal[];
   /** Every `bb.status.needsConfiguration` message, in order. */
   readonly needsConfigurationMessages: string[];
+  /**
+   * How many times the plugin called
+   * `bb.experimental_hooks.recheck()` — the wake it asks core for when a
+   * condition its own waits depend on has changed.
+   */
+  readonly recheckCount: number;
   /** Recorded `bb.sdk` calls + stub control. */
   readonly sdk: FakeSdkHarness;
   readonly registrations: FakePluginRegistrations;
@@ -1546,6 +1561,10 @@ function createFakePluginHostInternal(
     },
   };
 
+  // --- hooks ---
+  /** How many times `bb.experimental_hooks.recheck()` was called. */
+  let requestedDrains = 0;
+
   // --- status ---
   const needsConfigurationMessages: string[] = [];
   const status: PluginStatusApi = {
@@ -1589,6 +1608,14 @@ function createFakePluginHostInternal(
     "thread.failed": [],
     "thread.archived": [],
     "thread.deleted": [],
+    "message.queued": [],
+    "message.dispatched": [],
+    "turn.failed": [],
+  };
+  const hooks: {
+    [K in PluginHookName]: PluginHookHandler<K> | null;
+  } = {
+    "message.dispatch": null,
   };
   const disposeHooks: Array<() => void | Promise<void>> = [];
   const serviceControllers: AbortController[] = [];
@@ -1845,6 +1872,23 @@ function createFakePluginHostInternal(
     },
   };
 
+  const experimental_hooks: PluginHooks = {
+    on(hook, handler) {
+      if (hooks[hook] !== null) {
+        throw new Error(pluginHookAlreadyRegisteredMessage(hook));
+      }
+      storePluginHook(hooks, hook, handler);
+    },
+    async recheck(_hook) {
+      assertLive();
+      // The real host schedules a background walk and resolves; there is no
+      // queue here to walk, so the fake records the ask. Asserting on the
+      // count is how a test pins the wake path — the condition the plugin
+      // watches changed, so it told core to re-ask.
+      requestedDrains += 1;
+    },
+  };
+
   const bb: BbPluginApi = {
     pluginId,
     log,
@@ -1859,6 +1903,7 @@ function createFakePluginHostInternal(
     providers,
     ui,
     events,
+    experimental_hooks,
     status,
     server,
     hosts,
@@ -1920,6 +1965,9 @@ function createFakePluginHostInternal(
     logEntries,
     realtimeSignals,
     needsConfigurationMessages,
+    get recheckCount() {
+      return requestedDrains;
+    },
     sharedPortDeclarations,
     experimental_hostRpcCalls: hostRpcCalls,
     sdk: sdkHarness,
@@ -1949,7 +1997,14 @@ function createFakePluginHostInternal(
           "thread.failed": threadEventHandlers["thread.failed"].length,
           "thread.archived": threadEventHandlers["thread.archived"].length,
           "thread.deleted": threadEventHandlers["thread.deleted"].length,
+          "message.queued": threadEventHandlers["message.queued"].length,
+          "message.dispatched":
+            threadEventHandlers["message.dispatched"].length,
+          "turn.failed": threadEventHandlers["turn.failed"].length,
         };
+      },
+      get hooks() {
+        return { ...hooks };
       },
       mentionProviders,
       providerRegistrations,

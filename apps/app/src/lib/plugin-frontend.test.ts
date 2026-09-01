@@ -209,41 +209,36 @@ describe("installPluginRuntime", () => {
 });
 
 describe("createPluginFrontendPageLifecycle", () => {
-  function createDeps(tornDown: boolean) {
+  function createDeps() {
     return {
-      isTornDown: vi.fn(() => tornDown),
-      reboot: vi.fn(),
-      reconcile: vi.fn(),
+      restore: vi.fn(),
       teardown: vi.fn(),
     };
   }
 
   it("keeps frontends mounted when the page enters the back/forward cache", () => {
-    const deps = createDeps(false);
+    const deps = createDeps();
     const lifecycle = createPluginFrontendPageLifecycle(deps);
     lifecycle.onPageHide({ persisted: true });
     expect(deps.teardown).not.toHaveBeenCalled();
 
     lifecycle.onPageShow({ persisted: true });
-    expect(deps.reconcile).toHaveBeenCalledTimes(1);
-    expect(deps.reboot).not.toHaveBeenCalled();
+    expect(deps.restore).toHaveBeenCalledTimes(1);
   });
 
-  it("tears down on a real unload and reboots if a persisted restore follows a teardown", () => {
-    const deps = createDeps(true);
+  it("tears down on a real unload and delegates a later persisted restore", () => {
+    const deps = createDeps();
     const lifecycle = createPluginFrontendPageLifecycle(deps);
     lifecycle.onPageHide({ persisted: false });
     expect(deps.teardown).toHaveBeenCalledTimes(1);
 
     lifecycle.onPageShow({ persisted: true });
-    expect(deps.reboot).toHaveBeenCalledTimes(1);
-    expect(deps.reconcile).not.toHaveBeenCalled();
+    expect(deps.restore).toHaveBeenCalledTimes(1);
   });
 
   it("ignores the initial (non-persisted) pageshow", () => {
-    const deps = createDeps(false);
+    const deps = createDeps();
     createPluginFrontendPageLifecycle(deps).onPageShow({ persisted: false });
-    expect(deps.reboot).not.toHaveBeenCalled();
-    expect(deps.reconcile).not.toHaveBeenCalled();
+    expect(deps.restore).not.toHaveBeenCalled();
   });
 });

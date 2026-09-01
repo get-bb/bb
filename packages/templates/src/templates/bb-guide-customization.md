@@ -72,6 +72,12 @@ keep-awake hosts all`, or name individual host ids after `bb keep-awake hosts`.
 On macOS it prevents system idle sleep while bb is running; closing the lid or
 choosing Sleep still sleeps the Mac.
 
+Concurrency limit is also owned by its builtin plugin. Its autosaving page
+under Extensions → Plugins leaves the overall limit unlimited by default and
+uses an automatic per-host limit of one thread per available processor. Use
+`bb concurrency-limit global [unlimited|<limit>]` and `bb
+concurrency-limit host <host-id> [auto|<limit>]`; 0 pauses new work.
+
 Settings → Keyboard also includes `showKeyboardHints`, which defaults to true.
 Turn it off to hide the delayed shortcut badges shown while holding Command or
 Control on macOS, or Control on Windows/Linux. Shortcut commands continue to
@@ -82,6 +88,7 @@ false in packaged builds. Turn it on to show raw provider events bb does not yet
 understand; development builds always show these diagnostic rows.
 
 Settings → General also includes `steerActiveThreadOnEnter`, which defaults to
+true for a new install. An earlier install with saved settings or work keeps
 false. Outside an open typeahead menu, enabling it makes Enter steer a running
 thread and Command+Enter queue a follow-up; when disabled, those actions are
 reversed. Shift+Enter inserts a newline. On coarse-pointer touch devices, the
@@ -119,11 +126,9 @@ client-local; submitting stops and settles a running thread, then replaces the
 selected turn and all later conversation history while retaining workspace side
 effects. Grouped multi-message requests are not yet editable.
 
-The default-off `providerSessionReaping` experiment extends idle release to
-every restorable provider. BB releases those sessions after 30 idle minutes.
-The daemon applies a changed value within five minutes. Active turns, commands,
-agents, workflows, and monitors keep their sessions loaded. BB releases idle
-Codex sessions with the experiment off as well.
+BB releases restorable provider sessions after 30 idle minutes. The daemon
+checks for these sessions every five minutes. Active turns, commands, agents,
+workflows, and monitors keep their sessions loaded.
 
 The default-off `timelineWindowing` experiment mounts only nearby rows in long
 timelines and large expanded timeline details. Enable it with

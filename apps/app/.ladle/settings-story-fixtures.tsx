@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import { QueryClientProvider } from "@tanstack/react-query";
-import { PERSONAL_PROJECT_ID } from "@bb/domain";
+import { PERSONAL_PROJECT_ID, type ProviderInfo } from "@bb/domain";
 import { UPDATE_ACTION_ICON } from "@bb/domain/update-state";
 import type {
   SidebarBootstrapResponse,
@@ -15,6 +15,7 @@ import {
   pluginMarketplacesQueryKey,
   sidebarNavigationQueryKey,
   systemConfigQueryKey,
+  systemProvidersQueryKey,
   systemVersionQueryKey,
 } from "../src/hooks/queries/query-keys";
 import {
@@ -23,6 +24,7 @@ import {
 } from "../src/hooks/useUpdateInventory";
 import { createAppQueryClient } from "../src/lib/query-client";
 import { makeSystemConfig } from "../src/test/fixtures/system-config";
+import { makeProviderInfo } from "../src/test/provider-info-fixture";
 import { getSettingsRoutePath } from "../src/lib/route-paths";
 import {
   BbAppUpdateRows,
@@ -39,6 +41,9 @@ import {
   makeProject,
   makeProviderCliStatus,
 } from "./story-fixtures";
+import codexLogoUrl from "../../../plugins/provider-codex/icons/codex.svg";
+import claudeCodeLogoUrl from "../../../plugins/provider-claude-code/icons/claude-code.svg";
+import cursorLogoUrl from "../../../plugins/provider-acp/icons/cursor.svg";
 
 const SETTINGS_STORY_NOW = Date.parse("2026-08-19T08:00:00.000Z");
 
@@ -140,6 +145,24 @@ const systemVersion = {
   upgradeCommand: "npx bb-app@latest",
 } satisfies SystemVersionResponse;
 
+const systemProviders = [
+  makeProviderInfo({
+    id: "codex",
+    displayName: "Codex",
+    logoUrl: codexLogoUrl,
+  }),
+  makeProviderInfo({
+    id: "claude-code",
+    displayName: "Claude Code",
+    logoUrl: claudeCodeLogoUrl,
+  }),
+  makeProviderInfo({
+    id: "acp-cursor",
+    displayName: "Cursor",
+    logoUrl: cursorLogoUrl,
+  }),
+] satisfies ProviderInfo[];
+
 const settingsUpdateMachine = {
   host: SETTINGS_STORY_PRIMARY_HOST,
   isPrimary: true,
@@ -167,7 +190,6 @@ export function SettingsUpdatesStory() {
               label="Update all 1 CLI tool"
               tooltipLabel="Update all"
               icon={UPDATE_ACTION_ICON}
-              iconPosition="end"
               visibleLabel="Update all"
               variant="default"
               onClick={noop}
@@ -208,6 +230,7 @@ function createSettingsStoryQueryClient() {
   });
   queryClient.setQueryData(hostsQueryKey(), SETTINGS_STORY_HOSTS);
   queryClient.setQueryData(systemConfigQueryKey(), systemConfig);
+  queryClient.setQueryData(systemProvidersQueryKey(), systemProviders);
   queryClient.setQueryData(systemVersionQueryKey(), systemVersion);
   queryClient.setQueryData(sidebarNavigationQueryKey(), sidebarNavigation);
   queryClient.setQueryData(pluginMarketplacesQueryKey(), []);
@@ -219,7 +242,7 @@ function createSettingsStoryQueryClient() {
     hostProviderCliStatusQueryKey(HOST_IDS.remote),
     remoteProviderStatus,
   );
-  queryClient.setQueryData(pluginListQueryKey(true), { plugins: [] });
+  queryClient.setQueryData(pluginListQueryKey(true), []);
   return queryClient;
 }
 

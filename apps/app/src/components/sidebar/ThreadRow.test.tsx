@@ -92,6 +92,7 @@ function createThread(
     environmentHostId: null,
     environmentName: null,
     environmentBranchName: null,
+    queuedWork: "none",
     environmentWorkspaceDisplayKind: "other",
     runtime: {
       displayStatus: "idle",
@@ -880,6 +881,54 @@ describe("ThreadRow", () => {
     ).toBe("CircleQuestion");
   });
 
+  it("clocks a thread with queued work, and drops the clock once it runs", () => {
+    const { rerenderThreadRow } = renderThreadRow({
+      thread: createThread({ queuedWork: "waiting" }),
+    });
+
+    expect(
+      screen
+        .getByLabelText("Thread has a message waiting to send")
+        .getAttribute("data-icon"),
+    ).toBe("Clock");
+
+    rerenderThreadRow(
+      createThread({
+        queuedWork: "waiting",
+        runtime: { displayStatus: "active", hostReconnectGraceExpiresAt: null },
+      }),
+    );
+    expect(
+      screen.queryByLabelText("Thread has a message waiting to send"),
+    ).toBeNull();
+    expect(
+      screen.getByLabelText("Thread working").getAttribute("data-icon"),
+    ).toBe("Loading");
+  });
+
+  it("gives a failed queued row the same glyph a failed thread gets", () => {
+    renderThreadRow({ thread: createThread({ queuedWork: "failed" }) });
+    const queueFailure = screen.getByLabelText("Queued message failed to send");
+
+    cleanup();
+    renderThreadRow({
+      thread: createThread({
+        status: "error",
+        lastReadAt: 0,
+        latestAttentionAt: 10,
+      }),
+    });
+    const threadFailure = screen.getByLabelText("Unread thread failed");
+
+    expect(queueFailure.getAttribute("data-icon")).toBe("CircleX");
+    expect(threadFailure.getAttribute("data-icon")).toBe(
+      queueFailure.getAttribute("data-icon"),
+    );
+    expect(queueFailure.getAttribute("class")).toBe(
+      threadFailure.getAttribute("class"),
+    );
+  });
+
   it("keeps the parent-thread disclosure caret visible on mobile", () => {
     renderThreadRow({
       thread: createThread({ title: "Parent thread" }),
@@ -912,6 +961,34 @@ describe("ThreadRow", () => {
         .getAttribute("data-sidebar-hover-actions-mobile"),
     ).toBe("always");
   });
+
+  it.each([
+    { isCollapsed: true, expectedHoverReveal: false },
+    { isCollapsed: false, expectedHoverReveal: true },
+  ])(
+    "sets parent-thread disclosure hover reveal to $expectedHoverReveal when collapsed is $isCollapsed",
+    ({ expectedHoverReveal, isCollapsed }) => {
+      renderThreadRow({
+        thread: createThread({ title: "Parent thread" }),
+        options: {
+          kind: "parent",
+          depth: 1,
+          isCompact: false,
+          isCollapsed,
+          childCount: 1,
+          childActivity: NO_COLLAPSED_CHILD_ACTIVITY,
+          onToggleCollapsed: vi.fn(),
+        },
+      });
+
+      const toggle = screen.getByRole("button", {
+        name: `${isCollapsed ? "Expand" : "Collapse"} Parent thread threads`,
+      });
+      expect(toggle.classList.contains("bb-sidebar-hover-actions")).toBe(
+        expectedHoverReveal,
+      );
+    },
+  );
 
   it("shows its Command shortcut in place of an active indicator", () => {
     renderThreadRow({

@@ -421,7 +421,6 @@ describe("RuntimeManager", () => {
       manager.reapIdleProviderSessions({
         idleForMs: 1_000,
         nowMs: 5_000,
-        providerSessionReapingEnabled: false,
       }),
     ).resolves.toEqual({
       reapedSessions: [
@@ -444,13 +443,11 @@ describe("RuntimeManager", () => {
     expect(firstRuntime.reapIdleProviderSessions).toHaveBeenCalledWith({
       idleForMs: 1_000,
       nowMs: 5_000,
-      providerSessionReapingEnabled: false,
       runThreadExclusive: expect.any(Function),
     });
     expect(secondRuntime.reapIdleProviderSessions).toHaveBeenCalledWith({
       idleForMs: 1_000,
       nowMs: 5_000,
-      providerSessionReapingEnabled: false,
       runThreadExclusive: expect.any(Function),
     });
   });
@@ -486,7 +483,6 @@ describe("RuntimeManager", () => {
     const result = await manager.reapIdleProviderSessions({
       idleForMs: 1_000,
       nowMs: 5_000,
-      providerSessionReapingEnabled: true,
     });
 
     expect(result.reapedSessions).toEqual([]);

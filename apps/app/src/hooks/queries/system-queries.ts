@@ -1,4 +1,9 @@
-import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  queryOptions,
+  useQueries,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import type { QueryKey } from "@tanstack/react-query";
 import type {
   PermissionMode,
@@ -10,7 +15,6 @@ import { permissionModeValues } from "@bb/domain";
 import { toRecord } from "@bb/core-ui";
 import type {
   SystemCliSkillsStatusResponse,
-  SystemConfigResponse,
   SystemExecutionOptionsResponse,
   SystemProvidersQuery,
   SystemProviderStatesResponse,
@@ -215,36 +219,43 @@ export function useSystemProviders(args: UseSystemProvidersArgs = {}) {
   const hostId = args.hostId ?? null;
   const enabled = args.enabled ?? true;
   useSystemRealtimeSubscription({ enabled });
+  const providersCacheKey = providerListCacheKey({ environmentId, hostId });
   return useQuery<ProviderInfo[]>({
     queryKey: systemProvidersQueryKey({ capability, environmentId, hostId }),
-    queryFn: ({ signal }) => {
-      if (args.environmentId !== undefined) {
-        return sdk.providers.list({
-          ...(args.capability === undefined
-            ? {}
-            : { capability: args.capability }),
-          environmentId: args.environmentId,
-          signal,
-        });
+    queryFn: async ({ signal }) => {
+      const capabilityFilter =
+        args.capability === undefined ? {} : { capability: args.capability };
+      const providers = await (args.environmentId !== undefined
+        ? sdk.providers.list({
+            ...capabilityFilter,
+            environmentId: args.environmentId,
+            signal,
+          })
+        : args.hostId !== undefined
+          ? sdk.providers.list({
+              ...capabilityFilter,
+              hostId: args.hostId,
+              signal,
+            })
+          : sdk.providers.list({ ...capabilityFilter, signal }));
+      if (capability === null) {
+        writeCachedProviderList(providersCacheKey, providers);
       }
-      if (args.hostId !== undefined) {
-        return sdk.providers.list({
-          ...(args.capability === undefined
-            ? {}
-            : { capability: args.capability }),
-          hostId: args.hostId,
-          signal,
-        });
-      }
-      return sdk.providers.list({
-        ...(args.capability === undefined
-          ? {}
-          : { capability: args.capability }),
-        signal,
-      });
+      return providers;
     },
     enabled,
     staleTime: 60_000,
+    placeholderData: () => {
+      const remembered = readCachedProviderList(providersCacheKey);
+      if (remembered === null) return undefined;
+      const eligible =
+        capability === null
+          ? remembered
+          : remembered.filter(
+              (provider) => provider.maintenance[capability],
+            );
+      return eligible.length > 0 ? eligible : undefined;
+    },
   });
 }
 
@@ -319,15 +330,21 @@ export function useSystemExecutionOptions(
   });
 }
 
+export function systemConfigQueryOptions() {
+  return queryOptions({
+    queryKey: systemConfigQueryKey(),
+    queryFn: ({ signal }) => sdk.system.config({ signal }),
+    staleTime: 60_000,
+  });
+}
+
 export function useSystemConfig(options?: QueryOptions) {
   const enabled = options?.enabled ?? true;
   useSystemRealtimeSubscription({ enabled });
 
-  return useQuery<SystemConfigResponse>({
-    queryKey: systemConfigQueryKey(),
-    queryFn: ({ signal }) => sdk.system.config({ signal }),
+  return useQuery({
+    ...systemConfigQueryOptions(),
     enabled,
-    staleTime: 60_000,
   });
 }
 

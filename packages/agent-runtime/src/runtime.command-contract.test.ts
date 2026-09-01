@@ -197,7 +197,7 @@ describe("createAgentRuntime command contracts", () => {
       const requests = record.read();
       expect(
         requests.filter((entry) => entry.method === "initialize"),
-      ).toHaveLength(1);
+      ).toHaveLength(2);
       expect(requests).toContainEqual({
         method: "thread/archive",
         params: {

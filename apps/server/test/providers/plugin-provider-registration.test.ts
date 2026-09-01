@@ -41,6 +41,7 @@ describe("buildPluginProviderRegistration", () => {
       available: true,
       pluginId: "acme-agent",
       declaration: normalized,
+      iconHash: null,
       readSettings: NO_SETTINGS,
     });
 
@@ -106,6 +107,7 @@ describe("buildPluginProviderRegistration", () => {
 
   it("projects the target-state declaration fields onto ProviderInfo", () => {
     const registration = buildPluginProviderRegistration({
+      iconHash: null,
       available: true,
       pluginId: "acme-agent",
       declaration: declaration({
@@ -160,6 +162,7 @@ describe("buildPluginProviderRegistration", () => {
 
   it("binds the options hook to the plugin's settings and validates its result", () => {
     const registration = buildPluginProviderRegistration({
+      iconHash: null,
       available: true,
       pluginId: "acme-agent",
       declaration: declaration({
@@ -218,6 +221,7 @@ describe("buildPluginProviderRegistration", () => {
 
   it("refuses a hook result that is not bounded plain JSON", () => {
     const registration = buildPluginProviderRegistration({
+      iconHash: null,
       available: true,
       pluginId: "acme-agent",
       declaration: declaration({
@@ -240,6 +244,7 @@ describe("buildPluginProviderRegistration", () => {
   it("projects each fork ladder rung onto the two client booleans", () => {
     const projection = (fork: "none" | "tip" | "checkpoint") => {
       const { capabilities } = buildPluginProviderRegistration({
+        iconHash: null,
         available: true,
         pluginId: "acme-agent",
         declaration: declaration({
@@ -268,6 +273,7 @@ describe("buildPluginProviderRegistration", () => {
 
   it("maps an icon-less declaration to a null logoUrl and skills-only actions", () => {
     const registration = buildPluginProviderRegistration({
+      iconHash: null,
       available: true,
       pluginId: "acme-plain",
       declaration: declaration({
@@ -295,6 +301,7 @@ describe("buildPluginProviderRegistration", () => {
       available: true,
       pluginId: "echo-provider",
       declaration: declaration({ id: "echo-agent", icon: "Zap" }),
+      iconHash: null,
       readSettings: NO_SETTINGS,
     });
     expect(glyph.info.icon).toStrictEqual({ glyph: "Zap" });
@@ -304,6 +311,7 @@ describe("buildPluginProviderRegistration", () => {
       available: true,
       pluginId: "acme-agent",
       declaration: declaration({ icon: "./icons/agent.svg" }),
+      iconHash: null,
       readSettings: NO_SETTINGS,
     });
     expect(path.info.icon).toBeUndefined();
@@ -320,6 +328,7 @@ describe("buildPluginProviderRegistration", () => {
           available: true,
           pluginId,
           declaration: declared,
+          iconHash: null,
           readSettings: NO_SETTINGS,
         });
         return { id: info.id, logoUrl: info.logoUrl, icon: info.icon };

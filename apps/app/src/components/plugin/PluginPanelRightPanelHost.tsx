@@ -21,7 +21,10 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@bb/shared-ui/tooltip";
 import { useAppCommandHandler } from "@/components/commands/AppCommandProvider";
 import { PluginIcon } from "@/components/plugin/PluginIcon";
 import { PluginSlotMount } from "@/components/plugin/PluginSlotMount";
-import { getRightPanelToggleIconName } from "@/components/secondary-panel/panelToggleControlState";
+import {
+  getCompactPanelPresentation,
+  RIGHT_PANEL_TOGGLE_ICON_NAME,
+} from "@/components/secondary-panel/panelToggleControlState";
 import { SecondaryPanelLayout } from "@/components/secondary-panel/SecondaryPanelLayout";
 import {
   LazyBrowserTabDeck,
@@ -246,6 +249,9 @@ export function PluginPanelRightPanelHost({
   const [isCompactDrawerOpen, setCompactDrawerOpen] = useAtom(
     compactDrawerOpenAtomFamily(panelStateId),
   );
+  const closeCompactDrawer = useCallback(() => {
+    setCompactDrawerOpen(false);
+  }, [setCompactDrawerOpen]);
   const isCompactViewport = useIsCompactViewport();
   const isOpen = isCompactViewport
     ? isCompactDrawerOpen
@@ -278,6 +284,7 @@ export function PluginPanelRightPanelHost({
     closeTab,
     openTab,
     orderedSecondaryFileTabs,
+    reopenClosedTab,
     reorderTab,
     updateBrowserTab,
   } = useThreadFileTabs({
@@ -285,6 +292,7 @@ export function PluginPanelRightPanelHost({
     syncThreadId: null,
     environmentId: null,
     fileOwnerThreadId: null,
+    onCloseLastTab: closeCompactDrawer,
     preserveWorkspaceTabsAcrossContexts: true,
     storageFiles: undefined,
     terminalSessions: undefined,
@@ -328,8 +336,8 @@ export function PluginPanelRightPanelHost({
   ]);
 
   useEffect(() => {
-    setCompactDrawerOpen(false);
-  }, [setCompactDrawerOpen, subPath]);
+    closeCompactDrawer();
+  }, [closeCompactDrawer, subPath]);
 
   const revealPanel = useCallback(() => {
     if (isCompactViewport) {
@@ -459,11 +467,11 @@ export function PluginPanelRightPanelHost({
   );
   const hidePanel = useCallback(() => {
     if (isCompactViewport) {
-      setCompactDrawerOpen(false);
+      closeCompactDrawer();
       return;
     }
     closePersistedPanel();
-  }, [closePersistedPanel, isCompactViewport, setCompactDrawerOpen]);
+  }, [closeCompactDrawer, closePersistedPanel, isCompactViewport]);
   const openNewTab = useCallback(() => {
     openTab({ kind: "new-tab" });
     revealPanel();
@@ -485,6 +493,11 @@ export function PluginPanelRightPanelHost({
   useAppCommandHandler("panel.newTab", () => {
     if (!isFocused || panel === null) return false;
     openNewTab();
+    return true;
+  });
+  useAppCommandHandler("panel.reopenClosedTab", () => {
+    if (!isFocused || panel === null || !reopenClosedTab()) return false;
+    revealPanel();
     return true;
   });
 
@@ -944,7 +957,7 @@ export function PluginPanelRightPanelHost({
   );
 
   const toggleLabel = isOpen ? "Hide right panel" : "Show right panel";
-  const toggleIconName = getRightPanelToggleIconName(isCompactViewport);
+  const toggleIconName = RIGHT_PANEL_TOGGLE_ICON_NAME;
   const page = (
     <div
       className={`flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden ${
@@ -965,6 +978,11 @@ export function PluginPanelRightPanelHost({
         mainPanelId={`plugin-panel-main-${panelHostId}`}
         main={children}
         composerHost={null}
+        compactPresentation={getCompactPanelPresentation(
+          activeTab?.kind,
+          fixedTabs[0]?.tab.kind ??
+            panelTabs.find((tab) => tab.isHidden !== true)?.tab.kind,
+        )}
         renderPanel={renderPanel}
       />
     </div>

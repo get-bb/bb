@@ -14,6 +14,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { CompactViewportOverrideProvider } from "@bb/shared-ui/hooks/use-compact-viewport";
 import {
   Sidebar,
+  SidebarContent,
   SidebarInset,
   SidebarProvider,
   SidebarTrigger,
@@ -59,6 +60,15 @@ function fireTouch(
   const event = new Event(type, { bubbles: true, cancelable: true });
   Object.defineProperties(event, {
     touches: { value: createTouchList(touch) },
+    changedTouches: { value: createTouchList(touch) },
+  });
+  fireEvent(target, event);
+}
+
+function fireTouchEnd(target: Element | Document | Window, touch: Touch) {
+  const event = new Event("touchend", { bubbles: true, cancelable: true });
+  Object.defineProperties(event, {
+    touches: { value: createTouchList() },
     changedTouches: { value: createTouchList(touch) },
   });
   fireEvent(target, event);
@@ -212,9 +222,30 @@ describe("SidebarTrigger", () => {
   });
 });
 
+describe("SidebarContent", () => {
+  it("owns the sidebar surface used behind transparent and sticky rows", () => {
+    render(<SidebarContent data-testid="content">Rows</SidebarContent>);
+
+    expect(screen.getByTestId("content").classList).toContain("bg-sidebar");
+  });
+});
+
 function getMobilePanel(): HTMLElement | null {
   const panel = document.querySelector('[data-sidebar="panel"]');
   return panel instanceof HTMLElement ? panel : null;
+}
+
+const SHELF_OPEN_TRANSLATE = "320px";
+const SHELF_CLOSED_TRANSLATE = "0px";
+
+function getShelfRevealTranslate(): string {
+  const backdrop = document.querySelector("[data-sidebar-mobile-backdrop]");
+  return backdrop instanceof HTMLElement ? backdrop.style.translate : "";
+}
+
+function getShelfInsetTranslate(): string {
+  const inset = document.querySelector('[data-sidebar="inset"]');
+  return inset instanceof HTMLElement ? inset.style.translate : "";
 }
 
 const MOBILE_REALIZE_TIMEOUT_MS = 1000;
@@ -328,7 +359,8 @@ describe("mobile sidebar deferred realization", () => {
         trigger.click();
       });
       const panel = getMobilePanel();
-      panelStyledForSlideInTap = panel?.style.translate === "0%";
+      panelStyledForSlideInTap =
+        getShelfRevealTranslate() === SHELF_OPEN_TRANSLATE;
       realizedInTapFlush =
         panel?.textContent?.includes("Sidebar content") ?? false;
     });
@@ -374,7 +406,117 @@ describe("mobile sidebar deferred realization", () => {
   });
 });
 
+describe("mobile sidebar shelf stacking", () => {
+  it("keeps the panel beneath the page and moves the page to reveal it", () => {
+    vi.useFakeTimers();
+    renderCompactSidebarHarness();
+    settleMobileRealization();
+
+    const panel = getMobilePanel();
+    const inset = document.querySelector('[data-sidebar="inset"]');
+    if (!(inset instanceof HTMLElement) || panel === null) {
+      throw new Error("Expected a compact panel and page inset");
+    }
+
+    expect(panel.className).toContain("z-0");
+    expect(panel.className).toContain("data-[side=left]:border-r");
+    expect(panel.className).toContain("data-[side=right]:border-l");
+    expect(inset.className).toContain("max-md:z-30");
+    expect(inset.dataset.sidebarShelf).toBe("closed");
+
+    fireEvent.click(screen.getByRole("button", { name: "Toggle Sidebar" }));
+    settleMobileToggle();
+
+    expect(inset.dataset.sidebarShelf).toBe("open");
+    expect(getMobilePanel()?.style.translate).toBe("");
+  });
+
+  it("keeps the center pane square for both shelves", () => {
+    vi.useFakeTimers();
+    renderCompactSidebarHarness();
+    settleMobileRealization();
+
+    const inset = document.querySelector('[data-sidebar="inset"]');
+    if (!(inset instanceof HTMLElement)) {
+      throw new Error("Expected a page inset");
+    }
+
+    expect(inset.className).not.toContain(
+      "data-[sidebar-shelf=open]:rounded",
+    );
+    expect(inset.className).not.toContain("data-[panel-shelf=shelf]:rounded");
+    expect(inset.className).not.toContain(
+      "data-[sidebar-shelf=open]:overflow-hidden",
+    );
+    expect(inset.className).not.toContain(
+      "data-[panel-shelf=shelf]:overflow-hidden",
+    );
+    expect(inset.className).not.toContain(
+      "data-[sidebar-shelf=open]:shadow",
+    );
+    expect(inset.className).not.toContain("data-[panel-shelf=shelf]:shadow");
+  });
+
+  it("leaves the page untouched by the shelf on desktop", () => {
+    render(
+      <CompactViewportOverrideProvider isCompactViewport={false}>
+        <SidebarProvider>
+          <Sidebar>Sidebar content</Sidebar>
+          <SidebarInset>Main content</SidebarInset>
+        </SidebarProvider>
+      </CompactViewportOverrideProvider>,
+    );
+
+    const inset = document.querySelector('[data-sidebar="inset"]');
+    if (!(inset instanceof HTMLElement)) {
+      throw new Error("Expected a page inset");
+    }
+    expect(inset.dataset.sidebarShelf).toBeUndefined();
+  });
+});
+
 describe("mobile sidebar persistence", () => {
+  it("closes from a left swipe that starts on the exposed main content", () => {
+    vi.useFakeTimers();
+    renderCompactSidebarHarness();
+
+    fireEvent.click(screen.getByRole("button", { name: "Toggle Sidebar" }));
+    settleMobileToggle();
+
+    const panel = getMobilePanel();
+    const backdrop = screen.getByTestId("sidebar-mobile-backdrop");
+    expect(panel?.dataset.state).toBe("open");
+
+    fireTouch(backdrop, "touchstart", createTouch(360, 160));
+    fireTouch(window, "touchmove", createTouch(180, 164));
+    fireTouchEnd(window, createTouch(180, 164));
+    settleMobileToggle();
+
+    expect(panel?.dataset.state).toBe("closed");
+    act(() => {
+      vi.advanceTimersByTime(400);
+    });
+  });
+
+  it("ignores a closing swipe from the right browser edge", () => {
+    vi.useFakeTimers();
+    renderCompactSidebarHarness();
+
+    fireEvent.click(screen.getByRole("button", { name: "Toggle Sidebar" }));
+    settleMobileToggle();
+
+    const panel = getMobilePanel();
+    const backdrop = screen.getByTestId("sidebar-mobile-backdrop");
+    const startX = window.innerWidth - 12;
+
+    fireTouch(backdrop, "touchstart", createTouch(startX, 160));
+    fireTouch(window, "touchmove", createTouch(startX - 180, 164));
+    fireTouchEnd(window, createTouch(startX - 180, 164));
+    settleMobileToggle();
+
+    expect(panel?.dataset.state).toBe("open");
+  });
+
   it("keeps closed drawer content mounted, inert, and offscreen", () => {
     vi.useFakeTimers();
     renderCompactSidebarHarness();
@@ -394,7 +536,7 @@ describe("mobile sidebar persistence", () => {
 
     const openingPanel = getMobilePanel();
     expect(openingPanel?.dataset.state).toBe("closed");
-    expect(openingPanel?.style.translate).toBe("0%");
+    expect(getShelfInsetTranslate()).toBe(SHELF_OPEN_TRANSLATE);
     settleMobileToggle();
 
     const openPanel = getMobilePanel();
@@ -411,7 +553,7 @@ describe("mobile sidebar persistence", () => {
     fireEvent.click(backdrop);
     const closingPanel = getMobilePanel();
     expect(closingPanel?.dataset.state).toBe("open");
-    expect(closingPanel?.style.translate).toBe("-100%");
+    expect(getShelfInsetTranslate()).toBe(SHELF_CLOSED_TRANSLATE);
 
     settleMobileToggle();
 
@@ -479,7 +621,7 @@ describe("mobile sidebar persistence", () => {
 
     fireEvent.click(trigger);
     expect(getMobilePanel()?.dataset.state).toBe("open");
-    expect(getMobilePanel()?.style.translate).toBe("-100%");
+    expect(getShelfRevealTranslate()).toBe(SHELF_CLOSED_TRANSLATE);
 
     settleMobileToggle();
     expect(getMobilePanel()?.dataset.state).toBe("closed");

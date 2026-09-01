@@ -6,13 +6,18 @@ import {
   getQueuedThreadMessage,
   getEnvironment,
   getThread,
+  isThreadQueueAutoSendPaused,
   listIdleThreadsWithQueuedMessages,
   releaseQueuedMessageClaim,
   releaseStaleQueuedMessageClaims,
   type DbQueryConnection,
 } from "@bb/db";
+import {
+  queuedMessageSystemNoticeSchema,
+} from "@bb/domain";
 import type {
   PromptInput,
+  QueuedMessageWaitingOn,
   Thread,
   ThreadQueuedMessage,
   ThreadTurnInitiator,
@@ -57,12 +62,16 @@ import {
 import { recoverThreadModelOverride } from "./thread-execution-override.js";
 import { requireReadyThreadEnvironment } from "./thread-turn-dispatch.js";
 import { resolvePermissionEscalation } from "./thread-runtime-config.js";
+import { hasMessageDispatchHooks } from "./dispatch-hooks.js";
+import { attemptDispatch } from "./dispatch-attempt.js";
+import { deliverParentSystemMessage } from "./parent-system-messages.js";
+import { settleQueueRowDispatched } from "./queue-waits.js";
+import { recordQueuedMessageDrainFailure } from "./queue-drain-failure.js";
 import {
   ensureThreadIsWritable,
   formatAgentThreadInput,
   groupedInputForRuntime,
   resolveMessageSenderThreadId,
-  sendThreadMessage,
 } from "./thread-send.js";
 import { recordAcceptedPromptHistoryEntry } from "../prompt-history.js";
 import { requireThreadCommandEnvironment } from "./thread-command-environment.js";
@@ -77,8 +86,14 @@ import {
 import { validatePromptAttachmentReferences } from "../projects/attachments.js";
 
 interface SendQueuedMessageArgs {
+  isGroupEligible?: Parameters<typeof claimQueuedThreadMessageGroup>[3];
   mode: SendQueuedMessageMode;
   queuedMessageId: string;
+  /**
+   * True for the user's explicit "Send now", false for a timer that made the
+   * row eligible. Both address one row by id; only the first is an override.
+   */
+  sendNow: boolean;
   threadId: string;
 }
 
@@ -90,12 +105,15 @@ type ClaimedQueuedMessage = Exclude<
 interface SendClaimedQueuedMessageArgs {
   mode: SendQueuedMessageMode;
   queuedMessages: ClaimedQueuedMessage[];
+  /** True for an explicit "send now"; false for an ordinary drain. */
+  sendNow: boolean;
   threadId: string;
 }
 
 interface SendClaimedQueuedMessageForThreadArgs {
   mode: SendQueuedMessageMode;
   queuedMessages: ClaimedQueuedMessage[];
+  sendNow: boolean;
   thread: Thread;
 }
 
@@ -206,6 +224,14 @@ export async function createQueuedMessageForThread(
           reasoningLevel: execution.reasoningLevel,
           permissionMode: execution.permissionMode,
           serviceTier: execution.serviceTier,
+          // An explicit "queue this" is a message waiting for the running turn
+          // to end, which is exactly `thread-busy`. Naming it rather than
+          // leaving the wait null keeps every row on one vocabulary, and the
+          // idle drain treats the two identically anyway.
+          waitingOn: { kind: "thread-busy" },
+          sendAt: null,
+          payload: { kind: "inline" },
+          systemNotice: null,
         });
         return { currentThread, providerThreadId, queuedMessage };
       },
@@ -237,13 +263,15 @@ interface QueuedMessageAutoSendRequestArgs {
 }
 
 function isQueuedMessageAutoSendCandidate(
+  db: DbQueryConnection,
   thread: Thread | null,
 ): thread is Thread {
   return (
     thread !== null &&
     thread.archivedAt === null &&
     thread.deletedAt === null &&
-    thread.status !== "stopping"
+    thread.status !== "stopping" &&
+    !isThreadQueueAutoSendPaused(db, thread.id)
   );
 }
 
@@ -331,10 +359,12 @@ function claimQueuedThreadMessageForSend(
     deps.db,
     deps.hub,
     args.queuedMessageId,
+    args.isGroupEligible,
   );
   if (claimedQueuedMessages) {
     return claimedQueuedMessages;
   }
+  if (args.isGroupEligible) return [];
 
   const latestQueuedMessage = getQueuedThreadMessage(
     deps.db,
@@ -376,6 +406,7 @@ async function sendClaimedQueuedMessage(
   return sendClaimedQueuedMessageForThread(deps, {
     mode: args.mode,
     queuedMessages: args.queuedMessages,
+    sendNow: args.sendNow,
     thread,
   });
 }
@@ -385,6 +416,16 @@ async function sendClaimedQueuedMessageForIdleProviderThread(
   args: SendClaimedQueuedMessageForThreadArgs,
 ): Promise<ThreadQueuedMessage | null> {
   if (args.mode !== "auto") {
+    return null;
+  }
+  // This fast path dispatches straight to the daemon, bypassing the dispatch
+  // checkpoint. With a hook installed the drain takes the general path instead,
+  // so there is exactly one place a turn is decided about. With none (the
+  // overwhelming case) this check is a boolean and the drain is byte-for-byte
+  // what it was before the queue carried waits: the row it claims is already
+  // known drainable, so every core wait it could hit has been answered by the
+  // claim query itself.
+  if (hasMessageDispatchHooks()) {
     return null;
   }
 
@@ -433,7 +474,10 @@ async function sendClaimedQueuedMessageForIdleProviderThread(
   );
   const initiator: ThreadTurnInitiator =
     senderThreadId === null ? "user" : "agent";
-  if (initiator === "user") {
+  // A retry row's model is provenance — the failed attempt's tuple, replayed —
+  // not a model the user picked for this row, so it must not become the
+  // thread's sticky override the way a composed queued message's choice does.
+  if (initiator === "user" && queuedMessage.payload.kind !== "retry") {
     await recoverThreadModelOverride(deps, {
       model: payload.model,
       modelSource: "explicit",
@@ -532,13 +576,73 @@ async function sendClaimedQueuedMessageForIdleProviderThread(
       );
     },
   });
+  settleQueueRowDispatched({ row: args.queuedMessages[0]! });
   return queuedMessage;
 }
 
+/**
+ * Delivers a claimed row that is one of core's own system notices.
+ *
+ * Such a row is not a user dispatch and does not go through the checkpoint:
+ * it is an `initiator: "system"` turn with its own taxonomy and its own
+ * dispatch path, and the only reason it was on the queue at all is that the
+ * queue is where a blocked dispatch waits. Null when the row is an ordinary
+ * message, which is every row but these.
+ */
+async function sendClaimedSystemNotice(
+  deps: LoggedPendingInteractionWorkSessionDeps,
+  args: SendClaimedQueuedMessageForThreadArgs,
+): Promise<ThreadQueuedMessage | null> {
+  const lead = args.queuedMessages[0]!;
+  if (lead.systemNotice === null) {
+    return null;
+  }
+  const notice = queuedMessageSystemNoticeSchema.parse(
+    JSON.parse(lead.systemNotice),
+  );
+  const queuedMessage = toThreadQueuedMessage(lead);
+  const delivered = await deliverParentSystemMessage(deps, {
+    input: queuedMessage.content,
+    parentThread: args.thread,
+    systemMessageKind: notice.kind,
+    systemMessageSubject: notice.subject,
+  });
+  if (!delivered) {
+    // The thread changed under the drain. Leave the row claimed-and-released
+    // by the caller's error path rather than consuming a notice nobody got.
+    throw createQueuedMessageClaimLostError();
+  }
+  const consumed = deps.db.transaction(
+    (tx) =>
+      deleteClaimedQueuedThreadMessageBatchInTransaction(tx, {
+        queuedMessages: args.queuedMessages,
+      }),
+    { behavior: "immediate" },
+  );
+  if (!consumed) {
+    throw createQueuedMessageClaimLostError();
+  }
+  settleQueueRowDispatched({ row: lead });
+  return queuedMessage;
+}
+
+/**
+ * Re-attempts a claimed group through the dispatch checkpoint.
+ *
+ * The drain is nothing but a re-attempt: the same checkpoint runs, so a row
+ * whose wait cleared but whose thread went busy in the meantime simply queues
+ * again on the new reason rather than dispatching into a running turn. The
+ * claim the caller already won is handed to the attempt, which either consumes
+ * it inside the dispatch transaction (exactly once) or gives it back.
+ */
 async function sendClaimedQueuedMessageForThread(
   deps: LoggedPendingInteractionWorkSessionDeps,
   args: SendClaimedQueuedMessageForThreadArgs,
 ): Promise<ThreadQueuedMessage> {
+  const notice = await sendClaimedSystemNotice(deps, args);
+  if (notice) {
+    return notice;
+  }
   const sent = await sendClaimedQueuedMessageForIdleProviderThread(deps, args);
   if (sent) {
     return sent;
@@ -550,31 +654,68 @@ async function sendClaimedQueuedMessageForThread(
     (queuedMessage) => queuedMessage.content,
   );
   const input = groupedInputForRuntime(inputGroups);
-  const environment = await requireThreadCommandEnvironment(deps, {
+  const lead = args.queuedMessages[0]!;
+  const outcome = await attemptDispatch(deps, {
     thread: args.thread,
-  });
-  await sendThreadMessage(deps, {
-    beforeAppendInTransaction: ({ tx }) => {
-      const consumed = deleteClaimedQueuedThreadMessageBatchInTransaction(tx, {
-        queuedMessages: args.queuedMessages,
-      });
-      if (!consumed) {
-        throw createQueuedMessageClaimLostError();
-      }
-    },
-    environment,
     payload: {
       ...sendQueuedMessagePayload(
         { ...queuedMessage, content: input },
         args.mode,
-        args.queuedMessages[0]!.senderThreadId,
+        lead.senderThreadId,
       ),
       ...(inputGroups.length > 1 ? { inputGroups } : {}),
     },
-    thread: args.thread,
+    source: {
+      kind: "drain",
+      claimed: args.queuedMessages,
+      sendNow: args.sendNow,
+    },
+    queuePayload: queuedMessage.payload,
+    ...(queuedMessage.payload.kind === "retry"
+      ? {
+          retryOf: {
+            requestId: queuedMessage.payload.retryOfTurnRequestId,
+            attempt: queuedMessage.payload.attempt,
+          },
+        }
+      : {}),
+    origin: null,
+    originPluginId: null,
+    startedOnBehalfOf: null,
     trigger: "auto-dispatch",
   });
+  if (args.sendNow && outcome.kind === "queued") {
+    // "Send now" overrides every plugin wait and the row's own schedule, but
+    // not a core wait — those guard invariants rather than express a policy.
+    // The row is back on the queue with its new reason; say so rather than
+    // returning a success the caller would read as "it went".
+    throw new ApiError(
+      409,
+      "queued_message_still_waiting",
+      `This message cannot be sent yet: ${describeCoreWait(outcome.entry.waitingOn)}.`,
+    );
+  }
   return queuedMessage;
+}
+
+/** The user-facing half of a core wait, for a refused "Send now". */
+function describeCoreWait(waitingOn: QueuedMessageWaitingOn | null): string {
+  switch (waitingOn?.kind) {
+    case "provisioning":
+      return "the thread's workspace is still being prepared";
+    case "host-offline":
+      return `the "${waitingOn.hostName}" host is not connected`;
+    case "interaction":
+      return "the thread is waiting for you to answer a pending interaction";
+    case "turn-starting":
+      return "the current turn is still starting";
+    case "plugin":
+      return `it is waiting on the "${waitingOn.pluginId}" plugin`;
+    case "time":
+    case "thread-busy":
+    case undefined:
+      return "the thread is already running a turn";
+  }
 }
 
 export async function sendQueuedMessage(
@@ -582,8 +723,20 @@ export async function sendQueuedMessage(
   args: SendQueuedMessageArgs,
 ): Promise<ThreadQueuedMessage> {
   const queuedMessages = claimQueuedThreadMessageForSend(deps, args);
+  if (queuedMessages.length === 0) {
+    const existing = getQueuedThreadMessage(deps.db, args.queuedMessageId);
+    if (!existing)
+      throw new ApiError(404, "invalid_request", "Queued message not found");
+    return toThreadQueuedMessage(existing);
+  }
   const thread = getThread(deps.db, args.threadId);
-  if (thread && isManualCompactionActive(deps, thread)) {
+  if (
+    thread &&
+    (isManualCompactionActive(deps, thread) ||
+      (args.mode === "auto" &&
+        !args.sendNow &&
+        isThreadQueueAutoSendPaused(deps.db, thread.id)))
+  ) {
     releaseQueuedMessageClaims(deps, queuedMessages);
     return toThreadQueuedMessage(queuedMessages[0]!);
   }
@@ -592,6 +745,7 @@ export async function sendQueuedMessage(
       sendClaimedQueuedMessage(deps, {
         mode: args.mode,
         queuedMessages,
+        sendNow: args.sendNow,
         threadId: args.threadId,
       }),
     );
@@ -605,7 +759,12 @@ export async function sendNextQueuedMessageIfPresent(
   deps: LoggedPendingInteractionWorkSessionDeps,
   args: { threadId: string },
 ): Promise<boolean> {
-  if (!isQueuedMessageAutoSendCandidate(getThread(deps.db, args.threadId))) {
+  if (
+    !isQueuedMessageAutoSendCandidate(
+      deps.db,
+      getThread(deps.db, args.threadId),
+    )
+  ) {
     return false;
   }
 
@@ -620,7 +779,7 @@ export async function sendNextQueuedMessageIfPresent(
 
   const thread = getThread(deps.db, args.threadId);
   if (
-    !isQueuedMessageAutoSendCandidate(thread) ||
+    !isQueuedMessageAutoSendCandidate(deps.db, thread) ||
     isManualCompactionActive(deps, thread)
   ) {
     releaseQueuedMessageClaims(deps, nextQueuedMessages);
@@ -632,6 +791,7 @@ export async function sendNextQueuedMessageIfPresent(
       sendClaimedQueuedMessageForThread(deps, {
         mode: "auto",
         queuedMessages: nextQueuedMessages,
+        sendNow: false,
         thread,
       }),
     );
@@ -639,6 +799,17 @@ export async function sendNextQueuedMessageIfPresent(
     releaseQueuedMessageClaims(deps, nextQueuedMessages);
     if (isQueuedMessageClaimLostError(error)) {
       return false;
+    }
+    // Nobody is listening to this attempt, so the row itself has to carry what
+    // happened — either as a `host-offline` wait it can recover from, or as a
+    // failure reason the queued row renders. A host timeout is excluded: the
+    // command is still in flight, so the attempt has not failed yet.
+    if (!isCommandTimeoutError(error)) {
+      recordQueuedMessageDrainFailure(deps, {
+        error,
+        row: nextQueuedMessages[0]!,
+        thread,
+      });
     }
     if (isCommandTimeoutError(error)) {
       deps.logger.debug(

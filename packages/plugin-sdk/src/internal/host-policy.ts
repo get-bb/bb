@@ -19,6 +19,8 @@ import type {
   PluginAiServiceKind,
   PluginCliExecutionResult,
   PluginCliOutputLimitError,
+  PluginHookHandler,
+  PluginHookName,
   PluginMentionTrigger,
   PluginProviderCapabilities,
   PluginProviderComposerAction,
@@ -2012,4 +2014,30 @@ export function agentToolIconRefusalMessage(
  */
 export function providerWithoutBridgeMessage(providerId: string): string {
   return `provider "${providerId}" has no bridge to run on: this plugin declares no "bb.host" entry in its manifest`;
+}
+
+/**
+ * Files a hook handler under its key in a per-hook record.
+ *
+ * The record is a mapped type over the hook-name union, so writing to it
+ * through a generic key is not expressible soundly in TypeScript: this call
+ * site knows `handler` matches `hook`, but the checker only knows both range
+ * over the union and so demands their intersection. The erasure is confined to
+ * this one function; every READ is sound, because a slot is typed for its own
+ * hook and the runner builds the context for the hook it read the handler from.
+ *
+ * Shared by the real host (`plugin-api.ts`) and the fake one so both register
+ * hooks by the same rule, which is the point of every other helper here.
+ */
+export function storePluginHook<K extends PluginHookName>(
+  records: { [N in PluginHookName]: PluginHookHandler<N> | null },
+  hook: K,
+  handler: PluginHookHandler<K>,
+): void {
+  (records as Record<PluginHookName, unknown>)[hook] = handler;
+}
+
+/** The refusal a second handler for one hook from one plugin gets. */
+export function pluginHookAlreadyRegisteredMessage(hook: PluginHookName): string {
+  return `a "${hook}" hook handler is already registered by this plugin`;
 }

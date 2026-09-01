@@ -421,6 +421,80 @@ function registerOpenDrawer(
   };
 }
 
+interface UsePersistentOverlayFocusArgs {
+  onAfterCloseAutoFocus?: () => void;
+  onBeforeCloseAutoFocus?: () => void;
+  open: boolean;
+  panelRef: React.RefObject<HTMLElement | null>;
+  requestClose: () => void;
+}
+
+export function usePersistentOverlayFocus({
+  onAfterCloseAutoFocus,
+  onBeforeCloseAutoFocus,
+  open,
+  panelRef,
+  requestClose,
+}: UsePersistentOverlayFocusArgs): void {
+  const returnFocusRef = React.useRef<HTMLElement | null>(null);
+
+  React.useLayoutEffect(() => {
+    if (!open) return;
+    const panel = panelRef.current;
+    if (panel === null) return;
+    const ownerDocument = panel.ownerDocument;
+    const previousFocus = ownerDocument.activeElement;
+    returnFocusRef.current =
+      previousFocus instanceof HTMLElement &&
+      previousFocus !== ownerDocument.body
+        ? previousFocus
+        : null;
+    const unregister = registerOpenDrawer(ownerDocument, {
+      panel: () => panelRef.current,
+      requestClose,
+    });
+    panel.focus({ preventScroll: true });
+    return unregister;
+  }, [open, panelRef, requestClose]);
+
+  const previousOpenRef = React.useRef(open);
+  React.useLayoutEffect(() => {
+    let cancelDeferredFocus: (() => void) | undefined;
+    if (previousOpenRef.current && !open) {
+      onBeforeCloseAutoFocus?.();
+      const returnFocus = returnFocusRef.current;
+      if (
+        returnFocus?.isConnected &&
+        returnFocus.closest('[aria-hidden="true"], [inert]') === null
+      ) {
+        returnFocus.focus({ preventScroll: true });
+        if (returnFocus.ownerDocument.activeElement !== returnFocus) {
+          const ownerWindow = returnFocus.ownerDocument.defaultView;
+          if (ownerWindow !== null) {
+            const frame = ownerWindow.requestAnimationFrame(() => {
+              if (
+                returnFocus.isConnected &&
+                returnFocus.closest('[aria-hidden="true"], [inert]') === null
+              ) {
+                returnFocus.focus({ preventScroll: true });
+              }
+              onAfterCloseAutoFocus?.();
+            });
+            cancelDeferredFocus = () =>
+              ownerWindow.cancelAnimationFrame(frame);
+          }
+        }
+      }
+      returnFocusRef.current = null;
+      if (cancelDeferredFocus === undefined) {
+        onAfterCloseAutoFocus?.();
+      }
+    }
+    previousOpenRef.current = open;
+    return cancelDeferredFocus;
+  }, [onAfterCloseAutoFocus, onBeforeCloseAutoFocus, open]);
+}
+
 type PersistentDrawerDrag = {
   pointerId: number;
   startY: number;
@@ -445,7 +519,6 @@ export function PersistentResponsiveDrawerShell({
   const panelRef = React.useRef<HTMLDivElement>(null);
   const backdropRef = React.useRef<HTMLDivElement>(null);
   const dragRef = React.useRef<PersistentDrawerDrag | null>(null);
-  const returnFocusRef = React.useRef<HTMLElement | null>(null);
   const settledStateRef = React.useRef<boolean | null>(null);
   const labelId = React.useId();
   const portalScopeProps = usePortalScopeProps();
@@ -460,6 +533,18 @@ export function PersistentResponsiveDrawerShell({
     resetDrawerKeyboardStyles(panelRef.current);
     onOpenChangeRef.current(false);
   }, []);
+  const prepareCloseAutoFocus = React.useCallback(() => {
+    blurActiveKeyboardInputWithin(panelRef.current);
+    resetDrawerKeyboardStyles(panelRef.current);
+  }, []);
+
+  usePersistentOverlayFocus({
+    onAfterCloseAutoFocus,
+    onBeforeCloseAutoFocus: prepareCloseAutoFocus,
+    open,
+    panelRef,
+    requestClose,
+  });
 
   const reportSettled = React.useCallback(
     (settledOpen: boolean) => {
@@ -480,47 +565,6 @@ export function PersistentResponsiveDrawerShell({
     );
     return () => window.clearTimeout(timeout);
   }, [motionDurationMs, open, reportSettled]);
-
-  React.useLayoutEffect(() => {
-    if (!open) {
-      return;
-    }
-    const panel = panelRef.current;
-    if (panel === null) {
-      return;
-    }
-    const ownerDocument = panel.ownerDocument;
-    const previousFocus = ownerDocument.activeElement;
-    returnFocusRef.current =
-      previousFocus instanceof HTMLElement ? previousFocus : null;
-    const unregister = registerOpenDrawer(ownerDocument, {
-      panel: () => panelRef.current,
-      requestClose,
-    });
-    panel.focus({ preventScroll: true });
-
-    return () => {
-      unregister();
-    };
-  }, [open, requestClose]);
-
-  const previousOpenRef = React.useRef(open);
-  React.useLayoutEffect(() => {
-    if (previousOpenRef.current && !open) {
-      blurActiveKeyboardInputWithin(panelRef.current);
-      resetDrawerKeyboardStyles(panelRef.current);
-      const returnFocus = returnFocusRef.current;
-      if (
-        returnFocus?.isConnected &&
-        returnFocus.closest('[aria-hidden="true"], [inert]') === null
-      ) {
-        returnFocus.focus({ preventScroll: true });
-      }
-      returnFocusRef.current = null;
-      onAfterCloseAutoFocus?.();
-    }
-    previousOpenRef.current = open;
-  }, [onAfterCloseAutoFocus, open]);
 
   const setDragPosition = React.useCallback(
     (offsetY: number, height: number, animate: boolean) => {

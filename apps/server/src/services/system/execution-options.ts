@@ -22,7 +22,10 @@ import { callHostRetryableOnlineRpc } from "../hosts/online-rpc.js";
 import { getHostPermissionCeiling } from "../hosts/permission-ceiling.js";
 import { requireEnvironment } from "../lib/entity-lookup.js";
 import { createProviderListingBudget } from "../providers/native-roots.js";
-import type { ProviderRegistryService } from "../providers/provider-registry.js";
+import type {
+  ProviderHealthCacheKey,
+  ProviderRegistryService,
+} from "../providers/provider-registry.js";
 import { getSupportedReasoningLevelsForProvider } from "../threads/thread-reasoning-policy.js";
 import { resolveSystemLookupHostId } from "./host-lookup.js";
 import {
@@ -180,20 +183,34 @@ async function listInstalledPluginProviderInfos(
         registration.info.id,
       );
       if (bridgeLaunch === null) return null;
+      const cacheKey: ProviderHealthCacheKey = {
+        hostId,
+        providerId: registration.info.id,
+      };
+      const cached = deps.providerRegistry.lookupInstalled(cacheKey);
       try {
-        const result = await callHostRetryableOnlineRpc(deps, {
-          hostId,
-          timeoutMs: budget.remainingMs(),
-          command: {
-            type: "provider.health",
-            providerId: registration.info.id,
-            bridgeLaunch,
-          },
-        });
-        return result.supported && result.health.status !== "not_installed"
-          ? registration.info
-          : null;
+        const installed =
+          cached ??
+          (async () => {
+            const result = await callHostRetryableOnlineRpc(deps, {
+              hostId,
+              timeoutMs: budget.remainingMs(),
+              command: {
+                type: "provider.health",
+                providerId: registration.info.id,
+                bridgeLaunch,
+              },
+            });
+            return (
+              result.supported && result.health.status !== "not_installed"
+            );
+          })();
+        if (cached === undefined) {
+          deps.providerRegistry.rememberInstalled(cacheKey, installed);
+        }
+        return (await installed) ? registration.info : null;
       } catch (error) {
+        deps.providerRegistry.forgetInstalledKey(cacheKey);
         if (!canOmitProviderDiscoveryForError(error)) {
           throw error;
         }

@@ -29,6 +29,10 @@ import {
   PLAN_HELP,
   parseServiceTier,
 } from "./helpers.js";
+import { SEND_AT_HELP, parseSendAt } from "./send-time.js";
+
+const PROVIDER_HELP =
+  "Provider ID for the thread. Omit to use the project's remembered provider choice";
 
 interface ThreadSpawnCommandOptions {
   prompt: string;
@@ -55,6 +59,7 @@ interface ThreadSpawnCommandOptions {
   sourceThread?: string;
   sourceSeqEnd?: string;
   visibility?: string;
+  sendAt?: string;
 }
 
 export function looksLikePath(value: string): boolean {
@@ -180,7 +185,7 @@ export function registerSpawnCommand(
     )
     .option(
       "--base-branch <branch>",
-      "Base branch for new managed worktrees. Omit to let bb choose the project's default worktree base; naming the default branch fetches and prefers origin the same way.",
+      "Exact Git ref; omit for bb's project default (use origin/<branch> for a remote ref)",
     )
     .option(
       "--machine <id-or-name>",
@@ -189,10 +194,7 @@ export function registerSpawnCommand(
     .option("--host <id-or-name>", "Alias for --machine")
     .option("--parent-thread <id>", "Parent thread ID for worker thread links")
     .option("--parent-self", "Parent the new thread to BB_THREAD_ID")
-    .option(
-      "--provider <id>",
-      "Provider ID for the thread. Omit to use the project's remembered provider choice",
-    )
+    .option("--provider <id>", PROVIDER_HELP)
     .option(
       "--model <model>",
       "Model ID for the thread. Omit to use the project's remembered default for the resolved provider",
@@ -222,6 +224,7 @@ export function registerSpawnCommand(
       "--visibility <visibility>",
       "Thread visibility: visible or hidden (a child inherits its parent)",
     )
+    .option("--send-at <when>", SEND_AT_HELP)
     .option("--origin-kind <kind>", "Thread origin: fork")
     .option("--source-thread <id>", "Source thread for a fork")
     .option(
@@ -295,6 +298,11 @@ export function registerSpawnCommand(
         ) {
           throw new Error("--source-seq-end must be a non-negative integer.");
         }
+        const sendAt =
+          opts.sendAt === undefined
+            ? undefined
+            : parseSendAt(opts.sendAt);
+        const providerId = opts.provider?.trim();
 
         let thread: Thread;
         try {
@@ -302,7 +310,7 @@ export function registerSpawnCommand(
           thread = await sdk.threads.spawn({
             origin: "cli",
             projectId,
-            ...(opts.provider ? { providerId: opts.provider } : {}),
+            ...(providerId ? { providerId } : {}),
             ...(opts.model ? { model: opts.model } : {}),
             input: buildPromptInputs({
               message: opts.prompt,
@@ -322,6 +330,7 @@ export function registerSpawnCommand(
             ...(opts.section ? { sectionId: opts.section } : {}),
             ...(opts.sourceThread ? { sourceThreadId: opts.sourceThread } : {}),
             ...(sourceSeqEnd !== undefined ? { sourceSeqEnd } : {}),
+            ...(sendAt !== undefined ? { sendAt } : {}),
           });
         } catch (err: unknown) {
           throw prependErrorContext("Failed to create thread", err);
@@ -329,6 +338,13 @@ export function registerSpawnCommand(
 
         if (outputJson(opts, thread)) return;
         console.log(`Thread spawned: ${thread.id}`);
+        if (sendAt !== undefined) {
+          console.log(
+            `First message scheduled for ${new Date(sendAt).toLocaleString()}; the thread stays pending until then.`,
+          );
+        }
+        // A hidden child reports to its parent too, so the promise follows the
+        // parent link alone.
         if (
           thread.parentThreadId &&
           thread.parentThreadId === resolveContextThreadId()

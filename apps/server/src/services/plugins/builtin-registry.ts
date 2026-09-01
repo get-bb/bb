@@ -130,6 +130,18 @@ export const BUILTIN_PLUGINS = [
     category: "Developer tools",
   },
   {
+    name: "scheduled-send",
+    pluginId: "scheduled-send",
+    defaultEnabled: true,
+    category: "Workflow management",
+  },
+  {
+    name: "concurrency-limit",
+    pluginId: "concurrency-limit",
+    defaultEnabled: true,
+    category: "Workflow management",
+  },
+  {
     name: "side-chat",
     pluginId: "side-chat",
     defaultEnabled: true,

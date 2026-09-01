@@ -43,6 +43,7 @@ function storyThread(id: string, title: string): ThreadResponse {
     },
     activeBackgroundAgentCount: 0,
     canSpawnChild: false,
+    queuedMessageCount: 0,
   };
 }
 

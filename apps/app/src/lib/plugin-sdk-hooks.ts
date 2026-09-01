@@ -21,6 +21,7 @@ import type {
   PluginProvidersState,
   PluginSettingsState,
   ExperimentalAppPanel,
+  ExperimentalComposerSubmitOptions,
   ExperimentalFixedTabTargetState,
   ExperimentalPluginFixedTabReference,
   JsonValue,
@@ -814,6 +815,23 @@ export function useComposer(): PluginComposerApi {
   const focus = focusActiveComposer;
   const composerText = composerHostDraft?.text ?? routeDraft.text;
 
+  const hostSubmit = composerHost?.submit;
+  const experimental_submit = useCallback(
+    async (options: ExperimentalComposerSubmitOptions) => {
+      if (!scopeOwnership.isActive()) {
+        throw new Error("This composer is no longer active.");
+      }
+      if (hostSubmit === undefined) {
+        throw new Error("This composer cannot schedule a submission.");
+      }
+      if (!Number.isFinite(options.sendAt) || options.sendAt <= Date.now()) {
+        throw new Error("Pick a time in the future.");
+      }
+      await hostSubmit({ sendAt: options.sendAt });
+    },
+    [hostSubmit, scopeOwnership],
+  );
+
   return useMemo(
     () => ({
       scope:
@@ -831,12 +849,14 @@ export function useComposer(): PluginComposerApi {
       addQuote,
       insertMention,
       focus,
+      experimental_submit,
     }),
     [
       addQuote,
       clear,
       composerScope,
       composerText,
+      experimental_submit,
       focus,
       insertMention,
       projectId,

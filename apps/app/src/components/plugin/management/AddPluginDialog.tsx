@@ -335,7 +335,7 @@ function AddPluginDialogContent({
             role="progressbar"
             aria-label="Installing plugin"
           >
-            <div className="h-full w-1/3 animate-plugin-install-progress rounded-full bg-muted-foreground" />
+            <div className="h-full w-1/3 animate-indeterminate-progress rounded-full bg-muted-foreground" />
           </div>
         ) : (
           <FullTrustWarning />

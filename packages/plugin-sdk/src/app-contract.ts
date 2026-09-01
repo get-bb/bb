@@ -105,6 +105,58 @@ export interface PluginPendingInteractionProps {
  */
 export interface PluginSidebarFooterActionProps {}
 
+/** Display and accessibility metadata for a host-owned sidebar shortcut. */
+export interface ExperimentalSidebarNavigationShortcut {
+  label: string;
+  ariaKeyShortcuts: string;
+}
+
+/** Host-owned behavior represented by one sidebar navigation item. */
+export type ExperimentalSidebarNavigationAction =
+  | { kind: "new-thread" }
+  | { kind: "search-threads" }
+  | { kind: "open-extensions" }
+  | {
+      kind: "open-plugin-panel";
+      pluginId: string;
+      panelId: string;
+    };
+
+/** Semantic icon identity for one sidebar navigation item. */
+export type ExperimentalSidebarNavigationIcon =
+  | { kind: "host"; name: "new-thread" | "search" | "extensions" }
+  | { kind: "plugin"; pluginId: string; icon: string | null };
+
+/** One host-owned destination or action a plugin may arrange. */
+export interface ExperimentalSidebarNavigationItem {
+  id: string;
+  label: string;
+  icon: ExperimentalSidebarNavigationIcon;
+  action: ExperimentalSidebarNavigationAction;
+  isDisabled: boolean;
+  shortcut: ExperimentalSidebarNavigationShortcut | null;
+  experimental_splitProps: {
+    onPointerDown?: (event: import("react").PointerEvent<HTMLElement>) => void;
+  };
+}
+
+/** How the host should activate a sidebar navigation item. */
+export interface ExperimentalSidebarNavigationActivationOptions {
+  openInSplit: boolean;
+}
+
+/** Props passed to an `experimental_sidebarNavigation` component. */
+export interface ExperimentalSidebarNavigationProps {
+  items: readonly ExperimentalSidebarNavigationItem[];
+  activeItemId: string | null;
+  isCompactViewport: boolean;
+  experimental_activate(
+    itemId: string,
+    options: ExperimentalSidebarNavigationActivationOptions,
+  ): void;
+  experimental_Original: ComponentType;
+}
+
 /**
  * Props passed to an `experimental_threadList` component — the sidebar's
  * scrolling thread area, replaced wholesale by one plugin.
@@ -965,6 +1017,17 @@ export interface PluginThreadListRegistration {
   component: ComponentType<PluginThreadListProps>;
 }
 
+/** Replace the bounded navigation controls above the sidebar thread list. */
+export interface ExperimentalSidebarNavigationRegistration {
+  /** Unique within the plugin; letters, digits, `-`, `_`. */
+  id: string;
+  /** Label shown in Settings → Appearance and capability details. */
+  title: string;
+  /** Optional one-line description shown with the provider choice. */
+  description?: string;
+  component: ComponentType<ExperimentalSidebarNavigationProps>;
+}
+
 /**
  * Register this plugin as a viewer/editor for file extensions. By default,
  * matching files render the first applicable opener in deterministic slot
@@ -1280,6 +1343,10 @@ export interface PluginAppSlots {
   pendingInteraction(registration: PluginPendingInteractionRegistration): void;
   sidebarFooterAction(
     registration: PluginSidebarFooterActionRegistration,
+  ): void;
+  /** Replace the bounded sidebar navigation controls. */
+  experimental_sidebarNavigation(
+    registration: ExperimentalSidebarNavigationRegistration,
   ): void;
   /**
    * Replace the sidebar's thread list (see
@@ -1614,6 +1681,54 @@ export interface PluginComposerApi {
   insertMention(mention: PluginComposerMention): void;
   /** Focus the composer caret at the end of the draft. */
   focus(): void;
+  /**
+   * Submit this composer's draft through the composer's OWN submit pipeline,
+   * queued until `sendAt` instead of dispatched now.
+   *
+   * This is a real submission, not a plugin-issued send: the host builds the
+   * request exactly as pressing Enter would, so the draft's attachments and
+   * @-mentions, and — in the new-thread composer — the provider, model,
+   * reasoning level, service tier, permission mode and environment the user
+   * has selected on screen, all travel with it. A plugin cannot assemble that
+   * tuple itself, which is why sending from the backend instead would silently
+   * run the message with different settings than the ones in front of the user.
+   *
+   * In a thread composer the message is queued as a row instead of being
+   * sent or queued for the next idle moment. In the new-thread composer the
+   * thread is created `pending` and its first message becomes the queued row.
+   * Either way the resulting row is core's: the queued card above the
+   * composer, the countdown, Send now and Delete all work with no further
+   * plugin involvement.
+   *
+   * Resolves once the host has accepted the submission and cleared the draft.
+   * Rejects when the composer refused to submit — a scope with no submit
+   * pipeline (a queued-message editor, a side chat), an empty draft, or a
+   * composer that is not ready (still loading its execution defaults, missing
+   * an environment). The rejection's message is safe to show to the user.
+   * Failures of the underlying request are reported by bb's own submit error
+   * handling and restore the draft, exactly as an interactive failure does.
+   *
+   * Experimental: see docs/api_to_audit.md.
+   */
+  experimental_submit(
+    options: ExperimentalComposerSubmitOptions,
+  ): Promise<void>;
+}
+
+/**
+ * What `experimental_submit` does differently from pressing Enter.
+ *
+ * There is deliberately no zero-argument overload and no "submit now" arm: a
+ * plugin that wants a draft sent immediately is asking for the affordance the
+ * user already has, and handing plugins an unconditional "send this draft"
+ * button is a much larger surface than scheduling needs.
+ */
+export interface ExperimentalComposerSubmitOptions {
+  /**
+   * Epoch ms the submission should dispatch at. Must be in the future; the
+   * host does not second-guess how far ahead it is.
+   */
+  sendAt: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -1692,7 +1807,13 @@ export interface ThreadChatProps {
 // experimental_ProviderModelPicker — host-owned execution selection.
 // ---------------------------------------------------------------------------
 
-/** The controlled execution selection resolved by the picker. */
+/**
+ * The controlled execution selection resolved by the picker.
+ *
+ * Deliberately a single concrete shape, not a union: this value exists to be
+ * forwarded verbatim to `bb.sdk.threads.spawn`, so it must name a real
+ * provider and model.
+ */
 export interface ExperimentalProviderModelPickerValue {
   providerId: string;
   model: string;
@@ -1783,6 +1904,14 @@ export interface NewThreadRequest {
   executionInputSources: CreateExecutionInputSources;
   environment: CreateThreadEnvironmentArgs;
   input: PromptInput[];
+  /**
+   * Epoch ms the first turn should dispatch at. Present only when the
+   * submission came from `useComposer().experimental_submit` — a scheduled
+   * create — and absent otherwise, which is what makes an ordinary submission
+   * start work at once. Forward it to `threads.spawn` unchanged: the thread is
+   * created `pending` and its first message is queued as a row until then.
+   */
+  sendAt?: number;
 }
 
 /**

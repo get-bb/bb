@@ -16,10 +16,10 @@ const DISCOVERED_MODELS: ModelInfo[] = [
     description: "Opus 5 with 1M context",
   },
   {
-    value: "claude-fable-5[1m]",
-    resolvedModel: "claude-fable-5",
+    value: "claude-fable-5-1[1m]",
+    resolvedModel: "claude-fable-5-1",
     displayName: "Fable",
-    description: "Fable 5",
+    description: "Fable 5.1",
   },
   {
     value: "sonnet",
@@ -36,7 +36,7 @@ const DISCOVERED_MODELS: ModelInfo[] = [
 ];
 
 const CURATED_MODELS = [
-  "claude-fable-5",
+  "claude-fable-5-1",
   "claude-opus-5[1m]",
   "claude-opus-4-8[1m]",
   "claude-opus-4-7[1m]",

@@ -218,7 +218,7 @@ describe("guide fixture boundaries", () => {
       'data-guide-fixture="sidebar-top-reserve"',
     );
     const reserveEnd = markup.indexOf(
-      'data-guide-fixture="sidebar-primary-actions"',
+      'data-guide-fixture="sidebar-navigation-primary-actions"',
     );
 
     expect(markup).toContain('data-guide-fixture="sidebar-trigger-overlay"');
@@ -227,6 +227,28 @@ describe("guide fixture boundaries", () => {
     expect(markup.slice(reserveStart, reserveEnd)).not.toContain(
       'data-guide-fixture="sidebar-trigger-overlay"',
     );
+  });
+
+  it("shows the complete sidebar navigation replacement boundary", () => {
+    const markup = renderWireframe(createElement(AppShellWireframe));
+    const contract = anatomy.surfaceFixtures["sidebar-navigation"];
+
+    expect(contract.requiredStates).toEqual([
+      "owner",
+      "replacement",
+      "fallback",
+    ]);
+    for (const label of contract.labels.owner) {
+      expect(markup).toContain(label);
+    }
+    for (const classAnchor of contract.fixtureClassAnchors) {
+      expect(markup).toContain(classAnchor);
+    }
+    expect(markup).toContain('data-guide-region="sidebar-navigation"');
+    expect(markup).toContain(
+      'data-guide-fixture="sidebar-navigation-primary-actions"',
+    );
+    expect(markup).not.toContain("Custom navigation");
   });
 
   it("grows the app window within capped viewport-fit bounds while retaining loose timeline spacing", () => {

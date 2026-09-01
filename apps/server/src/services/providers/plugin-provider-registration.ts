@@ -109,10 +109,19 @@ export function projectFallbackModels(
   }));
 }
 
+function buildProviderLogoUrl(
+  providerId: string,
+  iconHash: string | null,
+): string {
+  const path = `/api/v1/system/providers/${providerId}/logo`;
+  return iconHash === null ? path : `${path}?h=${iconHash}`;
+}
+
 export function buildPluginProviderRegistration(args: {
   available: boolean;
   pluginId: string;
   declaration: NormalizedPluginProviderDeclaration;
+  iconHash: string | null;
   readSettings: () => PluginProviderOptionsContext["settings"];
 }): Omit<ProviderRegistration, "pluginId" | "iconNames"> {
   const { declaration } = args;
@@ -157,7 +166,7 @@ export function buildPluginProviderRegistration(args: {
       declaration.icon !== undefined &&
       (isPluginOwnedIconPath(declaration.icon) ||
         isNamespacedGlyph(declaration.icon))
-        ? `/api/v1/system/providers/${declaration.id}/logo`
+        ? buildProviderLogoUrl(declaration.id, args.iconHash)
         : null,
     ...(declaration.icon !== undefined &&
     !isPluginOwnedIconPath(declaration.icon) &&

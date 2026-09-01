@@ -23,11 +23,13 @@ import type {
   ThreadTimelineResponse,
   TimelineTurnSummaryDetailsResponse,
 } from "@bb/server-contract";
+import { threadConversationOutlineItemSchema } from "@bb/server-contract";
 import {
   findStoredTimelineWindowByteBudgetFloor,
   findTimelineWindowBudgetFloorSequence,
   getStoredEventRowsByParentToolCallIdsDataBytes,
   getEnvironment,
+  getThreadConversationOutlineRecord,
   findUnfinishedTurnCoveringSequence,
   hasParentedEventCrossingSequence,
   getTimelineSegmentAnchorAtSequence,
@@ -52,6 +54,7 @@ import {
   listStoredTurnStartedRowsByTurnIdsUpToSequence,
   listTimelineSegmentAnchorsDescending,
   scopedItemRefKey,
+  upsertThreadConversationOutlineRecord,
 } from "@bb/db";
 import type {
   DbConnection,
@@ -1616,7 +1619,14 @@ interface BuildThreadConversationOutlineOptions {
   providerDisplayName?: string;
 }
 
+interface LoadThreadConversationOutlineOptions extends BuildThreadConversationOutlineOptions {
+  outlineSequence: number;
+}
+
 const CONVERSATION_OUTLINE_PREVIEW_MAX_LENGTH = 200;
+const CONVERSATION_OUTLINE_PROJECTION_VERSION = 1;
+const conversationOutlineItemsSchema =
+  threadConversationOutlineItemSchema.array();
 
 function toConversationOutlinePreview(text: string): string {
   const normalized = text.replace(/\s+/g, " ").trim();
@@ -1697,6 +1707,68 @@ export function buildThreadConversationOutline(
     }
     return { items, maxSeq: options.maxSeq };
   });
+}
+
+export function buildThreadConversationOutlineProjectionKey(
+  thread: Thread,
+  outlineSequence: number,
+  providerDisplayName: string | undefined,
+): string {
+  return JSON.stringify([
+    CONVERSATION_OUTLINE_PROJECTION_VERSION,
+    outlineSequence,
+    thread.providerId,
+    providerDisplayName ?? null,
+    thread.status,
+    thread.title,
+    thread.titleFallback,
+  ]);
+}
+
+function parseThreadConversationOutlineItems(
+  itemsJson: string,
+): ThreadConversationOutlineItem[] | null {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(itemsJson);
+  } catch {
+    return null;
+  }
+  const result = conversationOutlineItemsSchema.safeParse(parsed);
+  return result.success ? result.data : null;
+}
+
+function shouldMaterializeThreadConversationOutline(thread: Thread): boolean {
+  return thread.status === "idle" || thread.status === "error";
+}
+
+export function loadThreadConversationOutline(
+  db: DbConnection,
+  thread: Thread,
+  options: LoadThreadConversationOutlineOptions,
+): ThreadConversationOutlineResponse {
+  const projectionKey = buildThreadConversationOutlineProjectionKey(
+    thread,
+    options.outlineSequence,
+    options.providerDisplayName,
+  );
+  const stored = getThreadConversationOutlineRecord(db, thread.id);
+  if (stored?.projectionKey === projectionKey) {
+    const items = parseThreadConversationOutlineItems(stored.itemsJson);
+    if (items !== null) {
+      return { items, maxSeq: options.maxSeq };
+    }
+  }
+
+  const response = buildThreadConversationOutline(db, thread, options);
+  if (shouldMaterializeThreadConversationOutline(thread)) {
+    upsertThreadConversationOutlineRecord(db, {
+      itemsJson: JSON.stringify(response.items),
+      projectionKey,
+      threadId: thread.id,
+    });
+  }
+  return response;
 }
 
 export function buildTimelineTurnSummaryDetails(

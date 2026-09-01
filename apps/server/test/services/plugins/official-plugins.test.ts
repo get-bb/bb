@@ -92,6 +92,7 @@ describe("official plugin registry invariants", () => {
     const expectedCategories = {
       "ask-user-question": "Agent interaction",
       automations: "Workflow management",
+      "concurrency-limit": "Workflow management",
       connect: "Host access",
       "custom-instructions": "Context & knowledge",
       "plugin-api-tester": "Developer tools",
@@ -108,6 +109,7 @@ describe("official plugin registry invariants", () => {
       "provider-codex": "Agent interaction",
       "provider-pi": "Agent interaction",
       "provider-retry": "Agent interaction",
+      "scheduled-send": "Workflow management",
       secrets: "Developer tools",
       "side-chat": "Agent interaction",
       tasks: "Workflow management",

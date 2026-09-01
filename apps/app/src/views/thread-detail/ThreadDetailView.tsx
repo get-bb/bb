@@ -105,9 +105,7 @@ import {
   useCreateThreadTerminal,
   useThreadTerminals,
 } from "@/hooks/queries/thread-terminal-queries";
-import {
-  getEnvironmentWorkspaceSummaryDisplay,
-} from "@/lib/environment-workspace-display";
+import { getEnvironmentWorkspaceSummaryDisplay } from "@/lib/environment-workspace-display";
 import { formatWorkspaceCheckoutDisplay } from "@/lib/workspace-checkout-display";
 import {
   getAbsoluteDirname,
@@ -597,6 +595,7 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
   const removeFixedTerminalTab = useRemoveFixedRightTerminalTab(
     threadId,
     threadId,
+    secondaryPanelDrawerVisibility.closeDrawer,
   );
   const updateFixedPanelTabsState = useUpdateFixedPanelTabsState(
     threadId,
@@ -658,6 +657,7 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
     secondaryTabs: fixedPanelTabsState.secondary.tabs,
   });
   const {
+    checkThreadStorageFileExists,
     isThreadStorageFilesLoading,
     refetchThreadStorageFiles,
     threadStorageFiles,
@@ -683,6 +683,7 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
     openTab,
     openPluginPanel,
     orderedSecondaryFileTabs,
+    reopenClosedTab,
     reorderTab,
     selectFileSearchResult,
     updateBrowserTab,
@@ -690,8 +691,10 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
     panelStateId: threadId,
     syncThreadId: threadId,
     environmentId: thread?.environmentId,
+    onCloseLastTab: secondaryPanelDrawerVisibility.closeDrawer,
     retainedTerminalId,
-    storageFiles: threadStorageFiles?.files,
+    storageFileExists: checkThreadStorageFileExists,
+    storageFiles: threadStorageFiles,
     terminalSessions: terminalsListQuery.data?.sessions,
   });
   const pluginPanelActions = usePluginPanelActions({
@@ -1555,6 +1558,11 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
   useAppCommandHandler("panel.newTab", () => {
     if (!isFocused) return false;
     handleOpenNewTab();
+    return true;
+  });
+  useAppCommandHandler("panel.reopenClosedTab", () => {
+    if (!isFocused || !reopenClosedTab()) return false;
+    openCompactDrawer();
     return true;
   });
   useAppCommandHandler("file.quickOpen", () => {
@@ -2523,6 +2531,7 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
       }
       pendingInteractions={pendingInteractions}
       pendingInteractionsInitialLoading={pendingInteractionsInitialLoading}
+      queuedMessageCount={thread.queuedMessageCount}
       pendingTodos={pendingTodos}
       activePromptMode={activePromptMode}
       goal={goal}

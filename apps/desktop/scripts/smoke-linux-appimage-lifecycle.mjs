@@ -71,26 +71,83 @@ async function waitFor({
   throw new Error(`Timed out waiting for ${describe}.${detail}`);
 }
 
-async function allocateTcpPort() {
-  const server = createServer();
-  await new Promise((resolvePromise, rejectPromise) => {
-    server.once("error", rejectPromise);
-    server.listen(0, "127.0.0.1", resolvePromise);
-  });
-  const address = server.address();
-  if (address === null || typeof address === "string") {
-    throw new Error("Expected an ephemeral TCP listener");
+function parseEphemeralTcpPortRange(rawRange) {
+  const ports = rawRange.trim().split(/\s+/u).map(Number);
+  const [firstPort, lastPort] = ports;
+  if (
+    ports.length !== 2 ||
+    !Number.isInteger(firstPort) ||
+    !Number.isInteger(lastPort) ||
+    firstPort < 1 ||
+    lastPort > 65_535 ||
+    firstPort > lastPort
+  ) {
+    throw new Error("Invalid Linux ephemeral TCP port range");
   }
-  await new Promise((resolvePromise, rejectPromise) => {
-    server.close((error) => {
-      if (error) {
-        rejectPromise(error);
+  return { firstPort, lastPort };
+}
+
+async function reserveTcpPort(port) {
+  const server = createServer();
+  const reserved = await new Promise((resolvePromise, rejectPromise) => {
+    const handleError = (error) => {
+      if (error.code === "EADDRINUSE") {
+        resolvePromise(null);
         return;
       }
-      resolvePromise();
+      rejectPromise(error);
+    };
+    server.once("error", handleError);
+    server.listen(port, "127.0.0.1", () => {
+      server.off("error", handleError);
+      resolvePromise(server);
     });
   });
-  return address.port;
+  return reserved;
+}
+
+async function allocateNonEphemeralTcpPorts(count) {
+  const range = parseEphemeralTcpPortRange(
+    await readFile("/proc/sys/net/ipv4/ip_local_port_range", "utf8"),
+  );
+  const candidateRanges = [
+    { firstPort: 65_535, lastPort: range.lastPort + 1 },
+    { firstPort: range.firstPort - 1, lastPort: 1_024 },
+  ];
+  const reservations = [];
+  try {
+    for (const candidateRange of candidateRanges) {
+      for (
+        let port = candidateRange.firstPort;
+        port >= candidateRange.lastPort && reservations.length < count;
+        port -= 1
+      ) {
+        const server = await reserveTcpPort(port);
+        if (server !== null) {
+          reservations.push({ port, server });
+        }
+      }
+    }
+    if (reservations.length !== count) {
+      throw new Error(`Unable to reserve ${String(count)} non-ephemeral ports`);
+    }
+    return reservations.map((reservation) => reservation.port);
+  } finally {
+    await Promise.all(
+      reservations.map(
+        (reservation) =>
+          new Promise((resolvePromise, rejectPromise) => {
+            reservation.server.close((error) => {
+              if (error) {
+                rejectPromise(error);
+                return;
+              }
+              resolvePromise();
+            });
+          }),
+      ),
+    );
+  }
 }
 
 async function resolveAppImage() {
@@ -323,6 +380,39 @@ async function serverIsHealthy(serverUrl) {
   }
 }
 
+async function hostDaemonIsReady({ daemonPort, serverUrl }) {
+  try {
+    const response = await fetch(
+      `http://127.0.0.1:${String(daemonPort)}/status`,
+      { signal: AbortSignal.timeout(2_000) },
+    );
+    if (!response.ok) {
+      return false;
+    }
+    const status = await response.json();
+    return (
+      typeof status === "object" &&
+      status !== null &&
+      status.connected === true &&
+      status.serverUrl === serverUrl
+    );
+  } catch {
+    return false;
+  }
+}
+
+async function pluginStartupIsSettled(serverUrl) {
+  try {
+    const response = await fetch(
+      new URL("/api/v1/system/providers", serverUrl),
+      { signal: AbortSignal.timeout(2_000) },
+    );
+    return response.ok;
+  } catch {
+    return false;
+  }
+}
+
 async function waitForChildExit(child, timeoutMs) {
   if (child.exitCode !== null || child.signalCode !== null) {
     return true;
@@ -422,11 +512,7 @@ async function smokeLinuxAppImageLifecycle() {
   let runtime = null;
 
   try {
-    const serverPort = await allocateTcpPort();
-    let daemonPort = await allocateTcpPort();
-    while (serverPort === daemonPort) {
-      daemonPort = await allocateTcpPort();
-    }
+    const [serverPort, daemonPort] = await allocateNonEphemeralTcpPorts(2);
 
     const childEnv = {
       ...process.env,
@@ -482,8 +568,34 @@ async function smokeLinuxAppImageLifecycle() {
       retryErrors: false,
     });
     await waitFor({
-      describe: `bb health at ${runtime.serverUrl}`,
-      predicate: async () => await serverIsHealthy(runtime.serverUrl),
+      describe: `bb startup and its host daemon at ${runtime.serverUrl} to settle`,
+      predicate: async () => {
+        if (child.exitCode !== null || child.signalCode !== null) {
+          await Promise.race([childClosed, sleep(outputFlushTimeoutMs)]);
+          throw new Error(
+            `AppImage exited before bb became ready: code=${String(
+              child.exitCode,
+            )} signal=${String(child.signalCode)}.\n${formatProcessOutput({
+              stdout,
+              stderr,
+            })}`,
+          );
+        }
+        if (!(await processIsLive(runtime.pid))) {
+          throw new Error(
+            `The owned runtime exited before bb became ready.\n${formatProcessOutput(
+              { stdout, stderr },
+            )}`,
+          );
+        }
+        return (
+          (await hostDaemonIsReady({
+            daemonPort,
+            serverUrl: runtime.serverUrl,
+          })) && (await pluginStartupIsSettled(runtime.serverUrl))
+        );
+      },
+      retryErrors: false,
     });
 
     const guiProcess = await readProcess(child.pid);

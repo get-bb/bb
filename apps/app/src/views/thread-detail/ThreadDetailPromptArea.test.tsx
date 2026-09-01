@@ -59,7 +59,7 @@ const mocks = vi.hoisted(() => ({
     subscribe: vi.fn(() => () => {}),
     text: "",
   },
-  queuedMessages: [] as ThreadQueuedMessage[],
+  queuedMessages: [] as ThreadQueuedMessage[] | undefined,
   reorderQueuedMessageMutateAsync: vi.fn(),
   sendQueuedMessageMutateAsync: vi.fn(),
   setQueuedMessageGroupBoundaryMutateAsync: vi.fn(),
@@ -282,46 +282,52 @@ vi.mock("@/components/promptbox/ThreadEnvironmentSummary", () => ({
   ThreadEnvironmentSummary: () => <div />,
 }));
 
-vi.mock("@/components/promptbox/banner/QueuedMessagesList", () => ({
-  QueuedMessagesList: ({
-    inlineEditor,
-    queuedMessages,
-    onEdit,
-  }: {
-    inlineEditor?: { content: ReactNode; onDismiss: () => void };
-    queuedMessages: readonly ThreadQueuedMessage[];
-    onEdit: (request: {
-      queuedMessageId: string;
-      queuedMessageIndex: number;
-    }) => void;
-  }) => (
-    <div data-testid="queued-message-list">
-      <div data-testid="queued-message-count">{queuedMessages.length}</div>
-      {queuedMessages.map((message, index) => (
-        <button
-          key={message.id}
-          type="button"
-          onClick={() =>
-            onEdit({
-              queuedMessageId: message.id,
-              queuedMessageIndex: index,
-            })
-          }
-        >
-          Edit queued message {index + 1}
-        </button>
-      ))}
-      {inlineEditor ? (
-        <div data-testid="inline-queued-message-editor">
-          {inlineEditor.content}
-          <button type="button" onClick={inlineEditor.onDismiss}>
-            Cancel queued edit
+vi.mock(
+  "@/components/promptbox/banner/QueuedMessagesList",
+  async (importOriginal) => ({
+    ...(await importOriginal<
+      typeof import("@/components/promptbox/banner/QueuedMessagesList")
+    >()),
+    QueuedMessagesList: ({
+      inlineEditor,
+      queuedMessages,
+      onEdit,
+    }: {
+      inlineEditor?: { content: ReactNode; onDismiss: () => void };
+      queuedMessages: readonly ThreadQueuedMessage[];
+      onEdit: (request: {
+        queuedMessageId: string;
+        queuedMessageIndex: number;
+      }) => void;
+    }) => (
+      <div data-testid="queued-message-list">
+        <div data-testid="queued-message-count">{queuedMessages.length}</div>
+        {queuedMessages.map((message, index) => (
+          <button
+            key={message.id}
+            type="button"
+            onClick={() =>
+              onEdit({
+                queuedMessageId: message.id,
+                queuedMessageIndex: index,
+              })
+            }
+          >
+            Edit queued message {index + 1}
           </button>
-        </div>
-      ) : null}
-    </div>
-  ),
-}));
+        ))}
+        {inlineEditor ? (
+          <div data-testid="inline-queued-message-editor">
+            {inlineEditor.content}
+            <button type="button" onClick={inlineEditor.onDismiss}>
+              Cancel queued edit
+            </button>
+          </div>
+        ) : null}
+      </div>
+    ),
+  }),
+);
 
 vi.mock("@/components/promptbox/banner/ThreadBackgroundCommandsCard", () => ({
   ThreadBackgroundCommandsCard: () => null,
@@ -564,12 +570,18 @@ function makeQueuedMessage(
 ): ThreadQueuedMessage {
   return {
     id: "qmsg_1",
+    threadId: "thr_1",
     content: [{ type: "text", text: "Already queued", mentions: [] }],
     model: "gpt-5",
     reasoningLevel: "medium",
     permissionMode: "auto",
     serviceTier: "default",
     groupWithNext: false,
+    sendAt: null,
+    waitingOn: null,
+    failureReason: null,
+    payload: { kind: "inline" },
+    editable: true,
     createdAt: 1,
     updatedAt: 1,
     ...overrides,
@@ -671,6 +683,7 @@ interface RenderPromptAreaOptions {
   pendingInteractions?: readonly PendingInteraction[];
   childPendingInteractions?: readonly ChildThreadPendingAttention[];
   pendingInteractionsInitialLoading?: boolean;
+  queuedMessageCount?: number;
   sentMessageEdit?: ThreadDetailSentMessageEdit;
   thread?: ThreadWithRuntime;
 }
@@ -683,6 +696,7 @@ function buildPromptAreaElement({
   pendingInteractions = [],
   childPendingInteractions = [],
   pendingInteractionsInitialLoading = false,
+  queuedMessageCount = 0,
   sentMessageEdit,
   thread = makeThread(),
 }: RenderPromptAreaOptions = {}) {
@@ -705,6 +719,7 @@ function buildPromptAreaElement({
       parentThreadSection={null}
       pendingInteractions={pendingInteractions}
       pendingInteractionsInitialLoading={pendingInteractionsInitialLoading}
+      queuedMessageCount={queuedMessageCount}
       pendingTodos={null}
       projectId="proj_1"
       pullRequest={null}
@@ -754,6 +769,19 @@ afterEach(() => {
 });
 
 describe("ThreadDetailPromptArea", () => {
+  it("shows queued work while its message details are loading", () => {
+    mocks.queuedMessages = undefined;
+
+    renderPromptArea({ queuedMessageCount: 1 });
+
+    expect(screen.getByRole("status").textContent).toContain(
+      "Loading queued message details",
+    );
+    expect(screen.getByLabelText("Queued messages").textContent).toContain(
+      "Queue1",
+    );
+  });
+
   it("keeps sent-message edit submission out of the normal send path", () => {
     mocks.defaultExecutionOptions = {
       model: "gpt-5",

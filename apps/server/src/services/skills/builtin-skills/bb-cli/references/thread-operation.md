@@ -28,18 +28,60 @@
   and workspace changes remain. When an agent edits another thread, the CLI
   carries its `BB_THREAD_ID` so the replacement runs under agent permission
   policy.
+- Add `--send-at <when>` to `bb thread spawn` or `bb thread tell` to schedule
+  the dispatch instead of attempting it now. `<when>` is an ISO 8601 timestamp
+  (`2026-08-25T09:00`, local when no offset is given) or a duration from now
+  (`30s`, `10m`, `2h`, `7d`); a time in the past and a bare date are both
+  rejected. A scheduled spawn creates the thread `pending` with no turn and no
+  environment work — no worktree and no setup script run until it is due — and a
+  scheduled tell neither sends nor runs. Both report `delivery: "queued"` and
+  dispatch on the sweep after the requested time. The SDK equivalent is `sendAt`
+  (epoch ms) on `threads.spawn` / `threads.send`.
+- A send that cannot run right now does not fail: it joins the thread's queue
+  with a typed reason. `--json` reports `delivery: "queued"` plus
+  `queuedMessageId`, `waitingOn` and `sendAt`, so a script can tell "waiting for
+  the current turn" from "waiting on a plugin" without guessing. `waitingOn.kind`
+  is one of `time`, `thread-busy`, `provisioning`, `interaction` or `plugin`
+  (which also carries `pluginId` and a human reason).
+- Inspect and act on queued dispatches with `bb thread queue list [<thread-id>]
+  [--wait-holder plugin:<plugin-id>]`, `bb thread queue send <thread-id>
+  <message-id>` (send it now, bypassing every plugin wait and its schedule), and
+  `bb thread queue delete <thread-id> <message-id>` (discard it). Omitting the
+  thread lists every queued row in the workspace. The list shows `Waiting on`
+  and `Send at` columns. Several queued rows on one thread are normal. The SDK
+  equivalents are `threads.queue.list` (cross-thread) and
+  `threads.queuedMessages.list/send/update/delete` (one thread).
+- Queueing writes nothing to the timeline: a queued message reaches the thread
+  log only once it dispatches. Ask the queue instead. In the app the same fact
+  reaches the sidebar as a clock on any thread that holds queued work and is not
+  running (the failure glyph instead if a drain attempt failed); a thread list
+  entry carries it as `queuedWork: "none" | "waiting" | "failed"`.
+- Use `bb thread count` when you need how many threads there are, never a list
+  plus a row count: the count is a database aggregate, while `bb thread list`
+  pages a bounded window and would miscount. Narrow with `--status
+  <pending|idle|starting|active|stopping|error>`, `--host`, `--provider`,
+  `--project`, and `--parent <id|none>` (`none` counts only threads that have no
+  parent at all; pass an id to count one thread's children). Archived, deleted,
+  and hidden threads are excluded. Plain output is one number; `--by
+  host|provider|project` prints a count per group (a thread with none groups
+  under `-`) and the total. The SDK equivalent is `threads.count({ status,
+  hostId, providerId, projectId, parentThreadId, groupBy })`.
 - `bb thread tell` steers by default, delivering the message immediately into
   the active turn. Use `--mode queue` when the message is non-urgent and the
   agent can finish its current work first. Steer is especially important for a
   wrong direction, hard stop, or critical clarification.
   Example: `bb thread tell <thread-id> "Stop and use approach B" --mode steer`.
+- Input sent while a turn is starting stays queued with
+  `waitingOn.kind: "turn-starting"`. The `turn/started` event wakes it and
+  steers it into that turn. Do not resend it.
 - If the target thread is awaiting user interaction (an open question or
-  approval), `bb thread tell` cannot interrupt it. The message is held and
-  delivers in the requested mode once the interaction settles; the CLI prints
-  "message held". That outcome is not a failure, so do not resend. For a hard
-  stop use `bb thread stop <thread-id>`. `--json` reports `delivery` as `sent`,
-  `queued`, or `deferred`. If the thread fails while the message is held (its
-  provider exited), the message waits until somebody retries the thread.
+  approval), `bb thread tell` cannot interrupt it. The message joins the
+  thread's queue with `waitingOn.kind: "interaction"` and dispatches once the
+  interaction settles; the CLI prints that it is queued and why. That outcome is
+  not a failure, so do not resend. For a hard stop use `bb thread stop
+  <thread-id>`. `--json` reports `delivery` as `sent` or `queued`. If the thread
+  fails while the message is queued (its provider exited), the message waits
+  until somebody retries the thread.
 
 ## Inspecting Results
 

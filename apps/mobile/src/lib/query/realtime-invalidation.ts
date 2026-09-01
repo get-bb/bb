@@ -90,6 +90,7 @@ const THREAD_LIST_AFFECTING_KINDS: ReadonlySet<ThreadChangeKind> =
     "interactions-changed",
     "status-changed",
     "title-changed",
+    "queue-changed",
     "archived-changed",
     "pin-state-changed",
     "parent-changed",

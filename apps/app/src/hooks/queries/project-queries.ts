@@ -14,6 +14,7 @@ import {
 } from "@bb/client-core";
 import { decodeBase64Bytes } from "@/lib/base64-bytes";
 import { buildProjectFileContentUrl } from "@/lib/file-content-urls";
+import { readProjectBranchOptions } from "@/lib/project-branch-options";
 import { sdk } from "@/lib/sdk";
 import { useProjectDetailRealtimeSubscription } from "@/hooks/useRealtimeSubscription";
 import {
@@ -111,21 +112,21 @@ export function useProjectSourceBranches(
       const remoteRefresh = remoteRefreshRef.current;
       const startsBlockingRefresh =
         remoteRefresh.requested && remoteRefresh.blockingSignal === null;
-      const refresh =
-        startsBlockingRefresh || remoteRefresh.blockingSignal === signal
-          ? "blocking"
-          : "background";
+      const blocking =
+        startsBlockingRefresh || remoteRefresh.blockingSignal === signal;
       if (startsBlockingRefresh) {
         remoteRefresh.requested = false;
         remoteRefresh.blockingSignal = signal;
       }
-      return sdk.projects.branches({
+      const readBranches = blocking
+        ? sdk.projects.branches
+        : readProjectBranchOptions;
+      return readBranches({
         projectId: requireProjectId(projectId, "useProjectSourceBranches"),
         hostId: hostId ?? "",
         ...(query ? { query } : {}),
         ...(selectedBranch ? { selectedBranch } : {}),
         limit: String(limit),
-        refresh,
         signal,
       });
     },

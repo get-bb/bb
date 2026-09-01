@@ -22,6 +22,7 @@ import { advanceEnvironmentProvisioning } from "../environments/environment-prov
 import { applyLoggedEnvironmentLifecycleEventInTransaction } from "../environments/lifecycle-outcome.js";
 import type { EnvironmentProvisionRequest } from "../environments/environment-provision-request.js";
 import { ensureHostSessionReadyForWork } from "../hosts/host-lifecycle.js";
+import { clearThreadQueueProvisioningWaits } from "./queue-drains.js";
 import {
   appendSystemErrorEvent,
   appendThreadProvisioningEvent,
@@ -359,6 +360,10 @@ export function failThreadProvisioning(
   args: FailThreadProvisioningArgs,
 ): void {
   forgetActiveThreadProvisionContext(args.thread.id);
+  // Provisioning is not coming, so nothing may keep waiting on it. The
+  // messages stay queued rather than being discarded: they are still the
+  // user's, and retrying the thread is exactly when they should go.
+  clearThreadQueueProvisioningWaits(deps, args.thread.id);
   appendSystemErrorEvent(deps, {
     threadId: args.thread.id,
     environmentId: args.environmentId,

@@ -40,13 +40,8 @@ pnpm bb thread spawn \
   --prompt "..."
 ```
 
-When you omit `--base-branch`, bb chooses the project's default worktree base,
-preferring the origin default branch when safe. Pass `--base-branch <name>`
-only when you need a specific base. Naming the default branch (`--base-branch
-main`) behaves like omitting the flag: bb fetches and starts from
-`origin/main` unless your local `main` is ahead or has diverged. Any other
-plain name starts from that local branch as it is; pass `origin/<name>` to
-fetch and start from the remote branch.
+Omit `--base-branch` for bb's smart default. Explicit values are exact:
+`main` is local and `origin/main` is remote.
 
 ## Copy local files with `.worktreeinclude`
 

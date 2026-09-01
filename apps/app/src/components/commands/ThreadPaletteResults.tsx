@@ -412,6 +412,7 @@ function ThreadPaletteResultRowComponent({
     isBackgroundAgentActive: hasActiveBackgroundAgentActivity(thread),
     isBackgroundCommandActive: hasActiveBackgroundCommandActivity(thread),
     isGoalActive: hasActiveGoalActivity(thread),
+    queuedWork: thread.queuedWork,
     isPlanModeActive: hasActivePlanModeActivity(thread),
     isRuntimeActive: isRuntimeBusyThread(thread),
     isWorkflowActive: hasActiveWorkflowActivity(thread),

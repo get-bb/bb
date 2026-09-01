@@ -14,7 +14,7 @@ export type AppSettings = z.infer<typeof appSettingsSchema>;
 
 export const defaultAppSettings: AppSettings = {
   showKeyboardHints: true,
-  steerActiveThreadOnEnter: false,
+  steerActiveThreadOnEnter: true,
   showUnhandledProviderEvents: false,
   providerOrder: [],
   defaultProviderId: null,

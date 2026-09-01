@@ -22,6 +22,8 @@ import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { CompactLongPressMenu } from "@/components/ui/compact-long-press-menu";
 import { isThreadRead } from "@bb/client-core";
+import { copyToClipboardWithToast } from "@/lib/clipboard";
+import { getThreadRoutePath } from "@/lib/route-paths";
 import { useThreadActions } from "./ThreadActionsProvider";
 
 interface ThreadActionsMenuBaseProps {
@@ -135,6 +137,10 @@ function ThreadActionsMenuItems({
   const isRead = isThreadRead(thread);
   const isArchived = thread.archivedAt != null;
   const isPinned = thread.pinnedAt !== null;
+  const threadUrl = new URL(
+    getThreadRoutePath({ projectId: thread.projectId, threadId: thread.id }),
+    window.location.origin,
+  ).toString();
 
   return (
     <>
@@ -173,7 +179,18 @@ function ThreadActionsMenuItems({
           ) : null}
         </>
       ) : null}
-      {}
+      <ThreadActionMenuItem
+        surface={surface}
+        icon="Copy"
+        onSelect={() => {
+          void copyToClipboardWithToast(threadUrl, {
+            successMessage: "Thread link copied",
+            errorMessage: "Failed to copy thread link",
+          });
+        }}
+      >
+        Copy thread link
+      </ThreadActionMenuItem>
       <ThreadActionMenuItem
         surface={surface}
         icon={isRead ? "Mail" : "MailOpen"}

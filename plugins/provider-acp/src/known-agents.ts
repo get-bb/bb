@@ -1,4 +1,5 @@
 import type { AcpAgentDefinition } from "./agents.js";
+import { resolveCursorNativeRoots } from "./native-roots/cursor.js";
 import { resolveGrokNativeRoots } from "./native-roots/grok.js";
 import { resolveHermesNativeRoots } from "./native-roots/hermes.js";
 import { resolveOmpNativeRoots } from "./native-roots/omp.js";
@@ -76,6 +77,7 @@ export const KNOWN_ACP_AGENTS: readonly AcpAgentDefinition[] = [
         ),
       },
     },
+    nativeRootsResolver: resolveCursorNativeRoots,
   },
   {
     id: "acp-opencode",

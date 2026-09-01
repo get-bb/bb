@@ -207,6 +207,58 @@ describe("useSystemProviders", () => {
       });
     });
   });
+
+  it("replays only usage-capable providers for a usage query", async () => {
+    const provider = (id: string, usage: boolean): ProviderInfo => ({
+      id,
+      pluginId: `provider-${id}`,
+      displayName: id,
+      logoUrl: null,
+      available: true,
+      maintenance: { health: true, usage, installation: false },
+      composerActions: [],
+      capabilities: {
+        supportsThreadArchive: false,
+        supportsThreadRename: false,
+        supportsServiceTier: false,
+        supportsNativeUserQuestion: false,
+        supportsFork: false,
+        supportsSessionRewind: false,
+        modelCatalogScope: "workspace",
+        permissionModes: ["full"],
+      },
+    });
+    const usageProvider = provider("usage-provider", true);
+    const unsupportedProvider = provider("unsupported-provider", false);
+    vi.mocked(sdk.providers.list).mockResolvedValueOnce([
+      usageProvider,
+      unsupportedProvider,
+    ]);
+    const warm = createQueryClientTestHarness();
+    const initial = renderHook(
+      () => useSystemProviders({ hostId: "host-a" }),
+      { wrapper: warm.wrapper },
+    );
+    await waitFor(() => {
+      expect(initial.result.current.data).toEqual([
+        usageProvider,
+        unsupportedProvider,
+      ]);
+    });
+    initial.unmount();
+
+    vi.mocked(sdk.providers.list).mockImplementation(
+      () => new Promise(() => undefined),
+    );
+    const reload = createQueryClientTestHarness();
+    const { result } = renderHook(
+      () => useSystemProviders({ capability: "usage", hostId: "host-a" }),
+      { wrapper: reload.wrapper },
+    );
+
+    expect(result.current.isPlaceholderData).toBe(true);
+    expect(result.current.data).toEqual([usageProvider]);
+  });
 });
 
 describe("useSystemExecutionOptions", () => {

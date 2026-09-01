@@ -14,10 +14,9 @@ import {
   SidebarMenuItem,
   useCloseMobileSidebar,
 } from "@/components/ui/sidebar.js";
-import { ProjectList, ProjectListActionButtons } from "./ProjectList";
+import { ProjectList } from "./ProjectList";
 import { PluginThreadList } from "./PluginThreadList";
 import { useThreadListReplacement } from "./threadListProvider";
-import { PluginNavSidebarItems } from "@/components/plugin/PluginNavSidebarItems";
 import { PluginSidebarFooterActions } from "@/components/plugin/PluginSidebarFooterActions";
 import { SidebarPluginAttentionGlyph } from "./SidebarPluginAttentionGlyph";
 import { SidebarUpdatesBadge } from "./SidebarUpdatesBadge";
@@ -49,6 +48,7 @@ import {
   useIndexedAppCommandHandlers,
 } from "@/components/commands/AppCommandProvider";
 import { useRouteState } from "@/hooks/useRouteState";
+import { SidebarNavigationRegion } from "./SidebarNavigationRegion";
 
 const NEW_THREAD_PANE_CONTENT = { kind: "new-thread" } as const;
 
@@ -227,21 +227,13 @@ export function AppSidebar({
           />
         </div>
       ) : null}
-      <div
-        data-testid="app-sidebar-primary-actions"
-        className="shrink-0 px-2 py-2 group-data-[collapsible=icon]:hidden"
-      >
-        <ProjectListActionButtons
-          splitEnabled
-          newThreadSplit={newThreadSplit}
-          onNewChat={handleNewChat}
-          onSearchThreads={closeOnMobile}
-        />
-      </div>
-      <PluginNavSidebarItems
+      <SidebarNavigationRegion
         onNavigate={closeOnMobile}
         splitEnabled
         toolsRoutePath={toolsRoutePath}
+        newThreadSplit={newThreadSplit}
+        onNewChat={handleNewChat}
+        onSearchThreads={closeOnMobile}
       />
       <SidebarContent>
         <PluginThreadList

@@ -7,13 +7,18 @@ import {
   type ResolvedThreadExecutionOptions,
   type ThreadEventRow,
   type ThreadEventType,
+  type QueuedMessageWaitHolder,
   type ThreadQueuedMessage,
   type ThreadStatus,
 } from "@bb/domain";
-import { threadTabsResponseSchema } from "@bb/server-contract";
+import {
+  DEFAULT_TURN_RETRY_REASON,
+  threadTabsResponseSchema,
+} from "@bb/server-contract";
 import type {
   CreateQueuedMessageRequest,
   CreateThreadRequest,
+  QueuedMessageListQuery,
   EditMessageRequest,
   EditMessageResponse,
   ForkThreadRequest,
@@ -23,7 +28,11 @@ import type {
   ThreadArchiveAllResponse,
   ThreadChildSummaryResponse,
   ThreadConversationOutlineResponse,
+  ThreadCountGroupBy,
+  ThreadCountQuery,
+  ThreadCountResponse,
   ThreadListResponse,
+  ThreadRunningResponse,
   ThreadOpenResponse,
   ThreadPaneAction,
   ThreadPaneActionResponse,
@@ -45,6 +54,8 @@ import type {
   ReorderQueuedMessageRequest,
   ResolveThreadMentionsRequest,
   ResolveThreadMentionsResponse,
+  RetryTurnRequest,
+  RetryTurnResponse,
   SendMessageRequest,
   SendMessageResponse,
   SendQueuedMessageRequest,
@@ -87,6 +98,27 @@ export interface ThreadSearchArgs extends ThreadSearchQuery {
   signal?: AbortSignal;
 }
 
+/**
+ * Counting is a server-side `SELECT count(*)`: a caller that only needs "how
+ * many threads are running on this host" must never page rows through
+ * `threads.list`, which would both cost memory and miscount past its limit.
+ *
+ * Every filter is genuinely absent by default. `parentThreadId` is
+ * three-valued: omitted does not filter on parentage at all, the
+ * `THREAD_COUNT_ROOT_PARENT` sentinel (`"none"`) counts root threads only, and
+ * any other value counts that parent's children. Archived and deleted threads
+ * are excluded by the route.
+ */
+export interface ThreadCountArgs {
+  groupBy?: ThreadCountGroupBy;
+  hostId?: string;
+  parentThreadId?: string;
+  projectId?: string;
+  providerId?: string;
+  signal?: AbortSignal;
+  status?: ThreadStatus;
+}
+
 export interface ThreadResolveMentionsArgs extends ResolveThreadMentionsRequest {
   signal?: AbortSignal;
 }
@@ -98,6 +130,30 @@ export interface ThreadGetArgs {
 }
 
 export type ThreadGetResult = ThreadResponse | ThreadWithIncludesResponse;
+export type ThreadCountResult = ThreadCountResponse;
+/**
+ * The threads occupying capacity right now — canonical status `starting` or
+ * `active`, archived and deleted excluded, hidden included (a hidden thread
+ * burns a real slot). Each row is just `id` and `hostId` — the machine whose
+ * pool the thread occupies, from its environment or, before one is attached,
+ * from the start intent it was admitted with; null only when neither names
+ * one. Anything else a policy needs it fetches by id.
+ *
+ * **Exact inside the `message.dispatch` hook, a snapshot everywhere else.**
+ * Hook passes are serialized under one server-wide lock and a cleared first
+ * attempt commits its `pending -> starting` flip before that lock releases, so
+ * a handler reading this sees every admission granted ahead of it in the same
+ * burst — which is what makes "five quick creates against a limit of two" hold
+ * three of them instead of admitting all five. Read from a background service,
+ * a timer or a `turn.failed` listener it is an ordinary query racing with every
+ * concurrent dispatch, exactly like {@link ThreadsArea.count}.
+ *
+ * One boundary: a warm follow-up admitted on an already-live `idle` thread
+ * flips `idle -> active` inside the send transaction, just AFTER the lock
+ * releases. First-dispatch admissions are exact; a burst of follow-ups to
+ * distinct idle threads can momentarily under-report.
+ */
+export type ThreadRunningResult = ThreadRunningResponse;
 export type ThreadListResult = ThreadListResponse;
 export type ThreadSearchResult = ThreadSearchResponse;
 export type ThreadResolveMentionsResult = ResolveThreadMentionsResponse;
@@ -120,6 +176,7 @@ export type ThreadOpenResult = ThreadOpenResponse;
 export type ThreadPaneActionResult = ThreadPaneActionResponse;
 export type ThreadDeleteResult = { ok: true };
 export type ThreadSendResult = SendMessageResponse;
+export type ThreadRetryResult = RetryTurnResponse;
 export type ThreadEditMessageResult = EditMessageResponse;
 export type ThreadStopResult = { ok: true };
 export type ThreadCompactResult = { ok: true };
@@ -137,6 +194,7 @@ export type ThreadQueuedMessageReorderResult = ThreadQueuedMessageListResponse;
 export type ThreadQueuedMessageSendResult = SendQueuedMessageResponse;
 export type ThreadQueuedMessageGroupBoundaryResult =
   ThreadQueuedMessageListResponse;
+export type ThreadQueueListResult = ThreadQueuedMessageListResponse;
 export type ThreadTabsResult = ThreadTabsResponse;
 export type ThreadTabsUpdateResult = ThreadTabsResponse;
 export type ThreadStorageFilesResult = ThreadStorageFileListResponse;
@@ -194,6 +252,23 @@ export interface ThreadEditMessageArgs extends EditMessageRequest {
   threadId: string;
 }
 
+export interface ThreadRetryArgs {
+  threadId: string;
+  /**
+   * The failed turn to re-submit. Omitted means the thread's most recent turn,
+   * which is the one whose failure put it in `error`; naming one asserts which
+   * failure you decided on and fails if the thread has moved on since.
+   */
+  turnRequestId?: string;
+  /**
+   * Epoch ms to retry at. Omitted attempts the retry now — it may still queue
+   * behind a busy thread or a plugin wait, like any other dispatch.
+   */
+  sendAt?: number;
+  /** Why the turn is being retried, shown verbatim on the queued row. */
+  reason?: string;
+}
+
 export interface ThreadActionArgs {
   threadId: string;
 }
@@ -236,6 +311,18 @@ export interface ThreadQueuedMessageReorderArgs
 
 export interface ThreadQueuedMessageGroupBoundaryArgs extends SetQueuedMessageGroupBoundaryRequest {
   threadId: string;
+}
+
+/**
+ * Both filters are genuinely absent by default: no filter lists every live
+ * queued row in the workspace, which is what `bb thread queue list` with no
+ * thread and a limiter plugin's own bookkeeping ask for.
+ */
+export interface ThreadQueueListArgs {
+  /** `plugin:<id>` — every row that plugin is holding the wait on. */
+  waitHolder?: QueuedMessageWaitHolder;
+  signal?: AbortSignal;
+  threadId?: string;
 }
 
 export interface ThreadStorageFilesArgs extends ThreadStorageFilesQuery {
@@ -424,6 +511,19 @@ export interface ThreadTabsArea {
   update(args: ThreadTabsUpdateArgs): Promise<ThreadTabsUpdateResult>;
 }
 
+/**
+ * Queued rows across every thread.
+ *
+ * The per-thread list, send-now, edit, reorder and delete all live on
+ * `queuedMessages`, which is where a row's own operations belong. This area
+ * exists for the one question a thread-scoped list cannot answer: "what is
+ * queued right now, anywhere" — a workspace-wide pending view, or a plugin
+ * recovering the rows it is holding after a restart.
+ */
+export interface ThreadQueueArea {
+  list(args?: ThreadQueueListArgs): Promise<ThreadQueueListResult>;
+}
+
 export interface ThreadsArea {
   archive(args: ThreadActionArgs): Promise<ThreadArchiveResult>;
   archiveAll(args: ThreadActionArgs): Promise<ThreadArchiveAllResult>;
@@ -434,6 +534,7 @@ export interface ThreadsArea {
   conversationOutline(
     args: ThreadStatusArgs,
   ): Promise<ThreadConversationOutlineResult>;
+  count(args?: ThreadCountArgs): Promise<ThreadCountResult>;
   defaultExecutionOptions(
     args: ThreadStatusArgs,
   ): Promise<ThreadDefaultExecutionOptionsResult>;
@@ -442,8 +543,10 @@ export interface ThreadsArea {
   events: ThreadEventsArea;
   fork(args: ThreadForkArgs): Promise<ThreadForkResult>;
   get(args: ThreadGetArgs): Promise<ThreadGetResult>;
+  queue: ThreadQueueArea;
   interactions: ThreadInteractionsArea;
   list(args?: ThreadListArgs): Promise<ThreadListResult>;
+  listRunning(args?: { signal?: AbortSignal }): Promise<ThreadRunningResult>;
   markRead(args: ThreadActionArgs): Promise<ThreadReadStateResult>;
   markUnread(args: ThreadActionArgs): Promise<ThreadReadStateResult>;
   open(args: ThreadOpenArgs): Promise<ThreadOpenResult>;
@@ -458,6 +561,12 @@ export interface ThreadsArea {
   resolveMentions(
     args: ThreadResolveMentionsArgs,
   ): Promise<ThreadResolveMentionsResult>;
+  /**
+   * Re-submit a failed turn. The retry is an ordinary dispatch attempt, so a
+   * `sendAt` in the future queues it on the clock and a `message.dispatch` hook
+   * can still hold it; the response says which of the two happened.
+   */
+  retry(args: ThreadRetryArgs): Promise<ThreadRetryResult>;
   search(args: ThreadSearchArgs): Promise<ThreadSearchResult>;
   send(args: ThreadSendArgs): Promise<ThreadSendResult>;
   spawn(args: ThreadSpawnArgs): Promise<ThreadSpawnResult>;
@@ -501,6 +610,19 @@ function listQuery(args: ThreadListArgs | undefined): ThreadListQuery {
   };
 }
 
+function countQuery(args: ThreadCountArgs | undefined): ThreadCountQuery {
+  return {
+    ...(args?.status === undefined ? {} : { status: args.status }),
+    ...(args?.hostId === undefined ? {} : { hostId: args.hostId }),
+    ...(args?.providerId === undefined ? {} : { providerId: args.providerId }),
+    ...(args?.projectId === undefined ? {} : { projectId: args.projectId }),
+    ...(args?.parentThreadId === undefined
+      ? {}
+      : { parentThreadId: args.parentThreadId }),
+    ...(args?.groupBy === undefined ? {} : { groupBy: args.groupBy }),
+  };
+}
+
 function updateJson(args: ThreadUpdateArgs): UpdateThreadRequest {
   return {
     title: args.title,
@@ -522,6 +644,26 @@ function sendJson(args: ThreadSendArgs): SendMessageRequest {
     senderThreadId: args.senderThreadId,
     serviceTier: args.serviceTier,
     executionInputSources: args.executionInputSources,
+    // Present ⇒ the message joins the queue waiting for the clock instead
+    // of attempting now; the response reports `delivery: "queued"`.
+    sendAt: args.sendAt,
+  };
+}
+
+function retryJson(args: ThreadRetryArgs): RetryTurnRequest {
+  return {
+    turnRequestId: args.turnRequestId ?? null,
+    sendAt: args.sendAt ?? null,
+    reason: args.reason ?? DEFAULT_TURN_RETRY_REASON,
+  };
+}
+
+function queueListQuery(
+  args: ThreadQueueListArgs | undefined,
+): QueuedMessageListQuery {
+  return {
+    ...(args?.threadId === undefined ? {} : { threadId: args.threadId }),
+    ...(args?.waitHolder === undefined ? {} : { waitHolder: args.waitHolder }),
   };
 }
 
@@ -857,6 +999,16 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
       );
     },
   };
+  const queue: ThreadQueueArea = {
+    async list(input) {
+      return transport.readJson(
+        transport.api.v1["queued-messages"].$get(
+          { query: queueListQuery(input) },
+          ...signalRequestArgs(input?.signal),
+        ),
+      );
+    },
+  };
   const tabs: ThreadTabsArea = {
     async get(input) {
       const body = await transport.readJson(
@@ -911,6 +1063,22 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
         ),
       );
     },
+    async count(input) {
+      return transport.readJson(
+        transport.api.v1.threads.count.$get(
+          { query: countQuery(input) },
+          ...signalRequestArgs(input?.signal),
+        ),
+      );
+    },
+    async listRunning(input) {
+      return transport.readJson(
+        transport.api.v1.threads.running.$get(
+          {},
+          ...signalRequestArgs(input?.signal),
+        ),
+      );
+    },
     async defaultExecutionOptions(input) {
       return transport.readJson(
         transport.api.v1.threads[":id"]["default-execution-options"].$get(
@@ -948,6 +1116,7 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
       );
     },
     get: getThread,
+    queue,
     interactions,
     async list(input) {
       return transport.readJson(
@@ -1049,6 +1218,14 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
         transport.api.v1.threads[":id"].send.$post({
           param: { id: input.threadId },
           json: sendJson(input),
+        }),
+      );
+    },
+    async retry(input) {
+      return transport.readJson(
+        transport.api.v1.threads[":id"].retry.$post({
+          param: { id: input.threadId },
+          json: retryJson(input),
         }),
       );
     },

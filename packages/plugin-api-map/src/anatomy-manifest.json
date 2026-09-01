@@ -1,12 +1,6 @@
 {
   "$comment": "Shared UI-anatomy contract between the Plugin Guide surface fixtures (wireframes.tsx) and the real app. Ordered regions are rendered by both sides. surfaceFixtures records authoritative source anchors plus the minimum deterministic fidelity and states for interaction-heavy fixtures.",
-  "appSidebar": [
-    "top-reserve",
-    "primary-actions",
-    "plugin-nav",
-    "thread-list",
-    "footer"
-  ],
+  "appSidebar": ["top-reserve", "sidebar-navigation", "thread-list", "footer"],
   "sidebarFooter": ["settings", "plugin-footer-actions", "bug-report"],
   "messageActionBar": [
     "copy",
@@ -70,6 +64,42 @@
             "fixed inset-0 z-50 bg-black/40",
             "bg-background p-6 shadow-sm",
             "sm:rounded-lg"
+          ]
+        }
+      ]
+    },
+    "sidebar-navigation": {
+      "groupId": "app-shell",
+      "fidelity": "state",
+      "responsiveStrategy": "scale-together",
+      "requiredStates": ["owner", "replacement", "fallback"],
+      "labels": {
+        "owner": ["New thread", "Search threads", "Extensions"],
+        "replacement": ["Custom navigation"],
+        "fallback": ["New thread", "Search threads", "Extensions"]
+      },
+      "fixtureClassAnchors": ["px-2 py-2", "px-2 pb-2"],
+      "sources": [
+        {
+          "path": "apps/app/src/components/sidebar/SidebarNavigationRegion.tsx",
+          "anchors": [
+            "data-testid=\"sidebar-navigation-region\"",
+            "PluginReplacementSlot",
+            "experimental_activate"
+          ]
+        },
+        {
+          "path": "apps/app/src/components/sidebar/BuiltInSidebarNavigation.tsx",
+          "anchors": [
+            "data-testid=\"app-sidebar-primary-actions\"",
+            "PluginNavSidebarItems"
+          ]
+        },
+        {
+          "path": "apps/app/src/components/sidebar/SidebarNavigationRegion.test.tsx",
+          "anchors": [
+            "routes Search through the quick palette without inline search UI",
+            "delegates and falls back after a crash without owner remounts"
           ]
         }
       ]

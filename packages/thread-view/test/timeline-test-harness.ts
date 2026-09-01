@@ -80,6 +80,7 @@ interface DefaultTurnEventOptions extends EventFactoryRowOptions {
 }
 
 type ClientTurnRequestedArgs = EventFactoryRowOptions & {
+  /** Dispatch-gate provenance; omitted means no gate amended the turn. */
   execution?: ResolvedThreadExecutionOptions;
   initiator?: ThreadTurnInitiator;
   input?: PromptInput[];

@@ -55,6 +55,7 @@ import {
 } from "@bb/shared-ui/option-display";
 import { type PickerOption } from "./OptionPicker";
 import type { ModelPickerOption } from "./model-picker-option";
+import { useResetPickerScroll } from "./useResetPickerScroll";
 import {
   formatModelLoadErrorText,
   ModelLoadErrorMessage,
@@ -267,6 +268,7 @@ export function ModelReasoningPicker({
     ? registeredToggleShortcut
     : null;
   const [searchQuery, setSearchQuery] = useState("");
+  const listRef = useResetPickerScroll<HTMLDivElement>(searchQuery);
   const [activeIndex, setActiveIndex] = useState(-1);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const normalizedQuery = searchQuery.trim().toLowerCase();
@@ -966,6 +968,7 @@ export function ModelReasoningPicker({
             )}
           >
             <div
+              ref={listRef}
               key={activeProviderId || "no-provider"}
               role={showSearchInput ? "listbox" : undefined}
               id={showSearchInput ? listboxId : undefined}

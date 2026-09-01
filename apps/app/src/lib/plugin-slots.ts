@@ -13,6 +13,7 @@ import type {
   PluginProviderIconRegistration,
   PluginSettingsSectionRegistration,
   PluginSidebarFooterActionRegistration,
+  ExperimentalSidebarNavigationRegistration,
   PluginSourceCodeRendererRegistration,
   PluginThreadHeaderActionRegistration,
   PluginThreadListRegistration,
@@ -29,6 +30,7 @@ export interface PluginRegistrationSet {
   composerCustomizations?: readonly ComposerCustomization[];
   pendingInteractions?: readonly PluginPendingInteractionRegistration[];
   sidebarFooterActions: readonly PluginSidebarFooterActionRegistration[];
+  experimentalSidebarNavigations?: readonly ExperimentalSidebarNavigationRegistration[];
   threadLists?: readonly PluginThreadListRegistration[];
   threadHeaderActions?: readonly PluginThreadHeaderActionRegistration[];
   fileOpeners: readonly PluginFileOpenerRegistration[];
@@ -62,6 +64,8 @@ export interface PluginPendingInteractionSlot
   extends PluginPendingInteractionRegistration, PluginSlotBase {}
 export interface PluginSidebarFooterActionSlot
   extends PluginSidebarFooterActionRegistration, PluginSlotBase {}
+export interface ExperimentalSidebarNavigationSlot
+  extends ExperimentalSidebarNavigationRegistration, PluginSlotBase {}
 export interface PluginThreadListSlot
   extends PluginThreadListRegistration, PluginSlotBase {}
 interface PluginThreadHeaderActionSlot
@@ -92,6 +96,7 @@ export interface PluginSlotSnapshot {
   composerCustomizations: readonly PluginComposerCustomizationSlot[];
   pendingInteractions: readonly PluginPendingInteractionSlot[];
   sidebarFooterActions: readonly PluginSidebarFooterActionSlot[];
+  experimentalSidebarNavigations: readonly ExperimentalSidebarNavigationSlot[];
   threadLists: readonly PluginThreadListSlot[];
   threadHeaderActions: readonly PluginThreadHeaderActionSlot[];
   fileOpeners: readonly PluginFileOpenerSlot[];
@@ -113,6 +118,7 @@ export const EMPTY_PLUGIN_SLOT_SNAPSHOT: PluginSlotSnapshot = {
   composerCustomizations: [],
   pendingInteractions: [],
   sidebarFooterActions: [],
+  experimentalSidebarNavigations: [],
   threadLists: [],
   threadHeaderActions: [],
   fileOpeners: [],
@@ -141,6 +147,7 @@ const SLOT_KINDS: readonly SlotKind[] = [
   "composerCustomizations",
   "pendingInteractions",
   "sidebarFooterActions",
+  "experimentalSidebarNavigations",
   "threadLists",
   "threadHeaderActions",
   "fileOpeners",
@@ -181,6 +188,7 @@ function flattenRegistrations(
     composerCustomizations: stamp(set.composerCustomizations),
     pendingInteractions: stamp(set.pendingInteractions),
     sidebarFooterActions: stamp(set.sidebarFooterActions),
+    experimentalSidebarNavigations: stamp(set.experimentalSidebarNavigations),
     threadLists: stamp(set.threadLists),
     threadHeaderActions: stamp(set.threadHeaderActions),
     fileOpeners: stamp(set.fileOpeners),

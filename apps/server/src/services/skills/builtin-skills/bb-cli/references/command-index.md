@@ -117,6 +117,7 @@ This index lists every command path that the core CLI registers. Read the task-s
 - `bb thread read`
 - `bb thread unread`
 - `bb thread reorder-pinned`
+- `bb thread count`
 - `bb thread queue`
 - `bb thread queue list`
 - `bb thread queue create`
@@ -136,6 +137,7 @@ This index lists every command path that the core CLI registers. Read the task-s
 - `bb thread delete`
 - `bb thread edit-message`
 - `bb thread tell`
+- `bb thread retry`
 - `bb thread stop`
 - `bb thread compact`
 - `bb thread cancel-plan`

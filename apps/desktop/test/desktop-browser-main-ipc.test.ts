@@ -125,6 +125,8 @@ class RecordingDesktopBrowserViewManager implements DesktopBrowserViewManager {
     this.beginWindowResizeCalls.push(hostWindow);
   }
 
+  prepareWindowReload(): void {}
+
   destroyAll(): void {
     this.destroyAllCalls.push("destroyAll");
   }

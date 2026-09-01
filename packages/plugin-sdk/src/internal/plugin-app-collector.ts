@@ -14,6 +14,7 @@ import type {
   PluginProviderIconRegistration,
   PluginSettingsSectionRegistration,
   PluginSidebarFooterActionRegistration,
+  ExperimentalSidebarNavigationRegistration,
   PluginSourceCodeRendererRegistration,
   PluginThreadHeaderActionRegistration,
   PluginThreadListRegistration,
@@ -91,6 +92,7 @@ export interface CollectedPluginAppRegistrations {
   composerCustomizations: ComposerCustomization[];
   pendingInteractions: PluginPendingInteractionRegistration[];
   sidebarFooterActions: PluginSidebarFooterActionRegistration[];
+  experimentalSidebarNavigations: ExperimentalSidebarNavigationRegistration[];
   threadLists: PluginThreadListRegistration[];
   threadHeaderActions: PluginThreadHeaderActionRegistration[];
   fileOpeners: PluginFileOpenerRegistration[];
@@ -124,6 +126,7 @@ export function collectPluginAppRegistrations(
     composerCustomizations: [],
     pendingInteractions: [],
     sidebarFooterActions: [],
+    experimentalSidebarNavigations: [],
     threadLists: [],
     threadHeaderActions: [],
     fileOpeners: [],
@@ -145,6 +148,7 @@ export function collectPluginAppRegistrations(
     composerCustomization: new Set<string>(),
     pendingInteraction: new Set<string>(),
     sidebarFooterAction: new Set<string>(),
+    sidebarNavigation: new Set<string>(),
     threadList: new Set<string>(),
     threadHeaderAction: new Set<string>(),
     fileOpener: new Set<string>(),
@@ -383,6 +387,22 @@ export function collectPluginAppRegistrations(
           title: requireNonEmptyString(kind, "title", registration.title),
           icon: requireNonEmptyString(kind, "icon", registration.icon),
           run: registration.run,
+        });
+      },
+      experimental_sidebarNavigation(registration) {
+        const kind = "slots.experimental_sidebarNavigation";
+        const id = requireSlotId(kind, registration?.id);
+        requireUniqueId(kind, seenIds.sidebarNavigation, id);
+        const description = requireOptionalString(
+          kind,
+          "description",
+          registration.description,
+        );
+        collected.experimentalSidebarNavigations.push({
+          id,
+          title: requireNonEmptyString(kind, "title", registration.title),
+          ...(description !== undefined ? { description } : {}),
+          component: requireComponent(kind, registration.component),
         });
       },
       experimental_threadList(registration) {

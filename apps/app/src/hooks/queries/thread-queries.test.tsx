@@ -2,7 +2,7 @@
 
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { ThreadListEntry } from "@bb/domain";
+import type { PendingInteraction, ThreadListEntry } from "@bb/domain";
 import type {
   SidebarBootstrapResponse,
   ThreadTimelineResponse,
@@ -18,6 +18,7 @@ import {
   sidebarNavigationQueryKey,
   threadDetailBootstrapQueryKey,
   threadHostFilePreviewQueryKey,
+  threadPendingInteractionsQueryKey,
   threadQueuedMessagesQueryKey,
   threadQueryKey,
   threadTimelineQueryKey,
@@ -31,6 +32,7 @@ import {
   useThreadDetailBootstrap,
   useThreadHostFilePreview,
   useThreadMentionCandidates,
+  useThreadPendingInteractions,
   useThreadQueuedMessages,
   useThreadStorageLocation,
   useThreadTimeline,
@@ -50,6 +52,7 @@ vi.mock("@/lib/sdk", () => ({
       get: vi.fn(),
       list: vi.fn(),
       queuedMessages: { list: vi.fn() },
+      interactions: { list: vi.fn() },
       storageLocation: vi.fn(),
       timeline: vi.fn(),
     },
@@ -88,6 +91,7 @@ const THREAD_WITH_INCLUDES = {
   },
   activeBackgroundAgentCount: 0,
   canSpawnChild: true,
+  queuedMessageCount: 0,
   environment: null,
   host: null,
 } satisfies ThreadWithIncludesResponse;
@@ -148,6 +152,7 @@ beforeEach(() => {
   vi.mocked(sdk.threads.get).mockResolvedValue(THREAD_WITH_INCLUDES);
   vi.mocked(sdk.threads.list).mockResolvedValue([]);
   vi.mocked(sdk.threads.queuedMessages.list).mockResolvedValue([]);
+  vi.mocked(sdk.threads.interactions.list).mockResolvedValue([]);
   vi.mocked(sdk.threads.storageLocation).mockResolvedValue({
     hostId: "host-1",
     storageRootPath: "/tmp/thread-storage/thread-1",
@@ -440,6 +445,99 @@ describe("useThreadQueuedMessages", () => {
         refetchOnWindowFocus: true,
       }),
     );
+  });
+});
+
+describe("useThreadPendingInteractions", () => {
+  it("reuses the first owner's fresh baseline when a second owner mounts", async () => {
+    const { queryClient, wrapper } = createQueryClientTestHarness();
+    const first = renderHook(() => useThreadPendingInteractions("thread-1"), {
+      wrapper,
+    });
+    await waitFor(() => {
+      expect(first.result.current.isSuccess).toBe(true);
+    });
+    queryClient.setQueryData(
+      threadPendingInteractionsQueryKey("thread-1"),
+      [],
+      { updatedAt: Date.now() - 1_000 },
+    );
+
+    renderHook(() => useThreadPendingInteractions("thread-1"), { wrapper });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(sdk.threads.interactions.list).toHaveBeenCalledTimes(1);
+  });
+
+  it("refreshes the baseline after every zero-owner interval", async () => {
+    const { wrapper } = createQueryClientTestHarness();
+    const first = renderHook(() => useThreadPendingInteractions("thread-1"), {
+      wrapper,
+    });
+    await waitFor(() => {
+      expect(first.result.current.isSuccess).toBe(true);
+    });
+    first.unmount();
+    const pendingInteraction: PendingInteraction = {
+      id: "pint-plan",
+      threadId: "thread-1",
+      turnId: "turn-1",
+      providerId: "claude-code",
+      providerThreadId: "provider-thread-1",
+      providerRequestId: "request-1",
+      status: "pending",
+      statusReason: null,
+      createdAt: 1,
+      resolvedAt: null,
+      resolution: null,
+      payload: {
+        kind: "approval",
+        reason: null,
+        availableDecisions: ["allow_once", "deny"],
+        subject: {
+          kind: "plan",
+          itemId: "plan-1",
+          plan: "Refresh the baseline",
+          planFilePath: null,
+        },
+      },
+    };
+    vi.mocked(sdk.threads.interactions.list).mockResolvedValue([
+      pendingInteraction,
+    ]);
+
+    const second = renderHook(() => useThreadPendingInteractions("thread-1"), {
+      wrapper,
+    });
+
+    await waitFor(() => {
+      expect(second.result.current.data).toEqual([pendingInteraction]);
+    });
+    expect(sdk.threads.interactions.list).toHaveBeenCalledTimes(2);
+  });
+
+  it("refetches the interaction baseline when a stale owner remounts", async () => {
+    const { queryClient, wrapper } = createQueryClientTestHarness();
+    const first = renderHook(() => useThreadPendingInteractions("thread-1"), {
+      wrapper,
+    });
+    await waitFor(() => {
+      expect(first.result.current.isSuccess).toBe(true);
+    });
+    first.unmount();
+    queryClient.setQueryData(
+      threadPendingInteractionsQueryKey("thread-1"),
+      [],
+      { updatedAt: Date.now() - 2_500 },
+    );
+
+    renderHook(() => useThreadPendingInteractions("thread-1"), { wrapper });
+
+    await waitFor(() => {
+      expect(sdk.threads.interactions.list).toHaveBeenCalledTimes(2);
+    });
   });
 });
 

@@ -370,7 +370,7 @@ describe("UpdatesSettingsSection", () => {
     expect(updateAll?.className).toContain("bg-foreground");
     expect(updateAll?.className).toContain("text-background");
     expect(updateAll?.textContent).toBe("Update all");
-    expect(updateAll?.lastElementChild?.getAttribute("data-icon")).toBe(
+    expect(updateAll?.firstElementChild?.getAttribute("data-icon")).toBe(
       "Download",
     );
     const workstationHeading = screen.getByRole("heading", {
@@ -1480,7 +1480,9 @@ The canonical release summary.
       name: "Update all 2 CLI tools",
     });
     expect(updateAll.textContent).toBe("Update all");
-    expect(updateAll.querySelector('[data-icon="Download"]')).not.toBeNull();
+    expect(updateAll.firstElementChild?.getAttribute("data-icon")).toBe(
+      "Download",
+    );
 
     fireEvent.click(updateAll);
     expect(startInstallMock).toHaveBeenCalledTimes(2);

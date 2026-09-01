@@ -33,6 +33,7 @@ import {
   createSidebarSplitState,
   focusSidebarPane,
   getSidebarGroupForPane,
+  getSidebarTabPlacement,
   isCanonicalSidebarSplitState,
   moveSidebarPaneToSide,
   moveSidebarTab,
@@ -43,6 +44,7 @@ import {
   reorderSidebarTab,
   replaceSidebarTab,
   resizeSidebarSplit,
+  restoreSidebarTabPlacement,
   selectSidebarTab,
   serializeSidebarSplitState,
   setSidebarPaneMaximized,
@@ -50,6 +52,7 @@ import {
   sidebarSplitStorageKey,
   toggleSidebarPaneMaximize,
   type SidebarSplitState,
+  type SidebarTabPlacement,
   type SidebarTabGroup,
 } from "./sidebarSplitLayout";
 import type { SecondaryPanelTabReorderRequest } from "./secondaryPanelTab";
@@ -131,6 +134,8 @@ export function SidebarSplitContainer({
     value: initialStorageValue,
   });
   const previousActiveTabId = useRef(activeTabId);
+  const previousAvailableTabIds = useRef(availableTabIds);
+  const removedTabPlacements = useRef(new Map<string, SidebarTabPlacement>());
   const previousFullScreen = useRef(isFullScreen);
   const dimsInactiveSplits = useAtomValue(dimInactiveSplitsAtom);
   const [resizeCursor, setResizeCursor] =
@@ -146,20 +151,38 @@ export function SidebarSplitContainer({
 
   useEffect(() => {
     const previousExternalActiveTabId = previousActiveTabId.current;
+    const previousAvailable = previousAvailableTabIds.current;
     const shouldFollowExternalSelection =
       previousExternalActiveTabId !== activeTabId;
     previousActiveTabId.current = activeTabId;
+    previousAvailableTabIds.current = availableTabIds;
     const current = stateRef.current;
+    const availableTabIdSet = new Set(availableTabIds);
+    for (const tabId of previousAvailable) {
+      if (availableTabIdSet.has(tabId)) continue;
+      const placement = getSidebarTabPlacement(current, tabId);
+      if (placement !== null) {
+        removedTabPlacements.current.set(tabId, placement);
+      }
+    }
     const withActiveTabReplacement =
       shouldFollowExternalSelection &&
       !availableTabIds.includes(previousExternalActiveTabId)
         ? replaceSidebarTab(current, previousExternalActiveTabId, activeTabId)
         : current;
-    const reconciled = reconcileSidebarSplitState(
+    let reconciled = reconcileSidebarSplitState(
       withActiveTabReplacement,
       availableTabIds,
       activeTabId,
     );
+    const previousAvailableTabIdSet = new Set(previousAvailable);
+    for (const tabId of availableTabIds) {
+      if (previousAvailableTabIdSet.has(tabId)) continue;
+      const placement = removedTabPlacements.current.get(tabId);
+      if (placement === undefined) continue;
+      reconciled = restoreSidebarTabPlacement(reconciled, tabId, placement);
+      removedTabPlacements.current.delete(tabId);
+    }
     const activePane = shouldFollowExternalSelection
       ? listPanes(reconciled.layout.root).find((pane) =>
           getSidebarGroupForPane(reconciled, pane.paneId)?.tabIds.includes(

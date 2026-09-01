@@ -1597,6 +1597,50 @@ describe("DesktopBrowserViewManager", () => {
     expect(focusedView.webContents.focusCalls).toBe(1);
   });
 
+  it("hides only the reloading window's browser views until they reattach", () => {
+    const manager = createDesktopBrowserViewManager({
+      partition: "persist:test",
+    });
+    const reloadingWindow = new FakeHostWindow({
+      contentBounds: { width: 900, height: 600 },
+      webContentsId: 83,
+    });
+    const otherWindow = new FakeHostWindow({
+      contentBounds: { width: 900, height: 600 },
+      webContentsId: 84,
+    });
+    attachBrowserTab({
+      manager,
+      hostWindow: reloadingWindow,
+      tabId: "browser:reloading",
+      url: "https://example.com/reloading",
+    });
+    attachBrowserTab({
+      manager,
+      hostWindow: otherWindow,
+      tabId: "browser:other",
+      url: "https://example.com/other",
+    });
+    const reloadingView = requireFakeView(0);
+    const otherView = requireFakeView(1);
+
+    manager.prepareWindowReload(reloadingWindow);
+
+    expect(reloadingView.visible).toBe(false);
+    expect(otherView.visible).toBe(true);
+    manager.attach({
+      hostWindow: reloadingWindow,
+      request: {
+        tabId: "browser:reloading",
+        url: "https://example.com/reloading",
+        bounds: { x: 100, y: 50, width: 500, height: 350 },
+        visible: true,
+      },
+    });
+    expect(electronMock.fakeViews).toHaveLength(2);
+    expect(reloadingView.visible).toBe(true);
+  });
+
   it("allows clipboard-sanitized-write but denies clipboard-read and device permissions", () => {
     expect(isAllowedBrowserPermission("clipboard-sanitized-write")).toBe(true);
     expect(isAllowedBrowserPermission("clipboard-read")).toBe(false);

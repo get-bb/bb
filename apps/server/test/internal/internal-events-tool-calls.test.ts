@@ -601,6 +601,9 @@ describe("internal event and tool-call routes", () => {
       await expect(readJson(sendResponse)).resolves.toEqual({
         ok: true,
         delivery: "queued",
+        queuedMessageId: expect.any(String),
+        waitingOn: { kind: "thread-busy" },
+        sendAt: null,
       });
       const queuedRows = listQueuedThreadMessages(harness.db, thread.id);
       expect(queuedRows).toHaveLength(1);

@@ -1329,7 +1329,6 @@ export function UpdatesSettingsSection({
         label={`Update all ${actionableIssues.length} CLI tools`}
         tooltipLabel="Update all"
         icon={UPDATE_ACTION_ICON}
-        iconPosition="end"
         visibleLabel="Update all"
         variant="default"
         onClick={() => {

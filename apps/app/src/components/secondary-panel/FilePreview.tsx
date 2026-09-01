@@ -667,7 +667,10 @@ function FilePreviewHeader({
                   <CopyButton
                     text={rawContents}
                     label={copyFileContentsLabel}
-                    className="shrink-0 rounded-md hover:bg-state-hover hover:text-foreground"
+                    className={cn(
+                      FILE_PREVIEW_HEADER_ICON_BUTTON_CLASS,
+                      "shrink-0 rounded-md hover:bg-state-hover hover:text-foreground",
+                    )}
                   />
                 </TooltipTrigger>
                 <TooltipContent side="bottom">
@@ -708,6 +711,7 @@ function FilePreviewHeader({
                   <TooltipTrigger asChild>
                     <OpenInEditorButton
                       onClick={() => onOpenInEditor(path)}
+                      className={FILE_PREVIEW_HEADER_ICON_BUTTON_CLASS}
                       label={
                         openShortcut
                           ? `Open in editor (${openShortcut.label})`

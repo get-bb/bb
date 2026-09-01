@@ -26,6 +26,8 @@ vi.mock("@/components/thread/ThreadActionsProvider", () => ({
 }));
 
 vi.mock("@/components/layout/AppPageHeader", () => ({
+  COMPACT_SHELF_HIDDEN_PAGE_HEADER_ACTIONS_CLASS:
+    "compact-shelf-hidden-header-actions",
   HEADER_ICON_BUTTON_CLASS: "header-icon-button",
   HEADER_PANE_ACTION_ICON_BUTTON_CLASS: "header-pane-action-button",
   AppPageHeader: ({
@@ -99,8 +101,32 @@ describe("ThreadDetailHeader", () => {
     ).toBeNull();
   });
 
+  it("retains the compact trigger while the open shelf hides page actions", () => {
+    viewportState.isCompactViewport = true;
+
+    render(
+      <PaneContext.Provider value={PANE_CONTEXT}>
+        <ThreadDetailHeader
+          actionsMenu={null}
+          childPillLabel={null}
+          isSecondaryPanelOpen
+          onOpenThreadGitAction={vi.fn()}
+          onToggleSecondaryPanel={vi.fn()}
+          threadHeaderGitActions={[]}
+          threadId={THREAD_ID}
+          threadTitle="Panel state"
+        />
+      </PaneContext.Provider>,
+    );
+
+    const trigger = screen.getByRole("button", {
+      name: "Hide right panel",
+    });
+    expect(trigger.closest("[data-thread-header-pane-actions]")).not.toBeNull();
+  });
+
   it.each([
-    { expectedIcon: "PanelBottom", isCompactViewport: true },
+    { expectedIcon: "PanelRight", isCompactViewport: true },
     { expectedIcon: "PanelRight", isCompactViewport: false },
   ])(
     "shows the $expectedIcon glyph on the right-panel trigger",
@@ -211,6 +237,9 @@ describe("ThreadDetailHeader", () => {
     expect(screen.queryByText("Commit")).toBeNull();
     expect(screen.getByText("Thread menu")).not.toBeNull();
     expect(screen.getByText("Responsive menu actions")).not.toBeNull();
+    expect(
+      screen.getByTestId("thread-detail-header-actions-menu").classList,
+    ).toContain("compact-shelf-hidden-header-actions");
     const closePane = screen.getByRole("button", { name: "Close pane" });
     expect(closePane.classList).toContain("header-pane-action-button");
     const closeIcon = closePane.querySelector('[data-icon="CloseThreadPane"]');

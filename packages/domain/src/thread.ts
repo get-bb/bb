@@ -2,6 +2,11 @@ import { z } from "zod";
 import { environmentWorkspaceDisplayKindSchema } from "./environment.js";
 import { gitCheckoutRefSchema } from "./git-checkout.js";
 import {
+  queuedMessageFailureReasonSchema,
+  queuedMessagePayloadSchema,
+  queuedMessageWaitingOnSchema,
+} from "./queued-message.js";
+import {
   promptInputSchema,
   permissionModeSchema,
   reasoningLevelSchema,
@@ -18,6 +23,16 @@ export {
 } from "./thread-origin-kind.js";
 export type { ThreadOriginKind } from "./thread-origin-kind.js";
 
+/**
+ * The three additions to {@link threadStatusValues} are display-only: they
+ * refine `active`/`idle` with host and workspace facts the durable status does
+ * not record.
+ *
+ * A never-started thread needs no such refinement — `pending` is a real thread
+ * status now, so it travels to the client as itself. It used to arrive as a
+ * separate `held` display status, derived from an `idle` thread holding a live
+ * dispatch hold; that derivation and the holds behind it are both gone.
+ */
 const threadRuntimeDisplayStatusValues = [
   ...threadStatusValues,
   "provisioning",
@@ -321,12 +336,53 @@ export type ThreadPullRequest = z.infer<typeof threadPullRequestSchema>;
 
 export const threadQueuedMessageSchema = z.object({
   id: z.string(),
+  /**
+   * The thread this row is waiting on. Redundant on the thread-scoped list
+   * route that first served this DTO, and load-bearing everywhere else it is
+   * now served: a `queue.*` plugin event and a cross-thread wait-holder query
+   * both hand out rows with no surrounding thread to read it from.
+   */
+  threadId: z.string(),
   content: z.array(promptInputSchema).min(1),
   model: z.string().min(1),
   reasoningLevel: reasoningLevelSchema,
   permissionMode: permissionModeSchema,
   serviceTier: serviceTierSchema,
   groupWithNext: z.boolean(),
+  /**
+   * Epoch ms this row is scheduled to attempt dispatch, or null when it is
+   * eligible as soon as its other waits clear.
+   */
+  sendAt: z.number().int().nonnegative().nullable(),
+  /**
+   * Why this row is queued, or null for a plain queued row that is simply
+   * next in line behind the running turn. Null rather than a
+   * `{ kind: "thread-busy" }` default because rows written before waits were
+   * typed carry no reason at all, and inventing one for them would be a lie.
+   */
+  waitingOn: queuedMessageWaitingOnSchema.nullable(),
+  /**
+   * Why this row's last DRAIN attempt failed outright, or null when it has not
+   * failed one — which is every row that has never been re-attempted, and
+   * every row whose latest attempt merely queued again. An inline attempt
+   * reports its failure to the sender that is still listening and never lands
+   * here.
+   *
+   * Independent of `waitingOn`, not folded into it: the row is still waiting on
+   * whatever it was waiting on, and writing a wait rewrites it wholesale, so a
+   * failure stored there would not survive the next attempt.
+   */
+  failureReason: queuedMessageFailureReasonSchema.nullable(),
+  payload: queuedMessagePayloadSchema,
+  /**
+   * Whether the sender may still rewrite this row's input. Not derivable from
+   * `payload` alone: a `retry` row is never editable, and an `inline` row
+   * stops being editable once the drain has claimed it — and the claim is
+   * deliberately not part of this response, since it is drain bookkeeping and
+   * not something a client should reason about. The server folds both into
+   * this one answer.
+   */
+  editable: z.boolean(),
   createdAt: z.number(),
   updatedAt: z.number(),
 });
@@ -361,8 +417,23 @@ export const threadWithRuntimeSchema = threadSchema.extend({
 });
 export type ThreadWithRuntime = z.infer<typeof threadWithRuntimeSchema>;
 
+/**
+ * Whether a thread has work waiting on its queue, as a list row needs to know
+ * it: not how many rows, but whether any are waiting and whether any of them
+ * failed to go out.
+ *
+ * `failed` outranks `waiting` because a failure is the only one of the two a
+ * reader has to act on — a waiting row will clear itself. Deliberately a
+ * queue fact only: whether the thread is also running is the list row's
+ * question, not the queue's, and the row's glyph precedence answers it.
+ */
+export const threadQueuedWorkValues = ["none", "waiting", "failed"] as const;
+export const threadQueuedWorkSchema = z.enum(threadQueuedWorkValues);
+export type ThreadQueuedWork = z.infer<typeof threadQueuedWorkSchema>;
+
 export const threadListEntrySchema = threadWithRuntimeSchema.extend({
   activity: threadActivityStateSchema,
+  queuedWork: threadQueuedWorkSchema,
   pinSortKey: z.string().nullable(),
   hasPendingInteraction: z.boolean(),
   environmentHostId: z.string().nullable(),

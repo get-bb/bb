@@ -16,7 +16,10 @@ import {
   FIXED_PANEL_TABS_STATE_STORAGE_VERSION,
 } from "@/lib/fixed-panel-tabs-state";
 import { buildFileOpenerPanelTab } from "@/components/plugin/file-opener-tabs";
-import { useThreadFileTabs } from "./useThreadFileTabs";
+import {
+  resetRecentlyClosedPanelTabsForTest,
+  useThreadFileTabs,
+} from "./useThreadFileTabs";
 import {
   resetPluginSlotStoreForTest,
   setPluginSlotRegistrations,
@@ -58,6 +61,14 @@ function renderThreadHook<Result>(hook: () => Result) {
   return renderHook(hook, { wrapper: QueryWrapper });
 }
 
+function createDeferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((nextResolve) => {
+    resolve = nextResolve;
+  });
+  return { promise, resolve };
+}
+
 function terminalSession(overrides: TerminalSessionOverrides): TerminalSession {
   return {
     id: "term_1",
@@ -82,10 +93,470 @@ afterEach(() => {
   cleanup();
   queryClient.clear();
   window.localStorage.clear();
+  resetRecentlyClosedPanelTabsForTest();
   resetPluginSlotStoreForTest();
   syncMocks.scheduleLocalThreadTabsMigration.mockClear();
   syncMocks.scheduleThreadTabsPersistence.mockClear();
   syncMocks.useThreadTabs.mockClear();
+});
+
+describe("useThreadFileTabs recently closed tabs", () => {
+  it("reopens closed tabs in reverse close order and restores their positions", () => {
+    const { result } = renderThreadHook(() =>
+      useThreadFileTabs({
+        panelStateId: "recently-closed",
+        syncThreadId: null,
+        environmentId: "env_1",
+        storageFiles: undefined,
+        terminalSessions: undefined,
+      }),
+    );
+
+    let firstTabId = "";
+    let secondTabId = "";
+    act(() => {
+      firstTabId =
+        result.current.openTab({
+          kind: "browser",
+          url: "https://first.example",
+        })?.id ?? "";
+      secondTabId =
+        result.current.openTab({
+          kind: "browser",
+          url: "https://second.example",
+        })?.id ?? "";
+    });
+    act(() => {
+      result.current.closeTab(firstTabId);
+      result.current.closeTab(secondTabId);
+    });
+
+    expect(result.current.orderedSecondaryFileTabs).toHaveLength(0);
+    let didReopen = false;
+    act(() => {
+      didReopen = result.current.reopenClosedTab();
+    });
+    expect(didReopen).toBe(true);
+    expect(result.current.activeBrowserTab?.id).toBe(secondTabId);
+
+    act(() => {
+      didReopen = result.current.reopenClosedTab();
+    });
+    expect(didReopen).toBe(true);
+    expect(result.current.activeBrowserTab?.id).toBe(firstTabId);
+    expect(
+      result.current.orderedSecondaryFileTabs.map((tab) => tab.id),
+    ).toEqual([firstTabId, secondTabId]);
+
+    act(() => {
+      didReopen = result.current.reopenClosedTab();
+    });
+    expect(didReopen).toBe(false);
+  });
+
+  it("does not reopen a launcher tab or a file reopened another way", () => {
+    const { result } = renderThreadHook(() =>
+      useThreadFileTabs({
+        panelStateId: "recently-closed-launcher",
+        syncThreadId: null,
+        environmentId: "env_1",
+        storageFiles: undefined,
+        terminalSessions: undefined,
+      }),
+    );
+    const fileRequest = {
+      kind: "workspace-file-preview" as const,
+      tab: {
+        lineRange: null,
+        path: "src/index.ts",
+        source: { kind: "working-tree" as const },
+        statusLabel: null,
+      },
+    };
+
+    act(() => {
+      const launcher = result.current.openTab({ kind: "new-tab" });
+      result.current.closeTab(launcher?.id ?? "");
+    });
+    expect(result.current.reopenClosedTab()).toBe(false);
+
+    let fileTabId = "";
+    act(() => {
+      fileTabId = result.current.openTab(fileRequest)?.id ?? "";
+    });
+    act(() => result.current.closeTab(fileTabId));
+    act(() => {
+      result.current.openTab(fileRequest);
+    });
+    expect(result.current.reopenClosedTab()).toBe(false);
+  });
+
+  it("skips storage history with a deleted path or different owner", () => {
+    let storageFiles = {
+      files: [
+        { name: "available.md", path: "available.md" },
+        { name: "deleted.md", path: "deleted.md" },
+      ],
+      truncated: false,
+    };
+    const { result, rerender } = renderThreadHook(() =>
+      useThreadFileTabs({
+        panelStateId: "recently-closed-storage",
+        syncThreadId: "thr_current",
+        environmentId: "env_1",
+        storageFiles,
+        terminalSessions: undefined,
+      }),
+    );
+
+    let availableTabId = "";
+    let foreignTabId = "";
+    let deletedTabId = "";
+    act(() => {
+      availableTabId =
+        result.current.openTab({
+          kind: "thread-storage-file-preview",
+          tab: { lineRange: null, path: "available.md" },
+        })?.id ?? "";
+      foreignTabId =
+        result.current.openTab({
+          kind: "thread-storage-file-preview",
+          tab: { lineRange: null, path: "foreign.md" },
+          threadId: "thr_foreign",
+        })?.id ?? "";
+      deletedTabId =
+        result.current.openTab({
+          kind: "thread-storage-file-preview",
+          tab: { lineRange: null, path: "deleted.md" },
+        })?.id ?? "";
+    });
+    act(() => {
+      result.current.closeTab(availableTabId);
+      result.current.closeTab(foreignTabId);
+      result.current.closeTab(deletedTabId);
+    });
+    act(() => {
+      storageFiles = {
+        files: [{ name: "available.md", path: "available.md" }],
+        truncated: false,
+      };
+      rerender();
+    });
+
+    let didReopen = false;
+    act(() => {
+      didReopen = result.current.reopenClosedTab();
+    });
+    expect(didReopen).toBe(true);
+    expect(result.current.activeStorageFilePath).toBe("available.md");
+    expect(result.current.activeStorageFileThreadId).toBe("thr_current");
+
+    act(() => {
+      didReopen = result.current.reopenClosedTab();
+    });
+    expect(didReopen).toBe(false);
+  });
+
+  it("does not consume or transiently restore storage history before exact validation", async () => {
+    const validation = createDeferred<boolean>();
+    const storageFileExists = vi.fn(() => validation.promise);
+    const { result } = renderThreadHook(() =>
+      useThreadFileTabs({
+        panelStateId: "recently-closed-storage-loading",
+        syncThreadId: "thr_current",
+        environmentId: "env_1",
+        storageFileExists,
+        storageFiles: undefined,
+        terminalSessions: undefined,
+      }),
+    );
+
+    let storageTabId = "";
+    act(() => {
+      storageTabId =
+        result.current.openTab({
+          kind: "thread-storage-file-preview",
+          tab: { lineRange: null, path: "still-here.md" },
+        })?.id ?? "";
+    });
+    act(() => result.current.closeTab(storageTabId));
+
+    let didHandle = false;
+    act(() => {
+      didHandle = result.current.reopenClosedTab();
+    });
+    expect(didHandle).toBe(true);
+    expect(result.current.orderedSecondaryFileTabs).toHaveLength(0);
+    expect(storageFileExists).toHaveBeenCalledWith("still-here.md");
+
+    await act(async () => {
+      validation.resolve(true);
+      await validation.promise;
+      await Promise.resolve();
+    });
+    expect(result.current.activeStorageFilePath).toBe("still-here.md");
+  });
+
+  it("checks a path omitted from a truncated inventory and skips it when deleted", async () => {
+    const storageFileExists = vi.fn(async () => false);
+    const { result } = renderThreadHook(() =>
+      useThreadFileTabs({
+        panelStateId: "recently-closed-storage-truncated",
+        syncThreadId: "thr_current",
+        environmentId: "env_1",
+        storageFileExists,
+        storageFiles: { files: [], truncated: true },
+        terminalSessions: undefined,
+      }),
+    );
+
+    let browserTabId = "";
+    let storageTabId = "";
+    act(() => {
+      browserTabId =
+        result.current.openTab({
+          kind: "browser",
+          url: "https://fallback.example",
+        })?.id ?? "";
+      storageTabId =
+        result.current.openTab({
+          kind: "thread-storage-file-preview",
+          tab: { lineRange: null, path: "deleted-after-close.md" },
+        })?.id ?? "";
+    });
+    act(() => {
+      result.current.closeTab(browserTabId);
+      result.current.closeTab(storageTabId);
+    });
+    act(() => {
+      result.current.reopenClosedTab();
+    });
+
+    await waitFor(() => {
+      expect(result.current.activeBrowserTab?.id).toBe(browserTabId);
+    });
+    expect(storageFileExists).toHaveBeenCalledWith("deleted-after-close.md");
+    expect(result.current.activeStorageFilePath).toBeNull();
+  });
+
+  it("restores a valid path omitted from a truncated inventory", async () => {
+    const storageFileExists = vi.fn(async () => true);
+    const { result } = renderThreadHook(() =>
+      useThreadFileTabs({
+        panelStateId: "recently-closed-storage-truncated-valid",
+        syncThreadId: "thr_current",
+        environmentId: "env_1",
+        storageFileExists,
+        storageFiles: { files: [], truncated: true },
+        terminalSessions: undefined,
+      }),
+    );
+
+    let storageTabId = "";
+    act(() => {
+      storageTabId =
+        result.current.openTab({
+          kind: "thread-storage-file-preview",
+          tab: { lineRange: null, path: "after-page-one.md" },
+        })?.id ?? "";
+    });
+    act(() => result.current.closeTab(storageTabId));
+    act(() => {
+      result.current.reopenClosedTab();
+    });
+
+    await waitFor(() => {
+      expect(result.current.activeStorageFilePath).toBe("after-page-one.md");
+    });
+    expect(storageFileExists).toHaveBeenCalledWith("after-page-one.md");
+  });
+
+  it("keeps an open storage tab when the inventory is truncated", () => {
+    const threadId = "storage-truncated-open-tab";
+    const storageTab = createThreadStorageFilePreviewFixedPanelTab({
+      environmentId: "env_1",
+      isPinned: false,
+      tab: { lineRange: null, path: "after-page-one.md" },
+      threadId,
+    });
+    const state = createEmptyFixedPanelTabsState({
+      secondary: {
+        activeTabId: storageTab.id,
+        isOpen: true,
+        tabs: [storageTab],
+      },
+      lastUsedAt: Date.now(),
+    });
+    window.localStorage.setItem(
+      getFixedPanelTabsStateStorageKey({ threadId }),
+      serializeFixedPanelTabsState({ state }),
+    );
+
+    const { result } = renderThreadHook(() =>
+      useThreadFileTabs({
+        panelStateId: threadId,
+        syncThreadId: threadId,
+        environmentId: "env_1",
+        storageFiles: { files: [], truncated: true },
+        terminalSessions: undefined,
+      }),
+    );
+
+    expect(result.current.activeStorageFilePath).toBe("after-page-one.md");
+  });
+
+  it.each([
+    {
+      changedContext: {
+        environmentId: "env_2",
+        fileOwnerThreadId: "thr_1",
+        projectHostId: "host_1",
+        projectId: "proj_1",
+      },
+      dimension: "environment",
+    },
+    {
+      changedContext: {
+        environmentId: "env_1",
+        fileOwnerThreadId: "thr_1",
+        projectHostId: "host_1",
+        projectId: "proj_2",
+      },
+      dimension: "project",
+    },
+    {
+      changedContext: {
+        environmentId: "env_1",
+        fileOwnerThreadId: "thr_2",
+        projectHostId: "host_1",
+        projectId: "proj_1",
+      },
+      dimension: "file owner",
+    },
+    {
+      changedContext: {
+        environmentId: "env_1",
+        fileOwnerThreadId: "thr_1",
+        projectHostId: "host_2",
+        projectId: "proj_1",
+      },
+      dimension: "project host",
+    },
+  ])(
+    "skips workspace history from a different $dimension",
+    ({ changedContext, dimension }) => {
+      let context = {
+        environmentId: "env_1",
+        fileOwnerThreadId: "thr_1",
+        projectHostId: "host_1",
+        projectId: "proj_1",
+      };
+      const { result, rerender } = renderThreadHook(() =>
+        useThreadFileTabs({
+          panelStateId: `recently-closed-${dimension}`,
+          syncThreadId: null,
+          environmentId: context.environmentId,
+          fileOwnerThreadId: context.fileOwnerThreadId,
+          projectHostId: context.projectHostId,
+          projectId: context.projectId,
+          storageFiles: undefined,
+          terminalSessions: undefined,
+        }),
+      );
+
+      let workspaceTabId = "";
+      act(() => {
+        workspaceTabId =
+          result.current.openTab({
+            kind: "workspace-file-preview",
+            tab: {
+              lineRange: null,
+              path: "src/index.ts",
+              source: { kind: "working-tree" },
+              statusLabel: null,
+            },
+          })?.id ?? "";
+      });
+      act(() => result.current.closeTab(workspaceTabId));
+      act(() => {
+        context = changedContext;
+        rerender();
+      });
+
+      let didReopen = false;
+      act(() => {
+        didReopen = result.current.reopenClosedTab();
+      });
+      expect(didReopen).toBe(false);
+      expect(result.current.activeWorkspaceFilePath).toBeNull();
+    },
+  );
+
+  it("restores the nearest history entry owned by the current context", () => {
+    let environmentId = "env_1";
+    const { result, rerender } = renderThreadHook(() =>
+      useThreadFileTabs({
+        panelStateId: "recently-closed-context-order",
+        syncThreadId: null,
+        environmentId,
+        fileOwnerThreadId: "thr_1",
+        projectHostId: "host_1",
+        projectId: "proj_1",
+        storageFiles: undefined,
+        terminalSessions: undefined,
+      }),
+    );
+
+    const openAndCloseWorkspaceFile = (path: string) => {
+      let tabId = "";
+      act(() => {
+        tabId =
+          result.current.openTab({
+            kind: "workspace-file-preview",
+            tab: {
+              lineRange: null,
+              path,
+              source: { kind: "working-tree" },
+              statusLabel: null,
+            },
+          })?.id ?? "";
+      });
+      act(() => result.current.closeTab(tabId));
+    };
+
+    openAndCloseWorkspaceFile("src/env-one.ts");
+    act(() => {
+      environmentId = "env_2";
+      rerender();
+    });
+    openAndCloseWorkspaceFile("src/env-two.ts");
+    act(() => {
+      environmentId = "env_1";
+      rerender();
+    });
+
+    let didReopen = false;
+    act(() => {
+      didReopen = result.current.reopenClosedTab();
+    });
+    expect(didReopen).toBe(true);
+    expect(result.current.activeWorkspaceFilePath).toBe("src/env-one.ts");
+
+    act(() => {
+      didReopen = result.current.reopenClosedTab();
+    });
+    expect(didReopen).toBe(false);
+
+    act(() => {
+      environmentId = "env_2";
+      rerender();
+    });
+    act(() => {
+      didReopen = result.current.reopenClosedTab();
+    });
+    expect(didReopen).toBe(true);
+    expect(result.current.activeWorkspaceFilePath).toBe("src/env-two.ts");
+  });
 });
 
 describe("useThreadFileTabs terminal pruning", () => {
@@ -734,7 +1205,10 @@ describe("useThreadFileTabs file opener diversion", () => {
         panelStateId: "opener-storage-search",
         syncThreadId: "thr_storage_search",
         environmentId: "env_1",
-        storageFiles: [{ path: "artifacts/notes.md" }],
+        storageFiles: {
+          files: [{ name: "notes.md", path: "artifacts/notes.md" }],
+          truncated: false,
+        },
         terminalSessions: undefined,
       }),
     );

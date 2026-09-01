@@ -42,10 +42,14 @@ vi.mock("@/hooks/queries/system-queries", () => ({
     data: {
       experiments: {
         editMessages: false,
-        providerSessionReaping: false,
       },
     },
   }),
+}));
+
+vi.mock("@/hooks/useHostDaemon", () => ({
+  useHostDaemon: () => ({ hasDaemon: false }),
+  useLocalHostDaemonAccess: () => ({ accessState: "unavailable" }),
 }));
 
 vi.mock("@/components/project/ProjectActionsProvider", () => ({

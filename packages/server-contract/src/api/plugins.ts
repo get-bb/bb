@@ -176,6 +176,16 @@ export const installedPluginSchema = z.object({
   logoUrl: z.string().nullable(),
   logoDarkUrl: z.string().nullable(),
   providerIds: z.array(z.string()),
+  /**
+   * The plugin's declared icons (`bb.branding.experimental_icons`): declared
+   * name → hashed asset URL (`/api/v1/plugins/<id>/assets/icons/<name>.svg?h=…`).
+   * A timeline row or provider whose glyph is `"<pluginId>/<name>"` resolves
+   * here; a name that is absent (the plugin changed its map, or is gone)
+   * renders the per-kind fallback glyph. Identity-backed like `iconUrl`, so a
+   * disabled plugin's icons still resolve. Empty for a plugin that declares
+   * none; the server fills it for every plugin, with the same response-side
+   * tolerance as `providerIds` in @bb/sdk for servers older than the field.
+   */
   icons: z.record(z.string(), z.string()),
 });
 export type InstalledPlugin = z.infer<typeof installedPluginSchema>;

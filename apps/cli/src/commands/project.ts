@@ -53,7 +53,6 @@ interface ProjectDiscoveryCommandOptions {
   limit?: string;
   provider?: string;
   query?: string;
-  refresh?: boolean;
 }
 
 function addProjectWorkspaceRoutingOptions(command: Command): Command {
@@ -391,7 +390,6 @@ export function registerProjectCommands(
     .requiredOption("--host <id>", "Source machine ID")
     .option("--query <query>", "Branch-name filter")
     .option("--limit <count>", "Maximum branches")
-    .option("--refresh", "Wait for remote refs before listing")
     .option("--json", "Print machine-readable JSON output")
     .action(
       action(async (id: string, opts: ProjectDiscoveryCommandOptions) => {
@@ -400,7 +398,6 @@ export function registerProjectCommands(
           hostId: opts.host ?? "",
           ...(opts.query ? { query: opts.query } : {}),
           ...(opts.limit ? { limit: opts.limit } : {}),
-          ...(opts.refresh ? { refresh: "blocking" as const } : {}),
         });
         if (outputJson(opts, result)) return;
         console.log(JSON.stringify(result, null, 2));

@@ -73,7 +73,7 @@ export interface PluginBrandingAssetSet {
   icons: ReadonlyMap<string, PluginBrandingAssetSnapshot>;
 }
 
-function brandingAssetHash(bytes: Uint8Array): string {
+export function brandingAssetHash(bytes: Uint8Array): string {
   return createHash("sha256").update(bytes).digest("hex").slice(0, 16);
 }
 

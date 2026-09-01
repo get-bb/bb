@@ -3,6 +3,8 @@ import type { ProviderCliKey } from "@bb/host-daemon-contract";
 import { Icon } from "@bb/shared-ui/icon";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@bb/shared-ui/tooltip";
 import { cn } from "@bb/shared-ui/lib/utils";
+import { useProviderCliInstallRunner } from "@/components/provider-cli/provider-cli-install";
+import { providerCliJobKey } from "@/components/provider-cli/provider-cli-install-store";
 import { SidebarMenuItem } from "@/components/ui/sidebar.js";
 import { useSystemProviders } from "@/hooks/queries/system-queries";
 import { useUpdateInventory } from "@/hooks/useUpdateInventory";
@@ -34,6 +36,7 @@ interface StaleProvider {
 export function SidebarUpdatesBadge({ onNavigate }: SidebarUpdatesBadgeProps) {
   const inventory = useUpdateInventory();
   const providers = useSystemProviders().data;
+  const { runningJobKey } = useProviderCliInstallRunner();
 
   const stuckDaemonCount = inventory.machines.filter(
     (machine) => machine.canRetryDaemonUpdate,
@@ -58,6 +61,13 @@ export function SidebarUpdatesBadge({ onNavigate }: SidebarUpdatesBadgeProps) {
     }
   }
   const staleProviders = [...staleProvidersByKey.values()];
+  const providerUpdateRunning = inventory.machines.some((machine) =>
+    machine.issues.some(
+      (issue) =>
+        issue.status.installed &&
+        runningJobKey === providerCliJobKey(machine.host.id, issue.provider),
+    ),
+  );
 
   if (bbUpdateCount === 0 && staleProviders.length === 0) {
     return null;
@@ -99,7 +109,13 @@ export function SidebarUpdatesBadge({ onNavigate }: SidebarUpdatesBadgeProps) {
               data-testid="sidebar-updates-badge-providers"
               className={CHIP_CLASS}
             >
-              <Icon name="Download" className="size-3 text-muted-foreground" />
+              <Icon
+                name={providerUpdateRunning ? "Loading" : "Download"}
+                className={cn(
+                  "size-3 text-muted-foreground",
+                  providerUpdateRunning && "animate-spin",
+                )}
+              />
               <span className="flex items-center gap-1">
                 {staleProviders.map((stale) => {
                   const providerId = stale.provider;

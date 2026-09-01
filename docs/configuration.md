@@ -179,6 +179,18 @@ bb keep-awake hosts all
 bb keep-awake hosts <host-id>...
 ```
 
+The builtin Concurrency limit plugin has an autosaving page under Extensions
+→ Plugins. Its overall limit is unlimited by default. Each host defaults to
+Auto: one thread per available processor. A blank host field restores
+Auto, and 0 pauses new work for that scope. Configure it from an agent or
+terminal with:
+
+```sh
+bb concurrency-limit status [--json]
+bb concurrency-limit global [unlimited|<limit>] [--json]
+bb concurrency-limit host <host-id> [auto|<limit>] [--json]
+```
+
 The "Show unhandled provider events" toggle in Settings → General exposes raw
 provider events that bb does not yet understand. It defaults to off in packaged
 builds because these diagnostic payloads are noisy. Development builds continue
@@ -189,9 +201,11 @@ agent or terminal with
 The "Default thread followup behavior" picker in Settings → General changes the
 active-thread composer shortcuts when no typeahead suggestion is active. A
 queued message waits and then runs when the agent stops. A steer message goes
-to the agent during the current run. The picker defaults to "Queue": Enter
-queues and Command+Enter steers. "Steer" swaps them: Enter steers and
-Command+Enter queues. Set it with
+to the agent during the current run. The picker defaults to "Steer" for a new
+install: Enter steers and Command+Enter queues. "Queue" swaps them: Enter
+queues and Command+Enter steers. An earlier install with saved settings or work
+keeps "Queue" because a one-time migration stamps the old default onto it. Set
+it with
 `bb settings general steerActiveThreadOnEnter <true|false>`, where `true` is
 "Steer".
 
@@ -646,12 +660,9 @@ The `mobileApp` experiment turns on pairing for the bb mobile app: the
 `bb connect machine-code` command (see "Pairing the bb mobile app" above). It
 is off by default while the app is in early access.
 
-The `providerSessionReaping` experiment extends idle session release to every
-restorable provider. BB releases those sessions after 30 idle minutes. The
-daemon reads the setting before each five-minute maintenance pass. Active
-turns, commands, agents, workflows, and monitors keep their sessions loaded.
-The experiment does not gate release: BB releases idle Codex sessions with the
-experiment off, which is the behavior it had before this setting.
+BB releases restorable provider sessions after 30 idle minutes. The daemon
+checks for these sessions every five minutes. Active turns, commands, agents,
+workflows, and monitors keep their sessions loaded.
 
 The `timelineWindowing` experiment is off by default. When enabled, long
 timelines and large expanded timeline details retain stable height-preserving
@@ -785,13 +796,23 @@ the plugin so it can be surfaced as needing attention.
 
 ### Provider retry plugin
 
-The builtin Provider retry plugin is enabled on fresh installations. It
-automatically waits for structured Codex and Claude Code subscription-window
-resets when the failed turn was accepted, the provider has stopped its own
-retries, and the original execution settings remain available. Prior output or
-tool activity does not block recovery. Recovery sends one agent-only
-`Please continue.` turn on the existing provider conversation. Disable it
-under Extensions → Plugins or with `bb plugin disable provider-retry`.
+The builtin Provider retry plugin is enabled on fresh installations. When a turn
+fails on a structured Codex or Claude Code subscription-window limit that
+reports a reset time, it queues that turn after the window opens. It also
+retries structured provider overloads with exponential backoff and jitter.
+Prior output or tool activity does not block recovery. If the provider accepted
+the failed input, core sends an agent-only continuation; if it rejected the
+input before starting, core re-sends the original message as agent-only. Disable
+the plugin under Extensions → Plugins or with
+`bb plugin disable provider-retry`.
+
+It never blocks a send. A remembered rate limit is a stale picture of the
+provider's state, so the plugin never refuses a dispatch on one — if you raised
+your plan or the window opened early, the next send simply works. The cost is
+that several threads on one exhausted subscription each fail once before each
+schedules its own retry; the retries are jittered so they do not all wake in the
+same instant. Overload retries start after 5–10 seconds, double their delay
+after each failure, and share the five-total-attempt cap with limit retries.
 The `maximumWait` setting defaults to `6 hours`; resets beyond that horizon are
 not scheduled. Choose `24 hours` or `No limit` under the plugin settings, or
 configure it from the CLI:
@@ -800,15 +821,14 @@ configure it from the CLI:
 bb plugin config provider-retry set maximumWait "24 hours"
 ```
 
-Pending waits are coordinated by machine/provider subscription and live only
-in the current server/plugin process. Restarting bb, reloading the plugin, or
-disabling it clears the timers without changing the original failed thread. A
-later 429 without a fresh provider rate-limit update can still inherit the last
-blocked window during that process.
-Inspect them with `bb provider-retry status`, or cancel one from its composer
-banner or with `bb provider-retry cancel <thread-id>`. Run
-`bb provider-retry retry <thread-id>` for a manual recovery, including credit
-or spend-control limits that do not report a reset time.
+A pending retry is a queued row on the thread, not an in-process timer, so it
+survives a restart and shows its reason and time on the queue card above the
+composer — the one surface that narrates the wait. Inspect them with
+`bb provider-retry status`, cancel one on that card or with
+`bb provider-retry cancel <thread-id>`, or run
+`bb provider-retry retry <thread-id>` to send it now instead of waiting. Limits
+that do not reset on a clock — credit and spend-control exhaustion — schedule
+nothing, because waiting does not fix them.
 
 ### Workflows plugin
 

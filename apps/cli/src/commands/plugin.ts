@@ -1418,8 +1418,16 @@ export function registerPluginCommands(
         }
         const loop = createPluginDevLoop({
           pluginId: entry.id,
-          hasApp,
-          hasHost,
+          // Re-read per cycle: a plugin can add or drop bb.app/bb.host while
+          // being watched, and a stale snapshot would demand a build that can
+          // never succeed again.
+          targets: async () => {
+            const current = await requirePluginManifest(rootDir);
+            return {
+              hasApp: typeof current.bb?.app === "string",
+              hasHost: typeof current.bb?.host === "string",
+            };
+          },
           buildApp: async () => {
             await buildPluginApp(
               rootDir,

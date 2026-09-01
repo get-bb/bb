@@ -29,6 +29,7 @@ describe("product-map surfaces", () => {
   it("keeps app-window annotations in their stable sequential order", () => {
     const ordered = [
       "nav-panel",
+      "sidebar-navigation",
       "thread-list",
       "thread-row-status",
       "sidebar-footer",

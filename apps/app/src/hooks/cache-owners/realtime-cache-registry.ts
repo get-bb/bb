@@ -377,7 +377,7 @@ export const REALTIME_THREAD_CHANGE_REGISTRY = {
   },
   "queue-changed": {
     flush: "debounced",
-    dirty: [dirtyThreadQueueContentQueries],
+    dirty: [dirtyThreadQueueContentQueries, dirtyActiveThreadListQueries],
   },
   "archived-changed": {
     flush: "debounced",
@@ -1133,8 +1133,11 @@ function dirtyHostAvailabilityQueries(): QueryKey[] {
   return [hostsQueryKey(), allHostQueryKeyPrefix()];
 }
 
-function dirtySystemConfigQueries(): QueryKey[] {
-  return [systemConfigQueryKey()];
+function dirtySystemConfigQueries({ queryClient }: RealtimeDirtyContext): void {
+  invalidateQueryKeysWithoutCancelingActiveFetches({
+    queryClient,
+    queryKeys: [systemConfigQueryKey()],
+  });
 }
 
 function dirtyAllThreadTimelineQueries(): QueryKey[] {

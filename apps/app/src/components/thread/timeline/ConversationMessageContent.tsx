@@ -421,7 +421,7 @@ function UserConversationMessage({
     <div className="w-full" data-message-column="">
       <div className="group/message ml-auto flex w-fit max-w-[70%] flex-col items-end">
         {requestLabel ? (
-          <div className="mb-1 flex justify-end">
+          <div className="mb-1 flex items-center justify-end gap-2">
             <TurnRequestLabel
               turnRequest={turnRequest}
               icon="ArrowTurnForward"

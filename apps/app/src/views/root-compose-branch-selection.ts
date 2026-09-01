@@ -1,4 +1,6 @@
-import { useCallback, useState } from "react";
+import { useAtom } from "jotai";
+import { atom } from "jotai/vanilla";
+import { useCallback, useEffect, useState } from "react";
 import type { RootComposeSelectedBranch } from "./root-compose-thread-environment";
 
 interface BranchSelectionScopeArgs {
@@ -13,6 +15,16 @@ interface UseScopedBranchSelectionResult {
   onCreateBranchFrom: (name: string) => void;
   selectedBranch: RootComposeSelectedBranch | null;
 }
+
+interface BranchSelectionState {
+  scopeKey: string | null;
+  selectedBranch: RootComposeSelectedBranch | null;
+}
+
+const newThreadBranchSelectionAtom = atom<BranchSelectionState>({
+  scopeKey: null,
+  selectedBranch: null,
+});
 
 export function getBranchSelectionScopeKey(
   args: BranchSelectionScopeArgs,
@@ -34,60 +46,73 @@ export function carryBranchSelectionAcrossScope(args: {
 }
 
 export function useScopedBranchSelection(
-  args: BranchSelectionScopeArgs,
+  args: BranchSelectionScopeArgs & {
+    selectionScope: "component-local" | "new-thread";
+  },
 ): UseScopedBranchSelectionResult {
   const scopeKey = getBranchSelectionScopeKey(args);
   const scopeUsable = scopeKey !== null;
-  const [selectedBranchState, setSelectedBranchState] =
-    useState<RootComposeSelectedBranch | null>(null);
-  const [trackedScopeKey, setTrackedScopeKey] = useState<string | null>(
+  const [localState, setLocalState] = useState<BranchSelectionState>(() => ({
     scopeKey,
+    selectedBranch: null,
+  }));
+  const [newThreadState, setNewThreadState] = useAtom(
+    newThreadBranchSelectionAtom,
   );
+  const selectionState =
+    args.selectionScope === "new-thread" ? newThreadState : localState;
+  const setSelectionState =
+    args.selectionScope === "new-thread" ? setNewThreadState : setLocalState;
 
   const selectedBranch = carryBranchSelectionAcrossScope({
-    previousScopeKey: trackedScopeKey,
+    previousScopeKey: selectionState.scopeKey,
     currentScopeKey: scopeKey,
-    selectedBranch: selectedBranchState,
+    selectedBranch: selectionState.selectedBranch,
   });
 
-  if (trackedScopeKey !== scopeKey) {
-    setTrackedScopeKey(scopeKey);
-    if (selectedBranchState !== null) {
-      setSelectedBranchState(null);
-    }
-  }
+  useEffect(() => {
+    if (selectionState.scopeKey === scopeKey) return;
+    setSelectionState({ scopeKey, selectedBranch: null });
+  }, [scopeKey, selectionState.scopeKey, setSelectionState]);
 
   const onBranchChange = useCallback(
     (name: string) => {
       if (!scopeUsable) return;
-      setSelectedBranchState({ name, isNew: false });
+      setSelectionState({
+        scopeKey,
+        selectedBranch: { name, isNew: false },
+      });
     },
-    [scopeUsable],
+    [scopeKey, scopeUsable, setSelectionState],
   );
 
   const onCreateBranch = useCallback(
     (currentBranch: string | null) => {
       if (!scopeUsable) return;
       const branchName = selectedBranch?.name ?? currentBranch;
-      setSelectedBranchState(
-        branchName ? { name: branchName, isNew: true } : null,
-      );
+      setSelectionState({
+        scopeKey,
+        selectedBranch: branchName ? { name: branchName, isNew: true } : null,
+      });
     },
-    [scopeUsable, selectedBranch?.name],
+    [scopeKey, scopeUsable, selectedBranch?.name, setSelectionState],
   );
 
   const onCreateBranchFrom = useCallback(
     (name: string) => {
       if (!scopeUsable) return;
-      setSelectedBranchState({ name, isNew: true });
+      setSelectionState({
+        scopeKey,
+        selectedBranch: { name, isNew: true },
+      });
     },
-    [scopeUsable],
+    [scopeKey, scopeUsable, setSelectionState],
   );
 
   const onClearBranch = useCallback(() => {
     if (!scopeUsable) return;
-    setSelectedBranchState(null);
-  }, [scopeUsable]);
+    setSelectionState({ scopeKey, selectedBranch: null });
+  }, [scopeKey, scopeUsable, setSelectionState]);
 
   return {
     onBranchChange,

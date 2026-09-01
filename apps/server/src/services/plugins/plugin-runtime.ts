@@ -26,6 +26,7 @@ import {
   PLUGIN_SDK_MAJOR,
   PLUGIN_SDK_VERSION,
   type Thread,
+  type ThreadQueuedMessage,
 } from "@bb/domain";
 import {
   buildPluginApp,
@@ -45,6 +46,7 @@ import {
 } from "@bb/db";
 import { toThreadResponseFromThread } from "../threads/thread-runtime-display.js";
 import {
+  brandingAssetHash,
   loadPluginAppBundle,
   loadPluginBrandingAssets,
   parsePluginAppBundleMeta,
@@ -59,7 +61,11 @@ import { buildPluginProviderRegistration } from "../providers/plugin-provider-re
 import type { ProviderInstallRank } from "../providers/provider-registry.js";
 import { BUNDLED_PLUGINS } from "./builtin-registry.js";
 import { readPluginSettingsValuesSync } from "./plugin-settings.js";
-import type { PluginSettingDescriptors } from "@get-bb/plugin-sdk";
+import type {
+  PluginHookName,
+  PluginSettingDescriptors,
+} from "@get-bb/plugin-sdk";
+import type { PluginHookRegistration } from "./plugin-hook-registry.js";
 import {
   isPluginSdkRangeSatisfied,
   pluginSdkRangeProblem,
@@ -166,7 +172,7 @@ const PROVIDER_ICON_CONTENT_TYPES: Record<string, string> = {
 export function readPluginProviderIcon(
   rootDir: string,
   icon: string | undefined,
-): { bytes: Uint8Array; contentType: string } | null {
+): { bytes: Uint8Array; contentType: string; hash: string } | null {
   if (icon === undefined || !isPluginOwnedIconPath(icon)) {
     return null;
   }
@@ -180,7 +186,8 @@ export function readPluginProviderIcon(
     return null;
   }
   try {
-    return { bytes: new Uint8Array(readFileSync(resolved)), contentType };
+    const bytes = new Uint8Array(readFileSync(resolved));
+    return { bytes, contentType, hash: brandingAssetHash(bytes) };
   } catch {
     return null;
   }
@@ -599,6 +606,21 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     );
   }
 
+  /**
+   * The handlers registered for one hook, in plugin install order (the `loaded`
+   * map's insertion order, which is the order `listInstalledPlugins` returns).
+   */
+  function listPluginHooks<K extends PluginHookName>(
+    hook: K,
+  ): PluginHookRegistration<K>[] {
+    const registrations: PluginHookRegistration<K>[] = [];
+    for (const [id, plugin] of loaded) {
+      const handler = plugin.handle.hooks[hook];
+      if (handler !== null) registrations.push({ pluginId: id, handler });
+    }
+    return registrations;
+  }
+
   function hasThreadEventHandlers(event: PluginThreadEventName): boolean {
     if (loaded.size === 0) return false;
     for (const plugin of loaded.values()) {
@@ -671,13 +693,25 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     if (pending.size === 0) pendingInvocations.delete(id);
   }
 
+  /**
+   * Fire-and-forget dispatch: the lifecycle seam returns immediately; the
+   * payload is assembled and handlers run on the next macrotask, after the
+   * transition (and any surrounding transaction) has settled. Handlers are
+   * looked up live at dispatch time, so a plugin disposed in between
+   * receives nothing.
+   *
+   * A builder may return null for "on second look there is nothing to
+   * announce" — a `turn.failed` on a thread that never dispatched a turn, say.
+   * The builder runs only when a handler is listening, so that second look
+   * costs nothing on a stock install.
+   */
   function emitThreadEvent<E extends PluginThreadEventName>(
     event: E,
-    buildPayload: () => PluginThreadEventPayloads[E],
+    buildPayload: () => PluginThreadEventPayloads[E] | null,
   ): void {
     if (!hasThreadEventHandlers(event)) return;
     setImmediate(() => {
-      let payload: PluginThreadEventPayloads[E];
+      let payload: PluginThreadEventPayloads[E] | null;
       try {
         payload = buildPayload();
       } catch (error) {
@@ -686,12 +720,22 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
         );
         return;
       }
+      if (payload === null) return;
+      const delivered = payload;
       for (const [id, plugin] of loaded) {
         for (const handler of [...plugin.handle.threadEventHandlers[event]]) {
-          void invokeWrapped(id, `${event} handler`, () => handler(payload));
+          void invokeWrapped(id, `${event} handler`, () => handler(delivered));
         }
       }
     });
+  }
+
+  function buildQueuedMessageEventEmitter(
+    event: Extract<PluginThreadEventName, `message.${string}`>,
+  ): (entry: ThreadQueuedMessage) => void {
+    return (entry) => {
+      emitThreadEvent(event, () => ({ entry }));
+    };
   }
 
   function buildThreadDto(thread: Thread) {
@@ -1102,7 +1146,7 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
       args.declaration.icon === undefined
         ? null
         : parseNamespacedGlyph(args.declaration.icon);
-    let icon: { bytes: Uint8Array; contentType: string } | null;
+    let icon: { bytes: Uint8Array; contentType: string; hash: string } | null;
     if (declaredIcon !== null) {
       const asset =
         declaredIcon.pluginId === args.row.id
@@ -1113,7 +1157,11 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
           `provider "${args.declaration.id}" icon "${args.declaration.icon}" is not an icon declared by plugin "${args.row.id}"`,
         );
       }
-      icon = { bytes: asset.bytes, contentType: asset.contentType };
+      icon = {
+        bytes: asset.bytes,
+        contentType: asset.contentType,
+        hash: asset.hash,
+      };
     } else {
       icon = readPluginProviderIcon(args.row.rootDir, args.declaration.icon);
     }
@@ -1122,6 +1170,7 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
         available: args.available,
         pluginId: args.row.id,
         declaration: args.declaration,
+        iconHash: icon?.hash ?? null,
         readSettings: () =>
           readPluginSettingsValuesSync({
             db: deps.db,
@@ -1259,6 +1308,11 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
       isAgentToolNameTaken: (name) => findAgentToolOwner(name, row.id),
       reportAgentToolProblem: (message) => {
         reportAgentToolProblem(row.id, message);
+      },
+      requestQueueDrain: () => {
+        // Unwired in isolated plugin-runtime tests, which have no thread
+        // queue to walk; asking for a drain there is honestly a no-op.
+        deps.requestQueueDrain?.();
       },
       requestInteraction: (args) => {
         if (!deps.pendingInteractions) {
@@ -1653,12 +1707,14 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     checkPluginSdkRange,
     disposeAll,
     disposeOne,
+    buildQueuedMessageEventEmitter,
     emitThreadEvent,
     handlerStats,
     handleUncaughtException,
     hungServices,
     invokeWrapped,
     isBuiltinPluginId,
+    listPluginHooks,
     identities,
     isPackagedBuiltinEntry,
     loadAll,

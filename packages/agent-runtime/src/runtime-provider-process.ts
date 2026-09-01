@@ -134,6 +134,7 @@ export class RuntimeProviderProcessManager {
   private readonly args: RuntimeProviderProcessManagerArgs;
   private readonly processes = new Map<string, RuntimeProviderProcess>();
   private readonly providerStarting = new Map<string, Promise<void>>();
+  private readonly providerRetiring = new Map<string, Promise<void>>();
   private readonly currentProcessKeyByProviderId = new Map<string, string>();
   private shuttingDown = false;
 
@@ -142,6 +143,13 @@ export class RuntimeProviderProcessManager {
   }
 
   async ensureProvider(args: EnsureRuntimeProviderArgs): Promise<void> {
+    if (this.shuttingDown) return;
+    const retirement = this.providerRetiring.get(args.processKey);
+    if (retirement !== undefined) {
+      await retirement;
+      if (this.shuttingDown) return;
+    }
+
     const existing = this.providerStarting.get(args.processKey);
     if (existing) {
       await existing;
@@ -152,6 +160,7 @@ export class RuntimeProviderProcessManager {
     if (existingProcess !== undefined) {
       if (!hasChildProcessExited(existingProcess.child)) return;
       await existingProcess.exitFinalized;
+      if (this.shuttingDown) return;
 
       const concurrentStart = this.providerStarting.get(args.processKey);
       if (concurrentStart !== undefined) {
@@ -191,6 +200,7 @@ export class RuntimeProviderProcessManager {
             });
             request.onResult(result);
           } catch (error) {
+            if (this.shuttingDown) return;
             if (request.required) throw error;
           }
         }
@@ -211,6 +221,7 @@ export class RuntimeProviderProcessManager {
           }
         }
       } catch (startupError) {
+        if (this.shuttingDown) return;
         await this.cleanupFailedStartup({
           processKey: args.processKey,
           providerId: args.providerId,
@@ -253,24 +264,6 @@ export class RuntimeProviderProcessManager {
     }
   }
 
-  async retireSupersededBridgeProcessIfIdle(
-    providerProcess: RuntimeProviderProcess,
-  ): Promise<void> {
-    if (providerProcess.identity.threadIds.size > 0) {
-      return;
-    }
-    const currentKey = this.currentProcessKeyByProviderId.get(
-      providerProcess.providerId,
-    );
-    if (currentKey === undefined || currentKey === providerProcess.processKey) {
-      return;
-    }
-    await this.shutdownProvider({
-      processKey: providerProcess.processKey,
-      providerId: providerProcess.providerId,
-    });
-  }
-
   requireProviderProcess(
     args: RequireRuntimeProviderProcessArgs,
   ): RuntimeProviderProcess {
@@ -297,6 +290,9 @@ export class RuntimeProviderProcessManager {
   }
 
   async shutdownProvider(args: ShutdownRuntimeProviderArgs): Promise<void> {
+    const existingRetirement = this.providerRetiring.get(args.processKey);
+    if (existingRetirement !== undefined) return existingRetirement;
+
     const providerProcess = this.processes.get(args.processKey);
     if (!providerProcess) {
       return;
@@ -308,13 +304,20 @@ export class RuntimeProviderProcessManager {
     }
 
     providerProcess.expectedShutdownExpectations += 1;
-    await this.terminateProviderProcess({
+    const retirement = this.terminateProviderProcess({
       providerProcess,
       timeoutMs: args.timeoutMs,
+    }).then(async () => {
+      if (hasChildProcessExited(providerProcess.child)) {
+        await providerProcess.exitFinalized;
+      }
     });
-    if (hasChildProcessExited(providerProcess.child)) {
-      await providerProcess.exitFinalized;
-    }
+    this.providerRetiring.set(args.processKey, retirement);
+    await retirement.finally(() => {
+      if (this.providerRetiring.get(args.processKey) === retirement) {
+        this.providerRetiring.delete(args.processKey);
+      }
+    });
   }
 
   async shutdown(): Promise<void> {

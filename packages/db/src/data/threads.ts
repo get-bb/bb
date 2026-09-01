@@ -1142,6 +1142,181 @@ export function searchThreadsWithPendingInteractionState(
   };
 }
 
+/** How `countThreads` buckets its result; omitted asks for the total only. */
+export type CountThreadsGroupBy = "host" | "provider" | "project";
+
+export interface CountThreadsOptions {
+  status?: ThreadStatus;
+  hostId?: string;
+  providerId?: string;
+  projectId?: string;
+  /**
+   * `{ kind: "root" }` counts threads with no parent, `{ kind: "id" }` counts
+   * one parent's children, and omitting the option does not filter on
+   * parentage. Three states, three shapes — a nullable string would have made
+   * "no parent" and "no filter" the same value.
+   */
+  parent?: { kind: "root" } | { kind: "id"; parentThreadId: string };
+  groupBy?: CountThreadsGroupBy;
+  /** Archived rows are excluded unless this is true; deleted rows always are. */
+  includeArchived?: boolean;
+  /** Hidden rows are excluded unless this is true. */
+  includeHidden?: boolean;
+}
+
+export interface ThreadCountGroupRow {
+  /** The host/provider/project id, or null for threads that have none. */
+  key: string | null;
+  count: number;
+}
+
+export interface CountThreadsResult {
+  total: number;
+  /** Present exactly when `groupBy` was asked for. */
+  groups?: ThreadCountGroupRow[];
+}
+
+/**
+ * `SELECT count(*)` over threads, optionally grouped. Backs `bb thread count`,
+ * which answers "how many" in the database instead of paging threads into
+ * memory to count them. The host filter and the `host` grouping both need the
+ * environment row, so they join it; every other shape reads `threads` alone.
+ * (Limiters do not use this: reconciling several pools needs the rows, which
+ * is `listRunningThreads`' job.)
+ */
+export function countThreads(
+  db: DbQueryConnection,
+  options: CountThreadsOptions,
+): CountThreadsResult {
+  const needsEnvironmentJoin =
+    options.hostId !== undefined || options.groupBy === "host";
+  const filters = [
+    nonDeletedThreads(),
+    options.includeArchived === true ? undefined : isNull(threads.archivedAt),
+    options.includeHidden === true
+      ? undefined
+      : eq(threads.visibility, "visible"),
+    options.status !== undefined ? eq(threads.status, options.status) : undefined,
+    options.providerId !== undefined
+      ? eq(threads.providerId, options.providerId)
+      : undefined,
+    options.projectId !== undefined
+      ? eq(threads.projectId, options.projectId)
+      : undefined,
+    options.parent === undefined
+      ? undefined
+      : options.parent.kind === "root"
+        ? isNull(threads.parentThreadId)
+        : eq(threads.parentThreadId, options.parent.parentThreadId),
+    options.hostId !== undefined
+      ? eq(environments.hostId, options.hostId)
+      : undefined,
+  ].filter((value) => value !== undefined);
+
+  const groupColumn =
+    options.groupBy === "host"
+      ? environments.hostId
+      : options.groupBy === "provider"
+        ? threads.providerId
+        : options.groupBy === "project"
+          ? threads.projectId
+          : null;
+
+  if (groupColumn === null) {
+    const base = db.select({ value: count() }).from(threads).$dynamic();
+    const joined = needsEnvironmentJoin
+      ? base.leftJoin(environments, eq(environments.id, threads.environmentId))
+      : base;
+    return { total: joined.where(and(...filters)).get()?.value ?? 0 };
+  }
+
+  const base = db
+    .select({ key: groupColumn, value: count() })
+    .from(threads)
+    .$dynamic();
+  const joined = needsEnvironmentJoin
+    ? base.leftJoin(environments, eq(environments.id, threads.environmentId))
+    : base;
+  const rows = joined
+    .where(and(...filters))
+    .groupBy(groupColumn)
+    .all();
+  const groups = rows.map((row) => ({
+    key: row.key ?? null,
+    count: row.value,
+  }));
+  return {
+    total: groups.reduce((sum, group) => sum + group.count, 0),
+    groups,
+  };
+}
+
+/**
+ * The statuses that occupy capacity. A `starting` thread is provisioning or
+ * cold-starting and a `active` one is executing a turn; both hold a real slot
+ * on a real machine. `idle` deliberately does not — an idle thread has a
+ * session but is consuming nothing — and `pending`, `stopping` and `error` are
+ * not running work either.
+ */
+const OCCUPYING_THREAD_STATUSES: readonly ThreadStatus[] = [
+  "starting",
+  "active",
+];
+
+/**
+ * One thread currently occupying capacity: its id, and the machine that id is
+ * occupying.
+ */
+export interface RunningThreadRow {
+  id: string;
+  /** The machine it runs on, or null while no environment has been chosen. */
+  hostId: string | null;
+}
+
+/**
+ * Every thread currently occupying capacity.
+ *
+ * `countThreads` answers "how many", which holds one pool but cannot say which
+ * threads make it up — so a limiter over several pools (all hosts, one host)
+ * had to issue a count per pool and could not reconcile them. The rows answer
+ * every such question at once, and the set is bounded by what is actually
+ * running: a handful of rows, not a page of threads.
+ *
+ * The row is deliberately just `{ id, hostId }`. `hostId` is here because a
+ * per-host pool cannot be derived from an id without a query per row; anything
+ * else a caller needs it fetches by id, which keeps this from accreting a
+ * projection of the threads table.
+ *
+ * Archived and deleted rows are excluded because neither runs: archival stops
+ * a thread, and a soft-deleted row is gone. Hidden threads are NOT excluded —
+ * visibility is a UI fact and a hidden thread burns a slot like any other, so
+ * hiding it here would under-report real occupancy.
+ *
+ * `threads_archived_status_idx` (archived_at, status) serves this directly:
+ * `archived_at IS NULL` is the leading equality and the status set is the
+ * range that follows.
+ */
+export function listRunningThreads(
+  db: DbQueryConnection,
+): RunningThreadRow[] {
+  return db
+    .select({
+      id: threads.id,
+      hostId: environments.hostId,
+    })
+    .from(threads)
+    .leftJoin(environments, eq(environments.id, threads.environmentId))
+    .where(
+      and(
+        liveThreads(),
+        inArray(threads.status, [...OCCUPYING_THREAD_STATUSES]),
+      ),
+    )
+    .orderBy(asc(threads.id))
+    .all()
+    .map((row) => ({ ...row, hostId: row.hostId ?? null }));
+}
+
 export function listThreads(db: DbConnection, options: ListThreadsOptions) {
   let query = db
     .select()
@@ -1708,6 +1883,53 @@ export function setThreadExecutionOverride(
     .returning()
     .get();
   return updated ?? null;
+}
+
+export interface SetThreadPendingStartContextInput {
+  threadId: string;
+  /** JSON-encoded context, or null to clear it as the thread leaves `pending`. */
+  pendingStartContext: string | null;
+}
+
+/**
+ * Records (or clears) how a `pending` thread will be established.
+ *
+ * Deliberately not folded into the lifecycle transition that leaves `pending`:
+ * creation writes the context unconditionally BEFORE the first dispatch
+ * attempt — an attempt that queues is not a transition at all — and clearing
+ * it is a separate fact from the status change: a thread that fails to start
+ * still wants its status moved without losing the context a later attempt
+ * would start from.
+ */
+export function setThreadPendingStartContext(
+  db: ThreadWriteConnection,
+  input: SetThreadPendingStartContextInput,
+) {
+  return (
+    db
+      .update(threads)
+      .set({
+        pendingStartContext: input.pendingStartContext,
+        updatedAt: Date.now(),
+      })
+      .where(eq(threads.id, input.threadId))
+      .returning()
+      .get() ?? null
+  );
+}
+
+/** The stored JSON; null once the thread was admitted, or never was pending. */
+export function getThreadPendingStartContext(
+  db: DbQueryConnection,
+  threadId: string,
+): string | null {
+  return (
+    db
+      .select({ pendingStartContext: threads.pendingStartContext })
+      .from(threads)
+      .where(eq(threads.id, threadId))
+      .get()?.pendingStartContext ?? null
+  );
 }
 
 export function markThreadAttentionRequested(

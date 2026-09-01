@@ -29,6 +29,9 @@ import type {
   PluginCliCommandInfo,
   PluginCliContext,
   PluginCliResult,
+  PluginHooks,
+  PluginHookHandler,
+  PluginHookName,
   PluginEvents,
   PluginHttp,
   PluginHttpAuthMode,
@@ -80,6 +83,8 @@ import {
   summarizeParseIssues,
   agentToolIconRefusalMessage,
   aiServiceAlreadyRegisteredMessage,
+  pluginHookAlreadyRegisteredMessage,
+  storePluginHook,
   providerAlreadyRegisteredMessage,
   providerIconRefusalMessage,
   undeclaredIconProblem,
@@ -128,6 +133,17 @@ export function isNeedsConfigurationError(error: unknown): error is Error {
   return error instanceof Error && error.name === "NeedsConfigurationError";
 }
 
+/**
+ * The handler this plugin registered per hook, or null where it registered
+ * none. A mapped type over the hook-name union rather than a loose map: a hook
+ * added to the contract without an entry here fails to compile, which is what
+ * keeps the registry and the contract from drifting.
+ */
+export type PluginHookRecords = {
+  [K in PluginHookName]: PluginHookHandler<K> | null;
+};
+
+/** Per-event handler lists recorded by `bb.events.on`; dropped with the handle. */
 type PluginThreadEventHandlers = {
   [E in PluginThreadEventName]: Array<PluginThreadEventHandler<E>>;
 };
@@ -209,6 +225,9 @@ export interface PluginApiHandle {
   };
   databaseHandles: Database.Database[];
   threadEventHandlers: PluginThreadEventHandlers;
+  /** Hook handlers recorded by `bb.experimental_hooks.on`. */
+  hooks: PluginHookRecords;
+  /** HTTP routes recorded by `bb.http.route`; dropped with the handle. */
   httpRoutes: PluginHttpRouteRecord[];
   rpcHandlers: Map<string, PluginRpcHandler>;
   hostWorkerExitHandlers: PluginHostWorkerExitHandler[];
@@ -364,6 +383,18 @@ export function createPluginApi(options: {
   reportNeedsConfiguration: (message: string) => void;
   isAgentToolNameTaken: (name: string) => string | undefined;
   reportAgentToolProblem: (message: string) => void;
+  /**
+   * Schedules a re-attempt of every plugin-queued row
+   * (`bb.experimental_hooks.recheck`). Coalescing, pacing and the walk
+   * itself belong to the queue; this only asks for it.
+   */
+  requestQueueDrain: () => void;
+  /**
+   * The names this plugin's manifest declares under
+   * `bb.branding.experimental_icons`: what a namespaced glyph
+   * (`"<pluginId>/<name>"`) in a tool presentation or a provider icon must
+   * name. Empty when the manifest declares none.
+   */
   declaredIconNames: ReadonlySet<string>;
   requestInteraction: (args: {
     threadId: string;
@@ -419,6 +450,7 @@ export function createPluginApi(options: {
     reportNeedsConfiguration,
     isAgentToolNameTaken,
     reportAgentToolProblem,
+    requestQueueDrain,
     declaredIconNames,
     requestInteraction,
     ensureSharedPortTunnel,
@@ -452,6 +484,12 @@ export function createPluginApi(options: {
     "thread.failed": [],
     "thread.archived": [],
     "thread.deleted": [],
+    "message.queued": [],
+    "message.dispatched": [],
+    "turn.failed": [],
+  };
+  const hooks: PluginHookRecords = {
+    "message.dispatch": null,
   };
   const httpRoutes: PluginHttpRouteRecord[] = [];
   const rpcHandlers = new Map<string, PluginRpcHandler>();
@@ -1270,6 +1308,29 @@ export function createPluginApi(options: {
     },
   };
 
+  const experimental_hooks: PluginHooks = {
+    on(hook, handler) {
+      assertLive();
+      if (hooks[hook] !== null) {
+        // Two handlers from one plugin for one hook would make the order
+        // within the plugin invisible. Say so at registration rather than
+        // silently keeping one.
+        throw new Error(pluginHookAlreadyRegisteredMessage(hook));
+      }
+      storePluginHook(hooks, hook, handler);
+    },
+    async recheck(hook) {
+      assertLive();
+      // One hook key exists; the parameter selects which question to re-pose
+      // and widens additively when a second key ever ships.
+      void hook;
+      // Resolves on SCHEDULING. The walk runs on a later macrotask, and the
+      // caller is not the one it reports to — a failed re-attempt lands on the
+      // row it failed, like every other background drain.
+      requestQueueDrain();
+    },
+  };
+
   const providers: PluginProviders = {
     register: providerRegistrations.register,
   };
@@ -1302,6 +1363,7 @@ export function createPluginApi(options: {
     providers,
     ui,
     events,
+    experimental_hooks,
     status,
     server,
     hosts,
@@ -1330,6 +1392,7 @@ export function createPluginApi(options: {
     settings: settingsRecord,
     databaseHandles,
     threadEventHandlers,
+    hooks,
     httpRoutes,
     rpcHandlers,
     hostWorkerExitHandlers,

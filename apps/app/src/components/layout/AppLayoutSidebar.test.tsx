@@ -88,6 +88,14 @@ function getMobilePanel(): HTMLElement {
   return panel;
 }
 
+function getShelfRevealTranslate(): string {
+  const backdrop = document.querySelector("[data-sidebar-mobile-backdrop]");
+  if (!(backdrop instanceof HTMLElement)) {
+    throw new Error("Expected the mobile sidebar backdrop");
+  }
+  return backdrop.style.translate;
+}
+
 function getAppSidebarBody(): HTMLElement {
   return screen.getByTestId("app-sidebar-body");
 }
@@ -167,7 +175,7 @@ describe("AppLayoutSidebar mobile mode transitions", () => {
     expect(getMobilePanel()).toBe(panel);
     expect(getAppSidebarBody().hidden).toBe(false);
     expect(screen.queryByTestId("settings-sidebar-body")).toBeNull();
-    expect(panel.style.translate).toBe("-100%");
+    expect(getShelfRevealTranslate()).toBe("0px");
 
     settleMobileToggle();
 
@@ -196,7 +204,7 @@ describe("AppLayoutSidebar mobile mode transitions", () => {
 
     expect(screen.getByTestId("tools-sidebar-body")).toBeTruthy();
     expect(getAppSidebarBody().hidden).toBe(true);
-    expect(getMobilePanel().style.translate).toBe("-100%");
+    expect(getShelfRevealTranslate()).toBe("0px");
 
     settleMobileToggle();
 

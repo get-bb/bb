@@ -1,10 +1,18 @@
 // @vitest-environment jsdom
 
-import { cleanup, renderHook } from "@testing-library/react";
+import { act, cleanup, renderHook } from "@testing-library/react";
 import { PERSONAL_PROJECT_ID, type ThreadListEntry } from "@bb/domain";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { makeThreadListEntry } from "@/test/fixtures/thread-list-entries";
-import { useSidebarThreads } from "./plugin-sidebar-hooks";
+import {
+  useSidebarThreadActions,
+  useSidebarThreads,
+} from "./plugin-sidebar-hooks";
+
+const actions = vi.hoisted(() => ({
+  navigate: vi.fn(),
+  setRootComposeProjectId: vi.fn(),
+}));
 
 const state = vi.hoisted(() => ({
   data: undefined as
@@ -29,6 +37,31 @@ vi.mock("@/hooks/queries/host-queries", () => {
   return { useHosts: () => ({ data: hosts }) };
 });
 
+vi.mock("@/components/thread/ThreadActionsProvider", () => ({
+  useThreadActions: () => ({
+    archiveThreadAndChildren: vi.fn(),
+    requestDelete: vi.fn(),
+    togglePin: vi.fn(),
+    toggleRead: vi.fn(),
+  }),
+}));
+
+vi.mock("@/hooks/mutations/thread-state-mutations", () => ({
+  useUpdateThread: () => ({ mutateAsync: vi.fn() }),
+}));
+
+vi.mock("@/components/ui/app-route-anchor", () => ({
+  useRouteNavigate: () => actions.navigate,
+}));
+
+vi.mock("@bb/shared-ui/hooks/use-compact-viewport", () => ({
+  useIsCompactViewport: () => false,
+}));
+
+vi.mock("./root-compose-selection", () => ({
+  useSetRootComposeProjectId: () => actions.setRootComposeProjectId,
+}));
+
 function payload(threads: ThreadListEntry[]) {
   return {
     sections: [],
@@ -39,6 +72,7 @@ function payload(threads: ThreadListEntry[]) {
 
 afterEach(() => {
   cleanup();
+  vi.clearAllMocks();
   state.data = undefined;
 });
 
@@ -79,5 +113,24 @@ describe("useSidebarThreads", () => {
     second.rerender();
     expect(first.result.current.threads[0]).toBe(before);
     expect(second.result.current.threads[0]).toBe(before);
+  });
+});
+
+describe("useSidebarThreadActions", () => {
+  it("opens a project composer without a legacy route transition", () => {
+    state.data = payload([]);
+    const { result } = renderHook(() => useSidebarThreadActions());
+
+    act(() => {
+      result.current.openNewThread({
+        projectId: "proj_target",
+        focusPrompt: true,
+      });
+    });
+
+    expect(actions.setRootComposeProjectId).toHaveBeenCalledWith("proj_target");
+    expect(actions.navigate).toHaveBeenCalledWith("/", {
+      state: { focusPrompt: true },
+    });
   });
 });

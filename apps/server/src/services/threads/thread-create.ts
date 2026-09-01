@@ -11,7 +11,11 @@ import type {
   ThreadOriginKind,
   ThreadVisibility,
 } from "@bb/domain";
-import type { BaseBranchSpec, UnmanagedBranchSpec } from "@bb/server-contract";
+import type {
+  BaseBranchSpec,
+  CreateThreadEnvironmentArgs,
+  UnmanagedBranchSpec,
+} from "@bb/server-contract";
 import type { LoggedPendingInteractionWorkSessionDeps } from "../../types.js";
 import { COMMAND_TIMEOUT_MS } from "../../constants.js";
 import { ApiError } from "../../errors.js";
@@ -33,6 +37,11 @@ import {
 } from "./project-execution-defaults.js";
 import { validatePromptAttachmentReferences } from "../projects/attachments.js";
 import { resolvePluginMentionContextInputs } from "../plugins/plugin-mentions.js";
+import {
+  attemptDispatch,
+  type PendingThreadStartContext,
+} from "./dispatch-attempt.js";
+import { setThreadPendingStartContext } from "@bb/db";
 import { emitPluginThreadDeleted } from "../plugins/plugin-thread-events.js";
 import {
   createThreadRecord,
@@ -54,14 +63,7 @@ import {
   type ThreadCreateServiceRequest,
 } from "./thread-create-request.js";
 import { deriveTitleFallback } from "./title-generation.js";
-import {
-  advanceThreadProvisioning,
-  requestThreadProvision,
-} from "./thread-provisioning.js";
-import type {
-  ThreadProvisionContext,
-  ThreadProvisionEnvironmentIntent,
-} from "./thread-provisioning-context.js";
+import type { ThreadProvisionEnvironmentIntent } from "./thread-provisioning-context.js";
 import { resolveManagedDefaultBaseBranchSpec } from "../projects/worktree-base-branch.js";
 import { applyLoggedEnvironmentLifecycleEvent } from "../environments/lifecycle-outcome.js";
 import { resolveSystemProviderModels } from "../system/execution-options.js";
@@ -212,31 +214,6 @@ interface ResolveManagedBaseBranchForCreateArgs {
   baseBranch: BaseBranchSpec;
   hostId: string;
   sourcePath: string;
-}
-
-function scheduleThreadProvisioningAdvance(
-  deps: ThreadCreateDeps,
-  context: ThreadProvisionContext,
-  threadId: string,
-): void {
-  void advanceThreadProvisioning(deps, {
-    context,
-    threadId,
-  }).catch((error) => {
-    deps.logger.warn(
-      {
-        threadId,
-        ...runtimeErrorLogFields(deps.config, error),
-      },
-      "Failed to advance thread provisioning after thread creation",
-    );
-  });
-}
-
-function shouldAdvanceProvisioningBeforeResponse(
-  environmentIntent: ThreadProvisionEnvironmentIntent,
-): boolean {
-  return environmentIntent.type === "direct-personal";
 }
 
 function requestUsesPersonalWorkspace(
@@ -426,10 +403,29 @@ function intentHostId(
   return intent.hostId;
 }
 
-async function createProvisioningThread(
+/**
+ * Creates the thread row and hands its first message to the dispatch
+ * checkpoint.
+ *
+ * This is the whole of thread creation's dispatch story now, and it replaced a
+ * pair of near-identical functions — one that provisioned immediately and one
+ * that queued the first turn — whose only real difference was
+ * whether anything was allowed to run yet. That is a question the checkpoint
+ * answers, so asking it here as well meant two code paths that had to be kept
+ * in agreement about forks, execution defaults, telemetry and cleanup.
+ *
+ * The row inserts `pending`: created, with its provider resolved, and nothing
+ * provisioned. Creation itself is unhooked — it is a cheap row — and admission
+ * happens at the first message's attempt. A cleared attempt moves the thread
+ * to `starting` and provisions with the message riding along; a queued one
+ * leaves the thread exactly where it is, with the start context recorded so a
+ * later drain (or a later server) can start it.
+ */
+async function createPendingThreadAndAttemptFirstDispatch(
   deps: ThreadCreateDeps,
   args: CreateProvisioningThreadArgs & {
     environmentIntent: ThreadProvisionEnvironmentIntent;
+    sendAt: number | undefined;
   },
 ) {
   const thread = createThreadRecord(deps, {
@@ -437,7 +433,6 @@ async function createProvisioningThread(
     environmentId: args.environmentId,
   });
   let execution: Awaited<ReturnType<typeof buildExecutionOptions>>;
-  let context: ThreadProvisionContext;
   try {
     if (
       args.fork !== null &&
@@ -450,24 +445,57 @@ async function createProvisioningThread(
         sourceThreadId: args.fork.sourceThreadId,
       });
     }
-    execution = await buildExecutionOptions(deps, args.request, {
-      ...(args.executionDefaults
-        ? { projectDefaults: args.executionDefaults }
-        : {}),
+    const executionPlanArgs = {
+      projectDefaults: args.executionDefaults,
       hostId: intentHostId(deps, args.environmentIntent),
       threadId: thread.id,
-    });
-    context = requestThreadProvision(deps, {
-      thread,
+    };
+    execution = await buildExecutionOptions(
+      deps,
+      args.request,
+      executionPlanArgs,
+    );
+
+    const startContext: PendingThreadStartContext = {
       environmentIntent: args.environmentIntent,
-      execution,
       fork: args.fork?.descriptor ?? null,
-      input: args.request.input,
       ...(args.providerInput !== undefined
         ? { providerInput: args.providerInput }
         : {}),
       startedOnBehalfOf: args.request.startedOnBehalfOf,
       titleProvided: Boolean(args.request.title),
+    };
+    // Recorded BEFORE the attempt, not after it queues: the attempt drives
+    // provisioning off this stack when it clears, and a context written
+    // afterwards would race that. Writing it unconditionally and clearing it
+    // when the thread leaves `pending` keeps one owner for the field.
+    setThreadPendingStartContext(deps.db, {
+      threadId: thread.id,
+      pendingStartContext: JSON.stringify(startContext),
+    });
+
+    await attemptDispatch(deps, {
+      thread,
+      payload: {
+        input: args.request.input,
+        mode: "start",
+        model: execution.model,
+        reasoningLevel: execution.reasoningLevel,
+        serviceTier: execution.serviceTier,
+        permissionMode: execution.permissionMode,
+        ...(args.request.executionInputSources !== undefined
+          ? { executionInputSources: args.request.executionInputSources }
+          : {}),
+        ...(args.sendAt !== undefined ? { sendAt: args.sendAt } : {}),
+      },
+      source: { kind: "inline" },
+      queuePayload: { kind: "inline" },
+      startContext,
+      executionDefaults: executionPlanArgs,
+      origin: args.request.origin,
+      originPluginId: args.request.originPluginId ?? null,
+      startedOnBehalfOf: args.request.startedOnBehalfOf,
+      trigger: "user",
     });
   } catch (error) {
     emitPluginThreadDeleted({
@@ -482,14 +510,6 @@ async function createProvisioningThread(
     execution,
     request: args.request,
   });
-  if (shouldAdvanceProvisioningBeforeResponse(args.environmentIntent)) {
-    await advanceThreadProvisioning(deps, {
-      context,
-      threadId: thread.id,
-    });
-  } else {
-    scheduleThreadProvisioningAdvance(deps, context, thread.id);
-  }
   return getThreadSafe(deps, thread.id);
 }
 
@@ -634,13 +654,20 @@ export async function createThreadFromRequest(
     projectId: requestInput.projectId,
   });
   await deps.providerRegistry.whenRegistrationsSettled();
-  const { executionDefaults, providerId, requestedModel } =
+  let { executionDefaults, providerId, requestedModel } =
     resolveProjectExecutionDefaultsForCreate(deps, {
       executionInputSources: requestInput.executionInputSources,
       model: requestInput.model,
       projectId: requestInput.projectId,
       providerId: requestInput.providerId,
     });
+  // No hook pass here. Creation is UNHOOKED — a thread row is cheap, costs no
+  // worktree, no setup script and no host resources — and admission happens at
+  // the first message's dispatch attempt, where a plugin sees the thread it is
+  // deciding about and can amend its provider and environment while neither is
+  // settled yet. That collapses what used to be a `thread.create` pass plus a
+  // second re-evaluation pass when it was let through into one checkpoint that
+  // runs the same way every time.
   const {
     originKind: _requestedOriginKind,
     parentThreadId: _requestedParentThreadId,
@@ -691,103 +718,128 @@ export async function createThreadFromRequest(
     },
   );
 
-  let environmentId: string | null = null;
-  let environmentIntent: ThreadProvisionEnvironmentIntent;
-
-  switch (resolvedEnvironment.type) {
-    case "reuse": {
-      let environment = resolvedEnvironment.environment;
-      if (environment.status === "retiring") {
-        applyLoggedEnvironmentLifecycleEvent(deps, {
+  /**
+   * Resolves where a thread will run: the workspace-path claim checks, the
+   * existing-unmanaged-environment reuse, and the managed base branch, in one
+   * place so there is one policy.
+   */
+  async function resolveEnvironmentPlacement(
+    requestedEnvironment: CreateThreadEnvironmentArgs,
+  ): Promise<{
+    environmentId: string | null;
+    environmentIntent: ThreadProvisionEnvironmentIntent;
+  }> {
+    const resolvedEnvironment = resolveStableThreadRequestEnvironment(deps, {
+      allowUnmanagedPersonalProjectReuseEnvironmentId: forkSourceEnvironmentId,
+      environment:
+        requestedEnvironment.type === "project-default"
+          ? await resolveProjectDefaultThreadEnvironment(deps, {
+              projectId: request.projectId,
+            })
+          : requestedEnvironment,
+      projectId: request.projectId,
+    });
+    let environmentId: string | null = null;
+    let environmentIntent: ThreadProvisionEnvironmentIntent;
+    switch (resolvedEnvironment.type) {
+      case "reuse": {
+        let environment = resolvedEnvironment.environment;
+        if (environment.status === "retiring") {
+          applyLoggedEnvironmentLifecycleEvent(deps, {
+            environmentId: environment.id,
+            event: { type: "retire.cancelled" },
+          });
+          environment = getEnvironment(deps.db, environment.id) ?? environment;
+        }
+        if (
+          environment.status !== "ready" &&
+          environment.status !== "provisioning"
+        ) {
+          throwEnvironmentNotReady(environment);
+        }
+        if (environment.status === "ready" && !environment.path) {
+          throwEnvironmentNotReady(environment);
+        }
+        if (environment.status === "provisioning") {
+          requireNonDestroyedHostWithStatus(deps, environment.hostId);
+        }
+        environmentId = environment.id;
+        environmentIntent = {
+          type: "reuse",
           environmentId: environment.id,
-          event: { type: "retire.cancelled" },
-        });
-        environment = getEnvironment(deps.db, environment.id) ?? environment;
-      }
-      if (
-        environment.status !== "ready" &&
-        environment.status !== "provisioning"
-      ) {
-        throwEnvironmentNotReady(environment);
-      }
-      if (environment.status === "ready" && !environment.path) {
-        throwEnvironmentNotReady(environment);
-      }
-      if (environment.status === "provisioning") {
-        requireNonDestroyedHostWithStatus(deps, environment.hostId);
-      }
-      environmentId = environment.id;
-      environmentIntent = {
-        type: "reuse",
-        environmentId: environment.id,
-      };
-      break;
-    }
-    case "host": {
-      const hostId = resolvedEnvironment.hostId;
-      const workspace = resolvedEnvironment.workspace;
-      if (workspace.type === "unmanaged") {
-        if (resolvedEnvironment.unmanagedPath === null) {
-          throw new Error(
-            "Validated unmanaged host request is missing a workspace path",
-          );
-        }
-        assertUnmanagedHostPathIsAttachable(deps, {
-          branch: workspace.branch,
-          dataDir: hostDataDir,
-          hostId,
-          path: resolvedEnvironment.unmanagedPath,
-          projectId: request.projectId,
-        });
-        const existingIntent = existingUnmanagedEnvironmentIntentByHostPath(
-          deps,
-          {
-            branch: workspace.branch,
-            hostId,
-            path: resolvedEnvironment.unmanagedPath,
-            request,
-          },
-        );
-        environmentIntent = existingIntent?.intent ?? {
-          type: "direct-unmanaged",
-          hostId,
-          path: resolvedEnvironment.unmanagedPath,
-          ...(workspace.branch ? { branch: workspace.branch } : {}),
         };
-        if (existingIntent) {
-          environmentId = existingIntent.environmentId;
-        }
         break;
       }
+      case "host": {
+        const hostId = resolvedEnvironment.hostId;
+        const workspace = resolvedEnvironment.workspace;
+        if (workspace.type === "unmanaged") {
+          if (resolvedEnvironment.unmanagedPath === null) {
+            throw new Error(
+              "Validated unmanaged host request is missing a workspace path",
+            );
+          }
+          assertUnmanagedHostPathIsAttachable(deps, {
+            branch: workspace.branch,
+            dataDir: hostDataDir,
+            hostId,
+            path: resolvedEnvironment.unmanagedPath,
+            projectId: request.projectId,
+          });
+          const existingIntent = existingUnmanagedEnvironmentIntentByHostPath(
+            deps,
+            {
+              branch: workspace.branch,
+              hostId,
+              path: resolvedEnvironment.unmanagedPath,
+              request,
+            },
+          );
+          environmentIntent = existingIntent?.intent ?? {
+            type: "direct-unmanaged",
+            hostId,
+            path: resolvedEnvironment.unmanagedPath,
+            ...(workspace.branch ? { branch: workspace.branch } : {}),
+          };
+          if (existingIntent) {
+            environmentId = existingIntent.environmentId;
+          }
+          break;
+        }
 
-      const managedSource = resolvedEnvironment.localSource;
-      if (!managedSource) {
-        throw new Error(
-          "Validated managed host request is missing a local source",
-        );
-      }
-      environmentIntent = {
-        type: "direct-managed",
-        hostId,
-        sourcePath: managedSource.path,
-        baseBranch: await resolveManagedBaseBranchForCreate(deps, {
-          baseBranch: workspace.baseBranch,
+        const managedSource = resolvedEnvironment.localSource;
+        if (!managedSource) {
+          throw new Error(
+            "Validated managed host request is missing a local source",
+          );
+        }
+        environmentIntent = {
+          type: "direct-managed",
           hostId,
           sourcePath: managedSource.path,
-        }),
-        workspaceProvisionType: workspace.type,
-      };
-      break;
+          baseBranch: await resolveManagedBaseBranchForCreate(deps, {
+            baseBranch: workspace.baseBranch,
+            hostId,
+            sourcePath: managedSource.path,
+          }),
+          workspaceProvisionType: workspace.type,
+        };
+        break;
+      }
+      case "personal": {
+        environmentIntent = {
+          type: "direct-personal",
+          hostId: resolvedEnvironment.hostId,
+          workspaceProvisionType: "personal",
+        };
+        break;
+      }
     }
-    case "personal": {
-      environmentIntent = {
-        type: "direct-personal",
-        hostId: resolvedEnvironment.hostId,
-        workspaceProvisionType: "personal",
-      };
-      break;
-    }
+    return { environmentId, environmentIntent };
   }
+
+  const { environmentId, environmentIntent } =
+    await resolveEnvironmentPlacement(request.environment);
 
   const fork = resolveForkPoint(deps, {
     childHostId,
@@ -805,7 +857,7 @@ export async function createThreadFromRequest(
     );
   }
 
-  const thread = await createProvisioningThread(deps, {
+  const createArgs = {
     environmentId,
     environmentIntent,
     executionDefaults: resolvedExecutionDefaults,
@@ -814,6 +866,10 @@ export async function createThreadFromRequest(
       ? { providerInput: options.providerInput }
       : {}),
     request,
+  };
+  const thread = await createPendingThreadAndAttemptFirstDispatch(deps, {
+    ...createArgs,
+    sendAt: request.sendAt,
   });
   deps.telemetry.capture({
     name: "thread_created",

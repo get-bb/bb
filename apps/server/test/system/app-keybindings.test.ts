@@ -152,6 +152,24 @@ describe("app keybindings", () => {
         shortcut: { key: "n", mod: true, shift: true },
       });
       expect(
+        config.keybindings.find(
+          (binding) => binding.command === "panel.reopenClosedTab",
+        ),
+      ).toMatchObject({
+        desktopOnly: true,
+        shortcut: { key: "t", mod: true, shift: true },
+      });
+      expect(
+        config.keybindings.filter(
+          (binding) => binding.command === "terminal.open",
+        ),
+      ).toMatchObject([
+        {
+          desktopOnly: false,
+          shortcut: { key: "Enter", mod: true, shift: true },
+        },
+      ]);
+      expect(
         assignedDefaultKeybindings
           .filter((binding) => binding.command === "thread.previous")
           .map((binding) => ({
@@ -276,7 +294,6 @@ describe("app keybindings", () => {
           })),
       ).toEqual([
         { desktopOnly: false, key: "Enter" },
-        { desktopOnly: true, key: "t" },
       ]);
       expect(
         assignedDefaultKeybindings.find(
@@ -448,7 +465,7 @@ describe("app keybindings", () => {
         "thread.next",
         ...THREAD_JUMP_APP_COMMAND_IDS,
         ...PANE_FOCUS_APP_COMMAND_IDS,
-        "terminal.open",
+        "panel.reopenClosedTab",
         "browser.focusLocation",
         "browser.reload",
         "browser.find",

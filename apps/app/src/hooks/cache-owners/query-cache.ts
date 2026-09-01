@@ -3,7 +3,6 @@ import type {
   Thread,
   ThreadListEntry,
   ThreadStatusChangeMetadata,
-  ThreadWithRuntime,
 } from "@bb/domain";
 import {
   applyToCachedThreadLists,
@@ -11,6 +10,7 @@ import {
   iterateThreadListCacheEntries,
 } from "./thread-list-cache-data";
 import { bumpDiffPatchEvictionGeneration } from "./environment-diff-patch-cache-owner";
+import { readCachedSidebarBootstrap } from "@/lib/sidebar-bootstrap-cache";
 import type {
   SidebarBootstrapResponse,
   ThreadResponse,
@@ -365,6 +365,27 @@ export function getCachedSidebarNavigationThreads(
   return listSidebarNavigationThreads(navigation);
 }
 
+export function findSidebarNavigationThreadPlaceholder(
+  queryClient: QueryClient,
+  threadId: string,
+): ThreadListEntry | undefined {
+  if (!threadId) {
+    return undefined;
+  }
+  const cached = getCachedSidebarNavigationThreads(queryClient).find(
+    (thread) => thread.id === threadId,
+  );
+  if (cached !== undefined) {
+    return cached;
+  }
+  const persisted = readCachedSidebarBootstrap();
+  return persisted === null
+    ? undefined
+    : listSidebarNavigationThreads(persisted).find(
+        (thread) => thread.id === threadId,
+      );
+}
+
 export function snapshotCachedSidebarNavigation(
   queryClient: QueryClient,
 ): CachedSidebarNavigationSnapshot {
@@ -550,8 +571,47 @@ function threadMatchesListFilters(
 
 export function optimisticallyInsertThread(
   queryClient: QueryClient,
-  thread: ThreadWithRuntime,
+  thread: ThreadResponse,
 ): void {
+  const queuedWork = thread.queuedMessageCount > 0 ? "waiting" : "none";
+  const insertedThread: ThreadListEntry = {
+    ...thread,
+    activity: {
+      activeWorkflowCount: 0,
+      activeBackgroundAgentCount: 0,
+      activeBackgroundCommandCount: 0,
+      activePlanModeCount: 0,
+      activeGoalCount: 0,
+    },
+    environmentBranchName: null,
+    environmentHostId: null,
+    environmentName: null,
+    runtime: thread.runtime,
+    hasPendingInteraction: false,
+    pinSortKey: null,
+    queuedWork,
+    environmentWorkspaceDisplayKind: "other",
+  };
+  const upsertThread = (threads: ThreadListEntry[]): ThreadListEntry[] => {
+    const existingIndex = threads.findIndex(
+      (candidate) => candidate.id === thread.id,
+    );
+    if (existingIndex === -1) {
+      return [insertedThread, ...threads];
+    }
+    return threads.map((candidate, index) =>
+      index === existingIndex
+        ? {
+            ...candidate,
+            queuedWork:
+              candidate.queuedWork === "none"
+                ? queuedWork
+                : candidate.queuedWork,
+          }
+        : candidate,
+    );
+  };
+
   for (const { queryKey, data } of getCachedThreadLists(queryClient, {
     queryKey: threadsQueryKey(),
   })) {
@@ -563,31 +623,33 @@ export function optimisticallyInsertThread(
     if (!threadMatchesListFilters(thread, filters)) {
       continue;
     }
-    if (data.some((candidate) => candidate.id === thread.id)) {
-      continue;
-    }
 
-    queryClient.setQueryData<ThreadListEntry[]>(queryKey, [
-      {
-        ...thread,
-        activity: {
-          activeWorkflowCount: 0,
-          activeBackgroundAgentCount: 0,
-          activeBackgroundCommandCount: 0,
-          activePlanModeCount: 0,
-          activeGoalCount: 0,
-        },
-        environmentBranchName: null,
-        environmentHostId: null,
-        environmentName: null,
-        runtime: thread.runtime,
-        hasPendingInteraction: false,
-        pinSortKey: null,
-        environmentWorkspaceDisplayKind: "other",
-      },
-      ...data,
-    ]);
+    queryClient.setQueryData<ThreadListEntry[]>(queryKey, upsertThread(data));
   }
+
+  if (thread.visibility === "hidden" || thread.archivedAt !== null) {
+    return;
+  }
+
+  queryClient.setQueryData<SidebarBootstrapResponse>(
+    sidebarNavigationQueryKey(),
+    (navigation) => {
+      if (!navigation) {
+        return navigation;
+      }
+      const updateProject = (
+        project: SidebarNavigationProject,
+      ): SidebarNavigationProject =>
+        project.id === thread.projectId
+          ? mapSidebarNavigationProjectThreads(project, upsertThread)
+          : project;
+      return {
+        sections: navigation.sections,
+        projects: navigation.projects.map(updateProject),
+        personalProject: updateProject(navigation.personalProject),
+      };
+    },
+  );
 }
 
 const updateEveryTimelineQuery: TimelineRowsUpdatePredicate = () => true;

@@ -1252,6 +1252,66 @@ describe("useComposer", () => {
       expect.stringContaining("invalid provider id"),
     );
   });
+
+  it("routes experimental_submit to the composer that owns the submission, and refuses where none does", async () => {
+    const submit = vi.fn(async () => {});
+    let captured: PluginComposerApi | null = null;
+    registerComposerProbe("submit", (composer) => {
+      captured = composer;
+    });
+    const draft: PromptDraftState = {
+      text: "ship the notes",
+      mentions: [],
+      attachments: [],
+    };
+
+    function Harness({ withSubmit }: { withSubmit: boolean }) {
+      const host = useMemo<PluginComposerHost>(
+        () => ({
+          scope: { kind: "thread", threadId: "thr_submit" },
+          textEffectKey: "thread:thr_submit",
+          getCurrent: () => draft,
+          subscribeDraft: () => () => {},
+          setDraft: () => {},
+          focus: () => {},
+          ...(withSubmit ? { submit } : {}),
+        }),
+        [withSubmit],
+      );
+      return (
+        <PluginComposerHostProvider value={host}>
+          <ComposerCustomizationMount />
+        </PluginComposerHostProvider>
+      );
+    }
+
+    const view = render(
+      <MemoryRouter initialEntries={["/threads/thr_submit"]}>
+        <Harness withSubmit />
+      </MemoryRouter>,
+    );
+    const sendAt = Date.now() + 3_600_000;
+    await act(async () => {
+      await captured!.experimental_submit({ sendAt });
+    });
+    expect(submit).toHaveBeenCalledWith({ sendAt });
+
+    await expect(
+      captured!.experimental_submit({ sendAt: Date.now() - 1 }),
+    ).rejects.toThrow(/future/);
+    expect(submit).toHaveBeenCalledTimes(1);
+
+    view.unmount();
+    render(
+      <MemoryRouter initialEntries={["/threads/thr_submit"]}>
+        <Harness withSubmit={false} />
+      </MemoryRouter>,
+    );
+    await expect(captured!.experimental_submit({ sendAt })).rejects.toThrow(
+      /cannot schedule/,
+    );
+    expect(submit).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe("PluginNavSidebarItems + PluginPanelView", () => {

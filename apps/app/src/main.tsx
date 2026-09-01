@@ -10,24 +10,17 @@ import { registerProviderCliInstallQueryClient } from "./components/provider-cli
 import { initializePreferredTheme } from "./hooks/useTheme";
 import { initializeFavicon } from "./lib/favicon-color-preference";
 import { installForeignDomMutationGuard } from "./lib/foreign-dom-mutation-guard";
-import {
-  createAppQueryClient,
-  installAppQueryClientBrowserEvents,
-} from "./lib/query-client";
+import { installAppQueryClientBrowserEvents } from "./lib/query-client";
+import { appQueryClient } from "./lib/app-query-client";
 import { applyCachedAppThemeCss } from "./lib/themes";
-import { wsManager } from "./lib/ws";
 import "./app.css";
 
 installForeignDomMutationGuard();
 
 Error.stackTraceLimit = 50;
 
-const queryClient = createAppQueryClient({
-  shouldRefetchOnWindowFocus: () =>
-    wsManager.getConnectionState() !== "connected",
-});
-installAppQueryClientBrowserEvents(queryClient);
-registerProviderCliInstallQueryClient(queryClient);
+installAppQueryClientBrowserEvents(appQueryClient);
+registerProviderCliInstallQueryClient(appQueryClient);
 
 initializePreferredTheme();
 applyCachedAppThemeCss();
@@ -46,7 +39,7 @@ createRoot(document.getElementById("root")!, {
   <StrictMode>
     {}
     <AppErrorBoundary>
-      <QueryClientProvider client={queryClient}>
+      <QueryClientProvider client={appQueryClient}>
         <BrowserRouter>
           <App />
           <AppToaster position="bottom-right" />

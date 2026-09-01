@@ -35,6 +35,7 @@ import {
   beginSendThreadMessageTransaction,
   beginStopThreadTransaction,
   beginUpdateQueuedMessageTransaction,
+  prefetchThreadQueuedMessages,
   rollbackCreateQueuedMessageTransaction,
   rollbackRemoveQueuedMessageTransaction,
   rollbackReorderQueuedMessageTransaction,
@@ -137,6 +138,17 @@ export function useCreateThread() {
       }),
     onMutate: async () => beginCreateThreadTransaction({ queryClient }),
     onSuccess: (thread, variables) => {
+      if (thread.queuedMessageCount > 0) {
+        void prefetchThreadQueuedMessages({
+          queryClient,
+          threadId: thread.id,
+          load: (signal) =>
+            sdk.threads.queuedMessages.list({
+              threadId: thread.id,
+              signal,
+            }),
+        });
+      }
       applyCreateThreadResult({
         queryClient,
         request: variables,
@@ -163,6 +175,7 @@ export function useSendThreadMessage() {
       reasoningLevel,
       permissionMode,
       mode,
+      sendAt,
       senderThreadId,
       executionInputSources,
     }: SendThreadMessageMutationRequest) => {
@@ -173,6 +186,7 @@ export function useSendThreadMessage() {
         serviceTier,
         reasoningLevel,
         permissionMode,
+        ...(sendAt === undefined ? {} : { sendAt }),
         executionInputSources,
         mode,
         ...(senderThreadId !== undefined ? { senderThreadId } : {}),
@@ -192,7 +206,7 @@ export function useSendThreadMessage() {
     },
     onSuccess: (data, variables, context) => {
       applySendThreadMessageSuccess({
-        delivery: data.delivery ?? "sent",
+        delivery: data.delivery,
         queryClient,
         realtimeConnected: wsManager.getConnectionState() === "connected",
         request: variables,

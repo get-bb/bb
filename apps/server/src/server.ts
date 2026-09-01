@@ -18,6 +18,7 @@ import { registerThreadSectionRoutes } from "./routes/thread-sections.js";
 import { registerSystemRoutes } from "./routes/system.js";
 import { registerTerminalRoutes } from "./routes/terminals.js";
 import { registerThreadRoutes } from "./routes/threads/index.js";
+import { registerQueueRoutes } from "./routes/queue.js";
 import { registerPluginRoutes } from "./routes/plugins.js";
 import { registerPluginCatalogRoutes } from "./routes/plugin-catalog.js";
 import { registerSkillsRegistryRoutes } from "./routes/skills-registry.js";
@@ -27,7 +28,12 @@ import {
 } from "./services/plugins/plugin-service.js";
 import { setPluginAgentContributions } from "./services/plugins/plugin-agent-contributions.js";
 import { setPluginThreadEventEmitter } from "./services/plugins/plugin-thread-events.js";
-import { requestDeferredThreadMessageFlush } from "./services/threads/thread-send-request.js";
+import { setPluginHookProvider } from "./services/plugins/plugin-hook-registry.js";
+import {
+  clearQueueWaitsForUnregisteredPlugin,
+  requestQueueDrain,
+  requestThreadQueueDrainForSettledInteraction,
+} from "./services/threads/queue-drains.js";
 import { registerInternalEventRoutes } from "./internal/events.js";
 import { registerInternalHostRoutes } from "./internal/hosts.js";
 import { registerInternalInteractiveRequestRoutes } from "./internal/interactive-requests.js";
@@ -559,15 +565,40 @@ export function createApp(
       ),
     callPluginHost: (args) => callPluginHostRpc(deps, args),
     disposePluginHost: (args) => disposePluginHostWorkers(deps, args),
-    onSettingsChanged: (pluginId) =>
-      deps.providerNativeRoots.invalidate(pluginId),
+    onSettingsChanged: (pluginId) => {
+      deps.providerNativeRoots.invalidate(pluginId);
+      deps.providerRegistry.forgetAllInstalled();
+    },
+    onPluginUnregistered: (pluginId) => {
+      void clearQueueWaitsForUnregisteredPlugin(deps, pluginId).catch(
+        (error: unknown) => {
+          deps.logger.warn(
+            { err: error, pluginId },
+            "Failed to clear queue waits for an unregistered plugin",
+          );
+        },
+      );
+    },
+    // `bb.experimental_hooks.recheck()`: a plugin whose wait condition
+    // may have changed asks core to re-attempt the plugin-queued rows. Core
+    // owns the walk, the coalescing and the pacing; the plugin owns knowing
+    // when to ask.
+    requestQueueDrain: () => {
+      requestQueueDrain(deps);
+    },
     watchBuiltinPluginSources:
       process.env.BB_MANAGED_DEV_BUILTIN_PLUGIN_HOT_RELOAD === "1",
   });
+  // Messages queued while a thread awaited user interaction stop waiting once
+  // that interaction settles (#1650); the idle drain then delivers them.
   deps.pendingInteractions.setThreadInteractionSettledListener((threadId) => {
-    requestDeferredThreadMessageFlush(deps, threadId);
+    requestThreadQueueDrainForSettledInteraction(deps, threadId);
   });
   setPluginThreadEventEmitter(pluginService.events);
+  // Bridge the dispatch pipeline to this service's hooks. Until this runs
+  // there are no hooks, which is exactly the zero-overhead path.
+  setPluginHookProvider(pluginService.hooks);
+  // Bridge runtime-config assembly to plugin skills + context (§4.4).
   setPluginAgentContributions(pluginService);
   const publicApi = new Hono();
   publicApi.use("*", async (context, next) => {
@@ -596,6 +627,7 @@ export function createApp(
   registerTerminalRoutes(publicApi, deps);
   registerEnvironmentRoutes(publicApi, deps);
   registerThreadRoutes(publicApi, deps);
+  registerQueueRoutes(publicApi, deps);
   registerSystemRoutes(publicApi, deps, pluginService);
   registerPluginCatalogRoutes(publicApi, pluginCatalogService);
   registerPluginRoutes(publicApi, deps, pluginService);

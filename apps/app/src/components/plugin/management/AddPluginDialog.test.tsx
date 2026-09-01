@@ -3,7 +3,7 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
-import type { PluginListResult } from "@/hooks/queries/plugin-settings-queries";
+import type { InstalledPlugin } from "@bb/server-contract";
 import {
   pluginCatalogSearchQueryKey,
   pluginListQueryKey,
@@ -332,9 +332,7 @@ describe("AddPluginDialog", () => {
     stubFetch();
     const onInstalled = vi.fn();
     const { wrapper, queryClient } = createQueryClientTestHarness();
-    queryClient.setQueryData<PluginListResult>(pluginListQueryKey(true), {
-      plugins: [],
-    });
+    queryClient.setQueryData<InstalledPlugin[]>(pluginListQueryKey(true), []);
     render(
       <AddPluginDialog
         open
@@ -353,8 +351,8 @@ describe("AddPluginDialog", () => {
           onInstalled(plugin);
           expect(
             queryClient
-              .getQueryData<PluginListResult>(pluginListQueryKey(true))
-              ?.plugins.some((candidate) => candidate.id === plugin.id),
+              .getQueryData<InstalledPlugin[]>(pluginListQueryKey(true))
+              ?.some((candidate) => candidate.id === plugin.id),
           ).toBe(true);
         }}
       />,

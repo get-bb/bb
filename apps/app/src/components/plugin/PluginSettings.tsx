@@ -23,8 +23,12 @@ import {
   ResourceDetailStack,
 } from "@bb/shared-ui/resource-detail";
 import { PluginIcon } from "@/components/plugin/PluginIcon";
-import { applyPluginSettingsView } from "@/hooks/cache-owners/plugin-cache-owner";
 import {
+  applyPluginSettingsView,
+  invalidatePluginList,
+} from "@/hooks/cache-owners/plugin-cache-owner";
+import {
+  setPluginEnabled,
   updatePluginSettings,
   usePluginList,
   usePluginSettingsView,
@@ -330,37 +334,70 @@ export function PluginSettingsPage({ pluginId }: { pluginId: string }) {
       </p>
     );
   }
+  return <PluginSettingsContent key={plugin.id} plugin={plugin} />;
+}
+
+function PluginSettingsContent({ plugin }: { plugin: PluginListItem }) {
+  const queryClient = useQueryClient();
+  const { settingsSections } = usePluginSlots();
+  const toggle = useMutation({
+    mutationFn: (enabled: boolean) =>
+      setPluginEnabled(fetch, plugin.id, enabled),
+    onError: (error, enabled) => {
+      appToast.error(
+        `${enabled ? "Enabling" : "Disabling"} ${plugin.id} failed`,
+        {
+          description: error instanceof Error ? error.message : String(error),
+        },
+      );
+    },
+    onSettled: () => invalidatePluginList({ queryClient }),
+  });
+  const enabled = toggle.isPending ? toggle.variables : plugin.enabled;
+  const hasAvailableSettings =
+    plugin.hasSettings ||
+    settingsSections.some((section) => section.pluginId === plugin.id);
   return (
     <div className="mx-auto w-full max-w-5xl">
-      <div className="flex items-center gap-3">
-        <div className="size-9 shrink-0">
-          <PluginIcon
-            pluginId={plugin.id}
-            icon={plugin.icon}
-            className="size-full"
-          />
+      <header className="flex items-center justify-between gap-4">
+        <div className="flex min-w-0 items-center gap-3">
+          <div className="size-9 shrink-0">
+            <PluginIcon
+              pluginId={plugin.id}
+              icon={plugin.icon}
+              className="size-full"
+            />
+          </div>
+          <div className="min-w-0">
+            <h1 className="truncate text-lg font-semibold text-foreground">
+              {plugin.name ?? plugin.id}
+            </h1>
+            {plugin.description ? (
+              <p className="truncate text-xs text-subtle-foreground">
+                {plugin.description}
+              </p>
+            ) : null}
+          </div>
         </div>
-        <div className="min-w-0">
-          <h1 className="truncate text-lg font-semibold text-foreground">
-            {plugin.name ?? plugin.id}
-          </h1>
-          {plugin.description ? (
-            <p className="truncate text-xs text-subtle-foreground">
-              {plugin.description}
-            </p>
-          ) : null}
-        </div>
-      </div>
+        <Switch
+          checked={enabled}
+          disabled={toggle.isPending}
+          onCheckedChange={(next) => toggle.mutate(next)}
+          aria-label={`${enabled ? "Disable" : "Enable"} ${plugin.id}`}
+        />
+      </header>
       <ResourceDetailStack className="mt-6">
-        <ResourceDetailConfigurationSection label="Configuration">
-          <PluginSettingsDetail plugin={plugin} />
-        </ResourceDetailConfigurationSection>
+        {enabled && plugin.enabled && hasAvailableSettings ? (
+          <ResourceDetailConfigurationSection label="Configuration">
+            <PluginSettingsDetail plugin={plugin} />
+          </ResourceDetailConfigurationSection>
+        ) : null}
         <ResourceDetailOverviewSection label="Plugin details">
           <p className="max-w-none text-sm leading-relaxed text-muted-foreground">
             Release, capabilities, and health live on{" "}
             <Link
               to={getPluginDetailRoutePath({
-                pluginId,
+                pluginId: plugin.id,
                 view: "installed",
               })}
               className="inline-flex items-center gap-0.5 rounded-sm underline underline-offset-2 hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"

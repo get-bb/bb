@@ -53,6 +53,13 @@ export interface SidebarSplitState {
   maximizedPaneId: string | null;
 }
 
+export interface SidebarTabPlacement {
+  followingTabId: string | null;
+  groupId: string;
+  index: number;
+  precedingTabId: string | null;
+}
+
 interface SidebarSplitIds {
   groupId: string;
   paneId: string;
@@ -169,6 +176,104 @@ function preserveSidebarSplitStateIdentity(
   next: SidebarSplitState,
 ): SidebarSplitState {
   return areSidebarSplitStatesEqual(current, next) ? current : next;
+}
+
+export function getSidebarTabPlacement(
+  state: SidebarSplitState,
+  tabId: string,
+): SidebarTabPlacement | null {
+  const group = Object.values(state.groups).find((candidate) =>
+    candidate.tabIds.includes(tabId),
+  );
+  if (group === undefined) return null;
+  const index = group.tabIds.indexOf(tabId);
+  return {
+    followingTabId: group.tabIds[index + 1] ?? null,
+    groupId: group.id,
+    index,
+    precedingTabId: group.tabIds[index - 1] ?? null,
+  };
+}
+
+export function restoreSidebarTabPlacement(
+  state: SidebarSplitState,
+  tabId: string,
+  placement: SidebarTabPlacement,
+): SidebarSplitState {
+  const currentGroup = Object.values(state.groups).find((group) =>
+    group.tabIds.includes(tabId),
+  );
+  if (currentGroup === undefined) return state;
+  const placedGroup = state.groups[placement.groupId];
+  const targetGroup =
+    placedGroup !== undefined &&
+    (placedGroup.id === currentGroup.id || currentGroup.tabIds.length > 1)
+      ? placedGroup
+      : currentGroup;
+  const groups = Object.fromEntries(
+    Object.entries(state.groups).map(([groupId, group]) => {
+      const tabIds = group.tabIds.filter((candidate) => candidate !== tabId);
+      return [
+        groupId,
+        {
+          ...group,
+          tabIds,
+          activeTabId:
+            group.activeTabId === tabId
+              ? (tabIds[0] ?? targetGroup.activeTabId)
+              : group.activeTabId,
+        },
+      ];
+    }),
+  );
+  const nextTargetGroup = groups[targetGroup.id];
+  if (nextTargetGroup === undefined) return state;
+  const followingIndex =
+    placement.followingTabId === null
+      ? -1
+      : nextTargetGroup.tabIds.indexOf(placement.followingTabId);
+  const precedingIndex =
+    placement.precedingTabId === null
+      ? -1
+      : nextTargetGroup.tabIds.indexOf(placement.precedingTabId);
+  const insertAt =
+    followingIndex >= 0
+      ? followingIndex
+      : precedingIndex >= 0
+        ? precedingIndex + 1
+        : Math.min(placement.index, nextTargetGroup.tabIds.length);
+  const tabIds = [...nextTargetGroup.tabIds];
+  tabIds.splice(insertAt, 0, tabId);
+  groups[targetGroup.id] = { ...nextTargetGroup, tabIds };
+  return { ...state, groups };
+}
+
+function insertMissingTabsInAvailableOrder(
+  tabIds: readonly string[],
+  missingTabIds: readonly string[],
+  availableTabIds: readonly string[],
+): string[] {
+  const next = [...tabIds];
+  for (const missingTabId of missingTabIds) {
+    const availableIndex = availableTabIds.indexOf(missingTabId);
+    const followingTabId = availableTabIds
+      .slice(availableIndex + 1)
+      .find((tabId) => next.includes(tabId));
+    if (followingTabId !== undefined) {
+      next.splice(next.indexOf(followingTabId), 0, missingTabId);
+      continue;
+    }
+    const precedingTabId = availableTabIds
+      .slice(0, availableIndex)
+      .reverse()
+      .find((tabId) => next.includes(tabId));
+    const insertAt =
+      precedingTabId === undefined
+        ? next.length
+        : next.indexOf(precedingTabId) + 1;
+    next.splice(insertAt, 0, missingTabId);
+  }
+  return next;
 }
 
 export function isCanonicalSidebarSplitState(
@@ -610,7 +715,11 @@ export function reconcileSidebarSplitState(
         ...next.groups,
         [focusedGroup.id]: {
           ...focusedGroup,
-          tabIds: [...focusedGroup.tabIds, ...missing],
+          tabIds: insertMissingTabsInAvailableOrder(
+            focusedGroup.tabIds,
+            missing,
+            available,
+          ),
           activeTabId:
             focusedGroup.tabIds.length === 0
               ? activeTabId

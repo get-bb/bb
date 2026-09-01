@@ -1998,7 +1998,7 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
     [rows, scopeActive],
   );
   const liveAutoExpandedRowIds = useStableReadonlySet(
-    computedAutoExpansionRowIds.liveFrontierRowIds,
+    computedAutoExpansionRowIds.liveExpandedRowIds,
   );
   const accumulatedTerminalRowIdsRef = useRef(new Set<string>());
   const accumulatedTerminalRowIds = useMemo(() => {

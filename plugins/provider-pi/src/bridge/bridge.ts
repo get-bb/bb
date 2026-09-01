@@ -1064,12 +1064,12 @@ async function handleTurnStart(
     return;
   }
   const { text, images } = extractInput(params.input);
-  if (!text) {
+  if (!text && images.length === 0) {
     sendError(id, BRIDGE_JSON_RPC_ERRORS.INVALID_PARAMS, "Missing input text");
     return;
   }
   try {
-    await startPiPrompt(threadSession, params.threadId, text, images);
+    await startPiPrompt(threadSession, params.threadId, text ?? "", images);
     recordAcceptedTurnInput(params);
     sendResult(id, { threadId: params.threadId });
   } catch (error) {
@@ -1091,7 +1091,7 @@ async function handleTurnSteer(
     return;
   }
   const { text, images } = extractInput(params.input);
-  if (!text) {
+  if (!text && images.length === 0) {
     sendError(id, BRIDGE_JSON_RPC_ERRORS.INVALID_PARAMS, "Missing input text");
     return;
   }
@@ -1101,7 +1101,7 @@ async function handleTurnSteer(
   }
   try {
     await threadSession.session.steer(
-      text,
+      text ?? "",
       images.length > 0 ? images : undefined,
     );
     sendThreadDeltas(params.threadId, [

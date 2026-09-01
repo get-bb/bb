@@ -19,6 +19,7 @@ import type {
   ThreadActivityState,
   ThreadChangeMetadata,
   ThreadListEntry,
+  ThreadQueuedWork,
   ThreadRuntimeState,
   ThreadStatus,
   ThreadWithRuntime,
@@ -33,6 +34,7 @@ import { DAEMON_ACTIVE_WORK_DISCONNECT_GRACE_MS } from "../../constants.js";
 import type { NotificationHub } from "../../ws/hub.js";
 import { resolveProviderPlanCommand } from "../providers/provider-plan-command.js";
 import type { ProviderRegistryService } from "../providers/provider-registry.js";
+import { listQueuedThreadMessageCountsByThreadIds } from "@bb/db";
 import { canThreadSpawnChild } from "./thread-parent.js";
 import { toThreadEventWithMeta } from "./timeline.js";
 
@@ -83,6 +85,7 @@ interface ToThreadListEntryResponseFromLatestSessionArgs {
   hostConnected: boolean;
   latestSession: HostDaemonSessionRow | null;
   now?: number;
+  queuedWork: ThreadQueuedWork;
   thread: ThreadWithPendingInteractionState;
 }
 
@@ -114,6 +117,7 @@ const EMPTY_THREAD_ACTIVITY: ThreadActivityState = {
 
 function threadStatusRuntimeState(status: ThreadStatus): ThreadRuntimeState {
   switch (status) {
+    case "pending":
     case "starting":
     case "idle":
     case "active":
@@ -183,7 +187,13 @@ export function resolveThreadRuntimeState(
   args: ResolveThreadRuntimeStateArgs,
 ): ThreadRuntimeState {
   if (args.status !== "active" || args.environmentHostId === null) {
-    return threadStatusRuntimeState(args.status);
+    return resolveThreadRuntimeStateFromLatestSession({
+      environmentHostId: args.environmentHostId,
+      hostConnected: false,
+      latestSession: null,
+      now: args.now,
+      status: args.status,
+    });
   }
 
   const hostConnected = hasOpenDaemonSessionForHost(
@@ -207,6 +217,11 @@ export function resolveThreadRuntimeState(
 function resolveThreadRuntimeStateFromLatestSession(
   args: ResolveThreadRuntimeStateFromLatestSessionArgs,
 ): ThreadRuntimeState {
+  // A `pending` thread needs no special case: it is never `active`, so it
+  // falls straight through to `threadStatusRuntimeState`, which reports it as
+  // itself. This used to short-circuit to a separate `held` display status
+  // derived from live dispatch holds — the holds are gone and `pending` is the
+  // status, so the derivation and its second vocabulary went with them.
   if (args.status !== "active" || args.environmentHostId === null) {
     return threadStatusRuntimeState(args.status);
   }
@@ -339,6 +354,10 @@ export function toThreadResponseFromThread(
         threadIds: [args.thread.id],
       })[0]?.activeBackgroundAgentCount ?? 0,
     canSpawnChild: canThreadSpawnChild(deps, { thread: args.thread }),
+    queuedMessageCount:
+      listQueuedThreadMessageCountsByThreadIds(deps.db, {
+        threadIds: [args.thread.id],
+      })[0]?.queuedMessageCount ?? 0,
   };
 }
 
@@ -491,6 +510,30 @@ function buildThreadActivityStateByThreadId(
   return result;
 }
 
+/**
+ * Whether each thread has queued work, from one grouped count over live queued
+ * rows. Threads with an empty queue are absent, so the caller fills "none".
+ *
+ * A failure outranks a plain wait: a row that failed to go out is the one the
+ * reader has to do something about, and a thread can easily hold both.
+ */
+function buildThreadQueuedWorkByThreadId(
+  deps: ThreadRuntimeDisplayDeps,
+  threads: readonly Thread[],
+): Map<string, ThreadQueuedWork> {
+  const result = new Map<string, ThreadQueuedWork>();
+  for (const counts of listQueuedThreadMessageCountsByThreadIds(deps.db, {
+    threadIds: threads.map((thread) => thread.id),
+  })) {
+    if (counts.queuedMessageCount === 0) continue;
+    result.set(
+      counts.threadId,
+      counts.failedQueuedMessageCount > 0 ? "failed" : "waiting",
+    );
+  }
+  return result;
+}
+
 export function toThreadListEntryResponses(
   deps: ThreadPromptBannerDeps,
   args: ToThreadListEntryResponsesArgs,
@@ -518,10 +561,14 @@ export function toThreadListEntryResponses(
       ),
     }).map((session) => [session.hostId, session]),
   );
-
+  const queuedWorkByThreadId = buildThreadQueuedWorkByThreadId(
+    deps,
+    args.threads,
+  );
   return args.threads.map((thread) => {
     return toThreadListEntryResponseFromLatestSession({
       activity: activityByThreadId.get(thread.id) ?? EMPTY_THREAD_ACTIVITY,
+      queuedWork: queuedWorkByThreadId.get(thread.id) ?? "none",
       hostConnected:
         thread.environmentHostId !== null &&
         connectedActiveHostIds.has(thread.environmentHostId),
@@ -542,6 +589,7 @@ function toThreadListEntryResponseFromLatestSession(
   return {
     ...thread,
     activity: args.activity,
+    queuedWork: args.queuedWork,
     pinSortKey: args.thread.pinSortKey,
     environmentBranchName: args.thread.environmentBranchName,
     environmentHostId: args.thread.environmentHostId,

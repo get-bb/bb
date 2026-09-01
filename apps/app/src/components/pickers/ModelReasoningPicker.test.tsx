@@ -633,6 +633,22 @@ describe("ModelReasoningPicker", () => {
     expect(onModelChange).toHaveBeenCalledWith("o4-mini");
   });
 
+  it("returns the results viewport to the top when searching", () => {
+    renderPicker({ modelOptions: manyCodexModels });
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Provider, model and reasoning" }),
+    );
+
+    const search = screen.getByPlaceholderText("Search models");
+    const list = screen.getByRole("listbox", { name: "Models" });
+    list.scrollTop = 120;
+
+    fireEvent.change(search, { target: { value: "o4" } });
+
+    expect(list.scrollTop).toBe(0);
+  });
+
   it("resets retained mobile browse state after the drawer closes", () => {
     const frames: FrameRequestCallback[] = [];
     vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {

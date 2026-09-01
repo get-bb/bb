@@ -12,10 +12,10 @@ import { useAtomValue } from "jotai";
 import { COARSE_POINTER_TOOLBAR_ACTION_BUTTON_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
 import { Icon } from "@bb/shared-ui/icon";
 import { Pill } from "@bb/shared-ui/pill";
-import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { SplitButton } from "@/components/ui/split-button.js";
 import {
   AppPageHeader,
+  COMPACT_SHELF_HIDDEN_PAGE_HEADER_ACTIONS_CLASS,
   HEADER_ICON_BUTTON_CLASS,
   HEADER_PANE_ACTION_ICON_BUTTON_CLASS,
 } from "@/components/layout/AppPageHeader";
@@ -32,8 +32,9 @@ import { useInlineThreadTitle } from "@/components/thread/InlineThreadTitle";
 import { useThreadActions } from "@/components/thread/ThreadActionsProvider";
 import { ThreadTitleMentions } from "@/components/thread/ThreadTitleMentions";
 import { SecondaryPanelHostLayoutContext } from "@/components/secondary-panel/SecondaryPanelHostLayoutContext";
-import { getRightPanelToggleIconName } from "@/components/secondary-panel/panelToggleControlState";
+import { RIGHT_PANEL_TOGGLE_ICON_NAME } from "@/components/secondary-panel/panelToggleControlState";
 import { CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS } from "@bb/shared-ui/chrome-style-tokens";
+import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { dimInactiveSplitsAtom } from "@/lib/split-layout/atoms";
 import {
   CONTEXT_INACTIVE_TEXT_CLASS,
@@ -76,6 +77,7 @@ export function ThreadDetailHeader({
   threadTitle,
   workspaceOpenButton,
 }: ThreadDetailHeaderProps) {
+  const isCompactViewport = useIsCompactViewport();
   const [primaryAction, ...secondaryActions] = threadHeaderGitActions;
   const { renameThread } = useThreadActions();
   const handleRename = useCallback(
@@ -89,7 +91,6 @@ export function ThreadDetailHeader({
     resetKey: threadId,
     title: threadTitle,
   });
-  const renderAsDrawer = useIsCompactViewport();
   const [desktopInfo] = useState(getBbDesktopInfo);
   const dimsInactiveSplits = useAtomValue(dimInactiveSplitsAtom);
   const panelShortcut = useAppCommandShortcut("panel.toggle");
@@ -147,9 +148,10 @@ export function ThreadDetailHeader({
   const rightPanelLabel = isSecondaryPanelOpen
     ? "Hide right panel"
     : "Show right panel";
-  const rightPanelIconName = getRightPanelToggleIconName(renderAsDrawer);
+  const rightPanelIconName = RIGHT_PANEL_TOGGLE_ICON_NAME;
   const showRightPanelToggle =
-    secondaryPanelHost === null && !isSecondaryPanelOpen;
+    secondaryPanelHost === null &&
+    (!isSecondaryPanelOpen || isCompactViewport);
 
   const center = (
     <>
@@ -195,6 +197,7 @@ export function ThreadDetailHeader({
           data-testid="thread-detail-header-actions-menu"
           className={cn(
             "flex items-center",
+            COMPACT_SHELF_HIDDEN_PAGE_HEADER_ACTIONS_CLASS,
             usesDesktopChrome && MACOS_WINDOW_NO_DRAG_CLASS,
           )}
         >

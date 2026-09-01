@@ -81,6 +81,16 @@ interface ParentThreadInvalidDescriptionArgs {
   operation?: LifecycleErrorOperation | undefined;
 }
 
+interface DispatchRejectedDescriptionArgs {
+  error: Extract<LifecycleApiError, { code: "dispatch_rejected" }>;
+  operation?: LifecycleErrorOperation | undefined;
+}
+
+interface DispatchHookFailedDescriptionArgs {
+  error: Extract<LifecycleApiError, { code: "dispatch_hook_failed" }>;
+  operation?: LifecycleErrorOperation | undefined;
+}
+
 function operationTitle(operation: LifecycleErrorOperation): string {
   switch (operation) {
     case "archive_thread":
@@ -411,6 +421,30 @@ function describeParentThreadInvalid({
   }
 }
 
+function describeDispatchRejected({
+  error,
+  operation,
+}: DispatchRejectedDescriptionArgs): LifecycleErrorDescription {
+  return warning({
+    operation,
+    title: "Blocked by a plugin",
+    body: `Blocked by the "${error.details.pluginId}" plugin: ${error.message}`,
+  });
+}
+
+function describeDispatchHookFailed({
+  error,
+  operation,
+}: DispatchHookFailedDescriptionArgs): LifecycleErrorDescription {
+  const reason = error.message.trim();
+  const sentence = reason.endsWith(".") ? reason : `${reason}.`;
+  return errorDescription({
+    operation,
+    title: "Plugin dispatch hook failed",
+    body: `${sentence} Disable that plugin to continue.`,
+  });
+}
+
 export function parseLifecycleError(error: unknown): LifecycleApiError | null {
   if (!(error instanceof HttpError) && !(error instanceof BbHttpError)) {
     return null;
@@ -460,6 +494,10 @@ export function describeLifecycleError({
         error: lifecycleError,
         operation,
       });
+    case "dispatch_rejected":
+      return describeDispatchRejected({ error: lifecycleError, operation });
+    case "dispatch_hook_failed":
+      return describeDispatchHookFailed({ error: lifecycleError, operation });
     default:
       return assertNever(lifecycleError);
   }

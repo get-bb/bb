@@ -89,6 +89,7 @@ import {
   startLiveHostCommand,
 } from "../hosts/live-command.js";
 import { createAsyncDeduper } from "../lib/async-deduper.js";
+import { clearThreadQueueProvisioningWaits } from "./queue-drains.js";
 import { throwThreadNotWritable } from "../lib/lifecycle-api-errors.js";
 import { NotificationBuffer } from "../lib/notification-buffer.js";
 import { queueChildThreadTurnNotificationBestEffort } from "./child-thread-notifications.js";
@@ -746,6 +747,12 @@ function settleThreadCommandFailure(
   if (!thread || thread.deletedAt !== null) {
     return emptyCommandResultSideEffects();
   }
+  if (
+    args.command.type === "turn.submit" &&
+    args.report.errorCode === "command_timeout"
+  ) {
+    return emptyCommandResultSideEffects();
+  }
   if (hasTerminalClientTurnRequestEvent(args.deps, args.command)) {
     return emptyCommandResultSideEffects();
   }
@@ -1199,6 +1206,11 @@ function requestPreStartThreadStop(
   deps: RequestThreadStopForCurrentStateDeps,
   thread: RequestThreadStopForCurrentStateThread,
 ): void {
+  // Stopping a thread abandons the provisioning anything was waiting on, so
+  // those waits end here. This runs outside the transaction below because
+  // clearing a wait notifies, and it runs first so no row is left waiting on
+  // provisioning by an early return inside it.
+  clearThreadQueueProvisioningWaits(deps, thread.id);
   const notificationBuffer = new NotificationBuffer();
   const result: RequestPreStartThreadStopResult = deps.db.transaction(
     (tx) => {

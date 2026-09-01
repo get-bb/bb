@@ -4,7 +4,9 @@ import { defaultAppSettings, defaultAppTheme } from "@bb/domain";
 import type { WorkspaceOpenTarget } from "@bb/host-daemon-contract";
 import type { HostDaemonStatusSnapshot } from "./api-host-daemon";
 import type { SystemConfigResponse } from "@bb/server-contract";
-import { apiClient } from "./api-server";
+import { systemConfigQueryOptions } from "@/hooks/queries/system-queries";
+import { markSystemConfigStale } from "@/hooks/cache-owners/system-config-cache-owner";
+import { appQueryClient } from "./app-query-client";
 import { fetchHostStatus, fetchWorkspaceOpenTargets } from "./api-host-daemon";
 import { getBbDesktopInfo } from "./bb-desktop";
 import {
@@ -24,7 +26,6 @@ const unavailableSystemConfig: SystemConfigResponse = {
     changelogPreview: false,
     editMessages: false,
     mobileApp: false,
-    providerSessionReaping: false,
     timelineWindowing: false,
   },
   appearance: defaultAppTheme,
@@ -80,13 +81,9 @@ function didLastSystemConfigLoadFail(): boolean {
 
 async function loadSystemConfig(): Promise<SystemConfigResponse> {
   try {
-    const res = await apiClient.system.config.$get();
-    if (!res.ok) {
-      markSystemConfigLoadFailed();
-      return unavailableSystemConfig;
-    }
+    const config = await appQueryClient.fetchQuery(systemConfigQueryOptions());
     markSystemConfigLoadSucceeded();
-    return (await res.json()) as SystemConfigResponse;
+    return config;
   } catch {
     markSystemConfigLoadFailed();
     return unavailableSystemConfig;
@@ -162,10 +159,17 @@ async function fetchLocalHostConnectionWithRetry({
 
 const systemConfigRefreshTickAtom = atom(0);
 systemConfigRefreshTickAtom.onMount = (setRefreshTick) => {
+  const queryKey = systemConfigQueryOptions().queryKey;
+  let observedConfig =
+    appQueryClient.getQueryData<SystemConfigResponse>(queryKey);
+  const invalidateSystemConfig = () => {
+    markSystemConfigStale(appQueryClient);
+  };
   const unsubscribeConnected = wsManager.onConnected(({ reconnected }) => {
     if (!reconnected && !didLastSystemConfigLoadFail()) {
       return;
     }
+    invalidateSystemConfig();
     setRefreshTick((count) => count + 1);
   });
   const unsubscribeChanged = wsManager.onChanged((message) => {
@@ -174,12 +178,37 @@ systemConfigRefreshTickAtom.onMount = (setRefreshTick) => {
       (message.entity === "system" &&
         message.changes.includes("config-changed"))
     ) {
+      if (message.entity === "host") {
+        invalidateSystemConfig();
+      }
       setRefreshTick((count) => count + 1);
     }
   });
+  const unsubscribeConfig = appQueryClient
+    .getQueryCache()
+    .subscribe((event) => {
+      if (
+        event.type === "updated" &&
+        event.action.type === "success" &&
+        event.query.queryKey[0] === queryKey[0]
+      ) {
+        const nextConfig =
+          appQueryClient.getQueryData<SystemConfigResponse>(queryKey);
+        if (observedConfig === undefined) {
+          observedConfig = nextConfig;
+          return;
+        }
+        if (nextConfig === observedConfig) {
+          return;
+        }
+        observedConfig = nextConfig;
+        setRefreshTick((count) => count + 1);
+      }
+    });
   return () => {
     unsubscribeConnected();
     unsubscribeChanged();
+    unsubscribeConfig();
   };
 };
 
@@ -189,25 +218,6 @@ const systemConfigAtom = atom(async (get) => {
 });
 
 const localHostStatusRefreshTickAtom = atom(0);
-localHostStatusRefreshTickAtom.onMount = (setRefreshTick) => {
-  const refresh = () => {
-    setRefreshTick((count) => count + 1);
-  };
-
-  const unsubscribeConnected = wsManager.onConnected(() => {
-    refresh();
-  });
-  const unsubscribeChanged = wsManager.onChanged((message) => {
-    if (message.entity === "host") {
-      refresh();
-    }
-  });
-
-  return () => {
-    unsubscribeConnected();
-    unsubscribeChanged();
-  };
-};
 
 const localHostDaemonAccessRefreshTickAtom = atom(0);
 const localHostDaemonSessionAccessGrantedAtom = atom(false);

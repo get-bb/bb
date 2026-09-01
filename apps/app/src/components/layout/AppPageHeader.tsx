@@ -29,6 +29,9 @@ export const HEADER_SEAM_CLASS = "border-b border-border-seam-vertical/60";
 
 export const APP_PAGE_HEADER_SURFACE_CLASS = "bg-surface-scrim";
 
+export const COMPACT_SHELF_HIDDEN_PAGE_HEADER_ACTIONS_CLASS =
+  "group-data-[panel-shelf=open]/page-inset:invisible group-data-[panel-shelf=shelf]/page-inset:invisible";
+
 interface AppPageHeaderProps {
   center?: ReactNode;
   actions?: ReactNode;
@@ -93,8 +96,10 @@ export function AppPageHeader({
         )}
         {actions ? (
           <div
+            data-app-page-header-actions=""
             className={cn(
               "flex shrink-0 items-center gap-1",
+              COMPACT_SHELF_HIDDEN_PAGE_HEADER_ACTIONS_CLASS,
               usesDesktopChrome && MACOS_WINDOW_NO_DRAG_CLASS,
             )}
           >

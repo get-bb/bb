@@ -71,16 +71,17 @@ import {
 } from "@bb/client-core";
 import { useActiveComposerDraft } from "./useActiveComposerDraft";
 import { useComposerAttachmentUploads } from "./useComposerAttachmentUploads";
+import { useLatestRef } from "@/hooks/useLatestRef";
 import { useComposerTypeahead } from "./useComposerTypeahead";
 import { useInlineQueuedMessageEditing } from "./useInlineQueuedMessageEditing";
 import { useQueuedMessageActions } from "./useQueuedMessageActions";
 
-function reportHeldSendDelivery(delivery: SendMessageDelivery): void {
-  if (delivery !== "deferred") {
+function reportQueuedSendDelivery(delivery: SendMessageDelivery): void {
+  if (delivery !== "queued") {
     return;
   }
   appToast.message(
-    "Message held until the pending question is answered. It sends by itself; do not send it again.",
+    "Message queued until this thread can take it. It sends by itself; do not send it again.",
   );
 }
 
@@ -316,10 +317,10 @@ function EmbeddedThreadChatWithComposer({
   const {
     inlineEditingQueuedMessage,
     inlineEditingQueuedMessageRef,
-    commitInlineQueuedMessage,
     updateInlineQueuedMessage,
     dismissInlineQueuedMessageEditor,
     beginEditQueuedMessage,
+    queuedMessageDraftSession,
   } = useInlineQueuedMessageEditing({
     ownerThreadId: threadId,
     queuedMessages,
@@ -328,6 +329,7 @@ function EmbeddedThreadChatWithComposer({
       setInlineComposerFocusNonce((nonce) => nonce + 1);
     },
   });
+  const inlineDraftSessionRef = useLatestRef(queuedMessageDraftSession);
   const {
     promptDraft,
     currentPromptDraft,
@@ -339,9 +341,8 @@ function EmbeddedThreadChatWithComposer({
     removeActiveComposerAttachment,
   } = useActiveComposerDraft({
     draftScope: composer.draftScope,
-    inlineEditingQueuedMessage,
-    inlineEditingQueuedMessageRef,
-    commitInlineQueuedMessage,
+    inlineDraft: inlineEditingQueuedMessage?.draft ?? null,
+    inlineSessionRef: inlineDraftSessionRef,
   });
   const {
     bottomAttachmentError,
@@ -355,9 +356,8 @@ function EmbeddedThreadChatWithComposer({
   } = useComposerAttachmentUploads({
     projectId,
     addDraftAttachment: promptDraft.addAttachment,
-    inlineEditingQueuedMessage,
-    inlineEditingQueuedMessageRef,
-    commitInlineQueuedMessage,
+    inlineEditSessionId: queuedMessageDraftSession?.editSessionId ?? null,
+    inlineSessionRef: inlineDraftSessionRef,
   });
   clearInlineAttachmentErrorRef.current = () => setInlineAttachmentError(null);
   const { typeaheadConfig, promptActions } = useComposerTypeahead({
@@ -435,7 +435,7 @@ function EmbeddedThreadChatWithComposer({
         mode: "queue-if-active",
         ...executionRequestFields,
       });
-      reportHeldSendDelivery(result.delivery);
+      reportQueuedSendDelivery(result.delivery);
     },
     [
       createQueuedMessage,
@@ -523,7 +523,7 @@ function EmbeddedThreadChatWithComposer({
         ...executionRequestFields,
       })
       .then((result) => {
-        reportHeldSendDelivery(result.delivery);
+        reportQueuedSendDelivery(result.delivery);
       })
       .catch((error) => {
         if (!isMountedRef.current) {

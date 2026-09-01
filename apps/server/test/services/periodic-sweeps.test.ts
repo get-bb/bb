@@ -60,6 +60,7 @@ describe("runPeriodicSweeps", () => {
           }),
         },
         pluginSchedules: harness.pluginService,
+        plugins: harness.pluginService,
         pluginService: harness.pluginService,
         pluginCatalogService: harness.pluginCatalogService,
       };
@@ -129,6 +130,7 @@ describe("runPeriodicSweeps", () => {
       const deps = {
         ...harness.deps,
         pluginSchedules: harness.pluginService,
+        plugins: harness.pluginService,
         pluginService: harness.pluginService,
         pluginCatalogService: harness.pluginCatalogService,
       };
@@ -163,6 +165,7 @@ describe("runPeriodicSweeps", () => {
       const deps = {
         ...harness.deps,
         pluginSchedules: harness.pluginService,
+        plugins: harness.pluginService,
         pluginService: harness.pluginService,
         pluginCatalogService: harness.pluginCatalogService,
       };
@@ -188,6 +191,7 @@ describe("runPeriodicSweeps", () => {
         ...harness.deps,
         logger,
         pluginSchedules: harness.pluginService,
+        plugins: harness.pluginService,
         pluginService: harness.pluginService,
         pluginCatalogService: harness.pluginCatalogService,
       };
@@ -252,6 +256,7 @@ describe("runPeriodicSweeps", () => {
       const deps = {
         ...harness.deps,
         pluginSchedules: harness.pluginService,
+        plugins: harness.pluginService,
         pluginService: harness.pluginService,
         pluginCatalogService: harness.pluginCatalogService,
       };
@@ -281,6 +286,7 @@ describe("runPeriodicSweeps", () => {
       const deps = {
         ...harness.deps,
         pluginSchedules: harness.pluginService,
+        plugins: harness.pluginService,
         pluginService: harness.pluginService,
         pluginCatalogService: harness.pluginCatalogService,
       };

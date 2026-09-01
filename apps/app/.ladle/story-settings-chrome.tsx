@@ -5,7 +5,7 @@ import { SettingsSidebarContent } from "@/components/settings/SettingsSidebar";
 import {
   SETTINGS_NAV_SECTIONS,
   type SettingsSectionId,
-} from "@/components/settings/settings-nav";
+} from "@/components/settings/settings-sections";
 import {
   SidebarInset,
   SidebarProvider,

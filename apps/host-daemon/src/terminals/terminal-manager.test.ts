@@ -416,6 +416,7 @@ describe("TerminalManager", () => {
       BB_TERMINAL_SESSION_ID: "term-1",
       COLORTERM: "truecolor",
       DISABLE_AUTO_TITLE: "true",
+      FORCE_HYPERLINK: "1",
       PROMPT_EOL_MARK: "",
       TERM: "xterm-256color",
     });

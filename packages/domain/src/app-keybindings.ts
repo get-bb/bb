@@ -54,6 +54,7 @@ export const APP_COMMAND_IDS = [
   "settings.openServers",
   "sidebar.toggle",
   "panel.newTab",
+  "panel.reopenClosedTab",
   "panel.close",
   "panel.toggle",
   "file.quickOpen",

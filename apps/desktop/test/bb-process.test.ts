@@ -20,7 +20,6 @@ interface TempScript {
 interface WaitForLogArgs {
   process: BbAppProcess;
   text: string;
-  timeoutMs: number;
 }
 
 interface CreateTempScriptArgs {
@@ -56,17 +55,51 @@ async function createTempScript(
   return script;
 }
 
-async function waitForLog(args: WaitForLogArgs): Promise<void> {
-  const deadline = Date.now() + args.timeoutMs;
-  while (Date.now() <= deadline) {
-    if (args.process.logs.text().includes(args.text)) {
-      return;
-    }
-    await new Promise<void>((resolvePromise) => {
-      setTimeout(resolvePromise, 10);
-    });
+function waitForLog(args: WaitForLogArgs): Promise<void> {
+  if (args.process.logs.text().includes(args.text)) {
+    return Promise.resolve();
   }
-  throw new Error(`Timed out waiting for log line: ${args.text}`);
+
+  return new Promise<void>((resolvePromise, rejectPromise) => {
+    let settled = false;
+    const finish = (error?: Error): void => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      args.process.childProcess.stdout?.off("data", handleData);
+      args.process.childProcess.stderr?.off("data", handleData);
+      args.process.childProcess.off("exit", handleExit);
+      if (error === undefined) {
+        resolvePromise();
+      } else {
+        rejectPromise(error);
+      }
+    };
+    const handleData = (): void => {
+      if (args.process.logs.text().includes(args.text)) {
+        finish();
+      }
+    };
+    const handleExit = (): void => {
+      finish(
+        new Error(
+          `Process exited before log line: ${args.text}\n${args.process.logs.text()}`,
+        ),
+      );
+    };
+
+    args.process.childProcess.stdout?.on("data", handleData);
+    args.process.childProcess.stderr?.on("data", handleData);
+    args.process.childProcess.once("exit", handleExit);
+    handleData();
+    if (
+      args.process.childProcess.exitCode !== null ||
+      args.process.childProcess.signalCode !== null
+    ) {
+      handleExit();
+    }
+  });
 }
 
 afterEach(async () => {
@@ -209,7 +242,6 @@ process.stdout.write(\`grandchild=\${grandchild.pid}\\n\`);
       await waitForLog({
         process: processEntry,
         text: "grandchild=",
-        timeoutMs: 1_000,
       });
       const grandchildPid = Number(
         processEntry.logs.text().match(/grandchild=(\d+)/u)?.[1],
@@ -302,13 +334,11 @@ setInterval(() => undefined, 1000);
     await waitForLog({
       process: processEntry,
       text: "ready",
-      timeoutMs: 1_000,
     });
     processEntry.childProcess.kill("SIGTERM");
     await waitForLog({
       process: processEntry,
       text: "ignored SIGTERM",
-      timeoutMs: 1_000,
     });
     const killSpy = vi.spyOn(processEntry.childProcess, "kill");
 

@@ -28,6 +28,7 @@
    */
   :root {
     --bb-shell-height: 100dvh;
+    --secondary-panel-width-mobile: min(76vw, 320px);
   }
 
   html.bb-app-shell-root {
@@ -643,6 +644,32 @@
 
   .thread-scrollbar[data-scrollbar-scrolling="true"]::-webkit-scrollbar-thumb:hover,
   .transient-scrollbar[data-scrollbar-scrolling="true"]::-webkit-scrollbar-thumb:hover {
+    background-color: color-mix(in oklab, var(--foreground) 40%, transparent);
+  }
+
+  [data-vaul-drawer-direction] [data-sidebar="content"] {
+    scrollbar-color: transparent transparent;
+  }
+
+  [data-vaul-drawer-direction]
+    [data-sidebar="content"]::-webkit-scrollbar-thumb,
+  [data-vaul-drawer-direction]
+    [data-sidebar="content"]::-webkit-scrollbar-thumb:hover {
+    background-color: transparent;
+  }
+
+  [data-vaul-drawer-direction] [data-sidebar="content"]:hover {
+    scrollbar-color: color-mix(in oklab, var(--foreground) 20%, transparent)
+      transparent;
+  }
+
+  [data-vaul-drawer-direction]
+    [data-sidebar="content"]:hover::-webkit-scrollbar-thumb {
+    background-color: color-mix(in oklab, var(--foreground) 20%, transparent);
+  }
+
+  [data-vaul-drawer-direction]
+    [data-sidebar="content"]:hover::-webkit-scrollbar-thumb:hover {
     background-color: color-mix(in oklab, var(--foreground) 40%, transparent);
   }
 

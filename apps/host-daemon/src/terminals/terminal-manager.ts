@@ -351,6 +351,7 @@ function buildTerminalEnv(args: BuildTerminalEnvArgs): NodeJS.ProcessEnv {
     BB_TERMINAL_SESSION_ID: args.terminalId,
     COLORTERM: "truecolor",
     DISABLE_AUTO_TITLE: "true",
+    FORCE_HYPERLINK: "1",
     PROMPT_EOL_MARK: "",
     TERM: "xterm-256color",
   };

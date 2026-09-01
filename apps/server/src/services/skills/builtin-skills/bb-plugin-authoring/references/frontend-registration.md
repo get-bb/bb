@@ -118,6 +118,11 @@ export default definePluginApp((app) => {
     icon: "Smartphone",
     run: ({ openSettings }) => openSettings(),
   });
+  app.slots.experimental_sidebarNavigation({
+    id: "compact",
+    title: "Compact navigation",
+    component: CompactSidebarNavigation,
+  });
   app.slots.messageDirective({ id: "inline-vis", component: InlineVis });
   app.slots.experimental_threadList({
     id: "inbox",
@@ -152,6 +157,26 @@ state in the component, never in a module-level singleton.
 A common pairing with a replaced sidebar: hide child threads from the list and
 surface them here instead, filtering `experimental_useSidebarThreads()` by
 `parentThreadId === threadId`.
+
+### Replacing the sidebar navigation
+
+`app.slots.experimental_sidebarNavigation` replaces the navigation controls
+above the thread list. The component receives `items`, `activeItemId`, and
+`isCompactViewport`. The items represent New thread, Search threads,
+Extensions, and plugin panels. BB keeps the drawer, thread list, footer,
+resize handle, and hidden-body shortcut policy.
+
+Each item has an `id`, `label`, semantic `icon`, host `action`, disabled state,
+shortcut metadata, and `experimental_splitProps`. Spread the split props onto
+the interactive element. Call
+`experimental_activate(item.id, { openInSplit })` for activation. Search opens
+the host quick palette. The former inline sidebar search field and query state
+are not part of this API.
+
+The component also receives `experimental_Original`. Render it to delegate to
+BB without another replacement lookup. BB restores the original controls if
+the selected replacement is unavailable or crashes. Users can select
+Automatic, BB, or one plugin under Settings → Appearance → Navigation.
 
 ### Replacing the sidebar thread list
 

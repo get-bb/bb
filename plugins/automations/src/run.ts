@@ -38,7 +38,14 @@ const sdkThreadSchema = z
     id: z.string(),
     archivedAt: z.number().nullable(),
     deletedAt: z.number().nullable(),
-    status: z.enum(["idle", "active", "starting", "stopping", "error"]),
+    status: z.enum([
+      "pending",
+      "idle",
+      "active",
+      "starting",
+      "stopping",
+      "error",
+    ]),
   })
   .passthrough();
 type SdkThread = z.infer<typeof sdkThreadSchema>;
@@ -414,6 +421,10 @@ async function reconcileOutcome(
         status: "failed",
         error: "Turn failed while the automations plugin was not running",
       };
+    // Still going somewhere: leave the run marked running and re-check later.
+    // `pending` belongs here — the thread's first dispatch is queued, not
+    // failed, so the run has neither succeeded nor finished.
+    case "pending":
     case "starting":
     case "active":
     case "stopping":

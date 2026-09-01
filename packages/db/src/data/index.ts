@@ -21,6 +21,12 @@ export type {
 } from "./projects.js";
 
 export {
+  getThreadConversationOutlineRecord,
+  upsertThreadConversationOutlineRecord,
+} from "./thread-conversation-outlines.js";
+export type { ThreadConversationOutlineRecord } from "./thread-conversation-outlines.js";
+
+export {
   createThreadSection,
   deleteThreadSection,
   getThreadSectionById,
@@ -54,11 +60,14 @@ export {
 export {
   createThread,
   countLiveThreadsInEnvironment,
+  countThreads,
   countNonDeletedAssignedChildThreads,
   getThread,
   getThreadExecutionOverride,
   hasActiveThreadAttention,
   setThreadExecutionOverride,
+  getThreadPendingStartContext,
+  setThreadPendingStartContext,
   hasLiveThreadAtHostPath,
   hasPendingThreadShutdownInEnvironment,
   hasRevivableArchivedThreadInEnvironment,
@@ -71,6 +80,7 @@ export {
   listThreadEnvironmentAssignmentsOnHost,
   listUnarchivedAssignedChildThreads,
   listUnarchivedHiddenSourceThreads,
+  listRunningThreads,
   listThreads,
   listThreadsWithPendingInteractionState,
   listThreadsWithPendingInteractionStateForProjects,
@@ -92,10 +102,15 @@ export {
 export type {
   ApplyThreadLifecycleEventArgs,
   ApplyThreadLifecycleEventOutcome,
+  CountThreadsGroupBy,
+  CountThreadsOptions,
+  CountThreadsResult,
   ReorderPinnedThreadResult,
+  RunningThreadRow,
   ThreadSearchHighlightRange,
   ThreadSearchMatch,
   ThreadSearchResult,
+  ThreadCountGroupRow,
   ThreadSearchResultGroup,
   ThreadWithPendingInteractionState,
   ThreadExecutionOverride,
@@ -279,6 +294,9 @@ export {
   listStoredTurnStartedKeys,
   listStoredTurnStartedRowsByTurnIdsUpToSequence,
   getLatestThreadInterruptedReason,
+  getLatestStoredRateLimitsEventForProvider,
+  getLatestStoredThreadEventOfTypes,
+  getStoredTurnRequestEventByRequestId,
   listLatestThreadStateEventRowsByThreadIds,
   listLatestBackgroundTaskStateRowsByItemIds,
   listLatestOpenBackgroundTaskStateRowsForThread,
@@ -304,6 +322,7 @@ export type {
   InlineOutputCharLimit,
   ScopedItemRef,
   StoredEventRow,
+  StoredThreadEventDataRow,
   StandardTimelineSegmentAnchorRow,
   ThreadClientTurnRequestKey,
   StoredTurnRequestEventRow,
@@ -355,36 +374,44 @@ export {
   claimQueuedThreadMessage,
   claimQueuedThreadMessageGroup,
   claimNextQueuedThreadMessageGroup,
+  clearQueuedThreadMessageWaitingOn,
   createQueuedThreadMessage,
   createQueuedThreadMessageInTransaction,
   deleteClaimedQueuedThreadMessageBatchInTransaction,
   deleteQueuedThreadMessage,
   getQueuedThreadMessage,
+  hasQueuedRetryOfTurnRequest,
   hasQueuedThreadMessages,
+  isThreadQueueAutoSendPaused,
+  listDueScheduledQueuedThreadMessages,
   listIdleThreadsWithQueuedMessages,
+  listQueuedThreadMessageCountsByThreadIds,
+  listQueuedThreadMessagePluginWaitRefs,
   listQueuedThreadMessages,
+  listQueuedThreadMessagesForApi,
+  listQueuedThreadMessagesByWaitHolder,
+  listQueuedThreadMessagesWaitingOnKind,
+  listThreadIdsWithHostOfflineQueueWaits,
   releaseQueuedMessageClaim,
+  requeueClaimedQueuedThreadMessages,
+  setQueuedThreadMessageFailureReason,
+  setQueuedThreadMessageWaitingOn,
   releaseStaleQueuedMessageClaims,
   reorderQueuedThreadMessage,
   setQueuedThreadMessageGroupBoundary,
   updateQueuedThreadMessage,
 } from "./queued-thread-messages.js";
-export {
-  createDeferredThreadMessage,
-  deleteDeferredThreadMessage,
-  deleteDeferredThreadMessagesForThread,
-  listDeferredThreadMessages,
-  listThreadIdsWithDeliverableDeferredThreadMessages,
-  listThreadIdsWithUndeliverableDeferredThreadMessages,
-} from "./deferred-thread-messages.js";
 export type {
-  CreateDeferredThreadMessageInput,
-  DeferredThreadMessageRow,
-} from "./deferred-thread-messages.js";
-export type {
+  ClaimedQueuedThreadMessageRow,
+  ClearQueuedThreadMessageWaitingOnArgs,
+  ListQueuedThreadMessagesForApiArgs,
+  ListQueuedThreadMessagesWaitingOnKindArgs,
+  QueuedThreadMessagePluginWaitRef,
   QueuedThreadMessageRow,
   ReorderQueuedThreadMessageResult,
+  SetQueuedThreadMessageGroupBoundaryArgs,
   SetQueuedThreadMessageGroupBoundaryResult,
+  SetQueuedThreadMessageWaitingOnArgs,
 } from "./queued-thread-messages.js";
 
 export {

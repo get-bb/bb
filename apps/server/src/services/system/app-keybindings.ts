@@ -190,6 +190,15 @@ export const DEFAULT_APP_KEYBINDINGS: AppDefaultKeybindings = [
   ),
   binding("pane.close", "x", { mod: true, shift: true }, splitWithoutModal),
   binding("panel.newTab", "t", { mod: true }, mainWithoutModal),
+  binding(
+    "panel.reopenClosedTab",
+    "t",
+    { mod: true, shift: true },
+    {
+      ...mainWithoutModal,
+      desktopOnly: true,
+    },
+  ),
   binding("panel.close", "w", { mod: true }, mainWithoutModal),
   binding("panel.toggle", "j", { mod: true }, mainWithoutModal),
   binding("file.quickOpen", "p", { mod: true }, mainWithoutModal),
@@ -207,15 +216,6 @@ export const DEFAULT_APP_KEYBINDINGS: AppDefaultKeybindings = [
     "Enter",
     { mod: true, shift: true },
     mainWithoutModal,
-  ),
-  binding(
-    "terminal.open",
-    "t",
-    { mod: true, shift: true },
-    {
-      ...mainWithoutModal,
-      desktopOnly: true,
-    },
   ),
   binding(
     "composer.focus",

@@ -1,16 +1,19 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
-import { findCachedProviderInfo } from "@/hooks/queries/system-queries";
+import {
+  findCachedProviderInfo,
+  useSystemProviders,
+} from "@/hooks/queries/system-queries";
 import {
   findLocalPathProjectSourceForHost,
   type EnvironmentStatus,
   type Host,
+  type ProviderInfo,
   type ReasoningLevel,
   type ServiceTier,
   type ThreadListEntry,
 } from "@bb/domain";
-import type { NewThreadRequest } from "@get-bb/plugin-sdk";
 import type {
   SidebarBootstrapResponse,
   TerminalSession,
@@ -18,6 +21,7 @@ import type {
 import {
   NewThreadComposer,
   type NewThreadComposerState,
+  type NewThreadComposerSubmission,
 } from "@/components/promptbox/NewThreadComposer";
 import { ProviderCliVersionBanner } from "@/components/promptbox/banner/ProviderCliVersionBanner";
 import {
@@ -36,13 +40,16 @@ import {
   type ProjectMachineSetupDialogTarget,
 } from "@/components/dialogs/ProjectMachineSetupDialog";
 import { HEADER_ICON_BUTTON_CLASS } from "@/components/layout/AppPageHeader";
-import { useRightPanelToggleIconName } from "@/components/secondary-panel/panelToggleControlState";
+import { RIGHT_PANEL_TOGGLE_ICON_NAME } from "@/components/secondary-panel/panelToggleControlState";
 import { AppCommandShortcutHint } from "@/components/commands/AppCommandShortcutHint";
 import type {
   SecondaryPanelPaneRenderContext,
   SecondaryPanelRenderableTab,
 } from "@/components/secondary-panel/ThreadSecondaryPanel";
-import { LazyBrowserTabDeck } from "@/components/secondary-panel/lazySecondaryPanelComponents";
+import {
+  LazyBrowserTabDeck,
+  preloadThreadSecondaryPanel,
+} from "@/components/secondary-panel/lazySecondaryPanelComponents";
 import type { BrowserAddressFocusRequest } from "@/components/secondary-panel/BrowserTabContent";
 import { EmptyStatePanel } from "@bb/shared-ui/empty-state";
 import { Icon } from "@bb/shared-ui/icon";
@@ -265,7 +272,19 @@ export function RootComposeRightPanelToggle({
 }: RootComposeRightPanelToggleProps) {
   const shortcut = useAppCommandShortcut("panel.toggle");
   const rightPanelLabel = isOpen ? "Hide right panel" : "Show right panel";
-  const rightPanelIconName = useRightPanelToggleIconName();
+  const rightPanelIconName = RIGHT_PANEL_TOGGLE_ICON_NAME;
+
+  useEffect(() => {
+    if (typeof window.requestIdleCallback === "function") {
+      const idleCallback = window.requestIdleCallback(
+        preloadThreadSecondaryPanel,
+        { timeout: 1000 },
+      );
+      return () => window.cancelIdleCallback(idleCallback);
+    }
+    const timeout = window.setTimeout(preloadThreadSecondaryPanel, 1000);
+    return () => window.clearTimeout(timeout);
+  }, []);
 
   return (
     <Button
@@ -278,6 +297,8 @@ export function RootComposeRightPanelToggle({
       }
       aria-keyshortcuts={shortcut?.ariaKeyshortcuts}
       aria-expanded={isOpen}
+      onFocus={preloadThreadSecondaryPanel}
+      onPointerDown={preloadThreadSecondaryPanel}
       onClick={onToggle}
     >
       <Icon name={rightPanelIconName} />
@@ -508,15 +529,16 @@ export function RootComposeView() {
     [setRootComposeProjectId],
   );
   const handleSubmit = useCallback(
-    async (request: NewThreadRequest) => {
+    async (request: NewThreadComposerSubmission) => {
       const shouldNavigateToCreatedThread = shouldNavigateAfterThreadCreate({
         isForkDraft: forkSeed !== null,
         navigateToThreadAfterCreate,
       });
+      const { sendAt, ...requestFields } = request;
       const createRequest =
         forkSeed === null
           ? {
-              ...request,
+              ...requestFields,
               ...(rootComposeSectionId
                 ? { sectionId: rootComposeSectionId }
                 : {}),
@@ -533,7 +555,9 @@ export function RootComposeView() {
               serviceTier: request.serviceTier,
             });
       if (createRequest === null) return;
-      const thread = await createThread.mutateAsync(createRequest);
+      const thread = await createThread.mutateAsync(
+        sendAt === undefined ? createRequest : { ...createRequest, sendAt },
+      );
       setLastCreatedThreadId(thread.id);
       setForkSeed(null);
       setRootComposeSectionId(null);
@@ -809,6 +833,14 @@ function RootComposeSurface({
     () => buildMobileRecentThreads({ sidebarNavigation }),
     [sidebarNavigation],
   );
+  const systemProviders = useSystemProviders().data;
+  const mobileRecentProvidersById = useMemo(() => {
+    const byId = new Map<string, ProviderInfo>();
+    for (const provider of systemProviders ?? []) {
+      byId.set(provider.id, provider);
+    }
+    return byId;
+  }, [systemProviders]);
   const mobileRecentProjectNamesById = useMemo(() => {
     const namesById = new Map<string, string>();
     if (!sidebarNavigation) return namesById;
@@ -870,13 +902,13 @@ function RootComposeSurface({
     [activeFixedSecondaryTab, isPersistedSecondaryPanelOpen],
   );
   const activeFixedSecondaryTabId = activeFixedSecondaryTab?.id ?? null;
-  const renderSecondaryPanelAsDrawer = useIsCompactViewport();
+  const isCompactViewport = useIsCompactViewport();
   const secondaryPanelDrawerVisibility =
     useThreadSecondaryPanelDrawerVisibility({
-      isCompactViewport: renderSecondaryPanelAsDrawer,
+      isCompactViewport,
       threadId: ROOT_COMPOSE_FIXED_PANEL_STATE_ID,
     });
-  const isSecondaryPanelOpen = renderSecondaryPanelAsDrawer
+  const isSecondaryPanelOpen = isCompactViewport
     ? secondaryPanelDrawerVisibility.isDrawerVisible
     : isPersistedSecondaryPanelOpen;
   const touchFixedPanelTabsState = useTouchFixedPanelTabsState(
@@ -899,6 +931,7 @@ function RootComposeSurface({
   const removeFixedTerminalTab = useRemoveFixedRightTerminalTab(
     ROOT_COMPOSE_FIXED_PANEL_STATE_ID,
     null,
+    secondaryPanelDrawerVisibility.closeDrawer,
   );
   const setRootSecondaryPanel = useSetThreadSecondaryPanelSelection(
     ROOT_COMPOSE_FIXED_PANEL_STATE_ID,
@@ -950,16 +983,17 @@ function RootComposeSurface({
         : rootPanelHostPathTerminalTarget,
     [rootPanelEnvironmentId, rootPanelHostPathTerminalTarget],
   );
-  const { threadStorageFiles: rootThreadStorageFiles } = useThreadStorageViewer(
-    {
-      fileListEnabled: shouldLoadThreadStorageFileList({
-        hasThread: rootPanelThreadId !== null,
-        isSecondaryPanelOpen,
-        secondaryTabs: fixedPanelTabsState.secondary.tabs,
-      }),
-      threadId: rootPanelThreadId ?? undefined,
-    },
-  );
+  const {
+    checkThreadStorageFileExists: checkRootThreadStorageFileExists,
+    threadStorageFiles: rootThreadStorageFiles,
+  } = useThreadStorageViewer({
+    fileListEnabled: shouldLoadThreadStorageFileList({
+      hasThread: rootPanelThreadId !== null,
+      isSecondaryPanelOpen,
+      secondaryTabs: fixedPanelTabsState.secondary.tabs,
+    }),
+    threadId: rootPanelThreadId ?? undefined,
+  });
   const environmentTerminalsListQuery = useEnvironmentTerminals(
     rootPanelEnvironmentId ?? "",
     {
@@ -1018,6 +1052,7 @@ function RootComposeSurface({
     openPluginPanel,
     openTab,
     orderedSecondaryFileTabs,
+    reopenClosedTab,
     reorderTab,
     selectFileSearchResult,
     updateBrowserTab,
@@ -1026,11 +1061,13 @@ function RootComposeSurface({
     syncThreadId: null,
     environmentId: rootPanelEnvironmentId,
     fileOwnerThreadId: rootPanelThreadId,
+    onCloseLastTab: secondaryPanelDrawerVisibility.closeDrawer,
     preserveWorkspaceTabsAcrossContexts: true,
     projectHostId: rootProjectHostId,
     projectId: isProjectless ? null : projectId,
     retainedTerminalId,
-    storageFiles: rootThreadStorageFiles?.files,
+    storageFileExists: checkRootThreadStorageFileExists,
+    storageFiles: rootThreadStorageFiles,
     terminalSessions: loadedTerminalSessions,
   });
   const rootPluginPanelActions = usePluginNewThreadPanelActions({
@@ -1115,7 +1152,7 @@ function RootComposeSurface({
   } = useThreadSecondaryPanelVisibility({
     closePersistedPanel: closeRootSecondaryPanel,
     drawerVisibility: secondaryPanelDrawerVisibility,
-    isCompactViewport: renderSecondaryPanelAsDrawer,
+    isCompactViewport,
     isPersistedOpen: isPersistedSecondaryPanelOpen,
     openPersistedCommitDiff: () => undefined,
     openPersistedDiffFile: () => undefined,
@@ -1356,6 +1393,11 @@ function RootComposeSurface({
   useAppCommandHandler("panel.newTab", () => {
     if (!isFocusedPane) return false;
     handleOpenNewTab();
+    return true;
+  });
+  useAppCommandHandler("panel.reopenClosedTab", () => {
+    if (!isFocusedPane || !reopenClosedTab()) return false;
+    openCompactDrawer();
     return true;
   });
   useAppCommandHandler("file.quickOpen", () => {
@@ -1727,10 +1769,13 @@ function RootComposeSurface({
     [openWorkspaceFile],
   );
   const showPinnedToggle =
-    (paneContext?.secondaryPanelHost ?? null) === null && !isSecondaryPanelOpen;
+    (paneContext?.secondaryPanelHost ?? null) === null &&
+    (!isSecondaryPanelOpen || isCompactViewport);
   const rootPanelToggle = showPinnedToggle ? (
     <div
-      className={`fixed z-40 ${ROOT_COMPOSE_PINNED_PANEL_TOGGLE_POSITION_CLASS}`}
+      className={`fixed z-40 ${ROOT_COMPOSE_PINNED_PANEL_TOGGLE_POSITION_CLASS} ${
+        isSecondaryPanelOpen ? "pointer-events-none invisible" : ""
+      }`}
     >
       <RootComposeRightPanelToggle
         isOpen={isSecondaryPanelOpen}
@@ -1884,6 +1929,7 @@ function RootComposeSurface({
   const promptBox = renderPromptBox({
     id: "root-compose-prompt",
     autoFocus: !isProviderCliVersionBlocked,
+    allowSoftKeyboardAutoFocus: isCompactViewport,
     banner: promptBanner,
     header: promptHeader,
     blockedReason: isProviderCliVersionBlocked
@@ -1932,6 +1978,17 @@ function RootComposeSurface({
                   ? ROOT_COMPOSE_EMPTY_WELCOME_CONTENT_CLASS
                   : ROOT_COMPOSE_SIDEBAR_ACTION_ALIGNED_TOP_PADDING_CLASS
               }
+              compactScrollContent={
+                showEmptyWelcome ? null : (
+                  <RootComposeMobileRecents
+                    highlightedThreadId={lastCreatedThreadId}
+                    projectNamesById={mobileRecentProjectNamesById}
+                    providersById={mobileRecentProvidersById}
+                    showCreatingRow={isSubmitting}
+                    threads={mobileRecentThreads}
+                  />
+                )
+              }
               isSecondaryPanelOpen={isSecondaryPanelOpen}
               onToggleSecondaryPanel={handleToggleSecondaryPanel}
               secondaryPanel={{
@@ -1969,15 +2026,7 @@ function RootComposeSurface({
                   }
                 />
               ) : (
-                <>
-                  {promptBox}
-                  <RootComposeMobileRecents
-                    highlightedThreadId={lastCreatedThreadId}
-                    projectNamesById={mobileRecentProjectNamesById}
-                    showCreatingRow={isSubmitting}
-                    threads={mobileRecentThreads}
-                  />
-                </>
+                promptBox
               )}
             </RootComposeSecondaryContent>
           </AppNavigationHostProvider>

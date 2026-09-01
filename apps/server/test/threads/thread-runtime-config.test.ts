@@ -900,6 +900,7 @@ describe("thread runtime config", () => {
     await withTestHarness(async (harness) => {
       const pluginId = "provider-hooked";
       const registration = buildPluginProviderRegistration({
+        iconHash: null,
         available: true,
         pluginId,
         declaration: validatePluginProviderDeclaration({

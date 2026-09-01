@@ -14,6 +14,13 @@ import type {
   Terminal as XTermTerminal,
 } from "@xterm/xterm";
 import type { FitAddon } from "@xterm/addon-fit";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuTrigger,
+} from "@bb/shared-ui/context-menu";
 import { TERMINAL_DATA_MAX_BYTES } from "@bb/domain";
 import type {
   TerminalServerMessage,
@@ -24,10 +31,17 @@ import { usePreferredTheme } from "@/hooks/useTheme";
 import type { MarkdownPreviewLinkHandler } from "@/components/ui/markdown-link";
 import { openUrlInExternalBrowser } from "@/lib/url-open-routing";
 import { useAppNavigationHost } from "@/lib/app-navigation-host";
+import { copyToClipboardWithToast } from "@/lib/clipboard";
 import type { MessageProseSelection } from "@/components/thread/timeline/SelectableMessageProse.js";
 import { TimelineSelectionMenu } from "@/components/thread/timeline/TimelineSelectionMenu.js";
 import { buildTerminalWebSocketUrl } from "./terminal-websocket-url";
 import { TerminalWebSocketTransport } from "@bb/client-core";
+import { TerminalLinkOpenDialog } from "./TerminalLinkOpenDialog";
+import {
+  createTerminalOsc8LinkHandler,
+  requestTerminalLinkOpen,
+  type TerminalLinkTarget,
+} from "./terminal-links";
 
 export const TERMINAL_FONT_FAMILY =
   '"JetBrainsMono Nerd Font Mono", "MesloLGS NF", "Symbols Nerd Font Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace';
@@ -323,9 +337,18 @@ interface ForwardTerminalDataArgs {
 }
 
 interface OpenTerminalWebLinkArgs {
-  event: MouseEvent;
   onOpenLink: MarkdownPreviewLinkHandler;
   uri: string;
+}
+
+interface TerminalContextMenuState {
+  link: TerminalLinkTarget | null;
+  selectionText: string;
+}
+
+interface CaptureTerminalContextMenuStateArgs {
+  link: TerminalLinkTarget | null;
+  terminal: Pick<XTermTerminal, "getSelection"> | null;
 }
 
 interface TerminalReplayWriteState {
@@ -511,15 +534,23 @@ function writeTerminalSessionStatusNotice({
 }
 
 function openTerminalWebLink({
-  event,
   onOpenLink,
   uri,
 }: OpenTerminalWebLinkArgs): void {
   if (onOpenLink({ href: uri })) {
-    event.preventDefault();
     return;
   }
   openUrlInExternalBrowser(uri);
+}
+
+export function captureTerminalContextMenuState({
+  link,
+  terminal,
+}: CaptureTerminalContextMenuStateArgs): TerminalContextMenuState {
+  return {
+    link,
+    selectionText: terminal?.getSelection() ?? "",
+  };
 }
 
 export function writeTerminalOutput({
@@ -597,8 +628,18 @@ export function ThreadTerminalView({
 }: ThreadTerminalViewProps) {
   const [activeSelection, setActiveSelection] =
     useState<MessageProseSelection | null>(null);
+  const [hoveredTerminalLink, setHoveredTerminalLink] =
+    useState<TerminalLinkTarget | null>(null);
+  const [pendingTerminalLink, setPendingTerminalLink] =
+    useState<TerminalLinkTarget | null>(null);
+  const [contextMenuState, setContextMenuState] =
+    useState<TerminalContextMenuState>({
+      link: null,
+      selectionText: "",
+    });
   const containerRef = useRef<HTMLDivElement | null>(null);
   const terminalRef = useRef<XTermTerminal | null>(null);
+  const hoveredTerminalLinkRef = useRef<TerminalLinkTarget | null>(null);
   const pointerIsDownRef = useRef(false);
   const pointerStartPointRef = useRef<TerminalSelectionAnchorPoint | null>(
     null,
@@ -666,6 +707,59 @@ export function ThreadTerminalView({
     terminalRef.current?.clearSelection();
     setActiveSelection(null);
   }, []);
+
+  const updateHoveredTerminalLink = useCallback(
+    (target: TerminalLinkTarget | null) => {
+      hoveredTerminalLinkRef.current = target;
+      setHoveredTerminalLink(target);
+    },
+    [],
+  );
+
+  const openTerminalLink = useCallback((uri: string) => {
+    openTerminalWebLink({
+      onOpenLink: onOpenLinkRef.current,
+      uri,
+    });
+  }, []);
+
+  const confirmTerminalLinkOpen = useCallback(
+    (target: TerminalLinkTarget) => {
+      setPendingTerminalLink(null);
+      openTerminalLink(target.uri);
+    },
+    [openTerminalLink],
+  );
+
+  const requestOpenTerminalLink = useCallback(
+    (target: TerminalLinkTarget) => {
+      requestTerminalLinkOpen({
+        openLink: openTerminalLink,
+        requestConfirmation: setPendingTerminalLink,
+        target,
+      });
+    },
+    [openTerminalLink],
+  );
+
+  const captureTerminalContextMenu = useCallback(() => {
+    setContextMenuState(
+      captureTerminalContextMenuState({
+        link: hoveredTerminalLinkRef.current,
+        terminal: terminalRef.current,
+      }),
+    );
+  }, []);
+
+  const copyTerminalContextValue = useCallback(
+    (text: string, successMessage: string) => {
+      void copyToClipboardWithToast(text, {
+        successMessage,
+        errorMessage: "Failed to copy",
+      });
+    },
+    [],
+  );
 
   const handleSelectionAddToChat = useCallback(
     (text: string) => {
@@ -750,7 +844,10 @@ export function ThreadTerminalView({
   useEffect(() => {
     touchFocusGestureRef.current = null;
     setActiveSelection(null);
-  }, [session.id]);
+    updateHoveredTerminalLink(null);
+    setPendingTerminalLink(null);
+    setContextMenuState({ link: null, selectionText: "" });
+  }, [session.id, updateHoveredTerminalLink]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -796,12 +893,22 @@ export function ThreadTerminalView({
         return;
       }
 
+      const osc8LinkHandler = createTerminalOsc8LinkHandler({
+        onActivate: requestOpenTerminalLink,
+        onHover: (target) => {
+          if (!disposed) {
+            updateHoveredTerminalLink(target);
+          }
+        },
+      });
+
       terminal = new Terminal({
         allowProposedApi: TERMINAL_ALLOW_PROPOSED_API,
         convertEol: true,
         cursorBlink: true,
         fontFamily: TERMINAL_FONT_FAMILY,
         fontSize: 12,
+        linkHandler: osc8LinkHandler,
         scrollback: 10_000,
         theme: buildTerminalTheme(),
       });
@@ -811,13 +918,22 @@ export function ThreadTerminalView({
       terminal.loadAddon(new Unicode11Addon());
       terminal.unicode.activeVersion = TERMINAL_UNICODE_VERSION;
       terminal.loadAddon(
-        new WebLinksAddon((event, uri) => {
-          openTerminalWebLink({
-            event,
-            onOpenLink: onOpenLinkRef.current,
-            uri,
-          });
-        }),
+        new WebLinksAddon(
+          (event, uri) => {
+            if (event.button !== 0) {
+              return;
+            }
+            requestOpenTerminalLink({ source: "detected-url", uri });
+          },
+          {
+            hover: (_event, uri) => {
+              updateHoveredTerminalLink({ source: "detected-url", uri });
+            },
+            leave: () => {
+              updateHoveredTerminalLink(null);
+            },
+          },
+        ),
       );
       if (webglAddonModule !== null) {
         loadTerminalWebglRenderer(
@@ -997,7 +1113,13 @@ export function ThreadTerminalView({
       terminalRef.current = null;
       scheduleFitRef.current = null;
     };
-  }, [reportTerminalSelection, session.id, session.threadId]);
+  }, [
+    reportTerminalSelection,
+    requestOpenTerminalLink,
+    session.id,
+    session.threadId,
+    updateHoveredTerminalLink,
+  ]);
 
   useEffect(() => {
     if (!isPanelOpen || !autoFocus) {
@@ -1031,21 +1153,70 @@ export function ThreadTerminalView({
     terminal.options.theme = buildTerminalTheme();
   }, [preferredTheme, appThemeEpoch]);
 
+  const contextMenuLink = contextMenuState.link;
+  const contextMenuSelectionText = contextMenuState.selectionText;
+  const hasTerminalContextMenuTarget =
+    hoveredTerminalLink !== null || activeSelection !== null;
+
   return (
-    <div
-      className="h-full min-h-0 w-full overflow-hidden bg-sidebar p-2"
-      onPointerDown={handleTerminalPointerDown}
-      onPointerUp={handleTerminalPointerRelease}
-      onPointerCancel={handleTerminalPointerCancel}
-      onTouchStart={handleTerminalTouchStart}
-      onTouchMove={handleTerminalTouchMove}
-      onTouchEnd={handleTerminalTouchEnd}
-      onTouchCancel={handleTerminalTouchCancel}
+    <ContextMenu
+      onOpenChange={(open) => {
+        if (!open) {
+          setContextMenuState({ link: null, selectionText: "" });
+        }
+      }}
     >
-      <div
-        ref={containerRef}
-        className="h-full min-h-0 w-full overflow-hidden"
-      />
+      <ContextMenuTrigger asChild disabled={!hasTerminalContextMenuTarget}>
+        <div
+          className="h-full min-h-0 w-full overflow-hidden bg-sidebar p-2"
+          onContextMenuCapture={captureTerminalContextMenu}
+          onPointerDown={handleTerminalPointerDown}
+          onPointerUp={handleTerminalPointerRelease}
+          onPointerCancel={handleTerminalPointerCancel}
+          onTouchStart={handleTerminalTouchStart}
+          onTouchMove={handleTerminalTouchMove}
+          onTouchEnd={handleTerminalTouchEnd}
+          onTouchCancel={handleTerminalTouchCancel}
+        >
+          <div
+            ref={containerRef}
+            className="h-full min-h-0 w-full overflow-hidden"
+          />
+        </div>
+      </ContextMenuTrigger>
+      <ContextMenuContent className="min-w-36">
+        {contextMenuLink !== null ? (
+          <>
+            <ContextMenuItem
+              onSelect={() => requestOpenTerminalLink(contextMenuLink)}
+            >
+              Open Link
+            </ContextMenuItem>
+            <ContextMenuItem
+              onSelect={() =>
+                copyTerminalContextValue(contextMenuLink.uri, "Link copied")
+              }
+            >
+              Copy Link
+            </ContextMenuItem>
+          </>
+        ) : null}
+        {contextMenuLink !== null && contextMenuSelectionText.length > 0 ? (
+          <ContextMenuSeparator />
+        ) : null}
+        {contextMenuSelectionText.length > 0 ? (
+          <ContextMenuItem
+            onSelect={() =>
+              copyTerminalContextValue(
+                contextMenuSelectionText,
+                "Selection copied",
+              )
+            }
+          >
+            Copy
+          </ContextMenuItem>
+        ) : null}
+      </ContextMenuContent>
       <TimelineSelectionMenu
         selection={activeSelection}
         onAddToChat={
@@ -1055,6 +1226,15 @@ export function ThreadTerminalView({
         }
         onDismiss={clearTerminalSelection}
       />
-    </div>
+      <TerminalLinkOpenDialog
+        target={pendingTerminalLink}
+        onConfirm={confirmTerminalLinkOpen}
+        onOpenChange={(open) => {
+          if (!open) {
+            setPendingTerminalLink(null);
+          }
+        }}
+      />
+    </ContextMenu>
   );
 }

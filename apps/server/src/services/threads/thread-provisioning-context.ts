@@ -47,15 +47,23 @@ const reuseIntentSchema = z.object({
   environmentId: z.string().min(1),
 });
 
-const threadProvisionEnvironmentIntentSchema = z.discriminatedUnion("type", [
-  directUnmanagedIntentSchema,
-  checkoutUnmanagedIntentSchema,
-  directManagedIntentSchema,
-  directPersonalIntentSchema,
-  reuseIntentSchema,
-]);
+/**
+ * Exported so a queued thread-start can persist the intent it resolved at
+ * create time and rebuild this context when its wait clears, possibly after a
+ * restart. Nothing else should construct one by hand.
+ */
+export const threadProvisionEnvironmentIntentSchema = z.discriminatedUnion(
+  "type",
+  [
+    directUnmanagedIntentSchema,
+    checkoutUnmanagedIntentSchema,
+    directManagedIntentSchema,
+    directPersonalIntentSchema,
+    reuseIntentSchema,
+  ],
+);
 
-const threadForkDescriptorSchema = z.object({
+export const threadForkDescriptorSchema = z.object({
   sourceProviderThreadId: z.string().min(1),
   sourceProviderCheckpointId: z.string().min(1).optional(),
 });
