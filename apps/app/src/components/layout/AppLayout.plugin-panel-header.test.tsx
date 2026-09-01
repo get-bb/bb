@@ -1,11 +1,14 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, render, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AppLayout } from "./AppLayout";
 import { APP_OVERLAY_LAYER } from "@/components/ui/app-overlay-layers";
+import {
+  setCompactSecondaryPanelPresentation,
+} from "@/components/ui/secondary-panel-shelf-visibility";
 
 const viewportState = vi.hoisted(() => ({ compact: false }));
 
@@ -164,10 +167,12 @@ function renderPluginPanelRoute(): void {
 describe("AppLayout plugin panel header", () => {
   beforeEach(() => {
     viewportState.compact = false;
+    setCompactSecondaryPanelPresentation("closed");
   });
 
   afterEach(() => {
     cleanup();
+    setCompactSecondaryPanelPresentation("closed");
     vi.clearAllMocks();
   });
 
@@ -184,7 +189,7 @@ describe("AppLayout plugin panel header", () => {
     expect(screen.queryByTestId("app-page-header")).toBeNull();
   });
 
-  it("keeps the fixed sidebar trigger above the compact shelf dismiss layer", () => {
+  it("shows the fixed left trigger only while the compact right panel is closed", () => {
     viewportState.compact = true;
     renderPluginPanelRoute();
 
@@ -192,8 +197,14 @@ describe("AppLayout plugin panel header", () => {
     expect(trigger.style.zIndex).toBe(
       String(APP_OVERLAY_LAYER.sidebarTrigger),
     );
-    expect(APP_OVERLAY_LAYER.sidebarTrigger).toBeGreaterThan(
-      APP_OVERLAY_LAYER.secondaryPanelDismiss,
-    );
+
+    act(() => setCompactSecondaryPanelPresentation("shelf"));
+    expect(screen.queryByTestId("app-sidebar-trigger-overlay")).toBeNull();
+
+    act(() => setCompactSecondaryPanelPresentation("full"));
+    expect(screen.queryByTestId("app-sidebar-trigger-overlay")).toBeNull();
+
+    act(() => setCompactSecondaryPanelPresentation("closed"));
+    expect(screen.getByTestId("app-sidebar-trigger-overlay")).not.toBeNull();
   });
 });
