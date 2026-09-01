@@ -1,11 +1,15 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, waitFor } from "@testing-library/react";
+import { act, cleanup, render, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
+import { toast } from "sonner";
 import { CompactViewportOverrideProvider } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { AppToaster } from "./AppToaster";
 
-afterEach(cleanup);
+afterEach(() => {
+  toast.dismiss();
+  cleanup();
+});
 
 async function renderToaster(isCompactViewport: boolean) {
   render(
@@ -15,6 +19,10 @@ async function renderToaster(isCompactViewport: boolean) {
       <AppToaster position="bottom-right" />
     </CompactViewportOverrideProvider>,
   );
+
+  act(() => {
+    toast("Position test", { duration: Number.POSITIVE_INFINITY });
+  });
 
   return waitFor(() => {
     const toaster = document.querySelector("[data-sonner-toaster]");
