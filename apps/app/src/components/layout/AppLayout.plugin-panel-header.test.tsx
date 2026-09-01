@@ -34,9 +34,15 @@ vi.mock("@/hooks/queries/system-queries", () => ({
   }),
 }));
 
+vi.mock("@/hooks/useHostDaemon", () => ({
+  useHostDaemon: () => ({ hasDaemon: false }),
+  useLocalHostDaemonAccess: () => ({ accessState: "unavailable" }),
+}));
+
 vi.mock("@/lib/plugin-slots", () => ({
   usePluginSlots: () => ({
     commandPaletteActions: [],
+    fileOpeners: [],
     navPanels: [
       {
         pluginId: "helm-wiki",

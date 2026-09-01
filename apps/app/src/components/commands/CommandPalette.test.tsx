@@ -80,6 +80,7 @@ function defaults(...commands: AppCommandId[]): AppDefaultKeybinding[] {
 
 const testState = vi.hoisted(() => ({
   calls: [] as string[],
+  filesAvailable: false,
   plugins: [] as Array<{
     enabled: boolean;
     hasSettings: boolean;
@@ -113,6 +114,15 @@ vi.mock("@/hooks/queries/system-queries", () => ({
 
 vi.mock("@/lib/bb-desktop", () => ({
   getBbDesktopInfo: () => null,
+}));
+
+vi.mock("@/hooks/useHostDaemon", () => ({
+  useHostDaemon: () => ({ hasDaemon: false }),
+  useLocalHostDaemonAccess: () => ({
+    accessState: testState.filesAvailable
+      ? "permission-required"
+      : "unavailable",
+  }),
 }));
 
 vi.mock("@/lib/app-query-client", () => ({
@@ -223,7 +233,7 @@ function openThreadSearch(): KeyboardEvent {
 
 const searchField = () => screen.getByRole("combobox");
 const optionTitles = () =>
-  screen.getAllByRole("option").map((option) => option.textContent);
+  screen.queryAllByRole("option").map((option) => option.textContent);
 const selectedOption = () =>
   screen
     .getAllByRole("option")
@@ -234,6 +244,7 @@ afterEach(() => {
   removePluginSlotRegistrations("linear");
   removePluginSlotRegistrations("automations");
   testState.calls.length = 0;
+  testState.filesAvailable = false;
   testState.plugins.length = 0;
   window.localStorage.clear();
 });
@@ -247,7 +258,7 @@ describe("CommandPalette", () => {
     expect((searchField() as HTMLInputElement).value).toBe(">");
     const titles = optionTitles();
     expect(titles?.[0]).toContain("New thread");
-    expect(titles).toHaveLength(17);
+    expect(titles).toHaveLength(16);
   });
 
   it("filters as the user types and keeps the selection on a live row", async () => {
@@ -476,6 +487,40 @@ describe("CommandPalette", () => {
       expect(screen.getByTestId("location").textContent).toContain(
         "/settings/keyboard",
       ),
+    );
+  });
+
+  it.each([false, true])(
+    "excludes Files settings when Settings has no local opener (compact: %s)",
+    async (compact) => {
+      renderPalette(compact);
+      openThreadSearch();
+      await waitFor(() => expect(searchField()).toBeTruthy());
+
+      fireEvent.change(searchField(), {
+        target: { value: ">files settings" },
+      });
+
+      await waitFor(() =>
+        expect(optionTitles()).not.toContainEqual(
+          expect.stringContaining("Files settings"),
+        ),
+      );
+    },
+  );
+
+  it("keeps Files settings when local helper access can be enabled", async () => {
+    testState.filesAvailable = true;
+    renderPalette();
+    openThreadSearch();
+    await waitFor(() => expect(searchField()).toBeTruthy());
+
+    fireEvent.change(searchField(), {
+      target: { value: ">files settings" },
+    });
+
+    await waitFor(() =>
+      expect(selectedOption()?.textContent).toContain("Files settings"),
     );
   });
 

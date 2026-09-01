@@ -1,6 +1,6 @@
 import {
   getSettingsSectionRoutePath,
-  SETTINGS_NAV_SECTIONS,
+  type SettingsNavSection,
 } from "@/components/settings/settings-sections";
 import type { PluginSettingsEntry } from "@/components/settings/plugin-settings-entries";
 import { getPluginConfigurationRoutePath } from "@/lib/route-paths";
@@ -9,13 +9,14 @@ import type { PaletteAction } from "./palette-action";
 interface BuildSettingsPaletteActionsArgs {
   navigate: (path: string) => void;
   pluginEntries: readonly PluginSettingsEntry[];
+  sections: readonly SettingsNavSection[];
 }
 
 export function buildSettingsPaletteActions(
   args: BuildSettingsPaletteActionsArgs,
 ): PaletteAction[] {
   return [
-    ...SETTINGS_NAV_SECTIONS.map((section) => ({
+    ...args.sections.map((section) => ({
       id: `settings:${section.id}`,
       group: "Settings",
       title: `${section.label} settings`,

@@ -43,6 +43,7 @@ import {
   buildPluginSettingsEntries,
   type PluginSettingsCandidate,
 } from "@/components/settings/plugin-settings-entries";
+import { useSettingsNavSections } from "@/components/settings/settings-nav";
 import { appQueryClient } from "@/lib/app-query-client";
 import {
   ThreadPaletteResults,
@@ -77,6 +78,7 @@ export function CommandPalette({ threadId, projectId }: CommandPaletteProps) {
     readonly PluginSettingsCandidate[]
   >([]);
   const pluginSlots = usePluginSlots();
+  const sections = useSettingsNavSections(pluginSlots.fileOpeners);
   const pluginSettingsEntries = useMemo(
     () =>
       buildPluginSettingsEntries({
@@ -92,8 +94,9 @@ export function CommandPalette({ threadId, projectId }: CommandPaletteProps) {
           void navigate(path);
         },
         pluginEntries: pluginSettingsEntries,
+        sections,
       }),
-    [navigate, pluginSettingsEntries],
+    [navigate, pluginSettingsEntries, sections],
   );
   const pluginPageActions = useMemo(
     () =>
