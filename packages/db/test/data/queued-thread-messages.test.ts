@@ -898,7 +898,7 @@ describe("queued thread messages", () => {
     // The requested drain clears the lead's wait and claims by id; the claim
     // is a claim on the batch, so the tail dispatches with it.
     expect(
-      claimQueuedThreadMessageGroup(db, noopNotifier, lead.id)?.map(
+      claimQueuedThreadMessageGroup(db, noopNotifier, lead.id, true)?.map(
         (queuedMessage) => queuedMessage.id,
       ),
     ).toEqual([lead.id, tail.id]);
@@ -957,6 +957,7 @@ describe("queued thread messages", () => {
       db,
       noopNotifier,
       thirdQueuedMessage.id,
+      true,
     );
 
     expect(claimedQueuedMessages?.map((queuedMessage) => queuedMessage.id)).toEqual([
@@ -1087,7 +1088,12 @@ describe("queued thread messages", () => {
     });
 
     expect(
-      claimQueuedThreadMessageGroup(db, noopNotifier, secondQueuedMessage.id)?.map(
+      claimQueuedThreadMessageGroup(
+        db,
+        noopNotifier,
+        secondQueuedMessage.id,
+        true,
+      )?.map(
         (queuedMessage) => queuedMessage.id,
       ),
     ).toEqual([secondQueuedMessage.id]);
@@ -1157,6 +1163,7 @@ describe("queued thread messages", () => {
       db,
       noopNotifier,
       secondQueuedMessage.id,
+      true,
     );
     expect(claimed?.map((queuedMessage) => queuedMessage.id)).toEqual([
       secondQueuedMessage.id,

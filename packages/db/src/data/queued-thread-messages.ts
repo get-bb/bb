@@ -845,6 +845,7 @@ export function claimQueuedThreadMessageGroup(
   db: DbConnection,
   notifier: DbNotifier,
   id: string,
+  explicitSend: boolean,
   isGroupEligible?: (rows: readonly QueuedThreadMessageRow[]) => boolean,
 ): ClaimedQueuedThreadMessageRow[] | null {
   const claimedQueuedMessages = db.transaction(
@@ -863,9 +864,9 @@ export function claimQueuedThreadMessageGroup(
         return null;
       }
       if (
-        isGroupEligible &&
-        (!group.every((row) => row.failureReason === null) ||
-          !isGroupEligible(group))
+        (!explicitSend &&
+          !group.every((row) => row.failureReason === null)) ||
+        (isGroupEligible && !isGroupEligible(group))
       ) {
         return null;
       }

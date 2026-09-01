@@ -90,7 +90,7 @@ import {
 import { validatePromptAttachmentReferences } from "../projects/attachments.js";
 
 interface SendQueuedMessageArgs {
-  isGroupEligible?: Parameters<typeof claimQueuedThreadMessageGroup>[3];
+  isGroupEligible?: Parameters<typeof claimQueuedThreadMessageGroup>[4];
   mode: SendQueuedMessageMode;
   queuedMessageId: string;
   /**
@@ -396,6 +396,7 @@ function claimQueuedThreadMessageForSend(
     deps.db,
     deps.hub,
     args.queuedMessageId,
+    args.sendNow,
     args.isGroupEligible,
   );
   if (claimedQueuedMessages) {

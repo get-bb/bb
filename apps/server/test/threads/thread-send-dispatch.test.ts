@@ -5,6 +5,7 @@ import {
   listEvents,
   listQueuedThreadMessages,
   markThreadDeleted,
+  setQueuedThreadMessageFailureReason,
   setQueuedThreadMessageGroupBoundary,
 } from "@bb/db";
 import {
@@ -380,6 +381,67 @@ describe("turn-starting queue wait", () => {
       });
     },
   );
+
+  it("keeps a failed grouped sibling out of the automatic turn-start send", async () => {
+    await withTestHarness(async (harness) => {
+      const { sessionId, thread } = seedProviderThreadFixture({
+        harness,
+        status: "active",
+        value: 66,
+      });
+      const lead = seedQueuedMessage(harness.deps, {
+        content: textInput("clean turn-starting lead"),
+        threadId: thread.id,
+        waitingOn: { kind: "turn-starting" },
+      });
+      const failed = seedQueuedMessage(harness.deps, {
+        content: textInput("failed scheduled sibling"),
+        threadId: thread.id,
+        waitingOn: { kind: "time" },
+        sendAt: Date.now() - 1_000,
+      });
+      setQueuedThreadMessageFailureReason(harness.db, harness.hub, {
+        id: failed.id,
+        threadId: thread.id,
+        failureReason: "Terminal failure",
+      });
+      setQueuedThreadMessageGroupBoundary({
+        db: harness.db,
+        notifier: harness.hub,
+        threadId: thread.id,
+        expectedGroupedPrefixQueuedMessageIds: [lead.id, failed.id],
+        groupBoundaryQueuedMessageId: failed.id,
+      });
+
+      const response = await harness.app.request("/internal/session/events", {
+        method: "POST",
+        headers: internalAuthHeaders(harness),
+        body: JSON.stringify({
+          sessionId,
+          eventGroups: groupHostDaemonEvents([
+            {
+              threadId: thread.id,
+              event: {
+                type: "turn/started",
+                threadId: thread.id,
+                providerThreadId: "provider-send-dispatch-66",
+                scope: turnScope("turn-failed-group"),
+              },
+            },
+          ]),
+        }),
+      });
+      await new Promise<void>((resolve) => setImmediate(resolve));
+
+      expect(response.status).toBe(200);
+      expect(
+        listQueuedThreadCommands(harness, "turn.submit", thread.id),
+      ).toHaveLength(0);
+      expect(
+        listQueuedThreadMessages(harness.db, thread.id).map((row) => row.id),
+      ).toEqual([lead.id, failed.id]);
+    });
+  });
 
   it("parks a steer until turn/started and then steers it into that turn", async () => {
     await withTestHarness(async (harness) => {

@@ -715,6 +715,7 @@ describe("retrying a failed turn", () => {
         harness.db,
         harness.deps.hub,
         onlyQueuedRow(harness, thread.id).id,
+        true,
       );
       expect(claimed).toHaveLength(1);
       await expect(retry(requestId)).rejects.toMatchObject({

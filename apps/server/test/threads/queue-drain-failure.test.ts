@@ -145,7 +145,12 @@ describe("recordQueuedMessageDrainFailure", () => {
 
         expect(attempts).toBe(1);
         expect(
-          claimQueuedThreadMessageGroup(harness.db, harness.deps.hub, row.id),
+          claimQueuedThreadMessageGroup(
+            harness.db,
+            harness.deps.hub,
+            row.id,
+            true,
+          ),
         ).not.toBeNull();
       } finally {
         setPluginHookProvider(undefined);
