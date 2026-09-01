@@ -261,7 +261,7 @@ function isIdleDrainableQueuedMessage(row: QueuedThreadMessageRow): boolean {
   if (row.waitingOn === null) return true;
   try {
     const parsed = JSON.parse(row.waitingOn) as { kind?: unknown };
-    return parsed.kind === "thread-busy";
+    return parsed.kind === "thread-busy" || parsed.kind === "turn-starting";
   } catch {
     return false;
   }
@@ -1367,7 +1367,7 @@ function automaticallyDrainableQueuedThreadMessage() {
 
 /**
  * Rows the IDLE drain may claim: a row with no wait at all, or one waiting
- * only on the thread being busy — which is exactly the wait an idle thread
+ * on the thread being busy or its turn starting — waits an idle thread
  * clears.
  *
  * Every other wait belongs to a different drain and must be invisible here, or
@@ -1385,6 +1385,7 @@ function drainableQueuedThreadMessage() {
     or(
       isNull(queuedThreadMessages.waitingOn),
       sql`json_extract(${queuedThreadMessages.waitingOn}, '$.kind') = 'thread-busy'`,
+      sql`json_extract(${queuedThreadMessages.waitingOn}, '$.kind') = 'turn-starting'`,
     ),
   );
 }

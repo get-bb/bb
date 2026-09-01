@@ -245,7 +245,7 @@ async function queueActiveParentSystemMessage(
 ): Promise<boolean> {
   const expectedSteerTurnId = getActiveTurnId(deps, args.thread.id);
   if (expectedSteerTurnId === null) {
-    queueInputForStartingTurn(deps, {
+    const queued = queueInputForStartingTurn(deps, {
       input: {
         content: args.input,
         execution: args.execution,
@@ -258,7 +258,21 @@ async function queueActiveParentSystemMessage(
       },
       threadId: args.thread.id,
     });
-    return true;
+    if (queued) return true;
+    const currentThread = getThread(deps.db, args.thread.id);
+    if (
+      !currentThread ||
+      currentThread.archivedAt !== null ||
+      currentThread.deletedAt !== null
+    ) {
+      return false;
+    }
+    if (currentThread.status !== "active") {
+      return queueReadyParentSystemMessage(deps, {
+        ...args,
+        thread: currentThread,
+      });
+    }
   }
   const permissionEscalation = resolvePermissionEscalation({
     initiator: "system",

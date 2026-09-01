@@ -14,8 +14,9 @@ import {
   type ThreadChangedMessage,
 } from "@bb/domain";
 import { groupHostDaemonEvents } from "@bb/host-daemon-contract";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { TelemetryService } from "../../src/services/system/telemetry.js";
+import * as threadEvents from "../../src/services/threads/thread-events.js";
 import { sendQueuedMessage } from "../../src/services/threads/queued-messages.js";
 import { queueParentSystemMessage } from "../../src/services/threads/parent-system-messages.js";
 import { acceptThreadSendRequest } from "../../src/services/threads/thread-send-request.js";
@@ -55,6 +56,8 @@ interface SeedIdleThreadFixtureArgs {
 interface SeedProviderThreadFixtureArgs extends SeedIdleThreadFixtureArgs {
   status?: "active" | "idle";
 }
+
+afterEach(() => vi.restoreAllMocks());
 
 function seedProviderThreadFixture(
   args: SeedProviderThreadFixtureArgs,
@@ -407,6 +410,21 @@ describe("turn-starting queue wait", () => {
           listQueuedThreadMessages(harness.db, thread.id)[0]!.waitingOn!,
         ),
       ).toEqual({ kind: "thread-busy" });
+
+      vi.spyOn(threadEvents, "getActiveTurnId").mockReturnValueOnce(null);
+      await expect(
+        acceptThreadSendRequest(harness.deps, {
+          payload: {
+            input: textInput("send after the wake scan"),
+            mode: "steer",
+            model: "gpt-5",
+            permissionMode: "full",
+            reasoningLevel: "medium",
+            serviceTier: "default",
+          },
+          thread,
+        }),
+      ).resolves.toEqual({ ok: true, delivery: "sent" });
     });
   });
 
@@ -486,6 +504,21 @@ describe("turn-starting queue wait", () => {
         }),
       ]);
       expect(listQueuedThreadMessages(harness.db, thread.id)).toEqual([]);
+
+      vi.spyOn(threadEvents, "getActiveTurnId").mockReturnValueOnce(null);
+      await expect(
+        queueParentSystemMessage(harness.deps, {
+          input,
+          parentThreadId: thread.id,
+          systemMessageKind: "child-completed",
+          systemMessageSubject: {
+            kind: "thread",
+            threadId: "child-2",
+            threadName: "Other child",
+          },
+        }),
+      ).resolves.toBe(true);
+      expect(listQueuedThreadMessages(harness.db, thread.id)).toHaveLength(0);
     });
   });
 });

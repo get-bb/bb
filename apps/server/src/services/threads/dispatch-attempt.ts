@@ -333,7 +333,19 @@ async function runDispatchAttempt(
     resolveDispatchAttemptKind(currentThread, payload.mode) === "join-turn" &&
     getActiveTurnId(deps, thread.id) === null
   ) {
-    return waitOn({ kind: "turn-starting" }, null);
+    const outcome = deps.db.transaction(
+      (tx) => {
+        const lockedThread = getThread(tx, thread.id);
+        if (!lockedThread) return null;
+        if (lockedThread.status !== "active") {
+          return waitOn({ kind: "thread-busy" }, null);
+        }
+        if (getActiveTurnId({ db: tx }, thread.id) !== null) return null;
+        return waitOn({ kind: "turn-starting" }, null);
+      },
+      { behavior: "immediate" },
+    );
+    if (outcome !== null) return outcome;
   }
   if (!firstDispatch && isPreStartThreadStatus(thread.status)) {
     // A follow-up or steer sent while the workspace is being (re)provisioned.

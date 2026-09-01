@@ -516,7 +516,7 @@ describe("queued thread messages", () => {
         reasoningLevel: "medium",
         permissionMode: "full",
         serviceTier: "default",
-        waitingOn: null,
+        waitingOn: { kind: "turn-starting" },
         sendAt: null,
         payload: { kind: "inline" },
         systemNotice: null,
