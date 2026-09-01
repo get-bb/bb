@@ -221,6 +221,17 @@ and falls back to the provider default; the next send records that default, so
 select the custom model again after you turn streamer mode off. Set it with
 `bb settings general streamerMode <true|false>`.
 
+The "Worktree branch prefix" field in Settings → General sets the text bb puts
+in front of every branch name it creates for a managed worktree or a new
+checkout branch. It defaults to `bb/`, which produces
+`bb/fix-login-flow-thr_ab12cd34ef`. Change it to `sawyer/` to group your branches
+under your own namespace, or clear the field to create
+`fix-login-flow-thr_ab12cd34ef` with no prefix. bb rejects a prefix that cannot
+start a valid git branch name, such as one with a space or a leading `-`, and
+the prefix is at most 64 characters. The prefix applies to branches bb creates
+after you change it; it does not rename an existing branch or worktree. Set it
+with `bb settings general managedBranchPrefix <prefix>`.
+
 Settings → Providers lists every registered agent provider in picker order.
 Move a provider up or down to change the order and choose the default for new
 threads. Both are persisted preferences: `providerOrder` is the list of ids

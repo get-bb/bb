@@ -1604,7 +1604,8 @@ describe("migrate", () => {
         providerOrder: [],
         defaultProviderId: null,
         streamerMode: false,
-          });
+        managedBranchPrefix: "bb/",
+      });
       expect(
         db.$client
           .prepare<[], { key: string; value: string }>(
@@ -2053,7 +2054,7 @@ describe("migrate", () => {
         permissionMode: "full",
         reasoningLevel: "medium",
         serviceTier: "default",
-          waitingOn: null,
+        waitingOn: null,
         sendAt: null,
         payload: { kind: "inline" },
         systemNotice: null,
@@ -2065,7 +2066,7 @@ describe("migrate", () => {
         permissionMode: "full",
         reasoningLevel: "medium",
         serviceTier: "default",
-          waitingOn: null,
+        waitingOn: null,
         sendAt: null,
         payload: { kind: "inline" },
         systemNotice: null,
@@ -2077,7 +2078,7 @@ describe("migrate", () => {
         permissionMode: "full",
         reasoningLevel: "medium",
         serviceTier: "default",
-          waitingOn: null,
+        waitingOn: null,
         sendAt: null,
         payload: { kind: "inline" },
         systemNotice: null,

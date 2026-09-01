@@ -65,6 +65,21 @@ every window and client sees the same value.
   provider default, and the next send records that default. Select the custom
   model again after you turn streamer mode off.
 
+## Worktree branch prefix
+
+- `managedBranchPrefix` defaults to `bb/`. Set it with
+  `bb settings general managedBranchPrefix <prefix>`.
+- bb puts the prefix in front of every branch name it creates for a managed
+  worktree or a new checkout branch, so the default gives
+  `bb/fix-login-flow-thr_ab12cd34ef`.
+- A prefix does not need a trailing slash. `sawyer/wt-` gives
+  `sawyer/wt-fix-login-flow-thr_ab12cd34ef`, and an empty prefix gives
+  `fix-login-flow-thr_ab12cd34ef`.
+- bb rejects a prefix that cannot start a valid git branch name, such as one
+  with a space or a leading `-`. The maximum length is 64 characters.
+- The new prefix applies to branches bb creates after the change. It does not
+  rename an existing branch or worktree.
+
 ## Provider order and default
 
 - `providerOrder` defaults to `[]`. Set it to a JSON array of provider IDs.

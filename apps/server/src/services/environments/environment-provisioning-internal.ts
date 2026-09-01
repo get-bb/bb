@@ -5,6 +5,7 @@ import {
   type DbNotifier,
   type DbQueryConnection,
   type DbTransaction,
+  getAppSettings,
   getEnvironment,
   getThread,
   listStoredThreadProvisioningRowsByProvisioningId,
@@ -1036,7 +1037,10 @@ export async function dispatchManagedEnvironmentReprovision(
             });
           const branchName =
             args.environment.branchName ??
-            buildManagedBranchName({ threadId: args.threadId });
+            buildManagedBranchName({
+              branchPrefix: getAppSettings(deps.db).managedBranchPrefix,
+              threadId: args.threadId,
+            });
           const baseBranch = storedBaseBranchNameToSpec(
             args.environment.baseBranch,
           );
