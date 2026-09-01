@@ -143,9 +143,11 @@ export class RuntimeProviderProcessManager {
   }
 
   async ensureProvider(args: EnsureRuntimeProviderArgs): Promise<void> {
+    if (this.shuttingDown) return;
     const retirement = this.providerRetiring.get(args.processKey);
     if (retirement !== undefined) {
       await retirement;
+      if (this.shuttingDown) return;
     }
 
     const existing = this.providerStarting.get(args.processKey);
@@ -158,6 +160,7 @@ export class RuntimeProviderProcessManager {
     if (existingProcess !== undefined) {
       if (!hasChildProcessExited(existingProcess.child)) return;
       await existingProcess.exitFinalized;
+      if (this.shuttingDown) return;
 
       const concurrentStart = this.providerStarting.get(args.processKey);
       if (concurrentStart !== undefined) {
@@ -197,6 +200,7 @@ export class RuntimeProviderProcessManager {
             });
             request.onResult(result);
           } catch (error) {
+            if (this.shuttingDown) return;
             if (request.required) throw error;
           }
         }
@@ -217,6 +221,7 @@ export class RuntimeProviderProcessManager {
           }
         }
       } catch (startupError) {
+        if (this.shuttingDown) return;
         await this.cleanupFailedStartup({
           processKey: args.processKey,
           providerId: args.providerId,
@@ -286,10 +291,7 @@ export class RuntimeProviderProcessManager {
 
   async shutdownProvider(args: ShutdownRuntimeProviderArgs): Promise<void> {
     const existingRetirement = this.providerRetiring.get(args.processKey);
-    if (existingRetirement !== undefined) {
-      await existingRetirement;
-      return;
-    }
+    if (existingRetirement !== undefined) return existingRetirement;
 
     const providerProcess = this.processes.get(args.processKey);
     if (!providerProcess) {
@@ -302,36 +304,23 @@ export class RuntimeProviderProcessManager {
     }
 
     providerProcess.expectedShutdownExpectations += 1;
-    const retirement = (async () => {
-      await this.terminateProviderProcess({
-        providerProcess,
-        timeoutMs: args.timeoutMs,
-      });
+    const retirement = this.terminateProviderProcess({
+      providerProcess,
+      timeoutMs: args.timeoutMs,
+    }).then(async () => {
       if (hasChildProcessExited(providerProcess.child)) {
         await providerProcess.exitFinalized;
       }
-    })();
+    });
     this.providerRetiring.set(args.processKey, retirement);
-    try {
-      await retirement;
-    } finally {
+    await retirement.finally(() => {
       if (this.providerRetiring.get(args.processKey) === retirement) {
         this.providerRetiring.delete(args.processKey);
       }
-    }
+    });
   }
 
   async shutdown(): Promise<void> {
-    const retiringProcessKeys = [...this.providerRetiring.keys()];
-    if (retiringProcessKeys.length > 0) {
-      await Promise.allSettled(this.providerRetiring.values());
-      await Promise.allSettled(
-        retiringProcessKeys.flatMap((processKey) => {
-          const start = this.providerStarting.get(processKey);
-          return start === undefined ? [] : [start];
-        }),
-      );
-    }
     this.shuttingDown = true;
     const shutdownPromises: Promise<void>[] = [];
 
