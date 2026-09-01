@@ -19,6 +19,7 @@ vi.mock(
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
+  vi.unstubAllGlobals();
 });
 
 describe("RootComposeRightPanelToggle", () => {
@@ -43,5 +44,23 @@ describe("RootComposeRightPanelToggle", () => {
     fireEvent.focus(button);
 
     expect(preloadThreadSecondaryPanel).toHaveBeenCalledTimes(2);
+  });
+
+  it("warms the panel chunk while the browser is idle", () => {
+    const cancelIdleCallback = vi.fn();
+    vi.stubGlobal("cancelIdleCallback", cancelIdleCallback);
+    vi.stubGlobal(
+      "requestIdleCallback",
+      (callback: IdleRequestCallback): number => {
+        callback({ didTimeout: false, timeRemaining: () => 50 });
+        return 7;
+      },
+    );
+
+    render(<RootComposeRightPanelToggle isOpen={false} onToggle={vi.fn()} />);
+
+    expect(preloadThreadSecondaryPanel).toHaveBeenCalledOnce();
+    cleanup();
+    expect(cancelIdleCallback).toHaveBeenCalledWith(7);
   });
 });
