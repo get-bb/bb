@@ -521,6 +521,30 @@ describe("runPluginCliCommand", () => {
     ).resolves.toBe(0);
   });
 
+  it("preserves output errors other than broken pipes", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(JSON.stringify({ exitCode: 0, stdout: "output" }), {
+            status: 200,
+          }),
+      ),
+    );
+    const fullDisk = new Writable({
+      write(_chunk, _encoding, callback) {
+        callback(Object.assign(new Error("write ENOSPC"), { code: "ENOSPC" }));
+      },
+    });
+
+    await expect(
+      runPluginCliCommand("http://localhost", "fixture", [], {
+        stdout: fullDisk,
+        stderr: fullDisk,
+      }),
+    ).rejects.toMatchObject({ code: "ENOSPC" });
+  });
+
   it("outlives the global fetch headers timeout while a plugin command waits on a human", async () => {
     const RESPONSE_DELAY_MS = 1500;
     const server: Server = createServer((request, response) => {
