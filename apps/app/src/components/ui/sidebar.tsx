@@ -107,7 +107,7 @@ function getSidebarMobileMotionNodes(): {
 }
 
 function getSidebarShelfRevealTranslate(progress: number): string {
-  return `${Math.round(getSidebarMobilePanelWidth() * progress)}px`;
+  return `${getSidebarMobilePanelWidth() * progress}px`;
 }
 
 function applySidebarMobileDragStyles({
@@ -1326,7 +1326,7 @@ const SidebarMobilePanel = React.forwardRef<
           data-vaul-drawer-direction="left"
           className={cn(
             "group fixed inset-y-0 left-0 z-0 flex h-(--bb-shell-height) w-(--sidebar-width-mobile) touch-pan-y select-none flex-col bg-sidebar text-sidebar-foreground outline-none",
-            "border-border-seam data-[side=left]:border-r data-[side=right]:border-l",
+            "border-border-seam data-[side=left]:border-r data-[side=right]:border-l data-[state=open]:border-r-0 data-[vaul-animate=false]:border-r-0",
             className,
           )}
           style={
