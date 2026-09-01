@@ -8,13 +8,10 @@ import {
   SectionSidebarRow,
 } from "@/components/sidebar/SectionSidebar";
 import { canOpenNativeScreen, shellOpenNative } from "@/lib/native-shell";
-import {
-  SETTINGS_ROUTE_PATH,
-  getPluginConfigurationRoutePath,
-  getSettingsRoutePath,
-} from "@/lib/route-paths";
+import { getPluginConfigurationRoutePath } from "@/lib/route-paths";
 import { useSettingsNavState } from "./settings-nav";
 import type { SettingsNavState } from "./settings-nav";
+import { getSettingsSectionRoutePath } from "./settings-sections";
 
 interface SettingsSidebarProps {
   onResizeMouseDown: (event: ReactMouseEvent<HTMLDivElement>) => void;
@@ -64,11 +61,7 @@ export function SettingsSidebarContent({
               key={section.id}
               active={activeSection === section.id}
               label={section.label}
-              to={
-                section.id === "general"
-                  ? SETTINGS_ROUTE_PATH
-                  : getSettingsRoutePath(section.id)
-              }
+              to={getSettingsSectionRoutePath(section.id)}
             >
               <SectionSidebarIcon name={section.icon} />
             </SectionSidebarRow>
@@ -126,7 +119,7 @@ export function SettingsSidebarContent({
                   key={section.id}
                   active={activeSection === section.id}
                   label={section.label}
-                  to={getSettingsRoutePath(section.id)}
+                  to={getSettingsSectionRoutePath(section.id)}
                 >
                   <SectionSidebarIcon name={section.icon} />
                 </SectionSidebarRow>

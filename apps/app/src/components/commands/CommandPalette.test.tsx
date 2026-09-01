@@ -78,7 +78,16 @@ function defaults(...commands: AppCommandId[]): AppDefaultKeybinding[] {
   }));
 }
 
-const testState = vi.hoisted(() => ({ calls: [] as string[] }));
+const testState = vi.hoisted(() => ({
+  calls: [] as string[],
+  plugins: [] as Array<{
+    enabled: boolean;
+    hasSettings: boolean;
+    icon: string | null;
+    id: string;
+    name: string | null;
+  }>,
+}));
 
 vi.mock("@/hooks/queries/system-queries", () => ({
   useSystemConfig: () => ({
@@ -104,6 +113,12 @@ vi.mock("@/hooks/queries/system-queries", () => ({
 
 vi.mock("@/lib/bb-desktop", () => ({
   getBbDesktopInfo: () => null,
+}));
+
+vi.mock("@/lib/app-query-client", () => ({
+  appQueryClient: {
+    fetchQuery: () => Promise.resolve(testState.plugins),
+  },
 }));
 
 vi.mock("./ThreadPaletteResults", () => ({
@@ -217,7 +232,9 @@ const selectedOption = () =>
 afterEach(() => {
   cleanup();
   removePluginSlotRegistrations("linear");
+  removePluginSlotRegistrations("automations");
   testState.calls.length = 0;
+  testState.plugins.length = 0;
   window.localStorage.clear();
 });
 
@@ -230,7 +247,7 @@ describe("CommandPalette", () => {
     expect((searchField() as HTMLInputElement).value).toBe(">");
     const titles = optionTitles();
     expect(titles?.[0]).toContain("New thread");
-    expect(titles).toHaveLength(5);
+    expect(titles).toHaveLength(17);
   });
 
   it("filters as the user types and keeps the selection on a live row", async () => {
@@ -250,12 +267,13 @@ describe("CommandPalette", () => {
     renderPalette();
     openPalette();
     await waitFor(() => expect(searchField()).toBeTruthy());
+    const titles = optionTitles();
 
     fireEvent.keyDown(searchField(), { key: "ArrowUp" });
-    expect(selectedOption()?.textContent).toContain("Open terminal");
+    expect(selectedOption()?.textContent).toBe(titles.at(-1));
 
     fireEvent.keyDown(searchField(), { key: "ArrowDown" });
-    expect(selectedOption()?.textContent).toContain("New thread");
+    expect(selectedOption()?.textContent).toBe(titles[0]);
   });
 
   it("runs the highlighted command, closes, and restores focus", async () => {
@@ -439,6 +457,90 @@ describe("CommandPalette", () => {
         }) as HTMLInputElement
       ).value,
     ).toBe("");
+  });
+
+  it("opens a specific settings page from Cmd-K", async () => {
+    renderPalette();
+    openThreadSearch();
+    await waitFor(() => expect(searchField()).toBeTruthy());
+
+    fireEvent.change(searchField(), {
+      target: { value: ">keyboard settings" },
+    });
+    await waitFor(() =>
+      expect(selectedOption()?.textContent).toContain("Keyboard"),
+    );
+    fireEvent.keyDown(searchField(), { key: "Enter" });
+
+    await waitFor(() =>
+      expect(screen.getByTestId("location").textContent).toContain(
+        "/settings/keyboard",
+      ),
+    );
+  });
+
+  it("opens a plugin settings page from Cmd-K", async () => {
+    testState.plugins.push({
+      enabled: true,
+      hasSettings: true,
+      icon: null,
+      id: "linear",
+      name: "Linear",
+    });
+    renderPalette();
+    openThreadSearch();
+    await waitFor(() => expect(searchField()).toBeTruthy());
+
+    fireEvent.change(searchField(), {
+      target: { value: ">linear settings" },
+    });
+    await waitFor(() =>
+      expect(selectedOption()?.textContent).toContain("Linear settings"),
+    );
+    fireEvent.keyDown(searchField(), { key: "Enter" });
+
+    await waitFor(() =>
+      expect(screen.getByTestId("location").textContent).toContain(
+        "/settings/plugins/linear",
+      ),
+    );
+  });
+
+  it("opens a plugin page from Cmd-K", async () => {
+    setPluginSlotRegistrations("automations", {
+      homepageSections: [],
+      settingsSections: [],
+      navPanels: [
+        {
+          id: "automations",
+          title: "Automations",
+          icon: "Calendar",
+          path: "automations",
+          component: () => null,
+        },
+      ],
+      threadPanelActions: [],
+      sidebarFooterActions: [],
+      fileOpeners: [],
+      messageDirectives: [],
+    });
+    renderPalette();
+    openThreadSearch();
+    await waitFor(() => expect(searchField()).toBeTruthy());
+
+    fireEvent.change(searchField(), {
+      target: { value: ">automations" },
+    });
+    await waitFor(() =>
+      expect(selectedOption()?.textContent).toContain("Automations"),
+    );
+    fireEvent.keyDown(searchField(), { key: "Enter" });
+
+    await waitFor(() =>
+      expect(screen.getByTestId("location").textContent).toContain(
+        "/plugins/automations/automations",
+      ),
+    );
   });
 
   it("opens a matched thread at its matched message", async () => {
