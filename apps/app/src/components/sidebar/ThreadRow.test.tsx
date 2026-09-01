@@ -962,6 +962,34 @@ describe("ThreadRow", () => {
     ).toBe("always");
   });
 
+  it.each([
+    { isCollapsed: true, expectedHoverReveal: false },
+    { isCollapsed: false, expectedHoverReveal: true },
+  ])(
+    "sets parent-thread disclosure hover reveal to $expectedHoverReveal when collapsed is $isCollapsed",
+    ({ expectedHoverReveal, isCollapsed }) => {
+      renderThreadRow({
+        thread: createThread({ title: "Parent thread" }),
+        options: {
+          kind: "parent",
+          depth: 1,
+          isCompact: false,
+          isCollapsed,
+          childCount: 1,
+          childActivity: NO_COLLAPSED_CHILD_ACTIVITY,
+          onToggleCollapsed: vi.fn(),
+        },
+      });
+
+      const toggle = screen.getByRole("button", {
+        name: `${isCollapsed ? "Expand" : "Collapse"} Parent thread threads`,
+      });
+      expect(toggle.classList.contains("bb-sidebar-hover-actions")).toBe(
+        expectedHoverReveal,
+      );
+    },
+  );
+
   it("shows its Command shortcut in place of an active indicator", () => {
     renderThreadRow({
       shortcutKey: "3",

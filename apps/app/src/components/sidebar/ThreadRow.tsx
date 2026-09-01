@@ -757,7 +757,7 @@ function ThreadRowComponent({
             expandLabel={`Expand ${labelTitle} threads`}
             collapseLabel={`Collapse ${labelTitle} threads`}
             onToggle={() => parentOptions.onToggleCollapsed(thread.id)}
-            revealOnHover
+            revealOnHover={!isParentCollapsed}
           />
         ) : null}
       </span>
