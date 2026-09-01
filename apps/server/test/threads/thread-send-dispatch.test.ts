@@ -18,7 +18,10 @@ import { groupHostDaemonEvents } from "@bb/host-daemon-contract";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { TelemetryService } from "../../src/services/system/telemetry.js";
 import * as threadEvents from "../../src/services/threads/thread-events.js";
-import { sendQueuedMessage } from "../../src/services/threads/queued-messages.js";
+import {
+  runQueuedMessageAutoSendForThread,
+  sendQueuedMessage,
+} from "../../src/services/threads/queued-messages.js";
 import { queueParentSystemMessage } from "../../src/services/threads/parent-system-messages.js";
 import { acceptThreadSendRequest } from "../../src/services/threads/thread-send-request.js";
 import { handleUpdateEnvironmentDirectoryToolCall } from "../../src/services/threads/thread-environment-directory.js";
@@ -305,6 +308,35 @@ describe("user message telemetry", () => {
 });
 
 describe("turn-starting queue wait", () => {
+  it("starts a new turn when startup settles before its queued wake", async () => {
+    await withTestHarness(async (harness) => {
+      const { thread } = seedProviderThreadFixture({
+        harness,
+        status: "idle",
+        value: 66,
+      });
+      seedQueuedMessage(harness.deps, {
+        content: textInput("follow-up after startup settled"),
+        threadId: thread.id,
+        waitingOn: { kind: "turn-starting" },
+      });
+
+      await runQueuedMessageAutoSendForThread(harness.deps, {
+        threadId: thread.id,
+      });
+
+      expect(listQueuedThreadMessages(harness.db, thread.id)).toEqual([]);
+      expect(
+        listQueuedThreadCommands(harness, "turn.submit", thread.id),
+      ).toEqual([
+        expect.objectContaining({
+          input: textInput("follow-up after startup settled"),
+          target: { mode: "start" },
+        }),
+      ]);
+    });
+  });
+
   it.each([
     ["archive", "archived"],
     ["delete", "deleted"],
