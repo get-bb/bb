@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { buildPluginSettingsEntries } from "./plugin-settings-entries";
 
 describe("buildPluginSettingsEntries", () => {
-  it("includes every installed plugin regardless of runtime configuration", () => {
+  it("separates configurable plugins while preserving the full catalog", () => {
     const installedPlugins = [
       {
         enabled: true,
@@ -33,13 +33,24 @@ describe("buildPluginSettingsEntries", () => {
         name: "Plain",
       },
     ];
-    const entries = buildPluginSettingsEntries({ installedPlugins });
+    const entries = buildPluginSettingsEntries({
+      installedPlugins,
+      settingsSections: [{ pluginId: "workflows" }],
+    });
 
-    expect(entries).toEqual([
+    expect(entries.all).toEqual([
       { icon: null, id: "disabled", label: "Disabled" },
       { icon: "linear-icon", id: "linear", label: "Linear" },
       { icon: null, id: "plain", label: "Plain" },
       { icon: null, id: "workflows", label: "workflows" },
+    ]);
+    expect(entries.configurable).toEqual([
+      { icon: "linear-icon", id: "linear", label: "Linear" },
+      { icon: null, id: "workflows", label: "workflows" },
+    ]);
+    expect(entries.other).toEqual([
+      { icon: null, id: "disabled", label: "Disabled" },
+      { icon: null, id: "plain", label: "Plain" },
     ]);
   });
 });

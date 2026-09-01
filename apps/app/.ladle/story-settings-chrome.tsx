@@ -60,6 +60,7 @@ export function SettingsStoryChrome({
         navigation={{
           activePluginId: null,
           activeSection: resolvedActiveSection,
+          otherPluginEntries: [],
           pluginEntries: [],
           sections: SETTINGS_NAV_SECTIONS,
         }}

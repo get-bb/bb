@@ -20,8 +20,7 @@ vi.mock("@/hooks/useHostDaemon", () => ({
 }));
 
 function wrapperFor(path: string, plugins: readonly InstalledPlugin[] = []) {
-  const { queryClient, wrapper: QueryWrapper } =
-    createQueryClientTestHarness();
+  const { queryClient, wrapper: QueryWrapper } = createQueryClientTestHarness();
   queryClient.setQueryData(pluginListQueryKey(true), plugins);
   return function Wrapper({ children }: { children: ReactNode }) {
     return (
@@ -122,12 +121,13 @@ describe("useSettingsNavState", () => {
     );
   });
 
-  it("keeps a disabled plugin reachable after its settings metadata unloads", () => {
+  it("keeps a disabled plugin reachable in the secondary plugin group", () => {
     const { result } = renderHook(() => useSettingsNavState(), {
       wrapper: wrapperFor("/settings", [disabledPlugin()]),
     });
 
-    expect(result.current.pluginEntries).toEqual([
+    expect(result.current.pluginEntries).toEqual([]);
+    expect(result.current.otherPluginEntries).toEqual([
       { icon: null, id: "linear", label: "Linear" },
     ]);
   });

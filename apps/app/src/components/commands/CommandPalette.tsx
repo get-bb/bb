@@ -83,8 +83,9 @@ export function CommandPalette({ threadId, projectId }: CommandPaletteProps) {
     () =>
       buildPluginSettingsEntries({
         installedPlugins,
-      }),
-    [installedPlugins],
+        settingsSections: pluginSlots.settingsSections,
+      }).all,
+    [installedPlugins, pluginSlots.settingsSections],
   );
   const settingsActions = useMemo(
     () =>

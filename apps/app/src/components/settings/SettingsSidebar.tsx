@@ -1,10 +1,11 @@
-import type { MouseEvent as ReactMouseEvent } from "react";
+import { useState, type MouseEvent as ReactMouseEvent } from "react";
 import { PluginIcon } from "@/components/plugin/PluginIcon";
 import {
   SectionSidebar,
   SectionSidebarIcon,
   SectionSidebarLabel,
   SectionSidebarActionRow,
+  SectionSidebarDisclosureRow,
   SectionSidebarRow,
 } from "@/components/sidebar/SectionSidebar";
 import { canOpenNativeScreen, shellOpenNative } from "@/lib/native-shell";
@@ -23,7 +24,11 @@ interface SettingsSidebarProps {
 
 type SettingsSidebarNavigation = Pick<
   SettingsNavState,
-  "activePluginId" | "activeSection" | "pluginEntries" | "sections"
+  | "activePluginId"
+  | "activeSection"
+  | "otherPluginEntries"
+  | "pluginEntries"
+  | "sections"
 >;
 
 interface SettingsSidebarContentProps extends SettingsSidebarProps {
@@ -40,7 +45,26 @@ export function SettingsSidebarContent({
   navigation,
   testIdPrefix = "settings",
 }: SettingsSidebarContentProps) {
-  const { activePluginId, activeSection, pluginEntries, sections } = navigation;
+  const {
+    activePluginId,
+    activeSection,
+    otherPluginEntries,
+    pluginEntries,
+    sections,
+  } = navigation;
+  const activePluginIsOther = otherPluginEntries.some(
+    (entry) => entry.id === activePluginId,
+  );
+  const disclosureContext = `${activePluginId ?? ""}:${activePluginIsOther}`;
+  const [otherPluginsDisclosure, setOtherPluginsDisclosure] = useState(() => ({
+    context: disclosureContext,
+    expanded: activePluginIsOther,
+  }));
+  const showOtherPlugins =
+    otherPluginsDisclosure.context === disclosureContext
+      ? otherPluginsDisclosure.expanded
+      : activePluginIsOther;
+  const hasPlugins = pluginEntries.length > 0 || otherPluginEntries.length > 0;
 
   return (
     <SectionSidebar
@@ -67,7 +91,7 @@ export function SettingsSidebarContent({
             </SectionSidebarRow>
           ))}
       </div>
-      {pluginEntries.length > 0 ? (
+      {hasPlugins ? (
         <>
           <div className="mt-4">
             <SectionSidebarLabel>Plugins</SectionSidebarLabel>
@@ -87,6 +111,38 @@ export function SettingsSidebarContent({
                 />
               </SectionSidebarRow>
             ))}
+            {otherPluginEntries.length > 0 ? (
+              <>
+                <SectionSidebarDisclosureRow
+                  expanded={showOtherPlugins}
+                  label={`Other installed plugins (${otherPluginEntries.length})`}
+                  onToggle={() =>
+                    setOtherPluginsDisclosure({
+                      context: disclosureContext,
+                      expanded: !showOtherPlugins,
+                    })
+                  }
+                />
+                {showOtherPlugins
+                  ? otherPluginEntries.map((entry) => (
+                      <SectionSidebarRow
+                        key={entry.id}
+                        active={activePluginId === entry.id}
+                        label={entry.label}
+                        to={getPluginConfigurationRoutePath({
+                          pluginId: entry.id,
+                        })}
+                      >
+                        <PluginIcon
+                          pluginId={entry.id}
+                          icon={entry.icon}
+                          className="size-4 shrink-0"
+                        />
+                      </SectionSidebarRow>
+                    ))
+                  : null}
+              </>
+            ) : null}
           </div>
         </>
       ) : null}

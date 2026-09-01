@@ -23,6 +23,7 @@ export interface SettingsNavState {
   activeSection: SettingsSectionId | null;
   hasUnknownSection: boolean;
   activePluginId: string | null;
+  otherPluginEntries: readonly PluginSettingsEntry[];
   pluginEntries: readonly PluginSettingsEntry[];
   sections: readonly SettingsNavSection[];
 }
@@ -48,7 +49,7 @@ export function useSettingsNavSections(
 
 export function useSettingsNavState(): SettingsNavState {
   const location = useLocation();
-  const { fileOpeners } = usePluginSlots();
+  const { fileOpeners, settingsSections } = usePluginSlots();
   const sections = useSettingsNavSections(fileOpeners);
   const pluginListQuery = usePluginList({ enabled: true });
 
@@ -76,15 +77,17 @@ export function useSettingsNavState(): SettingsNavState {
           : "general";
 
   const installedPlugins = pluginListQuery.data?.plugins ?? [];
-  const pluginEntries = buildPluginSettingsEntries({
+  const pluginEntryGroups = buildPluginSettingsEntries({
     installedPlugins,
+    settingsSections,
   });
 
   return {
     activePluginId,
     activeSection,
     hasUnknownSection,
-    pluginEntries,
+    otherPluginEntries: pluginEntryGroups.other,
+    pluginEntries: pluginEntryGroups.configurable,
     sections,
   };
 }
