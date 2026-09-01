@@ -20,6 +20,10 @@ import { runQueuedMessageAutoSendForThread } from "../../src/services/threads/qu
 import { acceptThreadSendRequest } from "../../src/services/threads/thread-send-request.js";
 import { textInput } from "../helpers/prompt-input.js";
 import {
+  reportQueuedCommandSuccess,
+  waitForQueuedCommand,
+} from "../helpers/commands.js";
+import {
   seedEnvironment,
   seedHostSession,
   seedProjectWithSource,
@@ -91,6 +95,21 @@ function turnRequests(harness: TestAppHarness, threadId: string) {
   return listEvents(harness.db, { threadId }).filter(
     (event) => event.type === "client/turn/requested",
   );
+}
+
+async function stopThread(harness: TestAppHarness, threadId: string) {
+  const response = harness.app.request(`/api/v1/threads/${threadId}/stop`, {
+    method: "POST",
+  });
+  const stop = await waitForQueuedCommand(
+    harness,
+    ({ command }) =>
+      command.type === "thread.stop" && command.threadId === threadId,
+  );
+  await reportQueuedCommandSuccess(harness, stop, {
+    providerCheckpointId: null,
+  });
+  expect((await response).status).toBe(200);
 }
 
 describe("the requested queue drain", () => {
@@ -326,6 +345,46 @@ describe("the requested queue drain", () => {
       expect(turnRequests(harness, thread.id)).toHaveLength(turnsBefore + 1);
     });
   });
+
+  it.each(["scheduled", "plugin"] as const)(
+    "dispatches independently %s work after a manual stop",
+    async (kind) => {
+      await withTestHarness(async (harness) => {
+        installHooks({
+          "message.dispatch": [
+            {
+              pluginId: "limiter",
+              handler: () => ({ action: "proceed" }) as const,
+            },
+          ],
+        });
+        const { thread } = seedRunnableThread(harness, {
+          hostId: `host-stopped-${kind}`,
+          status: "active",
+        });
+        seedQueuedMessage(harness.deps, {
+          threadId: thread.id,
+          content: textInput(`${kind} work`),
+          waitingOn:
+            kind === "scheduled"
+              ? { kind: "time" }
+              : { kind: "plugin", pluginId: "limiter", reason: "held" },
+          sendAt: kind === "scheduled" ? Date.now() - 1_000 : null,
+        });
+        const turnsBefore = turnRequests(harness, thread.id).length;
+        await stopThread(harness, thread.id);
+
+        if (kind === "scheduled") {
+          await runDueScheduledQueueSweep(harness.deps, Date.now());
+        } else {
+          await runRequestedQueueDrain(harness.deps);
+        }
+
+        expect(listQueuedThreadMessages(harness.db, thread.id)).toEqual([]);
+        expect(turnRequests(harness, thread.id)).toHaveLength(turnsBefore + 1);
+      });
+    },
+  );
 
   it.each(["scheduled", "plugin"] as const)(
     "does not dispatch a %s group containing a failed row",

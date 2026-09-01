@@ -6,6 +6,7 @@ import {
   getQueuedThreadMessage,
   getEnvironment,
   getThread,
+  isOrdinaryTurnEndQueuedMessage,
   isThreadQueueAutoSendPaused,
   listIdleThreadsWithQueuedMessages,
   releaseQueuedMessageClaim,
@@ -300,15 +301,13 @@ interface QueuedMessageAutoSendRequestArgs {
 }
 
 function isQueuedMessageAutoSendCandidate(
-  db: DbQueryConnection,
   thread: Thread | null,
 ): thread is Thread {
   return (
     thread !== null &&
     thread.archivedAt === null &&
     thread.deletedAt === null &&
-    thread.status !== "stopping" &&
-    !isThreadQueueAutoSendPaused(db, thread.id)
+    thread.status !== "stopping"
   );
 }
 
@@ -319,7 +318,18 @@ interface FormatQueuedMessageInputForSenderArgs {
 
 const STALE_QUEUED_MESSAGE_CLAIM_MS = 5 * 60 * 1000;
 const QUEUED_MESSAGE_CLAIM_LOST_CODE = "queued_message_claim_lost";
+const QUEUED_MESSAGE_AUTO_SEND_PAUSED_CODE = "queued_message_auto_send_paused";
 const activeQueuedMessageClaimTokens = new Set<string>();
+
+function respectsManualStopPause(
+  args: SendClaimedQueuedMessageForThreadArgs,
+): boolean {
+  return (
+    args.mode === "auto" &&
+    !args.sendNow &&
+    args.queuedMessages.every(isOrdinaryTurnEndQueuedMessage)
+  );
+}
 
 function sendQueuedMessagePayload(
   queuedMessage: ThreadQueuedMessage,
@@ -430,6 +440,21 @@ function isQueuedMessageClaimLostError(error: unknown): boolean {
   return (
     error instanceof ApiError &&
     error.body.code === QUEUED_MESSAGE_CLAIM_LOST_CODE
+  );
+}
+
+function createQueuedMessageAutoSendPausedError(): ApiError {
+  return new ApiError(
+    409,
+    QUEUED_MESSAGE_AUTO_SEND_PAUSED_CODE,
+    "Queued message auto-send was paused by a manual stop",
+  );
+}
+
+function isQueuedMessageAutoSendPausedError(error: unknown): boolean {
+  return (
+    error instanceof ApiError &&
+    error.body.code === QUEUED_MESSAGE_AUTO_SEND_PAUSED_CODE
   );
 }
 
@@ -544,6 +569,12 @@ async function sendClaimedQueuedMessageForIdleProviderThread(
 
   const { activeThread, command } = deps.db.transaction(
     (tx) => {
+      if (
+        respectsManualStopPause(args) &&
+        isThreadQueueAutoSendPaused(tx, thread.id)
+      ) {
+        throw createQueuedMessageAutoSendPausedError();
+      }
       if (deferredFirstTurnContext) {
         requireDeferredFirstTurnContextCurrent(tx, {
           requestSequence: deferredFirstTurnContext.requestSequence,
@@ -706,6 +737,7 @@ async function sendClaimedQueuedMessageForThread(
     source: {
       kind: "drain",
       claimed: args.queuedMessages,
+      respectManualStopPause: respectsManualStopPause(args),
       sendNow: args.sendNow,
     },
     queuePayload: queuedMessage.payload,
@@ -773,6 +805,7 @@ export async function sendQueuedMessage(
     (isManualCompactionActive(deps, thread) ||
       (args.mode === "auto" &&
         !args.sendNow &&
+        queuedMessages.every(isOrdinaryTurnEndQueuedMessage) &&
         isThreadQueueAutoSendPaused(deps.db, thread.id)))
   ) {
     releaseQueuedMessageClaims(deps, queuedMessages);
@@ -789,6 +822,9 @@ export async function sendQueuedMessage(
     );
   } catch (error) {
     releaseQueuedMessageClaims(deps, queuedMessages);
+    if (isQueuedMessageAutoSendPausedError(error)) {
+      return toThreadQueuedMessage(queuedMessages[0]!);
+    }
     throw error;
   }
 }
@@ -798,7 +834,7 @@ export async function sendNextQueuedMessageIfPresent(
   args: { threadId: string },
 ): Promise<boolean> {
   const initialThread = getThread(deps.db, args.threadId);
-  if (!isQueuedMessageAutoSendCandidate(deps.db, initialThread)) {
+  if (!isQueuedMessageAutoSendCandidate(initialThread)) {
     return false;
   }
 
@@ -817,7 +853,7 @@ export async function sendNextQueuedMessageIfPresent(
 
   const thread = getThread(deps.db, args.threadId);
   if (
-    !isQueuedMessageAutoSendCandidate(deps.db, thread) ||
+    !isQueuedMessageAutoSendCandidate(thread) ||
     isManualCompactionActive(deps, thread)
   ) {
     releaseQueuedMessageClaims(deps, nextQueuedMessages);
@@ -835,7 +871,10 @@ export async function sendNextQueuedMessageIfPresent(
     );
   } catch (error) {
     releaseQueuedMessageClaims(deps, nextQueuedMessages);
-    if (isQueuedMessageClaimLostError(error)) {
+    if (
+      isQueuedMessageClaimLostError(error) ||
+      isQueuedMessageAutoSendPausedError(error)
+    ) {
       return false;
     }
     // Nobody is listening to this attempt, so the row itself has to carry what

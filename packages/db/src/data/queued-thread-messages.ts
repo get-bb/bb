@@ -253,6 +253,22 @@ function partitionQueuedMessageGroups(
 
 const IDLE_DRAINABLE_WAIT_KINDS = ["thread-busy", "turn-starting"] as const;
 
+function hasOrdinaryTurnEndWait(row: QueuedThreadMessageRow): boolean {
+  if (row.waitingOn === null) return true;
+  try {
+    const parsed = JSON.parse(row.waitingOn) as { kind?: unknown };
+    return parsed.kind === "thread-busy";
+  } catch {
+    return false;
+  }
+}
+
+export function isOrdinaryTurnEndQueuedMessage(
+  row: QueuedThreadMessageRow,
+): boolean {
+  return row.systemNotice === null && hasOrdinaryTurnEndWait(row);
+}
+
 /**
  * The JS mirror of {@link drainableQueuedThreadMessage}'s wait condition, for
  * deciding whole-group eligibility over rows already in hand. Kept next to a
@@ -671,6 +687,7 @@ function manuallyStoppedQueuePauseQuery(
   const interruption = alias(events, "queue_pause_interruption");
   const laterInterruption = alias(events, "queue_pause_later_interruption");
   const laterRootTurnStart = alias(events, "queue_pause_later_turn_start");
+  const laterTurnRequest = alias(events, "queue_pause_later_turn_request");
   return db
     .select({ sequence: interruption.sequence })
     .from(interruption)
@@ -701,6 +718,19 @@ function manuallyStoppedQueuePauseQuery(
                 eq(laterRootTurnStart.type, "turn/started"),
                 isNull(laterRootTurnStart.parentToolCallId),
                 sql`${laterRootTurnStart.sequence} > ${interruption.sequence}`,
+                exists(
+                  db
+                    .select({ sequence: laterTurnRequest.sequence })
+                    .from(laterTurnRequest)
+                    .where(
+                      and(
+                        eq(laterTurnRequest.threadId, interruption.threadId),
+                        eq(laterTurnRequest.type, "client/turn/requested"),
+                        sql`${laterTurnRequest.sequence} > ${interruption.sequence}`,
+                        sql`${laterTurnRequest.sequence} < ${laterRootTurnStart.sequence}`,
+                      ),
+                    ),
+                ),
               ),
             ),
         ),
@@ -740,7 +770,10 @@ export function listIdleThreadsWithQueuedMessages(
         inArray(threads.status, ["idle", "pending"]),
         isNull(threads.archivedAt),
         isNull(threads.deletedAt),
-        notExists(manuallyStoppedQueuePauseQuery(db, threads.id)),
+        or(
+          notExists(manuallyStoppedQueuePauseQuery(db, threads.id)),
+          isNotNull(queuedThreadMessages.systemNotice),
+        ),
         // A gone environment (destroying/destroyed) is never reprovisioned, so
         // its queued rows can never drain. Leave them out of the sweep instead
         // of failing the same send every cycle (#1789). A thread with NO
@@ -906,13 +939,16 @@ export function claimNextQueuedThreadMessageGroup(
       // one prompt — and skipping it does not block the independent rows
       // behind it: the queue is a queue, not a pipeline.
       const queuedMessages = listQueuedThreadMessages(tx, threadId);
+      const pauseOrdinaryMessages = isThreadQueueAutoSendPaused(tx, threadId);
       const group =
         partitionQueuedMessageGroups(queuedMessages).find((rows) => {
-          if (!isGroupEligible) {
-            return rows.every(isIdleDrainableQueuedMessage);
-          }
+          const eligible = isGroupEligible
+            ? rows.some(isIdleDrainableQueuedMessage) && isGroupEligible(rows)
+            : rows.every(isIdleDrainableQueuedMessage);
           return (
-            rows.some(isIdleDrainableQueuedMessage) && isGroupEligible(rows)
+            eligible &&
+            (!pauseOrdinaryMessages ||
+              rows.every((row) => !isOrdinaryTurnEndQueuedMessage(row)))
           );
         }) ?? null;
       if (group === null) {

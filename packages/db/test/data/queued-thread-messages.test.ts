@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
-import type { PromptInput } from "@bb/domain";
+import { threadScope, type PromptInput } from "@bb/domain";
 import { noopNotifier } from "../../src/notifier.js";
+import { insertEvents } from "../../src/data/events.js";
 import {
   claimNextQueuedThreadMessageGroup,
   claimQueuedThreadMessage,
@@ -769,6 +770,70 @@ describe("queued thread messages", () => {
     expect(listQueuedThreadMessages(db, thread.id).map((queuedMessage) => queuedMessage.id)).toEqual([
       thirdQueuedMessage.id,
     ]);
+  });
+
+  it("pauses ordinary turn-end rows without pausing system notices", () => {
+    const { db, project } = setup();
+    const thread = createThread(db, noopNotifier, {
+      projectId: project.id,
+      providerId: "codex",
+      status: "idle",
+    });
+    const ordinary = createQueuedThreadMessage(db, noopNotifier, {
+      threadId: thread.id,
+      content: defaultInput,
+      model: "gpt-5",
+      reasoningLevel: "medium",
+      permissionMode: "full",
+      serviceTier: "default",
+      waitingOn: { kind: "thread-busy" },
+      sendAt: null,
+      payload: { kind: "inline" },
+      systemNotice: null,
+    });
+    const notice = createQueuedThreadMessage(db, noopNotifier, {
+      threadId: thread.id,
+      content: altInput,
+      model: "gpt-5",
+      reasoningLevel: "medium",
+      permissionMode: "full",
+      serviceTier: "default",
+      waitingOn: { kind: "thread-busy" },
+      sendAt: null,
+      payload: { kind: "inline" },
+      systemNotice: {
+        kind: "child-completed",
+        subject: {
+          kind: "thread",
+          threadId: "thr_child",
+          threadName: "Child",
+        },
+      },
+    });
+    insertEvents(db, noopNotifier, [
+      {
+        threadId: thread.id,
+        sequence: 1,
+        type: "system/thread/interrupted",
+        scope: threadScope(),
+        itemId: null,
+        itemKind: null,
+        parentToolCallId: null,
+        data: JSON.stringify({ reason: "manual-stop" }),
+      },
+    ]);
+
+    expect(
+      listIdleThreadsWithQueuedMessages(db).map((row) => row.threadId),
+    ).toContain(thread.id);
+    expect(
+      claimNextQueuedThreadMessageGroup(db, noopNotifier, thread.id)?.map(
+        (row) => row.id,
+      ),
+    ).toEqual([notice.id]);
+    expect(
+      listQueuedThreadMessages(db, thread.id).map((row) => row.id),
+    ).toEqual([ordinary.id]);
   });
 
   it("does not split a requeued group: the tail waits with its blocked lead", () => {

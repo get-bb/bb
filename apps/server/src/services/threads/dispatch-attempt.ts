@@ -3,6 +3,7 @@ import {
   getEnvironment,
   getThread,
   getThreadPendingStartContext,
+  isThreadQueueAutoSendPaused,
   listRunningThreads,
   setThreadPendingStartContext,
   type ClaimedQueuedThreadMessageRow,
@@ -160,6 +161,7 @@ export type DispatchAttemptSource =
   | {
       kind: "drain";
       claimed: ClaimedQueuedThreadMessageRow[];
+      respectManualStopPause: boolean;
       /**
        * Send-now. Bypasses every plugin wait AND the row's own `sendAt`; core
        * waits are NOT overridable, because they guard invariants rather than
@@ -274,6 +276,8 @@ async function runDispatchAttempt(
   const firstDispatch = thread.status === "pending";
   const claimed = args.source.kind === "drain" ? args.source.claimed : null;
   const sendNow = args.source.kind === "drain" && args.source.sendNow;
+  const respectManualStopPause =
+    args.source.kind === "drain" && args.source.respectManualStopPause;
   const attempt = resolveDispatchAttemptKind(thread, payload.mode);
 
   const execution = await buildExecutionOptions(
@@ -418,6 +422,7 @@ async function runDispatchAttempt(
               admitted.value = await admitPendingThread(deps, {
                 claimed,
                 payload: resolvedPayload,
+                respectManualStopPause,
                 startContext: args.startContext ?? null,
                 thread,
               });
@@ -450,6 +455,7 @@ async function runDispatchAttempt(
       : await admitPendingThread(deps, {
           claimed,
           payload: resolvedPayload,
+          respectManualStopPause,
           startContext: args.startContext ?? null,
           thread,
         });
@@ -486,7 +492,13 @@ async function runDispatchAttempt(
     ...(args.retryOf !== undefined ? { retryOf: args.retryOf } : {}),
     ...(claimed === null
       ? {}
-      : { beforeAppendInTransaction: consumeClaimedRows(claimed) }),
+      : {
+          beforeAppendInTransaction: consumeClaimedRows(
+            claimed,
+            thread.id,
+            respectManualStopPause,
+          ),
+        }),
   });
   if (claimed !== null) {
     settleQueueRowDispatched({ row: claimed[0]! });
@@ -502,8 +514,17 @@ async function runDispatchAttempt(
  */
 function consumeClaimedRows(
   claimed: readonly ClaimedQueuedThreadMessageRow[],
+  threadId: string,
+  respectManualStopPause: boolean,
 ): SendThreadMessageTransactionPreflight {
   return ({ tx }) => {
+    if (respectManualStopPause && isThreadQueueAutoSendPaused(tx, threadId)) {
+      throw new ApiError(
+        409,
+        "queued_message_auto_send_paused",
+        "Queued message auto-send was paused by a manual stop",
+      );
+    }
     const consumed = deleteClaimedQueuedThreadMessageBatchInTransaction(tx, {
       queuedMessages: claimed,
     });
@@ -520,6 +541,7 @@ function consumeClaimedRows(
 interface AdmitPendingThreadArgs {
   claimed: ClaimedQueuedThreadMessageRow[] | null;
   payload: SendMessageRequest & { inputGroups?: PromptInput[][] };
+  respectManualStopPause: boolean;
   /** Creation's own record; null on a re-attempt, which reads it back. */
   startContext: PendingThreadStartContext | null;
   thread: Thread;
@@ -593,7 +615,11 @@ async function admitPendingThread(
         // so the row stays claimed for the caller to hand back rather than
         // being deleted under a message that never dispatched.
         if (args.claimed !== null && args.claimed.length > 0) {
-          consumeClaimedRows(args.claimed)({ tx });
+          consumeClaimedRows(
+            args.claimed,
+            args.thread.id,
+            args.respectManualStopPause,
+          )({ tx });
         }
         const prepared = applyLoggedThreadLifecycleEventInTransaction(
           { db: tx, logger: deps.logger },
