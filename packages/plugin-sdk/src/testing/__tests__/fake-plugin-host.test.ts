@@ -308,7 +308,9 @@ describe("settings", () => {
       notes: {
         type: "string",
         label: "Notes",
-        experimental_maxLength: 4,
+        experimental_schema: z
+          .string()
+          .max(4, "Notes must be at most 4 characters"),
         default: "",
       },
       payload: {

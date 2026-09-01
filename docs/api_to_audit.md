@@ -140,25 +140,23 @@ and reads nothing under that method, so the constant names a lane that no
 longer exists. Kept because 0.4.x published it; remove at the next major
 version.
 
-## Settings schemas, text limits, and server writes
+## Settings schemas and server writes
 
 **What it does.** A `PluginSettingDescriptor` can declare an
 `experimental_schema` Standard Schema validator that runs on the server for
 every proposed value; Zod schemas qualify. Settings schemas must validate
-synchronously without transforming their primitive value. String settings can
-also declare `experimental_maxLength`, which limits the generated input and is
-enforced by the server and fake plugin host. The generated form autosaves one
-field at a time and displays the first validation issue beneath that field. A
-`PluginSettingsHandle` can call `experimental_set` to validate and persist its
-own fields, receive the effective values, fire `onChange`, and notify settings
-consumers just like a settings route or `bb plugin config` write.
+synchronously without transforming their primitive value. The generated form
+autosaves one field at a time and displays the first validation issue beneath
+that field. A `PluginSettingsHandle` can call `experimental_set` to validate
+and persist its own fields, receive the effective values, fire `onChange`, and
+notify settings consumers just like a settings route or `bb plugin config`
+write.
 
 **Audit before stabilizing.**
 
 - Confirm synchronous, non-transforming validation remains sufficient.
 - Decide whether settings errors need structured issue paths in addition to
   the first user-facing message.
-- Confirm JavaScript string length is the intended character-count contract.
 - Confirm schemas should continue running for defaults at registration.
 - Exercise concurrent route, CLI, and plugin-owned writes, including secret
   values and unsets, before stabilizing `experimental_set`.

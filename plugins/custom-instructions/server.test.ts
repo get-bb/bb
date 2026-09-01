@@ -18,7 +18,7 @@ describe("custom instructions plugin", () => {
         description:
           "Give agents extra instructions and context for tasks on this bb host.",
         experimental_multiline: true,
-        experimental_maxLength: MAX_CUSTOM_INSTRUCTIONS_LENGTH,
+        experimental_schema: expect.any(Object),
         default: "",
       },
     });

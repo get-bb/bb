@@ -1,7 +1,14 @@
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
+import { z } from "zod";
 
 export const MAX_CUSTOM_INSTRUCTIONS_LENGTH = 4096;
 const STORAGE_KEY = "customInstructions";
+const customInstructionsSchema = z
+  .string()
+  .max(
+    MAX_CUSTOM_INSTRUCTIONS_LENGTH,
+    `Custom instructions must be at most ${MAX_CUSTOM_INSTRUCTIONS_LENGTH} characters`,
+  );
 
 function parseInstructionsInput(input: unknown): string {
   if (typeof input !== "object" || input === null || Array.isArray(input)) {
@@ -15,12 +22,11 @@ function parseInstructionsInput(input: unknown): string {
   if (typeof instructions !== "string") {
     throw new Error('"instructions" must be a string');
   }
-  if (instructions.length > MAX_CUSTOM_INSTRUCTIONS_LENGTH) {
-    throw new Error(
-      `"instructions" must be at most ${MAX_CUSTOM_INSTRUCTIONS_LENGTH} characters`,
-    );
+  const parsed = customInstructionsSchema.safeParse(instructions);
+  if (!parsed.success) {
+    throw new Error(parsed.error.issues[0]?.message ?? "invalid instructions");
   }
-  return instructions;
+  return parsed.data;
 }
 
 export default async function plugin(bb: BbPluginApi) {
@@ -31,7 +37,7 @@ export default async function plugin(bb: BbPluginApi) {
       description:
         "Give agents extra instructions and context for tasks on this bb host.",
       experimental_multiline: true,
-      experimental_maxLength: MAX_CUSTOM_INSTRUCTIONS_LENGTH,
+      experimental_schema: customInstructionsSchema,
       default: "",
     },
   });

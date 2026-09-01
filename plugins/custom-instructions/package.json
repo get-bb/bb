@@ -22,6 +22,9 @@
     "test": "vitest run --config vitest.config.ts",
     "typecheck": "tsc --noEmit"
   },
+  "dependencies": {
+    "zod": "^4.3.6"
+  },
   "devDependencies": {
     "@get-bb/plugin-sdk": "workspace:*",
     "@types/node": "^22.0.0",

@@ -73,7 +73,9 @@ const settings = bb.settings.define({
   notes: {
     type: "string",
     label: "Notes",
-    experimental_maxLength: 4096,
+    experimental_schema: z
+      .string()
+      .max(4096, "Notes must be at most 4096 characters"),
     default: "",
   },
   mode: {
@@ -100,10 +102,9 @@ give non-secrets defaults and handle missing secrets explicitly.
 validator; Zod schemas qualify. It runs on the server for settings-page
 autosaves, `bb plugin config`, `experimental_set`, and fake-host writes. The
 first validation issue is shown beneath the field, and the schema is not sent
-to the browser. `experimental_maxLength` remains explicit because it also
-drives the generated input and character counter. `experimental_set` accepts
-only the fields defined by that handle, accepts `null` to unset one, fires
-`onChange`, and returns the handle's effective values.
+to the browser. `experimental_set` accepts only the fields defined by that
+handle, accepts `null` to unset one, fires `onChange`, and returns the handle's
+effective values.
 
 ### bb.storage
 

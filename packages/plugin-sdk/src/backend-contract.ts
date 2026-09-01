@@ -72,8 +72,6 @@ export type PluginSettingDescriptor =
        * be multi-line.
        */
       experimental_multiline?: boolean;
-      /** Limit text input length in the default settings UI and at write time. */
-      experimental_maxLength?: number;
       /** Synchronously validate without transforming a proposed value. */
       experimental_schema?: StandardSchemaV1<string, string>;
       default?: string;

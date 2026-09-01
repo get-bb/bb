@@ -448,7 +448,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Declare each field's type (text, toggle, choice, or project) with a label and an optional default",
           "Get the form, its validation, and autosaving without writing any UI",
           "Validate each proposed value with a synchronous, non-transforming Standard Schema through `experimental_schema`; Zod schemas qualify",
-          "Render multi-line text and an enforced character limit with `experimental_multiline` and `experimental_maxLength`",
+          "Render multi-line text with `experimental_multiline`",
           "Mark a text field secret: bb stores it in a protected file on the server and never sends it to the browser",
           "Read values from server code, update them with `experimental_set`, or read non-secret values from plugin UI with `useSettings()`",
         ],

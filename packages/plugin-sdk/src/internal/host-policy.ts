@@ -118,12 +118,6 @@ const settingsBaseFields = {
   description: z.string().min(1).optional(),
 };
 
-const safeIntegerSchema = z
-  .number()
-  .int()
-  .min(Number.MIN_SAFE_INTEGER)
-  .max(Number.MAX_SAFE_INTEGER);
-
 const stringSettingSchemaSchema = z.custom<StandardSchemaV1<string, string>>(
   (value) => isStandardSchema(value),
 );
@@ -138,7 +132,6 @@ const settingDescriptorSchema = z.discriminatedUnion("type", [
       ...settingsBaseFields,
       secret: z.literal(true).optional(),
       experimental_multiline: z.boolean().optional(),
-      experimental_maxLength: safeIntegerSchema.positive().optional(),
       experimental_schema: stringSettingSchemaSchema.optional(),
       default: z.string().optional(),
     })
@@ -297,16 +290,6 @@ export function validateSettingsUpdate(
     if (descriptor.type === "select" && !descriptor.options.includes(value)) {
       errors.push(
         `setting "${key}" must be one of: ${descriptor.options.join(", ")}`,
-      );
-      continue;
-    }
-    if (
-      descriptor.type === "string" &&
-      descriptor.experimental_maxLength !== undefined &&
-      value.length > descriptor.experimental_maxLength
-    ) {
-      errors.push(
-        `${descriptor.label} must be at most ${descriptor.experimental_maxLength} characters`,
       );
       continue;
     }

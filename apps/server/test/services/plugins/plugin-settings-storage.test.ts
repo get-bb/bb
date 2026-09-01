@@ -231,8 +231,7 @@ describe("plugin settings + storage", () => {
               notes: {
                 type: "string",
                 label: "Notes",
-                experimental_maxLength: 4,
-                experimental_schema: z.string().regex(/^[a-z]*$/, "Notes must contain lowercase letters only"),
+                experimental_schema: z.string().max(4, "Notes must be at most 4 characters").regex(/^[a-z]*$/, "Notes must contain lowercase letters only"),
                 default: "",
               },
             });

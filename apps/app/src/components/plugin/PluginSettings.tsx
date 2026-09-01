@@ -219,32 +219,22 @@ function PluginSettingField({
         ? storedValue
         : "";
   if (isMultilineSetting(descriptor)) {
-    const maximumLength = descriptor.experimental_maxLength;
     return (
-      <div className="space-y-1">
-        <Textarea
-          value={value}
-          aria-label={descriptor.label}
-          aria-describedby={ariaDescribedBy}
-          aria-invalid={ariaInvalid}
-          rows={multilineRows(value)}
-          spellCheck={false}
-          autoCapitalize="off"
-          autoCorrect="off"
-          maxLength={maximumLength}
-          onChange={(event) => onChange(event.target.value)}
-          onBlur={onBlur}
-          className={MULTILINE_TEXTAREA_CLASS}
-        />
-        {maximumLength !== undefined ? (
-          <div className="text-right text-xs text-muted-foreground">
-            {value.length.toLocaleString()} / {maximumLength.toLocaleString()}
-          </div>
-        ) : null}
-      </div>
+      <Textarea
+        value={value}
+        aria-label={descriptor.label}
+        aria-describedby={ariaDescribedBy}
+        aria-invalid={ariaInvalid}
+        rows={multilineRows(value)}
+        spellCheck={false}
+        autoCapitalize="off"
+        autoCorrect="off"
+        onChange={(event) => onChange(event.target.value)}
+        onBlur={onBlur}
+        className={MULTILINE_TEXTAREA_CLASS}
+      />
     );
   }
-  const maximumLength = descriptor.experimental_maxLength;
   return (
     <Input
       type={isSecret ? "password" : "text"}
@@ -252,7 +242,6 @@ function PluginSettingField({
       aria-label={descriptor.label}
       aria-describedby={ariaDescribedBy}
       aria-invalid={ariaInvalid}
-      maxLength={maximumLength}
       placeholder={isSecret ? (secretIsSet ? "[set]" : "[not set]") : undefined}
       onChange={(event) => onChange(event.target.value)}
       onBlur={onBlur}
