@@ -858,7 +858,11 @@ export function claimQueuedThreadMessageGroup(
       if (group === null) {
         return null;
       }
-      if (isGroupEligible && !isGroupEligible(group)) {
+      if (
+        isGroupEligible &&
+        (!group.every((row) => row.failureReason === null) ||
+          !isGroupEligible(group))
+      ) {
         return null;
       }
       if (!isGroupEligible && group[0]?.id !== id) {

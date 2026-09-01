@@ -1,4 +1,4 @@
-import { listEvents, listQueuedThreadMessages, setQueuedThreadMessageGroupBoundary } from "@bb/db";
+import { listEvents, listQueuedThreadMessages, setQueuedThreadMessageFailureReason, setQueuedThreadMessageGroupBoundary } from "@bb/db";
 import type { PluginHookName } from "@get-bb/plugin-sdk";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
@@ -142,6 +142,26 @@ describe("the requested queue drain", () => {
 
       expect(listQueuedThreadMessages(harness.db, thread.id)).toHaveLength(0);
       expect(turnRequests(harness, thread.id)).toHaveLength(turnsBefore + 1);
+    });
+  });
+
+  it.each(["scheduled", "plugin"] as const)("does not dispatch a %s group containing a failed row", async (drain) => {
+    await withTestHarness(async (harness) => {
+      let attempts = 0;
+      installHooks({ "message.dispatch": [{ pluginId: "limiter", handler: () => { attempts += 1; return { action: "wait", reason: "At capacity" } as const; } }] });
+      const { thread } = seedRunnableThread(harness, { hostId: `host-failed-${drain}-group`, status: "idle" });
+      const waitingOn = drain === "scheduled" ? ({ kind: "time" } as const) : ({ kind: "plugin", pluginId: "limiter", reason: "At capacity" } as const);
+      const sendAt = drain === "scheduled" ? Date.now() - 1_000 : null;
+      const lead = seedQueuedMessage(harness.deps, { threadId: thread.id, content: textInput("lead"), waitingOn, sendAt });
+      const failed = seedQueuedMessage(harness.deps, { threadId: thread.id, content: textInput("failed"), waitingOn, sendAt });
+      setQueuedThreadMessageGroupBoundary({ db: harness.db, notifier: harness.deps.hub, threadId: thread.id, expectedGroupedPrefixQueuedMessageIds: [lead.id, failed.id], groupBoundaryQueuedMessageId: failed.id });
+      setQueuedThreadMessageFailureReason(harness.db, harness.deps.hub, { id: failed.id, threadId: thread.id, failureReason: "Terminal failure" });
+
+      if (drain === "scheduled") await runDueScheduledQueueSweep(harness.deps, Date.now());
+      else await runRequestedQueueDrain(harness.deps);
+
+      expect(attempts).toBe(0);
+      expect(listQueuedThreadMessages(harness.db, thread.id)).toHaveLength(2);
     });
   });
 
