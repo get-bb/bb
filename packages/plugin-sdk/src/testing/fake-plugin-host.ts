@@ -5,7 +5,6 @@ import { join } from "node:path";
 import Database from "better-sqlite3";
 import { CronExpressionParser } from "cron-parser";
 import { Hono } from "hono";
-import { z } from "zod";
 import { PLUGIN_INTERACTION_MAX_TITLE_LENGTH } from "@bb/domain/plugin-interaction-limits";
 import {
   adoptHttpRouteResponse,
@@ -44,6 +43,7 @@ import {
   validatePluginAiServiceDeclaration,
   validatePluginProviderDeclaration,
   validateSettingsUpdate,
+  zodSchemaToJsonSchema,
   type NormalizedPluginProviderDeclaration,
 } from "../internal/host-policy.js";
 import type {
@@ -1500,16 +1500,14 @@ function createFakePluginHostInternal(
       let parse: FakeAgentToolRecord["parse"];
       if (isZodSchemaLike(parameters)) {
         try {
-          inputSchema = z.toJSONSchema(parameters as z.ZodType, {
-            io: "input",
-          });
+          inputSchema = zodSchemaToJsonSchema(parameters);
         } catch (error) {
           throw new Error(
             `tool "${name}" parameters look like a zod schema but could not be converted to JSON Schema (${errorMessage(error)}) — use zod 4, or pass a plain JSON-schema object`,
           );
         }
         parse = (input) => {
-          const result = (parameters as z.ZodType).safeParse(input);
+          const result = parameters.safeParse(input);
           if (result.success) return { ok: true, value: result.data };
           return { ok: false, error: summarizeParseIssues(result.error) };
         };

@@ -36,6 +36,7 @@ type EnvironmentProvisionCommandInitiator =
   EnvironmentProvisionCommand["initiator"];
 
 interface ManagedBranchNameArgs {
+  branchPrefix: string;
   branchSlug?: string | null;
   threadId: string;
 }
@@ -45,8 +46,8 @@ export function buildManagedBranchName(args: ManagedBranchNameArgs): string {
     ? sanitizeGeneratedBranchSlug(args.branchSlug)
     : null;
   return branchSlug
-    ? `bb/${branchSlug}-${args.threadId}`
-    : `bb/${args.threadId}`;
+    ? `${args.branchPrefix}${branchSlug}-${args.threadId}`
+    : `${args.branchPrefix}${args.threadId}`;
 }
 
 export function requirePublicProjectForThreadCreate(

@@ -1584,12 +1584,24 @@ export function readRpcMethodContract(
 
 /** Duck-typed zod detection: plugin sources may carry their own zod copy,
  * so instanceof is useless — anything with safeParse is treated as zod. */
-export function isZodSchemaLike(value: unknown): boolean {
+type ZodSchemaLike = {
+  safeParse: z.ZodType["safeParse"];
+  toJSONSchema?: z.ZodType["toJSONSchema"];
+};
+
+export function isZodSchemaLike(value: unknown): value is ZodSchemaLike {
   return (
     typeof value === "object" &&
     value !== null &&
     typeof (value as { safeParse?: unknown }).safeParse === "function"
   );
+}
+
+export function zodSchemaToJsonSchema(schema: ZodSchemaLike): unknown {
+  if (typeof schema.toJSONSchema === "function") {
+    return schema.toJSONSchema({ io: "input" });
+  }
+  return z.toJSONSchema(schema as z.ZodType, { io: "input" });
 }
 
 const SINGLE_SCHEMA_KEYWORDS = [

@@ -15,7 +15,7 @@ const gitReservedBranchNames = new Set([
   "REVERT_HEAD",
 ]);
 
-function isValidGitBranchName(name: GitBranchNameCandidate) {
+export function isValidGitBranchName(name: GitBranchNameCandidate) {
   const components = name.split("/");
   return (
     name.length > 0 &&

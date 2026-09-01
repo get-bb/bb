@@ -100,6 +100,13 @@ it on to hide every `customModels` entry from `~/.bb/config.json` in all model
 lists (pickers, `bb provider models`, and the SDK) during a screen share. The
 entries stay in the config file.
 
+Settings → General also includes `managedBranchPrefix`, which defaults to
+`bb/`. bb puts it in front of every branch name it creates for a worktree, so
+the default gives `bb/fix-login-flow-thr_ab12cd34ef`. Set `sawyer/wt-` to get
+`sawyer/wt-fix-login-flow-thr_ab12cd34ef`, or clear it for no prefix. bb rejects
+a prefix that cannot start a valid git branch name. The new prefix applies to
+branches bb creates after the change.
+
   bb settings show
   bb settings ai-services
   bb settings general <key> <value>

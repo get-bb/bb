@@ -1,5 +1,6 @@
 import {
   createEnvironment,
+  getAppSettings,
   getEnvironment,
   getThread,
   type CreateEnvironmentInput,
@@ -144,6 +145,7 @@ interface BuildEnvironmentProvisionRequestArgs {
 
 interface BuildUnmanagedCheckoutArgs {
   branch: UnmanagedBranchSpec;
+  branchPrefix: string;
   context: ThreadProvisionEnvironmentProvisioningContext;
   thread: Thread;
 }
@@ -183,6 +185,7 @@ interface RequestPreparedEnvironmentProvisionArgs {
 }
 
 interface DirectUnmanagedEnvironmentPlanArgs {
+  branchPrefix: string;
   intent: DirectUnmanagedIntent;
   thread: Thread;
 }
@@ -217,6 +220,7 @@ type CheckoutUnmanagedEnvironmentProvisionResult =
   | { kind: "active-provision" };
 
 interface ManagedEnvironmentPlanArgs {
+  branchPrefix: string;
   dataDir: string;
   hostId: string;
   sourcePath: string;
@@ -710,6 +714,7 @@ function buildUnmanagedCheckout(
   return {
     kind: "new",
     name: buildManagedBranchName({
+      branchPrefix: args.branchPrefix,
       branchSlug: args.context.request.branchSlug,
       threadId: args.thread.id,
     }),
@@ -719,12 +724,14 @@ function buildUnmanagedCheckout(
 
 function buildCheckoutUnmanagedEnvironmentProvisionRequest(
   args: BuildEnvironmentProvisionRequestArgs & {
+    branchPrefix: string;
     intent: CheckoutUnmanagedIntent;
     thread: Thread;
   },
 ): EnvironmentProvisionRequest {
   const checkout = buildUnmanagedCheckout({
     branch: args.intent.branch,
+    branchPrefix: args.branchPrefix,
     context: args.context,
     thread: args.thread,
   });
@@ -758,6 +765,7 @@ function buildDirectUnmanagedEnvironmentPlan(
       const checkout = args.intent.branch
         ? buildUnmanagedCheckout({
             branch: args.intent.branch,
+            branchPrefix: args.branchPrefix,
             context,
             thread: args.thread,
           })
@@ -794,6 +802,7 @@ function buildManagedEnvironmentPlan(
     buildRequest: ({ context, environment }) => {
       const command = buildEnvironmentProvisionCommand({
         branchName: buildManagedBranchName({
+          branchPrefix: args.branchPrefix,
           branchSlug: context.request.branchSlug,
           threadId: args.thread.id,
         }),
@@ -855,6 +864,7 @@ async function resolveEnvironmentCreationPlan(
   switch (args.intent.type) {
     case "direct-unmanaged":
       return buildDirectUnmanagedEnvironmentPlan({
+        branchPrefix: getAppSettings(deps.db).managedBranchPrefix,
         intent: args.intent,
         thread: args.thread,
       });
@@ -863,6 +873,7 @@ async function resolveEnvironmentCreationPlan(
         hostId: args.intent.hostId,
       });
       return buildManagedEnvironmentPlan({
+        branchPrefix: getAppSettings(deps.db).managedBranchPrefix,
         dataDir: hostSession.dataDir,
         hostId: args.intent.hostId,
         sourcePath: args.intent.sourcePath,
@@ -891,6 +902,7 @@ function requestCheckoutUnmanagedEnvironmentProvision(
   deps: ThreadProvisionWriteDeps,
   args: RequestCheckoutUnmanagedEnvironmentProvisionArgs,
 ): CheckoutUnmanagedEnvironmentProvisionResult {
+  const branchPrefix = getAppSettings(deps.db).managedBranchPrefix;
   return deps.db.transaction(
     (tx) => {
       if (hasActiveEnvironmentProvision(args.environment)) {
@@ -926,6 +938,7 @@ function requestCheckoutUnmanagedEnvironmentProvision(
             ),
           });
       const request = buildCheckoutUnmanagedEnvironmentProvisionRequest({
+        branchPrefix,
         context,
         environment: args.environment,
         intent: args.intent,
