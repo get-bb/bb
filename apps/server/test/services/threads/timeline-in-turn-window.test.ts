@@ -1591,3 +1591,165 @@ describe("turn details for an item that finishes in a later turn", () => {
     }
   });
 });
+
+describe("turn details for a reopened delegation", () => {
+  it("matches the summary range after an accepted new turn", () => {
+    const { db, thread } = setup();
+    const events: EventInput[] = [];
+    let sequence = 0;
+    const push = (event: Omit<EventInput, "sequence" | "threadId">): void => {
+      sequence += 1;
+      events.push({ ...event, sequence, threadId: thread.id });
+    };
+    const turnLifecycle = (
+      turnId: string,
+      type: "turn/started" | "turn/completed",
+      parentToolCallId: string | null = null,
+    ): Omit<EventInput, "sequence" | "threadId"> => ({
+      type,
+      scope: turnScope(turnId),
+      providerThreadId,
+      itemId: null,
+      itemKind: null,
+      parentToolCallId,
+      data: JSON.stringify(
+        type === "turn/started"
+          ? {
+              ...(parentToolCallId === null ? {} : { parentToolCallId }),
+            }
+          : { status: "completed", providerThreadId },
+      ),
+    });
+    const delegation = (
+      type: "item/started" | "item/completed",
+    ): Omit<EventInput, "sequence" | "threadId"> => ({
+      type,
+      scope: turnScope("turn-1"),
+      providerThreadId,
+      itemId: "delegation-1",
+      itemKind: "delegation",
+      parentToolCallId: null,
+      data: JSON.stringify({
+        providerThreadId,
+        item: {
+          type: "delegation",
+          id: "delegation-1",
+          childRef: "child-alpha",
+          label: "/root/alpha",
+          status: type === "item/started" ? "pending" : "completed",
+          background: false,
+        },
+      }),
+    });
+    const agentMessage = (
+      turnId: string,
+      itemId: string,
+      text: string,
+      parentToolCallId: string | null,
+    ): Omit<EventInput, "sequence" | "threadId"> => ({
+      type: "item/completed",
+      scope: turnScope(turnId),
+      providerThreadId,
+      itemId,
+      itemKind: "agentMessage",
+      parentToolCallId,
+      data: JSON.stringify({
+        providerThreadId,
+        item: {
+          type: "agentMessage",
+          id: itemId,
+          text,
+          ...(parentToolCallId === null ? {} : { parentToolCallId }),
+        },
+      }),
+    });
+    const clientTurn = (
+      value: number,
+      text: string,
+      target: { kind: "thread-start" } | { kind: "new-turn" },
+    ): Omit<EventInput, "sequence" | "threadId"> => ({
+      type: "client/turn/requested",
+      scope: threadScope(),
+      itemId: null,
+      itemKind: null,
+      parentToolCallId: null,
+      data: JSON.stringify({
+        direction: "outbound",
+        source: "tell",
+        initiator: "user",
+        request: { method: "turn/start", params: {} },
+        requestId: requestId(value),
+        senderThreadId: null,
+        input: [{ type: "text", text, mentions: [] }],
+        target,
+        execution,
+      }),
+    });
+    const acceptedInput = (
+      turnId: string,
+      value: number,
+    ): Omit<EventInput, "sequence" | "threadId"> => ({
+      type: "turn/input/accepted",
+      scope: turnScope(turnId),
+      providerThreadId,
+      itemId: null,
+      itemKind: null,
+      parentToolCallId: null,
+      data: JSON.stringify({ clientRequestId: requestId(value) }),
+    });
+
+    push(clientTurn(1, "Start alpha", { kind: "thread-start" }));
+    push(turnLifecycle("turn-1", "turn/started"));
+    push(acceptedInput("turn-1", 1));
+    push(delegation("item/started"));
+    push(turnLifecycle("turn-2", "turn/started", "delegation-1"));
+    push(
+      agentMessage(
+        "turn-2",
+        "alpha-original",
+        "ALPHA ORIGINAL",
+        "delegation-1",
+      ),
+    );
+    push(turnLifecycle("turn-2", "turn/completed"));
+    push(delegation("item/completed"));
+    push(agentMessage("turn-1", "root-original", "Alpha finished", null));
+    push(turnLifecycle("turn-1", "turn/completed"));
+    push(clientTurn(2, "Resume alpha", { kind: "new-turn" }));
+    push(turnLifecycle("turn-3", "turn/started"));
+    push(acceptedInput("turn-3", 2));
+    push(agentMessage("turn-3", "root-follow-up", "Resuming alpha", null));
+    push(delegation("item/started"));
+    push(turnLifecycle("turn-4", "turn/started", "delegation-1"));
+    push(
+      agentMessage("turn-4", "alpha-resumed", "ALPHA RESUMED", "delegation-1"),
+    );
+    push(turnLifecycle("turn-4", "turn/completed"));
+    push(delegation("item/completed"));
+    push(agentMessage("turn-3", "root-completed", "Alpha resumed", null));
+    push(turnLifecycle("turn-3", "turn/completed"));
+    insertEvents(db, noopNotifier, events);
+
+    const turnRows = buildNestedPage(
+      db,
+      thread,
+      LARGE_BUDGET,
+      null,
+    ).response.rows.filter(
+      (row): row is Extract<TimelineRow, { kind: "turn" }> =>
+        row.kind === "turn" && row.turnId === "turn-1",
+    );
+    expect(turnRows.length).toBeGreaterThan(0);
+    expect(JSON.stringify(turnRows)).toContain("ALPHA RESUMED");
+    for (const row of turnRows) {
+      expect(
+        buildTimelineTurnSummaryDetails(db, thread, {
+          includeProviderUnhandledOperations: false,
+          sourceSeqEnd: row.sourceSeqEnd,
+          sourceSeqStart: row.sourceSeqStart,
+          turnId: row.turnId,
+        }).rows,
+      ).toEqual(row.children ?? []);
+    }
+  });
+});
