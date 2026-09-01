@@ -181,7 +181,7 @@ bb keep-awake hosts <host-id>...
 
 The builtin Concurrency limit plugin has an autosaving page under Extensions
 → Plugins. Its overall limit is unlimited by default. Each host defaults to
-Auto: half its available processors, from 1 to 8. A blank host field restores
+Auto: one thread per available processor. A blank host field restores
 Auto, and 0 pauses new work for that scope. Configure it from an agent or
 terminal with:
 

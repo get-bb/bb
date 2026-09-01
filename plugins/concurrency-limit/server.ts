@@ -8,7 +8,6 @@ import { z } from "zod";
 import { concurrencyLimitHostContract } from "./contract.js";
 import {
   automaticHostLimit,
-  MAX_AUTOMATIC_LIMIT,
   MAX_LIMIT_VALUE,
   resolveHostLimit,
   type HostLimitOverride,
@@ -290,7 +289,7 @@ export default async function concurrencyLimitPlugin(
             ? JSON.stringify(view)
             : [
                 `Overall: ${view.globalLimit === null ? "unlimited" : view.globalLimit}`,
-                `Automatic host limit: half of available processors, up to ${MAX_AUTOMATIC_LIMIT}`,
+                "Automatic host limit: one thread per available processor",
                 ...view.hosts.map(formatHostLine),
               ].join("\n"),
         };

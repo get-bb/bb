@@ -13,8 +13,8 @@ const hosts = [
     name: "Laptop",
     status: "connected" as const,
     availableParallelism: 8,
-    automaticLimit: 4,
-    effectiveLimit: 4,
+    automaticLimit: 8,
+    effectiveLimit: 8,
     override: null,
   },
   {
@@ -81,7 +81,7 @@ describe("Concurrency limit settings", () => {
 
     expect(await slot.findByText("Host limits")).toBeTruthy();
     expect(
-      slot.getByText("Auto uses half the available processors, up to 8."),
+      slot.getByText("Auto allows one thread per available processor."),
     ).toBeTruthy();
     expect(slot.getByText("8 processors")).toBeTruthy();
     expect(slot.getByText("Offline")).toBeTruthy();
@@ -89,7 +89,7 @@ describe("Concurrency limit settings", () => {
       slot
         .getByRole("spinbutton", { name: "Laptop thread limit" })
         .getAttribute("placeholder"),
-    ).toBe("Auto (4)");
+    ).toBe("Auto (8)");
   });
 
   it("saves overall and per-host limits without accepting invalid numbers", async () => {

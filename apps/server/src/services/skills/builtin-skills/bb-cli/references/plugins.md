@@ -10,7 +10,7 @@
   `bb concurrency-limit status [--json]`,
   `bb concurrency-limit global [unlimited|<limit>] [--json]`, and
   `bb concurrency-limit host <host-id> [auto|<limit>] [--json]`. Automatic
-  host limits use half the available processors, from 1 to 8.
+  host limits allow one thread per available processor.
 - **BB plugin catalog** (store under `/api/v1/plugin-catalog`):
   - The store lists the **BB Community marketplace** catalog: a manifest
     the server re-reads at startup and every two hours from

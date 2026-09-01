@@ -41,7 +41,7 @@ workers and their child processes.
 
 The builtin Concurrency limit plugin controls how many threads run at once.
 Its settings page has an optional overall limit and one limit per host. Host
-limits default to Auto: half the host's available processors, from 1 to 8.
+limits default to Auto: one thread per available processor.
 Leave an override blank to return it to Auto; use 0 to pause new work. The CLI
 equivalents are:
 

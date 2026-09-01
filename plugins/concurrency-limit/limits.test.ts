@@ -5,11 +5,11 @@ describe("automaticHostLimit", () => {
   it.each([
     [null, 1],
     [1, 1],
-    [2, 1],
-    [4, 2],
-    [8, 4],
-    [16, 8],
-    [32, 8],
+    [2, 2],
+    [4, 4],
+    [8, 8],
+    [16, 16],
+    [32, 32],
   ])("maps %s available processors to %s threads", (processors, limit) => {
     expect(automaticHostLimit(processors)).toBe(limit);
   });
@@ -20,11 +20,11 @@ describe("resolveHostLimit", () => {
     const configuration = { globalLimit: null, hostOverrides: [] };
 
     expect(resolveHostLimit(configuration, "host-a", 8)).toEqual({
-      limit: 4,
+      limit: 8,
       mode: "automatic",
     });
     expect(resolveHostLimit(configuration, "host-b", 16)).toEqual({
-      limit: 8,
+      limit: 16,
       mode: "automatic",
     });
   });

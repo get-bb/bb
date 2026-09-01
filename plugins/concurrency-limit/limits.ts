@@ -1,5 +1,4 @@
 export const MAX_LIMIT_VALUE = 10_000;
-export const MAX_AUTOMATIC_LIMIT = 8;
 
 export interface HostLimitOverride {
   readonly hostId: string;
@@ -20,10 +19,7 @@ export function automaticHostLimit(
   availableParallelism: number | null,
 ): number {
   if (availableParallelism === null) return 1;
-  return Math.min(
-    MAX_AUTOMATIC_LIMIT,
-    Math.max(1, Math.floor(availableParallelism / 2)),
-  );
+  return availableParallelism;
 }
 
 export function resolveHostLimit(

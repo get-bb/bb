@@ -74,8 +74,8 @@ choosing Sleep still sleeps the Mac.
 
 Concurrency limit is also owned by its builtin plugin. Its autosaving page
 under Extensions → Plugins leaves the overall limit unlimited by default and
-uses an automatic per-host limit equal to half the available processors, from
-1 to 8. Use `bb concurrency-limit global [unlimited|<limit>]` and `bb
+uses an automatic per-host limit of one thread per available processor. Use
+`bb concurrency-limit global [unlimited|<limit>]` and `bb
 concurrency-limit host <host-id> [auto|<limit>]`; 0 pauses new work.
 
 Settings → Keyboard also includes `showKeyboardHints`, which defaults to true.

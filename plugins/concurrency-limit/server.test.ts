@@ -212,8 +212,8 @@ describe("configuration", () => {
             name: "Laptop",
             status: "connected",
             availableParallelism: 8,
-            automaticLimit: 4,
-            effectiveLimit: 4,
+            automaticLimit: 8,
+            effectiveLimit: 8,
             override: null,
           },
           {
@@ -221,8 +221,8 @@ describe("configuration", () => {
             name: "Studio",
             status: "disconnected",
             availableParallelism: 16,
-            automaticLimit: 8,
-            effectiveLimit: 8,
+            automaticLimit: 16,
+            effectiveLimit: 16,
             override: null,
           },
         ],
@@ -285,8 +285,8 @@ describe("configuration", () => {
         {
           id: "host-a",
           availableParallelism: 12,
-          automaticLimit: 6,
-          effectiveLimit: 6,
+          automaticLimit: 12,
+          effectiveLimit: 12,
         },
       ],
     });
@@ -340,7 +340,7 @@ describe("configuration", () => {
       harness.behavior.runCli(["host", "host-a", "auto"]),
     ).resolves.toMatchObject({
       exitCode: 0,
-      stdout: "Laptop: auto, 4 (8 processors, connected)",
+      stdout: "Laptop: auto, 8 (8 processors, connected)",
     });
     await expect(
       harness.behavior.runCli(["global", "1.5"]),
@@ -366,12 +366,16 @@ describe("message.dispatch", () => {
         running({ id: "b" }),
         running({ id: "c" }),
         running({ id: "d" }),
+        running({ id: "e" }),
+        running({ id: "f" }),
+        running({ id: "g" }),
+        running({ id: "h" }),
       ],
     });
 
     await expect(hook(dispatchContext())).resolves.toEqual({
       action: "wait",
-      reason: "4 of 4 running on host host-a",
+      reason: "8 of 8 running on host host-a",
     });
   });
 
