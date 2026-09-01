@@ -15,6 +15,7 @@ import {
 import { Icon } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { Popover, PopoverContent, PopoverTrigger } from "@bb/shared-ui/popover";
+import { useResetPickerScroll } from "./useResetPickerScroll";
 
 export interface ParentThreadPickerOption {
   label: string;
@@ -46,6 +47,7 @@ export function ParentThreadPicker({
 }: ParentThreadPickerProps) {
   const [open, setOpen] = useState(defaultOpen ?? false);
   const [searchQuery, setSearchQuery] = useState("");
+  const listRef = useResetPickerScroll<HTMLDivElement>(searchQuery);
   const selectedLabel =
     options.find((option) => option.value === value)?.label ?? "None";
   const handleOpenChange = useCallback(
@@ -99,7 +101,7 @@ export function ParentThreadPicker({
             value={searchQuery}
             onValueChange={setSearchQuery}
           />
-          <CommandList className="max-h-72">
+          <CommandList ref={listRef} className="max-h-72">
             {isLoading ? (
               <div className="px-3 py-2 text-sm text-muted-foreground">
                 Loading threads…

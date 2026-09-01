@@ -73,4 +73,21 @@ describe("ParentThreadPicker", () => {
       screen.queryByRole("combobox", { name: "Search parent threads" }),
     ).toBeNull();
   });
+
+  it("returns the results viewport to the top when searching", async () => {
+    render(picker());
+
+    fireEvent.click(screen.getByRole("button"));
+    const search = await screen.findByRole("combobox", {
+      name: "Search parent threads",
+    });
+    const list = document.querySelector<HTMLElement>("[cmdk-list]");
+    expect(list).not.toBeNull();
+    if (list === null) return;
+    list.scrollTop = 120;
+
+    fireEvent.change(search, { target: { value: "frontend" } });
+
+    expect(list.scrollTop).toBe(0);
+  });
 });

@@ -35,6 +35,7 @@ import {
 } from "@bb/shared-ui/option-display";
 import { cn } from "@bb/shared-ui/lib/utils";
 import type { GitBranchRefClassification } from "@bb/domain";
+import { useResetPickerScroll } from "./useResetPickerScroll";
 
 interface GetMergeBaseBranchCandidatesArgs {
   mergeBaseBranch?: string;
@@ -702,6 +703,7 @@ export function BranchPicker({
 }: BranchPickerProps) {
   const [open, setOpen] = useState(defaultOpen);
   const [query, setQuery] = useState("");
+  const optionsScrollRef = useResetPickerScroll<HTMLDivElement>(query);
   const isCompactViewport = useIsCompactViewport();
   const isPointerCoarse = usePointerCoarse();
   const selectedCheckoutIntent = resolveCheckoutIntent({
@@ -993,6 +995,7 @@ export function BranchPicker({
             />
           ) : null}
           <div
+            ref={optionsScrollRef}
             className="min-h-0 max-h-[60vh] overflow-y-auto overscroll-contain px-1 pb-1 pt-0 md:max-h-80"
             onWheel={(event) => {
               event.stopPropagation();
