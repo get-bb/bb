@@ -1,10 +1,13 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import type { Environment, JsonValue } from "@bb/domain";
 import { createBbSdk } from "../src/core.js";
 import { createHttpTransport } from "../src/transport-http.js";
-import { ThreadWaitTimeoutError } from "../src/areas/threads.js";
-import type { FetchImplementation } from "../src/response.js";
+import {
+  ThreadWaitTimeoutError,
+  ThreadWaitUnreachableError,
+} from "../src/areas/threads.js";
+import { BbHttpError, type FetchImplementation } from "../src/response.js";
 
 interface CapturedRequest {
   bodyText: string | undefined;
@@ -1586,7 +1589,7 @@ describe("@bb/sdk", () => {
 
   it("waits for a thread status through the shared SDK loop", async () => {
     const queue = createFetchQueue([
-      { body: { id: "thr_wait", status: "active" } },
+      { body: null, status: 204 },
       { body: { id: "thr_wait", status: "idle" } },
     ]);
     const sdk = createBbSdk({
@@ -1610,16 +1613,18 @@ describe("@bb/sdk", () => {
       threadId: "thr_wait",
     });
 
-    expect(queue.requests.map((request) => request.url)).toEqual([
-      "http://bb.test/api/v1/threads/thr_wait",
-      "http://bb.test/api/v1/threads/thr_wait",
-    ]);
+    expect(queue.requests).toHaveLength(2);
+    expect(
+      queue.requests.every((request) =>
+        request.url.startsWith(
+          "http://bb.test/api/v1/threads/thr_wait/wait?status=idle&waitMs=",
+        ),
+      ),
+    ).toBe(true);
   });
 
   it("throws a typed timeout error from thread wait", async () => {
-    const queue = createFetchQueue([
-      { body: { id: "thr_wait", status: "active" } },
-    ]);
+    const queue = createFetchQueue([{ body: null, status: 204 }]);
     const sdk = createBbSdk({
       transport: createHttpTransport({
         baseUrl: "http://bb.test",
@@ -1636,6 +1641,136 @@ describe("@bb/sdk", () => {
         pollIntervalMs: 1,
       }),
     ).rejects.toBeInstanceOf(ThreadWaitTimeoutError);
+  });
+
+  it("falls back to status polling only when the status wait route is absent", async () => {
+    const queue = createFetchQueue([
+      {
+        body: { code: "not_found", message: "Not found" },
+        status: 404,
+      },
+      { body: { id: "thr_wait", status: "active" } },
+      { body: { id: "thr_wait", status: "idle" } },
+    ]);
+    const sdk = createBbSdk({
+      transport: createHttpTransport({
+        baseUrl: "http://bb.test",
+        fetch: queue.fetch,
+        runtime: "node",
+      }),
+    });
+
+    await expect(
+      sdk.threads.wait({
+        pollIntervalMs: 1,
+        status: "idle",
+        threadId: "thr_wait",
+        timeoutMs: 1_000,
+      }),
+    ).resolves.toMatchObject({
+      matched: true,
+      target: { kind: "status", status: "idle" },
+    });
+    expect(queue.requests.map((request) => request.url)).toEqual([
+      expect.stringContaining("/threads/thr_wait/wait?status=idle&waitMs="),
+      "http://bb.test/api/v1/threads/thr_wait",
+      "http://bb.test/api/v1/threads/thr_wait",
+    ]);
+  });
+
+  it.each([
+    { code: "thread_not_found", status: 404 },
+    { code: "internal_error", status: 500 },
+  ])("does not poll after $status $code", async ({ code, status }) => {
+    const queue = createFetchQueue([
+      { body: { code, message: "Wait failed" }, status },
+    ]);
+    const sdk = createBbSdk({
+      transport: createHttpTransport({
+        baseUrl: "http://bb.test",
+        fetch: queue.fetch,
+        runtime: "node",
+      }),
+    });
+
+    await expect(
+      sdk.threads.wait({
+        pollIntervalMs: 1,
+        status: "idle",
+        threadId: "thr_wait",
+        timeoutMs: 1_000,
+      }),
+    ).rejects.toBeInstanceOf(BbHttpError);
+    expect(queue.requests).toHaveLength(1);
+  });
+
+  it("does not poll after a generic transport failure", async () => {
+    const failure = new TypeError("socket closed");
+    const fetchMock = vi.fn<FetchImplementation>(async () => {
+      throw failure;
+    });
+    const sdk = createBbSdk({
+      transport: createHttpTransport({
+        baseUrl: "http://bb.test",
+        fetch: fetchMock,
+        runtime: "node",
+      }),
+    });
+
+    await expect(
+      sdk.threads.wait({
+        pollIntervalMs: 1,
+        status: "idle",
+        threadId: "thr_wait",
+        timeoutMs: 1_000,
+      }),
+    ).rejects.toBe(failure);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("preserves unreachable status semantics on the long-poll route", async () => {
+    const queue = createFetchQueue([
+      { body: { id: "thr_wait", status: "error" } },
+    ]);
+    const sdk = createBbSdk({
+      transport: createHttpTransport({
+        baseUrl: "http://bb.test",
+        fetch: queue.fetch,
+        runtime: "node",
+      }),
+    });
+
+    await expect(
+      sdk.threads.wait({
+        status: "idle",
+        threadId: "thr_wait",
+        timeoutMs: 1_000,
+      }),
+    ).rejects.toBeInstanceOf(ThreadWaitUnreachableError);
+  });
+
+  it("aborts during the pause between status long-poll rounds", async () => {
+    const queue = createFetchQueue([{ body: null, status: 204 }]);
+    const sdk = createBbSdk({
+      transport: createHttpTransport({
+        baseUrl: "http://bb.test",
+        fetch: queue.fetch,
+        runtime: "node",
+      }),
+    });
+    const controller = new AbortController();
+    const wait = sdk.threads.wait({
+      pollIntervalMs: 10_000,
+      signal: controller.signal,
+      status: "idle",
+      threadId: "thr_wait",
+      timeoutMs: 60_000,
+    });
+    await vi.waitFor(() => expect(queue.requests).toHaveLength(1));
+    controller.abort();
+
+    await expect(wait).rejects.toMatchObject({ name: "AbortError" });
+    expect(queue.requests).toHaveLength(1);
   });
 
   it("exposes installed skills and canonical registry installation", async () => {

@@ -535,6 +535,31 @@ describe("plugin bb.sdk against a running server", () => {
           timeoutMs: 100,
         }),
       ).resolves.toMatchObject({ matched: true });
+      const waiting = seedThread(server.deps, {
+        environmentId: environment.id,
+        originPluginId: "spawner",
+        projectId: project.id,
+        status: "active",
+        visibility: "hidden",
+      });
+      const waitController = new AbortController();
+      const canceledWait = api.sdk.threads.wait({
+        signal: waitController.signal,
+        status: "idle",
+        threadId: waiting.id,
+        timeoutMs: 10_000,
+      });
+      await vi.waitFor(() => {
+        expect(server.threadWaitCoordinator.getStats().activeCallers).toBe(1);
+      });
+      waitController.abort();
+      await expect(canceledWait).rejects.toMatchObject({ name: "AbortError" });
+      await vi.waitFor(() => {
+        expect(server.threadWaitCoordinator.getStats()).toMatchObject({
+          activeCallers: 0,
+          activeEntries: 0,
+        });
+      });
       await expect(
         api.sdk.threads.send({
           threadId: operable.id,

@@ -66,11 +66,14 @@ export const CORE_COMMAND_GROUPS: readonly CommandGroup[] = [
     () => import("./commands/terminal.js"),
     (m) => (program, deps) => m.registerTerminalCommands(program, deps.getUrl),
   ),
-  group(
-    "thread",
-    () => import("./commands/thread/index.js"),
-    (m) => (program, deps) => m.registerThreadCommands(program, deps.getUrl),
-  ),
+  {
+    name: "thread",
+    load: async () => {
+      const module = await import("./commands/thread/index.js");
+      const register = await module.loadThreadCommandRegistrar(process.argv[3]);
+      return (program, deps) => register(program, deps.getUrl);
+    },
+  },
   group(
     "environment",
     () => import("./commands/environment.js"),

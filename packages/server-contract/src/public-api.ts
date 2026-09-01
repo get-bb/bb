@@ -168,6 +168,7 @@ import type {
   ThreadArchiveAllResponse,
   ThreadChildSummaryResponse,
   ThreadEventWaitQuery,
+  ThreadStatusWaitQuery,
   ThreadEventsQuery,
   ThreadSectionMutationResponse,
   ThreadSectionResponse,
@@ -279,6 +280,7 @@ import {
   systemUsageLimitsQuerySchema,
   systemVersionQuerySchema,
   threadEventWaitQuerySchema,
+  threadStatusWaitQuerySchema,
   threadEventsQuerySchema,
   threadFilesRawQuerySchema,
   threadGetQuerySchema,
@@ -1233,6 +1235,14 @@ export const publicApiRoutes = {
         threadEventWaitQuerySchema,
       ),
       response: jsonResponse<ThreadEventRow | null>(),
+    }),
+    wait: defineRoute({
+      path: "/threads/:id/wait",
+      method: "get",
+      request: queryRequest<PathId, ThreadStatusWaitQuery>(
+        threadStatusWaitQuerySchema,
+      ),
+      response: jsonResponse<ThreadResponse | null>(),
     }),
     defaultExecutionOptions: defineRoute({
       path: "/threads/:id/default-execution-options",

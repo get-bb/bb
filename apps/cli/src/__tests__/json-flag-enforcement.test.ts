@@ -6,7 +6,7 @@ import { registerProjectCommands } from "../commands/project.js";
 import { registerProviderCommands } from "../commands/provider.js";
 import { registerManagerCommands } from "../commands/manager.js";
 import { registerMachineCommands } from "../commands/machine.js";
-import { registerThreadCommands } from "../commands/thread/index.js";
+import { registerThreadCommands } from "../commands/thread/register-all.js";
 const EXCLUDED_COMMANDS = new Set<string>();
 
 function collectLeafCommands(

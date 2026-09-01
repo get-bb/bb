@@ -9,6 +9,7 @@ import type { Hono } from "hono";
 import {
   PROMPT_HISTORY_ENTRY_LIMIT,
   threadEventTypeSchema,
+  type Thread,
   type ThreadEventType,
 } from "@bb/domain";
 import {
@@ -16,6 +17,7 @@ import {
   typedRoutes,
   type PublicApiSchema,
   type ThreadConversationOutlineResponse,
+  type ThreadResponse,
   type ThreadTimelineQuery,
 } from "@bb/server-contract";
 import type {
@@ -68,12 +70,18 @@ import {
 import { previewTimelineResponseOutputs } from "../../services/threads/timeline-output-preview.js";
 import { computeTimelineRowDelta } from "@bb/server-contract";
 import {
-  findThreadEvent,
   getLastThreadOutput,
   listThreadEventRows,
 } from "../../services/threads/thread-data.js";
 import { listThreadPromptHistory } from "../../services/prompt-history.js";
 import { tryResolveExistingThreadExecutionPlan } from "../../services/threads/thread-execution-plan.js";
+import {
+  ThreadWaitCoordinatorLimitError,
+  type ThreadWaitCoordinator,
+  type ThreadWaitCoordinatorResult,
+  type ThreadWaitCoordinatorTarget,
+} from "../../services/threads/wait-coordinator.js";
+import { toThreadResponseFromThread } from "../../services/threads/thread-runtime-display.js";
 import {
   parseBoundedPositiveOptionalInteger,
   parseInteger,
@@ -292,7 +300,11 @@ async function serveThreadWorktreeRawFile(
   }
 }
 
-export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
+export function registerThreadDataRoutes(
+  app: Hono,
+  deps: AppDeps,
+  waitCoordinator: ThreadWaitCoordinator,
+): void {
   const { get } = typedRoutes<PublicApiSchema>(app, {
     onValidationError: (msg) => new ApiError(400, "invalid_request", msg),
   });
@@ -307,6 +319,15 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
     ThreadConversationOutlineResponse["items"]
   >();
   const CONVERSATION_OUTLINE_CACHE_MAX_ENTRIES = 128;
+  const waitThreadResponseCache = new WeakMap<Thread, ThreadResponse>();
+
+  const getWaitThreadResponse = (thread: Thread): ThreadResponse => {
+    const cached = waitThreadResponseCache.get(thread);
+    if (cached !== undefined) return cached;
+    const response = toThreadResponseFromThread(deps, { thread });
+    waitThreadResponseCache.set(thread, response);
+    return response;
+  };
 
   get(routes.timeline, (context, query) => {
     const thread = requirePublicThread(deps.db, context.req.param("id"));
@@ -493,11 +514,56 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
     );
   });
 
+  const waitForThread = async (args: {
+    signal: AbortSignal;
+    target: ThreadWaitCoordinatorTarget;
+    threadId: string;
+    waitMs: number;
+  }): Promise<ThreadWaitCoordinatorResult> => {
+    try {
+      return await waitCoordinator.wait({
+        signal: args.signal,
+        target: args.target,
+        threadId: args.threadId,
+        timeoutMs: args.waitMs,
+      });
+    } catch (error) {
+      if (error instanceof ThreadWaitCoordinatorLimitError) {
+        throw new ApiError(429, "too_many_waiters", error.message, {
+          retryable: true,
+        });
+      }
+      throw error;
+    }
+  };
+
+  get(routes.wait, async (context, query) => {
+    const threadId = context.req.param("id");
+    requirePublicThread(deps.db, threadId);
+    const waitMs = Math.min(
+      parseOptionalInteger(query.waitMs, "waitMs") ?? 30_000,
+      60_000,
+    );
+    const result = await waitForThread({
+      signal: context.req.raw.signal,
+      target: { kind: "status", status: query.status },
+      threadId,
+      waitMs,
+    });
+    if (result.kind === "timeout" || result.kind === "closed") {
+      return new Response(null, { status: 204 });
+    }
+    if (result.kind !== "status") {
+      throw new Error("A status wait received an event result.");
+    }
+    return context.json(getWaitThreadResponse(result.thread));
+  });
+
   get(routes.eventWait, async (context, query) => {
     const threadId = context.req.param("id");
     requirePublicThread(deps.db, threadId);
 
-    const afterSeq = parseOptionalInteger(query.afterSeq, "afterSeq");
+    const afterSeq = parseOptionalInteger(query.afterSeq, "afterSeq") ?? 0;
     const waitMs = Math.min(
       parseOptionalInteger(query.waitMs, "waitMs") ?? 30_000,
       60_000,
@@ -506,31 +572,23 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
     if (!parsedEventType.success) {
       throw new ApiError(400, "invalid_request", "Invalid event type");
     }
-    const eventType = parsedEventType.data;
-
-    const findMatch = () =>
-      findThreadEvent(deps.db, { threadId, type: eventType, afterSeq });
-
-    const deadline = Date.now() + waitMs;
-    let match = findMatch();
-    while (!match) {
-      const remaining = deadline - Date.now();
-      if (remaining <= 0) break;
-      const waiter = deps.hub.registerThreadEventWaiter(threadId, remaining);
-      match = findMatch();
-      if (match) {
-        waiter.cancel();
-        break;
-      }
-      await waiter.promise;
-      match = findMatch();
-    }
-
-    if (!match) {
+    const result = await waitForThread({
+      signal: context.req.raw.signal,
+      target: {
+        afterSeq,
+        eventType: parsedEventType.data,
+        kind: "event",
+      },
+      threadId,
+      waitMs,
+    });
+    if (result.kind === "timeout" || result.kind === "closed") {
       return new Response(null, { status: 204 });
     }
-
-    return context.json(match);
+    if (result.kind !== "event") {
+      throw new Error("An event wait received a status result.");
+    }
+    return context.json(result.event);
   });
 
   get(routes.defaultExecutionOptions, async (context) => {

@@ -30,6 +30,7 @@ All built-in agent providers now use the provider API. You can use the same API 
 
 ### CLI
 
+- Follow one thread with `bb thread wait <id> --output`. Follow several threads in one process with `bb thread wait-many`.
 - Use `--plan` with `bb thread tell` or `bb thread spawn` to enter Plan mode.
 - Use `bb thread log --all` to read the full thread history.
 - Move a local plugin with `bb plugin install path:<new directory>`. bb keeps its data and settings.
@@ -40,6 +41,7 @@ All built-in agent providers now use the provider API. You can use the same API 
 
 ### Performance
 
+- Thread status waits now use one server-side event subscription for duplicate conditions instead of 250 ms client polling.
 - A thread now opens with about half as many requests.
 - Smaller bundles reduce the initial load time for the app and plugins.
 - Long threads use less server work and load timeline pages faster.
@@ -50,6 +52,8 @@ All built-in agent providers now use the provider API. You can use the same API 
 - Large prompt drafts respond faster to a paste or a key press.
 - The app restores recent panel data after a reload. This change removes several blank states.
 - The `timelineWindowing` experiment renders only visible timeline rows.
+
+New clients retain polling for one release when an older server returns `404 not_found` for the status-wait route. New servers remain compatible with old clients.
 
 ### Experimental iOS app
 

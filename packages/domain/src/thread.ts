@@ -10,7 +10,11 @@ import {
 import { threadStatusSchema, threadStatusValues } from "./thread-status.js";
 import { threadOriginKindSchema } from "./thread-origin-kind.js";
 import { threadVisibilitySchema } from "./thread-visibility.js";
-export { threadStatusSchema, threadStatusValues } from "./thread-status.js";
+export {
+  isThreadWaitTargetUnreachable,
+  threadStatusSchema,
+  threadStatusValues,
+} from "./thread-status.js";
 export type { ThreadStatus } from "./thread-status.js";
 export {
   threadOriginKindSchema,
