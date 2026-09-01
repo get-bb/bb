@@ -78,6 +78,13 @@ Claude Code's native Workflow tool can be disabled separately on its provider
 page. This preference also defaults off and applies to newly started, resumed,
 or forked provider sessions.
 
+Claude Code can opt into releasing its native process after 30 seconds of
+quiescence while keeping the bb thread attached and resumable. This defaults
+off during its bake period. Enable it with
+`bb plugin config provider-claude-code set idleQueryReleaseEnabled true`.
+Changes apply on the next start, resume, or turn command and do not interrupt
+active work.
+
 Known ACP agents can appear automatically when their CLI is installed on the
 host. For example, opencode, omp, Grok Build's grok CLI, or Hermes' hermes CLI
 on PATH appears as provider acp-opencode, acp-omp, acp-grok, or

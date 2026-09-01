@@ -228,6 +228,7 @@ interface ThreadAttachment {
   idleTimer: ReturnType<typeof setTimeout> | null;
   residencyGeneration: number;
   wakePromise: Promise<ThreadSession | undefined> | null;
+  idleQueryReleaseEnabled: boolean;
   permissionEscalation: PermissionEscalation | null;
   permissionMode: ClaudePermissionMode;
   liveSettings: ClaudeLiveSessionSettings;
@@ -241,6 +242,7 @@ interface CreateThreadAttachmentArgs {
   permissionEscalation: PermissionEscalation | null;
   permissionMode: ClaudePermissionMode;
   liveSettings: ClaudeLiveSessionSettings;
+  idleQueryReleaseEnabled: boolean;
   approvedPlanPermissionMode: ClaudePermissionMode;
   providerThreadId?: string;
   sessionConstructionConfig: SessionConstructionConfig;
@@ -431,6 +433,10 @@ function scheduleIdleQueryRelease(
   ) {
     return;
   }
+  if (!attachment.idleQueryReleaseEnabled) {
+    cancelIdleQueryRelease(attachment);
+    return;
+  }
   cancelIdleQueryRelease(attachment);
   const generation = attachment.residencyGeneration;
   attachment.idleTimer = setTimeout(() => {
@@ -461,6 +467,19 @@ function refreshIdleQueryRelease(
 ): void {
   if (threadSession.attachment.idleTimer !== null) {
     scheduleIdleQueryRelease(threadSession, threadId);
+  }
+}
+
+function applyIdleQueryReleaseSetting(
+  attachment: ThreadAttachment,
+  enabled: boolean | undefined,
+): void {
+  if (enabled === undefined || attachment.idleQueryReleaseEnabled === enabled) {
+    return;
+  }
+  attachment.idleQueryReleaseEnabled = enabled;
+  if (!enabled) {
+    cancelIdleQueryRelease(attachment);
   }
 }
 
@@ -989,6 +1008,7 @@ function createThreadAttachment(
     idleTimer: null,
     residencyGeneration: 0,
     wakePromise: null,
+    idleQueryReleaseEnabled: args.idleQueryReleaseEnabled,
     permissionEscalation: args.permissionEscalation,
     permissionMode: args.permissionMode,
     liveSettings: args.liveSettings,
@@ -2199,6 +2219,7 @@ async function handleThreadStart(
 
   const attachment = createThreadAttachment({
     liveSettings: toInitialLiveSessionSettings(params),
+    idleQueryReleaseEnabled: params.idleQueryReleaseEnabled,
     permissionEscalation: params.permissionEscalation,
     permissionMode: params.permissionMode,
     approvedPlanPermissionMode: params.approvedPlanPermissionMode,
@@ -2246,6 +2267,7 @@ async function handleThreadResume(
     )
   ) {
     const liveSettings = toInitialLiveSessionSettings(params);
+    applyIdleQueryReleaseSetting(existing, params.idleQueryReleaseEnabled);
     if (existingSession) {
       await applyLiveSessionSettings(
         existingSession,
@@ -2296,6 +2318,7 @@ async function handleThreadResume(
   }
   const attachment = createThreadAttachment({
     liveSettings: toInitialLiveSessionSettings(params),
+    idleQueryReleaseEnabled: params.idleQueryReleaseEnabled,
     permissionEscalation: params.permissionEscalation,
     permissionMode: params.permissionMode,
     approvedPlanPermissionMode: params.approvedPlanPermissionMode,
@@ -2366,6 +2389,7 @@ async function handleThreadFork(
   }
   const attachment = createThreadAttachment({
     liveSettings: toInitialLiveSessionSettings(params),
+    idleQueryReleaseEnabled: params.idleQueryReleaseEnabled,
     permissionEscalation: params.permissionEscalation,
     permissionMode: params.permissionMode,
     approvedPlanPermissionMode: params.approvedPlanPermissionMode,
@@ -2413,6 +2437,11 @@ async function runTurnStart(
   if (promptText === undefined) {
     sendError(id, BRIDGE_JSON_RPC_ERRORS.INVALID_PARAMS, "Missing input text");
     return;
+  }
+
+  const attachment = threadAttachments.get(params.threadId);
+  if (attachment) {
+    applyIdleQueryReleaseSetting(attachment, params.idleQueryReleaseEnabled);
   }
 
   const threadSession = await getWritableThreadSession(
@@ -2492,6 +2521,11 @@ async function runTurnSteer(
   if (promptText === undefined) {
     sendError(id, BRIDGE_JSON_RPC_ERRORS.INVALID_PARAMS, "Missing input text");
     return;
+  }
+
+  const attachment = threadAttachments.get(params.threadId);
+  if (attachment) {
+    applyIdleQueryReleaseSetting(attachment, params.idleQueryReleaseEnabled);
   }
 
   const threadSession = await getWritableThreadSession(

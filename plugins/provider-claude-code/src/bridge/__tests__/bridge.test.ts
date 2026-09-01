@@ -183,6 +183,7 @@ interface StartBridgeThreadArgs {
 
 interface ResumeBridgeThreadArgs {
   bridge: BridgeJsonRpcTestHarness;
+  idleQueryReleaseEnabled?: boolean;
   permissionEscalation?: "ask" | "deny";
   providerThreadId: string | null;
   requestId: number;
@@ -630,6 +631,11 @@ function sendResumeThread(args: ResumeBridgeThreadArgs): void {
       ...(args.permissionEscalation
         ? { permissionEscalation: args.permissionEscalation }
         : {}),
+      providerOptions: {
+        ...(args.idleQueryReleaseEnabled === undefined
+          ? {}
+          : { idleQueryReleaseEnabled: args.idleQueryReleaseEnabled }),
+      },
     }),
     providerThreadId: args.providerThreadId,
     threadId: args.threadId,
@@ -3782,6 +3788,7 @@ describe("bridge", () => {
     try {
       sendResumeThread({
         bridge,
+        idleQueryReleaseEnabled: true,
         providerThreadId,
         requestId: 1,
         threadId,
@@ -3795,6 +3802,7 @@ describe("bridge", () => {
           threadId,
           providerThreadId,
           input: [{ type: "text", text: "before idle release" }],
+          providerOptions: { idleQueryReleaseEnabled: true },
         }),
       );
       await expect(readNextPromptText(getLatestQueryCall())).resolves.toBe(
@@ -3816,6 +3824,7 @@ describe("bridge", () => {
           threadId,
           providerThreadId,
           input: [{ type: "text", text: "after idle release" }],
+          providerOptions: { idleQueryReleaseEnabled: true },
         }),
       );
       await flushFakeTimerBridgeWork(bridge);
@@ -3868,6 +3877,7 @@ describe("bridge", () => {
     try {
       sendResumeThread({
         bridge,
+        idleQueryReleaseEnabled: true,
         providerThreadId,
         requestId: 1,
         threadId,
@@ -3892,6 +3902,95 @@ describe("bridge", () => {
     }
   });
 
+  it("keeps an idle Claude query resident when release is not enabled", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const bridge = createBridgeJsonRpcTestHarness(handleLine);
+    const query = createControlledClaudeQuery();
+    queryMock.mockReturnValue(query);
+
+    const threadId = "thread-idle-release-disabled";
+    const providerThreadId = "provider-thread-idle-release-disabled";
+    try {
+      sendResumeThread({
+        bridge,
+        providerThreadId,
+        requestId: 1,
+        threadId,
+      });
+      await waitForFakeTimerBridgeResponse(bridge, 1);
+
+      await vi.advanceTimersByTimeAsync(CLAUDE_IDLE_QUERY_GRACE_MS * 2);
+      expect(query.close).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+      bridge.sendRequest(2, "thread/stop", {
+        threadId,
+        providerThreadId,
+        intent: "interrupt",
+        activeTurnId: null,
+      });
+      await bridge.flushWork();
+      query.finish();
+      await bridge.waitForResponse(2);
+      bridge.restore();
+    }
+  });
+
+  it("cancels a scheduled release when the next turn disables it", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const bridge = createBridgeJsonRpcTestHarness(handleLine);
+    const query = createControlledClaudeQuery();
+    queryMock.mockReturnValue(query);
+
+    const threadId = "thread-idle-release-disabled-next-turn";
+    const providerThreadId = "provider-thread-idle-release-disabled-next-turn";
+    try {
+      sendResumeThread({
+        bridge,
+        idleQueryReleaseEnabled: true,
+        providerThreadId,
+        requestId: 1,
+        threadId,
+      });
+      await waitForFakeTimerBridgeResponse(bridge, 1);
+      await vi.advanceTimersByTimeAsync(
+        Math.floor(CLAUDE_IDLE_QUERY_GRACE_MS / 2),
+      );
+
+      bridge.sendRequest(
+        2,
+        "turn/start",
+        canonicalTurnParams({
+          threadId,
+          providerThreadId,
+          input: [{ type: "text", text: "disable idle release" }],
+          providerOptions: { idleQueryReleaseEnabled: false },
+        }),
+      );
+      await expect(readNextPromptText(getLatestQueryCall())).resolves.toBe(
+        "disable idle release",
+      );
+      await waitForFakeTimerBridgeResponse(bridge, 2);
+      query.emit(createSuccessfulResultMessage(providerThreadId));
+      await flushFakeTimerBridgeWork(bridge);
+
+      await vi.advanceTimersByTimeAsync(CLAUDE_IDLE_QUERY_GRACE_MS * 2);
+      expect(query.close).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+      bridge.sendRequest(3, "thread/stop", {
+        threadId,
+        providerThreadId,
+        intent: "interrupt",
+        activeTurnId: null,
+      });
+      await bridge.flushWork();
+      query.finish();
+      await bridge.waitForResponse(3);
+      bridge.restore();
+    }
+  });
+
   it("keeps a Claude query warm when a follow-up arrives inside the idle grace period", async () => {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     const bridge = createBridgeJsonRpcTestHarness(handleLine);
@@ -3907,6 +4006,7 @@ describe("bridge", () => {
     try {
       sendResumeThread({
         bridge,
+        idleQueryReleaseEnabled: true,
         providerThreadId,
         requestId: 1,
         threadId,
@@ -3920,6 +4020,7 @@ describe("bridge", () => {
           threadId,
           providerThreadId,
           input: [{ type: "text", text: "first prompt" }],
+          providerOptions: { idleQueryReleaseEnabled: true },
         }),
       );
       await expect(readNextPromptText(getLatestQueryCall())).resolves.toBe(
@@ -3939,6 +4040,7 @@ describe("bridge", () => {
           threadId,
           providerThreadId,
           input: [{ type: "text", text: "warm follow-up" }],
+          providerOptions: { idleQueryReleaseEnabled: true },
         }),
       );
       await expect(readNextPromptText(getLatestQueryCall())).resolves.toBe(
@@ -3982,6 +4084,7 @@ describe("bridge", () => {
     try {
       sendResumeThread({
         bridge,
+        idleQueryReleaseEnabled: true,
         providerThreadId,
         requestId: 1,
         threadId,
@@ -3995,6 +4098,7 @@ describe("bridge", () => {
           threadId,
           providerThreadId,
           input: [{ type: "text", text: "start background work" }],
+          providerOptions: { idleQueryReleaseEnabled: true },
         }),
       );
       await readNextPromptText(getLatestQueryCall());
@@ -4079,6 +4183,7 @@ describe("bridge", () => {
     try {
       sendResumeThread({
         bridge,
+        idleQueryReleaseEnabled: true,
         providerThreadId,
         requestId: 1,
         threadId,
@@ -4092,6 +4197,7 @@ describe("bridge", () => {
           threadId,
           providerThreadId,
           input: [{ type: "text", text: "make the attachment dormant" }],
+          providerOptions: { idleQueryReleaseEnabled: true },
         }),
       );
       await readNextPromptText(getLatestQueryCall());
@@ -4108,6 +4214,7 @@ describe("bridge", () => {
           threadId,
           providerThreadId,
           input: [{ type: "text", text: "wake one" }],
+          providerOptions: { idleQueryReleaseEnabled: true },
         }),
       );
       bridge.sendRequest(
@@ -4117,6 +4224,7 @@ describe("bridge", () => {
           threadId,
           providerThreadId,
           input: [{ type: "text", text: "wake two" }],
+          providerOptions: { idleQueryReleaseEnabled: true },
         }),
       );
       await flushFakeTimerBridgeWork(bridge);

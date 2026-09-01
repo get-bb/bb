@@ -233,9 +233,12 @@ provider new threads use when neither the caller nor the project chose one
 
 Each provider's own options live on its plugin: Codex memory and native
 subagents under the Codex provider plugin, Claude Code memory, native
-subagents and the Workflow tool under the Claude Code provider plugin. Read
-and set them like any plugin setting, for example
-`bb plugin config provider-claude-code set workflowsDisabled true`.
+subagents, the Workflow tool, and opt-in idle process release under the Claude
+Code provider plugin. Idle process release closes a quiescent Claude process
+after 30 seconds while keeping its bb thread resumable; it defaults off during
+its bake period and applies on the next start, resume, or turn command. Read and
+set provider options like any plugin setting, for example
+`bb plugin config provider-claude-code set idleQueryReleaseEnabled true`.
 
 Outside an open typeahead menu, Shift+Enter inserts a newline. On
 coarse-pointer touch devices, the software-keyboard Return path inserts a
