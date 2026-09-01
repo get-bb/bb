@@ -15,6 +15,8 @@ import {
   runDueScheduledQueueSweep,
   runRequestedQueueDrain,
 } from "../../src/services/threads/queue-drains.js";
+import { applyLoggedThreadLifecycleEvent } from "../../src/services/threads/lifecycle-outcome.js";
+import { runQueuedMessageAutoSendForThread } from "../../src/services/threads/queued-messages.js";
 import { acceptThreadSendRequest } from "../../src/services/threads/thread-send-request.js";
 import { textInput } from "../helpers/prompt-input.js";
 import {
@@ -198,6 +200,93 @@ describe("the requested queue drain", () => {
       expect(turnRequests(harness, thread.id)).toHaveLength(turnsBefore + 1);
     });
   });
+
+  it.each(["plugin-first", "thread-first"] as const)(
+    "drains a plugin and thread-busy group when %s clears",
+    async (first) => {
+      await withTestHarness(async (harness) => {
+        vi.useFakeTimers();
+        let released = first === "plugin-first";
+        let attempts = 0;
+        installHooks({
+          "message.dispatch": [
+            {
+              pluginId: "limiter",
+              handler: () => {
+                attempts += 1;
+                return released
+                  ? ({ action: "proceed" } as const)
+                  : ({ action: "wait", reason: "At capacity" } as const);
+              },
+            },
+          ],
+        });
+        const { thread } = seedRunnableThread(harness, {
+          hostId: `host-plugin-thread-${first}`,
+          status: "active",
+        });
+        const pluginHeld = seedQueuedMessage(harness.deps, {
+          threadId: thread.id,
+          content: textInput("plugin-held lead"),
+          waitingOn: {
+            kind: "plugin",
+            pluginId: "limiter",
+            reason: "At capacity",
+          },
+        });
+        const threadBusy = seedQueuedMessage(harness.deps, {
+          threadId: thread.id,
+          content: textInput("thread-busy tail"),
+          waitingOn: { kind: "thread-busy" },
+        });
+        setQueuedThreadMessageGroupBoundary({
+          db: harness.db,
+          notifier: harness.deps.hub,
+          threadId: thread.id,
+          expectedGroupedPrefixQueuedMessageIds: [
+            pluginHeld.id,
+            threadBusy.id,
+          ],
+          groupBoundaryQueuedMessageId: threadBusy.id,
+        });
+        const turnsBefore = turnRequests(harness, thread.id).length;
+
+        if (first === "plugin-first") {
+          await runRequestedQueueDrain(harness.deps);
+          expect(attempts).toBe(0);
+          expect(listQueuedThreadMessages(harness.db, thread.id)).toHaveLength(
+            2,
+          );
+        }
+
+        applyLoggedThreadLifecycleEvent(harness.deps, {
+          event: { type: "run.succeeded" },
+          threadId: thread.id,
+        });
+        await runQueuedMessageAutoSendForThread(harness.deps, {
+          threadId: thread.id,
+        });
+
+        if (first === "thread-first") {
+          expect(attempts).toBe(1);
+          expect(listQueuedThreadMessages(harness.db, thread.id)).toHaveLength(
+            2,
+          );
+          await runQueuedMessageAutoSendForThread(harness.deps, {
+            threadId: thread.id,
+          });
+          expect(attempts).toBe(1);
+          released = true;
+          vi.advanceTimersByTime(1_001);
+          await runRequestedQueueDrain(harness.deps);
+        }
+
+        expect(attempts).toBe(first === "plugin-first" ? 1 : 2);
+        expect(listQueuedThreadMessages(harness.db, thread.id)).toHaveLength(0);
+        expect(turnRequests(harness, thread.id)).toHaveLength(turnsBefore + 1);
+      });
+    },
+  );
 
   it("re-attempts a plugin-queued row once the hook lets it through", async () => {
     // The release path that replaced a plugin releasing its own wait: core

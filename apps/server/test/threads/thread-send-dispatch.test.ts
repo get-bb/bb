@@ -5,6 +5,7 @@ import {
   listEvents,
   listQueuedThreadMessages,
   markThreadDeleted,
+  setQueuedThreadMessageGroupBoundary,
 } from "@bb/db";
 import {
   changedMessageSchema,
@@ -355,8 +356,18 @@ describe("turn-starting queue wait", () => {
         status: "active",
         value: 6,
       });
+      const pluginInput = textInput("plugin-held lead");
       const input = textInput("steer when ready");
       const secondInput = textInput("also steer when ready");
+      const pluginHeld = seedQueuedMessage(harness.deps, {
+        content: pluginInput,
+        threadId: thread.id,
+        waitingOn: {
+          kind: "plugin",
+          pluginId: "limiter",
+          reason: "At capacity",
+        },
+      });
       const queueChangedInTransactions: boolean[] = [];
       const notifyThread = harness.hub.notifyThread.bind(harness.hub);
       vi.spyOn(harness.hub, "notifyThread").mockImplementation(
@@ -401,6 +412,17 @@ describe("turn-starting queue wait", () => {
         waitingOn: { kind: "turn-starting" },
       });
       expect(queueChangedInTransactions).toEqual([false, false]);
+      const queued = listQueuedThreadMessages(harness.db, thread.id);
+      setQueuedThreadMessageGroupBoundary({
+        db: harness.db,
+        notifier: harness.deps.hub,
+        threadId: thread.id,
+        expectedGroupedPrefixQueuedMessageIds: [
+          pluginHeld.id,
+          queued[1]!.id,
+        ],
+        groupBoundaryQueuedMessageId: queued[1]!.id,
+      });
       expect(
         listQueuedThreadCommands(harness, "turn.submit", thread.id),
       ).toHaveLength(0);
@@ -411,6 +433,14 @@ describe("turn-starting queue wait", () => {
           waitingOn: JSON.parse(row.waitingOn!),
         })),
       ).toEqual([
+        {
+          content: pluginInput,
+          waitingOn: {
+            kind: "plugin",
+            pluginId: "limiter",
+            reason: "At capacity",
+          },
+        },
         { content: input, waitingOn: { kind: "turn-starting" } },
         { content: secondInput, waitingOn: { kind: "turn-starting" } },
       ]);
@@ -449,7 +479,7 @@ describe("turn-starting queue wait", () => {
         listQueuedThreadCommands(harness, "turn.submit", thread.id),
       ).toEqual([
         expect.objectContaining({
-          input,
+          inputGroups: [pluginInput, input],
           target: { mode: "auto", expectedTurnId: "turn-ready" },
         }),
         expect.objectContaining({

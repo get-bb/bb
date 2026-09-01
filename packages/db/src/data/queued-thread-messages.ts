@@ -895,6 +895,7 @@ export function claimNextQueuedThreadMessageGroup(
   db: DbConnection,
   notifier: DbNotifier,
   threadId: string,
+  isGroupEligible?: (rows: readonly QueuedThreadMessageRow[]) => boolean,
 ): ClaimedQueuedThreadMessageRow[] | null {
   const claimedQueuedMessages = db.transaction(
     (tx) => {
@@ -905,9 +906,14 @@ export function claimNextQueuedThreadMessageGroup(
       // behind it: the queue is a queue, not a pipeline.
       const queuedMessages = listQueuedThreadMessages(tx, threadId);
       const group =
-        partitionQueuedMessageGroups(queuedMessages).find((rows) =>
-          rows.every(isIdleDrainableQueuedMessage),
-        ) ?? null;
+        partitionQueuedMessageGroups(queuedMessages).find((rows) => {
+          if (!isGroupEligible) {
+            return rows.every(isIdleDrainableQueuedMessage);
+          }
+          return (
+            rows.some(isIdleDrainableQueuedMessage) && isGroupEligible(rows)
+          );
+        }) ?? null;
       if (group === null) {
         return null;
       }

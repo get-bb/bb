@@ -42,7 +42,10 @@ import {
   isCommandTimeoutError,
   runtimeErrorLogFields,
 } from "../lib/error-log-fields.js";
-import { toThreadQueuedMessage } from "./thread-queued-messages.js";
+import {
+  parseStoredQueuedThreadMessageWaitingOn,
+  toThreadQueuedMessage,
+} from "./thread-queued-messages.js";
 import {
   addRequestIdToTurnSubmitCommandPayload,
   buildExecutionOptions,
@@ -56,6 +59,7 @@ import {
 } from "./deferred-first-turn-context.js";
 import { appendClientTurnEventInTransaction } from "./thread-events.js";
 import {
+  getActiveTurnId,
   getLastProviderThreadId,
   isManualCompactionActive,
 } from "./thread-events.js";
@@ -119,6 +123,39 @@ interface SendClaimedQueuedMessageForThreadArgs {
 
 interface QueuedMessageAutoSendArgs {
   threadId: string;
+}
+
+type QueuedMessageGroupEligibility = NonNullable<
+  Parameters<typeof claimQueuedThreadMessageGroup>[3]
+>;
+
+export function createAutomaticQueuedMessageGroupEligibility(
+  deps: Pick<AppDeps, "db">,
+  args: { now: number; thread: Thread },
+): QueuedMessageGroupEligibility {
+  const activeTurnId = getActiveTurnId(deps, args.thread.id);
+  return (group) =>
+    group.every((member) => {
+      if (member.failureReason !== null) return false;
+      const waitingOn = parseStoredQueuedThreadMessageWaitingOn(member);
+      switch (waitingOn?.kind) {
+        case undefined:
+        case "plugin":
+          return true;
+        case "time":
+          return member.sendAt !== null && member.sendAt <= args.now;
+        case "thread-busy":
+          return (
+            args.thread.status === "idle" || args.thread.status === "pending"
+          );
+        case "turn-starting":
+          return args.thread.status === "active" && activeTurnId !== null;
+        case "provisioning":
+        case "host-offline":
+        case "interaction":
+          return false;
+      }
+    });
 }
 
 async function requireReadyQueuedMessageEnvironment(
@@ -759,12 +796,8 @@ export async function sendNextQueuedMessageIfPresent(
   deps: LoggedPendingInteractionWorkSessionDeps,
   args: { threadId: string },
 ): Promise<boolean> {
-  if (
-    !isQueuedMessageAutoSendCandidate(
-      deps.db,
-      getThread(deps.db, args.threadId),
-    )
-  ) {
+  const initialThread = getThread(deps.db, args.threadId);
+  if (!isQueuedMessageAutoSendCandidate(deps.db, initialThread)) {
     return false;
   }
 
@@ -772,6 +805,10 @@ export async function sendNextQueuedMessageIfPresent(
     deps.db,
     deps.hub,
     args.threadId,
+    createAutomaticQueuedMessageGroupEligibility(deps, {
+      now: Date.now(),
+      thread: initialThread,
+    }),
   );
   if (!nextQueuedMessages) {
     return false;

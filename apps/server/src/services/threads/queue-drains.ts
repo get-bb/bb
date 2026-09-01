@@ -17,6 +17,7 @@ import { isDispatchRequeuedRecently } from "./dispatch-hooks.js";
 import { clearQueuedMessageWait } from "./queue-waits.js";
 import { recordQueuedMessageDrainFailure } from "./queue-drain-failure.js";
 import {
+  createAutomaticQueuedMessageGroupEligibility,
   runQueuedMessageAutoSendForThread,
   sendQueuedMessage,
 } from "./queued-messages.js";
@@ -206,7 +207,7 @@ async function dispatchDueQueuedMessage(
     // satisfied and every other wait is re-decided from scratch — including
     // the plugin pass, which is what makes a scheduled send still respect a
     // limiter at 9am rather than jumping it.
-    await attemptEligibleQueuedMessage(deps, row, now);
+    await attemptEligibleQueuedMessage(deps, row, thread, now);
   } catch (error) {
     // A background attempt has no caller left to report to, so the row carries
     // the outcome itself — as a `host-offline` wait when the machine is simply
@@ -228,14 +229,14 @@ async function dispatchDueQueuedMessage(
 async function attemptEligibleQueuedMessage(
   deps: QueueDrainDeps,
   row: QueuedMessageDispatchRef,
+  thread: NonNullable<ReturnType<typeof getThread>>,
   now: number,
 ): Promise<void> {
   await sendQueuedMessage(deps, {
-    isGroupEligible: (group) =>
-      group.every((member) =>
-        member.waitHolder !== null ||
-        (member.sendAt !== null && member.sendAt <= now),
-      ),
+    isGroupEligible: createAutomaticQueuedMessageGroupEligibility(deps, {
+      now,
+      thread,
+    }),
     mode: "auto",
     queuedMessageId: row.id,
     threadId: row.threadId,
@@ -300,7 +301,7 @@ export async function runRequestedQueueDrain(
     const thread = getThread(deps.db, row.threadId);
     if (!thread || thread.deletedAt !== null) continue;
     try {
-      await attemptEligibleQueuedMessage(deps, row, Date.now());
+      await attemptEligibleQueuedMessage(deps, row, thread, Date.now());
     } catch (error) {
       // Same posture as the due sweep: nobody is listening, so the outcome
       // lands on the row rather than propagating and stopping the walk.
