@@ -178,6 +178,7 @@ const tempDirs: string[] = [];
 
 interface StartBridgeThreadArgs {
   bridge: BridgeJsonRpcTestHarness;
+  idleQueryReleaseEnabled?: boolean;
   threadId: string;
 }
 
@@ -617,7 +618,13 @@ async function startBridgeThread(args: StartBridgeThreadArgs): Promise<void> {
   args.bridge.sendRequest(1, "thread/start", {
     cwd: "/tmp/worktree",
     instructionMode: "append",
-    options: canonicalOptions(),
+    options: canonicalOptions({
+      providerOptions: {
+        ...(args.idleQueryReleaseEnabled === undefined
+          ? {}
+          : { idleQueryReleaseEnabled: args.idleQueryReleaseEnabled }),
+      },
+    }),
     threadId: args.threadId,
   });
   await args.bridge.waitForResponse(1);
@@ -3902,6 +3909,38 @@ describe("bridge", () => {
     }
   });
 
+  it("releases a new Claude query that receives no turn", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const bridge = createBridgeJsonRpcTestHarness(handleLine);
+    const query = createControlledClaudeQuery();
+    queryMock.mockReturnValue(query);
+
+    const threadId = "thread-idle-start-without-turn";
+    try {
+      await startBridgeThread({
+        bridge,
+        idleQueryReleaseEnabled: true,
+        threadId,
+      });
+
+      await vi.advanceTimersByTimeAsync(CLAUDE_IDLE_QUERY_GRACE_MS - 1);
+      expect(query.close).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(1);
+      expect(query.close).toHaveBeenCalledOnce();
+    } finally {
+      vi.useRealTimers();
+      bridge.sendRequest(2, "thread/stop", {
+        threadId,
+        providerThreadId: threadId,
+        intent: "interrupt",
+        activeTurnId: null,
+      });
+      await bridge.waitForResponse(2);
+      query.finish();
+      bridge.restore();
+    }
+  });
+
   it("keeps an idle Claude query resident when release is not enabled", async () => {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     const bridge = createBridgeJsonRpcTestHarness(handleLine);
@@ -4163,6 +4202,83 @@ describe("bridge", () => {
       });
       await bridge.flushWork();
       queries.forEach((query) => query.finish());
+      await bridge.waitForResponse(3);
+      bridge.restore();
+    }
+  });
+
+  it("keeps a Claude query resident while hidden monitor work remains", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const bridge = createBridgeJsonRpcTestHarness(handleLine);
+    const query = createControlledClaudeQuery();
+    queryMock.mockReturnValue(query);
+
+    const threadId = "thread-idle-query-monitor-work";
+    const providerThreadId = "provider-thread-idle-query-monitor-work";
+    const taskId = "monitor-idle-query-work";
+    try {
+      sendResumeThread({
+        bridge,
+        idleQueryReleaseEnabled: true,
+        providerThreadId,
+        requestId: 1,
+        threadId,
+      });
+      await waitForFakeTimerBridgeResponse(bridge, 1);
+
+      bridge.sendRequest(
+        2,
+        "turn/start",
+        canonicalTurnParams({
+          threadId,
+          providerThreadId,
+          input: [{ type: "text", text: "monitor the background command" }],
+          providerOptions: { idleQueryReleaseEnabled: true },
+        }),
+      );
+      await readNextPromptText(getLatestQueryCall());
+      await waitForFakeTimerBridgeResponse(bridge, 2);
+
+      query.emit({
+        type: "system",
+        subtype: "task_started",
+        task_id: taskId,
+        description: "Watch the background command",
+        task_type: "monitor",
+        uuid: "00000000-0000-4000-8000-000000000007",
+        session_id: providerThreadId,
+      });
+      query.emit(createSuccessfulResultMessage(providerThreadId));
+      await flushFakeTimerBridgeWork(bridge);
+
+      await vi.advanceTimersByTimeAsync(CLAUDE_IDLE_QUERY_GRACE_MS * 2);
+      expect(query.close).not.toHaveBeenCalled();
+
+      query.emit({
+        type: "system",
+        subtype: "task_notification",
+        task_id: taskId,
+        status: "completed",
+        output_file: "",
+        summary: "Monitoring completed",
+        uuid: "00000000-0000-4000-8000-000000000008",
+        session_id: providerThreadId,
+      });
+      await flushFakeTimerBridgeWork(bridge);
+      await vi.advanceTimersByTimeAsync(CLAUDE_IDLE_QUERY_GRACE_MS - 1);
+      expect(query.close).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(1);
+      expect(query.close).toHaveBeenCalledOnce();
+    } finally {
+      vi.useRealTimers();
+      bridge.sendRequest(3, "thread/stop", {
+        threadId,
+        providerThreadId,
+        intent: "interrupt",
+        activeTurnId: null,
+      });
+      await bridge.flushWork();
+      query.finish();
       await bridge.waitForResponse(3);
       bridge.restore();
     }

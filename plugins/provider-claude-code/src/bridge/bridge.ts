@@ -1090,6 +1090,18 @@ function startResidentThreadSession(
   return threadSession;
 }
 
+function startAttachedResidentThreadSession(
+  attachment: ThreadAttachment,
+  resumeProviderThreadId?: string,
+): ThreadSession {
+  const threadSession = startResidentThreadSession(
+    attachment,
+    resumeProviderThreadId,
+  );
+  scheduleIdleQueryRelease(threadSession, attachment.threadIdRef.current);
+  return threadSession;
+}
+
 function getTrackedPermissionEscalation(
   values: Map<string, PermissionEscalation | null>,
   key: string | undefined,
@@ -2230,7 +2242,7 @@ async function handleThreadStart(
     threadIdRef,
   });
   threadAttachments.set(threadIdRef.current, attachment);
-  startResidentThreadSession(attachment);
+  startAttachedResidentThreadSession(attachment);
 
   sendThreadIdentity(threadIdRef.current, providerThreadId);
   sendSessionReset(threadIdRef.current);
@@ -2331,11 +2343,7 @@ async function handleThreadResume(
     threadIdRef,
   });
   threadAttachments.set(threadId, attachment);
-  const residentSession = startResidentThreadSession(
-    attachment,
-    requestedProviderThreadId,
-  );
-  scheduleIdleQueryRelease(residentSession, threadId);
+  startAttachedResidentThreadSession(attachment, requestedProviderThreadId);
 
   sendThreadIdentity(threadId, requestedProviderThreadId);
   sendSessionReset(threadId);
@@ -2400,11 +2408,7 @@ async function handleThreadFork(
     threadIdRef,
   });
   threadAttachments.set(threadId, attachment);
-  const residentSession = startResidentThreadSession(
-    attachment,
-    forkedProviderThreadId,
-  );
-  scheduleIdleQueryRelease(residentSession, threadId);
+  startAttachedResidentThreadSession(attachment, forkedProviderThreadId);
 
   sendThreadIdentity(threadId, forkedProviderThreadId);
   sendSessionReset(threadId);
