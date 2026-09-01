@@ -359,9 +359,7 @@ describe("provider retry plugin", () => {
     // The load-bearing half is the empty hook slot. This plugin must never
     // intercept a send: a remembered rate limit is a stale cache of provider
     // state, and refusing an attempt on it strands a user who fixed the limit
-    // out of band. It is also what keeps a stock install free of
-    // `message.dispatch` handlers entirely, since the only other one ships
-    // disabled by default.
+    // out of band.
     const host = createHost();
     await plugin(host.bb);
 
