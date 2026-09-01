@@ -43,6 +43,12 @@ Read the installed SDK declarations for the exact current signatures.
 - `PluginPendingInteractionView`
 - `PluginPendingInteractionProps`
 - `PluginSidebarFooterActionProps`
+- `ExperimentalSidebarNavigationShortcut`
+- `ExperimentalSidebarNavigationAction`
+- `ExperimentalSidebarNavigationIcon`
+- `ExperimentalSidebarNavigationItem`
+- `ExperimentalSidebarNavigationActivationOptions`
+- `ExperimentalSidebarNavigationProps`
 - `PluginThreadListProps`
 - `PluginThreadHeaderActionProps`
 - `PluginFileOpenerSource`
@@ -74,6 +80,7 @@ Read the installed SDK declarations for the exact current signatures.
 - `PluginPendingInteractionRegistration`
 - `PluginSidebarFooterActionContext`
 - `PluginSidebarFooterActionRegistration`
+- `ExperimentalSidebarNavigationRegistration`
 - `PluginSidebarThreadIndicator`
 - `PluginSidebarWorkspaceKind`
 - `PluginSidebarThreadActivity`

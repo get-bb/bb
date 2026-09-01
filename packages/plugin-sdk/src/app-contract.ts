@@ -105,6 +105,58 @@ export interface PluginPendingInteractionProps {
  */
 export interface PluginSidebarFooterActionProps {}
 
+/** Display and accessibility metadata for a host-owned sidebar shortcut. */
+export interface ExperimentalSidebarNavigationShortcut {
+  label: string;
+  ariaKeyShortcuts: string;
+}
+
+/** Host-owned behavior represented by one sidebar navigation item. */
+export type ExperimentalSidebarNavigationAction =
+  | { kind: "new-thread" }
+  | { kind: "search-threads" }
+  | { kind: "open-extensions" }
+  | {
+      kind: "open-plugin-panel";
+      pluginId: string;
+      panelId: string;
+    };
+
+/** Semantic icon identity for one sidebar navigation item. */
+export type ExperimentalSidebarNavigationIcon =
+  | { kind: "host"; name: "new-thread" | "search" | "extensions" }
+  | { kind: "plugin"; pluginId: string; icon: string | null };
+
+/** One host-owned destination or action a plugin may arrange. */
+export interface ExperimentalSidebarNavigationItem {
+  id: string;
+  label: string;
+  icon: ExperimentalSidebarNavigationIcon;
+  action: ExperimentalSidebarNavigationAction;
+  isDisabled: boolean;
+  shortcut: ExperimentalSidebarNavigationShortcut | null;
+  experimental_splitProps: {
+    onPointerDown?: (event: import("react").PointerEvent<HTMLElement>) => void;
+  };
+}
+
+/** How the host should activate a sidebar navigation item. */
+export interface ExperimentalSidebarNavigationActivationOptions {
+  openInSplit: boolean;
+}
+
+/** Props passed to an `experimental_sidebarNavigation` component. */
+export interface ExperimentalSidebarNavigationProps {
+  items: readonly ExperimentalSidebarNavigationItem[];
+  activeItemId: string | null;
+  isCompactViewport: boolean;
+  experimental_activate(
+    itemId: string,
+    options: ExperimentalSidebarNavigationActivationOptions,
+  ): void;
+  experimental_Original: ComponentType;
+}
+
 /**
  * Props passed to an `experimental_threadList` component — the sidebar's
  * scrolling thread area, replaced wholesale by one plugin.
@@ -965,6 +1017,17 @@ export interface PluginThreadListRegistration {
   component: ComponentType<PluginThreadListProps>;
 }
 
+/** Replace the bounded navigation controls above the sidebar thread list. */
+export interface ExperimentalSidebarNavigationRegistration {
+  /** Unique within the plugin; letters, digits, `-`, `_`. */
+  id: string;
+  /** Label shown in Settings → Appearance and capability details. */
+  title: string;
+  /** Optional one-line description shown with the provider choice. */
+  description?: string;
+  component: ComponentType<ExperimentalSidebarNavigationProps>;
+}
+
 /**
  * Register this plugin as a viewer/editor for file extensions. By default,
  * matching files render the first applicable opener in deterministic slot
@@ -1280,6 +1343,10 @@ export interface PluginAppSlots {
   pendingInteraction(registration: PluginPendingInteractionRegistration): void;
   sidebarFooterAction(
     registration: PluginSidebarFooterActionRegistration,
+  ): void;
+  /** Replace the bounded sidebar navigation controls. */
+  experimental_sidebarNavigation(
+    registration: ExperimentalSidebarNavigationRegistration,
   ): void;
   /**
    * Replace the sidebar's thread list (see

@@ -58,6 +58,28 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         firstParty: ["Automations", "Docs", "GitHub", "Tasks"],
       },
       {
+        id: "sidebar-navigation",
+        title: "Sidebar navigation",
+        summary:
+          "Replaces bb's navigation controls above the thread list with a component your plugin renders. With this, a plugin can:",
+        bullets: [
+          "Arrange New thread, Search, Extensions, and plugin destinations",
+          "Activate each destination through bb, including split placement for supported items",
+          "Render bb's original controls when the plugin wants to delegate",
+          "Leave the thread list, footer, drawer, and resize handle under bb's control",
+        ],
+        apiSymbols: [
+          "ExperimentalSidebarNavigationRegistration",
+          "ExperimentalSidebarNavigationProps",
+          "ExperimentalSidebarNavigationItem",
+          "ExperimentalSidebarNavigationAction",
+          "ExperimentalSidebarNavigationIcon",
+          "ExperimentalSidebarNavigationShortcut",
+          "ExperimentalSidebarNavigationActivationOptions",
+        ],
+        experimental: true,
+      },
+      {
         id: "thread-list",
         title: "The thread list",
         summary:

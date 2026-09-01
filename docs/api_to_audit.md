@@ -1687,6 +1687,37 @@ Before stabilization, audit:
    re-litigate that in the stabilization audit; audit only whether the two
    _contexts_ should merge.
 
+## `app.slots.experimental_sidebarNavigation` (`@get-bb/plugin-sdk/app`)
+
+**What it does.** Replaces the bounded sidebar navigation controls for New
+thread, Search threads, Extensions, and plugin panel destinations. The plugin
+receives semantic items, split-drag bindings, and one host activation callback.
+BB retains the drawer, thread list, footer, resize handle, and hidden-body
+shortcut policy.
+
+Search activation opens the quick palette. The removed inline sidebar search
+field, query state, combobox, and result list do not form part of this API.
+`experimental_Original` bypasses replacement resolution. A crash restores only
+the bounded controls and leaves the retained sidebar regions mounted.
+
+**Audit before stabilizing.**
+
+1. **Boundary.** Verify plugins can express useful navigation without control
+   of the drawer, thread list, footer, resize handle, or shortcuts.
+2. **Semantic items.** Confirm the action and icon variants cover current
+   navigation without exposing routes or host React elements.
+3. **Split contract.** Audit `experimental_splitProps` and
+   `experimental_activate(..., { openInSplit })` for pointer, keyboard,
+   modifier-click, pane-cap, and compact behavior.
+4. **Search action.** Confirm a semantic quick-palette action remains useful
+   without the former inline query and result UI.
+5. **Crash and delegation.** Verify `experimental_Original` and crash fallback
+   never recurse or remount the thread list and footer.
+6. **Arbitration.** Confirm Automatic remains the correct default when several
+   navigation replacements exist.
+7. **Accessibility.** Validate labels, `aria-current`, shortcut metadata,
+   disabled state, and focus order in third-party markup.
+
 ## `app.slots.experimental_threadList` (`@get-bb/plugin-sdk/app`)
 
 **Kept experimental (2026-08-22).** examples only; no shipped consumer has tested the arbitration/fallback model or the accessibility contract.
