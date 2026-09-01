@@ -251,6 +251,8 @@ function partitionQueuedMessageGroups(
   return groups;
 }
 
+const IDLE_DRAINABLE_WAIT_KINDS = ["thread-busy", "turn-starting"] as const;
+
 /**
  * The JS mirror of {@link drainableQueuedThreadMessage}'s wait condition, for
  * deciding whole-group eligibility over rows already in hand. Kept next to a
@@ -261,7 +263,9 @@ function isIdleDrainableQueuedMessage(row: QueuedThreadMessageRow): boolean {
   if (row.waitingOn === null) return true;
   try {
     const parsed = JSON.parse(row.waitingOn) as { kind?: unknown };
-    return parsed.kind === "thread-busy" || parsed.kind === "turn-starting";
+    return IDLE_DRAINABLE_WAIT_KINDS.some(
+      (waitKind) => waitKind === parsed.kind,
+    );
   } catch {
     return false;
   }
@@ -1138,7 +1142,7 @@ export interface RequeueClaimedQueuedThreadMessagesArgs {
 }
 
 export function requeueClaimedQueuedThreadMessages(
-  db: DbConnection,
+  db: DbQueryConnection,
   notifier: DbNotifier,
   args: RequeueClaimedQueuedThreadMessagesArgs,
 ): QueuedThreadMessageRow | null {
@@ -1384,8 +1388,10 @@ function drainableQueuedThreadMessage() {
     automaticallyDrainableQueuedThreadMessage(),
     or(
       isNull(queuedThreadMessages.waitingOn),
-      sql`json_extract(${queuedThreadMessages.waitingOn}, '$.kind') = 'thread-busy'`,
-      sql`json_extract(${queuedThreadMessages.waitingOn}, '$.kind') = 'turn-starting'`,
+      ...IDLE_DRAINABLE_WAIT_KINDS.map(
+        (waitKind) =>
+          sql`json_extract(${queuedThreadMessages.waitingOn}, '$.kind') = ${waitKind}`,
+      ),
     ),
   );
 }

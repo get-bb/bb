@@ -40,6 +40,7 @@ import {
 import {
   recordQueuedMessageWait,
   settleQueueRowDispatched,
+  type QueuedDispatchMessage,
 } from "./queue-waits.js";
 import { applyLoggedThreadLifecycleEventInTransaction } from "./lifecycle-outcome.js";
 import { buildExecutionOptions } from "./thread-commands.js";
@@ -61,6 +62,7 @@ import {
 } from "./thread-runtime-display.js";
 import { toThreadQueuedMessage } from "./thread-queued-messages.js";
 import { isPreStartThreadStatus } from "./thread-status.js";
+import { queueInputForStartingTurn } from "./thread-turn-starting.js";
 import {
   ensureThreadIsWritable,
   resolveMessageSenderThreadId,
@@ -280,6 +282,13 @@ async function runDispatchAttempt(
     args.executionDefaults ?? { threadId: thread.id },
   );
   const resolvedPayload = resolveExecutionIntoPayload(payload, execution);
+  const queuedMessage: QueuedDispatchMessage = {
+    input: payload.input,
+    execution,
+    senderThreadId,
+    payload: args.queuePayload,
+    systemNotice: null,
+  };
 
   const waitOn = (
     waitingOn: QueuedMessageWaitingOn,
@@ -287,15 +296,7 @@ async function runDispatchAttempt(
   ): DispatchAttemptOutcome => {
     const entry = recordQueuedMessageWait(deps, {
       thread,
-      message: {
-        input: payload.input,
-        execution,
-        senderThreadId,
-        payload: args.queuePayload,
-        // Only core queues a system notice, and it does so directly rather
-        // than through a send request, so an attempt never carries one.
-        systemNotice: null,
-      },
+      message: queuedMessage,
       waitingOn,
       sendAt,
       claimed,
@@ -320,7 +321,11 @@ async function runDispatchAttempt(
     if (payload.mode === "start") {
       // `start` asks for a FRESH turn specifically, so a running one is a
       // conflict rather than something to wait behind. Unchanged 409.
-      throwThreadNotWritable(thread, "already_active", "Thread is already active");
+      throwThreadNotWritable(
+        thread,
+        "already_active",
+        "Thread is already active",
+      );
     }
     return waitOn({ kind: "thread-busy" }, null);
   }
@@ -333,19 +338,21 @@ async function runDispatchAttempt(
     resolveDispatchAttemptKind(currentThread, payload.mode) === "join-turn" &&
     getActiveTurnId(deps, thread.id) === null
   ) {
-    const outcome = deps.db.transaction(
-      (tx) => {
-        const lockedThread = getThread(tx, thread.id);
-        if (!lockedThread) return null;
-        if (lockedThread.status !== "active") {
-          return waitOn({ kind: "thread-busy" }, null);
-        }
-        if (getActiveTurnId({ db: tx }, thread.id) !== null) return null;
-        return waitOn({ kind: "turn-starting" }, null);
-      },
-      { behavior: "immediate" },
-    );
-    if (outcome !== null) return outcome;
+    const outcome = queueInputForStartingTurn(deps, {
+      claimed,
+      fallbackWaitingOn: { kind: "thread-busy" },
+      input: queuedMessage,
+      threadId: thread.id,
+    });
+    if (outcome.kind === "queued" || outcome.kind === "dispatched") {
+      return outcome;
+    }
+    if (outcome.kind === "thread-changed") {
+      if (outcome.thread === null) {
+        throw new ApiError(404, "thread_not_found", "Thread not found");
+      }
+      ensureThreadIsWritable(outcome.thread);
+    }
   }
   if (!firstDispatch && isPreStartThreadStatus(thread.status)) {
     // A follow-up or steer sent while the workspace is being (re)provisioned.

@@ -1,63 +1,80 @@
-import { createQueuedThreadMessageInTransaction, getThread } from "@bb/db";
+import { getThread, type ClaimedQueuedThreadMessageRow } from "@bb/db";
 import type {
-  PromptInput,
-  QueuedMessagePayload,
-  QueuedMessageSystemNotice,
-  ResolvedThreadExecutionOptions,
+  QueuedMessageWaitingOn,
+  Thread,
+  ThreadQueuedMessage,
 } from "@bb/domain";
 import type { AppDeps } from "../../types.js";
-import { emitPluginMessageQueued } from "../plugins/plugin-thread-events.js";
+import { NotificationBuffer } from "../lib/notification-buffer.js";
+import {
+  recordQueuedMessageWait,
+  type QueuedDispatchMessage,
+} from "./queue-waits.js";
 import { getActiveTurnId } from "./thread-events.js";
-import { toThreadQueuedMessage } from "./thread-queued-messages.js";
-
-interface TurnStartingQueuedInput {
-  content: PromptInput[];
-  execution: ResolvedThreadExecutionOptions;
-  payload: QueuedMessagePayload;
-  senderThreadId: string | null;
-  systemNotice: QueuedMessageSystemNotice | null;
-}
 
 type TurnStartingDeps = Pick<AppDeps, "db" | "hub" | "logger">;
 
+export type QueueInputForStartingTurnResult =
+  | { kind: "continue" }
+  | { kind: "dispatched" }
+  | { kind: "queued"; entry: ThreadQueuedMessage }
+  | { kind: "thread-changed"; thread: Thread | null };
+
 export function queueInputForStartingTurn(
   deps: TurnStartingDeps,
-  args: { input: TurnStartingQueuedInput; threadId: string },
-): boolean {
-  if (args.input.content.length === 0) return false;
-  const queued = deps.db.transaction(
+  args: {
+    claimed: readonly ClaimedQueuedThreadMessageRow[] | null;
+    fallbackWaitingOn: QueuedMessageWaitingOn | null;
+    input: QueuedDispatchMessage;
+    threadId: string;
+  },
+): QueueInputForStartingTurnResult {
+  if (args.input.input.length === 0) return { kind: "dispatched" };
+  const notifications = new NotificationBuffer();
+  const outcome: QueueInputForStartingTurnResult = deps.db.transaction(
     (tx) => {
       const thread = getThread(tx, args.threadId);
       if (
         !thread ||
-        thread.status !== "active" ||
+        thread.archivedAt !== null ||
         thread.deletedAt !== null ||
-        getActiveTurnId({ db: tx }, args.threadId) !== null
+        thread.status === "stopping"
       ) {
-        return null;
+        return { kind: "thread-changed", thread };
       }
-      return createQueuedThreadMessageInTransaction(tx, {
-        threadId: args.threadId,
-        content: args.input.content,
-        senderThreadId: args.input.senderThreadId,
-        model: args.input.execution.model,
-        reasoningLevel: args.input.execution.reasoningLevel,
-        permissionMode: args.input.execution.permissionMode,
-        serviceTier: args.input.execution.serviceTier,
-        waitingOn: { kind: "turn-starting" },
-        sendAt: null,
-        payload: args.input.payload,
-        systemNotice: args.input.systemNotice,
-      });
+      const waitingOn =
+        thread.status === "active"
+          ? getActiveTurnId({ db: tx }, args.threadId) === null
+            ? { kind: "turn-starting" as const }
+            : null
+          : args.fallbackWaitingOn;
+      if (waitingOn === null) {
+        return thread.status === "active"
+          ? { kind: "continue" }
+          : { kind: "thread-changed", thread };
+      }
+      const entry = recordQueuedMessageWait(
+        { db: tx, hub: notifications },
+        {
+          thread,
+          message: args.input,
+          waitingOn,
+          sendAt: null,
+          claimed: args.claimed,
+        },
+      );
+      return entry === null
+        ? { kind: "dispatched" }
+        : { kind: "queued", entry };
     },
     { behavior: "immediate" },
   );
-  if (queued === null) return false;
-  emitPluginMessageQueued(toThreadQueuedMessage(queued));
-  deps.hub.notifyThread(args.threadId, ["queue-changed"]);
-  deps.logger.info(
-    { queuedMessageId: queued.id, threadId: args.threadId },
-    "Queued input until the current turn starts",
-  );
-  return true;
+  notifications.flushInto(deps.hub);
+  if (outcome.kind === "queued") {
+    deps.logger.info(
+      { queuedMessageId: outcome.entry.id, threadId: args.threadId },
+      "Queued input until the current turn starts",
+    );
+  }
+  return outcome;
 }

@@ -304,6 +304,50 @@ describe("user message telemetry", () => {
 });
 
 describe("turn-starting queue wait", () => {
+  it.each([
+    ["archive", "archived"],
+    ["delete", "deleted"],
+  ] as const)(
+    "does not queue an ordinary follow-up after %s wins before admission",
+    async (operation, reason) => {
+      await withTestHarness(async (harness) => {
+        const { thread } = seedProviderThreadFixture({
+          harness,
+          status: "active",
+          value: operation === "archive" ? 63 : 64,
+        });
+        if (operation === "archive") {
+          archiveThread(harness.db, harness.hub, thread.id);
+        } else {
+          markThreadDeleted(harness.db, harness.hub, {
+            threadId: thread.id,
+          });
+        }
+
+        await expect(
+          acceptThreadSendRequest(harness.deps, {
+            payload: {
+              input: textInput(`follow-up after ${operation}`),
+              mode: "steer",
+              model: "gpt-5",
+              permissionMode: "full",
+              reasoningLevel: "medium",
+              serviceTier: "default",
+            },
+            thread,
+          }),
+        ).rejects.toMatchObject({
+          body: {
+            code: "thread_not_writable",
+            details: { reason },
+          },
+          status: 409,
+        });
+        expect(listQueuedThreadMessages(harness.db, thread.id)).toEqual([]);
+      });
+    },
+  );
+
   it("parks a steer until turn/started and then steers it into that turn", async () => {
     await withTestHarness(async (harness) => {
       const { sessionId, thread } = seedProviderThreadFixture({
@@ -313,6 +357,16 @@ describe("turn-starting queue wait", () => {
       });
       const input = textInput("steer when ready");
       const secondInput = textInput("also steer when ready");
+      const queueChangedInTransactions: boolean[] = [];
+      const notifyThread = harness.hub.notifyThread.bind(harness.hub);
+      vi.spyOn(harness.hub, "notifyThread").mockImplementation(
+        (threadId, changes, metadata) => {
+          if (changes.includes("queue-changed")) {
+            queueChangedInTransactions.push(harness.db.$client.inTransaction);
+          }
+          notifyThread(threadId, changes, metadata);
+        },
+      );
 
       await expect(
         acceptThreadSendRequest(harness.deps, {
@@ -346,6 +400,7 @@ describe("turn-starting queue wait", () => {
         delivery: "queued",
         waitingOn: { kind: "turn-starting" },
       });
+      expect(queueChangedInTransactions).toEqual([false, false]);
       expect(
         listQueuedThreadCommands(harness, "turn.submit", thread.id),
       ).toHaveLength(0);
@@ -519,6 +574,27 @@ describe("turn-starting queue wait", () => {
         }),
       ).resolves.toBe(true);
       expect(listQueuedThreadMessages(harness.db, thread.id)).toHaveLength(0);
+    });
+  });
+
+  it("does not queue a parent notice when archive wins during preparation", async () => {
+    await withTestHarness(async (harness) => {
+      const { thread } = seedProviderThreadFixture({
+        harness,
+        status: "active",
+        value: 65,
+      });
+
+      const delivered = queueParentSystemMessage(harness.deps, {
+        input: textInput("child finished after archive"),
+        parentThreadId: thread.id,
+        systemMessageKind: "child-completed",
+        systemMessageSubject: null,
+      });
+      archiveThread(harness.db, harness.hub, thread.id);
+
+      await expect(delivered).resolves.toBe(false);
+      expect(listQueuedThreadMessages(harness.db, thread.id)).toEqual([]);
     });
   });
 });

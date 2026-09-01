@@ -245,9 +245,11 @@ async function queueActiveParentSystemMessage(
 ): Promise<boolean> {
   const expectedSteerTurnId = getActiveTurnId(deps, args.thread.id);
   if (expectedSteerTurnId === null) {
-    const queued = queueInputForStartingTurn(deps, {
+    const outcome = queueInputForStartingTurn(deps, {
+      claimed: null,
+      fallbackWaitingOn: null,
       input: {
-        content: args.input,
+        input: args.input,
         execution: args.execution,
         payload: { kind: "inline" },
         senderThreadId: null,
@@ -258,20 +260,24 @@ async function queueActiveParentSystemMessage(
       },
       threadId: args.thread.id,
     });
-    if (queued) return true;
-    const currentThread = getThread(deps.db, args.thread.id);
-    if (
-      !currentThread ||
-      currentThread.archivedAt !== null ||
-      currentThread.deletedAt !== null
-    ) {
-      return false;
-    }
-    if (currentThread.status !== "active") {
-      return queueReadyParentSystemMessage(deps, {
-        ...args,
-        thread: currentThread,
-      });
+    if (outcome.kind === "queued") return true;
+    if (outcome.kind === "dispatched") return false;
+    if (outcome.kind === "thread-changed") {
+      const currentThread = outcome.thread;
+      if (
+        currentThread === null ||
+        currentThread.archivedAt !== null ||
+        currentThread.deletedAt !== null ||
+        currentThread.status === "stopping"
+      ) {
+        return false;
+      }
+      if (currentThread.status !== "active") {
+        return queueReadyParentSystemMessage(deps, {
+          ...args,
+          thread: currentThread,
+        });
+      }
     }
   }
   const permissionEscalation = resolvePermissionEscalation({
@@ -431,9 +437,13 @@ export async function queueParentSystemMessage(
     // queues on the thread's queue like every other blocked dispatch, carrying
     // its own taxonomy so the turn it eventually becomes is the same turn it
     // would have been a moment earlier.
-    const execution = await buildExecutionOptions(deps, {}, {
-      threadId: parentThread.id,
-    });
+    const execution = await buildExecutionOptions(
+      deps,
+      {},
+      {
+        threadId: parentThread.id,
+      },
+    );
     createQueuedThreadMessage(deps.db, deps.hub, {
       threadId: parentThread.id,
       content: args.input,
