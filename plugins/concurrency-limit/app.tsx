@@ -165,7 +165,7 @@ function ConcurrencyLimitSettings() {
       <div className="flex items-start justify-between gap-6">
         <div className="min-w-0">
           <h3 className="text-sm font-medium text-foreground">Overall limit</h3>
-          <p className="mt-1 text-xs text-muted-foreground">
+          <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
             Leave blank for no overall limit. Use 0 to pause new work.
           </p>
         </div>
@@ -191,21 +191,21 @@ function ConcurrencyLimitSettings() {
 
       <div className="border-t border-border/60 pt-4">
         <h3 className="text-sm font-medium text-foreground">Host limits</h3>
-        <p className="mt-1 text-xs text-muted-foreground">
+        <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
           Auto uses half the available processors, up to {MAX_AUTOMATIC_LIMIT}.
         </p>
 
-        <div className="mt-3 overflow-hidden rounded-md border border-border/60">
+        <div className="ml-2 mt-2 border-l border-border/60 pl-2">
           {view.hosts.length === 0 ? (
-            <p className="px-3 py-4 text-sm text-muted-foreground">
+            <p className="px-2 py-2 text-sm text-muted-foreground">
               No hosts available.
             </p>
           ) : (
-            <div className="divide-y divide-border/60">
+            <div className="space-y-1">
               {view.hosts.map((host) => (
                 <div
                   key={host.id}
-                  className="flex min-h-14 items-center gap-3 px-3 py-2"
+                  className="flex min-h-14 items-center gap-3 rounded-md px-2 py-2 hover:bg-accent/50"
                 >
                   <div className="min-w-0 flex-1">
                     <div className="truncate text-sm font-medium text-foreground">
@@ -216,11 +216,9 @@ function ConcurrencyLimitSettings() {
                         ? host.status === "connected"
                           ? "Detecting processors…"
                           : "Detect when connected"
-                        : `${host.availableParallelism} processors · ${
-                            host.status === "connected"
-                              ? "Connected"
-                              : "Offline"
-                          }`}
+                        : host.status === "connected"
+                          ? `${host.availableParallelism} processors`
+                          : `${host.availableParallelism} processors · Offline`}
                     </div>
                   </div>
                   <Input

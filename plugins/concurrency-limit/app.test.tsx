@@ -83,7 +83,7 @@ describe("Concurrency limit settings", () => {
     expect(
       slot.getByText("Auto uses half the available processors, up to 8."),
     ).toBeTruthy();
-    expect(slot.getByText("8 processors · Connected")).toBeTruthy();
+    expect(slot.getByText("8 processors")).toBeTruthy();
     expect(slot.getByText("Detect when connected")).toBeTruthy();
     expect(
       slot
