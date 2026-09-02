@@ -55,6 +55,7 @@ import {
 } from "@bb/shared-ui/option-display";
 import { type PickerOption } from "./OptionPicker";
 import type { ModelPickerOption } from "./model-picker-option";
+import { searchPickerOptions } from "./picker-search";
 import { useResetPickerScroll } from "./useResetPickerScroll";
 import {
   formatModelLoadErrorText,
@@ -117,31 +118,6 @@ function splitModelLabelTag(label: string): ModelLabelParts {
     return { base: label, tag: null };
   }
   return { base: match[1], tag: match[2] };
-}
-
-export function buildFuzzyRegex(query: string): RegExp {
-  const pattern = query
-    .split("")
-    .map((c) => c.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
-    .join(".*");
-  return new RegExp(pattern, "i");
-}
-
-function fuzzyFilter<T>(
-  options: readonly T[],
-  normalizedQuery: string,
-  getText: (option: T) => string,
-): readonly T[] {
-  if (!normalizedQuery) return options;
-  const regex = buildFuzzyRegex(normalizedQuery);
-  return options.filter((option) => regex.test(getText(option)));
-}
-
-function modelSearchText(
-  option: ModelPickerOption,
-  brandPrefix: string | undefined,
-): string {
-  return `${stripModelBrandPrefix(option.label, brandPrefix)} ${option.routeProviderId ?? ""} ${option.value}`;
 }
 
 type ModelNavRow =
@@ -271,8 +247,7 @@ export function ModelReasoningPicker({
   const listRef = useResetPickerScroll<HTMLDivElement>(searchQuery);
   const [activeIndex, setActiveIndex] = useState(-1);
   const searchInputRef = useRef<HTMLInputElement>(null);
-  const normalizedQuery = searchQuery.trim().toLowerCase();
-  const isSearching = normalizedQuery.length > 0;
+  const isSearching = searchQuery.trim().length > 0;
   const navId = useId();
   const listboxId = `${navId}-listbox`;
   const optionDomId = (index: number) => `${navId}-opt-${index}`;
@@ -471,16 +446,29 @@ export function ModelReasoningPicker({
 
   const activeBrandPrefix = activeProvider?.brandPrefix;
   const filteredModelOptions = useMemo(() => {
-    return fuzzyFilter(activeModelOptions, normalizedQuery, (option) =>
-      modelSearchText(option, activeBrandPrefix),
-    );
-  }, [activeModelOptions, normalizedQuery, activeBrandPrefix]);
-
-  const filteredMoreModelOptions = useMemo(() => {
-    return fuzzyFilter(activeMoreModelOptions, normalizedQuery, (option) =>
-      modelSearchText(option, activeBrandPrefix),
-    );
-  }, [activeMoreModelOptions, normalizedQuery, activeBrandPrefix]);
+    if (!isSearching) {
+      return activeModelOptions;
+    }
+    return searchPickerOptions({
+      options: [...activeModelOptions, ...activeMoreModelOptions],
+      query: searchQuery,
+      getLabel: (option) =>
+        stripModelBrandPrefix(option.label, activeBrandPrefix),
+      getAliases: (option) =>
+        option.routeProviderId
+          ? [option.routeProviderId, option.value]
+          : [option.value],
+    });
+  }, [
+    activeBrandPrefix,
+    activeModelOptions,
+    activeMoreModelOptions,
+    isSearching,
+    searchQuery,
+  ]);
+  const filteredMoreModelOptions = isSearching
+    ? EMPTY_MODEL_OPTIONS
+    : activeMoreModelOptions;
 
   const navRows = useMemo(
     () =>

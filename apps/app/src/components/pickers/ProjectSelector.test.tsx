@@ -74,7 +74,7 @@ describe("ProjectSelector", () => {
     ).toBeTruthy();
   });
 
-  it("filters projects case-insensitively and selects the match", () => {
+  it("fuzzy-matches project names case-insensitively and selects the match", () => {
     const onChange = vi.fn();
     render(
       <ProjectSelector
@@ -88,7 +88,7 @@ describe("ProjectSelector", () => {
 
     fireEvent.change(
       screen.getByRole("combobox", { name: "Search projects" }),
-      { target: { value: "CHARLIE" } },
+      { target: { value: "CD" } },
     );
 
     expect(screen.queryByRole("option", { name: "Alpha Web" })).toBeNull();

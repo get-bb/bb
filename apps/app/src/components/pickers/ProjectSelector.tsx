@@ -17,6 +17,7 @@ import {
   OPTION_TRIGGER_CONTENT_CLASS_NAME,
 } from "@bb/shared-ui/option-display";
 import { Popover, PopoverContent, PopoverTrigger } from "@bb/shared-ui/popover";
+import { searchPickerOptions } from "./picker-search";
 import { useResetPickerScroll } from "./useResetPickerScroll";
 
 const PROJECT_SEARCH_MIN_OPTIONS = 5;
@@ -67,15 +68,16 @@ export function ProjectSelector({
   const listRef = useResetPickerScroll<HTMLDivElement>(searchQuery);
   const disabled = disabledProp || isLoading;
   const showSearch = projects.length > PROJECT_SEARCH_MIN_OPTIONS;
-  const normalizedSearchQuery = searchQuery.trim().toLocaleLowerCase();
   const filteredProjects = useMemo(
     () =>
-      showSearch && normalizedSearchQuery.length > 0
-        ? projects.filter((project) =>
-            project.name.toLocaleLowerCase().includes(normalizedSearchQuery),
-          )
+      showSearch
+        ? searchPickerOptions({
+            options: projects,
+            query: searchQuery,
+            getLabel: (project) => project.name,
+          })
         : projects,
-    [normalizedSearchQuery, projects, showSearch],
+    [projects, searchQuery, showSearch],
   );
   const selected = value !== null ? projects.find((p) => p.id === value) : null;
   const fallback = !allowNoProject && !selected ? projects[0] : null;

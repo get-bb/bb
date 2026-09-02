@@ -79,7 +79,7 @@ describe("ParentThreadPicker", () => {
     expect(await screen.findByText("Codex Parent")).toBeTruthy();
   });
 
-  it("searches candidates by title and selects the match", async () => {
+  it("fuzzy-searches candidates by title and selects the match", async () => {
     const onChange = vi.fn();
     render(picker({ onChange }));
 
@@ -87,7 +87,7 @@ describe("ParentThreadPicker", () => {
     const search = await screen.findByRole("combobox", {
       name: "Search parent threads",
     });
-    fireEvent.change(search, { target: { value: "frontend" } });
+    fireEvent.change(search, { target: { value: "frpar" } });
 
     expect(screen.queryByRole("option", { name: /Codex Parent/u })).toBeNull();
     fireEvent.click(screen.getByRole("option", { name: /Frontend Parent/u }));
@@ -96,6 +96,23 @@ describe("ParentThreadPicker", () => {
     expect(
       screen.queryByRole("combobox", { name: "Search parent threads" }),
     ).toBeNull();
+  });
+
+  it("augments thread titles with thread IDs", async () => {
+    render(picker());
+
+    fireEvent.click(screen.getByRole("button"));
+    fireEvent.change(
+      await screen.findByRole("combobox", {
+        name: "Search parent threads",
+      }),
+      { target: { value: "frontend_parent" } },
+    );
+
+    expect(screen.queryByRole("option", { name: /Codex Parent/u })).toBeNull();
+    expect(
+      screen.getByRole("option", { name: /Frontend Parent/u }),
+    ).toBeTruthy();
   });
 
   it("returns the results viewport to the top when searching", async () => {
