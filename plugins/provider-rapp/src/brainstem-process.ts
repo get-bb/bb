@@ -439,20 +439,9 @@ const nodeDependencies: BrainstemProcessDependencies = {
   setTimer: setNodeTimer,
 };
 
-function normalizeLoopbackHostname(hostname: string): string {
+function isLaunchableBrainstemHostname(hostname: string): boolean {
   const normalized = hostname.toLowerCase();
-  return normalized.startsWith("[") && normalized.endsWith("]")
-    ? normalized.slice(1, -1)
-    : normalized;
-}
-
-function isLoopback(hostname: string): boolean {
-  const normalized = normalizeLoopbackHostname(hostname);
-  return (
-    normalized === "localhost" ||
-    normalized === "127.0.0.1" ||
-    normalized === "::1"
-  );
+  return normalized === "localhost" || normalized === "127.0.0.1";
 }
 
 function resolveLocalBrainstemAddress(
@@ -460,7 +449,7 @@ function resolveLocalBrainstemAddress(
 ): LocalBrainstemAddress | null {
   if (
     endpoint.protocol !== "http:" ||
-    !isLoopback(endpoint.hostname) ||
+    !isLaunchableBrainstemHostname(endpoint.hostname) ||
     endpoint.username !== "" ||
     endpoint.password !== "" ||
     endpoint.pathname !== "/chat" ||

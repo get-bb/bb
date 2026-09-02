@@ -17,7 +17,8 @@ export const RAPP_USER_GUID_ENV = "RAPP_USER_GUID";
 export const rappGrailSchema = z.enum(["consumer", "business"]);
 export type RappGrail = z.infer<typeof rappGrailSchema>;
 
-const secretQueryKey = /(code|token|secret|key|password)/iu;
+export const RAPP_ENDPOINT_URL_REQUIREMENTS =
+  "Use an HTTP(S) RAPP endpoint without URL credentials, query parameters, or fragments; put credentials in the documented host environment variables and routing in the documented endpoint path";
 
 export const rappEndpointSettingSchema = z.string().refine((value) => {
   const trimmed = value.trim();
@@ -32,13 +33,11 @@ export const rappEndpointSettingSchema = z.string().refine((value) => {
     if (url.username !== "" || url.password !== "") {
       return false;
     }
-    return [...url.searchParams.keys()].every(
-      (key) => !secretQueryKey.test(key),
-    );
+    return url.search === "" && url.hash === "";
   } catch {
     return false;
   }
-}, "Use an HTTP(S) URL without credentials or secret-bearing query parameters");
+}, RAPP_ENDPOINT_URL_REQUIREMENTS);
 
 export const rappPluginSettingsSchema = z.object({
   grail: rappGrailSchema,

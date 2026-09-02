@@ -350,8 +350,12 @@ describe("local Brainstem process lifecycle", () => {
   it("manages only launchable plain-http loopback chat endpoints", async () => {
     const dependencies = new FakeDependencies();
     const manager = createBrainstemProcessManager(dependencies, fastTimings);
-    const accepted = config("http://localhost:7071/chat");
-    expect(shouldManageLocalBrainstem(accepted)).toBe(true);
+    expect(
+      shouldManageLocalBrainstem(config("http://localhost:7071/chat")),
+    ).toBe(true);
+    expect(
+      shouldManageLocalBrainstem(config("http://127.0.0.1:7071/chat")),
+    ).toBe(true);
 
     const rejected = [
       config("https://localhost:7071/chat"),
@@ -372,17 +376,30 @@ describe("local Brainstem process lifecycle", () => {
     expect(dependencies.probeUrls).toEqual([]);
   });
 
-  it("canonicalizes loopback aliases and shares their concurrent startup", async () => {
+  it("does not auto-manage IPv6 loopback endpoints", async () => {
+    const dependencies = new FakeDependencies();
+    const manager = createBrainstemProcessManager(dependencies, fastTimings);
+    const ipv6 = config("http://[::1]:7071/chat");
+
+    expect(canonicalLocalBrainstemKey(ipv6)).toBeNull();
+    expect(shouldManageLocalBrainstem(ipv6)).toBe(false);
+    await manager.ensureLocalBrainstem(
+      ipv6,
+      new AbortController().signal,
+    );
+
+    expect(dependencies.lockRequests).toEqual([]);
+    expect(dependencies.spawnRequests).toEqual([]);
+    expect(dependencies.probeUrls).toEqual([]);
+  });
+
+  it("canonicalizes launcher-served aliases and shares their concurrent startup", async () => {
     const dependencies = new FakeDependencies();
     const manager = createBrainstemProcessManager(dependencies, fastTimings);
     const localhost = config("http://localhost:7071/chat");
     const ipv4 = config("http://127.0.0.1:7071/chat");
-    const ipv6 = config("http://[::1]:7071/chat");
     expect(canonicalLocalBrainstemKey(localhost)).toBe(
       canonicalLocalBrainstemKey(ipv4),
-    );
-    expect(canonicalLocalBrainstemKey(ipv4)).toBe(
-      canonicalLocalBrainstemKey(ipv6),
     );
 
     const healthy = createDeferred<boolean>();

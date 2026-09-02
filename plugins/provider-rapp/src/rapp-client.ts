@@ -6,6 +6,7 @@ import {
   RAPP_BRAINSTEM_MODEL,
   RAPP_BUSINESS_MODEL,
   RAPP_BUSINESS_URL_ENV,
+  RAPP_ENDPOINT_URL_REQUIREMENTS,
   RAPP_FUNCTION_KEY_ENV,
   RAPP_USER_GUID_ENV,
   rappCatalogOptionsSchema,
@@ -152,21 +153,17 @@ function normalizeEndpoint(raw: string, grail: RappGrail): URL {
       "configuration",
     );
   }
-  if (endpoint.username !== "" || endpoint.password !== "") {
+  if (
+    endpoint.username !== "" ||
+    endpoint.password !== "" ||
+    endpoint.search !== "" ||
+    endpoint.hash !== ""
+  ) {
     throw new RappClientError(
-      "RAPP endpoint URLs must not contain credentials",
+      RAPP_ENDPOINT_URL_REQUIREMENTS,
       "configuration",
     );
   }
-  for (const key of endpoint.searchParams.keys()) {
-    if (/(code|token|secret|key|password)/iu.test(key)) {
-      throw new RappClientError(
-        "Put RAPP credentials in the documented host environment variables, not the endpoint URL",
-        "configuration",
-      );
-    }
-  }
-  endpoint.hash = "";
   const path = endpoint.pathname.replace(/\/+$/u, "");
   if (grail === "consumer") {
     endpoint.pathname =

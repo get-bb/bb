@@ -6,11 +6,50 @@ import {
   RAPP_BRAINSTEM_URL_ENV,
   RAPP_BUSINESS_MODEL_ID,
   RAPP_BUSINESS_URL_ENV,
+  RAPP_ENDPOINT_URL_REQUIREMENTS,
   RAPP_FUNCTION_KEY_ENV,
   RAPP_MODEL_ID,
   RAPP_PROVIDER_ID,
   RAPP_USER_GUID_ENV,
+  rappPluginSettingsSchema,
 } from "./src/vocabulary.js";
+
+const invalidEndpointSettings = [
+  {
+    label: "a generic query parameter",
+    endpoint: "https://example.com/chat?tenant=test",
+  },
+  {
+    label: "a sig query parameter",
+    endpoint:
+      "https://example.com/api/businessinsightbot_function?sig=secret",
+  },
+  {
+    label: "a signature query parameter",
+    endpoint: "https://example.com/chat?signature=secret",
+  },
+  {
+    label: "an auth query parameter",
+    endpoint:
+      "https://example.com/api/businessinsightbot_function?auth=secret",
+  },
+  {
+    label: "a credential query parameter",
+    endpoint: "https://example.com/chat?credential=secret",
+  },
+  {
+    label: "a username",
+    endpoint: "https://user@example.com/chat",
+  },
+  {
+    label: "a password",
+    endpoint: "https://:password@example.com/chat",
+  },
+  {
+    label: "a fragment",
+    endpoint: "https://example.com/chat#tenant",
+  },
+];
 
 async function registration(
   settings: { grail: "consumer" | "business"; endpoint: string } = {
@@ -31,6 +70,25 @@ async function registration(
   }
   return { declaration, host };
 }
+
+describe("RAPP endpoint setting validation", () => {
+  it.each(invalidEndpointSettings)("rejects $label", ({ endpoint }) => {
+    const result = rappPluginSettingsSchema.safeParse({
+      grail: "consumer",
+      endpoint,
+    });
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues).toContainEqual(
+        expect.objectContaining({
+          path: ["endpoint"],
+          message: RAPP_ENDPOINT_URL_REQUIREMENTS,
+        }),
+      );
+    }
+  });
+});
 
 describe("RAPP provider registration", () => {
   it("registers one Brainstem provider with Consumer catalog routing", async () => {
