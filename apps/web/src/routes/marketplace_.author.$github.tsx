@@ -1,26 +1,18 @@
-import { createFileRoute, getRouteApi, notFound } from "@tanstack/react-router";
+import { createFileRoute, getRouteApi } from "@tanstack/react-router";
 
 import { unfurlMeta } from "../landing/site.js";
+import { marketplaceAuthorRouteEntries } from "../marketplace/marketplace-route-data.js";
 import {
   PublicMarketplaceAuthorPage,
   PublicMarketplaceUnavailablePage,
 } from "../marketplace/public-marketplace.js";
-import { marketplaceAuthorEntries } from "../marketplace/marketplace-view-model.js";
 
 const marketplaceRoute = getRouteApi("/marketplace_");
 
 export const Route = createFileRoute("/marketplace_/author/$github")({
   loader: async ({ params, parentMatchPromise }) => {
     const { loaderData: marketplace } = await parentMatchPromise;
-    if (marketplace === undefined || marketplace.status === "unavailable") {
-      return null;
-    }
-    const entries = marketplaceAuthorEntries(
-      marketplace.manifest,
-      params.github,
-    );
-    if (entries.length === 0) throw notFound();
-    return entries;
+    return marketplaceAuthorRouteEntries(marketplace, params.github);
   },
   head: ({ loaderData, params }) => {
     const author = loaderData?.[0]?.author;

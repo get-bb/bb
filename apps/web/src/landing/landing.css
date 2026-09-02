@@ -3110,10 +3110,6 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
     font-size: 13px;
   }
 
-  .nav-links a[href="/changelog"] {
-    display: none;
-  }
-
   .updates-label {
     display: none;
   }

@@ -1,6 +1,7 @@
-import { createFileRoute, getRouteApi, notFound } from "@tanstack/react-router";
+import { createFileRoute, getRouteApi } from "@tanstack/react-router";
 
 import { unfurlMeta } from "../landing/site.js";
+import { marketplacePluginRouteEntry } from "../marketplace/marketplace-route-data.js";
 import {
   PublicMarketplaceDetailPage,
   PublicMarketplaceUnavailablePage,
@@ -11,14 +12,7 @@ const marketplaceRoute = getRouteApi("/marketplace_");
 export const Route = createFileRoute("/marketplace_/$pluginId")({
   loader: async ({ params, parentMatchPromise }) => {
     const { loaderData: marketplace } = await parentMatchPromise;
-    if (marketplace === undefined || marketplace.status === "unavailable") {
-      return null;
-    }
-    const entry = marketplace.manifest.plugins.find(
-      (candidate) => candidate.id === params.pluginId,
-    );
-    if (entry === undefined) throw notFound();
-    return entry;
+    return marketplacePluginRouteEntry(marketplace, params.pluginId);
   },
   head: ({ loaderData, params }) => {
     const entry = loaderData;

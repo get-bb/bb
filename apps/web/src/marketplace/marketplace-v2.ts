@@ -85,11 +85,17 @@ export const marketplaceV2EntrySchema = z.object({
   displayName: z.string().min(1),
   description: z.string().min(1),
   icon: marketplaceIconSchema,
-  tags: z.array(z.string().max(32).regex(TAG_PATTERN)).max(10).default([]),
+  tags: z
+    .array(z.string().max(32).regex(TAG_PATTERN))
+    .transform((tags) => tags.slice(0, 10))
+    .default([]),
   author: marketplaceAuthorSchema,
   source: z.union([marketplaceGitSourceSchema, marketplaceNpmSourceSchema]),
   category: z.string().regex(MARKETPLACE_ID_PATTERN).optional(),
-  screenshots: z.array(screenshotUrlSchema).max(6).default([]),
+  screenshots: z
+    .array(screenshotUrlSchema)
+    .transform((screenshots) => screenshots.slice(0, 6))
+    .default([]),
   publishedAt: z.string().datetime({ offset: true }).optional(),
   updatedAt: z.string().datetime({ offset: true }).optional(),
 });
@@ -147,7 +153,7 @@ export const marketplaceV2ManifestSchema = z
     description: z.string().min(1).optional(),
     categories: z.array(marketplaceCategorySchema).default([]),
     collections: z.array(marketplaceCollectionSchema).default([]),
-    plugins: z.array(marketplaceV2EntrySchema).min(1).max(256),
+    plugins: z.array(marketplaceV2EntrySchema).max(256),
   })
   .superRefine((manifest, context) => {
     reportDuplicateIds(manifest.categories, context, "categories");

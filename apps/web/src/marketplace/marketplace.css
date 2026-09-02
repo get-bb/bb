@@ -181,8 +181,8 @@
 }
 
 .marketplace-category-filters button.is-selected {
-  border-color: color-mix(in oklch, var(--ink) 32%, var(--canvas));
-  background: color-mix(in oklch, var(--ink) 10%, var(--canvas));
+  border-color: color-mix(in oklch, var(--ink) 32%, var(--bg));
+  background: color-mix(in oklch, var(--ink) 10%, var(--bg));
   color: var(--ink);
 }
 
@@ -836,10 +836,6 @@
 }
 
 @media (max-width: 520px) {
-  .plugin-pages-wrap .nav-links a[href="/changelog"] {
-    display: none;
-  }
-
   .marketplace-grid {
     grid-template-columns: 1fr;
   }

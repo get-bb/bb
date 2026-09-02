@@ -8,8 +8,11 @@ import {
 import type { ComponentProps } from "react";
 
 import landingCss from "../landing/landing.css?url";
-import { unfurlMeta } from "../landing/site.js";
 import marketplaceCss from "../marketplace/marketplace.css?url";
+import {
+  marketplaceIndexMeta,
+  validateMarketplaceSearch,
+} from "../marketplace/marketplace-route-data.js";
 import { getPublicMarketplace } from "../marketplace/marketplace-server.js";
 import {
   PublicMarketplaceNotFoundPage,
@@ -17,20 +20,6 @@ import {
   PublicMarketplaceUnavailablePage,
   MarketplaceNavigationProvider,
 } from "../marketplace/public-marketplace.js";
-import {
-  isMarketplaceSort,
-  parseMarketplaceCategories,
-} from "../marketplace/marketplace-view-model.js";
-
-const PAGE_TITLE = "Plugin Marketplace — bb";
-const PAGE_DESCRIPTION = "Find community plugins that add new features to bb.";
-
-function validateMarketplaceSearch(search: Record<string, unknown>) {
-  return {
-    category: parseMarketplaceCategories(search.category),
-    ...(isMarketplaceSort(search.sort) ? { sort: search.sort } : {}),
-  };
-}
 
 export const Route = createFileRoute("/marketplace_")({
   validateSearch: validateMarketplaceSearch,
@@ -64,12 +53,7 @@ export const Route = createFileRoute("/marketplace_")({
     }
     if (!isIndex) return { links: sharedLinks };
     return {
-      meta: [
-        { title: PAGE_TITLE },
-        { name: "description", content: PAGE_DESCRIPTION },
-        { name: "robots", content: available ? "index, follow" : "noindex" },
-        ...unfurlMeta(PAGE_TITLE, PAGE_DESCRIPTION, "/marketplace"),
-      ],
+      meta: marketplaceIndexMeta(available),
       links: [
         ...sharedLinks,
         { rel: "canonical", href: "https://getbb.app/marketplace" },

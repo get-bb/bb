@@ -107,4 +107,32 @@ describe("parseMarketplaceV2Manifest", () => {
       }),
     ).toThrow(/duplicate plugin id/u);
   });
+
+  it("accepts an empty catalog and truncates display arrays", () => {
+    expect(
+      parseMarketplaceV2Manifest({
+        ...MARKETPLACE_V2_FIXTURE,
+        plugins: [],
+      }).plugins,
+    ).toEqual([]);
+
+    const entry = MARKETPLACE_V2_FIXTURE.plugins[0];
+    if (entry === undefined) throw new Error("The fixture needs a plugin");
+    const parsed = parseMarketplaceV2Manifest({
+      ...MARKETPLACE_V2_FIXTURE,
+      plugins: [
+        {
+          ...entry,
+          tags: Array.from({ length: 12 }, (_, index) => `tag-${index}`),
+          screenshots: Array.from(
+            { length: 8 },
+            (_, index) =>
+              `https://getbb.app/marketplace/v2/screenshots/plugin/${index}.png`,
+          ),
+        },
+      ],
+    });
+    expect(parsed.plugins[0]?.tags).toHaveLength(10);
+    expect(parsed.plugins[0]?.screenshots).toHaveLength(6);
+  });
 });
