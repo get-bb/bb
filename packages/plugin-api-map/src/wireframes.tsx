@@ -1178,7 +1178,7 @@ function AppShellWireframeBody({
       >
         <PluginGlyph className="size-4 shrink-0" />
         <span className="min-w-0">
-          <span className="block truncate font-medium">Office widget</span>
+          <span className="block truncate font-medium">Floating widget</span>
           <span className="block truncate text-2xs text-subtle-foreground">
             2 agents active
           </span>

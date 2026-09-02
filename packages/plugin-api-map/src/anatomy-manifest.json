@@ -110,7 +110,7 @@
       "responsiveStrategy": "scale-together",
       "requiredStates": ["anchor"],
       "labels": {
-        "anchor": ["Office widget", "2 agents active"]
+        "anchor": ["Floating widget", "2 agents active"]
       },
       "fixtureClassAnchors": [
         "absolute bottom-24 right-12",
