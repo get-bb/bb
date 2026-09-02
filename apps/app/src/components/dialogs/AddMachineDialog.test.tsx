@@ -65,6 +65,8 @@ function connectPlugin(
     updateState: {},
     description: null,
     name: "Remote access",
+    screenshots: [],
+    collections: [],
     icon: null,
     iconUrl: null,
     statusDetail: null,

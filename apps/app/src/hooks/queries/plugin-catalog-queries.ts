@@ -249,7 +249,7 @@ function toPluginCatalogSearchEntry(
     icon: data.icon,
     iconUrl: data.iconUrl,
     iconTinted: data.iconTinted,
-    category: data.category,
+    category: data.category ?? "Uncategorized",
     source: data.source,
     repositoryUrl: data.repositoryUrl,
     marketplace: data.marketplace,

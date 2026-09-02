@@ -66,6 +66,8 @@ const INSTALLED_PLUGIN_RESPONSE = {
     enabled: true,
     description: "Linear integration",
     name: "Linear",
+    screenshots: [],
+    collections: [],
     icon: null,
     iconUrl: null,
     status: "running",

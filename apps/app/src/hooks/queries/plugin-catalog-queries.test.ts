@@ -117,7 +117,7 @@ describe("plugin installs", () => {
 });
 
 describe("plugin catalog queries", () => {
-  it("preserves canonical plugin identity without source-catalog fields", async () => {
+  it("preserves canonical identity and labels an absent category", async () => {
     const entries = await searchPluginCatalog(
       fetchReturning({
         results: [
@@ -128,7 +128,6 @@ describe("plugin catalog queries", () => {
             description: "Personal task capture",
             icon: "CheckList",
             iconUrl: null,
-            category: "Project management",
             source: "npm:@bb-plugins/todoist",
             marketplace: "acme-plugins",
             marketplaceDisplayName: "Acme Plugins",
@@ -153,7 +152,7 @@ describe("plugin catalog queries", () => {
         icon: "CheckList",
         iconUrl: null,
         iconTinted: false,
-        category: "Project management",
+        category: "Uncategorized",
         source: "npm:@bb-plugins/todoist",
         repositoryUrl: null,
         marketplace: "acme-plugins",
