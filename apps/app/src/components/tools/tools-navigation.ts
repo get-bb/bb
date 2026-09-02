@@ -190,12 +190,17 @@ export function resolveToolsBreadcrumbs(
     return pluginCreateBreadcrumbs;
   }
   for (const [section, browseRoute] of BROWSE_ROUTES) {
-    if (
-      pathname === browseRoute ||
-      (pathname === TOOLS_SECTIONS[section].to &&
-        view !== TOOLS_OWNED_COLLECTION_VIEW[section])
-    ) {
+    if (pathname === browseRoute) {
       return [sectionCrumb(section), { label: "Browse" }];
+    }
+  }
+
+  for (const section of [TOOLS_SECTIONS.plugins, TOOLS_SECTIONS.skills]) {
+    if (
+      pathname === section.to &&
+      view !== TOOLS_OWNED_COLLECTION_VIEW[section.id]
+    ) {
+      return [sectionCrumb(section.id), { label: "Browse" }];
     }
   }
 
