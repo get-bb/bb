@@ -64,6 +64,27 @@ Complete the applicable changes:
 - Keep Guide annotations separate from the product interface.
 - Add focused tests for the entry, source anchors, trigger, and outcome.
 
+## Redraw annotation order
+
+Annotation numbers express the rendered fixture's spatial reading order, not
+API registration or source order. Read rows from top to bottom, then read the
+annotations within each row from left to right.
+
+Whenever a visible surface is added, removed, or moved:
+
+1. Build and reload the Plugin Guide, then open the real affected fixture at
+   each relevant viewport.
+2. Inspect the rendered badge positions and redraw the full affected sequence.
+   Do not append or insert only the new annotation.
+3. Rewrite the affected group's order in `surfaces.ts` and its matching
+   `*_MARKS` order in `wireframes.tsx` as the same complete sequence.
+4. Update the focused order test with that complete sequence.
+5. Verify that badge numbers, cards, and previous/next navigation agree; every
+   annotation appears exactly once; and no badge clips or obscures its target.
+
+If responsive layouts produce conflicting spatial orders, fix the layout or
+define one stable readable sequence before shipping.
+
 ## Refresh the SDK inventory
 
 Refresh the inventory after the Guide represents the API change:

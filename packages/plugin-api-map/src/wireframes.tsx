@@ -70,19 +70,19 @@ export function useSurfaceMap(): SurfaceMapState {
 }
 
 export const APP_SHELL_MARKS = [
-  "nav-panel",
-  "sidebar-navigation",
-  "thread-list",
-  "thread-row-status",
-  "sidebar-footer",
   "thread-header",
-  "message-directives",
-  "message-actions",
-  "pending-interaction",
   "code-renderers",
   "thread-panel",
   "file-opener",
+  "sidebar-navigation",
+  "nav-panel",
   "timeline-renderers",
+  "thread-row-status",
+  "message-directives",
+  "message-actions",
+  "thread-list",
+  "pending-interaction",
+  "sidebar-footer",
   "content-scripts",
 ] as const;
 
@@ -295,6 +295,7 @@ function MeasuredBadge({
   anchor,
   at,
   align = "center",
+  flush = false,
   onActivate,
 }: {
   id: string;
@@ -302,6 +303,7 @@ function MeasuredBadge({
   anchor: string;
   at: "start" | "end" | "above" | "lane";
   align?: "center" | "end";
+  flush?: boolean;
   onActivate?: () => void;
 }) {
   const { setActiveId, numberOf, onSelect } = useSurfaceMap();
@@ -341,7 +343,10 @@ function MeasuredBadge({
         Number(strategy?.dataset.guideScale ?? "1"),
       );
       const chipBox = CHIP_SIZE * counterScale;
-      const chipGap = CHIP_GAP * counterScale;
+      const edgeGap = flush
+        ? parseFloat(getComputedStyle(container).borderLeftWidth || "0")
+        : CHIP_GAP;
+      const chipGap = edgeGap * counterScale;
       const chipTuck = 4 * counterScale;
       const recenter = (chipBox - CHIP_SIZE) / 2;
       const containerOrigin = layoutOrigin(container);
@@ -377,6 +382,8 @@ function MeasuredBadge({
                   left: local.left + local.width / 2 - chipBox / 2,
                   top: Math.max(0, (frameLocal.top - chipBox) / 2),
                 };
+      const clamp = (value: number, extent: number) =>
+        Math.max(0, Math.min(value, Math.max(0, extent - chipBox)));
       const clippingFrame =
         container.closest<HTMLElement>("[data-guide-frame]");
       if (clippingFrame) {
@@ -387,9 +394,9 @@ function MeasuredBadge({
           clipLeft + clippingFrame.offsetWidth - chipBox - chipTuck,
         );
       }
-      const clamp = (value: number, extent: number) =>
-        Math.max(0, Math.min(value, Math.max(0, extent - chipBox)));
-      next.left = clamp(next.left, container.offsetWidth);
+      if (!flush) {
+        next.left = clamp(next.left, container.offsetWidth);
+      }
       next.top = clamp(next.top, container.offsetHeight);
       next.left += recenter;
       next.top += recenter;
@@ -411,7 +418,7 @@ function MeasuredBadge({
     );
     if (scaleWrapper) observer.observe(scaleWrapper);
     return () => observer.disconnect();
-  }, [anchor, at, align]);
+  }, [anchor, at, align, flush]);
 
   return (
     <a
@@ -877,6 +884,7 @@ export function CommandPaletteWireframe() {
                   label="Plugin actions in bb's quick command palette"
                   anchor='[data-guide-region="command-palette-actions"]'
                   at="start"
+                  flush
                 />
               </div>
             </div>
@@ -955,7 +963,7 @@ function AppShellWireframeBody({
     assistantMessageHovered || messageActionsSelected;
 
   return (
-    <WindowFrame className="relative">
+    <WindowFrame className="relative overflow-visible">
       {}
       <span
         aria-hidden
