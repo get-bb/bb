@@ -1,5 +1,6 @@
 import { spawn, type ChildProcess } from "node:child_process";
-import { createInterface, type Interface } from "node:readline";
+import { createInterface } from "node:readline";
+import { StringDecoder } from "node:string_decoder";
 import { experimental_recordProviderChildIo } from "@get-bb/plugin-sdk/provider-bridge";
 import type { z } from "zod";
 
@@ -111,7 +112,7 @@ export function createCodexAppServerConnection(
     signal: NodeJS.Signals | null;
   } | null = null;
   let closeGraceTimer: NodeJS.Timeout | null = null;
-  let stdoutLines: Interface | null = null;
+  let stdoutLines: { close(): void } | null = null;
 
   function writeLine(message: object): void {
     const stdin = child.stdin;
@@ -159,8 +160,15 @@ export function createCodexAppServerConnection(
   }
 
   if (child.stdout) {
-    stdoutLines = createInterface({ input: child.stdout, terminal: false });
-    stdoutLines.on("line", (line) => {
+    // Split strictly on "\n". `node:readline` also treats U+2028 and U+2029 as
+    // line breaks, which codex may emit unescaped inside JSON strings. That
+    // fragmented large responses (for example `thread/resume` for a thread whose
+    // history contained U+2028) into unparseable pieces, so the request never
+    // resolved and timed out.
+    const stdout = child.stdout;
+    const decoder = new StringDecoder("utf8");
+    let buffered = "";
+    const handleStdoutLine = (line: string) => {
       if (finalized) {
         return;
       }
@@ -222,7 +230,23 @@ export function createCodexAppServerConnection(
       }
 
       options.onNotification(message.method, message.params);
-    });
+    };
+    const onStdoutData = (chunk: Buffer) => {
+      buffered += decoder.write(chunk);
+      let newlineIndex = buffered.indexOf("\n");
+      while (newlineIndex !== -1) {
+        const line = buffered.slice(0, newlineIndex);
+        buffered = buffered.slice(newlineIndex + 1);
+        handleStdoutLine(line.endsWith("\r") ? line.slice(0, -1) : line);
+        newlineIndex = buffered.indexOf("\n");
+      }
+    };
+    stdout.on("data", onStdoutData);
+    stdoutLines = {
+      close() {
+        stdout.off("data", onStdoutData);
+      },
+    };
   }
 
   if (child.stderr) {
