@@ -21,12 +21,6 @@ const DEFAULT_WARMUPS = 2;
 const DEFAULT_ITERATIONS = 10;
 const DEFAULT_DRAIN_ROWS_PER_TARGET = 1_000;
 const DEFAULT_SCAN_LIMIT = 250;
-const TARGETS = [
-  { itemKind: "commandExecution", outputPath: "aggregatedOutput" },
-  { itemKind: "toolCall", outputPath: "result" },
-  { itemKind: "webFetch", outputPath: "resultText" },
-  { itemKind: "webSearch", outputPath: "resultText" },
-];
 
 function parsePositiveInteger(value, name) {
   const parsed = Number(value);
@@ -93,6 +87,16 @@ function requireFunction(moduleValue, name) {
   return value;
 }
 
+function requireTargets(moduleValue) {
+  const value = moduleValue.RETAINED_EVENT_OUTPUT_TARGETS;
+  if (!Array.isArray(value) || value.length === 0) {
+    throw new Error(
+      "Target checkout does not export RETAINED_EVENT_OUTPUT_TARGETS",
+    );
+  }
+  return value;
+}
+
 async function loadTarget(repo) {
   const dbModule = await import(
     pathToFileURL(join(repo, "packages/db/src/index.ts")).href
@@ -120,6 +124,7 @@ async function loadTarget(repo) {
         ? dbModule.migrateNextCompletedEventItemOutput
         : null,
     noopNotifier: dbModule.noopNotifier,
+    targets: requireTargets(dbModule),
     truncateCompletedEventItemOutputs:
       typeof dbModule.truncateCompletedEventItemOutputs === "function"
         ? dbModule.truncateCompletedEventItemOutputs
@@ -238,7 +243,7 @@ function seedDatabase(api, root, args) {
   });
   const thread = api.createThread(db, api.noopNotifier, {
     projectId: projectResult.project.id,
-    providerId: "codex",
+    providerId: "benchmark",
     status: "idle",
   });
   const insert = db.$client.prepare(
@@ -251,7 +256,7 @@ function seedDatabase(api, root, args) {
       ? BENCHMARK_NOW - RETENTION_MS - 60_000
       : BENCHMARK_NOW - 60_000;
   const insertAll = db.$client.transaction(() => {
-    for (const [targetIndex, target] of TARGETS.entries()) {
+    for (const [targetIndex, target] of api.targets.entries()) {
       for (let index = 0; index < args.rowsPerTarget; index += 1) {
         sequence += 1;
         const itemId = `benchmark-${targetIndex}-${String(index).padStart(8, "0")}`;
@@ -311,7 +316,7 @@ function instrumentStatements(db) {
           if (
             operation === "get" &&
             normalized.startsWith(
-              "SELECT id, created_at, data, sequence, thread_id FROM events",
+              "SELECT id, created_at, data, thread_id FROM events",
             ) &&
             result !== undefined
           ) {
@@ -397,7 +402,7 @@ function createAdvance(api, mode, db, args) {
       });
   }
   return () => {
-    const target = TARGETS[targetIndex % TARGETS.length];
+    const target = api.targets[targetIndex % api.targets.length];
     targetIndex += 1;
     return api.migrateNextCompletedEventItemOutput(db, {
       ...target,
@@ -415,7 +420,7 @@ async function runDrain(api, mode, root, args) {
   });
   const counters = instrumentStatements(seeded.db);
   const advance = createAdvance(api, mode, seeded.db, args);
-  const expectedRows = args.rowsPerTarget * TARGETS.length;
+  const expectedRows = args.rowsPerTarget * api.targets.length;
   const samples = [];
   let migratedBytes = 0;
   let migratedRows = 0;
@@ -430,7 +435,7 @@ async function runDrain(api, mode, root, args) {
     samples.push(sample);
     migratedBytes += sample.migratedBytes;
     migratedRows += sample.migratedRows;
-    if (samples.length > expectedRows * 3 + TARGETS.length) {
+    if (samples.length > expectedRows * 3 + api.targets.length) {
       throw new Error(
         `Migration stopped making progress at ${migratedRows}/${expectedRows}`,
       );
@@ -502,7 +507,7 @@ async function runCorrectness(api, mode, root, args) {
   if (mode === "after") {
     const advance = createAdvance(api, mode, seeded.db, args);
     let migratedRows = 0;
-    while (migratedRows < TARGETS.length) {
+    while (migratedRows < api.targets.length) {
       const result = migrationResult(mode, advance(), args.outputChars);
       migratedRows += result.migratedRows;
     }
@@ -518,7 +523,7 @@ async function runCorrectness(api, mode, root, args) {
     BENCHMARK_NOW,
   );
   const rawEventRows = api.listThreadEventRows(seeded.db, {
-    limit: TARGETS.length,
+    limit: api.targets.length,
     order: "asc",
     threadId: seeded.thread.id,
   });
@@ -675,9 +680,9 @@ async function main() {
       dataset: {
         drainRowsPerTarget: args.drainRowsPerTarget,
         drainTotalBytes:
-          args.drainRowsPerTarget * TARGETS.length * args.outputChars,
-        drainTotalRows: args.drainRowsPerTarget * TARGETS.length,
-        itemPaths: TARGETS,
+          args.drainRowsPerTarget * api.targets.length * args.outputChars,
+        drainTotalRows: args.drainRowsPerTarget * api.targets.length,
+        itemPaths: api.targets,
         outputChars: args.outputChars,
         scanLimit: args.scanLimit,
       },

@@ -12,10 +12,17 @@ interface ThreadTimelineCacheOptions {
 
 interface ThreadTimelineCache {
   getOrBuild(
+    threadId: string,
     key: string,
     build: () => ThreadTimelineResponse,
   ): ThreadTimelineResponse;
+  invalidateThread(threadId: string): void;
   readonly size: number;
+}
+
+interface ThreadTimelineCacheEntry {
+  response: ThreadTimelineResponse;
+  threadId: string;
 }
 
 export function createThreadTimelineCache(
@@ -24,20 +31,20 @@ export function createThreadTimelineCache(
   const maxEntries = options.maxEntries ?? DEFAULT_MAX_ENTRIES;
   const maxCacheableRows =
     options.maxCacheableRows ?? DEFAULT_MAX_CACHEABLE_ROWS;
-  const entries = new Map<string, ThreadTimelineResponse>();
+  const entries = new Map<string, ThreadTimelineCacheEntry>();
 
   return {
-    getOrBuild(key, build) {
+    getOrBuild(threadId, key, build) {
       const cached = entries.get(key);
       if (cached !== undefined) {
         entries.delete(key);
         entries.set(key, cached);
-        return cached;
+        return cached.response;
       }
 
       const value = build();
       if (value.rows.length <= maxCacheableRows) {
-        entries.set(key, value);
+        entries.set(key, { response: value, threadId });
         while (entries.size > maxEntries) {
           const oldest = entries.keys().next().value;
           if (oldest === undefined) {
@@ -47,6 +54,13 @@ export function createThreadTimelineCache(
         }
       }
       return value;
+    },
+    invalidateThread(threadId) {
+      for (const [key, entry] of entries) {
+        if (entry.threadId === threadId) {
+          entries.delete(key);
+        }
+      }
     },
     get size() {
       return entries.size;

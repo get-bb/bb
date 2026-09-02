@@ -7,6 +7,7 @@ import {
   events,
   hostDaemonSessions,
   listQueuedThreadMessages,
+  RETAINED_EVENT_OUTPUT_TARGETS,
   retainedEventOutputs,
 } from "@bb/db";
 import { threadScope } from "@bb/domain";
@@ -98,13 +99,11 @@ function releaseRunningJob(release: ReleaseCallback | null): void {
 
 describe("runPeriodicSweeps", () => {
   it("deletes one expired retained output without changing its event preview", async () => {
-    const now = 1_800_000_000_000;
-    vi.useFakeTimers();
-    vi.setSystemTime(now);
+    const now = Date.now();
     await withTestHarness(async (harness) => {
       const { environment, thread } = seedThreadFixture(harness);
       seedEvent(harness.deps, {
-        createdAt: now - COMPLETED_EVENT_OUTPUT_RETENTION_MS,
+        createdAt: now - COMPLETED_EVENT_OUTPUT_RETENTION_MS - 1,
         data: {
           item: {
             aggregatedOutput: "x".repeat(50_000),
@@ -147,6 +146,85 @@ describe("runPeriodicSweeps", () => {
           .where(eq(events.threadId, thread.id))
           .get(),
       ).toEqual(preview);
+    });
+  });
+
+  it("migrates legacy outputs one per event-loop turn and notifies their thread", async () => {
+    await withTestHarness(async (harness) => {
+      const now = Date.now();
+      const { environment, thread } = seedThreadFixture(harness);
+      const output = "legacy-" + "m".repeat(40_000);
+      for (const sequence of [1, 2]) {
+        harness.db
+          .insert(events)
+          .values({
+            createdAt: now - COMPLETED_EVENT_OUTPUT_RETENTION_MS - sequence,
+            data: JSON.stringify({
+              item: {
+                aggregatedOutput: `${sequence}-${output}`,
+                id: `legacy-periodic-${sequence}`,
+                type: "commandExecution",
+              },
+            }),
+            environmentId: environment.id,
+            id: `evt_legacy_periodic_${sequence}`,
+            itemId: `legacy-periodic-${sequence}`,
+            itemKind: "commandExecution",
+            parentToolCallId: null,
+            providerThreadId: "provider-legacy-periodic",
+            scopeKind: "turn",
+            sequence,
+            threadId: thread.id,
+            turnId: "turn-legacy-periodic",
+            type: "item/completed",
+          })
+          .run();
+      }
+
+      const countLargeInlineOutputs = () =>
+        harness.db
+          .select({ data: events.data })
+          .from(events)
+          .where(eq(events.threadId, thread.id))
+          .all()
+          .filter(
+            (row) => JSON.parse(row.data).item.aggregatedOutput.length > 40_000,
+          ).length;
+      const observedCounts: number[] = [];
+      let sweepSettled = false;
+      const probe = () => {
+        if (sweepSettled) {
+          return;
+        }
+        observedCounts.push(countLargeInlineOutputs());
+        setImmediate(probe);
+      };
+      const changes: (readonly string[])[] = [];
+      const unsubscribe = harness.deps.hub.onChangedMessage((message) => {
+        if (message.entity === "thread" && message.id === thread.id) {
+          changes.push(message.changes);
+        }
+      });
+      setImmediate(probe);
+
+      try {
+        await runPeriodicSweeps({
+          ...harness.deps,
+          pluginSchedules: harness.pluginService,
+          plugins: harness.pluginService,
+        });
+      } finally {
+        sweepSettled = true;
+        unsubscribe();
+      }
+
+      expect(countLargeInlineOutputs()).toBe(0);
+      expect(observedCounts).toContain(1);
+      expect(
+        changes.filter((threadChanges) =>
+          threadChanges.includes("history-rewritten"),
+        ),
+      ).toHaveLength(2);
     });
   });
 
@@ -219,7 +297,13 @@ describe("runPeriodicSweeps", () => {
       const firstSweep = runPeriodicSweeps(deps);
       await idleRecoveryStarted;
       const overlappingSweep = runPeriodicSweeps(deps);
-      await new Promise<void>((resolve) => setImmediate(resolve));
+      for (
+        let yielded = 0;
+        yielded <= RETAINED_EVENT_OUTPUT_TARGETS.length;
+        yielded += 1
+      ) {
+        await new Promise<void>((resolve) => setImmediate(resolve));
+      }
       releaseRunningJob(releaseIdleRecovery);
       try {
         await expect(secondAttempt).resolves.toBe("scheduled");
