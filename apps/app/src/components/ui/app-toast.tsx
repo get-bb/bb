@@ -141,6 +141,7 @@ export function AppToastContent({
           <Icon
             name={iconForTone(tone)}
             className={cn("size-4", tone === "loading" && "animate-spin")}
+            style={{ margin: 0 }}
             aria-hidden
           />
         </div>
@@ -168,7 +169,12 @@ export function AppToastContent({
             aria-label="Dismiss notification"
             onClick={() => (onDismiss ? onDismiss() : dismissToast(id))}
           >
-            <Icon name="X" className="size-3.5" aria-hidden />
+            <Icon
+              name="X"
+              className="size-3.5"
+              style={{ margin: 0 }}
+              aria-hidden
+            />
           </Button>
         ) : null}
       </div>
