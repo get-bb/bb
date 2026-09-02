@@ -327,6 +327,27 @@ describe("fuzzyMatchText", () => {
     ).toEqual(["Alpha", "Beta"]);
   });
 
+  it("normalizes outer whitespace while preserving internal spacing", () => {
+    const items = ["New thread", "New  thread", "Next thread"];
+
+    expect(
+      fuzzyMatchText({
+        items,
+        query: "  new  thread  ",
+        getText: (item) => item,
+        limit: items.length,
+      }).map((match) => match.item),
+    ).toEqual(["New  thread"]);
+    expect(
+      fuzzyMatchText({
+        items,
+        query: "  ",
+        getText: (item) => item,
+        limit: 2,
+      }).map((match) => match.item),
+    ).toEqual(["New thread", "New  thread"]);
+  });
+
   it("matches non-contiguous title queries", () => {
     const threads: ThreadSearchFixture[] = [
       { id: "thr_research", title: "Research notes" },

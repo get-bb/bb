@@ -817,7 +817,8 @@ export function fuzzyMatchText<T>(
     return [];
   }
 
-  if (!args.query) {
+  const query = args.query.trim();
+  if (!query) {
     return args.items.slice(0, args.limit).map((item) => ({
       item,
       score: 0,
@@ -825,7 +826,7 @@ export function fuzzyMatchText<T>(
     }));
   }
 
-  if (args.query.length > FUZZY_MATCH_QUERY_MAX_LENGTH) {
+  if (query.length > FUZZY_MATCH_QUERY_MAX_LENGTH) {
     return [];
   }
 
@@ -833,7 +834,7 @@ export function fuzzyMatchText<T>(
     mergeRankedTextMatches(
       rankTextQueryMatches(
         getTextCandidates(args.items, args.getText, args.getAliases),
-        args.query,
+        query,
       ),
     ),
     args.limit,
