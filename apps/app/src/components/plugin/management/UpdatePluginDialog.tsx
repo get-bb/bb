@@ -66,6 +66,7 @@ function UpdatePluginDialogContent({
   const [rolledBack, setRolledBack] = useState<PluginUpdateResult | null>(null);
 
   const update = useMutation({
+    meta: { showErrorToast: false },
     mutationFn: () => applyPluginUpdate(fetch, plugin.id),
     onSuccess: (result) => {
       invalidatePluginList({ queryClient });

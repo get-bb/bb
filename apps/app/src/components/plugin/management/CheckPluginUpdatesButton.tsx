@@ -72,6 +72,7 @@ export function CheckPluginUpdatesButton({
 }) {
   const queryClient = useQueryClient();
   const check = useMutation({
+    meta: { showErrorToast: false },
     mutationFn: () =>
       checkPluginUpdates(fetch, pluginId === undefined ? {} : { id: pluginId }),
     onSuccess: (results) => {

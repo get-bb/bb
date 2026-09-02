@@ -475,6 +475,7 @@ function PluginSettingsContent({ plugin }: { plugin: PluginListItem }) {
   const queryClient = useQueryClient();
   const { settingsSections } = usePluginSlots();
   const toggle = useMutation({
+    meta: { showErrorToast: false },
     mutationFn: (enabled: boolean) =>
       setPluginEnabled(fetch, plugin.id, enabled),
     onError: (error, enabled) => {

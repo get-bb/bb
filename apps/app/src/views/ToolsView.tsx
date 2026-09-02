@@ -181,6 +181,7 @@ function PluginDetailToolView({ pluginId }: { pluginId: string }) {
     ),
   });
   const pluginToggle = useMutation({
+    meta: { showErrorToast: false },
     mutationFn: async (plugin: PluginListItem) => {
       const action = plugin.enabled ? "disable" : "enable";
       try {
@@ -195,6 +196,7 @@ function PluginDetailToolView({ pluginId }: { pluginId: string }) {
     },
   });
   const pluginDelete = useMutation({
+    meta: { showErrorToast: false },
     mutationFn: async (plugin: PluginListItem) => {
       try {
         await removePlugin(fetch, plugin.id);

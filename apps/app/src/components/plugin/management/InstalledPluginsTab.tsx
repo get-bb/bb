@@ -79,6 +79,7 @@ export function InstalledPluginRow({
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const toggle = useMutation({
+    meta: { showErrorToast: false },
     mutationFn: (enabled: boolean) =>
       setPluginEnabled(fetch, plugin.id, enabled),
     onError: (error, enabled) => {

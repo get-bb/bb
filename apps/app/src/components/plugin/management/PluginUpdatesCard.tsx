@@ -42,6 +42,7 @@ export function PluginDetailReleaseControl({
   const availableVersion = plugin.updateState.availableVersion;
   const failure = plugin.updateState.lastFailure;
   const retry = useMutation({
+    meta: { showErrorToast: false },
     mutationFn: () => applyPluginUpdate(fetch, plugin.id),
     onSuccess: (result) => {
       invalidatePluginList({ queryClient });

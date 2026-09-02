@@ -550,6 +550,7 @@ export function PluginHealthBanner({
 }) {
   const queryClient = useQueryClient();
   const reload = useMutation({
+    meta: { showErrorToast: false },
     mutationFn: () => reloadPlugin(fetch, plugin.id),
     onSuccess: () => invalidatePluginList({ queryClient }),
     onError: (error) => {

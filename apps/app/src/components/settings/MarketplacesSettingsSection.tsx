@@ -39,6 +39,7 @@ export function MarketplacesSettingsSection() {
   const invalidate = () => invalidatePluginMarketplaces({ queryClient });
 
   const add = useMutation({
+    meta: { showErrorToast: false },
     mutationFn: (value: string) => addPluginMarketplace(fetch, value),
     onSuccess: (marketplace) => {
       setSource("");
@@ -55,6 +56,7 @@ export function MarketplacesSettingsSection() {
   });
 
   const refresh = useMutation({
+    meta: { showErrorToast: false },
     mutationFn: (name: string) => refreshPluginMarketplaces(fetch, name),
     onSuccess: (results) => {
       invalidate();
@@ -75,6 +77,7 @@ export function MarketplacesSettingsSection() {
   });
 
   const remove = useMutation({
+    meta: { showErrorToast: false },
     mutationFn: (name: string) => removePluginMarketplace(fetch, name),
     onSuccess: (result) => {
       setRemoving(null);
