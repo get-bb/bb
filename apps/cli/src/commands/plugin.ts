@@ -98,7 +98,8 @@ async function searchCatalog(
   baseUrl: string,
   query: string,
 ): Promise<PluginCatalogSearchResult[]> {
-  return createCliBbSdk(baseUrl).plugins.catalog.search({ query });
+  return (await createCliBbSdk(baseUrl).plugins.catalog.search({ query }))
+    .results;
 }
 
 const pluginSettingDescriptorSchema = z.object({
@@ -782,6 +783,7 @@ export function registerPluginCommands(
         const rows = results.map((result) => [
           result.displayName,
           result.description,
+          result.category ?? "Uncategorized",
           ...(showMarketplace ? [result.marketplaceDisplayName] : []),
           ...(showInstalls
             ? [
@@ -802,16 +804,18 @@ export function registerPluginCommands(
               head: [
                 "Name",
                 "Description",
+                "Category",
                 ...(showMarketplace ? ["Marketplace"] : []),
                 ...(showInstalls ? ["Installs"] : []),
                 "Status",
               ],
               colWidths: [
-                showMarketplace ? 26 : 28,
-                showMarketplace ? 42 : 54,
+                showMarketplace ? 22 : 24,
+                showMarketplace ? 30 : 38,
+                24,
                 ...(showMarketplace ? [22] : []),
                 ...(showInstalls ? [10] : []),
-                showMarketplace ? 40 : 48,
+                showMarketplace ? 34 : 40,
               ],
               trimTrailingWhitespace: true,
             },

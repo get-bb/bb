@@ -26,6 +26,7 @@ import {
 import {
   COMPACT_THREAD_TIMELINE_SEGMENT_LIMIT,
   didThreadDetailBootstrapRefreshAfterMount,
+  isPendingInteractionStateUnknown,
   useArchivedThreads,
   useChildThreads,
   useThread,
@@ -449,6 +450,11 @@ describe("useThreadQueuedMessages", () => {
 });
 
 describe("useThreadPendingInteractions", () => {
+  it("keeps cached empty interactions unknown while their refresh is pending", () => {
+    expect(isPendingInteractionStateUnknown([], true)).toBe(true);
+    expect(isPendingInteractionStateUnknown([], false)).toBe(false);
+  });
+
   it("reuses the first owner's fresh baseline when a second owner mounts", async () => {
     const { queryClient, wrapper } = createQueryClientTestHarness();
     const first = renderHook(() => useThreadPendingInteractions("thread-1"), {

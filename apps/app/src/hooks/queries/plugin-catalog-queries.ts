@@ -249,7 +249,7 @@ function toPluginCatalogSearchEntry(
     icon: data.icon,
     iconUrl: data.iconUrl,
     iconTinted: data.iconTinted,
-    category: data.category,
+    category: data.category ?? "Uncategorized",
     source: data.source,
     repositoryUrl: data.repositoryUrl,
     marketplace: data.marketplace,
@@ -269,7 +269,7 @@ export async function searchPluginCatalog(
   fetchImpl: FetchLike,
   query: string,
 ): Promise<PluginCatalogSearchEntry[]> {
-  const results = await createPluginsClient(fetchImpl).catalog.search({
+  const { results } = await createPluginsClient(fetchImpl).catalog.search({
     query,
   });
   return results.map(toPluginCatalogSearchEntry);

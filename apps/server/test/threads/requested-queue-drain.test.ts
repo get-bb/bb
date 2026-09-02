@@ -11,12 +11,10 @@ import {
   type PluginHookRegistration,
 } from "../../src/services/plugins/plugin-hook-registry.js";
 import {
-  requestQueueDrain,
-  runDueScheduledQueueSweep,
-  runRequestedQueueDrain,
-} from "../../src/services/threads/queue-drains.js";
+  requestQueuedMessageDispatch,
+  runQueuedMessageDispatch,
+} from "../../src/services/threads/queued-message-dispatch.js";
 import { applyLoggedThreadLifecycleEvent } from "../../src/services/threads/lifecycle-outcome.js";
-import { runQueuedMessageAutoSendForThread } from "../../src/services/threads/queued-messages.js";
 import { acceptThreadSendRequest } from "../../src/services/threads/thread-send-request.js";
 import { textInput } from "../helpers/prompt-input.js";
 import {
@@ -33,6 +31,18 @@ import {
   seedTurnStarted,
 } from "../helpers/seed.js";
 import { withTestHarness, type TestAppHarness } from "../helpers/test-app.js";
+
+function runTimeWake(harness: TestAppHarness, now: number): Promise<void> {
+  return runQueuedMessageDispatch(harness.deps, { kind: "time-reached", now });
+}
+
+function runPluginWake(harness: TestAppHarness): Promise<void> {
+  return runQueuedMessageDispatch(harness.deps, { kind: "plugin-recheck" });
+}
+
+function requestPluginWake(harness: TestAppHarness): void {
+  requestQueuedMessageDispatch(harness.deps, { kind: "plugin-recheck" });
+}
 
 const WORKSPACE_PATH = "/tmp/requested-drain-project";
 
@@ -152,9 +162,9 @@ describe("the requested queue drain", () => {
         groupBoundaryQueuedMessageId: tail.id,
       });
 
-      await runDueScheduledQueueSweep(harness.deps, Date.now());
+      await runTimeWake(harness, Date.now());
       vi.advanceTimersByTime(1_001);
-      await runDueScheduledQueueSweep(harness.deps, Date.now());
+      await runTimeWake(harness, Date.now());
 
       expect(attempts).toBe(1);
       expect(listQueuedThreadMessages(harness.db, thread.id)).toHaveLength(2);
@@ -206,13 +216,13 @@ describe("the requested queue drain", () => {
       const turnsBefore = turnRequests(harness, thread.id).length;
 
       released = true;
-      await runRequestedQueueDrain(harness.deps);
+      await runPluginWake(harness);
 
       expect(attempts).toBe(1);
       expect(listQueuedThreadMessages(harness.db, thread.id)).toHaveLength(2);
 
       vi.advanceTimersByTime(1_000);
-      await runDueScheduledQueueSweep(harness.deps, Date.now());
+      await runTimeWake(harness, Date.now());
 
       expect(attempts).toBe(2);
       expect(listQueuedThreadMessages(harness.db, thread.id)).toHaveLength(0);
@@ -268,7 +278,7 @@ describe("the requested queue drain", () => {
         const turnsBefore = turnRequests(harness, thread.id).length;
 
         if (first === "plugin-first") {
-          await runRequestedQueueDrain(harness.deps);
+          await runPluginWake(harness);
           expect(attempts).toBe(0);
           expect(listQueuedThreadMessages(harness.db, thread.id)).toHaveLength(
             2,
@@ -279,7 +289,8 @@ describe("the requested queue drain", () => {
           event: { type: "run.succeeded" },
           threadId: thread.id,
         });
-        await runQueuedMessageAutoSendForThread(harness.deps, {
+        await runQueuedMessageDispatch(harness.deps, {
+          kind: "thread-ready",
           threadId: thread.id,
         });
 
@@ -288,13 +299,14 @@ describe("the requested queue drain", () => {
           expect(listQueuedThreadMessages(harness.db, thread.id)).toHaveLength(
             2,
           );
-          await runQueuedMessageAutoSendForThread(harness.deps, {
+          await runQueuedMessageDispatch(harness.deps, {
+            kind: "thread-ready",
             threadId: thread.id,
           });
           expect(attempts).toBe(1);
           released = true;
           vi.advanceTimersByTime(1_001);
-          await runRequestedQueueDrain(harness.deps);
+          await runPluginWake(harness);
         }
 
         expect(attempts).toBe(first === "plugin-first" ? 1 : 2);
@@ -336,7 +348,7 @@ describe("the requested queue drain", () => {
       expect(listQueuedThreadMessages(harness.db, thread.id)).toHaveLength(1);
 
       full = false;
-      await runRequestedQueueDrain(harness.deps);
+      await runPluginWake(harness);
 
       expect(listQueuedThreadMessages(harness.db, thread.id)).toHaveLength(0);
       expect(turnRequests(harness, thread.id)).toHaveLength(turnsBefore + 1);
@@ -372,9 +384,9 @@ describe("the requested queue drain", () => {
         await stopThread(harness, thread.id);
 
         if (kind === "scheduled") {
-          await runDueScheduledQueueSweep(harness.deps, Date.now());
+          await runTimeWake(harness, Date.now());
         } else {
-          await runRequestedQueueDrain(harness.deps);
+          await runPluginWake(harness);
         }
 
         expect(listQueuedThreadMessages(harness.db, thread.id)).toEqual([]);
@@ -437,9 +449,8 @@ describe("the requested queue drain", () => {
           failureReason: "Terminal failure",
         });
 
-        if (drain === "scheduled")
-          await runDueScheduledQueueSweep(harness.deps, Date.now());
-        else await runRequestedQueueDrain(harness.deps);
+        if (drain === "scheduled") await runTimeWake(harness, Date.now());
+        else await runPluginWake(harness);
 
         expect(attempts).toBe(0);
         expect(listQueuedThreadMessages(harness.db, thread.id)).toHaveLength(2);
@@ -476,7 +487,7 @@ describe("the requested queue drain", () => {
         },
       });
       installHooks(registry);
-      await runRequestedQueueDrain(harness.deps);
+      await runPluginWake(harness);
 
       expect(seen).toEqual([]);
       expect(listQueuedThreadMessages(harness.db, thread.id)).toHaveLength(1);
@@ -508,9 +519,9 @@ describe("the requested queue drain", () => {
       // The first drain re-queues, which starts the thread's cooldown; the
       // second finds it and does nothing, so a burst of completions costs one
       // hook pass per thread rather than one per completion.
-      await runRequestedQueueDrain(harness.deps);
+      await runPluginWake(harness);
       expect(passes).toBe(2);
-      await runRequestedQueueDrain(harness.deps);
+      await runPluginWake(harness);
       expect(passes).toBe(2);
     });
   });
@@ -552,7 +563,7 @@ describe("the requested queue drain", () => {
 
       seen.length = 0;
       admit = true;
-      await runRequestedQueueDrain(harness.deps);
+      await runPluginWake(harness);
 
       expect(seen).toEqual([first.id, second.id]);
       expect(listQueuedThreadMessages(harness.db, first.id)).toHaveLength(0);
@@ -562,6 +573,42 @@ describe("the requested queue drain", () => {
 });
 
 describe("requesting a drain", () => {
+  it("schedules one batch when unregistering a plugin releases multiple threads", async () => {
+    await withTestHarness(async (harness) => {
+      const threads = ["host-unregister-a", "host-unregister-b"].map(
+        (hostId) =>
+          seedRunnableThread(harness, { hostId, status: "idle" }).thread,
+      );
+      for (const thread of threads) {
+        seedQueuedMessage(harness.deps, {
+          content: textInput("released by plugin removal"),
+          threadId: thread.id,
+          waitingOn: {
+            kind: "plugin",
+            pluginId: "removed-plugin",
+            reason: "Held for testing",
+          },
+        });
+      }
+
+      vi.useFakeTimers();
+      try {
+        requestQueuedMessageDispatch(harness.deps, {
+          kind: "plugin-unregistered",
+          pluginId: "removed-plugin",
+        });
+        expect(vi.getTimerCount()).toBe(1);
+        await vi.runAllTimersAsync();
+      } finally {
+        vi.useRealTimers();
+      }
+
+      for (const thread of threads) {
+        expect(listQueuedThreadMessages(harness.db, thread.id)).toEqual([]);
+      }
+    });
+  });
+
   it("coalesces a burst of requests into one walk", async () => {
     // Five turns finishing together are five requests, and one walk of the
     // queue fills as many freed slots as the hook allows. Without the
@@ -592,9 +639,9 @@ describe("requesting a drain", () => {
 
       vi.useFakeTimers();
       try {
-        requestQueueDrain(harness.deps);
-        requestQueueDrain(harness.deps);
-        requestQueueDrain(harness.deps);
+        requestPluginWake(harness);
+        requestPluginWake(harness);
+        requestPluginWake(harness);
         expect(vi.getTimerCount()).toBe(1);
         // Let it run rather than dropping it: the pending flag clears when the
         // walk starts, and a walk that never starts would suppress every later
@@ -609,12 +656,70 @@ describe("requesting a drain", () => {
       // walk — a thread freeing mid-walk is not silently dropped.
       vi.useFakeTimers();
       try {
-        requestQueueDrain(harness.deps);
+        requestPluginWake(harness);
         expect(vi.getTimerCount()).toBe(1);
         await vi.runAllTimersAsync();
       } finally {
         vi.useRealTimers();
       }
+    });
+  });
+
+  it("scopes coalescing to one server instance", async () => {
+    await withTestHarness(async (first) => {
+      await withTestHarness(async (second) => {
+        vi.useFakeTimers();
+        try {
+          requestPluginWake(first);
+          requestPluginWake(first);
+          requestPluginWake(second);
+          expect(vi.getTimerCount()).toBe(2);
+          await vi.runAllTimersAsync();
+        } finally {
+          vi.useRealTimers();
+        }
+      });
+    });
+  });
+});
+
+describe("queue recovery", () => {
+  it("releases only waits held by missing plugins", async () => {
+    await withTestHarness(async (harness) => {
+      const missing = seedRunnableThread(harness, {
+        hostId: "host-missing-plugin",
+        status: "idle",
+      }).thread;
+      const loaded = seedRunnableThread(harness, {
+        hostId: "host-loaded-plugin",
+        status: "idle",
+      }).thread;
+      seedQueuedMessage(harness.deps, {
+        content: textInput("missing plugin work"),
+        threadId: missing.id,
+        waitingOn: {
+          kind: "plugin",
+          pluginId: "missing",
+          reason: "held",
+        },
+      });
+      seedQueuedMessage(harness.deps, {
+        content: textInput("loaded plugin work"),
+        threadId: loaded.id,
+        waitingOn: {
+          kind: "plugin",
+          pluginId: "loaded",
+          reason: "held",
+        },
+      });
+
+      await runQueuedMessageDispatch(harness.deps, {
+        kind: "orphaned-plugin-recovery",
+        plugins: { isPluginLoaded: (pluginId) => pluginId === "loaded" },
+      });
+
+      expect(listQueuedThreadMessages(harness.db, missing.id)).toEqual([]);
+      expect(listQueuedThreadMessages(harness.db, loaded.id)).toHaveLength(1);
     });
   });
 });

@@ -56,14 +56,14 @@ const GITHUB_PLUGIN = {
   provenance: "catalog" as const,
   isOrphanedBuiltin: false,
   catalogEntryId: "github",
-  publisherLabel: "BB Community",
+  publisherLabel: "BB Official",
   sourceDisplay: "BB Official · GitHub",
   updateState: EMPTY_PLUGIN_UPDATE_STATE,
 } satisfies PluginListItem;
 
 const GITHUB_CATALOG_ENTRY = {
   entryId: "github",
-  marketplace: "bb-community",
+  marketplace: "bb-official",
   pluginId: "github",
   displayName: "GitHub",
   description: "Browse GitHub issues and pull requests in BB.",
@@ -74,7 +74,7 @@ const GITHUB_CATALOG_ENTRY = {
   source: "builtin:github",
   repositoryUrl: null,
   marketplaceDisplayName: "BB Official",
-  publisherKey: "builtin",
+  publisherKey: "bb-official",
   publisherLabel: "BB Official",
   official: true,
   author: null,
@@ -210,7 +210,7 @@ describe("PluginDetail official catalog lifecycle", () => {
       </MemoryRouter>,
     );
 
-    expect(screen.queryByText("BB Official")).toBeNull();
+    expect(screen.getByText("BB Official")).toBeTruthy();
     expect(
       screen.queryByRole("button", { name: "Uninstall GitHub" }),
     ).toBeNull();
@@ -459,7 +459,7 @@ describe("PluginDetail official catalog lifecycle", () => {
       source: "builtin:automations",
       provenance: "builtin" as const,
       catalogEntryId: null,
-      publisherKey: "builtin",
+      publisherKey: "bb-official",
       publisherLabel: "BB Official",
     };
     const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
@@ -736,7 +736,7 @@ describe("PluginDetail runtime health", () => {
       source: "builtin:github",
       provenance: "builtin" as const,
       catalogEntryId: null,
-      publisherKey: "builtin",
+      publisherKey: "bb-official",
       publisherLabel: "BB Official",
       status,
       statusDetail: "The runtime reported a problem.",

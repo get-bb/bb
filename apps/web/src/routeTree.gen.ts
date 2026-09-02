@@ -2,6 +2,8 @@
 
 // @ts-nocheck
 
+// noinspection JSUnusedGlobalSymbols
+
 import { Route as rootRouteImport } from "./routes/__root";
 import { Route as PrivacyRouteImport } from "./routes/privacy";
 import { Route as DashboardRouteImport } from "./routes/dashboard";
@@ -13,6 +15,7 @@ import { Route as BlogSlugRouteImport } from "./routes/blog_.$slug";
 import { Route as ApiSubscribeRouteImport } from "./routes/api.subscribe";
 import { Route as DotwellKnownAssetlinksDotjsonRouteImport } from "./routes/[.]well-known.assetlinks[.]json";
 import { Route as DotwellKnownAppleAppSiteAssociationRouteImport } from "./routes/[.]well-known.apple-app-site-association";
+import { Route as MarketplaceV2SplatRouteImport } from "./routes/marketplace.v2.$";
 import { Route as MarketplaceV1SplatRouteImport } from "./routes/marketplace.v1.$";
 import { Route as ApiConnectRevokeMachineRouteImport } from "./routes/api.connect.revoke-machine";
 import { Route as ApiConnectRedeemMachineRouteImport } from "./routes/api.connect.redeem-machine";
@@ -72,6 +75,11 @@ const DotwellKnownAppleAppSiteAssociationRoute =
     path: "/.well-known/apple-app-site-association",
     getParentRoute: () => rootRouteImport,
   } as any);
+const MarketplaceV2SplatRoute = MarketplaceV2SplatRouteImport.update({
+  id: "/marketplace/v2/$",
+  path: "/marketplace/v2/$",
+  getParentRoute: () => rootRouteImport,
+} as any);
 const MarketplaceV1SplatRoute = MarketplaceV1SplatRouteImport.update({
   id: "/marketplace/v1/$",
   path: "/marketplace/v1/$",
@@ -120,6 +128,7 @@ export interface FileRoutesByFullPath {
   "/api/connect/redeem-machine": typeof ApiConnectRedeemMachineRoute;
   "/api/connect/revoke-machine": typeof ApiConnectRevokeMachineRoute;
   "/marketplace/v1/$": typeof MarketplaceV1SplatRoute;
+  "/marketplace/v2/$": typeof MarketplaceV2SplatRoute;
 }
 export interface FileRoutesByTo {
   "/": typeof IndexRoute;
@@ -138,6 +147,7 @@ export interface FileRoutesByTo {
   "/api/connect/redeem-machine": typeof ApiConnectRedeemMachineRoute;
   "/api/connect/revoke-machine": typeof ApiConnectRevokeMachineRoute;
   "/marketplace/v1/$": typeof MarketplaceV1SplatRoute;
+  "/marketplace/v2/$": typeof MarketplaceV2SplatRoute;
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport;
@@ -157,6 +167,7 @@ export interface FileRoutesById {
   "/api/connect/redeem-machine": typeof ApiConnectRedeemMachineRoute;
   "/api/connect/revoke-machine": typeof ApiConnectRevokeMachineRoute;
   "/marketplace/v1/$": typeof MarketplaceV1SplatRoute;
+  "/marketplace/v2/$": typeof MarketplaceV2SplatRoute;
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath;
@@ -176,7 +187,8 @@ export interface FileRouteTypes {
     | "/api/connect/redeem"
     | "/api/connect/redeem-machine"
     | "/api/connect/revoke-machine"
-    | "/marketplace/v1/$";
+    | "/marketplace/v1/$"
+    | "/marketplace/v2/$";
   fileRoutesByTo: FileRoutesByTo;
   to:
     | "/"
@@ -194,7 +206,8 @@ export interface FileRouteTypes {
     | "/api/connect/redeem"
     | "/api/connect/redeem-machine"
     | "/api/connect/revoke-machine"
-    | "/marketplace/v1/$";
+    | "/marketplace/v1/$"
+    | "/marketplace/v2/$";
   id:
     | "__root__"
     | "/"
@@ -212,7 +225,8 @@ export interface FileRouteTypes {
     | "/api/connect/redeem"
     | "/api/connect/redeem-machine"
     | "/api/connect/revoke-machine"
-    | "/marketplace/v1/$";
+    | "/marketplace/v1/$"
+    | "/marketplace/v2/$";
   fileRoutesById: FileRoutesById;
 }
 export interface RootRouteChildren {
@@ -232,6 +246,7 @@ export interface RootRouteChildren {
   ApiConnectRedeemMachineRoute: typeof ApiConnectRedeemMachineRoute;
   ApiConnectRevokeMachineRoute: typeof ApiConnectRevokeMachineRoute;
   MarketplaceV1SplatRoute: typeof MarketplaceV1SplatRoute;
+  MarketplaceV2SplatRoute: typeof MarketplaceV2SplatRoute;
 }
 
 declare module "@tanstack/react-router" {
@@ -306,6 +321,13 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof DotwellKnownAppleAppSiteAssociationRouteImport;
       parentRoute: typeof rootRouteImport;
     };
+    "/marketplace/v2/$": {
+      id: "/marketplace/v2/$";
+      path: "/marketplace/v2/$";
+      fullPath: "/marketplace/v2/$";
+      preLoaderRoute: typeof MarketplaceV2SplatRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
     "/marketplace/v1/$": {
       id: "/marketplace/v1/$";
       path: "/marketplace/v1/$";
@@ -369,6 +391,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiConnectRedeemMachineRoute: ApiConnectRedeemMachineRoute,
   ApiConnectRevokeMachineRoute: ApiConnectRevokeMachineRoute,
   MarketplaceV1SplatRoute: MarketplaceV1SplatRoute,
+  MarketplaceV2SplatRoute: MarketplaceV2SplatRoute,
 };
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

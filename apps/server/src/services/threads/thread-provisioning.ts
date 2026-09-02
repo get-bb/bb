@@ -11,7 +11,7 @@ import {
 } from "@bb/domain";
 import type { StartedOnBehalfOf } from "@bb/server-contract";
 import type { AppDeps } from "../../types.js";
-import { drainThreadQueueOnWorkspaceReady } from "./queue-drains.js";
+import { requestQueuedMessageDispatch } from "./queued-message-dispatch.js";
 import {
   appendClientTurnEvent,
   appendPreparedClientTurnRequestedEventWithNotificationInTransaction,
@@ -163,7 +163,10 @@ async function startThreadIfEnvironmentReady(
   // waiting here rather than after the dispatch below: the wait is over at
   // this line, and the `run.succeeded` branch below returns without
   // dispatching anything. A thread with nothing queued no-ops.
-  drainThreadQueueOnWorkspaceReady(deps, args.thread.id);
+  requestQueuedMessageDispatch(deps, {
+    kind: "workspace-ready",
+    threadId: args.thread.id,
+  });
 
   if (
     args.context.request.seedWithoutRun &&

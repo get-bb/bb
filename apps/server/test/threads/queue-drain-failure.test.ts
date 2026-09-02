@@ -11,9 +11,12 @@ import {
   setPluginHookProvider,
   type PluginHookRegistration,
 } from "../../src/services/plugins/plugin-hook-registry.js";
+import { noteDispatchRequeued } from "../../src/services/threads/dispatch-hooks.js";
 import { recordQueuedMessageDrainFailure } from "../../src/services/threads/queue-drain-failure.js";
-import { drainThreadQueueOnHostReconnect } from "../../src/services/threads/queue-drains.js";
-import { runQueuedMessageAutoSendSweep } from "../../src/services/threads/queued-messages.js";
+import {
+  requestQueuedMessageDispatch,
+  runQueuedMessageDispatch,
+} from "../../src/services/threads/queued-message-dispatch.js";
 import { toThreadQueuedMessage } from "../../src/services/threads/thread-queued-messages.js";
 import { textInput } from "../helpers/prompt-input.js";
 import {
@@ -23,6 +26,8 @@ import {
   seedProjectWithSource,
   seedQueuedMessage,
   seedThread,
+  seedThreadRuntimeState,
+  seedTurnStarted,
 } from "../helpers/seed.js";
 import { withTestHarness, type TestAppHarness } from "../helpers/test-app.js";
 
@@ -75,7 +80,7 @@ function reread(harness: TestAppHarness, queuedMessageId: string) {
   return toThreadQueuedMessage(row);
 }
 
-describe("drainThreadQueueOnHostReconnect", () => {
+describe("host-connected queue dispatch", () => {
   it("releases exactly the returning machine's host-offline rows", async () => {
     await withTestHarness(async (harness) => {
       const away = seedQueuedRow(harness, {
@@ -94,7 +99,10 @@ describe("drainThreadQueueOnHostReconnect", () => {
         });
       }
 
-      drainThreadQueueOnHostReconnect(harness.deps, away.host.id);
+      requestQueuedMessageDispatch(harness.deps, {
+        hostId: away.host.id,
+        kind: "host-connected",
+      });
 
       // The returning machine's row is an ordinary queued row again, eligible
       // at the next drain; the other machine is still away and its row still
@@ -130,18 +138,27 @@ describe("recordQueuedMessageDrainFailure", () => {
       });
 
       try {
-        const { row } = seedQueuedRow(harness, {
+        const { row, thread } = seedQueuedRow(harness, {
           hostConnected: true,
           hostName: "M4",
         });
 
-        await runQueuedMessageAutoSendSweep(harness.deps);
+        await runQueuedMessageDispatch(harness.deps, {
+          kind: "thread-ready",
+          threadId: thread.id,
+        });
         expect(reread(harness, row.id).failureReason).toBe(
           "Rejected for testing",
         );
 
-        await runQueuedMessageAutoSendSweep(harness.deps);
-        await runQueuedMessageAutoSendSweep(harness.deps);
+        await runQueuedMessageDispatch(harness.deps, {
+          kind: "thread-ready",
+          threadId: thread.id,
+        });
+        await runQueuedMessageDispatch(harness.deps, {
+          kind: "thread-ready",
+          threadId: thread.id,
+        });
 
         expect(attempts).toBe(1);
         expect(
@@ -149,6 +166,71 @@ describe("recordQueuedMessageDrainFailure", () => {
             kind: "explicit-send",
           }),
         ).not.toBeNull();
+      } finally {
+        setPluginHookProvider(undefined);
+      }
+    });
+  });
+
+  it("records a terminal failure from the turn-started wake", async () => {
+    await withTestHarness(async (harness) => {
+      const registry: HookRegistry = { "message.dispatch": [] };
+      registry["message.dispatch"].push({
+        pluginId: "rejector",
+        handler: () =>
+          ({ action: "reject", message: "Rejected on turn start" }) as const,
+      });
+      setPluginHookProvider({
+        listHooks: (hook) => registry[hook],
+        invokeHook: async (_pluginId, _label, run) => ({
+          ok: true,
+          value: await run(),
+        }),
+        decisionTimeoutMs: 10_000,
+      });
+
+      try {
+        const { host } = seedHostSession(harness.deps, { name: "M4" });
+        const { project } = seedProjectWithSource(harness.deps, {
+          hostId: host.id,
+          path: WORKSPACE_PATH,
+        });
+        const environment = seedEnvironment(harness.deps, {
+          hostId: host.id,
+          projectId: project.id,
+          path: WORKSPACE_PATH,
+        });
+        const thread = seedThread(harness.deps, {
+          environmentId: environment.id,
+          projectId: project.id,
+          status: "active",
+        });
+        seedThreadRuntimeState(harness.deps, {
+          environmentId: environment.id,
+          providerThreadId: "provider-turn-started",
+          threadId: thread.id,
+        });
+        seedTurnStarted(harness.deps, {
+          environmentId: environment.id,
+          providerThreadId: "provider-turn-started",
+          threadId: thread.id,
+          turnId: "turn-started",
+        });
+        const row = seedQueuedMessage(harness.deps, {
+          content: textInput("Wait for the turn"),
+          threadId: thread.id,
+          waitingOn: { kind: "turn-starting" },
+        });
+        noteDispatchRequeued(thread.id);
+
+        await runQueuedMessageDispatch(harness.deps, {
+          kind: "turn-started",
+          threadId: thread.id,
+        });
+
+        expect(reread(harness, row.id).failureReason).toBe(
+          "Rejected on turn start",
+        );
       } finally {
         setPluginHookProvider(undefined);
       }

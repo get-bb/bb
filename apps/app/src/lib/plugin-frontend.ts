@@ -25,6 +25,7 @@ import { BbHttpError } from "@bb/sdk/browser";
 import type { QueryClient } from "@tanstack/react-query";
 import { markEnabledPluginListStale } from "@/hooks/cache-owners/plugin-cache-owner";
 import { pluginListQueryOptions } from "@/hooks/queries/plugin-settings-queries";
+import { createRecordingToast } from "@/lib/notifications/plugin-toast-recording";
 import { appQueryClient } from "./app-query-client";
 import type {
   PluginContentScriptDisposer,
@@ -221,7 +222,7 @@ export function installPluginRuntime(): void {
     radixPopover,
     radixSelect,
     radixTooltip,
-    sonner,
+    sonner: { ...sonner, toast: createRecordingToast(sonner.toast) },
     vaul,
     pierreDiffs,
     pierreDiffsReact: createGatedPierreDiffsReact(),
