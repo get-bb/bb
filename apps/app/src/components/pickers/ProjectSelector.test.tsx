@@ -16,6 +16,34 @@ const PROJECTS = [
 afterEach(cleanup);
 
 describe("ProjectSelector", () => {
+  it("exposes the current project separately from keyboard highlight", () => {
+    render(
+      <ProjectSelector
+        projects={PROJECTS}
+        value="proj_charlie"
+        onChange={() => {}}
+        defaultOpen
+        modal={false}
+      />,
+    );
+
+    expect(
+      screen.getByRole("button", { name: "Project: Charlie Docs" }),
+    ).toBeTruthy();
+    const search = screen.getByRole("combobox", { name: "Search projects" });
+    const alpha = screen.getByRole("option", { name: "Alpha Web" });
+    const bravo = screen.getByRole("option", { name: "Bravo API" });
+    const charlie = screen.getByRole("option", { name: "Charlie Docs" });
+    expect(alpha.getAttribute("aria-selected")).toBe("true");
+    expect(charlie.getAttribute("aria-selected")).toBe("false");
+    expect(charlie.getAttribute("aria-current")).toBe("true");
+
+    fireEvent.keyDown(search, { key: "ArrowDown" });
+
+    expect(bravo.getAttribute("aria-selected")).toBe("true");
+    expect(charlie.getAttribute("aria-current")).toBe("true");
+  });
+
   it("shows search only when there are more than five projects", () => {
     const result = render(
       <ProjectSelector
@@ -102,7 +130,7 @@ describe("ProjectSelector", () => {
     render(
       <ProjectSelector
         projects={PROJECTS}
-        value="proj_alpha"
+        value={null}
         onChange={() => {}}
         allowNoProject
         createProject={{ onCreate }}
@@ -111,6 +139,11 @@ describe("ProjectSelector", () => {
       />,
     );
 
+    expect(
+      screen
+        .getByRole("option", { name: "Don't work in a project" })
+        .getAttribute("aria-current"),
+    ).toBe("true");
     fireEvent.change(
       screen.getByRole("combobox", { name: "Search projects" }),
       { target: { value: "missing" } },
@@ -125,7 +158,9 @@ describe("ProjectSelector", () => {
     fireEvent.click(screen.getByRole("option", { name: "New project" }));
     expect(onCreate).toHaveBeenCalledTimes(1);
 
-    fireEvent.click(screen.getByRole("button", { name: "Project" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Project: Work in a project" }),
+    );
     expect(
       screen.getByRole<HTMLInputElement>("combobox", {
         name: "Search projects",

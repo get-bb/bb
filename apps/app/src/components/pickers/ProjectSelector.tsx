@@ -111,7 +111,7 @@ export function ProjectSelector({
           type="button"
           variant="ghost"
           size="sm"
-          aria-label="Project"
+          aria-label={`Project: ${triggerLabel}`}
           aria-busy={isLoading || undefined}
           disabled={disabled}
           data-promptbox-project-control=""
@@ -185,6 +185,7 @@ export function ProjectSelector({
                   key={project.id}
                   value={project.id}
                   keywords={[project.name]}
+                  aria-current={project.id === value ? "true" : undefined}
                   onSelect={() => selectProject(project.id)}
                   className={PROJECT_PICKER_ITEM_CLASS_NAME}
                 >
@@ -236,6 +237,7 @@ export function ProjectSelector({
                 {allowNoProject ? (
                   <CommandItem
                     value="no-project"
+                    aria-current={value === null ? "true" : undefined}
                     onSelect={() => selectProject(null)}
                     className={PROJECT_PICKER_ITEM_CLASS_NAME}
                   >

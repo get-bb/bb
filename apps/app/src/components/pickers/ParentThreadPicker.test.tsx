@@ -31,6 +31,30 @@ function picker(overrides: Partial<ParentThreadPickerProps> = {}) {
 afterEach(cleanup);
 
 describe("ParentThreadPicker", () => {
+  it("exposes the current parent separately from keyboard highlight", () => {
+    render(
+      picker({
+        value: "thr_frontend_parent",
+        defaultOpen: true,
+      }),
+    );
+
+    const search = screen.getByRole("combobox", {
+      name: "Search parent threads",
+    });
+    const none = screen.getByRole("option", { name: "None" });
+    const codex = screen.getByRole("option", { name: "Codex Parent" });
+    const frontend = screen.getByRole("option", { name: "Frontend Parent" });
+    expect(none.getAttribute("aria-selected")).toBe("true");
+    expect(frontend.getAttribute("aria-selected")).toBe("false");
+    expect(frontend.getAttribute("aria-current")).toBe("true");
+
+    fireEvent.keyDown(search, { key: "ArrowDown" });
+
+    expect(codex.getAttribute("aria-selected")).toBe("true");
+    expect(frontend.getAttribute("aria-current")).toBe("true");
+  });
+
   it("requests candidates only when opened", async () => {
     const onOpenChange = vi.fn();
     render(picker({ isLoading: true, onOpenChange }));

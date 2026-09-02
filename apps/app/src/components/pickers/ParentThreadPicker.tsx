@@ -128,6 +128,7 @@ export function ParentThreadPicker({
                       key={option.value}
                       value={option.value}
                       keywords={[option.label]}
+                      aria-current={value === option.value ? "true" : undefined}
                       onSelect={() => {
                         onChange(option.value);
                         handleOpenChange(false);
@@ -139,6 +140,7 @@ export function ParentThreadPicker({
                       </span>
                       <Icon
                         name="Check"
+                        aria-hidden
                         className={cn(
                           COARSE_POINTER_ICON_SIZE_CLASS,
                           value === option.value ? "opacity-100" : "opacity-0",
