@@ -35,7 +35,6 @@
 
 - Any new public plugin API member (a `@get-bb/plugin-sdk/app` export, an `app.slots.*` method, or a `BbPluginApi` property) ships with an `experimental_` name prefix and an entry in [docs/api_to_audit.md](docs/api_to_audit.md) describing what it does and what to audit before stabilizing. Dropping the prefix is the deliberate stabilization step: audit the entry, rename project-wide, and remove it from the doc in the same change.
 - The Plugin Guide (the `plugin-api-docs` plugin, rendering `packages/plugin-api-map`) is bb's only plugin API documentation. A new surface needs a card in `packages/plugin-api-map/src/surfaces.ts` naming its SDK symbols in the same change; `packages/plugin-api-map/test/api-sync.test.ts` fails the build when the map and the SDK drift apart.
-- Plugin Guide annotation numbers follow the rendered fixture's spatial reading order: rows from top to bottom, then annotations within each row from left to right. When a visible surface is added, removed, or moved, rebuild and reload the real Guide, redraw the full affected annotation sequence from the rendered positions, and update the surface order, matching `*_MARKS` order, and focused order test together. Never append or insert a number based only on API registration or source order.
 
 ## Data Access
 
