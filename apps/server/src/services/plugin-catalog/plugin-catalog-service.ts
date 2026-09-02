@@ -134,6 +134,15 @@ type ResolvedCatalogEntry = {
   entry: MarketplaceEntry;
 };
 
+interface ReservedCollectionIndex {
+  catalogsByMarketplace: ReadonlyMap<string, MarketplaceManifest>;
+  collections: readonly PluginCatalogCollection[];
+  membershipsByEntry: ReadonlyMap<
+    string,
+    readonly PluginCatalogCollectionMembership[]
+  >;
+}
+
 export function createPluginCatalogService(deps: {
   db: DbConnection;
   appVersion: string;
@@ -186,7 +195,7 @@ export function createPluginCatalogService(deps: {
 
   seedBundledMarketplace(now());
   seedCuratedMarketplace();
-  reservedCollectionIndex();
+  let reservedCollections = buildReservedCollectionIndex();
 
   const locks = new Map<string, Promise<unknown>>();
   const ADD_LOCK_KEY = "\0add";
@@ -322,15 +331,10 @@ export function createPluginCatalogService(deps: {
     };
   }
 
-  function reservedCollectionIndex(
+  function buildReservedCollectionIndex(
     overrides: ReadonlyMap<string, MarketplaceManifest> = new Map(),
-  ): {
-    collections: PluginCatalogCollection[];
-    membershipsByEntry: ReadonlyMap<
-      string,
-      readonly PluginCatalogCollectionMembership[]
-    >;
-  } {
+  ): ReservedCollectionIndex {
+    const catalogsByMarketplace = new Map<string, MarketplaceManifest>();
     const collectionsByKey = new Map<string, PluginCatalogCollection>();
     const membershipsByEntry = new Map<
       string,
@@ -341,6 +345,7 @@ export function createPluginCatalogService(deps: {
       if (!isReservedMarketplace(row.name)) continue;
       const catalog = overrides.get(row.name) ?? catalogOf(row);
       if (catalog === null) continue;
+      catalogsByMarketplace.set(row.name, catalog);
       for (const collection of marketplaceCollections(catalog)) {
         const existingMarketplace = marketplacesByExposedId.get(collection.id);
         if (existingMarketplace !== undefined) {
@@ -360,6 +365,7 @@ export function createPluginCatalogService(deps: {
       }
     }
     return {
+      catalogsByMarketplace,
       collections: [...collectionsByKey.values()],
       membershipsByEntry,
     };
@@ -579,7 +585,7 @@ export function createPluginCatalogService(deps: {
   ): Promise<void> {
     if (row.name === BUNDLED_MARKETPLACE_NAME) {
       seedBundledMarketplace(attemptedAt);
-      reservedCollectionIndex();
+      reservedCollections = buildReservedCollectionIndex();
       deps.notifyCatalogChanged?.();
       return;
     }
@@ -610,9 +616,9 @@ export function createPluginCatalogService(deps: {
       }
       const rejection = rejectBundledIdCollisions(materialized.catalog);
       const catalog = rejection.catalog;
-      if (isReservedMarketplace(row.name)) {
-        reservedCollectionIndex(new Map([[row.name, catalog]]));
-      }
+      const nextReservedCollections = isReservedMarketplace(row.name)
+        ? buildReservedCollectionIndex(new Map([[row.name, catalog]]))
+        : null;
       collisionError = rejection.error;
       if (collisionError !== null) {
         deps.warn?.(`marketplace ${row.name} refresh ${collisionError}`);
@@ -646,6 +652,9 @@ export function createPluginCatalogService(deps: {
         });
         replacePluginMarketplaceIcons(tx, row.name, icons);
       });
+      if (nextReservedCollections !== null) {
+        reservedCollections = nextReservedCollections;
+      }
       deps.notifyCatalogChanged?.();
     } finally {
       await materialized.dispose();
@@ -1042,7 +1051,7 @@ export function createPluginCatalogService(deps: {
     },
 
     collections() {
-      return reservedCollectionIndex().collections;
+      return [...reservedCollections.collections];
     },
 
     async addMarketplace(rawSource) {
@@ -1125,7 +1134,7 @@ export function createPluginCatalogService(deps: {
 
     async search(rawQuery) {
       const query = rawQuery.trim().toLowerCase();
-      const collectionIndex = reservedCollectionIndex();
+      const collectionIndex = reservedCollections;
       const curatedRow = getPluginMarketplace(
         deps.db,
         CURATED_MARKETPLACE_NAME,
@@ -1152,7 +1161,9 @@ export function createPluginCatalogService(deps: {
       );
       const catalogEntryPromises = orderedMarketplaces().flatMap(
         (row, index) => {
-          const catalog = catalogOf(row);
+          const catalog = isReservedMarketplace(row.name)
+            ? (collectionIndex.catalogsByMarketplace.get(row.name) ?? null)
+            : catalogOf(row);
           if (catalog === null) return [];
           return catalog.plugins.map(async (entry) => {
             const bundled = bundledRegistration(entry);
