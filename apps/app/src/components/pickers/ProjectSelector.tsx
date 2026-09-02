@@ -113,7 +113,11 @@ export function ProjectSelector({
           )}
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" side="bottom" className="w-52">
+      <DropdownMenuContent
+        align="start"
+        side="bottom"
+        className="max-h-[min(var(--radix-dropdown-menu-content-available-height),calc(100dvh-0.5rem))] w-52 overflow-y-auto overscroll-contain"
+      >
         <DropdownMenuLabel>Project</DropdownMenuLabel>
         {projects.map((project) => (
           <DropdownMenuItem
