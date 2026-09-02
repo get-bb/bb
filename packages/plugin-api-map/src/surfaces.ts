@@ -195,6 +195,23 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         firstParty: ["Ask User Question", "Secrets"],
       },
       {
+        id: "app-overlay",
+        title: "App-wide overlays",
+        summary:
+          "Mounts floating plugin UI across the bb app, outside route-owned layout regions. With this, a plugin can:",
+        bullets: [
+          "Render a persistent widget once per bb window while the plugin is enabled",
+          "Use app-level SDK hooks and preserve their React context through portals",
+          "Own the widget's chrome, position, visibility, and responsive behavior",
+          "Coexist with other overlays while crashes remain isolated to the overlay that failed",
+        ],
+        apiSymbols: [
+          "ExperimentalAppOverlayRegistration",
+          "ExperimentalAppOverlayProps",
+        ],
+        experimental: true,
+      },
+      {
         id: "code-renderers",
         title: "Code & diff renderers",
         summary:

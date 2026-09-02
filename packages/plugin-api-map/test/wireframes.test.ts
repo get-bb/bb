@@ -244,6 +244,25 @@ describe("guide fixture boundaries", () => {
     );
   });
 
+  it("shows the app-wide plugin overlay above the host layout", () => {
+    const markup = renderWireframe(createElement(AppShellWireframe));
+    const contract = anatomy.surfaceFixtures["app-overlay"];
+
+    expect(contract.requiredStates).toEqual(["anchor"]);
+    for (const label of contract.labels.anchor) {
+      expect(markup).toContain(label);
+    }
+    for (const classAnchor of contract.fixtureClassAnchors) {
+      expect(markup, `missing fixture class ${classAnchor}`).toContain(
+        classAnchor,
+      );
+    }
+    expect(markup).toMatch(
+      /data-guide-region="app-overlay"[^>]*class="[^"]*absolute[^"]*z-\[6\][^"]*shadow-md/,
+    );
+    expect(markup.match(/data-guide-badge="app-overlay"/g)).toHaveLength(1);
+  });
+
   it("shows the complete sidebar navigation replacement boundary", () => {
     const markup = renderWireframe(createElement(AppShellWireframe));
     const contract = anatomy.surfaceFixtures["sidebar-navigation"];

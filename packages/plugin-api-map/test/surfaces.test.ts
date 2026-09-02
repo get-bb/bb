@@ -38,6 +38,7 @@ describe("product-map surfaces", () => {
       "message-directives",
       "message-actions",
       "pending-interaction",
+      "app-overlay",
       "code-renderers",
       "thread-panel",
       "file-opener",

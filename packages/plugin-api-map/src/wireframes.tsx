@@ -80,6 +80,7 @@ export const APP_SHELL_MARKS = [
   "message-directives",
   "message-actions",
   "pending-interaction",
+  "app-overlay",
   "code-renderers",
   "thread-panel",
   "file-opener",
@@ -1169,6 +1170,20 @@ function AppShellWireframeBody({
           onTabSelect={onRightPanelTabSelect}
         />
       </div>
+
+      <Mark
+        id="app-overlay"
+        label="App-wide floating plugin interface"
+        className="absolute bottom-24 right-12 z-[6] flex w-44 items-center gap-2 border border-border bg-popover px-3 py-2 text-foreground shadow-md"
+      >
+        <PluginGlyph className="size-4 shrink-0" />
+        <span className="min-w-0">
+          <span className="block truncate font-medium">Office widget</span>
+          <span className="block truncate text-2xs text-subtle-foreground">
+            2 agents active
+          </span>
+        </span>
+      </Mark>
     </WindowFrame>
   );
 }

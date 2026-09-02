@@ -17,6 +17,7 @@ import {
   type BbNavigate,
   type ComposerCustomization,
   type ComposerView,
+  type ExperimentalAppOverlayRegistration,
   type PluginAppDefinition,
   type PluginAppSetup,
   type PluginCodeThemeState,
@@ -895,6 +896,7 @@ export function installTestPluginRuntime(): void {
 export interface CapturedPluginApp {
   homepageSections: PluginHomepageSectionRegistration[];
   settingsSections: PluginSettingsSectionRegistration[];
+  appOverlays: ExperimentalAppOverlayRegistration[];
   navPanels: PluginNavPanelRegistration[];
   threadPanelActions: PluginThreadPanelActionRegistration[];
   newThreadPanelActions: PluginNewThreadPanelActionRegistration[];

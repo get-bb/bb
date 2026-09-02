@@ -103,6 +103,41 @@
           ]
         }
       ]
+    },
+    "app-overlay": {
+      "groupId": "app-shell",
+      "fidelity": "anchor",
+      "responsiveStrategy": "scale-together",
+      "requiredStates": ["anchor"],
+      "labels": {
+        "anchor": ["Office widget", "2 agents active"]
+      },
+      "fixtureClassAnchors": [
+        "absolute bottom-24 right-12",
+        "bg-popover",
+        "shadow-md"
+      ],
+      "sources": [
+        {
+          "path": "apps/app/src/components/plugin/PluginAppOverlays.tsx",
+          "anchors": [
+            "data-bb-plugin-app-overlays=\"\"",
+            "slotKind=\"appOverlay\"",
+            "crashFallback={null}"
+          ]
+        },
+        {
+          "path": "apps/app/src/App.tsx",
+          "anchors": ["<PluginAppOverlays />"]
+        },
+        {
+          "path": "apps/app/src/components/plugin/PluginAppOverlays.test.tsx",
+          "anchors": [
+            "keeps plugin, query, and router contexts through a React portal",
+            "hides a crashing overlay without unmounting additive siblings"
+          ]
+        }
+      ]
     }
   }
 }
