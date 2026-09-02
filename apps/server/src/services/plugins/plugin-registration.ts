@@ -595,7 +595,19 @@ export function createPluginRegistration(context: PluginRegistrationContext) {
 
   function bundledPluginProvenance(
     plugin: BundledPluginRegistration,
+    existing?: InstalledPluginRow,
   ): PluginProvenance {
+    if (
+      existing?.provenance === "catalog" &&
+      (catalogMarketplaceOf(existing) === CURATED_MARKETPLACE_NAME ||
+        catalogMarketplaceOf(existing) === BUNDLED_MARKETPLACE_NAME)
+    ) {
+      return {
+        kind: "catalog",
+        marketplace: BUNDLED_MARKETPLACE_NAME,
+        entryId: plugin.name,
+      };
+    }
     return plugin.autoInstall
       ? { kind: "builtin" }
       : {
@@ -626,7 +638,6 @@ export function createPluginRegistration(context: PluginRegistrationContext) {
   async function reconcileBundled(): Promise<void> {
     for (const bundled of bundledPlugins) {
       const source = builtinPluginSource(bundled.name);
-      const provenance = bundledPluginProvenance(bundled);
       let manifest: PluginManifest;
       try {
         manifest = await readPluginManifest(bundled.rootDir);
@@ -639,6 +650,7 @@ export function createPluginRegistration(context: PluginRegistrationContext) {
         continue;
       }
       const existing = getInstalledPluginRegistration(deps.db, manifest.id);
+      const provenance = bundledPluginProvenance(bundled, existing);
       if (existing?.removedAt !== null && existing?.removedAt !== undefined) {
         continue;
       }

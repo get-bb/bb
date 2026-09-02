@@ -495,21 +495,15 @@ export function createPluginCatalogService(deps: {
     );
     if (colliding.length === 0) return { catalog, error: null };
     const ids = colliding.map((entry) => entry.id).join(", ");
+    const filteredCatalog = structuredClone(catalog);
+    for (const collidingEntry of colliding) {
+      const index = filteredCatalog.plugins.findIndex(
+        (entry) => entry.id === collidingEntry.id,
+      );
+      if (index >= 0) filteredCatalog.plugins.splice(index, 1);
+    }
     return {
-      catalog:
-        catalog.schemaVersion === 1
-          ? {
-              ...catalog,
-              plugins: catalog.plugins.filter(
-                (entry) => !bundledIds.has(entry.id),
-              ),
-            }
-          : {
-              ...catalog,
-              plugins: catalog.plugins.filter(
-                (entry) => !bundledIds.has(entry.id),
-              ),
-            },
+      catalog: filteredCatalog,
       error: `dropped ${colliding.length} catalog ${colliding.length === 1 ? "entry" : "entries"} whose id matches a bundled plugin: ${ids}`,
     };
   }

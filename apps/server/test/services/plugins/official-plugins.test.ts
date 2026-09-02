@@ -7,6 +7,7 @@ import {
   createConnection,
   getInstalledPluginRegistration,
   migrate,
+  upsertInstalledPlugin,
   type DbConnection,
 } from "@bb/db";
 import type { Logger } from "@bb/logger";
@@ -159,6 +160,58 @@ describe("store-installed official plugins", () => {
       { id: "builtin-fixture", provenance: "catalog", status: "running" },
     ]);
   });
+
+  it.each([true, false])(
+    "moves old BB Community provenance to BB Official when autoInstall is %s",
+    async (autoInstall) => {
+      upsertInstalledPlugin(db, {
+        id: "builtin-fixture",
+        source: "builtin:fixture",
+        provenance: {
+          kind: "catalog",
+          marketplace: "bb-community",
+          entryId: "fixture",
+        },
+        sourceIntent: { kind: "builtin", name: "fixture" },
+        exactResolution: { kind: "builtin" },
+        updateState: {
+          lastCheckAt: null,
+          availableCompatibleVersion: null,
+          newestIncompatibleVersion: null,
+          statusDetail: null,
+        },
+        activeArtifactId: null,
+        rootDir: fixtureRoot,
+        version: "0.1.0",
+        enabled: true,
+      });
+      service = createService({
+        db,
+        dataDir: join(workDir, "data"),
+        bundled: [officialEntry({ autoInstall })],
+      });
+
+      await service.start();
+
+      expect(
+        getInstalledPluginRegistration(db, "builtin-fixture"),
+      ).toMatchObject({
+        provenance: "catalog",
+        catalogEntryId: "fixture",
+        catalogMarketplaceName: "bb-official",
+      });
+      expect(service.list()).toMatchObject([
+        {
+          id: "builtin-fixture",
+          provenance: "catalog",
+          catalogEntryId: "fixture",
+          catalogMarketplaceName: "bb-official",
+          publisherLabel: "BB Official",
+          status: "running",
+        },
+      ]);
+    },
+  );
 
   it("re-points an installed official plugin when the bundled copy changes", async () => {
     const mutableRoot = join(workDir, "bb-plugin-builtin-fixture");

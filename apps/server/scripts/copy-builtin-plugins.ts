@@ -10,6 +10,10 @@ import {
 import { isPluginOwnedIconPath, pluginPackageJsonSchema } from "@bb/domain";
 import { z } from "zod";
 import {
+  BUNDLED_MARKETPLACE_FILENAME,
+  BUNDLED_MARKETPLACE_GENERATED_DIRECTORY,
+} from "../src/services/plugin-catalog/bundled-marketplace-paths.js";
+import {
   BUILTIN_PLUGINS_DIRECTORY_NAME,
   BUNDLED_PLUGINS,
   resolveBuiltinPluginRootPathForModuleDir,
@@ -28,8 +32,8 @@ const bundledMarketplaceManifestPath = path.resolve(
   serverRoot,
   "src",
   "generated",
-  "bb-official-marketplace",
-  "marketplace.json",
+  BUNDLED_MARKETPLACE_GENERATED_DIRECTORY,
+  BUNDLED_MARKETPLACE_FILENAME,
 );
 const bbAppPackageJsonPath = path.resolve(
   serverRoot,
@@ -199,7 +203,7 @@ export async function copyBuiltinPlugins(args: {
   await mkdir(resolvedTargetRoot, { recursive: true });
   await cp(
     bundledMarketplaceManifestPath,
-    path.join(resolvedTargetRoot, "marketplace.json"),
+    path.join(resolvedTargetRoot, BUNDLED_MARKETPLACE_FILENAME),
   );
 
   for (const plugin of plugins) {

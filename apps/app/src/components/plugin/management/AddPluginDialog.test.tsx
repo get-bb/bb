@@ -20,15 +20,26 @@ function installPlanFor(url: string): unknown {
   const params = new URL(url, "https://bb.test").searchParams;
   const entryId = params.get("entryId") ?? "";
   const marketplace = params.get("marketplace") ?? "bb-community";
-  const official = marketplace === "bb-community";
+  const official =
+    marketplace === "bb-community" || marketplace === "bb-official";
   return {
     kind: "marketplace",
     entryId,
     pluginId: entryId,
     displayName: entryId,
     marketplace,
-    marketplaceDisplayName: official ? "BB Official" : "Acme Plugins",
-    publisherLabel: official ? "BB Official" : "Acme Plugins",
+    marketplaceDisplayName:
+      marketplace === "bb-official"
+        ? "BB Official"
+        : marketplace === "bb-community"
+          ? "BB Community"
+          : "Acme Plugins",
+    publisherLabel:
+      marketplace === "bb-official"
+        ? "BB Official"
+        : marketplace === "bb-community"
+          ? "BB Community"
+          : "Acme Plugins",
     official,
     author: { name: "Acme", url: "https://github.com/acme" },
     source: "git:https://github.com/acme/plugins.git@semver:^1.0.0",
@@ -214,8 +225,8 @@ describe("AddPluginDialog", () => {
     stubFetch();
     const { unmount } = renderDialog({
       entryId: "linear",
-      marketplace: "bb-community",
-      publisherLabel: "BB Community",
+      marketplace: "bb-official",
+      publisherLabel: "BB Official",
       displayName: "Linear",
       icon: "Github",
       iconUrl: null,
@@ -286,8 +297,8 @@ describe("AddPluginDialog", () => {
     const requests = stubFetch();
     renderDialog({
       entryId: "linear",
-      marketplace: "bb-community",
-      publisherLabel: "BB Community",
+      marketplace: "bb-official",
+      publisherLabel: "BB Official",
       displayName: "Linear",
       icon: "Github",
       iconUrl: null,
@@ -307,7 +318,7 @@ describe("AddPluginDialog", () => {
       expect(post).toBeDefined();
       expect(JSON.parse(String(post?.init?.body))).toEqual({
         entryId: "linear",
-        marketplace: "bb-community",
+        marketplace: "bb-official",
       });
     });
   });
@@ -341,8 +352,8 @@ describe("AddPluginDialog", () => {
         onOpenChange={() => {}}
         initial={{
           entryId: "linear",
-          marketplace: "bb-community",
-          publisherLabel: "BB Community",
+          marketplace: "bb-official",
+          publisherLabel: "BB Official",
           displayName: "Linear",
           icon: "Github",
           iconUrl: null,
@@ -449,8 +460,8 @@ describe("AddPluginDialog", () => {
     const requests = stubFetch();
     renderDialog({
       entryId: "linear",
-      marketplace: "bb-community",
-      publisherLabel: "BB Community",
+      marketplace: "bb-official",
+      publisherLabel: "BB Official",
       displayName: "Linear",
       icon: "Github",
       iconUrl: null,

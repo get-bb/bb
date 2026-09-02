@@ -16,6 +16,7 @@ import {
   isBundledMarketplaceEntry,
   parseBundledMarketplaceManifestJson,
 } from "../../../src/services/plugin-catalog/marketplace-manifest.js";
+import { loadBundledMarketplace } from "../../../src/services/plugin-catalog/bundled-marketplace.js";
 import { BUNDLED_PLUGINS } from "../../../src/services/plugins/builtin-registry.js";
 
 const run = promisify(execFile);
@@ -79,6 +80,15 @@ describe("bb-official marketplace generator", () => {
         plugins,
       ),
     ).toThrow(/unknown bundled plugin blocks: gamma/u);
+  });
+
+  it("names the generator task when the generated document is missing", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "bb-official-missing-"));
+    cleanup.push(root);
+
+    expect(() => loadBundledMarketplace([], root)).toThrow(
+      "pnpm exec turbo run generate:bb-official-marketplace --filter=@bb/server",
+    );
   });
 
   it("uses the first and last committer dates from plugin history", async () => {

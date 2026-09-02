@@ -8,9 +8,10 @@ import {
   parseBundledMarketplaceManifestJson,
   type MarketplaceManifestV2,
 } from "./marketplace-manifest.js";
-
-const MARKETPLACE_FILENAME = "marketplace.json";
-const GENERATED_MARKETPLACE_DIRECTORY = "bb-official-marketplace";
+import {
+  BUNDLED_MARKETPLACE_FILENAME,
+  BUNDLED_MARKETPLACE_GENERATED_DIRECTORY,
+} from "./bundled-marketplace-paths.js";
 
 const moduleDirectory = path.dirname(fileURLToPath(import.meta.url));
 
@@ -22,26 +23,32 @@ export function resolveBundledMarketplaceDirectory(
     path.resolve(
       baseDirectory,
       "../../generated",
-      GENERATED_MARKETPLACE_DIRECTORY,
+      BUNDLED_MARKETPLACE_GENERATED_DIRECTORY,
     ),
     path.resolve(
       baseDirectory,
       "../src/generated",
-      GENERATED_MARKETPLACE_DIRECTORY,
+      BUNDLED_MARKETPLACE_GENERATED_DIRECTORY,
     ),
   ];
   return (
     candidates.find((candidate) =>
-      existsSync(path.join(candidate, MARKETPLACE_FILENAME)),
+      existsSync(path.join(candidate, BUNDLED_MARKETPLACE_FILENAME)),
     ) ?? candidates[1]
   );
 }
 
 export function loadBundledMarketplace(
   plugins: readonly BundledPluginRegistration[],
+  baseDirectory = moduleDirectory,
 ): { catalog: MarketplaceManifestV2; directory: string; manifestJson: string } {
-  const directory = resolveBundledMarketplaceDirectory();
-  const manifestPath = path.join(directory, MARKETPLACE_FILENAME);
+  const directory = resolveBundledMarketplaceDirectory(baseDirectory);
+  const manifestPath = path.join(directory, BUNDLED_MARKETPLACE_FILENAME);
+  if (!existsSync(manifestPath)) {
+    throw new Error(
+      `the bundled marketplace document is missing at ${manifestPath}; run pnpm exec turbo run generate:bb-official-marketplace --filter=@bb/server`,
+    );
+  }
   const catalog = parseBundledMarketplaceManifestJson(
     readFileSync(manifestPath, "utf8"),
     `${BUNDLED_MARKETPLACE_NAME} marketplace catalog`,

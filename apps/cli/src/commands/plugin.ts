@@ -768,7 +768,7 @@ export function registerPluginCommands(
   plugin
     .command("search <query>")
     .description(
-      "Search bb-official, bb-community, and each third-party marketplace on this host. BB provides the two reserved marketplaces",
+      "Search every plugin the store lists: the plugins bundled with the app, the reserved bb-community marketplace catalog BB reviews, and any third-party marketplace added on this host. The Marketplace column names the source; only bb-community is reviewed by BB",
     )
     .option("--json", "Output JSON")
     .action(
@@ -899,7 +899,7 @@ export function registerPluginCommands(
   plugin
     .command("install <source>")
     .description(
-      "Install a catalog entry, Git repository, local path, builtin source, git source, or npm source. Third-party catalog installs show the author and exact source",
+      "Install a catalog entry by name or <entry>@<marketplace>, a Git repository URL, a local path, builtin:<name>, git:<url>[@<ref|semver-range>], or npm:<name>@<version>. A catalog entry from a third-party marketplace is not reviewed by BB, so its confirmation names the marketplace, the author, and the exact resolved source (managed sources validate engines ranges and build artifacts; bundled plugin ids are reserved)",
     )
     .option(
       "--subdirectory <path>",

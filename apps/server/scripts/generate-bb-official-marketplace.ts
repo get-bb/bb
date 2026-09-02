@@ -11,13 +11,14 @@ import {
   pluginPackageJsonSchema,
 } from "@bb/domain";
 import { z } from "zod";
+import {
+  BUNDLED_MARKETPLACE_FILENAME,
+  BUNDLED_MARKETPLACE_GENERATED_DIRECTORY,
+  BUNDLED_MARKETPLACE_NAME,
+} from "../src/services/plugin-catalog/bundled-marketplace-paths.js";
 import { BUNDLED_PLUGINS } from "../src/services/plugins/builtin-registry.js";
 
 const run = promisify(execFile);
-
-export const BB_OFFICIAL_MARKETPLACE_NAME = "bb-official";
-export const BB_OFFICIAL_MARKETPLACE_DIRECTORY = "bb-official-marketplace";
-export const BB_OFFICIAL_MARKETPLACE_FILENAME = "marketplace.json";
 
 const categoryIds: ReadonlySet<string> = new Set(
   PLUGIN_CATALOG_CATEGORIES.map((category) => category.id),
@@ -224,7 +225,7 @@ export async function generateBbOfficialMarketplace(args: {
   );
   const document = {
     schemaVersion: 2,
-    name: BB_OFFICIAL_MARKETPLACE_NAME,
+    name: BUNDLED_MARKETPLACE_NAME,
     displayName: "BB Official",
     description: "Plugins that ship with bb.",
     categories: PLUGIN_CATALOG_CATEGORIES,
@@ -243,8 +244,8 @@ const outputPath = path.join(
   "server",
   "src",
   "generated",
-  BB_OFFICIAL_MARKETPLACE_DIRECTORY,
-  BB_OFFICIAL_MARKETPLACE_FILENAME,
+  BUNDLED_MARKETPLACE_GENERATED_DIRECTORY,
+  BUNDLED_MARKETPLACE_FILENAME,
 );
 
 if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {

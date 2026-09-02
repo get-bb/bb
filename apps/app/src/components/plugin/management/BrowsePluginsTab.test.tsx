@@ -22,7 +22,7 @@ function jsonResponse(body: unknown, status = 200): Response {
 
 const MEMORY_ENTRY: PluginCatalogSearchEntry = {
   entryId: "memory",
-  marketplace: "bb-community",
+  marketplace: "bb-official",
   pluginId: "memory",
   displayName: "Memory",
   description: "Provider-independent durable memory for agents.",
@@ -32,8 +32,8 @@ const MEMORY_ENTRY: PluginCatalogSearchEntry = {
   category: "Context & knowledge",
   source: "builtin:memory",
   repositoryUrl: null,
-  marketplaceDisplayName: "BB Community",
-  publisherKey: "builtin",
+  marketplaceDisplayName: "BB Official",
+  publisherKey: "bb-official",
   publisherLabel: "BB Official",
   official: true,
   author: null,
@@ -52,7 +52,7 @@ const CATALOG_STATUS = {
 const INCOMPATIBLE_ENTRY: PluginCatalogSearchEntry = {
   ...MEMORY_ENTRY,
   entryId: "future-memory",
-  marketplace: "bb-community",
+  marketplace: "bb-official",
   pluginId: "future-memory",
   displayName: "Future Memory",
   compatible: false,
@@ -62,7 +62,7 @@ const INCOMPATIBLE_ENTRY: PluginCatalogSearchEntry = {
 const GITHUB_ENTRY: PluginCatalogSearchEntry = {
   ...MEMORY_ENTRY,
   entryId: "github",
-  marketplace: "bb-community",
+  marketplace: "bb-official",
   pluginId: "github",
   displayName: "GitHub",
   description: "Browse GitHub issues and pull requests in BB.",
@@ -81,8 +81,9 @@ const INSTALLED_MEMORY_PLUGIN = {
   provenance: "catalog",
   isOrphanedBuiltin: false,
   catalogEntryId: "memory",
-  publisherKey: "bb-community",
-  publisherLabel: "BB Community",
+  catalogMarketplaceName: "bb-official",
+  publisherKey: "bb-official",
+  publisherLabel: "BB Official",
   sourceDisplay: "BB Official · Memory",
   updateState: {},
   enabled: true,
@@ -621,7 +622,7 @@ describe("BrowsePluginsTab", () => {
     fireEvent.click(install);
     expect(onInstall).toHaveBeenCalledWith({
       entryId: "memory",
-      marketplace: "bb-community",
+      marketplace: "bb-official",
       publisherLabel: "BB Official",
       displayName: "Memory",
       icon: "Brain",
@@ -768,7 +769,7 @@ describe("BrowsePluginsTab", () => {
               {
                 ...MEMORY_ENTRY,
                 entryId: "docs",
-                marketplace: "bb-community",
+                marketplace: "bb-official",
                 pluginId: "simple-notes",
                 displayName: "Docs",
                 source: "builtin:docs",

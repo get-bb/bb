@@ -73,11 +73,11 @@ describe("plugin catalog routes", () => {
         optionalPluginCount: OFFICIAL_PLUGINS.length + SEED_ENTRY_COUNT,
       },
     });
-    const search = await app.request("/plugin-catalog/search?q=memory");
+    const search = await app.request(
+      "/plugin-catalog/search?q=durable%20memory",
+    );
     await expect(search.json()).resolves.toMatchObject({
-      results: expect.arrayContaining([
-        expect.objectContaining({ entryId: "memory", installed: false }),
-      ]),
+      results: [{ entryId: "memory", installed: false }],
       collections: [],
     });
 

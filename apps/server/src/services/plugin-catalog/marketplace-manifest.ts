@@ -23,6 +23,8 @@ import {
   normalizePluginSubdirectory,
   parsePluginSource,
 } from "../plugins/install-sources.js";
+import { BUNDLED_MARKETPLACE_NAME } from "./bundled-marketplace-paths.js";
+export { BUNDLED_MARKETPLACE_NAME } from "./bundled-marketplace-paths.js";
 
 export const MARKETPLACE_V1_SCHEMA_URL =
   "https://getbb.app/schemas/marketplace.schema.json";
@@ -35,8 +37,6 @@ export const CURATED_MARKETPLACE_V2_URL =
   "https://getbb.app/marketplace/v2/marketplace.json";
 
 export const CURATED_MARKETPLACE_NAME = CURATED_PLUGIN_MARKETPLACE_NAME;
-
-export const BUNDLED_MARKETPLACE_NAME = "bb-official";
 
 export const BUILTIN_PUBLISHER_LABEL = "BB Official";
 
