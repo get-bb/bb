@@ -62,7 +62,11 @@ import {
   createAcpDeltaTranslator,
   type AcpDeltaTranslator,
 } from "../delta-translation.js";
-import { resolveAcpDialect, type AcpDialect } from "../dialect.js";
+import {
+  compactionOutcomeForEndTurn,
+  resolveAcpDialect,
+  type AcpDialect,
+} from "../dialect.js";
 import type { AcpMaintenanceDialect } from "./provider-maintenance.js";
 import {
   buildAcpPermissionInteractionPayload,
@@ -2092,20 +2096,6 @@ function runTurn(
   })();
 }
 
-const COMPACTION_FAILURE_PATTERN = /\bcompaction failed\b/i;
-const COMPACTION_NOOP_PATTERN = /\b(?:nothing to compact|already compacted)\b/i;
-
-function compactionOutcomeForEndTurn(
-  agentMessage: string,
-): Record<string, unknown> {
-  const text = agentMessage.trim();
-  if (!COMPACTION_FAILURE_PATTERN.test(text)) {
-    return { status: "completed" };
-  }
-  return COMPACTION_NOOP_PATTERN.test(text)
-    ? { status: "skipped", detail: text }
-    : { status: "failed", error: text };
-}
 function startCompaction(
   session: AcpThreadSession,
   pending: AcpPendingTurnInput,
@@ -2134,7 +2124,10 @@ function startCompaction(
     .then((result) => {
       finish(
         result.stopReason === "end_turn"
-          ? compactionOutcomeForEndTurn(session.compactionAgentMessage)
+          ? compactionOutcomeForEndTurn(
+              session.dialect,
+              session.compactionAgentMessage,
+            )
           : result.stopReason === "cancelled"
             ? { status: "interrupted" }
             : {
