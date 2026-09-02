@@ -392,7 +392,7 @@ function PluginNavRowVisibilityMenuItem({
 
 function ToolsNavSidebarItem({
   row,
-  pathname,
+  pathname: _pathname,
   onNavigate,
   ...props
 }: Omit<SidebarNavRowItemProps, "row" | "splitEnabled"> & {
@@ -405,9 +405,7 @@ function ToolsNavSidebarItem({
       rowKey={getPluginNavPanelKey(row)}
       title={row.title}
       icon={<Icon name={row.icon} aria-hidden="true" />}
-      isActive={
-        pathname === row.routePath || pathname.startsWith(`${row.routePath}/`)
-      }
+      isActive={false}
       onSelect={() => {
         onNavigate?.();
         void navigate(row.routePath);
