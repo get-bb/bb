@@ -120,13 +120,13 @@ function PluginPath({ path }: { path: string }) {
 export function CatalogPluginDetail({
   entry,
   onInstall,
-  catalogEntries = [entry],
-  onOpenPlugin = () => undefined,
+  catalogEntries,
+  onOpenPlugin,
 }: {
   entry: PluginCatalogSearchEntry;
   onInstall: (entry: PluginCatalogSearchEntry) => void;
-  catalogEntries?: readonly PluginCatalogSearchEntry[];
-  onOpenPlugin?: (pluginId: string) => void;
+  catalogEntries: readonly PluginCatalogSearchEntry[];
+  onOpenPlugin: (pluginId: string) => void;
 }) {
   const count =
     entry.installs === null
@@ -232,8 +232,8 @@ export function PluginDetail({
   onOpenSource,
   onDelete,
   catalogEntry,
-  catalogEntries = [],
-  onOpenPlugin = () => undefined,
+  catalogEntries,
+  onOpenPlugin,
 }: {
   isLoading: boolean;
   plugin: PluginListItem | null;
@@ -244,8 +244,8 @@ export function PluginDetail({
   onOpenSource: (plugin: PluginListItem) => void;
   onDelete: (plugin: PluginListItem) => void;
   catalogEntry?: PluginCatalogSearchEntry;
-  catalogEntries?: readonly PluginCatalogSearchEntry[];
-  onOpenPlugin?: (pluginId: string) => void;
+  catalogEntries: readonly PluginCatalogSearchEntry[];
+  onOpenPlugin: (pluginId: string) => void;
 }) {
   const { settingsSections } = usePluginSlots();
   const sourceQuery = usePluginSource(plugin?.id ?? "", {

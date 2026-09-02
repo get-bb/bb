@@ -129,6 +129,8 @@ describe("PluginDetail official catalog lifecycle", () => {
       <CatalogPluginDetail
         entry={GITHUB_CATALOG_ENTRY}
         onInstall={onInstall}
+        catalogEntries={[GITHUB_CATALOG_ENTRY]}
+        onOpenPlugin={() => undefined}
       />,
     );
 
@@ -153,6 +155,8 @@ describe("PluginDetail official catalog lifecycle", () => {
           repositoryUrl: "https://github.com/acme/bb-github",
         }}
         onInstall={() => {}}
+        catalogEntries={[]}
+        onOpenPlugin={() => undefined}
       />,
     );
 
@@ -172,6 +176,8 @@ describe("PluginDetail official catalog lifecycle", () => {
           publishedAt: "2026-08-20T00:00:00Z",
         }}
         onInstall={() => undefined}
+        catalogEntries={[]}
+        onOpenPlugin={() => undefined}
       />,
     );
 
@@ -196,7 +202,12 @@ describe("PluginDetail official catalog lifecycle", () => {
     render(
       <>
         <CatalogPluginDetailBanner entry={incompatibleEntry} />
-        <CatalogPluginDetail entry={incompatibleEntry} onInstall={() => {}} />
+        <CatalogPluginDetail
+          entry={incompatibleEntry}
+          onInstall={() => {}}
+          catalogEntries={[incompatibleEntry]}
+          onOpenPlugin={() => undefined}
+        />
       </>,
     );
 
@@ -261,6 +272,8 @@ describe("PluginDetail official catalog lifecycle", () => {
             onOpenSource={() => {}}
             onDelete={onDelete}
             catalogEntry={GITHUB_CATALOG_ENTRY}
+            catalogEntries={[GITHUB_CATALOG_ENTRY]}
+            onOpenPlugin={() => undefined}
           />
         </QueryClientWrapper>
       </MemoryRouter>,
@@ -329,6 +342,8 @@ describe("PluginDetail official catalog lifecycle", () => {
             onEdit={() => {}}
             onOpenSource={() => {}}
             onDelete={() => {}}
+            catalogEntries={[]}
+            onOpenPlugin={() => undefined}
           />
         </QueryClientWrapper>
       </MemoryRouter>,
@@ -391,6 +406,8 @@ describe("PluginDetail official catalog lifecycle", () => {
             onEdit={() => {}}
             onOpenSource={() => {}}
             onDelete={() => {}}
+            catalogEntries={[]}
+            onOpenPlugin={() => undefined}
           />
         </QueryClientWrapper>
       </MemoryRouter>,
@@ -449,6 +466,8 @@ describe("PluginDetail official catalog lifecycle", () => {
               onEdit={() => {}}
               onOpenSource={() => {}}
               onDelete={() => {}}
+              catalogEntries={[]}
+              onOpenPlugin={() => undefined}
             />
           </QueryClientWrapper>
         </MemoryRouter>,
@@ -496,6 +515,8 @@ describe("PluginDetail official catalog lifecycle", () => {
             onEdit={() => {}}
             onOpenSource={() => {}}
             onDelete={() => {}}
+            catalogEntries={[]}
+            onOpenPlugin={() => undefined}
           />
         </QueryClientWrapper>
       </MemoryRouter>,
@@ -532,6 +553,8 @@ describe("PluginDetail official catalog lifecycle", () => {
             onEdit={() => {}}
             onOpenSource={() => {}}
             onDelete={onDelete}
+            catalogEntries={[]}
+            onOpenPlugin={() => undefined}
           />
         </QueryClientWrapper>
       </MemoryRouter>,
@@ -676,6 +699,88 @@ describe("BB Official plugin detail routing", () => {
       );
       expect(document.activeElement).toBe(card);
     });
+  });
+
+  it("keeps related plugin navigation in the full-page detail", async () => {
+    const author = {
+      name: "BB",
+      github: "get-bb",
+      url: "https://github.com/get-bb",
+    };
+    const catalogEntries = [
+      { ...GITHUB_CATALOG_ENTRY, author, installed: true },
+      {
+        ...GITHUB_CATALOG_ENTRY,
+        entryId: "automations",
+        pluginId: "automations",
+        displayName: "Automations",
+        author,
+      },
+    ];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url === "/api/v1/plugins") {
+          return new Response(
+            JSON.stringify({
+              enabled: true,
+              plugins: [
+                {
+                  ...GITHUB_PLUGIN,
+                  iconUrl: null,
+                  screenshots: [],
+                  collections: [],
+                  providerIds: [],
+                  icons: {},
+                  updateState: {},
+                },
+              ],
+            }),
+            { headers: { "content-type": "application/json" } },
+          );
+        }
+        if (url.startsWith("/api/v1/plugin-catalog/search")) {
+          return new Response(
+            JSON.stringify({ results: catalogEntries, collections: [] }),
+            { headers: { "content-type": "application/json" } },
+          );
+        }
+        return new Response(JSON.stringify({ error: "not found" }), {
+          status: 404,
+          headers: { "content-type": "application/json" },
+        });
+      }),
+    );
+
+    const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
+    render(
+      <MemoryRouter
+        initialEntries={["/extensions/plugins/github?view=installed"]}
+      >
+        <Routes>
+          <Route path="/extensions/plugins/*" element={<RoutedToolsView />} />
+        </Routes>
+      </MemoryRouter>,
+      { wrapper: QueryClientWrapper },
+    );
+
+    fireEvent.click(
+      await screen.findByRole("button", {
+        name: "Open Automations details",
+      }),
+    );
+    await waitFor(() => {
+      expect(screen.getByTestId("route-path").textContent).toBe(
+        "/extensions/plugins/automations",
+      );
+    });
+    expect(screen.getByTestId("route-search").textContent).toBe(
+      "?view=installed",
+    );
+    expect(
+      screen.queryByRole("button", { name: "Close Automations" }),
+    ).toBeNull();
   });
 
   it("opens an author from a card and returns to the prior Browse filters", async () => {
@@ -1049,6 +1154,8 @@ describe("PluginDetail runtime health", () => {
             onEdit={() => {}}
             onOpenSource={() => {}}
             onDelete={() => {}}
+            catalogEntries={[]}
+            onOpenPlugin={() => undefined}
           />
         </QueryClientWrapper>
       </MemoryRouter>,
@@ -1331,6 +1438,8 @@ describe("PluginDetail capability inventory", () => {
             onEdit={() => {}}
             onOpenSource={() => {}}
             onDelete={() => {}}
+            catalogEntries={[]}
+            onOpenPlugin={() => undefined}
           />
         </QueryClientWrapper>
       </MemoryRouter>,
@@ -1492,6 +1601,8 @@ describe("PluginDetail capability inventory", () => {
             onEdit={() => {}}
             onOpenSource={() => {}}
             onDelete={() => {}}
+            catalogEntries={[]}
+            onOpenPlugin={() => undefined}
           />
         </QueryClientWrapper>
       </MemoryRouter>,

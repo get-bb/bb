@@ -616,6 +616,8 @@ function Plugin({
           onEdit={noop}
           onOpenSource={noop}
           onDelete={noop}
+          catalogEntries={[]}
+          onOpenPlugin={noop}
         />
       </div>
     </div>
@@ -637,6 +639,8 @@ function CatalogPlugin({
         <CatalogPluginDetail
           entry={entry}
           onInstall={() => setInstallOpen(true)}
+          catalogEntries={[entry]}
+          onOpenPlugin={noop}
         />
       </div>
       <AddPluginDialog

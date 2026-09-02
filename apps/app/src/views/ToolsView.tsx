@@ -261,12 +261,9 @@ function PluginDetailToolView({ pluginId }: { pluginId: string }) {
   );
   const handleOpenCatalogPlugin = useCallback(
     (nextPluginId: string) => {
-      const nextSearchParams = new URLSearchParams(location.search);
-      nextSearchParams.delete("view");
-      const search = nextSearchParams.toString();
       navigate({
         pathname: getPluginDetailRoutePath({ pluginId: nextPluginId }),
-        search: search === "" ? "" : `?${search}`,
+        search: location.search,
       });
     },
     [location.search, navigate],

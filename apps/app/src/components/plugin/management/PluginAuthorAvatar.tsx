@@ -36,6 +36,7 @@ export function PluginAuthorAvatar({
           src={`https://github.com/${github}.png?size=${size === "detail" ? 40 : 80}`}
           alt=""
           loading="lazy"
+          referrerPolicy="no-referrer"
         />
       )}
       <AvatarFallback
