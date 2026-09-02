@@ -41,6 +41,8 @@ export function createDaemon(options: CreateDaemonOptions): HostDaemon {
   let stopPromise: Promise<void> | null = null;
   let stopFailure: Error | null = null;
   let shutdownExitWatchdog: ReturnType<typeof setTimeout> | null = null;
+  let shutdownExitReason: string | null = null;
+  let shutdownExitCode: 0 | 1 = 0;
 
   let resolveStopped: (() => void) | undefined;
   const stopped = new Promise<void>((resolve) => {
@@ -57,7 +59,14 @@ export function createDaemon(options: CreateDaemonOptions): HostDaemon {
     listeners.clear();
   }
 
-  function armShutdownExitWatchdog(reason: string, exitCode: 0 | 1): void {
+  function requestProcessExit(reason: string, exitCode: 0 | 1): void {
+    if (shutdownExitReason === null || exitCode > shutdownExitCode) {
+      shutdownExitReason = reason;
+      shutdownExitCode = exitCode;
+    }
+  }
+
+  function armShutdownExitWatchdog(): void {
     const exitProcess = options.exitProcess;
     if (!exitProcess) {
       return;
@@ -68,15 +77,19 @@ export function createDaemon(options: CreateDaemonOptions): HostDaemon {
     shutdownExitWatchdog = setTimeout(() => {
       shutdownExitWatchdog = null;
       options.logger.error(
-        { reason, graceMs, activeResources: process.getActiveResourcesInfo() },
+        {
+          reason: shutdownExitReason,
+          graceMs,
+          activeResources: process.getActiveResourcesInfo(),
+        },
         "Host daemon shutdown did not end the process; forcing exit so the service manager can restart it.",
       );
-      exitProcess(exitCode);
+      exitProcess(shutdownExitCode);
     }, graceMs);
     shutdownExitWatchdog.unref?.();
   }
 
-  function exitAfterCleanShutdown(exitCode: 0 | 1): void {
+  function exitAfterCleanShutdown(): void {
     const exitProcess = options.exitProcess;
     if (startupFailed || !exitProcess) {
       return;
@@ -85,15 +98,16 @@ export function createDaemon(options: CreateDaemonOptions): HostDaemon {
       clearTimeout(shutdownExitWatchdog);
       shutdownExitWatchdog = null;
     }
-    exitProcess(exitCode);
+    exitProcess(shutdownExitCode);
   }
 
   async function stop(reason: string, exitCode: 0 | 1): Promise<void> {
+    requestProcessExit(reason, exitCode);
     if (stopPromise) {
       return stopPromise;
     }
 
-    armShutdownExitWatchdog(reason, exitCode);
+    armShutdownExitWatchdog();
 
     stopPromise = (async () => {
       unregisterSignalHandlers();
@@ -142,7 +156,7 @@ export function createDaemon(options: CreateDaemonOptions): HostDaemon {
       }
 
       resolveStopped?.();
-      exitAfterCleanShutdown(exitCode);
+      exitAfterCleanShutdown();
     })();
 
     return stopPromise;

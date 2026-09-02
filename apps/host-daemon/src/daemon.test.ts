@@ -280,6 +280,39 @@ describe("daemon lifecycle", () => {
     expect(exitProcess).toHaveBeenCalledWith(0);
   });
 
+  it("escalates an active clean shutdown after daemon lock loss", async () => {
+    const logger = createLogger();
+    const exitProcess = vi.fn();
+    let finishRelease: () => void = () => undefined;
+    const releaseBlocked = new Promise<void>((resolve) => {
+      finishRelease = resolve;
+    });
+    const releaseLock = vi.fn(async () => releaseBlocked);
+    const daemon = createDaemon({
+      identity: {
+        hostId: "host-1",
+        hostName: "test-host",
+        instanceId: "instance-1",
+      },
+      logger,
+      releaseLock,
+      exitProcess,
+      shutdownExitGraceMs: 60_000,
+    });
+
+    await daemon.start();
+    const signalShutdown = daemon.shutdown("SIGTERM", 0);
+    await vi.waitFor(() => {
+      expect(releaseLock).toHaveBeenCalledOnce();
+    });
+    const lockLossShutdown = daemon.shutdown("daemon-lock-lost", 1);
+    finishRelease();
+    await Promise.all([signalShutdown, lockLossShutdown]);
+
+    expect(exitProcess).toHaveBeenCalledOnce();
+    expect(exitProcess).toHaveBeenCalledWith(1);
+  });
+
   it("preserves the requested failure status after daemon lock loss", async () => {
     const logger = createLogger();
     const exitProcess = vi.fn();
