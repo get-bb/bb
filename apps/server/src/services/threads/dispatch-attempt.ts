@@ -28,9 +28,13 @@ import { z } from "zod";
 import { ApiError } from "../../errors.js";
 import type { LoggedPendingInteractionWorkSessionDeps } from "../../types.js";
 import { requirePublicProject } from "../lib/entity-lookup.js";
-import { throwThreadNotWritable } from "../lib/lifecycle-api-errors.js";
+import {
+  goneThreadEnvironmentDetails,
+  throwThreadNotWritable,
+} from "../lib/lifecycle-api-errors.js";
 import { validatePromptAttachmentReferences } from "../projects/attachments.js";
 import {
+  dispatchEnvironmentAndHost,
   dispatchExecutionSources,
   dispatchWaitReasonForPass,
   hasMessageDispatchHooks,
@@ -315,6 +319,16 @@ async function runDispatchAttempt(
   const sendAt = payload.sendAt ?? null;
   if (!sendNow && sendAt !== null && sendAt > Date.now()) {
     return waitOn({ kind: "time" }, sendAt);
+  }
+
+  const { environment: dispatchEnvironment, host: dispatchHost } =
+    dispatchEnvironmentAndHost(deps, thread.environmentId);
+  if (
+    dispatchEnvironment !== null &&
+    goneThreadEnvironmentDetails(dispatchEnvironment) === null &&
+    dispatchHost?.status === "disconnected"
+  ) {
+    return waitOn({ kind: "host-offline", hostName: dispatchHost.name }, null);
   }
 
   if (thread.status === "active" && attempt === "start-turn") {
