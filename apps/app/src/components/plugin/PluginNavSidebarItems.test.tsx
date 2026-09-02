@@ -337,9 +337,29 @@ describe("PluginNavSidebarItems", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Plugins" }));
     expect(screen.getByTestId("pathname").textContent).toBe("/plugins");
+    expect(
+      screen
+        .getByRole("button", { name: "Plugins" })
+        .getAttribute("aria-current"),
+    ).toBe("page");
+    expect(
+      screen
+        .getByRole("button", { name: "Skills" })
+        .getAttribute("aria-current"),
+    ).toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: "Skills" }));
     expect(screen.getByTestId("pathname").textContent).toBe("/skills");
+    expect(
+      screen
+        .getByRole("button", { name: "Plugins" })
+        .getAttribute("aria-current"),
+    ).toBeNull();
+    expect(
+      screen
+        .getByRole("button", { name: "Skills" })
+        .getAttribute("aria-current"),
+    ).toBe("page");
   });
 
   it("hides each built-in resource row like a plugin row", async () => {
