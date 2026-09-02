@@ -46,7 +46,6 @@ import { cn } from "@bb/shared-ui/lib/utils";
 import { useSystemExecutionOptions } from "@/hooks/queries/system-queries";
 import { resolveModelCatalogSelection } from "@/hooks/thread-creation-options/model-catalog-selection";
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
-import { usePointerCoarse } from "@bb/shared-ui/hooks/use-pointer-coarse";
 import {
   OPTION_BASE_CLASS_NAME,
   OPTION_INTERACTIVE_CLASS_NAME,
@@ -236,7 +235,6 @@ export function ModelReasoningPicker({
   footerAction,
 }: ModelReasoningPickerProps) {
   const isCompactViewport = useIsCompactViewport();
-  const isPointerCoarse = usePointerCoarse();
   const [open, setOpen] = useState(defaultOpen);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const registeredToggleShortcut = useAppCommandShortcut("modelPicker.toggle");
@@ -741,15 +739,6 @@ export function ModelReasoningPicker({
     el?.scrollIntoView({ block: "nearest" });
   }, [highlightedIndex, navId]);
 
-  useEffect(() => {
-    if (!open || isCompactViewport || isPointerCoarse) return;
-    const frame = window.requestAnimationFrame(() => {
-      searchInputRef.current?.focus();
-      searchInputRef.current?.select();
-    });
-    return () => window.cancelAnimationFrame(frame);
-  }, [open, isCompactViewport, isPointerCoarse]);
-
   const TriggerIcon =
     hasSelectedModel || modelIsLoading ? ProviderIcon : undefined;
   const triggerTitleModelLabel = modelIsLoading
@@ -877,6 +866,7 @@ export function ModelReasoningPicker({
         align={align}
         mobileTitle="Model"
         onMobileContentAnimationEnd={handleMobileContentAnimationEnd}
+        autoFocusRef={showSearchInput ? searchInputRef : undefined}
         className={cn(
           "flex flex-col p-0",
           MODEL_PICKER_MENU_WIDTH_CLASS_NAME,
@@ -903,6 +893,7 @@ export function ModelReasoningPicker({
                   key={provider.value}
                   type="button"
                   title={provider.label}
+                  onMouseDown={(event) => event.preventDefault()}
                   onClick={() => {
                     if (provider.value !== activeProviderId) {
                       handleProviderSelect(provider.value);

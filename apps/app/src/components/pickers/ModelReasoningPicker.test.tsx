@@ -411,7 +411,7 @@ describe("ModelReasoningPicker", () => {
     expect(onSelectedProviderChange).toHaveBeenCalledWith("claude-code");
   });
 
-  it("clears the previous provider's search and highlight when cycling", () => {
+  it("keeps search focused and clears it when switching providers", () => {
     const alternateProviderModels = [
       "claude-opus-4-7",
       "claude-sonnet-4-7",
@@ -434,20 +434,20 @@ describe("ModelReasoningPicker", () => {
       screen.getByRole("button", { name: "Provider, model and reasoning" }),
     );
     const search = screen.getByPlaceholderText("Search models");
+    search.focus();
     fireEvent.change(search, { target: { value: "o4" } });
     fireEvent.keyDown(search, { key: "ArrowDown" });
 
-    act(() => {
-      expect(
-        commandHandlers.get("modelPicker.cycleProvider")?.({ target: search }),
-      ).toBe(true);
-    });
+    const claudeTab = screen.getByTitle("Claude Code");
+    if (fireEvent.mouseDown(claudeTab)) claudeTab.focus();
+    fireEvent.click(claudeTab);
 
     expect(onSelectedProviderChange).toHaveBeenCalledWith("claude-code");
     const nextSearch = screen.getByPlaceholderText(
       "Search models",
     ) as HTMLInputElement;
     expect(nextSearch.value).toBe("");
+    expect(document.activeElement).toBe(nextSearch);
     fireEvent.keyDown(nextSearch, { key: "Enter" });
     expect(onModelChange).not.toHaveBeenCalled();
   });

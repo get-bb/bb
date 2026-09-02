@@ -22,8 +22,6 @@ import {
   COARSE_POINTER_COMPACT_ICON_SIZE_SHRINK_CLASS,
   COARSE_POINTER_ICON_SIZE_SHRINK_CLASS,
 } from "@bb/shared-ui/coarse-pointer-sizing";
-import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
-import { usePointerCoarse } from "@bb/shared-ui/hooks/use-pointer-coarse";
 import { Input } from "@bb/shared-ui/input";
 import { blurActiveKeyboardInputWithin } from "@bb/shared-ui/overlay-trigger";
 import { Popover, PopoverContent, PopoverTrigger } from "@bb/shared-ui/popover";
@@ -687,8 +685,6 @@ export function BranchPicker({
   const [open, setOpen] = useState(defaultOpen);
   const [query, setQuery] = useState("");
   const optionsScrollRef = useResetPickerScroll<HTMLDivElement>(query);
-  const isCompactViewport = useIsCompactViewport();
-  const isPointerCoarse = usePointerCoarse();
   const selectedCheckoutIntent = resolveCheckoutIntent({
     isCreatingNew,
     value,
@@ -880,20 +876,6 @@ export function BranchPicker({
     onSearchQueryChange?.(debouncedNormalizedQuery);
   }, [debouncedNormalizedQuery, normalizedQuery, onSearchQueryChange, open]);
 
-  useEffect(() => {
-    if (!open || !showOptionsSearch || isCompactViewport || isPointerCoarse) {
-      return;
-    }
-
-    const frame = window.requestAnimationFrame(() => {
-      inputRef.current?.focus();
-      inputRef.current?.select();
-    });
-    return () => {
-      window.cancelAnimationFrame(frame);
-    };
-  }, [isCompactViewport, isPointerCoarse, open, showOptionsSearch]);
-
   return (
     <Popover modal={modal} open={open} onOpenChange={updateOpen}>
       <PopoverTrigger asChild disabled={disabled}>
@@ -965,6 +947,7 @@ export function BranchPicker({
         sideOffset={6}
         collisionPadding={16}
         mobileTitle={menuCopy.title ?? "Branch"}
+        autoFocusRef={showOptionsSearch ? inputRef : undefined}
         className={cn(
           BRANCH_PICKER_CONTENT_CLASS_NAME,
           showOptionsSearch && "md:min-w-40",
