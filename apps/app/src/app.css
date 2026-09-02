@@ -27,6 +27,7 @@
    * variable is the single switch both they and the shell root read.
    */
   :root {
+    --bb-app-chrome-row-height: 3rem;
     --bb-shell-height: 100dvh;
     --secondary-panel-width-mobile: min(76vw, 320px);
   }

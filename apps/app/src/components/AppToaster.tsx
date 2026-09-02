@@ -3,7 +3,7 @@ import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { usePreferredTheme } from "@/hooks/useTheme";
 
 const COMPACT_TOAST_TOP_OFFSET =
-  "calc(env(safe-area-inset-top) + 48px + 16px)";
+  "calc(env(safe-area-inset-top) + var(--bb-app-chrome-row-height) + 16px)";
 
 function withCompactTopOffset(
   offset: ToasterProps["offset"],
