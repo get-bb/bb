@@ -15,7 +15,7 @@ import {
 } from "../../src/services/plugins/plugin-hook-registry.js";
 import { setPluginThreadEventEmitter } from "../../src/services/plugins/plugin-thread-events.js";
 import { applyLoggedThreadLifecycleEvent } from "../../src/services/threads/lifecycle-outcome.js";
-import { runDueScheduledQueueSweep } from "../../src/services/threads/queue-drains.js";
+import { runQueuedMessageDispatch } from "../../src/services/threads/queued-message-dispatch.js";
 import { toThreadQueuedMessage } from "../../src/services/threads/thread-queued-messages.js";
 import { buildTurnFailedEvent } from "../../src/services/threads/turn-failed.js";
 import { retryFailedTurn } from "../../src/services/threads/turn-retry.js";
@@ -307,7 +307,10 @@ function requireThread(harness: TestAppHarness, threadId: string) {
  * send uses, which is what these tests are actually about.
  */
 async function sweepPastResume(harness: TestAppHarness): Promise<void> {
-  await runDueScheduledQueueSweep(harness.deps, Date.now() + 120_000);
+  await runQueuedMessageDispatch(harness.deps, {
+    kind: "time-reached",
+    now: Date.now() + 120_000,
+  });
 }
 
 describe("the turn.failed announcement", () => {

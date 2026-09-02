@@ -19,9 +19,9 @@ import { groupHostDaemonEvents } from "@bb/host-daemon-contract";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { TelemetryService } from "../../src/services/system/telemetry.js";
 import * as threadEvents from "../../src/services/threads/thread-events.js";
+import { runQueuedMessageDispatch } from "../../src/services/threads/queued-message-dispatch.js";
 import {
   createAutomaticQueuedMessageGroupEligibility,
-  runQueuedMessageAutoSendForThread,
   sendQueuedMessage,
 } from "../../src/services/threads/queued-messages.js";
 import { queueParentSystemMessage } from "../../src/services/threads/parent-system-messages.js";
@@ -342,7 +342,8 @@ describe("turn-starting queue wait", () => {
         waitingOn: { kind: "turn-starting" },
       });
 
-      await runQueuedMessageAutoSendForThread(harness.deps, {
+      await runQueuedMessageDispatch(harness.deps, {
+        kind: "thread-ready",
         threadId: thread.id,
       });
 

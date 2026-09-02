@@ -25,10 +25,8 @@ import {
   seedThreadFixture,
 } from "../helpers/seed.js";
 import { withTestHarness } from "../helpers/test-app.js";
-import {
-  runQueuedMessageAutoSendSweep,
-  sendQueuedMessage,
-} from "../../src/services/threads/queued-messages.js";
+import { runQueuedMessageDispatch } from "../../src/services/threads/queued-message-dispatch.js";
+import { sendQueuedMessage } from "../../src/services/threads/queued-messages.js";
 import { stopThreadForCurrentState } from "../../src/services/threads/thread-lifecycle.js";
 
 describe("thread runtime stop", () => {
@@ -199,7 +197,10 @@ describe("thread runtime stop", () => {
         queuedMessageId: queuedMessage.id,
         threadId: thread.id,
       });
-      await runQueuedMessageAutoSendSweep(harness.deps);
+      await runQueuedMessageDispatch(harness.deps, {
+        kind: "thread-ready",
+        threadId: thread.id,
+      });
 
       expect(getThread(harness.db, thread.id)?.status).toBe("idle");
       expect(listQueuedThreadMessages(harness.db, thread.id)).toHaveLength(1);
@@ -232,7 +233,10 @@ describe("thread runtime stop", () => {
       expect(getThread(harness.db, thread.id)?.status).toBe("idle");
       expect(isThreadQueueAutoSendPaused(harness.db, thread.id)).toBe(true);
 
-      await runQueuedMessageAutoSendSweep(harness.deps);
+      await runQueuedMessageDispatch(harness.deps, {
+        kind: "thread-ready",
+        threadId: thread.id,
+      });
       expect(listQueuedThreadMessages(harness.db, thread.id)).toHaveLength(1);
       expect(
         listQueuedThreadCommands(harness, "turn.submit", thread.id),
