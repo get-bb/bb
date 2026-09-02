@@ -64,7 +64,7 @@ describe("bb-cli skill command index", () => {
   it("leaves shipped plugin commands to their plugin skills", () => {
     const skill = readMarkdownTree(BB_CLI_SKILL_ROOT);
     expect(skill).not.toMatch(
-      /\bbb (?:automation|connect|instructions|github|keep-awake|provider-retry|memory|secret|docs|tasks|workflows)\b/,
+      /\bbb (?:automation|connect|instructions|github|keep-awake|provider-retry|refusal-fallback|memory|secret|docs|tasks|workflows)\b/,
     );
     expect(skill).not.toMatch(/\b(?:built-in|builtin|official) plugins?\b/i);
   });

@@ -111,6 +111,18 @@ function getClaudeProviderCode(
   return null;
 }
 
+export const CLAUDE_MODEL_REFUSAL_PROVIDER_CODE = "model_refusal_no_fallback";
+
+export function buildClaudeModelRefusalErrorInfo(
+  apiRefusalCategory: string | null,
+): ProviderErrorInfo {
+  return {
+    category: "policy",
+    providerCode: apiRefusalCategory ?? CLAUDE_MODEL_REFUSAL_PROVIDER_CODE,
+    httpStatusCode: null,
+  };
+}
+
 export function buildClaudeProviderErrorInfo(
   args: BuildClaudeProviderErrorInfoArgs,
 ): ProviderErrorInfo | null {

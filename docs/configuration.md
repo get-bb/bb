@@ -844,6 +844,27 @@ composer — the one surface that narrates the wait. Inspect them with
 that do not reset on a clock — credit and spend-control exhaustion — schedule
 nothing, because waiting does not fix them.
 
+### Refusal fallback plugin
+
+The builtin Refusal fallback plugin is enabled on fresh installations. When a
+provider's safety policy refuses a message and the provider has no fallback of
+its own, bb offers the models listed below the refused one in that provider's
+catalog, switches the thread to the chosen model, and sends one agent-only
+`Please continue.` turn. Declining leaves the thread on the refused model.
+Because only lower catalog entries are offered, a repeatedly refused thread
+runs out of alternatives instead of switching forever. Disable it under
+Extensions → Plugins or with `bb plugin disable provider-refusal-fallback`.
+
+Ticking "Switch automatically next time, do not ask again" stores the chosen
+model for that provider and skips the prompt afterwards. The choice is per
+provider, not per thread. Inspect and clear it with:
+
+```bash
+bb refusal-fallback status [--json]
+bb refusal-fallback forget <provider-id>
+bb refusal-fallback retry [thread-id]
+```
+
 ### Workflows plugin
 
 The builtin Workflows plugin is disabled on fresh installations. Enable it

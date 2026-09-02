@@ -42,7 +42,10 @@ import {
   type ClaudeRateLimitEvent,
   type ClaudeResultMessage,
 } from "./schemas.js";
-import { buildClaudeProviderErrorInfo } from "./error-info.js";
+import {
+  buildClaudeModelRefusalErrorInfo,
+  buildClaudeProviderErrorInfo,
+} from "./error-info.js";
 import {
   foldClaudeTaskToolResult,
   type ClaudeTaskPlanState,
@@ -352,6 +355,17 @@ function isHardClaudeRateLimitRejection(
 
 function isClaudeResultFailure(message: ClaudeResultMessage): boolean {
   return message.is_error === true || message.subtype.startsWith("error");
+}
+
+function buildClaudeModelRefusalDetail(refusal: {
+  original_model?: string | undefined;
+  content?: string | undefined;
+}): string {
+  if (refusal.content !== undefined) {
+    return refusal.content;
+  }
+  const model = refusal.original_model ?? "The selected model";
+  return `${model} refused the request and no fallback model was available.`;
 }
 
 function getClaudeResultErrorDetail(message: ClaudeResultMessage): string {
@@ -695,14 +709,15 @@ export function createClaudeDeltaTranslator(
     const noFallbackMessage =
       claudeModelRefusalNoFallbackSystemMessageSchema.safeParse(event);
     if (noFallbackMessage.success) {
+      const refusal = noFallbackMessage.data;
       return [
         {
-          kind: "provider.warning",
-          summary: "Model refused the request",
-          details:
-            noFallbackMessage.data.content ??
-            "The selected model refused the request and no fallback model was available.",
-          vouchedTurn: true,
+          kind: "provider.error",
+          message: "Provider error",
+          detail: buildClaudeModelRefusalDetail(refusal),
+          errorInfo: buildClaudeModelRefusalErrorInfo(
+            refusal.api_refusal_category ?? null,
+          ),
         },
       ];
     }

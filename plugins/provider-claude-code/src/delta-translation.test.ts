@@ -1569,21 +1569,50 @@ describe("claude model refusals", () => {
     expect(detailedEvents).toEqual([]);
   });
 
-  it("surfaces refusal without fallback as a warning", () => {
+  it("surfaces refusal without fallback as a policy provider error", () => {
     const harness = createClaudeDeltaHarness();
     const events = harness.translate({
       type: "system",
       subtype: "model_refusal_no_fallback",
+      original_model: "claude-opus-5[1m]",
+      api_refusal_category: "cyber",
       content: "The model refused and no fallback was configured.",
       session_id: "sess-1",
     });
 
     expect(events).toEqual([
       expect.objectContaining({
-        type: "provider/warning",
-        category: "general",
-        summary: "Model refused the request",
-        details: "The model refused and no fallback was configured.",
+        type: "provider/error",
+        message: "Provider error",
+        detail: "The model refused and no fallback was configured.",
+        errorInfo: {
+          category: "policy",
+          providerCode: "cyber",
+          httpStatusCode: null,
+        },
+      }),
+    ]);
+  });
+
+  it("names the refusing model when the refusal carries no content", () => {
+    const harness = createClaudeDeltaHarness();
+    const events = harness.translate({
+      type: "system",
+      subtype: "model_refusal_no_fallback",
+      original_model: "claude-opus-5[1m]",
+      session_id: "sess-1",
+    });
+
+    expect(events).toEqual([
+      expect.objectContaining({
+        type: "provider/error",
+        detail:
+          "claude-opus-5[1m] refused the request and no fallback model was available.",
+        errorInfo: {
+          category: "policy",
+          providerCode: "model_refusal_no_fallback",
+          httpStatusCode: null,
+        },
       }),
     ]);
   });

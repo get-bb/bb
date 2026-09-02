@@ -215,6 +215,8 @@ export const claudeModelRefusalNoFallbackSystemMessageSchema =
   claudeSystemMessageSchema
     .extend({
       subtype: z.literal("model_refusal_no_fallback"),
+      original_model: z.string().min(1).optional(),
+      api_refusal_category: z.string().nullish(),
       content: z.string().optional(),
     })
     .passthrough();

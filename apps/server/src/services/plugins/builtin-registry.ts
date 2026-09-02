@@ -124,6 +124,12 @@ export const BUILTIN_PLUGINS = [
     category: "Agent interaction",
   },
   {
+    name: "provider-refusal-fallback",
+    pluginId: "provider-refusal-fallback",
+    defaultEnabled: true,
+    category: "Agent interaction",
+  },
+  {
     name: "secrets",
     pluginId: "secrets",
     defaultEnabled: true,
