@@ -303,8 +303,14 @@ interface ThreadSearchFixture {
   title: string;
 }
 
-function getThreadSearchTexts(thread: ThreadSearchFixture): readonly string[] {
-  return [thread.title, thread.id];
+function getThreadSearchText(thread: ThreadSearchFixture): string {
+  return thread.title;
+}
+
+function getThreadSearchAliases(
+  thread: ThreadSearchFixture,
+): readonly string[] {
+  return [thread.id];
 }
 
 describe("fuzzyMatchText", () => {
@@ -331,7 +337,8 @@ describe("fuzzyMatchText", () => {
     const matches = fuzzyMatchText({
       items: threads,
       query: "pmi",
-      getText: getThreadSearchTexts,
+      getText: getThreadSearchText,
+      getAliases: getThreadSearchAliases,
       limit: 3,
     });
 
@@ -370,10 +377,34 @@ describe("fuzzyMatchText", () => {
       fuzzyMatchText({
         items: threads,
         query: "beta",
-        getText: getThreadSearchTexts,
+        getText: getThreadSearchText,
+        getAliases: getThreadSearchAliases,
         limit: 3,
       }).map((match) => match.item.id),
     ).toEqual(["thr_beta"]);
+  });
+
+  it("ranks primary text matches ahead of stronger alias matches", () => {
+    const models = [
+      {
+        id: "openrouter/nvidia/nemotron-3-ultra-550b-a55b",
+        label: "NVIDIA: Nemotron 3 Ultra",
+      },
+      {
+        id: "openai/gpt-5.5",
+        label: "GPT-5.5",
+      },
+    ];
+
+    expect(
+      fuzzyMatchText({
+        items: models,
+        query: "55",
+        getText: (model) => model.label,
+        getAliases: (model) => [model.id],
+        limit: models.length,
+      }).map((match) => match.item.label),
+    ).toEqual(["GPT-5.5", "NVIDIA: Nemotron 3 Ultra"]);
   });
 
   it("keeps deterministic ordering for equal text matches", () => {
@@ -386,7 +417,8 @@ describe("fuzzyMatchText", () => {
       fuzzyMatchText({
         items: threads,
         query: "shared",
-        getText: getThreadSearchTexts,
+        getText: getThreadSearchText,
+        getAliases: getThreadSearchAliases,
         limit: 3,
       }).map((match) => match.item.id),
     ).toEqual(["thr_b", "thr_a"]);

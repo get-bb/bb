@@ -2,7 +2,8 @@ import { Fzf } from "fzf";
 import type { FzfResultItem, Selector, Tiebreaker } from "fzf";
 
 type FuzzyPathGetter<T> = (item: T) => string;
-type FuzzyTextGetter<T> = (item: T) => string | readonly string[];
+type FuzzyTextGetter<T> = (item: T) => string;
+type FuzzyTextAliasesGetter<T> = (item: T) => readonly string[];
 
 interface FuzzyMatch<T> {
   item: T;
@@ -21,6 +22,7 @@ interface FuzzyMatchTextArgs<T> {
   items: readonly T[];
   query: string;
   getText: FuzzyTextGetter<T>;
+  getAliases?: FuzzyTextAliasesGetter<T>;
   limit: number;
 }
 
@@ -42,6 +44,7 @@ interface NormalizedTextCandidate<T> {
   itemIndex: number;
   text: string;
   textIndex: number;
+  isAlias: boolean;
 }
 
 interface RankedTextMatch<T> {
@@ -115,6 +118,8 @@ const TEXT_RELEVANCE_SCORE = {
   contains: 10_000,
   subsequence: 5_000,
 };
+
+const PRIMARY_TEXT_SCORE = 1_000_000;
 
 function byPathStartAsc<T>(
   left: FzfResultItem<T>,
@@ -650,32 +655,37 @@ function getTextRelevanceBonus(text: string, query: string): number {
   return 0;
 }
 
-function getTextValues<T>(item: T, getText: FuzzyTextGetter<T>): string[] {
-  const text = getText(item);
-  if (typeof text === "string") {
-    return text.length > 0 ? [text] : [];
-  }
-
-  return text.filter((value) => value.length > 0);
-}
-
 function getTextCandidates<T>(
   items: readonly T[],
   getText: FuzzyTextGetter<T>,
+  getAliases: FuzzyTextAliasesGetter<T> | undefined,
 ): NormalizedTextCandidate<T>[] {
   const candidates: NormalizedTextCandidate<T>[] = [];
   let itemIndex = 0;
   for (const item of items) {
-    const values = getTextValues(item, getText);
-    let textIndex = 0;
-    for (const text of values) {
+    const text = getText(item);
+    if (text.length > 0) {
       candidates.push({
         item,
         itemIndex,
         text,
-        textIndex,
+        textIndex: 0,
+        isAlias: false,
       });
-      textIndex += 1;
+    }
+    const aliases = getAliases?.(item) ?? [];
+    let aliasIndex = 0;
+    for (const alias of aliases) {
+      if (alias.length > 0) {
+        candidates.push({
+          item,
+          itemIndex,
+          text: alias,
+          textIndex: aliasIndex + 1,
+          isAlias: true,
+        });
+      }
+      aliasIndex += 1;
     }
     itemIndex += 1;
   }
@@ -732,7 +742,10 @@ function rankTextQueryMatches<T>(
       text: match.item.text,
       textIndex: match.item.textIndex,
       positions: [...match.positions].sort((left, right) => left - right),
-      score: match.score + getTextRelevanceBonus(match.item.text, query),
+      score:
+        match.score +
+        getTextRelevanceBonus(match.item.text, query) +
+        (match.item.isAlias ? 0 : PRIMARY_TEXT_SCORE),
       start: match.start,
     }))
     .sort(compareRankedTextMatches);
@@ -819,7 +832,7 @@ export function fuzzyMatchText<T>(
   return rankedTextMatchesToFuzzyMatches(
     mergeRankedTextMatches(
       rankTextQueryMatches(
-        getTextCandidates(args.items, args.getText),
+        getTextCandidates(args.items, args.getText, args.getAliases),
         args.query,
       ),
     ),

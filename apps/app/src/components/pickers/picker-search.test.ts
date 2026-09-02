@@ -53,6 +53,26 @@ describe("searchPickerOptions", () => {
     ).toEqual([options[0]]);
   });
 
+  it("ranks visible-label matches ahead of alias-only matches", () => {
+    const nemotron = {
+      label: "NVIDIA: Nemotron 3 Ultra",
+      aliases: ["openrouter/nvidia/nemotron-3-ultra-550b-a55b"],
+    };
+    const gpt = {
+      label: "GPT-5.5",
+      aliases: ["openai/gpt-5.5"],
+    };
+
+    expect(
+      searchPickerOptions({
+        options: [nemotron, gpt],
+        query: "55",
+        getLabel,
+        getAliases,
+      }),
+    ).toEqual([gpt, nemotron]);
+  });
+
   it("ranks stronger matches first and preserves source order for ties", () => {
     const exact = { label: "gpt4", aliases: [] };
     const direct = { label: "GPT-4 Turbo", aliases: [] };

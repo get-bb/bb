@@ -21,7 +21,8 @@ export function searchPickerOptions<T>({
   return fuzzyMatchText({
     items: options,
     query: normalizedQuery,
-    getText: (option) => [getLabel(option), ...(getAliases?.(option) ?? [])],
+    getText: getLabel,
+    getAliases: (option) => getAliases?.(option) ?? [],
     limit: options.length,
   }).map((match) => match.item);
 }
