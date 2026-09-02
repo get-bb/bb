@@ -173,16 +173,18 @@ not directly reachable from another machine. When bb connect is not paired and
 the server URL is a loopback or unspecified address, the dialog does not show an
 installer. It links to Settings → Remote access instead.
 
-The installer always installs the exact `bb-app` package exposed by that
-server at `/install/bb-app.tgz`; a `bb-app` already on PATH is reused, and the
-npm registry consulted, only when the server provides no package. Version
-strings cannot distinguish unpublished builds, so this keeps remote machines
-aligned with development and pre-release servers whose build may not exist on
-npm. The package route is public like `/install.sh`: `bb-app` is public
-software, and exposing an unpublished build slightly early through a paired
-tunnel is an accepted tradeoff. npm installs the package into the machine's bb
-data directory, not its system-wide global prefix, so enrollment needs neither
-`sudo` nor a PATH change.
+The installer always installs the exact host-only `bb-app` package exposed by
+that server at `/install/bb-app.tgz`. The package contains the host daemon,
+provider/plugin workers, native host dependencies, and bundled `bb` CLI, but no
+web app or server. A `bb-app` already on PATH is reused, and the npm registry
+consulted, only when the server provides no package. Version strings cannot
+distinguish unpublished builds, so the route also publishes a SHA-256 digest.
+The installer verifies that digest and uses a conditional request on later runs
+to skip an identical installed artifact. The package route is public like
+`/install.sh`: `bb-app` is public software, and exposing an unpublished build
+slightly early through a paired tunnel is an accepted tradeoff. npm installs
+the package into the machine's bb data directory, not its system-wide global
+prefix, so enrollment needs neither `sudo` nor a PATH change.
 
 Each joined server gets its own daemon instance, data directory
 (`~/.bb-machines/<server-host>`, override with `BB_DATA_DIR` when running the
@@ -198,7 +200,10 @@ bb versions on one machine remain isolated.
 
 The installed launchd/systemd service enables `--auto-update`. If session open
 reports a newer server protocol, the daemon downloads the server artifact,
-updates its private install, then exits so the service manager restarts it.
+verifies its SHA-256 digest, updates its private install, then exits so the
+service manager restarts it. If the identical artifact is already installed,
+the server returns `304` and the daemon restarts without downloading or running
+npm again.
 Failed attempts fall back to normal reconnect behavior with a persisted
 exponential retry backoff from 5 seconds to 5 minutes. Settings → Machines and
 `bb machine retry-update <id-or-name>` can bypass the current backoff. A daemon

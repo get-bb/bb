@@ -23,6 +23,7 @@ out
 /build
 /apps/app/build/
 /packages/bb-app/host-daemon/
+/packages/bb-app/host-package/
 /apps/desktop/release/
 /apps/desktop/.electron-builder.generated.json
 

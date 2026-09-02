@@ -1,4 +1,5 @@
 import { spawn, spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import {
   chmodSync,
   existsSync,
@@ -20,6 +21,9 @@ const SCRIPT_PATH = new URL(
   import.meta.url,
 );
 const createdDirectories: string[] = [];
+const FIXTURE_ARTIFACT_DIGEST = createHash("sha256")
+  .update("fixture-tarball")
+  .digest("hex");
 
 function createFixture(): { binDir: string; dataDir: string; homeDir: string } {
   const root = mkdtempSync(join(tmpdir(), "bb-install-script-test-"));
@@ -30,6 +34,7 @@ function createFixture(): { binDir: string; dataDir: string; homeDir: string } {
   mkdirSync(binDir, { recursive: true });
   mkdirSync(dataDir, { recursive: true });
   mkdirSync(homeDir, { recursive: true });
+  writeFileSync(join(root, "package.json"), '{"type":"commonjs"}\n');
   symlinkSync(process.execPath, join(binDir, "node"));
   return { binDir, dataDir, homeDir };
 }
@@ -162,6 +167,7 @@ process.on("SIGTERM", () => server.close(() => process.exit(0)));
 function writeServerInstallTools(
   fixture: ReturnType<typeof createFixture>,
   artifactStatus: 200 | 404,
+  artifactDigest = FIXTURE_ARTIFACT_DIGEST,
 ): void {
   const curlLog = join(fixture.dataDir, "curl.log");
   const npmLog = join(fixture.dataDir, "npm.log");
@@ -173,11 +179,22 @@ case "$*" in
   *redeem-machine*) printf '%s' '{"credential":"bbcm_durable","machineId":"machine-1"}' ;;
   *)
     output=
+    headers=
+    unchanged=no
+    case "$*" in *'If-None-Match: "sha256-${artifactDigest}"'*) unchanged=yes ;; esac
     while [ "$#" -gt 0 ]; do
-      if [ "$1" = --output ]; then output=$2; shift 2; else shift; fi
+      if [ "$1" = --output ]; then output=$2; shift 2
+      elif [ "$1" = --dump-header ]; then headers=$2; shift 2
+      else shift
+      fi
     done
-    [ -z "$output" ] || printf '%s' 'fixture-tarball' >"$output"
-    printf '%s' '${artifactStatus}'
+    [ -z "$headers" ] || printf '%s\n' 'HTTP/1.1 ${artifactStatus}' 'x-bb-artifact-sha256: ${artifactDigest}' >"$headers"
+    if [ "$unchanged" = yes ] && [ '${artifactStatus}' = 200 ]; then
+      printf '%s' 304
+    else
+      [ -z "$output" ] || printf '%s' 'fixture-tarball' >"$output"
+      printf '%s' '${artifactStatus}'
+    fi
     ;;
 esac
 `,
@@ -199,7 +216,11 @@ done
 mkdir -p "$prefix/bin"
 cp "${bbAppTemplatePath}" "$prefix/bin/bb-app"
 chmod +x "$prefix/bin/bb-app"
-for module in better-sqlite3 node-pty; do
+cp "${bbAppTemplatePath}" "$prefix/bin/bb"
+chmod +x "$prefix/bin/bb"
+mkdir -p "$prefix/lib/node_modules/bb-app/host-daemon/dist"
+printf '%s\n' 'fixture' >"$prefix/lib/node_modules/bb-app/host-daemon/dist/daemon-bundle.mjs"
+for module in node-pty @parcel/watcher; do
   mkdir -p "$prefix/lib/node_modules/bb-app/node_modules/$module"
   if [ -z "$FAKE_NPM_SKIP_NATIVE_MODULES" ]; then
     printf '%s\n' 'module.exports = {};' >"$prefix/lib/node_modules/bb-app/node_modules/$module/index.js"
@@ -304,7 +325,10 @@ describe("machine install script", () => {
       BB_INSTALL_SKIP_SERVICE: "1",
     });
 
-    expect(result.status, result.stderr).toBe(0);
+    expect(
+      result.status,
+      `${result.stderr}\n${readFileSync(join(fixture.dataDir, "install-join.log"), "utf8")}`,
+    ).toBe(0);
     const selectedPort = readFileSync(
       join(fixture.dataDir, "host-daemon-port"),
       "utf8",
@@ -426,6 +450,53 @@ describe("machine install script", () => {
     process.kill(daemonPid, "SIGTERM");
   });
 
+  it("skips downloading and installing an identical host artifact", () => {
+    const fixture = createFixture();
+    writeServerInstallTools(fixture, 200);
+    const first = runScript(JOIN_ARGS, fixture, {
+      BB_INSTALL_SKIP_SERVICE: "1",
+    });
+    expect(first.status, first.stderr).toBe(0);
+
+    const second = runScript(JOIN_ARGS, fixture, {
+      BB_INSTALL_SKIP_SERVICE: "1",
+    });
+
+    expect(second.status, second.stderr).toBe(0);
+    expect(second.stdout).toContain(
+      "The identical server host artifact is already installed",
+    );
+    expect(
+      readFileSync(join(fixture.dataDir, "host-artifact.sha256"), "utf8"),
+    ).toBe(`${FIXTURE_ARTIFACT_DIGEST}\n`);
+    expect(
+      readFileSync(join(fixture.dataDir, "npm.log"), "utf8").trim().split("\n"),
+    ).toHaveLength(1);
+    expect(readFileSync(join(fixture.dataDir, "curl.log"), "utf8")).toContain(
+      `If-None-Match: "sha256-${FIXTURE_ARTIFACT_DIGEST}"`,
+    );
+    const daemonPid = Number(
+      readFileSync(join(fixture.dataDir, "install-daemon.pid"), "utf8"),
+    );
+    process.kill(daemonPid, "SIGTERM");
+  });
+
+  it("rejects a server host artifact whose digest does not match", () => {
+    const fixture = createFixture();
+    writeServerInstallTools(fixture, 200, "a".repeat(64));
+
+    const result = runScript(JOIN_ARGS, fixture, {
+      BB_INSTALL_SKIP_SERVICE: "1",
+    });
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("failed SHA-256 verification");
+    expect(existsSync(join(fixture.dataDir, "npm.log"))).toBe(false);
+    expect(existsSync(join(fixture.dataDir, "host-artifact.sha256"))).toBe(
+      false,
+    );
+  });
+
   it("falls back to npm only when the server artifact returns 404", () => {
     const fixture = createFixture();
     writeServerInstallTools(fixture, 404);
@@ -453,7 +524,7 @@ describe("machine install script", () => {
 
     expect(result.status, result.stderr).toBe(1);
     expect(result.stderr).toContain(
-      "npm installed bb-app, but its native add-ons (better-sqlite3, node-pty) did not load.",
+      "npm installed bb-app, but its host native add-ons (node-pty, @parcel/watcher) did not load.",
     );
     expect(result.stderr).toContain(
       "npm_config_allow_scripts=better-sqlite3,node-pty,@parcel/watcher",
