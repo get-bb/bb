@@ -22,6 +22,22 @@ import type { TestAppHarness } from "../helpers/test-app.js";
 const BIG_OUTPUT = `HEAD${"a".repeat(TIMELINE_INLINE_OUTPUT_PREVIEW_THRESHOLD_CHARS * 3)}TAIL`;
 const SMALL_OUTPUT = "small output";
 
+function hasUnpairedSurrogate(value: string): boolean {
+  for (let index = 0; index < value.length; index += 1) {
+    const code = value.charCodeAt(index);
+    if (code >= 0xd800 && code <= 0xdbff) {
+      const next = value.charCodeAt(index + 1);
+      if (next < 0xdc00 || next > 0xdfff) {
+        return true;
+      }
+      index += 1;
+    } else if (code >= 0xdc00 && code <= 0xdfff) {
+      return true;
+    }
+  }
+  return false;
+}
+
 async function getTimeline(
   harness: TestAppHarness,
   threadId: string,
@@ -113,7 +129,10 @@ describe("GET /threads/:id/timeline inline output preview", () => {
       const timeline = await getTimeline(harness, threadId);
 
       const big = findCommandRow(timeline.rows, "big");
-      expect(big.outputPreview).toEqual({ totalChars: BIG_OUTPUT.length });
+      expect(big.outputPreview).toEqual({
+        experimental_fullOutputAvailability: "available",
+        totalChars: BIG_OUTPUT.length,
+      });
       expect(big.output.length).toBeLessThan(
         TIMELINE_INLINE_OUTPUT_PREVIEW_THRESHOLD_CHARS,
       );
@@ -130,6 +149,58 @@ describe("GET /threads/:id/timeline inline output preview", () => {
       const small = findCommandRow(timeline.rows, "small");
       expect(small.outputPreview).toBeUndefined();
       expect(small.output).toBe(SMALL_OUTPUT);
+    });
+  });
+
+  it("keeps both timeline preview boundaries on complete Unicode characters", async () => {
+    await withTestHarness(async (harness) => {
+      const { environment, thread } = seedThreadFixture(harness);
+      const turn = {
+        environmentId: environment.id,
+        providerThreadId: "provider-unicode-preview",
+        scope: turnScope("turn-unicode-preview"),
+        threadId: thread.id,
+      } as const;
+      seedEvent(harness.deps, {
+        ...turn,
+        data: {},
+        sequence: 1,
+        type: "turn/started",
+      });
+      const outputs = [
+        "h".repeat(TIMELINE_INLINE_OUTPUT_PREVIEW_HEAD_CHARS - 1) +
+          "😀" +
+          "m".repeat(TIMELINE_INLINE_OUTPUT_PREVIEW_THRESHOLD_CHARS),
+        "m".repeat(TIMELINE_INLINE_OUTPUT_PREVIEW_THRESHOLD_CHARS) +
+          "😀" +
+          "t".repeat(TIMELINE_INLINE_OUTPUT_PREVIEW_TAIL_CHARS - 1),
+      ];
+      for (const [index, output] of outputs.entries()) {
+        seedEvent(harness.deps, {
+          ...turn,
+          data: {
+            item: {
+              aggregatedOutput: output,
+              approvalStatus: null,
+              command: `unicode preview ${index}`,
+              cwd: "/tmp",
+              exitCode: 0,
+              id: `unicode-preview-${index}`,
+              status: "completed",
+              type: "commandExecution",
+            },
+          },
+          sequence: index + 2,
+          type: "item/completed",
+        });
+      }
+
+      const timeline = await getTimeline(harness, thread.id);
+      for (const index of [0, 1]) {
+        const row = findCommandRow(timeline.rows, `unicode preview ${index}`);
+        expect(hasUnpairedSurrogate(row.output)).toBe(false);
+        expect(Buffer.from(row.output).toString()).not.toContain("�");
+      }
     });
   });
 
@@ -383,6 +454,58 @@ describe("GET /threads/:id/events retained output", () => {
       expect(row.data.item.truncation).toBeUndefined();
     });
   });
+
+  it("rejects a retained-output page above the raw response byte limit", async () => {
+    await withTestHarness(async (harness) => {
+      const { environment, thread } = seedThreadFixture(harness);
+      const output = "r".repeat(1024 * 1024);
+      for (let sequence = 1; sequence <= 9; sequence += 1) {
+        seedEvent(harness.deps, {
+          data: {
+            item: {
+              aggregatedOutput: output,
+              approvalStatus: null,
+              command: "cat retained",
+              cwd: "/tmp",
+              exitCode: 0,
+              id: `retained-raw-command-${sequence}`,
+              status: "completed",
+              type: "commandExecution",
+            },
+          },
+          environmentId: environment.id,
+          providerThreadId: "provider-retained",
+          scope: turnScope("turn-retained"),
+          sequence,
+          threadId: thread.id,
+          type: "item/completed",
+        });
+      }
+
+      const oversized = await harness.app.request(
+        `/api/v1/threads/${thread.id}/events?types=item%2Fcompleted`,
+      );
+      expect(oversized.status).toBe(413);
+      await expect(readJson(oversized)).resolves.toEqual({
+        code: "event_data_too_large",
+        message: "Event response exceeds the 8 MiB limit",
+      });
+
+      const page = await harness.app.request(
+        `/api/v1/threads/${thread.id}/events?types=item%2Fcompleted&limit=1`,
+      );
+      expect(page.status).toBe(200);
+      const [row] = threadEventRowSchema.array().parse(await readJson(page));
+      if (
+        row?.type !== "item/completed" ||
+        row.data.item.type !== "commandExecution"
+      ) {
+        throw new Error("Expected completed command event");
+      }
+      expect(row.data.item.aggregatedOutput).toBe(output);
+      expect(row.data.item.truncation).toBeUndefined();
+    });
+  });
 });
 
 describe("GET /threads/:id/timeline retained output details", () => {
@@ -436,6 +559,128 @@ describe("GET /threads/:id/timeline retained output details", () => {
       }
       expect(row.output).toBe(output);
       expect(row.outputPreview).toBeUndefined();
+    });
+  });
+
+  it("keeps an oversized retained output as a preview in details", async () => {
+    await withTestHarness(async (harness) => {
+      const { environment, thread } = seedThreadFixture(harness);
+      const turn = {
+        environmentId: environment.id,
+        providerThreadId: "provider-oversized-retained-details",
+        scope: turnScope("turn-oversized-retained-details"),
+        threadId: thread.id,
+      } as const;
+      const output = "oversized-" + "o".repeat(5 * 1024 * 1024);
+      seedEvent(harness.deps, {
+        ...turn,
+        data: {},
+        sequence: 1,
+        type: "turn/started",
+      });
+      seedEvent(harness.deps, {
+        ...turn,
+        data: {
+          item: {
+            aggregatedOutput: output,
+            approvalStatus: null,
+            command: "cat oversized retained details",
+            cwd: "/tmp",
+            exitCode: 0,
+            id: "oversized-retained-details-command",
+            status: "completed",
+            type: "commandExecution",
+          },
+        },
+        sequence: 2,
+        type: "item/completed",
+      });
+
+      const response = await harness.app.request(
+        `/api/v1/threads/${thread.id}/timeline/turn-summary-details?turnId=turn-oversized-retained-details&sourceSeqStart=2&sourceSeqEnd=2`,
+      );
+      expect(response.status).toBe(200);
+      const details = timelineTurnSummaryDetailsResponseSchema.parse(
+        await readJson(response),
+      );
+      const row = details.rows.find(
+        (candidate) =>
+          candidate.kind === "work" && candidate.workKind === "command",
+      );
+      if (row?.kind !== "work" || row.workKind !== "command") {
+        throw new Error("Expected oversized retained details command row");
+      }
+      expect(row.output).not.toBe(output);
+      expect(row.output.startsWith(output.slice(0, 2_048))).toBe(true);
+      expect(row.output.endsWith(output.slice(-2_048))).toBe(true);
+      expect(row.output).toContain("output truncated by retention policy");
+      expect(row.outputPreview).toEqual({
+        experimental_fullOutputAvailability: "detail-limit",
+        totalChars: output.length,
+      });
+    });
+  });
+
+  it("marks a retained output unavailable after its retention expires", async () => {
+    await withTestHarness(async (harness) => {
+      const { environment, thread } = seedThreadFixture(harness);
+      const createdAt = Date.now() - COMPLETED_EVENT_OUTPUT_RETENTION_MS - 1;
+      const turn = {
+        environmentId: environment.id,
+        providerThreadId: "provider-expired-retained-details",
+        scope: turnScope("turn-expired-retained-details"),
+        threadId: thread.id,
+      } as const;
+      const output = "expired-" + "e".repeat(50_000);
+      seedEvent(harness.deps, {
+        ...turn,
+        createdAt,
+        data: {},
+        sequence: 1,
+        type: "turn/started",
+      });
+      seedEvent(harness.deps, {
+        ...turn,
+        createdAt,
+        data: {
+          item: {
+            aggregatedOutput: output,
+            approvalStatus: null,
+            command: "cat expired retained details",
+            cwd: "/tmp",
+            exitCode: 0,
+            id: "expired-retained-details-command",
+            status: "completed",
+            type: "commandExecution",
+          },
+        },
+        sequence: 2,
+        type: "item/completed",
+      });
+
+      const timelineRow = findCommandRow(
+        (await getTimeline(harness, thread.id)).rows,
+        "cat expired retained details",
+      );
+      expect(timelineRow.outputPreview).toEqual({
+        experimental_fullOutputAvailability: "retention-expired",
+        totalChars: output.length,
+      });
+      const response = await harness.app.request(
+        `/api/v1/threads/${thread.id}/timeline/turn-summary-details?turnId=turn-expired-retained-details&sourceSeqStart=2&sourceSeqEnd=2`,
+      );
+      expect(response.status).toBe(200);
+      const details = timelineTurnSummaryDetailsResponseSchema.parse(
+        await readJson(response),
+      );
+      const detailRow = findCommandRow(
+        details.rows,
+        "cat expired retained details",
+      );
+      expect(detailRow.outputPreview).toEqual({
+        experimental_fullOutputAvailability: "retention-expired",
+        totalChars: output.length,
+      });
     });
   });
 });

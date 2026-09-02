@@ -1,4 +1,5 @@
 import {
+  canHydrateRetainedEventOutputRowsWithinDataByteLimit,
   findStoredEventRow as findStoredEventRowRecord,
   getLatestThreadOutputEventRow,
   getLatestThreadSystemErrorEventRow,
@@ -16,6 +17,8 @@ import type {
   ThreadEventType,
 } from "@bb/domain";
 import { ApiError } from "../../errors.js";
+
+const THREAD_EVENT_RESPONSE_DATA_BYTE_LIMIT = 8 * 1024 * 1024;
 
 type StoredEventPayloadRow = Pick<
   StoredEventRow,
@@ -106,6 +109,26 @@ function parseStoredEventRow(row: StoredEventRow): ThreadEventRow {
   });
 }
 
+function hydrateRawThreadEventRows(
+  db: DbConnection,
+  rows: readonly StoredEventRow[],
+): StoredEventRow[] {
+  if (
+    !canHydrateRetainedEventOutputRowsWithinDataByteLimit(
+      db,
+      rows,
+      THREAD_EVENT_RESPONSE_DATA_BYTE_LIMIT,
+    )
+  ) {
+    throw new ApiError(
+      413,
+      "event_data_too_large",
+      "Event response exceeds the 8 MiB limit",
+    );
+  }
+  return hydrateRetainedEventOutputRows(db, rows);
+}
+
 export function listThreadEventRows(
   db: DbConnection,
   args: ListThreadEventRowsArgs,
@@ -118,7 +141,7 @@ export function listThreadEventRows(
     threadId: args.threadId,
     types: args.types,
   });
-  return hydrateRetainedEventOutputRows(db, rows).map((row) =>
+  return hydrateRawThreadEventRows(db, rows).map((row) =>
     parseStoredEventRow(row),
   );
 }
@@ -135,7 +158,7 @@ export function findThreadEvent(
   if (!row) {
     return null;
   }
-  const [hydrated] = hydrateRetainedEventOutputRows(db, [row]);
+  const [hydrated] = hydrateRawThreadEventRows(db, [row]);
   return parseStoredEventRow(hydrated ?? row);
 }
 

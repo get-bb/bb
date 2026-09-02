@@ -270,6 +270,43 @@ describe("bb thread log command output", () => {
     expect(stderr).toContain("--all");
   });
 
+  it("bb thread log --json detects more events across the server page boundary", async () => {
+    const events = Array.from({ length: 101 }, (_, index) => ({
+      id: `evt-${index + 1}`,
+      scope: { kind: "thread" },
+      threadId: "thread-json-log",
+      type: "system/error",
+      data: { code: "provider_unavailable" },
+      createdAt: 20 + index,
+      seq: index + 1,
+    }));
+    const getEvents = vi.fn(
+      async (input: { query: { afterSeq?: string; limit?: string } }) => {
+        const afterSeq = Number(input.query.afterSeq ?? 0);
+        const limit = Math.min(Number(input.query.limit), 100);
+        return events
+          .filter((event) => event.seq > afterSeq)
+          .slice(0, limit);
+      },
+    );
+    stubServerApi({
+      "v1.threads.:id.events.$get": getEvents,
+    });
+
+    await runCommand(["thread", "log", "thread-json-log", "--json"], register);
+
+    expect(
+      JSON.parse(String(vi.mocked(console.log).mock.calls[0]?.[0])),
+    ).toEqual(events.slice(0, 100));
+    expect(getEvents.mock.calls.map((call) => call[0].query)).toEqual([
+      { limit: "100" },
+      { afterSeq: "100", limit: "1" },
+    ]);
+    expect(collectLogLines(vi.mocked(console.error)).join("\n")).toContain(
+      "--after-seq 100",
+    );
+  });
+
   it("bb thread log --json stays quiet when the page is not full", async () => {
     const events = [
       {
@@ -310,7 +347,7 @@ describe("bb thread log command output", () => {
         const limit = Number(input.query.limit);
         return Array.from({ length: 1203 }, (_, index) => makeEvent(index + 1))
           .filter((event) => event.seq > afterSeq)
-          .slice(0, limit);
+          .slice(0, Math.min(limit, 100));
       },
     );
     stubServerApi({
@@ -330,8 +367,22 @@ describe("bb thread log command output", () => {
     expect(printed[1202]?.seq).toBe(1203);
     expect(getEvents.mock.calls.map((call) => call[0].query.afterSeq)).toEqual([
       undefined,
+      "100",
+      "200",
+      "300",
+      "400",
+      "500",
+      "600",
+      "700",
+      "800",
+      "900",
       "1000",
+      "1100",
+      "1200",
     ]);
+    expect(getEvents.mock.calls.map((call) => call[0].query.limit)).toEqual(
+      Array.from({ length: 13 }, () => "100"),
+    );
     expect(collectLogLines(vi.mocked(console.error))).toEqual([]);
   });
 

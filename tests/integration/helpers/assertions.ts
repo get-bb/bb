@@ -13,6 +13,7 @@ import {
   previewThreadText,
   stringifyThreadEventData,
 } from "./thread-diagnostics.js";
+import { getThreadEvents } from "./api.js";
 
 const POLL_INTERVAL_MS = 100;
 
@@ -62,16 +63,7 @@ async function readThreadEvents(
   api: PublicApiClient,
   threadId: string,
 ): Promise<ThreadEventRow[]> {
-  const response = await api.threads[":id"].events.$get({
-    param: { id: threadId },
-    query: { limit: "10000" },
-  });
-  if (response.status !== 200) {
-    throw new Error(
-      `Expected thread events for ${threadId}, got ${response.status}`,
-    );
-  }
-  return response.json();
+  return getThreadEvents(api, threadId);
 }
 
 async function readThreadOutput(

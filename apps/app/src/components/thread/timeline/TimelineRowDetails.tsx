@@ -143,6 +143,10 @@ function outputPreviewNoteText({
   switch (state) {
     case "streaming-preview":
       return `Preview of ${total}. The full output loads when this finishes.`;
+    case "limited-preview":
+      return `Preview of ${total}. The full output exceeds the detail response limit.`;
+    case "expired-preview":
+      return `Preview of ${total}. The full output is no longer available because its retention period ended.`;
     case "loading":
       return `Loading the full output (${total})…`;
     case "error":

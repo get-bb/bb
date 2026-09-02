@@ -315,8 +315,10 @@ export {
   pruneThreadEventsBeforeSequence,
 } from "./events.js";
 export {
+  canHydrateRetainedEventOutputRowsWithinDataByteLimit,
   deleteExpiredRetainedEventOutputs,
   hydrateRetainedEventOutputRows,
+  hydrateRetainedEventOutputRowsWithinDataByteLimit,
   RETAINED_EVENT_OUTPUT_TARGETS,
 } from "./retained-event-outputs.js";
 export type {

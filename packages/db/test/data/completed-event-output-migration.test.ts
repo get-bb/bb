@@ -205,6 +205,40 @@ describe("completed event output migration", () => {
     db.$client.close();
   });
 
+  it("uses the new-write UTF-16 threshold for astral Unicode output", () => {
+    const migratedAt = 1_800_000_000_000;
+    const output = "😀".repeat(20_000);
+    const { db, thread } = setup();
+    insertLegacyOutput({
+      createdAt: migratedAt - 1,
+      db,
+      eventId: "evt_astral_unicode",
+      itemKind: "commandExecution",
+      output,
+      outputPath: "aggregatedOutput",
+      sequence: 1,
+      threadId: thread.id,
+    });
+
+    expect(output.length).toBe(40_000);
+    expect(migrateCommandOutput(db, migratedAt)).toMatchObject({
+      action: "migrated",
+      eventId: "evt_astral_unicode",
+      migratedRows: 1,
+      retained: true,
+    });
+    const [stored] = listStoredEventRows(db, { threadId: thread.id });
+    const [hydrated] = hydrateRetainedEventOutputRows(
+      db,
+      stored ? [stored] : [],
+      migratedAt,
+    );
+    expect(hydrated && readOutput(hydrated.data, "aggregatedOutput")).toBe(
+      output,
+    );
+    db.$client.close();
+  });
+
   it("previews an already expired output without retaining a sidecar", () => {
     const migratedAt = 1_800_000_000_000;
     const createdAt = migratedAt - COMPLETED_EVENT_OUTPUT_RETENTION_MS;
@@ -332,7 +366,40 @@ describe("completed event output migration", () => {
     restarted.$client.close();
   });
 
-  it("wraps the cursor and finds a row inserted behind it", () => {
+  it("persists and reuses a bounded scan window across advances and restart", () => {
+    const migratedAt = 1_800_000_000_000;
+    const output = "window-" + "v".repeat(40_000);
+    const setupResult = setup();
+    for (let sequence = 1; sequence <= 20; sequence += 1) {
+      insertLegacyOutput({
+        createdAt: migratedAt - 1,
+        db: setupResult.db,
+        eventId: `evt_window_${String(sequence).padStart(2, "0")}`,
+        itemKind: "commandExecution",
+        output: `${sequence}-${output}`,
+        outputPath: "aggregatedOutput",
+        sequence,
+        threadId: setupResult.thread.id,
+      });
+    }
+
+    expect(migrateCommandOutput(setupResult.db, migratedAt)).toMatchObject({
+      eventId: "evt_window_01",
+      scanRows: 10,
+    });
+    const serialized = setupResult.db.$client.serialize();
+    setupResult.db.$client.close();
+
+    const restarted = createConnection(serialized);
+    expect(migrateCommandOutput(restarted, migratedAt)).toMatchObject({
+      eventId: "evt_window_02",
+      scanRows: 0,
+    });
+    expect(restarted.select().from(retainedEventOutputs).all()).toHaveLength(2);
+    restarted.$client.close();
+  });
+
+  it("stores completion permanently instead of rescanning completed history", () => {
     const migratedAt = 1_800_000_000_000;
     const output = "w".repeat(40_000);
     const { db, thread } = setup();
@@ -347,7 +414,10 @@ describe("completed event output migration", () => {
       threadId: thread.id,
     });
     expect(migrateCommandOutput(db, migratedAt).eventId).toBe("evt_wrap_later");
-    expect(migrateCommandOutput(db, migratedAt).action).toBe("wrapped");
+    expect(migrateCommandOutput(db, migratedAt).action).toBe("complete");
+    expect(
+      migrateCommandOutput(db, migratedAt + 7 * 24 * 60 * 60 * 1_000),
+    ).toMatchObject({ action: "complete", scanRows: 0 });
     insertLegacyOutput({
       createdAt: migratedAt - 2,
       db,
@@ -358,8 +428,52 @@ describe("completed event output migration", () => {
       sequence: 2,
       threadId: thread.id,
     });
-    expect(migrateCommandOutput(db, migratedAt).eventId).toBe(
-      "evt_wrap_earlier",
+    expect(
+      migrateCommandOutput(db, migratedAt + 30 * 24 * 60 * 60 * 1_000),
+    ).toMatchObject({ action: "complete", scanRows: 0 });
+    expect(db.select().from(retainedEventOutputs).all()).toHaveLength(1);
+    expect(
+      db.select().from(maintenanceScanCursors).all()[0]?.lastCreatedAt,
+    ).toBe(-1);
+    db.$client.close();
+  });
+
+  it("skips oversized legacy rows and continues to the next bounded candidate", () => {
+    const migratedAt = 1_800_000_000_000;
+    const { db, thread } = setup();
+    const oversizedOutput = "o".repeat(8 * 1024 * 1024);
+    insertLegacyOutput({
+      createdAt: migratedAt - 2,
+      db,
+      eventId: "evt_oversized_inline",
+      itemKind: "commandExecution",
+      output: oversizedOutput,
+      outputPath: "aggregatedOutput",
+      sequence: 1,
+      threadId: thread.id,
+    });
+    insertLegacyOutput({
+      createdAt: migratedAt - 1,
+      db,
+      eventId: "evt_bounded_after_oversized",
+      itemKind: "commandExecution",
+      output: "b".repeat(40_000),
+      outputPath: "aggregatedOutput",
+      sequence: 2,
+      threadId: thread.id,
+    });
+
+    expect(migrateCommandOutput(db, migratedAt)).toMatchObject({
+      action: "migrated",
+      eventId: "evt_bounded_after_oversized",
+      migratedRows: 1,
+    });
+    expect(db.select().from(retainedEventOutputs).all()).toHaveLength(1);
+    const oversized = listStoredEventRows(db, { threadId: thread.id }).find(
+      (row) => row.id === "evt_oversized_inline",
+    );
+    expect(JSON.parse(oversized?.data ?? "").item.aggregatedOutput).toBe(
+      oversizedOutput,
     );
     db.$client.close();
   });
