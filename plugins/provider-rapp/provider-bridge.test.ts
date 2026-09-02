@@ -3,10 +3,17 @@ import {
   type IncomingMessage,
   type ServerResponse,
 } from "node:http";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
+  experimental_createBridgeDeltaEventCollector as createBridgeDeltaEventCollector,
   experimental_createBridgeJsonRpcTestHarness as createBridgeJsonRpcTestHarness,
   experimental_formatConformanceReport as formatConformanceReport,
   experimental_runBridgeConformance as runBridgeConformance,
@@ -19,13 +26,18 @@ import type {
 import {
   experimental_providerBridge,
   experimental_resetRappBridgeForTests,
+  experimental_setRappBridgeDurabilityFaultForTests,
   handleLine,
 } from "./src/bridge.js";
+import { canonicalString } from "./src/rapp1.js";
+import { RappSessionStore } from "./src/session-store.js";
 import {
   RAPP_BUSINESS_MODEL_ID,
+  RAPP_FUNCTION_KEY_ENV,
   RAPP_MODEL_ID,
   RAPP_PROVIDER_ID,
   RAPP_SPEC,
+  RAPP_USER_GUID_ENV,
 } from "./src/vocabulary.js";
 
 const servers: ReturnType<typeof createServer>[] = [];
@@ -154,6 +166,42 @@ function threadDeltas(threadId: string): Array<Record<string, unknown>> {
     };
     return params.threadId === threadId ? (params.deltas ?? []) : [];
   });
+}
+
+function agentMessageText(delta: Record<string, unknown>): string | null {
+  if (delta.kind !== "item.close") {
+    return null;
+  }
+  const item = delta.item;
+  if (typeof item !== "object" || item === null) {
+    return null;
+  }
+  const text: unknown = Reflect.get(item, "text");
+  return Reflect.get(item, "type") === "agentMessage" &&
+    typeof text === "string"
+    ? text
+    : null;
+}
+
+function persistedStateText(directory: string): string {
+  const paths = [
+    join(directory, "identity.json"),
+    ...readdirSync(join(directory, "sessions")).map((name) =>
+      join(directory, "sessions", name),
+    ),
+    ...readdirSync(join(directory, "objects")).map((name) =>
+      join(directory, "objects", name),
+    ),
+  ];
+  return paths.map((path) => readFileSync(path, "utf8")).join("\n");
+}
+
+function persistedSessionHeadPath(directory: string): string {
+  const names = readdirSync(join(directory, "sessions"));
+  if (names.length !== 1) {
+    throw new Error("Expected exactly one persisted RAPP session head");
+  }
+  return join(directory, "sessions", names[0] ?? "");
 }
 
 async function waitFor(
@@ -439,13 +487,97 @@ describe("RAPP provider bridge", () => {
       ),
     ).toMatchObject({
       error: {
-        message:
+        message: expect.stringContaining(
           "RAPP Brainstem requested model model-b after bb selected model-a",
+        ),
       },
     });
     expect(
       threadDeltas(threadId).some((delta) => delta.kind === "extension.state"),
     ).toBe(false);
+  });
+
+  it("does not retain a pending turn when model selection fails before chat", async () => {
+    let modelSetCalls = 0;
+    let chatCalls = 0;
+    const endpoint = await listen(async (incoming, response) => {
+      response.setHeader("content-type", "application/json");
+      if (incoming.method === "GET") {
+        response.end(
+          JSON.stringify({ status: "ok", version: "test", agents: [] }),
+        );
+        return;
+      }
+      const body = await readJson(incoming);
+      if (incoming.url === "/models/set") {
+        modelSetCalls += 1;
+        if (modelSetCalls === 1) {
+          response.statusCode = 503;
+          response.end(JSON.stringify({ error: "model unavailable" }));
+          return;
+        }
+        response.end(JSON.stringify({ model: "model-a" }));
+        return;
+      }
+      chatCalls += 1;
+      response.end(
+        JSON.stringify({
+          response: "after local precondition retry",
+          session_id: "precondition-session",
+          agent_logs: [],
+          requested_model: "model-a",
+          model: "model-a",
+          received: body,
+        }),
+      );
+    });
+    const threadId = "thr_model_precondition";
+    const start = await request("thread/start", {
+      threadId,
+      cwd: "/workspace/rapp",
+      instructionMode: "append",
+      options: options(endpoint, "model-a"),
+    });
+    const identity = start.result as { providerThreadId: string };
+
+    await request("turn/start", {
+      threadId,
+      providerThreadId: identity.providerThreadId,
+      input: [{ type: "text", text: "first attempt", mentions: [] }],
+      clientRequestId: "creq_abcdefghjq",
+      options: options(endpoint, "model-a"),
+    });
+    await waitFor(
+      () =>
+        threadDeltas(threadId).some(
+          (delta) =>
+            delta.kind === "turn.boundary" && delta.status === "failed",
+        ),
+      "model selection failure did not settle",
+    );
+    expect(chatCalls).toBe(0);
+    expect(
+      new RappSessionStore(dataDir).load(identity.providerThreadId)?.snapshot
+        .pendingTurn,
+    ).toBeNull();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    await request("turn/start", {
+      threadId,
+      providerThreadId: identity.providerThreadId,
+      input: [{ type: "text", text: "second attempt", mentions: [] }],
+      clientRequestId: "creq_abcdefghjr",
+      options: options(endpoint, "model-a"),
+    });
+    await waitForCompletedTurn(threadId);
+    expect(modelSetCalls).toBe(2);
+    expect(chatCalls).toBe(1);
+    expect(
+      threadDeltas(threadId).some(
+        (delta) =>
+          agentMessageText(delta) === "after local precondition retry",
+      ),
+    ).toBe(true);
   });
 
   it("routes Business turns without model selection", async () => {
@@ -497,6 +629,73 @@ describe("RAPP provider bridge", () => {
     });
   });
 
+  it("never persists Business credentials or user identifiers in pending or delivery state", async () => {
+    const userGuid = "user-guid-must-not-persist";
+    const functionKey = "function-key-must-not-persist";
+    const previousUserGuid = process.env[RAPP_USER_GUID_ENV];
+    const previousFunctionKey = process.env[RAPP_FUNCTION_KEY_ENV];
+    process.env[RAPP_USER_GUID_ENV] = userGuid;
+    process.env[RAPP_FUNCTION_KEY_ENV] = functionKey;
+    try {
+      let receivedUserGuid: unknown;
+      let receivedFunctionKey: string | undefined;
+      const endpoint = await listen(async (incoming, response) => {
+        const body = await readJson(incoming);
+        if (typeof body === "object" && body !== null) {
+          receivedUserGuid = Reflect.get(body, "user_guid");
+        }
+        const header = incoming.headers["x-functions-key"];
+        receivedFunctionKey = typeof header === "string" ? header : undefined;
+        response.setHeader("content-type", "application/json");
+        response.end(
+          JSON.stringify({
+            assistant_response: "business answer",
+            agent_logs: [],
+            user_guid: userGuid,
+          }),
+        );
+      });
+      const threadId = "thr_business_sensitive_state";
+      const start = await request("thread/start", {
+        threadId,
+        cwd: "/workspace/rapp",
+        instructionMode: "append",
+        options: options(endpoint, RAPP_BUSINESS_MODEL_ID, "business"),
+      });
+      const identity = start.result as { providerThreadId: string };
+
+      await request("turn/start", {
+        threadId,
+        providerThreadId: identity.providerThreadId,
+        input: [{ type: "text", text: "business prompt", mentions: [] }],
+        clientRequestId: "creq_abcdefghjs",
+        options: options(endpoint, RAPP_BUSINESS_MODEL_ID, "business"),
+      });
+      await waitForCompletedTurn(threadId);
+
+      expect(receivedUserGuid).toBe(userGuid);
+      expect(receivedFunctionKey).toBe(functionKey);
+      const persisted = persistedStateText(dataDir);
+      expect(persisted).not.toContain(userGuid);
+      expect(persisted).not.toContain(functionKey);
+      expect(persisted).not.toContain("user_guid");
+      expect(persisted).not.toContain("x-functions-key");
+      expect(persisted).toContain("business");
+      expect(persisted).toContain(RAPP_BUSINESS_MODEL_ID);
+    } finally {
+      if (previousUserGuid === undefined) {
+        delete process.env[RAPP_USER_GUID_ENV];
+      } else {
+        process.env[RAPP_USER_GUID_ENV] = previousUserGuid;
+      }
+      if (previousFunctionKey === undefined) {
+        delete process.env[RAPP_FUNCTION_KEY_ENV];
+      } else {
+        process.env[RAPP_FUNCTION_KEY_ENV] = previousFunctionKey;
+      }
+    }
+  });
+
   it("rejects model and Grail mismatches before opening a session", async () => {
     for (const [grail, model] of [
       ["business", "claude-sonnet-5"],
@@ -517,7 +716,7 @@ describe("RAPP provider bridge", () => {
     }
   });
 
-  it("persists and reuses an exact pending chat after failure and resume", async () => {
+  it("never replays an ambiguous pending chat and requires an explicit interrupt to discard it", async () => {
     const requests: Array<Record<string, unknown>> = [];
     let chatCount = 0;
     const endpoint = await listen(async (incoming, response) => {
@@ -533,7 +732,7 @@ describe("RAPP provider bridge", () => {
       chatCount += 1;
       if (chatCount === 1) {
         response.statusCode = 503;
-        response.end(JSON.stringify({ error: "retry this turn" }));
+        response.end(JSON.stringify({ error: "completion unknown" }));
         return;
       }
       response.end(
@@ -573,6 +772,34 @@ describe("RAPP provider bridge", () => {
         ),
       "initial pending turn did not fail",
     );
+    expect(requests).toHaveLength(1);
+    expect(
+      threadDeltas(threadId).find(
+        (delta) => delta.kind === "turn.boundary" && delta.status === "failed",
+      ),
+    ).toMatchObject({
+      error: {
+        message: expect.stringContaining(
+          "legacy Brainstem does not honor idempotency keys",
+        ),
+      },
+    });
+    const legacyPending = new RappSessionStore(dataDir).load(
+      identity.providerThreadId,
+    );
+    if (legacyPending === null) {
+      throw new Error("Ambiguous pending RAPP turn was not persisted");
+    }
+    writeFileSync(
+      persistedSessionHeadPath(dataDir),
+      canonicalString({
+        schema: "bb/provider-rapp-session-head/1",
+        provider_thread_id: identity.providerThreadId,
+        egg_address: legacyPending.eggAddress,
+        turn_counter: legacyPending.snapshot.turnCounter,
+      }),
+      "utf8",
+    );
 
     experimental_resetRappBridgeForTests(dataDir);
     await request("thread/resume", {
@@ -589,24 +816,47 @@ describe("RAPP provider bridge", () => {
       clientRequestId: "creq_23456789ad",
       options: options(endpoint),
     });
-    await waitForCompletedTurn(threadId);
-
-    await request("turn/start", {
-      threadId,
-      providerThreadId: identity.providerThreadId,
-      input: [{ type: "text", text: "next prompt", mentions: [] }],
-      clientRequestId: "creq_23456789ae",
-      options: options(endpoint),
-    });
     await waitFor(
       () =>
         threadDeltas(threadId).filter(
           (delta) =>
-            delta.kind === "turn.boundary" && delta.status === "completed",
+            delta.kind === "turn.boundary" && delta.status === "failed",
         ).length === 2,
-      "new turn did not complete after pending success",
+      "retained pending turn did not fail closed",
     );
+    expect(requests).toHaveLength(1);
+    expect(
+      threadDeltas(threadId)
+        .filter(
+          (delta) =>
+            delta.kind === "turn.boundary" && delta.status === "failed",
+        )
+        .at(-1),
+    ).toMatchObject({
+      error: {
+        message: expect.stringContaining(
+          "Explicitly interrupt/stop this thread",
+        ),
+      },
+    });
 
+    await request("thread/stop", {
+      threadId,
+      providerThreadId: identity.providerThreadId,
+      intent: "interrupt",
+      activeTurnId: null,
+    });
+
+    await request("turn/start", {
+      threadId,
+      providerThreadId: identity.providerThreadId,
+      input: [{ type: "text", text: "later prompt", mentions: [] }],
+      clientRequestId: "creq_23456789ae",
+      options: options(endpoint),
+    });
+    await waitForCompletedTurn(threadId);
+
+    expect(requests).toHaveLength(2);
     expect(requests[0]).toEqual({
       user_input: "original prompt",
       idempotency_key: "creq_23456789ac",
@@ -617,20 +867,364 @@ describe("RAPP provider bridge", () => {
         },
       ],
     });
-    expect(requests[1]).toEqual(requests[0]);
-    expect(requests[2]).toMatchObject({
-      user_input: "next prompt",
-      session_id: "remote-session",
+    expect(requests[1]).toEqual({
+      user_input: "later prompt",
       idempotency_key: "creq_23456789ae",
       conversation_history: [
         {
           role: "user",
           content: "BB thread instructions:\nBe concise.",
         },
-        { role: "user", content: "original prompt" },
-        { role: "assistant", content: "answer-2" },
       ],
     });
+  }, 15_000);
+
+  it("recovers a committed completion from the delivery journal after a bridge crash", async () => {
+    let chatCalls = 0;
+    const endpoint = await listen(async (incoming, response) => {
+      response.setHeader("content-type", "application/json");
+      if (incoming.method === "GET") {
+        response.end(
+          JSON.stringify({ status: "ok", version: "test", agents: [] }),
+        );
+        return;
+      }
+      await readJson(incoming);
+      chatCalls += 1;
+      response.end(
+        JSON.stringify({
+          response: "recovered answer",
+          session_id: "recovered-session",
+          agent_logs: ["RecoveryAgent"],
+          requested_model: "claude-opus-5",
+          model: "claude-opus-5",
+        }),
+      );
+    });
+    const threadId = "thr_delivery_recovery";
+    const start = await request("thread/start", {
+      threadId,
+      cwd: "/workspace/rapp",
+      instructionMode: "append",
+      options: options(endpoint),
+    });
+    const identity = start.result as { providerThreadId: string };
+
+    experimental_setRappBridgeDurabilityFaultForTests(
+      "after-completion-commit",
+      () => experimental_resetRappBridgeForTests(dataDir),
+    );
+    await request("turn/start", {
+      threadId,
+      providerThreadId: identity.providerThreadId,
+      input: [{ type: "text", text: "recover me", mentions: [] }],
+      clientRequestId: "creq_abcdefghjm",
+      options: options(endpoint),
+    });
+    await waitFor(
+      () =>
+        (new RappSessionStore(dataDir).load(identity.providerThreadId)
+          ?.pendingDelivery ??
+          null) !== null,
+      "completed response was not committed to the delivery journal",
+    );
+
+    expect(chatCalls).toBe(1);
+    expect(
+      threadDeltas(threadId).some(
+        (delta) => agentMessageText(delta) === "recovered answer",
+      ),
+    ).toBe(false);
+    const providerTurnId = threadDeltas(threadId).find(
+      (delta) => delta.kind === "turn.open",
+    )?.providerTurnId;
+    expect(typeof providerTurnId).toBe("string");
+
+    await request("thread/resume", {
+      threadId,
+      providerThreadId: identity.providerThreadId,
+      cwd: "/workspace/rapp",
+      instructionMode: "append",
+      options: options(endpoint),
+    });
+    await waitForCompletedTurn(threadId);
+
+    expect(chatCalls).toBe(1);
+    expect(
+      threadDeltas(threadId).find(
+        (delta) => agentMessageText(delta) === "recovered answer",
+      ),
+    ).toMatchObject({
+      key: {
+        providerItemId: `${identity.providerThreadId}-t1-message`,
+      },
+      providerTurnId,
+    });
+    expect(
+      threadDeltas(threadId).find(
+        (delta) =>
+          delta.kind === "item.close" &&
+          typeof delta.item === "object" &&
+          delta.item !== null &&
+          Reflect.get(delta.item, "tool") === "rapp_agents",
+      ),
+    ).toMatchObject({
+      item: { result: "RecoveryAgent" },
+      providerTurnId,
+    });
+    expect(
+      threadDeltas(threadId).find(
+        (delta) => delta.kind === "extension.state",
+      ),
+    ).toMatchObject({
+      payload: {
+        grail: "consumer",
+        sessionId: "recovered-session",
+        endpoint: expect.stringContaining("/chat"),
+        selectedModel: RAPP_MODEL_ID,
+        requestedModel: "claude-opus-5",
+        actualModel: "claude-opus-5",
+      },
+    });
+    const recovered = new RappSessionStore(dataDir).load(
+      identity.providerThreadId,
+    );
+    expect(recovered?.pendingDelivery?.phase).toBe("emitted");
+    expect(recovered?.snapshot.transcript).toEqual([
+      { role: "user", content: "recover me" },
+      { role: "assistant", content: "recovered answer" },
+    ]);
+    await request("turn/start", {
+      threadId,
+      providerThreadId: identity.providerThreadId,
+      input: [{ type: "text", text: "   ", mentions: [] }],
+      clientRequestId: "creq_abcdefghjt",
+      options: options(endpoint),
+    });
+    await waitFor(
+      () =>
+        threadDeltas(threadId).some(
+          (delta) =>
+            delta.kind === "turn.boundary" && delta.status === "failed",
+        ),
+      "acknowledging follow-up turn did not settle locally",
+    );
+    expect(chatCalls).toBe(1);
+    expect(
+      new RappSessionStore(dataDir).load(identity.providerThreadId)
+        ?.pendingDelivery,
+    ).toBeNull();
+  });
+
+  it("deduplicates replay in a surviving assembler but exposes the unavoidable fresh-assembler duplicate", async () => {
+    let chatCalls = 0;
+    const endpoint = await listen(async (incoming, response) => {
+      response.setHeader("content-type", "application/json");
+      if (incoming.method === "GET") {
+        response.end(
+          JSON.stringify({ status: "ok", version: "test", agents: [] }),
+        );
+        return;
+      }
+      await readJson(incoming);
+      chatCalls += 1;
+      response.end(
+        JSON.stringify({
+          response: "deliver once",
+          session_id: "delivery-session",
+          agent_logs: ["DeliveryAgent"],
+          requested_model: "claude-opus-5",
+          model: "claude-opus-5",
+        }),
+      );
+    });
+    const threadId = "thr_delivery_duplicate_safe";
+    const start = await request("thread/start", {
+      threadId,
+      cwd: "/workspace/rapp",
+      instructionMode: "append",
+      options: options(endpoint),
+    });
+    const identity = start.result as { providerThreadId: string };
+
+    experimental_setRappBridgeDurabilityFaultForTests(
+      "after-delivery-emission",
+      () => experimental_resetRappBridgeForTests(dataDir),
+    );
+    await request("turn/start", {
+      threadId,
+      providerThreadId: identity.providerThreadId,
+      input: [{ type: "text", text: "deliver safely", mentions: [] }],
+      clientRequestId: "creq_abcdefghjn",
+      options: options(endpoint),
+    });
+    await waitFor(
+      () =>
+        (new RappSessionStore(dataDir).load(identity.providerThreadId)
+          ?.pendingDelivery ??
+          null) !== null,
+      "delivery journal was acknowledged despite the injected crash",
+    );
+    expect(
+      new RappSessionStore(dataDir).load(identity.providerThreadId)
+        ?.pendingDelivery?.phase,
+    ).toBe("ready");
+
+    const replayStartIndex = harness.messages.length;
+    await request("thread/resume", {
+      threadId,
+      providerThreadId: identity.providerThreadId,
+      cwd: "/workspace/rapp",
+      instructionMode: "append",
+      options: options(endpoint),
+    });
+    await waitForCompletedTurn(threadId);
+
+    expect(chatCalls).toBe(1);
+    expect(
+      threadDeltas(threadId).filter(
+        (delta) => agentMessageText(delta) === "deliver once",
+      ),
+    ).toHaveLength(2);
+    const collector = createBridgeDeltaEventCollector(RAPP_PROVIDER_ID);
+    const assembled = harness.messages.flatMap((message) =>
+      collector.assembleMessage(message),
+    );
+    expect(
+      assembled.filter(
+        (event) =>
+          event.type === "item/completed" &&
+          event.item.type === "agentMessage" &&
+          event.item.text === "deliver once",
+      ),
+    ).toHaveLength(1);
+    expect(
+      assembled.filter(
+        (event) =>
+          event.type === "item/completed" &&
+          event.item.type === "toolCall" &&
+          event.item.tool === "rapp_agents",
+      ),
+    ).toHaveLength(1);
+    const resetAssembler = createBridgeDeltaEventCollector(RAPP_PROVIDER_ID);
+    const initialEvents = harness.messages
+      .slice(0, replayStartIndex)
+      .flatMap((message) => resetAssembler.assembleMessage(message));
+    resetAssembler.assembler.assemble({
+      threadId,
+      deltas: [{ kind: "session.reset" }],
+    });
+    const replayEvents = harness.messages
+      .slice(replayStartIndex)
+      .flatMap((message) => resetAssembler.assembleMessage(message));
+    const initialMessageIds = initialEvents.flatMap((event) =>
+      event.type === "item/completed" &&
+      event.item.type === "agentMessage" &&
+      event.item.text === "deliver once"
+        ? [event.item.id]
+        : [],
+    );
+    const replayMessageIds = replayEvents.flatMap((event) =>
+      event.type === "item/completed" &&
+      event.item.type === "agentMessage" &&
+      event.item.text === "deliver once"
+        ? [event.item.id]
+        : [],
+    );
+    expect(initialMessageIds).toHaveLength(1);
+    expect(replayMessageIds).toHaveLength(1);
+    expect(replayMessageIds[0]).not.toBe(initialMessageIds[0]);
+    expect(
+      new RappSessionStore(dataDir).load(identity.providerThreadId)
+        ?.pendingDelivery?.phase,
+    ).toBe("emitted");
+    await request("turn/start", {
+      threadId,
+      providerThreadId: identity.providerThreadId,
+      input: [{ type: "text", text: "   ", mentions: [] }],
+      clientRequestId: "creq_abcdefghju",
+      options: options(endpoint),
+    });
+    await waitFor(
+      () =>
+        threadDeltas(threadId).some(
+          (delta) =>
+            delta.kind === "turn.boundary" && delta.status === "failed",
+        ),
+      "duplicate-window acknowledgement turn did not settle locally",
+    );
+    expect(chatCalls).toBe(1);
+    expect(
+      new RappSessionStore(dataDir).load(identity.providerThreadId)
+        ?.pendingDelivery,
+    ).toBeNull();
+  });
+
+  it("rejects a near-limit turn before making any endpoint request", async () => {
+    let networkCalls = 0;
+    const endpoint = await listen((_incoming, response) => {
+      networkCalls += 1;
+      response.setHeader("content-type", "application/json");
+      response.end(
+        JSON.stringify({
+          response: "must not execute",
+          session_id: "unused",
+          agent_logs: [],
+        }),
+      );
+    });
+    const threadId = "thr_capacity_preflight";
+    const start = await request("thread/start", {
+      threadId,
+      cwd: "/workspace/rapp",
+      instructionMode: "append",
+      options: options(endpoint),
+    });
+    const identity = start.result as { providerThreadId: string };
+    const store = new RappSessionStore(dataDir);
+    const saved = store.load(identity.providerThreadId);
+    if (saved === null) {
+      throw new Error("RAPP session was not persisted");
+    }
+    store.save(
+      {
+        ...saved.snapshot,
+        turnCounter: 1,
+        transcript: [{ role: "assistant", content: "x".repeat(985_000) }],
+      },
+      null,
+    );
+    experimental_resetRappBridgeForTests(dataDir);
+    await request("thread/resume", {
+      threadId,
+      providerThreadId: identity.providerThreadId,
+      cwd: "/workspace/rapp",
+      instructionMode: "append",
+      options: options(endpoint),
+    });
+
+    await request("turn/start", {
+      threadId,
+      providerThreadId: identity.providerThreadId,
+      input: [{ type: "text", text: "too late", mentions: [] }],
+      clientRequestId: "creq_abcdefghjp",
+      options: options(endpoint),
+    });
+    await waitFor(
+      () =>
+        threadDeltas(threadId).some(
+          (delta) =>
+            delta.kind === "turn.boundary" &&
+            delta.status === "failed" &&
+            typeof delta.error === "object" &&
+            delta.error !== null &&
+            String(Reflect.get(delta.error, "message")).includes(
+              "Start a new thread",
+            ),
+        ),
+      "near-limit turn did not fail its local capacity preflight",
+    );
+    expect(networkCalls).toBe(0);
   });
 
   it("serializes model selection and full chats across Consumer threads", async () => {
@@ -843,8 +1437,7 @@ describe("RAPP provider bridge", () => {
     await waitFor(
       () =>
         threadDeltas(threadId).some(
-          (delta) =>
-            delta.kind === "item.textClose" && delta.text === "after interrupt",
+          (delta) => agentMessageText(delta) === "after interrupt",
         ),
       "session was not usable after interrupt",
     );
@@ -922,7 +1515,7 @@ describe("RAPP provider bridge", () => {
     );
     expect(
       threadDeltas(brokenThreadId).some(
-        (delta) => delta.kind === "item.textClose",
+        (delta) => agentMessageText(delta) !== null,
       ),
     ).toBe(false);
   });
@@ -983,6 +1576,10 @@ describe("RAPP provider bridge", () => {
       intent: "release",
       activeTurnId: null,
     });
+    expect(
+      new RappSessionStore(dataDir).load(identity.providerThreadId)
+        ?.pendingDelivery?.phase,
+    ).toBe("emitted");
     await request("thread/resume", {
       threadId,
       providerThreadId: identity.providerThreadId,
@@ -1000,10 +1597,10 @@ describe("RAPP provider bridge", () => {
     });
     await waitFor(
       () =>
-        threadDeltas(threadId).filter(
-          (delta) =>
-            delta.kind === "turn.boundary" && delta.status === "completed",
-        ).length === 2,
+        requests.length === 2 &&
+        threadDeltas(threadId).some(
+          (delta) => agentMessageText(delta) === "answer-2",
+        ),
       "second turn did not settle after resume",
     );
 
@@ -1035,8 +1632,20 @@ describe("RAPP provider bridge", () => {
     const deltas = threadDeltas(threadId);
     expect(
       deltas
-        .filter((delta) => delta.kind === "item.textClose")
-        .map((delta) => delta.text),
+        .map(agentMessageText)
+        .filter((text): text is string => text !== null),
+    ).toEqual(["answer-1", "answer-1", "answer-2"]);
+    const collector = createBridgeDeltaEventCollector(RAPP_PROVIDER_ID);
+    const assembled = harness.messages.flatMap((message) =>
+      collector.assembleMessage(message),
+    );
+    expect(
+      assembled.flatMap((event) =>
+        event.type === "item/completed" &&
+        event.item.type === "agentMessage"
+          ? [event.item.text]
+          : [],
+      ),
     ).toEqual(["answer-1", "answer-2"]);
     const states = deltas.filter((delta) => delta.kind === "extension.state");
     expect(states.at(-1)).toMatchObject({
@@ -1052,14 +1661,13 @@ describe("RAPP provider bridge", () => {
       },
     });
     expect(
-      deltas
-        .filter(
-          (delta) =>
-            delta.kind === "item.close" &&
-            (delta.item as { tool?: string } | undefined)?.tool ===
-              "rapp_agents",
-        )
-        .map((delta) => (delta.item as { result?: string }).result),
+      assembled.flatMap((event) =>
+        event.type === "item/completed" &&
+        event.item.type === "toolCall" &&
+        event.item.tool === "rapp_agents"
+          ? [event.item.result]
+          : [],
+      ),
     ).toEqual(["Agent-1", "Agent-2"]);
   });
 });

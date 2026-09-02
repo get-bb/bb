@@ -28,6 +28,7 @@ import {
   callRapp,
   fixedBusinessModelList,
   listRappModels,
+  RAPP_MAX_RESPONSE_BYTES,
   resolveRappClientConfig,
   setRappModel,
   type RappClientConfig,
@@ -47,8 +48,10 @@ import {
 } from "./vocabulary.js";
 import {
   RappSessionStore,
+  type RappDeliveryDraft,
   type RappPendingTurn,
   type RappSessionSnapshot,
+  type SavedRappSession,
 } from "./session-store.js";
 
 type JsonRpcId = string | number;
@@ -64,17 +67,30 @@ interface ActiveTurn {
 interface Session {
   threadId: string;
   providerThreadId: string;
-  snapshot: RappSessionSnapshot;
+  saved: SavedRappSession;
+  deliveryEmittedInProcess: boolean;
   activeTurn: ActiveTurn | null;
   closed: boolean;
 }
+
+type RappBridgeDurabilityFault =
+  | "after-completion-commit"
+  | "after-delivery-emission";
 
 const io = createBridgeIo<OutboundMessage>();
 const sessions = new Map<string, Session>();
 const consumerEndpointTails = new Map<string, Promise<void>>();
 const maintenanceControllers = new Set<AbortController>();
 const TURN_STOP_TIMEOUT_MS = 5_000;
+const UNKNOWN_COMPLETION_MESSAGE = [
+  "A prior RAPP completion is unknown.",
+  "The endpoint may have completed the request, but legacy Brainstem does not honor idempotency keys, so bb will not replay it.",
+  "Explicitly interrupt/stop this thread to discard the retained pending turn, then send a new message.",
+].join(" ");
 let sessionStore = new RappSessionStore();
+let durabilityFault:
+  | { stage: RappBridgeDurabilityFault; trigger: () => void }
+  | null = null;
 
 function notify(method: string, params: Record<string, unknown>): void {
   io.send({ jsonrpc: "2.0", method, params });
@@ -260,7 +276,7 @@ function conversationHistory(
 function openSession(args: {
   threadId: string;
   providerThreadId: string;
-  snapshot: RappSessionSnapshot;
+  saved: SavedRappSession;
 }): Session {
   const existing = sessions.get(args.threadId);
   if (existing !== undefined) {
@@ -270,7 +286,8 @@ function openSession(args: {
   const session: Session = {
     threadId: args.threadId,
     providerThreadId: args.providerThreadId,
-    snapshot: args.snapshot,
+    saved: args.saved,
+    deliveryEmittedInProcess: false,
     activeTurn: null,
     closed: false,
   };
@@ -279,22 +296,138 @@ function openSession(args: {
     threadId: args.threadId,
     providerThreadId: args.providerThreadId,
   });
+  if (session.saved.pendingDelivery !== null) {
+    if (!deliverPending(session)) {
+      throw new Error(
+        "RAPP delivery replay was interrupted before acknowledgement",
+      );
+    }
+  }
   emitDeltas(args.threadId, [{ kind: "session.reset" }]);
   return session;
 }
 
+function isOpenSession(session: Session): boolean {
+  return !session.closed && sessions.get(session.threadId) === session;
+}
+
 function isCurrentTurn(session: Session, providerTurnId: string): boolean {
   return (
-    !session.closed &&
-    sessions.get(session.threadId) === session &&
+    isOpenSession(session) &&
     session.activeTurn?.providerTurnId === providerTurnId
   );
 }
 
-function turnItemId(session: Session, turnCounter: number, name: string) {
-  return {
-    providerItemId: `${session.providerThreadId}-t${turnCounter}-${name}`,
-  };
+function turnItemProviderId(
+  session: Session,
+  turnCounter: number,
+  name: string,
+): string {
+  return `${session.providerThreadId}-t${turnCounter}-${name}`;
+}
+
+function runDurabilityFault(stage: RappBridgeDurabilityFault): void {
+  if (durabilityFault?.stage !== stage) {
+    return;
+  }
+  const trigger = durabilityFault.trigger;
+  durabilityFault = null;
+  trigger();
+}
+
+function deliveryDeltas(saved: SavedRappSession): ThreadDelta[] {
+  const delivery = saved.pendingDelivery;
+  if (delivery === null) {
+    return [];
+  }
+  const deltas: ThreadDelta[] = [];
+  if (delivery.agentItemId !== null) {
+    const logs = delivery.agentLogs.join("\n");
+    deltas.push({
+      kind: "item.close",
+      key: { providerItemId: delivery.agentItemId },
+      providerTurnId: delivery.providerTurnId,
+      status: "completed",
+      item: {
+        type: "tool",
+        tool: "rapp_agents",
+        server: "rapp",
+        args: { spec: RAPP_SPEC },
+        result: logs,
+      },
+      presentation: RAPP_AGENT_ACTIVITY_PRESENTATION,
+    });
+  }
+  deltas.push(
+    {
+      kind: "item.close",
+      key: { providerItemId: delivery.messageItemId },
+      providerTurnId: delivery.providerTurnId,
+      status: "completed",
+      item: { type: "agentMessage", text: delivery.response },
+      presentation: RAPP_MESSAGE_PRESENTATION,
+    },
+    {
+      kind: "extension.state",
+      extensionKind: RAPP_SESSION_STATE_KIND,
+      payload: {
+        spec: RAPP_SPEC,
+        grail: delivery.grail,
+        rappid: saved.rappid,
+        sessionId: saved.snapshot.remoteSessionId,
+        turnCount: saved.snapshot.turnCounter,
+        eggAddress: delivery.eggAddress,
+        endpoint: delivery.endpoint,
+        selectedModel: delivery.selectedModel,
+        requestedModel: delivery.requestedModel,
+        actualModel: delivery.actualModel,
+      },
+    },
+    {
+      kind: "turn.boundary",
+      status: "completed",
+      providerTurnId: delivery.providerTurnId,
+    },
+  );
+  return deltas;
+}
+
+function deliverPending(session: Session): boolean {
+  const deliveryAddress = session.saved.deliveryAddress;
+  if (session.saved.pendingDelivery === null || deliveryAddress === null) {
+    throw new Error("RAPP delivery journal state is incomplete");
+  }
+  emitDeltas(session.threadId, deliveryDeltas(session.saved));
+  runDurabilityFault("after-delivery-emission");
+  if (!isOpenSession(session)) {
+    return false;
+  }
+  session.saved = sessionStore.markDeliveryEmitted(
+    session.providerThreadId,
+    deliveryAddress,
+  );
+  session.deliveryEmittedInProcess = true;
+  return true;
+}
+
+function acknowledgeDeliveryBeforeNextTurn(session: Session): void {
+  if (session.saved.pendingDelivery === null) {
+    return;
+  }
+  if (!session.deliveryEmittedInProcess && !deliverPending(session)) {
+    throw new Error(
+      "RAPP delivery replay was interrupted before acknowledgement",
+    );
+  }
+  const deliveryAddress = session.saved.deliveryAddress;
+  if (deliveryAddress === null) {
+    throw new Error("RAPP delivery journal state is incomplete");
+  }
+  session.saved = sessionStore.acknowledgeDelivery(
+    session.providerThreadId,
+    deliveryAddress,
+  );
+  session.deliveryEmittedInProcess = false;
 }
 
 function emitTurnFailure(
@@ -324,7 +457,8 @@ async function executeTurn(args: {
 }): Promise<void> {
   const { session } = args;
   const submittedPrompt = renderPrompt(args.input);
-  let pendingTurn: RappPendingTurn | null = null;
+  let chatMayHaveStarted = false;
+  let completionCommitted = false;
   emitDeltas(session.threadId, [
     {
       kind: "turn.open",
@@ -341,37 +475,55 @@ async function executeTurn(args: {
         ]),
   ]);
   try {
-    if (session.snapshot.pendingTurn === null) {
-      if (submittedPrompt === "") {
-        throw new Error("RAPP requires a non-empty prompt");
-      }
-      const turnCounter = session.snapshot.turnCounter + 1;
-      pendingTurn = {
-        idempotencyKey:
-          args.clientRequestId ?? `${session.providerThreadId}:${turnCounter}`,
-        userInput: submittedPrompt,
-        conversationHistory: conversationHistory(
-          session.snapshot,
-          args.instructions,
-        ),
-      };
-      const nextSnapshot: RappSessionSnapshot = {
-        ...session.snapshot,
-        turnCounter,
-        transcript: session.snapshot.transcript.map((entry) => ({ ...entry })),
-        pendingTurn,
-      };
-      session.snapshot = sessionStore.save(nextSnapshot).snapshot;
-    } else {
-      pendingTurn = session.snapshot.pendingTurn;
+    if (session.saved.snapshot.pendingTurn !== null) {
+      throw new Error(UNKNOWN_COMPLETION_MESSAGE);
     }
+    if (submittedPrompt === "") {
+      throw new Error("RAPP requires a non-empty prompt");
+    }
+    const turnCounter = session.saved.snapshot.turnCounter + 1;
     const config = resolveRappClientConfig(args.options);
+    const pendingTurn: RappPendingTurn = {
+      idempotencyKey:
+        args.clientRequestId ?? `${session.providerThreadId}:${turnCounter}`,
+      userInput: submittedPrompt,
+      conversationHistory: conversationHistory(
+        session.saved.snapshot,
+        args.instructions,
+      ),
+    };
+    const nextSnapshot: RappSessionSnapshot = {
+      ...session.saved.snapshot,
+      turnCounter,
+      transcript: session.saved.snapshot.transcript.map((entry) => ({
+        ...entry,
+      })),
+      pendingTurn: null,
+    };
+    sessionStore.assertCanCommitCompletion(
+      nextSnapshot,
+      pendingTurn.userInput,
+      RAPP_MAX_RESPONSE_BYTES,
+    );
     await ensureLocalBrainstem(config, args.controller.signal);
     const request = {
       userInput: pendingTurn.userInput,
-      sessionId: session.snapshot.remoteSessionId,
+      sessionId: session.saved.snapshot.remoteSessionId,
       idempotencyKey: pendingTurn.idempotencyKey,
       conversationHistory: pendingTurn.conversationHistory,
+    };
+    const persistPendingTurn = (): void => {
+      if (args.controller.signal.aborted) {
+        throw abortReason(args.controller.signal);
+      }
+      if (!isCurrentTurn(session, args.providerTurnId)) {
+        throw new Error("RAPP turn is no longer active");
+      }
+      session.saved = sessionStore.save(
+        { ...nextSnapshot, pendingTurn },
+        null,
+      );
+      chatMayHaveStarted = true;
     };
     let response: RappChatResponse;
     let requestedModel: string | null;
@@ -389,6 +541,7 @@ async function executeTurn(args: {
                   args.options.model,
                   args.controller.signal,
                 );
+          persistPendingTurn();
           const consumerResponse = await callRapp(
             config,
             request,
@@ -417,6 +570,7 @@ async function executeTurn(args: {
       requestedModel = result.requestedModel;
       actualModel = result.actualModel;
     } else {
+      persistPendingTurn();
       response = await callRapp(config, request, args.controller.signal);
       requestedModel = null;
       actualModel = null;
@@ -425,126 +579,79 @@ async function executeTurn(args: {
       return;
     }
     const completedSnapshot: RappSessionSnapshot = {
-      ...session.snapshot,
+      ...session.saved.snapshot,
       remoteSessionId: response.sessionId,
       transcript: [
-        ...session.snapshot.transcript,
+        ...session.saved.snapshot.transcript,
         { role: "user", content: pendingTurn.userInput },
         { role: "assistant", content: response.response },
       ],
       pendingTurn: null,
     };
-    const saved = sessionStore.save(completedSnapshot);
-    session.snapshot = saved.snapshot;
-
-    const deltas: ThreadDelta[] = [];
-    if (response.agentLogs.length > 0) {
-      const logsKey = turnItemId(
-        session,
-        session.snapshot.turnCounter,
-        "agents",
-      );
-      const logs = response.agentLogs.join("\n");
-      deltas.push(
-        {
-          kind: "item.open",
-          key: logsKey,
-          providerTurnId: args.providerTurnId,
-          item: {
-            type: "tool",
-            tool: "rapp_agents",
-            server: "rapp",
-            args: { spec: RAPP_SPEC },
-          },
-          presentation: RAPP_AGENT_ACTIVITY_PRESENTATION,
-        },
-        {
-          kind: "item.close",
-          key: logsKey,
-          providerTurnId: args.providerTurnId,
-          status: "completed",
-          item: {
-            type: "tool",
-            tool: "rapp_agents",
-            server: "rapp",
-            args: { spec: RAPP_SPEC },
-            result: logs,
-          },
-          presentation: RAPP_AGENT_ACTIVITY_PRESENTATION,
-        },
-      );
+    const delivery: RappDeliveryDraft = {
+      providerTurnId: args.providerTurnId,
+      agentItemId:
+        response.agentLogs.length === 0
+          ? null
+          : turnItemProviderId(session, turnCounter, "agents"),
+      messageItemId: turnItemProviderId(session, turnCounter, "message"),
+      response: response.response,
+      agentLogs: [...response.agentLogs],
+      grail: config.grail,
+      endpoint: config.displayEndpoint,
+      selectedModel: args.options.model,
+      requestedModel,
+      actualModel,
+    };
+    session.saved = sessionStore.save(completedSnapshot, delivery);
+    completionCommitted = true;
+    runDurabilityFault("after-completion-commit");
+    if (!isCurrentTurn(session, args.providerTurnId)) {
+      return;
     }
-
-    const messageKey = turnItemId(
-      session,
-      session.snapshot.turnCounter,
-      "message",
-    );
-    deltas.push(
-      {
-        kind: "item.open",
-        key: messageKey,
-        providerTurnId: args.providerTurnId,
-        item: { type: "agentMessage", text: "" },
-        presentation: RAPP_MESSAGE_PRESENTATION,
-      },
-      {
-        kind: "item.textClose",
-        key: messageKey,
-        providerTurnId: args.providerTurnId,
-        channel: "agentMessage",
-        text: response.response,
-      },
-      {
-        kind: "extension.state",
-        extensionKind: RAPP_SESSION_STATE_KIND,
-        payload: {
-          spec: RAPP_SPEC,
-          grail: config.grail,
-          rappid: saved.rappid,
-          sessionId: session.snapshot.remoteSessionId,
-          turnCount: session.snapshot.turnCounter,
-          eggAddress: saved.eggAddress,
-          endpoint: config.displayEndpoint,
-          selectedModel: args.options.model,
-          requestedModel,
-          actualModel,
-        },
-      },
-      {
-        kind: "turn.boundary",
-        status: "completed",
-        providerTurnId: args.providerTurnId,
-      },
-    );
-    emitDeltas(session.threadId, deltas);
+    deliverPending(session);
   } catch (error) {
     if (!isCurrentTurn(session, args.providerTurnId)) {
       return;
     }
+    if (completionCommitted) {
+      return;
+    }
     if (args.controller.signal.aborted) {
       try {
-        session.snapshot = sessionStore.save({
-          ...session.snapshot,
-          pendingTurn: null,
-        }).snapshot;
+        if (session.saved.snapshot.pendingTurn !== null) {
+          session.saved = sessionStore.save(
+            {
+              ...session.saved.snapshot,
+              pendingTurn: null,
+            },
+            null,
+          );
+        }
       } catch (clearError) {
+        const message =
+          clearError instanceof Error
+            ? clearError.message
+            : String(clearError);
         emitTurnFailure(
           session,
           args.providerTurnId,
           "failed",
-          `Could not clear interrupted RAPP turn: ${clearError instanceof Error ? clearError.message : String(clearError)}`,
+          `Could not clear interrupted RAPP turn: ${message}`,
         );
         return;
       }
       emitTurnFailure(session, args.providerTurnId, "interrupted");
       return;
     }
+    const message = error instanceof Error ? error.message : String(error);
     emitTurnFailure(
       session,
       args.providerTurnId,
       "failed",
-      error instanceof Error ? error.message : String(error),
+      chatMayHaveStarted
+        ? `${message} ${UNKNOWN_COMPLETION_MESSAGE}`
+        : message,
     );
   }
 }
@@ -557,10 +664,23 @@ function startTurn(args: {
   clientRequestId?: ClientTurnRequestId;
 }): void {
   const turnCounter =
-    args.session.snapshot.pendingTurn === null
-      ? args.session.snapshot.turnCounter + 1
-      : args.session.snapshot.turnCounter;
-  const providerTurnId = `${args.session.providerThreadId}-turn-${turnCounter}-${randomUUID().replaceAll("-", "")}`;
+    args.session.saved.snapshot.pendingTurn === null
+      ? args.session.saved.snapshot.turnCounter + 1
+      : args.session.saved.snapshot.turnCounter;
+  const providerTurnId =
+    args.session.saved.snapshot.pendingTurn === null
+      ? [
+          args.session.providerThreadId,
+          "turn",
+          String(turnCounter),
+          randomUUID().replaceAll("-", ""),
+        ].join("-")
+      : [
+          args.session.providerThreadId,
+          "blocked",
+          String(turnCounter),
+          randomUUID().replaceAll("-", ""),
+        ].join("-");
   const controller = new AbortController();
   const promise = Promise.resolve()
     .then(() =>
@@ -667,7 +787,7 @@ const handlers: Record<string, RequestHandler> = {
     const session = openSession({
       threadId: parsed.data.threadId,
       providerThreadId,
-      snapshot: saved.snapshot,
+      saved,
     });
     io.sendResult(id, { providerThreadId, sessionRestorable: true });
     if (parsed.data.input !== undefined && parsed.data.input.length > 0) {
@@ -710,7 +830,7 @@ const handlers: Record<string, RequestHandler> = {
     openSession({
       threadId: parsed.data.threadId,
       providerThreadId: parsed.data.providerThreadId,
-      snapshot: saved.snapshot,
+      saved,
     });
     io.sendResult(id, {
       providerThreadId: parsed.data.providerThreadId,
@@ -757,6 +877,19 @@ const handlers: Record<string, RequestHandler> = {
     if (options === null) {
       return;
     }
+    if (session.saved.pendingDelivery !== null) {
+      try {
+        acknowledgeDeliveryBeforeNextTurn(session);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        io.sendError(
+          id,
+          BRIDGE_JSON_RPC_ERRORS.BRIDGE_ERROR,
+          `Could not replay the prior completed RAPP turn: ${message}`,
+        );
+        return;
+      }
+    }
     io.sendResult(id, {});
     startTurn({
       session,
@@ -796,6 +929,7 @@ const handlers: Record<string, RequestHandler> = {
     }
     if (parsed.data.intent === "interrupt") {
       const activeTurn = session.activeTurn;
+      let canClearPending = activeTurn === null;
       if (
         activeTurn !== null &&
         parsed.data.activeTurnId === activeTurn.providerTurnId
@@ -805,6 +939,29 @@ const handlers: Record<string, RequestHandler> = {
         if (!settled && isCurrentTurn(session, activeTurn.providerTurnId)) {
           session.activeTurn = null;
           emitTurnFailure(session, activeTurn.providerTurnId, "interrupted");
+        }
+        canClearPending = true;
+      } else if (activeTurn !== null && parsed.data.activeTurnId === null) {
+        canClearPending = await waitForTurnSettlement(activeTurn.promise);
+      }
+      if (canClearPending && session.saved.snapshot.pendingTurn !== null) {
+        try {
+          session.saved = sessionStore.save(
+            {
+              ...session.saved.snapshot,
+              pendingTurn: null,
+            },
+            null,
+          );
+        } catch (error) {
+          const message =
+            error instanceof Error ? error.message : String(error);
+          io.sendError(
+            id,
+            BRIDGE_JSON_RPC_ERRORS.BRIDGE_ERROR,
+            `Could not discard the retained RAPP turn: ${message}`,
+          );
+          return;
         }
       }
       io.sendResult(id, {});
@@ -870,7 +1027,15 @@ export function handleLine(line: string): void {
 
 export function experimental_resetRappBridgeForTests(dataDir?: string): void {
   shutdownBridge();
+  durabilityFault = null;
   sessionStore = new RappSessionStore(dataDir);
+}
+
+export function experimental_setRappBridgeDurabilityFaultForTests(
+  stage: RappBridgeDurabilityFault,
+  trigger: () => void,
+): void {
+  durabilityFault = { stage, trigger };
 }
 
 function shutdownBridge(): void {

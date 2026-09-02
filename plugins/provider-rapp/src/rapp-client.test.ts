@@ -6,6 +6,7 @@ import {
 import { afterEach, describe, expect, it } from "vitest";
 import {
   callRapp,
+  RAPP_MAX_RESPONSE_BYTES,
   RappClientError,
   resolveRappClientConfig,
   type RappChatRequest,
@@ -349,5 +350,50 @@ describe("RAPP Grail client", () => {
     ).catch((caught: unknown) => caught);
     expect(error).toBeInstanceOf(RappClientError);
     expect(error).toMatchObject({ kind: "timeout" });
+  });
+
+  it("rejects a response whose declared body exceeds the persistence-safe cap", async () => {
+    const base = await listen((_request, response) => {
+      response.writeHead(200, {
+        "content-type": "application/json",
+        "content-length": String(RAPP_MAX_RESPONSE_BYTES + 1),
+      });
+      response.end("{}");
+    });
+
+    await expect(
+      callRapp(
+        resolveRappClientConfig({ grail: "consumer", endpoint: base }, {}),
+        chatRequest,
+        new AbortController().signal,
+      ),
+    ).rejects.toMatchObject({
+      kind: "response",
+      message: `RAPP response exceeds ${RAPP_MAX_RESPONSE_BYTES} bytes`,
+      statusCode: 200,
+    });
+  });
+
+  it("rejects a chunked response that crosses the persistence-safe cap", async () => {
+    const base = await listen((_request, response) => {
+      response.writeHead(200, { "content-type": "application/json" });
+      const chunk = Buffer.alloc(16 * 1024, "x");
+      for (let index = 0; index < 5; index += 1) {
+        response.write(chunk);
+      }
+      response.end();
+    });
+
+    await expect(
+      callRapp(
+        resolveRappClientConfig({ grail: "consumer", endpoint: base }, {}),
+        chatRequest,
+        new AbortController().signal,
+      ),
+    ).rejects.toMatchObject({
+      kind: "response",
+      message: `RAPP response exceeds ${RAPP_MAX_RESPONSE_BYTES} bytes`,
+      statusCode: 200,
+    });
   });
 });

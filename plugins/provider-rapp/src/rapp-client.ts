@@ -74,7 +74,7 @@ const modelSetResponseSchema = z
   })
   .passthrough();
 
-const MAX_RESPONSE_BYTES = 16 * 1024 * 1024;
+export const RAPP_MAX_RESPONSE_BYTES = 64 * 1024;
 
 export interface RappClientConfig {
   grail: RappGrail;
@@ -314,9 +314,12 @@ async function readBoundedResponseText(response: Response): Promise<string> {
   const declaredLength = response.headers.get("content-length");
   if (declaredLength !== null) {
     const parsedLength = Number.parseInt(declaredLength, 10);
-    if (Number.isFinite(parsedLength) && parsedLength > MAX_RESPONSE_BYTES) {
+    if (
+      Number.isFinite(parsedLength) &&
+      parsedLength > RAPP_MAX_RESPONSE_BYTES
+    ) {
       throw new RappClientError(
-        `RAPP response exceeds ${MAX_RESPONSE_BYTES} bytes`,
+        `RAPP response exceeds ${RAPP_MAX_RESPONSE_BYTES} bytes`,
         "response",
         response.status,
       );
@@ -335,10 +338,10 @@ async function readBoundedResponseText(response: Response): Promise<string> {
         break;
       }
       totalBytes += chunk.value.byteLength;
-      if (totalBytes > MAX_RESPONSE_BYTES) {
+      if (totalBytes > RAPP_MAX_RESPONSE_BYTES) {
         await reader.cancel();
         throw new RappClientError(
-          `RAPP response exceeds ${MAX_RESPONSE_BYTES} bytes`,
+          `RAPP response exceeds ${RAPP_MAX_RESPONSE_BYTES} bytes`,
           "response",
           response.status,
         );
