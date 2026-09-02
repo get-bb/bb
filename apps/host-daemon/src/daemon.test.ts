@@ -93,7 +93,7 @@ describe("daemon lifecycle", () => {
     });
 
     await daemon.start();
-    await daemon.shutdown("test");
+    await daemon.shutdown("test", 0);
 
     const reacquired = await acquireDaemonLock(dataDir);
     await reacquired();
@@ -175,7 +175,7 @@ describe("daemon lifecycle", () => {
 
     await daemon.start();
 
-    await expect(daemon.shutdown("test")).rejects.toThrow("release failed");
+    await expect(daemon.shutdown("test", 0)).rejects.toThrow("release failed");
     await expect(daemon.waitUntilStopped()).rejects.toThrow("release failed");
     expect(logger.error).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -217,7 +217,7 @@ describe("daemon lifecycle", () => {
     });
   });
 
-  it("forces the process to exit when a shutdown step never finishes", async () => {
+  it("forces the requested exit status when a shutdown step never finishes", async () => {
     const logger = createLogger();
     const exitProcess = vi.fn();
     const daemon = createDaemon({
@@ -233,13 +233,13 @@ describe("daemon lifecycle", () => {
     });
 
     await daemon.start();
-    void daemon.shutdown("self-update");
+    void daemon.shutdown("daemon-lock-lost", 1);
 
     await vi.waitFor(() => {
-      expect(exitProcess).toHaveBeenCalledWith(0);
+      expect(exitProcess).toHaveBeenCalledWith(1);
     });
     expect(logger.error).toHaveBeenCalledWith(
-      expect.objectContaining({ reason: "self-update" }),
+      expect.objectContaining({ reason: "daemon-lock-lost" }),
       "Host daemon shutdown did not end the process; forcing exit so the service manager can restart it.",
     );
   });
@@ -269,7 +269,7 @@ describe("daemon lifecycle", () => {
     });
 
     await daemon.start();
-    await daemon.shutdown("self-update");
+    await daemon.shutdown("self-update", 0);
 
     expect(lifecycle).toEqual([
       "flushEvents",
@@ -278,5 +278,61 @@ describe("daemon lifecycle", () => {
       "exitProcess",
     ]);
     expect(exitProcess).toHaveBeenCalledWith(0);
+  });
+
+  it("preserves the requested failure status after daemon lock loss", async () => {
+    const logger = createLogger();
+    const exitProcess = vi.fn();
+    const daemon = createDaemon({
+      identity: {
+        hostId: "host-1",
+        hostName: "test-host",
+        instanceId: "instance-1",
+      },
+      logger,
+      releaseLock: async () => undefined,
+      exitProcess,
+    });
+
+    await daemon.start();
+    await daemon.shutdown("daemon-lock-lost", 1);
+
+    expect(exitProcess).toHaveBeenCalledWith(1);
+  });
+
+  it("exits promptly when a signal requests shutdown during startup", async () => {
+    const logger = createLogger();
+    const signalSource = new FakeSignalSource();
+    const exitProcess = vi.fn();
+    let resolveStartup: () => void = () => undefined;
+    const startup = new Promise<void>((resolve) => {
+      resolveStartup = resolve;
+    });
+    const daemon = createDaemon({
+      identity: {
+        hostId: "host-1",
+        hostName: "test-host",
+        instanceId: "instance-1",
+      },
+      logger,
+      releaseLock: async () => undefined,
+      onStart: async () => startup,
+      signalSource,
+      exitProcess,
+      shutdownExitGraceMs: 60_000,
+    });
+
+    const startPromise = daemon.start();
+    signalSource.emit("SIGTERM");
+    await daemon.waitUntilStopped();
+
+    expect(exitProcess).toHaveBeenCalledWith(0);
+    expect(logger.info).not.toHaveBeenCalledWith(
+      expect.anything(),
+      "Host daemon started",
+    );
+
+    resolveStartup();
+    await startPromise;
   });
 });
