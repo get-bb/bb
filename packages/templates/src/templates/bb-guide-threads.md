@@ -216,8 +216,9 @@ Messaging:
   approval) cannot take a prompt; tell then adds the message to the thread's
   queue and dispatches it once the interaction settles. That outcome is not a
   failure, so do not resend. `--json` reports `delivery` as `sent` or `queued`,
-  and a queued answer carries `queuedMessageId`, `waitingOn` and `sendAt`. A deferred message waits for a thread that failed while
-  it was deferred, and delivers when the thread is retried.
+  and a queued answer carries the complete row as `queuedMessage`, including
+  its `id`, `waitingOn`, and `sendAt`. A deferred message waits for a thread
+  that failed while it was deferred, and delivers when the thread is retried.
 
   --plan sends the same structured /plan command the composer's plan action
   sends, so the agent proposes a plan for approval before executing (Claude
@@ -300,7 +301,10 @@ Queued messages:
   `queue send` dispatches a row now, bypassing every plugin wait and its own
   schedule — the invariants (a running turn, an unfinished workspace, an
   unanswered interaction) still apply, and a message that hits one simply queues
-  again. `queue delete` discards it instead. Both are always permitted.
+  again. `--mode steer` uses those same send-now bypasses and re-attempts the row
+  as a steer; it does not bypass the invariants, so a provisioning row remains
+  queued until the workspace is ready.
+  `queue delete` discards it instead. Both are always permitted.
 
   --send-at takes an ISO 8601 timestamp (2026-08-25T09:00, local without an
   offset) or a duration from now (30s, 10m, 2h, 7d). A time that has already

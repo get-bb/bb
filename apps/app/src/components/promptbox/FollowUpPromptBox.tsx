@@ -568,6 +568,10 @@ function FollowUpPromptBoxWithComposer({
   );
   const steerOnPrimarySubmit =
     submitMode.kind === "queue" && composer.steerActiveThreadOnEnter;
+  const isSteeringWhenReady =
+    steerOnPrimarySubmit &&
+    (composer.threadRuntimeDisplayStatus === "provisioning" ||
+      composer.threadRuntimeDisplayStatus === "starting");
   const onPrimarySubmit = steerOnPrimarySubmit
     ? composer.onModifierSubmit
     : composer.onSubmit;
@@ -719,7 +723,9 @@ function FollowUpPromptBoxWithComposer({
               ? composer.submitTitle
               : canQueueFollowUp
                 ? steerOnPrimarySubmit
-                  ? "Steer current run (Enter)"
+                  ? isSteeringWhenReady
+                    ? "Steer when ready (Enter)"
+                    : "Steer current run (Enter)"
                   : "Queue follow-up (Enter)"
                 : isStopping
                   ? "Stopping run..."

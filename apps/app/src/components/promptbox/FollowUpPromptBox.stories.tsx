@@ -775,11 +775,12 @@ function Row({
         attachedToComposer={true}
         queuedMessages={storyQueuedMessages}
         inlineEditor={inlineEditor}
+        sendAction="send-now"
         sendDisabled={false}
         actionDisabled={false}
         processingMessageId={null}
         processingAction={null}
-        onSendImmediately={(id) =>
+        onSend={(id) =>
           setStoryQueuedMessages((current) =>
             current.filter((message) => message.id !== id),
           )

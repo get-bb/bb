@@ -1301,9 +1301,11 @@ describe("@bb/sdk", () => {
         body: {
           ok: true,
           delivery: "queued",
-          queuedMessageId: "qm_1",
-          waitingOn: { kind: "time" },
-          sendAt: 1750,
+          queuedMessage: {
+            id: "qm_1",
+            waitingOn: { kind: "time" },
+            sendAt: 1750,
+          },
         },
       },
     ]);
@@ -1329,9 +1331,11 @@ describe("@bb/sdk", () => {
     ).resolves.toEqual({
       ok: true,
       delivery: "queued",
-      queuedMessageId: "qm_1",
-      waitingOn: { kind: "time" },
-      sendAt: 1750,
+      queuedMessage: {
+        id: "qm_1",
+        waitingOn: { kind: "time" },
+        sendAt: 1750,
+      },
     });
 
     expect(queue.requests[0].url).toBe(
