@@ -418,12 +418,12 @@ describe("PluginNavSidebarItems", () => {
     expect(
       screen
         .getByRole("button", { name: "Plugins" })
-        .querySelector('[data-icon="Blocks"]'),
+        .querySelector('[data-icon="GridView"]'),
     ).toBeTruthy();
     expect(
       screen
         .getByRole("button", { name: "Skills" })
-        .querySelector('[data-icon="BookOpen"]'),
+        .querySelector('[data-icon="Explore"]'),
     ).toBeTruthy();
   });
 });

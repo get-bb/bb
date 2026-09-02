@@ -145,7 +145,7 @@ export function PluginNavSidebarItems({
         pluginId: BUILTIN_NAV_ROW_PLUGIN_ID,
         id: "tools",
         title: "Plugins",
-        icon: "Blocks",
+        icon: "GridView",
         routePath: getPluginsRoutePath(),
       },
       {
@@ -153,7 +153,7 @@ export function PluginNavSidebarItems({
         pluginId: BUILTIN_NAV_ROW_PLUGIN_ID,
         id: "skills",
         title: "Skills",
-        icon: "BookOpen",
+        icon: "Explore",
         routePath: getSkillsRoutePath(),
       },
       ...pluginRows,
