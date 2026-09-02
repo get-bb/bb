@@ -1,5 +1,7 @@
+import { eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
-import { turnScope } from "@bb/domain";
+import { threadEventRowSchema, turnScope } from "@bb/domain";
+import { events } from "@bb/db";
 import {
   threadTimelineResponseSchema,
   timelineTurnSummaryDetailsResponseSchema,
@@ -259,6 +261,111 @@ describe("GET /threads/:id/timeline inline output preview (tool rows)", () => {
         TIMELINE_INLINE_OUTPUT_PREVIEW_THRESHOLD_CHARS,
       );
       expect(full.output).toContain(BIG_OUTPUT.slice(0, 64));
+    });
+  });
+});
+
+describe("GET /threads/:id/events retained output", () => {
+  it("hydrates a retained output in the raw event response", async () => {
+    await withTestHarness(async (harness) => {
+      const { environment, thread } = seedThreadFixture(harness);
+      const output = "raw-" + "r".repeat(50_000);
+      seedEvent(harness.deps, {
+        data: {
+          item: {
+            aggregatedOutput: output,
+            approvalStatus: null,
+            command: "cat retained",
+            cwd: "/tmp",
+            exitCode: 0,
+            id: "retained-raw-command",
+            status: "completed",
+            type: "commandExecution",
+          },
+        },
+        environmentId: environment.id,
+        providerThreadId: "provider-retained",
+        scope: turnScope("turn-retained"),
+        sequence: 1,
+        threadId: thread.id,
+        type: "item/completed",
+      });
+      const stored = harness.db
+        .select({ data: events.data })
+        .from(events)
+        .where(eq(events.threadId, thread.id))
+        .get();
+      expect(stored?.data).not.toContain(output);
+
+      const response = await harness.app.request(
+        `/api/v1/threads/${thread.id}/events?types=item%2Fcompleted`,
+      );
+      expect(response.status).toBe(200);
+      const rows = threadEventRowSchema.array().parse(await readJson(response));
+      const [row] = rows;
+      if (
+        row?.type !== "item/completed" ||
+        row.data.item.type !== "commandExecution"
+      ) {
+        throw new Error("Expected completed command event");
+      }
+      expect(row.data.item.aggregatedOutput).toBe(output);
+      expect(row.data.item.truncation).toBeUndefined();
+    });
+  });
+});
+
+describe("GET /threads/:id/timeline retained output details", () => {
+  it("hydrates a retained output in row-scoped details", async () => {
+    await withTestHarness(async (harness) => {
+      const { environment, thread } = seedThreadFixture(harness);
+      const turn = {
+        environmentId: environment.id,
+        providerThreadId: "provider-retained-details",
+        scope: turnScope("turn-retained-details"),
+        threadId: thread.id,
+      } as const;
+      const output = "details-" + "d".repeat(50_000);
+      seedEvent(harness.deps, {
+        ...turn,
+        data: {},
+        sequence: 1,
+        type: "turn/started",
+      });
+      seedEvent(harness.deps, {
+        ...turn,
+        data: {
+          item: {
+            aggregatedOutput: output,
+            approvalStatus: null,
+            command: "cat retained details",
+            cwd: "/tmp",
+            exitCode: 0,
+            id: "retained-details-command",
+            status: "completed",
+            type: "commandExecution",
+          },
+        },
+        sequence: 2,
+        type: "item/completed",
+      });
+
+      const response = await harness.app.request(
+        `/api/v1/threads/${thread.id}/timeline/turn-summary-details?turnId=turn-retained-details&sourceSeqStart=2&sourceSeqEnd=2`,
+      );
+      expect(response.status).toBe(200);
+      const details = timelineTurnSummaryDetailsResponseSchema.parse(
+        await readJson(response),
+      );
+      const row = details.rows.find(
+        (candidate) =>
+          candidate.kind === "work" && candidate.workKind === "command",
+      );
+      if (row?.kind !== "work" || row.workKind !== "command") {
+        throw new Error("Expected retained details command row");
+      }
+      expect(row.output).toBe(output);
+      expect(row.outputPreview).toBeUndefined();
     });
   });
 });

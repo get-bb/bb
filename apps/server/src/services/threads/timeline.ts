@@ -28,6 +28,7 @@ import {
   findStoredTimelineWindowByteBudgetFloor,
   findTimelineWindowBudgetFloorSequence,
   getStoredEventRowsByParentToolCallIdsDataBytes,
+  hydrateRetainedEventOutputRows,
   getEnvironment,
   getLatestCompletedThreadContextClearSequence,
   getThreadConversationOutlineRecord,
@@ -1491,7 +1492,7 @@ function buildThreadTimelineInternal(
     atOrBeforeSequence: options.maxSeq,
     threadId: thread.id,
   });
-  const eventSelection = measureThreadTimelineStage(
+  const storedEventSelection = measureThreadTimelineStage(
     profile,
     "event-query",
     () =>
@@ -1504,6 +1505,13 @@ function buildThreadTimelineInternal(
         contextBoundarySeq ?? 0,
       ),
   );
+  const eventSelection =
+    options.maxInlineOutputChars === null
+      ? {
+          ...storedEventSelection,
+          rows: hydrateRetainedEventOutputRows(db, storedEventSelection.rows),
+        }
+      : storedEventSelection;
   const rawEventRows = eventSelection.rows;
   if (profile) {
     profile.eventDataBytes = byteLengthOfStoredEventRows(rawEventRows);
@@ -1993,6 +2001,15 @@ export function buildTimelineTurnSummaryDetails(
       threadId: thread.id,
       rows: eventRowsWithTurnStarts,
     });
+  const hydratedEventRows =
+    detailsInlineOutputLimit === null
+      ? hydrateRetainedEventOutputRows(db, eventRowsWithBackgroundTaskState)
+      : eventRowsWithBackgroundTaskState;
+  const projectionEventRows =
+    byteLengthOfStoredEventRows(hydratedEventRows) <=
+    THREAD_TIMELINE_EVENT_DATA_BYTE_LIMIT
+      ? hydratedEventRows
+      : eventRowsWithBackgroundTaskState;
   const projectionSourceSeqStart = eventRowsWithTurnStarts.reduce(
     (sourceSeqStart, row) =>
       row.type === "turn/started" && row.turnId === options.turnId
@@ -2001,9 +2018,7 @@ export function buildTimelineTurnSummaryDetails(
     sourceRange.sourceSeqStart,
   );
   const children = buildThreadTimelineTurnDetailsFromEvents({
-    events: eventRowsWithBackgroundTaskState.map((row) =>
-      toThreadEventWithMeta(row),
-    ),
+    events: projectionEventRows.map((row) => toThreadEventWithMeta(row)),
     options: {
       includeProviderUnhandledOperations,
       sourceSeqEnd: sourceRange.sourceSeqEnd,

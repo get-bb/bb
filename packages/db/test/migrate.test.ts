@@ -206,6 +206,13 @@ interface TableInfoRow {
   notnull: number;
 }
 
+interface ForeignKeyRow {
+  childColumn: string;
+  onDelete: string;
+  parentColumn: string;
+  parentTable: string;
+}
+
 interface ReadIndexNamesArgs {
   db: DbConnection;
   tableName: string;
@@ -453,6 +460,12 @@ const steerOnEnterDefaultMigrationPath = resolve(
   "drizzle",
   "0112_steer_on_enter_default.sql",
 );
+const retainedEventOutputsMigrationPath = resolve(
+  __dirname,
+  "..",
+  "drizzle",
+  "0113_graceful_mojo.sql",
+);
 const providerSettingsToPluginsMigrationPath = resolve(
   __dirname,
   "..",
@@ -646,6 +659,7 @@ function dropMarketplaceCatalogSchema(db: DbConnection): void {
 }
 
 function dropEventToolNameColumn(db: DbConnection): void {
+  db.$client.prepare("DROP TABLE IF EXISTS retained_event_outputs").run();
   dropThreadConversationOutlinesTable(db);
   db.$client.exec("DROP INDEX IF EXISTS events_delegating_item_lookup_idx");
   db.$client.exec("DROP INDEX IF EXISTS events_plan_steps_thread_sequence_idx");
@@ -1430,6 +1444,79 @@ function deleteDeferredCleanupMigrationRows(db: DbConnection): void {
 describe("migrate", () => {
   beforeAll(() => {
     prepareMigratedConnectionTemplate();
+  });
+
+  it("adds retained event outputs without rewriting existing events", () => {
+    const db = createMigratedConnection();
+
+    try {
+      const host = upsertHost(db, noopNotifier, {
+        id: "host-retained-output-migration",
+        name: "Migration Host",
+        type: "persistent",
+      });
+      const { project } = createProject(db, noopNotifier, {
+        name: "Migration Project",
+        source: {
+          type: "local_path",
+          hostId: host.id,
+          path: "/tmp/retained-output-migration",
+        },
+      });
+      const thread = createThread(db, noopNotifier, {
+        projectId: project.id,
+        providerId: "codex",
+      });
+      const eventData = JSON.stringify({ message: "existing event" });
+
+      db.$client.prepare("DROP TABLE retained_event_outputs").run();
+      db.$client
+        .prepare<[string, string, string]>(
+          `
+            INSERT INTO events (
+              id, thread_id, scope_kind, sequence, type, data, created_at
+            ) VALUES (?, ?, 'thread', 1, 'system/error', ?, 1234)
+          `,
+        )
+        .run("evt-retained-output-migration", thread.id, eventData);
+
+      runMigrationFile({
+        db,
+        migrationPath: retainedEventOutputsMigrationPath,
+      });
+
+      expect(
+        db.$client
+          .prepare<[], MigratedEventDataRow>(
+            "SELECT data FROM events WHERE id = 'evt-retained-output-migration'",
+          )
+          .get(),
+      ).toEqual({ data: eventData });
+      expect(
+        readIndexNames({ db, tableName: "retained_event_outputs" }),
+      ).toContain("retained_event_outputs_expiry_idx");
+      expect(
+        db.$client
+          .prepare<[], ForeignKeyRow>(
+            `
+              SELECT
+                "table" AS parentTable,
+                "from" AS childColumn,
+                "to" AS parentColumn,
+                on_delete AS onDelete
+              FROM pragma_foreign_key_list('retained_event_outputs')
+            `,
+          )
+          .get(),
+      ).toEqual({
+        childColumn: "event_id",
+        onDelete: "CASCADE",
+        parentColumn: "id",
+        parentTable: "events",
+      });
+    } finally {
+      closeConnection(db);
+    }
   });
 
   it("backfills the first checkout commit component for every artifact shape", () => {

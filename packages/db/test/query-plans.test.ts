@@ -32,6 +32,10 @@ import {
   pruneDestroyedEnvironments,
   truncateCompletedEventItemOutputs,
 } from "../src/data/sweeps.js";
+import {
+  deleteExpiredRetainedEventOutputs,
+  hydrateRetainedEventOutputRows,
+} from "../src/data/retained-event-outputs.js";
 import { getDatabaseMaintenanceActivity } from "../src/data/maintenance.js";
 import { openSession } from "../src/data/sessions.js";
 import {
@@ -939,6 +943,120 @@ describe("slow query index plans", () => {
       debugLog,
       indexName: "events_completed_item_truncation_idx",
       params: ["item/completed", "commandExecution", createdBefore, 0, "", 10],
+    });
+
+    db.$client.close();
+  });
+
+  it("uses the retained-output primary key for hydration", () => {
+    const { db, logger, thread } = setup();
+    const now = 1_800_000_000_000;
+    insertEvents(db, noopNotifier, [
+      {
+        createdAt: now,
+        data: JSON.stringify({
+          item: {
+            aggregatedOutput: "x".repeat(
+              COMPLETED_EVENT_OUTPUT_TRUNCATION_THRESHOLD_CHARS + 1,
+            ),
+            id: "retained-hydration-plan",
+            type: "commandExecution",
+          },
+        }),
+        itemId: "retained-hydration-plan",
+        itemKind: "commandExecution",
+        parentToolCallId: null,
+        scope: turnScope("turn_retained_hydration_plan"),
+        sequence: 1,
+        threadId: thread.id,
+        type: "item/completed",
+      },
+    ]);
+    const [stored] = listStoredEventRows(db, { threadId: thread.id });
+    if (!stored) {
+      throw new Error("Expected retained hydration event");
+    }
+    logger.clear();
+
+    hydrateRetainedEventOutputRows(db, [stored], now);
+
+    const debugLog = findOnlyDebugLog({
+      logger,
+      predicate: (fields) =>
+        fields.operation === "all" &&
+        fields.sql.includes('from "retained_event_outputs"') &&
+        fields.sql.includes('"event_id" in'),
+    });
+    assertEmittedQueryPlanUsesIndex({
+      db,
+      debugLog,
+      indexName: "sqlite_autoindex_retained_event_outputs_1",
+      params: [stored.id, now],
+    });
+
+    db.$client.close();
+  });
+
+  it("uses the expiry and primary-key indexes for bounded cleanup", () => {
+    const { db, logger, thread } = setup();
+    const now = 1_800_000_000_000;
+    insertEvents(db, noopNotifier, [
+      {
+        createdAt: now,
+        data: JSON.stringify({
+          item: {
+            aggregatedOutput: "x".repeat(
+              COMPLETED_EVENT_OUTPUT_TRUNCATION_THRESHOLD_CHARS + 1,
+            ),
+            id: "retained-expiry-plan",
+            type: "commandExecution",
+          },
+        }),
+        itemId: "retained-expiry-plan",
+        itemKind: "commandExecution",
+        parentToolCallId: null,
+        scope: turnScope("turn_retained_expiry_plan"),
+        sequence: 1,
+        threadId: thread.id,
+        type: "item/completed",
+      },
+    ]);
+    const [stored] = listStoredEventRows(db, { threadId: thread.id });
+    if (!stored) {
+      throw new Error("Expected retained expiry event");
+    }
+    const expiredAtOrBefore = Number.MAX_SAFE_INTEGER;
+    logger.clear();
+
+    deleteExpiredRetainedEventOutputs(db, {
+      expiredAtOrBefore,
+      limit: 1,
+    });
+
+    const selection = findOnlyDebugLog({
+      logger,
+      predicate: (fields) =>
+        fields.operation === "all" &&
+        fields.sql.includes('from "retained_event_outputs"') &&
+        fields.sql.includes('order by "retained_event_outputs"."expires_at"'),
+    });
+    assertEmittedQueryPlanUsesIndex({
+      db,
+      debugLog: selection,
+      indexName: "retained_event_outputs_expiry_idx",
+      params: [expiredAtOrBefore, 1],
+    });
+    const deletion = findOnlyDebugLog({
+      logger,
+      predicate: (fields) =>
+        fields.operation === "run" &&
+        fields.sql.startsWith('delete from "retained_event_outputs"'),
+    });
+    assertEmittedQueryPlanUsesIndex({
+      db,
+      debugLog: deletion,
+      indexName: "sqlite_autoindex_retained_event_outputs_1",
+      params: [stored.id],
     });
 
     db.$client.close();

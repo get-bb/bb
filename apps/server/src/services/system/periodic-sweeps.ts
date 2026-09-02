@@ -12,6 +12,7 @@ import {
   DEFAULT_DESTROYED_ENVIRONMENT_EVENT_DETACH_BATCH_SIZE,
   DEFAULT_DESTROYED_ENVIRONMENT_PRUNE_BATCH_SIZE,
   DESTROYED_ENVIRONMENT_TTL_MS,
+  deleteExpiredRetainedEventOutputs,
   dropDeferredLegacyTables,
   getDatabaseAutoVacuumMode,
   getDatabaseCompactionStats,
@@ -73,6 +74,7 @@ const DATABASE_MAINTENANCE_CHECK_INTERVAL_MS = 60 * 60_000;
 const MANAGED_ENVIRONMENT_ARCHIVE_CLEANUP_RECOVERY_INTERVAL_MS = 15 * 60_000;
 const ORPHANED_ENVIRONMENT_DESTROY_RECOVERY_DELAY_MS =
   LIVE_DAEMON_COMMAND_TIMEOUT_MS;
+const RETAINED_EVENT_OUTPUT_EXPIRY_BATCH_SIZE = 1;
 
 type PeriodicSweepJobCategory =
   | "retention"
@@ -480,6 +482,18 @@ function runCompletedEventOutputTruncationSweep(
   });
 }
 
+function runRetainedEventOutputExpirySweep(
+  deps: LoggedPendingInteractionWorkSessionDeps,
+  now: number,
+): void {
+  runEventLoopWorkSync("sweep:retained-event-output-expiry:delete", () =>
+    deleteExpiredRetainedEventOutputs(deps.db, {
+      expiredAtOrBefore: now,
+      limit: RETAINED_EVENT_OUTPUT_EXPIRY_BATCH_SIZE,
+    }),
+  );
+}
+
 function runClosedSessionPruneSweep(
   deps: LoggedPendingInteractionWorkSessionDeps,
   now: number,
@@ -527,6 +541,12 @@ const PERIODIC_SWEEP_JOBS: PeriodicSweepJob[] = [
     category: "retention",
     name: "completed-event-output-truncation",
     run: runCompletedEventOutputTruncationSweep,
+  },
+  {
+    cadenceMs: 0,
+    category: "retention",
+    name: "retained-event-output-expiry",
+    run: runRetainedEventOutputExpirySweep,
   },
   {
     cadenceMs: 0,

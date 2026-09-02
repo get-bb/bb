@@ -2,6 +2,7 @@ import {
   findStoredEventRow as findStoredEventRowRecord,
   getLatestThreadOutputEventRow,
   getLatestThreadSystemErrorEventRow,
+  hydrateRetainedEventOutputRows,
   listStoredEventRows as listStoredEventRowRecords,
 } from "@bb/db";
 import type { DbConnection, StoredEventRow } from "@bb/db";
@@ -117,7 +118,9 @@ export function listThreadEventRows(
     threadId: args.threadId,
     types: args.types,
   });
-  return rows.map((row) => parseStoredEventRow(row));
+  return hydrateRetainedEventOutputRows(db, rows).map((row) =>
+    parseStoredEventRow(row),
+  );
 }
 
 export function findThreadEvent(
@@ -129,7 +132,11 @@ export function findThreadEvent(
     threadId: args.threadId,
     type: args.type,
   });
-  return row ? parseStoredEventRow(row) : null;
+  if (!row) {
+    return null;
+  }
+  const [hydrated] = hydrateRetainedEventOutputRows(db, [row]);
+  return parseStoredEventRow(hydrated ?? row);
 }
 
 export function getLastThreadOutput(

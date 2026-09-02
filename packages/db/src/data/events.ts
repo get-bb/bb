@@ -60,6 +60,11 @@ import {
   upsertThreadSearchSegments,
   type UpsertThreadSearchSegmentInput,
 } from "./threads.js";
+import {
+  hydrateRetainedEventOutputRows,
+  insertPreparedRetainedEventOutput,
+  prepareCompletedEventOutputData,
+} from "./retained-event-outputs.js";
 
 const STORED_EVENT_SEQUENCE_LOOKUP_CHUNK_SIZE = 250;
 export const STORED_TIMELINE_BYTE_PREFLIGHT_EVENT_LIMIT = 2_000;
@@ -361,6 +366,68 @@ export interface ThreadTurnInterruptionEventState {
   threadId: string;
 }
 
+interface InsertStoredEventRowArgs {
+  conflict: "error" | "ignore";
+  createdAt: number;
+  data: string;
+  environmentId: string | null;
+  itemId: string | null;
+  itemKind: ThreadEventItemType | null;
+  parentToolCallId: string | null;
+  providerThreadId: string | null;
+  scopeKind: ThreadEventScopeKind;
+  sequence: number;
+  threadId: string;
+  turnId: string | null;
+  type: ThreadEventType;
+}
+
+interface InsertStoredEventRowResult {
+  inserted: boolean;
+}
+
+function insertStoredEventRow(
+  db: DbQueryConnection,
+  args: InsertStoredEventRowArgs,
+): InsertStoredEventRowResult {
+  const id = createEventId();
+  const prepared = prepareCompletedEventOutputData({
+    createdAt: args.createdAt,
+    data: args.data,
+    itemKind: args.itemKind,
+    type: args.type,
+  });
+  const insert =
+    args.conflict === "ignore" ? sql`INSERT OR IGNORE` : sql`INSERT`;
+  const result = db.run(sql`${insert} INTO events
+    (id, thread_id, environment_id, scope_kind, turn_id, provider_thread_id, sequence, type, item_id, item_kind, parent_tool_call_id, data, created_at)
+    VALUES (
+      ${id},
+      ${args.threadId},
+      ${args.environmentId},
+      ${args.scopeKind},
+      ${args.turnId},
+      ${args.providerThreadId},
+      ${args.sequence},
+      ${args.type},
+      ${args.itemId},
+      ${args.itemKind},
+      ${args.parentToolCallId},
+      ${prepared.data},
+      ${args.createdAt}
+    )`);
+  if (result.changes === 0) {
+    return { inserted: false };
+  }
+  if (prepared.retainedOutput !== null) {
+    insertPreparedRetainedEventOutput(db, {
+      eventId: id,
+      output: prepared.retainedOutput,
+    });
+  }
+  return { inserted: true };
+}
+
 export function insertEvents(
   db: DbQueryConnection,
   notifier: DbNotifier,
@@ -379,14 +446,24 @@ export function insertEvents(
   const eventTypesByThreadId = new Map<string, Set<ThreadEventType>>();
 
   for (const [index, input] of eventInputs.entries()) {
-    const id = createEventId();
     const createdAt = input.createdAt ?? Date.now();
     const turnId = getThreadEventScopeTurnId(input.scope) ?? null;
-    const result = db.run(
-      sql`INSERT OR IGNORE INTO events (id, thread_id, environment_id, scope_kind, turn_id, provider_thread_id, sequence, type, item_id, item_kind, parent_tool_call_id, data, created_at)
-          VALUES (${id}, ${input.threadId}, ${input.environmentId ?? null}, ${input.scope.kind}, ${turnId}, ${input.providerThreadId ?? null}, ${input.sequence}, ${input.type}, ${input.itemId}, ${input.itemKind}, ${input.parentToolCallId}, ${input.data}, ${createdAt})`,
-    );
-    if (result.changes > 0) {
+    const result = insertStoredEventRow(db, {
+      conflict: "ignore",
+      createdAt,
+      data: input.data,
+      environmentId: input.environmentId ?? null,
+      itemId: input.itemId,
+      itemKind: input.itemKind,
+      parentToolCallId: input.parentToolCallId,
+      providerThreadId: input.providerThreadId ?? null,
+      scopeKind: input.scope.kind,
+      sequence: input.sequence,
+      threadId: input.threadId,
+      turnId,
+      type: input.type,
+    });
+    if (result.inserted) {
       insertedCount++;
       insertedInputIndexes.push(index);
       const eventTypes = eventTypesByThreadId.get(input.threadId);
@@ -698,25 +775,21 @@ export function appendDaemonEventsInTransaction(
     if (sequence === undefined) {
       throw new Error(`Missing event sequence for thread: ${input.threadId}`);
     }
-    db.run(
-      sql`INSERT INTO events
-        (id, thread_id, environment_id, scope_kind, turn_id, provider_thread_id, sequence, type, item_id, item_kind, parent_tool_call_id, data, created_at)
-        VALUES (
-          ${createEventId()},
-          ${input.threadId},
-          ${input.environmentId},
-          ${input.scope.kind},
-          ${turnId},
-          ${input.providerThreadId},
-          ${sequence},
-          ${input.type},
-          ${input.itemId},
-          ${input.itemKind},
-          ${input.parentToolCallId},
-          ${input.data},
-          ${now}
-        )`,
-    );
+    insertStoredEventRow(db, {
+      conflict: "error",
+      createdAt: now,
+      data: input.data,
+      environmentId: input.environmentId,
+      itemId: input.itemId,
+      itemKind: input.itemKind,
+      parentToolCallId: input.parentToolCallId,
+      providerThreadId: input.providerThreadId,
+      scopeKind: input.scope.kind,
+      sequence,
+      threadId: input.threadId,
+      turnId,
+      type: input.type,
+    });
     const event = parseDaemonThreadEvent(input);
     if (event !== null) {
       upsertThreadSearchSegments(db, {
@@ -768,26 +841,23 @@ export function copyStoredThreadEventsInTransaction(
   const highWaterMarks = getHighWaterMarks(db, [args.targetThreadId]);
   let sequence = (highWaterMarks[args.targetThreadId] ?? 0) + 1;
   const now = Date.now();
-  for (const row of args.rows) {
-    db.run(
-      sql`INSERT INTO events
-        (id, thread_id, environment_id, scope_kind, turn_id, provider_thread_id, sequence, type, item_id, item_kind, parent_tool_call_id, data, created_at)
-        VALUES (
-          ${createEventId()},
-          ${args.targetThreadId},
-          ${args.targetEnvironmentId},
-          ${row.scopeKind},
-          ${row.turnId},
-          ${row.providerThreadId},
-          ${sequence},
-          ${row.type},
-          ${row.itemId},
-          ${row.itemKind},
-          ${row.parentToolCallId},
-          ${row.data},
-          ${row.createdAt}
-        )`,
-    );
+  const hydratedRows = hydrateRetainedEventOutputRows(db, args.rows, now);
+  for (const row of hydratedRows) {
+    insertStoredEventRow(db, {
+      conflict: "error",
+      createdAt: row.createdAt,
+      data: row.data,
+      environmentId: args.targetEnvironmentId,
+      itemId: row.itemId,
+      itemKind: row.itemKind,
+      parentToolCallId: row.parentToolCallId,
+      providerThreadId: row.providerThreadId,
+      scopeKind: row.scopeKind,
+      sequence,
+      threadId: args.targetThreadId,
+      turnId: row.turnId,
+      type: row.type,
+    });
     const event = parseDaemonThreadEvent({
       data: row.data,
       environmentId: args.targetEnvironmentId,
@@ -866,25 +936,21 @@ export function appendStoredThreadEventsInTransaction(
     });
     const turnId = getThreadEventScopeTurnId(args.scope) ?? null;
 
-    db.run(
-      sql`INSERT INTO events
-        (id, thread_id, environment_id, scope_kind, turn_id, provider_thread_id, sequence, type, item_id, item_kind, parent_tool_call_id, data, created_at)
-        VALUES (
-          ${createEventId()},
-          ${args.threadId},
-          ${args.environmentId ?? null},
-          ${args.scope.kind},
-          ${turnId},
-          ${args.providerThreadId ?? null},
-          ${sequence},
-          ${args.type},
-          ${itemFields.itemId},
-          ${itemFields.itemKind},
-          ${itemFields.parentToolCallId},
-          ${JSON.stringify(args.data)},
-          ${now}
-        )`,
-    );
+    insertStoredEventRow(db, {
+      conflict: "error",
+      createdAt: now,
+      data: JSON.stringify(args.data),
+      environmentId: args.environmentId ?? null,
+      itemId: itemFields.itemId,
+      itemKind: itemFields.itemKind,
+      parentToolCallId: itemFields.parentToolCallId,
+      providerThreadId: args.providerThreadId ?? null,
+      scopeKind: args.scope.kind,
+      sequence,
+      threadId: args.threadId,
+      turnId,
+      type: args.type,
+    });
     upsertThreadSearchSegments(db, {
       updatedAt: now,
       segments: listThreadSearchSegmentsForStoredEventArgs({
