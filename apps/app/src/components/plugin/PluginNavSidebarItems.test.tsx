@@ -423,7 +423,7 @@ describe("PluginNavSidebarItems", () => {
     expect(
       screen
         .getByRole("button", { name: "Skills" })
-        .querySelector('[data-icon="Zap"]'),
+        .querySelector('[data-icon="BookOpen"]'),
     ).toBeTruthy();
   });
 });

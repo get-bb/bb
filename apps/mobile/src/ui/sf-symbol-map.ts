@@ -39,6 +39,7 @@ export const SF_SYMBOL_MAP = {
   Beaker: "testtube.2",
   BellDot: "bell.badge",
   Blocks: "square.grid.2x2",
+  BookOpen: "book",
   Bot: "cpu",
   Browser: "safari",
   Brain: "brain",
