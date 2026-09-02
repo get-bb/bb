@@ -186,10 +186,7 @@ export function PromptBoxActionsMenu({
             "-ml-1.5",
           )}
         >
-          <Icon
-            name={isAttaching ? "Spinner" : "Plus"}
-            className={cn("size-4", isAttaching && "animate-spin")}
-          />
+          <Icon name="Plus" className="size-4" />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent

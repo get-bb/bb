@@ -227,8 +227,8 @@ interface PromptSubmitButtonProps {
   canSubmit: boolean;
   className: string;
   disabledReason: string | undefined;
+  isBusy: boolean;
   isCompact: boolean;
-  isSubmitting: boolean;
   onClick: (event: ReactMouseEvent<HTMLButtonElement>) => void;
   onPointerDown: (event: ReactPointerEvent<HTMLButtonElement>) => void;
   title: string;
@@ -238,8 +238,8 @@ function PromptSubmitButton({
   canSubmit,
   className,
   disabledReason,
+  isBusy,
   isCompact,
-  isSubmitting,
   onClick,
   onPointerDown,
   title,
@@ -251,12 +251,13 @@ function PromptSubmitButton({
       size={isCompact ? "icon" : "sm"}
       variant="default"
       aria-label={title}
+      aria-busy={isBusy}
       disabled={!canSubmit}
       onPointerDown={onPointerDown}
       onClick={onClick}
       className={className}
     >
-      {isSubmitting ? (
+      {isBusy ? (
         <Icon name="Spinner" className="size-4 animate-spin" />
       ) : (
         <Icon name="CornerDownLeft" className="size-4" />
@@ -2520,17 +2521,27 @@ export function PromptBoxInternal({
   );
 
   const canSubmit =
-    hasSubmittableInput && !isSubmitting && !submitDisabled && !isVoiceBusy;
-  const canModifierSubmit =
-    onModifierSubmit !== undefined &&
+    hasSubmittableInput &&
+    !isAttaching &&
     !isSubmitting &&
     !submitDisabled &&
     !isVoiceBusy;
-  const showStop = Boolean(isRunning && onStop && !canSubmit && !isVoiceBusy);
+  const canModifierSubmit =
+    onModifierSubmit !== undefined &&
+    !isAttaching &&
+    !isSubmitting &&
+    !submitDisabled &&
+    !isVoiceBusy;
+  const showStop = Boolean(
+    isRunning && onStop && !canSubmit && !isAttaching && !isVoiceBusy,
+  );
   const canStartVoiceInput =
     voice !== undefined && voice.isSupported && !isSubmitting;
   const showVoiceAsPrimaryAction =
-    isPointerCoarse && !hasSubmittableInput && canStartVoiceInput;
+    isPointerCoarse &&
+    !isAttaching &&
+    !hasSubmittableInput &&
+    canStartVoiceInput;
   const handleVoicePointerDown = useCallback(
     (event: ReactPointerEvent<HTMLButtonElement>) => {
       if (!isPointerCoarse || event.button !== 0) return;
@@ -2556,8 +2567,12 @@ export function PromptBoxInternal({
     setVoiceActionTransition("exiting");
     voice?.cancel();
   }, [voice]);
-  const effectiveSubmitTitle =
-    !canSubmit && submitDisabledReason ? submitDisabledReason : submitTitle;
+  const attachmentUploadTitle = "Uploading attachments...";
+  const effectiveSubmitTitle = isAttaching
+    ? attachmentUploadTitle
+    : !canSubmit && submitDisabledReason
+      ? submitDisabledReason
+      : submitTitle;
 
   const emitAttachmentFiles = useCallback(
     (files: File[]) => {
@@ -3259,10 +3274,14 @@ export function PromptBoxInternal({
                           "transition-colors",
                         )}
                         disabledReason={
-                          !canSubmit ? submitDisabledReason : undefined
+                          !canSubmit
+                            ? isAttaching
+                              ? attachmentUploadTitle
+                              : submitDisabledReason
+                            : undefined
                         }
+                        isBusy={isSubmitting || isAttaching}
                         isCompact={showCompactLayout}
-                        isSubmitting={isSubmitting}
                         onPointerDown={handleSubmitPointerDown}
                         onClick={handleSubmitClick}
                         title={effectiveSubmitTitle}
