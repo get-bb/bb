@@ -86,6 +86,31 @@ Whenever a visible surface is added, removed, or moved:
 If responsive layouts produce conflicting spatial orders, fix the layout or
 define one stable readable sequence before shipping.
 
+## Validate annotation overlay areas
+
+Treat a badge's position, its visible target, and its interactive overlay as
+separate layout contracts. An annotation overlay must trace only the surface it
+describes: it must not extend into an adjacent annotation's surface, cover that
+surface's label or content, or capture its hover, focus, or click behavior.
+
+When annotated surfaces are intentionally nested, the child surface must own
+interaction across its full visible target and remain readable when either
+annotation is active. Do not rely on DOM order or a parent overlay's `z-index`
+to arbitrate overlapping targets; partition or layer the overlays so the
+rendered behavior matches the visible surfaces.
+
+Whenever an annotation target or its surrounding layout changes:
+
+1. At each relevant viewport, inspect the rendered bounds of every affected
+   target and overlay, including their shared edges and nested areas.
+2. Hover, focus, and click both the badge and the visible target for each
+   annotation. Confirm that only the matching annotation activates and that
+   the complete intended target remains reachable.
+3. Check sibling overlays for intersections and hit-test nested overlays to
+   confirm that a parent or neighbor cannot steal the child's interaction.
+4. Add or update a focused test for the overlay boundary or ownership rule that
+   could regress. A DOM-nesting assertion alone is not sufficient.
+
 ## Refresh the SDK inventory
 
 Refresh the inventory after the Guide represents the API change:
