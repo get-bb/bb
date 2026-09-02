@@ -98,7 +98,7 @@ export function BrowsePluginsTab({
   const sort =
     requestedSort === "most-installed" && !installsKnown ? null : requestedSort;
   const categoryOptions = useMemo(
-    () => categoryFilterOptions(entries, selectedCategories),
+    () => pluginCategoryFilterOptions(entries, selectedCategories),
     [entries, selectedCategories],
   );
   const filteredEntries = useMemo(() => {
@@ -314,7 +314,7 @@ export function BrowsePluginsTab({
   );
 }
 
-function categoryFilterOptions(
+export function pluginCategoryFilterOptions(
   entries: readonly PluginCatalogSearchEntry[],
   selected: readonly string[],
 ): PluginBrowseCategoryOption[] {

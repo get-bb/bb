@@ -13,7 +13,10 @@ import { TOOLS_PAGE_BAND_CLASSES } from "@/components/tools/tools-navigation";
 import { usePluginCatalogSearch } from "@/hooks/queries/plugin-catalog-queries";
 import { getPluginsRoutePath } from "@/lib/route-paths";
 import type { AddPluginInitial } from "./AddPluginDialog";
-import { PluginCatalogGrid } from "./BrowsePluginsTab";
+import {
+  PluginCatalogGrid,
+  pluginCategoryFilterOptions,
+} from "./BrowsePluginsTab";
 import { PluginAuthorAvatar } from "./PluginAuthorAvatar";
 import {
   PluginBrowseCategoryFilter,
@@ -25,7 +28,6 @@ import {
   pluginCategoryFilterId,
   sortPluginEntries,
 } from "./plugin-browse-discovery";
-import { pluginCategoryFilterOptions } from "./plugin-category-options";
 import {
   entriesByMarketplaceAuthor,
   pluginAuthorGithub,
@@ -68,14 +70,7 @@ export function PluginAuthorPage({
   const sort =
     requestedSort === "most-installed" && !installsKnown ? null : requestedSort;
   const categoryOptions = useMemo(
-    () =>
-      pluginCategoryFilterOptions(
-        entries.map((entry) => ({
-          id: pluginCategoryFilterId(entry),
-          label: entry.category ?? null,
-        })),
-        selectedCategories,
-      ),
+    () => pluginCategoryFilterOptions(entries, selectedCategories),
     [entries, selectedCategories],
   );
   const visibleEntries = useMemo(() => {
