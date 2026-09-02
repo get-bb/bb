@@ -11,6 +11,7 @@ import {
   type DbConnection,
 } from "@bb/db";
 import { ROOT_PLUGIN_SOURCE_SELECTION } from "@bb/server-contract";
+import { PLUGIN_CATALOG_CATEGORIES } from "@bb/domain";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createPluginCatalogService } from "../../../src/services/plugin-catalog/plugin-catalog-service.js";
 import type { MarketplaceFetch } from "../../../src/services/plugin-catalog/marketplace-http.js";
@@ -23,7 +24,6 @@ import {
   BUILTIN_PLUGINS,
   BUNDLED_PLUGINS,
   OFFICIAL_PLUGINS,
-  PLUGIN_CATALOG_CATEGORIES,
   listBundledPluginRegistrations,
 } from "../../../src/services/plugins/builtin-registry.js";
 
@@ -155,7 +155,7 @@ describe("plugin catalog service", () => {
       source: `builtin:${args.name}`,
       provenance: {
         kind: "catalog",
-        marketplace: "bb-community",
+        marketplace: "bb-official",
         entryId: args.name,
       },
       sourceIntent: { kind: "builtin", name: args.name },
@@ -194,14 +194,20 @@ describe("plugin catalog service", () => {
       displayName: "Docs",
       icon: "FileText",
       iconUrl: null,
-      category: "Context & knowledge",
+      category: "File Viewers & Editors",
+      screenshots: [],
       source: "builtin:docs",
+      marketplace: "bb-official",
+      marketplaceDisplayName: "BB Official",
+      publisherKey: "bb-official",
+      publisherLabel: "BB Official",
+      author: { name: "BB", url: null },
       installed: false,
       compatible: true,
     });
     for (const category of PLUGIN_CATALOG_CATEGORIES) {
       const categoryNames = results
-        .filter((entry) => entry.category === category)
+        .filter((entry) => entry.category === category.displayName)
         .map((entry) => entry.displayName);
       expect(categoryNames).toEqual(
         [...categoryNames].sort((a, b) => a.localeCompare(b)),
@@ -268,28 +274,28 @@ describe("plugin catalog service", () => {
     const missingRoot = await mkdtemp(join(tmpdir(), "bb-missing-plugin-"));
     await rm(missingRoot, { recursive: true, force: true });
     const warnings: string[] = [];
-    const [github] = listBundledPluginRegistrations().filter(
-      (plugin) => plugin.name === "github",
+    const registrations = listBundledPluginRegistrations();
+    const github = registrations.find((plugin) => plugin.name === "github");
+    const workflows = registrations.find(
+      (plugin) => plugin.name === "workflows",
     );
-    if (github === undefined) throw new Error("github registration missing");
+    if (github === undefined || workflows === undefined) {
+      throw new Error("bundled registration missing");
+    }
     const catalog = service({
       bundledPlugins: [
-        github,
         {
-          name: "broken",
-          pluginId: "broken",
-          autoInstall: false,
-          defaultEnabled: true,
-          category: "Developer tools",
+          ...github,
           rootDir: missingRoot,
         },
+        workflows,
       ],
       warn: (message) => warnings.push(message),
     });
     const results = await catalog.search("");
-    expect(results.map((entry) => entry.entryId)).not.toContain("broken");
-    expect(results.map((entry) => entry.entryId)).toContain("github");
-    expect(warnings.some((warning) => warning.includes("broken"))).toBe(true);
+    expect(results.map((entry) => entry.entryId)).not.toContain("github");
+    expect(results.map((entry) => entry.entryId)).toContain("workflows");
+    expect(warnings.some((warning) => warning.includes("github"))).toBe(true);
   });
 
   it("serves a bundled entry's own compact icon from the catalog route", async () => {
@@ -311,17 +317,17 @@ describe("plugin catalog service", () => {
       (entry) => entry.entryId === withGlyph.name,
     );
     expect(svgEntry?.icon?.startsWith("./")).toBe(true);
-    const icon = await catalog.icon("bb-community", withSvg.name);
+    const icon = await catalog.icon("bb-official", withSvg.name);
     expect(icon?.contentType).toBe("image/svg+xml");
     expect(svgEntry?.iconUrl).toBe(
-      `/api/v1/plugin-catalog/icons/bb-community/${withSvg.name}?h=${icon?.hash}`,
+      `/api/v1/plugin-catalog/icons/bb-official/${withSvg.name}?h=${icon?.hash}`,
     );
     expect(new TextDecoder().decode(icon?.bytes)).toContain("<svg");
     expect(svgEntry?.iconTinted).toBe(true);
 
     expect(glyphEntry?.iconUrl).toBeNull();
     expect(glyphEntry?.iconTinted).toBe(false);
-    expect(await catalog.icon("bb-community", withGlyph.name)).toBeUndefined();
+    expect(await catalog.icon("bb-official", withGlyph.name)).toBeUndefined();
   });
 
   describe("refresh", () => {

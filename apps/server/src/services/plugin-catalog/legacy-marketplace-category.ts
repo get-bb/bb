@@ -1,26 +1,4 @@
-import { PLUGIN_CATALOG_CATEGORIES } from "../plugins/builtin-registry.js";
-
-const categoryByTag = new Map(
-  PLUGIN_CATALOG_CATEGORIES.map((category) => [
-    category
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/gu, "-")
-      .replace(/^-+|-+$/gu, ""),
-    category,
-  ]),
-);
-
-export function legacyMarketplaceCategory(
-  tags: readonly string[],
-  official: boolean,
-): string {
-  if (official) {
-    for (const tag of tags) {
-      const category = categoryByTag.get(tag);
-      if (category !== undefined) return category;
-    }
-    return "Other";
-  }
+export function legacyMarketplaceCategory(tags: readonly string[]): string {
   const first = tags[0];
   return first === undefined
     ? "Other"

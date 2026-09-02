@@ -3,7 +3,10 @@ import { fileURLToPath } from "node:url";
 import { Ajv2020 } from "ajv/dist/2020.js";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import { parseMarketplaceManifest } from "../../../src/services/plugin-catalog/marketplace-manifest.js";
+import {
+  parseBundledMarketplaceManifest,
+  parseMarketplaceManifest,
+} from "../../../src/services/plugin-catalog/marketplace-manifest.js";
 
 const SCHEMA_PATHS = {
   1: fileURLToPath(
@@ -471,6 +474,23 @@ describe("published marketplace schema parity", () => {
       expect(validate(manifest)).toBe(false);
       expect(() => parseMarketplaceManifest(manifest, "fixture")).toThrow();
     }
+  });
+
+  it("keeps the bundled source out of the public publisher schema", async () => {
+    const validate = await compilePublishedSchema(2);
+    const manifest = {
+      ...manifestV2With({ source: { bundled: { plugin: "docs" } } }),
+      name: "bb-official",
+      displayName: "BB Official",
+    };
+
+    expect(validate(manifest)).toBe(false);
+    expect(parseBundledMarketplaceManifest(manifest, "fixture")).toMatchObject({
+      name: "bb-official",
+    });
+    expect(() => parseMarketplaceManifest(manifest, "fixture")).toThrow(
+      /not allowed in fetched or third-party documents/u,
+    );
   });
 
   it("caps the entry count in both contracts", async () => {

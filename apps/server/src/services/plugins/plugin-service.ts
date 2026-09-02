@@ -70,10 +70,12 @@ import {
   type PluginMarketplaceRow,
 } from "@bb/db";
 import {
-  CURATED_MARKETPLACE_NAME,
+  BUNDLED_MARKETPLACE_NAME,
   entryScreenshotUrls,
   marketplaceEntryCategory,
   marketplaceEntryCollections,
+  isBundledMarketplaceEntry,
+  parseBundledMarketplaceManifestJson,
   parseMarketplaceManifestJson,
   type MarketplaceManifest,
 } from "../plugin-catalog/marketplace-manifest.js";
@@ -1324,11 +1326,18 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     }
     let manifest: MarketplaceManifest | null = null;
     try {
-      manifest = parseMarketplaceManifestJson(
-        marketplace.manifestJson,
-        `stored "${marketplace.name}" marketplace catalog`,
-        (message) => logger.warn(message),
-      );
+      const location = `stored "${marketplace.name}" marketplace catalog`;
+      manifest =
+        marketplace.name === BUNDLED_MARKETPLACE_NAME
+          ? parseBundledMarketplaceManifestJson(
+              marketplace.manifestJson,
+              location,
+            )
+          : parseMarketplaceManifestJson(
+              marketplace.manifestJson,
+              location,
+              (message) => logger.warn(message),
+            );
     } catch (error) {
       logger.warn(
         `failed to read the stored "${marketplace.name}" marketplace catalog: ${error instanceof Error ? error.message : String(error)}`,
@@ -1384,9 +1393,16 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       );
       if (manifest === null) continue;
       const marketplaceRows = rowsByMarketplace.get(marketplaceName) ?? [];
-      const entriesById = new Map(
-        manifest.plugins.map((entry) => [entry.id, entry]),
-      );
+      const entriesById = new Map<
+        string,
+        MarketplaceManifest["plugins"][number]
+      >();
+      for (const entry of manifest.plugins) {
+        entriesById.set(entry.id, entry);
+        if (isBundledMarketplaceEntry(entry)) {
+          entriesById.set(entry.source.bundled.plugin, entry);
+        }
+      }
       for (const row of marketplaceRows) {
         const entry = entriesById.get(row.catalogEntryId ?? "");
         if (entry === undefined) continue;
@@ -1394,10 +1410,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
           const category = marketplaceEntryCategory(manifest, entry);
           const legacyCategory =
             manifest.schemaVersion === 1
-              ? legacyMarketplaceCategory(
-                  entry.tags ?? [],
-                  marketplace.name === CURATED_MARKETPLACE_NAME,
-                )
+              ? legacyMarketplaceCategory(entry.tags ?? [])
               : undefined;
           metadataByPluginId.set(row.id, {
             ...(category === undefined

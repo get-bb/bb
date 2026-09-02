@@ -266,4 +266,22 @@ describe("marketplace entry schemas", () => {
       }).success,
     ).toBe(false);
   });
+
+  it("accepts a bundled source only in v2", () => {
+    const bundled = {
+      ...entry(),
+      source: { bundled: { plugin: "docs" } },
+    };
+    expect(marketplaceEntryV2Schema.parse(bundled)).toEqual(bundled);
+    expect(marketplaceEntryV1Schema.safeParse(bundled).success).toBe(false);
+    expect(
+      marketplaceEntryV2Schema.safeParse({
+        ...bundled,
+        source: {
+          bundled: { plugin: "docs" },
+          npm: { package: "bb-plugin-docs" },
+        },
+      }).success,
+    ).toBe(false);
+  });
 });

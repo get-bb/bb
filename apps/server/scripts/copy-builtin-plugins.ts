@@ -24,6 +24,13 @@ const targetRoot = path.resolve(
   "dist",
   BUILTIN_PLUGINS_DIRECTORY_NAME,
 );
+const bundledMarketplaceManifestPath = path.resolve(
+  serverRoot,
+  "src",
+  "generated",
+  "bb-official-marketplace",
+  "marketplace.json",
+);
 const bbAppPackageJsonPath = path.resolve(
   serverRoot,
   "..",
@@ -189,10 +196,11 @@ export async function copyBuiltinPlugins(args: {
   const build = args.build ?? true;
 
   await rm(resolvedTargetRoot, { recursive: true, force: true });
-
-  if (plugins.length > 0) {
-    await mkdir(resolvedTargetRoot, { recursive: true });
-  }
+  await mkdir(resolvedTargetRoot, { recursive: true });
+  await cp(
+    bundledMarketplaceManifestPath,
+    path.join(resolvedTargetRoot, "marketplace.json"),
+  );
 
   for (const plugin of plugins) {
     await copyBuiltinPlugin({

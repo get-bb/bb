@@ -75,7 +75,9 @@ describe("plugin catalog routes", () => {
     });
     const search = await app.request("/plugin-catalog/search?q=memory");
     await expect(search.json()).resolves.toMatchObject({
-      results: [{ entryId: "memory", installed: false }],
+      results: expect.arrayContaining([
+        expect.objectContaining({ entryId: "memory", installed: false }),
+      ]),
       collections: [],
     });
 
@@ -213,7 +215,11 @@ describe("plugin catalog routes", () => {
 
       const listed = await app.request("/marketplaces");
       await expect(listed.json()).resolves.toMatchObject({
-        marketplaces: [{ name: "bb-community" }, { name: "acme-plugins" }],
+        marketplaces: [
+          { name: "bb-official", official: true, sourceKind: "path" },
+          { name: "bb-community" },
+          { name: "acme-plugins" },
+        ],
       });
 
       const refreshed = await postJson(app, "/marketplaces/refresh", {

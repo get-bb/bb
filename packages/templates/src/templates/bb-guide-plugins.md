@@ -305,7 +305,8 @@ added/updated/unchanged counts.
                                  cached icons are deleted; plugins installed
                                  from it keep running as direct installs and
                                  keep checking for updates from their recorded
-                                 source. bb-community cannot be removed
+                                 source. bb-official and bb-community cannot
+                                 be removed
 
 Multi-plugin repositories
 
@@ -344,13 +345,15 @@ rollback, and remove keep working per plugin.
 
 BB Official plugins
 
-BB's official plugins — GitHub, Docs, Memory, and Tasks — ship bundled inside
-the app itself. They appear in Extensions → Plugins → Browse
-and install with one click from the local bundled copy: no network, no
-download, no separate release. Install from the CLI by bare name
-(`bb plugin install github`, `bb plugin install docs`, `bb plugin install
-memory`, or `bb plugin install tasks`). Installed official plugins are pinned
-to the bundled copy and update automatically when the BB app updates.
+BB's official plugins ship inside the app. The reserved `bb-official`
+marketplace describes these plugins with the standard v2 format. Its catalog
+uses a local path. It never uses the network. `bb marketplace list` shows it
+first. You cannot add or remove it.
+
+The plugins appear in Extensions → Plugins → Browse under BB Official. Install
+a plugin by its bare name or its qualified name. For example, use
+`bb plugin install docs` or `bb plugin install docs@bb-official`. bb copies the
+plugin from the app bundle. An app update also updates the bundled copy.
 
 The BB Community marketplace has the reserved name `bb-community`. It lists
 reviewed plugins that live outside the app bundle. bb requests the v2 manifest
@@ -375,6 +378,9 @@ through anonymous telemetry, so it undercounts: telemetry is opt-out and only
 production builds report. No third-party marketplace has counts; bb measures
 them itself rather than repeating a publisher's claim.
 
+BB Official entries use the same counts. bb finds each count in the BB
+Community `stats.json` file by the plugin id.
+
 Third-party marketplaces
 
 Anyone can host a marketplace manifest. Add one with its https manifest URL,
@@ -386,8 +392,9 @@ path:<directory> on the bb server's machine:
   bb marketplace add path:/work/acme-marketplace
 
 The manifest `name` is the marketplace identity. bb refuses a duplicate name.
-The `bb-community` name is reserved. You cannot add or remove it. A third-party
-marketplace can use manifest v1 or v2. A git or path marketplace reads icons
+The `bb-official` and `bb-community` names are reserved. You cannot add or
+remove them. A third-party marketplace can use manifest v1 or v2. A git or
+path marketplace reads icons
 from its checkout. An HTTPS marketplace resolves relative icon URLs against
 the manifest URL. The server fetches and serves all icons. The detail page
 loads screenshots from the URLs that the marketplace declares. bb clones a
@@ -401,13 +408,12 @@ Install an entry of a specific marketplace with <entry-id>@<marketplace>:
 
   bb plugin install thread-hover-cards@acme-plugins
 
-A bare id resolves across every marketplace. Exactly one match installs, no
-match falls back to the bundled official plugin of that name, and several
-matches fail and list the id@marketplace choices. Every other source
+A bare id resolves across every marketplace. Exactly one match installs.
+Several matches fail and list the id@marketplace choices. Every other source
 form — Git repository URLs, path:, npm:, git:, builtin:, and path-like
 syntax — is unchanged and still bypasses catalog resolution.
 
-Before an install from a marketplace other than bb-community, bb resolves and
+Before an install from a third-party marketplace, bb resolves and
 shows the true source: the npm package with its range or dist-tag, or the git
 URL with its ref or semver range, its subdirectory, and the exact release tag
 and commit that range currently lands on. The confirmation names the
@@ -427,8 +433,9 @@ The Browse tab groups entries by publisher: BB Official for the plugins
 bundled with the app, BB Community for the curated marketplace's listings, and
 each third-party marketplace under its own display name. Grouping keys on the
 marketplace identity, not on the display name, so a marketplace cannot join
-another publisher's group by copying its name — and only bb-community may
-present the BB Official or BB Community labels. Entry cards show the author.
+another publisher's group by copying its name. Only the two reserved
+marketplaces can use the BB Official or BB Community labels. Entry cards show
+the author.
 
 For direct git:/npm: installs, updates are manual: `bb plugin outdated`
 checks tracking sources and `bb plugin update` applies compatible candidates.
@@ -471,7 +478,7 @@ it has both, the install fails and asks you to choose. Write
 version tags such as `v1` and `v1.2.3` are always the literal tag.
 
 `bb plugin search <query>` matches an id, name, description, category, or tag.
-It searches bundled plugins and each registered marketplace. The output has a
+It searches bb-official and each other registered marketplace. The output has a
 Category column. Status shows installed, compatible, or requires newer bb.
 Install a bundled plugin by its bare name. Direct
 HTTP(S) Git repository URLs, `path:`, `npm:`, `git:`, and `builtin:`

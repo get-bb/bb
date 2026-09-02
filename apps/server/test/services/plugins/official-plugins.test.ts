@@ -18,7 +18,6 @@ import {
 } from "../../../src/services/plugins/plugin-service.js";
 import {
   BUNDLED_PLUGINS,
-  PLUGIN_CATALOG_CATEGORIES,
   listBundledPluginRegistrations,
   type BundledPluginRegistration,
 } from "../../../src/services/plugins/builtin-registry.js";
@@ -50,7 +49,6 @@ function officialEntry(
     pluginId: "builtin-fixture",
     autoInstall: false,
     defaultEnabled: true,
-    category: "Productivity",
     rootDir: fixtureRoot,
     ...overrides,
   };
@@ -88,49 +86,10 @@ describe("official plugin registry invariants", () => {
     }
   });
 
-  it("assigns every bundled plugin to one curated store category", () => {
-    const expectedCategories = {
-      "ask-user-question": "Agent interaction",
-      automations: "Workflow management",
-      "concurrency-limit": "Workflow management",
-      connect: "Host access",
-      "custom-instructions": "Context & knowledge",
-      "plugin-api-tester": "Developer tools",
-      docs: "Context & knowledge",
-      github: "Developer tools",
-      "inline-vis": "Interface",
-      "keep-awake": "Host access",
-      memory: "Context & knowledge",
-      "monaco-editor": "Interface",
-      "pdf-preview": "Interface",
-      "plugin-api-docs": "Developer tools",
-      "provider-acp": "Agent interaction",
-      "provider-claude-code": "Agent interaction",
-      "provider-codex": "Agent interaction",
-      "provider-pi": "Agent interaction",
-      "provider-retry": "Agent interaction",
-      "scheduled-send": "Workflow management",
-      secrets: "Developer tools",
-      "side-chat": "Agent interaction",
-      tasks: "Workflow management",
-      "theme-preview": "Interface",
-      workflows: "Workflow management",
-    };
-
+  it("uses one unique bundled name for each plugin", () => {
     expect(new Set(BUNDLED_PLUGINS.map((plugin) => plugin.name)).size).toBe(
       BUNDLED_PLUGINS.length,
     );
-    expect(
-      Object.fromEntries(
-        BUNDLED_PLUGINS.map((plugin) => [plugin.name, plugin.category]),
-      ),
-    ).toEqual(expectedCategories);
-    const validCategories = new Set<string>(PLUGIN_CATALOG_CATEGORIES);
-    expect(
-      BUNDLED_PLUGINS.every((plugin) =>
-        validCategories.has(plugin.category ?? ""),
-      ),
-    ).toBe(true);
   });
 });
 

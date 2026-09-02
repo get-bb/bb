@@ -1049,6 +1049,9 @@ describe("builtin plugin packaging", () => {
     ).resolves.toBeTruthy();
     await expect(stat(join(copiedRoot, "skills"))).resolves.toBeTruthy();
     await expect(
+      readFile(join(targetRoot, "marketplace.json"), "utf8"),
+    ).resolves.toContain('"name": "bb-official"');
+    await expect(
       readFile(join(copiedRoot, "assets", "icon.svg"), "utf8"),
     ).resolves.toBe("<svg/>\n");
     await expect(stat(join(copiedRoot, "src"))).rejects.toThrow();

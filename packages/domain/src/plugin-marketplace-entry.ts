@@ -141,12 +141,24 @@ function marketplaceGitSourceSchema(strict: boolean) {
   return z.union([refObject, rangeObject]);
 }
 
+function marketplaceBundledSourceSchema() {
+  return z
+    .object({
+      bundled: z
+        .object({
+          plugin: z.string().regex(NAME_PATTERN),
+        })
+        .strict(),
+    })
+    .strict();
+}
+
 function marketplaceSourceSchema(strict: boolean) {
-  const source = z.union([
-    marketplaceNpmSourceSchema(strict),
-    marketplaceGitSourceSchema(strict),
-  ]);
-  return source;
+  const npm = marketplaceNpmSourceSchema(strict);
+  const git = marketplaceGitSourceSchema(strict);
+  return strict
+    ? z.union([npm, git])
+    : z.union([npm, git, marketplaceBundledSourceSchema()]);
 }
 
 const marketplaceEntryIdentityShape = (strict: boolean) => ({
@@ -183,4 +195,4 @@ export const marketplaceEntryV2Schema = z.object({
 
 export type MarketplaceEntryV1 = z.infer<typeof marketplaceEntryV1Schema>;
 export type MarketplaceEntryV2 = z.infer<typeof marketplaceEntryV2Schema>;
-export type MarketplaceEntrySource = MarketplaceEntryV1["source"];
+export type MarketplaceEntrySource = MarketplaceEntryV2["source"];

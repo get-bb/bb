@@ -36,9 +36,9 @@ export const CURATED_MARKETPLACE_V2_URL =
 
 export const CURATED_MARKETPLACE_NAME = CURATED_PLUGIN_MARKETPLACE_NAME;
 
-export const BUILTIN_PUBLISHER_LABEL = "BB Official";
+export const BUNDLED_MARKETPLACE_NAME = "bb-official";
 
-export const BUILTIN_PUBLISHER_KEY = "builtin";
+export const BUILTIN_PUBLISHER_LABEL = "BB Official";
 
 const MARKETPLACE_MAX_ENTRIES = 256;
 
@@ -291,6 +291,15 @@ export type MarketplaceManifest = MarketplaceManifestV1 | MarketplaceManifestV2;
 export type MarketplaceEntryV1 = MarketplaceManifestV1["plugins"][number];
 export type MarketplaceEntryV2 = MarketplaceManifestV2["plugins"][number];
 export type MarketplaceEntry = MarketplaceEntryV1 | MarketplaceEntryV2;
+export type BundledMarketplaceEntry = MarketplaceEntryV2 & {
+  source: Extract<MarketplaceEntryV2["source"], { bundled: object }>;
+};
+
+export function isBundledMarketplaceEntry(
+  entry: MarketplaceEntry,
+): entry is BundledMarketplaceEntry {
+  return "bundled" in entry.source;
+}
 
 export interface MarketplaceCollectionMembership {
   id: string;
@@ -369,6 +378,48 @@ export function parseMarketplaceManifest(
   location: string,
   warn?: (message: string) => void,
 ): MarketplaceManifest {
+  return parseMarketplaceManifestWithBundledPolicy(
+    input,
+    location,
+    false,
+    warn,
+  );
+}
+
+export function parseBundledMarketplaceManifest(
+  input: unknown,
+  location: string,
+): MarketplaceManifestV2 {
+  const manifest = parseMarketplaceManifestWithBundledPolicy(
+    input,
+    location,
+    true,
+  );
+  if (
+    manifest.schemaVersion !== 2 ||
+    manifest.name !== BUNDLED_MARKETPLACE_NAME
+  ) {
+    throw new Error(
+      `invalid ${location}: the bundled marketplace must be a v2 document named "${BUNDLED_MARKETPLACE_NAME}"`,
+    );
+  }
+  const nonBundled = manifest.plugins.find(
+    (entry) => !isBundledMarketplaceEntry(entry),
+  );
+  if (nonBundled !== undefined) {
+    throw new Error(
+      `invalid ${location}: entry "${nonBundled.id}" in "${BUNDLED_MARKETPLACE_NAME}" must use a bundled source`,
+    );
+  }
+  return manifest;
+}
+
+function parseMarketplaceManifestWithBundledPolicy(
+  input: unknown,
+  location: string,
+  allowBundled: boolean,
+  warn?: (message: string) => void,
+): MarketplaceManifest {
   if (
     typeof input === "object" &&
     input !== null &&
@@ -391,8 +442,15 @@ export function parseMarketplaceManifest(
   if (!parsed.success) {
     throw new Error(`invalid ${location}: ${formatIssues(parsed.error)}`);
   }
+  const bundled = parsed.data.plugins.find(isBundledMarketplaceEntry);
+  if (bundled !== undefined && !allowBundled) {
+    throw new Error(
+      `invalid ${location}: bundled source on entry "${bundled.id}" is reserved for the built-in "${BUNDLED_MARKETPLACE_NAME}" marketplace and is not allowed in fetched or third-party documents`,
+    );
+  }
   if (parsed.data.schemaVersion === 1) return parsed.data;
   const plugins = parsed.data.plugins.filter((entry) => {
+    if ("bundled" in entry.source) return true;
     const range =
       "npm" in entry.source
         ? entry.source.npm.range
@@ -452,6 +510,21 @@ export function parseMarketplaceManifestJson(
     );
   }
   return parseMarketplaceManifest(json, location, warn);
+}
+
+export function parseBundledMarketplaceManifestJson(
+  raw: string,
+  location: string,
+): MarketplaceManifestV2 {
+  let json: unknown;
+  try {
+    json = JSON.parse(raw);
+  } catch (error) {
+    throw new Error(
+      `invalid ${location}: not valid JSON (${error instanceof Error ? error.message : String(error)})`,
+    );
+  }
+  return parseBundledMarketplaceManifest(json, location);
 }
 
 export function entryIconName(entry: MarketplaceEntry): string | null {
@@ -528,11 +601,13 @@ export function resolveEntryIcon(
 }
 
 export function entryRepositoryUrl(entry: MarketplaceEntry): string | null {
+  if (isBundledMarketplaceEntry(entry)) return null;
   if ("npm" in entry.source) {
     return entry.source.npm.registry === undefined
       ? `https://www.npmjs.com/package/${entry.source.npm.package}`
       : null;
   }
+  if (!("git" in entry.source)) return null;
   const git = entry.source.git;
   const repository = git.url.replace(/\.git$/u, "");
   if (git.subdir === undefined) return repository;
@@ -543,6 +618,9 @@ export function entryRepositoryUrl(entry: MarketplaceEntry): string | null {
 }
 
 export function entrySourceDisplay(entry: MarketplaceEntry): string {
+  if (isBundledMarketplaceEntry(entry)) {
+    return `builtin:${entry.source.bundled.plugin}`;
+  }
   if ("npm" in entry.source) {
     const spec = entry.source.npm.range ?? entry.source.npm.tag ?? "";
     const registry =
@@ -550,6 +628,9 @@ export function entrySourceDisplay(entry: MarketplaceEntry): string {
         ? ""
         : ` (registry ${entry.source.npm.registry})`;
     return `npm:${entry.source.npm.package}${spec.length === 0 ? "" : `@${spec}`}${registry}`;
+  }
+  if (!("git" in entry.source)) {
+    return `builtin:${entry.source.bundled.plugin}`;
   }
   const git = entry.source.git;
   const subdir = git.subdir === undefined ? "" : `#${git.subdir}`;
@@ -567,6 +648,12 @@ interface ResolvedEntrySource {
 export function resolvedEntrySource(
   entry: MarketplaceEntry,
 ): ResolvedEntrySource {
+  if (isBundledMarketplaceEntry(entry)) {
+    return {
+      source: `builtin:${entry.source.bundled.plugin}`,
+      selection: ROOT_PLUGIN_SOURCE_SELECTION,
+    };
+  }
   if ("npm" in entry.source) {
     const spec = entry.source.npm.range ?? entry.source.npm.tag ?? "";
     return {
@@ -575,6 +662,12 @@ export function resolvedEntrySource(
       ...(entry.source.npm.registry === undefined
         ? {}
         : { npmRegistry: entry.source.npm.registry }),
+    };
+  }
+  if (!("git" in entry.source)) {
+    return {
+      source: `builtin:${entry.source.bundled.plugin}`,
+      selection: ROOT_PLUGIN_SOURCE_SELECTION,
     };
   }
   const git = entry.source.git;
