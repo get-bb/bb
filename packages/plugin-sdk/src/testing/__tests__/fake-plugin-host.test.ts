@@ -273,6 +273,12 @@ describe("settings", () => {
         default: "fast",
       },
       enabled: { type: "boolean", label: "Enabled", default: true },
+      retries: {
+        type: "number",
+        label: "Retries",
+        experimental_schema: z.number().int().min(0).max(5),
+        default: 3,
+      },
     });
   }
 
@@ -285,6 +291,7 @@ describe("settings", () => {
       token: "xoxb-1",
       mode: "fast",
       enabled: false,
+      retries: 3,
     });
   });
 
@@ -301,11 +308,11 @@ describe("settings", () => {
       "must be one of: fast, slow",
     );
 
-    await harness.setSettings({ token: "xoxb-2", mode: "slow" });
+    await harness.setSettings({ token: "xoxb-2", mode: "slow", retries: 5 });
     expect(changes).toHaveLength(1);
     expect(changes[0]).toEqual({
-      next: { token: "xoxb-2", mode: "slow", enabled: true },
-      prev: { token: undefined, mode: "fast", enabled: true },
+      next: { token: "xoxb-2", mode: "slow", enabled: true, retries: 5 },
+      prev: { token: undefined, mode: "fast", enabled: true, retries: 3 },
     });
 
     await harness.setSettings({ mode: "slow" });
@@ -314,6 +321,16 @@ describe("settings", () => {
     await harness.setSettings({ mode: null });
     expect(changes).toHaveLength(2);
     expect(await handle.get()).toMatchObject({ mode: "fast" });
+
+    await expect(harness.setSettings({ retries: "4" })).rejects.toThrow(
+      "expects a finite number",
+    );
+    await expect(harness.setSettings({ retries: 6 })).rejects.toThrow(
+      "Too big",
+    );
+    await expect(harness.setSettings({ retries: Number.NaN })).rejects.toThrow(
+      "expects a finite number",
+    );
   });
 
   it("validates strings and lets plugin server code persist its own settings", async () => {
@@ -393,6 +410,15 @@ describe("settings", () => {
         notes: { type: "string", label: "Notes", experimental_multiline: true },
       }),
     ).not.toThrow();
+    expect(() =>
+      bb.settings.define({
+        invalidRetries: {
+          type: "number",
+          label: "Retries",
+          default: Number.POSITIVE_INFINITY,
+        },
+      }),
+    ).toThrow('invalid descriptor for setting "invalidRetries"');
     expect(() =>
       bb.settings.define({
         payload: {

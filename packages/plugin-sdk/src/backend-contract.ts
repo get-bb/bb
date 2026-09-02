@@ -86,6 +86,13 @@ export type PluginSettingDescriptor =
       default?: boolean;
     }
   | {
+      type: "number";
+      label: string;
+      description?: string;
+      experimental_schema?: StandardSchemaV1<number, number>;
+      default?: number;
+    }
+  | {
       type: "select";
       label: string;
       description?: string;
@@ -105,13 +112,13 @@ export type PluginSettingDescriptor =
 
 export type PluginSettingDescriptors = Record<string, PluginSettingDescriptor>;
 
-export type PluginSettingValue = string | boolean;
+export type PluginSettingValue = string | number | boolean;
 
 /** `default` present → non-optional value; absent → `T | undefined`. */
 export type PluginSettingsValues<
   Ds extends Record<string, PluginSettingDescriptor>,
 > = {
-  [K in keyof Ds]: Ds[K] extends { default: string | boolean }
+  [K in keyof Ds]: Ds[K] extends { default: string | number | boolean }
     ? PluginSettingValueOf<Ds[K]>
     : PluginSettingValueOf<Ds[K]> | undefined;
 };
@@ -120,7 +127,9 @@ type PluginSettingValueOf<D extends PluginSettingDescriptor> = D extends {
   type: "boolean";
 }
   ? boolean
-  : string;
+  : D extends { type: "number" }
+    ? number
+    : string;
 
 export interface PluginSettingsHandle<
   Ds extends Record<string, PluginSettingDescriptor>,

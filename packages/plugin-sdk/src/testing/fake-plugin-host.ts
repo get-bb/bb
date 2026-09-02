@@ -480,7 +480,26 @@ function readSettingsValues(
   const values: Record<string, PluginSettingValue | undefined> = {};
   for (const [key, descriptor] of Object.entries(descriptors)) {
     let value = stored.get(key);
-    const expected = descriptor.type === "boolean" ? "boolean" : "string";
+    if (descriptor.type === "number" && typeof value === "string") {
+      const legacyNumber = Number(value.trim());
+      value =
+        value.trim().length > 0 && Number.isFinite(legacyNumber)
+          ? legacyNumber
+          : undefined;
+    }
+    if (
+      descriptor.type === "number" &&
+      typeof value === "number" &&
+      !Number.isFinite(value)
+    ) {
+      value = undefined;
+    }
+    const expected =
+      descriptor.type === "boolean"
+        ? "boolean"
+        : descriptor.type === "number"
+          ? "number"
+          : "string";
     if (typeof value !== expected) value = undefined;
     if (
       descriptor.type === "select" &&
@@ -991,9 +1010,10 @@ function createFakePluginHostInternal(
         );
       }
       const rows = database
-        .prepare<[], { id: number; statement_hash: string | null }>(
-          "SELECT id, statement_hash FROM _bb_migrations ORDER BY id",
-        )
+        .prepare<
+          [],
+          { id: number; statement_hash: string | null }
+        >("SELECT id, statement_hash FROM _bb_migrations ORDER BY id")
         .all();
       const applied = new Map<number, string | null>();
       for (const row of rows) applied.set(row.id, row.statement_hash);
@@ -1053,7 +1073,11 @@ function createFakePluginHostInternal(
     const prev = readSettingsValues(settingsDescriptors, storedSettings);
     for (const [key, value] of Object.entries(values)) {
       if (value === null) storedSettings.delete(key);
-      else if (typeof value === "string" || typeof value === "boolean") {
+      else if (
+        typeof value === "string" ||
+        typeof value === "number" ||
+        typeof value === "boolean"
+      ) {
         storedSettings.set(key, value);
       } else {
         throw new Error(`setting "${key}" has an unsupported value`);

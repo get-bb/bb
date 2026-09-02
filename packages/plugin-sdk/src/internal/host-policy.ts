@@ -125,6 +125,9 @@ const stringSettingSchemaSchema = z.custom<StandardSchemaV1<string, string>>(
 const booleanSettingSchemaSchema = z.custom<StandardSchemaV1<boolean, boolean>>(
   (value) => isStandardSchema(value),
 );
+const numberSettingSchemaSchema = z.custom<StandardSchemaV1<number, number>>(
+  (value) => isStandardSchema(value),
+);
 
 const settingDescriptorSchema = z.discriminatedUnion("type", [
   z
@@ -156,6 +159,14 @@ const settingDescriptorSchema = z.discriminatedUnion("type", [
       ...settingsBaseFields,
       experimental_schema: booleanSettingSchemaSchema.optional(),
       default: z.boolean().optional(),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("number"),
+      ...settingsBaseFields,
+      experimental_schema: numberSettingSchemaSchema.optional(),
+      default: z.number().finite().optional(),
     })
     .strict(),
   z
@@ -229,7 +240,7 @@ export function registerSettingDescriptors(
   return validated;
 }
 
-function settingSchemaError<T extends string | boolean>(
+function settingSchemaError<T extends string | number | boolean>(
   key: string,
   schema: StandardSchemaV1<T, T> | undefined,
   value: T,
@@ -272,6 +283,21 @@ export function validateSettingsUpdate(
     if (descriptor.type === "boolean") {
       if (typeof value !== "boolean") {
         errors.push(`setting "${key}" expects a boolean`);
+        continue;
+      }
+      const validationError = settingSchemaError(
+        key,
+        descriptor.experimental_schema,
+        value,
+      );
+      if (validationError !== null) {
+        errors.push(validationError);
+      }
+      continue;
+    }
+    if (descriptor.type === "number") {
+      if (typeof value !== "number" || !Number.isFinite(value)) {
+        errors.push(`setting "${key}" expects a finite number`);
         continue;
       }
       const validationError = settingSchemaError(

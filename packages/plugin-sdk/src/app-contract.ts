@@ -1538,7 +1538,7 @@ export interface PluginSettingsState {
    * Effective non-secret setting values (secret settings are excluded —
    * read them server-side). Undefined while loading or unavailable.
    */
-  values: Record<string, string | boolean> | undefined;
+  values: Record<string, string | number | boolean> | undefined;
   isLoading: boolean;
 }
 

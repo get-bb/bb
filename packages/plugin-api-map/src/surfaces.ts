@@ -462,7 +462,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         summary:
           "Declares the settings your plugin needs as plain data; bb renders the form for them on the plugin's settings page and stores the values. With this, a plugin can:",
         bullets: [
-          "Declare each field's type (text, toggle, choice, or project) with a label and an optional default",
+          "Declare each field's type (text, number, toggle, choice, or project) with a label and an optional default",
           "Get the form, its validation, and autosaving without writing any UI",
           "Validate each proposed value with a synchronous, non-transforming Standard Schema through `experimental_schema`; Zod schemas qualify",
           "Render multi-line text with `experimental_multiline`",

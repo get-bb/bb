@@ -854,8 +854,8 @@ nothing, because waiting does not fix them.
 
 The builtin Workflows plugin is disabled on fresh installations. Enable it
 under Extensions → Plugins or with `bb plugin enable workflows`. Its six
-settings accept base-10 integer strings through Extensions → Plugins or
-`bb plugin config workflows set <key> <value>`:
+settings are bounded integers, edited with numeric inputs under Extensions →
+Plugins or with `bb plugin config workflows set <key> <value>`:
 
 | Key                    |    Default |       Allowed range | Behavior                                               |
 | ---------------------- | ---------: | ------------------: | ------------------------------------------------------ |

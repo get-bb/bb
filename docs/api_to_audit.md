@@ -162,6 +162,23 @@ write.
   values and unsets, before stabilizing `experimental_set`.
 - Decide whether schemas and server-side writes stabilize independently.
 
+## `PluginSettingDescriptor` type `"number"`
+
+**What it does.** A numeric setting descriptor gives server code, provider
+configuration, and plugin UI a finite `number` instead of making each consumer
+parse a string. The host renders a number input and converts CLI values before
+validation. `experimental_schema` can enforce integer and range constraints.
+Stored numeric strings from settings created before this descriptor existed
+are read as numbers so migrated plugins preserve their configuration.
+
+**Audit before stabilizing.**
+
+- Decide whether common minimum, maximum, and step metadata belongs directly
+  on the descriptor instead of only in `experimental_schema`.
+- Confirm clearing a number input should continue to unset the stored value.
+- Decide how long legacy stored numeric strings should be coerced on read.
+- Exercise decimal and exponent input across browser engines and the CLI.
+
 ## `bb.experimental_hooks` (`on`, `recheck`)
 
 **What it does.** The one plugin surface that _decides_ rather than observes.

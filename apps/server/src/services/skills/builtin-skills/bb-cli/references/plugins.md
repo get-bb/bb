@@ -133,7 +133,8 @@
     schedules; managed git/npm files are deleted, and local path sources stay
     on disk).
   - `bb plugin config <id> [set <key> <value> | unset <key>]` — declared
-    settings. Reload the plugin after configuring (`bb plugin reload <id>`).
+    settings; boolean and number arguments are converted to their declared
+    types. Reload the plugin after configuring (`bb plugin reload <id>`).
   - `bb plugin token <id>` — print a short-lived bearer token for that plugin.
   - List, reload, enable, disable, config, and remove support `--json`.
   - `bb plugin logs <id> [-n N] [-f]` — the plugin's `bb.log` output.

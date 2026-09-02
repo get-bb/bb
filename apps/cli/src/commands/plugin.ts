@@ -103,11 +103,11 @@ async function searchCatalog(
 }
 
 const pluginSettingDescriptorSchema = z.object({
-  type: z.enum(["string", "boolean", "select", "project"]),
+  type: z.enum(["string", "number", "boolean", "select", "project"]),
   label: z.string(),
   description: z.string().optional(),
   secret: z.literal(true).optional(),
-  default: z.union([z.string(), z.boolean()]).optional(),
+  default: z.union([z.string(), z.number().finite(), z.boolean()]).optional(),
   options: z.array(z.string()).optional(),
 });
 const pluginSettingsResultSchema = z.object({
@@ -740,7 +740,7 @@ function parseSettingValue(
   descriptor: PluginSettingDescriptor,
   key: string,
   raw: string,
-): string | boolean {
+): string | number | boolean {
   if (descriptor.type === "boolean") {
     if (raw === "true") return true;
     if (raw === "false") return false;
@@ -751,6 +751,17 @@ function parseSettingValue(
     console.error(
       `Setting "${key}" must be one of: ${descriptor.options?.join(", ") ?? ""}`,
     );
+    process.exit(1);
+  }
+  if (descriptor.type === "number") {
+    let value: unknown;
+    try {
+      value = JSON.parse(raw);
+    } catch {
+      value = undefined;
+    }
+    if (typeof value === "number" && Number.isFinite(value)) return value;
+    console.error(`Setting "${key}" is a number — pass a finite number.`);
     process.exit(1);
   }
   return raw;
@@ -1589,7 +1600,7 @@ export function registerPluginCommands(
             );
             process.exit(1);
           }
-          let parsedValue: string | boolean | null = null;
+          let parsedValue: string | number | boolean | null = null;
           if (actionName === "set") {
             if (value === undefined) {
               console.error("Usage: bb plugin config <id> set <key> <value>");

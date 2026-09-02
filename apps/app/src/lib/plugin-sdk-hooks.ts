@@ -177,7 +177,7 @@ export async function callPluginRpc(
 export async function fetchPluginSdkSettings(
   fetchImpl: FetchLike,
   pluginId: string,
-): Promise<Record<string, string | boolean> | null> {
+): Promise<Record<string, string | number | boolean> | null> {
   const response = await fetchImpl(
     `/api/v1/plugins/${encodeURIComponent(pluginId)}/settings`,
   );
@@ -193,9 +193,13 @@ export async function fetchPluginSdkSettings(
   ) {
     return null;
   }
-  const values: Record<string, string | boolean> = {};
+  const values: Record<string, string | number | boolean> = {};
   for (const [key, value] of Object.entries(body.values)) {
-    if (typeof value === "string" || typeof value === "boolean") {
+    if (
+      typeof value === "string" ||
+      (typeof value === "number" && Number.isFinite(value)) ||
+      typeof value === "boolean"
+    ) {
       values[key] = value;
     }
   }

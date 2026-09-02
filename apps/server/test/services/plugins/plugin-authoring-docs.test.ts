@@ -177,6 +177,7 @@ void _assertAllApiKeysListed;
 
 const SETTING_DESCRIPTOR_TYPES = [
   "string",
+  "number",
   "boolean",
   "select",
   "project",

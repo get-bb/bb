@@ -1755,6 +1755,20 @@ export function SettingsWireframe() {
                 <span className="ml-auto size-3.5 rounded-full bg-background" />
               </span>
             </span>
+            <span className="flex items-start justify-between gap-3 py-1.5">
+              <span className="min-w-0">
+                <span className="block text-foreground">Retry attempts</span>
+                <span className="block pt-1 leading-relaxed">
+                  Maximum retries before stopping.
+                </span>
+              </span>
+              <span
+                aria-hidden
+                className="flex h-6 w-32 shrink-0 items-center rounded-md border border-border bg-card px-2 text-xs text-foreground"
+              >
+                3
+              </span>
+            </span>
             <span className="block py-1.5">
               <span className="block text-foreground">Custom instructions</span>
               <span className="block pt-1 leading-relaxed">
