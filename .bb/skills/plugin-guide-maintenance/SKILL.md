@@ -1,14 +1,16 @@
 ---
 name: plugin-guide-maintenance
-description: Keep the Plugin Guide aligned with public Plugin SDK changes that affect its documented contract. Use this skill when an addition, change, rename, stabilization, or removal in @get-bb/plugin-sdk, app.slots.*, or BbPluginApi changes a Guide card, API symbol list, fixture, or SDK inventory. Do not use it for internal API work or interface-only changes that leave the Guide accurate.
+description: Keep the Plugin Guide accurate when a public Plugin SDK change affects its documented contract or an existing Guide annotation changes order, placement, target, or overlay ownership. Use for additions, changes, renames, stabilizations, or removals in @get-bb/plugin-sdk, app.slots.*, or BbPluginApi that affect a Guide card, fixture, symbol list, or SDK inventory, and for annotation-only maintenance. Do not use for internal implementation or API work that leaves the Guide accurate.
 ---
 
-# Maintain the Plugin Guide for a public API change
+# Maintain the Plugin Guide
 
-The Plugin Guide is bb's public Plugin SDK reference. Use this workflow only
-when a public API change affects its documented contract.
+The Plugin Guide is bb's public Plugin SDK reference. For a public API change,
+follow the full workflow. For annotation-only maintenance, start at Maintain
+annotation layout, skip the public-API and SDK-inventory sections, and then
+follow the annotation-only verification path.
 
-## Confirm the trigger
+## Confirm a public API change
 
 Build the declarations and inspect the SDK change:
 
@@ -96,7 +98,7 @@ one stable readable sequence before shipping.
 
 ## Refresh the SDK inventory
 
-Refresh the inventory after the Guide represents the API change:
+Refresh the inventory after the Guide represents a public API change:
 
 ```sh
 pnpm exec turbo run update:sdk-inventory --filter=@bb/plugin-api-map
@@ -105,6 +107,8 @@ pnpm exec turbo run update:sdk-inventory --filter=@bb/plugin-api-map
 Review `packages/plugin-api-map/sdk-public-api.json`. Do not edit its hashes.
 
 ## Verify the result
+
+For a public API change, run:
 
 ```sh
 pnpm exec turbo run test typecheck \
@@ -115,5 +119,8 @@ pnpm exec turbo run test typecheck \
 bb plugin build plugins/plugin-api-docs
 ```
 
-For a visible API change, start `scripts/bb-dev-app current`. Inspect the
-affected entry and each reachable action.
+For annotation-only maintenance, use the affected package and Plugin Guide
+checks required by repository validation policy. Start
+`scripts/bb-dev-app current`; inspect the affected entry and reachable actions
+for a public API change, or the affected annotations and adjacent interactive
+surfaces for annotation-only maintenance.
