@@ -143,6 +143,7 @@
             },
             "url": {
               "type": "string",
+              "format": "uri",
               "pattern": "^https://"
             }
           }
@@ -223,6 +224,7 @@
             },
             "registry": {
               "type": "string",
+              "format": "uri",
               "pattern": "^https://"
             }
           }
@@ -247,6 +249,7 @@
           "properties": {
             "url": {
               "type": "string",
+              "format": "uri",
               "pattern": "^https://"
             },
             "subdir": {
@@ -274,6 +277,7 @@
           "properties": {
             "url": {
               "type": "string",
+              "format": "uri",
               "pattern": "^https://"
             },
             "subdir": {

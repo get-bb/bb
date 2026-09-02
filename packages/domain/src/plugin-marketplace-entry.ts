@@ -54,6 +54,13 @@ const semverRangeSchema = z
   .min(1)
   .regex(MARKETPLACE_SEMVER_RANGE_PATTERN);
 const httpsUrlSchema = z.string().regex(HTTPS_URL_PATTERN);
+const validHttpsUrlSchema = httpsUrlSchema.refine((value) => {
+  try {
+    return new URL(value).protocol === "https:";
+  } catch {
+    return false;
+  }
+}, "must be a valid https URL");
 const marketplaceScreenshotSchema = z
   .string()
   .min(1)
@@ -81,7 +88,7 @@ function marketplaceAuthorSchema(strict: boolean) {
   const object = z.object({
     name: z.string().min(1),
     github: z.string().regex(GITHUB_LOGIN_PATTERN).optional(),
-    url: httpsUrlSchema.optional(),
+    url: (strict ? httpsUrlSchema : validHttpsUrlSchema).optional(),
   });
   return strict ? object.strict() : object;
 }
@@ -97,7 +104,7 @@ function marketplaceNpmSourceSchema(strict: boolean) {
         .string()
         .regex(/^[A-Za-z][A-Za-z0-9._-]*$/u)
         .optional(),
-      registry: httpsUrlSchema.optional(),
+      registry: (strict ? httpsUrlSchema : validHttpsUrlSchema).optional(),
     })
     .refine((value) => value.range === undefined || value.tag === undefined, {
       message: "range and tag are mutually exclusive",
@@ -109,7 +116,7 @@ function marketplaceNpmSourceSchema(strict: boolean) {
 
 function marketplaceGitSourceSchema(strict: boolean) {
   const base = {
-    url: httpsUrlSchema,
+    url: strict ? httpsUrlSchema : validHttpsUrlSchema,
     subdir: z.string().regex(GIT_SUBDIR_PATTERN).optional(),
   };
   const ref = z.object({

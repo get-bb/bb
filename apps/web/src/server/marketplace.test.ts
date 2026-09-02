@@ -42,6 +42,7 @@ const bucket = bucketOf({
     contentType: "application/json",
   },
   "icons/widgets.svg": { body: "<svg/>", etag: "icon-1" },
+  "v2/screenshots/acme/1.jpg": { body: "jpeg", etag: "screenshot-1" },
 });
 
 function request(path: string, headers: Record<string, string> = {}): Request {
@@ -97,6 +98,17 @@ describe("serveMarketplaceObject", () => {
     expect(response.headers.get("content-type")).toBe("image/svg+xml");
     expect(response.headers.get("cache-control")).toContain("immutable");
     expect(response.headers.get("x-content-type-options")).toBe("nosniff");
+  });
+
+  it("serves v2 JPEG assets with revalidation", async () => {
+    const response = await serveMarketplaceObject({
+      bucket,
+      request: request("/marketplace/v2/screenshots/acme/1.jpg"),
+    });
+    expect(response.headers.get("content-type")).toBe("image/jpeg");
+    expect(response.headers.get("cache-control")).toBe(
+      "public, max-age=300, must-revalidate",
+    );
   });
 
   it("answers 304 for a matching conditional request", async () => {

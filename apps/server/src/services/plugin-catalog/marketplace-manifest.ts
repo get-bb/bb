@@ -1,7 +1,7 @@
 import { join } from "node:path";
 import {
   marketplaceEntryV2Schema as domainMarketplaceEntryV2Schema,
-  PLUGIN_CATALOG_CATEGORIES,
+  pluginCatalogCategory,
   pluginMarketplaceCategorySchema,
   pluginMarketplaceCollectionSchema,
   type PluginMarketplaceCategory,
@@ -335,6 +335,44 @@ export interface MarketplaceCollectionMembership {
   rank: number;
 }
 
+interface MarketplaceManifestIndex {
+  categories: ReadonlyMap<string, PluginMarketplaceCategory>;
+  collections: ReadonlyMap<string, readonly MarketplaceCollectionMembership[]>;
+}
+
+const marketplaceManifestIndexes = new WeakMap<
+  MarketplaceManifest,
+  MarketplaceManifestIndex
+>();
+
+function marketplaceManifestIndex(
+  manifest: MarketplaceManifest,
+): MarketplaceManifestIndex {
+  const existing = marketplaceManifestIndexes.get(manifest);
+  if (existing !== undefined) return existing;
+  const categories = new Map<string, PluginMarketplaceCategory>();
+  const collections = new Map<string, MarketplaceCollectionMembership[]>();
+  if (manifest.schemaVersion === 2) {
+    for (const category of manifest.categories ?? []) {
+      categories.set(category.id, category);
+    }
+    const entryIds = new Set(manifest.plugins.map((entry) => entry.id));
+    for (const collection of manifest.collections ?? []) {
+      let rank = 0;
+      for (const entryId of collection.pluginIds) {
+        if (!entryIds.has(entryId)) continue;
+        const memberships = collections.get(entryId) ?? [];
+        memberships.push({ id: collection.id, rank });
+        collections.set(entryId, memberships);
+        rank += 1;
+      }
+    }
+  }
+  const index = { categories, collections };
+  marketplaceManifestIndexes.set(manifest, index);
+  return index;
+}
+
 export function curatedMarketplaceManifestUrls(configuredUrl: string): {
   primary: string;
   fallback: string | null;
@@ -395,28 +433,19 @@ export function marketplaceEntryCategory(
   if (manifest.schemaVersion !== 2 || !("category" in entry)) return undefined;
   const categoryId = entry.category;
   if (categoryId === undefined) return undefined;
-  const declared = manifest.categories?.find(
-    (category) => category.id === categoryId,
-  );
+  const declared =
+    marketplaceManifestIndex(manifest).categories.get(categoryId);
   if (declared !== undefined) return declared;
-  return PLUGIN_CATALOG_CATEGORIES.find(
-    (category) => category.id === categoryId,
-  );
+  return pluginCatalogCategory(categoryId);
 }
 
 export function marketplaceEntryCollections(
   manifest: MarketplaceManifest,
   entryId: string,
 ): MarketplaceCollectionMembership[] {
-  if (manifest.schemaVersion !== 2) return [];
-  const entryIds = new Set(manifest.plugins.map((entry) => entry.id));
-  if (!entryIds.has(entryId)) return [];
-  return (manifest.collections ?? []).flatMap((collection) => {
-    const rank = collection.pluginIds
-      .filter((candidate) => entryIds.has(candidate))
-      .indexOf(entryId);
-    return rank === -1 ? [] : [{ id: collection.id, rank }];
-  });
+  return [
+    ...(marketplaceManifestIndex(manifest).collections.get(entryId) ?? []),
+  ];
 }
 
 export function parseMarketplaceManifestJson(

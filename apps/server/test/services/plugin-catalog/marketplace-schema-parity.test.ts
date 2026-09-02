@@ -33,6 +33,13 @@ async function compilePublishedSchema(
     "date-time",
     (value) => z.iso.datetime({ offset: true }).safeParse(value).success,
   );
+  ajv.addFormat("uri", (value) => {
+    try {
+      return new URL(value).protocol.length > 0;
+    } catch {
+      return false;
+    }
+  });
   return ajv.compile(schema);
 }
 
@@ -254,6 +261,29 @@ const v2Fixtures: readonly Fixture[] = [
     valid: false,
     manifest: manifestV2With({
       screenshots: ["http://cdn.example.com/acme.png"],
+    }),
+  },
+  {
+    label: "malformed author URL",
+    valid: false,
+    manifest: manifestV2With({
+      author: { name: "Acme", url: "https://" },
+    }),
+  },
+  {
+    label: "malformed npm registry URL",
+    valid: false,
+    manifest: manifestV2With({
+      source: {
+        npm: { package: "bb-plugin-acme", registry: "https://" },
+      },
+    }),
+  },
+  {
+    label: "malformed git URL",
+    valid: false,
+    manifest: manifestV2With({
+      source: { git: { url: "https://", ref: "v1.2.3" } },
     }),
   },
   {

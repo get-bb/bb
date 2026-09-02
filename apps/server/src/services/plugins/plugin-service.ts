@@ -73,6 +73,7 @@ import {
   marketplaceEntryCategory,
   marketplaceEntryCollections,
   parseMarketplaceManifestJson,
+  type MarketplaceManifest,
 } from "../plugin-catalog/marketplace-manifest.js";
 import {
   getLastThreadErrorMessage,
@@ -1190,6 +1191,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     const publisherLabels = rows.some((row) => row.provenance === "catalog")
       ? marketplacePublisherLabels(deps.db)
       : new Map<string, string>();
+    const catalogMetadataByPluginId = installedCatalogMetadata(rows);
     return rows
       .sort((a, b) => a.id.localeCompare(b.id))
       .map((row) => {
@@ -1199,7 +1201,10 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
         const cliRegistration = loadedPlugin?.handle.cli.registration;
         const identity =
           loadedPlugin === undefined ? identities.get(row.id) : undefined;
-        const catalogMetadata = installedCatalogMetadata(row);
+        const catalogMetadata = catalogMetadataByPluginId.get(row.id) ?? {
+          screenshots: [],
+          collections: [],
+        };
         return {
           id: row.id,
           source: row.source,
@@ -1300,9 +1305,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       });
   }
 
-  function installedCatalogMetadata(
-    row: InstalledPluginRow,
-  ): Pick<
+  type InstalledCatalogMetadata = Pick<
     PluginListEntry,
     | "categoryId"
     | "category"
@@ -1310,56 +1313,74 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     | "collections"
     | "publishedAt"
     | "updatedAt"
-  > {
-    const empty = { screenshots: [], collections: [] };
-    if (row.catalogMarketplaceName === null || row.catalogEntryId === null) {
-      return empty;
+  >;
+
+  function installedCatalogMetadata(
+    rows: readonly InstalledPluginRow[],
+  ): ReadonlyMap<string, InstalledCatalogMetadata> {
+    const rowsByMarketplace = new Map<string, InstalledPluginRow[]>();
+    for (const row of rows) {
+      if (row.catalogMarketplaceName === null || row.catalogEntryId === null) {
+        continue;
+      }
+      const marketplaceRows =
+        rowsByMarketplace.get(row.catalogMarketplaceName) ?? [];
+      marketplaceRows.push(row);
+      rowsByMarketplace.set(row.catalogMarketplaceName, marketplaceRows);
     }
-    const marketplace = getPluginMarketplace(
-      deps.db,
-      row.catalogMarketplaceName,
-    );
-    if (marketplace === undefined) return empty;
-    try {
-      const manifest = parseMarketplaceManifestJson(
-        marketplace.manifestJson,
-        `stored "${marketplace.name}" marketplace catalog`,
+
+    const metadataByPluginId = new Map<string, InstalledCatalogMetadata>();
+    for (const [marketplaceName, marketplaceRows] of rowsByMarketplace) {
+      const marketplace = getPluginMarketplace(deps.db, marketplaceName);
+      if (marketplace === undefined) continue;
+      let manifest: MarketplaceManifest;
+      try {
+        manifest = parseMarketplaceManifestJson(
+          marketplace.manifestJson,
+          `stored "${marketplace.name}" marketplace catalog`,
+        );
+      } catch {
+        continue;
+      }
+      const entriesById = new Map(
+        manifest.plugins.map((entry) => [entry.id, entry]),
       );
-      const entry = manifest.plugins.find(
-        (candidate) => candidate.id === row.catalogEntryId,
-      );
-      if (entry === undefined) return empty;
-      const category = marketplaceEntryCategory(manifest, entry);
-      const legacyCategory =
-        manifest.schemaVersion === 1
-          ? installedLegacyCategory(
-              entry.tags ?? [],
-              marketplace.name === CURATED_MARKETPLACE_NAME,
-            )
-          : undefined;
-      return {
-        ...(category === undefined
-          ? legacyCategory === undefined
-            ? {}
-            : { category: legacyCategory }
-          : { categoryId: category.id, category: category.displayName }),
-        screenshots: entryScreenshotUrls(
-          entry,
-          marketplace.sourceKind === "https"
-            ? { kind: "url", manifestUrl: marketplace.manifestUrl }
-            : { kind: "dir", root: marketplace.manifestUrl },
-        ),
-        collections: marketplaceEntryCollections(manifest, entry.id),
-        ...("publishedAt" in entry && typeof entry.publishedAt === "string"
-          ? { publishedAt: entry.publishedAt }
-          : {}),
-        ...("updatedAt" in entry && typeof entry.updatedAt === "string"
-          ? { updatedAt: entry.updatedAt }
-          : {}),
-      };
-    } catch {
-      return empty;
+      for (const row of marketplaceRows) {
+        const entry = entriesById.get(row.catalogEntryId ?? "");
+        if (entry === undefined) continue;
+        try {
+          const category = marketplaceEntryCategory(manifest, entry);
+          const legacyCategory =
+            manifest.schemaVersion === 1
+              ? installedLegacyCategory(
+                  entry.tags ?? [],
+                  marketplace.name === CURATED_MARKETPLACE_NAME,
+                )
+              : undefined;
+          metadataByPluginId.set(row.id, {
+            ...(category === undefined
+              ? legacyCategory === undefined
+                ? {}
+                : { category: legacyCategory }
+              : { categoryId: category.id, category: category.displayName }),
+            screenshots: entryScreenshotUrls(
+              entry,
+              marketplace.sourceKind === "https"
+                ? { kind: "url", manifestUrl: marketplace.manifestUrl }
+                : { kind: "dir", root: marketplace.manifestUrl },
+            ),
+            collections: marketplaceEntryCollections(manifest, entry.id),
+            ...("publishedAt" in entry && typeof entry.publishedAt === "string"
+              ? { publishedAt: entry.publishedAt }
+              : {}),
+            ...("updatedAt" in entry && typeof entry.updatedAt === "string"
+              ? { updatedAt: entry.updatedAt }
+              : {}),
+          });
+        } catch {}
+      }
     }
+    return metadataByPluginId;
   }
 
   function installedLegacyCategory(

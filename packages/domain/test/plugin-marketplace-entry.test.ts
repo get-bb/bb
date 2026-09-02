@@ -95,6 +95,29 @@ describe("marketplace entry schemas", () => {
     ).toBe(false);
   });
 
+  it("rejects malformed v2 https URLs", () => {
+    expect(
+      marketplaceEntryV2Schema.safeParse({
+        ...entry(),
+        author: { name: "Author", url: "https://" },
+      }).success,
+    ).toBe(false);
+    expect(
+      marketplaceEntryV2Schema.safeParse({
+        ...entry(),
+        source: {
+          npm: { package: "author-tools", registry: "https://" },
+        },
+      }).success,
+    ).toBe(false);
+    expect(
+      marketplaceEntryV2Schema.safeParse({
+        ...entry(),
+        source: { git: { url: "https://", ref: "v1.0.0" } },
+      }).success,
+    ).toBe(false);
+  });
+
   it("rejects conflicting known source fields", () => {
     expect(
       marketplaceEntryV2Schema.safeParse({

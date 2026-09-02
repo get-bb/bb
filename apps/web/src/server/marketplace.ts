@@ -10,6 +10,8 @@ const CONTENT_TYPES: Record<string, string> = {
   json: "application/json; charset=utf-8",
   svg: "image/svg+xml",
   png: "image/png",
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
   webp: "image/webp",
 };
 
@@ -38,6 +40,12 @@ function contentTypeFor(key: string): string {
   return CONTENT_TYPES[extension] ?? "application/octet-stream";
 }
 
+function cacheControlFor(key: string): string {
+  return key.endsWith(".json") || key.startsWith("v2/")
+    ? MANIFEST_CACHE_CONTROL
+    : ICON_CACHE_CONTROL;
+}
+
 function notFound(reason: string): Response {
   return Response.json({ error: reason }, { status: 404 });
 }
@@ -64,10 +72,7 @@ export async function serveMarketplaceObject(args: {
     "content-type",
     object.httpMetadata?.contentType ?? contentTypeFor(key),
   );
-  headers.set(
-    "cache-control",
-    key.endsWith(".json") ? MANIFEST_CACHE_CONTROL : ICON_CACHE_CONTROL,
-  );
+  headers.set("cache-control", cacheControlFor(key));
   headers.set("x-content-type-options", "nosniff");
   headers.set(
     "content-security-policy",
