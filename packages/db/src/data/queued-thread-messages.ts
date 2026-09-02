@@ -261,7 +261,9 @@ function hasOrdinaryTurnEndWait(row: QueuedThreadMessageRow): boolean {
   if (row.waitingOn === null) return true;
   try {
     const parsed = JSON.parse(row.waitingOn) as { kind?: unknown };
-    return parsed.kind === "thread-busy";
+    return (
+      parsed.kind === "thread-busy" || parsed.kind === "turn-starting"
+    );
   } catch {
     return false;
   }
