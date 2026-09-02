@@ -2143,6 +2143,58 @@ describe("codex account rate-limit translation", () => {
     });
   });
 
+  it("preserves every applicable blocked window across global and active buckets", () => {
+    const harness = createHarness();
+    harness.translate(
+      codexEvent("account/rateLimits/updated", {
+        rateLimits: codexRateLimitSnapshot({
+          primary: {
+            usedPercent: 100,
+            windowDurationMins: 10_080,
+            resetsAt: 1_788_748_218,
+          },
+          planType: "pro",
+        }),
+      }),
+    );
+
+    const [event] = harness.translate(
+      codexEvent("account/rateLimits/updated", {
+        rateLimits: codexRateLimitSnapshot({
+          limitId: "premium",
+          primary: {
+            usedPercent: 100,
+            windowDurationMins: 300,
+            resetsAt: 1_788_700_000,
+          },
+          planType: "pro",
+        }),
+      }),
+    );
+
+    expect(event).toMatchObject({
+      type: "provider/rateLimits/updated",
+      rateLimits: {
+        status: "blocked",
+        kind: "subscription-window",
+        windows: [
+          {
+            providerKey: "primary",
+            label: "Weekly limit",
+            status: "blocked",
+            resetsAtMs: 1_788_748_218_000,
+          },
+          {
+            providerKey: "primary",
+            label: "Current session",
+            status: "blocked",
+            resetsAtMs: 1_788_700_000_000,
+          },
+        ],
+      },
+    });
+  });
+
   it("does not let an inactive model bucket block the active bucket", () => {
     const harness = createHarness();
     harness.translate(

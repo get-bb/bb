@@ -260,6 +260,22 @@ function normalizeCodexRateLimits(
   state: CodexEventTranslationState,
   preferredLimitId: string,
 ): ProviderRateLimitState {
+  const candidates: Array<{
+    explicitlyBlocked: boolean;
+    limitId: string;
+    rateLimits: ProviderRateLimitState;
+  }> = [];
+  for (const limitId of new Set(["codex", preferredLimitId])) {
+    const snapshot = state.rateLimitsByLimitId.get(limitId);
+    if (snapshot === undefined) continue;
+    candidates.push({
+      explicitlyBlocked:
+        snapshot.rateLimitReachedType !== null ||
+        snapshot.spendControlReached === true,
+      limitId,
+      rateLimits: normalizeCodexRateLimitSnapshot(snapshot),
+    });
+  }
   let selected:
     | {
         explicitlyBlocked: boolean;
@@ -267,12 +283,8 @@ function normalizeCodexRateLimits(
         rateLimits: ProviderRateLimitState;
       }
     | undefined;
-  for (const [limitId, snapshot] of state.rateLimitsByLimitId) {
-    if (limitId !== "codex" && limitId !== preferredLimitId) continue;
-    const rateLimits = normalizeCodexRateLimitSnapshot(snapshot);
-    const explicitlyBlocked =
-      snapshot.rateLimitReachedType !== null ||
-      snapshot.spendControlReached === true;
+  for (const candidate of candidates) {
+    const { explicitlyBlocked, limitId, rateLimits } = candidate;
     const selectedExplicitlyBlocked = selected?.explicitlyBlocked ?? false;
     if (
       selected === undefined ||
@@ -285,13 +297,24 @@ function normalizeCodexRateLimits(
         explicitlyBlocked === selectedExplicitlyBlocked &&
         limitId === preferredLimitId)
     ) {
-      selected = { explicitlyBlocked, limitId, rateLimits };
+      selected = candidate;
     }
   }
   if (selected === undefined) {
     throw new Error("Expected at least one Codex rate-limit snapshot");
   }
-  return selected.rateLimits;
+  const windows = candidates.flatMap((candidate) =>
+    candidate === selected
+      ? candidate.rateLimits.windows
+      : candidate.rateLimits.status === "blocked"
+        ? candidate.rateLimits.windows.filter(
+            (window) => window.status === "blocked",
+          )
+        : [],
+  );
+  return windows.length === selected.rateLimits.windows.length
+    ? selected.rateLimits
+    : { ...selected.rateLimits, windows };
 }
 
 type CodexErrorEvent = Extract<CodexHandledEvent, { method: "error" }>;
