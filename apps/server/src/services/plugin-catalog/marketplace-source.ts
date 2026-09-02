@@ -219,10 +219,9 @@ async function materializeHttps(
   if (unchanged) {
     await response.body?.cancel();
     manifestJson = cached.manifestJson;
-    catalog = parseMarketplaceManifestJson(
-      manifestJson,
-      "stored marketplace catalog",
-    );
+    catalog =
+      cachedCatalog ??
+      parseMarketplaceManifestJson(manifestJson, "stored marketplace catalog");
   } else {
     const raw = new TextDecoder().decode(
       await boundedResponseBytes(

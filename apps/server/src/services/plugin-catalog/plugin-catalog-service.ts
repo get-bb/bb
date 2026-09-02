@@ -216,16 +216,35 @@ export function createPluginCatalogService(deps: {
 
   function seedOfficialMarketplace(): void {
     const existing = getPluginMarketplace(deps.db, CURATED_MARKETPLACE_NAME);
-    if (
-      existing !== undefined &&
-      existing.sourceKind === "https" &&
-      existing.manifestUrl === curatedManifestUrls.primary
-    ) {
+    const isCurrentSource =
+      existing?.sourceKind === "https" &&
+      existing.manifestUrl === curatedManifestUrls.primary;
+    const isFallbackSource =
+      existing?.sourceKind === "https" &&
+      curatedManifestUrls.fallback !== null &&
+      existing.manifestUrl === curatedManifestUrls.fallback;
+    if (existing !== undefined && (isCurrentSource || isFallbackSource)) {
       try {
         parseMarketplaceManifestJson(
           existing.manifestJson,
           "stored marketplace catalog",
         );
+        if (isFallbackSource) {
+          upsertPluginMarketplace(deps.db, {
+            name: CURATED_MARKETPLACE_NAME,
+            sourceKind: "https",
+            manifestUrl: curatedManifestUrls.primary,
+            sourceGitRef: null,
+            sourceGitCommit: null,
+            manifestJson: existing.manifestJson,
+            statsJson: existing.statsJson,
+            etag: null,
+            lastModified: null,
+            lastSuccessfulRefreshAt: existing.lastSuccessfulRefreshAt,
+            lastAttemptedRefreshAt: existing.lastAttemptedRefreshAt,
+            lastError: existing.lastError,
+          });
+        }
         return;
       } catch (error) {
         deps.warn?.(

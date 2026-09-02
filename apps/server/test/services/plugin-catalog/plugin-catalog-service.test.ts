@@ -6,6 +6,7 @@ import {
   getPluginMarketplace,
   markInstalledPluginRemoved,
   migrate,
+  upsertPluginMarketplace,
   upsertInstalledPlugin,
   type DbConnection,
 } from "@bb/db";
@@ -320,6 +321,40 @@ describe("plugin catalog service", () => {
   });
 
   describe("refresh", () => {
+    it("keeps the saved v1 catalog during an offline v2 URL upgrade", async () => {
+      const savedManifest = manifest([remoteEntry({ icon: "Zap" })]);
+      upsertPluginMarketplace(db, {
+        name: "bb-community",
+        sourceKind: "https",
+        manifestUrl: V1_MANIFEST_URL,
+        sourceGitRef: null,
+        sourceGitCommit: null,
+        manifestJson: JSON.stringify(savedManifest),
+        statsJson: null,
+        etag: '"v1"',
+        lastModified: "Wed, 02 Sep 2026 00:00:00 GMT",
+        lastSuccessfulRefreshAt: 1_000,
+        lastAttemptedRefreshAt: 1_000,
+        lastError: null,
+      });
+
+      const catalog = service({
+        marketplaceUrl: V2_MANIFEST_URL,
+        fetch: async () => new Response(null, { status: 503 }),
+      });
+
+      expect(await catalog.search("widgets")).toHaveLength(1);
+      expect(getPluginMarketplace(db, "bb-community")).toMatchObject({
+        manifestUrl: V2_MANIFEST_URL,
+        manifestJson: JSON.stringify(savedManifest),
+        etag: null,
+        lastModified: null,
+        lastSuccessfulRefreshAt: 1_000,
+      });
+      await expect(catalog.refresh(2_000)).rejects.toThrow("HTTP 503");
+      expect(await catalog.search("widgets")).toHaveLength(1);
+    });
+
     it("requests v2 first and falls back to v1 only after a 404", async () => {
       const requests: string[] = [];
       const catalog = service({

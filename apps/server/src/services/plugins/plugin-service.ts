@@ -1357,6 +1357,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     const metadataByPluginId = new Map<string, InstalledCatalogMetadata>();
     const publisherLabels = new Map<string, string>();
     if (marketplaceNamesInUse.size === 0) {
+      marketplaceManifestCache.clear();
       return { metadataByPluginId, publisherLabels };
     }
     const marketplaces = listPluginMarketplaces(deps.db);
