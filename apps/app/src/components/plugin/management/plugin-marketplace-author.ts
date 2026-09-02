@@ -3,18 +3,6 @@ import type { PluginCatalogSearchEntry } from "@/hooks/queries/plugin-catalog-qu
 
 const GITHUB_AUTHOR_PREFIX = "github:";
 const NAME_AUTHOR_PREFIX = "name:";
-const URL_AUTHOR_PREFIX = "url:";
-
-function authorUrlIdentity(url: string): string {
-  try {
-    const parsed = new URL(url);
-    parsed.hash = "";
-    const pathname = parsed.pathname.replace(/\/+$/u, "");
-    return `${parsed.origin}${pathname}${parsed.search}`;
-  } catch {
-    return url;
-  }
-}
 
 export function pluginAuthorGithub(
   author: PluginCatalogAuthor | null,
@@ -30,9 +18,7 @@ export function pluginMarketplaceAuthorKey(
   const identity =
     github !== null
       ? `${GITHUB_AUTHOR_PREFIX}${github.toLowerCase()}`
-      : entry.author.url !== null
-        ? `${URL_AUTHOR_PREFIX}${authorUrlIdentity(entry.author.url)}`
-        : `${NAME_AUTHOR_PREFIX}${entry.author.name}`;
+      : `${NAME_AUTHOR_PREFIX}${entry.author.name}`;
   return `${entry.marketplace.length}:${entry.marketplace}:${identity}`;
 }
 

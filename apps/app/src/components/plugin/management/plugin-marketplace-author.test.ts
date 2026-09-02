@@ -58,12 +58,12 @@ describe("plugin marketplace author identity", () => {
   it("uses an exact name when a GitHub login is not present", () => {
     const selected = entry(
       "first",
-      { name: "BB", github: null, url: null },
+      { name: "BB", github: null, url: "https://bb.dev" },
       "selected",
     );
     const sameName = entry(
       "first",
-      { name: "BB", github: null, url: null },
+      { name: "BB", github: null, url: "https://other.dev" },
       "same-name",
     );
     const differentCase = entry(
@@ -86,30 +86,5 @@ describe("plugin marketplace author identity", () => {
         key,
       ),
     ).toEqual([selected, sameName]);
-  });
-
-  it("uses the author URL before the display name", () => {
-    const selected = entry(
-      "first",
-      { name: "Pat Lee", github: null, url: "https://PATLEE.dev/" },
-      "selected",
-    );
-    const sameUrl = entry(
-      "first",
-      { name: "Patricia Lee", github: null, url: "https://patlee.dev" },
-      "same-url",
-    );
-    const sameName = entry(
-      "first",
-      { name: "Pat Lee", github: null, url: "https://other.dev" },
-      "same-name",
-    );
-    const key = pluginMarketplaceAuthorKey(selected);
-
-    expect(key).toBe("5:first:url:https://patlee.dev");
-    if (key === null) throw new Error("Expected an author key");
-    expect(
-      entriesByMarketplaceAuthor([selected, sameUrl, sameName], key),
-    ).toEqual([selected, sameUrl]);
   });
 });
