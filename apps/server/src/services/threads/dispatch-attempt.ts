@@ -246,10 +246,6 @@ export function attemptDispatch(
   return runDispatchAttempt(deps, args, false);
 }
 
-/**
- * `reattempted` is true on the one re-entry a lost pending admission makes,
- * against the re-read thread; a second loss is a bug, not a race.
- */
 async function runDispatchAttempt(
   deps: LoggedPendingInteractionWorkSessionDeps,
   args: DispatchAttemptArgs,
@@ -337,25 +333,41 @@ async function runDispatchAttempt(
     return waitOn({ kind: "thread-busy" }, null);
   }
   const currentThread = getThread(deps.db, thread.id);
+  if (currentThread === null) {
+    throw new ApiError(404, "thread_not_found", "Thread not found");
+  }
   if (
-    currentThread?.status === "active" &&
+    currentThread.status !== thread.status ||
+    currentThread.archivedAt !== thread.archivedAt ||
+    currentThread.deletedAt !== thread.deletedAt
+  ) {
+    return reattemptDispatchForThreadChange(
+      deps,
+      args,
+      currentThread,
+      reattempted,
+    );
+  }
+  if (
+    currentThread.status === "active" &&
     resolveDispatchAttemptKind(currentThread, payload.mode) === "join-turn" &&
     getActiveTurnId(deps, thread.id) === null
   ) {
     const outcome = queueInputForStartingTurn(deps, {
       claimed,
-      fallbackWaitingOn: { kind: "thread-busy" },
       input: queuedMessage,
       threadId: thread.id,
     });
     if (outcome.kind === "queued" || outcome.kind === "dispatched") {
       return outcome;
     }
-    if (outcome.kind === "thread-changed") {
-      if (outcome.thread === null) {
-        throw new ApiError(404, "thread_not_found", "Thread not found");
-      }
-      ensureThreadIsWritable(outcome.thread);
+    if (outcome.kind === "retry") {
+      return reattemptDispatchForThreadChange(
+        deps,
+        args,
+        outcome.thread,
+        reattempted,
+      );
     }
   }
   if (!firstDispatch && isPreStartThreadStatus(thread.status)) {
@@ -466,18 +478,8 @@ async function runDispatchAttempt(
       // it is now: it queues behind the winner's cold start, or is refused
       // for a thread that is gone. Reporting a dispatch here would tell the
       // caller their message went when it went nowhere.
-      if (reattempted) {
-        throw new ApiError(
-          500,
-          "internal_error",
-          `Thread ${thread.id} left pending twice under one dispatch attempt`,
-        );
-      }
       const current = getThread(deps.db, thread.id);
-      if (!current) {
-        throw new ApiError(404, "thread_not_found", "Thread not found");
-      }
-      return runDispatchAttempt(deps, { ...args, thread: current }, true);
+      return reattemptDispatchForThreadChange(deps, args, current, reattempted);
     }
     await launchAdmittedThread(deps, admission);
     return { kind: "dispatched" };
@@ -504,6 +506,25 @@ async function runDispatchAttempt(
     settleQueueRowDispatched({ row: claimed[0]! });
   }
   return { kind: "dispatched" };
+}
+
+function reattemptDispatchForThreadChange(
+  deps: LoggedPendingInteractionWorkSessionDeps,
+  args: DispatchAttemptArgs,
+  thread: Thread | null,
+  reattempted: boolean,
+): Promise<DispatchAttemptOutcome> {
+  if (thread === null) {
+    throw new ApiError(404, "thread_not_found", "Thread not found");
+  }
+  if (reattempted) {
+    throw new ApiError(
+      500,
+      "internal_error",
+      `Thread ${thread.id} changed twice under one dispatch attempt`,
+    );
+  }
+  return runDispatchAttempt(deps, { ...args, thread }, true);
 }
 
 /**

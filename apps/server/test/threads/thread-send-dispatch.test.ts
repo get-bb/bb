@@ -27,6 +27,7 @@ import {
 import { queueParentSystemMessage } from "../../src/services/threads/parent-system-messages.js";
 import { acceptThreadSendRequest } from "../../src/services/threads/thread-send-request.js";
 import { handleUpdateEnvironmentDirectoryToolCall } from "../../src/services/threads/thread-environment-directory.js";
+import { applyLoggedThreadLifecycleEvent } from "../../src/services/threads/lifecycle-outcome.js";
 import { sendThreadMessage } from "../../src/services/threads/thread-send.js";
 import {
   internalAuthHeaders,
@@ -401,6 +402,82 @@ describe("turn-starting queue wait", () => {
     },
   );
 
+  it("rejects a steer when the thread fails during startup admission", async () => {
+    await withTestHarness(async (harness) => {
+      const { thread } = seedProviderThreadFixture({
+        harness,
+        status: "active",
+        value: 67,
+      });
+      vi.spyOn(threadEvents, "getActiveTurnId").mockImplementationOnce(() => {
+        applyLoggedThreadLifecycleEvent(harness.deps, {
+          event: { type: "run.failed" },
+          threadId: thread.id,
+        });
+        return null;
+      });
+
+      await expect(
+        acceptThreadSendRequest(harness.deps, {
+          payload: {
+            input: textInput("do not strand this steer"),
+            mode: "steer",
+            model: "gpt-5",
+            permissionMode: "full",
+            reasoningLevel: "medium",
+            serviceTier: "default",
+          },
+          thread,
+        }),
+      ).rejects.toMatchObject({
+        body: {
+          code: "thread_not_writable",
+          details: { reason: "errored", threadStatus: "error" },
+        },
+        status: 409,
+      });
+      expect(listQueuedThreadMessages(harness.db, thread.id)).toEqual([]);
+    });
+  });
+
+  it("starts a turn when steer-if-active observes a startup failure", async () => {
+    await withTestHarness(async (harness) => {
+      const { thread } = seedProviderThreadFixture({
+        harness,
+        status: "active",
+        value: 68,
+      });
+      const input = textInput("recover this send as a new turn");
+      vi.spyOn(threadEvents, "getActiveTurnId").mockImplementationOnce(() => {
+        applyLoggedThreadLifecycleEvent(harness.deps, {
+          event: { type: "run.failed" },
+          threadId: thread.id,
+        });
+        return null;
+      });
+
+      await expect(
+        acceptThreadSendRequest(harness.deps, {
+          payload: {
+            input,
+            mode: "steer-if-active",
+            model: "gpt-5",
+            permissionMode: "full",
+            reasoningLevel: "medium",
+            serviceTier: "default",
+          },
+          thread,
+        }),
+      ).resolves.toEqual({ ok: true, delivery: "sent" });
+      expect(
+        listQueuedThreadCommands(harness, "turn.submit", thread.id),
+      ).toEqual([
+        expect.objectContaining({ input, target: { mode: "start" } }),
+      ]);
+      expect(listQueuedThreadMessages(harness.db, thread.id)).toEqual([]);
+    });
+  });
+
   it("keeps a failed grouped sibling out of the automatic turn-start send", async () => {
     await withTestHarness(async (harness) => {
       const { sessionId, thread } = seedProviderThreadFixture({
@@ -714,6 +791,14 @@ describe("turn-starting queue wait", () => {
         }),
       ).resolves.toBe(true);
       expect(listQueuedThreadMessages(harness.db, thread.id)).toHaveLength(0);
+      expect(
+        listQueuedThreadCommands(harness, "turn.submit", thread.id),
+      ).toHaveLength(2);
+      expect(
+        listQueuedThreadCommands(harness, "turn.submit", thread.id)[1],
+      ).toMatchObject({
+        target: { mode: "auto", expectedTurnId: "turn-system-notice-ready" },
+      });
     });
   });
 

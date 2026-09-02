@@ -1474,9 +1474,9 @@ function drainableQueuedThreadMessage() {
     automaticallyDrainableQueuedThreadMessage(),
     or(
       isNull(queuedThreadMessages.waitingOn),
-      ...IDLE_DRAINABLE_WAIT_KINDS.map(
-        (waitKind) =>
-          sql`json_extract(${queuedThreadMessages.waitingOn}, '$.kind') = ${waitKind}`,
+      inArray(
+        sql<string>`json_extract(${queuedThreadMessages.waitingOn}, '$.kind')`,
+        [...IDLE_DRAINABLE_WAIT_KINDS],
       ),
     ),
   );

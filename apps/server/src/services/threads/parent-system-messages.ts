@@ -247,7 +247,6 @@ async function queueActiveParentSystemMessage(
   if (expectedSteerTurnId === null) {
     const outcome = queueInputForStartingTurn(deps, {
       claimed: null,
-      fallbackWaitingOn: null,
       input: {
         input: args.input,
         execution: args.execution,
@@ -262,7 +261,7 @@ async function queueActiveParentSystemMessage(
     });
     if (outcome.kind === "queued") return true;
     if (outcome.kind === "dispatched") return false;
-    if (outcome.kind === "thread-changed") {
+    if (outcome.kind === "retry") {
       const currentThread = outcome.thread;
       if (
         currentThread === null ||
@@ -272,12 +271,10 @@ async function queueActiveParentSystemMessage(
       ) {
         return false;
       }
-      if (currentThread.status !== "active") {
-        return queueReadyParentSystemMessage(deps, {
-          ...args,
-          thread: currentThread,
-        });
-      }
+      return queueReadyParentSystemMessage(deps, {
+        ...args,
+        thread: currentThread,
+      });
     }
   }
   const permissionEscalation = resolvePermissionEscalation({

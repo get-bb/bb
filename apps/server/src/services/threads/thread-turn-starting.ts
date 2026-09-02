@@ -1,9 +1,5 @@
 import { getThread, type ClaimedQueuedThreadMessageRow } from "@bb/db";
-import type {
-  QueuedMessageWaitingOn,
-  Thread,
-  ThreadQueuedMessage,
-} from "@bb/domain";
+import type { Thread, ThreadQueuedMessage } from "@bb/domain";
 import type { AppDeps } from "../../types.js";
 import { NotificationBuffer } from "../lib/notification-buffer.js";
 import {
@@ -15,16 +11,14 @@ import { getActiveTurnId } from "./thread-events.js";
 type TurnStartingDeps = Pick<AppDeps, "db" | "hub" | "logger">;
 
 export type QueueInputForStartingTurnResult =
-  | { kind: "continue" }
   | { kind: "dispatched" }
   | { kind: "queued"; entry: ThreadQueuedMessage }
-  | { kind: "thread-changed"; thread: Thread | null };
+  | { kind: "retry"; thread: Thread | null };
 
 export function queueInputForStartingTurn(
   deps: TurnStartingDeps,
   args: {
     claimed: readonly ClaimedQueuedThreadMessageRow[] | null;
-    fallbackWaitingOn: QueuedMessageWaitingOn | null;
     input: QueuedDispatchMessage;
     threadId: string;
   },
@@ -38,27 +32,19 @@ export function queueInputForStartingTurn(
         !thread ||
         thread.archivedAt !== null ||
         thread.deletedAt !== null ||
-        thread.status === "stopping"
+        thread.status !== "active"
       ) {
-        return { kind: "thread-changed", thread };
+        return { kind: "retry", thread };
       }
-      const waitingOn =
-        thread.status === "active"
-          ? getActiveTurnId({ db: tx }, args.threadId) === null
-            ? { kind: "turn-starting" as const }
-            : null
-          : args.fallbackWaitingOn;
-      if (waitingOn === null) {
-        return thread.status === "active"
-          ? { kind: "continue" }
-          : { kind: "thread-changed", thread };
+      if (getActiveTurnId({ db: tx }, args.threadId) !== null) {
+        return { kind: "retry", thread };
       }
       const entry = recordQueuedMessageWait(
         { db: tx, hub: notifications },
         {
           thread,
           message: args.input,
-          waitingOn,
+          waitingOn: { kind: "turn-starting" },
           sendAt: null,
           claimed: args.claimed,
         },
