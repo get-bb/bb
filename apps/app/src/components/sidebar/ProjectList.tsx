@@ -932,13 +932,13 @@ function SectionModeSections({
     return orderedDestinationIds.flatMap<ThreadSectionMoveDestination>(
       (sectionId) => {
         if (sectionId === "threads") {
-          return [{ label: "Threads", sectionId: null }];
+          return [{ label: threadsSection.label, sectionId: null }];
         }
         const destination = destinationsBySidebarId.get(sectionId);
         return destination ? [destination] : [];
       },
     );
-  }, [order, sections]);
+  }, [order, sections, threadsSection.label]);
 
   return (
     <ThreadSectionMoveProvider destinations={moveDestinations}>
