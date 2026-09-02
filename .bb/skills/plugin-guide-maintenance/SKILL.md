@@ -64,52 +64,35 @@ Complete the applicable changes:
 - Keep Guide annotations separate from the product interface.
 - Add focused tests for the entry, source anchors, trigger, and outcome.
 
-## Redraw annotation order
+## Maintain annotation layout
 
-Annotation numbers express the rendered fixture's spatial reading order, not
-API registration or source order. Read the fixture's columns from left to
-right, then read the annotations within each column from top to bottom. When
-annotations share a row within one column, read them from left to right.
+Annotation numbers follow the rendered fixture: columns from left to right,
+then annotations within each column from top to bottom. Read annotations that
+share a row from left to right.
 
-Whenever a visible surface is added, removed, or moved:
+Treat each annotation's badge, visible target, and interactive overlay as
+separate layout contracts. Whenever an annotation is added, removed, moved, or
+renumbered, or its target or surrounding layout changes:
 
-1. Build and reload the Plugin Guide, then open the real affected fixture at
-   each relevant viewport.
-2. Inspect the rendered badge positions and redraw the full affected sequence.
-   Do not append or insert only the new annotation.
-3. Rewrite the affected group's order in `surfaces.ts` and its matching
-   `*_MARKS` order in `wireframes.tsx` as the same complete sequence.
-4. Update the focused order test with that complete sequence.
-5. Verify that badge numbers, cards, and previous/next navigation agree; every
-   annotation appears exactly once; and no badge clips or obscures its target.
+1. Build and reload the real Plugin Guide at each relevant viewport. Redraw the
+   complete affected sequence, then update `surfaces.ts`, the matching
+   `*_MARKS` order in `wireframes.tsx`, and the focused order test.
+2. Inspect each rendered badge footprint, including its outline, ring, and
+   hover scaling. It must remain inside its container, not intersect another
+   badge, and leave its annotated content readable.
+3. Inspect target and overlay bounds, including shared edges and nested areas.
+   An overlay must not enter a sibling surface, cover its content, or capture
+   its hover, focus, or click behavior. A nested child must own its full visible
+   target; do not rely on DOM order or `z-index` to resolve ownership.
+4. Hover, focus, and click every affected badge and visible target. Confirm
+   that only the matching annotation activates, the full target is reachable,
+   and badge numbers, cards, and previous/next navigation agree.
+5. Add or update focused tests for the order and any boundary or ownership rule
+   that could regress. Every annotation must appear exactly once; DOM nesting
+   alone does not prove correct overlay ownership.
 
-If responsive layouts produce conflicting spatial orders, fix the layout or
-define one stable readable sequence before shipping.
-
-## Validate annotation overlay areas
-
-Treat a badge's position, its visible target, and its interactive overlay as
-separate layout contracts. An annotation overlay must trace only the surface it
-describes: it must not extend into an adjacent annotation's surface, cover that
-surface's label or content, or capture its hover, focus, or click behavior.
-
-When annotated surfaces are intentionally nested, the child surface must own
-interaction across its full visible target and remain readable when either
-annotation is active. Do not rely on DOM order or a parent overlay's `z-index`
-to arbitrate overlapping targets; partition or layer the overlays so the
-rendered behavior matches the visible surfaces.
-
-Whenever an annotation target or its surrounding layout changes:
-
-1. At each relevant viewport, inspect the rendered bounds of every affected
-   target and overlay, including their shared edges and nested areas.
-2. Hover, focus, and click both the badge and the visible target for each
-   annotation. Confirm that only the matching annotation activates and that
-   the complete intended target remains reachable.
-3. Check sibling overlays for intersections and hit-test nested overlays to
-   confirm that a parent or neighbor cannot steal the child's interaction.
-4. Add or update a focused test for the overlay boundary or ownership rule that
-   could regress. A DOM-nesting assertion alone is not sufficient.
+If responsive layouts cannot share one spatial order, fix the layout or define
+one stable readable sequence before shipping.
 
 ## Refresh the SDK inventory
 
