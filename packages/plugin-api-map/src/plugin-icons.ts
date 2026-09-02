@@ -6,6 +6,7 @@ import {
   BrowserIcon,
   CheckListIcon,
   Calendar03Icon,
+  CalendarSyncIcon,
   Clock01Icon,
   Coffee01Icon,
   ComputerIcon,
@@ -34,7 +35,7 @@ interface FirstPartyPlugin {
 
 const FIRST_PARTY_PLUGINS: Record<string, FirstPartyPlugin> = {
   "Ask User Question": { id: "ask-user-question", icon: MessageQuestionIcon },
-  Automations: { id: "automations", icon: Clock01Icon },
+  Automations: { id: "automations", icon: CalendarSyncIcon },
   "Custom instructions": { id: "custom-instructions", icon: Edit04Icon },
   Docs: { id: "simple-notes", icon: File01Icon },
   GitHub: { id: "github", icon: GithubIcon },

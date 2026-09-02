@@ -46,6 +46,7 @@ export const SF_SYMBOL_MAP = {
   Bug: "ladybug",
   Calendar: "calendar",
   CalendarCheckOut02: "calendar.badge.minus",
+  CalendarSync: "calendar.badge.clock",
   ChartColumn: "chart.bar",
   Check: "checkmark",
   ChevronDown: "chevron.down",
