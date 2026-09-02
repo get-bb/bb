@@ -37,12 +37,13 @@ afterEach(() => {
 });
 
 function renderMachineMenu(overrides?: {
+  hosts?: readonly Host[];
   selectedHostId?: string | null;
   onChange?: (hostId: string) => void;
 }) {
   render(
     <MachinePickerUI
-      hosts={[thisMachine, studio, devVm]}
+      hosts={overrides?.hosts ?? [thisMachine, studio, devVm]}
       localDaemonHostId={thisMachine.id}
       primaryHostId={thisMachine.id}
       selectedHostId={overrides?.selectedHostId ?? thisMachine.id}
@@ -56,6 +57,23 @@ function renderMachineMenu(overrides?: {
 }
 
 describe("MachinePickerUI", () => {
+  it("keeps a long machine menu inside a short viewport and scrolls it", () => {
+    renderMachineMenu({
+      hosts: Array.from({ length: 20 }, (_, index) => ({
+        ...thisMachine,
+        id: `host_${index}`,
+        name: `Machine ${index}`,
+      })),
+    });
+
+    const menu = screen.getByRole("menu");
+    expect(menu.className).toContain(
+      "max-h-[min(var(--radix-dropdown-menu-content-available-height),calc(100dvh-0.5rem))]",
+    );
+    expect(menu.className).toContain("overflow-y-auto");
+    expect(menu.className).toContain("overscroll-contain");
+  });
+
   it("names the selected machine in the trigger and badges this machine in the menu", () => {
     renderMachineMenu({ selectedHostId: studio.id });
 

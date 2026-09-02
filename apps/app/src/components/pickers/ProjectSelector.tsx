@@ -12,6 +12,7 @@ import { cn } from "@bb/shared-ui/lib/utils";
 import {
   OPTION_BASE_CLASS_NAME,
   OPTION_INTERACTIVE_CLASS_NAME,
+  OPTION_MENU_CONTENT_CLASS_NAME,
   OPTION_MUTED_CLASS_NAME,
   OPTION_TRIGGER_CONTENT_CLASS_NAME,
 } from "@bb/shared-ui/option-display";
@@ -116,7 +117,7 @@ export function ProjectSelector({
       <DropdownMenuContent
         align="start"
         side="bottom"
-        className="max-h-[min(var(--radix-dropdown-menu-content-available-height),calc(100dvh-0.5rem))] w-52 overflow-y-auto overscroll-contain"
+        className={cn(OPTION_MENU_CONTENT_CLASS_NAME, "w-52")}
       >
         <DropdownMenuLabel>Project</DropdownMenuLabel>
         {projects.map((project) => (
