@@ -728,7 +728,7 @@ setInterval(() => {}, 1000);
     expect(result.stderr).toContain("Timed out waiting for host daemon");
   });
 
-  it("installs an idempotent macOS launch agent for joined state", () => {
+  it("starts a fresh macOS launch agent once and replaces it with one new process", () => {
     const fixture = createFixture();
     writeJoinedState(fixture);
     writeServerInstallTools(fixture, 200);
@@ -737,18 +737,34 @@ setInterval(() => {}, 1000);
       join(fixture.binDir, "launchctl"),
       `#!/bin/sh
 printf '%s\n' "$*" >>"${join(fixture.dataDir, "launchctl.log")}"
-if [ "$1" = kickstart ]; then
+if [ "$1" = bootout ] && [ -f "${join(fixture.dataDir, "service-daemon.pid")}" ]; then
+  service_pid=$(sed -n '1p' "${join(fixture.dataDir, "service-daemon.pid")}")
+  kill "$service_pid" 2>/dev/null || true
+  attempts=0
+  while kill -0 "$service_pid" 2>/dev/null && [ "$attempts" -lt 100 ]; do
+    attempts=$((attempts + 1))
+    sleep 0.01
+  done
+  rm -f "${join(fixture.dataDir, "service-daemon.pid")}"
+fi
+if [ "$1" = bootstrap ]; then
   port=$(sed -n '1p' "${join(fixture.dataDir, "host-daemon-port")}")
   BB_DATA_DIR="${fixture.dataDir}" "${join(fixture.dataDir, "npm/bin/bb-app")}" host-daemon --host-daemon-port "$port" --server-url https://machine.getbb.app >/dev/null 2>&1 &
   echo $! >"${join(fixture.dataDir, "service-daemon.pid")}"
+  printf 'start\n' >>"${join(fixture.dataDir, "launchctl-starts.log")}"
+fi
+if [ "$1" = kickstart ]; then
+  printf '%s\n' 'unexpected kickstart' >&2
+  exit 70
 fi
 `,
     );
 
-    const result = runScript(
+    const firstResult = runScript([...JOIN_ARGS], fixture);
+    const secondResult = runScript(
       [
         "--join-code",
-        "unused-fresh-code",
+        "unused-reinstall-code",
         "--host-id",
         "host-test",
         "--server",
@@ -757,15 +773,20 @@ fi
       fixture,
     );
 
-    expect(result.status, result.stderr).toBe(0);
-    expect(result.stdout).toContain("already joined");
-    expect(result.stdout).toContain(
+    expect(firstResult.status, firstResult.stderr).toBe(0);
+    expect(firstResult.stdout).toContain("already joined");
+    expect(firstResult.stdout).toContain(
       "Installing the persistent bb host daemon service",
     );
-    expect(result.stdout).toContain("Waiting for the launch agent to connect");
-    expect(result.stdout).toContain("  ●  bb machine is ready");
-    expect(result.stdout).toContain("server  https://machine.getbb.app");
-    expect(result.stdout).toContain(
+    expect(firstResult.stdout).toContain(
+      "Waiting for the launch agent to connect",
+    );
+    expect(firstResult.stdout).toContain("  ●  bb machine is ready");
+    expect(secondResult.status, secondResult.stderr).toBe(0);
+    expect(secondResult.stdout).toContain("already joined");
+    expect(secondResult.stdout).toContain("  ●  bb machine is ready");
+    expect(secondResult.stdout).toContain("server  https://machine.getbb.app");
+    expect(secondResult.stdout).toContain(
       "service " +
         join(
           fixture.homeDir,
@@ -782,6 +803,8 @@ fi
     expect(plist).toContain(
       "<string>app.getbb.host-daemon.machine-getbb-app</string>",
     );
+    expect(plist).toContain("<key>RunAtLoad</key><true/>");
+    expect(plist).toContain("<key>KeepAlive</key><true/>");
     expect(plist).toContain("<string>host-daemon</string>");
     expect(plist).toContain("<string>--auto-update</string>");
     const selectedPort = readFileSync(
@@ -795,10 +818,70 @@ fi
     expect(plist).toContain(
       `<key>BB_APP_NPM_PREFIX</key><string>${realpathSync(fixture.dataDir)}/npm</string>`,
     );
+    const serviceFile = join(
+      fixture.homeDir,
+      "Library/LaunchAgents/app.getbb.host-daemon.machine-getbb-app.plist",
+    );
+    const domain = `gui/${process.getuid?.()}`;
+    expect(readFileSync(join(fixture.dataDir, "launchctl.log"), "utf8")).toBe(
+      `bootout ${domain} ${serviceFile}\nbootstrap ${domain} ${serviceFile}\nbootout ${domain} ${serviceFile}\nbootstrap ${domain} ${serviceFile}\n`,
+    );
     expect(
-      readFileSync(join(fixture.dataDir, "launchctl.log"), "utf8"),
-    ).toContain("bootstrap");
+      readFileSync(join(fixture.dataDir, "launchctl-starts.log"), "utf8"),
+    ).toBe("start\nstart\n");
   });
+
+  it("reports launchctl bootstrap failures", () => {
+    const fixture = createFixture();
+    writeJoinedState(fixture);
+    writeServerInstallTools(fixture, 200);
+    writeExecutable(join(fixture.binDir, "uname"), "#!/bin/sh\necho Darwin\n");
+    writeExecutable(
+      join(fixture.binDir, "launchctl"),
+      `#!/bin/sh
+printf '%s\n' "$*" >>"${join(fixture.dataDir, "launchctl.log")}"
+if [ "$1" = bootstrap ]; then
+  printf '%s\n' 'fixture bootstrap failure' >&2
+  exit 36
+fi
+`,
+    );
+
+    const result = runScript(JOIN_ARGS, fixture);
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain(
+      "Could not register the bb host-daemon launch agent app.getbb.host-daemon.machine-getbb-app.",
+    );
+    expect(result.stderr).toContain("launchctl: fixture bootstrap failure");
+  });
+
+  it("treats launch-agent readiness as authoritative after bootstrap", () => {
+    const fixture = createFixture();
+    writeJoinedState(fixture);
+    writeServerInstallTools(fixture, 200);
+    writeExecutable(join(fixture.binDir, "uname"), "#!/bin/sh\necho Darwin\n");
+    writeExecutable(
+      join(fixture.binDir, "launchctl"),
+      `#!/bin/sh
+printf '%s\n' "$*" >>"${join(fixture.dataDir, "launchctl.log")}"
+`,
+    );
+    writeExecutable(join(fixture.binDir, "sleep"), "#!/bin/sh\nexit 0\n");
+
+    const result = runScript(JOIN_ARGS, fixture);
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain(
+      "The bb host-daemon launch agent started but did not connect to https://machine.getbb.app.",
+    );
+    expect(result.stderr).toContain(
+      `See ${fixture.dataDir}/logs/launchd.log for the daemon error.`,
+    );
+    expect(result.stdout).toContain(
+      "Still waiting for the launch agent (60/60 checks)",
+    );
+  }, 15_000);
 
   it("restarts an active Linux systemd user unit after replacing it", () => {
     const fixture = createFixture();

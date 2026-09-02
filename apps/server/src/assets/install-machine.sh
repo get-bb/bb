@@ -715,12 +715,6 @@ EOF
     [ -z "$launchctl_error" ] || detail "launchctl: $launchctl_error" >&2
     exit 1
   fi
-  if ! launchctl_error=$(launchctl kickstart -k "gui/$(id -u)/$service_label" 2>&1); then
-    fail_step "The bb host-daemon launch agent was registered, but the daemon did not start."
-    [ -z "$launchctl_error" ] || detail "launchctl: $launchctl_error" >&2
-    detail "See $data_dir/logs/launchd.log for the daemon error." >&2
-    exit 1
-  fi
   if ! wait_for_daemon_connection "the launch agent"; then
     fail_step "The bb host-daemon launch agent started but did not connect to $server_url."
     detail "See $data_dir/logs/launchd.log for the daemon error." >&2
