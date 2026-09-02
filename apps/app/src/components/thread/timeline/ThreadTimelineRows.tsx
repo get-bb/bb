@@ -357,7 +357,7 @@ interface ConversationRowProps {
 }
 
 interface ConversationRowContentProps extends ConversationRowProps {
-  mobileActionDisplay: "inline" | "overflow";
+  touchActionDisplay: "inline" | "overflow";
   streaming: boolean;
 }
 
@@ -874,7 +874,7 @@ function ConversationRow({
     <ConversationRowContent
       row={row}
       showAssistantMessageActions={showAssistantMessageActions}
-      mobileActionDisplay={
+      touchActionDisplay={
         row.id === latestActionableMessageId ? "inline" : "overflow"
       }
       streaming={
@@ -902,7 +902,7 @@ function InlineMessageEditorHost({
 const ConversationRowContent = memo(function ConversationRowContent({
   row,
   showAssistantMessageActions,
-  mobileActionDisplay,
+  touchActionDisplay,
   streaming,
 }: ConversationRowContentProps) {
   const {
@@ -1002,7 +1002,7 @@ const ConversationRowContent = memo(function ConversationRowContent({
         originKind={originKind}
         initiator={row.initiator}
         mentions={row.mentions}
-        mobileActionDisplay={mobileActionDisplay}
+        touchActionDisplay={touchActionDisplay}
         onAddToChat={onSelectionAddToChat}
         onEdit={onEdit}
         onOpenLink={onOpenLink}
@@ -1063,7 +1063,7 @@ const ConversationRowContent = memo(function ConversationRowContent({
       resolveUserAttachmentImageSrc={resolveUserAttachmentImageSrc}
       role="assistant"
       showActions={showAssistantMessageActions}
-      mobileActionDisplay={mobileActionDisplay}
+      touchActionDisplay={touchActionDisplay}
       streaming={streaming}
       text={row.text}
       threadId={row.threadId}
@@ -1218,7 +1218,7 @@ function TimelineExpandableBody({
                   resolveUserAttachmentImageSrc={resolveUserAttachmentImageSrc}
                   role="assistant"
                   showActions={false}
-                  mobileActionDisplay="overflow"
+                  touchActionDisplay="overflow"
                   streaming={delegationActive}
                   text={row.output}
                   threadId={row.threadId}

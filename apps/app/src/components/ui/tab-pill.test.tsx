@@ -118,4 +118,31 @@ describe("TabPill", () => {
         .classList.contains("max-md:pointer-coarse:pl-3.5"),
     ).toBe(true);
   });
+
+  it("keeps the close affordance visible without hover at any viewport width", () => {
+    render(
+      <TabPill
+        label="Side chat"
+        leadingVisual={<span aria-hidden>chat</span>}
+        title="Side chat"
+        isActive
+        onSelect={vi.fn()}
+        closeAction={{ onClose: vi.fn(), closeLabel: "Close side chat" }}
+      />,
+    );
+
+    const close = screen.getByRole("button", { name: "Close side chat" });
+    expect(close.classList).toContain("pointer-coarse:opacity-100");
+    expect(close.classList).toContain("[@media(hover:none)]:opacity-100");
+    expect(close.classList).toContain("pointer-coarse:size-5");
+    expect(close.classList).toContain("[@media(hover:none)]:size-5");
+    expect(close.classList).not.toContain("max-md:pointer-coarse:opacity-100");
+    expect(close.classList).not.toContain("max-md:pointer-coarse:size-5");
+
+    const leadingVisual = screen.getByText("chat").parentElement;
+    expect(leadingVisual?.classList).toContain("pointer-coarse:opacity-0");
+    expect(leadingVisual?.classList).toContain(
+      "[@media(hover:none)]:opacity-0",
+    );
+  });
 });

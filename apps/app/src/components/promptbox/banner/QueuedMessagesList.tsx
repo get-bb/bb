@@ -863,7 +863,7 @@ const QueuedMessageRow = memo(function QueuedMessageRow({
                 data-queued-message-actions=""
                 className={cn(
                   QUEUED_MESSAGE_ACTION_TAKEOVER_CLASS,
-                  "pointer-events-none absolute right-2.5 top-1/2 hidden -translate-y-1/2 items-center gap-0.5 rounded-md opacity-0 transition-opacity duration-[120ms] ease-out md:flex",
+                  "pointer-events-none absolute right-2.5 top-1/2 hidden -translate-y-1/2 items-center gap-0.5 rounded-md opacity-0 transition-opacity duration-[120ms] ease-out md:flex pointer-coarse:hidden [@media(hover:none)]:hidden",
                   "group-hover/dispatch-row:pointer-events-auto group-hover/dispatch-row:opacity-100",
                   "group-focus-within/dispatch-row:pointer-events-auto group-focus-within/dispatch-row:opacity-100",
                 )}
@@ -948,7 +948,8 @@ const QueuedMessageRow = memo(function QueuedMessageRow({
                     "group-hover/dispatch-row:pointer-events-auto group-hover/dispatch-row:opacity-100",
                     "group-focus-within/dispatch-row:pointer-events-auto group-focus-within/dispatch-row:opacity-100",
                     "data-[state=open]:pointer-events-auto data-[state=open]:opacity-100",
-                    "[@media(hover:none)]:pointer-events-auto [@media(hover:none)]:opacity-100",
+                    "pointer-coarse:inline-flex pointer-coarse:pointer-events-auto pointer-coarse:opacity-100",
+                    "[@media(hover:none)]:inline-flex [@media(hover:none)]:pointer-events-auto [@media(hover:none)]:opacity-100",
                     compact ? "size-7" : "size-8",
                   )}
                   disabled={actionDisabled}

@@ -11,6 +11,7 @@ import {
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { COMPACT_VIEWPORT_QUERY } from "@bb/shared-ui/hooks/use-compact-viewport";
+import { HOVER_NONE_QUERY } from "@bb/shared-ui/hooks/use-media-query";
 import { POINTER_COARSE_QUERY } from "@bb/shared-ui/hooks/use-pointer-coarse";
 import {
   computeMessageActionRowLayout,
@@ -79,6 +80,32 @@ function mockMobileCoarsePointer() {
   }));
 }
 
+function mockWideCoarsePointer() {
+  vi.spyOn(window, "matchMedia").mockImplementation((query) => ({
+    matches: query === POINTER_COARSE_QUERY,
+    media: query,
+    onchange: null,
+    addListener: () => {},
+    removeListener: () => {},
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    dispatchEvent: () => false,
+  }));
+}
+
+function mockWideNoHoverPointer() {
+  vi.spyOn(window, "matchMedia").mockImplementation((query) => ({
+    matches: query === HOVER_NONE_QUERY,
+    media: query,
+    onchange: null,
+    addListener: () => {},
+    removeListener: () => {},
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    dispatchEvent: () => false,
+  }));
+}
+
 describe("MessageActionBar", () => {
   it("uses the nearest thread window as the tooltip collision boundary", () => {
     const threadWindow = document.createElement("div");
@@ -102,7 +129,7 @@ describe("MessageActionBar", () => {
       <MessageActionBar
         messageText="An answer worth keeping."
         alignment="start"
-        mobileActionDisplay="overflow"
+        touchActionDisplay="overflow"
         onSendToMain={onSendToMain}
       />,
     );
@@ -119,7 +146,7 @@ describe("MessageActionBar", () => {
       <MessageActionBar
         messageText="An answer."
         alignment="start"
-        mobileActionDisplay="inline"
+        touchActionDisplay="inline"
         onAddToChat={vi.fn()}
         onFork={vi.fn()}
       />,
@@ -138,7 +165,7 @@ describe("MessageActionBar", () => {
       <MessageActionBar
         messageText="An answer."
         alignment="start"
-        mobileActionDisplay="overflow"
+        touchActionDisplay="overflow"
         onAddToChat={vi.fn()}
         onFork={vi.fn()}
       />,
@@ -161,7 +188,7 @@ describe("MessageActionBar", () => {
       <MessageActionBar
         messageText="An answer."
         alignment="start"
-        mobileActionDisplay="inline"
+        touchActionDisplay="inline"
         onAddToChat={vi.fn()}
         onFork={vi.fn()}
         pluginActions={[
@@ -195,7 +222,7 @@ describe("MessageActionBar", () => {
       <MessageActionBar
         messageText=""
         alignment="start"
-        mobileActionDisplay="inline"
+        touchActionDisplay="inline"
         pluginActions={[
           {
             key: "demo/summarize/1",
@@ -217,7 +244,7 @@ describe("MessageActionBar", () => {
       <MessageActionBar
         messageText="An answer."
         alignment="start"
-        mobileActionDisplay="overflow"
+        touchActionDisplay="overflow"
         onAddToChat={vi.fn()}
         pluginActions={[
           {
@@ -245,7 +272,7 @@ describe("MessageActionBar", () => {
       <MessageActionBar
         messageText="Quote this message."
         alignment="end"
-        mobileActionDisplay="overflow"
+        touchActionDisplay="overflow"
         onAddToChat={onAddToChat}
       />,
     );
@@ -267,7 +294,7 @@ describe("MessageActionBar", () => {
       <MessageActionBar
         messageText="Quote this message."
         alignment="end"
-        mobileActionDisplay="overflow"
+        touchActionDisplay="overflow"
         addToChatAttachments={[attachment]}
         onAddToChat={onAddToChat}
       />,
@@ -291,7 +318,7 @@ describe("MessageActionBar", () => {
       <MessageActionBar
         messageText=""
         alignment="end"
-        mobileActionDisplay="overflow"
+        touchActionDisplay="overflow"
         addToChatAttachments={[attachment]}
         onAddToChat={onAddToChat}
       />,
@@ -306,7 +333,7 @@ describe("MessageActionBar", () => {
       <MessageActionBar
         messageText="An answer."
         alignment="start"
-        mobileActionDisplay="overflow"
+        touchActionDisplay="overflow"
       />,
     );
 
@@ -321,7 +348,7 @@ describe("MessageActionBar", () => {
       <MessageActionBar
         messageText="An answer."
         alignment="start"
-        mobileActionDisplay="overflow"
+        touchActionDisplay="overflow"
         onSendToMain={onSendToMain}
         disabled
       />,
@@ -340,7 +367,7 @@ describe("MessageActionBar", () => {
       <MessageActionBar
         messageText="Quote this message."
         alignment="end"
-        mobileActionDisplay="overflow"
+        touchActionDisplay="overflow"
         onAddToChat={onAddToChat}
       />,
     );
@@ -371,7 +398,7 @@ describe("MessageActionBar", () => {
       <MessageActionBar
         messageText="Copy this answer."
         alignment="start"
-        mobileActionDisplay="overflow"
+        touchActionDisplay="overflow"
       />,
     );
 
@@ -396,7 +423,7 @@ describe("MessageActionBar", () => {
       <MessageActionBar
         messageText="The latest answer."
         alignment="start"
-        mobileActionDisplay="inline"
+        touchActionDisplay="inline"
         onFork={onFork}
       />,
     );
@@ -413,7 +440,7 @@ describe("MessageActionBar", () => {
       <MessageActionBar
         messageText="The latest answer."
         alignment="start"
-        mobileActionDisplay="inline"
+        touchActionDisplay="inline"
         onAddToChat={vi.fn()}
         onFork={vi.fn()}
       />,
@@ -431,6 +458,42 @@ describe("MessageActionBar", () => {
     ).toBeNull();
   });
 
+  it("uses the always-visible touch surface on wide coarse-pointer viewports", () => {
+    mockWideCoarsePointer();
+    render(
+      <MessageActionBar
+        messageText="The latest answer."
+        alignment="start"
+        touchActionDisplay="inline"
+        onFork={vi.fn()}
+      />,
+    );
+
+    const fork = screen.getByRole("button", { name: "Fork into new thread" });
+    expect(fork.hasAttribute("data-state")).toBe(false);
+    expect(fork.classList).toContain("pointer-coarse:opacity-100");
+    expect(fork.classList).not.toContain("max-md:pointer-coarse:opacity-100");
+  });
+
+  it("uses the always-visible touch surface when the pointer cannot hover", () => {
+    mockWideNoHoverPointer();
+    render(
+      <MessageActionBar
+        messageText="The latest answer."
+        alignment="start"
+        touchActionDisplay="overflow"
+        onFork={vi.fn()}
+      />,
+    );
+
+    expect(
+      screen.getByRole("button", { name: "Message actions" }).classList,
+    ).toContain("[@media(hover:none)]:inline-flex");
+    expect(
+      screen.queryByRole("button", { name: "Fork into new thread" }),
+    ).toBeNull();
+  });
+
   it("collapses desktop actions that do not fit into a trailing overflow menu", () => {
     const resizeObserver = installControlledResizeObserver();
     const onAddToChat = vi.fn();
@@ -438,7 +501,7 @@ describe("MessageActionBar", () => {
       <MessageActionBar
         messageText="An answer."
         alignment="end"
-        mobileActionDisplay="overflow"
+        touchActionDisplay="overflow"
         onAddToChat={onAddToChat}
         onFork={vi.fn()}
       />,
@@ -465,7 +528,7 @@ describe("MessageActionBar", () => {
       <MessageActionBar
         messageText="An answer."
         alignment="end"
-        mobileActionDisplay="overflow"
+        touchActionDisplay="overflow"
         onAddToChat={vi.fn()}
         onFork={vi.fn()}
       />,
@@ -487,7 +550,7 @@ describe("MessageActionBar", () => {
       <MessageActionBar
         messageText="An answer."
         alignment="start"
-        mobileActionDisplay="inline"
+        touchActionDisplay="inline"
         onAddToChat={vi.fn()}
         onFork={onFork}
       />,
@@ -523,7 +586,7 @@ describe("MessageActionBar", () => {
         <MessageActionBar
           messageText="An answer."
           alignment="end"
-          mobileActionDisplay="overflow"
+          touchActionDisplay="overflow"
           onAddToChat={onAddToChat}
           onFork={vi.fn()}
         />
@@ -557,7 +620,7 @@ describe("MessageActionBar", () => {
         <MessageActionBar
           messageText="Copy this answer."
           alignment="end"
-          mobileActionDisplay="overflow"
+          touchActionDisplay="overflow"
           onAddToChat={vi.fn()}
           onFork={vi.fn()}
         />
@@ -587,7 +650,7 @@ describe("MessageActionBar", () => {
         <MessageActionBar
           messageText="An answer."
           alignment="end"
-          mobileActionDisplay="overflow"
+          touchActionDisplay="overflow"
           onAddToChat={vi.fn()}
           onFork={vi.fn()}
         />
@@ -612,7 +675,7 @@ describe("MessageActionBar", () => {
       <MessageActionBar
         messageText="The latest answer."
         alignment="start"
-        mobileActionDisplay="inline"
+        touchActionDisplay="inline"
         onFork={vi.fn()}
       />,
     );
@@ -644,7 +707,7 @@ describe("MessageActionBar observer budget", () => {
         <MessageActionBar
           messageText="An answer."
           alignment="start"
-          mobileActionDisplay="overflow"
+          touchActionDisplay="overflow"
           onAddToChat={vi.fn()}
         />
       </div>,
@@ -661,7 +724,7 @@ describe("MessageActionBar observer budget", () => {
         <MessageActionBar
           messageText="An answer."
           alignment="end"
-          mobileActionDisplay="overflow"
+          touchActionDisplay="overflow"
           onAddToChat={vi.fn()}
           onFork={vi.fn()}
         />
@@ -684,7 +747,7 @@ describe("MessageActionBar observer budget", () => {
         <MessageActionBar
           messageText="An answer."
           alignment="end"
-          mobileActionDisplay="overflow"
+          touchActionDisplay="overflow"
           onAddToChat={vi.fn()}
           onFork={vi.fn()}
         />
@@ -707,7 +770,7 @@ describe("MessageActionBar shared column width", () => {
         <MessageActionBar
           messageText="An answer."
           alignment={alignment}
-          mobileActionDisplay="overflow"
+          touchActionDisplay="overflow"
           onAddToChat={vi.fn()}
           onFork={vi.fn()}
         />

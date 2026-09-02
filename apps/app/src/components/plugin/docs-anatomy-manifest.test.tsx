@@ -227,7 +227,7 @@ describe("docs anatomy manifest", () => {
         <MessageActionBar
           messageText="hello"
           alignment="start"
-          mobileActionDisplay="inline"
+          touchActionDisplay="inline"
           onAddToChat={() => {}}
           onEdit={() => {}}
           onFork={() => {}}

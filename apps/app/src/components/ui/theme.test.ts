@@ -115,6 +115,21 @@ function contrastRatio(foreground: OklchColor, background: OklchColor): number {
 }
 
 describe("theme.css neutral ramp", () => {
+  it("keeps sidebar hover actions available on wide non-hover pointers", () => {
+    expect(css).toContain(
+      "@media (min-width: 768px) and (hover: none),\n    (min-width: 768px) and (pointer: coarse)",
+    );
+    expect(css).toMatch(
+      /\.bb-sidebar-hover-actions-row \.bb-sidebar-hover-actions\s*\{\s*pointer-events: auto;\s*opacity: 1;/s,
+    );
+    expect(css).toMatch(
+      /\.bb-sidebar-hover-actions-row \.bb-sidebar-hover-actions-inset\s*\{\s*padding-right: 1\.5rem;/s,
+    );
+    expect(css).toMatch(
+      /\.bb-sidebar-hover-actions-row \.bb-sidebar-hover-actions-fade\s*\{\s*opacity: 0;/s,
+    );
+  });
+
   it("backs selected sticky sidebar rows with an opaque sidebar layer", () => {
     const rule = css.match(
       /\[data-sidebar-sticky-tier\]\.bb-sidebar-selected-row\s*\{([^}]*)\}/s,

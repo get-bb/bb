@@ -195,7 +195,7 @@ export function Overview() {
             text={shortMessage}
             attachments={null}
             showActions={true}
-            mobileActionDisplay="inline"
+            touchActionDisplay="inline"
             streaming={false}
           />
         </TimelineStage>
@@ -213,7 +213,7 @@ export function Overview() {
             text={longMessage}
             attachments={null}
             showActions={true}
-            mobileActionDisplay="inline"
+            touchActionDisplay="inline"
             streaming={false}
           />
         </TimelineStage>
@@ -277,7 +277,7 @@ export function ActionOverflow() {
               text="Done — the migration ran cleanly on all three environments."
               attachments={null}
               showActions={true}
-              mobileActionDisplay="inline"
+              touchActionDisplay="inline"
               streaming={false}
               onAddToChat={noop}
               onFork={noop}
@@ -299,7 +299,7 @@ export function ActionOverflow() {
             text="Done — migration complete."
             attachments={null}
             showActions={true}
-            mobileActionDisplay="inline"
+            touchActionDisplay="inline"
             streaming={false}
             onAddToChat={noop}
             onFork={noop}

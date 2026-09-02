@@ -391,6 +391,19 @@ describe("QueuedMessagesList", () => {
       container.querySelector('[data-icon="DragDropVertical"]'),
     ).not.toBeNull();
 
+    const desktopActions = container.querySelector<HTMLElement>(
+      "[data-queued-message-actions]",
+    );
+    const overflowTrigger = getByRole("button", {
+      name: "Queued message 1 actions",
+    });
+    expect(desktopActions?.classList).toContain("pointer-coarse:hidden");
+    expect(desktopActions?.classList).toContain("[@media(hover:none)]:hidden");
+    expect(overflowTrigger.classList).toContain("pointer-coarse:inline-flex");
+    expect(overflowTrigger.classList).toContain(
+      "[@media(hover:none)]:inline-flex",
+    );
+
     for (const [button, label] of [
       [sendButton, "Send now"],
       [editButton, "Edit"],
