@@ -99,7 +99,7 @@ export const RAPP_BUSINESS_MODEL = {
   id: RAPP_BUSINESS_MODEL_ID,
   displayName: "Business Grail",
   description:
-    "Use the fixed managed GitHub Copilot model selected by the Business RAPP Brainstem deployment.",
+    "Use the fixed managed model owned by the configured Business RAPP deployment.",
   supportedReasoningEfforts: [
     {
       reasoningEffort: "none",

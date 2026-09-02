@@ -22,6 +22,7 @@ function isBuiltProviderBridge(value: unknown): value is BuiltProviderBridge {
 
 interface BuiltHostEntry {
   readonly experimental_apiVersion: 1;
+  readonly contract: Readonly<Record<string, unknown>>;
   readonly handlers: Readonly<
     Record<string, (input: unknown, context: unknown) => unknown>
   >;
@@ -31,7 +32,10 @@ function isBuiltHostEntry(value: unknown): value is BuiltHostEntry {
   if (typeof value !== "object" || value === null) return false;
   return (
     Reflect.get(value, "experimental_apiVersion") === 1 &&
-    typeof Reflect.get(value, "handlers") === "object"
+    typeof Reflect.get(value, "contract") === "object" &&
+    Reflect.get(value, "contract") !== null &&
+    typeof Reflect.get(value, "handlers") === "object" &&
+    Reflect.get(value, "handlers") !== null
   );
 }
 
@@ -98,7 +102,14 @@ describe("builtin host artifacts", () => {
       methods: ["probeAgent", "resolveNativeRoots"],
     },
     { pluginDir: "provider-claude-code", methods: ["resolveNativeRoots"] },
-    { pluginDir: "provider-codex", methods: ["resolveNativeRoots"] },
+    {
+      pluginDir: "provider-codex",
+      methods: [
+        "ai.inference.complete",
+        "ai.voice.transcribe",
+        "resolveNativeRoots",
+      ],
+    },
     { pluginDir: "provider-pi", methods: ["resolveNativeRoots"] },
     { pluginDir: "provider-rapp", methods: [] },
   ])(
@@ -130,10 +141,10 @@ describe("builtin host artifacts", () => {
       );
       expect(isBuiltProviderBridge(bridge)).toBe(true);
       const entry = Reflect.get(Object(imported), "default");
-      const contract = Reflect.get(Object(entry), "contract");
-      expect(Object.keys(Object(contract))).toEqual(
-        expect.arrayContaining(methods),
-      );
+      if (!isBuiltHostEntry(entry)) {
+        throw new Error(`${pluginDir} did not build a valid host entry`);
+      }
+      expect(Object.keys(entry.contract).sort()).toEqual([...methods].sort());
     },
     90_000,
   );

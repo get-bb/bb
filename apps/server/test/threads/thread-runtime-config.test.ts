@@ -860,7 +860,7 @@ describe("thread runtime config", () => {
                 : providerId === "pi"
                   ? "pi-model"
                   : providerId === "rapp"
-                    ? "brainstem"
+                    ? "claude-sonnet-5"
                     : "claude-sonnet-4-6",
             ...(providerId === "rapp"
               ? { reasoningLevel: "none" as const }
@@ -908,8 +908,14 @@ describe("thread runtime config", () => {
         grail: "consumer",
       });
       expect(rapp.options.providerOptions).toEqual({
-        model: "brainstem",
+        model: "claude-sonnet-5",
       });
+      expect(
+        [
+          ...Object.keys(rapp.bridgeLaunch.providerOptions),
+          ...Object.keys(rapp.options.providerOptions),
+        ].filter((key) => /COPILOT|GITHUB_TOKEN|GH_TOKEN/iu.test(key)),
+      ).toEqual([]);
     });
   });
 

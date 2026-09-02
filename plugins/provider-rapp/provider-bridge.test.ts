@@ -491,8 +491,8 @@ describe("RAPP provider bridge", () => {
       payload: {
         grail: "business",
         selectedModel: RAPP_BUSINESS_MODEL_ID,
-        requestedModel: RAPP_BUSINESS_MODEL_ID,
-        actualModel: RAPP_BUSINESS_MODEL_ID,
+        requestedModel: null,
+        actualModel: null,
       },
     });
   });

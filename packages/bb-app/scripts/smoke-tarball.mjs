@@ -8,7 +8,8 @@ import {
   rm,
   writeFile,
 } from "node:fs/promises";
-import { createServer } from "node:net";
+import { createServer as createHttpServer } from "node:http";
+import { createServer as createNetServer } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -147,7 +148,7 @@ function spawnManagedProcess({ args, command, env = {}, label }) {
 
 function reserveFreePort() {
   return new Promise((resolvePromise, reject) => {
-    const server = createServer();
+    const server = createNetServer();
     server.once("error", reject);
     server.listen(0, "127.0.0.1", () => {
       const address = server.address();
@@ -433,6 +434,8 @@ function spawnPackedBridge({ bridgePath, packageDir, pluginId }) {
 async function smokeBridgeModelList({
   allowUnavailableProvider = false,
   bridgePath,
+  expectedModelIds,
+  expectedSelectedOnlyModelIds,
   packageDir,
   pluginId,
   label,
@@ -484,7 +487,50 @@ async function smokeBridgeModelList({
     isRecord(modelListResponse.result) &&
     Array.isArray(modelListResponse.result.models)
   ) {
-    return;
+    const models = modelListResponse.result.models;
+    if (models.length === 0) {
+      throw new Error(`${label} returned an empty model catalog`);
+    }
+    for (const model of models) {
+      if (
+        !isRecord(model) ||
+        typeof model.id !== "string" ||
+        typeof model.model !== "string" ||
+        typeof model.displayName !== "string"
+      ) {
+        throw new Error(`${label} returned an invalid model`);
+      }
+    }
+    if (!models.some((model) => model.isDefault === true)) {
+      throw new Error(`${label} returned no default model`);
+    }
+    const modelIds = models.map((model) => model.id);
+    if (
+      expectedModelIds !== undefined &&
+      JSON.stringify(modelIds) !== JSON.stringify(expectedModelIds)
+    ) {
+      throw new Error(
+        `${label} returned models ${JSON.stringify(modelIds)}, expected ${JSON.stringify(expectedModelIds)}`,
+      );
+    }
+    if (expectedSelectedOnlyModelIds !== undefined) {
+      const selectedOnlyModels = modelListResponse.result.selectedOnlyModels;
+      if (!Array.isArray(selectedOnlyModels)) {
+        throw new Error(`${label} returned no selected-only model catalog`);
+      }
+      const selectedOnlyModelIds = selectedOnlyModels.map((model) =>
+        isRecord(model) ? model.id : undefined,
+      );
+      if (
+        JSON.stringify(selectedOnlyModelIds) !==
+        JSON.stringify(expectedSelectedOnlyModelIds)
+      ) {
+        throw new Error(
+          `${label} returned selected-only models ${JSON.stringify(selectedOnlyModelIds)}, expected ${JSON.stringify(expectedSelectedOnlyModelIds)}`,
+        );
+      }
+    }
+    return models;
   }
 
   const unavailableProviderMessage =
@@ -499,6 +545,66 @@ async function smokeBridgeModelList({
       `${label} did not return a model/list response\n${formatProcessOutput(output)}`,
     );
   }
+}
+
+async function startFakeRappBrainstem() {
+  let modelRequestCount = 0;
+  const server = createHttpServer((request, response) => {
+    response.setHeader("content-type", "application/json");
+    if (request.method === "GET" && request.url === "/health") {
+      response.end(
+        JSON.stringify({ status: "ok", version: "smoke", agents: [] }),
+      );
+      return;
+    }
+    if (request.method === "GET" && request.url === "/models") {
+      modelRequestCount += 1;
+      response.end(
+        JSON.stringify({
+          current: "claude-sonnet-5",
+          models: [
+            {
+              id: "claude-sonnet-5",
+              name: "Claude Sonnet 5",
+              available: true,
+            },
+            { id: "gpt-5.4", name: "GPT-5.4", available: true },
+            {
+              id: "unavailable-smoke-model",
+              name: "Unavailable",
+              available: false,
+            },
+          ],
+        }),
+      );
+      return;
+    }
+    response.statusCode = 404;
+    response.end(JSON.stringify({ error: "not found" }));
+  });
+  await new Promise((resolvePromise, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", resolvePromise);
+  });
+  const address = server.address();
+  if (address === null || typeof address === "string") {
+    server.close();
+    throw new Error("Fake RAPP Brainstem has no TCP address");
+  }
+  return {
+    endpoint: `http://127.0.0.1:${address.port}/chat`,
+    modelRequestCount: () => modelRequestCount,
+    close: () =>
+      new Promise((resolvePromise, reject) => {
+        server.close((error) => {
+          if (error) {
+            reject(error);
+            return;
+          }
+          resolvePromise();
+        });
+      }),
+  };
 }
 
 async function smokeProviderBridgeBundles(packageDir) {
@@ -541,24 +647,36 @@ async function smokeProviderBridgeBundles(packageDir) {
     pluginId: "provider-pi",
     label: "Pi host-artifact bridge model/list",
   });
-  await smokeBridgeModelList({
-    bridgePath: join(
+  const fakeRappBrainstem = await startFakeRappBrainstem();
+  try {
+    await smokeBridgeModelList({
+      bridgePath: join(
+        packageDir,
+        "server",
+        "dist",
+        "builtin-plugins",
+        "provider-rapp",
+        "dist",
+        "host.js",
+      ),
+      expectedModelIds: ["claude-sonnet-5", "gpt-5.4"],
+      expectedSelectedOnlyModelIds: ["brainstem"],
       packageDir,
-      "server",
-      "dist",
-      "builtin-plugins",
-      "provider-rapp",
-      "dist",
-      "host.js",
-    ),
-    packageDir,
-    pluginId: "provider-rapp",
-    providerOptions: {
-      endpoint: "",
-      grail: "business",
-    },
-    label: "RAPP host-artifact bridge model/list",
-  });
+      pluginId: "provider-rapp",
+      providerOptions: {
+        endpoint: fakeRappBrainstem.endpoint,
+        grail: "consumer",
+      },
+      label: "RAPP host-artifact bridge model/list",
+    });
+    if (fakeRappBrainstem.modelRequestCount() === 0) {
+      throw new Error(
+        "RAPP bridge did not request the Brainstem model catalog",
+      );
+    }
+  } finally {
+    await fakeRappBrainstem.close();
+  }
   await smokeBridgeModelList({
     // ACP ships its bridge as a plugin artifact (graduation wave 5). With no
     // launch spec in the provider options it serves its synthetic "Agent

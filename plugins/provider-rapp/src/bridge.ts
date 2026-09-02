@@ -418,8 +418,8 @@ async function executeTurn(args: {
       actualModel = result.actualModel;
     } else {
       response = await callRapp(config, request, args.controller.signal);
-      requestedModel = RAPP_BUSINESS_MODEL_ID;
-      actualModel = RAPP_BUSINESS_MODEL_ID;
+      requestedModel = null;
+      actualModel = null;
     }
     if (!isCurrentTurn(session, args.providerTurnId)) {
       return;

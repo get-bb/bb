@@ -37,12 +37,30 @@ describe("bbAppManagedConfigSchema", () => {
     expect(parsed.customModels?.[1]?.displayName).toBeUndefined();
   });
 
-  it("rejects custom models for RAPP's plugin-owned catalogs", () => {
-    expect(
-      bbAppManagedConfigSchema.safeParse({
-        customModels: [{ providerId: "rapp", model: "brainstem" }],
-      }).success,
-    ).toBe(false);
+  it("drops RAPP custom models at the parsed config boundary", () => {
+    const warnings: Record<string, unknown>[] = [];
+    const parsed = parseBbAppManagedConfig(
+      {
+        customModels: [
+          { providerId: "claude-code", model: "claude-example-preview" },
+          { providerId: "rapp", model: "brainstem" },
+          { providerId: "acp-my-agent", model: "provider/model" },
+        ],
+      },
+      {
+        logger: {
+          warn(fields): void {
+            warnings.push(fields);
+          },
+        },
+      },
+    );
+
+    expect(parsed.customModels).toEqual([
+      { providerId: "claude-code", model: "claude-example-preview" },
+      { providerId: "acp-my-agent", model: "provider/model" },
+    ]);
+    expect(warnings.map((warning) => warning.index)).toEqual([1]);
   });
 
   it("parses custom models with dynamic ACP provider ids", () => {

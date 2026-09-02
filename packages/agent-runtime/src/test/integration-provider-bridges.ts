@@ -14,6 +14,16 @@ export const INTEGRATION_PROVIDER_BRIDGE_MANIFEST_PATH = join(
   "bb-agent-runtime-integration-provider-bridges.json",
 );
 
+export const INTEGRATION_RAPP_MODEL_REQUEST_PATH = join(
+  tmpdir(),
+  "bb-agent-runtime-integration-rapp-model-request.txt",
+);
+
+export const INTEGRATION_RAPP_MODEL_IDS = [
+  "claude-sonnet-5",
+  "gpt-5.4",
+] as const;
+
 const bridgeLaunchSchema = z.object({
   pluginId: z.string(),
   dataDir: z.string(),

@@ -340,6 +340,13 @@ describe("first-party provider plugins", () => {
           },
           composerActions: [skills],
         });
+        const rappRegistration = harness.deps.providerRegistry.get("rapp");
+        expect(
+          [
+            ...(rappRegistration?.envPassthrough ?? []),
+            ...Object.keys(rappRegistration?.bridgeOptions ?? {}),
+          ].filter((key) => /COPILOT|GITHUB_TOKEN|GH_TOKEN/iu.test(key)),
+        ).toEqual([]);
         expect(clientFields("acp-cursor")).toStrictEqual({
           id: "acp-cursor",
           displayName: "Cursor",
