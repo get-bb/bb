@@ -181,9 +181,11 @@ describe("ThreadActionsMenu section moves", () => {
     renderCompact(<ThreadActionsMenu thread={thread} />);
 
     fireEvent.click(screen.getByRole("button", { name: "Thread actions" }));
-    fireEvent.click(
-      await screen.findByRole("menuitem", { name: "Move to section" }),
-    );
+    const moveToSection = await screen.findByRole("menuitem", {
+      name: "Move to section",
+    });
+    expect(moveToSection.querySelector('[data-icon="MoveTo"]')).not.toBeNull();
+    fireEvent.click(moveToSection);
 
     expect(await screen.findByText("Move to section")).not.toBeNull();
     expect(screen.getByRole("menuitem", { name: "Building" })).not.toBeNull();
