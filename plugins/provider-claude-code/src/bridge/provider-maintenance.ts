@@ -257,21 +257,39 @@ async function readKeychainCredentials(): Promise<string | null> {
   return null;
 }
 
-async function readCredentials(): Promise<ClaudeCredentials | null> {
-  let raw = await readKeychainCredentials();
-  if (raw === null) {
+function decodeCredentialBlob(raw: string): unknown {
+  try {
+    return JSON.parse(raw);
+  } catch {
+    if (raw.length === 0 || raw.length % 2 !== 0 || /[^0-9a-f]/i.test(raw)) {
+      return null;
+    }
     try {
-      raw = await fs.readFile(
-        path.join(os.homedir(), ".claude", ".credentials.json"),
-        "utf8",
-      );
+      return JSON.parse(Buffer.from(raw, "hex").toString("utf8"));
     } catch {
       return null;
     }
   }
+}
+
+function parseClaudeCredentials(raw: string): ClaudeCredentials | null {
+  const parsed = claudeCredentialsSchema.safeParse(decodeCredentialBlob(raw));
+  return parsed.success ? parsed.data.claudeAiOauth : null;
+}
+
+async function readCredentials(): Promise<ClaudeCredentials | null> {
+  const keychain = await readKeychainCredentials();
+  if (keychain !== null) {
+    const fromKeychain = parseClaudeCredentials(keychain);
+    if (fromKeychain !== null) return fromKeychain;
+  }
   try {
-    const parsed = claudeCredentialsSchema.safeParse(JSON.parse(raw));
-    return parsed.success ? parsed.data.claudeAiOauth : null;
+    return parseClaudeCredentials(
+      await fs.readFile(
+        path.join(os.homedir(), ".claude", ".credentials.json"),
+        "utf8",
+      ),
+    );
   } catch {
     return null;
   }
@@ -524,4 +542,5 @@ export async function getClaudeProviderUsage(): Promise<ProviderUsageResult> {
 export const __testing = {
   buildProviderInstallationRun: buildClaudeProviderInstallationRun,
   normalizeUsage,
+  parseClaudeCredentials,
 };

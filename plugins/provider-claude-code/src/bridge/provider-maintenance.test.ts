@@ -80,4 +80,25 @@ describe("Claude Code provider maintenance", () => {
       "https://claude.ai/install.sh",
     );
   });
+
+  it("decodes hex-encoded Claude Code keychain credentials", () => {
+    const credentials = {
+      claudeAiOauth: {
+        accessToken: "sk-ant-test",
+        expiresAt: 1_788_350_959_477,
+        subscriptionType: "team",
+        rateLimitTier: "default_claude_max_5x",
+      },
+    };
+    const hex = Buffer.from(JSON.stringify(credentials), "utf8").toString(
+      "hex",
+    );
+    expect(__testing.parseClaudeCredentials(hex)).toEqual(
+      credentials.claudeAiOauth,
+    );
+    expect(
+      __testing.parseClaudeCredentials(JSON.stringify(credentials)),
+    ).toEqual(credentials.claudeAiOauth);
+    expect(__testing.parseClaudeCredentials("not-credentials")).toBeNull();
+  });
 });
