@@ -107,6 +107,7 @@ describe("daemon lifecycle", () => {
     const startupFailure = new Error("server unavailable");
     const shutdownRuntimes = vi.fn(async () => undefined);
     const releaseLock = vi.fn(async () => undefined);
+    const exitProcess = vi.fn();
     const daemon = createDaemon({
       identity: {
         hostId: "host-1",
@@ -119,6 +120,7 @@ describe("daemon lifecycle", () => {
       },
       releaseLock,
       shutdownRuntimes,
+      exitProcess,
     });
 
     await expect(daemon.start()).rejects.toBe(startupFailure);
@@ -126,6 +128,7 @@ describe("daemon lifecycle", () => {
 
     expect(shutdownRuntimes).toHaveBeenCalledOnce();
     expect(releaseLock).toHaveBeenCalledOnce();
+    expect(exitProcess).not.toHaveBeenCalled();
     expect(logger.info).toHaveBeenCalledWith(
       { mode: "shutdown", reason: "startup-failed" },
       "Shutting down host daemon",
@@ -216,7 +219,7 @@ describe("daemon lifecycle", () => {
 
   it("forces the process to exit when a shutdown step never finishes", async () => {
     const logger = createLogger();
-    const forceExit = vi.fn();
+    const exitProcess = vi.fn();
     const daemon = createDaemon({
       identity: {
         hostId: "host-1",
@@ -225,7 +228,7 @@ describe("daemon lifecycle", () => {
       },
       logger,
       releaseLock: () => new Promise<void>(() => undefined),
-      forceExit,
+      exitProcess,
       shutdownExitGraceMs: 10,
     });
 
@@ -233,7 +236,7 @@ describe("daemon lifecycle", () => {
     void daemon.shutdown("self-update");
 
     await vi.waitFor(() => {
-      expect(forceExit).toHaveBeenCalledWith(0);
+      expect(exitProcess).toHaveBeenCalledWith(0);
     });
     expect(logger.error).toHaveBeenCalledWith(
       expect.objectContaining({ reason: "self-update" }),
@@ -241,9 +244,10 @@ describe("daemon lifecycle", () => {
     );
   });
 
-  it("forces the process to exit when cleanup succeeds but the event loop stays alive", async () => {
+  it("exits the process immediately after clean shutdown", async () => {
     const logger = createLogger();
-    const forceExit = vi.fn();
+    const lifecycle: string[] = [];
+    const exitProcess = vi.fn(() => lifecycle.push("exitProcess"));
     const daemon = createDaemon({
       identity: {
         hostId: "host-1",
@@ -251,16 +255,28 @@ describe("daemon lifecycle", () => {
         instanceId: "instance-1",
       },
       logger,
-      releaseLock: async () => undefined,
-      forceExit,
-      shutdownExitGraceMs: 10,
+      flushEvents: async () => {
+        lifecycle.push("flushEvents");
+      },
+      shutdownRuntimes: async () => {
+        lifecycle.push("shutdownRuntimes");
+      },
+      releaseLock: async () => {
+        lifecycle.push("releaseLock");
+      },
+      exitProcess,
+      shutdownExitGraceMs: 60_000,
     });
 
     await daemon.start();
     await daemon.shutdown("self-update");
 
-    await vi.waitFor(() => {
-      expect(forceExit).toHaveBeenCalledWith(0);
-    });
+    expect(lifecycle).toEqual([
+      "flushEvents",
+      "shutdownRuntimes",
+      "releaseLock",
+      "exitProcess",
+    ]);
+    expect(exitProcess).toHaveBeenCalledWith(0);
   });
 });

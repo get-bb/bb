@@ -20,7 +20,7 @@ interface CreateDaemonOptions {
   shutdownRuntimes?: () => Promise<void>;
   onStart?: () => Promise<void>;
   signalSource?: SignalSource;
-  forceExit?: (code: number) => void;
+  exitProcess?: (code: number) => void;
   shutdownExitGraceMs?: number;
 }
 
@@ -39,6 +39,7 @@ export function createDaemon(options: CreateDaemonOptions): HostDaemon {
   let started = false;
   let stopPromise: Promise<void> | null = null;
   let stopFailure: Error | null = null;
+  let shutdownExitWatchdog: ReturnType<typeof setTimeout> | null = null;
 
   let resolveStopped: (() => void) | undefined;
   const stopped = new Promise<void>((resolve) => {
@@ -56,21 +57,34 @@ export function createDaemon(options: CreateDaemonOptions): HostDaemon {
   }
 
   function armShutdownExitWatchdog(reason: string): void {
-    const forceExit = options.forceExit;
-    if (!forceExit) {
+    const exitProcess = options.exitProcess;
+    if (!exitProcess) {
       return;
     }
 
     const graceMs =
       options.shutdownExitGraceMs ?? DEFAULT_SHUTDOWN_EXIT_GRACE_MS;
-    const timer = setTimeout(() => {
+    shutdownExitWatchdog = setTimeout(() => {
+      shutdownExitWatchdog = null;
       options.logger.error(
         { reason, graceMs, activeResources: process.getActiveResourcesInfo() },
         "Host daemon shutdown did not end the process; forcing exit so the service manager can restart it.",
       );
-      forceExit(0);
+      exitProcess(0);
     }, graceMs);
-    timer.unref?.();
+    shutdownExitWatchdog.unref?.();
+  }
+
+  function exitAfterCleanShutdown(): void {
+    const exitProcess = options.exitProcess;
+    if (!started || !exitProcess) {
+      return;
+    }
+    if (shutdownExitWatchdog !== null) {
+      clearTimeout(shutdownExitWatchdog);
+      shutdownExitWatchdog = null;
+    }
+    exitProcess(0);
   }
 
   async function stop(reason: string): Promise<void> {
@@ -127,6 +141,7 @@ export function createDaemon(options: CreateDaemonOptions): HostDaemon {
       }
 
       resolveStopped?.();
+      exitAfterCleanShutdown();
     })();
 
     return stopPromise;
