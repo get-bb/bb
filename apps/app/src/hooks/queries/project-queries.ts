@@ -4,6 +4,7 @@ import type {
   CommandListResponse,
   ProjectBranchesResponse,
   ProjectWithThreadsResponse,
+  ProjectWorktreesResponse,
   PromptHistoryResponse,
   WorkspacePathListResponse,
 } from "@bb/server-contract";
@@ -23,6 +24,7 @@ import {
   projectPathsQueryKey,
   projectPromptHistoryQueryKey,
   projectSourceBranchesQueryKey,
+  projectWorktreesQueryKey,
 } from "./query-keys";
 import { resolveProjectSourceBranchesPlaceholder } from "./query-placeholders";
 import {
@@ -33,6 +35,7 @@ import {
 } from "./query-helpers";
 import {
   EXPENSIVE_MANUAL_QUERY_POLICY,
+  FOCUS_OWNED_LIVE_QUERY_POLICY,
   HEAVY_PAYLOAD_QUERY_POLICY,
   REALTIME_OWNED_NO_FOCUS_QUERY_POLICY,
   TYPEAHEAD_QUERY_POLICY,
@@ -166,6 +169,30 @@ export function useProjectSourceBranches(
     return remoteRefresh.inFlight;
   }, [refetch]);
   return { ...result, refreshFromRemote };
+}
+
+/**
+ * Focus-owned worktree discovery for the new-thread composer. The policy's
+ * 30-second stale time is load-bearing: discovery spawns a git process per
+ * host, so focus changes and composer re-renders must not refetch eagerly.
+ * Expose `refetch` as the explicit retry affordance.
+ */
+export function useProjectWorktrees(
+  projectId: string | undefined,
+  options?: QueryOptions,
+) {
+  const enabled = (options?.enabled ?? true) && Boolean(projectId);
+
+  return useQuery<ProjectWorktreesResponse>({
+    queryKey: projectWorktreesQueryKey(projectId ?? ""),
+    queryFn: ({ signal }) =>
+      sdk.projects.worktrees({
+        projectId: requireProjectId(projectId, "useProjectWorktrees"),
+        signal,
+      }),
+    enabled,
+    ...FOCUS_OWNED_LIVE_QUERY_POLICY,
+  });
 }
 
 export function useProjectPromptHistory(

@@ -1,4 +1,4 @@
-import { and, eq, inArray, ne, sql, lt } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, ne, sql, lt } from "drizzle-orm";
 import type {
   DiscoveredWorkspaceProperties,
   EnvironmentChangeKind,
@@ -119,6 +119,27 @@ export function findForeignManagedEnvironmentAtHostPath(
       )
       .get() ?? null
   );
+}
+
+/**
+ * Environments that can participate in worktree discovery merging. A
+ * provisioning direct-unmanaged environment has no path yet, so it cannot be
+ * canonically matched and is deliberately absent here.
+ */
+export function listProjectEnvironmentsWithPaths(
+  db: DbConnection,
+  projectId: string,
+) {
+  return db
+    .select()
+    .from(environments)
+    .where(
+      and(
+        eq(environments.projectId, projectId),
+        isNotNull(environments.path),
+      ),
+    )
+    .all();
 }
 
 export function listEnvironments(db: DbConnection, projectId?: string) {

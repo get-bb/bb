@@ -76,6 +76,7 @@ const baseBranch: NewThreadBranchConfig = {
 
 const baseWorktree: NewThreadWorktreeConfig = {
   options: STORY_WORKTREE_OPTIONS,
+  failures: [],
   value: null,
   onChange: noop,
 };

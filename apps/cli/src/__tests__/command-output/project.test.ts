@@ -194,6 +194,163 @@ describe("bb project command output", () => {
     }
   });
 
+  it("bb project worktrees --json prints the raw discovery response", async () => {
+    const response = {
+      worktrees: [
+        {
+          hostId: "host-1",
+          path: "/work/feature",
+          checkout: { kind: "branch", branchName: "feature" },
+          lock: null,
+          availability: { kind: "selectable", canonicalPath: "/work/feature" },
+          ownership: "user-managed",
+          environmentId: null,
+          environmentName: null,
+        },
+      ],
+      failures: [
+        {
+          hostId: "host-2",
+          code: "host_offline",
+          message: "Machine is offline",
+        },
+      ],
+    };
+    const getWorktrees = vi.fn(async () => response);
+    stubServerApi({ "v1.projects.:id.worktrees.$get": getWorktrees });
+
+    await runCommand(["project", "worktrees", "proj-1", "--json"], register);
+
+    expect(
+      JSON.parse(String(vi.mocked(console.log).mock.calls[0]?.[0])),
+    ).toEqual(response);
+    expect(getWorktrees).toHaveBeenCalledWith({ param: { id: "proj-1" } });
+  });
+
+  it("bb project worktrees groups by machine and prints failures as rows", async () => {
+    const response = {
+      worktrees: [
+        {
+          hostId: "host-1",
+          path: "/work/feature",
+          checkout: { kind: "branch", branchName: "feature" },
+          lock: null,
+          availability: { kind: "selectable", canonicalPath: "/work/feature" },
+          ownership: "user-managed",
+          environmentId: null,
+          environmentName: null,
+        },
+        {
+          hostId: "host-1",
+          path: "/work/named",
+          checkout: { kind: "branch", branchName: "bb/thread" },
+          lock: { reason: "on external drive" },
+          availability: { kind: "selectable", canonicalPath: "/work/named" },
+          ownership: "bb-managed",
+          environmentId: "env-1",
+          environmentName: "Named env",
+        },
+        {
+          hostId: "host-1",
+          path: "/work/stale",
+          checkout: { kind: "detached", headSha: "abc1234def5678" },
+          lock: null,
+          availability: { kind: "unavailable", reason: "missing" },
+          ownership: "user-managed",
+          environmentId: null,
+          environmentName: null,
+        },
+      ],
+      failures: [
+        {
+          hostId: "host-2",
+          code: "host_offline",
+          message: "Machine is offline",
+        },
+      ],
+    };
+    stubServerApi({
+      "v1.projects.:id.worktrees.$get": vi.fn(async () => response),
+      "v1.hosts.$get": vi.fn(async () => [
+        { id: "host-1", name: "MacBook" },
+        { id: "host-2", name: "Studio" },
+      ]),
+    });
+
+    await runCommand(["project", "worktrees", "proj-1"], register);
+
+    const output = collectLogPayloads(vi.mocked(console.log)).join("\n");
+    expect(output).toContain("MacBook · feature");
+    expect(output).toContain("/work/feature");
+    expect(output).toContain("available");
+    expect(output).toContain("MacBook · Named env");
+    expect(output).toContain("locked: on external drive");
+    expect(output).toContain("bb-managed");
+    expect(output).toContain("env-1");
+    expect(output).toContain("MacBook · Detached at abc1234");
+    expect(output).toContain("missing");
+    expect(output).toContain("Studio");
+    expect(output).toContain("offline");
+  });
+
+  it("bb project worktrees renders a host's failure without dropping its rows", async () => {
+    const response = {
+      worktrees: [
+        {
+          hostId: "host-1",
+          path: "/work/feature",
+          checkout: { kind: "branch", branchName: "feature" },
+          lock: null,
+          availability: { kind: "selectable", canonicalPath: "/work/feature" },
+          ownership: "user-managed",
+          environmentId: null,
+          environmentName: null,
+        },
+      ],
+      failures: [
+        { hostId: "host-1", code: "discovery_failed", message: "Partial scan" },
+      ],
+    };
+    stubServerApi({
+      "v1.projects.:id.worktrees.$get": vi.fn(async () => response),
+      "v1.hosts.$get": vi.fn(async () => [{ id: "host-1", name: "MacBook" }]),
+    });
+
+    await runCommand(["project", "worktrees", "proj-1"], register);
+
+    const output = collectLogPayloads(vi.mocked(console.log)).join("\n");
+    expect(output).toContain("Partial scan");
+    expect(output).toContain("/work/feature");
+  });
+
+  it("bb project worktrees omits the machine prefix for a single machine", async () => {
+    const response = {
+      worktrees: [
+        {
+          hostId: "host-1",
+          path: "/work/feature",
+          checkout: { kind: "branch", branchName: "feature" },
+          lock: null,
+          availability: { kind: "selectable", canonicalPath: "/work/feature" },
+          ownership: "user-managed",
+          environmentId: null,
+          environmentName: null,
+        },
+      ],
+      failures: [],
+    };
+    stubServerApi({
+      "v1.projects.:id.worktrees.$get": vi.fn(async () => response),
+      "v1.hosts.$get": vi.fn(async () => [{ id: "host-1", name: "MacBook" }]),
+    });
+
+    await runCommand(["project", "worktrees", "proj-1"], register);
+
+    const output = collectLogPayloads(vi.mocked(console.log)).join("\n");
+    expect(output).toContain("feature");
+    expect(output).not.toContain("MacBook ·");
+  });
+
   it("bb project list --json prints raw projects", async () => {
     const projects = [
       {

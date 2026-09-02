@@ -18,7 +18,7 @@ import { getProviderIconInfo } from "../src/lib/provider-icon";
 import type { PickerOption } from "../src/components/pickers/OptionPicker";
 import type { ModelPickerOption } from "../src/components/pickers/model-picker-option";
 import type { ProjectSelectorOption } from "../src/components/pickers/ProjectSelector";
-import type { ReuseThreadOption } from "../src/components/pickers/WorktreePicker";
+import type { WorktreeOption } from "../src/components/pickers/WorktreePicker";
 import type { ExecutionControlsProps } from "../src/components/promptbox/ExecutionControls";
 import {
   INERT_TYPEAHEAD_COMMAND_CONFIG,
@@ -272,21 +272,51 @@ export const STORY_BRANCH_OPTIONS: readonly string[] = [
   "bb/refactor-project-creation-thr_jj65bdsiwa",
 ];
 
-export const STORY_WORKTREE_OPTIONS: readonly ReuseThreadOption[] = [
+export const STORY_WORKTREE_OPTIONS: readonly WorktreeOption[] = [
   {
+    value: "reuse:env_review_flow",
     environmentId: "env_review_flow",
-    branchName: "bb/review-flow-thr_4hge9xn14m",
+    hostId: HOST_IDS.local,
+    hostName: null,
     name: null,
+    checkout: { kind: "branch", branchName: "bb/review-flow-thr_4hge9xn14m" },
+    displayPath: "/Users/dev/bb-worktrees/review-flow",
+    availability: "selectable",
+    lock: null,
+    ownership: "bb-managed",
     threads: [
       { id: "thr_review", title: "Review flow cleanup" },
       { id: "thr_tests", title: "Backfill promptbox tests" },
     ],
   },
   {
+    value: "reuse:env_timeline",
     environmentId: "env_timeline",
-    branchName: "bb/timeline-pagination-thr_qfk8ksbxkk",
+    hostId: HOST_IDS.local,
+    hostName: null,
     name: "Timeline workspace",
+    checkout: {
+      kind: "branch",
+      branchName: "bb/timeline-pagination-thr_qfk8ksbxkk",
+    },
+    displayPath: "/Users/dev/bb-worktrees/timeline-pagination",
+    availability: "selectable",
+    lock: null,
+    ownership: "bb-managed",
     threads: [{ id: "thr_timeline", title: "Timeline pagination" }],
+  },
+  {
+    value: "path:host_local:%2FUsers%2Fdev%2Fworktrees%2Fspike",
+    environmentId: null,
+    hostId: HOST_IDS.local,
+    hostName: null,
+    name: null,
+    checkout: { kind: "branch", branchName: "spike/manual-worktree" },
+    displayPath: "/Users/dev/worktrees/spike",
+    availability: "selectable",
+    lock: null,
+    ownership: "user-managed",
+    threads: [],
   },
 ];
 

@@ -36,6 +36,7 @@ This index lists every command path that the core CLI registers. Read the task-s
 - `bb project history`
 - `bb project reorder`
 - `bb project branches`
+- `bb project worktrees`
 - `bb project paths`
 - `bb project commands`
 - `bb project files`

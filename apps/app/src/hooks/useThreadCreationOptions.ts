@@ -178,7 +178,7 @@ type InitialReadyProviderResolution =
 function sanitizeStoredEnvironmentValue(stored: string): string {
   if (!stored) return "";
   const parsed = parseEnvironmentValue(stored);
-  if (parsed?.type === "reuse") return "";
+  if (parsed?.type === "reuse" || parsed?.type === "worktree-path") return "";
   return stored;
 }
 
@@ -832,7 +832,7 @@ export function useThreadCreationOptions(
     (value: string) => {
       if (scope === "new-thread") {
         const parsed = parseEnvironmentValue(value);
-        if (parsed?.type === "reuse") {
+        if (parsed?.type === "reuse" || parsed?.type === "worktree-path") {
           setRootComposeReuseValue(value);
           return;
         }

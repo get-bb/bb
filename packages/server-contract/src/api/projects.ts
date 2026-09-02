@@ -225,6 +225,66 @@ export type ProjectBranchesResponse = z.infer<
   typeof projectBranchesResponseSchema
 >;
 
+/**
+ * A worktree the project can start a thread in: either an existing reusable
+ * environment or a user-managed worktree discovered from the project's git
+ * sources. Bare checkouts never appear; the configured source checkout itself
+ * is represented by "Work locally", not by a row here.
+ */
+export const projectWorktreeCheckoutSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("branch"), branchName: z.string().min(1) }),
+  z.object({ kind: z.literal("detached"), headSha: z.string().min(1) }),
+]);
+export type ProjectWorktreeCheckout = z.infer<
+  typeof projectWorktreeCheckoutSchema
+>;
+
+export const projectWorktreeSchema = z.object({
+  hostId: z.string().min(1),
+  /** Git-reported absolute path, for display. */
+  path: z.string().min(1),
+  checkout: projectWorktreeCheckoutSchema,
+  /** Null when unlocked; a locked worktree may have no recorded reason. */
+  lock: z.object({ reason: z.string().nullable() }).nullable(),
+  /**
+   * Selection identity lives only on the selectable arm, so a selectable row
+   * without a canonical path is unrepresentable.
+   */
+  availability: z.discriminatedUnion("kind", [
+    z.object({
+      kind: z.literal("selectable"),
+      canonicalPath: z.string().min(1),
+    }),
+    z.object({
+      kind: z.literal("unavailable"),
+      reason: z.enum(["missing", "prunable"]),
+    }),
+  ]),
+  ownership: z.enum(["bb-managed", "user-managed"]),
+  /** Null when the row is an unmatched discovered worktree. */
+  environmentId: z.string().nullable(),
+  environmentName: z.string().nullable(),
+});
+export type ProjectWorktree = z.infer<typeof projectWorktreeSchema>;
+
+export const projectWorktreeFailureSchema = z.object({
+  hostId: z.string().min(1),
+  code: z.enum(["host_offline", "discovery_failed"]),
+  message: z.string().min(1),
+});
+export type ProjectWorktreeFailure = z.infer<
+  typeof projectWorktreeFailureSchema
+>;
+
+/** Partial discovery is a successful response: failures are per-host data. */
+export const projectWorktreesResponseSchema = z.object({
+  worktrees: z.array(projectWorktreeSchema),
+  failures: z.array(projectWorktreeFailureSchema),
+});
+export type ProjectWorktreesResponse = z.infer<
+  typeof projectWorktreesResponseSchema
+>;
+
 export const projectAttachmentContentQuerySchema = z.object({
   path: z.string().min(1),
 });

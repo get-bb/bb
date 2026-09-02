@@ -31,3 +31,6 @@ export {
   runGit,
 } from "./git.js";
 export type { GitProcessOptions } from "./git.js";
+
+export { listGitWorktrees, resolveHostPaths } from "./worktree-list.js";
+export type { ListGitWorktreesOptions } from "./worktree-list.js";

@@ -138,6 +138,25 @@ describe("resolveRootComposeThreadEnvironment", () => {
     });
   });
 
+  it("attaches a discovered worktree as an unmanaged path with no branch intent", () => {
+    const canonicalPath = "/Users/dev/worktrees/spike branch:odd";
+    expect(
+      resolveRootComposeThreadEnvironment({
+        defaultBranch: "main",
+        defaultWorktreeBaseBranch: null,
+        environmentValue: `path:${encodeURIComponent("host_123")}:${encodeURIComponent(canonicalPath)}`,
+        projectId,
+        // A branch pick from an earlier host-mode state must not leak into
+        // the discovered-worktree attachment.
+        selectedBranch: selectedBranch("develop"),
+      }),
+    ).toEqual({
+      type: "host",
+      hostId: "host_123",
+      workspace: { type: "unmanaged", path: canonicalPath },
+    });
+  });
+
   it("uses personal workspaces for the personal project", () => {
     expect(
       resolveRootComposeThreadEnvironment({

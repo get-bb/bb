@@ -214,6 +214,35 @@ describe("@bb/sdk", () => {
     );
   });
 
+  it("requests project worktrees while forwarding the abort signal", async () => {
+    const controller = new AbortController();
+    let receivedSignal: AbortSignal | null | undefined;
+    const response = { worktrees: [], failures: [] };
+    const queue = createFetchQueue([{ body: response }]);
+    const sdk = createBbSdk({
+      transport: createHttpTransport({
+        baseUrl: "http://bb.test",
+        fetch: async (input, init) => {
+          receivedSignal = init?.signal;
+          return queue.fetch(input, init);
+        },
+        runtime: "node",
+      }),
+    });
+
+    await expect(
+      sdk.projects.worktrees({
+        projectId: "proj-1",
+        signal: controller.signal,
+      }),
+    ).resolves.toEqual(response);
+    expect(receivedSignal).toBe(controller.signal);
+    expect(queue.requests[0]?.url).toBe(
+      "http://bb.test/api/v1/projects/proj-1/worktrees",
+    );
+    expect(queue.requests[0]?.method).toBe("GET");
+  });
+
   it("sends a complete appearance selection through the theme transport", async () => {
     const appearance = {
       themeId: "nord",

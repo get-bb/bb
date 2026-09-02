@@ -137,6 +137,7 @@ const storyBranch: NewThreadBranchConfig = {
 
 const storyWorktree: NewThreadWorktreeConfig = {
   options: STORY_WORKTREE_OPTIONS,
+  failures: [],
   value: null,
   onChange: noop,
 };

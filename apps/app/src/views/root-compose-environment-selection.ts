@@ -5,14 +5,21 @@ import {
 } from "@bb/domain";
 import type {
   ProjectBranchesResponse,
+  ProjectWorktree,
+  ProjectWorktreeFailure,
   SystemProvidersQuery,
 } from "@bb/server-contract";
 import {
   encodeHostValue,
+  encodeReuseValue,
+  encodeWorktreePathValue,
   parseEnvironmentValue,
   REUSE_VALUE_WITHOUT_ENVIRONMENT,
 } from "@/components/pickers/environment-picker-value";
-import type { ReuseThreadOption } from "@/components/pickers/WorktreePicker";
+import type {
+  WorktreeDiscoveryFailure,
+  WorktreeOption,
+} from "@/components/pickers/WorktreePicker";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
 
 interface ResolveRootComposeEffectiveEnvironmentValueArgs {
@@ -21,8 +28,10 @@ interface ResolveRootComposeEffectiveEnvironmentValueArgs {
   knownHostIds: ReadonlySet<string>;
   primaryHostId: string | null;
   projectSources: readonly ProjectSource[];
-  reuseThreadOptions: readonly ReuseThreadOption[];
-  reuseThreadOptionsLoading: boolean;
+  worktreeOptions: readonly WorktreeOption[];
+  worktreeOptionsLoading: boolean;
+  /** At least one machine's discovery failed; keep reuse mode inspectable. */
+  hasWorktreeDiscoveryFailures: boolean;
 }
 
 const PROJECT_SOURCE_NOT_GIT_WORKTREE_DISABLED_REASON =
@@ -30,67 +39,83 @@ const PROJECT_SOURCE_NOT_GIT_WORKTREE_DISABLED_REASON =
 const PROJECT_SOURCE_NO_COMMITS_WORKTREE_DISABLED_REASON =
   "Project source has no commits. Create an initial commit before creating a worktree";
 
-function isWorktreeWithEnv(thread: ThreadListEntry): boolean {
-  if (thread.environmentId === null) return false;
-  return (
-    thread.environmentWorkspaceDisplayKind === "managed-worktree" ||
-    thread.environmentWorkspaceDisplayKind === "unmanaged-worktree"
-  );
+export interface WorktreeOptionsModel {
+  options: WorktreeOption[];
+  failures: WorktreeDiscoveryFailure[];
 }
 
-export function buildReuseThreadOptions(
-  threads: readonly ThreadListEntry[],
-  hostNameById: ReadonlyMap<string, string> | null = null,
-): ReuseThreadOption[] {
+interface BuildWorktreeOptionsArgs {
+  worktrees: readonly ProjectWorktree[];
+  failures: readonly ProjectWorktreeFailure[];
+  threads: readonly ThreadListEntry[];
+  hostNameById: ReadonlyMap<string, string> | null;
+}
+
+export function buildWorktreeOptions(
+  args: BuildWorktreeOptionsArgs,
+): WorktreeOptionsModel {
   const threadsByEnvironmentId = new Map<string, ThreadListEntry[]>();
-  const branchByEnvironmentId = new Map<string, string | null>();
-  const nameByEnvironmentId = new Map<string, string | null>();
-  const hostIdByEnvironmentId = new Map<string, string | null>();
-  for (const thread of threads) {
-    if (!isWorktreeWithEnv(thread)) continue;
+  for (const thread of args.threads) {
     if (thread.environmentId === null) continue;
-    let bucket = threadsByEnvironmentId.get(thread.environmentId);
-    if (!bucket) {
-      bucket = [];
-      threadsByEnvironmentId.set(thread.environmentId, bucket);
-      branchByEnvironmentId.set(
-        thread.environmentId,
-        thread.environmentBranchName,
-      );
-      nameByEnvironmentId.set(thread.environmentId, thread.environmentName);
-      hostIdByEnvironmentId.set(thread.environmentId, thread.environmentHostId);
+    const bucket = threadsByEnvironmentId.get(thread.environmentId);
+    if (bucket) {
+      bucket.push(thread);
+    } else {
+      threadsByEnvironmentId.set(thread.environmentId, [thread]);
     }
-    bucket.push(thread);
   }
-  const options: ReuseThreadOption[] = [];
-  for (const [environmentId, bucket] of threadsByEnvironmentId) {
+  for (const bucket of threadsByEnvironmentId.values()) {
     bucket.sort(
       (left, right) => right.latestAttentionAt - left.latestAttentionAt,
     );
-    const hostId = hostIdByEnvironmentId.get(environmentId) ?? null;
-    options.push({
-      environmentId,
-      branchName: branchByEnvironmentId.get(environmentId) ?? null,
-      name: nameByEnvironmentId.get(environmentId) ?? null,
-      hostName:
-        hostNameById !== null && hostId !== null
-          ? (hostNameById.get(hostId) ?? null)
-          : null,
-      threads: bucket.map((thread) => ({
+  }
+
+  const hostName = (hostId: string): string | null =>
+    args.hostNameById === null ? null : (args.hostNameById.get(hostId) ?? null);
+
+  const options = args.worktrees.map((worktree): WorktreeOption => {
+    const availability = worktree.availability;
+    const selectable = availability.kind === "selectable";
+    const value =
+      worktree.environmentId !== null
+        ? encodeReuseValue(worktree.environmentId)
+        : availability.kind === "selectable"
+          ? encodeWorktreePathValue(worktree.hostId, availability.canonicalPath)
+          : null;
+    const threads =
+      worktree.environmentId !== null
+        ? (threadsByEnvironmentId.get(worktree.environmentId) ?? [])
+        : [];
+    return {
+      value: selectable ? value : null,
+      environmentId: worktree.environmentId,
+      hostId: worktree.hostId,
+      hostName: hostName(worktree.hostId),
+      name: worktree.environmentName,
+      checkout: worktree.checkout,
+      displayPath: worktree.path,
+      availability:
+        availability.kind === "selectable" ? "selectable" : availability.reason,
+      lock: worktree.lock,
+      ownership: worktree.ownership,
+      threads: threads.map((thread) => ({
         id: thread.id,
         title: getThreadDisplayTitle(thread),
       })),
-    });
-  }
-  options.sort((left, right) => {
-    const leftLabel = left.name ?? left.branchName;
-    const rightLabel = right.name ?? right.branchName;
-    if (leftLabel && rightLabel) {
-      return leftLabel.localeCompare(rightLabel);
-    }
-    return left.environmentId.localeCompare(right.environmentId);
+    };
   });
-  return options;
+
+  return {
+    options,
+    failures: args.failures.map((failure) => ({
+      hostId: failure.hostId,
+      hostName: hostName(failure.hostId),
+      message:
+        failure.code === "host_offline"
+          ? "Machine is offline"
+          : failure.message,
+    })),
+  };
 }
 
 export function resolveProjectSourceWorktreeDisabledReason(
@@ -114,8 +139,9 @@ export function resolveRootComposeEffectiveEnvironmentValue({
   knownHostIds,
   primaryHostId,
   projectSources,
-  reuseThreadOptions,
-  reuseThreadOptionsLoading,
+  worktreeOptions,
+  worktreeOptionsLoading,
+  hasWorktreeDiscoveryFailures,
 }: ResolveRootComposeEffectiveEnvironmentValueArgs): string {
   if (!primaryHostId) {
     return "";
@@ -153,20 +179,39 @@ export function resolveRootComposeEffectiveEnvironmentValue({
 
   if (parsedSelection?.type === "reuse") {
     if (parsedSelection.environmentId === null) {
-      return reuseThreadOptionsLoading || reuseThreadOptions.length > 0
+      return worktreeOptionsLoading ||
+        worktreeOptions.length > 0 ||
+        hasWorktreeDiscoveryFailures
         ? environmentSelectionValue
         : fallbackHostValue;
     }
 
-    if (reuseThreadOptionsLoading) {
+    if (worktreeOptionsLoading) {
       return REUSE_VALUE_WITHOUT_ENVIRONMENT;
     }
 
-    return reuseThreadOptions.some(
-      (option) => option.environmentId === parsedSelection.environmentId,
+    // A refresh that removed or disabled the selected row clears the choice
+    // and keeps the picker in reuse mode: silently retargeting the thread at
+    // "Work locally" would run it somewhere the user never picked.
+    return worktreeOptions.some(
+      (option) =>
+        option.environmentId === parsedSelection.environmentId &&
+        option.value !== null,
     )
       ? environmentSelectionValue
-      : fallbackHostValue;
+      : REUSE_VALUE_WITHOUT_ENVIRONMENT;
+  }
+
+  if (parsedSelection?.type === "worktree-path") {
+    if (worktreeOptionsLoading) {
+      return environmentSelectionValue;
+    }
+    return worktreeOptions.some(
+      (option) =>
+        option.value !== null && option.value === environmentSelectionValue,
+    )
+      ? environmentSelectionValue
+      : REUSE_VALUE_WITHOUT_ENVIRONMENT;
   }
 
   if (!canUseHostWorkspace) {
@@ -184,9 +229,13 @@ export function resolveComposeHostId(
   parsedEnvironment: ReturnType<typeof parseEnvironmentValue>,
   primaryHostId: string | null,
 ): string | null {
-  return parsedEnvironment?.type === "host"
-    ? parsedEnvironment.hostId
-    : primaryHostId;
+  if (
+    parsedEnvironment?.type === "host" ||
+    parsedEnvironment?.type === "worktree-path"
+  ) {
+    return parsedEnvironment.hostId;
+  }
+  return primaryHostId;
 }
 
 export function resolveRootComposeProjectRouting(
@@ -208,7 +257,7 @@ export function resolveRootComposeProviderRouting(
   const parsed = parseEnvironmentValue(
     resolveRootComposeEffectiveEnvironmentValue(args),
   );
-  if (parsed?.type === "host") {
+  if (parsed?.type === "host" || parsed?.type === "worktree-path") {
     return { hostId: parsed.hostId };
   }
   if (parsed?.type === "reuse" && parsed.environmentId !== null) {

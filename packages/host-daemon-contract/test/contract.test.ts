@@ -1,5 +1,10 @@
 import { collectOptionalFieldPaths } from "@bb/test-helpers";
-import { threadScope, turnScope, type JsonObject } from "@bb/domain";
+import {
+  threadScope,
+  turnScope,
+  WORKTREE_COMPARISON_PATHS_MAX,
+  type JsonObject,
+} from "@bb/domain";
 import { describe, expect, it } from "vitest";
 import * as contract from "../src/index.js";
 import {
@@ -296,6 +301,35 @@ const ONLINE_RPC_RESPONSE_RESULT_FIXTURES: OnlineRpcResponseResultFixtures = {
       name: "main",
       kind: "local",
     },
+  },
+  "host.list_worktrees": {
+    worktrees: [
+      {
+        path: "/home/user/project",
+        canonicalPath: "/home/user/project",
+        checkout: { kind: "branch", branchName: "main" },
+        lock: null,
+        prunable: null,
+      },
+      {
+        path: "/home/user/project-bare/.bare",
+        canonicalPath: "/home/user/project-bare/.bare",
+        checkout: { kind: "bare" },
+        lock: null,
+        prunable: null,
+      },
+      {
+        path: "/home/user/wt detached",
+        canonicalPath: null,
+        checkout: { kind: "detached", headSha: "abc1234def" },
+        lock: { reason: null },
+        prunable: { reason: "gitdir file points to non-existent location" },
+      },
+    ],
+    resolvedPaths: [
+      { path: "/home/user/env", canonicalPath: "/home/user/env" },
+      { path: "/home/user/gone", canonicalPath: null },
+    ],
   },
   "host.file_metadata": {
     path: "/tmp/report.html",
@@ -935,7 +969,7 @@ const ACP_BRIDGE_LAUNCH = {
 
 describe("host-daemon command schemas", () => {
   it("uses the current host-daemon protocol version", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(176);
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(177);
     expect(HOST_ARTIFACT_MAX_BYTES).toBe(256 * 1024 * 1024);
   });
 
@@ -2736,6 +2770,56 @@ describe("host-daemon command schemas", () => {
         includeDirectories: false,
       }),
     ).toThrow();
+  });
+
+  it("bounds worktree discovery commands and rejects malformed variants", () => {
+    const valid = {
+      type: "host.list_worktrees",
+      path: "/home/user/project",
+      comparisonPaths: ["/home/user/env"],
+    };
+    expect(hostDaemonOnlineRpcCommandSchema.safeParse(valid).success).toBe(
+      true,
+    );
+
+    expect(
+      hostDaemonOnlineRpcCommandSchema.safeParse({
+        ...valid,
+        comparisonPaths: Array.from(
+          { length: WORKTREE_COMPARISON_PATHS_MAX + 1 },
+          (_, index) => `/home/user/env-${index}`,
+        ),
+      }).success,
+    ).toBe(false);
+
+    expect(
+      hostDaemonOnlineRpcCommandSchema.safeParse({
+        type: "host.list_worktrees",
+        path: "/home/user/project",
+      }).success,
+    ).toBe(false);
+
+    expect(
+      hostDaemonOnlineRpcCommandSchema.safeParse({
+        ...valid,
+        extra: true,
+      }).success,
+    ).toBe(false);
+
+    expect(
+      hostDaemonOnlineRpcResultSchemaByType["host.list_worktrees"].safeParse({
+        worktrees: [
+          {
+            path: "/home/user/project",
+            canonicalPath: "/home/user/project",
+            checkout: { kind: "branch" },
+            lock: null,
+            prunable: null,
+          },
+        ],
+        resolvedPaths: [],
+      }).success,
+    ).toBe(false);
   });
 
   it("keeps typed per-command result schemas", () => {

@@ -59,7 +59,8 @@ import {
 } from "@/components/pickers/ProjectSelector";
 import {
   WorktreePicker,
-  type ReuseThreadOption,
+  type WorktreeDiscoveryFailure,
+  type WorktreeOption,
 } from "@/components/pickers/WorktreePicker";
 import { selectPrimaryHost, useHosts } from "@/hooks/queries/host-queries";
 import { useSystemConfig } from "@/hooks/queries/system-queries";
@@ -115,9 +116,12 @@ export interface NewThreadBranchConfig {
 }
 
 export interface NewThreadWorktreeConfig {
-  options: readonly ReuseThreadOption[];
+  options: readonly WorktreeOption[];
+  failures: readonly WorktreeDiscoveryFailure[];
   value: string | null;
-  onChange: (environmentId: string) => void;
+  onChange: (value: string) => void;
+  onRetry?: () => void;
+  loading?: boolean;
   disabled?: boolean;
 }
 
@@ -449,7 +453,9 @@ export function ThreadEnvSlot({
   const branchMenuKind = getBranchPickerMenuKind({ parsedEnvironment });
   const showBranchPicker =
     parsedEnvironment?.type === "host" && branch.hidden !== true;
-  const showWorktreePicker = parsedEnvironment?.type === "reuse";
+  const showWorktreePicker =
+    parsedEnvironment?.type === "reuse" ||
+    parsedEnvironment?.type === "worktree-path";
   return (
     <>
       <EnvironmentPickerUI
@@ -498,8 +504,11 @@ export function ThreadEnvSlot({
         <WorktreePicker
           muted
           options={worktree.options}
+          failures={worktree.failures}
           value={worktree.value}
           onChange={worktree.onChange}
+          onRetry={worktree.onRetry}
+          loading={worktree.loading}
           disabled={worktree.disabled}
         />
       ) : null}

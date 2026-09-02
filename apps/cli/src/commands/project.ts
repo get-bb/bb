@@ -4,6 +4,8 @@ import { Command } from "commander";
 import type {
   CreateProjectSourceRequest,
   ProjectResponse,
+  ProjectWorktree,
+  ProjectWorktreesResponse,
   UpdateProjectSourceRequest,
 } from "@bb/server-contract";
 import { action } from "../action.js";
@@ -31,6 +33,10 @@ interface ProjectCreateCommandOptions {
 }
 
 interface ProjectShowCommandOptions {
+  json?: boolean;
+}
+
+interface ProjectWorktreesCommandOptions {
   json?: boolean;
 }
 
@@ -527,6 +533,23 @@ export function registerProjectCommands(
     );
 
   project
+    .command("worktrees <id>")
+    .description("List git worktrees discovered for a project")
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(async (id: string, opts: ProjectWorktreesCommandOptions) => {
+        const sdk = createCliBbSdk(getUrl());
+        const result = await sdk.projects.worktrees({ projectId: id });
+        if (outputJson(opts, result)) return;
+        const hosts = await sdk.hosts.list();
+        printProjectWorktrees(
+          result,
+          new Map(hosts.map((host) => [host.id, host.name])),
+        );
+      }),
+    );
+
+  project
     .command("update <id>")
     .description("Update a project")
     .option("--name <name>", "Set the project name")
@@ -693,6 +716,94 @@ function printProject(project: ProjectResponse): void {
       console.log(`    ${source.type}  ${source.path}${defaultMarker}`);
     }
   }
+  console.log("");
+}
+
+function formatWorktreeLabel(worktree: ProjectWorktree): string {
+  if (worktree.environmentName !== null) {
+    return worktree.environmentName;
+  }
+  return worktree.checkout.kind === "branch"
+    ? worktree.checkout.branchName
+    : `Detached at ${worktree.checkout.headSha.slice(0, 7)}`;
+}
+
+function formatWorktreeState(worktree: ProjectWorktree): string {
+  if (worktree.availability.kind === "unavailable") {
+    return worktree.availability.reason;
+  }
+  if (worktree.lock !== null) {
+    return worktree.lock.reason === null
+      ? "locked"
+      : `locked: ${worktree.lock.reason}`;
+  }
+  return "available";
+}
+
+function printProjectWorktrees(
+  response: ProjectWorktreesResponse,
+  hostNameById: ReadonlyMap<string, string>,
+): void {
+  const hostIds = [
+    ...new Set([
+      ...response.worktrees.map((worktree) => worktree.hostId),
+      ...response.failures.map((failure) => failure.hostId),
+    ]),
+  ];
+  if (hostIds.length === 0) {
+    console.log("No worktrees found");
+    return;
+  }
+  const multiMachine = hostIds.length > 1;
+  const hostLabel = (hostId: string) => hostNameById.get(hostId) ?? hostId;
+
+  const rows: string[][] = [];
+  for (const hostId of hostIds) {
+    // The response shape permits a host to report both a failure and rows;
+    // render everything rather than letting a warning hide returned data.
+    const failure = response.failures.find((entry) => entry.hostId === hostId);
+    if (failure) {
+      rows.push([
+        hostLabel(hostId),
+        "-",
+        failure.code === "host_offline" ? "offline" : failure.message,
+        "-",
+        "-",
+      ]);
+    }
+    for (const worktree of response.worktrees) {
+      if (worktree.hostId !== hostId) {
+        continue;
+      }
+      const label = formatWorktreeLabel(worktree);
+      rows.push([
+        multiMachine ? `${hostLabel(hostId)} · ${label}` : label,
+        worktree.path,
+        formatWorktreeState(worktree),
+        worktree.ownership,
+        worktree.environmentId ?? "-",
+      ]);
+    }
+  }
+
+  const widths = [
+    Math.max(8, ...rows.map((row) => row[0].length)),
+    Math.max(4, ...rows.map((row) => row[1].length)),
+    Math.max(5, ...rows.map((row) => row[2].length)),
+    Math.max(9, ...rows.map((row) => row[3].length)),
+    Math.max(11, ...rows.map((row) => row[4].length)),
+  ];
+  console.log("");
+  console.log(
+    renderBorderlessTable(
+      {
+        head: ["Worktree", "Path", "State", "Ownership", "Environment"],
+        colWidths: widths,
+        trimTrailingWhitespace: true,
+      },
+      rows,
+    ),
+  );
   console.log("");
 }
 

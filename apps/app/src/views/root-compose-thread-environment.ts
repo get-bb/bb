@@ -43,6 +43,17 @@ export function resolveRootComposeThreadEnvironment(
     return { type: "reuse", environmentId: parsed.environmentId };
   }
 
+  if (parsed.type === "worktree-path") {
+    // A discovered user-managed worktree attaches through the existing
+    // unmanaged request at its canonical path. No branch intent: the branch
+    // or detached HEAD stays exactly as the user left it.
+    return {
+      type: "host",
+      hostId: parsed.hostId,
+      workspace: { type: "unmanaged", path: parsed.canonicalPath },
+    };
+  }
+
   if (parsed.type === "host") {
     if (args.projectId === PERSONAL_PROJECT_ID) {
       return {

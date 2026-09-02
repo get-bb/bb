@@ -10,6 +10,7 @@ import type {
   ProjectFilesQuery,
   ProjectResponse,
   ProjectWithThreadsResponse,
+  ProjectWorktreesResponse,
   ProjectListQuery,
   ProjectPathsQuery,
   PromptHistoryResponse,
@@ -91,6 +92,11 @@ export interface ProjectBranchesArgs extends ProjectBranchesQuery {
 }
 
 export interface ProjectDefaultExecutionOptionsArgs {
+  projectId: string;
+  signal?: AbortSignal;
+}
+
+export interface ProjectWorktreesArgs {
   projectId: string;
   signal?: AbortSignal;
 }
@@ -182,6 +188,7 @@ export type ProjectSourceAddResult = ProjectSource;
 export type ProjectSourceDeleteResult = { ok: true };
 export type ProjectSourceUpdateResult = ProjectSource;
 export type ProjectUpdateResult = ProjectResponse;
+export type ProjectWorktreesResult = ProjectWorktreesResponse;
 
 export interface ProjectSourcesArea {
   add(args: ProjectSourceAddArgs): Promise<ProjectSourceAddResult>;
@@ -220,6 +227,13 @@ export interface ProjectsArea {
   ): Promise<ProjectSidebarBootstrapResult>;
   sources: ProjectSourcesArea;
   update(args: ProjectUpdateArgs): Promise<ProjectUpdateResult>;
+  /**
+   * Discovers git worktrees for every configured project source and merges
+   * them with reusable environments. Partial discovery is a success: each
+   * unreachable machine appears in `failures` while healthy machines keep
+   * their rows.
+   */
+  worktrees(args: ProjectWorktreesArgs): Promise<ProjectWorktreesResult>;
 }
 
 function projectUpdateJson(args: ProjectUpdateArgs): UpdateProjectRequest {
@@ -571,6 +585,16 @@ export function createProjectsArea(args: CreateSdkAreaArgs): ProjectsArea {
           param: { id: input.projectId },
           json: projectUpdateJson(input),
         }),
+      );
+    },
+    async worktrees(input) {
+      return transport.readJson(
+        transport.api.v1.projects[":id"].worktrees.$get(
+          {
+            param: { id: input.projectId },
+          },
+          ...signalRequestArgs(input.signal),
+        ),
       );
     },
   };

@@ -15,6 +15,7 @@ import {
   COARSE_POINTER_COMPACT_ICON_SIZE_SHRINK_CLASS,
   COARSE_POINTER_ICON_SIZE_CLASS,
 } from "@bb/shared-ui/coarse-pointer-sizing";
+import type { ProjectWorktreeCheckout } from "@bb/server-contract";
 import { getEnvironmentWorkspaceLabelIconName } from "@/lib/environment-workspace-display";
 import {
   OPTION_BASE_CLASS_NAME,
@@ -26,18 +27,45 @@ import {
 
 const REUSE_THREAD_PREVIEW_LIMIT = 2;
 
-export interface ReuseThreadOption {
-  environmentId: string;
-  branchName: string | null;
+export interface WorktreeOption {
+  value: string | null;
+  environmentId: string | null;
+  hostId: string;
+  hostName: string | null;
   name: string | null;
-  hostName?: string | null;
+  checkout: ProjectWorktreeCheckout;
+  displayPath: string;
+  availability: "selectable" | "missing" | "prunable";
+  lock: { reason: string | null } | null;
+  ownership: "bb-managed" | "user-managed";
   threads: ReadonlyArray<{ id: string; title: string }>;
 }
 
+export interface WorktreeDiscoveryFailure {
+  hostId: string;
+  hostName: string | null;
+  message: string;
+}
+
+export function worktreeOptionLabel(option: WorktreeOption): string {
+  if (option.name !== null) {
+    return option.name;
+  }
+  return option.checkout.kind === "branch"
+    ? option.checkout.branchName
+    : `Detached at ${option.checkout.headSha.slice(0, 7)}`;
+}
+
+const UNAVAILABLE_REMEDIATION =
+  "Inspect with `git worktree list`; clean up with `git worktree prune`.";
+
 interface WorktreePickerProps {
-  options: readonly ReuseThreadOption[];
+  options: readonly WorktreeOption[];
+  failures: readonly WorktreeDiscoveryFailure[];
   value: string | null;
-  onChange: (environmentId: string) => void;
+  onChange: (value: string) => void;
+  onRetry?: () => void;
+  loading?: boolean;
   muted?: boolean;
   disabled?: boolean;
   defaultOpen?: boolean;
@@ -46,8 +74,11 @@ interface WorktreePickerProps {
 
 export function WorktreePicker({
   options,
+  failures,
   value,
   onChange,
+  onRetry,
+  loading = false,
   muted,
   disabled = false,
   defaultOpen,
@@ -55,11 +86,31 @@ export function WorktreePicker({
 }: WorktreePickerProps) {
   const branchIcon = getEnvironmentWorkspaceLabelIconName("managed-worktree");
   const activeOption = useMemo(
-    () => options.find((option) => option.environmentId === value) ?? null,
+    () =>
+      value === null
+        ? null
+        : (options.find((option) => option.value === value) ?? null),
     [options, value],
   );
-  const triggerLabel =
-    activeOption?.name ?? activeOption?.branchName ?? "Pick a worktree";
+  const triggerLabel = activeOption
+    ? worktreeOptionLabel(activeOption)
+    : "Pick a worktree";
+  // Machine grouping only exists in multi-machine projects: the option
+  // builder sets hostName exactly then.
+  const groups = useMemo(() => {
+    const grouped = new Map<string | null, WorktreeOption[]>();
+    for (const option of options) {
+      const bucket = grouped.get(option.hostName);
+      if (bucket) {
+        bucket.push(option);
+      } else {
+        grouped.set(option.hostName, [option]);
+      }
+    }
+    return [...grouped.entries()];
+  }, [options]);
+  const showMachineHeaders = groups.some(([hostName]) => hostName !== null);
+  const isEmpty = options.length === 0 && failures.length === 0;
   return (
     <DropdownMenu defaultOpen={defaultOpen} modal={modal}>
       <DropdownMenuTrigger asChild disabled={disabled}>
@@ -100,23 +151,46 @@ export function WorktreePicker({
       </DropdownMenuTrigger>
       <DropdownMenuContent
         align="start"
-        className={cn(OPTION_MENU_CONTENT_CLASS_NAME, "max-w-80")}
+        className={cn(
+          OPTION_MENU_CONTENT_CLASS_NAME,
+          "max-h-[var(--radix-dropdown-menu-content-available-height)] max-w-96 overflow-x-hidden overflow-y-auto overscroll-contain",
+        )}
         mobileTitle="Worktree"
       >
-        <DropdownMenuLabel>Reuse existing worktree</DropdownMenuLabel>
-        {options.length === 0 ? (
+        <DropdownMenuLabel>Existing worktrees</DropdownMenuLabel>
+        {isEmpty ? (
           <div className="px-2 py-2 text-xs text-muted-foreground">
-            No worktrees in this project yet.
+            {loading
+              ? "Discovering worktrees…"
+              : "No existing worktrees found."}
           </div>
         ) : (
-          options.map((option) => (
-            <WorktreeMenuItem
-              key={option.environmentId}
-              option={option}
-              isSelected={option.environmentId === value}
-              onSelect={onChange}
-            />
-          ))
+          <>
+            {groups.map(([hostName, groupOptions]) => (
+              <div key={hostName ?? "single-machine"}>
+                {showMachineHeaders && hostName !== null ? (
+                  <DropdownMenuLabel className="text-xs text-muted-foreground">
+                    {hostName}
+                  </DropdownMenuLabel>
+                ) : null}
+                {groupOptions.map((option) => (
+                  <WorktreeMenuItem
+                    key={JSON.stringify([option.hostId, option.displayPath])}
+                    option={option}
+                    isSelected={option.value !== null && option.value === value}
+                    onSelect={onChange}
+                  />
+                ))}
+              </div>
+            ))}
+            {failures.map((failure) => (
+              <WorktreeFailureRow
+                key={failure.hostId}
+                failure={failure}
+                onRetry={onRetry}
+              />
+            ))}
+          </>
         )}
       </DropdownMenuContent>
     </DropdownMenu>
@@ -124,9 +198,9 @@ export function WorktreePicker({
 }
 
 interface WorktreeMenuItemProps {
-  option: ReuseThreadOption;
+  option: WorktreeOption;
   isSelected: boolean;
-  onSelect: (environmentId: string) => void;
+  onSelect: (value: string) => void;
 }
 
 function WorktreeMenuItem({
@@ -137,11 +211,21 @@ function WorktreeMenuItem({
   const previewThreads = option.threads.slice(0, REUSE_THREAD_PREVIEW_LIMIT);
   const additionalCount = option.threads.length - previewThreads.length;
   const branchIcon = getEnvironmentWorkspaceLabelIconName("managed-worktree");
-  const label = option.name ?? option.branchName ?? "Worktree";
-  const branchDetail = option.name ? option.branchName : null;
+  const label = worktreeOptionLabel(option);
+  const branchDetail =
+    option.name !== null && option.checkout.kind === "branch"
+      ? option.checkout.branchName
+      : null;
+  const unavailable = option.availability !== "selectable";
+  const optionValue = option.value;
   return (
     <DropdownMenuItem
-      onSelect={() => onSelect(option.environmentId)}
+      disabled={unavailable || optionValue === null}
+      onSelect={() => {
+        if (optionValue !== null) {
+          onSelect(optionValue);
+        }
+      }}
       className={cn(
         "flex flex-col items-stretch gap-1 py-2",
         LIST_HOVER_TRANSITION,
@@ -163,9 +247,9 @@ function WorktreeMenuItem({
             </span>
           ) : null}
         </span>
-        {option.hostName ? (
-          <span className="max-w-24 shrink-0 truncate text-xs text-muted-foreground">
-            {option.hostName}
+        {option.ownership === "user-managed" ? (
+          <span className="shrink-0 rounded-sm border border-border bg-muted/40 px-1.5 py-0.5 text-2xs leading-none text-subtle-foreground">
+            User-managed
           </span>
         ) : null}
         <Icon
@@ -176,6 +260,24 @@ function WorktreeMenuItem({
           )}
         />
       </span>
+      <span className="truncate pl-6 text-xs text-muted-foreground">
+        {option.displayPath}
+      </span>
+      {option.lock !== null && !unavailable ? (
+        <span className="truncate pl-6 text-xs text-warning-foreground">
+          {option.lock.reason === null
+            ? "Locked"
+            : `Locked: ${option.lock.reason}`}
+        </span>
+      ) : null}
+      {unavailable ? (
+        <span className="pl-6 text-xs text-muted-foreground">
+          {option.availability === "missing"
+            ? "Directory is missing. "
+            : "Registration is prunable. "}
+          {UNAVAILABLE_REMEDIATION}
+        </span>
+      ) : null}
       {previewThreads.length > 0 ? (
         <span className="flex flex-col gap-0.5 pl-6 text-xs text-muted-foreground">
           {previewThreads.map((thread) => (
@@ -191,5 +293,43 @@ function WorktreeMenuItem({
         </span>
       ) : null}
     </DropdownMenuItem>
+  );
+}
+
+interface WorktreeFailureRowProps {
+  failure: WorktreeDiscoveryFailure;
+  onRetry?: () => void;
+}
+
+function WorktreeFailureRow({ failure, onRetry }: WorktreeFailureRowProps) {
+  return (
+    <div className="flex items-center gap-2 px-2 py-2 text-xs text-muted-foreground">
+      <Icon
+        name="AlertTriangle"
+        className={cn(
+          "shrink-0",
+          COARSE_POINTER_COMPACT_ICON_SIZE_SHRINK_CLASS,
+        )}
+      />
+      <span className="min-w-0 flex-1 truncate">
+        {failure.hostName !== null
+          ? `${failure.hostName}: ${failure.message}`
+          : failure.message}
+      </span>
+      {onRetry ? (
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="h-6 shrink-0 px-2 text-xs"
+          onClick={(event) => {
+            event.preventDefault();
+            onRetry();
+          }}
+        >
+          Retry
+        </Button>
+      ) : null}
+    </div>
   );
 }

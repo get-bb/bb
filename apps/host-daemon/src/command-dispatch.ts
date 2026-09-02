@@ -23,6 +23,7 @@ import {
   inspectHostGitSource,
   listHostBranchOptions,
 } from "./command-handlers/host-branches.js";
+import { listHostWorktrees } from "./command-handlers/host-worktrees.js";
 import {
   installGlobalSkills,
   readGlobalSkillsStatus,
@@ -597,6 +598,7 @@ const onlineRpcHandlers: OnlineRpcHandlerMap = {
     readGlobalSkillsStatus(command, {}),
   "host.inspect_git_source": inspectHostGitSource,
   "host.list_branch_options": listHostBranchOptions,
+  "host.list_worktrees": listHostWorktrees,
   "host.file_metadata": readHostFileMetadata,
   "host.read_file": readHostFile,
   "host.read_file_relative": readHostRelativeFile,

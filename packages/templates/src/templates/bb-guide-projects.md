@@ -34,6 +34,7 @@ A project maps to a code repository. All threads belong to a project.
 Discovery:
 
   bb project branches <id> --host <id>   List branches for a machine source
+  bb project worktrees <id>               List discovered git worktrees
   bb project paths <id>                   Search workspace paths
   bb project files <id>                   List workspace files
   bb project content <id> <path>          Read file content (binary is base64)

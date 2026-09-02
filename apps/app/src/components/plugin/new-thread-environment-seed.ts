@@ -2,6 +2,7 @@ import type { CreateThreadEnvironmentArgs } from "@bb/server-contract";
 import {
   encodeHostValue,
   encodeReuseValue,
+  encodeWorktreePathValue,
 } from "@/components/pickers/environment-picker-value";
 import type { RootComposeSelectedBranch } from "@/views/root-compose-thread-environment";
 
@@ -36,6 +37,15 @@ export function newThreadEnvironmentArgsToSeed(
         workspace.baseBranch.kind === "named"
           ? { name: workspace.baseBranch.name, isNew: false }
           : null,
+    };
+  }
+  if (workspace.path !== null) {
+    if (workspace.branch !== undefined) {
+      return null;
+    }
+    return {
+      selectionValue: encodeWorktreePathValue(hostId, workspace.path),
+      branch: null,
     };
   }
   return {

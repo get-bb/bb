@@ -99,6 +99,11 @@ status|install` to inspect or install provider CLIs on a selected machine.
   (convert them to JPEG or PNG first). `bb project attachment download <project-id>
 <attachment-path> --client-file <path>` writes existing attachment bytes on
   the CLI machine. There is no project-attachment list or per-file remove API.
+- `bb project worktrees <project-id>` discovers registered Git worktrees across
+  configured project sources and merges them with reusable BB environments.
+  Partial discovery returns successful rows alongside per-machine failures.
+  Start a thread in a discovered user-managed worktree by passing its path as
+  an unmanaged workspace; BB never removes that worktree or its branch.
 - `bb project history|reorder` exposes project prompt recall and sidebar order.
 - Use `bb project show|update|delete` for one project. Use `bb project source
 update|delete` for one source. Use `bb project branches` for branch data.

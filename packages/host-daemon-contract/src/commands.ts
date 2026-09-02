@@ -22,10 +22,12 @@ import {
   jsonObjectSchema,
   jsonValueSchema,
   providerNativeRootSetSchema,
+  hostWorktreeListResultSchema,
   BRANCH_LIST_LIMIT_MAX,
   BRANCH_LIST_QUERY_MAX_LENGTH,
   FILE_LIST_LIMIT_MAX,
   FILE_LIST_QUERY_MAX_LENGTH,
+  WORKTREE_COMPARISON_PATHS_MAX,
 } from "@bb/domain";
 import { z } from "zod";
 import {
@@ -766,6 +768,15 @@ const hostListBranchOptionsCommandSchema = z
   })
   .strict();
 
+const hostListWorktreesCommandSchema = z
+  .object({
+    type: z.literal("host.list_worktrees"),
+    path: z.string().min(1),
+    comparisonPaths: z
+      .array(z.string().min(1))
+      .max(WORKTREE_COMPARISON_PATHS_MAX),
+  })
+  .strict();
 const providerListModelsCommandSchema = z.object({
   type: z.literal("provider.list_models"),
   providerId: z.string().min(1),
@@ -1651,6 +1662,15 @@ export const hostDaemonCommandRegistry = {
     type: "host.list_branch_options",
     schema: hostListBranchOptionsCommandSchema,
     resultSchema: gitBranchOptionsSchema,
+    transport: "onlineRpc",
+    retryable: true,
+    flushEventsBeforeResult: false,
+    envLane: null,
+  }),
+  "host.list_worktrees": defineHostDaemonCommandDescriptor({
+    type: "host.list_worktrees",
+    schema: hostListWorktreesCommandSchema,
+    resultSchema: hostWorktreeListResultSchema,
     transport: "onlineRpc",
     retryable: true,
     flushEventsBeforeResult: false,

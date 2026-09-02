@@ -56,6 +56,7 @@ describe("ThreadEnvSlot", () => {
         }}
         worktree={{
           options: [],
+          failures: [],
           value: null,
           onChange: vi.fn(),
         }}
@@ -94,6 +95,7 @@ describe("ThreadEnvSlot", () => {
         }}
         worktree={{
           options: [],
+          failures: [],
           value: null,
           onChange: vi.fn(),
         }}

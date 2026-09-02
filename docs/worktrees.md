@@ -6,6 +6,11 @@ with its own branch. Worktrees let bb work on multiple things in parallel
 without touching your main checkout, and they make it easy to throw away
 whatever the agent does without affecting the rest of your work.
 
+bb also discovers **user-managed worktrees** — worktrees you created yourself
+with `git worktree add` — and lets you start threads in them without handing
+their lifecycle over to bb. See
+[Managed vs user-managed ownership](#managed-vs-user-managed-ownership).
+
 You can pair a worktree with a **`.worktreeinclude` file** that lists the local
 files each new worktree needs, and with a **setup script** that bb runs the
 first time the worktree is created — useful for installing dependencies,
@@ -42,6 +47,50 @@ pnpm bb thread spawn \
 
 Omit `--base-branch` for bb's smart default. Explicit values are exact:
 `main` is local and `origin/main` is remote.
+
+## Managed vs user-managed ownership
+
+Ownership decides who cleans up:
+
+- A **bb-managed** worktree was created by bb. When the last thread using its
+  environment is archived or deleted, bb removes the directory and its branch
+  and stops processes running inside it (see [Cleanup](#cleanup)).
+- A **user-managed** worktree is one you created yourself with
+  `git worktree add`. bb attaches to it as an unmanaged workspace: it never
+  removes the directory, never deletes its branch, and never applies managed
+  cleanup — archiving or deleting the last thread simply detaches bb's
+  interest. The branch (or detached `HEAD`) stays exactly as you left it.
+
+### Discovery
+
+When you open the new-thread composer with a project selected, bb asks each
+configured project machine for `git worktree list` of that machine's source
+and merges the results with reusable bb environments. In the **Existing
+worktree** picker:
+
+- Every worktree of the project's repos appears — including ones with no bb
+  thread yet. The project source checkout itself is represented by **Work
+  locally** instead of a row.
+- Rows are labeled by environment name, branch name, or `Detached at <sha>`,
+  with the worktree's path underneath. User-managed rows carry a
+  `User-managed` hint.
+- A locked worktree stays selectable and shows its lock reason as a warning.
+- A stale registration (directory deleted, or one git reports as prunable) is
+  visible but disabled. bb never runs `git worktree prune` for you — inspect
+  with `git worktree list` and prune manually.
+- If a machine is offline or discovery fails there, that machine shows an
+  explanatory row with a Retry action while other machines' worktrees remain
+  usable.
+
+Selecting a discovered worktree has no side effects; the environment is
+created or reused only when you submit the thread.
+
+From the CLI:
+
+```bash
+bb project worktrees <project-id>          # grouped human output
+bb project worktrees <project-id> --json   # complete response with failures
+```
 
 ## Copy local files with `.worktreeinclude`
 
@@ -106,9 +155,10 @@ Contract:
 
 ## Cleanup
 
-You don't need to clean up worktrees by hand — bb removes them once every
-thread using the environment is archived or deleted, and the branch goes with
-it. If you
+You don't need to clean up bb-managed worktrees by hand — bb removes them once
+every thread using the environment is archived or deleted, and the branch goes
+with it. (User-managed worktrees are never removed; see
+[Managed vs user-managed ownership](#managed-vs-user-managed-ownership).) If you
 want to keep work the agent did, commit and push (or open a PR) from inside
 the worktree before letting the thread go.
 

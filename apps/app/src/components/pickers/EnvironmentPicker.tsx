@@ -103,7 +103,7 @@ export function EnvironmentPickerUI({
   const newWorktreeDisabledReason =
     workspaceDisabledReason ?? worktreeDisabledReason ?? null;
   const reuseDisabledReason = reuseDisabled
-    ? "No worktrees in this project yet"
+    ? "No existing worktrees found."
     : null;
 
   const parsed = useMemo(() => parseEnvironmentValue(value), [value]);
@@ -133,7 +133,7 @@ export function EnvironmentPickerUI({
         icon: "Laptop" as const,
       };
     }
-    if (parsed.type === "reuse") {
+    if (parsed.type === "reuse" || parsed.type === "worktree-path") {
       return {
         modeLabel: "Reuse worktree",
         compactModeLabel: "Reuse",
@@ -318,7 +318,9 @@ function EnvironmentOptionsSection({
             label="Existing worktree"
             description={reuseDisabledReason ?? undefined}
             icon={getEnvironmentWorkspaceLabelIconName("managed-worktree")}
-            selected={selectedType === "reuse"}
+            selected={
+              selectedType === "reuse" || selectedType === "worktree-path"
+            }
             disabled={reuseDisabledReason !== null}
             onSelect={() => onChange(REUSE_VALUE_WITHOUT_ENVIRONMENT)}
           />
@@ -387,7 +389,9 @@ function MachineGroupedEnvironmentOptions({
           label="Existing worktree"
           description={reuseDisabledReason ?? undefined}
           icon={getEnvironmentWorkspaceLabelIconName("managed-worktree")}
-          selected={selectedType === "reuse"}
+          selected={
+            selectedType === "reuse" || selectedType === "worktree-path"
+          }
           disabled={reuseDisabledReason !== null}
           onSelect={() => onChange(REUSE_VALUE_WITHOUT_ENVIRONMENT)}
         />
