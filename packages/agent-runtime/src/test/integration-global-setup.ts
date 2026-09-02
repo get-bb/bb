@@ -7,6 +7,7 @@ import type { NormalizedPluginProviderDeclaration } from "@get-bb/plugin-sdk/int
 import {
   captureFirstPartyProviderDeclarations,
   firstPartyPluginRootDir,
+  type CaptureFirstPartyProviderDeclarationsOptions,
 } from "./first-party-provider-declarations.js";
 import {
   INTEGRATION_PROVIDER_BRIDGE_MANIFEST_PATH,
@@ -18,7 +19,35 @@ const PROVIDER_BRIDGE_PLUGIN_IDS = [
   "provider-claude-code",
   "provider-acp",
   "provider-pi",
+  "provider-rapp",
 ] as const;
+
+function declarationSettings(
+  pluginId: string,
+): CaptureFirstPartyProviderDeclarationsOptions {
+  return pluginId === "provider-rapp"
+    ? { settings: { endpoint: "", grail: "business" } }
+    : {};
+}
+
+function integrationProviderOptions(
+  pluginId: string,
+  declaration: NormalizedPluginProviderDeclaration,
+): IntegrationProviderBridgeManifest[string]["providerOptions"] {
+  const bridgeOptions = declaration.experimental_bridgeOptions ?? {};
+  if (pluginId !== "provider-rapp") {
+    return bridgeOptions;
+  }
+  const defaultModel = (declaration.models.fallback ?? []).find(
+    (model) => model.isDefault,
+  );
+  if (defaultModel === undefined) {
+    throw new Error(
+      "provider-rapp integration declaration has no default model",
+    );
+  }
+  return { ...bridgeOptions, model: defaultModel.id };
+}
 
 function wireCapabilities(
   declaration: NormalizedPluginProviderDeclaration,
@@ -43,7 +72,10 @@ export async function setup(): Promise<void> {
   for (const pluginId of PROVIDER_BRIDGE_PLUGIN_IDS) {
     const rootDir = firstPartyPluginRootDir(pluginId);
     const [declarations, build] = await Promise.all([
-      captureFirstPartyProviderDeclarations(pluginId),
+      captureFirstPartyProviderDeclarations(
+        pluginId,
+        declarationSettings(pluginId),
+      ),
       buildPluginHost(rootDir, "0.0.0-integration", toolchain),
     ]);
     const dataDir = await ensurePluginProcessDataDir({
@@ -60,7 +92,7 @@ export async function setup(): Promise<void> {
           digest: build.artifactDigest,
           artifactPath: build.jsPath,
         },
-        providerOptions: declaration.experimental_bridgeOptions ?? {},
+        providerOptions: integrationProviderOptions(pluginId, declaration),
         envPassthrough: [...(declaration.env?.passthrough ?? [])],
         capabilities: wireCapabilities(declaration),
       };

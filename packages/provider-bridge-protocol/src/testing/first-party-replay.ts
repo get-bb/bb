@@ -45,6 +45,23 @@ export const FIRST_PARTY_BRIDGE_MODULES: Readonly<
     legacyModulePaths: ["plugins/provider-pi/src/bridge/bridge.ts"],
     pluginId: "provider-pi",
   },
+  rapp: {
+    modulePath: "plugins/provider-rapp/src/host.ts",
+    pluginId: "provider-rapp",
+  },
+};
+
+export const FIRST_PARTY_REPLAY_MATRIX_PROVIDER_IDS = [
+  "acp-cursor",
+  "claude-code",
+  "codex",
+  "pi",
+] as const;
+
+export const FIRST_PARTY_CONFORMANCE_ONLY_PROVIDER_REASONS: Readonly<
+  Record<string, string>
+> = {
+  rapp: "its provider transport is HTTP rather than a replay-child stdio dialect; plugins/provider-rapp/provider-bridge.test.ts runs the public conformance kit against a deterministic local endpoint",
 };
 
 const BRIDGE_WORKER_ENTRY =
@@ -113,7 +130,11 @@ export function resolveReplayProfile(
       prepareState: seedPiSessionFiles,
     };
   }
-  throw new UnreplayableProviderError(providerId, "no replay profile");
+  throw new UnreplayableProviderError(
+    providerId,
+    FIRST_PARTY_CONFORMANCE_ONLY_PROVIDER_REASONS[providerId] ??
+      "no replay profile",
+  );
 }
 
 function claudeConfigDir(stateDir: string): string {

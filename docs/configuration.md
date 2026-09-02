@@ -257,6 +257,47 @@ its bake period and applies on the next start, resume, or turn command. Read and
 set provider options like any plugin setting, for example
 `bb plugin config provider-claude-code set idleQueryReleaseEnabled true`.
 
+The bundled `rapp` provider speaks only the `rapp/1` protocol. Consumer mode
+uses `kody-w/rapp-installer`, discovers the Brainstem's verified GitHub
+Copilot model catalog, and defaults to `http://127.0.0.1:7071/chat`. Select a
+discovered model id or use `brainstem` to follow the Brainstem's current
+GitHub Copilot default. bb reuses a healthy shared Brainstem or starts the
+installed `~/.brainstem` runtime, and stops only a process it owns. Automatic
+startup applies only to a plain HTTP loopback endpoint with the exact `/chat`
+path and no URL credentials, query, or fragment; any other endpoint must
+already be running. Override the endpoint with
+`bb plugin config provider-rapp set endpoint <url>` or
+`RAPP_BRAINSTEM_URL`. Set `RAPP_BRAINSTEM_SECRET` when a LAN Brainstem
+requires `X-Brainstem-Secret`; credential-bearing non-loopback endpoints must
+use HTTPS. Business mode adapts
+`microsoft/aibast-agents-library` and exposes the fixed `business-grail`
+model:
+
+```bash
+bb plugin config provider-rapp set grail business
+bb plugin config provider-rapp set endpoint \
+  https://YOUR_APP.azurewebsites.net/api/businessinsightbot_function
+```
+
+`RAPP_BUSINESS_URL` can supply that endpoint instead. The host daemon reads the
+Azure Function key from `RAPP_FUNCTION_KEY` and sends it as
+`x-functions-key`; do not put it in the endpoint URL or a plugin setting.
+`RAPP_USER_GUID` optionally selects the Business Grail's persistent user
+memory. Store host credentials and identifiers through the launcher:
+
+```bash
+npx bb-app env set RAPP_BRAINSTEM_SECRET <secret>
+npx bb-app env set RAPP_FUNCTION_KEY <function-key>
+npx bb-app env set RAPP_USER_GUID <user-guid>
+```
+
+The `grail` and `endpoint` plugin settings are non-secret routing choices.
+An auto-launched local Brainstem keeps the ordinary host and GitHub Copilot
+environment but does not inherit the five RAPP routing and credential
+variables above.
+RAPP threads are saved as canonical `rapp/1` session eggs so they remain
+resumable after a host-daemon restart.
+
 Outside an open typeahead menu, Shift+Enter inserts a newline. On
 coarse-pointer touch devices, the software-keyboard Return path inserts a
 newline and the submit button sends.
@@ -446,6 +487,10 @@ edit the JSON, then run `npx bb-app config refresh` or restart bb. `bb-app confi
 such as `acp-opencode`, or a custom ACP agent's derived `acp-<id>`. `displayName` is
 optional; bb derives the label from the model id when it is omitted. bb skips
 an invalid entry with a warning and keeps the rest of the config.
+
+The `rapp` provider is intentionally not accepted here. Its Consumer
+Brainstem publishes an authoritative dynamic GitHub Copilot catalog, and its
+Business Grail publishes its fixed model through the provider plugin.
 
 Each entry appears in `bb provider models <providerId>` and in the model
 picker after the provider's own catalog. The provider catalog wins on a model

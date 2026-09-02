@@ -20,7 +20,7 @@ Spawning:
     --parent-self                  Parent to the current thread (BB_THREAD_ID)
     --provider <id>                Provider override
     --model <model>                Model override
-    --reasoning-level <level>      Reasoning level: low, medium, high, xhigh, max (provider-dependent)
+    --reasoning-level <level>      Reasoning level: none, low, medium, high, xhigh, ultracode, max (provider-dependent)
     --environment <id-or-path>     Attach to an existing environment (ID or workspace path)
     --new-environment <kind>       Create a new environment (worktree)
     --base-branch <branch>         Exact Git ref for a new managed worktree

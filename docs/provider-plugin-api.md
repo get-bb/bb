@@ -8,10 +8,11 @@ Members that still carry the `experimental_` prefix are named with it here;
 each has an entry in [api_to_audit.md](api_to_audit.md) saying why.
 
 A "provider" is a coding agent BB can run a thread on (Claude Code, Codex, Pi,
-ACP agents such as Cursor or Amp). The design goal is that **everything a
-provider touches is owned by its plugin** — translating the agent's native
-output into BB's data model, projecting that data onto the timeline, and how
-its tools are represented — with the smallest possible provider-agnostic core.
+RAPP Brainstem backed by GitHub Copilot, or ACP agents such as Cursor or Amp).
+The design goal is that **everything a provider touches is owned by its
+plugin** — translating the agent's native output into BB's data model,
+projecting that data onto the timeline, and how its tools are represented —
+with the smallest possible provider-agnostic core.
 
 ## Principles
 
@@ -125,6 +126,11 @@ Rules:
   is plugin install order. First-party plugins install first at bootstrap.
 - Third-party ACP agents (for example Amp) register the same way, with a
   bridge built from the published ACP kit.
+- Provider credentials stay in the provider's native authentication store or
+  host-local environment variables declared through `env.passthrough`.
+  `ctx.settings` omits secret plugin settings, and neither
+  `experimental_bridgeOptions` nor derived `providerOptions` should carry
+  credentials or secret-bearing endpoint URLs.
 
 ## 2. Bridge (plugin `bb.host` artifact, runs on the host)
 

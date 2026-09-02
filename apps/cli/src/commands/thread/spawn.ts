@@ -201,7 +201,7 @@ export function registerSpawnCommand(
     )
     .option(
       "--reasoning-level <level>",
-      "Reasoning level: low, medium, high, xhigh, max (provider-dependent)",
+      "Reasoning level: none, low, medium, high, xhigh, ultracode, max (provider-dependent)",
     )
     .option("--title <title>", "Thread title")
     .option("--service-tier <tier>", "Service tier: fast or default")

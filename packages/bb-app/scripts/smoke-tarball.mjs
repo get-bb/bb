@@ -30,6 +30,7 @@ const EXPECTED_RUNNING_BUILTIN_PLUGINS = [
   "provider-acp",
   "provider-claude-code",
   "provider-codex",
+  "provider-rapp",
   "push-notifications",
   "connect",
   "custom-instructions",
@@ -435,6 +436,7 @@ async function smokeBridgeModelList({
   packageDir,
   pluginId,
   label,
+  providerOptions,
 }) {
   const childProcess = spawnPackedBridge({ bridgePath, packageDir, pluginId });
   const output = collectProcessOutput(childProcess);
@@ -460,7 +462,12 @@ async function smokeBridgeModelList({
       jsonrpc: "2.0",
       id: 2,
       method: "model/list",
-      params: {},
+      params:
+        providerOptions === undefined
+          ? {}
+          : {
+              providerOptions,
+            },
     })}\n`,
   );
   const modelListResponse = await modelListResponsePromise;
@@ -533,6 +540,24 @@ async function smokeProviderBridgeBundles(packageDir) {
     packageDir,
     pluginId: "provider-pi",
     label: "Pi host-artifact bridge model/list",
+  });
+  await smokeBridgeModelList({
+    bridgePath: join(
+      packageDir,
+      "server",
+      "dist",
+      "builtin-plugins",
+      "provider-rapp",
+      "dist",
+      "host.js",
+    ),
+    packageDir,
+    pluginId: "provider-rapp",
+    providerOptions: {
+      endpoint: "",
+      grail: "business",
+    },
+    label: "RAPP host-artifact bridge model/list",
   });
   await smokeBridgeModelList({
     // ACP ships its bridge as a plugin artifact (graduation wave 5). With no

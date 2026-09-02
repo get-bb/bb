@@ -104,6 +104,60 @@ describe("public thread default routes", () => {
     });
   });
 
+  it("uses provider-compatible defaults for an explicit RAPP model", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps);
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+        path: "/tmp/rapp-explicit-model",
+      });
+      seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+        path: "/tmp/rapp-explicit-model",
+      });
+
+      const response = await harness.app.request("/api/v1/threads", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          origin: "cli",
+          projectId: project.id,
+          providerId: "rapp",
+          model: "claude-opus-5",
+          input: [{ type: "text", text: "Use RAPP Brainstem" }],
+          environment: {
+            type: "host",
+            hostId: host.id,
+            workspace: {
+              type: "unmanaged",
+              path: null,
+            },
+          },
+        }),
+      });
+
+      expect(response.status).toBe(201);
+      const createdThread = threadSchema.parse(await readJson(response));
+      const queuedStart = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "thread.start" &&
+          command.threadId === createdThread.id,
+      );
+      expect(queuedStart.command).toMatchObject({
+        providerId: "rapp",
+        options: {
+          model: "claude-opus-5",
+          reasoningLevel: "none",
+          permissionMode: "full",
+        },
+      });
+    });
+  });
+
   it("allows managed-worktree threads on a secondary host", async () => {
     await withTestHarness(async (harness) => {
       const { host: localHost } = seedHostSession(harness.deps, {

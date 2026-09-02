@@ -39,6 +39,23 @@ Prefer your own `bb.settings` and `bb.storage` over `sdk.system` and
 areas write app-wide state that the user owns.
 
 ```ts
+const catalog = await bb.sdk.providers.models({
+  providerId: "echo-agent",
+});
+const installedSettings = await bb.sdk.plugins.getSettings({
+  pluginId: "another-plugin",
+});
+await bb.sdk.plugins.updateSettings({
+  pluginId: "another-plugin",
+  values: { mode: "fast" },
+});
+```
+
+Use `providers.models` before persisting a provider/model choice. The plugin
+settings calls are for explicit administration of another installed plugin;
+use the typed `bb.settings` handle for your own plugin.
+
+```ts
 const thread = await bb.sdk.threads.spawn({
   projectId,
   environment: { type: "project-default" }, // server resolves the project's default environment

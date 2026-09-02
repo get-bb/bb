@@ -31,6 +31,18 @@
 - Claude Code's `idleQueryReleaseEnabled` setting opts into closing its native
   process after 30 seconds of quiescence while keeping the bb thread resumable.
   It defaults to `false`; changes apply on the next start, resume, or turn.
+- The bundled `rapp` provider speaks only the `rapp/1` protocol. Consumer mode
+  discovers the Brainstem's verified GitHub Copilot models; select one of
+  those ids or use `brainstem` to follow its current default. Business mode
+  exposes the fixed `business-grail` model. Configure the non-secret `grail`
+  setting as `consumer` or `business`, and optionally set `endpoint`.
+- Consumer mode defaults to the shared local Brainstem and also reads
+  `RAPP_BRAINSTEM_URL` and `RAPP_BRAINSTEM_SECRET` from the host daemon.
+  Business mode reads `RAPP_BUSINESS_URL`, `RAPP_FUNCTION_KEY`, and optional
+  `RAPP_USER_GUID`. Store credentials with `npx bb-app env set`, not in plugin
+  settings or endpoint URLs. Automatic startup applies only to plain HTTP
+  loopback `/chat` endpoints, and the launched Brainstem does not inherit
+  those five RAPP routing and credential variables.
 
 ## Agent Instructions
 

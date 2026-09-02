@@ -489,6 +489,10 @@
       ],
       "inputs": [
         "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/plugins/provider-*/**",
+        "!$TURBO_ROOT$/plugins/provider-*/dist/**",
+        "!$TURBO_ROOT$/plugins/provider-*/node_modules/**",
+        "!$TURBO_ROOT$/plugins/provider-*/.turbo/**",
         "$TURBO_ROOT$/plugins/*/skills/**",
         "$TURBO_ROOT$/tests/scripted-echo-provider/host.ts",
         "$TURBO_ROOT$/tests/scripted-echo-provider/src/**",
@@ -542,6 +546,10 @@
       "inputs": [
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/vitest.shared.ts",
+        "$TURBO_ROOT$/plugins/provider-*/**",
+        "!$TURBO_ROOT$/plugins/provider-*/dist/**",
+        "!$TURBO_ROOT$/plugins/provider-*/node_modules/**",
+        "!$TURBO_ROOT$/plugins/provider-*/.turbo/**",
         "$TURBO_ROOT$/plugins/*/icons/**",
         "$TURBO_ROOT$/examples/plugins/*/icons/**"
       ]
@@ -593,7 +601,27 @@
         "@get-bb/plugin-sdk#build",
         "topo"
       ],
-      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/vitest.shared.ts"]
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/plugins/provider-*/**",
+        "!$TURBO_ROOT$/plugins/provider-*/dist/**",
+        "!$TURBO_ROOT$/plugins/provider-*/node_modules/**",
+        "!$TURBO_ROOT$/plugins/provider-*/.turbo/**",
+        "$TURBO_ROOT$/vitest.shared.ts"
+      ]
+    },
+    "@bb/provider-parity#test": {
+      "dependsOn": ["//#ensure-native-modules", "topo"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/packages/provider-bridge-protocol/recordings/**",
+        "$TURBO_ROOT$/plugins/provider-*/**",
+        "!$TURBO_ROOT$/plugins/provider-*/dist/**",
+        "!$TURBO_ROOT$/plugins/provider-*/node_modules/**",
+        "!$TURBO_ROOT$/plugins/provider-*/.turbo/**",
+        "$TURBO_ROOT$/vitest.shared.ts"
+      ],
+      "passThroughEnv": ["UPDATE_PARITY_ROW_COUNTS"]
     },
     "smoke:tarball": {
       "dependsOn": ["build"],
@@ -617,6 +645,10 @@
         "$TURBO_ROOT$/packages/templates/package.json",
         "$TURBO_ROOT$/packages/templates/scripts/**",
         "$TURBO_ROOT$/packages/templates/src/**",
+        "$TURBO_ROOT$/plugins/provider-*/**",
+        "!$TURBO_ROOT$/plugins/provider-*/dist/**",
+        "!$TURBO_ROOT$/plugins/provider-*/node_modules/**",
+        "!$TURBO_ROOT$/plugins/provider-*/.turbo/**",
         "$TURBO_ROOT$/tests/scripted-echo-provider/host.ts",
         "$TURBO_ROOT$/tests/scripted-echo-provider/src/**",
         "$TURBO_ROOT$/vitest.shared.ts"
@@ -655,6 +687,10 @@
         "$TURBO_ROOT$/packages/templates/package.json",
         "$TURBO_ROOT$/packages/templates/scripts/**",
         "$TURBO_ROOT$/packages/templates/src/**",
+        "$TURBO_ROOT$/plugins/provider-*/**",
+        "!$TURBO_ROOT$/plugins/provider-*/dist/**",
+        "!$TURBO_ROOT$/plugins/provider-*/node_modules/**",
+        "!$TURBO_ROOT$/plugins/provider-*/.turbo/**",
         "$TURBO_ROOT$/tests/scripted-echo-provider/host.ts",
         "$TURBO_ROOT$/tests/scripted-echo-provider/src/**",
         "$TURBO_ROOT$/vitest.shared.ts"
@@ -679,6 +715,10 @@
         "$TURBO_ROOT$/packages/templates/package.json",
         "$TURBO_ROOT$/packages/templates/scripts/**",
         "$TURBO_ROOT$/packages/templates/src/**",
+        "$TURBO_ROOT$/plugins/provider-*/**",
+        "!$TURBO_ROOT$/plugins/provider-*/dist/**",
+        "!$TURBO_ROOT$/plugins/provider-*/node_modules/**",
+        "!$TURBO_ROOT$/plugins/provider-*/.turbo/**",
         "$TURBO_ROOT$/vitest.shared.ts"
       ]
     },
@@ -815,6 +855,9 @@
       "dependsOn": ["@get-bb/plugin-sdk#build:types", "topo"]
     },
     "bb-plugin-provider-pi#typecheck": {
+      "dependsOn": ["@get-bb/plugin-sdk#build:types", "topo"]
+    },
+    "bb-plugin-provider-rapp#typecheck": {
       "dependsOn": ["@get-bb/plugin-sdk#build:types", "topo"]
     },
     "bb-plugin-provider-retry#typecheck": {

@@ -46,6 +46,19 @@ const FIRST_PARTY_PROVIDER_DECLARATIONS = [
     hasLogo: true,
   },
   {
+    builtinName: "provider-rapp",
+    pluginId: "provider-rapp",
+    providerId: "rapp",
+    displayName: "RAPP Brainstem",
+    supportsThreadArchive: false,
+    supportsThreadRename: false,
+    fork: "none",
+    supportsManualCompaction: false,
+    supportsUsage: false,
+    visibility: "always",
+    hasLogo: true,
+  },
+  {
     builtinName: "provider-acp",
     pluginId: "provider-acp",
     providerId: "acp-cursor",
@@ -215,7 +228,7 @@ describe("first-party provider plugins", () => {
     );
   }, 60_000);
 
-  it("pins the client-read ProviderInfo fields of the four core providers", async () => {
+  it("pins the client-read ProviderInfo fields of the bundled providers", async () => {
     await withTestHarness(
       { seedFirstPartyProviders: false },
       async (harness) => {
@@ -309,6 +322,24 @@ describe("first-party provider plugins", () => {
           },
           composerActions: [skills],
         });
+        expect(clientFields("rapp")).toStrictEqual({
+          id: "rapp",
+          displayName: "RAPP Brainstem",
+          logoUrl: expectedLogoUrl(harness.deps.providerRegistry, "rapp"),
+          available: true,
+          maintenance: { health: false, usage: false, installation: false },
+          capabilities: {
+            supportsThreadArchive: false,
+            supportsThreadRename: false,
+            supportsServiceTier: false,
+            supportsNativeUserQuestion: false,
+            permissionModes: ["full"],
+            supportsFork: false,
+            supportsSessionRewind: false,
+            modelCatalogScope: "host",
+          },
+          composerActions: [skills],
+        });
         expect(clientFields("acp-cursor")).toStrictEqual({
           id: "acp-cursor",
           displayName: "Cursor",
@@ -369,6 +400,7 @@ describe("first-party provider plugins", () => {
         expect(registry.list().map((entry) => entry.info.id)).toEqual([
           "codex",
           "claude-code",
+          "rapp",
           "acp-cursor",
           "acp-opencode",
           "acp-omp",

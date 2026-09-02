@@ -12,7 +12,7 @@
  * guard are deleted.
  *
  * Scope: provider-*id* references only — quoted id literals (`"codex"`,
- * `"claude-code"`, `"pi"`, `"acp-…"`, `"cursor"`) and the named id
+ * `"claude-code"`, `"pi"`, `"rapp"`, `"acp-…"`) and the named id
  * constants/helpers (`isAcpProviderId`, `CODEX_PROVIDER_ID`,
  * `RESERVED_PROVIDER_ID_OWNERS`, …). Tool-name keying (thread-view's
  * Read/Task/TodoWrite tables) is retired by its own workstream and would add
@@ -96,7 +96,7 @@ export function providerLiteralRegex() {
       // quoted provider-id literals (acp-* allows the bare `"acp-"` of
       // startsWith). The Cursor agent's id is `acp-cursor`; a bare `"cursor"`
       // is an editor id or a pagination cursor, never a provider.
-      String.raw`["'](?:codex|claude-code|pi|acp-[a-z0-9-]*)["']`,
+      String.raw`["'](?:codex|claude-code|pi|rapp|acp-[a-z0-9-]*)["']`,
       // named id constants / helpers
       String.raw`\bisAcpProviderId\b`,
       String.raw`\bACP_ID_PREFIX\b`,

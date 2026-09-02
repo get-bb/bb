@@ -23,6 +23,7 @@ const PROVIDER_NAME_SEGMENTS = new Set([
   "pi",
   "acp",
   "cursor",
+  "rapp",
 ]);
 
 const allowlistSchema = z.object({
@@ -87,6 +88,7 @@ describe("guardrail G2: the provider contract names no provider", () => {
     expect(keyNamesProvider("acpLaunchSpec")).toBe(true);
     expect(keyNamesProvider("codex_goal")).toBe(true);
     expect(keyNamesProvider("piMode")).toBe(true);
+    expect(keyNamesProvider("rappGrail")).toBe(true);
   });
 
   it("flags every provider-named key and keeps the allowlist honest", () => {

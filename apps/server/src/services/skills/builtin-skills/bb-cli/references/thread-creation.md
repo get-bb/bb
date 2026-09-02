@@ -140,13 +140,15 @@ environment pull-request show <id>`. Diff commands require an explicit target
   can link to `.agents/skills`. `bb skill list` shows linked Cursor skills under
   `cursor-project` and keeps them read-only.
 - Top-level `customModels` in the same `config.json` registers extra picker
-  models. `providerId` accepts a built-in provider id or any `acp-*` provider
-  id. The provider must still accept the id: `claude-code` and `codex` accept
-  unlisted ids, while an ACP agent can reject an unknown id at session start.
-  OpenCode rejects unlisted ids; add the model to the OpenCode config instead
-  and bb discovers it automatically. An OpenCode agent is a session mode, not
-  a model, and cannot be selected through bb. This list also has no set/unset
-  CLI surface. Edit the JSON and restart BB.
+  models. `providerId` accepts `codex`, `claude-code`, `pi`, `acp-cursor`, or
+  any `acp-*` provider id. It intentionally excludes `rapp`, whose Brainstem
+  supplies an authoritative dynamic GitHub Copilot catalog. The provider must
+  still accept the id: `claude-code` and `codex` accept unlisted ids, while an
+  ACP agent can reject an unknown id at session start. OpenCode rejects
+  unlisted ids; add the model to the OpenCode config instead and bb discovers
+  it automatically. An OpenCode agent is a session mode, not a model, and
+  cannot be selected through bb. This list also has no set/unset CLI surface.
+  Edit the JSON and restart BB.
   The `streamerMode` General preference hides every entry from model lists.
 - Top-level `sharedSkillRoots` uses the same relative `user` and `project`
   paths. bb lists these skills as read-only. bb injects them into each provider,

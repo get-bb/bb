@@ -45,7 +45,7 @@ describe("getProviderStates", () => {
   it("asks each provider bridge and preserves model-picker order", async () => {
     await withTestHarness(async (harness) => {
       const { host, session } = seedHostSession(harness.deps);
-      registerHostRpcResponder(harness, {
+      const responder = registerHostRpcResponder(harness, {
         hostId: host.id,
         sessionId: session.id,
         handle: (request) => {
@@ -73,6 +73,7 @@ describe("getProviderStates", () => {
         "codex",
         "claude-code",
         "pi",
+        "rapp",
         "acp-cursor",
         "acp-opencode",
       ]);
@@ -80,6 +81,19 @@ describe("getProviderStates", () => {
         providerId: "codex",
         status: "ready",
       });
+      expect(
+        result.providers.find((provider) => provider.providerId === "rapp"),
+      ).toMatchObject({
+        status: "unknown",
+        statusMessage: "This provider does not report readiness.",
+      });
+      expect(
+        responder.requests.some(
+          (request) =>
+            request.command.type === "provider.health" &&
+            request.command.providerId === "rapp",
+        ),
+      ).toBe(false);
     });
   });
 

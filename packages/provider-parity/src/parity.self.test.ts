@@ -11,7 +11,11 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   compareParity,
+  FIRST_PARTY_BRIDGE_MODULES,
+  FIRST_PARTY_CONFORMANCE_ONLY_PROVIDER_REASONS,
+  FIRST_PARTY_REPLAY_MATRIX_PROVIDER_IDS,
   type ParityAllowlistEntry,
+  resolveReplayProfile,
 } from "@bb/provider-bridge-protocol/testing/parity";
 import {
   RECORDINGS_ROOT,
@@ -43,12 +47,29 @@ function readPinned(): Record<string, RowCountsEntry> {
 describe("recorded fixtures", () => {
   it("has every matrix provider", () => {
     const providers = new Set(cells.map((cell) => cell.provider));
-    expect([...providers].sort()).toEqual([
-      "acp-cursor",
-      "claude-code",
-      "codex",
-      "pi",
-    ]);
+    expect([...providers].sort()).toEqual(
+      [...FIRST_PARTY_REPLAY_MATRIX_PROVIDER_IDS].sort(),
+    );
+  });
+
+  it("accounts for every first-party bridge family in replay policy", () => {
+    const replayFamilies = FIRST_PARTY_REPLAY_MATRIX_PROVIDER_IDS.map(
+      (providerId) => resolveReplayProfile(providerId).bridgeFamily,
+    );
+    const conformanceOnlyProviders = Object.keys(
+      FIRST_PARTY_CONFORMANCE_ONLY_PROVIDER_REASONS,
+    );
+
+    expect(
+      [...new Set([...replayFamilies, ...conformanceOnlyProviders])].sort(),
+    ).toEqual(Object.keys(FIRST_PARTY_BRIDGE_MODULES).sort());
+    expect(conformanceOnlyProviders).toEqual(["rapp"]);
+    expect(FIRST_PARTY_CONFORMANCE_ONLY_PROVIDER_REASONS.rapp).toMatch(
+      /HTTP.*deterministic local endpoint/u,
+    );
+    expect(() => resolveReplayProfile("rapp")).toThrow(
+      /cannot be replayed.*HTTP/u,
+    );
   });
 
   it("assembles every cell to its pinned counts", () => {

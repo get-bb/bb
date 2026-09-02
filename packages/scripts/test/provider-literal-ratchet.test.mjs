@@ -45,14 +45,14 @@ function write(rel, content) {
 }
 
 describe("scanTree (pure)", () => {
-  it("counts every occurrence, including two ids on one line", () => {
+  it("counts every occurrence, including multiple ids on one line", () => {
     write(
       "packages/core/a.ts",
-      'const m = { codexHint: "codex", claudeHint: "claude-code" };\n',
+      'const m = { codexHint: "codex", claudeHint: "claude-code", rappHint: "rapp" };\n',
     );
     const { total, files } = scanTree(dir);
-    expect(files["packages/core/a.ts"]).toBe(2); // both ids on one line
-    expect(total).toBe(2);
+    expect(files["packages/core/a.ts"]).toBe(3);
+    expect(total).toBe(3);
   });
 
   it("counts named id constants and helpers", () => {

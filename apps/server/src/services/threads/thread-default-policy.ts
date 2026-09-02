@@ -6,7 +6,11 @@ import type {
   ServiceTier,
   Thread,
 } from "@bb/domain";
-import { PERSONAL_PROJECT_ID, clampPermissionModeToCeiling } from "@bb/domain";
+import {
+  PERSONAL_PROJECT_ID,
+  clampPermissionModeToCeiling,
+  reconcileReasoningLevel,
+} from "@bb/domain";
 import type { EnvironmentArgs } from "@bb/server-contract";
 import { COMMAND_TIMEOUT_MS } from "../../constants.js";
 import type { WorkSessionDeps } from "../../types.js";
@@ -186,10 +190,15 @@ export function buildProviderThreadExecutionDefaults(
     providerId: string;
   },
 ): ProjectExecutionDefaults {
+  const supportedReasoning =
+    registry.getServerCapabilities(args.providerId)?.reasoningLevels ?? [];
   return {
     providerId: args.providerId,
     model: args.model,
-    reasoningLevel: DEFAULT_REASONING_LEVEL,
+    reasoningLevel:
+      supportedReasoning.length === 0
+        ? DEFAULT_REASONING_LEVEL
+        : reconcileReasoningLevel(DEFAULT_REASONING_LEVEL, supportedReasoning),
     permissionMode: resolveSupportedPermissionMode(registry, {
       providerId: args.providerId,
       preferredPermissionMode: DEFAULT_PERMISSION_MODE,

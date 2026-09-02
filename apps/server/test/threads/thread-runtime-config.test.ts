@@ -843,7 +843,9 @@ describe("thread runtime config", () => {
         projectId: project.id,
       });
 
-      async function build(providerId: "codex" | "claude-code" | "pi") {
+      async function build(
+        providerId: "codex" | "claude-code" | "pi" | "rapp",
+      ) {
         const thread = seedThread(harness.deps, {
           projectId: project.id,
           environmentId: environment.id,
@@ -857,7 +859,12 @@ describe("thread runtime config", () => {
                 ? "gpt-5"
                 : providerId === "pi"
                   ? "pi-model"
-                  : "claude-sonnet-4-6",
+                  : providerId === "rapp"
+                    ? "brainstem"
+                    : "claude-sonnet-4-6",
+            ...(providerId === "rapp"
+              ? { reasoningLevel: "none" as const }
+              : {}),
             source: "client/turn/requested",
           },
         });
@@ -894,6 +901,15 @@ describe("thread runtime config", () => {
 
       const pi = await build("pi");
       expect(pi.options.providerOptions).toEqual({});
+
+      const rapp = await build("rapp");
+      expect(rapp.bridgeLaunch.providerOptions).toEqual({
+        endpoint: "",
+        grail: "consumer",
+      });
+      expect(rapp.options.providerOptions).toEqual({
+        model: "brainstem",
+      });
     });
   });
 

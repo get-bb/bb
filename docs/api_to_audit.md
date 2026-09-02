@@ -442,7 +442,7 @@ plugin is owed when the spec grows a field.
 
 ## `PluginProviderDeclaration.experimental_nativeSkillRoots`
 
-**Kept experimental (2026-08-22).** every first-party provider declares it now (stabilization S5 moved the daemon's per-provider scan table here), but no third-party agent has validated the relative-path / 32-root rule or the per-root options, and the split between a global declaration and the per-workspace resolver (`experimental_resolvesNativeRoots`) is one release old.
+**Kept experimental (2026-08-22).** every first-party provider that exposes native skills declares it now (stabilization S5 moved the daemon's per-provider scan table here); RAPP intentionally has no native roots because its agents live behind Brainstem. No third-party agent has validated the relative-path / 32-root rule or the per-root options, and the split between a global declaration and the per-workspace resolver (`experimental_resolvesNativeRoots`) is one release old.
 
 **What it does.** Names the directories a provider's own agent reads skills
 from, relative to the target host's home directory (`user`) or to the
@@ -1070,7 +1070,7 @@ Before stabilization, audit:
 
 ## `bb.providers.register` (`experimental_bridgeOptions`, `experimental_visibility`, and the `experimental_providerBridge` artifact export)
 
-**Kept experimental (2026-08-22).** `bb.providers.register` and the declaration's target-state fields are stable. `experimental_bridgeOptions` and `experimental_visibility` have one consumer (the ACP plugin); docs/provider-plugin-api.md §1 lists both under "Still experimental on the declaration" — decide whether static options survive beside `deriveProviderOptions` before naming them. The `experimental_providerBridge` export name is an artifact contract read by the daemon bootstrap from every installed plugin; renaming it needs a dual-name acceptance window plus a protocol bump, so it stabilizes with the bridge kit once that deprecation policy exists.
+**Kept experimental (2026-08-22).** `bb.providers.register` and the declaration's target-state fields are stable. `experimental_visibility` has one consumer (the ACP plugin), while `experimental_bridgeOptions` has two (ACP and RAPP); docs/provider-plugin-api.md §1 lists both under "Still experimental on the declaration" — decide whether static options survive beside `deriveProviderOptions` before naming them. The `experimental_providerBridge` export name is an artifact contract read by the daemon bootstrap from every installed plugin; renaming it needs a dual-name acceptance window plus a protocol bump, so it stabilizes with the bridge kit once that deprecation policy exists.
 
 **What it does.** Lets a plugin declare an agent provider into the server's
 `ProviderRegistryService`. The declaration owns static metadata and opaque
@@ -1305,9 +1305,12 @@ protocol`'s `assembler`, `conformance`, and `testing` subpaths.
    first-party bridges needed (`env`, `rewriteRuntimeLine`, `prepareState`)
    and `ReplayDialect` is the three protocols the replay child speaks
    (`json-rpc`, `claude-cli`, `pi-rpc`). A third-party bridge whose CLI
-   speaks none of them cannot replay its provider lanes. Decide whether the
-   dialect set grows, or whether the child becomes pluggable, before the
-   profile is a promise.
+   speaks none of them cannot replay its provider lanes. RAPP is the concrete
+   first-party exception: its provider transport is HTTP, so its deterministic
+   local-endpoint conformance suite is inventoried as conformance-only instead
+   of pretending it has a replay-child dialect. Decide whether the dialect set
+   grows, or whether the child becomes pluggable, before the profile is a
+   promise.
 4. **Two shipped programs.** The kit's bundle spawns `provider-bridge-worker-entry.mjs`
    and `replay-provider-child.mjs` from beside itself (`import.meta.url`),
    so the published package carries both under `dist/`. Confirm the bundled
@@ -1440,7 +1443,7 @@ wholesale with the rest of the plugin's slot set, so disable/uninstall/failed
 reload falls back to `logoUrl`, then the declared glyph, then the generic
 glyph. No provider bb ships uses it: each declares an SVG asset and the mask
 rendering keeps it theme-aware with no frontend bundle (an icon-only bundle
-cost four JS+CSS fetches and four icon remounts at every boot).
+cost five JS+CSS fetches and five icon remounts at every boot).
 
 **Audit before stabilizing.**
 

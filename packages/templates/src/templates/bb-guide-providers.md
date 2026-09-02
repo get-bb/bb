@@ -24,6 +24,44 @@ the explicitly requested provider or Codex, then resolves the model marked
 default by that provider on the target machine (falling back to the first
 catalog model when none is marked).
 
+RAPP
+
+The bundled `rapp` provider speaks only the frozen `rapp/1` protocol.
+Consumer mode targets `kody-w/rapp-installer`, discovers the Brainstem's
+verified GitHub Copilot models, and defaults to the local Brainstem at
+`http://127.0.0.1:7071/chat`. Select a discovered model id or use `brainstem`
+to follow the Brainstem's current GitHub Copilot default. bb reuses a healthy
+shared Brainstem or starts the installed `~/.brainstem` runtime, and stops only
+a process it owns. Automatic startup applies only to a plain HTTP loopback
+`/chat` endpoint with no URL credentials, query, or fragment; other endpoints
+must already be running:
+
+  bb provider models rapp
+  bb thread spawn --project <project-id> --provider rapp --model brainstem --prompt "Use my RAPP agents."
+
+Override the Consumer endpoint with
+`bb plugin config provider-rapp set endpoint <url>` or the host-daemon
+environment variable `RAPP_BRAINSTEM_URL`. Set
+`RAPP_BRAINSTEM_SECRET` for a LAN Brainstem that requires the
+`X-Brainstem-Secret` header; credential-bearing non-loopback endpoints must
+use HTTPS.
+
+Business mode adapts `microsoft/aibast-agents-library` and exposes the fixed
+`business-grail` model:
+
+  bb plugin config provider-rapp set grail business
+  bb plugin config provider-rapp set endpoint \
+    https://YOUR_APP.azurewebsites.net/api/businessinsightbot_function
+
+`RAPP_BUSINESS_URL` may supply the endpoint. The host-daemon environment
+variable `RAPP_FUNCTION_KEY` supplies `x-functions-key`, and
+`RAPP_USER_GUID` optionally selects persistent Business Grail memory. Store
+credentials with `npx bb-app env set`, never in endpoint URLs or plugin
+settings. An auto-launched local Brainstem keeps ordinary host and GitHub
+Copilot environment but does not inherit those five RAPP routing and
+credential variables. bb persists each RAPP thread as a canonical `rapp/1`
+session egg for restart-safe resume.
+
 Provider-native memory can be controlled on the separate Settings → Providers
 → Codex and Settings → Providers → Claude Code pages. Codex memory controls
 both recall (`memories.use_memories`) and future generation
@@ -104,7 +142,7 @@ list mirrors the OpenCode catalog, so a custom model from the OpenCode config
 appears automatically. Discover and select one with:
 
   bb provider models acp-opencode --environment "$BB_ENVIRONMENT_ID"
-  bb thread spawn --provider acp-opencode --model <provider/model>
+  bb thread spawn --project <project-id> --provider acp-opencode --model <provider/model>
 
 bb applies the selected model to the ACP session before the first prompt.
 
@@ -114,14 +152,16 @@ session mode, not a model. bb does not select OpenCode agents; configure the
 default agent in the OpenCode config and the ACP session uses it.
 
 Top-level customModels in the app data-dir config.json adds extra picker
-entries. Each entry has a providerId (a built-in provider id or any acp-*
-provider id), a model id, and an optional displayName. bb skips an invalid
-entry with a warning. The entry then appears in bb provider models output and
-in the model picker, but the provider must still accept the id: claude-code
-and codex accept unlisted ids, while an ACP agent can reject an id it does
-not know at session start. OpenCode rejects unlisted ids, so add an OpenCode
-model to the OpenCode config instead. Edit the JSON and run bb-app config
-refresh; there is no set/unset CLI surface. The streamerMode
+entries. Each entry has a providerId (`codex`, `claude-code`, `pi`,
+`acp-cursor`, or any `acp-*` provider id), a model id, and an optional
+displayName. The `rapp` provider is intentionally excluded because its
+Brainstem supplies an authoritative dynamic GitHub Copilot catalog. bb skips
+an invalid entry with a warning. The entry then appears in bb provider models
+output and in the model picker, but the provider must still accept the id:
+claude-code and codex accept unlisted ids, while an ACP agent can reject an id
+it does not know at session start. OpenCode rejects unlisted ids, so add an
+OpenCode model to the OpenCode config instead. Edit the JSON and run bb-app
+config refresh; there is no set/unset CLI surface. The streamerMode
 General setting hides every entry from these lists; see the customization
 chapter.
 

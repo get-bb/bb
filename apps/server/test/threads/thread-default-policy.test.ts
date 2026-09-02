@@ -5,6 +5,7 @@ import {
 } from "@bb/domain";
 import { describe, expect, it } from "vitest";
 import {
+  buildProviderThreadExecutionDefaults,
   resolveCreateThreadEnvironment,
   resolveCreateThreadExecutionDefaults,
   resolveThreadDefaultPermissionMode,
@@ -85,6 +86,20 @@ describe("resolveCreateThreadExecutionDefaults", () => {
     });
   });
 
+  it("uses a reasoning level supported by the selected provider", () => {
+    expect(
+      buildProviderThreadExecutionDefaults(registry, {
+        providerId: "rapp",
+        model: "claude-opus-5",
+      }),
+    ).toMatchObject({
+      providerId: "rapp",
+      model: "claude-opus-5",
+      reasoningLevel: "none",
+      permissionMode: "full",
+    });
+  });
+
   it("honors the user's default provider and picker order", async () => {
     const preferences = {
       providerOrder: ["pi", "claude-code"],
@@ -99,6 +114,7 @@ describe("resolveCreateThreadExecutionDefaults", () => {
       "pi",
       "claude-code",
       "codex",
+      "rapp",
       "acp-cursor",
       "acp-opencode",
       "acp-omp",

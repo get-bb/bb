@@ -37,6 +37,14 @@ describe("bbAppManagedConfigSchema", () => {
     expect(parsed.customModels?.[1]?.displayName).toBeUndefined();
   });
 
+  it("rejects custom models for RAPP's plugin-owned catalogs", () => {
+    expect(
+      bbAppManagedConfigSchema.safeParse({
+        customModels: [{ providerId: "rapp", model: "brainstem" }],
+      }).success,
+    ).toBe(false);
+  });
+
   it("parses custom models with dynamic ACP provider ids", () => {
     const parsed = bbAppManagedConfigSchema.parse({
       customModels: [

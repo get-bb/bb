@@ -380,6 +380,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Claude Code provider",
           "Codex provider",
           "Pi provider",
+          "RAPP provider",
         ],
         experimental: true,
       },

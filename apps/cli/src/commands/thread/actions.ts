@@ -154,7 +154,7 @@ export function registerActionsCommands(
     )
     .option(
       "--reasoning-level <level>",
-      "Set the sticky reasoning level applied on the thread's next turn: low, medium, high, xhigh, max (provider-dependent)",
+      "Set the sticky reasoning level applied on the thread's next turn: none, low, medium, high, xhigh, ultracode, max (provider-dependent)",
     )
     .option("--visibility <visibility>", "Thread visibility: visible or hidden")
     .action(
@@ -438,7 +438,7 @@ export function registerActionsCommands(
     .option("--service-tier <tier>", "Service tier: fast or default")
     .option(
       "--reasoning-level <level>",
-      "Reasoning level: low, medium, high, xhigh, max (provider-dependent)",
+      "Reasoning level: none, low, medium, high, xhigh, ultracode, max (provider-dependent)",
     )
     .option("--permission-mode <mode>", PERMISSION_MODE_HELP)
     .option(

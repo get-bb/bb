@@ -26,6 +26,7 @@ const FIRST_PARTY_BRANDING_SVGS = [
   "plugins/provider-claude-code/icons/claude-code.svg",
   "plugins/provider-codex/icons/codex.svg",
   "plugins/provider-pi/icons/pi.svg",
+  "plugins/provider-rapp/icons/rapp.svg",
 ];
 
 function discoverFirstPartyBrandingSvgs(): string[] {

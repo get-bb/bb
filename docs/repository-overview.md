@@ -2,26 +2,48 @@
 
 This monorepo contains the packaged app plus the runtime services it bundles:
 
-| Package or app                                                      | Role                                                                                                |
-| ------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
-| [`packages/bb-app`](../packages/bb-app)                             | Published npm package, `npx bb-app@latest` launcher, bundled `bb` CLI entry, and public SDK export. |
-| [`apps/desktop`](../apps/desktop)                                   | macOS/Linux Electron shell that supervises the packaged runtime and loads the bb web UI.            |
-| [`apps/app`](../apps/app)                                           | Web UI for inspecting projects, threads, environments, and running work.                            |
-| [`apps/mobile`](../apps/mobile)                                     | Native phone client (Expo; iOS first, Android next) for a bb server over Direct URLs or bb connect. |
-| [`apps/server`](../apps/server)                                     | HTTP API, WebSocket notifications, state management, and server-owned product policy.               |
-| [`apps/host-daemon`](../apps/host-daemon)                           | Host-local runtime that provisions workspaces and runs provider processes.                          |
-| [`apps/cli`](../apps/cli)                                           | Scriptable `bb` CLI for users and agents.                                                           |
-| [`apps/web`](../apps/web)                                           | getbb.app site: marketing page + bb connect auth/dashboard (TanStack Start on Cloudflare Workers).  |
-| [`packages/sdk`](../packages/sdk)                                   | TypeScript SDK used by the CLI, package SDK export, and programmatic clients.                       |
-| [`packages/agent-runtime`](../packages/agent-runtime)               | Provider runtime adapters and bridges for Codex, Claude Code, Pi, and ACP agents.                   |
-| [`packages/config`](../packages/config)                             | Config parsing, defaults, managed package config schema, and environment variable definitions.      |
-| [`packages/db`](../packages/db)                                     | SQLite schema, migrations, and data access helpers.                                                 |
-| [`packages/server-contract`](../packages/server-contract)           | HTTP and WebSocket contract between clients and the server.                                         |
-| [`packages/host-daemon-contract`](../packages/host-daemon-contract) | Command/event contract between the server and host daemons.                                         |
+| Package or app                                                      | Role                                                                                                                            |
+| ------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| [`packages/bb-app`](../packages/bb-app)                             | Published npm package, `npx bb-app@latest` launcher, bundled `bb` CLI entry, and public SDK export.                             |
+| [`apps/desktop`](../apps/desktop)                                   | macOS/Linux Electron shell that supervises the packaged runtime and loads the bb web UI.                                        |
+| [`apps/app`](../apps/app)                                           | Web UI for inspecting projects, threads, environments, and running work.                                                        |
+| [`apps/mobile`](../apps/mobile)                                     | Native phone client (Expo; iOS first, Android next) for a bb server over Direct URLs or bb connect.                             |
+| [`apps/server`](../apps/server)                                     | HTTP API, WebSocket notifications, state management, and server-owned product policy.                                           |
+| [`apps/host-daemon`](../apps/host-daemon)                           | Host-local runtime that provisions workspaces and runs provider processes.                                                      |
+| [`apps/cli`](../apps/cli)                                           | Scriptable `bb` CLI for users and agents.                                                                                       |
+| [`apps/web`](../apps/web)                                           | getbb.app site: marketing page + bb connect auth/dashboard (TanStack Start on Cloudflare Workers).                              |
+| [`packages/sdk`](../packages/sdk)                                   | TypeScript SDK used by the CLI, package SDK export, and programmatic clients.                                                   |
+| [`packages/agent-runtime`](../packages/agent-runtime)               | Provider-agnostic runtime that launches plugin-supplied bridges and normalizes their events.                                    |
+| [`packages/config`](../packages/config)                             | Config parsing, defaults, managed package config schema, and environment variable definitions.                                  |
+| [`packages/db`](../packages/db)                                     | SQLite schema, migrations, and data access helpers.                                                                             |
+| [`packages/server-contract`](../packages/server-contract)           | HTTP and WebSocket contract between clients and the server.                                                                     |
+| [`packages/host-daemon-contract`](../packages/host-daemon-contract) | Command/event contract between the server and host daemons.                                                                     |
+| [`plugins`](../plugins)                                             | First-party plugins, including provider bridges for Codex, Claude Code, Pi, RAPP Brainstem with GitHub Copilot, and ACP agents. |
 
 `bb-app` also exposes a Node scripting SDK:
 `import { BBSdk } from "bb-app"`. See
 [`packages/bb-app`](../packages/bb-app/README.md#scripting-with-the-sdk).
+
+```ts
+import { BBSdk } from "bb-app";
+
+const bb = new BBSdk();
+const catalog = await bb.providers.models({ providerId: "my-provider" });
+const thread = await bb.threads.spawn({
+  projectId: "proj_example",
+  environment: { type: "project-default" },
+  providerId: "my-provider",
+  model: "my-model",
+  prompt: "Review the current changes.",
+});
+const settings = await bb.plugins.getSettings({ pluginId: "my-plugin" });
+await bb.plugins.updateSettings({
+  pluginId: "my-plugin",
+  values: { mode: "fast" },
+});
+
+console.log(catalog.models, thread.id, settings);
+```
 
 ## Pinned Dependencies
 

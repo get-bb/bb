@@ -351,6 +351,11 @@ describe("buildPluginProviderRegistration", () => {
         icon: undefined,
       },
       {
+        id: "rapp",
+        logoUrl: "/api/v1/system/providers/rapp/logo",
+        icon: undefined,
+      },
+      {
         id: "acp-cursor",
         logoUrl: "/api/v1/system/providers/acp-cursor/logo",
         icon: undefined,

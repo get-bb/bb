@@ -40,6 +40,7 @@ const FIRST_PARTY_PROVIDER_PLUGIN_IDS = [
   "provider-codex",
   "provider-claude-code",
   "provider-pi",
+  "provider-rapp",
   "provider-acp",
 ] as const;
 

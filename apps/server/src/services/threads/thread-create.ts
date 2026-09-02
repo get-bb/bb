@@ -114,8 +114,14 @@ async function resolveCatalogExecutionDefaults(
   deps: ThreadCreateDeps,
   args: ResolveCatalogExecutionDefaultsArgs,
 ): Promise<ProjectExecutionDefaults | null> {
-  if (args.executionDefaults !== null || args.requestedModel !== null) {
+  if (args.executionDefaults !== null) {
     return args.executionDefaults;
+  }
+  if (args.requestedModel !== null) {
+    return buildProviderThreadExecutionDefaults(deps.providerRegistry, {
+      providerId: args.providerId,
+      model: args.requestedModel,
+    });
   }
 
   const catalog = await resolveSystemProviderModels(deps, {

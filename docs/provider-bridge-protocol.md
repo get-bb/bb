@@ -602,6 +602,9 @@ The conformance kit runs the same recordings as its recorded-traffic
 scenario set: `checkRecordedCellReplay` replays a bridge's cells and
 `checkRecordedCellReplay` reports `recorded/<cell>/{replays,
 events-schema-valid, grammar, turn-lifecycle, not-empty}` per cell. Each
-first-party bridge has a `bridge.recorded-conformance.test.ts` beside its
-scripted suite, so conformance reflects the real dialect as well as the
-protocol.
+first-party child-process bridge has a
+`bridge.recorded-conformance.test.ts` beside its scripted suite, so
+conformance reflects the real dialect as well as the protocol. RAPP is the
+explicit conformance-only exception: its provider transport is HTTP rather
+than one of the replay child's stdio dialects, and its bridge suite runs the
+public conformance kit against a deterministic local endpoint.

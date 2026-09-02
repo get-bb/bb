@@ -61,8 +61,9 @@ bb.providers.register({
   // Called by the server on EVERY session and turn command. The returned
   // JSON reaches the bridge as `options.providerOptions`; core never reads
   // it. This is where the provider's own knobs travel — read them from the
-  // plugin's own `bb.settings.define` values in `ctx.settings` (secrets are
-  // omitted). `ctx.promptMode` is "plan" when the prompt entered plan mode.
+  // plugin's own non-secret `bb.settings.define` values in `ctx.settings`.
+  // Secret settings are omitted. `ctx.promptMode` is "plan" when the prompt
+  // entered plan mode.
   deriveProviderOptions(ctx) {
     return {
       verbose: ctx.settings.verbose === true,
@@ -110,7 +111,7 @@ export default definePluginApp((app) => {
 });
 ```
 
-(The four first-party provider plugins ship no `app.tsx`: bb vendors their
+(The five first-party provider plugins ship no `app.tsx`: bb vendors their
 marks itself, so an icon-only bundle would only add fetches at boot.)
 
 A provider plugin's `app.tsx` loads in the same deferred boot pass as every
@@ -132,17 +133,24 @@ user reorders them and picks a default in Settings → Providers
 
 `experimental_bridgeOptions` must be a plain JSON object no larger than 64
 KiB. It is validated and frozen at registration, then carried on every bridge
-request as provider-scoped static options. Use it for immutable launch facts
-shared by all hosts, not user settings or machine-local state. It participates
-in bridge process identity, so changing it causes the next runtime to use a
-new bridge process. `experimental_visibility: "installed"` makes the provider
+request as provider-scoped static options. Use it for immutable
+per-registration launch facts shared by all hosts, including validated
+non-secret provider settings that cause a re-registration when they change.
+Do not put credentials or machine-local state in it. It participates in bridge
+process identity, so changing it causes the next runtime to use a new bridge
+process. `experimental_visibility: "installed"` makes the provider
 host-dependent: BB asks that provider's bridge for `provider/health` and lists
-it only when the status is not `not_installed`. Such a declaration must support
-health; bridge failures hide only that provider.
+it only when the status is not `not_installed`. Such a declaration must
+support health; bridge failures hide only that provider.
 
 `deriveProviderOptions` runs synchronously for each session and turn command.
 Its plain JSON result has the same 64 KiB limit. The runtime merges the result
 over `experimental_bridgeOptions`; a derived key replaces its static key.
+
+Provider credentials stay in the provider's native authentication store or in
+host-local environment variables named by `env.passthrough`. Secret plugin
+settings are deliberately absent from `ctx.settings`, so they cannot leak into
+`providerOptions`. Never encode a credential in an endpoint URL.
 
 Use `extensionKinds` to declare provider-specific item or state payloads. Each
 kind needs an item schema, a state schema, or both. The server validates each

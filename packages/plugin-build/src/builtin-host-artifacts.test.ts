@@ -100,6 +100,7 @@ describe("builtin host artifacts", () => {
     { pluginDir: "provider-claude-code", methods: ["resolveNativeRoots"] },
     { pluginDir: "provider-codex", methods: ["resolveNativeRoots"] },
     { pluginDir: "provider-pi", methods: ["resolveNativeRoots"] },
+    { pluginDir: "provider-rapp", methods: [] },
   ])(
     "builds the $pluginDir host entry that serves a host contract beside its bridge",
     async ({ pluginDir, methods }) => {
