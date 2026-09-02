@@ -1,6 +1,12 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { MemoryRouter, useLocation } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { PluginCatalogSearchEntry } from "@/hooks/queries/plugin-catalog-queries";
@@ -31,7 +37,11 @@ function catalogEntry(
     publisherKey: "bb-community",
     publisherLabel: "BB Community",
     official: true,
-    author: { name: "Pat Lee", url: "https://github.com/patlee" },
+    author: {
+      name: "Pat Lee",
+      github: "patlee",
+      url: "https://github.com/patlee",
+    },
     installed: false,
     installs: 10,
     compatible: true,
@@ -42,7 +52,11 @@ function catalogEntry(
 
 const ALPHA = catalogEntry("Alpha", { installs: null });
 const BETA = catalogEntry("Beta", {
-  author: { name: "Patricia Lee", url: "https://github.com/PatLee" },
+  author: {
+    name: "Patricia Lee",
+    github: "PatLee",
+    url: "https://github.com/PatLee",
+  },
   categoryId: "security",
   category: "Security",
   publishedAt: "2026-08-20T00:00:00Z",
@@ -53,7 +67,7 @@ const GAMMA = catalogEntry("Gamma", {
   installs: 100,
 });
 const OTHER = catalogEntry("Other", {
-  author: { name: "Pat Lee", url: null },
+  author: { name: "Pat Lee", github: null, url: null },
 });
 
 function LocationProbe() {
@@ -74,16 +88,28 @@ function cardOrder(): string[] {
 function renderPage(initialEntry: string, onOpenPlugin = vi.fn()) {
   vi.stubGlobal(
     "fetch",
-    vi.fn(
-      async () =>
-        new Response(
-          JSON.stringify({
-            results: [GAMMA, OTHER, BETA, ALPHA],
-            collections: [],
-          }),
-          { headers: { "content-type": "application/json" } },
-        ),
-    ),
+    vi.fn(async (input: RequestInfo | URL) => {
+      const requestUrl =
+        typeof input === "string"
+          ? input
+          : input instanceof URL
+            ? input.href
+            : input.url;
+      const query = new URL(requestUrl, "http://localhost").searchParams.get(
+        "q",
+      );
+      const results =
+        query === "Beta" || query === "agent-interaction"
+          ? [BETA]
+          : [GAMMA, OTHER, BETA, ALPHA];
+      return new Response(
+        JSON.stringify({
+          results,
+          collections: [],
+        }),
+        { headers: { "content-type": "application/json" } },
+      );
+    }),
   );
   const { wrapper } = createQueryClientTestHarness();
   render(
@@ -175,10 +201,22 @@ describe("PluginAuthorPage", () => {
     fireEvent.change(screen.getByRole("textbox", { name: "Search plugins" }), {
       target: { value: "Beta" },
     });
-    expect(cardOrder()).toEqual(["Open Beta details"]);
+    await waitFor(() => expect(cardOrder()).toEqual(["Open Beta details"]));
     const beta = screen.getByRole("button", { name: "Open Beta details" });
     fireEvent.click(beta);
     expect(onOpenPlugin).toHaveBeenCalledWith("Beta", beta);
     expect(screen.getByTestId("location").textContent).toContain("query=Beta");
+  });
+
+  it("uses the catalog search result for a tag-only query", async () => {
+    renderPage(
+      "/extensions/plugins?author=12%3Abb-community%3Agithub%3Apatlee&query=agent-interaction",
+    );
+
+    expect(
+      await screen.findByRole("heading", { name: /^Pat Lee/u }),
+    ).toBeTruthy();
+    expect(screen.getByText("3 plugins")).toBeTruthy();
+    await waitFor(() => expect(cardOrder()).toEqual(["Open Beta details"]));
   });
 });

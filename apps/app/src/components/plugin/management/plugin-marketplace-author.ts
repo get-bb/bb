@@ -3,21 +3,23 @@ import type { PluginCatalogSearchEntry } from "@/hooks/queries/plugin-catalog-qu
 
 const GITHUB_AUTHOR_PREFIX = "github:";
 const NAME_AUTHOR_PREFIX = "name:";
+const URL_AUTHOR_PREFIX = "url:";
+
+function authorUrlIdentity(url: string): string {
+  try {
+    const parsed = new URL(url);
+    parsed.hash = "";
+    const pathname = parsed.pathname.replace(/\/+$/u, "");
+    return `${parsed.origin}${pathname}${parsed.search}`;
+  } catch {
+    return url;
+  }
+}
 
 export function pluginAuthorGithub(
   author: PluginCatalogAuthor | null,
 ): string | null {
-  if (author?.url === null || author?.url === undefined) return null;
-  try {
-    const url = new URL(author.url);
-    if (url.hostname !== "github.com" && url.hostname !== "www.github.com") {
-      return null;
-    }
-    const [github] = url.pathname.split("/").filter(Boolean);
-    return github ?? null;
-  } catch {
-    return null;
-  }
+  return author?.github ?? null;
 }
 
 export function pluginMarketplaceAuthorKey(
@@ -26,9 +28,11 @@ export function pluginMarketplaceAuthorKey(
   if (entry.author === null) return null;
   const github = pluginAuthorGithub(entry.author);
   const identity =
-    github === null
-      ? `${NAME_AUTHOR_PREFIX}${entry.author.name}`
-      : `${GITHUB_AUTHOR_PREFIX}${github.toLocaleLowerCase()}`;
+    github !== null
+      ? `${GITHUB_AUTHOR_PREFIX}${github.toLowerCase()}`
+      : entry.author.url !== null
+        ? `${URL_AUTHOR_PREFIX}${authorUrlIdentity(entry.author.url)}`
+        : `${NAME_AUTHOR_PREFIX}${entry.author.name}`;
   return `${entry.marketplace.length}:${entry.marketplace}:${identity}`;
 }
 

@@ -169,7 +169,11 @@ describe("plugin catalog queries", () => {
           publisherKey: "acme-plugins",
           publisherLabel: "Acme Plugins",
           official: false,
-          author: { name: "Acme", url: "https://acme.dev" },
+          author: {
+            name: "Acme",
+            github: null,
+            url: "https://acme.dev",
+          },
           installed: false,
           installs: null,
           compatible: false,

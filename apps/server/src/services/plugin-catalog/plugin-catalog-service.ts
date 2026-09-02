@@ -1349,5 +1349,9 @@ function entryAuthor(entry: MarketplaceEntry): PluginCatalogAuthor {
     (entry.author.github === undefined
       ? null
       : `https://github.com/${entry.author.github}`);
-  return { name: entry.author.name, url };
+  return {
+    name: entry.author.name,
+    github: entry.author.github ?? null,
+    url,
+  };
 }

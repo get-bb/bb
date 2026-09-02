@@ -365,6 +365,7 @@ export const pluginCatalogStatusResponseSchema = z.object({
 
 export const pluginCatalogAuthorSchema = z.object({
   name: z.string(),
+  github: z.string().nullable().default(null),
   url: z.string().nullable(),
 });
 export type PluginCatalogAuthor = z.infer<typeof pluginCatalogAuthorSchema>;

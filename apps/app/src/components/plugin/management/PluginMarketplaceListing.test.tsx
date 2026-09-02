@@ -27,7 +27,11 @@ function catalogEntry(pluginId: string): PluginCatalogSearchEntry {
     publisherKey: "bb-community",
     publisherLabel: "BB Community",
     official: true,
-    author: { name: "Pat Lee", url: "https://github.com/patlee" },
+    author: {
+      name: "Pat Lee",
+      github: "patlee",
+      url: "https://github.com/patlee",
+    },
     installed: false,
     installs: null,
     compatible: true,
@@ -63,7 +67,10 @@ describe("plugin marketplace author links", () => {
       catalogEntry("Charlie"),
       catalogEntry("Bravo"),
       catalogEntry("Alpha"),
-      { ...catalogEntry("Other"), author: { name: "Other", url: null } },
+      {
+        ...catalogEntry("Other"),
+        author: { name: "Other", github: null, url: null },
+      },
     ];
     const onOpenPlugin = vi.fn();
     render(

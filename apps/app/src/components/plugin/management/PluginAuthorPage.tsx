@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import { Link, useSearchParams } from "react-router-dom";
+import { useDebounceValue } from "usehooks-ts";
 import { Icon } from "@bb/shared-ui/icon";
 import {
   ResourceCollectionViewport,
@@ -9,10 +10,7 @@ import {
 } from "@bb/shared-ui/resource-list";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { TOOLS_PAGE_BAND_CLASSES } from "@/components/tools/tools-navigation";
-import {
-  usePluginCatalogSearch,
-  type PluginCatalogSearchEntry,
-} from "@/hooks/queries/plugin-catalog-queries";
+import { usePluginCatalogSearch } from "@/hooks/queries/plugin-catalog-queries";
 import { getPluginsRoutePath } from "@/lib/route-paths";
 import type { AddPluginInitial } from "./AddPluginDialog";
 import { PluginCatalogGrid } from "./BrowsePluginsTab";
@@ -33,25 +31,6 @@ import {
   pluginAuthorGithub,
 } from "./plugin-marketplace-author";
 
-function matchesAuthorSearch(
-  entry: PluginCatalogSearchEntry,
-  query: string,
-): boolean {
-  const normalizedQuery = query.trim().toLocaleLowerCase();
-  if (normalizedQuery === "") return true;
-  return [
-    entry.entryId,
-    entry.pluginId,
-    entry.displayName,
-    entry.description,
-    entry.category ?? "",
-    entry.marketplaceDisplayName,
-  ]
-    .join("\n")
-    .toLocaleLowerCase()
-    .includes(normalizedQuery);
-}
-
 function authorUrlLabel(url: string): string {
   return url.replace(/^https?:\/\//u, "").replace(/\/+$/u, "");
 }
@@ -67,11 +46,15 @@ export function PluginAuthorPage({
 }) {
   const [searchParams, setSearchParams] = useSearchParams();
   const query = searchParams.get("query") ?? "";
+  const [debouncedQuery] = useDebounceValue(query.trim(), 300);
   const selectedCategories = searchParams.getAll("category");
   const requestedSort = pluginBrowseSort(searchParams.get("sort"));
   const sortDirection =
     pluginBrowseSortDirection(searchParams.get("direction")) ?? "desc";
   const catalogQuery = usePluginCatalogSearch("", { enabled: true });
+  const searchQuery = usePluginCatalogSearch(debouncedQuery, {
+    enabled: debouncedQuery !== "",
+  });
   const entries = useMemo(
     () =>
       entriesByMarketplaceAuthor(
@@ -97,15 +80,30 @@ export function PluginAuthorPage({
   );
   const visibleEntries = useMemo(() => {
     const selected = new Set(selectedCategories);
-    const filtered = entries.filter(
+    const searchEntries =
+      debouncedQuery === ""
+        ? (catalogQuery.data?.entries ?? [])
+        : (searchQuery.data?.entries ?? []);
+    const filtered = entriesByMarketplaceAuthor(
+      searchEntries.filter((entry) => entry.compatible),
+      authorKey,
+    ).filter(
       (entry) =>
-        matchesAuthorSearch(entry, query) &&
-        (selected.size === 0 || selected.has(pluginCategoryFilterId(entry))),
+        selected.size === 0 || selected.has(pluginCategoryFilterId(entry)),
     );
     return sort === null
       ? filtered
       : sortPluginEntries(filtered, sort, sortDirection);
-  }, [entries, query, selectedCategories, sort, sortDirection]);
+  }, [
+    authorKey,
+    catalogQuery.data?.entries,
+    debouncedQuery,
+    searchQuery.data?.entries,
+    selectedCategories,
+    sort,
+    sortDirection,
+  ]);
+  const searchPending = debouncedQuery !== "" && searchQuery.isPending;
   const browseParams = new URLSearchParams(searchParams);
   browseParams.delete("author");
   const browseSearch = browseParams.toString();
@@ -229,12 +227,14 @@ export function PluginAuthorPage({
                 }
               />
             </div>
-            {catalogQuery.isError ? (
+            {catalogQuery.isError || searchQuery.isError ? (
               <p className="text-xs text-warning-text" role="status">
                 The latest search failed. The page shows saved catalog results.
               </p>
             ) : null}
-            {visibleEntries.length === 0 ? (
+            {searchPending ? (
+              <ResourceListState state="loading" message="Loading plugins" />
+            ) : visibleEntries.length === 0 ? (
               <ResourceListState
                 state="empty"
                 message="No plugins match these filters."

@@ -618,7 +618,11 @@ describe("BB Official plugin detail routing", () => {
       ...GITHUB_CATALOG_ENTRY,
       categoryId: "code-and-reviews",
       category: "Code & Reviews",
-      author: { name: "BB", url: "https://github.com/get-bb" },
+      author: {
+        name: "BB",
+        github: "get-bb",
+        url: "https://github.com/get-bb",
+      },
     };
     vi.stubGlobal(
       "fetch",
@@ -675,7 +679,11 @@ describe("BB Official plugin detail routing", () => {
   });
 
   it("opens an author from a card and returns to the prior Browse filters", async () => {
-    const author = { name: "BB", url: "https://github.com/get-bb" };
+    const author = {
+      name: "BB",
+      github: "get-bb",
+      url: "https://github.com/get-bb",
+    };
     const catalogEntries = [
       {
         ...GITHUB_CATALOG_ENTRY,
@@ -764,7 +772,11 @@ describe("BB Official plugin detail routing", () => {
   });
 
   it("routes the detail author link to the restored author page", async () => {
-    const author = { name: "BB", url: "https://github.com/get-bb" };
+    const author = {
+      name: "BB",
+      github: "get-bb",
+      url: "https://github.com/get-bb",
+    };
     const catalogEntries = [
       { ...GITHUB_CATALOG_ENTRY, author },
       {

@@ -36,7 +36,11 @@ const MEMORY_ENTRY: PluginCatalogSearchEntry = {
   publisherKey: "bb-official",
   publisherLabel: "BB Official",
   official: true,
-  author: { name: "BB", url: "https://github.com/get-bb" },
+  author: {
+    name: "BB",
+    github: "get-bb",
+    url: "https://github.com/get-bb",
+  },
   installed: false,
   installs: 4_210,
   compatible: true,

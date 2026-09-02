@@ -488,6 +488,11 @@ describe("plugin catalog service", () => {
                   [
                     remoteEntry({
                       icon: "Zap",
+                      author: {
+                        name: "Acme",
+                        github: "acme",
+                        url: "https://acme.dev",
+                      },
                       category: "acme-tools",
                       screenshots: ["./screenshots/widgets/widgets.webp"],
                       publishedAt: "2026-08-20T11:47:04-07:00",
@@ -525,6 +530,11 @@ describe("plugin catalog service", () => {
         (entry) => entry.entryId === "widgets",
       );
       expect(widgets).toMatchObject({
+        author: {
+          name: "Acme",
+          github: "acme",
+          url: "https://acme.dev",
+        },
         categoryId: "acme-tools",
         category: "Acme tools",
         screenshots: [
