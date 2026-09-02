@@ -29,6 +29,7 @@ import {
   existsSync,
   openSync,
   readFileSync,
+  unlinkSync,
   writeFileSync,
 } from "node:fs";
 import { createInterface } from "node:readline";
@@ -166,6 +167,15 @@ const archivedThreadIds = new Set();
 const processLogPath = script?.processLogPath ?? null;
 /** `startDelayMs`: answer `thread/start` only after this many milliseconds. */
 const startDelayMs = script?.startDelayMs ?? 0;
+/**
+ * `writerLockPath`: optional single-writer fixture shared by every fake child
+ * from one script. A resumed thread owns it until that child exits, mirroring
+ * Codex's process-lifetime writer lock.
+ */
+const writerLockPath = script?.writerLockPath ?? null;
+/** `sigtermDelayMs`: keep a writer alive briefly after SIGTERM. */
+const sigtermDelayMs = script?.sigtermDelayMs ?? 0;
+let ownsWriterLock = false;
 
 function logProcessStep(step) {
   if (processLogPath === null) {
@@ -175,9 +185,64 @@ function logProcessStep(step) {
 }
 
 logProcessStep("spawn");
-process.on("SIGTERM", () => {
+
+function releaseWriterLock() {
+  if (!ownsWriterLock || writerLockPath === null) {
+    return;
+  }
+  ownsWriterLock = false;
+  if (
+    existsSync(writerLockPath) &&
+    readFileSync(writerLockPath, "utf8") === String(process.pid)
+  ) {
+    unlinkSync(writerLockPath);
+  }
+}
+
+function acquireWriterLock() {
+  if (writerLockPath === null || ownsWriterLock) {
+    return true;
+  }
+  try {
+    writeFileSync(writerLockPath, String(process.pid), { flag: "wx" });
+    ownsWriterLock = true;
+    return true;
+  } catch (error) {
+    if (!error || typeof error !== "object" || error.code !== "EEXIST") {
+      throw error;
+    }
+    const ownerPid = Number(readFileSync(writerLockPath, "utf8"));
+    try {
+      process.kill(ownerPid, 0);
+      return false;
+    } catch (ownerError) {
+      if (
+        !ownerError ||
+        typeof ownerError !== "object" ||
+        ownerError.code !== "ESRCH"
+      ) {
+        throw ownerError;
+      }
+      unlinkSync(writerLockPath);
+      return acquireWriterLock();
+    }
+  }
+}
+
+function exitCleanly() {
+  releaseWriterLock();
   logProcessStep("exit");
   process.exit(0);
+}
+
+process.on("exit", releaseWriterLock);
+process.on("SIGTERM", () => {
+  logProcessStep("sigterm");
+  if (sigtermDelayMs > 0) {
+    setTimeout(exitCleanly, sigtermDelayMs);
+    return;
+  }
+  exitCleanly();
 });
 let scriptedTurnIndex = 0;
 
@@ -351,6 +416,15 @@ async function handleRequest(message) {
       return;
     }
     case "thread/resume": {
+      if (!acquireWriterLock()) {
+        logProcessStep("writer-conflict");
+        respondError(
+          id,
+          -32603,
+          `thread ${params.threadId} already has an active writer`,
+        );
+        return;
+      }
       // Scripted archived-session rejection: the real app-server refuses to
       // resume an archived thread with an error naming the session. Tests use
       // an `archived-` provider-thread-id prefix to trigger it.
@@ -552,6 +626,5 @@ stdinLines.on("line", (line) => {
   }
 });
 stdinLines.on("close", () => {
-  logProcessStep("exit");
-  process.exit(0);
+  exitCleanly();
 });

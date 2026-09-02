@@ -44,7 +44,7 @@ interface CodexAppServerRequestArgs<TResult> {
 export interface CodexAppServerConnection {
   request<TResult>(args: CodexAppServerRequestArgs<TResult>): Promise<TResult>;
   notify(method: string, params?: unknown): void;
-  kill(): void;
+  kill(): Promise<void>;
   readonly exited: boolean;
 }
 
@@ -112,6 +112,10 @@ export function createCodexAppServerConnection(
   } | null = null;
   let closeGraceTimer: NodeJS.Timeout | null = null;
   let stdoutLines: Interface | null = null;
+  let resolveExit!: () => void;
+  const exitPromise = new Promise<void>((resolve) => {
+    resolveExit = resolve;
+  });
 
   function writeLine(message: object): void {
     const stdin = child.stdin;
@@ -155,7 +159,11 @@ export function createCodexAppServerConnection(
         { spawnFailed },
       ),
     );
-    options.onExit({ ...status, stderrTail, spawnFailed });
+    try {
+      options.onExit({ ...status, stderrTail, spawnFailed });
+    } finally {
+      resolveExit();
+    }
   }
 
   if (child.stdout) {
@@ -313,7 +321,7 @@ export function createCodexAppServerConnection(
 
     kill() {
       if (finalized) {
-        return;
+        return exitPromise;
       }
       const escalation = setTimeout(() => {
         if (!finalized) {
@@ -322,6 +330,7 @@ export function createCodexAppServerConnection(
       }, KILL_ESCALATION_MS);
       escalation.unref?.();
       child.kill("SIGTERM");
+      return exitPromise;
     },
   };
 }
