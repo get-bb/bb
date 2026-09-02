@@ -81,6 +81,12 @@ describe("marketplace entry schemas", () => {
     expect(
       marketplaceEntryV2Schema.safeParse({
         ...entry(),
+        screenshots: ["https://example.com/one.txt?file=.png"],
+      }).success,
+    ).toBe(false);
+    expect(
+      marketplaceEntryV2Schema.safeParse({
+        ...entry(),
         screenshots: Array.from(
           { length: 7 },
           (_value, index) => `https://example.com/${index}.png`,
@@ -96,6 +102,12 @@ describe("marketplace entry schemas", () => {
   });
 
   it("rejects malformed v2 https URLs", () => {
+    expect(
+      marketplaceEntryV2Schema.safeParse({
+        ...entry(),
+        icon: { url: "https:///icon.svg" },
+      }).success,
+    ).toBe(false);
     expect(
       marketplaceEntryV2Schema.safeParse({
         ...entry(),
@@ -116,6 +128,25 @@ describe("marketplace entry schemas", () => {
         source: { git: { url: "https://", ref: "v1.0.0" } },
       }).success,
     ).toBe(false);
+  });
+
+  it("validates prerelease range shapes in v2", () => {
+    for (const range of ["1.x-alpha", "1.2-alpha", "^1.2-alpha"]) {
+      expect(
+        marketplaceEntryV2Schema.safeParse({
+          ...entry(),
+          source: { npm: { package: "author-tools", range } },
+        }).success,
+      ).toBe(false);
+    }
+    for (const range of ["1.2+build", ">=1.2.3-alpha"]) {
+      expect(
+        marketplaceEntryV2Schema.safeParse({
+          ...entry(),
+          source: { npm: { package: "author-tools", range } },
+        }).success,
+      ).toBe(true);
+    }
   });
 
   it("rejects conflicting known source fields", () => {

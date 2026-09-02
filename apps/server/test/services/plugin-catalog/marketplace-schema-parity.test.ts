@@ -264,6 +264,41 @@ const v2Fixtures: readonly Fixture[] = [
     }),
   },
   {
+    label: "malformed absolute v2 icon URL",
+    valid: false,
+    manifest: manifestV2With({ icon: { url: "https:///icon.svg" } }),
+  },
+  {
+    label: "screenshot extension in the query",
+    valid: false,
+    manifest: manifestV2With({
+      screenshots: ["https://cdn.example.com/acme.txt?file=.png"],
+    }),
+  },
+  {
+    label: "partial prerelease range",
+    valid: false,
+    manifest: manifestV2With({
+      source: { npm: { package: "bb-plugin-acme", range: "1.x-alpha" } },
+    }),
+  },
+  {
+    label: "partial range with build metadata",
+    valid: true,
+    manifest: manifestV2With({
+      source: { npm: { package: "bb-plugin-acme", range: "1.2+build" } },
+    }),
+  },
+  {
+    label: "full prerelease range",
+    valid: true,
+    manifest: manifestV2With({
+      source: {
+        npm: { package: "bb-plugin-acme", range: ">=1.2.3-alpha" },
+      },
+    }),
+  },
+  {
     label: "malformed author URL",
     valid: false,
     manifest: manifestV2With({

@@ -9,8 +9,10 @@ const HOST_ICON_PATTERN = /^[A-Za-z][A-Za-z0-9]*$/u;
 const HTTPS_URL_PATTERN = /^https:\/\//u;
 const ICON_URL_PATTERN =
   /^(?:(?![A-Za-z][A-Za-z0-9+.-]*:)|(?=[Hh][Tt][Tt][Pp][Ss]:))[^\s]*\.(?:[Ss][Vv][Gg]|[Pp][Nn][Gg]|[Ww][Ee][Bb][Pp])(?:[?#][^\s]*)?$/u;
+const V2_ICON_URL_PATTERN =
+  /^(?:(?![A-Za-z][A-Za-z0-9+.-]*:)|(?=[Hh][Tt][Tt][Pp][Ss]:\/\/[^/?#\s]+\/))[^\s?#]*\.(?:[Ss][Vv][Gg]|[Pp][Nn][Gg]|[Ww][Ee][Bb][Pp])(?:[?#][^\s]*)?$/u;
 const SCREENSHOT_URL_PATTERN =
-  /^(?:(?![A-Za-z][A-Za-z0-9+.-]*:)|(?=[Hh][Tt][Tt][Pp][Ss]:))[^\s]*\.(?:[Pp][Nn][Gg]|[Jj][Pp][Ee]?[Gg]|[Ww][Ee][Bb][Pp])(?:[?#][^\s]*)?$/u;
+  /^(?:(?![A-Za-z][A-Za-z0-9+.-]*:)|(?=[Hh][Tt][Tt][Pp][Ss]:\/\/[^/?#\s]+\/))[^\s?#]*\.(?:[Pp][Nn][Gg]|[Jj][Pp][Ee]?[Gg]|[Ww][Ee][Bb][Pp])(?:[?#][^\s]*)?$/u;
 const NPM_PACKAGE_PATTERN =
   /^(?:@[a-z0-9][a-z0-9._~-]*\/)?[a-z0-9][a-z0-9._~-]*$/u;
 const GIT_SUBDIR_PATTERN =
@@ -49,10 +51,19 @@ export const MARKETPLACE_SEMVER_RANGE_PATTERN = new RegExp(
   "u",
 );
 
+const INVALID_PARTIAL_PRERELEASE_PATTERN = new RegExp(
+  String.raw`(?:^|[\s|<>=~^])v?(?!(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)-)(?:0|[1-9]\d*|[xX*])(?:\.(?:0|[1-9]\d*|[xX*])(?:\.(?:0|[1-9]\d*|[xX*]))?)?-[0-9A-Za-z-]+`,
+  "u",
+);
+
 const semverRangeSchema = z
   .string()
   .min(1)
   .regex(MARKETPLACE_SEMVER_RANGE_PATTERN);
+const semverRangeV2Schema = semverRangeSchema.refine(
+  (value) => !INVALID_PARTIAL_PRERELEASE_PATTERN.test(value),
+  "prerelease ranges require three numeric version parts",
+);
 const httpsUrlSchema = z.string().regex(HTTPS_URL_PATTERN);
 const validHttpsUrlSchema = httpsUrlSchema.refine((value) => {
   try {
@@ -74,7 +85,7 @@ function marketplaceIconSchema(strict: boolean) {
     .string()
     .min(1)
     .regex(
-      ICON_URL_PATTERN,
+      strict ? ICON_URL_PATTERN : V2_ICON_URL_PATTERN,
       "must be an https URL or relative .svg, .png, or .webp asset",
     );
   const object = z.object({ url });
@@ -99,7 +110,7 @@ function marketplaceNpmSourceSchema(strict: boolean) {
       package: z
         .string()
         .regex(NPM_PACKAGE_PATTERN, "must be an unambiguous npm package name"),
-      range: semverRangeSchema.optional(),
+      range: (strict ? semverRangeSchema : semverRangeV2Schema).optional(),
       tag: z
         .string()
         .regex(/^[A-Za-z][A-Za-z0-9._-]*$/u)
@@ -127,7 +138,7 @@ function marketplaceGitSourceSchema(strict: boolean) {
   });
   const range = z.object({
     ...base,
-    range: semverRangeSchema,
+    range: strict ? semverRangeSchema : semverRangeV2Schema,
     tagPrefix: z.string().max(128).regex(GIT_TAG_PREFIX_PATTERN).optional(),
   });
   const refObject = z.object({ git: strict ? ref.strict() : ref });

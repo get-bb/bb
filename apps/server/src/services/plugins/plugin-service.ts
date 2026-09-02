@@ -42,7 +42,7 @@ import {
 } from "@bb/plugin-build";
 import { getPluginBuildToolchain } from "./build-toolchain.js";
 import {
-  marketplacePublisherLabels,
+  marketplacePublisherLabel,
   pluginPublisherLabel,
 } from "../plugin-catalog/marketplace-publishers.js";
 import { deleteSecretFile, readOrCreateSecretFile } from "@bb/secret-storage";
@@ -57,15 +57,16 @@ import {
   deleteInstalledPlugin,
   deletePluginSchedules,
   getInstalledPlugin,
-  getPluginMarketplace,
   listDuePluginSchedules,
   listInstalledPlugins,
   listPendingGitPluginArtifacts,
+  listPluginMarketplaces,
   listPluginSchedules,
   markInstalledPluginRemoved,
   recordPluginScheduleResult,
   setInstalledPluginEnabled,
   type InstalledPluginRow,
+  type PluginMarketplaceRow,
 } from "@bb/db";
 import {
   CURATED_MARKETPLACE_NAME,
@@ -834,6 +835,10 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
   const artifactRetentionMs =
     deps.artifactRetentionMs ?? DEFAULT_ARTIFACT_RETENTION_MS;
   const now = deps.now ?? Date.now;
+  const marketplaceManifestCache = new Map<
+    string,
+    { manifestJson: string; manifest: MarketplaceManifest | null }
+  >();
   let lastNotifiedProviderRegistrationRevision =
     deps.providerRegistry?.getRegistrationRevision() ?? 0;
   const scheduleStabilizationWindow =
@@ -1188,10 +1193,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
   function list(): PluginListEntry[] {
     const scheduleRows = listPluginSchedules(deps.db);
     const rows = listInstalledPlugins(deps.db);
-    const publisherLabels = rows.some((row) => row.provenance === "catalog")
-      ? marketplacePublisherLabels(deps.db)
-      : new Map<string, string>();
-    const catalogMetadataByPluginId = installedCatalogMetadata(rows);
+    const catalogData = installedCatalogData(rows);
     return rows
       .sort((a, b) => a.id.localeCompare(b.id))
       .map((row) => {
@@ -1201,7 +1203,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
         const cliRegistration = loadedPlugin?.handle.cli.registration;
         const identity =
           loadedPlugin === undefined ? identities.get(row.id) : undefined;
-        const catalogMetadata = catalogMetadataByPluginId.get(row.id) ?? {
+        const catalogMetadata = catalogData.metadataByPluginId.get(row.id) ?? {
           screenshots: [],
           collections: [],
         };
@@ -1221,7 +1223,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
             sourceKind: row.sourceKind,
             provenance: row.provenance,
             catalogMarketplaceName: row.catalogMarketplaceName,
-            labels: publisherLabels,
+            labels: catalogData.publisherLabels,
           }),
           isOrphanedBuiltin:
             row.sourceKind === "builtin" &&
@@ -1315,14 +1317,37 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     | "updatedAt"
   >;
 
-  function installedCatalogMetadata(
-    rows: readonly InstalledPluginRow[],
-  ): ReadonlyMap<string, InstalledCatalogMetadata> {
+  function cachedMarketplaceManifest(
+    marketplace: PluginMarketplaceRow,
+  ): MarketplaceManifest | null {
+    const cached = marketplaceManifestCache.get(marketplace.name);
+    if (cached?.manifestJson === marketplace.manifestJson) {
+      return cached.manifest;
+    }
+    let manifest: MarketplaceManifest | null = null;
+    try {
+      manifest = parseMarketplaceManifestJson(
+        marketplace.manifestJson,
+        `stored "${marketplace.name}" marketplace catalog`,
+      );
+    } catch {}
+    marketplaceManifestCache.set(marketplace.name, {
+      manifestJson: marketplace.manifestJson,
+      manifest,
+    });
+    return manifest;
+  }
+
+  function installedCatalogData(rows: readonly InstalledPluginRow[]): {
+    metadataByPluginId: ReadonlyMap<string, InstalledCatalogMetadata>;
+    publisherLabels: ReadonlyMap<string, string>;
+  } {
     const rowsByMarketplace = new Map<string, InstalledPluginRow[]>();
+    const marketplaceNamesInUse = new Set<string>();
     for (const row of rows) {
-      if (row.catalogMarketplaceName === null || row.catalogEntryId === null) {
-        continue;
-      }
+      if (row.catalogMarketplaceName === null) continue;
+      marketplaceNamesInUse.add(row.catalogMarketplaceName);
+      if (row.catalogEntryId === null) continue;
       const marketplaceRows =
         rowsByMarketplace.get(row.catalogMarketplaceName) ?? [];
       marketplaceRows.push(row);
@@ -1330,18 +1355,31 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     }
 
     const metadataByPluginId = new Map<string, InstalledCatalogMetadata>();
-    for (const [marketplaceName, marketplaceRows] of rowsByMarketplace) {
-      const marketplace = getPluginMarketplace(deps.db, marketplaceName);
+    const publisherLabels = new Map<string, string>();
+    if (marketplaceNamesInUse.size === 0) {
+      return { metadataByPluginId, publisherLabels };
+    }
+    const marketplaces = listPluginMarketplaces(deps.db);
+    const marketplaceByName = new Map(
+      marketplaces.map((marketplace) => [marketplace.name, marketplace]),
+    );
+    const marketplaceNames = new Set(marketplaceByName.keys());
+    for (const name of marketplaceManifestCache.keys()) {
+      if (!marketplaceNames.has(name)) marketplaceManifestCache.delete(name);
+    }
+    for (const marketplaceName of marketplaceNamesInUse) {
+      const marketplace = marketplaceByName.get(marketplaceName);
       if (marketplace === undefined) continue;
-      let manifest: MarketplaceManifest;
-      try {
-        manifest = parseMarketplaceManifestJson(
-          marketplace.manifestJson,
-          `stored "${marketplace.name}" marketplace catalog`,
-        );
-      } catch {
-        continue;
-      }
+      const manifest = cachedMarketplaceManifest(marketplace);
+      publisherLabels.set(
+        marketplaceName,
+        marketplacePublisherLabel({
+          marketplaceName,
+          displayName: manifest?.displayName ?? marketplaceName,
+        }),
+      );
+      if (manifest === null) continue;
+      const marketplaceRows = rowsByMarketplace.get(marketplaceName) ?? [];
       const entriesById = new Map(
         manifest.plugins.map((entry) => [entry.id, entry]),
       );
@@ -1380,7 +1418,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
         } catch {}
       }
     }
-    return metadataByPluginId;
+    return { metadataByPluginId, publisherLabels };
   }
 
   function installedLegacyCategory(

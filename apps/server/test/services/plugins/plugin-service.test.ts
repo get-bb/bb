@@ -887,6 +887,47 @@ describe("plugin service", () => {
       publishedAt: "2026-08-20T11:47:04-07:00",
       updatedAt: "2026-08-27T16:12:00Z",
     });
+
+    upsertPluginMarketplace(db, {
+      name: "acme",
+      sourceKind: "https",
+      manifestUrl: "https://plugins.acme.test/marketplace.json",
+      sourceGitRef: null,
+      sourceGitCommit: null,
+      manifestJson: JSON.stringify({
+        schemaVersion: 2,
+        name: "acme",
+        displayName: "Acme",
+        categories: [
+          {
+            id: "acme-tools",
+            displayName: "Updated Acme tools",
+            description: "Updated tools from Acme.",
+          },
+        ],
+        plugins: [
+          {
+            id: "installed-tool",
+            displayName: "Installed tool",
+            description: "An installed tool.",
+            icon: "Zap",
+            category: "acme-tools",
+            author: { name: "Acme" },
+            source: { npm: { package: "bb-plugin-installed-tool" } },
+          },
+        ],
+      }),
+      statsJson: null,
+      etag: null,
+      lastModified: null,
+      lastSuccessfulRefreshAt: 2,
+      lastAttemptedRefreshAt: 2,
+      lastError: null,
+    });
+
+    expect(
+      service.list().find((entry) => entry.id === "installed-tool")?.category,
+    ).toBe("Updated Acme tools");
   });
 
   it("times out a hung factory and reports error", async () => {
