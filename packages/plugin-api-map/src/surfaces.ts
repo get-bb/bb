@@ -45,19 +45,6 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
       "The main bb window, containing the sidebar, the conversation, and the side panel. A plugin can add rows, controls, panel tabs, and message content to the numbered regions.",
     surfaces: [
       {
-        id: "nav-panel",
-        title: "Full-page panels",
-        summary:
-          "Adds a row to bb's sidebar that opens a page your plugin renders where threads normally appear. With this, a plugin can:",
-        bullets: [
-          "Render any React you write across that whole area",
-          "Get its own URL, so the page can be linked to and bb's back and forward buttons work",
-          "Register tabs in the panel to the right of its page, beside bb's own Browser and Terminal tabs",
-        ],
-        apiSymbols: ["PluginNavPanelRegistration"],
-        firstParty: ["Automations", "Docs", "GitHub", "Tasks"],
-      },
-      {
         id: "sidebar-navigation",
         title: "Sidebar navigation",
         summary:
@@ -80,20 +67,17 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         experimental: true,
       },
       {
-        id: "thread-list",
-        title: "The thread list",
+        id: "nav-panel",
+        title: "Full-page panels",
         summary:
-          "Replaces the list of threads in bb's sidebar with a component your plugin renders. With this, a plugin can:",
+          "Adds a row to bb's sidebar that opens a page your plugin renders where threads normally appear. With this, a plugin can:",
         bullets: [
-          "Render every row, and decide the grouping, the ordering, and what each row shows",
-          "Read the same live thread data and run statuses bb's own list reads",
-          "Replace only the list. The New thread button, the search action, the plugin rows, and the sidebar footer stay bb's",
+          "Render any React you write across that whole area",
+          "Get its own URL, so the page can be linked to and bb's back and forward buttons work",
+          "Register tabs in the panel to the right of its page, beside bb's own Browser and Terminal tabs",
         ],
-        apiSymbols: [
-          "PluginThreadListRegistration",
-          "PluginSidebarThreadsState",
-        ],
-        experimental: true,
+        apiSymbols: ["PluginNavPanelRegistration"],
+        firstParty: ["Automations", "Docs", "GitHub", "Tasks"],
       },
       {
         id: "thread-row-status",
@@ -110,6 +94,22 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         apiSymbols: [
           "PluginComposerThreadRowStatus",
           "PluginContentScriptContext",
+        ],
+        experimental: true,
+      },
+      {
+        id: "thread-list",
+        title: "The thread list",
+        summary:
+          "Replaces the list of threads in bb's sidebar with a component your plugin renders. With this, a plugin can:",
+        bullets: [
+          "Render every row, and decide the grouping, the ordering, and what each row shows",
+          "Read the same live thread data and run statuses bb's own list reads",
+          "Replace only the list. The New thread button, the search action, the plugin rows, and the sidebar footer stay bb's",
+        ],
+        apiSymbols: [
+          "PluginThreadListRegistration",
+          "PluginSidebarThreadsState",
         ],
         experimental: true,
       },
@@ -137,6 +137,22 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Render in the same row as bb's own header controls",
         ],
         apiSymbols: ["PluginThreadHeaderActionRegistration"],
+        experimental: true,
+      },
+      {
+        id: "timeline-renderers",
+        title: "Timeline entry content",
+        summary:
+          "Renders the expanded content of plugin-owned timeline entries while bb keeps each entry's header and controls. With this, a plugin can:",
+        bullets: [
+          "Draw the expanded content beneath timeline entries created by the plugin's own provider",
+          "Receive the entry data and plugin payload, plus bb's default content as `Original`",
+          "Fall back to bb's default content automatically when the plugin is unavailable or crashes",
+        ],
+        apiSymbols: [
+          "PluginTimelineRendererRegistration",
+          "PluginTimelineRendererProps",
+        ],
         experimental: true,
       },
       {
@@ -220,22 +236,6 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         ],
         apiSymbols: ["PluginFileOpenerRegistration"],
         firstParty: ["Docs"],
-      },
-      {
-        id: "timeline-renderers",
-        title: "Timeline entry content",
-        summary:
-          "Renders the expanded content of plugin-owned timeline entries while bb keeps each entry's header and controls. With this, a plugin can:",
-        bullets: [
-          "Draw the expanded content beneath timeline entries created by the plugin's own provider",
-          "Receive the entry data and plugin payload, plus bb's default content as `Original`",
-          "Fall back to bb's default content automatically when the plugin is unavailable or crashes",
-        ],
-        apiSymbols: [
-          "PluginTimelineRendererRegistration",
-          "PluginTimelineRendererProps",
-        ],
-        experimental: true,
       },
       {
         id: "content-scripts",

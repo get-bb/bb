@@ -304,7 +304,7 @@ function AutosavingPluginSetting({
       value,
       hasNewerDraft: descriptor.type === "string",
     });
-    save.reset();
+    if (!save.isPending) save.reset();
     if (descriptor.type !== "string") {
       save.mutate(value);
     }
@@ -312,7 +312,10 @@ function AutosavingPluginSetting({
 
   function saveDraft(): void {
     if (descriptor.type !== "string") return;
-    if (draft === storedValue || (descriptor.secret === true && draft === "")) {
+    if (
+      (draft === storedValue && !save.isPending) ||
+      (descriptor.secret === true && draft === "")
+    ) {
       setDraftState({ value: draft, hasNewerDraft: false });
       return;
     }

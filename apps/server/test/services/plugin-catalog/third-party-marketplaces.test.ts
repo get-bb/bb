@@ -239,6 +239,7 @@ describe("third-party marketplaces", () => {
       getPluginMarketplaceIcon(db, "acme-plugins", "notes"),
     ).toBeUndefined();
     expect(catalog.listMarketplaces().map((row) => row.name)).toEqual([
+      "bb-official",
       "bb-community",
     ]);
 
@@ -299,13 +300,35 @@ describe("third-party marketplaces", () => {
     expect(getPluginMarketplaceIcon(db, "acme-plugins", "notes")).toBeDefined();
   });
 
-  it("refuses a name collision and the reserved bb-community name", async () => {
+  it("rejects a bundled source from a fetched marketplace", async () => {
+    const bundledUrl = "https://acme.test/bundled-marketplace.json";
+    const catalog = service({
+      fetch: marketplaceFetch({
+        [bundledUrl]: {
+          schemaVersion: 2,
+          name: "acme-bundled",
+          displayName: "Acme Bundled",
+          plugins: [entry({ source: { bundled: { plugin: "docs" } } })],
+        },
+      }),
+    });
+
+    await expect(catalog.addMarketplace(bundledUrl)).rejects.toThrow(
+      /not allowed in fetched or third-party documents/u,
+    );
+  });
+
+  it("refuses name collisions and reserved marketplace names", async () => {
     const catalog = service({
       fetch: marketplaceFetch({
         [ACME_URL]: manifest("acme-plugins", [entry()]),
         "https://impostor.test/marketplace.json": manifest("bb-community", [
           entry(),
         ]),
+        "https://official-impostor.test/marketplace.json": manifest(
+          "bb-official",
+          [entry()],
+        ),
         "https://other.test/marketplace.json": manifest("acme-plugins", [
           entry({ id: "other" }),
         ]),
@@ -319,10 +342,17 @@ describe("third-party marketplaces", () => {
     await expect(
       catalog.addMarketplace("https://impostor.test/marketplace.json"),
     ).rejects.toThrow(/"bb-community" is reserved/);
+    await expect(
+      catalog.addMarketplace("https://official-impostor.test/marketplace.json"),
+    ).rejects.toThrow(/"bb-official" is reserved/);
     await expect(catalog.removeMarketplace("bb-community")).rejects.toThrow(
       /cannot be removed/,
     );
+    await expect(catalog.removeMarketplace("bb-official")).rejects.toThrow(
+      /cannot be removed/,
+    );
     expect(catalog.listMarketplaces().map((row) => row.name)).toEqual([
+      "bb-official",
       "bb-community",
       "acme-plugins",
     ]);
@@ -376,22 +406,12 @@ describe("third-party marketplaces", () => {
     ]);
   });
 
-  it("names a bundled official plugin with <id>@bb-community", async () => {
+  it("names a bundled official plugin with <id>@bb-official", async () => {
     const catalog = createPluginCatalogService({
       db,
       appVersion: "1.0.0",
       marketplaceUrl: OFFICIAL_URL,
       dataDir,
-      bundledPlugins: [
-        {
-          name: "docs",
-          pluginId: "docs",
-          rootDir: join(dataDir, "missing-bundled-plugin"),
-          autoInstall: false,
-          defaultEnabled: true,
-          category: "Context & knowledge",
-        },
-      ],
       plugins: {
         installOfficialPlugin: async (name: string) => {
           installedCatalogEntries.push({ bundled: name });
@@ -409,8 +429,8 @@ describe("third-party marketplaces", () => {
     });
 
     await expect(
-      catalog.install({ entryId: "docs", marketplace: "bb-community" }),
-    ).rejects.toThrow(/bundled installation stopped by test|unavailable/u);
+      catalog.install({ entryId: "docs", marketplace: "bb-official" }),
+    ).rejects.toThrow(/bundled installation stopped by test/u);
     await expect(
       catalog.install({ entryId: "docs", marketplace: "acme-plugins" }),
     ).rejects.toThrow('unknown marketplace "acme-plugins"');
@@ -606,18 +626,24 @@ describe("third-party marketplaces", () => {
 
     const results = await catalog.refreshMarketplaces({ attemptedAt: 2_000 });
     expect(results).toMatchObject([
+      { name: "bb-official", ok: true },
       { name: "bb-community", ok: true },
       { name: "acme-plugins", ok: false },
     ]);
-    expect(results[1]?.error).toContain("503");
+    expect(results[2]?.error).toContain("503");
 
     const marketplaces = catalog.listMarketplaces();
     expect(marketplaces[0]).toMatchObject({
-      name: "bb-community",
+      name: "bb-official",
       lastRefreshAt: 2_000,
       lastError: null,
     });
     expect(marketplaces[1]).toMatchObject({
+      name: "bb-community",
+      lastRefreshAt: 2_000,
+      lastError: null,
+    });
+    expect(marketplaces[2]).toMatchObject({
       name: "acme-plugins",
       entryCount: 1,
       lastAttemptAt: 2_000,

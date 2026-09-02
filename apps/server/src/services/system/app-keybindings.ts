@@ -148,6 +148,7 @@ export const DEFAULT_APP_KEYBINDINGS: AppDefaultKeybindings = [
   unassignedBinding("thread.archive", mainWithoutModal),
   binding("settings.open", ",", { mod: true }, mainWithoutModal),
   binding("sidebar.toggle", "\\", { mod: true }, mainWithoutModal),
+  unassignedBinding("notifications.open", mainWithoutModal),
   binding(
     "thread.previous",
     "[",

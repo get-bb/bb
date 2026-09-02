@@ -48,12 +48,10 @@ import {
 } from "../projects/project-deletion.js";
 import { hasLiveThreadStartInFlight } from "../threads/thread-lifecycle.js";
 import { advanceThreadProvisioning } from "../threads/thread-provisioning.js";
-import { runQueuedMessageAutoSendSweep } from "../threads/queued-messages.js";
 import {
-  runDueScheduledQueueSweep,
-  runOrphanedQueueWaitSweep,
+  runQueuedMessageDispatch,
   type QueueWaitPluginDirectory,
-} from "../threads/queue-drains.js";
+} from "../threads/queued-message-dispatch.js";
 import { deliverLegacyDeferredThreadMessages } from "../threads/legacy-deferred-messages.js";
 import { LIVE_DAEMON_COMMAND_TIMEOUT_MS } from "../hosts/live-command.js";
 import { runEventLoopWork, runEventLoopWorkSync } from "./event-loop-work.js";
@@ -556,19 +554,28 @@ const PERIODIC_SWEEP_JOBS: PeriodicSweepJob[] = [
     cadenceMs: 0,
     category: "durable-intent-retry",
     name: "queued-message-auto-send",
-    run: runQueuedMessageAutoSendSweep,
+    run: (deps, now) =>
+      runQueuedMessageDispatch(deps, {
+        kind: "idle-recovery",
+        now,
+      }),
   },
   {
     cadenceMs: 0,
     category: "durable-intent-retry",
     name: "due-scheduled-queue-dispatch",
-    run: (deps, now) => runDueScheduledQueueSweep(deps, now),
+    run: (deps, now) =>
+      runQueuedMessageDispatch(deps, { kind: "time-reached", now }),
   },
   {
     cadenceMs: 0,
     category: "durable-intent-retry",
     name: "orphaned-queue-wait-clear",
-    run: (deps) => runOrphanedQueueWaitSweep(deps, deps.plugins),
+    run: (deps) =>
+      runQueuedMessageDispatch(deps, {
+        kind: "orphaned-plugin-recovery",
+        plugins: deps.plugins,
+      }),
   },
   {
     cadenceMs: 0,

@@ -25,10 +25,7 @@ import {
   seedThreadFixture,
 } from "../helpers/seed.js";
 import { withTestHarness } from "../helpers/test-app.js";
-import {
-  runQueuedMessageAutoSendSweep,
-  sendQueuedMessage,
-} from "../../src/services/threads/queued-messages.js";
+import { runQueuedMessageDispatch } from "../../src/services/threads/queued-message-dispatch.js";
 import { stopThreadForCurrentState } from "../../src/services/threads/thread-lifecycle.js";
 
 describe("thread runtime stop", () => {
@@ -152,7 +149,7 @@ describe("thread runtime stop", () => {
     });
   });
 
-  it("keeps queued messages paused after a manual stop until explicitly sent", async () => {
+  it("keeps a startup-parked message paused after a manual stop until explicitly sent", async () => {
     await withTestHarness(async (harness) => {
       const { session, thread } = seedThreadFixture(harness, {
         thread: { status: "active", visibility: "hidden" },
@@ -163,8 +160,8 @@ describe("thread runtime stop", () => {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({
-            input: [{ type: "text", text: "Wait in the queue" }],
-            mode: "queue-if-active",
+            input: [{ type: "text", text: "Park while the turn starts" }],
+            mode: "steer",
             model: "gpt-5",
             permissionMode: "full",
             reasoningLevel: "medium",
@@ -173,6 +170,10 @@ describe("thread runtime stop", () => {
         },
       );
       expect(queueResponse.status).toBe(200);
+      await expect(readJson(queueResponse)).resolves.toMatchObject({
+        delivery: "queued",
+        waitingOn: { kind: "turn-starting" },
+      });
       expect(listQueuedThreadMessages(harness.db, thread.id)).toHaveLength(1);
 
       const stopResponsePromise = harness.app.request(
@@ -190,25 +191,6 @@ describe("thread runtime stop", () => {
       expect((await stopResponsePromise).status).toBe(200);
 
       const queuedMessage = listQueuedThreadMessages(harness.db, thread.id)[0]!;
-      await sendQueuedMessage(harness.deps, {
-        claimPolicy: {
-          kind: "automatic",
-          isGroupEligible: () => true,
-        },
-        mode: "auto",
-        queuedMessageId: queuedMessage.id,
-        threadId: thread.id,
-      });
-      await runQueuedMessageAutoSendSweep(harness.deps);
-
-      expect(getThread(harness.db, thread.id)?.status).toBe("idle");
-      expect(listQueuedThreadMessages(harness.db, thread.id)).toHaveLength(1);
-      expect(
-        listQueuedThreadCommands(harness, "thread.start", thread.id),
-      ).toEqual([]);
-      expect(
-        listQueuedThreadCommands(harness, "turn.submit", thread.id),
-      ).toEqual([]);
 
       const staleStart = await harness.app.request("/internal/session/events", {
         method: "POST",
@@ -232,8 +214,31 @@ describe("thread runtime stop", () => {
       expect(getThread(harness.db, thread.id)?.status).toBe("idle");
       expect(isThreadQueueAutoSendPaused(harness.db, thread.id)).toBe(true);
 
-      await runQueuedMessageAutoSendSweep(harness.deps);
-      expect(listQueuedThreadMessages(harness.db, thread.id)).toHaveLength(1);
+      const laterQueueResponse = await harness.app.request(
+        `/api/v1/threads/${thread.id}/queued-messages`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            input: [{ type: "text", text: "Queue after the stop" }],
+            model: "gpt-5",
+            permissionMode: "full",
+            reasoningLevel: "medium",
+            serviceTier: "default",
+          }),
+        },
+      );
+      expect(
+        laterQueueResponse.status,
+        await laterQueueResponse.clone().text(),
+      ).toBe(201);
+      await runQueuedMessageDispatch(harness.deps, {
+        kind: "thread-ready",
+        threadId: thread.id,
+      });
+      const pausedMessages = listQueuedThreadMessages(harness.db, thread.id);
+      expect(pausedMessages).toHaveLength(2);
+      expect(pausedMessages[0]?.id).toBe(queuedMessage.id);
       expect(
         listQueuedThreadCommands(harness, "turn.submit", thread.id),
       ).toEqual([]);
@@ -247,7 +252,9 @@ describe("thread runtime stop", () => {
         },
       );
       expect(sendResponse.status).toBe(200);
-      expect(listQueuedThreadMessages(harness.db, thread.id)).toEqual([]);
+      expect(
+        listQueuedThreadMessages(harness.db, thread.id).map((row) => row.id),
+      ).toEqual([pausedMessages[1]!.id]);
       expect(getThread(harness.db, thread.id)?.status).toBe("active");
       expect(
         listQueuedThreadCommands(harness, "turn.submit", thread.id),

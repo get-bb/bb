@@ -99,7 +99,7 @@ const ThreadStorageFilePreviewTabContentChunk = lazy(() =>
   ),
 );
 
-function SecondaryPanelContentSkeleton() {
+export function SecondaryPanelContentSkeleton() {
   return (
     <div
       className="space-y-2 px-4 py-4"

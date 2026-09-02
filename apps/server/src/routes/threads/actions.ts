@@ -42,7 +42,7 @@ import { parseSafeRelativeRoutePath } from "../relative-route-path.js";
 import { validatePromptAttachmentReferences } from "../../services/projects/attachments.js";
 import {
   createQueuedMessageForThread,
-  sendQueuedMessage,
+  sendQueuedMessageNow,
 } from "../../services/threads/queued-messages.js";
 import {
   ensureThreadIsNotAwaitingUserInteraction,
@@ -266,8 +266,7 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
     const thread = requirePublicThread(deps.db, context.req.param("id"));
     ensureThreadIsWritable(thread);
     ensureThreadIsNotAwaitingUserInteraction(deps, thread.id);
-    const queuedMessage = await sendQueuedMessage(deps, {
-      claimPolicy: { kind: "explicit-send" },
+    const queuedMessage = await sendQueuedMessageNow(deps, {
       queuedMessageId: context.req.param("queuedMessageId"),
       mode: payload.mode,
       threadId: context.req.param("id"),

@@ -68,6 +68,7 @@ import {
 import {
   didThreadDetailBootstrapRefreshAfterMount,
   getLatestPendingInteraction,
+  isPendingInteractionStateUnknown,
   useChildThreads,
   useProjectThreadSubset,
   useThread,
@@ -630,8 +631,10 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
   );
   const pendingInteractions = pendingInteractionsQuery.data ?? [];
   const pendingInteractionsInitialLoading =
-    pendingInteractionsQuery.data === undefined &&
-    (pendingInteractionsQuery.isLoading || pendingInteractionsQuery.isFetching);
+    isPendingInteractionStateUnknown(
+      pendingInteractionsQuery.data,
+      pendingInteractionsQuery.isFetching,
+    );
   const hasPendingInteraction =
     getLatestPendingInteraction(pendingInteractions) !== null;
   const { data: queuedMessagesForEditEligibility = [] } =

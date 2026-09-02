@@ -263,6 +263,7 @@
       // `@get-bb/plugin-sdk/provider-bridge` entry from the SDK dist, so a
       // clean worktree must build that runtime before the server starts.
       "dependsOn": [
+        "@bb/server#generate:bb-official-marketplace",
         "@bb/templates#generate:templates",
         "@bb/plugin-build#generate",
         "@get-bb/plugin-sdk#build:runtime"
@@ -332,6 +333,23 @@
     },
     "@bb/plugin-build#topo": {
       "dependsOn": ["^topo", "@bb/plugin-build#generate"]
+    },
+    "@bb/server#topo": {
+      "dependsOn": ["^topo", "@bb/server#generate:bb-official-marketplace"]
+    },
+    "@bb/server#generate:bb-official-marketplace": {
+      "dependsOn": [],
+      "inputs": [
+        "scripts/generate-bb-official-marketplace.ts",
+        "src/services/plugin-catalog/bundled-marketplace-paths.ts",
+        "src/services/plugins/builtin-registry.ts",
+        "$TURBO_ROOT$/packages/domain/src/plugin-catalog-category.ts",
+        "$TURBO_ROOT$/packages/domain/src/plugin-id.ts",
+        "$TURBO_ROOT$/packages/domain/src/plugin-manifest.ts",
+        "$TURBO_ROOT$/plugins/*/package.json",
+        "$TURBO_ROOT$/plugins/bb-official.json"
+      ],
+      "outputs": ["src/generated/bb-official-marketplace/marketplace.json"]
     },
     "@bb/templates#generate:templates": {
       "dependsOn": [],

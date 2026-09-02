@@ -1,6 +1,7 @@
 import {
   ArrowDataTransferHorizontalIcon,
   ArrowReloadHorizontalIcon,
+  BellDotIcon,
   BrainIcon,
   BrowserIcon,
   CheckListIcon,
@@ -41,6 +42,7 @@ const FIRST_PARTY_PLUGINS: Record<string, FirstPartyPlugin> = {
   "Keep Awake": { id: "keep-awake", icon: Coffee01Icon },
   Memory: { id: "memory", icon: BrainIcon },
   "Provider retry": { id: "provider-retry", icon: ArrowReloadHorizontalIcon },
+  "Push notifications": { id: "push-notifications", icon: BellDotIcon },
   "Remote access": { id: "connect", icon: SmartPhone01Icon },
   Secrets: { id: "secrets", icon: LockIcon },
   "Send later": { id: "scheduled-send", icon: Calendar03Icon },

@@ -124,7 +124,7 @@ export function registerMarketplaceCommands(
   marketplace
     .command("remove <name>")
     .description(
-      "Forget a marketplace. Its catalog and cached icons are deleted; its installed plugins keep running as direct installs and keep checking for updates",
+      "Forget a marketplace. bb-official and bb-community cannot be removed. Installed plugins keep their direct sources",
     )
     .option("--json", "Output JSON")
     .action(

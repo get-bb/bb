@@ -20,7 +20,10 @@ import {
   builtinPluginSource,
   type BundledPluginRegistration,
 } from "./builtin-registry.js";
-import { CURATED_MARKETPLACE_NAME } from "../plugin-catalog/marketplace-manifest.js";
+import {
+  BUNDLED_MARKETPLACE_NAME,
+  CURATED_MARKETPLACE_NAME,
+} from "../plugin-catalog/marketplace-manifest.js";
 import type { PluginSourceSelection } from "@bb/server-contract";
 import type { TelemetryEvent } from "../system/telemetry.js";
 import { resolveSelectedSubdirectory } from "./collection-manifest.js";
@@ -59,7 +62,8 @@ export function pluginInstalledTelemetryEvent(
   const isPublic =
     provenance.kind === "builtin" ||
     (provenance.kind === "catalog" &&
-      provenance.marketplace === CURATED_MARKETPLACE_NAME);
+      (provenance.marketplace === CURATED_MARKETPLACE_NAME ||
+        provenance.marketplace === BUNDLED_MARKETPLACE_NAME));
   return {
     name: "plugin_installed",
     properties: {
@@ -591,12 +595,24 @@ export function createPluginRegistration(context: PluginRegistrationContext) {
 
   function bundledPluginProvenance(
     plugin: BundledPluginRegistration,
+    existing?: InstalledPluginRow,
   ): PluginProvenance {
+    if (
+      existing?.provenance === "catalog" &&
+      (catalogMarketplaceOf(existing) === CURATED_MARKETPLACE_NAME ||
+        catalogMarketplaceOf(existing) === BUNDLED_MARKETPLACE_NAME)
+    ) {
+      return {
+        kind: "catalog",
+        marketplace: BUNDLED_MARKETPLACE_NAME,
+        entryId: plugin.name,
+      };
+    }
     return plugin.autoInstall
       ? { kind: "builtin" }
       : {
           kind: "catalog",
-          marketplace: CURATED_MARKETPLACE_NAME,
+          marketplace: BUNDLED_MARKETPLACE_NAME,
           entryId: plugin.name,
         };
   }
@@ -622,7 +638,6 @@ export function createPluginRegistration(context: PluginRegistrationContext) {
   async function reconcileBundled(): Promise<void> {
     for (const bundled of bundledPlugins) {
       const source = builtinPluginSource(bundled.name);
-      const provenance = bundledPluginProvenance(bundled);
       let manifest: PluginManifest;
       try {
         manifest = await readPluginManifest(bundled.rootDir);
@@ -635,6 +650,7 @@ export function createPluginRegistration(context: PluginRegistrationContext) {
         continue;
       }
       const existing = getInstalledPluginRegistration(deps.db, manifest.id);
+      const provenance = bundledPluginProvenance(bundled, existing);
       if (existing?.removedAt !== null && existing?.removedAt !== undefined) {
         continue;
       }

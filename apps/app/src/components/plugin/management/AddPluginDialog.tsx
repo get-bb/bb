@@ -237,7 +237,9 @@ function AddPluginDialogContent({
   const [sourceText, setSourceText] = useState("");
   const request = buildRequest(initial, sourceText);
   const thirdParty =
-    initial !== null && initial.marketplace !== CURATED_PLUGIN_MARKETPLACE_NAME;
+    initial !== null &&
+    initial.marketplace !== CURATED_PLUGIN_MARKETPLACE_NAME &&
+    !initial.source.startsWith("builtin:");
   const planQuery = useCatalogInstallPlan(
     thirdParty && initial !== null
       ? { entryId: initial.entryId, marketplace: initial.marketplace }

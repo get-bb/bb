@@ -8,7 +8,6 @@ import {
   getThread,
   isOrdinaryTurnEndQueuedMessage,
   isThreadQueueAutoSendPaused,
-  listIdleThreadsWithQueuedMessages,
   releaseQueuedMessageClaim,
   releaseStaleQueuedMessageClaims,
   type DbQueryConnection,
@@ -33,16 +32,12 @@ import type {
   LoggedPendingInteractionWorkSessionDeps,
 } from "../../types.js";
 import { ApiError } from "../../errors.js";
-import { deferAfterResponse } from "../lib/response-deferral.js";
 import { ensureHostSessionReadyForWork } from "../hosts/host-lifecycle.js";
 import {
   LIVE_DAEMON_COMMAND_TIMEOUT_MS,
   startLiveHostCommand,
 } from "../hosts/live-command.js";
-import {
-  isCommandTimeoutError,
-  runtimeErrorLogFields,
-} from "../lib/error-log-fields.js";
+import { isCommandTimeoutError } from "../lib/error-log-fields.js";
 import {
   parseStoredQueuedThreadMessageWaitingOn,
   toThreadQueuedMessage,
@@ -89,6 +84,7 @@ import {
   throwThreadEnvironmentUnavailable,
 } from "../lib/lifecycle-api-errors.js";
 import { validatePromptAttachmentReferences } from "../projects/attachments.js";
+import { requestQueuedMessageDispatch } from "./queued-message-dispatch.js";
 
 interface SendQueuedMessageArgs {
   claimPolicy: QueuedThreadMessageGroupClaimPolicy;
@@ -115,10 +111,6 @@ interface SendClaimedQueuedMessageForThreadArgs {
   queuedMessages: ClaimedQueuedMessage[];
   sendNow: boolean;
   thread: Thread;
-}
-
-interface QueuedMessageAutoSendArgs {
-  threadId: string;
 }
 
 export function createAutomaticQueuedMessageGroupEligibility(
@@ -281,17 +273,12 @@ export async function createQueuedMessageForThread(
     });
   }
   if (currentThread.status === "idle" && providerThreadId !== null) {
-    requestQueuedMessageAutoSendForThread(deps, {
-      queuedMessageId: queuedMessage.id,
+    requestQueuedMessageDispatch(deps, {
+      kind: "thread-ready",
       threadId: thread.id,
     });
   }
   return toThreadQueuedMessage(queuedMessage);
-}
-
-interface QueuedMessageAutoSendRequestArgs {
-  queuedMessageId: string;
-  threadId: string;
 }
 
 function isQueuedMessageAutoSendCandidate(
@@ -823,6 +810,22 @@ export async function sendQueuedMessage(
   }
 }
 
+export async function sendQueuedMessageNow(
+  deps: LoggedPendingInteractionWorkSessionDeps,
+  args: {
+    mode: SendQueuedMessageMode;
+    queuedMessageId: string;
+    threadId: string;
+  },
+): Promise<ThreadQueuedMessage> {
+  return sendQueuedMessage(deps, {
+    claimPolicy: { kind: "explicit-send" },
+    mode: args.mode,
+    queuedMessageId: args.queuedMessageId,
+    threadId: args.threadId,
+  });
+}
+
 export async function sendNextQueuedMessageIfPresent(
   deps: LoggedPendingInteractionWorkSessionDeps,
   args: { threadId: string },
@@ -882,94 +885,17 @@ export async function sendNextQueuedMessageIfPresent(
         thread,
       });
     }
-    if (isCommandTimeoutError(error)) {
-      deps.logger.debug(
-        {
-          queuedMessageId: nextQueuedMessages[0]!.id,
-          ...runtimeErrorLogFields(deps.config, error),
-          threadId: args.threadId,
-        },
-        "Queued message auto-send deferred by host timeout",
-      );
-      throw error;
-    }
-    deps.logger.warn(
-      {
-        queuedMessageId: nextQueuedMessages[0]!.id,
-        ...runtimeErrorLogFields(deps.config, error),
-        threadId: args.threadId,
-      },
-      "Queued message auto-send failed",
-    );
     throw error;
   }
   return true;
 }
 
-export async function runQueuedMessageAutoSendForThread(
-  deps: LoggedPendingInteractionWorkSessionDeps,
-  args: QueuedMessageAutoSendArgs,
-): Promise<void> {
-  await deps.lifecycleDedupers.queuedMessageAutoSend.run(
-    args.threadId,
-    async () => {
-      await sendNextQueuedMessageIfPresent(deps, {
-        threadId: args.threadId,
-      });
-    },
-  );
-}
-
-export function requestQueuedMessageAutoSendForThread(
-  deps: LoggedPendingInteractionWorkSessionDeps,
-  args: QueuedMessageAutoSendRequestArgs,
+export function releaseStaleQueuedMessageDispatchClaims(
+  deps: Pick<AppDeps, "db" | "hub">,
+  now: number,
 ): void {
-  deferAfterResponse({
-    config: deps.config,
-    context: {
-      queuedMessageId: args.queuedMessageId,
-      threadId: args.threadId,
-    },
-    logger: deps.logger,
-    name: "Queued message auto-send request",
-    work: () =>
-      runQueuedMessageAutoSendForThread(deps, {
-        threadId: args.threadId,
-      }),
-  });
-}
-
-export async function runQueuedMessageAutoSendSweep(
-  deps: LoggedPendingInteractionWorkSessionDeps,
-): Promise<void> {
   releaseStaleQueuedMessageClaims(deps.db, deps.hub, {
-    claimedBefore: Date.now() - STALE_QUEUED_MESSAGE_CLAIM_MS,
+    claimedBefore: now - STALE_QUEUED_MESSAGE_CLAIM_MS,
     protectedClaimTokens: [...activeQueuedMessageClaimTokens],
   });
-
-  for (const candidate of listIdleThreadsWithQueuedMessages(deps.db)) {
-    try {
-      await runQueuedMessageAutoSendForThread(deps, {
-        threadId: candidate.threadId,
-      });
-    } catch (error) {
-      if (isCommandTimeoutError(error)) {
-        deps.logger.debug(
-          {
-            ...runtimeErrorLogFields(deps.config, error),
-            threadId: candidate.threadId,
-          },
-          "Queued message auto-send sweep deferred by host timeout",
-        );
-        continue;
-      }
-      deps.logger.warn(
-        {
-          ...runtimeErrorLogFields(deps.config, error),
-          threadId: candidate.threadId,
-        },
-        "Queued message auto-send sweep failed",
-      );
-    }
-  }
 }
