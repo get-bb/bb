@@ -6,7 +6,10 @@ import {
   resetPluginSlotStoreForTest,
   setPluginSlotRegistrations,
 } from "@/lib/plugin-slots";
-import { BUILT_IN_FILE_OPENER_PREFERENCE } from "@/lib/file-opener-preference";
+import {
+  BUILT_IN_FILE_OPENER_PREFERENCE,
+  DOWNLOAD_FILE_OPENER_PREFERENCE,
+} from "@/lib/file-opener-preference";
 import { FileOpenersSettingsSection } from "./FileOpenersSettingsSection";
 
 function registerNotesOpener() {
@@ -35,6 +38,20 @@ afterEach(() => {
 });
 
 describe("FileOpenersSettingsSection", () => {
+  it("offers preview and download for PDFs without requiring a plugin", async () => {
+    render(<FileOpenersSettingsSection />);
+
+    const trigger = screen.getByRole("button", {
+      name: "Default opener for .pdf files",
+    });
+    expect(trigger.textContent).toContain("Built-in preview");
+
+    await selectOption(trigger, /^Download$/u);
+    expect(storedPreference()).toEqual({
+      pdf: DOWNLOAD_FILE_OPENER_PREFERENCE,
+    });
+  });
+
   it("defaults to automatic and persists built-in, plugin, and automatic choices", async () => {
     registerNotesOpener();
     render(<FileOpenersSettingsSection />);

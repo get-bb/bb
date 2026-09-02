@@ -60,6 +60,7 @@ import {
   writeProjectSkill,
 } from "../services/skills/skill-listing.js";
 import {
+  buildAttachmentContentDisposition,
   createDaemonFileContentResponse,
   remapDaemonFileRouteError,
   requestMatchesEntityTag,
@@ -659,7 +660,16 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
         },
       });
       return createDaemonFileContentResponse(result, {
-        headers: { "x-bb-content-encoding": result.contentEncoding },
+        headers: {
+          ...(query.disposition === "attachment"
+            ? {
+                "content-disposition": buildAttachmentContentDisposition(
+                  query.path,
+                ),
+              }
+            : {}),
+          "x-bb-content-encoding": result.contentEncoding,
+        },
         ifNoneMatch: context.req.header("if-none-match"),
       });
     } catch (error) {

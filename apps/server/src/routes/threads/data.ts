@@ -36,6 +36,7 @@ import {
 } from "../../services/lib/lifecycle-api-errors.js";
 import { callHostRetryableOnlineRpc } from "../../services/hosts/online-rpc.js";
 import {
+  buildAttachmentContentDisposition,
   createDaemonFileContentResponse,
   type DaemonFileReadResult,
   remapDaemonFileRouteError,
@@ -664,6 +665,14 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
         },
       });
       return createDaemonFileContentResponse(result, {
+        headers:
+          query.disposition === "attachment"
+            ? {
+                "content-disposition": buildAttachmentContentDisposition(
+                  query.path,
+                ),
+              }
+            : undefined,
         ifNoneMatch: context.req.header("if-none-match"),
       });
     } catch (error) {
@@ -690,6 +699,14 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
         },
       });
       return createDaemonFileContentResponse(result, {
+        headers:
+          query.disposition === "attachment"
+            ? {
+                "content-disposition": buildAttachmentContentDisposition(
+                  query.path,
+                ),
+              }
+            : undefined,
         ifNoneMatch: context.req.header("if-none-match"),
       });
     } catch (error) {

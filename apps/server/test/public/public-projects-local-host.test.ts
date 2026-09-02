@@ -293,7 +293,7 @@ describe("public project local host routes", () => {
       });
 
       const filePromise = harness.app.request(
-        `/api/v1/projects/${project.id}/files/content?path=${encodeURIComponent("src/app.ts")}`,
+        `/api/v1/projects/${project.id}/files/content?disposition=attachment&path=${encodeURIComponent("src/app.ts")}`,
       );
       const fileCommand = await waitForQueuedCommand(
         harness,
@@ -318,6 +318,9 @@ describe("public project local host routes", () => {
       expect(fileResponse.status).toBe(200);
       expect(fileResponse.headers.get("content-type")).toContain(
         "application/typescript",
+      );
+      expect(fileResponse.headers.get("content-disposition")).toBe(
+        `attachment; filename="app.ts"; filename*=UTF-8''app.ts`,
       );
       expect(fileResponse.headers.get("cache-control")).toBe(
         "private, no-cache",

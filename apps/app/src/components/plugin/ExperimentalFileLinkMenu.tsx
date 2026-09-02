@@ -49,7 +49,11 @@ export function ExperimentalFileLinkMenu({
 
   return (
     <>
-      <ContextMenuItem onSelect={() => navigation.openFilePreview(intent)}>
+      <ContextMenuItem
+        onSelect={() =>
+          navigation.openFilePreview({ ...intent, viewer: "builtin" })
+        }
+      >
         Open preview
       </ContextMenuItem>
       {matchingOpeners.length > 0 ? (

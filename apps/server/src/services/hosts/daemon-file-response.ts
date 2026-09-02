@@ -18,6 +18,18 @@ function daemonFileEntityTag(result: DaemonFileReadResult): string {
   return `"${result.sha256}"`;
 }
 
+export function buildAttachmentContentDisposition(path: string): string {
+  const filename = path.split(/[\\/]/u).at(-1) ?? "download";
+  const fallback = filename
+    .replace(/[^\x20-\x7E]/gu, "_")
+    .replace(/["\\]/gu, "_");
+  const encoded = encodeURIComponent(filename).replace(
+    /[!'()*]/gu,
+    (char) => `%${char.charCodeAt(0).toString(16).toUpperCase()}`,
+  );
+  return `attachment; filename="${fallback}"; filename*=UTF-8''${encoded}`;
+}
+
 export function requestMatchesEntityTag(
   ifNoneMatch: string | undefined,
   entityTag: string,

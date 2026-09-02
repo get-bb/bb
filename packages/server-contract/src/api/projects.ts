@@ -200,6 +200,7 @@ export type ProjectPathsQuery = z.infer<typeof projectPathsQuerySchema>;
 export const projectFileContentQuerySchema = z
   .object({
     ...projectWorkspaceRoutingFields,
+    disposition: z.literal("attachment").optional(),
     path: z.string().min(1),
   })
   .partial({ hostId: true, environmentId: true })

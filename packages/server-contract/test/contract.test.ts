@@ -1607,12 +1607,17 @@ describe("server-contract clients", () => {
         },
       }).pathname,
     ).toBe("/api/v1/projects/proj_123/paths");
+    const projectFileContentUrl = publicClient.projects[
+      ":id"
+    ].files.content.$url({
+      param: { id: "proj_123" },
+      query: { disposition: "attachment", path: "src/report.pdf" },
+    });
     expect(
-      publicClient.projects[":id"].files.content.$url({
-        param: { id: "proj_123" },
-        query: { path: "src/app.ts" },
-      }).pathname,
-    ).toBe("/api/v1/projects/proj_123/files/content");
+      `${projectFileContentUrl.pathname}${projectFileContentUrl.search}`,
+    ).toBe(
+      "/api/v1/projects/proj_123/files/content?disposition=attachment&path=src%2Freport.pdf",
+    );
     expect(
       publicClient.threads[":id"].timeline["turn-summary-details"].$url({
         param: { id: "thr_123" },
@@ -1642,18 +1647,27 @@ describe("server-contract clients", () => {
         },
       }).pathname,
     ).toBe("/api/v1/threads/thr_123/thread-storage/paths");
-    expect(
-      publicClient.threads[":id"]["thread-storage"].content.$url({
-        param: { id: "thr_123" },
-        query: { path: "notes/plan.md" },
-      }).pathname,
-    ).toBe("/api/v1/threads/thr_123/thread-storage/content");
-    expect(
-      publicClient.threads[":id"]["host-files"].content.$url({
-        param: { id: "thr_123" },
-        query: { path: "/Users/me/notes/plan.md" },
-      }).pathname,
-    ).toBe("/api/v1/threads/thr_123/host-files/content");
+    const storageContentUrl = publicClient.threads[":id"][
+      "thread-storage"
+    ].content.$url({
+      param: { id: "thr_123" },
+      query: { disposition: "attachment", path: "reports/result.pdf" },
+    });
+    expect(`${storageContentUrl.pathname}${storageContentUrl.search}`).toBe(
+      "/api/v1/threads/thr_123/thread-storage/content?disposition=attachment&path=reports%2Fresult.pdf",
+    );
+    const hostFileContentUrl = publicClient.threads[":id"][
+      "host-files"
+    ].content.$url({
+      param: { id: "thr_123" },
+      query: {
+        disposition: "attachment",
+        path: "/Users/me/reports/result.pdf",
+      },
+    });
+    expect(`${hostFileContentUrl.pathname}${hostFileContentUrl.search}`).toBe(
+      "/api/v1/threads/thr_123/host-files/content?disposition=attachment&path=%2FUsers%2Fme%2Freports%2Fresult.pdf",
+    );
     expect(
       publicClient.threads[":id"]["thread-storage"].files[":filePath{.+}"].$url(
         {

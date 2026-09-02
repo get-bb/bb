@@ -37,7 +37,14 @@ import {
   fileOpenerIdFromActionId,
   parseFileOpenerParams,
 } from "@/components/plugin/file-opener-tabs";
-import type { FileOpenerOverride } from "@/lib/plugin-slot-resolvers";
+import {
+  shouldDownloadWithFileOpenerPreference,
+  type FileOpenerOverride,
+} from "@/lib/plugin-slot-resolvers";
+import {
+  downloadFileForOpenRequest,
+  getFileOpenRequestPath,
+} from "@/lib/file-download";
 import type { OpenPluginPanelArgs } from "@/components/plugin/PluginPanelActions";
 import type {
   HostFileTabState,
@@ -680,6 +687,24 @@ export function useThreadFileTabs({
       behavior: OpenResolvedTabBehavior,
       viewer?: FileOpenerOverride,
     ): SecondaryPanelTab | null => {
+      const path = getFileOpenRequestPath(request);
+      if (
+        path !== null &&
+        shouldDownloadWithFileOpenerPreference({
+          path,
+          preference: fileOpenerPreference,
+          ...(viewer !== undefined ? { override: viewer } : {}),
+        }) &&
+        downloadFileForOpenRequest({
+          projectHostId,
+          projectId,
+          request,
+          resolvedEnvironmentId,
+          threadId: resolvedFileOwnerThreadId,
+        })
+      ) {
+        return null;
+      }
       const openerTab = createFileOpenerTabForRequest({
         fileOpeners,
         preference: fileOpenerPreference,

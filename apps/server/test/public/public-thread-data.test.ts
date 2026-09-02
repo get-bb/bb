@@ -4311,7 +4311,7 @@ describe("public thread data routes", () => {
       const threadStorageFilePath = `${threadStorageRoot}/images/diagram.png`;
 
       const filePromise = harness.app.request(
-        `/api/v1/threads/${thread.id}/thread-storage/content?path=${encodeURIComponent("images/diagram.png")}`,
+        `/api/v1/threads/${thread.id}/thread-storage/content?disposition=attachment&path=${encodeURIComponent("images/diagram.png")}`,
       );
       const fileCommand = await waitForQueuedCommand(
         harness,
@@ -4334,6 +4334,9 @@ describe("public thread data routes", () => {
       const fileResponse = await filePromise;
       expect(fileResponse.status).toBe(200);
       expect(fileResponse.headers.get("content-type")).toBe("image/png");
+      expect(fileResponse.headers.get("content-disposition")).toBe(
+        `attachment; filename="diagram.png"; filename*=UTF-8''diagram.png`,
+      );
       expect(fileResponse.headers.get("x-bb-content-encoding")).toBeNull();
       expect(fileResponse.headers.get("x-bb-size-bytes")).toBeNull();
       expect(new Uint8Array(await fileResponse.arrayBuffer())).toEqual(
@@ -4629,7 +4632,7 @@ describe("public thread data routes", () => {
       const fileBytes = new TextEncoder().encode("# Plan\n");
 
       const filePromise = harness.app.request(
-        `/api/v1/threads/${thread.id}/host-files/content?path=${encodeURIComponent(hostFilePath)}`,
+        `/api/v1/threads/${thread.id}/host-files/content?disposition=attachment&path=${encodeURIComponent(hostFilePath)}`,
       );
       const fileCommand = await waitForQueuedCommand(
         harness,
@@ -4658,6 +4661,9 @@ describe("public thread data routes", () => {
       const fileResponse = await filePromise;
       expect(fileResponse.status).toBe(200);
       expect(fileResponse.headers.get("content-type")).toBe("text/markdown");
+      expect(fileResponse.headers.get("content-disposition")).toBe(
+        `attachment; filename="plan.md"; filename*=UTF-8''plan.md`,
+      );
       expect(new Uint8Array(await fileResponse.arrayBuffer())).toEqual(
         fileBytes,
       );

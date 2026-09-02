@@ -14,6 +14,7 @@ import {
 import { COARSE_POINTER_ICON_SIZE_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
 import {
   BUILT_IN_FILE_OPENER_PREFERENCE,
+  DOWNLOAD_FILE_OPENER_PREFERENCE,
   buildFileOpenerRef,
   useFileOpenerPreference,
 } from "@/lib/file-opener-preference";
@@ -22,6 +23,7 @@ import { cn } from "@bb/shared-ui/lib/utils";
 
 const AUTOMATIC_FILE_OPENER_PREFERENCE = "__automatic__";
 const BUILTIN_LABEL = "Built-in preview";
+const BUILT_IN_FILE_OPENER_EXTENSIONS = ["pdf"];
 const DROPDOWN_TRIGGER_CLASS =
   "h-7 w-full justify-between border-border/60 bg-card px-2 text-xs sm:w-44";
 const DROPDOWN_CONTENT_CLASS =
@@ -33,7 +35,12 @@ export function FileOpenersSettingsSection() {
 
   const extensions = useMemo(
     () =>
-      [...new Set(fileOpeners.flatMap((opener) => opener.extensions))].sort(),
+      [
+        ...new Set([
+          ...BUILT_IN_FILE_OPENER_EXTENSIONS,
+          ...fileOpeners.flatMap((opener) => opener.extensions),
+        ]),
+      ].sort(),
     [fileOpeners],
   );
 
@@ -42,7 +49,7 @@ export function FileOpenersSettingsSection() {
   return (
     <SettingsSection
       title="File openers"
-      description="Automatically use matching plugins, or choose a viewer for each file type. Right-click a file link for a one-off choice."
+      description="Automatically use matching plugins, or choose a viewer for each file type. Thread file links offer one-off choices."
     >
       <div className="space-y-5">
         {extensions.map((extension) => (
@@ -53,7 +60,12 @@ export function FileOpenersSettingsSection() {
               opener.extensions.includes(extension),
             )}
             preference={
-              preference[extension] ?? AUTOMATIC_FILE_OPENER_PREFERENCE
+              preference[extension] ??
+              (fileOpeners.some((opener) =>
+                opener.extensions.includes(extension),
+              )
+                ? AUTOMATIC_FILE_OPENER_PREFERENCE
+                : BUILT_IN_FILE_OPENER_PREFERENCE)
             }
             onSelect={(selection) =>
               setPreference((previous) => {
@@ -85,21 +97,28 @@ function ExtensionOpenerControl({
   preference: string;
 }) {
   const automaticOpener = openers[0];
-  if (automaticOpener === undefined) return null;
 
   const options = [
-    {
-      key: AUTOMATIC_FILE_OPENER_PREFERENCE,
-      label: `Automatic (${automaticOpener.title})`,
-    },
+    ...(automaticOpener === undefined
+      ? []
+      : [
+          {
+            key: AUTOMATIC_FILE_OPENER_PREFERENCE,
+            label: `Automatic (${automaticOpener.title})`,
+          },
+        ]),
     { key: BUILT_IN_FILE_OPENER_PREFERENCE, label: BUILTIN_LABEL },
+    ...(extension === "pdf"
+      ? [{ key: DOWNLOAD_FILE_OPENER_PREFERENCE, label: "Download" }]
+      : []),
     ...openers.map((opener) => ({
       key: buildFileOpenerRef(opener),
       label: `${opener.title} (${opener.pluginId})`,
     })),
   ];
   const selected =
-    options.find((option) => option.key === preference) ?? options[1];
+    options.find((option) => option.key === preference) ??
+    options.find((option) => option.key === BUILT_IN_FILE_OPENER_PREFERENCE);
   if (selected === undefined) return null;
 
   return (
