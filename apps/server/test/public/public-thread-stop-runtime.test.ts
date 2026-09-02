@@ -191,9 +191,12 @@ describe("thread runtime stop", () => {
 
       const queuedMessage = listQueuedThreadMessages(harness.db, thread.id)[0]!;
       await sendQueuedMessage(harness.deps, {
+        claimPolicy: {
+          kind: "automatic",
+          isGroupEligible: () => true,
+        },
         mode: "auto",
         queuedMessageId: queuedMessage.id,
-        sendNow: false,
         threadId: thread.id,
       });
       await runQueuedMessageAutoSendSweep(harness.deps);

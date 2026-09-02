@@ -20,6 +20,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { TelemetryService } from "../../src/services/system/telemetry.js";
 import * as threadEvents from "../../src/services/threads/thread-events.js";
 import {
+  createAutomaticQueuedMessageGroupEligibility,
   runQueuedMessageAutoSendForThread,
   sendQueuedMessage,
 } from "../../src/services/threads/queued-messages.js";
@@ -151,10 +152,16 @@ describe("queued message dispatch hook", () => {
 
       await expect(
         sendQueuedMessage(harness.deps, {
+          claimPolicy: {
+            kind: "automatic",
+            isGroupEligible: createAutomaticQueuedMessageGroupEligibility(
+              harness.deps,
+              { now: Date.now(), thread },
+            ),
+          },
           threadId: thread.id,
           queuedMessageId: queued.id,
           mode: "auto",
-          sendNow: false,
         }),
       ).rejects.toMatchObject({
         body: { code: "queued_message_claim_lost" },
@@ -188,10 +195,16 @@ describe("queued message dispatch hook", () => {
 
       await expect(
         sendQueuedMessage(harness.deps, {
+          claimPolicy: {
+            kind: "automatic",
+            isGroupEligible: createAutomaticQueuedMessageGroupEligibility(
+              harness.deps,
+              { now: Date.now(), thread },
+            ),
+          },
           threadId: thread.id,
           queuedMessageId: queued.id,
           mode: "auto",
-          sendNow: false,
         }),
       ).rejects.toMatchObject({
         body: { code: "queued_message_claim_lost" },
@@ -220,10 +233,16 @@ describe("queued message auto-send notification", () => {
       harness.hub.subscribe(socket, { kind: "thread-list" });
 
       await sendQueuedMessage(harness.deps, {
+        claimPolicy: {
+          kind: "automatic",
+          isGroupEligible: createAutomaticQueuedMessageGroupEligibility(
+            harness.deps,
+            { now: Date.now(), thread },
+          ),
+        },
         threadId: thread.id,
         queuedMessageId: queued.id,
         mode: "auto",
-        sendNow: false,
       });
 
       const statusMessages = parseThreadMessages(socket.messages).filter(
@@ -511,10 +530,7 @@ describe("turn-starting queue wait", () => {
         db: harness.db,
         notifier: harness.deps.hub,
         threadId: thread.id,
-        expectedGroupedPrefixQueuedMessageIds: [
-          pluginHeld.id,
-          queued[1]!.id,
-        ],
+        expectedGroupedPrefixQueuedMessageIds: [pluginHeld.id, queued[1]!.id],
         groupBoundaryQueuedMessageId: queued[1]!.id,
       });
       expect(

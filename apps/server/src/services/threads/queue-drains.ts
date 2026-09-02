@@ -232,17 +232,15 @@ async function attemptEligibleQueuedMessage(
   thread: NonNullable<ReturnType<typeof getThread>>,
   now: number,
 ): Promise<void> {
+  const isGroupEligible = createAutomaticQueuedMessageGroupEligibility(deps, {
+    now,
+    thread,
+  });
   await sendQueuedMessage(deps, {
-    isGroupEligible: createAutomaticQueuedMessageGroupEligibility(deps, {
-      now,
-      thread,
-    }),
+    claimPolicy: { kind: "automatic", isGroupEligible },
     mode: "auto",
     queuedMessageId: row.id,
     threadId: row.threadId,
-    // A due row is eligible, not overridden: the plugin pass runs. Send-now is
-    // the only thing that bypasses it, and a timer is not a user.
-    sendNow: false,
   });
 }
 
@@ -361,7 +359,8 @@ export async function clearQueueWaitsForUnregisteredPlugin(
   deps: QueueDrainDeps,
   pluginId: string,
 ): Promise<void> {
-  const holder = `${QUEUED_MESSAGE_PLUGIN_WAIT_HOLDER_PREFIX}${pluginId}` as const;
+  const holder =
+    `${QUEUED_MESSAGE_PLUGIN_WAIT_HOLDER_PREFIX}${pluginId}` as const;
   const threadIds = new Set<string>();
   for (const row of listQueuedThreadMessagesByWaitHolder(deps.db, holder)) {
     deps.logger.info(

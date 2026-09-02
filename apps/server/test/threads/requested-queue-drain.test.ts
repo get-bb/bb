@@ -262,10 +262,7 @@ describe("the requested queue drain", () => {
           db: harness.db,
           notifier: harness.deps.hub,
           threadId: thread.id,
-          expectedGroupedPrefixQueuedMessageIds: [
-            pluginHeld.id,
-            threadBusy.id,
-          ],
+          expectedGroupedPrefixQueuedMessageIds: [pluginHeld.id, threadBusy.id],
           groupBoundaryQueuedMessageId: threadBusy.id,
         });
         const turnsBefore = turnRequests(harness, thread.id).length;

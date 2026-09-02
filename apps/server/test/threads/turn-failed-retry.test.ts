@@ -163,7 +163,8 @@ function seedRateLimitFailure(
     threadId: args.threadId,
     environmentId: args.environmentId,
     providerThreadId,
-    sequence: getLatestThreadSequence(harness.db, { threadId: args.threadId }) + 1,
+    sequence:
+      getLatestThreadSequence(harness.db, { threadId: args.threadId }) + 1,
     type: "provider/rateLimits/updated",
     scope: { kind: "thread" },
     data: {
@@ -190,7 +191,8 @@ function seedRateLimitFailure(
     threadId: args.threadId,
     environmentId: args.environmentId,
     providerThreadId,
-    sequence: getLatestThreadSequence(harness.db, { threadId: args.threadId }) + 1,
+    sequence:
+      getLatestThreadSequence(harness.db, { threadId: args.threadId }) + 1,
     type: "provider/error",
     scope: { kind: "thread" },
     data: {
@@ -218,7 +220,8 @@ function seedInputAccepted(
     threadId: args.threadId,
     environmentId: args.environmentId,
     providerThreadId,
-    sequence: getLatestThreadSequence(harness.db, { threadId: args.threadId }) + 1,
+    sequence:
+      getLatestThreadSequence(harness.db, { threadId: args.threadId }) + 1,
     type: "turn/input/accepted",
     scope: { kind: "turn", turnId: "turn-1" },
     data: {
@@ -245,7 +248,8 @@ function seedDoorRejection(
   seedEvent(harness.deps, {
     threadId: args.threadId,
     environmentId: args.environmentId,
-    sequence: getLatestThreadSequence(harness.db, { threadId: args.threadId }) + 1,
+    sequence:
+      getLatestThreadSequence(harness.db, { threadId: args.threadId }) + 1,
     type: "client/turn/rejected",
     scope: { kind: "thread" },
     data: {
@@ -496,7 +500,11 @@ describe("retrying a failed turn", () => {
 
       const result = await retryFailedTurn(harness.deps, {
         thread: requireThread(harness, thread.id),
-        request: { turnRequestId: requestId, sendAt: null, reason: "Rate limited" },
+        request: {
+          turnRequestId: requestId,
+          sendAt: null,
+          reason: "Rate limited",
+        },
       });
       expect(result.delivery).toBe("sent");
 
@@ -595,7 +603,10 @@ describe("retrying a failed turn", () => {
 
   it("counts a retry's own failure as a later attempt of the same original", async () => {
     await withTestHarness(async (harness) => {
-      const { requestId, thread } = seedFailableThread(harness, "host-attempts");
+      const { requestId, thread } = seedFailableThread(
+        harness,
+        "host-attempts",
+      );
       failThread(harness, thread.id);
       await retryFailedTurn(harness.deps, {
         thread: requireThread(harness, thread.id),
@@ -685,7 +696,11 @@ describe("retrying a failed turn", () => {
       const retry = (turnRequestId: string | null) =>
         retryFailedTurn(harness.deps, {
           thread: requireThread(harness, thread.id),
-          request: { turnRequestId, sendAt: Date.now() + 60_000, reason: "Retry" },
+          request: {
+            turnRequestId,
+            sendAt: Date.now() + 60_000,
+            reason: "Retry",
+          },
         });
 
       // Still running: there is no failed turn to re-submit.
@@ -715,7 +730,7 @@ describe("retrying a failed turn", () => {
         harness.db,
         harness.deps.hub,
         onlyQueuedRow(harness, thread.id).id,
-        true,
+        { kind: "explicit-send" },
       );
       expect(claimed).toHaveLength(1);
       await expect(retry(requestId)).rejects.toMatchObject({

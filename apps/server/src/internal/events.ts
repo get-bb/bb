@@ -520,10 +520,9 @@ async function executeEventFollowUpBestEffort(
         for (const queuedMessageId of followUp.queuedMessageIds) {
           try {
             await sendQueuedMessage(deps, {
-              isGroupEligible,
+              claimPolicy: { kind: "automatic", isGroupEligible },
               mode: "auto",
               queuedMessageId,
-              sendNow: false,
               threadId: followUp.threadId,
             });
           } catch (error) {

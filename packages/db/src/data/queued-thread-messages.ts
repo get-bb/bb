@@ -39,11 +39,11 @@ import {
   queuedThreadMessages,
   threads,
 } from "../schema.js";
-import { createQueuedThreadMessageClaimToken, createQueuedThreadMessageId } from "../ids.js";
 import {
-  createOrderKeyAfter,
-  createOrderKeyBetween,
-} from "./order-keys.js";
+  createQueuedThreadMessageClaimToken,
+  createQueuedThreadMessageId,
+} from "../ids.js";
+import { createOrderKeyAfter, createOrderKeyBetween } from "./order-keys.js";
 import { queryInSqliteVariableBatches } from "./events.js";
 
 export interface CreateQueuedThreadMessageInput {
@@ -201,7 +201,8 @@ export type UpdateQueuedThreadMessageResult =
   | { kind: "claimed" }
   | { kind: "stale" };
 
-export type ReleaseQueuedMessageClaimArgs = ClaimedQueuedThreadMessageMutationArgs;
+export type ReleaseQueuedMessageClaimArgs =
+  ClaimedQueuedThreadMessageMutationArgs;
 
 class ReorderQueuedThreadMessageRollback extends Error {
   constructor(readonly result: ReorderQueuedThreadMessageResult) {
@@ -220,7 +221,10 @@ function collectLeadGroupIds(
     const nextQueuedMessage = queuedMessages[index + 1];
     if (
       !nextQueuedMessage ||
-      !queuedMessageGroupingEnvelopeMatches(firstQueuedMessage, nextQueuedMessage)
+      !queuedMessageGroupingEnvelopeMatches(
+        firstQueuedMessage,
+        nextQueuedMessage,
+      )
     ) {
       break;
     }
@@ -315,7 +319,9 @@ function isQueuedThreadMessageClaimed(row: QueuedThreadMessageRow): boolean {
   return row.claimedAt !== null || row.claimToken !== null;
 }
 
-function requireClaimedQueuedThreadMessage(row: QueuedThreadMessageRow | null): ClaimedQueuedThreadMessageRow | null {
+function requireClaimedQueuedThreadMessage(
+  row: QueuedThreadMessageRow | null,
+): ClaimedQueuedThreadMessageRow | null {
   if (!row || row.claimedAt === null || row.claimToken === null) {
     return null;
   }
@@ -366,7 +372,10 @@ function getLastQueuedThreadMessage(
       .select()
       .from(queuedThreadMessages)
       .where(eq(queuedThreadMessages.threadId, threadId))
-      .orderBy(desc(queuedThreadMessages.sortKey), desc(queuedThreadMessages.id))
+      .orderBy(
+        desc(queuedThreadMessages.sortKey),
+        desc(queuedThreadMessages.id),
+      )
       .limit(1)
       .get() ?? null
   );
@@ -394,7 +403,10 @@ function getPreviousUnclaimedQueuedThreadMessage(
           ),
         ),
       )
-      .orderBy(desc(queuedThreadMessages.sortKey), desc(queuedThreadMessages.id))
+      .orderBy(
+        desc(queuedThreadMessages.sortKey),
+        desc(queuedThreadMessages.id),
+      )
       .limit(1)
       .get() ?? null
   );
@@ -498,7 +510,10 @@ function applyQueuedThreadMessageGroupBoundary(
     }
     const hasMixedExecutionOptions = groupedMessages.some(
       (queuedMessage) =>
-        !queuedMessageGroupingEnvelopeMatches(firstQueuedMessage, queuedMessage),
+        !queuedMessageGroupingEnvelopeMatches(
+          firstQueuedMessage,
+          queuedMessage,
+        ),
     );
     if (hasMixedExecutionOptions) {
       return { kind: "invalid_execution_options" };
@@ -553,9 +568,7 @@ function applyPreservedLeadGroupAfterReorder(
       .run();
   }
 
-  return changed
-    ? listQueuedThreadMessages(db, threadId)
-    : queuedMessages;
+  return changed ? listQueuedThreadMessages(db, threadId) : queuedMessages;
 }
 
 export function createQueuedThreadMessageInTransaction(
@@ -588,8 +601,11 @@ export function createQueuedThreadMessageInTransaction(
         input.systemNotice === null ? null : JSON.stringify(input.systemNotice),
       payloadKind: input.payload.kind,
       retryOfTurnRequestId:
-        input.payload.kind === "retry" ? input.payload.retryOfTurnRequestId : null,
-      retryAttempt: input.payload.kind === "retry" ? input.payload.attempt : null,
+        input.payload.kind === "retry"
+          ? input.payload.retryOfTurnRequestId
+          : null,
+      retryAttempt:
+        input.payload.kind === "retry" ? input.payload.attempt : null,
       retryReason: input.payload.kind === "retry" ? input.payload.reason : null,
       groupWithNext: false,
       claimedAt: null,
@@ -806,7 +822,11 @@ export function claimQueuedThreadMessage(
         .from(queuedThreadMessages)
         .where(eq(queuedThreadMessages.id, id))
         .get();
-      if (!existing || existing.claimedAt !== null || existing.claimToken !== null) {
+      if (
+        !existing ||
+        existing.claimedAt !== null ||
+        existing.claimToken !== null
+      ) {
         return null;
       }
 
@@ -874,12 +894,33 @@ function claimQueuedThreadMessageIdsInTransaction(
   return claimedRows;
 }
 
+export type QueuedThreadMessageGroupEligibility = (
+  rows: readonly QueuedThreadMessageRow[],
+) => boolean;
+
+export type QueuedThreadMessageGroupClaimPolicy =
+  | {
+      kind: "automatic";
+      isGroupEligible: QueuedThreadMessageGroupEligibility;
+    }
+  | { kind: "explicit-send" };
+
+function isAutomaticQueuedThreadMessageGroupClaimAllowed(
+  rows: readonly QueuedThreadMessageRow[],
+  pauseOrdinaryMessages: boolean,
+): boolean {
+  return (
+    rows.every((row) => row.failureReason === null) &&
+    (!pauseOrdinaryMessages ||
+      rows.every((row) => !isOrdinaryTurnEndQueuedMessage(row)))
+  );
+}
+
 export function claimQueuedThreadMessageGroup(
   db: DbConnection,
   notifier: DbNotifier,
   id: string,
-  explicitSend: boolean,
-  isGroupEligible?: (rows: readonly QueuedThreadMessageRow[]) => boolean,
+  policy: QueuedThreadMessageGroupClaimPolicy,
 ): ClaimedQueuedThreadMessageRow[] | null {
   const claimedQueuedMessages = db.transaction(
     (tx) => {
@@ -897,13 +938,16 @@ export function claimQueuedThreadMessageGroup(
         return null;
       }
       if (
-        (!explicitSend &&
-          !group.every((row) => row.failureReason === null)) ||
-        (isGroupEligible && !isGroupEligible(group))
+        (policy.kind === "automatic" &&
+          !isAutomaticQueuedThreadMessageGroupClaimAllowed(
+            group,
+            isThreadQueueAutoSendPaused(tx, existing.threadId),
+          )) ||
+        (policy.kind === "automatic" && !policy.isGroupEligible(group))
       ) {
         return null;
       }
-      if (!isGroupEligible && group[0]?.id !== id) {
+      if (policy.kind === "explicit-send" && group[0]?.id !== id) {
         const now = Date.now();
         clearPreviousQueuedMessageGroupEdgeInTransaction(tx, existing, now);
         clearQueuedMessageGroupEdgeInTransaction(tx, existing, now);
@@ -929,7 +973,7 @@ export function claimNextQueuedThreadMessageGroup(
   db: DbConnection,
   notifier: DbNotifier,
   threadId: string,
-  isGroupEligible?: (rows: readonly QueuedThreadMessageRow[]) => boolean,
+  isGroupEligible?: QueuedThreadMessageGroupEligibility,
 ): ClaimedQueuedThreadMessageRow[] | null {
   const claimedQueuedMessages = db.transaction(
     (tx) => {
@@ -947,8 +991,10 @@ export function claimNextQueuedThreadMessageGroup(
             : rows.every(isIdleDrainableQueuedMessage);
           return (
             eligible &&
-            (!pauseOrdinaryMessages ||
-              rows.every((row) => !isOrdinaryTurnEndQueuedMessage(row)))
+            isAutomaticQueuedThreadMessageGroupClaimAllowed(
+              rows,
+              pauseOrdinaryMessages,
+            )
           );
         }) ?? null;
       if (group === null) {
@@ -1013,10 +1059,7 @@ export function reorderQueuedThreadMessage({
           return { kind: "invalid_neighbor_order" };
         }
 
-        const currentQueuedMessages = listQueuedThreadMessages(
-          tx,
-          threadId,
-        );
+        const currentQueuedMessages = listQueuedThreadMessages(tx, threadId);
         const originalLeadGroupIds = collectLeadGroupIds(currentQueuedMessages);
         const currentIndex = currentQueuedMessages.findIndex(
           (queuedMessage) => queuedMessage.id === queuedMessageId,
@@ -1846,7 +1889,10 @@ export function hasQueuedRetryOfTurnRequest(
       .where(
         and(
           eq(queuedThreadMessages.threadId, args.threadId),
-          eq(queuedThreadMessages.retryOfTurnRequestId, args.retryOfTurnRequestId),
+          eq(
+            queuedThreadMessages.retryOfTurnRequestId,
+            args.retryOfTurnRequestId,
+          ),
         ),
       )
       .limit(1)
@@ -1892,7 +1938,9 @@ export function deleteQueuedThreadMessage(
       const existing = getQueuedThreadMessageForMutation(tx, id);
       if (!existing) return null;
       clearPreviousQueuedMessageGroupEdgeInTransaction(tx, existing);
-      tx.delete(queuedThreadMessages).where(eq(queuedThreadMessages.id, id)).run();
+      tx.delete(queuedThreadMessages)
+        .where(eq(queuedThreadMessages.id, id))
+        .run();
       return existing;
     },
     { behavior: "immediate" },

@@ -12,10 +12,10 @@ import {
   releaseQueuedMessageClaim,
   releaseStaleQueuedMessageClaims,
   type DbQueryConnection,
+  type QueuedThreadMessageGroupClaimPolicy,
+  type QueuedThreadMessageGroupEligibility,
 } from "@bb/db";
-import {
-  queuedMessageSystemNoticeSchema,
-} from "@bb/domain";
+import { queuedMessageSystemNoticeSchema } from "@bb/domain";
 import type {
   PromptInput,
   QueuedMessageWaitingOn,
@@ -91,14 +91,9 @@ import {
 import { validatePromptAttachmentReferences } from "../projects/attachments.js";
 
 interface SendQueuedMessageArgs {
-  isGroupEligible?: Parameters<typeof claimQueuedThreadMessageGroup>[4];
+  claimPolicy: QueuedThreadMessageGroupClaimPolicy;
   mode: SendQueuedMessageMode;
   queuedMessageId: string;
-  /**
-   * True for the user's explicit "Send now", false for a timer that made the
-   * row eligible. Both address one row by id; only the first is an override.
-   */
-  sendNow: boolean;
   threadId: string;
 }
 
@@ -126,14 +121,10 @@ interface QueuedMessageAutoSendArgs {
   threadId: string;
 }
 
-type QueuedMessageGroupEligibility = NonNullable<
-  Parameters<typeof claimQueuedThreadMessageGroup>[3]
->;
-
 export function createAutomaticQueuedMessageGroupEligibility(
   deps: Pick<AppDeps, "db">,
   args: { now: number; thread: Thread },
-): QueuedMessageGroupEligibility {
+): QueuedThreadMessageGroupEligibility {
   const activeTurnId = getActiveTurnId(deps, args.thread.id);
   return (group) =>
     group.every((member) => {
@@ -150,7 +141,10 @@ export function createAutomaticQueuedMessageGroupEligibility(
             args.thread.status === "idle" || args.thread.status === "pending"
           );
         case "turn-starting":
-          return args.thread.status === "active" && activeTurnId !== null;
+          return (
+            args.thread.status === "idle" ||
+            (args.thread.status === "active" && activeTurnId !== null)
+          );
         case "provisioning":
         case "host-offline":
         case "interaction":
@@ -327,7 +321,7 @@ function respectsManualStopPause(
   return (
     args.mode === "auto" &&
     !args.sendNow &&
-    args.queuedMessages.every(isOrdinaryTurnEndQueuedMessage)
+    args.queuedMessages.some(isOrdinaryTurnEndQueuedMessage)
   );
 }
 
@@ -406,13 +400,12 @@ function claimQueuedThreadMessageForSend(
     deps.db,
     deps.hub,
     args.queuedMessageId,
-    args.sendNow,
-    args.isGroupEligible,
+    args.claimPolicy,
   );
   if (claimedQueuedMessages) {
     return claimedQueuedMessages;
   }
-  if (args.isGroupEligible) return [];
+  if (args.claimPolicy.kind === "automatic") return [];
 
   const latestQueuedMessage = getQueuedThreadMessage(
     deps.db,
@@ -792,6 +785,7 @@ export async function sendQueuedMessage(
   deps: LoggedPendingInteractionWorkSessionDeps,
   args: SendQueuedMessageArgs,
 ): Promise<ThreadQueuedMessage> {
+  const sendNow = args.claimPolicy.kind === "explicit-send";
   const queuedMessages = claimQueuedThreadMessageForSend(deps, args);
   if (queuedMessages.length === 0) {
     const existing = getQueuedThreadMessage(deps.db, args.queuedMessageId);
@@ -804,8 +798,8 @@ export async function sendQueuedMessage(
     thread &&
     (isManualCompactionActive(deps, thread) ||
       (args.mode === "auto" &&
-        !args.sendNow &&
-        queuedMessages.every(isOrdinaryTurnEndQueuedMessage) &&
+        !sendNow &&
+        queuedMessages.some(isOrdinaryTurnEndQueuedMessage) &&
         isThreadQueueAutoSendPaused(deps.db, thread.id)))
   ) {
     releaseQueuedMessageClaims(deps, queuedMessages);
@@ -816,7 +810,7 @@ export async function sendQueuedMessage(
       sendClaimedQueuedMessage(deps, {
         mode: args.mode,
         queuedMessages,
-        sendNow: args.sendNow,
+        sendNow,
         threadId: args.threadId,
       }),
     );
