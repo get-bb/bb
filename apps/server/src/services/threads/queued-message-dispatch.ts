@@ -42,9 +42,9 @@ export type QueuedMessageDispatchWake =
   | { kind: "time-reached"; now: number }
   | { kind: "plugin-recheck" }
   | { kind: "plugin-unregistered"; pluginId: string }
+  | { kind: "idle-recovery"; now: number }
   | {
-      kind: "recovery";
-      now: number;
+      kind: "orphaned-plugin-recovery";
       plugins: QueueWaitPluginDirectory;
     };
 
@@ -60,7 +60,6 @@ type PreparedQueuedMessageDispatchWake = Exclude<
   | { kind: "workspace-ready" }
   | { kind: "provisioning-ended" }
   | { kind: "host-connected" }
-  | { kind: "plugin-unregistered" }
 >;
 
 const pendingPluginRechecks = new WeakSet<
@@ -115,30 +114,6 @@ function prepareQueuedMessageDispatchWake(
       }
       return prepared;
     }
-    case "plugin-unregistered": {
-      const holder =
-        `${QUEUED_MESSAGE_PLUGIN_WAIT_HOLDER_PREFIX}${wake.pluginId}` as const;
-      const threadIds = new Set<string>();
-      for (const row of listQueuedThreadMessagesByWaitHolder(deps.db, holder)) {
-        deps.logger.info(
-          {
-            queuedMessageId: row.id,
-            pluginId: wake.pluginId,
-            threadId: row.threadId,
-          },
-          "Clearing a queue wait: its holding plugin was unregistered",
-        );
-        clearQueuedMessageWait(deps, {
-          queuedMessageId: row.id,
-          threadId: row.threadId,
-        });
-        threadIds.add(row.threadId);
-      }
-      return [...threadIds].map((threadId) => ({
-        kind: "thread-ready",
-        threadId,
-      }));
-    }
     default:
       return [wake];
   }
@@ -152,12 +127,16 @@ function dispatchWakeContext(
     case "turn-started":
     case "interaction-settled":
       return { threadId: wake.threadId, wake: wake.kind };
-    case "recovery":
+    case "idle-recovery":
       return { now: wake.now, wake: wake.kind };
+    case "orphaned-plugin-recovery":
+      return { wake: wake.kind };
     case "time-reached":
       return { now: wake.now, wake: wake.kind };
     case "plugin-recheck":
       return { wake: wake.kind };
+    case "plugin-unregistered":
+      return { pluginId: wake.pluginId, wake: wake.kind };
   }
 }
 
@@ -218,11 +197,18 @@ async function executePreparedQueuedMessageDispatch(
     case "plugin-recheck":
       await runPluginRecheckDispatch(deps);
       return;
+    case "plugin-unregistered":
+      await runPluginUnregisteredDispatch(deps, wake.pluginId);
+      return;
     case "time-reached":
       await runDueScheduledDispatch(deps, wake.now);
       return;
-    case "recovery":
-      await runQueuedMessageRecovery(deps, wake.now, wake.plugins);
+    case "idle-recovery":
+      releaseStaleQueuedMessageDispatchClaims(deps, wake.now);
+      await runIdleThreadRecovery(deps);
+      return;
+    case "orphaned-plugin-recovery":
+      await runOrphanedPluginWaitRecovery(deps, wake.plugins);
       return;
   }
 }
@@ -338,6 +324,27 @@ async function runPluginRecheckDispatch(
   }
 }
 
+async function runPluginUnregisteredDispatch(
+  deps: QueueDispatchDeps,
+  pluginId: string,
+): Promise<void> {
+  const holder =
+    `${QUEUED_MESSAGE_PLUGIN_WAIT_HOLDER_PREFIX}${pluginId}` as const;
+  const threadIds = new Set<string>();
+  for (const row of listQueuedThreadMessagesByWaitHolder(deps.db, holder)) {
+    deps.logger.info(
+      { queuedMessageId: row.id, pluginId, threadId: row.threadId },
+      "Clearing a queue wait: its holding plugin was unregistered",
+    );
+    clearQueuedMessageWait(deps, {
+      queuedMessageId: row.id,
+      threadId: row.threadId,
+    });
+    threadIds.add(row.threadId);
+  }
+  await runThreadReadyDispatches(deps, threadIds);
+}
+
 async function runDueScheduledDispatch(
   deps: QueueDispatchDeps,
   now: number,
@@ -348,17 +355,6 @@ async function runDueScheduledDispatch(
       respectRequeuePacing: true,
     });
   }
-}
-
-async function runQueuedMessageRecovery(
-  deps: QueueDispatchDeps,
-  now: number,
-  plugins: QueueWaitPluginDirectory,
-): Promise<void> {
-  releaseStaleQueuedMessageDispatchClaims(deps, now);
-  await runIdleThreadRecovery(deps);
-  await runDueScheduledDispatch(deps, now);
-  await runOrphanedPluginWaitRecovery(deps, plugins);
 }
 
 async function runIdleThreadRecovery(deps: QueueDispatchDeps): Promise<void> {

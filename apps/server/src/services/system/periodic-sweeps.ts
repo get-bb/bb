@@ -553,11 +553,27 @@ const PERIODIC_SWEEP_JOBS: PeriodicSweepJob[] = [
   {
     cadenceMs: 0,
     category: "durable-intent-retry",
-    name: "queued-message-recovery",
+    name: "queued-message-auto-send",
     run: (deps, now) =>
       runQueuedMessageDispatch(deps, {
-        kind: "recovery",
+        kind: "idle-recovery",
         now,
+      }),
+  },
+  {
+    cadenceMs: 0,
+    category: "durable-intent-retry",
+    name: "due-scheduled-queue-dispatch",
+    run: (deps, now) =>
+      runQueuedMessageDispatch(deps, { kind: "time-reached", now }),
+  },
+  {
+    cadenceMs: 0,
+    category: "durable-intent-retry",
+    name: "orphaned-queue-wait-clear",
+    run: (deps) =>
+      runQueuedMessageDispatch(deps, {
+        kind: "orphaned-plugin-recovery",
         plugins: deps.plugins,
       }),
   },

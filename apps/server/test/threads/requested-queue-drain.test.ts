@@ -573,6 +573,42 @@ describe("the requested queue drain", () => {
 });
 
 describe("requesting a drain", () => {
+  it("schedules one batch when unregistering a plugin releases multiple threads", async () => {
+    await withTestHarness(async (harness) => {
+      const threads = ["host-unregister-a", "host-unregister-b"].map(
+        (hostId) =>
+          seedRunnableThread(harness, { hostId, status: "idle" }).thread,
+      );
+      for (const thread of threads) {
+        seedQueuedMessage(harness.deps, {
+          content: textInput("released by plugin removal"),
+          threadId: thread.id,
+          waitingOn: {
+            kind: "plugin",
+            pluginId: "removed-plugin",
+            reason: "Held for testing",
+          },
+        });
+      }
+
+      vi.useFakeTimers();
+      try {
+        requestQueuedMessageDispatch(harness.deps, {
+          kind: "plugin-unregistered",
+          pluginId: "removed-plugin",
+        });
+        expect(vi.getTimerCount()).toBe(1);
+        await vi.runAllTimersAsync();
+      } finally {
+        vi.useRealTimers();
+      }
+
+      for (const thread of threads) {
+        expect(listQueuedThreadMessages(harness.db, thread.id)).toEqual([]);
+      }
+    });
+  });
+
   it("coalesces a burst of requests into one walk", async () => {
     // Five turns finishing together are five requests, and one walk of the
     // queue fills as many freed slots as the hook allows. Without the
@@ -678,8 +714,7 @@ describe("queue recovery", () => {
       });
 
       await runQueuedMessageDispatch(harness.deps, {
-        kind: "recovery",
-        now: Date.now(),
+        kind: "orphaned-plugin-recovery",
         plugins: { isPluginLoaded: (pluginId) => pluginId === "loaded" },
       });
 
