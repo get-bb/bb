@@ -67,8 +67,9 @@ Complete the applicable changes:
 ## Redraw annotation order
 
 Annotation numbers express the rendered fixture's spatial reading order, not
-API registration or source order. Read rows from top to bottom, then read the
-annotations within each row from left to right.
+API registration or source order. Read the fixture's columns from left to
+right, then read the annotations within each column from top to bottom. When
+annotations share a row within one column, read them from left to right.
 
 Whenever a visible surface is added, removed, or moved:
 

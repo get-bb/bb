@@ -45,6 +45,88 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
       "The main bb window, containing the sidebar, the conversation, and the side panel. A plugin can add rows, controls, panel tabs, and message content to the numbered regions.",
     surfaces: [
       {
+        id: "sidebar-navigation",
+        title: "Sidebar navigation",
+        summary:
+          "Replaces bb's navigation controls above the thread list with a component your plugin renders. With this, a plugin can:",
+        bullets: [
+          "Arrange New thread, Search, Extensions, and plugin destinations",
+          "Activate each destination through bb, including split placement for supported items",
+          "Render bb's original controls when the plugin wants to delegate",
+          "Leave the thread list, footer, drawer, and resize handle under bb's control",
+        ],
+        apiSymbols: [
+          "ExperimentalSidebarNavigationRegistration",
+          "ExperimentalSidebarNavigationProps",
+          "ExperimentalSidebarNavigationItem",
+          "ExperimentalSidebarNavigationAction",
+          "ExperimentalSidebarNavigationIcon",
+          "ExperimentalSidebarNavigationShortcut",
+          "ExperimentalSidebarNavigationActivationOptions",
+        ],
+        experimental: true,
+      },
+      {
+        id: "nav-panel",
+        title: "Full-page panels",
+        summary:
+          "Adds a row to bb's sidebar that opens a page your plugin renders where threads normally appear. With this, a plugin can:",
+        bullets: [
+          "Render any React you write across that whole area",
+          "Get its own URL, so the page can be linked to and bb's back and forward buttons work",
+          "Register tabs in the panel to the right of its page, beside bb's own Browser and Terminal tabs",
+        ],
+        apiSymbols: ["PluginNavPanelRegistration"],
+        firstParty: ["Automations", "Docs", "GitHub", "Tasks"],
+      },
+      {
+        id: "thread-row-status",
+        title: "Thread row status",
+        summary:
+          "A small status bb can draw on a thread's row in the sidebar. With this, a plugin can:",
+        bullets: [
+          "Give the status an icon and a label",
+          "Mark a thread as running while it works on it, and bb shimmers the icon",
+          "Mark it succeeded or failed when the work ends, and bb settles the icon",
+          "Set it only from an [app-wide script](content-scripts). A status needs an owner that outlives any single screen, and those scripts are the only plugin code that does",
+          "Rely on bb to clear it when the script unmounts",
+        ],
+        apiSymbols: [
+          "PluginComposerThreadRowStatus",
+          "PluginContentScriptContext",
+        ],
+        experimental: true,
+      },
+      {
+        id: "thread-list",
+        title: "The thread list",
+        summary:
+          "Replaces the list of threads in bb's sidebar with a component your plugin renders. With this, a plugin can:",
+        bullets: [
+          "Render every row, and decide the grouping, the ordering, and what each row shows",
+          "Read the same live thread data and run statuses bb's own list reads",
+          "Replace only the list. The New thread button, the search action, the plugin rows, and the sidebar footer stay bb's",
+        ],
+        apiSymbols: [
+          "PluginThreadListRegistration",
+          "PluginSidebarThreadsState",
+        ],
+        experimental: true,
+      },
+      {
+        id: "sidebar-footer",
+        title: "Sidebar footer buttons",
+        summary:
+          "Adds an icon button to the row at the bottom of bb's sidebar, beside the Settings button. With this, a plugin can:",
+        bullets: [
+          "Supply the button's icon and its hover tooltip",
+          "Run a callback when the button is clicked",
+          "Stay reachable wherever bb's sidebar is showing",
+        ],
+        apiSymbols: ["PluginSidebarFooterActionRegistration"],
+        firstParty: ["Remote access"],
+      },
+      {
         id: "thread-header",
         title: "Thread header controls",
         summary:
@@ -56,6 +138,61 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         ],
         apiSymbols: ["PluginThreadHeaderActionRegistration"],
         experimental: true,
+      },
+      {
+        id: "timeline-renderers",
+        title: "Timeline entry content",
+        summary:
+          "Renders the expanded content of plugin-owned timeline entries while bb keeps each entry's header and controls. With this, a plugin can:",
+        bullets: [
+          "Draw the expanded content beneath timeline entries created by the plugin's own provider",
+          "Receive the entry data and plugin payload, plus bb's default content as `Original`",
+          "Fall back to bb's default content automatically when the plugin is unavailable or crashes",
+        ],
+        apiSymbols: [
+          "PluginTimelineRendererRegistration",
+          "PluginTimelineRendererProps",
+        ],
+        experimental: true,
+      },
+      {
+        id: "message-directives",
+        title: "Rich message embeds",
+        summary:
+          "Renders your component inside an agent's reply, in place of a marker the agent writes into its message. With this, a plugin can:",
+        bullets: [
+          "Claim a directive name; an agent writes `::name` in a message to invoke it",
+          "Replace that marker with a live component, inline in the conversation",
+          "Open a file from the workspace when someone interacts with the embed",
+        ],
+        apiSymbols: ["PluginMessageDirectiveRegistration"],
+        firstParty: ["Docs", "Inline visualizations", "Tasks", "Workflows"],
+      },
+      {
+        id: "message-actions",
+        title: "Message actions",
+        summary:
+          "Adds an action to individual messages in a thread. With this, a plugin can:",
+        bullets: [
+          "Appear in the row that shows under messages on hover, or in the toolbar that appears when text in an agent's message is selected",
+          "Receive the message, plus the selected text when the action was run from a selection",
+          "Open one of the plugin's own [side-panel tabs](thread-panel) with what it received",
+        ],
+        apiSymbols: ["PluginMessageActionRegistration"],
+        firstParty: ["Side chat"],
+      },
+      {
+        id: "pending-interaction",
+        title: "In-thread forms",
+        summary:
+          "Pauses an agent mid-turn to ask the person a question, and hands their answer back to the agent. With this, a plugin can:",
+        bullets: [
+          "Replace the prompt box with a form while the agent waits for an answer",
+          "Receive the submitted answer, or a cancellation and its reason",
+          "Supply the component that draws the form",
+        ],
+        apiSymbols: ["PluginUi", "PluginPendingInteractionRegistration"],
+        firstParty: ["Ask User Question", "Secrets"],
       },
       {
         id: "code-renderers",
@@ -99,143 +236,6 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         ],
         apiSymbols: ["PluginFileOpenerRegistration"],
         firstParty: ["Docs"],
-      },
-      {
-        id: "sidebar-navigation",
-        title: "Sidebar navigation",
-        summary:
-          "Replaces bb's navigation controls above the thread list with a component your plugin renders. With this, a plugin can:",
-        bullets: [
-          "Arrange New thread, Search, Extensions, and plugin destinations",
-          "Activate each destination through bb, including split placement for supported items",
-          "Render bb's original controls when the plugin wants to delegate",
-          "Leave the thread list, footer, drawer, and resize handle under bb's control",
-        ],
-        apiSymbols: [
-          "ExperimentalSidebarNavigationRegistration",
-          "ExperimentalSidebarNavigationProps",
-          "ExperimentalSidebarNavigationItem",
-          "ExperimentalSidebarNavigationAction",
-          "ExperimentalSidebarNavigationIcon",
-          "ExperimentalSidebarNavigationShortcut",
-          "ExperimentalSidebarNavigationActivationOptions",
-        ],
-        experimental: true,
-      },
-      {
-        id: "nav-panel",
-        title: "Full-page panels",
-        summary:
-          "Adds a row to bb's sidebar that opens a page your plugin renders where threads normally appear. With this, a plugin can:",
-        bullets: [
-          "Render any React you write across that whole area",
-          "Get its own URL, so the page can be linked to and bb's back and forward buttons work",
-          "Register tabs in the panel to the right of its page, beside bb's own Browser and Terminal tabs",
-        ],
-        apiSymbols: ["PluginNavPanelRegistration"],
-        firstParty: ["Automations", "Docs", "GitHub", "Tasks"],
-      },
-      {
-        id: "timeline-renderers",
-        title: "Timeline entry content",
-        summary:
-          "Renders the expanded content of plugin-owned timeline entries while bb keeps each entry's header and controls. With this, a plugin can:",
-        bullets: [
-          "Draw the expanded content beneath timeline entries created by the plugin's own provider",
-          "Receive the entry data and plugin payload, plus bb's default content as `Original`",
-          "Fall back to bb's default content automatically when the plugin is unavailable or crashes",
-        ],
-        apiSymbols: [
-          "PluginTimelineRendererRegistration",
-          "PluginTimelineRendererProps",
-        ],
-        experimental: true,
-      },
-      {
-        id: "thread-row-status",
-        title: "Thread row status",
-        summary:
-          "A small status bb can draw on a thread's row in the sidebar. With this, a plugin can:",
-        bullets: [
-          "Give the status an icon and a label",
-          "Mark a thread as running while it works on it, and bb shimmers the icon",
-          "Mark it succeeded or failed when the work ends, and bb settles the icon",
-          "Set it only from an [app-wide script](content-scripts). A status needs an owner that outlives any single screen, and those scripts are the only plugin code that does",
-          "Rely on bb to clear it when the script unmounts",
-        ],
-        apiSymbols: [
-          "PluginComposerThreadRowStatus",
-          "PluginContentScriptContext",
-        ],
-        experimental: true,
-      },
-      {
-        id: "message-directives",
-        title: "Rich message embeds",
-        summary:
-          "Renders your component inside an agent's reply, in place of a marker the agent writes into its message. With this, a plugin can:",
-        bullets: [
-          "Claim a directive name; an agent writes `::name` in a message to invoke it",
-          "Replace that marker with a live component, inline in the conversation",
-          "Open a file from the workspace when someone interacts with the embed",
-        ],
-        apiSymbols: ["PluginMessageDirectiveRegistration"],
-        firstParty: ["Docs", "Inline visualizations", "Tasks", "Workflows"],
-      },
-      {
-        id: "message-actions",
-        title: "Message actions",
-        summary:
-          "Adds an action to individual messages in a thread. With this, a plugin can:",
-        bullets: [
-          "Appear in the row that shows under messages on hover, or in the toolbar that appears when text in an agent's message is selected",
-          "Receive the message, plus the selected text when the action was run from a selection",
-          "Open one of the plugin's own [side-panel tabs](thread-panel) with what it received",
-        ],
-        apiSymbols: ["PluginMessageActionRegistration"],
-        firstParty: ["Side chat"],
-      },
-      {
-        id: "thread-list",
-        title: "The thread list",
-        summary:
-          "Replaces the list of threads in bb's sidebar with a component your plugin renders. With this, a plugin can:",
-        bullets: [
-          "Render every row, and decide the grouping, the ordering, and what each row shows",
-          "Read the same live thread data and run statuses bb's own list reads",
-          "Replace only the list. The New thread button, the search action, the plugin rows, and the sidebar footer stay bb's",
-        ],
-        apiSymbols: [
-          "PluginThreadListRegistration",
-          "PluginSidebarThreadsState",
-        ],
-        experimental: true,
-      },
-      {
-        id: "pending-interaction",
-        title: "In-thread forms",
-        summary:
-          "Pauses an agent mid-turn to ask the person a question, and hands their answer back to the agent. With this, a plugin can:",
-        bullets: [
-          "Replace the prompt box with a form while the agent waits for an answer",
-          "Receive the submitted answer, or a cancellation and its reason",
-          "Supply the component that draws the form",
-        ],
-        apiSymbols: ["PluginUi", "PluginPendingInteractionRegistration"],
-        firstParty: ["Ask User Question", "Secrets"],
-      },
-      {
-        id: "sidebar-footer",
-        title: "Sidebar footer buttons",
-        summary:
-          "Adds an icon button to the row at the bottom of bb's sidebar, beside the Settings button. With this, a plugin can:",
-        bullets: [
-          "Supply the button's icon and its hover tooltip",
-          "Run a callback when the button is clicked",
-          "Stay reachable wherever bb's sidebar is showing",
-        ],
-        apiSymbols: ["PluginSidebarFooterActionRegistration"],
-        firstParty: ["Remote access"],
       },
       {
         id: "content-scripts",

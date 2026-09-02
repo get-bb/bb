@@ -70,19 +70,19 @@ export function useSurfaceMap(): SurfaceMapState {
 }
 
 export const APP_SHELL_MARKS = [
+  "sidebar-navigation",
+  "nav-panel",
+  "thread-row-status",
+  "thread-list",
+  "sidebar-footer",
   "thread-header",
+  "timeline-renderers",
+  "message-directives",
+  "message-actions",
+  "pending-interaction",
   "code-renderers",
   "thread-panel",
   "file-opener",
-  "sidebar-navigation",
-  "nav-panel",
-  "timeline-renderers",
-  "thread-row-status",
-  "message-directives",
-  "message-actions",
-  "thread-list",
-  "pending-interaction",
-  "sidebar-footer",
   "content-scripts",
 ] as const;
 
