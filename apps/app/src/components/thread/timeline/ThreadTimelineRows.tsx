@@ -2019,8 +2019,16 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
   const terminalAutoExpandedRowIds = useStableReadonlySet(
     accumulatedTerminalRowIds,
   );
+  const initialAndDefaultExpandedRowIds = useMemo(
+    () =>
+      new Set([
+        ...(props.initialExpanded ?? EMPTY_ROW_ID_SET),
+        ...computedAutoExpansionRowIds.defaultExpandedRowIds,
+      ]),
+    [computedAutoExpansionRowIds.defaultExpandedRowIds, props.initialExpanded],
+  );
   const initialAutoExpandedRowIds = useStableReadonlySet(
-    props.initialExpanded ?? EMPTY_ROW_ID_SET,
+    initialAndDefaultExpandedRowIds,
   );
   const projectId = props.projectId;
   const senderThreadMetadataById = useSenderThreadMetadataById();

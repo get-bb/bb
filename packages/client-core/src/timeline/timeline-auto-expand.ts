@@ -12,12 +12,54 @@ interface CollectTimelineAutoExpansionRowIdsArgs {
 }
 
 export interface TimelineAutoExpansionRowIds {
+  defaultExpandedRowIds: ReadonlySet<string>;
   /**
    * Rows the timeline opens for as long as the condition holds and closes
    * again when it stops: the active scope's live frontier.
    */
   liveExpandedRowIds: ReadonlySet<string>;
   terminalFrontierRowIds: ReadonlySet<string>;
+}
+
+function isDefaultExpandedRow(row: ThreadTimelineViewRow): boolean {
+  return (
+    isRowExpandable(row) &&
+    row.kind === "work" &&
+    row.workKind === "extension" &&
+    row.extensionKind === "provider-acp/advisor"
+  );
+}
+
+function visitForDefaultAutoExpand(
+  rows: readonly ThreadTimelineViewRow[],
+  ids: Set<string>,
+): void {
+  for (const row of rows) {
+    if (isDefaultExpandedRow(row)) {
+      ids.add(row.id);
+    }
+    switch (row.kind) {
+      case "conversation":
+      case "system":
+        break;
+      case "bundle-summary":
+      case "step-summary":
+        visitForDefaultAutoExpand(row.children, ids);
+        break;
+      case "turn":
+        if (row.children) {
+          visitForDefaultAutoExpand(row.children, ids);
+        }
+        break;
+      case "work":
+        if (row.workKind === "delegation") {
+          visitForDefaultAutoExpand(row.childRows, ids);
+        }
+        break;
+      default:
+        assertNever(row);
+    }
+  }
 }
 
 export function isWorkRowExpandable(row: TimelineViewWorkRow): boolean {
@@ -183,11 +225,14 @@ export function collectTimelineAutoExpansionRowIds({
   rows,
   scopeActive,
 }: CollectTimelineAutoExpansionRowIdsArgs): TimelineAutoExpansionRowIds {
+  const defaultExpandedRowIds = new Set<string>();
   const terminalFrontierRowIds = new Set<string>();
   const liveExpandedRowIds = new Set<string>();
+  visitForDefaultAutoExpand(rows, defaultExpandedRowIds);
   visitForTerminalFrontierAutoExpand(rows, terminalFrontierRowIds);
   visitForLiveFrontierAutoExpand(rows, scopeActive, liveExpandedRowIds);
   return {
+    defaultExpandedRowIds,
     liveExpandedRowIds,
     terminalFrontierRowIds,
   };

@@ -56,6 +56,19 @@ describe("OMP advisor timeline renderer", () => {
     expect(rendered.container.textContent?.length).toBeGreaterThan(280);
   });
 
+  it("surrounds the advisor output with a bordered card", () => {
+    const rendered = renderSlot(
+      app.timelineRenderers[0]!,
+      props("The implementation is sound."),
+    );
+
+    expect(
+      Array.from(rendered.container.firstElementChild?.classList ?? []),
+    ).toEqual(
+      expect.arrayContaining(["rounded-md", "border", "border-border"]),
+    );
+  });
+
   it("does not repeat the pending row label in its body", () => {
     const rendered = renderSlot(app.timelineRenderers[0]!, props(null));
     expect(rendered.container.textContent).toBe("");

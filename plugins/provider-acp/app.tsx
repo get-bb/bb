@@ -17,7 +17,7 @@ export function OmpAdvisorTimelineRenderer({
     return null;
   }
   return (
-    <div className="px-2 py-1">
+    <div className="rounded-md border border-border bg-surface-raised px-3 py-2">
       <Markdown content={advisor.data.output} className="text-sm" />
     </div>
   );

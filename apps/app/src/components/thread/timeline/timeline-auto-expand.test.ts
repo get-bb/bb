@@ -24,12 +24,16 @@ function collectAutoExpandedIds({
   rows,
   scopeActive,
 }: CollectAutoExpandedIdsArgs): Set<string> {
-  const { liveExpandedRowIds, terminalFrontierRowIds } =
+  const { defaultExpandedRowIds, liveExpandedRowIds, terminalFrontierRowIds } =
     collectTimelineAutoExpansionRowIds({
       rows,
       scopeActive,
     });
-  return new Set([...liveExpandedRowIds, ...terminalFrontierRowIds]);
+  return new Set([
+    ...defaultExpandedRowIds,
+    ...liveExpandedRowIds,
+    ...terminalFrontierRowIds,
+  ]);
 }
 
 describe("isWorkRowExpandable", () => {
@@ -85,6 +89,29 @@ describe("collectTimelineAutoExpansionRowIds", () => {
     });
 
     expect(Array.from(ids)).toEqual([]);
+  });
+
+  it("defaults every OMP advisor row to expanded after it leaves the frontier", () => {
+    const rows = buildTimelineViewRows([
+      extensionRow({
+        extensionKind: "provider-acp/advisor",
+        id: "omp-advisor",
+        sourceSeqStart: 1,
+      }),
+      conversationRow({
+        id: "assistant-final",
+        role: "assistant",
+        text: "All done.",
+        sourceSeqStart: 2,
+      }),
+    ]);
+
+    const ids = collectAutoExpandedIds({
+      rows,
+      scopeActive: false,
+    });
+
+    expect(Array.from(ids)).toEqual(["omp-advisor"]);
   });
 
   it("auto-expands a trailing bundle in an active scope without expanding its children", () => {
