@@ -1,22 +1,5 @@
 import { Avatar, AvatarFallback, AvatarImage } from "@bb/shared-ui/avatar";
 import { cn } from "@bb/shared-ui/lib/utils";
-import type { PluginCatalogAuthor } from "@bb/server-contract";
-
-export function pluginAuthorGithub(
-  author: PluginCatalogAuthor | null,
-): string | null {
-  if (author?.url === null || author?.url === undefined) return null;
-  try {
-    const url = new URL(author.url);
-    if (url.hostname !== "github.com" && url.hostname !== "www.github.com") {
-      return null;
-    }
-    const [github] = url.pathname.split("/").filter(Boolean);
-    return github ?? null;
-  } catch {
-    return null;
-  }
-}
 
 function authorInitials(name: string): string {
   const initials = name

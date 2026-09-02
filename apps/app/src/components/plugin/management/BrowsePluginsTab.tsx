@@ -32,7 +32,9 @@ import {
   type PluginCatalogSearchEntry,
 } from "@/hooks/queries/plugin-catalog-queries";
 import type { AddPluginInitial } from "./AddPluginDialog";
-import { PluginAuthorAvatar, pluginAuthorGithub } from "./PluginAuthorAvatar";
+import { PluginAuthorAvatar } from "./PluginAuthorAvatar";
+import { PluginAuthorLink } from "./PluginAuthorLink";
+import { pluginAuthorGithub } from "./plugin-marketplace-author";
 import {
   PluginBrowseCategoryFilter,
   pluginBrowseSort,
@@ -418,7 +420,7 @@ function BrowseShelf({
   );
 }
 
-function PluginCatalogGrid({
+export function PluginCatalogGrid({
   entries,
   showCategory,
   onInstall,
@@ -477,7 +479,19 @@ function PluginCatalogCard({
             github={pluginAuthorGithub(entry.author)}
             size="detail"
           />
-          <span className="truncate">By {authorName}</span>
+          <span className="truncate">
+            By{" "}
+            {entry.author === null ? (
+              authorName
+            ) : (
+              <PluginAuthorLink
+                entry={entry}
+                className="pointer-events-auto relative z-10 rounded-sm underline underline-offset-2 hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              >
+                {authorName}
+              </PluginAuthorLink>
+            )}
+          </span>
         </span>
       }
       footerMeta={

@@ -38,6 +38,7 @@ import {
   PluginMarketplaceCategoryPill,
   PluginMarketplaceHeaderMetadata,
   PluginMarketplaceListingSections,
+  PluginMoreFromAuthorSection,
 } from "@/components/plugin/management/PluginMarketplaceListing";
 import { pluginRuntimeStatusPresentation } from "@/components/plugin/management/plugin-status";
 import {
@@ -119,9 +120,13 @@ function PluginPath({ path }: { path: string }) {
 export function CatalogPluginDetail({
   entry,
   onInstall,
+  catalogEntries = [entry],
+  onOpenPlugin = () => undefined,
 }: {
   entry: PluginCatalogSearchEntry;
   onInstall: (entry: PluginCatalogSearchEntry) => void;
+  catalogEntries?: readonly PluginCatalogSearchEntry[];
+  onOpenPlugin?: (pluginId: string) => void;
 }) {
   const count =
     entry.installs === null
@@ -149,6 +154,11 @@ export function CatalogPluginDetail({
     >
       <ResourceDetailStack>
         <PluginMarketplaceListingSections entry={entry} />
+        <PluginMoreFromAuthorSection
+          entry={entry}
+          catalogEntries={catalogEntries}
+          onOpenPlugin={onOpenPlugin}
+        />
       </ResourceDetailStack>
     </ResourceDetailPage>
   );
@@ -222,6 +232,8 @@ export function PluginDetail({
   onOpenSource,
   onDelete,
   catalogEntry,
+  catalogEntries = [],
+  onOpenPlugin = () => undefined,
 }: {
   isLoading: boolean;
   plugin: PluginListItem | null;
@@ -232,6 +244,8 @@ export function PluginDetail({
   onOpenSource: (plugin: PluginListItem) => void;
   onDelete: (plugin: PluginListItem) => void;
   catalogEntry?: PluginCatalogSearchEntry;
+  catalogEntries?: readonly PluginCatalogSearchEntry[];
+  onOpenPlugin?: (pluginId: string) => void;
 }) {
   const { settingsSections } = usePluginSlots();
   const sourceQuery = usePluginSource(plugin?.id ?? "", {
@@ -358,7 +372,14 @@ export function PluginDetail({
             </p>
           </ResourceDetailOverviewSection>
         ) : (
-          <PluginMarketplaceListingSections entry={catalogEntry} />
+          <>
+            <PluginMarketplaceListingSections entry={catalogEntry} />
+            <PluginMoreFromAuthorSection
+              entry={catalogEntry}
+              catalogEntries={catalogEntries}
+              onOpenPlugin={onOpenPlugin}
+            />
+          </>
         )}
         {hasConfiguration ? (
           <ResourceDetailConfigurationSection

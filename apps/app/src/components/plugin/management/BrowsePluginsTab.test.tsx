@@ -186,6 +186,25 @@ describe("BrowsePluginsTab", () => {
     expect(params.get("query")).toBe("Memory");
   });
 
+  it("routes the card author name and preserves the Browse filters", async () => {
+    const onOpenPlugin = vi.fn();
+    renderBrowse(
+      { entries: [MEMORY_ENTRY], collections: [] },
+      "/extensions/plugins?category=memory-and-context&sort=recently-added",
+      vi.fn(),
+      onOpenPlugin,
+    );
+
+    fireEvent.click(await screen.findByRole("link", { name: "BB" }));
+    const params = new URLSearchParams(
+      screen.getByTestId("location-search").textContent ?? "",
+    );
+    expect(params.get("author")).toBe("11:bb-official:github:get-bb");
+    expect(params.getAll("category")).toEqual(["memory-and-context"]);
+    expect(params.get("sort")).toBe("recently-added");
+    expect(onOpenPlugin).not.toHaveBeenCalled();
+  });
+
   it("round trips repeatable category parameters", async () => {
     renderBrowse(
       { entries: [MEMORY_ENTRY, SECURITY_ENTRY, TASKS_ENTRY], collections: [] },

@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   Carousel,
   CarouselContent,
@@ -9,10 +9,21 @@ import {
 } from "@bb/shared-ui/carousel";
 import { Icon } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
-import { ResourceDefinitionSection } from "@bb/shared-ui/resource-list";
+import {
+  ResourceDefinitionSection,
+  ResourceListPanel,
+  ResourceRow,
+  ResourceRowDetailChevron,
+} from "@bb/shared-ui/resource-list";
 import type { PluginCatalogSearchEntry } from "@/hooks/queries/plugin-catalog-queries";
-import { PluginCategoryLabel } from "./plugin-ui";
-import { PluginAuthorAvatar, pluginAuthorGithub } from "./PluginAuthorAvatar";
+import { CatalogEntryIconChip, PluginCategoryLabel } from "./plugin-ui";
+import { PluginAuthorAvatar } from "./PluginAuthorAvatar";
+import { PluginAuthorLink } from "./PluginAuthorLink";
+import {
+  entriesByMarketplaceAuthor,
+  pluginAuthorGithub,
+  pluginMarketplaceAuthorKey,
+} from "./plugin-marketplace-author";
 
 function repositoryLinkLabel(url: string): string {
   return url.replace(/^https?:\/\//u, "").replace(/\/+$/u, "");
@@ -34,18 +45,12 @@ export function PluginMarketplaceHeaderMetadata({
       />
       <span className="min-w-0">
         By{" "}
-        {author.url === null ? (
-          author.name
-        ) : (
-          <a
-            href={author.url}
-            target="_blank"
-            rel="noreferrer"
-            className="rounded-sm underline underline-offset-2 hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-          >
-            {author.name}
-          </a>
-        )}
+        <PluginAuthorLink
+          entry={entry}
+          className="rounded-sm underline underline-offset-2 hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+        >
+          {author.name}
+        </PluginAuthorLink>
       </span>
     </span>
   );
@@ -241,5 +246,54 @@ export function PluginMarketplaceListingSections({
       <PluginMarketplaceSource entry={entry} />
       <PluginMarketplaceDetails entry={entry} />
     </>
+  );
+}
+
+export function PluginMoreFromAuthorSection({
+  entry,
+  catalogEntries,
+  onOpenPlugin,
+}: {
+  entry: PluginCatalogSearchEntry;
+  catalogEntries: readonly PluginCatalogSearchEntry[];
+  onOpenPlugin: (pluginId: string) => void;
+}) {
+  const authorKey = pluginMarketplaceAuthorKey(entry);
+  const moreEntries = useMemo(
+    () =>
+      authorKey === null
+        ? []
+        : entriesByMarketplaceAuthor(catalogEntries, authorKey)
+            .filter(
+              (candidate) =>
+                candidate.compatible &&
+                (candidate.marketplace !== entry.marketplace ||
+                  candidate.entryId !== entry.entryId),
+            )
+            .sort(
+              (left, right) =>
+                left.displayName.localeCompare(right.displayName) ||
+                left.entryId.localeCompare(right.entryId),
+            )
+            .slice(0, 4),
+    [authorKey, catalogEntries, entry.entryId, entry.marketplace],
+  );
+  if (moreEntries.length === 0) return null;
+  return (
+    <ResourceDefinitionSection label="More from this author">
+      <ResourceListPanel className="py-0">
+        {moreEntries.map((candidate) => (
+          <ResourceRow
+            key={`${candidate.marketplace}/${candidate.entryId}`}
+            leading={<CatalogEntryIconChip entry={candidate} />}
+            title={candidate.displayName}
+            description={candidate.description || undefined}
+            trailingVisual={<ResourceRowDetailChevron />}
+            openLabel={`Open ${candidate.displayName} details`}
+            onOpen={() => onOpenPlugin(candidate.pluginId)}
+          />
+        ))}
+      </ResourceListPanel>
+    </ResourceDefinitionSection>
   );
 }

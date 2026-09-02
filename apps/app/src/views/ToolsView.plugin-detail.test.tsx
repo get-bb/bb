@@ -8,7 +8,13 @@ import {
   waitFor,
   within,
 } from "@testing-library/react";
-import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
+import {
+  MemoryRouter,
+  Route,
+  Routes,
+  useLocation,
+  useNavigate,
+} from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   EMPTY_PLUGIN_UPDATE_STATE,
@@ -99,8 +105,14 @@ function RoutedToolsView() {
         <ToolsView pluginId={pluginId} />
       </TooltipProvider>
       <output data-testid="route-path">{location.pathname}</output>
+      <output data-testid="route-search">{location.search}</output>
     </>
   );
+}
+
+function HistoryBackButton() {
+  const navigate = useNavigate();
+  return <button onClick={() => navigate(-1)}>Browser back</button>;
 }
 
 afterEach(() => {
@@ -660,6 +672,157 @@ describe("BB Official plugin detail routing", () => {
       );
       expect(document.activeElement).toBe(card);
     });
+  });
+
+  it("opens an author from a card and returns to the prior Browse filters", async () => {
+    const author = { name: "BB", url: "https://github.com/get-bb" };
+    const catalogEntries = [
+      {
+        ...GITHUB_CATALOG_ENTRY,
+        categoryId: "code-and-reviews",
+        category: "Code & Reviews",
+        author,
+      },
+      {
+        ...GITHUB_CATALOG_ENTRY,
+        entryId: "automations",
+        pluginId: "automations",
+        displayName: "Automations",
+        categoryId: "tasks-and-workflows",
+        category: "Tasks & Workflows",
+        author,
+      },
+    ];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url === "/api/v1/plugins") {
+          return new Response(JSON.stringify({ enabled: true, plugins: [] }), {
+            headers: { "content-type": "application/json" },
+          });
+        }
+        if (url.startsWith("/api/v1/plugin-catalog/search")) {
+          return new Response(
+            JSON.stringify({ results: catalogEntries, collections: [] }),
+            { headers: { "content-type": "application/json" } },
+          );
+        }
+        return new Response(JSON.stringify({ error: "not found" }), {
+          status: 404,
+          headers: { "content-type": "application/json" },
+        });
+      }),
+    );
+
+    const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
+    render(
+      <MemoryRouter
+        initialEntries={[
+          "/extensions/plugins?category=code-and-reviews&sort=recently-added",
+        ]}
+      >
+        <Routes>
+          <Route path="/extensions/plugins/*" element={<RoutedToolsView />} />
+        </Routes>
+        <HistoryBackButton />
+      </MemoryRouter>,
+      { wrapper: QueryClientWrapper },
+    );
+
+    fireEvent.click((await screen.findAllByRole("link", { name: "BB" }))[0]!);
+    expect(await screen.findByRole("heading", { name: /^BB/u })).toBeTruthy();
+    let params = new URLSearchParams(
+      screen.getByTestId("route-search").textContent ?? "",
+    );
+    expect(params.get("author")).toBe("11:bb-official:github:get-bb");
+    expect(params.getAll("category")).toEqual(["code-and-reviews"]);
+    expect(params.get("sort")).toBe("recently-added");
+
+    fireEvent.click(screen.getByRole("button", { name: "Browser back" }));
+    await waitFor(() => {
+      expect(screen.queryByRole("heading", { name: /^BB/u })).toBeNull();
+    });
+    params = new URLSearchParams(
+      screen.getByTestId("route-search").textContent ?? "",
+    );
+    expect(params.has("author")).toBe(false);
+    expect(params.getAll("category")).toEqual(["code-and-reviews"]);
+    expect(params.get("sort")).toBe("recently-added");
+
+    fireEvent.click((await screen.findAllByRole("link", { name: "BB" }))[0]!);
+    const card = await screen.findByRole("button", {
+      name: "Open GitHub details",
+    });
+    card.focus();
+    fireEvent.click(card);
+    expect(
+      await screen.findByRole("heading", { name: "More from this author" }),
+    ).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Close GitHub" }));
+    await waitFor(() => expect(document.activeElement).toBe(card));
+  });
+
+  it("routes the detail author link to the restored author page", async () => {
+    const author = { name: "BB", url: "https://github.com/get-bb" };
+    const catalogEntries = [
+      { ...GITHUB_CATALOG_ENTRY, author },
+      {
+        ...GITHUB_CATALOG_ENTRY,
+        entryId: "automations",
+        pluginId: "automations",
+        displayName: "Automations",
+        author,
+      },
+    ];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url === "/api/v1/plugins") {
+          return new Response(JSON.stringify({ enabled: true, plugins: [] }), {
+            headers: { "content-type": "application/json" },
+          });
+        }
+        if (url.startsWith("/api/v1/plugin-catalog/search")) {
+          return new Response(
+            JSON.stringify({ results: catalogEntries, collections: [] }),
+            { headers: { "content-type": "application/json" } },
+          );
+        }
+        return new Response(JSON.stringify({ error: "not found" }), {
+          status: 404,
+          headers: { "content-type": "application/json" },
+        });
+      }),
+    );
+
+    const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
+    render(
+      <MemoryRouter initialEntries={["/extensions/plugins/github"]}>
+        <Routes>
+          <Route path="/extensions/plugins/*" element={<RoutedToolsView />} />
+        </Routes>
+      </MemoryRouter>,
+      { wrapper: QueryClientWrapper },
+    );
+
+    expect(
+      await screen.findByRole("heading", { name: "More from this author" }),
+    ).toBeTruthy();
+    const authorLinks = screen.getAllByRole("link", { name: "BB" });
+    fireEvent.click(authorLinks.at(-1)!);
+    await waitFor(() => {
+      expect(screen.getByTestId("route-path").textContent).toBe(
+        "/extensions/plugins",
+      );
+    });
+    expect(await screen.findByRole("heading", { name: /^BB/u })).toBeTruthy();
+    expect(
+      new URLSearchParams(
+        screen.getByTestId("route-search").textContent ?? "",
+      ).get("author"),
+    ).toBe("11:bb-official:github:get-bb");
   });
 });
 
