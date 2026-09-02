@@ -443,6 +443,12 @@ export function registerOrganizationCommands(
             mode: opts.mode,
           });
           if (outputJson(opts, result)) return;
+          if (result.delivery === "queued") {
+            console.log(
+              `Queued message ${messageId} is still queued (${describeQueueWait(result.queuedMessage)})`,
+            );
+            return;
+          }
           console.log(`Queued message ${messageId} sent`);
         },
       ),

@@ -172,7 +172,7 @@ describe("thread runtime stop", () => {
       expect(queueResponse.status).toBe(200);
       await expect(readJson(queueResponse)).resolves.toMatchObject({
         delivery: "queued",
-        waitingOn: { kind: "turn-starting" },
+        queuedMessage: { waitingOn: { kind: "turn-starting" } },
       });
       expect(listQueuedThreadMessages(harness.db, thread.id)).toHaveLength(1);
 

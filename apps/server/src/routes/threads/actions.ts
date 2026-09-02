@@ -266,12 +266,12 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
     const thread = requirePublicThread(deps.db, context.req.param("id"));
     ensureThreadIsWritable(thread);
     ensureThreadIsNotAwaitingUserInteraction(deps, thread.id);
-    const queuedMessage = await sendQueuedMessageNow(deps, {
+    const result = await sendQueuedMessageNow(deps, {
       queuedMessageId: context.req.param("queuedMessageId"),
       mode: payload.mode,
       threadId: context.req.param("id"),
     });
-    return context.json({ ok: true, queuedMessage });
+    return context.json({ ok: true, ...result });
   });
 
   patch(routes.reorderQueuedMessage, (context, payload) => {

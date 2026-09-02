@@ -57,9 +57,7 @@ interface QueuedMessageDispatchRef {
 
 type PreparedQueuedMessageDispatchWake = Exclude<
   QueuedMessageDispatchWake,
-  | { kind: "workspace-ready" }
-  | { kind: "provisioning-ended" }
-  | { kind: "host-connected" }
+  { kind: "provisioning-ended" } | { kind: "host-connected" }
 >;
 
 const pendingPluginRechecks = new WeakSet<
@@ -86,12 +84,7 @@ function prepareQueuedMessageDispatchWake(
 ): PreparedQueuedMessageDispatchWake[] {
   switch (wake.kind) {
     case "workspace-ready":
-      return clearThreadQueueWaitsOfKind(deps, {
-        threadId: wake.threadId,
-        kind: "provisioning",
-      }) === 0
-        ? []
-        : [{ kind: "thread-ready", threadId: wake.threadId }];
+      return [wake];
     case "provisioning-ended":
       clearThreadQueueWaitsOfKind(deps, {
         threadId: wake.threadId,
@@ -123,6 +116,7 @@ function dispatchWakeContext(
   wake: PreparedQueuedMessageDispatchWake,
 ): Record<string, number | string | undefined> {
   switch (wake.kind) {
+    case "workspace-ready":
     case "thread-ready":
     case "turn-started":
     case "interaction-settled":
@@ -185,6 +179,9 @@ async function executePreparedQueuedMessageDispatch(
   wake: PreparedQueuedMessageDispatchWake,
 ): Promise<void> {
   switch (wake.kind) {
+    case "workspace-ready":
+      await runWorkspaceReadyDispatch(deps, wake.threadId);
+      return;
     case "thread-ready":
       await runThreadReadyDispatch(deps, wake.threadId);
       return;
@@ -239,10 +236,53 @@ async function runTurnStartedDispatch(
   deps: QueueDispatchDeps,
   threadId: string,
 ): Promise<void> {
-  const rows = listQueuedThreadMessagesWaitingOnKind(deps.db, {
+  const turnStartingRows = listQueuedThreadMessagesWaitingOnKind(deps.db, {
     kind: "turn-starting",
     threadId,
   });
+  const provisioningRows = listQueuedThreadMessagesWaitingOnKind(deps.db, {
+    kind: "provisioning",
+    threadId,
+  });
+  for (const row of provisioningRows) {
+    clearQueuedMessageWait(deps, {
+      queuedMessageId: row.id,
+      threadId,
+    });
+  }
+  const rows = [...turnStartingRows, ...provisioningRows].sort(
+    (left, right) => {
+      if (left.sortKey !== right.sortKey) {
+        return left.sortKey < right.sortKey ? -1 : 1;
+      }
+      if (left.id === right.id) return 0;
+      return left.id < right.id ? -1 : 1;
+    },
+  );
+  for (const row of rows) {
+    await attemptAutomaticQueuedMessage(deps, row, {
+      now: Date.now(),
+      respectRequeuePacing: false,
+    });
+  }
+}
+
+async function runWorkspaceReadyDispatch(
+  deps: QueueDispatchDeps,
+  threadId: string,
+): Promise<void> {
+  const thread = getThread(deps.db, threadId);
+  if (thread?.status === "starting") return;
+  const rows = listQueuedThreadMessagesWaitingOnKind(deps.db, {
+    kind: "provisioning",
+    threadId,
+  });
+  for (const row of rows) {
+    clearQueuedMessageWait(deps, {
+      queuedMessageId: row.id,
+      threadId,
+    });
+  }
   for (const row of rows) {
     await attemptAutomaticQueuedMessage(deps, row, {
       now: Date.now(),

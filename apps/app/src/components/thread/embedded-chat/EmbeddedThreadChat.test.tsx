@@ -26,6 +26,7 @@ const mocks = vi.hoisted(() => ({
   pendingInteractionsRefetch: vi.fn(),
   queuedMessages: [] as Array<{ id: string }>,
   readTrackingThreads: [] as Array<unknown>,
+  sendQueuedMessageMutateAsync: vi.fn(),
   sendThreadMessageMutateAsync: vi.fn(),
   threadRuntimeDisplayStatus: "idle" as string,
   timelineRows: [] as Array<{ text: string }>,
@@ -107,19 +108,27 @@ vi.mock("@/components/promptbox/FollowUpPromptBox", async () => {
 vi.mock("@/components/promptbox/banner/QueuedMessagesList", () => ({
   QueuedMessagesList: ({
     attachedToComposer,
+    onSend,
     queuedMessages,
+    sendAction,
     sendDisabled,
   }: {
     attachedToComposer: boolean;
+    onSend: (queuedMessageId: string) => void;
     queuedMessages: readonly unknown[];
+    sendAction: "send-now" | "steer-when-ready";
     sendDisabled: boolean;
   }) => (
     <div
       data-testid="embedded-chat-queued-messages"
       data-attached-to-composer={String(attachedToComposer)}
+      data-send-action={sendAction}
       data-send-disabled={sendDisabled ? "" : undefined}
     >
       <span data-testid="queued-count">{queuedMessages.length}</span>
+      <button type="button" onClick={() => onSend("q1")}>
+        Send queued message
+      </button>
     </div>
   ),
 }));
@@ -310,7 +319,7 @@ vi.mock("@/hooks/mutations/thread-runtime-mutations", () => ({
     isPending: false,
   }),
   useSendThreadQueuedMessage: () => ({
-    mutateAsync: vi.fn(),
+    mutateAsync: mocks.sendQueuedMessageMutateAsync,
     isPending: false,
   }),
   useSetThreadQueuedMessageGroupBoundary: () => ({
@@ -398,6 +407,7 @@ describe("EmbeddedThreadChat", () => {
     mocks.pendingInteractionsRefetch.mockReset().mockResolvedValue({});
     mocks.queuedMessages = [];
     mocks.readTrackingThreads = [];
+    mocks.sendQueuedMessageMutateAsync.mockReset().mockResolvedValue({});
     mocks.threadRuntimeDisplayStatus = "idle";
     mocks.timelineRows = [];
     mocks.injectedTimelineProps = [];
@@ -534,6 +544,27 @@ describe("EmbeddedThreadChat", () => {
     const composer = screen.getByTestId("embedded-chat-composer");
     expect(queue.nextElementSibling).toBe(composer);
     expect(screen.getByTestId("queued-count").textContent).toBe("2");
+  });
+
+  it("steers a queued row once provisioning is ready", async () => {
+    mocks.threadRuntimeDisplayStatus = "provisioning";
+    mocks.queuedMessages = [{ id: "q1" }];
+    renderEmbeddedChat();
+
+    const queue = screen.getByTestId("embedded-chat-queued-messages");
+    expect(queue.dataset.sendAction).toBe("steer-when-ready");
+    expect(queue.dataset.sendDisabled).toBeUndefined();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Send queued message" }),
+    );
+
+    await vi.waitFor(() => {
+      expect(mocks.sendQueuedMessageMutateAsync).toHaveBeenCalledWith({
+        id: "thr_child",
+        mode: "steer",
+        queuedMessageId: "q1",
+      });
+    });
   });
 
   it("shows a pending approval in place of the composer", () => {
