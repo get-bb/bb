@@ -25,7 +25,9 @@ async function renderToaster(isCompactViewport: boolean) {
   });
 
   return waitFor(() => {
-    const toaster = document.querySelector("[data-sonner-toaster]");
+    const toaster = document.querySelector<HTMLElement>(
+      "[data-sonner-toaster]",
+    );
     expect(toaster).not.toBeNull();
     return toaster;
   });
