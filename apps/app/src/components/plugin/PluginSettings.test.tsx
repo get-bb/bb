@@ -182,6 +182,65 @@ describe("PluginSettingsForm", () => {
     expect((greeting as HTMLInputElement).value).toBe("newer");
   });
 
+  it("preserves restored saved text while an older save is pending", async () => {
+    const first = deferred<Response>();
+    const second = deferred<Response>();
+    const requests: RecordedRequest[] = [];
+    let saveCount = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init?: RequestInit) => {
+        requests.push({ url, init });
+        if (init?.method !== "PUT") return jsonOk(SETTINGS_VIEW);
+        saveCount += 1;
+        return saveCount === 1 ? first.promise : second.promise;
+      }),
+    );
+
+    const { wrapper } = createQueryClientTestHarness();
+    render(<PluginSettingsForm pluginId="demo" />, { wrapper });
+
+    const greeting = await screen.findByLabelText("Greeting");
+    const enabled = screen.getByRole("switch", { name: "Enabled" });
+    fireEvent.change(greeting, { target: { value: "temporary" } });
+    fireEvent.blur(greeting);
+    await vi.waitFor(() => expect(saveCount).toBe(1));
+
+    fireEvent.change(greeting, { target: { value: "hello" } });
+    fireEvent.blur(greeting);
+    expect(saveCount).toBe(1);
+
+    await act(async () => {
+      first.resolve(
+        jsonOk({
+          ...SETTINGS_VIEW,
+          values: {
+            ...SETTINGS_VIEW.values,
+            greeting: "temporary",
+            enabled: false,
+          },
+        }),
+      );
+      await first.promise;
+    });
+    await vi.waitFor(() => expect(saveCount).toBe(2));
+    expect(JSON.parse(String(requests.at(-1)?.init?.body))).toEqual({
+      values: { greeting: "hello" },
+    });
+    await vi.waitFor(() =>
+      expect(enabled.getAttribute("data-state")).toBe("unchecked"),
+    );
+
+    await act(async () => {
+      second.resolve(jsonOk(SETTINGS_VIEW));
+      await second.promise;
+    });
+    await vi.waitFor(() =>
+      expect(enabled.getAttribute("data-state")).toBe("checked"),
+    );
+    expect((greeting as HTMLInputElement).value).toBe("hello");
+  });
+
   it("renders an experimental_multiline string below its label and flushes it on blur", async () => {
     const view = {
       ok: true,
