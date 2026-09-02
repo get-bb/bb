@@ -256,33 +256,34 @@ function rateLimitStatusRank(status: ProviderRateLimitStatus): number {
   }
 }
 
+type CodexRateLimitCandidate = {
+  explicitlyBlocked: boolean;
+  limitId: string;
+  nonResettableBlock: boolean;
+  rateLimits: ProviderRateLimitState;
+};
+
 function normalizeCodexRateLimits(
   state: CodexEventTranslationState,
   preferredLimitId: string,
 ): ProviderRateLimitState {
-  const candidates: Array<{
-    explicitlyBlocked: boolean;
-    limitId: string;
-    rateLimits: ProviderRateLimitState;
-  }> = [];
+  const candidates: CodexRateLimitCandidate[] = [];
   for (const limitId of new Set(["codex", preferredLimitId])) {
     const snapshot = state.rateLimitsByLimitId.get(limitId);
     if (snapshot === undefined) continue;
+    const rateLimits = normalizeCodexRateLimitSnapshot(snapshot);
     candidates.push({
       explicitlyBlocked:
         snapshot.rateLimitReachedType !== null ||
         snapshot.spendControlReached === true,
       limitId,
-      rateLimits: normalizeCodexRateLimitSnapshot(snapshot),
+      nonResettableBlock:
+        rateLimits.status === "blocked" &&
+        rateLimits.kind !== "subscription-window",
+      rateLimits,
     });
   }
-  let selected:
-    | {
-        explicitlyBlocked: boolean;
-        limitId: string;
-        rateLimits: ProviderRateLimitState;
-      }
-    | undefined;
+  let selected: CodexRateLimitCandidate | undefined;
   for (const candidate of candidates) {
     const { explicitlyBlocked, limitId, rateLimits } = candidate;
     const selectedExplicitlyBlocked = selected?.explicitlyBlocked ?? false;
@@ -291,9 +292,14 @@ function normalizeCodexRateLimits(
       rateLimitStatusRank(rateLimits.status) >
         rateLimitStatusRank(selected.rateLimits.status) ||
       (rateLimits.status === selected.rateLimits.status &&
+        candidate.nonResettableBlock &&
+        !selected.nonResettableBlock) ||
+      (rateLimits.status === selected.rateLimits.status &&
+        candidate.nonResettableBlock === selected.nonResettableBlock &&
         explicitlyBlocked &&
         !selectedExplicitlyBlocked) ||
       (rateLimits.status === selected.rateLimits.status &&
+        candidate.nonResettableBlock === selected.nonResettableBlock &&
         explicitlyBlocked === selectedExplicitlyBlocked &&
         limitId === preferredLimitId)
     ) {

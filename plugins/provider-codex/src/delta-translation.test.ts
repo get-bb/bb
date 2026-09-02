@@ -2195,6 +2195,55 @@ describe("codex account rate-limit translation", () => {
     });
   });
 
+  it("keeps a global credit block ahead of an active subscription block", () => {
+    const harness = createHarness();
+    harness.translate(
+      codexEvent("account/rateLimits/updated", {
+        rateLimits: codexRateLimitSnapshot({
+          credits: {
+            hasCredits: false,
+            unlimited: false,
+            balance: "0",
+          },
+          planType: "pro",
+          rateLimitReachedType: "workspace_owner_credits_depleted",
+        }),
+      }),
+    );
+
+    const [event] = harness.translate(
+      codexEvent("account/rateLimits/updated", {
+        rateLimits: codexRateLimitSnapshot({
+          limitId: "premium",
+          primary: {
+            usedPercent: 100,
+            windowDurationMins: 300,
+            resetsAt: 1_788_700_000,
+          },
+          planType: "pro",
+          rateLimitReachedType: "rate_limit_reached",
+        }),
+      }),
+    );
+
+    expect(event).toMatchObject({
+      type: "provider/rateLimits/updated",
+      rateLimits: {
+        status: "blocked",
+        kind: "credits",
+        reachedReason: "workspace_owner_credits_depleted",
+        windows: [
+          {
+            providerKey: "primary",
+            label: "Current session",
+            status: "blocked",
+            resetsAtMs: 1_788_700_000_000,
+          },
+        ],
+      },
+    });
+  });
+
   it("does not let an inactive model bucket block the active bucket", () => {
     const harness = createHarness();
     harness.translate(
