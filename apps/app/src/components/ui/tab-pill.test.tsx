@@ -95,4 +95,27 @@ describe("TabPill", () => {
       closeButton.classList.contains("max-md:pointer-coarse:min-w-9"),
     ).toBe(true);
   });
+
+  it("separates an enlarged coarse-pointer close target from the label", () => {
+    render(
+      <TabPill
+        label="rabbits.md"
+        title="rabbits.md"
+        isActive
+        onSelect={vi.fn()}
+        leadingVisual={<span aria-hidden>file</span>}
+        enlargeCloseTargetOnCoarsePointer
+        closeAction={{
+          closeLabel: "Close rabbits.md",
+          onClose: vi.fn(),
+        }}
+      />,
+    );
+
+    expect(
+      screen
+        .getByRole("button", { name: "rabbits.md" })
+        .classList.contains("max-md:pointer-coarse:pl-3.5"),
+    ).toBe(true);
+  });
 });

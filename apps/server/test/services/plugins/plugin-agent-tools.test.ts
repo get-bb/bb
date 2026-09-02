@@ -271,6 +271,43 @@ describe("bb.agents.registerTool", () => {
     ).toBe(1);
   });
 
+  it("uses a foreign zod schema's own JSON Schema converter", async () => {
+    const rootDir = await writePlugin(workDir, {
+      name: "bb-plugin-foreign-zod",
+      serverSource: "export default function plugin() {}",
+    });
+    await service.installPath(rootDir);
+    const api = service.getApi("foreign-zod")!;
+    const parameters = {
+      safeParse(input: unknown) {
+        return { success: true as const, data: input };
+      },
+      toJSONSchema() {
+        return {
+          type: "object",
+          properties: { name: { type: "string" } },
+          required: ["name"],
+        };
+      },
+    };
+
+    expect(() =>
+      api.agents.registerTool({
+        name: "foreign_schema",
+        description: "Uses a foreign schema package",
+        parameters,
+        execute: () => "ok",
+      }),
+    ).not.toThrow();
+    expect(service.findAgentTool("foreign_schema")?.record.inputSchema).toEqual(
+      {
+        type: "object",
+        properties: { name: { type: "string" } },
+        required: ["name"],
+      },
+    );
+  });
+
   it("rejects recursive tool schemas before they reach a provider", async () => {
     const rootDir = await writePlugin(workDir, {
       name: "bb-plugin-schema-refs",

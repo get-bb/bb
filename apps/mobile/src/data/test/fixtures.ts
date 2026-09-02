@@ -54,6 +54,7 @@ export function threadListEntry(
     environmentHostId: null,
     environmentName: null,
     environmentBranchName: null,
+    queuedWork: "none",
     environmentWorkspaceDisplayKind: "other",
     runtime: { displayStatus: "idle", hostReconnectGraceExpiresAt: null },
     ...overrides,
@@ -71,12 +72,14 @@ export function threadResponse(
     environmentName: _envName,
     environmentBranchName: _branch,
     environmentWorkspaceDisplayKind: _kind,
+    queuedWork: _queuedWork,
     ...base
   } = threadListEntry({ id: overrides.id });
   return {
     ...base,
     activeBackgroundAgentCount: 0,
     canSpawnChild: true,
+    queuedMessageCount: 0,
     ...overrides,
   };
 }
@@ -130,12 +133,18 @@ export function queuedMessage(
   overrides: Partial<ThreadQueuedMessage> & { id: string },
 ): ThreadQueuedMessage {
   return {
+    threadId: "thread-1",
     content: [{ type: "text", text: `Queued ${overrides.id}`, mentions: [] }],
     model: "fake-model",
     reasoningLevel: "medium",
     permissionMode: "auto",
     serviceTier: "default",
     groupWithNext: false,
+    sendAt: null,
+    waitingOn: null,
+    failureReason: null,
+    payload: { kind: "inline" },
+    editable: true,
     createdAt: 1,
     updatedAt: 1,
     ...overrides,

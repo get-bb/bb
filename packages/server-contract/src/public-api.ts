@@ -135,6 +135,8 @@ import type {
   ResolveThreadMentionsResponse,
   RespondPluginInteractionRequest,
   SendMessageRequest,
+  RetryTurnRequest,
+  RetryTurnResponse,
   SendMessageResponse,
   SetQueuedMessageGroupBoundaryRequest,
   SendQueuedMessageRequest,
@@ -174,6 +176,8 @@ import type {
   ThreadFilesRawQuery,
   ThreadGetQuery,
   ThreadHostFileContentQuery,
+  ThreadCountQuery,
+  ThreadCountResponse,
   ThreadListQuery,
   ThreadListResponse,
   ThreadConversationOutlineResponse,
@@ -182,6 +186,8 @@ import type {
   ThreadPaneActionRequest,
   ThreadPaneActionResponse,
   ThreadPendingInteractionsResponse,
+  ThreadRunningResponse,
+  QueuedMessageListQuery,
   ThreadQueuedMessageListResponse,
   ThreadResponse,
   ThreadSearchQuery,
@@ -227,6 +233,7 @@ import {
   createHostJoinCodeRequestSchema,
   createProjectSourceRequestSchema,
   createQueuedMessageRequestSchema,
+  queuedMessageListQuerySchema,
   updateQueuedMessageRequestSchema,
   createThreadRequestSchema,
   forkThreadRequestSchema,
@@ -270,6 +277,7 @@ import {
   resolvePendingInteractionRequestSchema,
   resolveThreadMentionsRequestSchema,
   respondPluginInteractionRequestSchema,
+  retryTurnRequestSchema,
   sendMessageRequestSchema,
   editMessageRequestSchema,
   setQueuedMessageGroupBoundaryRequestSchema,
@@ -283,6 +291,7 @@ import {
   threadFilesRawQuerySchema,
   threadGetQuerySchema,
   threadHostFileContentQuerySchema,
+  threadCountQuerySchema,
   threadListQuerySchema,
   threadOpenRequestSchema,
   threadPaneActionRequestSchema,
@@ -908,6 +917,31 @@ export const publicApiRoutes = {
       ),
       response: jsonResponse<ThreadListResponse>(),
     }),
+    /**
+     * Grouped `SELECT count(*)` over threads. Exists because a plugin gate
+     * that limits concurrency must count without loading: `threads.list`
+     * would page rows into memory and still miscount past its limit.
+     */
+    count: defineRoute({
+      path: "/threads/count",
+      method: "get",
+      request: optionalQueryRequest<EmptyInput, ThreadCountQuery>(
+        threadCountQuerySchema,
+      ),
+      response: jsonResponse<ThreadCountResponse>(),
+    }),
+    /**
+     * The threads occupying capacity right now, as rows rather than a count.
+     * A limiter needs to know *which* threads are running to hold several
+     * pools at once — `threads.count` answers one pool per request and cannot
+     * reconcile a global limit with a per-host one from separate counts.
+     */
+    running: defineRoute({
+      path: "/threads/running",
+      method: "get",
+      request: noRequest(),
+      response: jsonResponse<ThreadRunningResponse>(),
+    }),
     search: defineRoute({
       path: "/threads/search",
       method: "get",
@@ -986,12 +1020,27 @@ export const publicApiRoutes = {
       ),
       response: jsonResponse<EditMessageResponse>(),
     }),
+    /**
+     * Retry a failed turn: re-submit it by reference, as an ordinary dispatch
+     * attempt. `turnRequestId` null means the thread's most recent turn, whose
+     * failure is what put the thread in `error`.
+     */
+    retry: defineRoute({
+      path: "/threads/:id/retry",
+      method: "post",
+      request: jsonRequest<PathId, RetryTurnRequest>(retryTurnRequestSchema),
+      response: jsonResponse<RetryTurnResponse>(),
+    }),
     queuedMessages: defineRoute({
       path: "/threads/:id/queued-messages",
       method: "get",
       request: noRequest<PathId>(),
       response: jsonResponse<ThreadQueuedMessageListResponse>(),
     }),
+    /**
+     * Create a queued message; senderThreadId preserves agent-to-agent context
+     * until send time.
+     */
     createQueuedMessage: defineRoute({
       path: "/threads/:id/queued-messages",
       method: "post",
@@ -1297,6 +1346,24 @@ export const publicApiRoutes = {
         threadFilesRawQuerySchema,
       ),
       response: binaryResponse<Uint8Array>(),
+    }),
+  },
+
+  queue: {
+    /**
+     * Every live queued row, optionally narrowed to one thread or one
+     * wait holder. Cross-thread because "what is queued right now" is a
+     * whole-workspace question (`bb thread queue list` with no thread, a
+     * limiter plugin's own bookkeeping, a router recovering its rows after a
+     * restart) that no single thread's list can answer.
+     */
+    list: defineRoute({
+      path: "/queued-messages",
+      method: "get",
+      request: optionalQueryRequest<EmptyInput, QueuedMessageListQuery>(
+        queuedMessageListQuerySchema,
+      ),
+      response: jsonResponse<ThreadQueuedMessageListResponse>(),
     }),
   },
 

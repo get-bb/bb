@@ -1,9 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type {
-  ThreadListEntry,
-  ThreadWithRuntime,
-  WorkspaceStatus,
-} from "@bb/domain";
+import type { ThreadListEntry, WorkspaceStatus } from "@bb/domain";
 import {
   makeWorkspaceMergeBase,
   makeWorkspaceStatus,
@@ -13,6 +9,7 @@ import type {
   EnvironmentDiffBranchesResponse,
   EnvironmentStatusResponse,
   ProjectBranchesResponse,
+  SidebarBootstrapResponse,
   ThreadResponse,
   ThreadTimelineResponse,
 } from "@bb/server-contract";
@@ -25,6 +22,7 @@ import {
   environmentDiffFilesQueryKeyPrefix,
   environmentDiffPatchQueryKeyPrefix,
   environmentWorkStatusQueryKey,
+  sidebarNavigationQueryKey,
   threadListQueryKey,
   threadsQueryKey,
 } from "./query-keys";
@@ -143,9 +141,9 @@ function makeEnvironmentDiffBranchesResponse(): EnvironmentDiffBranchesResponse 
   };
 }
 
-function makeThreadWithRuntime(
-  thread: Partial<ThreadWithRuntime> = {},
-): ThreadWithRuntime {
+function makeThreadResponse(
+  thread: Partial<ThreadResponse> = {},
+): ThreadResponse {
   return {
     id: "thread-1",
     projectId: "project-1",
@@ -171,7 +169,40 @@ function makeThreadWithRuntime(
       displayStatus: "waiting-for-host",
       hostReconnectGraceExpiresAt: null,
     },
+    activeBackgroundAgentCount: 0,
+    canSpawnChild: false,
+    queuedMessageCount: 0,
     ...thread,
+  };
+}
+
+function makeSidebarNavigation(): SidebarBootstrapResponse {
+  return {
+    sections: [],
+    projects: [
+      {
+        id: "project-1",
+        kind: "standard",
+        name: "Project",
+        gitRemoteUrl: null,
+        createdAt: 1,
+        updatedAt: 1,
+        sources: [],
+        threads: [],
+        defaultExecutionOptions: null,
+      },
+    ],
+    personalProject: {
+      id: "proj_personal",
+      kind: "personal",
+      name: "Personal",
+      gitRemoteUrl: null,
+      createdAt: 1,
+      updatedAt: 1,
+      sources: [],
+      threads: [],
+      defaultExecutionOptions: null,
+    },
   };
 }
 
@@ -243,11 +274,7 @@ describe("resolveEnvironmentWorkStatusPlaceholder", () => {
 
 describe("resolveThreadPlaceholder", () => {
   it("reuses previous thread data only for the same thread query", () => {
-    const previousThread: ThreadResponse = {
-      ...makeThreadWithRuntime({ id: "thread-1" }),
-      activeBackgroundAgentCount: 0,
-      canSpawnChild: false,
-    };
+    const previousThread = makeThreadResponse({ id: "thread-1" });
 
     expect(
       resolveThreadPlaceholder(
@@ -518,7 +545,7 @@ describe("optimisticallyInsertThread", () => {
     const { queryClient } = createQueryClientTestHarness();
     queryClient.setQueryData(threadsQueryKey(), []);
 
-    optimisticallyInsertThread(queryClient, makeThreadWithRuntime());
+    optimisticallyInsertThread(queryClient, makeThreadResponse());
 
     expect(
       queryClient.getQueryData<ThreadListEntry[]>(threadsQueryKey()),
@@ -533,7 +560,7 @@ describe("optimisticallyInsertThread", () => {
     });
     queryClient.setQueryData(threadListKey, []);
 
-    optimisticallyInsertThread(queryClient, makeThreadWithRuntime());
+    optimisticallyInsertThread(queryClient, makeThreadResponse());
 
     const [thread] =
       queryClient.getQueryData<ThreadListEntry[]>(threadListKey) ?? [];
@@ -541,6 +568,71 @@ describe("optimisticallyInsertThread", () => {
       displayStatus: "waiting-for-host",
       hostReconnectGraceExpiresAt: null,
     });
+  });
+
+  it("projects queued work into the thread list and sidebar immediately", () => {
+    const { queryClient } = createQueryClientTestHarness();
+    const threadListKey = threadListQueryKey({
+      archived: false,
+      projectId: "project-1",
+    });
+    queryClient.setQueryData(threadListKey, []);
+    queryClient.setQueryData(
+      sidebarNavigationQueryKey(),
+      makeSidebarNavigation(),
+    );
+
+    optimisticallyInsertThread(
+      queryClient,
+      makeThreadResponse({ queuedMessageCount: 1 }),
+    );
+
+    expect(
+      queryClient.getQueryData<ThreadListEntry[]>(threadListKey)?.[0]
+        ?.queuedWork,
+    ).toBe("waiting");
+    expect(
+      queryClient.getQueryData<SidebarBootstrapResponse>(
+        sidebarNavigationQueryKey(),
+      )?.projects[0]?.threads[0]?.queuedWork,
+    ).toBe("waiting");
+  });
+
+  it("adds queued work without replacing newer realtime row state", () => {
+    const { queryClient } = createQueryClientTestHarness();
+    const threadListKey = threadListQueryKey({
+      archived: false,
+      projectId: "project-1",
+    });
+    queryClient.setQueryData(threadListKey, []);
+    queryClient.setQueryData(
+      sidebarNavigationQueryKey(),
+      makeSidebarNavigation(),
+    );
+    optimisticallyInsertThread(
+      queryClient,
+      makeThreadResponse({
+        runtime: {
+          displayStatus: "active",
+          hostReconnectGraceExpiresAt: null,
+        },
+      }),
+    );
+
+    optimisticallyInsertThread(
+      queryClient,
+      makeThreadResponse({ queuedMessageCount: 1 }),
+    );
+
+    const listThread =
+      queryClient.getQueryData<ThreadListEntry[]>(threadListKey)?.[0];
+    const sidebarThread = queryClient.getQueryData<SidebarBootstrapResponse>(
+      sidebarNavigationQueryKey(),
+    )?.projects[0]?.threads[0];
+    expect(listThread?.runtime.displayStatus).toBe("active");
+    expect(listThread?.queuedWork).toBe("waiting");
+    expect(sidebarThread?.runtime.displayStatus).toBe("active");
+    expect(sidebarThread?.queuedWork).toBe("waiting");
   });
 
   it("respects the originKind filter when inserting source-derived threads", () => {
@@ -555,7 +647,7 @@ describe("optimisticallyInsertThread", () => {
 
     optimisticallyInsertThread(
       queryClient,
-      makeThreadWithRuntime({
+      makeThreadResponse({
         id: "side-chat-1",
         sourceThreadId: "source-1",
         originKind: "fork",
@@ -568,7 +660,7 @@ describe("optimisticallyInsertThread", () => {
 
     optimisticallyInsertThread(
       queryClient,
-      makeThreadWithRuntime({
+      makeThreadResponse({
         id: "fork-1",
         sourceThreadId: "source-1",
         originKind: "fork",

@@ -212,6 +212,13 @@ target? })`. Inside the fixed-tab component,
   (sync or async) are contained and logged,
   never breaking the sidebar. `title` is the tooltip + accessible label;
   `icon` is a BB icon-name hint (unknown names fall back to a generic bolt).
+- `experimental_sidebarNavigation` → replaces the bounded navigation controls
+  above the thread list. Registration:
+  `{ id, title, description?, component }`. The component receives semantic
+  host items, the active item id, the compact-viewport state,
+  `experimental_activate`, and `experimental_Original`. Search activation opens
+  the quick palette. No inline search field or query state exists. BB keeps the
+  drawer, thread list, footer, resize handle, and shortcut ownership.
 - `fileOpener` → `{ path: string, source, Original }` — register as a viewer/editor
   for file extensions: `{ id, title, extensions: ["md"], component }`.
   Matching files use the first applicable opener in deterministic slot order

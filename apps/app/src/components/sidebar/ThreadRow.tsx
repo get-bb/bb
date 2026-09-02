@@ -281,6 +281,7 @@ export function ThreadStatusGlyph({
   isPlanModeActive,
   isRuntimeActive,
   isWorkflowActive,
+  queuedWork,
 }: ThreadStatusGlyphProps) {
   const kind = resolveThreadListIndicator({
     hasPendingInteraction,
@@ -293,10 +294,12 @@ export function ThreadStatusGlyph({
     isPlanModeActive,
     isRuntimeActive,
     isWorkflowActive,
+    queuedWork,
   });
 
   switch (kind) {
     case "unread-error":
+    case "queued-failed":
       return (
         <Icon
           name="CircleX"
@@ -389,6 +392,17 @@ export function ThreadStatusGlyph({
           aria-label={getThreadListIndicatorLabel(kind) ?? undefined}
         />
       );
+    case "queued-waiting":
+      return (
+        <Icon
+          name="Clock"
+          className={cn(
+            "text-muted-foreground/75",
+            COARSE_POINTER_ICON_SIZE_CLASS,
+          )}
+          aria-label={getThreadListIndicatorLabel(kind) ?? undefined}
+        />
+      );
     case "draft":
       return (
         <ThreadDraftIndicator
@@ -425,6 +439,7 @@ export function CollapsedThreadStatusGlyph({
     isBackgroundAgentActive: activity.backgroundAgent,
     isBackgroundCommandActive: activity.backgroundCommand,
     isGoalActive: activity.goal,
+    queuedWork: "none",
     isPlanModeActive: activity.planMode,
     isRuntimeActive: activity.runtimeWorking,
     isWorkflowActive: activity.workflow,
@@ -612,6 +627,7 @@ function ThreadRowComponent({
     isBackgroundAgentActive: trailingBackgroundAgentActive,
     isBackgroundCommandActive: trailingBackgroundCommandActive,
     isGoalActive: trailingGoalActive,
+    queuedWork: thread.queuedWork,
     isPlanModeActive: trailingPlanModeActive,
     isRuntimeActive: trailingRuntimeBusy,
     isWorkflowActive: trailingIsWorkflowActive,
@@ -741,7 +757,7 @@ function ThreadRowComponent({
             expandLabel={`Expand ${labelTitle} threads`}
             collapseLabel={`Collapse ${labelTitle} threads`}
             onToggle={() => parentOptions.onToggleCollapsed(thread.id)}
-            revealOnHover
+            revealOnHover={!isParentCollapsed}
           />
         ) : null}
       </span>

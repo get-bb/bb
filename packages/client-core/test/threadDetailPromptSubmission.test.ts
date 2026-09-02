@@ -362,7 +362,9 @@ describe("threadDetailPromptSubmission", () => {
     expect(
       buildSideChatSubmitMode({
         childThreadId: null,
+        hasPendingInteraction: false,
         isDefaultExecutionOptionsLoading: true,
+        isPendingInteractionsInitialLoading: false,
         isStopRequested: false,
         onStop,
         runtimeDisplayStatus: "provisioning",
@@ -372,7 +374,9 @@ describe("threadDetailPromptSubmission", () => {
     expect(
       buildSideChatSubmitMode({
         childThreadId: null,
+        hasPendingInteraction: false,
         isDefaultExecutionOptionsLoading: false,
+        isPendingInteractionsInitialLoading: false,
         isStopRequested: false,
         onStop,
         runtimeDisplayStatus: "idle",
@@ -386,11 +390,41 @@ describe("threadDetailPromptSubmission", () => {
     expect(
       buildSideChatSubmitMode({
         childThreadId: "thr_side",
+        hasPendingInteraction: false,
         isDefaultExecutionOptionsLoading: false,
+        isPendingInteractionsInitialLoading: false,
         isStopRequested: false,
         onStop,
         runtimeDisplayStatus: "active",
       }),
     ).toEqual({ kind: "queue", onStop });
+  });
+
+  it("blocks child side chats until pending interactions initially load", () => {
+    expect(
+      buildSideChatSubmitMode({
+        childThreadId: "thr_side",
+        hasPendingInteraction: false,
+        isDefaultExecutionOptionsLoading: false,
+        isPendingInteractionsInitialLoading: true,
+        isStopRequested: false,
+        onStop: () => undefined,
+        runtimeDisplayStatus: "active",
+      }),
+    ).toEqual({ kind: "blocked", reason: "loading-pending-interactions" });
+  });
+
+  it("blocks child side chats with a pending interaction", () => {
+    expect(
+      buildSideChatSubmitMode({
+        childThreadId: "thr_side",
+        hasPendingInteraction: true,
+        isDefaultExecutionOptionsLoading: false,
+        isPendingInteractionsInitialLoading: false,
+        isStopRequested: false,
+        onStop: () => undefined,
+        runtimeDisplayStatus: "active",
+      }),
+    ).toEqual({ kind: "blocked", reason: "pending-interaction" });
   });
 });

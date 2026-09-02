@@ -24,6 +24,14 @@
 - Use `bb settings reload` to reload BB-managed configuration.
 - These commands support `--json`.
 
+## Provider plugin settings
+
+- Read provider settings with `bb plugin config <plugin-id>` and change them
+  with `bb plugin config <plugin-id> set <key> <value>`.
+- Claude Code's `idleQueryReleaseEnabled` setting opts into closing its native
+  process after 30 seconds of quiescence while keeping the bb thread resumable.
+  It defaults to `false`; changes apply on the next start, resume, or turn.
+
 ## Agent Instructions
 
 - Add `AGENTS.md` to the bb data dir (usually `~/.bb/AGENTS.md`) to inject

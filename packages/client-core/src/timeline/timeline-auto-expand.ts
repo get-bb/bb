@@ -12,7 +12,11 @@ interface CollectTimelineAutoExpansionRowIdsArgs {
 }
 
 export interface TimelineAutoExpansionRowIds {
-  liveFrontierRowIds: ReadonlySet<string>;
+  /**
+   * Rows the timeline opens for as long as the condition holds and closes
+   * again when it stops: the active scope's live frontier.
+   */
+  liveExpandedRowIds: ReadonlySet<string>;
   terminalFrontierRowIds: ReadonlySet<string>;
 }
 
@@ -132,6 +136,26 @@ function visitForTerminalFrontierAutoExpand(
   }
 }
 
+// Auto-expand rule:
+//
+//   1. Terminal frontier: the literal tail row in a scope. Selected terminal
+//      rows, currently system errors with detail, open when they arrive. The
+//      terminal pass descends into pending delegation childRows as nested
+//      scopes. The row component preserves that visible disclosure state after
+//      later appends; the collector does not keep old terminal rows
+//      auto-expanded.
+//
+//   2. Live frontier: only while the scope is active, find the trailing row
+//      that the agent produced (skipping user input rows). Selected live rows
+//      open while they are the current active frontier, then stop being
+//      auto-expanded when newer agent/system/work output supersedes them.
+//
+// Active containers are the timeline's top-level row list (when the thread
+// is active) and the childRows of pending delegations *inside an active
+// container*. A completed delegation closes its scope, so a pending
+// sub-delegation buried inside a completed parent does NOT auto-expand —
+// the active scope must propagate from the top-level thread runtime down
+// through every enclosing container.
 function visitForLiveFrontierAutoExpand(
   rows: readonly ThreadTimelineViewRow[],
   scopeActive: boolean,
@@ -160,11 +184,11 @@ export function collectTimelineAutoExpansionRowIds({
   scopeActive,
 }: CollectTimelineAutoExpansionRowIdsArgs): TimelineAutoExpansionRowIds {
   const terminalFrontierRowIds = new Set<string>();
-  const liveFrontierRowIds = new Set<string>();
+  const liveExpandedRowIds = new Set<string>();
   visitForTerminalFrontierAutoExpand(rows, terminalFrontierRowIds);
-  visitForLiveFrontierAutoExpand(rows, scopeActive, liveFrontierRowIds);
+  visitForLiveFrontierAutoExpand(rows, scopeActive, liveExpandedRowIds);
   return {
-    liveFrontierRowIds,
+    liveExpandedRowIds,
     terminalFrontierRowIds,
   };
 }

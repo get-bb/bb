@@ -312,6 +312,7 @@ function dropRewindAddedTables(db: DbConnection): void {
   db.$client.prepare("DROP TABLE IF EXISTS marketplaces").run();
   dropMarketplaceCatalogSchema(db);
   dropEventParentToolCallIdColumn(db);
+  dropQueueReworkSchema(db);
   db.$client.prepare("DROP TABLE IF EXISTS plugins").run();
   db.$client.prepare("DROP TABLE IF EXISTS plugin_kv").run();
   db.$client.prepare("DROP TABLE IF EXISTS plugin_settings").run();
@@ -445,6 +446,12 @@ const appSettingsKeyValueMigrationPath = resolve(
   "..",
   "drizzle",
   "0102_app_settings_key_value.sql",
+);
+const steerOnEnterDefaultMigrationPath = resolve(
+  __dirname,
+  "..",
+  "drizzle",
+  "0112_steer_on_enter_default.sql",
 );
 const providerSettingsToPluginsMigrationPath = resolve(
   __dirname,
@@ -642,7 +649,9 @@ function dropEventToolNameColumn(db: DbConnection): void {
   dropThreadConversationOutlinesTable(db);
   db.$client.exec("DROP INDEX IF EXISTS events_delegating_item_lookup_idx");
   db.$client.exec("DROP INDEX IF EXISTS events_plan_steps_thread_sequence_idx");
+  // The same rewind also rewinds the later deferred-message table (0108).
   db.$client.prepare("DROP TABLE IF EXISTS deferred_thread_messages").run();
+  // Generated columns are omitted from table_info but included in table_xinfo.
   const columns = db.$client
     .prepare<[], TableInfoRow>("PRAGMA table_xinfo(events)")
     .all();
@@ -676,6 +685,57 @@ function dropMarketplaceStatsColumn(db: DbConnection): void {
   if (columns.some((column) => column.name === "stats_json")) {
     db.$client
       .prepare("ALTER TABLE plugin_marketplaces DROP COLUMN stats_json")
+      .run();
+  }
+}
+
+/**
+ * Undo migration 0110, the dispatch-queue rework.
+ *
+ * 0110 adds the queue's wait columns (schedule, typed wait, wait holder,
+ * payload kind and its retry reference), the system-notice and failure-reason
+ * sidecars, their two partial indexes, and the thread's pending start
+ * context.
+ * A rewind that clears its journal row must remove all of them before the
+ * replay's ADDs hit a table that already has them.
+ *
+ * The table 0110 DROPs (`deferred_thread_messages`, added by 0108) needs
+ * nothing here. Every rewind that clears 0110's journal row also clears
+ * 0108's, so the replay recreates the table before 0110 drops it again.
+ */
+function dropQueueReworkSchema(db: DbConnection): void {
+  // Indexes first: SQLite refuses to drop a column an existing index names.
+  for (const index of [
+    "queued_thread_messages_due_idx",
+    "queued_thread_messages_wait_holder_idx",
+  ]) {
+    db.$client.prepare(`DROP INDEX IF EXISTS ${index}`).run();
+  }
+  const queuedColumns = db.$client
+    .prepare<[], TableInfoRow>("PRAGMA table_info(queued_thread_messages)")
+    .all();
+  for (const name of [
+    "system_notice",
+    "send_at",
+    "waiting_on",
+    "wait_holder",
+    "failure_reason",
+    "payload_kind",
+    "retry_of_turn_request_id",
+    "retry_attempt",
+    "retry_reason",
+  ]) {
+    if (!queuedColumns.some((column) => column.name === name)) continue;
+    db.$client
+      .prepare(`ALTER TABLE queued_thread_messages DROP COLUMN ${name}`)
+      .run();
+  }
+  const threadColumns = db.$client
+    .prepare<[], TableInfoRow>("PRAGMA table_info(threads)")
+    .all();
+  if (threadColumns.some((column) => column.name === "pending_start_context")) {
+    db.$client
+      .prepare("ALTER TABLE threads DROP COLUMN pending_start_context")
       .run();
   }
 }
@@ -751,6 +811,7 @@ function dropQueuedMessageSenderThreadIdColumn(db: DbConnection): void {
 
 function dropPost0023Tables(db: DbConnection): void {
   dropEventParentToolCallIdColumn(db);
+  dropQueueReworkSchema(db);
   dropEnvironmentRetireRequestedAtColumn(db);
   dropPluginArtifactGitCheckoutRootColumn(db);
   dropProjectGitRemoteUrlColumn(db);
@@ -1543,6 +1604,7 @@ describe("migrate", () => {
         providerOrder: [],
         defaultProviderId: null,
         streamerMode: false,
+        managedBranchPrefix: "bb/",
       });
       expect(
         db.$client
@@ -1683,7 +1745,10 @@ describe("migrate", () => {
 
       runMigrationFile({ db, migrationPath: appSettingsKeyValueMigrationPath });
 
-      expect(getAppSettings(db)).toEqual(defaultAppSettings);
+      expect(getAppSettings(db)).toEqual({
+        ...defaultAppSettings,
+        steerActiveThreadOnEnter: false,
+      });
       expect(getAppKeybindingOverrides(db)).toEqual([]);
     } finally {
       closeConnection(db);
@@ -1722,6 +1787,128 @@ describe("migrate", () => {
           .get(),
       ).toEqual({ count: 0 });
       expect(getAppSettings(db)).toEqual(defaultAppSettings);
+    } finally {
+      closeConnection(db);
+    }
+  });
+
+  it("keeps queue-on-enter for a store that predates the steer default", () => {
+    const db = createConnection(":memory:");
+
+    try {
+      db.$client.exec(`
+        CREATE TABLE app_settings_values (
+          key text PRIMARY KEY NOT NULL,
+          value text NOT NULL,
+          updated_at integer NOT NULL
+        );
+        CREATE TABLE projects (id text PRIMARY KEY NOT NULL, kind text NOT NULL);
+        CREATE TABLE threads (id text PRIMARY KEY NOT NULL);
+        INSERT INTO projects (id, kind) VALUES ('proj_personal', 'personal');
+        INSERT INTO projects (id, kind) VALUES ('project-1', 'standard');
+      `);
+
+      runMigrationFile({ db, migrationPath: steerOnEnterDefaultMigrationPath });
+
+      expect(getAppSettings(db).steerActiveThreadOnEnter).toBe(false);
+    } finally {
+      closeConnection(db);
+    }
+  });
+
+  it("keeps queue-on-enter for a store whose only work is a personal thread", () => {
+    const db = createConnection(":memory:");
+
+    try {
+      db.$client.exec(`
+        CREATE TABLE app_settings_values (
+          key text PRIMARY KEY NOT NULL,
+          value text NOT NULL,
+          updated_at integer NOT NULL
+        );
+        CREATE TABLE projects (id text PRIMARY KEY NOT NULL, kind text NOT NULL);
+        CREATE TABLE threads (id text PRIMARY KEY NOT NULL);
+        INSERT INTO projects (id, kind) VALUES ('proj_personal', 'personal');
+        INSERT INTO threads (id) VALUES ('thread-1');
+      `);
+
+      runMigrationFile({ db, migrationPath: steerOnEnterDefaultMigrationPath });
+
+      expect(getAppSettings(db).steerActiveThreadOnEnter).toBe(false);
+    } finally {
+      closeConnection(db);
+    }
+  });
+
+  it("steers on enter for a store that only holds the seeded personal project", () => {
+    const db = createConnection(":memory:");
+
+    try {
+      db.$client.exec(`
+        CREATE TABLE app_settings_values (
+          key text PRIMARY KEY NOT NULL,
+          value text NOT NULL,
+          updated_at integer NOT NULL
+        );
+        CREATE TABLE projects (id text PRIMARY KEY NOT NULL, kind text NOT NULL);
+        CREATE TABLE threads (id text PRIMARY KEY NOT NULL);
+        INSERT INTO projects (id, kind) VALUES ('proj_personal', 'personal');
+      `);
+
+      runMigrationFile({ db, migrationPath: steerOnEnterDefaultMigrationPath });
+
+      expect(
+        db.$client
+          .prepare<[], { count: number }>(
+            "SELECT COUNT(*) AS count FROM app_settings_values",
+          )
+          .get(),
+      ).toEqual({ count: 0 });
+      expect(getAppSettings(db).steerActiveThreadOnEnter).toBe(true);
+    } finally {
+      closeConnection(db);
+    }
+  });
+
+  it("steers on enter for a store built by a full migration run", () => {
+    const db = createConnection(":memory:");
+
+    try {
+      migrate(db);
+
+      expect(getAppSettings(db).steerActiveThreadOnEnter).toBe(true);
+    } finally {
+      closeConnection(db);
+    }
+  });
+
+  it("keeps a chosen steer preference through the steer default change", () => {
+    const db = createConnection(":memory:");
+
+    try {
+      db.$client.exec(`
+        CREATE TABLE app_settings_values (
+          key text PRIMARY KEY NOT NULL,
+          value text NOT NULL,
+          updated_at integer NOT NULL
+        );
+        CREATE TABLE projects (id text PRIMARY KEY NOT NULL, kind text NOT NULL);
+        CREATE TABLE threads (id text PRIMARY KEY NOT NULL);
+        INSERT INTO projects (id, kind) VALUES ('project-1', 'standard');
+        INSERT INTO app_settings_values (key, value, updated_at)
+        VALUES ('steerActiveThreadOnEnter', 'true', 1234);
+      `);
+
+      runMigrationFile({ db, migrationPath: steerOnEnterDefaultMigrationPath });
+
+      expect(
+        db.$client
+          .prepare<[], { value: string; updatedAt: number }>(
+            "SELECT value, updated_at AS updatedAt FROM app_settings_values WHERE key = 'steerActiveThreadOnEnter'",
+          )
+          .get(),
+      ).toEqual({ value: "true", updatedAt: 1234 });
+      expect(getAppSettings(db).steerActiveThreadOnEnter).toBe(true);
     } finally {
       closeConnection(db);
     }
@@ -1867,6 +2054,10 @@ describe("migrate", () => {
         permissionMode: "full",
         reasoningLevel: "medium",
         serviceTier: "default",
+        waitingOn: null,
+        sendAt: null,
+        payload: { kind: "inline" },
+        systemNotice: null,
       });
       const inheritedQueue = createQueuedThreadMessage(db, noopNotifier, {
         threadId: sideChatWithHistory.id,
@@ -1875,6 +2066,10 @@ describe("migrate", () => {
         permissionMode: "full",
         reasoningLevel: "medium",
         serviceTier: "default",
+        waitingOn: null,
+        sendAt: null,
+        payload: { kind: "inline" },
+        systemNotice: null,
       });
       const fallbackQueue = createQueuedThreadMessage(db, noopNotifier, {
         threadId: sideChatWithoutHistory.id,
@@ -1883,6 +2078,10 @@ describe("migrate", () => {
         permissionMode: "full",
         reasoningLevel: "medium",
         serviceTier: "default",
+        waitingOn: null,
+        sendAt: null,
+        payload: { kind: "inline" },
+        systemNotice: null,
       });
       db.$client
         .prepare(
@@ -1954,6 +2153,7 @@ describe("migrate", () => {
       dropPluginArtifactGitCheckoutRootColumn(db);
       dropMarketplaceCatalogSchema(db);
       dropEventParentToolCallIdColumn(db);
+      dropQueueReworkSchema(db);
 
       restoreLegacyThreadOriginColumn(db);
       migrate(db);
@@ -2358,6 +2558,7 @@ describe("migrate", () => {
       dropPluginArtifactGitCheckoutRootColumn(db);
       dropMarketplaceCatalogSchema(db);
       dropEventParentToolCallIdColumn(db);
+      dropQueueReworkSchema(db);
 
       restoreLegacyThreadOriginColumn(db);
       expect(
@@ -2459,6 +2660,7 @@ describe("migrate", () => {
       dropPluginArtifactGitCheckoutRootColumn(db);
       dropMarketplaceCatalogSchema(db);
       dropEventParentToolCallIdColumn(db);
+      dropQueueReworkSchema(db);
 
       restoreLegacyThreadOriginColumn(db);
       expect(() => migrate(db)).not.toThrow();
@@ -5027,6 +5229,7 @@ describe("migrate", () => {
 
       dropEventParentToolCallIdColumn(db);
       dropMarketplaceStatsColumn(db);
+      dropQueueReworkSchema(db);
       db.$client
         .prepare<DeleteMigrationParameters>(
           "DELETE FROM __drizzle_migrations WHERE created_at >= ?",

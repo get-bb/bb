@@ -13,6 +13,10 @@ import {
 } from "./shared-types.js";
 import { jsonValueSchema } from "./json-value.js";
 import { clientTurnRequestIdSchema } from "./protocol-ids.js";
+import {
+  systemMessageKindSchema,
+  systemMessageSubjectSchema,
+} from "./system-message.js";
 
 export const systemEventTypeValues = [
   "client/thread/start",
@@ -27,6 +31,8 @@ export const systemEventTypeValues = [
   "system/permissionGrant/lifecycle",
   "system/userQuestion/lifecycle",
   "system/thread-provisioning",
+  // Legacy persisted watchdog diagnostic; retained for read/decode/render
+  // only, with no current producer.
   "system/provider-turn-watchdog",
 ] as const;
 
@@ -34,32 +40,11 @@ const threadTurnInitiatorValues = ["user", "agent", "system"] as const;
 export const threadTurnInitiatorSchema = z.enum(threadTurnInitiatorValues);
 export type ThreadTurnInitiator = z.infer<typeof threadTurnInitiatorSchema>;
 
-const systemMessageKindValues = [
-  "ownership-assigned",
-  "ownership-removed",
-  "child-needs-attention",
-  "child-completed",
-  "child-failed",
-  "child-interrupted",
-  "child-outcome-batch",
-  "unlabeled",
-] as const;
-export const systemMessageKindSchema = z.enum(systemMessageKindValues);
-export type SystemMessageKind = z.infer<typeof systemMessageKindSchema>;
-
-export const systemMessageSubjectSchema = z.discriminatedUnion("kind", [
-  z.object({
-    kind: z.literal("thread"),
-    threadId: z.string(),
-    threadName: z.string(),
-  }),
-  z.object({
-    kind: z.literal("thread-batch"),
-    count: z.number(),
-  }),
-]);
-export type SystemMessageSubject = z.infer<typeof systemMessageSubjectSchema>;
-
+/**
+ * Execution values are historical facts once recorded in the event stream.
+ * The stored-event boundary therefore accepts the two retired modes without
+ * treating either as a current public preset.
+ */
 const turnRequestOptionsSchema = recordedThreadExecutionOptionsSchema;
 
 export const turnRequestTargetSchema = z.discriminatedUnion("kind", [
@@ -92,7 +77,15 @@ export type ClientTurnLifecycleEventData = z.infer<
 export const turnRequestEventDataSchema = z.object({
   direction: z.literal("outbound"),
   requestId: clientTurnRequestIdSchema,
-  continuationOfRequestId: clientTurnRequestIdSchema.optional(),
+  // Retry provenance, written only when a `turn.failed` gate's retry row
+  // dispatches. Both fields are present together or not at all: absence means
+  // "this is an original dispatch", which is the overwhelmingly common case.
+  // (Supersedes the pre-plugin `continuationOfRequestId` key, which the removed
+  // core rate-limit recovery wrote and nothing ever read.)
+  /** The original request this attempt re-submits, unchanged across attempts. */
+  retryOfRequestId: clientTurnRequestIdSchema.optional(),
+  /** Which attempt this is: 2 is the first retry of the original request. */
+  retryAttempt: z.number().int().min(2).optional(),
   source: z.enum(["spawn", "tell"]),
   initiator: threadTurnInitiatorSchema,
   senderThreadId: z.string().nullable(),
@@ -108,6 +101,26 @@ export const turnRequestEventDataSchema = z.object({
   execution: turnRequestOptionsSchema,
 });
 export type TurnRequestEventData = z.infer<typeof turnRequestEventDataSchema>;
+
+/**
+ * The retry marker is one fact in two keys, so a stored request that carries
+ * one without the other is malformed — it would misstate which turn a retry
+ * re-runs, or which attempt it is. Applied where persisted events are parsed,
+ * since the discriminated unions the base schema feeds cannot carry a
+ * refinement themselves.
+ */
+export function refineTurnRequestRetryMarker(
+  data: Pick<TurnRequestEventData, "retryOfRequestId" | "retryAttempt">,
+  ctx: z.RefinementCtx,
+): void {
+  if ((data.retryOfRequestId === undefined) !== (data.retryAttempt === undefined)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message:
+        "retryOfRequestId and retryAttempt must be present together or absent together",
+    });
+  }
+}
 
 export const turnRequestRejectedEventDataSchema = z.object({
   requestId: clientTurnRequestIdSchema,

@@ -280,6 +280,7 @@ vi.mock("@/components/secondary-panel/ThreadSecondaryPanel", () => ({
     activeTab,
     tabs,
     fixedTabs,
+    isOpen,
     onClose,
     onOpenNewTab,
     renderBrowserDeck,
@@ -307,6 +308,7 @@ vi.mock("@/components/secondary-panel/ThreadSecondaryPanel", () => ({
         onFocusPane: () => void;
       }) => ReactNode;
     }>;
+    isOpen: boolean;
     onClose: () => void;
     onOpenNewTab: () => void;
     renderBrowserDeck?: (
@@ -361,6 +363,9 @@ vi.mock("@/components/secondary-panel/ThreadSecondaryPanel", () => ({
         {activeRenderableTab?.tab.kind === "browser"
           ? null
           : activeRenderableTab?.renderContent(pane)}
+        {isOpen && fixedTabs.length === 0 && tabs.length === 0 ? (
+          <div>This panel view is unavailable.</div>
+        ) : null}
         {renderBrowserDeck?.(
           activeRenderableTab?.tab.kind === "browser"
             ? activeRenderableTab.tab.id
@@ -682,6 +687,23 @@ describe("PluginPanelRightPanelHost", () => {
     expect(
       await screen.findByRole("button", { name: "Show right panel" }),
     ).toBeTruthy();
+  });
+
+  it("closes the compact drawer when its remaining tab closes", async () => {
+    viewportState.isCompactViewport = true;
+    renderHost();
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Show right panel" }),
+    );
+    expect(await screen.findByTestId("plugin-page-new-tab")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Close New tab" }));
+
+    expect(
+      await screen.findByRole("button", { name: "Show right panel" }),
+    ).toBeTruthy();
+    expect(screen.queryByText("This panel view is unavailable.")).toBeNull();
   });
 
   it("uses the shared panel state and chrome for plugin fixed tabs", async () => {

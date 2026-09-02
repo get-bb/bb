@@ -161,6 +161,10 @@ export interface NewThreadComposerState {
   renderPromptBox: (options: NewThreadComposerPromptOptions) => ReactNode;
 }
 
+export interface NewThreadComposerSubmission extends NewThreadRequest {
+  sendAt?: number;
+}
+
 export interface NewThreadComposerProps {
   projectId: string | null;
   onProjectChange: (projectId: string) => void | Promise<void>;
@@ -169,7 +173,7 @@ export interface NewThreadComposerProps {
   seed?: NewThreadComposerSeed;
   resetKey?: string | number | null;
   preferReadyProviderWhenUnset?: boolean;
-  onSubmit: (request: NewThreadRequest) => void | Promise<void>;
+  onSubmit: (request: NewThreadComposerSubmission) => void | Promise<void>;
   focusRequest?: number;
   children: (state: NewThreadComposerState) => ReactNode;
 }
@@ -989,6 +993,13 @@ export function NewThreadComposer({
     () => promptDraftToInput(currentDraft),
     [currentDraft],
   );
+  const submitScheduledRef = useRef<
+    (options: { sendAt: number }) => Promise<void>
+  >(async () => {});
+  const submitScheduledThroughRef = useCallback(
+    (options: { sendAt: number }) => submitScheduledRef.current(options),
+    [],
+  );
   const pluginComposerHost = useMemo<PluginComposerHost>(
     () => ({
       scope: { kind: "new-thread", projectId },
@@ -997,6 +1008,7 @@ export function NewThreadComposer({
       subscribeDraft: promptDraft.subscribe,
       setDraft: promptDraft.setDraft,
       focus: () => promptBoxRef.current?.focusEnd(),
+      submit: submitScheduledThroughRef,
     }),
     [
       projectId,
@@ -1004,6 +1016,7 @@ export function NewThreadComposer({
       promptDraft.setDraft,
       promptDraft.storageKey,
       promptDraft.subscribe,
+      submitScheduledThroughRef,
     ],
   );
 
@@ -1058,8 +1071,8 @@ export function NewThreadComposer({
     selectedThreadModel,
     submissionEnvironmentUnavailable: submissionEnvironment === null,
   });
-  const handleSubmit = useCallback(
-    async (blockedReason: string | null) => {
+  const submitDraft = useCallback(
+    async (blockedReason: string | null, sendAt: number | null) => {
       const submittedDraft = promptDraft.getCurrent();
       const input = promptDraftToInput(submittedDraft);
       if (
@@ -1073,13 +1086,19 @@ export function NewThreadComposer({
         !selectedThreadModel ||
         managedWorktreeUnavailable
       ) {
-        return;
+        throw new Error(
+          blockedReason ??
+            submitDisabledReason ??
+            (input.length === 0
+              ? "Type a message first."
+              : "This composer is not ready to submit yet."),
+        );
       }
       const sources: CreateExecutionInputSources = {
         ...executionInputSources,
         ...seededExecutionInputSources,
       };
-      const request: NewThreadRequest = {
+      const request: NewThreadComposerSubmission = {
         projectId,
         providerId: selectedProviderId,
         model: selectedThreadModel,
@@ -1089,6 +1108,7 @@ export function NewThreadComposer({
         executionInputSources: sources,
         environment: submissionEnvironment,
         input,
+        ...(sendAt === null ? {} : { sendAt }),
       };
       isSubmittingRef.current = true;
       setIsSubmitting(true);
@@ -1098,10 +1118,11 @@ export function NewThreadComposer({
       try {
         await onSubmit(request);
         clearReuseEnvironment();
-      } catch {
+      } catch (submitError) {
         if (clearedSubmittedDraft) {
           promptDraft.restoreIfEmpty(submittedDraft);
         }
+        throw submitError;
       } finally {
         isSubmittingRef.current = false;
         setIsSubmitting(false);
@@ -1126,6 +1147,20 @@ export function NewThreadComposer({
       supportsServiceTier,
     ],
   );
+
+  const handleSubmit = useCallback(
+    async (blockedReason: string | null) => {
+      try {
+        await submitDraft(blockedReason, null);
+      } catch {}
+    },
+    [submitDraft],
+  );
+  useEffect(() => {
+    submitScheduledRef.current = async ({ sendAt }) => {
+      await submitDraft(null, sendAt);
+    };
+  }, [submitDraft]);
 
   const handleProviderChange = useCallback(
     (value: string) => {

@@ -2,6 +2,7 @@ import { z } from "zod";
 import {
   environmentStatusSchema,
   hostStatusSchema,
+  pluginIdSchema,
   threadStatusSchema,
 } from "@bb/domain";
 
@@ -114,6 +115,16 @@ export type ParentThreadInvalidErrorDetails = z.infer<
   typeof parentThreadInvalidErrorDetailsSchema
 >;
 
+/** Which plugin's `message.dispatch` hook ended the dispatch. Shared by the
+ *  hook's `reject` decision (409) and its fail-closed failure (502): both name
+ *  the same plugin, so the client can attribute either one without guessing. */
+export const dispatchHookErrorDetailsSchema = z.object({
+  pluginId: pluginIdSchema,
+});
+export type DispatchHookErrorDetails = z.infer<
+  typeof dispatchHookErrorDetailsSchema
+>;
+
 export const environmentNotReadyApiErrorSchema = apiErrorSchema.extend({
   code: z.literal("environment_not_ready"),
   details: environmentNotReadyErrorDetailsSchema,
@@ -146,6 +157,16 @@ export const parentThreadInvalidApiErrorSchema = apiErrorSchema.extend({
   details: parentThreadInvalidErrorDetailsSchema,
 });
 
+export const dispatchRejectedApiErrorSchema = apiErrorSchema.extend({
+  code: z.literal("dispatch_rejected"),
+  details: dispatchHookErrorDetailsSchema,
+});
+
+export const dispatchHookFailedApiErrorSchema = apiErrorSchema.extend({
+  code: z.literal("dispatch_hook_failed"),
+  details: dispatchHookErrorDetailsSchema,
+});
+
 export const lifecycleApiErrorSchema = z.discriminatedUnion("code", [
   environmentNotReadyApiErrorSchema,
   threadNotWritableApiErrorSchema,
@@ -153,5 +174,7 @@ export const lifecycleApiErrorSchema = z.discriminatedUnion("code", [
   hostUnavailableApiErrorSchema,
   projectUnavailableApiErrorSchema,
   parentThreadInvalidApiErrorSchema,
+  dispatchRejectedApiErrorSchema,
+  dispatchHookFailedApiErrorSchema,
 ]);
 export type LifecycleApiError = z.infer<typeof lifecycleApiErrorSchema>;

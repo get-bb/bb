@@ -9,6 +9,10 @@ import {
   pendingInteractionSchema,
   permissionModeInputSchema,
   promptInputSchema,
+  clientTurnRequestIdSchema,
+  queuedMessageWaitHolderSchema,
+  queuedMessageWaitingOnSchema,
+  queuedMessageWaitReasonSchema,
   reasoningLevelSchema,
   rawThreadIdSchema,
   serviceTierSchema,
@@ -16,6 +20,7 @@ import {
   threadListEntrySchema,
   threadQueuedMessageSchema,
   threadSearchSourceKindSchema,
+  threadStatusSchema,
   threadTimelineActivePromptModeSchema,
   threadTimelineGoalSchema,
   threadTimelineModelFallbackSchema,
@@ -108,6 +113,14 @@ export const createThreadRequestSchema = z
     sourceSeqEnd: z.number().int().nonnegative().optional(),
     startedOnBehalfOf: startedOnBehalfOfSchema.nullable().default(null),
     originKind: threadOriginKindSchema.nullable().default(null),
+    /**
+     * Epoch ms at which this thread's first message should dispatch. Present ⇒
+     * the thread is created `pending` with no turn and no environment work,
+     * and the first message is queued as a row waiting on the clock. Absent
+     * ⇒ attempt the dispatch now; when nothing blocks it no queued row is ever
+     * created and creation runs exactly as it did before the queue existed.
+     */
+    sendAt: z.number().int().nonnegative().optional(),
   })
   .superRefine((value, ctx) => {
     if (value.origin === "plugin" && value.originPluginId === undefined) {
@@ -176,7 +189,7 @@ export const forkThreadRequestSchema = z
   });
 export type ForkThreadRequest = z.infer<typeof forkThreadRequestSchema>;
 
-export const sendMessageRequestSchema = z.object({
+const sendMessageRequestBaseSchema = z.object({
   input: z.array(promptInputSchema).min(1),
   model: z.string().optional(),
   serviceTier: serviceTierSchema.optional(),
@@ -185,20 +198,53 @@ export const sendMessageRequestSchema = z.object({
   executionInputSources: existingThreadExecutionInputSourcesSchema.optional(),
   mode: sendMessageModeSchema,
   senderThreadId: z.string().min(1).optional(),
+  /**
+   * Epoch ms at which this message should dispatch. Present ⇒ nothing is sent
+   * now; the message is queued as a row waiting on the clock, and the due
+   * sweep re-attempts it then. Absent ⇒ attempt the dispatch now.
+   */
+  sendAt: z.number().int().nonnegative().optional(),
 });
+
+export const sendMessageRequestSchema = sendMessageRequestBaseSchema;
 export type SendMessageRequest = z.infer<typeof sendMessageRequestSchema>;
 
-export const sendMessageDeliverySchema = z.enum(["sent", "queued", "deferred"]);
+/**
+ * How a `send` request was taken.
+ *
+ * Two outcomes, because there are two: the attempt cleared and dispatched, or
+ * something blocked it and it queued. The four-way `sent`/`queued`/`deferred`/
+ * `held` split this replaces described WHICH queueing mechanism took the
+ * message, and there is only one now — so the useful half of that answer, WHY
+ * it is waiting, moved onto the queued arm where it can be typed.
+ */
+export const sendMessageDeliverySchema = z.enum(["sent", "queued"]);
 export type SendMessageDelivery = z.infer<typeof sendMessageDeliverySchema>;
 
-export const sendMessageResponseSchema = z.object({
-  ok: z.literal(true),
-  delivery: sendMessageDeliverySchema,
-});
+/**
+ * A discriminated union rather than a flat record with nullable extras: a
+ * `sent` message has no queued row and no wait, and modelling those as "null
+ * for now" would invite every caller to check fields that cannot exist.
+ */
+export const sendMessageResponseSchema = z.discriminatedUnion("delivery", [
+  z.object({ ok: z.literal(true), delivery: z.literal("sent") }),
+  z.object({
+    ok: z.literal(true),
+    delivery: z.literal("queued"),
+    /** The row now carrying this message; addressable for send-now or cancel. */
+    queuedMessageId: z.string().min(1),
+    /** Why it is waiting, as the card and `bb thread queue` render it. */
+    waitingOn: queuedMessageWaitingOnSchema,
+    /** The row's scheduled instant, when it has one. */
+    sendAt: z.number().int().nonnegative().nullable(),
+  }),
+]);
 export type SendMessageResponse = z.infer<typeof sendMessageResponseSchema>;
 
-export const editMessageRequestSchema = sendMessageRequestSchema
-  .omit({ mode: true })
+// `sendAt` is deliberately dropped: an edit rewrites a message that has
+// already been dispatched, so there is nothing left to schedule.
+export const editMessageRequestSchema = sendMessageRequestBaseSchema
+  .omit({ mode: true, sendAt: true })
   .extend({
     operationId: z.string().min(1),
     expectedRequestSequence: z.number().int().nonnegative().optional(),
@@ -214,6 +260,63 @@ export const editMessageResponseSchema = z
   })
   .strict();
 export type EditMessageResponse = z.infer<typeof editMessageResponseSchema>;
+
+/**
+ * The reason a retry carries when the caller names none. Filled here at the
+ * boundary so the queued row, its card and `bb thread queue list` all read the
+ * same word whether the retry came from a plugin, the CLI or the app.
+ */
+export const DEFAULT_TURN_RETRY_REASON = "Retry";
+
+export const retryTurnRequestSchema = z
+  .object({
+    /**
+     * The failed turn to re-submit. Null means the thread's own most recent
+     * turn, which is the one whose failure put it in `error` — the only turn a
+     * caller who did not watch the failure happen can mean.
+     */
+    turnRequestId: clientTurnRequestIdSchema.nullable().default(null),
+    /**
+     * Epoch ms to retry at. Null attempts the retry now (it may still queue
+     * behind a busy thread or a plugin wait, like any other dispatch); a future
+     * instant queues the row on the clock, which is what a rate-limit window
+     * wants.
+     */
+    sendAt: z.number().int().nonnegative().nullable().default(null),
+    /** Why the turn is being retried, shown verbatim on the queued row. */
+    reason: queuedMessageWaitReasonSchema.default(DEFAULT_TURN_RETRY_REASON),
+  })
+  .strict();
+export type RetryTurnRequest = z.infer<typeof retryTurnRequestSchema>;
+
+/**
+ * What a retry did, mirroring `sendMessageResponseSchema`: a retry is a
+ * dispatch of a turn that already exists, so it is delivered or queued on
+ * exactly the same terms as a send. The two retry-specific facts ride along,
+ * because a caller that let the server pick the turn has no other way to learn
+ * which one it picked.
+ */
+export const retryTurnResponseSchema = z.discriminatedUnion("delivery", [
+  z.object({
+    ok: z.literal(true),
+    delivery: z.literal("sent"),
+    /** The ORIGINAL request of the retry chain, which the retry re-submits. */
+    turnRequestId: clientTurnRequestIdSchema,
+    /** Which attempt this retry is: 2 is the first retry. */
+    attempt: z.number().int().min(2),
+  }),
+  z.object({
+    ok: z.literal(true),
+    delivery: z.literal("queued"),
+    turnRequestId: clientTurnRequestIdSchema,
+    attempt: z.number().int().min(2),
+    /** The row now carrying the retry; addressable for send-now or cancel. */
+    queuedMessageId: z.string().min(1),
+    waitingOn: queuedMessageWaitingOnSchema,
+    sendAt: z.number().int().nonnegative().nullable(),
+  }),
+]);
+export type RetryTurnResponse = z.infer<typeof retryTurnResponseSchema>;
 
 export const sendQueuedMessageModeSchema = z.enum(["auto", "steer"]);
 export type SendQueuedMessageMode = z.infer<typeof sendQueuedMessageModeSchema>;
@@ -352,6 +455,12 @@ export type ThreadSearchResponse = z.infer<typeof threadSearchResponseSchema>;
 export const threadResponseSchema = threadWithRuntimeSchema.extend({
   activeBackgroundAgentCount: z.number().int().nonnegative(),
   canSpawnChild: z.boolean(),
+  // How many messages are waiting on this thread's queue right now — waiting on
+  // the clock, on the running turn, on provisioning, on an interaction, or on
+  // a plugin. The count alone drives the pending-region and thread-row badges;
+  // `GET /threads/:id/queued-messages` supplies the reasons once a surface
+  // actually renders them.
+  queuedMessageCount: z.number().int().nonnegative(),
 });
 export type ThreadResponse = z.infer<typeof threadResponseSchema>;
 
@@ -400,6 +509,25 @@ export const respondPluginInteractionRequestSchema = z.object({
 });
 export type RespondPluginInteractionRequest = z.infer<
   typeof respondPluginInteractionRequestSchema
+>;
+
+/**
+ * Filters for the cross-thread queue list — the replacement for the hold
+ * list, and cross-thread for the same reason it was: "what is queued right
+ * now" is a whole-workspace question (`bb thread queue list` with no thread, a
+ * limiter plugin's own bookkeeping, a router recovering its rows after a
+ * restart) that no single thread's list can answer.
+ *
+ * `waitHolder` is the indexed one. It answers "every row this plugin is
+ * holding", which is exactly what a plugin needs on restart and what the
+ * orphan sweep needs per uninstalled plugin.
+ */
+export const queuedMessageListQuerySchema = z.object({
+  threadId: z.string().min(1).optional(),
+  waitHolder: queuedMessageWaitHolderSchema.optional(),
+});
+export type QueuedMessageListQuery = z.infer<
+  typeof queuedMessageListQuerySchema
 >;
 
 export const threadQueuedMessageListResponseSchema = z.array(
@@ -575,6 +703,91 @@ export const threadListQuerySchema = z.object({
   offset: z.string().regex(/^\d+$/).optional(),
 });
 export type ThreadListQuery = z.infer<typeof threadListQuerySchema>;
+
+/**
+ * Grouping for `GET /threads/count`. Omitted, the route answers one total.
+ * `host` groups by the host the thread's environment lives on; a thread with
+ * no environment yet counts under the `null` key.
+ */
+export const threadCountGroupBySchema = z.enum(["host", "provider", "project"]);
+export type ThreadCountGroupBy = z.infer<typeof threadCountGroupBySchema>;
+
+/**
+ * Filters for `GET /threads/count`. Every value is a string because this is a
+ * query string; the route parses them once at the boundary.
+ *
+ * `parentThreadId` is deliberately three-valued and unambiguous: omitted means
+ * "do not filter on parentage", the literal `"none"` means root threads only
+ * (`parent_thread_id IS NULL`), and any other value is that parent's id. An
+ * empty string would have been ambiguous with an omitted parameter, and a
+ * thread id can never be `"none"` (ids are prefixed `thr_`).
+ */
+export const THREAD_COUNT_ROOT_PARENT = "none";
+
+export const threadCountQuerySchema = z.object({
+  status: threadStatusSchema.optional(),
+  hostId: z.string().min(1).optional(),
+  providerId: z.string().min(1).optional(),
+  projectId: z.string().min(1).optional(),
+  parentThreadId: z.string().min(1).optional(),
+  groupBy: threadCountGroupBySchema.optional(),
+  /** Count archived threads too; omitted/false excludes them (deleted always are). */
+  includeArchived: z.enum(["true", "false"]).optional(),
+  /** Count hidden threads too; omitted/false counts visible threads only. */
+  includeHidden: z.enum(["true", "false"]).optional(),
+});
+export type ThreadCountQuery = z.infer<typeof threadCountQuerySchema>;
+
+/**
+ * `total` is always the count of every matching thread. `groups` is present
+ * exactly when `groupBy` was requested — an ungrouped count has no group list,
+ * rather than one anonymous group.
+ */
+export const threadCountResponseSchema = z.object({
+  total: z.number().int().nonnegative(),
+  groups: z
+    .array(
+      z.object({
+        /** The host/provider/project id, or null for threads with none. */
+        key: z.string().nullable(),
+        count: z.number().int().nonnegative(),
+      }),
+    )
+    .optional(),
+});
+export type ThreadCountResponse = z.infer<typeof threadCountResponseSchema>;
+
+/**
+ * One thread currently occupying capacity — canonical status `starting` or
+ * `active`. Archived and deleted threads are excluded (neither runs); hidden
+ * ones are not, because a hidden thread burns a real slot on a real machine.
+ *
+ * The row is an id and the machine that id is occupying, and nothing else.
+ * `hostId` is here because a per-host pool cannot be derived from an id
+ * without a query per row; every other question a caller might ask is
+ * answerable by fetching the thread it names.
+ *
+ * **Exact inside the `message.dispatch` hook, a snapshot everywhere else.**
+ * Hook passes run one at a time under a server-wide lock, and a cleared first
+ * attempt commits its `pending → starting` flip before that lock releases — so
+ * the next handler in line sees the admission the previous one granted. Read
+ * anywhere else (a background service, an HTTP client, a `turn.failed`
+ * listener) it is an ordinary query that races with every concurrent dispatch,
+ * exactly like `threads.count`.
+ * See {@link threadRunningResponseSchema}'s consumers in the plugin authoring
+ * guide for the one boundary case: a warm follow-up's `idle → active` flip
+ * commits just after the lock, so admissions of already-live threads can be
+ * momentarily invisible.
+ */
+export const threadRunningEntrySchema = z.object({
+  id: z.string(),
+  /** The machine it runs on; null while no environment has been chosen. */
+  hostId: z.string().nullable(),
+});
+export type ThreadRunningEntry = z.infer<typeof threadRunningEntrySchema>;
+
+export const threadRunningResponseSchema = z.array(threadRunningEntrySchema);
+export type ThreadRunningResponse = z.infer<typeof threadRunningResponseSchema>;
 
 export const threadSearchQuerySchema = z.object({
   query: z.string().trim().min(2),

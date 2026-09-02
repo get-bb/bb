@@ -62,6 +62,7 @@ function makeThreadResponse(
     ...makeThreadWithRuntime(thread),
     activeBackgroundAgentCount: 0,
     canSpawnChild: true,
+    queuedMessageCount: 0,
     ...thread,
   };
 }
@@ -83,6 +84,7 @@ function makeThreadListEntry(
     environmentHostId: "host-1",
     environmentName: "Environment",
     environmentBranchName: "main",
+    queuedWork: "none",
     environmentWorkspaceDisplayKind: "managed-worktree",
     ...thread,
   };

@@ -3,24 +3,28 @@ import type {
   PluginSettingDescriptors,
   PluginSettingsValues,
 } from "@get-bb/plugin-sdk";
+import { z } from "zod";
 
 export const WORKFLOW_SETTING_DESCRIPTORS = {
   maxActiveRuns: {
     type: "string",
     label: "Maximum active runs",
     description: "Concurrent workflow runs across the plugin (1-32).",
+    experimental_schema: workflowIntegerSchema("maxActiveRuns"),
     default: "4",
   },
   maxConcurrentAgents: {
     type: "string",
     label: "Per-run agent concurrency",
     description: "Agent calls that one workflow may run concurrently (1-64).",
+    experimental_schema: workflowIntegerSchema("maxConcurrentAgents"),
     default: "8",
   },
   maxAgentCalls: {
     type: "string",
     label: "Maximum agent calls",
     description: "Agent calls allowed during one workflow run (1-1000).",
+    experimental_schema: workflowIntegerSchema("maxAgentCalls"),
     default: "100",
   },
   totalRunTimeoutMs: {
@@ -28,12 +32,14 @@ export const WORKFLOW_SETTING_DESCRIPTORS = {
     label: "Total run timeout (milliseconds)",
     description:
       "Fail a workflow after this total duration in milliseconds (60000-604800000).",
+    experimental_schema: workflowIntegerSchema("totalRunTimeoutMs"),
     default: "86400000",
   },
   retentionDays: {
     type: "string",
     label: "Retention (days)",
     description: "Days to retain completed workflow data (1-3650).",
+    experimental_schema: workflowIntegerSchema("retentionDays"),
     default: "7",
   },
   maxNotificationBytes: {
@@ -41,6 +47,7 @@ export const WORKFLOW_SETTING_DESCRIPTORS = {
     label: "Maximum notification bytes",
     description:
       "Maximum UTF-8 size of a completion notification (1024-262144).",
+    experimental_schema: workflowIntegerSchema("maxNotificationBytes"),
     default: "16384",
   },
 } as const satisfies PluginSettingDescriptors;
@@ -133,6 +140,19 @@ function parseBoundedInteger(raw: string, field: IntegerField): number {
     );
   }
   return parsed;
+}
+
+function workflowIntegerSchema(key: keyof WorkflowSettings): z.ZodString {
+  return z.string().superRefine((value, context) => {
+    try {
+      parseBoundedInteger(value, INTEGER_FIELDS[key]);
+    } catch (error) {
+      context.addIssue({
+        code: "custom",
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
+  });
 }
 
 export function parseWorkflowSettings(

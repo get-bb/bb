@@ -12,6 +12,7 @@ import { cn } from "@bb/shared-ui/lib/utils";
 import {
   OPTION_BASE_CLASS_NAME,
   OPTION_INTERACTIVE_CLASS_NAME,
+  OPTION_MENU_CONTENT_CLASS_NAME,
   OPTION_MUTED_CLASS_NAME,
   OPTION_TRIGGER_CONTENT_CLASS_NAME,
 } from "@bb/shared-ui/option-display";
@@ -113,7 +114,11 @@ export function ProjectSelector({
           )}
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" side="bottom" className="w-52">
+      <DropdownMenuContent
+        align="start"
+        side="bottom"
+        className={cn(OPTION_MENU_CONTENT_CLASS_NAME, "w-52")}
+      >
         <DropdownMenuLabel>Project</DropdownMenuLabel>
         {projects.map((project) => (
           <DropdownMenuItem

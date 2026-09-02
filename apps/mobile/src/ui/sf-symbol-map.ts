@@ -102,6 +102,7 @@ export const SF_SYMBOL_MAP = {
   Info: "info.circle",
   Laptop: "laptopcomputer",
   Layers: "square.3.layers.3d",
+  Limitation: "hand.raised",
   ListView: "list.bullet",
   SectionAdd: "text.badge.plus",
   ListTodo: "checklist",

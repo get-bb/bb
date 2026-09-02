@@ -39,7 +39,10 @@ import {
 } from "../services/system/event-pruning.js";
 import { queueChildThreadTurnNotificationBestEffort } from "../services/threads/child-thread-notifications.js";
 import { isParentNotifiableChildThread } from "../services/threads/thread-parent.js";
-import { runQueuedMessageAutoSendForThread } from "../services/threads/queued-messages.js";
+import {
+  runQueuedMessageDispatch,
+  type QueuedMessageDispatchWake,
+} from "../services/threads/queued-message-dispatch.js";
 import { deferAfterResponse } from "../services/lib/response-deferral.js";
 import {
   isCommandTimeoutError,
@@ -189,14 +192,17 @@ interface ParentTurnNotificationFollowUp {
   turnStatus: ThreadEventTurnStatus;
 }
 
-interface QueuedMessageAutoSendFollowUp {
-  kind: "queued-message-auto-send";
-  threadId: string;
+interface QueuedMessageDispatchFollowUp {
+  kind: "queued-message-dispatch";
+  wake: Extract<
+    QueuedMessageDispatchWake,
+    { kind: "thread-ready" } | { kind: "turn-started" }
+  >;
 }
 
 type EventEffectFollowUp =
   | ParentTurnNotificationFollowUp
-  | QueuedMessageAutoSendFollowUp;
+  | QueuedMessageDispatchFollowUp;
 
 function isRootTurnStartedEvent(
   event: Extract<HostDaemonEventEnvelope["event"], { type: "turn/started" }>,
@@ -358,10 +364,14 @@ async function applyEventEffects(
         ) {
           continue;
         }
-        if (hasThreadAlreadyStartedRun(deps, entry.threadId)) {
+        if (!isRootTurnStartedEvent(event)) {
           continue;
         }
-        if (!isRootTurnStartedEvent(event)) {
+        followUps.push({
+          kind: "queued-message-dispatch",
+          wake: { kind: "turn-started", threadId: entry.threadId },
+        });
+        if (hasThreadAlreadyStartedRun(deps, entry.threadId)) {
           continue;
         }
         applyLoggedThreadLifecycleEvent(deps, {
@@ -414,8 +424,8 @@ async function applyEventEffects(
           turnCompleted.nextStatus === "idle"
         ) {
           followUps.push({
-            kind: "queued-message-auto-send",
-            threadId: entry.threadId,
+            kind: "queued-message-dispatch",
+            wake: { kind: "thread-ready", threadId: entry.threadId },
           });
         }
         continue;
@@ -479,10 +489,8 @@ async function executeEventFollowUpBestEffort(
           turnStatus: followUp.turnStatus,
         });
         return;
-      case "queued-message-auto-send":
-        await runQueuedMessageAutoSendForThread(deps, {
-          threadId: followUp.threadId,
-        });
+      case "queued-message-dispatch":
+        await runQueuedMessageDispatch(deps, followUp.wake);
         return;
     }
   } catch (error) {

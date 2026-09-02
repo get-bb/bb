@@ -19,6 +19,7 @@ import {
   getCompactSecondaryPanelPresentation,
   subscribeCompactSecondaryPanelShelfShowing,
 } from "./secondary-panel-shelf-visibility.js";
+import { useHorizontalDismissDrag } from "./use-horizontal-dismiss-drag.js";
 
 const SIDEBAR_WIDTH = "16rem";
 const SIDEBAR_MOBILE_VIEWPORT_FRACTION = 0.76;
@@ -37,8 +38,6 @@ const SIDEBAR_MOBILE_SHELF_SETTLE_TRANSITION = `translate ${SIDEBAR_MOBILE_DRAG_
 const SIDEBAR_MOBILE_SHELF_BACKDROP_SETTLE_TRANSITION = `opacity ${SIDEBAR_MOBILE_DRAG_SETTLE_MS}ms ${SIDEBAR_MOBILE_DRAG_SETTLE_EASING}, translate ${SIDEBAR_MOBILE_DRAG_SETTLE_MS}ms ${SIDEBAR_MOBILE_DRAG_SETTLE_EASING}`;
 const SIDEBAR_MOBILE_WHEEL_SWIPE_OPEN_DISTANCE_PX = 90;
 const SIDEBAR_MOBILE_WHEEL_SWIPE_RESET_MS = 250;
-const SIDEBAR_MOBILE_DRAG_CLOSE_RATIO = 0.25;
-const SIDEBAR_MOBILE_DRAG_CLOSE_FLING_VELOCITY_PX_PER_SEC = 450;
 const SIDEBAR_MOBILE_SHELF_INSET_TRANSITION_CLASS =
   "max-md:[transition:translate_220ms_cubic-bezier(0.32,0.72,0,1)]";
 const SIDEBAR_MOBILE_BACKDROP_TRANSITION_CLASS =
@@ -797,37 +796,6 @@ const Sidebar = React.forwardRef<HTMLDivElement, React.ComponentProps<"div">>(
 );
 Sidebar.displayName = "Sidebar";
 
-type SidebarPanelDragSession = {
-  kind: "pointer" | "touch";
-  id: number;
-  startX: number;
-  startY: number;
-  panelWidth: number;
-  lastProgress: number;
-  lastClientX: number;
-  lastTimeMs: number;
-  velocityX: number;
-  isDragging: boolean;
-  startTarget: Element | null;
-};
-
-function suppressNextSidebarPanelDragClick() {
-  const cleanup = () => {
-    window.removeEventListener("click", suppressClick, { capture: true });
-    window.clearTimeout(timeout);
-  };
-  const suppressClick = (event: MouseEvent) => {
-    event.preventDefault();
-    event.stopPropagation();
-    cleanup();
-  };
-  const timeout = window.setTimeout(cleanup, 400);
-  window.addEventListener("click", suppressClick, {
-    capture: true,
-    once: true,
-  });
-}
-
 interface SidebarMobilePanelProps extends React.ComponentProps<"div"> {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -896,26 +864,6 @@ const SidebarMobilePanel = React.forwardRef<
       },
       [ref],
     );
-    const dragSessionRef = React.useRef<SidebarPanelDragSession | null>(null);
-    const removeDragListenersRef = React.useRef<(() => void) | null>(null);
-    const settleTimeoutRef = React.useRef<number | null>(null);
-
-    const clearDragSession = React.useCallback(() => {
-      removeDragListenersRef.current?.();
-      removeDragListenersRef.current = null;
-      dragSessionRef.current = null;
-    }, []);
-
-    const clearSettleTimeout = React.useCallback(() => {
-      if (settleTimeoutRef.current !== null) {
-        window.clearTimeout(settleTimeoutRef.current);
-        settleTimeoutRef.current = null;
-      }
-    }, []);
-
-    React.useLayoutEffect(() => {
-      clearSidebarMobileDragStyles();
-    }, [open]);
 
     React.useEffect(() => {
       if (!open) {
@@ -995,294 +943,30 @@ const SidebarMobilePanel = React.forwardRef<
       };
     }, [open, onDismiss]);
 
-    React.useEffect(
-      () => () => {
-        clearDragSession();
-        clearSettleTimeout();
-        clearSidebarMobileDragStyles();
+    const { beginPointerDrag, beginTouchDrag } = useHorizontalDismissDrag({
+      direction: "left",
+      dismissTiming: "settled",
+      enabled: open,
+      getWidth: getSidebarMobilePanelWidth,
+      onClear: clearSidebarMobileDragStyles,
+      onDismiss: () => onOpenChange(false),
+      onProgress: ({ progress, settling }) => {
+        applySidebarMobileDragStyles({ progress, settling });
       },
-      [clearDragSession, clearSettleTimeout],
-    );
+      resetKey: open ? "open" : "closed",
+      suppressClick: true,
+    });
 
-    const restoreOpenAfterCancelledDrag = () => {
-      clearSettleTimeout();
-      applySidebarMobileDragStyles({ progress: 1, settling: true });
-      settleTimeoutRef.current = window.setTimeout(() => {
-        settleTimeoutRef.current = null;
-        clearSidebarMobileDragStyles();
-      }, SIDEBAR_MOBILE_DRAG_SETTLE_MS);
-    };
-
-    const continuePanelDrag = (
-      clientX: number,
-      clientY: number,
-      event: PointerEvent | TouchEvent,
-    ) => {
-      const session = dragSessionRef.current;
-      if (session === null) {
-        return;
-      }
-
-      const deltaX = clientX - session.startX;
-      const deltaY = clientY - session.startY;
-      const closeDelta = -deltaX;
-      const absDeltaX = Math.abs(deltaX);
-      const absDeltaY = Math.abs(deltaY);
-
-      if (!session.isDragging) {
-        if (
-          absDeltaY > SIDEBAR_MOBILE_SWIPE_OPEN_INTENT_PX &&
-          absDeltaY > absDeltaX * 1.15
-        ) {
-          clearDragSession();
-          return;
-        }
-        if (
-          closeDelta < SIDEBAR_MOBILE_SWIPE_OPEN_INTENT_PX ||
-          absDeltaX <= absDeltaY * 1.25
-        ) {
-          return;
-        }
-        if (
-          session.startTarget !== null &&
-          (!session.startTarget.isConnected ||
-            isInsideHorizontalScrollRegion(session.startTarget))
-        ) {
-          clearDragSession();
-          return;
-        }
-        session.isDragging = true;
-        clearSettleTimeout();
-      }
-
-      if (event.cancelable) {
-        event.preventDefault();
-      }
-
-      const nowMs = Date.now();
-      const elapsedMs = nowMs - session.lastTimeMs;
-      if (elapsedMs > 0) {
-        session.velocityX =
-          ((clientX - session.lastClientX) / elapsedMs) * 1000;
-        session.lastClientX = clientX;
-        session.lastTimeMs = nowMs;
-      }
-      const progress = clampSidebarMobileSwipeProgress(
-        1 - closeDelta / session.panelWidth,
-      );
-      session.lastProgress = progress;
-      applySidebarMobileDragStyles({ progress, settling: false });
-    };
-
-    const finishPanelDrag = (event: PointerEvent | TouchEvent) => {
-      const session = dragSessionRef.current;
-      if (session === null) {
-        return;
-      }
-
-      clearDragSession();
-      if (!session.isDragging) {
-        return;
-      }
-      if (event.cancelable) {
-        event.preventDefault();
-      }
-      suppressNextSidebarPanelDragClick();
-
-      const closeVelocity = -session.velocityX;
-      const shouldClose =
-        session.lastProgress <= 1 - SIDEBAR_MOBILE_DRAG_CLOSE_RATIO ||
-        (session.lastProgress <=
-          1 - SIDEBAR_MOBILE_SWIPE_OPEN_FLING_MIN_RATIO &&
-          closeVelocity >= SIDEBAR_MOBILE_DRAG_CLOSE_FLING_VELOCITY_PX_PER_SEC);
-
-      clearSettleTimeout();
-      applySidebarMobileDragStyles({
-        progress: shouldClose ? 0 : 1,
-        settling: true,
-      });
-      settleTimeoutRef.current = window.setTimeout(() => {
-        settleTimeoutRef.current = null;
-        if (shouldClose) {
-          onOpenChange(false);
-        } else {
-          clearSidebarMobileDragStyles();
-        }
-      }, SIDEBAR_MOBILE_DRAG_SETTLE_MS);
-    };
-
-    const cancelPanelDrag = () => {
-      const wasDragging = dragSessionRef.current?.isDragging ?? false;
-      clearDragSession();
-      if (wasDragging) {
-        restoreOpenAfterCancelledDrag();
-      }
-    };
-
-    const isIgnoredPanelDragTarget = (target: EventTarget | null) =>
-      target instanceof Element &&
-      target.closest(
-        'input, textarea, select, [contenteditable="true"], [role="slider"], [data-vaul-no-drag], [data-no-sidebar-swipe]',
-      ) !== null;
-
-    const beginPanelDragSession = (
-      kind: "pointer" | "touch",
-      id: number,
-      clientX: number,
-      clientY: number,
-      target: EventTarget | null,
-    ) => {
-      dragSessionRef.current = {
-        kind,
-        id,
-        startX: clientX,
-        startY: clientY,
-        panelWidth: getSidebarMobilePanelWidth(),
-        lastProgress: 1,
-        lastClientX: clientX,
-        lastTimeMs: Date.now(),
-        velocityX: 0,
-        isDragging: false,
-        startTarget: target instanceof Element ? target : null,
-      };
-    };
-
-    const handlePanelPointerDown = (
+    const beginPanelPointerDrag = (
       event: React.PointerEvent<HTMLDivElement>,
     ) => {
       onPointerDown?.(event);
-      if (
-        !open ||
-        event.defaultPrevented ||
-        event.pointerType !== "touch" ||
-        event.button !== 0 ||
-        dragSessionRef.current !== null ||
-        isIgnoredPanelDragTarget(event.target)
-      ) {
-        return;
-      }
-
-      beginPanelDragSession(
-        "pointer",
-        event.pointerId,
-        event.clientX,
-        event.clientY,
-        event.target,
-      );
-
-      const handleMove = (moveEvent: PointerEvent) => {
-        const session = dragSessionRef.current;
-        if (session?.kind !== "pointer" || moveEvent.pointerId !== session.id) {
-          return;
-        }
-        continuePanelDrag(moveEvent.clientX, moveEvent.clientY, moveEvent);
-      };
-      const handleEnd = (endEvent: PointerEvent) => {
-        const session = dragSessionRef.current;
-        if (session?.kind !== "pointer" || endEvent.pointerId !== session.id) {
-          return;
-        }
-        finishPanelDrag(endEvent);
-      };
-      const handleCancel = (cancelEvent: PointerEvent) => {
-        const session = dragSessionRef.current;
-        if (
-          session?.kind !== "pointer" ||
-          cancelEvent.pointerId !== session.id
-        ) {
-          return;
-        }
-        cancelPanelDrag();
-      };
-
-      const removeListeners = () => {
-        window.removeEventListener("pointermove", handleMove);
-        window.removeEventListener("pointerup", handleEnd);
-        window.removeEventListener("pointercancel", handleCancel);
-      };
-      window.addEventListener("pointermove", handleMove, { passive: false });
-      window.addEventListener("pointerup", handleEnd);
-      window.addEventListener("pointercancel", handleCancel);
-      removeDragListenersRef.current = removeListeners;
+      beginPointerDrag(event);
     };
 
-    const handlePanelTouchStart = (event: React.TouchEvent<HTMLDivElement>) => {
+    const beginPanelTouchDrag = (event: React.TouchEvent<HTMLDivElement>) => {
       onTouchStart?.(event);
-      if (
-        !open ||
-        event.defaultPrevented ||
-        event.touches.length !== 1 ||
-        isIgnoredPanelDragTarget(event.target)
-      ) {
-        return;
-      }
-      const currentSession = dragSessionRef.current;
-      if (currentSession !== null) {
-        if (currentSession.kind !== "pointer") {
-          return;
-        }
-        clearDragSession();
-      }
-      const touch = event.touches.item(0);
-      if (touch === null) {
-        return;
-      }
-
-      beginPanelDragSession(
-        "touch",
-        touch.identifier,
-        touch.clientX,
-        touch.clientY,
-        event.target,
-      );
-
-      const handleTouchMove = (moveEvent: TouchEvent) => {
-        const session = dragSessionRef.current;
-        if (session?.kind !== "touch") {
-          return;
-        }
-        const trackedTouch = getTrackedSwipeTouch(moveEvent, session.id);
-        if (trackedTouch === null) {
-          return;
-        }
-        continuePanelDrag(
-          trackedTouch.clientX,
-          trackedTouch.clientY,
-          moveEvent,
-        );
-      };
-      const handleTouchEnd = (endEvent: TouchEvent) => {
-        const session = dragSessionRef.current;
-        if (
-          session?.kind !== "touch" ||
-          getTrackedSwipeTouch(endEvent, session.id) === null
-        ) {
-          return;
-        }
-        finishPanelDrag(endEvent);
-      };
-      const handleTouchCancel = (cancelEvent: TouchEvent) => {
-        const session = dragSessionRef.current;
-        if (
-          session?.kind !== "touch" ||
-          getTrackedSwipeTouch(cancelEvent, session.id) === null
-        ) {
-          return;
-        }
-        cancelPanelDrag();
-      };
-
-      const removeListeners = () => {
-        window.removeEventListener("touchmove", handleTouchMove);
-        window.removeEventListener("touchend", handleTouchEnd);
-        window.removeEventListener("touchcancel", handleTouchCancel);
-      };
-      window.addEventListener("touchmove", handleTouchMove, {
-        passive: false,
-      });
-      window.addEventListener("touchend", handleTouchEnd);
-      window.addEventListener("touchcancel", handleTouchCancel);
-      removeDragListenersRef.current = removeListeners;
+      beginTouchDrag(event);
     };
 
     const suppressedOpenTransitionStyle =
@@ -1305,6 +989,8 @@ const SidebarMobilePanel = React.forwardRef<
           )}
           style={{ ...suppressedOpenTransitionStyle, ...backdropStyle }}
           onClick={onDismiss}
+          onPointerDown={beginPointerDrag}
+          onTouchStart={beginTouchDrag}
         />
         <div
           ref={setPanelRef}
@@ -1331,8 +1017,8 @@ const SidebarMobilePanel = React.forwardRef<
               ...style,
             } as SidebarMobileWidthStyle
           }
-          onPointerDown={handlePanelPointerDown}
-          onTouchStart={handlePanelTouchStart}
+          onPointerDown={beginPanelPointerDrag}
+          onTouchStart={beginPanelTouchDrag}
           {...props}
         >
           <div

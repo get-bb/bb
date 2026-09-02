@@ -125,12 +125,7 @@ function getMentionTitle(item: PromptMentionSuggestion): string {
 
 function getMentionKey(item: PromptMentionSuggestion): string {
   if (item.kind === "path") {
-    return JSON.stringify([
-      item.kind,
-      item.source,
-      item.entryKind,
-      item.path,
-    ]);
+    return JSON.stringify([item.kind, item.source, item.entryKind, item.path]);
   }
   if (item.kind === "plugin") {
     return JSON.stringify([

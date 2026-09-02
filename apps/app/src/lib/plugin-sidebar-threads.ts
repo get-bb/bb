@@ -22,7 +22,7 @@ export function toPluginSidebarThread(
 ): PluginSidebarThread {
   const isUnreadDone = isUnreadDoneThread(entry);
   const hasUnreadError = isUnreadDone && entry.status === "error";
-  const indicator: PluginSidebarThreadIndicator = resolveThreadListIndicator({
+  const resolvedIndicator = resolveThreadListIndicator({
     hasPendingInteraction: entry.hasPendingInteraction,
     hasUnsubmittedDraft: false,
     hasUnreadError,
@@ -30,10 +30,16 @@ export function toPluginSidebarThread(
     isBackgroundAgentActive: hasActiveBackgroundAgentActivity(entry),
     isBackgroundCommandActive: hasActiveBackgroundCommandActivity(entry),
     isGoalActive: hasActiveGoalActivity(entry),
+    queuedWork: entry.queuedWork,
     isPlanModeActive: hasActivePlanModeActivity(entry),
     isRuntimeActive: isRuntimeBusyThread(entry),
     isWorkflowActive: hasActiveWorkflowActivity(entry),
   });
+  const indicator: PluginSidebarThreadIndicator =
+    resolvedIndicator === "queued-waiting" ||
+    resolvedIndicator === "queued-failed"
+      ? "none"
+      : resolvedIndicator;
 
   return {
     id: entry.id,

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { BbDesktopInfo } from "@bb/desktop-contract";
 import { createBbDesktopApi } from "@/test/bb-desktop-test-utils";
 import {
+  CHROME_ROW_HEIGHT_CLASS,
   MACOS_COLLAPSED_TOP_LEFT_RESERVE_CLASS,
   MACOS_TRAFFIC_LIGHT_RESERVE_OFFSET_CLASS,
   shouldReserveMacosTrafficLights,
@@ -18,6 +19,10 @@ const desktopInfo: BbDesktopInfo = {
 };
 
 describe("desktop chrome geometry", () => {
+  it("sizes chrome rows from the shared app chrome token", () => {
+    expect(CHROME_ROW_HEIGHT_CLASS).toBe("h-(--bb-app-chrome-row-height)");
+  });
+
   it("reserves macOS traffic-light space only when lights are visible", () => {
     const desktopApi = createBbDesktopApi(desktopInfo);
 

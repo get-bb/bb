@@ -10,12 +10,18 @@ const noop = () => {};
 function makeQueuedMessage(id: string, text: string): ThreadQueuedMessage {
   return {
     id,
+    threadId: "thr_queue",
     content: [{ type: "text", text, mentions: [] }],
     model: "gpt-5.5",
     reasoningLevel: "medium",
     permissionMode: "auto",
     serviceTier: "default",
     groupWithNext: false,
+    sendAt: null,
+    waitingOn: null,
+    failureReason: null,
+    payload: { kind: "inline" },
+    editable: true,
     createdAt: 0,
     updatedAt: 0,
   };
@@ -40,6 +46,7 @@ describe("QueuedMessagesList group-handle drag", () => {
     ];
     const { container, getByLabelText } = render(
       <QueuedMessagesList
+        attachedToComposer={true}
         queuedMessages={queuedMessages}
         sendDisabled={false}
         actionDisabled={false}

@@ -290,6 +290,7 @@ export class DemoWorld {
       if (!body.success) return badRequest(body.error);
       const message = queuedMessage({
         id: `qm_demo${this.nextQueuedId++}`,
+        threadId,
         content: body.data.input,
         now,
       });

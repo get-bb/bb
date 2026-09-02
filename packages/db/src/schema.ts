@@ -21,6 +21,8 @@ import type {
   PermissionMode,
   PromptHistoryScope,
   ProjectSourceType,
+  QueuedMessagePayloadKind,
+  QueuedMessageWaitHolder,
   ReasoningLevel,
   ServiceTier,
   TerminalSessionCloseReason,
@@ -499,6 +501,19 @@ export const threads = sqliteTable(
     status: text("status", { enum: threadStatusValues })
       .notNull()
       .default("starting"),
+    // How a `pending` thread will be established once its first message clears
+    // a dispatch attempt: the resolved environment intent, the fork descriptor,
+    // the provider-facing input and the `startedOnBehalfOf`/title facts that
+    // `requestThreadProvision` needs and that nothing else persists.
+    //
+    // It lives on the THREAD rather than on the queued message because it
+    // describes how to start the thread, not what to say once it has started —
+    // and because the live provisioning context is in-memory and only valid
+    // while a thread is `starting`, so a thread queued for a week (or across a
+    // restart) would otherwise have nothing to start from. Written only when a
+    // first message actually queues, and cleared when the thread leaves
+    // `pending`, so it is NULL for every thread that started immediately.
+    pendingStartContext: text("pending_start_context"),
     parentThreadId: text("parent_thread_id").references(
       (): AnySQLiteColumn => threads.id,
       { onDelete: "set null" },
@@ -785,30 +800,14 @@ export const promptHistoryEntries = sqliteTable(
   ],
 );
 
-export const deferredThreadMessages = sqliteTable(
-  "deferred_thread_messages",
-  {
-    id: text("id").primaryKey(),
-    threadId: text("thread_id")
-      .notNull()
-      .references(() => threads.id, { onDelete: "cascade" }),
-    kind: text("kind").notNull(),
-    payload: text("payload").notNull(),
-    createdAt: integer("created_at").notNull(),
-  },
-  (table) => [
-    index("deferred_thread_messages_thread_created_idx").on(
-      table.threadId,
-      table.createdAt,
-      table.id,
-    ),
-  ],
-);
-
 export const queuedThreadMessages = sqliteTable(
   "queued_thread_messages",
   {
     id: text("id").primaryKey(),
+    // JSON `{ kind, subject }` when this row is one of core's own system
+    // notices rather than somebody's message; NULL for every ordinary row.
+    // Owned by the server, which is the only thing that writes or reads it.
+    systemNotice: text("system_notice"),
     threadId: text("thread_id")
       .notNull()
       .references(() => threads.id, { onDelete: "cascade" }),
@@ -821,6 +820,48 @@ export const queuedThreadMessages = sqliteTable(
     groupWithNext: integer("group_with_next", { mode: "boolean" })
       .notNull()
       .default(false),
+    // Epoch ms this row is scheduled to attempt dispatch. NULL means "as soon
+    // as the other waits clear", which is what an ordinary queued row is.
+    sendAt: integer("send_at"),
+    // JSON `QueuedMessageWaitingOn`: the typed reason this row is queued.
+    // NULL for a plain queued row that is simply next in line behind the
+    // running turn — including every row written before waits were typed, for
+    // which inventing a reason would be a lie.
+    //
+    // A plugin wait's authored reason lives HERE and nowhere else. There is
+    // deliberately no `wait_reason` column: nothing queries on the reason, and
+    // every read that renders it already has the whole row in hand.
+    waitingOn: text("waiting_on"),
+    // Denormalized `plugin:<id>` owner of a plugin wait, NULL otherwise.
+    // Unlike the reason, this IS queried — the orphan sweep and the
+    // per-plugin release both need "every row this plugin holds" as an
+    // indexed equality lookup, which JSON cannot serve. Written only by the
+    // same statement that writes `waiting_on`, derived from it, so the two
+    // cannot drift.
+    waitHolder: text("wait_holder").$type<QueuedMessageWaitHolder>(),
+    // Why this row's last DRAIN attempt failed outright, NULL when it has not
+    // failed one. Its own column rather than a shape inside `waiting_on`
+    // because writing a wait rewrites that column wholesale on every attempt, which
+    // would erase a failure recorded there before anybody could read it. The
+    // row stays waiting on whatever it was waiting on; this only says what went
+    // wrong the last time the drain tried to send it.
+    failureReason: text("failure_reason"),
+    payloadKind: text("payload_kind")
+      .$type<QueuedMessagePayloadKind>()
+      .notNull()
+      .default("inline"),
+    // Set together, and only on a `retry` row: the ORIGINAL request this row
+    // re-submits, which attempt it is (2 is the first retry), and why it is
+    // being retried in the retrier's words ("Rate limited").
+    //
+    // The reason is a column of the retry rather than part of `waiting_on`
+    // because a retry can wait on the clock, on a plugin, or on nothing, and
+    // the reason outlives all three: it is a fact about the retry, not about
+    // what is currently holding it, so a re-queue that rewrites the wait must
+    // not erase it.
+    retryOfTurnRequestId: text("retry_of_turn_request_id"),
+    retryAttempt: integer("retry_attempt"),
+    retryReason: text("retry_reason"),
     claimedAt: integer("claimed_at"),
     claimToken: text("claim_token"),
     sortKey: text("sort_key").notNull(),
@@ -838,9 +879,20 @@ export const queuedThreadMessages = sqliteTable(
       table.sortKey,
       table.id,
     ),
+    // The due-scheduled sweep: "every unclaimed row whose send_at has
+    // arrived", ordered by when it came due. Partial on the two liveness
+    // predicates so the index holds only rows the sweep can actually act on.
+    index("queued_thread_messages_due_idx")
+      .on(table.sendAt, table.id)
+      .where(
+        sql`${table.sendAt} IS NOT NULL AND ${table.claimedAt} IS NULL AND ${table.claimToken} IS NULL`,
+      ),
+    // Plugin-holder lookup for the orphan sweep and per-plugin release.
+    index("queued_thread_messages_wait_holder_idx")
+      .on(table.waitHolder, table.id)
+      .where(sql`${table.waitHolder} IS NOT NULL`),
   ],
 );
-
 export const hostDaemonSessions = sqliteTable(
   "host_daemon_sessions",
   {

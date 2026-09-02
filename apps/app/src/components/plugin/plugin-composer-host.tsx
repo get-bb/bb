@@ -21,6 +21,7 @@ export interface PluginComposerHost {
   subscribeDraft(listener: () => void): () => void;
   setDraft(next: PromptDraftState): void;
   focus(): void;
+  submit?(options: { sendAt: number }): Promise<void>;
 }
 
 export function composerScopeIdentity(scope: PluginComposerScope): string {

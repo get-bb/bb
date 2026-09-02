@@ -2,6 +2,7 @@ import {
   THREAD_SEARCH_LIMIT_PER_GROUP_DEFAULT,
   THREAD_SEARCH_LIMIT_PER_GROUP_MAX,
   countNonDeletedAssignedChildThreads,
+  countThreads,
   getEnvironment,
   getThreadSectionById,
   listThreadMentionRowsByIds,
@@ -15,11 +16,14 @@ import {
 import type { Environment, Thread, ThreadListEntry } from "@bb/domain";
 import {
   threadIncludeOptionSchema,
+  THREAD_COUNT_ROOT_PARENT,
   publicApiRoutes,
   typedRoutes,
   type ThreadGetQuery,
   type ThreadIncludeOption,
   type ThreadChildSummaryResponse,
+  type ThreadCountResponse,
+  type ThreadRunningResponse,
   type ThreadSearchResponse,
   type ThreadWithIncludesResponse,
   type PublicApiSchema,
@@ -39,6 +43,7 @@ import {
   requirePublicProject,
   requirePublicThread,
 } from "../../services/lib/entity-lookup.js";
+import { listRunningThreadsWithIntendedHosts } from "../../services/threads/dispatch-attempt.js";
 import { dispatchThreadRenameCommand } from "../../services/threads/thread-commands.js";
 import {
   finalizeStoppedThread,
@@ -210,6 +215,45 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
     onValidationError: (msg) => new ApiError(400, "invalid_request", msg),
   });
   const routes = publicApiRoutes.threads;
+
+  get(routes.count, (context, query) => {
+    if (query.projectId) {
+      requirePublicProject(deps.db, query.projectId);
+    }
+    const result = countThreads(deps.db, {
+      ...(query.status !== undefined ? { status: query.status } : {}),
+      ...(query.hostId !== undefined ? { hostId: query.hostId } : {}),
+      ...(query.providerId !== undefined
+        ? { providerId: query.providerId }
+        : {}),
+      ...(query.projectId !== undefined ? { projectId: query.projectId } : {}),
+      ...(query.parentThreadId === undefined
+        ? {}
+        : {
+            parent:
+              query.parentThreadId === THREAD_COUNT_ROOT_PARENT
+                ? { kind: "root" as const }
+                : {
+                    kind: "id" as const,
+                    parentThreadId: query.parentThreadId,
+                  },
+          }),
+      ...(query.groupBy !== undefined ? { groupBy: query.groupBy } : {}),
+      includeArchived: query.includeArchived === "true",
+      includeHidden: query.includeHidden === "true",
+    });
+    const response: ThreadCountResponse = {
+      total: result.total,
+      ...(result.groups !== undefined ? { groups: result.groups } : {}),
+    };
+    return context.json(response);
+  });
+
+  get(routes.running, (context) => {
+    return context.json(
+      listRunningThreadsWithIntendedHosts(deps) satisfies ThreadRunningResponse,
+    );
+  });
 
   get(routes.list, (context, query) => {
     const limit = parseOptionalInteger(query.limit, "limit");

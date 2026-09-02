@@ -207,7 +207,7 @@ export function Overview() {
       </StoryRow>
       <StoryRow
         label="collapsed — waiting for approval"
-        hint="approvalStatus=waiting_for_approval, parked before applying the edit"
+        hint="approvalStatus=waiting_for_approval, queued before applying the edit"
       >
         <TimelineStage>
           <ThreadTimelineRows

@@ -168,6 +168,13 @@ export async function dispatchTurnDuringReprovision(
           systemMessageKind: args.systemMessageKind,
           systemMessageSubject: args.systemMessageSubject,
         });
+        // The turn above is queued, not sent: it replays when the workspace is
+        // ready, driven by the provisioning machinery that owns that ordering.
+        // It deliberately does NOT become a queued row — the queue carries
+        // dispatches core will re-ATTEMPT, and this one is already committed
+        // to a specific replay. Messages that arrive DURING the reprovision do
+        // queue, on `waitingOn: provisioning`, and the workspace-ready drain
+        // releases them.
       },
       environment: args.environment,
       projectId: args.thread.projectId,

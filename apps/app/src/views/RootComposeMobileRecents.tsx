@@ -223,6 +223,7 @@ function MobileRecentThreadRow({
     isBackgroundAgentActive: hasActiveBackgroundAgentActivity(thread),
     isBackgroundCommandActive: hasActiveBackgroundCommandActivity(thread),
     isGoalActive: hasActiveGoalActivity(thread),
+    queuedWork: thread.queuedWork,
     isPlanModeActive: hasActivePlanModeActivity(thread),
     isRuntimeActive: isRuntimeBusyThread(thread),
     isWorkflowActive: hasActiveWorkflowActivity(thread),
@@ -247,6 +248,7 @@ function MobileRecentThreadRow({
           indicatorState.isBackgroundCommandActive ||
           childActivity.backgroundCommand,
         isGoalActive: indicatorState.isGoalActive || childActivity.goal,
+        queuedWork: indicatorState.queuedWork,
         isPlanModeActive:
           indicatorState.isPlanModeActive || childActivity.planMode,
         isRuntimeActive:

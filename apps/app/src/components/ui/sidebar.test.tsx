@@ -65,6 +65,15 @@ function fireTouch(
   fireEvent(target, event);
 }
 
+function fireTouchEnd(target: Element | Document | Window, touch: Touch) {
+  const event = new Event("touchend", { bubbles: true, cancelable: true });
+  Object.defineProperties(event, {
+    touches: { value: createTouchList() },
+    changedTouches: { value: createTouchList(touch) },
+  });
+  fireEvent(target, event);
+}
+
 function firePointer(
   target: Element | Document | Window,
   type: "pointerdown" | "pointermove",
@@ -467,6 +476,47 @@ describe("mobile sidebar shelf stacking", () => {
 });
 
 describe("mobile sidebar persistence", () => {
+  it("closes from a left swipe that starts on the exposed main content", () => {
+    vi.useFakeTimers();
+    renderCompactSidebarHarness();
+
+    fireEvent.click(screen.getByRole("button", { name: "Toggle Sidebar" }));
+    settleMobileToggle();
+
+    const panel = getMobilePanel();
+    const backdrop = screen.getByTestId("sidebar-mobile-backdrop");
+    expect(panel?.dataset.state).toBe("open");
+
+    fireTouch(backdrop, "touchstart", createTouch(360, 160));
+    fireTouch(window, "touchmove", createTouch(180, 164));
+    fireTouchEnd(window, createTouch(180, 164));
+    settleMobileToggle();
+
+    expect(panel?.dataset.state).toBe("closed");
+    act(() => {
+      vi.advanceTimersByTime(400);
+    });
+  });
+
+  it("ignores a closing swipe from the right browser edge", () => {
+    vi.useFakeTimers();
+    renderCompactSidebarHarness();
+
+    fireEvent.click(screen.getByRole("button", { name: "Toggle Sidebar" }));
+    settleMobileToggle();
+
+    const panel = getMobilePanel();
+    const backdrop = screen.getByTestId("sidebar-mobile-backdrop");
+    const startX = window.innerWidth - 12;
+
+    fireTouch(backdrop, "touchstart", createTouch(startX, 160));
+    fireTouch(window, "touchmove", createTouch(startX - 180, 164));
+    fireTouchEnd(window, createTouch(startX - 180, 164));
+    settleMobileToggle();
+
+    expect(panel?.dataset.state).toBe("open");
+  });
+
   it("keeps closed drawer content mounted, inert, and offscreen", () => {
     vi.useFakeTimers();
     renderCompactSidebarHarness();

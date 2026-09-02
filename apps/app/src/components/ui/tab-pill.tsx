@@ -83,6 +83,11 @@ export function TabPill({
         className={cn(
           "flex h-full min-w-0 items-center rounded-md focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
           iconOnly ? "px-1.5" : "pl-1.5 pr-2",
+          !iconOnly &&
+            closeAction !== null &&
+            enlargeCloseTargetOnCoarsePointer
+            ? "max-md:pointer-coarse:pl-3.5"
+            : null,
         )}
       >
         {leadingVisual ? (

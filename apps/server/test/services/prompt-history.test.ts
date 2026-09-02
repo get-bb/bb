@@ -398,6 +398,10 @@ describe("prompt history service", () => {
       reasoningLevel: "medium",
       permissionMode: "full",
       serviceTier: "default",
+      waitingOn: null,
+      sendAt: null,
+      payload: { kind: "inline" },
+      systemNotice: null,
     });
 
     expect(

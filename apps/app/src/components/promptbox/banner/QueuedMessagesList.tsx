@@ -14,6 +14,17 @@ import {
 import ReactMarkdown from "react-markdown";
 import type { Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { useSecondTick } from "@/hooks/useSecondTick";
+import { usePluginDisplayName } from "@/lib/plugin-logos";
+import {
+  describeQueuedMessageWait,
+  formatQueuedMessageCountdown,
+  isQueuedMessageSendNowAllowed,
+  queuedMessageCountdownInstant,
+  queuedMessageFallbackTitle,
+  queuedMessageHasWaitLine,
+  queuedMessageWaitIcon,
+} from "@/lib/queued-message-wait";
 import {
   DndContext,
   KeyboardSensor,
@@ -55,6 +66,7 @@ import {
   PROMPT_STACK_EDGE_CARET_BUTTON_WIDTH_CLASS,
   PromptStackCard,
 } from "@/components/promptbox/banner/PromptStackCard";
+import { PROMPT_STACK_ROW_ACTION_TAKEOVER_CLASS } from "@/components/promptbox/banner/prompt-banner-actions";
 import { useScrollOverflowState } from "@/components/thread/timeline/useScrollOverflowState";
 import { OverflowFade } from "@/components/ui/overflow-fade";
 import { InlineMessageEditorFrame } from "@/components/promptbox/InlineMessageEditorFrame";
@@ -108,6 +120,7 @@ export interface QueuedMessageInlineEditor {
 }
 
 export interface QueuedMessagesListProps {
+  attachedToComposer: boolean;
   queuedMessages: readonly ThreadQueuedMessage[];
   resolveMentionLink?: PromptMentionLinkResolver;
   sendDisabled: boolean;
@@ -120,6 +133,10 @@ export interface QueuedMessagesListProps {
   onSetGroupBoundary: (request: QueuedMessageGroupBoundaryRequest) => void;
   onEdit: (request: QueuedMessageEditRequest) => void;
   onDelete: (id: string) => void;
+}
+
+interface QueuedMessagesPendingCardProps {
+  queuedMessageCount: number;
 }
 
 interface QueuedMessagePreviewText {
@@ -147,6 +164,10 @@ const GROUP_DIVIDER_ID = "__queued_message_group_divider__";
 const COLLAPSED_HEIGHT = 44;
 const DRAWER_HEIGHT = 174;
 const DRAWER_MAX_VISIBLE_MESSAGES = 3;
+const DRAWER_CHROME_HEIGHT = 1 + 32 + 12 + 2;
+const DRAWER_LIST_PADDING = 8;
+const DRAWER_ROW_HEIGHT = 33;
+const DRAWER_SECOND_LINE_HEIGHT = 16;
 const WORKSPACE_MIN_HEIGHT = 240;
 const WORKSPACE_MAX_HEIGHT = 360;
 const WORKSPACE_CHROME_HEIGHT = 56;
@@ -154,8 +175,43 @@ const WORKSPACE_ROW_HEIGHT = 40;
 const TYPEAHEAD_MENU_GAP = 8;
 const SURFACE_DRAG_THRESHOLD = 72;
 const QUEUED_MESSAGE_ACTION_TAKEOVER_CLASS =
-  "relative bg-surface-raised-solid before:pointer-events-none before:absolute before:inset-y-0 before:right-full before:w-4 before:bg-gradient-to-r before:from-transparent before:to-surface-raised-solid before:content-['']";
+  PROMPT_STACK_ROW_ACTION_TAKEOVER_CLASS;
 type QueueSurfaceMode = "collapsed" | "drawer" | "workspace";
+
+function getDrawerHeight({
+  queuedMessages,
+  processingMessageId,
+}: {
+  queuedMessages: readonly ThreadQueuedMessage[];
+  processingMessageId: string | null;
+}): number {
+  const rowsHeight =
+    queuedMessages.length === 0
+      ? DRAWER_ROW_HEIGHT
+      : queuedMessages.reduce(
+          (total, queuedMessage) =>
+            total +
+            DRAWER_ROW_HEIGHT +
+            (queuedMessageHasWaitLine(queuedMessage) ||
+            queuedMessage.id === processingMessageId
+              ? DRAWER_SECOND_LINE_HEIGHT
+              : 0),
+          0,
+        );
+  return Math.min(
+    DRAWER_HEIGHT,
+    DRAWER_CHROME_HEIGHT + DRAWER_LIST_PADDING + rowsHeight,
+  );
+}
+
+function getPendingDrawerHeight(queuedMessageCount: number): number {
+  return Math.min(
+    DRAWER_HEIGHT,
+    DRAWER_CHROME_HEIGHT +
+      DRAWER_LIST_PADDING +
+      Math.max(1, queuedMessageCount) * DRAWER_ROW_HEIGHT,
+  );
+}
 
 function getWorkspaceHeight({
   messageCount,
@@ -546,6 +602,26 @@ function buildQueuedMessagePreviewText(
   return { text, mentions };
 }
 
+function QueuedMessageFallbackTitle({
+  compact,
+  queuedMessage,
+}: {
+  compact: boolean;
+  queuedMessage: ThreadQueuedMessage;
+}) {
+  const now = useSecondTick();
+  const title = queuedMessageFallbackTitle({
+    createdAt: queuedMessage.createdAt,
+    now,
+    payload: queuedMessage.payload,
+  });
+  return (
+    <span className={queuedMarkdownPreviewClass(compact)} title={title}>
+      {title}
+    </span>
+  );
+}
+
 function QueuedMessagePreview({
   compact,
   queuedMessage,
@@ -567,6 +643,17 @@ function QueuedMessagePreview({
     [queuedMessage.content],
   );
 
+  if (queuedMessage.payload.kind === "retry") {
+    return (
+      <div className="min-w-0 flex-1 overflow-hidden text-foreground">
+        <QueuedMessageFallbackTitle
+          compact={compact}
+          queuedMessage={queuedMessage}
+        />
+      </div>
+    );
+  }
+
   return (
     <div
       className="min-w-0 flex-1 overflow-hidden text-foreground"
@@ -581,6 +668,66 @@ function QueuedMessagePreview({
       ) : (
         <span className={queuedMarkdownPreviewClass(compact)}>{preview}</span>
       )}
+    </div>
+  );
+}
+
+function QueuedMessageWaitLine({
+  pluginDisplayName,
+  queuedMessage,
+}: {
+  pluginDisplayName: string;
+  queuedMessage: ThreadQueuedMessage;
+}) {
+  const now = useSecondTick();
+  const label = describeQueuedMessageWait({
+    failureReason: queuedMessage.failureReason,
+    now,
+    payload: queuedMessage.payload,
+    pluginDisplayName,
+    sendAt: queuedMessage.sendAt,
+    waitingOn: queuedMessage.waitingOn,
+  });
+  if (label === null) return null;
+  const failed = queuedMessage.failureReason !== null;
+  const icon = queuedMessageWaitIcon(queuedMessage);
+  const countdownInstant = queuedMessageCountdownInstant(queuedMessage);
+  const countdown =
+    countdownInstant === null
+      ? null
+      : formatQueuedMessageCountdown(countdownInstant - now);
+  return (
+    <div
+      data-queued-message-wait=""
+      data-queued-message-failed={failed ? "" : undefined}
+      className={cn(
+        "mt-0.5 flex min-w-0 items-center gap-1 text-2xs",
+        failed ? "text-destructive-text" : "text-subtle-foreground",
+      )}
+    >
+      {icon === null ? null : (
+        <Icon name={icon} className="size-3 shrink-0" aria-hidden />
+      )}
+      <span className="min-w-0 truncate">{label}</span>
+      {countdown === null ? null : (
+        <span className="shrink-0 tabular-nums">· {countdown}</span>
+      )}
+    </div>
+  );
+}
+
+function QueuedMessageProcessingLine({ label }: { label: string }) {
+  return (
+    <div
+      data-queued-message-processing=""
+      className="mt-0.5 flex min-w-0 items-center gap-1 text-2xs text-muted-foreground"
+    >
+      <Icon
+        name="Spinner"
+        className="size-3 shrink-0 animate-spin"
+        aria-hidden
+      />
+      <span className="min-w-0 truncate">{label}</span>
     </div>
   );
 }
@@ -604,6 +751,13 @@ const QueuedMessageRow = memo(function QueuedMessageRow({
     () => countQueuedMessageAttachments(queuedMessage.content),
     [queuedMessage.content],
   );
+  const pluginDisplayName = usePluginDisplayName(
+    queuedMessage.waitingOn?.kind === "plugin"
+      ? queuedMessage.waitingOn.pluginId
+      : "",
+  );
+  const hasWaitLine = queuedMessageHasWaitLine(queuedMessage);
+  const sendNowAllowed = isQueuedMessageSendNowAllowed(queuedMessage.waitingOn);
   const {
     attributes,
     isDragging,
@@ -629,7 +783,7 @@ const QueuedMessageRow = memo(function QueuedMessageRow({
       data-queued-message-id={queuedMessage.id}
       data-queued-message-group-boundary-row={isGroupBoundary ? "" : undefined}
       className={cn(
-        "group/row relative border-b border-border/35 px-2.5 py-0.5",
+        "group/dispatch-row relative border-b border-border/35 px-2.5 py-0.5",
         !isGroupBoundary && "last:border-b-0",
         isDragging &&
           "z-20 rounded-lg border border-border bg-background opacity-90 shadow-lift",
@@ -645,7 +799,7 @@ const QueuedMessageRow = memo(function QueuedMessageRow({
             !dragDisabled && "cursor-grab active:cursor-grabbing",
           )}
           disabled={dragDisabled}
-          aria-label={`Reorder follow-up ${index + 1}`}
+          aria-label={`Reorder queued message ${index + 1}`}
           {...attributes}
           {...listeners}
         >
@@ -654,13 +808,19 @@ const QueuedMessageRow = memo(function QueuedMessageRow({
             className={cn(
               "size-3.5 shrink-0 opacity-0 transition-opacity",
               !dragDisabled &&
-                "group-hover/row:opacity-100 group-focus-within/row:opacity-100 [@media(hover:none)]:opacity-100",
+                "group-hover/dispatch-row:opacity-100 group-focus-within/dispatch-row:opacity-100 [@media(hover:none)]:opacity-100",
               isDragging && "opacity-100",
             )}
             aria-hidden="true"
           />
         </Button>
-        <div className="min-w-0 flex-1 py-1">
+        {}
+        <div
+          className={cn(
+            "min-w-0 flex-1 py-1",
+            (hasWaitLine || isProcessing) && "py-1.5",
+          )}
+        >
           <div className="flex min-w-0 items-center gap-1">
             <QueuedMessagePreview
               compact={compact}
@@ -673,7 +833,7 @@ const QueuedMessageRow = memo(function QueuedMessageRow({
                 className={cn(
                   "ml-auto inline-flex shrink-0 items-center gap-0.5 text-2xs text-subtle-foreground opacity-70 transition-opacity duration-[120ms] ease-out",
                   !isProcessing &&
-                    "group-hover/row:opacity-0 group-focus-within/row:opacity-0 [@media(hover:none)]:opacity-0",
+                    "group-hover/dispatch-row:opacity-0 group-focus-within/dispatch-row:opacity-0 [@media(hover:none)]:opacity-0",
                 )}
                 role="img"
                 aria-label={
@@ -687,12 +847,16 @@ const QueuedMessageRow = memo(function QueuedMessageRow({
               </span>
             ) : null}
           </div>
+          {isProcessing ? (
+            <QueuedMessageProcessingLine label={processingLabel} />
+          ) : hasWaitLine ? (
+            <QueuedMessageWaitLine
+              pluginDisplayName={pluginDisplayName}
+              queuedMessage={queuedMessage}
+            />
+          ) : null}
         </div>
-        {isProcessing ? (
-          <span className="whitespace-nowrap px-1 text-xs text-muted-foreground">
-            {processingLabel}
-          </span>
-        ) : (
+        {isProcessing ? null : (
           <>
             <TooltipProvider delayDuration={300}>
               <div
@@ -700,53 +864,57 @@ const QueuedMessageRow = memo(function QueuedMessageRow({
                 className={cn(
                   QUEUED_MESSAGE_ACTION_TAKEOVER_CLASS,
                   "pointer-events-none absolute right-2.5 top-1/2 hidden -translate-y-1/2 items-center gap-0.5 rounded-md opacity-0 transition-opacity duration-[120ms] ease-out md:flex",
-                  "group-hover/row:pointer-events-auto group-hover/row:opacity-100",
-                  "group-focus-within/row:pointer-events-auto group-focus-within/row:opacity-100",
+                  "group-hover/dispatch-row:pointer-events-auto group-hover/dispatch-row:opacity-100",
+                  "group-focus-within/dispatch-row:pointer-events-auto group-focus-within/dispatch-row:opacity-100",
                 )}
               >
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      type="button"
-                      size="icon"
-                      variant="ghost"
-                      className={cn(
-                        "shrink-0 text-muted-foreground",
-                        compact ? "size-7" : "size-8",
-                      )}
-                      disabled={actionDisabled || sendDisabled}
-                      onClick={() => onSendImmediately(queuedMessage.id)}
-                      aria-label={`Send follow-up ${index + 1} now`}
-                    >
-                      <Icon name="Sent" className="size-4" aria-hidden />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>Send now</TooltipContent>
-                </Tooltip>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      type="button"
-                      size="icon"
-                      variant="ghost"
-                      className={cn(
-                        "shrink-0 text-muted-foreground",
-                        compact ? "size-7" : "size-8",
-                      )}
-                      disabled={actionDisabled}
-                      onClick={() =>
-                        onEdit({
-                          queuedMessageId: queuedMessage.id,
-                          queuedMessageIndex: index,
-                        })
-                      }
-                      aria-label={`Edit follow-up ${index + 1}`}
-                    >
-                      <Icon name="Edit" className="size-4" aria-hidden />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>Edit</TooltipContent>
-                </Tooltip>
+                {sendNowAllowed ? (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        type="button"
+                        size="icon"
+                        variant="ghost"
+                        className={cn(
+                          "shrink-0 text-muted-foreground",
+                          compact ? "size-7" : "size-8",
+                        )}
+                        disabled={actionDisabled || sendDisabled}
+                        onClick={() => onSendImmediately(queuedMessage.id)}
+                        aria-label={`Send queued message ${index + 1} now`}
+                      >
+                        <Icon name="Sent" className="size-4" aria-hidden />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>Send now</TooltipContent>
+                  </Tooltip>
+                ) : null}
+                {queuedMessage.editable ? (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        type="button"
+                        size="icon"
+                        variant="ghost"
+                        className={cn(
+                          "shrink-0 text-muted-foreground",
+                          compact ? "size-7" : "size-8",
+                        )}
+                        disabled={actionDisabled}
+                        onClick={() =>
+                          onEdit({
+                            queuedMessageId: queuedMessage.id,
+                            queuedMessageIndex: index,
+                          })
+                        }
+                        aria-label={`Edit queued message ${index + 1}`}
+                      >
+                        <Icon name="Edit" className="size-4" aria-hidden />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>Edit</TooltipContent>
+                  </Tooltip>
+                ) : null}
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <Button
@@ -759,7 +927,7 @@ const QueuedMessageRow = memo(function QueuedMessageRow({
                       )}
                       disabled={actionDisabled}
                       onClick={() => onDelete(queuedMessage.id)}
-                      aria-label={`Delete follow-up ${index + 1}`}
+                      aria-label={`Delete queued message ${index + 1}`}
                     >
                       <Icon name="Trash2" className="size-4" aria-hidden />
                     </Button>
@@ -777,37 +945,41 @@ const QueuedMessageRow = memo(function QueuedMessageRow({
                   className={cn(
                     QUEUED_MESSAGE_ACTION_TAKEOVER_CLASS,
                     "pointer-events-none absolute right-2.5 top-1/2 shrink-0 -translate-y-1/2 text-muted-foreground opacity-0 transition-opacity duration-[120ms] ease-out md:hidden",
-                    "group-hover/row:pointer-events-auto group-hover/row:opacity-100",
-                    "group-focus-within/row:pointer-events-auto group-focus-within/row:opacity-100",
+                    "group-hover/dispatch-row:pointer-events-auto group-hover/dispatch-row:opacity-100",
+                    "group-focus-within/dispatch-row:pointer-events-auto group-focus-within/dispatch-row:opacity-100",
                     "data-[state=open]:pointer-events-auto data-[state=open]:opacity-100",
                     "[@media(hover:none)]:pointer-events-auto [@media(hover:none)]:opacity-100",
                     compact ? "size-7" : "size-8",
                   )}
                   disabled={actionDisabled}
-                  aria-label={`Follow-up ${index + 1} actions`}
+                  aria-label={`Queued message ${index + 1} actions`}
                 >
                   <Icon name="MoreHorizontal" className="size-4" aria-hidden />
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="min-w-[7rem]">
-                <DropdownMenuItem
-                  disabled={sendDisabled}
-                  onSelect={() => onSendImmediately(queuedMessage.id)}
-                >
-                  <Icon name="Sent" aria-hidden />
-                  Send now
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onSelect={() =>
-                    onEdit({
-                      queuedMessageId: queuedMessage.id,
-                      queuedMessageIndex: index,
-                    })
-                  }
-                >
-                  <Icon name="Edit" aria-hidden />
-                  Edit
-                </DropdownMenuItem>
+                {sendNowAllowed ? (
+                  <DropdownMenuItem
+                    disabled={sendDisabled}
+                    onSelect={() => onSendImmediately(queuedMessage.id)}
+                  >
+                    <Icon name="Sent" aria-hidden />
+                    Send now
+                  </DropdownMenuItem>
+                ) : null}
+                {queuedMessage.editable ? (
+                  <DropdownMenuItem
+                    onSelect={() =>
+                      onEdit({
+                        queuedMessageId: queuedMessage.id,
+                        queuedMessageIndex: index,
+                      })
+                    }
+                  >
+                    <Icon name="Edit" aria-hidden />
+                    Edit
+                  </DropdownMenuItem>
+                ) : null}
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
                   variant="destructive"
@@ -908,8 +1080,8 @@ function QueuedMessageInlineEditorSlot({
     >
       <OverflowFade placement="above" tone="surface-raised" className="z-10" />
       <InlineMessageEditorFrame
-        cancelLabel="Stop editing follow-up"
-        label={`Editing follow-up ${editor.queuedMessageIndex + 1}`}
+        cancelLabel="Stop editing queued message"
+        label={`Editing queued message ${editor.queuedMessageIndex + 1}`}
         onCancel={editor.onDismiss}
       >
         <QueuedEditorTypeaheadLayoutContext.Provider value={setTypeaheadLayout}>
@@ -926,7 +1098,36 @@ function QueuedMessageInlineEditorSlot({
   );
 }
 
+export function QueuedMessagesPendingCard({
+  queuedMessageCount,
+}: QueuedMessagesPendingCardProps) {
+  return (
+    <PromptStackCard
+      ariaLabel="Queued messages"
+      style={{ height: getPendingDrawerHeight(queuedMessageCount) }}
+      className="relative z-10 -mb-5 flex min-h-0 flex-col overflow-hidden rounded-xl rounded-b-none border-b-0 bg-surface-raised-solid pb-3 shadow-lift"
+    >
+      <header className="flex h-8 shrink-0 items-center gap-2 border-b border-border/35 px-2">
+        <div className="flex min-w-16 items-baseline gap-1.5 pl-1">
+          <span className="text-xs font-medium text-foreground">Queue</span>
+          <span className="text-2xs tabular-nums text-subtle-foreground">
+            {queuedMessageCount}
+          </span>
+        </div>
+      </header>
+      <div
+        role="status"
+        className="flex min-h-0 flex-1 items-center gap-2 px-3 text-xs text-subtle-foreground"
+      >
+        <Icon name="Loading" className="size-3.5 animate-spin" aria-hidden />
+        <span>Loading queued message details…</span>
+      </div>
+    </PromptStackCard>
+  );
+}
+
 export function QueuedMessagesList({
+  attachedToComposer,
   queuedMessages,
   resolveMentionLink,
   sendDisabled,
@@ -942,10 +1143,10 @@ export function QueuedMessagesList({
 }: QueuedMessagesListProps) {
   const processingLabel =
     processingAction === "edit"
-      ? "Editing..."
+      ? "Editing…"
       : processingAction === "delete"
-        ? "Deleting..."
-        : "Sending...";
+        ? "Deleting…"
+        : "Sending…";
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: { distance: 4 },
@@ -1367,7 +1568,7 @@ export function QueuedMessagesList({
           messageCount: queuedMessages.length,
         })
       : mode === "drawer"
-        ? Math.min(DRAWER_HEIGHT, 57 + Math.max(1, queuedMessages.length) * 33)
+        ? getDrawerHeight({ queuedMessages, processingMessageId })
         : COLLAPSED_HEIGHT;
   const unconstrainedSurfaceHeight = surfaceDragging
     ? clamp(
@@ -1457,10 +1658,10 @@ export function QueuedMessagesList({
   const caretWillCollapse =
     mode === "workspace" || (mode === "drawer" && queueFitsDrawer);
   const caretLabel = caretWillCollapse
-    ? "Collapse follow-ups"
+    ? "Collapse queued messages"
     : mode === "collapsed" && queueFitsDrawer
-      ? "Show follow-ups"
-      : "Expand follow-ups";
+      ? "Show queued messages"
+      : "Expand queued messages";
   const handleCaretClick = () => {
     if (caretWillCollapse) {
       collapseDrawer();
@@ -1474,11 +1675,11 @@ export function QueuedMessagesList({
   return (
     <PromptStackCard
       rootRef={surfaceRef}
-      ariaLabel="Follow-ups"
+      ariaLabel="Queued messages"
       style={{ height: surfaceHeight }}
       className={cn(
         "relative z-10 flex min-h-0 flex-col overflow-hidden bg-surface-raised-solid shadow-lift",
-        inlineEditor
+        inlineEditor || !attachedToComposer
           ? "mb-0 rounded-xl pb-4"
           : "-mb-5 rounded-xl rounded-b-none border-b-0 pb-3",
         !surfaceDragging &&
@@ -1493,10 +1694,8 @@ export function QueuedMessagesList({
         data-queued-messages-mode={mode}
       >
         <div className="flex min-w-16 items-baseline gap-1.5 pl-1">
-          <span className="text-xs font-normal text-subtle-foreground">
-            Follow-ups
-          </span>
-          <span className="text-2xs text-subtle-foreground">
+          <span className="text-xs font-medium text-foreground">Queue</span>
+          <span className="text-2xs tabular-nums text-subtle-foreground">
             {queuedMessages.length}
           </span>
         </div>
@@ -1508,8 +1707,8 @@ export function QueuedMessagesList({
           )}
           aria-label={
             mode === "workspace"
-              ? "Drag down to dock follow-ups"
-              : "Drag up to open the follow-up workspace"
+              ? "Drag down to dock the queue"
+              : "Drag up to open the queue workspace"
           }
           onPointerDown={handleSurfacePointerDown}
           onPointerMove={handleSurfacePointerMove}

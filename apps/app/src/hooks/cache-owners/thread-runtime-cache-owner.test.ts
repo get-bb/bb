@@ -94,6 +94,7 @@ function makeThreadListEntry(id = "thread-1"): ThreadListEntry {
     environmentHostId: "host-1",
     environmentName: "Environment",
     environmentBranchName: "main",
+    queuedWork: "none",
     environmentWorkspaceDisplayKind: "managed-worktree",
   };
 }
@@ -145,12 +146,18 @@ function makeQueuedMessage(
 ): ThreadQueuedMessage {
   return {
     id: "qmsg-1",
+    threadId: "thread-1",
     content: [{ type: "text", text: "Queued message", mentions: [] }],
     model: "codex-test",
     reasoningLevel: "medium",
     permissionMode: "auto",
     serviceTier: "default",
     groupWithNext: false,
+    sendAt: null,
+    waitingOn: null,
+    failureReason: null,
+    payload: { kind: "inline" },
+    editable: true,
     createdAt: 1,
     updatedAt: 1,
     ...message,
@@ -928,26 +935,27 @@ describe("thread runtime cache owner", () => {
       )?.rows,
     ).toEqual([]);
   });
-  it("keeps a held message visible and the thread idle when the server defers the send", async () => {
+  it("drops the optimistic turn when a send joins the queue", async () => {
     const queryClient = createAppQueryClient({
       defaultOptions: { queries: { gcTime: Infinity, retry: false } },
       showMutationErrorToasts: false,
     });
-    const idleThread = {
+    queryClient.setQueryData(threadQueryKey("thread-1"), {
       id: "thread-1",
       status: "idle",
       updatedAt: 1,
       runtime: { displayStatus: "idle", hostReconnectGraceExpiresAt: null },
-    };
-    queryClient.setQueryData(threadQueryKey("thread-1"), idleThread);
+    });
     queryClient.setQueryData(
       threadTimelineQueryKey("thread-1"),
       makeTimelineResponse(),
     );
+    queryClient.setQueryData(threadQueuedMessagesQueryKey("thread-1"), []);
     const request = {
       id: "thread-1",
-      mode: "steer-if-active" as const,
-      input: [{ type: "text" as const, text: "worker report", mentions: [] }],
+      mode: "queue-if-active" as const,
+      input: [{ type: "text" as const, text: "ship the notes", mentions: [] }],
+      sendAt: Date.now() + 3_600_000,
     };
     const transaction = await beginSendThreadMessageTransaction({
       queryClient,
@@ -956,22 +964,19 @@ describe("thread runtime cache owner", () => {
     expect(transaction.kind).toBe("accepted-turn");
 
     applySendThreadMessageSuccess({
-      delivery: "deferred",
+      delivery: "queued",
       queryClient,
-      realtimeConnected: false,
+      realtimeConnected: true,
       request,
       transaction,
     });
     await Promise.resolve();
 
-    const timeline = queryClient.getQueryData<ThreadTimelineResponse>(
-      threadTimelineQueryKey("thread-1"),
-    );
-    expect(timeline?.rows).toHaveLength(1);
     expect(
-      queryClient.getQueryState(threadTimelineQueryKey("thread-1"))
-        ?.isInvalidated,
-    ).toBe(false);
+      queryClient.getQueryData<ThreadTimelineResponse>(
+        threadTimelineQueryKey("thread-1"),
+      )?.rows,
+    ).toEqual([]);
     expect(queryClient.getQueryData(threadQueryKey("thread-1"))).toMatchObject({
       status: "idle",
       runtime: { displayStatus: "idle" },
@@ -979,6 +984,10 @@ describe("thread runtime cache owner", () => {
     expect(
       queryClient.getQueryData(threadPromptHistoryQueryKey("thread-1")),
     ).toMatchObject([{ input: request.input }]);
+    expect(
+      queryClient.getQueryState(threadQueuedMessagesQueryKey("thread-1"))
+        ?.isInvalidated,
+    ).toBe(true);
   });
 
   it("keeps an accepted send local while realtime is connected: prompt history is prepended, not refetched, and default execution options only go stale", async () => {

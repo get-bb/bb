@@ -71,6 +71,10 @@ interface ThreadIdCacheArgs {
   threadId: string;
 }
 
+interface PrefetchThreadQueuedMessagesArgs extends ThreadIdCacheArgs {
+  load: (signal: AbortSignal) => Promise<ThreadQueuedMessageListResponse>;
+}
+
 type ThreadBannerActivityKind = "goal" | "plan";
 
 interface BeginCreateThreadTransactionArgs {
@@ -393,6 +397,7 @@ function buildOptimisticQueuedMessage({
 
   return {
     id: `optimistic-queued-${nanoid()}`,
+    threadId: request.id,
     content: request.input,
     model: request.model ?? defaultExecutionOptions?.model ?? "pending",
     reasoningLevel:
@@ -406,6 +411,11 @@ function buildOptimisticQueuedMessage({
     serviceTier:
       request.serviceTier ?? defaultExecutionOptions?.serviceTier ?? "default",
     groupWithNext: false,
+    sendAt: null,
+    waitingOn: null,
+    failureReason: null,
+    payload: { kind: "inline" },
+    editable: true,
     createdAt,
     updatedAt: createdAt,
   };
@@ -724,6 +734,17 @@ export async function beginCreateThreadTransaction({
   await queryClient.cancelQueries({ queryKey: threadsQueryKey() });
 }
 
+export function prefetchThreadQueuedMessages({
+  load,
+  queryClient,
+  threadId,
+}: PrefetchThreadQueuedMessagesArgs): Promise<void> {
+  return queryClient.prefetchQuery<ThreadQueuedMessageListResponse>({
+    queryKey: threadQueuedMessagesQueryKey(threadId),
+    queryFn: ({ signal }) => load(signal),
+  });
+}
+
 export function applyCreateThreadResult({
   queryClient,
   request,
@@ -848,7 +869,14 @@ export function applySendThreadMessageSuccess({
   request,
   transaction,
 }: ApplySendThreadMessageSuccessArgs): void {
-  if (delivery === "deferred" && transaction?.kind === "accepted-turn") {
+  if (delivery === "queued" && transaction?.kind === "accepted-turn") {
+    if (transaction.optimisticRowId) {
+      removeOptimisticTimelineRow(
+        queryClient,
+        request.id,
+        transaction.optimisticRowId,
+      );
+    }
     if (transaction.previousThread) {
       queryClient.setQueryData<ThreadResponse>(
         threadQueryKey(request.id),
@@ -863,6 +891,7 @@ export function applySendThreadMessageSuccess({
         input: request.input,
       }),
     );
+    invalidateThreadQueueQueries({ queryClient, threadId: request.id });
     return;
   }
   if (transaction?.kind === "queued-message") {

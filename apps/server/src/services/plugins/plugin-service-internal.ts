@@ -1,6 +1,10 @@
 import type { AiServiceRegistry } from "../ai/ai-service-registry.js";
 import type { DbConnection } from "@bb/db";
-import type { DynamicTool, Thread } from "@bb/domain";
+import type {
+  DynamicTool,
+  Thread,
+  ThreadQueuedMessage,
+} from "@bb/domain";
 import type { HostDaemonConnectTunnelIdentity } from "@bb/host-daemon-contract";
 import {
   pluginUpdateCheckEntrySchema,
@@ -72,6 +76,23 @@ export interface PluginServiceDeps {
   pluginHostArtifacts?: PluginHostArtifactRegistry;
   aiServices: AiServiceRegistry;
   onSettingsChanged?: (pluginId: string) => void;
+  /**
+   * Fired after a plugin stops being a registered owner — disabled or
+   * uninstalled, but *not* reloaded. Core state keyed by `plugin:<id>` (queue
+   * rows waiting on it) is cleared here instead of waiting for a sweep.
+   */
+  onPluginUnregistered?: (pluginId: string) => void;
+  /**
+   * Backs `bb.experimental_hooks.recheck()`: schedules a re-attempt of
+   * every plugin-queued row. Omitted only by isolated plugin tests, which have
+   * no thread queue — the call is then a no-op, exactly as it was when core
+   * drove this signal itself and no app had registered a listener.
+   */
+  requestQueueDrain?: () => void;
+  /** Per-handler hook decision box; tests shrink it to exercise the timeout path. */
+  pluginHookTimeoutMs?: number;
+  /** Thread DTO assembly for lifecycle events + plugin-signal broadcast +
+   * the `plugins-changed` system broadcast on lifecycle completion. */
   hub: Pick<
     NotificationHub,
     "getDaemonSessionIdForHost" | "notifyPluginSignal" | "notifySystem"
@@ -176,6 +197,19 @@ export interface PluginThreadEventEmitter {
   emitThreadFailed(thread: Thread): void;
   emitThreadArchived(thread: Thread): void;
   emitThreadDeleted(thread: Thread): void;
+  /**
+   * Queue lifecycle. The row is already in its new state when these fire; the
+   * DTO is built once and shared by every listener, exactly like the thread
+   * events above.
+   */
+  emitMessageQueued(entry: ThreadQueuedMessage): void;
+  emitMessageDispatched(entry: ThreadQueuedMessage): void;
+  /**
+   * A turn on this thread failed and the thread has already landed in `error`.
+   * Takes the id alone: the payload is read from the failed turn's own records,
+   * and only when a plugin is listening.
+   */
+  emitTurnFailed(threadId: string): void;
 }
 
 export type PluginWireLookup<T> =

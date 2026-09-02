@@ -11,6 +11,7 @@ import { createPortal } from "react-dom";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { usePersistentOverlayFocus } from "@bb/shared-ui/responsive-overlay";
 import { APP_OVERLAY_LAYER } from "@/components/ui/app-overlay-layers";
+import { useHorizontalDismissDrag } from "@/components/ui/use-horizontal-dismiss-drag";
 import {
   setCompactSecondaryPanelPresentation,
   type CompactSecondaryPanelPresentation,
@@ -19,6 +20,8 @@ import {
 const SHELF_TRANSITION_CLASS =
   "[transition:translate_220ms_cubic-bezier(0.32,0.72,0,1),width_220ms_cubic-bezier(0.32,0.72,0,1)]";
 const SHELF_SETTLE_MS = 220;
+const SHELF_DRAG_SETTLE_TRANSITION =
+  "translate 220ms cubic-bezier(0.32, 0.72, 0, 1)";
 
 interface CompactSecondaryPanelShelfProps {
   children: ReactNode;
@@ -39,12 +42,69 @@ export function CompactSecondaryPanelShelf({
 }: CompactSecondaryPanelShelfProps) {
   const labelId = useId();
   const panelRef = useRef<HTMLDivElement | null>(null);
+  const dismissRef = useRef<HTMLDivElement | null>(null);
+  const draggedInsetRef = useRef<HTMLElement | null>(null);
   const state = !open ? "closed" : presentation;
   const onCloseRef = useRef(onClose);
   useLayoutEffect(() => {
     onCloseRef.current = onClose;
   }, [onClose]);
   const requestClose = useCallback(() => onCloseRef.current(), []);
+
+  const clearDragStyles = useCallback(() => {
+    const inset = draggedInsetRef.current;
+    if (inset !== null) {
+      inset.style.translate = "";
+      inset.style.transition = "";
+      draggedInsetRef.current = null;
+    }
+    const dismiss = dismissRef.current;
+    if (dismiss !== null) {
+      dismiss.style.translate = "";
+      dismiss.style.transition = "";
+    }
+  }, []);
+
+  const applyDragProgress = useCallback(
+    ({
+      progress,
+      width,
+      settling,
+    }: {
+      progress: number;
+      width: number;
+      settling: boolean;
+    }) => {
+      const panel = panelRef.current;
+      const dismiss = dismissRef.current;
+      if (panel === null || dismiss === null) {
+        return;
+      }
+      const inset = panel.ownerDocument.querySelector('[data-sidebar="inset"]');
+      const translate = `${-width * progress}px`;
+      const transition = settling ? SHELF_DRAG_SETTLE_TRANSITION : "none";
+      if (inset instanceof HTMLElement) {
+        draggedInsetRef.current = inset;
+        inset.style.translate = translate;
+        inset.style.transition = transition;
+      }
+      dismiss.style.translate = translate;
+      dismiss.style.transition = transition;
+    },
+    [],
+  );
+  const { beginPointerDrag, beginTouchDrag } = useHorizontalDismissDrag({
+    direction: "right",
+    dismissTiming: "immediate",
+    enabled: open,
+    getWidth: () => panelRef.current?.clientWidth ?? 0,
+    onClear: clearDragStyles,
+    onDismiss: requestClose,
+    onProgress: applyDragProgress,
+    resetKey: presentation,
+    suppressClick: false,
+  });
+
   const [portalTarget, setPortalTarget] = useState<HTMLElement | null>(null);
   useEffect(() => {
     setPortalTarget(document.body);
@@ -77,6 +137,7 @@ export function CompactSecondaryPanelShelf({
   return createPortal(
     <>
       <div
+        ref={dismissRef}
         data-secondary-panel-shelf-dismiss=""
         data-testid="secondary-panel-shelf-dismiss"
         data-state={state}
@@ -90,6 +151,8 @@ export function CompactSecondaryPanelShelf({
           "data-[state=closed]:pointer-events-none data-[state=full]:pointer-events-none",
         )}
         onClick={requestClose}
+        onPointerDown={beginPointerDrag}
+        onTouchStart={beginTouchDrag}
       />
       <div
         ref={panelRef}
@@ -109,11 +172,13 @@ export function CompactSecondaryPanelShelf({
               : APP_OVERLAY_LAYER.secondaryPanel,
         }}
         className={cn(
-          "fixed inset-y-0 right-0 flex h-(--bb-shell-height) select-none flex-col overflow-hidden border-l border-border-seam bg-background outline-none",
+          "fixed inset-y-0 right-0 flex h-(--bb-shell-height) touch-pan-y select-none flex-col overflow-hidden border-l border-border-seam bg-background outline-none",
           "w-(--secondary-panel-width-mobile) data-[state=full]:w-full data-[state=full]:border-l-0",
           SHELF_TRANSITION_CLASS,
           "data-[state=closed]:invisible data-[state=closed]:[transition:visibility_0s_linear_220ms]",
         )}
+        onPointerDown={beginPointerDrag}
+        onTouchStart={beginTouchDrag}
       >
         {srLabel === undefined ? null : (
           <span id={labelId} className="sr-only">

@@ -33,10 +33,15 @@ import {
 } from "../src/data/sweeps.js";
 import { getDatabaseMaintenanceActivity } from "../src/data/maintenance.js";
 import { openSession } from "../src/data/sessions.js";
+import {
+  listDueScheduledQueuedThreadMessages,
+  listQueuedThreadMessagesByWaitHolder,
+} from "../src/data/queued-thread-messages.js";
 import { upsertHost } from "../src/data/hosts.js";
 import { createProject } from "../src/data/projects.js";
 import {
   createThread,
+  listRunningThreads,
   listThreadsWithPendingInteractionState,
 } from "../src/data/threads.js";
 
@@ -219,6 +224,70 @@ function assertEmittedQueryPlanUsesIndex(
 }
 
 describe("slow query index plans", () => {
+  // Both queue indexes are PARTIAL. A partial index is only usable when the
+  // query repeats its WHERE clause, so a refactor that drops one liveness
+  // predicate from the query — or adds one to the index — silently degrades
+  // the sweep to a full table scan. Nothing else would notice.
+  it("finds due scheduled queued messages through the partial due index", () => {
+    const { db } = setup();
+
+    const captured = captureStatements(db, () => {
+      expect(listDueScheduledQueuedThreadMessages(db, 1_000)).toEqual([]);
+    });
+    expect(captured).toHaveLength(1);
+    const details = queryPlanDetails({
+      db,
+      params: captured[0]!.params,
+      sql: captured[0]!.sql,
+    });
+    expect(details).toMatch(/USING INDEX queued_thread_messages_due_idx/u);
+    expect(details).not.toMatch(/SCAN queued_thread_messages/u);
+
+    db.$client.close();
+  });
+
+  it("finds a plugin's held queued messages through the partial holder index", () => {
+    const { db } = setup();
+
+    const captured = captureStatements(db, () => {
+      expect(
+        listQueuedThreadMessagesByWaitHolder(db, "plugin:limiter"),
+      ).toEqual([]);
+    });
+    expect(captured).toHaveLength(1);
+    const details = queryPlanDetails({
+      db,
+      params: captured[0]!.params,
+      sql: captured[0]!.sql,
+    });
+    expect(details).toMatch(
+      /USING INDEX queued_thread_messages_wait_holder_idx/u,
+    );
+    expect(details).not.toMatch(/SCAN queued_thread_messages/u);
+
+    db.$client.close();
+  });
+
+  it("finds the occupying threads through the archived/status index", () => {
+    // A dispatch gate calls this on every admission decision, so a plan that
+    // degraded to a table scan would put one on every send in the server.
+    const { db } = setup();
+
+    const captured = captureStatements(db, () => {
+      listRunningThreads(db);
+    });
+    expect(captured).toHaveLength(1);
+    const details = queryPlanDetails({
+      db,
+      params: captured[0]!.params,
+      sql: captured[0]!.sql,
+    });
+    expect(details).toMatch(/USING INDEX threads_archived_status_idx/u);
+    expect(details).not.toMatch(/SCAN threads/u);
+
+    db.$client.close();
+  });
+
   it("uses the thread/type/sequence index for filtered event pages", () => {
     const { db, thread } = setup();
 

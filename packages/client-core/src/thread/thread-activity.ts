@@ -1,5 +1,14 @@
 import { assertNever } from "@bb/core-ui";
-import type { Thread, ThreadListEntry, ThreadWithRuntime } from "@bb/domain";
+import type {
+  Thread,
+  ThreadListEntry,
+  ThreadQueuedWork,
+  ThreadWithRuntime,
+} from "@bb/domain";
+// Imported from the defining leaf module, not the timeline barrel: the sidebar
+// thread list reaches this helper before first paint, and the barrel would pull
+// the whole timeline (and @pierre/diffs, Shiki, KaTeX behind it) onto the boot
+// path for one predicate.
 import { isRunningThreadRuntimeDisplayStatus } from "../timeline/thread-runtime-status.js";
 import { isThreadRead } from "./thread-read-state.js";
 
@@ -56,6 +65,13 @@ export interface ThreadListIndicatorState {
   isPlanModeActive: boolean;
   isRuntimeActive: boolean;
   isWorkflowActive: boolean;
+  /**
+   * Whether the thread has work waiting on its queue. Read straight off the list
+   * entry rather than inferred from the thread's status: a `pending` thread is
+   * only the most obvious case, and an idle thread with a scheduled send or a
+   * plugin-queued follow-up is waiting just as much.
+   */
+  queuedWork: ThreadQueuedWork;
 }
 
 export type ThreadListIndicatorKind =
@@ -68,6 +84,8 @@ export type ThreadListIndicatorKind =
   | "plan-mode"
   | "goal"
   | "runtime"
+  | "queued-failed"
+  | "queued-waiting"
   | "draft"
   | "unread-success"
   | "none";
@@ -85,6 +103,8 @@ const THREAD_LIST_INDICATOR_LABELS: Record<
   "plan-mode": "Plan mode active",
   goal: "Goal active",
   runtime: "Thread working",
+  "queued-failed": "Queued message failed to send",
+  "queued-waiting": "Thread has a message waiting to send",
   draft: "Thread has unsubmitted draft",
   "unread-success": "Unread thread succeeded",
 };
@@ -124,6 +144,13 @@ export function resolveThreadListIndicator(
   if (state.isWorkflowActive) return "workflow";
   if (state.isBackgroundAgentActive) return "background-agent";
   if (state.isBackgroundCommandActive) return "background-command";
+  // Queued work outranks a draft: the draft is the user's to send whenever,
+  // while a queued row is work already committed that has not run yet. It sits
+  // below every working arm above deliberately — a thread that is BOTH running
+  // and holding a queued follow-up is best described by what it is doing, and
+  // the queue rows above its composer say the rest.
+  if (state.queuedWork === "failed") return "queued-failed";
+  if (state.queuedWork === "waiting") return "queued-waiting";
   if (state.hasUnsubmittedDraft) return "draft";
   if (state.hasUnreadSuccess) return "unread-success";
   return "none";
@@ -251,6 +278,9 @@ export function isUnreadDoneThread(thread: ThreadStatusShape): boolean {
     case "active":
     case "starting":
     case "stopping":
+    // A pending thread has never run, so it has no outcome to be unread
+    // about; it is waiting, not done.
+    case "pending":
       return false;
     default:
       return assertNever(thread.status);

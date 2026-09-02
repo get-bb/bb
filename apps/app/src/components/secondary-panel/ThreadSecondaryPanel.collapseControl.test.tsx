@@ -715,6 +715,23 @@ describe("ThreadSecondaryPanel hide control glyph", () => {
   });
 });
 
+describe("ThreadSecondaryPanel resize boundary", () => {
+  it("keeps the panel seam visible while the clipped panel surface moves", () => {
+    const view = renderPanel({
+      isConversationCollapsed: false,
+      onToggleConversationCollapse: noop,
+    });
+
+    const boundary = view.getByRole("separator", {
+      name: "Resize thread and right panel",
+    });
+    const seam = boundary.querySelector(
+      "span:not([data-panel-resize-hit-target])",
+    );
+    expect(seam?.className).toContain("bg-border-seam");
+  });
+});
+
 describe("ThreadSecondaryPanel full-screen control", () => {
   it("keeps Full Screen before Hide right panel in the trailing toolbar", () => {
     const view = renderPanel({

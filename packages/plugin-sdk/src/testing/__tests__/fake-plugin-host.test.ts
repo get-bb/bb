@@ -302,6 +302,55 @@ describe("settings", () => {
     expect(await handle.get()).toMatchObject({ mode: "fast" });
   });
 
+  it("validates strings and lets plugin server code persist its own settings", async () => {
+    const { bb, harness } = createFakePluginHost();
+    const handle = bb.settings.define({
+      notes: {
+        type: "string",
+        label: "Notes",
+        experimental_schema: z
+          .string()
+          .max(4, "Notes must be at most 4 characters"),
+        default: "",
+      },
+      payload: {
+        type: "string",
+        label: "Payload",
+        experimental_schema: z.string().superRefine((value, context) => {
+          if (value.length === 0) return;
+          try {
+            if (!Array.isArray(JSON.parse(value))) {
+              context.addIssue({
+                code: "custom",
+                message: "Payload must be a JSON array",
+              });
+            }
+          } catch {
+            context.addIssue({
+              code: "custom",
+              message: "Payload must be valid JSON",
+            });
+          }
+        }),
+        default: "",
+      },
+    });
+    const changes: string[] = [];
+    handle.onChange((next) => changes.push(next.notes));
+
+    await expect(handle.experimental_set({ notes: "test" })).resolves.toEqual({
+      notes: "test",
+      payload: "",
+    });
+    expect(changes).toEqual(["test"]);
+    await expect(harness.setSettings({ notes: "longer" })).rejects.toThrow(
+      "at most 4 characters",
+    );
+    await expect(harness.setSettings({ payload: "{}" })).rejects.toThrow(
+      "must be a JSON array",
+    );
+  });
+
   it("rejects duplicate and invalid descriptors at define time", () => {
     const { bb } = createFakePluginHost();
     defineSettings(bb);
@@ -330,6 +379,40 @@ describe("settings", () => {
         notes: { type: "string", label: "Notes", experimental_multiline: true },
       }),
     ).not.toThrow();
+    expect(() =>
+      bb.settings.define({
+        payload: {
+          type: "string",
+          label: "Payload",
+          experimental_schema: z
+            .string()
+            .regex(/^\{\}$/u, "Payload must be a JSON object"),
+          default: "[]",
+        },
+      }),
+    ).toThrow(
+      'invalid default for setting "payload": Payload must be a JSON object',
+    );
+    expect(() =>
+      bb.settings.define({
+        normalized: {
+          type: "string",
+          label: "Normalized",
+          experimental_schema: z.string().transform((value) => value.trim()),
+          default: " padded ",
+        },
+      }),
+    ).toThrow('schema for setting "normalized" must not transform its value');
+    expect(() =>
+      bb.settings.define({
+        remote: {
+          type: "string",
+          label: "Remote",
+          experimental_schema: z.string().refine(async () => true),
+          default: "value",
+        },
+      }),
+    ).toThrow(/schema for setting "remote".*synchron/u);
   });
 });
 

@@ -4,6 +4,9 @@ import { threadEventSchema, threadEventTypeSchema } from "./provider-event.js";
 import {
   systemMessageKindSchema,
   systemMessageSubjectSchema,
+} from "./system-message.js";
+import {
+  refineTurnRequestRetryMarker,
   turnRequestEventDataSchema,
   turnRequestTargetSchema,
 } from "./thread-events.js";
@@ -88,12 +91,14 @@ const LEGACY_TURN_REQUEST_TARGET = {
   kind: "new-turn",
 } satisfies TurnRequestTarget;
 
-const storedTurnRequestEventDataSchema = turnRequestEventDataSchema.extend({
-  senderThreadId: z.string().nullable().default(null),
-  target: turnRequestTargetSchema.default(LEGACY_TURN_REQUEST_TARGET),
-  systemMessageKind: systemMessageKindSchema.default("unlabeled"),
-  systemMessageSubject: systemMessageSubjectSchema.nullable().default(null),
-});
+const storedTurnRequestEventDataSchema = turnRequestEventDataSchema
+  .extend({
+    senderThreadId: z.string().nullable().default(null),
+    target: turnRequestTargetSchema.default(LEGACY_TURN_REQUEST_TARGET),
+    systemMessageKind: systemMessageKindSchema.default("unlabeled"),
+    systemMessageSubject: systemMessageSubjectSchema.nullable().default(null),
+  })
+  .superRefine(refineTurnRequestRetryMarker);
 
 function parseStoredTurnRequestEventData(
   args: StoredThreadEventParseArgs,

@@ -181,8 +181,7 @@ describe("docs anatomy manifest", () => {
 
     const sectionSelectors: Record<string, string> = {
       "top-reserve": '[data-testid="app-sidebar-top-reserve-row"]',
-      "primary-actions": '[data-testid="app-sidebar-primary-actions"]',
-      "plugin-nav": '[data-testid="plugin-nav-sidebar-items"]',
+      "sidebar-navigation": '[data-testid="sidebar-navigation-region"]',
       "thread-list": '[data-sidebar="content"]',
       footer: '[data-sidebar="footer"]',
     };

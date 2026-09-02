@@ -285,6 +285,7 @@ function makeWorktreeComboThreads(combo: readonly RollupSignal[]) {
     environmentId,
     environmentHostId: HOST_IDS.local,
     environmentBranchName: `bb/status-${key}`,
+    queuedWork: "none",
     environmentWorkspaceDisplayKind: "managed-worktree",
   } satisfies Partial<ThreadListEntry>;
 
@@ -324,6 +325,7 @@ function makeParentRollupThreads(combo: readonly RollupSignal[]) {
   const parent = makeThread(`thr_parent_${key}`, "Collapsed parent", {
     environmentHostId: HOST_IDS.local,
     environmentBranchName: BRANCH_NAMES.default,
+    queuedWork: "none",
     environmentWorkspaceDisplayKind: "managed-worktree",
   });
 

@@ -1,5 +1,6 @@
 import {
   createEnvironment,
+  getAppSettings,
   getEnvironment,
   getThread,
   type CreateEnvironmentInput,
@@ -22,6 +23,7 @@ import { advanceEnvironmentProvisioning } from "../environments/environment-prov
 import { applyLoggedEnvironmentLifecycleEventInTransaction } from "../environments/lifecycle-outcome.js";
 import type { EnvironmentProvisionRequest } from "../environments/environment-provision-request.js";
 import { ensureHostSessionReadyForWork } from "../hosts/host-lifecycle.js";
+import { requestQueuedMessageDispatch } from "./queued-message-dispatch.js";
 import {
   appendSystemErrorEvent,
   appendThreadProvisioningEvent,
@@ -143,6 +145,7 @@ interface BuildEnvironmentProvisionRequestArgs {
 
 interface BuildUnmanagedCheckoutArgs {
   branch: UnmanagedBranchSpec;
+  branchPrefix: string;
   context: ThreadProvisionEnvironmentProvisioningContext;
   thread: Thread;
 }
@@ -182,6 +185,7 @@ interface RequestPreparedEnvironmentProvisionArgs {
 }
 
 interface DirectUnmanagedEnvironmentPlanArgs {
+  branchPrefix: string;
   intent: DirectUnmanagedIntent;
   thread: Thread;
 }
@@ -216,6 +220,7 @@ type CheckoutUnmanagedEnvironmentProvisionResult =
   | { kind: "active-provision" };
 
 interface ManagedEnvironmentPlanArgs {
+  branchPrefix: string;
   dataDir: string;
   hostId: string;
   sourcePath: string;
@@ -355,10 +360,17 @@ export function ensureWorkspaceReadyEventInTransaction(
 }
 
 export function failThreadProvisioning(
-  deps: Pick<AppDeps, "db" | "hub" | "logger" | "providerRegistry">,
+  deps: ThreadProvisioningDeps,
   args: FailThreadProvisioningArgs,
 ): void {
   forgetActiveThreadProvisionContext(args.thread.id);
+  // Provisioning is not coming, so nothing may keep waiting on it. The
+  // messages stay queued rather than being discarded: they are still the
+  // user's, and retrying the thread is exactly when they should go.
+  requestQueuedMessageDispatch(deps, {
+    kind: "provisioning-ended",
+    threadId: args.thread.id,
+  });
   appendSystemErrorEvent(deps, {
     threadId: args.thread.id,
     environmentId: args.environmentId,
@@ -705,6 +717,7 @@ function buildUnmanagedCheckout(
   return {
     kind: "new",
     name: buildManagedBranchName({
+      branchPrefix: args.branchPrefix,
       branchSlug: args.context.request.branchSlug,
       threadId: args.thread.id,
     }),
@@ -714,12 +727,14 @@ function buildUnmanagedCheckout(
 
 function buildCheckoutUnmanagedEnvironmentProvisionRequest(
   args: BuildEnvironmentProvisionRequestArgs & {
+    branchPrefix: string;
     intent: CheckoutUnmanagedIntent;
     thread: Thread;
   },
 ): EnvironmentProvisionRequest {
   const checkout = buildUnmanagedCheckout({
     branch: args.intent.branch,
+    branchPrefix: args.branchPrefix,
     context: args.context,
     thread: args.thread,
   });
@@ -753,6 +768,7 @@ function buildDirectUnmanagedEnvironmentPlan(
       const checkout = args.intent.branch
         ? buildUnmanagedCheckout({
             branch: args.intent.branch,
+            branchPrefix: args.branchPrefix,
             context,
             thread: args.thread,
           })
@@ -789,6 +805,7 @@ function buildManagedEnvironmentPlan(
     buildRequest: ({ context, environment }) => {
       const command = buildEnvironmentProvisionCommand({
         branchName: buildManagedBranchName({
+          branchPrefix: args.branchPrefix,
           branchSlug: context.request.branchSlug,
           threadId: args.thread.id,
         }),
@@ -850,6 +867,7 @@ async function resolveEnvironmentCreationPlan(
   switch (args.intent.type) {
     case "direct-unmanaged":
       return buildDirectUnmanagedEnvironmentPlan({
+        branchPrefix: getAppSettings(deps.db).managedBranchPrefix,
         intent: args.intent,
         thread: args.thread,
       });
@@ -858,6 +876,7 @@ async function resolveEnvironmentCreationPlan(
         hostId: args.intent.hostId,
       });
       return buildManagedEnvironmentPlan({
+        branchPrefix: getAppSettings(deps.db).managedBranchPrefix,
         dataDir: hostSession.dataDir,
         hostId: args.intent.hostId,
         sourcePath: args.intent.sourcePath,
@@ -886,6 +905,7 @@ function requestCheckoutUnmanagedEnvironmentProvision(
   deps: ThreadProvisionWriteDeps,
   args: RequestCheckoutUnmanagedEnvironmentProvisionArgs,
 ): CheckoutUnmanagedEnvironmentProvisionResult {
+  const branchPrefix = getAppSettings(deps.db).managedBranchPrefix;
   return deps.db.transaction(
     (tx) => {
       if (hasActiveEnvironmentProvision(args.environment)) {
@@ -921,6 +941,7 @@ function requestCheckoutUnmanagedEnvironmentProvision(
             ),
           });
       const request = buildCheckoutUnmanagedEnvironmentProvisionRequest({
+        branchPrefix,
         context,
         environment: args.environment,
         intent: args.intent,
@@ -960,7 +981,7 @@ function requestCheckoutUnmanagedEnvironmentProvision(
 }
 
 function queueCheckoutUnmanagedEnvironment(
-  deps: ThreadProvisionWriteDeps,
+  deps: ThreadProvisioningDeps,
   args: QueueCheckoutUnmanagedEnvironmentArgs,
 ): ThreadProvisioningResult {
   const result = requestCheckoutUnmanagedEnvironmentProvision(deps, {
@@ -1062,7 +1083,7 @@ async function requestPreparedEnvironmentProvision(
 }
 
 function attachActiveProvisioningEnvironment(
-  deps: ThreadProvisionWriteDeps,
+  deps: ThreadProvisioningDeps,
   args: EnvironmentPayloadThreadArgs,
 ): ThreadProvisioningResult {
   if (!hasActiveEnvironmentProvision(args.environment)) {
@@ -1088,7 +1109,7 @@ function attachActiveProvisioningEnvironment(
 }
 
 function ensureCheckoutUnmanagedEnvironmentRequested(
-  deps: ThreadProvisionWriteDeps,
+  deps: ThreadProvisioningDeps,
   args: CheckoutUnmanagedEnvironmentArgs,
 ): ThreadProvisioningResult {
   if (!isAttachableContext(args.context)) {

@@ -75,7 +75,7 @@ interface QueryInSqliteVariableBatchesArgs<TValue, TRow> {
   variableCountPerValue: number;
 }
 
-function queryInSqliteVariableBatches<TValue, TRow>(
+export function queryInSqliteVariableBatches<TValue, TRow>(
   args: QueryInSqliteVariableBatchesArgs<TValue, TRow>,
 ): TRow[] {
   const values = [
@@ -1798,6 +1798,121 @@ export function getStoredTurnRequestEventForTurn(
           sql`json_extract(${events.data}, '$.requestId') = ${requestIdResult.data}`,
         ),
       )
+      .limit(1)
+      .get() ?? null
+  );
+}
+
+/**
+ * The `client/turn/requested` row for one request id.
+ *
+ * A retry hold stores only the request id it re-submits, so releasing it needs
+ * exactly this lookup — the turn-keyed variant above cannot serve it, because a
+ * request whose turn never started has no `turn/input/accepted` to join through.
+ */
+export function getStoredTurnRequestEventByRequestId(
+  db: DbQueryConnection,
+  args: { threadId: string; requestId: string },
+): StoredTurnRequestEventRow | null {
+  return (
+    db
+      .select({
+        data: events.data,
+        sequence: events.sequence,
+        threadId: events.threadId,
+        type: events.type,
+      })
+      .from(events)
+      .where(
+        and(
+          eq(events.threadId, args.threadId),
+          eq(events.type, "client/turn/requested"),
+          sql`json_extract(${events.data}, '$.requestId') = ${args.requestId}`,
+        ),
+      )
+      .limit(1)
+      .get() ?? null
+  );
+}
+
+export interface StoredThreadEventDataRow {
+  data: string;
+  sequence: number;
+  turnId: string | null;
+  type: ThreadEventType;
+}
+
+/**
+ * The newest row of any of `types`, optionally restricted to what came after a
+ * sequence.
+ *
+ * Assembling a turn's failure context means asking two questions of the log —
+ * "how did the provider describe this failure" and "what rate-limit windows did
+ * it last report" — and both are one indexed row, not a scan the caller filters.
+ */
+export function getLatestStoredThreadEventOfTypes(
+  db: DbQueryConnection,
+  args: {
+    threadId: string;
+    types: readonly ThreadEventType[];
+    afterSequence?: number;
+  },
+): StoredThreadEventDataRow | null {
+  if (args.types.length === 0) {
+    return null;
+  }
+  return (
+    db
+      .select({
+        data: events.data,
+        sequence: events.sequence,
+        turnId: events.turnId,
+        type: events.type,
+      })
+      .from(events)
+      .where(
+        and(
+          eq(events.threadId, args.threadId),
+          inArray(events.type, [...args.types]),
+          ...(args.afterSequence === undefined
+            ? []
+            : [gt(events.sequence, args.afterSequence)]),
+        ),
+      )
+      .orderBy(desc(events.sequence))
+      .limit(1)
+      .get() ?? null
+  );
+}
+
+/**
+ * The newest rate-limit snapshot this thread saw for one provider.
+ *
+ * Filtered on the provider inside the query: a thread's log can carry snapshots
+ * from more than one provider id, and the caller wants its own thread's
+ * provider rather than whatever reported last.
+ */
+export function getLatestStoredRateLimitsEventForProvider(
+  db: DbQueryConnection,
+  args: { threadId: string; providerId: string },
+): StoredThreadEventDataRow | null {
+  return (
+    db
+      .select({
+        data: events.data,
+        sequence: events.sequence,
+        turnId: events.turnId,
+        type: events.type,
+      })
+      .from(events)
+      .where(
+        and(
+          eq(events.threadId, args.threadId),
+          eq(events.type, "provider/rateLimits/updated"),
+          sql`json_extract(${events.data}, '$.rateLimits.providerId') = ${args.providerId}`,
+        ),
+      )
+      .orderBy(desc(events.sequence))
       .limit(1)
       .get() ?? null
   );

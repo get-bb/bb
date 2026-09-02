@@ -4,8 +4,10 @@ import { cleanup, renderHook } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { InstalledPlugin } from "@bb/server-contract";
 import { resetPluginSlotStoreForTest } from "@/lib/plugin-slots";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
+import { pluginListQueryKey } from "@/hooks/queries/query-keys";
 import { useSettingsNavState } from "./settings-nav";
 
 const mocks = vi.hoisted(() => ({
@@ -17,14 +19,47 @@ vi.mock("@/hooks/useHostDaemon", () => ({
   useLocalHostDaemonAccess: () => ({ accessState: mocks.accessState }),
 }));
 
-function wrapperFor(path: string) {
-  const { wrapper: QueryWrapper } = createQueryClientTestHarness();
+function wrapperFor(path: string, plugins: readonly InstalledPlugin[] = []) {
+  const { queryClient, wrapper: QueryWrapper } = createQueryClientTestHarness();
+  queryClient.setQueryData(pluginListQueryKey(true), plugins);
   return function Wrapper({ children }: { children: ReactNode }) {
     return (
       <QueryWrapper>
         <MemoryRouter initialEntries={[path]}>{children}</MemoryRouter>
       </QueryWrapper>
     );
+  };
+}
+
+function disabledPlugin(): InstalledPlugin {
+  return {
+    id: "linear",
+    source: "path:/plugins/linear",
+    rootDir: "/plugins/linear",
+    version: "0.1.0",
+    enabled: false,
+    status: "disabled",
+    statusDetail: null,
+    description: "Linear integration",
+    name: "Linear",
+    icon: null,
+    iconUrl: null,
+    logoUrl: null,
+    logoDarkUrl: null,
+    hasSettings: false,
+    handlerStats: { count: 0, totalMs: 0, maxMs: 0, errorCount: 0 },
+    services: [],
+    schedules: [],
+    cliCommand: null,
+    capabilities: [],
+    app: { hasApp: false, bundle: null },
+    provenance: "direct",
+    isOrphanedBuiltin: false,
+    publisherLabel: null,
+    sourceDisplay: "path · /plugins/linear",
+    updateState: {},
+    providerIds: [],
+    icons: {},
   };
 }
 
@@ -84,5 +119,16 @@ describe("useSettingsNavState", () => {
     expect(result.current.sections.map((section) => section.id)).not.toContain(
       "plugins",
     );
+  });
+
+  it("keeps a disabled plugin reachable in the secondary plugin group", () => {
+    const { result } = renderHook(() => useSettingsNavState(), {
+      wrapper: wrapperFor("/settings", [disabledPlugin()]),
+    });
+
+    expect(result.current.pluginEntries).toEqual([]);
+    expect(result.current.otherPluginEntries).toEqual([
+      { icon: null, id: "linear", label: "Linear" },
+    ]);
   });
 });

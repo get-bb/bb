@@ -1,4 +1,11 @@
-import { createThread, getEnvironment, getThread, listEvents } from "@bb/db";
+import {
+  createThread,
+  getAppSettings,
+  getEnvironment,
+  getThread,
+  listEvents,
+  setAppSettings,
+} from "@bb/db";
 import {
   type ResolvedThreadExecutionOptions,
   systemThreadProvisioningEventDataSchema,
@@ -144,6 +151,59 @@ describe("generated managed branch names", () => {
         `bb/improve-branch-names-${thread.id}`,
       );
       expect(piAiMocks.complete).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it("applies the configured managed branch prefix", async () => {
+    mockThreadMetadata({
+      branchSlug: "unrelated-slug",
+      title: "Custom Prefix Branch",
+    });
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps, {
+        id: "host-custom-branch-prefix",
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+        path: "/tmp/custom-branch-prefix-project",
+      });
+      setAppSettings(harness.db, {
+        ...getAppSettings(harness.db),
+        managedBranchPrefix: "sawyer/wt-",
+      });
+
+      const response = await harness.app.request("/api/v1/threads", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          origin: "app",
+          projectId: project.id,
+          providerId: "codex",
+          model: "gpt-5",
+          input: [{ type: "text", text: "Use the configured branch prefix" }],
+          environment: {
+            type: "host",
+            hostId: host.id,
+            workspace: {
+              type: "managed-worktree",
+              baseBranch: { kind: "default" },
+            },
+          },
+        }),
+      });
+
+      expect(response.status).toBe(201);
+      const thread = threadSchema.parse(await readJson(response));
+
+      const queued = await waitForQueuedCommand(
+        harness,
+        ({ command }) => command.type === "environment.provision",
+      );
+      const managedCommand =
+        requireManagedWorktreeEnvironmentProvisionLiveCommand(queued);
+      expect(managedCommand.command.branchName).toBe(
+        `sawyer/wt-custom-prefix-branch-${thread.id}`,
+      );
     });
   });
 

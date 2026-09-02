@@ -304,6 +304,14 @@ export function registerHostRoutes(
         bridgeLaunch,
       },
     });
+    if (
+      result.events.some((event) => event.type === "completed" && event.success)
+    ) {
+      deps.providerRegistry.forgetInstalledKey({
+        hostId,
+        providerId: payload.provider,
+      });
+    }
     return new Response(providerCliInstallEventsToNdjson(result.events), {
       headers: {
         "content-type": "application/x-ndjson; charset=utf-8",

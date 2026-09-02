@@ -39,7 +39,6 @@ interface ThreadShowCommandOptions {
   diffTarget?: string;
   diffSha?: string;
   diffMergeBase?: string;
-  mergeBaseBranches?: boolean;
   json?: boolean;
 }
 
@@ -74,7 +73,6 @@ interface ThreadShowJsonPayload extends ThreadStatusPayload {
   pendingTodos: ThreadTimelinePendingTodos | null;
   workStatus?: WorkspaceStatus | null;
   gitDiff?: ThreadGitDiffResponse | null;
-  mergeBaseBranches?: string[];
 }
 
 interface ThreadShowPullRequestPayload {
@@ -207,10 +205,6 @@ export function registerShowCommand(
       "--diff-merge-base <branch>",
       "Merge base branch for --diff-target branch_committed or all",
     )
-    .option(
-      "--merge-base-branches",
-      "Include available merge-base branches in output",
-    )
     .action(
       action(async (id: string | undefined, opts: ThreadShowCommandOptions) => {
         const threadId = requireThreadIdOrSelf(id, opts);
@@ -302,14 +296,6 @@ export function registerShowCommand(
           });
         }
 
-        let mergeBaseBranches: string[] | undefined;
-        if (opts.mergeBaseBranches && thread.environmentId) {
-          const branchResponse = await sdk.environments.diffBranches({
-            environmentId: thread.environmentId,
-          });
-          mergeBaseBranches = branchResponse.branches;
-        }
-
         const fetchedPullRequest = thread.environmentId
           ? await fetchPullRequest({
               environmentId: thread.environmentId,
@@ -348,9 +334,6 @@ export function registerShowCommand(
             jsonPayload.gitDiff = fetchedGitDiff.available
               ? fetchedGitDiff.diff
               : null;
-          }
-          if (mergeBaseBranches !== undefined) {
-            jsonPayload.mergeBaseBranches = mergeBaseBranches;
           }
           outputJson(opts, jsonPayload);
           return;
@@ -408,18 +391,6 @@ export function registerShowCommand(
             }
           } else {
             console.log(`Git diff: ${fetchedGitDiff.message}`);
-          }
-        }
-
-        if (mergeBaseBranches !== undefined) {
-          console.log("");
-          if (mergeBaseBranches.length === 0) {
-            console.log("Merge-base branches: none");
-          } else {
-            console.log("Merge-base branches:");
-            for (const branch of mergeBaseBranches) {
-              console.log(`  ${branch}`);
-            }
           }
         }
       }),

@@ -140,6 +140,162 @@ and reads nothing under that method, so the constant names a lane that no
 longer exists. Kept because 0.4.x published it; remove at the next major
 version.
 
+## Settings schemas and server writes
+
+**What it does.** A `PluginSettingDescriptor` can declare an
+`experimental_schema` Standard Schema validator that runs on the server for
+every proposed value; Zod schemas qualify. Settings schemas must validate
+synchronously without transforming their primitive value. The generated form
+autosaves one field at a time and displays the first validation issue beneath
+that field. A `PluginSettingsHandle` can call `experimental_set` to validate
+and persist its own fields, receive the effective values, fire `onChange`, and
+notify settings consumers just like a settings route or `bb plugin config`
+write.
+
+**Audit before stabilizing.**
+
+- Confirm synchronous, non-transforming validation remains sufficient.
+- Decide whether settings errors need structured issue paths in addition to
+  the first user-facing message.
+- Confirm schemas should continue running for defaults at registration.
+- Exercise concurrent route, CLI, and plugin-owned writes, including secret
+  values and unsets, before stabilizing `experimental_set`.
+- Decide whether schemas and server-side writes stabilize independently.
+
+## `bb.experimental_hooks` (`on`, `recheck`)
+
+**What it does.** The one plugin surface that _decides_ rather than observes.
+`bb.experimental_hooks.on(hook, handler)` registers this plugin's answer to a
+hook — a question core stops to ask and then acts on the answer to. Its
+counterpart is `bb.events.on`, whose handlers are told what already happened
+and whose return value is ignored; the split is the one git draws between
+pre-commit and post-commit hooks, and it is why the two are separate
+namespaces rather than one `on`.
+
+One hook today. `"message.dispatch"` is THE admission checkpoint: it runs
+before every message reaches a provider — a thread's first message, a
+follow-up, a steer, a drained queue row, a retry of a failed turn — and it runs
+identically for all of them. The handler receives a typed context (project,
+environment/host, prompt blocks plus a plain-text view, the resolved execution
+tuple with per-field provenance, origin/parent provenance, the target thread,
+whether the attempt would `start-turn` or `join-turn`, and the queued row when
+the attempt is a re-attempt) and answers `proceed`, `wait` (queue the message as
+a row with a reason and an optional `sendAt`), or `reject` (a synchronous 409
+carrying the plugin's message). A handler cannot rewrite the dispatch it is
+deciding about: there is no amendment arm.
+
+Handlers run as a deterministic chain in plugin install order, `reject`
+short-circuits, `wait` decisions collect across a full pass, and the FIRST
+waiter owns the row while the rest have their reasons appended to it. The whole
+pass runs under a single server-wide async lock. A handler that throws or
+exceeds a 10s decision box fails the attempt with the plugin named
+(fail-closed, the `deriveProviderOptions` precedent).
+
+`bb.experimental_hooks.recheck("message.dispatch")` is the second member and the pair to
+`on`: `on` answers the question core asks, `recheck` asks core to ask it
+again. It schedules a walk that re-attempts every plugin-queued row in queue
+order — claim-CAS exactly-once, full hook pass per row, still-blocked rows
+re-queue, the per-thread re-queue pacing bounding the churn — and bursts
+coalesce into one walk. It resolves when the walk is SCHEDULED, not when it
+finishes: the walk has no caller to report to (a failed re-attempt lands on its
+row, like the due sweep's), and resolving on completion would mean awaiting a
+full hook pass from inside whatever asked, which for a handler holding the
+evaluation lock could never complete.
+
+The split it draws: **core owns the re-draining and the clock; plugins own
+every other wait condition and tell core when to re-ask.** Core's own wakes are
+the `sendAt` due sweep, thread-idle, workspace-ready, interaction-settled,
+send-now and the orphan sweep — all of them queue mechanics or core waits.
+Capacity is not one of them: `concurrency-limit` subscribes to
+`thread.idle`/`thread.failed`/`thread.archived`/`thread.deleted` and calls
+`recheck("message.dispatch")` itself. That retires the future `clearWait` need for
+external-event waits: a plugin does not release a row, it wakes core and core
+re-asks, so a wake that was not warranted is safe by construction.
+
+A plugin's wait therefore clears when the row's `sendAt` comes due, when some
+plugin requests a drain and this handler now proceeds, when the user sends it
+now, or when the orphan sweep clears a wait whose plugin is no longer running.
+
+**Audit before stabilizing.**
+
+- **One hook is not a shape.** The registry, the map and the `on(hook, handler)`
+  signature are all built for several hooks, and there is one. Confirm the
+  second hook fits the shape before stabilizing it — or collapse the argument.
+- **`wait` returns no row id.** A handler returns a reason; the id arrives later
+  on `message.queued`. Every plugin that must act on its own wait therefore
+  correlates by ordering or re-queries `threads.queue.list({ waitHolder })`.
+  Decide whether the decision should be able to name a correlation key.
+- **A wait has no plugin-driven release, only a plugin-driven re-ask.**
+  `recheck("message.dispatch")` names no row, so a plugin whose one condition resolved wakes
+  every plugin-queued row in the server and every handler re-decides. That is
+  what makes an unwarranted wake safe, and it is also its cost. Confirm the
+  whole-queue walk is still right when there are many plugin waits and many
+  waiters, and decide then whether a scoped variant is worth the correlation
+  problem it reintroduces (see the row-id bullet above).
+- **`recheck("message.dispatch")` is unauthenticated in both directions.** Any plugin can
+  wake rows held by any other, and core does not tell a handler why it is being
+  re-asked. Both are deliberate — a wait is a decision, not a lease — but
+  confirm before stabilizing that no plugin needs to distinguish "core's clock"
+  from "somebody asked".
+- **Resolving on schedule is a contract, not an implementation detail.** A
+  caller cannot await the walk, so it cannot observe whether its own row went.
+  Confirm the alternative (resolve on completion, with the lock-reentrancy
+  hazard) is genuinely unwanted rather than merely unbuilt.
+- **A handler's `sendAt` and a user's `--send-at` are the same column.** A
+  plugin wait with a `sendAt` sets the row's `sendAt`, which is also what
+  `--send-at` sets. Confirm nothing renders a plugin's instant as a user's
+  schedule.
+- **Send-now bypasses EVERY plugin check.** A user's "Send now" skips the pass
+  entirely, so a content-policy `reject` is skipped with it. That is a
+  deliberate loosening of the old skip-owner-only rule; confirm it before
+  stabilizing, or split `wait` bypass from `reject` bypass.
+- **"Never started" is now a thread status, not an event-log fact.** That
+  replaced a `getLastProviderThreadId(...) === null` probe on a hot-ish path.
+  Confirm `pending` is maintained everywhere that probe used to be consulted.
+- **The context DTOs.** `thread`, `project`, `environment`, `host` and
+  `queuedMessage` are public DTOs; confirm they are what a plugin should couple
+  to.
+- **The single server-wide lock.** One slow handler delays every dispatch in the
+  server, up to its box.
+
+## `message.queued` / `message.dispatched` / `turn.failed` (`bb.events.on`)
+
+**What it does.** Three announcements on the observe-only `bb.events.on`
+registry.
+
+`message.queued` and `message.dispatched` each carry the `ThreadQueuedMessage`
+DTO that `GET /threads/:id/queued-messages` serves. `message.queued` fires when
+a row's wait is rewritten as well as when the row is first queued, because a row
+that moved from one wait to another is news to whoever was waiting on the old
+one.
+
+`turn.failed` fires after a turn failed and the thread has landed in `error`. It
+carries ids and failure facts only — `threadId`, the failed turn's `requestId`,
+the provider `turnId`, the provider's `ProviderErrorInfo`, the latest
+`ProviderRateLimitState` and `attemptNumber` — and no thread DTO or copy of the
+message, because a retry is asked for by reference with
+`bb.sdk.threads.retry({ threadId, turnRequestId, sendAt })` and anything else is
+one `threads.get` away and fresher for being read when it is used. It is an
+announcement, not a question: the failure stands as core applied it, a handler's
+return value is ignored, and a handler that throws is isolated like any other
+event handler. A broken retry plugin can therefore cost a retry; it can never
+make failures unrecoverable.
+
+**Audit before stabilizing.** These are still the only non-thread events on
+`bb.events.on`, so the interface is called `PluginThreadEventPayloads` and its
+handler type `PluginThreadEventHandler`; renaming both project-wide is part of
+stabilizing. Decide whether every plugin should see every queued row (it does
+today, and filtering on `entry.waitingOn` is the documented pattern) or whether
+a plugin should only see the rows whose wait it owns. Decide too whether
+`message.queued` firing on every rewritten wait is what a listener wants, or
+whether a separate `message.updated` belongs alongside it — the timeline event
+already distinguishes the two. There is no cancellation event: a plugin that
+needs a teardown signal has none today, so decide whether one belongs here
+before this is stable. For `turn.failed`, confirm the payload answers every
+question a retry policy asks without replaying the event log, and note that
+attempt caps are entirely the plugin's: core enforces no ceiling on retry chains
+beyond one live retry row per original request.
+
 ## `bb.branding.experimental_icons` (manifest) and namespaced presentation glyphs
 
 **What it does.** A plugin ships SVG files and declares a name → file map in
@@ -1553,6 +1709,37 @@ Before stabilization, audit:
    re-litigate that in the stabilization audit; audit only whether the two
    _contexts_ should merge.
 
+## `app.slots.experimental_sidebarNavigation` (`@get-bb/plugin-sdk/app`)
+
+**What it does.** Replaces the bounded sidebar navigation controls for New
+thread, Search threads, Extensions, and plugin panel destinations. The plugin
+receives semantic items, split-drag bindings, and one host activation callback.
+BB retains the drawer, thread list, footer, resize handle, and hidden-body
+shortcut policy.
+
+Search activation opens the quick palette. The removed inline sidebar search
+field, query state, combobox, and result list do not form part of this API.
+`experimental_Original` bypasses replacement resolution. A crash restores only
+the bounded controls and leaves the retained sidebar regions mounted.
+
+**Audit before stabilizing.**
+
+1. **Boundary.** Verify plugins can express useful navigation without control
+   of the drawer, thread list, footer, resize handle, or shortcuts.
+2. **Semantic items.** Confirm the action and icon variants cover current
+   navigation without exposing routes or host React elements.
+3. **Split contract.** Audit `experimental_splitProps` and
+   `experimental_activate(..., { openInSplit })` for pointer, keyboard,
+   modifier-click, pane-cap, and compact behavior.
+4. **Search action.** Confirm a semantic quick-palette action remains useful
+   without the former inline query and result UI.
+5. **Crash and delegation.** Verify `experimental_Original` and crash fallback
+   never recurse or remount the thread list and footer.
+6. **Arbitration.** Confirm Automatic remains the correct default when several
+   navigation replacements exist.
+7. **Accessibility.** Validate labels, `aria-current`, shortcut metadata,
+   disabled state, and focus order in third-party markup.
+
 ## `app.slots.experimental_threadList` (`@get-bb/plugin-sdk/app`)
 
 **Kept experimental (2026-08-22).** examples only; no shipped consumer has tested the arbitration/fallback model or the accessibility contract.
@@ -1887,3 +2074,62 @@ other pane's copy (or release its owned state). The thread-list slot omits it
 deliberately: it mounts once, and a crash there should disable it everywhere.
 Confirm that split before stabilizing, and decide whether other multi-mount
 slots need the same treatment.
+
+## `useComposer().experimental_submit` (`@get-bb/plugin-sdk/app`)
+
+**What it does.** Runs the composer's own submit pipeline with the draft that
+is on screen, queueing the result until `sendAt` instead of dispatching it.
+In a thread composer that is a queued row waiting on the clock; in the
+new-thread composer the thread is created `pending` and its first message is
+the queued row, so nothing provisions until the row comes due. The point is
+that everything the user selected travels with the
+submission — attachments, @-mentions, and for a create the provider, model,
+reasoning level, service tier, permission mode and environment — none of
+which is reachable from a plugin backend, so a
+plugin-issued `threads.send`/`threads.spawn` would silently schedule a
+different message from the one being composed. Backed host-side by an optional
+`submit` on the internal `PluginComposerHost`, supplied by the thread
+composer (`ThreadDetailPromptArea`) and the new-thread composer
+(`NewThreadComposer`) and omitted everywhere else. Rejects with a
+user-presentable message when the composer refuses; request failures reject
+too, after the host has restored the draft. Sole consumer:
+`plugins/scheduled-send`.
+
+**Audit before stabilizing.**
+
+1. **Options is a one-field object with no "submit now" arm.** `sendAt` is
+   required, so the method can only schedule. That is deliberate — an
+   unconditional "send the user's draft" capability is a much larger surface
+   than scheduling needs — but confirm the shape before a second option
+   (`mode`, `senderThreadId`, a queue hint) has to be added, because adding one
+   makes `sendAt` optional and re-opens the "submit now" question.
+2. **Two of four scopes are unsupported.** A queued-message editor and a side
+   chat have no `submit`, and the route-draft fallback (a plugin surface
+   mounted outside any composer) has none either. All three reject with the
+   same "cannot schedule a submission" message, so a plugin cannot tell
+   "unsupported here" from "no composer mounted". Decide whether
+   `ComposerView` should advertise submit capability so a `+` menu row can
+   disable itself instead of failing on click.
+3. **Double error reporting on the create path.** A failed scheduled _send_
+   is reported only through the rejection (`useSendThreadMessage` sets
+   `showErrorToast: false`). A failed scheduled _create_ is also toasted by
+   the create mutation's default error handling, so the user sees the reason
+   twice — once in the plugin's picker and once in a toast. Decide whether the
+   host should suppress its toast for programmatic submissions.
+4. **Freshness of `sendAt`.** The host rejects a non-future `sendAt` at
+   call time and the server accepts any non-negative timestamp, dispatching a
+   past one inline at once. The only guard against a time that goes stale
+   between the plugin computing it and the request landing is that window
+   being small. Decide whether the send/create routes should refuse a
+   `sendAt` in the past outright.
+5. **No submission identity is returned.** The method resolves with nothing, so
+   a plugin cannot address the queued row it just created (to edit or delete
+   it) without listing the thread's queue. Confirm whether the queued message
+   id belongs in the result.
+6. **`NewThreadRequest.sendAt`.** The same field is now visible to plugins
+   hosting `experimental_NewThreadComposer`: a scheduled submission there
+   reaches the plugin's `onSubmit` carrying `sendAt`, which the plugin must
+   forward to `threads.spawn`. A plugin that reconstructs the spawn request
+   field-by-field instead of forwarding it will drop the schedule silently.
+   Confirm that forwarding expectation is documented well enough, or make the
+   composer refuse to schedule when it is plugin-hosted.

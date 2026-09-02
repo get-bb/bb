@@ -48,8 +48,11 @@ import {
 } from "../projects/project-deletion.js";
 import { hasLiveThreadStartInFlight } from "../threads/thread-lifecycle.js";
 import { advanceThreadProvisioning } from "../threads/thread-provisioning.js";
-import { runQueuedMessageAutoSendSweep } from "../threads/queued-messages.js";
-import { runDeferredThreadMessageSweep } from "../threads/thread-send-request.js";
+import {
+  runQueuedMessageDispatch,
+  type QueueWaitPluginDirectory,
+} from "../threads/queued-message-dispatch.js";
+import { deliverLegacyDeferredThreadMessages } from "../threads/legacy-deferred-messages.js";
 import { LIVE_DAEMON_COMMAND_TIMEOUT_MS } from "../hosts/live-command.js";
 import { runEventLoopWork, runEventLoopWorkSync } from "./event-loop-work.js";
 
@@ -61,6 +64,8 @@ interface PluginScheduleSweeper {
 
 type PeriodicSweepDeps = LoggedPendingInteractionWorkSessionDeps & {
   pluginSchedules: PluginScheduleSweeper;
+  /** Liveness directory for `plugin:<id>` wait holders. */
+  plugins: QueueWaitPluginDirectory;
 };
 
 const DATABASE_MAINTENANCE_CHECK_INTERVAL_MS = 60 * 60_000;
@@ -549,13 +554,28 @@ const PERIODIC_SWEEP_JOBS: PeriodicSweepJob[] = [
     cadenceMs: 0,
     category: "durable-intent-retry",
     name: "queued-message-auto-send",
-    run: runQueuedMessageAutoSendSweep,
+    run: (deps, now) =>
+      runQueuedMessageDispatch(deps, {
+        kind: "idle-recovery",
+        now,
+      }),
   },
   {
     cadenceMs: 0,
     category: "durable-intent-retry",
-    name: "deferred-thread-message-flush",
-    run: runDeferredThreadMessageSweep,
+    name: "due-scheduled-queue-dispatch",
+    run: (deps, now) =>
+      runQueuedMessageDispatch(deps, { kind: "time-reached", now }),
+  },
+  {
+    cadenceMs: 0,
+    category: "durable-intent-retry",
+    name: "orphaned-queue-wait-clear",
+    run: (deps) =>
+      runQueuedMessageDispatch(deps, {
+        kind: "orphaned-plugin-recovery",
+        plugins: deps.plugins,
+      }),
   },
   {
     cadenceMs: 0,
@@ -586,6 +606,7 @@ const PERIODIC_SWEEP_JOBS: PeriodicSweepJob[] = [
 export async function runStartupRecoverySweep(
   deps: LoggedPendingInteractionWorkSessionDeps,
 ): Promise<void> {
+  await deliverLegacyDeferredThreadMessages(deps);
   await runEnvironmentProvisioningSweep(deps);
   await runThreadLifecycleSweep(deps);
   recoverOrphanedEnvironmentDestroyRequests(deps, {

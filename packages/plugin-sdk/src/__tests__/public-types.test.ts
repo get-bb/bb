@@ -8,6 +8,7 @@ type ExpectedBbPluginApiKey =
   | "cli"
   | "events"
   | "experimental_aiServices"
+  | "experimental_hooks"
   | "hosts"
   | "http"
   | "log"
@@ -25,6 +26,8 @@ type ExpectedBbPluginApiKey =
 
 const EXPECTED_BACKEND_ROOT_TYPE_EXPORTS = [
   "BbPluginApi",
+  "MessageDispatchHookContext",
+  "MessageDispatchHookDecision",
   "PluginAgents",
   "PluginAiServiceDeclaration",
   "PluginAiServiceKind",
@@ -46,7 +49,15 @@ const EXPECTED_BACKEND_ROOT_TYPE_EXPORTS = [
   "PluginCliOutputLimitError",
   "PluginCliRegistration",
   "PluginCliResult",
+  "PluginDispatchAttemptKind",
+  "PluginDispatchExecution",
+  "PluginDispatchExecutionSources",
+  "PluginDispatchInput",
   "PluginEvents",
+  "PluginHookHandler",
+  "PluginHookName",
+  "PluginHookSignatures",
+  "PluginHooks",
   "PluginHosts",
   "PluginHttp",
   "PluginHttpAuthMode",
@@ -90,6 +101,7 @@ const EXPECTED_BACKEND_ROOT_TYPE_EXPORTS = [
   "PluginThreadEventHandler",
   "PluginThreadEventName",
   "PluginThreadEventPayloads",
+  "PluginTurnFailedEvent",
   "PluginUi",
 ] as const;
 

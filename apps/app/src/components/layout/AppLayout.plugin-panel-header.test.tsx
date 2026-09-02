@@ -6,9 +6,7 @@ import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AppLayout } from "./AppLayout";
 import { APP_OVERLAY_LAYER } from "@/components/ui/app-overlay-layers";
-import {
-  setCompactSecondaryPanelPresentation,
-} from "@/components/ui/secondary-panel-shelf-visibility";
+import { setCompactSecondaryPanelPresentation } from "@/components/ui/secondary-panel-shelf-visibility";
 
 const viewportState = vi.hoisted(() => ({ compact: false }));
 
@@ -36,8 +34,15 @@ vi.mock("@/hooks/queries/system-queries", () => ({
   }),
 }));
 
+vi.mock("@/hooks/useHostDaemon", () => ({
+  useHostDaemon: () => ({ hasDaemon: false }),
+  useLocalHostDaemonAccess: () => ({ accessState: "unavailable" }),
+}));
+
 vi.mock("@/lib/plugin-slots", () => ({
   usePluginSlots: () => ({
+    commandPaletteActions: [],
+    fileOpeners: [],
     navPanels: [
       {
         pluginId: "helm-wiki",
@@ -46,6 +51,7 @@ vi.mock("@/lib/plugin-slots", () => ({
         icon: "Book",
       },
     ],
+    settingsSections: [],
   }),
 }));
 
@@ -194,9 +200,7 @@ describe("AppLayout plugin panel header", () => {
     renderPluginPanelRoute();
 
     const trigger = screen.getByTestId("app-sidebar-trigger-overlay");
-    expect(trigger.style.zIndex).toBe(
-      String(APP_OVERLAY_LAYER.sidebarTrigger),
-    );
+    expect(trigger.style.zIndex).toBe(String(APP_OVERLAY_LAYER.sidebarTrigger));
     act(() => setCompactSecondaryPanelPresentation("shelf"));
     expect(screen.queryByTestId("app-sidebar-trigger-overlay")).toBeNull();
 

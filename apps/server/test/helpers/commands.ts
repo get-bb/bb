@@ -143,7 +143,7 @@ interface RegisterTestHostRpcCaptureArgs {
   ) => void;
 }
 
-interface TestHostRpcSocket {
+export interface TestHostRpcSocket {
   close(code?: number, reason?: string): void;
   send(data: string): void;
 }
@@ -352,10 +352,15 @@ function nextTestRpcCursor(
   return nextCursor;
 }
 
+/**
+ * Registers the capturing daemon socket for a host and returns it, so a test
+ * that reconnects a host can hand the same socket to the real
+ * `onDaemonSocketOpen` instead of replacing the capture with a stub.
+ */
 export function registerTestHostRpcCapture(
   deps: Pick<TestAppHarness, "db" | "hub">,
   args: RegisterTestHostRpcCaptureArgs,
-): void {
+): TestHostRpcSocket {
   testRpcCursorByHost.delete(args.hostId);
   for (let index = pendingHostRpcRequests.length - 1; index >= 0; index -= 1) {
     const queued = pendingHostRpcRequests[index];
@@ -454,6 +459,7 @@ export function registerTestHostRpcCapture(
     },
   };
   deps.hub.registerDaemon(args.sessionId, args.hostId, socket);
+  return socket;
 }
 
 function removePendingHostRpcRequest(requestId: string): void {

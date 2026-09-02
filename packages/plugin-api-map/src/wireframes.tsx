@@ -71,6 +71,7 @@ export function useSurfaceMap(): SurfaceMapState {
 
 export const APP_SHELL_MARKS = [
   "nav-panel",
+  "sidebar-navigation",
   "thread-list",
   "thread-row-status",
   "sidebar-footer",
@@ -523,35 +524,39 @@ const SIDEBAR_SECTION_RENDERERS: Record<string, () => ReactNode> = {
       <MiniIcon icon={ArrowRight01Icon} className="ml-1.5 size-3.5" />
     </div>
   ),
-  "primary-actions": () => (
-    <div
-      data-guide-fixture="sidebar-primary-actions"
-      className="flex items-center gap-2 px-2.5 py-2.5"
-    >
-      <span className="flex h-6.5 flex-1 items-center gap-2 rounded-md px-2 text-foreground">
-        <MiniIcon icon={PlusSignIcon} className="text-foreground" />
-        New thread
-      </span>
-      <MiniIcon icon={Search01Icon} />
-    </div>
-  ),
-  "plugin-nav": () => (
-    <Mark
-      id="nav-panel"
-      label="Plugin nav panels, above the thread list"
-      className="mx-1.5 px-1.5 pb-2.5 pt-1"
+  "sidebar-navigation": () => (
+    <RegionMark
+      id="sidebar-navigation"
+      label="The sidebar navigation controls, replaceable by one plugin"
       showChip={false}
     >
-      <span className="flex h-6.5 items-center gap-2 rounded-md px-2">
-        <MiniIcon icon={ToolboxIcon} />
-        Extensions
-      </span>
-      {}
-      <span className="flex h-6.5 items-center gap-2 rounded-md bg-sidebar-accent px-2 font-medium text-sidebar-foreground">
-        <PluginGlyph />
-        Your panel
-      </span>
-    </Mark>
+      <div
+        data-guide-fixture="sidebar-navigation-primary-actions"
+        className="flex items-center gap-2 px-2 py-2"
+      >
+        <span className="flex h-6.5 flex-1 items-center gap-2 rounded-md px-2 text-foreground">
+          <MiniIcon icon={PlusSignIcon} className="text-foreground" />
+          New thread
+        </span>
+        <MiniIcon icon={Search01Icon} />
+        <span className="sr-only">Search threads</span>
+      </div>
+      <Mark
+        id="nav-panel"
+        label="Plugin nav panels, above the thread list"
+        className="mx-1.5 space-y-0.5 px-2 pb-2"
+        showChip={false}
+      >
+        <span className="flex h-6.5 items-center gap-2 rounded-md px-2">
+          <MiniIcon icon={ToolboxIcon} />
+          Extensions
+        </span>
+        <span className="flex h-6.5 items-center gap-2 rounded-md bg-sidebar-accent px-2 font-medium text-sidebar-foreground">
+          <PluginGlyph />
+          Your panel
+        </span>
+      </Mark>
+    </RegionMark>
   ),
   "thread-list": () => (
     <RegionMark
@@ -904,6 +909,12 @@ export function AppShellWireframe() {
         id="nav-panel"
         label="Plugin nav panels, above the thread list"
         anchor='[data-guide-region="nav-panel"]'
+        at="start"
+      />
+      <MeasuredBadge
+        id="sidebar-navigation"
+        label="The sidebar navigation controls, replaceable by one plugin"
+        anchor='[data-guide-region="sidebar-navigation"]'
         at="start"
       />
       <MeasuredBadge
@@ -1708,9 +1719,16 @@ export function SettingsWireframe() {
                 <span className="ml-auto size-3.5 rounded-full bg-background" />
               </span>
             </span>
-            <span className="flex justify-end pt-2">
-              <span className="flex h-6 items-center rounded-md border border-border bg-card px-2 text-foreground">
-                Save settings
+            <span className="block py-1.5">
+              <span className="block text-foreground">Custom instructions</span>
+              <span className="block pt-1 leading-relaxed">
+                Added to every agent task on this host.
+              </span>
+              <span
+                aria-hidden
+                className="mt-2 block h-12 rounded-md border border-border bg-card px-2 py-1.5 text-subtle-foreground"
+              >
+                Keep answers concise and run focused tests.
               </span>
             </span>
           </Mark>

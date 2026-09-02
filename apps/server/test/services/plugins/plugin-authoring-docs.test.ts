@@ -27,6 +27,7 @@ import {
   type PluginSettingDescriptor,
   type PluginSettingsSectionProps,
   type PluginSidebarFooterActionProps,
+  type ExperimentalSidebarNavigationProps,
   type PluginSourceCodeRendererProps,
   type PluginThreadHeaderActionProps,
   type PluginThreadListProps,
@@ -160,6 +161,7 @@ const BB_PLUGIN_API_KEYS = [
   "server",
   "hosts",
   "experimental_aiServices",
+  "experimental_hooks",
   "sdk",
   "onDispose",
 ] as const satisfies readonly (keyof BbPluginApi)[];
@@ -209,6 +211,17 @@ const THREAD_EVENT_PAYLOAD_FIELDS = {
   "thread.failed": ["thread", "error"],
   "thread.archived": ["thread"],
   "thread.deleted": ["thread"],
+  "message.queued": ["entry"],
+  "message.dispatched": ["entry"],
+  "turn.failed": [
+    "threadId",
+    "requestId",
+    "turnId",
+    "errorInfo",
+    "inputAccepted",
+    "rateLimits",
+    "attemptNumber",
+  ],
 } as const satisfies {
   [E in keyof PluginThreadEventPayloads]: readonly (keyof PluginThreadEventPayloads[E])[];
 };
@@ -232,6 +245,7 @@ type SlotPropsByName = {
   experimental_newThreadPanelAction: PluginNewThreadPanelProps;
   pendingInteraction: PluginPendingInteractionProps;
   sidebarFooterAction: PluginSidebarFooterActionProps;
+  experimental_sidebarNavigation: ExperimentalSidebarNavigationProps;
   experimental_threadList: PluginThreadListProps;
   experimental_threadHeaderAction: PluginThreadHeaderActionProps;
   fileOpener: PluginFileOpenerProps;
@@ -301,6 +315,13 @@ const FRONTEND_SLOT_PROP_FIELDS = {
   experimental_newThreadPanelAction: ["projectId", "params"],
   pendingInteraction: ["interaction", "submit", "cancel"],
   sidebarFooterAction: [],
+  experimental_sidebarNavigation: [
+    "items",
+    "activeItemId",
+    "isCompactViewport",
+    "experimental_activate",
+    "experimental_Original",
+  ],
   experimental_threadList: [
     "activeThreadId",
     "activeProjectId",

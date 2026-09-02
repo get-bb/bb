@@ -3,7 +3,11 @@
 import { useEffect, type ReactNode } from "react";
 import { Provider } from "jotai";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { PERSONAL_PROJECT_ID, type ThreadListEntry } from "@bb/domain";
+import {
+  defaultAppSettings,
+  PERSONAL_PROJECT_ID,
+  type ThreadListEntry,
+} from "@bb/domain";
 import {
   act,
   cleanup,
@@ -132,7 +136,9 @@ vi.mock("@/hooks/queries/system-queries", () => ({
   useSystemProviderStates: () => ({ data: undefined, isPending: false }),
   useKnownProviderModelCatalogScope: () => undefined,
   useHostProviderCliStatus: () => ({ data: undefined }),
-  useSystemConfig: () => ({ data: { primaryHostId: "host_1" } }),
+  useSystemConfig: () => ({
+    data: { primaryHostId: "host_1", generalSettings: defaultAppSettings },
+  }),
   useSystemExecutionOptions: () => ({
     data: {
       providers: [
@@ -729,6 +735,7 @@ describe("PluginNewThreadComposer seeding", () => {
         environmentHostId: "host_1",
         environmentName: "source",
         environmentBranchName: "feature/source",
+        queuedWork: "none",
         environmentWorkspaceDisplayKind: "managed-worktree",
       }),
     ];
@@ -844,6 +851,7 @@ describe("PluginNewThreadComposer seeding", () => {
         environmentHostId: "host_1",
         environmentName: "source",
         environmentBranchName: "feature/source",
+        queuedWork: "none",
         environmentWorkspaceDisplayKind: "managed-worktree",
       }),
     ];

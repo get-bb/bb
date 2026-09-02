@@ -78,6 +78,9 @@ const LARGE_CLAUDE_CONTEXT_WINDOW = 1_000_000;
 const LARGE_CLAUDE_CONTEXT_MODELS = new Set([
   "best",
   "claude-fable-5",
+  "claude-fable-5-1",
+  "claude-mythos-5",
+  "claude-mythos-5-1",
   "fable",
 ]);
 

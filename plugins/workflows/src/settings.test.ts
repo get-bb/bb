@@ -147,7 +147,7 @@ describe("workflow settings policy", () => {
     );
   });
 
-  it("accepts a valid update after replacing invalid persisted settings", async () => {
+  it("rejects invalid updates before replacing invalid persisted settings", async () => {
     const { bb, harness } = createFakePluginHost({
       pluginId: "workflows",
       settings: { retentionDays: "forever" },
@@ -161,8 +161,11 @@ describe("workflow settings policy", () => {
       (error) => errors.push(error.message),
     );
 
-    await harness.setSettings({ maxActiveRuns: "0" });
-    expect(errors.at(-1)).toContain("Maximum active runs");
+    await expect(harness.setSettings({ maxActiveRuns: "0" })).rejects.toThrow(
+      "Maximum active runs must be from 1 through 32",
+    );
+    expect(errors).toEqual([]);
+    expect(changes).toEqual([]);
     await harness.setSettings({ retentionDays: "14", maxActiveRuns: "6" });
     expect(changes.at(-1)).toMatchObject({
       retentionDays: 14,

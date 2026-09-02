@@ -39,18 +39,28 @@ It reconciles when the plugin starts, a host connects, its configuration
 changes, or a worker exits unexpectedly. Disabling the plugin disposes its host
 workers and their child processes.
 
-The builtin Provider retry plugin is enabled on fresh installations. It
-continues Codex and Claude Code turns after a structured subscription window
-resets, keeps its timers in memory, coordinates waits by machine/provider
-subscription, and adds a composer banner with a Cancel action while an
-automatic retry is pending.
-The banner disappears when the retry starts, is cancelled, or the user
-continues the thread. A server restart or plugin reload clears pending timers
-without changing the original failed thread. Inspect it with
-`bb provider-retry status`. See `bb guide providers` for the eligibility rules.
-Prior output or tool activity does not block recovery. Its `maximumWait`
-setting defaults to `6 hours`; choose `24 hours` or `No limit` from the plugin
-detail page, or configure it with
+The builtin Concurrency limit plugin controls how many threads run at once.
+Its settings page has an optional overall limit and one limit per host. Host
+limits default to Auto: one thread per available processor.
+Leave an override blank to return it to Auto; use 0 to pause new work. The CLI
+equivalents are:
+
+```
+bb concurrency-limit status [--json]
+bb concurrency-limit global [unlimited|<limit>] [--json]
+bb concurrency-limit host <host-id> [auto|<limit>] [--json]
+```
+
+The builtin Provider retry plugin is enabled on fresh installations. It retries
+Codex and Claude Code turns after structured provider overloads and subscription
+window limits. A pending retry is a queued row on the thread, so a server
+restart does not lose it, and that row — on the queue card above the composer,
+with its reason, its time and its own Cancel — is the only place the wait is
+narrated. Inspect it with `bb provider-retry status`. See
+`bb guide providers` for the eligibility rules. The plugin only reacts to a
+failed turn — it never blocks a send. Prior output or tool activity does not
+block recovery. Its `maximumWait` setting defaults to `6 hours`; choose
+`24 hours` or `No limit` from the plugin detail page, or configure it with
 `bb plugin config provider-retry set maximumWait <value>`.
 
 The builtin Workflows plugin runs durable provider-independent JavaScript

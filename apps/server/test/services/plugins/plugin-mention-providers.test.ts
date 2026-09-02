@@ -396,6 +396,10 @@ describe("plugin mention providers (bb.ui.registerMentionProvider)", () => {
     });
 
     await sendQueuedMessage(harness.deps, {
+      claimPolicy: {
+        kind: "automatic",
+        isGroupEligible: () => true,
+      },
       threadId: thread.id,
       queuedMessageId: queued.id,
       mode: "auto",

@@ -534,14 +534,20 @@ export function useSetFixedRightTerminalActiveTerminal(
 export function useRemoveFixedRightTerminalTab(
   panelStateId: FixedPanelTabsPanelStateId,
   syncThreadId: FixedPanelTabsSyncThreadId,
+  onCloseLastTab?: () => void,
 ): FixedPanelTerminalIdRemover {
   const updateState = useUpdateFixedPanelTabsState(panelStateId, syncThreadId);
   return useCallback(
     (terminalId: string) => {
-      updateState((current) =>
-        removeFixedRightTerminalTabInState(current, terminalId),
-      );
+      let didCloseLastTab = false;
+      updateState((current) => {
+        const next = removeFixedRightTerminalTabInState(current, terminalId);
+        didCloseLastTab =
+          next !== current && next.secondary.tabs.length === 0;
+        return next;
+      });
+      if (didCloseLastTab) onCloseLastTab?.();
     },
-    [updateState],
+    [onCloseLastTab, updateState],
   );
 }

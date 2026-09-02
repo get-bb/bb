@@ -92,7 +92,9 @@ interface BuildFollowUpSubmitModeArgs {
 
 interface BuildSideChatSubmitModeArgs {
   childThreadId: string | null;
+  hasPendingInteraction: boolean;
   isDefaultExecutionOptionsLoading: boolean;
+  isPendingInteractionsInitialLoading: boolean;
   isStopRequested: boolean;
   onStop: () => void;
   runtimeDisplayStatus: ThreadRuntimeDisplayStatus;
@@ -157,7 +159,9 @@ export function buildFollowUpSubmitMode({
 
 export function buildSideChatSubmitMode({
   childThreadId,
+  hasPendingInteraction,
   isDefaultExecutionOptionsLoading,
+  isPendingInteractionsInitialLoading,
   isStopRequested,
   onStop,
   runtimeDisplayStatus,
@@ -168,9 +172,9 @@ export function buildSideChatSubmitMode({
       : { kind: "ready" };
   }
   return buildFollowUpSubmitMode({
-    hasPendingInteraction: false,
+    hasPendingInteraction,
     isDefaultExecutionOptionsLoading,
-    isPendingInteractionsInitialLoading: false,
+    isPendingInteractionsInitialLoading,
     isStopRequested,
     onStop,
     runtimeDisplayStatus,

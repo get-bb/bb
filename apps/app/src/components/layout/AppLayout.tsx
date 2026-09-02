@@ -1,8 +1,4 @@
-import {
-  type MouseEvent as ReactMouseEvent,
-  type Ref,
-  type ReactNode,
-} from "react";
+import { type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
 import {
   useCallback,
   useEffect,
@@ -29,6 +25,7 @@ import {
 } from "@/components/thread/ThreadTitleMentions";
 import { AppCommandShortcutHint } from "@/components/commands/AppCommandShortcutHint";
 import { CommandPalette } from "@/components/commands/CommandPalette";
+import { NotificationCenter } from "@/components/notifications/NotificationCenter";
 import {
   resolveAutomationBreadcrumbs,
   resolveToolsAreaHeaderMeta,
@@ -160,17 +157,13 @@ const sidebarOpenAtom = atomWithStorage<boolean>(
 );
 
 interface SidebarStateBridgeProps {
-  providerRef: Ref<HTMLDivElement>;
   children: ReactNode;
 }
 
 type SidebarResizeMouseEvent = ReactMouseEvent<HTMLDivElement>;
 type SidebarOpenChangeHandler = (open: boolean) => void;
 
-function SidebarStateBridge({
-  providerRef,
-  children,
-}: SidebarStateBridgeProps) {
+function SidebarStateBridge({ children }: SidebarStateBridgeProps) {
   const [open, setOpen] = useAtom(sidebarOpenAtom);
   const sidebarWidth = useAtomValue(sidebarWidthAtom);
   const sidebarLiveWidth = useAtomValue(sidebarLiveWidthAtom);
@@ -187,7 +180,6 @@ function SidebarStateBridge({
   });
   return (
     <SidebarProvider
-      ref={providerRef}
       width={`${sidebarLiveWidth ?? sidebarWidth}px`}
       data-testid="app-layout-root"
       open={open}
@@ -218,10 +210,7 @@ function SidebarTriggerOverlay({
     () => "closed",
   );
   const shortcut = useAppCommandShortcut("sidebar.toggle");
-  if (
-    isCompactViewport &&
-    compactSecondaryPanelPresentation !== "closed"
-  ) {
+  if (isCompactViewport && compactSecondaryPanelPresentation !== "closed") {
     return null;
   }
   const triggerProps = {
@@ -386,14 +375,12 @@ export function AppLayout({ children }: AppLayoutProps) {
   const isCompactViewport = useIsCompactViewport();
   const store = useStore();
   const contentShellRef = useRef<HTMLDivElement>(null);
-  const providerRef = useRef<HTMLDivElement>(null);
   const restoreIOSViewportOnKeyboardDismissal = useMemo(
     () => shouldRestoreIOSViewportOnKeyboardDismissal(navigator),
     [],
   );
   useMobileVisualViewportHeight(
     contentShellRef,
-    providerRef,
     isCompactViewport,
     restoreIOSViewportOnKeyboardDismissal,
   );
@@ -757,7 +744,7 @@ export function AppLayout({ children }: AppLayoutProps) {
     <ProjectActionsProvider>
       <ThreadTitleMentionResourcesProvider {...titleMentionResources}>
         <ThreadActionsProvider>
-          <SidebarStateBridge providerRef={providerRef}>
+          <SidebarStateBridge>
             <AppLayoutSidebar
               mode={
                 isGlobalSettingsView
@@ -812,6 +799,7 @@ export function AppLayout({ children }: AppLayoutProps) {
             threadId={threadId ?? null}
             projectId={projectId ?? null}
           />
+          <NotificationCenter />
           <ProjectPathDialog
             target={quickCreateProject.projectPathDialog.target}
             pending={quickCreateProject.isCreating}

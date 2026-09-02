@@ -253,6 +253,7 @@ function threadListEntry(
     environmentHostId: "host_toc",
     environmentName: "ToC environment",
     environmentBranchName: "main",
+    queuedWork: "none",
     environmentWorkspaceDisplayKind: "managed-worktree",
     ...thread,
   };

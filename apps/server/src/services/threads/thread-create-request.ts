@@ -14,6 +14,12 @@ import type {
 export interface ThreadCreateServiceRequestInput {
   environment: CreateThreadEnvironmentArgs;
   executionInputSources?: CreateThreadRequest["executionInputSources"];
+  /**
+   * Epoch ms the first message should dispatch at. Present ⇒ the thread is
+   * created `pending` with no turn and the first message is queued as a row
+   * waiting on the clock.
+   */
+  sendAt?: CreateThreadRequest["sendAt"];
   input: PromptInput[];
   sectionId?: CreateThreadRequest["sectionId"];
   model?: CreateThreadRequest["model"];

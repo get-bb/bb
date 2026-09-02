@@ -10,6 +10,7 @@ import type {
   PluginSettingDescriptors,
   PluginSettingValue,
 } from "@get-bb/plugin-sdk";
+import type { PluginSettingDescriptor as PublicPluginSettingDescriptor } from "@bb/server-contract";
 import { validateSettingsUpdate } from "@get-bb/plugin-sdk/internal/host-policy";
 import { deleteSecretFile, writeSecretFile } from "@bb/secret-storage";
 
@@ -130,8 +131,16 @@ export async function writePluginSettingsUpdate(
 }
 
 export interface PluginSettingsView {
-  schema: PluginSettingDescriptors;
+  schema: Record<string, PublicPluginSettingDescriptor>;
   values: Record<string, unknown>;
+}
+
+function publicSettingDescriptor(
+  descriptor: PluginSettingDescriptor,
+): PublicPluginSettingDescriptor {
+  const publicDescriptor = { ...descriptor };
+  delete publicDescriptor.experimental_schema;
+  return publicDescriptor;
 }
 
 export async function buildPluginSettingsView(
@@ -150,5 +159,13 @@ export async function buildPluginSettingsView(
       values[key] = effective[key];
     }
   }
-  return { schema: args.descriptors, values };
+  return {
+    schema: Object.fromEntries(
+      Object.entries(args.descriptors).map(([key, descriptor]) => [
+        key,
+        publicSettingDescriptor(descriptor),
+      ]),
+    ),
+    values,
+  };
 }

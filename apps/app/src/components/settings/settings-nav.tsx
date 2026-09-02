@@ -1,54 +1,56 @@
+import { useMemo } from "react";
 import { matchPath, useLocation } from "react-router-dom";
-import type { IconName } from "@bb/shared-ui/icon";
 import { useHostDaemon, useLocalHostDaemonAccess } from "@/hooks/useHostDaemon";
-import { usePluginSlots } from "@/lib/plugin-slots";
+import { usePluginSlots, type PluginFileOpenerSlot } from "@/lib/plugin-slots";
 import { usePluginList } from "@/hooks/queries/plugin-settings-queries";
 import {
   SETTINGS_MACHINE_ROUTE_PATH,
   SETTINGS_PLUGIN_ROUTE_PATH,
   SETTINGS_SECTION_ROUTE_PATH,
 } from "@/lib/route-paths";
-
-export const SETTINGS_NAV_SECTIONS = [
-  { icon: "Settings", id: "general", label: "General" },
-  { icon: "Bot", id: "providers", label: "Providers" },
-  { icon: "Palette", id: "appearance", label: "Appearance" },
-  { icon: "SlidersHorizontal", id: "keyboard", label: "Keyboard" },
-  { icon: "ChartColumn", id: "usage", label: "Usage limits" },
-  { icon: "Folder", id: "files", label: "Files" },
-  { icon: "Laptop", id: "machines", label: "Machines" },
-  { icon: "PackageReceive", id: "updates", label: "Updates" },
-  { icon: "Puzzle", id: "marketplaces", label: "Plugin marketplaces" },
-  { icon: "Beaker", id: "experiments", label: "Experiments" },
-  { icon: "MessageSquare", id: "community", label: "Community" },
-  { icon: "Archive", id: "archived", label: "Archived threads" },
-] as const satisfies readonly {
-  icon: IconName;
-  id: string;
-  label: string;
-}[];
-
-type SettingsNavSection = (typeof SETTINGS_NAV_SECTIONS)[number];
-
-export type SettingsSectionId = SettingsNavSection["id"];
-
-function isSettingsSectionId(value: string): value is SettingsSectionId {
-  return SETTINGS_NAV_SECTIONS.some((section) => section.id === value);
-}
+import {
+  isSettingsSectionId,
+  SETTINGS_NAV_SECTIONS,
+  type SettingsNavSection,
+  type SettingsSectionId,
+} from "./settings-sections";
+import {
+  buildPluginSettingsEntries,
+  type PluginSettingsEntry,
+} from "./plugin-settings-entries";
 
 export interface SettingsNavState {
   activeSection: SettingsSectionId | null;
   hasUnknownSection: boolean;
   activePluginId: string | null;
-  pluginEntries: readonly { id: string; label: string; icon: string | null }[];
+  otherPluginEntries: readonly PluginSettingsEntry[];
+  pluginEntries: readonly PluginSettingsEntry[];
   sections: readonly SettingsNavSection[];
+}
+
+export function useSettingsNavSections(
+  fileOpeners: readonly PluginFileOpenerSlot[],
+): readonly SettingsNavSection[] {
+  const { hasDaemon } = useHostDaemon();
+  const { accessState } = useLocalHostDaemonAccess();
+
+  return useMemo(
+    () =>
+      SETTINGS_NAV_SECTIONS.filter(
+        (section) =>
+          section.id !== "files" ||
+          hasDaemon ||
+          accessState !== "unavailable" ||
+          fileOpeners.length > 0,
+      ),
+    [accessState, fileOpeners.length, hasDaemon],
+  );
 }
 
 export function useSettingsNavState(): SettingsNavState {
   const location = useLocation();
-  const { hasDaemon } = useHostDaemon();
-  const { accessState } = useLocalHostDaemonAccess();
   const { fileOpeners, settingsSections } = usePluginSlots();
+  const sections = useSettingsNavSections(fileOpeners);
   const pluginListQuery = usePluginList({ enabled: true });
 
   const sectionMatch = matchPath(
@@ -74,33 +76,18 @@ export function useSettingsNavState(): SettingsNavState {
           ? sectionParam
           : "general";
 
-  const sections = SETTINGS_NAV_SECTIONS.filter((section) => {
-    if (section.id === "files") {
-      return (
-        hasDaemon || accessState !== "unavailable" || fileOpeners.length > 0
-      );
-    }
-    return true;
+  const installedPlugins = pluginListQuery.data?.plugins ?? [];
+  const pluginEntryGroups = buildPluginSettingsEntries({
+    installedPlugins,
+    settingsSections,
   });
-  const pluginEntries = (pluginListQuery.data?.plugins ?? [])
-    .filter(
-      (plugin) =>
-        plugin.enabled &&
-        (plugin.hasSettings ||
-          settingsSections.some((section) => section.pluginId === plugin.id)),
-    )
-    .map((plugin) => ({
-      id: plugin.id,
-      label: plugin.name ?? plugin.id,
-      icon: plugin.icon,
-    }))
-    .sort((left, right) => left.label.localeCompare(right.label));
 
   return {
     activePluginId,
     activeSection,
     hasUnknownSection,
-    pluginEntries,
+    otherPluginEntries: pluginEntryGroups.other,
+    pluginEntries: pluginEntryGroups.configurable,
     sections,
   };
 }

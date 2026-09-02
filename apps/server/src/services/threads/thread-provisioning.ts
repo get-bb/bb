@@ -11,6 +11,7 @@ import {
 } from "@bb/domain";
 import type { StartedOnBehalfOf } from "@bb/server-contract";
 import type { AppDeps } from "../../types.js";
+import { requestQueuedMessageDispatch } from "./queued-message-dispatch.js";
 import {
   appendClientTurnEvent,
   appendPreparedClientTurnRequestedEventWithNotificationInTransaction,
@@ -40,6 +41,7 @@ import {
   rememberActiveThreadProvisionContext,
 } from "./thread-provisioning-active-context.js";
 import { applyLoggedThreadLifecycleEvent } from "./lifecycle-outcome.js";
+import { runtimeErrorLogFields } from "../lib/error-log-fields.js";
 import { recordAcceptedPromptHistoryEntry } from "../prompt-history.js";
 
 interface RequestThreadProvisionArgs {
@@ -156,6 +158,15 @@ async function startThreadIfEnvironmentReady(
   if (!workspaceReady.reached) {
     throw new Error("Thread did not reach workspace-ready provisioning state");
   }
+
+  // The workspace exists, so anything that queued waiting for it stops
+  // waiting here rather than after the dispatch below: the wait is over at
+  // this line, and the `run.succeeded` branch below returns without
+  // dispatching anything. A thread with nothing queued no-ops.
+  requestQueuedMessageDispatch(deps, {
+    kind: "workspace-ready",
+    threadId: args.thread.id,
+  });
 
   if (
     args.context.request.seedWithoutRun &&
@@ -377,4 +388,28 @@ export async function advanceThreadProvisioning(
   await deps.lifecycleDedupers.threadProvisionAdvance.run(args.threadId, () =>
     advanceThreadProvisioningOnce(deps, args),
   );
+}
+
+/**
+ * Drives provisioning off the caller's stack. Creation returns the thread row
+ * before the workspace exists, and a cold-start row whose wait cleared returns
+ * to its sweep or route the same way, so neither waits on the daemon.
+ */
+export function scheduleThreadProvisioningAdvance(
+  deps: ThreadProvisioningDeps & Pick<AppDeps, "config" | "logger">,
+  context: ThreadProvisionContext,
+  threadId: string,
+): void {
+  void advanceThreadProvisioning(deps, {
+    context,
+    threadId,
+  }).catch((error) => {
+    deps.logger.warn(
+      {
+        threadId,
+        ...runtimeErrorLogFields(deps.config, error),
+      },
+      "Failed to advance thread provisioning",
+    );
+  });
 }
