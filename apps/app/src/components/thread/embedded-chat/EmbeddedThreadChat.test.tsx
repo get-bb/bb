@@ -249,6 +249,10 @@ vi.mock("@/hooks/queries/thread-queries", () => ({
   getLatestPendingInteraction: (
     interactions: readonly { createdAt: number }[] | undefined,
   ) => (interactions && interactions.length > 0 ? interactions[0] : null),
+  isPendingInteractionStateUnknown: (
+    interactions: readonly { createdAt: number }[] | undefined,
+    isFetching: boolean,
+  ) => (!interactions || interactions.length === 0) && isFetching,
 }));
 
 vi.mock(
@@ -545,7 +549,7 @@ describe("EmbeddedThreadChat", () => {
     expect(screen.getByTestId("embedded-chat-composer").hidden).toBe(true);
   });
 
-  it("keeps held messages visible beside a pending side-chat question", () => {
+  it("hides held messages while a pending side-chat question is answered", () => {
     mocks.pendingInteractions = [
       { id: "int_1", createdAt: 1, payload: { kind: "user_question" } },
     ];
@@ -554,17 +558,7 @@ describe("EmbeddedThreadChat", () => {
     renderEmbeddedChat({ threadId: "thr_side_chat" });
 
     expect(screen.getByTestId("pending-interaction-banner")).toBeTruthy();
-    expect(screen.getByTestId("queued-count").textContent).toBe("1");
-    expect(
-      screen
-        .getByTestId("embedded-chat-queued-messages")
-        .hasAttribute("data-send-disabled"),
-    ).toBe(true);
-    expect(
-      screen
-        .getByTestId("embedded-chat-queued-messages")
-        .getAttribute("data-attached-to-composer"),
-    ).toBe("false");
+    expect(screen.queryByTestId("embedded-chat-queued-messages")).toBeNull();
     expect(screen.getByTestId("embedded-chat-composer").hidden).toBe(true);
   });
 
@@ -608,6 +602,20 @@ describe("EmbeddedThreadChat", () => {
     expect(
       screen.getByTestId("embedded-chat-composer").dataset.submitReason,
     ).toBe("loading-pending-interactions");
+  });
+
+  it("hides the composer while cached empty interactions refresh", () => {
+    mocks.pendingInteractions = [];
+    mocks.pendingInteractionsIsFetching = true;
+    mocks.queuedMessages = [{ id: "q1" }];
+
+    renderEmbeddedChat({ threadId: "thr_side_chat" });
+
+    expect(screen.getByRole("status").textContent).toContain(
+      "Checking pending interactions",
+    );
+    expect(screen.queryByTestId("embedded-chat-queued-messages")).toBeNull();
+    expect(screen.getByTestId("embedded-chat-composer").hidden).toBe(true);
   });
 
   it("keeps the composer unavailable when pending interactions fail to load", () => {

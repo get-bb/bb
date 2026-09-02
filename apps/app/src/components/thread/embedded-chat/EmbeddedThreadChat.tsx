@@ -48,6 +48,7 @@ import {
 import { useThreadCreationOptions } from "@/hooks/useThreadCreationOptions";
 import {
   getLatestPendingInteraction,
+  isPendingInteractionStateUnknown,
   useThread,
   useThreadPendingInteractions,
   useThreadQueuedMessages,
@@ -262,9 +263,10 @@ function EmbeddedThreadChatWithComposer({
     activePendingInteraction !== null &&
     activePendingInteraction.payload.kind !== "plugin";
   const pendingInteractionsInitialLoading =
-    activePendingInteraction === null &&
-    pendingInteractionsQuery.data === undefined &&
-    (pendingInteractionsQuery.isLoading || pendingInteractionsQuery.isFetching);
+    isPendingInteractionStateUnknown(
+      pendingInteractionsQuery.data,
+      pendingInteractionsQuery.isFetching,
+    );
   const pendingInteractionsUnavailable =
     activePendingInteraction === null && pendingInteractionsQuery.isError;
   const pendingInteractionOccupiesComposer =
@@ -1084,17 +1086,13 @@ function EmbeddedThreadChatWithComposer({
 
   const queuedMessagesStack = useMemo(
     () =>
-      queuedMessages.length > 0 ? (
+      queuedMessages.length > 0 && !pendingInteractionOccupiesComposer ? (
         <QueuedMessagesList
-          attachedToComposer={!pendingInteractionOccupiesComposer}
+          attachedToComposer
           queuedMessages={queuedMessages}
           resolveMentionLink={resolveMentionLink}
           inlineEditor={inlineEditor}
-          sendDisabled={
-            isProvisioning ||
-            queuedMessageActionPending ||
-            pendingInteractionOccupiesComposer
-          }
+          sendDisabled={isProvisioning || queuedMessageActionPending}
           actionDisabled={queuedMessageActionPending}
           processingMessageId={processingQueuedMessage?.id ?? null}
           processingAction={processingQueuedMessage?.action ?? null}
