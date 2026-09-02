@@ -15,6 +15,7 @@ import {
   threadQueryKey,
 } from "../queries/query-keys";
 import {
+  resolveMoveThreadToSectionOperation,
   useUnpinAndMoveThread,
   useUpdateThread,
 } from "./thread-state-mutations";
@@ -128,6 +129,52 @@ afterEach(() => {
 });
 
 describe("thread state mutations", () => {
+  it("resolves menu and drag section moves through the same pinned-thread rules", () => {
+    const unpinned = makeThreadListEntry({
+      id: "thread-1",
+      pinnedAt: null,
+      sectionId: "sec_work",
+    });
+    const pinned = makeThreadListEntry({
+      id: "thread-1",
+      pinnedAt: 10,
+      sectionId: "sec_work",
+    });
+
+    expect(
+      resolveMoveThreadToSectionOperation({
+        thread: unpinned,
+        sectionId: "sec_personal",
+      }),
+    ).toEqual({
+      kind: "update",
+      id: "thread-1",
+      sectionId: "sec_personal",
+    });
+    expect(
+      resolveMoveThreadToSectionOperation({
+        thread: unpinned,
+        sectionId: "sec_work",
+      }),
+    ).toEqual({ kind: "none" });
+    expect(
+      resolveMoveThreadToSectionOperation({
+        thread: pinned,
+        sectionId: "sec_work",
+      }),
+    ).toEqual({ kind: "unpin", id: "thread-1" });
+    expect(
+      resolveMoveThreadToSectionOperation({
+        thread: pinned,
+        sectionId: null,
+      }),
+    ).toEqual({
+      kind: "unpin-and-move",
+      id: "thread-1",
+      sectionId: null,
+    });
+  });
+
   it("optimistically renames a thread while the update request is pending", async () => {
     const { queryClient, wrapper } = createQueryClientTestHarness();
     const threadId = "thread-1";

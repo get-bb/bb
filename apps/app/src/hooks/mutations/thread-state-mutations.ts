@@ -1,3 +1,4 @@
+import { useCallback } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type {
   ReorderPinnedThreadRequest,
@@ -44,6 +45,37 @@ type ReorderPinnedThreadMutationRequest = ThreadMutationRequest &
 type UnpinAndMoveThreadMutationRequest = ThreadMutationRequest & {
   sectionId: string | null;
 };
+
+interface ThreadSectionMoveTarget {
+  id: string;
+  pinnedAt: number | null;
+  sectionId: string | null;
+}
+
+interface MoveThreadToSectionRequest {
+  sectionId: string | null;
+  thread: ThreadSectionMoveTarget;
+}
+
+export type MoveThreadToSectionOperation =
+  | { kind: "none" }
+  | { kind: "unpin"; id: string }
+  | { kind: "unpin-and-move"; id: string; sectionId: string | null }
+  | { kind: "update"; id: string; sectionId: string | null };
+
+export function resolveMoveThreadToSectionOperation({
+  sectionId,
+  thread,
+}: MoveThreadToSectionRequest): MoveThreadToSectionOperation {
+  if (thread.pinnedAt !== null) {
+    return thread.sectionId === sectionId
+      ? { kind: "unpin", id: thread.id }
+      : { kind: "unpin-and-move", id: thread.id, sectionId };
+  }
+  return thread.sectionId === sectionId
+    ? { kind: "none" }
+    : { kind: "update", id: thread.id, sectionId };
+}
 
 interface UpdateThreadMutationOptions {
   errorMessage?: string | undefined;
@@ -208,6 +240,40 @@ export function useUnpinAndMoveThread() {
       });
     },
   });
+}
+
+export function useMoveThreadToSection() {
+  const updateThread = useUpdateThread();
+  const unpinThread = useUnpinThread();
+  const unpinAndMoveThread = useUnpinAndMoveThread();
+  const { mutate: updateMutate } = updateThread;
+  const { mutate: unpinMutate } = unpinThread;
+  const { mutate: unpinAndMoveMutate } = unpinAndMoveThread;
+
+  return useCallback(
+    (request: MoveThreadToSectionRequest) => {
+      const operation = resolveMoveThreadToSectionOperation(request);
+      switch (operation.kind) {
+        case "none":
+          return;
+        case "unpin":
+          unpinMutate({ id: operation.id });
+          return;
+        case "unpin-and-move":
+          unpinAndMoveMutate({
+            id: operation.id,
+            sectionId: operation.sectionId,
+          });
+          return;
+        case "update":
+          updateMutate({
+            id: operation.id,
+            sectionId: operation.sectionId,
+          });
+      }
+    },
+    [unpinAndMoveMutate, unpinMutate, updateMutate],
+  );
 }
 
 export function useReorderPinnedThread() {

@@ -102,6 +102,10 @@ import {
 } from "./PinnedThreadTree";
 import { useThreadTitleMentionResources } from "@/components/thread/ThreadTitleMentions";
 import {
+  ThreadSectionMoveProvider,
+  type ThreadSectionMoveDestination,
+} from "@/components/thread/ThreadSectionMoveProvider";
+import {
   collapsedEnvironmentIdsAtom,
   collapsedThreadIdsAtom,
   collapsedProjectIdsAtom,
@@ -1164,34 +1168,57 @@ function SectionModeSections({
     showPinnedSection,
     isReady,
   });
+  const moveDestinations = useMemo<ThreadSectionMoveDestination[]>(() => {
+    const destinationsBySidebarId = new Map(
+      sections.map((section) => [
+        buildSidebarEntitySectionId("section", section.id),
+        { label: section.name, sectionId: section.id },
+      ]),
+    );
+    const orderedDestinationIds: SidebarSectionId[] = [
+      ...order.filter((sectionId) => sectionId !== "threads"),
+      "threads",
+    ];
+    return orderedDestinationIds.flatMap<ThreadSectionMoveDestination>(
+      (sectionId) => {
+        if (sectionId === "threads") {
+          return [{ label: threadsSection.label, sectionId: null }];
+        }
+        const destination = destinationsBySidebarId.get(sectionId);
+        return destination ? [destination] : [];
+      },
+    );
+  }, [order, sections, threadsSection.label]);
 
   return (
-    <ChronologicalSectionThreadSections
-      threadListState={threadListState}
-      compareThreads={compareThreads}
-      sections={sections}
-      selectedThreadId={selectedThreadId}
-      collapsedThreadIds={collapsedThreadIds}
-      collapsedEnvironmentIds={collapsedEnvironmentIds}
-      onProjectSelect={onProjectSelect}
-      onCreateThreadInSection={onCreateThreadInSection}
-      onRenameSection={onRenameSection}
-      onRemoveSection={onRemoveSection}
-      renderTopLevelSectionHeaderActions={renderTopLevelSectionHeaderActions}
-      onToggleThreadCollapsed={onToggleThreadCollapsed}
-      onToggleEnvironmentCollapsed={onToggleEnvironmentCollapsed}
-      topLevelSectionOrder={order}
-      onTopLevelSectionOrderChange={onOrderChange}
-      pinnedReorderPending={pinnedReorderPending}
-      pinnedThreads={pinnedThreads}
-      onReorderPinnedThread={onReorderPinnedThread}
-      builtInSections={{
-        pinned: pinnedSection,
-        threads: threadsSection,
-        collapsedSectionIds,
-        onToggleCollapsed,
-      }}
-    />
+    <ThreadSectionMoveProvider destinations={moveDestinations}>
+      <ChronologicalSectionThreadSections
+        threadListState={threadListState}
+        compareThreads={compareThreads}
+        sections={sections}
+        selectedThreadId={selectedThreadId}
+        collapsedThreadIds={collapsedThreadIds}
+        collapsedEnvironmentIds={collapsedEnvironmentIds}
+        onProjectSelect={onProjectSelect}
+        onCreateThreadInSection={onCreateThreadInSection}
+        onRenameSection={onRenameSection}
+        onRemoveSection={onRemoveSection}
+        renderTopLevelSectionHeaderActions={renderTopLevelSectionHeaderActions}
+        onToggleThreadCollapsed={onToggleThreadCollapsed}
+        onToggleEnvironmentCollapsed={onToggleEnvironmentCollapsed}
+        topLevelSectionOrder={order}
+        onTopLevelSectionOrderChange={onOrderChange}
+        pinnedReorderPending={pinnedReorderPending}
+        pinnedThreads={pinnedThreads}
+        onReorderPinnedThread={onReorderPinnedThread}
+        builtInSections={{
+          pinned: pinnedSection,
+          threads: threadsSection,
+          collapsedSectionIds,
+          onToggleCollapsed,
+        }}
+      />
+    </ThreadSectionMoveProvider>
   );
 }
 

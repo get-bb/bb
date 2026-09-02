@@ -119,6 +119,7 @@ export const SF_SYMBOL_MAP = {
   Mic: "mic",
   Minimize2: "arrow.down.right.and.arrow.up.left",
   MoreHorizontal: "ellipsis",
+  MoveTo: "arrow.right.to.line",
   NewTab: "plus.square.dashed",
   PackageReceive: "shippingbox",
   Palette: "paintpalette",
