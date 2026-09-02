@@ -50,6 +50,16 @@ function catalogEntry(
   };
 }
 
+function catalogEntryForAuthor(pluginId: string, name: string) {
+  return catalogEntry(pluginId, {
+    author: {
+      name,
+      github: "patlee",
+      url: "https://github.com/patlee",
+    },
+  });
+}
+
 const ALPHA = catalogEntry("Alpha", { installs: null });
 const BETA = catalogEntry("Beta", {
   author: {
@@ -85,7 +95,16 @@ function cardOrder(): string[] {
   ].map((button) => button.getAttribute("aria-label") ?? "");
 }
 
-function renderPage(initialEntry: string, onOpenPlugin = vi.fn()) {
+function renderPage(
+  initialEntry: string,
+  onOpenPlugin = vi.fn(),
+  catalogEntries: readonly PluginCatalogSearchEntry[] = [
+    GAMMA,
+    OTHER,
+    BETA,
+    ALPHA,
+  ],
+) {
   vi.stubGlobal(
     "fetch",
     vi.fn(async (input: RequestInfo | URL) => {
@@ -101,7 +120,7 @@ function renderPage(initialEntry: string, onOpenPlugin = vi.fn()) {
       const results =
         query === "Beta" || query === "agent-interaction"
           ? [BETA]
-          : [GAMMA, OTHER, BETA, ALPHA];
+          : catalogEntries;
       return new Response(
         JSON.stringify({
           results,
@@ -133,6 +152,60 @@ afterEach(() => {
 });
 
 describe("PluginAuthorPage", () => {
+  it("aligns the author header with the toolbar and card grid", async () => {
+    renderPage(
+      "/extensions/plugins?author=12%3Abb-community%3Agithub%3Apatlee",
+    );
+
+    await screen.findByRole("heading", { name: /^Pat Lee/u });
+    const headerContainer = screen
+      .getByRole("link", { name: "Browse plugins" })
+      .closest(".max-w-3xl");
+    const toolbarContainer = screen
+      .getByRole("textbox", { name: "Search plugins" })
+      .closest(".max-w-3xl");
+    const gridContainer = screen
+      .getByRole("button", { name: "Open Alpha details" })
+      .closest(".max-w-3xl");
+    for (const container of [
+      headerContainer,
+      toolbarContainer,
+      gridContainer,
+    ]) {
+      expect(container?.classList.contains("mx-auto")).toBe(true);
+      expect(container?.classList.contains("w-full")).toBe(true);
+    }
+  });
+
+  it.each([
+    {
+      rule: "frequency before length",
+      entries: [
+        catalogEntryForAuthor("Long", "Divyesh Puri"),
+        catalogEntryForAuthor("Short One", "Divyesh"),
+        catalogEntryForAuthor("Short Two", "Divyesh"),
+      ],
+      expected: "Divyesh",
+    },
+    {
+      rule: "length for equal counts",
+      entries: [
+        catalogEntryForAuthor("Short", "Divyesh"),
+        catalogEntryForAuthor("Long", "Divyesh Puri"),
+      ],
+      expected: "Divyesh Puri",
+    },
+  ])("selects an author name by $rule", async ({ entries, expected }) => {
+    renderPage(
+      "/extensions/plugins?author=12%3Abb-community%3Agithub%3Apatlee",
+      vi.fn(),
+      entries,
+    );
+
+    const heading = await screen.findByRole("heading");
+    expect(heading.firstElementChild?.textContent).toBe(expected);
+  });
+
   it("restores the URL and shows only the selected author's plugins", async () => {
     renderPage(
       "/extensions/plugins?author=12%3Abb-community%3Agithub%3Apatlee&sort=recently-added&direction=asc",

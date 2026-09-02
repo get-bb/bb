@@ -10,7 +10,10 @@ import {
 } from "@bb/shared-ui/resource-list";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { TOOLS_PAGE_BAND_CLASSES } from "@/components/tools/tools-navigation";
-import { usePluginCatalogSearch } from "@/hooks/queries/plugin-catalog-queries";
+import {
+  type PluginCatalogSearchEntry,
+  usePluginCatalogSearch,
+} from "@/hooks/queries/plugin-catalog-queries";
 import { getPluginsRoutePath } from "@/lib/route-paths";
 import type { AddPluginInitial } from "./AddPluginDialog";
 import {
@@ -35,6 +38,35 @@ import {
 
 function authorUrlLabel(url: string): string {
   return url.replace(/^https?:\/\//u, "").replace(/\/+$/u, "");
+}
+
+function authorForEntries(
+  entries: readonly PluginCatalogSearchEntry[],
+): PluginCatalogSearchEntry["author"] {
+  const nameCounts = new Map<string, number>();
+  for (const entry of entries) {
+    if (entry.author === null) continue;
+    nameCounts.set(
+      entry.author.name,
+      (nameCounts.get(entry.author.name) ?? 0) + 1,
+    );
+  }
+  let selected: PluginCatalogSearchEntry["author"] = null;
+  for (const entry of entries) {
+    if (entry.author === null) continue;
+    const candidateCount = nameCounts.get(entry.author.name) ?? 0;
+    const selectedCount =
+      selected === null ? 0 : (nameCounts.get(selected.name) ?? 0);
+    if (
+      selected === null ||
+      candidateCount > selectedCount ||
+      (candidateCount === selectedCount &&
+        entry.author.name.length > selected.name.length)
+    ) {
+      selected = entry.author;
+    }
+  }
+  return selected;
 }
 
 export function PluginAuthorPage({
@@ -65,7 +97,7 @@ export function PluginAuthorPage({
       ),
     [authorKey, catalogQuery.data?.entries],
   );
-  const author = entries[0]?.author ?? null;
+  const author = useMemo(() => authorForEntries(entries), [entries]);
   const installsKnown = entries.some((entry) => entry.installs !== null);
   const sort =
     requestedSort === "most-installed" && !installsKnown ? null : requestedSort;
@@ -112,7 +144,7 @@ export function PluginAuthorPage({
   return (
     <ResourceCollectionViewport scrollId="plugin-author-results">
       <div className={cn("space-y-6 pb-8", TOOLS_PAGE_BAND_CLASSES)}>
-        <div className="space-y-2">
+        <div className="mx-auto w-full max-w-3xl space-y-2">
           <Link
             to={{
               pathname: getPluginsRoutePath(),
