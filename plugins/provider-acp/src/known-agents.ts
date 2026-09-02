@@ -60,6 +60,10 @@ export const KNOWN_ACP_AGENTS: readonly AcpAgentDefinition[] = [
       command: "cursor-agent",
       args: ["acp"],
       env: {},
+      modelCli: {
+        listArgs: ["--list-models"],
+        primaryModels: [],
+      },
       nativeSkillRoots: {
         user: recursiveRoots([
           ".cursor/skills",

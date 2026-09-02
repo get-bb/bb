@@ -630,6 +630,36 @@ describe("acp bridge", () => {
     });
   });
 
+  it("uses Cursor CLI variants as reasoning metadata for bare ACP models", async () => {
+    const modelListId = sendModelList({
+      dialectId: "cursor",
+      parameterizedModelPicker: true,
+      modelPickerPrimaryModels: ["default", "gemini-3.8-flash"],
+      modelLines: [
+        "auto - Auto (default)",
+        "gemini-3.8-flash-low - Gemini 3.8 Flash Low",
+        "gemini-3.8-flash-medium - Gemini 3.8 Flash Medium",
+        "gemini-3.8-flash-high - Gemini 3.8 Flash High",
+      ].join("\n"),
+    });
+
+    const result = (await waitForResponse(modelListId)).result as {
+      models: {
+        id: string;
+        supportedReasoningEfforts: { reasoningEffort: string }[];
+      }[];
+    };
+    expect(result.models.map((model) => model.id)).toEqual([
+      "default",
+      "gemini-3.8-flash",
+    ]);
+    expect(
+      result.models[1]?.supportedReasoningEfforts.map(
+        (effort) => effort.reasoningEffort,
+      ),
+    ).toEqual(["low", "medium", "high"]);
+  });
+
   it("discovers ACP-native models and per-model reasoning from session configOptions", async () => {
     const modelListId = sendModelList({
       envVars: {
