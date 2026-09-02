@@ -1,28 +1,10 @@
-import { defaultFilter } from "cmdk";
+import { fuzzyMatchText } from "@bb/fuzzy-match";
 
 interface SearchPickerOptionsArgs<T> {
   options: readonly T[];
   query: string;
   getLabel: (option: T) => string;
   getAliases?: (option: T) => readonly string[];
-}
-
-interface RankedPickerOption<T> {
-  option: T;
-  sourceIndex: number;
-  score: number;
-}
-
-function scorePickerOption(
-  label: string,
-  aliases: readonly string[],
-  query: string,
-): number {
-  let score = defaultFilter(label, query, []);
-  for (const alias of aliases) {
-    score = Math.max(score, defaultFilter(alias, query, []));
-  }
-  return score;
 }
 
 export function searchPickerOptions<T>({
@@ -36,22 +18,10 @@ export function searchPickerOptions<T>({
     return options;
   }
 
-  return options
-    .map((option, sourceIndex): RankedPickerOption<T> => {
-      return {
-        option,
-        sourceIndex,
-        score: scorePickerOption(
-          getLabel(option),
-          getAliases?.(option) ?? [],
-          normalizedQuery,
-        ),
-      };
-    })
-    .filter(({ score }) => score > 0)
-    .sort(
-      (left, right) =>
-        right.score - left.score || left.sourceIndex - right.sourceIndex,
-    )
-    .map(({ option }) => option);
+  return fuzzyMatchText({
+    items: options,
+    query: normalizedQuery,
+    getText: (option) => [getLabel(option), ...(getAliases?.(option) ?? [])],
+    limit: options.length,
+  }).map((match) => match.item);
 }

@@ -339,6 +339,27 @@ describe("fuzzyMatchText", () => {
     expect(matches[0].positions.length).toBeGreaterThan(0);
   });
 
+  it("matches case-insensitively regardless of query casing", () => {
+    const items = ["atlas-web", "Beacon API"];
+
+    expect(
+      fuzzyMatchText({
+        items,
+        query: "AW",
+        getText: (item) => item,
+        limit: items.length,
+      }).map((match) => match.item),
+    ).toEqual(["atlas-web"]);
+    expect(
+      fuzzyMatchText({
+        items,
+        query: "beacon api",
+        getText: (item) => item,
+        limit: items.length,
+      }).map((match) => match.item),
+    ).toEqual(["Beacon API"]);
+  });
+
   it("matches secondary text values such as ids", () => {
     const threads: ThreadSearchFixture[] = [
       { id: "thr_alpha", title: "Design review" },

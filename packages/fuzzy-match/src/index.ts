@@ -162,6 +162,16 @@ function getComparableValues(query: string, value: string): ComparableValues {
   return { query, value: value.toLowerCase() };
 }
 
+function getCaseInsensitiveComparableValues(
+  query: string,
+  value: string,
+): ComparableValues {
+  return {
+    query: query.toLowerCase(),
+    value: value.toLowerCase(),
+  };
+}
+
 function startsWithQueryCase(value: string, query: string): boolean {
   const comparable = getComparableValues(query, value);
   return comparable.value.startsWith(comparable.query);
@@ -622,7 +632,7 @@ function rankedMatchesToFuzzyMatches<T>(
 }
 
 function getTextRelevanceBonus(text: string, query: string): number {
-  const comparable = getComparableValues(query, text);
+  const comparable = getCaseInsensitiveComparableValues(query, text);
 
   if (comparable.value === comparable.query) {
     return TEXT_RELEVANCE_SCORE.exact;
@@ -707,7 +717,7 @@ function rankTextQueryMatches<T>(
   ];
   const matcher = new Fzf<readonly NormalizedTextCandidate<T>[]>(candidates, {
     selector: (candidate: NormalizedTextCandidate<T>) => candidate.text,
-    casing: "smart-case",
+    casing: "case-insensitive",
     forward: true,
     tiebreakers,
   });
