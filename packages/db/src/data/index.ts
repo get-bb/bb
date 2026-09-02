@@ -313,8 +313,12 @@ export {
 export {
   deleteExpiredRetainedEventOutputs,
   hydrateRetainedEventOutputRows,
+  RETAINED_EVENT_OUTPUT_TARGETS,
 } from "./retained-event-outputs.js";
-export type { DeleteExpiredRetainedEventOutputsResult } from "./retained-event-outputs.js";
+export type {
+  DeleteExpiredRetainedEventOutputsResult,
+  RetainedEventOutputTarget,
+} from "./retained-event-outputs.js";
 export type {
   AcceptedDaemonEvent,
   AppendDaemonEventInput,
