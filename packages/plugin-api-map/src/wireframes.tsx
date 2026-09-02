@@ -80,10 +80,10 @@ export const APP_SHELL_MARKS = [
   "message-directives",
   "message-actions",
   "pending-interaction",
-  "app-overlay",
   "code-renderers",
   "thread-panel",
   "file-opener",
+  "app-overlay",
   "content-scripts",
 ] as const;
 

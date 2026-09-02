@@ -127,13 +127,13 @@
           ]
         },
         {
-          "path": "apps/app/src/App.tsx",
+          "path": "apps/app/src/components/layout/AppLayout.tsx",
           "anchors": ["<PluginAppOverlays />"]
         },
         {
           "path": "apps/app/src/components/plugin/PluginAppOverlays.test.tsx",
           "anchors": [
-            "keeps plugin, query, and router contexts through a React portal",
+            "keeps sidebar thread actions available through a portal and route change",
             "hides a crashing overlay without unmounting additive siblings"
           ]
         }

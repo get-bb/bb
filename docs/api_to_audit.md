@@ -1701,8 +1701,10 @@ window, outside route-owned layout regions and inside `PluginSlotMount`. The
 component receives no props and owns its chrome, positioning, visibility,
 focus, and responsive behavior. It can call app-level SDK hooks and either
 render fixed UI directly or create a React portal without losing plugin,
-router, query, realtime, or sidebar context. One overlay crash hides only that
-registration; sibling overlays remain mounted.
+router, query, realtime, or sidebar thread/action context. Hooks whose contract
+requires a particular surface, including `useComposer` and `useComposerView`,
+remain limited to that surface. One overlay crash hides only that registration;
+sibling overlays remain mounted.
 
 **Audit before stabilizing.**
 

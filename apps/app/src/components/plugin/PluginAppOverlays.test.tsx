@@ -6,11 +6,14 @@ import { createPortal } from "react-dom";
 import { MemoryRouter, useLocation } from "react-router-dom";
 import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { ThreadActionsProvider } from "@/components/thread/ThreadActionsProvider";
+import { RouteNavigationProvider } from "@/components/ui/app-route-anchor";
 import {
   resetPluginSlotStoreForTest,
   setPluginSlotRegistrations,
   type PluginRegistrationSet,
 } from "@/lib/plugin-slots";
+import { pluginSdkAppImplementation } from "@/lib/plugin-sdk-app-impl";
 import {
   useBbContext,
   useBbNavigate,
@@ -19,6 +22,46 @@ import {
 } from "@/lib/plugin-sdk-hooks";
 import { resetAllCrashedPluginSlotsForTest } from "./PluginSlotMount";
 import { PluginAppOverlays } from "./PluginAppOverlays";
+
+vi.mock("@/components/dialogs/ThreadDeleteDialog", () => ({
+  ThreadDeleteDialog: () => null,
+}));
+
+vi.mock("@/components/dialogs/ThreadRenameDialog", () => ({
+  ThreadRenameDialog: () => null,
+}));
+
+vi.mock("@/hooks/mutations/thread-state-mutations", () => {
+  const mutation = () => ({
+    isPending: false,
+    mutate: vi.fn(),
+    mutateAsync: vi.fn(),
+  });
+  return {
+    useArchiveThreadAndChildren: mutation,
+    useDeleteThread: mutation,
+    useMarkThreadRead: mutation,
+    useMarkThreadUnread: mutation,
+    usePinThread: mutation,
+    useUnarchiveThread: mutation,
+    useUnpinThread: mutation,
+    useUpdateThread: mutation,
+  };
+});
+
+vi.mock("@/hooks/queries/host-queries", () => ({
+  useHosts: () => ({ data: [] }),
+}));
+
+vi.mock("@/hooks/queries/sidebar-navigation-query", () => ({
+  useSidebarNavigation: () => ({
+    data: {
+      personalProject: { id: "personal", name: "Personal", threads: [] },
+      projects: [],
+    },
+    isError: false,
+  }),
+}));
 
 function registrationSet(
   overrides: Partial<PluginRegistrationSet>,
@@ -44,6 +87,8 @@ function PortaledProbe() {
   const navigate = useBbNavigate();
   const rpc = useRpc();
   const settings = useSettings();
+  const sidebarThreadActions =
+    pluginSdkAppImplementation.experimental_useSidebarThreadActions();
   const [rpcResult, setRpcResult] = useState("idle");
 
   return (
@@ -55,6 +100,9 @@ function PortaledProbe() {
         {settings.isLoading ? "loading" : settings.values?.mode}
       </div>
       <div data-testid="overlay-rpc">{rpcResult}</div>
+      <div data-testid="overlay-sidebar-actions">
+        {typeof sidebarThreadActions.openNewThread}
+      </div>
       <button
         type="button"
         onClick={() => {
@@ -83,7 +131,7 @@ afterEach(() => {
 });
 
 describe("PluginAppOverlays", () => {
-  it("keeps plugin, query, and router contexts through a React portal", async () => {
+  it("keeps sidebar thread actions available through a portal and route change", async () => {
     const fetchMock = vi.fn(async (input: string | URL | Request) => {
       const url = String(input);
       if (url.endsWith("/settings")) {
@@ -113,8 +161,12 @@ describe("PluginAppOverlays", () => {
     render(
       <QueryClientProvider client={queryClient}>
         <MemoryRouter initialEntries={["/projects/proj_1/threads/thr_1"]}>
-          <PluginAppOverlays />
-          <LocationProbe />
+          <RouteNavigationProvider>
+            <ThreadActionsProvider>
+              <PluginAppOverlays />
+              <LocationProbe />
+            </ThreadActionsProvider>
+          </RouteNavigationProvider>
         </MemoryRouter>
       </QueryClientProvider>,
     );
@@ -123,6 +175,9 @@ describe("PluginAppOverlays", () => {
       "proj_1/thr_1",
     );
     expect(await screen.findByText("floating")).toBeDefined();
+    expect(screen.getByTestId("overlay-sidebar-actions").textContent).toBe(
+      "function",
+    );
     fireEvent.click(screen.getByRole("button", { name: "Call RPC" }));
     expect(await screen.findByText("pong")).toBeDefined();
     expect(fetchMock).toHaveBeenCalledWith(
@@ -133,6 +188,9 @@ describe("PluginAppOverlays", () => {
     fireEvent.click(screen.getByRole("button", { name: "Go home" }));
     expect(screen.getByTestId("location").textContent).toBe("/");
     expect(screen.getByTestId("overlay-rpc").textContent).toBe("pong");
+    expect(screen.getByTestId("overlay-sidebar-actions").textContent).toBe(
+      "function",
+    );
   });
 
   it("hides a crashing overlay without unmounting additive siblings", () => {
