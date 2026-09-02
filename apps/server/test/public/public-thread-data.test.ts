@@ -4907,6 +4907,27 @@ describe("public thread data routes", () => {
     });
   });
 
+  it("rejects thread event list pages above the public limit", async () => {
+    await withTestHarness(async (harness) => {
+      const { environment, thread } = seedThreadFixture(harness);
+      for (let sequence = 1; sequence <= 101; sequence += 1) {
+        seedEvent(harness.deps, {
+          data: { message: `error ${sequence}` },
+          environmentId: environment.id,
+          scope: threadScope(),
+          sequence,
+          threadId: thread.id,
+          type: "system/error",
+        });
+      }
+
+      const response = await harness.app.request(
+        `/api/v1/threads/${thread.id}/events?limit=1000`,
+      );
+      expect(response.status).toBe(400);
+    });
+  });
+
   it("rejects invalid thread event list filters", async () => {
     await withTestHarness(async (harness) => {
       const { thread } = seedThreadFixture(harness);

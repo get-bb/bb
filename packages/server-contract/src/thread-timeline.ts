@@ -267,8 +267,14 @@ const timelineRowPresentationField = {
 };
 
 export const timelineOutputPreviewSchema = z.object({
+  experimental_fullOutputAvailability: z.enum([
+    "available",
+    "detail-limit",
+    "retention-expired",
+  ]),
   totalChars: z.number().int().nonnegative(),
 });
+export type TimelineOutputPreview = z.infer<typeof timelineOutputPreviewSchema>;
 
 export const timelineCommandWorkRowSchema = timelineWorkRowBaseSchema.extend({
   workKind: z.literal("command"),

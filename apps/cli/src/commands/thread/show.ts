@@ -18,6 +18,7 @@ import type {
   EnvironmentDiffQuery,
   ThreadTimelineResponse,
 } from "@bb/server-contract";
+import { THREAD_EVENT_LIST_PAGE_SIZE } from "@bb/server-contract";
 import { action } from "../../action.js";
 import { createCliBbSdk } from "../../client.js";
 import {
@@ -52,7 +53,6 @@ interface ThreadLogCommandOptions {
 }
 
 const THREAD_LOG_DEFAULT_EVENT_LIMIT = 100;
-const THREAD_LOG_ALL_EVENTS_PAGE_SIZE = 1000;
 const THREAD_LOG_TIMELINE_SEGMENT_LIMIT_MAX = 100;
 
 interface ThreadOutputCommandOptions {
@@ -616,11 +616,26 @@ async function listThreadLogEventsPage(
   sdk: BbSdk,
   args: { threadId: string; limit: number; afterSeq: string | undefined },
 ): Promise<ThreadLogEventsPage> {
-  const rows = await sdk.threads.events.list({
-    threadId: args.threadId,
-    limit: String(args.limit + 1),
-    ...(args.afterSeq === undefined ? {} : { afterSeq: args.afterSeq }),
-  });
+  const requestedRows = args.limit + 1;
+  const rows: ThreadEventRow[] = [];
+  let cursor = args.afterSeq;
+  while (rows.length < requestedRows) {
+    const pageLimit = Math.min(
+      THREAD_EVENT_LIST_PAGE_SIZE,
+      requestedRows - rows.length,
+    );
+    const page = await sdk.threads.events.list({
+      threadId: args.threadId,
+      limit: String(pageLimit),
+      ...(cursor === undefined ? {} : { afterSeq: cursor }),
+    });
+    rows.push(...page);
+    const last = page.at(-1);
+    if (!last || page.length < pageLimit) {
+      break;
+    }
+    cursor = String(last.seq);
+  }
   const hasMore = rows.length > args.limit;
   return { rows: hasMore ? rows.slice(0, args.limit) : rows, hasMore };
 }
@@ -635,12 +650,12 @@ async function listAllThreadLogEvents(
   for (;;) {
     const page = await sdk.threads.events.list({
       threadId,
-      limit: String(THREAD_LOG_ALL_EVENTS_PAGE_SIZE),
+      limit: String(THREAD_EVENT_LIST_PAGE_SIZE),
       ...(cursor === undefined ? {} : { afterSeq: cursor }),
     });
     rows.push(...page);
     const last = page[page.length - 1];
-    if (last === undefined || page.length < THREAD_LOG_ALL_EVENTS_PAGE_SIZE) {
+    if (last === undefined || page.length < THREAD_EVENT_LIST_PAGE_SIZE) {
       return { rows, hasMore: false };
     }
     cursor = String(last.seq);

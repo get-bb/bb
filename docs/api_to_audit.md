@@ -2280,3 +2280,23 @@ too, after the host has restored the draft. Sole consumer:
    field-by-field instead of forwarding it will drop the schedule silently.
    Confirm that forwarding expectation is documented well enough, or make the
    composer refuse to schedule when it is plugin-hosted.
+
+## `TimelineOutputPreview.experimental_fullOutputAvailability` (`@get-bb/plugin-sdk`)
+
+**What it does.** Distinguishes why a timeline row contains a preview instead
+of the full completed output. `available` means an explicit detail read can
+still hydrate the retained value, `detail-limit` means that read stayed
+previewed because its response byte budget was exceeded, and
+`retention-expired` means the full value reached its retention deadline and no
+longer exists. The field is reachable through the timeline results returned by
+`bb.sdk.threads.timeline` and lets clients avoid retrying an expired value or
+describing it as merely too large.
+
+**Audit before stabilizing.**
+
+1. Confirm these three states remain complete if another output storage tier
+   or hydration limit is introduced.
+2. Confirm plugins need the storage-policy distinction rather than a simpler
+   boolean indicating whether a detail read can succeed.
+3. Verify old persisted previews and mixed-version clients still receive a
+   deterministic state before making the field stable.

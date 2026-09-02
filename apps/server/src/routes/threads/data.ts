@@ -13,6 +13,7 @@ import {
 } from "@bb/domain";
 import {
   publicApiRoutes,
+  THREAD_EVENT_LIST_PAGE_SIZE,
   typedRoutes,
   type PublicApiSchema,
   type ThreadConversationOutlineResponse,
@@ -500,7 +501,12 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
         threadId: context.req.param("id"),
         afterSeq: parseOptionalInteger(query.afterSeq, "afterSeq"),
         beforeSeq: parseOptionalInteger(query.beforeSeq, "beforeSeq"),
-        limit: parseOptionalInteger(query.limit, "limit") ?? 100,
+        limit: parseBoundedPositiveOptionalInteger({
+          defaultValue: THREAD_EVENT_LIST_PAGE_SIZE,
+          max: THREAD_EVENT_LIST_PAGE_SIZE,
+          name: "limit",
+          value: query.limit,
+        }),
         order: query.order,
         types: parseThreadEventTypes(query.types),
       }),

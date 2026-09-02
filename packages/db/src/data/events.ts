@@ -61,7 +61,7 @@ import {
   type UpsertThreadSearchSegmentInput,
 } from "./threads.js";
 import {
-  hydrateRetainedEventOutputRows,
+  copyRetainedEventOutput,
   insertPreparedRetainedEventOutput,
   prepareCompletedEventOutputData,
 } from "./retained-event-outputs.js";
@@ -383,6 +383,7 @@ interface InsertStoredEventRowArgs {
 }
 
 interface InsertStoredEventRowResult {
+  id: string;
   inserted: boolean;
 }
 
@@ -417,7 +418,7 @@ function insertStoredEventRow(
       ${args.createdAt}
     )`);
   if (result.changes === 0) {
-    return { inserted: false };
+    return { id, inserted: false };
   }
   if (prepared.retainedOutput !== null) {
     insertPreparedRetainedEventOutput(db, {
@@ -425,11 +426,11 @@ function insertStoredEventRow(
       output: prepared.retainedOutput,
     });
   }
-  return { inserted: true };
+  return { id, inserted: true };
 }
 
 export function insertEvents(
-  db: DbQueryConnection,
+  db: DbConnection,
   notifier: DbNotifier,
   eventInputs: InsertEventInput[],
 ): InsertEventsResult {
@@ -440,40 +441,44 @@ export function insertEvents(
     };
   }
 
-  let insertedCount = 0;
-  const insertedInputIndexes: number[] = [];
-
   const eventTypesByThreadId = new Map<string, Set<ThreadEventType>>();
-
-  for (const [index, input] of eventInputs.entries()) {
-    const createdAt = input.createdAt ?? Date.now();
-    const turnId = getThreadEventScopeTurnId(input.scope) ?? null;
-    const result = insertStoredEventRow(db, {
-      conflict: "ignore",
-      createdAt,
-      data: input.data,
-      environmentId: input.environmentId ?? null,
-      itemId: input.itemId,
-      itemKind: input.itemKind,
-      parentToolCallId: input.parentToolCallId,
-      providerThreadId: input.providerThreadId ?? null,
-      scopeKind: input.scope.kind,
-      sequence: input.sequence,
-      threadId: input.threadId,
-      turnId,
-      type: input.type,
-    });
-    if (result.inserted) {
-      insertedCount++;
-      insertedInputIndexes.push(index);
-      const eventTypes = eventTypesByThreadId.get(input.threadId);
-      if (eventTypes) {
-        eventTypes.add(input.type);
-      } else {
-        eventTypesByThreadId.set(input.threadId, new Set([input.type]));
+  const result = db.transaction(
+    (tx) => {
+      let insertedCount = 0;
+      const insertedInputIndexes: number[] = [];
+      for (const [index, input] of eventInputs.entries()) {
+        const createdAt = input.createdAt ?? Date.now();
+        const turnId = getThreadEventScopeTurnId(input.scope) ?? null;
+        const insertResult = insertStoredEventRow(tx, {
+          conflict: "ignore",
+          createdAt,
+          data: input.data,
+          environmentId: input.environmentId ?? null,
+          itemId: input.itemId,
+          itemKind: input.itemKind,
+          parentToolCallId: input.parentToolCallId,
+          providerThreadId: input.providerThreadId ?? null,
+          scopeKind: input.scope.kind,
+          sequence: input.sequence,
+          threadId: input.threadId,
+          turnId,
+          type: input.type,
+        });
+        if (insertResult.inserted) {
+          insertedCount += 1;
+          insertedInputIndexes.push(index);
+          const eventTypes = eventTypesByThreadId.get(input.threadId);
+          if (eventTypes) {
+            eventTypes.add(input.type);
+          } else {
+            eventTypesByThreadId.set(input.threadId, new Set([input.type]));
+          }
+        }
       }
-    }
-  }
+      return { insertedCount, insertedInputIndexes };
+    },
+    { behavior: "immediate" },
+  );
 
   for (const [threadId, eventTypes] of eventTypesByThreadId) {
     notifier.notifyThread(threadId, ["events-appended"], {
@@ -481,10 +486,7 @@ export function insertEvents(
     });
   }
 
-  return {
-    insertedCount,
-    insertedInputIndexes,
-  };
+  return result;
 }
 
 function buildThreadTurnKey(args: ThreadTurnKey): string {
@@ -841,9 +843,8 @@ export function copyStoredThreadEventsInTransaction(
   const highWaterMarks = getHighWaterMarks(db, [args.targetThreadId]);
   let sequence = (highWaterMarks[args.targetThreadId] ?? 0) + 1;
   const now = Date.now();
-  const hydratedRows = hydrateRetainedEventOutputRows(db, args.rows, now);
-  for (const row of hydratedRows) {
-    insertStoredEventRow(db, {
+  for (const row of args.rows) {
+    const insertResult = insertStoredEventRow(db, {
       conflict: "error",
       createdAt: row.createdAt,
       data: row.data,
@@ -857,6 +858,14 @@ export function copyStoredThreadEventsInTransaction(
       threadId: args.targetThreadId,
       turnId: row.turnId,
       type: row.type,
+    });
+    if (!insertResult.inserted) {
+      throw new Error("Expected copied event row to be inserted");
+    }
+    copyRetainedEventOutput(db, {
+      copiedAt: now,
+      sourceEventId: row.id,
+      targetEventId: insertResult.id,
     });
     const event = parseDaemonThreadEvent({
       data: row.data,

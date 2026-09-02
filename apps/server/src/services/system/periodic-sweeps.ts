@@ -75,6 +75,7 @@ const MANAGED_ENVIRONMENT_ARCHIVE_CLEANUP_RECOVERY_INTERVAL_MS = 15 * 60_000;
 const ORPHANED_ENVIRONMENT_DESTROY_RECOVERY_DELAY_MS =
   LIVE_DAEMON_COMMAND_TIMEOUT_MS;
 const COMPLETED_EVENT_OUTPUT_MIGRATION_MAX_ADVANCES_PER_SWEEP = 64;
+const RETAINED_EVENT_OUTPUT_EXPIRY_MAX_ADVANCES_PER_SWEEP = 256;
 const RETAINED_EVENT_OUTPUT_EXPIRY_BATCH_SIZE = 1;
 
 type PeriodicSweepJobCategory =
@@ -477,52 +478,81 @@ async function runCompletedEventOutputMigrationSweep(
   now: number,
 ): Promise<void> {
   const exhaustedTargets = new Set<number>();
+  const changedThreadIds = new Set<string>();
   let targetIndex = 0;
-  for (
-    let advance = 0;
-    advance < COMPLETED_EVENT_OUTPUT_MIGRATION_MAX_ADVANCES_PER_SWEEP &&
-    exhaustedTargets.size < RETAINED_EVENT_OUTPUT_TARGETS.length;
-    advance += 1
-  ) {
-    while (exhaustedTargets.has(targetIndex)) {
-      targetIndex = (targetIndex + 1) % RETAINED_EVENT_OUTPUT_TARGETS.length;
-    }
-    const target = RETAINED_EVENT_OUTPUT_TARGETS[targetIndex];
-    if (!target) {
-      throw new Error("Expected completed output migration target");
-    }
-    const result = runEventLoopWorkSync(
-      "sweep:completed-event-output-migration:advance",
-      () =>
-        migrateNextCompletedEventItemOutput(deps.db, {
-          ...target,
-          limit: DEFAULT_COMPLETED_EVENT_OUTPUT_MIGRATION_SCAN_LIMIT,
-          migratedAt: now,
-        }),
-    );
-    if (result.action === "migrated") {
-      if (!result.threadId) {
-        throw new Error("Migrated completed output has no thread");
+  try {
+    for (
+      let advance = 0;
+      advance < COMPLETED_EVENT_OUTPUT_MIGRATION_MAX_ADVANCES_PER_SWEEP &&
+      exhaustedTargets.size < RETAINED_EVENT_OUTPUT_TARGETS.length;
+      advance += 1
+    ) {
+      while (exhaustedTargets.has(targetIndex)) {
+        targetIndex = (targetIndex + 1) % RETAINED_EVENT_OUTPUT_TARGETS.length;
       }
-      deps.hub.notifyThread(result.threadId, ["history-rewritten"]);
-    } else if (result.action === "idle" || result.action === "wrapped") {
-      exhaustedTargets.add(targetIndex);
+      const target = RETAINED_EVENT_OUTPUT_TARGETS[targetIndex];
+      if (!target) {
+        throw new Error("Expected completed output migration target");
+      }
+      const result = runEventLoopWorkSync(
+        "sweep:completed-event-output-migration:advance",
+        () =>
+          migrateNextCompletedEventItemOutput(deps.db, {
+            ...target,
+            limit: DEFAULT_COMPLETED_EVENT_OUTPUT_MIGRATION_SCAN_LIMIT,
+            migratedAt: now,
+          }),
+      );
+      if (result.action === "migrated") {
+        if (!result.threadId) {
+          throw new Error("Migrated completed output has no thread");
+        }
+        changedThreadIds.add(result.threadId);
+      } else if (result.action === "complete" || result.action === "idle") {
+        exhaustedTargets.add(targetIndex);
+      }
+      targetIndex = (targetIndex + 1) % RETAINED_EVENT_OUTPUT_TARGETS.length;
+      await new Promise<void>((resolve) => setImmediate(resolve));
     }
-    targetIndex = (targetIndex + 1) % RETAINED_EVENT_OUTPUT_TARGETS.length;
-    await new Promise<void>((resolve) => setImmediate(resolve));
+  } finally {
+    for (const threadId of changedThreadIds) {
+      deps.hub.notifyThread(threadId, ["history-rewritten"]);
+    }
   }
 }
 
-function runRetainedEventOutputExpirySweep(
+async function runRetainedEventOutputExpirySweep(
   deps: LoggedPendingInteractionWorkSessionDeps,
   now: number,
-): void {
-  runEventLoopWorkSync("sweep:retained-event-output-expiry:delete", () =>
-    deleteExpiredRetainedEventOutputs(deps.db, {
-      expiredAtOrBefore: now,
-      limit: RETAINED_EVENT_OUTPUT_EXPIRY_BATCH_SIZE,
-    }),
-  );
+): Promise<void> {
+  const changedThreadIds = new Set<string>();
+  try {
+    for (
+      let advance = 0;
+      advance < RETAINED_EVENT_OUTPUT_EXPIRY_MAX_ADVANCES_PER_SWEEP;
+      advance += 1
+    ) {
+      const { deleted, threadIds } = runEventLoopWorkSync(
+        "sweep:retained-event-output-expiry:delete",
+        () =>
+          deleteExpiredRetainedEventOutputs(deps.db, {
+            expiredAtOrBefore: now,
+            limit: RETAINED_EVENT_OUTPUT_EXPIRY_BATCH_SIZE,
+          }),
+      );
+      for (const threadId of threadIds) {
+        changedThreadIds.add(threadId);
+      }
+      if (deleted === 0) {
+        break;
+      }
+      await new Promise<void>((resolve) => setImmediate(resolve));
+    }
+  } finally {
+    for (const threadId of changedThreadIds) {
+      deps.hub.notifyThread(threadId, ["history-rewritten"]);
+    }
+  }
 }
 
 function runClosedSessionPruneSweep(

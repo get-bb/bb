@@ -19,6 +19,7 @@ import type {
   TimelineConversationAttachments,
   ThreadConversationOutlineAttachmentSummary,
   TimelineRow,
+  TimelineOutputPreview,
   TimelineSystemRow,
   ThreadTimelineResponse,
   TimelineTurnSummaryDetailsResponse,
@@ -29,6 +30,7 @@ import {
   findTimelineWindowBudgetFloorSequence,
   getStoredEventRowsByParentToolCallIdsDataBytes,
   hydrateRetainedEventOutputRows,
+  hydrateRetainedEventOutputRowsWithinDataByteLimit,
   getEnvironment,
   getLatestCompletedThreadContextClearSequence,
   getThreadConversationOutlineRecord,
@@ -254,6 +256,68 @@ export function toThreadEventWithMeta(
       createdAt: row.createdAt,
     },
   };
+}
+
+function retainedOutputPreviewsByCallId(
+  events: readonly ThreadEventWithMeta[],
+  availablePreview: Extract<
+    TimelineOutputPreview["experimental_fullOutputAvailability"],
+    "available" | "detail-limit"
+  >,
+  now: number,
+): ReadonlyMap<string, TimelineOutputPreview> {
+  const previews = new Map<string, TimelineOutputPreview>();
+  for (const { event } of events) {
+    if (event.type !== "item/completed") {
+      continue;
+    }
+    const item = event.item;
+    if (item.type !== "commandExecution" && item.type !== "toolCall") {
+      continue;
+    }
+    const truncation =
+      item.type === "commandExecution"
+        ? item.truncation?.aggregatedOutput
+        : item.truncation?.result;
+    if (truncation !== undefined) {
+      previews.set(item.id, {
+        experimental_fullOutputAvailability:
+          truncation.truncatedAt > now ? availablePreview : "retention-expired",
+        totalChars: truncation.originalLength,
+      });
+    } else {
+      previews.delete(item.id);
+    }
+  }
+  return previews;
+}
+
+function applyRetainedOutputPreviews(
+  rows: readonly TimelineRow[],
+  events: readonly ThreadEventWithMeta[],
+  availablePreview: Extract<
+    TimelineOutputPreview["experimental_fullOutputAvailability"],
+    "available" | "detail-limit"
+  >,
+): TimelineRow[] {
+  const previews = retainedOutputPreviewsByCallId(
+    events,
+    availablePreview,
+    Date.now(),
+  );
+  if (previews.size === 0) {
+    return [...rows];
+  }
+  return rows.map((row) => {
+    if (
+      row.kind !== "work" ||
+      (row.workKind !== "command" && row.workKind !== "tool")
+    ) {
+      return row;
+    }
+    const outputPreview = previews.get(row.callId);
+    return outputPreview === undefined ? row : { ...row, outputPreview };
+  });
 }
 
 function parseAcceptedInputClientRequestId(
@@ -1599,9 +1663,10 @@ function buildThreadTimelineInternal(
         },
       }),
   );
-  const projectedTimelineRows = buildSequencePageTimelineRows(
-    timeline.rows,
-    eventSelection,
+  const projectedTimelineRows = applyRetainedOutputPreviews(
+    buildSequencePageTimelineRows(timeline.rows, eventSelection),
+    decodedRawEvents,
+    "available",
   );
   if (profile) {
     profile.projectedRowCount = projectedTimelineRows.length;
@@ -2003,7 +2068,11 @@ export function buildTimelineTurnSummaryDetails(
     });
   const hydratedEventRows =
     detailsInlineOutputLimit === null
-      ? hydrateRetainedEventOutputRows(db, eventRowsWithBackgroundTaskState)
+      ? hydrateRetainedEventOutputRowsWithinDataByteLimit(
+          db,
+          eventRowsWithBackgroundTaskState,
+          THREAD_TIMELINE_EVENT_DATA_BYTE_LIMIT,
+        )
       : eventRowsWithBackgroundTaskState;
   const projectionEventRows =
     byteLengthOfStoredEventRows(hydratedEventRows) <=
@@ -2017,8 +2086,11 @@ export function buildTimelineTurnSummaryDetails(
         : sourceSeqStart,
     sourceRange.sourceSeqStart,
   );
+  const projectionEvents = projectionEventRows.map((row) =>
+    toThreadEventWithMeta(row),
+  );
   const children = buildThreadTimelineTurnDetailsFromEvents({
-    events: projectionEventRows.map((row) => toThreadEventWithMeta(row)),
+    events: projectionEvents,
     options: {
       includeProviderUnhandledOperations,
       sourceSeqEnd: sourceRange.sourceSeqEnd,
@@ -2032,7 +2104,11 @@ export function buildTimelineTurnSummaryDetails(
 
   if (children.kind !== "missing-match") {
     return {
-      rows: children.rows,
+      rows: applyRetainedOutputPreviews(
+        children.rows,
+        projectionEvents,
+        "detail-limit",
+      ),
     };
   }
 

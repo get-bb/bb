@@ -1,30 +1,40 @@
-import { eq, and, sql, lt, asc } from "drizzle-orm";
+import { eq, and, sql, lt, asc, inArray } from "drizzle-orm";
 import type { DbConnection, DbQueryConnection } from "../connection.js";
 import type { DbNotifier } from "../notifier.js";
+import {
+  COMPLETED_EVENT_OUTPUT_TRUNCATION_THRESHOLD_CHARS,
+  type RetainedEventOutputTarget,
+} from "../retained-event-output.js";
 import { environments, events, maintenanceScanCursors } from "../schema.js";
 import {
   insertPreparedRetainedEventOutput,
   prepareCompletedEventOutputData,
-  type RetainedEventOutputTarget,
 } from "./retained-event-outputs.js";
+
+export {
+  COMPLETED_EVENT_OUTPUT_RETAINED_HEAD_CHARS,
+  COMPLETED_EVENT_OUTPUT_RETAINED_TAIL_CHARS,
+  COMPLETED_EVENT_OUTPUT_RETENTION_MS,
+  COMPLETED_EVENT_OUTPUT_TRUNCATION_THRESHOLD_CHARS,
+} from "../retained-event-output.js";
 
 export const DESTROYED_ENVIRONMENT_TTL_MS = 7 * 24 * 60 * 60_000;
 
 export const CLOSED_SESSION_ROW_RETENTION_MS = 7 * 24 * 60 * 60_000;
 
-export const COMPLETED_EVENT_OUTPUT_RETENTION_MS = 7 * 24 * 60 * 60_000;
-
-export const COMPLETED_EVENT_OUTPUT_TRUNCATION_THRESHOLD_CHARS = 32 * 1024;
-export const COMPLETED_EVENT_OUTPUT_RETAINED_HEAD_CHARS = 2 * 1024;
-export const COMPLETED_EVENT_OUTPUT_RETAINED_TAIL_CHARS = 2 * 1024;
 const COMPLETED_EVENT_OUTPUT_MIGRATION_CURSOR_VERSION = 1;
+const COMPLETED_EVENT_OUTPUT_MIGRATION_COMPLETED_AT = -1;
 export const DEFAULT_CLOSED_SESSION_PRUNE_BATCH_SIZE = 1_000;
 export const DEFAULT_DESTROYED_ENVIRONMENT_EVENT_DETACH_BATCH_SIZE = 50;
 export const DEFAULT_COMPLETED_EVENT_OUTPUT_MIGRATION_SCAN_LIMIT = 250;
 export const DEFAULT_DESTROYED_ENVIRONMENT_PRUNE_BATCH_SIZE = 10;
+export const MAX_COMPLETED_EVENT_OUTPUT_MIGRATION_EVENT_DATA_BYTES =
+  8 * 1024 * 1024;
 
 const COMPLETED_EVENT_OUTPUT_MIGRATION_CURSOR_POLICY =
   "legacy_completed_event_output_sidecar";
+const COMPLETED_EVENT_OUTPUT_MIGRATION_WINDOW_POLICY =
+  "legacy_completed_event_output_sidecar_window";
 
 type ClosedSessionState = "closed";
 type ClosedSessionDeleteParameters = [ClosedSessionState, number, number];
@@ -44,6 +54,7 @@ type CompletedEventOutputCandidateParameters = [
   string,
   number,
   string,
+  number,
   string,
   string,
   string,
@@ -51,10 +62,15 @@ type CompletedEventOutputCandidateParameters = [
   string,
   number,
 ];
-
 interface CompletedEventOutputScanCursor {
   lastCreatedAt: number;
   lastEventId: string;
+  updatedAt: number;
+}
+
+interface CompletedEventOutputScanState {
+  cursor: CompletedEventOutputScanCursor;
+  window: CompletedEventOutputScanCursor | null;
 }
 
 interface CompletedEventOutputScanRow {
@@ -69,8 +85,9 @@ interface CompletedEventOutputCandidateRow {
   thread_id: string;
 }
 
-interface AdvanceCompletedEventOutputMigrationCursorArgs
-  extends RetainedEventOutputTarget, CompletedEventOutputScanCursor {
+interface AdvanceCompletedEventOutputMigrationCursorArgs extends RetainedEventOutputTarget {
+  lastCreatedAt: number;
+  lastEventId: string;
   updatedAt: number;
 }
 
@@ -100,7 +117,7 @@ export interface MigrateNextCompletedEventItemOutputArgs extends RetainedEventOu
 }
 
 export interface MigrateNextCompletedEventItemOutputResult {
-  action: "idle" | "migrated" | "scanned" | "wrapped";
+  action: "complete" | "idle" | "migrated" | "scanned";
   eventId: string | null;
   migratedBytes: number;
   migratedRows: number;
@@ -135,31 +152,43 @@ export function pruneClosedSessions(
 
 function buildCompletedEventOutputCursorId(
   args: RetainedEventOutputTarget,
+  policy: string = COMPLETED_EVENT_OUTPUT_MIGRATION_CURSOR_POLICY,
 ): string {
   return [
-    COMPLETED_EVENT_OUTPUT_MIGRATION_CURSOR_POLICY,
+    policy,
     `v${COMPLETED_EVENT_OUTPUT_MIGRATION_CURSOR_VERSION}`,
     args.itemKind,
     args.outputPath,
   ].join(":");
 }
 
-function getCompletedEventOutputScanCursor(
+function getCompletedEventOutputScanState(
   db: DbQueryConnection,
   args: RetainedEventOutputTarget,
-): CompletedEventOutputScanCursor {
-  const row = db
+): CompletedEventOutputScanState {
+  const cursorId = buildCompletedEventOutputCursorId(args);
+  const windowId = buildCompletedEventOutputCursorId(
+    args,
+    COMPLETED_EVENT_OUTPUT_MIGRATION_WINDOW_POLICY,
+  );
+  const rows = db
     .select({
+      id: maintenanceScanCursors.id,
       lastCreatedAt: maintenanceScanCursors.lastCreatedAt,
       lastEventId: maintenanceScanCursors.lastEventId,
+      updatedAt: maintenanceScanCursors.updatedAt,
     })
     .from(maintenanceScanCursors)
-    .where(
-      eq(maintenanceScanCursors.id, buildCompletedEventOutputCursorId(args)),
-    )
-    .get();
+    .where(inArray(maintenanceScanCursors.id, [cursorId, windowId]))
+    .all();
+  const rowsById = new Map(rows.map((row) => [row.id, row]));
+  const cursor = rowsById.get(cursorId);
+  const window = rowsById.get(windowId);
 
-  return row ?? { lastCreatedAt: 0, lastEventId: "" };
+  return {
+    cursor: cursor ?? { lastCreatedAt: 0, lastEventId: "", updatedAt: 0 },
+    window: window ?? null,
+  };
 }
 
 function listCompletedEventOutputScanRows(
@@ -197,17 +226,9 @@ function listCompletedEventOutputScanRows(
 function findCompletedEventOutputCandidate(
   db: DbConnection,
   args: MigrateNextCompletedEventItemOutputArgs,
-  rows: readonly CompletedEventOutputScanRow[],
+  cursor: CompletedEventOutputScanCursor,
+  window: CompletedEventOutputScanCursor,
 ): CompletedEventOutputCandidateRow | undefined {
-  if (rows.length === 0) {
-    return undefined;
-  }
-
-  const firstRow = rows[0];
-  const lastRow = rows.at(-1);
-  if (!firstRow || !lastRow) {
-    return undefined;
-  }
   const valuePath = `$.item.${args.outputPath}`;
   const truncationPath = `$.item.truncation.${args.outputPath}`;
   return db.$client
@@ -223,11 +244,13 @@ function findCompletedEventOutputCandidate(
           AND created_at < ?
           AND (created_at, id) >= (?, ?)
           AND (created_at, id) <= (?, ?)
-          AND CASE WHEN json_valid(data) THEN
+          AND CASE
+          WHEN octet_length(data) > ? THEN 0
+          WHEN json_valid(data) THEN
             json_type(data, ?) = 'text'
             AND json_type(data, ?) IS NULL
             AND json_extract(data, ?) = ?
-            AND length(json_extract(data, ?)) > ?
+            AND octet_length(json_extract(data, ?)) > ?
           ELSE 0 END
         ORDER BY created_at, id
         LIMIT 1
@@ -237,10 +260,11 @@ function findCompletedEventOutputCandidate(
       "item/completed",
       args.itemKind,
       args.migratedAt,
-      firstRow.created_at,
-      firstRow.id,
-      lastRow.created_at,
-      lastRow.id,
+      cursor.lastCreatedAt,
+      cursor.lastEventId,
+      window.lastCreatedAt,
+      window.lastEventId,
+      MAX_COMPLETED_EVENT_OUTPUT_MIGRATION_EVENT_DATA_BYTES,
       valuePath,
       truncationPath,
       "$.item.type",
@@ -253,11 +277,12 @@ function findCompletedEventOutputCandidate(
 function advanceCompletedEventOutputMigrationCursor(
   db: DbQueryConnection,
   args: AdvanceCompletedEventOutputMigrationCursorArgs,
+  policy: string = COMPLETED_EVENT_OUTPUT_MIGRATION_CURSOR_POLICY,
 ): void {
   db.insert(maintenanceScanCursors)
     .values({
-      id: buildCompletedEventOutputCursorId(args),
-      policy: COMPLETED_EVENT_OUTPUT_MIGRATION_CURSOR_POLICY,
+      id: buildCompletedEventOutputCursorId(args, policy),
+      policy,
       version: COMPLETED_EVENT_OUTPUT_MIGRATION_CURSOR_VERSION,
       itemKind: args.itemKind,
       outputPath: args.outputPath,
@@ -276,8 +301,74 @@ function advanceCompletedEventOutputMigrationCursor(
     .run();
 }
 
+function clearCompletedEventOutputMigrationWindow(
+  db: DbQueryConnection,
+  args: RetainedEventOutputTarget,
+): void {
+  db.delete(maintenanceScanCursors)
+    .where(
+      eq(
+        maintenanceScanCursors.id,
+        buildCompletedEventOutputCursorId(
+          args,
+          COMPLETED_EVENT_OUTPUT_MIGRATION_WINDOW_POLICY,
+        ),
+      ),
+    )
+    .run();
+}
+
+function sameCompletedEventOutputScanPosition(
+  left: CompletedEventOutputScanCursor,
+  right: CompletedEventOutputScanCursor,
+): boolean {
+  return (
+    left.lastCreatedAt === right.lastCreatedAt &&
+    left.lastEventId === right.lastEventId
+  );
+}
+
+function completedEventOutputScanPositionAfter(
+  left: CompletedEventOutputScanCursor,
+  right: CompletedEventOutputScanCursor,
+): boolean {
+  return (
+    left.lastCreatedAt > right.lastCreatedAt ||
+    (left.lastCreatedAt === right.lastCreatedAt &&
+      left.lastEventId > right.lastEventId)
+  );
+}
+
+function persistCompletedEventOutputMigrationPosition(
+  db: DbQueryConnection,
+  args: MigrateNextCompletedEventItemOutputArgs,
+  position: CompletedEventOutputScanCursor,
+  window: CompletedEventOutputScanCursor,
+): void {
+  advanceCompletedEventOutputMigrationCursor(db, {
+    ...args,
+    lastCreatedAt: position.lastCreatedAt,
+    lastEventId: position.lastEventId,
+    updatedAt: args.migratedAt,
+  });
+  if (sameCompletedEventOutputScanPosition(position, window)) {
+    clearCompletedEventOutputMigrationWindow(db, args);
+    return;
+  }
+  advanceCompletedEventOutputMigrationCursor(
+    db,
+    {
+      ...args,
+      lastCreatedAt: window.lastCreatedAt,
+      lastEventId: window.lastEventId,
+      updatedAt: args.migratedAt,
+    },
+    COMPLETED_EVENT_OUTPUT_MIGRATION_WINDOW_POLICY,
+  );
+}
+
 function emptyCompletedEventOutputMigrationResult(
-  action: "idle" | "scanned" | "wrapped",
+  action: "complete" | "idle" | "scanned",
   scanRows: number,
 ): MigrateNextCompletedEventItemOutputResult {
   return {
@@ -298,34 +389,73 @@ export function migrateNextCompletedEventItemOutput(
   if (args.limit <= 0) {
     return emptyCompletedEventOutputMigrationResult("idle", 0);
   }
-  const cursor = getCompletedEventOutputScanCursor(db, args);
-  const rows = listCompletedEventOutputScanRows(db, args, cursor);
-  if (rows.length === 0) {
-    if (cursor.lastCreatedAt === 0 && cursor.lastEventId === "") {
-      return emptyCompletedEventOutputMigrationResult("idle", 0);
-    }
-    advanceCompletedEventOutputMigrationCursor(db, {
-      ...args,
-      lastCreatedAt: 0,
-      lastEventId: "",
-      updatedAt: args.migratedAt,
-    });
-    return emptyCompletedEventOutputMigrationResult("wrapped", 0);
+  const state = getCompletedEventOutputScanState(db, args);
+  const cursor = state.cursor;
+  if (cursor.lastCreatedAt === COMPLETED_EVENT_OUTPUT_MIGRATION_COMPLETED_AT) {
+    return emptyCompletedEventOutputMigrationResult("complete", 0);
   }
 
-  const candidate = findCompletedEventOutputCandidate(db, args, rows);
-  if (!candidate) {
+  let window =
+    state.window && completedEventOutputScanPositionAfter(state.window, cursor)
+      ? state.window
+      : null;
+  let initialWindowScanRows: number | null = null;
+  if (!window) {
+    const rows = listCompletedEventOutputScanRows(db, args, cursor);
+    if (rows.length === 0) {
+      if (cursor.lastCreatedAt === 0 && cursor.lastEventId === "") {
+        if (state.window) {
+          clearCompletedEventOutputMigrationWindow(db, args);
+        }
+        return emptyCompletedEventOutputMigrationResult("idle", 0);
+      }
+      db.transaction(
+        (tx) => {
+          advanceCompletedEventOutputMigrationCursor(tx, {
+            ...args,
+            lastCreatedAt: COMPLETED_EVENT_OUTPUT_MIGRATION_COMPLETED_AT,
+            lastEventId: "",
+            updatedAt: args.migratedAt,
+          });
+          clearCompletedEventOutputMigrationWindow(tx, args);
+        },
+        { behavior: "immediate" },
+      );
+      return emptyCompletedEventOutputMigrationResult("complete", 0);
+    }
     const lastRow = rows.at(-1);
     if (!lastRow) {
       throw new Error("Expected completed output migration scan row");
     }
-    advanceCompletedEventOutputMigrationCursor(db, {
-      ...args,
+    window = {
       lastCreatedAt: lastRow.created_at,
       lastEventId: lastRow.id,
       updatedAt: args.migratedAt,
-    });
-    return emptyCompletedEventOutputMigrationResult("scanned", rows.length);
+    };
+    initialWindowScanRows = rows.length;
+  }
+
+  const candidate = findCompletedEventOutputCandidate(db, args, cursor, window);
+  const candidatePosition = candidate
+    ? {
+        lastCreatedAt: candidate.created_at,
+        lastEventId: candidate.id,
+        updatedAt: args.migratedAt,
+      }
+    : window;
+  const scanRows = initialWindowScanRows ?? 0;
+  if (!candidate) {
+    db.transaction(
+      (tx) =>
+        persistCompletedEventOutputMigrationPosition(
+          tx,
+          args,
+          candidatePosition,
+          window,
+        ),
+      { behavior: "immediate" },
+    );
+    return emptyCompletedEventOutputMigrationResult("scanned", scanRows);
   }
 
   const prepared = prepareCompletedEventOutputData({
@@ -335,7 +465,17 @@ export function migrateNextCompletedEventItemOutput(
     type: "item/completed",
   });
   if (!prepared.retainedOutput) {
-    throw new Error("Completed output migration candidate was not eligible");
+    db.transaction(
+      (tx) =>
+        persistCompletedEventOutputMigrationPosition(
+          tx,
+          args,
+          candidatePosition,
+          window,
+        ),
+      { behavior: "immediate" },
+    );
+    return emptyCompletedEventOutputMigrationResult("scanned", scanRows);
   }
   const retainedOutput = prepared.retainedOutput;
   const retained = retainedOutput.expiresAt > args.migratedAt;
@@ -359,12 +499,12 @@ export function migrateNextCompletedEventItemOutput(
           output: retainedOutput,
         });
       }
-      advanceCompletedEventOutputMigrationCursor(tx, {
-        ...args,
-        lastCreatedAt: candidate.created_at,
-        lastEventId: candidate.id,
-        updatedAt: args.migratedAt,
-      });
+      persistCompletedEventOutputMigrationPosition(
+        tx,
+        args,
+        candidatePosition,
+        window,
+      );
     },
     { behavior: "immediate" },
   );
@@ -375,7 +515,7 @@ export function migrateNextCompletedEventItemOutput(
     migratedBytes: Buffer.byteLength(retainedOutput.value),
     migratedRows: 1,
     retained,
-    scanRows: rows.length,
+    scanRows,
     threadId: candidate.thread_id,
   };
 }
