@@ -574,8 +574,7 @@ describe("RAPP provider bridge", () => {
     expect(chatCalls).toBe(1);
     expect(
       threadDeltas(threadId).some(
-        (delta) =>
-          agentMessageText(delta) === "after local precondition retry",
+        (delta) => agentMessageText(delta) === "after local precondition retry",
       ),
     ).toBe(true);
   });
@@ -835,7 +834,7 @@ describe("RAPP provider bridge", () => {
     ).toMatchObject({
       error: {
         message: expect.stringContaining(
-          "Explicitly interrupt/stop this thread",
+          "Start a new thread to continue safely",
         ),
       },
     });
@@ -924,8 +923,7 @@ describe("RAPP provider bridge", () => {
     await waitFor(
       () =>
         (new RappSessionStore(dataDir).load(identity.providerThreadId)
-          ?.pendingDelivery ??
-          null) !== null,
+          ?.pendingDelivery ?? null) !== null,
       "completed response was not committed to the delivery journal",
     );
 
@@ -973,9 +971,7 @@ describe("RAPP provider bridge", () => {
       providerTurnId,
     });
     expect(
-      threadDeltas(threadId).find(
-        (delta) => delta.kind === "extension.state",
-      ),
+      threadDeltas(threadId).find((delta) => delta.kind === "extension.state"),
     ).toMatchObject({
       payload: {
         grail: "consumer",
@@ -1010,6 +1006,98 @@ describe("RAPP provider bridge", () => {
       "acknowledging follow-up turn did not settle locally",
     );
     expect(chatCalls).toBe(1);
+    expect(
+      new RappSessionStore(dataDir).load(identity.providerThreadId)
+        ?.pendingDelivery,
+    ).toBeNull();
+  });
+
+  it("does not replay a delivery already marked emitted on a normal bridge restart", async () => {
+    let chatCalls = 0;
+    const endpoint = await listen(async (incoming, response) => {
+      response.setHeader("content-type", "application/json");
+      if (incoming.method === "GET") {
+        response.end(
+          JSON.stringify({ status: "ok", version: "test", agents: [] }),
+        );
+        return;
+      }
+      await readJson(incoming);
+      chatCalls += 1;
+      response.end(
+        JSON.stringify({
+          response: "persisted answer",
+          session_id: "persisted-session",
+          agent_logs: [],
+          requested_model: "claude-opus-5",
+          model: "claude-opus-5",
+        }),
+      );
+    });
+    const threadId = "thr_emitted_delivery_restart";
+    const start = await request("thread/start", {
+      threadId,
+      cwd: "/workspace/rapp",
+      instructionMode: "append",
+      options: options(endpoint),
+    });
+    const identity = start.result as { providerThreadId: string };
+
+    await request("turn/start", {
+      threadId,
+      providerThreadId: identity.providerThreadId,
+      input: [{ type: "text", text: "persist once", mentions: [] }],
+      clientRequestId: "creq_abcdefghjv",
+      options: options(endpoint),
+    });
+    await waitForCompletedTurn(threadId);
+    expect(
+      new RappSessionStore(dataDir).load(identity.providerThreadId)
+        ?.pendingDelivery?.phase,
+    ).toBe("emitted");
+
+    experimental_resetRappBridgeForTests(dataDir);
+    const resumeStartIndex = harness.messages.length;
+    await request("thread/resume", {
+      threadId,
+      providerThreadId: identity.providerThreadId,
+      cwd: "/workspace/rapp",
+      instructionMode: "append",
+      options: options(endpoint),
+    });
+
+    expect(chatCalls).toBe(1);
+    expect(
+      harness.messages
+        .slice(resumeStartIndex)
+        .flatMap((message) => {
+          if (message.method !== "thread/delta") {
+            return [];
+          }
+          const params = message.params as {
+            threadId?: string;
+            deltas?: Array<Record<string, unknown>>;
+          };
+          return params.threadId === threadId ? (params.deltas ?? []) : [];
+        })
+        .filter((delta) => agentMessageText(delta) === "persisted answer"),
+    ).toEqual([]);
+
+    await request("turn/start", {
+      threadId,
+      providerThreadId: identity.providerThreadId,
+      input: [{ type: "text", text: "   ", mentions: [] }],
+      clientRequestId: "creq_abcdefghjw",
+      options: options(endpoint),
+    });
+    await waitFor(
+      () =>
+        threadDeltas(threadId).some(
+          (delta) =>
+            delta.kind === "turn.boundary" && delta.status === "failed",
+        ),
+      "post-restart acknowledgement turn did not settle locally",
+    );
     expect(
       new RappSessionStore(dataDir).load(identity.providerThreadId)
         ?.pendingDelivery,
@@ -1061,8 +1149,7 @@ describe("RAPP provider bridge", () => {
     await waitFor(
       () =>
         (new RappSessionStore(dataDir).load(identity.providerThreadId)
-          ?.pendingDelivery ??
-          null) !== null,
+          ?.pendingDelivery ?? null) !== null,
       "delivery journal was acknowledged despite the injected crash",
     );
     expect(
@@ -1634,15 +1721,14 @@ describe("RAPP provider bridge", () => {
       deltas
         .map(agentMessageText)
         .filter((text): text is string => text !== null),
-    ).toEqual(["answer-1", "answer-1", "answer-2"]);
+    ).toEqual(["answer-1", "answer-2"]);
     const collector = createBridgeDeltaEventCollector(RAPP_PROVIDER_ID);
     const assembled = harness.messages.flatMap((message) =>
       collector.assembleMessage(message),
     );
     expect(
       assembled.flatMap((event) =>
-        event.type === "item/completed" &&
-        event.item.type === "agentMessage"
+        event.type === "item/completed" && event.item.type === "agentMessage"
           ? [event.item.text]
           : [],
       ),

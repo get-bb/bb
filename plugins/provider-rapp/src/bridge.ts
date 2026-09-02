@@ -85,12 +85,13 @@ const TURN_STOP_TIMEOUT_MS = 5_000;
 const UNKNOWN_COMPLETION_MESSAGE = [
   "A prior RAPP completion is unknown.",
   "The endpoint may have completed the request, but legacy Brainstem does not honor idempotency keys, so bb will not replay it.",
-  "Explicitly interrupt/stop this thread to discard the retained pending turn, then send a new message.",
+  "Start a new thread to continue safely; bb will retain this thread for audit.",
 ].join(" ");
 let sessionStore = new RappSessionStore();
-let durabilityFault:
-  | { stage: RappBridgeDurabilityFault; trigger: () => void }
-  | null = null;
+let durabilityFault: {
+  stage: RappBridgeDurabilityFault;
+  trigger: () => void;
+} | null = null;
 
 function notify(method: string, params: Record<string, unknown>): void {
   io.send({ jsonrpc: "2.0", method, params });
@@ -296,7 +297,7 @@ function openSession(args: {
     threadId: args.threadId,
     providerThreadId: args.providerThreadId,
   });
-  if (session.saved.pendingDelivery !== null) {
+  if (session.saved.pendingDelivery?.phase === "ready") {
     if (!deliverPending(session)) {
       throw new Error(
         "RAPP delivery replay was interrupted before acknowledgement",
@@ -414,7 +415,11 @@ function acknowledgeDeliveryBeforeNextTurn(session: Session): void {
   if (session.saved.pendingDelivery === null) {
     return;
   }
-  if (!session.deliveryEmittedInProcess && !deliverPending(session)) {
+  if (
+    session.saved.pendingDelivery.phase === "ready" &&
+    !session.deliveryEmittedInProcess &&
+    !deliverPending(session)
+  ) {
     throw new Error(
       "RAPP delivery replay was interrupted before acknowledgement",
     );
@@ -519,10 +524,7 @@ async function executeTurn(args: {
       if (!isCurrentTurn(session, args.providerTurnId)) {
         throw new Error("RAPP turn is no longer active");
       }
-      session.saved = sessionStore.save(
-        { ...nextSnapshot, pendingTurn },
-        null,
-      );
+      session.saved = sessionStore.save({ ...nextSnapshot, pendingTurn }, null);
       chatMayHaveStarted = true;
     };
     let response: RappChatResponse;
@@ -630,9 +632,7 @@ async function executeTurn(args: {
         }
       } catch (clearError) {
         const message =
-          clearError instanceof Error
-            ? clearError.message
-            : String(clearError);
+          clearError instanceof Error ? clearError.message : String(clearError);
         emitTurnFailure(
           session,
           args.providerTurnId,
@@ -649,9 +649,7 @@ async function executeTurn(args: {
       session,
       args.providerTurnId,
       "failed",
-      chatMayHaveStarted
-        ? `${message} ${UNKNOWN_COMPLETION_MESSAGE}`
-        : message,
+      chatMayHaveStarted ? `${message} ${UNKNOWN_COMPLETION_MESSAGE}` : message,
     );
   }
 }

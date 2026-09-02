@@ -45,6 +45,12 @@
   startup applies only to plain HTTP `localhost` or `127.0.0.1` `/chat`
   endpoints, and the launched Brainstem does not inherit those five RAPP
   routing and credential variables.
+- RAPP persists complete transcripts in canonical `rapp/1` session eggs,
+  journals completed responses before delivery, caps responses at 64 KiB, and
+  fails before `/chat` when the egg cannot reserve that response capacity.
+  Continue in a new thread after the 1 MiB egg limit or an uncertain legacy
+  Brainstem completion; bb retains uncertain requests for audit and does not
+  replay them automatically.
 
 ## Agent Instructions
 

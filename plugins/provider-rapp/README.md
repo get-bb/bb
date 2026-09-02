@@ -39,6 +39,23 @@ so bb serializes each concrete model selection with its complete `/chat`
 request per endpoint. Brainstem remains the owner of Copilot authentication,
 catalog filtering, fallback, soul, agents, and execution.
 
+## Durable turn safety
+
+bb persists the complete transcript in canonical RAPP/1 session eggs and
+journals a successful response before delivering it to the thread. A bridge
+restart can recover a response committed before delivery.
+
+RAPP/1 caps each canonical session egg at 1 MiB. Responses are capped at
+64 KiB, and bb reserves enough space for a maximum-size response before calling
+`/chat`. When a thread no longer has that capacity, the turn fails locally and
+must continue in a new thread.
+
+Some installed Brainstem versions accept but do not enforce
+`idempotency_key`. If a `/chat` attempt may have completed but bb did not
+receive a valid response, bb retains the pending request for audit and refuses
+to replay it automatically. Start a new thread to continue without risking a
+duplicate agent action.
+
 ## Business Grail
 
 Select the Business Grail and configure the Azure Function App URL:

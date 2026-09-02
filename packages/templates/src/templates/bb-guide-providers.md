@@ -60,7 +60,13 @@ settings. Business endpoint URLs also may not contain query parameters or
 fragments. An auto-launched local Brainstem keeps ordinary host and GitHub
 Copilot environment but does not inherit those five RAPP routing and
 credential variables. bb persists each RAPP thread as a canonical `rapp/1`
-session egg for restart-safe resume.
+session egg for restart-safe resume and journals completed responses before
+delivery. RAPP/1 limits a complete-transcript session egg to 1 MiB, so bb caps
+responses at 64 KiB and fails locally before `/chat` when a maximum response no
+longer fits; continue in a new thread. If an older Brainstem may have completed
+an uncertain request without enforcing `idempotency_key`, bb keeps it for
+audit and never replays it automatically; continue in a new thread to avoid a
+duplicate agent action.
 
 Provider-native memory can be controlled on the separate Settings → Providers
 → Codex and Settings → Providers → Claude Code pages. Codex memory controls

@@ -13,6 +13,10 @@ export const RAPP_BRAINSTEM_SECRET_ENV = "RAPP_BRAINSTEM_SECRET";
 export const RAPP_BUSINESS_URL_ENV = "RAPP_BUSINESS_URL";
 export const RAPP_FUNCTION_KEY_ENV = "RAPP_FUNCTION_KEY";
 export const RAPP_USER_GUID_ENV = "RAPP_USER_GUID";
+export const RAPP_CONSUMER_REASONING_DESCRIPTION =
+  "RAPP Brainstem owns GitHub Copilot reasoning and execution.";
+export const RAPP_BUSINESS_REASONING_DESCRIPTION =
+  "The configured Business RAPP deployment owns reasoning and execution.";
 
 export const rappGrailSchema = z.enum(["consumer", "business"]);
 export type RappGrail = z.infer<typeof rappGrailSchema>;
@@ -86,8 +90,7 @@ export const RAPP_BRAINSTEM_MODEL = {
   supportedReasoningEfforts: [
     {
       reasoningEffort: "none",
-      description:
-        "RAPP Brainstem owns GitHub Copilot reasoning and execution.",
+      description: RAPP_CONSUMER_REASONING_DESCRIPTION,
     },
   ],
   defaultReasoningEffort: "none",
@@ -102,8 +105,7 @@ export const RAPP_BUSINESS_MODEL = {
   supportedReasoningEfforts: [
     {
       reasoningEffort: "none",
-      description:
-        "RAPP Brainstem owns GitHub Copilot reasoning and execution.",
+      description: RAPP_BUSINESS_REASONING_DESCRIPTION,
     },
   ],
   defaultReasoningEffort: "none",

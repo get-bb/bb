@@ -4,8 +4,10 @@ import rappPlugin from "./server.js";
 import {
   RAPP_BRAINSTEM_SECRET_ENV,
   RAPP_BRAINSTEM_URL_ENV,
+  RAPP_BUSINESS_REASONING_DESCRIPTION,
   RAPP_BUSINESS_MODEL_ID,
   RAPP_BUSINESS_URL_ENV,
+  RAPP_CONSUMER_REASONING_DESCRIPTION,
   RAPP_ENDPOINT_URL_REQUIREMENTS,
   RAPP_FUNCTION_KEY_ENV,
   RAPP_MODEL_ID,
@@ -21,8 +23,7 @@ const invalidEndpointSettings = [
   },
   {
     label: "a sig query parameter",
-    endpoint:
-      "https://example.com/api/businessinsightbot_function?sig=secret",
+    endpoint: "https://example.com/api/businessinsightbot_function?sig=secret",
   },
   {
     label: "a signature query parameter",
@@ -30,8 +31,7 @@ const invalidEndpointSettings = [
   },
   {
     label: "an auth query parameter",
-    endpoint:
-      "https://example.com/api/businessinsightbot_function?auth=secret",
+    endpoint: "https://example.com/api/businessinsightbot_function?auth=secret",
   },
   {
     label: "a credential query parameter",
@@ -106,6 +106,12 @@ describe("RAPP provider registration", () => {
       }),
     ]);
     expect(declaration.extensionKinds).toHaveProperty("session.state");
+    expect(declaration.reasoningLevels).toEqual([
+      expect.objectContaining({
+        id: "none",
+        description: RAPP_CONSUMER_REASONING_DESCRIPTION,
+      }),
+    ]);
     expect(
       Object.keys(host.harness.registrations.settingsDescriptors).sort(),
     ).toEqual(["endpoint", "grail"]);
@@ -157,6 +163,17 @@ describe("RAPP provider registration", () => {
       expect.objectContaining({
         id: RAPP_BUSINESS_MODEL_ID,
         isDefault: true,
+        supportedReasoningEfforts: [
+          expect.objectContaining({
+            description: RAPP_BUSINESS_REASONING_DESCRIPTION,
+          }),
+        ],
+      }),
+    ]);
+    expect(registrations[0]?.reasoningLevels).toEqual([
+      expect.objectContaining({
+        id: "none",
+        description: RAPP_BUSINESS_REASONING_DESCRIPTION,
       }),
     ]);
   });

@@ -299,6 +299,14 @@ environment but does not inherit the five RAPP routing and credential
 variables above.
 RAPP threads are saved as canonical `rapp/1` session eggs so they remain
 resumable after a host-daemon restart.
+Each egg keeps the complete transcript and is subject to RAPP/1's 1 MiB
+canonical limit. bb caps endpoint responses at 64 KiB and checks before
+`/chat` that a maximum-size response can still be committed; once capacity is
+exhausted, continue in a new thread. Successful responses are journaled before
+thread delivery. If an older Brainstem may have completed a request without
+honoring its `idempotency_key`, bb retains the uncertain request for audit and
+does not replay it automatically; continue in a new thread to avoid duplicate
+agent actions.
 
 Outside an open typeahead menu, Shift+Enter inserts a newline. On
 coarse-pointer touch devices, the software-keyboard Return path inserts a

@@ -6,8 +6,10 @@ import {
   RAPP_BRAINSTEM_SECRET_ENV,
   RAPP_BRAINSTEM_URL_ENV,
   RAPP_BRAINSTEM_MODEL,
+  RAPP_BUSINESS_REASONING_DESCRIPTION,
   RAPP_BUSINESS_MODEL,
   RAPP_BUSINESS_URL_ENV,
+  RAPP_CONSUMER_REASONING_DESCRIPTION,
   RAPP_FUNCTION_KEY_ENV,
   RAPP_PROVIDER_ID,
   RAPP_USER_GUID_ENV,
@@ -50,7 +52,9 @@ function providerDeclaration(
         id: "none",
         label: "Brainstem",
         description:
-          "RAPP Brainstem owns GitHub Copilot reasoning and execution.",
+          settings.grail === "consumer"
+            ? RAPP_CONSUMER_REASONING_DESCRIPTION
+            : RAPP_BUSINESS_REASONING_DESCRIPTION,
       },
     ],
     composerActions: [],
