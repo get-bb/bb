@@ -226,6 +226,7 @@ interface ThreadAttachment {
   closing: boolean;
   residentSession: ThreadSession | null;
   idleTimer: ReturnType<typeof setTimeout> | null;
+  dormantWakeReason: string;
   residencyGeneration: number;
   wakePromise: Promise<ThreadSession | undefined> | null;
   idleQueryReleaseEnabled: boolean;
@@ -384,6 +385,7 @@ function requireSkillPluginsRoot(): string {
 
 const THREAD_STOP_CLOSE_TIMEOUT_MS = 4_000;
 export const CLAUDE_IDLE_QUERY_GRACE_MS = 30_000;
+const CLAUDE_IDLE_QUERY_WAKE_REASON = "Claude query resumed after idle release";
 
 const { send, sendResult, sendError } = createBridgeIo<
   SdkMessageNotification | BridgeEventNotification | BridgeToolCallRequest
@@ -421,6 +423,27 @@ function isThreadSessionQuiescent(
   );
 }
 
+function releaseResidentQuery(args: {
+  attachment: ThreadAttachment;
+  reason: string;
+  threadId: string;
+  threadSession: ThreadSession;
+}): void {
+  if (
+    args.attachment.closing ||
+    args.threadSession.closing ||
+    threadAttachments.get(args.threadId) !== args.attachment ||
+    args.attachment.residentSession !== args.threadSession
+  ) {
+    return;
+  }
+  cancelIdleQueryRelease(args.attachment);
+  args.threadSession.closing = true;
+  args.attachment.residentSession = null;
+  args.attachment.dormantWakeReason = args.reason;
+  args.threadSession.session.stop();
+}
+
 function scheduleIdleQueryRelease(
   threadSession: ThreadSession,
   threadId: string,
@@ -454,10 +477,12 @@ function scheduleIdleQueryRelease(
       scheduleIdleQueryRelease(threadSession, threadId);
       return;
     }
-    threadSession.closing = true;
-    attachment.residentSession = null;
-    attachment.residencyGeneration += 1;
-    threadSession.session.stop();
+    releaseResidentQuery({
+      attachment,
+      reason: CLAUDE_IDLE_QUERY_WAKE_REASON,
+      threadId,
+      threadSession,
+    });
   }, CLAUDE_IDLE_QUERY_GRACE_MS);
 }
 
@@ -509,6 +534,7 @@ function createForwardToolCall(getThreadId: () => string): ToolCallForwarder {
     }).finally(() => {
       threadSession.pendingForwardedToolCalls -= 1;
       refreshIdleQueryRelease(threadSession, threadId);
+      scheduleAuthenticationFailureEviction(threadSession);
     });
   };
 }
@@ -1006,6 +1032,7 @@ function createThreadAttachment(
     closing: false,
     residentSession: null,
     idleTimer: null,
+    dormantWakeReason: CLAUDE_IDLE_QUERY_WAKE_REASON,
     residencyGeneration: 0,
     wakePromise: null,
     idleQueryReleaseEnabled: args.idleQueryReleaseEnabled,
@@ -1427,7 +1454,7 @@ async function getWritableThreadSession(
 
   const threadSession = attachment.residentSession;
   const replacementReason = !threadSession
-    ? "Claude query resumed after idle release"
+    ? attachment.dormantWakeReason
     : threadSession.streamEnded
       ? "Thread session replaced after Claude SDK stream ended"
       : intent === "new-turn"
@@ -1476,7 +1503,7 @@ async function getWritableThreadSession(
       params: {
         threadId,
         providerThreadId,
-        reason: "Claude query resumed after idle release",
+        reason: attachment.dormantWakeReason,
         contextLost: false,
       },
     });
@@ -1508,6 +1535,33 @@ function getAuthenticationFailureRestartReason(
     default:
       return null;
   }
+}
+
+function evictAuthenticationFailedQueryIfQuiescent(
+  threadSession: ThreadSession,
+): void {
+  const reason = threadSession.restartBeforeNextTurnReason;
+  if (reason === null) {
+    return;
+  }
+  const threadId = threadSession.attachment.threadIdRef.current;
+  if (!isThreadSessionQuiescent(threadSession, threadId)) {
+    return;
+  }
+  releaseResidentQuery({
+    attachment: threadSession.attachment,
+    reason,
+    threadId,
+    threadSession,
+  });
+}
+
+function scheduleAuthenticationFailureEviction(
+  threadSession: ThreadSession,
+): void {
+  queueMicrotask(() => {
+    evictAuthenticationFailedQueryIfQuiescent(threadSession);
+  });
 }
 
 function getCurrentThreadSession(
@@ -1562,6 +1616,7 @@ function createOnSdkMessage(
       );
     }
     refreshIdleQueryRelease(threadSession, args.threadIdRef.current);
+    scheduleAuthenticationFailureEviction(threadSession);
   };
 }
 
@@ -1801,6 +1856,7 @@ function createForwardInteractiveRequest(
         args.signal.removeEventListener("abort", onAbort);
         resolve(result);
         refreshIdleQueryRelease(threadSession, threadIdRef.current);
+        scheduleAuthenticationFailureEviction(threadSession);
       };
 
       const onAbort = (): void => {
@@ -1866,6 +1922,7 @@ function createForwardUserQuestionRequest(
         args.signal.removeEventListener("abort", onAbort);
         resolve(result);
         refreshIdleQueryRelease(threadSession, threadIdRef.current);
+        scheduleAuthenticationFailureEviction(threadSession);
       };
 
       const onAbort = (): void => {

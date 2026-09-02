@@ -46,7 +46,10 @@ import {
 } from "@get-bb/plugin-sdk/provider-bridge/testing";
 import type { BridgeJsonRpcOutputMessage } from "@get-bb/plugin-sdk/provider-bridge/testing";
 
-import { BRIDGE_INBOUND_REQUEST_METHODS } from "@bb/provider-bridge-protocol";
+import {
+  BRIDGE_INBOUND_REQUEST_METHODS,
+  THREAD_DELTA_NOTIFICATION_METHOD,
+} from "@bb/provider-bridge-protocol";
 
 type BridgeSessionOptions = ReturnType<typeof buildSessionOptions>;
 type BridgeSessionHooks = NonNullable<BridgeSessionOptions["hooks"]>;
@@ -56,6 +59,11 @@ type BridgeJsonRpcTestHarness = ReturnType<
   typeof createBridgeJsonRpcTestHarness
 >;
 type SdkResultUsage = Extract<SDKMessage, { type: "result" }>["usage"];
+type AuthenticationFailureError = Extract<
+  SDKMessage,
+  { type: "assistant" }
+>["error"] &
+  ("authentication_failed" | "oauth_org_not_allowed");
 
 async function flushFakeTimerBridgeWork(
   bridge: BridgeJsonRpcTestHarness,
@@ -443,10 +451,13 @@ function createStaleResumeErrorMessage(
   };
 }
 
-function createAuthenticationErrorMessage(sessionId: string): SDKMessage {
+function createAuthenticationErrorMessage(
+  sessionId: string,
+  error: AuthenticationFailureError = "authentication_failed",
+): SDKMessage {
   return {
     type: "assistant",
-    error: "authentication_failed",
+    error,
     message: {
       id: "authentication-error-message",
       type: "message",
@@ -468,6 +479,27 @@ function createAuthenticationErrorMessage(sessionId: string): SDKMessage {
     },
     parent_tool_use_id: null,
     uuid: "00000000-0000-4000-8000-000000000002",
+    session_id: sessionId,
+  };
+}
+
+function createAuthenticationFailureResult(sessionId: string): SDKMessage {
+  return {
+    type: "result",
+    subtype: "error_during_execution",
+    duration_ms: 0,
+    duration_api_ms: 0,
+    is_error: true,
+    num_turns: 0,
+    stop_reason: null,
+    total_cost_usd: 0,
+    usage: createResultUsage(),
+    modelUsage: {},
+    permission_denials: [],
+    errors: [
+      "Failed to authenticate: OAuth session expired and could not be refreshed",
+    ],
+    uuid: "00000000-0000-4000-8000-000000000003",
     session_id: sessionId,
   };
 }
@@ -681,6 +713,19 @@ function interactionPayload(
 
 function isApprovalInteraction(message: BridgeJsonRpcOutputMessage): boolean {
   return interactionPayload(message)?.kind === "approval";
+}
+
+function isSessionResetMessage(message: BridgeJsonRpcOutputMessage): boolean {
+  if (
+    message.method !== THREAD_DELTA_NOTIFICATION_METHOD ||
+    !isRecord(message.params) ||
+    !Array.isArray(message.params.deltas)
+  ) {
+    return false;
+  }
+  return message.params.deltas.some(
+    (delta) => isRecord(delta) && delta.kind === "session.reset",
+  );
 }
 
 function isUserQuestionInteraction(
@@ -4369,7 +4414,135 @@ describe("bridge", () => {
     }
   });
 
-  it("restarts a Claude session before the next turn after an authentication failure", async () => {
+  it.each(["authentication_failed", "oauth_org_not_allowed"] as const)(
+    "evicts a %s Claude query after settling the turn",
+    async (error) => {
+      const bridge = createBridgeJsonRpcTestHarness(handleLine);
+      const queries: ControlledClaudeQuery[] = [];
+      let failedTurnsBeforeClose = 0;
+      let recoveryNotificationsBeforeClose = 0;
+      queryMock.mockImplementation(() => {
+        const query = createControlledClaudeQuery();
+        query.close.mockImplementation(() => {
+          failedTurnsBeforeClose = getFailedTurns(bridge.messages).length;
+          recoveryNotificationsBeforeClose = bridge.messages.filter(
+            (message) => message.method === "provider/recovery",
+          ).length;
+          query.finish();
+        });
+        queries.push(query);
+        return query;
+      });
+
+      try {
+        const threadId = "thread-authentication-failure";
+        const providerThreadId = "provider-thread-authentication-failure";
+        sendResumeThread({
+          bridge,
+          providerThreadId,
+          requestId: 1,
+          threadId,
+        });
+        await bridge.waitForResponse(1);
+
+        bridge.sendRequest(
+          2,
+          "turn/start",
+          canonicalTurnParams({
+            threadId,
+            providerThreadId,
+            input: [{ type: "text", text: "before reauthentication" }],
+          }),
+        );
+        await expect(readNextPromptText(getLatestQueryCall())).resolves.toBe(
+          "before reauthentication",
+        );
+        await bridge.waitForResponse(2);
+
+        const messagesBeforeFailure = bridge.messages.length;
+        queries[0]?.emit(
+          createAuthenticationErrorMessage(providerThreadId, error),
+        );
+        queries[0]?.emit(createAuthenticationFailureResult(providerThreadId));
+        await bridge.flushWork();
+
+        expect(getFailedTurns(bridge.messages)).toHaveLength(1);
+        expect(queries).toHaveLength(1);
+        expect(queries[0]?.close).toHaveBeenCalledOnce();
+        expect(failedTurnsBeforeClose).toBe(1);
+        expect(recoveryNotificationsBeforeClose).toBe(1);
+        expect(
+          bridge.messages
+            .filter((message) => message.method === "provider/recovery")
+            .map((message) => message.params),
+        ).toEqual([
+          {
+            threadId,
+            kind: "authRequired",
+            message: expect.stringContaining("authenticate"),
+            retryable: false,
+          },
+        ]);
+        expect(
+          bridge.messages
+            .slice(messagesBeforeFailure)
+            .some((message) => message.method === "session/replaced"),
+        ).toBe(false);
+        expect(
+          bridge.messages
+            .slice(messagesBeforeFailure)
+            .some(isSessionResetMessage),
+        ).toBe(false);
+
+        const messagesBeforeReplacement = bridge.messages.length;
+        bridge.sendRequest(
+          3,
+          "turn/start",
+          canonicalTurnParams({
+            threadId,
+            providerThreadId,
+            input: [{ type: "text", text: "after reauthentication" }],
+          }),
+        );
+        await bridge.flushWork();
+
+        expect(queries).toHaveLength(2);
+        expect(queries[0]?.close).toHaveBeenCalledOnce();
+        expect(getLatestQueryOptions()).toMatchObject({
+          resume: providerThreadId,
+        });
+        const replacementMessages = bridge.messages.slice(
+          messagesBeforeReplacement,
+        );
+        const replacementIndex = replacementMessages.findIndex(
+          (message) => message.method === "session/replaced",
+        );
+        const resetIndex = replacementMessages.findIndex(isSessionResetMessage);
+        expect(replacementIndex).toBeGreaterThanOrEqual(0);
+        expect(resetIndex).toBeGreaterThan(replacementIndex);
+        await expect(readNextPromptText(getLatestQueryCall())).resolves.toBe(
+          "after reauthentication",
+        );
+        await bridge.waitForResponse(3);
+
+        bridge.sendRequest(4, "thread/stop", {
+          threadId,
+          providerThreadId,
+          intent: "interrupt",
+          activeTurnId: null,
+        });
+        await bridge.flushWork();
+        queries[1]?.finish();
+        await bridge.waitForResponse(4);
+        expect(queries[0]?.close).toHaveBeenCalledOnce();
+      } finally {
+        queries.forEach((query) => query.finish());
+        bridge.restore();
+      }
+    },
+  );
+
+  it("waits for interactions and background work before auth-failure eviction", async () => {
     const bridge = createBridgeJsonRpcTestHarness(handleLine);
     const queries: ControlledClaudeQuery[] = [];
     queryMock.mockImplementation(() => {
@@ -4379,8 +4552,10 @@ describe("bridge", () => {
     });
 
     try {
-      const threadId = "thread-authentication-failure";
-      const providerThreadId = "provider-thread-authentication-failure";
+      const threadId = "thread-authentication-failure-work";
+      const providerThreadId = "session-1";
+      const backgroundToolUseId = "tool-background-auth-failure";
+      const backgroundTaskId = "task-auth-failure";
       sendResumeThread({
         bridge,
         providerThreadId,
@@ -4395,81 +4570,88 @@ describe("bridge", () => {
         canonicalTurnParams({
           threadId,
           providerThreadId,
-          input: [{ type: "text", text: "before reauthentication" }],
+          input: [{ type: "text", text: "start background work" }],
         }),
       );
-      await expect(readNextPromptText(getLatestQueryCall())).resolves.toBe(
-        "before reauthentication",
-      );
+      await readNextPromptText(getLatestQueryCall());
       await bridge.waitForResponse(2);
 
-      queries[0]?.emit(createAuthenticationErrorMessage(providerThreadId));
+      queries[0]?.emit(
+        createAssistantToolUseMessage({
+          parentToolUseId: null,
+          toolInput: { prompt: "continue in the background" },
+          toolName: "Agent",
+          toolUseId: backgroundToolUseId,
+        }),
+      );
       queries[0]?.emit({
-        type: "result",
-        subtype: "error_during_execution",
-        duration_ms: 0,
-        duration_api_ms: 0,
-        is_error: true,
-        num_turns: 0,
-        stop_reason: null,
-        total_cost_usd: 0,
-        usage: createResultUsage(),
-        modelUsage: {},
-        permission_denials: [],
-        errors: [
-          "Failed to authenticate: OAuth session expired and could not be refreshed",
-        ],
-        uuid: "00000000-0000-4000-8000-000000000003",
+        type: "system",
+        subtype: "task_started",
+        task_id: backgroundTaskId,
+        tool_use_id: backgroundToolUseId,
+        description: "Continue in the background",
+        subagent_type: "general-purpose",
+        is_backgrounded: true,
+        task_type: "local_agent",
+        prompt: "continue in the background",
+        uuid: "00000000-0000-4000-8000-000000000004",
+        session_id: providerThreadId,
+      });
+      const { questionRequest, resultPromise } = await forwardAskUserQuestion({
+        bridge,
+        toolUseID: "tool-question-auth-failure",
+      });
+
+      queries[0]?.emit(createAuthenticationErrorMessage(providerThreadId));
+      queries[0]?.emit(createAuthenticationFailureResult(providerThreadId));
+      await bridge.flushWork();
+
+      expect(getFailedTurns(bridge.messages)).toHaveLength(1);
+      expect(queries[0]?.close).not.toHaveBeenCalled();
+
+      handleLine(
+        JSON.stringify({
+          jsonrpc: "2.0",
+          id: questionRequest.id,
+          result: {
+            kind: "user_answer",
+            answers: {
+              "tool-question-auth-failure:question-1": {
+                selected: ["tool-question-auth-failure:question-1:option-1"],
+              },
+            },
+          },
+        }),
+      );
+      await expect(resultPromise).resolves.toMatchObject({ behavior: "allow" });
+      await bridge.flushWork();
+
+      expect(queries[0]?.close).not.toHaveBeenCalled();
+
+      queries[0]?.emit({
+        type: "system",
+        subtype: "task_notification",
+        task_id: backgroundTaskId,
+        tool_use_id: backgroundToolUseId,
+        status: "completed",
+        output_file: "",
+        summary: "Background work completed",
+        usage: { total_tokens: 10, tool_uses: 0, duration_ms: 1 },
+        uuid: "00000000-0000-4000-8000-000000000005",
         session_id: providerThreadId,
       });
       await bridge.flushWork();
 
-      expect(getFailedTurns(bridge.messages)).toHaveLength(1);
-      expect(queries).toHaveLength(1);
-      expect(queries[0]?.close).not.toHaveBeenCalled();
-      expect(
-        bridge.messages
-          .filter((message) => message.method === "provider/recovery")
-          .map((message) => message.params),
-      ).toEqual([
-        {
-          threadId,
-          kind: "authRequired",
-          message: expect.stringContaining("authenticate"),
-          retryable: false,
-        },
-      ]);
-
-      bridge.sendRequest(
-        3,
-        "turn/start",
-        canonicalTurnParams({
-          threadId,
-          providerThreadId,
-          input: [{ type: "text", text: "after reauthentication" }],
-        }),
-      );
-      await bridge.flushWork();
-
-      expect(queries).toHaveLength(2);
       expect(queries[0]?.close).toHaveBeenCalledOnce();
-      expect(getLatestQueryOptions()).toMatchObject({
-        resume: providerThreadId,
-      });
-      await expect(readNextPromptText(getLatestQueryCall())).resolves.toBe(
-        "after reauthentication",
-      );
-      await bridge.waitForResponse(3);
 
-      bridge.sendRequest(4, "thread/stop", {
+      bridge.sendRequest(3, "thread/stop", {
         threadId,
         providerThreadId,
         intent: "interrupt",
         activeTurnId: null,
       });
-      await bridge.flushWork();
-      queries[1]?.finish();
-      await bridge.waitForResponse(4);
+      await bridge.waitForResponse(3);
+      expect(queries[0]?.close).toHaveBeenCalledOnce();
     } finally {
       queries.forEach((query) => query.finish());
       bridge.restore();
