@@ -43,6 +43,7 @@ import {
 import { SecondaryPanelHostLayoutContext } from "./SecondaryPanelHostLayoutContext";
 import { SecondaryPanelTabStrip } from "./SecondaryPanelTabStrip";
 import type {
+  MarketplacePluginDetailPanelTab,
   SecondaryPanelPaneRenderContext,
   SecondaryPanelRenderableTab,
   SecondaryPanelTabReorderHandler,
@@ -81,7 +82,10 @@ import {
 import { useDesktopWindowState } from "@/hooks/useDesktopWindowState";
 import { useOptionalIsSidebarShowing } from "@/components/ui/sidebar.js";
 import { IframeDragGuardOverlay } from "@/lib/iframe-drag-guard";
-import type { FixedPanelViewTab } from "@/lib/fixed-panel-tabs-state";
+import type {
+  FixedPanelViewTab,
+  SecondaryFixedPanelTab,
+} from "@/lib/fixed-panel-tabs-state";
 import { useAppCommandShortcut } from "@/components/commands/AppCommandProvider";
 import { AppCommandShortcutHint } from "@/components/commands/AppCommandShortcutHint";
 import type { AppShortcutPresentation } from "@/lib/app-keybindings";
@@ -170,7 +174,10 @@ export interface SecondaryPanelFixedTab {
 }
 
 export interface ThreadSecondaryPanelProps {
-  activeTab: SecondaryPanelRenderableTab["tab"] | null;
+  activeTab:
+    | SecondaryFixedPanelTab
+    | MarketplacePluginDetailPanelTab
+    | null;
   canUseGitUi: boolean;
   gitDiffTabStatus?: GitDiffTabStatus;
   onRetryGitDiffEligibility?: () => void;
