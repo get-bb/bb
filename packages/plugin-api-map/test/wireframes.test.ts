@@ -199,6 +199,9 @@ describe("guide fixture boundaries", () => {
       /data-guide-badge="nav-panel"[\s\S]*?data-guide-badge-placement="start"/,
     );
     expect(markup).toMatch(
+      /data-guide-badge="sidebar-navigation"[^>]*data-guide-badge-placement="start"[^>]*data-guide-badge-align="start"/,
+    );
+    expect(markup).toMatch(
       /data-guide-badge="thread-list"[\s\S]*?data-guide-badge-placement="start"/,
     );
     expect(markup).toMatch(
@@ -210,6 +213,18 @@ describe("guide fixture boundaries", () => {
     expect(markup).toMatch(
       /data-guide-target="content-scripts"[^>]*class="[^"]*absolute inset-0/,
     );
+  });
+
+  it("keeps nested sidebar targets reachable and the thread-header badge outside its control", () => {
+    const markup = renderWireframe(createElement(AppShellWireframe));
+
+    expect(markup).toMatch(
+      /data-guide-region="nav-panel"[^>]*class="[^"]*z-\[2\][^"]*block/,
+    );
+    expect(markup).toMatch(
+      /data-guide-badge="thread-header"[^>]*data-guide-badge-placement="above"/,
+    );
+    expect(markup.match(/data-guide-badge="thread-header"/g)).toHaveLength(1);
   });
 
   it("keeps the sidebar trigger in app-owned overlay chrome", () => {

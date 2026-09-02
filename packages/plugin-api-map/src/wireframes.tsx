@@ -302,7 +302,7 @@ function MeasuredBadge({
   label: string;
   anchor: string;
   at: "start" | "end" | "above" | "lane";
-  align?: "center" | "end";
+  align?: "start" | "center" | "end";
   flush?: boolean;
   onActivate?: () => void;
 }) {
@@ -359,7 +359,11 @@ function MeasuredBadge({
       };
       const centerY = local.top + local.height / 2 - chipBox / 2;
       const anchoredY =
-        align === "end" ? local.top + local.height - chipBox : centerY;
+        align === "start"
+          ? local.top
+          : align === "end"
+            ? local.top + local.height - chipBox
+            : centerY;
       const frame = container.querySelector<HTMLElement>("[data-guide-frame]");
       const frameOrigin = frame ? layoutOrigin(frame) : containerOrigin;
       const frameWidth = frame ? frame.offsetWidth : container.offsetWidth;
@@ -425,6 +429,7 @@ function MeasuredBadge({
       ref={ref}
       data-guide-badge={id}
       data-guide-badge-placement={at}
+      data-guide-badge-align={align}
       href={`#surface-${id}`}
       aria-label={`${label} — jump to details`}
       onClick={(event) => {
@@ -551,7 +556,7 @@ const SIDEBAR_SECTION_RENDERERS: Record<string, () => ReactNode> = {
       <Mark
         id="nav-panel"
         label="Plugin nav panels, above the thread list"
-        className="mx-1.5 space-y-0.5 px-2 pb-2"
+        className="mx-1.5 z-[2] block space-y-0.5 px-2 pb-2"
         showChip={false}
       >
         <span className="flex h-6.5 items-center gap-2 rounded-md px-2">
@@ -924,12 +929,19 @@ export function AppShellWireframe() {
         label="The sidebar navigation controls, replaceable by one plugin"
         anchor='[data-guide-region="sidebar-navigation"]'
         at="start"
+        align="start"
       />
       <MeasuredBadge
         id="thread-list"
         label="The thread list, replaceable by one plugin"
         anchor='[data-guide-region="thread-list"]'
         at="start"
+      />
+      <MeasuredBadge
+        id="thread-header"
+        label="Plugin thread-header control, left end of the action row"
+        anchor='[data-guide-region="thread-header"]'
+        at="above"
       />
       {}
       <MeasuredBadge
@@ -1003,6 +1015,7 @@ function AppShellWireframeBody({
               id="thread-header"
               label="Plugin thread-header control, left end of the action row"
               className="flex h-6.5 items-center gap-1 px-2"
+              showChip={false}
             >
               <PluginGlyph className="size-3.5" />
             </Mark>
