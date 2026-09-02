@@ -277,27 +277,33 @@ function AutosavingPluginSetting({
   const queryClient = useQueryClient();
   const messageId = useId();
   const initialDraft = initialSettingDraft(descriptor, storedValue);
-  const [draft, setDraft] = useState<string | boolean>(initialDraft);
+  const [draftState, setDraftState] = useState({
+    value: initialDraft,
+    hasNewerDraft: false,
+  });
+  const draft = draftState.value;
   const save = useMutation({
     scope: { id: `plugin-setting:${pluginId}:${settingKey}` },
     mutationFn: (value: string | boolean) =>
       updatePluginSettings(fetch, pluginId, {
         [settingKey]: value,
       }),
-    onSuccess: (view, value) => {
+    onSuccess: (view) => {
       applyPluginSettingsView({ queryClient, pluginId, view });
-      if (descriptor.type === "string" && descriptor.secret === true) {
-        setDraft((current) => (current === value ? "" : current));
-      }
     },
   });
 
   useEffect(() => {
-    if (!save.isPending && !save.isError) setDraft(initialDraft);
-  }, [initialDraft, save.isError, save.isPending]);
+    if (!draftState.hasNewerDraft && !save.isPending && !save.isError) {
+      setDraftState({ value: initialDraft, hasNewerDraft: false });
+    }
+  }, [draftState.hasNewerDraft, initialDraft, save.isError, save.isPending]);
 
   function changeDraft(value: string | boolean): void {
-    setDraft(value);
+    setDraftState({
+      value,
+      hasNewerDraft: descriptor.type === "string",
+    });
     save.reset();
     if (descriptor.type !== "string") {
       save.mutate(value);
@@ -305,8 +311,12 @@ function AutosavingPluginSetting({
   }
 
   function saveDraft(): void {
-    if (descriptor.type !== "string" || draft === storedValue) return;
-    if (descriptor.secret === true && draft === "") return;
+    if (descriptor.type !== "string") return;
+    if (draft === storedValue || (descriptor.secret === true && draft === "")) {
+      setDraftState({ value: draft, hasNewerDraft: false });
+      return;
+    }
+    setDraftState({ value: draft, hasNewerDraft: false });
     save.mutate(draft);
   }
 

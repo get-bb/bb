@@ -129,6 +129,59 @@ describe("PluginSettingsForm", () => {
     );
   });
 
+  it("preserves text typed while an older save is pending", async () => {
+    const first = deferred<Response>();
+    const second = deferred<Response>();
+    const requests: RecordedRequest[] = [];
+    let saveCount = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init?: RequestInit) => {
+        requests.push({ url, init });
+        if (init?.method !== "PUT") return jsonOk(SETTINGS_VIEW);
+        saveCount += 1;
+        return saveCount === 1 ? first.promise : second.promise;
+      }),
+    );
+
+    const { wrapper } = createQueryClientTestHarness();
+    render(<PluginSettingsForm pluginId="demo" />, { wrapper });
+
+    const greeting = await screen.findByLabelText("Greeting");
+    fireEvent.change(greeting, { target: { value: "older" } });
+    fireEvent.blur(greeting);
+    await vi.waitFor(() => expect(saveCount).toBe(1));
+    fireEvent.change(greeting, { target: { value: "newer" } });
+
+    await act(async () => {
+      first.resolve(
+        jsonOk({
+          ...SETTINGS_VIEW,
+          values: { ...SETTINGS_VIEW.values, greeting: "older" },
+        }),
+      );
+      await first.promise;
+    });
+    expect((greeting as HTMLInputElement).value).toBe("newer");
+
+    fireEvent.blur(greeting);
+    await vi.waitFor(() => expect(saveCount).toBe(2));
+    expect(JSON.parse(String(requests.at(-1)?.init?.body))).toEqual({
+      values: { greeting: "newer" },
+    });
+
+    await act(async () => {
+      second.resolve(
+        jsonOk({
+          ...SETTINGS_VIEW,
+          values: { ...SETTINGS_VIEW.values, greeting: "newer" },
+        }),
+      );
+      await second.promise;
+    });
+    expect((greeting as HTMLInputElement).value).toBe("newer");
+  });
+
   it("renders an experimental_multiline string below its label and flushes it on blur", async () => {
     const view = {
       ok: true,
