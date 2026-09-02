@@ -218,7 +218,7 @@ function ThreadActionsMenuItems({
           }, 0);
         }}
       >
-        Rename
+        Rename thread
       </ThreadActionMenuItem>
       {showSeparators ? <ThreadActionMenuSeparator surface={surface} /> : null}
       <ThreadActionMenuItem

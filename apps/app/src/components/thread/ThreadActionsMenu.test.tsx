@@ -1,22 +1,36 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import type { Thread } from "@bb/domain";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ThreadActionsMenu } from "./ThreadActionsMenu";
+import {
+  ThreadActionsContextMenu,
+  ThreadActionsMenu,
+} from "./ThreadActionsMenu";
 
 const mocks = vi.hoisted(() => ({
   copyToClipboardWithToast: vi.fn(),
+  requestRename: vi.fn(),
 }));
 
 vi.mock("@/lib/clipboard", () => ({
   copyToClipboardWithToast: mocks.copyToClipboardWithToast,
 }));
 
+vi.mock("@bb/shared-ui/hooks/use-compact-viewport", () => ({
+  useIsCompactViewport: () => false,
+}));
+
 vi.mock("./ThreadActionsProvider", () => ({
   useThreadActions: () => ({
     archiveThreadAndChildren: vi.fn(),
-    requestRename: vi.fn(),
+    requestRename: mocks.requestRename,
     requestDelete: vi.fn(),
     togglePin: vi.fn(),
     toggleRead: vi.fn(),
@@ -35,7 +49,7 @@ function createThread(): Thread {
 
 afterEach(() => {
   cleanup();
-  mocks.copyToClipboardWithToast.mockReset();
+  vi.clearAllMocks();
 });
 
 describe("ThreadActionsMenu", () => {
@@ -54,6 +68,24 @@ describe("ThreadActionsMenu", () => {
         successMessage: "Thread link copied",
         errorMessage: "Failed to copy thread link",
       },
+    );
+  });
+
+  it("offers an explicit rename action from a thread row context menu", async () => {
+    const thread = createThread();
+    render(
+      <ThreadActionsContextMenu thread={thread}>
+        <button type="button">Test thread</button>
+      </ThreadActionsContextMenu>,
+    );
+
+    fireEvent.contextMenu(screen.getByRole("button", { name: "Test thread" }));
+    fireEvent.click(
+      await screen.findByRole("menuitem", { name: "Rename thread" }),
+    );
+
+    await waitFor(() =>
+      expect(mocks.requestRename).toHaveBeenCalledWith(thread),
     );
   });
 });
