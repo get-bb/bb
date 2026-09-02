@@ -81,7 +81,6 @@ export interface SecondaryPanelTabStripProps {
     event: ReactPointerEvent<HTMLElement>,
   ) => void;
   onReorderTab: SecondaryPanelTabReorderHandler;
-  reorderingDisabled?: boolean;
   usesDesktopChrome: boolean;
   isPanelOpen: boolean;
 }
@@ -103,7 +102,6 @@ export function SecondaryPanelTabStrip({
   tabs,
   onBeginTabDrag,
   onReorderTab,
-  reorderingDisabled = false,
   usesDesktopChrome,
   isPanelOpen,
 }: SecondaryPanelTabStripProps) {
@@ -125,7 +123,7 @@ export function SecondaryPanelTabStrip({
     clearDragClickSuppressionSoon,
     consumeDragClickSuppression,
   } = useDragClickSuppression();
-  const dragDisabled = reorderingDisabled || tabs.length < 2;
+  const dragDisabled = tabs.length < 2;
   const mouseSensor = useSensor(MouseSensor, {
     activationConstraint: { distance: 4 },
   });
@@ -395,7 +393,6 @@ export function SecondaryPanelTabStrip({
       ref={stripRef}
       data-testid="secondary-panel-tab-strip"
       className="group relative flex min-w-0 items-center"
-      data-reordering-disabled={reorderingDisabled ? "true" : undefined}
     >
       <TabStripScrollButton
         buttonRef={leftScrollButtonRef}
@@ -495,7 +492,7 @@ function SortablePanelTab({
         noDragClass,
       )}
       onPointerDown={(event) => {
-        if (!dragDisabled) onBeginTabDrag?.(tab.tab.id, event);
+        onBeginTabDrag?.(tab.tab.id, event);
         sortablePointerDown?.(event);
       }}
       {...sortableListeners}

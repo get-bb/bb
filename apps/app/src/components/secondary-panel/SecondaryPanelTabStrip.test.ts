@@ -1,12 +1,6 @@
 // @vitest-environment jsdom
 
-import {
-  act,
-  cleanup,
-  fireEvent,
-  render,
-  screen,
-} from "@testing-library/react";
+import { act, cleanup, fireEvent, render } from "@testing-library/react";
 import { createElement } from "react";
 import { afterEach, vi } from "vitest";
 import { describe, expect, it } from "vitest";
@@ -109,55 +103,6 @@ describe("secondary panel tab-strip edge fades", () => {
         "max-md:pointer-coarse:min-h-9",
       ),
     ).toBe(false);
-  });
-
-  it("removes drag affordances when tab reordering is disabled", () => {
-    vi.stubGlobal(
-      "ResizeObserver",
-      class {
-        observe() {}
-        disconnect() {}
-      },
-    );
-    const onBeginTabDrag = vi.fn();
-    const { container } = render(
-      createElement(SecondaryPanelTabStrip, {
-        activeTabId: "first",
-        tabs: [
-          {
-            label: "First",
-            leadingVisual: null,
-            statusLabel: null,
-            onSelect: vi.fn(),
-            onClose: vi.fn(),
-            renderContent: () => null,
-            tab: { id: "first", kind: "new-tab" as const },
-          },
-          {
-            label: "Second",
-            leadingVisual: null,
-            statusLabel: null,
-            onSelect: vi.fn(),
-            onClose: vi.fn(),
-            renderContent: () => null,
-            tab: { id: "second", kind: "new-tab" as const },
-          },
-        ],
-        onBeginTabDrag,
-        onReorderTab: vi.fn(),
-        reorderingDisabled: true,
-        usesDesktopChrome: false,
-        isPanelOpen: true,
-      }),
-    );
-
-    const strip = container.querySelector(
-      '[data-testid="secondary-panel-tab-strip"]',
-    );
-    expect(strip?.getAttribute("data-reordering-disabled")).toBe("true");
-    expect(container.querySelector(".cursor-grab")).toBeNull();
-    fireEvent.pointerDown(screen.getByRole("button", { name: "First" }));
-    expect(onBeginTabDrag).not.toHaveBeenCalled();
   });
 
   it("observes the intrinsic tab row so async title changes refresh overflow", () => {

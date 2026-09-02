@@ -562,23 +562,24 @@ function ExternalNav({ to }: { to: string }) {
   );
 }
 
-function PluginPanelNavigationControls() {
-  const navigate = useNavigate();
+function PluginPanelLifecycleHarness() {
+  const [routeContent, setRouteContent] = useState<PaneContent>(
+    pluginGuideContent,
+  );
   return (
     <>
+      <SplitThreadArea routeContent={routeContent} />
       <button
         type="button"
         onClick={() =>
-          navigate("/plugins/plugin-api-docs/plugin-api/the-composer")
+          setRouteContent((current) =>
+            current.kind === "plugin-panel" && current.subPath === ""
+              ? { ...pluginGuideContent, subPath: "the-composer" }
+              : docsContent,
+          )
         }
       >
-        Open Guide subpath
-      </button>
-      <button
-        type="button"
-        onClick={() => navigate("/plugins/docs/docs")}
-      >
-        Open another plugin page
+        Navigate plugin panel
       </button>
     </>
   );
@@ -586,19 +587,13 @@ function PluginPanelNavigationControls() {
 
 function RouteAwareSplitArea() {
   const location = useLocation();
-  const routeContent = location.pathname.startsWith(
-    "/plugins/plugin-api-docs/plugin-api",
-  )
-    ? {
-        ...pluginGuideContent,
-        subPath: location.pathname.slice(
-          "/plugins/plugin-api-docs/plugin-api".length,
-        ),
+  return (
+    <SplitThreadArea
+      routeContent={
+        location.pathname.startsWith("/plugins/") ? docsContent : undefined
       }
-    : location.pathname.startsWith("/plugins/")
-      ? docsContent
-      : undefined;
-  return <SplitThreadArea routeContent={routeContent} />;
+    />
+  );
 }
 
 function renderSplitArea(options: {
@@ -607,6 +602,7 @@ function renderSplitArea(options: {
   externalTo?: string;
   routeContent?: PaneContent;
   routeAwareContent?: boolean;
+  pluginPanelLifecycle?: boolean;
   maximizedPaneId?: string;
 }) {
   const store = createStore();
@@ -621,7 +617,9 @@ function renderSplitArea(options: {
       <JotaiProvider store={store}>
         <QueryClientProvider client={queryClient}>
           <MemoryRouter initialEntries={[options.path]}>
-            {options.routeAwareContent ? (
+            {options.pluginPanelLifecycle ? (
+              <PluginPanelLifecycleHarness />
+            ) : options.routeAwareContent ? (
               <RouteAwareSplitArea />
             ) : (
               <SplitThreadArea routeContent={options.routeContent} />
@@ -629,9 +627,6 @@ function renderSplitArea(options: {
             <LocationProbe />
             {options.externalTo !== undefined ? (
               <ExternalNav to={options.externalTo} />
-            ) : null}
-            {options.routeAwareContent ? (
-              <PluginPanelNavigationControls />
             ) : null}
           </MemoryRouter>
         </QueryClientProvider>
@@ -680,49 +675,35 @@ describe("SplitThreadArea", () => {
     expect(host.dataset.pluginDetailTabsEnabled).toBe("false");
   });
 
-  it("enables plugin-detail tabs only for the Plugin Guide", async () => {
+  it("preserves detail state within the Guide and clears it for another plugin page", async () => {
     renderSplitArea({
       path: "/plugins/plugin-api-docs/plugin-api",
-      routeContent: pluginGuideContent,
+      pluginPanelLifecycle: true,
     });
 
     const host = await screen.findByTestId("plugin-browser-host");
     expect(host.dataset.pluginDetailTabsEnabled).toBe("true");
-  });
-
-  it("preserves detail state within the Guide and clears it for another plugin page", async () => {
-    renderSplitArea({
-      path: "/plugins/plugin-api-docs/plugin-api",
-      routeAwareContent: true,
-    });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Open plugin detail tab" }),
+    );
+    expect(host.dataset.detailTabOpen).toBe("true");
 
     fireEvent.click(
-      await screen.findByRole("button", { name: "Open plugin detail tab" }),
+      screen.getByRole("button", { name: "Navigate plugin panel" }),
     );
-    expect(screen.getByTestId("plugin-browser-host").dataset.detailTabOpen).toBe(
-      "true",
-    );
-
-    fireEvent.click(screen.getByRole("button", { name: "Open Guide subpath" }));
     await waitFor(() =>
-      expect(screen.getByTestId("location").textContent).toBe(
-        "/plugins/plugin-api-docs/plugin-api/the-composer",
-      ),
-    );
-    expect(screen.getByTestId("plugin-browser-host").dataset.detailTabOpen).toBe(
-      "true",
+      expect(
+        screen.getByTestId("plugin-browser-host").dataset.detailTabOpen,
+      ).toBe("true"),
     );
 
     fireEvent.click(
-      screen.getByRole("button", { name: "Open another plugin page" }),
+      screen.getByRole("button", { name: "Navigate plugin panel" }),
     );
     await waitFor(() =>
-      expect(screen.getByTestId("location").textContent).toBe(
-        "/plugins/docs/docs",
-      ),
-    );
-    expect(screen.getByTestId("plugin-browser-host").dataset.detailTabOpen).toBe(
-      "false",
+      expect(
+        screen.getByTestId("plugin-browser-host").dataset.detailTabOpen,
+      ).toBe("false"),
     );
   });
 

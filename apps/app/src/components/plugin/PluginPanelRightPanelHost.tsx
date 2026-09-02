@@ -42,7 +42,6 @@ import type {
   SecondaryPanelFixedTab,
   SecondaryPanelRenderableTab,
 } from "@/components/secondary-panel/ThreadSecondaryPanel";
-import type { SecondaryPanelTabReorderRequest } from "@/components/secondary-panel/secondaryPanelTab";
 import { useThreadFileTabs } from "@/components/secondary-panel/useThreadFileTabs";
 import {
   useCloseFixedSecondaryPanel,
@@ -133,12 +132,6 @@ function marketplacePluginDetailTab(pluginId: string) {
     id: `${MARKETPLACE_PLUGIN_DETAIL_TAB_PREFIX}${pluginId}`,
     kind: "marketplace-plugin-detail" as const,
   };
-}
-
-function marketplacePluginIdFromTabId(tabId: string): string | null {
-  return tabId.startsWith(MARKETPLACE_PLUGIN_DETAIL_TAB_PREFIX)
-    ? tabId.slice(MARKETPLACE_PLUGIN_DETAIL_TAB_PREFIX.length)
-    : null;
 }
 
 function PluginDetailPanelContent({ pluginId }: { pluginId: string }) {
@@ -615,7 +608,6 @@ export function PluginPanelRightPanelHost({
   });
   useAppCommandHandler("panel.reopenClosedTab", () => {
     if (!isFocused || panel === null || !reopenClosedTab()) return false;
-    selectPersistedPanelTab();
     revealPanel();
     return true;
   });
@@ -1087,27 +1079,6 @@ export function PluginPanelRightPanelHost({
     [panelTabs, pluginDetailTabs],
   );
 
-  const reorderPanelTabs = useCallback(
-    (request: SecondaryPanelTabReorderRequest) => {
-      const activePluginId = marketplacePluginIdFromTabId(request.activeTabId);
-      const overPluginId = marketplacePluginIdFromTabId(request.overTabId);
-      if (activePluginId === null || overPluginId === null) {
-        if (activePluginId === null && overPluginId === null) {
-          reorderTab(request);
-        }
-        return;
-      }
-      const nextPluginIds = [...openedPluginIds];
-      const from = nextPluginIds.indexOf(activePluginId);
-      const to = nextPluginIds.indexOf(overPluginId);
-      if (from === -1 || to === -1 || from === to) return;
-      nextPluginIds.splice(from, 1);
-      nextPluginIds.splice(to, 0, activePluginId);
-      setOpenedPluginIds(nextPluginIds);
-    },
-    [openedPluginIds, reorderTab],
-  );
-
   const renderPanel = useCallback(
     ({
       presentation,
@@ -1153,7 +1124,7 @@ export function PluginPanelRightPanelHost({
           splitPanelStateId={
             activePluginDetailId === null ? panelStateId : undefined
           }
-          onTabReorder={reorderPanelTabs}
+          onTabReorder={reorderTab}
           renderBrowserDeck={(activeBrowserTabId, pane) =>
             renderDeck(
               activeBrowserTabId,
@@ -1165,9 +1136,6 @@ export function PluginPanelRightPanelHost({
           fixedTabs={fixedTabs}
           showConversationCollapseControl={activePluginDetailId !== null}
           showNewTabButton={activePluginDetailId === null}
-          tabReorderingDisabled={
-            pluginDetailTabs.length > 0 && panelTabs.length > 0
-          }
           onPanelFocus={() => undefined}
           onCollapse={hidePanel}
           onClose={hidePanel}
@@ -1189,9 +1157,7 @@ export function PluginPanelRightPanelHost({
       isOpen,
       openNewTab,
       panelStateId,
-      panelTabs.length,
-      pluginDetailTabs.length,
-      reorderPanelTabs,
+      reorderTab,
       tabs,
       updateBrowserTab,
     ],

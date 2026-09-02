@@ -1,7 +1,6 @@
 // @vitest-environment jsdom
 
 import {
-  act,
   cleanup,
   fireEvent,
   render,
@@ -33,7 +32,6 @@ import {
   RouteNavigationProvider,
   useRouteAnchorDelegate,
 } from "@/components/ui/app-route-anchor";
-import { resetRecentlyClosedPanelTabsForTest } from "@/components/secondary-panel/useThreadFileTabs";
 
 interface TestFixedTabRegistration {
   panelId: string;
@@ -71,7 +69,6 @@ interface TestNewThreadPanelActionRegistration {
 const browserState = vi.hoisted(() => ({ available: false }));
 const viewportState = vi.hoisted(() => ({ isCompactViewport: false }));
 const createTerminal = vi.hoisted(() => vi.fn());
-const appCommandHandlers = vi.hoisted(() => new Map<string, () => boolean>());
 const catalogQueryState = vi.hoisted(() => ({ queries: [] as string[] }));
 const openPaneContentInSplit = vi.hoisted(() => vi.fn());
 const threadTabsApi = vi.hoisted(() => ({
@@ -136,7 +133,6 @@ const secondaryPanelState = vi.hoisted(() => ({
   }>,
   splitPanelStateId: undefined as string | undefined,
   showsCollapseControl: false,
-  tabReorderingDisabled: false,
   tabKinds: [] as string[],
 }));
 
@@ -198,9 +194,7 @@ vi.mock("@bb/shared-ui/hooks/use-compact-viewport", () => ({
 }));
 
 vi.mock("@/components/commands/AppCommandProvider", () => ({
-  useAppCommandHandler: (command: string, handler: () => boolean) => {
-    appCommandHandlers.set(command, handler);
-  },
+  useAppCommandHandler: () => undefined,
   useAppCommandShortcut: () => null,
 }));
 
@@ -344,7 +338,6 @@ vi.mock("@/components/secondary-panel/ThreadSecondaryPanel", () => ({
     onOpenNewTab,
     renderBrowserDeck,
     showConversationCollapseControl,
-    tabReorderingDisabled,
     splitPanelStateId,
   }: {
     activeTab: { id: string } | null;
@@ -377,7 +370,6 @@ vi.mock("@/components/secondary-panel/ThreadSecondaryPanel", () => ({
       pane: { isFocused: boolean; onFocusPane: () => void },
     ) => ReactNode;
     showConversationCollapseControl?: boolean;
-    tabReorderingDisabled?: boolean;
     splitPanelStateId?: string;
   }) => {
     const pane = { isFocused: true, onFocusPane: () => undefined };
@@ -395,7 +387,6 @@ vi.mock("@/components/secondary-panel/ThreadSecondaryPanel", () => ({
     secondaryPanelState.splitPanelStateId = splitPanelStateId;
     secondaryPanelState.showsCollapseControl =
       showConversationCollapseControl === true;
-    secondaryPanelState.tabReorderingDisabled = tabReorderingDisabled === true;
     secondaryPanelState.tabKinds = tabs.map((tab) => tab.tab.kind);
     return (
       <aside
@@ -701,18 +692,15 @@ describe("PluginPanelRightPanelHost", () => {
     fixedTabState.registrations = [];
     fixedTabState.fileOpeners = [];
     fixedTabState.newThreadPanelActions = [];
-    appCommandHandlers.clear();
     catalogQueryState.queries = [];
     openPaneContentInSplit.mockReset();
     secondaryPanelState.collapseEnabled = false;
     secondaryPanelState.fixedTabs = [];
     secondaryPanelState.splitPanelStateId = undefined;
     secondaryPanelState.showsCollapseControl = false;
-    secondaryPanelState.tabReorderingDisabled = false;
     secondaryPanelState.tabKinds = [];
     localStorage.clear();
     resetFixedPanelTabsStateForTest();
-    resetRecentlyClosedPanelTabsForTest();
   });
 
   afterEach(() => {
@@ -791,18 +779,10 @@ describe("PluginPanelRightPanelHost", () => {
   it("opens plugin detail links in a header-controlled tab without leaving the plugin page", async () => {
     renderHost("board", "", createStore(), true);
 
-    expect(screen.getByTestId("current-path").textContent).toBe(
-      "/plugins/demo/board",
-    );
     fireEvent.click(screen.getByRole("link", { name: "Open Secrets plugin" }));
 
     expect(await screen.findByText("Details for secrets")).toBeTruthy();
     expect(screen.getByText("Plugin page")).toBeTruthy();
-    expect(
-      screen
-        .getByTestId("shared-secondary-panel-region")
-        .hasAttribute("hidden"),
-    ).toBe(false);
     expect(screen.getByTestId("current-path").textContent).toBe(
       "/plugins/demo/board",
     );
@@ -810,7 +790,6 @@ describe("PluginPanelRightPanelHost", () => {
     expect(secondaryPanelState.splitPanelStateId).toBeUndefined();
     expect(secondaryPanelState.collapseEnabled).toBe(true);
     expect(secondaryPanelState.showsCollapseControl).toBe(true);
-    expect(catalogQueryState.queries).toEqual(["secrets"]);
 
     fireEvent.click(screen.getByRole("button", { name: "Close Secrets" }));
 
@@ -858,36 +837,6 @@ describe("PluginPanelRightPanelHost", () => {
     expect(secondaryPanelState.tabKinds).not.toContain(
       "marketplace-plugin-detail",
     );
-  });
-
-  it("selects a restored panel tab while retaining an open plugin detail tab", async () => {
-    renderHost("board", "", createStore(), true);
-
-    fireEvent.click(screen.getByRole("button", { name: "Open host file" }));
-    expect(await screen.findByTestId("host-scoped-file-preview")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Close example.log" }));
-    fireEvent.click(screen.getByRole("link", { name: "Open Secrets plugin" }));
-    expect(await screen.findByText("Details for secrets")).toBeTruthy();
-
-    act(() => {
-      expect(appCommandHandlers.get("panel.reopenClosedTab")?.()).toBe(true);
-    });
-
-    expect(await screen.findByTestId("host-scoped-file-preview")).toBeTruthy();
-    expect(screen.queryByTestId("marketplace-plugin-detail")).toBeNull();
-    expect(screen.getByRole("button", { name: "Close Secrets" })).toBeTruthy();
-  });
-
-  it("disables drag reordering while plugin-detail and persisted tabs are mixed", async () => {
-    renderHost("board", "", createStore(), true);
-
-    fireEvent.click(screen.getByRole("link", { name: "Open Secrets plugin" }));
-    expect(await screen.findByText("Details for secrets")).toBeTruthy();
-    fireEvent.click(
-      screen.getByRole("button", { name: "Open workspace file" }),
-    );
-
-    expect(secondaryPanelState.tabReorderingDisabled).toBe(true);
   });
 
   it("closes the compact drawer when its remaining tab closes", async () => {

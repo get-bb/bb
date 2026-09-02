@@ -277,21 +277,15 @@ export async function searchPluginCatalog(
 
 const PLUGIN_CATALOG_STALE_TIME_MS = 30 * 60_000;
 
-function pluginCatalogSearchQueryOptions(query: string) {
-  return {
-    queryKey: pluginCatalogSearchQueryKey(query),
-    queryFn: () => searchPluginCatalog(fetch, query),
-    refetchOnWindowFocus: false,
-    staleTime: PLUGIN_CATALOG_STALE_TIME_MS,
-  };
-}
-
 export function usePluginCatalogSearch(
   query: string,
   options: { enabled: boolean },
 ) {
   return useQuery({
-    ...pluginCatalogSearchQueryOptions(query),
+    queryKey: pluginCatalogSearchQueryKey(query),
+    queryFn: () => searchPluginCatalog(fetch, query),
     enabled: options.enabled,
+    refetchOnWindowFocus: false,
+    staleTime: PLUGIN_CATALOG_STALE_TIME_MS,
   });
 }
