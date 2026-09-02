@@ -18,7 +18,7 @@ import {
 } from "../lib/theme";
 import { DiscordLink, DownloadLink, GitHubLink, XLink } from "./cta";
 
-type SiteNavPage = "blog" | "changelog";
+type SiteNavPage = "blog" | "changelog" | "plugins";
 
 const THEME_OPTIONS: ReadonlyArray<{
   value: ThemePreference;
@@ -131,6 +131,12 @@ export function SiteNav({ current }: { current?: SiteNavPage }) {
         <span className="bb-mark logo-mark" />
       </a>
       <div className="nav-links">
+        <a
+          className={current === "plugins" ? "nav-current" : undefined}
+          href="/marketplace"
+        >
+          Plugins
+        </a>
         <a
           className={current === "blog" ? "nav-current" : undefined}
           href="/blog"

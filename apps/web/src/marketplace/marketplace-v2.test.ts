@@ -1,0 +1,73 @@
+import { describe, expect, it } from "vitest";
+
+import { MARKETPLACE_V2_FIXTURE } from "./marketplace-v2.fixture.js";
+import { parseMarketplaceV2Manifest } from "./marketplace-v2.js";
+
+describe("parseMarketplaceV2Manifest", () => {
+  it("parses the v2 fixture and fills omitted arrays at the boundary", () => {
+    const parsed = parseMarketplaceV2Manifest({
+      ...MARKETPLACE_V2_FIXTURE,
+      collections: undefined,
+      plugins: [
+        {
+          ...MARKETPLACE_V2_FIXTURE.plugins[0],
+          tags: undefined,
+          screenshots: undefined,
+        },
+      ],
+    });
+    expect(parsed.collections).toEqual([]);
+    expect(parsed.plugins[0]?.tags).toEqual([]);
+    expect(parsed.plugins[0]?.screenshots).toEqual([]);
+  });
+
+  it("ignores unknown keys at each document level", () => {
+    const parsed = parseMarketplaceV2Manifest({
+      ...MARKETPLACE_V2_FIXTURE,
+      futureDocumentField: true,
+      categories: [
+        { ...MARKETPLACE_V2_FIXTURE.categories[0], futureCategoryField: true },
+      ],
+      collections: [
+        {
+          ...MARKETPLACE_V2_FIXTURE.collections[0],
+          futureCollectionField: true,
+        },
+      ],
+      plugins: [
+        {
+          ...MARKETPLACE_V2_FIXTURE.plugins[0],
+          futureEntryField: true,
+          author: {
+            ...MARKETPLACE_V2_FIXTURE.plugins[0]?.author,
+            futureAuthorField: true,
+          },
+        },
+      ],
+    });
+    expect(parsed).not.toHaveProperty("futureDocumentField");
+    expect(parsed.categories[0]).not.toHaveProperty("futureCategoryField");
+    expect(parsed.collections[0]).not.toHaveProperty("futureCollectionField");
+    expect(parsed.plugins[0]).not.toHaveProperty("futureEntryField");
+    expect(parsed.plugins[0]?.author).not.toHaveProperty("futureAuthorField");
+  });
+
+  it("accepts an unknown category id and rejects an invalid id", () => {
+    expect(parseMarketplaceV2Manifest(MARKETPLACE_V2_FIXTURE)).toMatchObject({
+      plugins: expect.arrayContaining([
+        expect.objectContaining({
+          id: "orphan-tool",
+          category: "future-tools",
+        }),
+      ]),
+    });
+    expect(() =>
+      parseMarketplaceV2Manifest({
+        ...MARKETPLACE_V2_FIXTURE,
+        plugins: [
+          { ...MARKETPLACE_V2_FIXTURE.plugins[0], category: "Bad Category" },
+        ],
+      }),
+    ).toThrow(/category/u);
+  });
+});
