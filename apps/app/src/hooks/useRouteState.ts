@@ -1,6 +1,9 @@
 import { useLocation, useMatch } from "react-router-dom";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
-import { isToolsRoutePath, TOOLS_SKILLS_ROUTE_PATH } from "@/lib/route-paths";
+import {
+  isSkillsRoutePath,
+  isToolsRoutePath,
+} from "@/lib/route-paths";
 
 interface RouteState {
   projectId: string | undefined;
@@ -54,13 +57,8 @@ export function useRouteState(): RouteState {
     isArchivedView:
       Boolean(projectArchivedMatch) || Boolean(projectlessArchivedMatch),
     isSettingsView: Boolean(projectSettingsMatch),
-    isToolsView:
-      isToolsPath ||
-      location.pathname === "/skills" ||
-      location.pathname === "/automations",
-    isSkillsView:
-      location.pathname === TOOLS_SKILLS_ROUTE_PATH ||
-      location.pathname === "/skills",
+    isToolsView: isToolsPath || location.pathname === "/automations",
+    isSkillsView: isSkillsRoutePath(location.pathname),
     isRootView,
     isProjectlessView:
       isRootView ||

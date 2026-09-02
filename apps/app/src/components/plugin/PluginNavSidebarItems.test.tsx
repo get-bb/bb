@@ -9,7 +9,7 @@ import {
 } from "@testing-library/react";
 import { useEffect, type ComponentType } from "react";
 import { createStore, Provider } from "jotai";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CompactViewportOverrideProvider } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { SidebarProvider } from "@/components/ui/sidebar.js";
@@ -66,6 +66,10 @@ function registerPanel(
   );
 }
 
+function LocationProbe() {
+  return <output data-testid="pathname">{useLocation().pathname}</output>;
+}
+
 function renderSidebarItems(
   options: {
     toolsRoutePath?: string;
@@ -85,6 +89,7 @@ function renderSidebarItems(
         <MemoryRouter initialEntries={["/"]}>
           <SidebarProvider>
             <PluginNavSidebarItems toolsRoutePath={options.toolsRoutePath} />
+            <LocationProbe />
           </SidebarProvider>
         </MemoryRouter>
       </Provider>
@@ -92,7 +97,7 @@ function renderSidebarItems(
   );
 }
 
-const ROW_LABELS = new Set(["Extensions", "Docs", "GitHub"]);
+const ROW_LABELS = new Set(["Plugins", "Skills", "Docs", "GitHub"]);
 
 function panelRowNames(): string[] {
   return screen
@@ -327,15 +332,25 @@ describe("PluginNavSidebarItems", () => {
     });
   });
 
-  it("hides the built-in Extensions row like a plugin row", async () => {
+  it("links Plugins and Skills to their existing subpages", () => {
+    renderSidebarItems({ toolsRoutePath: "/plugins" });
+
+    fireEvent.click(screen.getByRole("button", { name: "Plugins" }));
+    expect(screen.getByTestId("pathname").textContent).toBe("/plugins");
+
+    fireEvent.click(screen.getByRole("button", { name: "Skills" }));
+    expect(screen.getByTestId("pathname").textContent).toBe("/skills");
+  });
+
+  it("hides each built-in resource row like a plugin row", async () => {
     registerPanel("docs", "Docs");
 
-    renderSidebarItems({ toolsRoutePath: "/extensions/skills" });
+    renderSidebarItems({ toolsRoutePath: "/skills" });
 
-    expect(panelRowNames()).toEqual(["Extensions", "Docs"]);
+    expect(panelRowNames()).toEqual(["Plugins", "Skills", "Docs"]);
 
     fireEvent.pointerDown(
-      screen.getByRole("button", { name: "Extensions panel options" }),
+      screen.getByRole("button", { name: "Plugins panel options" }),
       { button: 0 },
     );
     fireEvent.click(
@@ -343,7 +358,7 @@ describe("PluginNavSidebarItems", () => {
     );
 
     await waitFor(() => {
-      expect(panelRowNames()).toEqual(["Docs"]);
+      expect(panelRowNames()).toEqual(["Skills", "Docs"]);
     });
     expect(
       screen.getByTestId("plugin-nav-sidebar-overflow-toggle").textContent,
@@ -353,35 +368,35 @@ describe("PluginNavSidebarItems", () => {
     ).toContain("__builtin__/tools");
   });
 
-  it("keeps Extensions on top for users who already reordered their plugin rows", () => {
+  it("keeps Plugins and Skills on top for users who reordered plugin rows", () => {
     registerPanel("docs", "Docs");
     registerPanel("github", "GitHub");
 
     renderSidebarItems({
-      toolsRoutePath: "/extensions/skills",
+      toolsRoutePath: "/skills",
       storedOrder: ["github/main", "docs/main"],
     });
 
-    expect(panelRowNames()).toEqual(["Extensions", "GitHub", "Docs"]);
+    expect(panelRowNames()).toEqual(["Plugins", "Skills", "GitHub", "Docs"]);
   });
 
-  it("keeps a saved order when plugin frontends register after the first render", async () => {
+  it("adds Skills beside the saved Plugins compatibility position", async () => {
     renderSidebarItems({
-      toolsRoutePath: "/extensions/skills",
+      toolsRoutePath: "/skills",
       storedOrder: ["github/main", "__builtin__/tools", "docs/main"],
     });
 
-    expect(panelRowNames()).toEqual(["Extensions"]);
+    expect(panelRowNames()).toEqual(["Plugins", "Skills"]);
 
     registerPanel("docs", "Docs");
     registerPanel("github", "GitHub");
 
     await waitFor(() => {
-      expect(panelRowNames()).toEqual(["GitHub", "Extensions", "Docs"]);
+      expect(panelRowNames()).toEqual(["GitHub", "Plugins", "Skills", "Docs"]);
     });
   });
 
-  it("saves no Extensions key while the row is absent", async () => {
+  it("saves no built-in resource keys while the rows are absent", async () => {
     registerPanel("docs", "Docs");
 
     renderSidebarItems({ storedOrder: ["docs/main"] });
@@ -392,23 +407,23 @@ describe("PluginNavSidebarItems", () => {
     expect(
       window.localStorage.getItem("bb.sidebar.pluginPanelOrder") ?? "",
     ).not.toContain("__builtin__/tools");
+    expect(
+      window.localStorage.getItem("bb.sidebar.pluginPanelOrder") ?? "",
+    ).not.toContain("__builtin__/skills");
   });
 
-  it("carries both Extensions glyphs so hover swaps without reflow", () => {
-    renderSidebarItems({ toolsRoutePath: "/extensions/plugins" });
+  it("uses the established Plugins and Skills glyphs", () => {
+    renderSidebarItems({ toolsRoutePath: "/plugins" });
 
-    const extensionsRow = screen
-      .getAllByRole("button")
-      .find((button) => button.textContent?.trim() === "Extensions");
-    expect(extensionsRow).toBeTruthy();
-
-    const swap = extensionsRow?.querySelector(".bb-sidebar-row-icon-swap");
-    expect(swap).toBeTruthy();
     expect(
-      swap?.querySelector('.bb-sidebar-row-icon-rest[data-icon="Toolbox"]'),
+      screen
+        .getByRole("button", { name: "Plugins" })
+        .querySelector('[data-icon="ElectricPlugs"]'),
     ).toBeTruthy();
     expect(
-      swap?.querySelector('.bb-sidebar-row-icon-hover[data-icon="ToolCase"]'),
+      screen
+        .getByRole("button", { name: "Skills" })
+        .querySelector('[data-icon="Zap"]'),
     ).toBeTruthy();
   });
 });

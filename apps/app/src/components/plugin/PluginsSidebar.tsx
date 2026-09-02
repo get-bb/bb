@@ -7,12 +7,11 @@ import {
   SectionSidebarRow,
 } from "@/components/sidebar/SectionSidebar";
 import {
+  PLUGIN_PAGES,
   resolveToolsActivePage,
-  TOOLS_NAV_ITEMS,
-  TOOLS_PAGES,
-} from "./tools-navigation";
+} from "@/components/tools/tools-navigation";
 
-export function ToolsSidebar({
+export function PluginsSidebar({
   appRoutePath,
   isResizing,
   mobileHosted,
@@ -36,27 +35,21 @@ export function ToolsSidebar({
       mobileHosted={mobileHosted}
       onResizeMouseDown={onResizeMouseDown}
       showTopReserve={showTopReserve}
-      testIdPrefix="tools"
+      testIdPrefix="plugins"
     >
-      {TOOLS_NAV_ITEMS.map((section, index) => (
-        <div key={section.id} className={index > 0 ? "mt-4" : undefined}>
-          <SectionSidebarLabel>{section.label}</SectionSidebarLabel>
-          <div className="mt-1 space-y-0.5">
-            {TOOLS_PAGES.filter((page) => page.section === section.id).map(
-              (page) => (
-                <SectionSidebarRow
-                  key={page.id}
-                  active={activePage === page.id}
-                  label={page.label}
-                  to={page.to}
-                >
-                  <SectionSidebarIcon name={page.icon} />
-                </SectionSidebarRow>
-              ),
-            )}
-          </div>
-        </div>
-      ))}
+      <SectionSidebarLabel>Plugins</SectionSidebarLabel>
+      <div className="mt-1 space-y-0.5">
+        {PLUGIN_PAGES.map((page) => (
+          <SectionSidebarRow
+            key={page.id}
+            active={activePage === page.id}
+            label={page.label}
+            to={page.to}
+          >
+            <SectionSidebarIcon name={page.icon} />
+          </SectionSidebarRow>
+        ))}
+      </div>
     </SectionSidebar>
   );
 }

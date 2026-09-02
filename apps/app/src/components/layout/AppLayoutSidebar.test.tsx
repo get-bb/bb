@@ -58,16 +58,30 @@ vi.mock("@/components/settings/SettingsSidebar", async () => {
   };
 });
 
-vi.mock("@/components/tools/ToolsSidebar", async () => {
+vi.mock("@/components/plugin/PluginsSidebar", async () => {
   const { Sidebar } = await vi.importActual<
     typeof import("@/components/ui/sidebar")
   >("@/components/ui/sidebar");
   return {
-    ToolsSidebar: ({ mobileHosted }: { mobileHosted?: boolean }) =>
+    PluginsSidebar: ({ mobileHosted }: { mobileHosted?: boolean }) =>
       mobileHosted ? (
-        <div data-testid="tools-sidebar-body">Tools sidebar</div>
+        <div data-testid="plugins-sidebar-body">Plugins sidebar</div>
       ) : (
-        <Sidebar>Tools sidebar</Sidebar>
+        <Sidebar>Plugins sidebar</Sidebar>
+      ),
+  };
+});
+
+vi.mock("@/components/tools/SkillsSidebar", async () => {
+  const { Sidebar } = await vi.importActual<
+    typeof import("@/components/ui/sidebar")
+  >("@/components/ui/sidebar");
+  return {
+    SkillsSidebar: ({ mobileHosted }: { mobileHosted?: boolean }) =>
+      mobileHosted ? (
+        <div data-testid="skills-sidebar-body">Skills sidebar</div>
+      ) : (
+        <Sidebar>Skills sidebar</Sidebar>
       ),
   };
 });
@@ -120,8 +134,11 @@ function SidebarModeHarness({
       <button type="button" onClick={() => navigate("settings")}>
         Navigate to settings
       </button>
-      <button type="button" onClick={() => navigate("tools")}>
-        Navigate to tools
+      <button type="button" onClick={() => navigate("plugins")}>
+        Navigate to plugins
+      </button>
+      <button type="button" onClick={() => navigate("skills")}>
+        Navigate to skills
       </button>
       <button type="button" onClick={() => navigate("app")}>
         Navigate back to app
@@ -149,7 +166,7 @@ afterEach(() => {
 });
 
 describe("AppLayoutSidebar mobile mode transitions", () => {
-  it("keeps one drawer panel and the app sidebar mounted across settings and tools round trips", () => {
+  it("keeps one drawer panel and the app sidebar mounted across resource round trips", () => {
     vi.useFakeTimers();
     render(
       <CompactViewportOverrideProvider isCompactViewport>
@@ -190,10 +207,13 @@ describe("AppLayoutSidebar mobile mode transitions", () => {
     settleMobileToggle();
     expect(getMobilePanel().dataset.state).toBe("open");
 
-    fireEvent.click(screen.getByRole("button", { name: "Navigate to tools" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Navigate to plugins" }),
+    );
     settleMobileToggle();
     expect(screen.queryByTestId("settings-sidebar-body")).toBeNull();
-    expect(screen.getByTestId("tools-sidebar-body")).toBeTruthy();
+    expect(screen.getByTestId("plugins-sidebar-body")).toBeTruthy();
+    expect(screen.queryByTestId("skills-sidebar-body")).toBeNull();
     expect(getAppSidebarBody().hidden).toBe(true);
 
     fireEvent.click(screen.getByRole("button", { name: "Toggle Sidebar" }));
@@ -202,14 +222,14 @@ describe("AppLayoutSidebar mobile mode transitions", () => {
       screen.getByRole("button", { name: "Navigate back to app" }),
     );
 
-    expect(screen.getByTestId("tools-sidebar-body")).toBeTruthy();
+    expect(screen.getByTestId("plugins-sidebar-body")).toBeTruthy();
     expect(getAppSidebarBody().hidden).toBe(true);
     expect(getShelfRevealTranslate()).toBe("0px");
 
     settleMobileToggle();
 
     expect(getMobilePanel()).toBe(panel);
-    expect(screen.queryByTestId("tools-sidebar-body")).toBeNull();
+    expect(screen.queryByTestId("plugins-sidebar-body")).toBeNull();
     expect(getAppSidebarBody().hidden).toBe(false);
     expect(mountCounts.appSidebar).toBe(1);
   });
@@ -260,5 +280,17 @@ describe("AppLayoutSidebar mobile mode transitions", () => {
     expect(screen.getByText("Settings sidebar")).toBeTruthy();
     expect(screen.queryByText("App sidebar")).toBeNull();
     expect(screen.queryByTestId("settings-sidebar-body")).toBeNull();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Navigate to plugins" }),
+    );
+    expect(screen.getByText("Plugins sidebar")).toBeTruthy();
+    expect(screen.queryByText("Skills sidebar")).toBeNull();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Navigate to skills" }),
+    );
+    expect(screen.getByText("Skills sidebar")).toBeTruthy();
+    expect(screen.queryByText("Plugins sidebar")).toBeNull();
   });
 });

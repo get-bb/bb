@@ -66,14 +66,14 @@ Server-backed General settings
 
 Settings → General includes app-wide preferences stored server-side so every
 window and restart sees the same value. Keep Awake is instead owned by its
-builtin plugin: use its autosaving page under Extensions → Plugins or run
+builtin plugin: use its autosaving page under Plugins → Installed plugins or run
 `bb keep-awake enable` or `bb keep-awake disable`. Choose every host with `bb
 keep-awake hosts all`, or name individual host ids after `bb keep-awake hosts`.
 On macOS it prevents system idle sleep while bb is running; closing the lid or
 choosing Sleep still sleeps the Mac.
 
 Concurrency limit is also owned by its builtin plugin. Its autosaving page
-under Extensions → Plugins leaves the overall limit unlimited by default and
+under Plugins → Installed plugins leaves the overall limit unlimited by default and
 uses an automatic per-host limit of one thread per available processor. Use
 `bb concurrency-limit global [unlimited|<limit>]` and `bb
 concurrency-limit host <host-id> [auto|<limit>]`; 0 pauses new work.

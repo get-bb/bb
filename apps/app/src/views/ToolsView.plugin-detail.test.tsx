@@ -26,7 +26,7 @@ import {
   resetPluginSlotStoreForTest,
   setPluginSlotRegistrations,
 } from "@/lib/plugin-slots";
-import { ToolsView } from "./ToolsView";
+import { PluginsView } from "./ToolsView";
 import {
   CatalogPluginDetail,
   CatalogPluginDetailBanner,
@@ -611,13 +611,13 @@ describe("BB Official plugin detail routing", () => {
 
     const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
     render(
-      <MemoryRouter initialEntries={["/extensions/plugins/github"]}>
+      <MemoryRouter initialEntries={["/plugins/github"]}>
         <Routes>
           <Route
-            path="/extensions/plugins/:pluginId"
+            path="/plugins/:pluginId"
             element={
               <TooltipProvider>
-                <ToolsView pluginId="github" />
+                <PluginsView pluginId="github" />
               </TooltipProvider>
             }
           />
@@ -990,13 +990,13 @@ describe("plugin removal confirmation", () => {
 
     const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
     render(
-      <MemoryRouter initialEntries={["/extensions/plugins/github"]}>
+      <MemoryRouter initialEntries={["/plugins/github"]}>
         <Routes>
           <Route
-            path="/extensions/plugins/:pluginId"
+            path="/plugins/:pluginId"
             element={
               <TooltipProvider>
-                <ToolsView pluginId="github" />
+                <PluginsView pluginId="github" />
               </TooltipProvider>
             }
           />

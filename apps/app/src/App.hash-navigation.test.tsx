@@ -18,7 +18,7 @@ describe("HashNavigationScroll", () => {
 
     render(
       <MemoryRouter
-        initialEntries={["/extensions/plugins/workflows#configuration"]}
+        initialEntries={["/plugins/workflows#configuration"]}
       >
         <HashNavigationScroll />
         <div id="configuration" />

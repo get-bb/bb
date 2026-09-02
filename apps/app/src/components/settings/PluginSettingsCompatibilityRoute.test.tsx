@@ -39,9 +39,9 @@ function renderRoute(path: string) {
             </PluginSettingsCompatibilityRoute>
           }
         />
-        <Route path="/extensions/plugins" element={<ToolsPluginsLocation />} />
+        <Route path="/plugins" element={<ToolsPluginsLocation />} />
         <Route
-          path="/extensions/plugins/:pluginId"
+          path="/plugins/:pluginId"
           element={<ToolsPluginsLocation />}
         />
       </Routes>
@@ -60,13 +60,13 @@ describe("PluginSettingsCompatibilityRoute", () => {
   });
 
   it.each(["/settings/plugins", "/settings/plugins/"])(
-    "moves legacy plugin management at %s to Extensions",
+    "moves legacy plugin management at %s to Plugins",
     (path) => {
       renderRoute(path);
 
       expect(screen.getByText("Tools plugins")).toBeTruthy();
       expect(screen.getByTestId("tools-plugins-location").textContent).toBe(
-        "/extensions/plugins?view=installed",
+        "/plugins?view=installed",
       );
       expect(screen.queryByText("Settings plugin manager")).toBeNull();
     },

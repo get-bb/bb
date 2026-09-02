@@ -20,8 +20,8 @@ import {
   getPluginPanelRoutePath,
   getRootComposeRoutePath,
   getThreadRoutePath,
+  PLUGIN_DETAIL_ROUTE_PATH,
   PLUGIN_PANEL_ROUTE_PATH,
-  TOOLS_PLUGIN_DETAIL_ROUTE_PATH,
 } from "@/lib/route-paths";
 
 const FIRST_PANE_ID = "pane-1";
@@ -87,7 +87,7 @@ export function paneContentForPathname(pathname: string): PaneContent | null {
       threadId: thread.params.threadId,
     };
   }
-  const detail = matchPath(TOOLS_PLUGIN_DETAIL_ROUTE_PATH, pathname);
+  const detail = matchPath(PLUGIN_DETAIL_ROUTE_PATH, pathname);
   if (detail?.params.pluginId) {
     return { kind: "plugin-detail", pluginId: detail.params.pluginId };
   }
