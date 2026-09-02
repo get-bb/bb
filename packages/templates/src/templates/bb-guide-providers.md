@@ -32,9 +32,8 @@ verified GitHub Copilot models, and defaults to the local Brainstem at
 `http://127.0.0.1:7071/chat`. Select a discovered model id or use `brainstem`
 to follow the Brainstem's current GitHub Copilot default. bb reuses a healthy
 shared Brainstem or starts the installed `~/.brainstem` runtime, and stops only
-a process it owns. Automatic startup applies only to a plain HTTP loopback
-`/chat` endpoint with no URL credentials, query, or fragment; other endpoints
-must already be running:
+a process it owns. Automatic startup applies only to a plain HTTP `localhost`
+or `127.0.0.1` `/chat` endpoint; other endpoints must already be running:
 
   bb provider models rapp
   bb thread spawn --project <project-id> --provider rapp --model brainstem --prompt "Use my RAPP agents."
@@ -43,8 +42,8 @@ Override the Consumer endpoint with
 `bb plugin config provider-rapp set endpoint <url>` or the host-daemon
 environment variable `RAPP_BRAINSTEM_URL`. Set
 `RAPP_BRAINSTEM_SECRET` for a LAN Brainstem that requires the
-`X-Brainstem-Secret` header; credential-bearing non-loopback endpoints must
-use HTTPS.
+`X-Brainstem-Secret` header. Endpoint URLs may not contain credentials, query
+parameters, or fragments; header credentials require HTTPS outside loopback.
 
 Business mode adapts `microsoft/aibast-agents-library` and exposes the fixed
 `business-grail` model:
@@ -57,7 +56,8 @@ Business mode adapts `microsoft/aibast-agents-library` and exposes the fixed
 variable `RAPP_FUNCTION_KEY` supplies `x-functions-key`, and
 `RAPP_USER_GUID` optionally selects persistent Business Grail memory. Store
 credentials with `npx bb-app env set`, never in endpoint URLs or plugin
-settings. An auto-launched local Brainstem keeps ordinary host and GitHub
+settings. Business endpoint URLs also may not contain query parameters or
+fragments. An auto-launched local Brainstem keeps ordinary host and GitHub
 Copilot environment but does not inherit those five RAPP routing and
 credential variables. bb persists each RAPP thread as a canonical `rapp/1`
 session egg for restart-safe resume.

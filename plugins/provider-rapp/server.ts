@@ -92,7 +92,7 @@ export default async function plugin(bb: BbPluginApi): Promise<void> {
       type: "string",
       label: "RAPP endpoint",
       description:
-        "Optional HTTP(S) endpoint override. Leave blank to use the matching RAPP environment variable or the local Consumer Grail.",
+        "Optional HTTP(S) endpoint override without URL credentials, query parameters, or fragments. Leave blank to use the matching RAPP environment variable or the local Consumer Grail.",
       experimental_schema: rappEndpointSettingSchema,
       default: "",
     },

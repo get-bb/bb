@@ -263,13 +263,14 @@ Copilot model catalog, and defaults to `http://127.0.0.1:7071/chat`. Select a
 discovered model id or use `brainstem` to follow the Brainstem's current
 GitHub Copilot default. bb reuses a healthy shared Brainstem or starts the
 installed `~/.brainstem` runtime, and stops only a process it owns. Automatic
-startup applies only to a plain HTTP loopback endpoint with the exact `/chat`
-path and no URL credentials, query, or fragment; any other endpoint must
-already be running. Override the endpoint with
+startup applies only to a plain HTTP `localhost` or `127.0.0.1` endpoint with
+the exact `/chat` path; any other endpoint must already be running. Override
+the endpoint with
 `bb plugin config provider-rapp set endpoint <url>` or
 `RAPP_BRAINSTEM_URL`. Set `RAPP_BRAINSTEM_SECRET` when a LAN Brainstem
-requires `X-Brainstem-Secret`; credential-bearing non-loopback endpoints must
-use HTTPS. Business mode adapts
+requires `X-Brainstem-Secret`. Endpoint URLs may not contain credentials,
+query parameters, or fragments; header credentials require HTTPS outside
+loopback. Business mode adapts
 `microsoft/aibast-agents-library` and exposes the fixed `business-grail`
 model:
 
@@ -282,6 +283,7 @@ bb plugin config provider-rapp set endpoint \
 `RAPP_BUSINESS_URL` can supply that endpoint instead. The host daemon reads the
 Azure Function key from `RAPP_FUNCTION_KEY` and sends it as
 `x-functions-key`; do not put it in the endpoint URL or a plugin setting.
+Business endpoint URLs also may not contain query parameters or fragments.
 `RAPP_USER_GUID` optionally selects the Business Grail's persistent user
 memory. Store host credentials and identifiers through the launcher:
 

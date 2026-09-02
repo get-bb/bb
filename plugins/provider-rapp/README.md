@@ -29,8 +29,10 @@ bb plugin config provider-rapp set endpoint https://brainstem.example.com/chat
 ```
 
 or the host-daemon environment variable `RAPP_BRAINSTEM_URL`. Deployments that
-require `X-Brainstem-Secret` read it from `RAPP_BRAINSTEM_SECRET`; a
-credential-bearing non-loopback endpoint must use HTTPS.
+require `X-Brainstem-Secret` read it from `RAPP_BRAINSTEM_SECRET`. Endpoint
+URLs may not contain credentials, query parameters, or fragments; header
+credentials require HTTPS outside loopback. Automatic startup is limited to
+plain HTTP `localhost` or `127.0.0.1` `/chat` endpoints.
 
 Brainstem's current `/models/set` endpoint changes a process-global selection,
 so bb serializes each concrete model selection with its complete `/chat`
@@ -50,7 +52,8 @@ bb plugin config provider-rapp set endpoint \
 The endpoint can instead come from `RAPP_BUSINESS_URL`. Put the Function key in
 the host-daemon environment as `RAPP_FUNCTION_KEY`; the bridge sends it through
 `x-functions-key` and never stores it in bb settings, provider options, thread
-events, or the endpoint URL. `RAPP_USER_GUID` optionally selects the Business
+events, or the endpoint URL. Business endpoint URLs also may not contain query
+parameters or fragments. `RAPP_USER_GUID` optionally selects the Business
 Grail's persistent user memory.
 
 ## CLI

@@ -40,9 +40,11 @@
   `RAPP_BRAINSTEM_URL` and `RAPP_BRAINSTEM_SECRET` from the host daemon.
   Business mode reads `RAPP_BUSINESS_URL`, `RAPP_FUNCTION_KEY`, and optional
   `RAPP_USER_GUID`. Store credentials with `npx bb-app env set`, not in plugin
-  settings or endpoint URLs. Automatic startup applies only to plain HTTP
-  loopback `/chat` endpoints, and the launched Brainstem does not inherit
-  those five RAPP routing and credential variables.
+  settings or endpoint URLs. Endpoint URLs may not contain query parameters or
+  fragments, and header credentials require HTTPS outside loopback. Automatic
+  startup applies only to plain HTTP `localhost` or `127.0.0.1` `/chat`
+  endpoints, and the launched Brainstem does not inherit those five RAPP
+  routing and credential variables.
 
 ## Agent Instructions
 
