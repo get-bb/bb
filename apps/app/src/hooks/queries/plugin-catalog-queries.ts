@@ -10,7 +10,7 @@ import type {
   PluginSourceDetail as SdkPluginSourceDetail,
   PluginUpdateCheckEntry,
 } from "@bb/server-contract";
-import { useQueries, useQuery } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { createPluginsClient } from "./plugin-client";
 import { toEpochMs } from "./plugin-settings-queries";
 import {
@@ -293,17 +293,5 @@ export function usePluginCatalogSearch(
   return useQuery({
     ...pluginCatalogSearchQueryOptions(query),
     enabled: options.enabled,
-  });
-}
-
-export function usePluginCatalogSearches(
-  queries: readonly string[],
-  options: { enabled: boolean },
-) {
-  return useQueries({
-    queries: queries.map((query) => ({
-      ...pluginCatalogSearchQueryOptions(query),
-      enabled: options.enabled,
-    })),
   });
 }

@@ -97,7 +97,7 @@ import {
 import { getPluginPagePanelStateId } from "./plugin-page-panel-state";
 import { PluginPanelTabContent } from "./PluginPanelActions";
 import { PluginDetailRouteNavigationProvider } from "@/components/ui/app-route-anchor";
-import { usePluginCatalogSearches } from "@/hooks/queries/plugin-catalog-queries";
+import { usePluginCatalogSearch } from "@/hooks/queries/plugin-catalog-queries";
 import { usePluginList } from "@/hooks/queries/plugin-settings-queries";
 
 const TERMINAL_COLS = 100;
@@ -105,6 +105,11 @@ const TERMINAL_ROWS = 30;
 const MARKETPLACE_PLUGIN_DETAIL_TAB_PREFIX = "marketplace-plugin:";
 const EMPTY_TERMINAL_HOSTS: readonly Host[] = [];
 const RIGHT_PANEL_TOGGLE_CLASS = `${COARSE_POINTER_HEADER_ICON_BUTTON_CLASS} ${CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS}`;
+
+interface PluginDetailTabMetadata {
+  icon: string | null;
+  label: string;
+}
 
 const compactDrawerOpenAtomFamily = atomFamily((_panelStateId: string) =>
   atom(false),
@@ -289,12 +294,45 @@ export function PluginPanelRightPanelHost({
   >(null);
   const [isPluginDetailPanelOpen, setIsPluginDetailPanelOpen] = useState(false);
   const [isPluginDetailFullPage, setIsPluginDetailFullPage] = useState(false);
+  const [pluginDetailTabMetadata, setPluginDetailTabMetadata] = useState<
+    Record<string, PluginDetailTabMetadata>
+  >({});
   const pluginListQuery = usePluginList({
     enabled: openedPluginIds.length > 0,
   });
-  const pluginCatalogQueries = usePluginCatalogSearches(openedPluginIds, {
-    enabled: pluginDetailTabsEnabled && openedPluginIds.length > 0,
-  });
+  const activePluginCatalogQuery = usePluginCatalogSearch(
+    activePluginDetailId ?? "",
+    {
+      enabled: pluginDetailTabsEnabled && activePluginDetailId !== null,
+    },
+  );
+  useEffect(() => {
+    if (activePluginDetailId === null) return;
+    const catalogEntry = activePluginCatalogQuery.data?.find(
+      (entry) => entry.pluginId === activePluginDetailId,
+    );
+    if (catalogEntry === undefined) return;
+    setPluginDetailTabMetadata((current) => {
+      const previous = current[activePluginDetailId];
+      if (
+        previous?.icon === catalogEntry.icon &&
+        previous.label === catalogEntry.displayName
+      ) {
+        return current;
+      }
+      return {
+        ...current,
+        [activePluginDetailId]: {
+          icon: catalogEntry.icon,
+          label: catalogEntry.displayName,
+        },
+      };
+    });
+  }, [
+    activePluginCatalogQuery.data,
+    activePluginDetailId,
+    setPluginDetailTabMetadata,
+  ]);
   const [isCompactDrawerOpen, setCompactDrawerOpen] = useAtom(
     compactDrawerOpenAtomFamily(panelStateId),
   );
@@ -728,15 +766,13 @@ export function PluginPanelRightPanelHost({
 
   const pluginDetailTabs = useMemo<readonly SecondaryPanelRenderableTab[]>(
     () =>
-      openedPluginIds.map((tabPluginId, index) => {
-        const catalogEntry = pluginCatalogQueries[index]?.data?.find(
-          (entry) => entry.pluginId === tabPluginId,
-        );
+      openedPluginIds.map((tabPluginId) => {
+        const catalogEntry = pluginDetailTabMetadata[tabPluginId];
         const installedPlugin = pluginListQuery.data?.plugins.find(
           (entry) => entry.id === tabPluginId,
         );
         const label =
-          catalogEntry?.displayName ??
+          catalogEntry?.label ??
           installedPlugin?.name ??
           installedPlugin?.id ??
           tabPluginId;
@@ -766,7 +802,7 @@ export function PluginPanelRightPanelHost({
     [
       closePluginDetailTab,
       openedPluginIds,
-      pluginCatalogQueries,
+      pluginDetailTabMetadata,
       pluginListQuery.data?.plugins,
       revealPanel,
     ],

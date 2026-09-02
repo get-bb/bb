@@ -150,6 +150,7 @@ function PluginPagePanelHost({
   return (
     <Suspense fallback={null}>
       <LazyPluginPanelRightPanelHost
+        key={`${props.pluginId}/${props.panelPath}`}
         {...props}
         pluginDetailTabsEnabled={
           props.pluginId === PLUGIN_GUIDE_PLUGIN_ID &&

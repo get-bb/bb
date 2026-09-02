@@ -226,6 +226,7 @@ vi.mock("@/components/plugin/PluginPanelRightPanelHost", () => ({
   }) => {
     const pane = useContext(PaneContext);
     const [isPanelOpen, setIsPanelOpen] = useState(false);
+    const [isDetailTabOpen, setIsDetailTabOpen] = useState(false);
     const panelModel = useMemo(
       () => ({
         composerHost: null,
@@ -264,8 +265,14 @@ vi.mock("@/components/plugin/PluginPanelRightPanelHost", () => ({
           pluginDetailTabsEnabled === true,
         )}
         data-plugin-id={pluginId}
+        data-detail-tab-open={String(isDetailTabOpen)}
       >
         {children}
+        {pluginDetailTabsEnabled === true ? (
+          <button type="button" onClick={() => setIsDetailTabOpen(true)}>
+            Open plugin detail tab
+          </button>
+        ) : null}
       </div>
     );
   },
@@ -555,15 +562,43 @@ function ExternalNav({ to }: { to: string }) {
   );
 }
 
+function PluginPanelNavigationControls() {
+  const navigate = useNavigate();
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() =>
+          navigate("/plugins/plugin-api-docs/plugin-api/the-composer")
+        }
+      >
+        Open Guide subpath
+      </button>
+      <button
+        type="button"
+        onClick={() => navigate("/plugins/docs/docs")}
+      >
+        Open another plugin page
+      </button>
+    </>
+  );
+}
+
 function RouteAwareSplitArea() {
   const location = useLocation();
-  return (
-    <SplitThreadArea
-      routeContent={
-        location.pathname.startsWith("/plugins/") ? docsContent : undefined
+  const routeContent = location.pathname.startsWith(
+    "/plugins/plugin-api-docs/plugin-api",
+  )
+    ? {
+        ...pluginGuideContent,
+        subPath: location.pathname.slice(
+          "/plugins/plugin-api-docs/plugin-api".length,
+        ),
       }
-    />
-  );
+    : location.pathname.startsWith("/plugins/")
+      ? docsContent
+      : undefined;
+  return <SplitThreadArea routeContent={routeContent} />;
 }
 
 function renderSplitArea(options: {
@@ -594,6 +629,9 @@ function renderSplitArea(options: {
             <LocationProbe />
             {options.externalTo !== undefined ? (
               <ExternalNav to={options.externalTo} />
+            ) : null}
+            {options.routeAwareContent ? (
+              <PluginPanelNavigationControls />
             ) : null}
           </MemoryRouter>
         </QueryClientProvider>
@@ -650,6 +688,42 @@ describe("SplitThreadArea", () => {
 
     const host = await screen.findByTestId("plugin-browser-host");
     expect(host.dataset.pluginDetailTabsEnabled).toBe("true");
+  });
+
+  it("preserves detail state within the Guide and clears it for another plugin page", async () => {
+    renderSplitArea({
+      path: "/plugins/plugin-api-docs/plugin-api",
+      routeAwareContent: true,
+    });
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Open plugin detail tab" }),
+    );
+    expect(screen.getByTestId("plugin-browser-host").dataset.detailTabOpen).toBe(
+      "true",
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Open Guide subpath" }));
+    await waitFor(() =>
+      expect(screen.getByTestId("location").textContent).toBe(
+        "/plugins/plugin-api-docs/plugin-api/the-composer",
+      ),
+    );
+    expect(screen.getByTestId("plugin-browser-host").dataset.detailTabOpen).toBe(
+      "true",
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Open another plugin page" }),
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId("location").textContent).toBe(
+        "/plugins/docs/docs",
+      ),
+    );
+    expect(screen.getByTestId("plugin-browser-host").dataset.detailTabOpen).toBe(
+      "false",
+    );
   });
 
   it("applies spotlight pane actions to the targeted open split and preference", async () => {

@@ -141,17 +141,27 @@ const secondaryPanelState = vi.hoisted(() => ({
 }));
 
 vi.mock("@/hooks/queries/plugin-catalog-queries", () => ({
-  usePluginCatalogSearches: (queries: string[]) => {
-    catalogQueryState.queries = [...queries];
-    return queries.map((pluginId) => ({
+  usePluginCatalogSearch: (pluginId: string, options: { enabled: boolean }) => {
+    catalogQueryState.queries = options.enabled ? [pluginId] : [];
+    return {
       data: [
         {
           pluginId,
-          displayName: pluginId === "secrets" ? "Secrets" : pluginId,
-          icon: pluginId === "secrets" ? "Key" : null,
+          displayName:
+            pluginId === "secrets"
+              ? "Secrets"
+              : pluginId === "automations"
+                ? "Automations"
+                : pluginId,
+          icon:
+            pluginId === "secrets"
+              ? "Key"
+              : pluginId === "automations"
+                ? "Bot"
+                : null,
         },
       ],
-    }));
+    };
   },
 }));
 
@@ -629,6 +639,7 @@ function PluginDetailNavigationLink() {
   return (
     <div onClick={onRouteAnchorClick}>
       <a href="/extensions/plugins/secrets">Open Secrets plugin</a>
+      <a href="/extensions/plugins/automations">Open Automations plugin</a>
     </div>
   );
 }
@@ -810,6 +821,25 @@ describe("PluginPanelRightPanelHost", () => {
     expect(screen.getByTestId("current-path").textContent).toBe(
       "/plugins/demo/board",
     );
+  });
+
+  it("observes only the selected detail tab while retaining inactive tab metadata", async () => {
+    renderHost("board", "", createStore(), true);
+
+    fireEvent.click(screen.getByRole("link", { name: "Open Secrets plugin" }));
+    expect(await screen.findByText("Details for secrets")).toBeTruthy();
+    expect(catalogQueryState.queries).toEqual(["secrets"]);
+
+    fireEvent.click(
+      screen.getByRole("link", { name: "Open Automations plugin" }),
+    );
+    expect(await screen.findByText("Details for automations")).toBeTruthy();
+    expect(catalogQueryState.queries).toEqual(["automations"]);
+    expect(screen.getByRole("button", { name: "Secrets" })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Secrets" }));
+    expect(await screen.findByText("Details for secrets")).toBeTruthy();
+    expect(catalogQueryState.queries).toEqual(["secrets"]);
   });
 
   it("keeps split navigation for plugin-detail links outside the Plugin Guide", () => {
