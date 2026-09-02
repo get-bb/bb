@@ -87,9 +87,9 @@ renumbered, or its target or surrounding layout changes:
 4. Hover, focus, and click every affected badge and visible target. Confirm
    that only the matching annotation activates, the full target is reachable,
    and badge numbers, cards, and previous/next navigation agree.
-5. Add or update focused tests for the order and any boundary or ownership rule
-   that could regress. Every annotation must appear exactly once; DOM nesting
-   alone does not prove correct overlay ownership.
+5. Add or update a focused test for any boundary or ownership rule that could
+   regress. Every annotation must appear exactly once; DOM nesting alone does
+   not prove correct overlay ownership.
 
 If responsive layouts cannot share one spatial order, fix the layout or define
 one stable readable sequence before shipping.
