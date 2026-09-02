@@ -90,7 +90,7 @@ const PROMPT_ACTION_PRESENTATION = {
   },
   plugin: {
     label: "Plugin",
-    icon: "ElectricPlugs",
+    icon: "Blocks",
   },
 } as const satisfies Record<
   PromptBoxActionKind,

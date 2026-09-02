@@ -37,7 +37,7 @@ const TOOLS_SECTIONS = {
   plugins: {
     id: "plugins",
     label: "Plugins",
-    icon: "ElectricPlugs",
+    icon: "Blocks",
     to: getPluginsRoutePath(),
   },
 } satisfies Record<ToolsSectionId, ToolsSectionDefinition>;

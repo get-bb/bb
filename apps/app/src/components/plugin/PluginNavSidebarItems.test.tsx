@@ -418,7 +418,7 @@ describe("PluginNavSidebarItems", () => {
     expect(
       screen
         .getByRole("button", { name: "Plugins" })
-        .querySelector('[data-icon="ElectricPlugs"]'),
+        .querySelector('[data-icon="Blocks"]'),
     ).toBeTruthy();
     expect(
       screen
