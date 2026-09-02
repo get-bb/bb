@@ -139,6 +139,10 @@ import {
   runAcpDynamicToolMcpServer,
   type AcpMcpServerConfig,
 } from "./tool-proxy-mcp.js";
+import {
+  createOmpAdvisorTranscriptObserver,
+  type OmpAdvisorTranscriptObserver,
+} from "./omp-advisor-observer.js";
 
 interface AcpSessionPolicy {
   permissionMode: "accept-edits" | "full";
@@ -180,6 +184,7 @@ interface AcpThreadSession {
   pendingPermissions: Set<PendingAcpPermission>;
   cursorMcpApproval: CursorMcpApproval | undefined;
   deferStartEmit: AcpDeferredStartEmitter | undefined;
+  advisorObserver: OmpAdvisorTranscriptObserver | undefined;
 }
 
 type AcpDeferredStartEmitter = (
@@ -1567,6 +1572,8 @@ function liveSessionForThread(
 }
 
 function removeSession(session: AcpThreadSession): void {
+  session.advisorObserver?.stop();
+  session.advisorObserver = undefined;
   if (sessionsByBbThreadId.get(session.bbThreadId) === session) {
     sessionsByBbThreadId.delete(session.bbThreadId);
   }
@@ -1723,6 +1730,7 @@ async function startAgentSession(
     pendingPermissions: new Set(),
     cursorMcpApproval: undefined,
     deferStartEmit: emitStartNotification,
+    advisorObserver: undefined,
   };
   sessionsByBbThreadId.set(bbThreadId, session);
 
@@ -1879,6 +1887,26 @@ async function startAgentSession(
       sessionRestorable: session.supportsLoadSession,
     });
     sendThreadDeltas(bbThreadId, [{ kind: "session.reset" }]);
+    if (session.dialect.id === "omp") {
+      const observer = createOmpAdvisorTranscriptObserver({
+        providerThreadId: sessionId,
+        cwd: params.cwd,
+        env: childEnv,
+        ignoreExisting: request.kind === "resume",
+        isTurnActive: () => session.activePromptKind === "turn",
+        emit: (deltas) => {
+          if (
+            sessionsByBbThreadId.get(bbThreadId) === session &&
+            !session.stopping &&
+            session.activePromptKind === "turn"
+          ) {
+            sendThreadDeltas(bbThreadId, deltas);
+          }
+        },
+      });
+      session.advisorObserver = observer;
+      await observer.start().catch(() => undefined);
+    }
     session.deferStartEmit = undefined;
     for (const deferred of deferredEmits) {
       if (
@@ -2017,6 +2045,7 @@ function finishTurn(
   if (session.activePromptKind !== "turn") {
     return;
   }
+  session.advisorObserver?.finishTurn();
   session.activePromptKind = null;
   dropQueuedTurnInputs(session, "ACP turn ended before the steer was sent");
   session.promptRequestPending = false;
@@ -2037,6 +2066,7 @@ function runTurn(
   });
 
   session.turnSettled = (async () => {
+    await session.advisorObserver?.prepareTurn().catch(() => undefined);
     let pending = firstInput;
     for (;;) {
       if (session.stopping) {
@@ -2063,6 +2093,7 @@ function runTurn(
         }
         const result = await promptResult;
         stopReason = result.stopReason;
+        await session.advisorObserver?.poll();
       } catch (error) {
         session.promptRequestPending = false;
         dropTurnInput(pending, "ACP turn failed before the prompt was sent");
@@ -2077,6 +2108,7 @@ function runTurn(
             error instanceof Error ? error.message : String(error),
           );
         }
+        session.advisorObserver?.finishTurn();
         session.activePromptKind = null;
         return;
       }

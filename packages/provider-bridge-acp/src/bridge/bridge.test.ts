@@ -1,14 +1,16 @@
 import {
   chmodSync,
   existsSync,
+  mkdirSync,
   mkdtempSync,
   readFileSync,
   rmSync,
   symlinkSync,
+  writeFileSync,
 } from "node:fs";
 import { createConnection } from "node:net";
 import { tmpdir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createStandaloneBuiltinCompactCommandInput } from "@bb/domain";
@@ -2402,6 +2404,96 @@ describe("acp bridge", () => {
       expect(threadEventsOfType("thread/compacted")).toHaveLength(1);
     },
   );
+
+  it("adds OMP advisor transcript output to the thread timeline", async () => {
+    const ompAgentDir = join(workspaceDir, "omp-agent");
+    const { providerThreadId } = await startThread({
+      dialectId: "omp",
+      envVars: { PI_CODING_AGENT_DIR: ompAgentDir },
+    });
+    const turnId = sendTurnRequest("turn/start", providerThreadId, {
+      input: [{ type: "text", text: "slow review this", mentions: [] }],
+    });
+    await waitFor(
+      () =>
+        agentMessageTexts().includes("echo:slow review this")
+          ? true
+          : undefined,
+      "slow OMP turn to start",
+    );
+
+    const artifactDir = join(
+      ompAgentDir,
+      "sessions",
+      `-tmp-${basename(workspaceDir)}`,
+      `2026-09-02T00-00-00-000Z_${providerThreadId}`,
+    );
+    mkdirSync(artifactDir, { recursive: true });
+    writeFileSync(
+      join(artifactDir, "__advisor.jsonl"),
+      [
+        {
+          type: "message",
+          id: "review-1",
+          message: {
+            role: "user",
+            content: [{ type: "text", text: "### Session update" }],
+          },
+        },
+        {
+          type: "message",
+          id: "response-1",
+          message: {
+            role: "assistant",
+            provider: "anthropic",
+            model: "claude-fable-5-1",
+            stopReason: "stop",
+            content: [{ type: "text", text: "Silent — no concerns." }],
+          },
+        },
+      ]
+        .map((entry) => JSON.stringify(entry))
+        .join("\n") + "\n",
+    );
+
+    const completed = await waitFor(
+      () =>
+        threadEventsOfType("item/completed").find((event) => {
+          const item = event.item;
+          const record = item as Record<string, unknown>;
+          return (
+            typeof item === "object" &&
+            item !== null &&
+            !Array.isArray(item) &&
+            record.type === "extension" &&
+            record.kind === "provider-acp/advisor"
+          );
+        }),
+      "OMP advisor extension item",
+    );
+    expect(completed).toMatchObject({
+      item: {
+        type: "extension",
+        kind: "provider-acp/advisor",
+        status: "completed",
+        payload: {
+          advisor: "default",
+          provider: "anthropic",
+          model: "claude-fable-5-1",
+          output: "Silent — no concerns.",
+          notes: [],
+        },
+        presentation: {
+          title: "anthropic/claude-fable-5-1",
+          detail: "Silent — no concerns.",
+        },
+      },
+    });
+    await waitForResponse(turnId);
+    await waitForTurnCompleted();
+    expect(threadEventsOfType("turn/started")).toHaveLength(1);
+    expect(threadEventsOfType("turn/completed")).toHaveLength(1);
+  });
 
   it("fails the compaction turn when the agent reports the failure in an end-turn message", async () => {
     const { providerThreadId } = await startThread({

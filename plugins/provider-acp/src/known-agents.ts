@@ -114,6 +114,7 @@ export const KNOWN_ACP_AGENTS: readonly AcpAgentDefinition[] = [
     signInCommand: "omp login",
     installUrl: "https://github.com/can1357/omp",
     visibility: "installed",
+    dialect: "omp",
     supportsManualCompaction: true,
     fork: "tip",
     launch: {

@@ -4,7 +4,12 @@ import { describe, expect, it } from "vitest";
 import { experimental_scanPublicSdkOnly as scanPublicSdkOnly } from "@get-bb/plugin-sdk/testing";
 
 const scan = scanPublicSdkOnly(dirname(fileURLToPath(import.meta.url)), {
-  allow: [/^yaml$/u, /^smol-toml$/u, /^(?:\.\.\/)+vitest\.shared\.js$/u],
+  allow: [
+    /^yaml$/u,
+    /^smol-toml$/u,
+    /^@testing-library\/react$/u,
+    /^(?:\.\.\/)+vitest\.shared\.js$/u,
+  ],
 });
 
 describe("provider-acp imports only the public SDK", () => {

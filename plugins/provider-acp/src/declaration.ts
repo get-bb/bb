@@ -4,6 +4,7 @@ import type {
   PluginProviderStrings,
 } from "@get-bb/plugin-sdk";
 import { ACP_FAMILY, type AcpAgentDefinition } from "./agents.js";
+import { ompAdvisorExtensionKinds } from "./advisor.js";
 
 const ACP_BASE_CAPABILITIES: PluginProviderCapabilities = {
   supportsServiceTier: true,
@@ -98,6 +99,9 @@ export function acpProviderDeclaration(
           ? [...ACP_BASE_CAPABILITIES.reasoningLevels]
           : [...agent.reasoningLevels],
     },
+    ...(agent.dialect === "omp"
+      ? { extensionKinds: ompAdvisorExtensionKinds }
+      : {}),
     composerActions: [],
   };
 }
