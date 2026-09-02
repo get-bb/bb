@@ -1,14 +1,12 @@
-import {
-  eq,
-  and,
-  sql,
-  lt,
-  asc,
-} from "drizzle-orm";
-import { type ThreadEventItemType } from "@bb/domain";
-import type { DbConnection } from "../connection.js";
+import { eq, and, sql, lt, asc } from "drizzle-orm";
+import type { DbConnection, DbQueryConnection } from "../connection.js";
 import type { DbNotifier } from "../notifier.js";
-import { environments, maintenanceScanCursors } from "../schema.js";
+import { environments, events, maintenanceScanCursors } from "../schema.js";
+import {
+  insertPreparedRetainedEventOutput,
+  prepareCompletedEventOutputData,
+  type RetainedEventOutputTarget,
+} from "./retained-event-outputs.js";
 
 export const DESTROYED_ENVIRONMENT_TTL_MS = 7 * 24 * 60 * 60_000;
 
@@ -19,38 +17,40 @@ export const COMPLETED_EVENT_OUTPUT_RETENTION_MS = 7 * 24 * 60 * 60_000;
 export const COMPLETED_EVENT_OUTPUT_TRUNCATION_THRESHOLD_CHARS = 32 * 1024;
 export const COMPLETED_EVENT_OUTPUT_RETAINED_HEAD_CHARS = 2 * 1024;
 export const COMPLETED_EVENT_OUTPUT_RETAINED_TAIL_CHARS = 2 * 1024;
-const COMPLETED_EVENT_OUTPUT_TRUNCATION_CURSOR_VERSION = 1;
+const COMPLETED_EVENT_OUTPUT_MIGRATION_CURSOR_VERSION = 1;
 export const DEFAULT_CLOSED_SESSION_PRUNE_BATCH_SIZE = 1_000;
-export const DEFAULT_COMPLETED_EVENT_OUTPUT_TRUNCATION_BATCH_SIZE = 250;
 export const DEFAULT_DESTROYED_ENVIRONMENT_EVENT_DETACH_BATCH_SIZE = 50;
+export const DEFAULT_COMPLETED_EVENT_OUTPUT_MIGRATION_SCAN_LIMIT = 250;
 export const DEFAULT_DESTROYED_ENVIRONMENT_PRUNE_BATCH_SIZE = 10;
 
-const COMPLETED_EVENT_OUTPUT_TRUNCATION_MARKER =
-  "\n\n[... output truncated by retention policy; showing beginning and end ...]\n\n";
-const COMPLETED_EVENT_OUTPUT_TRUNCATION_CURSOR_POLICY =
-  "completed_event_output_truncation";
+const COMPLETED_EVENT_OUTPUT_MIGRATION_CURSOR_POLICY =
+  "legacy_completed_event_output_sidecar";
 
 type ClosedSessionState = "closed";
 type ClosedSessionDeleteParameters = [ClosedSessionState, number, number];
-type CompletedEventOutputItemKind = Extract<
-  ThreadEventItemType,
-  "commandExecution" | "toolCall" | "webSearch" | "webFetch"
->;
-type CompletedEventOutputPath = "aggregatedOutput" | "result" | "resultText";
 type CompletedEventOutputScanParameters = [
   "item/completed",
-  CompletedEventOutputItemKind,
+  RetainedEventOutputTarget["itemKind"],
   number,
   number,
   string,
   number,
 ];
-type SqliteParameter = string | number | bigint | Buffer | null;
-
-interface CompletedEventOutputPathTarget {
-  itemKind: CompletedEventOutputItemKind;
-  outputPath: CompletedEventOutputPath;
-}
+type CompletedEventOutputCandidateParameters = [
+  "item/completed",
+  RetainedEventOutputTarget["itemKind"],
+  number,
+  number,
+  string,
+  number,
+  string,
+  string,
+  string,
+  string,
+  RetainedEventOutputTarget["itemKind"],
+  string,
+  number,
+];
 
 interface CompletedEventOutputScanCursor {
   lastCreatedAt: number;
@@ -62,19 +62,15 @@ interface CompletedEventOutputScanRow {
   id: string;
 }
 
-interface TruncateCompletedEventItemOutputPathArgs
-  extends CompletedEventOutputPathTarget,
-    TruncateCompletedEventItemOutputsArgs {}
-
-interface UpdateCompletedEventOutputScanRowsArgs
-  extends CompletedEventOutputPathTarget {
-  rows: CompletedEventOutputScanRow[];
-  truncatedAt: number;
+interface CompletedEventOutputCandidateRow {
+  created_at: number;
+  data: string;
+  id: string;
+  thread_id: string;
 }
 
-interface AdvanceCompletedEventOutputScanCursorArgs
-  extends CompletedEventOutputPathTarget,
-    CompletedEventOutputScanCursor {
+interface AdvanceCompletedEventOutputMigrationCursorArgs
+  extends RetainedEventOutputTarget, CompletedEventOutputScanCursor {
   updatedAt: number;
 }
 
@@ -98,17 +94,19 @@ export interface PruneDestroyedEnvironmentsResult {
   detachedEvents: number;
 }
 
-export interface TruncateCompletedEventItemOutputsArgs {
-  createdBefore: number;
+export interface MigrateNextCompletedEventItemOutputArgs extends RetainedEventOutputTarget {
   limit: number;
-  truncatedAt: number;
+  migratedAt: number;
 }
 
-export interface TruncateCompletedEventItemOutputsResult {
-  commandExecutionOutputs: number;
-  toolCallResults: number;
-  webFetchResultTexts: number;
-  webSearchResultTexts: number;
+export interface MigrateNextCompletedEventItemOutputResult {
+  action: "idle" | "migrated" | "scanned" | "wrapped";
+  eventId: string | null;
+  migratedBytes: number;
+  migratedRows: number;
+  retained: boolean;
+  scanRows: number;
+  threadId: string | null;
 }
 
 export function pruneClosedSessions(
@@ -136,19 +134,19 @@ export function pruneClosedSessions(
 }
 
 function buildCompletedEventOutputCursorId(
-  args: CompletedEventOutputPathTarget,
+  args: RetainedEventOutputTarget,
 ): string {
   return [
-    COMPLETED_EVENT_OUTPUT_TRUNCATION_CURSOR_POLICY,
-    `v${COMPLETED_EVENT_OUTPUT_TRUNCATION_CURSOR_VERSION}`,
+    COMPLETED_EVENT_OUTPUT_MIGRATION_CURSOR_POLICY,
+    `v${COMPLETED_EVENT_OUTPUT_MIGRATION_CURSOR_VERSION}`,
     args.itemKind,
     args.outputPath,
   ].join(":");
 }
 
 function getCompletedEventOutputScanCursor(
-  db: DbConnection,
-  args: CompletedEventOutputPathTarget,
+  db: DbQueryConnection,
+  args: RetainedEventOutputTarget,
 ): CompletedEventOutputScanCursor {
   const row = db
     .select({
@@ -166,13 +164,13 @@ function getCompletedEventOutputScanCursor(
 
 function listCompletedEventOutputScanRows(
   db: DbConnection,
-  args: TruncateCompletedEventItemOutputPathArgs,
+  args: MigrateNextCompletedEventItemOutputArgs,
+  cursor: CompletedEventOutputScanCursor,
 ): CompletedEventOutputScanRow[] {
   if (args.limit <= 0) {
     return [];
   }
 
-  const cursor = getCompletedEventOutputScanCursor(db, args);
   return db.$client
     .prepare<CompletedEventOutputScanParameters, CompletedEventOutputScanRow>(
       `
@@ -189,85 +187,78 @@ function listCompletedEventOutputScanRows(
     .all(
       "item/completed",
       args.itemKind,
-      args.createdBefore,
+      args.migratedAt,
       cursor.lastCreatedAt,
       cursor.lastEventId,
       args.limit,
     );
 }
 
-function updateCompletedEventOutputScanRows(
+function findCompletedEventOutputCandidate(
   db: DbConnection,
-  args: UpdateCompletedEventOutputScanRowsArgs,
-): number {
-  if (args.rows.length === 0) {
-    return 0;
+  args: MigrateNextCompletedEventItemOutputArgs,
+  rows: readonly CompletedEventOutputScanRow[],
+): CompletedEventOutputCandidateRow | undefined {
+  if (rows.length === 0) {
+    return undefined;
   }
 
+  const firstRow = rows[0];
+  const lastRow = rows.at(-1);
+  if (!firstRow || !lastRow) {
+    return undefined;
+  }
   const valuePath = `$.item.${args.outputPath}`;
   const truncationPath = `$.item.truncation.${args.outputPath}`;
-  const rowPlaceholders = args.rows.map(() => "?").join(",");
-  const parameters: SqliteParameter[] = [
-    valuePath,
-    valuePath,
-    COMPLETED_EVENT_OUTPUT_RETAINED_HEAD_CHARS,
-    COMPLETED_EVENT_OUTPUT_TRUNCATION_MARKER,
-    valuePath,
-    COMPLETED_EVENT_OUTPUT_RETAINED_TAIL_CHARS,
-    `${truncationPath}.originalLength`,
-    valuePath,
-    `${truncationPath}.retainedHeadLength`,
-    COMPLETED_EVENT_OUTPUT_RETAINED_HEAD_CHARS,
-    `${truncationPath}.retainedTailLength`,
-    COMPLETED_EVENT_OUTPUT_RETAINED_TAIL_CHARS,
-    `${truncationPath}.truncatedAt`,
-    args.truncatedAt,
-    ...args.rows.map((row) => row.id),
-    valuePath,
-    truncationPath,
-    valuePath,
-    COMPLETED_EVENT_OUTPUT_TRUNCATION_THRESHOLD_CHARS,
-  ];
-
-  const result = db.$client
-    .prepare<SqliteParameter[]>(
+  return db.$client
+    .prepare<
+      CompletedEventOutputCandidateParameters,
+      CompletedEventOutputCandidateRow
+    >(
       `
-        UPDATE events
-        SET data = json_set(
-          data,
-          ?,
-          substr(json_extract(data, ?), 1, ?)
-            || ?
-            || substr(json_extract(data, ?), -?),
-          ?,
-          length(json_extract(data, ?)),
-          ?,
-          ?,
-          ?,
-          ?,
-          ?,
-          ?
-        )
-        WHERE id IN (${rowPlaceholders})
-          AND json_type(data, ?) = 'text'
-          AND json_type(data, ?) IS NULL
-          AND length(json_extract(data, ?)) > ?
+        SELECT id, created_at, data, thread_id
+        FROM events
+        WHERE type = ?
+          AND item_kind = ?
+          AND created_at < ?
+          AND (created_at, id) >= (?, ?)
+          AND (created_at, id) <= (?, ?)
+          AND CASE WHEN json_valid(data) THEN
+            json_type(data, ?) = 'text'
+            AND json_type(data, ?) IS NULL
+            AND json_extract(data, ?) = ?
+            AND length(json_extract(data, ?)) > ?
+          ELSE 0 END
+        ORDER BY created_at, id
+        LIMIT 1
       `,
     )
-    .run(...parameters);
-
-  return result.changes;
+    .get(
+      "item/completed",
+      args.itemKind,
+      args.migratedAt,
+      firstRow.created_at,
+      firstRow.id,
+      lastRow.created_at,
+      lastRow.id,
+      valuePath,
+      truncationPath,
+      "$.item.type",
+      args.itemKind,
+      valuePath,
+      COMPLETED_EVENT_OUTPUT_TRUNCATION_THRESHOLD_CHARS,
+    );
 }
 
-function advanceCompletedEventOutputScanCursor(
-  db: DbConnection,
-  args: AdvanceCompletedEventOutputScanCursorArgs,
+function advanceCompletedEventOutputMigrationCursor(
+  db: DbQueryConnection,
+  args: AdvanceCompletedEventOutputMigrationCursorArgs,
 ): void {
   db.insert(maintenanceScanCursors)
     .values({
       id: buildCompletedEventOutputCursorId(args),
-      policy: COMPLETED_EVENT_OUTPUT_TRUNCATION_CURSOR_POLICY,
-      version: COMPLETED_EVENT_OUTPUT_TRUNCATION_CURSOR_VERSION,
+      policy: COMPLETED_EVENT_OUTPUT_MIGRATION_CURSOR_POLICY,
+      version: COMPLETED_EVENT_OUTPUT_MIGRATION_CURSOR_VERSION,
       itemKind: args.itemKind,
       outputPath: args.outputPath,
       lastCreatedAt: args.lastCreatedAt,
@@ -285,55 +276,107 @@ function advanceCompletedEventOutputScanCursor(
     .run();
 }
 
-function truncateCompletedEventItemOutputPath(
-  db: DbConnection,
-  args: TruncateCompletedEventItemOutputPathArgs,
-): number {
-  const rows = listCompletedEventOutputScanRows(db, args);
-  const truncated = updateCompletedEventOutputScanRows(db, {
-    itemKind: args.itemKind,
-    outputPath: args.outputPath,
-    rows,
-    truncatedAt: args.truncatedAt,
-  });
-  const lastRow = rows.at(-1);
-  if (lastRow) {
-    advanceCompletedEventOutputScanCursor(db, {
-      itemKind: args.itemKind,
-      outputPath: args.outputPath,
-      lastCreatedAt: lastRow.created_at,
-      lastEventId: lastRow.id,
-      updatedAt: args.truncatedAt,
-    });
-  }
-  return truncated;
+function emptyCompletedEventOutputMigrationResult(
+  action: "idle" | "scanned" | "wrapped",
+  scanRows: number,
+): MigrateNextCompletedEventItemOutputResult {
+  return {
+    action,
+    eventId: null,
+    migratedBytes: 0,
+    migratedRows: 0,
+    retained: false,
+    scanRows,
+    threadId: null,
+  };
 }
 
-export function truncateCompletedEventItemOutputs(
+export function migrateNextCompletedEventItemOutput(
   db: DbConnection,
-  args: TruncateCompletedEventItemOutputsArgs,
-): TruncateCompletedEventItemOutputsResult {
+  args: MigrateNextCompletedEventItemOutputArgs,
+): MigrateNextCompletedEventItemOutputResult {
+  if (args.limit <= 0) {
+    return emptyCompletedEventOutputMigrationResult("idle", 0);
+  }
+  const cursor = getCompletedEventOutputScanCursor(db, args);
+  const rows = listCompletedEventOutputScanRows(db, args, cursor);
+  if (rows.length === 0) {
+    if (cursor.lastCreatedAt === 0 && cursor.lastEventId === "") {
+      return emptyCompletedEventOutputMigrationResult("idle", 0);
+    }
+    advanceCompletedEventOutputMigrationCursor(db, {
+      ...args,
+      lastCreatedAt: 0,
+      lastEventId: "",
+      updatedAt: args.migratedAt,
+    });
+    return emptyCompletedEventOutputMigrationResult("wrapped", 0);
+  }
+
+  const candidate = findCompletedEventOutputCandidate(db, args, rows);
+  if (!candidate) {
+    const lastRow = rows.at(-1);
+    if (!lastRow) {
+      throw new Error("Expected completed output migration scan row");
+    }
+    advanceCompletedEventOutputMigrationCursor(db, {
+      ...args,
+      lastCreatedAt: lastRow.created_at,
+      lastEventId: lastRow.id,
+      updatedAt: args.migratedAt,
+    });
+    return emptyCompletedEventOutputMigrationResult("scanned", rows.length);
+  }
+
+  const prepared = prepareCompletedEventOutputData({
+    createdAt: candidate.created_at,
+    data: candidate.data,
+    itemKind: args.itemKind,
+    type: "item/completed",
+  });
+  if (!prepared.retainedOutput) {
+    throw new Error("Completed output migration candidate was not eligible");
+  }
+  const retainedOutput = prepared.retainedOutput;
+  const retained = retainedOutput.expiresAt > args.migratedAt;
+  db.transaction(
+    (tx) => {
+      const update = tx
+        .update(events)
+        .set({ data: prepared.data })
+        .where(
+          and(eq(events.id, candidate.id), eq(events.data, candidate.data)),
+        )
+        .run();
+      if (update.changes !== 1) {
+        throw new Error(
+          "Completed output migration event changed during advance",
+        );
+      }
+      if (retained) {
+        insertPreparedRetainedEventOutput(tx, {
+          eventId: candidate.id,
+          output: retainedOutput,
+        });
+      }
+      advanceCompletedEventOutputMigrationCursor(tx, {
+        ...args,
+        lastCreatedAt: candidate.created_at,
+        lastEventId: candidate.id,
+        updatedAt: args.migratedAt,
+      });
+    },
+    { behavior: "immediate" },
+  );
+
   return {
-    commandExecutionOutputs: truncateCompletedEventItemOutputPath(db, {
-      ...args,
-      itemKind: "commandExecution",
-      outputPath: "aggregatedOutput",
-    }),
-    toolCallResults: truncateCompletedEventItemOutputPath(db, {
-      ...args,
-      itemKind: "toolCall",
-      outputPath: "result",
-    }),
-    webFetchResultTexts: truncateCompletedEventItemOutputPath(db, {
-      ...args,
-      itemKind: "webFetch",
-      outputPath: "resultText",
-    }),
-    webSearchResultTexts: truncateCompletedEventItemOutputPath(db, {
-      ...args,
-      itemKind: "webSearch",
-      outputPath: "resultText",
-    }),
+    action: "migrated",
+    eventId: candidate.id,
+    migratedBytes: Buffer.byteLength(retainedOutput.value),
+    migratedRows: 1,
+    retained,
+    scanRows: rows.length,
+    threadId: candidate.thread_id,
   };
 }
 

@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 import { threadEventRowSchema, turnScope } from "@bb/domain";
-import { events } from "@bb/db";
+import { COMPLETED_EVENT_OUTPUT_RETENTION_MS, events } from "@bb/db";
 import {
   threadTimelineResponseSchema,
   timelineTurnSummaryDetailsResponseSchema,
@@ -13,6 +13,7 @@ import {
   TIMELINE_INLINE_OUTPUT_PREVIEW_TAIL_CHARS,
   TIMELINE_INLINE_OUTPUT_PREVIEW_THRESHOLD_CHARS,
 } from "../../src/services/threads/timeline-output-preview.js";
+import { runPeriodicSweeps } from "../../src/services/system/periodic-sweeps.js";
 import { readJson } from "../helpers/json.js";
 import { seedEvent, seedThreadFixture } from "../helpers/seed.js";
 import { withTestHarness } from "../helpers/test-app.js";
@@ -196,6 +197,75 @@ describe("GET /threads/:id/timeline inline output preview", () => {
         throw new Error("expected the previewed command row in details");
       }
       expect(full.output).toBe(BIG_OUTPUT);
+    });
+  });
+
+  it("invalidates a cached timeline when legacy output storage is rewritten", async () => {
+    await withTestHarness(async (harness) => {
+      const now = Date.now();
+      const { environment, thread } = seedThreadFixture(harness);
+      const turn = {
+        environmentId: environment.id,
+        providerThreadId: "provider-legacy-cache",
+        scope: turnScope("turn-legacy-cache"),
+        threadId: thread.id,
+      } as const;
+      seedEvent(harness.deps, {
+        ...turn,
+        createdAt: now - COMPLETED_EVENT_OUTPUT_RETENTION_MS - 2,
+        data: {},
+        sequence: 1,
+        type: "turn/started",
+      });
+      const output = "cache-" + "k".repeat(40_000);
+      harness.db
+        .insert(events)
+        .values({
+          createdAt: now - COMPLETED_EVENT_OUTPUT_RETENTION_MS - 1,
+          data: JSON.stringify({
+            item: {
+              aggregatedOutput: output,
+              approvalStatus: null,
+              command: "legacy cached command",
+              cwd: "/tmp",
+              exitCode: 0,
+              id: "legacy-cache-command",
+              status: "completed",
+              type: "commandExecution",
+            },
+          }),
+          environmentId: environment.id,
+          id: "evt_legacy_cache_command",
+          itemId: "legacy-cache-command",
+          itemKind: "commandExecution",
+          parentToolCallId: null,
+          providerThreadId: "provider-legacy-cache",
+          scopeKind: "turn",
+          sequence: 2,
+          threadId: thread.id,
+          turnId: "turn-legacy-cache",
+          type: "item/completed",
+        })
+        .run();
+
+      const before = findCommandRow(
+        (await getTimeline(harness, thread.id, "?includeNestedRows=true")).rows,
+        "legacy cached command",
+      );
+      expect(before.output.length).toBeGreaterThan(10_000);
+
+      await runPeriodicSweeps({
+        ...harness.deps,
+        pluginSchedules: harness.pluginService,
+        plugins: harness.pluginService,
+      });
+
+      const after = findCommandRow(
+        (await getTimeline(harness, thread.id, "?includeNestedRows=true")).rows,
+        "legacy cached command",
+      );
+      expect(after.output.length).toBeLessThan(10_000);
+      expect(after.output).toContain("output truncated by retention policy");
     });
   });
 });

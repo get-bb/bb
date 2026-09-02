@@ -2,13 +2,11 @@ import { and, eq, isNull } from "drizzle-orm";
 import {
   CLOSED_SESSION_ROW_RETENTION_MS,
   compactDatabase,
-  COMPLETED_EVENT_OUTPUT_RETENTION_MS,
   DATABASE_COMPACTION_MIN_RECLAIMABLE_BYTES,
   DATABASE_COMPACTION_MIN_RECLAIMABLE_RATIO,
   DATABASE_INCREMENTAL_VACUUM_MAX_PAGES,
   DATABASE_INCREMENTAL_VACUUM_MIN_FREELIST_PAGES,
   DEFAULT_CLOSED_SESSION_PRUNE_BATCH_SIZE,
-  DEFAULT_COMPLETED_EVENT_OUTPUT_TRUNCATION_BATCH_SIZE,
   DEFAULT_DESTROYED_ENVIRONMENT_EVENT_DETACH_BATCH_SIZE,
   DEFAULT_DESTROYED_ENVIRONMENT_PRUNE_BATCH_SIZE,
   DESTROYED_ENVIRONMENT_TTL_MS,
@@ -20,15 +18,17 @@ import {
   getDatabaseMaintenanceActivity,
   isDatabaseMaintenanceIdle,
   listDeferredLegacyTables,
+  migrateNextCompletedEventItemOutput,
   environments,
   pruneClosedSessions,
   pruneDestroyedEnvironments,
+  RETAINED_EVENT_OUTPUT_TARGETS,
   runIncrementalVacuum,
   shouldCompactDatabase,
   shouldRunIncrementalVacuum,
   sweepManagedEnvironments,
   threads,
-  truncateCompletedEventItemOutputs,
+  DEFAULT_COMPLETED_EVENT_OUTPUT_MIGRATION_SCAN_LIMIT,
 } from "@bb/db";
 import type {
   AppDeps,
@@ -74,6 +74,7 @@ const DATABASE_MAINTENANCE_CHECK_INTERVAL_MS = 60 * 60_000;
 const MANAGED_ENVIRONMENT_ARCHIVE_CLEANUP_RECOVERY_INTERVAL_MS = 15 * 60_000;
 const ORPHANED_ENVIRONMENT_DESTROY_RECOVERY_DELAY_MS =
   LIVE_DAEMON_COMMAND_TIMEOUT_MS;
+const COMPLETED_EVENT_OUTPUT_MIGRATION_MAX_ADVANCES_PER_SWEEP = 64;
 const RETAINED_EVENT_OUTPUT_EXPIRY_BATCH_SIZE = 1;
 
 type PeriodicSweepJobCategory =
@@ -471,15 +472,45 @@ async function runMachineAuthPruneSweep(
   await deps.machineAuth.pruneExpiredKeys();
 }
 
-function runCompletedEventOutputTruncationSweep(
+async function runCompletedEventOutputMigrationSweep(
   deps: LoggedPendingInteractionWorkSessionDeps,
   now: number,
-): void {
-  truncateCompletedEventItemOutputs(deps.db, {
-    createdBefore: now - COMPLETED_EVENT_OUTPUT_RETENTION_MS,
-    limit: DEFAULT_COMPLETED_EVENT_OUTPUT_TRUNCATION_BATCH_SIZE,
-    truncatedAt: now,
-  });
+): Promise<void> {
+  const exhaustedTargets = new Set<number>();
+  let targetIndex = 0;
+  for (
+    let advance = 0;
+    advance < COMPLETED_EVENT_OUTPUT_MIGRATION_MAX_ADVANCES_PER_SWEEP &&
+    exhaustedTargets.size < RETAINED_EVENT_OUTPUT_TARGETS.length;
+    advance += 1
+  ) {
+    while (exhaustedTargets.has(targetIndex)) {
+      targetIndex = (targetIndex + 1) % RETAINED_EVENT_OUTPUT_TARGETS.length;
+    }
+    const target = RETAINED_EVENT_OUTPUT_TARGETS[targetIndex];
+    if (!target) {
+      throw new Error("Expected completed output migration target");
+    }
+    const result = runEventLoopWorkSync(
+      "sweep:completed-event-output-migration:advance",
+      () =>
+        migrateNextCompletedEventItemOutput(deps.db, {
+          ...target,
+          limit: DEFAULT_COMPLETED_EVENT_OUTPUT_MIGRATION_SCAN_LIMIT,
+          migratedAt: now,
+        }),
+    );
+    if (result.action === "migrated") {
+      if (!result.threadId) {
+        throw new Error("Migrated completed output has no thread");
+      }
+      deps.hub.notifyThread(result.threadId, ["history-rewritten"]);
+    } else if (result.action === "idle" || result.action === "wrapped") {
+      exhaustedTargets.add(targetIndex);
+    }
+    targetIndex = (targetIndex + 1) % RETAINED_EVENT_OUTPUT_TARGETS.length;
+    await new Promise<void>((resolve) => setImmediate(resolve));
+  }
 }
 
 function runRetainedEventOutputExpirySweep(
@@ -539,8 +570,8 @@ const PERIODIC_SWEEP_JOBS: PeriodicSweepJob[] = [
   {
     cadenceMs: 0,
     category: "retention",
-    name: "completed-event-output-truncation",
-    run: runCompletedEventOutputTruncationSweep,
+    name: "completed-event-output-migration",
+    run: runCompletedEventOutputMigrationSweep,
   },
   {
     cadenceMs: 0,

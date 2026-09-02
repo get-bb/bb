@@ -28,9 +28,9 @@ import {
 } from "../src/data/events.js";
 import {
   COMPLETED_EVENT_OUTPUT_TRUNCATION_THRESHOLD_CHARS,
+  migrateNextCompletedEventItemOutput,
   pruneClosedSessions,
   pruneDestroyedEnvironments,
-  truncateCompletedEventItemOutputs,
 } from "../src/data/sweeps.js";
 import {
   deleteExpiredRetainedEventOutputs,
@@ -789,6 +789,14 @@ describe("slow query index plans", () => {
         type: "system/error",
       },
     ]);
+    const eventId = db.$client
+      .prepare<[string, number], { id: string }>(
+        "SELECT id FROM events WHERE thread_id = ? AND sequence = ?",
+      )
+      .get(thread.id, 1)?.id;
+    if (!eventId) {
+      throw new Error("Expected completed output migration event");
+    }
     logger.clear();
 
     pruneContextWindowUsageEventsBeforeSequence(db, {
@@ -890,7 +898,7 @@ describe("slow query index plans", () => {
     db.$client.close();
   });
 
-  it("uses the completed item truncation partial index for emitted cursor scans", () => {
+  it("uses selective indexes for completed output migration cursor and event scans", () => {
     const { db, logger, thread } = setup();
     const createdBefore = Date.now();
     const commandOutput =
@@ -916,33 +924,82 @@ describe("slow query index plans", () => {
         type: "item/completed",
       },
     ]);
+    const insertedEvent = db.$client
+      .prepare<[string, number], IdentifiedRow>(
+        "SELECT id FROM events WHERE thread_id = ? AND sequence = ?",
+      )
+      .get(thread.id, 1);
+    if (!insertedEvent) {
+      throw new Error("Expected completed output query-plan event");
+    }
     logger.clear();
 
-    truncateCompletedEventItemOutputs(db, {
-      createdBefore,
+    migrateNextCompletedEventItemOutput(db, {
+      itemKind: "commandExecution",
       limit: 10,
-      truncatedAt: createdBefore,
+      migratedAt: createdBefore,
+      outputPath: "aggregatedOutput",
     });
 
-    const scanDebugLogs = logger.debugLogs.filter(
-      (debugLog) =>
-        debugLog.fields.operation === "all" &&
-        debugLog.fields.sql.startsWith("SELECT id, created_at FROM events") &&
-        debugLog.fields.sql.includes("ORDER BY created_at, id") &&
-        debugLog.fields.bindingArgumentCount === 6,
-    );
-    expect(scanDebugLogs.map((debugLog) => debugLog.fields.sql)).toHaveLength(
-      4,
-    );
-    const debugLog = scanDebugLogs[0];
-    if (!debugLog) {
-      throw new Error("Expected completed item truncation scan SQL debug log");
-    }
+    const cursorDebugLog = findOnlyDebugLog({
+      logger,
+      predicate: (fields) =>
+        fields.operation === "get" &&
+        fields.sql.includes('from "maintenance_scan_cursors"') &&
+        fields.bindingArgumentCount === 1,
+    });
     assertEmittedQueryPlanUsesIndex({
       db,
-      debugLog,
+      debugLog: cursorDebugLog,
+      indexName: "sqlite_autoindex_maintenance_scan_cursors_1",
+      params: [
+        "legacy_completed_event_output_sidecar:v1:commandExecution:aggregatedOutput",
+      ],
+    });
+
+    const scanDebugLog = findOnlyDebugLog({
+      logger,
+      predicate: (fields) =>
+        fields.operation === "all" &&
+        fields.sql.startsWith("SELECT id, created_at FROM events") &&
+        fields.sql.includes("ORDER BY created_at, id") &&
+        fields.bindingArgumentCount === 6,
+    });
+    assertEmittedQueryPlanUsesIndex({
+      db,
+      debugLog: scanDebugLog,
       indexName: "events_completed_item_truncation_idx",
       params: ["item/completed", "commandExecution", createdBefore, 0, "", 10],
+    });
+
+    const candidateDebugLog = findOnlyDebugLog({
+      logger,
+      predicate: (fields) =>
+        fields.operation === "get" &&
+        fields.sql.startsWith(
+          "SELECT id, created_at, data, thread_id FROM events",
+        ) &&
+        fields.bindingArgumentCount === 13,
+    });
+    assertEmittedQueryPlanUsesIndex({
+      db,
+      debugLog: candidateDebugLog,
+      indexName: "events_completed_item_truncation_idx",
+      params: [
+        "item/completed",
+        "commandExecution",
+        createdBefore,
+        createdBefore - 10_000,
+        insertedEvent.id,
+        createdBefore - 10_000,
+        insertedEvent.id,
+        "$.item.aggregatedOutput",
+        "$.item.truncation.aggregatedOutput",
+        "$.item.type",
+        "commandExecution",
+        "$.item.aggregatedOutput",
+        COMPLETED_EVENT_OUTPUT_TRUNCATION_THRESHOLD_CHARS,
+      ],
     });
 
     db.$client.close();

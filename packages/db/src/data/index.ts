@@ -423,14 +423,18 @@ export {
   CLOSED_SESSION_ROW_RETENTION_MS,
   COMPLETED_EVENT_OUTPUT_RETENTION_MS,
   DEFAULT_CLOSED_SESSION_PRUNE_BATCH_SIZE,
-  DEFAULT_COMPLETED_EVENT_OUTPUT_TRUNCATION_BATCH_SIZE,
   DEFAULT_DESTROYED_ENVIRONMENT_EVENT_DETACH_BATCH_SIZE,
+  DEFAULT_COMPLETED_EVENT_OUTPUT_MIGRATION_SCAN_LIMIT,
   DEFAULT_DESTROYED_ENVIRONMENT_PRUNE_BATCH_SIZE,
   DESTROYED_ENVIRONMENT_TTL_MS,
+  migrateNextCompletedEventItemOutput,
   pruneClosedSessions,
   pruneDestroyedEnvironments,
-  truncateCompletedEventItemOutputs,
   sweepManagedEnvironments,
+} from "./sweeps.js";
+export type {
+  MigrateNextCompletedEventItemOutputArgs,
+  MigrateNextCompletedEventItemOutputResult,
 } from "./sweeps.js";
 export {
   compactDatabase,
