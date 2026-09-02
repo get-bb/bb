@@ -12,6 +12,10 @@
 <seconds>` when you need a shorter or longer budget.
 - Use `bb thread tell <thread-id> "..."` when requirements change, a blocker
   needs clarification, or follow-up work is needed.
+- Do not put generated message text in shell source. Stage generated Markdown
+  in a file and pass it as one quoted argument:
+  `bb thread tell <thread-id> -- "$(cat "$file")"`. This remains subject to
+  the shell's argument-size limit.
 - Add `--plan` to `bb thread spawn` or `bb thread tell` to send the prompt as
   the provider's structured `/plan` action: the agent proposes a plan for
   approval before executing (Claude Code and Codex). Plain `/plan ...` text is
@@ -56,6 +60,10 @@
   reaches the sidebar as a clock on any thread that holds queued work and is not
   running (the failure glyph instead if a drain attempt failed); a thread list
   entry carries it as `queuedWork: "none" | "waiting" | "failed"`.
+- Use `bb thread tell <thread-id> "..." --mode queue` for agent-to-agent
+  delivery that can wait. It preserves the caller's thread ID as sender
+  attribution. `bb thread queue create` creates an unattributed queued draft;
+  do not use it for agent reports.
 - Use `bb thread count` when you need how many threads there are, never a list
   plus a row count: the count is a database aggregate, while `bb thread list`
   pages a bounded window and would miscount. Narrow with `--status
@@ -141,9 +149,13 @@ For review or fix pipelines, get the environment ID from
 
 ## Long-Running Commands
 
-- Use `bb terminal ...` for long-running commands the user may need to inspect
-  or stop later: dev servers, watch tasks, REPLs, database consoles, and similar
-  processes. The terminal is a real persistent PTY shown in the bb UI.
+- Use `bb terminal ...` for interactive commands and processes the user needs
+  to inspect or stop later: dev servers, watch tasks, REPLs, database consoles,
+  and similar processes. The terminal is a real persistent PTY shown in the bb
+  UI.
+- Native terminal output is available only while the session is running. When
+  output must survive process exit, make the command write it to a durable
+  file. `bb terminal output` cannot recover completed scrollback.
 - `list` and `create` require exactly one explicit scope: `--thread <id>`,
   `--environment <id>`, or `--machine <id-or-name>` (`--host` is an alias).
   Add `--cwd <path>` only to a machine scope. Machine targets resolve to an
