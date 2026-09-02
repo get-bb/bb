@@ -12,6 +12,9 @@ patchedDependencies:
   '@pierre/diffs@1.2.9':
     hash: wdjikkl65wfpocm6wrflymrtdq
     path: patches/@pierre__diffs@1.2.9.patch
+  '@react-native-cookies/cookies@6.2.1':
+    hash: s72aowoinnkfundvu4ubltsjfi
+    path: patches/@react-native-cookies__cookies@6.2.1.patch
   expo-modules-jsi@57.0.4:
     hash: raucdrgf3mznkb7qkl7fkzjw5u
     path: patches/expo-modules-jsi@57.0.4.patch
@@ -838,7 +841,7 @@ importers:
         version: 1.0.15(react-native-svg@15.15.4(react-native@0.86.2(@babel/core@7.29.0)(@react-native/metro-config@0.86.2(@babel/core@7.29.0))(@types/react@19.2.13)(react@19.2.4))(react@19.2.4))(react-native@0.86.2(@babel/core@7.29.0)(@react-native/metro-config@0.86.2(@babel/core@7.29.0))(@types/react@19.2.13)(react@19.2.4))(react@19.2.4)
       '@react-native-cookies/cookies':
         specifier: ^6.2.1
-        version: 6.2.1(react-native@0.86.2(@babel/core@7.29.0)(@react-native/metro-config@0.86.2(@babel/core@7.29.0))(@types/react@19.2.13)(react@19.2.4))
+        version: 6.2.1(patch_hash=s72aowoinnkfundvu4ubltsjfi)(react-native@0.86.2(@babel/core@7.29.0)(@react-native/metro-config@0.86.2(@babel/core@7.29.0))(@types/react@19.2.13)(react@19.2.4))
       '@react-native/normalize-colors':
         specifier: 0.86.2
         version: 0.86.2
@@ -19564,7 +19567,7 @@ snapshots:
 
   '@radix-ui/rect@1.1.2': {}
 
-  '@react-native-cookies/cookies@6.2.1(react-native@0.86.2(@babel/core@7.29.0)(@react-native/metro-config@0.86.2(@babel/core@7.29.0))(@types/react@19.2.13)(react@19.2.4))':
+  '@react-native-cookies/cookies@6.2.1(patch_hash=s72aowoinnkfundvu4ubltsjfi)(react-native@0.86.2(@babel/core@7.29.0)(@react-native/metro-config@0.86.2(@babel/core@7.29.0))(@types/react@19.2.13)(react@19.2.4))':
     dependencies:
       invariant: 2.2.4
       react-native: 0.86.2(@babel/core@7.29.0)(@react-native/metro-config@0.86.2(@babel/core@7.29.0))(@types/react@19.2.13)(react@19.2.4)
