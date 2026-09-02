@@ -2352,6 +2352,49 @@ describe("codex account rate-limit translation", () => {
     });
   });
 
+  it("keeps an exhausted individual limit ahead of an allowed subscription window", () => {
+    const harness = createHarness();
+    const [event] = harness.translate(
+      codexEvent("account/rateLimits/updated", {
+        rateLimits: codexRateLimitSnapshot({
+          primary: {
+            usedPercent: 20,
+            windowDurationMins: 300,
+            resetsAt: 1_788_700_000,
+          },
+          individualLimit: {
+            limit: "100",
+            used: "100",
+            remainingPercent: 0,
+            resetsAt: 1_788_748_218,
+          },
+          planType: "pro",
+        }),
+      }),
+    );
+
+    expect(event).toMatchObject({
+      type: "provider/rateLimits/updated",
+      rateLimits: {
+        status: "blocked",
+        kind: "spend-control",
+        reachedReason: null,
+        windows: [
+          {
+            providerKey: "primary",
+            label: "Current session",
+            status: "allowed",
+          },
+          {
+            providerKey: "individual-limit",
+            label: "Spend control",
+            status: "blocked",
+          },
+        ],
+      },
+    });
+  });
+
   it("uses Codex's reached reason before credit and spend metadata", () => {
     const harness = createHarness();
     const [event] = harness.translate(

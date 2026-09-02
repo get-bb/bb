@@ -204,6 +204,9 @@ function normalizeCodexRateLimitSnapshot(
   }
 
   const reachedReason = snapshot.rateLimitReachedType;
+  const isIndividualLimitBlocked =
+    snapshot.individualLimit !== null &&
+    snapshot.individualLimit.remainingPercent <= 0;
   const kind =
     reachedReason === "rate_limit_reached"
       ? "subscription-window"
@@ -213,11 +216,13 @@ function normalizeCodexRateLimitSnapshot(
           ? "spend-control"
           : reachedReason !== null
             ? "unknown"
-            : snapshot.primary !== null || snapshot.secondary !== null
-              ? "subscription-window"
-              : snapshot.individualLimit !== null
-                ? "spend-control"
-                : "unknown";
+            : isIndividualLimitBlocked
+              ? "spend-control"
+              : snapshot.primary !== null || snapshot.secondary !== null
+                ? "subscription-window"
+                : snapshot.individualLimit !== null
+                  ? "spend-control"
+                  : "unknown";
   const status =
     reachedReason !== null
       ? "blocked"
