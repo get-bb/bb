@@ -15,7 +15,9 @@
   - The reserved **BB Official marketplace** has the name `bb-official`. It
     describes all plugins in the app bundle with a generated v2 document.
     Its source is a local path. It never uses the network. It appears first in
-    `bb marketplace list`. It can be neither added nor removed.
+    `bb marketplace list`. Its plugins appear in the first Browse shelf, BB
+    Official, and in their category shelves. It can be neither added nor
+    removed.
   - The store lists the **BB Community marketplace** catalog: a manifest
     the server re-reads at startup and every two hours from
     `https://getbb.app/marketplace/v2/marketplace.json`. A 404 response causes

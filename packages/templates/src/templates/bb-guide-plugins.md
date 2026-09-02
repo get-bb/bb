@@ -350,8 +350,9 @@ marketplace describes these plugins with the standard v2 format. Its catalog
 uses a local path. It never uses the network. `bb marketplace list` shows it
 first. You cannot add or remove it.
 
-The plugins appear in Extensions → Plugins → Browse under BB Official. Install
-a plugin by its bare name or its qualified name. For example, use
+The plugins appear in the first Browse shelf, BB Official. They also appear in
+their category shelves. Install a plugin by its bare name or its qualified name.
+For example, use
 `bb plugin install docs` or `bb plugin install docs@bb-official`. bb copies the
 plugin from the app bundle. An app update also updates the bundled copy.
 

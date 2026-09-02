@@ -22,6 +22,7 @@ import type {
   InstalledPlugin,
   PluginCatalogAuthor,
   PluginCatalogCollection,
+  PluginCatalogCollectionMembership,
   PluginCatalogInstallPlan,
   PluginCatalogResolvedSource,
   PluginCatalogSearchResult,
@@ -66,7 +67,6 @@ import {
   CURATED_MARKETPLACE_NAME,
   isBundledMarketplaceEntry,
   marketplaceEntryCategory,
-  marketplaceEntryCollections,
   marketplaceCollections,
   parseMarketplaceManifestJson,
   parseBundledMarketplaceManifestJson,
@@ -186,6 +186,7 @@ export function createPluginCatalogService(deps: {
 
   seedBundledMarketplace(now());
   seedCuratedMarketplace();
+  reservedCollectionIndex();
 
   const locks = new Map<string, Promise<unknown>>();
   const ADD_LOCK_KEY = "\0add";
@@ -321,6 +322,49 @@ export function createPluginCatalogService(deps: {
     };
   }
 
+  function reservedCollectionIndex(
+    overrides: ReadonlyMap<string, MarketplaceManifest> = new Map(),
+  ): {
+    collections: PluginCatalogCollection[];
+    membershipsByEntry: ReadonlyMap<
+      string,
+      readonly PluginCatalogCollectionMembership[]
+    >;
+  } {
+    const collectionsByKey = new Map<string, PluginCatalogCollection>();
+    const membershipsByEntry = new Map<
+      string,
+      PluginCatalogCollectionMembership[]
+    >();
+    const marketplacesByExposedId = new Map<string, string>();
+    for (const row of orderedMarketplaces()) {
+      if (!isReservedMarketplace(row.name)) continue;
+      const catalog = overrides.get(row.name) ?? catalogOf(row);
+      if (catalog === null) continue;
+      for (const collection of marketplaceCollections(catalog)) {
+        const existingMarketplace = marketplacesByExposedId.get(collection.id);
+        if (existingMarketplace !== undefined) {
+          throw new Error(
+            `duplicate reserved marketplace collection id "${collection.id}" in "${existingMarketplace}" and "${row.name}"`,
+          );
+        }
+        marketplacesByExposedId.set(collection.id, row.name);
+        const collectionKey = catalogEntryKey(row.name, collection.id);
+        collectionsByKey.set(collectionKey, collection);
+        collection.pluginIds.forEach((pluginId, rank) => {
+          const entryKey = catalogEntryKey(row.name, pluginId);
+          const memberships = membershipsByEntry.get(entryKey) ?? [];
+          memberships.push({ id: collection.id, rank });
+          membershipsByEntry.set(entryKey, memberships);
+        });
+      }
+    }
+    return {
+      collections: [...collectionsByKey.values()],
+      membershipsByEntry,
+    };
+  }
+
   function compatibilityProblem(ranges: {
     bbRange: string | undefined;
     sdkRange: string | undefined;
@@ -396,6 +440,7 @@ export function createPluginCatalogService(deps: {
     catalog: MarketplaceManifest;
     installedEntryIds: ReadonlySet<string>;
     installs: number | null;
+    collections: readonly PluginCatalogCollectionMembership[];
   }): Promise<PluginCatalogSearchResult | null> {
     const { entry, row, catalog } = args;
     const official = isReservedMarketplace(row.name);
@@ -449,7 +494,7 @@ export function createPluginCatalogService(deps: {
           ? {}
           : { categoryId: category.id, category: category.displayName }),
       screenshots,
-      collections: marketplaceEntryCollections(catalog, entry.id),
+      collections: [...args.collections],
       ...("publishedAt" in entry && typeof entry.publishedAt === "string"
         ? { publishedAt: entry.publishedAt }
         : {}),
@@ -534,6 +579,7 @@ export function createPluginCatalogService(deps: {
   ): Promise<void> {
     if (row.name === BUNDLED_MARKETPLACE_NAME) {
       seedBundledMarketplace(attemptedAt);
+      reservedCollectionIndex();
       deps.notifyCatalogChanged?.();
       return;
     }
@@ -564,6 +610,9 @@ export function createPluginCatalogService(deps: {
       }
       const rejection = rejectBundledIdCollisions(materialized.catalog);
       const catalog = rejection.catalog;
+      if (isReservedMarketplace(row.name)) {
+        reservedCollectionIndex(new Map([[row.name, catalog]]));
+      }
       collisionError = rejection.error;
       if (collisionError !== null) {
         deps.warn?.(`marketplace ${row.name} refresh ${collisionError}`);
@@ -993,10 +1042,7 @@ export function createPluginCatalogService(deps: {
     },
 
     collections() {
-      return orderedMarketplaces().flatMap((row) => {
-        const catalog = catalogOf(row);
-        return catalog === null ? [] : marketplaceCollections(catalog);
-      });
+      return reservedCollectionIndex().collections;
     },
 
     async addMarketplace(rawSource) {
@@ -1079,6 +1125,7 @@ export function createPluginCatalogService(deps: {
 
     async search(rawQuery) {
       const query = rawQuery.trim().toLowerCase();
+      const collectionIndex = reservedCollectionIndex();
       const curatedRow = getPluginMarketplace(
         deps.db,
         CURATED_MARKETPLACE_NAME,
@@ -1118,6 +1165,10 @@ export function createPluginCatalogService(deps: {
               installs: isReservedMarketplace(row.name)
                 ? (curatedInstalls.get(pluginId) ?? null)
                 : null,
+              collections:
+                collectionIndex.membershipsByEntry.get(
+                  catalogEntryKey(row.name, entry.id),
+                ) ?? [],
             });
             return result === null
               ? null

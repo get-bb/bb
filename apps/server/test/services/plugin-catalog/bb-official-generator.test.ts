@@ -50,8 +50,14 @@ describe("bb-official marketplace generator", () => {
     expect(catalog.name).toBe(BUNDLED_MARKETPLACE_NAME);
     expect(catalog.displayName).toBe("BB Official");
     expect(catalog.categories).toEqual(PLUGIN_CATALOG_CATEGORIES);
-    expect(catalog.collections).toEqual([]);
     expect(catalog.plugins).toHaveLength(BUNDLED_PLUGINS.length);
+    expect(catalog.collections).toEqual([
+      {
+        id: "bb-official",
+        displayName: "BB Official",
+        pluginIds: BUNDLED_PLUGINS.map((plugin) => plugin.pluginId),
+      },
+    ]);
     for (const plugin of BUNDLED_PLUGINS) {
       const entry = catalog.plugins.find(
         (candidate) =>

@@ -229,7 +229,13 @@ export async function generateBbOfficialMarketplace(args: {
     displayName: "BB Official",
     description: "Plugins that ship with bb.",
     categories: PLUGIN_CATALOG_CATEGORIES,
-    collections: [],
+    collections: [
+      {
+        id: "bb-official",
+        displayName: "BB Official",
+        pluginIds: entries.map((entry) => entry.id),
+      },
+    ],
     plugins: entries,
   };
   await mkdir(path.dirname(args.outputPath), { recursive: true });

@@ -196,6 +196,14 @@ describe("plugin catalog service", () => {
       iconUrl: null,
       category: "File Viewers & Editors",
       screenshots: [],
+      collections: [
+        {
+          id: "bb-official",
+          rank: BUNDLED_PLUGINS.findIndex(
+            (plugin) => plugin.pluginId === "simple-notes",
+          ),
+        },
+      ],
       source: "builtin:docs",
       marketplace: "bb-official",
       marketplaceDisplayName: "BB Official",
@@ -205,6 +213,13 @@ describe("plugin catalog service", () => {
       installed: false,
       compatible: true,
     });
+    expect(catalog.collections()).toEqual([
+      {
+        id: "bb-official",
+        displayName: "BB Official",
+        pluginIds: BUNDLED_PLUGINS.map((plugin) => plugin.pluginId),
+      },
+    ]);
     for (const category of PLUGIN_CATALOG_CATEGORIES) {
       const categoryNames = results
         .filter((entry) => entry.category === category.displayName)
@@ -494,8 +509,8 @@ describe("plugin catalog service", () => {
                     ],
                     collections: [
                       {
-                        id: "featured",
-                        displayName: "Featured",
+                        id: "new-and-notable",
+                        displayName: "New & notable",
                         pluginIds: ["missing-plugin", "widgets"],
                       },
                     ],
@@ -515,7 +530,7 @@ describe("plugin catalog service", () => {
         screenshots: [
           "https://marketplace.test/screenshots/widgets/widgets.webp",
         ],
-        collections: [{ id: "featured", rank: 0 }],
+        collections: [{ id: "new-and-notable", rank: 0 }],
         publishedAt: "2026-08-20T11:47:04-07:00",
         updatedAt: "2026-08-27T16:12:00Z",
       });
@@ -525,11 +540,86 @@ describe("plugin catalog service", () => {
       expect(uncategorized?.collections).toEqual([]);
       expect(catalog.collections()).toEqual([
         {
-          id: "featured",
-          displayName: "Featured",
+          id: "bb-official",
+          displayName: "BB Official",
+          pluginIds: BUNDLED_PLUGINS.map((plugin) => plugin.pluginId),
+        },
+        {
+          id: "new-and-notable",
+          displayName: "New & notable",
           pluginIds: ["widgets"],
         },
       ]);
+    });
+
+    it("ignores collections from a third-party marketplace", async () => {
+      const catalog = service();
+      upsertPluginMarketplace(db, {
+        name: "acme",
+        sourceKind: "path",
+        manifestUrl: dataDir,
+        sourceGitRef: null,
+        sourceGitCommit: null,
+        manifestJson: JSON.stringify(
+          manifestV2([remoteEntry({ icon: "Zap" })], {
+            name: "acme",
+            displayName: "Acme",
+            collections: [
+              {
+                id: "featured",
+                displayName: "Featured",
+                pluginIds: ["widgets"],
+              },
+            ],
+          }),
+        ),
+        statsJson: null,
+        etag: null,
+        lastModified: null,
+        lastSuccessfulRefreshAt: 1_000,
+        lastAttemptedRefreshAt: 1_000,
+        lastError: null,
+      });
+
+      expect((await catalog.search("widgets"))[0]?.collections).toEqual([]);
+      expect(catalog.collections()).toEqual([
+        {
+          id: "bb-official",
+          displayName: "BB Official",
+          pluginIds: BUNDLED_PLUGINS.map((plugin) => plugin.pluginId),
+        },
+      ]);
+    });
+
+    it("fails at load when reserved marketplace collection ids collide", () => {
+      upsertPluginMarketplace(db, {
+        name: "bb-community",
+        sourceKind: "https",
+        manifestUrl: MANIFEST_URL,
+        sourceGitRef: null,
+        sourceGitCommit: null,
+        manifestJson: JSON.stringify(
+          manifestV2([], {
+            collections: [
+              {
+                id: "bb-official",
+                displayName: "Duplicate",
+                pluginIds: [],
+              },
+            ],
+          }),
+        ),
+        statsJson: null,
+        etag: null,
+        lastModified: null,
+        lastSuccessfulRefreshAt: 1_000,
+        lastAttemptedRefreshAt: 1_000,
+        lastError: null,
+      });
+
+      expect(() => service()).toThrow(
+        'duplicate reserved marketplace collection id "bb-official" in "bb-official" and "bb-community"',
+      );
     });
 
     it("tints a catalog SVG but keeps a raster icon's own colors", async () => {

@@ -78,7 +78,7 @@ describe("plugin catalog routes", () => {
     );
     await expect(search.json()).resolves.toMatchObject({
       results: [{ entryId: "memory", installed: false }],
-      collections: [],
+      collections: [{ id: "bb-official", displayName: "BB Official" }],
     });
 
     const refresh = await app.request("/plugin-catalog/refresh", {
