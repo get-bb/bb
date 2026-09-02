@@ -45,6 +45,7 @@ import {
   marketplacePublisherLabel,
   pluginPublisherLabel,
 } from "../plugin-catalog/marketplace-publishers.js";
+import { legacyMarketplaceCategory } from "../plugin-catalog/legacy-marketplace-category.js";
 import { deleteSecretFile, readOrCreateSecretFile } from "@bb/secret-storage";
 import {
   ROOT_PLUGIN_SOURCE_SELECTION,
@@ -89,10 +90,7 @@ import {
   recoverInterruptedGitPluginPromotion,
 } from "./install-sources.js";
 import { readPluginManifest, type PluginManifest } from "./manifest.js";
-import {
-  listBundledPluginRegistrations,
-  PLUGIN_CATALOG_CATEGORIES as LEGACY_PLUGIN_CATALOG_CATEGORIES,
-} from "./builtin-registry.js";
+import { listBundledPluginRegistrations } from "./builtin-registry.js";
 import {
   type BbPluginApi,
   type PluginAgentConfigurationContext,
@@ -1329,8 +1327,13 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       manifest = parseMarketplaceManifestJson(
         marketplace.manifestJson,
         `stored "${marketplace.name}" marketplace catalog`,
+        (message) => logger.warn(message),
       );
-    } catch {}
+    } catch (error) {
+      logger.warn(
+        `failed to read the stored "${marketplace.name}" marketplace catalog: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
     marketplaceManifestCache.set(marketplace.name, {
       manifestJson: marketplace.manifestJson,
       manifest,
@@ -1391,7 +1394,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
           const category = marketplaceEntryCategory(manifest, entry);
           const legacyCategory =
             manifest.schemaVersion === 1
-              ? installedLegacyCategory(
+              ? legacyMarketplaceCategory(
                   entry.tags ?? [],
                   marketplace.name === CURATED_MARKETPLACE_NAME,
                 )
@@ -1407,6 +1410,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
               marketplace.sourceKind === "https"
                 ? { kind: "url", manifestUrl: marketplace.manifestUrl }
                 : { kind: "dir", root: marketplace.manifestUrl },
+              (message) => logger.warn(message),
             ),
             collections: marketplaceEntryCollections(manifest, entry.id),
             ...("publishedAt" in entry && typeof entry.publishedAt === "string"
@@ -1416,38 +1420,14 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
               ? { updatedAt: entry.updatedAt }
               : {}),
           });
-        } catch {}
+        } catch (error) {
+          logger.warn(
+            `failed to read catalog metadata for plugin "${row.id}" from marketplace "${marketplace.name}": ${error instanceof Error ? error.message : String(error)}`,
+          );
+        }
       }
     }
     return { metadataByPluginId, publisherLabels };
-  }
-
-  function installedLegacyCategory(
-    tags: readonly string[],
-    official: boolean,
-  ): string | undefined {
-    const first = tags[0];
-    if (first === undefined) return "Other";
-    if (!official) {
-      return first
-        .split("-")
-        .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-        .join(" ");
-    }
-    const normalized = new Map(
-      LEGACY_PLUGIN_CATALOG_CATEGORIES.map((category) => [
-        category
-          .toLowerCase()
-          .replace(/[^a-z0-9]+/gu, "-")
-          .replace(/^-+|-+$/gu, ""),
-        category,
-      ]),
-    );
-    for (const tag of tags) {
-      const category = normalized.get(tag);
-      if (category !== undefined) return category;
-    }
-    return "Other";
   }
 
   return {

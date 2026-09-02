@@ -830,7 +830,7 @@ describe("plugin service", () => {
             description: "An installed tool.",
             icon: "Zap",
             category: "acme-tools",
-            screenshots: ["./screenshots/installed-tool.png"],
+            screenshots: ["./screenshots/installed-tool/installed-tool.png"],
             publishedAt: "2026-08-20T11:47:04-07:00",
             updatedAt: "2026-08-27T16:12:00Z",
             author: { name: "Acme" },
@@ -882,7 +882,9 @@ describe("plugin service", () => {
     ).toMatchObject({
       categoryId: "acme-tools",
       category: "Acme tools",
-      screenshots: ["https://plugins.acme.test/screenshots/installed-tool.png"],
+      screenshots: [
+        "https://plugins.acme.test/screenshots/installed-tool/installed-tool.png",
+      ],
       collections: [{ id: "featured", rank: 0 }],
       publishedAt: "2026-08-20T11:47:04-07:00",
       updatedAt: "2026-08-27T16:12:00Z",

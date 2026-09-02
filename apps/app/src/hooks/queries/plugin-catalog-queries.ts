@@ -269,7 +269,7 @@ export async function searchPluginCatalog(
   fetchImpl: FetchLike,
   query: string,
 ): Promise<PluginCatalogSearchEntry[]> {
-  const results = await createPluginsClient(fetchImpl).catalog.search({
+  const { results } = await createPluginsClient(fetchImpl).catalog.search({
     query,
   });
   return results.map(toPluginCatalogSearchEntry);

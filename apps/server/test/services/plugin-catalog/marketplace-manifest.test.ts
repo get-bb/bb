@@ -7,6 +7,7 @@ import {
   entrySourceDisplay,
   marketplaceEntryCategory,
   marketplaceEntryCollections,
+  marketplaceCollections,
   parseMarketplaceManifest,
   resolveEntryIcon,
   resolvedEntrySource,
@@ -124,7 +125,7 @@ describe("marketplace manifest schema", () => {
           [
             entry({
               category: "thread-content",
-              screenshots: ["./screenshots/widgets.png"],
+              screenshots: ["./screenshots/widgets/widgets.png"],
               publishedAt: "2026-08-20T11:47:04-07:00",
               updatedAt: "2026-08-27T16:12:00Z",
             }),
@@ -158,12 +159,21 @@ describe("marketplace manifest schema", () => {
         { id: "new-and-notable", rank: 0 },
       ]);
       expect(marketplaceEntryCollections(parsed, "missing-plugin")).toEqual([]);
+      expect(marketplaceCollections(parsed)).toEqual([
+        {
+          id: "new-and-notable",
+          displayName: "New & notable",
+          pluginIds: ["widgets"],
+        },
+      ]);
       expect(
         entryScreenshotUrls(parsedEntry, {
           kind: "url",
           manifestUrl: MANIFEST_V2_URL,
         }),
-      ).toEqual(["https://getbb.app/marketplace/v2/screenshots/widgets.png"]);
+      ).toEqual([
+        "https://getbb.app/marketplace/v2/screenshots/widgets/widgets.png",
+      ]);
     });
 
     it("accepts omitted discovery fields and ignores unknown keys", () => {
@@ -174,14 +184,6 @@ describe("marketplace manifest schema", () => {
               futureEntryField: true,
               icon: { url: "./icons/widgets.svg", futureIconField: true },
               author: { name: "Acme", futureAuthorField: true },
-              source: {
-                git: {
-                  url: "https://github.com/acme/plugins.git",
-                  ref: "v1.0.0",
-                  futureGitField: true,
-                },
-                futureSourceField: true,
-              },
             }),
           ],
           { futureManifestField: true },
@@ -194,12 +196,71 @@ describe("marketplace manifest schema", () => {
       expect(parsed.plugins[0]).not.toHaveProperty("futureEntryField");
       expect(parsed.plugins[0]?.icon).toEqual({ url: "./icons/widgets.svg" });
       expect(parsed.plugins[0]?.author).toEqual({ name: "Acme" });
-      expect(parsed.plugins[0]?.source).toEqual({
-        git: {
-          url: "https://github.com/acme/plugins.git",
-          ref: "v1.0.0",
-        },
-      });
+    });
+
+    it("rejects unknown source keys", () => {
+      expect(() =>
+        parseMarketplaceManifest(
+          manifestV2([
+            entry({
+              source: {
+                npm: {
+                  package: "bb-plugin-widgets",
+                  regsitry: "https://npm.test/",
+                },
+              },
+            }),
+          ]),
+          "manifest",
+        ),
+      ).toThrow(/invalid manifest/iu);
+    });
+
+    it("skips an invalid semver entry with a warning", () => {
+      const warnings: string[] = [];
+      const parsed = parseMarketplaceManifest(
+        manifestV2([
+          entry({
+            id: "invalid-range",
+            source: {
+              npm: { package: "bb-plugin-invalid", range: "not-semver" },
+            },
+          }),
+          entry(),
+        ]),
+        "manifest",
+        (message) => warnings.push(message),
+      );
+
+      expect(parsed.plugins.map((plugin) => plugin.id)).toEqual(["widgets"]);
+      expect(warnings).toEqual([
+        expect.stringContaining('entry "invalid-range" was skipped'),
+      ]);
+    });
+
+    it("skips a relative screenshot for a git or path marketplace", () => {
+      const warnings: string[] = [];
+      const parsed = parseMarketplaceManifest(
+        manifestV2([
+          entry({
+            screenshots: ["./screenshots/widgets/widgets.png"],
+          }),
+        ]),
+        "manifest",
+      );
+      const parsedEntry = parsed.plugins[0];
+      if (parsedEntry === undefined) throw new Error("entry missing");
+
+      expect(
+        entryScreenshotUrls(
+          parsedEntry,
+          { kind: "dir", root: "/tmp/marketplace" },
+          (message) => warnings.push(message),
+        ),
+      ).toEqual([]);
+      expect(warnings).toEqual([
+        expect.stringContaining("relative screenshots require an https"),
+      ]);
     });
 
     it("leaves an unknown category uncategorized", () => {

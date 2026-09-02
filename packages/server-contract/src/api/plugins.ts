@@ -1,11 +1,21 @@
 import {
   jsonValueSchema,
   pluginCatalogCategoryIdSchema,
+  pluginMarketplaceCollectionIdSchema,
+  pluginMarketplaceCollectionPluginIdSchema,
   type PluginCatalogCategoryId,
+  type PluginMarketplaceCollectionId,
+  type PluginMarketplaceCollectionPluginId,
 } from "@bb/domain";
 import { z } from "zod";
 
 export { pluginCatalogCategoryIdSchema, type PluginCatalogCategoryId };
+export {
+  pluginMarketplaceCollectionIdSchema,
+  pluginMarketplaceCollectionPluginIdSchema,
+  type PluginMarketplaceCollectionId,
+  type PluginMarketplaceCollectionPluginId,
+};
 
 export const pluginRuntimeStatusSchema = z.enum([
   "running",
@@ -173,7 +183,7 @@ export const installedPluginSchema = z.object({
   screenshots: z.array(z.string()),
   collections: z.array(
     z.object({
-      id: pluginCatalogCategoryIdSchema,
+      id: pluginMarketplaceCollectionIdSchema,
       rank: z.number().int().nonnegative(),
     }),
   ),
@@ -353,11 +363,20 @@ export const pluginCatalogAuthorSchema = z.object({
 export type PluginCatalogAuthor = z.infer<typeof pluginCatalogAuthorSchema>;
 
 export const pluginCatalogCollectionMembershipSchema = z.object({
-  id: pluginCatalogCategoryIdSchema,
+  id: pluginMarketplaceCollectionIdSchema,
   rank: z.number().int().nonnegative(),
 });
 export type PluginCatalogCollectionMembership = z.infer<
   typeof pluginCatalogCollectionMembershipSchema
+>;
+
+export const pluginCatalogCollectionSchema = z.object({
+  id: pluginMarketplaceCollectionIdSchema,
+  displayName: z.string(),
+  pluginIds: z.array(pluginMarketplaceCollectionPluginIdSchema),
+});
+export type PluginCatalogCollection = z.infer<
+  typeof pluginCatalogCollectionSchema
 >;
 
 export const pluginCatalogSearchResultSchema = z.object({
@@ -393,7 +412,11 @@ export type PluginCatalogSearchResult = z.infer<
 
 export const pluginCatalogSearchResponseSchema = z.object({
   results: z.array(pluginCatalogSearchResultSchema),
+  collections: z.array(pluginCatalogCollectionSchema),
 });
+export type PluginCatalogSearchResponse = z.infer<
+  typeof pluginCatalogSearchResponseSchema
+>;
 
 export const pluginCatalogResolvedSourceSchema = z.discriminatedUnion("kind", [
   z

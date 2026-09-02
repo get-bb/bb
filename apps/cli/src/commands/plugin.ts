@@ -98,7 +98,8 @@ async function searchCatalog(
   baseUrl: string,
   query: string,
 ): Promise<PluginCatalogSearchResult[]> {
-  return createCliBbSdk(baseUrl).plugins.catalog.search({ query });
+  return (await createCliBbSdk(baseUrl).plugins.catalog.search({ query }))
+    .results;
 }
 
 const pluginSettingDescriptorSchema = z.object({

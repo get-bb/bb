@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   installedPluginSchema,
   pluginCatalogInstallRequestSchema,
+  pluginCatalogSearchResponseSchema,
   pluginCatalogSearchResultSchema,
   pluginCatalogStatusSchema,
 } from "../src/index.js";
@@ -95,6 +96,33 @@ describe("plugin catalog contracts", () => {
         ...required,
         categoryId: "Acme tools",
       }).success,
+    ).toBe(false);
+  });
+
+  it("requires complete collections on the catalog search response", () => {
+    expect(
+      pluginCatalogSearchResponseSchema.parse({
+        results: [],
+        collections: [
+          {
+            id: "featured",
+            displayName: "Featured",
+            pluginIds: ["notes", "tasks"],
+          },
+        ],
+      }),
+    ).toEqual({
+      results: [],
+      collections: [
+        {
+          id: "featured",
+          displayName: "Featured",
+          pluginIds: ["notes", "tasks"],
+        },
+      ],
+    });
+    expect(
+      pluginCatalogSearchResponseSchema.safeParse({ results: [] }).success,
     ).toBe(false);
   });
 

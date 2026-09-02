@@ -5,6 +5,7 @@ import {
   pluginMarketplaceCategorySchema,
   pluginMarketplaceCollectionSchema,
   type PluginMarketplaceCategory,
+  type PluginMarketplaceCollection,
 } from "@bb/domain";
 import {
   CURATED_PLUGIN_MARKETPLACE_NAME,
@@ -237,39 +238,7 @@ const marketplaceEntryV1Schema = z
   })
   .strict();
 
-function uniqueIds(
-  values: readonly { id: string }[],
-  ctx: z.RefinementCtx,
-): void {
-  const seen = new Set<string>();
-  values.forEach((value, index) => {
-    if (seen.has(value.id)) {
-      ctx.addIssue({
-        code: "custom",
-        path: [index, "id"],
-        message: `duplicate id "${value.id}"`,
-      });
-    }
-    seen.add(value.id);
-  });
-}
-
-const marketplaceEntryV2Schema = domainMarketplaceEntryV2Schema.superRefine(
-  (entry, ctx) => {
-    const {
-      category: _category,
-      screenshots: _screenshots,
-      publishedAt: _publishedAt,
-      updatedAt: _updatedAt,
-      ...v1Fields
-    } = entry;
-    const parsed = marketplaceEntryV1Schema.safeParse(v1Fields);
-    if (parsed.success) return;
-    for (const issue of parsed.error.issues) {
-      ctx.addIssue({ ...issue, path: [...issue.path] });
-    }
-  },
-);
+const marketplaceEntryV2Schema = domainMarketplaceEntryV2Schema;
 
 const marketplaceManifestV1Schema = z
   .object({
@@ -303,24 +272,17 @@ const marketplaceManifestV1Schema = z
 const marketplaceManifestV2Schema = z.object({
   $schema: z.literal(MARKETPLACE_V2_SCHEMA_URL).optional(),
   schemaVersion: z.literal(2),
-  name: manifestNameSchema,
+  name: z.string().regex(NAME_PATTERN),
   displayName: z.string().min(1),
   description: z.string().min(1).optional(),
-  categories: z
-    .array(pluginMarketplaceCategorySchema)
-    .superRefine(uniqueIds)
-    .optional(),
-  collections: z
-    .array(pluginMarketplaceCollectionSchema)
-    .superRefine(uniqueIds)
-    .optional(),
+  categories: z.array(pluginMarketplaceCategorySchema).optional(),
+  collections: z.array(pluginMarketplaceCollectionSchema).optional(),
   plugins: z
     .array(marketplaceEntryV2Schema)
     .max(
       MARKETPLACE_MAX_ENTRIES,
       `a marketplace may list at most ${MARKETPLACE_MAX_ENTRIES} plugins`,
-    )
-    .superRefine((entries, ctx) => uniqueIds(entries, ctx)),
+    ),
 });
 
 export type MarketplaceManifestV1 = z.infer<typeof marketplaceManifestV1Schema>;
@@ -338,6 +300,7 @@ export interface MarketplaceCollectionMembership {
 interface MarketplaceManifestIndex {
   categories: ReadonlyMap<string, PluginMarketplaceCategory>;
   collections: ReadonlyMap<string, readonly MarketplaceCollectionMembership[]>;
+  resolvedCollections: readonly PluginMarketplaceCollection[];
 }
 
 const marketplaceManifestIndexes = new WeakMap<
@@ -352,6 +315,7 @@ function marketplaceManifestIndex(
   if (existing !== undefined) return existing;
   const categories = new Map<string, PluginMarketplaceCategory>();
   const collections = new Map<string, MarketplaceCollectionMembership[]>();
+  const resolvedCollections: PluginMarketplaceCollection[] = [];
   if (manifest.schemaVersion === 2) {
     for (const category of manifest.categories ?? []) {
       categories.set(category.id, category);
@@ -359,16 +323,23 @@ function marketplaceManifestIndex(
     const entryIds = new Set(manifest.plugins.map((entry) => entry.id));
     for (const collection of manifest.collections ?? []) {
       let rank = 0;
+      const pluginIds: string[] = [];
       for (const entryId of collection.pluginIds) {
         if (!entryIds.has(entryId)) continue;
+        pluginIds.push(entryId);
         const memberships = collections.get(entryId) ?? [];
         memberships.push({ id: collection.id, rank });
         collections.set(entryId, memberships);
         rank += 1;
       }
+      resolvedCollections.push({
+        id: collection.id,
+        displayName: collection.displayName,
+        pluginIds,
+      });
     }
   }
-  const index = { categories, collections };
+  const index = { categories, collections, resolvedCollections };
   marketplaceManifestIndexes.set(manifest, index);
   return index;
 }
@@ -396,6 +367,7 @@ export function curatedMarketplaceManifestUrls(configuredUrl: string): {
 export function parseMarketplaceManifest(
   input: unknown,
   location: string,
+  warn?: (message: string) => void,
 ): MarketplaceManifest {
   if (
     typeof input === "object" &&
@@ -419,7 +391,23 @@ export function parseMarketplaceManifest(
   if (!parsed.success) {
     throw new Error(`invalid ${location}: ${formatIssues(parsed.error)}`);
   }
-  return parsed.data;
+  if (parsed.data.schemaVersion === 1) return parsed.data;
+  const plugins = parsed.data.plugins.filter((entry) => {
+    const range =
+      "npm" in entry.source
+        ? entry.source.npm.range
+        : "range" in entry.source.git
+          ? entry.source.git.range
+          : undefined;
+    if (range === undefined || semver.validRange(range) !== null) return true;
+    warn?.(
+      `marketplace entry "${entry.id}" was skipped because source range ${JSON.stringify(range)} is not valid semver`,
+    );
+    return false;
+  });
+  return plugins.length === parsed.data.plugins.length
+    ? parsed.data
+    : { ...parsed.data, plugins };
 }
 
 export function marketplaceEntryCategory(
@@ -444,9 +432,16 @@ export function marketplaceEntryCollections(
   ];
 }
 
+export function marketplaceCollections(
+  manifest: MarketplaceManifest,
+): PluginMarketplaceCollection[] {
+  return [...marketplaceManifestIndex(manifest).resolvedCollections];
+}
+
 export function parseMarketplaceManifestJson(
   raw: string,
   location: string,
+  warn?: (message: string) => void,
 ): MarketplaceManifest {
   let json: unknown;
   try {
@@ -456,7 +451,7 @@ export function parseMarketplaceManifestJson(
       `invalid ${location}: not valid JSON (${error instanceof Error ? error.message : String(error)})`,
     );
   }
-  return parseMarketplaceManifest(json, location);
+  return parseMarketplaceManifest(json, location, warn);
 }
 
 export function entryIconName(entry: MarketplaceEntry): string | null {
@@ -466,14 +461,16 @@ export function entryIconName(entry: MarketplaceEntry): string | null {
 export function entryScreenshotUrls(
   entry: MarketplaceEntry,
   base: MarketplaceIconBase,
+  warn?: (message: string) => void,
 ): string[] {
   if (!("screenshots" in entry) || entry.screenshots === undefined) return [];
-  return entry.screenshots.map((declared) => {
+  return entry.screenshots.flatMap((declared) => {
     const absolute = /^[A-Za-z][A-Za-z0-9+.-]*:/u.test(declared);
     if (!absolute && base.kind !== "url") {
-      throw new Error(
-        `relative screenshot URL ${JSON.stringify(declared)} requires an https marketplace manifest`,
+      warn?.(
+        `marketplace entry "${entry.id}" screenshot ${JSON.stringify(declared)} was skipped because relative screenshots require an https marketplace manifest`,
       );
+      return [];
     }
     const resolved = new URL(
       declared,
@@ -484,7 +481,7 @@ export function entryScreenshotUrls(
         `screenshot URL ${JSON.stringify(declared)} resolves to a non-https URL`,
       );
     }
-    return resolved.toString();
+    return [resolved.toString()];
   });
 }
 

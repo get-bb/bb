@@ -27,3 +27,8 @@ jobs:
 
       - name: Parse marketplace v2
         run: pnpm exec tsx apps/server/scripts/validate-live-marketplace.ts https://getbb.app/marketplace/v2/marketplace.json
+
+      - name: Check the published schema
+        run: |
+          curl --fail --location --silent --show-error https://raw.githubusercontent.com/get-bb/marketplace/main/schema/marketplace-v2.schema.json --output /tmp/marketplace-v2.schema.json
+          cmp apps/web/public/schemas/marketplace-v2.schema.json /tmp/marketplace-v2.schema.json

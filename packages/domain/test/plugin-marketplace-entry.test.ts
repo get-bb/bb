@@ -31,12 +31,12 @@ describe("marketplace entry schemas", () => {
     ).toBe(false);
   });
 
-  it("accepts optional v2 fields and ignores unknown keys at each level", () => {
+  it("accepts optional v2 fields and ignores discovery metadata keys", () => {
     expect(
       marketplaceEntryV2Schema.parse({
         ...entry(),
         category: "acme-tools",
-        screenshots: ["./screenshots/one.webp"],
+        screenshots: ["./screenshots/author-tools/one.webp"],
         publishedAt: "2026-08-20T11:47:04-07:00",
         updatedAt: "2026-08-27T16:12:00Z",
         futureEntryField: true,
@@ -50,9 +50,7 @@ describe("marketplace entry schemas", () => {
           git: {
             url: "https://github.com/author/author-tools.git",
             range: "^1.0.0",
-            futureGitField: true,
           },
-          futureSourceField: true,
         },
       }),
     ).toEqual({
@@ -64,14 +62,14 @@ describe("marketplace entry schemas", () => {
         },
       },
       category: "acme-tools",
-      screenshots: ["./screenshots/one.webp"],
+      screenshots: ["./screenshots/author-tools/one.webp"],
       publishedAt: "2026-08-20T11:47:04-07:00",
       updatedAt: "2026-08-27T16:12:00Z",
     });
     expect(marketplaceEntryV2Schema.parse(entry())).toEqual(entry());
   });
 
-  it("rejects invalid screenshots and dates", () => {
+  it("applies the registry screenshot and date rules", () => {
     expect(
       marketplaceEntryV2Schema.safeParse({
         ...entry(),
@@ -83,7 +81,7 @@ describe("marketplace entry schemas", () => {
         ...entry(),
         screenshots: ["https://example.com/one.txt?file=.png"],
       }).success,
-    ).toBe(false);
+    ).toBe(true);
     expect(
       marketplaceEntryV2Schema.safeParse({
         ...entry(),
@@ -101,19 +99,25 @@ describe("marketplace entry schemas", () => {
     ).toBe(false);
   });
 
-  it("rejects malformed v2 https URLs", () => {
+  it("accepts the registry URL patterns", () => {
     expect(
       marketplaceEntryV2Schema.safeParse({
         ...entry(),
         icon: { url: "https:///icon.svg" },
       }).success,
-    ).toBe(false);
+    ).toBe(true);
+    expect(
+      marketplaceEntryV2Schema.safeParse({
+        ...entry(),
+        icon: { url: "HTTP://example.com/icon.svg" },
+      }).success,
+    ).toBe(true);
     expect(
       marketplaceEntryV2Schema.safeParse({
         ...entry(),
         author: { name: "Author", url: "https://" },
       }).success,
-    ).toBe(false);
+    ).toBe(true);
     expect(
       marketplaceEntryV2Schema.safeParse({
         ...entry(),
@@ -121,23 +125,36 @@ describe("marketplace entry schemas", () => {
           npm: { package: "author-tools", registry: "https://" },
         },
       }).success,
-    ).toBe(false);
+    ).toBe(true);
     expect(
       marketplaceEntryV2Schema.safeParse({
         ...entry(),
         source: { git: { url: "https://", ref: "v1.0.0" } },
       }).success,
-    ).toBe(false);
+    ).toBe(true);
   });
 
-  it("validates prerelease range shapes in v2", () => {
+  it("accepts the registry date-time format", () => {
+    for (const publishedAt of [
+      "2026-08-20t11:47:04z",
+      "2026-08-20T11:47:04+0000",
+      "2026-08-20T11:47:04+00",
+      "2016-12-31T23:59:60Z",
+    ]) {
+      expect(
+        marketplaceEntryV2Schema.safeParse({ ...entry(), publishedAt }).success,
+      ).toBe(true);
+    }
+  });
+
+  it("defers v2 semver range validity to the server", () => {
     for (const range of ["1.x-alpha", "1.2-alpha", "^1.2-alpha"]) {
       expect(
         marketplaceEntryV2Schema.safeParse({
           ...entry(),
           source: { npm: { package: "author-tools", range } },
         }).success,
-      ).toBe(false);
+      ).toBe(true);
     }
     for (const range of ["1.2+build", ">=1.2.3-alpha", "==1", "==1.2"]) {
       expect(
@@ -149,7 +166,7 @@ describe("marketplace entry schemas", () => {
     }
   });
 
-  it("rejects a hostile semver range before expression evaluation", () => {
+  it("accepts a long semver range without expression evaluation", () => {
     const startedAt = performance.now();
     const result = marketplaceEntryV2Schema.safeParse({
       ...entry(),
@@ -158,7 +175,7 @@ describe("marketplace entry schemas", () => {
       },
     });
 
-    expect(result.success).toBe(false);
+    expect(result.success).toBe(true);
     expect(performance.now() - startedAt).toBeLessThan(100);
   });
 
@@ -210,6 +227,41 @@ describe("marketplace entry schemas", () => {
             ref: "v1.0.0",
             range: "^1.0.0",
           },
+        },
+      }).success,
+    ).toBe(false);
+  });
+
+  it("rejects unknown source keys as the v2 tolerance exception", () => {
+    expect(
+      marketplaceEntryV2Schema.safeParse({
+        ...entry(),
+        source: {
+          npm: { package: "author-tools", regsitry: "https://npm.test/" },
+        },
+      }).success,
+    ).toBe(false);
+    expect(
+      marketplaceEntryV2Schema.safeParse({
+        ...entry(),
+        source: {
+          git: {
+            url: "https://github.com/author/author-tools.git",
+            ref: "v1.0.0",
+            futureGitField: true,
+          },
+        },
+      }).success,
+    ).toBe(false);
+    expect(
+      marketplaceEntryV2Schema.safeParse({
+        ...entry(),
+        source: {
+          git: {
+            url: "https://github.com/author/author-tools.git",
+            ref: "v1.0.0",
+          },
+          futureSourceField: true,
         },
       }).success,
     ).toBe(false);

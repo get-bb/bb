@@ -139,6 +139,7 @@ export async function materializeMarketplace(args: {
   stagingDir: string;
   fetch: MarketplaceFetch;
   fallbackManifestUrl?: string;
+  warn?: (message: string) => void;
 }): Promise<MaterializedMarketplace> {
   if (args.source.kind === "https") {
     return materializeHttps(
@@ -146,12 +147,18 @@ export async function materializeMarketplace(args: {
       args.cached,
       args.fetch,
       args.fallbackManifestUrl,
+      args.warn,
     );
   }
   if (args.source.kind === "path") {
-    return materializeLocal(args.source.directory, null, async () => {});
+    return materializeLocal(
+      args.source.directory,
+      null,
+      async () => {},
+      args.warn,
+    );
   }
-  return materializeGit(args.source, args.stagingDir);
+  return materializeGit(args.source, args.stagingDir, args.warn);
 }
 
 async function materializeHttps(
@@ -163,6 +170,7 @@ async function materializeHttps(
   } | null,
   fetchMarketplace: MarketplaceFetch,
   fallbackManifestUrl: string | undefined,
+  warn: ((message: string) => void) | undefined,
 ): Promise<MaterializedMarketplace> {
   const cachedCatalog =
     cached === null
@@ -170,6 +178,7 @@ async function materializeHttps(
       : parseMarketplaceManifestJson(
           cached.manifestJson,
           "stored marketplace catalog",
+          warn,
         );
 
   async function requestManifest(
@@ -201,6 +210,29 @@ async function materializeHttps(
     fallbackManifestUrl === undefined,
   );
   if (response.status === 404 && fallbackManifestUrl !== undefined) {
+    if (cachedCatalog?.schemaVersion === 2 && cached !== null) {
+      await response.body?.cancel();
+      warn?.(
+        "the marketplace v2 manifest returned HTTP 404; BB kept the stored v2 catalog and did not request v1",
+      );
+      const iconBase = {
+        kind: "url",
+        manifestUrl: source.manifestUrl,
+      } as const;
+      for (const entry of cachedCatalog.plugins) {
+        entryScreenshotUrls(entry, iconBase, warn);
+      }
+      return {
+        catalog: cachedCatalog,
+        manifestJson: cached.manifestJson,
+        unchanged: true,
+        etag: cached.etag,
+        lastModified: cached.lastModified,
+        commit: null,
+        iconBase,
+        dispose: async () => {},
+      };
+    }
     await response.body?.cancel();
     manifestUrl = fallbackManifestUrl;
     response = await requestManifest(
@@ -221,7 +253,11 @@ async function materializeHttps(
     manifestJson = cached.manifestJson;
     catalog =
       cachedCatalog ??
-      parseMarketplaceManifestJson(manifestJson, "stored marketplace catalog");
+      parseMarketplaceManifestJson(
+        manifestJson,
+        "stored marketplace catalog",
+        warn,
+      );
   } else {
     const raw = new TextDecoder().decode(
       await boundedResponseBytes(
@@ -230,11 +266,13 @@ async function materializeHttps(
         "marketplace manifest",
       ),
     );
-    catalog = parseMarketplaceManifestJson(raw, "marketplace manifest");
+    catalog = parseMarketplaceManifestJson(raw, "marketplace manifest", warn);
     manifestJson = JSON.stringify(catalog);
   }
   const iconBase = { kind: "url", manifestUrl } as const;
-  for (const entry of catalog.plugins) entryScreenshotUrls(entry, iconBase);
+  for (const entry of catalog.plugins) {
+    entryScreenshotUrls(entry, iconBase, warn);
+  }
   return {
     catalog,
     manifestJson,
@@ -253,6 +291,7 @@ async function materializeLocal(
   root: string,
   commit: string | null,
   dispose: () => Promise<void>,
+  warn: ((message: string) => void) | undefined,
 ): Promise<MaterializedMarketplace> {
   try {
     const isDirectory = await stat(root)
@@ -276,9 +315,12 @@ async function materializeLocal(
     const catalog = parseMarketplaceManifest(
       JSON.parse(raw) as unknown,
       "marketplace manifest",
+      warn,
     );
     const iconBase = { kind: "dir", root } as const;
-    for (const entry of catalog.plugins) entryScreenshotUrls(entry, iconBase);
+    for (const entry of catalog.plugins) {
+      entryScreenshotUrls(entry, iconBase, warn);
+    }
     return {
       catalog,
       manifestJson: JSON.stringify(catalog),
@@ -298,6 +340,7 @@ async function materializeLocal(
 async function materializeGit(
   source: Extract<MarketplaceSource, { kind: "git" }>,
   stagingDir: string,
+  warn: ((message: string) => void) | undefined,
 ): Promise<MaterializedMarketplace> {
   await mkdir(stagingDir, { recursive: true });
   const checkout = join(stagingDir, randomUUID());
@@ -327,7 +370,7 @@ async function materializeGit(
       "HEAD",
     ]);
     await rm(join(checkout, ".git"), { recursive: true, force: true });
-    return await materializeLocal(checkout, commit, dispose);
+    return await materializeLocal(checkout, commit, dispose, warn);
   } catch (error) {
     await dispose();
     throw error;

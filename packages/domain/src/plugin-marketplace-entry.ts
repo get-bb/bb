@@ -2,7 +2,6 @@ import { z } from "zod";
 import { pluginCatalogCategoryIdSchema } from "./plugin-catalog-category.js";
 
 const MARKETPLACE_MAX_SCREENSHOTS = 6;
-const MARKETPLACE_MAX_SEMVER_RANGE_LENGTH = 256;
 const NAME_PATTERN = /^[a-z0-9][a-z0-9-]*$/u;
 const TAG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/u;
 const GITHUB_LOGIN_PATTERN = /^[A-Za-z0-9](?:-?[A-Za-z0-9]){0,38}$/u;
@@ -11,9 +10,9 @@ const HTTPS_URL_PATTERN = /^[Hh][Tt][Tt][Pp][Ss]:\/\//u;
 const ICON_URL_PATTERN =
   /^(?:(?![A-Za-z][A-Za-z0-9+.-]*:)|(?=[Hh][Tt][Tt][Pp][Ss]:))[^\s]*\.(?:[Ss][Vv][Gg]|[Pp][Nn][Gg]|[Ww][Ee][Bb][Pp])(?:[?#][^\s]*)?$/u;
 const V2_ICON_URL_PATTERN =
-  /^(?:(?![A-Za-z][A-Za-z0-9+.-]*:)|(?=[Hh][Tt][Tt][Pp][Ss]:\/\/[^/?#\s]+\/))[^\s?#]*\.(?:[Ss][Vv][Gg]|[Pp][Nn][Gg]|[Ww][Ee][Bb][Pp])(?:[?#][^\s]*)?$/u;
+  /^(?!http:)(?:[Hh][Tt][Tt][Pp][Ss]:\/\/)?[^\s]+\.(?:[Ss][Vv][Gg]|[Pp][Nn][Gg]|[Ww][Ee][Bb][Pp])$/u;
 const SCREENSHOT_URL_PATTERN =
-  /^(?:(?![A-Za-z][A-Za-z0-9+.-]*:)|(?=[Hh][Tt][Tt][Pp][Ss]:\/\/[^/?#\s]+\/))[^\s?#]*\.(?:[Pp][Nn][Gg]|[Jj][Pp][Ee]?[Gg]|[Ww][Ee][Bb][Pp])(?:[?#][^\s]*)?$/u;
+  /^(?:[Hh][Tt][Tt][Pp][Ss]:\/\/[^\s]+\.(?:[Pp][Nn][Gg]|[Jj][Pp][Ee]?[Gg]|[Ww][Ee][Bb][Pp])|\.\/screenshots\/[a-z0-9][a-z0-9-]*\/[A-Za-z0-9][A-Za-z0-9._-]*\.(?:[Pp][Nn][Gg]|[Jj][Pp][Ee]?[Gg]|[Ww][Ee][Bb][Pp]))$/u;
 const NPM_PACKAGE_PATTERN =
   /^(?:@[a-z0-9][a-z0-9._~-]*\/)?[a-z0-9][a-z0-9._~-]*$/u;
 const GIT_SUBDIR_PATTERN =
@@ -22,23 +21,9 @@ const GIT_REF_PATTERN =
   /^(?!-)(?![\s\S]*\.\.)(?![\s\S]*@)(?![\s\S]*:)[\s\S]+$/u;
 const GIT_TAG_PREFIX_PATTERN =
   /^(?!.*\.\.)(?!.*\/\/)(?!.*\/\.)(?![^/]*\.lock(?:\/|$))(?!.*\/[^/]*\.lock(?:\/|$))(?!.*\.$)[A-Za-z0-9][A-Za-z0-9._/-]*$/u;
-
-function rejectKeyConflicts(
-  input: unknown,
-  conflicts: readonly (readonly [string, string])[],
-  ctx: z.RefinementCtx,
-): unknown {
-  if (typeof input !== "object" || input === null) return input;
-  for (const [left, right] of conflicts) {
-    if (left in input && right in input) {
-      ctx.addIssue({
-        code: "custom",
-        message: `${left} and ${right} are mutually exclusive`,
-      });
-    }
-  }
-  return input;
-}
+const DATE_TIME_SEPARATOR_PATTERN = /t|\s/iu;
+const TIME_WITH_OFFSET_PATTERN =
+  /^(\d\d):(\d\d):(\d\d(?:\.\d+)?)(z|([+-])(\d\d)(?::?(\d\d))?)$/iu;
 
 const SEMVER_NUMBER = String.raw`(?:0|[1-9]\d*|[xX*])`;
 const SEMVER_PRERELEASE = String.raw`(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?`;
@@ -52,33 +37,36 @@ const MARKETPLACE_SEMVER_RANGE_PATTERN = new RegExp(
   "u",
 );
 
-const INVALID_PARTIAL_PRERELEASE_PATTERN = new RegExp(
-  String.raw`(?:^|[\s|<>=~^])v?(?!(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)-)(?:0|[1-9]\d*|[xX*])(?:\.(?:0|[1-9]\d*|[xX*])(?:\.(?:0|[1-9]\d*|[xX*]))?)?-[0-9A-Za-z-]+`,
-  "u",
-);
-
 const semverRangeSchema = z
   .string()
   .min(1)
   .regex(MARKETPLACE_SEMVER_RANGE_PATTERN);
-const semverRangeV2Schema = z
-  .string()
-  .min(1)
-  .refine(
-    (value) =>
-      value.length <= MARKETPLACE_MAX_SEMVER_RANGE_LENGTH &&
-      MARKETPLACE_SEMVER_RANGE_PATTERN.test(value) &&
-      !INVALID_PARTIAL_PRERELEASE_PATTERN.test(value),
-    "must be a valid semver range with complete prerelease versions",
-  );
+const semverRangeV2Schema = z.string().min(1);
 const httpsUrlSchema = z.string().regex(HTTPS_URL_PATTERN);
-const validHttpsUrlSchema = httpsUrlSchema.refine((value) => {
-  try {
-    return new URL(value).protocol === "https:";
-  } catch {
+const isoDateSchema = z.iso.date();
+const marketplaceDateTimeSchema = z.string().refine((value) => {
+  const parts = value.split(DATE_TIME_SEPARATOR_PATTERN);
+  if (parts.length !== 2 || !isoDateSchema.safeParse(parts[0]).success) {
     return false;
   }
-}, "must be a valid https URL");
+  const match = TIME_WITH_OFFSET_PATTERN.exec(parts[1] ?? "");
+  if (match === null) return false;
+  const hour = Number(match[1]);
+  const minute = Number(match[2]);
+  const second = Number(match[3]);
+  const offsetSign = match[5] === "-" ? -1 : 1;
+  const offsetHour = Number(match[6] ?? 0);
+  const offsetMinute = Number(match[7] ?? 0);
+  if (offsetHour > 23 || offsetMinute > 59) return false;
+  if (hour <= 23 && minute <= 59 && second < 60) return true;
+  const utcMinute = minute - offsetMinute * offsetSign;
+  const utcHour = hour - offsetHour * offsetSign - (utcMinute < 0 ? 1 : 0);
+  return (
+    (utcHour === 23 || utcHour === -1) &&
+    (utcMinute === 59 || utcMinute === -1) &&
+    second < 61
+  );
+});
 const marketplaceScreenshotSchema = z
   .string()
   .min(1)
@@ -106,7 +94,7 @@ function marketplaceAuthorSchema(strict: boolean) {
   const object = z.object({
     name: z.string().min(1),
     github: z.string().regex(GITHUB_LOGIN_PATTERN).optional(),
-    url: (strict ? httpsUrlSchema : validHttpsUrlSchema).optional(),
+    url: httpsUrlSchema.optional(),
   });
   return strict ? object.strict() : object;
 }
@@ -122,19 +110,19 @@ function marketplaceNpmSourceSchema(strict: boolean) {
         .string()
         .regex(/^[A-Za-z][A-Za-z0-9._-]*$/u)
         .optional(),
-      registry: (strict ? httpsUrlSchema : validHttpsUrlSchema).optional(),
+      registry: httpsUrlSchema.optional(),
     })
     .refine((value) => value.range === undefined || value.tag === undefined, {
       message: "range and tag are mutually exclusive",
     });
-  const nested = strict ? npm.strict() : npm;
+  const nested = npm.strict();
   const object = z.object({ npm: nested });
-  return strict ? object.strict() : object;
+  return object.strict();
 }
 
 function marketplaceGitSourceSchema(strict: boolean) {
   const base = {
-    url: strict ? httpsUrlSchema : validHttpsUrlSchema,
+    url: httpsUrlSchema,
     subdir: z.string().regex(GIT_SUBDIR_PATTERN).optional(),
   };
   const ref = z.object({
@@ -148,12 +136,9 @@ function marketplaceGitSourceSchema(strict: boolean) {
     range: strict ? semverRangeSchema : semverRangeV2Schema,
     tagPrefix: z.string().max(128).regex(GIT_TAG_PREFIX_PATTERN).optional(),
   });
-  const refObject = z.object({ git: strict ? ref.strict() : ref });
-  const rangeObject = z.object({ git: strict ? range.strict() : range });
-  return z.union([
-    strict ? refObject.strict() : refObject,
-    strict ? rangeObject.strict() : rangeObject,
-  ]);
+  const refObject = z.object({ git: ref.strict() }).strict();
+  const rangeObject = z.object({ git: range.strict() }).strict();
+  return z.union([refObject, rangeObject]);
 }
 
 function marketplaceSourceSchema(strict: boolean) {
@@ -161,21 +146,7 @@ function marketplaceSourceSchema(strict: boolean) {
     marketplaceNpmSourceSchema(strict),
     marketplaceGitSourceSchema(strict),
   ]);
-  if (strict) return source;
-  return z.preprocess((input, ctx) => {
-    rejectKeyConflicts(input, [["npm", "git"]], ctx);
-    if (typeof input === "object" && input !== null && "git" in input) {
-      rejectKeyConflicts(
-        input.git,
-        [
-          ["ref", "range"],
-          ["ref", "tagPrefix"],
-        ],
-        ctx,
-      );
-    }
-    return input;
-  }, source);
+  return source;
 }
 
 const marketplaceEntryIdentityShape = (strict: boolean) => ({
@@ -205,8 +176,8 @@ export const marketplaceEntryV2Schema = z.object({
     .array(marketplaceScreenshotSchema)
     .max(MARKETPLACE_MAX_SCREENSHOTS)
     .optional(),
-  publishedAt: z.iso.datetime({ offset: true }).optional(),
-  updatedAt: z.iso.datetime({ offset: true }).optional(),
+  publishedAt: marketplaceDateTimeSchema.optional(),
+  updatedAt: marketplaceDateTimeSchema.optional(),
   ...marketplaceEntryMetadataShape(false),
 });
 

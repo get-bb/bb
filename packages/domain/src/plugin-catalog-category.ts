@@ -6,6 +6,14 @@ export const pluginCatalogCategoryIdSchema = z
   .string()
   .regex(PLUGIN_CATALOG_CATEGORY_ID_PATTERN);
 
+export const pluginMarketplaceCollectionIdSchema = z
+  .string()
+  .regex(PLUGIN_CATALOG_CATEGORY_ID_PATTERN);
+
+export const pluginMarketplaceCollectionPluginIdSchema = z
+  .string()
+  .regex(PLUGIN_CATALOG_CATEGORY_ID_PATTERN);
+
 export const pluginMarketplaceCategorySchema = z.object({
   id: pluginCatalogCategoryIdSchema,
   displayName: z.string().min(1),
@@ -13,10 +21,10 @@ export const pluginMarketplaceCategorySchema = z.object({
 });
 
 export const pluginMarketplaceCollectionSchema = z.object({
-  id: pluginCatalogCategoryIdSchema,
+  id: pluginMarketplaceCollectionIdSchema,
   displayName: z.string().min(1),
   pluginIds: z
-    .array(pluginCatalogCategoryIdSchema)
+    .array(pluginMarketplaceCollectionPluginIdSchema)
     .superRefine((pluginIds, ctx) => {
       const seen = new Set<string>();
       pluginIds.forEach((pluginId, index) => {
@@ -121,6 +129,12 @@ export type PluginCatalogCategoryId = z.infer<
 >;
 export type PluginMarketplaceCategory = z.infer<
   typeof pluginMarketplaceCategorySchema
+>;
+export type PluginMarketplaceCollectionId = z.infer<
+  typeof pluginMarketplaceCollectionIdSchema
+>;
+export type PluginMarketplaceCollectionPluginId = z.infer<
+  typeof pluginMarketplaceCollectionPluginIdSchema
 >;
 export type PluginMarketplaceCollection = z.infer<
   typeof pluginMarketplaceCollectionSchema

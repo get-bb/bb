@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://getbb.app/schemas/marketplace-v2.schema.json",
-  "title": "BB plugin marketplace manifest (v2)",
-  "description": "The discovery catalog. Every v1 field keeps its v1 meaning. Version 2 adds categories, collections, screenshots, and dates.",
+  "title": "BB plugin marketplace manifest version 2",
+  "description": "This document lists plugins and discovery data.",
   "type": "object",
   "additionalProperties": false,
   "required": ["schemaVersion", "name", "displayName", "plugins"],
@@ -27,6 +27,7 @@
     },
     "categories": {
       "type": "array",
+      "$comment": "Each category id must be unique.",
       "items": {
         "$ref": "#/$defs/category"
       }
@@ -40,123 +41,13 @@
     "plugins": {
       "type": "array",
       "maxItems": 256,
-      "$comment": "Entry ids must also be unique within one manifest.",
+      "$comment": "Each plugin id must be unique.",
       "items": {
         "$ref": "#/$defs/entry"
       }
     }
   },
   "$defs": {
-    "entry": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "id",
-        "displayName",
-        "description",
-        "icon",
-        "author",
-        "source"
-      ],
-      "properties": {
-        "id": {
-          "type": "string",
-          "$comment": "The plugin id this entry installs; BB refuses an install whose manifest declares another id.",
-          "pattern": "^[a-z0-9][a-z0-9-]*$"
-        },
-        "displayName": {
-          "type": "string",
-          "minLength": 1
-        },
-        "description": {
-          "type": "string",
-          "minLength": 1
-        },
-        "icon": {
-          "oneOf": [
-            {
-              "type": "string",
-              "$comment": "A host icon name such as ZoomIn.",
-              "pattern": "^[A-Za-z][A-Za-z0-9]*$"
-            },
-            {
-              "type": "object",
-              "additionalProperties": false,
-              "required": ["url"],
-              "properties": {
-                "url": {
-                  "type": "string",
-                  "$comment": "Absolute https URL, or a URL relative to this manifest. Must end in .svg, .png, or .webp.",
-                  "pattern": "^(?:(?![A-Za-z][A-Za-z0-9+.-]*:)|(?=[Hh][Tt][Tt][Pp][Ss]://[^/?#\\s]+/))[^\\s?#]*\\.(?:[Ss][Vv][Gg]|[Pp][Nn][Gg]|[Ww][Ee][Bb][Pp])(?:[?#][^\\s]*)?$"
-                }
-              }
-            }
-          ]
-        },
-        "category": {
-          "type": "string",
-          "$comment": "A category id from this document or a client built-in category.",
-          "pattern": "^[a-z0-9][a-z0-9-]*$"
-        },
-        "screenshots": {
-          "type": "array",
-          "maxItems": 6,
-          "items": {
-            "type": "string",
-            "minLength": 1,
-            "$comment": "An https URL or a relative .png, .jpg, .jpeg, or .webp asset in this repository.",
-            "pattern": "^(?:(?![A-Za-z][A-Za-z0-9+.-]*:)|(?=[Hh][Tt][Tt][Pp][Ss]://[^/?#\\s]+/))[^\\s?#]*\\.(?:[Pp][Nn][Gg]|[Jj][Pp][Ee]?[Gg]|[Ww][Ee][Bb][Pp])(?:[?#][^\\s]*)?$"
-          }
-        },
-        "publishedAt": {
-          "type": "string",
-          "format": "date-time",
-          "$comment": "Derived by the registry from the first commit of this entry file. Not author-supplied."
-        },
-        "updatedAt": {
-          "type": "string",
-          "format": "date-time",
-          "$comment": "Derived by the registry from the last commit of this entry file. Not author-supplied."
-        },
-        "tags": {
-          "type": "array",
-          "maxItems": 10,
-          "items": {
-            "type": "string",
-            "maxLength": 32,
-            "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
-          }
-        },
-        "author": {
-          "type": "object",
-          "additionalProperties": false,
-          "required": ["name"],
-          "$comment": "Never put an email address here: the manifest is public and mirrored.",
-          "properties": {
-            "name": {
-              "type": "string",
-              "minLength": 1
-            },
-            "github": {
-              "type": "string",
-              "pattern": "^[A-Za-z0-9](?:-?[A-Za-z0-9]){0,38}$"
-            },
-            "url": {
-              "type": "string",
-              "format": "uri",
-              "pattern": "^[Hh][Tt][Tt][Pp][Ss]://"
-            }
-          }
-        },
-        "source": {
-          "oneOf": [
-            { "$ref": "#/$defs/npmSource" },
-            { "$ref": "#/$defs/gitRefSource" },
-            { "$ref": "#/$defs/gitRangeSource" }
-          ]
-        }
-      }
-    },
     "category": {
       "type": "object",
       "additionalProperties": false,
@@ -199,6 +90,117 @@
         }
       }
     },
+    "entry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "displayName",
+        "description",
+        "icon",
+        "author",
+        "source"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "$comment": "The file name must match this id.",
+          "pattern": "^[a-z0-9][a-z0-9-]*$"
+        },
+        "displayName": {
+          "type": "string",
+          "minLength": 1
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1
+        },
+        "icon": {
+          "oneOf": [
+            {
+              "type": "string",
+              "pattern": "^[A-Za-z][A-Za-z0-9]*$"
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["url"],
+              "properties": {
+                "url": {
+                  "type": "string",
+                  "$comment": "Use an HTTPS URL or a path relative to this document.",
+                  "pattern": "^(?!http:)(?:https://)?[^\\s]+\\.(?:svg|png|webp)$"
+                }
+              }
+            }
+          ]
+        },
+        "tags": {
+          "type": "array",
+          "maxItems": 10,
+          "items": {
+            "type": "string",
+            "maxLength": 32,
+            "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+          }
+        },
+        "author": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["name"],
+          "$comment": "Do not put an email address here.",
+          "properties": {
+            "name": {
+              "type": "string",
+              "minLength": 1
+            },
+            "github": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9](?:-?[A-Za-z0-9]){0,38}$"
+            },
+            "url": {
+              "type": "string",
+              "pattern": "^https://"
+            }
+          }
+        },
+        "source": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/npmSource"
+            },
+            {
+              "$ref": "#/$defs/gitRefSource"
+            },
+            {
+              "$ref": "#/$defs/gitRangeSource"
+            }
+          ]
+        },
+        "category": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9-]*$",
+          "$comment": "This id must occur in the categories array."
+        },
+        "screenshots": {
+          "type": "array",
+          "maxItems": 6,
+          "items": {
+            "type": "string",
+            "$comment": "Use an HTTPS URL or a repository screenshot path.",
+            "pattern": "^(?:https://[^\\s]+\\.(?:png|jpg|jpeg|webp)|\\./screenshots/[a-z0-9][a-z0-9-]*/[A-Za-z0-9][A-Za-z0-9._-]*\\.(?:png|jpg|jpeg|webp))$"
+          }
+        },
+        "publishedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
     "npmSource": {
       "type": "object",
       "additionalProperties": false,
@@ -208,15 +210,18 @@
           "type": "object",
           "additionalProperties": false,
           "required": ["package"],
-          "$comment": "range and tag are mutually exclusive.",
-          "not": { "required": ["range", "tag"] },
+          "$comment": "Do not use range and tag together.",
+          "not": {
+            "required": ["range", "tag"]
+          },
           "properties": {
             "package": {
               "type": "string",
               "pattern": "^(?:@[a-z0-9][a-z0-9._~-]*/)?[a-z0-9][a-z0-9._~-]*$"
             },
             "range": {
-              "$ref": "#/$defs/semverRange"
+              "type": "string",
+              "minLength": 1
             },
             "tag": {
               "type": "string",
@@ -224,8 +229,7 @@
             },
             "registry": {
               "type": "string",
-              "format": "uri",
-              "pattern": "^[Hh][Tt][Tt][Pp][Ss]://"
+              "pattern": "^https://"
             }
           }
         }
@@ -233,14 +237,13 @@
     },
     "gitSubdir": {
       "type": "string",
-      "$comment": "Repository-relative directory; absolute paths, empty segments, .. and .git are rejected.",
+      "$comment": "Use a safe path relative to the repository.",
       "pattern": "^(?![A-Za-z]:)(?!/)(?!(?:[^/]+/)*(?:\\.|\\.\\.|\\.git)(?:/|$))[^/\\\\]+(?:/[^/\\\\]+)*$"
     },
     "gitRefSource": {
       "type": "object",
       "additionalProperties": false,
       "required": ["git"],
-      "$comment": "One branch, tag, or commit. Mutually exclusive with the range form.",
       "properties": {
         "git": {
           "type": "object",
@@ -249,15 +252,13 @@
           "properties": {
             "url": {
               "type": "string",
-              "format": "uri",
-              "pattern": "^[Hh][Tt][Tt][Pp][Ss]://"
+              "pattern": "^https://"
             },
             "subdir": {
               "$ref": "#/$defs/gitSubdir"
             },
             "ref": {
               "type": "string",
-              "$comment": "Must round-trip through BB's git:<url>@<ref> install syntax, so colon is rejected.",
               "pattern": "^(?!-)(?![\\s\\S]*\\.\\.)(?![\\s\\S]*@)(?![\\s\\S]*:)[\\s\\S]+$"
             }
           }
@@ -268,7 +269,6 @@
       "type": "object",
       "additionalProperties": false,
       "required": ["git"],
-      "$comment": "A semver range resolved over the repository's [tagPrefix]vX.Y.Z release tags.",
       "properties": {
         "git": {
           "type": "object",
@@ -277,33 +277,23 @@
           "properties": {
             "url": {
               "type": "string",
-              "format": "uri",
-              "pattern": "^[Hh][Tt][Tt][Pp][Ss]://"
+              "pattern": "^https://"
             },
             "subdir": {
               "$ref": "#/$defs/gitSubdir"
             },
             "range": {
-              "$ref": "#/$defs/semverRange"
+              "type": "string",
+              "minLength": 1
             },
             "tagPrefix": {
               "type": "string",
               "maxLength": 128,
-              "pattern": "^(?!.*\\.\\.)(?!.*//)(?!.*/\\.)(?![^/]*\\.lock(?:/|$))(?!.*/[^/]*\\.lock(?:/|$))(?!.*\\.$)[A-Za-z0-9][A-Za-z0-9._/-]*$"
+              "pattern": "^(?!.*\\.\\.)(?!.*//)(?!.*\\/\\.)(?![^/]*\\.lock(?:/|$))(?!.*\\/[^/]*\\.lock(?:/|$))(?!.*\\.$)[A-Za-z0-9][A-Za-z0-9._/-]*$"
             }
           }
         }
       }
-    },
-    "semverRange": {
-      "type": "string",
-      "minLength": 1,
-      "maxLength": 256,
-      "$comment": "An npm semver range. Mirrors semver.validRange, which BB's parser applies at refresh time.",
-      "not": {
-        "pattern": "(?:^|[\\s|<>=~^])v?(?!(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)-)(?:0|[1-9]\\d*|[xX*])(?:\\.(?:0|[1-9]\\d*|[xX*])(?:\\.(?:0|[1-9]\\d*|[xX*]))?)?-[0-9A-Za-z-]+"
-      },
-      "pattern": "^\\s*(?:\\*|v?(?:0|[1-9]\\d*|[xX*])(?:\\.(?:0|[1-9]\\d*|[xX*])(?:\\.(?:0|[1-9]\\d*|[xX*]))?)?(?:-[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?(?:\\+[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?\\s+-\\s+v?(?:0|[1-9]\\d*|[xX*])(?:\\.(?:0|[1-9]\\d*|[xX*])(?:\\.(?:0|[1-9]\\d*|[xX*]))?)?(?:-[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?(?:\\+[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?|(?:[<>]=?|==?|~>?|\\^)?\\s*v?(?:0|[1-9]\\d*|[xX*])(?:\\.(?:0|[1-9]\\d*|[xX*])(?:\\.(?:0|[1-9]\\d*|[xX*]))?)?(?:-[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?(?:\\+[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?(?:\\s+(?:[<>]=?|==?|~>?|\\^)?\\s*v?(?:0|[1-9]\\d*|[xX*])(?:\\.(?:0|[1-9]\\d*|[xX*])(?:\\.(?:0|[1-9]\\d*|[xX*]))?)?(?:-[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?(?:\\+[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?)*|)(?:\\s*\\|\\|\\s*(?:\\*|v?(?:0|[1-9]\\d*|[xX*])(?:\\.(?:0|[1-9]\\d*|[xX*])(?:\\.(?:0|[1-9]\\d*|[xX*]))?)?(?:-[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?(?:\\+[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?\\s+-\\s+v?(?:0|[1-9]\\d*|[xX*])(?:\\.(?:0|[1-9]\\d*|[xX*])(?:\\.(?:0|[1-9]\\d*|[xX*]))?)?(?:-[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?(?:\\+[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?|(?:[<>]=?|==?|~>?|\\^)?\\s*v?(?:0|[1-9]\\d*|[xX*])(?:\\.(?:0|[1-9]\\d*|[xX*])(?:\\.(?:0|[1-9]\\d*|[xX*]))?)?(?:-[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?(?:\\+[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?(?:\\s+(?:[<>]=?|==?|~>?|\\^)?\\s*v?(?:0|[1-9]\\d*|[xX*])(?:\\.(?:0|[1-9]\\d*|[xX*])(?:\\.(?:0|[1-9]\\d*|[xX*]))?)?(?:-[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?(?:\\+[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?)*|))*\\s*$"
     }
   }
 }

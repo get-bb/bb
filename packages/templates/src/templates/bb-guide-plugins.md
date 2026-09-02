@@ -394,6 +394,9 @@ loads screenshots from the URLs that the marketplace declares. bb clones a
 git marketplace into a temporary checkout. bb keeps only the validated
 manifest and icon bytes.
 
+bb ignores unknown v2 fields, except in npm and git source objects. bb rejects
+unknown source keys because a source key changes the installed code.
+
 Install an entry of a specific marketplace with <entry-id>@<marketplace>:
 
   bb plugin install thread-hover-cards@acme-plugins

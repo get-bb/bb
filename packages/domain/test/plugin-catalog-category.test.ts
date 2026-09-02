@@ -4,6 +4,8 @@ import {
   pluginCatalogCategory,
   pluginCatalogCategoryIdSchema,
   pluginMarketplaceCategorySchema,
+  pluginMarketplaceCollectionIdSchema,
+  pluginMarketplaceCollectionPluginIdSchema,
   pluginMarketplaceCollectionSchema,
 } from "../src/plugin-catalog-category.js";
 
@@ -50,6 +52,12 @@ describe("plugin catalog categories", () => {
     );
     expect(pluginCatalogCategoryIdSchema.safeParse("Acme tools").success).toBe(
       false,
+    );
+    expect(pluginMarketplaceCollectionIdSchema.parse("featured")).toBe(
+      "featured",
+    );
+    expect(pluginMarketplaceCollectionPluginIdSchema.parse("acme-one")).toBe(
+      "acme-one",
     );
     expect(
       pluginMarketplaceCategorySchema.parse({

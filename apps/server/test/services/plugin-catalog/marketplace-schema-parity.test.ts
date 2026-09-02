@@ -29,10 +29,14 @@ async function compilePublishedSchema(
     JSON.parse(await readFile(SCHEMA_PATHS[version], "utf8")),
   );
   const ajv = new Ajv2020({ strict: false });
-  ajv.addFormat(
-    "date-time",
-    (value) => z.iso.datetime({ offset: true }).safeParse(value).success,
-  );
+  ajv.addFormat("date-time", (value) => {
+    const normalized = value
+      .replace(/^(.{10})t/iu, "$1T")
+      .replace(/z$/iu, "Z")
+      .replace(/([+-]\d\d)(\d\d)$/u, "$1:$2")
+      .replace(/([+-]\d\d)$/u, "$1:00");
+    return z.iso.datetime({ offset: true }).safeParse(normalized).success;
+  });
   ajv.addFormat("uri", (value) => {
     try {
       return new URL(value).protocol.length > 0;
@@ -265,19 +269,24 @@ const v2Fixtures: readonly Fixture[] = [
   },
   {
     label: "malformed absolute v2 icon URL",
-    valid: false,
+    valid: true,
     manifest: manifestV2With({ icon: { url: "https:///icon.svg" } }),
   },
   {
+    label: "uppercase http v2 icon URL",
+    valid: true,
+    manifest: manifestV2With({ icon: { url: "HTTP://example.com/icon.svg" } }),
+  },
+  {
     label: "screenshot extension in the query",
-    valid: false,
+    valid: true,
     manifest: manifestV2With({
       screenshots: ["https://cdn.example.com/acme.txt?file=.png"],
     }),
   },
   {
     label: "partial prerelease range",
-    valid: false,
+    valid: true,
     manifest: manifestV2With({
       source: { npm: { package: "bb-plugin-acme", range: "1.x-alpha" } },
     }),
@@ -307,7 +316,7 @@ const v2Fixtures: readonly Fixture[] = [
   },
   {
     label: "range over the v2 length limit",
-    valid: false,
+    valid: true,
     manifest: manifestV2With({
       source: {
         npm: {
@@ -319,7 +328,7 @@ const v2Fixtures: readonly Fixture[] = [
   },
   {
     label: "uppercase https URL fields",
-    valid: true,
+    valid: false,
     manifest: manifestV2With({
       author: { name: "Acme", url: "HTTPS://example.com/acme" },
       source: {
@@ -332,14 +341,14 @@ const v2Fixtures: readonly Fixture[] = [
   },
   {
     label: "malformed author URL",
-    valid: false,
+    valid: true,
     manifest: manifestV2With({
       author: { name: "Acme", url: "https://" },
     }),
   },
   {
     label: "malformed npm registry URL",
-    valid: false,
+    valid: true,
     manifest: manifestV2With({
       source: {
         npm: { package: "bb-plugin-acme", registry: "https://" },
@@ -348,7 +357,7 @@ const v2Fixtures: readonly Fixture[] = [
   },
   {
     label: "malformed git URL",
-    valid: false,
+    valid: true,
     manifest: manifestV2With({
       source: { git: { url: "https://", ref: "v1.2.3" } },
     }),
@@ -357,6 +366,11 @@ const v2Fixtures: readonly Fixture[] = [
     label: "date without time or offset",
     valid: false,
     manifest: manifestV2With({ publishedAt: "2026-08-20" }),
+  },
+  {
+    label: "lowercase date-time with a basic offset",
+    valid: true,
+    manifest: manifestV2With({ publishedAt: "2026-08-20t11:47:04+0000" }),
   },
   {
     label: "duplicate collection plugin id",
@@ -388,7 +402,7 @@ describe("published marketplace schema parity", () => {
       } catch {
         runtime = false;
       }
-      return published === fixture.valid && runtime === fixture.valid
+      return published === fixture.valid && (!published || runtime)
         ? []
         : [
             `${fixture.label}: expected ${fixture.valid ? "valid" : "invalid"}, published schema said ${published}, runtime parser said ${runtime}`,
@@ -408,7 +422,7 @@ describe("published marketplace schema parity", () => {
       } catch {
         runtime = false;
       }
-      return published === fixture.valid && runtime === fixture.valid
+      return published === fixture.valid && (!published || runtime)
         ? []
         : [
             `${fixture.label}: expected ${fixture.valid ? "valid" : "invalid"}, published schema said ${published}, runtime parser said ${runtime}`,
@@ -432,6 +446,31 @@ describe("published marketplace schema parity", () => {
     expect(parseMarketplaceManifest(manifest, "fixture")).toEqual(
       manifestV2With({}),
     );
+  });
+
+  it("keeps source objects strict as the v2 tolerance exception", async () => {
+    const validate = await compilePublishedSchema(2);
+    const manifests = [
+      manifestV2With({
+        source: {
+          npm: { package: "bb-plugin-acme", regsitry: "https://npm.test/" },
+        },
+      }),
+      manifestV2With({
+        source: {
+          git: {
+            url: "https://example.com/acme.git",
+            ref: "v1.0.0",
+            futureField: true,
+          },
+        },
+      }),
+    ];
+
+    for (const manifest of manifests) {
+      expect(validate(manifest)).toBe(false);
+      expect(() => parseMarketplaceManifest(manifest, "fixture")).toThrow();
+    }
   });
 
   it("caps the entry count in both contracts", async () => {

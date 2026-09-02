@@ -36,6 +36,7 @@ export function registerPluginCatalogRoutes(
   app.get("/plugin-catalog/search", async (context) =>
     context.json({
       results: await catalog.search(context.req.query("q") ?? ""),
+      collections: catalog.collections(),
     }),
   );
 

@@ -21,6 +21,7 @@ import {
 import type {
   InstalledPlugin,
   PluginCatalogAuthor,
+  PluginCatalogCollection,
   PluginCatalogInstallPlan,
   PluginCatalogResolvedSource,
   PluginCatalogSearchResult,
@@ -67,11 +68,13 @@ import {
   CURATED_MARKETPLACE_NAME,
   marketplaceEntryCategory,
   marketplaceEntryCollections,
+  marketplaceCollections,
   parseMarketplaceManifestJson,
   resolvedEntrySource,
   type MarketplaceEntry,
   type MarketplaceManifest,
 } from "./marketplace-manifest.js";
+import { legacyMarketplaceCategory } from "./legacy-marketplace-category.js";
 import {
   marketplaceSourceColumns,
   marketplaceSourceDisplay,
@@ -109,6 +112,7 @@ export interface PluginCatalogService {
     attemptedAt?: number;
   }): Promise<PluginMarketplaceRefreshResult[]>;
   search(query: string): Promise<PluginCatalogSearchResult[]>;
+  collections(): PluginCatalogCollection[];
   installPlan(
     selector: PluginCatalogEntrySelector,
   ): Promise<PluginCatalogInstallPlan>;
@@ -161,15 +165,6 @@ export function createPluginCatalogService(deps: {
       ...LEGACY_PLUGIN_CATALOG_CATEGORIES,
       ...BUILTIN_DISCOVERY_CATEGORIES.map((category) => category.displayName),
     ].map((category, index) => [category, index]),
-  );
-  const categoryByTag = new Map<string, string>(
-    LEGACY_PLUGIN_CATALOG_CATEGORIES.map((category) => [
-      category
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/gu, "-")
-        .replace(/^-+|-+$/gu, ""),
-      category,
-    ]),
   );
   const now = deps.now ?? Date.now;
   const fetchMarketplace = deps.fetch ?? publicMarketplaceFetch;
@@ -228,6 +223,7 @@ export function createPluginCatalogService(deps: {
         parseMarketplaceManifestJson(
           existing.manifestJson,
           "stored marketplace catalog",
+          deps.warn,
         );
         if (isFallbackSource) {
           upsertPluginMarketplace(deps.db, {
@@ -279,6 +275,7 @@ export function createPluginCatalogService(deps: {
       return parseMarketplaceManifestJson(
         row.manifestJson,
         `stored "${row.name}" marketplace catalog`,
+        deps.warn,
       );
     } catch (error) {
       deps.warn?.(marketplaceErrorMessage(error));
@@ -399,22 +396,6 @@ export function createPluginCatalogService(deps: {
     };
   }
 
-  function legacyEntryCategory(
-    entry: MarketplaceEntry,
-    official: boolean,
-  ): string {
-    const tags = entry.tags ?? [];
-    if (official) {
-      for (const tag of tags) {
-        const category = categoryByTag.get(tag);
-        if (category !== undefined) return category;
-      }
-      return "Other";
-    }
-    const first = tags[0];
-    return first === undefined ? "Other" : titleCaseTag(first);
-  }
-
   function entryIconAssetUrl(
     marketplace: string,
     entryId: string,
@@ -460,7 +441,9 @@ export function createPluginCatalogService(deps: {
       icon: entryIconName(entry),
       ...entryIconAsset(row.name, entry.id),
       ...(catalog.schemaVersion === 1
-        ? { category: legacyEntryCategory(entry, official) }
+        ? {
+            category: legacyMarketplaceCategory(entry.tags ?? [], official),
+          }
         : category === undefined
           ? {}
           : { categoryId: category.id, category: category.displayName }),
@@ -547,6 +530,7 @@ export function createPluginCatalogService(deps: {
       },
       stagingDir,
       fetch: fetchMarketplace,
+      ...(deps.warn === undefined ? {} : { warn: deps.warn }),
       ...(row.name === CURATED_MARKETPLACE_NAME &&
       row.sourceKind === "https" &&
       curatedManifestUrls.fallback !== null
@@ -977,6 +961,13 @@ export function createPluginCatalogService(deps: {
       return orderedMarketplaces().map(marketplaceView);
     },
 
+    collections() {
+      return orderedMarketplaces().flatMap((row) => {
+        const catalog = catalogOf(row);
+        return catalog === null ? [] : marketplaceCollections(catalog);
+      });
+    },
+
     async addMarketplace(rawSource) {
       return withLock(ADD_LOCK_KEY, async () => {
         const source = parseMarketplaceSource(rawSource);
@@ -986,6 +977,7 @@ export function createPluginCatalogService(deps: {
           cached: null,
           stagingDir,
           fetch: fetchMarketplace,
+          ...(deps.warn === undefined ? {} : { warn: deps.warn }),
         });
         try {
           const name = materialized.catalog.name;
@@ -1266,12 +1258,4 @@ function entryAuthor(entry: MarketplaceEntry): PluginCatalogAuthor {
       ? null
       : `https://github.com/${entry.author.github}`);
   return { name: entry.author.name, url };
-}
-
-function titleCaseTag(tag: string): string {
-  return tag
-    .split("-")
-    .filter((word) => word.length > 0)
-    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-    .join(" ");
 }

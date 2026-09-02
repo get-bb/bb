@@ -380,6 +380,54 @@ describe("plugin catalog service", () => {
       expect(await catalog.search("widgets")).toHaveLength(1);
     });
 
+    it("keeps a stored v2 catalog after a transient v2 404", async () => {
+      const requests: string[] = [];
+      const warnings: string[] = [];
+      let v2Available = true;
+      const catalog = service({
+        marketplaceUrl: V2_MANIFEST_URL,
+        warn: (message) => warnings.push(message),
+        fetch: async (url) => {
+          requests.push(url);
+          if (url === V2_MANIFEST_URL) {
+            return v2Available
+              ? jsonResponse(
+                  manifestV2([
+                    remoteEntry({ icon: "Zap", category: "security" }),
+                  ]),
+                )
+              : new Response(null, { status: 404 });
+          }
+          if (url === V1_MANIFEST_URL) {
+            return jsonResponse(manifest([remoteEntry({ icon: "Zap" })]));
+          }
+          return new Response(null, { status: 404 });
+        },
+      });
+
+      await catalog.refresh(1_000);
+      v2Available = false;
+      requests.length = 0;
+      await catalog.refresh(2_000);
+
+      expect(
+        requests.filter(
+          (url) => url === V1_MANIFEST_URL || url === V2_MANIFEST_URL,
+        ),
+      ).toEqual([V2_MANIFEST_URL]);
+      expect(await catalog.search("widgets")).toMatchObject([
+        { entryId: "widgets", categoryId: "security" },
+      ]);
+      expect(
+        JSON.parse(
+          getPluginMarketplace(db, "bb-community")?.manifestJson ?? "null",
+        ),
+      ).toMatchObject({ schemaVersion: 2 });
+      expect(warnings).toContainEqual(
+        expect.stringContaining("kept the stored v2 catalog"),
+      );
+    });
+
     it("does not fall back to v1 after a v2 server error", async () => {
       const requests: string[] = [];
       const catalog = service({
@@ -420,7 +468,7 @@ describe("plugin catalog service", () => {
                     remoteEntry({
                       icon: "Zap",
                       category: "acme-tools",
-                      screenshots: ["./screenshots/widgets.webp"],
+                      screenshots: ["./screenshots/widgets/widgets.webp"],
                       publishedAt: "2026-08-20T11:47:04-07:00",
                       updatedAt: "2026-08-27T16:12:00Z",
                     }),
@@ -458,7 +506,9 @@ describe("plugin catalog service", () => {
       expect(widgets).toMatchObject({
         categoryId: "acme-tools",
         category: "Acme tools",
-        screenshots: ["https://marketplace.test/screenshots/widgets.webp"],
+        screenshots: [
+          "https://marketplace.test/screenshots/widgets/widgets.webp",
+        ],
         collections: [{ id: "featured", rank: 0 }],
         publishedAt: "2026-08-20T11:47:04-07:00",
         updatedAt: "2026-08-27T16:12:00Z",
@@ -467,6 +517,13 @@ describe("plugin catalog service", () => {
       expect(uncategorized).not.toHaveProperty("categoryId");
       expect(uncategorized).not.toHaveProperty("category");
       expect(uncategorized?.collections).toEqual([]);
+      expect(catalog.collections()).toEqual([
+        {
+          id: "featured",
+          displayName: "Featured",
+          pluginIds: ["widgets"],
+        },
+      ]);
     });
 
     it("tints a catalog SVG but keeps a raster icon's own colors", async () => {

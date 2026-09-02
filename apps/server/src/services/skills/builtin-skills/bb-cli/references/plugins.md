@@ -39,6 +39,9 @@
     reserved and can be neither added nor removed.
     A third-party manifest can use v1 or v2. The server serves its icons.
     The detail page loads screenshots from the declared URLs.
+    BB ignores unknown v2 fields, except in npm and git source objects. BB
+    rejects unknown source keys because a source key changes the installed
+    code.
   - `bb marketplace list [--json]` — name, source, entry count, last refresh.
   - `bb marketplace refresh [name] [--json]` — re-read one catalog or every
     one of them. Discovery metadata and icons only. A failed refresh keeps the

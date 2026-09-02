@@ -76,6 +76,7 @@ describe("plugin catalog routes", () => {
     const search = await app.request("/plugin-catalog/search?q=memory");
     await expect(search.json()).resolves.toMatchObject({
       results: [{ entryId: "memory", installed: false }],
+      collections: [],
     });
 
     const refresh = await app.request("/plugin-catalog/refresh", {
