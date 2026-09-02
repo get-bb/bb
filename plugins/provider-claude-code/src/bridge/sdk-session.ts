@@ -15,6 +15,7 @@ import {
   experimental_recordProviderChildIo,
 } from "@get-bb/plugin-sdk/provider-bridge";
 import type { ClaudePermissionMode } from "../interactive-contract.js";
+import type { ClaudeCredentialInitializationCoordinator } from "./credential-initialization-lock.js";
 import {
   isMissingClaudeCliMessage,
   missingClaudeCliGuidance,
@@ -41,6 +42,7 @@ export interface SdkSessionOptions {
   thinking?: Options["thinking"];
   settings?: Options["settings"];
   recordThreadId?: () => string;
+  credentialInitializationCoordinator?: ClaudeCredentialInitializationCoordinator;
 }
 
 export type ClaudeSdkReasoningEffort =
@@ -216,79 +218,123 @@ export class SdkSession {
     }
 
     this.stderrTail = "";
-    const permissionOptions = buildSdkPermissionOptions({
-      permissionMode: this.options.permissionMode,
-    });
     const onStderr = (data: string): void => {
       this.stderrTail = appendBoundedText({
         current: this.stderrTail,
         chunk: data,
       });
     };
-    const recordThreadId = this.options.recordThreadId;
-    const sdkOptions: Options = {
-      abortController: this.abortController,
-      cwd: this.options.cwd,
-      systemPrompt: this.options.systemPrompt,
-      ...permissionOptions,
-      ...(experimental_isProviderBridgeRecording()
-        ? {
-            spawnClaudeCodeProcess: (spawnOptions: SpawnOptions) =>
-              spawnRecordedClaudeProcess({
-                onStderr,
-                spawnOptions,
-                threadId: recordThreadId?.() ?? null,
-              }),
-          }
-        : {}),
-      includePartialMessages: true,
-      settingSources: ["user", "project", "local"],
-      persistSession: true,
-      env: this.options.env ?? process.env,
-      stderr: onStderr,
-      ...(this.options.mcpServers
-        ? { mcpServers: this.options.mcpServers }
-        : {}),
-      ...(this.options.allowedTools
-        ? { allowedTools: this.options.allowedTools }
-        : {}),
-      ...(this.options.disallowedTools
-        ? { disallowedTools: this.options.disallowedTools }
-        : {}),
-      ...(this.options.canUseTool
-        ? { canUseTool: this.options.canUseTool }
-        : {}),
-      ...(this.options.sandbox ? { sandbox: this.options.sandbox } : {}),
-      ...(this.options.hooks ? { hooks: this.options.hooks } : {}),
-      ...(resumeSessionId ? { resume: resumeSessionId } : {}),
-      ...(!resumeSessionId && this.options.sessionId
-        ? { sessionId: this.options.sessionId }
-        : {}),
-      ...(this.options.model ? { model: this.options.model } : {}),
-      ...(this.options.additionalDirectories
-        ? { additionalDirectories: [...this.options.additionalDirectories] }
-        : {}),
-      ...(this.options.effort ? { effort: this.options.effort } : {}),
-      ...(this.options.pathToClaudeCodeExecutable
-        ? {
-            pathToClaudeCodeExecutable: this.options.pathToClaudeCodeExecutable,
-          }
-        : {}),
-      ...(this.options.plugins ? { plugins: this.options.plugins } : {}),
-      ...(this.options.thinking ? { thinking: this.options.thinking } : {}),
-      ...(this.options.settings ? { settings: this.options.settings } : {}),
+    const buildSdkOptions = (): Options => {
+      const permissionOptions = buildSdkPermissionOptions({
+        permissionMode: this.options.permissionMode,
+      });
+      const recordThreadId = this.options.recordThreadId;
+      return {
+        abortController: this.abortController,
+        cwd: this.options.cwd,
+        systemPrompt: this.options.systemPrompt,
+        ...permissionOptions,
+        ...(experimental_isProviderBridgeRecording()
+          ? {
+              spawnClaudeCodeProcess: (spawnOptions: SpawnOptions) =>
+                spawnRecordedClaudeProcess({
+                  onStderr,
+                  spawnOptions,
+                  threadId: recordThreadId?.() ?? null,
+                }),
+            }
+          : {}),
+        includePartialMessages: true,
+        settingSources: ["user", "project", "local"],
+        persistSession: true,
+        env: this.options.env ?? process.env,
+        stderr: onStderr,
+        ...(this.options.mcpServers
+          ? { mcpServers: this.options.mcpServers }
+          : {}),
+        ...(this.options.allowedTools
+          ? { allowedTools: this.options.allowedTools }
+          : {}),
+        ...(this.options.disallowedTools
+          ? { disallowedTools: this.options.disallowedTools }
+          : {}),
+        ...(this.options.canUseTool
+          ? { canUseTool: this.options.canUseTool }
+          : {}),
+        ...(this.options.sandbox ? { sandbox: this.options.sandbox } : {}),
+        ...(this.options.hooks ? { hooks: this.options.hooks } : {}),
+        ...(resumeSessionId ? { resume: resumeSessionId } : {}),
+        ...(!resumeSessionId && this.options.sessionId
+          ? { sessionId: this.options.sessionId }
+          : {}),
+        ...(this.options.model ? { model: this.options.model } : {}),
+        ...(this.options.additionalDirectories
+          ? { additionalDirectories: [...this.options.additionalDirectories] }
+          : {}),
+        ...(this.options.effort ? { effort: this.options.effort } : {}),
+        ...(this.options.pathToClaudeCodeExecutable
+          ? {
+              pathToClaudeCodeExecutable:
+                this.options.pathToClaudeCodeExecutable,
+            }
+          : {}),
+        ...(this.options.plugins ? { plugins: this.options.plugins } : {}),
+        ...(this.options.thinking ? { thinking: this.options.thinking } : {}),
+        ...(this.options.settings ? { settings: this.options.settings } : {}),
+      };
     };
 
-    try {
-      this.query = query({
-        prompt: this.createInputIterable(),
-        options: sdkOptions,
-      });
-    } catch (error) {
-      throw translateMissingClaudeCliError(error);
+    let queryStarted = false;
+    const startQuery = (): Promise<void> => {
+      if (this.abortController.signal.aborted) {
+        return Promise.resolve();
+      }
+      try {
+        this.query = query({
+          prompt: this.createInputIterable(),
+          options: buildSdkOptions(),
+        });
+      } catch (error) {
+        throw translateMissingClaudeCliError(error);
+      }
+      queryStarted = true;
+      const activeQuery = this.query;
+      void this.consumeStream(activeQuery);
+      return Promise.race([
+        activeQuery.initializationResult().then(() => undefined),
+        this.completion,
+      ]);
+    };
+
+    const coordinator = this.options.credentialInitializationCoordinator;
+    if (coordinator === undefined) {
+      try {
+        this.query = query({
+          prompt: this.createInputIterable(),
+          options: buildSdkOptions(),
+        });
+      } catch (error) {
+        throw translateMissingClaudeCliError(error);
+      }
+      void this.consumeStream(this.query);
+      return;
     }
 
-    void this.consumeStream();
+    void coordinator
+      .run(this.options.env ?? process.env, startQuery)
+      .catch((error: unknown) => {
+        if (queryStarted || this.abortController.signal.aborted) {
+          return;
+        }
+        this.inputDone = true;
+        this.rejectQueuedInputs(
+          "Claude SDK session failed before input consumed",
+        );
+        this.resolveInputDone();
+        this.onDone(error);
+        this.complete?.();
+        this.complete = null;
+      });
   }
 
   pushInput(
@@ -423,10 +469,7 @@ export class SdkSession {
     }
   }
 
-  private async consumeStream(): Promise<void> {
-    const q = this.query;
-    if (!q) return;
-
+  private async consumeStream(q: Query): Promise<void> {
     try {
       for await (const message of q) {
         this.captureSessionId(message);

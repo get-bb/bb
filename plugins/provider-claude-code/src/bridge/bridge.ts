@@ -53,7 +53,14 @@ import {
   type ClaudeCodeSkillRoot,
 } from "../session-params.js";
 import { SdkSession, type SdkSessionOptions } from "./sdk-session.js";
-import { createClaudeCodeBridgeModelListMemo } from "./model-list.js";
+import {
+  createClaudeCodeBridgeModelListMemo,
+  listClaudeCodeBridgeModels,
+} from "./model-list.js";
+import {
+  createClaudeCredentialInitializationCoordinator,
+  type ClaudeCredentialInitializationCoordinator,
+} from "./credential-initialization-lock.js";
 import {
   claudeThreadForkParamsSchema,
   claudeThreadResumeParamsSchema,
@@ -348,6 +355,8 @@ function nextInteractiveRequestId(): string {
 let configuredSkillRoots: ClaudeCodeSkillRoot[] | null = null;
 let skillPluginsRoot: string | null = null;
 let bridgeTempDir: string | null = null;
+let credentialInitializationCoordinator: ClaudeCredentialInitializationCoordinator | null =
+  null;
 
 function assembleSkillPlugins(
   roots: readonly { id: string; path: string }[],
@@ -737,6 +746,11 @@ function applyDormantLiveSessionSettings(
 
 const MODEL_LIST_MEMO_TTL_MS = 2 * 60_000;
 const listModelsMemoized = createClaudeCodeBridgeModelListMemo({
+  list: () =>
+    listClaudeCodeBridgeModels(
+      process.env,
+      credentialInitializationCoordinator ?? undefined,
+    ),
   ttlMs: MODEL_LIST_MEMO_TTL_MS,
 });
 
@@ -1367,6 +1381,10 @@ function buildTrackedSessionOptions(
   );
   addPermissionEscalationTrackingHooks(sessionOptions, threadIdRef);
   sessionOptions.recordThreadId = () => threadIdRef.current;
+  if (credentialInitializationCoordinator !== null) {
+    sessionOptions.credentialInitializationCoordinator =
+      credentialInitializationCoordinator;
+  }
   return sessionOptions;
 }
 
@@ -2785,6 +2803,13 @@ export const experimental_providerBridge = experimental_defineProviderBridge({
   handleLine,
   start: (context) => {
     bridgeTempDir = context.tempDir;
+    credentialInitializationCoordinator =
+      createClaudeCredentialInitializationCoordinator({
+        lockRoot: joinPath(
+          context.dataDir,
+          "claude-credential-initialization-locks",
+        ),
+      });
   },
   onSigterm: () => {
     shutdownGracefully(

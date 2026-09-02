@@ -3,6 +3,7 @@ import { query, type Options } from "@anthropic-ai/claude-agent-sdk";
 import { buildClaudeCodeModels } from "../model-list.js";
 import { translateMissingClaudeCliError } from "./missing-cli-error.js";
 import { resolveClaudeCodeExecutable } from "./session-options.js";
+import type { ClaudeCredentialInitializationCoordinator } from "./credential-initialization-lock.js";
 
 function buildModelProbeOptions(env: NodeJS.ProcessEnv): Options {
   const pathToClaudeCodeExecutable = resolveClaudeCodeExecutable({ env });
@@ -19,28 +20,32 @@ function buildModelProbeOptions(env: NodeJS.ProcessEnv): Options {
 
 export async function listClaudeCodeBridgeModels(
   env: NodeJS.ProcessEnv = process.env,
+  coordinator?: ClaudeCredentialInitializationCoordinator,
 ): Promise<{
   models: AvailableModel[];
   selectedOnlyModels: AvailableModel[];
 }> {
-  let session: ReturnType<typeof query>;
-  try {
-    session = query({
-      prompt: ".",
-      options: buildModelProbeOptions(env),
-    });
-  } catch (error) {
-    throw translateMissingClaudeCliError(error);
-  }
+  const probe = async () => {
+    let session: ReturnType<typeof query>;
+    try {
+      session = query({
+        prompt: ".",
+        options: buildModelProbeOptions(env),
+      });
+    } catch (error) {
+      throw translateMissingClaudeCliError(error);
+    }
 
-  try {
-    const initialization = await session.initializationResult();
-    return buildClaudeCodeModels(initialization.models);
-  } catch (error) {
-    throw translateMissingClaudeCliError(error);
-  } finally {
-    session.close();
-  }
+    try {
+      const initialization = await session.initializationResult();
+      return buildClaudeCodeModels(initialization.models);
+    } catch (error) {
+      throw translateMissingClaudeCliError(error);
+    } finally {
+      session.close();
+    }
+  };
+  return coordinator === undefined ? probe() : coordinator.run(env, probe);
 }
 
 interface ClaudeCodeBridgeModelListMemoOptions {

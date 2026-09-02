@@ -8,6 +8,7 @@ import type {
 const mockQueryInstance = {
   applyFlagSettings: vi.fn(),
   close: vi.fn(),
+  initializationResult: vi.fn(),
   interrupt: vi.fn(),
   setModel: vi.fn(),
   setPermissionMode: vi.fn(),
@@ -89,6 +90,7 @@ describe("SdkSession", () => {
     mockQueryInstance.applyFlagSettings.mockResolvedValue(undefined);
     mockQueryInstance.setModel.mockResolvedValue(undefined);
     mockQueryInstance.setPermissionMode.mockResolvedValue(undefined);
+    mockQueryInstance.initializationResult.mockResolvedValue({});
     mockQueryInstance[Symbol.asyncIterator].mockReturnValue({
       next: vi.fn().mockResolvedValue({ value: undefined, done: true }),
       return: vi.fn().mockResolvedValue({ value: undefined, done: true }),
@@ -104,6 +106,56 @@ describe("SdkSession", () => {
     const onDone = vi.fn();
     const session = new SdkSession(defaultOptions, onMessage, onDone);
     expect(session.getSessionId()).toBeUndefined();
+  });
+
+  it("holds credential coordination through SDK initialization", async () => {
+    keepSdkStreamOpen();
+    let allowAcquisition: (() => void) | undefined;
+    const acquisitionAllowed = new Promise<void>((resolve) => {
+      allowAcquisition = resolve;
+    });
+    let finishInitialization: (() => void) | undefined;
+    mockQueryInstance.initializationResult.mockReturnValue(
+      new Promise<void>((resolve) => {
+        finishInitialization = resolve;
+      }),
+    );
+    let coordinationReleased = false;
+    const coordinator = {
+      async run<T>(
+        _env: NodeJS.ProcessEnv,
+        work: () => Promise<T>,
+      ): Promise<T> {
+        await acquisitionAllowed;
+        try {
+          return await work();
+        } finally {
+          coordinationReleased = true;
+        }
+      },
+    };
+    const session = new SdkSession(
+      {
+        ...defaultOptions,
+        credentialInitializationCoordinator: coordinator,
+      },
+      vi.fn(),
+      vi.fn(),
+    );
+
+    session.start();
+    await waitForAsyncWork();
+    expect(queryMock).not.toHaveBeenCalled();
+
+    allowAcquisition?.();
+    await waitForAsyncWork();
+    expect(queryMock).toHaveBeenCalledOnce();
+    expect(coordinationReleased).toBe(false);
+
+    finishInitialization?.();
+    await waitForAsyncWork();
+    expect(coordinationReleased).toBe(true);
+    session.stop();
   });
 
   it("applies model and mutable flag settings to the live query", async () => {
