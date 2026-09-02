@@ -1,36 +1,37 @@
-import { createFileRoute, notFound } from "@tanstack/react-router";
+import { createFileRoute, getRouteApi, notFound } from "@tanstack/react-router";
 
 import { unfurlMeta } from "../landing/site.js";
-import { getPublicMarketplace } from "../marketplace/marketplace-server.js";
 import {
   PublicMarketplaceAuthorPage,
   PublicMarketplaceUnavailablePage,
 } from "../marketplace/public-marketplace.js";
 import { marketplaceAuthorEntries } from "../marketplace/marketplace-view-model.js";
 
+const marketplaceRoute = getRouteApi("/marketplace_");
+
 export const Route = createFileRoute("/marketplace_/author/$github")({
-  loader: async ({ params }) => {
-    const marketplace = await getPublicMarketplace();
-    if (marketplace.status === "unavailable") return marketplace;
+  loader: async ({ params, parentMatchPromise }) => {
+    const { loaderData: marketplace } = await parentMatchPromise;
+    if (marketplace === undefined || marketplace.status === "unavailable") {
+      return null;
+    }
     const entries = marketplaceAuthorEntries(
       marketplace.manifest,
       params.github,
     );
     if (entries.length === 0) throw notFound();
-    return { ...marketplace, entries };
+    return entries;
   },
   head: ({ loaderData, params }) => {
-    const author =
-      loaderData?.status === "available"
-        ? loaderData.entries[0]?.author
-        : undefined;
+    const author = loaderData?.[0]?.author;
     const title = author
       ? `${author.name} plugins — bb Plugin Marketplace`
       : "Plugin author — bb Plugin Marketplace";
     const description = author
       ? `Find bb plugins from ${author.name}.`
       : "Find community plugins for bb.";
-    const path = `/marketplace/author/${encodeURIComponent(params.github)}`;
+    const github = author?.github ?? params.github;
+    const path = `/marketplace/author/${encodeURIComponent(github)}`;
     return {
       meta: [
         { title },
@@ -45,16 +46,18 @@ export const Route = createFileRoute("/marketplace_/author/$github")({
 });
 
 function MarketplaceAuthorRoute() {
-  const marketplace = Route.useLoaderData();
+  const marketplace = marketplaceRoute.useLoaderData();
+  const entries = Route.useLoaderData();
   const search = Route.useSearch();
   const navigate = Route.useNavigate();
   if (marketplace.status === "unavailable") {
     return <PublicMarketplaceUnavailablePage />;
   }
+  if (entries === null) return null;
   return (
     <PublicMarketplaceAuthorPage
       manifest={marketplace.manifest}
-      entries={marketplace.entries}
+      entries={entries}
       stats={marketplace.stats}
       state={{ categories: search.category, sort: search.sort }}
       onStateChange={(next) =>

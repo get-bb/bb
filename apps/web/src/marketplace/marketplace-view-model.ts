@@ -3,11 +3,11 @@ import type {
   MarketplaceV2Entry,
   MarketplaceV2Manifest,
 } from "./marketplace-v2.js";
-import { MARKETPLACE_ID_PATTERN } from "./marketplace-v2.js";
 import {
+  MARKETPLACE_ID_PATTERN,
   marketplaceEntryInstalls,
   type MarketplaceStats,
-} from "./marketplace-stats.js";
+} from "./marketplace-model.js";
 
 export const UNCATEGORIZED_CATEGORY_ID = "uncategorized";
 

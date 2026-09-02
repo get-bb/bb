@@ -4,10 +4,8 @@ import {
   MARKETPLACE_STATS_FIXTURE,
   MARKETPLACE_V2_FIXTURE,
 } from "./marketplace-v2.fixture.js";
-import {
-  marketplaceEntryInstalls,
-  parseMarketplaceStats,
-} from "./marketplace-stats.js";
+import { marketplaceEntryInstalls } from "./marketplace-model.js";
+import { parseMarketplaceStats } from "./marketplace-stats.js";
 
 describe("marketplace install stats", () => {
   it("reads install counts only from the stats sidecar", () => {

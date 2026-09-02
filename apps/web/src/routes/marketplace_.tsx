@@ -2,6 +2,7 @@ import interWoff2 from "@fontsource-variable/inter/files/inter-latin-wght-normal
 import {
   createFileRoute,
   Outlet,
+  useRouter,
   useRouterState,
 } from "@tanstack/react-router";
 import type { ComponentProps } from "react";
@@ -14,6 +15,7 @@ import {
   PublicMarketplaceNotFoundPage,
   PublicMarketplacePage,
   PublicMarketplaceUnavailablePage,
+  MarketplaceNavigationProvider,
 } from "../marketplace/public-marketplace.js";
 import {
   isMarketplaceSort,
@@ -83,20 +85,27 @@ function MarketplaceRoute() {
   const marketplace = Route.useLoaderData();
   const search = Route.useSearch();
   const navigate = Route.useNavigate();
-  if (path !== "/marketplace" && path !== "/marketplace/") return <Outlet />;
-  if (marketplace.status === "unavailable") {
-    return <PublicMarketplaceUnavailablePage />;
-  }
+  const router = useRouter();
   return (
-    <PublicMarketplacePage
-      manifest={marketplace.manifest}
-      stats={marketplace.stats}
-      state={{ categories: search.category, sort: search.sort }}
-      onStateChange={(next) =>
-        void navigate({
-          search: { category: next.categories, sort: next.sort },
-        })
-      }
-    />
+    <MarketplaceNavigationProvider
+      navigate={(href) => void router.navigate({ href })}
+    >
+      {path !== "/marketplace" && path !== "/marketplace/" ? (
+        <Outlet />
+      ) : marketplace.status === "unavailable" ? (
+        <PublicMarketplaceUnavailablePage />
+      ) : (
+        <PublicMarketplacePage
+          manifest={marketplace.manifest}
+          stats={marketplace.stats}
+          state={{ categories: search.category, sort: search.sort }}
+          onStateChange={(next) =>
+            void navigate({
+              search: { category: next.categories, sort: next.sort },
+            })
+          }
+        />
+      )}
+    </MarketplaceNavigationProvider>
   );
 }

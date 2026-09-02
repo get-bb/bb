@@ -1,24 +1,27 @@
-import { createFileRoute, notFound } from "@tanstack/react-router";
+import { createFileRoute, getRouteApi, notFound } from "@tanstack/react-router";
 
 import { unfurlMeta } from "../landing/site.js";
-import { getPublicMarketplace } from "../marketplace/marketplace-server.js";
 import {
   PublicMarketplaceDetailPage,
   PublicMarketplaceUnavailablePage,
 } from "../marketplace/public-marketplace.js";
 
+const marketplaceRoute = getRouteApi("/marketplace_");
+
 export const Route = createFileRoute("/marketplace_/$pluginId")({
-  loader: async ({ params }) => {
-    const marketplace = await getPublicMarketplace();
-    if (marketplace.status === "unavailable") return marketplace;
+  loader: async ({ params, parentMatchPromise }) => {
+    const { loaderData: marketplace } = await parentMatchPromise;
+    if (marketplace === undefined || marketplace.status === "unavailable") {
+      return null;
+    }
     const entry = marketplace.manifest.plugins.find(
       (candidate) => candidate.id === params.pluginId,
     );
     if (entry === undefined) throw notFound();
-    return { ...marketplace, entry };
+    return entry;
   },
   head: ({ loaderData, params }) => {
-    const entry = loaderData?.status === "available" ? loaderData.entry : null;
+    const entry = loaderData;
     const title = entry
       ? `${entry.displayName} — bb Plugin Marketplace`
       : "Plugin Marketplace — bb";
@@ -38,14 +41,16 @@ export const Route = createFileRoute("/marketplace_/$pluginId")({
 });
 
 function MarketplaceDetailRoute() {
-  const marketplace = Route.useLoaderData();
+  const marketplace = marketplaceRoute.useLoaderData();
+  const entry = Route.useLoaderData();
   if (marketplace.status === "unavailable") {
     return <PublicMarketplaceUnavailablePage />;
   }
+  if (entry === null) return null;
   return (
     <PublicMarketplaceDetailPage
       manifest={marketplace.manifest}
-      entry={marketplace.entry}
+      entry={entry}
       stats={marketplace.stats}
     />
   );

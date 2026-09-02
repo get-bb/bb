@@ -35,19 +35,25 @@ import {
   ZoomInAreaIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react";
-import { useEffect, useState } from "react";
+import {
+  createContext,
+  type ReactNode,
+  useContext,
+  useEffect,
+  useState,
+} from "react";
 
 import { initAnalytics, trackLandingEvent } from "../landing/analytics.js";
 import { SiteFooter, SiteNav } from "../landing/site-chrome.js";
 import { copyPlainText } from "../lib/copy-plain-text.js";
+import {
+  marketplaceEntryInstalls,
+  type MarketplaceStats,
+} from "./marketplace-model.js";
 import type {
   MarketplaceV2Entry,
   MarketplaceV2Manifest,
 } from "./marketplace-v2.js";
-import {
-  marketplaceEntryInstalls,
-  type MarketplaceStats,
-} from "./marketplace-stats.js";
 import {
   filterMarketplaceCategories,
   filterMarketplaceEntries,
@@ -102,6 +108,58 @@ const PLUGIN_ICONS: Readonly<Record<string, IconSvgElement | undefined>> = {
   Zap: ZapIcon,
   ZoomIn: ZoomInAreaIcon,
 };
+
+const MarketplaceNavigationContext = createContext<
+  ((href: string) => void) | undefined
+>(undefined);
+
+export function MarketplaceNavigationProvider({
+  navigate,
+  children,
+}: {
+  navigate: (href: string) => void;
+  children: ReactNode;
+}) {
+  return (
+    <MarketplaceNavigationContext.Provider value={navigate}>
+      {children}
+    </MarketplaceNavigationContext.Provider>
+  );
+}
+
+function MarketplaceLink({
+  href,
+  className,
+  children,
+}: {
+  href: string;
+  className?: string;
+  children: ReactNode;
+}) {
+  const navigate = useContext(MarketplaceNavigationContext);
+  return (
+    <a
+      className={className}
+      href={href}
+      onClick={(event) => {
+        if (
+          navigate === undefined ||
+          event.button !== 0 ||
+          event.metaKey ||
+          event.ctrlKey ||
+          event.shiftKey ||
+          event.altKey
+        ) {
+          return;
+        }
+        event.preventDefault();
+        navigate(href);
+      }}
+    >
+      {children}
+    </a>
+  );
+}
 
 function PluginArtwork({
   entry,
@@ -170,7 +228,7 @@ function PluginCard({
 }) {
   return (
     <article className="marketplace-card">
-      <a
+      <MarketplaceLink
         className="marketplace-card-link"
         href={marketplaceDetailPath(entry.id)}
       >
@@ -194,7 +252,7 @@ function PluginCard({
             <InstallCount entry={entry} stats={stats} />
           </span>
         </span>
-      </a>
+      </MarketplaceLink>
     </article>
   );
 }
@@ -316,7 +374,9 @@ export function PublicMarketplaceNotFoundPage() {
           description="The plugin or author does not exist."
         />
         <p className="marketplace-not-found-link">
-          <a href="/marketplace">Return to the Marketplace</a>
+          <MarketplaceLink href="/marketplace">
+            Return to the Marketplace
+          </MarketplaceLink>
         </p>
       </main>
       <SiteFooter />
@@ -601,9 +661,12 @@ function InstallCommand({ entry }: { entry: MarketplaceV2Entry }) {
               : "Copy"}
         </button>
       </div>
-      <a className="btn btn-ghost marketplace-get-bb" href="/download/macos">
+      <MarketplaceLink
+        className="btn btn-ghost marketplace-get-bb"
+        href="/download/macos"
+      >
         Get bb
-      </a>
+      </MarketplaceLink>
     </div>
   );
 }
@@ -624,14 +687,17 @@ function MoreFromAuthor({
       <h2>More from {entry.author.name}</h2>
       <div className="marketplace-author-teasers">
         {entries.map((candidate) => (
-          <a key={candidate.id} href={marketplaceDetailPath(candidate.id)}>
+          <MarketplaceLink
+            key={candidate.id}
+            href={marketplaceDetailPath(candidate.id)}
+          >
             <PluginArtwork entry={candidate} />
             <span>
               <strong>{candidate.displayName}</strong>
               <small>{candidate.description}</small>
             </span>
             <InstallCount entry={candidate} stats={stats} />
-          </a>
+          </MarketplaceLink>
         ))}
       </div>
     </section>
@@ -666,9 +732,9 @@ export function PublicMarketplaceDetailPage({
     <div className="wrap plugin-pages-wrap">
       <SiteNav current="plugins" />
       <main className="marketplace-detail-main">
-        <a className="marketplace-back-link" href="/marketplace">
+        <MarketplaceLink className="marketplace-back-link" href="/marketplace">
           Marketplace
-        </a>
+        </MarketplaceLink>
         <div className="marketplace-detail-layout">
           <article className="marketplace-detail-content">
             <header className="marketplace-detail-head">
@@ -681,10 +747,10 @@ export function PublicMarketplaceDetailPage({
                   {authorPath === undefined ? (
                     entry.author.name
                   ) : (
-                    <a href={authorPath}>
+                    <MarketplaceLink href={authorPath}>
                       {entry.author.name}
                       <HugeiconsIcon icon={GithubIcon} aria-hidden />
-                    </a>
+                    </MarketplaceLink>
                   )}
                 </p>
               </div>
@@ -768,12 +834,12 @@ export function PublicMarketplaceAuthorPage({
     <div className="wrap plugin-pages-wrap">
       <SiteNav current="plugins" />
       <main className="marketplace-main">
-        <a
+        <MarketplaceLink
           className="marketplace-back-link marketplace-author-back"
           href="/marketplace"
         >
           Marketplace
-        </a>
+        </MarketplaceLink>
         <header className="plugin-page-head marketplace-author-head">
           <span>Plugin author</span>
           <h1>{author.name}</h1>

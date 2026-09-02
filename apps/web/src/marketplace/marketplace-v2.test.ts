@@ -70,4 +70,41 @@ describe("parseMarketplaceV2Manifest", () => {
       }),
     ).toThrow(/category/u);
   });
+
+  it("rejects unsafe subdirectories and duplicate collection members", () => {
+    const entry = MARKETPLACE_V2_FIXTURE.plugins[1];
+    const collection = MARKETPLACE_V2_FIXTURE.collections[0];
+    if (
+      entry === undefined ||
+      !("git" in entry.source) ||
+      collection === undefined
+    ) {
+      throw new Error("The fixture needs a Git plugin and a collection");
+    }
+    const git = entry.source.git;
+    for (const subdir of ["../outside", ".git/hooks", "plugins/../outside"]) {
+      expect(() =>
+        parseMarketplaceV2Manifest({
+          ...MARKETPLACE_V2_FIXTURE,
+          plugins: [
+            {
+              ...entry,
+              source: { git: { ...git, subdir } },
+            },
+          ],
+        }),
+      ).toThrow(/subdir/u);
+    }
+    expect(() =>
+      parseMarketplaceV2Manifest({
+        ...MARKETPLACE_V2_FIXTURE,
+        collections: [
+          {
+            ...collection,
+            pluginIds: ["prompt-library", "prompt-library"],
+          },
+        ],
+      }),
+    ).toThrow(/duplicate plugin id/u);
+  });
 });

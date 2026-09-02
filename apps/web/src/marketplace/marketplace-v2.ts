@@ -1,14 +1,17 @@
 import { z } from "zod";
 
+import { MARKETPLACE_ID_PATTERN } from "./marketplace-model.js";
+
 export const MARKETPLACE_V2_SCHEMA_URL =
   "https://getbb.app/schemas/marketplace-v2.schema.json";
-export const MARKETPLACE_ID_PATTERN = /^[a-z0-9][a-z0-9-]*$/u;
 
 const TAG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/u;
 const HOST_ICON_PATTERN = /^[A-Za-z][A-Za-z0-9]*$/u;
 const GITHUB_LOGIN_PATTERN = /^[A-Za-z0-9](?:-?[A-Za-z0-9]){0,38}$/u;
 const NPM_PACKAGE_PATTERN =
   /^(?:@[a-z0-9][a-z0-9._~-]*\/)?[a-z0-9][a-z0-9._~-]*$/u;
+const GIT_SUBDIR_PATTERN =
+  /^(?![A-Za-z]:)(?!\/)(?!(?:[^/]+\/)*(?:\.|\.\.|\.git)(?:\/|$))[^/\\]+(?:\/[^/\\]+)*$/u;
 const HTTPS_URL_PATTERN = /^https:\/\//iu;
 const ASSET_BASE_URL = "https://getbb.app/marketplace/v2/marketplace.json";
 
@@ -49,7 +52,7 @@ const marketplaceGitSourceSchema = z.union([
   z.object({
     git: z.object({
       url: httpsUrlSchema,
-      subdir: z.string().min(1).optional(),
+      subdir: z.string().regex(GIT_SUBDIR_PATTERN).optional(),
       range: z.string().min(1),
       tagPrefix: z.string().min(1).max(128).optional(),
     }),
@@ -57,7 +60,7 @@ const marketplaceGitSourceSchema = z.union([
   z.object({
     git: z.object({
       url: httpsUrlSchema,
-      subdir: z.string().min(1).optional(),
+      subdir: z.string().regex(GIT_SUBDIR_PATTERN).optional(),
       ref: z.string().min(1),
     }),
   }),
@@ -100,7 +103,21 @@ const marketplaceCategorySchema = z.object({
 const marketplaceCollectionSchema = z.object({
   id: z.string().regex(MARKETPLACE_ID_PATTERN),
   displayName: z.string().min(1),
-  pluginIds: z.array(z.string().regex(MARKETPLACE_ID_PATTERN)),
+  pluginIds: z
+    .array(z.string().regex(MARKETPLACE_ID_PATTERN))
+    .superRefine((pluginIds, context) => {
+      const seen = new Set<string>();
+      pluginIds.forEach((pluginId, index) => {
+        if (seen.has(pluginId)) {
+          context.addIssue({
+            code: "custom",
+            path: [index],
+            message: `duplicate plugin id ${JSON.stringify(pluginId)}`,
+          });
+        }
+        seen.add(pluginId);
+      });
+    }),
 });
 
 function reportDuplicateIds(
