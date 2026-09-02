@@ -2,8 +2,11 @@ import { listEvents, listQueuedThreadMessages } from "@bb/db";
 import { queuedMessageWaitingOnSchema } from "@bb/domain";
 import { sendMessageResponseSchema } from "@bb/server-contract";
 import { describe, expect, it } from "vitest";
+import { applyLoggedThreadLifecycleEvent } from "../../src/services/threads/lifecycle-outcome.js";
+import { runQueuedMessageDispatch } from "../../src/services/threads/queued-message-dispatch.js";
 import { onDaemonSocketOpen } from "../../src/ws/daemon-protocol.js";
 import {
+  listQueuedThreadCommands,
   registerTestHostRpcCapture,
   waitForQueuedCommand,
 } from "../helpers/commands.js";
@@ -15,11 +18,23 @@ import {
   seedSession,
   seedThread,
   seedThreadRuntimeState,
+  seedTurnStarted,
 } from "../helpers/seed.js";
 import { withTestHarness } from "../helpers/test-app.js";
 
 describe("offline host follow-ups", () => {
-  it("queues a follow-up to an existing idle thread until its host reconnects", async () => {
+  it.each([
+    {
+      mode: "steer-if-active",
+      status: "idle",
+      waitingOn: { kind: "host-offline", hostName: "M5" },
+    },
+    {
+      mode: "queue-if-active",
+      status: "active",
+      waitingOn: { kind: "thread-busy" },
+    },
+  ] as const)("queues an offline $status follow-up", async (testCase) => {
     await withTestHarness(async (harness) => {
       const host = seedHost(harness.deps, {
         id: "host-offline-followup",
@@ -37,13 +52,21 @@ describe("offline host follow-ups", () => {
       const thread = seedThread(harness.deps, {
         projectId: project.id,
         environmentId: environment.id,
-        status: "idle",
+        status: testCase.status,
       });
       seedThreadRuntimeState(harness.deps, {
         threadId: thread.id,
         environmentId: environment.id,
         providerThreadId: "provider-offline-followup",
       });
+      if (testCase.status === "active") {
+        seedTurnStarted(harness.deps, {
+          environmentId: environment.id,
+          providerThreadId: "provider-offline-followup",
+          threadId: thread.id,
+          turnId: "turn-current",
+        });
+      }
       const input = [
         {
           type: "text" as const,
@@ -62,7 +85,7 @@ describe("offline host follow-ups", () => {
           headers: { "content-type": "application/json" },
           body: JSON.stringify({
             input,
-            mode: "steer-if-active",
+            mode: testCase.mode,
             model: "gpt-5",
             permissionMode: "full",
             reasoningLevel: "medium",
@@ -75,7 +98,6 @@ describe("offline host follow-ups", () => {
       const body = sendMessageResponseSchema.parse(await readJson(response));
       expect(body).toMatchObject({
         delivery: "queued",
-        waitingOn: { kind: "host-offline", hostName: "M5" },
         sendAt: null,
       });
       if (body.delivery !== "queued") {
@@ -89,9 +111,6 @@ describe("offline host follow-ups", () => {
         sendAt: null,
         failureReason: null,
       });
-      expect(
-        queuedMessageWaitingOnSchema.parse(JSON.parse(queued[0]!.waitingOn!)),
-      ).toEqual({ kind: "host-offline", hostName: "M5" });
       expect(listEvents(harness.db, { threadId: thread.id })).toHaveLength(
         eventCountBeforeSend,
       );
@@ -106,6 +125,28 @@ describe("offline host follow-ups", () => {
         sessionId: reconnectSession.id,
         socket: reconnectSocket,
       });
+
+      if (testCase.status === "active") {
+        await new Promise<void>((resolve) => setImmediate(resolve));
+        expect(
+          listQueuedThreadCommands(harness, "turn.submit", thread.id),
+        ).toEqual([]);
+      }
+      expect(body).toMatchObject({ waitingOn: testCase.waitingOn });
+      expect(
+        queuedMessageWaitingOnSchema.parse(JSON.parse(queued[0]!.waitingOn!)),
+      ).toEqual(testCase.waitingOn);
+
+      if (testCase.status === "active") {
+        applyLoggedThreadLifecycleEvent(harness.deps, {
+          event: { type: "run.succeeded" },
+          threadId: thread.id,
+        });
+        await runQueuedMessageDispatch(harness.deps, {
+          kind: "thread-ready",
+          threadId: thread.id,
+        });
+      }
 
       const dispatched = await waitForQueuedCommand(
         harness,

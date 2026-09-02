@@ -321,16 +321,6 @@ async function runDispatchAttempt(
     return waitOn({ kind: "time" }, sendAt);
   }
 
-  const { environment: dispatchEnvironment, host: dispatchHost } =
-    dispatchEnvironmentAndHost(deps, thread.environmentId);
-  if (
-    dispatchEnvironment !== null &&
-    goneThreadEnvironmentDetails(dispatchEnvironment) === null &&
-    dispatchHost?.status === "disconnected"
-  ) {
-    return waitOn({ kind: "host-offline", hostName: dispatchHost.name }, null);
-  }
-
   if (thread.status === "active" && attempt === "start-turn") {
     if (payload.mode === "start") {
       // `start` asks for a FRESH turn specifically, so a running one is a
@@ -343,6 +333,17 @@ async function runDispatchAttempt(
     }
     return waitOn({ kind: "thread-busy" }, null);
   }
+
+  const { environment: dispatchEnvironment, host: dispatchHost } =
+    dispatchEnvironmentAndHost(deps, thread.environmentId);
+  if (
+    dispatchEnvironment !== null &&
+    goneThreadEnvironmentDetails(dispatchEnvironment) === null &&
+    dispatchHost?.status === "disconnected"
+  ) {
+    return waitOn({ kind: "host-offline", hostName: dispatchHost.name }, null);
+  }
+
   if (payload.mode !== "start" && isManualCompactionActive(deps, thread)) {
     return waitOn({ kind: "thread-busy" }, null);
   }
