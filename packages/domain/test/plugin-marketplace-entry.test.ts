@@ -139,7 +139,7 @@ describe("marketplace entry schemas", () => {
         }).success,
       ).toBe(false);
     }
-    for (const range of ["1.2+build", ">=1.2.3-alpha"]) {
+    for (const range of ["1.2+build", ">=1.2.3-alpha", "==1", "==1.2"]) {
       expect(
         marketplaceEntryV2Schema.safeParse({
           ...entry(),
@@ -147,6 +147,45 @@ describe("marketplace entry schemas", () => {
         }).success,
       ).toBe(true);
     }
+  });
+
+  it("rejects a hostile semver range before expression evaluation", () => {
+    const startedAt = performance.now();
+    const result = marketplaceEntryV2Schema.safeParse({
+      ...entry(),
+      source: {
+        npm: { package: "author-tools", range: `${" ".repeat(20_000)}!` },
+      },
+    });
+
+    expect(result.success).toBe(false);
+    expect(performance.now() - startedAt).toBeLessThan(100);
+  });
+
+  it("accepts uppercase https schemes in v2 URL fields", () => {
+    expect(
+      marketplaceEntryV2Schema.safeParse({
+        ...entry(),
+        author: { name: "Author", url: "HTTPS://example.com/author" },
+        source: {
+          npm: {
+            package: "author-tools",
+            registry: "HTTPS://registry.example.com/",
+          },
+        },
+      }).success,
+    ).toBe(true);
+    expect(
+      marketplaceEntryV2Schema.safeParse({
+        ...entry(),
+        source: {
+          git: {
+            url: "HTTPS://github.com/author/author-tools.git",
+            ref: "v1.0.0",
+          },
+        },
+      }).success,
+    ).toBe(true);
   });
 
   it("rejects conflicting known source fields", () => {

@@ -2,11 +2,12 @@ import { z } from "zod";
 import { pluginCatalogCategoryIdSchema } from "./plugin-catalog-category.js";
 
 const MARKETPLACE_MAX_SCREENSHOTS = 6;
+const MARKETPLACE_MAX_SEMVER_RANGE_LENGTH = 256;
 const NAME_PATTERN = /^[a-z0-9][a-z0-9-]*$/u;
 const TAG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/u;
 const GITHUB_LOGIN_PATTERN = /^[A-Za-z0-9](?:-?[A-Za-z0-9]){0,38}$/u;
 const HOST_ICON_PATTERN = /^[A-Za-z][A-Za-z0-9]*$/u;
-const HTTPS_URL_PATTERN = /^https:\/\//u;
+const HTTPS_URL_PATTERN = /^[Hh][Tt][Tt][Pp][Ss]:\/\//u;
 const ICON_URL_PATTERN =
   /^(?:(?![A-Za-z][A-Za-z0-9+.-]*:)|(?=[Hh][Tt][Tt][Pp][Ss]:))[^\s]*\.(?:[Ss][Vv][Gg]|[Pp][Nn][Gg]|[Ww][Ee][Bb][Pp])(?:[?#][^\s]*)?$/u;
 const V2_ICON_URL_PATTERN =
@@ -43,10 +44,10 @@ const SEMVER_NUMBER = String.raw`(?:0|[1-9]\d*|[xX*])`;
 const SEMVER_PRERELEASE = String.raw`(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?`;
 const SEMVER_BUILD = String.raw`(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?`;
 const SEMVER_VERSION = String.raw`v?${SEMVER_NUMBER}(?:\.${SEMVER_NUMBER}(?:\.${SEMVER_NUMBER})?)?${SEMVER_PRERELEASE}${SEMVER_BUILD}`;
-const SEMVER_COMPARATOR = String.raw`(?:[<>]=?|=|~>?|\^)?\s*${SEMVER_VERSION}`;
+const SEMVER_COMPARATOR = String.raw`(?:[<>]=?|==?|~>?|\^)?\s*${SEMVER_VERSION}`;
 const SEMVER_SET = String.raw`(?:\*|${SEMVER_VERSION}\s+-\s+${SEMVER_VERSION}|${SEMVER_COMPARATOR}(?:\s+${SEMVER_COMPARATOR})*|)`;
 
-export const MARKETPLACE_SEMVER_RANGE_PATTERN = new RegExp(
+const MARKETPLACE_SEMVER_RANGE_PATTERN = new RegExp(
   String.raw`^\s*${SEMVER_SET}(?:\s*\|\|\s*${SEMVER_SET})*\s*$`,
   "u",
 );
@@ -60,10 +61,16 @@ const semverRangeSchema = z
   .string()
   .min(1)
   .regex(MARKETPLACE_SEMVER_RANGE_PATTERN);
-const semverRangeV2Schema = semverRangeSchema.refine(
-  (value) => !INVALID_PARTIAL_PRERELEASE_PATTERN.test(value),
-  "prerelease ranges require three numeric version parts",
-);
+const semverRangeV2Schema = z
+  .string()
+  .min(1)
+  .refine(
+    (value) =>
+      value.length <= MARKETPLACE_MAX_SEMVER_RANGE_LENGTH &&
+      MARKETPLACE_SEMVER_RANGE_PATTERN.test(value) &&
+      !INVALID_PARTIAL_PRERELEASE_PATTERN.test(value),
+    "must be a valid semver range with complete prerelease versions",
+  );
 const httpsUrlSchema = z.string().regex(HTTPS_URL_PATTERN);
 const validHttpsUrlSchema = httpsUrlSchema.refine((value) => {
   try {

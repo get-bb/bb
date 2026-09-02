@@ -299,6 +299,38 @@ const v2Fixtures: readonly Fixture[] = [
     }),
   },
   {
+    label: "double equals partial range",
+    valid: true,
+    manifest: manifestV2With({
+      source: { npm: { package: "bb-plugin-acme", range: "==1.2" } },
+    }),
+  },
+  {
+    label: "range over the v2 length limit",
+    valid: false,
+    manifest: manifestV2With({
+      source: {
+        npm: {
+          package: "bb-plugin-acme",
+          range: ">=1.0.0 ".repeat(33).trim(),
+        },
+      },
+    }),
+  },
+  {
+    label: "uppercase https URL fields",
+    valid: true,
+    manifest: manifestV2With({
+      author: { name: "Acme", url: "HTTPS://example.com/acme" },
+      source: {
+        npm: {
+          package: "bb-plugin-acme",
+          registry: "HTTPS://registry.example.com/",
+        },
+      },
+    }),
+  },
+  {
     label: "malformed author URL",
     valid: false,
     manifest: manifestV2With({

@@ -378,21 +378,17 @@ export function curatedMarketplaceManifestUrls(configuredUrl: string): {
   fallback: string | null;
 } {
   const url = new URL(configuredUrl);
-  if (url.pathname.endsWith("/marketplace/v1/marketplace.json")) {
-    const primary = new URL(url);
-    primary.pathname = primary.pathname.replace(
-      /\/marketplace\/v1\/marketplace\.json$/u,
-      "/marketplace/v2/marketplace.json",
-    );
-    return { primary: primary.toString(), fallback: url.toString() };
+  if (url.toString() === CURATED_MARKETPLACE_V1_URL) {
+    return {
+      primary: CURATED_MARKETPLACE_V2_URL,
+      fallback: CURATED_MARKETPLACE_V1_URL,
+    };
   }
-  if (url.pathname.endsWith("/marketplace/v2/marketplace.json")) {
-    const fallback = new URL(url);
-    fallback.pathname = fallback.pathname.replace(
-      /\/marketplace\/v2\/marketplace\.json$/u,
-      "/marketplace/v1/marketplace.json",
-    );
-    return { primary: url.toString(), fallback: fallback.toString() };
+  if (url.toString() === CURATED_MARKETPLACE_V2_URL) {
+    return {
+      primary: CURATED_MARKETPLACE_V2_URL,
+      fallback: CURATED_MARKETPLACE_V1_URL,
+    };
   }
   return { primary: url.toString(), fallback: null };
 }

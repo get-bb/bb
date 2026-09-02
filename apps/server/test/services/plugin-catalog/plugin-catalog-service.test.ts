@@ -14,6 +14,10 @@ import { ROOT_PLUGIN_SOURCE_SELECTION } from "@bb/server-contract";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createPluginCatalogService } from "../../../src/services/plugin-catalog/plugin-catalog-service.js";
 import type { MarketplaceFetch } from "../../../src/services/plugin-catalog/marketplace-http.js";
+import {
+  CURATED_MARKETPLACE_V1_URL,
+  CURATED_MARKETPLACE_V2_URL,
+} from "../../../src/services/plugin-catalog/marketplace-manifest.js";
 import { BUNDLED_CURATED_MARKETPLACE } from "../../../src/services/plugin-catalog/curated-marketplace.js";
 import {
   BUILTIN_PLUGINS,
@@ -26,10 +30,10 @@ import {
 const MANIFEST_URL = "https://marketplace.test/marketplace.json";
 const ICON_URL = "https://marketplace.test/icons/widgets.svg";
 const STATS_URL = "https://marketplace.test/stats.json";
-const V1_MANIFEST_URL =
+const V1_MANIFEST_URL = CURATED_MARKETPLACE_V1_URL;
+const V2_MANIFEST_URL = CURATED_MARKETPLACE_V2_URL;
+const CUSTOM_V1_MANIFEST_URL =
   "https://marketplace.test/marketplace/v1/marketplace.json";
-const V2_MANIFEST_URL =
-  "https://marketplace.test/marketplace/v2/marketplace.json";
 const SEED_ENTRY_COUNT = BUNDLED_CURATED_MARKETPLACE.plugins.length;
 
 const VALID_SVG = Buffer.from(
@@ -388,6 +392,22 @@ describe("plugin catalog service", () => {
 
       await expect(catalog.refresh(1_000)).rejects.toThrow("HTTP 500");
       expect(requests).toEqual([V2_MANIFEST_URL]);
+    });
+
+    it("requests a custom configured v1 URL without a v2 rewrite", async () => {
+      const requests: string[] = [];
+      const catalog = service({
+        marketplaceUrl: CUSTOM_V1_MANIFEST_URL,
+        fetch: async (url) => {
+          requests.push(url);
+          return jsonResponse(manifest([remoteEntry({ icon: "Zap" })]));
+        },
+      });
+
+      await catalog.refresh(1_000);
+      expect(requests[0]).toBe(CUSTOM_V1_MANIFEST_URL);
+      expect(requests).toHaveLength(2);
+      expect(await catalog.search("widgets")).toHaveLength(1);
     });
 
     it("projects v2 categories, screenshots, dates, and collections", async () => {
