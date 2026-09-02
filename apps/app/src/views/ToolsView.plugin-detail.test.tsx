@@ -8,13 +8,14 @@ import {
   waitFor,
   within,
 } from "@testing-library/react";
-import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   EMPTY_PLUGIN_UPDATE_STATE,
   type PluginListItem,
 } from "@/hooks/queries/plugin-settings-queries";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
+import { TooltipProvider } from "@bb/shared-ui/tooltip";
 import {
   resetPluginSlotStoreForTest,
   setPluginSlotRegistrations,
@@ -71,6 +72,8 @@ const GITHUB_CATALOG_ENTRY = {
   iconUrl: null,
   iconTinted: false,
   category: "Developer tools",
+  screenshots: [],
+  collections: [],
   source: "builtin:github",
   repositoryUrl: null,
   marketplaceDisplayName: "BB Official",
@@ -83,6 +86,22 @@ const GITHUB_CATALOG_ENTRY = {
   compatible: true,
   incompatibleReason: null,
 } satisfies PluginCatalogSearchEntry;
+
+function RoutedToolsView() {
+  const location = useLocation();
+  const prefix = "/extensions/plugins/";
+  const pluginId = location.pathname.startsWith(prefix)
+    ? decodeURIComponent(location.pathname.slice(prefix.length))
+    : undefined;
+  return (
+    <>
+      <TooltipProvider>
+        <ToolsView pluginId={pluginId} />
+      </TooltipProvider>
+      <output data-testid="route-path">{location.pathname}</output>
+    </>
+  );
+}
 
 afterEach(() => {
   cleanup();
@@ -126,10 +145,34 @@ describe("PluginDetail official catalog lifecycle", () => {
     );
 
     const link = screen.getByRole("link", {
-      name: "github.com/acme/bb-github",
+      name: /github\.com\/acme\/bb-github/u,
     });
     expect(link.getAttribute("href")).toBe("https://github.com/acme/bb-github");
     expect(link.getAttribute("target")).toBe("_blank");
+  });
+
+  it("loads remote screenshots only in detail and shows the listed date", () => {
+    const { container } = render(
+      <CatalogPluginDetail
+        entry={{
+          ...GITHUB_CATALOG_ENTRY,
+          screenshots: ["https://images.example/plugin.png"],
+          publishedAt: "2026-08-20T00:00:00Z",
+        }}
+        onInstall={() => undefined}
+      />,
+    );
+
+    const screenshot = screen.getByRole("img", {
+      name: "GitHub screenshot 1",
+    });
+    expect(screenshot.getAttribute("src")).toBe(
+      "https://images.example/plugin.png",
+    );
+    expect(screenshot.getAttribute("referrerpolicy")).toBe("no-referrer");
+    expect(screenshot.getAttribute("loading")).toBe("lazy");
+    expect(screen.getByText("Listed")).toBeTruthy();
+    expect(container.textContent).not.toContain("Last updated");
   });
 
   it("explains why an incompatible official plugin cannot be installed", () => {
@@ -205,12 +248,14 @@ describe("PluginDetail official catalog lifecycle", () => {
             onEdit={() => {}}
             onOpenSource={() => {}}
             onDelete={onDelete}
+            catalogEntry={GITHUB_CATALOG_ENTRY}
           />
         </QueryClientWrapper>
       </MemoryRouter>,
     );
 
-    expect(screen.getByText("BB Official")).toBeTruthy();
+    expect(screen.getAllByText("BB Official").length).toBeGreaterThan(0);
+    expect(screen.getByText("Developer tools")).toBeTruthy();
     expect(
       screen.queryByRole("button", { name: "Uninstall GitHub" }),
     ).toBeNull();
@@ -513,9 +558,12 @@ describe("BB Official plugin detail routing", () => {
             headers: { "content-type": "application/json" },
           });
         }
-        if (url === "/api/v1/plugin-catalog/search?q=github") {
+        if (url === "/api/v1/plugin-catalog/search?q=") {
           return new Response(
-            JSON.stringify({ results: [GITHUB_CATALOG_ENTRY] }),
+            JSON.stringify({
+              results: [GITHUB_CATALOG_ENTRY],
+              collections: [],
+            }),
             { headers: { "content-type": "application/json" } },
           );
         }
@@ -532,7 +580,11 @@ describe("BB Official plugin detail routing", () => {
         <Routes>
           <Route
             path="/extensions/plugins/:pluginId"
-            element={<ToolsView pluginId="github" />}
+            element={
+              <TooltipProvider>
+                <ToolsView pluginId="github" />
+              </TooltipProvider>
+            }
           />
         </Routes>
       </MemoryRouter>,
@@ -540,11 +592,74 @@ describe("BB Official plugin detail routing", () => {
     );
 
     expect(await screen.findByRole("heading", { name: "GitHub" })).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Install GitHub" }));
+    fireEvent.click(
+      screen.getAllByRole("button", { name: "Install GitHub" }).at(-1)!,
+    );
     expect(
       await screen.findByRole("heading", { name: "Install GitHub?" }),
     ).toBeTruthy();
     expect(screen.getByTestId("full-trust-warning")).toBeTruthy();
+  });
+
+  it("opens one detail tab beside Browse and restores card focus", async () => {
+    const catalogEntry = {
+      ...GITHUB_CATALOG_ENTRY,
+      categoryId: "code-and-reviews",
+      category: "Code & Reviews",
+      author: { name: "BB", url: "https://github.com/get-bb" },
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url === "/api/v1/plugins") {
+          return new Response(JSON.stringify({ enabled: true, plugins: [] }), {
+            headers: { "content-type": "application/json" },
+          });
+        }
+        if (url.startsWith("/api/v1/plugin-catalog/search")) {
+          return new Response(
+            JSON.stringify({ results: [catalogEntry], collections: [] }),
+            { headers: { "content-type": "application/json" } },
+          );
+        }
+        return new Response(JSON.stringify({ error: "not found" }), {
+          status: 404,
+          headers: { "content-type": "application/json" },
+        });
+      }),
+    );
+
+    const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
+    render(
+      <MemoryRouter initialEntries={["/extensions/plugins"]}>
+        <Routes>
+          <Route path="/extensions/plugins/*" element={<RoutedToolsView />} />
+        </Routes>
+      </MemoryRouter>,
+      { wrapper: QueryClientWrapper },
+    );
+
+    const card = await screen.findByRole("button", {
+      name: "Open GitHub details",
+    });
+    card.focus();
+    fireEvent.click(card);
+    expect(
+      await screen.findByRole("button", { name: "Close GitHub" }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("textbox", { name: "Search plugins" }),
+    ).toBeTruthy();
+    expect(screen.getAllByRole("button", { name: /^Close /u })).toHaveLength(1);
+
+    fireEvent.click(screen.getByRole("button", { name: "Close GitHub" }));
+    await waitFor(() => {
+      expect(screen.getByTestId("route-path").textContent).toBe(
+        "/extensions/plugins",
+      );
+      expect(document.activeElement).toBe(card);
+    });
   });
 });
 
@@ -599,7 +714,11 @@ describe("plugin removal confirmation", () => {
         <Routes>
           <Route
             path="/extensions/plugins/:pluginId"
-            element={<ToolsView pluginId="github" />}
+            element={
+              <TooltipProvider>
+                <ToolsView pluginId="github" />
+              </TooltipProvider>
+            }
           />
         </Routes>
       </MemoryRouter>,

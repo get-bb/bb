@@ -140,23 +140,26 @@ vi.mock("@/hooks/queries/plugin-catalog-queries", () => ({
   usePluginCatalogSearch: (pluginId: string, options: { enabled: boolean }) => {
     catalogQueryState.queries = options.enabled ? [pluginId] : [];
     return {
-      data: [
-        {
-          pluginId,
-          displayName:
-            pluginId === "secrets"
-              ? "Secrets"
-              : pluginId === "automations"
-                ? "Automations"
-                : pluginId,
-          icon:
-            pluginId === "secrets"
-              ? "Key"
-              : pluginId === "automations"
-                ? "Bot"
-                : null,
-        },
-      ],
+      data: {
+        entries: [
+          {
+            pluginId,
+            displayName:
+              pluginId === "secrets"
+                ? "Secrets"
+                : pluginId === "automations"
+                  ? "Automations"
+                  : pluginId,
+            icon:
+              pluginId === "secrets"
+                ? "Key"
+                : pluginId === "automations"
+                  ? "Bot"
+                  : null,
+          },
+        ],
+        collections: [],
+      },
     };
   },
 }));

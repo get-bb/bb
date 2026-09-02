@@ -301,7 +301,7 @@ export function PluginPanelRightPanelHost({
   );
   useEffect(() => {
     if (activePluginDetailId === null) return;
-    const catalogEntry = activePluginCatalogQuery.data?.find(
+    const catalogEntry = activePluginCatalogQuery.data?.entries.find(
       (entry) => entry.pluginId === activePluginDetailId,
     );
     if (catalogEntry === undefined) return;

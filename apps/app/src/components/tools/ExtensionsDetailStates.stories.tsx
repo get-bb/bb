@@ -519,6 +519,8 @@ const UNINSTALLED_CATALOG_PLUGIN = {
   iconUrl: null,
   iconTinted: false,
   category: "Developer tools",
+  screenshots: [],
+  collections: [],
   source: "builtin:github",
   repositoryUrl: null,
   marketplaceDisplayName: "BB Official",

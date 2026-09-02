@@ -42,7 +42,11 @@ function modeFromSearchParams(value: string | null): PluginsCollectionMode {
   return "browse";
 }
 
-export function PluginsOverview() {
+export function PluginsOverview({
+  onOpenPlugin,
+}: {
+  onOpenPlugin?: (pluginId: string, trigger: HTMLButtonElement) => void;
+} = {}) {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const listQuery = usePluginList({ enabled: true });
@@ -165,8 +169,9 @@ export function PluginsOverview() {
     content = (
       <BrowsePluginsTab
         onInstall={(initial) => setAddDialog({ open: true, initial })}
-        onOpenPlugin={(pluginId) =>
-          navigate(getPluginDetailRoutePath({ pluginId }))
+        onOpenPlugin={
+          onOpenPlugin ??
+          ((pluginId) => navigate(getPluginDetailRoutePath({ pluginId })))
         }
         onInstallFromSource={() => setAddDialog({ open: true, initial: null })}
       />

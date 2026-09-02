@@ -82,6 +82,7 @@ export interface ResourceOption {
   leading?: ReactNode;
   description?: string;
   disabled?: boolean;
+  omitDirection?: boolean;
 }
 
 function ResourceOptionContent({
@@ -411,18 +412,27 @@ export function ResourceSortMenu({
   direction,
   options,
   onChange,
+  onClear,
+  placeholderLabel = "Sort",
   compact = false,
 }: {
-  value: string;
+  value: string | null;
   direction: "asc" | "desc";
   options: readonly ResourceOption[];
   onChange: (value: string) => void;
+  onClear?: () => void;
+  placeholderLabel?: string;
   compact?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const selectedOption = options.find((option) => option.id === value);
   const directionLabel = direction === "asc" ? "ascending" : "descending";
-  const sortStateLabel = `Sort: ${selectedOption?.label ?? value}, ${directionLabel}`;
+  const sortStateLabel =
+    selectedOption === undefined
+      ? `Sort: ${placeholderLabel}`
+      : selectedOption.omitDirection === true
+        ? `Sort: ${selectedOption.label}`
+        : `Sort: ${selectedOption.label}, ${directionLabel}`;
 
   return (
     <DropdownMenu onOpenChange={setOpen}>
@@ -430,6 +440,7 @@ export function ResourceSortMenu({
       <ResourceMenuTrigger
         label={sortStateLabel}
         icon="ArrowUpDown"
+        active={onClear !== undefined && value !== null}
         open={open}
       />
       <DropdownMenuContent
@@ -445,6 +456,30 @@ export function ResourceSortMenu({
         >
           Sort by
         </DropdownMenuLabel>
+        {onClear === undefined ? null : (
+          <DropdownMenuItem
+            role="menuitemradio"
+            aria-checked={value === null}
+            onSelect={(event) => {
+              event.preventDefault();
+              onClear();
+            }}
+            className={cn(
+              "flex items-center justify-between gap-3",
+              compact && "md:gap-2 md:px-1.5 md:py-1",
+            )}
+          >
+            {placeholderLabel}
+            <Icon
+              name="Check"
+              aria-hidden
+              className={cn(
+                "size-4 text-subtle-foreground",
+                value === null ? "opacity-100" : "opacity-0",
+              )}
+            />
+          </DropdownMenuItem>
+        )}
         {options.map((option) => {
           const selected = option.id === value;
           return (
@@ -467,7 +502,14 @@ export function ResourceSortMenu({
               <Icon
                 name={direction === "asc" ? "ArrowUp" : "ArrowDown"}
                 aria-hidden
-                className={cn("size-4", selected ? "opacity-100" : "opacity-0")}
+                className={cn(
+                  "size-4 text-subtle-foreground",
+                  option.omitDirection === true
+                    ? "hidden"
+                    : selected
+                      ? "opacity-100"
+                      : "opacity-0",
+                )}
               />
             </DropdownMenuItem>
           );
