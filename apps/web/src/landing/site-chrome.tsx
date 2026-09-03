@@ -4,7 +4,7 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import { DASHBOARD_PATH } from "../lib/connect-return-to";
 import { DiscordLink, DownloadLink, GitHubLink, XLink } from "./cta";
 
-type SiteNavPage = "blog" | "plugins";
+type SiteNavPage = "blog" | "changelog" | "plugins";
 
 export function SiteNav({ current }: { current?: SiteNavPage }) {
   return (
@@ -25,6 +25,12 @@ export function SiteNav({ current }: { current?: SiteNavPage }) {
           href="/blog"
         >
           Blog
+        </a>
+        <a
+          className={current === "changelog" ? "nav-current" : undefined}
+          href="/changelog"
+        >
+          Changelog
         </a>
         <a href={DASHBOARD_PATH}>Sign in</a>
         <GitHubLink
