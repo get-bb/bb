@@ -25,7 +25,7 @@ function RouteMemoryTestSurface() {
       <Link to={settingsRoutePath}>Settings</Link>
       <Link to={toolsRoutePath}>Tools</Link>
       <Link to={toolsBackRoutePath}>Tools back</Link>
-      <Link to="/extensions/plugins/ui-patterns?tab=settings#source">
+      <Link to="/plugins/ui-patterns?tab=settings#source">
         Plugin detail
       </Link>
       <Link to="/settings/providers/codex?tab=models#preferred">
@@ -70,7 +70,7 @@ describe("useAppSettingsRouteMemory", () => {
     );
   });
 
-  it("resets Extensions after Back to app returns to core app context", () => {
+  it("resets Plugins after Back to app returns to core app context", () => {
     render(
       <MemoryRouter
         initialEntries={[
@@ -83,12 +83,12 @@ describe("useAppSettingsRouteMemory", () => {
 
     fireEvent.click(screen.getByRole("link", { name: "Tools" }));
     expect(screen.getByTestId("location").textContent).toBe(
-      "/extensions/plugins",
+      "/plugins",
     );
 
     fireEvent.click(screen.getByRole("link", { name: "Plugin detail" }));
     expect(screen.getByTestId("location").textContent).toBe(
-      "/extensions/plugins/ui-patterns?tab=settings#source",
+      "/plugins/ui-patterns?tab=settings#source",
     );
 
     fireEvent.click(screen.getByRole("link", { name: "Tools back" }));
@@ -98,7 +98,7 @@ describe("useAppSettingsRouteMemory", () => {
 
     fireEvent.click(screen.getByRole("link", { name: "Tools" }));
     expect(screen.getByTestId("location").textContent).toBe(
-      "/extensions/plugins",
+      "/plugins",
     );
   });
 
@@ -125,7 +125,7 @@ describe("useAppSettingsRouteMemory", () => {
       ).toBe("/settings/providers/codex?tab=models#preferred");
       expect(
         screen.getByRole("link", { name: "Tools" }).getAttribute("href"),
-      ).toBe("/extensions/plugins");
+      ).toBe("/plugins");
       expect(
         screen.getByRole("link", { name: "Tools back" }).getAttribute("href"),
       ).toBe("/projects/proj_one/threads/thr_one?message=12#event-12");
@@ -156,7 +156,7 @@ describe("useAppSettingsRouteMemory", () => {
     ).toBe("/settings");
     expect(
       screen.getByRole("link", { name: "Tools" }).getAttribute("href"),
-    ).toBe("/extensions/plugins");
+    ).toBe("/plugins");
     expect(
       screen.getByRole("link", { name: "Tools back" }).getAttribute("href"),
     ).toBe("/");
@@ -188,7 +188,7 @@ describe("useAppSettingsRouteMemory", () => {
     "/tools/automations/proj_one/auto_one",
     "/tools/automations/proj_one/auto_one/edit",
   ])(
-    "does not remember the legacy automation location %s as Extensions",
+    "does not remember the legacy automation location %s as Plugins",
     (legacyAutomationPath) => {
       render(
         <MemoryRouter initialEntries={[legacyAutomationPath]}>
@@ -198,7 +198,7 @@ describe("useAppSettingsRouteMemory", () => {
 
       fireEvent.click(screen.getByRole("link", { name: "Tools" }));
       expect(screen.getByTestId("location").textContent).toBe(
-        "/extensions/plugins",
+        "/plugins",
       );
     },
   );

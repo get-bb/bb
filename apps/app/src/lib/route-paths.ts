@@ -1,7 +1,13 @@
 import { matchPath } from "react-router-dom";
 import {
+  PLUGIN_DETAIL_ROUTE_PATH,
+  PLUGINS_ROUTE_PATH,
   PLUGIN_PANEL_ROUTE_PATH,
+  REGISTRY_SKILL_DETAIL_ROUTE_PATH,
+  REGISTRY_SKILLS_ROUTE_PATH,
   ROUTE_PATTERNS,
+  SKILL_DETAIL_ROUTE_PATH,
+  SKILLS_ROUTE_PATH,
   TOOLS_ROUTE_PATH,
   stripRoutePathSuffix,
 } from "@bb/client-core";
@@ -14,6 +20,12 @@ export {
   SETTINGS_PLUGINS_ROUTE_PATH,
   SETTINGS_PLUGIN_ROUTE_PATH,
   SETTINGS_MACHINE_ROUTE_PATH,
+  PLUGINS_ROUTE_PATH,
+  PLUGIN_DETAIL_ROUTE_PATH,
+  SKILLS_ROUTE_PATH,
+  SKILL_DETAIL_ROUTE_PATH,
+  REGISTRY_SKILLS_ROUTE_PATH,
+  REGISTRY_SKILL_DETAIL_ROUTE_PATH,
   TOOLS_ROUTE_PATH,
   TOOLS_SKILLS_ROUTE_PATH,
   TOOLS_SKILL_DETAIL_ROUTE_PATH,
@@ -38,7 +50,6 @@ export {
   AUTOMATIONS_BROWSE_ROUTE_PATH,
   AUTOMATION_DETAIL_ROUTE_PATH,
   AUTOMATION_EDIT_ROUTE_PATH,
-  SKILLS_ROUTE_PATH,
   LEGACY_PROJECT_COMPOSE_ROUTE_PATH,
   PROJECTLESS_ARCHIVED_ROUTE_PATH,
   PROJECT_SETTINGS_ROUTE_PATH,
@@ -85,8 +96,26 @@ interface RouteHrefResolution {
 
 export function isToolsRoutePath(pathname: string): boolean {
   return (
+    isPluginsRoutePath(pathname) ||
+    isSkillsRoutePath(pathname) ||
     pathname === TOOLS_ROUTE_PATH ||
     matchPath(`${TOOLS_ROUTE_PATH}/*`, pathname) !== null
+  );
+}
+
+export function isPluginsRoutePath(pathname: string): boolean {
+  return (
+    pathname === PLUGINS_ROUTE_PATH ||
+    matchPath(PLUGIN_DETAIL_ROUTE_PATH, pathname) !== null
+  );
+}
+
+export function isSkillsRoutePath(pathname: string): boolean {
+  return (
+    pathname === SKILLS_ROUTE_PATH ||
+    pathname === REGISTRY_SKILLS_ROUTE_PATH ||
+    matchPath(SKILL_DETAIL_ROUTE_PATH, pathname) !== null ||
+    matchPath(REGISTRY_SKILL_DETAIL_ROUTE_PATH, pathname) !== null
   );
 }
 

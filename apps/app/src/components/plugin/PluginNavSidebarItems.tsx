@@ -16,7 +16,7 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { Button } from "@bb/shared-ui/button";
-import { Icon } from "@bb/shared-ui/icon";
+import { Icon, type IconName } from "@bb/shared-ui/icon";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -34,7 +34,11 @@ import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { PluginIcon } from "@/components/plugin/PluginIcon";
 import { PluginSlotMount } from "@/components/plugin/PluginSlotMount";
 import { PROJECT_LIST_ACTION_BUTTON_CLASS } from "@/components/sidebar/ProjectList";
-import { getPluginPanelRoutePath } from "@/lib/route-paths";
+import {
+  getPluginPanelRoutePath,
+  getPluginsRoutePath,
+  getSkillsRoutePath,
+} from "@/lib/route-paths";
 import {
   usePluginNavPanelChrome,
   type PluginNavPanelChrome,
@@ -63,24 +67,48 @@ import {
   arrangePluginNavPanels,
   getPluginNavPanelKey,
   hidePluginNavPanel,
-  seedLeadingNavPanelKeys,
   showPluginNavPanel,
 } from "./pluginNavSidebarOrder";
 import { haveSameOrder, reorderStoredOrder } from "@/lib/stored-order";
 
 const BUILTIN_NAV_ROW_PLUGIN_ID = "__builtin__";
 
-const TOOLS_NAV_ROW_KEY = getPluginNavPanelKey({
+const PLUGINS_NAV_ROW_KEY = getPluginNavPanelKey({
   pluginId: BUILTIN_NAV_ROW_PLUGIN_ID,
   id: "tools",
 });
+const SKILLS_NAV_ROW_KEY = getPluginNavPanelKey({
+  pluginId: BUILTIN_NAV_ROW_PLUGIN_ID,
+  id: "skills",
+});
+
+function seedResourceNavRowKeys(order: readonly string[]): string[] {
+  if (order.length === 0) return [];
+  const hasPlugins = order.includes(PLUGINS_NAV_ROW_KEY);
+  const hasSkills = order.includes(SKILLS_NAV_ROW_KEY);
+  if (hasPlugins && hasSkills) return [...order];
+  if (!hasPlugins && !hasSkills) {
+    return [PLUGINS_NAV_ROW_KEY, SKILLS_NAV_ROW_KEY, ...order];
+  }
+  const next = [...order];
+  const siblingIndex = next.indexOf(
+    hasPlugins ? PLUGINS_NAV_ROW_KEY : SKILLS_NAV_ROW_KEY,
+  );
+  next.splice(
+    hasPlugins ? siblingIndex + 1 : siblingIndex,
+    0,
+    hasPlugins ? SKILLS_NAV_ROW_KEY : PLUGINS_NAV_ROW_KEY,
+  );
+  return next;
+}
 
 type SidebarNavRow =
   | {
-      kind: "tools";
+      kind: "resource";
       pluginId: string;
       id: string;
       title: string;
+      icon: IconName;
       routePath: string;
     }
   | {
@@ -113,11 +141,20 @@ export function PluginNavSidebarItems({
     if (toolsRoutePath === undefined) return pluginRows;
     return [
       {
-        kind: "tools",
+        kind: "resource",
         pluginId: BUILTIN_NAV_ROW_PLUGIN_ID,
         id: "tools",
-        title: "Extensions",
-        routePath: toolsRoutePath,
+        title: "Plugins",
+        icon: "Blocks",
+        routePath: getPluginsRoutePath(),
+      },
+      {
+        kind: "resource",
+        pluginId: BUILTIN_NAV_ROW_PLUGIN_ID,
+        id: "skills",
+        title: "Skills",
+        icon: "BookOpen",
+        routePath: getSkillsRoutePath(),
       },
       ...pluginRows,
     ];
@@ -141,12 +178,11 @@ function PluginNavSidebarItemList({
   const [isOverflowOpen, setIsOverflowOpen] = useState(false);
 
   const { visible, hidden, normalizedOrder } = useMemo(() => {
-    const leadingKeys = rows.some((row) => row.kind === "tools")
-      ? [TOOLS_NAV_ROW_KEY]
-      : [];
     return arrangePluginNavPanels({
       panels: rows,
-      storedOrder: seedLeadingNavPanelKeys(storedOrder, leadingKeys),
+      storedOrder: rows.some((row) => row.kind === "resource")
+        ? seedResourceNavRowKeys(storedOrder)
+        : storedOrder,
       hiddenKeys,
     });
   }, [hiddenKeys, rows, storedOrder]);
@@ -323,7 +359,7 @@ function SidebarNavRowItem({
   splitEnabled,
   ...props
 }: SidebarNavRowItemProps) {
-  return row.kind === "tools" ? (
+  return row.kind === "resource" ? (
     <ToolsNavSidebarItem {...props} row={row} />
   ) : (
     <PluginNavSidebarItem {...props} row={row} splitEnabled={splitEnabled} />
@@ -354,22 +390,13 @@ function PluginNavRowVisibilityMenuItem({
   );
 }
 
-function ToolsNavSidebarItemIcon() {
-  return (
-    <span className="bb-sidebar-row-icon-swap shrink-0" aria-hidden="true">
-      <Icon name="Toolbox" className="bb-sidebar-row-icon-rest" />
-      <Icon name="ToolCase" className="bb-sidebar-row-icon-hover" />
-    </span>
-  );
-}
-
 function ToolsNavSidebarItem({
   row,
   pathname: _pathname,
   onNavigate,
   ...props
 }: Omit<SidebarNavRowItemProps, "row" | "splitEnabled"> & {
-  row: Extract<SidebarNavRow, { kind: "tools" }>;
+  row: Extract<SidebarNavRow, { kind: "resource" }>;
 }) {
   const navigate = useNavigate();
   return (
@@ -377,7 +404,7 @@ function ToolsNavSidebarItem({
       {...props}
       rowKey={getPluginNavPanelKey(row)}
       title={row.title}
-      icon={<ToolsNavSidebarItemIcon />}
+      icon={<Icon name={row.icon} aria-hidden="true" />}
       isActive={false}
       onSelect={() => {
         onNavigate?.();

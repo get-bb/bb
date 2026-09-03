@@ -44,7 +44,7 @@ import { ProvenancePill } from "@/components/tools/ProvenancePill";
 import { SkillDetailView } from "@/components/tools/SkillDetailView";
 
 export default {
-  title: "Extensions",
+  title: "Plugins and Skills/Detail states",
 };
 
 const noop = () => {};

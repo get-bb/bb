@@ -65,7 +65,7 @@ block recovery. Its `maximumWait` setting defaults to `6 hours`; choose
 
 The builtin Workflows plugin runs durable provider-independent JavaScript
 orchestration. It is disabled on fresh installations; enable `workflows` under
-Extensions → Plugins or run `bb plugin enable workflows` before using:
+Plugins → Installed plugins or run `bb plugin enable workflows` before using:
 
   bb workflows validate (--script '<javascript>'|--source '<javascript>'|
                         --file <path>|--name <name>)
@@ -346,9 +346,9 @@ rollback, and remove keep working per plugin.
 BB Official plugins
 
 BB's official plugins ship inside the app. The reserved `bb-official`
-marketplace describes these plugins with the standard v2 format. Its catalog
-uses a local path. It never uses the network. `bb marketplace list` shows it
-first. You cannot add or remove it.
+marketplace describes these plugins with the standard v2 format, and they
+appear in Plugins → Browse plugins. Its catalog uses a local path. It never uses
+the network. `bb marketplace list` shows it first. You cannot add or remove it.
 
 The plugins appear in the first Browse shelf, BB Official. They also appear in
 their category shelves. Install a plugin by its bare name or its qualified name.
@@ -647,7 +647,7 @@ Everything else (zod included) bundles from the plugin's node_modules (`npm inst
 release packages with their declared production dependencies). A crashing slot collapses to a
 "plugin <id> crashed" chip without
 touching the rest of the app. Installed plugins and their declared settings
-(same data as `bb plugin config`) also appear under Extensions → Plugins.
+(same data as `bb plugin config`) also appear under Plugins → Installed plugins.
 
 Plugin CLI commands: a plugin can register one top-level subcommand (for
 example `bb github …`). Unknown `bb` commands are looked up against installed

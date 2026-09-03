@@ -74,9 +74,9 @@
       "responsiveStrategy": "scale-together",
       "requiredStates": ["owner", "replacement", "fallback"],
       "labels": {
-        "owner": ["New thread", "Search threads", "Extensions"],
+        "owner": ["New thread", "Search threads", "Plugins", "Skills"],
         "replacement": ["Custom navigation"],
-        "fallback": ["New thread", "Search threads", "Extensions"]
+        "fallback": ["New thread", "Search threads", "Plugins", "Skills"]
       },
       "fixtureClassAnchors": ["px-2 py-2", "px-2 pb-2"],
       "sources": [

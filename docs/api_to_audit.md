@@ -1786,8 +1786,8 @@ Before stabilization, audit:
 ## `app.slots.experimental_sidebarNavigation` (`@get-bb/plugin-sdk/app`)
 
 **What it does.** Replaces the bounded sidebar navigation controls for New
-thread, Search threads, Extensions, and plugin panel destinations. The plugin
-receives semantic items, split-drag bindings, and one host activation callback.
+thread, Search threads, Plugins, Skills, and plugin panel destinations. The
+plugin receives semantic items, split-drag bindings, and one host activation callback.
 BB retains the drawer, thread list, footer, resize handle, and hidden-body
 shortcut policy.
 

@@ -50,7 +50,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         summary:
           "Replaces bb's navigation controls above the thread list with a component your plugin renders. With this, a plugin can:",
         bullets: [
-          "Arrange New thread, Search, Extensions, and plugin destinations",
+          "Arrange New thread, Search, Plugins, Skills, and plugin destinations",
           "Activate each destination through bb, including split placement for supported items",
           "Render bb's original controls when the plugin wants to delegate",
           "Leave the thread list, footer, drawer, and resize handle under bb's control",
@@ -499,10 +499,10 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
   },
   {
     id: "extensions",
-    title: "Plugin page in Extensions",
+    title: "Plugin page",
     fixtureKind: "spatial",
     blurb:
-      "The page bb shows for an installed plugin under Extensions: what it is, what it registers, and whether it is healthy. A plugin can report that it needs configuring, and bb says so at the top of this page.",
+      "The page bb shows for an installed plugin under Plugins: what it is, what it registers, and whether it is healthy. A plugin can report that it needs configuring, and bb says so at the top of this page.",
     surfaces: [
       {
         id: "plugin-status",
@@ -511,7 +511,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Reports that the plugin cannot run until someone configures it, so bb can say so instead of the plugin failing silently. With this, a plugin can:",
         bullets: [
           "Set a needs-configuration state with a message naming what is missing",
-          "Show a warning banner with that message on the plugin's page in Extensions",
+          "Show a warning banner with that message on the plugin's page",
         ],
         apiSymbols: ["PluginStatusApi"],
         firstParty: ["GitHub", "Workflows"],

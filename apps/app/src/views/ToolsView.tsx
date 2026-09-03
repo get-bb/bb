@@ -45,17 +45,13 @@ import {
 } from "@/hooks/queries/plugin-settings-queries";
 import { useLocalOpenTargets } from "@/hooks/useLocalOpenTargets";
 import {
-  TOOLS_REGISTRY_SKILLS_ROUTE_PATH,
-  TOOLS_SKILLS_ROUTE_PATH,
+  REGISTRY_SKILLS_ROUTE_PATH,
+  SKILLS_ROUTE_PATH,
   getPluginDetailRoutePath,
   getPluginsRoutePath,
   getRootComposeRoutePath,
 } from "@/lib/route-paths";
-import {
-  getToolsOwnedCollectionRoutePath,
-  resolveToolsSection,
-  type ToolsSectionId,
-} from "@/components/tools/tools-navigation";
+import { getToolsOwnedCollectionRoutePath } from "@/components/tools/tools-navigation";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { SkillsLibrary } from "@/components/tools/SkillsLibrary";
 import { PluginIcon } from "@/components/plugin/PluginIcon";
@@ -63,7 +59,7 @@ import { SecondaryPanelLayout } from "@/components/secondary-panel/SecondaryPane
 import { ThreadSecondaryPanel } from "@/components/secondary-panel/ThreadSecondaryPanel";
 import type { SecondaryPanelRenderableTab } from "@/components/secondary-panel/secondaryPanelTab";
 
-function ToolsBodyFallback() {
+function ResourceBodyFallback() {
   return (
     <div className="h-full overflow-y-auto">
       <div className="mx-auto w-full max-w-5xl px-4 pb-4 pt-2 md:px-5">
@@ -77,7 +73,7 @@ function ToolsBodyFallback() {
   );
 }
 
-function ToolsScrollPage({
+function ResourceScrollPage({
   children,
   fillViewport = false,
 }: {
@@ -126,37 +122,15 @@ function ToolsScrollPage({
   );
 }
 
-function ToolsSectionBody({
-  activeSection,
-  pathname,
-  onOpenPlugin,
-}: {
-  activeSection: ToolsSectionId;
-  pathname: string;
-  onOpenPlugin: (pluginId: string, trigger: HTMLButtonElement) => void;
-}) {
-  if (activeSection === "skills") {
-    const isCollection =
-      pathname === TOOLS_SKILLS_ROUTE_PATH ||
-      pathname === TOOLS_REGISTRY_SKILLS_ROUTE_PATH;
-    return (
-      <ToolsScrollPage fillViewport={isCollection}>
-        <SkillsLibrary />
-      </ToolsScrollPage>
-    );
-  }
-  return <PluginsToolView onOpenPlugin={onOpenPlugin} />;
-}
-
 function PluginsToolView({
   onOpenPlugin,
 }: {
   onOpenPlugin: (pluginId: string, trigger: HTMLButtonElement) => void;
 }) {
   return (
-    <ToolsScrollPage fillViewport>
+    <ResourceScrollPage fillViewport>
       <PluginsOverview onOpenPlugin={onOpenPlugin} />
-    </ToolsScrollPage>
+    </ResourceScrollPage>
   );
 }
 
@@ -362,7 +336,7 @@ function PluginDetailToolView({ pluginId }: { pluginId: string }) {
         <CatalogPluginDetailBanner entry={selectedCatalogEntry} />
       ) : null}
       <div className="min-h-0 flex-1">
-        <ToolsScrollPage>
+        <ResourceScrollPage>
           {detailContent}
           <ConfirmDeleteDialog
             open={deleteTarget !== null}
@@ -406,7 +380,7 @@ function PluginDetailToolView({ pluginId }: { pluginId: string }) {
             }}
             onInstalled={() => void listQuery.refetch()}
           />
-        </ToolsScrollPage>
+        </ResourceScrollPage>
       </div>
     </div>
   );
@@ -416,7 +390,7 @@ export function PluginDetailPaneView({ pluginId }: { pluginId: string }) {
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
       <div className="min-h-0 flex-1 overflow-hidden">
-        <Suspense fallback={<ToolsBodyFallback />}>
+        <Suspense fallback={<ResourceBodyFallback />}>
           <PluginDetailToolView pluginId={pluginId} />
         </Suspense>
       </div>
@@ -424,22 +398,17 @@ export function PluginDetailPaneView({ pluginId }: { pluginId: string }) {
   );
 }
 
-export function ToolsView({ pluginId }: { pluginId?: string } = {}) {
+export function PluginsView({ pluginId }: { pluginId?: string } = {}) {
   const location = useLocation();
   const navigate = useNavigate();
-  const activeSection = resolveToolsSection(location.pathname);
   const focusReturnRef = useRef<HTMLButtonElement | null>(null);
   const [isPluginDetailFullPage, setIsPluginDetailFullPage] = useState(false);
-  const catalogQuery = usePluginCatalogSearch("", {
-    enabled: activeSection === "plugins",
-  });
-  const listQuery = usePluginList({ enabled: activeSection === "plugins" });
+  const catalogQuery = usePluginCatalogSearch("", { enabled: true });
+  const listQuery = usePluginList({ enabled: true });
   const isInstalledDetail =
-    activeSection === "plugins" &&
     pluginId !== undefined &&
     new URLSearchParams(location.search).get("view") === "installed";
-  const isPanelOpen =
-    activeSection === "plugins" && pluginId !== undefined && !isInstalledDetail;
+  const isPanelOpen = pluginId !== undefined && !isInstalledDetail;
 
   const openPlugin = useCallback(
     (nextPluginId: string, trigger: HTMLButtonElement) => {
@@ -510,15 +479,11 @@ export function ToolsView({ pluginId }: { pluginId?: string } = {}) {
   );
   const mainContent = (
     <div className="min-h-0 flex-1 overflow-hidden">
-      <Suspense fallback={<ToolsBodyFallback />}>
+      <Suspense fallback={<ResourceBodyFallback />}>
         {isInstalledDetail && pluginId !== undefined ? (
           <PluginDetailToolView pluginId={pluginId} />
         ) : (
-          <ToolsSectionBody
-            activeSection={activeSection}
-            pathname={location.pathname}
-            onOpenPlugin={openPlugin}
-          />
+          <PluginsToolView onOpenPlugin={openPlugin} />
         )}
       </Suspense>
     </div>
@@ -569,7 +534,7 @@ export function ToolsView({ pluginId }: { pluginId?: string } = {}) {
         resetKey="extensions-plugin-details"
         contentKey={pluginId ?? "extensions-plugins"}
         drawerLabel="Plugin details"
-        drawerFallback={<ToolsBodyFallback />}
+        drawerFallback={<ResourceBodyFallback />}
         mainPanelId="extensions-main-panel"
         main={mainContent}
         collapse={{
@@ -580,6 +545,25 @@ export function ToolsView({ pluginId }: { pluginId?: string } = {}) {
         composerHost={null}
         compactPresentation="full"
       />
+    </div>
+  );
+}
+
+export function SkillsView() {
+  const location = useLocation();
+  const isCollection =
+    location.pathname === SKILLS_ROUTE_PATH ||
+    location.pathname === REGISTRY_SKILLS_ROUTE_PATH;
+
+  return (
+    <div className="-mx-4 -mb-4 -mt-4 flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden md:-mx-5 md:-mb-5 md:-mt-5">
+      <div className="min-h-0 flex-1 overflow-hidden">
+        <Suspense fallback={<ResourceBodyFallback />}>
+          <ResourceScrollPage fillViewport={isCollection}>
+            <SkillsLibrary />
+          </ResourceScrollPage>
+        </Suspense>
+      </div>
     </div>
   );
 }

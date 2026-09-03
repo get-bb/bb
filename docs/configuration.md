@@ -185,8 +185,8 @@ bb keep-awake hosts all
 bb keep-awake hosts <host-id>...
 ```
 
-The builtin Concurrency limit plugin has an autosaving page under Extensions
-→ Plugins. Its overall limit is unlimited by default. Each host defaults to
+The builtin Concurrency limit plugin has an autosaving page under Plugins →
+Installed plugins. Its overall limit is unlimited by default. Each host defaults to
 Auto: one thread per available processor. A blank host field restores
 Auto, and 0 pauses new work for that scope. Configure it from an agent or
 terminal with:
@@ -753,7 +753,7 @@ Plugin state lives under the data dir:
 
 BB's official plugins (GitHub, Docs, Memory, and Tasks) ship bundled
 inside the app and install from the local bundled copy — no network, no remote catalog.
-Discover them with `bb plugin search` or Extensions → Plugins → Browse; users
+Discover them with `bb plugin search` or Plugins → Browse plugins; users
 cannot add, remove, or configure the bundled official plugin set. Installed official
 plugins are pinned to the bundled copy and update with BB app releases. Local
 path installs remain available directly through `bb plugin install ./path` or
@@ -827,7 +827,7 @@ retries structured provider overloads with exponential backoff and jitter.
 Prior output or tool activity does not block recovery. If the provider accepted
 the failed input, core sends an agent-only continuation; if it rejected the
 input before starting, core re-sends the original message as agent-only. Disable
-the plugin under Extensions → Plugins or with
+the plugin under Plugins → Installed plugins or with
 `bb plugin disable provider-retry`.
 
 It never blocks a send. A remembered rate limit is a stale picture of the
@@ -857,9 +857,9 @@ nothing, because waiting does not fix them.
 ### Workflows plugin
 
 The builtin Workflows plugin is disabled on fresh installations. Enable it
-under Extensions → Plugins or with `bb plugin enable workflows`. Its six
-settings are bounded integers, edited with numeric inputs under Extensions →
-Plugins or with `bb plugin config workflows set <key> <value>`:
+under Plugins → Installed plugins or with `bb plugin enable workflows`. Its six
+settings are bounded integers, edited with numeric inputs under Plugins →
+Installed plugins or with `bb plugin config workflows set <key> <value>`:
 
 | Key                    |    Default |       Allowed range | Behavior                                               |
 | ---------------------- | ---------: | ------------------: | ------------------------------------------------------ |

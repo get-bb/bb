@@ -74,7 +74,7 @@ const PROMPT_ACTION_ORDER: readonly PromptBoxActionKind[] = [
 const PROMPT_ACTION_PRESENTATION = {
   skills: {
     label: "Skills",
-    icon: "Zap",
+    icon: "BookOpen",
   },
   plan: {
     label: "Plan",
@@ -90,7 +90,7 @@ const PROMPT_ACTION_PRESENTATION = {
   },
   plugin: {
     label: "Plugin",
-    icon: "ElectricPlugs",
+    icon: "Blocks",
   },
 } as const satisfies Record<
   PromptBoxActionKind,
