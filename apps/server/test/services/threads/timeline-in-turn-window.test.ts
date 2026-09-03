@@ -12,6 +12,7 @@ import {
   getLatestThreadSequence,
   insertEvents,
   migrate,
+  migrateNextLegacyImageGenerationOutput,
   noopNotifier,
   upsertHost,
 } from "@bb/db";
@@ -1007,6 +1008,87 @@ describe("in-turn timeline windows", () => {
       }),
     ]);
     expect(latest.profile.eventRowCount).toBe(0);
+  });
+
+  it("renders a migrated oversized Codex image generation as a compact row", () => {
+    const { db, thread } = setup();
+    seedTurns(db, thread, { completeLastTurn: false, itemsPerTurn: [0] });
+    const migratedAt = Date.now() + 1_000;
+    const result = "encoded-image-" + "i".repeat(4 * 1024 * 1024);
+    insertEvents(db, noopNotifier, [
+      {
+        createdAt: migratedAt - 1,
+        threadId: thread.id,
+        sequence: getLatestThreadSequence(db, { threadId: thread.id }) + 1,
+        type: "provider/unhandled",
+        scope: turnScope("turn-1"),
+        providerThreadId,
+        itemId: null,
+        itemKind: null,
+        parentToolCallId: null,
+        data: JSON.stringify({
+          providerId: "codex",
+          rawType: "item/completed",
+          rawEvent: {
+            jsonrpc: "2.0",
+            method: "item/completed",
+            params: {
+              threadId: providerThreadId,
+              turnId: "turn-1",
+              item: {
+                type: "imageGeneration",
+                id: "legacy-generated-image",
+                status: "completed",
+                revisedPrompt: "Draw a production-shaped image",
+                savedPath: "/tmp/generated.png",
+                transparentBackground: false,
+                failure: null,
+                result,
+              },
+            },
+          },
+        }),
+      },
+    ]);
+
+    expect(
+      migrateNextLegacyImageGenerationOutput(db, {
+        limit: 10,
+        migratedAt,
+      }),
+    ).toMatchObject({
+      action: "migrated",
+      migratedRows: 1,
+      retained: true,
+      threadId: thread.id,
+    });
+    const page = buildNestedPage(db, thread, LARGE_BUDGET, null);
+    const rows = page.response.rows.flatMap((row) =>
+      row.kind === "turn" && row.children ? row.children : [row],
+    );
+    const imageRow = rows.find(
+      (row) => row.kind === "work" && row.workKind === "image-generation",
+    );
+
+    expect(imageRow).toMatchObject({
+      kind: "work",
+      workKind: "image-generation",
+      callId: "legacy-generated-image",
+      status: "completed",
+      prompt: "Draw a production-shaped image",
+      path: "/tmp/generated.png",
+    });
+    expect(JSON.stringify(page.response)).not.toContain(result);
+    expect(page.profile.eventDataBytes).toBeLessThan(
+      THREAD_TIMELINE_EVENT_DATA_BYTE_LIMIT,
+    );
+    expect(
+      rows.some(
+        (row) =>
+          row.kind === "system" &&
+          row.title === "Timeline event is too large to display",
+      ),
+    ).toBe(false);
   });
 
   it("keeps a parented aggregate whole instead of bypassing the budget during closure", () => {

@@ -661,6 +661,9 @@ function dropMarketplaceCatalogSchema(db: DbConnection): void {
 function dropEventToolNameColumn(db: DbConnection): void {
   db.$client.prepare("DROP TABLE IF EXISTS retained_event_outputs").run();
   dropThreadConversationOutlinesTable(db);
+  db.$client.exec(
+    "DROP INDEX IF EXISTS events_provider_unhandled_migration_idx",
+  );
   db.$client.exec("DROP INDEX IF EXISTS events_delegating_item_lookup_idx");
   db.$client.exec("DROP INDEX IF EXISTS events_plan_steps_thread_sequence_idx");
   // The same rewind also rewinds the later deferred-message table (0108).
@@ -4287,6 +4290,7 @@ describe("migrate", () => {
         "events_item_lifecycle_thread_item_sequence_idx",
         "events_parent_tool_call_thread_parent_sequence_idx",
         "events_plan_steps_thread_sequence_idx",
+        "events_provider_unhandled_migration_idx",
         "events_thread_sequence_idx",
         "events_thread_state_thread_sequence_idx",
         "events_thread_turn_type_item_sequence_idx",

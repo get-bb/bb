@@ -665,6 +665,22 @@ function convertMessage(
           ...rowPresentation(message),
         },
       ];
+    case "image-generation":
+      return [
+        {
+          ...buildTimelineRowBase(message, options.rowIdPrefix),
+          kind: "work",
+          workKind: "image-generation",
+          status: message.status,
+          callId: message.callId,
+          prompt: message.prompt,
+          path: message.path,
+          error: message.error,
+          transparentBackground: message.transparentBackground,
+          completedAt: message.completedAt,
+          ...rowPresentation(message),
+        },
+      ];
     case "file-read":
       return [
         {

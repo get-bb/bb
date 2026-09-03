@@ -18,8 +18,8 @@ import {
   type PluginHookRegistration,
 } from "../../src/services/plugins/plugin-hook-registry.js";
 import {
+  hasCompletedEventLoopWorkForTests,
   resetEventLoopWorkForTests,
-  takeEventLoopWorkWindowSnapshot,
 } from "../../src/services/system/event-loop-work.js";
 import {
   type PeriodicSweepJob,
@@ -258,6 +258,81 @@ describe("runPeriodicSweeps", () => {
     });
   });
 
+  it("migrates legacy Codex image output and invalidates its thread history", async () => {
+    await withTestHarness(async (harness) => {
+      const now = Date.now();
+      const { environment, thread } = seedThreadFixture(harness);
+      harness.db
+        .insert(events)
+        .values({
+          createdAt: now - 1_000,
+          data: JSON.stringify({
+            providerId: "codex",
+            rawEvent: {
+              jsonrpc: "2.0",
+              method: "item/completed",
+              params: {
+                item: {
+                  failure: null,
+                  id: "legacy-periodic-image",
+                  result: "encoded-image-" + "i".repeat(4 * 1024 * 1024),
+                  revisedPrompt: "Draw a swept image",
+                  savedPath: "/tmp/swept.png",
+                  status: "completed",
+                  transparentBackground: false,
+                  type: "imageGeneration",
+                },
+              },
+            },
+            rawType: "item/completed",
+          }),
+          environmentId: environment.id,
+          id: "evt_legacy_periodic_image",
+          itemId: null,
+          itemKind: null,
+          parentToolCallId: null,
+          providerThreadId: "provider-legacy-periodic-image",
+          scopeKind: "turn",
+          sequence: 1,
+          threadId: thread.id,
+          turnId: "turn-legacy-periodic-image",
+          type: "provider/unhandled",
+        })
+        .run();
+      const changes: (readonly string[])[] = [];
+      const unsubscribe = harness.deps.hub.onChangedMessage((message) => {
+        if (message.entity === "thread" && message.id === thread.id) {
+          changes.push(message.changes);
+        }
+      });
+
+      try {
+        await runPeriodicSweeps({
+          ...harness.deps,
+          pluginSchedules: harness.pluginService,
+          plugins: harness.pluginService,
+        });
+      } finally {
+        unsubscribe();
+      }
+
+      const [stored] = harness.db
+        .select({ data: events.data })
+        .from(events)
+        .where(eq(events.threadId, thread.id))
+        .all();
+      expect(stored?.data.length).toBeLessThan(10_000);
+      expect(harness.db.select().from(retainedEventOutputs).all()).toHaveLength(
+        1,
+      );
+      expect(
+        changes.filter((threadChanges) =>
+          threadChanges.includes("history-rewritten"),
+        ),
+      ).toHaveLength(1);
+    });
+  });
+
   it("dispatches due messages from an overlapping tick while idle recovery is still running", async () => {
     await withTestHarness(async (harness) => {
       let releaseIdleRecovery: ReleaseCallback | null = null;
@@ -329,7 +404,7 @@ describe("runPeriodicSweeps", () => {
       const overlappingSweep = runPeriodicSweeps(deps);
       for (
         let yielded = 0;
-        yielded <= RETAINED_EVENT_OUTPUT_TARGETS.length;
+        yielded <= RETAINED_EVENT_OUTPUT_TARGETS.length + 1;
         yielded += 1
       ) {
         await new Promise<void>((resolve) => setImmediate(resolve));
@@ -546,7 +621,6 @@ describe("runPeriodicSweeps", () => {
         .set({ updatedAt: Date.now() - DESTROYED_ENVIRONMENT_TTL_MS - 60_000 })
         .where(eq(environments.id, environment.id))
         .run();
-
       const deps = {
         ...harness.deps,
         pluginSchedules: harness.pluginService,
@@ -557,9 +631,11 @@ describe("runPeriodicSweeps", () => {
       resetEventLoopWorkForTests();
       try {
         await runPeriodicSweeps(deps);
-        expect(takeEventLoopWorkWindowSnapshot().slowestWork).toBe(
-          "sweep:destroyed-environment-prune:advance",
-        );
+        expect(
+          hasCompletedEventLoopWorkForTests(
+            "sweep:destroyed-environment-prune:advance",
+          ),
+        ).toBe(true);
       } finally {
         resetEventLoopWorkForTests();
       }

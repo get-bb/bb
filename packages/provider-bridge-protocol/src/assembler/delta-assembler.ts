@@ -513,6 +513,7 @@ export function createDeltaAssembler(
       case "webSearch":
       case "webFetch":
       case "imageView":
+      case "imageGeneration":
       case "backgroundTask":
       case "fileRead":
       case "search":
@@ -675,6 +676,7 @@ export function createDeltaAssembler(
       case "webSearch":
       case "webFetch":
       case "imageView":
+      case "imageGeneration":
       case "fileRead":
       case "search":
       case "planSteps":
@@ -805,6 +807,20 @@ export function createDeltaAssembler(
           { type: "imageView", id: bbItemId, path: shape.path },
           parentToolCallId,
         );
+      case "imageGeneration":
+        return withParentToolCallId(
+          {
+            type: "imageGeneration",
+            id: bbItemId,
+            status: "pending",
+            prompt: shape.prompt,
+            path: shape.path,
+            ...(shape.result === undefined ? {} : { result: shape.result }),
+            error: shape.error,
+            transparentBackground: shape.transparentBackground,
+          },
+          parentToolCallId,
+        );
       case "backgroundTask":
         return buildBackgroundTaskItem(bbItemId, shape, parentToolCallId);
       case "fileRead":
@@ -895,6 +911,14 @@ export function createDeltaAssembler(
       case "contextCompaction":
         return withParentToolCallId(
           { type: "contextCompaction", id: started.id },
+          parent,
+        );
+      case "imageGeneration":
+        return withParentToolCallId(
+          {
+            ...started,
+            status: close.status,
+          },
           parent,
         );
       case "fileRead":
@@ -1021,6 +1045,20 @@ export function createDeltaAssembler(
             prompt: shape.prompt ?? null,
             pattern: shape.pattern,
             resultText: close.resultText ?? null,
+          },
+          parentToolCallId,
+        );
+      case "imageGeneration":
+        return withParentToolCallId(
+          {
+            type: "imageGeneration",
+            id: bbItemId,
+            status: close.status,
+            prompt: shape.prompt,
+            path: shape.path,
+            ...(shape.result === undefined ? {} : { result: shape.result }),
+            error: shape.error,
+            transparentBackground: shape.transparentBackground,
           },
           parentToolCallId,
         );

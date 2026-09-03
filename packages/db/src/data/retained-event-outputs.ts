@@ -58,6 +58,7 @@ interface CopyRetainedEventOutputArgs {
 interface HydratableStoredEventRow {
   data: string;
   id: string;
+  type: ThreadEventType;
 }
 
 interface RetainedEventOutputHydrationRow {
@@ -109,6 +110,52 @@ function truncateOutput(value: string): TruncatedOutput {
   };
 }
 
+function prepareRetainedOutputData(args: {
+  createdAt: number;
+  data: string;
+  item: Record<string, unknown>;
+  outputPath: RetainedEventOutputPath;
+  payload: Record<string, unknown>;
+}): PreparedCompletedEventOutputData {
+  const value = args.item[args.outputPath];
+  if (
+    typeof value !== "string" ||
+    value.length <= COMPLETED_EVENT_OUTPUT_TRUNCATION_THRESHOLD_CHARS
+  ) {
+    return { data: args.data, retainedOutput: null };
+  }
+  const existingTruncation = args.item.truncation;
+  if (
+    isJsonObject(existingTruncation) &&
+    existingTruncation[args.outputPath] !== undefined
+  ) {
+    return { data: args.data, retainedOutput: null };
+  }
+
+  const expiresAt = args.createdAt + COMPLETED_EVENT_OUTPUT_RETENTION_MS;
+  const truncation = isJsonObject(existingTruncation)
+    ? existingTruncation
+    : {};
+  const preview = truncateOutput(value);
+  args.item[args.outputPath] = preview.value;
+  truncation[args.outputPath] = {
+    originalLength: value.length,
+    retainedHeadLength: preview.retainedHeadLength,
+    retainedTailLength: preview.retainedTailLength,
+    truncatedAt: expiresAt,
+  };
+  args.item.truncation = truncation;
+
+  return {
+    data: JSON.stringify(args.payload),
+    retainedOutput: {
+      expiresAt,
+      outputPath: args.outputPath,
+      value,
+    },
+  };
+}
+
 export function prepareCompletedEventOutputData(
   args: PrepareCompletedEventOutputDataArgs,
 ): PreparedCompletedEventOutputData {
@@ -131,42 +178,69 @@ export function prepareCompletedEventOutputData(
     return { data: args.data, retainedOutput: null };
   }
   const item = payload.item;
-  const value = item[target.outputPath];
+  if (item.type !== target.itemKind) {
+    return { data: args.data, retainedOutput: null };
+  }
+  return prepareRetainedOutputData({
+    createdAt: args.createdAt,
+    data: args.data,
+    item,
+    outputPath: target.outputPath,
+    payload,
+  });
+}
+
+export function prepareLegacyImageGenerationOutputData(args: {
+  createdAt: number;
+  data: string;
+}): PreparedCompletedEventOutputData {
+  let payload: unknown;
+  try {
+    payload = JSON.parse(args.data);
+  } catch {
+    return { data: args.data, retainedOutput: null };
+  }
   if (
-    item.type !== target.itemKind ||
-    typeof value !== "string" ||
-    value.length <= COMPLETED_EVENT_OUTPUT_TRUNCATION_THRESHOLD_CHARS
+    !isJsonObject(payload) ||
+    payload.rawType !== "item/completed" ||
+    !isJsonObject(payload.rawEvent) ||
+    payload.rawEvent.method !== "item/completed" ||
+    !isJsonObject(payload.rawEvent.params) ||
+    !isJsonObject(payload.rawEvent.params.item) ||
+    payload.rawEvent.params.item.type !== "imageGeneration" ||
+    typeof payload.rawEvent.params.item.id !== "string" ||
+    ![
+      "inProgress",
+      "completed",
+      "failed",
+      "declined",
+    ].includes(String(payload.rawEvent.params.item.status)) ||
+    !(
+      payload.rawEvent.params.item.revisedPrompt === null ||
+      typeof payload.rawEvent.params.item.revisedPrompt === "string"
+    ) ||
+    !(
+      payload.rawEvent.params.item.savedPath === undefined ||
+      typeof payload.rawEvent.params.item.savedPath === "string"
+    ) ||
+    !(
+      payload.rawEvent.params.item.transparentBackground === undefined ||
+      typeof payload.rawEvent.params.item.transparentBackground === "boolean"
+    ) ||
+    !(
+      payload.rawEvent.params.item.failure === null ||
+      isJsonObject(payload.rawEvent.params.item.failure)
+    )
   ) {
     return { data: args.data, retainedOutput: null };
   }
-  const existingTruncation = item.truncation;
-  if (
-    isJsonObject(existingTruncation) &&
-    existingTruncation[target.outputPath] !== undefined
-  ) {
-    return { data: args.data, retainedOutput: null };
-  }
-
-  const expiresAt = args.createdAt + COMPLETED_EVENT_OUTPUT_RETENTION_MS;
-  const truncation = isJsonObject(existingTruncation) ? existingTruncation : {};
-  const preview = truncateOutput(value);
-  item[target.outputPath] = preview.value;
-  truncation[target.outputPath] = {
-    originalLength: value.length,
-    retainedHeadLength: preview.retainedHeadLength,
-    retainedTailLength: preview.retainedTailLength,
-    truncatedAt: expiresAt,
-  };
-  item.truncation = truncation;
-
-  return {
-    data: JSON.stringify(payload),
-    retainedOutput: {
-      expiresAt,
-      outputPath: target.outputPath,
-      value,
-    },
-  };
+  return prepareRetainedOutputData({
+    createdAt: args.createdAt,
+    data: args.data,
+    item: payload.rawEvent.params.item,
+    outputPath: "result",
+    payload,
+  });
 }
 
 export function insertPreparedRetainedEventOutput(
@@ -208,15 +282,36 @@ function decodeRetainedOutputValue(encodedValue: string): string {
   return value;
 }
 
+function hydratableOutputItem(
+  row: HydratableStoredEventRow,
+  payload: Record<string, unknown>,
+): Record<string, unknown> {
+  if (row.type === "item/completed" && isJsonObject(payload.item)) {
+    return payload.item;
+  }
+  if (
+    row.type === "provider/unhandled" &&
+    payload.rawType === "item/completed" &&
+    isJsonObject(payload.rawEvent) &&
+    payload.rawEvent.method === "item/completed" &&
+    isJsonObject(payload.rawEvent.params) &&
+    isJsonObject(payload.rawEvent.params.item) &&
+    payload.rawEvent.params.item.type === "imageGeneration"
+  ) {
+    return payload.rawEvent.params.item;
+  }
+  throw new Error("Retained output event payload has no hydratable item");
+}
+
 function hydrateEventData(
-  data: string,
+  row: HydratableStoredEventRow,
   output: RetainedEventOutputHydrationRow,
 ): string {
-  const payload: unknown = JSON.parse(data);
-  if (!isJsonObject(payload) || !isJsonObject(payload.item)) {
-    throw new Error("Retained output event payload is not an item object");
+  const payload: unknown = JSON.parse(row.data);
+  if (!isJsonObject(payload)) {
+    throw new Error("Retained output event payload is not an object");
   }
-  const item = payload.item;
+  const item = hydratableOutputItem(row, payload);
   item[output.outputPath] = decodeRetainedOutputValue(output.encodedValue);
   removeOutputTruncation(item, output.outputPath);
   return JSON.stringify(payload);
@@ -283,7 +378,7 @@ export function hydrateRetainedEventOutputRows<
   );
   return rows.map((row) => {
     const output = outputsByEventId.get(row.id);
-    return output ? { ...row, data: hydrateEventData(row.data, output) } : row;
+    return output ? { ...row, data: hydrateEventData(row, output) } : row;
   });
 }
 

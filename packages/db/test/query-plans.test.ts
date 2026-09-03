@@ -30,6 +30,7 @@ import {
   COMPLETED_EVENT_OUTPUT_TRUNCATION_THRESHOLD_CHARS,
   MAX_COMPLETED_EVENT_OUTPUT_MIGRATION_EVENT_DATA_BYTES,
   migrateNextCompletedEventItemOutput,
+  migrateNextLegacyImageGenerationOutput,
   pruneClosedSessions,
   pruneDestroyedEnvironments,
 } from "../src/data/sweeps.js";
@@ -791,10 +792,9 @@ describe("slow query index plans", () => {
       },
     ]);
     const eventId = db.$client
-      .prepare<
-        [string, number],
-        { id: string }
-      >("SELECT id FROM events WHERE thread_id = ? AND sequence = ?")
+      .prepare<[string, number], { id: string }>(
+        "SELECT id FROM events WHERE thread_id = ? AND sequence = ?",
+      )
       .get(thread.id, 1)?.id;
     if (!eventId) {
       throw new Error("Expected completed output migration event");
@@ -927,10 +927,9 @@ describe("slow query index plans", () => {
       },
     ]);
     const insertedEvent = db.$client
-      .prepare<
-        [string, number],
-        IdentifiedRow
-      >("SELECT id FROM events WHERE thread_id = ? AND sequence = ?")
+      .prepare<[string, number], IdentifiedRow>(
+        "SELECT id FROM events WHERE thread_id = ? AND sequence = ?",
+      )
       .get(thread.id, 1);
     if (!insertedEvent) {
       throw new Error("Expected completed output query-plan event");
@@ -1003,6 +1002,104 @@ describe("slow query index plans", () => {
         "$.item.type",
         "commandExecution",
         "$.item.aggregatedOutput",
+        COMPLETED_EVENT_OUTPUT_TRUNCATION_THRESHOLD_CHARS,
+      ],
+    });
+
+    db.$client.close();
+  });
+
+  it("uses the partial provider index for legacy image generation migration", () => {
+    const { db, logger, thread } = setup();
+    const migratedAt = Date.now();
+    insertEvents(db, noopNotifier, [
+      {
+        createdAt: migratedAt - 10_000,
+        data: JSON.stringify({
+          providerId: "codex",
+          rawType: "item/completed",
+          rawEvent: {
+            jsonrpc: "2.0",
+            method: "item/completed",
+            params: {
+              item: {
+                failure: null,
+                id: "legacy-image-query-plan",
+                result: "i".repeat(
+                  COMPLETED_EVENT_OUTPUT_TRUNCATION_THRESHOLD_CHARS + 1,
+                ),
+                revisedPrompt: "Draw an indexed image",
+                savedPath: "/tmp/indexed.png",
+                status: "completed",
+                transparentBackground: false,
+                type: "imageGeneration",
+              },
+            },
+          },
+        }),
+        itemId: null,
+        itemKind: null,
+        parentToolCallId: null,
+        scope: turnScope("turn_legacy_image_query_plan"),
+        sequence: 1,
+        threadId: thread.id,
+        type: "provider/unhandled",
+      },
+    ]);
+    const insertedEvent = db.$client
+      .prepare<[string, number], IdentifiedRow>(
+        "SELECT id FROM events WHERE thread_id = ? AND sequence = ?",
+      )
+      .get(thread.id, 1);
+    if (!insertedEvent) {
+      throw new Error("Expected legacy image generation query-plan event");
+    }
+    logger.clear();
+
+    migrateNextLegacyImageGenerationOutput(db, {
+      limit: 10,
+      migratedAt,
+    });
+
+    const scanDebugLog = findOnlyDebugLog({
+      logger,
+      predicate: (fields) =>
+        fields.operation === "all" &&
+        fields.sql.startsWith("SELECT id, created_at FROM events") &&
+        fields.sql.includes("ORDER BY created_at, id") &&
+        fields.bindingArgumentCount === 5,
+    });
+    assertEmittedQueryPlanUsesIndex({
+      db,
+      debugLog: scanDebugLog,
+      indexName: "events_provider_unhandled_migration_idx",
+      params: ["provider/unhandled", migratedAt, 0, "", 10],
+    });
+
+    const candidateDebugLog = findOnlyDebugLog({
+      logger,
+      predicate: (fields) =>
+        fields.operation === "get" &&
+        fields.sql.startsWith(
+          "SELECT id, created_at, data, thread_id FROM events",
+        ) &&
+        fields.bindingArgumentCount === 11,
+    });
+    assertEmittedQueryPlanUsesIndex({
+      db,
+      debugLog: candidateDebugLog,
+      indexName: "events_provider_unhandled_migration_idx",
+      params: [
+        "provider/unhandled",
+        migratedAt,
+        0,
+        "",
+        migratedAt - 10_000,
+        insertedEvent.id,
+        MAX_COMPLETED_EVENT_OUTPUT_MIGRATION_EVENT_DATA_BYTES,
+        "item/completed",
+        "item/completed",
+        "imageGeneration",
         COMPLETED_EVENT_OUTPUT_TRUNCATION_THRESHOLD_CHARS,
       ],
     });
@@ -1297,10 +1394,9 @@ describe("slow query index plans", () => {
   it("drops redundant events indexes after creating their consolidated replacement", () => {
     const { db } = setup();
     const indexRows = db.$client
-      .prepare<
-        [],
-        IndexNameRow
-      >("SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'events'")
+      .prepare<[], IndexNameRow>(
+        "SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'events'",
+      )
       .all();
     const indexNames = indexRows.map((row) => row.name);
 

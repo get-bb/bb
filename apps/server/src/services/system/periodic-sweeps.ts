@@ -19,6 +19,7 @@ import {
   isDatabaseMaintenanceIdle,
   listDeferredLegacyTables,
   migrateNextCompletedEventItemOutput,
+  migrateNextLegacyImageGenerationOutput,
   environments,
   pruneClosedSessions,
   pruneDestroyedEnvironments,
@@ -477,6 +478,7 @@ async function runCompletedEventOutputMigrationSweep(
   deps: LoggedPendingInteractionWorkSessionDeps,
   now: number,
 ): Promise<void> {
+  const migrationTargetCount = RETAINED_EVENT_OUTPUT_TARGETS.length + 1;
   const exhaustedTargets = new Set<number>();
   const changedThreadIds = new Set<string>();
   let targetIndex = 0;
@@ -484,24 +486,27 @@ async function runCompletedEventOutputMigrationSweep(
     for (
       let advance = 0;
       advance < COMPLETED_EVENT_OUTPUT_MIGRATION_MAX_ADVANCES_PER_SWEEP &&
-      exhaustedTargets.size < RETAINED_EVENT_OUTPUT_TARGETS.length;
+      exhaustedTargets.size < migrationTargetCount;
       advance += 1
     ) {
       while (exhaustedTargets.has(targetIndex)) {
-        targetIndex = (targetIndex + 1) % RETAINED_EVENT_OUTPUT_TARGETS.length;
-      }
-      const target = RETAINED_EVENT_OUTPUT_TARGETS[targetIndex];
-      if (!target) {
-        throw new Error("Expected completed output migration target");
+        targetIndex = (targetIndex + 1) % migrationTargetCount;
       }
       const result = runEventLoopWorkSync(
         "sweep:completed-event-output-migration:advance",
-        () =>
-          migrateNextCompletedEventItemOutput(deps.db, {
-            ...target,
-            limit: DEFAULT_COMPLETED_EVENT_OUTPUT_MIGRATION_SCAN_LIMIT,
-            migratedAt: now,
-          }),
+        () => {
+          const target = RETAINED_EVENT_OUTPUT_TARGETS[targetIndex];
+          return target
+            ? migrateNextCompletedEventItemOutput(deps.db, {
+                ...target,
+                limit: DEFAULT_COMPLETED_EVENT_OUTPUT_MIGRATION_SCAN_LIMIT,
+                migratedAt: now,
+              })
+            : migrateNextLegacyImageGenerationOutput(deps.db, {
+                limit: DEFAULT_COMPLETED_EVENT_OUTPUT_MIGRATION_SCAN_LIMIT,
+                migratedAt: now,
+              });
+        },
       );
       if (result.action === "migrated") {
         if (!result.threadId) {
@@ -511,7 +516,7 @@ async function runCompletedEventOutputMigrationSweep(
       } else if (result.action === "complete" || result.action === "idle") {
         exhaustedTargets.add(targetIndex);
       }
-      targetIndex = (targetIndex + 1) % RETAINED_EVENT_OUTPUT_TARGETS.length;
+      targetIndex = (targetIndex + 1) % migrationTargetCount;
       await new Promise<void>((resolve) => setImmediate(resolve));
     }
   } finally {

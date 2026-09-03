@@ -1,0 +1,1 @@
+CREATE INDEX `events_provider_unhandled_migration_idx` ON `events` (`created_at`,`id`) WHERE "events"."type" = 'provider/unhandled';
