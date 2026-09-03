@@ -98,7 +98,7 @@ describe("offline host follow-ups", () => {
       const body = sendMessageResponseSchema.parse(await readJson(response));
       expect(body).toMatchObject({
         delivery: "queued",
-        sendAt: null,
+        queuedMessage: { sendAt: null },
       });
       if (body.delivery !== "queued") {
         throw new Error("expected the offline follow-up to queue");
@@ -107,7 +107,7 @@ describe("offline host follow-ups", () => {
       const queued = listQueuedThreadMessages(harness.db, thread.id);
       expect(queued).toHaveLength(1);
       expect(queued[0]).toMatchObject({
-        id: body.queuedMessageId,
+        id: body.queuedMessage.id,
         sendAt: null,
         failureReason: null,
       });
@@ -132,7 +132,9 @@ describe("offline host follow-ups", () => {
           listQueuedThreadCommands(harness, "turn.submit", thread.id),
         ).toEqual([]);
       }
-      expect(body).toMatchObject({ waitingOn: testCase.waitingOn });
+      expect(body).toMatchObject({
+        queuedMessage: { waitingOn: testCase.waitingOn },
+      });
       expect(
         queuedMessageWaitingOnSchema.parse(JSON.parse(queued[0]!.waitingOn!)),
       ).toEqual(testCase.waitingOn);

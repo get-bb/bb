@@ -734,7 +734,7 @@ async function sendClaimedQueuedMessageForThread(
     startedOnBehalfOf: null,
     trigger: "auto-dispatch",
   });
-  if (args.sendNow && outcome.kind === "queued") {
+  if (args.sendNow && args.mode !== "steer" && outcome.kind === "queued") {
     // "Send now" overrides every plugin wait and the row's own schedule, but
     // not a core wait — those guard invariants rather than express a policy.
     // The row is back on the queue with its new reason; say so rather than
@@ -817,13 +817,26 @@ export async function sendQueuedMessageNow(
     queuedMessageId: string;
     threadId: string;
   },
-): Promise<ThreadQueuedMessage> {
-  return sendQueuedMessage(deps, {
+): Promise<
+  | { delivery: "sent" }
+  | { delivery: "queued"; queuedMessage: ThreadQueuedMessage }
+> {
+  await sendQueuedMessage(deps, {
     claimPolicy: { kind: "explicit-send" },
     mode: args.mode,
     queuedMessageId: args.queuedMessageId,
     threadId: args.threadId,
   });
+  const remainingQueuedMessage = getQueuedThreadMessage(
+    deps.db,
+    args.queuedMessageId,
+  );
+  return remainingQueuedMessage
+    ? {
+        delivery: "queued",
+        queuedMessage: toThreadQueuedMessage(remainingQueuedMessage),
+      }
+    : { delivery: "sent" };
 }
 
 export async function sendNextQueuedMessageIfPresent(

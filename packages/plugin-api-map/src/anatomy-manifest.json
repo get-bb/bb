@@ -103,6 +103,41 @@
           ]
         }
       ]
+    },
+    "app-overlay": {
+      "groupId": "app-shell",
+      "fidelity": "anchor",
+      "responsiveStrategy": "scale-together",
+      "requiredStates": ["anchor"],
+      "labels": {
+        "anchor": ["Floating widget", "2 agents active"]
+      },
+      "fixtureClassAnchors": [
+        "absolute bottom-24 right-12",
+        "bg-popover",
+        "shadow-md"
+      ],
+      "sources": [
+        {
+          "path": "apps/app/src/components/plugin/PluginAppOverlays.tsx",
+          "anchors": [
+            "data-bb-plugin-app-overlays=\"\"",
+            "slotKind=\"appOverlay\"",
+            "crashFallback={null}"
+          ]
+        },
+        {
+          "path": "apps/app/src/components/layout/AppLayout.tsx",
+          "anchors": ["<PluginAppOverlays />"]
+        },
+        {
+          "path": "apps/app/src/components/plugin/PluginAppOverlays.test.tsx",
+          "anchors": [
+            "keeps sidebar thread actions available through a portal and route change",
+            "hides a crashing overlay without unmounting additive siblings"
+          ]
+        }
+      ]
     }
   }
 }

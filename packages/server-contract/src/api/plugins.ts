@@ -1,5 +1,21 @@
-import { jsonValueSchema } from "@bb/domain";
+import {
+  jsonValueSchema,
+  pluginCatalogCategoryIdSchema,
+  pluginMarketplaceCollectionIdSchema,
+  pluginMarketplaceCollectionPluginIdSchema,
+  type PluginCatalogCategoryId,
+  type PluginMarketplaceCollectionId,
+  type PluginMarketplaceCollectionPluginId,
+} from "@bb/domain";
 import { z } from "zod";
+
+export { pluginCatalogCategoryIdSchema, type PluginCatalogCategoryId };
+export {
+  pluginMarketplaceCollectionIdSchema,
+  pluginMarketplaceCollectionPluginIdSchema,
+  type PluginMarketplaceCollectionId,
+  type PluginMarketplaceCollectionPluginId,
+};
 
 export const pluginRuntimeStatusSchema = z.enum([
   "running",
@@ -162,6 +178,17 @@ export const installedPluginSchema = z.object({
   enabled: z.boolean(),
   description: z.string().nullable(),
   name: z.string().nullable(),
+  categoryId: pluginCatalogCategoryIdSchema.optional(),
+  category: z.string().optional(),
+  screenshots: z.array(z.string()),
+  collections: z.array(
+    z.object({
+      id: pluginMarketplaceCollectionIdSchema,
+      rank: z.number().int().nonnegative(),
+    }),
+  ),
+  publishedAt: z.iso.datetime({ offset: true }).optional(),
+  updatedAt: z.iso.datetime({ offset: true }).optional(),
   icon: z.string().nullable(),
   iconUrl: z.string().nullable(),
   status: pluginRuntimeStatusSchema,
@@ -278,6 +305,13 @@ export const pluginSettingDescriptorSchema = z.discriminatedUnion("type", [
   z
     .object({
       ...pluginSettingBaseSchema,
+      type: z.literal("number"),
+      default: z.number().finite().optional(),
+    })
+    .strict(),
+  z
+    .object({
+      ...pluginSettingBaseSchema,
       type: z.literal("select"),
       options: z.array(z.string().min(1)).min(1),
       default: z.string().optional(),
@@ -331,9 +365,27 @@ export const pluginCatalogStatusResponseSchema = z.object({
 
 export const pluginCatalogAuthorSchema = z.object({
   name: z.string(),
+  github: z.string().nullable().default(null),
   url: z.string().nullable(),
 });
 export type PluginCatalogAuthor = z.infer<typeof pluginCatalogAuthorSchema>;
+
+export const pluginCatalogCollectionMembershipSchema = z.object({
+  id: pluginMarketplaceCollectionIdSchema,
+  rank: z.number().int().nonnegative(),
+});
+export type PluginCatalogCollectionMembership = z.infer<
+  typeof pluginCatalogCollectionMembershipSchema
+>;
+
+export const pluginCatalogCollectionSchema = z.object({
+  id: pluginMarketplaceCollectionIdSchema,
+  displayName: z.string(),
+  pluginIds: z.array(pluginMarketplaceCollectionPluginIdSchema),
+});
+export type PluginCatalogCollection = z.infer<
+  typeof pluginCatalogCollectionSchema
+>;
 
 export const pluginCatalogSearchResultSchema = z.object({
   entryId: z.string(),
@@ -343,7 +395,12 @@ export const pluginCatalogSearchResultSchema = z.object({
   icon: z.string().nullable(),
   iconUrl: z.string().nullable(),
   iconTinted: z.boolean().default(false),
-  category: z.string(),
+  categoryId: pluginCatalogCategoryIdSchema.optional(),
+  category: z.string().optional(),
+  screenshots: z.array(z.string()).default([]),
+  collections: z.array(pluginCatalogCollectionMembershipSchema).default([]),
+  publishedAt: z.iso.datetime({ offset: true }).optional(),
+  updatedAt: z.iso.datetime({ offset: true }).optional(),
   source: z.string(),
   repositoryUrl: z.string().nullable().default(null),
   marketplace: z.string(),
@@ -363,7 +420,11 @@ export type PluginCatalogSearchResult = z.infer<
 
 export const pluginCatalogSearchResponseSchema = z.object({
   results: z.array(pluginCatalogSearchResultSchema),
+  collections: z.array(pluginCatalogCollectionSchema),
 });
+export type PluginCatalogSearchResponse = z.infer<
+  typeof pluginCatalogSearchResponseSchema
+>;
 
 export const pluginCatalogResolvedSourceSchema = z.discriminatedUnion("kind", [
   z

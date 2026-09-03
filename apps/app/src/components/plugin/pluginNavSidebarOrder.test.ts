@@ -4,7 +4,6 @@ import {
   arrangePluginNavPanels,
   getPluginNavPanelKey,
   migrateLegacyHiddenPluginNavPanelOrder,
-  reorderPluginNavPanels,
   togglePluginNavPanelVisibility,
 } from "./pluginNavSidebarOrder";
 
@@ -188,48 +187,6 @@ describe("legacy hidden-panel migration", () => {
         ["docs/vault"],
       ),
     ).toEqual(["github/pulls", "docs/vault"]);
-  });
-});
-
-describe("reorderPluginNavPanels", () => {
-  it("moves a row across the full customization order", () => {
-    const order = [
-      "one/main",
-      "two/main",
-      "three/main",
-      "four/main",
-      "five/main",
-      "six/main",
-      "seven/main",
-    ];
-
-    expect(
-      reorderPluginNavPanels({
-        activeKey: "one/main",
-        overKey: "six/main",
-        order,
-        visibleKeys: order,
-      }),
-    ).toEqual([
-      "two/main",
-      "three/main",
-      "four/main",
-      "five/main",
-      "six/main",
-      "one/main",
-      "seven/main",
-    ]);
-  });
-
-  it("returns null when the drag lands where it started", () => {
-    expect(
-      reorderPluginNavPanels({
-        activeKey: "github/pulls",
-        overKey: "github/pulls",
-        order: ["github/pulls", "docs/vault"],
-        visibleKeys: ["github/pulls", "docs/vault"],
-      }),
-    ).toBeNull();
   });
 });
 

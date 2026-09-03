@@ -239,6 +239,7 @@ describe("builtin plugin reconciliation", () => {
       ["provider-codex", "./icons/codex.svg"],
       ["provider-pi", "./icons/pi.svg"],
       ["provider-retry", "ArrowReloadHorizontal"],
+      ["push-notifications", "BellDot"],
       ["scheduled-send", "Calendar"],
       ["secrets", "Lock"],
       ["side-chat", "SideChat"],
@@ -564,6 +565,13 @@ describe("builtin plugin reconciliation", () => {
         status: "running",
       },
     ]);
+  });
+
+  it("ships Push notifications enabled on a fresh database", () => {
+    const pushPlugin = BUILTIN_PLUGINS.find(
+      (builtin) => builtin.name === "push-notifications",
+    );
+    expect(pushPlugin?.defaultEnabled).toBe(true);
   });
 
   it("loads the builtin connect plugin like other builtins", async () => {
@@ -1048,6 +1056,9 @@ describe("builtin plugin packaging", () => {
       stat(join(copiedRoot, "dist", "app.css")),
     ).resolves.toBeTruthy();
     await expect(stat(join(copiedRoot, "skills"))).resolves.toBeTruthy();
+    await expect(
+      readFile(join(targetRoot, "marketplace.json"), "utf8"),
+    ).resolves.toContain('"name": "bb-official"');
     await expect(
       readFile(join(copiedRoot, "assets", "icon.svg"), "utf8"),
     ).resolves.toBe("<svg/>\n");

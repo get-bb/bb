@@ -1,6 +1,7 @@
 import { HeadContent, Scripts, createRootRoute } from "@tanstack/react-router";
+import { useEffect } from "react";
 
-import { THEME_INIT } from "../lib/theme";
+import { THEME_INIT, watchSystemTheme } from "../lib/theme";
 
 export const Route = createRootRoute({
   head: () => ({
@@ -51,6 +52,7 @@ export const Route = createRootRoute({
 const JS_INIT = `document.documentElement.classList.add("js")`;
 
 function RootDocument({ children }: { children: React.ReactNode }) {
+  useEffect(() => watchSystemTheme(), []);
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
@@ -62,13 +64,11 @@ function RootDocument({ children }: { children: React.ReactNode }) {
           name="theme-color"
           media="(prefers-color-scheme: light)"
           content="#ffffff"
-          data-scheme="light"
         />
         <meta
           name="theme-color"
           media="(prefers-color-scheme: dark)"
           content="#151515"
-          data-scheme="dark"
         />
         <HeadContent />
       </head>

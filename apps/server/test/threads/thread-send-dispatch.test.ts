@@ -23,6 +23,7 @@ import { runQueuedMessageDispatch } from "../../src/services/threads/queued-mess
 import {
   createAutomaticQueuedMessageGroupEligibility,
   sendQueuedMessage,
+  sendQueuedMessageNow,
 } from "../../src/services/threads/queued-messages.js";
 import { queueParentSystemMessage } from "../../src/services/threads/parent-system-messages.js";
 import { acceptThreadSendRequest } from "../../src/services/threads/thread-send-request.js";
@@ -61,7 +62,7 @@ interface SeedIdleThreadFixtureArgs {
 }
 
 interface SeedProviderThreadFixtureArgs extends SeedIdleThreadFixtureArgs {
-  status?: "active" | "idle";
+  status?: "active" | "idle" | "starting";
 }
 
 afterEach(() => vi.restoreAllMocks());
@@ -328,7 +329,113 @@ describe("user message telemetry", () => {
   });
 });
 
-describe("turn-starting queue wait", () => {
+describe("startup queue waits", () => {
+  it("steers provisioning input into the first turn in queue order", async () => {
+    await withTestHarness(async (harness) => {
+      const { environment, thread } = seedProviderThreadFixture({
+        harness,
+        status: "starting",
+        value: 69,
+      });
+      for (const text of [
+        "first provisioning steer",
+        "second provisioning steer",
+      ]) {
+        await expect(
+          acceptThreadSendRequest(harness.deps, {
+            payload: {
+              input: textInput(text),
+              mode: "steer-if-active",
+            },
+            thread,
+          }),
+        ).resolves.toMatchObject({
+          delivery: "queued",
+          queuedMessage: { waitingOn: { kind: "provisioning" } },
+        });
+      }
+
+      await runQueuedMessageDispatch(harness.deps, {
+        kind: "workspace-ready",
+        threadId: thread.id,
+      });
+      expect(listQueuedThreadMessages(harness.db, thread.id)).toMatchObject([
+        { waitingOn: JSON.stringify({ kind: "provisioning" }) },
+        { waitingOn: JSON.stringify({ kind: "provisioning" }) },
+      ]);
+
+      applyLoggedThreadLifecycleEvent(harness.deps, {
+        event: { type: "run.started" },
+        threadId: thread.id,
+      });
+      seedTurnStarted(harness.deps, {
+        environmentId: environment.id,
+        providerThreadId: "provider-send-dispatch-69",
+        threadId: thread.id,
+        turnId: "turn-send-dispatch-69",
+      });
+      await runQueuedMessageDispatch(harness.deps, {
+        kind: "turn-started",
+        threadId: thread.id,
+      });
+
+      expect(listQueuedThreadMessages(harness.db, thread.id)).toEqual([]);
+      expect(
+        listQueuedThreadCommands(harness, "turn.submit", thread.id),
+      ).toMatchObject([
+        {
+          input: textInput("first provisioning steer"),
+          target: {
+            mode: "auto",
+            expectedTurnId: "turn-send-dispatch-69",
+          },
+        },
+        {
+          input: textInput("second provisioning steer"),
+          target: {
+            mode: "auto",
+            expectedTurnId: "turn-send-dispatch-69",
+          },
+        },
+      ]);
+    });
+  });
+
+  it("keeps an explicitly steered queued row parked during provisioning", async () => {
+    await withTestHarness(async (harness) => {
+      const { thread } = seedProviderThreadFixture({
+        harness,
+        status: "starting",
+        value: 70,
+      });
+      const queued = seedQueuedMessage(harness.deps, {
+        content: textInput("steer this queued row when ready"),
+        threadId: thread.id,
+        waitingOn: { kind: "thread-busy" },
+      });
+
+      await expect(
+        sendQueuedMessageNow(harness.deps, {
+          mode: "steer",
+          queuedMessageId: queued.id,
+          threadId: thread.id,
+        }),
+      ).resolves.toMatchObject({
+        delivery: "queued",
+        queuedMessage: {
+          id: queued.id,
+          waitingOn: { kind: "provisioning" },
+        },
+      });
+      expect(listQueuedThreadMessages(harness.db, thread.id)).toMatchObject([
+        {
+          id: queued.id,
+          waitingOn: JSON.stringify({ kind: "provisioning" }),
+        },
+      ]);
+    });
+  });
+
   it("starts a new turn when startup settles before its queued wake", async () => {
     await withTestHarness(async (harness) => {
       const { thread } = seedProviderThreadFixture({
@@ -584,7 +691,7 @@ describe("turn-starting queue wait", () => {
         }),
       ).resolves.toMatchObject({
         delivery: "queued",
-        waitingOn: { kind: "turn-starting" },
+        queuedMessage: { waitingOn: { kind: "turn-starting" } },
       });
       await expect(
         acceptThreadSendRequest(harness.deps, {
@@ -600,7 +707,7 @@ describe("turn-starting queue wait", () => {
         }),
       ).resolves.toMatchObject({
         delivery: "queued",
-        waitingOn: { kind: "turn-starting" },
+        queuedMessage: { waitingOn: { kind: "turn-starting" } },
       });
       expect(queueChangedInTransactions).toEqual([false, false]);
       const queued = listQueuedThreadMessages(harness.db, thread.id);

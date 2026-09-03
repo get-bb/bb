@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from "react";
 import type {
   ComposerCustomization,
+  ExperimentalAppOverlayRegistration,
   PluginDiffRendererRegistration,
   PluginPendingInteractionRegistration,
   PluginFileOpenerRegistration,
@@ -24,6 +25,7 @@ import type {
 export interface PluginRegistrationSet {
   homepageSections: readonly PluginHomepageSectionRegistration[];
   settingsSections: readonly PluginSettingsSectionRegistration[];
+  appOverlays?: readonly ExperimentalAppOverlayRegistration[];
   navPanels: readonly PluginNavPanelRegistration[];
   threadPanelActions: readonly PluginThreadPanelActionRegistration[];
   newThreadPanelActions?: readonly PluginNewThreadPanelActionRegistration[];
@@ -52,6 +54,8 @@ export interface PluginHomepageSectionSlot
   extends PluginHomepageSectionRegistration, PluginSlotBase {}
 export interface PluginSettingsSectionSlot
   extends PluginSettingsSectionRegistration, PluginSlotBase {}
+export interface ExperimentalAppOverlaySlot
+  extends ExperimentalAppOverlayRegistration, PluginSlotBase {}
 export interface PluginNavPanelSlot
   extends PluginNavPanelRegistration, PluginSlotBase {}
 export interface PluginThreadPanelActionSlot
@@ -90,6 +94,7 @@ export interface PluginTimelineRendererSlot
 export interface PluginSlotSnapshot {
   homepageSections: readonly PluginHomepageSectionSlot[];
   settingsSections: readonly PluginSettingsSectionSlot[];
+  appOverlays: readonly ExperimentalAppOverlaySlot[];
   navPanels: readonly PluginNavPanelSlot[];
   threadPanelActions: readonly PluginThreadPanelActionSlot[];
   newThreadPanelActions: readonly PluginNewThreadPanelActionSlot[];
@@ -112,6 +117,7 @@ export interface PluginSlotSnapshot {
 export const EMPTY_PLUGIN_SLOT_SNAPSHOT: PluginSlotSnapshot = {
   homepageSections: [],
   settingsSections: [],
+  appOverlays: [],
   navPanels: [],
   threadPanelActions: [],
   newThreadPanelActions: [],
@@ -141,6 +147,7 @@ type SlotKind = keyof PluginSlotSnapshot;
 const SLOT_KINDS: readonly SlotKind[] = [
   "homepageSections",
   "settingsSections",
+  "appOverlays",
   "navPanels",
   "threadPanelActions",
   "newThreadPanelActions",
@@ -182,6 +189,7 @@ function flattenRegistrations(
   return {
     homepageSections: stamp(set.homepageSections),
     settingsSections: stamp(set.settingsSections),
+    appOverlays: stamp(set.appOverlays),
     navPanels: stamp(set.navPanels),
     threadPanelActions: stamp(set.threadPanelActions),
     newThreadPanelActions: stamp(set.newThreadPanelActions),

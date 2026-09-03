@@ -407,6 +407,26 @@
  * The mobile path still owns its React state so software-keyboard expansion
  * remains synchronized with visualViewport changes.
  */
+[data-plugin-shelf] {
+  container: plugin-shelf / inline-size;
+}
+
+[data-plugin-shelf-grid] {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+@container plugin-shelf (min-width: 32.5rem) {
+  [data-plugin-shelf-grid] {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@container plugin-shelf (min-width: 49rem) {
+  [data-plugin-shelf-grid] {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
 @container promptbox-shell (max-width: 30rem) {
   [data-follow-up-composer] {
     --follow-up-composer-container-compact: true;

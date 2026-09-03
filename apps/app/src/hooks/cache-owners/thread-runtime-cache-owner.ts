@@ -10,7 +10,8 @@ import type {
 import type {
   CreateQueuedMessageRequest,
   PromptHistoryResponse,
-  SendMessageDelivery,
+  SendMessageResponse,
+  SendQueuedMessageResponse,
   SendQueuedMessageMode,
   ThreadQueuedMessageListResponse,
   ThreadResponse,
@@ -154,11 +155,18 @@ interface RollbackRemoveQueuedMessageTransactionArgs {
   transaction: RemoveQueuedMessageTransaction | undefined;
 }
 
+interface ApplyQueuedMessageSendResultArgs {
+  queryClient: QueryClient;
+  request: SendQueuedMessageRequest;
+  result: SendQueuedMessageResponse;
+  transaction: RemoveQueuedMessageTransaction | undefined;
+}
+
 interface ApplySendThreadMessageSuccessArgs {
-  delivery: SendMessageDelivery;
   queryClient: QueryClient;
   realtimeConnected: boolean;
   request: SendThreadMessageMutationRequest;
+  result: SendMessageResponse;
   transaction: SendThreadMessageTransaction | undefined;
 }
 
@@ -239,7 +247,7 @@ interface BuildOptimisticUserMessageRowParams {
 interface BuildOptimisticQueuedMessageParams {
   createdAt: number;
   queryClient: QueryClient;
-  request: CreateQueuedMessageRequestWithThreadId;
+  request: CreateQueuedMessageRequestWithThreadId & { sendAt?: number };
 }
 
 type OptimisticTurnRequestKind = "message" | "steer";
@@ -253,13 +261,15 @@ interface SendThreadMessageAcceptedTurnTransaction {
   kind: "accepted-turn";
   optimisticCreatedAt: number;
   optimisticRowId: string;
+  optimisticThreadDataUpdateCount: number | null;
   previousThread: ThreadResponse | undefined;
 }
 
 interface SendThreadMessageQueuedTransaction {
   kind: "queued-message";
+  optimisticCreatedAt: number;
   optimisticQueuedMessageId: string;
-  previousQueuedMessages: ThreadQueuedMessageListResponse | undefined;
+  previousThreadStatus: ThreadWithRuntime["status"] | null;
 }
 
 export type SendThreadMessageTransaction =
@@ -271,8 +281,8 @@ export interface ReorderQueuedMessageTransaction {
 }
 
 export interface CreateQueuedMessageTransaction {
+  optimisticCreatedAt: number;
   optimisticQueuedMessageId: string;
-  previousQueuedMessages: ThreadQueuedMessageListResponse | undefined;
 }
 
 export interface UpdateQueuedMessageTransaction {
@@ -281,7 +291,10 @@ export interface UpdateQueuedMessageTransaction {
 }
 
 export interface RemoveQueuedMessageTransaction {
+  optimisticCreatedAt: number | null;
+  optimisticQueueDataUpdateCount: number;
   optimisticRowId: string | null;
+  optimisticThreadDataUpdateCount: number | null;
   previousQueuedMessages: ThreadQueuedMessageListResponse | undefined;
   previousThread: ThreadResponse | undefined;
 }
@@ -394,6 +407,10 @@ function buildOptimisticQueuedMessage({
     queryClient,
     request.id,
   );
+  const scheduledSendAt =
+    request.sendAt !== undefined && request.sendAt > createdAt
+      ? request.sendAt
+      : null;
 
   return {
     id: `optimistic-queued-${nanoid()}`,
@@ -411,8 +428,8 @@ function buildOptimisticQueuedMessage({
     serviceTier:
       request.serviceTier ?? defaultExecutionOptions?.serviceTier ?? "default",
     groupWithNext: false,
-    sendAt: null,
-    waitingOn: null,
+    sendAt: scheduledSendAt,
+    waitingOn: scheduledSendAt === null ? null : { kind: "time" },
     failureReason: null,
     payload: { kind: "inline" },
     editable: true,
@@ -424,12 +441,14 @@ function buildOptimisticQueuedMessage({
 function insertOptimisticQueuedMessage({
   queryClient,
   request,
-}: CreateQueuedMessageTransactionArgs): CreateQueuedMessageTransaction {
+}: {
+  queryClient: QueryClient;
+  request: CreateQueuedMessageRequestWithThreadId & { sendAt?: number };
+}): CreateQueuedMessageTransaction {
   const queryKey = threadQueuedMessagesQueryKey(request.id);
-  const previousQueuedMessages =
-    queryClient.getQueryData<ThreadQueuedMessageListResponse>(queryKey);
+  const optimisticCreatedAt = Date.now();
   const optimisticQueuedMessage = buildOptimisticQueuedMessage({
-    createdAt: Date.now(),
+    createdAt: optimisticCreatedAt,
     queryClient,
     request,
   });
@@ -443,23 +462,99 @@ function insertOptimisticQueuedMessage({
   );
 
   return {
+    optimisticCreatedAt,
     optimisticQueuedMessageId: optimisticQueuedMessage.id,
-    previousQueuedMessages,
   };
 }
 
-function restoreQueuedMessageSnapshot({
+function restoreQueuedMessageSnapshotIfUnchanged({
+  optimisticQueueDataUpdateCount,
   previousQueuedMessages,
   queryClient,
   threadId,
 }: {
+  optimisticQueueDataUpdateCount: number;
   previousQueuedMessages: ThreadQueuedMessageListResponse | undefined;
   queryClient: QueryClient;
+  threadId: string;
+}): boolean {
+  const queryKey = threadQueuedMessagesQueryKey(threadId);
+  if (
+    queryClient.getQueryState(queryKey)?.dataUpdateCount !==
+    optimisticQueueDataUpdateCount
+  ) {
+    return false;
+  }
+  queryClient.setQueryData<ThreadQueuedMessageListResponse>(
+    queryKey,
+    previousQueuedMessages ?? [],
+  );
+  return true;
+}
+
+function removeOptimisticQueuedMessage(
+  queryClient: QueryClient,
+  threadId: string,
+  optimisticQueuedMessageId: string,
+): boolean {
+  let removed = false;
+  queryClient.setQueryData<ThreadQueuedMessageListResponse>(
+    threadQueuedMessagesQueryKey(threadId),
+    (currentQueuedMessages) => {
+      if (!currentQueuedMessages) return currentQueuedMessages;
+      const nextQueuedMessages = currentQueuedMessages.filter(
+        (queuedMessage) => queuedMessage.id !== optimisticQueuedMessageId,
+      );
+      removed = nextQueuedMessages.length !== currentQueuedMessages.length;
+      return removed ? nextQueuedMessages : currentQueuedMessages;
+    },
+  );
+  return removed;
+}
+
+function reconcileAuthoritativeQueuedMessage({
+  insertWhenMissing,
+  optimisticQueuedMessageId,
+  queryClient,
+  queuedMessage,
+  threadId,
+}: {
+  insertWhenMissing: boolean;
+  optimisticQueuedMessageId: string | null;
+  queryClient: QueryClient;
+  queuedMessage: ThreadQueuedMessage;
   threadId: string;
 }): void {
   queryClient.setQueryData<ThreadQueuedMessageListResponse>(
     threadQueuedMessagesQueryKey(threadId),
-    previousQueuedMessages ?? [],
+    (currentQueuedMessages) => {
+      if (!currentQueuedMessages) {
+        return insertWhenMissing ? [queuedMessage] : currentQueuedMessages;
+      }
+      const authoritativeIndex = currentQueuedMessages.findIndex(
+        (currentQueuedMessage) => currentQueuedMessage.id === queuedMessage.id,
+      );
+      if (authoritativeIndex !== -1) {
+        const nextQueuedMessages = [...currentQueuedMessages];
+        nextQueuedMessages[authoritativeIndex] = queuedMessage;
+        return nextQueuedMessages;
+      }
+      const optimisticIndex =
+        optimisticQueuedMessageId === null
+          ? -1
+          : currentQueuedMessages.findIndex(
+              (currentQueuedMessage) =>
+                currentQueuedMessage.id === optimisticQueuedMessageId,
+            );
+      if (optimisticIndex !== -1) {
+        const nextQueuedMessages = [...currentQueuedMessages];
+        nextQueuedMessages[optimisticIndex] = queuedMessage;
+        return nextQueuedMessages;
+      }
+      return insertWhenMissing
+        ? [...currentQueuedMessages, queuedMessage]
+        : currentQueuedMessages;
+    },
   );
 }
 
@@ -481,7 +576,11 @@ function removeCachedQueuedMessage({
   );
 
   return {
+    optimisticCreatedAt: null,
+    optimisticQueueDataUpdateCount:
+      queryClient.getQueryState(queryKey)?.dataUpdateCount ?? 0,
     optimisticRowId: null,
+    optimisticThreadDataUpdateCount: null,
     previousQueuedMessages,
     previousThread: undefined,
   };
@@ -543,11 +642,14 @@ function optimisticTurnRequestKind({
   return "message";
 }
 
-function requestWillQueueForActiveThread(
+function requestWillOptimisticallyQueue(
   request: SendThreadMessageMutationRequest,
   thread: ThreadWithRuntime | undefined,
 ): boolean {
-  return request.mode === "queue-if-active" && thread?.status === "active";
+  return (
+    (request.sendAt !== undefined && request.sendAt > Date.now()) ||
+    (request.mode === "queue-if-active" && thread?.status === "active")
+  );
 }
 
 function buildOptimisticUserMessageRow({
@@ -624,6 +726,47 @@ function applyOptimisticAcceptedTurnThreadState({
           : "active",
     },
   }));
+}
+
+function removeOptimisticTimelineRowIfPresent(
+  queryClient: QueryClient,
+  threadId: string,
+  optimisticRowId: string,
+): boolean {
+  const wasPresent = queryClient
+    .getQueriesData<ThreadTimelineResponse>({
+      queryKey: threadTimelineQueryKeyPrefix(threadId),
+    })
+    .some(([, timeline]) =>
+      timeline?.rows.some((row) => row.id === optimisticRowId),
+    );
+  removeOptimisticTimelineRow(queryClient, threadId, optimisticRowId);
+  return wasPresent;
+}
+
+function restoreOptimisticThreadSnapshotIfUnchanged({
+  optimisticThreadDataUpdateCount,
+  previousThread,
+  queryClient,
+  threadId,
+}: {
+  optimisticThreadDataUpdateCount: number | null;
+  previousThread: ThreadResponse | undefined;
+  queryClient: QueryClient;
+  threadId: string;
+}): void {
+  if (
+    optimisticThreadDataUpdateCount === null ||
+    previousThread === undefined ||
+    queryClient.getQueryState(threadQueryKey(threadId))?.dataUpdateCount !==
+      optimisticThreadDataUpdateCount
+  ) {
+    return;
+  }
+  queryClient.setQueryData<ThreadResponse>(
+    threadQueryKey(threadId),
+    previousThread,
+  );
 }
 
 function applyOptimisticStopRequest({
@@ -776,27 +919,11 @@ export async function beginSendThreadMessageTransaction({
   queryClient,
   request,
 }: SendThreadMessageTransactionArgs): Promise<SendThreadMessageTransaction> {
-  await queryClient.cancelQueries({ queryKey: threadQueryKey(request.id) });
-
-  const previousThread = queryClient.getQueryData<ThreadResponse>(
-    threadQueryKey(request.id),
-  );
-  if (requestWillQueueForActiveThread(request, previousThread)) {
-    const queryKey = threadQueuedMessagesQueryKey(request.id);
-    await queryClient.cancelQueries({
-      queryKey,
-    });
-    const transaction = insertOptimisticQueuedMessage({
-      queryClient,
-      request,
-    });
-    return {
-      kind: "queued-message",
-      ...transaction,
-    };
-  }
-
   await Promise.all([
+    queryClient.cancelQueries({ queryKey: threadQueryKey(request.id) }),
+    queryClient.cancelQueries({
+      queryKey: threadQueuedMessagesQueryKey(request.id),
+    }),
     queryClient.cancelQueries({
       queryKey: threadTimelineQueryKeyPrefix(request.id),
     }),
@@ -804,6 +931,22 @@ export async function beginSendThreadMessageTransaction({
       queryKey: threadTimelineTurnSummaryDetailsQueryKeyPrefix(request.id),
     }),
   ]);
+
+  const previousThread = queryClient.getQueryData<ThreadResponse>(
+    threadQueryKey(request.id),
+  );
+  if (requestWillOptimisticallyQueue(request, previousThread)) {
+    const transaction = insertOptimisticQueuedMessage({
+      queryClient,
+      request,
+    });
+    return {
+      kind: "queued-message",
+      previousThreadStatus: previousThread?.status ?? null,
+      ...transaction,
+    };
+  }
+
   const optimisticCreatedAt = Date.now();
 
   applyOptimisticAcceptedTurnThreadState({
@@ -826,6 +969,9 @@ export async function beginSendThreadMessageTransaction({
     previousThread,
     optimisticCreatedAt,
     optimisticRowId: optimisticRow.id,
+    optimisticThreadDataUpdateCount:
+      queryClient.getQueryState(threadQueryKey(request.id))?.dataUpdateCount ??
+      null,
   };
 }
 
@@ -835,89 +981,114 @@ export function rollbackSendThreadMessageTransaction({
   transaction,
 }: RollbackSendThreadMessageTransactionArgs): void {
   if (transaction?.kind === "queued-message") {
-    restoreQueuedMessageSnapshot({
-      previousQueuedMessages: transaction.previousQueuedMessages,
+    removeOptimisticQueuedMessage(
       queryClient,
-      threadId: request.id,
-    });
+      request.id,
+      transaction.optimisticQueuedMessageId,
+    );
     return;
   }
   if (transaction?.kind !== "accepted-turn") {
     return;
   }
-  if (transaction.optimisticRowId) {
-    removeOptimisticTimelineRow(
-      queryClient,
-      request.id,
-      transaction.optimisticRowId,
-    );
-  }
-  if (!transaction?.previousThread) {
-    return;
-  }
-
-  queryClient.setQueryData<ThreadResponse>(
-    threadQueryKey(request.id),
-    transaction.previousThread,
+  removeOptimisticTimelineRow(
+    queryClient,
+    request.id,
+    transaction.optimisticRowId,
   );
+  restoreOptimisticThreadSnapshotIfUnchanged({
+    optimisticThreadDataUpdateCount:
+      transaction.optimisticThreadDataUpdateCount,
+    previousThread: transaction.previousThread,
+    queryClient,
+    threadId: request.id,
+  });
 }
 
 export function applySendThreadMessageSuccess({
-  delivery,
   queryClient,
   realtimeConnected,
   request,
+  result,
   transaction,
 }: ApplySendThreadMessageSuccessArgs): void {
-  if (delivery === "queued" && transaction?.kind === "accepted-turn") {
-    if (transaction.optimisticRowId) {
-      removeOptimisticTimelineRow(
+  const optimisticCreatedAt = transaction?.optimisticCreatedAt ?? Date.now();
+  if (result.delivery === "queued") {
+    const optimisticTimelineRowRemoved =
+      transaction?.kind === "accepted-turn"
+        ? removeOptimisticTimelineRowIfPresent(
+            queryClient,
+            request.id,
+            transaction.optimisticRowId,
+          )
+        : false;
+    reconcileAuthoritativeQueuedMessage({
+      insertWhenMissing:
+        transaction === undefined || optimisticTimelineRowRemoved,
+      optimisticQueuedMessageId:
+        transaction?.kind === "queued-message"
+          ? transaction.optimisticQueuedMessageId
+          : null,
+      queryClient,
+      queuedMessage: result.queuedMessage,
+      threadId: request.id,
+    });
+    if (transaction?.kind === "accepted-turn" && optimisticTimelineRowRemoved) {
+      restoreOptimisticThreadSnapshotIfUnchanged({
+        optimisticThreadDataUpdateCount:
+          transaction.optimisticThreadDataUpdateCount,
+        previousThread: transaction.previousThread,
         queryClient,
-        request.id,
-        transaction.optimisticRowId,
-      );
-    }
-    if (transaction.previousThread) {
-      queryClient.setQueryData<ThreadResponse>(
-        threadQueryKey(request.id),
-        transaction.previousThread,
-      );
+        threadId: request.id,
+      });
     }
     prependThreadPromptHistory(
       queryClient,
       request.id,
       buildAcceptedPromptHistoryEntry({
-        createdAt: transaction.optimisticCreatedAt,
+        createdAt: optimisticCreatedAt,
         input: request.input,
       }),
     );
     invalidateThreadQueueQueries({ queryClient, threadId: request.id });
     return;
   }
+
   if (transaction?.kind === "queued-message") {
-    prependThreadPromptHistory(
+    const optimisticQueuedMessageRemoved = removeOptimisticQueuedMessage(
       queryClient,
       request.id,
-      buildAcceptedPromptHistoryEntry({
-        createdAt: Date.now(),
-        input: request.input,
-      }),
+      transaction.optimisticQueuedMessageId,
     );
-    if (realtimeConnected) {
-      invalidateThreadQueuedMessageListQuery({
+    if (optimisticQueuedMessageRemoved) {
+      applyOptimisticAcceptedTurnThreadState({
+        createdAt: optimisticCreatedAt,
         queryClient,
         threadId: request.id,
       });
-    } else {
-      invalidateThreadQueueQueries({ queryClient, threadId: request.id });
+      insertOptimisticTimelineRow(
+        queryClient,
+        request.id,
+        buildOptimisticUserMessageRow({
+          createdAt: optimisticCreatedAt,
+          input: request.input,
+          mode: request.mode,
+          threadId: request.id,
+          threadStatus: transaction.previousThreadStatus,
+        }),
+      );
     }
-    return;
+    invalidateThreadQueuedMessageListQuery({
+      queryClient,
+      threadId: request.id,
+    });
   }
+
   prependThreadPromptHistory(
     queryClient,
     request.id,
     buildAcceptedPromptHistoryEntry({
-      createdAt: transaction?.optimisticCreatedAt ?? Date.now(),
+      createdAt: optimisticCreatedAt,
       input: request.input,
     }),
   );
@@ -949,11 +1120,11 @@ export function rollbackCreateQueuedMessageTransaction({
   if (!transaction) {
     return;
   }
-  restoreQueuedMessageSnapshot({
-    previousQueuedMessages: transaction.previousQueuedMessages,
+  removeOptimisticQueuedMessage(
     queryClient,
-    threadId: request.id,
-  });
+    request.id,
+    transaction.optimisticQueuedMessageId,
+  );
 }
 
 export function applyQueuedMessageCreateResult({
@@ -1126,10 +1297,16 @@ export async function beginSendQueuedMessageTransaction({
     (currentQueuedMessages) =>
       removeQueuedMessagesAndRepairGroupEdges(currentQueuedMessages, sendIds),
   );
+  const optimisticQueueDataUpdateCount =
+    queryClient.getQueryState(threadQueuedMessagesQueryKey(request.id))
+      ?.dataUpdateCount ?? 0;
 
   if (!queuedMessage) {
     return {
+      optimisticCreatedAt: null,
+      optimisticQueueDataUpdateCount,
       optimisticRowId: null,
+      optimisticThreadDataUpdateCount: null,
       previousQueuedMessages,
       previousThread,
     };
@@ -1141,9 +1318,15 @@ export async function beginSendQueuedMessageTransaction({
     queryClient,
     threadId: request.id,
   });
+  const optimisticThreadDataUpdateCount =
+    queryClient.getQueryState(threadQueryKey(request.id))?.dataUpdateCount ??
+    null;
   if (queuedMessageGroup.length > 1) {
     return {
+      optimisticCreatedAt,
+      optimisticQueueDataUpdateCount,
       optimisticRowId: null,
+      optimisticThreadDataUpdateCount,
       previousQueuedMessages,
       previousThread,
     };
@@ -1158,7 +1341,10 @@ export async function beginSendQueuedMessageTransaction({
   insertOptimisticTimelineRow(queryClient, request.id, optimisticRow);
 
   return {
+    optimisticCreatedAt,
+    optimisticQueueDataUpdateCount,
     optimisticRowId: optimisticRow.id,
+    optimisticThreadDataUpdateCount,
     previousQueuedMessages,
     previousThread,
   };
@@ -1179,24 +1365,72 @@ export function rollbackRemoveQueuedMessageTransaction({
       transaction.optimisticRowId,
     );
   }
-  if (transaction.previousThread) {
-    queryClient.setQueryData<ThreadResponse>(
-      threadQueryKey(request.id),
-      transaction.previousThread,
-    );
-  }
-  restoreQueuedMessageSnapshot({
+  restoreOptimisticThreadSnapshotIfUnchanged({
+    optimisticThreadDataUpdateCount:
+      transaction.optimisticThreadDataUpdateCount,
+    previousThread: transaction.previousThread,
+    queryClient,
+    threadId: request.id,
+  });
+  const queueRestored = restoreQueuedMessageSnapshotIfUnchanged({
+    optimisticQueueDataUpdateCount: transaction.optimisticQueueDataUpdateCount,
     previousQueuedMessages: transaction.previousQueuedMessages,
     queryClient,
     threadId: request.id,
   });
+  if (!queueRestored) {
+    invalidateThreadQueueQueries({ queryClient, threadId: request.id });
+  }
 }
 
 export function applyQueuedMessageSendResult({
   queryClient,
-  threadId,
-}: ThreadIdCacheArgs): void {
-  invalidateThreadQueuedMessageSendQueries({ queryClient, threadId });
+  request,
+  result,
+  transaction,
+}: ApplyQueuedMessageSendResultArgs): void {
+  if (result.delivery === "queued") {
+    const optimisticQueueUnchanged =
+      transaction !== undefined &&
+      queryClient.getQueryState(threadQueuedMessagesQueryKey(request.id))
+        ?.dataUpdateCount === transaction.optimisticQueueDataUpdateCount;
+    if (optimisticQueueUnchanged && transaction !== undefined) {
+      restoreQueuedMessageSnapshotIfUnchanged({
+        optimisticQueueDataUpdateCount:
+          transaction.optimisticQueueDataUpdateCount,
+        previousQueuedMessages: transaction.previousQueuedMessages,
+        queryClient,
+        threadId: request.id,
+      });
+    }
+    reconcileAuthoritativeQueuedMessage({
+      insertWhenMissing: transaction === undefined || optimisticQueueUnchanged,
+      optimisticQueuedMessageId: null,
+      queryClient,
+      queuedMessage: result.queuedMessage,
+      threadId: request.id,
+    });
+    if (transaction !== undefined && transaction.optimisticRowId !== null) {
+      removeOptimisticTimelineRow(
+        queryClient,
+        request.id,
+        transaction.optimisticRowId,
+      );
+    }
+    if (transaction !== undefined) {
+      restoreOptimisticThreadSnapshotIfUnchanged({
+        optimisticThreadDataUpdateCount:
+          transaction.optimisticThreadDataUpdateCount,
+        previousThread: transaction.previousThread,
+        queryClient,
+        threadId: request.id,
+      });
+    }
+  }
+  invalidateThreadQueuedMessageSendQueries({
+    queryClient,
+    threadId: request.id,
+  });
 }
 
 export async function beginReorderQueuedMessageTransaction({

@@ -6,11 +6,15 @@ import { HOST_DAEMON_PROTOCOL_VERSION } from "@bb/host-daemon-contract";
 import type { HostDaemonLogger } from "./logger.js";
 import type { FetchFn } from "./server-client.js";
 import { usesSecureInternalFetchTransport } from "./server-client.js";
+import { sha256Hex } from "./sha256-hex.js";
 
 const execFileAsync = promisify(execFile);
 export const SELF_UPDATE_INITIAL_RETRY_DELAY_MS = 5_000;
 export const SELF_UPDATE_MAX_RETRY_DELAY_MS = 5 * 60 * 1000;
 const ATTEMPT_FILE_NAME = "host-daemon-update-attempt.json";
+const INSTALLED_ARTIFACT_DIGEST_FILE_NAME = "host-artifact.sha256";
+const ARTIFACT_DIGEST_HEADER = "x-bb-artifact-sha256";
+const ARTIFACT_DIGEST_PATTERN = /^[a-f0-9]{64}$/u;
 
 interface UpdateVersion {
   protocolVersion: number;
@@ -117,6 +121,33 @@ async function writeAttempt(
   await rename(temporary, path);
 }
 
+async function readInstalledArtifactDigest(
+  path: string,
+): Promise<string | null> {
+  try {
+    const digest = (await readFile(path, "utf8")).trim();
+    return ARTIFACT_DIGEST_PATTERN.test(digest) ? digest : null;
+  } catch {
+    return null;
+  }
+}
+
+async function writeInstalledArtifactDigest(
+  path: string,
+  digest: string,
+): Promise<void> {
+  const temporary = `${path}.${process.pid}.tmp`;
+  await writeFile(temporary, `${digest}\n`, { mode: 0o600 });
+  await rename(temporary, path);
+}
+
+function responseArtifactDigest(response: Response): string | null {
+  const digest = response.headers.get(ARTIFACT_DIGEST_HEADER);
+  return digest !== null && ARTIFACT_DIGEST_PATTERN.test(digest)
+    ? digest
+    : null;
+}
+
 const defaultRunProcess: SelfUpdateProcessRunner = async (
   command,
   args,
@@ -167,6 +198,10 @@ export function createProtocolSelfUpdater(
       ));
   const now = options.now ?? Date.now;
   const attemptPath = join(options.dataDir, ATTEMPT_FILE_NAME);
+  const installedArtifactDigestPath = join(
+    options.dataDir,
+    INSTALLED_ARTIFACT_DIGEST_FILE_NAME,
+  );
 
   return {
     async handleProtocolMismatch(
@@ -252,18 +287,51 @@ export function createProtocolSelfUpdater(
         );
         try {
           const tarballUrl = new URL("/install/bb-app.tgz", options.serverUrl);
-          const response = await fetchFn(tarballUrl, { method: "GET" });
+          const installedDigest = await readInstalledArtifactDigest(
+            installedArtifactDigestPath,
+          );
+          const response = await fetchFn(tarballUrl, {
+            method: "GET",
+            ...(installedDigest === null
+              ? {}
+              : {
+                  headers: {
+                    "if-none-match": `"sha256-${installedDigest}"`,
+                  },
+                }),
+          });
+          if (response.status === 304 && installedDigest !== null) {
+            options.logger.info(
+              { artifactDigest: installedDigest },
+              "The server-matched bb host artifact is already installed; restarting the daemon.",
+            );
+            return "updated";
+          }
           if (!response.ok) {
             throw new Error(
               `Package download failed: ${response.status} ${response.statusText}`,
             );
           }
-          await writeFile(
-            tarballPath,
-            new Uint8Array(await response.arrayBuffer()),
-            { mode: 0o600 },
-          );
+          const bytes = new Uint8Array(await response.arrayBuffer());
+          const expectedDigest = responseArtifactDigest(response);
+          if (expectedDigest !== null) {
+            const actualDigest = sha256Hex(bytes);
+            if (actualDigest !== expectedDigest) {
+              throw new Error(
+                `Package digest mismatch: expected ${expectedDigest}, received ${actualDigest}`,
+              );
+            }
+          }
+          await writeFile(tarballPath, bytes, { mode: 0o600 });
           await installTarball(tarballPath);
+          if (expectedDigest === null) {
+            await rm(installedArtifactDigestPath, { force: true });
+          } else {
+            await writeInstalledArtifactDigest(
+              installedArtifactDigestPath,
+              expectedDigest,
+            );
+          }
         } finally {
           await rm(tarballPath, { force: true });
         }
@@ -274,7 +342,7 @@ export function createProtocolSelfUpdater(
             serverProtocolVersion: server.protocolVersion,
             serverVersion: server.version,
           },
-          "Installed the server-matched bb-app package; restarting the daemon.",
+          "Installed the server-matched bb host package; restarting the daemon.",
         );
         return "updated";
       } catch (error) {

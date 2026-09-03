@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import * as pluginSdkApp from "@get-bb/plugin-sdk/app";
 import {
   type BbPluginApi,
+  type ExperimentalAppOverlayProps,
   type PluginAppBuilder,
   type PluginAppSlots,
   type PluginContentScriptContext,
@@ -176,6 +177,7 @@ void _assertAllApiKeysListed;
 
 const SETTING_DESCRIPTOR_TYPES = [
   "string",
+  "number",
   "boolean",
   "select",
   "project",
@@ -211,6 +213,7 @@ const THREAD_EVENT_PAYLOAD_FIELDS = {
   "thread.failed": ["thread", "error"],
   "thread.archived": ["thread"],
   "thread.deleted": ["thread"],
+  "interaction.pending": ["thread", "interaction"],
   "message.queued": ["entry"],
   "message.dispatched": ["entry"],
   "turn.failed": [
@@ -240,6 +243,7 @@ void _assertAllThreadEventFieldsListed;
 type SlotPropsByName = {
   homepageSection: PluginHomepageSectionProps;
   settingsSection: PluginSettingsSectionProps;
+  experimental_appOverlay: ExperimentalAppOverlayProps;
   navPanel: PluginNavPanelProps;
   threadPanelAction: PluginThreadPanelProps;
   experimental_newThreadPanelAction: PluginNewThreadPanelProps;
@@ -310,6 +314,7 @@ void _assertAllContentScriptRegistrationFieldsListed;
 const FRONTEND_SLOT_PROP_FIELDS = {
   homepageSection: ["projectId"],
   settingsSection: [],
+  experimental_appOverlay: [],
   navPanel: ["subPath"],
   threadPanelAction: ["threadId", "params"],
   experimental_newThreadPanelAction: ["projectId", "params"],

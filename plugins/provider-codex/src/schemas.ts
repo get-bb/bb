@@ -807,8 +807,18 @@ export interface CodexRateLimitSnapshot {
 }
 
 export const codexRateLimitReadResponseSchema = z
-  .object({ rateLimits: codexRateLimitSnapshotUpdateSchema })
-  .passthrough();
+  .object({
+    rateLimits: codexRateLimitSnapshotUpdateSchema,
+    rateLimitsByLimitId: z
+      .record(z.string(), codexRateLimitSnapshotUpdateSchema)
+      .nullable()
+      .optional(),
+  })
+  .passthrough()
+  .transform((response) => ({
+    rateLimits: response.rateLimits,
+    rateLimitsByLimitId: response.rateLimitsByLimitId ?? null,
+  }));
 
 export const codexHandledEventSchema = z.discriminatedUnion("method", [
   createCodexEventSchema(

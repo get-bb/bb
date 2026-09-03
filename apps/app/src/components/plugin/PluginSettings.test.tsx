@@ -129,6 +129,72 @@ describe("PluginSettingsForm", () => {
     );
   });
 
+  it("autosaves a number input on blur and unsets it when cleared", async () => {
+    const view = {
+      ok: true,
+      schema: {
+        retries: { type: "number", label: "Retries" },
+      },
+      values: { retries: 3 },
+    };
+    const requests: RecordedRequest[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init?: RequestInit) => {
+        requests.push({ url, init });
+        if (init?.method === "PUT") {
+          const body = JSON.parse(String(init.body)) as {
+            values: Record<string, unknown>;
+          };
+          return jsonOk({
+            ...view,
+            values: { ...view.values, ...body.values },
+          });
+        }
+        return jsonOk(view);
+      }),
+    );
+
+    const { wrapper } = createQueryClientTestHarness();
+    render(<PluginSettingsForm pluginId="demo" />, { wrapper });
+
+    const retries = (await screen.findByLabelText(
+      "Retries",
+    )) as HTMLInputElement;
+    expect(retries.type).toBe("number");
+    expect(retries.step).toBe("any");
+    expect(retries.value).toBe("3");
+
+    fireEvent.change(retries, { target: { value: "4.5" } });
+    expect(requests.some((request) => request.init?.method === "PUT")).toBe(
+      false,
+    );
+    fireEvent.blur(retries);
+
+    const put = await vi.waitFor(() => {
+      const request = requests.find(
+        (candidate) => candidate.init?.method === "PUT",
+      );
+      expect(request).toBeDefined();
+      return request;
+    });
+    expect(JSON.parse(String(put?.init?.body))).toEqual({
+      values: { retries: 4.5 },
+    });
+
+    await vi.waitFor(() => expect(retries.value).toBe("4.5"));
+    fireEvent.change(retries, { target: { value: "" } });
+    fireEvent.blur(retries);
+    await vi.waitFor(() =>
+      expect(
+        requests.filter((request) => request.init?.method === "PUT"),
+      ).toHaveLength(2),
+    );
+    expect(JSON.parse(String(requests.at(-1)?.init?.body))).toEqual({
+      values: { retries: null },
+    });
+  });
+
   it("preserves text typed while an older save is pending", async () => {
     const first = deferred<Response>();
     const second = deferred<Response>();
@@ -502,6 +568,8 @@ function installedPlugin(
     statusDetail: null,
     description: "Linear integration",
     name: "Linear",
+    screenshots: [],
+    collections: [],
     icon: null,
     iconUrl: null,
     logoUrl: null,

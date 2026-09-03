@@ -1,0 +1,35 @@
+{
+  "name": "bb-plugin-push-notifications",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Send mobile push notifications for threads that need attention",
+  "engines": {
+    "bb": ">=0.0"
+  },
+  "bb": {
+    "name": "Push notifications",
+    "description": "Send mobile push notifications for threads that need attention",
+    "branding": {
+      "icon": "BellDot"
+    },
+    "server": "./server.ts"
+  },
+  "keywords": [
+    "bb-plugin"
+  ],
+  "scripts": {
+    "test": "vitest run --config vitest.config.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "undici": "^7.28.0",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@get-bb/plugin-sdk": "workspace:*",
+    "@types/node": "^22.0.0",
+    "typescript": "npm:@typescript/typescript6@^6.0.2",
+    "vitest": "^4.1.1"
+  }
+}

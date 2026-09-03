@@ -20,14 +20,14 @@ interface CreateDaemonOptions {
   shutdownRuntimes?: () => Promise<void>;
   onStart?: () => Promise<void>;
   signalSource?: SignalSource;
-  forceExit?: (code: number) => void;
+  exitProcess?: (code: number) => void;
   shutdownExitGraceMs?: number;
 }
 
 export interface HostDaemon {
   readonly identity: HostDaemonIdentity;
   start(): Promise<void>;
-  shutdown(reason?: string): Promise<void>;
+  shutdown(reason: string, exitCode: 0 | 1): Promise<void>;
   waitUntilStopped(): Promise<void>;
 }
 
@@ -37,8 +37,12 @@ const DEFAULT_SHUTDOWN_EXIT_GRACE_MS = 15_000;
 
 export function createDaemon(options: CreateDaemonOptions): HostDaemon {
   let started = false;
+  let startupFailed = false;
   let stopPromise: Promise<void> | null = null;
   let stopFailure: Error | null = null;
+  let shutdownExitWatchdog: ReturnType<typeof setTimeout> | null = null;
+  let shutdownExitReason: string | null = null;
+  let shutdownExitCode: 0 | 1 = 0;
 
   let resolveStopped: (() => void) | undefined;
   const stopped = new Promise<void>((resolve) => {
@@ -55,30 +59,55 @@ export function createDaemon(options: CreateDaemonOptions): HostDaemon {
     listeners.clear();
   }
 
-  function armShutdownExitWatchdog(reason: string): void {
-    const forceExit = options.forceExit;
-    if (!forceExit) {
+  function requestProcessExit(reason: string, exitCode: 0 | 1): void {
+    if (shutdownExitReason === null || exitCode > shutdownExitCode) {
+      shutdownExitReason = reason;
+      shutdownExitCode = exitCode;
+    }
+  }
+
+  function armShutdownExitWatchdog(): void {
+    const exitProcess = options.exitProcess;
+    if (!exitProcess) {
       return;
     }
 
     const graceMs =
       options.shutdownExitGraceMs ?? DEFAULT_SHUTDOWN_EXIT_GRACE_MS;
-    const timer = setTimeout(() => {
+    shutdownExitWatchdog = setTimeout(() => {
+      shutdownExitWatchdog = null;
       options.logger.error(
-        { reason, graceMs, activeResources: process.getActiveResourcesInfo() },
+        {
+          reason: shutdownExitReason,
+          graceMs,
+          activeResources: process.getActiveResourcesInfo(),
+        },
         "Host daemon shutdown did not end the process; forcing exit so the service manager can restart it.",
       );
-      forceExit(0);
+      exitProcess(shutdownExitCode);
     }, graceMs);
-    timer.unref?.();
+    shutdownExitWatchdog.unref?.();
   }
 
-  async function stop(reason: string): Promise<void> {
+  function exitAfterCleanShutdown(): void {
+    const exitProcess = options.exitProcess;
+    if (startupFailed || !exitProcess) {
+      return;
+    }
+    if (shutdownExitWatchdog !== null) {
+      clearTimeout(shutdownExitWatchdog);
+      shutdownExitWatchdog = null;
+    }
+    exitProcess(shutdownExitCode);
+  }
+
+  async function stop(reason: string, exitCode: 0 | 1): Promise<void> {
+    requestProcessExit(reason, exitCode);
     if (stopPromise) {
       return stopPromise;
     }
 
-    armShutdownExitWatchdog(reason);
+    armShutdownExitWatchdog();
 
     stopPromise = (async () => {
       unregisterSignalHandlers();
@@ -127,25 +156,26 @@ export function createDaemon(options: CreateDaemonOptions): HostDaemon {
       }
 
       resolveStopped?.();
+      exitAfterCleanShutdown();
     })();
 
     return stopPromise;
   }
 
-  async function shutdown(reason = "shutdown"): Promise<void> {
-    return stop(reason);
+  async function shutdown(reason: string, exitCode: 0 | 1): Promise<void> {
+    return stop(reason, exitCode);
   }
 
   return {
     identity: options.identity,
     async start(): Promise<void> {
-      if (started) {
+      if (started || stopPromise) {
         return;
       }
 
       for (const signal of TERMINATION_SIGNALS) {
         const listener = () => {
-          void stop(signal).catch((error) => {
+          void stop(signal, 0).catch((error) => {
             options.logger.error(
               { err: error, signal },
               "Signal-triggered host daemon shutdown failed",
@@ -158,13 +188,21 @@ export function createDaemon(options: CreateDaemonOptions): HostDaemon {
 
       try {
         await options.onStart?.();
+        if (stopPromise) {
+          return;
+        }
         started = true;
         options.logger.info(
           { identity: options.identity },
           "Host daemon started",
         );
       } catch (error) {
-        await stop("startup-failed").catch(() => undefined);
+        if (stopPromise) {
+          await stop("startup-interrupted", 0).catch(() => undefined);
+          return;
+        }
+        startupFailed = true;
+        await stop("startup-failed", 1).catch(() => undefined);
         throw error;
       }
     },

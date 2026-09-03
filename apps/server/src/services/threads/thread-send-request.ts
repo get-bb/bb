@@ -41,11 +41,6 @@ export async function acceptThreadSendRequest(
   return {
     ok: true,
     delivery: "queued",
-    queuedMessageId: outcome.entry.id,
-    // A queued row's `waitingOn` is null only when a drain cleared its wait
-    // and is about to re-attempt it — a state this row, just written by the
-    // attempt above, cannot be in. The fallback narrows the type honestly.
-    waitingOn: outcome.entry.waitingOn ?? { kind: "thread-busy" },
-    sendAt: outcome.entry.sendAt,
+    queuedMessage: outcome.entry,
   };
 }

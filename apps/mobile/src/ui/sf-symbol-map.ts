@@ -37,6 +37,7 @@ export const SF_SYMBOL_MAP = {
   ArrowTurnForward: "arrow.uturn.forward",
   ArrowUpRight: "arrow.up.right",
   Beaker: "testtube.2",
+  BellDot: "bell.badge",
   Bot: "cpu",
   Browser: "safari",
   Brain: "brain",

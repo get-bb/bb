@@ -406,6 +406,78 @@ describe("useThreadCreationOptions", () => {
     });
   });
 
+  it("persists the reconciled reasoning level when switching to a shorter model ladder", async () => {
+    const response = executionOptionsResponse();
+    vi.mocked(sdk.system.executionOptions).mockResolvedValue({
+      ...response,
+      models: [
+        {
+          id: "wide-model",
+          model: "wide-model",
+          displayName: "Wide Model",
+          description: "",
+          supportedReasoningEfforts: [
+            { reasoningEffort: "low", description: "" },
+            { reasoningEffort: "medium", description: "" },
+            { reasoningEffort: "high", description: "" },
+            { reasoningEffort: "xhigh", description: "" },
+            { reasoningEffort: "max", description: "" },
+          ],
+          defaultReasoningEffort: "medium",
+          isDefault: true,
+        },
+        {
+          id: "short-model",
+          model: "short-model",
+          displayName: "Short Model",
+          description: "",
+          supportedReasoningEfforts: [
+            { reasoningEffort: "low", description: "" },
+            { reasoningEffort: "medium", description: "" },
+            { reasoningEffort: "high", description: "" },
+          ],
+          defaultReasoningEffort: "medium",
+          isDefault: false,
+        },
+      ],
+    });
+    const { result } = renderHook(
+      () =>
+        useThreadCreationOptions({
+          scope: "new-thread",
+          initialProviderId: GLOBAL_PROVIDER_ID,
+          initialModel: "wide-model",
+          initialReasoningLevel: "max",
+        }),
+      { wrapper: createQueryClientTestHarness().wrapper },
+    );
+
+    await waitFor(() => {
+      expect(result.current.selectedModel).toBe("wide-model");
+      expect(result.current.reasoningLevel).toBe("max");
+    });
+
+    act(() => {
+      result.current.setSelectedModel("short-model");
+    });
+
+    await waitFor(() => {
+      expect(result.current.selectedModel).toBe("short-model");
+      expect(result.current.reasoningLevel).toBe("high");
+      expect(result.current.executionInputSources.reasoningLevel).toBe(
+        "client-preference",
+      );
+    });
+
+    act(() => {
+      result.current.setSelectedModel("wide-model");
+    });
+
+    await waitFor(() => {
+      expect(result.current.reasoningLevel).toBe("high");
+    });
+  });
+
   it("applies a fork provider, model, and reasoning seed atomically", async () => {
     window.localStorage.setItem("bb.promptbox.provider", GLOBAL_PROVIDER_ID);
     vi.mocked(sdk.system.executionOptions).mockImplementation(async (args) =>

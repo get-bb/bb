@@ -295,7 +295,10 @@ function AppRoutes() {
             path={TOOLS_REGISTRY_SKILL_DETAIL_ROUTE_PATH}
             element={<ToolsView />}
           />
-          <Route path={TOOLS_PLUGINS_ROUTE_PATH} element={<ToolsView />} />
+          <Route
+            path={`${TOOLS_PLUGINS_ROUTE_PATH}/*`}
+            element={<ToolsPluginsRoute />}
+          />
           <Route
             path={TOOLS_PLUGIN_BROWSE_ROUTE_PATH}
             element={<ExtensionsLandingRedirect />}
@@ -326,6 +329,11 @@ function RouteContentPaintSignal() {
     markRouteContentPainted();
   }, []);
   return null;
+}
+
+function ToolsPluginsRoute() {
+  const { "*": pluginId } = useParams<"*">();
+  return <ToolsView pluginId={pluginId || undefined} />;
 }
 
 export function App() {

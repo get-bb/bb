@@ -205,6 +205,29 @@ function PluginSettingField({
     );
   }
 
+  if (descriptor.type === "number") {
+    const value =
+      typeof draft === "string"
+        ? draft
+        : typeof storedValue === "number"
+          ? String(storedValue)
+          : "";
+    return (
+      <Input
+        type="number"
+        inputMode="decimal"
+        step="any"
+        value={value}
+        aria-label={descriptor.label}
+        aria-describedby={ariaDescribedBy}
+        aria-invalid={ariaInvalid}
+        onChange={(event) => onChange(event.target.value)}
+        onBlur={onBlur}
+        className="h-7 w-full text-xs sm:w-64"
+      />
+    );
+  }
+
   const isSecret = descriptor.secret === true;
   const secretIsSet =
     isSecret &&
@@ -257,6 +280,9 @@ function initialSettingDraft(
   if (descriptor.type === "boolean") {
     return typeof storedValue === "boolean" ? storedValue : false;
   }
+  if (descriptor.type === "number") {
+    return typeof storedValue === "number" ? String(storedValue) : "";
+  }
   if (descriptor.type === "string" && descriptor.secret === true) return "";
   return typeof storedValue === "string" ? storedValue : "";
 }
@@ -284,10 +310,20 @@ function AutosavingPluginSetting({
   const draft = draftState.value;
   const save = useMutation({
     scope: { id: `plugin-setting:${pluginId}:${settingKey}` },
-    mutationFn: (value: string | boolean) =>
-      updatePluginSettings(fetch, pluginId, {
-        [settingKey]: value,
-      }),
+    mutationFn: (value: string | boolean) => {
+      let settingValue: string | number | boolean | null = value;
+      if (descriptor.type === "number") {
+        const trimmed = typeof value === "string" ? value.trim() : "";
+        const parsed = Number(trimmed);
+        if (trimmed.length > 0 && !Number.isFinite(parsed)) {
+          throw new Error("Enter a finite number");
+        }
+        settingValue = trimmed.length === 0 ? null : parsed;
+      }
+      return updatePluginSettings(fetch, pluginId, {
+        [settingKey]: settingValue,
+      });
+    },
     onSuccess: (view) => {
       applyPluginSettingsView({ queryClient, pluginId, view });
     },
@@ -302,19 +338,33 @@ function AutosavingPluginSetting({
   function changeDraft(value: string | boolean): void {
     setDraftState({
       value,
-      hasNewerDraft: descriptor.type === "string",
+      hasNewerDraft:
+        descriptor.type === "string" || descriptor.type === "number",
     });
     if (!save.isPending) save.reset();
-    if (descriptor.type !== "string") {
+    if (descriptor.type !== "string" && descriptor.type !== "number") {
       save.mutate(value);
     }
   }
 
   function saveDraft(): void {
-    if (descriptor.type !== "string") return;
+    if (descriptor.type !== "string" && descriptor.type !== "number") return;
+    if (descriptor.type === "number") {
+      const trimmed = typeof draft === "string" ? draft.trim() : "";
+      const parsed = Number(trimmed);
+      if (
+        (trimmed.length === 0 && storedValue === undefined) ||
+        (trimmed.length > 0 && parsed === storedValue && !save.isPending)
+      ) {
+        setDraftState({ value: draft, hasNewerDraft: false });
+        return;
+      }
+    }
     if (
       (draft === storedValue && !save.isPending) ||
-      (descriptor.secret === true && draft === "")
+      (descriptor.type === "string" &&
+        descriptor.secret === true &&
+        draft === "")
     ) {
       setDraftState({ value: draft, hasNewerDraft: false });
       return;

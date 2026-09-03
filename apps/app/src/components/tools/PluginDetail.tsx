@@ -29,12 +29,18 @@ import {
   pluginHasUpdateSurfaces,
 } from "@/components/plugin/management/PluginUpdatesCard";
 import {
-  CatalogEntryIcon,
+  CatalogEntryIconChip,
   formatAbsoluteDate,
+  formatPluginInstallCount,
   PluginLogo,
 } from "@/components/plugin/management/plugin-ui";
+import {
+  PluginMarketplaceCategoryPill,
+  PluginMarketplaceHeaderMetadata,
+  PluginMarketplaceListingSections,
+  PluginMoreFromAuthorSection,
+} from "@/components/plugin/management/PluginMarketplaceListing";
 import { pluginRuntimeStatusPresentation } from "@/components/plugin/management/plugin-status";
-import { PluginUrlLink } from "@/components/plugin/PluginUrlLink";
 import {
   PluginHealthBanner,
   PluginIncludes,
@@ -111,72 +117,48 @@ function PluginPath({ path }: { path: string }) {
   );
 }
 
-function repositoryLinkLabel(url: string): string {
-  return url.replace(/^https?:\/\//u, "").replace(/\/+$/u, "");
-}
-
 export function CatalogPluginDetail({
   entry,
   onInstall,
+  catalogEntries,
+  onOpenPlugin,
 }: {
   entry: PluginCatalogSearchEntry;
   onInstall: (entry: PluginCatalogSearchEntry) => void;
+  catalogEntries: readonly PluginCatalogSearchEntry[];
+  onOpenPlugin: (pluginId: string) => void;
 }) {
+  const count =
+    entry.installs === null
+      ? undefined
+      : {
+          display: formatPluginInstallCount(entry.installs),
+          accessibleLabel: `${entry.installs.toLocaleString()} ${entry.installs === 1 ? "install" : "installs"}`,
+        };
   return (
     <ResourceDetailPage
       maxWidthClassName="max-w-5xl"
-      leading={<CatalogEntryIcon entry={entry} className="size-full" />}
+      leading={<CatalogEntryIconChip entry={entry} />}
+      leadingClassName="size-10"
       title={entry.displayName}
-      titleMeta={<ProvenancePill label={entry.publisherLabel} />}
-      metadata={
-        <>
-          <span>{entry.category}</span>
-          {entry.author === null ? null : (
-            <span>
-              {" · By: "}
-              {entry.author.url === null ? (
-                entry.author.name
-              ) : (
-                <PluginUrlLink
-                  href={entry.author.url}
-                  className="underline underline-offset-2"
-                >
-                  {entry.author.name}
-                </PluginUrlLink>
-              )}
-            </span>
-          )}
-          {entry.repositoryUrl === null ? null : (
-            <span>
-              {" · "}
-              <a
-                href={entry.repositoryUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="underline underline-offset-2"
-              >
-                {repositoryLinkLabel(entry.repositoryUrl)}
-              </a>
-            </span>
-          )}
-        </>
-      }
+      titleMeta={<PluginMarketplaceCategoryPill entry={entry} />}
+      metadata={<PluginMarketplaceHeaderMetadata entry={entry} />}
       actions={
         <ResourceInstallControl
           accessibleLabel={`Install ${entry.displayName}`}
           disabled={!entry.compatible}
+          count={count}
           onAction={() => onInstall(entry)}
         />
       }
     >
       <ResourceDetailStack>
-        <ResourceDetailOverviewSection label="About">
-          <p className="max-w-none text-sm leading-relaxed text-muted-foreground">
-            {entry.description.length > 0
-              ? entry.description
-              : "This plugin does not describe itself."}
-          </p>
-        </ResourceDetailOverviewSection>
+        <PluginMarketplaceListingSections entry={entry} />
+        <PluginMoreFromAuthorSection
+          entry={entry}
+          catalogEntries={catalogEntries}
+          onOpenPlugin={onOpenPlugin}
+        />
       </ResourceDetailStack>
     </ResourceDetailPage>
   );
@@ -249,6 +231,9 @@ export function PluginDetail({
   onEdit,
   onOpenSource,
   onDelete,
+  catalogEntry,
+  catalogEntries,
+  onOpenPlugin,
 }: {
   isLoading: boolean;
   plugin: PluginListItem | null;
@@ -258,6 +243,9 @@ export function PluginDetail({
   onEdit: (plugin: PluginListItem) => void;
   onOpenSource: (plugin: PluginListItem) => void;
   onDelete: (plugin: PluginListItem) => void;
+  catalogEntry?: PluginCatalogSearchEntry;
+  catalogEntries: readonly PluginCatalogSearchEntry[];
+  onOpenPlugin: (pluginId: string) => void;
 }) {
   const { settingsSections } = usePluginSlots();
   const sourceQuery = usePluginSource(plugin?.id ?? "", {
@@ -345,8 +333,22 @@ export function PluginDetail({
       maxWidthClassName="max-w-5xl"
       leading={<PluginLogo plugin={plugin} className="size-4" />}
       title={pluginName}
-      titleMeta={<PluginProvenancePill plugin={plugin} />}
-      metadata={<PluginPath path={plugin.rootDir} />}
+      titleMeta={
+        <span className="flex flex-wrap items-center gap-1.5">
+          <PluginProvenancePill plugin={plugin} />
+          {catalogEntry === undefined ? null : (
+            <PluginMarketplaceCategoryPill entry={catalogEntry} />
+          )}
+        </span>
+      }
+      metadata={
+        <div className="space-y-1">
+          {catalogEntry === undefined ? null : (
+            <PluginMarketplaceHeaderMetadata entry={catalogEntry} />
+          )}
+          <PluginPath path={plugin.rootDir} />
+        </div>
+      }
       lifecycleControl={
         <Switch
           checked={plugin.enabled}
@@ -363,11 +365,22 @@ export function PluginDetail({
       }
     >
       <ResourceDetailStack>
-        <ResourceDetailOverviewSection label="About">
-          <p className="max-w-none text-sm leading-relaxed text-muted-foreground">
-            {plugin.description ?? "This plugin does not describe itself."}
-          </p>
-        </ResourceDetailOverviewSection>
+        {catalogEntry === undefined ? (
+          <ResourceDetailOverviewSection label="About">
+            <p className="max-w-none text-sm leading-relaxed text-muted-foreground">
+              {plugin.description ?? "This plugin does not describe itself."}
+            </p>
+          </ResourceDetailOverviewSection>
+        ) : (
+          <>
+            <PluginMarketplaceListingSections entry={catalogEntry} />
+            <PluginMoreFromAuthorSection
+              entry={catalogEntry}
+              catalogEntries={catalogEntries}
+              onOpenPlugin={onOpenPlugin}
+            />
+          </>
+        )}
         {hasConfiguration ? (
           <ResourceDetailConfigurationSection
             id="configuration"

@@ -148,7 +148,7 @@ import {
 } from "./BuiltInSidebarSection";
 import { ReorderableSidebarSectionOrderList } from "./ReorderableSidebarSectionOrderList";
 import { useSidebarModeSectionOrder } from "./useSidebarModeSectionOrder";
-import { haveSameOrder } from "./usePersistedSidebarSectionOrder";
+import { haveSameOrder } from "@/lib/stored-order";
 import {
   resolveThreadTitleDisplayText,
   type ThreadTitleMentionResources,
@@ -174,8 +174,7 @@ interface ProjectListSearchThreadsActionProps {
 }
 
 interface ProjectListActionButtonsProps
-  extends
-    ProjectListNewThreadActionProps,
+  extends ProjectListNewThreadActionProps,
     ProjectListSearchThreadsActionProps {}
 
 interface ProjectListShellProps {

@@ -82,10 +82,9 @@ import {
   arrangePluginNavPanelPreferences,
   BUILT_IN_SIDEBAR_NAVIGATION_KEYS,
   getPluginNavPanelKey,
-  havePluginNavPanelOrdersDiverged,
-  reorderPluginNavPanels,
   togglePluginNavPanelVisibility,
 } from "./pluginNavSidebarOrder";
+import { haveSameOrder, reorderStoredOrder } from "@/lib/stored-order";
 
 const PLUGIN_NAV_VISIBLE_LIMIT = 3;
 
@@ -263,7 +262,7 @@ function PluginNavSidebarItemList({
   );
 
   useEffect(() => {
-    if (!havePluginNavPanelOrdersDiverged(storedOrder, normalizedOrder)) return;
+    if (haveSameOrder(storedOrder, normalizedOrder)) return;
     setStoredOrder(normalizedOrder);
   }, [normalizedOrder, setStoredOrder, storedOrder]);
 
@@ -271,10 +270,7 @@ function PluginNavSidebarItemList({
     if (
       storedVisibleKeys === null ||
       normalizedVisibleKeys === null ||
-      !havePluginNavPanelOrdersDiverged(
-        storedVisibleKeys,
-        normalizedVisibleKeys,
-      )
+      haveSameOrder(storedVisibleKeys, normalizedVisibleKeys)
     ) {
       return;
     }
@@ -308,14 +304,11 @@ function PluginNavSidebarItemList({
       ) {
         return;
       }
-      const activeGroupKeys = visibleKeys;
-      if (!activeGroupKeys.includes(event.active.id)) return;
-      if (!activeGroupKeys.includes(event.over.id)) return;
-      const nextOrder = reorderPluginNavPanels({
-        activeKey: event.active.id,
-        overKey: event.over.id,
+      const nextOrder = reorderStoredOrder({
+        activeId: event.active.id,
+        overId: event.over.id,
         order: normalizedOrder,
-        visibleKeys: activeGroupKeys,
+        visibleIds: visibleKeys,
       });
       if (nextOrder) setStoredOrder(nextOrder);
     },
@@ -327,11 +320,11 @@ function PluginNavSidebarItemList({
 
   const handleCustomizeDragEnd = useCallback(
     (activeKey: string, overKey: string) => {
-      const nextOrder = reorderPluginNavPanels({
-        activeKey,
-        overKey,
+      const nextOrder = reorderStoredOrder({
+        activeId: activeKey,
+        overId: overKey,
         order: normalizedOrder,
-        visibleKeys: orderedKeys,
+        visibleIds: orderedKeys,
       });
       if (nextOrder) setStoredOrder(nextOrder);
     },

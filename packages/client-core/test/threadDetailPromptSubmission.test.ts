@@ -83,7 +83,7 @@ describe("threadDetailPromptSubmission", () => {
       kind: "queued",
       request: {
         id: "thread-1",
-        mode: "auto",
+        mode: "steer",
         queuedMessageId: "queued-1",
       },
     });
@@ -227,6 +227,18 @@ describe("threadDetailPromptSubmission", () => {
         submitModeKind: "queue",
       }),
     ).toBe(true);
+    for (const runtimeDisplayStatus of ["provisioning", "starting"] as const) {
+      expect(
+        canSubmitFollowUpShortcut({
+          hasPromptDraftInput: true,
+          isFollowUpSubmitting: false,
+          isQueueMutationPending: false,
+          queuedMessageCount: 0,
+          runtimeDisplayStatus,
+          submitModeKind: "queue",
+        }),
+      ).toBe(true);
+    }
     expect(
       canSubmitFollowUpShortcut({
         hasPromptDraftInput: true,

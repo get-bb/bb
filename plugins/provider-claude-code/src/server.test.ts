@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import type { PluginProviderOptionsContext } from "@get-bb/plugin-sdk";
 import { createFakePluginHost } from "@get-bb/plugin-sdk/testing";
 import claudeCodePlugin from "../server.js";
 
@@ -16,7 +17,7 @@ function loadClaudeCodePlugin() {
 
 function providerOptions(
   declaration: ReturnType<typeof loadClaudeCodePlugin>["declaration"],
-  settings: Readonly<Record<string, string | boolean | undefined>>,
+  settings: PluginProviderOptionsContext["settings"],
 ) {
   const deriveProviderOptions = declaration.deriveProviderOptions;
   if (deriveProviderOptions === undefined) {

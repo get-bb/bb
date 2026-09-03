@@ -462,6 +462,38 @@ const app = await loadPluginApp(
 );
 
 describe("loadPluginApp", () => {
+  it("captures and validates app overlay registrations", async () => {
+    function Overlay() {
+      return <div>overlay</div>;
+    }
+    const captured = await loadPluginApp(
+      definePluginApp((builder) => {
+        builder.slots.experimental_appOverlay({
+          id: "office",
+          component: Overlay,
+        });
+      }),
+    );
+
+    expect(captured.appOverlays).toEqual([
+      { id: "office", component: Overlay },
+    ]);
+    await expect(
+      loadPluginApp(
+        definePluginApp((builder) => {
+          builder.slots.experimental_appOverlay({
+            id: "office",
+            component: Overlay,
+          });
+          builder.slots.experimental_appOverlay({
+            id: "office",
+            component: Overlay,
+          });
+        }),
+      ),
+    ).rejects.toThrow('slots.experimental_appOverlay: duplicate id "office"');
+  });
+
   it("captures and validates sidebar navigation registrations", async () => {
     const captured = await loadPluginApp(
       definePluginApp((builder) => {

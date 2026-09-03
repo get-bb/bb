@@ -1,7 +1,6 @@
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import {
   Command,
-  CommandEmpty,
   CommandGroup,
   CommandInput,
   CommandItem,
@@ -15,6 +14,7 @@ import {
 import { Icon } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { Popover, PopoverContent, PopoverTrigger } from "@bb/shared-ui/popover";
+import { searchPickerOptions } from "./picker-search";
 import { useResetPickerScroll } from "./useResetPickerScroll";
 
 export interface ParentThreadPickerOption {
@@ -48,6 +48,16 @@ export function ParentThreadPicker({
   const [open, setOpen] = useState(defaultOpen ?? false);
   const [searchQuery, setSearchQuery] = useState("");
   const listRef = useResetPickerScroll<HTMLDivElement>(searchQuery);
+  const filteredOptions = useMemo(
+    () =>
+      searchPickerOptions({
+        options,
+        query: searchQuery,
+        getLabel: (option) => option.label,
+        getAliases: (option) => [option.value],
+      }),
+    [options, searchQuery],
+  );
   const selectedLabel =
     options.find((option) => option.value === value)?.label ?? "None";
   const handleOpenChange = useCallback(
@@ -94,7 +104,7 @@ export function ParentThreadPicker({
         className="w-72 p-0 max-md:w-full"
         mobileTitle="Assign parent thread"
       >
-        <Command label="Search parent threads">
+        <Command label="Search parent threads" shouldFilter={false}>
           <CommandInput
             aria-label="Search parent threads"
             placeholder="Search threads…"
@@ -121,32 +131,42 @@ export function ParentThreadPicker({
               </CommandGroup>
             ) : (
               <>
-                <CommandEmpty>No matching threads.</CommandEmpty>
-                <CommandGroup heading="Assign parent thread">
-                  {options.map((option) => (
-                    <CommandItem
-                      key={option.value}
-                      value={option.value}
-                      keywords={[option.label]}
-                      onSelect={() => {
-                        onChange(option.value);
-                        handleOpenChange(false);
-                      }}
-                      className="flex items-center justify-between gap-3"
-                    >
-                      <span className="truncate" title={option.label}>
-                        {option.label}
-                      </span>
-                      <Icon
-                        name="Check"
-                        className={cn(
-                          COARSE_POINTER_ICON_SIZE_CLASS,
-                          value === option.value ? "opacity-100" : "opacity-0",
-                        )}
-                      />
-                    </CommandItem>
-                  ))}
-                </CommandGroup>
+                {filteredOptions.length === 0 ? (
+                  <div className="py-6 text-center text-sm">
+                    No matching threads.
+                  </div>
+                ) : (
+                  <CommandGroup heading="Assign parent thread">
+                    {filteredOptions.map((option) => (
+                      <CommandItem
+                        key={option.value}
+                        value={option.value}
+                        aria-current={
+                          value === option.value ? "true" : undefined
+                        }
+                        onSelect={() => {
+                          onChange(option.value);
+                          handleOpenChange(false);
+                        }}
+                        className="flex items-center justify-between gap-3"
+                      >
+                        <span className="truncate" title={option.label}>
+                          {option.label}
+                        </span>
+                        <Icon
+                          name="Check"
+                          aria-hidden
+                          className={cn(
+                            COARSE_POINTER_ICON_SIZE_CLASS,
+                            value === option.value
+                              ? "opacity-100"
+                              : "opacity-0",
+                          )}
+                        />
+                      </CommandItem>
+                    ))}
+                  </CommandGroup>
+                )}
               </>
             )}
           </CommandList>

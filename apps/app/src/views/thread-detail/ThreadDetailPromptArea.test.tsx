@@ -292,6 +292,9 @@ vi.mock(
       inlineEditor,
       queuedMessages,
       onEdit,
+      onSend,
+      sendAction,
+      sendDisabled,
     }: {
       inlineEditor?: { content: ReactNode; onDismiss: () => void };
       queuedMessages: readonly ThreadQueuedMessage[];
@@ -299,22 +302,35 @@ vi.mock(
         queuedMessageId: string;
         queuedMessageIndex: number;
       }) => void;
+      onSend: (queuedMessageId: string) => void;
+      sendAction: "send-now" | "steer-when-ready";
+      sendDisabled: boolean;
     }) => (
-      <div data-testid="queued-message-list">
+      <div
+        data-testid="queued-message-list"
+        data-send-action={sendAction}
+        data-send-disabled={sendDisabled ? "" : undefined}
+      >
         <div data-testid="queued-message-count">{queuedMessages.length}</div>
         {queuedMessages.map((message, index) => (
-          <button
-            key={message.id}
-            type="button"
-            onClick={() =>
-              onEdit({
-                queuedMessageId: message.id,
-                queuedMessageIndex: index,
-              })
-            }
-          >
-            Edit queued message {index + 1}
-          </button>
+          <div key={message.id}>
+            <button type="button" onClick={() => onSend(message.id)}>
+              {sendAction === "steer-when-ready"
+                ? `Steer queued message ${index + 1} when ready`
+                : `Send queued message ${index + 1} now`}
+            </button>
+            <button
+              type="button"
+              onClick={() =>
+                onEdit({
+                  queuedMessageId: message.id,
+                  queuedMessageIndex: index,
+                })
+              }
+            >
+              Edit queued message {index + 1}
+            </button>
+          </div>
         ))}
         {inlineEditor ? (
           <div data-testid="inline-queued-message-editor">
@@ -934,6 +950,39 @@ describe("ThreadDetailPromptArea", () => {
     const composer = screen.getByTestId("composer-boundary");
     expect(stack.lastElementChild).toBe(queue);
     expect(stack.nextElementSibling).toBe(composer);
+  });
+
+  it("steers a queued row once a provisioning thread is ready", async () => {
+    mocks.queuedMessages = [
+      makeQueuedMessage({ waitingOn: { kind: "provisioning" } }),
+    ];
+
+    renderPromptArea({
+      thread: makeThread({
+        runtime: {
+          displayStatus: "provisioning",
+          hostReconnectGraceExpiresAt: null,
+        },
+        status: "starting",
+      }),
+    });
+
+    const queue = screen.getByTestId("queued-message-list");
+    expect(queue.dataset.sendAction).toBe("steer-when-ready");
+    expect(queue.dataset.sendDisabled).toBeUndefined();
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Steer queued message 1 when ready",
+      }),
+    );
+
+    await waitFor(() => {
+      expect(mocks.sendQueuedMessageMutateAsync).toHaveBeenCalledWith({
+        id: "thr_1",
+        mode: "steer",
+        queuedMessageId: "qmsg_1",
+      });
+    });
   });
 
   it("uses the real thread cache keys immediately", () => {

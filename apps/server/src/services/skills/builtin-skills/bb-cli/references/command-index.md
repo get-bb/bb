@@ -164,7 +164,6 @@ This index lists every command path that the core CLI registers. Read the task-s
 - `bb environment diff-patch`
 - `bb environment update`
 - `bb environment commit`
-- `bb environment squash-merge`
 - `bb environment archive-threads`
 - `bb environment pull-request`
 - `bb environment pull-request show`

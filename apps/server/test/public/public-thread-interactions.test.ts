@@ -891,12 +891,14 @@ describe("public thread interaction routes", () => {
       // A prompt cannot interrupt the interaction, but the message is not lost:
       // it joins the queue and delivers once the interaction settles (#1650).
       expect(sendResponse.status).toBe(200);
-      await expect(readJson(sendResponse)).resolves.toEqual({
+      await expect(readJson(sendResponse)).resolves.toMatchObject({
         ok: true,
         delivery: "queued",
-        queuedMessageId: expect.any(String),
-        waitingOn: { kind: "interaction" },
-        sendAt: null,
+        queuedMessage: {
+          id: expect.any(String),
+          waitingOn: { kind: "interaction" },
+          sendAt: null,
+        },
       });
       // The queued row sits alongside the message that was already queued, and
       // it is the only one carrying the interaction wait.
@@ -993,12 +995,14 @@ describe("public thread interaction routes", () => {
       // interaction does not change, so an explicit queue request queues behind
       // the running turn rather than behind the interaction.
       expect(activeSendResponse.status).toBe(200);
-      await expect(readJson(activeSendResponse)).resolves.toEqual({
+      await expect(readJson(activeSendResponse)).resolves.toMatchObject({
         ok: true,
         delivery: "queued",
-        queuedMessageId: expect.any(String),
-        waitingOn: { kind: "thread-busy" },
-        sendAt: null,
+        queuedMessage: {
+          id: expect.any(String),
+          waitingOn: { kind: "thread-busy" },
+          sendAt: null,
+        },
       });
       expect(
         listQueuedThreadMessages(harness.db, activeThread.id),
