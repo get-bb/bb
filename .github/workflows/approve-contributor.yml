@@ -12,7 +12,7 @@ jobs:
     name: Add contributor to allow list
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    if: github.event.issue.pull_request != null && startsWith(github.event.comment.body, '/approve @')
+    if: startsWith(github.event.comment.body, '/approve @')
     steps:
       - name: Check maintainer rank
         env:
@@ -61,11 +61,11 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add "$list_path"
           if git diff --cached --quiet; then
-            msg="Approved @$target for PRs. The name stays on the allow list. Ask the author to reopen the PR or open a new one."
-            gh pr comment "$ISSUE_NUMBER" --body "$msg" --repo "$GITHUB_REPOSITORY"
+            msg="Approved @$target for PRs. The name stays on the allow list. The author can open a PR now."
+            gh issue comment "$ISSUE_NUMBER" --body "$msg" --repo "$GITHUB_REPOSITORY"
             exit 0
           fi
           git commit -m "Add @$target to allow list"
           git push origin HEAD:main
-          msg="Approved @$target for PRs. The name now stays on the allow list. Ask the author to reopen the PR or open a new one."
-          gh pr comment "$ISSUE_NUMBER" --body "$msg" --repo "$GITHUB_REPOSITORY"
+          msg="Approved @$target for PRs. The name now stays on the allow list. The author can open a PR now."
+          gh issue comment "$ISSUE_NUMBER" --body "$msg" --repo "$GITHUB_REPOSITORY"
