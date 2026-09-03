@@ -3,7 +3,9 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { createStore, Provider } from "jotai";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { COMPACT_VIEWPORT_QUERY } from "@bb/shared-ui/hooks/use-compact-viewport";
 import type { PluginPanelActionEntry } from "@/components/plugin/PluginPanelActions";
+import { setCompactSidebarDrawerShowing } from "@/components/ui/sidebar-mobile-drawer-visibility";
 import { NewTabActions } from "./NewTabActions";
 import { newTabActionOrderAtom } from "./newTabActionsAtoms";
 
@@ -52,7 +54,10 @@ function actionLabels(): string[] {
 
 afterEach(() => {
   cleanup();
+  setCompactSidebarDrawerShowing(false);
   window.localStorage.clear();
+  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
 });
 
 describe("NewTabActions", () => {
@@ -113,5 +118,47 @@ describe("NewTabActions", () => {
       "Start terminal",
       "Quickstart",
     ]);
+  });
+
+  it("installs touch reorder on a compact viewport while the sidebar drawer is closed", () => {
+    vi.stubGlobal(
+      "matchMedia",
+      vi.fn(() => ({
+        matches: true,
+        media: COMPACT_VIEWPORT_QUERY,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      })),
+    );
+    setCompactSidebarDrawerShowing(false);
+    const addSpy = vi.spyOn(window, "addEventListener");
+
+    renderActions([], [sideChat]);
+
+    const touchMoveInstalls = addSpy.mock.calls.filter(
+      ([type]) => type === "touchmove",
+    );
+    expect(touchMoveInstalls).toHaveLength(1);
+    expect(touchMoveInstalls[0]?.[2]).toEqual({
+      capture: false,
+      passive: false,
+    });
+  });
+
+  it("uses the default order after stored data has an invalid shape", () => {
+    window.localStorage.setItem("bb.newTab.actionOrder", JSON.stringify({}));
+    const store = createStore();
+
+    render(
+      <Provider store={store}>
+        <NewTabActions
+          onStartTerminal={() => undefined}
+          pluginActions={[sideChat]}
+        />
+      </Provider>,
+    );
+
+    expect(store.get(newTabActionOrderAtom)).toEqual([]);
+    expect(actionLabels()).toEqual(["Start terminal", "Start side chat"]);
   });
 });

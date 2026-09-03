@@ -13,7 +13,7 @@ import { useAppCommandShortcut } from "@/components/commands/AppCommandProvider"
 import { PluginIcon } from "@/components/plugin/PluginIcon";
 import type { PluginPanelActionEntry } from "@/components/plugin/PluginPanelActions";
 import { useSidebarSortable } from "@/components/sidebar/sortableMotion";
-import { useSidebarReorderDnd } from "@/components/sidebar/useSidebarReorderDnd";
+import { useReorderDnd } from "@/components/ui/useReorderDnd";
 import { isDesktopBrowserAvailable } from "@/lib/bb-desktop";
 import { arrangeByStoredOrder, reorderStoredOrder } from "@/lib/stored-order";
 import type { AppShortcutPresentation } from "@/lib/app-keybindings";
@@ -212,7 +212,7 @@ function ReorderableNewTabActionList({
     },
     [normalizedOrder, onOrderChange, orderedIds],
   );
-  const { dndContextProps, onClickCapture } = useSidebarReorderDnd({
+  const { dndContextProps, onClickCapture } = useReorderDnd({
     onDragEnd: handleDragEnd,
   });
 
