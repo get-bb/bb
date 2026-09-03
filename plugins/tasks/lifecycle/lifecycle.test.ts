@@ -210,6 +210,7 @@ describe("task thread lifecycle", () => {
       "thread.failed": 1,
       "thread.archived": 0,
       "thread.deleted": 1,
+      "interaction.pending": 0,
       "message.queued": 0,
       "message.dispatched": 0,
       "turn.failed": 0,

@@ -2607,12 +2607,14 @@ describe("public thread data routes", () => {
       );
 
       expect(response.status).toBe(200);
-      await expect(readJson(response)).resolves.toEqual({
+      await expect(readJson(response)).resolves.toMatchObject({
         ok: true,
         delivery: "queued",
-        queuedMessageId: expect.any(String),
-        waitingOn: { kind: "thread-busy" },
-        sendAt: null,
+        queuedMessage: {
+          id: expect.any(String),
+          waitingOn: { kind: "thread-busy" },
+          sendAt: null,
+        },
       });
       const queuedRows = listQueuedThreadMessages(harness.db, thread.id);
       expect(queuedRows).toMatchObject([
@@ -2674,12 +2676,14 @@ describe("public thread data routes", () => {
       );
 
       expect(response.status).toBe(200);
-      await expect(readJson(response)).resolves.toEqual({
+      await expect(readJson(response)).resolves.toMatchObject({
         ok: true,
         delivery: "queued",
-        queuedMessageId: expect.any(String),
-        waitingOn: { kind: "thread-busy" },
-        sendAt: null,
+        queuedMessage: {
+          id: expect.any(String),
+          waitingOn: { kind: "thread-busy" },
+          sendAt: null,
+        },
       });
       expect(listQueuedThreadMessages(harness.db, thread.id)).toMatchObject([
         {

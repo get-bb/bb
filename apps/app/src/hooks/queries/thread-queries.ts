@@ -1031,3 +1031,10 @@ export function getLatestPendingInteraction(
     firstInteraction,
   );
 }
+
+export function isPendingInteractionStateUnknown(
+  interactions: readonly PendingInteraction[] | undefined,
+  isFetching: boolean,
+): boolean {
+  return getLatestPendingInteraction(interactions) === null && isFetching;
+}

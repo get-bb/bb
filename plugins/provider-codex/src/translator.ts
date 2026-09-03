@@ -1514,7 +1514,20 @@ export function createCodexEventTranslator(
         required: false,
         onResult(result: unknown) {
           const response = codexRateLimitReadResponseSchema.parse(result);
-          applyCodexRateLimitUpdate(eventTranslationState, response.rateLimits);
+          const snapshots = response.rateLimitsByLimitId;
+          if (snapshots === null || Object.keys(snapshots).length === 0) {
+            applyCodexRateLimitUpdate(
+              eventTranslationState,
+              response.rateLimits,
+            );
+            return;
+          }
+          for (const [limitId, snapshot] of Object.entries(snapshots)) {
+            applyCodexRateLimitUpdate(eventTranslationState, {
+              ...snapshot,
+              limitId: snapshot.limitId ?? limitId,
+            });
+          }
         },
       },
     ];

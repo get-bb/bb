@@ -12,13 +12,14 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ThreadQueuedMessage } from "@bb/domain";
 import type { Active, DroppableContainer } from "@dnd-kit/core";
 import {
-  QueuedMessagesList,
+  QueuedMessagesList as QueuedMessagesListComponent,
   clampQueuedMessageDragTransform,
   getInlineEditorSurfaceMaxHeight,
   queuedMessageCollisionDetection,
   queuedMessageSortingStrategy,
   resolveQueuedMessageDrag,
   snapGroupBoundaryDragTransform,
+  type QueuedMessagesListProps,
 } from "./QueuedMessagesList";
 import {
   QueuedEditorTypeaheadLayoutContext,
@@ -28,6 +29,23 @@ import {
 const bottomAnchorMocks = vi.hoisted(() => ({
   scrollElement: null as HTMLElement | null,
 }));
+
+function QueuedMessagesList({
+  attachedToComposer = true,
+  sendAction = "send-now",
+  ...props
+}: Omit<QueuedMessagesListProps, "attachedToComposer" | "sendAction"> & {
+  attachedToComposer?: boolean;
+  sendAction?: QueuedMessagesListProps["sendAction"];
+}) {
+  return (
+    <QueuedMessagesListComponent
+      {...props}
+      attachedToComposer={attachedToComposer}
+      sendAction={sendAction}
+    />
+  );
+}
 
 vi.mock("@/components/ui/bottom-anchored-scroll-body", () => ({
   useBottomAnchoredScroll: () =>
@@ -100,15 +118,19 @@ function rect({ top, bottom }: { top: number; bottom: number }) {
   return new DOMRect(0, top, 100, bottom - top);
 }
 
-function renderQueuedMessages(queuedMessages: readonly ThreadQueuedMessage[]) {
+function renderQueuedMessages(
+  queuedMessages: readonly ThreadQueuedMessage[],
+  attachedToComposer = true,
+) {
   return render(
     <QueuedMessagesList
+      attachedToComposer={attachedToComposer}
       queuedMessages={queuedMessages}
       sendDisabled={false}
       actionDisabled={false}
       processingMessageId={null}
       processingAction={null}
-      onSendImmediately={noop}
+      onSend={noop}
       onReorder={noop}
       onSetGroupBoundary={noop}
       onEdit={noop}
@@ -123,13 +145,14 @@ function renderQueuedMessagesWithOptions(
 ) {
   return render(
     <QueuedMessagesList
+      attachedToComposer={true}
       queuedMessages={queuedMessages}
       resolveMentionLink={options.resolveMentionLink}
       sendDisabled={false}
       actionDisabled={false}
       processingMessageId={null}
       processingAction={null}
-      onSendImmediately={noop}
+      onSend={noop}
       onReorder={noop}
       onSetGroupBoundary={noop}
       onEdit={noop}
@@ -146,6 +169,21 @@ afterEach(() => {
 });
 
 describe("QueuedMessagesList", () => {
+  it("renders as a standalone card when it is not attached to the composer", () => {
+    const { container } = renderQueuedMessages(
+      [makeQueuedMessage("q_one", "First queued message")],
+      false,
+    );
+    const surface = container.querySelector<HTMLElement>(
+      'section[aria-label="Queued messages"]',
+    );
+
+    expect(surface?.classList.contains("mb-0")).toBe(true);
+    expect(surface?.classList.contains("-mb-5")).toBe(false);
+    expect(surface?.classList.contains("rounded-b-none")).toBe(false);
+    expect(surface?.classList.contains("border-b-0")).toBe(false);
+  });
+
   it("toggles a few messages between the fitted drawer and collapsed modes", () => {
     const { container, getByRole, getByText } = renderQueuedMessages([
       makeQueuedMessage("q_one", "First queued message"),
@@ -234,7 +272,7 @@ describe("QueuedMessagesList", () => {
       actionDisabled: false,
       processingMessageId: null,
       processingAction: null,
-      onSendImmediately: noop,
+      onSend: noop,
       onReorder: noop,
       onSetGroupBoundary: noop,
       onEdit: noop,
@@ -343,7 +381,9 @@ describe("QueuedMessagesList", () => {
       name: "Delete queued message 1",
     });
 
-    expect(getByRole("button", { name: "Queued message 1 actions" })).toBeTruthy();
+    expect(
+      getByRole("button", { name: "Queued message 1 actions" }),
+    ).toBeTruthy();
     expect(editButton).toBeTruthy();
     expect(deleteButton).toBeTruthy();
     expect(container.querySelector('[data-icon="Sent"]')).not.toBeNull();
@@ -390,7 +430,7 @@ describe("QueuedMessagesList", () => {
         actionDisabled={false}
         processingMessageId={null}
         processingAction={null}
-        onSendImmediately={noop}
+        onSend={noop}
         onReorder={noop}
         onSetGroupBoundary={noop}
         onEdit={noop}
@@ -429,7 +469,9 @@ describe("QueuedMessagesList", () => {
     ).not.toBeNull();
     expect(getByTestId("inline-queue-editor")).toBeTruthy();
 
-    fireEvent.click(getByRole("button", { name: "Stop editing queued message" }));
+    fireEvent.click(
+      getByRole("button", { name: "Stop editing queued message" }),
+    );
     expect(onDismiss).toHaveBeenCalledOnce();
   });
 
@@ -447,7 +489,7 @@ describe("QueuedMessagesList", () => {
         actionDisabled={false}
         processingMessageId={null}
         processingAction={null}
-        onSendImmediately={noop}
+        onSend={noop}
         onReorder={noop}
         onSetGroupBoundary={noop}
         onEdit={noop}
@@ -480,7 +522,7 @@ describe("QueuedMessagesList", () => {
       actionDisabled: false,
       processingMessageId: null,
       processingAction: null,
-      onSendImmediately: noop,
+      onSend: noop,
       onReorder: noop,
       onSetGroupBoundary: noop,
       onEdit: noop,
@@ -527,7 +569,7 @@ describe("QueuedMessagesList", () => {
       actionDisabled: false,
       processingMessageId: null,
       processingAction: null,
-      onSendImmediately: noop,
+      onSend: noop,
       onReorder: noop,
       onSetGroupBoundary: noop,
       onEdit: noop,
@@ -588,7 +630,7 @@ describe("QueuedMessagesList", () => {
       actionDisabled: false,
       processingMessageId: null,
       processingAction: null,
-      onSendImmediately: noop,
+      onSend: noop,
       onReorder: noop,
       onSetGroupBoundary: noop,
       onEdit: noop,
@@ -690,7 +732,7 @@ describe("QueuedMessagesList", () => {
             actionDisabled={false}
             processingMessageId={null}
             processingAction={null}
-            onSendImmediately={noop}
+            onSend={noop}
             onReorder={noop}
             onSetGroupBoundary={noop}
             onEdit={noop}
@@ -776,7 +818,7 @@ describe("QueuedMessagesList", () => {
             actionDisabled={false}
             processingMessageId={null}
             processingAction={null}
-            onSendImmediately={noop}
+            onSend={noop}
             onReorder={noop}
             onSetGroupBoundary={noop}
             onEdit={noop}
@@ -880,7 +922,7 @@ describe("QueuedMessagesList", () => {
               actionDisabled={false}
               processingMessageId={null}
               processingAction={null}
-              onSendImmediately={noop}
+              onSend={noop}
               onReorder={noop}
               onSetGroupBoundary={noop}
               onEdit={noop}
@@ -1037,7 +1079,7 @@ describe("QueuedMessagesList", () => {
         actionDisabled={false}
         processingMessageId={queuedMessage.id}
         processingAction="send"
-        onSendImmediately={noop}
+        onSend={noop}
         onReorder={noop}
         onSetGroupBoundary={noop}
         onEdit={noop}
@@ -1426,7 +1468,7 @@ describe("QueuedMessagesList", () => {
         actionDisabled={false}
         processingMessageId={null}
         processingAction={null}
-        onSendImmediately={noop}
+        onSend={noop}
         onReorder={noop}
         onSetGroupBoundary={noop}
         onEdit={noop}
@@ -1450,7 +1492,7 @@ describe("QueuedMessagesList", () => {
         actionDisabled={false}
         processingMessageId={null}
         processingAction={null}
-        onSendImmediately={noop}
+        onSend={noop}
         onReorder={noop}
         onSetGroupBoundary={noop}
         onEdit={noop}
@@ -1600,6 +1642,33 @@ describe("queued row affordances", () => {
       },
     ]);
     expect(queued.queryByLabelText("Send queued message 1 now")).toBeNull();
+  });
+
+  it("offers to steer a provisioning row when the thread is ready", () => {
+    const onSend = vi.fn();
+    const { getByLabelText } = render(
+      <QueuedMessagesList
+        queuedMessages={[
+          {
+            ...makeQueuedMessage("q_provisioning", "Steer after startup"),
+            waitingOn: { kind: "provisioning" },
+          },
+        ]}
+        sendAction="steer-when-ready"
+        sendDisabled={false}
+        actionDisabled={false}
+        processingMessageId={null}
+        processingAction={null}
+        onSend={onSend}
+        onReorder={noop}
+        onSetGroupBoundary={noop}
+        onEdit={noop}
+        onDelete={noop}
+      />,
+    );
+
+    fireEvent.click(getByLabelText("Steer queued message 1 when ready"));
+    expect(onSend).toHaveBeenCalledWith("q_provisioning");
   });
 
   it("names the absent machine on a host-offline row and hides Send now", () => {

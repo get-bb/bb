@@ -215,15 +215,18 @@ vi.mock("@/components/plugin/PluginPanelRightPanelHost", () => ({
     children,
     flushPageInsets,
     panelPath,
+    pluginDetailTabsEnabled,
     pluginId,
   }: {
     children: ReactNode;
     flushPageInsets?: boolean;
     panelPath: string;
+    pluginDetailTabsEnabled?: boolean;
     pluginId: string;
   }) => {
     const pane = useContext(PaneContext);
     const [isPanelOpen, setIsPanelOpen] = useState(false);
+    const [isDetailTabOpen, setIsDetailTabOpen] = useState(false);
     const panelModel = useMemo(
       () => ({
         composerHost: null,
@@ -258,9 +261,18 @@ vi.mock("@/components/plugin/PluginPanelRightPanelHost", () => ({
         data-testid="plugin-browser-host"
         data-flush-page-insets={String(flushPageInsets === true)}
         data-panel-path={panelPath}
+        data-plugin-detail-tabs-enabled={String(
+          pluginDetailTabsEnabled === true,
+        )}
         data-plugin-id={pluginId}
+        data-detail-tab-open={String(isDetailTabOpen)}
       >
         {children}
+        {pluginDetailTabsEnabled === true ? (
+          <button type="button" onClick={() => setIsDetailTabOpen(true)}>
+            Open plugin detail tab
+          </button>
+        ) : null}
       </div>
     );
   },
@@ -429,6 +441,13 @@ const docsContent: PaneContent = {
   subPath: "",
 };
 
+const pluginGuideContent: PaneContent = {
+  kind: "plugin-panel",
+  pluginId: "plugin-api-docs",
+  panelPath: "plugin-api",
+  subPath: "",
+};
+
 const newThreadContent: PaneContent = { kind: "new-thread" };
 
 function pluginContent(panelPath: string): PaneContent {
@@ -543,6 +562,29 @@ function ExternalNav({ to }: { to: string }) {
   );
 }
 
+function PluginPanelLifecycleHarness() {
+  const [routeContent, setRouteContent] = useState<PaneContent>(
+    pluginGuideContent,
+  );
+  return (
+    <>
+      <SplitThreadArea routeContent={routeContent} />
+      <button
+        type="button"
+        onClick={() =>
+          setRouteContent((current) =>
+            current.kind === "plugin-panel" && current.subPath === ""
+              ? { ...pluginGuideContent, subPath: "the-composer" }
+              : docsContent,
+          )
+        }
+      >
+        Navigate plugin panel
+      </button>
+    </>
+  );
+}
+
 function RouteAwareSplitArea() {
   const location = useLocation();
   return (
@@ -560,6 +602,7 @@ function renderSplitArea(options: {
   externalTo?: string;
   routeContent?: PaneContent;
   routeAwareContent?: boolean;
+  pluginPanelLifecycle?: boolean;
   maximizedPaneId?: string;
 }) {
   const store = createStore();
@@ -574,7 +617,9 @@ function renderSplitArea(options: {
       <JotaiProvider store={store}>
         <QueryClientProvider client={queryClient}>
           <MemoryRouter initialEntries={[options.path]}>
-            {options.routeAwareContent ? (
+            {options.pluginPanelLifecycle ? (
+              <PluginPanelLifecycleHarness />
+            ) : options.routeAwareContent ? (
               <RouteAwareSplitArea />
             ) : (
               <SplitThreadArea routeContent={options.routeContent} />
@@ -627,6 +672,39 @@ describe("SplitThreadArea", () => {
     expect(host.dataset.pluginId).toBe("docs");
     expect(host.dataset.panelPath).toBe("docs");
     expect(host.dataset.flushPageInsets).toBe("true");
+    expect(host.dataset.pluginDetailTabsEnabled).toBe("false");
+  });
+
+  it("preserves detail state within the Guide and clears it for another plugin page", async () => {
+    renderSplitArea({
+      path: "/plugins/plugin-api-docs/plugin-api",
+      pluginPanelLifecycle: true,
+    });
+
+    const host = await screen.findByTestId("plugin-browser-host");
+    expect(host.dataset.pluginDetailTabsEnabled).toBe("true");
+    fireEvent.click(
+      screen.getByRole("button", { name: "Open plugin detail tab" }),
+    );
+    expect(host.dataset.detailTabOpen).toBe("true");
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Navigate plugin panel" }),
+    );
+    await waitFor(() =>
+      expect(
+        screen.getByTestId("plugin-browser-host").dataset.detailTabOpen,
+      ).toBe("true"),
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Navigate plugin panel" }),
+    );
+    await waitFor(() =>
+      expect(
+        screen.getByTestId("plugin-browser-host").dataset.detailTabOpen,
+      ).toBe("false"),
+    );
   });
 
   it("applies spotlight pane actions to the targeted open split and preference", async () => {
@@ -1717,6 +1795,29 @@ describe("SplitThreadArea", () => {
 
     expect(await screen.findByTestId("pane-thr-a")).toBeTruthy();
     expect(screen.getByTestId("pane-thr-b")).toBeTruthy();
+  });
+
+  it("keeps restored thread panes when the root compose route mounts", async () => {
+    const store = renderSplitArea({
+      path: "/",
+      layout: twoPaneLayout("pane-1"),
+      routeContent: newThreadContent,
+    });
+
+    expect(await screen.findByTestId("root-compose-view")).toBeTruthy();
+    await waitFor(() => {
+      const restored = store.get(splitLayoutAtom);
+      if (restored === null) {
+        throw new Error("Expected a restored split layout");
+      }
+      expect(
+        listPanes(restored.root).map((pane) => pane.content),
+      ).toEqual([
+        threadContent("thr-a"),
+        threadContent("thr-b"),
+        newThreadContent,
+      ]);
+    });
   });
 
   it("restores eight successive default-right opens, then focuses and closes with valid URL state", async () => {

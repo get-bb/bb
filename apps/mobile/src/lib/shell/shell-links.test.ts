@@ -36,6 +36,7 @@ describe("isNativeOnlyShellPath", () => {
     expect(isNativeOnlyShellPath("/settings/servers/add")).toBe(true);
     expect(isNativeOnlyShellPath("/settings")).toBe(false);
     expect(isNativeOnlyShellPath("/settings/device")).toBe(true);
+    expect(isNativeOnlyShellPath("/settings/notifications")).toBe(true);
     expect(isNativeOnlyShellPath("/settings/general")).toBe(false);
     expect(isNativeOnlyShellPath("/threads/x")).toBe(false);
     expect(isNativeOnlyShellPath("/connections")).toBe(false);
@@ -57,6 +58,16 @@ describe("resolveShellIncomingLink", () => {
     ).toEqual({
       kind: "navigate",
       path: "/connect?code=ABCD-EFGH",
+      profileId: null,
+    });
+  });
+
+  it("keeps notification settings native", () => {
+    expect(
+      resolveShellIncomingLink("bb://settings/notifications", context),
+    ).toEqual({
+      kind: "navigate",
+      path: "/settings/notifications",
       profileId: null,
     });
   });

@@ -29,6 +29,7 @@ import {
 import {
   COMPLETED_EVENT_OUTPUT_TRUNCATION_THRESHOLD_CHARS,
   pruneClosedSessions,
+  pruneDestroyedEnvironments,
   truncateCompletedEventItemOutputs,
 } from "../src/data/sweeps.js";
 import { getDatabaseMaintenanceActivity } from "../src/data/maintenance.js";
@@ -39,6 +40,7 @@ import {
 } from "../src/data/queued-thread-messages.js";
 import { upsertHost } from "../src/data/hosts.js";
 import { createProject } from "../src/data/projects.js";
+import { createEnvironment } from "../src/data/environments.js";
 import {
   createThread,
   listRunningThreads,
@@ -79,6 +81,7 @@ interface TestDb {
   db: DbConnection;
   host: IdentifiedRow;
   logger: CapturingSlowQueryLogger;
+  project: IdentifiedRow;
   thread: IdentifiedRow;
 }
 
@@ -132,7 +135,7 @@ function setup(): TestDb {
     providerId: "codex",
   });
   logger.clear();
-  return { db, host, logger, thread };
+  return { db, host, logger, project, thread };
 }
 
 function closeSessionAt(args: CloseSessionAtArgs): void {
@@ -624,6 +627,66 @@ describe("slow query index plans", () => {
       indexName: "host_daemon_sessions_closed_prune_idx",
       params: ["closed", closedBefore, 100],
     });
+    db.$client.close();
+  });
+
+  it("uses the environment index for bounded event detaches", () => {
+    const { db, host, logger, project, thread } = setup();
+    const now = Date.now();
+    const environment = createEnvironment(db, noopNotifier, {
+      hostId: host.id,
+      managed: true,
+      projectId: project.id,
+      status: "destroyed",
+      workspaceProvisionType: "managed-worktree",
+    });
+    insertEvents(db, noopNotifier, [
+      {
+        data: JSON.stringify({ text: "environment prune query plan" }),
+        environmentId: environment.id,
+        itemId: null,
+        itemKind: null,
+        parentToolCallId: null,
+        scope: threadScope(),
+        sequence: 1,
+        threadId: thread.id,
+        type: "system/manager/user_message",
+      },
+    ]);
+    const updatedBefore = now - 5_000;
+    db.$client
+      .prepare("UPDATE environments SET updated_at = ? WHERE id = ?")
+      .run(now - 10_000, environment.id);
+    logger.clear();
+
+    expect(
+      pruneDestroyedEnvironments(db, noopNotifier, {
+        eventBatchSize: 50,
+        limit: 1,
+        updatedBefore,
+      }),
+    ).toEqual({ deleted: 0, detachedEvents: 1 });
+
+    const debugLog = findOnlyDebugLog({
+      logger,
+      predicate: (fields) =>
+        fields.operation === "run" &&
+        fields.sql.startsWith("UPDATE events SET environment_id = NULL"),
+    });
+    assertEmittedQueryPlanUsesIndex({
+      db,
+      debugLog,
+      indexName: "events_environment_idx",
+      params: [environment.id, 50],
+    });
+    expect(
+      queryPlanDetails({
+        db,
+        params: [environment.id, 50],
+        sql: debugLog.fields.sql,
+      }),
+    ).not.toContain("USE TEMP B-TREE");
+
     db.$client.close();
   });
 

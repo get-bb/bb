@@ -382,6 +382,7 @@ export function createPluginApi(options: {
   db: DbConnection;
   dataDir: string;
   getSdk: () => BbSdk | undefined;
+  getAppUrl: () => string | null;
   getLoopbackBaseUrl: () => string | undefined;
   publishSignal: (channel: string, payload: unknown) => void;
   settingsChanged: () => void;
@@ -450,6 +451,7 @@ export function createPluginApi(options: {
     db,
     dataDir,
     getSdk,
+    getAppUrl,
     getLoopbackBaseUrl,
     publishSignal,
     settingsChanged,
@@ -490,6 +492,7 @@ export function createPluginApi(options: {
     "thread.failed": [],
     "thread.archived": [],
     "thread.deleted": [],
+    "interaction.pending": [],
     "message.queued": [],
     "message.dispatched": [],
     "turn.failed": [],
@@ -829,7 +832,7 @@ export function createPluginApi(options: {
       for (const [name, methodContractValue] of contractEntries) {
         if (!RPC_METHOD_PATTERN.test(name)) {
           throw new Error(
-            `invalid rpc method name "${name}" — use letters, digits, "-" and "_"`,
+            `invalid rpc method name "${name}" — use dot-separated segments with letters, digits, "-" and "_"`,
           );
         }
         const methodContract = readRpcMethodContract(name, methodContractValue);
@@ -1226,6 +1229,10 @@ export function createPluginApi(options: {
   };
 
   const server: PluginServerApi = {
+    get experimental_appUrl(): string | null {
+      assertLive();
+      return getAppUrl();
+    },
     get loopbackBaseUrl(): string {
       assertLive();
       const baseUrl = getLoopbackBaseUrl();

@@ -17,6 +17,7 @@ import {
   DialogDescription,
   DialogTitle,
 } from "@bb/shared-ui/dialog";
+import { Popover, PopoverContent } from "@bb/shared-ui/popover";
 import {
   PersistentResponsiveDrawerShell,
   ResponsiveDrawerShell,
@@ -146,6 +147,35 @@ describe("ResponsiveDrawerShell", () => {
     );
     act(() => vi.advanceTimersByTime(120));
     expect(screen.getByRole("button", { name: "Project option" })).toBeTruthy();
+  });
+});
+
+describe("responsive Popover", () => {
+  it.each([
+    ["compact viewports", true, false, false],
+    ["coarse pointers", false, true, false],
+    ["fine-pointer desktop", false, false, true],
+  ])("applies search focus policy on %s", (_, compact, coarse, focused) => {
+    vi.useFakeTimers();
+    mockPointerCoarse(coarse);
+    const focusRef = { current: null as HTMLInputElement | null };
+    const content = (ref?: typeof focusRef) => (
+      <CompactViewportOverrideProvider isCompactViewport={compact}>
+        <Popover defaultOpen>
+          <PopoverContent autoFocusRef={ref}>
+            {ref ? <input ref={ref} aria-label="Search" /> : null}
+          </PopoverContent>
+        </Popover>
+      </CompactViewportOverrideProvider>
+    );
+
+    const view = render(content(focusRef));
+    act(() => vi.advanceTimersByTime(120));
+    expect(document.activeElement === focusRef.current).toBe(focused);
+    view.rerender(content());
+    view.rerender(content(focusRef));
+    act(() => vi.advanceTimersByTime(120));
+    expect(document.activeElement === focusRef.current).toBe(focused);
   });
 });
 

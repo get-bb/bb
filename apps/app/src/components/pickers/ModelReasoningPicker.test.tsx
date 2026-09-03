@@ -22,7 +22,6 @@ import {
   type PaneContextValue,
 } from "@/views/thread-detail/PaneContext";
 import {
-  buildFuzzyRegex,
   buildModelNavRows,
   ModelReasoningPicker,
 } from "./ModelReasoningPicker";
@@ -412,7 +411,7 @@ describe("ModelReasoningPicker", () => {
     expect(onSelectedProviderChange).toHaveBeenCalledWith("claude-code");
   });
 
-  it("clears the previous provider's search and highlight when cycling", () => {
+  it("keeps search focused and clears it when switching providers", () => {
     const alternateProviderModels = [
       "claude-opus-4-7",
       "claude-sonnet-4-7",
@@ -435,20 +434,20 @@ describe("ModelReasoningPicker", () => {
       screen.getByRole("button", { name: "Provider, model and reasoning" }),
     );
     const search = screen.getByPlaceholderText("Search models");
+    search.focus();
     fireEvent.change(search, { target: { value: "o4" } });
     fireEvent.keyDown(search, { key: "ArrowDown" });
 
-    act(() => {
-      expect(
-        commandHandlers.get("modelPicker.cycleProvider")?.({ target: search }),
-      ).toBe(true);
-    });
+    const claudeTab = screen.getByTitle("Claude Code");
+    if (fireEvent.mouseDown(claudeTab)) claudeTab.focus();
+    fireEvent.click(claudeTab);
 
     expect(onSelectedProviderChange).toHaveBeenCalledWith("claude-code");
     const nextSearch = screen.getByPlaceholderText(
       "Search models",
     ) as HTMLInputElement;
     expect(nextSearch.value).toBe("");
+    expect(document.activeElement).toBe(nextSearch);
     fireEvent.keyDown(nextSearch, { key: "Enter" });
     expect(onModelChange).not.toHaveBeenCalled();
   });
@@ -614,7 +613,7 @@ describe("ModelReasoningPicker", () => {
     expect(onModelChange).toHaveBeenCalledWith(apiModel);
   });
 
-  it("fuzzy-filters a long model list and selects the match by keyboard", () => {
+  it("uses picker search policy and selects the match by keyboard", () => {
     const { onModelChange } = renderPicker({ modelOptions: manyCodexModels });
 
     fireEvent.click(
@@ -622,7 +621,7 @@ describe("ModelReasoningPicker", () => {
     );
 
     const search = screen.getByPlaceholderText("Search models");
-    fireEvent.change(search, { target: { value: "o4" } });
+    fireEvent.change(search, { target: { value: "o4m" } });
 
     expect(screen.getByText("o4-mini")).not.toBeNull();
     expect(screen.queryByText("Sonnet")).toBeNull();
@@ -631,6 +630,38 @@ describe("ModelReasoningPicker", () => {
     fireEvent.keyDown(search, { key: "Enter" });
 
     expect(onModelChange).toHaveBeenCalledWith("o4-mini");
+  });
+
+  it("ranks primary and selected-only model matches together", () => {
+    const looseMatch = "Super GPT-4 Compatibility";
+    const directMatch = "GPT-4 Turbo";
+    renderPicker({
+      modelOptions: [
+        { value: "super-gpt-4", label: looseMatch },
+        { value: "alpha", label: "Alpha" },
+        { value: "beta", label: "Beta" },
+        { value: "gamma", label: "Gamma" },
+        { value: "delta", label: "Delta" },
+      ],
+      moreModelOptions: [{ value: "gpt-4-turbo", label: directMatch }],
+      pickerProviderOptions: [{ value: "codex", label: "Codex" }],
+    });
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Provider, model and reasoning" }),
+    );
+    fireEvent.change(screen.getByPlaceholderText("Search models"), {
+      target: { value: "gpt4" },
+    });
+
+    const directResult = screen.getByText(directMatch);
+    const looseResult = screen.getAllByText(looseMatch).at(-1);
+    expect(looseResult).toBeTruthy();
+    if (!looseResult) return;
+    expect(
+      directResult.compareDocumentPosition(looseResult) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).not.toBe(0);
   });
 
   it("returns the results viewport to the top when searching", () => {
@@ -798,18 +829,5 @@ describe("buildModelNavRows", () => {
       { kind: "model", option: primary[0] },
       { kind: "model", option: primary[1] },
     ]);
-  });
-});
-
-describe("buildFuzzyRegex", () => {
-  it("matches subsequences case-insensitively", () => {
-    expect(buildFuzzyRegex("gpt4").test("GPT-4 Turbo")).toBe(true);
-    expect(buildFuzzyRegex("o4m").test("o4-mini")).toBe(true);
-    expect(buildFuzzyRegex("xyz").test("o4-mini")).toBe(false);
-  });
-
-  it("escapes regex metacharacters so they match literally", () => {
-    expect(buildFuzzyRegex("5.2").test("5.2")).toBe(true);
-    expect(buildFuzzyRegex("5.2").test("512")).toBe(false);
   });
 });

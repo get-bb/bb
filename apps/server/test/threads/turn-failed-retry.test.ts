@@ -15,7 +15,7 @@ import {
 } from "../../src/services/plugins/plugin-hook-registry.js";
 import { setPluginThreadEventEmitter } from "../../src/services/plugins/plugin-thread-events.js";
 import { applyLoggedThreadLifecycleEvent } from "../../src/services/threads/lifecycle-outcome.js";
-import { runDueScheduledQueueSweep } from "../../src/services/threads/queue-drains.js";
+import { runQueuedMessageDispatch } from "../../src/services/threads/queued-message-dispatch.js";
 import { toThreadQueuedMessage } from "../../src/services/threads/thread-queued-messages.js";
 import { buildTurnFailedEvent } from "../../src/services/threads/turn-failed.js";
 import { retryFailedTurn } from "../../src/services/threads/turn-retry.js";
@@ -81,6 +81,7 @@ function recordTurnFailedAnnouncements(): string[] {
     emitThreadFailed: () => {},
     emitThreadArchived: () => {},
     emitThreadDeleted: () => {},
+    emitInteractionPending: () => {},
     emitMessageQueued: () => {},
     emitMessageDispatched: () => {},
     emitTurnFailed: (threadId) => announced.push(threadId),
@@ -163,7 +164,8 @@ function seedRateLimitFailure(
     threadId: args.threadId,
     environmentId: args.environmentId,
     providerThreadId,
-    sequence: getLatestThreadSequence(harness.db, { threadId: args.threadId }) + 1,
+    sequence:
+      getLatestThreadSequence(harness.db, { threadId: args.threadId }) + 1,
     type: "provider/rateLimits/updated",
     scope: { kind: "thread" },
     data: {
@@ -190,7 +192,8 @@ function seedRateLimitFailure(
     threadId: args.threadId,
     environmentId: args.environmentId,
     providerThreadId,
-    sequence: getLatestThreadSequence(harness.db, { threadId: args.threadId }) + 1,
+    sequence:
+      getLatestThreadSequence(harness.db, { threadId: args.threadId }) + 1,
     type: "provider/error",
     scope: { kind: "thread" },
     data: {
@@ -218,7 +221,8 @@ function seedInputAccepted(
     threadId: args.threadId,
     environmentId: args.environmentId,
     providerThreadId,
-    sequence: getLatestThreadSequence(harness.db, { threadId: args.threadId }) + 1,
+    sequence:
+      getLatestThreadSequence(harness.db, { threadId: args.threadId }) + 1,
     type: "turn/input/accepted",
     scope: { kind: "turn", turnId: "turn-1" },
     data: {
@@ -245,7 +249,8 @@ function seedDoorRejection(
   seedEvent(harness.deps, {
     threadId: args.threadId,
     environmentId: args.environmentId,
-    sequence: getLatestThreadSequence(harness.db, { threadId: args.threadId }) + 1,
+    sequence:
+      getLatestThreadSequence(harness.db, { threadId: args.threadId }) + 1,
     type: "client/turn/rejected",
     scope: { kind: "thread" },
     data: {
@@ -303,7 +308,10 @@ function requireThread(harness: TestAppHarness, threadId: string) {
  * send uses, which is what these tests are actually about.
  */
 async function sweepPastResume(harness: TestAppHarness): Promise<void> {
-  await runDueScheduledQueueSweep(harness.deps, Date.now() + 120_000);
+  await runQueuedMessageDispatch(harness.deps, {
+    kind: "time-reached",
+    now: Date.now() + 120_000,
+  });
 }
 
 describe("the turn.failed announcement", () => {
@@ -496,7 +504,11 @@ describe("retrying a failed turn", () => {
 
       const result = await retryFailedTurn(harness.deps, {
         thread: requireThread(harness, thread.id),
-        request: { turnRequestId: requestId, sendAt: null, reason: "Rate limited" },
+        request: {
+          turnRequestId: requestId,
+          sendAt: null,
+          reason: "Rate limited",
+        },
       });
       expect(result.delivery).toBe("sent");
 
@@ -595,7 +607,10 @@ describe("retrying a failed turn", () => {
 
   it("counts a retry's own failure as a later attempt of the same original", async () => {
     await withTestHarness(async (harness) => {
-      const { requestId, thread } = seedFailableThread(harness, "host-attempts");
+      const { requestId, thread } = seedFailableThread(
+        harness,
+        "host-attempts",
+      );
       failThread(harness, thread.id);
       await retryFailedTurn(harness.deps, {
         thread: requireThread(harness, thread.id),
@@ -685,7 +700,11 @@ describe("retrying a failed turn", () => {
       const retry = (turnRequestId: string | null) =>
         retryFailedTurn(harness.deps, {
           thread: requireThread(harness, thread.id),
-          request: { turnRequestId, sendAt: Date.now() + 60_000, reason: "Retry" },
+          request: {
+            turnRequestId,
+            sendAt: Date.now() + 60_000,
+            reason: "Retry",
+          },
         });
 
       // Still running: there is no failed turn to re-submit.
@@ -715,6 +734,7 @@ describe("retrying a failed turn", () => {
         harness.db,
         harness.deps.hub,
         onlyQueuedRow(harness, thread.id).id,
+        { kind: "explicit-send" },
       );
       expect(claimed).toHaveLength(1);
       await expect(retry(requestId)).rejects.toMatchObject({

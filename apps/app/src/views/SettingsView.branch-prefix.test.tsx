@@ -1,5 +1,11 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen, fireEvent } from "@testing-library/react";
+import {
+  cleanup,
+  render,
+  screen,
+  fireEvent,
+  waitFor,
+} from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { GeneralSettingsSection } from "./SettingsView";
 
@@ -60,6 +66,17 @@ describe("worktree branch prefix setting", () => {
     fireEvent.change(input, { target: { value: "" } });
     fireEvent.blur(input);
     expect(onChange).toHaveBeenCalledWith("");
+  });
+
+  it("restores the saved value when saving fails", async () => {
+    const failedSave = Promise.reject(new Error("write failed"));
+    void failedSave.catch(() => undefined);
+    const onChange = vi.fn(() => failedSave);
+    renderSection({ onManagedBranchPrefixChange: onChange });
+    const input = branchPrefixInput();
+    fireEvent.change(input, { target: { value: "team/" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    await waitFor(() => expect(input.value).toBe("bb/"));
   });
 
   it("refuses an invalid prefix and restores the saved value", () => {

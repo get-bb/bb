@@ -68,6 +68,7 @@ import {
 import {
   didThreadDetailBootstrapRefreshAfterMount,
   getLatestPendingInteraction,
+  isPendingInteractionStateUnknown,
   useChildThreads,
   useProjectThreadSubset,
   useThread,
@@ -630,8 +631,10 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
   );
   const pendingInteractions = pendingInteractionsQuery.data ?? [];
   const pendingInteractionsInitialLoading =
-    pendingInteractionsQuery.data === undefined &&
-    (pendingInteractionsQuery.isLoading || pendingInteractionsQuery.isFetching);
+    isPendingInteractionStateUnknown(
+      pendingInteractionsQuery.data,
+      pendingInteractionsQuery.isFetching,
+    );
   const hasPendingInteraction =
     getLatestPendingInteraction(pendingInteractions) !== null;
   const { data: queuedMessagesForEditEligibility = [] } =
@@ -1981,11 +1984,6 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
     thread,
     workspaceStatus,
   });
-  useEffect(() => {
-    if (gitActions.threadGitActionDialog.target !== null) {
-      setHasRequestedMergeBaseOptions(true);
-    }
-  }, [gitActions.threadGitActionDialog.target]);
   const parentThreadId = thread?.parentThreadId;
   const parentThreadDisplayName =
     parentThread?.title && parentThread.title.trim().length > 0
@@ -2959,23 +2957,12 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
               branchName={threadBranchName}
               gitStatusDisplay={threadGitStatusDisplay}
               changedFilesSection={workingTreeChangedFilesSection}
-              showMergeBaseDetails={showBranchComparisonUi}
-              mergeBaseBranch={effectiveMergeBaseBranch}
-              mergeBaseBranchOptions={mergeBaseBranchOptions}
-              mergeBaseBranchRef={selectedMergeBaseBranchRef}
-              mergeBaseRemoteBranchOptions={mergeBaseRemoteBranchOptions}
-              mergeBaseBranchOptionsLoading={isLoadingMergeBaseBranchOptions}
-              onMergeBaseBranchSearchQueryChange={setMergeBaseBranchSearchQuery}
-              onMergeBaseBranchChange={
-                showBranchComparisonUi ? handleMergeBaseBranchChange : undefined
-              }
               onOpenChange={(open) => {
                 if (!open) {
                   gitActions.threadGitActionDialog.onClose();
                 }
               }}
               onCommit={gitActions.handleCommitThread}
-              onSquashMerge={gitActions.handleSquashMergeThread}
             />
           ) : null}
         </AppNavigationHostProvider>

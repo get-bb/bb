@@ -15,6 +15,7 @@ import type {
 } from "@/components/promptbox/PromptBoxInternal";
 import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
 import { cn } from "@bb/shared-ui/lib/utils";
+import { Button } from "@bb/shared-ui/button";
 import { BottomAnchoredScrollBody } from "@/components/ui/bottom-anchored-scroll-body";
 import { PageShell } from "@/components/ui/page-shell.js";
 import {
@@ -47,6 +48,7 @@ import {
 import { useThreadCreationOptions } from "@/hooks/useThreadCreationOptions";
 import {
   getLatestPendingInteraction,
+  isPendingInteractionStateUnknown,
   useThread,
   useThreadPendingInteractions,
   useThreadQueuedMessages,
@@ -105,6 +107,44 @@ const DEFAULT_LABELS: EmbeddedThreadChatLabels = {
   provisioning: "Provisioning thread...",
   sendError: "Failed to send message",
 };
+
+type PendingInteractionsQueryBannerProps =
+  | { state: "loading" }
+  | { state: "error"; isRetrying: boolean; onRetry: () => void };
+
+function PendingInteractionsQueryBanner(
+  props: PendingInteractionsQueryBannerProps,
+) {
+  const isError = props.state === "error";
+  return (
+    <div
+      className={cn(
+        "mb-2 flex min-w-0 max-w-full items-center justify-between gap-3 rounded-lg border border-border bg-surface-recessed px-4 py-3 text-xs text-muted-foreground",
+        isError &&
+          "border-surface-destructive-border bg-surface-destructive text-destructive-text",
+      )}
+      role={isError ? "alert" : "status"}
+    >
+      <span>
+        {isError
+          ? "Couldn't check pending interactions."
+          : "Checking pending interactions…"}
+      </span>
+      {props.state === "error" ? (
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          disabled={props.isRetrying}
+          onClick={props.onRetry}
+          className="h-7 cursor-pointer px-2"
+        >
+          {props.isRetrying ? "Retrying…" : "Retry"}
+        </Button>
+      ) : null}
+    </div>
+  );
+}
 
 interface EmbeddedThreadChatComposerProps {
   draftScope: PromptDraftScope;
@@ -219,6 +259,19 @@ function EmbeddedThreadChatWithComposer({
   const activePendingInteraction = getLatestPendingInteraction(
     pendingInteractionsQuery.data,
   );
+  const hasComposerBlockingPendingInteraction =
+    activePendingInteraction !== null &&
+    activePendingInteraction.payload.kind !== "plugin";
+  const pendingInteractionsInitialLoading = isPendingInteractionStateUnknown(
+    pendingInteractionsQuery.data,
+    pendingInteractionsQuery.isFetching,
+  );
+  const pendingInteractionsUnavailable =
+    activePendingInteraction === null && pendingInteractionsQuery.isError;
+  const pendingInteractionOccupiesComposer =
+    hasComposerBlockingPendingInteraction ||
+    pendingInteractionsInitialLoading ||
+    pendingInteractionsUnavailable;
   useThreadReadTracking({
     markThreadRead,
     thread: threadQuery.data,
@@ -385,7 +438,7 @@ function EmbeddedThreadChatWithComposer({
     processingQueuedMessage,
     queuedMessageActionPending,
     isUpdateQueuedMessagePending,
-    handleSendQueuedImmediately,
+    sendQueuedMessageById,
     handleSaveInlineQueuedMessage,
     handleDeleteQueuedMessage,
     handleReorderQueuedMessage,
@@ -394,7 +447,6 @@ function EmbeddedThreadChatWithComposer({
     threadId,
     queuedMessages,
     sendProcessingPersistence: "clear-on-settle",
-    canSendNow: () => !isProvisioning,
     onSaveSuccess: () => setInlineAttachmentError(null),
     inlineEditingQueuedMessage,
     dismissInlineQueuedMessageEditor,
@@ -405,16 +457,22 @@ function EmbeddedThreadChatWithComposer({
     () =>
       buildSideChatSubmitMode({
         childThreadId: threadId,
+        hasPendingInteraction: hasComposerBlockingPendingInteraction,
         isDefaultExecutionOptionsLoading,
+        isPendingInteractionsInitialLoading:
+          pendingInteractionsInitialLoading || pendingInteractionsUnavailable,
         isStopRequested,
         onStop: handleStopThread,
         runtimeDisplayStatus: displayStatus,
       }),
     [
       displayStatus,
+      hasComposerBlockingPendingInteraction,
       handleStopThread,
       isDefaultExecutionOptionsLoading,
       isStopRequested,
+      pendingInteractionsInitialLoading,
+      pendingInteractionsUnavailable,
       threadId,
     ],
   );
@@ -488,6 +546,16 @@ function EmbeddedThreadChatWithComposer({
 
   const isQueueMutationPending =
     queuedMessageActionPending || createQueuedMessage.isPending;
+  const handleSendQueuedMessage = useCallback(
+    (queuedMessageId: string) => {
+      void sendQueuedMessageById({
+        guard: "exists",
+        messageId: queuedMessageId,
+        mode: isProvisioning ? "steer" : "auto",
+      });
+    },
+    [isProvisioning, sendQueuedMessageById],
+  );
   const hasPromptDraftInput = currentPromptDraftInput.length > 0;
   const canSubmitModifierShortcut = canSubmitFollowUpShortcut({
     hasPromptDraftInput,
@@ -507,7 +575,11 @@ function EmbeddedThreadChatWithComposer({
     if (submittedInput.length === 0) {
       const nextQueuedMessage = queuedMessages[0];
       if (nextQueuedMessage) {
-        handleSendQueuedImmediately(nextQueuedMessage.id);
+        void sendQueuedMessageById({
+          guard: "current-head",
+          messageId: nextQueuedMessage.id,
+          mode: "steer",
+        });
       }
       return;
     }
@@ -548,10 +620,10 @@ function EmbeddedThreadChatWithComposer({
     currentPromptDraft,
     currentPromptDraftInput,
     executionRequestFields,
-    handleSendQueuedImmediately,
     labels.sendError,
     promptDraft,
     queuedMessages,
+    sendQueuedMessageById,
     sendThreadMessage,
     setBottomAttachmentError,
     threadId,
@@ -1026,16 +1098,18 @@ function EmbeddedThreadChatWithComposer({
 
   const queuedMessagesStack = useMemo(
     () =>
-      queuedMessages.length > 0 ? (
+      queuedMessages.length > 0 && !pendingInteractionOccupiesComposer ? (
         <QueuedMessagesList
+          attachedToComposer
           queuedMessages={queuedMessages}
           resolveMentionLink={resolveMentionLink}
           inlineEditor={inlineEditor}
-          sendDisabled={isProvisioning || queuedMessageActionPending}
+          sendAction={isProvisioning ? "steer-when-ready" : "send-now"}
+          sendDisabled={queuedMessageActionPending}
           actionDisabled={queuedMessageActionPending}
           processingMessageId={processingQueuedMessage?.id ?? null}
           processingAction={processingQueuedMessage?.action ?? null}
-          onSendImmediately={handleSendQueuedImmediately}
+          onSend={handleSendQueuedMessage}
           onReorder={handleReorderQueuedMessage}
           onSetGroupBoundary={handleSetQueuedMessageGroupBoundary}
           onEdit={beginEditQueuedMessage}
@@ -1046,12 +1120,13 @@ function EmbeddedThreadChatWithComposer({
       beginEditQueuedMessage,
       handleDeleteQueuedMessage,
       handleReorderQueuedMessage,
-      handleSendQueuedImmediately,
+      handleSendQueuedMessage,
       handleSetQueuedMessageGroupBoundary,
       inlineEditor,
       isProvisioning,
       processingQueuedMessage?.action,
       processingQueuedMessage?.id,
+      pendingInteractionOccupiesComposer,
       queuedMessageActionPending,
       queuedMessages,
       resolveMentionLink,
@@ -1060,42 +1135,48 @@ function EmbeddedThreadChatWithComposer({
 
   const surfaceClassName =
     surfaceTone === "sidebar" ? "bg-sidebar" : "bg-background";
-  const pendingInteractionBanner =
-    activePendingInteraction === null ||
-    activePendingInteraction.payload.kind === "plugin" ? null : (
-      <ThreadPendingInteractionBanner
-        interaction={activePendingInteraction}
-        threadId={threadId}
-      />
-    );
+  const pendingInteractionBanner = pendingInteractionsUnavailable ? (
+    <PendingInteractionsQueryBanner
+      state="error"
+      isRetrying={pendingInteractionsQuery.isFetching}
+      onRetry={() => void pendingInteractionsQuery.refetch()}
+    />
+  ) : pendingInteractionsInitialLoading ? (
+    <PendingInteractionsQueryBanner state="loading" />
+  ) : activePendingInteraction !== null &&
+    activePendingInteraction.payload.kind !== "plugin" ? (
+    <ThreadPendingInteractionBanner
+      interaction={activePendingInteraction}
+      threadId={threadId}
+    />
+  ) : null;
   const footer = (
     <div className={cn("relative", surfaceClassName)}>
       <OverflowFade placement="above" tone={surfaceTone} />
       <div className="px-4 pb-4 pt-2">
-        {pendingInteractionBanner ?? (
-          <FollowUpPromptBox
-            attachments={bottomAttachmentsConfig}
-            stack={queuedMessagesStack}
-            composer={bottomComposerConfig}
-            pluginComposerHost={activeBottomPluginComposerHost}
-            pluginComposerScope={activeBottomPluginComposerHost?.scope ?? null}
-            textEffects={bottomComposerTextEffects}
-            environmentSummary={composer.environmentSummary}
-            contextWindowUsage={null}
-            execution={bottomExecutionConfig}
-            permission={bottomPermissionConfig}
-            permissionReadOnly={composer.permissionPolicy === "snapshot"}
-            typeahead={typeaheadConfig}
-            promptActions={promptActions}
-            collapseResetKey={surfaceKey}
-            focusEndKey={
-              composer.focusRequestKey === undefined
-                ? composerFocusNonce
-                : `${composerFocusNonce}:${composer.focusRequestKey}`
-            }
-            isPrimaryComposer={false}
-          />
-        )}
+        <FollowUpPromptBox
+          attachments={bottomAttachmentsConfig}
+          stack={queuedMessagesStack}
+          pendingInteraction={pendingInteractionBanner}
+          composer={bottomComposerConfig}
+          pluginComposerHost={activeBottomPluginComposerHost}
+          pluginComposerScope={activeBottomPluginComposerHost?.scope ?? null}
+          textEffects={bottomComposerTextEffects}
+          environmentSummary={composer.environmentSummary}
+          contextWindowUsage={null}
+          execution={bottomExecutionConfig}
+          permission={bottomPermissionConfig}
+          permissionReadOnly={composer.permissionPolicy === "snapshot"}
+          typeahead={typeaheadConfig}
+          promptActions={promptActions}
+          collapseResetKey={surfaceKey}
+          focusEndKey={
+            composer.focusRequestKey === undefined
+              ? composerFocusNonce
+              : `${composerFocusNonce}:${composer.focusRequestKey}`
+          }
+          isPrimaryComposer={false}
+        />
       </div>
     </div>
   );

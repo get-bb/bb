@@ -41,6 +41,7 @@ vi.mock("@/hooks/useHostDaemon", () => ({
 
 vi.mock("@/lib/plugin-slots", () => ({
   usePluginSlots: () => ({
+    appOverlays: [],
     commandPaletteActions: [],
     fileOpeners: [],
     navPanels: [
@@ -70,8 +71,12 @@ vi.mock("@/components/project/ProjectActionsProvider", () => ({
 
 vi.mock("@/components/thread/ThreadActionsProvider", () => ({
   ThreadActionsProvider: ({ children }: { children: ReactNode }) => (
-    <>{children}</>
+    <div data-testid="thread-actions-provider">{children}</div>
   ),
+}));
+
+vi.mock("@/components/plugin/PluginAppOverlays", () => ({
+  PluginAppOverlays: () => <div data-testid="plugin-app-overlays" />,
 }));
 
 vi.mock("@/components/dialogs/ProjectPathDialog", () => ({
@@ -193,6 +198,16 @@ describe("AppLayout plugin panel header", () => {
     renderPluginPanelRoute();
 
     expect(screen.queryByTestId("app-page-header")).toBeNull();
+  });
+
+  it("mounts app overlays inside the app-level thread actions provider", () => {
+    renderPluginPanelRoute();
+
+    expect(
+      screen
+        .getByTestId("thread-actions-provider")
+        .contains(screen.getByTestId("plugin-app-overlays")),
+    ).toBe(true);
   });
 
   it("shows the fixed left trigger only while the compact right panel is closed", () => {

@@ -19,7 +19,7 @@ import {
   notifyDaemonEnvironmentChange,
   recordDaemonEnvironmentMetadataChange,
 } from "../internal/environment-changes.js";
-import { drainThreadQueueOnHostReconnect } from "../services/threads/queue-drains.js";
+import { requestQueuedMessageDispatch } from "../services/threads/queued-message-dispatch.js";
 import { runEventLoopWorkSync } from "../services/system/event-loop-work.js";
 import { decodeSocketPayload } from "./decode-payload.js";
 import type { PluginService } from "../services/plugins/plugin-service.js";
@@ -90,7 +90,10 @@ export function onDaemonSocketOpen(
   // `host-offline` wait with no schedule, so no sweep can see it — the
   // machine coming back is that wait's release signal, and this socket
   // opening is where core hears it.
-  drainThreadQueueOnHostReconnect(deps, args.hostId);
+  requestQueuedMessageDispatch(deps, {
+    hostId: args.hostId,
+    kind: "host-connected",
+  });
 }
 
 export function onDaemonSocketMessage(

@@ -28,6 +28,11 @@ export interface AcpDelegationReport {
   detail?: string;
 }
 
+type AcpCompactionOutcome =
+  | { status: "completed" }
+  | { status: "skipped"; detail: string }
+  | { status: "failed"; error: string };
+
 export interface AcpDialect {
   readonly id: string;
   toolIdentity?(event: AcpToolCallUpdateEvent): AcpToolIdentity | undefined;
@@ -291,6 +296,26 @@ function ompCommandResult(
     ...(exitCode === undefined ? {} : { exitCode }),
     ...(output.length === 0 ? {} : { output }),
   };
+}
+
+const OMP_COMPACTION_FAILURE_PATTERN = /\bcompaction failed\b/i;
+const OMP_COMPACTION_NOOP_PATTERN =
+  /\b(?:nothing to compact|already compacted)\b/i;
+
+export function compactionOutcomeForEndTurn(
+  dialect: AcpDialect,
+  agentMessage: string,
+): AcpCompactionOutcome {
+  if (dialect.id !== "omp") {
+    return { status: "completed" };
+  }
+  const text = agentMessage.trim();
+  if (!OMP_COMPACTION_FAILURE_PATTERN.test(text)) {
+    return { status: "completed" };
+  }
+  return OMP_COMPACTION_NOOP_PATTERN.test(text)
+    ? { status: "skipped", detail: text }
+    : { status: "failed", error: text };
 }
 
 export const OMP_ACP_DIALECT: AcpDialect = {

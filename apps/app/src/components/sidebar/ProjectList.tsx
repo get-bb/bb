@@ -48,7 +48,10 @@ import { BbHttpError } from "@bb/sdk/browser";
 import { useSetRootComposeProjectId } from "@/lib/root-compose-selection";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { Button } from "@bb/shared-ui/button";
-import { AppCommandShortcutHint } from "@/components/commands/AppCommandShortcutHint";
+import {
+  AppCommandShortcutHint,
+  AppCommandShortcutPill,
+} from "@/components/commands/AppCommandShortcutHint";
 import {
   ThreadSectionCreateDialog,
   ThreadSectionRenameDialog,
@@ -145,7 +148,7 @@ import {
 } from "./BuiltInSidebarSection";
 import { ReorderableSidebarSectionOrderList } from "./ReorderableSidebarSectionOrderList";
 import { useSidebarModeSectionOrder } from "./useSidebarModeSectionOrder";
-import { haveSameOrder } from "./usePersistedSidebarSectionOrder";
+import { haveSameOrder } from "@/lib/stored-order";
 import {
   resolveThreadTitleDisplayText,
   type ThreadTitleMentionResources,
@@ -157,15 +160,22 @@ interface ProjectListProps {
   isCreatingProject?: boolean;
 }
 
-interface ProjectListActionButtonsProps {
+interface ProjectListNewThreadActionProps {
   splitEnabled?: boolean;
   newThreadSplit?: {
     onPointerDown?: PointerEventHandler<HTMLElement>;
     openInSplit(): void;
   };
   onNewChat?: () => void;
+}
+
+interface ProjectListSearchThreadsActionProps {
   onSearchThreads?: () => void;
 }
+
+interface ProjectListActionButtonsProps
+  extends ProjectListNewThreadActionProps,
+    ProjectListSearchThreadsActionProps {}
 
 interface ProjectListShellProps {
   children: ReactNode;
@@ -211,11 +221,6 @@ export const PROJECT_LIST_ACTION_BUTTON_CLASS = cn(
   SIDEBAR_ROW_INTERACTIVE_STATE_CLASS,
   COARSE_POINTER_ROW_HEIGHT_CLASS,
   "min-w-0 cursor-pointer justify-start overflow-hidden font-normal ring-sidebar-ring focus-visible:ring-2 disabled:cursor-default disabled:opacity-70 max-md:pointer-coarse:[&_svg]:size-5",
-);
-
-const PROJECT_LIST_ACTION_ICON_BUTTON_CLASS = cn(
-  "inline-flex shrink-0 cursor-pointer items-center justify-center rounded-md text-sidebar-foreground/85 outline-none ring-sidebar-ring transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 disabled:cursor-default disabled:opacity-50",
-  COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
 );
 
 const PROJECT_LIST_SECTION_ACTION_BUTTON_CLASS = cn(
@@ -754,79 +759,110 @@ function ProjectListNavigationLoadingRow({
   );
 }
 
-export function ProjectListActionButtons({
+export function ProjectListNewThreadAction({
   splitEnabled = false,
   newThreadSplit,
   onNewChat,
-  onSearchThreads,
-}: ProjectListActionButtonsProps) {
-  const commandRunner = useAppCommandRunner();
+}: ProjectListNewThreadActionProps) {
   const isNewChatDisabled = !onNewChat;
   const newThreadShortcut = useAppCommandShortcut("thread.new");
-  const threadSearchShortcut = useAppCommandShortcut("thread.search");
   const newThreadSplitIndicator = usePaneContentSplitIndicator(
     { kind: "new-thread" },
     splitEnabled,
   );
 
   return (
-    <div className="space-y-1">
-      <div className="flex min-w-0 items-center gap-0.5">
-        <Button
-          type="button"
-          size="sm"
-          variant="ghost"
-          className={cn(PROJECT_LIST_ACTION_BUTTON_CLASS, "flex-1")}
-          onPointerDown={newThreadSplit?.onPointerDown}
-          onClick={(event) => {
-            if (event.metaKey || event.ctrlKey) {
-              newThreadSplit?.openInSplit();
-              return;
-            }
-            onNewChat?.();
-          }}
-          disabled={isNewChatDisabled}
-          aria-label={
-            newThreadShortcut
-              ? `New thread (${newThreadShortcut.label})`
-              : "New thread"
-          }
-          aria-keyshortcuts={newThreadShortcut?.ariaKeyshortcuts}
-        >
-          <Icon name="MessageSquarePlus" />
-          <span className="flex min-w-0 flex-1 items-center gap-1.5">
-            <span className="min-w-0 truncate text-left">New thread</span>
-            {newThreadSplitIndicator.miniMap ? (
-              <SplitPaneMiniMap
-                slots={newThreadSplitIndicator.miniMap}
-                label="New thread — open in split"
-              />
-            ) : null}
-            <AppCommandShortcutHint shortcut={newThreadShortcut} />
-          </span>
-        </Button>
-        <span className="flex shrink-0 items-center gap-1">
-          <AppCommandShortcutHint shortcut={threadSearchShortcut} />
-          <Button
-            type="button"
-            size="icon"
-            variant="ghost"
-            aria-label={
-              threadSearchShortcut
-                ? `Search threads (${threadSearchShortcut.label})`
-                : "Search threads"
-            }
-            aria-keyshortcuts={threadSearchShortcut?.ariaKeyshortcuts}
-            className={PROJECT_LIST_ACTION_ICON_BUTTON_CLASS}
-            onClick={(event) => {
-              onSearchThreads?.();
-              commandRunner.dispatch("thread.search", event.currentTarget);
-            }}
-          >
-            <Icon name="Search" className={COARSE_POINTER_ICON_SIZE_CLASS} />
-          </Button>
+    <Button
+      type="button"
+      size="sm"
+      variant="ghost"
+      className={cn(PROJECT_LIST_ACTION_BUTTON_CLASS, "w-full")}
+      onPointerDown={newThreadSplit?.onPointerDown}
+      onClick={(event) => {
+        if (event.metaKey || event.ctrlKey) {
+          newThreadSplit?.openInSplit();
+          return;
+        }
+        onNewChat?.();
+      }}
+      disabled={isNewChatDisabled}
+      aria-label={
+        newThreadShortcut
+          ? `New thread (${newThreadShortcut.label})`
+          : "New thread"
+      }
+      aria-keyshortcuts={newThreadShortcut?.ariaKeyshortcuts}
+    >
+      <Icon name="MessageSquarePlus" />
+      <span className="flex min-w-0 flex-1 items-center gap-1.5">
+        <span className="min-w-0 flex-1 truncate text-left">New thread</span>
+        {newThreadSplitIndicator.miniMap ? (
+          <SplitPaneMiniMap
+            slots={newThreadSplitIndicator.miniMap}
+            label="New thread — open in split"
+          />
+        ) : null}
+        <AppCommandShortcutHint shortcut={newThreadShortcut} />
+      </span>
+    </Button>
+  );
+}
+
+export function ProjectListSearchThreadsAction({
+  onSearchThreads,
+}: ProjectListSearchThreadsActionProps) {
+  const commandRunner = useAppCommandRunner();
+  const threadSearchShortcut = useAppCommandShortcut("thread.search");
+
+  return (
+    <Button
+      type="button"
+      size="sm"
+      variant="ghost"
+      className={cn(
+        PROJECT_LIST_ACTION_BUTTON_CLASS,
+        "group/search-threads w-full pr-1",
+      )}
+      onClick={(event) => {
+        onSearchThreads?.();
+        commandRunner.dispatch("thread.search", event.currentTarget);
+      }}
+      aria-label={
+        threadSearchShortcut
+          ? `Search threads (${threadSearchShortcut.label})`
+          : "Search threads"
+      }
+      aria-keyshortcuts={threadSearchShortcut?.ariaKeyshortcuts}
+    >
+      <Icon name="Search" />
+      <span className="flex min-w-0 flex-1 items-center gap-1.5">
+        <span className="min-w-0 flex-1 truncate text-left">
+          Search threads
         </span>
-      </div>
+        {threadSearchShortcut ? (
+          <span className="inline-flex shrink-0 opacity-0 transition-opacity group-hover/search-threads:opacity-100 group-focus-visible/search-threads:opacity-100 max-md:pointer-coarse:hidden">
+            <AppCommandShortcutPill shortcut={threadSearchShortcut} />
+          </span>
+        ) : null}
+      </span>
+    </Button>
+  );
+}
+
+export function ProjectListActionButtons({
+  splitEnabled = false,
+  newThreadSplit,
+  onNewChat,
+  onSearchThreads,
+}: ProjectListActionButtonsProps) {
+  return (
+    <div className="space-y-1">
+      <ProjectListNewThreadAction
+        splitEnabled={splitEnabled}
+        newThreadSplit={newThreadSplit}
+        onNewChat={onNewChat}
+      />
+      <ProjectListSearchThreadsAction onSearchThreads={onSearchThreads} />
     </div>
   );
 }
@@ -1829,7 +1865,7 @@ function ProjectListComponent({
     actionsOpen: isSectionDisplayOptionsOpen("pinned"),
   };
   const threadsSection = {
-    label: organizationMode === "chronological" ? "Unorganized" : "Threads",
+    label: "Threads",
     actions: threadsSectionActions,
     actionsOpen: threadsDisplayOptionsMenuOpen,
   } satisfies Omit<BuiltInSidebarSectionOptions, "content">;
@@ -1859,7 +1895,7 @@ function ProjectListComponent({
       {sectionDeleteDialog.target ? (
         <ConfirmDeleteDialogContent
           title="Remove section?"
-          description="Threads in this section will move back to Unorganized."
+          description="Threads in this section will move back to Threads."
           confirmLabel="Remove section"
           pending={isDeleteThreadSectionPending}
           onConfirm={handleConfirmRemoveThreadSection}

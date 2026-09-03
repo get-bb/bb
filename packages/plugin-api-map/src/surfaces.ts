@@ -45,19 +45,6 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
       "The main bb window, containing the sidebar, the conversation, and the side panel. A plugin can add rows, controls, panel tabs, and message content to the numbered regions.",
     surfaces: [
       {
-        id: "nav-panel",
-        title: "Full-page panels",
-        summary:
-          "Adds a row to bb's sidebar that opens a page your plugin renders where threads normally appear. With this, a plugin can:",
-        bullets: [
-          "Render any React you write across that whole area",
-          "Get its own URL, so the page can be linked to and bb's back and forward buttons work",
-          "Register tabs in the panel to the right of its page, beside bb's own Browser and Terminal tabs",
-        ],
-        apiSymbols: ["PluginNavPanelRegistration"],
-        firstParty: ["Automations", "Docs", "GitHub", "Tasks"],
-      },
-      {
         id: "sidebar-navigation",
         title: "Sidebar navigation",
         summary:
@@ -80,20 +67,17 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         experimental: true,
       },
       {
-        id: "thread-list",
-        title: "The thread list",
+        id: "nav-panel",
+        title: "Full-page panels",
         summary:
-          "Replaces the list of threads in bb's sidebar with a component your plugin renders. With this, a plugin can:",
+          "Adds a row to bb's sidebar that opens a page your plugin renders where threads normally appear. With this, a plugin can:",
         bullets: [
-          "Render every row, and decide the grouping, the ordering, and what each row shows",
-          "Read the same live thread data and run statuses bb's own list reads",
-          "Replace only the list. The New thread button, the search action, the plugin rows, and the sidebar footer stay bb's",
+          "Render any React you write across that whole area",
+          "Get its own URL, so the page can be linked to and bb's back and forward buttons work",
+          "Register tabs in the panel to the right of its page, beside bb's own Browser and Terminal tabs",
         ],
-        apiSymbols: [
-          "PluginThreadListRegistration",
-          "PluginSidebarThreadsState",
-        ],
-        experimental: true,
+        apiSymbols: ["PluginNavPanelRegistration"],
+        firstParty: ["Automations", "Docs", "GitHub", "Tasks"],
       },
       {
         id: "thread-row-status",
@@ -110,6 +94,22 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         apiSymbols: [
           "PluginComposerThreadRowStatus",
           "PluginContentScriptContext",
+        ],
+        experimental: true,
+      },
+      {
+        id: "thread-list",
+        title: "The thread list",
+        summary:
+          "Replaces the list of threads in bb's sidebar with a component your plugin renders. With this, a plugin can:",
+        bullets: [
+          "Render every row, and decide the grouping, the ordering, and what each row shows",
+          "Read the same live thread data and run statuses bb's own list reads",
+          "Replace only the list. The New thread button, the search action, the plugin rows, and the sidebar footer stay bb's",
+        ],
+        apiSymbols: [
+          "PluginThreadListRegistration",
+          "PluginSidebarThreadsState",
         ],
         experimental: true,
       },
@@ -137,6 +137,22 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Render in the same row as bb's own header controls",
         ],
         apiSymbols: ["PluginThreadHeaderActionRegistration"],
+        experimental: true,
+      },
+      {
+        id: "timeline-renderers",
+        title: "Timeline entry content",
+        summary:
+          "Renders the expanded content of plugin-owned timeline entries while bb keeps each entry's header and controls. With this, a plugin can:",
+        bullets: [
+          "Draw the expanded content beneath timeline entries created by the plugin's own provider",
+          "Receive the entry data and plugin payload, plus bb's default content as `Original`",
+          "Fall back to bb's default content automatically when the plugin is unavailable or crashes",
+        ],
+        apiSymbols: [
+          "PluginTimelineRendererRegistration",
+          "PluginTimelineRendererProps",
+        ],
         experimental: true,
       },
       {
@@ -222,18 +238,19 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         firstParty: ["Docs"],
       },
       {
-        id: "timeline-renderers",
-        title: "Timeline entry content",
+        id: "app-overlay",
+        title: "App-wide overlays",
         summary:
-          "Renders the expanded content of plugin-owned timeline entries while bb keeps each entry's header and controls. With this, a plugin can:",
+          "Mounts floating plugin UI across the bb app, outside route-owned layout regions. With this, a plugin can:",
         bullets: [
-          "Draw the expanded content beneath timeline entries created by the plugin's own provider",
-          "Receive the entry data and plugin payload, plus bb's default content as `Original`",
-          "Fall back to bb's default content automatically when the plugin is unavailable or crashes",
+          "Render a persistent widget once per bb window while the plugin is enabled",
+          "Use app-level SDK hooks and preserve their React context through portals",
+          "Own the widget's chrome, position, visibility, and responsive behavior",
+          "Coexist with other overlays while crashes remain isolated to the overlay that failed",
         ],
         apiSymbols: [
-          "PluginTimelineRendererRegistration",
-          "PluginTimelineRendererProps",
+          "ExperimentalAppOverlayRegistration",
+          "ExperimentalAppOverlayProps",
         ],
         experimental: true,
       },
@@ -445,7 +462,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         summary:
           "Declares the settings your plugin needs as plain data; bb renders the form for them on the plugin's settings page and stores the values. With this, a plugin can:",
         bullets: [
-          "Declare each field's type (text, toggle, choice, or project) with a label and an optional default",
+          "Declare each field's type (text, number, toggle, choice, or project) with a label and an optional default",
           "Get the form, its validation, and autosaving without writing any UI",
           "Validate each proposed value with a synchronous, non-transforming Standard Schema through `experimental_schema`; Zod schemas qualify",
           "Render multi-line text with `experimental_multiline`",
@@ -637,6 +654,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         bullets: [
           "Subscribe to threads being created, going active or idle, failing, being archived, or being deleted",
           "Subscribe to messages being queued behind a wait and dispatching when it clears",
+          "Subscribe when a thread receives a pending interaction",
           "Subscribe to a turn failing, with the provider's error and rate-limit windows attached",
           "Respond by sending a notification, asking for a retry, or writing to its own storage",
         ],
@@ -645,7 +663,13 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "PluginThreadEventPayloads",
           "PluginTurnFailedEvent",
         ],
-        firstParty: ["Automations", "Provider retry", "Tasks", "Workflows"],
+        firstParty: [
+          "Automations",
+          "Provider retry",
+          "Push notifications",
+          "Tasks",
+          "Workflows",
+        ],
       },
       {
         id: "dispatch-hook",
@@ -719,8 +743,9 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Create threads, send messages to them, and manage projects",
           "Reach the same operations the [bb CLI](cli) and the bb UI use",
           "Have the threads it creates attributed back to the plugin",
+          "Read the server's loopback URL, public app URL, and data directory when it needs server facts",
         ],
-        apiSymbols: ["BbPluginApi"],
+        apiSymbols: ["BbPluginApi", "PluginServerApi"],
         firstParty: [
           "Automations",
           "Docs",
@@ -728,6 +753,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Inline visualizations",
           "Keep Awake",
           "Provider retry",
+          "Push notifications",
           "Secrets",
           "Side chat",
           "Tasks",

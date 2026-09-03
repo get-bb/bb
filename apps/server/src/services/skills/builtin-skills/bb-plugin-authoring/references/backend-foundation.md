@@ -39,7 +39,7 @@ are additive, so registering multiple listeners is supported.
 
 `bb.settings.define(descriptors)` declares settings descriptors (rendered
 in Extensions → Plugins and editable via `bb plugin config <id> set <key>
-<value>`). Four descriptor types:
+<value>`). Five descriptor types:
 
 ```ts
 import { z } from "zod";
@@ -63,12 +63,10 @@ const settings = bb.settings.define({
     default: "[]",
   },
   retries: {
-    type: "string",
+    type: "number",
     label: "Retries",
-    experimental_schema: z
-      .string()
-      .regex(/^[1-5]$/, "Retries must be from 1 through 5"),
-    default: "3",
+    experimental_schema: z.number().int().min(1).max(5),
+    default: 3,
   },
   notes: {
     type: "string",
@@ -95,8 +93,10 @@ settings.onChange((next, prev) => {
 ```
 
 Typing rule: a descriptor **with** `default` yields a non-optional value
-from `get()`; without one the value is `string | boolean | undefined` — so
-give non-secrets defaults and handle missing secrets explicitly.
+from `get()`; without one the value is `string | number | boolean | undefined`
+— so give non-secrets defaults and handle missing secrets explicitly. Number
+descriptors accept finite numbers and render a numeric input; use
+`experimental_schema` for integer and range constraints.
 
 `experimental_schema` accepts a synchronous, non-transforming Standard Schema
 validator; Zod schemas qualify. It runs on the server for settings-page
@@ -134,6 +134,8 @@ the SPA + `/api` + `/ws` — for plugins that proxy or relay traffic back to
 the server itself (the builtin connect plugin's tunnel is the canonical
 user). **Bind-gated** like `bb.sdk`: reading it before the server is
 listening throws, so prefer reading it from handlers, services, and timers.
+`bb.server.experimental_appUrl` gives the operator-configured public app URL,
+or `null` when `BB_APP_URL` is empty. It is not bind-gated.
 `bb.server.experimental_dataDir` gives the exact server data directory for a
 migration from BB-managed files. Do not write plugin state there. Use
 `bb.storage` for plugin-owned state.

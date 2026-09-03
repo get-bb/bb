@@ -9,6 +9,7 @@ bb.events.on("thread.idle", ({ thread, lastAssistantText }) => { ... });   // la
 bb.events.on("thread.failed", ({ thread, error }) => { ... });             // error: string | null
 bb.events.on("thread.archived", ({ thread }) => { ... });
 bb.events.on("thread.deleted", ({ thread }) => { ... });
+bb.events.on("interaction.pending", ({ thread, interaction }) => { ... });
 bb.events.on("message.queued", ({ entry }) => { ... });                    // entry: ThreadQueuedMessage
 bb.events.on("message.dispatched", ({ entry }) => { ... });
 bb.events.on("turn.failed", (event) => { ... });                           // ids + failure facts
@@ -19,7 +20,8 @@ handler is told, and whatever it returns is IGNORED. The surface that ASKS is
 `bb.experimental_hooks`, below, where core acts on your answer — the same split
 git draws between post-commit and pre-commit hooks.
 
-Nine events. The six `thread.*` ones are thread lifecycle. The two `message.*`
+Ten events. The six `thread.*` ones are thread lifecycle. `interaction.pending`
+fires after core commits a pending interaction row. The two `message.*`
 ones fire when a dispatch is queued behind a wait, and when a queued row's waits
 all clear and it dispatches. Every listener sees every queued row, so a plugin
 that only wants its own filters on
@@ -177,6 +179,7 @@ handlers against that contract. Schemas use validator-neutral Standard Schema
 v1, which Zod 4 implements directly. The server RPC boundary validates input
 before it invokes the handler. It validates output before serialization.
 Handler parameters and return values are inferred from the schemas.
+Method names can use dot-separated segments with letters, digits, `-`, and `_`.
 
 ```ts
 import { defineRpcContract, type BbPluginApi } from "@get-bb/plugin-sdk";

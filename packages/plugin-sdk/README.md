@@ -65,6 +65,16 @@ action id, or a surface with no side panel). A decline is a return value, never
 a thrown error, so a plugin registering several kinds of action can share one
 open routine and branch on the result.
 
+Use `app.slots.experimental_appOverlay({ id, component })` for additive,
+app-wide floating React UI. BB mounts the component once per app window through
+the normal plugin slot boundary, so SDK hooks and plugin CSS work and React
+context survives portals. This app-level boundary includes the sidebar thread
+data and action hooks. Hooks whose contract requires a particular surface,
+including `useComposer` and `useComposerView`, remain limited to that surface.
+The plugin owns the overlay's chrome, positioning, visibility, focus, and
+responsive behavior; a crashing overlay is hidden without affecting siblings.
+Use a content script for app-wide DOM behavior that does not need React context.
+
 See the
 [`composer-customization` reference plugin](../../examples/plugins/composer-customization/README.md)
 for every region in one small app. The deprecated pre-1.0

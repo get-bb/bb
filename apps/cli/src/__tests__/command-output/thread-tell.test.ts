@@ -38,9 +38,11 @@ describe("bb thread tell command output", () => {
     const post = vi.fn(async () => ({
       ok: true,
       delivery: "queued",
-      queuedMessageId: "qm_1",
-      waitingOn: { kind: "interaction" },
-      sendAt: null,
+      queuedMessage: {
+        id: "qm_1",
+        waitingOn: { kind: "interaction" },
+        sendAt: null,
+      },
     }));
     stubServerApi({ "v1.threads.:id.send.$post": post });
 
@@ -55,13 +57,15 @@ describe("bb thread tell command output", () => {
     const post = vi.fn(async () => ({
       ok: true,
       delivery: "queued",
-      queuedMessageId: "qm_2",
-      waitingOn: {
-        kind: "plugin",
-        pluginId: "concurrency-limit",
-        reason: "4 of 4 running",
+      queuedMessage: {
+        id: "qm_2",
+        waitingOn: {
+          kind: "plugin",
+          pluginId: "concurrency-limit",
+          reason: "4 of 4 running",
+        },
+        sendAt: null,
       },
-      sendAt: null,
     }));
     stubServerApi({ "v1.threads.:id.send.$post": post });
 

@@ -47,7 +47,7 @@ describe("workflows plugin", () => {
     const { bb, harness } = createFakePluginHost({
       pluginId: "workflows",
       agentSkillIds: ["workflows"],
-      settings: { maxActiveRuns: "not-a-number" },
+      settings: { maxActiveRuns: 0 },
     });
     hosts.push(harness);
     await expect(plugin(bb)).resolves.toBeUndefined();
@@ -58,7 +58,7 @@ describe("workflows plugin", () => {
     expect(
       harness.registrations.services.map((service) => service.name),
     ).toEqual(["workflow-worker"]);
-    await harness.setSettings({ maxActiveRuns: "5" });
+    await harness.setSettings({ maxActiveRuns: 5 });
   });
 
   it("registers tool schemas without recursive $refs", async () => {

@@ -61,7 +61,7 @@ function parseStoredQueuedThreadMessageContent(
   return parsed.data;
 }
 
-function parseStoredQueuedThreadMessageWaitingOn(
+export function parseStoredQueuedThreadMessageWaitingOn(
   row: Pick<StoredQueuedThreadMessageRow, "id" | "threadId" | "waitingOn">,
 ): QueuedMessageWaitingOn | null {
   if (row.waitingOn === null) return null;

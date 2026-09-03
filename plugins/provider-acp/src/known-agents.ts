@@ -60,6 +60,10 @@ export const KNOWN_ACP_AGENTS: readonly AcpAgentDefinition[] = [
       command: "cursor-agent",
       args: ["acp"],
       env: {},
+      modelCli: {
+        listArgs: ["--list-models"],
+        primaryModels: [],
+      },
       nativeSkillRoots: {
         user: recursiveRoots([
           ".cursor/skills",
@@ -114,6 +118,7 @@ export const KNOWN_ACP_AGENTS: readonly AcpAgentDefinition[] = [
     signInCommand: "omp login",
     installUrl: "https://github.com/can1357/omp",
     visibility: "installed",
+    supportsManualCompaction: true,
     fork: "tip",
     launch: {
       displayName: "omp",

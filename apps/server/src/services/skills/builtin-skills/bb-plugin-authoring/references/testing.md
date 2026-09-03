@@ -83,9 +83,9 @@ agent tools/configure provider, mention providers). Pass
 `agentSkillIds` to `createFakePluginHost` to declare the manifest skill names
 available to the configure driver.
 
-`createFakePluginHost` also accepts `dataDir`, `loopbackBaseUrl`, saved
-settings, SDK method overrides, manifest skill ids, shared-tunnel identities,
-host-entry presence, declared icon names, and a host-RPC driver. Inspect
+`createFakePluginHost` also accepts `appUrl`, `dataDir`, `loopbackBaseUrl`,
+saved settings, SDK method overrides, manifest skill ids, shared-tunnel
+identities, host-entry presence, declared icon names, and a host-RPC driver. Inspect
 provider and AI-service registrations, host RPC calls, signals, and shared-port
 declarations through the harness.
 

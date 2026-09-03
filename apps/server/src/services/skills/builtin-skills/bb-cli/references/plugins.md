@@ -12,9 +12,16 @@
   `bb concurrency-limit host <host-id> [auto|<limit>] [--json]`. Automatic
   host limits allow one thread per available processor.
 - **BB plugin catalog** (store under `/api/v1/plugin-catalog`):
+  - The reserved **BB Official marketplace** has the name `bb-official`. It
+    describes all plugins in the app bundle with a generated v2 document.
+    Its source is a local path. It never uses the network. It appears first in
+    `bb marketplace list`. Its plugins appear in the first Browse shelf, BB
+    Official, and in their category shelves. It can be neither added nor
+    removed.
   - The store lists the **BB Community marketplace** catalog: a manifest
     the server re-reads at startup and every two hours from
-    `https://getbb.app/marketplace/v1/marketplace.json`
+    `https://getbb.app/marketplace/v2/marketplace.json`. A 404 response causes
+    one fallback request to `https://getbb.app/marketplace/v1/marketplace.json`
     (override with `BB_MARKETPLACE_URL`, which the server reads only at
     startup). Its entries install from their listed
     git or npm source through the normal install pipeline. A refresh only
@@ -22,10 +29,11 @@
     plugin code, and a failed refresh keeps the last catalog bb validated.
   - `bb plugin search <query> [--json]` — search the catalog by id,
     name, description, category, or tag; status shows installed / compatible /
-    requires newer bb. An **Installs** column appears once the curated
+    requires newer bb. The table includes a **Category** column. An
+    **Installs** column appears once the curated
     marketplace's `stats.json` sidecar has been read (`installs` in `--json`,
     null when unknown): anonymous-telemetry install counts for published
-    entries.
+    entries. BB Official entries use the count for the same plugin id.
 - **Third-party marketplaces** (routes under `/api/v1/marketplaces`):
   - `bb marketplace add <source>` — add a marketplace from an https manifest
     URL, `git:<url>[@<ref>]` (bb reads `marketplace.json` from the checkout),
@@ -33,8 +41,13 @@
     directory before it sends the request. BB validates the
     manifest, caches the catalog, and fetches its icons. **Adding a
     marketplace installs nothing.** The manifest's own `name` is the
-    marketplace's identity, so a name collision is refused; `bb-community` is
-    reserved and can be neither added nor removed.
+    marketplace's identity, so a name collision is refused. The `bb-official`
+    and `bb-community` names are reserved. You can add or remove neither one.
+    A third-party manifest can use v1 or v2. The server serves its icons.
+    The detail page loads screenshots from the declared URLs.
+    BB ignores unknown v2 fields, except in npm and git source objects. BB
+    rejects unknown source keys because a source key changes the installed
+    code.
   - `bb marketplace list [--json]` — name, source, entry count, last refresh.
   - `bb marketplace refresh [name] [--json]` — re-read one catalog or every
     one of them. Discovery metadata and icons only. A failed refresh keeps the
@@ -48,12 +61,14 @@
     `bb plugin install <entry-id>@<marketplace>`. A bare entry id resolves
     across every marketplace. Exactly one match installs. Several matches fail
     and list the `id@marketplace` choices.
-  - Installing from a marketplace other than `bb-community` first resolves and
+  - A third-party marketplace install first resolves and
     prints the true source — npm package with its range or dist-tag, or git
     URL with its ref or semver range, subdirectory, and the exact release tag
     and commit that range currently lands on — plus the marketplace and the
     entry's author. `--yes` skips the prompt, not the resolution. The install
     fails if the listing or its resolved git commit changes after confirmation.
+  - Install a bundled plugin by its bare name or with
+    `<entry-id>@bb-official`. bb copies it from the app bundle.
 - Commands:
   - `bb plugin install <src>` — `<entry-id>@<marketplace>`, an HTTP(S) Git
     repository URL, a local path,
@@ -118,7 +133,8 @@
     schedules; managed git/npm files are deleted, and local path sources stay
     on disk).
   - `bb plugin config <id> [set <key> <value> | unset <key>]` — declared
-    settings. Reload the plugin after configuring (`bb plugin reload <id>`).
+    settings; boolean and number arguments are converted to their declared
+    types. Reload the plugin after configuring (`bb plugin reload <id>`).
   - `bb plugin token <id>` — print a short-lived bearer token for that plugin.
   - List, reload, enable, disable, config, and remove support `--json`.
   - `bb plugin logs <id> [-n N] [-f]` — the plugin's `bb.log` output.

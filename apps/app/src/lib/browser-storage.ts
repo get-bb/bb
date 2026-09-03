@@ -1,6 +1,7 @@
 import { atomWithStorage } from "jotai/utils";
 
 type StringValueGuard<T extends string> = (value: string) => value is T;
+type StoredValueGuard<T> = (value: unknown) => value is T;
 type StoredValueListener = (storedValue: string | null) => void;
 
 export interface SyncStorage<T> {
@@ -85,7 +86,9 @@ export const rawStringLocalStorage = createLocalStorageSyncStorage<string>({
   serialize: (value) => value,
 });
 
-export function createJsonLocalStorage<T>(): SyncStorage<T> {
+export function createJsonLocalStorage<T>(
+  isValue?: StoredValueGuard<T>,
+): SyncStorage<T> {
   return createLocalStorageSyncStorage<T>({
     parse: (storedValue, initialValue) => {
       if (storedValue === null) {
@@ -93,7 +96,10 @@ export function createJsonLocalStorage<T>(): SyncStorage<T> {
       }
 
       try {
-        return JSON.parse(storedValue) as T;
+        const parsedValue: unknown = JSON.parse(storedValue);
+        return isValue === undefined || isValue(parsedValue)
+          ? (parsedValue as T)
+          : initialValue;
       } catch {
         return initialValue;
       }
