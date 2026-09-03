@@ -761,9 +761,12 @@ describe("PluginNavSidebarItems", () => {
     fireEvent.click(
       screen.getByRole("button", { name: "Customize sidebar navigation" }),
     );
-    fireEvent.click(screen.getByRole("button", { name: "New thread" }), {
-      metaKey: true,
-    });
+    const row = customizeRows()[0];
+    expect(row).toBeDefined();
+    fireEvent.click(
+      within(row as HTMLElement).getByRole("button", { name: "New thread" }),
+      { metaKey: true },
+    );
 
     expect(onActivate).toHaveBeenCalledOnce();
     expect(onActivate.mock.calls[0]?.[0]).toMatchObject({ metaKey: true });
@@ -781,9 +784,12 @@ describe("PluginNavSidebarItems", () => {
     fireEvent.click(
       screen.getByRole("button", { name: "Customize sidebar navigation" }),
     );
-    fireEvent.click(screen.getByRole("button", { name: "Docs" }), {
-      metaKey: true,
-    });
+    const row = customizeRows()[0];
+    expect(row).toBeDefined();
+    fireEvent.click(
+      within(row as HTMLElement).getByRole("button", { name: "Docs" }),
+      { metaKey: true },
+    );
 
     const layout = store.get(splitLayoutAtom);
     expect(layout).not.toBeNull();
