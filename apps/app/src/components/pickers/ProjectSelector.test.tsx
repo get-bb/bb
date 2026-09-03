@@ -169,6 +169,27 @@ describe("ProjectSelector", () => {
     expect(screen.getByRole("option", { name: "Alpha Web" })).toBeTruthy();
   });
 
+  it("keeps empty-list actions in the project group", () => {
+    render(
+      <ProjectSelector
+        projects={[]}
+        value={null}
+        onChange={() => {}}
+        allowNoProject
+        createProject={{ onCreate: () => {} }}
+        defaultOpen
+        modal={false}
+      />,
+    );
+
+    const groups = document.querySelectorAll("[cmdk-group]");
+    expect(groups).toHaveLength(1);
+    expect(groups[0]?.querySelector("[cmdk-group-heading]")?.textContent).toBe(
+      "Project",
+    );
+    expect(groups[0]?.querySelectorAll("[cmdk-item]")).toHaveLength(2);
+  });
+
   it("keeps the search fixed while the project results scroll", () => {
     render(
       <ProjectSelector
