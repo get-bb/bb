@@ -63,6 +63,11 @@
  *                              count model-discovery spawns in cache/TTL tests)
  * - FAKE_ACP_PROMPT_LOG      → append one JSON-encoded prompt text per request
  * - FAKE_ACP_PROMPT_ERROR=1  → reject every session/prompt request
+ * - FAKE_ACP_COMPACT_AGENT_MESSAGE
+ *                            → agent message chunk to emit for /compact
+ * - FAKE_ACP_COMPACT_AGENT_MESSAGES
+ *                            → JSON string array; one message per /compact
+ *                              request, repeating the last once exhausted
  * - FAKE_ACP_COMPACT_STOP_REASON
  *                            → stop reason returned for /compact
  */
@@ -128,6 +133,11 @@ let selectedFast = process.env.FAKE_ACP_INITIAL_FAST ?? "false";
 let clientSupportsParameterizedModels = false;
 let authenticatedMethod = null;
 let activeSessionId = sessionId;
+let compactRequestCount = 0;
+const compactMessages =
+  process.env.FAKE_ACP_COMPACT_AGENT_MESSAGES === undefined
+    ? undefined
+    : JSON.parse(process.env.FAKE_ACP_COMPACT_AGENT_MESSAGES);
 const pendingClientRequests = new Map();
 let currentMcpServers = [];
 
@@ -434,10 +444,16 @@ async function handlePrompt(message) {
 
   if (text === "/compact") {
     // OpenCode treats this exact prompt as a provider-local control.
-    const compactMessage = process.env.FAKE_ACP_COMPACT_AGENT_MESSAGE;
+    const compactMessage =
+      compactMessages === undefined
+        ? process.env.FAKE_ACP_COMPACT_AGENT_MESSAGE
+        : compactMessages[
+            Math.min(compactRequestCount, compactMessages.length - 1)
+          ];
     if (compactMessage !== undefined) {
       notifyUpdate(messageChunk(compactMessage));
     }
+    compactRequestCount += 1;
   } else if (text.includes("request-external-directory-permission")) {
     // opencode's external_directory permission: the running edit tool asks
     // with the generic kind "other", a bare directory title, and

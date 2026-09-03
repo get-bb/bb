@@ -63,6 +63,7 @@ import {
   type AcpDeltaTranslator,
 } from "../delta-translation.js";
 import {
+  collectsCompactionAgentMessage,
   compactionOutcomeForEndTurn,
   resolveAcpDialect,
   type AcpDialect,
@@ -2097,12 +2098,12 @@ function runTurn(
   })();
 }
 
+const COMPACTION_AGENT_MESSAGE_CAP = 64 * 1024;
 function startCompaction(
   session: AcpThreadSession,
   pending: AcpPendingTurnInput,
 ): void {
   session.activePromptKind = "compaction";
-  session.compactionAgentMessage = "";
   emitForSession(session, ACP_COMPACTION_STARTED_METHOD, {
     threadId: session.bbThreadId,
   });
@@ -2158,6 +2159,7 @@ function finishCompaction(
   });
   session.activePromptKind = null;
   session.turnSettled = undefined;
+  session.compactionAgentMessage = "";
 }
 
 function handleAgentRequest(
@@ -2242,13 +2244,21 @@ function handleAgentNotification(
   if (parsed.data.sessionId !== session.providerThreadId) {
     return;
   }
-  if (session.activePromptKind === "compaction") {
+  if (
+    session.activePromptKind === "compaction" &&
+    collectsCompactionAgentMessage(session.dialect)
+  ) {
     const chunk = acpAgentMessageChunkUpdateSchema.safeParse(
       parsed.data.update,
     );
-    if (chunk.success) {
-      session.compactionAgentMessage +=
-        extractAcpContentText(chunk.data.content) ?? "";
+    if (
+      chunk.success &&
+      session.compactionAgentMessage.length < COMPACTION_AGENT_MESSAGE_CAP
+    ) {
+      session.compactionAgentMessage = (
+        session.compactionAgentMessage +
+        (extractAcpContentText(chunk.data.content) ?? "")
+      ).slice(0, COMPACTION_AGENT_MESSAGE_CAP);
     }
   }
   emitForSession(session, ACP_UPDATE_METHOD, update);

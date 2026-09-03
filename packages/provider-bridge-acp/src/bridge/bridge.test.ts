@@ -2531,6 +2531,78 @@ describe("acp bridge", () => {
     expect(threadEventsOfType("thread/compacted")).toEqual([]);
   });
 
+  it("classifies failure prose that arrives within the compaction buffer cap", async () => {
+    const { providerThreadId } = await startThread({
+      dialectId: "omp",
+      envVars: {
+        FAKE_ACP_COMPACT_AGENT_MESSAGE: `Compaction failed: summary model rejected the request ${"x".repeat(70_000)}`,
+      },
+    });
+
+    const turnId = sendTurnRequest("turn/start", providerThreadId, {
+      input: compactCommandInput(),
+    });
+    expect((await waitForResponse(turnId)).error).toBeUndefined();
+
+    const completed = await waitForTurnCompleted();
+    expect(completed).toMatchObject({
+      status: "failed",
+      error: { message: expect.stringContaining("summary model rejected") },
+    });
+    expect(threadEventsOfType("thread/compacted")).toEqual([]);
+  });
+
+  it("ignores failure prose that arrives past the compaction buffer cap", async () => {
+    const { providerThreadId } = await startThread({
+      dialectId: "omp",
+      envVars: {
+        FAKE_ACP_COMPACT_AGENT_MESSAGE: `${"x".repeat(70_000)} Compaction failed: summary model rejected the request`,
+      },
+    });
+
+    const turnId = sendTurnRequest("turn/start", providerThreadId, {
+      input: compactCommandInput(),
+    });
+    expect((await waitForResponse(turnId)).error).toBeUndefined();
+
+    const completed = await waitForTurnCompleted();
+    expect(completed).toMatchObject({ status: "completed" });
+    expect(threadEventsOfType("thread/compacted")).toHaveLength(1);
+  });
+
+  it("clears the compaction message buffer between compactions", async () => {
+    const { providerThreadId } = await startThread({
+      dialectId: "omp",
+      envVars: {
+        FAKE_ACP_COMPACT_AGENT_MESSAGES: JSON.stringify([
+          "Compaction failed: summary model rejected the request",
+          "Context compacted; the session is smaller now.",
+        ]),
+      },
+    });
+
+    const firstTurnId = sendTurnRequest("turn/start", providerThreadId, {
+      input: compactCommandInput(),
+    });
+    expect((await waitForResponse(firstTurnId)).error).toBeUndefined();
+    expect(await waitForTurnCompleted()).toMatchObject({ status: "failed" });
+
+    const completedCount = threadEventsOfType("turn/completed").length;
+    const secondTurnId = sendTurnRequest("turn/start", providerThreadId, {
+      input: compactCommandInput(),
+    });
+    expect((await waitForResponse(secondTurnId)).error).toBeUndefined();
+    const secondCompleted = await waitFor(
+      () =>
+        threadEventsOfType("turn/completed").length > completedCount
+          ? threadEventsOfType("turn/completed").at(-1)
+          : undefined,
+      "second turn/completed thread event",
+    );
+    expect(secondCompleted).toMatchObject({ status: "completed" });
+    expect(threadEventsOfType("thread/compacted")).toHaveLength(1);
+  });
+
   it("accepts turn input only after the prompt carrying it goes out", async () => {
     const { providerThreadId } = await startThread();
     const turnId = sendTurnRequest("turn/start", providerThreadId, {

@@ -323,6 +323,10 @@ export const OMP_ACP_DIALECT: AcpDialect = {
   commandResult: ompCommandResult,
 };
 
+export function collectsCompactionAgentMessage(dialect: AcpDialect): boolean {
+  return dialect.id === OMP_ACP_DIALECT.id;
+}
+
 const openCodeCommandRawOutputSchema = z
   .object({
     output: z.unknown().optional(),
