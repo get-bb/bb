@@ -892,8 +892,12 @@ export function PublicMarketplaceDetailPage({
                 });
               }}
             />
-            <MarketplaceLink href="/download/macos">
+            <MarketplaceLink
+              className="marketplace-detail-source"
+              href="/download/macos"
+            >
               Get it for macOS
+              <HugeiconsIcon icon={ArrowUpRight01Icon} aria-hidden />
             </MarketplaceLink>
           </div>
         </header>

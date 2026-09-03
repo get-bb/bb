@@ -373,15 +373,15 @@
 }
 
 .marketplace-artwork.is-large {
-  width: 64px;
-  height: 64px;
-  border-radius: 16px;
+  width: 56px;
+  height: 56px;
+  border-radius: 14px;
 }
 
 .marketplace-artwork.is-large svg,
 .marketplace-artwork.is-large img {
-  width: 34px;
-  height: 34px;
+  width: 30px;
+  height: 30px;
 }
 
 .marketplace-card-description {
@@ -673,15 +673,6 @@ a.marketplace-detail-author:hover {
   grid-row: 3;
   margin-top: 4px;
   font-size: 13px;
-}
-
-.marketplace-detail-install > a {
-  color: var(--dim);
-  font-weight: 500;
-}
-
-.marketplace-detail-install > a:hover {
-  color: var(--heading);
 }
 
 .marketplace-detail-body {
