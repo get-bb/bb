@@ -6,7 +6,7 @@ import type { MarketplaceV2Entry } from "./marketplace-v2.js";
 import {
   isMarketplaceSort,
   marketplaceAuthorEntries,
-  parseMarketplaceCategories,
+  parseMarketplaceCategory,
 } from "./marketplace-view-model.js";
 
 export const MARKETPLACE_PAGE_TITLE = "Plugin Marketplace — bb";
@@ -14,8 +14,9 @@ export const MARKETPLACE_PAGE_DESCRIPTION =
   "Find community plugins that add new features to bb.";
 
 export function validateMarketplaceSearch(search: Record<string, unknown>) {
+  const category = parseMarketplaceCategory(search.category);
   return {
-    category: parseMarketplaceCategories(search.category),
+    ...(category === undefined ? {} : { category }),
     ...(isMarketplaceSort(search.sort) ? { sort: search.sort } : {}),
   };
 }

@@ -2,6 +2,7 @@ import {
   AiContentGenerator01Icon,
   AlertCircleIcon,
   Archive03Icon,
+  ArrowDown01Icon,
   ArrowUpRight01Icon,
   AudioWave01Icon,
   Cancel01Icon,
@@ -55,7 +56,7 @@ import type {
   MarketplaceV2Manifest,
 } from "./marketplace-v2.js";
 import {
-  filterMarketplaceCategories,
+  filterMarketplaceCategory,
   filterMarketplaceEntries,
   formatInstalls,
   formatMarketplaceDate,
@@ -480,12 +481,6 @@ function MarketplaceToolbar({
     window.addEventListener("keydown", focusSearch);
     return () => window.removeEventListener("keydown", focusSearch);
   }, []);
-  const toggleCategory = (id: string) => {
-    const categories = state.categories.includes(id)
-      ? state.categories.filter((category) => category !== id)
-      : [...state.categories, id];
-    onStateChange({ categories, sort: state.sort });
-  };
   const search = (
     <label className="marketplace-search">
       <span className="marketplace-visually-hidden">Search plugins</span>
@@ -536,36 +531,30 @@ function MarketplaceToolbar({
         </header>
       )}
       <div className="marketplace-controls">
-        <div className="marketplace-category-filters" aria-label="Categories">
-          <button
-            type="button"
-            className={
-              state.categories.length === 0 ? "is-selected" : undefined
+        <label className="marketplace-category-select">
+          <span className="marketplace-visually-hidden">
+            Filter by category
+          </span>
+          <select
+            value={state.category ?? ""}
+            onChange={(event) =>
+              onStateChange({
+                ...(event.currentTarget.value === ""
+                  ? {}
+                  : { category: event.currentTarget.value }),
+                sort: state.sort,
+              })
             }
-            aria-pressed={state.categories.length === 0}
-            onClick={() => onStateChange({ categories: [], sort: state.sort })}
           >
-            All{" "}
-            <span>
-              {heroCount ??
-                options.reduce((sum, option) => sum + option.count, 0)}
-            </span>
-          </button>
-          {options.map((option) => {
-            const selected = state.categories.includes(option.id);
-            return (
-              <button
-                key={option.id}
-                type="button"
-                className={selected ? "is-selected" : undefined}
-                aria-pressed={selected}
-                onClick={() => toggleCategory(option.id)}
-              >
-                {option.label} <span>{option.count}</span>
-              </button>
-            );
-          })}
-        </div>
+            <option value="">All categories</option>
+            {options.map((option) => (
+              <option key={option.id} value={option.id}>
+                {option.label} ({option.count})
+              </option>
+            ))}
+          </select>
+          <HugeiconsIcon icon={ArrowDown01Icon} aria-hidden />
+        </label>
         <div
           className="marketplace-sort-control"
           role="group"
@@ -580,10 +569,7 @@ function MarketplaceToolbar({
               }
               aria-pressed={state.sort === option.value}
               onClick={() =>
-                onStateChange({
-                  categories: state.categories,
-                  sort: option.value,
-                })
+                onStateChange({ category: state.category, sort: option.value })
               }
             >
               {option.label}
@@ -614,19 +600,18 @@ function MarketplaceBrowser({
 }) {
   const [query, setQuery] = useState("");
   const options = marketplaceCategoryOptions(manifest, entries);
-  const optionIds = new Set(options.map((option) => option.id));
-  const activeCategories = state.categories.filter((category) =>
-    optionIds.has(category),
-  );
+  const activeCategory = options.some((option) => option.id === state.category)
+    ? state.category
+    : undefined;
   useMarketplacePageAnalytics(
-    { categories: activeCategories, sort: state.sort },
+    { category: activeCategory, sort: state.sort },
     analyticsAuthor,
   );
   const searched = filterMarketplaceEntries(manifest, entries, query);
-  const filtered = filterMarketplaceCategories(
+  const filtered = filterMarketplaceCategory(
     manifest,
     searched,
-    activeCategories,
+    activeCategory,
   );
   const displayed =
     state.sort === undefined
@@ -634,14 +619,14 @@ function MarketplaceBrowser({
       : sortMarketplaceEntries(filtered, state.sort, stats);
   const isFlat =
     query.trim().length > 0 ||
-    activeCategories.length > 0 ||
+    activeCategory !== undefined ||
     state.sort !== undefined;
   return (
     <section className="marketplace-browser" aria-label="Browse plugins">
       <MarketplaceToolbar
         options={options}
         query={query}
-        state={{ categories: activeCategories, sort: state.sort }}
+        state={{ category: activeCategory, sort: state.sort }}
         onQueryChange={setQuery}
         onStateChange={onStateChange}
         heroCount={heroCount}
@@ -680,12 +665,7 @@ function MarketplaceBrowser({
               manifest={manifest}
               shelf={shelf}
               stats={stats}
-              onSelect={(category, sort) =>
-                onStateChange({
-                  categories: category === undefined ? [] : [category],
-                  sort,
-                })
-              }
+              onSelect={(category, sort) => onStateChange({ category, sort })}
             />
           ))
         )}
@@ -698,18 +678,17 @@ function useMarketplacePageAnalytics(
   state: MarketplaceIndexState,
   author?: string,
 ): void {
-  const categories = state.categories.join(",");
   useEffect(() => {
     initAnalytics();
     trackLandingEvent({
       name: "marketplace_page_viewed",
       properties: {
-        categories: state.categories,
+        ...(state.category === undefined ? {} : { category: state.category }),
         sort: state.sort ?? "featured",
         ...(author === undefined ? {} : { author }),
       },
     });
-  }, [author, categories, state.sort]);
+  }, [author, state.category, state.sort]);
 }
 
 export function PublicMarketplacePage({

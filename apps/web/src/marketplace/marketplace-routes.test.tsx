@@ -72,9 +72,13 @@ describe("marketplace routes", () => {
     }
   });
 
-  it("round-trips repeated category parameters", () => {
+  it("keeps the first category parameter and round-trips it", () => {
     const first = validateMarketplaceSearch({
       category: ["thread-content", "code-and-reviews"],
+      sort: "recently-added",
+    });
+    expect(first).toEqual({
+      category: "thread-content",
       sort: "recently-added",
     });
     const encoded = stringifySiteSearch(first);
@@ -84,9 +88,8 @@ describe("marketplace routes", () => {
       sort: params.get("sort"),
     });
     expect(second).toEqual(first);
-    expect(encoded).toBe(
-      "?sort=recently-added&category=thread-content&category=code-and-reviews",
-    );
+    expect(encoded).toBe("?sort=recently-added&category=thread-content");
+    expect(validateMarketplaceSearch({})).toEqual({});
   });
 
   it("keeps an empty catalog available", async () => {
@@ -109,7 +112,7 @@ describe("marketplace routes", () => {
           <PublicMarketplacePage
             manifest={MARKETPLACE_V2_FIXTURE}
             stats={MARKETPLACE_STATS_FIXTURE}
-            state={{ categories: [] }}
+            state={{}}
             onStateChange={() => {}}
           />
         </body>

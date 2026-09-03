@@ -14,7 +14,7 @@ export const UNCATEGORIZED_CATEGORY_ID = "uncategorized";
 export type MarketplaceSort = "recently-added" | "most-installed";
 
 export interface MarketplaceIndexState {
-  categories: string[];
+  category?: string;
   sort?: MarketplaceSort;
 }
 
@@ -133,16 +133,15 @@ export function filterMarketplaceEntries(
   });
 }
 
-export function filterMarketplaceCategories(
+export function filterMarketplaceCategory(
   manifest: MarketplaceV2Manifest,
   entries: readonly MarketplaceV2Entry[],
-  categories: readonly string[],
+  category: string | undefined,
 ): MarketplaceV2Entry[] {
-  if (categories.length === 0) return [...entries];
-  const selected = new Set(categories);
+  if (category === undefined) return [...entries];
   return entries.filter((entry) => {
-    const category = resolveMarketplaceCategory(manifest, entry);
-    return selected.has(category?.id ?? UNCATEGORIZED_CATEGORY_ID);
+    const resolved = resolveMarketplaceCategory(manifest, entry);
+    return (resolved?.id ?? UNCATEGORIZED_CATEGORY_ID) === category;
   });
 }
 
@@ -176,13 +175,12 @@ export function sortMarketplaceEntries(
   });
 }
 
-export function parseMarketplaceCategories(input: unknown): string[] {
+export function parseMarketplaceCategory(input: unknown): string | undefined {
   const values = Array.isArray(input) ? input : [input];
-  const categories = values.filter(
+  return values.find(
     (value): value is string =>
       typeof value === "string" && MARKETPLACE_ID_PATTERN.test(value),
   );
-  return [...new Set(categories)];
 }
 
 export function isMarketplaceSort(value: unknown): value is MarketplaceSort {

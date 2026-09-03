@@ -18,7 +18,7 @@ describe("public marketplace route rendering", () => {
       <PublicMarketplacePage
         manifest={MARKETPLACE_V2_FIXTURE}
         stats={MARKETPLACE_STATS_FIXTURE}
-        state={{ categories: [] }}
+        state={{}}
         onStateChange={() => {}}
       />,
     );
@@ -33,11 +33,41 @@ describe("public marketplace route rendering", () => {
     expect(html).toContain("marketplace-shelf-notable");
     expect(html).toContain("marketplace-new-chip");
     expect(html).toContain("https://github.com/get-bb.png?size=32");
-    expect(html).toContain('aria-pressed="false"');
     expect(html).toContain("https://getbb.app/marketplace/v1/icons");
+    expect(html).toContain(
+      '<option value="" selected="">All categories</option>',
+    );
+    expect(html).toContain(
+      '<option value="thread-content">Thread Content (1)</option>',
+    );
+    expect(html).toContain(
+      '<option value="code-and-reviews">Code &amp; Reviews (2)</option>',
+    );
+    expect(html).toContain(
+      '<option value="uncategorized">More plugins (1)</option>',
+    );
     expect(html).not.toContain("marketplace-category-pill");
-    expect(html).not.toContain("<select");
+    expect(html).not.toContain("marketplace-category-filters");
     expect(html).not.toContain("mask-image");
+  });
+
+  it("filters the marketplace route to one selected category", () => {
+    const html = renderToStaticMarkup(
+      <PublicMarketplacePage
+        manifest={MARKETPLACE_V2_FIXTURE}
+        stats={MARKETPLACE_STATS_FIXTURE}
+        state={{ category: "code-and-reviews" }}
+        onStateChange={() => {}}
+      />,
+    );
+    expect(html).toContain(
+      '<option value="code-and-reviews" selected="">Code &amp; Reviews (2)</option>',
+    );
+    expect(html).toContain("Filtered plugins");
+    expect(html).toContain("2 plugins");
+    expect(html).toContain("Review Companion");
+    expect(html).not.toContain("Prompt Library");
+    expect(html).not.toContain("New &amp; notable");
   });
 
   it("renders the detail route with install, source, and image policy", () => {
@@ -132,7 +162,7 @@ describe("public marketplace route rendering", () => {
         manifest={MARKETPLACE_V2_FIXTURE}
         entries={entries}
         stats={MARKETPLACE_STATS_FIXTURE}
-        state={{ categories: [] }}
+        state={{}}
         onStateChange={() => {}}
       />,
     );

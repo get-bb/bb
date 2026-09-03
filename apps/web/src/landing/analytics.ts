@@ -25,7 +25,7 @@ type LandingEvent =
   | {
       name: "marketplace_page_viewed";
       properties: {
-        categories: string[];
+        category?: string;
         sort: "featured" | "recently-added" | "most-installed";
         author?: string;
       };

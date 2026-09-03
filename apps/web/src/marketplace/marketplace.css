@@ -154,25 +154,56 @@
   display: flex;
   align-items: center;
   gap: 10px;
+  justify-content: space-between;
   padding: 12px 0 8px;
   background: var(--bg);
 }
 
-.marketplace-category-filters {
-  display: flex;
+.marketplace-category-select {
+  position: relative;
+  display: inline-flex;
   min-width: 0;
-  flex: 1;
-  gap: 6px;
-  padding: 2px;
-  overflow-x: auto;
-  scrollbar-width: none;
+  align-items: center;
+  border: 1px solid var(--border-soft);
+  border-radius: 999px;
+  background: var(--surface);
 }
 
-.marketplace-category-filters::-webkit-scrollbar {
-  display: none;
+.marketplace-category-select:hover {
+  border-color: var(--border);
 }
 
-.marketplace-category-filters button,
+.marketplace-category-select select {
+  max-width: 100%;
+  height: 32px;
+  padding: 0 32px 0 14px;
+  border: 0;
+  border-radius: inherit;
+  background: transparent;
+  color: var(--heading);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+  appearance: none;
+}
+
+.marketplace-category-select select:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+
+.marketplace-category-select > svg {
+  position: absolute;
+  right: 12px;
+  width: 14px;
+  height: 14px;
+  color: var(--subtle);
+  pointer-events: none;
+}
+
 .marketplace-sort-control button {
   border: 0;
   border-radius: 999px;
@@ -182,38 +213,6 @@
   font-weight: 500;
   white-space: nowrap;
   cursor: pointer;
-}
-
-.marketplace-category-filters button {
-  display: inline-flex;
-  align-items: center;
-  height: 32px;
-  padding: 0 12px;
-  flex: 0 0 auto;
-  gap: 6px;
-  border: 1px solid var(--border-soft);
-  background: var(--surface);
-}
-
-.marketplace-category-filters button span {
-  color: var(--subtle);
-  font-size: 11.5px;
-  font-variant-numeric: tabular-nums;
-}
-
-.marketplace-category-filters button:hover {
-  border-color: var(--border);
-  color: var(--heading-sub);
-}
-
-.marketplace-category-filters button.is-selected {
-  border-color: var(--ink);
-  background: var(--ink);
-  color: var(--bg);
-}
-
-.marketplace-category-filters button.is-selected span {
-  color: color-mix(in oklab, var(--bg) 70%, transparent);
 }
 
 .marketplace-sort-control {
@@ -932,17 +931,6 @@ a.marketplace-detail-author:hover {
 
   .marketplace-hero > p {
     font-size: 16px;
-  }
-
-  .marketplace-controls {
-    flex-wrap: wrap;
-  }
-
-  .marketplace-category-filters {
-    width: 100%;
-    margin-inline: -20px;
-    padding-inline: 20px;
-    flex-basis: calc(100% + 40px);
   }
 
   .marketplace-grid,

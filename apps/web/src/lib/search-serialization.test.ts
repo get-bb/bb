@@ -3,15 +3,13 @@ import { describe, expect, it } from "vitest";
 import { stringifySiteSearch } from "./search-serialization.js";
 
 describe("stringifySiteSearch", () => {
-  it("uses repeatable category parameters and omits an empty array", () => {
+  it("writes one plain category parameter and omits a missing one", () => {
     expect(
       stringifySiteSearch({
-        category: ["thread-content", "code-and-reviews"],
+        category: "thread-content",
         sort: "recently-added",
       }),
-    ).toBe(
-      "?sort=recently-added&category=thread-content&category=code-and-reviews",
-    );
-    expect(stringifySiteSearch({ category: [] })).toBe("");
+    ).toBe("?sort=recently-added&category=thread-content");
+    expect(stringifySiteSearch({ category: undefined })).toBe("");
   });
 });

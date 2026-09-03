@@ -5,7 +5,7 @@ import {
   MARKETPLACE_V2_FIXTURE,
 } from "./marketplace-v2.fixture.js";
 import {
-  filterMarketplaceCategories,
+  filterMarketplaceCategory,
   filterMarketplaceEntries,
   marketplaceAuthorEntries,
   marketplaceCategoryOptions,
@@ -13,7 +13,7 @@ import {
   marketplaceRepositoryUrl,
   marketplaceShelves,
   moreInMarketplaceCategory,
-  parseMarketplaceCategories,
+  parseMarketplaceCategory,
   sortMarketplaceEntries,
 } from "./marketplace-view-model.js";
 
@@ -80,7 +80,7 @@ describe("public marketplace view model", () => {
     ).toEqual([second.id, first.id]);
   });
 
-  it("searches copy and filters more than one category", () => {
+  it("searches copy and filters one category", () => {
     expect(
       filterMarketplaceEntries(
         MARKETPLACE_V2_FIXTURE,
@@ -89,12 +89,19 @@ describe("public marketplace view model", () => {
       ).map((entry) => entry.id),
     ).toEqual(["review-companion", "review-notes"]);
     expect(
-      filterMarketplaceCategories(
+      filterMarketplaceCategory(
         MARKETPLACE_V2_FIXTURE,
         MARKETPLACE_V2_FIXTURE.plugins,
-        ["thread-content", "uncategorized"],
+        "uncategorized",
       ).map((entry) => entry.id),
-    ).toEqual(["prompt-library", "orphan-tool"]);
+    ).toEqual(["orphan-tool"]);
+    expect(
+      filterMarketplaceCategory(
+        MARKETPLACE_V2_FIXTURE,
+        MARKETPLACE_V2_FIXTURE.plugins,
+        undefined,
+      ),
+    ).toHaveLength(4);
   });
 
   it("adds category counts in document order", () => {
@@ -110,15 +117,17 @@ describe("public marketplace view model", () => {
     ]);
   });
 
-  it("parses repeatable category parameters and finds an author", () => {
+  it("keeps the first valid category parameter and finds an author", () => {
     expect(
-      parseMarketplaceCategories([
+      parseMarketplaceCategory([
+        "Bad Category",
         "code-and-reviews",
         "thread-content",
-        "code-and-reviews",
-        "Bad Category",
       ]),
-    ).toEqual(["code-and-reviews", "thread-content"]);
+    ).toBe("code-and-reviews");
+    expect(parseMarketplaceCategory("thread-content")).toBe("thread-content");
+    expect(parseMarketplaceCategory(undefined)).toBeUndefined();
+    expect(parseMarketplaceCategory("Bad Category")).toBeUndefined();
     expect(
       marketplaceAuthorEntries(MARKETPLACE_V2_FIXTURE, "ACME-TOOLS").map(
         (entry) => entry.id,

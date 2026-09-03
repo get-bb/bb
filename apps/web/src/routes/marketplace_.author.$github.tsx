@@ -51,10 +51,10 @@ function MarketplaceAuthorRoute() {
       manifest={marketplace.manifest}
       entries={entries}
       stats={marketplace.stats}
-      state={{ categories: search.category, sort: search.sort }}
+      state={{ category: search.category, sort: search.sort }}
       onStateChange={(next) =>
         void navigate({
-          search: { category: next.categories, sort: next.sort },
+          search: { category: next.category, sort: next.sort },
         })
       }
     />
