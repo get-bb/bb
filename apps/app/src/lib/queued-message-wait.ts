@@ -91,7 +91,7 @@ export function queuedMessageFallbackTitle(args: {
   payload: QueuedMessagePayload;
 }): string {
   if (args.payload.kind !== "retry") return "Queued message";
-  return `Retry failed turn from ${formatScheduledTime({
+  return `Retry turn from ${formatScheduledTime({
     now: args.now,
     timestamp: args.createdAt,
   })}`;

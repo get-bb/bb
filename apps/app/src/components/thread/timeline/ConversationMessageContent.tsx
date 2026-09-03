@@ -88,8 +88,10 @@ interface ConversationMessageContentUserProps extends ConversationMessageContent
   mentions: readonly PromptTextMention[];
   onAddToChat?: ThreadTimelineAddToChatHandler;
   onEdit?: () => void;
+  onRetry?: () => void;
   resolveMentionLink?: PromptMentionLinkResolver;
   resolveSegmentLinkHref?: TimelineTitleLinkResolver;
+  retryDisabled?: boolean;
   onOpenLink?: ThreadTimelineLinkHandler;
   onTitleAction?: TimelineTitleActionResolver;
   senderThreadId: TimelineUserConversationRow["senderThreadId"];
@@ -151,11 +153,13 @@ interface UserConversationMessageProps {
   mobileActionDisplay: "inline" | "overflow";
   onAddToChat?: ThreadTimelineAddToChatHandler;
   onEdit?: () => void;
+  onRetry?: () => void;
   onOpenLink?: ThreadTimelineLinkHandler;
   onOpenLocalFileLink?: ThreadTimelineLocalFileLinkHandler;
   projectId?: string;
   resolveMentionLink?: PromptMentionLinkResolver;
   resolveSegmentLinkHref?: TimelineTitleLinkResolver;
+  retryDisabled?: boolean;
   onTitleAction?: TimelineTitleActionResolver;
   senderThreadId: TimelineUserConversationRow["senderThreadId"];
   senderThreadProjectId: string | null;
@@ -333,12 +337,14 @@ function UserConversationMessage({
   mobileActionDisplay,
   onAddToChat,
   onEdit,
+  onRetry,
   onOpenLink,
   onOpenLocalFileLink,
   pluginActions = [],
   projectId,
   resolveMentionLink,
   resolveSegmentLinkHref,
+  retryDisabled,
   onTitleAction,
   senderThreadId,
   senderThreadProjectId,
@@ -460,7 +466,9 @@ function UserConversationMessage({
             copyImageUrl={attachmentItems.imageItems[0]?.src}
             onAddToChat={onAddToChat}
             onEdit={onEdit}
+            onRetry={onRetry}
             pluginActions={pluginActions}
+            retryDisabled={retryDisabled}
           />
         </div>
       </div>
@@ -676,11 +684,13 @@ export function ConversationMessageContent(
         mobileActionDisplay={props.mobileActionDisplay ?? "overflow"}
         onAddToChat={props.onAddToChat}
         onEdit={props.onEdit}
+        onRetry={props.onRetry}
         onOpenLink={props.onOpenLink}
         onOpenLocalFileLink={onOpenLocalFileLink}
         projectId={projectId}
         resolveMentionLink={props.resolveMentionLink}
         resolveSegmentLinkHref={props.resolveSegmentLinkHref}
+        retryDisabled={props.retryDisabled}
         onTitleAction={props.onTitleAction}
         senderThreadId={props.senderThreadId}
         senderThreadProjectId={props.senderThreadProjectId ?? null}

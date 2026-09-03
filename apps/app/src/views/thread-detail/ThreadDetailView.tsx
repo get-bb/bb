@@ -52,6 +52,7 @@ import {
 import {
   useCreateThreadQueuedMessage,
   useEditThreadMessage,
+  useRetryStoppedThreadRequest,
   useSendThreadMessage,
 } from "../../hooks/mutations/thread-runtime-mutations";
 import { useUpdateEnvironment } from "../../hooks/mutations/environment-mutations";
@@ -630,11 +631,10 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
     },
   );
   const pendingInteractions = pendingInteractionsQuery.data ?? [];
-  const pendingInteractionsInitialLoading =
-    isPendingInteractionStateUnknown(
-      pendingInteractionsQuery.data,
-      pendingInteractionsQuery.isFetching,
-    );
+  const pendingInteractionsInitialLoading = isPendingInteractionStateUnknown(
+    pendingInteractionsQuery.data,
+    pendingInteractionsQuery.isFetching,
+  );
   const hasPendingInteraction =
     getLatestPendingInteraction(pendingInteractions) !== null;
   const { data: queuedMessagesForEditEligibility = [] } =
@@ -863,6 +863,8 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
   });
   const sendMessage = useSendThreadMessage();
   const editMessage = useEditThreadMessage();
+  const { isPending: retryStoppedRequestPending, mutate: retryStoppedRequest } =
+    useRetryStoppedThreadRequest();
   const createQueuedMessage = useCreateThreadQueuedMessage();
   const requestEnvironmentAction = useRequestEnvironmentAction();
   const [pullRequestMergeMethod, setPullRequestMergeMethod] = useAtom(
@@ -948,6 +950,15 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
     },
     [forkThreadFromMessage],
   );
+  const retryableStoppedTurnRequestId =
+    thread?.retryableStoppedTurnRequestId ?? null;
+  const handleRetryStoppedRequest = useCallback(() => {
+    if (thread === undefined || retryableStoppedTurnRequestId === null) return;
+    retryStoppedRequest({
+      id: thread.id,
+      turnRequestId: retryableStoppedTurnRequestId,
+    });
+  }, [retryStoppedRequest, retryableStoppedTurnRequestId, thread]);
   const threadProviderInfo = useSystemProviderInfo(
     thread?.environmentId
       ? {
@@ -2919,6 +2930,11 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
               onEditMessage: canEditSentMessages
                 ? handleEditSentMessage
                 : undefined,
+              onRetryMessage:
+                retryableStoppedTurnRequestId === null
+                  ? undefined
+                  : handleRetryStoppedRequest,
+              retryMessagePending: retryStoppedRequestPending,
               inlineMessageEditor,
               onMessageAddToChat: handleSelectionAddToChat,
               onSendToMainMessage: handleSendToMainMessage,

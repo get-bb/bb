@@ -108,6 +108,9 @@ export interface IntegrationHarness {
 export interface CreateHarnessOptions {
   serverPort?: number;
   bindHost?: "127.0.0.1" | "0.0.0.0";
+  createRuntime?: NonNullable<
+    Parameters<typeof createHostDaemonApp>[0]["createRuntime"]
+  >;
   staticDir?: string;
 }
 
@@ -374,6 +377,9 @@ async function startHarnessDaemon(
       logger: testLogger,
       releaseLock,
       serverUrl: server.baseUrl,
+      ...(options.createRuntime === undefined
+        ? {}
+        : { createRuntime: options.createRuntime }),
     });
     for (
       let attempt = 1;

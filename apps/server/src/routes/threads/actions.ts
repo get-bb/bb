@@ -36,7 +36,7 @@ import {
   wouldCleanupEnvironment,
 } from "../../services/environments/environment-cleanup-internal.js";
 import { applyLoggedEnvironmentLifecycleEvent } from "../../services/environments/lifecycle-outcome.js";
-import { retryFailedTurn } from "../../services/threads/turn-retry.js";
+import { retryTurn } from "../../services/threads/turn-retry.js";
 import { requirePublicThread } from "../../services/lib/entity-lookup.js";
 import { parseSafeRelativeRoutePath } from "../relative-route-path.js";
 import { validatePromptAttachmentReferences } from "../../services/projects/attachments.js";
@@ -249,7 +249,7 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
   post(routes.retry, async (context, payload) => {
     const thread = requirePublicThread(deps.db, context.req.param("id"));
     ensureThreadIsWritable(thread);
-    const result = await retryFailedTurn(deps, { request: payload, thread });
+    const result = await retryTurn(deps, { request: payload, thread });
     return context.json(result);
   });
 

@@ -18,7 +18,7 @@ import { applyLoggedThreadLifecycleEvent } from "../../src/services/threads/life
 import { runQueuedMessageDispatch } from "../../src/services/threads/queued-message-dispatch.js";
 import { toThreadQueuedMessage } from "../../src/services/threads/thread-queued-messages.js";
 import { buildTurnFailedEvent } from "../../src/services/threads/turn-failed.js";
-import { retryFailedTurn } from "../../src/services/threads/turn-retry.js";
+import { retryTurn } from "../../src/services/threads/turn-retry.js";
 import {
   seedEnvironment,
   seedEvent,
@@ -438,7 +438,7 @@ describe("retrying a failed turn", () => {
       const { requestId, thread } = seedFailableThread(harness, "host-retry");
       failThread(harness, thread.id);
 
-      const result = await retryFailedTurn(harness.deps, {
+      const result = await retryTurn(harness.deps, {
         thread: requireThread(harness, thread.id),
         request: { turnRequestId: requestId, sendAt, reason: "Rate limited" },
       });
@@ -502,7 +502,7 @@ describe("retrying a failed turn", () => {
       });
       failThread(harness, thread.id);
 
-      const result = await retryFailedTurn(harness.deps, {
+      const result = await retryTurn(harness.deps, {
         thread: requireThread(harness, thread.id),
         request: {
           turnRequestId: requestId,
@@ -534,7 +534,7 @@ describe("retrying a failed turn", () => {
       const { thread } = seedFailableThread(harness, "host-retry-now");
       failThread(harness, thread.id);
 
-      const result = await retryFailedTurn(harness.deps, {
+      const result = await retryTurn(harness.deps, {
         thread: requireThread(harness, thread.id),
         request: { turnRequestId: null, sendAt: null, reason: "Retry" },
       });
@@ -560,7 +560,7 @@ describe("retrying a failed turn", () => {
         modelOverride: "gpt-6-pro",
       });
 
-      await retryFailedTurn(harness.deps, {
+      await retryTurn(harness.deps, {
         thread: requireThread(harness, thread.id),
         request: { turnRequestId: requestId, sendAt: null, reason: "Retry" },
       });
@@ -578,7 +578,7 @@ describe("retrying a failed turn", () => {
       const { requestId, thread } = seedFailableThread(harness, "host-race");
       failThread(harness, thread.id);
       const retry = () =>
-        retryFailedTurn(harness.deps, {
+        retryTurn(harness.deps, {
           thread: requireThread(harness, thread.id),
           request: {
             turnRequestId: requestId,
@@ -612,7 +612,7 @@ describe("retrying a failed turn", () => {
         "host-attempts",
       );
       failThread(harness, thread.id);
-      await retryFailedTurn(harness.deps, {
+      await retryTurn(harness.deps, {
         thread: requireThread(harness, thread.id),
         request: {
           turnRequestId: requestId,
@@ -630,7 +630,7 @@ describe("retrying a failed turn", () => {
       expect(failedAgain?.attemptNumber).toBe(2);
       expect(failedAgain?.requestId).not.toBe(requestId);
 
-      await retryFailedTurn(harness.deps, {
+      await retryTurn(harness.deps, {
         thread: requireThread(harness, thread.id),
         request: {
           turnRequestId: failedAgain?.requestId ?? null,
@@ -667,7 +667,7 @@ describe("retrying a failed turn", () => {
       });
       const { thread } = seedFailableThread(harness, "host-limit");
       failThread(harness, thread.id);
-      await retryFailedTurn(harness.deps, {
+      await retryTurn(harness.deps, {
         thread: requireThread(harness, thread.id),
         request: {
           turnRequestId: null,
@@ -698,7 +698,7 @@ describe("retrying a failed turn", () => {
     await withTestHarness(async (harness) => {
       const { requestId, thread } = seedFailableThread(harness, "host-refuse");
       const retry = (turnRequestId: string | null) =>
-        retryFailedTurn(harness.deps, {
+        retryTurn(harness.deps, {
           thread: requireThread(harness, thread.id),
           request: {
             turnRequestId,

@@ -44,7 +44,7 @@ BY REFERENCE:
 ```ts
 bb.events.on("turn.failed", async (event) => {
   if (event.errorInfo?.category !== "rate-limit") return;
-  if (event.attemptNumber >= 5) return;                  // cap your own retries
+  if (event.attemptNumber >= 5) return; // cap your own retries
   const resetsAt =
     event.rateLimits?.windows.find((w) => w.resetsAtMs !== null)?.resetsAtMs ??
     null;
@@ -53,15 +53,16 @@ bb.events.on("turn.failed", async (event) => {
     turnRequestId: event.requestId,
     // omit sendAt to attempt now
     ...(resetsAt === null ? {} : { sendAt: resetsAt + 15_000 }),
-    reason: "Rate limited",        // shown verbatim on the queued row
+    reason: "Rate limited", // shown verbatim on the queued row
   });
 });
 ```
 
-`threads.retry` re-submits the failed turn: the user's message never re-enters
-the timeline, and what the provider is sent follows `inputAccepted` — an input
-the provider never took is re-sent verbatim, while an accepted turn (already in
-the provider's conversation) is continued with a nudge rather than asked twice.
+`threads.retry` re-submits a failed turn, or the latest unaccepted request after
+a manual Stop: the user's message never re-enters the timeline, and what the
+provider is sent follows `inputAccepted` — an input the provider never took is
+re-sent verbatim, while an accepted turn (already in the provider's
+conversation) is continued with a nudge rather than asked twice.
 The new attempt carries a retry marker so the next failure's `attemptNumber` is
 right. A future `sendAt`
 queues it on the clock; without one it is attempted now. Either way it is an
@@ -94,7 +95,7 @@ ACTS ON what you return — the opposite of `bb.events`, whose handlers are told
 what already happened. There is ONE hook today, `"message.dispatch"`
 (`PluginHookName`), the admission checkpoint every message passes through
 exactly once per attempt: a thread's first message, a follow-up, a steer, a
-drained queue row, a retry of a failed turn. Two members: `on` answers the
+drained queue row, a retry of a retryable turn. Two members: `on` answers the
 question, and `recheck("message.dispatch")` asks core to ask it again.
 
 ```ts

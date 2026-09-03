@@ -648,6 +648,7 @@ function liftThreadListPlaceholder(
     activeBackgroundAgentCount: thread.activity.activeBackgroundAgentCount,
     canSpawnChild: false,
     queuedMessageCount: 0,
+    retryableStoppedTurnRequestId: null,
   };
 }
 

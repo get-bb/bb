@@ -20,6 +20,7 @@ import {
   wasFailedTurnInputAccepted,
   type FailedTurnRecord,
 } from "./turn-failed.js";
+import { loadStoppedUnacceptedTurn } from "./turn-retry-eligibility.js";
 
 type TurnRetryDeps = LoggedPendingInteractionWorkSessionDeps;
 
@@ -40,34 +41,20 @@ function hasQueuedRetryFor(
   });
 }
 
-/**
- * The failed turn a retry re-submits.
- *
- * A thread has exactly one retryable turn: its most recent one, whose failure
- * is what put it in `error`. Anything earlier has already been answered by the
- * turns after it, so re-submitting it would ask the provider to redo work the
- * conversation has moved past. `turnRequestId` therefore ASSERTS which turn the
- * caller means rather than selecting among several — it is how a retry policy
- * that decided on one failure refuses to act on a different one it never saw.
- */
-function requireFailedTurn(
+function requireRetryableTurn(
   deps: Pick<TurnRetryDeps, "db">,
   args: { thread: Thread; turnRequestId: ClientTurnRequestId | null },
 ) {
   const { thread } = args;
-  if (thread.status !== "error") {
-    throw new ApiError(
-      409,
-      "no_failed_turn",
-      `Thread ${thread.id} has no failed turn to retry: it is ${thread.status}.`,
-    );
-  }
-  const failed = loadFailedTurn(deps.db, thread.id);
+  const failed =
+    thread.status === "error"
+      ? loadFailedTurn(deps.db, thread.id)
+      : loadStoppedUnacceptedTurn(deps.db, thread);
   if (failed === null) {
     throw new ApiError(
       409,
       "no_failed_turn",
-      `Thread ${thread.id} failed before it dispatched a turn, so there is nothing to retry.`,
+      `Thread ${thread.id} has no failed or stopped unaccepted turn to retry: it is ${thread.status}.`,
     );
   }
   if (
@@ -77,13 +64,13 @@ function requireFailedTurn(
     throw new ApiError(
       409,
       "no_failed_turn",
-      `Turn ${args.turnRequestId} is not the failed turn on thread ${thread.id}; its most recent turn is ${failed.request.requestId}.`,
+      `Turn ${args.turnRequestId} is not the retryable turn on thread ${thread.id}; its most recent retryable turn is ${failed.request.requestId}.`,
     );
   }
   return failed;
 }
 
-export interface RetryFailedTurnArgs {
+export interface RetryTurnArgs {
   thread: Thread;
   request: RetryTurnRequest;
 }
@@ -167,13 +154,13 @@ function retryExecution(failed: FailedTurnRecord): {
  *
  * The queued-row check below cannot see a concurrent call that has passed it
  * but not yet written anything — two clients clicking Retry together would
- * both dispatch. One failure earns one retry, so the second caller gets the
- * same 409 a queued duplicate gets.
+ * both dispatch. One retryable request earns one retry, so the second caller
+ * gets the same 409 a queued duplicate gets.
  */
 const retriesInFlight = new Set<string>();
 
 /**
- * Re-submits a failed turn.
+ * Re-submits a failed or manually stopped unaccepted turn.
  *
  * The retry is an ordinary dispatch attempt carrying a `retry` payload, which
  * is what makes it behave like everything else: a `sendAt` in the future queues
@@ -182,12 +169,12 @@ const retriesInFlight = new Set<string>();
  * a rate-limit window respects a limiter that is at capacity instead of jumping
  * the queue. What the attempt carries is `retryInput` and `retryExecution` decide.
  */
-export async function retryFailedTurn(
+export async function retryTurn(
   deps: TurnRetryDeps,
-  args: RetryFailedTurnArgs,
+  args: RetryTurnArgs,
 ): Promise<RetryTurnResponse> {
   const { request, thread } = args;
-  const failed = requireFailedTurn(deps, {
+  const failed = requireRetryableTurn(deps, {
     thread,
     turnRequestId: request.turnRequestId,
   });

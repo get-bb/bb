@@ -49,6 +49,8 @@ export interface ThreadTimelineSurfaceProps {
   leadingContent?: ReactNode;
   onForkMessage?: ThreadTimelineForkMessageHandler;
   onEditMessage?: ThreadTimelineEditMessageHandler;
+  onRetryMessage?: () => void;
+  retryMessagePending?: boolean;
   inlineMessageEditor?: ThreadTimelineInlineMessageEditor;
   onMessageAddToChat?: ThreadTimelineAddToChatHandler;
   onSendToMainMessage?: ThreadTimelineSendToMainMessageHandler;
@@ -150,6 +152,8 @@ export function ThreadTimelineSurface({
   leadingContent,
   onForkMessage,
   onEditMessage,
+  onRetryMessage,
+  retryMessagePending,
   inlineMessageEditor,
   onMessageAddToChat,
   onSendToMainMessage,
@@ -225,6 +229,8 @@ export function ThreadTimelineSurface({
           threadOriginKind={threadOriginKind}
           onForkMessage={onForkMessage}
           onEditMessage={onEditMessage}
+          onRetryMessage={onRetryMessage}
+          retryMessagePending={retryMessagePending}
           inlineMessageEditor={inlineMessageEditor}
           onMessageAddToChat={onMessageAddToChat}
           onSendToMainMessage={onSendToMainMessage}

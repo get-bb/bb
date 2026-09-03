@@ -258,6 +258,51 @@ afterEach(() => {
 });
 
 describe("ThreadTimelineRows actions", () => {
+  it("offers retry only on the latest pending user request while idle", () => {
+    const onRetryMessage = vi.fn();
+    renderWithRouter(
+      <ThreadTimelineRows
+        timelineRows={[
+          conversationRow({
+            id: "older_pending_request",
+            role: "user",
+            text: "First request",
+            sourceSeqStart: 3,
+            turnRequest: {
+              isGrouped: false,
+              kind: "message",
+              status: "pending",
+            },
+          }),
+          conversationRow({
+            id: "latest_pending_request",
+            role: "user",
+            text: "Build the sidebar",
+            sourceSeqStart: 7,
+            turnRequest: {
+              isGrouped: false,
+              kind: "message",
+              status: "pending",
+            },
+          }),
+        ]}
+        onRetryMessage={onRetryMessage}
+        retryMessagePending={false}
+        threadRuntimeDisplayStatus="idle"
+        workspaceRootPath={undefined}
+      />,
+    );
+
+    const retry = screen.getByRole("button", { name: "Retry request" });
+    expect(
+      retry
+        .closest("[data-timeline-row-id]")
+        ?.getAttribute("data-timeline-row-id"),
+    ).toBe("latest_pending_request");
+    fireEvent.click(retry);
+    expect(onRetryMessage).toHaveBeenCalledTimes(1);
+  });
+
   it("uses inline mobile actions only for the last assistant message", () => {
     const { container } = renderWithRouter(
       <ThreadTimelineRows

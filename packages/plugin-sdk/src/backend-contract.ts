@@ -397,7 +397,7 @@ export type PluginDispatchAttemptKind = "start-turn" | "join-turn";
  *
  * It runs identically whether the attempt is inline (someone just sent) or
  * from a drain (a queued row became eligible again), and whether the message
- * is a thread's first, a follow-up, a steer, or a retry of a failed turn. A
+ * is a thread's first, a follow-up, a steer, or a retry of a prior turn. A
  * handler must therefore be idempotent for one logical dispatch: passes re-run
  * on every drain, on restart, and on retry.
  */

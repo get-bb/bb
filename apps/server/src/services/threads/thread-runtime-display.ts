@@ -2,6 +2,7 @@ import {
   getEnvironment,
   getLatestSessionForHost,
   getSessionById,
+  hasQueuedRetryOfTurnRequest,
   listActiveBackgroundTaskCountsByThreadIds,
   listLatestThreadStateEventRowsByThreadIds,
   listLatestSessionsForHosts,
@@ -37,6 +38,7 @@ import type { ProviderRegistryService } from "../providers/provider-registry.js"
 import { listQueuedThreadMessageCountsByThreadIds } from "@bb/db";
 import { canThreadSpawnChild } from "./thread-parent.js";
 import { toThreadEventWithMeta } from "./timeline.js";
+import { loadStoppedUnacceptedTurn } from "./turn-retry-eligibility.js";
 
 type ThreadRuntimeDisplayHub = Pick<
   NotificationHub,
@@ -347,6 +349,15 @@ export function toThreadResponseFromThread(
     ...args,
     environmentHostId: resolveThreadEnvironmentHostId(deps, args.thread),
   });
+  const stoppedUnacceptedTurn = loadStoppedUnacceptedTurn(deps.db, args.thread);
+  const retryableStoppedTurn =
+    stoppedUnacceptedTurn !== null &&
+    !hasQueuedRetryOfTurnRequest(deps.db, {
+      threadId: args.thread.id,
+      retryOfTurnRequestId: stoppedUnacceptedTurn.request.requestId,
+    })
+      ? stoppedUnacceptedTurn
+      : null;
   return {
     ...threadWithRuntime,
     activeBackgroundAgentCount:
@@ -358,6 +369,8 @@ export function toThreadResponseFromThread(
       listQueuedThreadMessageCountsByThreadIds(deps.db, {
         threadIds: [args.thread.id],
       })[0]?.queuedMessageCount ?? 0,
+    retryableStoppedTurnRequestId:
+      retryableStoppedTurn?.request.requestId ?? null,
   };
 }
 

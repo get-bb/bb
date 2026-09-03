@@ -312,6 +312,9 @@ export async function registerFakeProviders(
             reasoningLevels: ["low", "medium", "high"],
           },
           composerActions: ["plan", "goal"],
+          experimental_bridgeOptions: {
+            scripted: { swallowUserTurnStartText: "[stopped-unaccepted]" },
+          },
         }),
         readSettings: NO_PLUGIN_SETTINGS,
       }),

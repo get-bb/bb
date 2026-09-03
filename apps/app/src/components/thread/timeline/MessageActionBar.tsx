@@ -65,13 +65,21 @@ interface MessageActionBarProps {
   ) => void;
   onEdit?: () => void;
   onFork?: () => void;
+  onRetry?: () => void;
   onSendToMain?: () => void;
+  retryDisabled?: boolean;
   disabled?: boolean;
   pluginActions?: readonly ThreadTimelinePluginMessageAction[];
 }
 
 interface MessageOverflowAction {
-  icon: "Copy" | "Edit" | "MessageSquarePlus" | "Fork" | "ArrowTurnBackward";
+  icon:
+    | "Copy"
+    | "Edit"
+    | "MessageSquarePlus"
+    | "Fork"
+    | "ArrowTurnBackward"
+    | "RotateCcw";
   plugin?: { pluginId: string | null; icon: string | null };
   key?: string;
   label: string;
@@ -80,6 +88,7 @@ interface MessageOverflowAction {
   copyText?: string;
   copyImageUrl?: string;
   kind?: "copy";
+  variant?: "default" | "destructive";
 }
 
 const DESKTOP_ACTION_WIDTH_PX = 20;
@@ -238,7 +247,10 @@ function MobileMessageOverflowPopover({
             <button
               key={action.key ?? action.label}
               type="button"
-              className={MOBILE_OVERFLOW_ITEM_CLASS}
+              className={cn(
+                MOBILE_OVERFLOW_ITEM_CLASS,
+                action.variant === "destructive" && "text-destructive",
+              )}
               disabled={action.disabled}
               onClick={() => {
                 if (action.kind === "copy") {
@@ -328,7 +340,12 @@ function DesktopMessageAction({
         ) : (
           <button
             type="button"
-            className={cn(ACTION_BUTTON_CLASS, className)}
+            className={cn(
+              ACTION_BUTTON_CLASS,
+              action.variant === "destructive" &&
+                "text-destructive hover:text-destructive",
+              className,
+            )}
             onClick={action.onSelect}
             disabled={action.disabled}
             aria-label={action.label}
@@ -366,6 +383,7 @@ function MessageActionMenuItems({
       disabled={action.disabled}
       onSelect={action.onSelect}
       textValue={action.label}
+      variant={action.variant}
     >
       {action.plugin ? (
         <PluginActionIcon
@@ -389,7 +407,9 @@ export function MessageActionBar({
   onAddToChat,
   onEdit,
   onFork,
+  onRetry,
   onSendToMain,
+  retryDisabled,
   disabled,
   pluginActions = [],
 }: MessageActionBarProps) {
@@ -494,6 +514,17 @@ export function MessageActionBar({
             icon: "Edit" as const,
             label: "Edit message",
             onSelect: onEdit,
+          },
+        ]
+      : []),
+    ...(onRetry
+      ? [
+          {
+            icon: "RotateCcw" as const,
+            label: "Retry request",
+            onSelect: onRetry,
+            disabled: retryDisabled,
+            variant: "destructive" as const,
           },
         ]
       : []),
@@ -755,6 +786,8 @@ function MobileInlineActions({
           ACTION_BUTTON_CLASS,
           HOVER_REVEAL_CLASS,
           MOBILE_INLINE_ACTION_CLASS,
+          action.variant === "destructive" &&
+            "text-destructive hover:text-destructive",
         )}
         onClick={action.onSelect}
         disabled={action.disabled}

@@ -149,6 +149,8 @@ export interface ThreadTimelineRowsProps {
   threadOriginKind?: ThreadOriginKind | null;
   onForkMessage?: ThreadTimelineForkMessageHandler;
   onEditMessage?: ThreadTimelineEditMessageHandler;
+  onRetryMessage?: () => void;
+  retryMessagePending?: boolean;
   inlineMessageEditor?: ThreadTimelineInlineMessageEditor;
   onMessageAddToChat?: ThreadTimelineAddToChatHandler;
   onSendToMainMessage?: ThreadTimelineSendToMainMessageHandler;
@@ -180,6 +182,9 @@ interface TimelineRendererStaticContextValue {
   getViewRows: GetTimelineViewRows;
   onForkMessage: ThreadTimelineForkMessageHandler | undefined;
   onEditMessage: ThreadTimelineEditMessageHandler | undefined;
+  onRetryMessage: (() => void) | undefined;
+  retryMessagePending: boolean;
+  retryableUserMessageId: string | null;
   inlineMessageEditor: ThreadTimelineInlineMessageEditor | undefined;
   onMessageAddToChat: ThreadTimelineAddToChatHandler | undefined;
   onSendToMainMessage: ThreadTimelineSendToMainMessageHandler | undefined;
@@ -790,6 +795,28 @@ function findLastActionableUserMessageId(
   return lastMessageId;
 }
 
+function findLastPendingUserRequestId(
+  rows: readonly ThreadTimelineViewRow[],
+): string | null {
+  let lastMessageId: string | null = null;
+  const visitRows = (candidateRows: readonly ThreadTimelineViewRow[]): void => {
+    for (const row of candidateRows) {
+      if (
+        row.kind === "conversation" &&
+        row.role === "user" &&
+        row.initiator === "user" &&
+        row.turnRequest.status === "pending"
+      ) {
+        lastMessageId = row.id;
+      } else if (row.kind === "turn" && row.children !== null) {
+        visitRows(row.children);
+      }
+    }
+  };
+  visitRows(rows);
+  return lastMessageId;
+}
+
 const EMPTY_CONSUMER_MESSAGE_ACTIONS: readonly ThreadTimelineConsumerMessageAction[] =
   [];
 
@@ -910,6 +937,7 @@ const ConversationRowContent = memo(function ConversationRowContent({
     inlineMessageEditor,
     onEditMessage,
     onForkMessage,
+    onRetryMessage,
     onMessageAddToChat,
     onSendToMainMessage,
     onSelectionAddToChat,
@@ -925,6 +953,8 @@ const ConversationRowContent = memo(function ConversationRowContent({
     resolveMentionLink,
     resolveSegmentLinkHref,
     resolveUserAttachmentImageSrc,
+    retryMessagePending,
+    retryableUserMessageId,
     threadId,
     workspaceRootPath,
   } = useTimelineRendererStaticContext();
@@ -996,6 +1026,10 @@ const ConversationRowContent = memo(function ConversationRowContent({
           });
         }
       : undefined;
+    const onRetry =
+      onRetryMessage !== undefined && row.id === retryableUserMessageId
+        ? onRetryMessage
+        : undefined;
     return (
       <ConversationMessageContent
         attachments={row.attachments}
@@ -1005,11 +1039,13 @@ const ConversationRowContent = memo(function ConversationRowContent({
         mobileActionDisplay={mobileActionDisplay}
         onAddToChat={onSelectionAddToChat}
         onEdit={onEdit}
+        onRetry={onRetry}
         onOpenLink={onOpenLink}
         onOpenLocalFileLink={onOpenLocalFileLink}
         projectId={projectId}
         resolveMentionLink={resolveMentionLink}
         resolveUserAttachmentImageSrc={resolveUserAttachmentImageSrc}
+        retryDisabled={retryMessagePending}
         role="user"
         resolveSegmentLinkHref={resolveSegmentLinkHref}
         onTitleAction={onTitleAction}
@@ -1989,6 +2025,14 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
   const scopeActive = isRunningThreadRuntimeDisplayStatus(
     props.threadRuntimeDisplayStatus,
   );
+  const retryableUserMessageId = useMemo(
+    () =>
+      props.onRetryMessage !== undefined &&
+      props.threadRuntimeDisplayStatus === "idle"
+        ? findLastPendingUserRequestId(rows)
+        : null,
+    [props.onRetryMessage, props.threadRuntimeDisplayStatus, rows],
+  );
   const streamingAssistantMessageId = useMemo(
     () => (scopeActive ? findStreamingAssistantMessageId(rows) : null),
     [rows, scopeActive],
@@ -2133,6 +2177,9 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
       getViewRows,
       onForkMessage: props.onForkMessage,
       onEditMessage: props.onEditMessage,
+      onRetryMessage: props.onRetryMessage,
+      retryMessagePending: props.retryMessagePending ?? false,
+      retryableUserMessageId,
       inlineMessageEditor: props.inlineMessageEditor,
       onMessageAddToChat: props.onMessageAddToChat,
       onSendToMainMessage: props.onSendToMainMessage,
@@ -2163,6 +2210,9 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
       getViewRows,
       props.onForkMessage,
       props.onEditMessage,
+      props.onRetryMessage,
+      props.retryMessagePending,
+      retryableUserMessageId,
       props.inlineMessageEditor,
       props.onMessageAddToChat,
       props.onSendToMainMessage,

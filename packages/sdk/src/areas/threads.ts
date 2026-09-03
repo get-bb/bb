@@ -254,9 +254,9 @@ export interface ThreadEditMessageArgs extends EditMessageRequest {
 export interface ThreadRetryArgs {
   threadId: string;
   /**
-   * The failed turn to re-submit. Omitted means the thread's most recent turn,
-   * which is the one whose failure put it in `error`; naming one asserts which
-   * failure you decided on and fails if the thread has moved on since.
+   * The failed turn or manually stopped unaccepted request to re-submit. Omitted
+   * means the thread's most recent retryable turn; naming one asserts which
+   * request you decided on and fails if the thread has moved on since.
    */
   turnRequestId?: string;
   /**
@@ -561,9 +561,10 @@ export interface ThreadsArea {
     args: ThreadResolveMentionsArgs,
   ): Promise<ThreadResolveMentionsResult>;
   /**
-   * Re-submit a failed turn. The retry is an ordinary dispatch attempt, so a
-   * `sendAt` in the future queues it on the clock and a `message.dispatch` hook
-   * can still hold it; the response says which of the two happened.
+   * Re-submit a failed turn or manually stopped unaccepted request. The retry
+   * is an ordinary dispatch attempt, so a `sendAt` in the future queues it on
+   * the clock and a `message.dispatch` hook can still hold it; the response
+   * says which of the two happened.
    */
   retry(args: ThreadRetryArgs): Promise<ThreadRetryResult>;
   search(args: ThreadSearchArgs): Promise<ThreadSearchResult>;

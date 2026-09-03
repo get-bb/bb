@@ -5,19 +5,24 @@
 - For failed threads, inspect `bb thread show <id> --json` and
   `bb thread log <id>` before deciding whether to retry, clarify, or update the
   user.
-- Use `bb thread retry <thread-id>` to re-send a failed turn's original message
-  verbatim. It re-submits the same input — it does not add a new user message to
-  the timeline — and increments the attempt number (2 is the first retry). With
-  no `--turn` it retries the most recent turn, the one whose failure put the
-  thread in `error`; `--turn <requestId>` asserts which turn you mean and fails
-  when the thread has moved on. It errors when the thread has not failed or
-  `--turn` names a different turn (409 `no_failed_turn`), and when that turn
-  already has a retry queued (`retry_already_queued`). Add `--send-at <when>` to
-  queue the retry on the clock (same `<when>` grammar as `bb thread tell
-  --send-at`); without it the retry is attempted now and may still queue behind
-  a busy thread or a plugin's dispatch hook. `--reason <text>` labels the queued
-  row. The SDK equivalent is `sdk.threads.retry({ threadId, turnRequestId?,
-  sendAt?, reason? })`.
+- Use `bb thread retry <thread-id>` to re-send a retryable turn's original
+  message verbatim. It re-submits the same input — it does not add a new user
+  message to the timeline — and increments the attempt number (2 is the first
+  retry). With no `--turn` it retries the most recent failed turn, or the latest
+  unaccepted request after a manual Stop; `--turn <requestId>` asserts which
+  turn you mean and fails when the thread has moved on. It returns 409
+  `no_failed_turn` when no turn is eligible, and
+  `retry_already_queued` when that turn already has a retry queued. Add
+  `--send-at <when>` to queue the retry on the clock (same `<when>` grammar as
+  `bb thread tell --send-at`); without it the retry is attempted now and may
+  still queue behind a busy thread or a plugin's dispatch hook. The
+  `--reason <text>` option labels the queued row. The SDK equivalent is
+  `sdk.threads.retry({ threadId, turnRequestId?, sendAt?, reason? })`.
+- A provider-start watchdog warning does not fail a healthy runtime. If an
+  opening request never starts, stop it first; the latest unaccepted request is
+  then retryable whether Stop happened before or after the warning. Inputs sent
+  while it was starting stay queued and drain after the retry starts. In the
+  app, use the red **Retry request** action beneath the original message.
 - The Provider retry plugin is enabled on fresh installations. When a turn fails
   on a structured Codex or Claude Code subscription-window limit that reports a
   reset, it queues that turn to be re-sent after the window opens, re-sending

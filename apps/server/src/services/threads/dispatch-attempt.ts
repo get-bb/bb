@@ -184,9 +184,9 @@ export interface DispatchAttemptArgs {
    * thread. Absent on a drain re-attempt, which reads it back off the thread.
    */
   startContext?: PendingThreadStartContext;
-  /** What the queued row would carry; `retry` for a re-submitted failed turn. */
+  /** What the queued row would carry; `retry` for a re-submitted turn. */
   queuePayload: QueuedMessagePayload;
-  /** Retry provenance, when this attempt re-submits a failed turn. */
+  /** Retry provenance, when this attempt re-submits a prior turn. */
   retryOf?: TurnRequestRetryMarker;
   origin: ThreadCreateOrigin | null;
   originPluginId: string | null;

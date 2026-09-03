@@ -1021,9 +1021,9 @@ export const publicApiRoutes = {
       response: jsonResponse<EditMessageResponse>(),
     }),
     /**
-     * Retry a failed turn: re-submit it by reference, as an ordinary dispatch
-     * attempt. `turnRequestId` null means the thread's most recent turn, whose
-     * failure is what put the thread in `error`.
+     * Retry a failed turn or manually stopped unaccepted request by reference
+     * as an ordinary dispatch attempt. `turnRequestId` null selects the most
+     * recent retryable turn.
      */
     retry: defineRoute({
       path: "/threads/:id/retry",

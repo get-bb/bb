@@ -80,6 +80,23 @@ function mockMobileCoarsePointer() {
 }
 
 describe("MessageActionBar", () => {
+  it("renders retry as a destructive message action", () => {
+    const onRetry = vi.fn();
+    render(
+      <MessageActionBar
+        messageText="Build the sidebar"
+        alignment="end"
+        mobileActionDisplay="inline"
+        onRetry={onRetry}
+      />,
+    );
+
+    const button = screen.getByRole("button", { name: "Retry request" });
+    expect(button.className).toContain("text-destructive");
+    fireEvent.click(button);
+    expect(onRetry).toHaveBeenCalledTimes(1);
+  });
+
   it("uses the nearest thread window as the tooltip collision boundary", () => {
     const threadWindow = document.createElement("div");
     threadWindow.setAttribute("data-thread-window", "");

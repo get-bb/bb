@@ -80,7 +80,7 @@ type SendThreadMessagePayload = SendMessageRequest & {
 interface SendThreadMessageArgs {
   beforeAppendInTransaction?: SendThreadMessageTransactionPreflight;
   /**
-   * Present only when this send re-submits a failed turn. Marks the turn event
+   * Present only when this send re-submits a retryable turn. Marks the turn event
    * as attempt N of an earlier request, which is what makes the next failure's
    * attempt number correct without a separate tally.
    */

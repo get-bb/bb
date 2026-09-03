@@ -154,9 +154,9 @@ export type QueuedMessageWaitHolder = z.infer<
  * the sender wrote and the execution tuple frozen at queue time. It is a draft
  * that has not run, so it is editable while it waits.
  *
- * `retry` only references a failed turn's original request. Nothing about it
- * is editable: the point of a retry is to re-submit the original faithfully,
- * with no duplicated user message.
+ * `retry` only references a retryable turn's original request. Nothing about
+ * it is editable: the point of a retry is to re-submit the original
+ * faithfully, with no duplicated user message.
  */
 export const queuedMessagePayloadKindValues = ["inline", "retry"] as const;
 export const queuedMessagePayloadKindSchema = z.enum(
@@ -171,7 +171,7 @@ export const queuedMessagePayloadSchema = z.discriminatedUnion("kind", [
   z.object({
     kind: z.literal("retry"),
     /**
-     * The ORIGINAL request, not the attempt that just failed. Retrying a retry
+     * The ORIGINAL request, not the attempt being retried. Retrying a retry
      * re-submits the same original blocks, so this id is carried forward
      * unchanged across attempts and `attempt` is what distinguishes them.
      */

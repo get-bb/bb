@@ -94,6 +94,7 @@ function makeThreadResponse(
     },
     canSpawnChild: false,
     queuedMessageCount: 1,
+    retryableStoppedTurnRequestId: null,
     ...thread,
   });
 }

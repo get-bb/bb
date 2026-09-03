@@ -53,6 +53,7 @@ import {
 import {
   invalidateThreadBannerQueries,
   invalidateThreadHistoryRewriteQueries,
+  invalidateThreadQueuedMessageSendQueries,
 } from "../cache-owners/mutation-cache-effects";
 
 interface CreateThreadQueuedMessageMutationRequest extends CreateQueuedMessageRequest {
@@ -83,6 +84,11 @@ interface SetThreadQueuedMessageGroupBoundaryMutationRequest {
   expectedGroupedPrefixQueuedMessageIds: string[];
   groupBoundaryQueuedMessageId: string;
   id: string;
+}
+
+interface RetryStoppedThreadRequestMutationRequest {
+  id: string;
+  turnRequestId: string;
 }
 
 function getHttpErrorBodyMessage(error: BbHttpError): string | null {
@@ -518,6 +524,28 @@ export function useStopThread() {
     },
     onSettled: (_data, _error, threadId) => {
       settleStopThreadTransaction({ queryClient, threadId });
+    },
+  });
+}
+
+export function useRetryStoppedThreadRequest() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    meta: {
+      errorMessage: "Failed to retry request.",
+      lifecycleOperation: "retry_request",
+    },
+    mutationFn: ({
+      id,
+      turnRequestId,
+    }: RetryStoppedThreadRequestMutationRequest) =>
+      sdk.threads.retry({ threadId: id, turnRequestId }),
+    onSuccess: (_data, variables) => {
+      invalidateThreadQueuedMessageSendQueries({
+        queryClient,
+        threadId: variables.id,
+      });
     },
   });
 }

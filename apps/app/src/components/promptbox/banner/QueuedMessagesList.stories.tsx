@@ -679,7 +679,7 @@ export function ScheduledAndWaitingDispatch() {
       </StoryRow>
       <StoryRow
         label="retry"
-        hint="a failed turn queued by reference; no message to quote, not editable"
+        hint="a retryable turn queued by reference; no message to quote, not editable"
       >
         <ResponsivePromptStage>
           <StaticQueuedMessagesList queuedMessages={retry} />

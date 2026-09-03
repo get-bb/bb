@@ -82,6 +82,7 @@ export const scriptedEchoOptionsSchema = z
     goalClearNotifyDelayMs: z.number().int().nonnegative().optional(),
     goalClearReportsCleared: z.boolean().optional(),
     swallowTurnStart: z.boolean().optional(),
+    swallowUserTurnStartText: z.string().min(1).optional(),
     sessionRestorable: z.boolean().optional(),
     warnOnTurn: z.boolean().optional(),
     toolCallThreadIdHint: z.string().min(1).optional(),
@@ -1038,7 +1039,19 @@ const handlers: Record<string, RequestHandler> = {
     if (responseDelayMs === undefined) {
       io.sendResult(id, {});
     }
-    if (session.options.swallowTurnStart !== true) {
+    const swallowUserTurnStartText = session.options.swallowUserTurnStartText;
+    const swallowsVisibleMatchingInput =
+      swallowUserTurnStartText !== undefined &&
+      parsed.data.input.some(
+        (item) =>
+          item.type === "text" &&
+          item.visibility !== "agent-only" &&
+          item.text.includes(swallowUserTurnStartText),
+      );
+    if (
+      session.options.swallowTurnStart !== true &&
+      !swallowsVisibleMatchingInput
+    ) {
       beginTurn({
         session,
         input: parsed.data.input,

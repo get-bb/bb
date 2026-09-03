@@ -487,30 +487,35 @@ export function registerActionsCommands(
 
   parent
     .command("retry [id]")
-    .description("Retry the failed turn on a thread")
+    .description("Retry a failed or stopped unaccepted turn on a thread")
     .option("--self", "Target the current thread (from BB_THREAD_ID)")
     .option(
       "--turn <requestId>",
-      "Retry this turn request id specifically; fails when it is not the thread's failed turn",
+      "Retry this turn request id specifically; fails when it is not the thread's retryable turn",
     )
     .option("--send-at <when>", SEND_AT_HELP)
-    .option("--reason <text>", "Why it is being retried, shown on the queued row")
+    .option(
+      "--reason <text>",
+      "Why it is being retried, shown on the queued row",
+    )
     .option("--json", "Print machine-readable JSON output")
     .action(
-      action(async (id: string | undefined, opts: ThreadRetryCommandOptions) => {
-        const threadId = requireThreadIdOrSelf(id, opts);
-        const sdk = createCliBbSdk(getUrl());
-        const response = await sdk.threads.retry({
-          threadId,
-          ...(opts.turn === undefined ? {} : { turnRequestId: opts.turn }),
-          ...(opts.sendAt === undefined
-            ? {}
-            : { sendAt: parseSendAt(opts.sendAt) }),
-          ...(opts.reason === undefined ? {} : { reason: opts.reason }),
-        });
-        if (outputJson(opts, { threadId, ...response })) return;
-        console.log(describeThreadRetryOutcome(threadId, response));
-      }),
+      action(
+        async (id: string | undefined, opts: ThreadRetryCommandOptions) => {
+          const threadId = requireThreadIdOrSelf(id, opts);
+          const sdk = createCliBbSdk(getUrl());
+          const response = await sdk.threads.retry({
+            threadId,
+            ...(opts.turn === undefined ? {} : { turnRequestId: opts.turn }),
+            ...(opts.sendAt === undefined
+              ? {}
+              : { sendAt: parseSendAt(opts.sendAt) }),
+            ...(opts.reason === undefined ? {} : { reason: opts.reason }),
+          });
+          if (outputJson(opts, { threadId, ...response })) return;
+          console.log(describeThreadRetryOutcome(threadId, response));
+        },
+      ),
     );
 
   parent

@@ -267,9 +267,8 @@ export const DEFAULT_TURN_RETRY_REASON = "Retry";
 export const retryTurnRequestSchema = z
   .object({
     /**
-     * The failed turn to re-submit. Null means the thread's own most recent
-     * turn, which is the one whose failure put it in `error` — the only turn a
-     * caller who did not watch the failure happen can mean.
+     * The failed turn or manually stopped unaccepted request to re-submit. Null
+     * means the thread's own most recent retryable turn.
      */
     turnRequestId: clientTurnRequestIdSchema.nullable().default(null),
     /**
@@ -454,6 +453,7 @@ export const threadResponseSchema = threadWithRuntimeSchema.extend({
   // `GET /threads/:id/queued-messages` supplies the reasons once a surface
   // actually renders them.
   queuedMessageCount: z.number().int().nonnegative(),
+  retryableStoppedTurnRequestId: clientTurnRequestIdSchema.nullable(),
 });
 export type ThreadResponse = z.infer<typeof threadResponseSchema>;
 

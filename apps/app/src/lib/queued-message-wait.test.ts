@@ -183,7 +183,7 @@ describe("queuedMessageWaitIcon", () => {
 });
 
 describe("queuedMessageFallbackTitle", () => {
-  it("names the failed turn a retry row re-submits", () => {
+  it("names the turn a retry row re-submits", () => {
     expect(
       queuedMessageFallbackTitle({
         createdAt: NOW,
@@ -195,7 +195,7 @@ describe("queuedMessageFallbackTitle", () => {
           reason: "Rate limited",
         },
       }),
-    ).toBe(`Retry failed turn from ${clockAt(NOW)}`);
+    ).toBe(`Retry turn from ${clockAt(NOW)}`);
   });
 });
 
