@@ -15,7 +15,7 @@ import {
   ThreadPaletteResults,
   type ThreadPaletteNavigationItem,
 } from "./ThreadPaletteResults";
-import { makeThreadListEntry } from "@bb/test-helpers";
+import { makeThreadListEntry } from "@bb/test-helpers/domain-fixtures";
 
 vi.mock("@/hooks/queries/thread-queries", () => ({
   hasThreadSearchableQuery: (value: string) =>

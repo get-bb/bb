@@ -10,7 +10,7 @@ import { createAppQueryClient } from "@/lib/query-client";
 import {
   makeThreadListEntry as makeThreadListEntryFixture,
   makeThreadQueuedMessage as makeThreadQueuedMessageFixture,
-} from "@bb/test-helpers";
+} from "@bb/test-helpers/domain-fixtures";
 import {
   makeProjectWithThreadsResponse,
   makeSidebarBootstrapResponse,

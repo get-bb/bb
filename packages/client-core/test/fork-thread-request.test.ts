@@ -1,5 +1,5 @@
 import type { Thread } from "@bb/domain";
-import { makeThread as makeThreadFixture } from "@bb/test-helpers";
+import { makeThread as makeThreadFixture } from "@bb/test-helpers/domain-fixtures";
 import { describe, expect, it } from "vitest";
 import {
   buildForkThreadRequest,

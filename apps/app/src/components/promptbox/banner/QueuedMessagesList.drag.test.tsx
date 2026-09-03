@@ -3,7 +3,7 @@
 import { fireEvent, render, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ThreadQueuedMessage } from "@bb/domain";
-import { makeThreadQueuedMessage } from "@bb/test-helpers";
+import { makeThreadQueuedMessage } from "@bb/test-helpers/domain-fixtures";
 import { QueuedMessagesList } from "./QueuedMessagesList";
 
 const noop = () => {};

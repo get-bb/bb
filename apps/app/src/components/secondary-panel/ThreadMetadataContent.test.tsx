@@ -15,7 +15,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   makeEnvironment,
   makeThread as makeThreadFixture,
-} from "@bb/test-helpers";
+} from "@bb/test-helpers/domain-fixtures";
 import { EnvironmentRow, ThreadMetadataCard } from "./ThreadMetadataContent";
 
 const localHost = { locality: "local", identity: null } as const;

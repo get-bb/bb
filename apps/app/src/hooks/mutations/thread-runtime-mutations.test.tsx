@@ -7,10 +7,8 @@ import type {
   ThreadResponse,
   ThreadTimelineResponse,
 } from "@bb/server-contract";
-import {
-  createDeferredPromise,
-  makeThreadQueuedMessage as makeThreadQueuedMessageFixture,
-} from "@bb/test-helpers";
+import { createDeferredPromise } from "@bb/test-helpers";
+import { makeThreadQueuedMessage as makeThreadQueuedMessageFixture } from "@bb/test-helpers/domain-fixtures";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { BbHttpError, sdk } from "@/lib/sdk";
 import { wsManager } from "@/lib/ws";

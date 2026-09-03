@@ -1,8 +1,6 @@
 import type { Environment, WorkspaceStatus } from "@bb/domain";
-import {
-  makeEnvironment,
-  makeWorkspaceStatus as makeSharedWorkspaceStatus,
-} from "@bb/test-helpers";
+import { makeWorkspaceStatus as makeSharedWorkspaceStatus } from "@bb/test-helpers";
+import { makeEnvironment } from "@bb/test-helpers/domain-fixtures";
 import { describe, expect, it } from "vitest";
 import {
   resolveEffectiveMergeBaseBranch,

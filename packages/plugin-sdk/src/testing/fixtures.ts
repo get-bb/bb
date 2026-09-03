@@ -213,10 +213,11 @@ export function makeMessageDispatchHookContext(
     createdAt: 0,
     updatedAt: 0,
   };
+  const thread = { ...context.thread, ...overrides.thread };
   return {
     ...context,
     ...overrides,
-    thread: { ...context.thread, ...overrides.thread },
+    thread,
     project: { ...context.project, ...overrides.project },
     environment:
       overrides.environment === undefined
@@ -244,7 +245,10 @@ export function makeMessageDispatchHookContext(
         ? context.queuedMessage
         : overrides.queuedMessage === null
           ? null
-          : makeQueueEntry(overrides.queuedMessage),
+          : makeQueueEntry({
+              threadId: thread.id,
+              ...overrides.queuedMessage,
+            }),
   };
 }
 

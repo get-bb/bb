@@ -12,7 +12,7 @@ import {
 } from "@bb/client-core";
 import { NO_COLLAPSED_CHILD_ACTIVITY } from "@bb/client-core";
 import type { ThreadTitleMentionResources } from "@/components/thread/ThreadTitleMentions";
-import { makeThreadListEntry } from "@bb/test-helpers";
+import { makeThreadListEntry } from "@bb/test-helpers/domain-fixtures";
 
 function thread(overrides: Partial<ThreadListEntry>): ThreadListEntry {
   return makeThreadListEntry({

@@ -2,7 +2,7 @@
 
 import { cleanup, fireEvent, render } from "@testing-library/react";
 import type { Thread } from "@bb/domain";
-import { makeThread as makeThreadFixture } from "@bb/test-helpers";
+import { makeThread as makeThreadFixture } from "@bb/test-helpers/domain-fixtures";
 import { defaultAppSettings } from "@bb/domain";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { AppCommandProvider } from "@/components/commands/AppCommandProvider";

@@ -7,7 +7,7 @@ import type {
   SystemProviderStatesResponse,
 } from "@bb/server-contract";
 import type { ProviderInfo } from "@bb/domain";
-import { makeProviderInfo } from "@bb/test-helpers";
+import { makeProviderInfo } from "@bb/test-helpers/domain-fixtures";
 import type {
   ProviderCliStatusResponse,
   ProviderUsageResponse,

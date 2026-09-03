@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { requireEnvironmentMergeBaseBranch } from "../../helpers/api.js";
-import { makeEnvironment } from "@bb/test-helpers";
+import { makeEnvironment } from "@bb/test-helpers/domain-fixtures";
 
 describe("requireEnvironmentMergeBaseBranch", () => {
   it("prefers an explicit merge-base override", () => {

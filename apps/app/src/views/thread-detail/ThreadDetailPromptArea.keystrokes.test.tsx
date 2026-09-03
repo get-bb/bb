@@ -8,7 +8,7 @@ import type {
 import {
   makeThreadQueuedMessage,
   makeThreadWithRuntime,
-} from "@bb/test-helpers";
+} from "@bb/test-helpers/domain-fixtures";
 import {
   act,
   cleanup,

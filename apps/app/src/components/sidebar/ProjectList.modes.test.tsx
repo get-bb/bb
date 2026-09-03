@@ -31,7 +31,7 @@ import {
   type SidebarSectionId,
 } from "./sidebarCollapsedAtoms";
 import { useSidebarModeSectionOrder } from "./useSidebarModeSectionOrder";
-import { makeThreadListEntry } from "@bb/test-helpers";
+import { makeThreadListEntry } from "@bb/test-helpers/domain-fixtures";
 
 const mockUseHosts = vi.hoisted(() => vi.fn(() => ({ data: [] })));
 

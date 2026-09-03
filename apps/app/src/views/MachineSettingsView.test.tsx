@@ -8,7 +8,7 @@ import {
   waitFor,
 } from "@testing-library/react";
 import type { Host } from "@bb/domain";
-import { makeHost as makeHostFixture } from "@bb/test-helpers";
+import { makeHost as makeHostFixture } from "@bb/test-helpers/domain-fixtures";
 import type { SystemConfigResponse } from "@bb/server-contract";
 import type {
   ProviderCliKey,
@@ -20,7 +20,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { sdk } from "@/lib/sdk";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { makeSystemConfig } from "@/test/fixtures/system-config";
-import { makeProviderInfo } from "@bb/test-helpers";
+import { makeProviderInfo } from "@bb/test-helpers/domain-fixtures";
 import { MachineSettingsView } from "./MachineSettingsView";
 
 vi.mock("@/lib/sdk", () => ({

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Host } from "@bb/domain";
-import { makeHost } from "@bb/test-helpers";
+import { makeHost } from "@bb/test-helpers/domain-fixtures";
 import { selectPrimaryHost } from "./host-queries";
 
 function host(overrides: Partial<Host> & Pick<Host, "id">): Host {

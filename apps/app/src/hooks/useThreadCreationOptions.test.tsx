@@ -17,7 +17,7 @@ import {
   providerListCacheKey,
   writeCachedProviderList,
 } from "@/lib/provider-list-cache";
-import { makeProviderInfo } from "@bb/test-helpers";
+import { makeProviderInfo } from "@bb/test-helpers/domain-fixtures";
 
 const PROJECT_ID = "proj_prompt_defaults";
 const GLOBAL_PROVIDER_ID = "global-provider";

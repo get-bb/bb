@@ -9,7 +9,7 @@ import {
   waitFor,
 } from "@testing-library/react";
 import type { Host } from "@bb/domain";
-import { makeHost as host } from "@bb/test-helpers";
+import { makeHost as host } from "@bb/test-helpers/domain-fixtures";
 import type { InstalledPlugin } from "@bb/server-contract";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";

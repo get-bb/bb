@@ -2,7 +2,7 @@
 
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import type { Host } from "@bb/domain";
-import { makeHost } from "@bb/test-helpers";
+import { makeHost } from "@bb/test-helpers/domain-fixtures";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useLocalPathPicker } from "./useLocalPathPicker";
 

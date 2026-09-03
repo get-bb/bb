@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { makeThread } from "@bb/test-helpers";
+import { makeThread } from "@bb/test-helpers/domain-fixtures";
 import { TooltipProvider } from "@bb/shared-ui/tooltip";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ThreadArchiveQuickAction } from "./ThreadActionsMenu";

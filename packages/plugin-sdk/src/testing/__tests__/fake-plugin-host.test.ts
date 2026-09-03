@@ -14,9 +14,26 @@ import {
 } from "../../internal/host-policy.js";
 import {
   createFakePluginHost,
+  makeMessageDispatchHookContext,
   makePluginAgentConfigurationContext,
   makeThreadResponse,
 } from "../index.js";
+
+describe("fixtures", () => {
+  it("keeps queued messages on the dispatch context thread by default", () => {
+    const inherited = makeMessageDispatchHookContext({
+      thread: { id: "thread-target" },
+      queuedMessage: { id: "queued-target" },
+    });
+    const explicit = makeMessageDispatchHookContext({
+      thread: { id: "thread-target" },
+      queuedMessage: { threadId: "thread-explicit" },
+    });
+
+    expect(inherited.queuedMessage?.threadId).toBe("thread-target");
+    expect(explicit.queuedMessage?.threadId).toBe("thread-explicit");
+  });
+});
 
 describe("server", () => {
   it("serves the configured public app URL and defaults to null", () => {

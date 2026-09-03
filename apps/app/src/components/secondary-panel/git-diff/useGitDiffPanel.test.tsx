@@ -6,7 +6,7 @@ import type { Environment } from "@bb/domain";
 import { StrictMode, useState, type ReactNode } from "react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { useUpdateEnvironment } from "@/hooks/mutations/environment-mutations";
-import { makeEnvironment } from "@bb/test-helpers";
+import { makeEnvironment } from "@bb/test-helpers/domain-fixtures";
 import { useEnvironmentMergeBase } from "./useEnvironmentMergeBase";
 import { useGitDiffPanel } from "./useGitDiffPanel";
 import { useGitDiffPanelState } from "./useGitDiffPanelState";

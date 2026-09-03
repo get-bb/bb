@@ -1,5 +1,8 @@
 import type { Host, ThreadListEntry } from "@bb/domain";
-import { makeHost, makeThreadListEntry } from "@bb/test-helpers";
+import {
+  makeHost,
+  makeThreadListEntry,
+} from "@bb/test-helpers/domain-fixtures";
 import { describe, expect, it } from "vitest";
 import {
   buildMachineThreadGroups,

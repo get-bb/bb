@@ -4,7 +4,7 @@ import type {
   WorkspaceFileStatusKind,
 } from "@bb/domain";
 import type { WorkspaceChangedFilesSection } from "@/components/workspace/workspace-change-summary";
-import { makeEnvironment } from "@bb/test-helpers";
+import { makeEnvironment } from "@bb/test-helpers/domain-fixtures";
 import { describe, expect, it } from "vitest";
 import {
   resolveWorkspaceChangedFileOpenTarget,

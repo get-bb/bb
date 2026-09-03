@@ -13,7 +13,7 @@ import { MemoryRouter } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Host } from "@bb/domain";
-import { makeHost as makeHostFixture } from "@bb/test-helpers";
+import { makeHost as makeHostFixture } from "@bb/test-helpers/domain-fixtures";
 import type { BbDesktopApi, BbDesktopInfo } from "@bb/desktop-contract";
 import {
   HOST_DAEMON_PROTOCOL_VERSION,
@@ -51,7 +51,7 @@ vi.mock("@/components/ui/app-toast", () => ({
 }));
 
 vi.mock("@/lib/sdk", async () => {
-  const { makeProviderInfo } = await import("@bb/test-helpers");
+  const { makeProviderInfo } = await import("@bb/test-helpers/domain-fixtures");
   return {
     sdk: {
       system: { version: vi.fn() },

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createAppQueryClient } from "@/lib/query-client";
-import { makeEnvironment } from "@bb/test-helpers";
+import { makeEnvironment } from "@bb/test-helpers/domain-fixtures";
 import { threadSearchQueryKey } from "../queries/query-keys";
 import { applyEnvironmentUpdateResult } from "./environment-workspace-cache-owner";
 
