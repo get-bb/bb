@@ -2,7 +2,6 @@ import { useSyncExternalStore } from "react";
 import {
   ResourceActivitySection,
   ResourceDetailConfigurationSection,
-  ResourceDetailOverviewSection,
   ResourceDetailPage,
   ResourceDetailReleaseSection,
   ResourceDetailStack,
@@ -39,6 +38,7 @@ import {
   PluginMarketplaceHeaderMetadata,
   PluginMarketplaceListingSections,
   PluginMoreFromAuthorSection,
+  PluginOverviewLead,
 } from "@/components/plugin/management/PluginMarketplaceListing";
 import { pluginRuntimeStatusPresentation } from "@/components/plugin/management/plugin-status";
 import {
@@ -366,11 +366,13 @@ export function PluginDetail({
     >
       <ResourceDetailStack>
         {catalogEntry === undefined ? (
-          <ResourceDetailOverviewSection label="About">
-            <p className="max-w-none text-sm leading-relaxed text-muted-foreground">
-              {plugin.description ?? "This plugin does not describe itself."}
-            </p>
-          </ResourceDetailOverviewSection>
+          <section data-resource-detail-section="overview">
+            <PluginOverviewLead
+              description={
+                plugin.description ?? "This plugin does not describe itself."
+              }
+            />
+          </section>
         ) : (
           <>
             <PluginMarketplaceListingSections entry={catalogEntry} />

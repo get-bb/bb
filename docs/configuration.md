@@ -257,6 +257,14 @@ its bake period and applies on the next start, resume, or turn command. Read and
 set provider options like any plugin setting, for example
 `bb plugin config provider-claude-code set idleQueryReleaseEnabled true`.
 
+Claude Code starts without its Claude in Chrome browser tools when bb runs it,
+even when the interactive `claude` CLI has Chrome enabled by default. Turn the
+tools on for bb threads with
+`bb plugin config provider-claude-code set chromeEnabled true`. bb then starts
+Claude Code with `--chrome`. The host needs the Claude in Chrome extension and a
+claude.ai login; API-key sessions keep Chrome off. A change restarts the thread's
+Claude process before its next turn and keeps the conversation.
+
 Outside an open typeahead menu, Shift+Enter inserts a newline. On
 coarse-pointer touch devices, the software-keyboard Return path inserts a
 newline and the submit button sends.

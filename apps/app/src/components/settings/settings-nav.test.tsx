@@ -9,6 +9,7 @@ import { resetPluginSlotStoreForTest } from "@/lib/plugin-slots";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { pluginListQueryKey } from "@/hooks/queries/query-keys";
 import { useSettingsNavState } from "./settings-nav";
+import { makeInstalledPlugin } from "@/test/fixtures/plugins";
 
 const mocks = vi.hoisted(() => ({
   accessState: "unavailable",
@@ -32,37 +33,16 @@ function wrapperFor(path: string, plugins: readonly InstalledPlugin[] = []) {
 }
 
 function disabledPlugin(): InstalledPlugin {
-  return {
+  return makeInstalledPlugin({
     id: "linear",
     source: "path:/plugins/linear",
     rootDir: "/plugins/linear",
-    version: "0.1.0",
     enabled: false,
     status: "disabled",
-    statusDetail: null,
     description: "Linear integration",
     name: "Linear",
-    screenshots: [],
-    collections: [],
-    icon: null,
-    iconUrl: null,
-    logoUrl: null,
-    logoDarkUrl: null,
-    hasSettings: false,
-    handlerStats: { count: 0, totalMs: 0, maxMs: 0, errorCount: 0 },
-    services: [],
-    schedules: [],
-    cliCommand: null,
-    capabilities: [],
-    app: { hasApp: false, bundle: null },
-    provenance: "direct",
-    isOrphanedBuiltin: false,
-    publisherLabel: null,
     sourceDisplay: "path · /plugins/linear",
-    updateState: {},
-    providerIds: [],
-    icons: {},
-  };
+  });
 }
 
 afterEach(() => {

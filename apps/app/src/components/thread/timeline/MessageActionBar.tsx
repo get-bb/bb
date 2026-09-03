@@ -58,6 +58,7 @@ interface MessageActionBarProps {
   alignment: "start" | "end";
   mobileActionDisplay: "inline" | "overflow";
   addToChatAttachments?: readonly PromptDraftAttachment[];
+  copyImageUrl?: string;
   onAddToChat?: (
     text: string,
     attachments?: readonly PromptDraftAttachment[],
@@ -77,6 +78,7 @@ interface MessageOverflowAction {
   onSelect: () => void;
   disabled?: boolean;
   copyText?: string;
+  copyImageUrl?: string;
   kind?: "copy";
 }
 
@@ -319,6 +321,7 @@ function DesktopMessageAction({
         {action.kind === "copy" ? (
           <CopyButton
             text={action.copyText ?? ""}
+            imageUrl={action.copyImageUrl}
             label={action.label}
             className={className}
           />
@@ -382,6 +385,7 @@ export function MessageActionBar({
   alignment,
   mobileActionDisplay,
   addToChatAttachments = [],
+  copyImageUrl,
   onAddToChat,
   onEdit,
   onFork,
@@ -391,7 +395,7 @@ export function MessageActionBar({
 }: MessageActionBarProps) {
   const isCompactViewport = useIsCompactViewport();
   const isPointerCoarse = usePointerCoarse();
-  const hasCopy = messageText.length > 0;
+  const hasCopy = messageText.length > 0 || copyImageUrl !== undefined;
   const hasAddToChat =
     (hasCopy || addToChatAttachments.length > 0) && onAddToChat !== undefined;
   const [collisionBoundary, setCollisionBoundary] = useState<
@@ -475,9 +479,11 @@ export function MessageActionBar({
             onSelect: () => {
               void copyToClipboardWithToast(messageText, {
                 errorMessage: "Failed to copy",
+                imageUrl: copyImageUrl,
               });
             },
             copyText: messageText,
+            copyImageUrl,
             kind: "copy" as const,
           },
         ]
@@ -723,6 +729,7 @@ function MobileInlineActions({
             void copyToClipboardWithToast(action.copyText ?? "", {
               successMessage: null,
               errorMessage: "Failed to copy",
+              imageUrl: action.copyImageUrl,
             }).then((didCopy) => {
               if (didCopy) onCopied();
             });
@@ -735,6 +742,7 @@ function MobileInlineActions({
         <CopyButton
           key={action.key ?? action.label}
           text={action.copyText ?? ""}
+          imageUrl={action.copyImageUrl}
           label={action.label}
           className={cn(HOVER_REVEAL_CLASS, MOBILE_INLINE_ACTION_CLASS)}
         />

@@ -10,19 +10,24 @@ import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { PluginTimelineRendererProps } from "@get-bb/plugin-sdk";
 import { sdk } from "@/lib/sdk";
+import { makeProviderInfo } from "@bb/test-helpers/domain-fixtures";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { pluginSdkAppImplementation } from "@/lib/plugin-sdk-app-impl";
 import { toolRow } from "@/test/fixtures/thread-timeline-rows";
 import {
   resetPluginSlotStoreForTest,
   setPluginSlotRegistrations,
-  type PluginRegistrationSet,
 } from "@/lib/plugin-slots";
 import {
   PluginSlotMount,
   resetAllCrashedPluginSlotsForTest,
 } from "@/components/plugin/PluginSlotMount";
 import { ThreadProviderContext } from "@/components/thread/thread-provider-context";
+import { makePluginRegistrationSet as registrationSet } from "@/test/fixtures/plugins";
+import {
+  makeThreadResponse,
+  makeThreadTimelineResponse,
+} from "@/test/fixtures/thread-responses";
 
 vi.mock("@/lib/sdk", async (importOriginal) => {
   const mod = await importOriginal<typeof import("@/lib/sdk")>();
@@ -51,13 +56,15 @@ vi.mock("@/hooks/useHostDaemon", () => ({
 }));
 
 const THREAD_B = {
-  id: "thr_b",
-  projectId: "proj_demo",
-  providerId: "agent-b",
-  environmentId: null,
-  status: "active",
-  runtime: { displayStatus: "idle" },
-  activeBackgroundAgentCount: 0,
+  ...makeThreadResponse({
+    id: "thr_b",
+    projectId: "proj_demo",
+    providerId: "agent-b",
+    environmentId: null,
+    status: "active",
+  }),
+  environment: null,
+  host: null,
 };
 const ROW_B = toolRow({
   id: "thr_b:tool:1",
@@ -66,41 +73,17 @@ const ROW_B = toolRow({
   toolArgs: { q: 1 },
   output: "out",
 });
-const TIMELINE_B = {
+const TIMELINE_B = makeThreadTimelineResponse({
   rows: [ROW_B],
-  activePromptMode: null,
-  activeThinking: null,
-  activeWorkflows: [],
-  activeBackgroundCommands: [],
-  pendingTodos: null,
-  goal: null,
-  modelFallback: null,
-  timelinePage: {
-    olderCursor: null,
-    newerCursor: null,
-    hasOlder: false,
-    hasNewer: false,
-  },
   maxSeq: 10,
-};
+});
 const PROVIDERS = [
-  { id: "agent-b", pluginId: "plugin-b", displayName: "Agent B" },
+  makeProviderInfo({
+    id: "agent-b",
+    pluginId: "plugin-b",
+    displayName: "Agent B",
+  }),
 ];
-
-function registrationSet(
-  overrides: Partial<PluginRegistrationSet>,
-): PluginRegistrationSet {
-  return {
-    homepageSections: [],
-    settingsSections: [],
-    navPanels: [],
-    threadPanelActions: [],
-    sidebarFooterActions: [],
-    fileOpeners: [],
-    messageDirectives: [],
-    ...overrides,
-  };
-}
 
 function PluginPanelPage({ threadId }: { threadId: string }) {
   const ThreadChat = pluginSdkAppImplementation.ThreadChat;
@@ -149,9 +132,9 @@ afterEach(() => {
   resetAllCrashedPluginSlotsForTest();
 });
 beforeEach(() => {
-  vi.mocked(sdk.threads.get).mockResolvedValue(THREAD_B as never);
-  vi.mocked(sdk.threads.timeline).mockResolvedValue(TIMELINE_B as never);
-  vi.mocked(sdk.providers.list).mockResolvedValue(PROVIDERS as never);
+  vi.mocked(sdk.threads.get).mockResolvedValue(THREAD_B);
+  vi.mocked(sdk.threads.timeline).mockResolvedValue(TIMELINE_B);
+  vi.mocked(sdk.providers.list).mockResolvedValue(PROVIDERS);
 });
 
 describe("PluginThreadChat provider context", () => {

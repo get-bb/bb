@@ -12,56 +12,23 @@ import { MemoryRouter } from "react-router-dom";
 import type { Environment, Thread } from "@bb/domain";
 import { TooltipProvider } from "@bb/shared-ui/tooltip";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  makeEnvironment,
+  makeThread as makeThreadFixture,
+} from "@bb/test-helpers/domain-fixtures";
 import { EnvironmentRow, ThreadMetadataCard } from "./ThreadMetadataContent";
 
 const localHost = { locality: "local", identity: null } as const;
 
 function makeThread(overrides: Partial<Thread> = {}): Thread {
-  return {
-    id: "thr_test",
-    projectId: "proj_test",
-    environmentId: "env_test",
-    providerId: "codex",
+  return makeThreadFixture({
     title: null,
     titleFallback: null,
-    sectionId: null,
-    status: "idle",
-    parentThreadId: null,
-    sourceThreadId: null,
-    originKind: null,
-    originPluginId: null,
-    visibility: "visible",
-    archivedAt: null,
-    pinnedAt: null,
-    deletedAt: null,
     lastReadAt: null,
     latestAttentionAt: 0,
-    createdAt: 0,
     updatedAt: 0,
     ...overrides,
-  };
-}
-
-function makeEnvironment(overrides: Partial<Environment> = {}): Environment {
-  return {
-    id: "env_test",
-    name: null,
-    projectId: "proj_test",
-    hostId: "host_test",
-    path: "/workspace",
-    managed: true,
-    isGitRepo: true,
-    isWorktree: true,
-    workspaceProvisionType: "managed-worktree",
-    branchName: "feature",
-    baseBranch: "main",
-    defaultBranch: "main",
-    mergeBaseBranch: null,
-    status: "ready",
-    createdAt: 0,
-    updatedAt: 0,
-    ...overrides,
-  };
+  });
 }
 
 function renderEnvironmentRow(environment: Environment): string {

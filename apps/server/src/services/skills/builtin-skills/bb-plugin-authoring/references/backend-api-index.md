@@ -290,6 +290,8 @@ Read the installed declarations for exact current signatures.
 - `createFakePluginHost`
 - `createFakeSdk`
 - `experimental_scanPublicSdkOnly`
+- `makeMessageDispatchHookContext`
+- `makePluginAgentConfigurationContext`
 - `makeQueueEntry`
 - `makeThreadResponse`
 - `makeTurnFailedEvent`

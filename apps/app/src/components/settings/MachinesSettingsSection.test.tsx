@@ -8,6 +8,7 @@ import {
   waitFor,
 } from "@testing-library/react";
 import type { Host } from "@bb/domain";
+import { makeHost } from "@bb/test-helpers/domain-fixtures";
 import { RETRY_ACTION_ICON } from "@bb/domain/update-state";
 import { HOST_DAEMON_PROTOCOL_VERSION } from "@bb/host-daemon-contract";
 import type { SystemConfigResponse } from "@bb/server-contract";
@@ -49,16 +50,10 @@ vi.mock("@/hooks/useHostDaemon", () => ({
 const NOW = Date.now();
 
 function host(overrides: Partial<Host> & Pick<Host, "id" | "name">): Host {
-  return {
-    type: "persistent",
-    status: "connected",
+  return makeHost({
     lastSeenAt: NOW,
-    maxPermissionMode: "full",
-    lastRejectedProtocolVersion: null,
-    createdAt: 0,
-    updatedAt: 0,
     ...overrides,
-  };
+  });
 }
 
 const primaryHost = host({ id: "host_primary", name: "MacBook Pro" });

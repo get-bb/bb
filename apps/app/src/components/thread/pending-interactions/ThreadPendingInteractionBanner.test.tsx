@@ -9,7 +9,6 @@ import type { PluginPendingInteractionProps } from "@get-bb/plugin-sdk";
 import {
   resetPluginSlotStoreForTest,
   setPluginSlotRegistrations,
-  type PluginRegistrationSet,
 } from "@/lib/plugin-slots";
 import {
   resetPluginLogoStoreForTest,
@@ -17,6 +16,7 @@ import {
 } from "@/lib/plugin-logos";
 import { resetAllCrashedPluginSlotsForTest } from "../../plugin/PluginSlotMount";
 import { ThreadPendingInteractionBanner } from "./ThreadPendingInteractionBanner";
+import { makePluginRegistrationSet as registrationSet } from "@/test/fixtures/plugins";
 
 const mocks = vi.hoisted(() => ({
   resolveMutateAsync: vi.fn(async () => ({})),
@@ -122,21 +122,6 @@ const pluginRequest: PluginPendingInteraction = {
   resolution: null,
   payload: { kind: "plugin", title: "Add secrets", data: { fields: ["KEY"] } },
 };
-
-function registrationSet(
-  overrides: Partial<PluginRegistrationSet>,
-): PluginRegistrationSet {
-  return {
-    homepageSections: [],
-    settingsSections: [],
-    navPanels: [],
-    threadPanelActions: [],
-    sidebarFooterActions: [],
-    fileOpeners: [],
-    messageDirectives: [],
-    ...overrides,
-  };
-}
 
 function renderBanner(interaction: PendingInteraction) {
   return render(

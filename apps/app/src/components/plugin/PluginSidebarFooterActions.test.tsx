@@ -7,28 +7,13 @@ import { SidebarProvider } from "@/components/ui/sidebar.js";
 import {
   resetPluginSlotStoreForTest,
   setPluginSlotRegistrations,
-  type PluginRegistrationSet,
 } from "@/lib/plugin-slots";
 import {
   resetPluginLogoStoreForTest,
   setPluginLogoUrls,
 } from "@/lib/plugin-logos";
 import { PluginSidebarFooterActions } from "./PluginSidebarFooterActions";
-
-function registrationSet(
-  overrides: Partial<PluginRegistrationSet>,
-): PluginRegistrationSet {
-  return {
-    homepageSections: [],
-    settingsSections: [],
-    navPanels: [],
-    threadPanelActions: [],
-    sidebarFooterActions: [],
-    fileOpeners: [],
-    messageDirectives: [],
-    ...overrides,
-  };
-}
+import { makePluginRegistrationSet as registrationSet } from "@/test/fixtures/plugins";
 
 function LocationProbe() {
   const location = useLocation();

@@ -495,6 +495,7 @@ describe("plugin catalog service", () => {
                       },
                       category: "acme-tools",
                       screenshots: ["./screenshots/widgets/widgets.webp"],
+                      overview: "# Widgets\n\nLong-form text.\n",
                       publishedAt: "2026-08-20T11:47:04-07:00",
                       updatedAt: "2026-08-27T16:12:00Z",
                     }),
@@ -502,6 +503,7 @@ describe("plugin catalog service", () => {
                       id: "uncategorized",
                       icon: "Zap",
                       category: "missing-category",
+                      overview: `${"a".repeat(4001)}\n`,
                     }),
                   ],
                   {
@@ -540,6 +542,7 @@ describe("plugin catalog service", () => {
         screenshots: [
           "https://marketplace.test/screenshots/widgets/widgets.webp",
         ],
+        overview: "# Widgets\n\nLong-form text.\n",
         collections: [{ id: "new-and-notable", rank: 0 }],
         publishedAt: "2026-08-20T11:47:04-07:00",
         updatedAt: "2026-08-27T16:12:00Z",
@@ -547,6 +550,7 @@ describe("plugin catalog service", () => {
       const uncategorized = (await catalog.search("uncategorized"))[0];
       expect(uncategorized).not.toHaveProperty("categoryId");
       expect(uncategorized).not.toHaveProperty("category");
+      expect(uncategorized).not.toHaveProperty("overview");
       expect(uncategorized?.collections).toEqual([]);
       expect(catalog.collections()).toEqual([
         {

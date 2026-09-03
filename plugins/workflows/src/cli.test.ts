@@ -1,4 +1,7 @@
-import { createFakePluginHost } from "@get-bb/plugin-sdk/testing";
+import {
+  createFakePluginHost,
+  makePluginAgentConfigurationContext,
+} from "@get-bb/plugin-sdk/testing";
 import { readdirSync, readFileSync } from "node:fs";
 import { extname, relative, resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -172,34 +175,9 @@ describe("workflows CLI argument validation", () => {
       'Use this tool to return your final response in the requested structured format. You MUST call this tool exactly once at the end of your response with {"value": ...} to provide the structured output.',
     );
 
-    const author = await harness.resolveAgentConfiguration({
-      thread: {
-        id: "thread-test",
-        title: null,
-        parentThreadId: null,
-        sourceThreadId: null,
-      },
-      project: {
-        id: "project-test",
-        kind: "standard",
-        name: "test",
-        gitRemoteUrl: null,
-      },
-      environment: {
-        id: "environment-test",
-        name: null,
-        path: "/tmp/test",
-        workspaceProvisionType: "unmanaged",
-        branchName: null,
-      },
-      host: { id: "host-test", name: "host" },
-      provider: {
-        id: "codex",
-        model: "gpt-test",
-        capabilities: { supportsNativeUserQuestion: false },
-      },
-      origin: { kind: null, pluginId: null },
-    });
+    const author = await harness.resolveAgentConfiguration(
+      makePluginAgentConfigurationContext(),
+    );
     expect(author.tools.map((tool) => tool.name)).toEqual(["bb_workflow_run"]);
     expect(author.skills).toEqual(["workflows"]);
   });

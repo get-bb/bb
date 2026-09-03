@@ -21,7 +21,7 @@ import type { ProviderInfo } from "@bb/domain";
 import type { SkillSummary } from "@bb/server-contract";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
-import { makeProviderInfo } from "@/test/provider-info-fixture";
+import { makeProviderInfo } from "@bb/test-helpers/domain-fixtures";
 import { sdk } from "@/lib/sdk";
 import {
   buildRegistrySkillReferencePrompt,

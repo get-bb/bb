@@ -1,46 +1,20 @@
 import type { ThreadListEntry } from "@bb/domain";
 import { describe, expect, it } from "vitest";
 import { toPluginSidebarThread } from "./plugin-sidebar-threads";
+import { makeThreadListEntry } from "@bb/test-helpers/domain-fixtures";
 
 function makeThread(overrides: Partial<ThreadListEntry> = {}): ThreadListEntry {
-  return {
+  return makeThreadListEntry({
     id: "thr_1",
     projectId: "proj_1",
-    environmentId: null,
-    providerId: "codex",
     title: "A thread",
     titleFallback: "A thread",
-    sectionId: null,
-    status: "idle",
-    parentThreadId: null,
-    sourceThreadId: null,
-    originKind: null,
-    originPluginId: null,
-    visibility: "visible",
-    archivedAt: null,
-    pinnedAt: null,
-    pinSortKey: null,
-    deletedAt: null,
     lastReadAt: 10,
     latestAttentionAt: 5,
     createdAt: 1,
     updatedAt: 2,
-    activity: {
-      activeWorkflowCount: 0,
-      activeBackgroundAgentCount: 0,
-      activeBackgroundCommandCount: 0,
-      activePlanModeCount: 0,
-      activeGoalCount: 0,
-    },
-    hasPendingInteraction: false,
-    environmentHostId: null,
-    environmentName: null,
-    environmentBranchName: null,
-    queuedWork: "none",
-    environmentWorkspaceDisplayKind: "other",
-    runtime: { displayStatus: "idle", hostReconnectGraceExpiresAt: null },
     ...overrides,
-  };
+  });
 }
 
 describe("toPluginSidebarThread", () => {

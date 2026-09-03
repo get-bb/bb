@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Environment } from "@bb/domain";
+import { makeEnvironment as makeEnvironmentFixture } from "@bb/test-helpers/domain-fixtures";
 import {
   formatEnvironmentDisplay,
   type EnvironmentDisplayHostContext,
@@ -15,33 +16,23 @@ const remoteHostContext: EnvironmentDisplayHostContext = {
   identity: null,
 };
 
-function makeEnvironment(overrides?: Partial<Environment>): Environment {
-  return {
-    id: "env_test",
-    name: null,
-    projectId: "proj_test",
-    hostId: "host_test",
-    path: "/workspace",
+function makeDisplayEnvironment(overrides?: Partial<Environment>): Environment {
+  return makeEnvironmentFixture({
     managed: false,
-    isGitRepo: true,
     isWorktree: false,
     workspaceProvisionType: "unmanaged",
     baseBranch: null,
     branchName: null,
     defaultBranch: null,
-    mergeBaseBranch: null,
-    status: "ready",
-    createdAt: 0,
-    updatedAt: 0,
     ...overrides,
-  };
+  });
 }
 
 describe("formatEnvironmentDisplay", () => {
   describe("display labels", () => {
     it("returns 'Working locally' for unmanaged workspace", () => {
       const result = formatEnvironmentDisplay({
-        environment: makeEnvironment(),
+        environment: makeDisplayEnvironment(),
         host: localHostContext,
       });
       expect(result).toEqual({
@@ -56,7 +47,7 @@ describe("formatEnvironmentDisplay", () => {
 
     it("returns a remote label for remote unmanaged workspace", () => {
       const result = formatEnvironmentDisplay({
-        environment: makeEnvironment(),
+        environment: makeDisplayEnvironment(),
         host: remoteHostContext,
       });
       expect(result).toEqual({
@@ -71,7 +62,7 @@ describe("formatEnvironmentDisplay", () => {
 
     it("returns 'Worktree' for worktree workspace", () => {
       const result = formatEnvironmentDisplay({
-        environment: makeEnvironment({
+        environment: makeDisplayEnvironment({
           isWorktree: true,
           workspaceProvisionType: "managed-worktree",
         }),
@@ -89,7 +80,7 @@ describe("formatEnvironmentDisplay", () => {
 
     it("uses a custom environment name when one is present", () => {
       const result = formatEnvironmentDisplay({
-        environment: makeEnvironment({
+        environment: makeDisplayEnvironment({
           isWorktree: true,
           name: "Review workspace",
           workspaceProvisionType: "managed-worktree",
@@ -103,7 +94,7 @@ describe("formatEnvironmentDisplay", () => {
 
     it("does not compact custom names that resemble generated labels", () => {
       const result = formatEnvironmentDisplay({
-        environment: makeEnvironment({
+        environment: makeDisplayEnvironment({
           name: "Working locally copy",
         }),
         host: remoteHostContext,
@@ -115,7 +106,7 @@ describe("formatEnvironmentDisplay", () => {
 
     it("uses local direct-workspace display for personal environments", () => {
       const result = formatEnvironmentDisplay({
-        environment: makeEnvironment({
+        environment: makeDisplayEnvironment({
           isGitRepo: false,
           workspaceProvisionType: "personal",
         }),
@@ -133,7 +124,7 @@ describe("formatEnvironmentDisplay", () => {
   describe("provisioning", () => {
     it("reports 'Provisioning' for a worktree env before discovery populates isWorktree", () => {
       const result = formatEnvironmentDisplay({
-        environment: makeEnvironment({
+        environment: makeDisplayEnvironment({
           status: "provisioning",
           workspaceProvisionType: "managed-worktree",
           isWorktree: false,
@@ -151,7 +142,7 @@ describe("formatEnvironmentDisplay", () => {
         ["destroyed", "Destroyed"],
       ] as const) {
         const result = formatEnvironmentDisplay({
-          environment: makeEnvironment({
+          environment: makeDisplayEnvironment({
             managed: true,
             isWorktree: true,
             workspaceProvisionType: "managed-worktree",
@@ -167,7 +158,7 @@ describe("formatEnvironmentDisplay", () => {
 
     it("reports 'Provisioning' for a prepared managed worktree before the workspace path exists", () => {
       const result = formatEnvironmentDisplay({
-        environment: makeEnvironment({
+        environment: makeDisplayEnvironment({
           status: "ready",
           path: null,
           workspaceProvisionType: "managed-worktree",
@@ -187,7 +178,7 @@ describe("formatEnvironmentDisplay", () => {
 
     it("reports 'Provisioning' for a local unmanaged env", () => {
       const result = formatEnvironmentDisplay({
-        environment: makeEnvironment({ status: "provisioning" }),
+        environment: makeDisplayEnvironment({ status: "provisioning" }),
         host: localHostContext,
       });
       expect(result.modeLabel).toBe("Provisioning");
@@ -196,7 +187,7 @@ describe("formatEnvironmentDisplay", () => {
 
     it("reports 'Provisioning' before local or remote display applies", () => {
       const result = formatEnvironmentDisplay({
-        environment: makeEnvironment({ status: "provisioning" }),
+        environment: makeDisplayEnvironment({ status: "provisioning" }),
         host: remoteHostContext,
       });
       expect(result).toEqual({

@@ -2,21 +2,15 @@
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import type { Host, ProjectSource } from "@bb/domain";
+import { makeHost } from "@bb/test-helpers/domain-fixtures";
 import { HOST_DAEMON_PROTOCOL_VERSION } from "@bb/host-daemon-contract";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { EnvironmentPickerUI } from "./EnvironmentPicker";
 
-const host: Host = {
+const host = makeHost({
   id: "host_test",
   name: "Local host",
-  type: "persistent",
-  status: "connected",
-  lastSeenAt: null,
-  maxPermissionMode: "full",
-  lastRejectedProtocolVersion: null,
-  createdAt: 0,
-  updatedAt: 0,
-};
+});
 
 const sources: readonly ProjectSource[] = [
   {

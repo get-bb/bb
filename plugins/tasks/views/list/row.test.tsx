@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
 import { COMPACT_VIEWPORT_QUERY } from "@bb/shared-ui/hooks/use-compact-viewport";
 import type { Task, TaskMutationResult } from "../../shared/contract.js";
+import { makeTask } from "../../test-fixtures.js";
 
 window.matchMedia = (query: string) => ({
   matches: query === COMPACT_VIEWPORT_QUERY,
@@ -47,21 +48,13 @@ const label = {
 };
 
 function task(overrides: Partial<Task> & Pick<Task, "id" | "number">): Task {
-  return {
+  return makeTask({
     projectId: PROJECT_ID,
     key: `TSK-${overrides.number}`,
     title: `Task ${overrides.number}`,
-    description: "",
-    status: "todo",
-    priority: "none",
-    dueDate: null,
-    parentTaskId: null,
     position: overrides.number,
-    createdAt: "2026-07-15T00:00:00.000Z",
-    updatedAt: "2026-07-15T00:00:00.000Z",
-    labelIds: [],
     ...overrides,
-  };
+  });
 }
 
 interface Options {

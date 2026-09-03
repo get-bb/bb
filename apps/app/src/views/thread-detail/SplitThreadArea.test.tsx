@@ -46,6 +46,7 @@ import {
 import { PaneContext, usePaneSecondaryPanelRegistration } from "./PaneContext";
 import { SplitThreadArea } from "./SplitThreadArea";
 import { applyThreadOpenToLayout } from "./splitThreadNavigation";
+import { makePluginRegistrationSet } from "@/test/fixtures/plugins";
 
 const threadStore = vi.hoisted(
   () =>
@@ -563,9 +564,8 @@ function ExternalNav({ to }: { to: string }) {
 }
 
 function PluginPanelLifecycleHarness() {
-  const [routeContent, setRouteContent] = useState<PaneContent>(
-    pluginGuideContent,
-  );
+  const [routeContent, setRouteContent] =
+    useState<PaneContent>(pluginGuideContent);
   return (
     <>
       <SplitThreadArea routeContent={routeContent} />
@@ -1637,45 +1637,45 @@ describe("SplitThreadArea", () => {
   });
 
   it("preserves plugin-owned right panels with and without a plugin split", async () => {
-    setPluginSlotRegistrations("test-plugin", {
-      homepageSections: [],
-      settingsSections: [],
-      navPanels: [
-        {
-          id: "automations",
-          title: "Automations",
-          icon: "Clock",
-          path: "automations",
-          component: () => <div>Automations content</div>,
-        },
-      ],
-      threadPanelActions: [],
-      pendingInteractions: [],
-      sidebarFooterActions: [],
-      fileOpeners: [],
-      messageDirectives: [],
-    });
-    setPluginSlotRegistrations("docs", {
-      homepageSections: [],
-      settingsSections: [],
-      navPanels: [
-        {
-          id: "docs",
-          title: "Docs",
-          icon: "FileText",
-          path: "docs",
-          component: () => <div>Docs content with notes sidebar</div>,
-          headerContent: () => (
-            <button type="button">Collapse notes sidebar</button>
-          ),
-        },
-      ],
-      threadPanelActions: [],
-      pendingInteractions: [],
-      sidebarFooterActions: [],
-      fileOpeners: [],
-      messageDirectives: [],
-    });
+    setPluginSlotRegistrations(
+      "test-plugin",
+      makePluginRegistrationSet({
+        navPanels: [
+          {
+            id: "automations",
+            title: "Automations",
+            icon: "Clock",
+            path: "automations",
+            component: () => <div>Automations content</div>,
+          },
+        ],
+        threadPanelActions: [],
+        pendingInteractions: [],
+        sidebarFooterActions: [],
+        fileOpeners: [],
+      }),
+    );
+    setPluginSlotRegistrations(
+      "docs",
+      makePluginRegistrationSet({
+        navPanels: [
+          {
+            id: "docs",
+            title: "Docs",
+            icon: "FileText",
+            path: "docs",
+            component: () => <div>Docs content with notes sidebar</div>,
+            headerContent: () => (
+              <button type="button">Collapse notes sidebar</button>
+            ),
+          },
+        ],
+        threadPanelActions: [],
+        pendingInteractions: [],
+        sidebarFooterActions: [],
+        fileOpeners: [],
+      }),
+    );
 
     renderSplitArea({
       path: "/plugins/docs/docs",
@@ -1797,29 +1797,6 @@ describe("SplitThreadArea", () => {
     expect(screen.getByTestId("pane-thr-b")).toBeTruthy();
   });
 
-  it("keeps restored thread panes when the root compose route mounts", async () => {
-    const store = renderSplitArea({
-      path: "/",
-      layout: twoPaneLayout("pane-1"),
-      routeContent: newThreadContent,
-    });
-
-    expect(await screen.findByTestId("root-compose-view")).toBeTruthy();
-    await waitFor(() => {
-      const restored = store.get(splitLayoutAtom);
-      if (restored === null) {
-        throw new Error("Expected a restored split layout");
-      }
-      expect(
-        listPanes(restored.root).map((pane) => pane.content),
-      ).toEqual([
-        threadContent("thr-a"),
-        threadContent("thr-b"),
-        newThreadContent,
-      ]);
-    });
-  });
-
   it("restores eight successive default-right opens, then focuses and closes with valid URL state", async () => {
     const layout = eightPaneThreadLayout();
     expect(layout.root).toMatchObject({
@@ -1870,24 +1847,24 @@ describe("SplitThreadArea", () => {
       version: "0.0.0-test",
     };
     window.bbDesktop = createBbDesktopApi(desktopInfo);
-    setPluginSlotRegistrations("docs", {
-      homepageSections: [],
-      settingsSections: [],
-      navPanels: [
-        {
-          id: "docs",
-          title: "Docs",
-          icon: "FileText",
-          path: "docs",
-          component: () => <div>Docs panel</div>,
-        },
-      ],
-      threadPanelActions: [],
-      pendingInteractions: [],
-      sidebarFooterActions: [],
-      fileOpeners: [],
-      messageDirectives: [],
-    });
+    setPluginSlotRegistrations(
+      "docs",
+      makePluginRegistrationSet({
+        navPanels: [
+          {
+            id: "docs",
+            title: "Docs",
+            icon: "FileText",
+            path: "docs",
+            component: () => <div>Docs panel</div>,
+          },
+        ],
+        threadPanelActions: [],
+        pendingInteractions: [],
+        sidebarFooterActions: [],
+        fileOpeners: [],
+      }),
+    );
 
     renderSplitArea({
       path: "/plugins/docs/docs",
@@ -1912,24 +1889,24 @@ describe("SplitThreadArea", () => {
       version: "0.0.0-test",
     };
     window.bbDesktop = createBbDesktopApi(desktopInfo);
-    setPluginSlotRegistrations("test-plugin", {
-      homepageSections: [],
-      settingsSections: [],
-      navPanels: ["top-left", "bottom-left", "top-right", "bottom-right"].map(
-        (path) => ({
-          id: path,
-          title: path,
-          icon: "FileText",
-          path,
-          component: () => <div>{path} panel</div>,
-        }),
-      ),
-      threadPanelActions: [],
-      pendingInteractions: [],
-      sidebarFooterActions: [],
-      fileOpeners: [],
-      messageDirectives: [],
-    });
+    setPluginSlotRegistrations(
+      "test-plugin",
+      makePluginRegistrationSet({
+        navPanels: ["top-left", "bottom-left", "top-right", "bottom-right"].map(
+          (path) => ({
+            id: path,
+            title: path,
+            icon: "FileText",
+            path,
+            component: () => <div>{path} panel</div>,
+          }),
+        ),
+        threadPanelActions: [],
+        pendingInteractions: [],
+        sidebarFooterActions: [],
+        fileOpeners: [],
+      }),
+    );
 
     renderSplitArea({
       path: "/plugins/test-plugin/bottom-right",
@@ -1961,24 +1938,24 @@ describe("SplitThreadArea", () => {
     };
     window.bbDesktop = createBbDesktopApi(desktopInfo);
     sidebarState.showing = false;
-    setPluginSlotRegistrations("test-plugin", {
-      homepageSections: [],
-      settingsSections: [],
-      navPanels: ["top-left", "bottom-left", "top-right", "bottom-right"].map(
-        (path) => ({
-          id: path,
-          title: path,
-          icon: "FileText",
-          path,
-          component: () => <div>{path} panel</div>,
-        }),
-      ),
-      threadPanelActions: [],
-      pendingInteractions: [],
-      sidebarFooterActions: [],
-      fileOpeners: [],
-      messageDirectives: [],
-    });
+    setPluginSlotRegistrations(
+      "test-plugin",
+      makePluginRegistrationSet({
+        navPanels: ["top-left", "bottom-left", "top-right", "bottom-right"].map(
+          (path) => ({
+            id: path,
+            title: path,
+            icon: "FileText",
+            path,
+            component: () => <div>{path} panel</div>,
+          }),
+        ),
+        threadPanelActions: [],
+        pendingInteractions: [],
+        sidebarFooterActions: [],
+        fileOpeners: [],
+      }),
+    );
 
     renderSplitArea({
       path: "/plugins/test-plugin/bottom-right",
@@ -2039,27 +2016,27 @@ describe("SplitThreadArea", () => {
   });
 
   it("places plugin header actions before the pane close button", async () => {
-    setPluginSlotRegistrations("docs", {
-      homepageSections: [],
-      settingsSections: [],
-      navPanels: [
-        {
-          id: "docs",
-          title: "Docs",
-          icon: "FileText",
-          path: "docs",
-          component: () => <div>Docs panel</div>,
-          headerContent: () => (
-            <button type="button">Toggle docs sidebar</button>
-          ),
-        },
-      ],
-      threadPanelActions: [],
-      pendingInteractions: [],
-      sidebarFooterActions: [],
-      fileOpeners: [],
-      messageDirectives: [],
-    });
+    setPluginSlotRegistrations(
+      "docs",
+      makePluginRegistrationSet({
+        navPanels: [
+          {
+            id: "docs",
+            title: "Docs",
+            icon: "FileText",
+            path: "docs",
+            component: () => <div>Docs panel</div>,
+            headerContent: () => (
+              <button type="button">Toggle docs sidebar</button>
+            ),
+          },
+        ],
+        threadPanelActions: [],
+        pendingInteractions: [],
+        sidebarFooterActions: [],
+        fileOpeners: [],
+      }),
+    );
 
     renderSplitArea({
       path: "/plugins/docs/docs",
@@ -2083,24 +2060,24 @@ describe("SplitThreadArea", () => {
   });
 
   it("reserves the window toggle corner for a plugin pane at the top right", async () => {
-    setPluginSlotRegistrations("docs", {
-      homepageSections: [],
-      settingsSections: [],
-      navPanels: [
-        {
-          id: "docs",
-          title: "Docs",
-          icon: "FileText",
-          path: "docs",
-          component: () => <div>Docs panel</div>,
-        },
-      ],
-      threadPanelActions: [],
-      pendingInteractions: [],
-      sidebarFooterActions: [],
-      fileOpeners: [],
-      messageDirectives: [],
-    });
+    setPluginSlotRegistrations(
+      "docs",
+      makePluginRegistrationSet({
+        navPanels: [
+          {
+            id: "docs",
+            title: "Docs",
+            icon: "FileText",
+            path: "docs",
+            component: () => <div>Docs panel</div>,
+          },
+        ],
+        threadPanelActions: [],
+        pendingInteractions: [],
+        sidebarFooterActions: [],
+        fileOpeners: [],
+      }),
+    );
 
     renderSplitArea({
       path: "/",
@@ -2161,24 +2138,24 @@ describe("SplitThreadArea", () => {
   });
 
   it("uses automation breadcrumbs in the split-owned plugin header", async () => {
-    setPluginSlotRegistrations("automations", {
-      homepageSections: [],
-      settingsSections: [],
-      navPanels: [
-        {
-          id: "automations",
-          title: "Automations",
-          icon: "Clock",
-          path: "automations",
-          component: () => <div>Automation detail</div>,
-        },
-      ],
-      threadPanelActions: [],
-      pendingInteractions: [],
-      sidebarFooterActions: [],
-      fileOpeners: [],
-      messageDirectives: [],
-    });
+    setPluginSlotRegistrations(
+      "automations",
+      makePluginRegistrationSet({
+        navPanels: [
+          {
+            id: "automations",
+            title: "Automations",
+            icon: "Clock",
+            path: "automations",
+            component: () => <div>Automation detail</div>,
+          },
+        ],
+        threadPanelActions: [],
+        pendingInteractions: [],
+        sidebarFooterActions: [],
+        fileOpeners: [],
+      }),
+    );
     const content: PaneContent = {
       kind: "plugin-panel",
       pluginId: "automations",

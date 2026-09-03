@@ -23,7 +23,6 @@ import { SidebarProvider } from "@/components/ui/sidebar.js";
 import {
   resetPluginSlotStoreForTest,
   setPluginSlotRegistrations,
-  type PluginRegistrationSet,
 } from "@/lib/plugin-slots";
 import {
   AUTOMATIONS_PLUGIN_ID,
@@ -44,21 +43,7 @@ import {
 } from "./pluginNavSidebarAtoms";
 import { splitLayoutAtom } from "@/lib/split-layout/atoms";
 import { countPanes, findPaneByContent } from "@/lib/split-layout";
-
-function registrationSet(
-  overrides: Partial<PluginRegistrationSet>,
-): PluginRegistrationSet {
-  return {
-    homepageSections: [],
-    settingsSections: [],
-    navPanels: [],
-    threadPanelActions: [],
-    sidebarFooterActions: [],
-    fileOpeners: [],
-    messageDirectives: [],
-    ...overrides,
-  };
-}
+import { makePluginRegistrationSet as registrationSet } from "@/test/fixtures/plugins";
 
 function registerPanel(
   pluginId: string,
@@ -132,10 +117,7 @@ function renderSidebarItems(options: RenderSidebarItemsOptions = {}) {
     store.set(pluginNavPanelOrderAtom, options.storedOrder);
   }
   if ("storedVisibleKeys" in options) {
-    store.set(
-      pluginNavVisiblePanelKeysAtom,
-      options.storedVisibleKeys ?? null,
-    );
+    store.set(pluginNavVisiblePanelKeysAtom, options.storedVisibleKeys ?? null);
   }
   if (options.splitEnabled) {
     store.set(splitLayoutAtom, {
@@ -170,7 +152,9 @@ function LocationProbe() {
   return <output data-testid="location-path">{useLocation().pathname}</output>;
 }
 
-function panelRowNames(labels: readonly string[] = ["Docs", "GitHub"]): string[] {
+function panelRowNames(
+  labels: readonly string[] = ["Docs", "GitHub"],
+): string[] {
   const rowLabels = new Set(labels);
   const container = screen.queryByTestId("plugin-nav-sidebar-items");
   if (!container) return [];
@@ -184,9 +168,7 @@ function panelRowNames(labels: readonly string[] = ["Docs", "GitHub"]): string[]
 function builtInEntry(
   id: string,
   title: string,
-  onActivate: (
-    event: ReactMouseEvent<HTMLButtonElement>,
-  ) => void = vi.fn(),
+  onActivate: (event: ReactMouseEvent<HTMLButtonElement>) => void = vi.fn(),
 ): BuiltInSidebarNavEntry {
   return {
     kind: "built-in",

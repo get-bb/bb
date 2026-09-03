@@ -641,10 +641,29 @@ fi
 # Tests and source-development smoke runs can leave the enrolled daemon in the
 # foreground-supervised process without modifying the user's service manager.
 if [ "${BB_INSTALL_SKIP_SERVICE:-0}" = 1 ]; then
+  if [ -z "$join_pid" ] && ! daemon_status_matches "$host_daemon_port" no; then
+    daemon_log="$data_dir/install-daemon.log"
+    active_step "Starting the host daemon"
+    detail "Host daemon output is logged to $daemon_log"
+    BB_APP_NPM_PREFIX="$bb_app_npm_prefix" BB_DATA_DIR="$data_dir" nohup "$bb_app" host-daemon \
+      --auto-update \
+      --host-daemon-port "$host_daemon_port" \
+      --server-url "$server_url" >"$daemon_log" 2>&1 &
+    join_pid=$!
+    echo "$join_pid" >"$data_dir/install-daemon.pid"
+    if ! wait_for_daemon_connection "the host daemon"; then
+      kill "$join_pid" 2>/dev/null || true
+      wait "$join_pid" 2>/dev/null || true
+      fail_step "The bb host daemon did not connect to $server_url."
+      detail "See $daemon_log" >&2
+      exit 1
+    fi
+    complete_step "Host daemon connected"
+  fi
   if [ -n "$join_pid" ]; then
     warning_step "Service installation skipped; daemon PID $join_pid is still running."
   else
-    warning_step "Service installation skipped."
+    warning_step "Service installation skipped; the daemon is already running."
   fi
   exit 0
 fi

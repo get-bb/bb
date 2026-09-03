@@ -174,3 +174,35 @@ BB's own official plugins are separate: inclusion in the `bb-community`
 marketplace is a BB release decision, not part of the plugin authoring
 workflow, and the bundled official plugins ship inside the app itself and
 install from that local copy with no network fetch.
+
+### Store listing text
+
+A store listing has two text fields. The short `bb.description` in
+package.json is the one-sentence hook. It appears on every browse card and as
+the lead paragraph on the detail page. Keep it under about 140 characters.
+State the outcome the user gets.
+
+An optional `PLUGIN_OVERVIEW.md` beside package.json holds the long-form
+description. The detail page shows it in an Overview section under the lead
+paragraph, in the app and on the public getbb.app marketplace. The
+`submit-a-plugin` skill copies the file into the marketplace repository as
+`overview/<plugin-id>.md` and references it from the entry with
+`"overview": "./overview/<plugin-id>.md"`. A bundled BB plugin uses the same
+file, and the bb-official generator folds it into the built catalog.
+
+Follow these rules. Marketplace CI rejects a file that breaks one.
+
+- UTF-8 text with a maximum of 4000 characters. Aim for 700 to 1800.
+- Headings, paragraphs, emphasis, strong text, strikethrough, inline code,
+  code blocks, blockquotes, lists, thematic breaks, and links only.
+- No raw HTML, images, tables, footnotes, or task lists. Put images in
+  screenshots instead.
+- Each link is an absolute https URL. The store opens it in the browser.
+- Use `##` headings for sections. The page renders each heading as a small
+  uppercase label. Do not start with a `#` title, and do not repeat the short
+  description as the first sentence.
+
+Lead with the outcome, then sections such as What you get, How it works, and
+Requirements. Name every cost: an external service, an account, a separate
+install, or a limited operating system. Name agent surfaces with their exact
+tool or `bb` command names in inline code.

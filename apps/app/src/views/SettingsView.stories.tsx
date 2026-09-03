@@ -9,6 +9,7 @@ import {
   defaultAppSettings,
   type AppSettings,
 } from "@bb/domain";
+import { makeHost } from "@bb/test-helpers/domain-fixtures";
 import type {
   ProviderUsage,
   WorkspaceOpenTarget,
@@ -167,28 +168,20 @@ const usageFixture: {
 };
 
 const usageHosts: Host[] = [
-  {
+  makeHost({
     id: "host-macbook",
     name: "MacBook Pro",
-    type: "persistent",
-    status: "connected",
     lastSeenAt: Date.now(),
-    maxPermissionMode: "full",
-    lastRejectedProtocolVersion: null,
     createdAt: 1,
     updatedAt: 1,
-  },
-  {
+  }),
+  makeHost({
     id: "host-studio",
     name: "Mac Studio",
-    type: "persistent",
-    status: "connected",
     lastSeenAt: Date.now(),
-    maxPermissionMode: "full",
-    lastRejectedProtocolVersion: null,
     createdAt: 1,
     updatedAt: 1,
-  },
+  }),
 ];
 
 function useSettingsStoryState() {
