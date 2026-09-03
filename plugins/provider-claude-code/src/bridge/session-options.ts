@@ -30,6 +30,7 @@ export interface BuildSessionOptionsArgs {
   plugins?: Options["plugins"];
   reasoningLevel?: ReasoningLevel;
   workflowsEnabled: boolean;
+  chromeEnabled: boolean;
   memoryEnabled?: boolean;
 }
 
@@ -80,6 +81,12 @@ function buildFlagSettings(params: BuildSessionOptionsArgs): Settings {
     enableWorkflows: params.workflowsEnabled,
     ultracode: params.reasoningLevel === "ultracode",
   };
+}
+
+export function buildChromeExtraArgs(
+  chromeEnabled: boolean,
+): Options["extraArgs"] | undefined {
+  return chromeEnabled ? { chrome: null } : undefined;
 }
 
 export function buildMutableFlagSettings(args: {
@@ -302,6 +309,7 @@ export function buildSessionOptions(
     : [];
   const pathToClaudeCodeExecutable = resolveClaudeCodeExecutable({ env });
   const flagSettings = buildFlagSettings(params);
+  const extraArgs = buildChromeExtraArgs(params.chromeEnabled);
 
   return {
     cwd: params.cwd,
@@ -316,6 +324,7 @@ export function buildSessionOptions(
       ? { thinking: SUMMARIZED_ADAPTIVE_THINKING }
       : {}),
     settings: flagSettings,
+    ...(extraArgs ? { extraArgs } : {}),
     ...(pathToClaudeCodeExecutable ? { pathToClaudeCodeExecutable } : {}),
     ...(params.plugins ? { plugins: params.plugins } : {}),
     ...(sandbox ? { sandbox } : {}),

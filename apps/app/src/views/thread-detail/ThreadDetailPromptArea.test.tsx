@@ -20,6 +20,10 @@ import {
 } from "@testing-library/react";
 import type { TimelineWorkflowWorkRow } from "@bb/server-contract";
 import { createDeferredPromise } from "@bb/test-helpers";
+import {
+  makeThreadQueuedMessage as makeThreadQueuedMessageFixture,
+  makeThreadWithRuntime as makeThreadWithRuntimeFixture,
+} from "@bb/test-helpers/domain-fixtures";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { workflowRow } from "@/test/fixtures/thread-timeline-rows";
@@ -36,6 +40,7 @@ import {
   ThreadDetailPromptArea,
   type ThreadDetailSentMessageEdit,
 } from "./ThreadDetailPromptArea";
+import { makePluginRegistrationSet } from "@/test/fixtures/plugins";
 
 const mocks = vi.hoisted(() => ({
   cancelThreadPlanMutate: vi.fn(),
@@ -584,39 +589,26 @@ vi.mock("@/hooks/queries/thread-queries", () => ({
 function makeQueuedMessage(
   overrides: Partial<ThreadQueuedMessage> = {},
 ): ThreadQueuedMessage {
-  return {
+  return makeThreadQueuedMessageFixture({
     id: "qmsg_1",
     threadId: "thr_1",
     content: [{ type: "text", text: "Already queued", mentions: [] }],
     model: "gpt-5",
-    reasoningLevel: "medium",
-    permissionMode: "auto",
-    serviceTier: "default",
-    groupWithNext: false,
-    sendAt: null,
-    waitingOn: null,
-    failureReason: null,
-    payload: { kind: "inline" },
-    editable: true,
     createdAt: 1,
     updatedAt: 1,
     ...overrides,
-  };
+  });
 }
 
 function makeThread(
   overrides: Partial<ThreadWithRuntime> = {},
 ): ThreadWithRuntime {
-  return {
-    archivedAt: null,
+  return makeThreadWithRuntimeFixture({
     environmentId: null,
     id: "thr_1",
     projectId: "proj_1",
-    providerId: "codex",
-    runtime: { displayStatus: "idle" },
-    status: "idle",
     ...overrides,
-  } as ThreadWithRuntime;
+  });
 }
 
 const activePlan = {
@@ -1601,41 +1593,39 @@ describe("ThreadDetailPromptArea", () => {
   });
 
   it("keeps plugin banners mounted while pending interaction suspends editor regions", () => {
-    setPluginSlotRegistrations("pending-plugin", {
-      homepageSections: [],
-      settingsSections: [],
-      navPanels: [],
-      threadPanelActions: [],
-      composerCustomizations: [
-        {
-          id: "pending",
-          scopes: ["thread"],
-          actions: [
-            { id: "action", component: () => <button>Editor action</button> },
-          ],
-          plusMenu: [{ id: "menu", label: "Editor menu", run: () => {} }],
-          banners: [
-            {
-              id: "banner",
-              component: () => <div>Persistent plugin banner</div>,
-            },
-          ],
-          richText: {
-            effects: [
+    setPluginSlotRegistrations(
+      "pending-plugin",
+      makePluginRegistrationSet({
+        composerCustomizations: [
+          {
+            id: "pending",
+            scopes: ["thread"],
+            actions: [
+              { id: "action", component: () => <button>Editor action</button> },
+            ],
+            plusMenu: [{ id: "menu", label: "Editor menu", run: () => {} }],
+            banners: [
               {
-                id: "rule",
-                className: "pending-rule",
-                match: (text) => [{ from: 0, to: text.length }],
+                id: "banner",
+                component: () => <div>Persistent plugin banner</div>,
               },
             ],
+            richText: {
+              effects: [
+                {
+                  id: "rule",
+                  className: "pending-rule",
+                  match: (text) => [{ from: 0, to: text.length }],
+                },
+              ],
+            },
           },
-        },
-      ],
-      pendingInteractions: [],
-      sidebarFooterActions: [],
-      fileOpeners: [],
-      messageDirectives: [],
-    });
+        ],
+        pendingInteractions: [],
+        sidebarFooterActions: [],
+        fileOpeners: [],
+      }),
+    );
 
     renderPromptArea({ pendingInteractions: [makePendingInteraction()] });
 

@@ -4,28 +4,12 @@ import {
   getPluginSlotSnapshot,
   resetPluginSlotStoreForTest,
   setPluginSlotRegistrations,
-  type PluginRegistrationSet,
 } from "./plugin-slots";
 import { resolveTimelineRenderer } from "./plugin-slot-resolvers";
+import { makePluginRegistrationSet as registrationSet } from "@/test/fixtures/plugins";
 
 function Renderer(_props: PluginTimelineRendererProps) {
   return null;
-}
-
-function registrationSet(
-  overrides: Partial<PluginRegistrationSet> = {},
-): PluginRegistrationSet {
-  return {
-    homepageSections: [],
-    settingsSections: [],
-    navPanels: [],
-    threadPanelActions: [],
-    composerCustomizations: [],
-    sidebarFooterActions: [],
-    fileOpeners: [],
-    messageDirectives: [],
-    ...overrides,
-  };
 }
 
 afterEach(() => {

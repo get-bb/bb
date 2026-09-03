@@ -13,6 +13,7 @@ import { MemoryRouter } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Host } from "@bb/domain";
+import { makeHost as makeHostFixture } from "@bb/test-helpers/domain-fixtures";
 import type { BbDesktopApi, BbDesktopInfo } from "@bb/desktop-contract";
 import {
   HOST_DAEMON_PROTOCOL_VERSION,
@@ -50,7 +51,7 @@ vi.mock("@/components/ui/app-toast", () => ({
 }));
 
 vi.mock("@/lib/sdk", async () => {
-  const { makeProviderInfo } = await import("@/test/provider-info-fixture");
+  const { makeProviderInfo } = await import("@bb/test-helpers/domain-fixtures");
   return {
     sdk: {
       system: { version: vi.fn() },
@@ -122,16 +123,12 @@ vi.mock("@/components/provider-cli/provider-cli-install", async (original) => {
 });
 
 function makeHost(overrides: Partial<Host> & Pick<Host, "id" | "name">): Host {
-  return {
-    type: "persistent",
-    status: "connected",
+  return makeHostFixture({
     lastSeenAt: Date.now(),
-    maxPermissionMode: "full",
-    lastRejectedProtocolVersion: null,
     createdAt: Date.now(),
     updatedAt: Date.now(),
     ...overrides,
-  };
+  });
 }
 
 function makeUpdateIssue(args: {

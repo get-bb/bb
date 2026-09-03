@@ -142,7 +142,7 @@ describe("named managed-worktree base branch", () => {
     });
   });
 
-  it("keeps a fork on its source branch even when local main is behind origin", async () => {
+  it("passes a fork's explicitly named base branch through unchanged", async () => {
     await withTestHarness(async (harness) => {
       const { host, session } = seedHostSession(harness.deps);
       registerTestHostRpcCapture(harness, {
@@ -155,7 +155,7 @@ describe("named managed-worktree base branch", () => {
         path: SOURCE_PATH,
       });
       const environment = seedEnvironment(harness.deps, {
-        branchName: "main",
+        branchName: "feature/source",
         hostId: host.id,
         path: SOURCE_PATH,
         projectId: project.id,
@@ -183,7 +183,14 @@ describe("named managed-worktree base branch", () => {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           sourceThreadId: sourceThread.id,
-          workspace: "isolated",
+          environment: {
+            type: "host",
+            hostId: host.id,
+            workspace: {
+              type: "managed-worktree",
+              baseBranch: { kind: "named", name: "main" },
+            },
+          },
         }),
       });
       expect(response.status).toBe(201);

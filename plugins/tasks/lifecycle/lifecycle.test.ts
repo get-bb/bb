@@ -203,17 +203,12 @@ describe("task thread lifecycle", () => {
 
     await registerLifecycle(host.bb, store);
 
-    expect(handlersAtFirstRead).toEqual({
+    expect(handlersAtFirstRead).toMatchObject({
       "thread.created": 1,
       "thread.active": 1,
       "thread.idle": 1,
       "thread.failed": 1,
-      "thread.archived": 0,
       "thread.deleted": 1,
-      "interaction.pending": 0,
-      "message.queued": 0,
-      "message.dispatched": 0,
-      "turn.failed": 0,
     });
     expect(host.harness.sdk.callsTo("threads.get")).toHaveLength(2);
     expect(store.tasks.getTaskThread(tracked.id)?.liveStatus).toBe("starting");

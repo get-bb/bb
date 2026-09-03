@@ -54,6 +54,7 @@ import {
   resetPluginLogoStoreForTest,
   setPluginLogoUrls,
 } from "@/lib/plugin-logos";
+import { makePluginRegistrationSet } from "@/test/fixtures/plugins";
 import {
   AUTOMATION_PROMPT_ACTION,
   CREATE_PLUGIN_PROMPT_ACTION,
@@ -82,17 +83,9 @@ function pluginRegistrationSet(
     PluginRegistrationSet["composerCustomizations"]
   >,
 ): PluginRegistrationSet {
-  return {
-    homepageSections: [],
-    settingsSections: [],
-    navPanels: [],
-    threadPanelActions: [],
+  return makePluginRegistrationSet({
     composerCustomizations,
-    pendingInteractions: [],
-    sidebarFooterActions: [],
-    fileOpeners: [],
-    messageDirectives: [],
-  };
+  });
 }
 
 interface PromptChange {
@@ -278,6 +271,7 @@ function renderPromptBox(
     mentionTriggers?: TypeaheadConfig["mention"]["triggers"];
     mentionSuggestions?: readonly PromptMentionSuggestion[];
     commandSuggestions?: TypeaheadConfig["command"]["suggestions"];
+    onAttachFiles?: (files: File[]) => Promise<void> | void;
   } = {},
 ) {
   const changes: PromptChange[] = [];
@@ -309,7 +303,7 @@ function renderPromptBox(
           onCommandQueryChange,
         })}
         mentionMenuPlacement="bottom"
-        attachments={{}}
+        attachments={{ onAttachFiles: options.onAttachFiles }}
         promptActions={promptActions}
         promptBoxRef={promptBoxRef}
       />
@@ -416,15 +410,20 @@ function pastePlainText(text: string) {
 }
 
 function pasteClipboard({
+  files = [],
   html = "",
   plainText = "",
 }: {
+  files?: File[];
   html?: string;
   plainText?: string;
 }) {
   fireEvent.paste(getPromptEditorElement(), {
     clipboardData: {
-      items: [],
+      items: files.map((file) => ({
+        kind: "file",
+        getAsFile: () => file,
+      })),
       getData: (type: string) => {
         if (type === "text/html") return html;
         if (type === "text/plain") return plainText;
@@ -3381,6 +3380,20 @@ describe("PromptBoxInternal prompt actions", () => {
       coordsAtPosSpy.mockRestore();
       scrollRectSpy.mockRestore();
     }
+  });
+
+  it("pastes clipboard text and attaches the clipboard image", async () => {
+    const onAttachFiles = vi.fn().mockResolvedValue(undefined);
+    const { changes, promptBoxRef } = renderPromptBox("Before ", {
+      onAttachFiles,
+    });
+    const image = new File(["image"], "photo.png", { type: "image/png" });
+
+    await focusPromptEnd(promptBoxRef);
+    pasteClipboard({ files: [image], plainText: "A photo" });
+
+    await waitFor(() => expect(latestValue(changes)).toBe("Before A photo"));
+    expect(onAttachFiles).toHaveBeenCalledWith([image]);
   });
 
   it("preserves blockquote structure when pasting copied blockquote html", async () => {

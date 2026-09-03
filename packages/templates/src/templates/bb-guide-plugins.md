@@ -367,8 +367,11 @@ bb stores the last catalog that it validated. An invalid manifest keeps that
 catalog. The app also includes a seed snapshot for the first offline start. A
 refresh changes discovery data and icons only. It never installs, updates, or
 runs plugin code. The server fetches and serves entry icons. The detail page
-loads screenshots from the URLs that the marketplace declares. An install
-uses the normal git or npm source pipeline. bb records the source marketplace.
+loads screenshots from the URLs that the marketplace declares. An entry can
+also carry a long-form markdown description. The detail page renders it below
+the short description, and `bb plugin search --json` returns it as `overview`.
+An install uses the normal git or npm source pipeline. bb records the source
+marketplace.
 
 The BB Community marketplace also publishes install counts beside its
 manifest, at https://getbb.app/marketplace/v1/stats.json. bb re-reads that

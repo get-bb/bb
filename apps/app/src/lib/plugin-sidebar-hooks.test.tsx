@@ -3,7 +3,7 @@
 import { act, cleanup, renderHook } from "@testing-library/react";
 import { PERSONAL_PROJECT_ID, type ThreadListEntry } from "@bb/domain";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { makeThreadListEntry } from "@/test/fixtures/thread-list-entries";
+import { makeThreadListEntry } from "@bb/test-helpers/domain-fixtures";
 import {
   useSidebarThreadActions,
   useSidebarThreads,

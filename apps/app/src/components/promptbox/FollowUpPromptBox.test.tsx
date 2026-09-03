@@ -20,6 +20,7 @@ import {
   FollowUpPromptBox,
   type FollowUpSubmitMode,
 } from "@/components/promptbox/FollowUpPromptBox";
+import { makePluginRegistrationSet } from "@/test/fixtures/plugins";
 
 const mocks = vi.hoisted(() => {
   const values = {
@@ -333,27 +334,25 @@ describe("FollowUpPromptBox", () => {
   });
 
   it("includes expanding plugin banners in measured stack compensation", () => {
-    setPluginSlotRegistrations("measured-banner", {
-      homepageSections: [],
-      settingsSections: [],
-      navPanels: [],
-      threadPanelActions: [],
-      composerCustomizations: [
-        {
-          id: "measured",
-          banners: [
-            {
-              id: "banner",
-              component: () => <div>Expandable plugin banner</div>,
-            },
-          ],
-        },
-      ],
-      pendingInteractions: [],
-      sidebarFooterActions: [],
-      fileOpeners: [],
-      messageDirectives: [],
-    });
+    setPluginSlotRegistrations(
+      "measured-banner",
+      makePluginRegistrationSet({
+        composerCustomizations: [
+          {
+            id: "measured",
+            banners: [
+              {
+                id: "banner",
+                component: () => <div>Expandable plugin banner</div>,
+              },
+            ],
+          },
+        ],
+        pendingInteractions: [],
+        sidebarFooterActions: [],
+        fileOpeners: [],
+      }),
+    );
     const draft = { text: "Follow up", mentions: [], attachments: [] };
     const props = createFollowUpPromptBoxProps({ kind: "ready" });
     render(
@@ -402,27 +401,25 @@ describe("FollowUpPromptBox", () => {
   });
 
   it("renders plugin banners above native stack content", () => {
-    setPluginSlotRegistrations("ordered-banner", {
-      homepageSections: [],
-      settingsSections: [],
-      navPanels: [],
-      threadPanelActions: [],
-      composerCustomizations: [
-        {
-          id: "ordered",
-          banners: [
-            {
-              id: "header",
-              component: () => <div data-testid="plugin-header">Header</div>,
-            },
-          ],
-        },
-      ],
-      pendingInteractions: [],
-      sidebarFooterActions: [],
-      fileOpeners: [],
-      messageDirectives: [],
-    });
+    setPluginSlotRegistrations(
+      "ordered-banner",
+      makePluginRegistrationSet({
+        composerCustomizations: [
+          {
+            id: "ordered",
+            banners: [
+              {
+                id: "header",
+                component: () => <div data-testid="plugin-header">Header</div>,
+              },
+            ],
+          },
+        ],
+        pendingInteractions: [],
+        sidebarFooterActions: [],
+        fileOpeners: [],
+      }),
+    );
     const draft = { text: "Follow up", mentions: [], attachments: [] };
     const props = createFollowUpPromptBoxProps({ kind: "ready" });
     render(
@@ -449,29 +446,27 @@ describe("FollowUpPromptBox", () => {
   });
 
   it("does not mount plugin banners for a retained inactive composer without a real scope", () => {
-    setPluginSlotRegistrations("inactive-banner", {
-      homepageSections: [],
-      settingsSections: [],
-      navPanels: [],
-      threadPanelActions: [],
-      composerCustomizations: [
-        {
-          id: "inactive",
-          banners: [
-            {
-              id: "banner",
-              component: () => (
-                <div data-testid="inactive-plugin-banner">Plugin banner</div>
-              ),
-            },
-          ],
-        },
-      ],
-      pendingInteractions: [],
-      sidebarFooterActions: [],
-      fileOpeners: [],
-      messageDirectives: [],
-    });
+    setPluginSlotRegistrations(
+      "inactive-banner",
+      makePluginRegistrationSet({
+        composerCustomizations: [
+          {
+            id: "inactive",
+            banners: [
+              {
+                id: "banner",
+                component: () => (
+                  <div data-testid="inactive-plugin-banner">Plugin banner</div>
+                ),
+              },
+            ],
+          },
+        ],
+        pendingInteractions: [],
+        sidebarFooterActions: [],
+        fileOpeners: [],
+      }),
+    );
 
     render(
       <FollowUpPromptBox
@@ -572,31 +567,29 @@ describe("FollowUpPromptBox", () => {
   ] as const)(
     "renders queued-message banners before the %s inline composer",
     (_kind, isPrimaryComposer) => {
-      setPluginSlotRegistrations("queued-tools", {
-        homepageSections: [],
-        settingsSections: [],
-        navPanels: [],
-        threadPanelActions: [],
-        composerCustomizations: [
-          {
-            id: "queued-banner",
-            scopes: ["queued-message"],
-            banners: [
-              {
-                id: "status",
-                chrome: "bare",
-                component: () => (
-                  <div data-testid="queued-plugin-banner">Queued status</div>
-                ),
-              },
-            ],
-          },
-        ],
-        pendingInteractions: [],
-        sidebarFooterActions: [],
-        fileOpeners: [],
-        messageDirectives: [],
-      });
+      setPluginSlotRegistrations(
+        "queued-tools",
+        makePluginRegistrationSet({
+          composerCustomizations: [
+            {
+              id: "queued-banner",
+              scopes: ["queued-message"],
+              banners: [
+                {
+                  id: "status",
+                  chrome: "bare",
+                  component: () => (
+                    <div data-testid="queued-plugin-banner">Queued status</div>
+                  ),
+                },
+              ],
+            },
+          ],
+          pendingInteractions: [],
+          sidebarFooterActions: [],
+          fileOpeners: [],
+        }),
+      );
       const draft = { text: "Queued draft", mentions: [], attachments: [] };
       const scope = {
         kind: "queued-message" as const,

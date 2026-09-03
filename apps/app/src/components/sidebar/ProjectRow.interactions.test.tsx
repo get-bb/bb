@@ -8,7 +8,6 @@ import {
   waitFor,
 } from "@testing-library/react";
 import type { ThreadListEntry } from "@bb/domain";
-import type { ProjectResponse } from "@bb/server-contract";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 import { TooltipProvider } from "@bb/shared-ui/tooltip";
@@ -20,6 +19,8 @@ import {
   type ProjectThreadListState,
 } from "./ProjectRow";
 import { buildSidebarEntitySectionId } from "@bb/client-core";
+import { makeThreadListEntry } from "@bb/test-helpers/domain-fixtures";
+import { makeProjectResponse } from "@/test/fixtures/projects";
 
 const mockUpdateEnvironment = vi.hoisted(() => ({
   mutate: vi.fn(),
@@ -77,57 +78,13 @@ vi.mock("@/components/thread/ThreadActionsProvider", () => ({
   }),
 }));
 
-function makeProject(): ProjectResponse {
-  return {
-    id: "proj_test",
-    kind: "standard",
-    name: "Test project",
-    gitRemoteUrl: null,
-    sources: [],
-    createdAt: 0,
-    updatedAt: 0,
-  };
-}
-
 function makeThread(overrides: Partial<ThreadListEntry> = {}): ThreadListEntry {
-  return {
+  return makeThreadListEntry({
     id: "thr_test",
-    projectId: "proj_test",
-    environmentId: null,
-    providerId: "codex",
     title: "Test thread",
     titleFallback: "Test thread",
-    sectionId: null,
-    status: "idle",
-    parentThreadId: null,
-    sourceThreadId: null,
-    originKind: null,
-    originPluginId: null,
-    visibility: "visible",
-    archivedAt: null,
-    pinnedAt: null,
-    pinSortKey: null,
-    deletedAt: null,
-    lastReadAt: 100,
-    latestAttentionAt: 100,
-    createdAt: 0,
-    updatedAt: 100,
-    activity: {
-      activeWorkflowCount: 0,
-      activeBackgroundAgentCount: 0,
-      activeBackgroundCommandCount: 0,
-      activePlanModeCount: 0,
-      activeGoalCount: 0,
-    },
-    hasPendingInteraction: false,
-    environmentHostId: null,
-    environmentName: null,
-    environmentBranchName: null,
-    queuedWork: "none",
-    environmentWorkspaceDisplayKind: "other",
-    runtime: { displayStatus: "idle", hostReconnectGraceExpiresAt: null },
     ...overrides,
-  };
+  });
 }
 
 function renderProjectRow(
@@ -142,7 +99,7 @@ function renderProjectRow(
     <TooltipProvider>
       <MemoryRouter>
         <ProjectRow
-          project={makeProject()}
+          project={makeProjectResponse()}
           threadListState={threadListState}
           isActive={isActive}
           isCollapsed={isCollapsed}

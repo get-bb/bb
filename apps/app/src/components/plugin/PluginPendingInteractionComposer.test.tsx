@@ -12,6 +12,7 @@ import {
 } from "@/lib/plugin-slots";
 import { resetAllCrashedPluginSlotsForTest } from "./PluginSlotMount";
 import { PluginPendingInteractionComposer } from "./PluginPendingInteractionComposer";
+import { makePluginRegistrationSet } from "@/test/fixtures/plugins";
 
 function renderComposer(ui: React.ReactElement) {
   return render(
@@ -24,16 +25,9 @@ function registrations(
     PluginRegistrationSet["pendingInteractions"]
   >,
 ): PluginRegistrationSet {
-  return {
-    homepageSections: [],
-    settingsSections: [],
-    navPanels: [],
-    threadPanelActions: [],
+  return makePluginRegistrationSet({
     pendingInteractions,
-    sidebarFooterActions: [],
-    fileOpeners: [],
-    messageDirectives: [],
-  };
+  });
 }
 
 const interaction: PluginPendingInteraction = {

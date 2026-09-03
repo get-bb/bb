@@ -24,7 +24,7 @@ import {
 } from "../src/hooks/useUpdateInventory";
 import { createAppQueryClient } from "../src/lib/query-client";
 import { makeSystemConfig } from "../src/test/fixtures/system-config";
-import { makeProviderInfo } from "../src/test/provider-info-fixture";
+import { makeProviderInfo } from "@bb/test-helpers/domain-fixtures";
 import { getSettingsRoutePath } from "../src/lib/route-paths";
 import {
   BbAppUpdateRows,

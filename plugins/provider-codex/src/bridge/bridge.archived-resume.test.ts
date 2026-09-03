@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -24,13 +24,20 @@ const sessionOptions = {
 
 let harness: ReturnType<typeof createBridgeJsonRpcTestHarness>;
 let workspaceDir: string;
+let processLogPath: string;
 
 beforeEach(() => {
   workspaceDir = mkdtempSync(join(tmpdir(), "bb-codex-archived-ws-"));
+  processLogPath = join(workspaceDir, "app-server-processes.log");
+  const scriptPath = join(workspaceDir, "fake-codex-script.json");
+  writeFileSync(
+    scriptPath,
+    JSON.stringify({ processLogPath, sigtermDelayMs: 250 }),
+  );
   vi.stubEnv("BB_CODEX_BRIDGE_APP_SERVER_COMMAND", process.execPath);
   vi.stubEnv(
     "BB_CODEX_BRIDGE_APP_SERVER_ARGS",
-    JSON.stringify([fakeAppServerPath]),
+    JSON.stringify([fakeAppServerPath, scriptPath]),
   );
   harness = createBridgeJsonRpcTestHarness(handleLine);
 });
@@ -71,6 +78,7 @@ it("preserves the archived-session error text verbatim on a rejected resume", as
       retryable: true,
     },
   });
+  expect(readFileSync(processLogPath, "utf8")).toContain("exit:");
 }, 30_000);
 
 it("attaches the sessionArchived hint to a fork whose source is archived", async () => {

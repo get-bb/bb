@@ -17,6 +17,7 @@ import {
   providerListCacheKey,
   writeCachedProviderList,
 } from "@/lib/provider-list-cache";
+import { makeProviderInfo } from "@bb/test-helpers/domain-fixtures";
 
 const PROJECT_ID = "proj_prompt_defaults";
 const GLOBAL_PROVIDER_ID = "global-provider";
@@ -96,12 +97,10 @@ function rememberedProviders() {
 function executionOptionsResponse(): SystemExecutionOptionsResponse {
   return {
     providers: [
-      {
+      makeProviderInfo({
         id: GLOBAL_PROVIDER_ID,
-        pluginId: `provider-${GLOBAL_PROVIDER_ID}`,
         displayName: "Global Provider",
         logoUrl: null,
-        available: true,
         maintenance: { health: true, usage: true, installation: false },
         composerActions: [
           { kind: "skills", trigger: "/" },
@@ -120,13 +119,11 @@ function executionOptionsResponse(): SystemExecutionOptionsResponse {
           modelCatalogScope: "workspace",
           permissionModes: ["accept-edits", "auto", "full"],
         },
-      },
-      {
+      }),
+      makeProviderInfo({
         id: PROJECT_PROVIDER_ID,
-        pluginId: `provider-${PROJECT_PROVIDER_ID}`,
         displayName: "Project Provider",
         logoUrl: null,
-        available: true,
         maintenance: { health: true, usage: true, installation: false },
         composerActions: [{ kind: "skills", trigger: "/" }],
         capabilities: {
@@ -139,7 +136,7 @@ function executionOptionsResponse(): SystemExecutionOptionsResponse {
           modelCatalogScope: "workspace",
           permissionModes: ["accept-edits", "auto", "full"],
         },
-      },
+      }),
     ],
     models: [
       {
@@ -214,12 +211,10 @@ function providerExecutionOptionsResponse(
 function claudeExecutionOptionsResponse(): SystemExecutionOptionsResponse {
   return {
     providers: [
-      {
+      makeProviderInfo({
         id: "claude-code",
-        pluginId: "provider-claude-code",
         displayName: "Claude Code",
         logoUrl: null,
-        available: true,
         maintenance: { health: true, usage: true, installation: false },
         composerActions: [],
         capabilities: {
@@ -232,7 +227,7 @@ function claudeExecutionOptionsResponse(): SystemExecutionOptionsResponse {
           modelCatalogScope: "workspace",
           permissionModes: ["accept-edits", "auto", "full"],
         },
-      },
+      }),
     ],
     models: [
       {

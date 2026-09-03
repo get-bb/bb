@@ -51,6 +51,11 @@ import {
   sidebarOrganizationModeAtom,
   type SidebarOrganizationMode,
 } from "./sidebarCollapsedAtoms";
+import { makePluginRegistrationSet } from "@/test/fixtures/plugins";
+import {
+  makeProjectWithThreadsResponse,
+  makeSidebarBootstrapResponse,
+} from "@/test/fixtures/projects";
 
 export default {
   title: "Sidebar/Overview",
@@ -77,11 +82,9 @@ const personalProject = makeProject({
   name: "Personal",
 });
 
-const loadedSidebarNavigation = {
-  sections: [],
-  personalProject: {
+const loadedSidebarNavigation = makeSidebarBootstrapResponse({
+  personalProject: makeProjectWithThreadsResponse({
     ...personalProject,
-    defaultExecutionOptions: null,
     threads: [
       makeThreadListEntry({
         id: "thr_story_personal",
@@ -112,11 +115,10 @@ const loadedSidebarNavigation = {
         updatedAt: 75,
       }),
     ],
-  },
+  }),
   projects: [
-    {
+    makeProjectWithThreadsResponse({
       ...bbProject,
-      defaultExecutionOptions: null,
       threads: [
         makeThreadListEntry({
           id: "thr_story_pinned",
@@ -202,10 +204,9 @@ const loadedSidebarNavigation = {
           updatedAt: 160,
         }),
       ],
-    },
-    {
+    }),
+    makeProjectWithThreadsResponse({
       ...docsProject,
-      defaultExecutionOptions: null,
       threads: [
         makeThreadListEntry({
           id: "thr_story_docs",
@@ -217,9 +218,9 @@ const loadedSidebarNavigation = {
           updatedAt: 120,
         }),
       ],
-    },
+    }),
   ],
-} satisfies SidebarBootstrapResponse;
+});
 
 const emptySidebarNavigation = {
   ...loadedSidebarNavigation,
@@ -337,17 +338,9 @@ function LoadedSidebar({
 function registrationSet(
   navPanels: PluginRegistrationSet["navPanels"],
 ): PluginRegistrationSet {
-  return {
-    homepageSections: [],
-    settingsSections: [],
+  return makePluginRegistrationSet({
     navPanels,
-    threadPanelActions: [],
-    composerCustomizations: [],
-    pendingInteractions: [],
-    sidebarFooterActions: [],
-    fileOpeners: [],
-    messageDirectives: [],
-  };
+  });
 }
 
 function StoryPluginPageRegistrations() {
@@ -600,25 +593,25 @@ export function SplitPageLabels() {
         ],
       },
     });
-    setPluginSlotRegistrations("story-split-page", {
-      homepageSections: [],
-      settingsSections: [],
-      navPanels: [
-        {
-          id: "notes",
-          title: "Project notes",
-          icon: "FileText",
-          path: "notes",
-          component: () => null,
-        },
-      ],
-      threadPanelActions: [],
-      composerCustomizations: [],
-      pendingInteractions: [],
-      sidebarFooterActions: [],
-      fileOpeners: [],
-      messageDirectives: [],
-    });
+    setPluginSlotRegistrations(
+      "story-split-page",
+      makePluginRegistrationSet({
+        navPanels: [
+          {
+            id: "notes",
+            title: "Project notes",
+            icon: "FileText",
+            path: "notes",
+            component: () => null,
+          },
+        ],
+        threadPanelActions: [],
+        composerCustomizations: [],
+        pendingInteractions: [],
+        sidebarFooterActions: [],
+        fileOpeners: [],
+      }),
+    );
 
     return () => {
       store.set(splitLayoutAtom, null);

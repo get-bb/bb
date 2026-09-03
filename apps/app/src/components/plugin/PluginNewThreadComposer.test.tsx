@@ -34,7 +34,8 @@ import {
 import { useRootComposeReuseEnvironment } from "@/lib/root-compose-selection";
 import { getPromptDraftAccessor } from "@/hooks/usePromptDraftStorage";
 import { buildThreadHandoffLocationState } from "@bb/client-core";
-import { makeThreadListEntry } from "@/test/fixtures/thread-list-entries";
+import { makeThreadListEntry } from "@bb/test-helpers/domain-fixtures";
+import { makeProjectWithThreadsResponse } from "@/test/fixtures/projects";
 import { RootComposeView } from "@/views/RootComposeView";
 import { PluginNewThreadComposer } from "./PluginNewThreadComposer";
 
@@ -60,13 +61,13 @@ vi.mock("@/lib/sdk", () => ({
   sdk: { projects: { attachments: { copy: mocks.copyAttachments } } },
 }));
 
-const PROJECT = {
+const PROJECT = makeProjectWithThreadsResponse({
   id: "proj_1",
   name: "Project One",
   defaultExecutionOptions: {
     providerId: "codex",
     model: "gpt-5.6",
-    serviceTier: undefined,
+    serviceTier: "default",
     reasoningLevel: "medium",
     permissionMode: "auto",
   },
@@ -82,15 +83,14 @@ const PROJECT = {
       updatedAt: 0,
     },
   ],
-  threads: [],
-};
+});
 
-const OTHER_PROJECT = {
+const OTHER_PROJECT = makeProjectWithThreadsResponse({
   ...PROJECT,
   id: "proj_2",
   name: "Project Two",
   sources: [{ ...PROJECT.sources[0], id: "src_2", projectId: "proj_2" }],
-};
+});
 
 vi.mock("@/hooks/queries/sidebar-navigation-query", () => ({
   useSidebarNavigation: () =>
@@ -102,12 +102,13 @@ vi.mock("@/hooks/queries/sidebar-navigation-query", () => ({
               OTHER_PROJECT,
               ...mocks.extraProjects,
             ],
-            personalProject: {
+            personalProject: makeProjectWithThreadsResponse({
               id: "personal",
+              kind: "personal",
               name: "Personal",
               sources: [],
               threads: [],
-            },
+            }),
           },
           isError: false,
           isLoading: false,

@@ -6,6 +6,10 @@ import type {
   ThreadWithRuntime,
 } from "@bb/domain";
 import {
+  makeThreadQueuedMessage,
+  makeThreadWithRuntime,
+} from "@bb/test-helpers/domain-fixtures";
+import {
   act,
   cleanup,
   fireEvent,
@@ -273,35 +277,22 @@ vi.mock("@/hooks/queries/thread-queries", () => ({
 const PROJECT_ID = "proj_keystrokes";
 
 function makeThread(id: string): ThreadWithRuntime {
-  return {
-    archivedAt: null,
+  return makeThreadWithRuntime({
     environmentId: null,
     id,
     projectId: PROJECT_ID,
-    providerId: "codex",
-    runtime: { displayStatus: "idle" },
-    status: "idle",
-  } as ThreadWithRuntime;
+  });
 }
 
 function makeQueuedMessage(): ThreadQueuedMessage {
-  return {
+  return makeThreadQueuedMessage({
     id: "qmsg_1",
     threadId: "thr_keystrokes",
     content: [{ type: "text", text: "Already queued", mentions: [] }],
     model: "gpt-5",
-    reasoningLevel: "medium",
-    permissionMode: "auto",
-    serviceTier: "default",
-    groupWithNext: false,
-    sendAt: null,
-    waitingOn: null,
-    failureReason: null,
-    payload: { kind: "inline" },
-    editable: true,
     createdAt: 1,
     updatedAt: 1,
-  };
+  });
 }
 
 function makePendingInteraction(threadId: string): PendingInteraction {

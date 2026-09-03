@@ -1,4 +1,5 @@
 import type { ThreadListEntry } from "@bb/domain";
+import { makeThreadListEntry } from "@bb/test-helpers/domain-fixtures";
 import { describe, expect, it } from "vitest";
 import {
   buildChronologicalThreadList,
@@ -45,47 +46,17 @@ compareAlphaDescending.compareItems = (left, right) =>
 function createThread(
   overrides: ThreadListEntryOverrides = {},
 ): ThreadListEntry {
-  return {
+  return makeThreadListEntry({
     id: "thr_1",
     projectId: "proj_1",
-    environmentId: null,
-    providerId: "codex",
     title: "Thread",
     titleFallback: "Thread",
-    sectionId: null,
-    status: "idle",
-    parentThreadId: null,
-    sourceThreadId: null,
-    originKind: null,
-    originPluginId: null,
-    visibility: "visible",
-    archivedAt: null,
-    pinnedAt: null,
-    pinSortKey: null,
-    deletedAt: null,
     lastReadAt: 0,
     latestAttentionAt: 2,
     createdAt: 1,
     updatedAt: 2,
-    activity: {
-      activeWorkflowCount: 0,
-      activeBackgroundAgentCount: 0,
-      activeBackgroundCommandCount: 0,
-      activePlanModeCount: 0,
-      activeGoalCount: 0,
-    },
-    hasPendingInteraction: false,
-    environmentHostId: null,
-    environmentName: null,
-    environmentBranchName: null,
-    queuedWork: "none",
-    environmentWorkspaceDisplayKind: "other",
-    runtime: {
-      displayStatus: "idle",
-      hostReconnectGraceExpiresAt: null,
-    },
     ...overrides,
-  };
+  });
 }
 
 function summarizeNode(node: ProjectThreadNode): TreeSummary {

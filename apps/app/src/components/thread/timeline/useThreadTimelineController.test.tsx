@@ -12,6 +12,7 @@ import { OPTIMISTIC_TIMELINE_ROW_ID_PREFIX } from "@bb/client-core";
 import { threadTimelineQueryKey } from "@/hooks/queries/query-keys";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { useThreadTimelineController } from "./useThreadTimelineController";
+import { makeThreadTimelineResponse as makeTimelineResponse } from "@/test/fixtures/thread-responses";
 
 vi.mock("@/lib/sdk", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/sdk")>();
@@ -33,27 +34,6 @@ afterEach(() => {
   cleanup();
   vi.clearAllMocks();
 });
-
-function makeTimelineResponse(): ThreadTimelineResponse {
-  return {
-    rows: [],
-    activePromptMode: null,
-    activeThinking: null,
-    activeWorkflows: [],
-    activeBackgroundCommands: [],
-    pendingTodos: null,
-    goal: null,
-    modelFallback: null,
-    maxSeq: 0,
-    timelinePage: {
-      kind: "latest",
-      segmentLimit: 20,
-      returnedSegmentCount: 0,
-      hasOlderRows: false,
-      olderCursor: null,
-    },
-  };
-}
 
 function makeUserRow(
   id: string,

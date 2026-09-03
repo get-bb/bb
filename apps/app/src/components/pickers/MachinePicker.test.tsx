@@ -2,34 +2,28 @@
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import type { Host } from "@bb/domain";
+import { makeHost } from "@bb/test-helpers/domain-fixtures";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MachinePickerUI } from "./MachinePicker";
 
 const HOUR_MS = 60 * 60 * 1000;
 
-const thisMachine: Host = {
+const thisMachine = makeHost({
   id: "host_local",
   name: "MacBook Pro",
-  type: "persistent",
-  status: "connected",
-  lastSeenAt: null,
-  maxPermissionMode: "full",
-  lastRejectedProtocolVersion: null,
-  createdAt: 0,
-  updatedAt: 0,
-};
-const studio: Host = {
+});
+const studio = makeHost({
   ...thisMachine,
   id: "host_studio",
   name: "Mac Studio",
-};
-const devVm: Host = {
+});
+const devVm = makeHost({
   ...thisMachine,
   id: "host_vm",
   name: "dev-vm",
   status: "disconnected",
   lastSeenAt: Date.now() - 2 * HOUR_MS,
-};
+});
 
 afterEach(() => {
   cleanup();

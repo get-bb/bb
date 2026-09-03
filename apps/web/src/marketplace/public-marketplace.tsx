@@ -51,6 +51,7 @@ import {
   marketplaceEntryInstalls,
   type MarketplaceStats,
 } from "./marketplace-model.js";
+import { MarketplaceOverview } from "./marketplace-overview.js";
 import type {
   MarketplaceV2Entry,
   MarketplaceV2Manifest,
@@ -811,10 +812,7 @@ export function PublicMarketplaceDetailPage({
   const installCommand = marketplaceInstallCommand(entry.id);
   const authorSiblings = moreFromMarketplaceAuthor(manifest, entry);
   const categoryEntries = moreInMarketplaceCategory(manifest, entry, stats);
-  const hasDetailBody =
-    entry.screenshots.length > 0 ||
-    authorSiblings.length > 0 ||
-    categoryEntries.length > 0;
+
   const authorPath =
     entry.author.github === undefined
       ? undefined
@@ -838,7 +836,6 @@ export function PublicMarketplaceDetailPage({
           <PluginArtwork entry={entry} large />
           <div className="marketplace-detail-identity">
             <h1>{entry.displayName}</h1>
-            <p>{entry.description}</p>
           </div>
           <div className="marketplace-detail-facts">
             {authorPath === undefined ? (
@@ -899,7 +896,7 @@ export function PublicMarketplaceDetailPage({
             </MarketplaceLink>
           </div>
         </header>
-        {hasDetailBody ? (
+        {
           <div className="marketplace-detail-body">
             {entry.screenshots.length === 0 ? null : (
               <div className="marketplace-screenshots">
@@ -914,6 +911,16 @@ export function PublicMarketplaceDetailPage({
                 ))}
               </div>
             )}
+            <section className="marketplace-detail-section marketplace-overview-section">
+              <p className="marketplace-overview-lead">{entry.description}</p>
+              {entry.overview === undefined ? null : (
+                <>
+                  <hr className="marketplace-overview-rule" />
+                  <h2>Overview</h2>
+                  <MarketplaceOverview markdown={entry.overview} />
+                </>
+              )}
+            </section>
             <MoreFromAuthor
               author={entry.author}
               entries={authorSiblings}
@@ -926,7 +933,7 @@ export function PublicMarketplaceDetailPage({
               stats={stats}
             />
           </div>
-        ) : null}
+        }
       </main>
       <SiteFooter />
     </div>

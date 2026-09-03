@@ -31,6 +31,7 @@ import {
 } from "@/lib/plugin-logos";
 import { CommandPalette } from "./CommandPalette";
 import type { PaletteNewThreadDraft } from "@/lib/command-palette/palette-thread-search";
+import { makePluginRegistrationSet } from "@/test/fixtures/plugins";
 
 const PALETTE_SHORTCUT = {
   key: "p",
@@ -1306,24 +1307,23 @@ describe("CommandPalette", () => {
   });
 
   it("opens a plugin page", async () => {
-    setPluginSlotRegistrations("automations", {
-      homepageSections: [],
-      settingsSections: [],
-      navPanels: [
-        {
-          id: "automations",
-          title: "Automations",
-          icon: "Calendar",
-          path: "automations",
-          component: () => null,
-        },
-      ],
-      threadPanelActions: [],
-      sidebarFooterActions: [],
-      fileOpeners: [],
-      messageDirectives: [],
-      commandPaletteActions: [],
-    });
+    setPluginSlotRegistrations(
+      "automations",
+      makePluginRegistrationSet({
+        navPanels: [
+          {
+            id: "automations",
+            title: "Automations",
+            icon: "Calendar",
+            path: "automations",
+            component: () => null,
+          },
+        ],
+        threadPanelActions: [],
+        sidebarFooterActions: [],
+        fileOpeners: [],
+      }),
+    );
     renderPalette();
     openPalette();
     await waitFor(() => expect(searchField()).toBeTruthy());
@@ -1357,24 +1357,20 @@ describe("CommandPalette", () => {
         ],
       ]),
     );
-    setPluginSlotRegistrations("linear", {
-      homepageSections: [],
-      settingsSections: [],
-      navPanels: [],
-      threadPanelActions: [],
-      sidebarFooterActions: [],
-      fileOpeners: [],
-      messageDirectives: [],
-      commandPaletteActions: [
-        {
-          id: "open-issue",
-          title: "Open issue",
-          run: () => {
-            testState.calls.push("plugin-ran");
+    setPluginSlotRegistrations(
+      "linear",
+      makePluginRegistrationSet({
+        commandPaletteActions: [
+          {
+            id: "open-issue",
+            title: "Open issue",
+            run: () => {
+              testState.calls.push("plugin-ran");
+            },
           },
-        },
-      ],
-    });
+        ],
+      }),
+    );
     renderPalette();
     openPalette();
     await waitFor(() => expect(searchField()).toBeTruthy());

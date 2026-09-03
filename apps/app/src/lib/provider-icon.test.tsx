@@ -7,19 +7,11 @@ import {
   removePluginSlotRegistrations,
   resetPluginSlotStoreForTest,
   setPluginSlotRegistrations,
-  type PluginRegistrationSet,
 } from "./plugin-slots";
 import { getProviderIconInfo } from "./provider-icon";
+import { makePluginRegistrationSet } from "@/test/fixtures/plugins";
 
-const EMPTY_REGISTRATIONS: PluginRegistrationSet = {
-  homepageSections: [],
-  settingsSections: [],
-  navPanels: [],
-  threadPanelActions: [],
-  sidebarFooterActions: [],
-  fileOpeners: [],
-  messageDirectives: [],
-};
+const EMPTY_REGISTRATIONS = makePluginRegistrationSet();
 
 function PluginCodexIcon({ className }: { className?: string }) {
   return (

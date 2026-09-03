@@ -2,6 +2,7 @@
 
 import { act, cleanup, renderHook } from "@testing-library/react";
 import type { Host } from "@bb/domain";
+import { makeHost } from "@bb/test-helpers/domain-fixtures";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useQuickCreateProject } from "./useQuickCreateProject";
 
@@ -59,17 +60,11 @@ function host(
   name: string,
   status: Host["status"] = "connected",
 ): Host {
-  return {
+  return makeHost({
     id,
     name,
-    type: "persistent",
     status,
-    lastSeenAt: null,
-    maxPermissionMode: "full",
-    lastRejectedProtocolVersion: null,
-    createdAt: 0,
-    updatedAt: 0,
-  };
+  });
 }
 
 beforeEach(() => {
