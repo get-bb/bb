@@ -1017,7 +1017,7 @@ describe("@bb/sdk", () => {
     );
   });
 
-  it("fills thread fork defaults and preserves an agent-only context seed", async () => {
+  it("defaults thread forks to source-environment reuse and preserves an agent-only context seed", async () => {
     const queue = createFetchQueue([{ body: { id: "thr_fork" }, status: 201 }]);
     const sdk = createBbSdk({
       transport: createHttpTransport({
@@ -1055,7 +1055,6 @@ describe("@bb/sdk", () => {
       ],
       origin: "sdk",
       visibility: "visible",
-      workspace: "isolated",
     });
   });
 
@@ -1983,5 +1982,4 @@ describe("@bb/sdk", () => {
       },
     ]);
   });
-
 });

@@ -537,7 +537,6 @@ describe("plugin bb.sdk against a running server", () => {
       });
       const fork = await api.sdk.threads.fork({
         sourceThreadId: operable.id,
-        workspace: "reuse",
       });
       expect(fork).toMatchObject({
         originKind: "fork",

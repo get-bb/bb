@@ -73,7 +73,9 @@ export function requireHostId(hostId: string | null): string {
   return hostId;
 }
 
-function resolveSpawnEnvironmentValue(flagValue?: string): string | undefined {
+export function resolveSpawnEnvironmentValue(
+  flagValue?: string,
+): string | undefined {
   const trimmedValue = flagValue?.trim();
   if (!trimmedValue) return undefined;
   if (looksLikePath(trimmedValue)) return trimmedValue;

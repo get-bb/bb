@@ -4,9 +4,14 @@ import {
   type PromptInput,
   type Thread,
 } from "@bb/domain";
+import type { EnvironmentArgs } from "@bb/server-contract";
 import { action } from "../../action.js";
 import { createCliBbSdk } from "../../client.js";
 import { resolveExplicitIdFlag } from "../../context-env.js";
+import {
+  resolveMachineHostId,
+  resolveMachineTargetOption,
+} from "../machine.js";
 import { outputJson, prependErrorContext } from "../helpers.js";
 import {
   buildPromptInputs,
@@ -14,18 +19,27 @@ import {
   parsePermissionMode,
   PERMISSION_MODE_HELP,
 } from "./helpers.js";
+import {
+  buildSpawnEnvironment,
+  looksLikePath,
+  resolveSpawnEnvironmentValue,
+} from "./spawn.js";
 
 interface ThreadForkCommandOptions {
   agentContextSeed?: string;
+  baseBranch?: string;
+  environment?: string;
   file?: string[];
+  host?: string;
   image?: string[];
   json?: boolean;
+  machine?: string;
+  newEnvironment?: string;
   permissionMode?: string;
   prompt?: string;
   sourceSeqEnd?: string;
   title?: string;
   visibility?: string;
-  workspace?: string;
 }
 
 function parseSourceSeqEnd(value: string | undefined): number | undefined {
@@ -35,14 +49,6 @@ function parseSourceSeqEnd(value: string | undefined): number | undefined {
     throw new Error("--source-seq-end must be a non-negative integer.");
   }
   return parsed;
-}
-
-function parseWorkspace(value: string | undefined): "isolated" | "reuse" {
-  const workspace = value ?? "isolated";
-  if (workspace !== "isolated" && workspace !== "reuse") {
-    throw new Error("--workspace must be isolated or reuse.");
-  }
-  return workspace;
 }
 
 function buildForkInput(
@@ -62,6 +68,32 @@ function buildForkInput(
   ];
 }
 
+async function resolveForkSourceHostId(
+  sdk: ReturnType<typeof createCliBbSdk>,
+  sourceThreadId: string,
+): Promise<string> {
+  const sourceThread = await sdk.threads.get({ threadId: sourceThreadId });
+  if (sourceThread.environmentId === null) {
+    throw new Error("Source thread has no environment.");
+  }
+  const sourceEnvironment = await sdk.environments.get({
+    environmentId: sourceThread.environmentId,
+  });
+  return sourceEnvironment.hostId;
+}
+
+function describeForkEnvironment(
+  environment: EnvironmentArgs | undefined,
+): string {
+  if (environment === undefined) return "source environment";
+  if (environment.type === "reuse") return environment.environmentId;
+  if (environment.workspace.type === "managed-worktree") {
+    return "new worktree";
+  }
+  if (environment.workspace.type === "personal") return "new personal";
+  return environment.workspace.path ?? "host project source";
+}
+
 export function registerForkCommand(
   parent: Command,
   getUrl: () => string,
@@ -75,7 +107,23 @@ export function registerForkCommand(
       "--source-seq-end <seq>",
       "Fork after the source turn containing this event sequence",
     )
-    .option("--workspace <mode>", "Workspace: isolated (default) or reuse")
+    .option(
+      "--environment <id-or-path>",
+      "Existing environment ID or unmanaged workspace path",
+    )
+    .option(
+      "--new-environment <kind>",
+      "Create a new managed environment of the given kind (worktree)",
+    )
+    .option(
+      "--base-branch <branch>",
+      "Exact Git ref; omit for bb's project default (use origin/<branch> for a remote ref)",
+    )
+    .option(
+      "--machine <id-or-name>",
+      "Execution machine ID or unambiguous name",
+    )
+    .option("--host <id-or-name>", "Alias for --machine")
     .option("--permission-mode <mode>", PERMISSION_MODE_HELP)
     .option("--visibility <visibility>", "Thread visibility: visible or hidden")
     .option(
@@ -112,14 +160,61 @@ export function registerForkCommand(
             opts.visibility === undefined
               ? undefined
               : threadVisibilitySchema.parse(opts.visibility);
-          const workspace = parseWorkspace(opts.workspace);
+          const environmentValue = resolveSpawnEnvironmentValue(
+            opts.environment,
+          );
+          const machineTarget = resolveMachineTargetOption(opts);
+          if (
+            machineTarget &&
+            environmentValue &&
+            !looksLikePath(environmentValue)
+          ) {
+            throw new Error(
+              "Cannot combine --machine or --host with an existing environment ID; that environment already selects its machine.",
+            );
+          }
+          if (
+            machineTarget &&
+            environmentValue === undefined &&
+            opts.newEnvironment === undefined
+          ) {
+            throw new Error(
+              "--machine or --host requires --new-environment or an unmanaged --environment path.",
+            );
+          }
 
           let thread: Thread;
+          let environment: EnvironmentArgs | undefined;
           try {
-            thread = await createCliBbSdk(getUrl()).threads.fork({
+            const sdk = createCliBbSdk(getUrl());
+            const needsHostId =
+              Boolean(opts.newEnvironment) ||
+              (environmentValue !== undefined &&
+                looksLikePath(environmentValue));
+            const hostId = needsHostId
+              ? machineTarget
+                ? await resolveMachineHostId({
+                    serverUrl: getUrl(),
+                    target: machineTarget,
+                  })
+                : await resolveForkSourceHostId(sdk, sourceThreadId)
+              : null;
+            environment =
+              environmentValue === undefined &&
+              opts.newEnvironment === undefined &&
+              opts.baseBranch === undefined
+                ? undefined
+                : buildSpawnEnvironment({
+                    defaultPersonalWorkspace: false,
+                    environmentValue,
+                    newEnvironmentKind: opts.newEnvironment,
+                    hostId,
+                    baseBranch: opts.baseBranch,
+                  });
+            thread = await sdk.threads.fork({
               sourceThreadId,
               origin: "cli",
-              workspace,
+              ...(environment === undefined ? {} : { environment }),
               ...(input === undefined ? {} : { input }),
               ...(sourceSeqEnd === undefined ? {} : { sourceSeqEnd }),
               ...(opts.title === undefined ? {} : { title: opts.title }),
@@ -149,7 +244,7 @@ export function registerForkCommand(
           console.log(`Thread forked: ${thread.id}`);
           console.log(`Source: ${sourceThreadId}`);
           console.log(`Status: ${thread.status}`);
-          console.log(`Workspace: ${workspace}`);
+          console.log(`Environment: ${describeForkEnvironment(environment)}`);
           if (thread.visibility === "hidden") {
             console.log("Visibility: hidden");
           }

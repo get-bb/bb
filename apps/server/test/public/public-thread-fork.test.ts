@@ -1,4 +1,5 @@
 import {
+  createProjectSource,
   ensurePersonalProject,
   getEnvironment,
   getThread,
@@ -23,6 +24,7 @@ import { appendClientTurnEventInTransaction } from "../../src/services/threads/t
 import { sendQueuedMessage } from "../../src/services/threads/queued-messages.js";
 import { sendThreadMessage } from "../../src/services/threads/thread-send.js";
 import {
+  listQueuedCommands,
   listQueuedThreadCommands,
   reportQueuedCommandError,
   reportQueuedCommandSuccess,
@@ -140,7 +142,6 @@ async function createIdleSeededFork(
   const response = await postFork(harness, {
     sourceThreadId: sourceThread.id,
     agentContextSeed: [args.seed],
-    workspace: "reuse",
   });
   expect(response.status).toBe(201);
   const fork = threadResponseSchema.parse(await readJson(response));
@@ -167,6 +168,19 @@ async function createIdleSeededFork(
 }
 
 describe("public thread fork route", () => {
+  it("rejects the removed workspace selector", async () => {
+    await withTestHarness(async (harness) => {
+      const { sourceThread } = seedForkSource(harness);
+
+      const response = await postFork(harness, {
+        sourceThreadId: sourceThread.id,
+        workspace: "isolated",
+      });
+
+      expect(response.status).toBe(400);
+    });
+  });
+
   it("reuses a switched directory from a personal-project source", async () => {
     await withTestHarness(async (harness) => {
       const { environment, sourceThread } =
@@ -174,7 +188,6 @@ describe("public thread fork route", () => {
 
       const response = await postFork(harness, {
         sourceThreadId: sourceThread.id,
-        workspace: "reuse",
       });
 
       expect(response.status).toBe(201);
@@ -196,14 +209,78 @@ describe("public thread fork route", () => {
     });
   });
 
-  it("uses a personal workspace for an isolated fork after a directory switch", async () => {
+  it("rejects a new environment on another host before provisioning", async () => {
+    await withTestHarness(async (harness) => {
+      const { environment, project, sourceThread } = seedForkSource(harness);
+      const { host: otherHost } = seedHostSession(harness.deps, {
+        id: "host-other",
+        name: "Other Host",
+      });
+      createProjectSource(harness.db, harness.hub, {
+        hostId: otherHost.id,
+        path: "/tmp/public-thread-fork-other",
+        projectId: project.id,
+        type: "local_path",
+      });
+
+      const response = await postFork(harness, {
+        sourceThreadId: sourceThread.id,
+        environment: {
+          type: "host",
+          hostId: otherHost.id,
+          workspace: {
+            type: "managed-worktree",
+            baseBranch: { kind: "default" },
+          },
+        },
+      });
+
+      expect(response.status).toBe(400);
+      expect(await readJson(response)).toMatchObject({
+        code: "invalid_request",
+        message: `Fork environment must use the source thread's host (${environment.hostId}), not ${otherHost.id}`,
+      });
+      expect(listQueuedCommands(harness, "environment.provision")).toEqual([]);
+    });
+  });
+
+  it("reuses a requested environment on the source host", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, project, sourceThread } = seedForkSource(harness);
+      const targetEnvironment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        path: "/tmp/public-thread-fork-target",
+        projectId: project.id,
+      });
+
+      const response = await postFork(harness, {
+        sourceThreadId: sourceThread.id,
+        environment: {
+          type: "reuse",
+          environmentId: targetEnvironment.id,
+        },
+      });
+
+      expect(response.status).toBe(201);
+      const fork = threadResponseSchema.parse(await readJson(response));
+      expect(getThread(harness.db, fork.id)?.environmentId).toBe(
+        targetEnvironment.id,
+      );
+    });
+  });
+
+  it("creates a requested personal environment after a directory switch", async () => {
     await withTestHarness(async (harness) => {
       const { environment, sourceThread } =
         seedPersonalDirectoryForkSource(harness);
 
       const response = await postFork(harness, {
         sourceThreadId: sourceThread.id,
-        workspace: "isolated",
+        environment: {
+          type: "host",
+          hostId: environment.hostId,
+          workspace: { type: "personal" },
+        },
       });
 
       expect(response.status).toBe(201);
@@ -255,7 +332,6 @@ describe("public thread fork route", () => {
 
       const response = await postFork(harness, {
         sourceThreadId: sourceThread.id,
-        workspace: "reuse",
       });
 
       expect(response.status).toBe(201);
@@ -311,7 +387,6 @@ describe("public thread fork route", () => {
         sourceThreadId: sourceThread.id,
         sourceSeqEnd: 3,
         input,
-        workspace: "reuse",
       });
 
       expect(response.status).toBe(201);
@@ -705,7 +780,6 @@ describe("public thread fork route", () => {
 
       const response = await postFork(harness, {
         sourceThreadId: sourceThread.id,
-        workspace: "reuse",
       });
 
       expect(response.status).toBe(201);
@@ -732,7 +806,6 @@ describe("public thread fork route", () => {
 
       const response = await postFork(harness, {
         sourceThreadId: sourceThread.id,
-        workspace: "reuse",
       });
 
       expect(response.status).toBe(201);
@@ -784,7 +857,6 @@ describe("public thread fork route", () => {
 
       const response = await postFork(harness, {
         sourceThreadId: sourceThread.id,
-        workspace: "reuse",
       });
 
       expect(response.status).toBe(201);
@@ -1043,7 +1115,6 @@ describe("fork branch point and inherited history", () => {
       const response = await postFork(harness, {
         sourceThreadId: sourceThread.id,
         sourceSeqEnd: 5,
-        workspace: "reuse",
       });
 
       expect(response.status).toBe(201);
@@ -1085,7 +1156,6 @@ describe("fork branch point and inherited history", () => {
       const response = await postFork(harness, {
         sourceThreadId: sourceThread.id,
         sourceSeqEnd: 6,
-        workspace: "reuse",
       });
 
       expect(response.status).toBe(201);
@@ -1109,7 +1179,6 @@ describe("fork branch point and inherited history", () => {
 
       const response = await postFork(harness, {
         sourceThreadId: sourceThread.id,
-        workspace: "reuse",
       });
 
       expect(response.status).toBe(201);
@@ -1133,7 +1202,6 @@ describe("fork branch point and inherited history", () => {
 
       const response = await postFork(harness, {
         sourceThreadId: sourceThread.id,
-        workspace: "reuse",
       });
 
       expect(response.status).toBe(201);
@@ -1165,7 +1233,6 @@ describe("fork branch point and inherited history", () => {
         sourceThreadId: sourceThread.id,
         sourceSeqEnd: 5,
         visibility: "hidden",
-        workspace: "reuse",
       });
 
       expect(response.status).toBe(201);
@@ -1191,7 +1258,6 @@ describe("fork branch point and inherited history", () => {
       const running = await postFork(harness, {
         sourceThreadId: sourceThread.id,
         sourceSeqEnd: 14,
-        workspace: "reuse",
       });
       expect(running.status).toBe(400);
       expect(await readJson(running)).toMatchObject({
@@ -1203,7 +1269,6 @@ describe("fork branch point and inherited history", () => {
       const beforeFirstTurn = await postFork(harness, {
         sourceThreadId: sourceThread.id,
         sourceSeqEnd: 2,
-        workspace: "reuse",
       });
       expect(beforeFirstTurn.status).toBe(400);
       expect(await readJson(beforeFirstTurn)).toMatchObject({
@@ -1224,7 +1289,6 @@ describe("fork branch point and inherited history", () => {
 
       const response = await postFork(harness, {
         sourceThreadId: sourceThread.id,
-        workspace: "reuse",
       });
 
       expect(response.status).toBe(201);
@@ -1252,7 +1316,6 @@ describe("fork branch point and inherited history", () => {
       const earlier = await postFork(harness, {
         sourceThreadId: sourceThread.id,
         sourceSeqEnd: 5,
-        workspace: "reuse",
       });
       expect(earlier.status).toBe(400);
       expect(await readJson(earlier)).toMatchObject({
@@ -1263,7 +1326,6 @@ describe("fork branch point and inherited history", () => {
       const tip = await postFork(harness, {
         sourceThreadId: sourceThread.id,
         sourceSeqEnd: 10,
-        workspace: "reuse",
       });
       expect(tip.status).toBe(201);
       const fork = threadResponseSchema.parse(await readJson(tip));

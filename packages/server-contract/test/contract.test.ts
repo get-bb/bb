@@ -60,12 +60,18 @@ const OPTIONAL_SERVER_FIELD_GROUPS: readonly OptionalServerFieldGroup[] = [
   {
     reason:
       "Unmanaged workspaces may omit branch checkout intent when the daemon should leave HEAD untouched.",
-    fields: ["createThreadRequestSchema.environment.workspace.branch"],
+    fields: [
+      "createThreadRequestSchema.environment.workspace.branch",
+      "forkThreadRequestSchema.environment.workspace.branch",
+    ],
   },
   {
     reason:
       "Personal workspace requests may omit hostId so the server can use the default connected local host.",
-    fields: ["createThreadRequestSchema.environment.hostId"],
+    fields: [
+      "createThreadRequestSchema.environment.hostId",
+      "forkThreadRequestSchema.environment.hostId",
+    ],
   },
   {
     reason:
@@ -82,6 +88,7 @@ const OPTIONAL_SERVER_FIELD_GROUPS: readonly OptionalServerFieldGroup[] = [
       "Fork creation requires only a source thread; all other fields either select an optional behavior or receive an explicit server-boundary default.",
     fields: [
       "forkThreadRequestSchema.agentContextSeed",
+      "forkThreadRequestSchema.environment",
       "forkThreadRequestSchema.input",
       "forkThreadRequestSchema.originPluginId",
       "forkThreadRequestSchema.permissionMode",
