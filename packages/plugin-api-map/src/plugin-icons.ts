@@ -33,6 +33,7 @@ interface FirstPartyPlugin {
 }
 
 const FIRST_PARTY_PLUGINS: Record<string, FirstPartyPlugin> = {
+  "Account Pool": { id: "account-pool", icon: Layers01Icon },
   "Ask User Question": { id: "ask-user-question", icon: MessageQuestionIcon },
   Automations: { id: "automations", icon: Clock01Icon },
   "Custom instructions": { id: "custom-instructions", icon: Edit04Icon },

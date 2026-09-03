@@ -223,6 +223,7 @@ describe("builtin plugin reconciliation", () => {
 
   it("gives every builtin plugin a deliberate settings icon", async () => {
     const expectedIcons = new Map([
+      ["account-pool", "Layers"],
       ["ask-user-question", "MessageQuestion"],
       ["automations", "Clock"],
       ["concurrency-limit", "Limitation"],

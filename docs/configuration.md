@@ -611,6 +611,41 @@ how many connected clients received the broadcast. `spotlight` focuses the
 target pane and persistently dims the others; `clear-spotlight` focuses it and
 persistently restores undimmed splits.
 
+## Account Pool
+
+The builtin Account Pool plugin is disabled on fresh installations. It stores
+non-secret Claude account metadata in plugin KV, quota observations in the
+plugin SQLite database, and each account token plus the generated hub bearer
+key in 0600 files under `<data-dir>/plugins/account-pool/secrets/accounts/`.
+Enable it and add at least one account:
+
+```sh
+bb plugin enable account-pool
+bb pool account add --provider claude --import
+bb pool account add --provider claude --api-key <key> [--label <text>] [--priority <n>]
+```
+
+The import path reads the Claude Code login on the bb server host. The API-key
+form necessarily places the key in the command arguments and may leave it in
+shell history; prefer import when possible. If the plugin entered
+needs-configuration before its first account was added, run
+`bb plugin reload account-pool` afterward.
+
+`bb pool status --show-key` is the only command that reveals the hub bearer
+key. Point a client at the route printed by that command and supply the key as
+`Authorization: Bearer <key>`. Account listing, enable, disable, and removal
+are available through `bb pool account list|enable|disable|remove`.
+
+Two settings control routing. `switchThreshold` is the 5-hour or 7-day quota
+fraction at which an account stops receiving traffic and defaults to `0.98`.
+`upstreamBaseUrl` defaults to `https://api.anthropic.com` and exists only for
+tests and QA with a controlled fake upstream:
+
+```sh
+bb plugin config account-pool set switchThreshold 0.98
+bb plugin config account-pool set upstreamBaseUrl http://127.0.0.1:9000
+```
+
 ## bb connect
 
 `bb connect --code <code> --server https://<handle>.getbb.app` pairs this bb

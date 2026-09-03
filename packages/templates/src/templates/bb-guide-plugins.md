@@ -23,6 +23,28 @@ The builtin Custom instructions plugin adds a multiline editor under Settings
 → Custom instructions. Saved text is persisted on this bb host and included in
 agent task instructions; blank text contributes nothing.
 
+The builtin Account Pool plugin is disabled on fresh installations. It stores
+Claude account tokens in per-account 0600 secret files and proxies Anthropic
+Messages API requests through the bb server. Enable it, add an account, then
+point Claude Code at the route and bearer key shown by `status`:
+
+```
+bb plugin enable account-pool
+bb pool account add --provider claude --import
+bb pool account add --provider claude --api-key <key> [--label <text>] [--priority <n>]
+bb pool account list [--json]
+bb pool account remove <id>
+bb pool account enable <id>
+bb pool account disable <id>
+bb pool status [--json] [--show-key]
+```
+
+If the plugin was awaiting its first account, reload it after `account add`.
+Only `status --show-key` reveals the hub bearer key. Passing `--api-key <key>`
+can leave the key in shell history; prefer `--import` when Claude Code is
+already signed in. The `upstreamBaseUrl` setting exists for tests and QA and
+defaults to `https://api.anthropic.com`; `switchThreshold` defaults to `0.98`.
+
 The builtin Keep Awake plugin prevents macOS idle sleep while bb is running.
 Its settings page lets you target all hosts or selected hosts. The CLI
 equivalents are:

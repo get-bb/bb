@@ -51,6 +51,26 @@ BB_HOST_DAEMON_PORT only for an intentional non-default target.
 - Prefer non-interactive commands and machine-readable output for automation.
 - Pass `--yes` for a confirmed destructive command in a non-interactive shell.
 - Treat plugin commands as normal top-level commands after installation.
+
+The builtin Account Pool plugin is disabled by default. Enable it, add Claude
+credentials, and inspect its proxy route and account quota with:
+
+```sh
+bb plugin enable account-pool
+bb pool account add --provider claude --import
+bb pool account add --provider claude --api-key <key> [--label <text>] [--priority <n>]
+bb pool account list [--json]
+bb pool account remove <id>
+bb pool account enable <id>
+bb pool account disable <id>
+bb pool status [--json] [--show-key]
+```
+
+Reload the plugin after adding its first account if it was awaiting
+configuration. The hub bearer key appears only with `status --show-key`.
+`--api-key <key>` can be recorded in shell history, so prefer `--import` for an
+existing Claude Code login.
+
 - Inspect real status, logs, API results, or diffs instead of assumptions.
 - Keep file paths on the machine that owns the selected workspace.
 
