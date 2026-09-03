@@ -56,7 +56,7 @@ describe("OMP advisor timeline renderer", () => {
     expect(rendered.container.textContent?.length).toBeGreaterThan(280);
   });
 
-  it("surrounds the advisor output with a bordered card", () => {
+  it("surrounds the advisor output with a violet-bordered card", () => {
     const rendered = renderSlot(
       app.timelineRenderers[0]!,
       props("The implementation is sound."),
@@ -65,7 +65,7 @@ describe("OMP advisor timeline renderer", () => {
     expect(
       Array.from(rendered.container.firstElementChild?.classList ?? []),
     ).toEqual(
-      expect.arrayContaining(["rounded-md", "border", "border-border"]),
+      expect.arrayContaining(["rounded-md", "border", "border-violet-500"]),
     );
   });
 
