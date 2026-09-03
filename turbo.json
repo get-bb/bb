@@ -461,6 +461,9 @@
       "dependsOn": ["//#ensure-native-modules", "@bb/cli#build", "topo"],
       "inputs": [
         "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/.github/APPROVED_CONTRIBUTORS",
+        "$TURBO_ROOT$/.github/workflows/approve-contributor.yml",
+        "$TURBO_ROOT$/.github/workflows/pr-gate.yml",
         "$TURBO_ROOT$/package.json",
         "$TURBO_ROOT$/vitest.shared.ts"
       ]
