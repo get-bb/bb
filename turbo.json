@@ -364,6 +364,7 @@
         "$TURBO_ROOT$/packages/domain/src/plugin-id.ts",
         "$TURBO_ROOT$/packages/domain/src/plugin-manifest.ts",
         "$TURBO_ROOT$/plugins/*/package.json",
+        "$TURBO_ROOT$/plugins/*/ABOUT.md",
         "$TURBO_ROOT$/plugins/bb-official.json"
       ],
       "outputs": ["src/generated/bb-official-marketplace/marketplace.json"]

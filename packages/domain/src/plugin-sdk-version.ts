@@ -1,3 +1,3 @@
-export const PLUGIN_SDK_VERSION = "0.4.40";
+export const PLUGIN_SDK_VERSION = "0.4.41";
 
 export const PLUGIN_SDK_MAJOR = Number(PLUGIN_SDK_VERSION.split(".", 1)[0]);
