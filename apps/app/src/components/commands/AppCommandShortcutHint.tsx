@@ -13,7 +13,7 @@ interface AppCommandShortcutPillProps {
   className?: string;
 }
 
-const APP_COMMAND_SHORTCUT_HINT_CLASS =
+export const APP_COMMAND_ACCESSORY_PILL_CLASS =
   "pointer-events-none inline-flex shrink-0 items-center justify-center whitespace-nowrap rounded-sm bg-state-hover px-1.5 py-1 font-sans text-xs font-normal leading-none tabular-nums text-subtle-foreground opacity-60";
 
 export function AppCommandShortcutPill({
@@ -24,7 +24,7 @@ export function AppCommandShortcutPill({
   return (
     <kbd
       aria-hidden={ariaHidden}
-      className={cn(APP_COMMAND_SHORTCUT_HINT_CLASS, className)}
+      className={cn(APP_COMMAND_ACCESSORY_PILL_CLASS, className)}
     >
       {shortcut.label}
     </kbd>

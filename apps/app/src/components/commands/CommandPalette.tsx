@@ -10,12 +10,9 @@ import type { KeyboardEvent as ReactKeyboardEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { Dialog, DialogContent, DialogTitle } from "@bb/shared-ui/dialog";
 import { cn } from "@bb/shared-ui/lib/utils";
-import { COARSE_POINTER_TEXT_SM_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
 import { CHROME_SECTION_LABEL_CLASS } from "@bb/shared-ui/chrome-style-tokens";
-import { LAUNCHER_ACTION_ROW_BASE_CLASS } from "@/components/secondary-panel/launcherRow";
 import {
   useAppCommandHandler,
-  useAppCommandShortcut,
   useAppCommandRunner,
   useAppCommandShortcuts,
   useIndexedAppCommandHandlers,
@@ -56,7 +53,12 @@ import {
 } from "@/lib/command-palette/palette-modes";
 import { PaletteShell } from "./PaletteShell";
 
-const PALETTE_PLACEHOLDER = "Search commands";
+const PALETTE_INPUT_LABEL = "Search commands";
+const PALETTE_PLACEHOLDER = "Search commands…";
+const ROOT_FOOTER_KEYS = [
+  { keys: ["↑↓"], label: "Select" },
+  { keys: ["↵"], label: "Run" },
+] as const;
 const MODE_ENTRY_HANDLER_PRIORITY = 100;
 const MODE_BY_ACTION_ID = new Map(
   PALETTE_MODES.map((mode) => [
@@ -79,7 +81,6 @@ export function CommandPalette({
   const navigate = useNavigate();
   const runner = useAppCommandRunner();
   const shortcuts = useAppCommandShortcuts(PALETTE_COMMAND_IDS);
-  const paletteShortcut = useAppCommandShortcut("palette.open");
   const listId = useId();
   const optionIdPrefix = useId();
 
@@ -224,7 +225,9 @@ export function CommandPalette({
     const groups = PALETTE_ACTION_BUCKETS.map((bucket) => ({
       bucket,
       entries: ranked.filter((entry) => entry.action.bucket === bucket),
-    }));
+    })).filter(
+      (group) => group.bucket !== "Plugins" || group.entries.length > 0,
+    );
     return groups.map((group, index) => ({
       ...group,
       startIndex: groups
@@ -252,15 +255,18 @@ export function CommandPalette({
       ?.scrollIntoView({ block: "nearest" });
   }, [activeIndex]);
 
-  const chooseAction = useCallback((action: PaletteAction) => {
-    setRecents((current) => recordPaletteRecent(current, action.id));
-    if (MODE_BY_ACTION_ID.has(action.id)) {
-      action.run();
-      return;
-    }
-    pendingRunRef.current = action.run;
-    setOpen(false);
-  }, []);
+  const chooseAction = useCallback(
+    (action: PaletteAction) => {
+      setRecents((current) => recordPaletteRecent(current, action.id));
+      if (MODE_BY_ACTION_ID.has(action.id)) {
+        action.run();
+        return;
+      }
+      pendingRunRef.current = action.run;
+      setOpen(false);
+    },
+    [],
+  );
 
   const runAfterClose = useCallback((run: () => void) => {
     pendingRunRef.current = run;
@@ -337,7 +343,7 @@ export function CommandPalette({
       <DialogContent
         hideCloseButton
         aria-describedby={undefined}
-        className="top-[12%] max-w-xl translate-y-0 gap-0 p-0"
+        className="top-[12%] max-w-[640px] translate-y-0 gap-0 overflow-hidden p-0 shadow-lg sm:rounded-xl"
         onCloseAutoFocus={handleCloseAutoFocus}
         onEscapeKeyDown={(event) => {
           if (activeMode !== undefined) event.preventDefault();
@@ -352,12 +358,8 @@ export function CommandPalette({
                 ? undefined
                 : `${optionIdPrefix}-${activeIndex}`
             }
-            accessory={
-              paletteShortcut === null ? null : (
-                <AppCommandShortcutPill shortcut={paletteShortcut} />
-              )
-            }
-            inputLabel={PALETTE_PLACEHOLDER}
+            footerKeys={ROOT_FOOTER_KEYS}
+            inputLabel={PALETTE_INPUT_LABEL}
             listId={listId}
             listLabel="Commands"
             listRef={listRef}
@@ -371,11 +373,11 @@ export function CommandPalette({
             value={query}
           >
             {!isGroupedRoot && visibleEntries.length === 0 ? (
-              <p className="px-2 py-6 text-center text-sm text-muted-foreground">
+              <p className="px-3 py-8 text-center text-sm text-muted-foreground">
                 No matching commands
               </p>
             ) : isGroupedRoot ? (
-              rootGroups.map((group, groupIndex) => {
+              rootGroups.map((group) => {
                 const labelId = `${optionIdPrefix}-${group.bucket.toLowerCase()}-label`;
                 return (
                   <div
@@ -388,8 +390,7 @@ export function CommandPalette({
                       id={labelId}
                       className={cn(
                         CHROME_SECTION_LABEL_CLASS,
-                        "px-2 pb-1",
-                        groupIndex === 0 ? "pt-1" : "pt-2",
+                        "px-3 pb-1 pt-3",
                       )}
                     >
                       {group.bucket}
@@ -402,7 +403,10 @@ export function CommandPalette({
                           entry={entry}
                           id={`${optionIdPrefix}-${visibleIndex}`}
                           isActive={visibleIndex === activeIndex}
-                          onActivate={() => setHighlightedIndex(visibleIndex)}
+                          isDrillIn={MODE_BY_ACTION_ID.has(entry.action.id)}
+                          onActivate={() => {
+                            setHighlightedIndex(visibleIndex);
+                          }}
                           onSelect={() => chooseAction(entry.action)}
                         />
                       );
@@ -417,7 +421,10 @@ export function CommandPalette({
                   entry={entry}
                   id={`${optionIdPrefix}-${index}`}
                   isActive={index === activeIndex}
-                  onActivate={() => setHighlightedIndex(index)}
+                  isDrillIn={MODE_BY_ACTION_ID.has(entry.action.id)}
+                  onActivate={() => {
+                    setHighlightedIndex(index);
+                  }}
                   onSelect={() => chooseAction(entry.action)}
                 />
               ))
@@ -443,26 +450,30 @@ function PaletteRow({
   entry,
   id,
   isActive,
+  isDrillIn,
   onActivate,
   onSelect,
 }: {
   entry: RankedPaletteAction;
   id: string;
   isActive: boolean;
+  isDrillIn: boolean;
   onActivate: () => void;
   onSelect: () => void;
 }) {
   const metadataGroup =
     entry.action.group === entry.action.bucket ? null : entry.action.group;
-  const hasTrailing = metadataGroup !== null || entry.action.shortcut !== null;
+  const title = isDrillIn ? `${entry.action.title}…` : entry.action.title;
+  const hasTrailing =
+    metadataGroup !== null || entry.action.shortcut !== null || isDrillIn;
   return (
     <div
       id={id}
       role="option"
       aria-selected={isActive}
+      data-palette-action-kind={isDrillIn ? "drill-in" : "terminal"}
       className={cn(
-        LAUNCHER_ACTION_ROW_BASE_CLASS,
-        "cursor-pointer",
+        "flex min-h-9 w-full min-w-0 cursor-pointer items-center gap-3 rounded-md px-3 py-2 text-left text-sm outline-none",
         isActive && "bg-state-hover text-foreground",
       )}
       onPointerMove={onActivate}
@@ -470,25 +481,23 @@ function PaletteRow({
     >
       <span className="min-w-0 truncate">
         <HighlightedTitle
-          title={entry.action.title}
+          title={title}
           positions={entry.positions}
         />
       </span>
       {hasTrailing ? (
         <span className="ml-auto flex shrink-0 items-center gap-2">
           {metadataGroup === null ? null : (
-            <span
-              className={cn(
-                "text-muted-foreground",
-                COARSE_POINTER_TEXT_SM_CLASS,
-              )}
-            >
+            <span className="text-xs text-muted-foreground">
               {metadataGroup}
             </span>
           )}
           {entry.action.shortcut === null ? null : (
             <AppCommandShortcutPill shortcut={entry.action.shortcut} />
           )}
+          {isDrillIn ? (
+            <span className="sr-only">Opens a search view</span>
+          ) : null}
         </span>
       ) : null}
     </div>

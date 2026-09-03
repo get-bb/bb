@@ -8,7 +8,7 @@ export interface PaletteModePresentation {
     label: string;
   };
   footerKeys: readonly {
-    keys: string;
+    keys: readonly string[];
     label: string;
   }[];
   placeholder: string;
