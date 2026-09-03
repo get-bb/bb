@@ -160,6 +160,7 @@ function isEventProjectionCallMessage(
     case "extension":
     case "file-edit":
     case "file-read":
+    case "image-generation":
     case "image-view":
     case "plan-steps":
     case "search":

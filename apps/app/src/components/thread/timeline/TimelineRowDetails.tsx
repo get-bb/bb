@@ -282,6 +282,7 @@ export function WorkRowBody({
         />
       );
     case "approval":
+    case "image-generation":
     case "web-search":
     case "web-fetch":
     case "file-read":

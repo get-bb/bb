@@ -33,6 +33,12 @@ const IMAGE_PRESENTATION = {
   title: "image.png",
 };
 
+const IMAGE_GENERATION_PRESENTATION = {
+  label: { pending: "Generating image", completed: "Generated image" },
+  icon: { glyph: "Palette" },
+  title: "generated.png",
+};
+
 function webSearchPresentation(query: string) {
   return {
     label: { pending: "Searching the web", completed: "Searched the web" },
@@ -521,6 +527,79 @@ describe("codex item translation", () => {
           presentation: IMAGE_PRESENTATION,
         },
       }),
+    );
+  });
+
+  it("maps imageGeneration items without a provider-unhandled fallback", () => {
+    const harness = createHarness();
+    const started = harness.translate(
+      codexEvent("item/started", {
+        threadId: "t1",
+        turnId: "turn-1",
+        startedAtMs: 0,
+        item: {
+          type: "imageGeneration",
+          id: "generated-image-1",
+          status: "inProgress",
+          revisedPrompt: "Draw a blue circle",
+          result: "",
+          failure: null,
+          savedPath: "/tmp/generated.png",
+          transparentBackground: true,
+        },
+      }),
+    );
+    expect(started).toContainEqual(
+      expect.objectContaining({
+        type: "item/started",
+        item: {
+          type: "imageGeneration",
+          id: harness.itemId("generated-image-1"),
+          status: "pending",
+          prompt: "Draw a blue circle",
+          path: "/tmp/generated.png",
+          error: null,
+          transparentBackground: true,
+          presentation: IMAGE_GENERATION_PRESENTATION,
+        },
+      }),
+    );
+
+    const completed = harness.translate(
+      codexEvent("item/completed", {
+        threadId: "t1",
+        turnId: "turn-1",
+        completedAtMs: 0,
+        item: {
+          type: "imageGeneration",
+          id: "generated-image-1",
+          status: "completed",
+          revisedPrompt: "Draw a blue circle",
+          result: "encoded-image-result",
+          failure: null,
+          savedPath: "/tmp/generated.png",
+          transparentBackground: true,
+        },
+      }),
+    );
+    expect(completed).toContainEqual(
+      expect.objectContaining({
+        type: "item/completed",
+        item: {
+          type: "imageGeneration",
+          id: harness.itemId("generated-image-1"),
+          status: "completed",
+          prompt: "Draw a blue circle",
+          path: "/tmp/generated.png",
+          result: "encoded-image-result",
+          error: null,
+          transparentBackground: true,
+          presentation: IMAGE_GENERATION_PRESENTATION,
+        },
+      }),
+    );
+    expect(completed.some((event) => event.type === "provider/unhandled")).toBe(
+      false,
     );
   });
 

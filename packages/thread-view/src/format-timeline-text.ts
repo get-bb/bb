@@ -222,6 +222,8 @@ function formatWorkBody(
       return lines;
     case "web-fetch":
       return lines;
+    case "image-generation":
+      return lines;
     case "image-view":
       return lines;
     case "file-read":

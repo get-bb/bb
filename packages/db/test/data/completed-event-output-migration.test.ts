@@ -1,4 +1,5 @@
 import { turnScope } from "@bb/domain";
+import { eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 import { createConnection, type DbConnection } from "../../src/connection.js";
 import { listStoredEventRows } from "../../src/data/events.js";
@@ -13,6 +14,7 @@ import {
   COMPLETED_EVENT_OUTPUT_RETENTION_MS,
   COMPLETED_EVENT_OUTPUT_TRUNCATION_THRESHOLD_CHARS,
   migrateNextCompletedEventItemOutput,
+  migrateNextLegacyImageGenerationOutput,
 } from "../../src/data/sweeps.js";
 import { createThread } from "../../src/data/threads.js";
 import { noopNotifier } from "../../src/notifier.js";
@@ -58,6 +60,20 @@ function readOutput(data: string, outputPath: string): string {
     throw new Error(`Expected string output at ${outputPath}`);
   }
   return value.item[outputPath];
+}
+
+function readLegacyImageGenerationOutput(data: string): string {
+  const value: unknown = JSON.parse(data);
+  if (
+    !isRecord(value) ||
+    !isRecord(value.rawEvent) ||
+    !isRecord(value.rawEvent.params) ||
+    !isRecord(value.rawEvent.params.item) ||
+    typeof value.rawEvent.params.item.result !== "string"
+  ) {
+    throw new Error("Expected legacy image generation result");
+  }
+  return value.rawEvent.params.item.result;
 }
 
 interface InsertLegacyOutputArgs extends RetainedEventOutputTarget {
@@ -108,6 +124,64 @@ function migrateCommandOutput(db: DbConnection, migratedAt: number) {
     limit: 10,
     migratedAt,
     outputPath: "aggregatedOutput",
+  });
+}
+
+function insertLegacyImageGeneration(args: {
+  createdAt: number;
+  db: DbConnection;
+  eventId: string;
+  output: string;
+  sequence: number;
+  threadId: string;
+}): void {
+  args.db
+    .insert(events)
+    .values({
+      createdAt: args.createdAt,
+      data: JSON.stringify({
+        providerId: "codex",
+        rawEvent: {
+          jsonrpc: "2.0",
+          method: "item/completed",
+          params: {
+            item: {
+              failure: null,
+              id: `${args.eventId}-item`,
+              result: args.output,
+              revisedPrompt: "Draw a compact test image",
+              savedPath: "/tmp/generated.png",
+              status: "completed",
+              transparentBackground: false,
+              type: "imageGeneration",
+            },
+            threadId: "codex-thread",
+            turnId: `turn-${args.eventId}`,
+          },
+        },
+        rawType: "item/completed",
+      }),
+      id: args.eventId,
+      itemId: null,
+      itemKind: null,
+      parentToolCallId: null,
+      providerThreadId: "codex-thread",
+      scopeKind: "turn",
+      sequence: args.sequence,
+      threadId: args.threadId,
+      turnId: `turn-${args.eventId}`,
+      type: "provider/unhandled",
+    })
+    .run();
+}
+
+function migrateLegacyImageGeneration(
+  db: DbConnection,
+  migratedAt: number,
+) {
+  return migrateNextLegacyImageGenerationOutput(db, {
+    limit: 10,
+    migratedAt,
   });
 }
 
@@ -191,7 +265,9 @@ describe("completed event output migration", () => {
       });
     }
 
-    expect(db.select().from(retainedEventOutputs).all()).toHaveLength(4);
+    expect(db.select().from(retainedEventOutputs).all()).toHaveLength(
+      RETAINED_EVENT_OUTPUT_TARGETS.length,
+    );
     const stored = listStoredEventRows(db, { threadId: thread.id });
     const hydrated = hydrateRetainedEventOutputRows(db, stored, migratedAt);
     for (const [index, target] of RETAINED_EVENT_OUTPUT_TARGETS.entries()) {
@@ -506,6 +582,149 @@ describe("completed event output migration", () => {
 
     expect(migrateCommandOutput(db, migratedAt).eventId).toBe("evt_new_cursor");
     expect(db.select().from(maintenanceScanCursors).all()).toHaveLength(2);
+    db.$client.close();
+  });
+
+  it("sidecarizes a legacy Codex image result without rewriting its event envelope", () => {
+    const migratedAt = 1_800_000_000_000;
+    const output = "image-result-" + "i".repeat(4 * 1024 * 1024);
+    const { db, thread } = setup();
+    insertLegacyImageGeneration({
+      createdAt: migratedAt - 1,
+      db,
+      eventId: "evt_legacy_image_generation",
+      output,
+      sequence: 1,
+      threadId: thread.id,
+    });
+
+    expect(migrateLegacyImageGeneration(db, migratedAt)).toMatchObject({
+      action: "migrated",
+      eventId: "evt_legacy_image_generation",
+      migratedRows: 1,
+      retained: true,
+      threadId: thread.id,
+    });
+    const [stored] = listStoredEventRows(db, { threadId: thread.id });
+    if (!stored) {
+      throw new Error("Expected migrated legacy image generation event");
+    }
+    expect(stored.type).toBe("provider/unhandled");
+    expect(stored.itemKind).toBeNull();
+    expect(readLegacyImageGenerationOutput(stored.data)).not.toBe(output);
+    const [hydrated] = hydrateRetainedEventOutputRows(db, [stored], migratedAt);
+    expect(
+      hydrated && readLegacyImageGenerationOutput(hydrated.data),
+    ).toBe(output);
+    expect(
+      JSON.parse(hydrated?.data ?? "{}").rawEvent.params.item.truncation,
+    ).toBeUndefined();
+    db.$client.close();
+  });
+
+  it("resumes legacy image migration one row at a time with independent cursor state", () => {
+    const migratedAt = 1_800_000_000_000;
+    const setupResult = setup();
+    for (const sequence of [1, 2]) {
+      insertLegacyImageGeneration({
+        createdAt: migratedAt - 1,
+        db: setupResult.db,
+        eventId: `evt_legacy_image_restart_${sequence}`,
+        output: `${sequence}-` + "r".repeat(40_000),
+        sequence,
+        threadId: setupResult.thread.id,
+      });
+    }
+    expect(
+      migrateLegacyImageGeneration(setupResult.db, migratedAt),
+    ).toMatchObject({
+      action: "migrated",
+      eventId: "evt_legacy_image_restart_1",
+      migratedRows: 1,
+    });
+    const serialized = setupResult.db.$client.serialize();
+    setupResult.db.$client.close();
+
+    const restarted = createConnection(serialized);
+    expect(migrateLegacyImageGeneration(restarted, migratedAt)).toMatchObject({
+      action: "migrated",
+      eventId: "evt_legacy_image_restart_2",
+      migratedRows: 1,
+    });
+    expect(restarted.select().from(retainedEventOutputs).all()).toHaveLength(2);
+    expect(
+      restarted
+        .select()
+        .from(maintenanceScanCursors)
+        .all()
+        .every((cursor) =>
+          cursor.policy.startsWith("legacy_image_generation"),
+        ),
+    ).toBe(true);
+    restarted.$client.close();
+  });
+
+  it("drops expired legacy image results and skips unrelated unhandled events", () => {
+    const migratedAt = 1_800_000_000_000;
+    const { db, thread } = setup();
+    insertLegacyImageGeneration({
+      createdAt: migratedAt - COMPLETED_EVENT_OUTPUT_RETENTION_MS,
+      db,
+      eventId: "evt_expired_legacy_image",
+      output: "expired-" + "e".repeat(40_000),
+      sequence: 1,
+      threadId: thread.id,
+    });
+    const malformedData = JSON.stringify({
+      providerId: "codex",
+      rawEvent: {
+        jsonrpc: "2.0",
+        method: "item/completed",
+        params: {
+          item: {
+            failure: null,
+            id: "malformed-image",
+            result: "malformed-" + "m".repeat(40_000),
+            revisedPrompt: "Malformed future status",
+            status: "futureStatus",
+            type: "imageGeneration",
+          },
+        },
+      },
+      rawType: "item/completed",
+    });
+    db.insert(events)
+      .values({
+        createdAt: migratedAt - 1,
+        data: malformedData,
+        id: "evt_malformed_image",
+        itemId: null,
+        itemKind: null,
+        parentToolCallId: null,
+        providerThreadId: "codex-thread",
+        scopeKind: "turn",
+        sequence: 2,
+        threadId: thread.id,
+        turnId: "turn-unrelated",
+        type: "provider/unhandled",
+      })
+      .run();
+
+    expect(migrateLegacyImageGeneration(db, migratedAt)).toMatchObject({
+      action: "migrated",
+      eventId: "evt_expired_legacy_image",
+      retained: false,
+    });
+    expect(db.select().from(retainedEventOutputs).all()).toEqual([]);
+    expect(migrateLegacyImageGeneration(db, migratedAt).action).toBe(
+      "scanned",
+    );
+    expect(
+      db.select({ data: events.data })
+        .from(events)
+        .where(eq(events.id, "evt_malformed_image"))
+        .get()?.data,
+    ).toBe(malformedData);
     db.$client.close();
   });
 });

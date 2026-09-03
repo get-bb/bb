@@ -37,6 +37,14 @@ interface StatusedItemActivityLifecycleBase extends ItemActivityLifecycleBase {
   status: ThreadEventItemStatus;
 }
 
+interface ImageGenerationLifecycleEvent extends StatusedItemActivityLifecycleBase {
+  itemKind: "image-generation";
+  prompt: string | null;
+  path: string | null;
+  error: string | null;
+  transparentBackground: boolean;
+}
+
 export interface FileReadLifecycleEvent extends StatusedItemActivityLifecycleBase {
   itemKind: "file-read";
   path: string;
@@ -68,6 +76,7 @@ export type WebActivityLifecycleEvent =
   | WebSearchLifecycleEvent
   | WebFetchLifecycleEvent
   | ImageViewLifecycleEvent
+  | ImageGenerationLifecycleEvent
   | FileReadLifecycleEvent
   | SearchLifecycleEvent
   | PlanStepsLifecycleEvent
@@ -77,6 +86,10 @@ export function parseWebActivityLifecycleEvent(
   decoded: ThreadEvent,
   parentToolCallIdOverride?: string,
 ): WebActivityLifecycleEvent | null {
+  const legacyImageGeneration = parseLegacyImageGeneration(decoded);
+  if (legacyImageGeneration !== null) {
+    return legacyImageGeneration;
+  }
   if (decoded.type !== "item/started" && decoded.type !== "item/completed") {
     return null;
   }
@@ -114,6 +127,17 @@ export function parseWebActivityLifecycleEvent(
         ...base,
         itemKind: "image-view",
         path: item.path,
+        ...(item.presentation ? { presentation: item.presentation } : {}),
+      };
+    case "imageGeneration":
+      return {
+        ...base,
+        itemKind: "image-generation",
+        prompt: item.prompt,
+        path: item.path,
+        error: item.error,
+        transparentBackground: item.transparentBackground,
+        status: item.status,
         ...(item.presentation ? { presentation: item.presentation } : {}),
       };
     case "fileRead":
@@ -157,4 +181,80 @@ export function parseWebActivityLifecycleEvent(
     default:
       return null;
   }
+}
+
+function jsonObject(
+  value: JsonValue | undefined,
+): Record<string, JsonValue> | null {
+  return value !== null && typeof value === "object" && !Array.isArray(value)
+    ? value
+    : null;
+}
+
+function legacyImageGenerationStatus(
+  value: JsonValue | undefined,
+): ThreadEventItemStatus | null {
+  switch (value) {
+    case "inProgress":
+      return "pending";
+    case "failed":
+      return "failed";
+    case "declined":
+      return "interrupted";
+    case "completed":
+      return "completed";
+    default:
+      return null;
+  }
+}
+
+function parseLegacyImageGeneration(
+  decoded: ThreadEvent,
+): ImageGenerationLifecycleEvent | null {
+  if (
+    decoded.type !== "provider/unhandled" ||
+    decoded.rawType !== "item/completed" ||
+    decoded.rawEvent.method !== "item/completed"
+  ) {
+    return null;
+  }
+  const params = jsonObject(decoded.rawEvent.params);
+  const item = jsonObject(params?.item);
+  const status = legacyImageGenerationStatus(item?.status);
+  if (
+    item?.type !== "imageGeneration" ||
+    typeof item.id !== "string" ||
+    status === null ||
+    !(item.revisedPrompt === null || typeof item.revisedPrompt === "string") ||
+    !(item.savedPath === undefined || typeof item.savedPath === "string") ||
+    !(
+      item.transparentBackground === undefined ||
+      typeof item.transparentBackground === "boolean"
+    ) ||
+    !(item.failure === null || jsonObject(item.failure) !== null)
+  ) {
+    return null;
+  }
+  const prompt =
+    typeof item.revisedPrompt === "string" ? item.revisedPrompt : null;
+  const path = typeof item.savedPath === "string" ? item.savedPath : null;
+  return {
+    kind: "end",
+    callId: item.id,
+    itemKind: "image-generation",
+    prompt,
+    path,
+    error:
+      item.failure === null || item.failure === undefined
+        ? null
+        : "Image generation failed",
+    transparentBackground:
+      typeof item.transparentBackground === "boolean"
+        ? item.transparentBackground
+        : false,
+    status,
+    ...(decoded.parentToolCallId
+      ? { parentToolCallId: decoded.parentToolCallId }
+      : {}),
+  };
 }

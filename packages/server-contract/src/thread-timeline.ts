@@ -360,6 +360,21 @@ export type TimelineImageViewWorkRow = z.infer<
   typeof timelineImageViewWorkRowSchema
 >;
 
+export const timelineImageGenerationWorkRowSchema =
+  timelineWorkRowBaseSchema.extend({
+    workKind: z.literal("image-generation"),
+    callId: z.string(),
+    prompt: z.string().nullable(),
+    path: z.string().nullable(),
+    error: z.string().nullable(),
+    transparentBackground: z.boolean(),
+    completedAt: z.number().nullable(),
+    ...timelineRowPresentationField,
+  });
+export type TimelineImageGenerationWorkRow = z.infer<
+  typeof timelineImageGenerationWorkRowSchema
+>;
+
 export const timelineFileReadWorkRowSchema = timelineWorkRowBaseSchema.extend({
   workKind: z.literal("file-read"),
   callId: z.string(),
@@ -538,6 +553,7 @@ export type TimelineWorkRow =
   | TimelineFileChangeWorkRow
   | TimelineWebSearchWorkRow
   | TimelineWebFetchWorkRow
+  | TimelineImageGenerationWorkRow
   | TimelineImageViewWorkRow
   | TimelineFileReadWorkRow
   | TimelineSearchWorkRow
@@ -554,6 +570,7 @@ export const timelineWorkRowSchema: z.ZodType<TimelineWorkRow> = z.union([
   timelineFileChangeWorkRowSchema,
   timelineWebSearchWorkRowSchema,
   timelineWebFetchWorkRowSchema,
+  timelineImageGenerationWorkRowSchema,
   timelineImageViewWorkRowSchema,
   timelineFileReadWorkRowSchema,
   timelineSearchWorkRowSchema,

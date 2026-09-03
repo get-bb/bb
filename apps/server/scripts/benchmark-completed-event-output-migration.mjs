@@ -185,6 +185,17 @@ function createItem(target, id, output) {
         tool: "benchmark",
         type: "toolCall",
       };
+    case "imageGeneration":
+      return {
+        error: null,
+        id,
+        path: "/tmp/benchmark.png",
+        prompt: "Generate a benchmark image",
+        result: output,
+        status: "completed",
+        transparentBackground: false,
+        type: "imageGeneration",
+      };
     case "webFetch":
       return {
         id,

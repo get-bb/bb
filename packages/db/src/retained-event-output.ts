@@ -7,7 +7,7 @@ export const COMPLETED_EVENT_OUTPUT_RETAINED_TAIL_CHARS = 2 * 1024;
 
 export type RetainedEventOutputItemKind = Extract<
   ThreadEventItemType,
-  "commandExecution" | "toolCall" | "webFetch" | "webSearch"
+  "commandExecution" | "imageGeneration" | "toolCall" | "webFetch" | "webSearch"
 >;
 
 export type RetainedEventOutputPath =
@@ -22,6 +22,7 @@ export interface RetainedEventOutputTarget {
 
 export const RETAINED_EVENT_OUTPUT_TARGETS = [
   { itemKind: "commandExecution", outputPath: "aggregatedOutput" },
+  { itemKind: "imageGeneration", outputPath: "result" },
   { itemKind: "toolCall", outputPath: "result" },
   { itemKind: "webFetch", outputPath: "resultText" },
   { itemKind: "webSearch", outputPath: "resultText" },

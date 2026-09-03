@@ -440,6 +440,24 @@ export const codexHandledThreadItemSchema = z.discriminatedUnion("type", [
     .passthrough(),
   z
     .object({
+      type: z.literal("imageGeneration"),
+      id: z.string(),
+      status: codexToolReferenceStatusSchema,
+      revisedPrompt: z.string().nullable(),
+      result: z.string(),
+      transparentBackground: z.boolean().optional(),
+      failure: z
+        .object({
+          type: z.literal("usageLimitExceeded"),
+          limitId: z.string(),
+          resetsAt: z.number().nullable(),
+        })
+        .nullable(),
+      savedPath: z.string().optional(),
+    })
+    .passthrough(),
+  z
+    .object({
       type: z.literal("reasoning"),
       id: z.string(),
       summary: codexStringArraySchema,

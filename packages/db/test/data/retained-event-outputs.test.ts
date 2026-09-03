@@ -89,6 +89,46 @@ afterEach(() => {
 });
 
 describe("retained completed-event outputs", () => {
+  it("stores new image generation results in the authoritative sidecar", () => {
+    const now = 1_800_000_000_000;
+    const { db, source } = setup();
+    const result = "encoded-image-" + "i".repeat(4 * 1024 * 1024);
+    insertEvents(db, noopNotifier, [
+      {
+        createdAt: now,
+        data: JSON.stringify({
+          item: {
+            error: null,
+            id: "generated-image-1",
+            path: "/tmp/generated.png",
+            prompt: "Draw a blue circle",
+            result,
+            status: "completed",
+            transparentBackground: false,
+            type: "imageGeneration",
+          },
+        }),
+        itemId: "generated-image-1",
+        itemKind: "imageGeneration",
+        parentToolCallId: null,
+        scope: turnScope("turn-image-generation"),
+        sequence: 1,
+        threadId: source.id,
+        type: "item/completed",
+      },
+    ]);
+
+    const [stored] = listStoredEventRows(db, { threadId: source.id });
+    if (!stored) {
+      throw new Error("Expected stored image generation event");
+    }
+    expect(stored.data.length).toBeLessThan(10_000);
+    expect(readOutput(stored.data, "result")).not.toBe(result);
+    const [hydrated] = hydrateRetainedEventOutputRows(db, [stored], now);
+    expect(hydrated && readOutput(hydrated.data, "result")).toBe(result);
+    db.$client.close();
+  });
+
   it("stores a bounded preview and hydrates the full output until expiry", () => {
     const now = 1_800_000_000_000;
     vi.useFakeTimers();
