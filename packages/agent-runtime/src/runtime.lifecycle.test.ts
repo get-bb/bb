@@ -238,6 +238,22 @@ describe("createAgentRuntime lifecycle", () => {
       const record = createScriptedEchoRequestRecord();
       const events: ThreadEvent[] = [];
       const threadStorageRootPath = join(tmpDir, "thread-storage");
+      const contributedEnv = [
+        {
+          name: "PATH",
+          value: "/plugin/bin",
+          source: { plugin: "env-test" },
+          reason: "Use the plugin toolchain",
+          secret: false,
+        },
+        {
+          name: "AUTH_PROXY_URL",
+          value: { serverPath: "/plugins/env-test/auth" },
+          source: { plugin: "env-test" },
+          reason: "Use the authenticated server proxy",
+          secret: true,
+        },
+      ] as const;
       const runtime = createScriptedEchoRuntime({
         runtime: {
           workspacePath: tmpDir,
@@ -259,22 +275,7 @@ describe("createAgentRuntime lifecycle", () => {
         threadId: "t1",
         projectId: "p1",
         providerId: "fake",
-        contributedEnv: [
-          {
-            name: "PATH",
-            value: "/plugin/bin",
-            source: { plugin: "env-test" },
-            reason: "Use the plugin toolchain",
-            secret: false,
-          },
-          {
-            name: "AUTH_PROXY_URL",
-            value: { serverPath: "/plugins/env-test/auth" },
-            source: { plugin: "env-test" },
-            reason: "Use the authenticated server proxy",
-            secret: true,
-          },
-        ],
+        contributedEnv,
         options: fullRuntimeOptions,
       });
 
@@ -317,6 +318,17 @@ describe("createAgentRuntime lifecycle", () => {
         ]),
       });
       expect(JSON.stringify(events)).not.toContain("/plugins/env-test/auth");
+
+      await runtime.runTurn({
+        clientRequestId: "creq_222222224c",
+        threadId: "t1",
+        input: [promptTextInput({ text: "follow up" })],
+        contributedEnv,
+        options: fullRuntimeOptions,
+      });
+      expect(
+        events.filter((event) => event.type === "provider.env-resolved"),
+      ).toHaveLength(1);
 
       await runtime.shutdown();
     });
