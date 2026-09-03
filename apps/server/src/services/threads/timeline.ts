@@ -1047,6 +1047,15 @@ function resolveTimelineWindowBounds(
     };
   }
 
+  if (budgetFloorSequence === undefined && anchors.length <= segmentLimit) {
+    return {
+      affordableAnchorCount: anchors.length,
+      effectiveSegmentLimit: segmentLimit,
+      sequenceWindowStart: null,
+      sequenceStart: 0,
+    };
+  }
+
   const segmentCount = Math.max(1, affordable);
   return {
     affordableAnchorCount: segmentCount,
@@ -1140,7 +1149,9 @@ function resolveTimelineSegmentWindow(
       hasAnchors: true,
       sequenceWindowStart: bounds.sequenceWindowStart,
       knownHasOlderSegments:
-        precedingAnchors.length > bounds.affordableAnchorCount,
+        bounds.sequenceStart === 0
+          ? null
+          : precedingAnchors.length > bounds.affordableAnchorCount,
       oversizedEventPlaceholder: null,
       sequenceStart: bounds.sequenceStart,
     };
@@ -1170,7 +1181,10 @@ function resolveTimelineSegmentWindow(
     effectiveSegmentLimit: bounds.effectiveSegmentLimit,
     hasAnchors: true,
     sequenceWindowStart: bounds.sequenceWindowStart,
-    knownHasOlderSegments: newestAnchors.length > bounds.affordableAnchorCount,
+    knownHasOlderSegments:
+      bounds.sequenceStart === 0
+        ? null
+        : newestAnchors.length > bounds.affordableAnchorCount,
     oversizedEventPlaceholder: null,
     sequenceStart: bounds.sequenceStart,
   };
