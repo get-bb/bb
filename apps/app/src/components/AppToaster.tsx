@@ -8,28 +8,31 @@ const COMPACT_TOAST_TOP_OFFSET =
 const COMPACT_TOAST_SWIPE_DIRECTIONS: NonNullable<
   ToasterProps["swipeDirections"]
 > = ["top", "left", "right"];
+const TOAST_BUTTON_TAP_SLOP = 4;
 
 type ToastSwipeDirection = NonNullable<ToasterProps["swipeDirections"]>[number];
 
 interface ToastSwipeStart {
-  moved: boolean;
+  axis: "x" | "y" | null;
+  button: HTMLButtonElement | null;
+  dragged: boolean;
   pointerId: number;
   toastElement: HTMLElement;
   x: number;
   y: number;
 }
 
-interface SonnerFirstMoveFixOptions {
+interface ReliableToastSwipesOptions {
   enabled: boolean;
   swipeDirections: readonly ToastSwipeDirection[] | undefined;
   toasterRef: RefObject<HTMLElement | null>;
 }
 
-function useSonnerFirstMoveFix({
+function useReliableToastSwipes({
   enabled,
   swipeDirections,
   toasterRef,
-}: SonnerFirstMoveFixOptions): void {
+}: ReliableToastSwipesOptions): void {
   const swipeStartRef = useRef<ToastSwipeStart | null>(null);
 
   useEffect(() => {
@@ -39,14 +42,17 @@ function useSonnerFirstMoveFix({
     }
     const allowedDirections = new Set(swipeDirections);
     const ownerDocument = toasterElement.ownerDocument;
+    const bridgedPointerDowns = new WeakSet<Event>();
+    let suppressedClickButton: HTMLButtonElement | null = null;
+    let suppressedClickTimeout: number | null = null;
 
     const handlePointerDown = (event: PointerEvent) => {
       const target = event.target;
       if (
+        bridgedPointerDowns.has(event) ||
         event.button !== 0 ||
         event.pointerType !== "touch" ||
-        !(target instanceof Element) ||
-        target.closest("button") !== null
+        !(target instanceof Element)
       ) {
         return;
       }
@@ -58,20 +64,43 @@ function useSonnerFirstMoveFix({
       ) {
         return;
       }
+      const button = target.closest<HTMLButtonElement>("button");
       swipeStartRef.current = {
-        moved: false,
+        axis: null,
+        button,
+        dragged: false,
         pointerId: event.pointerId,
         toastElement,
         x: event.clientX,
         y: event.clientY,
       };
+      if (target === button) {
+        const PointerEventConstructor = ownerDocument.defaultView?.PointerEvent;
+        if (PointerEventConstructor === undefined) {
+          return;
+        }
+        const bridgedPointerDown = new PointerEventConstructor("pointerdown", {
+          bubbles: true,
+          button: event.button,
+          buttons: event.buttons,
+          cancelable: true,
+          clientX: event.clientX,
+          clientY: event.clientY,
+          composed: true,
+          isPrimary: event.isPrimary,
+          pointerId: event.pointerId,
+          pointerType: event.pointerType,
+          pressure: event.pressure,
+        });
+        bridgedPointerDowns.add(bridgedPointerDown);
+        toastElement.dispatchEvent(bridgedPointerDown);
+      }
     };
 
     const handlePointerMove = (event: PointerEvent) => {
       const start = swipeStartRef.current;
       if (
         start === null ||
-        start.moved ||
         start.pointerId !== event.pointerId ||
         ownerDocument.getSelection()?.toString()
       ) {
@@ -82,39 +111,76 @@ function useSonnerFirstMoveFix({
       if (Math.abs(deltaX) <= 1 && Math.abs(deltaY) <= 1) {
         return;
       }
-      start.moved = true;
-      if (Math.abs(deltaX) > Math.abs(deltaY)) {
+      if (
+        start.button !== null &&
+        Math.max(Math.abs(deltaX), Math.abs(deltaY)) > TOAST_BUTTON_TAP_SLOP
+      ) {
+        start.dragged = true;
+        event.preventDefault();
+      }
+      start.axis ??= Math.abs(deltaX) > Math.abs(deltaY) ? "x" : "y";
+      if (start.axis === "x") {
         const direction = deltaX > 0 ? "right" : "left";
-        if (allowedDirections.has(direction)) {
-          start.toastElement.style.setProperty(
-            "--swipe-amount-x",
-            `${deltaX}px`,
-          );
-        }
+        const amount = allowedDirections.has(direction) ? deltaX : 0;
+        start.toastElement.style.setProperty("--swipe-amount-x", `${amount}px`);
         return;
       }
       const direction = deltaY > 0 ? "bottom" : "top";
-      if (allowedDirections.has(direction)) {
-        start.toastElement.style.setProperty("--swipe-amount-y", `${deltaY}px`);
-      }
+      const amount = allowedDirections.has(direction) ? deltaY : 0;
+      start.toastElement.style.setProperty("--swipe-amount-y", `${amount}px`);
     };
 
     const handlePointerEnd = (event: PointerEvent) => {
-      if (swipeStartRef.current?.pointerId === event.pointerId) {
-        swipeStartRef.current = null;
+      const start = swipeStartRef.current;
+      if (start?.pointerId !== event.pointerId) {
+        return;
       }
+      swipeStartRef.current = null;
+      if (
+        event.type === "pointerup" &&
+        start.dragged &&
+        start.button !== null
+      ) {
+        suppressedClickButton = start.button;
+        if (suppressedClickTimeout !== null) {
+          window.clearTimeout(suppressedClickTimeout);
+        }
+        suppressedClickTimeout = window.setTimeout(() => {
+          suppressedClickButton = null;
+          suppressedClickTimeout = null;
+        }, 0);
+      }
+    };
+
+    const handleClick = (event: MouseEvent) => {
+      const target = event.target;
+      if (
+        suppressedClickButton === null ||
+        !(target instanceof Node) ||
+        !suppressedClickButton.contains(target)
+      ) {
+        return;
+      }
+      suppressedClickButton = null;
+      event.preventDefault();
+      event.stopPropagation();
     };
 
     toasterElement.addEventListener("pointerdown", handlePointerDown);
     ownerDocument.addEventListener("pointermove", handlePointerMove);
     ownerDocument.addEventListener("pointerup", handlePointerEnd);
     ownerDocument.addEventListener("pointercancel", handlePointerEnd);
+    ownerDocument.addEventListener("click", handleClick, true);
     return () => {
       swipeStartRef.current = null;
+      if (suppressedClickTimeout !== null) {
+        window.clearTimeout(suppressedClickTimeout);
+      }
       toasterElement.removeEventListener("pointerdown", handlePointerDown);
       ownerDocument.removeEventListener("pointermove", handlePointerMove);
       ownerDocument.removeEventListener("pointerup", handlePointerEnd);
       ownerDocument.removeEventListener("pointercancel", handlePointerEnd);
+      ownerDocument.removeEventListener("click", handleClick, true);
     };
   }, [enabled, swipeDirections, toasterRef]);
 }
@@ -146,7 +212,7 @@ export function AppToaster({
   const renderedSwipeDirections =
     swipeDirections ??
     (isCompactViewport ? COMPACT_TOAST_SWIPE_DIRECTIONS : undefined);
-  useSonnerFirstMoveFix({
+  useReliableToastSwipes({
     enabled: isCompactViewport,
     swipeDirections: renderedSwipeDirections,
     toasterRef,
