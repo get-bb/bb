@@ -107,7 +107,7 @@ export function registerForkCommand(
     )
     .option(
       "--new-environment <kind>",
-      "Create a new managed environment of the given kind (worktree)",
+      "Create a fresh environment of the given kind (personal or worktree)",
     )
     .option(
       "--base-branch <branch>",

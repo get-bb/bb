@@ -22,9 +22,10 @@
 - Use `bb thread fork <source-thread-id>` to clone a provider session. The
   fork inherits the source conversation in its timeline. It creates an idle
   fork in the source environment by default; add `--prompt`, select an existing
-  environment with `--environment`, or create a worktree with
-  `--new-environment worktree`. `--base-branch` matches spawn, while the target
-  machine is always derived from the source environment. Anchor with
+  environment with `--environment`, or create a fresh personal workspace or
+  worktree with `--new-environment personal|worktree`. `--base-branch` matches
+  spawn for worktrees, while the target machine is always derived from the
+  source environment. Anchor with
   `--source-seq-end` on a completed source turn (the clone and inherited
   timeline both end with the turn containing that sequence). Permission mode
   inherits the source thread unless explicitly overridden.

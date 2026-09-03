@@ -22,7 +22,7 @@ Spawning:
     --model <model>                Model override
     --reasoning-level <level>      Reasoning level: low, medium, high, xhigh, max (provider-dependent)
     --environment <id-or-path>     Attach to an existing environment (ID or workspace path)
-    --new-environment <kind>       Create a new environment (worktree)
+    --new-environment <kind>       Create a fresh personal workspace or managed worktree
     --base-branch <branch>         Exact Git ref for a new managed worktree
     --machine <id-or-name>         Run on a machine (--host is an alias)
     --service-tier <tier>          Service tier: fast, default
@@ -70,7 +70,7 @@ Forking:
     --prompt <prompt>              Optional first prompt; omit for an idle fork
     --source-seq-end <seq>         Fork after the source turn containing this event sequence (tip by default)
     --environment <id-or-path>     Existing environment ID or unmanaged workspace path
-    --new-environment worktree     Create a new managed worktree
+    --new-environment <kind>       Create a fresh personal workspace or managed worktree
     --base-branch <branch>         Exact Git ref for a new worktree; omit for the project default
     --title <title>                Thread title
     --permission-mode <mode>       Inherit source by default; accepts accept-edits, auto, full
@@ -86,11 +86,12 @@ Forking:
   branches before it, like editing it). Without it a fork clones the session
   tip and inherits every completed turn. Providers that can only clone a whole
   session accept an anchor only on the source's latest turn. A fork reuses the
-  source environment by default. Use --new-environment worktree for a fresh
-  worktree on the source machine; --environment can select another environment
-  or unmanaged path on that machine. A different machine is rejected because
-  the source provider session lives on its original machine. Omit --prompt to
-  create an idle fork.
+  source environment by default. Use --new-environment personal for a fresh
+  personal workspace or --new-environment worktree for a fresh worktree on the
+  source machine; --environment can select another environment or unmanaged
+  path on that machine. A different machine is rejected because the source
+  provider session lives on its original machine. Omit --prompt to create an
+  idle fork.
 
 Editing a sent message (requires the default-on `editMessages` experiment):
 
