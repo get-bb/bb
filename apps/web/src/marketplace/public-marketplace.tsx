@@ -906,43 +906,43 @@ export function PublicMarketplaceDetailPage({
           <div className="marketplace-detail-identity">
             <h1>{entry.displayName}</h1>
             <p>{entry.description}</p>
-            <div className="marketplace-detail-facts">
-              {authorPath === undefined ? (
-                <span className="marketplace-detail-author">
-                  <AuthorAvatar author={entry.author} />
-                  {entry.author.name}
-                </span>
-              ) : (
-                <MarketplaceLink
-                  className="marketplace-detail-author"
-                  href={authorPath}
-                >
-                  <AuthorAvatar author={entry.author} />
-                  {entry.author.name}
-                </MarketplaceLink>
-              )}
-              <MarketplaceLink
-                className="marketplace-category-pill"
-                href={`/marketplace?category=${encodeURIComponent(categoryId)}`}
-              >
-                {category}
-              </MarketplaceLink>
-              <span className={installs === undefined ? "is-new" : undefined}>
-                {installs === undefined
-                  ? "New"
-                  : `${installs.toLocaleString("en-US")} ${installs === 1 ? "install" : "installs"}`}
+          </div>
+          <div className="marketplace-detail-facts">
+            {authorPath === undefined ? (
+              <span className="marketplace-detail-author">
+                <AuthorAvatar author={entry.author} />
+                {entry.author.name}
               </span>
-              {published === null ? null : <span>Listed {published}</span>}
-              <a
-                className="marketplace-detail-source"
-                href={repository}
-                target="_blank"
-                rel="noreferrer"
+            ) : (
+              <MarketplaceLink
+                className="marketplace-detail-author"
+                href={authorPath}
               >
-                View source
-                <HugeiconsIcon icon={ArrowUpRight01Icon} aria-hidden />
-              </a>
-            </div>
+                <AuthorAvatar author={entry.author} />
+                {entry.author.name}
+              </MarketplaceLink>
+            )}
+            <MarketplaceLink
+              className="marketplace-category-pill"
+              href={`/marketplace?category=${encodeURIComponent(categoryId)}`}
+            >
+              {category}
+            </MarketplaceLink>
+            <span className={installs === undefined ? "is-new" : undefined}>
+              {installs === undefined
+                ? "New"
+                : `${installs.toLocaleString("en-US")} ${installs === 1 ? "install" : "installs"}`}
+            </span>
+            {published === null ? null : <span>Listed {published}</span>}
+            <a
+              className="marketplace-detail-source"
+              href={repository}
+              target="_blank"
+              rel="noreferrer"
+            >
+              View source
+              <HugeiconsIcon icon={ArrowUpRight01Icon} aria-hidden />
+            </a>
           </div>
           <InstallCommand entry={entry} />
         </header>

@@ -623,7 +623,7 @@
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) 360px;
   align-items: start;
-  gap: 18px;
+  gap: 12px 18px;
 }
 
 .marketplace-detail-identity {
@@ -648,10 +648,12 @@
 
 .marketplace-detail-facts {
   display: flex;
+  min-width: 0;
   align-items: center;
   flex-wrap: wrap;
   gap: 6px 18px;
-  margin-top: 12px;
+  grid-column: 2 / -1;
+  grid-row: 2;
   color: var(--subtle);
   font-size: 13px;
 }
@@ -687,7 +689,8 @@ a.marketplace-detail-author:hover {
 
 .marketplace-install-command {
   width: 360px;
-  margin-left: auto;
+  grid-column: 3;
+  grid-row: 1;
 }
 
 .marketplace-install-command > div {
@@ -895,8 +898,9 @@ a.marketplace-detail-author:hover {
 
   .marketplace-install-command {
     width: 100%;
-    margin: 6px 0 0;
+    margin-top: 12px;
     grid-column: 1 / -1;
+    grid-row: 3;
   }
 }
 
@@ -972,11 +976,6 @@ a.marketplace-detail-author:hover {
 
   .marketplace-detail-identity h1 {
     font-size: 27px;
-  }
-
-  .marketplace-detail-identity > p,
-  .marketplace-detail-facts {
-    grid-column: 1 / -1;
   }
 
   .marketplace-screenshots {
