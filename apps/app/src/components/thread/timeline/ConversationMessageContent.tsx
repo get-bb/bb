@@ -125,6 +125,7 @@ const STREAMING_TAIL_MARKDOWN_CLASS_NAME =
 interface ConversationMessageContentAssistantProps
   extends ConversationMessageContentBaseProps, AssistantMessageRowIdentity {
   role: "assistant";
+  localFileHostId?: string;
   onOpenLink?: ThreadTimelineLinkHandler;
   onAddToChat?: ThreadTimelineAddToChatHandler;
   onFork?: () => void;
@@ -170,6 +171,7 @@ interface UserConversationMessageProps {
 interface AssistantConversationMessageProps extends AssistantMessageRowIdentity {
   addToChatAttachments: readonly PromptDraftAttachment[];
   attachmentItems: ConversationAttachmentItems;
+  localFileHostId?: string;
   pluginActions?: readonly ThreadTimelinePluginMessageAction[];
   onAddToChat?: ThreadTimelineAddToChatHandler;
   onFork?: () => void;
@@ -471,6 +473,7 @@ function AssistantConversationMessage({
   addToChatAttachments,
   attachmentItems,
   id,
+  localFileHostId,
   onAddToChat,
   onFork,
   onSendToMain,
@@ -519,6 +522,11 @@ function AssistantConversationMessage({
         },
         onOpenLink: onOpenLocalFileLink,
       };
+      if (localFileHostId !== undefined) {
+        routing.localFile.inlineCodeFileLinks = {
+          hostId: localFileHostId,
+        };
+      }
       if (workspaceRootPath !== undefined) {
         routing.localFile.relativeLinks = {
           baseDir: workspaceRootPath,
@@ -527,7 +535,13 @@ function AssistantConversationMessage({
       }
     }
     return routing;
-  }, [onOpenLink, onOpenLocalFileLink, threadId, workspaceRootPath]);
+  }, [
+    localFileHostId,
+    onOpenLink,
+    onOpenLocalFileLink,
+    threadId,
+    workspaceRootPath,
+  ]);
 
   const messageDirectiveRegistry = useMessageDirectiveRegistry();
   const openDirectiveWorkspaceFile = useMemo<
@@ -697,6 +711,7 @@ export function ConversationMessageContent(
       addToChatAttachments={addToChatAttachments}
       attachmentItems={attachmentItems}
       id={props.id}
+      localFileHostId={props.localFileHostId}
       pluginActions={props.pluginActions}
       onAddToChat={props.onAddToChat}
       onFork={props.onFork}

@@ -374,6 +374,7 @@ type ThreadDetailViewProps =
 
 interface BuildMarkdownPreviewLinkRoutingArgs {
   baseDir: string | undefined;
+  localFileHostId: string | undefined;
   onOpenLink: ThreadTimelineLinkHandler;
   onOpenLocalFileLink: ThreadTimelineLocalFileLinkHandler;
   rootPath: string | null | undefined;
@@ -409,6 +410,7 @@ function buildHostConnectionNotice(
 
 function buildMarkdownPreviewLinkRouting({
   baseDir,
+  localFileHostId,
   onOpenLink,
   onOpenLocalFileLink,
   rootPath,
@@ -426,6 +428,11 @@ function buildMarkdownPreviewLinkRouting({
     },
     onOpenLink: onOpenLocalFileLink,
   };
+  if (localFileHostId !== undefined) {
+    localFileRouting.inlineCodeFileLinks = {
+      hostId: localFileHostId,
+    };
+  }
   if (baseDir !== undefined) {
     localFileRouting.relativeLinks = {
       baseDir,
@@ -2608,6 +2615,7 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
               baseDir: copyPath
                 ? getAbsoluteDirname({ path: copyPath })
                 : undefined,
+              localFileHostId: environment?.hostId,
               onOpenLink: handleOpenTimelineLink,
               onOpenLocalFileLink: handleOpenTimelineLocalFileLink,
               rootPath: workspacePreviewRootPath,
@@ -2631,6 +2639,7 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
             lineRange={tab.lineRange}
             markdownLinkRouting={buildMarkdownPreviewLinkRouting({
               baseDir,
+              localFileHostId: environment?.hostId,
               onOpenLink: handleOpenTimelineLink,
               onOpenLocalFileLink: handleOpenTimelineLocalFileLink,
               rootPath: resolveHostFilePreviewLinkRootPath({
@@ -2660,6 +2669,7 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
               baseDir: copyPath
                 ? getAbsoluteDirname({ path: copyPath })
                 : undefined,
+              localFileHostId: environment?.hostId,
               onOpenLink: handleOpenTimelineLink,
               onOpenLocalFileLink: handleOpenTimelineLocalFileLink,
               rootPath: threadStorageRootPath,
@@ -2923,6 +2933,7 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
               onMessageAddToChat: handleSelectionAddToChat,
               onSendToMainMessage: handleSendToMainMessage,
               onSelectionAddToChat: handleSelectionAddToChat,
+              localFileHostId: environment?.hostId,
               onLoadOlderRows: loadOlderTimelineRows,
               onOpenLink: handleOpenTimelineLink,
               onOpenLocalFileLink: handleOpenTimelineLocalFileLink,
