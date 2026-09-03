@@ -250,6 +250,9 @@ async function hasManifestMarker(
 async function scanSkillRootFiles(
   root: CommandScanDirectoryRoot,
 ): Promise<SkillFileMatch[]> {
+  if ((await resolveBoundedRootPath(root)) === null) {
+    return [];
+  }
   const entries = await readDirEntries(root.rootPath);
   if (entries === null) {
     return [];
@@ -320,7 +323,7 @@ export function isPathWithinDirectory(
   );
 }
 
-async function resolveRecursiveRootPath(
+async function resolveBoundedRootPath(
   root: CommandScanDirectoryRoot,
 ): Promise<string | null> {
   const resolvedRoot = await fs.realpath(root.rootPath).catch(() => null);
@@ -343,7 +346,7 @@ async function scanRecursiveSkillRootFiles(
   root: CommandScanDirectoryRoot,
   budget: ScanBudget,
 ): Promise<SkillFileMatch[]> {
-  const rootPath = await resolveRecursiveRootPath(root);
+  const rootPath = await resolveBoundedRootPath(root);
   if (rootPath === null) {
     return [];
   }
