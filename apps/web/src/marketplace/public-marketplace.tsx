@@ -285,19 +285,17 @@ function PluginCard({
         <span className="marketplace-card-description">
           {entry.description}
         </span>
+        {showCategory ? (
+          <span className="marketplace-card-category">
+            {categoryLabel(manifest, entry)}
+          </span>
+        ) : null}
         <span className="marketplace-card-meta">
           <span className="marketplace-card-author">
             <AuthorAvatar author={entry.author} />
             <span>{entry.author.name}</span>
           </span>
-          <span className="marketplace-card-secondary">
-            {showCategory ? (
-              <span className="marketplace-category-pill">
-                {categoryLabel(manifest, entry)}
-              </span>
-            ) : null}
-            <InstallCount entry={entry} stats={stats} />
-          </span>
+          <InstallCount entry={entry} stats={stats} />
         </span>
       </MarketplaceLink>
     </article>

@@ -396,6 +396,16 @@
   -webkit-line-clamp: 2;
 }
 
+.marketplace-card-category {
+  display: block;
+  margin-top: 8px;
+  overflow: hidden;
+  color: var(--subtle);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .marketplace-card-meta {
   display: flex;
   align-items: center;
@@ -444,14 +454,6 @@
   width: 64px;
   height: 64px;
   font-size: 24px;
-}
-
-.marketplace-card-secondary {
-  display: inline-flex;
-  align-items: center;
-  justify-content: flex-end;
-  min-width: 0;
-  gap: 7px;
 }
 
 .marketplace-card-installs {
