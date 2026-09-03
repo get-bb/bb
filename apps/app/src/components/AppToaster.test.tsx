@@ -3,6 +3,7 @@
 import {
   act,
   cleanup,
+  createEvent,
   fireEvent,
   render,
   waitFor,
@@ -52,29 +53,88 @@ async function renderToaster(isCompactViewport: boolean) {
   });
 }
 
-function flickToast(toastElement: HTMLElement, pointerId: number): void {
+interface ToastFlickOptions {
+  duration?: number;
+  endX?: number;
+  endY?: number;
+  startX?: number;
+  startY?: number;
+  terminal?: "cancel" | "up";
+  terminalTarget?: Document | HTMLElement;
+}
+
+function fireTimedPointerEvent(
+  target: Document | HTMLElement,
+  type: "cancel" | "down" | "move" | "up",
+  init: PointerEventInit,
+  timeStamp: number,
+): void {
+  const event =
+    type === "down"
+      ? createEvent.pointerDown(target, init)
+      : type === "move"
+        ? createEvent.pointerMove(target, init)
+        : type === "up"
+          ? createEvent.pointerUp(target, init)
+          : createEvent.pointerCancel(target, init);
+  Object.defineProperty(event, "timeStamp", {
+    configurable: true,
+    value: timeStamp,
+  });
+  fireEvent(target, event);
+}
+
+function flickToast(
+  toastElement: HTMLElement,
+  pointerId: number,
+  {
+    duration = 200,
+    endX = 200,
+    endY = 100,
+    startX = 120,
+    startY = 100,
+    terminal = "up",
+    terminalTarget = toastElement,
+  }: ToastFlickOptions = {},
+): void {
   Object.defineProperty(toastElement, "setPointerCapture", {
     configurable: true,
     value: () => undefined,
   });
-  fireEvent.pointerDown(toastElement, {
-    clientX: 120,
-    clientY: 100,
+  const pointerInit = {
     pointerId,
     pointerType: "touch",
-  });
-  fireEvent.pointerMove(toastElement, {
-    clientX: 200,
-    clientY: 100,
-    pointerId,
-    pointerType: "touch",
-  });
-  fireEvent.pointerUp(toastElement, {
-    clientX: 200,
-    clientY: 100,
-    pointerId,
-    pointerType: "touch",
-  });
+  };
+  fireTimedPointerEvent(
+    toastElement,
+    "down",
+    {
+      ...pointerInit,
+      clientX: startX,
+      clientY: startY,
+    },
+    100,
+  );
+  fireTimedPointerEvent(
+    toastElement,
+    "move",
+    {
+      ...pointerInit,
+      clientX: endX,
+      clientY: endY,
+    },
+    100 + duration / 2,
+  );
+  fireTimedPointerEvent(
+    terminalTarget,
+    terminal,
+    {
+      ...pointerInit,
+      clientX: endX,
+      clientY: endY,
+    },
+    100 + duration,
+  );
 }
 
 describe("AppToaster", () => {
@@ -115,28 +175,11 @@ describe("AppToaster", () => {
       if (toastElement === null) {
         return;
       }
-      Object.defineProperty(toastElement, "setPointerCapture", {
-        configurable: true,
-        value: () => undefined,
-      });
-
-      fireEvent.pointerDown(toastElement, {
-        clientX: startX,
-        clientY: startY,
-        pointerId: 1,
-        pointerType: "touch",
-      });
-      fireEvent.pointerMove(toastElement, {
-        clientX: endX,
-        clientY: endY,
-        pointerId: 1,
-        pointerType: "touch",
-      });
-      fireEvent.pointerUp(toastElement, {
-        clientX: endX,
-        clientY: endY,
-        pointerId: 1,
-        pointerType: "touch",
+      flickToast(toastElement, 1, {
+        endX,
+        endY,
+        startX,
+        startY,
       });
 
       if (shouldDismiss) {
@@ -151,6 +194,87 @@ describe("AppToaster", () => {
       }
     },
   );
+
+  it("handles a short high-velocity flick", async () => {
+    await renderToaster(true);
+    const toastElement = document.querySelector<HTMLElement>(
+      "[data-sonner-toast]",
+    );
+    expect(toastElement).not.toBeNull();
+    if (toastElement === null) {
+      return;
+    }
+
+    flickToast(toastElement, 1, { duration: 50, endX: 132 });
+
+    await waitFor(() => {
+      expect(document.querySelector("[data-sonner-toast]")).toBeNull();
+    });
+  });
+
+  it("handles a flick released outside the toast", async () => {
+    await renderToaster(true);
+    const toastElement = document.querySelector<HTMLElement>(
+      "[data-sonner-toast]",
+    );
+    expect(toastElement).not.toBeNull();
+    if (toastElement === null) {
+      return;
+    }
+
+    flickToast(toastElement, 1, { terminalTarget: document });
+
+    await waitFor(() => {
+      expect(document.querySelector("[data-sonner-toast]")).toBeNull();
+    });
+  });
+
+  it("handles a flick while unrelated page text is selected", async () => {
+    await renderToaster(true);
+    const toastElement = document.querySelector<HTMLElement>(
+      "[data-sonner-toast]",
+    );
+    expect(toastElement).not.toBeNull();
+    if (toastElement === null) {
+      return;
+    }
+    const unrelatedText = document.createElement("p");
+    unrelatedText.textContent = "Unrelated selection";
+    document.body.append(unrelatedText);
+    const selection = document.getSelection();
+    const range = document.createRange();
+    range.selectNodeContents(unrelatedText);
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+
+    try {
+      flickToast(toastElement, 1);
+
+      await waitFor(() => {
+        expect(document.querySelector("[data-sonner-toast]")).toBeNull();
+      });
+    } finally {
+      selection?.removeAllRanges();
+      unrelatedText.remove();
+    }
+  });
+
+  it("completes a qualified flick after pointer cancellation", async () => {
+    await renderToaster(true);
+    const toastElement = document.querySelector<HTMLElement>(
+      "[data-sonner-toast]",
+    );
+    expect(toastElement).not.toBeNull();
+    if (toastElement === null) {
+      return;
+    }
+
+    flickToast(toastElement, 1, { terminal: "cancel" });
+
+    await waitFor(() => {
+      expect(document.querySelector("[data-sonner-toast]")).toBeNull();
+    });
+  });
 
   it("handles touch flicks outside the compact viewport", async () => {
     mockPointerCoarse();

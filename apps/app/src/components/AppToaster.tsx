@@ -12,7 +12,9 @@ import { usePreferredTheme } from "@/hooks/useTheme";
 
 const COMPACT_TOAST_TOP_OFFSET =
   "calc(env(safe-area-inset-top) + var(--bb-app-chrome-row-height) + 16px)";
+const TOUCH_TOAST_SWIPE_DIRECTION_LOCK_PX = 1;
 const TOUCH_TOAST_SWIPE_DISTANCE_PX = 20;
+const TOUCH_TOAST_SWIPE_VELOCITY_PX_PER_MS = 0.11;
 const TOUCH_TOAST_SWIPE_DIRECTIONS: NonNullable<
   ToasterProps["swipeDirections"]
 > = ["top", "right", "bottom", "left"];
@@ -21,11 +23,14 @@ type ToastPosition = NonNullable<ToasterProps["position"]>;
 type ToastSwipeDirection = NonNullable<ToasterProps["swipeDirections"]>[number];
 
 interface ToastSwipeStart {
+  lastX: number;
+  lastY: number;
   pointerId: number;
+  startTime: number;
+  startX: number;
+  startY: number;
   toastId: ToastT["id"];
   toastElement: HTMLElement;
-  x: number;
-  y: number;
 }
 
 interface TouchToastSwipeFallbackOptions {
@@ -112,17 +117,29 @@ function associateToastElements(
   }
 }
 
-function swipeDirection(
+function allowedSwipeDistance(
   deltaX: number,
   deltaY: number,
-): ToastSwipeDirection | null {
-  if (deltaX === 0 && deltaY === 0) {
-    return null;
+  allowedDirections: ReadonlySet<ToastSwipeDirection>,
+): number {
+  return Math.max(
+    deltaX < 0 && allowedDirections.has("left") ? -deltaX : 0,
+    deltaX > 0 && allowedDirections.has("right") ? deltaX : 0,
+    deltaY < 0 && allowedDirections.has("top") ? -deltaY : 0,
+    deltaY > 0 && allowedDirections.has("bottom") ? deltaY : 0,
+  );
+}
+
+function toastContainsSelection(toastElement: HTMLElement): boolean {
+  const selection = toastElement.ownerDocument.getSelection();
+  if (selection === null || selection.isCollapsed) {
+    return false;
   }
-  if (Math.abs(deltaX) > Math.abs(deltaY)) {
-    return deltaX > 0 ? "right" : "left";
-  }
-  return deltaY > 0 ? "bottom" : "top";
+  return (
+    (selection.anchorNode !== null &&
+      toastElement.contains(selection.anchorNode)) ||
+    (selection.focusNode !== null && toastElement.contains(selection.focusNode))
+  );
 }
 
 function useTouchToastSwipeFallback({
@@ -165,34 +182,48 @@ function useTouchToastSwipeFallback({
         return;
       }
       swipeStartRef.current = {
+        lastX: event.clientX,
+        lastY: event.clientY,
         pointerId: event.pointerId,
+        startTime: event.timeStamp,
+        startX: event.clientX,
+        startY: event.clientY,
         toastId,
         toastElement,
-        x: event.clientX,
-        y: event.clientY,
       };
     };
 
-    const handlePointerUp = (event: PointerEvent) => {
+    const handlePointerMove = (event: PointerEvent) => {
+      const start = swipeStartRef.current;
+      if (start === null || start.pointerId !== event.pointerId) {
+        return;
+      }
+      start.lastX = event.clientX;
+      start.lastY = event.clientY;
+    };
+
+    const finishSwipe = (event: PointerEvent, useLastPosition: boolean) => {
       const start = swipeStartRef.current;
       if (start === null || start.pointerId !== event.pointerId) {
         return;
       }
       swipeStartRef.current = null;
-      if (start.toastElement.ownerDocument.getSelection()?.toString()) {
+      if (toastContainsSelection(start.toastElement)) {
         return;
       }
-      const deltaX = event.clientX - start.x;
-      const deltaY = event.clientY - start.y;
-      const direction = swipeDirection(deltaX, deltaY);
-      const distance =
-        direction === "left" || direction === "right"
-          ? Math.abs(deltaX)
-          : Math.abs(deltaY);
+      const endX = useLastPosition ? start.lastX : event.clientX;
+      const endY = useLastPosition ? start.lastY : event.clientY;
+      const distance = allowedSwipeDistance(
+        endX - start.startX,
+        endY - start.startY,
+        allowedDirections,
+      );
+      const elapsed = Math.max(event.timeStamp - start.startTime, 1);
+      const velocity = distance / elapsed;
       if (
-        direction === null ||
-        !allowedDirections.has(direction) ||
-        distance < TOUCH_TOAST_SWIPE_DISTANCE_PX
+        distance <= TOUCH_TOAST_SWIPE_DIRECTION_LOCK_PX ||
+        (distance < TOUCH_TOAST_SWIPE_DISTANCE_PX &&
+          velocity <= TOUCH_TOAST_SWIPE_VELOCITY_PX_PER_MS)
       ) {
         return;
       }
@@ -213,20 +244,39 @@ function useTouchToastSwipeFallback({
       });
     };
 
-    const handlePointerCancel = (event: PointerEvent) => {
-      if (swipeStartRef.current?.pointerId === event.pointerId) {
-        swipeStartRef.current = null;
-      }
-    };
+    const handlePointerUp = (event: PointerEvent) => finishSwipe(event, false);
+    const handlePointerTermination = (event: PointerEvent) =>
+      finishSwipe(event, true);
+    const ownerDocument = toasterElement.ownerDocument;
 
     toasterElement.addEventListener("pointerdown", handlePointerDown);
-    toasterElement.addEventListener("pointerup", handlePointerUp);
-    toasterElement.addEventListener("pointercancel", handlePointerCancel);
+    ownerDocument.addEventListener("pointermove", handlePointerMove, true);
+    ownerDocument.addEventListener("pointerup", handlePointerUp, true);
+    ownerDocument.addEventListener(
+      "pointercancel",
+      handlePointerTermination,
+      true,
+    );
+    ownerDocument.addEventListener(
+      "lostpointercapture",
+      handlePointerTermination,
+      true,
+    );
     return () => {
       swipeStartRef.current = null;
       toasterElement.removeEventListener("pointerdown", handlePointerDown);
-      toasterElement.removeEventListener("pointerup", handlePointerUp);
-      toasterElement.removeEventListener("pointercancel", handlePointerCancel);
+      ownerDocument.removeEventListener("pointermove", handlePointerMove, true);
+      ownerDocument.removeEventListener("pointerup", handlePointerUp, true);
+      ownerDocument.removeEventListener(
+        "pointercancel",
+        handlePointerTermination,
+        true,
+      );
+      ownerDocument.removeEventListener(
+        "lostpointercapture",
+        handlePointerTermination,
+        true,
+      );
     };
   }, [enabled, position, swipeDirections, toasterRef]);
 }
