@@ -275,6 +275,7 @@ export function ModelReasoningPicker({
   const ProviderIcon = selectedProvider?.icon;
   const selectedModelOption = modelOptions.find((m) => m.value === modelValue);
   const selectedModelLabel = selectedModelOption?.label ?? modelValue;
+  const selectedModelQualifier = selectedModelOption?.qualifier;
   const hasSelectedModel = selectedModelLabel.trim().length > 0;
   const selectedProviderLabel = selectedProvider?.label ?? selectedProviderId;
   const selectedModelLoadErrorMatches =
@@ -452,10 +453,11 @@ export function ModelReasoningPicker({
       query: searchQuery,
       getLabel: (option) =>
         stripModelBrandPrefix(option.label, activeBrandPrefix),
-      getAliases: (option) =>
-        option.routeProviderId
-          ? [option.routeProviderId, option.value]
-          : [option.value],
+      getAliases: (option) => [
+        ...(option.qualifier ? [option.qualifier] : []),
+        ...(option.routeProviderId ? [option.routeProviderId] : []),
+        option.value,
+      ],
     });
   }, [
     activeBrandPrefix,
@@ -746,8 +748,11 @@ export function ModelReasoningPicker({
     : selectedModelLoadFailed
       ? selectedModelLoadErrorText
       : triggerModelLabel;
+  const qualifiedTriggerTitleModelLabel = selectedModelQualifier
+    ? `${triggerTitleModelLabel} · ${selectedModelQualifier}`
+    : triggerTitleModelLabel;
   const triggerTitle = [
-    `${selectedProviderLabel}: ${triggerTitleModelLabel}`,
+    `${selectedProviderLabel}: ${qualifiedTriggerTitleModelLabel}`,
     triggerReasoningLabel ? ` · ${triggerReasoningLabel} reasoning` : "",
     showSelectedFastMode ? " (Fast mode)" : "",
   ].join("");
@@ -819,6 +824,11 @@ export function ModelReasoningPicker({
             {triggerModelTag ? (
               <span className="shrink-0 text-subtle-foreground">
                 {triggerModelTag}
+              </span>
+            ) : null}
+            {selectedModelQualifier ? (
+              <span className="shrink-0 text-subtle-foreground">
+                {` · ${selectedModelQualifier}`}
               </span>
             ) : null}
             {triggerReasoningLabel ? (
@@ -993,7 +1003,9 @@ export function ModelReasoningPicker({
                           option.label,
                           activeBrandPrefix,
                         )}
-                        qualifier={option.routeProviderId}
+                        qualifier={
+                          option.qualifier ?? option.routeProviderId
+                        }
                         selected={!isPreviewing && option.value === modelValue}
                         disabled={previewSelectionBlocked}
                         onClick={() => handleModelSelect(option.value)}
@@ -1300,7 +1312,7 @@ function MoreModelsSubmenu({
             <MenuRowButton
               key={option.value}
               label={stripModelBrandPrefix(option.label, activeBrandPrefix)}
-              qualifier={option.routeProviderId}
+              qualifier={option.qualifier ?? option.routeProviderId}
               selected={!isPreviewing && option.value === modelValue}
               onClick={() => onSelect(option.value)}
             />
@@ -1376,7 +1388,12 @@ function MenuRowButton({
           <span className="ml-1.5 text-subtle-foreground">{tag}</span>
         ) : null}
         {qualifier ? (
-          <span className="ml-1.5 text-subtle-foreground">{qualifier}</span>
+          <>
+            <span className="text-subtle-foreground" aria-hidden>
+              {" · "}
+            </span>
+            <span className="text-subtle-foreground">{qualifier}</span>
+          </>
         ) : null}
       </span>
       <span className="flex shrink-0 items-center gap-1.5">

@@ -613,6 +613,32 @@ describe("ModelReasoningPicker", () => {
     expect(onModelChange).toHaveBeenCalledWith(apiModel);
   });
 
+  it("shows a model source in the trigger and menu row", () => {
+    const modelLabel = "Grok 4.6 Fast";
+    renderPicker({
+      modelOptions: [
+        {
+          value: "cursor/cursor-grok-4.6-fast",
+          label: modelLabel,
+          qualifier: "Cursor",
+        },
+      ],
+      pickerProviderOptions: [{ value: "acp-omp", label: "omp" }],
+      selectedProviderId: "acp-omp",
+    });
+
+    const trigger = screen.getByRole("button", {
+      name: "Provider, model and reasoning",
+    });
+    expect(trigger.textContent).toContain("Grok 4.6 Fast · Cursor");
+
+    fireEvent.click(trigger);
+
+    expect(screen.getByTitle("Grok 4.6 Fast · Cursor").textContent).toBe(
+      "Grok 4.6 Fast · Cursor",
+    );
+  });
+
   it("uses picker search policy and selects the match by keyboard", () => {
     const { onModelChange } = renderPicker({ modelOptions: manyCodexModels });
 

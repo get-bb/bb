@@ -1,21 +1,21 @@
 import {
   reconcileReasoningLevel,
   type AvailableModel,
+  type ProviderInfo,
   type ReasoningLevel,
 } from "@bb/domain";
 import type { ModelPickerOption } from "@/components/pickers/model-picker-option";
 import type { PickerOption } from "@/components/pickers/OptionPicker";
-import {
-  reasoningLevelLabel,
-  type ReasoningLabelSource,
-} from "@/lib/reasoning-labels";
+import { reasoningLevelLabel } from "@/lib/reasoning-labels";
+
+type ModelCatalogProvider = Pick<ProviderInfo, "id" | "reasoningLevels">;
 
 interface ResolveModelCatalogSelectionArgs {
   models: readonly AvailableModel[];
   selectedOnlyModels: readonly AvailableModel[];
   selectedModel: string;
   preferredReasoningLevel?: ReasoningLevel;
-  provider: ReasoningLabelSource | undefined;
+  provider: ModelCatalogProvider | undefined;
   catalogIsVerified: boolean;
   formatModelLabel: (displayName: string) => string;
 }
@@ -30,13 +30,41 @@ interface ResolvedModelCatalogSelection {
   isUnavailableModelRecovery: boolean;
 }
 
+const OMP_MODEL_SOURCE_LABELS: Readonly<Record<string, string>> = {
+  anthropic: "Anthropic",
+  cursor: "Cursor",
+  "kimi-code": "Kimi Code",
+  ollama: "Ollama",
+  "openai-codex": "OpenAI Codex",
+  openrouter: "OpenRouter",
+  "xai-oauth": "xAI OAuth",
+};
+
+function modelSourceQualifier(
+  provider: ModelCatalogProvider | undefined,
+  model: AvailableModel,
+): string | undefined {
+  if (provider?.id !== "acp-omp") {
+    return undefined;
+  }
+  const separator = model.model.indexOf("/");
+  if (separator <= 0) {
+    return undefined;
+  }
+  const source = model.model.slice(0, separator);
+  return OMP_MODEL_SOURCE_LABELS[source] ?? source;
+}
+
 function toModelPickerOption(
   model: AvailableModel,
   formatModelLabel: (displayName: string) => string,
+  provider: ModelCatalogProvider | undefined,
 ): ModelPickerOption {
+  const qualifier = modelSourceQualifier(provider, model);
   return {
     value: model.model,
     label: formatModelLabel(model.displayName || model.model),
+    ...(qualifier ? { qualifier } : {}),
     ...(model.routeProviderId
       ? { routeProviderId: model.routeProviderId }
       : {}),
@@ -124,14 +152,14 @@ export function resolveModelCatalogSelection({
     selectedModel,
     activeModel,
     modelOptions: availableModels.map((model) =>
-      toModelPickerOption(model, formatModelLabel),
+      toModelPickerOption(model, formatModelLabel, provider),
     ),
     moreModelOptions: selectedOnlyModels
       .filter(
         (model) =>
           !availableModels.some((active) => active.model === model.model),
       )
-      .map((model) => toModelPickerOption(model, formatModelLabel)),
+      .map((model) => toModelPickerOption(model, formatModelLabel, provider)),
     reasoningLevel,
     reasoningOptions,
     isUnavailableModelRecovery:
