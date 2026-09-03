@@ -34,6 +34,7 @@ import {
   LEGACY_TOOLS_SPLAT_ROUTE_PATH,
   PROJECT_ARCHIVED_ROUTE_PATH,
   PROJECTLESS_ARCHIVED_ROUTE_PATH,
+  PLUGIN_DETAIL_ROUTE_PATH,
   PLUGINS_ROUTE_PATH,
   REGISTRY_SKILL_DETAIL_ROUTE_PATH,
   REGISTRY_SKILLS_ROUTE_PATH,
@@ -384,6 +385,7 @@ function AppRoutes() {
             element={<SkillsView />}
           />
           <Route path={PLUGINS_ROUTE_PATH} element={<PluginsView />} />
+          <Route path={PLUGIN_DETAIL_ROUTE_PATH} element={<PluginsRoute />} />
           <Route
             path="*"
             element={
@@ -406,6 +408,11 @@ function RouteContentPaintSignal() {
     markRouteContentPainted();
   }, []);
   return null;
+}
+
+function PluginsRoute() {
+  const { pluginId } = useParams<{ pluginId?: string }>();
+  return <PluginsView pluginId={pluginId} />;
 }
 
 export function App() {
