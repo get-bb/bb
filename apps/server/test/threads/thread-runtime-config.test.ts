@@ -886,6 +886,7 @@ describe("thread runtime config", () => {
 
       const claudeCode = await build("claude-code");
       expect(claudeCode.options.providerOptions).toEqual({
+        chromeEnabled: false,
         idleQueryReleaseEnabled: false,
         memoryEnabled: true,
         providerSubagentsEnabled: true,

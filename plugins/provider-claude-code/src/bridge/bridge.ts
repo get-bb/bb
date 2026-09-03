@@ -76,6 +76,7 @@ import {
   getClaudeProviderUsage,
 } from "./provider-maintenance.js";
 import {
+  buildChromeExtraArgs,
   buildReadonlyDenialMessage,
   buildMutableFlagSettings,
   buildSessionOptions,
@@ -391,6 +392,7 @@ function requireSkillPluginsRoot(): string {
 
 const THREAD_STOP_CLOSE_TIMEOUT_MS = 4_000;
 export const CLAUDE_IDLE_QUERY_GRACE_MS = 30_000;
+const CLAUDE_CHROME_SETTING_RESTART_REASON = "Claude in Chrome setting changed";
 
 const { send, sendResult, sendError } = createBridgeIo<
   SdkMessageNotification | BridgeEventNotification | BridgeToolCallRequest
@@ -490,6 +492,27 @@ function applyIdleQueryReleaseSetting(
   attachment.idleQueryReleaseEnabled = enabled;
   if (!enabled) {
     cancelIdleQueryRelease(attachment);
+  }
+}
+
+function applyChromeSetting(
+  attachment: ThreadAttachment,
+  enabled: boolean | undefined,
+): void {
+  const sessionOptions = attachment.sessionConstructionConfig.sessionOptions;
+  if (enabled === undefined || sessionOptions.chromeEnabled === enabled) {
+    return;
+  }
+  sessionOptions.chromeEnabled = enabled;
+  const extraArgs = buildChromeExtraArgs(enabled);
+  if (extraArgs) {
+    attachment.sessionOptions.extraArgs = extraArgs;
+  } else {
+    delete attachment.sessionOptions.extraArgs;
+  }
+  if (attachment.residentSession) {
+    attachment.residentSession.restartBeforeNextTurnReason =
+      CLAUDE_CHROME_SETTING_RESTART_REASON;
   }
 }
 
@@ -938,6 +961,7 @@ function toSessionConstructionConfig(
     sessionOptions: {
       additionalWorkspaceWriteRoots: params.additionalWorkspaceWriteRoots,
       baseInstructions: params.baseInstructions,
+      chromeEnabled: params.chromeEnabled,
       cwd: params.cwd,
       disallowedTools: params.disallowedTools,
       instructionMode: params.instructionMode,
@@ -2482,6 +2506,7 @@ async function runTurnStart(
   const attachment = threadAttachments.get(params.threadId);
   if (attachment) {
     applyIdleQueryReleaseSetting(attachment, params.idleQueryReleaseEnabled);
+    applyChromeSetting(attachment, params.chromeEnabled);
   }
 
   const threadSession = await getWritableThreadSession(
@@ -2566,6 +2591,7 @@ async function runTurnSteer(
   const attachment = threadAttachments.get(params.threadId);
   if (attachment) {
     applyIdleQueryReleaseSetting(attachment, params.idleQueryReleaseEnabled);
+    applyChromeSetting(attachment, params.chromeEnabled);
   }
 
   const threadSession = await getWritableThreadSession(
