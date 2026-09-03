@@ -9,7 +9,7 @@
 }
 
 .marketplace-hero {
-  padding: 56px 0 36px;
+  padding: 46px 0 36px;
   background-image: radial-gradient(
     circle,
     color-mix(in oklab, var(--ink) 10%, transparent) 1px,
@@ -19,29 +19,7 @@
   text-align: center;
 }
 
-.marketplace-eyebrow {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 5px 12px 5px 6px;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  background: var(--bg);
-  color: var(--dim);
-  font-size: 13px;
-}
-
-.marketplace-eyebrow strong {
-  padding: 2px 8px;
-  border-radius: 999px;
-  background: var(--heading);
-  color: var(--bg);
-  font-size: 12px;
-  font-weight: 600;
-}
-
 .marketplace-hero h1 {
-  margin-top: 22px;
   color: var(--heading);
   font-size: 52px;
   font-weight: 800;
@@ -920,7 +898,7 @@ a.marketplace-detail-author:hover {
   }
 
   .marketplace-hero {
-    padding-top: 44px;
+    padding-top: 34px;
   }
 }
 

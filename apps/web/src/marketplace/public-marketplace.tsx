@@ -452,14 +452,14 @@ function MarketplaceToolbar({
   state,
   onQueryChange,
   onStateChange,
-  heroCount,
+  hero,
 }: {
   options: readonly MarketplaceCategoryOption[];
   query: string;
   state: MarketplaceIndexState;
   onQueryChange: (query: string) => void;
   onStateChange: (state: MarketplaceIndexState) => void;
-  heroCount?: number;
+  hero: boolean;
 }) {
   const searchInput = useRef<HTMLInputElement>(null);
   useEffect(() => {
@@ -515,20 +515,16 @@ function MarketplaceToolbar({
   ];
   return (
     <>
-      {heroCount === undefined ? (
-        <div className="marketplace-author-search">{search}</div>
-      ) : (
+      {hero ? (
         <header className="marketplace-hero">
-          <span className="marketplace-eyebrow">
-            <strong>{heroCount}</strong>
-            plugins from bb and its community
-          </span>
           <h1>Make bb yours.</h1>
           <p>
             Themes, providers, workflows, and tools, installed with one command.
           </p>
           <div className="marketplace-hero-search">{search}</div>
         </header>
+      ) : (
+        <div className="marketplace-author-search">{search}</div>
       )}
       <div className="marketplace-controls">
         <div className="marketplace-category-select">
@@ -586,7 +582,7 @@ function MarketplaceBrowser({
   state,
   onStateChange,
   analyticsAuthor,
-  heroCount,
+  hero,
 }: {
   manifest: MarketplaceV2Manifest;
   entries: readonly MarketplaceV2Entry[];
@@ -594,7 +590,7 @@ function MarketplaceBrowser({
   state: MarketplaceIndexState;
   onStateChange: (state: MarketplaceIndexState) => void;
   analyticsAuthor?: string;
-  heroCount?: number;
+  hero: boolean;
 }) {
   const [query, setQuery] = useState("");
   const options = marketplaceCategoryOptions(manifest, entries);
@@ -627,7 +623,7 @@ function MarketplaceBrowser({
         state={{ category: activeCategory, sort: state.sort }}
         onQueryChange={setQuery}
         onStateChange={onStateChange}
-        heroCount={heroCount}
+        hero={hero}
       />
       <div className="marketplace-results" aria-live="polite">
         {displayed.length === 0 ? (
@@ -710,7 +706,7 @@ export function PublicMarketplacePage({
           stats={stats}
           state={state}
           onStateChange={onStateChange}
-          heroCount={manifest.plugins.length}
+          hero
         />
       </main>
       <SiteFooter />
@@ -1008,6 +1004,7 @@ export function PublicMarketplaceAuthorPage({
           state={state}
           onStateChange={onStateChange}
           analyticsAuthor={author.github}
+          hero={false}
         />
       </main>
       <SiteFooter />
