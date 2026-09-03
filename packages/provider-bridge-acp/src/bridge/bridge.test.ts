@@ -2346,6 +2346,186 @@ describe("acp bridge", () => {
     expect(threadEventsOfType("turn/completed")).toHaveLength(1);
   });
 
+  it("retries a session_busy prompt once after the agent reports an idle session status", async () => {
+    const promptLog = join(workspaceDir, "busy-retry-prompt-log.jsonl");
+    const { providerThreadId } = await startThread({
+      envVars: {
+        FAKE_ACP_PROMPT_LOG: promptLog,
+        FAKE_ACP_SESSION_BUSY_PROMPTS: "1",
+      },
+    });
+
+    const turnId = sendTurnRequest("turn/start", providerThreadId, {
+      input: [{ type: "text", text: "busy-then-echo", mentions: [] }],
+    });
+    expect((await waitForResponse(turnId)).error).toBeUndefined();
+
+    const completed = await waitForTurnCompleted();
+    expect(completed).toMatchObject({ status: "completed" });
+    expect(agentMessageTexts().join("")).toContain("echo:busy-then-echo");
+    expect(loggedPrompts(promptLog)).toEqual([
+      "busy-then-echo",
+      "busy-then-echo",
+    ]);
+    expect(threadEventsOfType("turn/started")).toHaveLength(1);
+    expect(
+      emittedDeltaKinds().filter((kind) => kind === "input.accepted"),
+    ).toHaveLength(1);
+  });
+
+  it("fails the turn when the retried prompt is session_busy again", async () => {
+    const promptLog = join(workspaceDir, "busy-twice-prompt-log.jsonl");
+    const { bbThreadId, providerThreadId } = await startThread({
+      envVars: {
+        FAKE_ACP_PROMPT_LOG: promptLog,
+        FAKE_ACP_SESSION_BUSY_PROMPTS: "2",
+      },
+    });
+
+    const turnId = sendTurnRequest("turn/start", providerThreadId, {
+      input: [{ type: "text", text: "busy-twice", mentions: [] }],
+    });
+    expect((await waitForResponse(turnId)).error).toBeUndefined();
+
+    const errors = await waitFor(() => {
+      const errorNotifications = notifications("error");
+      return errorNotifications.length > 0 ? errorNotifications : undefined;
+    }, "second busy error notification");
+    expect(errors[0]?.params).toMatchObject({
+      threadId: bbThreadId,
+      message: expect.stringContaining("Agent is already processing"),
+    });
+    expect(loggedPrompts(promptLog)).toEqual(["busy-twice", "busy-twice"]);
+    expect(await waitForTurnCompleted()).toMatchObject({ status: "failed" });
+  });
+
+  it.each(["other", "none"])(
+    "fails the turn immediately when the -32003 error carries reason %s",
+    async (reason) => {
+      const promptLog = join(workspaceDir, `busy-${reason}-prompt-log.jsonl`);
+      const { bbThreadId, providerThreadId } = await startThread({
+        envVars: {
+          FAKE_ACP_PROMPT_LOG: promptLog,
+          FAKE_ACP_SESSION_BUSY_PROMPTS: "1",
+          FAKE_ACP_SESSION_BUSY_REASON: reason,
+        },
+      });
+
+      const turnId = sendTurnRequest("turn/start", providerThreadId, {
+        input: [{ type: "text", text: "busy-wrong-reason", mentions: [] }],
+      });
+      expect((await waitForResponse(turnId)).error).toBeUndefined();
+
+      const errors = await waitFor(() => {
+        const errorNotifications = notifications("error");
+        return errorNotifications.length > 0 ? errorNotifications : undefined;
+      }, "non-busy reason error notification");
+      expect(errors[0]?.params).toMatchObject({
+        threadId: bbThreadId,
+        message: expect.stringContaining("Agent is already processing"),
+      });
+      expect(await waitForTurnCompleted()).toMatchObject({
+        status: "failed",
+      });
+      expect(loggedPrompts(promptLog)).toEqual(["busy-wrong-reason"]);
+    },
+  );
+
+  it("fails the turn with the original busy error when no idle status arrives before the retry timeout", async () => {
+    const promptLog = join(workspaceDir, "busy-timeout-prompt-log.jsonl");
+    vi.stubEnv("BB_ACP_SESSION_BUSY_RETRY_TIMEOUT_MS", "250");
+    try {
+      const { bbThreadId, providerThreadId } = await startThread({
+        envVars: {
+          FAKE_ACP_PROMPT_LOG: promptLog,
+          FAKE_ACP_SESSION_BUSY_PROMPTS: "1",
+          FAKE_ACP_SESSION_BUSY_IDLE_DELAY_MS: "0",
+        },
+      });
+
+      const turnId = sendTurnRequest("turn/start", providerThreadId, {
+        input: [{ type: "text", text: "busy-then-never-idle", mentions: [] }],
+      });
+      expect((await waitForResponse(turnId)).error).toBeUndefined();
+
+      const errors = await waitFor(() => {
+        const errorNotifications = notifications("error");
+        return errorNotifications.length > 0 ? errorNotifications : undefined;
+      }, "busy timeout error notification");
+      expect(errors[0]?.params).toMatchObject({
+        threadId: bbThreadId,
+        message: expect.stringContaining("Agent is already processing"),
+      });
+      expect(await waitForTurnCompleted()).toMatchObject({ status: "failed" });
+      expect(loggedPrompts(promptLog)).toEqual(["busy-then-never-idle"]);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it("grants each new prompt a fresh session_busy retry", async () => {
+    const promptLog = join(workspaceDir, "busy-per-prompt-log.jsonl");
+    const { providerThreadId } = await startThread({
+      envVars: {
+        FAKE_ACP_PROMPT_LOG: promptLog,
+        FAKE_ACP_SESSION_BUSY_SKIP: "1",
+        FAKE_ACP_SESSION_BUSY_PROMPTS: "1",
+      },
+    });
+
+    const firstTurnId = sendTurnRequest("turn/start", providerThreadId, {
+      input: [{ type: "text", text: "warm-up", mentions: [] }],
+    });
+    expect((await waitForResponse(firstTurnId)).error).toBeUndefined();
+    expect(await waitForTurnCompleted()).toMatchObject({ status: "completed" });
+
+    const secondTurnId = sendTurnRequest("turn/start", providerThreadId, {
+      input: [{ type: "text", text: "busy-second-turn", mentions: [] }],
+    });
+    expect((await waitForResponse(secondTurnId)).error).toBeUndefined();
+
+    const completions = await waitFor(
+      () =>
+        threadEventsOfType("turn/completed").length === 2
+          ? threadEventsOfType("turn/completed")
+          : undefined,
+      "both turns completed",
+    );
+    expect(completions).toMatchObject([
+      { status: "completed" },
+      { status: "completed" },
+    ]);
+    expect(loggedPrompts(promptLog)).toEqual([
+      "warm-up",
+      "busy-second-turn",
+      "busy-second-turn",
+    ]);
+  });
+
+  it("retries immediately when the busy error and the idle update arrive in one chunk", async () => {
+    const promptLog = join(workspaceDir, "busy-same-chunk-prompt-log.jsonl");
+    const { providerThreadId } = await startThread({
+      envVars: {
+        FAKE_ACP_PROMPT_LOG: promptLog,
+        FAKE_ACP_SESSION_BUSY_PROMPTS: "1",
+        FAKE_ACP_SESSION_BUSY_SAME_CHUNK: "1",
+      },
+    });
+
+    const turnId = sendTurnRequest("turn/start", providerThreadId, {
+      input: [{ type: "text", text: "busy-same-chunk", mentions: [] }],
+    });
+    expect((await waitForResponse(turnId)).error).toBeUndefined();
+
+    const completed = await waitForTurnCompleted();
+    expect(completed).toMatchObject({ status: "completed" });
+    expect(agentMessageTexts().join("")).toContain("echo:busy-same-chunk");
+    expect(loggedPrompts(promptLog)).toEqual([
+      "busy-same-chunk",
+      "busy-same-chunk",
+    ]);
+  });
+
   it("runs the builtin /compact command as compaction, not as a prompt", async () => {
     const promptLog = join(workspaceDir, "compact-prompt-log.jsonl");
     const { providerThreadId } = await startThread({

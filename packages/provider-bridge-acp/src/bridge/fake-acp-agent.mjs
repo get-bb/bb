@@ -63,6 +63,23 @@
  *                              count model-discovery spawns in cache/TTL tests)
  * - FAKE_ACP_PROMPT_LOG      → append one JSON-encoded prompt text per request
  * - FAKE_ACP_PROMPT_ERROR=1  → reject every session/prompt request
+ * - FAKE_ACP_SESSION_BUSY_PROMPTS=<n>
+ *                            → reject the first n session/prompt requests
+ * - FAKE_ACP_SESSION_BUSY_SKIP=<n>
+ *                            → let the first n session/prompt requests bypass
+ *                              the busy rejection (busy starts after them)
+ * - FAKE_ACP_SESSION_BUSY_REASON
+ *                            → override data.reason ("none" omits it) so the
+ *                              busy branch must not fire
+ * - FAKE_ACP_SESSION_BUSY_SAME_CHUNK=1
+ *                            → write the busy error and the idle updates in
+ *                              one stdout write (same JSON-RPC chunk), so the
+ *                              retry cannot rely on the wait being armed
+ *                              before the idle update is handled
+ * - FAKE_ACP_SESSION_BUSY_IDLE_DELAY_MS=<ms>
+ *                            → after a busy rejection, emit omp's end-of-turn
+ *                              updates (usage_update then session_info_update)
+ *                              after this delay; 0 never emits them
  * - FAKE_ACP_COMPACT_STOP_REASON
  *                            → stop reason returned for /compact
  */
@@ -102,6 +119,17 @@ const sessionNewDelayMs = Number(
 const updatesWithSessionResponse =
   process.env.FAKE_ACP_UPDATES_WITH_SESSION_RESPONSE === "1";
 const ignoreCancel = process.env.FAKE_ACP_IGNORE_CANCEL === "1";
+const sessionBusyPrompts = Number(
+  process.env.FAKE_ACP_SESSION_BUSY_PROMPTS ?? "0",
+);
+let sessionBusySkip = Number(process.env.FAKE_ACP_SESSION_BUSY_SKIP ?? "0");
+const sessionBusyIdleDelayMs = Number(
+  process.env.FAKE_ACP_SESSION_BUSY_IDLE_DELAY_MS ?? "100",
+);
+const sessionBusyReasonOverride = process.env.FAKE_ACP_SESSION_BUSY_REASON;
+const sessionBusySameChunk =
+  process.env.FAKE_ACP_SESSION_BUSY_SAME_CHUNK === "1";
+let sessionBusyPromptsRemaining = sessionBusyPrompts;
 // `--list-models` is the agent's own model-list mode: the bridge derives its
 // list command from the launch spec's agent binary plus `modelCli.listArgs`,
 // so a list command can only ever be this binary.
@@ -420,6 +448,80 @@ async function handlePrompt(message) {
       process.env.FAKE_ACP_PROMPT_LOG,
       `${JSON.stringify(text)}\n`,
     );
+  }
+
+  if (sessionBusySkip > 0) {
+    sessionBusySkip -= 1;
+  } else if (sessionBusyPromptsRemaining > 0) {
+    // Mirrors omp's typed session-busy rejection (oh-my-pi#9825): transient,
+    // retried once the session goes idle.
+    sessionBusyPromptsRemaining -= 1;
+    activePromptId = null;
+    const reason =
+      sessionBusyReasonOverride === "none"
+        ? undefined
+        : (sessionBusyReasonOverride ?? "session_busy");
+    const busyResponse = {
+      jsonrpc: "2.0",
+      id: message.id,
+      error: {
+        code: -32003,
+        message:
+          "Agent is already processing. Use steer() or followUp() to queue messages, or wait for completion.",
+        data: {
+          ...(reason === undefined ? {} : { reason }),
+          hint: "steer|followUp|wait",
+        },
+      },
+    };
+    if (sessionBusySameChunk) {
+      process.stdout.write(
+        [
+          JSON.stringify(busyResponse),
+          JSON.stringify({
+            jsonrpc: "2.0",
+            method: "session/update",
+            params: {
+              sessionId: activeSessionId,
+              update: {
+                sessionUpdate: "usage_update",
+                used: 12_345,
+                size: 200_000,
+              },
+            },
+          }),
+          JSON.stringify({
+            jsonrpc: "2.0",
+            method: "session/update",
+            params: {
+              sessionId: activeSessionId,
+              update: {
+                sessionUpdate: "session_info_update",
+                title: "Fake ACP",
+                updatedAt: new Date().toISOString(),
+              },
+            },
+          }),
+        ].join("\n") + "\n",
+      );
+    } else {
+      send(busyResponse);
+      if (sessionBusyIdleDelayMs > 0) {
+        setTimeout(() => {
+          notifyUpdate({
+            sessionUpdate: "usage_update",
+            used: 12_345,
+            size: 200_000,
+          });
+          notifyUpdate({
+            sessionUpdate: "session_info_update",
+            title: "Fake ACP",
+            updatedAt: new Date().toISOString(),
+          });
+        }, sessionBusyIdleDelayMs);
+      }
+    }
+    return;
   }
 
   if (process.env.FAKE_ACP_PROMPT_ERROR === "1") {

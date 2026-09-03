@@ -54,11 +54,13 @@ export class AcpAgentExitedError extends Error {
 
 export class AcpAgentResponseError extends Error {
   readonly code: number | undefined;
+  readonly data: unknown;
 
-  constructor(message: string, code: number | undefined) {
+  constructor(message: string, code: number | undefined, data?: unknown) {
     super(message);
     this.name = "AcpAgentResponseError";
     this.code = code;
+    this.data = data;
   }
 }
 
@@ -231,6 +233,7 @@ export function createAcpAgentConnection(
             new AcpAgentResponseError(
               formatAgentError(message.error),
               message.error.code,
+              message.error.data,
             ),
           );
         } else {
