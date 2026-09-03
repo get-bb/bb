@@ -1,5 +1,27 @@
-import { usePluginSlots } from "@/lib/plugin-slots";
+import { memo } from "react";
+import {
+  usePluginSlots,
+  type ExperimentalAppOverlaySlot,
+} from "@/lib/plugin-slots";
 import { PluginSlotMount } from "./PluginSlotMount";
+
+const PluginAppOverlay = memo(function PluginAppOverlay({
+  slot,
+}: {
+  slot: ExperimentalAppOverlaySlot;
+}) {
+  const Component = slot.component;
+  return (
+    <PluginSlotMount
+      pluginId={slot.pluginId}
+      slotKind="appOverlay"
+      slotId={slot.id}
+      crashFallback={null}
+    >
+      <Component />
+    </PluginSlotMount>
+  );
+});
 
 export function PluginAppOverlays() {
   const { appOverlays } = usePluginSlots();
@@ -7,20 +29,12 @@ export function PluginAppOverlays() {
 
   return (
     <div data-bb-plugin-app-overlays="" className="contents">
-      {appOverlays.map((slot) => {
-        const Component = slot.component;
-        return (
-          <PluginSlotMount
-            key={`${slot.pluginId}/${slot.id}/${slot.generation}`}
-            pluginId={slot.pluginId}
-            slotKind="appOverlay"
-            slotId={slot.id}
-            crashFallback={null}
-          >
-            <Component />
-          </PluginSlotMount>
-        );
-      })}
+      {appOverlays.map((slot) => (
+        <PluginAppOverlay
+          key={`${slot.pluginId}/${slot.id}/${slot.generation}`}
+          slot={slot}
+        />
+      ))}
     </div>
   );
 }

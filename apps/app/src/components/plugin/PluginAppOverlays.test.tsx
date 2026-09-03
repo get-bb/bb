@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { createPortal } from "react-dom";
 import { MemoryRouter, useLocation } from "react-router-dom";
 import { useState } from "react";
@@ -131,6 +131,41 @@ afterEach(() => {
 });
 
 describe("PluginAppOverlays", () => {
+  it("does not render an existing overlay when another one registers", () => {
+    const firstRender = vi.fn();
+    function First() {
+      firstRender();
+      return <div>first overlay</div>;
+    }
+    function Second() {
+      return <div>second overlay</div>;
+    }
+    setPluginSlotRegistrations(
+      "first",
+      registrationSet({
+        appOverlays: [{ id: "first", component: First }],
+      }),
+    );
+    render(
+      <MemoryRouter>
+        <PluginAppOverlays />
+      </MemoryRouter>,
+    );
+
+    expect(firstRender).toHaveBeenCalledTimes(1);
+    act(() => {
+      setPluginSlotRegistrations(
+        "second",
+        registrationSet({
+          appOverlays: [{ id: "second", component: Second }],
+        }),
+      );
+    });
+
+    expect(screen.getByText("second overlay")).toBeDefined();
+    expect(firstRender).toHaveBeenCalledTimes(1);
+  });
+
   it("keeps sidebar thread actions available through a portal and route change", async () => {
     const fetchMock = vi.fn(async (input: string | URL | Request) => {
       const url = String(input);
