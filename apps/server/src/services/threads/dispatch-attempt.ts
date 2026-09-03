@@ -3,6 +3,7 @@ import {
   getEnvironment,
   getThread,
   getThreadPendingStartContext,
+  isThreadQueueAutoSendPaused,
   listRunningThreads,
   setThreadPendingStartContext,
   type ClaimedQueuedThreadMessageRow,
@@ -27,9 +28,13 @@ import { z } from "zod";
 import { ApiError } from "../../errors.js";
 import type { LoggedPendingInteractionWorkSessionDeps } from "../../types.js";
 import { requirePublicProject } from "../lib/entity-lookup.js";
-import { throwThreadNotWritable } from "../lib/lifecycle-api-errors.js";
+import {
+  goneThreadEnvironmentDetails,
+  throwThreadNotWritable,
+} from "../lib/lifecycle-api-errors.js";
 import { validatePromptAttachmentReferences } from "../projects/attachments.js";
 import {
+  dispatchEnvironmentAndHost,
   dispatchExecutionSources,
   dispatchWaitReasonForPass,
   hasMessageDispatchHooks,
@@ -40,6 +45,7 @@ import {
 import {
   recordQueuedMessageWait,
   settleQueueRowDispatched,
+  type QueuedDispatchMessage,
 } from "./queue-waits.js";
 import { applyLoggedThreadLifecycleEventInTransaction } from "./lifecycle-outcome.js";
 import { buildExecutionOptions } from "./thread-commands.js";
@@ -61,6 +67,7 @@ import {
 } from "./thread-runtime-display.js";
 import { toThreadQueuedMessage } from "./thread-queued-messages.js";
 import { isPreStartThreadStatus } from "./thread-status.js";
+import { queueInputForStartingTurn } from "./thread-turn-starting.js";
 import {
   ensureThreadIsWritable,
   resolveMessageSenderThreadId,
@@ -158,6 +165,7 @@ export type DispatchAttemptSource =
   | {
       kind: "drain";
       claimed: ClaimedQueuedThreadMessageRow[];
+      respectManualStopPause: boolean;
       /**
        * Send-now. Bypasses every plugin wait AND the row's own `sendAt`; core
        * waits are NOT overridable, because they guard invariants rather than
@@ -242,10 +250,6 @@ export function attemptDispatch(
   return runDispatchAttempt(deps, args, false);
 }
 
-/**
- * `reattempted` is true on the one re-entry a lost pending admission makes,
- * against the re-read thread; a second loss is a bug, not a race.
- */
 async function runDispatchAttempt(
   deps: LoggedPendingInteractionWorkSessionDeps,
   args: DispatchAttemptArgs,
@@ -272,6 +276,8 @@ async function runDispatchAttempt(
   const firstDispatch = thread.status === "pending";
   const claimed = args.source.kind === "drain" ? args.source.claimed : null;
   const sendNow = args.source.kind === "drain" && args.source.sendNow;
+  const respectManualStopPause =
+    args.source.kind === "drain" && args.source.respectManualStopPause;
   const attempt = resolveDispatchAttemptKind(thread, payload.mode);
 
   const execution = await buildExecutionOptions(
@@ -280,6 +286,13 @@ async function runDispatchAttempt(
     args.executionDefaults ?? { threadId: thread.id },
   );
   const resolvedPayload = resolveExecutionIntoPayload(payload, execution);
+  const queuedMessage: QueuedDispatchMessage = {
+    input: payload.input,
+    execution,
+    senderThreadId,
+    payload: args.queuePayload,
+    systemNotice: null,
+  };
 
   const waitOn = (
     waitingOn: QueuedMessageWaitingOn,
@@ -287,15 +300,7 @@ async function runDispatchAttempt(
   ): DispatchAttemptOutcome => {
     const entry = recordQueuedMessageWait(deps, {
       thread,
-      message: {
-        input: payload.input,
-        execution,
-        senderThreadId,
-        payload: args.queuePayload,
-        // Only core queues a system notice, and it does so directly rather
-        // than through a send request, so an attempt never carries one.
-        systemNotice: null,
-      },
+      message: queuedMessage,
       waitingOn,
       sendAt,
       claimed,
@@ -320,20 +325,65 @@ async function runDispatchAttempt(
     if (payload.mode === "start") {
       // `start` asks for a FRESH turn specifically, so a running one is a
       // conflict rather than something to wait behind. Unchanged 409.
-      throwThreadNotWritable(thread, "already_active", "Thread is already active");
+      throwThreadNotWritable(
+        thread,
+        "already_active",
+        "Thread is already active",
+      );
     }
     return waitOn({ kind: "thread-busy" }, null);
   }
+
+  const { environment: dispatchEnvironment, host: dispatchHost } =
+    dispatchEnvironmentAndHost(deps, thread.environmentId);
+  if (
+    dispatchEnvironment !== null &&
+    goneThreadEnvironmentDetails(dispatchEnvironment) === null &&
+    dispatchHost?.status === "disconnected"
+  ) {
+    return waitOn({ kind: "host-offline", hostName: dispatchHost.name }, null);
+  }
+
   if (payload.mode !== "start" && isManualCompactionActive(deps, thread)) {
     return waitOn({ kind: "thread-busy" }, null);
   }
   const currentThread = getThread(deps.db, thread.id);
+  if (currentThread === null) {
+    throw new ApiError(404, "thread_not_found", "Thread not found");
+  }
   if (
-    currentThread?.status === "active" &&
+    currentThread.status !== thread.status ||
+    currentThread.archivedAt !== thread.archivedAt ||
+    currentThread.deletedAt !== thread.deletedAt
+  ) {
+    return reattemptDispatchForThreadChange(
+      deps,
+      args,
+      currentThread,
+      reattempted,
+    );
+  }
+  if (
+    currentThread.status === "active" &&
     resolveDispatchAttemptKind(currentThread, payload.mode) === "join-turn" &&
     getActiveTurnId(deps, thread.id) === null
   ) {
-    return waitOn({ kind: "turn-starting" }, null);
+    const outcome = queueInputForStartingTurn(deps, {
+      claimed,
+      input: queuedMessage,
+      threadId: thread.id,
+    });
+    if (outcome.kind === "queued" || outcome.kind === "dispatched") {
+      return outcome;
+    }
+    if (outcome.kind === "retry") {
+      return reattemptDispatchForThreadChange(
+        deps,
+        args,
+        outcome.thread,
+        reattempted,
+      );
+    }
   }
   if (!firstDispatch && isPreStartThreadStatus(thread.status)) {
     // A follow-up or steer sent while the workspace is being (re)provisioned.
@@ -399,6 +449,7 @@ async function runDispatchAttempt(
               admitted.value = await admitPendingThread(deps, {
                 claimed,
                 payload: resolvedPayload,
+                respectManualStopPause,
                 startContext: args.startContext ?? null,
                 thread,
               });
@@ -431,6 +482,7 @@ async function runDispatchAttempt(
       : await admitPendingThread(deps, {
           claimed,
           payload: resolvedPayload,
+          respectManualStopPause,
           startContext: args.startContext ?? null,
           thread,
         });
@@ -441,18 +493,8 @@ async function runDispatchAttempt(
       // it is now: it queues behind the winner's cold start, or is refused
       // for a thread that is gone. Reporting a dispatch here would tell the
       // caller their message went when it went nowhere.
-      if (reattempted) {
-        throw new ApiError(
-          500,
-          "internal_error",
-          `Thread ${thread.id} left pending twice under one dispatch attempt`,
-        );
-      }
       const current = getThread(deps.db, thread.id);
-      if (!current) {
-        throw new ApiError(404, "thread_not_found", "Thread not found");
-      }
-      return runDispatchAttempt(deps, { ...args, thread: current }, true);
+      return reattemptDispatchForThreadChange(deps, args, current, reattempted);
     }
     await launchAdmittedThread(deps, admission);
     return { kind: "dispatched" };
@@ -467,12 +509,37 @@ async function runDispatchAttempt(
     ...(args.retryOf !== undefined ? { retryOf: args.retryOf } : {}),
     ...(claimed === null
       ? {}
-      : { beforeAppendInTransaction: consumeClaimedRows(claimed) }),
+      : {
+          beforeAppendInTransaction: consumeClaimedRows(
+            claimed,
+            thread.id,
+            respectManualStopPause,
+          ),
+        }),
   });
   if (claimed !== null) {
     settleQueueRowDispatched({ row: claimed[0]! });
   }
   return { kind: "dispatched" };
+}
+
+function reattemptDispatchForThreadChange(
+  deps: LoggedPendingInteractionWorkSessionDeps,
+  args: DispatchAttemptArgs,
+  thread: Thread | null,
+  reattempted: boolean,
+): Promise<DispatchAttemptOutcome> {
+  if (thread === null) {
+    throw new ApiError(404, "thread_not_found", "Thread not found");
+  }
+  if (reattempted) {
+    throw new ApiError(
+      500,
+      "internal_error",
+      `Thread ${thread.id} changed twice under one dispatch attempt`,
+    );
+  }
+  return runDispatchAttempt(deps, { ...args, thread }, true);
 }
 
 /**
@@ -483,8 +550,17 @@ async function runDispatchAttempt(
  */
 function consumeClaimedRows(
   claimed: readonly ClaimedQueuedThreadMessageRow[],
+  threadId: string,
+  respectManualStopPause: boolean,
 ): SendThreadMessageTransactionPreflight {
   return ({ tx }) => {
+    if (respectManualStopPause && isThreadQueueAutoSendPaused(tx, threadId)) {
+      throw new ApiError(
+        409,
+        "queued_message_auto_send_paused",
+        "Queued message auto-send was paused by a manual stop",
+      );
+    }
     const consumed = deleteClaimedQueuedThreadMessageBatchInTransaction(tx, {
       queuedMessages: claimed,
     });
@@ -501,6 +577,7 @@ function consumeClaimedRows(
 interface AdmitPendingThreadArgs {
   claimed: ClaimedQueuedThreadMessageRow[] | null;
   payload: SendMessageRequest & { inputGroups?: PromptInput[][] };
+  respectManualStopPause: boolean;
   /** Creation's own record; null on a re-attempt, which reads it back. */
   startContext: PendingThreadStartContext | null;
   thread: Thread;
@@ -574,7 +651,11 @@ async function admitPendingThread(
         // so the row stays claimed for the caller to hand back rather than
         // being deleted under a message that never dispatched.
         if (args.claimed !== null && args.claimed.length > 0) {
-          consumeClaimedRows(args.claimed)({ tx });
+          consumeClaimedRows(
+            args.claimed,
+            args.thread.id,
+            args.respectManualStopPause,
+          )({ tx });
         }
         const prepared = applyLoggedThreadLifecycleEventInTransaction(
           { db: tx, logger: deps.logger },

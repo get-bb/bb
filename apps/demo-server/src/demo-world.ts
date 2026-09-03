@@ -321,7 +321,7 @@ export class DemoWorld {
       this.appendTurn(state, promptText(message.content), now);
       return json({
         ok: true,
-        queuedMessage: message,
+        delivery: "sent",
       } satisfies SendQueuedMessageResponse);
     }
     return null;

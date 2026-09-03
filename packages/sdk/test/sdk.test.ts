@@ -1301,9 +1301,11 @@ describe("@bb/sdk", () => {
         body: {
           ok: true,
           delivery: "queued",
-          queuedMessageId: "qm_1",
-          waitingOn: { kind: "time" },
-          sendAt: 1750,
+          queuedMessage: {
+            id: "qm_1",
+            waitingOn: { kind: "time" },
+            sendAt: 1750,
+          },
         },
       },
     ]);
@@ -1329,9 +1331,11 @@ describe("@bb/sdk", () => {
     ).resolves.toEqual({
       ok: true,
       delivery: "queued",
-      queuedMessageId: "qm_1",
-      waitingOn: { kind: "time" },
-      sendAt: 1750,
+      queuedMessage: {
+        id: "qm_1",
+        waitingOn: { kind: "time" },
+        sendAt: 1750,
+      },
     });
 
     expect(queue.requests[0].url).toBe(
@@ -1492,6 +1496,8 @@ describe("@bb/sdk", () => {
       enabled: true,
       description: "Notes",
       name: "Notes",
+      screenshots: [],
+      collections: [],
       icon: null,
       iconUrl: null,
       status: "running" as const,
@@ -1567,6 +1573,13 @@ describe("@bb/sdk", () => {
               incompatibleReason: null,
             },
           ],
+          collections: [
+            {
+              id: "featured",
+              displayName: "Featured",
+              pluginIds: ["notes"],
+            },
+          ],
         },
       },
     ]);
@@ -1600,9 +1613,16 @@ describe("@bb/sdk", () => {
     await expect(sdk.plugins.catalog.status()).resolves.toEqual(catalog);
     await expect(
       sdk.plugins.catalog.search({ query: "notes" }),
-    ).resolves.toMatchObject([
-      { entryId: "notes", pluginId: "notes", compatible: true },
-    ]);
+    ).resolves.toMatchObject({
+      results: [{ entryId: "notes", pluginId: "notes", compatible: true }],
+      collections: [
+        {
+          id: "featured",
+          displayName: "Featured",
+          pluginIds: ["notes"],
+        },
+      ],
+    });
     expect(queue.requests).toEqual([
       {
         bodyText: undefined,
@@ -1963,4 +1983,5 @@ describe("@bb/sdk", () => {
       },
     ]);
   });
+
 });

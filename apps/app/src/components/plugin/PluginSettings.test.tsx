@@ -129,6 +129,184 @@ describe("PluginSettingsForm", () => {
     );
   });
 
+  it("autosaves a number input on blur and unsets it when cleared", async () => {
+    const view = {
+      ok: true,
+      schema: {
+        retries: { type: "number", label: "Retries" },
+      },
+      values: { retries: 3 },
+    };
+    const requests: RecordedRequest[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init?: RequestInit) => {
+        requests.push({ url, init });
+        if (init?.method === "PUT") {
+          const body = JSON.parse(String(init.body)) as {
+            values: Record<string, unknown>;
+          };
+          return jsonOk({
+            ...view,
+            values: { ...view.values, ...body.values },
+          });
+        }
+        return jsonOk(view);
+      }),
+    );
+
+    const { wrapper } = createQueryClientTestHarness();
+    render(<PluginSettingsForm pluginId="demo" />, { wrapper });
+
+    const retries = (await screen.findByLabelText(
+      "Retries",
+    )) as HTMLInputElement;
+    expect(retries.type).toBe("number");
+    expect(retries.step).toBe("any");
+    expect(retries.value).toBe("3");
+
+    fireEvent.change(retries, { target: { value: "4.5" } });
+    expect(requests.some((request) => request.init?.method === "PUT")).toBe(
+      false,
+    );
+    fireEvent.blur(retries);
+
+    const put = await vi.waitFor(() => {
+      const request = requests.find(
+        (candidate) => candidate.init?.method === "PUT",
+      );
+      expect(request).toBeDefined();
+      return request;
+    });
+    expect(JSON.parse(String(put?.init?.body))).toEqual({
+      values: { retries: 4.5 },
+    });
+
+    await vi.waitFor(() => expect(retries.value).toBe("4.5"));
+    fireEvent.change(retries, { target: { value: "" } });
+    fireEvent.blur(retries);
+    await vi.waitFor(() =>
+      expect(
+        requests.filter((request) => request.init?.method === "PUT"),
+      ).toHaveLength(2),
+    );
+    expect(JSON.parse(String(requests.at(-1)?.init?.body))).toEqual({
+      values: { retries: null },
+    });
+  });
+
+  it("preserves text typed while an older save is pending", async () => {
+    const first = deferred<Response>();
+    const second = deferred<Response>();
+    const requests: RecordedRequest[] = [];
+    let saveCount = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init?: RequestInit) => {
+        requests.push({ url, init });
+        if (init?.method !== "PUT") return jsonOk(SETTINGS_VIEW);
+        saveCount += 1;
+        return saveCount === 1 ? first.promise : second.promise;
+      }),
+    );
+
+    const { wrapper } = createQueryClientTestHarness();
+    render(<PluginSettingsForm pluginId="demo" />, { wrapper });
+
+    const greeting = await screen.findByLabelText("Greeting");
+    fireEvent.change(greeting, { target: { value: "older" } });
+    fireEvent.blur(greeting);
+    await vi.waitFor(() => expect(saveCount).toBe(1));
+    fireEvent.change(greeting, { target: { value: "newer" } });
+
+    await act(async () => {
+      first.resolve(
+        jsonOk({
+          ...SETTINGS_VIEW,
+          values: { ...SETTINGS_VIEW.values, greeting: "older" },
+        }),
+      );
+      await first.promise;
+    });
+    expect((greeting as HTMLInputElement).value).toBe("newer");
+
+    fireEvent.blur(greeting);
+    await vi.waitFor(() => expect(saveCount).toBe(2));
+    expect(JSON.parse(String(requests.at(-1)?.init?.body))).toEqual({
+      values: { greeting: "newer" },
+    });
+
+    await act(async () => {
+      second.resolve(
+        jsonOk({
+          ...SETTINGS_VIEW,
+          values: { ...SETTINGS_VIEW.values, greeting: "newer" },
+        }),
+      );
+      await second.promise;
+    });
+    expect((greeting as HTMLInputElement).value).toBe("newer");
+  });
+
+  it("preserves restored saved text while an older save is pending", async () => {
+    const first = deferred<Response>();
+    const second = deferred<Response>();
+    const requests: RecordedRequest[] = [];
+    let saveCount = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init?: RequestInit) => {
+        requests.push({ url, init });
+        if (init?.method !== "PUT") return jsonOk(SETTINGS_VIEW);
+        saveCount += 1;
+        return saveCount === 1 ? first.promise : second.promise;
+      }),
+    );
+
+    const { wrapper } = createQueryClientTestHarness();
+    render(<PluginSettingsForm pluginId="demo" />, { wrapper });
+
+    const greeting = await screen.findByLabelText("Greeting");
+    const enabled = screen.getByRole("switch", { name: "Enabled" });
+    fireEvent.change(greeting, { target: { value: "temporary" } });
+    fireEvent.blur(greeting);
+    await vi.waitFor(() => expect(saveCount).toBe(1));
+
+    fireEvent.change(greeting, { target: { value: "hello" } });
+    fireEvent.blur(greeting);
+    expect(saveCount).toBe(1);
+
+    await act(async () => {
+      first.resolve(
+        jsonOk({
+          ...SETTINGS_VIEW,
+          values: {
+            ...SETTINGS_VIEW.values,
+            greeting: "temporary",
+            enabled: false,
+          },
+        }),
+      );
+      await first.promise;
+    });
+    await vi.waitFor(() => expect(saveCount).toBe(2));
+    expect(JSON.parse(String(requests.at(-1)?.init?.body))).toEqual({
+      values: { greeting: "hello" },
+    });
+    await vi.waitFor(() =>
+      expect(enabled.getAttribute("data-state")).toBe("unchecked"),
+    );
+
+    await act(async () => {
+      second.resolve(jsonOk(SETTINGS_VIEW));
+      await second.promise;
+    });
+    await vi.waitFor(() =>
+      expect(enabled.getAttribute("data-state")).toBe("checked"),
+    );
+    expect((greeting as HTMLInputElement).value).toBe("hello");
+  });
+
   it("renders an experimental_multiline string below its label and flushes it on blur", async () => {
     const view = {
       ok: true,
@@ -390,6 +568,8 @@ function installedPlugin(
     statusDetail: null,
     description: "Linear integration",
     name: "Linear",
+    screenshots: [],
+    collections: [],
     icon: null,
     iconUrl: null,
     logoUrl: null,

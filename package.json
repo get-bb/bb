@@ -7,7 +7,7 @@
     "node": ">=22.19.0"
   },
   "scripts": {
-    "prepare": "turbo run generate:templates generate:plugin-scaffold generate --filter=@bb/templates --filter=@bb/plugin-build --output-logs=errors-only --summarize=false",
+    "prepare": "turbo run generate:templates generate:plugin-scaffold generate generate:bb-official-marketplace --filter=@bb/templates --filter=@bb/plugin-build --filter=@bb/server --output-logs=errors-only --summarize=false",
     "scripts:prepare": "pnpm exec turbo run build --filter=@bb/scripts --output-logs=none --log-prefix=none --summarize=false",
     "cli:prepare": "pnpm exec turbo run build --filter=@bb/scripts --filter=@bb/cli --output-logs=none --log-prefix=none --summarize=false",
     "ensure-native-modules": "node scripts/ensure-native-modules.mjs",

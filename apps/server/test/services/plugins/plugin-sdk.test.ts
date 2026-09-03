@@ -76,6 +76,7 @@ describe("plugin bb.sdk bind gate", () => {
   let workDir: string;
   let service: PluginService;
   let pluginHostArtifacts: PluginHostArtifactRegistry;
+  let appUrl: string | null;
   const sharedPorts = {
     declareSharedPorts: vi.fn(),
     validateSharedPortDeclaration: vi.fn(
@@ -105,6 +106,7 @@ describe("plugin bb.sdk bind gate", () => {
     ensureSharedPortTunnel.mockClear();
     callPluginHost.mockClear();
     disposePluginHost.mockClear();
+    appUrl = "https://bb.example.test";
     pluginHostArtifacts = new PluginHostArtifactRegistry();
     service = createPluginService({
       aiServices: createAiServiceRegistry(),
@@ -121,6 +123,7 @@ describe("plugin bb.sdk bind gate", () => {
       logger,
       dataDir: join(workDir, "data"),
       appVersion: "0.9.0",
+      getAppUrl: () => appUrl,
       loadTimeoutMs: 2000,
       callPluginHost,
       disposePluginHost,
@@ -147,6 +150,19 @@ describe("plugin bb.sdk bind gate", () => {
     service.bindSdk({ baseUrl: "http://127.0.0.1:9" });
     expect(typeof api.sdk.threads.fork).toBe("function");
     expect(typeof api.sdk.threads.spawn).toBe("function");
+  });
+
+  it("serves the current public app URL without the SDK bind gate", async () => {
+    const rootDir = await writePlugin(workDir, {
+      name: "bb-plugin-app-url",
+      serverSource: `export default function plugin() {}`,
+    });
+    await service.installPath(rootDir);
+    const api = requireApi(service, "app-url");
+
+    expect(api.server.experimental_appUrl).toBe("https://bb.example.test");
+    appUrl = null;
+    expect(api.server.experimental_appUrl).toBeNull();
   });
 
   it("marks a plugin error when its factory touches bb.sdk at load time", async () => {

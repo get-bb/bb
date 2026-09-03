@@ -200,14 +200,21 @@ interface ClaudeSessionPermissionGrantCoverageArgs {
   toolName: string;
 }
 
+type ClaudeSdkSessionState = Extract<
+  SDKMessage,
+  { type: "system"; subtype: "session_state_changed" }
+>["state"];
+
 interface ThreadSession {
   session: SdkSession;
   attachment: ThreadAttachment;
   sessionSerial: number;
   closing: boolean;
   pendingForwardedToolCalls: number;
+  pendingSessionCronIds: Set<string>;
   restartBeforeNextTurnReason: string | null;
   recoveryHintRaisedThisTurn: "authRequired" | "rateLimited" | null;
+  sdkSessionState: ClaudeSdkSessionState | undefined;
   streamEnded: boolean;
   translator: ClaudeDeltaTranslator;
   pendingInteractiveRequests: Map<string | number, PendingInteractiveRequest>;
@@ -417,7 +424,10 @@ function isThreadSessionQuiescent(
   return (
     !threadSession.translator.hasOpenSessionWork(threadId) &&
     threadSession.pendingForwardedToolCalls === 0 &&
-    threadSession.pendingInteractiveRequests.size === 0
+    threadSession.pendingInteractiveRequests.size === 0 &&
+    threadSession.pendingSessionCronIds.size === 0 &&
+    (threadSession.sdkSessionState === undefined ||
+      threadSession.sdkSessionState === "idle")
   );
 }
 
@@ -1054,8 +1064,10 @@ function createThreadSession(attachment: ThreadAttachment): ThreadSession {
     sessionSerial,
     closing: false,
     pendingForwardedToolCalls: 0,
+    pendingSessionCronIds: new Set(),
     restartBeforeNextTurnReason: null,
     recoveryHintRaisedThisTurn: null,
+    sdkSessionState: undefined,
     streamEnded: false,
     translator,
     pendingInteractiveRequests: new Map(),
@@ -1176,7 +1188,7 @@ function trackSdkAssistantPermissionEscalation(
   }
 }
 
-function buildPermissionEscalationTrackingHooks(
+function buildSessionTrackingHooks(
   threadIdRef: ThreadIdRef,
 ): NonNullable<SdkSessionOptions["hooks"]> {
   const trackPermissionRequest: HookCallback = async (input, toolUseId) => {
@@ -1306,23 +1318,40 @@ function buildPermissionEscalationTrackingHooks(
     return { continue: true };
   };
 
+  const trackSessionCrons: HookCallback = async (input) => {
+    if (input.hook_event_name !== "Stop" || input.session_crons === undefined) {
+      return { continue: true };
+    }
+    const threadSession = threadAttachments.get(
+      threadIdRef.current,
+    )?.residentSession;
+    if (threadSession) {
+      threadSession.pendingSessionCronIds = new Set(
+        input.session_crons.map((cron) => cron.id),
+      );
+      refreshIdleQueryRelease(threadSession, threadIdRef.current);
+    }
+    return { continue: true };
+  };
+
   return {
     PermissionDenied: [{ hooks: [clearToolUse] }],
     PermissionRequest: [{ hooks: [trackPermissionRequest] }],
     PostToolUse: [{ hooks: [clearToolUse] }],
     PostToolUseFailure: [{ hooks: [clearToolUse] }],
     PreToolUse: [{ hooks: [trackPreToolUse] }],
+    Stop: [{ hooks: [trackSessionCrons] }],
     SubagentStart: [{ hooks: [trackSubagentStart] }],
     SubagentStop: [{ hooks: [clearSubagent] }],
   };
 }
 
-function addPermissionEscalationTrackingHooks(
+function addSessionTrackingHooks(
   sessionOptions: SdkSessionOptions,
   threadIdRef: ThreadIdRef,
 ): void {
   const existingHooks = sessionOptions.hooks;
-  const trackingHooks = buildPermissionEscalationTrackingHooks(threadIdRef);
+  const trackingHooks = buildSessionTrackingHooks(threadIdRef);
   sessionOptions.hooks = {
     ...existingHooks,
     PermissionDenied: [
@@ -1345,6 +1374,7 @@ function addPermissionEscalationTrackingHooks(
       ...(trackingHooks.PreToolUse ?? []),
       ...(existingHooks?.PreToolUse ?? []),
     ],
+    Stop: [...(trackingHooks.Stop ?? []), ...(existingHooks?.Stop ?? [])],
     SubagentStart: [
       ...(trackingHooks.SubagentStart ?? []),
       ...(existingHooks?.SubagentStart ?? []),
@@ -1365,7 +1395,7 @@ function buildTrackedSessionOptions(
     withTrackedPermissionEscalation(params, threadIdRef),
     env,
   );
-  addPermissionEscalationTrackingHooks(sessionOptions, threadIdRef);
+  addSessionTrackingHooks(sessionOptions, threadIdRef);
   sessionOptions.recordThreadId = () => threadIdRef.current;
   return sessionOptions;
 }
@@ -1548,6 +1578,12 @@ function createOnSdkMessage(
         authenticationFailureRestartReason;
     }
     trackSdkAssistantPermissionEscalation(threadSession, message);
+    if (
+      message.type === "system" &&
+      message.subtype === "session_state_changed"
+    ) {
+      threadSession.sdkSessionState = message.state;
+    }
     emitForSession(threadSession, args.threadIdRef.current, "sdk/message", {
       threadId: args.threadIdRef.current,
       message,

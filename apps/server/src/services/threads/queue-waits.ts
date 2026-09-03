@@ -3,6 +3,9 @@ import {
   createQueuedThreadMessageInTransaction,
   requeueClaimedQueuedThreadMessages,
   type ClaimedQueuedThreadMessageRow,
+  type DbConnection,
+  type DbNotifier,
+  type DbQueryConnection,
   type QueuedThreadMessageRow,
 } from "@bb/db";
 import type {
@@ -14,14 +17,13 @@ import type {
   Thread,
   ThreadQueuedMessage,
 } from "@bb/domain";
-import type { AppDeps } from "../../types.js";
 import {
   emitPluginMessageDispatched,
   emitPluginMessageQueued,
 } from "../plugins/plugin-thread-events.js";
 import { toThreadQueuedMessage } from "./thread-queued-messages.js";
 
-type QueueWaitDeps = Pick<AppDeps, "db" | "hub">;
+type QueueWaitDeps = { db: DbQueryConnection; hub: DbNotifier };
 
 /**
  * A settling row, for the plugin event its transition raises.
@@ -139,7 +141,7 @@ export function settleQueueRowDispatched(args: SettleQueueRowArgs): void {
  * where it is in the queue; only its eligibility changes.
  */
 export function clearQueuedMessageWait(
-  deps: QueueWaitDeps,
+  deps: { db: DbConnection; hub: DbNotifier },
   args: { queuedMessageId: string; threadId: string },
 ): QueuedThreadMessageRow | null {
   return clearQueuedThreadMessageWaitingOn(deps.db, deps.hub, {

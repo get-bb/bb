@@ -350,12 +350,14 @@ function StaticQueuedMessagesList({
 }: StaticQueuedMessagesListProps) {
   return (
     <QueuedMessagesList
+      attachedToComposer={true}
       queuedMessages={queuedMessages}
+      sendAction="send-now"
       sendDisabled={sendDisabled}
       actionDisabled={actionDisabled}
       processingMessageId={processingMessageId ?? null}
       processingAction={processingAction ?? null}
-      onSendImmediately={noop}
+      onSend={noop}
       onReorder={noop}
       onSetGroupBoundary={noop}
       onEdit={noop}
@@ -386,12 +388,14 @@ function ReorderableQueuedMessagesList() {
 
   return (
     <QueuedMessagesList
+      attachedToComposer={true}
       queuedMessages={queuedMessages}
+      sendAction="send-now"
       sendDisabled={false}
       actionDisabled={false}
       processingMessageId={null}
       processingAction={null}
-      onSendImmediately={noop}
+      onSend={noop}
       onReorder={handleReorder}
       onSetGroupBoundary={handleSetGroupBoundary}
       onEdit={noop}

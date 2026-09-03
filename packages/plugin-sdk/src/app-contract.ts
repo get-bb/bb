@@ -43,6 +43,14 @@ export interface PluginHomepageSectionProps {
  */
 export interface PluginSettingsSectionProps {}
 
+/**
+ * Props passed to an `experimental_appOverlay` component.
+ *
+ * Deliberately empty while the component reads live app state through SDK
+ * hooks; versioned additive like the other slot props.
+ */
+export interface ExperimentalAppOverlayProps {}
+
 /** Props passed to a `navPanel` component (it owns its whole route). */
 export interface PluginNavPanelProps {
   /**
@@ -439,6 +447,22 @@ export interface PluginSettingsSectionRegistration {
    */
   description?: string;
   component: ComponentType<PluginSettingsSectionProps>;
+}
+
+/**
+ * Render app-wide plugin UI outside BB's layout regions.
+ *
+ * The host mounts each registration once per app window through the ordinary
+ * plugin React boundary. The component therefore keeps PluginContext, router,
+ * query, realtime, and other app-level SDK contexts when it renders fixed UI
+ * or creates a React portal. BB supplies no chrome, positioning, visibility,
+ * or interaction policy; the plugin owns those details and responsive
+ * behavior. Registrations are additive and a crash hides only that overlay.
+ */
+export interface ExperimentalAppOverlayRegistration {
+  /** Unique within the plugin; letters, digits, `-`, `_`. */
+  id: string;
+  component: ComponentType<ExperimentalAppOverlayProps>;
 }
 
 /**
@@ -1326,6 +1350,14 @@ export interface PluginTimelineRendererRegistration {
 export interface PluginAppSlots {
   homepageSection(registration: PluginHomepageSectionRegistration): void;
   settingsSection(registration: PluginSettingsSectionRegistration): void;
+  /**
+   * Render one app-wide overlay component (see
+   * {@link ExperimentalAppOverlayRegistration}). Experimental: see
+   * docs/api_to_audit.md.
+   */
+  experimental_appOverlay(
+    registration: ExperimentalAppOverlayRegistration,
+  ): void;
   navPanel(registration: PluginNavPanelRegistration): void;
   /**
    * Add an action to an existing thread's panel launcher. This slot is
@@ -1506,7 +1538,7 @@ export interface PluginSettingsState {
    * Effective non-secret setting values (secret settings are excluded —
    * read them server-side). Undefined while loading or unavailable.
    */
-  values: Record<string, string | boolean> | undefined;
+  values: Record<string, string | number | boolean> | undefined;
   isLoading: boolean;
 }
 

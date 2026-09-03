@@ -30,6 +30,21 @@ interface ResolvedModelCatalogSelection {
   isUnavailableModelRecovery: boolean;
 }
 
+export function resolveModelReasoningLevel(
+  model: AvailableModel | undefined,
+  preferredReasoningLevel: ReasoningLevel,
+): ReasoningLevel {
+  const supportedReasoningLevels =
+    model?.supportedReasoningEfforts.map((effort) => effort.reasoningEffort) ??
+    [];
+  return supportedReasoningLevels.length === 0
+    ? preferredReasoningLevel
+    : reconcileReasoningLevel(
+        preferredReasoningLevel,
+        supportedReasoningLevels,
+      );
+}
+
 function toModelPickerOption(
   model: AvailableModel,
   formatModelLabel: (displayName: string) => string,
@@ -112,13 +127,10 @@ export function resolveModelCatalogSelection({
   }
 
   const preferredLevel = preferredReasoningLevel ?? "medium";
-  const reasoningLevel =
-    reasoningOptions.length === 0
-      ? preferredLevel
-      : reconcileReasoningLevel(
-          preferredLevel,
-          reasoningOptions.map((option) => option.value),
-        );
+  const reasoningLevel = resolveModelReasoningLevel(
+    activeModel,
+    preferredLevel,
+  );
 
   return {
     selectedModel,

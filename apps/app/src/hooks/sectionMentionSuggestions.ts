@@ -18,11 +18,9 @@ interface BuildSectionMentionSuggestionsArgs {
   limit: number;
 }
 
-function getSectionSearchTexts(
-  section: SectionMentionCandidate,
-): readonly string[] {
+function getSectionSearchText(section: SectionMentionCandidate): string {
   const name = section.name.trim();
-  return name ? [name, section.id] : [section.id];
+  return name || section.id;
 }
 
 function toSectionMentionSuggestion(
@@ -48,7 +46,8 @@ export function buildSectionMentionSuggestions(
   const matches = fuzzyMatchText({
     items: args.sections,
     query: trimmedQuery,
-    getText: getSectionSearchTexts,
+    getText: getSectionSearchText,
+    getAliases: (section) => [section.id],
     limit: args.sections.length,
   });
 

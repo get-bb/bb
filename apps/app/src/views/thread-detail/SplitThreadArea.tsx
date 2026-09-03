@@ -96,6 +96,7 @@ import {
   focusedPaneRoute,
   paneContentRoute,
   reconcileLayoutForContent,
+  reconcileRestoredLayoutForContent,
   threadPaneContent,
 } from "./splitThreadNavigation";
 import { ThreadDetailWorkerPoolProvider } from "./ThreadDetailWorkerPoolProvider";
@@ -118,6 +119,9 @@ const LazyPluginPanelRightPanelHost = lazy(() =>
     ({ PluginPanelRightPanelHost }) => ({ default: PluginPanelRightPanelHost }),
   ),
 );
+
+const PLUGIN_GUIDE_PLUGIN_ID = "plugin-api-docs";
+const PLUGIN_GUIDE_PANEL_PATH = "plugin-api";
 
 const LazyPluginDetailPaneView = lazy(() =>
   import("@/views/ToolsView").then(({ PluginDetailPaneView }) => ({
@@ -146,7 +150,14 @@ function PluginPagePanelHost({
 }) {
   return (
     <Suspense fallback={null}>
-      <LazyPluginPanelRightPanelHost {...props}>
+      <LazyPluginPanelRightPanelHost
+        key={`${props.pluginId}/${props.panelPath}`}
+        {...props}
+        pluginDetailTabsEnabled={
+          props.pluginId === PLUGIN_GUIDE_PLUGIN_ID &&
+          props.panelPath === PLUGIN_GUIDE_PANEL_PATH
+        }
+      >
         {children}
       </LazyPluginPanelRightPanelHost>
     </Suspense>
@@ -266,6 +277,7 @@ function SplitThreadAreaContent({ routeContent }: SplitThreadAreaProps) {
   const dimsInactiveSplits = useAtomValue(dimInactiveSplitsAtom);
   const [maximizedPaneId, setMaximizedPaneIdAtom] =
     useAtom(maximizedPaneIdAtom);
+  const shouldReconcileRestoredLayout = useRef(true);
   const secondaryPanelRegistry = useMemo(
     () => createPaneSecondaryPanelRegistry(),
     [],
@@ -284,8 +296,12 @@ function SplitThreadAreaContent({ routeContent }: SplitThreadAreaProps) {
     if (currentContent === null) {
       return;
     }
+    const reconcile = shouldReconcileRestoredLayout.current
+      ? reconcileRestoredLayoutForContent
+      : reconcileLayoutForContent;
+    shouldReconcileRestoredLayout.current = false;
     setLayout((previous) =>
-      reconcileLayoutForContent(previous, currentContent),
+      reconcile(previous, currentContent),
     );
   }, [currentContent, setLayout]);
 

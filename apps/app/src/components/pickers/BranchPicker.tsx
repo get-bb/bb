@@ -22,8 +22,6 @@ import {
   COARSE_POINTER_COMPACT_ICON_SIZE_SHRINK_CLASS,
   COARSE_POINTER_ICON_SIZE_SHRINK_CLASS,
 } from "@bb/shared-ui/coarse-pointer-sizing";
-import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
-import { usePointerCoarse } from "@bb/shared-ui/hooks/use-pointer-coarse";
 import { Input } from "@bb/shared-ui/input";
 import { blurActiveKeyboardInputWithin } from "@bb/shared-ui/overlay-trigger";
 import { Popover, PopoverContent, PopoverTrigger } from "@bb/shared-ui/popover";
@@ -35,6 +33,7 @@ import {
 } from "@bb/shared-ui/option-display";
 import { cn } from "@bb/shared-ui/lib/utils";
 import type { GitBranchRefClassification } from "@bb/domain";
+import { searchPickerOptions } from "./picker-search";
 import { useResetPickerScroll } from "./useResetPickerScroll";
 
 interface GetMergeBaseBranchCandidatesArgs {
@@ -217,11 +216,6 @@ interface BranchPickerBranchOptionsProps {
 interface BuildBranchPickerOptionGroupsArgs {
   options: readonly string[];
   remoteOptions: readonly string[];
-}
-
-interface FilterBranchOptionsArgs {
-  normalizedQuery: string;
-  options: readonly string[];
 }
 
 interface OrderBranchPickerOptionsArgs {
@@ -588,19 +582,6 @@ export function buildBranchPickerOptionGroups({
   return { local, remote };
 }
 
-function filterBranchOptions({
-  normalizedQuery,
-  options,
-}: FilterBranchOptionsArgs): string[] {
-  if (normalizedQuery.length === 0) {
-    return [...options];
-  }
-
-  return options.filter((branch) =>
-    branch.toLowerCase().includes(normalizedQuery),
-  );
-}
-
 export function orderBranchPickerOptions({
   options,
   selectedValue,
@@ -704,8 +685,6 @@ export function BranchPicker({
   const [open, setOpen] = useState(defaultOpen);
   const [query, setQuery] = useState("");
   const optionsScrollRef = useResetPickerScroll<HTMLDivElement>(query);
-  const isCompactViewport = useIsCompactViewport();
-  const isPointerCoarse = usePointerCoarse();
   const selectedCheckoutIntent = resolveCheckoutIntent({
     isCreatingNew,
     value,
@@ -715,6 +694,7 @@ export function BranchPicker({
   const deferredQuery = useDeferredValue(query);
   const inputRef = useRef<HTMLInputElement>(null);
   const normalizedQuery = deferredQuery.trim().toLowerCase();
+  const isSearching = normalizedQuery.length > 0;
   const [debouncedNormalizedQuery] = useDebounceValue(
     normalizedQuery,
     BRANCH_SEARCH_DEBOUNCE_MS,
@@ -744,39 +724,41 @@ export function BranchPicker({
   );
   const filteredLocalBranchOptions = useMemo(
     () =>
-      filterBranchOptions({
-        normalizedQuery,
+      searchPickerOptions({
         options: branchOptionGroups.local,
+        query: deferredQuery,
+        getLabel: (branch) => branch,
       }),
-    [branchOptionGroups.local, normalizedQuery],
+    [branchOptionGroups.local, deferredQuery],
   );
-  const filteredRemoteBranchOptions = useMemo(
-    () =>
-      filterBranchOptions({
-        normalizedQuery,
-        options: branchOptionGroups.remote,
-      }),
-    [branchOptionGroups.remote, normalizedQuery],
+  const combinedBranchOptions = useMemo(
+    () => [...branchOptionGroups.local, ...branchOptionGroups.remote],
+    [branchOptionGroups.local, branchOptionGroups.remote],
   );
   const filteredCombinedBranchOptions = useMemo(
-    () => [...filteredLocalBranchOptions, ...filteredRemoteBranchOptions],
-    [filteredLocalBranchOptions, filteredRemoteBranchOptions],
+    () =>
+      searchPickerOptions({
+        options: combinedBranchOptions,
+        query: deferredQuery,
+        getLabel: (branch) => branch,
+      }),
+    [combinedBranchOptions, deferredQuery],
   );
   const filteredCheckoutTargetOptions = useMemo(
     () =>
       orderBranchPickerOptions({
         options: filteredLocalBranchOptions,
-        selectedValue: value,
+        selectedValue: isSearching ? null : value,
       }),
-    [filteredLocalBranchOptions, value],
+    [filteredLocalBranchOptions, isSearching, value],
   );
   const filteredBranchOptions = useMemo(
     () =>
       orderBranchPickerOptions({
         options: filteredCombinedBranchOptions,
-        selectedValue: value,
+        selectedValue: isSearching ? null : value,
       }),
-    [filteredCombinedBranchOptions, value],
+    [filteredCombinedBranchOptions, isSearching, value],
   );
   const activeEnterOptions =
     isCheckoutMenu && activeCheckoutIntent === "checkout"
@@ -894,20 +876,6 @@ export function BranchPicker({
     onSearchQueryChange?.(debouncedNormalizedQuery);
   }, [debouncedNormalizedQuery, normalizedQuery, onSearchQueryChange, open]);
 
-  useEffect(() => {
-    if (!open || !showOptionsSearch || isCompactViewport || isPointerCoarse) {
-      return;
-    }
-
-    const frame = window.requestAnimationFrame(() => {
-      inputRef.current?.focus();
-      inputRef.current?.select();
-    });
-    return () => {
-      window.cancelAnimationFrame(frame);
-    };
-  }, [isCompactViewport, isPointerCoarse, open, showOptionsSearch]);
-
   return (
     <Popover modal={modal} open={open} onOpenChange={updateOpen}>
       <PopoverTrigger asChild disabled={disabled}>
@@ -979,6 +947,7 @@ export function BranchPicker({
         sideOffset={6}
         collisionPadding={16}
         mobileTitle={menuCopy.title ?? "Branch"}
+        autoFocusRef={showOptionsSearch ? inputRef : undefined}
         className={cn(
           BRANCH_PICKER_CONTENT_CLASS_NAME,
           showOptionsSearch && "md:min-w-40",

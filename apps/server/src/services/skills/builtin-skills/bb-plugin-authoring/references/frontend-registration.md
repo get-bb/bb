@@ -46,6 +46,10 @@ export default definePluginApp((app) => {
     description: "Configure the remote service used by this plugin.",
     component: SettingsSection,
   });
+  app.slots.experimental_appOverlay({
+    id: "floating-status",
+    component: FloatingStatus,
+  });
   app.slots.navPanel({
     id: "board",
     title: "Board",

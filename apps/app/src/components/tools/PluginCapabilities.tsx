@@ -216,6 +216,12 @@ function pluginAppSurfaceItems(
     ),
     ...namedSlotItems(
       pluginId,
+      slots.appOverlays,
+      "app-overlay",
+      "Renders app-wide floating interface content.",
+    ),
+    ...namedSlotItems(
+      pluginId,
       slots.threadLists,
       "thread-list",
       "Can replace the sidebar thread list; configured in Appearance.",

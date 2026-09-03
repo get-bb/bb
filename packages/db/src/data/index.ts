@@ -39,9 +39,7 @@ export {
   listStoredProjectPromptHistoryRows,
   listStoredThreadPromptHistoryRows,
 } from "./prompt-history.js";
-export type {
-  StoredPromptHistoryEntryRow,
-} from "./prompt-history.js";
+export type { StoredPromptHistoryEntryRow } from "./prompt-history.js";
 
 export {
   getProjectExecutionDefaults,
@@ -227,9 +225,7 @@ export {
   listRetiredLoadedEnvironmentIdsOnHost,
   updateEnvironmentMetadata,
 } from "./environments.js";
-export type {
-  CreateEnvironmentInput,
-} from "./environments.js";
+export type { CreateEnvironmentInput } from "./environments.js";
 
 export {
   upsertHost,
@@ -354,9 +350,7 @@ export {
   setPendingInteractionResolving,
   setPendingInteractionResolved,
 } from "./pending-interactions.js";
-export type {
-  PendingInteractionRow,
-} from "./pending-interactions.js";
+export type { PendingInteractionRow } from "./pending-interactions.js";
 
 export {
   openSession,
@@ -366,9 +360,7 @@ export {
   heartbeatSession,
   listLatestSessionsForHosts,
 } from "./sessions.js";
-export type {
-  HostDaemonSessionRow,
-} from "./sessions.js";
+export type { HostDaemonSessionRow } from "./sessions.js";
 
 export {
   claimQueuedThreadMessage,
@@ -382,6 +374,7 @@ export {
   getQueuedThreadMessage,
   hasQueuedRetryOfTurnRequest,
   hasQueuedThreadMessages,
+  isOrdinaryTurnEndQueuedMessage,
   isThreadQueueAutoSendPaused,
   listDueScheduledQueuedThreadMessages,
   listIdleThreadsWithQueuedMessages,
@@ -406,6 +399,8 @@ export type {
   ClearQueuedThreadMessageWaitingOnArgs,
   ListQueuedThreadMessagesForApiArgs,
   ListQueuedThreadMessagesWaitingOnKindArgs,
+  QueuedThreadMessageGroupClaimPolicy,
+  QueuedThreadMessageGroupEligibility,
   QueuedThreadMessagePluginWaitRef,
   QueuedThreadMessageRow,
   ReorderQueuedThreadMessageResult,
@@ -419,6 +414,7 @@ export {
   COMPLETED_EVENT_OUTPUT_RETENTION_MS,
   DEFAULT_CLOSED_SESSION_PRUNE_BATCH_SIZE,
   DEFAULT_COMPLETED_EVENT_OUTPUT_TRUNCATION_BATCH_SIZE,
+  DEFAULT_DESTROYED_ENVIRONMENT_EVENT_DETACH_BATCH_SIZE,
   DEFAULT_DESTROYED_ENVIRONMENT_PRUNE_BATCH_SIZE,
   DESTROYED_ENVIRONMENT_TTL_MS,
   pruneClosedSessions,

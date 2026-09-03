@@ -511,7 +511,7 @@ const BUNDLED_PLUGIN: PluginListItem = {
 
 const UNINSTALLED_CATALOG_PLUGIN = {
   entryId: "github",
-  marketplace: "bb-community",
+  marketplace: "bb-official",
   pluginId: "github",
   displayName: "GitHub",
   description: "Browse GitHub issues and pull requests without leaving bb.",
@@ -519,10 +519,12 @@ const UNINSTALLED_CATALOG_PLUGIN = {
   iconUrl: null,
   iconTinted: false,
   category: "Developer tools",
+  screenshots: [],
+  collections: [],
   source: "builtin:github",
   repositoryUrl: null,
-  marketplaceDisplayName: "BB Community",
-  publisherKey: "builtin",
+  marketplaceDisplayName: "BB Official",
+  publisherKey: "bb-official",
   publisherLabel: "BB Official",
   official: true,
   author: null,
@@ -614,6 +616,8 @@ function Plugin({
           onEdit={noop}
           onOpenSource={noop}
           onDelete={noop}
+          catalogEntries={[]}
+          onOpenPlugin={noop}
         />
       </div>
     </div>
@@ -635,14 +639,16 @@ function CatalogPlugin({
         <CatalogPluginDetail
           entry={entry}
           onInstall={() => setInstallOpen(true)}
+          catalogEntries={[entry]}
+          onOpenPlugin={noop}
         />
       </div>
       <AddPluginDialog
         open={installOpen}
         initial={{
           entryId: entry.entryId,
-          marketplace: "bb-community",
-          publisherLabel: "BB Community",
+          marketplace: "bb-official",
+          publisherLabel: "BB Official",
           displayName: entry.displayName,
           icon: entry.icon,
           iconUrl: entry.iconUrl,

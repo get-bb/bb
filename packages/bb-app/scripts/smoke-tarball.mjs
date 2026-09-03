@@ -30,6 +30,7 @@ const EXPECTED_RUNNING_BUILTIN_PLUGINS = [
   "provider-acp",
   "provider-claude-code",
   "provider-codex",
+  "push-notifications",
   "connect",
   "custom-instructions",
   "inline-vis",

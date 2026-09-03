@@ -485,11 +485,6 @@ const SETTLED_RESPONSE_RESULT_FIXTURES: SettledResponseResultFixtures = {
     commitSha: "abcdef123456",
     commitSubject: "Checkpoint work",
   },
-  "workspace.squash_merge": {
-    commitSha: "abcdef123456",
-    commitSubject: "Merge feature",
-    merged: true,
-  },
   "workspace.pull_request_action": {},
 };
 
@@ -935,7 +930,7 @@ const ACP_BRIDGE_LAUNCH = {
 
 describe("host-daemon command schemas", () => {
   it("uses the current host-daemon protocol version", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(176);
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(178);
     expect(HOST_ARTIFACT_MAX_BYTES).toBe(256 * 1024 * 1024);
   });
 
@@ -2299,8 +2294,6 @@ describe("host-daemon command schemas", () => {
         contract.hostDaemonSessionOpenResponseSchema,
       workspaceCommitResultSchema:
         contract.hostDaemonCommandResultSchemaByType["workspace.commit"],
-      workspaceSquashMergeResultSchema:
-        contract.hostDaemonCommandResultSchemaByType["workspace.squash_merge"],
     });
 
     expect(optionalFieldPaths).toEqual(
@@ -2629,20 +2622,6 @@ describe("host-daemon command schemas", () => {
           workspaceProvisionType: "unmanaged",
         },
         mergeBaseBranch: "origin/main lock",
-      }).success,
-    ).toBe(false);
-
-    expect(
-      hostDaemonCommandSchema.safeParse({
-        type: "workspace.squash_merge",
-        environmentId: "env_123",
-        environmentStatus: "ready",
-        workspaceContext: {
-          workspacePath: "/tmp/workspace",
-          workspaceProvisionType: "unmanaged",
-        },
-        targetBranch: "main lock",
-        commitMessage: "Merge branch",
       }).success,
     ).toBe(false);
   });

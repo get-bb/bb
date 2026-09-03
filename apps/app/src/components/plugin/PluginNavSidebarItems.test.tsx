@@ -6,11 +6,18 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
-import { useEffect, type ComponentType } from "react";
+import {
+  useEffect,
+  useState,
+  type ComponentType,
+  type MouseEvent as ReactMouseEvent,
+} from "react";
 import { createStore, Provider } from "jotai";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { CompactViewportOverrideProvider } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { SidebarProvider } from "@/components/ui/sidebar.js";
 import {
@@ -19,11 +26,24 @@ import {
   type PluginRegistrationSet,
 } from "@/lib/plugin-slots";
 import {
+  AUTOMATIONS_PLUGIN_ID,
+  getPluginPanelRoutePath,
+} from "@/lib/route-paths";
+import {
   resetAllCrashedPluginSlotsForTest,
   resetCrashedPluginSlots,
 } from "./PluginSlotMount";
-import { PluginNavSidebarItems } from "./PluginNavSidebarItems";
-import { pluginNavPanelOrderAtom } from "./pluginNavSidebarAtoms";
+import {
+  type BuiltInSidebarNavEntry,
+  ExtensionsNavSidebarItem,
+  PluginNavSidebarItems,
+} from "./PluginNavSidebarItems";
+import {
+  pluginNavPanelOrderAtom,
+  pluginNavVisiblePanelKeysAtom,
+} from "./pluginNavSidebarAtoms";
+import { splitLayoutAtom } from "@/lib/split-layout/atoms";
+import { countPanes, findPaneByContent } from "@/lib/split-layout";
 
 function registrationSet(
   overrides: Partial<PluginRegistrationSet>,
@@ -66,39 +86,125 @@ function registerPanel(
   );
 }
 
-function renderSidebarItems(
-  options: {
-    toolsRoutePath?: string;
-    storedOrder?: string[];
-    compactViewport?: boolean;
-  } = {},
-) {
-  const store = createStore();
-  if (options.storedOrder) {
-    store.set(pluginNavPanelOrderAtom, options.storedOrder);
-  }
-  return render(
-    <CompactViewportOverrideProvider
-      isCompactViewport={options.compactViewport ?? false}
-    >
-      <Provider store={store}>
-        <MemoryRouter initialEntries={["/"]}>
-          <SidebarProvider>
-            <PluginNavSidebarItems toolsRoutePath={options.toolsRoutePath} />
-          </SidebarProvider>
-        </MemoryRouter>
-      </Provider>
-    </CompactViewportOverrideProvider>,
+interface RenderSidebarItemsOptions {
+  builtInEntries?: readonly BuiltInSidebarNavEntry[];
+  storedOrder?: string[];
+  storedVisibleKeys?: string[] | null;
+  compactViewport?: boolean;
+  compactCustomizeMode?: boolean;
+  onCompactCustomizeModeChange?: (isCustomizing: boolean) => void;
+  splitEnabled?: boolean;
+}
+
+function PluginNavSidebarItemsHarness({
+  options,
+}: {
+  options: RenderSidebarItemsOptions;
+}) {
+  const [compactCustomizeMode, setCompactCustomizeMode] = useState(
+    options.compactCustomizeMode ?? false,
+  );
+  const compactControlProps = options.compactViewport
+    ? {
+        compactCustomizeMode,
+        onCompactCustomizeModeChange: (isCustomizing: boolean) => {
+          setCompactCustomizeMode(isCustomizing);
+          options.onCompactCustomizeModeChange?.(isCustomizing);
+        },
+      }
+    : {};
+
+  return (
+    <PluginNavSidebarItems
+      builtInEntries={options.builtInEntries}
+      splitEnabled={options.splitEnabled}
+      {...compactControlProps}
+    />
   );
 }
 
-const ROW_LABELS = new Set(["Extensions", "Docs", "GitHub"]);
+function renderSidebarItems(options: RenderSidebarItemsOptions = {}) {
+  const store = createStore();
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  if (options.storedOrder) {
+    store.set(pluginNavPanelOrderAtom, options.storedOrder);
+  }
+  if ("storedVisibleKeys" in options) {
+    store.set(
+      pluginNavVisiblePanelKeysAtom,
+      options.storedVisibleKeys ?? null,
+    );
+  }
+  if (options.splitEnabled) {
+    store.set(splitLayoutAtom, {
+      root: {
+        type: "pane",
+        paneId: "pane-1",
+        content: { kind: "new-thread" },
+      },
+      focusedPaneId: "pane-1",
+    });
+  }
+  const view = render(
+    <CompactViewportOverrideProvider
+      isCompactViewport={options.compactViewport ?? false}
+    >
+      <QueryClientProvider client={queryClient}>
+        <Provider store={store}>
+          <MemoryRouter initialEntries={["/"]}>
+            <SidebarProvider>
+              <PluginNavSidebarItemsHarness options={options} />
+              <LocationProbe />
+            </SidebarProvider>
+          </MemoryRouter>
+        </Provider>
+      </QueryClientProvider>
+    </CompactViewportOverrideProvider>,
+  );
+  return { ...view, store };
+}
 
-function panelRowNames(): string[] {
-  return screen
-    .getAllByRole("button")
-    .map((button) => button.textContent?.trim() ?? "")
-    .filter((label) => ROW_LABELS.has(label));
+function LocationProbe() {
+  return <output data-testid="location-path">{useLocation().pathname}</output>;
+}
+
+function panelRowNames(labels: readonly string[] = ["Docs", "GitHub"]): string[] {
+  const rowLabels = new Set(labels);
+  const container = screen.queryByTestId("plugin-nav-sidebar-items");
+  if (!container) return [];
+  return Array.from(
+    container.querySelectorAll<HTMLElement>("[data-sidebar-navigation-item]"),
+  )
+    .map((row) => row.textContent?.trim() ?? "")
+    .filter((label) => rowLabels.has(label));
+}
+
+function builtInEntry(
+  id: string,
+  title: string,
+  onActivate: (
+    event: ReactMouseEvent<HTMLButtonElement>,
+  ) => void = vi.fn(),
+): BuiltInSidebarNavEntry {
+  return {
+    kind: "built-in",
+    pluginId: "__bb__",
+    id,
+    title,
+    icon: <span aria-hidden="true" />,
+    content: <button type="button">{title}</button>,
+    onActivate,
+  };
+}
+
+function customizeRows(): HTMLElement[] {
+  return Array.from(
+    screen
+      .getByRole("list", { name: "Sidebar navigation" })
+      .querySelectorAll<HTMLElement>("[data-plugin-nav-customize-item]"),
+  );
 }
 
 beforeEach(() => {
@@ -117,6 +223,27 @@ afterEach(() => {
 });
 
 describe("PluginNavSidebarItems", () => {
+  it("collapses the entire subsection with zero traditional plugins", () => {
+    renderSidebarItems();
+
+    expect(screen.queryByTestId("plugin-nav-sidebar-items")).toBeNull();
+    expect(screen.queryByText("Plugins")).toBeNull();
+  });
+
+  it("shows one plugin with a unified customization entry point and no section label", () => {
+    registerPanel("docs", "Docs");
+    renderSidebarItems();
+
+    expect(screen.queryByText("Plugins")).toBeNull();
+    expect(panelRowNames(["Docs"])).toEqual(["Docs"]);
+    expect(
+      screen.queryByTestId("plugin-nav-sidebar-overflow-toggle"),
+    ).toBeNull();
+    expect(
+      screen.getByRole("button", { name: "Customize sidebar navigation" }),
+    ).not.toBeNull();
+  });
+
   it("keeps an accessory-less plugin row unchanged", () => {
     registerPanel("docs", "Docs");
 
@@ -214,6 +341,10 @@ describe("PluginNavSidebarItems", () => {
     expect(
       await screen.findByRole("menuitem", { name: "Hide from sidebar" }),
     ).not.toBeNull();
+    expect(screen.queryByRole("menuitem", { name: "Move to top" })).toBeNull();
+    expect(
+      screen.queryByRole("menuitem", { name: "Move to overflow" }),
+    ).toBeNull();
 
     expect(accessory?.getAttribute("data-sidebar-hover-actions-open")).toBe(
       "true",
@@ -237,6 +368,111 @@ describe("PluginNavSidebarItems", () => {
     ).toBeNull();
   });
 
+  it("uses an in-place customization mode instead of a drawer on compact viewports", () => {
+    const onCompactCustomizeModeChange = vi.fn();
+    renderSidebarItems({
+      compactViewport: true,
+      builtInEntries: [
+        builtInEntry("new-thread", "New thread"),
+        builtInEntry("search-threads", "Search threads"),
+      ],
+      onCompactCustomizeModeChange,
+    });
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Customize sidebar navigation" }),
+    );
+
+    expect(onCompactCustomizeModeChange).toHaveBeenCalledWith(true);
+    expect(
+      screen.getByTestId("sidebar-navigation-customize-inline"),
+    ).not.toBeNull();
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(screen.getByRole("button", { name: "Back to sidebar" })).toBe(
+      document.activeElement,
+    );
+    expect(
+      screen.queryByRole("button", { name: "Customize sidebar navigation" }),
+    ).toBeNull();
+    const firstCustomizeRow = customizeRows()[0];
+    const firstDragHandle = firstCustomizeRow?.querySelector<HTMLElement>(
+      "[data-plugin-nav-customize-drag-handle]",
+    );
+    const firstCheckbox = within(firstCustomizeRow as HTMLElement).getByRole(
+      "checkbox",
+    );
+    expect(
+      firstCustomizeRow?.classList.contains("max-md:pointer-coarse:h-9"),
+    ).toBe(true);
+    expect(
+      firstDragHandle?.classList.contains("max-md:pointer-coarse:h-9"),
+    ).toBe(true);
+    expect(
+      firstDragHandle?.classList.contains("max-md:pointer-coarse:w-9"),
+    ).toBe(true);
+    expect(
+      firstCheckbox
+        .closest("label")
+        ?.classList.contains("max-md:pointer-coarse:h-9"),
+    ).toBe(true);
+
+    fireEvent.click(screen.getByRole("button", { name: "Back to sidebar" }));
+
+    expect(onCompactCustomizeModeChange).toHaveBeenLastCalledWith(false);
+    expect(
+      screen.queryByTestId("sidebar-navigation-customize-inline"),
+    ).toBeNull();
+    expect(screen.getByRole("button", { name: "New thread" })).not.toBeNull();
+    expect(
+      screen.getByRole("button", { name: "Customize sidebar navigation" }),
+    ).toBe(document.activeElement);
+  });
+
+  it("keeps compact visibility changes in place and closes the mode when launching", () => {
+    const onActivate = vi.fn();
+    const { store } = renderSidebarItems({
+      compactViewport: true,
+      builtInEntries: [builtInEntry("new-thread", "New thread", onActivate)],
+    });
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Customize sidebar navigation" }),
+    );
+    fireEvent.click(
+      screen.getByRole("checkbox", { name: "Show New thread in sidebar" }),
+    );
+
+    expect(
+      screen.getByTestId("sidebar-navigation-customize-inline"),
+    ).not.toBeNull();
+    expect(store.get(pluginNavVisiblePanelKeysAtom)).toEqual([]);
+
+    fireEvent.click(screen.getByRole("button", { name: "New thread" }));
+
+    expect(onActivate).toHaveBeenCalledTimes(1);
+    expect(
+      screen.queryByTestId("sidebar-navigation-customize-inline"),
+    ).toBeNull();
+    expect(screen.queryByRole("checkbox")).toBeNull();
+  });
+
+  it("keeps the desktop customization popover", () => {
+    renderSidebarItems({
+      builtInEntries: [builtInEntry("new-thread", "New thread")],
+    });
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Customize sidebar navigation" }),
+    );
+
+    expect(
+      screen.getByRole("list", { name: "Sidebar navigation" }),
+    ).not.toBeNull();
+    expect(
+      screen.queryByTestId("sidebar-navigation-customize-inline"),
+    ).toBeNull();
+  });
+
   it("hides a crashed accessory and retries it after a plugin reload", () => {
     function CrashingAccessory(): never {
       throw new Error("accessory crashed");
@@ -257,158 +493,370 @@ describe("PluginNavSidebarItems", () => {
     expect(screen.queryByText("plugin tasks crashed")).toBeNull();
   });
 
-  it("moves a hidden panel into an expanded More disclosure and back", async () => {
-    registerPanel("docs", "Docs");
-    registerPanel("github", "GitHub");
+  it("shows only the first three plugins directly and lists every plugin in the menu", () => {
+    const labels = ["One", "Two", "Three", "Four", "Five", "Six"];
+    labels.forEach((label, index) => registerPanel(`plugin-${index}`, label));
 
     renderSidebarItems();
 
-    expect(panelRowNames()).toEqual(["Docs", "GitHub"]);
+    expect(panelRowNames(labels)).toEqual(labels.slice(0, 3));
     expect(
       screen.queryByTestId("plugin-nav-sidebar-overflow-toggle"),
     ).toBeNull();
 
-    fireEvent.pointerDown(
-      screen.getByRole("button", { name: "Docs panel options" }),
-      { button: 0 },
-    );
     fireEvent.click(
-      await screen.findByRole("menuitem", { name: "Hide from sidebar" }),
+      screen.getByRole("button", { name: "Customize sidebar navigation" }),
     );
-
-    await waitFor(() => {
-      expect(
-        screen.getByTestId("plugin-nav-sidebar-overflow-toggle").textContent,
-      ).toContain("More (1)");
-    });
-    expect(panelRowNames()).toEqual(["GitHub"]);
+    expect(customizeRows().map((row) => row.textContent?.trim())).toEqual(
+      labels,
+    );
     expect(
-      window.localStorage.getItem("bb.sidebar.hiddenPluginPanels"),
-    ).toContain("docs/main");
-
-    fireEvent.click(screen.getByTestId("plugin-nav-sidebar-overflow-toggle"));
-    await waitFor(() => {
-      expect(panelRowNames()).toEqual(["GitHub", "Docs"]);
-    });
-
-    fireEvent.pointerDown(
-      screen.getByRole("button", { name: "Docs panel options" }),
-      { button: 0 },
-    );
-    fireEvent.click(
-      await screen.findByRole("menuitem", { name: "Show in sidebar" }),
-    );
-
-    await waitFor(() => {
-      expect(
-        screen.queryByTestId("plugin-nav-sidebar-overflow-toggle"),
-      ).toBeNull();
-    });
-    expect(panelRowNames()).toEqual(["Docs", "GitHub"]);
+      screen.queryByRole("button", { name: "Four panel options" }),
+    ).toBeNull();
   });
 
-  it("collapses hidden panels behind the More toggle on a later mount", async () => {
-    registerPanel("docs", "Docs");
-    registerPanel("github", "GitHub");
-    window.localStorage.setItem(
-      "bb.sidebar.hiddenPluginPanels",
-      JSON.stringify(["docs/main"]),
+  it("keeps built-ins visible without letting their order consume plugin slots", () => {
+    const labels = ["One", "Two", "Three", "Four"];
+    labels.forEach((label, index) => registerPanel(`plugin-${index}`, label));
+    renderSidebarItems({
+      builtInEntries: [
+        builtInEntry("new-thread", "New thread"),
+        builtInEntry("search-threads", "Search threads"),
+      ],
+      storedOrder: [
+        "plugin-0/main",
+        "__bb__/new-thread",
+        "plugin-1/main",
+        "__bb__/search-threads",
+        "plugin-2/main",
+        "plugin-3/main",
+      ],
+    });
+
+    expect(
+      Array.from(
+        screen
+          .getByTestId("plugin-nav-sidebar-items")
+          .querySelectorAll("[data-sidebar-navigation-item]"),
+      ).map((row) => row.getAttribute("data-sidebar-navigation-item")),
+    ).toEqual([
+      "plugin-0/main",
+      "__bb__/new-thread",
+      "plugin-1/main",
+      "__bb__/search-threads",
+      "plugin-2/main",
+    ]);
+  });
+
+  it("keeps launch and visibility as distinct targets with a clear row hover state", async () => {
+    const labels = ["One", "Two", "Three", "Four"];
+    labels.forEach((label, index) => registerPanel(`plugin-${index}`, label));
+    const { store, unmount } = renderSidebarItems();
+
+    const trigger = screen.getByRole("button", {
+      name: "Customize sidebar navigation",
+    });
+    expect(trigger.querySelector("svg")).not.toBeNull();
+
+    fireEvent.click(trigger);
+    const choices = screen.getAllByRole("checkbox");
+    await waitFor(() =>
+      expect(
+        document.activeElement?.getAttribute(
+          "data-sidebar-navigation-customize-launch",
+        ),
+      ).toBe("plugin-0/main"),
+    );
+    expect(choices.map((choice) => choice.getAttribute("data-state"))).toEqual([
+      "checked",
+      "checked",
+      "checked",
+      "unchecked",
+    ]);
+    expect(
+      document.querySelectorAll("[data-plugin-nav-customize-drag-handle]"),
+    ).toHaveLength(4);
+    expect(customizeRows()[0]?.classList.contains("hover:bg-state-hover")).toBe(
+      true,
     );
 
+    fireEvent.click(choices[0]!);
+    expect(
+      screen.getByRole("list", { name: "Sidebar navigation" }),
+    ).not.toBeNull();
+    expect(store.get(pluginNavVisiblePanelKeysAtom)).toEqual([
+      "plugin-1/main",
+      "plugin-2/main",
+    ]);
+    expect(panelRowNames(labels)).toEqual(["Two", "Three"]);
+
+    unmount();
     renderSidebarItems();
-
-    expect(panelRowNames()).toEqual(["GitHub"]);
-    const toggle = screen.getByTestId("plugin-nav-sidebar-overflow-toggle");
-    expect(toggle.textContent).toContain("More (1)");
-
-    fireEvent.click(toggle);
-    await waitFor(() => {
-      expect(panelRowNames()).toEqual(["GitHub", "Docs"]);
-    });
-  });
-
-  it("hides the built-in Extensions row like a plugin row", async () => {
-    registerPanel("docs", "Docs");
-
-    renderSidebarItems({ toolsRoutePath: "/extensions/skills" });
-
-    expect(panelRowNames()).toEqual(["Extensions", "Docs"]);
-
-    fireEvent.pointerDown(
-      screen.getByRole("button", { name: "Extensions panel options" }),
-      { button: 0 },
-    );
+    expect(panelRowNames(labels)).toEqual(["Two", "Three"]);
     fireEvent.click(
-      await screen.findByRole("menuitem", { name: "Hide from sidebar" }),
+      screen.getByRole("button", { name: "Customize sidebar navigation" }),
     );
 
-    await waitFor(() => {
-      expect(panelRowNames()).toEqual(["Docs"]);
-    });
-    expect(
-      screen.getByTestId("plugin-nav-sidebar-overflow-toggle").textContent,
-    ).toContain("More (1)");
-    expect(
-      window.localStorage.getItem("bb.sidebar.hiddenPluginPanels"),
-    ).toContain("__builtin__/tools");
+    const hiddenRow = document.querySelector<HTMLElement>(
+      '[data-plugin-nav-customize-item="plugin-0/main"]',
+    );
+    expect(hiddenRow).not.toBeNull();
+    fireEvent.click(
+      within(hiddenRow as HTMLElement).getByRole("button", { name: "One" }),
+    );
+
+    expect(screen.getByTestId("location-path").textContent).toBe(
+      getPluginPanelRoutePath({ pluginId: "plugin-0", path: "main" }),
+    );
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("list", { name: "Sidebar navigation" }),
+      ).toBeNull(),
+    );
   });
 
-  it("keeps Extensions on top for users who already reordered their plugin rows", () => {
+  it("seeds newly introduced built-ins without overriding existing plugin visibility", () => {
     registerPanel("docs", "Docs");
-    registerPanel("github", "GitHub");
-
+    registerPanel("tasks", "Tasks");
     renderSidebarItems({
-      toolsRoutePath: "/extensions/skills",
-      storedOrder: ["github/main", "docs/main"],
+      builtInEntries: [
+        builtInEntry("new-thread", "New thread"),
+        builtInEntry("search-threads", "Search threads"),
+      ],
+      storedOrder: ["tasks/main", "docs/main"],
+      storedVisibleKeys: ["docs/main"],
     });
 
-    expect(panelRowNames()).toEqual(["Extensions", "GitHub", "Docs"]);
+    expect(
+      Array.from(
+        screen
+          .getByTestId("plugin-nav-sidebar-items")
+          .querySelectorAll("[data-sidebar-navigation-item]"),
+      ).map((row) => row.getAttribute("data-sidebar-navigation-item")),
+    ).toEqual(["__bb__/new-thread", "__bb__/search-threads", "docs/main"]);
   });
 
-  it("keeps a saved order when plugin frontends register after the first render", async () => {
+  it("keeps Customize on the New thread row without stranding it when the row is hidden", () => {
     renderSidebarItems({
-      toolsRoutePath: "/extensions/skills",
-      storedOrder: ["github/main", "__builtin__/tools", "docs/main"],
+      builtInEntries: [
+        builtInEntry("new-thread", "New thread"),
+        builtInEntry("search-threads", "Search threads"),
+      ],
     });
 
-    expect(panelRowNames()).toEqual(["Extensions"]);
-
-    registerPanel("docs", "Docs");
-    registerPanel("github", "GitHub");
-
-    await waitFor(() => {
-      expect(panelRowNames()).toEqual(["GitHub", "Extensions", "Docs"]);
+    const trigger = screen.getByRole("button", {
+      name: "Customize sidebar navigation",
     });
+    expect(
+      trigger
+        .closest("[data-sidebar-navigation-item]")
+        ?.getAttribute("data-sidebar-navigation-item"),
+    ).toBe("__bb__/new-thread");
+
+    fireEvent.click(trigger);
+    fireEvent.click(
+      screen.getByRole("checkbox", { name: "Show New thread in sidebar" }),
+    );
+
+    expect(
+      screen.getByRole("list", { name: "Sidebar navigation" }),
+    ).not.toBeNull();
+    expect(
+      screen
+        .getByRole("button", { name: "Customize sidebar navigation" })
+        .closest("[data-sidebar-navigation-item]"),
+    ).toBeNull();
   });
 
-  it("saves no Extensions key while the row is absent", async () => {
-    registerPanel("docs", "Docs");
-
-    renderSidebarItems({ storedOrder: ["docs/main"] });
-
-    await waitFor(() => {
-      expect(panelRowNames()).toEqual(["Docs"]);
+  it("applies one persisted mixed order to direct rows and the menu", () => {
+    const labels = ["One", "Two", "Three", "Four"];
+    labels.forEach((label, index) => registerPanel(`plugin-${index}`, label));
+    const newThread = builtInEntry("new-thread", "New thread");
+    const searchThreads = builtInEntry("search-threads", "Search threads");
+    renderSidebarItems({
+      builtInEntries: [newThread, searchThreads],
+      storedOrder: [
+        "plugin-3/main",
+        "__bb__/search-threads",
+        "plugin-1/main",
+        "__bb__/new-thread",
+        "plugin-0/main",
+        "plugin-2/main",
+      ],
+      storedVisibleKeys: [
+        "plugin-3/main",
+        "__bb__/search-threads",
+        "__bb__/new-thread",
+        "plugin-0/main",
+      ],
     });
+
     expect(
-      window.localStorage.getItem("bb.sidebar.pluginPanelOrder") ?? "",
-    ).not.toContain("__builtin__/tools");
+      Array.from(
+        screen
+          .getByTestId("plugin-nav-sidebar-items")
+          .querySelectorAll("[data-sidebar-navigation-item]"),
+      ).map((row) => row.getAttribute("data-sidebar-navigation-item")),
+    ).toEqual([
+      "plugin-3/main",
+      "__bb__/search-threads",
+      "__bb__/new-thread",
+      "plugin-0/main",
+    ]);
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Customize sidebar navigation" }),
+    );
+    expect(customizeRows().map((row) => row.textContent?.trim())).toEqual([
+      "Four",
+      "Search threads",
+      "Two",
+      "New thread",
+      "One",
+      "Three",
+    ]);
+    expect(
+      screen
+        .getAllByRole("checkbox")
+        .map((choice) => choice.getAttribute("data-state")),
+    ).toEqual([
+      "checked",
+      "checked",
+      "unchecked",
+      "checked",
+      "checked",
+      "unchecked",
+    ]);
   });
 
-  it("carries both Extensions glyphs so hover swaps without reflow", () => {
-    renderSidebarItems({ toolsRoutePath: "/extensions/plugins" });
+  it("launches a built-in row from the menu without changing its visibility", async () => {
+    const onActivate = vi.fn();
+    renderSidebarItems({
+      builtInEntries: [builtInEntry("new-thread", "New thread", onActivate)],
+    });
 
-    const extensionsRow = screen
-      .getAllByRole("button")
-      .find((button) => button.textContent?.trim() === "Extensions");
-    expect(extensionsRow).toBeTruthy();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Customize sidebar navigation" }),
+    );
+    const row = customizeRows()[0];
+    expect(row).toBeDefined();
+    fireEvent.click(
+      within(row as HTMLElement).getByRole("button", { name: "New thread" }),
+    );
 
-    const swap = extensionsRow?.querySelector(".bb-sidebar-row-icon-swap");
-    expect(swap).toBeTruthy();
+    expect(onActivate).toHaveBeenCalledTimes(1);
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("list", { name: "Sidebar navigation" }),
+      ).toBeNull(),
+    );
+  });
+
+  it("preserves modifier-click when launching a built-in from Customize", async () => {
+    const onActivate = vi.fn();
+    renderSidebarItems({
+      builtInEntries: [builtInEntry("new-thread", "New thread", onActivate)],
+    });
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Customize sidebar navigation" }),
+    );
+    const row = customizeRows()[0];
+    expect(row).toBeDefined();
+    fireEvent.click(
+      within(row as HTMLElement).getByRole("button", { name: "New thread" }),
+      { metaKey: true },
+    );
+
+    expect(onActivate).toHaveBeenCalledOnce();
+    expect(onActivate.mock.calls[0]?.[0]).toMatchObject({ metaKey: true });
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("list", { name: "Sidebar navigation" }),
+      ).toBeNull(),
+    );
+  });
+
+  it("preserves modifier-click when launching a plugin from Customize", async () => {
+    registerPanel("docs", "Docs");
+    const { store } = renderSidebarItems({ splitEnabled: true });
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Customize sidebar navigation" }),
+    );
+    const row = customizeRows()[0];
+    expect(row).toBeDefined();
+    fireEvent.click(
+      within(row as HTMLElement).getByRole("button", { name: "Docs" }),
+      { metaKey: true },
+    );
+
+    const layout = store.get(splitLayoutAtom);
+    expect(layout).not.toBeNull();
+    expect(countPanes(layout!.root)).toBe(2);
     expect(
-      swap?.querySelector('.bb-sidebar-row-icon-rest[data-icon="Toolbox"]'),
-    ).toBeTruthy();
+      findPaneByContent(layout!.root, {
+        kind: "plugin-panel",
+        pluginId: "docs",
+        panelPath: "main",
+        subPath: "",
+      }),
+    ).not.toBeNull();
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("list", { name: "Sidebar navigation" }),
+      ).toBeNull(),
+    );
+  });
+
+  it("keeps Automations on the plugin row contract with a unified identity", () => {
+    registerPanel(AUTOMATIONS_PLUGIN_ID, "Automations", () => (
+      <span>Scheduled</span>
+    ));
+    const view = renderSidebarItems({ splitEnabled: true });
+
     expect(
-      swap?.querySelector('.bb-sidebar-row-icon-hover[data-icon="ToolCase"]'),
-    ).toBeTruthy();
+      view.container.querySelector(
+        '[data-sidebar-navigation-item="__bb__/automations"]',
+      ),
+    ).not.toBeNull();
+    expect(
+      screen.getByRole("button", { name: "Automations panel options" }),
+    ).not.toBeNull();
+    expect(
+      view.container.querySelector("[data-plugin-nav-sidebar-accessory]")
+        ?.textContent,
+    ).toBe("Scheduled");
+
+    fireEvent.click(screen.getByRole("button", { name: "Automations" }), {
+      metaKey: true,
+    });
+    const layout = view.store.get(splitLayoutAtom);
+    expect(layout).not.toBeNull();
+    expect(countPanes(layout!.root)).toBe(2);
+    expect(
+      findPaneByContent(layout!.root, {
+        kind: "plugin-panel",
+        pluginId: AUTOMATIONS_PLUGIN_ID,
+        panelPath: "main",
+        subPath: "",
+      }),
+    ).not.toBeNull();
+  });
+});
+
+describe("ExtensionsNavSidebarItem", () => {
+  it("is host-owned and has no plugin-panel options menu", () => {
+    render(
+      <MemoryRouter>
+        <ExtensionsNavSidebarItem routePath="/extensions/plugins" />
+      </MemoryRouter>,
+    );
+
+    const row = screen.getByRole("button", { name: "Extensions" });
+    expect(row.querySelector(".bb-sidebar-row-icon-swap")).not.toBeNull();
+    expect(
+      screen.queryByRole("button", { name: "Extensions panel options" }),
+    ).toBeNull();
   });
 });

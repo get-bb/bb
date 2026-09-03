@@ -1992,6 +1992,42 @@ describe("PromptBoxInternal plugin composer actions", () => {
 });
 
 describe("PromptBoxInternal compact layout", () => {
+  it("shows attachment upload progress on the submit button", () => {
+    const restoreMatchMedia = mockPointerCoarse(true);
+    try {
+      render(
+        <PromptBoxInternal
+          {...createPromptBoxProps({
+            attachments: { isAttaching: true },
+            compact: {
+              isCompact: true,
+              placeholder: "Ask a follow-up",
+            },
+            voice: {
+              state: "idle",
+              isSupported: true,
+              stream: null,
+              start: vi.fn(),
+              stop: vi.fn(),
+              cancel: vi.fn(),
+            },
+          })}
+        />,
+      );
+
+      const submit = screen.getByRole("button", {
+        name: "Uploading attachments...",
+      });
+      expect(submit.hasAttribute("disabled")).toBe(true);
+      expect(submit.querySelector('[data-icon="Spinner"]')).not.toBeNull();
+      expect(
+        screen.queryByRole("button", { name: "Start voice input" }),
+      ).toBeNull();
+    } finally {
+      restoreMatchMedia();
+    }
+  });
+
   it("publishes the container-compact placeholder for CSS", () => {
     const baseProps = createPromptBoxProps();
     const view = render(

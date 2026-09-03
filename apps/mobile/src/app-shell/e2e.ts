@@ -5,6 +5,7 @@ import {
   type E2eEnv,
 } from "@/lib/e2e";
 import { getProfileStore } from "@/lib/native";
+import { getPushStore } from "@/notifications/push-storage";
 import { getAppProfileClientRegistry } from "./client-registry";
 import { getPreferencesStorage } from "./preferences-storage";
 
@@ -20,4 +21,5 @@ export async function resetLocalState(): Promise<void> {
     preferences: getPreferencesStorage(),
     disposeClients: () => getAppProfileClientRegistry().disposeAll(),
   });
+  getPushStore().reload();
 }

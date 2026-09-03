@@ -4,7 +4,6 @@ import {
   deriveStoredEventItemFields,
   getThread,
   listCompletedTurnsByThreadIds,
-  listQueuedThreadMessagesWaitingOnKind,
   listThreadEnvironmentAssignmentsOnHost,
   MissingStoredTurnStartedError,
   events as storedEvents,
@@ -41,9 +40,9 @@ import {
 import { queueChildThreadTurnNotificationBestEffort } from "../services/threads/child-thread-notifications.js";
 import { isParentNotifiableChildThread } from "../services/threads/thread-parent.js";
 import {
-  runQueuedMessageAutoSendForThread,
-  sendQueuedMessage,
-} from "../services/threads/queued-messages.js";
+  runQueuedMessageDispatch,
+  type QueuedMessageDispatchWake,
+} from "../services/threads/queued-message-dispatch.js";
 import { deferAfterResponse } from "../services/lib/response-deferral.js";
 import {
   isCommandTimeoutError,
@@ -193,21 +192,17 @@ interface ParentTurnNotificationFollowUp {
   turnStatus: ThreadEventTurnStatus;
 }
 
-interface QueuedMessageAutoSendFollowUp {
-  kind: "queued-message-auto-send";
-  threadId: string;
-}
-
-interface TurnStartingQueuedMessagesFollowUp {
-  kind: "turn-starting-queued-messages";
-  queuedMessageIds: string[];
-  threadId: string;
+interface QueuedMessageDispatchFollowUp {
+  kind: "queued-message-dispatch";
+  wake: Extract<
+    QueuedMessageDispatchWake,
+    { kind: "thread-ready" } | { kind: "turn-started" }
+  >;
 }
 
 type EventEffectFollowUp =
   | ParentTurnNotificationFollowUp
-  | QueuedMessageAutoSendFollowUp
-  | TurnStartingQueuedMessagesFollowUp;
+  | QueuedMessageDispatchFollowUp;
 
 function isRootTurnStartedEvent(
   event: Extract<HostDaemonEventEnvelope["event"], { type: "turn/started" }>,
@@ -372,20 +367,10 @@ async function applyEventEffects(
         if (!isRootTurnStartedEvent(event)) {
           continue;
         }
-        const queuedMessageIds = listQueuedThreadMessagesWaitingOnKind(
-          deps.db,
-          {
-            kind: "turn-starting",
-            threadId: entry.threadId,
-          },
-        ).map((row) => row.id);
-        if (queuedMessageIds.length > 0) {
-          followUps.push({
-            kind: "turn-starting-queued-messages",
-            queuedMessageIds,
-            threadId: entry.threadId,
-          });
-        }
+        followUps.push({
+          kind: "queued-message-dispatch",
+          wake: { kind: "turn-started", threadId: entry.threadId },
+        });
         if (hasThreadAlreadyStartedRun(deps, entry.threadId)) {
           continue;
         }
@@ -439,8 +424,8 @@ async function applyEventEffects(
           turnCompleted.nextStatus === "idle"
         ) {
           followUps.push({
-            kind: "queued-message-auto-send",
-            threadId: entry.threadId,
+            kind: "queued-message-dispatch",
+            wake: { kind: "thread-ready", threadId: entry.threadId },
           });
         }
         continue;
@@ -504,31 +489,8 @@ async function executeEventFollowUpBestEffort(
           turnStatus: followUp.turnStatus,
         });
         return;
-      case "queued-message-auto-send":
-        await runQueuedMessageAutoSendForThread(deps, {
-          threadId: followUp.threadId,
-        });
-        return;
-      case "turn-starting-queued-messages":
-        for (const queuedMessageId of followUp.queuedMessageIds) {
-          try {
-            await sendQueuedMessage(deps, {
-              mode: "auto",
-              queuedMessageId,
-              sendNow: false,
-              threadId: followUp.threadId,
-            });
-          } catch (error) {
-            deps.logger.warn(
-              {
-                queuedMessageId,
-                threadId: followUp.threadId,
-                ...runtimeErrorLogFields(deps.config, error),
-              },
-              "Failed to dispatch a message waiting for its turn to start",
-            );
-          }
-        }
+      case "queued-message-dispatch":
+        await runQueuedMessageDispatch(deps, followUp.wake);
         return;
     }
   } catch (error) {

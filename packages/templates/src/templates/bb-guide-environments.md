@@ -113,9 +113,6 @@ Making your repo work with bb:
 
   bb environment commit <id>              Create a commit in the environment
 
-  bb environment squash-merge <id>        Squash-merge into a target branch
-    --merge-base-branch <branch>          Target branch (required)
-
   bb environment archive-threads <id>     Archive all threads in an environment
 
   When the last thread of a managed worktree environment is archived or

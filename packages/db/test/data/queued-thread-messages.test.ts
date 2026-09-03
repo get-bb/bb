@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
-import type { PromptInput } from "@bb/domain";
+import { threadScope, type PromptInput } from "@bb/domain";
 import { noopNotifier } from "../../src/notifier.js";
+import { insertEvents } from "../../src/data/events.js";
 import {
   claimNextQueuedThreadMessageGroup,
   claimQueuedThreadMessage,
@@ -10,6 +11,7 @@ import {
   deleteClaimedQueuedThreadMessageBatchInTransaction,
   deleteQueuedThreadMessage,
   getQueuedThreadMessage,
+  listIdleThreadsWithQueuedMessages,
   listQueuedThreadMessages,
   releaseQueuedMessageClaim,
   releaseStaleQueuedMessageClaims,
@@ -121,6 +123,31 @@ describe("queued thread messages", () => {
     expect(listQueuedThreadMessages(db, thread.id)).toHaveLength(2);
   });
 
+  it("lists an idle thread waiting for its turn to start", () => {
+    const { db, project } = setup();
+    const thread = createThread(db, noopNotifier, {
+      projectId: project.id,
+      providerId: "codex",
+      status: "idle",
+    });
+    createQueuedThreadMessage(db, noopNotifier, {
+      threadId: thread.id,
+      content: defaultInput,
+      model: "gpt-5",
+      reasoningLevel: "medium",
+      permissionMode: "full",
+      serviceTier: "default",
+      waitingOn: { kind: "turn-starting" },
+      sendAt: null,
+      payload: { kind: "inline" },
+      systemNotice: null,
+    });
+
+    expect(
+      listIdleThreadsWithQueuedMessages(db).map((row) => row.threadId),
+    ).toContain(thread.id);
+  });
+
   it("updates queued message content without changing its identity or position", () => {
     const { db, thread } = setup();
     const first = createQueuedThreadMessage(db, noopNotifier, {
@@ -164,9 +191,9 @@ describe("queued thread messages", () => {
     });
 
     expect(result.kind).toBe("updated");
-    expect(listQueuedThreadMessages(db, thread.id).map((row) => row.id)).toEqual(
-      [first.id, second.id],
-    );
+    expect(
+      listQueuedThreadMessages(db, thread.id).map((row) => row.id),
+    ).toEqual([first.id, second.id]);
     expect(getQueuedThreadMessage(db, first.id)).toMatchObject({
       content: JSON.stringify(textInput("edited in place")),
       createdAt: before?.createdAt,
@@ -294,9 +321,13 @@ describe("queued thread messages", () => {
       systemNotice: null,
     });
 
-    expect(deleteQueuedThreadMessage(db, noopNotifier, queuedMessage.id)).toBe(true);
+    expect(deleteQueuedThreadMessage(db, noopNotifier, queuedMessage.id)).toBe(
+      true,
+    );
     expect(listQueuedThreadMessages(db, thread.id)).toHaveLength(0);
-    expect(deleteQueuedThreadMessage(db, noopNotifier, queuedMessage.id)).toBe(false);
+    expect(deleteQueuedThreadMessage(db, noopNotifier, queuedMessage.id)).toBe(
+      false,
+    );
   });
 
   it("claims a queued message and hides it from the queue until the claim is released", () => {
@@ -314,7 +345,11 @@ describe("queued thread messages", () => {
       systemNotice: null,
     });
 
-    const claimedQueuedMessage = claimQueuedThreadMessage(db, noopNotifier, queuedMessage.id);
+    const claimedQueuedMessage = claimQueuedThreadMessage(
+      db,
+      noopNotifier,
+      queuedMessage.id,
+    );
     expect(claimedQueuedMessage?.id).toBe(queuedMessage.id);
     expect(claimedQueuedMessage?.claimToken).toMatch(/^qclaim_/);
     expect(listQueuedThreadMessages(db, thread.id)).toHaveLength(0);
@@ -345,7 +380,11 @@ describe("queued thread messages", () => {
       payload: { kind: "inline" },
       systemNotice: null,
     });
-    const firstClaim = claimQueuedThreadMessage(db, noopNotifier, queuedMessage.id);
+    const firstClaim = claimQueuedThreadMessage(
+      db,
+      noopNotifier,
+      queuedMessage.id,
+    );
     if (!firstClaim) {
       throw new Error("Expected first queued message claim");
     }
@@ -355,11 +394,15 @@ describe("queued thread messages", () => {
         claimToken: "qclaim_staleowner",
       }),
     ).toBe(false);
-    expect(getQueuedThreadMessage(db, queuedMessage.id)?.claimToken).toBe(firstClaim.claimToken);
+    expect(getQueuedThreadMessage(db, queuedMessage.id)?.claimToken).toBe(
+      firstClaim.claimToken,
+    );
     expect(
       db.transaction((tx) =>
         deleteClaimedQueuedThreadMessageBatchInTransaction(tx, {
-          queuedMessages: [{ id: queuedMessage.id, claimToken: "qclaim_staleowner" }],
+          queuedMessages: [
+            { id: queuedMessage.id, claimToken: "qclaim_staleowner" },
+          ],
         }),
       ),
     ).toBe(false);
@@ -370,7 +413,11 @@ describe("queued thread messages", () => {
         claimToken: firstClaim.claimToken,
       }),
     ).toBe(true);
-    const secondClaim = claimQueuedThreadMessage(db, noopNotifier, queuedMessage.id);
+    const secondClaim = claimQueuedThreadMessage(
+      db,
+      noopNotifier,
+      queuedMessage.id,
+    );
     if (!secondClaim) {
       throw new Error("Expected second queued message claim");
     }
@@ -378,15 +425,21 @@ describe("queued thread messages", () => {
     expect(
       db.transaction((tx) =>
         deleteClaimedQueuedThreadMessageBatchInTransaction(tx, {
-          queuedMessages: [{ id: queuedMessage.id, claimToken: firstClaim.claimToken }],
+          queuedMessages: [
+            { id: queuedMessage.id, claimToken: firstClaim.claimToken },
+          ],
         }),
       ),
     ).toBe(false);
-    expect(getQueuedThreadMessage(db, queuedMessage.id)?.claimToken).toBe(secondClaim.claimToken);
+    expect(getQueuedThreadMessage(db, queuedMessage.id)?.claimToken).toBe(
+      secondClaim.claimToken,
+    );
     expect(
       db.transaction((tx) =>
         deleteClaimedQueuedThreadMessageBatchInTransaction(tx, {
-          queuedMessages: [{ id: queuedMessage.id, claimToken: secondClaim.claimToken }],
+          queuedMessages: [
+            { id: queuedMessage.id, claimToken: secondClaim.claimToken },
+          ],
         }),
       ),
     ).toBe(true);
@@ -410,7 +463,11 @@ describe("queued thread messages", () => {
         payload: { kind: "inline" },
         systemNotice: null,
       });
-      const claimedQueuedMessage = claimQueuedThreadMessage(db, noopNotifier, queuedMessage.id);
+      const claimedQueuedMessage = claimQueuedThreadMessage(
+        db,
+        noopNotifier,
+        queuedMessage.id,
+      );
       expect(claimedQueuedMessage?.claimedAt).toBe(1_000);
       expect(claimedQueuedMessage?.claimToken).toMatch(/^qclaim_/);
       expect(listQueuedThreadMessages(db, thread.id)).toHaveLength(0);
@@ -422,10 +479,12 @@ describe("queued thread messages", () => {
           protectedClaimTokens: [],
         }),
       ).toBe(1);
-      expect(listQueuedThreadMessages(db, thread.id).map((row) => row.id)).toEqual([
-        queuedMessage.id,
-      ]);
-      expect(getQueuedThreadMessage(db, queuedMessage.id)?.claimToken).toBeNull();
+      expect(
+        listQueuedThreadMessages(db, thread.id).map((row) => row.id),
+      ).toEqual([queuedMessage.id]);
+      expect(
+        getQueuedThreadMessage(db, queuedMessage.id)?.claimToken,
+      ).toBeNull();
     } finally {
       nowSpy.mockRestore();
     }
@@ -496,9 +555,9 @@ describe("queued thread messages", () => {
       expect(
         getQueuedThreadMessage(db, releasableQueuedMessage.id)?.claimToken,
       ).toBeNull();
-      expect(listQueuedThreadMessages(db, thread.id).map((row) => row.id)).toEqual([
-        releasableQueuedMessage.id,
-      ]);
+      expect(
+        listQueuedThreadMessages(db, thread.id).map((row) => row.id),
+      ).toEqual([releasableQueuedMessage.id]);
     } finally {
       nowSpy.mockRestore();
     }
@@ -516,7 +575,7 @@ describe("queued thread messages", () => {
         reasoningLevel: "medium",
         permissionMode: "full",
         serviceTier: "default",
-        waitingOn: null,
+        waitingOn: { kind: "turn-starting" },
         sendAt: null,
         payload: { kind: "inline" },
         systemNotice: null,
@@ -535,11 +594,17 @@ describe("queued thread messages", () => {
         systemNotice: null,
       });
 
-      const claimedQueuedMessage = claimNextQueuedThreadMessageGroup(db, noopNotifier, thread.id)?.[0];
+      const claimedQueuedMessage = claimNextQueuedThreadMessageGroup(
+        db,
+        noopNotifier,
+        thread.id,
+      )?.[0];
       expect(claimedQueuedMessage?.id).toBe(firstQueuedMessage.id);
-      expect(listQueuedThreadMessages(db, thread.id).map((queuedMessage) => queuedMessage.id)).toEqual([
-        secondQueuedMessage.id,
-      ]);
+      expect(
+        listQueuedThreadMessages(db, thread.id).map(
+          (queuedMessage) => queuedMessage.id,
+        ),
+      ).toEqual([secondQueuedMessage.id]);
     } finally {
       nowSpy.mockRestore();
     }
@@ -736,13 +801,84 @@ describe("queued thread messages", () => {
       thread.id,
     );
 
-    expect(claimedQueuedMessages?.map((queuedMessage) => queuedMessage.id)).toEqual([
-      firstQueuedMessage.id,
-      secondQueuedMessage.id,
+    expect(
+      claimedQueuedMessages?.map((queuedMessage) => queuedMessage.id),
+    ).toEqual([firstQueuedMessage.id, secondQueuedMessage.id]);
+    expect(
+      listQueuedThreadMessages(db, thread.id).map(
+        (queuedMessage) => queuedMessage.id,
+      ),
+    ).toEqual([thirdQueuedMessage.id]);
+  });
+
+  it("pauses ordinary turn-end rows without pausing system notices", () => {
+    const { db, project } = setup();
+    const thread = createThread(db, noopNotifier, {
+      projectId: project.id,
+      providerId: "codex",
+      status: "idle",
+    });
+    const ordinary = createQueuedThreadMessage(db, noopNotifier, {
+      threadId: thread.id,
+      content: defaultInput,
+      model: "gpt-5",
+      reasoningLevel: "medium",
+      permissionMode: "full",
+      serviceTier: "default",
+      waitingOn: { kind: "thread-busy" },
+      sendAt: null,
+      payload: { kind: "inline" },
+      systemNotice: null,
+    });
+    const notice = createQueuedThreadMessage(db, noopNotifier, {
+      threadId: thread.id,
+      content: altInput,
+      model: "gpt-5",
+      reasoningLevel: "medium",
+      permissionMode: "full",
+      serviceTier: "default",
+      waitingOn: { kind: "thread-busy" },
+      sendAt: null,
+      payload: { kind: "inline" },
+      systemNotice: {
+        kind: "child-completed",
+        subject: {
+          kind: "thread",
+          threadId: "thr_child",
+          threadName: "Child",
+        },
+      },
+    });
+    insertEvents(db, noopNotifier, [
+      {
+        threadId: thread.id,
+        sequence: 1,
+        type: "system/thread/interrupted",
+        scope: threadScope(),
+        itemId: null,
+        itemKind: null,
+        parentToolCallId: null,
+        data: JSON.stringify({ reason: "manual-stop" }),
+      },
     ]);
-    expect(listQueuedThreadMessages(db, thread.id).map((queuedMessage) => queuedMessage.id)).toEqual([
-      thirdQueuedMessage.id,
-    ]);
+
+    expect(
+      listIdleThreadsWithQueuedMessages(db).map((row) => row.threadId),
+    ).toContain(thread.id);
+    expect(
+      claimQueuedThreadMessageGroup(db, noopNotifier, ordinary.id, {
+        kind: "automatic",
+        isGroupEligible: () => true,
+      }),
+    ).toBeNull();
+    expect(
+      claimNextQueuedThreadMessageGroup(db, noopNotifier, thread.id)?.map(
+        (row) => row.id,
+      ),
+    ).toEqual([notice.id]);
+    expect(
+      listQueuedThreadMessages(db, thread.id).map((row) => row.id),
+    ).toEqual([ordinary.id]);
   });
 
   it("does not split a requeued group: the tail waits with its blocked lead", () => {
@@ -872,9 +1008,9 @@ describe("queued thread messages", () => {
     // The requested drain clears the lead's wait and claims by id; the claim
     // is a claim on the batch, so the tail dispatches with it.
     expect(
-      claimQueuedThreadMessageGroup(db, noopNotifier, lead.id)?.map(
-        (queuedMessage) => queuedMessage.id,
-      ),
+      claimQueuedThreadMessageGroup(db, noopNotifier, lead.id, {
+        kind: "explicit-send",
+      })?.map((queuedMessage) => queuedMessage.id),
     ).toEqual([lead.id, tail.id]);
   });
 
@@ -931,15 +1067,17 @@ describe("queued thread messages", () => {
       db,
       noopNotifier,
       thirdQueuedMessage.id,
+      { kind: "explicit-send" },
     );
 
-    expect(claimedQueuedMessages?.map((queuedMessage) => queuedMessage.id)).toEqual([
-      thirdQueuedMessage.id,
-    ]);
-    expect(listQueuedThreadMessages(db, thread.id).map((queuedMessage) => queuedMessage.id)).toEqual([
-      firstQueuedMessage.id,
-      secondQueuedMessage.id,
-    ]);
+    expect(
+      claimedQueuedMessages?.map((queuedMessage) => queuedMessage.id),
+    ).toEqual([thirdQueuedMessage.id]);
+    expect(
+      listQueuedThreadMessages(db, thread.id).map(
+        (queuedMessage) => queuedMessage.id,
+      ),
+    ).toEqual([firstQueuedMessage.id, secondQueuedMessage.id]);
   });
 
   it("clears the previous group edge when deleting a grouped follower", () => {
@@ -1061,9 +1199,9 @@ describe("queued thread messages", () => {
     });
 
     expect(
-      claimQueuedThreadMessageGroup(db, noopNotifier, secondQueuedMessage.id)?.map(
-        (queuedMessage) => queuedMessage.id,
-      ),
+      claimQueuedThreadMessageGroup(db, noopNotifier, secondQueuedMessage.id, {
+        kind: "explicit-send",
+      })?.map((queuedMessage) => queuedMessage.id),
     ).toEqual([secondQueuedMessage.id]);
 
     expect(
@@ -1131,6 +1269,7 @@ describe("queued thread messages", () => {
       db,
       noopNotifier,
       secondQueuedMessage.id,
+      { kind: "explicit-send" },
     );
     expect(claimed?.map((queuedMessage) => queuedMessage.id)).toEqual([
       secondQueuedMessage.id,
@@ -1369,7 +1508,9 @@ describe("queued thread messages", () => {
       nextQueuedMessageId: firstQueuedMessage.id,
     });
     expect(moveToFront.kind).toBe("reordered");
-    expect(listQueuedThreadMessages(db, thread.id).map((row) => row.id)).toEqual([
+    expect(
+      listQueuedThreadMessages(db, thread.id).map((row) => row.id),
+    ).toEqual([
       thirdQueuedMessage.id,
       firstQueuedMessage.id,
       secondQueuedMessage.id,
@@ -1384,7 +1525,9 @@ describe("queued thread messages", () => {
       nextQueuedMessageId: firstQueuedMessage.id,
     });
     expect(moveToMiddle.kind).toBe("reordered");
-    expect(listQueuedThreadMessages(db, thread.id).map((row) => row.id)).toEqual([
+    expect(
+      listQueuedThreadMessages(db, thread.id).map((row) => row.id),
+    ).toEqual([
       thirdQueuedMessage.id,
       secondQueuedMessage.id,
       firstQueuedMessage.id,
@@ -1399,7 +1542,9 @@ describe("queued thread messages", () => {
       nextQueuedMessageId: null,
     });
     expect(moveToEnd.kind).toBe("reordered");
-    expect(listQueuedThreadMessages(db, thread.id).map((row) => row.id)).toEqual([
+    expect(
+      listQueuedThreadMessages(db, thread.id).map((row) => row.id),
+    ).toEqual([
       secondQueuedMessage.id,
       firstQueuedMessage.id,
       thirdQueuedMessage.id,
@@ -1450,9 +1595,9 @@ describe("queued thread messages", () => {
       thread.id,
     )?.[0];
     expect(claimedQueuedMessage?.id).toBe(secondQueuedMessage.id);
-    expect(listQueuedThreadMessages(db, thread.id).map((row) => row.id)).toEqual([
-      firstQueuedMessage.id,
-    ]);
+    expect(
+      listQueuedThreadMessages(db, thread.id).map((row) => row.id),
+    ).toEqual([firstQueuedMessage.id]);
   });
 
   it("rolls back a reorder when the requested group boundary is invalid", () => {

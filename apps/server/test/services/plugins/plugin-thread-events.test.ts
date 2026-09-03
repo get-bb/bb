@@ -6,7 +6,12 @@ import { threadScope, turnScope } from "@bb/domain";
 import { applyLoggedThreadLifecycleEvent } from "../../../src/services/threads/lifecycle-outcome.js";
 import { createThreadRecord } from "../../../src/services/threads/thread-create-helpers.js";
 import type { ThreadCreateServiceRequest } from "../../../src/services/threads/thread-create-request.js";
-import { seedEvent, seedThreadFixture } from "../../helpers/seed.js";
+import {
+  seedEvent,
+  seedThreadFixture,
+  seedTurnStarted,
+} from "../../helpers/seed.js";
+import { createUserQuestionPayload } from "../../helpers/pending-interactions.js";
 import {
   createTestAppHarness,
   testLogger,
@@ -23,6 +28,15 @@ interface RecordedThreadPayload {
   };
   lastAssistantText?: string | null;
   error?: string | null;
+}
+
+interface RecordedInteractionPayload extends RecordedThreadPayload {
+  interaction: {
+    id: string;
+    payload: { kind: string };
+    status: string;
+    threadId: string;
+  };
 }
 
 const globals = globalThis as Record<string, unknown>;
@@ -193,6 +207,56 @@ describe("plugin thread lifecycle events", () => {
       expect(recorded[0]?.error).toBe("provider exploded");
     } finally {
       delete globals.__failedEvents;
+      await cleanup();
+    }
+  });
+
+  it("delivers interaction.pending after the interaction is committed", async () => {
+    const recorded: RecordedInteractionPayload[] = [];
+    globals.__pendingInteractionEvents = recorded;
+    const { harness, cleanup } = await setUpPluginHarness(`
+      export default function plugin(bb: any) {
+        bb.events.on("interaction.pending", (payload: any) => {
+          (globalThis as any).__pendingInteractionEvents.push(payload);
+        });
+      }
+    `);
+    try {
+      const { thread } = seedThreadFixture(harness, {
+        thread: { status: "active" },
+      });
+      seedTurnStarted(harness.deps, {
+        threadId: thread.id,
+        turnId: "turn-pending-event",
+        providerThreadId: "provider-thread-pending-event",
+      });
+
+      const result =
+        harness.deps.pendingInteractions.registerPendingInteraction({
+          interaction: {
+            threadId: thread.id,
+            turnId: "turn-pending-event",
+            providerId: "codex",
+            providerThreadId: "provider-thread-pending-event",
+            providerRequestId: "request-pending-event",
+            payload: createUserQuestionPayload({
+              prompt: "Deploy to production?",
+            }),
+          },
+        });
+
+      expect(result.outcome).toBe("created");
+      await vi.waitFor(() => expect(recorded).toHaveLength(1));
+      expect(recorded[0]?.thread).toMatchObject({
+        id: thread.id,
+        status: "active",
+      });
+      if (result.outcome === "rejected") {
+        throw new Error(result.reason);
+      }
+      expect(recorded[0]?.interaction).toEqual(result.interaction);
+    } finally {
+      delete globals.__pendingInteractionEvents;
       await cleanup();
     }
   });

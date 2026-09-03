@@ -61,6 +61,7 @@
   },
   "scripts": {
     "build": "node scripts/build.mjs",
+    "build:host": "node scripts/build-host.mjs",
     "clean": "rimraf dist app host-daemon server tsconfig.tsbuildinfo",
     "prepack": "node dist/prune-bb-chunks.mjs",
     "smoke:tarball": "node scripts/smoke-tarball.mjs",

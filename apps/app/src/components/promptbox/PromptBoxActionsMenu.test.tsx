@@ -53,7 +53,7 @@ describe("PromptBoxActionsMenu", () => {
     expect(onAttach).toHaveBeenCalledOnce();
   });
 
-  it("keeps attachment upload progress visible on the menu trigger", () => {
+  it("keeps the plus menu trigger stable during attachment uploads", () => {
     render(
       <PromptBoxActionsMenu
         isAttaching
@@ -63,7 +63,8 @@ describe("PromptBoxActionsMenu", () => {
     );
 
     const trigger = screen.getByRole("button", { name: "Prompt actions" });
-    expect(trigger.querySelector('[data-icon="Spinner"]')).not.toBeNull();
+    expect(trigger.querySelector('[data-icon="Plus"]')).not.toBeNull();
+    expect(trigger.querySelector('[data-icon="Spinner"]')).toBeNull();
   });
 
   it("seeds the composer with the plugin prompt after the provider actions", async () => {

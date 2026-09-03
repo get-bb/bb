@@ -122,7 +122,7 @@ describe("UsageLimitsSettingsSectionContent", () => {
     expect(screen.getByText("$5.00 / $50")).toBeDefined();
   });
 
-  it("keeps an uninstalled provider visible with its status", () => {
+  it("hides an uninstalled provider", () => {
     renderContent({
       usage: {
         codex: { status: "unauthenticated" },
@@ -134,8 +134,8 @@ describe("UsageLimitsSettingsSectionContent", () => {
       onRefresh: vi.fn(),
     });
 
-    expect(screen.getByRole("heading", { name: "Cursor" })).toBeDefined();
-    expect(screen.getByText("Not installed on this machine.")).toBeDefined();
+    expect(screen.queryByRole("heading", { name: "Cursor" })).toBeNull();
+    expect(screen.queryByText("Not installed on this machine.")).toBeNull();
     expect(screen.getByRole("heading", { name: "Codex" })).toBeDefined();
   });
 

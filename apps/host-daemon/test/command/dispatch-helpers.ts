@@ -251,17 +251,6 @@ export function createFakeWorkspace(pathname: string) {
       };
     },
     async reset() {},
-    async squashMerge(options: {
-      targetBranch: string;
-      commitMessage: string;
-    }) {
-      return {
-        merged: true,
-        commitSha: `merge-${options.targetBranch}`,
-        commitSubject: options.commitMessage,
-        targetBranch: options.targetBranch,
-      };
-    },
     async destroy() {
       state.destroyed = true;
     },

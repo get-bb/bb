@@ -206,10 +206,10 @@ export function useSendThreadMessage() {
     },
     onSuccess: (data, variables, context) => {
       applySendThreadMessageSuccess({
-        delivery: data.delivery,
         queryClient,
         realtimeConnected: wsManager.getConnectionState() === "connected",
         request: variables,
+        result: data,
         transaction: context,
       });
     },
@@ -360,10 +360,12 @@ export function useSendThreadQueuedMessage() {
         transaction: context,
       });
     },
-    onSuccess: (_data, variables) => {
+    onSuccess: (data, variables, transaction) => {
       applyQueuedMessageSendResult({
         queryClient,
-        threadId: variables.id,
+        request: variables,
+        result: data,
+        transaction,
       });
     },
   });

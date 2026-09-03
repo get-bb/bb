@@ -148,13 +148,6 @@ export type PullRequestMergeMethod = z.infer<
   typeof pullRequestMergeMethodSchema
 >;
 
-export const squashMergeOptionsSchema = z
-  .object({
-    mergeBaseBranch: gitBranchNameSchema,
-  })
-  .strict();
-export type SquashMergeOptions = z.infer<typeof squashMergeOptionsSchema>;
-
 export const pullRequestMergeOptionsSchema = z
   .object({
     method: pullRequestMergeMethodSchema,
@@ -165,12 +158,6 @@ export const environmentActionRequestSchema = z.discriminatedUnion("action", [
   z
     .object({
       action: z.literal("commit"),
-    })
-    .strict(),
-  z
-    .object({
-      action: z.literal("squash_merge"),
-      options: squashMergeOptionsSchema,
     })
     .strict(),
   z
@@ -203,18 +190,6 @@ export const commitActionResponseSchema = z.object({
 });
 export type CommitActionResponse = z.infer<typeof commitActionResponseSchema>;
 
-export const squashMergeActionResponseSchema = z.object({
-  ok: z.literal(true),
-  action: z.literal("squash_merge"),
-  merged: z.boolean(),
-  message: z.string().min(1),
-  commitSha: z.string().min(1),
-  commitSubject: z.string().min(1),
-});
-export type SquashMergeActionResponse = z.infer<
-  typeof squashMergeActionResponseSchema
->;
-
 export const pullRequestReadyActionResponseSchema = z.object({
   ok: z.literal(true),
   action: z.literal("pull_request_ready"),
@@ -245,7 +220,6 @@ export type PullRequestDraftActionResponse = z.infer<
 
 export const environmentActionResponseSchema = z.discriminatedUnion("action", [
   commitActionResponseSchema,
-  squashMergeActionResponseSchema,
   pullRequestReadyActionResponseSchema,
   pullRequestMergeActionResponseSchema,
   pullRequestDraftActionResponseSchema,

@@ -1,7 +1,43 @@
 import { Toaster, type ToasterProps } from "sonner";
+import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { usePreferredTheme } from "@/hooks/useTheme";
 
-export function AppToaster(props: ToasterProps) {
+const COMPACT_TOAST_TOP_OFFSET =
+  "calc(env(safe-area-inset-top) + var(--bb-app-chrome-row-height) + 16px)";
+
+function withCompactTopOffset(
+  offset: ToasterProps["offset"],
+): ToasterProps["offset"] {
+  if (typeof offset === "object") {
+    return { ...offset, top: COMPACT_TOAST_TOP_OFFSET };
+  }
+  return {
+    top: COMPACT_TOAST_TOP_OFFSET,
+    right: offset,
+    bottom: offset,
+    left: offset,
+  };
+}
+
+export function AppToaster({
+  position = "bottom-right",
+  offset,
+  mobileOffset,
+  ...props
+}: ToasterProps) {
   const theme = usePreferredTheme();
-  return <Toaster theme={theme} {...props} />;
+  const isCompactViewport = useIsCompactViewport();
+  return (
+    <Toaster
+      theme={theme}
+      position={isCompactViewport ? "top-center" : position}
+      {...props}
+      offset={isCompactViewport ? withCompactTopOffset(offset) : offset}
+      mobileOffset={
+        isCompactViewport
+          ? withCompactTopOffset(mobileOffset)
+          : mobileOffset
+      }
+    />
+  );
 }

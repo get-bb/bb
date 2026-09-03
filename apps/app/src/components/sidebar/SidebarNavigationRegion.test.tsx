@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type MouseEventHandler } from "react";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { createStore, Provider } from "jotai";
 import { MemoryRouter, useLocation } from "react-router-dom";
@@ -17,6 +17,7 @@ import { SidebarNavigationRegion } from "./SidebarNavigationRegion";
 
 const mocks = vi.hoisted(() => ({
   dispatch: vi.fn(),
+  openNewThreadInSplit: vi.fn(),
   onSearchThreads: vi.fn(),
 }));
 
@@ -29,7 +30,31 @@ vi.mock("@/components/commands/AppCommandProvider", () => ({
   useIsAppCommandModifierHeld: () => false,
 }));
 vi.mock("@/components/plugin/PluginNavSidebarItems", () => ({
-  PluginNavSidebarItems: () => <div>BB plugin destinations</div>,
+  ExtensionsNavSidebarItem: () => <div>Extensions</div>,
+  PluginNavSidebarItems: ({
+    builtInEntries = [],
+    entries = [],
+  }: {
+    builtInEntries?: Array<{
+      id: string;
+      title: string;
+      onActivate: MouseEventHandler<HTMLButtonElement>;
+    }>;
+    entries?: Array<{ chrome: { pluginId: string; title: string } }>;
+  }) => (
+    <div>
+      {builtInEntries.map((entry) => (
+        <button key={entry.id} type="button" onClick={entry.onActivate}>
+          {entry.title}
+        </button>
+      ))}
+      {entries.map(({ chrome }) => (
+        <div key={chrome.pluginId} data-testid="built-in-plugin-entry">
+          {chrome.title}
+        </div>
+      ))}
+    </div>
+  ),
 }));
 vi.mock("./usePaneContentSplitDrag", () => ({
   usePaneContentSplitActions: () => ({
@@ -103,7 +128,7 @@ function Harness({ onOwnerMount }: { onOwnerMount: () => void }) {
     <>
       <SidebarNavigationRegion
         splitEnabled
-        newThreadSplit={{ openInSplit: vi.fn() }}
+        newThreadSplit={{ openInSplit: mocks.openNewThreadInSplit }}
         onNavigate={vi.fn()}
         onNewChat={vi.fn()}
         onSearchThreads={mocks.onSearchThreads}
@@ -158,10 +183,43 @@ afterEach(() => {
   window.localStorage.clear();
   vi.restoreAllMocks();
   mocks.dispatch.mockReset();
+  mocks.openNewThreadInSplit.mockReset();
   mocks.onSearchThreads.mockReset();
 });
 
 describe("SidebarNavigationRegion", () => {
+  it("preserves modifier-click for New thread in BB navigation", () => {
+    renderHarness();
+
+    fireEvent.click(screen.getByRole("button", { name: "New thread" }), {
+      metaKey: true,
+    });
+
+    expect(mocks.openNewThreadInSplit).toHaveBeenCalledOnce();
+  });
+
+  it("passes Automations through the plugin navigation row path", () => {
+    setPluginSlotRegistrations(
+      "automations",
+      registrationSet({
+        navPanels: [
+          {
+            id: "automations",
+            title: "Automations",
+            icon: "Calendar",
+            path: "automations",
+            component: () => null,
+          },
+        ],
+      }),
+    );
+    renderHarness();
+
+    expect(screen.getByTestId("built-in-plugin-entry").textContent).toBe(
+      "Automations",
+    );
+  });
+
   it("routes Search through the quick palette without inline search UI", () => {
     registerFixture();
     renderHarness();

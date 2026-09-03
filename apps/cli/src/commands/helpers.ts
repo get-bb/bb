@@ -5,10 +5,7 @@ import {
   reasoningLevelValues,
   type ReasoningLevel,
 } from "@bb/domain";
-import type {
-  CommitActionResponse,
-  SquashMergeActionResponse,
-} from "@bb/server-contract";
+import type { CommitActionResponse } from "@bb/server-contract";
 import type { ResolvedId } from "../context-env.js";
 
 export {
@@ -46,14 +43,9 @@ export function printContextLabel(
 }
 
 export function printEnvironmentGitOperationResult(
-  result: CommitActionResponse | SquashMergeActionResponse,
+  result: CommitActionResponse,
 ): void {
-  const flags = [
-    ...(result.action === "commit"
-      ? ["committed"]
-      : [result.merged ? "merged" : "noop"]),
-  ];
-  console.log(`${result.message} [${flags.join(", ")}]`);
+  console.log(`${result.message} [committed]`);
 }
 
 export async function confirmDestructiveAction(

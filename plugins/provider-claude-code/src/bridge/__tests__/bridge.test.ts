@@ -14,6 +14,7 @@ import type {
   CanUseTool,
   SDKMessage,
   SDKUserMessage,
+  StopHookInput,
 } from "@anthropic-ai/claude-agent-sdk";
 import {
   type JsonValue,
@@ -52,6 +53,7 @@ type BridgeSessionOptions = ReturnType<typeof buildSessionOptions>;
 type BridgeSessionHooks = NonNullable<BridgeSessionOptions["hooks"]>;
 type BridgePreToolUseHooks = NonNullable<BridgeSessionHooks["PreToolUse"]>;
 type BridgePreToolUseHook = BridgePreToolUseHooks[number]["hooks"][number];
+type BridgeStopHooks = NonNullable<BridgeSessionHooks["Stop"]>;
 type BridgeJsonRpcTestHarness = ReturnType<
   typeof createBridgeJsonRpcTestHarness
 >;
@@ -399,6 +401,19 @@ async function invokeBridgeHooks(
     }
   }
   return outputs;
+}
+
+async function invokeStopHooks(
+  matchers: BridgeStopHooks | undefined,
+  input: StopHookInput,
+): Promise<void> {
+  for (const matcher of matchers ?? []) {
+    for (const hook of matcher.hooks) {
+      await hook(input, undefined, {
+        signal: new AbortController().signal,
+      });
+    }
+  }
 }
 
 function createResultUsage(): SdkResultUsage {
@@ -4241,11 +4256,24 @@ describe("bridge", () => {
 
       query.emit({
         type: "system",
+        subtype: "background_tasks_changed",
+        tasks: [
+          {
+            task_id: taskId,
+            task_type: "monitor",
+            description: "Watch the background command",
+          },
+        ],
+        uuid: "00000000-0000-4000-8000-000000000007",
+        session_id: providerThreadId,
+      });
+      query.emit({
+        type: "system",
         subtype: "task_started",
         task_id: taskId,
         description: "Watch the background command",
         task_type: "monitor",
-        uuid: "00000000-0000-4000-8000-000000000007",
+        uuid: "00000000-0000-4000-8000-000000000009",
         session_id: providerThreadId,
       });
       query.emit(createSuccessfulResultMessage(providerThreadId));
@@ -4256,13 +4284,135 @@ describe("bridge", () => {
 
       query.emit({
         type: "system",
-        subtype: "task_notification",
-        task_id: taskId,
-        status: "completed",
-        output_file: "",
-        summary: "Monitoring completed",
+        subtype: "background_tasks_changed",
+        tasks: [],
         uuid: "00000000-0000-4000-8000-000000000008",
         session_id: providerThreadId,
+      });
+      await flushFakeTimerBridgeWork(bridge);
+      await vi.advanceTimersByTimeAsync(CLAUDE_IDLE_QUERY_GRACE_MS - 1);
+      expect(query.close).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(1);
+      expect(query.close).toHaveBeenCalledOnce();
+    } finally {
+      vi.useRealTimers();
+      bridge.sendRequest(3, "thread/stop", {
+        threadId,
+        providerThreadId,
+        intent: "interrupt",
+        activeTurnId: null,
+      });
+      await bridge.flushWork();
+      query.finish();
+      await bridge.waitForResponse(3);
+      bridge.restore();
+    }
+  });
+
+  it("keeps a Claude query resident until the SDK session becomes idle", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const bridge = createBridgeJsonRpcTestHarness(handleLine);
+    const query = createControlledClaudeQuery();
+    queryMock.mockReturnValue(query);
+
+    const threadId = "thread-idle-query-session-state";
+    const providerThreadId = "provider-thread-idle-query-session-state";
+    try {
+      sendResumeThread({
+        bridge,
+        idleQueryReleaseEnabled: true,
+        providerThreadId,
+        requestId: 1,
+        threadId,
+      });
+      await waitForFakeTimerBridgeResponse(bridge, 1);
+
+      for (const state of ["running", "requires_action"] as const) {
+        query.emit({
+          type: "system",
+          subtype: "session_state_changed",
+          state,
+          uuid:
+            state === "running"
+              ? "00000000-0000-4000-8000-000000000010"
+              : "00000000-0000-4000-8000-000000000011",
+          session_id: providerThreadId,
+        });
+        await flushFakeTimerBridgeWork(bridge);
+        await vi.advanceTimersByTimeAsync(CLAUDE_IDLE_QUERY_GRACE_MS * 2);
+        expect(query.close).not.toHaveBeenCalled();
+      }
+
+      query.emit({
+        type: "system",
+        subtype: "session_state_changed",
+        state: "idle",
+        uuid: "00000000-0000-4000-8000-000000000012",
+        session_id: providerThreadId,
+      });
+      await flushFakeTimerBridgeWork(bridge);
+      await vi.advanceTimersByTimeAsync(CLAUDE_IDLE_QUERY_GRACE_MS - 1);
+      expect(query.close).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(1);
+      expect(query.close).toHaveBeenCalledOnce();
+    } finally {
+      vi.useRealTimers();
+      bridge.sendRequest(3, "thread/stop", {
+        threadId,
+        providerThreadId,
+        intent: "interrupt",
+        activeTurnId: null,
+      });
+      await bridge.flushWork();
+      query.finish();
+      await bridge.waitForResponse(3);
+      bridge.restore();
+    }
+  });
+
+  it("keeps a Claude query resident while a session wakeup remains scheduled", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const bridge = createBridgeJsonRpcTestHarness(handleLine);
+    const query = createControlledClaudeQuery();
+    queryMock.mockReturnValue(query);
+
+    const threadId = "thread-idle-query-scheduled-wakeup";
+    const providerThreadId = "provider-thread-idle-query-scheduled-wakeup";
+    try {
+      sendResumeThread({
+        bridge,
+        idleQueryReleaseEnabled: true,
+        providerThreadId,
+        requestId: 1,
+        threadId,
+      });
+      await waitForFakeTimerBridgeResponse(bridge, 1);
+
+      const stopHookInput = {
+        session_id: providerThreadId,
+        transcript_path: "/tmp/transcript.jsonl",
+        cwd: "/tmp/worktree",
+        hook_event_name: "Stop",
+        stop_hook_active: false,
+      } as const;
+      await invokeStopHooks(getLatestQueryOptions().hooks?.Stop, {
+        ...stopHookInput,
+        session_crons: [
+          {
+            id: "scheduled-wakeup",
+            schedule: "0 17 1 9 *",
+            recurring: false,
+            prompt: "continue later",
+          },
+        ],
+      });
+      await flushFakeTimerBridgeWork(bridge);
+      await vi.advanceTimersByTimeAsync(CLAUDE_IDLE_QUERY_GRACE_MS * 2);
+      expect(query.close).not.toHaveBeenCalled();
+
+      await invokeStopHooks(getLatestQueryOptions().hooks?.Stop, {
+        ...stopHookInput,
+        session_crons: [],
       });
       await flushFakeTimerBridgeWork(bridge);
       await vi.advanceTimersByTimeAsync(CLAUDE_IDLE_QUERY_GRACE_MS - 1);

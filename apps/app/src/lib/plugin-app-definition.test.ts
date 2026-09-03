@@ -26,6 +26,47 @@ describe("definePluginApp", () => {
   });
 });
 
+describe("collectPluginAppRegistrations — experimental_appOverlay", () => {
+  it("collects additive app overlays", () => {
+    const definition = definePluginApp((app) => {
+      app.slots.experimental_appOverlay({
+        id: "office",
+        component: Component,
+      });
+    });
+
+    expect(collectPluginAppRegistrations(definition).appOverlays).toEqual([
+      { id: "office", component: Component },
+    ]);
+  });
+
+  it("rejects duplicate ids and malformed components", () => {
+    const duplicate = definePluginApp((app) => {
+      app.slots.experimental_appOverlay({
+        id: "office",
+        component: Component,
+      });
+      app.slots.experimental_appOverlay({
+        id: "office",
+        component: Component,
+      });
+    });
+    const malformed = definePluginApp((app) => {
+      app.slots.experimental_appOverlay({
+        id: "office",
+        component: null as never,
+      });
+    });
+
+    expect(() => collectPluginAppRegistrations(duplicate)).toThrow(
+      'duplicate id "office"',
+    );
+    expect(() => collectPluginAppRegistrations(malformed)).toThrow(
+      '"component" must be a React component function',
+    );
+  });
+});
+
 describe("collectPluginAppRegistrations — experimental_threadHeaderAction", () => {
   it("collects a header action", () => {
     const definition = definePluginApp((app) => {
@@ -170,6 +211,10 @@ describe("collectPluginAppRegistrations", () => {
         description: "Configure it.",
         component: Component,
       });
+      app.slots.experimental_appOverlay({
+        id: "overlay",
+        component: Component,
+      });
       app.slots.navPanel({
         id: "panel",
         title: "Panel",
@@ -270,6 +315,10 @@ describe("collectPluginAppRegistrations", () => {
         title: "Custom settings",
         component: Component,
       });
+      app.slots.experimental_appOverlay({
+        id: "floating-widget",
+        component: Component,
+      });
       app.slots.navPanel({
         id: "board",
         title: "Board",
@@ -335,6 +384,9 @@ describe("collectPluginAppRegistrations", () => {
         title: "Custom settings",
         component: Component,
       },
+    ]);
+    expect(registrations.appOverlays).toEqual([
+      { id: "floating-widget", component: Component },
     ]);
     expect(registrations.navPanels).toEqual([
       {

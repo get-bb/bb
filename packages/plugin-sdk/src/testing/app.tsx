@@ -17,6 +17,7 @@ import {
   type BbNavigate,
   type ComposerCustomization,
   type ComposerView,
+  type ExperimentalAppOverlayRegistration,
   type PluginAppDefinition,
   type PluginAppSetup,
   type PluginCodeThemeState,
@@ -895,6 +896,7 @@ export function installTestPluginRuntime(): void {
 export interface CapturedPluginApp {
   homepageSections: PluginHomepageSectionRegistration[];
   settingsSections: PluginSettingsSectionRegistration[];
+  appOverlays: ExperimentalAppOverlayRegistration[];
   navPanels: PluginNavPanelRegistration[];
   threadPanelActions: PluginThreadPanelActionRegistration[];
   newThreadPanelActions: PluginNewThreadPanelActionRegistration[];
@@ -1103,7 +1105,7 @@ export interface RenderSlotOptions<
    */
   rpc?: PluginRpcTestHandlers<Contract>;
   /** `useSettings()` values; omitted → `{ values: undefined, isLoading: false }`. */
-  settings?: Record<string, string | boolean>;
+  settings?: Record<string, string | number | boolean>;
   /** `useBbContext()` selection; both default to null. */
   context?: { projectId?: string | null; threadId?: string | null };
   /** Initial `useRealtimeConnectionState()` value; defaults to `connected`. */

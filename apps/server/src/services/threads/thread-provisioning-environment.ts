@@ -23,7 +23,7 @@ import { advanceEnvironmentProvisioning } from "../environments/environment-prov
 import { applyLoggedEnvironmentLifecycleEventInTransaction } from "../environments/lifecycle-outcome.js";
 import type { EnvironmentProvisionRequest } from "../environments/environment-provision-request.js";
 import { ensureHostSessionReadyForWork } from "../hosts/host-lifecycle.js";
-import { clearThreadQueueProvisioningWaits } from "./queue-drains.js";
+import { requestQueuedMessageDispatch } from "./queued-message-dispatch.js";
 import {
   appendSystemErrorEvent,
   appendThreadProvisioningEvent,
@@ -360,14 +360,17 @@ export function ensureWorkspaceReadyEventInTransaction(
 }
 
 export function failThreadProvisioning(
-  deps: Pick<AppDeps, "db" | "hub" | "logger" | "providerRegistry">,
+  deps: ThreadProvisioningDeps,
   args: FailThreadProvisioningArgs,
 ): void {
   forgetActiveThreadProvisionContext(args.thread.id);
   // Provisioning is not coming, so nothing may keep waiting on it. The
   // messages stay queued rather than being discarded: they are still the
   // user's, and retrying the thread is exactly when they should go.
-  clearThreadQueueProvisioningWaits(deps, args.thread.id);
+  requestQueuedMessageDispatch(deps, {
+    kind: "provisioning-ended",
+    threadId: args.thread.id,
+  });
   appendSystemErrorEvent(deps, {
     threadId: args.thread.id,
     environmentId: args.environmentId,
@@ -978,7 +981,7 @@ function requestCheckoutUnmanagedEnvironmentProvision(
 }
 
 function queueCheckoutUnmanagedEnvironment(
-  deps: ThreadProvisionWriteDeps,
+  deps: ThreadProvisioningDeps,
   args: QueueCheckoutUnmanagedEnvironmentArgs,
 ): ThreadProvisioningResult {
   const result = requestCheckoutUnmanagedEnvironmentProvision(deps, {
@@ -1080,7 +1083,7 @@ async function requestPreparedEnvironmentProvision(
 }
 
 function attachActiveProvisioningEnvironment(
-  deps: ThreadProvisionWriteDeps,
+  deps: ThreadProvisioningDeps,
   args: EnvironmentPayloadThreadArgs,
 ): ThreadProvisioningResult {
   if (!hasActiveEnvironmentProvision(args.environment)) {
@@ -1106,7 +1109,7 @@ function attachActiveProvisioningEnvironment(
 }
 
 function ensureCheckoutUnmanagedEnvironmentRequested(
-  deps: ThreadProvisionWriteDeps,
+  deps: ThreadProvisioningDeps,
   args: CheckoutUnmanagedEnvironmentArgs,
 ): ThreadProvisioningResult {
   if (!isAttachableContext(args.context)) {

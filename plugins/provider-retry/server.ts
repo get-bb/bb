@@ -4,7 +4,7 @@ import { DEFAULT_MAXIMUM_WAIT_MS, decideRetry } from "./src/retry-policy.js";
 
 const MAXIMUM_WAIT_OPTIONS = ["6 hours", "24 hours", "No limit"] as const;
 
-function maximumWaitMs(value: string | boolean | undefined): number | null {
+function maximumWaitMs(value: string): number | null {
   switch (value) {
     case "6 hours":
       return DEFAULT_MAXIMUM_WAIT_MS;

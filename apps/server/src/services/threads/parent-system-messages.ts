@@ -245,9 +245,10 @@ async function queueActiveParentSystemMessage(
 ): Promise<boolean> {
   const expectedSteerTurnId = getActiveTurnId(deps, args.thread.id);
   if (expectedSteerTurnId === null) {
-    queueInputForStartingTurn(deps, {
+    const outcome = queueInputForStartingTurn(deps, {
+      claimed: null,
       input: {
-        content: args.input,
+        input: args.input,
         execution: args.execution,
         payload: { kind: "inline" },
         senderThreadId: null,
@@ -258,7 +259,23 @@ async function queueActiveParentSystemMessage(
       },
       threadId: args.thread.id,
     });
-    return true;
+    if (outcome.kind === "queued") return true;
+    if (outcome.kind === "dispatched") return false;
+    if (outcome.kind === "retry") {
+      const currentThread = outcome.thread;
+      if (
+        currentThread === null ||
+        currentThread.archivedAt !== null ||
+        currentThread.deletedAt !== null ||
+        currentThread.status === "stopping"
+      ) {
+        return false;
+      }
+      return queueReadyParentSystemMessage(deps, {
+        ...args,
+        thread: currentThread,
+      });
+    }
   }
   const permissionEscalation = resolvePermissionEscalation({
     initiator: "system",
@@ -417,9 +434,13 @@ export async function queueParentSystemMessage(
     // queues on the thread's queue like every other blocked dispatch, carrying
     // its own taxonomy so the turn it eventually becomes is the same turn it
     // would have been a moment earlier.
-    const execution = await buildExecutionOptions(deps, {}, {
-      threadId: parentThread.id,
-    });
+    const execution = await buildExecutionOptions(
+      deps,
+      {},
+      {
+        threadId: parentThread.id,
+      },
+    );
     createQueuedThreadMessage(deps.db, deps.hub, {
       threadId: parentThread.id,
       content: args.input,

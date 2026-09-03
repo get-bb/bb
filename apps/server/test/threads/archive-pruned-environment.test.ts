@@ -1,4 +1,5 @@
 import {
+  DEFAULT_DESTROYED_ENVIRONMENT_EVENT_DETACH_BATCH_SIZE,
   DEFAULT_DESTROYED_ENVIRONMENT_PRUNE_BATCH_SIZE,
   DESTROYED_ENVIRONMENT_TTL_MS,
   environments,
@@ -44,6 +45,7 @@ function seedThreadWithPrunedEnvironment(
   expect(
     pruneDestroyedEnvironments(deps.db, deps.hub, {
       updatedBefore: Date.now() - DESTROYED_ENVIRONMENT_TTL_MS,
+      eventBatchSize: DEFAULT_DESTROYED_ENVIRONMENT_EVENT_DETACH_BATCH_SIZE,
       limit: DEFAULT_DESTROYED_ENVIRONMENT_PRUNE_BATCH_SIZE,
     }).deleted,
   ).toBe(1);
