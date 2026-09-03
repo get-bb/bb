@@ -3,6 +3,7 @@ import { cleanup, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
 import type { Label, Task, TaskThread } from "../../shared/contract.js";
+import { makeTask } from "../../test-fixtures.js";
 
 window.matchMedia ??= (query: string) => ({
   matches: false,
@@ -43,22 +44,15 @@ const project = {
 };
 
 function task(number: number, labelIds: string[] = []): Task {
-  return {
+  return makeTask({
     id: `01HZZZZZZZZZZZZZZZZZZZZZT${number}`,
     projectId: PROJECT_ID,
     number,
     key: `TSK-${number}`,
     title: `Task ${number}`,
-    description: "",
-    status: "todo",
-    priority: "none",
-    dueDate: null,
-    parentTaskId: null,
     position: number,
-    createdAt: "2026-07-15T00:00:00.000Z",
-    updatedAt: "2026-07-15T00:00:00.000Z",
     labelIds,
-  };
+  });
 }
 
 function thread(

@@ -16,16 +16,9 @@ import {
   BUILT_IN_REPLACEMENT_PROVIDER,
 } from "@/lib/plugin-replacement-preference";
 import { CodeRendererSettings } from "./CodeRendererSettings";
+import { makePluginRegistrationSet } from "@/test/fixtures/plugins";
 
-const EMPTY_REGISTRATIONS = {
-  homepageSections: [],
-  settingsSections: [],
-  navPanels: [],
-  threadPanelActions: [],
-  sidebarFooterActions: [],
-  fileOpeners: [],
-  messageDirectives: [],
-};
+const EMPTY_REGISTRATIONS = makePluginRegistrationSet();
 
 afterEach(() => {
   cleanup();

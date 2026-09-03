@@ -16,7 +16,6 @@ import {
 import {
   resetPluginSlotStoreForTest,
   setPluginSlotRegistrations,
-  type PluginRegistrationSet,
 } from "@/lib/plugin-slots";
 import {
   resetPluginLogoStoreForTest,
@@ -25,21 +24,7 @@ import {
 import { resetAllCrashedPluginSlotsForTest } from "../../plugin/PluginSlotMount";
 import { ThreadProviderContext } from "../thread-provider-context";
 import { ThreadTimelineRows } from "./ThreadTimelineRows";
-
-function registrationSet(
-  overrides: Partial<PluginRegistrationSet>,
-): PluginRegistrationSet {
-  return {
-    homepageSections: [],
-    settingsSections: [],
-    navPanels: [],
-    threadPanelActions: [],
-    sidebarFooterActions: [],
-    fileOpeners: [],
-    messageDirectives: [],
-    ...overrides,
-  };
-}
+import { makePluginRegistrationSet as registrationSet } from "@/test/fixtures/plugins";
 
 const toMarkup = (ui: ReactElement) =>
   renderToStaticMarkup(<MemoryRouter>{ui}</MemoryRouter>);

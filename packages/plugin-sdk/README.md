@@ -117,16 +117,31 @@ npm install --save-dev react react-dom @testing-library/react jsdom # frontend t
 Backend example:
 
 ```ts
-import { createFakePluginHost } from "@get-bb/plugin-sdk/testing";
+import {
+  createFakePluginHost,
+  makePluginAgentConfigurationContext,
+} from "@get-bb/plugin-sdk/testing";
 import plugin from "./server.js";
 
 const host = createFakePluginHost({ pluginId: "notes" });
 await plugin(host.bb);
 
+await host.harness.behavior.resolveAgentConfiguration(
+  makePluginAgentConfigurationContext({
+    provider: { id: "codex" },
+  }),
+);
 await host.harness.behavior.callRpc("list", { query: "today" });
 expect(host.harness.inspection.registrations.rpcMethods).toContain("list");
 await host.harness.lifecycle.dispose();
 ```
+
+`makePluginAgentConfigurationContext`, `makeMessageDispatchHookContext`,
+`makeThreadResponse`, `makeQueueEntry`, and `makeTurnFailedEvent` return
+complete deterministic SDK objects. Pass partial overrides so a behavioral
+test shows only the values relevant to its scenario. Nested context
+members merge partial overrides against complete defaults, so required contract
+additions remain localized to the shared fixtures.
 
 `harness.behavior` contains deterministic host inputs (RPC/HTTP/CLI calls,
 events, settings, tools, interactions, and schedules), `harness.inspection`

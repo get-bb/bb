@@ -31,7 +31,7 @@
     },
     "./testing": {
       "types": "bundled-types/bb-plugin-sdk-testing.d.ts",
-      "sha256": "94f3ab09f233362a6cf435a355be0be2272cba8a630d541aa81a545c50d0f86f"
+      "sha256": "2d1cd3fd4a3528a3314c1deca0848071dc160724ad26d77b47bac7ad52f30819"
     },
     "./testing/app": {
       "types": "bundled-types/bb-plugin-sdk-testing-app.d.ts",

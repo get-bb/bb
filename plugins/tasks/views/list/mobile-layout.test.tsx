@@ -3,6 +3,7 @@ import { cleanup, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
 import type { Label, Task, TaskThread } from "../../shared/contract.js";
+import { makeTask } from "../../test-fixtures.js";
 
 window.matchMedia ??= (query: string) => ({
   matches: false,
@@ -47,22 +48,17 @@ const labels: Label[] = ["bug", "frontend", "needs-design"].map(
   }),
 );
 
-const busyTask: Task = {
+const busyTask: Task = makeTask({
   id: "01HZZZZZZZZZZZZZZZZZZZZZT1",
   projectId: PROJECT_ID,
   number: 1,
   key: "TSK-1",
   title: "A task carrying every piece of row metadata at once",
-  description: "",
-  status: "todo",
   priority: "high",
   dueDate: "2026-07-20",
-  parentTaskId: null,
   position: 1,
-  createdAt: "2026-07-15T00:00:00.000Z",
-  updatedAt: "2026-07-15T00:00:00.000Z",
   labelIds: labels.map((label) => label.id),
-};
+});
 
 const workerThread: TaskThread = {
   id: "01HZZZZZZZZZZZZZZZZZZZZZH1",

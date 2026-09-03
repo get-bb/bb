@@ -18,6 +18,7 @@ import {
   setPluginSlotRegistrations,
   type PluginRegistrationSet,
 } from "./plugin-slots";
+import { makePluginRegistrationSet } from "@/test/fixtures/plugins";
 
 function Body() {
   return null;
@@ -26,15 +27,9 @@ function Body() {
 function registrations(
   navPanels: PluginRegistrationSet["navPanels"],
 ): PluginRegistrationSet {
-  return {
-    homepageSections: [],
-    settingsSections: [],
+  return makePluginRegistrationSet({
     navPanels,
-    threadPanelActions: [],
-    sidebarFooterActions: [],
-    fileOpeners: [],
-    messageDirectives: [],
-  };
+  });
 }
 
 const TASKS = {

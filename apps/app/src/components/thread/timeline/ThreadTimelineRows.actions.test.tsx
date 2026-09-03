@@ -26,20 +26,14 @@ import {
   type PluginRegistrationSet,
 } from "@/lib/plugin-slots";
 import { ThreadTimelineRows } from "./ThreadTimelineRows";
+import { makePluginRegistrationSet } from "@/test/fixtures/plugins";
 
 function messageActionRegistrationSet(
   messageActions: readonly PluginMessageActionRegistration[],
 ): PluginRegistrationSet {
-  return {
-    homepageSections: [],
-    settingsSections: [],
-    navPanels: [],
-    threadPanelActions: [],
-    sidebarFooterActions: [],
-    fileOpeners: [],
-    messageDirectives: [],
+  return makePluginRegistrationSet({
     messageActions,
-  };
+  });
 }
 
 const toMarkup = (ui: ReactElement) =>
