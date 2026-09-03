@@ -223,7 +223,7 @@ export function buildModelCatalogFromConfigOptions(
       id: option.value,
       model: option.value,
       displayName: option.name ?? option.value,
-      description: "",
+      description: option.description ?? "",
       supportedReasoningEfforts: reasoning.supportedReasoningEfforts,
       defaultReasoningEffort: reasoning.defaultReasoningEffort,
       isDefault,

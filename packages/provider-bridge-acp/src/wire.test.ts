@@ -125,6 +125,11 @@ describe("acpSessionNewResultSchema", () => {
               name: "openai-codex/GPT-5.5",
               description: null,
             },
+            {
+              value: "openai-codex/gpt-5.5-codex-max",
+              name: "openai-codex/GPT-5.5 Codex Max",
+              description: "openai-codex/gpt-5.5-codex-max",
+            },
           ],
         },
         {
@@ -147,6 +152,12 @@ describe("acpSessionNewResultSchema", () => {
     ).toBeUndefined();
     expect(parsed.data.configOptions?.[0].options?.[0].name).toBe(
       "openai-codex/GPT-5.5",
+    );
+    expect(
+      parsed.data.configOptions?.[0].options?.[0].description,
+    ).toBeUndefined();
+    expect(parsed.data.configOptions?.[0].options?.[1].description).toBe(
+      "openai-codex/gpt-5.5-codex-max",
     );
     expect(parsed.data.configOptions?.[1].category).toBeUndefined();
     expect(parsed.data.configOptions?.[1].options?.[0].name).toBeUndefined();

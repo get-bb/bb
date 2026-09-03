@@ -10,6 +10,8 @@ import {
   STORY_CLAUDE_REASONING,
   STORY_CODEX_MODELS,
   STORY_CODEX_REASONING,
+  STORY_OMP_MODELS,
+  STORY_OMP_PROVIDER_OPTION,
   STORY_PI_MODELS,
   STORY_PROVIDER_OPTIONS,
   STORY_SERVICE_TIER_SUPPORT,
@@ -68,6 +70,7 @@ const MODEL_OPTIONS_BY_PROVIDER_ID: Record<
   codex: STORY_CODEX_MODELS,
   "claude-code": STORY_CLAUDE_CODE_MODELS,
   pi: STORY_PI_MODELS,
+  omp: STORY_OMP_MODELS,
 };
 
 const MORE_MODEL_OPTIONS_BY_PROVIDER_ID: Record<
@@ -77,6 +80,7 @@ const MORE_MODEL_OPTIONS_BY_PROVIDER_ID: Record<
   codex: [],
   "claude-code": STORY_CLAUDE_CODE_MORE_MODELS,
   pi: [],
+  omp: [],
 };
 
 const REASONING_OPTIONS_BY_PROVIDER_ID: Record<
@@ -86,6 +90,7 @@ const REASONING_OPTIONS_BY_PROVIDER_ID: Record<
   codex: STORY_CODEX_REASONING,
   "claude-code": STORY_CLAUDE_REASONING,
   pi: STORY_CODEX_REASONING,
+  omp: STORY_CODEX_REASONING,
 };
 
 export function Overview() {
@@ -115,6 +120,12 @@ export function Overview() {
           hint="provider tabs and model selection use seeded story data"
         >
           <ModelReasoningPickerInteractive />
+        </StoryRow>
+        <StoryRow
+          label="open: acp grouped"
+          hint="omp-style catalog; provider headers, collision qualifiers, ambiguous-selection token"
+        >
+          <ModelReasoningPickerOpenGrouped />
         </StoryRow>
         <StoryRow
           label="loading models"
@@ -170,6 +181,7 @@ function ModelReasoningPickerInteractive() {
   return (
     <ModelReasoningPicker
       {...codexBase}
+      providerOptions={[...STORY_PROVIDER_OPTIONS, STORY_OMP_PROVIDER_OPTION]}
       selectedProviderId={selectedProviderId}
       onSelectedProviderChange={(providerId) => {
         setSelectedProviderId(providerId);
@@ -186,6 +198,23 @@ function ModelReasoningPickerInteractive() {
         STORY_SERVICE_TIER_SUPPORT[selectedProviderId] ?? false
       }
       onReasoningChange={setReasoningValue}
+      modal={false}
+    />
+  );
+}
+
+function ModelReasoningPickerOpenGrouped() {
+  return (
+    <ModelReasoningPicker
+      {...codexBase}
+      providerOptions={[STORY_OMP_PROVIDER_OPTION]}
+      selectedProviderId="omp"
+      modelValue="zai/glm-5.3"
+      modelOptions={STORY_OMP_MODELS}
+      moreModelOptions={[]}
+      reasoningOptions={STORY_CODEX_REASONING}
+      showFastModeToggle={false}
+      defaultOpen
       modal={false}
     />
   );

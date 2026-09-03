@@ -1,4 +1,5 @@
 import {
+  Fragment,
   useCallback,
   useEffect,
   useId,
@@ -53,7 +54,15 @@ import {
   OPTION_TRIGGER_CONTENT_CLASS_NAME,
 } from "@bb/shared-ui/option-display";
 import { type PickerOption } from "./OptionPicker";
-import type { ModelPickerOption } from "./model-picker-option";
+import {
+  groupModelOptions,
+  hasMultipleRouteGroups,
+  modelRouteKey,
+  qualifyCollidingLabels,
+  routeProviderDisplayName,
+  selectedModelQualifier,
+  type ModelPickerOption,
+} from "./model-picker-option";
 import { searchPickerOptions } from "./picker-search";
 import { useResetPickerScroll } from "./useResetPickerScroll";
 import {
@@ -157,6 +166,35 @@ export function buildModelNavRows({
   }
 
   return rows;
+}
+
+type ModelListBlock =
+  | { kind: "toggle"; navIndex: number }
+  | {
+      kind: "group";
+      routeKey: string | null;
+      entries: { navIndex: number; option: ModelPickerOption }[];
+    };
+
+function buildModelListBlocks(
+  navRows: readonly ModelNavRow[],
+): ModelListBlock[] {
+  const blocks: ModelListBlock[] = [];
+  let currentGroup: Extract<ModelListBlock, { kind: "group" }> | null = null;
+  navRows.forEach((row, navIndex) => {
+    if (row.kind === "more-toggle") {
+      currentGroup = null;
+      blocks.push({ kind: "toggle", navIndex });
+      return;
+    }
+    const routeKey = modelRouteKey(row.option);
+    if (currentGroup === null || currentGroup.routeKey !== routeKey) {
+      currentGroup = { kind: "group", routeKey, entries: [] };
+      blocks.push(currentGroup);
+    }
+    currentGroup.entries.push({ navIndex, option: row.option });
+  });
+  return blocks;
 }
 
 interface ModelReasoningPickerProps {
@@ -313,6 +351,16 @@ export function ModelReasoningPicker({
   const { base: triggerModelBase, tag: triggerModelTag } =
     splitModelLabelTag(triggerModelLabel);
 
+  const triggerModelQualifier = useMemo(
+    () =>
+      selectedModelQualifier(
+        [...modelOptions, ...moreModelOptions],
+        modelValue,
+        selectedProvider?.brandPrefix,
+      ),
+    [modelOptions, moreModelOptions, modelValue, selectedProvider?.brandPrefix],
+  );
+
   const selectedReasoningOption = reasoningOptions.find(
     (r) => r.value === reasoningValue,
   );
@@ -452,10 +500,15 @@ export function ModelReasoningPicker({
       query: searchQuery,
       getLabel: (option) =>
         stripModelBrandPrefix(option.label, activeBrandPrefix),
-      getAliases: (option) =>
-        option.routeProviderId
-          ? [option.routeProviderId, option.value]
-          : [option.value],
+      getAliases: (option) => {
+        const routeKey = modelRouteKey(option);
+        return [
+          ...(routeKey !== null
+            ? [routeKey, routeProviderDisplayName(routeKey)]
+            : []),
+          option.value,
+        ];
+      },
     });
   }, [
     activeBrandPrefix,
@@ -485,6 +538,25 @@ export function ModelReasoningPicker({
       showMoreModels,
     ],
   );
+
+  const visibleModelOptions = useMemo(
+    () => navRows.flatMap((row) => (row.kind === "model" ? [row.option] : [])),
+    [navRows],
+  );
+  const visibleModelQualifiers = useMemo(
+    () => qualifyCollidingLabels(visibleModelOptions, activeBrandPrefix),
+    [visibleModelOptions, activeBrandPrefix],
+  );
+  const modelListBlocks = useMemo(
+    () => buildModelListBlocks(navRows),
+    [navRows],
+  );
+  const showModelGroupHeaders = useMemo(
+    () => hasMultipleRouteGroups(groupModelOptions(visibleModelOptions)),
+    [visibleModelOptions],
+  );
+  const modelGroupHeaderId = (routeKey: string, blockIndex: number): string =>
+    `${navId}-group-${routeKey}-${blockIndex}`;
 
   const highlightedIndex =
     activeIndex >= 0 && activeIndex < navRows.length ? activeIndex : -1;
@@ -745,23 +817,27 @@ export function ModelReasoningPicker({
     ? "Loading models..."
     : selectedModelLoadFailed
       ? selectedModelLoadErrorText
-      : triggerModelLabel;
+      : triggerModelQualifier
+        ? `${triggerModelLabel} · ${modelValue}`
+        : triggerModelLabel;
   const triggerTitle = [
     `${selectedProviderLabel}: ${triggerTitleModelLabel}`,
     triggerReasoningLabel ? ` · ${triggerReasoningLabel} reasoning` : "",
     showSelectedFastMode ? " (Fast mode)" : "",
   ].join("");
+  const triggerBaseAriaLabel = toggleShortcut
+    ? `Provider, model and reasoning (${toggleShortcut.label})`
+    : "Provider, model and reasoning";
+  const triggerAriaLabel = triggerModelQualifier
+    ? `${triggerBaseAriaLabel}, ${triggerModelQualifier}`
+    : triggerBaseAriaLabel;
   const trigger = (
     <Button
       ref={triggerRef}
       type="button"
       variant="ghost"
       size="sm"
-      aria-label={
-        toggleShortcut
-          ? `Provider, model and reasoning (${toggleShortcut.label})`
-          : "Provider, model and reasoning"
-      }
+      aria-label={triggerAriaLabel}
       aria-keyshortcuts={toggleShortcut?.ariaKeyshortcuts}
       disabled={disabled}
       className={cn(
@@ -819,6 +895,11 @@ export function ModelReasoningPicker({
             {triggerModelTag ? (
               <span className="shrink-0 text-subtle-foreground">
                 {triggerModelTag}
+              </span>
+            ) : null}
+            {triggerModelQualifier ? (
+              <span className="shrink-0 text-subtle-foreground">
+                {triggerModelQualifier}
               </span>
             ) : null}
             {triggerReasoningLabel ? (
@@ -966,15 +1047,13 @@ export function ModelReasoningPicker({
                 <ModelPickerLoadingRows />
               ) : hasActiveModelOptions ? (
                 <>
-                  {navRows.map((row, index) => {
-                    const active = highlightedIndex === index;
-                    const domId = optionDomId(index);
-                    if (row.kind === "more-toggle") {
+                  {modelListBlocks.map((block, blockIndex) => {
+                    if (block.kind === "toggle") {
                       return (
                         <MoreModelsToggleRow
                           key="more-toggle"
-                          id={domId}
-                          isActive={active}
+                          id={optionDomId(block.navIndex)}
+                          isActive={highlightedIndex === block.navIndex}
                           expanded={showMoreModels}
                           onToggle={() =>
                             setShowMoreModels((current) => !current)
@@ -982,22 +1061,51 @@ export function ModelReasoningPicker({
                         />
                       );
                     }
-                    const option = row.option;
-                    return (
+                    const headerKey =
+                      showModelGroupHeaders && block.routeKey !== null
+                        ? block.routeKey
+                        : null;
+                    const rows = block.entries.map(({ navIndex, option }) => (
                       <MenuRowButton
                         key={option.value}
-                        id={domId}
+                        id={optionDomId(navIndex)}
                         role={showSearchInput ? "option" : undefined}
-                        isActive={active}
+                        isActive={highlightedIndex === navIndex}
                         label={stripModelBrandPrefix(
                           option.label,
                           activeBrandPrefix,
                         )}
-                        qualifier={option.routeProviderId}
+                        qualifier={visibleModelQualifiers.get(option.value)}
+                        title={
+                          block.routeKey === null ? undefined : option.value
+                        }
                         selected={!isPreviewing && option.value === modelValue}
                         disabled={previewSelectionBlocked}
                         onClick={() => handleModelSelect(option.value)}
                       />
+                    ));
+                    if (headerKey === null) {
+                      return (
+                        <Fragment
+                          key={`ungrouped-${blockIndex}-${block.routeKey}`}
+                        >
+                          {rows}
+                        </Fragment>
+                      );
+                    }
+                    const headerId = modelGroupHeaderId(headerKey, blockIndex);
+                    return (
+                      <div
+                        key={`group-${headerKey}-${blockIndex}`}
+                        role="group"
+                        aria-labelledby={headerId}
+                      >
+                        {}
+                        <MenuSectionLabel id={headerId} pinBelowLabel>
+                          {routeProviderDisplayName(headerKey)}
+                        </MenuSectionLabel>
+                        {rows}
+                      </div>
                     );
                   })}
                   {!isCompactViewport &&
@@ -1114,13 +1222,30 @@ export function ModelReasoningPicker({
   );
 }
 
-function MenuSectionLabel({ children }: { children: ReactNode }) {
+export const MODEL_GROUP_HEADER_STICKY_TOP_DESKTOP = "top-[33px]";
+export const MODEL_GROUP_HEADER_STICKY_TOP_COMPACT = "top-[34px]";
+
+function MenuSectionLabel({
+  id,
+  pinBelowLabel = false,
+  children,
+}: {
+  id?: string;
+  pinBelowLabel?: boolean;
+  children: ReactNode;
+}) {
   const isCompactViewport = useIsCompactViewport();
 
   return (
     <div
+      id={id}
       className={cn(
-        "sticky top-0 z-10 bg-background px-2 text-xs font-medium text-muted-foreground",
+        "sticky z-10 bg-background px-2 text-xs font-medium text-muted-foreground",
+        pinBelowLabel
+          ? isCompactViewport
+            ? MODEL_GROUP_HEADER_STICKY_TOP_COMPACT
+            : MODEL_GROUP_HEADER_STICKY_TOP_DESKTOP
+          : "top-0",
         isCompactViewport ? "pb-1.5 pt-2" : "pb-[0.3125rem] pt-2",
       )}
     >
@@ -1220,8 +1345,15 @@ function MoreModelsSubmenu({
   onSelect: (value: string) => void;
 }) {
   const { isLastHovered, hoverProps } = useMenuItemHover();
+  const submenuId = useId();
   const triggerRef = useRef<HTMLButtonElement | null>(null);
   const contentRef = useRef<HTMLDivElement | null>(null);
+  const groups = useMemo(() => groupModelOptions(options), [options]);
+  const qualifiers = useMemo(
+    () => qualifyCollidingLabels(options, activeBrandPrefix),
+    [options, activeBrandPrefix],
+  );
+  const showGroupHeaders = hasMultipleRouteGroups(groups);
   const focusFirstSubItem = useCallback(() => {
     window.setTimeout(() => {
       contentRef.current?.querySelector<HTMLButtonElement>("button")?.focus();
@@ -1296,15 +1428,36 @@ function MoreModelsSubmenu({
         }}
       >
         <MenuHoverProvider>
-          {options.map((option) => (
-            <MenuRowButton
-              key={option.value}
-              label={stripModelBrandPrefix(option.label, activeBrandPrefix)}
-              qualifier={option.routeProviderId}
-              selected={!isPreviewing && option.value === modelValue}
-              onClick={() => onSelect(option.value)}
-            />
-          ))}
+          {groups.map((group, groupIndex) => {
+            const rows = group.options.map((option) => (
+              <MenuRowButton
+                key={option.value}
+                label={stripModelBrandPrefix(option.label, activeBrandPrefix)}
+                qualifier={qualifiers.get(option.value)}
+                title={group.key === null ? undefined : option.value}
+                selected={!isPreviewing && option.value === modelValue}
+                onClick={() => onSelect(option.value)}
+              />
+            ));
+            if (group.key === null || !showGroupHeaders) {
+              return (
+                <Fragment key={`ungrouped-${groupIndex}`}>{rows}</Fragment>
+              );
+            }
+            const headerId = `${submenuId}-group-${group.key}`;
+            return (
+              <div
+                key={`group-${group.key}-${groupIndex}`}
+                role="group"
+                aria-labelledby={headerId}
+              >
+                <MenuSectionLabel id={headerId}>
+                  {routeProviderDisplayName(group.key)}
+                </MenuSectionLabel>
+                {rows}
+              </div>
+            );
+          })}
         </MenuHoverProvider>
       </PopoverContent>
     </Popover>
@@ -1323,6 +1476,7 @@ function ResetBrowseStateOnContentUnmount({
 function MenuRowButton({
   label,
   qualifier,
+  title,
   selected,
   disabled = false,
   onClick,
@@ -1334,6 +1488,7 @@ function MenuRowButton({
 }: {
   label: string;
   qualifier?: string;
+  title?: string;
   selected: boolean;
   disabled?: boolean;
   onClick: () => void;
@@ -1369,7 +1524,7 @@ function MenuRowButton({
     >
       <span
         className="truncate"
-        title={qualifier ? `${label} · ${qualifier}` : label}
+        title={title ?? (qualifier ? `${label} · ${qualifier}` : label)}
       >
         {base}
         {tag ? (

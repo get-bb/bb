@@ -255,6 +255,7 @@ const acpConfigOptionSelectOptionSchema = z
   .object({
     value: z.string(),
     name: acpOptionalString,
+    description: acpOptionalString,
   })
   .passthrough();
 

@@ -6,6 +6,7 @@ import {
   fireEvent,
   render,
   screen,
+  within,
 } from "@testing-library/react";
 import type { AvailableModel, ReasoningLevel } from "@bb/domain";
 import type {
@@ -23,6 +24,8 @@ import {
 } from "@/views/thread-detail/PaneContext";
 import {
   buildModelNavRows,
+  MODEL_GROUP_HEADER_STICKY_TOP_COMPACT,
+  MODEL_GROUP_HEADER_STICKY_TOP_DESKTOP,
   ModelReasoningPicker,
 } from "./ModelReasoningPicker";
 import type { PickerOption } from "./OptionPicker";
@@ -81,6 +84,34 @@ const manyCodexModels: readonly PickerOption<string>[] = [
   { value: "o3", label: "o3" },
   { value: "o4-mini", label: "o4-mini" },
   { value: "sonnet-in-codex", label: "Sonnet" },
+];
+
+const ompStyleModels: readonly ModelPickerOption[] = [
+  { value: "cursor/claude-sonnet-4-5", label: "Claude Sonnet 4.5" },
+  { value: "cursor/glm-5.3", label: "GLM-5.3" },
+  { value: "zai/glm-5.3", label: "GLM-5.3" },
+  { value: "zai/glm-5.2-air", label: "GLM-5.2 Air" },
+  { value: "commandcode/zai-org/GLM-5", label: "GLM-5" },
+  { value: "mistral/mistral-medium-latest", label: "mistral-medium-latest" },
+  { value: "mistral/mistral-medium-2506", label: "mistral-medium-latest" },
+  {
+    value: "mistral/mistral-medium-latest-2501",
+    label: "mistral-medium-latest",
+  },
+  { value: "mistral/mistral-large-latest", label: "Mistral Large" },
+];
+
+const ompProviderOptions: readonly ProviderPickerOption[] = [
+  { value: "omp", label: "OMP" },
+];
+
+const singleRouteZai: readonly ModelPickerOption[] = [
+  { value: "zai/glm-5.3", label: "GLM-5.3" },
+  { value: "zai/glm-5.3-preview", label: "GLM-5.3" },
+  { value: "zai/glm-5.2-air", label: "GLM-5.2 Air" },
+  { value: "zai/glm-5.2", label: "GLM-5.2" },
+  { value: "zai/glm-5.1", label: "GLM-5.1" },
+  { value: "zai/glm-4.7", label: "GLM-4.7" },
 ];
 
 const reasoningOptions: readonly PickerOption<ReasoningLevel>[] = [
@@ -578,7 +609,7 @@ describe("ModelReasoningPicker", () => {
     expect(await screen.findByText("Opus 4.7")).not.toBeNull();
   });
 
-  it("keeps duplicate Pi models distinct by their nested provider", () => {
+  it("groups Pi's nested-provider models under labelled route groups", () => {
     const apiModel = "openai/gpt-5.3-codex-spark";
     const subscriptionModel = "openai-codex/gpt-5.3-codex-spark";
     const modelLabel = "GPT-5.3 Codex Spark";
@@ -597,20 +628,312 @@ describe("ModelReasoningPicker", () => {
     });
 
     const trigger = screen.getByRole("button", {
-      name: "Provider, model and reasoning",
+      name: "Provider, model and reasoning, OpenAI Codex",
     });
+    expect(trigger.textContent).toContain("OpenAI Codex");
     expect(trigger.textContent).toContain(modelLabel);
-    expect(trigger.textContent).not.toContain("openai-codex");
+    expect(
+      (trigger.querySelector("span[title]") as HTMLElement | null)?.title,
+    ).toContain(subscriptionModel);
 
     fireEvent.click(trigger);
 
-    expect(screen.getAllByText(modelLabel)).toHaveLength(3);
-    const apiQualifier = screen.getByText("openai");
-    expect(screen.getByText("openai-codex")).not.toBeNull();
+    expect(screen.getByRole("group", { name: "OpenAI" })).not.toBeNull();
+    expect(screen.getByRole("group", { name: "OpenAI Codex" })).not.toBeNull();
+    const rows = screen.getAllByText(modelLabel);
+    expect(rows).toHaveLength(3);
 
-    fireEvent.click(apiQualifier);
-
+    fireEvent.click(rows[1]);
     expect(onModelChange).toHaveBeenCalledWith(apiModel);
+
+    fireEvent.click(rows[2]);
+    expect(onModelChange).toHaveBeenCalledWith(subscriptionModel);
+  });
+
+  it("groups a multi-route catalog under labelled provider headers", () => {
+    const { onModelChange } = renderPicker({
+      modelOptions: ompStyleModels,
+      modelValue: "zai/glm-5.3",
+      pickerProviderOptions: ompProviderOptions,
+      selectedProviderId: "omp",
+    });
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Provider, model and reasoning, Z.ai",
+      }),
+    );
+    expect(screen.getByText("Model")).not.toBeNull();
+    expect(screen.getByRole("group", { name: "Cursor" })).not.toBeNull();
+    expect(screen.getByRole("group", { name: "Z.ai" })).not.toBeNull();
+    expect(screen.getByRole("group", { name: "CommandCode" })).not.toBeNull();
+    expect(screen.getByRole("group", { name: "Mistral" })).not.toBeNull();
+
+    expect(
+      screen
+        .getAllByText("Z.ai")
+        .some((node) =>
+          node.className.includes(MODEL_GROUP_HEADER_STICKY_TOP_DESKTOP),
+        ),
+    ).toBe(true);
+
+    expect(screen.getAllByText("GLM-5.3")).toHaveLength(3);
+    expect(screen.queryByText("glm-5.3")).toBeNull();
+    expect(screen.getByTitle("zai/glm-5.3")).not.toBeNull();
+    expect(screen.getByTitle("cursor/glm-5.3")).not.toBeNull();
+
+    fireEvent.click(screen.getAllByText("GLM-5.3")[1]);
+    expect(onModelChange).toHaveBeenCalledWith("cursor/glm-5.3");
+  });
+
+  it("renders single-route lists flat, keeping the pre-grouping DOM", () => {
+    renderPicker({ modelOptions: manyCodexModels });
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Provider, model and reasoning" }),
+    );
+
+    expect(screen.getByTitle("5.5")).not.toBeNull();
+    expect(screen.queryByText("gpt-5.5")).toBeNull();
+    expect(screen.queryByRole("group")).toBeNull();
+  });
+
+  it("renders a single-route keyed list headerless but keeps raw-id tooltips and within-group qualifiers", () => {
+    renderPicker({ modelOptions: singleRouteZai });
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Provider, model and reasoning" }),
+    );
+
+    expect(screen.queryByRole("group")).toBeNull();
+    expect(screen.getByTitle("zai/glm-5.3")).not.toBeNull();
+    expect(screen.getByTitle("zai/glm-5.3-preview")).not.toBeNull();
+    expect(
+      screen.getByRole("option", { name: "GLM-5.2 Air" }).textContent,
+    ).toBe("GLM-5.2 Air");
+    expect(
+      screen.getByRole("option", { name: "GLM-5.3glm-5.3-preview" }),
+    ).not.toBeNull();
+    expect(screen.getByRole("option", { name: "GLM-5.3" }).textContent).toBe(
+      "GLM-5.3",
+    );
+  });
+
+  it("qualifies only within-provider label collisions", () => {
+    renderPicker({
+      modelOptions: ompStyleModels,
+      modelValue: "mistral/mistral-medium-2506",
+      pickerProviderOptions: ompProviderOptions,
+      selectedProviderId: "omp",
+    });
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Provider, model and reasoning, Mistral · mistral-medium-2506",
+      }),
+    );
+
+    const listbox = screen.getByRole("listbox", { name: "Models" });
+    expect(within(listbox).getAllByText("mistral-medium-latest")).toHaveLength(
+      3,
+    );
+
+    const aliasRow = within(listbox).getByRole("option", {
+      name: "mistral-medium-latest",
+    });
+    expect(aliasRow.textContent).toBe("mistral-medium-latest");
+    expect(
+      within(listbox).getByRole("option", {
+        name: "mistral-medium-latestmistral-medium-2506",
+      }).textContent,
+    ).toContain("mistral-medium-2506");
+    expect(
+      within(listbox).getByRole("option", {
+        name: "mistral-medium-latestmistral-medium-latest-2501",
+      }).textContent,
+    ).toContain("mistral-medium-latest-2501");
+    const largeRow = within(listbox)
+      .getByText("Mistral Large")
+      .closest("button")?.textContent;
+    expect(largeRow).toBe("Mistral Large");
+  });
+
+  it("regroups search results and re-applies the header rule", () => {
+    renderPicker({
+      modelOptions: ompStyleModels,
+      pickerProviderOptions: ompProviderOptions,
+      selectedProviderId: "omp",
+    });
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Provider, model and reasoning" }),
+    );
+    const search = screen.getByPlaceholderText("Search models");
+
+    fireEvent.change(search, { target: { value: "zai" } });
+    expect(screen.getByRole("group", { name: "Z.ai" })).not.toBeNull();
+    expect(screen.getByRole("group", { name: "CommandCode" })).not.toBeNull();
+    expect(screen.queryByRole("group", { name: "Cursor" })).toBeNull();
+    expect(screen.queryByRole("group", { name: "Mistral" })).toBeNull();
+    expect(
+      within(screen.getByRole("listbox", { name: "Models" })).queryByText(
+        "Claude Sonnet 4.5",
+      ),
+    ).toBeNull();
+
+    fireEvent.change(search, { target: { value: "Z.ai" } });
+    expect(screen.getByText("GLM-5.3")).not.toBeNull();
+    expect(screen.queryByRole("group")).toBeNull();
+
+    fireEvent.change(search, { target: { value: "mistral-large" } });
+    expect(screen.queryByRole("group")).toBeNull();
+    expect(screen.getByText("Mistral Large")).not.toBeNull();
+    expect(screen.queryByText("mistral-medium-latest")).toBeNull();
+  });
+
+  it("keeps keyboard selection working across group wrappers", () => {
+    const { onModelChange } = renderPicker({
+      modelOptions: ompStyleModels,
+      pickerProviderOptions: ompProviderOptions,
+      selectedProviderId: "omp",
+    });
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Provider, model and reasoning" }),
+    );
+    const search = screen.getByPlaceholderText("Search models");
+    fireEvent.change(search, { target: { value: "glm" } });
+
+    fireEvent.keyDown(search, { key: "ArrowDown" });
+    fireEvent.keyDown(search, { key: "ArrowDown" });
+    expect(search.getAttribute("aria-activedescendant")).not.toBeNull();
+    fireEvent.keyDown(search, { key: "Enter" });
+    expect(onModelChange).toHaveBeenCalledWith("cursor/glm-5.3");
+  });
+
+  it("cycles a grouped catalog in list order", () => {
+    const { onModelChange } = renderPicker({
+      modelOptions: ompStyleModels,
+      modelValue: "zai/glm-5.3",
+      pickerProviderOptions: ompProviderOptions,
+      selectedProviderId: "omp",
+    });
+    const target = screen.getByRole("button", {
+      name: "Provider, model and reasoning, Z.ai",
+    });
+
+    expect(
+      commandHandlers.get("modelPicker.cycleModelBackward")?.({ target }),
+    ).toBe(true);
+    expect(onModelChange).toHaveBeenCalledWith("cursor/glm-5.3");
+  });
+
+  it("shows the distinguishing token on the trigger only when ambiguous", () => {
+    const ambiguous = renderPicker({
+      modelOptions: ompStyleModels,
+      modelValue: "zai/glm-5.3",
+      pickerProviderOptions: ompProviderOptions,
+      selectedProviderId: "omp",
+    });
+    const ambiguousTrigger = screen.getByRole("button", {
+      name: "Provider, model and reasoning, Z.ai",
+    });
+    expect(ambiguousTrigger.textContent).toContain("Z.ai");
+    expect(ambiguousTrigger.textContent).not.toContain("Cursor");
+    cleanup();
+
+    renderPicker({
+      modelOptions: ompStyleModels,
+      modelValue: "zai/glm-5.2-air",
+      pickerProviderOptions: ompProviderOptions,
+      selectedProviderId: "omp",
+      onModelChange: ambiguous.onModelChange,
+    });
+    const uniqueTrigger = screen.getByRole("button", {
+      name: "Provider, model and reasoning",
+    });
+    expect(uniqueTrigger.textContent).toContain("GLM-5.2 Air");
+    expect(uniqueTrigger.textContent).not.toContain("Z.ai");
+    expect(uniqueTrigger.textContent).not.toContain("zai");
+  });
+
+  it("qualifies a within-group collision on the trigger with route name and id tail", () => {
+    renderPicker({
+      modelOptions: ompStyleModels,
+      modelValue: "mistral/mistral-medium-2506",
+      pickerProviderOptions: ompProviderOptions,
+      selectedProviderId: "omp",
+    });
+
+    const trigger = screen.getByRole("button", {
+      name: "Provider, model and reasoning, Mistral · mistral-medium-2506",
+    });
+    expect(trigger.textContent).toContain("Mistral · mistral-medium-2506");
+  });
+
+  it("groups the more-models submenu under the same headers", () => {
+    const { onModelChange } = renderPicker({
+      modelOptions: manyCodexModels,
+      moreModelOptions: ompStyleModels,
+    });
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Provider, model and reasoning" }),
+    );
+    fireEvent.pointerOver(screen.getByText("More models"));
+
+    expect(screen.getByRole("group", { name: "Z.ai" })).not.toBeNull();
+    expect(screen.getByTitle("zai/glm-5.3")).not.toBeNull();
+    fireEvent.click(screen.getByTitle("zai/glm-5.3"));
+    expect(onModelChange).toHaveBeenCalledWith("zai/glm-5.3");
+  });
+
+  it("groups the compact drawer's model list and keeps the more-models toggle in place", () => {
+    const frames: FrameRequestCallback[] = [];
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+      frames.push(callback);
+      return frames.length;
+    });
+    renderPicker({
+      modelOptions: ompStyleModels,
+      moreModelOptions: [
+        { value: "cursor/claude-haiku-4-5", label: "Claude Haiku 4.5" },
+        { value: "mistral/codestral-latest", label: "Codestral" },
+      ],
+      pickerProviderOptions: ompProviderOptions,
+      selectedProviderId: "omp",
+      compact: true,
+    });
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Provider, model and reasoning" }),
+    );
+    act(() => frames.shift()?.(0));
+    act(() => frames.shift()?.(16));
+    expect(screen.getByRole("group", { name: "Z.ai" })).not.toBeNull();
+    expect(screen.getByRole("group", { name: "Cursor" })).not.toBeNull();
+    expect(screen.getByText("Z.ai").className).toContain(
+      MODEL_GROUP_HEADER_STICKY_TOP_COMPACT,
+    );
+
+    fireEvent.click(screen.getByText("More models"));
+    const groups = screen.getAllByRole("group");
+    const labelledBy = groups.map((group) =>
+      group.getAttribute("aria-labelledby"),
+    );
+    const groupLabels = labelledBy.map(
+      (id) => document.getElementById(id ?? "")?.textContent,
+    );
+    expect(groupLabels).toEqual([
+      "Cursor",
+      "Z.ai",
+      "CommandCode",
+      "Mistral",
+      "Cursor",
+      "Mistral",
+    ]);
+    expect(new Set(labelledBy).size).toBe(labelledBy.length);
+    expect(screen.getByText("Claude Haiku 4.5")).not.toBeNull();
+    expect(screen.getByText("Codestral")).not.toBeNull();
   });
 
   it("uses picker search policy and selects the match by keyboard", () => {

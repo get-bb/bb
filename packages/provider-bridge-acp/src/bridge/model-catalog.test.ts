@@ -414,6 +414,35 @@ describe("acp configOptions model catalog", () => {
     ]);
   });
 
+  it("preserves select-option descriptions, defaulting missing ones to empty", () => {
+    const models = buildModelCatalogFromConfigOptions({
+      id: "model",
+      name: "Model",
+      category: "model",
+      type: "select",
+      currentValue: "zai/glm-5.3",
+      options: [
+        {
+          value: "zai/glm-5.3",
+          name: "GLM 5.3",
+          description: "zai/glm-5.3",
+        },
+        { value: "cursor/glm-5.3", name: "GLM 5.3" },
+        {
+          value: "mistral/mistral-medium-latest",
+          name: "Mistral Medium",
+          description: undefined,
+        },
+      ],
+    });
+
+    expect(models.map((model) => model.description)).toEqual([
+      "zai/glm-5.3",
+      "",
+      "",
+    ]);
+  });
+
   it("finds and maps ACP thought_level config options", () => {
     const thoughtLevel = {
       id: "effort",

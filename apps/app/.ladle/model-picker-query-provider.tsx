@@ -16,6 +16,8 @@ import {
   STORY_CLAUDE_REASONING,
   STORY_CODEX_MODELS,
   STORY_CODEX_REASONING,
+  STORY_OMP_MODELS,
+  STORY_OMP_PROVIDER_OPTION,
   STORY_PI_MODELS,
   STORY_PROVIDER_OPTIONS,
   STORY_SERVICE_TIER_SUPPORT,
@@ -46,31 +48,33 @@ const STORY_COMPOSER_ACTIONS_BY_PROVIDER: Record<
     },
   ],
   pi: [],
+  omp: [],
 };
 
-const STORY_PROVIDER_INFOS: ProviderInfo[] = STORY_PROVIDER_OPTIONS.map(
-  (provider) => ({
-    id: provider.value,
-    pluginId: `provider-${provider.value}`,
-    displayName: provider.label,
-    logoUrl: null,
-    available: true,
-    maintenance: { health: true, usage: true, installation: true },
-    composerActions: [
-      ...(STORY_COMPOSER_ACTIONS_BY_PROVIDER[provider.value] ?? []),
-    ],
-    capabilities: {
-      supportsThreadArchive: true,
-      supportsThreadRename: true,
-      supportsServiceTier: STORY_SERVICE_TIER_SUPPORT[provider.value] ?? false,
-      supportsNativeUserQuestion: true,
-      supportsFork: true,
-      supportsSessionRewind: true,
-      modelCatalogScope: "workspace",
-      permissionModes: [...permissionModes],
-    },
-  }),
-);
+const STORY_PROVIDER_INFOS: ProviderInfo[] = [
+  ...STORY_PROVIDER_OPTIONS,
+  STORY_OMP_PROVIDER_OPTION,
+].map((provider) => ({
+  id: provider.value,
+  pluginId: `provider-${provider.value}`,
+  displayName: provider.label,
+  logoUrl: null,
+  available: true,
+  maintenance: { health: true, usage: true, installation: true },
+  composerActions: [
+    ...(STORY_COMPOSER_ACTIONS_BY_PROVIDER[provider.value] ?? []),
+  ],
+  capabilities: {
+    supportsThreadArchive: true,
+    supportsThreadRename: true,
+    supportsServiceTier: STORY_SERVICE_TIER_SUPPORT[provider.value] ?? false,
+    supportsNativeUserQuestion: true,
+    supportsFork: true,
+    supportsSessionRewind: true,
+    modelCatalogScope: "workspace",
+    permissionModes: [...permissionModes],
+  },
+}));
 
 function makeSupportedReasoningEfforts(
   reasoningOptions: readonly PickerOption<ReasoningLevel>[],
@@ -159,6 +163,12 @@ function createStoryQueryClient(): QueryClient {
     pi: makeExecutionOptions(
       makeAvailableModels({
         models: STORY_PI_MODELS,
+        reasoningOptions: STORY_CODEX_REASONING,
+      }),
+    ),
+    omp: makeExecutionOptions(
+      makeAvailableModels({
+        models: STORY_OMP_MODELS,
         reasoningOptions: STORY_CODEX_REASONING,
       }),
     ),

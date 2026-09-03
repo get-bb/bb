@@ -220,6 +220,60 @@ export const STORY_PI_MODELS: readonly ModelPickerOption[] = [
   },
 ];
 
+export const STORY_OMP_MODELS: readonly ModelPickerOption[] = [
+  {
+    value: "cursor/claude-sonnet-4-5",
+    label: "Claude Sonnet 4.5",
+    description: "cursor/claude-sonnet-4-5",
+  },
+  {
+    value: "cursor/glm-5.3",
+    label: "GLM-5.3",
+    description: "cursor/glm-5.3",
+  },
+  {
+    value: "zai/glm-5.3",
+    label: "GLM-5.3",
+    description: "zai/glm-5.3",
+  },
+  {
+    value: "zai/glm-5.2-air",
+    label: "GLM-5.2 Air",
+    description: "zai/glm-5.2-air",
+  },
+  {
+    value: "commandcode/zai-org/GLM-5",
+    label: "GLM-5",
+    description: "commandcode/zai-org/GLM-5",
+  },
+  {
+    value: "mistral/mistral-medium-latest",
+    label: "mistral-medium-latest",
+    description: "mistral/mistral-medium-latest",
+  },
+  {
+    value: "mistral/mistral-medium-2506",
+    label: "mistral-medium-latest",
+    description: "mistral/mistral-medium-2506",
+  },
+  {
+    value: "mistral/mistral-medium-latest-2501",
+    label: "mistral-medium-latest",
+    description: "mistral/mistral-medium-latest-2501",
+  },
+  {
+    value: "mistral/mistral-large-latest",
+    label: "Mistral Large",
+    description: "mistral/mistral-large-latest",
+  },
+];
+
+export const STORY_OMP_PROVIDER_OPTION: PickerOption<string> = {
+  value: "omp",
+  label: "OMP",
+  icon: storyProviderIcon("omp", "Layers"),
+};
+
 export const STORY_CODEX_REASONING: readonly PickerOption<ReasoningLevel>[] = [
   { value: "low", label: "Low" },
   { value: "medium", label: "Medium" },
