@@ -432,7 +432,7 @@ describe("ThreadTimelineRows actions", () => {
     });
   });
 
-  it("keeps the last real user action footer inline when a remote-image-only row follows", () => {
+  it("adds a copy action to a remote-image-only row", () => {
     const { container } = renderWithRouter(
       <ThreadTimelineRows
         timelineRows={[
@@ -475,7 +475,7 @@ describe("ThreadTimelineRows actions", () => {
     ).not.toBeNull();
     expect(
       remoteImageOnlyMessage?.querySelector('[aria-label="Copy message"]'),
-    ).toBeNull();
+    ).not.toBeNull();
   });
 
   it("keeps the last text footer inline when an attachment-only row has no add action", () => {

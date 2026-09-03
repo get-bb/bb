@@ -1698,7 +1698,6 @@ export function PromptBoxInternal({
           if (attachFiles && pastedFiles.length > 0) {
             event.preventDefault();
             void attachFiles(pastedFiles);
-            return true;
           }
 
           const plainText = event.clipboardData?.getData("text/plain") ?? "";
@@ -1737,7 +1736,9 @@ export function PromptBoxInternal({
             event.clipboardData ?? null,
             promptActions,
           );
-          if (pastedValue === null) return false;
+          if (pastedValue === null) {
+            return attachFiles !== undefined && pastedFiles.length > 0;
+          }
 
           event.preventDefault();
           if (pastedValue.text.length === 0) return true;
