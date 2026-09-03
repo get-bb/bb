@@ -43,6 +43,7 @@ interface ReorderSecondaryPanelFileTabInStateArgs {
 interface GetActiveTabIdAfterCloseArgs {
   activeTabId: string | null;
   closedTabId: string;
+  previousActiveTabId: string | undefined;
   tabsBeforeClose: readonly FixedPanelTab[];
   tabsAfterClose: readonly FixedPanelTab[];
 }
@@ -190,8 +191,35 @@ export function setSecondaryPanelTabsInState({
       tabs,
       activeTabId,
       isOpen,
+      previousActiveTabId: getPreviousActiveTabIdAfterActivation({
+        activeTabId,
+        state,
+        tabs,
+      }),
     },
   };
+}
+
+function getPreviousActiveTabIdAfterActivation({
+  activeTabId,
+  state,
+  tabs,
+}: {
+  activeTabId: string | null;
+  state: FixedPanelTabsState;
+  tabs: readonly FixedPanelTab[];
+}): string | undefined {
+  const currentActiveTabId = state.secondary.activeTabId;
+  if (activeTabId === currentActiveTabId) {
+    return state.secondary.previousActiveTabId;
+  }
+  if (
+    currentActiveTabId !== null &&
+    tabs.some((tab) => tab.id === currentActiveTabId)
+  ) {
+    return currentActiveTabId;
+  }
+  return undefined;
 }
 
 function upsertSecondaryPanelTab(
@@ -318,11 +346,22 @@ export function activateSecondaryPanelTabInState(
 function getActiveTabIdAfterClose({
   activeTabId,
   closedTabId,
+  previousActiveTabId,
   tabsBeforeClose,
   tabsAfterClose,
 }: GetActiveTabIdAfterCloseArgs): string | null {
   if (activeTabId !== closedTabId) {
     return activeTabId;
+  }
+
+  if (
+    previousActiveTabId !== undefined &&
+    previousActiveTabId !== closedTabId &&
+    tabsAfterClose.some(
+      (tab) => tab.id === previousActiveTabId && isSecondaryFileTab(tab),
+    )
+  ) {
+    return previousActiveTabId;
   }
 
   const fileTabsBeforeClose = tabsBeforeClose.filter(isSecondaryFileTab);
@@ -374,6 +413,7 @@ export function closeSecondaryPanelTabInState(
     activeTabId: getActiveTabIdAfterClose({
       activeTabId: state.secondary.activeTabId,
       closedTabId: tabId,
+      previousActiveTabId: state.secondary.previousActiveTabId,
       tabsBeforeClose: state.secondary.tabs,
       tabsAfterClose: tabs,
     }),
