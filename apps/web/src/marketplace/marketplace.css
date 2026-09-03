@@ -598,7 +598,7 @@
 
 .marketplace-detail-head {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) 360px;
+  grid-template-columns: auto minmax(0, 1fr);
   align-items: start;
   gap: 12px 18px;
 }
@@ -664,67 +664,23 @@ a.marketplace-detail-author:hover {
   height: 13px;
 }
 
-.marketplace-install-command {
-  width: 360px;
-  grid-column: 3;
-  grid-row: 1;
-}
-
-.marketplace-install-command > div {
+.marketplace-detail-install {
   display: flex;
-  align-items: stretch;
-  height: 44px;
-  min-width: 0;
-  overflow: hidden;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  background: var(--surface);
-}
-
-.marketplace-install-command code {
-  min-width: 0;
-  padding: 0 14px;
-  flex: 1;
-  overflow: hidden;
-  color: var(--heading-sub);
-  font-family: var(--font-mono);
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  grid-column: 2 / -1;
+  grid-row: 3;
+  margin-top: 4px;
   font-size: 13px;
-  font-weight: 500;
-  line-height: 42px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
-.marketplace-install-command button {
-  padding: 0 16px;
-  border: 0;
-  border-left: 1px solid var(--border);
-  background: var(--heading);
-  color: var(--bg);
-  font-family: var(--font-sans);
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-}
-
-.marketplace-install-command button:hover {
-  background: var(--ink-strong);
-}
-
-.marketplace-install-command p {
-  margin-top: 8px;
-  color: var(--subtle);
-  font-size: 12px;
-  line-height: 1.5;
-}
-
-.marketplace-install-command p a {
+.marketplace-detail-install > a {
   color: var(--dim);
-  text-decoration: underline;
-  text-underline-offset: 2px;
+  font-weight: 500;
 }
 
-.marketplace-install-command p a:hover {
+.marketplace-detail-install > a:hover {
   color: var(--heading);
 }
 
@@ -868,19 +824,6 @@ a.marketplace-detail-author:hover {
   }
 }
 
-@media (max-width: 900px) {
-  .marketplace-detail-head {
-    grid-template-columns: auto minmax(0, 1fr);
-  }
-
-  .marketplace-install-command {
-    width: 100%;
-    margin-top: 12px;
-    grid-column: 1 / -1;
-    grid-row: 3;
-  }
-}
-
 @media (max-width: 860px) {
   .marketplace-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -924,10 +867,6 @@ a.marketplace-detail-author:hover {
     max-width: 260px;
   }
 
-  .marketplace-detail-head {
-    grid-template-columns: auto minmax(0, 1fr);
-  }
-
   .marketplace-detail-head .marketplace-artwork.is-large {
     width: 52px;
     height: 52px;
@@ -942,6 +881,10 @@ a.marketplace-detail-author:hover {
 
   .marketplace-detail-identity h1 {
     font-size: 27px;
+  }
+
+  .marketplace-detail-install {
+    grid-column: 1 / -1;
   }
 
   .marketplace-screenshots {

@@ -333,6 +333,22 @@ code,
   font-family: var(--font-mono);
 }
 
+.cmd-compact {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  gap: 8px;
+  padding: 6px 12px;
+  font-size: 13px;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+
+.cmd-compact .cmd-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .cmd-dollar {
   color: var(--accent);
 }

@@ -82,9 +82,14 @@ describe("public marketplace route rendering", () => {
     );
     expect(html).toContain("Marketplace</a>");
     expect(html).toContain("Thread Content</a>");
+    expect(html).toContain(
+      'aria-label="Copy bb plugin install prompt-library"',
+    );
+    expect(html).toContain("cmd-btn cmd-compact");
     expect(html).toContain("bb plugin install prompt-library");
-    expect(html).toContain("Don&#x27;t have bb?");
     expect(html).toContain("Get it for macOS");
+    expect(html).not.toContain("marketplace-install-command");
+    expect(html).not.toContain("Don&#x27;t have bb?");
     expect(html).not.toContain("Runs in bb");
     expect(html).toContain("Listed");
     expect(html).toContain(

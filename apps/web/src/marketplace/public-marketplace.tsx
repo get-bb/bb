@@ -45,8 +45,8 @@ import {
 } from "react";
 
 import { initAnalytics, trackLandingEvent } from "../landing/analytics.js";
+import { CommandButton } from "../landing/command-button.js";
 import { SiteFooter, SiteNav } from "../landing/site-chrome.js";
-import { copyPlainText } from "../lib/copy-plain-text.js";
 import {
   marketplaceEntryInstalls,
   type MarketplaceStats,
@@ -714,45 +714,6 @@ export function PublicMarketplacePage({
   );
 }
 
-function InstallCommand({ entry }: { entry: MarketplaceV2Entry }) {
-  const [status, setStatus] = useState<"idle" | "copied" | "failed">("idle");
-  const command = marketplaceInstallCommand(entry.id);
-  const copy = async () => {
-    const copied = await copyPlainText(command);
-    setStatus(copied ? "copied" : "failed");
-    if (copied) {
-      trackLandingEvent({
-        name: "marketplace_install_command_copied",
-        properties: { plugin_id: entry.id },
-      });
-    }
-  };
-  return (
-    <div className="marketplace-install-command">
-      <div>
-        <code>{command}</code>
-        <button
-          type="button"
-          onClick={() => void copy()}
-          aria-label={`Copy ${command}`}
-        >
-          {status === "copied"
-            ? "Copied"
-            : status === "failed"
-              ? "Copy failed"
-              : "Copy"}
-        </button>
-      </div>
-      <p>
-        Don&apos;t have bb?{" "}
-        <MarketplaceLink href="/download/macos">
-          Get it for macOS
-        </MarketplaceLink>
-      </p>
-    </div>
-  );
-}
-
 function MoreFromAuthor({
   author,
   entries,
@@ -849,6 +810,7 @@ export function PublicMarketplaceDetailPage({
   const installs = marketplaceEntryInstalls(entry, stats);
   const published = formatMarketplaceDate(entry.publishedAt);
   const repository = marketplaceRepositoryUrl(entry);
+  const installCommand = marketplaceInstallCommand(entry.id);
   const authorSiblings = moreFromMarketplaceAuthor(manifest, entry);
   const categoryEntries = moreInMarketplaceCategory(manifest, entry, stats);
   const hasDetailBody =
@@ -917,7 +879,23 @@ export function PublicMarketplaceDetailPage({
               <HugeiconsIcon icon={ArrowUpRight01Icon} aria-hidden />
             </a>
           </div>
-          <InstallCommand entry={entry} />
+          <div className="marketplace-detail-install">
+            <CommandButton
+              command={installCommand}
+              label={`Copy ${installCommand}`}
+              size="compact"
+              onCopy={(copied) => {
+                if (!copied) return;
+                trackLandingEvent({
+                  name: "marketplace_install_command_copied",
+                  properties: { plugin_id: entry.id },
+                });
+              }}
+            />
+            <MarketplaceLink href="/download/macos">
+              Get it for macOS
+            </MarketplaceLink>
+          </div>
         </header>
         {hasDetailBody ? (
           <div className="marketplace-detail-body">
