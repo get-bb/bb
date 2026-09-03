@@ -9,14 +9,16 @@ Create entries/<plugin-id>.json. The filename, entry ID, and plugin manifest ID
 must match. Do not add fields that the schema does not define.
 
 The current required fields are id, displayName, description, icon, author, and
-source. Use tags and engines when they add useful search or compatibility data.
+source. Use tags when they add useful search data.
 
 Use the product name for displayName. Write one concrete description sentence
 that states the feature and user value. Do not make subjective marketing claims.
 
 Use no more than ten specific lowercase tags. Use hyphens inside multiword tags.
-Copy honest engine ranges from the plugin manifest. An entry can narrow those
-ranges but cannot widen them.
+
+An entry declares no compatibility range. BB reads engines.bb and
+engines.bbPluginSdk from the plugin's own package.json and refuses the install
+there. Keep those ranges honest in the plugin manifest instead.
 
 Set author.github to the account that opens the pull request. Get it with:
 
@@ -39,10 +41,6 @@ Use this shape only as a guide:
     "name": "Acme",
     "github": "acme",
     "url": "https://acme.example"
-  },
-  "engines": {
-    "bb": ">=0.40.0",
-    "bbPluginSdk": ">=0.5.0"
   },
   "source": {
     "git": {

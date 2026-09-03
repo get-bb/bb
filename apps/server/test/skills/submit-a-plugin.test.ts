@@ -4,7 +4,9 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { Ajv2020 } from "ajv/dist/2020.js";
 import { afterEach, describe, expect, it } from "vitest";
+import { z } from "zod";
 import { derivePluginId } from "@bb/domain";
 
 const skillRoot = fileURLToPath(
@@ -24,6 +26,18 @@ const skillReferencePaths = [
   "plugin-release.md",
   "pull-request.md",
 ].map((name) => path.join(skillRoot, "references", name));
+const marketplaceEntryReferencePath = path.join(
+  skillRoot,
+  "references",
+  "marketplace-entry.md",
+);
+const publishedMarketplaceSchemaPath = fileURLToPath(
+  new URL(
+    "../../../web/public/schemas/marketplace-v2.schema.json",
+    import.meta.url,
+  ),
+);
+const publishedSchemaSchema = z.record(z.string(), z.unknown());
 const tempDirs: string[] = [];
 
 async function readSkillTree(): Promise<string> {
@@ -97,6 +111,33 @@ describe("submit-a-plugin skill", () => {
     expect(skill).toContain("npm pack --dry-run --ignore-scripts");
     expect(skill).toContain("npm publish --ignore-scripts");
     expect(skill).not.toContain("PLUGIN_DISPLAY_NAME");
+  });
+
+  it("keeps the worked entry valid under the published marketplace schema", async () => {
+    const markdown = await readFile(marketplaceEntryReferencePath, "utf8");
+    const entries = [...markdown.matchAll(/```json\n([\s\S]*?)```/gu)]
+      .map((match) => match[1])
+      .filter((block) => block.includes('"id":'))
+      .map((block): unknown => JSON.parse(block));
+    expect(entries).toHaveLength(1);
+
+    const validate = new Ajv2020({
+      allErrors: true,
+      strict: false,
+      validateFormats: false,
+    }).compile(
+      publishedSchemaSchema.parse(
+        JSON.parse(await readFile(publishedMarketplaceSchemaPath, "utf8")),
+      ),
+    );
+    validate({
+      schemaVersion: 2,
+      name: "bb-community",
+      displayName: "BB Community",
+      plugins: entries,
+    });
+
+    expect(validate.errors ?? []).toEqual([]);
   });
 
   it("provides a local submission path without gh", async () => {

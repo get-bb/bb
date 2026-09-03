@@ -60,7 +60,6 @@ Confirm:
 - The entry ID matches the filename and plugin manifest.
 - The public source contains the selected release and reviewed code.
 - The source subdirectory is correct.
-- Entry engine ranges do not exceed manifest ranges.
 - The author account matches the pull request account.
 - The description states observed user value.
 - The icon meets size, format, location, and reference rules.
