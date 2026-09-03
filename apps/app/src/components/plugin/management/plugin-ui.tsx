@@ -1,6 +1,7 @@
-import { useState, type ReactNode } from "react";
-import { Icon, type IconName } from "@bb/shared-ui/icon";
+import { useState, type CSSProperties, type ReactNode } from "react";
+import { Icon } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
+import { ResourceIconFrame } from "@bb/shared-ui/resource-list";
 import {
   PluginCompactIconMask,
   PluginIcon,
@@ -24,6 +25,89 @@ export function displayPluginVersion(version: string): string {
 export const SUCCESS_TEXT_STYLE = {
   color: "color-mix(in oklab, var(--success) 80%, var(--ink))",
 } as const;
+
+const PLUGIN_INSTALL_COUNT_FORMATTER = new Intl.NumberFormat(undefined, {
+  notation: "compact",
+  maximumFractionDigits: 1,
+});
+
+export function formatPluginInstallCount(installs: number): string {
+  return PLUGIN_INSTALL_COUNT_FORMATTER.format(installs);
+}
+
+const PLUGIN_CATEGORY_ACCENT_TOKENS: Record<string, string> = {
+  "themes-and-appearance": "--file-accent",
+  "thread-management": "--file-accent",
+  "thread-content": "--file-accent",
+  "memory-and-context": "--success",
+  security: "--warning",
+  "agents-and-providers": "--success",
+  "token-usage-and-limits": "--warning",
+  notifications: "--warning",
+  "code-and-reviews": "--pr-merged",
+  "file-viewers-and-editors": "--pr-merged",
+  "cloud-and-remote": "--attention",
+  "command-line": "--attention",
+  utilities: "--attention",
+  "plugin-development": "--pr-merged",
+  "tasks-and-workflows": "--success",
+};
+
+function neutral(percent: number): string {
+  return `color-mix(in oklch, var(--ink) ${percent}%, var(--canvas))`;
+}
+
+function accentTint(token: string, percent: number): string {
+  return `color-mix(in oklch, var(${token}) ${percent}%, var(--canvas))`;
+}
+
+function accentInk(token: string, percent: number): string {
+  return `color-mix(in oklch, var(${token}) ${percent}%, var(--ink))`;
+}
+
+function pluginCatalogCategoryAccentToken(
+  categoryId: string | undefined,
+): string | undefined {
+  return categoryId === undefined
+    ? undefined
+    : PLUGIN_CATEGORY_ACCENT_TOKENS[categoryId];
+}
+
+export function pluginCatalogCategoryPillStyle(
+  categoryId: string | undefined,
+): CSSProperties {
+  const accentToken = pluginCatalogCategoryAccentToken(categoryId);
+  return accentToken === undefined
+    ? {
+        background: neutral(8),
+        borderColor: neutral(16),
+        color: neutral(55),
+      }
+    : {
+        background: accentTint(accentToken, 16),
+        borderColor: accentTint(accentToken, 24),
+        color: accentInk(accentToken, 52),
+      };
+}
+
+export function pluginCatalogCategoryMutedAccentStyle(
+  categoryId: string | undefined,
+): CSSProperties {
+  const accentToken = pluginCatalogCategoryAccentToken(categoryId);
+  return {
+    background:
+      accentToken === undefined ? neutral(36) : accentTint(accentToken, 55),
+  };
+}
+
+export function pluginCatalogCategoryAccentStyle(
+  categoryId: string | undefined,
+): CSSProperties {
+  const accentToken = pluginCatalogCategoryAccentToken(categoryId);
+  return {
+    background: accentToken === undefined ? neutral(58) : `var(${accentToken})`,
+  };
+}
 
 export function PluginLogo({
   plugin,
@@ -81,45 +165,68 @@ export function CatalogEntryIcon({
   className: string;
 }) {
   const [failedIconUrl, setFailedIconUrl] = useState<string | null>(null);
-  if (entry.iconUrl !== null && entry.iconTinted) {
-    return <PluginCompactIconMask url={entry.iconUrl} className={className} />;
-  }
-  if (entry.iconUrl === null || entry.iconUrl === failedIconUrl) {
-    return (
-      <PlaceholderBadge
-        className={className}
-        iconName={pluginIconName(entry.icon)}
-      />
-    );
-  }
-  return (
-    <img
-      src={entry.iconUrl}
-      alt=""
-      aria-hidden="true"
-      className={cn("rounded-sm object-contain", className)}
-      onError={() => setFailedIconUrl(entry.iconUrl)}
-    />
-  );
-}
-
-function PlaceholderBadge({
-  className,
-  iconName = "Zap",
-}: {
-  className?: string;
-  iconName?: IconName;
-}) {
   return (
     <span
       aria-hidden="true"
-      className={cn(
-        "grid shrink-0 place-items-center text-muted-foreground",
-        className,
-      )}
+      data-catalog-entry-icon-glyph=""
+      className={cn("grid shrink-0 place-items-center", className)}
     >
-      <Icon name={iconName} className="size-5" />
+      {entry.iconUrl !== null && entry.iconTinted ? (
+        <PluginCompactIconMask url={entry.iconUrl} className="size-full" />
+      ) : entry.iconUrl === null || entry.iconUrl === failedIconUrl ? (
+        <Icon name={pluginIconName(entry.icon)} className="size-full" />
+      ) : (
+        <img
+          src={entry.iconUrl}
+          alt=""
+          className="size-full rounded-sm object-contain"
+          onError={() => setFailedIconUrl(entry.iconUrl)}
+        />
+      )}
     </span>
+  );
+}
+
+export function PluginCategoryLabel({
+  categoryId,
+  label,
+}: {
+  categoryId: string | undefined;
+  label: string;
+}) {
+  return (
+    <span
+      className="shrink-0 truncate rounded border px-2 py-1 text-2xs leading-none"
+      style={pluginCatalogCategoryPillStyle(categoryId)}
+    >
+      {label}
+    </span>
+  );
+}
+
+export function CatalogEntryIconChip({
+  entry,
+  className,
+}: {
+  entry: {
+    displayName: string;
+    icon: string | null;
+    iconUrl: string | null;
+    iconTinted: boolean;
+  };
+  className?: string;
+}) {
+  return (
+    <ResourceIconFrame
+      className={cn("size-10 rounded-md border", className)}
+      style={{
+        background: neutral(5),
+        borderColor: neutral(14),
+        color: neutral(55),
+      }}
+    >
+      {() => <CatalogEntryIcon entry={entry} className="size-6" />}
+    </ResourceIconFrame>
   );
 }
 

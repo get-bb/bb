@@ -9,6 +9,7 @@ import {
   DATABASE_INCREMENTAL_VACUUM_MIN_FREELIST_PAGES,
   DEFAULT_CLOSED_SESSION_PRUNE_BATCH_SIZE,
   DEFAULT_COMPLETED_EVENT_OUTPUT_TRUNCATION_BATCH_SIZE,
+  DEFAULT_DESTROYED_ENVIRONMENT_EVENT_DETACH_BATCH_SIZE,
   DEFAULT_DESTROYED_ENVIRONMENT_PRUNE_BATCH_SIZE,
   DESTROYED_ENVIRONMENT_TTL_MS,
   dropDeferredLegacyTables,
@@ -498,15 +499,16 @@ async function runDestroyedEnvironmentPruneSweep(
     pruned < DEFAULT_DESTROYED_ENVIRONMENT_PRUNE_BATCH_SIZE;
     pruned += 1
   ) {
-    const { deleted } = runEventLoopWorkSync(
-      "sweep:destroyed-environment-prune:delete",
+    const { deleted, detachedEvents } = runEventLoopWorkSync(
+      "sweep:destroyed-environment-prune:advance",
       () =>
         pruneDestroyedEnvironments(deps.db, deps.hub, {
           updatedBefore: now - DESTROYED_ENVIRONMENT_TTL_MS,
+          eventBatchSize: DEFAULT_DESTROYED_ENVIRONMENT_EVENT_DETACH_BATCH_SIZE,
           limit: 1,
         }),
     );
-    if (deleted === 0) {
+    if (deleted === 0 && detachedEvents === 0) {
       break;
     }
     await new Promise<void>((resolve) => setImmediate(resolve));

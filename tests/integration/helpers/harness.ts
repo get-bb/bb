@@ -452,7 +452,7 @@ export async function createIntegrationHarness(
       const mismatchedResources = daemonResources;
       daemonResources = null;
       await mismatchedResources.daemon
-        .shutdown("integration-host-id-mismatch")
+        .shutdown("integration-host-id-mismatch", 0)
         .catch(() => undefined);
       throw new Error(
         `Restarted daemon host ID ${mismatchedResources.hostId} did not match existing harness host ID ${harness.hostId}`,
@@ -476,7 +476,7 @@ export async function createIntegrationHarness(
     }
     const currentResources = daemonResources;
     daemonResources = null;
-    await currentResources.daemon.shutdown(reason);
+    await currentResources.daemon.shutdown(reason, 0);
   }
 
   async function restartDaemon(reason = "integration-restart"): Promise<void> {

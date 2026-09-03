@@ -101,6 +101,7 @@ import {
 } from "@/components/promptbox/queued-editor-typeahead-layout";
 
 export type QueuedMessageProcessingAction = "send" | "edit" | "delete";
+export type QueuedMessageSendAction = "send-now" | "steer-when-ready";
 
 export interface QueuedMessageGroupBoundaryRequest {
   expectedGroupedPrefixQueuedMessageIds: string[];
@@ -123,12 +124,13 @@ export interface QueuedMessagesListProps {
   attachedToComposer: boolean;
   queuedMessages: readonly ThreadQueuedMessage[];
   resolveMentionLink?: PromptMentionLinkResolver;
+  sendAction: QueuedMessageSendAction;
   sendDisabled: boolean;
   actionDisabled: boolean;
   processingMessageId: string | null;
   processingAction: QueuedMessageProcessingAction | null;
   inlineEditor?: QueuedMessageInlineEditor;
-  onSendImmediately: (id: string) => void;
+  onSend: (id: string) => void;
   onReorder: (request: QueuedMessageReorderRequest) => void;
   onSetGroupBoundary: (request: QueuedMessageGroupBoundaryRequest) => void;
   onEdit: (request: QueuedMessageEditRequest) => void;
@@ -151,9 +153,10 @@ interface QueuedMessageRowProps {
   isProcessing: boolean;
   processingLabel: string;
   dragDisabled: boolean;
+  sendAction: QueuedMessageSendAction;
   sendDisabled: boolean;
   actionDisabled: boolean;
-  onSendImmediately: (id: string) => void;
+  onSend: (id: string) => void;
   onEdit: (request: QueuedMessageEditRequest) => void;
   onDelete: (id: string) => void;
   compact: boolean;
@@ -739,9 +742,10 @@ const QueuedMessageRow = memo(function QueuedMessageRow({
   isProcessing,
   processingLabel,
   dragDisabled,
+  sendAction,
   sendDisabled,
   actionDisabled,
-  onSendImmediately,
+  onSend,
   onEdit,
   onDelete,
   compact,
@@ -757,7 +761,15 @@ const QueuedMessageRow = memo(function QueuedMessageRow({
       : "",
   );
   const hasWaitLine = queuedMessageHasWaitLine(queuedMessage);
-  const sendNowAllowed = isQueuedMessageSendNowAllowed(queuedMessage.waitingOn);
+  const sendAllowed =
+    sendAction === "steer-when-ready" ||
+    isQueuedMessageSendNowAllowed(queuedMessage.waitingOn);
+  const sendAriaLabel =
+    sendAction === "steer-when-ready"
+      ? `Steer queued message ${index + 1} when ready`
+      : `Send queued message ${index + 1} now`;
+  const sendLabel =
+    sendAction === "steer-when-ready" ? "Steer when ready" : "Send now";
   const {
     attributes,
     isDragging,
@@ -868,7 +880,7 @@ const QueuedMessageRow = memo(function QueuedMessageRow({
                   "group-focus-within/dispatch-row:pointer-events-auto group-focus-within/dispatch-row:opacity-100",
                 )}
               >
-                {sendNowAllowed ? (
+                {sendAllowed ? (
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <Button
@@ -880,13 +892,13 @@ const QueuedMessageRow = memo(function QueuedMessageRow({
                           compact ? "size-7" : "size-8",
                         )}
                         disabled={actionDisabled || sendDisabled}
-                        onClick={() => onSendImmediately(queuedMessage.id)}
-                        aria-label={`Send queued message ${index + 1} now`}
+                        onClick={() => onSend(queuedMessage.id)}
+                        aria-label={sendAriaLabel}
                       >
                         <Icon name="Sent" className="size-4" aria-hidden />
                       </Button>
                     </TooltipTrigger>
-                    <TooltipContent>Send now</TooltipContent>
+                    <TooltipContent>{sendLabel}</TooltipContent>
                   </Tooltip>
                 ) : null}
                 {queuedMessage.editable ? (
@@ -958,13 +970,13 @@ const QueuedMessageRow = memo(function QueuedMessageRow({
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="min-w-[7rem]">
-                {sendNowAllowed ? (
+                {sendAllowed ? (
                   <DropdownMenuItem
                     disabled={sendDisabled}
-                    onSelect={() => onSendImmediately(queuedMessage.id)}
+                    onSelect={() => onSend(queuedMessage.id)}
                   >
                     <Icon name="Sent" aria-hidden />
-                    Send now
+                    {sendLabel}
                   </DropdownMenuItem>
                 ) : null}
                 {queuedMessage.editable ? (
@@ -1130,12 +1142,13 @@ export function QueuedMessagesList({
   attachedToComposer,
   queuedMessages,
   resolveMentionLink,
+  sendAction,
   sendDisabled,
   actionDisabled,
   processingMessageId,
   processingAction,
   inlineEditor,
-  onSendImmediately,
+  onSend,
   onReorder,
   onSetGroupBoundary,
   onEdit,
@@ -1631,11 +1644,12 @@ export function QueuedMessagesList({
           isProcessing={processingMessageId === queuedMessage.id}
           processingLabel={processingLabel}
           dragDisabled={sortingDisabled || inlineEditor !== undefined}
+          sendAction={sendAction}
           sendDisabled={sendDisabled}
           actionDisabled={actionDisabled}
           compact={mode !== "workspace"}
           isGroupBoundary={messageIndex === groupBoundaryIndex}
-          onSendImmediately={onSendImmediately}
+          onSend={onSend}
           onEdit={handleEdit}
           onDelete={onDelete}
         />,

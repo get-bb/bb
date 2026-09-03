@@ -42,9 +42,10 @@ import {
 } from "@bb/plugin-build";
 import { getPluginBuildToolchain } from "./build-toolchain.js";
 import {
-  marketplacePublisherLabels,
+  marketplacePublisherLabel,
   pluginPublisherLabel,
 } from "../plugin-catalog/marketplace-publishers.js";
+import { legacyMarketplaceCategory } from "../plugin-catalog/legacy-marketplace-category.js";
 import { deleteSecretFile, readOrCreateSecretFile } from "@bb/secret-storage";
 import {
   ROOT_PLUGIN_SOURCE_SELECTION,
@@ -60,12 +61,24 @@ import {
   listDuePluginSchedules,
   listInstalledPlugins,
   listPendingGitPluginArtifacts,
+  listPluginMarketplaces,
   listPluginSchedules,
   markInstalledPluginRemoved,
   recordPluginScheduleResult,
   setInstalledPluginEnabled,
   type InstalledPluginRow,
+  type PluginMarketplaceRow,
 } from "@bb/db";
+import {
+  BUNDLED_MARKETPLACE_NAME,
+  entryScreenshotUrls,
+  marketplaceEntryCategory,
+  marketplaceEntryCollections,
+  isBundledMarketplaceEntry,
+  parseBundledMarketplaceManifestJson,
+  parseMarketplaceManifestJson,
+  type MarketplaceManifest,
+} from "../plugin-catalog/marketplace-manifest.js";
 import {
   getLastThreadErrorMessage,
   getLastThreadOutput,
@@ -822,6 +835,10 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
   const artifactRetentionMs =
     deps.artifactRetentionMs ?? DEFAULT_ARTIFACT_RETENTION_MS;
   const now = deps.now ?? Date.now;
+  const marketplaceManifestCache = new Map<
+    string,
+    { manifestJson: string; manifest: MarketplaceManifest | null }
+  >();
   let lastNotifiedProviderRegistrationRevision =
     deps.providerRegistry?.getRegistrationRevision() ?? 0;
   const scheduleStabilizationWindow =
@@ -1176,9 +1193,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
   function list(): PluginListEntry[] {
     const scheduleRows = listPluginSchedules(deps.db);
     const rows = listInstalledPlugins(deps.db);
-    const publisherLabels = rows.some((row) => row.provenance === "catalog")
-      ? marketplacePublisherLabels(deps.db)
-      : new Map<string, string>();
+    const catalogData = installedCatalogData(rows);
     return rows
       .sort((a, b) => a.id.localeCompare(b.id))
       .map((row) => {
@@ -1188,11 +1203,15 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
         const cliRegistration = loadedPlugin?.handle.cli.registration;
         const identity =
           loadedPlugin === undefined ? identities.get(row.id) : undefined;
+        const catalogMetadata = catalogData.metadataByPluginId.get(row.id) ?? {
+          screenshots: [],
+          collections: [],
+        };
         return {
           id: row.id,
           source: row.source,
           rootDir: row.rootDir,
-          version: row.version,
+          version: loadedPlugin?.manifest.version ?? row.version,
           provenance: row.provenance,
           ...(row.catalogEntryId === null
             ? {}
@@ -1204,7 +1223,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
             sourceKind: row.sourceKind,
             provenance: row.provenance,
             catalogMarketplaceName: row.catalogMarketplaceName,
-            labels: publisherLabels,
+            labels: catalogData.publisherLabels,
           }),
           isOrphanedBuiltin:
             row.sourceKind === "builtin" &&
@@ -1219,6 +1238,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
             identity?.manifest.description ??
             null,
           name: loadedPlugin?.manifest.name ?? identity?.manifest.name ?? null,
+          ...catalogMetadata,
           icon:
             loadedPlugin?.manifest.branding.icon ??
             identity?.manifest.branding.icon ??
@@ -1285,6 +1305,142 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
           ),
         };
       });
+  }
+
+  type InstalledCatalogMetadata = Pick<
+    PluginListEntry,
+    | "categoryId"
+    | "category"
+    | "screenshots"
+    | "collections"
+    | "publishedAt"
+    | "updatedAt"
+  >;
+
+  function cachedMarketplaceManifest(
+    marketplace: PluginMarketplaceRow,
+  ): MarketplaceManifest | null {
+    const cached = marketplaceManifestCache.get(marketplace.name);
+    if (cached?.manifestJson === marketplace.manifestJson) {
+      return cached.manifest;
+    }
+    let manifest: MarketplaceManifest | null = null;
+    try {
+      const location = `stored "${marketplace.name}" marketplace catalog`;
+      manifest =
+        marketplace.name === BUNDLED_MARKETPLACE_NAME
+          ? parseBundledMarketplaceManifestJson(
+              marketplace.manifestJson,
+              location,
+            )
+          : parseMarketplaceManifestJson(
+              marketplace.manifestJson,
+              location,
+              (message) => logger.warn(message),
+            );
+    } catch (error) {
+      logger.warn(
+        `failed to read the stored "${marketplace.name}" marketplace catalog: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+    marketplaceManifestCache.set(marketplace.name, {
+      manifestJson: marketplace.manifestJson,
+      manifest,
+    });
+    return manifest;
+  }
+
+  function installedCatalogData(rows: readonly InstalledPluginRow[]): {
+    metadataByPluginId: ReadonlyMap<string, InstalledCatalogMetadata>;
+    publisherLabels: ReadonlyMap<string, string>;
+  } {
+    const rowsByMarketplace = new Map<string, InstalledPluginRow[]>();
+    const marketplaceNamesInUse = new Set<string>();
+    for (const row of rows) {
+      if (row.catalogMarketplaceName === null) continue;
+      marketplaceNamesInUse.add(row.catalogMarketplaceName);
+      if (row.catalogEntryId === null) continue;
+      const marketplaceRows =
+        rowsByMarketplace.get(row.catalogMarketplaceName) ?? [];
+      marketplaceRows.push(row);
+      rowsByMarketplace.set(row.catalogMarketplaceName, marketplaceRows);
+    }
+
+    const metadataByPluginId = new Map<string, InstalledCatalogMetadata>();
+    const publisherLabels = new Map<string, string>();
+    if (marketplaceNamesInUse.size === 0) {
+      marketplaceManifestCache.clear();
+      return { metadataByPluginId, publisherLabels };
+    }
+    const marketplaces = listPluginMarketplaces(deps.db);
+    const marketplaceByName = new Map(
+      marketplaces.map((marketplace) => [marketplace.name, marketplace]),
+    );
+    const marketplaceNames = new Set(marketplaceByName.keys());
+    for (const name of marketplaceManifestCache.keys()) {
+      if (!marketplaceNames.has(name)) marketplaceManifestCache.delete(name);
+    }
+    for (const marketplaceName of marketplaceNamesInUse) {
+      const marketplace = marketplaceByName.get(marketplaceName);
+      if (marketplace === undefined) continue;
+      const manifest = cachedMarketplaceManifest(marketplace);
+      publisherLabels.set(
+        marketplaceName,
+        marketplacePublisherLabel({
+          marketplaceName,
+          displayName: manifest?.displayName ?? marketplaceName,
+        }),
+      );
+      if (manifest === null) continue;
+      const marketplaceRows = rowsByMarketplace.get(marketplaceName) ?? [];
+      const entriesById = new Map<
+        string,
+        MarketplaceManifest["plugins"][number]
+      >();
+      for (const entry of manifest.plugins) {
+        entriesById.set(entry.id, entry);
+        if (isBundledMarketplaceEntry(entry)) {
+          entriesById.set(entry.source.bundled.plugin, entry);
+        }
+      }
+      for (const row of marketplaceRows) {
+        const entry = entriesById.get(row.catalogEntryId ?? "");
+        if (entry === undefined) continue;
+        try {
+          const category = marketplaceEntryCategory(manifest, entry);
+          const legacyCategory =
+            manifest.schemaVersion === 1
+              ? legacyMarketplaceCategory(entry.tags ?? [])
+              : undefined;
+          metadataByPluginId.set(row.id, {
+            ...(category === undefined
+              ? legacyCategory === undefined
+                ? {}
+                : { category: legacyCategory }
+              : { categoryId: category.id, category: category.displayName }),
+            screenshots: entryScreenshotUrls(
+              entry,
+              marketplace.sourceKind === "https"
+                ? { kind: "url", manifestUrl: marketplace.manifestUrl }
+                : { kind: "dir", root: marketplace.manifestUrl },
+              (message) => logger.warn(message),
+            ),
+            collections: marketplaceEntryCollections(manifest, entry.id),
+            ...("publishedAt" in entry && typeof entry.publishedAt === "string"
+              ? { publishedAt: entry.publishedAt }
+              : {}),
+            ...("updatedAt" in entry && typeof entry.updatedAt === "string"
+              ? { updatedAt: entry.updatedAt }
+              : {}),
+          });
+        } catch (error) {
+          logger.warn(
+            `failed to read catalog metadata for plugin "${row.id}" from marketplace "${marketplace.name}": ${error instanceof Error ? error.message : String(error)}`,
+          );
+        }
+      }
+    }
+    return { metadataByPluginId, publisherLabels };
   }
 
   return {
@@ -1365,6 +1521,12 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       emitThreadDeleted(thread) {
         emitThreadEvent("thread.deleted", () => ({
           thread: buildThreadDto(thread),
+        }));
+      },
+      emitInteractionPending(thread, interaction) {
+        emitThreadEvent("interaction.pending", () => ({
+          thread: buildThreadDto(thread),
+          interaction,
         }));
       },
       emitMessageQueued: buildQueuedMessageEventEmitter("message.queued"),

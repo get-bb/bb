@@ -3,9 +3,11 @@ import {
   CLOSED_SESSION_ROW_RETENTION_MS,
   DESTROYED_ENVIRONMENT_TTL_MS,
   environments,
+  events,
   hostDaemonSessions,
   listQueuedThreadMessages,
 } from "@bb/db";
+import { threadScope } from "@bb/domain";
 import type { PluginHookName } from "@get-bb/plugin-sdk";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
@@ -23,6 +25,7 @@ import {
 } from "../../src/services/system/periodic-sweeps.js";
 import {
   seedEnvironment,
+  seedEvent,
   seedHostSession,
   seedProjectWithSource,
   seedQueuedMessage,
@@ -282,6 +285,76 @@ describe("runPeriodicSweeps", () => {
     });
   });
 
+  it("clears a large environment event set across event-loop turns", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps);
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+        path: "/tmp/destroyed-with-large-history",
+        managed: true,
+        status: "destroyed",
+        workspaceProvisionType: "managed-worktree",
+      });
+      const thread = seedThread(harness.deps, {
+        environmentId: environment.id,
+        projectId: project.id,
+      });
+      const eventCount = 150;
+      for (let sequence = 1; sequence <= eventCount; sequence += 1) {
+        seedEvent(harness.deps, {
+          data: { text: `event ${sequence}` },
+          environmentId: environment.id,
+          scope: threadScope(),
+          sequence,
+          threadId: thread.id,
+          type: "system/manager/user_message",
+        });
+      }
+      harness.db
+        .update(environments)
+        .set({ updatedAt: Date.now() - DESTROYED_ENVIRONMENT_TTL_MS - 60_000 })
+        .where(eq(environments.id, environment.id))
+        .run();
+
+      const countReferences = () =>
+        harness.db
+          .select({ id: events.id })
+          .from(events)
+          .where(eq(events.environmentId, environment.id))
+          .all().length;
+      const observedReferenceCounts: number[] = [];
+      let sweepSettled = false;
+      const probe = () => {
+        if (sweepSettled) {
+          return;
+        }
+        observedReferenceCounts.push(countReferences());
+        setImmediate(probe);
+      };
+      setImmediate(probe);
+
+      const deps = {
+        ...harness.deps,
+        pluginSchedules: harness.pluginService,
+        plugins: harness.pluginService,
+        pluginService: harness.pluginService,
+        pluginCatalogService: harness.pluginCatalogService,
+      };
+      await runPeriodicSweeps(deps);
+      sweepSettled = true;
+
+      expect(
+        observedReferenceCounts.some(
+          (count) => count > 0 && count < eventCount,
+        ),
+      ).toBe(true);
+    });
+  });
+
   it("attributes each destroyed-environment prune to a blocking work frame", async () => {
     await withTestHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps);
@@ -313,7 +386,7 @@ describe("runPeriodicSweeps", () => {
       try {
         await runPeriodicSweeps(deps);
         expect(takeEventLoopWorkWindowSnapshot().slowestWork).toBe(
-          "sweep:destroyed-environment-prune:delete",
+          "sweep:destroyed-environment-prune:advance",
         );
       } finally {
         resetEventLoopWorkForTests();

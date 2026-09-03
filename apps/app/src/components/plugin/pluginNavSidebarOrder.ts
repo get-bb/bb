@@ -1,3 +1,5 @@
+import { arrangeByStoredOrder } from "@/lib/stored-order";
+
 interface PluginNavPanelIdentity {
   pluginId: string;
   id: string;
@@ -35,6 +37,7 @@ interface ArrangePluginNavPanelPreferencesArgs<
   TPanel extends PluginNavPanelIdentity,
 > extends ArrangePluginNavPanelsArgs<TPanel> {
   storedVisibleKeys: readonly string[] | null;
+  defaultVisibleKeys: readonly string[];
   defaultVisibleCount: number;
 }
 
@@ -50,28 +53,11 @@ export function arrangePluginNavPanels<TPanel extends PluginNavPanelIdentity>({
   panels,
   storedOrder,
 }: ArrangePluginNavPanelsArgs<TPanel>): ArrangedPluginNavPanels<TPanel> {
-  const byKey = new Map(
-    panels.map((panel) => [getPluginNavPanelKey(panel), panel]),
-  );
-  const ordered: TPanel[] = [];
-  const normalizedOrder: string[] = [];
-  const seen = new Set<string>();
-  for (const key of storedOrder) {
-    if (seen.has(key)) continue;
-    seen.add(key);
-    normalizedOrder.push(key);
-    const panel = byKey.get(key);
-    if (panel) ordered.push(panel);
-  }
-  for (const panel of panels) {
-    const key = getPluginNavPanelKey(panel);
-    if (seen.has(key)) continue;
-    seen.add(key);
-    normalizedOrder.push(key);
-    ordered.push(panel);
-  }
-
-  return { ordered, normalizedOrder };
+  return arrangeByStoredOrder({
+    items: panels,
+    getId: getPluginNavPanelKey,
+    storedOrder,
+  });
 }
 
 export function arrangePluginNavPanelPreferences<
@@ -80,6 +66,7 @@ export function arrangePluginNavPanelPreferences<
   panels,
   storedOrder,
   storedVisibleKeys,
+  defaultVisibleKeys,
   defaultVisibleCount,
 }: ArrangePluginNavPanelPreferencesArgs<TPanel>): ArrangedPluginNavPanelPreferences<TPanel> {
   const { ordered, normalizedOrder } = arrangePluginNavPanels({
@@ -90,11 +77,16 @@ export function arrangePluginNavPanelPreferences<
     storedVisibleKeys === null
       ? null
       : [...new Set(storedVisibleKeys.filter((key) => key.length > 0))];
-  const visibleKeys =
-    normalizedVisibleKeys ??
-    ordered
+  const defaultVisibleKeySet = new Set(defaultVisibleKeys);
+  const visibleKeys = normalizedVisibleKeys ?? [
+    ...ordered
+      .filter((panel) => defaultVisibleKeySet.has(getPluginNavPanelKey(panel)))
+      .map(getPluginNavPanelKey),
+    ...ordered
+      .filter((panel) => !defaultVisibleKeySet.has(getPluginNavPanelKey(panel)))
       .slice(0, Math.max(0, defaultVisibleCount))
-      .map(getPluginNavPanelKey);
+      .map(getPluginNavPanelKey),
+  ];
   const visibleSet = new Set(visibleKeys);
 
   return {
@@ -122,34 +114,6 @@ export function togglePluginNavPanelVisibility(
   return normalized.filter((item) => item !== key);
 }
 
-interface ReorderPluginNavPanelsArgs {
-  activeKey: string;
-  overKey: string;
-  order: readonly string[];
-  visibleKeys: readonly string[];
-}
-
-export function reorderPluginNavPanels({
-  activeKey,
-  overKey,
-  order,
-  visibleKeys,
-}: ReorderPluginNavPanelsArgs): string[] | null {
-  const from = visibleKeys.indexOf(activeKey);
-  const to = visibleKeys.indexOf(overKey);
-  if (from === -1 || to === -1 || from === to) return null;
-
-  const nextVisible = [...visibleKeys];
-  const [moved] = nextVisible.splice(from, 1);
-  nextVisible.splice(to, 0, moved);
-
-  const visibleSet = new Set(visibleKeys);
-  let cursor = 0;
-  return order.map((key) =>
-    visibleSet.has(key) ? nextVisible[cursor++] : key,
-  );
-}
-
 export function migrateLegacyHiddenPluginNavPanelOrder(
   order: readonly string[],
   hiddenKeys: readonly string[],
@@ -162,14 +126,4 @@ export function migrateLegacyHiddenPluginNavPanelOrder(
     ...uniqueOrder.filter((key) => !hidden.has(key)),
     ...uniqueOrder.filter((key) => hidden.has(key)),
   ];
-}
-
-export function havePluginNavPanelOrdersDiverged(
-  left: readonly string[],
-  right: readonly string[],
-): boolean {
-  return (
-    left.length !== right.length ||
-    left.some((key, index) => key !== right[index])
-  );
 }

@@ -1,20 +1,13 @@
-import type { ComponentProps } from "react";
+import type { ComponentProps, MouseEvent as ReactMouseEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import {
-  AutomationsNavSidebarItem,
   type BuiltInSidebarNavEntry,
   ExtensionsNavSidebarItem,
-  getTraditionalPluginNavPanelEntries,
   PluginNavSidebarItems,
 } from "@/components/plugin/PluginNavSidebarItems";
 import { useAppCommandRunner } from "@/components/commands/AppCommandProvider";
-import { PluginIcon } from "@/components/plugin/PluginIcon";
 import { Icon } from "@bb/shared-ui/icon";
 import { usePluginNavPanelChrome } from "@/lib/plugin-nav-panel-chrome";
-import {
-  AUTOMATIONS_PLUGIN_ID,
-  getPluginPanelRoutePath,
-} from "@/lib/route-paths";
 import {
   ProjectListNewThreadAction,
   ProjectListSearchThreadsAction,
@@ -42,12 +35,6 @@ export function BuiltInSidebarNavigation({
   const navigate = useNavigate();
   const commandRunner = useAppCommandRunner();
   const pluginNavPanels = usePluginNavPanelChrome();
-  const automationsNavPanel = pluginNavPanels.find(
-    ({ chrome }) => chrome.pluginId === AUTOMATIONS_PLUGIN_ID,
-  );
-  const traditionalPluginNavPanels = getTraditionalPluginNavPanelEntries(
-    pluginNavPanels,
-  );
   const builtInEntries: BuiltInSidebarNavEntry[] = [
     {
       kind: "built-in",
@@ -63,7 +50,13 @@ export function BuiltInSidebarNavigation({
         />
       ),
       disabled: onNewChat === undefined,
-      onActivate: () => onNewChat?.(),
+      onActivate: (event: ReactMouseEvent<HTMLButtonElement>) => {
+        if (event.metaKey || event.ctrlKey) {
+          newThreadSplit?.openInSplit();
+          return;
+        }
+        onNewChat?.();
+      },
     },
     {
       kind: "built-in",
@@ -101,37 +94,6 @@ export function BuiltInSidebarNavigation({
           },
         ]
       : []),
-    ...(automationsNavPanel
-      ? [
-          {
-            kind: "built-in" as const,
-            pluginId: "__bb__" as const,
-            id: "automations",
-            title: automationsNavPanel.chrome.title,
-            icon: (
-              <PluginIcon
-                pluginId={automationsNavPanel.chrome.pluginId}
-                icon={automationsNavPanel.chrome.icon}
-              />
-            ),
-            content: (
-              <AutomationsNavSidebarItem
-                chrome={automationsNavPanel.chrome}
-                onNavigate={onNavigate}
-              />
-            ),
-            onActivate: () => {
-              onNavigate?.();
-              void navigate(
-                getPluginPanelRoutePath({
-                  pluginId: automationsNavPanel.chrome.pluginId,
-                  path: automationsNavPanel.chrome.path,
-                }),
-              );
-            },
-          },
-        ]
-      : []),
   ];
 
   return (
@@ -144,7 +106,7 @@ export function BuiltInSidebarNavigation({
         <PluginNavSidebarItems
           builtInEntries={builtInEntries}
           compactCustomizeMode={compactCustomizeMode}
-          entries={traditionalPluginNavPanels}
+          entries={pluginNavPanels}
           leadingOrderKeys={DEFAULT_BUILT_IN_SIDEBAR_NAVIGATION_ORDER}
           onCompactCustomizeModeChange={onCompactCustomizeModeChange}
           onNavigate={onNavigate}

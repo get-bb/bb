@@ -104,14 +104,11 @@ export async function handleHostSessionOpened(
       });
     }
 
-    interruptPendingInteractionsForHostThreads(deps, {
-      hostId: args.hostId,
-      reason: sameDaemonInstance
-        ? DAEMON_DISCONNECTED_PENDING_INTERACTION_REASON
-        : DAEMON_RESTARTED_PENDING_INTERACTION_REASON,
-    });
-
     if (!sameDaemonInstance) {
+      interruptPendingInteractionsForHostThreads(deps, {
+        hostId: args.hostId,
+        reason: DAEMON_RESTARTED_PENDING_INTERACTION_REASON,
+      });
       interruptActiveThreadsForHost(deps, {
         hostId: args.hostId,
         reason: "host-daemon-restarted",

@@ -46,9 +46,9 @@ function getThreadDisplayTitle(thread: Thread): string | undefined {
   return titleFallback || undefined;
 }
 
-function getThreadSearchTexts(thread: Thread): readonly string[] {
+function getThreadSearchText(thread: Thread): string {
   const title = getThreadDisplayTitle(thread);
-  return title ? [title, thread.id] : [thread.id];
+  return title ?? thread.id;
 }
 
 function canSuggestThread(
@@ -169,7 +169,8 @@ export function buildThreadMentionSuggestions(
   const matches = fuzzyMatchText({
     items: candidateThreads,
     query: trimmedQuery,
-    getText: getThreadSearchTexts,
+    getText: getThreadSearchText,
+    getAliases: (thread) => [thread.id],
     limit: candidateThreads.length,
   });
 

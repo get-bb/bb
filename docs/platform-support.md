@@ -55,9 +55,9 @@ talks to a server over the same HTTP + WebSocket contract as the web app.
 - Distribution: developer builds from source (Xcode 26.2, iOS 26 simulator
   runtime) today; TestFlight / Play builds go through EAS once the Expo
   account exists (see `apps/mobile/README.md`). No store release yet.
-- Push notifications arrive in a later PR; they will need an EAS project,
-  APNs / FCM credentials, a physical device, and a server that can reach
-  `exp.host`.
+- The built-in Push notifications plugin works on iOS when the bb server can
+  reach `exp.host`. The server needs no Apple or Google keys. Android push
+  support remains untested.
 
 Not available on the phone (use the web app or desktop for these):
 

@@ -55,6 +55,7 @@ import {
   pendingInteractionResolutionEquals,
   validatePendingInteractionResolution,
 } from "./pending-interaction-validation.js";
+import { emitPluginInteractionPending } from "../plugins/plugin-thread-events.js";
 
 type RegisterPendingInteractionResult =
   | {
@@ -447,6 +448,7 @@ export class PendingInteractionLifecycle {
         hasPendingInteraction: true,
         threadId: pendingInteraction.threadId,
       });
+      emitPluginInteractionPending(thread, pendingInteraction);
     }
 
     return {

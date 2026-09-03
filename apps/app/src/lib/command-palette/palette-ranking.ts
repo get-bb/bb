@@ -55,7 +55,8 @@ export function rankPaletteActions(
   const matches = fuzzyMatchText({
     items: args.actions,
     query: args.query,
-    getText: (action) => [action.title, action.group],
+    getText: (action) => action.title,
+    getAliases: (action) => [action.group],
     limit: PALETTE_RESULT_LIMIT,
   });
 

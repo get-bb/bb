@@ -22,8 +22,6 @@ import {
   ensureGitRepo,
   getCheckoutRef,
   getCurrentBranch,
-  hasRef,
-  hasUncommittedChanges,
   parseNameStatusEntries,
   parseNameStatusSourceEntries,
   parseNumstatEntriesZ,
@@ -51,7 +49,6 @@ import {
   withCheckoutMutationLock,
   withCheckoutMutationLocks,
 } from "./checkout-mutation-lock.js";
-import { runGitWithWorktreeMetadataLock } from "./worktree-metadata-lock.js";
 
 export interface DiffOptions {
   target?: WorkspaceDiffTarget;
@@ -76,18 +73,6 @@ export interface CommitOptions {
 export interface CommitResult {
   commitSha: string;
   commitSubject: string;
-}
-
-export interface SquashMergeOptions {
-  targetBranch: string;
-  commitMessage: string;
-}
-
-export interface SquashMergeResult {
-  merged: boolean;
-  commitSha: string;
-  commitSubject: string;
-  targetBranch: string;
 }
 
 export type PullRequestActionOptions = GitHostPullRequestAction;
@@ -171,23 +156,6 @@ type TruncatedOutput = {
   truncated: boolean;
 };
 
-type WorktreeEntry = {
-  path: string;
-  branchRef: string | null;
-};
-
-type SquashMergeTarget = {
-  kind: "local";
-  baseRef: string;
-  expectedSha: string;
-};
-
-type PublishSquashMergeCommitArgs = {
-  targetBranch: string;
-  target: SquashMergeTarget;
-  commitSha: string;
-};
-
 type ReadDiffArtifactsArgs = {
   diffArgs: string[];
   filesArgs: string[];
@@ -243,38 +211,6 @@ const WORKSPACE_STATUS_UNTRACKED_ENRICHMENT_TIMEOUT_MS = 10_000;
 const TEMPORARY_UNTRACKED_INDEX_ADD_ATTEMPTS = 3;
 const DIFF_NUMSTAT_BASE_BUFFER_BYTES = 64 * 1024;
 const DIFF_NUMSTAT_PER_FILE_BUFFER_BYTES = 16 * 1024;
-
-function parseWorktreeList(porcelainOutput: string): WorktreeEntry[] {
-  const entries: WorktreeEntry[] = [];
-  let currentPath: string | null = null;
-  let currentBranchRef: string | null = null;
-
-  for (const line of porcelainOutput.split("\n")) {
-    if (line === "") {
-      if (currentPath !== null) {
-        entries.push({ path: currentPath, branchRef: currentBranchRef });
-      }
-      currentPath = null;
-      currentBranchRef = null;
-      continue;
-    }
-
-    if (line.startsWith("worktree ")) {
-      currentPath = line.slice("worktree ".length);
-      continue;
-    }
-
-    if (line.startsWith("branch ")) {
-      currentBranchRef = line.slice("branch ".length);
-    }
-  }
-
-  if (currentPath !== null) {
-    entries.push({ path: currentPath, branchRef: currentBranchRef });
-  }
-
-  return entries;
-}
 
 function resolveWorkspaceFileStatusKind(args: {
   indexStatus: string;
@@ -1082,187 +1018,6 @@ export class Workspace {
       await this.runGit(["reset", "--hard", "HEAD"], { cwd: this.path });
       await this.runGit(["clean", "-fd"], { cwd: this.path });
     });
-  }
-
-  async squashMergeInto(
-    options: SquashMergeOptions,
-  ): Promise<SquashMergeResult> {
-    await ensureGitRepo(this.path, this.gitProcessOptions);
-
-    const sourceBranch = await this.currentBranch;
-    if (!sourceBranch) {
-      throw new WorkspaceError(
-        "detached_head",
-        "Cannot squash merge from a detached workspace",
-      );
-    }
-
-    const target = await this.resolveSquashMergeTarget(options.targetBranch);
-    const tempDir = await createTempDir("bb-squash-");
-    const tempDirPath = path.resolve(tempDir);
-
-    try {
-      await runGitWithWorktreeMetadataLock(
-        ["worktree", "add", "--detach", tempDir, target.baseRef],
-        { cwd: this.path, ...this.gitProcessOptions },
-      );
-      const squashCommit = await new Workspace(
-        tempDir,
-        this.gitProcessOptions,
-      ).withMutation(async () => {
-        await this.runGit(["merge", "--squash", sourceBranch], {
-          cwd: tempDir,
-        });
-        const staged = await this.runGit(["diff", "--cached", "--quiet"], {
-          cwd: tempDir,
-          allowFailure: true,
-        });
-        if (staged.exitCode === 0) {
-          throw new WorkspaceError("no_changes", "No changes to merge");
-        }
-        await this.runGit(
-          ["commit", "--no-verify", "-m", options.commitMessage],
-          {
-            cwd: tempDir,
-          },
-        );
-        const commitSha = await revParse(
-          tempDir,
-          "HEAD",
-          this.gitProcessOptions,
-        );
-        const commitSubject = (
-          await this.runGit(["log", "-1", "--pretty=%s"], { cwd: tempDir })
-        ).stdout.trim();
-        return { commitSha, commitSubject };
-      });
-      await this.publishSquashMergeCommit({
-        targetBranch: options.targetBranch,
-        target,
-        commitSha: squashCommit.commitSha,
-      });
-
-      return {
-        merged: true,
-        commitSha: squashCommit.commitSha,
-        commitSubject: squashCommit.commitSubject,
-        targetBranch: options.targetBranch,
-      };
-    } finally {
-      await runGitWithWorktreeMetadataLock(
-        ["worktree", "remove", tempDir, "--force"],
-        {
-          cwd: this.path,
-          ...this.gitProcessOptions,
-          allowFailure: true,
-        },
-      );
-      await fs.rm(tempDir, { recursive: true, force: true });
-
-      const remainingTempWorktree = (await this.listWorktrees()).find(
-        (entry) => path.resolve(entry.path) === tempDirPath,
-      );
-      if (remainingTempWorktree) {
-        throw new WorkspaceError(
-          "worktree_cleanup_failed",
-          "Temporary worktree cleanup failed",
-        );
-      }
-    }
-  }
-
-  private async resolveSquashMergeTarget(
-    targetBranch: string,
-  ): Promise<SquashMergeTarget> {
-    const localRef = `refs/heads/${targetBranch}`;
-    if (await hasRef(this.path, localRef, this.gitProcessOptions)) {
-      return {
-        kind: "local",
-        baseRef: localRef,
-        expectedSha: await revParse(
-          this.path,
-          localRef,
-          this.gitProcessOptions,
-        ),
-      };
-    }
-
-    const directRemoteRef = `refs/remotes/${targetBranch}`;
-    if (await hasRef(this.path, directRemoteRef, this.gitProcessOptions)) {
-      throw new WorkspaceError(
-        "non_local_target_branch",
-        `Cannot squash merge into remote branch ${targetBranch}; select a local branch`,
-      );
-    }
-
-    const remoteRef = `refs/remotes/origin/${targetBranch}`;
-    if (await hasRef(this.path, remoteRef, this.gitProcessOptions)) {
-      throw new WorkspaceError(
-        "non_local_target_branch",
-        `Cannot squash merge into remote-only branch ${targetBranch}; select a local branch`,
-      );
-    }
-
-    throw new WorkspaceError(
-      "branch_not_found",
-      `Target branch does not exist: ${targetBranch}`,
-    );
-  }
-
-  private async publishSquashMergeCommit(
-    args: PublishSquashMergeCommitArgs,
-  ): Promise<void> {
-    const checkedOutTargetPath = await this.findWorktreePathForBranch(
-      args.targetBranch,
-    );
-    if (checkedOutTargetPath !== null) {
-      await new Workspace(
-        checkedOutTargetPath,
-        this.gitProcessOptions,
-      ).withMutation(async () => {
-        if (
-          await hasUncommittedChanges(
-            checkedOutTargetPath,
-            this.gitProcessOptions,
-          )
-        ) {
-          throw new WorkspaceError(
-            "dirty_target_branch",
-            `Cannot squash merge into ${args.targetBranch}: target branch is checked out at ${checkedOutTargetPath} with uncommitted changes`,
-          );
-        }
-
-        await this.runGit(["merge", "--ff-only", args.commitSha], {
-          cwd: checkedOutTargetPath,
-        });
-      });
-      return;
-    }
-
-    await this.runGit(
-      [
-        "update-ref",
-        `refs/heads/${args.targetBranch}`,
-        args.commitSha,
-        args.target.expectedSha,
-      ],
-      { cwd: this.path },
-    );
-  }
-
-  private async findWorktreePathForBranch(
-    branchName: string,
-  ): Promise<string | null> {
-    const entries = await this.listWorktrees();
-    const branchRef = `refs/heads/${branchName}`;
-    return entries.find((entry) => entry.branchRef === branchRef)?.path ?? null;
-  }
-
-  private async listWorktrees(): Promise<WorktreeEntry[]> {
-    const result = await this.runGit(["worktree", "list", "--porcelain"], {
-      cwd: this.path,
-    });
-    return parseWorktreeList(result.stdout);
   }
 
   private async buildDiffSummary(args: {

@@ -5,6 +5,7 @@ import type {
   Environment,
   Host,
   PermissionMode,
+  PendingInteraction,
   Project,
   PromptInput,
   ProviderErrorInfo,
@@ -85,6 +86,13 @@ export type PluginSettingDescriptor =
       default?: boolean;
     }
   | {
+      type: "number";
+      label: string;
+      description?: string;
+      experimental_schema?: StandardSchemaV1<number, number>;
+      default?: number;
+    }
+  | {
       type: "select";
       label: string;
       description?: string;
@@ -104,13 +112,13 @@ export type PluginSettingDescriptor =
 
 export type PluginSettingDescriptors = Record<string, PluginSettingDescriptor>;
 
-export type PluginSettingValue = string | boolean;
+export type PluginSettingValue = string | number | boolean;
 
 /** `default` present → non-optional value; absent → `T | undefined`. */
 export type PluginSettingsValues<
   Ds extends Record<string, PluginSettingDescriptor>,
 > = {
-  [K in keyof Ds]: Ds[K] extends { default: string | boolean }
+  [K in keyof Ds]: Ds[K] extends { default: string | number | boolean }
     ? PluginSettingValueOf<Ds[K]>
     : PluginSettingValueOf<Ds[K]> | undefined;
 };
@@ -119,7 +127,9 @@ type PluginSettingValueOf<D extends PluginSettingDescriptor> = D extends {
   type: "boolean";
 }
   ? boolean
-  : string;
+  : D extends { type: "number" }
+    ? number
+    : string;
 
 export interface PluginSettingsHandle<
   Ds extends Record<string, PluginSettingDescriptor>,
@@ -261,6 +271,11 @@ export interface PluginThreadEventPayloads {
   "thread.archived": { thread: ThreadResponse };
   /** Fired after a thread is soft-deleted. */
   "thread.deleted": { thread: ThreadResponse };
+  /** Fired after a pending interaction row is committed. */
+  "interaction.pending": {
+    thread: ThreadResponse;
+    interaction: PendingInteraction;
+  };
   /**
    * Fired after a dispatch attempt is queued as a row — by a `message.dispatch`
    * hook's `wait` decision, by a `sendAt` in the future, or by a core wait (the
@@ -1411,6 +1426,12 @@ export interface PluginEvents {
 // ---------------------------------------------------------------------------
 
 export interface PluginServerApi {
+  /**
+   * The operator-configured public app URL from `BB_APP_URL`, or `null` when
+   * the operator has not configured one. This value is not bind-gated.
+   */
+  readonly experimental_appUrl: string | null;
+
   /**
    * This BB server's own loopback base URL (e.g. "http://127.0.0.1:38886"),
    * which serves the SPA + /api + /ws. For plugins that proxy or relay

@@ -46,7 +46,6 @@ import { cn } from "@bb/shared-ui/lib/utils";
 import { useSystemExecutionOptions } from "@/hooks/queries/system-queries";
 import { resolveModelCatalogSelection } from "@/hooks/thread-creation-options/model-catalog-selection";
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
-import { usePointerCoarse } from "@bb/shared-ui/hooks/use-pointer-coarse";
 import {
   OPTION_BASE_CLASS_NAME,
   OPTION_INTERACTIVE_CLASS_NAME,
@@ -55,6 +54,7 @@ import {
 } from "@bb/shared-ui/option-display";
 import { type PickerOption } from "./OptionPicker";
 import type { ModelPickerOption } from "./model-picker-option";
+import { searchPickerOptions } from "./picker-search";
 import { useResetPickerScroll } from "./useResetPickerScroll";
 import {
   formatModelLoadErrorText,
@@ -117,31 +117,6 @@ function splitModelLabelTag(label: string): ModelLabelParts {
     return { base: label, tag: null };
   }
   return { base: match[1], tag: match[2] };
-}
-
-export function buildFuzzyRegex(query: string): RegExp {
-  const pattern = query
-    .split("")
-    .map((c) => c.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
-    .join(".*");
-  return new RegExp(pattern, "i");
-}
-
-function fuzzyFilter<T>(
-  options: readonly T[],
-  normalizedQuery: string,
-  getText: (option: T) => string,
-): readonly T[] {
-  if (!normalizedQuery) return options;
-  const regex = buildFuzzyRegex(normalizedQuery);
-  return options.filter((option) => regex.test(getText(option)));
-}
-
-function modelSearchText(
-  option: ModelPickerOption,
-  brandPrefix: string | undefined,
-): string {
-  return `${stripModelBrandPrefix(option.label, brandPrefix)} ${option.routeProviderId ?? ""} ${option.value}`;
 }
 
 type ModelNavRow =
@@ -260,7 +235,6 @@ export function ModelReasoningPicker({
   footerAction,
 }: ModelReasoningPickerProps) {
   const isCompactViewport = useIsCompactViewport();
-  const isPointerCoarse = usePointerCoarse();
   const [open, setOpen] = useState(defaultOpen);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const registeredToggleShortcut = useAppCommandShortcut("modelPicker.toggle");
@@ -271,8 +245,7 @@ export function ModelReasoningPicker({
   const listRef = useResetPickerScroll<HTMLDivElement>(searchQuery);
   const [activeIndex, setActiveIndex] = useState(-1);
   const searchInputRef = useRef<HTMLInputElement>(null);
-  const normalizedQuery = searchQuery.trim().toLowerCase();
-  const isSearching = normalizedQuery.length > 0;
+  const isSearching = searchQuery.trim().length > 0;
   const navId = useId();
   const listboxId = `${navId}-listbox`;
   const optionDomId = (index: number) => `${navId}-opt-${index}`;
@@ -471,16 +444,29 @@ export function ModelReasoningPicker({
 
   const activeBrandPrefix = activeProvider?.brandPrefix;
   const filteredModelOptions = useMemo(() => {
-    return fuzzyFilter(activeModelOptions, normalizedQuery, (option) =>
-      modelSearchText(option, activeBrandPrefix),
-    );
-  }, [activeModelOptions, normalizedQuery, activeBrandPrefix]);
-
-  const filteredMoreModelOptions = useMemo(() => {
-    return fuzzyFilter(activeMoreModelOptions, normalizedQuery, (option) =>
-      modelSearchText(option, activeBrandPrefix),
-    );
-  }, [activeMoreModelOptions, normalizedQuery, activeBrandPrefix]);
+    if (!isSearching) {
+      return activeModelOptions;
+    }
+    return searchPickerOptions({
+      options: [...activeModelOptions, ...activeMoreModelOptions],
+      query: searchQuery,
+      getLabel: (option) =>
+        stripModelBrandPrefix(option.label, activeBrandPrefix),
+      getAliases: (option) =>
+        option.routeProviderId
+          ? [option.routeProviderId, option.value]
+          : [option.value],
+    });
+  }, [
+    activeBrandPrefix,
+    activeModelOptions,
+    activeMoreModelOptions,
+    isSearching,
+    searchQuery,
+  ]);
+  const filteredMoreModelOptions = isSearching
+    ? EMPTY_MODEL_OPTIONS
+    : activeMoreModelOptions;
 
   const navRows = useMemo(
     () =>
@@ -753,15 +739,6 @@ export function ModelReasoningPicker({
     el?.scrollIntoView({ block: "nearest" });
   }, [highlightedIndex, navId]);
 
-  useEffect(() => {
-    if (!open || isCompactViewport || isPointerCoarse) return;
-    const frame = window.requestAnimationFrame(() => {
-      searchInputRef.current?.focus();
-      searchInputRef.current?.select();
-    });
-    return () => window.cancelAnimationFrame(frame);
-  }, [open, isCompactViewport, isPointerCoarse]);
-
   const TriggerIcon =
     hasSelectedModel || modelIsLoading ? ProviderIcon : undefined;
   const triggerTitleModelLabel = modelIsLoading
@@ -889,6 +866,7 @@ export function ModelReasoningPicker({
         align={align}
         mobileTitle="Model"
         onMobileContentAnimationEnd={handleMobileContentAnimationEnd}
+        autoFocusRef={showSearchInput ? searchInputRef : undefined}
         className={cn(
           "flex flex-col p-0",
           MODEL_PICKER_MENU_WIDTH_CLASS_NAME,
@@ -915,6 +893,7 @@ export function ModelReasoningPicker({
                   key={provider.value}
                   type="button"
                   title={provider.label}
+                  onMouseDown={(event) => event.preventDefault()}
                   onClick={() => {
                     if (provider.value !== activeProviderId) {
                       handleProviderSelect(provider.value);

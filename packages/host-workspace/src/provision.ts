@@ -12,8 +12,6 @@ import type {
   DiffPatchEntry,
   PullRequestActionOptions,
   StatusOptions,
-  SquashMergeOptions,
-  SquashMergeResult,
 } from "./workspace.js";
 import { Workspace } from "./workspace.js";
 import type {
@@ -141,7 +139,6 @@ export interface HostWorkspace {
 
   commit(options: CommitOptions): Promise<CommitResult>;
   reset(): Promise<void>;
-  squashMerge(options: SquashMergeOptions): Promise<SquashMergeResult>;
 
   destroy(args: DestroyWorkspaceArgs): Promise<void>;
 }
@@ -267,10 +264,6 @@ class ProvisionedHostWorkspace implements HostWorkspace {
 
   reset(): Promise<void> {
     return this.ws.reset();
-  }
-
-  squashMerge(options: SquashMergeOptions): Promise<SquashMergeResult> {
-    return this.ws.squashMergeInto(options);
   }
 
   destroy(args: DestroyWorkspaceArgs): Promise<void> {

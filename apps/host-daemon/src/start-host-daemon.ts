@@ -206,14 +206,13 @@ export async function startHostDaemon(
       resolveRuntimeShellEnv,
       hostWatcher,
       closeMachineAuthProxy: machineAuthProxy?.close,
-      forceExit: (code) => process.exit(code),
+      exitProcess: (code) => process.exit(code),
     });
     const startedApp = app;
     handleDaemonLockLost = () => {
       void startedApp.daemon
-        .shutdown("daemon-lock-lost")
-        .catch(() => undefined)
-        .finally(() => process.exit(1));
+        .shutdown("daemon-lock-lost", 1)
+        .catch(() => process.exit(1));
     };
     await app.daemon.start();
     return app.daemon;

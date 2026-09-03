@@ -22,7 +22,7 @@ export interface CreateQueuedFollowUpRequest extends CreateQueuedMessageRequest 
 
 export interface SendQueuedMessageByIdRequest {
   id: string;
-  mode: "auto";
+  mode: "steer";
   queuedMessageId: string;
 }
 
@@ -190,7 +190,9 @@ export function canSubmitFollowUpShortcut({
   submitModeKind,
 }: CanSubmitFollowUpShortcutArgs): boolean {
   return (
-    runtimeDisplayStatus === "active" &&
+    (runtimeDisplayStatus === "active" ||
+      runtimeDisplayStatus === "provisioning" ||
+      runtimeDisplayStatus === "starting") &&
     submitModeKind === "queue" &&
     !isFollowUpSubmitting &&
     !isQueueMutationPending &&
@@ -268,7 +270,7 @@ function buildSendQueuedMessageByIdRequest({
 }: BuildSendQueuedMessageByIdRequestArgs): SendQueuedMessageByIdRequest {
   return {
     id: threadId,
-    mode: "auto",
+    mode: "steer",
     queuedMessageId,
   };
 }

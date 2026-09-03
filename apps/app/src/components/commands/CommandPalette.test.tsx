@@ -274,6 +274,17 @@ describe("CommandPalette", () => {
     expect(selectedOption()?.textContent).toContain("Open terminal");
   });
 
+  it("finds commands when the query starts with a space", async () => {
+    renderPalette();
+    openPalette();
+    await waitFor(() => expect(searchField()).toBeTruthy());
+
+    fireEvent.change(searchField(), { target: { value: "> new thread" } });
+
+    await waitFor(() => expect(optionTitles()).toHaveLength(1));
+    expect(selectedOption()?.textContent).toContain("New thread");
+  });
+
   it("wraps at both ends of the list", async () => {
     renderPalette();
     openPalette();

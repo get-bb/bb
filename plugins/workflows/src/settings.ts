@@ -5,65 +5,117 @@ import type {
 } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 
-export const WORKFLOW_SETTING_DESCRIPTORS = {
+interface IntegerField {
+  label: string;
+  minimum: number;
+  maximum: number;
+}
+
+const INTEGER_FIELDS = Object.freeze({
   maxActiveRuns: {
-    type: "string",
     label: "Maximum active runs",
-    description: "Concurrent workflow runs across the plugin (1-32).",
-    experimental_schema: workflowIntegerSchema("maxActiveRuns"),
-    default: "4",
+    minimum: 1,
+    maximum: 32,
   },
   maxConcurrentAgents: {
-    type: "string",
     label: "Per-run agent concurrency",
-    description: "Agent calls that one workflow may run concurrently (1-64).",
-    experimental_schema: workflowIntegerSchema("maxConcurrentAgents"),
-    default: "8",
+    minimum: 1,
+    maximum: 64,
   },
   maxAgentCalls: {
-    type: "string",
     label: "Maximum agent calls",
-    description: "Agent calls allowed during one workflow run (1-1000).",
-    experimental_schema: workflowIntegerSchema("maxAgentCalls"),
-    default: "100",
+    minimum: 1,
+    maximum: 1_000,
   },
   totalRunTimeoutMs: {
-    type: "string",
+    label: "Total run timeout",
+    minimum: 60_000,
+    maximum: 604_800_000,
+  },
+  retentionDays: {
+    label: "Retention days",
+    minimum: 1,
+    maximum: 3_650,
+  },
+  maxNotificationBytes: {
+    label: "Maximum notification bytes",
+    minimum: 1_024,
+    maximum: 262_144,
+  },
+});
+
+function boundedIntegerSchema(field: IntegerField) {
+  const rangeMessage = `${field.label} must be from ${field.minimum} through ${field.maximum}`;
+  return z
+    .number()
+    .int(`${field.label} must be a whole number`)
+    .min(field.minimum, rangeMessage)
+    .max(field.maximum, rangeMessage);
+}
+
+const workflowSettingsSchema = z.object({
+  maxActiveRuns: boundedIntegerSchema(INTEGER_FIELDS.maxActiveRuns),
+  maxConcurrentAgents: boundedIntegerSchema(INTEGER_FIELDS.maxConcurrentAgents),
+  maxAgentCalls: boundedIntegerSchema(INTEGER_FIELDS.maxAgentCalls),
+  totalRunTimeoutMs: boundedIntegerSchema(INTEGER_FIELDS.totalRunTimeoutMs),
+  retentionDays: boundedIntegerSchema(INTEGER_FIELDS.retentionDays),
+  maxNotificationBytes: boundedIntegerSchema(
+    INTEGER_FIELDS.maxNotificationBytes,
+  ),
+});
+
+export type WorkflowSettings = z.infer<typeof workflowSettingsSchema>;
+
+export const WORKFLOW_SETTING_DESCRIPTORS = {
+  maxActiveRuns: {
+    type: "number",
+    label: "Maximum active runs",
+    description: "Concurrent workflow runs across the plugin (1-32).",
+    experimental_schema: workflowSettingsSchema.shape.maxActiveRuns,
+    default: 4,
+  },
+  maxConcurrentAgents: {
+    type: "number",
+    label: "Per-run agent concurrency",
+    description: "Agent calls that one workflow may run concurrently (1-64).",
+    experimental_schema: workflowSettingsSchema.shape.maxConcurrentAgents,
+    default: 8,
+  },
+  maxAgentCalls: {
+    type: "number",
+    label: "Maximum agent calls",
+    description: "Agent calls allowed during one workflow run (1-1000).",
+    experimental_schema: workflowSettingsSchema.shape.maxAgentCalls,
+    default: 100,
+  },
+  totalRunTimeoutMs: {
+    type: "number",
     label: "Total run timeout (milliseconds)",
     description:
       "Fail a workflow after this total duration in milliseconds (60000-604800000).",
-    experimental_schema: workflowIntegerSchema("totalRunTimeoutMs"),
-    default: "86400000",
+    experimental_schema: workflowSettingsSchema.shape.totalRunTimeoutMs,
+    default: 86_400_000,
   },
   retentionDays: {
-    type: "string",
+    type: "number",
     label: "Retention (days)",
     description: "Days to retain completed workflow data (1-3650).",
-    experimental_schema: workflowIntegerSchema("retentionDays"),
-    default: "7",
+    experimental_schema: workflowSettingsSchema.shape.retentionDays,
+    default: 7,
   },
   maxNotificationBytes: {
-    type: "string",
+    type: "number",
     label: "Maximum notification bytes",
     description:
       "Maximum UTF-8 size of a completion notification (1024-262144).",
-    experimental_schema: workflowIntegerSchema("maxNotificationBytes"),
-    default: "16384",
+    experimental_schema: workflowSettingsSchema.shape.maxNotificationBytes,
+    default: 16_384,
   },
 } as const satisfies PluginSettingDescriptors;
 
-type RawWorkflowSettings = PluginSettingsValues<
+type DeclaredWorkflowSettings = PluginSettingsValues<
   typeof WORKFLOW_SETTING_DESCRIPTORS
 >;
-
-export interface WorkflowSettings {
-  maxActiveRuns: number;
-  maxConcurrentAgents: number;
-  maxAgentCalls: number;
-  totalRunTimeoutMs: number;
-  retentionDays: number;
-  maxNotificationBytes: number;
-}
 
 export const DEFAULT_WORKFLOW_SETTINGS: Readonly<WorkflowSettings> =
   Object.freeze({
@@ -75,115 +127,10 @@ export const DEFAULT_WORKFLOW_SETTINGS: Readonly<WorkflowSettings> =
     maxNotificationBytes: 16 * 1_024,
   });
 
-interface IntegerField {
-  label: string;
-  minimum: number;
-  maximum: number;
-}
-
-const INTEGER_FIELDS: Readonly<Record<keyof WorkflowSettings, IntegerField>> =
-  Object.freeze({
-    maxActiveRuns: {
-      label: "Maximum active runs",
-      minimum: 1,
-      maximum: 32,
-    },
-    maxConcurrentAgents: {
-      label: "Per-run agent concurrency",
-      minimum: 1,
-      maximum: 64,
-    },
-    maxAgentCalls: {
-      label: "Maximum agent calls",
-      minimum: 1,
-      maximum: 1_000,
-    },
-    totalRunTimeoutMs: {
-      label: "Total run timeout",
-      minimum: 60_000,
-      maximum: 604_800_000,
-    },
-    retentionDays: {
-      label: "Retention days",
-      minimum: 1,
-      maximum: 3_650,
-    },
-    maxNotificationBytes: {
-      label: "Maximum notification bytes",
-      minimum: 1_024,
-      maximum: 262_144,
-    },
-  });
-
-function parseBoundedInteger(raw: string, field: IntegerField): number {
-  const value = raw.trim();
-  const expectation = `${field.minimum} through ${field.maximum}`;
-  if (value.length === 0) {
-    throw new Error(
-      `${field.label} cannot be empty; enter a base-10 integer from ${expectation}`,
-    );
-  }
-  if (!/^[0-9]+$/.test(value)) {
-    throw new Error(
-      `${field.label} must be a base-10 integer from ${expectation}; received ${JSON.stringify(raw)}`,
-    );
-  }
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed) || !Number.isSafeInteger(parsed)) {
-    throw new Error(
-      `${field.label} must be a finite base-10 integer from ${expectation}; received ${JSON.stringify(raw)}`,
-    );
-  }
-  if (parsed < field.minimum || parsed > field.maximum) {
-    throw new Error(
-      `${field.label} must be from ${expectation}; received ${parsed}`,
-    );
-  }
-  return parsed;
-}
-
-function workflowIntegerSchema(key: keyof WorkflowSettings): z.ZodString {
-  return z.string().superRefine((value, context) => {
-    try {
-      parseBoundedInteger(value, INTEGER_FIELDS[key]);
-    } catch (error) {
-      context.addIssue({
-        code: "custom",
-        message: error instanceof Error ? error.message : String(error),
-      });
-    }
-  });
-}
-
-export function parseWorkflowSettings(
-  values: Readonly<RawWorkflowSettings>,
+export function validateWorkflowSettings(
+  values: Readonly<DeclaredWorkflowSettings>,
 ): WorkflowSettings {
-  return Object.freeze({
-    maxActiveRuns: parseBoundedInteger(
-      values.maxActiveRuns,
-      INTEGER_FIELDS.maxActiveRuns,
-    ),
-    maxConcurrentAgents: parseBoundedInteger(
-      values.maxConcurrentAgents,
-      INTEGER_FIELDS.maxConcurrentAgents,
-    ),
-    maxAgentCalls: parseBoundedInteger(
-      values.maxAgentCalls,
-      INTEGER_FIELDS.maxAgentCalls,
-    ),
-    totalRunTimeoutMs: parseBoundedInteger(
-      values.totalRunTimeoutMs,
-      INTEGER_FIELDS.totalRunTimeoutMs,
-    ),
-    retentionDays: parseBoundedInteger(
-      values.retentionDays,
-      INTEGER_FIELDS.retentionDays,
-    ),
-    maxNotificationBytes: parseBoundedInteger(
-      values.maxNotificationBytes,
-      INTEGER_FIELDS.maxNotificationBytes,
-    ),
-  });
+  return Object.freeze(workflowSettingsSchema.parse(values));
 }
 
 const LEGACY_STORED_SETTING_KEYS = new Set(["workerStallTimeoutMs"]);
@@ -205,16 +152,16 @@ export function parseStoredWorkflowSettings(value: unknown): WorkflowSettings {
   ) {
     throw new Error("Workflow settings snapshot has unexpected fields");
   }
-  const raw = Object.fromEntries(
+  const stored = Object.fromEntries(
     expected.map((key) => {
-      const stored = object[key];
-      if (typeof stored !== "number" || !Number.isSafeInteger(stored)) {
+      const value = object[key];
+      if (typeof value !== "number" || !Number.isSafeInteger(value)) {
         throw new Error(`Workflow settings snapshot.${key} must be an integer`);
       }
-      return [key, String(stored)];
+      return [key, value];
     }),
-  ) as Record<keyof WorkflowSettings, string>;
-  return parseWorkflowSettings(raw);
+  ) as WorkflowSettings;
+  return validateWorkflowSettings(stored);
 }
 
 interface WorkflowSettingsHandle {
@@ -232,20 +179,20 @@ export function registerWorkflowSettings(
   let lastValid = DEFAULT_WORKFLOW_SETTINGS;
   return {
     async get() {
-      const parsed = parseWorkflowSettings(await handle.get());
-      lastValid = parsed;
-      return parsed;
+      const validated = validateWorkflowSettings(await handle.get());
+      lastValid = validated;
+      return validated;
     },
     onChange(listener, onInvalid) {
       handle.onChange((next, previous) => {
         try {
-          const parsedNext = parseWorkflowSettings(next);
+          const validatedNext = validateWorkflowSettings(next);
           let parsedPrevious = lastValid;
           try {
-            parsedPrevious = parseWorkflowSettings(previous);
+            parsedPrevious = validateWorkflowSettings(previous);
           } catch {}
-          lastValid = parsedNext;
-          listener(parsedNext, parsedPrevious);
+          lastValid = validatedNext;
+          listener(validatedNext, parsedPrevious);
         } catch (error) {
           onInvalid?.(
             error instanceof Error ? error : new Error(String(error)),

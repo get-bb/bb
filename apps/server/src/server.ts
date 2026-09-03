@@ -480,12 +480,20 @@ export function createApp(
     });
   });
   app.get("/install/bb-app.tgz", async (context) => {
-    const tarball = await readFile(await bbAppArtifactService.getTarballPath());
+    const artifact = await bbAppArtifactService.getArtifact();
+    const etag = `"sha256-${artifact.digest}"`;
+    const headers = {
+      "cache-control": "public, max-age=300",
+      "content-type": "application/gzip",
+      etag,
+      "x-bb-artifact-sha256": artifact.digest,
+    };
+    if (context.req.header("if-none-match") === etag) {
+      return new Response(null, { headers, status: 304 });
+    }
+    const tarball = await readFile(artifact.path);
     return new Response(tarball, {
-      headers: {
-        "cache-control": "public, max-age=300",
-        "content-type": "application/gzip",
-      },
+      headers: { ...headers, "content-length": String(artifact.size) },
     });
   });
   app.use("/api/v1/*", async (context, next) => {
@@ -547,6 +555,7 @@ export function createApp(
     pendingInteractions: deps.pendingInteractions,
     dataDir: deps.config.dataDir,
     appVersion: deps.config.appVersion,
+    getAppUrl: () => deps.config.appUrl ?? null,
     sharedPorts: deps.sharedPorts,
     providerRegistry: deps.providerRegistry,
     pluginHostArtifacts: deps.pluginHostArtifacts,

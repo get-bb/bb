@@ -39,10 +39,10 @@
   (epoch ms) on `threads.spawn` / `threads.send`.
 - A send that cannot run right now does not fail: it joins the thread's queue
   with a typed reason. `--json` reports `delivery: "queued"` plus
-  `queuedMessageId`, `waitingOn` and `sendAt`, so a script can tell "waiting for
-  the current turn" from "waiting on a plugin" without guessing. `waitingOn.kind`
-  is one of `time`, `thread-busy`, `provisioning`, `interaction` or `plugin`
-  (which also carries `pluginId` and a human reason).
+  the complete `queuedMessage` row, so a script can inspect its `id`,
+  `waitingOn`, and `sendAt` without guessing. `queuedMessage.waitingOn.kind` is
+  one of `time`, `thread-busy`, `turn-starting`, `provisioning`, `host-offline`,
+  `interaction`, or `plugin` (which also carries `pluginId` and a human reason).
 - Inspect and act on queued dispatches with `bb thread queue list [<thread-id>]
   [--wait-holder plugin:<plugin-id>]`, `bb thread queue send <thread-id>
   <message-id>` (send it now, bypassing every plugin wait and its schedule), and
@@ -51,6 +51,10 @@
   and `Send at` columns. Several queued rows on one thread are normal. The SDK
   equivalents are `threads.queue.list` (cross-thread) and
   `threads.queuedMessages.list/send/update/delete` (one thread).
+- `bb thread queue send <thread-id> <message-id> --mode steer` re-attempts the
+  row as a steer with the same send-now behavior: it bypasses the row's schedule
+  and plugin waits, while core waits still apply. During provisioning it reports
+  that the row is still queued and leaves it waiting for the workspace.
 - Queueing writes nothing to the timeline: a queued message reaches the thread
   log only once it dispatches. Ask the queue instead. In the app the same fact
   reaches the sidebar as a clock on any thread that holds queued work and is not

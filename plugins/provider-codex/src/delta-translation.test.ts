@@ -7,6 +7,7 @@ import {
 import { experimental_createDeltaAssembler as createDeltaAssembler } from "@get-bb/plugin-sdk/provider-bridge/testing";
 import type { DeltaAssembler } from "@get-bb/plugin-sdk/provider-bridge/testing";
 import type { ServerNotification as CodexServerNotification } from "./generated/codex-app-server/schema/ServerNotification.js";
+import type { RateLimitSnapshot } from "./generated/codex-app-server/schema/v2/RateLimitSnapshot.js";
 import type { Turn } from "./generated/codex-app-server/schema/v2/Turn.js";
 import {
   AGENT_MESSAGE_PRESENTATION,
@@ -53,6 +54,23 @@ function codexEvent<M extends CodexServerNotification["method"]>(
   params: Extract<CodexServerNotification, { method: M }>["params"],
 ) {
   return { jsonrpc: "2.0" as const, method, params };
+}
+
+function codexRateLimitSnapshot(
+  overrides: Partial<RateLimitSnapshot>,
+): RateLimitSnapshot {
+  return {
+    limitId: "codex",
+    limitName: null,
+    primary: null,
+    secondary: null,
+    credits: null,
+    individualLimit: null,
+    spendControlReached: null,
+    planType: null,
+    rateLimitReachedType: null,
+    ...overrides,
+  };
 }
 
 function codexTurn(args: {
@@ -2000,6 +2018,381 @@ describe("codex account rate-limit translation", () => {
         }),
       }),
     ]);
+  });
+
+  it("classifies an exhausted weekly window independently from extra credits", () => {
+    const harness = createHarness();
+    const [event] = harness.translate(
+      codexEvent("account/rateLimits/updated", {
+        rateLimits: codexRateLimitSnapshot({
+          primary: {
+            usedPercent: 100,
+            windowDurationMins: 10_080,
+            resetsAt: 1_788_748_218,
+          },
+          credits: {
+            hasCredits: false,
+            unlimited: false,
+            balance: "0",
+          },
+          planType: "pro",
+        }),
+      }),
+    );
+
+    expect(event).toMatchObject({
+      type: "provider/rateLimits/updated",
+      rateLimits: {
+        status: "blocked",
+        kind: "subscription-window",
+        reachedReason: null,
+        windows: [
+          {
+            providerKey: "primary",
+            label: "Weekly limit",
+            status: "blocked",
+            resetsAtMs: 1_788_748_218_000,
+          },
+        ],
+      },
+    });
+  });
+
+  it("does not merge subscription windows across limit ids", () => {
+    const state = createCodexEventTranslationState();
+    applyCodexRateLimitUpdate(state, {
+      limitId: "codex",
+      primary: {
+        usedPercent: 100,
+        windowDurationMins: 10_080,
+        resetsAt: 1_788_748_218,
+      },
+      credits: {
+        hasCredits: false,
+        unlimited: false,
+        balance: "0",
+      },
+    });
+
+    const premiumSnapshot = applyCodexRateLimitUpdate(state, {
+      limitId: "premium",
+      primary: null,
+      secondary: null,
+      credits: {
+        hasCredits: false,
+        unlimited: false,
+        balance: "0",
+      },
+    });
+
+    expect(premiumSnapshot).toMatchObject({
+      limitId: "premium",
+      primary: null,
+      secondary: null,
+    });
+  });
+
+  it("keeps an exhausted bucket active when another bucket has no windows", () => {
+    const harness = createHarness();
+    harness.translate(
+      codexEvent("account/rateLimits/updated", {
+        rateLimits: codexRateLimitSnapshot({
+          primary: {
+            usedPercent: 100,
+            windowDurationMins: 10_080,
+            resetsAt: 1_788_748_218,
+          },
+          credits: {
+            hasCredits: false,
+            unlimited: false,
+            balance: "0",
+          },
+          planType: "pro",
+        }),
+      }),
+    );
+
+    const [event] = harness.translate(
+      codexEvent("account/rateLimits/updated", {
+        rateLimits: codexRateLimitSnapshot({
+          limitId: "premium",
+          credits: {
+            hasCredits: false,
+            unlimited: false,
+            balance: "0",
+          },
+          planType: "pro",
+        }),
+      }),
+    );
+
+    expect(event).toMatchObject({
+      type: "provider/rateLimits/updated",
+      rateLimits: {
+        status: "blocked",
+        kind: "subscription-window",
+        windows: [
+          {
+            providerKey: "primary",
+            label: "Weekly limit",
+            status: "blocked",
+            resetsAtMs: 1_788_748_218_000,
+          },
+        ],
+      },
+    });
+  });
+
+  it("preserves every applicable blocked window across global and active buckets", () => {
+    const harness = createHarness();
+    harness.translate(
+      codexEvent("account/rateLimits/updated", {
+        rateLimits: codexRateLimitSnapshot({
+          primary: {
+            usedPercent: 100,
+            windowDurationMins: 10_080,
+            resetsAt: 1_788_748_218,
+          },
+          planType: "pro",
+        }),
+      }),
+    );
+
+    const [event] = harness.translate(
+      codexEvent("account/rateLimits/updated", {
+        rateLimits: codexRateLimitSnapshot({
+          limitId: "premium",
+          primary: {
+            usedPercent: 100,
+            windowDurationMins: 300,
+            resetsAt: 1_788_700_000,
+          },
+          planType: "pro",
+        }),
+      }),
+    );
+
+    expect(event).toMatchObject({
+      type: "provider/rateLimits/updated",
+      rateLimits: {
+        status: "blocked",
+        kind: "subscription-window",
+        windows: [
+          {
+            providerKey: "primary",
+            label: "Weekly limit",
+            status: "blocked",
+            resetsAtMs: 1_788_748_218_000,
+          },
+          {
+            providerKey: "primary",
+            label: "Current session",
+            status: "blocked",
+            resetsAtMs: 1_788_700_000_000,
+          },
+        ],
+      },
+    });
+  });
+
+  it("keeps a global credit block ahead of an active subscription block", () => {
+    const harness = createHarness();
+    harness.translate(
+      codexEvent("account/rateLimits/updated", {
+        rateLimits: codexRateLimitSnapshot({
+          credits: {
+            hasCredits: false,
+            unlimited: false,
+            balance: "0",
+          },
+          planType: "pro",
+          rateLimitReachedType: "workspace_owner_credits_depleted",
+        }),
+      }),
+    );
+
+    const [event] = harness.translate(
+      codexEvent("account/rateLimits/updated", {
+        rateLimits: codexRateLimitSnapshot({
+          limitId: "premium",
+          primary: {
+            usedPercent: 100,
+            windowDurationMins: 300,
+            resetsAt: 1_788_700_000,
+          },
+          planType: "pro",
+          rateLimitReachedType: "rate_limit_reached",
+        }),
+      }),
+    );
+
+    expect(event).toMatchObject({
+      type: "provider/rateLimits/updated",
+      rateLimits: {
+        status: "blocked",
+        kind: "credits",
+        reachedReason: "workspace_owner_credits_depleted",
+        windows: [
+          {
+            providerKey: "primary",
+            label: "Current session",
+            status: "blocked",
+            resetsAtMs: 1_788_700_000_000,
+          },
+        ],
+      },
+    });
+  });
+
+  it("does not let an inactive model bucket block the active bucket", () => {
+    const harness = createHarness();
+    harness.translate(
+      codexEvent("account/rateLimits/updated", {
+        rateLimits: codexRateLimitSnapshot({
+          limitId: "model-a",
+          limitName: "Model A",
+          primary: {
+            usedPercent: 100,
+            windowDurationMins: 300,
+            resetsAt: 1_788_748_218,
+          },
+          planType: "pro",
+        }),
+      }),
+    );
+
+    const [event] = harness.translate(
+      codexEvent("account/rateLimits/updated", {
+        rateLimits: codexRateLimitSnapshot({
+          limitId: "model-b",
+          limitName: "Model B",
+          primary: {
+            usedPercent: 10,
+            windowDurationMins: 300,
+            resetsAt: 1_788_748_218,
+          },
+          planType: "pro",
+        }),
+      }),
+    );
+
+    expect(event).toMatchObject({
+      type: "provider/rateLimits/updated",
+      rateLimits: {
+        status: "allowed",
+        kind: "subscription-window",
+        windows: [{ providerKey: "primary", status: "allowed" }],
+      },
+    });
+  });
+
+  it("hydrates and preserves rate-limit buckets by limit id", () => {
+    const harness = createHarness();
+    const [rateLimitRead] = harness.translator.buildPostInitializeRequests();
+    if (rateLimitRead === undefined) {
+      throw new Error("Expected a Codex rate-limit hydration request");
+    }
+    rateLimitRead.onResult({
+      rateLimits: {
+        limitId: "codex",
+        primary: {
+          usedPercent: 20,
+          windowDurationMins: 300,
+          resetsAt: 1_788_700_000,
+        },
+      },
+      rateLimitsByLimitId: {
+        codex: {
+          limitId: "codex",
+          primary: {
+            usedPercent: 20,
+            windowDurationMins: 300,
+            resetsAt: 1_788_700_000,
+          },
+        },
+        premium: {
+          limitId: "premium",
+          primary: {
+            usedPercent: 100,
+            windowDurationMins: 10_080,
+            resetsAt: 1_788_748_218,
+          },
+        },
+      },
+    });
+
+    const [event] = harness.translate(
+      codexEvent("account/rateLimits/updated", {
+        rateLimits: codexRateLimitSnapshot({
+          limitId: "premium",
+          credits: {
+            hasCredits: false,
+            unlimited: false,
+            balance: "0",
+          },
+          planType: "pro",
+        }),
+      }),
+    );
+
+    expect(event).toMatchObject({
+      type: "provider/rateLimits/updated",
+      rateLimits: {
+        status: "blocked",
+        kind: "subscription-window",
+        windows: [
+          {
+            providerKey: "primary",
+            label: "Weekly limit",
+            status: "blocked",
+            resetsAtMs: 1_788_748_218_000,
+          },
+        ],
+      },
+    });
+  });
+
+  it("keeps an exhausted individual limit ahead of an allowed subscription window", () => {
+    const harness = createHarness();
+    const [event] = harness.translate(
+      codexEvent("account/rateLimits/updated", {
+        rateLimits: codexRateLimitSnapshot({
+          primary: {
+            usedPercent: 20,
+            windowDurationMins: 300,
+            resetsAt: 1_788_700_000,
+          },
+          individualLimit: {
+            limit: "100",
+            used: "100",
+            remainingPercent: 0,
+            resetsAt: 1_788_748_218,
+          },
+          planType: "pro",
+        }),
+      }),
+    );
+
+    expect(event).toMatchObject({
+      type: "provider/rateLimits/updated",
+      rateLimits: {
+        status: "blocked",
+        kind: "spend-control",
+        reachedReason: null,
+        windows: [
+          {
+            providerKey: "primary",
+            label: "Current session",
+            status: "allowed",
+          },
+          {
+            providerKey: "individual-limit",
+            label: "Spend control",
+            status: "blocked",
+          },
+        ],
+      },
+    });
   });
 
   it("uses Codex's reached reason before credit and spend metadata", () => {

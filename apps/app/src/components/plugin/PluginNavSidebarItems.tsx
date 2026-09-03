@@ -68,7 +68,10 @@ import {
 } from "@/lib/plugin-nav-panel-chrome";
 import { cn } from "@bb/shared-ui/lib/utils";
 import type { PluginNavPanelSlot } from "@/lib/plugin-slots";
-import { usePaneContentSplitDrag } from "@/components/sidebar/usePaneContentSplitDrag";
+import {
+  usePaneContentSplitActions,
+  usePaneContentSplitDrag,
+} from "@/components/sidebar/usePaneContentSplitDrag";
 import { usePaneContentSplitIndicator } from "@/components/sidebar/paneContentSplitIndicator";
 import type { MiniMapSlot } from "@/components/sidebar/paneContentSplitIndicator";
 import { SplitPaneMiniMap } from "@/components/sidebar/SplitPaneMiniMap";
@@ -94,10 +97,9 @@ import {
   arrangePluginNavPanelPreferences,
   BUILT_IN_SIDEBAR_NAVIGATION_KEYS,
   getPluginNavPanelKey,
-  havePluginNavPanelOrdersDiverged,
-  reorderPluginNavPanels,
   togglePluginNavPanelVisibility,
 } from "./pluginNavSidebarOrder";
+import { haveSameOrder, reorderStoredOrder } from "@/lib/stored-order";
 
 const PLUGIN_NAV_VISIBLE_LIMIT = 3;
 
@@ -118,7 +120,7 @@ export interface BuiltInSidebarNavEntry {
   icon: ReactNode;
   content: ReactNode;
   disabled?: boolean;
-  onActivate: () => void;
+  onActivate: (event: ReactMouseEvent<HTMLButtonElement>) => void;
 }
 
 type SidebarNavRow = PluginSidebarNavRow | BuiltInSidebarNavEntry;
@@ -127,14 +129,6 @@ function isPluginSidebarNavRow(
   row: SidebarNavRow,
 ): row is PluginSidebarNavRow {
   return row.kind === "plugin";
-}
-
-export function getTraditionalPluginNavPanelEntries(
-  entries: readonly PluginNavPanelChromeEntry[],
-): PluginNavPanelChromeEntry[] {
-  return entries.filter(
-    ({ chrome }) => chrome.pluginId !== AUTOMATIONS_PLUGIN_ID,
-  );
 }
 
 export function PluginNavSidebarItems(props: {
@@ -153,8 +147,14 @@ export function PluginNavSidebarItems(props: {
       ...(props.builtInEntries ?? []),
       ...entries.map(({ chrome, panel }) => ({
         kind: "plugin" as const,
-        pluginId: chrome.pluginId,
-        id: chrome.id,
+        pluginId:
+          chrome.pluginId === AUTOMATIONS_PLUGIN_ID
+            ? "__bb__"
+            : chrome.pluginId,
+        id:
+          chrome.pluginId === AUTOMATIONS_PLUGIN_ID
+            ? "automations"
+            : chrome.id,
         title: chrome.title,
         chrome,
         panel,
@@ -206,6 +206,7 @@ function PluginNavSidebarItemList({
   const location = useLocation();
   const navigate = useNavigate();
   const isCompactViewport = useIsCompactViewport();
+  const splitActions = usePaneContentSplitActions();
   const [storedOrder, setStoredOrder] = useAtom(pluginNavPanelOrderAtom);
   const [storedVisibleKeys, setStoredVisibleKeys] = useAtom(
     pluginNavVisiblePanelKeysAtom,
@@ -257,12 +258,12 @@ function PluginNavSidebarItemList({
     },
     [location.pathname, navigate, onNavigate],
   );
-  const builtInKeys = useMemo(
+  const defaultVisibleKeys = useMemo(
     () =>
-      rows
-        .filter((row) => row.kind === "built-in")
-        .map(getPluginNavPanelKey),
-    [rows],
+      leadingOrderKeys.filter((key) =>
+        rows.some((row) => getPluginNavPanelKey(row) === key),
+      ),
+    [leadingOrderKeys, rows],
   );
   const newLeadingKeys = useMemo(
     () => leadingOrderKeys.filter((key) => !storedOrder.includes(key)),
@@ -286,11 +287,11 @@ function PluginNavSidebarItemList({
           storedVisibleKeys === null || newLeadingKeys.length === 0
             ? storedVisibleKeys
             : [...newLeadingKeys, ...storedVisibleKeys],
-        defaultVisibleCount:
-          builtInKeys.length + PLUGIN_NAV_VISIBLE_LIMIT,
+        defaultVisibleKeys,
+        defaultVisibleCount: PLUGIN_NAV_VISIBLE_LIMIT,
       }),
     [
-      builtInKeys,
+      defaultVisibleKeys,
       newLeadingKeys,
       rows,
       storedOrder,
@@ -299,7 +300,7 @@ function PluginNavSidebarItemList({
   );
 
   useEffect(() => {
-    if (!havePluginNavPanelOrdersDiverged(storedOrder, normalizedOrder)) return;
+    if (haveSameOrder(storedOrder, normalizedOrder)) return;
     setStoredOrder(normalizedOrder);
   }, [normalizedOrder, setStoredOrder, storedOrder]);
 
@@ -307,10 +308,7 @@ function PluginNavSidebarItemList({
     if (
       storedVisibleKeys === null ||
       normalizedVisibleKeys === null ||
-      !havePluginNavPanelOrdersDiverged(
-        storedVisibleKeys,
-        normalizedVisibleKeys,
-      )
+      haveSameOrder(storedVisibleKeys, normalizedVisibleKeys)
     ) {
       return;
     }
@@ -344,14 +342,11 @@ function PluginNavSidebarItemList({
       ) {
         return;
       }
-      const activeGroupKeys = visibleKeys;
-      if (!activeGroupKeys.includes(event.active.id)) return;
-      if (!activeGroupKeys.includes(event.over.id)) return;
-      const nextOrder = reorderPluginNavPanels({
-        activeKey: event.active.id,
-        overKey: event.over.id,
+      const nextOrder = reorderStoredOrder({
+        activeId: event.active.id,
+        overId: event.over.id,
         order: normalizedOrder,
-        visibleKeys: activeGroupKeys,
+        visibleIds: visibleKeys,
       });
       if (nextOrder) setStoredOrder(nextOrder);
     },
@@ -363,15 +358,24 @@ function PluginNavSidebarItemList({
 
   const handleCustomizeDragEnd = useCallback(
     (activeKey: string, overKey: string) => {
-      const nextOrder = reorderPluginNavPanels({
-        activeKey,
-        overKey,
+      const nextOrder = reorderStoredOrder({
+        activeId: activeKey,
+        overId: overKey,
         order: normalizedOrder,
-        visibleKeys: orderedKeys,
+        visibleIds: orderedKeys,
       });
-      if (nextOrder) setStoredOrder(nextOrder);
+      if (!nextOrder) return;
+      if (storedVisibleKeys === null) setStoredVisibleKeys(visibleKeys);
+      setStoredOrder(nextOrder);
     },
-    [normalizedOrder, orderedKeys, setStoredOrder],
+    [
+      normalizedOrder,
+      orderedKeys,
+      setStoredOrder,
+      setStoredVisibleKeys,
+      storedVisibleKeys,
+      visibleKeys,
+    ],
   );
 
   const reorderDisabled = ordered.length < 2;
@@ -384,9 +388,23 @@ function PluginNavSidebarItemList({
   };
 
   const handleActivate = useCallback(
-    (row: SidebarNavRow) => {
+    (row: SidebarNavRow, event: ReactMouseEvent<HTMLButtonElement>) => {
       if (!isPluginSidebarNavRow(row)) {
-        row.onActivate();
+        row.onActivate(event);
+        return;
+      }
+      if (event.metaKey || event.ctrlKey) {
+        splitActions.openInSplit({
+          content: {
+            kind: "plugin-panel",
+            pluginId: row.chrome.pluginId,
+            panelPath: row.chrome.path,
+            subPath: "",
+          },
+          enabled: splitEnabled,
+          label: row.title,
+          onNavigate,
+        });
         return;
       }
       onNavigate?.();
@@ -397,7 +415,7 @@ function PluginNavSidebarItemList({
         }),
       );
     },
-    [navigate, onNavigate],
+    [navigate, onNavigate, splitActions, splitEnabled],
   );
 
   useEffect(() => {
@@ -510,7 +528,10 @@ function SidebarNavigationInlineCustomizeMode({
   rows,
   visibleKeys,
 }: {
-  onActivate: (row: SidebarNavRow) => void;
+  onActivate: (
+    row: SidebarNavRow,
+    event: ReactMouseEvent<HTMLButtonElement>,
+  ) => void;
   onBack: () => void;
   onDragEnd: (activeKey: string, overKey: string) => void;
   onExit: () => void;
@@ -553,8 +574,8 @@ function SidebarNavigationInlineCustomizeMode({
           rows={rows}
           visibleKeys={visibleKeys}
           surface="sidebar"
-          onActivate={(row) => {
-            onActivate(row);
+          onActivate={(row, event) => {
+            onActivate(row, event);
             onExit();
           }}
           onDragEnd={onDragEnd}
@@ -575,7 +596,10 @@ function SidebarNavigationCustomizeMenu({
   visibleKeys,
 }: {
   isOpen: boolean;
-  onActivate: (row: SidebarNavRow) => void;
+  onActivate: (
+    row: SidebarNavRow,
+    event: ReactMouseEvent<HTMLButtonElement>,
+  ) => void;
   onDragEnd: (activeKey: string, overKey: string) => void;
   onOpenChange: (isOpen: boolean) => void;
   onVisibleChange: (key: string, visible: boolean) => void;
@@ -634,8 +658,8 @@ function SidebarNavigationCustomizeMenu({
         <SidebarNavigationCustomizeList
           rows={rows}
           visibleKeys={visibleKeys}
-          onActivate={(row) => {
-            onActivate(row);
+          onActivate={(row, event) => {
+            onActivate(row, event);
             onOpenChange(false);
           }}
           onDragEnd={onDragEnd}
@@ -654,7 +678,10 @@ function SidebarNavigationCustomizeList({
   surface = "popover",
   visibleKeys,
 }: {
-  onActivate: (row: SidebarNavRow) => void;
+  onActivate: (
+    row: SidebarNavRow,
+    event: ReactMouseEvent<HTMLButtonElement>,
+  ) => void;
   onDragEnd: (activeKey: string, overKey: string) => void;
   onVisibleChange: (key: string, visible: boolean) => void;
   rows: readonly SidebarNavRow[];
@@ -703,7 +730,7 @@ function SidebarNavigationCustomizeList({
                 checked={visibleKeySet.has(key)}
                 reorderDisabled={rows.length < 2}
                 surface={surface}
-                onActivate={() => onActivate(row)}
+                onActivate={(event) => onActivate(row, event)}
                 onCheckedChange={(checked) =>
                   onVisibleChange(key, checked)
                 }
@@ -725,7 +752,7 @@ function SortableSidebarNavigationCustomizeItem({
   surface,
 }: {
   checked: boolean;
-  onActivate: () => void;
+  onActivate: (event: ReactMouseEvent<HTMLButtonElement>) => void;
   onCheckedChange: (checked: boolean) => void;
   reorderDisabled: boolean;
   row: SidebarNavRow;
@@ -1004,43 +1031,6 @@ export function ExtensionsNavSidebarItem({
     >
       <ToolsNavSidebarItemIcon />
       <span className="min-w-0 truncate text-left">Extensions</span>
-    </Button>
-  );
-}
-
-export function AutomationsNavSidebarItem({
-  chrome,
-  onNavigate,
-}: {
-  chrome: PluginNavPanelChrome;
-  onNavigate?: () => void;
-}) {
-  const location = useLocation();
-  const navigate = useNavigate();
-  const path = getPluginPanelRoutePath({
-    pluginId: chrome.pluginId,
-    path: chrome.path,
-  });
-  const isActive =
-    location.pathname === path || location.pathname.startsWith(`${path}/`);
-  return (
-    <Button
-      type="button"
-      size="sm"
-      variant="ghost"
-      className={cn(
-        PROJECT_LIST_ACTION_BUTTON_CLASS,
-        "w-full",
-        isActive && "bg-sidebar-accent text-sidebar-foreground",
-      )}
-      aria-current={isActive ? "page" : undefined}
-      onClick={() => {
-        onNavigate?.();
-        void navigate(path);
-      }}
-    >
-      <PluginIcon pluginId={chrome.pluginId} icon={chrome.icon} />
-      <span className="min-w-0 truncate text-left">{chrome.title}</span>
     </Button>
   );
 }

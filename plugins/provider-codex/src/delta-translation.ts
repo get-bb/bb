@@ -64,14 +64,14 @@ interface CodexRetryErrorContext {
 }
 
 interface CodexEventTranslationState {
-  rateLimits: CodexRateLimitSnapshot | null;
+  rateLimitsByLimitId: Map<string, CodexRateLimitSnapshot>;
   injectedToolsByName: Map<string, CodexInjectedTool>;
   retryErrorsByTurnKey: Map<string, CodexRetryErrorContext>;
 }
 
 export function createCodexEventTranslationState(): CodexEventTranslationState {
   return {
-    rateLimits: null,
+    rateLimitsByLimitId: new Map(),
     injectedToolsByName: new Map(),
     retryErrorsByTurnKey: new Map(),
   };
@@ -100,9 +100,17 @@ function normalizeCodexRateLimitWindow(
 ): ProviderRateLimitWindow | null {
   if (!window) return null;
   const usedPercent = clampRateLimitPercent(window.usedPercent);
+  const label =
+    window.windowDurationMins === 10_080
+      ? "Weekly limit"
+      : window.windowDurationMins === 300
+        ? "Current session"
+        : key === "primary"
+          ? "Current session"
+          : "Weekly limit";
   return {
     providerKey: key,
-    label: key === "primary" ? "Current session" : "Weekly limit",
+    label,
     status: codexWindowStatus(usedPercent),
     resetsAtMs: window.resetsAt === null ? null : window.resetsAt * 1_000,
   };
@@ -136,9 +144,10 @@ function codexReachedReasonIsActive(
 function mergeCodexRateLimitSnapshot(
   previous: CodexRateLimitSnapshot | null,
   update: CodexRateLimitSnapshotUpdate,
+  limitId: string,
 ): CodexRateLimitSnapshot {
   const merged: CodexRateLimitSnapshot = {
-    limitId: update.limitId ?? previous?.limitId ?? null,
+    limitId,
     limitName: update.limitName ?? previous?.limitName ?? null,
     primary: update.primary ?? previous?.primary ?? null,
     secondary: update.secondary ?? previous?.secondary ?? null,
@@ -164,12 +173,17 @@ export function applyCodexRateLimitUpdate(
   state: CodexEventTranslationState,
   update: CodexRateLimitSnapshotUpdate,
 ): CodexRateLimitSnapshot {
-  const rateLimits = mergeCodexRateLimitSnapshot(state.rateLimits, update);
-  state.rateLimits = rateLimits;
+  const limitId = update.limitId ?? "codex";
+  const rateLimits = mergeCodexRateLimitSnapshot(
+    state.rateLimitsByLimitId.get(limitId) ?? null,
+    update,
+    limitId,
+  );
+  state.rateLimitsByLimitId.set(limitId, rateLimits);
   return rateLimits;
 }
 
-function normalizeCodexRateLimits(
+function normalizeCodexRateLimitSnapshot(
   snapshot: CodexRateLimitSnapshot,
 ): ProviderRateLimitState {
   const windows = [
@@ -190,6 +204,9 @@ function normalizeCodexRateLimits(
   }
 
   const reachedReason = snapshot.rateLimitReachedType;
+  const isIndividualLimitBlocked =
+    snapshot.individualLimit !== null &&
+    snapshot.individualLimit.remainingPercent <= 0;
   const kind =
     reachedReason === "rate_limit_reached"
       ? "subscription-window"
@@ -199,14 +216,12 @@ function normalizeCodexRateLimits(
           ? "spend-control"
           : reachedReason !== null
             ? "unknown"
-            : snapshot.credits !== null &&
-                !snapshot.credits.unlimited &&
-                !snapshot.credits.hasCredits
-              ? "credits"
-              : snapshot.individualLimit !== null
-                ? "spend-control"
-                : snapshot.primary !== null || snapshot.secondary !== null
-                  ? "subscription-window"
+            : isIndividualLimitBlocked
+              ? "spend-control"
+              : snapshot.primary !== null || snapshot.secondary !== null
+                ? "subscription-window"
+                : snapshot.individualLimit !== null
+                  ? "spend-control"
                   : "unknown";
   const status =
     reachedReason !== null
@@ -229,6 +244,88 @@ function normalizeCodexRateLimits(
     overageStatus: null,
     overageReason: null,
   };
+}
+
+function rateLimitStatusRank(status: ProviderRateLimitStatus): number {
+  switch (status) {
+    case "blocked":
+      return 3;
+    case "warning":
+      return 2;
+    case "allowed":
+      return 1;
+    case "unknown":
+      return 0;
+    default:
+      return assertNever(status);
+  }
+}
+
+type CodexRateLimitCandidate = {
+  explicitlyBlocked: boolean;
+  limitId: string;
+  nonResettableBlock: boolean;
+  rateLimits: ProviderRateLimitState;
+};
+
+function normalizeCodexRateLimits(
+  state: CodexEventTranslationState,
+  preferredLimitId: string,
+): ProviderRateLimitState {
+  const candidates: CodexRateLimitCandidate[] = [];
+  for (const limitId of new Set(["codex", preferredLimitId])) {
+    const snapshot = state.rateLimitsByLimitId.get(limitId);
+    if (snapshot === undefined) continue;
+    const rateLimits = normalizeCodexRateLimitSnapshot(snapshot);
+    candidates.push({
+      explicitlyBlocked:
+        snapshot.rateLimitReachedType !== null ||
+        snapshot.spendControlReached === true,
+      limitId,
+      nonResettableBlock:
+        rateLimits.status === "blocked" &&
+        rateLimits.kind !== "subscription-window",
+      rateLimits,
+    });
+  }
+  let selected: CodexRateLimitCandidate | undefined;
+  for (const candidate of candidates) {
+    const { explicitlyBlocked, limitId, rateLimits } = candidate;
+    const selectedExplicitlyBlocked = selected?.explicitlyBlocked ?? false;
+    if (
+      selected === undefined ||
+      rateLimitStatusRank(rateLimits.status) >
+        rateLimitStatusRank(selected.rateLimits.status) ||
+      (rateLimits.status === selected.rateLimits.status &&
+        candidate.nonResettableBlock &&
+        !selected.nonResettableBlock) ||
+      (rateLimits.status === selected.rateLimits.status &&
+        candidate.nonResettableBlock === selected.nonResettableBlock &&
+        explicitlyBlocked &&
+        !selectedExplicitlyBlocked) ||
+      (rateLimits.status === selected.rateLimits.status &&
+        candidate.nonResettableBlock === selected.nonResettableBlock &&
+        explicitlyBlocked === selectedExplicitlyBlocked &&
+        limitId === preferredLimitId)
+    ) {
+      selected = candidate;
+    }
+  }
+  if (selected === undefined) {
+    throw new Error("Expected at least one Codex rate-limit snapshot");
+  }
+  const windows = candidates.flatMap((candidate) =>
+    candidate === selected
+      ? candidate.rateLimits.windows
+      : candidate.rateLimits.status === "blocked"
+        ? candidate.rateLimits.windows.filter(
+            (window) => window.status === "blocked",
+          )
+        : [],
+  );
+  return windows.length === selected.rateLimits.windows.length
+    ? selected.rateLimits
+    : { ...selected.rateLimits, windows };
 }
 
 type CodexErrorEvent = Extract<CodexHandledEvent, { method: "error" }>;
@@ -905,7 +1002,10 @@ export function translateCodexEventToDeltas(
       return [
         {
           kind: "provider.rateLimits",
-          rateLimits: normalizeCodexRateLimits(rateLimits),
+          rateLimits: normalizeCodexRateLimits(
+            state,
+            rateLimits.limitId ?? "codex",
+          ),
         },
       ];
     }

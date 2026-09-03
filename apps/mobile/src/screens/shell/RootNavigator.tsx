@@ -83,6 +83,10 @@ export function RootNavigator() {
           options={{ title: "Appearance" }}
         />
         <Stack.Screen
+          name="settings/notifications"
+          options={{ title: "Notifications", ...listScreen }}
+        />
+        <Stack.Screen
           name="settings/servers/index"
           options={{ title: "Servers", ...listScreen }}
         />

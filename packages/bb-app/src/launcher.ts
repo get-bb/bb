@@ -1539,8 +1539,8 @@ Usage:
 
 Startup-only server and launcher keys:
   BB_APP_SURFACE, BB_APP_URL, BB_DATA_DIR, BB_DEV_APP_PORT,
-  BB_EXTERNAL_URL, BB_HOST_DAEMON_PORT, BB_INFERENCE,
-  BB_INFERENCE_FALLBACK, BB_INHERITED_SKILLS_ROOTS, BB_LOG_LEVEL,
+  BB_EXTERNAL_URL, BB_HOST_DAEMON_PORT, BB_INFERENCE, BB_INFERENCE_FALLBACK,
+  BB_INHERITED_SKILLS_ROOTS, BB_LOG_LEVEL,
   BB_MANAGED_DEV_BUILTIN_PLUGIN_HOT_RELOAD, BB_POSTHOG_API_KEY,
   BB_SERVER_BIND_HOST, BB_SERVER_PORT, BB_TELEMETRY, BB_TRANSCRIPTION,
   and BB_FF_* feature flags.
@@ -2103,9 +2103,8 @@ async function runClientCommand(args: RunClientCommandArgs): Promise<void> {
   );
 }
 
-function requiredArtifactPaths(context: BbAppStartContext): ArtifactPath[] {
+function requiredHostArtifactPaths(context: BbAppStartContext): ArtifactPath[] {
   return [
-    { kind: "file", label: "server entry", path: context.serverEntry },
     { kind: "file", label: "host daemon entry", path: context.daemonEntry },
     {
       kind: "file",
@@ -2132,6 +2131,15 @@ function requiredArtifactPaths(context: BbAppStartContext): ArtifactPath[] {
       label: "plugin host worker",
       path: join(context.daemonBundleDir, "bb-plugin-host-worker.mjs"),
     },
+  ];
+}
+
+function requiredFullStackArtifactPaths(
+  context: BbAppStartContext,
+): ArtifactPath[] {
+  return [
+    ...requiredHostArtifactPaths(context),
+    { kind: "file", label: "server entry", path: context.serverEntry },
     {
       kind: "file",
       label: "web app",
@@ -2161,12 +2169,23 @@ function artifactPresent(artifact: ArtifactPath): boolean {
 }
 
 export function assertBbAppArtifacts(context: BbAppStartContext): void {
-  const missingArtifact = requiredArtifactPaths(context).find(
+  const missingArtifact = requiredFullStackArtifactPaths(context).find(
     (artifact) => !artifactPresent(artifact),
   );
   if (missingArtifact) {
     throw new Error(
       `Missing ${missingArtifact.label} at ${missingArtifact.path}. Rebuild bb-app before running this package.`,
+    );
+  }
+}
+
+export function assertBbHostArtifacts(context: BbAppStartContext): void {
+  const missingArtifact = requiredHostArtifactPaths(context).find(
+    (artifact) => !artifactPresent(artifact),
+  );
+  if (missingArtifact) {
+    throw new Error(
+      `Missing ${missingArtifact.label} at ${missingArtifact.path}. Rebuild the bb host artifact before running this package.`,
     );
   }
 }
@@ -2751,7 +2770,7 @@ export async function runBbCli(
     options: createDefaultLauncherOptions(),
     serverUrlMode: "managed",
   });
-  assertBbAppArtifacts(runtime.context);
+  assertBbHostArtifacts(runtime.context);
   process.exitCode = await runBundledCliCommand({
     args: cliArgs,
     context: runtime.context,
@@ -2965,7 +2984,7 @@ Usage:
     options: parsedArgs.options,
     serverUrlMode: "managed",
   });
-  assertBbAppArtifacts(runtime.context);
+  assertBbHostArtifacts(runtime.context);
   await runHostDaemonOnly({
     args: parsedArgs.positionals,
     context: runtime.context,
@@ -3374,9 +3393,8 @@ export async function runBbApp(
     return;
   }
 
-  assertBbAppArtifacts(runtime.context);
-
   if (command.kind === "host-daemon") {
+    assertBbHostArtifacts(runtime.context);
     await runHostDaemonOnly({
       args: command.args,
       context: runtime.context,
@@ -3384,6 +3402,8 @@ export async function runBbApp(
     });
     return;
   }
+
+  assertBbAppArtifacts(runtime.context);
 
   const context = runtime.context;
   const serverListenerUrl = resolveServerListenerUrl({

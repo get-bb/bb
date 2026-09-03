@@ -262,11 +262,10 @@ function EmbeddedThreadChatWithComposer({
   const hasComposerBlockingPendingInteraction =
     activePendingInteraction !== null &&
     activePendingInteraction.payload.kind !== "plugin";
-  const pendingInteractionsInitialLoading =
-    isPendingInteractionStateUnknown(
-      pendingInteractionsQuery.data,
-      pendingInteractionsQuery.isFetching,
-    );
+  const pendingInteractionsInitialLoading = isPendingInteractionStateUnknown(
+    pendingInteractionsQuery.data,
+    pendingInteractionsQuery.isFetching,
+  );
   const pendingInteractionsUnavailable =
     activePendingInteraction === null && pendingInteractionsQuery.isError;
   const pendingInteractionOccupiesComposer =
@@ -439,7 +438,7 @@ function EmbeddedThreadChatWithComposer({
     processingQueuedMessage,
     queuedMessageActionPending,
     isUpdateQueuedMessagePending,
-    handleSendQueuedImmediately,
+    sendQueuedMessageById,
     handleSaveInlineQueuedMessage,
     handleDeleteQueuedMessage,
     handleReorderQueuedMessage,
@@ -448,7 +447,6 @@ function EmbeddedThreadChatWithComposer({
     threadId,
     queuedMessages,
     sendProcessingPersistence: "clear-on-settle",
-    canSendNow: () => !isProvisioning,
     onSaveSuccess: () => setInlineAttachmentError(null),
     inlineEditingQueuedMessage,
     dismissInlineQueuedMessageEditor,
@@ -548,6 +546,16 @@ function EmbeddedThreadChatWithComposer({
 
   const isQueueMutationPending =
     queuedMessageActionPending || createQueuedMessage.isPending;
+  const handleSendQueuedMessage = useCallback(
+    (queuedMessageId: string) => {
+      void sendQueuedMessageById({
+        guard: "exists",
+        messageId: queuedMessageId,
+        mode: isProvisioning ? "steer" : "auto",
+      });
+    },
+    [isProvisioning, sendQueuedMessageById],
+  );
   const hasPromptDraftInput = currentPromptDraftInput.length > 0;
   const canSubmitModifierShortcut = canSubmitFollowUpShortcut({
     hasPromptDraftInput,
@@ -567,7 +575,11 @@ function EmbeddedThreadChatWithComposer({
     if (submittedInput.length === 0) {
       const nextQueuedMessage = queuedMessages[0];
       if (nextQueuedMessage) {
-        handleSendQueuedImmediately(nextQueuedMessage.id);
+        void sendQueuedMessageById({
+          guard: "current-head",
+          messageId: nextQueuedMessage.id,
+          mode: "steer",
+        });
       }
       return;
     }
@@ -608,10 +620,10 @@ function EmbeddedThreadChatWithComposer({
     currentPromptDraft,
     currentPromptDraftInput,
     executionRequestFields,
-    handleSendQueuedImmediately,
     labels.sendError,
     promptDraft,
     queuedMessages,
+    sendQueuedMessageById,
     sendThreadMessage,
     setBottomAttachmentError,
     threadId,
@@ -1092,11 +1104,12 @@ function EmbeddedThreadChatWithComposer({
           queuedMessages={queuedMessages}
           resolveMentionLink={resolveMentionLink}
           inlineEditor={inlineEditor}
-          sendDisabled={isProvisioning || queuedMessageActionPending}
+          sendAction={isProvisioning ? "steer-when-ready" : "send-now"}
+          sendDisabled={queuedMessageActionPending}
           actionDisabled={queuedMessageActionPending}
           processingMessageId={processingQueuedMessage?.id ?? null}
           processingAction={processingQueuedMessage?.action ?? null}
-          onSendImmediately={handleSendQueuedImmediately}
+          onSend={handleSendQueuedMessage}
           onReorder={handleReorderQueuedMessage}
           onSetGroupBoundary={handleSetQueuedMessageGroupBoundary}
           onEdit={beginEditQueuedMessage}
@@ -1107,7 +1120,7 @@ function EmbeddedThreadChatWithComposer({
       beginEditQueuedMessage,
       handleDeleteQueuedMessage,
       handleReorderQueuedMessage,
-      handleSendQueuedImmediately,
+      handleSendQueuedMessage,
       handleSetQueuedMessageGroupBoundary,
       inlineEditor,
       isProvisioning,

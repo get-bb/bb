@@ -13,6 +13,7 @@ import {
   type MarketplaceFetch,
 } from "./marketplace-http.js";
 import {
+  entryScreenshotUrls,
   parseMarketplaceManifest,
   parseMarketplaceManifestJson,
   type MarketplaceIconBase,
@@ -137,14 +138,27 @@ export async function materializeMarketplace(args: {
   } | null;
   stagingDir: string;
   fetch: MarketplaceFetch;
+  fallbackManifestUrl?: string;
+  warn?: (message: string) => void;
 }): Promise<MaterializedMarketplace> {
   if (args.source.kind === "https") {
-    return materializeHttps(args.source, args.cached, args.fetch);
+    return materializeHttps(
+      args.source,
+      args.cached,
+      args.fetch,
+      args.fallbackManifestUrl,
+      args.warn,
+    );
   }
   if (args.source.kind === "path") {
-    return materializeLocal(args.source.directory, null, async () => {});
+    return materializeLocal(
+      args.source.directory,
+      null,
+      async () => {},
+      args.warn,
+    );
   }
-  return materializeGit(args.source, args.stagingDir);
+  return materializeGit(args.source, args.stagingDir, args.warn);
 }
 
 async function materializeHttps(
@@ -155,18 +169,78 @@ async function materializeHttps(
     lastModified: string | null;
   } | null,
   fetchMarketplace: MarketplaceFetch,
+  fallbackManifestUrl: string | undefined,
+  warn: ((message: string) => void) | undefined,
 ): Promise<MaterializedMarketplace> {
-  const headers = new Headers({ accept: "application/json" });
-  if (cached?.etag != null) headers.set("if-none-match", cached.etag);
-  if (cached?.lastModified != null) {
-    headers.set("if-modified-since", cached.lastModified);
+  const cachedCatalog =
+    cached === null
+      ? null
+      : parseMarketplaceManifestJson(
+          cached.manifestJson,
+          "stored marketplace catalog",
+          warn,
+        );
+
+  async function requestManifest(
+    manifestUrl: string,
+    useCache: boolean,
+    preferJson: boolean,
+  ): Promise<Response> {
+    const headers = new Headers(
+      preferJson ? { accept: "application/json" } : undefined,
+    );
+    if (useCache && cached?.etag != null) {
+      headers.set("if-none-match", cached.etag);
+    }
+    if (useCache && cached?.lastModified != null) {
+      headers.set("if-modified-since", cached.lastModified);
+    }
+    return fetchMarketplace(manifestUrl, {
+      method: "GET",
+      headers,
+      redirect: "error",
+      signal: AbortSignal.timeout(MARKETPLACE_FETCH_TIMEOUT_MS),
+    });
   }
-  const response = await fetchMarketplace(source.manifestUrl, {
-    method: "GET",
-    headers,
-    redirect: "error",
-    signal: AbortSignal.timeout(MARKETPLACE_FETCH_TIMEOUT_MS),
-  });
+
+  let manifestUrl = source.manifestUrl;
+  let response = await requestManifest(
+    manifestUrl,
+    fallbackManifestUrl === undefined || cachedCatalog?.schemaVersion === 2,
+    fallbackManifestUrl === undefined,
+  );
+  if (response.status === 404 && fallbackManifestUrl !== undefined) {
+    if (cachedCatalog?.schemaVersion === 2 && cached !== null) {
+      await response.body?.cancel();
+      warn?.(
+        "the marketplace v2 manifest returned HTTP 404; BB kept the stored v2 catalog and did not request v1",
+      );
+      const iconBase = {
+        kind: "url",
+        manifestUrl: source.manifestUrl,
+      } as const;
+      for (const entry of cachedCatalog.plugins) {
+        entryScreenshotUrls(entry, iconBase, warn);
+      }
+      return {
+        catalog: cachedCatalog,
+        manifestJson: cached.manifestJson,
+        unchanged: true,
+        etag: cached.etag,
+        lastModified: cached.lastModified,
+        commit: null,
+        iconBase,
+        dispose: async () => {},
+      };
+    }
+    await response.body?.cancel();
+    manifestUrl = fallbackManifestUrl;
+    response = await requestManifest(
+      manifestUrl,
+      cachedCatalog?.schemaVersion === 1,
+      true,
+    );
+  }
   const unchanged = response.status === 304 && cached !== null;
   if (!unchanged && !response.ok) {
     await response.body?.cancel();
@@ -177,10 +251,13 @@ async function materializeHttps(
   if (unchanged) {
     await response.body?.cancel();
     manifestJson = cached.manifestJson;
-    catalog = parseMarketplaceManifestJson(
-      manifestJson,
-      "stored marketplace catalog",
-    );
+    catalog =
+      cachedCatalog ??
+      parseMarketplaceManifestJson(
+        manifestJson,
+        "stored marketplace catalog",
+        warn,
+      );
   } else {
     const raw = new TextDecoder().decode(
       await boundedResponseBytes(
@@ -189,8 +266,12 @@ async function materializeHttps(
         "marketplace manifest",
       ),
     );
-    catalog = parseMarketplaceManifestJson(raw, "marketplace manifest");
+    catalog = parseMarketplaceManifestJson(raw, "marketplace manifest", warn);
     manifestJson = JSON.stringify(catalog);
+  }
+  const iconBase = { kind: "url", manifestUrl } as const;
+  for (const entry of catalog.plugins) {
+    entryScreenshotUrls(entry, iconBase, warn);
   }
   return {
     catalog,
@@ -201,7 +282,7 @@ async function materializeHttps(
       response.headers.get("last-modified") ??
       (unchanged ? cached.lastModified : null),
     commit: null,
-    iconBase: { kind: "url", manifestUrl: source.manifestUrl },
+    iconBase,
     dispose: async () => {},
   };
 }
@@ -210,6 +291,7 @@ async function materializeLocal(
   root: string,
   commit: string | null,
   dispose: () => Promise<void>,
+  warn: ((message: string) => void) | undefined,
 ): Promise<MaterializedMarketplace> {
   try {
     const isDirectory = await stat(root)
@@ -233,7 +315,12 @@ async function materializeLocal(
     const catalog = parseMarketplaceManifest(
       JSON.parse(raw) as unknown,
       "marketplace manifest",
+      warn,
     );
+    const iconBase = { kind: "dir", root } as const;
+    for (const entry of catalog.plugins) {
+      entryScreenshotUrls(entry, iconBase, warn);
+    }
     return {
       catalog,
       manifestJson: JSON.stringify(catalog),
@@ -241,7 +328,7 @@ async function materializeLocal(
       etag: null,
       lastModified: null,
       commit,
-      iconBase: { kind: "dir", root },
+      iconBase,
       dispose,
     };
   } catch (error) {
@@ -253,6 +340,7 @@ async function materializeLocal(
 async function materializeGit(
   source: Extract<MarketplaceSource, { kind: "git" }>,
   stagingDir: string,
+  warn: ((message: string) => void) | undefined,
 ): Promise<MaterializedMarketplace> {
   await mkdir(stagingDir, { recursive: true });
   const checkout = join(stagingDir, randomUUID());
@@ -282,7 +370,7 @@ async function materializeGit(
       "HEAD",
     ]);
     await rm(join(checkout, ".git"), { recursive: true, force: true });
-    return await materializeLocal(checkout, commit, dispose);
+    return await materializeLocal(checkout, commit, dispose, warn);
   } catch (error) {
     await dispose();
     throw error;
