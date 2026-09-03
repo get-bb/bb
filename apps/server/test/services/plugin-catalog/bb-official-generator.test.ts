@@ -46,6 +46,15 @@ describe("bb-official marketplace generator", () => {
       raw,
       "generated marketplace",
     );
+    const fields = parseBbOfficialCatalogFields(
+      JSON.parse(
+        await readFile(
+          new URL("../../../../../plugins/bb-official.json", import.meta.url),
+          "utf8",
+        ),
+      ),
+      BUNDLED_PLUGINS,
+    );
 
     expect(catalog.name).toBe(BUNDLED_MARKETPLACE_NAME);
     expect(catalog.displayName).toBe("BB Official");
@@ -65,7 +74,7 @@ describe("bb-official marketplace generator", () => {
           candidate.source.bundled.plugin === plugin.name,
       );
       expect(entry?.id).toBe(plugin.pluginId);
-      expect(entry?.screenshots).toEqual([]);
+      expect(entry?.screenshots).toEqual(fields[plugin.name]?.screenshots);
       expect(entry?.author).toEqual({ name: "BB" });
     }
   });
