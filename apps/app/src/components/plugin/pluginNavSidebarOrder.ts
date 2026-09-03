@@ -1,8 +1,4 @@
-import {
-  arrangeByStoredOrder,
-  haveStoredOrdersDiverged,
-  reorderStoredOrder,
-} from "@/lib/stored-order";
+import { arrangeByStoredOrder } from "@/lib/stored-order";
 
 interface PluginNavPanelIdentity {
   pluginId: string;
@@ -47,27 +43,6 @@ export function arrangePluginNavPanels<TPanel extends PluginNavPanelIdentity>({
   return { visible, hidden, normalizedOrder };
 }
 
-interface ReorderPluginNavPanelsArgs {
-  activeKey: string;
-  overKey: string;
-  order: readonly string[];
-  visibleKeys: readonly string[];
-}
-
-export function reorderPluginNavPanels({
-  activeKey,
-  overKey,
-  order,
-  visibleKeys,
-}: ReorderPluginNavPanelsArgs): string[] | null {
-  return reorderStoredOrder({
-    activeId: activeKey,
-    overId: overKey,
-    order,
-    visibleIds: visibleKeys,
-  });
-}
-
 export function seedLeadingNavPanelKeys(
   order: readonly string[],
   leadingKeys: readonly string[],
@@ -90,11 +65,4 @@ export function showPluginNavPanel(
   key: string,
 ): string[] {
   return hiddenKeys.filter((hiddenKey) => hiddenKey !== key);
-}
-
-export function havePluginNavPanelOrdersDiverged(
-  left: readonly string[],
-  right: readonly string[],
-): boolean {
-  return haveStoredOrdersDiverged(left, right);
 }

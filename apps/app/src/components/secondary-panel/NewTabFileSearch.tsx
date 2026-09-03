@@ -8,12 +8,6 @@ import {
   type KeyboardEvent,
   type ReactNode,
 } from "react";
-import { useAtom } from "jotai";
-import { DndContext, type DragEndEvent } from "@dnd-kit/core";
-import {
-  SortableContext,
-  verticalListSortingStrategy,
-} from "@dnd-kit/sortable";
 import { directoryFromPath } from "@bb/thread-view";
 import {
   COARSE_POINTER_COMPACT_ICON_SIZE_CLASS,
@@ -21,7 +15,7 @@ import {
   COARSE_POINTER_ICON_SIZE_CLASS,
   COARSE_POINTER_TEXT_SM_CLASS,
 } from "@bb/shared-ui/coarse-pointer-sizing";
-import { Icon, type IconName } from "@bb/shared-ui/icon";
+import { Icon } from "@bb/shared-ui/icon";
 import { EmptyStatePanel } from "@bb/shared-ui/empty-state";
 import { LIST_HOVER_TRANSITION } from "@bb/shared-ui/motion";
 import { usePointerCoarse } from "@bb/shared-ui/hooks/use-pointer-coarse";
@@ -33,8 +27,6 @@ import {
   type FileSearchSuggestion,
 } from "@/hooks/useFileSearchSuggestions";
 import type { FileSearchSelection } from "./useThreadFileTabs";
-import type { PluginPanelActionEntry } from "@/components/plugin/PluginPanelActions";
-import { PluginIcon } from "@/components/plugin/PluginIcon";
 import {
   useThreadRecentItems,
   THREAD_RECENT_ITEMS_VISIBLE_LIMIT,
@@ -45,25 +37,14 @@ import {
   resolveRightPanelFileVisual,
 } from "./rightPanelFileVisuals";
 import { cn } from "@bb/shared-ui/lib/utils";
-import { isDesktopBrowserAvailable } from "@/lib/bb-desktop";
+import { useAppCommandShortcut } from "@/components/commands/AppCommandProvider";
 import { formatRelativeTime } from "@/lib/relative-time";
 import {
-  LAUNCHER_ACTION_ROW_BASE_CLASS,
   LAUNCHER_ROW_BASE_CLASS,
   LAUNCHER_ROW_ICON_CLASS,
   LauncherRowTrailing,
   LauncherSectionHeader,
 } from "./launcherRow";
-import {
-  useSidebarSortable,
-  type SidebarSortableDragBindings,
-} from "@/components/sidebar/sortableMotion";
-import { useSidebarReorderDnd } from "@/components/sidebar/useSidebarReorderDnd";
-import { arrangeByStoredOrder, reorderStoredOrder } from "@/lib/stored-order";
-import { newTabActionOrderAtom } from "./newTabActionsAtoms";
-import { useAppCommandShortcut } from "@/components/commands/AppCommandProvider";
-import { AppCommandShortcutHint } from "@/components/commands/AppCommandShortcutHint";
-import type { AppShortcutPresentation } from "@/lib/app-keybindings";
 
 export interface NewTabFileSearchProps {
   projectId: string | undefined;
@@ -77,35 +58,6 @@ export interface NewTabFileSearchProps {
   onSelect: (selection: FileSearchSelection) => void;
   recentItemsThreadId?: string | null;
   showFileSearch?: boolean;
-}
-
-export type OpenBrowserHandler = () => void;
-export type StartTerminalHandler = () => void;
-
-interface NewTabActionsProps {
-  onOpenBrowser?: OpenBrowserHandler;
-  onStartTerminal?: StartTerminalHandler;
-  startTerminalDisabled?: boolean;
-  startTerminalTrailing?: ReactNode;
-  pluginActions?: readonly PluginPanelActionEntry[];
-}
-
-type NewTabActionDescriptor =
-  | {
-      kind: "builtin";
-      id: string;
-      iconName: IconName;
-      label: string;
-      disabled: boolean;
-      shortcut: AppShortcutPresentation | null;
-      trailing: ReactNode;
-      onSelect: () => void;
-    }
-  | { kind: "plugin"; id: string; action: PluginPanelActionEntry };
-
-interface SortableNewTabActionProps {
-  descriptor: NewTabActionDescriptor;
-  reorderDisabled: boolean;
 }
 
 interface FileResultRowProps {
@@ -147,8 +99,7 @@ interface FileSearchSection {
 
 type LauncherKeyDownHandler = (event: KeyboardEvent<HTMLElement>) => void;
 type FileSearchSource = FileSearchSuggestion["source"];
-type FileSearchSectionKind = "actions" | "files" | "recent";
-type LauncherTileVariant = "result" | "action";
+type FileSearchSectionKind = "files" | "recent";
 
 interface GroupFileSearchSectionsArgs {
   suggestions: readonly FileSearchSuggestion[];
@@ -156,28 +107,12 @@ interface GroupFileSearchSectionsArgs {
 }
 
 interface LauncherTileProps {
-  ariaKeyshortcuts?: string;
-  dragBindings?: SidebarSortableDragBindings;
   id: string;
   isActive: boolean;
-  variant?: LauncherTileVariant;
   onActivate: () => void;
   onSelect: () => void;
   title?: string;
   children: ReactNode;
-}
-
-interface NewTabActionTileProps {
-  disabled: boolean;
-  dragBindings?: SidebarSortableDragBindings;
-  id: string;
-  iconName: IconName;
-  label: string;
-  isActive: boolean;
-  onActivate: () => void;
-  onSelect: () => void;
-  shortcut: AppShortcutPresentation | null;
-  trailing: ReactNode;
 }
 
 interface ShowMoreToggleProps {
@@ -193,7 +128,6 @@ const FILE_SEARCH_SECTION_ORDER: readonly FileSearchSectionKind[] = [
 ];
 
 const FILE_SEARCH_SECTION_LABELS = {
-  actions: "Actions",
   files: "Files",
   recent: "Recent",
 } satisfies Record<FileSearchSectionKind, string>;
@@ -202,9 +136,6 @@ const FILE_SEARCH_SOURCE_LABELS = {
   workspace: "Workspace",
   "thread-storage": "Thread storage",
 } satisfies Record<FileSearchSource, string>;
-
-const OPEN_BROWSER_ENTRY_ID = "file-search-result-open-browser";
-const START_TERMINAL_ENTRY_ID = "file-search-result-start-terminal";
 
 const RECENT_ENTRY_ID_PREFIX = "file-search-result-recent";
 
@@ -301,124 +232,30 @@ function FileSearchMessage({
 }
 
 function LauncherTile({
-  ariaKeyshortcuts,
-  dragBindings,
   id,
   isActive,
-  variant = "result",
   onActivate,
   onSelect,
   title,
   children,
 }: LauncherTileProps) {
-  const baseClass =
-    variant === "action"
-      ? LAUNCHER_ACTION_ROW_BASE_CLASS
-      : LAUNCHER_ROW_BASE_CLASS;
-  const { onKeyDown: _keyboardDragActivator, ...pointerDragListeners } =
-    dragBindings?.listeners ?? {};
-
   return (
     <button
       type="button"
       id={id}
-      role={variant === "result" ? "option" : undefined}
-      aria-selected={variant === "result" ? isActive : undefined}
-      aria-keyshortcuts={ariaKeyshortcuts}
-      ref={dragBindings?.setActivatorNodeRef}
-      {...dragBindings?.attributes}
-      {...pointerDragListeners}
+      role="option"
+      aria-selected={isActive}
       onClick={onSelect}
       onMouseEnter={onActivate}
       title={title}
       className={cn(
-        baseClass,
+        LAUNCHER_ROW_BASE_CLASS,
         "relative scroll-mt-7",
         isActive ? "bg-state-active" : "hover:bg-state-hover",
       )}
     >
       {children}
     </button>
-  );
-}
-
-function NewTabActionTile({
-  disabled,
-  dragBindings,
-  id,
-  iconName,
-  label,
-  isActive,
-  onActivate,
-  onSelect,
-  shortcut,
-  trailing,
-}: NewTabActionTileProps) {
-  const { onKeyDown: _keyboardDragActivator, ...pointerDragListeners } =
-    dragBindings?.listeners ?? {};
-
-  if (trailing !== null) {
-    return (
-      <div
-        id={id}
-        className={cn(
-          LAUNCHER_ACTION_ROW_BASE_CLASS,
-          "relative scroll-mt-7",
-          isActive ? "bg-state-active" : disabled ? "" : "hover:bg-state-hover",
-        )}
-      >
-        <button
-          type="button"
-          aria-label={label}
-          aria-keyshortcuts={shortcut?.ariaKeyshortcuts}
-          disabled={disabled}
-          ref={dragBindings?.setActivatorNodeRef}
-          {...dragBindings?.attributes}
-          {...pointerDragListeners}
-          onClick={onSelect}
-          onMouseEnter={onActivate}
-          className="absolute inset-0 rounded focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-default"
-        />
-        <span className={cn(LAUNCHER_ROW_ICON_CLASS, "pointer-events-none")}>
-          <Icon
-            name={iconName}
-            className={COARSE_POINTER_COMPACT_ICON_SIZE_CLASS}
-            aria-hidden
-          />
-        </span>
-        <span className="pointer-events-none min-w-0 flex-1 truncate text-foreground">
-          {label}
-        </span>
-        <div className="relative z-10 ml-auto flex min-w-0 shrink-0 items-center">
-          {trailing}
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <LauncherTile
-      id={id}
-      isActive={isActive}
-      ariaKeyshortcuts={shortcut?.ariaKeyshortcuts}
-      dragBindings={dragBindings}
-      variant="action"
-      onActivate={onActivate}
-      onSelect={onSelect}
-    >
-      <span className={LAUNCHER_ROW_ICON_CLASS}>
-        <Icon
-          name={iconName}
-          className={COARSE_POINTER_COMPACT_ICON_SIZE_CLASS}
-          aria-hidden
-        />
-      </span>
-      <span className="min-w-0 flex-1 truncate text-foreground">{label}</span>
-      <AppCommandShortcutHint
-        shortcut={shortcut ?? null}
-        className="absolute right-2 top-1/2 -translate-y-1/2"
-      />
-    </LauncherTile>
   );
 }
 
@@ -821,197 +658,6 @@ export function NewTabFileSearch({
           }}
           sections={sections}
         />
-      )}
-    </div>
-  );
-}
-
-export function NewTabActions({
-  onOpenBrowser,
-  onStartTerminal,
-  pluginActions,
-  startTerminalDisabled = false,
-  startTerminalTrailing,
-}: NewTabActionsProps) {
-  const terminalShortcut = useAppCommandShortcut("terminal.open");
-  const [storedOrder, setStoredOrder] = useAtom(newTabActionOrderAtom);
-  const showOpenBrowserEntry =
-    onOpenBrowser !== undefined && isDesktopBrowserAvailable();
-  const showStartTerminalEntry = onStartTerminal !== undefined;
-
-  const handleOpenBrowser = useCallback(() => {
-    onOpenBrowser?.();
-  }, [onOpenBrowser]);
-
-  const handleStartTerminal = useCallback(() => {
-    onStartTerminal?.();
-  }, [onStartTerminal]);
-
-  const descriptors = useMemo<NewTabActionDescriptor[]>(
-    () => [
-      ...(showOpenBrowserEntry
-        ? [
-            {
-              kind: "builtin" as const,
-              id: OPEN_BROWSER_ENTRY_ID,
-              iconName: "Globe" as const,
-              label: "Open browser",
-              disabled: false,
-              shortcut: null,
-              trailing: null,
-              onSelect: handleOpenBrowser,
-            },
-          ]
-        : []),
-      ...(showStartTerminalEntry
-        ? [
-            {
-              kind: "builtin" as const,
-              id: START_TERMINAL_ENTRY_ID,
-              iconName: "Terminal" as const,
-              label: "Start terminal",
-              disabled: startTerminalDisabled,
-              shortcut: terminalShortcut,
-              trailing: startTerminalTrailing ?? null,
-              onSelect: handleStartTerminal,
-            },
-          ]
-        : []),
-      ...(pluginActions ?? []).map((action) => ({
-        kind: "plugin" as const,
-        id: action.id,
-        action,
-      })),
-    ],
-    [
-      handleOpenBrowser,
-      handleStartTerminal,
-      pluginActions,
-      showOpenBrowserEntry,
-      showStartTerminalEntry,
-      startTerminalDisabled,
-      startTerminalTrailing,
-      terminalShortcut,
-    ],
-  );
-
-  const { ordered, normalizedOrder } = useMemo(
-    () =>
-      arrangeByStoredOrder({
-        items: descriptors,
-        getId: (descriptor) => descriptor.id,
-        storedOrder,
-      }),
-    [descriptors, storedOrder],
-  );
-  const orderedIds = useMemo(
-    () => ordered.map((descriptor) => descriptor.id),
-    [ordered],
-  );
-
-  const handleDragEnd = useCallback(
-    (event: DragEndEvent) => {
-      if (
-        !event.over ||
-        typeof event.active.id !== "string" ||
-        typeof event.over.id !== "string"
-      ) {
-        return;
-      }
-      const nextOrder = reorderStoredOrder({
-        activeId: event.active.id,
-        overId: event.over.id,
-        order: normalizedOrder,
-        visibleIds: orderedIds,
-      });
-      if (nextOrder) setStoredOrder(nextOrder);
-    },
-    [normalizedOrder, orderedIds, setStoredOrder],
-  );
-  const { dndContextProps, onClickCapture } = useSidebarReorderDnd({
-    onDragEnd: handleDragEnd,
-  });
-
-  if (ordered.length === 0) {
-    return null;
-  }
-
-  return (
-    <div
-      data-testid="new-tab-actions"
-      className="flex min-w-0 flex-col"
-      onClickCapture={onClickCapture}
-    >
-      <section>
-        <LauncherSectionHeader
-          label={FILE_SEARCH_SECTION_LABELS.actions}
-          className="pb-1"
-        />
-        <DndContext {...dndContextProps}>
-          <SortableContext
-            items={orderedIds}
-            strategy={verticalListSortingStrategy}
-          >
-            <div className="flex flex-col gap-px">
-              {ordered.map((descriptor) => (
-                <SortableNewTabAction
-                  key={descriptor.id}
-                  descriptor={descriptor}
-                  reorderDisabled={ordered.length < 2}
-                />
-              ))}
-            </div>
-          </SortableContext>
-        </DndContext>
-      </section>
-    </div>
-  );
-}
-
-function SortableNewTabAction({
-  descriptor,
-  reorderDisabled,
-}: SortableNewTabActionProps) {
-  const { dragBindings, setNodeRef, style } = useSidebarSortable({
-    id: descriptor.id,
-    disabled: reorderDisabled,
-  });
-
-  return (
-    <div ref={setNodeRef} style={style}>
-      {descriptor.kind === "builtin" ? (
-        <NewTabActionTile
-          disabled={descriptor.disabled}
-          dragBindings={dragBindings}
-          id={descriptor.id}
-          iconName={descriptor.iconName}
-          label={descriptor.label}
-          isActive={false}
-          onActivate={() => undefined}
-          onSelect={descriptor.onSelect}
-          shortcut={descriptor.shortcut}
-          trailing={descriptor.trailing}
-        />
-      ) : (
-        <LauncherTile
-          dragBindings={dragBindings}
-          id={descriptor.id}
-          isActive={false}
-          variant="action"
-          onActivate={() => undefined}
-          onSelect={descriptor.action.onSelect}
-        >
-          <span className={LAUNCHER_ROW_ICON_CLASS}>
-            <PluginIcon
-              pluginId={descriptor.action.pluginId}
-              icon={descriptor.action.icon}
-              className={COARSE_POINTER_COMPACT_ICON_SIZE_CLASS}
-            />
-          </span>
-          <span className="min-w-0 flex-1 truncate text-foreground">
-            {descriptor.action.title}
-          </span>
-        </LauncherTile>
       )}
     </div>
   );

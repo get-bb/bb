@@ -4,7 +4,7 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { createStore, Provider } from "jotai";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { PluginPanelActionEntry } from "@/components/plugin/PluginPanelActions";
-import { NewTabActions } from "./NewTabFileSearch";
+import { NewTabActions } from "./NewTabActions";
 import { newTabActionOrderAtom } from "./newTabActionsAtoms";
 
 vi.mock("@/components/commands/AppCommandProvider", () => ({
@@ -84,6 +84,25 @@ describe("NewTabActions", () => {
     renderActions([sideChat.id, START_TERMINAL_ID], [sideChat]);
 
     expect(actionLabels()).toEqual(["Start side chat", "Start terminal"]);
+  });
+
+  it("offers a reorder handle per action once there are two to order", () => {
+    renderActions([], [sideChat]);
+
+    expect(
+      screen
+        .getAllByRole("button", { name: /^Reorder / })
+        .map((button) => button.getAttribute("aria-label")),
+    ).toEqual(["Reorder Start terminal", "Reorder Start side chat"]);
+  });
+
+  it("offers no reorder handle when a single action cannot move", () => {
+    renderActions([], []);
+
+    expect(
+      screen.getByRole("button", { name: "Start terminal" }),
+    ).toBeDefined();
+    expect(screen.queryByRole("button", { name: /^Reorder / })).toBeNull();
   });
 
   it("appends an action the saved order has never seen", () => {

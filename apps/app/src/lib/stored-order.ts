@@ -1,3 +1,5 @@
+import { arrayMove } from "@bb/client-core";
+
 interface ArrangeByStoredOrderArgs<TItem> {
   items: readonly TItem[];
   getId: (item: TItem) => string;
@@ -53,21 +55,18 @@ export function reorderStoredOrder({
   const to = visibleIds.indexOf(overId);
   if (from === -1 || to === -1 || from === to) return null;
 
-  const nextVisible = [...visibleIds];
-  const [moved] = nextVisible.splice(from, 1);
-  nextVisible.splice(to, 0, moved);
-
+  const nextVisible = arrayMove(visibleIds, from, to);
   const visibleSet = new Set(visibleIds);
   let cursor = 0;
   return order.map((id) => (visibleSet.has(id) ? nextVisible[cursor++] : id));
 }
 
-export function haveStoredOrdersDiverged(
+export function haveSameOrder(
   left: readonly string[],
   right: readonly string[],
-): boolean {
+) {
   return (
-    left.length !== right.length ||
-    left.some((id, index) => id !== right[index])
+    left.length === right.length &&
+    left.every((id, index) => id === right[index])
   );
 }

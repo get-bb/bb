@@ -2,10 +2,12 @@ import type { ReactNode } from "react";
 import type { PluginPanelActionEntry } from "@/components/plugin/PluginPanelActions";
 import {
   NewTabActions,
-  NewTabFileSearch,
-  type NewTabFileSearchProps,
   type OpenBrowserHandler,
   type StartTerminalHandler,
+} from "./NewTabActions";
+import {
+  NewTabFileSearch,
+  type NewTabFileSearchProps,
 } from "./NewTabFileSearch";
 
 type NewTabPageFileSearchProps = Omit<NewTabFileSearchProps, "idleActions">;

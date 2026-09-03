@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   arrangeByStoredOrder,
-  haveStoredOrdersDiverged,
+  haveSameOrder,
   reorderStoredOrder,
 } from "./stored-order";
 
@@ -95,10 +95,10 @@ describe("reorderStoredOrder", () => {
   });
 });
 
-describe("haveStoredOrdersDiverged", () => {
+describe("haveSameOrder", () => {
   it("compares by position, not membership", () => {
-    expect(haveStoredOrdersDiverged(["a", "b"], ["a", "b"])).toBe(false);
-    expect(haveStoredOrdersDiverged(["a", "b"], ["b", "a"])).toBe(true);
-    expect(haveStoredOrdersDiverged(["a"], ["a", "b"])).toBe(true);
+    expect(haveSameOrder(["a", "b"], ["a", "b"])).toBe(true);
+    expect(haveSameOrder(["a", "b"], ["b", "a"])).toBe(false);
+    expect(haveSameOrder(["a"], ["a", "b"])).toBe(false);
   });
 });

@@ -62,12 +62,11 @@ import {
 import {
   arrangePluginNavPanels,
   getPluginNavPanelKey,
-  havePluginNavPanelOrdersDiverged,
   hidePluginNavPanel,
-  reorderPluginNavPanels,
   seedLeadingNavPanelKeys,
   showPluginNavPanel,
 } from "./pluginNavSidebarOrder";
+import { haveSameOrder, reorderStoredOrder } from "@/lib/stored-order";
 
 const BUILTIN_NAV_ROW_PLUGIN_ID = "__builtin__";
 
@@ -153,7 +152,7 @@ function PluginNavSidebarItemList({
   }, [hiddenKeys, rows, storedOrder]);
 
   useEffect(() => {
-    if (!havePluginNavPanelOrdersDiverged(storedOrder, normalizedOrder)) return;
+    if (haveSameOrder(storedOrder, normalizedOrder)) return;
     setStoredOrder(normalizedOrder);
   }, [normalizedOrder, setStoredOrder, storedOrder]);
 
@@ -171,11 +170,11 @@ function PluginNavSidebarItemList({
       ) {
         return;
       }
-      const nextOrder = reorderPluginNavPanels({
-        activeKey: event.active.id,
-        overKey: event.over.id,
+      const nextOrder = reorderStoredOrder({
+        activeId: event.active.id,
+        overId: event.over.id,
         order: normalizedOrder,
-        visibleKeys,
+        visibleIds: visibleKeys,
       });
       if (nextOrder) setStoredOrder(nextOrder);
     },
