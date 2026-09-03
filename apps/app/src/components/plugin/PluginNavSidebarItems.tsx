@@ -109,6 +109,7 @@ type SidebarNavRow =
       id: string;
       title: string;
       icon: IconName;
+      hoverIcon: IconName;
       routePath: string;
     }
   | {
@@ -145,7 +146,8 @@ export function PluginNavSidebarItems({
         pluginId: BUILTIN_NAV_ROW_PLUGIN_ID,
         id: "tools",
         title: "Plugins",
-        icon: "GridView",
+        icon: "Blocks",
+        hoverIcon: "GridView",
         routePath: getPluginsRoutePath(),
       },
       {
@@ -153,7 +155,8 @@ export function PluginNavSidebarItems({
         pluginId: BUILTIN_NAV_ROW_PLUGIN_ID,
         id: "skills",
         title: "Skills",
-        icon: "Explore",
+        icon: "BookOpen",
+        hoverIcon: "Explore",
         routePath: getSkillsRoutePath(),
       },
       ...pluginRows,
@@ -404,7 +407,20 @@ function ToolsNavSidebarItem({
       {...props}
       rowKey={getPluginNavPanelKey(row)}
       title={row.title}
-      icon={<Icon name={row.icon} aria-hidden="true" />}
+      icon={
+        <span className="relative size-4 shrink-0">
+          <Icon
+            name={row.icon}
+            className="absolute inset-0 opacity-100 transition-opacity duration-150 group-hover/nav-row:opacity-0 group-focus-within/nav-row:opacity-0"
+            aria-hidden="true"
+          />
+          <Icon
+            name={row.hoverIcon}
+            className="absolute inset-0 opacity-0 transition-opacity duration-150 group-hover/nav-row:opacity-100 group-focus-within/nav-row:opacity-100"
+            aria-hidden="true"
+          />
+        </span>
+      }
       isActive={false}
       onSelect={() => {
         onNavigate?.();
@@ -528,7 +544,10 @@ function SidebarNavRowChrome({
         <div
           ref={rowRef}
           style={rowStyle}
-          className={cn(SIDEBAR_HOVER_ACTIONS_ROW_CLASS, "relative")}
+          className={cn(
+            SIDEBAR_HOVER_ACTIONS_ROW_CLASS,
+            "group/nav-row relative",
+          )}
         >
           <Button
             type="button"
