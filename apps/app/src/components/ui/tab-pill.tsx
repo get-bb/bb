@@ -23,6 +23,7 @@ interface TabPillCloseAction {
 
 interface TabPillProps {
   label: string;
+  className?: string;
   ariaLabel?: string;
   ariaKeyshortcuts?: string;
   iconOnly?: boolean;
@@ -39,6 +40,7 @@ interface TabPillProps {
 
 export function TabPill({
   label,
+  className,
   ariaLabel,
   ariaKeyshortcuts,
   iconOnly = false,
@@ -72,6 +74,7 @@ export function TabPill({
         isActive
           ? cn(CONTEXT_SELECTION_SURFACE_CLASS, "text-foreground")
           : "text-muted-foreground hover:bg-state-hover",
+        className,
       )}
     >
       <button

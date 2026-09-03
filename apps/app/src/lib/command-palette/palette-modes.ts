@@ -8,11 +8,11 @@ export const PALETTE_MODES: readonly PaletteModeRegistration[] = [
     chip: { icon: "Search", label: "Threads" },
     placeholder: "Search title, project, or message…",
     footerKeys: [
-      { keys: ["↑↓"], label: "Select" },
-      { keys: ["↵"], label: "Open" },
       { keys: ["⌘↵"], label: "Split" },
-      { keys: ["Backspace", "Esc"], label: "Back" },
+      { keys: ["Esc"], label: "Back" },
     ],
+    inputDescription:
+      "Use Command-Enter or Control-Enter to open the selected thread in a split. Use Escape to return to commands.",
     View: ThreadSearchPaletteMode,
   },
 ];

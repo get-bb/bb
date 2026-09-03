@@ -157,7 +157,9 @@ export function buildPaletteThreadSearchRows({
   const activeRows = isRecent
     ? recentThreads
         .slice(0, RECENT_THREAD_LIMIT)
-        .map((thread) => serverRow(thread, [], "active", projectNamesById, now))
+        .map((thread) =>
+          serverRow(thread, [], "active", projectNamesById, now),
+        )
     : isSearchable && searchResultsAreCurrent
       ? (searchResponse?.active.results ?? []).map((result) =>
           serverRow(

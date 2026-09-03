@@ -54,11 +54,9 @@ import {
 import { PaletteShell } from "./PaletteShell";
 
 const PALETTE_INPUT_LABEL = "Search commands";
+const PALETTE_INPUT_DESCRIPTION = "Use Escape to close the command palette.";
 const PALETTE_PLACEHOLDER = "Search commands…";
-const ROOT_FOOTER_KEYS = [
-  { keys: ["↑↓"], label: "Select" },
-  { keys: ["↵"], label: "Run" },
-] as const;
+const ROOT_FOOTER_KEYS = [{ keys: ["Esc"], label: "Close" }] as const;
 const MODE_ENTRY_HANDLER_PRIORITY = 100;
 const MODE_BY_ACTION_ID = new Map(
   PALETTE_MODES.map((mode) => [
@@ -359,6 +357,7 @@ export function CommandPalette({
                 : `${optionIdPrefix}-${activeIndex}`
             }
             footerKeys={ROOT_FOOTER_KEYS}
+            inputDescription={PALETTE_INPUT_DESCRIPTION}
             inputLabel={PALETTE_INPUT_LABEL}
             listId={listId}
             listLabel="Commands"

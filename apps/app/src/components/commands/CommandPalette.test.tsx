@@ -470,9 +470,16 @@ describe("CommandPalette", () => {
     const rootFooter = screen
       .getByTestId("command-palette")
       .querySelector("[data-palette-footer]");
-    expectText(rootFooter, "Select");
-    expectText(rootFooter, "Run");
-    expect(rootFooter?.textContent).not.toContain("Open");
+    expectText(rootFooter, "Close");
+    expect(rootFooter?.textContent).not.toContain("Select");
+    expect(rootFooter?.textContent).not.toContain("Run");
+    expectAttribute(rootFooter, "aria-hidden", "true");
+    const rootDescriptionId = searchField().getAttribute("aria-describedby");
+    expect(rootDescriptionId).not.toBeNull();
+    expectText(
+      document.getElementById(rootDescriptionId ?? ""),
+      "Use Escape to close the command palette.",
+    );
 
     const threadRows = within(bucketGroup("Threads")).getAllByRole("option");
     expect(threadRows.map((row) => row.textContent)).toEqual([
@@ -529,13 +536,15 @@ describe("CommandPalette", () => {
     const modeSelect = screen.getByRole("button", { name: "Threads search" });
     expectAttribute(modeSelect, "aria-pressed", "true");
     expect(modeSelect.querySelector('[data-icon="Search"]')).not.toBeNull();
+    expectClasses(modeSelect.parentElement, "bg-state-active");
+    expectNoClasses(modeSelect.parentElement, "bg-background/70");
     expectAttribute(
       screen.getByRole("button", { name: "Return to commands" }),
       "data-tab-pill-close",
     );
-    expect(
-      screen.getByRole("button", { name: "Thread scope" }).textContent,
-    ).toContain("All");
+    const scope = screen.getByRole("button", { name: "Thread scope" });
+    expect(scope.textContent).toContain("All");
+    expectClasses(scope, "text-subtle-foreground", "opacity-70");
     expectText(screen.getByTestId("command-palette"), "Split");
     const footer = screen
       .getByTestId("command-palette")
@@ -547,10 +556,20 @@ describe("CommandPalette", () => {
       "px-4",
       "py-2",
     );
+    expectAttribute(footer, "aria-hidden", "true");
     for (const keycap of footer?.querySelectorAll("kbd") ?? []) {
       expectClasses(
         keycap,
-        "rounded",
+        "rounded-sm",
+        "bg-state-hover",
+        "font-sans",
+        "font-normal",
+        "tabular-nums",
+        "text-subtle-foreground",
+        "opacity-60",
+      );
+      expectNoClasses(
+        keycap,
         "border-border/70",
         "bg-background/70",
         "font-mono",
@@ -566,8 +585,19 @@ describe("CommandPalette", () => {
         "text-subtle-foreground",
       );
     }
-    expectText(footer, "Backspace");
+    expect(footer?.textContent).not.toContain("Backspace");
+    expect(footer?.textContent).not.toContain("Select");
+    expect(footer?.textContent).not.toContain("Open");
     expectText(footer, "Esc");
+    const threadInput = screen.getByRole("combobox", {
+      name: "Search threads",
+    });
+    const threadDescriptionId = threadInput.getAttribute("aria-describedby");
+    expect(threadDescriptionId).not.toBeNull();
+    expectText(
+      document.getElementById(threadDescriptionId ?? ""),
+      "Use Command-Enter or Control-Enter to open the selected thread in a split. Use Escape to return to commands.",
+    );
 
     fireEvent.keyDown(screen.getByRole("combobox"), { key: "Escape" });
     await waitFor(() =>
@@ -804,6 +834,12 @@ describe("CommandPalette", () => {
     expect(within(results).getByRole("option").textContent).toContain(
       "matching draft",
     );
+    expectText(
+      within(results)
+        .getByRole("option")
+        .querySelector("[data-palette-thread-metadata]"),
+      "Palette project",
+    );
     fireEvent.keyDown(scope, { key: "Escape" });
     expect(document.activeElement).toBe(input);
 
@@ -850,22 +886,26 @@ describe("CommandPalette", () => {
     expect(rows[1]?.textContent).toContain("Draft");
     expect(rows[2]?.textContent).toContain("Title recent-archived");
     expect(rows[2]?.textContent).toContain("Archived");
-    expect(results.querySelector("[data-palette-thread-state]")).toBeNull();
     expect(results.querySelector("[data-icon]")).toBeNull();
     for (const row of rows) {
       expectClasses(
         row.querySelector("[data-palette-thread-metadata]"),
         "text-subtle-foreground",
+        "opacity-70",
       );
     }
-    expectClasses(
-      within(rows[1] as HTMLElement).getByText("Draft"),
-      "text-subtle-foreground",
-    );
-    expectClasses(
-      within(rows[2] as HTMLElement).getByText("Archived"),
-      "text-subtle-foreground",
-    );
+    expect(
+      rows[1]?.querySelector("[data-palette-thread-metadata]")?.textContent,
+    ).toBe("Palette project");
+    expect(
+      rows[2]?.querySelector("[data-palette-thread-metadata]")?.textContent,
+    ).toBe("Palette project · just now");
+    const draftState = rows[1]?.lastElementChild;
+    const archivedState = rows[2]?.lastElementChild;
+    expectText(draftState, "Draft");
+    expectText(archivedState, "Archived");
+    expectClasses(draftState, "shrink-0", "text-subtle-foreground");
+    expectClasses(archivedState, "shrink-0", "text-subtle-foreground");
     expect(within(results).queryAllByRole("group")).toHaveLength(0);
     expect(within(results).queryByText("Recent")).toBeNull();
   });
@@ -938,9 +978,15 @@ describe("CommandPalette", () => {
       expectClasses(
         row.querySelector("[data-palette-thread-metadata]"),
         "text-subtle-foreground",
+        "opacity-70",
       );
     }
-    expect(results.querySelector("[data-palette-thread-state]")).toBeNull();
+    expect(
+      rows[1]?.querySelector("[data-palette-thread-metadata]")?.textContent,
+    ).toBe("Palette project");
+    expect(
+      rows[2]?.querySelector("[data-palette-thread-metadata]")?.textContent,
+    ).toBe("Palette project · just now");
     expect(within(results).queryAllByRole("group")).toHaveLength(0);
     expect(within(results).queryByText("Recent")).toBeNull();
     expect(results.textContent).not.toContain("1/1");

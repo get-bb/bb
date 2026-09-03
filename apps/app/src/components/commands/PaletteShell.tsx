@@ -1,8 +1,21 @@
-import type { KeyboardEventHandler, ReactNode, Ref } from "react";
+import {
+  useId,
+  type KeyboardEventHandler,
+  type ReactNode,
+  type Ref,
+} from "react";
 import { useComposedRefs } from "@radix-ui/react-compose-refs";
 import { Icon } from "@bb/shared-ui/icon";
+import { cn } from "@bb/shared-ui/lib/utils";
 import { useScrollOverflowState } from "@/components/thread/timeline/useScrollOverflowState";
 import { TabPill } from "@/components/ui/tab-pill";
+import { APP_COMMAND_ACCESSORY_PILL_CLASS } from "./AppCommandShortcutHint";
+
+export const PALETTE_FOOTER_KEYCAP_CLASS = cn(
+  APP_COMMAND_ACCESSORY_PILL_CLASS,
+  "min-w-5 py-0.5",
+);
+export const PALETTE_FOOTER_LABEL_CLASS = "text-subtle-foreground opacity-70";
 
 interface PaletteModeChipProps {
   clearLabel: string;
@@ -16,6 +29,7 @@ interface PaletteShellProps {
   accessory?: ReactNode;
   children: ReactNode;
   footerKeys: readonly { keys: readonly string[]; label: string }[];
+  inputDescription: string;
   inputLabel: string;
   inputRef?: Ref<HTMLInputElement>;
   listId: string;
@@ -33,6 +47,7 @@ export function PaletteShell({
   accessory,
   children,
   footerKeys,
+  inputDescription,
   inputLabel,
   inputRef,
   listId,
@@ -44,6 +59,7 @@ export function PaletteShell({
   placeholder,
   value,
 }: PaletteShellProps) {
+  const inputDescriptionId = useId();
   const overflow = useScrollOverflowState<HTMLDivElement>({
     measureOverflow: true,
   });
@@ -67,9 +83,7 @@ export function PaletteShell({
           className="flex h-10 items-center gap-2 px-3"
           data-palette-input-frame
         >
-          {modeChip === undefined ? null : (
-            <PaletteModeChip {...modeChip} />
-          )}
+          {modeChip === undefined ? null : <PaletteModeChip {...modeChip} />}
           <input
             ref={inputRef}
             autoFocus
@@ -77,6 +91,7 @@ export function PaletteShell({
             aria-expanded
             aria-controls={listId}
             aria-activedescendant={activeDescendantId}
+            aria-describedby={inputDescriptionId}
             aria-label={inputLabel}
             autoComplete="off"
             spellCheck={false}
@@ -86,6 +101,9 @@ export function PaletteShell({
             onChange={(event) => onInputChange(event.target.value)}
             onKeyDown={onInputKeyDown}
           />
+          <span id={inputDescriptionId} className="sr-only">
+            {inputDescription}
+          </span>
           {accessory}
         </div>
       </div>
@@ -121,6 +139,7 @@ export function PaletteShell({
         </div>
       </div>
       <div
+        aria-hidden
         className="relative z-10 flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-border bg-surface-recessed-soft-solid px-4 py-2 text-xs text-subtle-foreground"
         data-palette-footer
       >
@@ -133,20 +152,18 @@ export function PaletteShell({
               {hint.keys.map((keys, index) => (
                 <span key={keys} className="inline-flex items-center gap-1">
                   {index === 0 ? null : (
-                    <span
-                      aria-hidden
-                      className="text-muted-foreground/60"
-                    >
+                    <span aria-hidden className="text-muted-foreground/60">
                       /
                     </span>
                   )}
-                  <kbd className="inline-flex min-w-5 items-center justify-center rounded border border-border/70 bg-background/70 px-1.5 py-0.5 font-mono text-xs leading-none text-muted-foreground shadow-xs">
-                    {keys}
-                  </kbd>
+                  <kbd className={PALETTE_FOOTER_KEYCAP_CLASS}>{keys}</kbd>
                 </span>
               ))}
             </span>
-            <span className="opacity-70" data-palette-footer-label>
+            <span
+              className={PALETTE_FOOTER_LABEL_CLASS}
+              data-palette-footer-label
+            >
               {hint.label}
             </span>
           </span>
