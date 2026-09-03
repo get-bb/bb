@@ -56,12 +56,6 @@ function swipeToast(
     pointerType: "touch",
   });
   fireEvent.pointerMove(toastElement, {
-    clientX: startX + Math.sign(endX - startX) * 2,
-    clientY: startY + Math.sign(endY - startY) * 2,
-    pointerId,
-    pointerType: "touch",
-  });
-  fireEvent.pointerMove(toastElement, {
     clientX: endX,
     clientY: endY,
     pointerId,
