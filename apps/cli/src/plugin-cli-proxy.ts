@@ -272,11 +272,25 @@ export function findPluginCliCommand(
 
 interface PluginCliOutputStream {
   write(chunk: string, callback: (error?: Error | null) => void): boolean;
+  once?(
+    event: "error",
+    listener: (error: Error) => void,
+  ): PluginCliOutputStream;
+  off?(event: "error", listener: (error: Error) => void): PluginCliOutputStream;
 }
 
 interface PluginCliOutputStreams {
   stdout: PluginCliOutputStream;
   stderr: PluginCliOutputStream;
+}
+
+function isBrokenPipeError(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    error.code === "EPIPE"
+  );
 }
 
 async function writePluginCliOutput(
@@ -286,9 +300,20 @@ async function writePluginCliOutput(
   if (value.length === 0) return;
   const output = value.endsWith("\n") ? value : `${value}\n`;
   await new Promise<void>((resolvePromise, rejectPromise) => {
+    const settleError = (error: Error) => {
+      if (isBrokenPipeError(error)) resolvePromise();
+      else rejectPromise(error);
+    };
+    stream.once?.("error", settleError);
     stream.write(output, (error) => {
-      if (error) rejectPromise(error);
-      else resolvePromise();
+      if (error) {
+        // Node invokes the write callback before emitting the paired error.
+        // Keep the one-shot listener attached so EPIPE cannot escape uncaught.
+        settleError(error);
+        return;
+      }
+      stream.off?.("error", settleError);
+      resolvePromise();
     });
   });
 }
