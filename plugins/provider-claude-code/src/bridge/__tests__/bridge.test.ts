@@ -5506,6 +5506,7 @@ describe("canonical model context-window hint", () => {
             providerThreadId,
             reason:
               "Execution settings changed; the Claude session was rebuilt to apply them.",
+            showRuntimeNote: true,
             threadId,
           }),
         }),

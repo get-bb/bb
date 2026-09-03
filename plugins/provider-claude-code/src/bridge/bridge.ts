@@ -906,6 +906,7 @@ function emitSessionReplacement(args: {
   contextLost: boolean;
   providerThreadId: string | null;
   reason: string;
+  showRuntimeNote?: boolean;
   threadId: string;
   threadSession: ThreadSession;
 }): void {
@@ -921,6 +922,7 @@ function emitSessionReplacement(args: {
       providerThreadId: args.providerThreadId,
       reason: args.reason,
       contextLost: args.contextLost,
+      showRuntimeNote: args.showRuntimeNote ?? false,
     },
   });
 }
@@ -1435,6 +1437,9 @@ function replaceThreadSession(args: ReplaceThreadSessionArgs): ThreadSession {
     contextLost: false,
     providerThreadId: args.providerThreadId,
     reason: args.reason,
+    showRuntimeNote:
+      args.reason ===
+      "Execution settings changed; the Claude session was rebuilt to apply them.",
     threadId: args.threadId,
     threadSession: args.threadSession,
   });
