@@ -99,6 +99,34 @@ describe("submit-a-plugin skill", () => {
     expect(skill).not.toContain("PLUGIN_DISPLAY_NAME");
   });
 
+  it("captures screenshots with a harness tool and falls back to the user", async () => {
+    const skill = await readSkillTree();
+
+    expect(skill).toContain(
+      "Use a browser or computer automation tool that the current harness supplies.",
+    );
+    expect(skill).toContain(
+      "If the harness supplies no such tool, ask the user for the images.",
+    );
+    expect(skill).toContain("at least 1200 pixels wide");
+    expect(skill).toContain("at or below 2 MiB");
+    expect(skill).toContain("a maximum of six");
+  });
+
+  it("states the entry quality rules the store UI depends on", async () => {
+    const skill = await readSkillTree();
+
+    expect(skill).toContain("Write an App Store listing, not a README line.");
+    expect(skill).toContain(
+      "Do not use these words: powerful, seamless, easy, simple, fast, best, modern,",
+    );
+    expect(skill).toContain("clamps the description to two lines in a");
+    expect(skill).toContain(
+      "Marketplace CI refuses a new or changed entry with no category.",
+    );
+    expect(skill).toContain("The entry has no engines field");
+  });
+
   it("provides a local submission path without gh", async () => {
     const skill = await readSkillTree();
 
