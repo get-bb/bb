@@ -1114,23 +1114,47 @@ export function createCodexEventTranslator(
       : materializeCodexFollowup(args.activity);
   }
 
-  function consumeExactCodexInteraction(
+  function consumeCodexInteractionForTurnStart(
     providerThreadId: string,
   ): ThreadDelta[] {
+    let exactInteraction: CodexActivityInteraction | undefined;
+    let fallbackInteraction: CodexActivityInteraction | undefined;
+    let fallbackIsAmbiguous = false;
     for (const interaction of pendingInteractionsByCallId.values()) {
+      if (interaction.state !== "activity") {
+        continue;
+      }
+      if (interaction.activity.item.agentThreadId === providerThreadId) {
+        exactInteraction = interaction;
+        break;
+      }
+      const tracked = findTrackedSubAgentByAgentThreadId(
+        interaction.activity.item.agentThreadId,
+      );
       if (
-        interaction.state !== "activity" ||
-        interaction.activity.item.agentThreadId !== providerThreadId
+        interaction.parentProviderThreadId !== providerThreadId ||
+        !tracked?.terminal
       ) {
         continue;
       }
-      settleCodexInteraction(interaction, providerThreadId);
-      return correlateCodexInteraction({
-        activity: interaction.activity,
-        intent: "followup",
-      });
+      if (fallbackInteraction) {
+        fallbackIsAmbiguous = true;
+      } else {
+        fallbackInteraction = interaction;
+      }
     }
-    return [];
+    const interaction =
+      exactInteraction ??
+      (fallbackIsAmbiguous ? undefined : fallbackInteraction);
+    if (!interaction) {
+      return [];
+    }
+    const childThreadId = interaction.activity.item.agentThreadId;
+    settleCodexInteraction(interaction, childThreadId);
+    return correlateCodexInteraction({
+      activity: interaction.activity,
+      intent: "followup",
+    });
   }
 
   function advanceCodexInteractionBoundaries(args: {
@@ -1200,7 +1224,9 @@ export function createCodexEventTranslator(
         delta.providerTurnId !== undefined &&
         !hasPendingNativeTurnStart(providerThreadId)
       ) {
-        materialized.push(...consumeExactCodexInteraction(providerThreadId));
+        materialized.push(
+          ...consumeCodexInteractionForTurnStart(providerThreadId),
+        );
       }
       materialized.push(
         ...attachCodexDelegationParentLinks([delta], providerThreadId),

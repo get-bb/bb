@@ -378,11 +378,28 @@ async function handleRequest(message) {
       if (String(params.threadId).startsWith("usage-replay-")) {
         replayLastTurnUsage(params.threadId);
       }
+      const resumedThread =
+        resumeThread === null
+          ? { id: params.threadId }
+          : { ...resumeThread, id: params.threadId };
       respond(id, {
         thread:
-          resumeThread === null
-            ? { id: params.threadId }
-            : { ...resumeThread, id: params.threadId },
+          params.excludeTurns === true
+            ? { ...resumedThread, turns: [] }
+            : resumedThread,
+      });
+      return;
+    }
+    case "thread/read": {
+      const readThread =
+        resumeThread === null
+          ? { id: params.threadId }
+          : { ...resumeThread, id: params.threadId };
+      respond(id, {
+        thread:
+          params.includeTurns === true
+            ? readThread
+            : { ...readThread, turns: [] },
       });
       return;
     }

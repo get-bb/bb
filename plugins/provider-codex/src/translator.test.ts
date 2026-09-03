@@ -934,11 +934,7 @@ describe("codex subagent activity correlation", () => {
       subAgentActivity({ id: "rawless-followup", kind: "interacted" }),
     );
 
-    expect(
-      harness.translate(
-        childTurnStarted("resumed-child-turn", "agent-thread-1"),
-      ),
-    ).toEqual([
+    expect(harness.translate(childTurnStarted("resumed-child-turn"))).toEqual([
       expect.objectContaining({
         type: "item/started",
         scope: turnScope(harness.turnId("original-parent-turn")),
@@ -1090,6 +1086,68 @@ describe("codex subagent activity correlation", () => {
         events.find((event) => event.type === "turn/started"),
       ).not.toHaveProperty("parentToolCallId");
     }
+  });
+
+  it("does not guess between known resumed children on multiplexed root turns", () => {
+    const harness = createHarness();
+    harness.translator.primeSubAgentHistory(
+      ["a", "b"].map((suffix) => ({
+        agentPath: `/root/child_${suffix}`,
+        agentThreadId: `agent-thread-${suffix}`,
+        callId: `original-call-${suffix}`,
+        parentProviderThreadId: rootProviderThreadId,
+        parentTurnId: `original-turn-${suffix}`,
+      })),
+    );
+    for (const suffix of ["a", "b"]) {
+      harness.translate(
+        subAgentActivity({
+          agentThreadId: `agent-thread-${suffix}`,
+          id: `interaction-${suffix}`,
+          kind: "interacted",
+        }),
+      );
+    }
+
+    const events = harness.translate(childTurnStarted("multiplexed-turn"));
+    expect(
+      events.find((event) => event.type === "item/started"),
+    ).toBeUndefined();
+    expect(
+      events.find((event) => event.type === "turn/started"),
+    ).not.toHaveProperty("parentToolCallId");
+  });
+
+  it("keeps a native root turn ahead of one known resumed-child candidate", () => {
+    const harness = createHarness();
+    harness.translator.primeSubAgentHistory([
+      {
+        agentPath: "/root/child_a",
+        agentThreadId: "agent-thread-a",
+        callId: "original-call-a",
+        parentProviderThreadId: rootProviderThreadId,
+        parentTurnId: "original-turn-a",
+      },
+    ]);
+    harness.translate(
+      subAgentActivity({
+        agentThreadId: "agent-thread-a",
+        id: "interaction-a",
+        kind: "interacted",
+      }),
+    );
+    harness.translator.prepareTurnStart({
+      clientRequestId: "creq_native_root",
+      providerThreadId: rootProviderThreadId,
+    });
+
+    const events = harness.translate(childTurnStarted("native-root-turn"));
+    expect(
+      events.find((event) => event.type === "item/started"),
+    ).toBeUndefined();
+    expect(
+      events.find((event) => event.type === "turn/started"),
+    ).not.toHaveProperty("parentToolCallId");
   });
 
   it("does not materialize an interaction before late message intent", () => {

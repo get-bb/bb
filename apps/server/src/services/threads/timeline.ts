@@ -577,25 +577,25 @@ function filterExactEventRowsForRequestedTurn(
       row.scopeKind === "turn" &&
       row.turnId === args.turnId,
   );
-  for (const [index, row] of args.exactEventRows.entries()) {
-    if (!hasRequestedTurnCompletedRow || !isExternalUserNewTurnBoundary(row)) {
-      continue;
-    }
-    const requestId = tryReadClientTurnRequestedRequestId(row);
+  let hasLaterRequestedTurnRow = false;
+  for (let index = args.exactEventRows.length - 1; index >= 0; index -= 1) {
+    const row = args.exactEventRows[index];
     if (
-      requestId === null ||
-      !args.acceptedClientRequestIdsForOtherTurns.has(requestId)
+      hasRequestedTurnCompletedRow &&
+      hasLaterRequestedTurnRow &&
+      row !== undefined &&
+      isExternalUserNewTurnBoundary(row)
     ) {
-      continue;
+      const requestId = tryReadClientTurnRequestedRequestId(row);
+      if (
+        requestId !== null &&
+        args.acceptedClientRequestIdsForOtherTurns.has(requestId)
+      ) {
+        externalUserNewTurnRequestIds.add(requestId);
+      }
     }
-    const hasLaterRequestedTurnRow = args.exactEventRows
-      .slice(index + 1)
-      .some(
-        (laterRow) =>
-          laterRow.scopeKind === "turn" && laterRow.turnId === args.turnId,
-      );
-    if (hasLaterRequestedTurnRow) {
-      externalUserNewTurnRequestIds.add(requestId);
+    if (row?.scopeKind === "turn" && row.turnId === args.turnId) {
+      hasLaterRequestedTurnRow = true;
     }
   }
   for (const row of args.exactEventRows) {
@@ -1995,26 +1995,17 @@ export function buildTimelineTurnSummaryDetails(
     turnId: options.turnId,
     workspaceRoot: resolveThreadWorkspaceRoot(db, thread),
   };
-  const exactChildren = buildThreadTimelineTurnDetailsFromEvents({
-    events,
-    options: {
-      ...detailOptions,
-      sourceSeqEnd: options.sourceSeqEnd,
-      sourceSeqStart: options.sourceSeqStart,
-    },
-  });
-  if (exactChildren.kind !== "missing-match") {
-    return {
-      rows: exactChildren.rows,
-    };
-  }
-
   const children = buildThreadTimelineTurnDetailsFromEvents({
     events,
     options: {
       ...detailOptions,
-      sourceSeqEnd: sourceRange.sourceSeqEnd,
-      sourceSeqStart: projectionSourceSeqStart,
+      fallbackSelection: {
+        sourceSeqEnd: sourceRange.sourceSeqEnd,
+        sourceSeqStart: projectionSourceSeqStart,
+        turnId: options.turnId,
+      },
+      sourceSeqEnd: options.sourceSeqEnd,
+      sourceSeqStart: options.sourceSeqStart,
     },
   });
 

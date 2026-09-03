@@ -79,6 +79,7 @@ import {
   codexThreadIdentityResultSchema,
   extractCodexSubAgentHistory,
 } from "../subagent-history.js";
+import { codexSubAgentActivityItemSchema } from "../schemas.js";
 import {
   createCodexAppServerConnection,
   CodexAppServerExitedError,
@@ -363,6 +364,16 @@ interface CodexSessionConstruction {
   dynamicTools: DynamicTool[] | undefined;
 }
 
+interface CodexBufferedNotification {
+  method: string;
+  params: unknown;
+}
+
+type CodexSubAgentHistoryHydration =
+  | { state: "ready" }
+  | { state: "deferred" }
+  | { state: "loading"; notifications: CodexBufferedNotification[] };
+
 interface CodexBridgeSession {
   bbThreadId: string;
   codexThreadId: string | null;
@@ -377,6 +388,7 @@ interface CodexBridgeSession {
   identityAnnounced: boolean;
   pendingPreIdentityDeltas: ThreadDelta[];
   rebuildBeforeNextTurnReason: string | null;
+  subAgentHistoryHydration: CodexSubAgentHistoryHydration;
   closing: boolean;
 }
 
@@ -534,6 +546,9 @@ function announceSessionIdentity(
 const codexThreadStartedNotificationSchema = z
   .object({ thread: z.object({ id: z.string().min(1) }).passthrough() })
   .passthrough();
+const codexSubAgentActivityNotificationSchema = z
+  .object({ item: codexSubAgentActivityItemSchema })
+  .passthrough();
 
 function toProviderRuntimeEvent(
   method: string,
@@ -546,16 +561,11 @@ function toProviderRuntimeEvent(
   } as ProviderRuntimeEvent;
 }
 
-function handleChildNotification(
-  bbThreadId: string,
-  serial: number,
+function translateChildNotification(
+  session: CodexBridgeSession,
   method: string,
   params: unknown,
 ): void {
-  const session = currentSession(bbThreadId, serial);
-  if (!session) {
-    return;
-  }
   if (method === "thread/started") {
     const parsed = codexThreadStartedNotificationSchema.safeParse(params);
     if (parsed.success) {
@@ -571,6 +581,90 @@ function handleChildNotification(
       emitTerminalAccountErrorHint(session, delta);
     }
   }
+}
+
+function isCodexSubAgentInteractionNotification(
+  method: string,
+  params: unknown,
+): boolean {
+  if (method !== "item/completed") {
+    return false;
+  }
+  const parsed = codexSubAgentActivityNotificationSchema.safeParse(params);
+  return parsed.success && parsed.data.item.kind === "interacted";
+}
+
+async function hydrateDeferredSubAgentHistory(args: {
+  bbThreadId: string;
+  codexThreadId: string;
+  connection: CodexAppServerConnection;
+  serial: number;
+}): Promise<void> {
+  let history: ReturnType<typeof extractCodexSubAgentHistory> = [];
+  try {
+    const result = await args.connection.request({
+      method: "thread/read",
+      params: { includeTurns: true, threadId: args.codexThreadId },
+      resultSchema: codexThreadIdentityResultSchema,
+      timeoutMs: CHILD_REQUEST_TIMEOUT_MS,
+    });
+    history = extractCodexSubAgentHistory(result.thread);
+  } catch {
+    history = [];
+  }
+  const session = currentSession(args.bbThreadId, args.serial);
+  if (!session || session.connection !== args.connection) {
+    return;
+  }
+  const hydration = session.subAgentHistoryHydration;
+  if (hydration.state !== "loading") {
+    return;
+  }
+  session.translator.primeSubAgentHistory(history);
+  session.subAgentHistoryHydration = { state: "ready" };
+  for (const notification of hydration.notifications) {
+    translateChildNotification(
+      session,
+      notification.method,
+      notification.params,
+    );
+  }
+}
+
+function handleChildNotification(
+  bbThreadId: string,
+  serial: number,
+  method: string,
+  params: unknown,
+): void {
+  const session = currentSession(bbThreadId, serial);
+  if (!session) {
+    return;
+  }
+  const hydration = session.subAgentHistoryHydration;
+  if (hydration.state === "loading") {
+    hydration.notifications.push({ method, params });
+    return;
+  }
+  if (
+    hydration.state === "deferred" &&
+    isCodexSubAgentInteractionNotification(method, params) &&
+    session.connection !== null &&
+    session.codexThreadId !== null
+  ) {
+    session.subAgentHistoryHydration = {
+      state: "loading",
+      notifications: [{ method, params }],
+    };
+    void hydrateDeferredSubAgentHistory({
+      bbThreadId,
+      codexThreadId: session.codexThreadId,
+      connection: session.connection,
+      serial,
+    });
+    return;
+  }
+  translateChildNotification(session, method, params);
 }
 
 function emitTerminalAccountErrorHint(
@@ -885,6 +979,7 @@ async function constructThreadSession(
     identityAnnounced: false,
     pendingPreIdentityDeltas: [],
     rebuildBeforeNextTurnReason: null,
+    subAgentHistoryHydration: { state: "ready" },
     closing: false,
   };
   sessionsByBbThreadId.set(args.threadId, session);
@@ -931,10 +1026,7 @@ async function constructThreadSession(
     };
 
     let method: string;
-    let params:
-      | BbThreadStartParams
-      | BbThreadResumeParams
-      | BbThreadForkParams;
+    let params: BbThreadStartParams | BbThreadResumeParams | BbThreadForkParams;
     switch (args.request.kind) {
       case "start": {
         method = "thread/start";
@@ -983,9 +1075,11 @@ async function constructThreadSession(
     const codexThreadId = result.thread.id;
     session.codexThreadId = codexThreadId;
     if (args.request.kind !== "start") {
-      translator.primeSubAgentHistory(
-        extractCodexSubAgentHistory(result.thread),
-      );
+      const history = extractCodexSubAgentHistory(result.thread);
+      translator.primeSubAgentHistory(history);
+      if (result.thread.turns.length === 0) {
+        session.subAgentHistoryHydration = { state: "deferred" };
+      }
     }
     translator.activateThreadGitWritableRoots({
       providerThreadId: codexThreadId,
@@ -1033,6 +1127,7 @@ function registerResumableSession(session: CodexBridgeSession): void {
     identityAnnounced: session.identityAnnounced,
     pendingPreIdentityDeltas: [],
     rebuildBeforeNextTurnReason: null,
+    subAgentHistoryHydration: { state: "ready" },
     closing: false,
   });
 }

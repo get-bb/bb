@@ -118,6 +118,7 @@ interface ThreadTimelineTurnSummarySelection extends ThreadTimelineSourceSeqRang
 }
 
 interface BuildThreadTimelineTurnDetailsFromEventsOptions extends ThreadTimelineTurnSummarySelection {
+  fallbackSelection?: ThreadTimelineTurnSummarySelection;
   includeProviderUnhandledOperations: boolean;
   providerDisplayName?: string;
   threadStatus: Thread["status"];
@@ -1419,10 +1420,11 @@ export function buildThreadTimelineTurnDetailsFromEvents(
     rowIdPrefix: ROOT_TIMELINE_ROW_ID_PREFIX,
     workspaceRoot: args.options.workspaceRoot,
   });
-  const matchingTurnSummary = findMatchingTurnSummaryRow(
-    nestedRows,
-    args.options,
-  );
+  const matchingTurnSummary =
+    findMatchingTurnSummaryRow(nestedRows, args.options) ??
+    (args.options.fallbackSelection
+      ? findMatchingTurnSummaryRow(nestedRows, args.options.fallbackSelection)
+      : null);
   if (matchingTurnSummary) {
     return {
       kind: "matched",

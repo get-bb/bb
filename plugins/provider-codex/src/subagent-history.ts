@@ -1,15 +1,6 @@
 import { z } from "zod";
+import { codexSubAgentActivityItemSchema } from "./schemas.js";
 import type { CodexSubAgentHistoryEntry } from "./translator.js";
-
-const subAgentActivitySchema = z
-  .object({
-    agentPath: z.string(),
-    agentThreadId: z.string().min(1),
-    id: z.string().min(1),
-    kind: z.enum(["started", "interacted", "interrupted"]),
-    type: z.literal("subAgentActivity"),
-  })
-  .passthrough();
 
 const historyTurnSchema = z
   .object({
@@ -39,8 +30,18 @@ export function extractCodexSubAgentHistory(
   const entriesByChildThreadId = new Map<string, CodexSubAgentHistoryEntry>();
   for (const turn of thread.turns) {
     for (const candidate of turn.items) {
-      const item = subAgentActivitySchema.safeParse(candidate);
-      if (!item.success || item.data.kind !== "started") {
+      if (
+        typeof candidate !== "object" ||
+        candidate === null ||
+        !("type" in candidate) ||
+        candidate.type !== "subAgentActivity" ||
+        !("kind" in candidate) ||
+        candidate.kind !== "started"
+      ) {
+        continue;
+      }
+      const item = codexSubAgentActivityItemSchema.safeParse(candidate);
+      if (!item.success) {
         continue;
       }
       if (!entriesByChildThreadId.has(item.data.agentThreadId)) {

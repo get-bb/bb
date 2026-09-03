@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -21,6 +21,7 @@ const sessionOptions = {
 
 let harness: ReturnType<typeof createBridgeJsonRpcTestHarness>;
 let workspaceDir: string;
+let requestLogPath: string;
 
 function capturedDeltas(): ThreadDelta[] {
   const deltas: ThreadDelta[] = [];
@@ -41,10 +42,12 @@ function capturedDeltas(): ThreadDelta[] {
 
 beforeEach(() => {
   workspaceDir = mkdtempSync(join(tmpdir(), "bb-codex-history-ws-"));
+  requestLogPath = join(workspaceDir, "requests.jsonl");
   const scriptPath = join(workspaceDir, "app-server-script.json");
   writeFileSync(
     scriptPath,
     JSON.stringify({
+      requestLogPath,
       forkThread: {
         turns: [
           {
@@ -80,6 +83,16 @@ beforeEach(() => {
       turns: [
         [
           {
+            method: "turn/started",
+            params: {
+              threadId: PROVIDER_THREAD_ID,
+              turn: {
+                id: "live-parent-turn",
+                status: "inProgress",
+              },
+            },
+          },
+          {
             method: "rawResponseItem/completed",
             params: {
               threadId: PROVIDER_THREAD_ID,
@@ -103,6 +116,16 @@ beforeEach(() => {
                 kind: "interacted",
                 agentThreadId: "historical-child-thread",
                 agentPath: "/root/historical_child",
+              },
+            },
+          },
+          {
+            method: "turn/started",
+            params: {
+              threadId: PROVIDER_THREAD_ID,
+              turn: {
+                id: "live-resumed-child-turn",
+                status: "inProgress",
               },
             },
           },
@@ -170,16 +193,39 @@ it.each(["resume", "fork"] as const)(
     });
     expect((await harness.waitForResponse(2)).error).toBeUndefined();
 
+    if (construction === "resume") {
+      await vi.waitFor(() => {
+        expect(readFileSync(requestLogPath, "utf8")).toContain(
+          '"method":"thread/read"',
+        );
+      });
+    }
+
+    await vi.waitFor(() => {
+      expect(
+        capturedDeltas().filter((delta) => delta.kind === "item.open"),
+      ).toContainEqual(
+        expect.objectContaining({
+          key: expect.objectContaining({
+            providerItemId: "original-spawn-call",
+          }),
+          item: expect.objectContaining({
+            type: "delegation",
+            childRef: "historical-child-thread",
+          }),
+          providerTurnId: "original-parent-turn",
+        }),
+      );
+    });
     expect(
-      capturedDeltas().filter((delta) => delta.kind === "item.open"),
+      capturedDeltas().filter(
+        (delta) =>
+          delta.kind === "turn.open" &&
+          delta.providerTurnId === "live-resumed-child-turn",
+      ),
     ).toContainEqual(
       expect.objectContaining({
-        key: expect.objectContaining({ providerItemId: "original-spawn-call" }),
-        item: expect.objectContaining({
-          type: "delegation",
-          childRef: "historical-child-thread",
-        }),
-        providerTurnId: "original-parent-turn",
+        parentRef: "original-spawn-call",
       }),
     );
     expect(
