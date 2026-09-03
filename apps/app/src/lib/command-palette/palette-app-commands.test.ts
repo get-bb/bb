@@ -71,8 +71,18 @@ describe("buildAppCommandActions", () => {
     );
     expect(actions[0]).toMatchObject({
       id: "app:thread.new",
+      bucket: "Threads",
       group: "Threads",
       shortcut: SHORTCUT,
+    });
+  });
+
+  it("buckets non-thread commands as actions without replacing their metadata group", () => {
+    const { actions } = build(["panel.toggle"]);
+    expect(actions[0]).toMatchObject({
+      id: "app:panel.toggle",
+      bucket: "Actions",
+      group: "Window and layout",
     });
   });
 

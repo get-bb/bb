@@ -3,7 +3,14 @@ import type { PaletteAction } from "./palette-action";
 import { rankPaletteActions } from "./palette-ranking";
 
 function action(id: string, title: string, group: string): PaletteAction {
-  return { id, title, group, shortcut: null, run: () => {} };
+  return {
+    id,
+    bucket: group === "Threads" ? "Threads" : "Actions",
+    title,
+    group,
+    shortcut: null,
+    run: () => {},
+  };
 }
 
 const ACTIONS: readonly PaletteAction[] = [

@@ -16,6 +16,7 @@ vi.mock("@/components/commands/AppCommandProvider", () => ({
   useAppCommandHandler: (command: string, handler: () => boolean) => {
     commandHandlers.set(command, handler);
   },
+  useIndexedAppCommandHandlers: () => {},
   useAppCommandShortcut: () => null,
   useAppCommandShortcuts: () => new Map(),
   useAppCommandRunner: () => ({

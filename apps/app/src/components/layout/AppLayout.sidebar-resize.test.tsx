@@ -10,6 +10,7 @@ const SIDEBAR_WIDTH_STORAGE_KEY = "bb.sidebar.width";
 
 vi.mock("@/components/commands/AppCommandProvider", () => ({
   useAppCommandHandler: () => {},
+  useIndexedAppCommandHandlers: () => {},
   useAppCommandShortcut: () => null,
   useAppCommandShortcuts: () => new Map(),
   useAppCommandRunner: () => ({
