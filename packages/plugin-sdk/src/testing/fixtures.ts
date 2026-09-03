@@ -184,7 +184,9 @@ export function makeMessageDispatchHookContext(
     startedOnBehalfOf: null,
     parentThreadId: null,
   };
-  const environment: NonNullable<MessageDispatchHookContext["environment"]> = {
+  const environmentDefaults: NonNullable<
+    MessageDispatchHookContext["environment"]
+  > = {
     id: "environment-1",
     name: null,
     projectId: "project-1",
@@ -202,7 +204,7 @@ export function makeMessageDispatchHookContext(
     createdAt: 0,
     updatedAt: 0,
   };
-  const host: NonNullable<MessageDispatchHookContext["host"]> = {
+  const hostDefaults: NonNullable<MessageDispatchHookContext["host"]> = {
     id: "host-1",
     name: "Test host",
     type: "persistent",
@@ -213,24 +215,37 @@ export function makeMessageDispatchHookContext(
     createdAt: 0,
     updatedAt: 0,
   };
-  const thread = { ...context.thread, ...overrides.thread };
+  const project = { ...context.project, ...overrides.project };
+  const host =
+    overrides.host === undefined
+      ? context.host
+      : overrides.host === null
+        ? null
+        : { ...hostDefaults, ...overrides.host };
+  const environment =
+    overrides.environment === undefined
+      ? context.environment
+      : overrides.environment === null
+        ? null
+        : {
+            ...environmentDefaults,
+            projectId: project.id,
+            hostId: host?.id ?? environmentDefaults.hostId,
+            ...overrides.environment,
+          };
+  const thread = {
+    ...context.thread,
+    projectId: project.id,
+    environmentId: environment?.id ?? null,
+    ...overrides.thread,
+  };
   return {
     ...context,
     ...overrides,
     thread,
-    project: { ...context.project, ...overrides.project },
-    environment:
-      overrides.environment === undefined
-        ? context.environment
-        : overrides.environment === null
-          ? null
-          : { ...environment, ...overrides.environment },
-    host:
-      overrides.host === undefined
-        ? context.host
-        : overrides.host === null
-          ? null
-          : { ...host, ...overrides.host },
+    project,
+    environment,
+    host,
     input: { ...context.input, ...overrides.input },
     requestedExecution: {
       ...context.requestedExecution,
