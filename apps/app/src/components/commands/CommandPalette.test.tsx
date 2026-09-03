@@ -885,7 +885,6 @@ describe("CommandPalette", () => {
     expect(rows[1]?.textContent).toContain("Draft");
     expect(rows[2]?.textContent).toContain("Title recent-archived");
     expect(rows[2]?.textContent).toContain("Archived");
-    expect(results.querySelector("[data-palette-thread-state]")).toBeNull();
     expect(results.querySelector("[data-icon]")).toBeNull();
     for (const row of rows) {
       expectClasses(
@@ -896,10 +895,16 @@ describe("CommandPalette", () => {
     }
     expect(
       rows[1]?.querySelector("[data-palette-thread-metadata]")?.textContent,
-    ).toBe("Draft · Palette project");
+    ).toBe("Palette project");
     expect(
       rows[2]?.querySelector("[data-palette-thread-metadata]")?.textContent,
-    ).toBe("Archived · Palette project · just now");
+    ).toBe("Palette project · just now");
+    const draftState = rows[1]?.lastElementChild;
+    const archivedState = rows[2]?.lastElementChild;
+    expectText(draftState, "Draft");
+    expectText(archivedState, "Archived");
+    expectClasses(draftState, "shrink-0", "text-subtle-foreground");
+    expectClasses(archivedState, "shrink-0", "text-subtle-foreground");
     expect(within(results).queryAllByRole("group")).toHaveLength(0);
     expect(within(results).queryByText("Recent")).toBeNull();
   });
@@ -977,11 +982,10 @@ describe("CommandPalette", () => {
     }
     expect(
       rows[1]?.querySelector("[data-palette-thread-metadata]")?.textContent,
-    ).toBe("Draft · Palette project");
+    ).toBe("Palette project");
     expect(
       rows[2]?.querySelector("[data-palette-thread-metadata]")?.textContent,
-    ).toBe("Archived · Palette project · just now");
-    expect(results.querySelector("[data-palette-thread-state]")).toBeNull();
+    ).toBe("Palette project · just now");
     expect(within(results).queryAllByRole("group")).toHaveLength(0);
     expect(within(results).queryByText("Recent")).toBeNull();
     expect(results.textContent).not.toContain("1/1");

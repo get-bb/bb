@@ -80,19 +80,10 @@ function metadataText(parts: readonly (string | null)[]): string {
   return parts.filter((part): part is string => Boolean(part)).join(" · ");
 }
 
-function lifecycleMetadata(
-  scope: PaletteThreadSearchScope,
-  lifecycle: PaletteThreadLifecycle,
-): string | null {
-  if (scope !== "all" || lifecycle === "active") return null;
-  return lifecycle === "draft" ? "Draft" : "Archived";
-}
-
 function serverRow(
   thread: ThreadListEntry,
   matches: readonly ThreadSearchMatch[],
   lifecycle: "active" | "archived",
-  scope: PaletteThreadSearchScope,
   projectNamesById: ReadonlyMap<string, string>,
   now: number,
 ): PaletteThreadSearchRow {
@@ -108,7 +99,6 @@ function serverRow(
     primaryText: primaryMatch?.text ?? title,
     highlightRanges: primaryMatch?.highlightRanges ?? [],
     metadataText: metadataText([
-      lifecycleMetadata(scope, lifecycle),
       snippetMatch === undefined ? null : title,
       projectMetadata(thread.projectId, projectNamesById),
       formatRelativeTime({ timestamp: thread.updatedAt, now }),
@@ -168,7 +158,7 @@ export function buildPaletteThreadSearchRows({
     ? recentThreads
         .slice(0, RECENT_THREAD_LIMIT)
         .map((thread) =>
-          serverRow(thread, [], "active", scope, projectNamesById, now),
+          serverRow(thread, [], "active", projectNamesById, now),
         )
     : isSearchable && searchResultsAreCurrent
       ? (searchResponse?.active.results ?? []).map((result) =>
@@ -176,7 +166,6 @@ export function buildPaletteThreadSearchRows({
             result.thread,
             result.matches,
             "active",
-            scope,
             projectNamesById,
             now,
           ),
@@ -198,7 +187,6 @@ export function buildPaletteThreadSearchRows({
     primaryText: item.title,
     highlightRanges: draftHighlightRanges(item.title, positions),
     metadataText: metadataText([
-      lifecycleMetadata(scope, "draft"),
       projectMetadata(item.destination.projectId, projectNamesById),
       item.lastEditedAt === null
         ? null
@@ -213,7 +201,7 @@ export function buildPaletteThreadSearchRows({
     ? recentArchivedThreads
         .slice(0, RECENT_THREAD_LIMIT)
         .map((thread) =>
-          serverRow(thread, [], "archived", scope, projectNamesById, now),
+          serverRow(thread, [], "archived", projectNamesById, now),
         )
     : isSearchable && searchResultsAreCurrent
       ? (searchResponse?.archived.results ?? []).map((result) =>
@@ -221,7 +209,6 @@ export function buildPaletteThreadSearchRows({
             result.thread,
             result.matches,
             "archived",
-            scope,
             projectNamesById,
             now,
           ),

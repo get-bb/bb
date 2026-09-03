@@ -110,13 +110,13 @@ describe("buildPaletteThreadSearchRows", () => {
     ]);
     expect(result.rows.map((row) => row.metadataText)).toEqual([
       "Palette project · just now",
-      "Draft · Palette project · just now",
-      "Archived · Palette project · just now",
+      "Palette project · just now",
+      "Palette project · just now",
     ]);
     expect(result.draftMatchCount).toBe(1);
   });
 
-  it("omits redundant lifecycle metadata after narrowing scope", () => {
+  it("preserves metadata anatomy after narrowing lifecycle scope", () => {
     const draftResult = build({
       drafts: [makeDraft("draft", "A matching local draft")],
       scope: "draft",
