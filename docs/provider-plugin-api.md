@@ -97,9 +97,12 @@ directories, `ancestors` (project roots only) also scans the same relative
 directory in every ancestor of the workspace up to the repository root,
 `namePrefix` is prepended to every name under the root, and `skipIfManifest`
 names the marker file whose presence makes bb skip a directory as a vendor
-plugin rather than a skill; a symlink out of a project root is followed
-within the workspace for a plain root and within the repository root for a
-root that walks ancestors or that the plugin resolved) and
+plugin rather than a skill; a project skill root inside the repository is
+followed only when its real root remains inside it, while non-recursive roots
+may also follow child-directory and SKILL.md symlinks only to
+repository-contained targets; a plain resolved root outside the repository
+remains scannable but follows no links beneath it; recursive roots skip nested
+links; external, broken, and looping links are ignored) and
 `experimental_resolvesNativeRoots` (the plugin's `bb.host`
 entry answers `resolveNativeRoots({ providerId, cwd })` with the roots only
 that host and workspace know: a moved config directory, installed vendor

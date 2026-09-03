@@ -19,6 +19,8 @@ const MAX_SCAN_DEPTH = 24;
 const MAX_SCAN_ENTRY_COUNT = 1_000;
 
 interface CommandScanRootBase {
+  allowExternalProjectRoot?: boolean;
+  boundaryPath?: string;
   namePrefix: string;
   skipIfManifest?: string;
   source: HostCommandSource;
@@ -27,7 +29,6 @@ interface CommandScanRootBase {
 }
 
 interface CommandScanDirectoryRoot extends CommandScanRootBase {
-  boundaryPath?: string;
   rootPath: string;
   shape: "skill" | "skill-recursive" | "skill-directory" | "command";
 }
@@ -63,9 +64,15 @@ interface ScanBudget {
 }
 
 interface SkillDirectoryCheckArgs {
+  boundary: SkillPathBoundary;
   entry: Dirent;
   entryPath: string;
-  root: CommandScanDirectoryRoot;
+}
+
+interface SkillPathBoundary {
+  canonicalPath: string | null;
+  followLinks: boolean;
+  requirePlainRoot: boolean;
 }
 
 interface WalkMarkdownTreeArgs {
@@ -161,41 +168,103 @@ async function parseFrontmatter(filePath: string): Promise<ParsedFrontmatter> {
   };
 }
 
-function canFollowSkillSymlink(root: CommandScanRoot): boolean {
-  return root.origin === "user" && root.source === "skill";
+async function resolveSkillPathBoundary(
+  root: CommandScanRoot,
+): Promise<SkillPathBoundary | null> {
+  if ("rootKind" in root && root.rootKind === "bb-project") {
+    return {
+      canonicalPath: null,
+      followLinks: false,
+      requirePlainRoot: false,
+    };
+  }
+  if (root.origin === "user") {
+    return {
+      canonicalPath: null,
+      followLinks: true,
+      requirePlainRoot: false,
+    };
+  }
+  if (root.boundaryPath === undefined) {
+    return null;
+  }
+  const canonicalPath = await fs.realpath(root.boundaryPath).catch(() => null);
+  if (canonicalPath === null) {
+    return null;
+  }
+  const rootPath = "rootPath" in root ? root.rootPath : root.filePath;
+  if (!isPathWithinDirectory(root.boundaryPath, rootPath)) {
+    return root.allowExternalProjectRoot === true
+      ? { canonicalPath: null, followLinks: false, requirePlainRoot: true }
+      : null;
+  }
+  return { canonicalPath, followLinks: true, requirePlainRoot: false };
+}
+
+async function resolveSkillPath(
+  boundary: SkillPathBoundary,
+  candidatePath: string,
+): Promise<string | null> {
+  const resolvedPath = await fs.realpath(candidatePath).catch(() => null);
+  if (resolvedPath === null) {
+    return null;
+  }
+  return boundary.canonicalPath === null ||
+    isPathWithinDirectory(boundary.canonicalPath, resolvedPath)
+    ? resolvedPath
+    : null;
+}
+
+async function resolveSkillRootPath(
+  boundary: SkillPathBoundary,
+  candidatePath: string,
+): Promise<string | null> {
+  if (boundary.requirePlainRoot) {
+    const stat = await fs.lstat(candidatePath).catch(() => null);
+    if (stat === null || stat.isSymbolicLink()) {
+      return null;
+    }
+  }
+  return resolveSkillPath(boundary, candidatePath);
 }
 
 async function isSkillDirectory(
   args: SkillDirectoryCheckArgs,
-): Promise<boolean> {
-  if (args.entry.isDirectory()) {
-    return true;
+): Promise<string | null> {
+  if (!args.entry.isDirectory() && !args.entry.isSymbolicLink()) {
+    return null;
   }
-  if (!args.entry.isSymbolicLink() || !canFollowSkillSymlink(args.root)) {
-    return false;
+  if (args.entry.isSymbolicLink() && !args.boundary.followLinks) {
+    return null;
   }
-  try {
-    const stat = await fs.stat(args.entryPath);
-    return stat.isDirectory();
-  } catch {
-    return false;
-  }
+  const resolvedPath = await resolveSkillPath(args.boundary, args.entryPath);
+  const stat =
+    resolvedPath === null
+      ? null
+      : await fs.stat(resolvedPath).catch(() => null);
+  return stat?.isDirectory() === true ? resolvedPath : null;
 }
 
 async function statSkillFile(
   filePath: string,
-  root: CommandScanRoot,
-): Promise<{ linked: boolean } | null> {
+  boundary: SkillPathBoundary,
+): Promise<{ linked: boolean; resolvedPath: string } | null> {
   try {
     const stat = await fs.lstat(filePath);
-    if (stat.isFile()) {
-      return { linked: false };
-    }
-    if (!stat.isSymbolicLink() || !canFollowSkillSymlink(root)) {
+    if (!stat.isFile() && !stat.isSymbolicLink()) {
       return null;
     }
-    const targetStat = await fs.stat(filePath);
-    return targetStat.isFile() ? { linked: true } : null;
+    if (stat.isSymbolicLink() && !boundary.followLinks) {
+      return null;
+    }
+    const resolvedPath = await resolveSkillPath(boundary, filePath);
+    if (resolvedPath === null) {
+      return null;
+    }
+    const targetStat = await fs.stat(resolvedPath);
+    return targetStat.isFile()
+      ? { linked: stat.isSymbolicLink(), resolvedPath }
+      : null;
   } catch {
     return null;
   }
@@ -249,29 +318,39 @@ async function hasManifestMarker(
 
 async function scanSkillRootFiles(
   root: CommandScanDirectoryRoot,
+  boundary: SkillPathBoundary,
 ): Promise<SkillFileMatch[]> {
-  const entries = await readDirEntries(root.rootPath);
+  const resolvedRootPath = await resolveSkillRootPath(boundary, root.rootPath);
+  if (resolvedRootPath === null) {
+    return [];
+  }
+  const entries = await readDirEntries(resolvedRootPath);
   if (entries === null) {
     return [];
   }
   const rootLinked = await isSymbolicLinkPath(root.rootPath);
   const matches: SkillFileMatch[] = [];
   for (const entry of entries) {
-    const skillDirPath = path.join(root.rootPath, entry.name);
-    if (!(await isSkillDirectory({ entry, entryPath: skillDirPath, root }))) {
+    const skillDirPath = path.join(resolvedRootPath, entry.name);
+    const resolvedSkillDirPath = await isSkillDirectory({
+      boundary,
+      entry,
+      entryPath: skillDirPath,
+    });
+    if (resolvedSkillDirPath === null) {
       continue;
     }
-    if (await hasManifestMarker(root, skillDirPath)) {
+    if (await hasManifestMarker(root, resolvedSkillDirPath)) {
       continue;
     }
-    const skillFilePath = path.join(skillDirPath, SKILL_FILE_NAME);
-    const skillFile = await statSkillFile(skillFilePath, root);
+    const skillFilePath = path.join(resolvedSkillDirPath, SKILL_FILE_NAME);
+    const skillFile = await statSkillFile(skillFilePath, boundary);
     if (skillFile === null) {
       continue;
     }
     matches.push({
-      filePath: skillFilePath,
-      frontmatter: await parseFrontmatter(skillFilePath),
+      filePath: path.join(root.rootPath, entry.name, SKILL_FILE_NAME),
+      frontmatter: await parseFrontmatter(skillFile.resolvedPath),
       linked: rootLinked || entry.isSymbolicLink() || skillFile.linked,
       name: entry.name,
     });
@@ -320,30 +399,12 @@ export function isPathWithinDirectory(
   );
 }
 
-async function resolveRecursiveRootPath(
-  root: CommandScanDirectoryRoot,
-): Promise<string | null> {
-  const resolvedRoot = await fs.realpath(root.rootPath).catch(() => null);
-  if (resolvedRoot === null) {
-    return null;
-  }
-  if (root.origin !== "project" || root.boundaryPath === undefined) {
-    return resolvedRoot;
-  }
-  const resolvedBoundary = await fs
-    .realpath(root.boundaryPath)
-    .catch(() => null);
-  return resolvedBoundary !== null &&
-    isPathWithinDirectory(resolvedBoundary, resolvedRoot)
-    ? resolvedRoot
-    : null;
-}
-
 async function scanRecursiveSkillRootFiles(
   root: CommandScanDirectoryRoot,
   budget: ScanBudget,
+  boundary: SkillPathBoundary,
 ): Promise<SkillFileMatch[]> {
-  const rootPath = await resolveRecursiveRootPath(root);
+  const rootPath = await resolveSkillRootPath(boundary, root.rootPath);
   if (rootPath === null) {
     return [];
   }
@@ -371,16 +432,23 @@ async function scanRecursiveSkillRootFiles(
 
 async function scanSingleSkillDirectoryFiles(
   root: CommandScanDirectoryRoot,
+  boundary: SkillPathBoundary,
 ): Promise<SkillFileMatch[]> {
-  const skillFilePath = path.join(root.rootPath, SKILL_FILE_NAME);
-  const skillFile = await statSkillFile(skillFilePath, root);
+  const resolvedRootPath = await resolveSkillRootPath(boundary, root.rootPath);
+  if (resolvedRootPath === null) {
+    return [];
+  }
+  const skillFile = await statSkillFile(
+    path.join(resolvedRootPath, SKILL_FILE_NAME),
+    boundary,
+  );
   if (skillFile === null) {
     return [];
   }
   return [
     {
-      filePath: skillFilePath,
-      frontmatter: await parseFrontmatter(skillFilePath),
+      filePath: path.join(root.rootPath, SKILL_FILE_NAME),
+      frontmatter: await parseFrontmatter(skillFile.resolvedPath),
       linked: (await isSymbolicLinkPath(root.rootPath)) || skillFile.linked,
       name: path.basename(root.rootPath),
     },
@@ -389,12 +457,13 @@ async function scanSingleSkillDirectoryFiles(
 
 async function scanSkillFileRootFiles(
   root: CommandScanSkillFileRoot,
+  boundary: SkillPathBoundary,
 ): Promise<SkillFileMatch[]> {
-  const skillFile = await statSkillFile(root.filePath, root);
+  const skillFile = await statSkillFile(root.filePath, boundary);
   if (skillFile === null) {
     return [];
   }
-  const frontmatter = await parseFrontmatter(root.filePath);
+  const frontmatter = await parseFrontmatter(skillFile.resolvedPath);
   return [
     {
       filePath: root.filePath,
@@ -407,15 +476,19 @@ async function scanSkillFileRootFiles(
 
 async function scanSkillFiles(args: ScanRootArgs): Promise<SkillFileMatch[]> {
   const { root } = args;
+  const boundary = await resolveSkillPathBoundary(root);
+  if (boundary === null) {
+    return [];
+  }
   switch (root.shape) {
     case "skill":
-      return scanSkillRootFiles(root);
+      return scanSkillRootFiles(root, boundary);
     case "skill-recursive":
-      return scanRecursiveSkillRootFiles(root, args.budget);
+      return scanRecursiveSkillRootFiles(root, args.budget, boundary);
     case "skill-directory":
-      return scanSingleSkillDirectoryFiles(root);
+      return scanSingleSkillDirectoryFiles(root, boundary);
     case "skill-file":
-      return scanSkillFileRootFiles(root);
+      return scanSkillFileRootFiles(root, boundary);
     case "command":
     case "command-file":
       return [];

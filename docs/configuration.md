@@ -510,6 +510,14 @@ itself knows no agent's layout. The Skills page and `bb skill list` show
 native skills for every provider whose plugin declares or resolves roots. The
 table lists what the shipped plugins declare and resolve.
 
+A provider-native project root inside the repository is followed only when its
+real root remains inside the canonical repository boundary. Non-recursive
+roots may also follow child skill directory and `SKILL.md` symbolic links only
+to repository-contained targets. A plain provider-resolved root outside the
+repository remains scannable, but links beneath it are not followed. Recursive
+roots skip nested links. External, broken, and looping links are ignored.
+Linked skills retain their logical workspace path and are read-only.
+
 | Provider     | User roots                                                                                               | Project roots                                                                                                |
 | ------------ | -------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
 | Codex        | `~/.agents/skills`, `$CODEX_HOME/skills`                                                                 | `.agents/skills` from the repository root to the current directory, plus `.codex/skills`                     |

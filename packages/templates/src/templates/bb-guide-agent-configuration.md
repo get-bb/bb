@@ -47,6 +47,13 @@ Skills (.bb/skills/):
 
   A project skill overrides a user or builtin skill with the same name. Two
   skills with the same name within one source collide and are both dropped.
+  A provider-native project root inside the repository is followed only when
+  its real root remains inside it. Non-recursive roots may also follow child
+  skill directory and SKILL.md links only to repository-contained targets. A
+  plain provider-resolved root outside the repository is scanned, but links
+  beneath it are not followed. Recursive roots skip nested links. External,
+  broken, and looping links are ignored. Linked skills keep their workspace
+  path and are read-only.
 
   Use `bb skill list` to inspect installed and discovered skills and copy the
   opaque skill ID. `bb skill show|files <skill-id>` reads that exact skill;

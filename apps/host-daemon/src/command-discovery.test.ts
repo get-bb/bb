@@ -498,7 +498,7 @@ describe("discoverProviderCommands over declared roots", () => {
     ]);
   });
 
-  it("does not follow project-origin symlinked skill directories or skill files", async () => {
+  it("rejects project-origin skill directory and file links outside the workspace", async () => {
     const fixture = await makeWorkspaceFixture();
     const skillsRoot = path.join(fixture.cwd, ".agent", "skills");
     await mkdir(skillsRoot, { recursive: true });
@@ -1087,6 +1087,7 @@ describe("resolveDeclaredScanRoots", () => {
         skillIdentitySeed: `${PROVIDER_ID}:provider-user:${skillDirectory}`,
       },
       {
+        boundaryPath: fixture.cwd,
         filePath: skillFilePath,
         fallbackName: "notes",
         shape: "skill-file",

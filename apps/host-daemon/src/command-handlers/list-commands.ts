@@ -115,6 +115,7 @@ function toPosixRelativePath(fromPath: string, toPath: string): string {
 }
 
 function directoryScanRoot(args: {
+  allowExternalProjectRoot?: boolean;
   boundaryPath: string | null;
   identity: string;
   namePrefix: string;
@@ -127,6 +128,10 @@ function directoryScanRoot(args: {
 }): CommandScanRoot {
   const boundary =
     args.boundaryPath === null ? {} : { boundaryPath: args.boundaryPath };
+  const externalProjectRoot =
+    args.allowExternalProjectRoot === true
+      ? { allowExternalProjectRoot: true }
+      : {};
   const marker =
     args.skipIfManifest === undefined
       ? {}
@@ -143,6 +148,7 @@ function directoryScanRoot(args: {
   }
   return {
     ...boundary,
+    ...externalProjectRoot,
     ...marker,
     rootPath: args.rootPath,
     shape: args.recursive ? "skill-recursive" : "skill",
@@ -193,6 +199,7 @@ async function declaredProjectScanRoots(args: {
   workspace: Workspace;
 }): Promise<CommandScanRoot[]> {
   const roots: CommandScanRoot[] = [];
+  const boundaryPath = (await args.workspace.ancestors()).projectRootPath;
   for (const entry of args.entries) {
     if (entry.ancestors) {
       roots.push(
@@ -210,7 +217,7 @@ async function declaredProjectScanRoots(args: {
     }
     roots.push(
       directoryScanRoot({
-        boundaryPath: args.workspace.cwd,
+        boundaryPath,
         identity: entry.path,
         namePrefix: entry.namePrefix,
         origin: "project",
@@ -260,7 +267,16 @@ async function declaredScanRoots(args: {
 function resolvedSingleScanRoot(
   root: ProviderResolvedNativeRoot,
   providerId: string,
+  boundaryPath: string | null,
 ): CommandScanRoot | null {
+  const boundary =
+    root.origin === "project" && boundaryPath !== null ? { boundaryPath } : {};
+  const externalProjectRoot =
+    root.origin === "project" &&
+    boundaryPath !== null &&
+    !isPathWithinDirectory(boundaryPath, root.path)
+      ? { allowExternalProjectRoot: true }
+      : {};
   const seed =
     root.namePrefix === ""
       ? {
@@ -274,6 +290,8 @@ function resolvedSingleScanRoot(
   switch (root.shape) {
     case "skill":
       return {
+        ...boundary,
+        ...externalProjectRoot,
         rootPath: root.path,
         shape: "skill-directory",
         namePrefix: root.namePrefix,
@@ -283,6 +301,8 @@ function resolvedSingleScanRoot(
       };
     case "skill-file":
       return {
+        ...boundary,
+        ...externalProjectRoot,
         filePath: root.path,
         fallbackName:
           root.fallbackName ?? path.basename(path.dirname(root.path)),
@@ -314,12 +334,18 @@ async function resolvedScanRoots(args: {
 }): Promise<CommandScanRoot[]> {
   const roots: CommandScanRoot[] = [];
   for (const root of args.roots) {
-    const single = resolvedSingleScanRoot(root, args.providerId);
+    const workspace = root.origin === "project" ? args.workspace : null;
+    const boundaryPath =
+      workspace === null ? null : (await workspace.ancestors()).projectRootPath;
+    const allowExternalProjectRoot =
+      root.origin === "project" &&
+      boundaryPath !== null &&
+      !isPathWithinDirectory(boundaryPath, root.path);
+    const single = resolvedSingleScanRoot(root, args.providerId, boundaryPath);
     if (single !== null) {
       roots.push(single);
       continue;
     }
-    const workspace = root.origin === "project" ? args.workspace : null;
     if (
       root.ancestors &&
       workspace !== null &&
@@ -340,10 +366,8 @@ async function resolvedScanRoots(args: {
     }
     roots.push(
       directoryScanRoot({
-        boundaryPath:
-          workspace === null || root.origin !== "project"
-            ? null
-            : (await workspace.ancestors()).projectRootPath,
+        ...(allowExternalProjectRoot ? { allowExternalProjectRoot: true } : {}),
+        boundaryPath,
         identity: root.path,
         namePrefix: root.namePrefix,
         origin: root.origin,
