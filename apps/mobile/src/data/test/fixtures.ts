@@ -81,6 +81,8 @@ export function threadResponse(
     canSpawnChild: true,
     queuedMessageCount: 0,
     ...overrides,
+    retryableStoppedTurnRequestId:
+      overrides.retryableStoppedTurnRequestId ?? null,
   };
 }
 
