@@ -1138,6 +1138,21 @@ describe("in-turn timeline windows", () => {
 describe("timeline segment anchors", () => {
   it("includes provisioning before the first visible user message", () => {
     const { db, thread } = setup();
+    const fillerEvent = (sequence: number): EventInput => ({
+      threadId: thread.id,
+      sequence,
+      type: "system/operation",
+      scope: threadScope(),
+      itemId: null,
+      itemKind: null,
+      parentToolCallId: null,
+      data: JSON.stringify({
+        operation: "event_budget_filler",
+        status: "completed",
+        message: `Visible operation ${sequence}`,
+        operationId: `event-budget-${sequence}`,
+      }),
+    });
     insertEvents(db, noopNotifier, [
       {
         threadId: thread.id,
@@ -1196,7 +1211,13 @@ describe("timeline segment anchors", () => {
       },
     ]);
 
-    const timeline = buildPage(db, thread, LARGE_BUDGET, null).response;
+    insertEvents(
+      db,
+      noopNotifier,
+      Array.from({ length: 1_498 }, (_, index) => fillerEvent(index + 4)),
+    );
+
+    const timeline = buildPage(db, thread, 1_501, null).response;
 
     expect(timeline.timelinePage.hasOlderRows).toBe(false);
     expect(timeline.timelinePage.olderCursor).toBeNull();
@@ -1215,15 +1236,38 @@ describe("timeline segment anchors", () => {
       ]),
     );
 
+    const budgeted = buildPage(db, thread, 1_500, null).response;
+    expect(budgeted.timelinePage.olderCursor).toEqual({
+      anchorSeq: 3,
+      anchorId: `${thread.id}:user-seed:3`,
+    });
+    expect(
+      budgeted.rows.some(
+        (row) =>
+          row.kind === "system" &&
+          row.systemKind === "operation" &&
+          row.title === "Provisioned thread",
+      ),
+    ).toBe(false);
+
+    insertEvents(db, noopNotifier, [fillerEvent(1_502), fillerEvent(1_503)]);
+    const exactFloor = buildPage(db, thread, 1_500, null).response.timelinePage;
+    expect(exactFloor.olderCursor).toEqual({
+      anchorSeq: 3,
+      anchorId: `${thread.id}:user-seed:3`,
+    });
+
     const latest = buildPage(db, thread, LARGE_BUDGET, null, 1).response;
     expect(latest.timelinePage.hasOlderRows).toBe(true);
-    expect(latest.rows).toEqual([
-      expect.objectContaining({
-        kind: "conversation",
-        role: "user",
-        text: "Start now",
-      }),
-    ]);
+    expect(latest.rows).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: "conversation",
+          role: "user",
+          text: "Start now",
+        }),
+      ]),
+    );
     if (latest.timelinePage.olderCursor === null) {
       throw new Error("expected an older timeline cursor");
     }
