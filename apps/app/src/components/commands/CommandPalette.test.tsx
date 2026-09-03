@@ -837,7 +837,7 @@ describe("CommandPalette", () => {
       within(results)
         .getByRole("option")
         .querySelector("[data-palette-thread-metadata]"),
-      "Palette project · just now",
+      "Palette project",
     );
     fireEvent.keyDown(scope, { key: "Escape" });
     expect(document.activeElement).toBe(input);
@@ -896,7 +896,7 @@ describe("CommandPalette", () => {
     }
     expect(
       rows[1]?.querySelector("[data-palette-thread-metadata]")?.textContent,
-    ).toBe("Draft · Palette project · just now");
+    ).toBe("Draft · Palette project");
     expect(
       rows[2]?.querySelector("[data-palette-thread-metadata]")?.textContent,
     ).toBe("Archived · Palette project · just now");
@@ -977,7 +977,7 @@ describe("CommandPalette", () => {
     }
     expect(
       rows[1]?.querySelector("[data-palette-thread-metadata]")?.textContent,
-    ).toBe("Draft · Palette project · just now");
+    ).toBe("Draft · Palette project");
     expect(
       rows[2]?.querySelector("[data-palette-thread-metadata]")?.textContent,
     ).toBe("Archived · Palette project · just now");
