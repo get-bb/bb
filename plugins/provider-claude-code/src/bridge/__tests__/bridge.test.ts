@@ -816,7 +816,6 @@ describe("bridge", () => {
         },
       });
       expect(forkSessionMock).toHaveBeenCalledWith("source-session-1", {
-        dir: "/tmp/worktree",
         upToMessageId: "assistant-message-42",
       });
     } finally {
