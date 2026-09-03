@@ -725,13 +725,9 @@ a.marketplace-detail-author:hover {
 
 .marketplace-summary {
   max-width: 720px;
-  padding: 16px 18px;
-  border: 1px solid var(--border);
-  border-radius: 12px;
+  padding: 14px 16px;
+  border-radius: 10px;
   background: var(--surface);
-  box-shadow:
-    0 1px 2px rgb(0 0 0 / 6%),
-    0 6px 20px rgb(0 0 0 / 6%);
 }
 
 .marketplace-summary p {
@@ -741,8 +737,7 @@ a.marketplace-detail-author:hover {
 }
 
 .marketplace-summary-lead {
-  color: var(--heading);
-  font-weight: 600;
+  color: var(--ink);
 }
 
 .marketplace-summary p + p {

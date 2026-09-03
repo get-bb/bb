@@ -224,14 +224,12 @@ export function PluginSummaryCard({ description }: { description: string }) {
   const { lead, rest } = splitLeadSentence(description);
   return (
     <div
-      className="rounded-xl border border-border bg-surface-raised px-4 py-3.5 shadow-sm"
+      className="rounded-lg bg-surface-recessed px-4 py-3"
       data-plugin-summary=""
     >
-      <p className="text-sm font-medium leading-relaxed text-foreground">
-        {lead}
-      </p>
+      <p className="text-sm leading-relaxed text-foreground">{lead}</p>
       {rest.length === 0 ? null : (
-        <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">
+        <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
           {rest}
         </p>
       )}
