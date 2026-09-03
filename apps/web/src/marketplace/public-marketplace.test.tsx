@@ -54,7 +54,6 @@ describe("public marketplace route rendering", () => {
     expect(html).toContain("bb plugin install prompt-library");
     expect(html).toContain("Get bb for macOS");
     expect(html).toContain("Runs in bb&#x27;s terminal");
-    expect(html).toContain("About");
     expect(html).toContain("Details");
     expect(html).toContain("Trust");
     expect(html).toContain("npm, ^1.2.0");
@@ -62,6 +61,8 @@ describe("public marketplace route rendering", () => {
     expect(html).toContain('loading="lazy"');
     expect(html).toContain('referrerPolicy="no-referrer"');
     expect(html).not.toContain("More from BB Labs");
+    expect(html).not.toContain("About");
+    expect(html.split(entry.description)).toHaveLength(2);
     expect(html).not.toContain("Version");
     expect(html).not.toContain("Updated");
   });
@@ -83,6 +84,37 @@ describe("public marketplace route rendering", () => {
     expect(html).toContain("More in Code &amp; Reviews");
     expect(html).toContain("git tag, &gt;=1.0.0 &lt;2.0.0");
     expect(html).not.toContain("marketplace-screenshots");
+    expect(html).not.toContain("About");
+  });
+
+  it("puts category recommendations in an otherwise empty content column", () => {
+    const source = MARKETPLACE_V2_FIXTURE.plugins[1];
+    if (source === undefined) {
+      throw new Error("The fixture needs a second plugin");
+    }
+    const entry = {
+      ...source,
+      id: "solo-review",
+      displayName: "Solo Review",
+      author: { name: "Solo Reviewer", github: "solo-reviewer" },
+    };
+    const html = renderToStaticMarkup(
+      <PublicMarketplaceDetailPage
+        manifest={{
+          ...MARKETPLACE_V2_FIXTURE,
+          plugins: [...MARKETPLACE_V2_FIXTURE.plugins, entry],
+        }}
+        entry={entry}
+        stats={MARKETPLACE_STATS_FIXTURE}
+      />,
+    );
+    const related = html.indexOf("marketplace-detail-related is-in-layout");
+    const aside = html.indexOf("marketplace-detail-aside");
+    expect(related).toBeGreaterThan(-1);
+    expect(aside).toBeGreaterThan(related);
+    expect(html).toContain("More in Code &amp; Reviews");
+    expect(html).not.toContain("marketplace-detail-content");
+    expect(html).not.toContain("More from Solo Reviewer");
   });
 
   it("renders the author route with the same toolbar", () => {

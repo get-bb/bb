@@ -768,23 +768,12 @@ a.marketplace-detail-author:hover {
   scroll-snap-align: start;
 }
 
-.marketplace-detail-section + .marketplace-detail-section {
-  margin-top: 32px;
-}
-
 .marketplace-detail-section h2 {
   margin-bottom: 10px;
   color: var(--heading);
   font-size: 16px;
   font-weight: 650;
   letter-spacing: -0.01em;
-}
-
-.marketplace-about p {
-  max-width: 640px;
-  color: var(--ink);
-  font-size: 15.5px;
-  line-height: 1.65;
 }
 
 .marketplace-author-teasers {
@@ -914,15 +903,30 @@ a.marketplace-detail-author:hover {
   line-height: 1.45;
 }
 
+.marketplace-trust svg,
+.marketplace-trust svg * {
+  stroke: currentColor;
+  stroke-width: 1.5;
+}
+
 .marketplace-trust svg {
   width: 14px;
   height: 14px;
   flex: 0 0 auto;
-  color: var(--subtle);
+  color: var(--dim);
 }
 
 .marketplace-detail-related {
   margin-top: 56px;
+}
+
+.marketplace-detail-related.is-in-layout {
+  margin-top: 0;
+}
+
+.marketplace-detail-layout-aside-only {
+  grid-template-columns: 300px;
+  justify-content: end;
 }
 
 .marketplace-author-head {

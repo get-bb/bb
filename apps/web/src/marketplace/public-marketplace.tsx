@@ -783,19 +783,18 @@ function InstallCommand({ entry }: { entry: MarketplaceV2Entry }) {
 }
 
 function MoreFromAuthor({
-  manifest,
-  entry,
+  author,
+  entries,
   stats,
 }: {
-  manifest: MarketplaceV2Manifest;
-  entry: MarketplaceV2Entry;
+  author: MarketplaceV2Entry["author"];
+  entries: readonly MarketplaceV2Entry[];
   stats: MarketplaceStats | null;
 }) {
-  const entries = moreFromMarketplaceAuthor(manifest, entry);
   if (entries.length === 0) return null;
   return (
     <section className="marketplace-detail-section">
-      <h2>More from {entry.author.name}</h2>
+      <h2>More from {author.name}</h2>
       <div className="marketplace-author-teasers">
         {entries.map((candidate) => (
           <MarketplaceLink
@@ -818,19 +817,24 @@ function MoreFromAuthor({
 function MoreInCategory({
   manifest,
   entry,
+  entries,
   stats,
+  inLayout = false,
 }: {
   manifest: MarketplaceV2Manifest;
   entry: MarketplaceV2Entry;
+  entries: readonly MarketplaceV2Entry[];
   stats: MarketplaceStats | null;
+  inLayout?: boolean;
 }) {
-  const entries = moreInMarketplaceCategory(manifest, entry, stats);
   if (entries.length === 0) return null;
   const category = resolveMarketplaceCategory(manifest, entry);
   const categoryId = category?.id ?? UNCATEGORIZED_CATEGORY_ID;
   const categoryName = category?.displayName ?? "More plugins";
   return (
-    <section className="marketplace-detail-related">
+    <section
+      className={`marketplace-detail-related${inLayout ? " is-in-layout" : ""}`}
+    >
       <div className="marketplace-section-head">
         <div>
           <div>
@@ -853,6 +857,63 @@ function MoreInCategory({
         stats={stats}
       />
     </section>
+  );
+}
+
+function MarketplaceDetailAside({
+  repository,
+  repositoryLabel,
+  installSource,
+  published,
+}: {
+  repository: string;
+  repositoryLabel: string;
+  installSource: string;
+  published: string | null;
+}) {
+  return (
+    <aside className="marketplace-detail-aside">
+      <section className="marketplace-aside-block">
+        <h2>Details</h2>
+        <dl>
+          <div>
+            <dt>Source</dt>
+            <dd>
+              <a href={repository} target="_blank" rel="noreferrer">
+                {repositoryLabel}
+              </a>
+            </dd>
+          </div>
+          <div>
+            <dt>Install from</dt>
+            <dd>{installSource}</dd>
+          </div>
+          <div>
+            <dt>Updates</dt>
+            <dd>Manual, staged</dd>
+          </div>
+          <div>
+            <dt>Listed</dt>
+            <dd>{published ?? "Not listed"}</dd>
+          </div>
+        </dl>
+      </section>
+      <section className="marketplace-aside-block marketplace-trust">
+        <h2>Trust</h2>
+        <p>
+          <HugeiconsIcon icon={Tick02Icon} aria-hidden />
+          Reviewed listing in the bb-community registry
+        </p>
+        <p>
+          <HugeiconsIcon icon={LockIcon} aria-hidden />
+          Installs stay pinned; updates are opt-in
+        </p>
+        <p>
+          <HugeiconsIcon icon={Clock01Icon} aria-hidden />
+          Install count from opt-out telemetry
+        </p>
+      </section>
+    </aside>
   );
 }
 
@@ -880,6 +941,15 @@ export function PublicMarketplaceDetailPage({
   const repository = marketplaceRepositoryUrl(entry);
   const repositoryLabel = marketplaceRepositoryLabel(entry);
   const installSource = marketplaceInstallSource(entry);
+  const authorSiblings = moreFromMarketplaceAuthor(manifest, entry);
+  const categoryEntries = moreInMarketplaceCategory(manifest, entry, stats);
+  const hasDetailContent =
+    entry.screenshots.length > 0 || authorSiblings.length > 0;
+  const detailLayoutClass = hasDetailContent
+    ? "marketplace-detail-layout"
+    : categoryEntries.length > 0
+      ? "marketplace-detail-layout marketplace-detail-layout-related"
+      : "marketplace-detail-layout marketplace-detail-layout-aside-only";
   const authorPath =
     entry.author.github === undefined
       ? undefined
@@ -935,71 +1005,52 @@ export function PublicMarketplaceDetailPage({
           </div>
           <InstallCommand entry={entry} />
         </header>
-        <div className="marketplace-detail-layout">
-          <article className="marketplace-detail-content">
-            {entry.screenshots.length === 0 ? null : (
-              <div className="marketplace-screenshots">
-                {entry.screenshots.map((screenshot, index) => (
-                  <img
-                    key={screenshot}
-                    src={marketplaceAssetUrl(screenshot)}
-                    alt={`${entry.displayName} screenshot ${index + 1}`}
-                    referrerPolicy="no-referrer"
-                    loading="lazy"
-                  />
-                ))}
-              </div>
-            )}
-            <section className="marketplace-detail-section marketplace-about">
-              <h2>About</h2>
-              <p>{entry.description}</p>
-            </section>
-            <MoreFromAuthor manifest={manifest} entry={entry} stats={stats} />
-          </article>
-          <aside className="marketplace-detail-aside">
-            <section className="marketplace-aside-block">
-              <h2>Details</h2>
-              <dl>
-                <div>
-                  <dt>Source</dt>
-                  <dd>
-                    <a href={repository} target="_blank" rel="noreferrer">
-                      {repositoryLabel}
-                    </a>
-                  </dd>
+        <div className={detailLayoutClass}>
+          {hasDetailContent ? (
+            <article className="marketplace-detail-content">
+              {entry.screenshots.length === 0 ? null : (
+                <div className="marketplace-screenshots">
+                  {entry.screenshots.map((screenshot, index) => (
+                    <img
+                      key={screenshot}
+                      src={marketplaceAssetUrl(screenshot)}
+                      alt={`${entry.displayName} screenshot ${index + 1}`}
+                      referrerPolicy="no-referrer"
+                      loading="lazy"
+                    />
+                  ))}
                 </div>
-                <div>
-                  <dt>Install from</dt>
-                  <dd>{installSource}</dd>
-                </div>
-                <div>
-                  <dt>Updates</dt>
-                  <dd>Manual, staged</dd>
-                </div>
-                <div>
-                  <dt>Listed</dt>
-                  <dd>{published ?? "Not listed"}</dd>
-                </div>
-              </dl>
-            </section>
-            <section className="marketplace-aside-block marketplace-trust">
-              <h2>Trust</h2>
-              <p>
-                <HugeiconsIcon icon={Tick02Icon} aria-hidden />
-                Reviewed listing in the bb-community registry
-              </p>
-              <p>
-                <HugeiconsIcon icon={LockIcon} aria-hidden />
-                Installs stay pinned; updates are opt-in
-              </p>
-              <p>
-                <HugeiconsIcon icon={Clock01Icon} aria-hidden />
-                Install count from opt-out telemetry
-              </p>
-            </section>
-          </aside>
+              )}
+              <MoreFromAuthor
+                author={entry.author}
+                entries={authorSiblings}
+                stats={stats}
+              />
+            </article>
+          ) : categoryEntries.length > 0 ? (
+            <MoreInCategory
+              manifest={manifest}
+              entry={entry}
+              entries={categoryEntries}
+              stats={stats}
+              inLayout
+            />
+          ) : null}
+          <MarketplaceDetailAside
+            repository={repository}
+            repositoryLabel={repositoryLabel}
+            installSource={installSource}
+            published={published}
+          />
         </div>
-        <MoreInCategory manifest={manifest} entry={entry} stats={stats} />
+        {hasDetailContent ? (
+          <MoreInCategory
+            manifest={manifest}
+            entry={entry}
+            entries={categoryEntries}
+            stats={stats}
+          />
+        ) : null}
       </main>
       <SiteFooter />
     </div>
