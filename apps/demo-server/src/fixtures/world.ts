@@ -98,7 +98,13 @@ export function threadResponse(
     queuedWork: _queuedWork,
     ...thread
   } = threadListEntry(view, now);
-  return { ...thread, activeBackgroundAgentCount: 0, canSpawnChild: true, queuedMessageCount: 0 };
+  return {
+    ...thread,
+    activeBackgroundAgentCount: 0,
+    canSpawnChild: true,
+    queuedMessageCount: 0,
+    retryableStoppedTurnRequestId: null,
+  };
 }
 
 const PROJECT_DEFAULT_EXECUTION_OPTIONS = {
