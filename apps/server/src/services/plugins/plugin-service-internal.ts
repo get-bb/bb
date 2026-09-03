@@ -2,6 +2,7 @@ import type { AiServiceRegistry } from "../ai/ai-service-registry.js";
 import type { DbConnection } from "@bb/db";
 import type {
   DynamicTool,
+  PendingInteraction,
   Thread,
   ThreadQueuedMessage,
 } from "@bb/domain";
@@ -105,6 +106,7 @@ export interface PluginServiceDeps {
     | "interruptPluginInteractions"
     | "setPluginDirectory"
   >;
+  getAppUrl?: () => string | null;
   dataDir: string;
   appVersion: string;
   bundledPlugins?: readonly BundledPluginRegistration[];
@@ -197,6 +199,10 @@ export interface PluginThreadEventEmitter {
   emitThreadFailed(thread: Thread): void;
   emitThreadArchived(thread: Thread): void;
   emitThreadDeleted(thread: Thread): void;
+  emitInteractionPending(
+    thread: Thread,
+    interaction: PendingInteraction,
+  ): void;
   /**
    * Queue lifecycle. The row is already in its new state when these fire; the
    * DTO is built once and shared by every listener, exactly like the thread

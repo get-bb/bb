@@ -144,6 +144,11 @@ export const APP_COMMAND_GROUPS: readonly AppCommandGroup[] = [
         "Open server and daemon logs",
         "Open the desktop log viewer for the bb server and host daemon.",
       ),
+      command(
+        "notifications.open",
+        "Show all notifications",
+        "Open the notification center to read and clear past notifications.",
+      ),
     ],
   },
   {

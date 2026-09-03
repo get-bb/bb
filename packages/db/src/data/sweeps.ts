@@ -22,6 +22,7 @@ export const COMPLETED_EVENT_OUTPUT_RETAINED_TAIL_CHARS = 2 * 1024;
 const COMPLETED_EVENT_OUTPUT_TRUNCATION_CURSOR_VERSION = 1;
 export const DEFAULT_CLOSED_SESSION_PRUNE_BATCH_SIZE = 1_000;
 export const DEFAULT_COMPLETED_EVENT_OUTPUT_TRUNCATION_BATCH_SIZE = 250;
+export const DEFAULT_DESTROYED_ENVIRONMENT_EVENT_DETACH_BATCH_SIZE = 50;
 export const DEFAULT_DESTROYED_ENVIRONMENT_PRUNE_BATCH_SIZE = 10;
 
 const COMPLETED_EVENT_OUTPUT_TRUNCATION_MARKER =
@@ -88,11 +89,13 @@ export interface PruneClosedSessionsResult {
 
 export interface PruneDestroyedEnvironmentsArgs {
   updatedBefore: number;
+  eventBatchSize: number;
   limit: number;
 }
 
 export interface PruneDestroyedEnvironmentsResult {
   deleted: number;
+  detachedEvents: number;
 }
 
 export interface TruncateCompletedEventItemOutputsArgs {
@@ -360,8 +363,8 @@ export function pruneDestroyedEnvironments(
   notifier: DbNotifier,
   args: PruneDestroyedEnvironmentsArgs,
 ): PruneDestroyedEnvironmentsResult {
-  if (args.limit <= 0) {
-    return { deleted: 0 };
+  if (args.limit <= 0 || args.eventBatchSize <= 0) {
+    return { deleted: 0, detachedEvents: 0 };
   }
 
   const staleEnvironmentIds = db
@@ -378,10 +381,39 @@ export function pruneDestroyedEnvironments(
     .all()
     .map((environment) => environment.id);
 
+  let deleted = 0;
+  let detachedEvents = 0;
   for (const environmentId of staleEnvironmentIds) {
-    db.delete(environments).where(eq(environments.id, environmentId)).run();
-    notifier.notifyEnvironment(environmentId, ["environment-deleted"]);
+    const result = db.transaction(
+      (tx) => {
+        const detached = tx.run(sql`
+          UPDATE events
+          SET environment_id = NULL
+          WHERE rowid IN (
+            SELECT rowid
+            FROM events INDEXED BY events_environment_idx
+            WHERE environment_id = ${environmentId}
+            ORDER BY rowid
+            LIMIT ${args.eventBatchSize}
+          )
+        `).changes;
+        if (detached > 0) {
+          return { deleted: 0, detachedEvents: detached };
+        }
+        const deleteResult = tx
+          .delete(environments)
+          .where(eq(environments.id, environmentId))
+          .run();
+        return { deleted: deleteResult.changes, detachedEvents: 0 };
+      },
+      { behavior: "immediate" },
+    );
+    detachedEvents += result.detachedEvents;
+    if (result.deleted > 0) {
+      notifier.notifyEnvironment(environmentId, ["environment-deleted"]);
+      deleted += result.deleted;
+    }
   }
 
-  return { deleted: staleEnvironmentIds.length };
+  return { deleted, detachedEvents };
 }

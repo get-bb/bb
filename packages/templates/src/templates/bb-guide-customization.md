@@ -1,8 +1,8 @@
 ---
 kind: instruction
 title: bb Guide — Customization
-summary: Command reference for customizing the bb app color palette and keyboard shortcuts.
-intent: Explain the CLI theme surface and server-backed app customization.
+summary: Command reference for customizing the bb app color palette, keyboard shortcuts, and mobile push notifications.
+intent: Explain the CLI theme surface, server-backed app customization, and push-notification device registration.
 editingNotes: Keep flags accurate against the CLI implementation. Theme details live in the bb-cli skill's references/theming.md.
 ---
 Customization commands
@@ -163,6 +163,24 @@ same resolved bindings. The complete default table is in docs/configuration.md.
   bb settings keyboard hints <true|false>
   bb settings keyboard set <command> <shortcut|disabled>
   bb settings keyboard reset [command]
+
+Push notifications
+
+The built-in Push notifications plugin sends thread updates through Expo.
+These commands inspect and repair its device registry.
+
+  bb push-notifications list
+  bb push-notifications add --token <expo-push-token>
+      --platform <ios|android> --label <device-name>
+  bb push-notifications remove <id>
+  bb push-notifications status
+
+`add` is an upsert by token: a known token refreshes its label and last-seen
+time and keeps its id. Expo tokens that are no longer registered are removed
+automatically after a failed delivery. Use `bb plugin disable
+push-notifications` to stop delivery. Change the relay URL with `bb plugin
+config push-notifications set expoPushUrl <url>`. Add `--json` to `list` or
+`status` for machine-readable output. The list returns token suffixes only.
 
 Host files and voice transcription
 

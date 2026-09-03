@@ -72,6 +72,18 @@ describe("CompactSecondaryPanelShelf", () => {
     expect(shelf.className).not.toContain("bottom-0");
   });
 
+  it("keeps portaled panel controls inside the device safe area", () => {
+    renderShelf(true);
+
+    const shelf = screen.getByTestId("secondary-panel-shelf");
+    expect(shelf.className).toContain("pt-[env(safe-area-inset-top)]");
+    expect(shelf.className).toContain("pr-[env(safe-area-inset-right)]");
+    expect(shelf.className).toContain(
+      "pb-[var(--bb-safe-area-bottom,env(safe-area-inset-bottom))]",
+    );
+    expect(shelf.className).toContain("pl-[env(safe-area-inset-left)]");
+  });
+
   it("fills the viewport for a full-page tab and keeps the shelf width otherwise", () => {
     const { rerender } = renderShelf(true, "shelf");
     const shelf = screen.getByTestId("secondary-panel-shelf");

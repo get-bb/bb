@@ -6,6 +6,7 @@ import {
   listRunningThreads,
 } from "@bb/db";
 import type { ThreadQueuedMessage } from "@bb/domain";
+import { createDeferredPromise } from "@bb/test-helpers";
 import type { PluginHookName } from "@get-bb/plugin-sdk";
 import { afterEach, describe, expect, it } from "vitest";
 import { ApiError } from "../../src/errors.js";
@@ -20,8 +21,14 @@ import {
 import { acceptThreadSendRequest } from "../../src/services/threads/thread-send-request.js";
 import { attemptDispatch } from "../../src/services/threads/dispatch-attempt.js";
 import { createThreadFromRequest } from "../../src/services/threads/thread-create.js";
+import { applyLoggedThreadLifecycleEvent } from "../../src/services/threads/lifecycle-outcome.js";
 import { toThreadQueuedMessage } from "../../src/services/threads/thread-queued-messages.js";
 import { textInput } from "../helpers/prompt-input.js";
+import {
+  listQueuedThreadCommands,
+  reportQueuedCommandSuccess,
+  waitForQueuedCommand,
+} from "../helpers/commands.js";
 import {
   seedEnvironment,
   seedHostSession,
@@ -178,9 +185,7 @@ function seedRunnableThread(
   return { environment, project, thread };
 }
 
-async function expectApiError(
-  run: () => Promise<unknown>,
-): Promise<ApiError> {
+async function expectApiError(run: () => Promise<unknown>): Promise<ApiError> {
   try {
     await run();
   } catch (error) {
@@ -376,7 +381,10 @@ describe("message.dispatch hook composition", () => {
         },
       );
       installHooks(registry);
-      const { host, project } = seedDispatchFixture(harness, "host-hook-reject");
+      const { host, project } = seedDispatchFixture(
+        harness,
+        "host-hook-reject",
+      );
 
       const error = await expectApiError(() =>
         createHookedThread(harness, { hostId: host.id, projectId: project.id }),
@@ -441,7 +449,10 @@ describe("message.dispatch hook admission visibility", () => {
           const running = listRunningThreads(harness.db);
           seen.push(running.map((row) => row.id));
           return running.length >= 1
-            ? ({ action: "wait", reason: "1 of 1 running on all hosts" } as const)
+            ? ({
+                action: "wait",
+                reason: "1 of 1 running on all hosts",
+              } as const)
             : ({ action: "proceed" } as const);
         },
       });
@@ -555,7 +566,10 @@ describe("dispatch hooks and the no-hook path", () => {
         pluginId: "limiter",
         handler: (context) => {
           attempts.push(context.attempt);
-          return { action: "reject", message: "no steering right now" } as const;
+          return {
+            action: "reject",
+            message: "no steering right now",
+          } as const;
         },
       });
       installHooks(registry);
@@ -613,6 +627,74 @@ describe("message.dispatch hooks on the queue drain", () => {
         reason: "at capacity",
       });
       expect(turnRequests(harness, thread.id)).toHaveLength(turnsBefore);
+    });
+  });
+
+  it("returns an ordinary row when its hook pass crosses a manual stop", async () => {
+    await withTestHarness(async (harness) => {
+      const entered = createDeferredPromise<void>();
+      const release = createDeferredPromise<void>();
+      const registry = emptyRegistry();
+      registry["message.dispatch"].push({
+        pluginId: "limiter",
+        handler: async () => {
+          entered.resolve();
+          await release.promise;
+          return { action: "proceed" } as const;
+        },
+      });
+      installHooks(registry);
+      const { thread } = seedRunnableThread(harness, {
+        hostId: "host-hook-stop-race",
+        status: "idle",
+      });
+      const queued = await createQueuedMessageForThread(harness.deps, {
+        payload: { input: textInput("stay paused") },
+        thread,
+      });
+      const turnsBefore = turnRequests(harness, thread.id).length;
+
+      const draining = sendNextQueuedMessageIfPresent(harness.deps, {
+        threadId: thread.id,
+      });
+      await entered.promise;
+      try {
+        applyLoggedThreadLifecycleEvent(harness.deps, {
+          event: { type: "run.started" },
+          threadId: thread.id,
+        });
+        seedTurnStarted(harness.deps, {
+          environmentId: thread.environmentId,
+          providerThreadId: "provider-host-hook-stop-race",
+          threadId: thread.id,
+          turnId: "turn-host-hook-stop-race",
+        });
+        const stopResponse = harness.app.request(
+          `/api/v1/threads/${thread.id}/stop`,
+          { method: "POST" },
+        );
+        const stop = await waitForQueuedCommand(
+          harness,
+          ({ command }) =>
+            command.type === "thread.stop" && command.threadId === thread.id,
+        );
+        await reportQueuedCommandSuccess(harness, stop, {
+          providerCheckpointId: null,
+        });
+        expect((await stopResponse).status).toBe(200);
+      } finally {
+        release.resolve();
+      }
+
+      await expect(draining).resolves.toBe(false);
+      expect(getThread(harness.db, thread.id)?.status).toBe("idle");
+      expect(listQueuedThreadMessages(harness.db, thread.id)).toMatchObject([
+        { id: queued.id },
+      ]);
+      expect(turnRequests(harness, thread.id)).toHaveLength(turnsBefore);
+      expect(
+        listQueuedThreadCommands(harness, "turn.submit", thread.id),
+      ).toEqual([]);
     });
   });
 });

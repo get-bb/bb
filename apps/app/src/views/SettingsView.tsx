@@ -150,7 +150,7 @@ interface GeneralSettingsSectionProps {
   managedBranchPrefix: string;
   managedBranchPrefixDisabled: boolean;
   navigateToThreadAfterCreate: boolean;
-  onManagedBranchPrefixChange: (prefix: string) => void;
+  onManagedBranchPrefixChange: (prefix: string) => Promise<void> | void;
   onNavigateToThreadAfterCreateChange: (enabled: boolean) => void;
   onOpenLinksInAppBrowserChange: (enabled: boolean) => void;
   onRewriteLocalhostLinksChange: (enabled: boolean) => void;
@@ -556,7 +556,7 @@ const MANAGED_BRANCH_PREFIX_EXAMPLE_SLUG = "fix-login-flow-thr_ab12cd34ef";
 
 interface ManagedBranchPrefixSettingProps {
   disabled: boolean;
-  onChange: (prefix: string) => void;
+  onChange: (prefix: string) => Promise<void> | void;
   value: string;
 }
 
@@ -578,7 +578,9 @@ function ManagedBranchPrefixSetting({
       setDraft(value);
       return;
     }
-    if (draft !== value) onChange(draft);
+    if (draft !== value) {
+      void Promise.resolve(onChange(draft)).catch(() => setDraft(value));
+    }
   };
 
   return (
@@ -1178,12 +1180,12 @@ export function SettingsView() {
             systemConfigQuery.data === undefined ||
             updateGeneralSettingsMutation.isPending
           }
-          onManagedBranchPrefixChange={(prefix) =>
-            updateGeneralSettingsMutation.mutate({
+          onManagedBranchPrefixChange={async (prefix) => {
+            await updateGeneralSettingsMutation.mutateAsync({
               ...generalSettings,
               managedBranchPrefix: prefix,
-            })
-          }
+            });
+          }}
           navigateToThreadAfterCreate={navigateToThreadAfterCreate}
           openLinksInAppBrowser={openLinksInAppBrowser}
           rewriteLocalhostLinks={rewriteLocalhostLinks}

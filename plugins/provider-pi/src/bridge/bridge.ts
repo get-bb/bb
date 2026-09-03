@@ -1180,6 +1180,8 @@ function extractInput(input: TurnStartParams["input"]): ExtractedInput {
         const mimeType = typed.mimeType ?? mimeTypeFromExtension(typed.path);
         images.push({ type: "image", data, mimeType });
       } catch {}
+    } else if (typed.type === "localFile" && typeof typed.path === "string") {
+      chunks.push(`[Attached file: ${typed.path}]`);
     }
   }
   return { text: chunks.length > 0 ? chunks.join("\n") : undefined, images };

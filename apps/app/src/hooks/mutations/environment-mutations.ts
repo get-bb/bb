@@ -38,11 +38,6 @@ export function useRequestEnvironmentAction() {
       switch (request.action) {
         case "commit":
           return sdk.environments.commit({ environmentId: id });
-        case "squash_merge":
-          return sdk.environments.squashMerge({
-            environmentId: id,
-            mergeBaseBranch: request.options.mergeBaseBranch,
-          });
         case "pull_request_ready":
           return sdk.environments.markPullRequestReady({ environmentId: id });
         case "pull_request_merge":

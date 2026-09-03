@@ -53,9 +53,6 @@ interface GitSuccessDescriptionParams {
 const LIVE_TOAST_DURATION = Infinity;
 const GIT_SUCCESS_COMMIT_SHA = "e547e81c0ffee1234567890abcdef123456789";
 const GIT_SUCCESS_COMMIT_SUBJECT = "Update provider CLI health toasts";
-const SQUASH_MERGE_SUCCESS_COMMIT_SHA =
-  "a83f4d2b055e5eed1234567890abcdef1234567";
-const SQUASH_MERGE_SUCCESS_COMMIT_SUBJECT = "Merge toast UX fixes";
 
 function gitSuccessDescription({
   commitSha,
@@ -132,21 +129,6 @@ const TOAST_EXAMPLES: readonly ToastExample[] = [
       description: gitSuccessDescription({
         commitSha: GIT_SUCCESS_COMMIT_SHA,
         commitSubject: GIT_SUCCESS_COMMIT_SUBJECT,
-      }),
-    },
-  },
-  {
-    id: "git-squash-merge-success",
-    group: "Git actions",
-    label: "squash merge success",
-    source: "useThreadGitActions",
-    usage: ["Squash merge action succeeds"],
-    current: {
-      tone: "success",
-      title: "Squash merge completed",
-      description: gitSuccessDescription({
-        commitSha: SQUASH_MERGE_SUCCESS_COMMIT_SHA,
-        commitSubject: SQUASH_MERGE_SUCCESS_COMMIT_SUBJECT,
       }),
     },
   },

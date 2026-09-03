@@ -610,7 +610,7 @@ function describeThreadTellOutcome(
     // The server says WHY it is waiting, so the CLI does not have to guess
     // from the flags it happened to send. `bb thread queue list` shows the
     // same reason for the row afterwards.
-    return `Thread ${threadId} message queued (${describeQueueWait(response)}); it dispatches when that clears`;
+    return `Thread ${threadId} message queued (${describeQueueWait(response.queuedMessage)}); it dispatches when that clears`;
   }
   return response.mode === "steer"
     ? `Thread ${threadId} steered`

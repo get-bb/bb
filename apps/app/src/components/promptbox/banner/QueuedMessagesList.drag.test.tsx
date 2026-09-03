@@ -46,12 +46,14 @@ describe("QueuedMessagesList group-handle drag", () => {
     ];
     const { container, getByLabelText } = render(
       <QueuedMessagesList
+        attachedToComposer={true}
         queuedMessages={queuedMessages}
+        sendAction="send-now"
         sendDisabled={false}
         actionDisabled={false}
         processingMessageId={null}
         processingAction={null}
-        onSendImmediately={noop}
+        onSend={noop}
         onReorder={noop}
         onSetGroupBoundary={onSetGroupBoundary}
         onEdit={noop}

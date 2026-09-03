@@ -41,6 +41,7 @@ type ClaudeMessageContentType =
   | "unknown";
 
 type ClaudeSystemSubtype =
+  | "background_tasks_changed"
   | "commands_changed"
   | "compact_boundary"
   | "elicitation_complete"
@@ -213,6 +214,7 @@ function toClaudeSystemSubtype(
   subtype: string | undefined,
 ): ClaudeSystemSubtype {
   switch (subtype) {
+    case "background_tasks_changed":
     case "commands_changed":
     case "compact_boundary":
     case "elicitation_complete":
@@ -490,6 +492,7 @@ function describeParsedClaudeRawEvent(
         case "task_progress":
         case "task_started":
         case "task_updated":
+        case "background_tasks_changed":
           return {
             kind: `sdk/system:${event.subtype}`,
             coverage: "normalized",

@@ -1,5 +1,6 @@
 import type {
   ComposerCustomization,
+  ExperimentalAppOverlayRegistration,
   PluginAppDefinition,
   PluginContentScriptRegistration,
   PluginDiffRendererRegistration,
@@ -86,6 +87,7 @@ function rejectStaleNavPanelKeys(kind: string, registration: object): void {
 export interface CollectedPluginAppRegistrations {
   homepageSections: PluginHomepageSectionRegistration[];
   settingsSections: PluginSettingsSectionRegistration[];
+  appOverlays: ExperimentalAppOverlayRegistration[];
   navPanels: PluginNavPanelRegistration[];
   threadPanelActions: PluginThreadPanelActionRegistration[];
   newThreadPanelActions: PluginNewThreadPanelActionRegistration[];
@@ -120,6 +122,7 @@ export function collectPluginAppRegistrations(
   const collected: CollectedPluginAppRegistrations = {
     homepageSections: [],
     settingsSections: [],
+    appOverlays: [],
     navPanels: [],
     threadPanelActions: [],
     newThreadPanelActions: [],
@@ -142,6 +145,7 @@ export function collectPluginAppRegistrations(
   const seenIds = {
     homepageSection: new Set<string>(),
     settingsSection: new Set<string>(),
+    appOverlay: new Set<string>(),
     navPanel: new Set<string>(),
     threadPanelAction: new Set<string>(),
     newThreadPanelAction: new Set<string>(),
@@ -188,6 +192,15 @@ export function collectPluginAppRegistrations(
           id,
           ...(title !== undefined ? { title } : {}),
           ...(description !== undefined ? { description } : {}),
+          component: requireComponent(kind, registration.component),
+        });
+      },
+      experimental_appOverlay(registration) {
+        const kind = "slots.experimental_appOverlay";
+        const id = requireSlotId(kind, registration?.id);
+        requireUniqueId(kind, seenIds.appOverlay, id);
+        collected.appOverlays.push({
+          id,
           component: requireComponent(kind, registration.component),
         });
       },

@@ -1,54 +1,66 @@
-import { createQueuedThreadMessageInTransaction, getThread } from "@bb/db";
-import type {
-  PromptInput,
-  QueuedMessagePayload,
-  QueuedMessageSystemNotice,
-  ResolvedThreadExecutionOptions,
-} from "@bb/domain";
+import { getThread, type ClaimedQueuedThreadMessageRow } from "@bb/db";
+import type { Thread, ThreadQueuedMessage } from "@bb/domain";
 import type { AppDeps } from "../../types.js";
-import { emitPluginMessageQueued } from "../plugins/plugin-thread-events.js";
-import { toThreadQueuedMessage } from "./thread-queued-messages.js";
-
-interface TurnStartingQueuedInput {
-  content: PromptInput[];
-  execution: ResolvedThreadExecutionOptions;
-  payload: QueuedMessagePayload;
-  senderThreadId: string | null;
-  systemNotice: QueuedMessageSystemNotice | null;
-}
+import { NotificationBuffer } from "../lib/notification-buffer.js";
+import {
+  recordQueuedMessageWait,
+  type QueuedDispatchMessage,
+} from "./queue-waits.js";
+import { getActiveTurnId } from "./thread-events.js";
 
 type TurnStartingDeps = Pick<AppDeps, "db" | "hub" | "logger">;
 
+export type QueueInputForStartingTurnResult =
+  | { kind: "dispatched" }
+  | { kind: "queued"; entry: ThreadQueuedMessage }
+  | { kind: "retry"; thread: Thread | null };
+
 export function queueInputForStartingTurn(
   deps: TurnStartingDeps,
-  args: { input: TurnStartingQueuedInput; threadId: string },
-): void {
-  if (args.input.content.length === 0) return;
-  const queued = deps.db.transaction(
+  args: {
+    claimed: readonly ClaimedQueuedThreadMessageRow[] | null;
+    input: QueuedDispatchMessage;
+    threadId: string;
+  },
+): QueueInputForStartingTurnResult {
+  if (args.input.input.length === 0) return { kind: "dispatched" };
+  const notifications = new NotificationBuffer();
+  const outcome: QueueInputForStartingTurnResult = deps.db.transaction(
     (tx) => {
       const thread = getThread(tx, args.threadId);
-      if (!thread || thread.deletedAt !== null) return null;
-      return createQueuedThreadMessageInTransaction(tx, {
-        threadId: args.threadId,
-        content: args.input.content,
-        senderThreadId: args.input.senderThreadId,
-        model: args.input.execution.model,
-        reasoningLevel: args.input.execution.reasoningLevel,
-        permissionMode: args.input.execution.permissionMode,
-        serviceTier: args.input.execution.serviceTier,
-        waitingOn: { kind: "turn-starting" },
-        sendAt: null,
-        payload: args.input.payload,
-        systemNotice: args.input.systemNotice,
-      });
+      if (
+        !thread ||
+        thread.archivedAt !== null ||
+        thread.deletedAt !== null ||
+        thread.status !== "active"
+      ) {
+        return { kind: "retry", thread };
+      }
+      if (getActiveTurnId({ db: tx }, args.threadId) !== null) {
+        return { kind: "retry", thread };
+      }
+      const entry = recordQueuedMessageWait(
+        { db: tx, hub: notifications },
+        {
+          thread,
+          message: args.input,
+          waitingOn: { kind: "turn-starting" },
+          sendAt: null,
+          claimed: args.claimed,
+        },
+      );
+      return entry === null
+        ? { kind: "dispatched" }
+        : { kind: "queued", entry };
     },
     { behavior: "immediate" },
   );
-  if (queued === null) return;
-  emitPluginMessageQueued(toThreadQueuedMessage(queued));
-  deps.hub.notifyThread(args.threadId, ["queue-changed"]);
-  deps.logger.info(
-    { queuedMessageId: queued.id, threadId: args.threadId },
-    "Queued input until the current turn starts",
-  );
+  notifications.flushInto(deps.hub);
+  if (outcome.kind === "queued") {
+    deps.logger.info(
+      { queuedMessageId: outcome.entry.id, threadId: args.threadId },
+      "Queued input until the current turn starts",
+    );
+  }
+  return outcome;
 }

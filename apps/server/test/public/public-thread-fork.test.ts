@@ -609,10 +609,13 @@ describe("public thread fork route", () => {
       ).toBe("updated");
 
       await sendQueuedMessage(harness.deps, {
+        claimPolicy: {
+          kind: "automatic",
+          isGroupEligible: () => true,
+        },
         threadId: fork.id,
         queuedMessageId: first.id,
         mode: "auto",
-        sendNow: false,
       });
 
       const turn = await waitForQueuedCommandAfter(

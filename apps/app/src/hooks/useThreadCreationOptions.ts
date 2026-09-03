@@ -64,7 +64,10 @@ import {
   type UsePromptModelReasoningOptions,
   updateThreadPromptSelections,
 } from "./thread-creation-options/selection-state";
-import { resolveModelCatalogSelection } from "./thread-creation-options/model-catalog-selection";
+import {
+  resolveModelCatalogSelection,
+  resolveModelReasoningLevel,
+} from "./thread-creation-options/model-catalog-selection";
 
 export { formatModelLabel, resolvePermissionModeSelection };
 
@@ -735,8 +738,23 @@ export function useThreadCreationOptions(
   const setSelectedModel = useCallback(
     (value: string) => {
       touchedThreadFieldsRef.current.add("selectedModel");
+      const nextModel =
+        executionOptionsQuery.data?.models.find(
+          (model) => model.model === value,
+        ) ??
+        executionOptionsQuery.data?.selectedOnlyModels.find(
+          (model) => model.model === value,
+        );
+      const nextReasoningLevel = resolveModelReasoningLevel(
+        nextModel,
+        reasoningLevel,
+      );
       if (usesStoredCreateSelections) {
-        setStoredSelectedModel(value);
+        setStoredProviderModelReasoning({
+          providerId: effectiveProviderId,
+          model: value,
+          reasoningLevel: nextReasoningLevel,
+        });
         return;
       }
       setLocalProvidersUsingDefaults((current) => {
@@ -747,18 +765,20 @@ export function useThreadCreationOptions(
       });
       localProviderSelectionsRef.current.set(effectiveProviderId, {
         model: value,
-        reasoningLevel,
+        reasoningLevel: nextReasoningLevel,
       });
       setThreadSelections((currentSelections) => ({
         ...currentSelections,
         selectedModel: value,
-        reasoningLevel,
+        reasoningLevel: nextReasoningLevel,
       }));
     },
     [
       effectiveProviderId,
+      executionOptionsQuery.data?.models,
+      executionOptionsQuery.data?.selectedOnlyModels,
       reasoningLevel,
-      setStoredSelectedModel,
+      setStoredProviderModelReasoning,
       usesStoredCreateSelections,
     ],
   );

@@ -29,11 +29,7 @@ import {
 import { setPluginAgentContributions } from "./services/plugins/plugin-agent-contributions.js";
 import { setPluginThreadEventEmitter } from "./services/plugins/plugin-thread-events.js";
 import { setPluginHookProvider } from "./services/plugins/plugin-hook-registry.js";
-import {
-  clearQueueWaitsForUnregisteredPlugin,
-  requestQueueDrain,
-  requestThreadQueueDrainForSettledInteraction,
-} from "./services/threads/queue-drains.js";
+import { requestQueuedMessageDispatch } from "./services/threads/queued-message-dispatch.js";
 import { registerInternalEventRoutes } from "./internal/events.js";
 import { registerInternalHostRoutes } from "./internal/hosts.js";
 import { registerInternalInteractiveRequestRoutes } from "./internal/interactive-requests.js";
@@ -484,12 +480,20 @@ export function createApp(
     });
   });
   app.get("/install/bb-app.tgz", async (context) => {
-    const tarball = await readFile(await bbAppArtifactService.getTarballPath());
+    const artifact = await bbAppArtifactService.getArtifact();
+    const etag = `"sha256-${artifact.digest}"`;
+    const headers = {
+      "cache-control": "public, max-age=300",
+      "content-type": "application/gzip",
+      etag,
+      "x-bb-artifact-sha256": artifact.digest,
+    };
+    if (context.req.header("if-none-match") === etag) {
+      return new Response(null, { headers, status: 304 });
+    }
+    const tarball = await readFile(artifact.path);
     return new Response(tarball, {
-      headers: {
-        "cache-control": "public, max-age=300",
-        "content-type": "application/gzip",
-      },
+      headers: { ...headers, "content-length": String(artifact.size) },
     });
   });
   app.use("/api/v1/*", async (context, next) => {
@@ -551,6 +555,7 @@ export function createApp(
     pendingInteractions: deps.pendingInteractions,
     dataDir: deps.config.dataDir,
     appVersion: deps.config.appVersion,
+    getAppUrl: () => deps.config.appUrl ?? null,
     sharedPorts: deps.sharedPorts,
     providerRegistry: deps.providerRegistry,
     pluginHostArtifacts: deps.pluginHostArtifacts,
@@ -570,21 +575,17 @@ export function createApp(
       deps.providerRegistry.forgetAllInstalled();
     },
     onPluginUnregistered: (pluginId) => {
-      void clearQueueWaitsForUnregisteredPlugin(deps, pluginId).catch(
-        (error: unknown) => {
-          deps.logger.warn(
-            { err: error, pluginId },
-            "Failed to clear queue waits for an unregistered plugin",
-          );
-        },
-      );
+      requestQueuedMessageDispatch(deps, {
+        kind: "plugin-unregistered",
+        pluginId,
+      });
     },
     // `bb.experimental_hooks.recheck()`: a plugin whose wait condition
     // may have changed asks core to re-attempt the plugin-queued rows. Core
     // owns the walk, the coalescing and the pacing; the plugin owns knowing
     // when to ask.
     requestQueueDrain: () => {
-      requestQueueDrain(deps);
+      requestQueuedMessageDispatch(deps, { kind: "plugin-recheck" });
     },
     watchBuiltinPluginSources:
       process.env.BB_MANAGED_DEV_BUILTIN_PLUGIN_HOT_RELOAD === "1",
@@ -592,7 +593,10 @@ export function createApp(
   // Messages queued while a thread awaited user interaction stop waiting once
   // that interaction settles (#1650); the idle drain then delivers them.
   deps.pendingInteractions.setThreadInteractionSettledListener((threadId) => {
-    requestThreadQueueDrainForSettledInteraction(deps, threadId);
+    requestQueuedMessageDispatch(deps, {
+      kind: "interaction-settled",
+      threadId,
+    });
   });
   setPluginThreadEventEmitter(pluginService.events);
   // Bridge the dispatch pipeline to this service's hooks. Until this runs

@@ -26,6 +26,7 @@ import {
   type InstalledPlugin,
   type PluginCatalogInstallPlan as PluginCatalogInstallPlanContract,
   type PluginCatalogResolvedSource,
+  type PluginCatalogSearchResponse as PluginCatalogSearchResponseContract,
   type PluginCatalogSearchResult as PluginCatalogSearchContract,
   type PluginMarketplace as PluginMarketplaceContract,
   type PluginMarketplaceRefreshResult as PluginMarketplaceRefreshContract,
@@ -51,6 +52,8 @@ import type { CreateSdkAreaArgs } from "./common.js";
  * default on the contract would leak into request bodies.
  */
 const installedPluginResponseSchema = installedPluginSchema.extend({
+  screenshots: installedPluginSchema.shape.screenshots.default([]),
+  collections: installedPluginSchema.shape.collections.default([]),
   providerIds: z.array(z.string()).default([]),
   icons: z.record(z.string(), z.string()).default({}),
 });
@@ -65,6 +68,12 @@ const pluginReloadResponseSchema = z.object({
   ok: z.literal(true),
   plugins: z.array(installedPluginResponseSchema),
 });
+const pluginCatalogSearchResponseCompatibilitySchema =
+  pluginCatalogSearchResponseSchema.extend({
+    collections: pluginCatalogSearchResponseSchema.shape.collections.default(
+      [],
+    ),
+  });
 
 export const pluginMutationResponseSchema = z.object({
   ok: z.boolean(),
@@ -177,7 +186,8 @@ export type PluginCheckUpdatesResult = PluginUpdateCheckEntry[];
 export type PluginApplyUpdateResult = PluginApplyUpdateContract;
 
 export type PluginCatalogStatusResult = PluginCatalogStatusContract;
-export type PluginCatalogSearchResult = PluginCatalogSearchContract[];
+export type PluginCatalogSearchEntry = PluginCatalogSearchContract;
+export type PluginCatalogSearchResult = PluginCatalogSearchResponseContract;
 export type PluginCatalogInstallPlanResult = PluginCatalogInstallPlanContract;
 export type PluginMarketplaceListResult = PluginMarketplaceContract[];
 export type PluginMarketplaceAddResult = PluginMarketplaceContract;
@@ -302,10 +312,10 @@ export function createPluginsArea(args: CreateSdkAreaArgs): PluginsArea {
       const query = z.string().parse(input.query);
       const response = await requestParsed(
         `/api/v1/plugin-catalog/search?q=${encodeURIComponent(query)}`,
-        pluginCatalogSearchResponseSchema,
+        pluginCatalogSearchResponseCompatibilitySchema,
         { signal: input.signal },
       );
-      return response.results;
+      return response;
     },
     async status(input = {}) {
       const response = await requestParsed(

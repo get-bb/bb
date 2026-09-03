@@ -73,7 +73,26 @@ function parseStoredSettingValue(
       parsed = undefined;
     }
   }
-  const expected = descriptor.type === "boolean" ? "boolean" : "string";
+  if (descriptor.type === "number" && typeof parsed === "string") {
+    const legacyNumber = Number(parsed.trim());
+    parsed =
+      parsed.trim().length > 0 && Number.isFinite(legacyNumber)
+        ? legacyNumber
+        : undefined;
+  }
+  if (
+    descriptor.type === "number" &&
+    typeof parsed === "number" &&
+    !Number.isFinite(parsed)
+  ) {
+    parsed = undefined;
+  }
+  const expected =
+    descriptor.type === "boolean"
+      ? "boolean"
+      : descriptor.type === "number"
+        ? "number"
+        : "string";
   if (typeof parsed !== expected) parsed = undefined;
   if (
     descriptor.type === "select" &&

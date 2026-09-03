@@ -162,6 +162,8 @@ function renderPlugin(
           onEdit={() => {}}
           onOpenSource={() => {}}
           onDelete={() => {}}
+          catalogEntries={[]}
+          onOpenPlugin={() => undefined}
         />
       </QueryClientWrapper>
     </MemoryRouter>,

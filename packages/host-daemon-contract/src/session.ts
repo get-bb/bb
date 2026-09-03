@@ -445,7 +445,6 @@ const hostDaemonOnlineRpcResponseSuccessSchema = z.discriminatedUnion(
     commandRpcResponseSuccessSchemaFor("environment.provision.cancel"),
     commandRpcResponseSuccessSchemaFor("environment.destroy"),
     commandRpcResponseSuccessSchemaFor("workspace.commit"),
-    commandRpcResponseSuccessSchemaFor("workspace.squash_merge"),
     commandRpcResponseSuccessSchemaFor("workspace.pull_request_action"),
   ],
 );
