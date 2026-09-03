@@ -10,8 +10,7 @@ import {
   marketplaceAuthorEntries,
   marketplaceCategoryOptions,
   marketplaceInstallCommand,
-  marketplaceInstallSource,
-  marketplaceRepositoryLabel,
+  marketplaceRepositoryUrl,
   marketplaceShelves,
   moreInMarketplaceCategory,
   parseMarketplaceCategories,
@@ -136,18 +135,29 @@ describe("public marketplace view model", () => {
     );
   });
 
-  it("builds repository and install source labels", () => {
+  it("builds the source repository link", () => {
     const npmEntry = MARKETPLACE_V2_FIXTURE.plugins[0];
     const gitEntry = MARKETPLACE_V2_FIXTURE.plugins[1];
     if (npmEntry === undefined || gitEntry === undefined) {
       throw new Error("The fixture needs two plugins");
     }
-    expect(marketplaceRepositoryLabel(npmEntry)).toBe(
-      "package/@get-bb/plugin-prompt-library",
+    expect(marketplaceRepositoryUrl(npmEntry)).toBe(
+      "https://www.npmjs.com/package/@get-bb/plugin-prompt-library",
     );
-    expect(marketplaceInstallSource(npmEntry)).toBe("npm, ^1.2.0");
-    expect(marketplaceRepositoryLabel(gitEntry)).toBe("acme/bb-plugins");
-    expect(marketplaceInstallSource(gitEntry)).toBe("git tag, >=1.0.0 <2.0.0");
+    expect(
+      marketplaceRepositoryUrl({
+        ...npmEntry,
+        source: {
+          npm: {
+            package: "custom-tool",
+            registry: "https://npm.example.com/",
+          },
+        },
+      }),
+    ).toBe("https://npm.example.com/custom-tool");
+    expect(marketplaceRepositoryUrl(gitEntry)).toBe(
+      "https://github.com/acme/bb-plugins",
+    );
   });
 
   it("orders category recommendations by install count", () => {

@@ -28,8 +28,5 @@ describe("marketplace theme tokens", () => {
     expect([...referenced].filter((token) => !light.has(token))).toEqual([]);
     expect([...referenced].filter((token) => !dark.has(token))).toEqual([]);
     expect(referenced.has("--canvas")).toBe(false);
-    expect(marketplaceCss).toMatch(
-      /\.marketplace-trust svg,\s*\.marketplace-trust svg \* \{\s*stroke: currentColor;\s*stroke-width: 1\.5;/u,
-    );
   });
 });

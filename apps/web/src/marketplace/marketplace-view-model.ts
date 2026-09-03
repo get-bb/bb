@@ -217,22 +217,6 @@ export function marketplaceRepositoryUrl(entry: MarketplaceV2Entry): string {
   return entry.source.git.url.replace(/\.git$/u, "");
 }
 
-export function marketplaceRepositoryLabel(entry: MarketplaceV2Entry): string {
-  const repository = new URL(marketplaceRepositoryUrl(entry));
-  const path = repository.pathname.replace(/^\/|\/$/gu, "");
-  return path.length === 0 ? repository.hostname : path;
-}
-
-export function marketplaceInstallSource(entry: MarketplaceV2Entry): string {
-  if ("npm" in entry.source) {
-    return `npm, ${entry.source.npm.range ?? entry.source.npm.tag ?? "latest"}`;
-  }
-  if ("range" in entry.source.git) {
-    return `git tag, ${entry.source.git.range}`;
-  }
-  return `git ref, ${entry.source.git.ref}`;
-}
-
 export function marketplaceAuthorEntries(
   manifest: MarketplaceV2Manifest,
   github: string,

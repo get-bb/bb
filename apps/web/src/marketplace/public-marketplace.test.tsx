@@ -40,7 +40,7 @@ describe("public marketplace route rendering", () => {
     expect(html).not.toContain("mask-image");
   });
 
-  it("renders the detail route with install, trust, and image policy", () => {
+  it("renders the detail route with install, source, and image policy", () => {
     const entry = MARKETPLACE_V2_FIXTURE.plugins[0];
     const html = renderToStaticMarkup(
       <PublicMarketplaceDetailPage
@@ -52,12 +52,18 @@ describe("public marketplace route rendering", () => {
     expect(html).toContain("Marketplace</a>");
     expect(html).toContain("Thread Content</a>");
     expect(html).toContain("bb plugin install prompt-library");
-    expect(html).toContain("Get bb for macOS");
-    expect(html).toContain("Runs in bb&#x27;s terminal");
-    expect(html).toContain("Details");
-    expect(html).toContain("Trust");
-    expect(html).toContain("npm, ^1.2.0");
+    expect(html).toContain("Don&#x27;t have bb?");
+    expect(html).toContain("Get it for macOS");
+    expect(html).not.toContain("Runs in bb");
     expect(html).toContain("Listed");
+    expect(html).toContain(
+      'href="https://www.npmjs.com/package/@get-bb/plugin-prompt-library"',
+    );
+    expect(html).toContain("View source");
+    expect(html).not.toContain("Details");
+    expect(html).not.toContain("Install from");
+    expect(html).not.toContain("Trust");
+    expect(html).not.toContain("<aside");
     expect(html).toContain('loading="lazy"');
     expect(html).toContain('referrerPolicy="no-referrer"');
     expect(html).not.toContain("More from BB Labs");
@@ -82,12 +88,15 @@ describe("public marketplace route rendering", () => {
     expect(html).toContain("More from Acme");
     expect(html).toContain("Review Notes");
     expect(html).toContain("More in Code &amp; Reviews");
-    expect(html).toContain("git tag, &gt;=1.0.0 &lt;2.0.0");
+    expect(html).toContain('href="https://github.com/acme/bb-plugins"');
+    expect(html.indexOf("More from Acme")).toBeLessThan(
+      html.indexOf("More in Code &amp; Reviews"),
+    );
     expect(html).not.toContain("marketplace-screenshots");
     expect(html).not.toContain("About");
   });
 
-  it("puts category recommendations in an otherwise empty content column", () => {
+  it("renders the category shelf alone when the author has no other plugins", () => {
     const source = MARKETPLACE_V2_FIXTURE.plugins[1];
     if (source === undefined) {
       throw new Error("The fixture needs a second plugin");
@@ -108,12 +117,9 @@ describe("public marketplace route rendering", () => {
         stats={MARKETPLACE_STATS_FIXTURE}
       />,
     );
-    const related = html.indexOf("marketplace-detail-related is-in-layout");
-    const aside = html.indexOf("marketplace-detail-aside");
-    expect(related).toBeGreaterThan(-1);
-    expect(aside).toBeGreaterThan(related);
+    expect(html).toContain("marketplace-detail-body");
     expect(html).toContain("More in Code &amp; Reviews");
-    expect(html).not.toContain("marketplace-detail-content");
+    expect(html).not.toContain("marketplace-detail-section");
     expect(html).not.toContain("More from Solo Reviewer");
   });
 

@@ -2,6 +2,7 @@ import {
   AiContentGenerator01Icon,
   AlertCircleIcon,
   Archive03Icon,
+  ArrowUpRight01Icon,
   AudioWave01Icon,
   Cancel01Icon,
   ChartColumnIcon,
@@ -27,7 +28,6 @@ import {
   SentIcon,
   SidebarLeftIcon,
   SlidersHorizontalIcon,
-  Tick02Icon,
   UserSwitchIcon,
   WorkflowCircle03Icon,
   ZapIcon,
@@ -64,9 +64,7 @@ import {
   marketplaceCategoryOptions,
   marketplaceDetailPath,
   marketplaceInstallCommand,
-  marketplaceInstallSource,
   marketplaceRepositoryUrl,
-  marketplaceRepositoryLabel,
   marketplaceShelves,
   moreInMarketplaceCategory,
   moreFromMarketplaceAuthor,
@@ -773,9 +771,9 @@ function InstallCommand({ entry }: { entry: MarketplaceV2Entry }) {
         </button>
       </div>
       <p>
-        Runs in bb&apos;s terminal or any shell with the bb CLI. New here?{" "}
+        Don&apos;t have bb?{" "}
         <MarketplaceLink href="/download/macos">
-          Get bb for macOS
+          Get it for macOS
         </MarketplaceLink>
       </p>
     </div>
@@ -819,22 +817,18 @@ function MoreInCategory({
   entry,
   entries,
   stats,
-  inLayout = false,
 }: {
   manifest: MarketplaceV2Manifest;
   entry: MarketplaceV2Entry;
   entries: readonly MarketplaceV2Entry[];
   stats: MarketplaceStats | null;
-  inLayout?: boolean;
 }) {
   if (entries.length === 0) return null;
   const category = resolveMarketplaceCategory(manifest, entry);
   const categoryId = category?.id ?? UNCATEGORIZED_CATEGORY_ID;
   const categoryName = category?.displayName ?? "More plugins";
   return (
-    <section
-      className={`marketplace-detail-related${inLayout ? " is-in-layout" : ""}`}
-    >
+    <section>
       <div className="marketplace-section-head">
         <div>
           <div>
@@ -860,63 +854,6 @@ function MoreInCategory({
   );
 }
 
-function MarketplaceDetailAside({
-  repository,
-  repositoryLabel,
-  installSource,
-  published,
-}: {
-  repository: string;
-  repositoryLabel: string;
-  installSource: string;
-  published: string | null;
-}) {
-  return (
-    <aside className="marketplace-detail-aside">
-      <section className="marketplace-aside-block">
-        <h2>Details</h2>
-        <dl>
-          <div>
-            <dt>Source</dt>
-            <dd>
-              <a href={repository} target="_blank" rel="noreferrer">
-                {repositoryLabel}
-              </a>
-            </dd>
-          </div>
-          <div>
-            <dt>Install from</dt>
-            <dd>{installSource}</dd>
-          </div>
-          <div>
-            <dt>Updates</dt>
-            <dd>Manual, staged</dd>
-          </div>
-          <div>
-            <dt>Listed</dt>
-            <dd>{published ?? "Not listed"}</dd>
-          </div>
-        </dl>
-      </section>
-      <section className="marketplace-aside-block marketplace-trust">
-        <h2>Trust</h2>
-        <p>
-          <HugeiconsIcon icon={Tick02Icon} aria-hidden />
-          Reviewed listing in the bb-community registry
-        </p>
-        <p>
-          <HugeiconsIcon icon={LockIcon} aria-hidden />
-          Installs stay pinned; updates are opt-in
-        </p>
-        <p>
-          <HugeiconsIcon icon={Clock01Icon} aria-hidden />
-          Install count from opt-out telemetry
-        </p>
-      </section>
-    </aside>
-  );
-}
-
 export function PublicMarketplaceDetailPage({
   manifest,
   entry,
@@ -939,17 +876,12 @@ export function PublicMarketplaceDetailPage({
   const installs = marketplaceEntryInstalls(entry, stats);
   const published = formatMarketplaceDate(entry.publishedAt);
   const repository = marketplaceRepositoryUrl(entry);
-  const repositoryLabel = marketplaceRepositoryLabel(entry);
-  const installSource = marketplaceInstallSource(entry);
   const authorSiblings = moreFromMarketplaceAuthor(manifest, entry);
   const categoryEntries = moreInMarketplaceCategory(manifest, entry, stats);
-  const hasDetailContent =
-    entry.screenshots.length > 0 || authorSiblings.length > 0;
-  const detailLayoutClass = hasDetailContent
-    ? "marketplace-detail-layout"
-    : categoryEntries.length > 0
-      ? "marketplace-detail-layout marketplace-detail-layout-related"
-      : "marketplace-detail-layout marketplace-detail-layout-aside-only";
+  const hasDetailBody =
+    entry.screenshots.length > 0 ||
+    authorSiblings.length > 0 ||
+    categoryEntries.length > 0;
   const authorPath =
     entry.author.github === undefined
       ? undefined
@@ -1001,55 +933,46 @@ export function PublicMarketplaceDetailPage({
                   : `${installs.toLocaleString("en-US")} ${installs === 1 ? "install" : "installs"}`}
               </span>
               {published === null ? null : <span>Listed {published}</span>}
+              <a
+                className="marketplace-detail-source"
+                href={repository}
+                target="_blank"
+                rel="noreferrer"
+              >
+                View source
+                <HugeiconsIcon icon={ArrowUpRight01Icon} aria-hidden />
+              </a>
             </div>
           </div>
           <InstallCommand entry={entry} />
         </header>
-        <div className={detailLayoutClass}>
-          {hasDetailContent ? (
-            <article className="marketplace-detail-content">
-              {entry.screenshots.length === 0 ? null : (
-                <div className="marketplace-screenshots">
-                  {entry.screenshots.map((screenshot, index) => (
-                    <img
-                      key={screenshot}
-                      src={marketplaceAssetUrl(screenshot)}
-                      alt={`${entry.displayName} screenshot ${index + 1}`}
-                      referrerPolicy="no-referrer"
-                      loading="lazy"
-                    />
-                  ))}
-                </div>
-              )}
-              <MoreFromAuthor
-                author={entry.author}
-                entries={authorSiblings}
-                stats={stats}
-              />
-            </article>
-          ) : categoryEntries.length > 0 ? (
+        {hasDetailBody ? (
+          <div className="marketplace-detail-body">
+            {entry.screenshots.length === 0 ? null : (
+              <div className="marketplace-screenshots">
+                {entry.screenshots.map((screenshot, index) => (
+                  <img
+                    key={screenshot}
+                    src={marketplaceAssetUrl(screenshot)}
+                    alt={`${entry.displayName} screenshot ${index + 1}`}
+                    referrerPolicy="no-referrer"
+                    loading="lazy"
+                  />
+                ))}
+              </div>
+            )}
+            <MoreFromAuthor
+              author={entry.author}
+              entries={authorSiblings}
+              stats={stats}
+            />
             <MoreInCategory
               manifest={manifest}
               entry={entry}
               entries={categoryEntries}
               stats={stats}
-              inLayout
             />
-          ) : null}
-          <MarketplaceDetailAside
-            repository={repository}
-            repositoryLabel={repositoryLabel}
-            installSource={installSource}
-            published={published}
-          />
-        </div>
-        {hasDetailContent ? (
-          <MoreInCategory
-            manifest={manifest}
-            entry={entry}
-            entries={categoryEntries}
-            stats={stats}
-          />
+          </div>
         ) : null}
       </main>
       <SiteFooter />
