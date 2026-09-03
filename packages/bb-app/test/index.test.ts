@@ -1967,6 +1967,7 @@ describe("bb-app launcher", () => {
     const supervision = superviseFullStackProcesses({
       context: createTestStartContext(),
       delayMilliseconds: immediateDelay,
+      isHealthyServerAnswering: async () => false,
       isShutdownRequested: supervisor.shutdownRequested,
       processes: supervisor.processes,
       startDaemon: supervisor.daemonStart,
@@ -1999,6 +2000,7 @@ describe("bb-app launcher", () => {
     const supervision = superviseFullStackProcesses({
       context: createTestStartContext(),
       delayMilliseconds: immediateDelay,
+      isHealthyServerAnswering: async () => false,
       isShutdownRequested: supervisor.shutdownRequested,
       processes: supervisor.processes,
       startDaemon: supervisor.daemonStart,
@@ -2031,6 +2033,7 @@ describe("bb-app launcher", () => {
     const supervision = superviseFullStackProcesses({
       context: createTestStartContext(),
       delayMilliseconds: immediateDelay,
+      isHealthyServerAnswering: async () => false,
       isShutdownRequested: supervisor.shutdownRequested,
       processes: supervisor.processes,
       startDaemon: supervisor.daemonStart,
@@ -2058,6 +2061,7 @@ describe("bb-app launcher", () => {
     const supervision = superviseFullStackProcesses({
       context: createTestStartContext(),
       delayMilliseconds: immediateDelay,
+      isHealthyServerAnswering: async () => false,
       isShutdownRequested: supervisor.shutdownRequested,
       processes: supervisor.processes,
       startDaemon: supervisor.daemonStart,
@@ -2093,6 +2097,7 @@ describe("bb-app launcher", () => {
     const supervision = superviseFullStackProcesses({
       context: createTestStartContext(),
       delayMilliseconds: (args) => restartThrottle.delayMilliseconds(args),
+      isHealthyServerAnswering: async () => false,
       isShutdownRequested: supervisor.shutdownRequested,
       processes: supervisor.processes,
       startDaemon: supervisor.daemonStart,
