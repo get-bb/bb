@@ -108,7 +108,7 @@ describe("public marketplace route rendering", () => {
     expect(html).toContain('referrerPolicy="no-referrer"');
     expect(html).not.toContain("More from BB Labs");
     expect(html).toContain("Summary</h2>");
-    expect(html).not.toContain("Overview</h2>");
+    expect(html).not.toContain("marketplace-overview-rule");
     expect(html.split(entry.description)).toHaveLength(2);
     expect(html).not.toContain("Version");
     expect(html).not.toContain("Updated");
@@ -138,7 +138,7 @@ describe("public marketplace route rendering", () => {
         stats={MARKETPLACE_STATS_FIXTURE}
       />,
     );
-    expect(html).toContain("Overview</h2>");
+    expect(html).toContain("Summary</h2>");
     const overview = html.slice(
       html.indexOf('class="marketplace-overview"'),
       html.indexOf("More from Acme"),
@@ -177,7 +177,7 @@ describe("public marketplace route rendering", () => {
       html.indexOf("More in Code &amp; Reviews"),
     );
     expect(html).not.toContain("marketplace-screenshots");
-    expect(html).not.toContain("Overview</h2>");
+    expect(html).not.toContain("marketplace-overview-rule");
   });
 
   it("renders the category shelf alone when the author has no other plugins", () => {

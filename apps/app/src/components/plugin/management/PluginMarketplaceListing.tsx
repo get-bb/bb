@@ -213,27 +213,14 @@ function PluginScreenshotGallery({
   );
 }
 
-function splitLeadSentence(text: string): { lead: string; rest: string } {
-  const match = /^(.*?[.!?])\s+(\S[\s\S]*)$/u.exec(text.trim());
-  return match === null
-    ? { lead: text.trim(), rest: "" }
-    : { lead: match[1] ?? text, rest: match[2] ?? "" };
-}
-
-export function PluginSummaryCard({ description }: { description: string }) {
-  const { lead, rest } = splitLeadSentence(description);
+export function PluginOverviewLead({ description }: { description: string }) {
   return (
-    <div
-      className="rounded-lg bg-surface-recessed px-4 py-3"
+    <p
+      className="max-w-none text-sm leading-relaxed text-foreground"
       data-plugin-summary=""
     >
-      <p className="text-sm leading-relaxed text-foreground">{lead}</p>
-      {rest.length === 0 ? null : (
-        <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
-          {rest}
-        </p>
-      )}
-    </div>
+      {description}
+    </p>
   );
 }
 
@@ -247,14 +234,15 @@ function PluginMarketplaceOverview({
       <PluginScreenshotGallery entry={entry} />
       <div className="space-y-3">
         <h2 className="text-sm font-medium text-foreground">Summary</h2>
-        <PluginSummaryCard description={entry.description} />
+        <PluginOverviewLead description={entry.description} />
+        {entry.overview === undefined ? null : (
+          <>
+            <hr className="border-t border-border" />
+            <h2 className="text-sm font-medium text-foreground">Overview</h2>
+            <PluginOverviewMarkdown markdown={entry.overview} />
+          </>
+        )}
       </div>
-      {entry.overview === undefined ? null : (
-        <div className="space-y-3">
-          <h2 className="text-sm font-medium text-foreground">Overview</h2>
-          <PluginOverviewMarkdown markdown={entry.overview} />
-        </div>
-      )}
     </section>
   );
 }

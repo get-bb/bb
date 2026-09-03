@@ -715,34 +715,19 @@ a.marketplace-detail-author:hover {
   letter-spacing: -0.01em;
 }
 
-.marketplace-summary-label {
-  font-size: 11px !important;
-  font-weight: 600 !important;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--dim) !important;
-}
-
-.marketplace-summary {
+.marketplace-overview-lead {
   max-width: 720px;
-  padding: 14px 16px;
-  border-radius: 10px;
-  background: var(--surface);
-}
-
-.marketplace-summary p {
   margin: 0;
-  font-size: 15px;
-  line-height: 1.5;
-}
-
-.marketplace-summary-lead {
   color: var(--ink);
+  font-size: 16px;
+  line-height: 1.55;
 }
 
-.marketplace-summary p + p {
-  margin-top: 6px;
-  color: var(--dim);
+.marketplace-overview-rule {
+  max-width: 720px;
+  margin: 16px 0;
+  border: 0;
+  border-top: 1px solid var(--border);
 }
 
 .marketplace-overview {

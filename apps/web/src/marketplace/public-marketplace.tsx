@@ -51,10 +51,7 @@ import {
   marketplaceEntryInstalls,
   type MarketplaceStats,
 } from "./marketplace-model.js";
-import {
-  MarketplaceOverview,
-  MarketplaceSummary,
-} from "./marketplace-overview.js";
+import { MarketplaceOverview } from "./marketplace-overview.js";
 import type {
   MarketplaceV2Entry,
   MarketplaceV2Manifest,
@@ -914,16 +911,17 @@ export function PublicMarketplaceDetailPage({
                 ))}
               </div>
             )}
-            <section className="marketplace-detail-section marketplace-summary-section">
-              <h2 className="marketplace-summary-label">Summary</h2>
-              <MarketplaceSummary description={entry.description} />
+            <section className="marketplace-detail-section marketplace-overview-section">
+              <h2>Summary</h2>
+              <p className="marketplace-overview-lead">{entry.description}</p>
+              {entry.overview === undefined ? null : (
+                <>
+                  <hr className="marketplace-overview-rule" />
+                  <h2>Overview</h2>
+                  <MarketplaceOverview markdown={entry.overview} />
+                </>
+              )}
             </section>
-            {entry.overview === undefined ? null : (
-              <section className="marketplace-detail-section marketplace-overview-section">
-                <h2>Overview</h2>
-                <MarketplaceOverview markdown={entry.overview} />
-              </section>
-            )}
             <MoreFromAuthor
               author={entry.author}
               entries={authorSiblings}

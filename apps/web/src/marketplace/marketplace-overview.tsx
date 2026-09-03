@@ -74,20 +74,3 @@ export function MarketplaceOverview({ markdown }: { markdown: string }) {
     </div>
   );
 }
-
-function splitLeadSentence(text: string): { lead: string; rest: string } {
-  const match = /^(.*?[.!?])\s+(\S[\s\S]*)$/u.exec(text.trim());
-  return match === null
-    ? { lead: text.trim(), rest: "" }
-    : { lead: match[1] ?? text, rest: match[2] ?? "" };
-}
-
-export function MarketplaceSummary({ description }: { description: string }) {
-  const { lead, rest } = splitLeadSentence(description);
-  return (
-    <div className="marketplace-summary">
-      <p className="marketplace-summary-lead">{lead}</p>
-      {rest.length === 0 ? null : <p>{rest}</p>}
-    </div>
-  );
-}
