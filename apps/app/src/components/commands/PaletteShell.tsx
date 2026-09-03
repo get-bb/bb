@@ -1,12 +1,15 @@
 import type { KeyboardEventHandler, ReactNode, Ref } from "react";
 import { useComposedRefs } from "@radix-ui/react-compose-refs";
 import { Icon } from "@bb/shared-ui/icon";
+import { cn } from "@bb/shared-ui/lib/utils";
 import { useScrollOverflowState } from "@/components/thread/timeline/useScrollOverflowState";
 import { TabPill } from "@/components/ui/tab-pill";
+import { APP_COMMAND_ACCESSORY_PILL_CLASS } from "./AppCommandShortcutHint";
 
-export const PALETTE_FOOTER_CONTROL_SURFACE_CLASS =
-  "border border-border/70 bg-background/70 shadow-xs";
-export const PALETTE_FOOTER_KEYCAP_CLASS = `inline-flex min-w-5 items-center justify-center rounded px-1.5 py-0.5 font-mono text-xs leading-none text-muted-foreground ${PALETTE_FOOTER_CONTROL_SURFACE_CLASS}`;
+export const PALETTE_FOOTER_KEYCAP_CLASS = cn(
+  APP_COMMAND_ACCESSORY_PILL_CLASS,
+  "min-w-5 py-0.5",
+);
 export const PALETTE_FOOTER_LABEL_CLASS = "text-subtle-foreground opacity-70";
 
 interface PaletteModeChipProps {

@@ -551,7 +551,16 @@ describe("CommandPalette", () => {
     for (const keycap of footer?.querySelectorAll("kbd") ?? []) {
       expectClasses(
         keycap,
-        "rounded",
+        "rounded-sm",
+        "bg-state-hover",
+        "font-sans",
+        "font-normal",
+        "tabular-nums",
+        "text-subtle-foreground",
+        "opacity-60",
+      );
+      expectNoClasses(
+        keycap,
         "border-border/70",
         "bg-background/70",
         "font-mono",
