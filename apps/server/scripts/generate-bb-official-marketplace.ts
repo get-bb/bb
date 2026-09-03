@@ -189,7 +189,10 @@ export async function readBundledPluginAbout(
       `bundled plugin ${pluginName} ABOUT.md has ${length} characters; the maximum is ${MARKETPLACE_ABOUT_MAX_CHARS}`,
     );
   }
-  if (ABOUT_HTML_OR_IMAGE_PATTERN.test(about)) {
+  const prose = about
+    .replace(/```[\s\S]*?```/gu, "")
+    .replace(/`[^`\n]*`/gu, "");
+  if (ABOUT_HTML_OR_IMAGE_PATTERN.test(prose)) {
     throw new Error(
       `bundled plugin ${pluginName} ABOUT.md must not hold raw HTML or an image`,
     );

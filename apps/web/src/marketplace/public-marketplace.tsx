@@ -51,6 +51,7 @@ import {
   marketplaceEntryInstalls,
   type MarketplaceStats,
 } from "./marketplace-model.js";
+import { MarketplaceAbout } from "./marketplace-about.js";
 import type {
   MarketplaceV2Entry,
   MarketplaceV2Manifest,
@@ -813,6 +814,7 @@ export function PublicMarketplaceDetailPage({
   const categoryEntries = moreInMarketplaceCategory(manifest, entry, stats);
   const hasDetailBody =
     entry.screenshots.length > 0 ||
+    entry.about !== undefined ||
     authorSiblings.length > 0 ||
     categoryEntries.length > 0;
   const authorPath =
@@ -913,6 +915,12 @@ export function PublicMarketplaceDetailPage({
                   />
                 ))}
               </div>
+            )}
+            {entry.about === undefined ? null : (
+              <section className="marketplace-detail-section marketplace-about-section">
+                <h2>About</h2>
+                <MarketplaceAbout markdown={entry.about} />
+              </section>
             )}
             <MoreFromAuthor
               author={entry.author}

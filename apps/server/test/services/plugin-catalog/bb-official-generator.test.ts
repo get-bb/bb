@@ -116,6 +116,14 @@ describe("bb-official marketplace generator", () => {
       "# Sample\n\nDoes one thing.\n",
     );
 
+    await writeFile(
+      path.join(pluginDirectory, "ABOUT.md"),
+      "Run `bb keep-awake hosts <host-id>`.\n\n```sh\n<not html>\n```\n",
+    );
+    expect(await readBundledPluginAbout(pluginDirectory, "sample")).toContain(
+      "<host-id>",
+    );
+
     for (const [text, message] of [
       ["\n\n", /empty ABOUT\.md/u],
       [`${"a".repeat(4001)}\n`, /maximum is 4000/u],

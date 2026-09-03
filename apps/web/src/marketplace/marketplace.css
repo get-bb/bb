@@ -715,6 +715,83 @@ a.marketplace-detail-author:hover {
   letter-spacing: -0.01em;
 }
 
+.marketplace-about {
+  max-width: 720px;
+  color: var(--ink);
+  font-size: 15px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
+.marketplace-about > :first-child {
+  margin-top: 0;
+}
+
+.marketplace-about h3,
+.marketplace-about h4,
+.marketplace-about h5,
+.marketplace-about h6 {
+  margin: 20px 0 6px;
+  color: var(--heading);
+  font-size: 15px;
+  font-weight: 650;
+}
+
+.marketplace-about p,
+.marketplace-about ul,
+.marketplace-about ol,
+.marketplace-about blockquote,
+.marketplace-about pre {
+  margin: 0 0 10px;
+}
+
+.marketplace-about ul,
+.marketplace-about ol {
+  padding-left: 22px;
+}
+
+.marketplace-about li {
+  margin-bottom: 4px;
+}
+
+.marketplace-about blockquote {
+  padding-left: 12px;
+  border-left: 2px solid var(--border);
+  color: var(--dim);
+}
+
+.marketplace-about code {
+  padding: 1px 5px;
+  border-radius: 5px;
+  background: var(--surface);
+  font-family: var(--font-mono);
+  font-size: 13px;
+}
+
+.marketplace-about pre {
+  overflow-x: auto;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+}
+
+.marketplace-about pre code {
+  padding: 0;
+  background: none;
+}
+
+.marketplace-about hr {
+  margin: 16px 0;
+  border: 0;
+  border-top: 1px solid var(--border);
+}
+
+.marketplace-about a {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
 .marketplace-author-teasers {
   display: flex;
   overflow: hidden;

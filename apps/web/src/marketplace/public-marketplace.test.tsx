@@ -113,6 +113,49 @@ describe("public marketplace route rendering", () => {
     expect(html).not.toContain("Updated");
   });
 
+  it("renders the about text through the markdown allowlist", () => {
+    const entry = {
+      ...MARKETPLACE_V2_FIXTURE.plugins[1],
+      about: [
+        "## What you get",
+        "",
+        "Each check stays beside its review. <b>Inline</b> html goes away.",
+        "",
+        "<script>window.pwned = true</script>",
+        "",
+        "![logo](https://example.com/logo.png)",
+        "",
+        "- One [docs page](https://example.com/docs)",
+        "- One [plain page](http://example.com)",
+        "",
+      ].join("\n"),
+    };
+    const html = renderToStaticMarkup(
+      <PublicMarketplaceDetailPage
+        manifest={MARKETPLACE_V2_FIXTURE}
+        entry={entry}
+        stats={MARKETPLACE_STATS_FIXTURE}
+      />,
+    );
+    expect(html).toContain("<h2>About</h2>");
+    const about = html.slice(
+      html.indexOf('class="marketplace-about"'),
+      html.indexOf("More from Acme"),
+    );
+    expect(about).toContain("<h3>What you get</h3>");
+    expect(about).toContain("Each check stays beside its review.");
+    expect(about).not.toContain("<script");
+    expect(about).not.toContain("pwned");
+    expect(about).not.toContain("<b>");
+    expect(about).toContain("Inline html goes away.");
+    expect(about).not.toContain("<img");
+    expect(about).toContain(
+      'href="https://example.com/docs" target="_blank" rel="noopener noreferrer"',
+    );
+    expect(about).not.toContain('href="http://example.com"');
+    expect(about).toContain("plain page");
+  });
+
   it("renders author and category recommendations on a detail route", () => {
     const entry = MARKETPLACE_V2_FIXTURE.plugins[1];
     if (entry === undefined) {
