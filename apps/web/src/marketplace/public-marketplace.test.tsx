@@ -22,15 +22,25 @@ describe("public marketplace route rendering", () => {
         onStateChange={() => {}}
       />,
     );
+    expect(html).toContain("Make bb yours.");
+    expect(html).toContain(
+      "Themes, providers, workflows, and tools, installed with one command.",
+    );
     expect(html).toContain("New &amp; notable");
     expect(html).toContain("More plugins");
-    expect(html).toContain("Most installed");
+    expect(html).toContain("Featured");
+    expect(html).toContain("Popular");
+    expect(html).toContain("marketplace-shelf-notable");
+    expect(html).toContain("marketplace-new-chip");
+    expect(html).toContain("https://github.com/get-bb.png?size=32");
     expect(html).toContain('aria-pressed="false"');
     expect(html).toContain("https://getbb.app/marketplace/v1/icons");
+    expect(html).not.toContain("marketplace-category-pill");
+    expect(html).not.toContain("<select");
     expect(html).not.toContain("mask-image");
   });
 
-  it("renders the detail route with install, metadata, and image policy", () => {
+  it("renders the detail route with install, trust, and image policy", () => {
     const entry = MARKETPLACE_V2_FIXTURE.plugins[0];
     const html = renderToStaticMarkup(
       <PublicMarketplaceDetailPage
@@ -39,12 +49,40 @@ describe("public marketplace route rendering", () => {
         stats={MARKETPLACE_STATS_FIXTURE}
       />,
     );
+    expect(html).toContain("Marketplace</a>");
+    expect(html).toContain("Thread Content</a>");
     expect(html).toContain("bb plugin install prompt-library");
-    expect(html).toContain("Get bb");
+    expect(html).toContain("Get bb for macOS");
+    expect(html).toContain("Runs in bb&#x27;s terminal");
+    expect(html).toContain("About");
+    expect(html).toContain("Details");
+    expect(html).toContain("Trust");
+    expect(html).toContain("npm, ^1.2.0");
     expect(html).toContain("Listed");
     expect(html).toContain('loading="lazy"');
     expect(html).toContain('referrerPolicy="no-referrer"');
+    expect(html).not.toContain("More from BB Labs");
+    expect(html).not.toContain("Version");
     expect(html).not.toContain("Updated");
+  });
+
+  it("renders author and category recommendations on a detail route", () => {
+    const entry = MARKETPLACE_V2_FIXTURE.plugins[1];
+    if (entry === undefined) {
+      throw new Error("The fixture needs a second plugin");
+    }
+    const html = renderToStaticMarkup(
+      <PublicMarketplaceDetailPage
+        manifest={MARKETPLACE_V2_FIXTURE}
+        entry={entry}
+        stats={MARKETPLACE_STATS_FIXTURE}
+      />,
+    );
+    expect(html).toContain("More from Acme");
+    expect(html).toContain("Review Notes");
+    expect(html).toContain("More in Code &amp; Reviews");
+    expect(html).toContain("git tag, &gt;=1.0.0 &lt;2.0.0");
+    expect(html).not.toContain("marketplace-screenshots");
   });
 
   it("renders the author route with the same toolbar", () => {
@@ -61,8 +99,12 @@ describe("public marketplace route rendering", () => {
       />,
     );
     expect(html).toContain("Acme");
+    expect(html).toContain("2 plugins in the Marketplace");
+    expect(html).toContain("https://github.com/acme-tools.png?size=64");
+    expect(html).toContain("https://github.com/acme-tools");
     expect(html).toContain("Search plugins");
-    expect(html).toContain("Recently added");
+    expect(html).toContain("Featured");
+    expect(html).toContain("Popular");
     expect(html).toContain("Review Companion");
   });
 

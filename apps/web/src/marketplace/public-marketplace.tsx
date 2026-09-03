@@ -19,7 +19,6 @@ import {
   GitBranchIcon,
   GridViewIcon,
   Layers01Icon,
-  LinkSquare01Icon,
   LockIcon,
   Mail02Icon,
   PackageIcon,
@@ -40,6 +39,7 @@ import {
   type ReactNode,
   useContext,
   useEffect,
+  useRef,
   useState,
 } from "react";
 
@@ -64,19 +64,24 @@ import {
   marketplaceCategoryOptions,
   marketplaceDetailPath,
   marketplaceInstallCommand,
+  marketplaceInstallSource,
   marketplaceRepositoryUrl,
+  marketplaceRepositoryLabel,
   marketplaceShelves,
+  moreInMarketplaceCategory,
   moreFromMarketplaceAuthor,
   resolveMarketplaceCategory,
   sortMarketplaceEntries,
+  UNCATEGORIZED_CATEGORY_ID,
+  type MarketplaceCategoryOption,
   type MarketplaceIndexState,
   type MarketplaceShelf,
   type MarketplaceSort,
 } from "./marketplace-view-model.js";
 
 const SORT_LABELS: Record<MarketplaceSort, string> = {
-  "recently-added": "Recently added",
-  "most-installed": "Most installed",
+  "recently-added": "New",
+  "most-installed": "Popular",
 };
 
 const PLUGIN_ICONS: Readonly<Record<string, IconSvgElement | undefined>> = {
@@ -185,6 +190,43 @@ function PluginArtwork({
   );
 }
 
+function authorInitials(name: string): string {
+  return name
+    .split(/\s+/u)
+    .filter((part) => part.length > 0)
+    .slice(0, 2)
+    .map((part) => part[0]?.toLocaleUpperCase() ?? "")
+    .join("");
+}
+
+function AuthorAvatar({
+  author,
+  large = false,
+}: {
+  author: MarketplaceV2Entry["author"];
+  large?: boolean;
+}) {
+  const className = large
+    ? "marketplace-author-avatar is-large"
+    : "marketplace-author-avatar";
+  if (author.github === undefined) {
+    return (
+      <span className={`${className} is-fallback`} aria-hidden>
+        {authorInitials(author.name)}
+      </span>
+    );
+  }
+  return (
+    <img
+      className={className}
+      src={`https://github.com/${encodeURIComponent(author.github)}.png?size=${large ? 64 : 32}`}
+      alt=""
+      referrerPolicy="no-referrer"
+      loading="lazy"
+    />
+  );
+}
+
 function InstallCount({
   entry,
   stats,
@@ -193,7 +235,9 @@ function InstallCount({
   stats: MarketplaceStats | null;
 }) {
   const total = marketplaceEntryInstalls(entry, stats);
-  if (total === undefined) return null;
+  if (total === undefined) {
+    return <span className="marketplace-card-installs is-new">New</span>;
+  }
   const formatted = formatInstalls(total) ?? total.toLocaleString("en-US");
   return (
     <span
@@ -220,11 +264,13 @@ function PluginCard({
   entry,
   stats,
   showCategory = false,
+  notable = false,
 }: {
   manifest: MarketplaceV2Manifest;
   entry: MarketplaceV2Entry;
   stats: MarketplaceStats | null;
   showCategory?: boolean;
+  notable?: boolean;
 }) {
   return (
     <article className="marketplace-card">
@@ -235,13 +281,15 @@ function PluginCard({
         <span className="marketplace-card-topline">
           <PluginArtwork entry={entry} />
           <strong>{entry.displayName}</strong>
+          {notable ? <span className="marketplace-new-chip">New</span> : null}
         </span>
         <span className="marketplace-card-description">
           {entry.description}
         </span>
         <span className="marketplace-card-meta">
           <span className="marketplace-card-author">
-            By {entry.author.name}
+            <AuthorAvatar author={entry.author} />
+            <span>{entry.author.name}</span>
           </span>
           <span className="marketplace-card-secondary">
             {showCategory ? (
@@ -262,14 +310,18 @@ function PluginGrid({
   entries,
   stats,
   showCategory = false,
+  notable = false,
 }: {
   manifest: MarketplaceV2Manifest;
   entries: readonly MarketplaceV2Entry[];
   stats: MarketplaceStats | null;
   showCategory?: boolean;
+  notable?: boolean;
 }) {
   return (
-    <div className="marketplace-grid">
+    <div
+      className={`marketplace-grid${notable ? " marketplace-grid-notable" : ""}`}
+    >
       {entries.map((entry) => (
         <PluginCard
           key={entry.id}
@@ -277,6 +329,7 @@ function PluginGrid({
           entry={entry}
           stats={stats}
           showCategory={showCategory}
+          notable={notable}
         />
       ))}
     </div>
@@ -292,36 +345,46 @@ function Shelf({
   manifest: MarketplaceV2Manifest;
   shelf: MarketplaceShelf;
   stats: MarketplaceStats | null;
-  onSelect: (category: string) => void;
+  onSelect: (category: string | undefined, sort?: MarketplaceSort) => void;
 }) {
-  const canFilter = shelf.kind !== "collection";
+  const notable = shelf.kind === "collection";
+  const description =
+    shelf.description ??
+    (notable ? "Hand-picked recent additions." : undefined);
+  const viewHref = notable
+    ? "/marketplace?sort=recently-added"
+    : `/marketplace?category=${encodeURIComponent(shelf.id)}`;
   return (
-    <section className="marketplace-shelf">
+    <section
+      className={`marketplace-shelf${notable ? " marketplace-shelf-notable" : ""}`}
+    >
       <div className="marketplace-section-head">
         <div>
-          <h2>{shelf.label}</h2>
-          <span>{shelf.entries.length} plugins</span>
+          <div>
+            <h2>{shelf.label}</h2>
+            <span>{shelf.entries.length}</span>
+          </div>
+          {description === undefined ? null : <p>{description}</p>}
         </div>
-        {canFilter ? (
-          <a
-            href={`/marketplace?category=${encodeURIComponent(shelf.id)}`}
-            onClick={(event) => {
-              event.preventDefault();
-              onSelect(shelf.id);
-            }}
-          >
-            View all
-          </a>
-        ) : null}
+        <a
+          href={viewHref}
+          onClick={(event) => {
+            event.preventDefault();
+            if (notable) {
+              onSelect(undefined, "recently-added");
+              return;
+            }
+            onSelect(shelf.id);
+          }}
+        >
+          View all <span aria-hidden>→</span>
+        </a>
       </div>
-      {shelf.description === undefined ? null : (
-        <p className="marketplace-shelf-description">{shelf.description}</p>
-      )}
       <PluginGrid
         manifest={manifest}
-        entries={shelf.entries.slice(0, 3)}
+        entries={shelf.entries.slice(0, notable ? 4 : 3)}
         stats={stats}
-        showCategory={shelf.kind === "collection"}
+        notable={notable}
       />
     </section>
   );
@@ -390,71 +453,106 @@ function MarketplaceToolbar({
   state,
   onQueryChange,
   onStateChange,
+  heroCount,
 }: {
-  options: readonly { id: string; label: string }[];
+  options: readonly MarketplaceCategoryOption[];
   query: string;
   state: MarketplaceIndexState;
   onQueryChange: (query: string) => void;
   onStateChange: (state: MarketplaceIndexState) => void;
+  heroCount?: number;
 }) {
-  const activeOptions = options.filter((option) =>
-    state.categories.includes(option.id),
-  );
+  const searchInput = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    const focusSearch = (event: KeyboardEvent) => {
+      if (event.key !== "/" || event.metaKey || event.ctrlKey || event.altKey) {
+        return;
+      }
+      const target = event.target;
+      if (
+        target instanceof HTMLInputElement ||
+        target instanceof HTMLTextAreaElement ||
+        target instanceof HTMLSelectElement
+      ) {
+        return;
+      }
+      event.preventDefault();
+      searchInput.current?.focus();
+    };
+    window.addEventListener("keydown", focusSearch);
+    return () => window.removeEventListener("keydown", focusSearch);
+  }, []);
   const toggleCategory = (id: string) => {
     const categories = state.categories.includes(id)
       ? state.categories.filter((category) => category !== id)
       : [...state.categories, id];
     onStateChange({ categories, sort: state.sort });
   };
+  const search = (
+    <label className="marketplace-search">
+      <span className="marketplace-visually-hidden">Search plugins</span>
+      <HugeiconsIcon icon={Search01Icon} aria-hidden />
+      <input
+        ref={searchInput}
+        type="search"
+        value={query}
+        onChange={(event) => onQueryChange(event.currentTarget.value)}
+        placeholder="Search plugins"
+      />
+      {query.length > 0 ? (
+        <button
+          type="button"
+          aria-label="Clear search"
+          onClick={() => onQueryChange("")}
+        >
+          <HugeiconsIcon icon={Cancel01Icon} aria-hidden />
+        </button>
+      ) : (
+        <kbd>/</kbd>
+      )}
+    </label>
+  );
+  const sortOptions: Array<{
+    label: string;
+    value: MarketplaceSort | undefined;
+  }> = [
+    { label: "Featured", value: undefined },
+    { label: "New", value: "recently-added" },
+    { label: "Popular", value: "most-installed" },
+  ];
   return (
     <>
-      <div className="marketplace-toolbar">
-        <label className="marketplace-search">
-          <span className="marketplace-visually-hidden">Search plugins</span>
-          <HugeiconsIcon icon={Search01Icon} aria-hidden />
-          <input
-            type="search"
-            value={query}
-            onChange={(event) => onQueryChange(event.currentTarget.value)}
-            placeholder="Search plugins"
-          />
-          {query.length > 0 ? (
-            <button
-              type="button"
-              aria-label="Clear search"
-              onClick={() => onQueryChange("")}
-            >
-              <HugeiconsIcon icon={Cancel01Icon} aria-hidden />
-            </button>
-          ) : null}
-        </label>
-        <label className="marketplace-select">
-          <span className="marketplace-visually-hidden">Sort plugins</span>
-          <select
-            value={state.sort ?? ""}
-            onChange={(event) => {
-              const value = event.currentTarget.value;
-              onStateChange({
-                categories: state.categories,
-                sort:
-                  value === "recently-added" || value === "most-installed"
-                    ? value
-                    : undefined,
-              });
-            }}
+      {heroCount === undefined ? (
+        <div className="marketplace-author-search">{search}</div>
+      ) : (
+        <header className="marketplace-hero">
+          <span className="marketplace-eyebrow">
+            <strong>{heroCount}</strong>
+            plugins from bb and its community
+          </span>
+          <h1>Make bb yours.</h1>
+          <p>
+            Themes, providers, workflows, and tools, installed with one command.
+          </p>
+          <div className="marketplace-hero-search">{search}</div>
+        </header>
+      )}
+      <div className="marketplace-controls">
+        <div className="marketplace-category-filters" aria-label="Categories">
+          <button
+            type="button"
+            className={
+              state.categories.length === 0 ? "is-selected" : undefined
+            }
+            aria-pressed={state.categories.length === 0}
+            onClick={() => onStateChange({ categories: [], sort: state.sort })}
           >
-            <option value="">Featured</option>
-            <option value="recently-added">Recently added</option>
-            <option value="most-installed">Most installed</option>
-          </select>
-        </label>
-      </div>
-      <div className="marketplace-category-filters" aria-label="Categories">
-        <span>
-          <HugeiconsIcon icon={SlidersHorizontalIcon} aria-hidden />
-          Categories
-        </span>
-        <div>
+            All{" "}
+            <span>
+              {heroCount ??
+                options.reduce((sum, option) => sum + option.count, 0)}
+            </span>
+          </button>
           {options.map((option) => {
             const selected = state.categories.includes(option.id);
             return (
@@ -465,21 +563,34 @@ function MarketplaceToolbar({
                 aria-pressed={selected}
                 onClick={() => toggleCategory(option.id)}
               >
-                {option.label}
+                {option.label} <span>{option.count}</span>
               </button>
             );
           })}
-          {activeOptions.length > 0 ? (
+        </div>
+        <div
+          className="marketplace-sort-control"
+          role="group"
+          aria-label="Sort plugins"
+        >
+          {sortOptions.map((option) => (
             <button
+              key={option.label}
               type="button"
-              className="marketplace-clear-filters"
+              className={
+                state.sort === option.value ? "is-selected" : undefined
+              }
+              aria-pressed={state.sort === option.value}
               onClick={() =>
-                onStateChange({ categories: [], sort: state.sort })
+                onStateChange({
+                  categories: state.categories,
+                  sort: option.value,
+                })
               }
             >
-              Clear categories
+              {option.label}
             </button>
-          ) : null}
+          ))}
         </div>
       </div>
     </>
@@ -493,6 +604,7 @@ function MarketplaceBrowser({
   state,
   onStateChange,
   analyticsAuthor,
+  heroCount,
 }: {
   manifest: MarketplaceV2Manifest;
   entries: readonly MarketplaceV2Entry[];
@@ -500,6 +612,7 @@ function MarketplaceBrowser({
   state: MarketplaceIndexState;
   onStateChange: (state: MarketplaceIndexState) => void;
   analyticsAuthor?: string;
+  heroCount?: number;
 }) {
   const [query, setQuery] = useState("");
   const options = marketplaceCategoryOptions(manifest, entries);
@@ -533,6 +646,7 @@ function MarketplaceBrowser({
         state={{ categories: activeCategories, sort: state.sort }}
         onQueryChange={setQuery}
         onStateChange={onStateChange}
+        heroCount={heroCount}
       />
       <div className="marketplace-results" aria-live="polite">
         {displayed.length === 0 ? (
@@ -568,7 +682,12 @@ function MarketplaceBrowser({
               manifest={manifest}
               shelf={shelf}
               stats={stats}
-              onSelect={(category) => onStateChange({ categories: [category] })}
+              onSelect={(category, sort) =>
+                onStateChange({
+                  categories: category === undefined ? [] : [category],
+                  sort,
+                })
+              }
             />
           ))
         )}
@@ -610,16 +729,13 @@ export function PublicMarketplacePage({
     <div className="wrap plugin-pages-wrap">
       <SiteNav current="plugins" />
       <main className="marketplace-main">
-        <header className="plugin-page-head marketplace-page-head">
-          <h1>Plugin Marketplace</h1>
-          <p>Find plugins from bb and its community.</p>
-        </header>
         <MarketplaceBrowser
           manifest={manifest}
           entries={manifest.plugins}
           stats={stats}
           state={state}
           onStateChange={onStateChange}
+          heroCount={manifest.plugins.length}
         />
       </main>
       <SiteFooter />
@@ -642,7 +758,6 @@ function InstallCommand({ entry }: { entry: MarketplaceV2Entry }) {
   };
   return (
     <div className="marketplace-install-command">
-      <span>Install this plugin</span>
       <div>
         <code>{command}</code>
         <button
@@ -650,10 +765,6 @@ function InstallCommand({ entry }: { entry: MarketplaceV2Entry }) {
           onClick={() => void copy()}
           aria-label={`Copy ${command}`}
         >
-          <HugeiconsIcon
-            icon={status === "copied" ? Tick02Icon : Copy01Icon}
-            aria-hidden
-          />
           {status === "copied"
             ? "Copied"
             : status === "failed"
@@ -661,12 +772,12 @@ function InstallCommand({ entry }: { entry: MarketplaceV2Entry }) {
               : "Copy"}
         </button>
       </div>
-      <MarketplaceLink
-        className="btn btn-ghost marketplace-get-bb"
-        href="/download/macos"
-      >
-        Get bb
-      </MarketplaceLink>
+      <p>
+        Runs in bb&apos;s terminal or any shell with the bb CLI. New here?{" "}
+        <MarketplaceLink href="/download/macos">
+          Get bb for macOS
+        </MarketplaceLink>
+      </p>
     </div>
   );
 }
@@ -704,6 +815,47 @@ function MoreFromAuthor({
   );
 }
 
+function MoreInCategory({
+  manifest,
+  entry,
+  stats,
+}: {
+  manifest: MarketplaceV2Manifest;
+  entry: MarketplaceV2Entry;
+  stats: MarketplaceStats | null;
+}) {
+  const entries = moreInMarketplaceCategory(manifest, entry, stats);
+  if (entries.length === 0) return null;
+  const category = resolveMarketplaceCategory(manifest, entry);
+  const categoryId = category?.id ?? UNCATEGORIZED_CATEGORY_ID;
+  const categoryName = category?.displayName ?? "More plugins";
+  return (
+    <section className="marketplace-detail-related">
+      <div className="marketplace-section-head">
+        <div>
+          <div>
+            <h2>More in {categoryName}</h2>
+            <span>{entries.length}</span>
+          </div>
+          {category?.description === undefined ? null : (
+            <p>{category.description}</p>
+          )}
+        </div>
+        <MarketplaceLink
+          href={`/marketplace?category=${encodeURIComponent(categoryId)}`}
+        >
+          View all <span aria-hidden>→</span>
+        </MarketplaceLink>
+      </div>
+      <PluginGrid
+        manifest={manifest}
+        entries={entries.slice(0, 3)}
+        stats={stats}
+      />
+    </section>
+  );
+}
+
 export function PublicMarketplaceDetailPage({
   manifest,
   entry,
@@ -720,10 +872,14 @@ export function PublicMarketplaceDetailPage({
       properties: { plugin_id: entry.id },
     });
   }, [entry.id]);
-  const category = categoryLabel(manifest, entry);
+  const categoryDefinition = resolveMarketplaceCategory(manifest, entry);
+  const category = categoryDefinition?.displayName ?? "More plugins";
+  const categoryId = categoryDefinition?.id ?? UNCATEGORIZED_CATEGORY_ID;
   const installs = marketplaceEntryInstalls(entry, stats);
   const published = formatMarketplaceDate(entry.publishedAt);
   const repository = marketplaceRepositoryUrl(entry);
+  const repositoryLabel = marketplaceRepositoryLabel(entry);
+  const installSource = marketplaceInstallSource(entry);
   const authorPath =
     entry.author.github === undefined
       ? undefined
@@ -732,83 +888,118 @@ export function PublicMarketplaceDetailPage({
     <div className="wrap plugin-pages-wrap">
       <SiteNav current="plugins" />
       <main className="marketplace-detail-main">
-        <MarketplaceLink className="marketplace-back-link" href="/marketplace">
-          Marketplace
-        </MarketplaceLink>
+        <nav className="marketplace-breadcrumbs" aria-label="Breadcrumb">
+          <MarketplaceLink href="/marketplace">Marketplace</MarketplaceLink>
+          <span aria-hidden>/</span>
+          <MarketplaceLink
+            href={`/marketplace?category=${encodeURIComponent(categoryId)}`}
+          >
+            {category}
+          </MarketplaceLink>
+          <span aria-hidden>/</span>
+          <strong>{entry.displayName}</strong>
+        </nav>
+        <header className="marketplace-detail-head">
+          <PluginArtwork entry={entry} large />
+          <div className="marketplace-detail-identity">
+            <h1>{entry.displayName}</h1>
+            <p>{entry.description}</p>
+            <div className="marketplace-detail-facts">
+              {authorPath === undefined ? (
+                <span className="marketplace-detail-author">
+                  <AuthorAvatar author={entry.author} />
+                  {entry.author.name}
+                </span>
+              ) : (
+                <MarketplaceLink
+                  className="marketplace-detail-author"
+                  href={authorPath}
+                >
+                  <AuthorAvatar author={entry.author} />
+                  {entry.author.name}
+                </MarketplaceLink>
+              )}
+              <MarketplaceLink
+                className="marketplace-category-pill"
+                href={`/marketplace?category=${encodeURIComponent(categoryId)}`}
+              >
+                {category}
+              </MarketplaceLink>
+              <span className={installs === undefined ? "is-new" : undefined}>
+                {installs === undefined
+                  ? "New"
+                  : `${installs.toLocaleString("en-US")} ${installs === 1 ? "install" : "installs"}`}
+              </span>
+              {published === null ? null : <span>Listed {published}</span>}
+            </div>
+          </div>
+          <InstallCommand entry={entry} />
+        </header>
         <div className="marketplace-detail-layout">
           <article className="marketplace-detail-content">
-            <header className="marketplace-detail-head">
-              <PluginArtwork entry={entry} large />
-              <div>
-                <span className="marketplace-category-pill">{category}</span>
-                <h1>{entry.displayName}</h1>
-                <p>
-                  By{" "}
-                  {authorPath === undefined ? (
-                    entry.author.name
-                  ) : (
-                    <MarketplaceLink href={authorPath}>
-                      {entry.author.name}
-                      <HugeiconsIcon icon={GithubIcon} aria-hidden />
-                    </MarketplaceLink>
-                  )}
-                </p>
+            {entry.screenshots.length === 0 ? null : (
+              <div className="marketplace-screenshots">
+                {entry.screenshots.map((screenshot, index) => (
+                  <img
+                    key={screenshot}
+                    src={marketplaceAssetUrl(screenshot)}
+                    alt={`${entry.displayName} screenshot ${index + 1}`}
+                    referrerPolicy="no-referrer"
+                    loading="lazy"
+                  />
+                ))}
               </div>
-            </header>
-            <p className="marketplace-detail-description">
-              {entry.description}
-            </p>
+            )}
+            <section className="marketplace-detail-section marketplace-about">
+              <h2>About</h2>
+              <p>{entry.description}</p>
+            </section>
+            <MoreFromAuthor manifest={manifest} entry={entry} stats={stats} />
           </article>
           <aside className="marketplace-detail-aside">
-            <InstallCommand entry={entry} />
-            <dl>
-              <div>
-                <dt>Category</dt>
-                <dd>{category}</dd>
-              </div>
-              {installs === undefined ? null : (
+            <section className="marketplace-aside-block">
+              <h2>Details</h2>
+              <dl>
                 <div>
-                  <dt>Installs</dt>
-                  <dd>{installs.toLocaleString("en-US")}</dd>
+                  <dt>Source</dt>
+                  <dd>
+                    <a href={repository} target="_blank" rel="noreferrer">
+                      {repositoryLabel}
+                    </a>
+                  </dd>
                 </div>
-              )}
-              {published === null ? null : (
+                <div>
+                  <dt>Install from</dt>
+                  <dd>{installSource}</dd>
+                </div>
+                <div>
+                  <dt>Updates</dt>
+                  <dd>Manual, staged</dd>
+                </div>
                 <div>
                   <dt>Listed</dt>
-                  <dd>{published}</dd>
+                  <dd>{published ?? "Not listed"}</dd>
                 </div>
-              )}
-            </dl>
-            <a
-              className="marketplace-source-link"
-              href={repository}
-              target="_blank"
-              rel="noreferrer"
-            >
-              <HugeiconsIcon icon={LinkSquare01Icon} aria-hidden />
-              View source
-            </a>
+              </dl>
+            </section>
+            <section className="marketplace-aside-block marketplace-trust">
+              <h2>Trust</h2>
+              <p>
+                <HugeiconsIcon icon={Tick02Icon} aria-hidden />
+                Reviewed listing in the bb-community registry
+              </p>
+              <p>
+                <HugeiconsIcon icon={LockIcon} aria-hidden />
+                Installs stay pinned; updates are opt-in
+              </p>
+              <p>
+                <HugeiconsIcon icon={Clock01Icon} aria-hidden />
+                Install count from opt-out telemetry
+              </p>
+            </section>
           </aside>
-          <div className="marketplace-detail-sections">
-            {entry.screenshots.length === 0 ? null : (
-              <section className="marketplace-detail-section">
-                <h2>Screenshots</h2>
-                <div className="marketplace-screenshots">
-                  {entry.screenshots.map((screenshot, index) => (
-                    <img
-                      key={screenshot}
-                      src={marketplaceAssetUrl(screenshot)}
-                      alt={`${entry.displayName} screenshot ${index + 1}`}
-                      referrerPolicy="no-referrer"
-                      loading="lazy"
-                    />
-                  ))}
-                </div>
-              </section>
-            )}
-            <MoreFromAuthor manifest={manifest} entry={entry} stats={stats} />
-          </div>
         </div>
+        <MoreInCategory manifest={manifest} entry={entry} stats={stats} />
       </main>
       <SiteFooter />
     </div>
@@ -834,16 +1025,30 @@ export function PublicMarketplaceAuthorPage({
     <div className="wrap plugin-pages-wrap">
       <SiteNav current="plugins" />
       <main className="marketplace-main">
-        <MarketplaceLink
-          className="marketplace-back-link marketplace-author-back"
-          href="/marketplace"
-        >
-          Marketplace
-        </MarketplaceLink>
-        <header className="plugin-page-head marketplace-author-head">
-          <span>Plugin author</span>
-          <h1>{author.name}</h1>
-          <p>{entries.length} plugins in the Marketplace.</p>
+        <nav className="marketplace-breadcrumbs" aria-label="Breadcrumb">
+          <MarketplaceLink href="/marketplace">Marketplace</MarketplaceLink>
+          <span aria-hidden>/</span>
+          <strong>{author.name}</strong>
+        </nav>
+        <header className="marketplace-author-head">
+          <AuthorAvatar author={author} large />
+          <div>
+            <h1>{author.name}</h1>
+            <p>
+              {entries.length} {entries.length === 1 ? "plugin" : "plugins"} in
+              the Marketplace
+            </p>
+          </div>
+          {author.github === undefined ? null : (
+            <a
+              href={`https://github.com/${encodeURIComponent(author.github)}`}
+              target="_blank"
+              rel="noreferrer"
+            >
+              <HugeiconsIcon icon={GithubIcon} aria-hidden />
+              {author.github}
+            </a>
+          )}
         </header>
         <MarketplaceBrowser
           manifest={manifest}

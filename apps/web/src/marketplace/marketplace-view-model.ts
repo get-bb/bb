@@ -29,6 +29,7 @@ export interface MarketplaceShelf {
 export interface MarketplaceCategoryOption {
   id: string;
   label: string;
+  count: number;
 }
 
 export function resolveMarketplaceCategory(
@@ -102,7 +103,11 @@ export function marketplaceCategoryOptions(
 ): MarketplaceCategoryOption[] {
   return marketplaceShelves(manifest, entries)
     .filter((shelf) => shelf.kind !== "collection")
-    .map((shelf) => ({ id: shelf.id, label: shelf.label }));
+    .map((shelf) => ({
+      id: shelf.id,
+      label: shelf.label,
+      count: shelf.entries.length,
+    }));
 }
 
 export function filterMarketplaceEntries(
@@ -212,6 +217,22 @@ export function marketplaceRepositoryUrl(entry: MarketplaceV2Entry): string {
   return entry.source.git.url.replace(/\.git$/u, "");
 }
 
+export function marketplaceRepositoryLabel(entry: MarketplaceV2Entry): string {
+  const repository = new URL(marketplaceRepositoryUrl(entry));
+  const path = repository.pathname.replace(/^\/|\/$/gu, "");
+  return path.length === 0 ? repository.hostname : path;
+}
+
+export function marketplaceInstallSource(entry: MarketplaceV2Entry): string {
+  if ("npm" in entry.source) {
+    return `npm, ${entry.source.npm.range ?? entry.source.npm.tag ?? "latest"}`;
+  }
+  if ("range" in entry.source.git) {
+    return `git tag, ${entry.source.git.range}`;
+  }
+  return `git ref, ${entry.source.git.ref}`;
+}
+
 export function marketplaceAuthorEntries(
   manifest: MarketplaceV2Manifest,
   github: string,
@@ -237,6 +258,19 @@ export function moreFromMarketplaceAuthor(
       return candidate.author.name.toLocaleLowerCase() === name;
     })
     .slice(0, 4);
+}
+
+export function moreInMarketplaceCategory(
+  manifest: MarketplaceV2Manifest,
+  entry: MarketplaceV2Entry,
+  stats: MarketplaceStats | null,
+): MarketplaceV2Entry[] {
+  const categoryId = resolveMarketplaceCategory(manifest, entry)?.id;
+  const categoryEntries = manifest.plugins.filter((candidate) => {
+    if (candidate.id === entry.id) return false;
+    return resolveMarketplaceCategory(manifest, candidate)?.id === categoryId;
+  });
+  return sortMarketplaceEntries(categoryEntries, "most-installed", stats);
 }
 
 export function formatInstalls(value: number | undefined): string | null {

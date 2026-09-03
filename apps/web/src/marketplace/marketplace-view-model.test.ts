@@ -8,8 +8,12 @@ import {
   filterMarketplaceCategories,
   filterMarketplaceEntries,
   marketplaceAuthorEntries,
+  marketplaceCategoryOptions,
   marketplaceInstallCommand,
+  marketplaceInstallSource,
+  marketplaceRepositoryLabel,
   marketplaceShelves,
+  moreInMarketplaceCategory,
   parseMarketplaceCategories,
   sortMarketplaceEntries,
 } from "./marketplace-view-model.js";
@@ -94,6 +98,19 @@ describe("public marketplace view model", () => {
     ).toEqual(["prompt-library", "orphan-tool"]);
   });
 
+  it("adds category counts in document order", () => {
+    expect(
+      marketplaceCategoryOptions(
+        MARKETPLACE_V2_FIXTURE,
+        MARKETPLACE_V2_FIXTURE.plugins,
+      ),
+    ).toEqual([
+      { id: "thread-content", label: "Thread Content", count: 1 },
+      { id: "code-and-reviews", label: "Code & Reviews", count: 2 },
+      { id: "uncategorized", label: "More plugins", count: 1 },
+    ]);
+  });
+
   it("parses repeatable category parameters and finds an author", () => {
     expect(
       parseMarketplaceCategories([
@@ -117,5 +134,42 @@ describe("public marketplace view model", () => {
     expect(marketplaceInstallCommand("prompt-library")).toBe(
       "bb plugin install prompt-library",
     );
+  });
+
+  it("builds repository and install source labels", () => {
+    const npmEntry = MARKETPLACE_V2_FIXTURE.plugins[0];
+    const gitEntry = MARKETPLACE_V2_FIXTURE.plugins[1];
+    if (npmEntry === undefined || gitEntry === undefined) {
+      throw new Error("The fixture needs two plugins");
+    }
+    expect(marketplaceRepositoryLabel(npmEntry)).toBe(
+      "package/@get-bb/plugin-prompt-library",
+    );
+    expect(marketplaceInstallSource(npmEntry)).toBe("npm, ^1.2.0");
+    expect(marketplaceRepositoryLabel(gitEntry)).toBe("acme/bb-plugins");
+    expect(marketplaceInstallSource(gitEntry)).toBe("git tag, >=1.0.0 <2.0.0");
+  });
+
+  it("orders category recommendations by install count", () => {
+    const current = MARKETPLACE_V2_FIXTURE.plugins[1];
+    const prompt = MARKETPLACE_V2_FIXTURE.plugins[0];
+    if (current === undefined || prompt === undefined) {
+      throw new Error("The fixture needs two plugins");
+    }
+    const manifest = {
+      ...MARKETPLACE_V2_FIXTURE,
+      plugins: [
+        current,
+        { ...prompt, category: "code-and-reviews" },
+        ...MARKETPLACE_V2_FIXTURE.plugins.slice(2),
+      ],
+    };
+    expect(
+      moreInMarketplaceCategory(
+        manifest,
+        current,
+        MARKETPLACE_STATS_FIXTURE,
+      ).map((entry) => entry.id),
+    ).toEqual(["prompt-library", "review-notes"]);
   });
 });
