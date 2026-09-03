@@ -177,7 +177,7 @@ function ReleaseEntry({ release }: { release: Release }) {
 function ChangelogPage() {
   return (
     <div className="wrap">
-      <SiteNav current="changelog" />
+      <SiteNav />
 
       <header className="page-head">
         <h1>Changelog</h1>

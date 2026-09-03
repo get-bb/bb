@@ -214,12 +214,18 @@ code,
    html[data-theme-preference], stamped pre-paint by THEME_INIT, picks one;
    no attribute (no JS) means the default, system. The button opens a
    Light / Dark / System menu anchored to its right edge. */
+.nav-icon-buttons {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
 .theme-menu-wrap {
   position: relative;
   display: inline-flex;
 }
 
-.theme-toggle {
+.nav-icon-button {
   display: inline-grid;
   place-items: center;
   width: 30px;
@@ -232,17 +238,17 @@ code,
   cursor: pointer;
 }
 
-.theme-toggle:hover {
+.nav-icon-button:hover {
   background: var(--state-hover);
   color: var(--ink);
 }
 
-.theme-toggle:focus-visible {
+.nav-icon-button:focus-visible {
   outline: 2px solid var(--ink);
   outline-offset: 2px;
 }
 
-.theme-toggle svg {
+.nav-icon-button svg {
   width: 17px;
   height: 17px;
 }

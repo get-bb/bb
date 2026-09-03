@@ -1,5 +1,6 @@
 import {
   ComputerIcon,
+  GithubIcon,
   Moon02Icon,
   Sun03Icon,
   Tick02Icon,
@@ -18,7 +19,7 @@ import {
 } from "../lib/theme";
 import { DiscordLink, DownloadLink, GitHubLink, XLink } from "./cta";
 
-type SiteNavPage = "blog" | "changelog" | "plugins";
+type SiteNavPage = "blog" | "plugins";
 
 const THEME_OPTIONS: ReadonlyArray<{
   value: ThemePreference;
@@ -89,7 +90,7 @@ function ThemeMenu() {
       <button
         ref={buttonRef}
         type="button"
-        className="theme-toggle"
+        className="nav-icon-button theme-toggle"
         aria-label="Theme"
         aria-haspopup="menu"
         aria-expanded={open}
@@ -143,16 +144,17 @@ export function SiteNav({ current }: { current?: SiteNavPage }) {
         >
           Blog
         </a>
-        <a
-          className={current === "changelog" ? "nav-current" : undefined}
-          href="/changelog"
-        >
-          Changelog
-        </a>
-        <GitHubLink placement="nav">GitHub</GitHubLink>
         <a href={DASHBOARD_PATH}>Sign in</a>
-        {}
-        <ThemeMenu />
+        <div className="nav-icon-buttons">
+          <GitHubLink
+            placement="nav"
+            className="nav-icon-button"
+            aria-label="GitHub"
+          >
+            <HugeiconsIcon icon={GithubIcon} />
+          </GitHubLink>
+          <ThemeMenu />
+        </div>
         <DownloadLink placement="nav" className="btn btn-primary btn-sm">
           Download for macOS
         </DownloadLink>
