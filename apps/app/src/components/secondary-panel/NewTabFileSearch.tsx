@@ -8,6 +8,12 @@ import {
   type KeyboardEvent,
   type ReactNode,
 } from "react";
+import { useAtom } from "jotai";
+import { DndContext, type DragEndEvent } from "@dnd-kit/core";
+import {
+  SortableContext,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
 import { directoryFromPath } from "@bb/thread-view";
 import {
   COARSE_POINTER_COMPACT_ICON_SIZE_CLASS,
@@ -48,6 +54,13 @@ import {
   LauncherRowTrailing,
   LauncherSectionHeader,
 } from "./launcherRow";
+import {
+  useSidebarSortable,
+  type SidebarSortableDragBindings,
+} from "@/components/sidebar/sortableMotion";
+import { useSidebarReorderDnd } from "@/components/sidebar/useSidebarReorderDnd";
+import { arrangeByStoredOrder, reorderStoredOrder } from "@/lib/stored-order";
+import { newTabActionOrderAtom } from "./newTabActionsAtoms";
 import { useAppCommandShortcut } from "@/components/commands/AppCommandProvider";
 import { AppCommandShortcutHint } from "@/components/commands/AppCommandShortcutHint";
 import type { AppShortcutPresentation } from "@/lib/app-keybindings";
@@ -75,6 +88,24 @@ interface NewTabActionsProps {
   startTerminalDisabled?: boolean;
   startTerminalTrailing?: ReactNode;
   pluginActions?: readonly PluginPanelActionEntry[];
+}
+
+type NewTabActionDescriptor =
+  | {
+      kind: "builtin";
+      id: string;
+      iconName: IconName;
+      label: string;
+      disabled: boolean;
+      shortcut: AppShortcutPresentation | null;
+      trailing: ReactNode;
+      onSelect: () => void;
+    }
+  | { kind: "plugin"; id: string; action: PluginPanelActionEntry };
+
+interface SortableNewTabActionProps {
+  descriptor: NewTabActionDescriptor;
+  reorderDisabled: boolean;
 }
 
 interface FileResultRowProps {
@@ -126,6 +157,7 @@ interface GroupFileSearchSectionsArgs {
 
 interface LauncherTileProps {
   ariaKeyshortcuts?: string;
+  dragBindings?: SidebarSortableDragBindings;
   id: string;
   isActive: boolean;
   variant?: LauncherTileVariant;
@@ -136,15 +168,16 @@ interface LauncherTileProps {
 }
 
 interface NewTabActionTileProps {
-  disabled?: boolean;
+  disabled: boolean;
+  dragBindings?: SidebarSortableDragBindings;
   id: string;
   iconName: IconName;
   label: string;
   isActive: boolean;
   onActivate: () => void;
   onSelect: () => void;
-  shortcut?: AppShortcutPresentation;
-  trailing?: ReactNode;
+  shortcut: AppShortcutPresentation | null;
+  trailing: ReactNode;
 }
 
 interface ShowMoreToggleProps {
@@ -269,6 +302,7 @@ function FileSearchMessage({
 
 function LauncherTile({
   ariaKeyshortcuts,
+  dragBindings,
   id,
   isActive,
   variant = "result",
@@ -281,6 +315,8 @@ function LauncherTile({
     variant === "action"
       ? LAUNCHER_ACTION_ROW_BASE_CLASS
       : LAUNCHER_ROW_BASE_CLASS;
+  const { onKeyDown: _keyboardDragActivator, ...pointerDragListeners } =
+    dragBindings?.listeners ?? {};
 
   return (
     <button
@@ -289,6 +325,9 @@ function LauncherTile({
       role={variant === "result" ? "option" : undefined}
       aria-selected={variant === "result" ? isActive : undefined}
       aria-keyshortcuts={ariaKeyshortcuts}
+      ref={dragBindings?.setActivatorNodeRef}
+      {...dragBindings?.attributes}
+      {...pointerDragListeners}
       onClick={onSelect}
       onMouseEnter={onActivate}
       title={title}
@@ -304,7 +343,8 @@ function LauncherTile({
 }
 
 function NewTabActionTile({
-  disabled = false,
+  disabled,
+  dragBindings,
   id,
   iconName,
   label,
@@ -314,7 +354,10 @@ function NewTabActionTile({
   shortcut,
   trailing,
 }: NewTabActionTileProps) {
-  if (trailing !== undefined) {
+  const { onKeyDown: _keyboardDragActivator, ...pointerDragListeners } =
+    dragBindings?.listeners ?? {};
+
+  if (trailing !== null) {
     return (
       <div
         id={id}
@@ -329,6 +372,9 @@ function NewTabActionTile({
           aria-label={label}
           aria-keyshortcuts={shortcut?.ariaKeyshortcuts}
           disabled={disabled}
+          ref={dragBindings?.setActivatorNodeRef}
+          {...dragBindings?.attributes}
+          {...pointerDragListeners}
           onClick={onSelect}
           onMouseEnter={onActivate}
           className="absolute inset-0 rounded focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-default"
@@ -355,6 +401,7 @@ function NewTabActionTile({
       id={id}
       isActive={isActive}
       ariaKeyshortcuts={shortcut?.ariaKeyshortcuts}
+      dragBindings={dragBindings}
       variant="action"
       onActivate={onActivate}
       onSelect={onSelect}
@@ -783,10 +830,11 @@ export function NewTabActions({
   onOpenBrowser,
   onStartTerminal,
   pluginActions,
-  startTerminalDisabled,
+  startTerminalDisabled = false,
   startTerminalTrailing,
 }: NewTabActionsProps) {
   const terminalShortcut = useAppCommandShortcut("terminal.open");
+  const [storedOrder, setStoredOrder] = useAtom(newTabActionOrderAtom);
   const showOpenBrowserEntry =
     onOpenBrowser !== undefined && isDesktopBrowserAvailable();
   const showStartTerminalEntry = onStartTerminal !== undefined;
@@ -799,69 +847,172 @@ export function NewTabActions({
     onStartTerminal?.();
   }, [onStartTerminal]);
 
-  const hasOpenActions =
-    showOpenBrowserEntry ||
-    showStartTerminalEntry ||
-    (pluginActions !== undefined && pluginActions.length > 0);
+  const descriptors = useMemo<NewTabActionDescriptor[]>(
+    () => [
+      ...(showOpenBrowserEntry
+        ? [
+            {
+              kind: "builtin" as const,
+              id: OPEN_BROWSER_ENTRY_ID,
+              iconName: "Globe" as const,
+              label: "Open browser",
+              disabled: false,
+              shortcut: null,
+              trailing: null,
+              onSelect: handleOpenBrowser,
+            },
+          ]
+        : []),
+      ...(showStartTerminalEntry
+        ? [
+            {
+              kind: "builtin" as const,
+              id: START_TERMINAL_ENTRY_ID,
+              iconName: "Terminal" as const,
+              label: "Start terminal",
+              disabled: startTerminalDisabled,
+              shortcut: terminalShortcut,
+              trailing: startTerminalTrailing ?? null,
+              onSelect: handleStartTerminal,
+            },
+          ]
+        : []),
+      ...(pluginActions ?? []).map((action) => ({
+        kind: "plugin" as const,
+        id: action.id,
+        action,
+      })),
+    ],
+    [
+      handleOpenBrowser,
+      handleStartTerminal,
+      pluginActions,
+      showOpenBrowserEntry,
+      showStartTerminalEntry,
+      startTerminalDisabled,
+      startTerminalTrailing,
+      terminalShortcut,
+    ],
+  );
 
-  if (!hasOpenActions) {
+  const { ordered, normalizedOrder } = useMemo(
+    () =>
+      arrangeByStoredOrder({
+        items: descriptors,
+        getId: (descriptor) => descriptor.id,
+        storedOrder,
+      }),
+    [descriptors, storedOrder],
+  );
+  const orderedIds = useMemo(
+    () => ordered.map((descriptor) => descriptor.id),
+    [ordered],
+  );
+
+  const handleDragEnd = useCallback(
+    (event: DragEndEvent) => {
+      if (
+        !event.over ||
+        typeof event.active.id !== "string" ||
+        typeof event.over.id !== "string"
+      ) {
+        return;
+      }
+      const nextOrder = reorderStoredOrder({
+        activeId: event.active.id,
+        overId: event.over.id,
+        order: normalizedOrder,
+        visibleIds: orderedIds,
+      });
+      if (nextOrder) setStoredOrder(nextOrder);
+    },
+    [normalizedOrder, orderedIds, setStoredOrder],
+  );
+  const { dndContextProps, onClickCapture } = useSidebarReorderDnd({
+    onDragEnd: handleDragEnd,
+  });
+
+  if (ordered.length === 0) {
     return null;
   }
 
   return (
-    <div data-testid="new-tab-actions" className="flex min-w-0 flex-col">
+    <div
+      data-testid="new-tab-actions"
+      className="flex min-w-0 flex-col"
+      onClickCapture={onClickCapture}
+    >
       <section>
         <LauncherSectionHeader
           label={FILE_SEARCH_SECTION_LABELS.actions}
           className="pb-1"
         />
-        <div className="flex flex-col gap-px">
-          {showOpenBrowserEntry ? (
-            <NewTabActionTile
-              id={OPEN_BROWSER_ENTRY_ID}
-              iconName="Globe"
-              label="Open browser"
-              isActive={false}
-              onActivate={() => undefined}
-              onSelect={handleOpenBrowser}
-            />
-          ) : null}
-          {showStartTerminalEntry ? (
-            <NewTabActionTile
-              disabled={startTerminalDisabled}
-              id={START_TERMINAL_ENTRY_ID}
-              iconName="Terminal"
-              label="Start terminal"
-              isActive={false}
-              onActivate={() => undefined}
-              onSelect={handleStartTerminal}
-              shortcut={terminalShortcut ?? undefined}
-              trailing={startTerminalTrailing}
-            />
-          ) : null}
-          {pluginActions?.map((action) => (
-            <LauncherTile
-              key={action.id}
-              id={action.id}
-              isActive={false}
-              variant="action"
-              onActivate={() => undefined}
-              onSelect={action.onSelect}
-            >
-              <span className={LAUNCHER_ROW_ICON_CLASS}>
-                <PluginIcon
-                  pluginId={action.pluginId}
-                  icon={action.icon}
-                  className={COARSE_POINTER_COMPACT_ICON_SIZE_CLASS}
+        <DndContext {...dndContextProps}>
+          <SortableContext
+            items={orderedIds}
+            strategy={verticalListSortingStrategy}
+          >
+            <div className="flex flex-col gap-px">
+              {ordered.map((descriptor) => (
+                <SortableNewTabAction
+                  key={descriptor.id}
+                  descriptor={descriptor}
+                  reorderDisabled={ordered.length < 2}
                 />
-              </span>
-              <span className="min-w-0 flex-1 truncate text-foreground">
-                {action.title}
-              </span>
-            </LauncherTile>
-          ))}
-        </div>
+              ))}
+            </div>
+          </SortableContext>
+        </DndContext>
       </section>
+    </div>
+  );
+}
+
+function SortableNewTabAction({
+  descriptor,
+  reorderDisabled,
+}: SortableNewTabActionProps) {
+  const { dragBindings, setNodeRef, style } = useSidebarSortable({
+    id: descriptor.id,
+    disabled: reorderDisabled,
+  });
+
+  return (
+    <div ref={setNodeRef} style={style}>
+      {descriptor.kind === "builtin" ? (
+        <NewTabActionTile
+          disabled={descriptor.disabled}
+          dragBindings={dragBindings}
+          id={descriptor.id}
+          iconName={descriptor.iconName}
+          label={descriptor.label}
+          isActive={false}
+          onActivate={() => undefined}
+          onSelect={descriptor.onSelect}
+          shortcut={descriptor.shortcut}
+          trailing={descriptor.trailing}
+        />
+      ) : (
+        <LauncherTile
+          dragBindings={dragBindings}
+          id={descriptor.id}
+          isActive={false}
+          variant="action"
+          onActivate={() => undefined}
+          onSelect={descriptor.action.onSelect}
+        >
+          <span className={LAUNCHER_ROW_ICON_CLASS}>
+            <PluginIcon
+              pluginId={descriptor.action.pluginId}
+              icon={descriptor.action.icon}
+              className={COARSE_POINTER_COMPACT_ICON_SIZE_CLASS}
+            />
+          </span>
+          <span className="min-w-0 flex-1 truncate text-foreground">
+            {descriptor.action.title}
+          </span>
+        </LauncherTile>
+      )}
     </div>
   );
 }
