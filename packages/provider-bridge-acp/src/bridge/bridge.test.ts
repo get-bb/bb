@@ -735,8 +735,8 @@ describe("acp bridge", () => {
       loggedAcpRequests(requestLog)
         .filter((request) => request.method === "session/set_config_option")
         .map((request) => request.params?.["value"])
-        .slice(0, 2),
-    ).toEqual(["grok-4.6", "grok-4.5"]);
+        .slice(0, 3),
+    ).toEqual(["default", "grok-4.6", "grok-4.5"]);
     expect(result.models.map((model) => model.id)).toEqual([
       "default",
       "composer-2.5",
@@ -1010,6 +1010,49 @@ describe("acp bridge", () => {
       { reasoningEffort: "medium", description: "medium" },
       { reasoningEffort: "high", description: "high" },
     ]);
+  });
+
+  it("probes the current model's reasoning ladder first under a tight discovery deadline", async () => {
+    vi.stubEnv("ACP_NATIVE_REASONING_DISCOVERY_TIMEOUT_MS", "500");
+    let modelListId: number;
+    try {
+      modelListId = sendModelList({
+        envVars: {
+          FAKE_ACP_MODEL_CONFIG: "1",
+          FAKE_ACP_THOUGHT_LEVEL_CONFIG: "1",
+          FAKE_ACP_MODEL_COUNT: "8",
+          FAKE_ACP_INITIAL_MODEL: "fake/gen-7",
+          FAKE_ACP_SET_CONFIG_MODEL_DELAY_MS: "150",
+        },
+      });
+
+      const result = (await waitForResponse(modelListId)).result as {
+        models: {
+          id: string;
+          supportedReasoningEfforts: { reasoningEffort: string }[];
+        }[];
+      };
+      const currentModel = result.models.find(
+        (model) => model.id === "fake/gen-7",
+      );
+      expect(currentModel?.supportedReasoningEfforts).toEqual([
+        { reasoningEffort: "low", description: "low" },
+        { reasoningEffort: "medium", description: "medium" },
+        { reasoningEffort: "high", description: "high" },
+      ]);
+      const unprobedNeighbor = result.models.find(
+        (model) => model.id === "fake/gen-2",
+      );
+      expect(unprobedNeighbor?.supportedReasoningEfforts).toEqual([
+        {
+          reasoningEffort: "medium",
+          description:
+            "Reasoning effort is managed by the connected ACP agent.",
+        },
+      ]);
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 
   it("keeps ACP-native discovered models when per-model reasoning discovery errors", async () => {

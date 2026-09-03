@@ -462,6 +462,14 @@ const ACP_DEFAULT_MODEL: AvailableModel = {
 
 const MODEL_LIST_TIMEOUT_MS = 30_000;
 const ACP_NATIVE_REASONING_DISCOVERY_TIMEOUT_MS = 5_000;
+function acpNativeReasoningDiscoveryTimeoutMs(): number {
+  const override = Number(
+    process.env.ACP_NATIVE_REASONING_DISCOVERY_TIMEOUT_MS,
+  );
+  return Number.isFinite(override) && override > 0
+    ? override
+    : ACP_NATIVE_REASONING_DISCOVERY_TIMEOUT_MS;
+}
 const AUTH_REQUIRED_MODEL_LIST_ERROR_MESSAGE =
   "ACP agent is not authenticated.";
 
@@ -911,6 +919,13 @@ async function discoverAcpNativeReasoningByModel(args: {
   );
   const modelsToProbe: typeof modelOptions = [];
   const addedModels = new Set<string>();
+  if (modelOption.currentValue !== undefined) {
+    const currentModel = modelByValue.get(modelOption.currentValue);
+    if (currentModel) {
+      modelsToProbe.push(currentModel);
+      addedModels.add(currentModel.value);
+    }
+  }
   for (const value of args.reasoningProbePriorityModelIds) {
     const model = modelByValue.get(value);
     if (model && !addedModels.has(model.value)) {
@@ -932,7 +947,7 @@ async function discoverAcpNativeReasoningByModel(args: {
     timeout = setTimeout(() => {
       args.connection.kill();
       resolve(supportByModel);
-    }, ACP_NATIVE_REASONING_DISCOVERY_TIMEOUT_MS);
+    }, acpNativeReasoningDiscoveryTimeoutMs());
   });
 
   try {

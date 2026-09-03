@@ -24,14 +24,20 @@
  * - FAKE_ACP_MODELS_FIELD=1  → advertise legacy ACP models state
  * - FAKE_ACP_THOUGHT_LEVEL_CONFIG=1
  *                            → advertise per-model effort configOptions
- * - FAKE_ACP_INITIAL_FAST    → set the initial Fast mode value
+ * - FAKE_ACP_INITIAL_MODEL    → set the initial selected model (the model
+ *                              config option's currentValue)
  * - FAKE_ACP_UNMAPPED_REASONING_CONFIG=1
  *                            → advertise unmapped thought_level values
  * - FAKE_ACP_ACCEPT_NATIVE_REASONING=1
  *                            → accept reasoning_effort config updates without
  *                              advertising a thought_level config option
  * - FAKE_ACP_SET_CONFIG_MODEL_ERROR=1
- *                            → fail session/set_config_option for model values
+ *                            → fail session/set_config_option for model
+ *                              values
+ * - FAKE_ACP_SET_CONFIG_MODEL_DELAY_MS=<ms>
+ *                            → answer model config probes only after this
+ *                              delay
+ * - FAKE_ACP_INITIAL_FAST    → set the initial Fast mode value
  * - FAKE_ACP_SET_CONFIG_FAST_ERROR=1
  *                            → fail session/set_config_option for Fast values
  * - FAKE_ACP_CURSOR_PARAMETERIZED_MODELS=1
@@ -84,7 +90,11 @@ const unmappedReasoningConfig =
 const acceptNativeReasoning =
   process.env.FAKE_ACP_ACCEPT_NATIVE_REASONING === "1";
 const setConfigModelError = process.env.FAKE_ACP_SET_CONFIG_MODEL_ERROR === "1";
+const initialModel = process.env.FAKE_ACP_INITIAL_MODEL;
 const setConfigFastError = process.env.FAKE_ACP_SET_CONFIG_FAST_ERROR === "1";
+const setConfigModelDelayMs = Number(
+  process.env.FAKE_ACP_SET_CONFIG_MODEL_DELAY_MS ?? "0",
+);
 const cursorParameterizedModels =
   process.env.FAKE_ACP_CURSOR_PARAMETERIZED_MODELS === "1";
 const requestLog = process.env.FAKE_ACP_REQUEST_LOG;
@@ -140,6 +150,13 @@ for (let i = fakeModels.length; i < modelCount; i += 1) {
   const value = `fake/gen-${i}`;
   fakeModels.push({ value, name: `Fake Gen ${i}` });
   effortsByModel.set(value, ["low", "medium", "high"]);
+}
+
+if (
+  initialModel !== undefined &&
+  fakeModels.some((model) => model.value === initialModel)
+) {
+  selectedModel = initialModel;
 }
 
 process.on("SIGTERM", () => {
@@ -761,6 +778,9 @@ async function handleMessage(message) {
             error: { code: -32602, message: `model not found: ${value}` },
           });
           return;
+        }
+        if (setConfigModelDelayMs > 0) {
+          await sleep(setConfigModelDelayMs);
         }
         selectedModel = value;
         send({ jsonrpc: "2.0", id: message.id, result: configState() });
