@@ -912,7 +912,6 @@ export function PublicMarketplaceDetailPage({
               </div>
             )}
             <section className="marketplace-detail-section marketplace-overview-section">
-              <h2>Summary</h2>
               <p className="marketplace-overview-lead">{entry.description}</p>
               {entry.overview === undefined ? null : (
                 <>

@@ -175,7 +175,7 @@ describe("Plugin detail recipe", () => {
     const { container } = renderPlugin(PLUGIN);
 
     expect(renderedRecipe(container)).toEqual([
-      ["overview", "Summary"],
+      ["overview", ""],
       ["release", "Release"],
     ]);
   });
@@ -197,7 +197,7 @@ describe("Plugin detail recipe", () => {
     });
 
     expect(renderedRecipe(container)).toEqual([
-      ["overview", "Summary"],
+      ["overview", ""],
       ["release", "Release"],
       ["activity", "Background services"],
       ["activity", "Scheduled jobs"],
@@ -211,13 +211,13 @@ describe("Plugin detail recipe", () => {
     });
 
     expect(renderedRecipe(container)).toEqual([
-      ["overview", "Summary"],
+      ["overview", ""],
       ["release", "Release"],
       ["activity", "Background services"],
     ]);
   });
 
-  it("keeps Summary present when a plugin declares no description", () => {
+  it("keeps the description present when a plugin declares no description", () => {
     const { container } = renderPlugin({ ...PLUGIN, description: null });
 
     expect(renderedRecipe(container).map(([kind]) => kind)).toContain(

@@ -2,7 +2,6 @@ import { useSyncExternalStore } from "react";
 import {
   ResourceActivitySection,
   ResourceDetailConfigurationSection,
-  ResourceDetailOverviewSection,
   ResourceDetailPage,
   ResourceDetailReleaseSection,
   ResourceDetailStack,
@@ -367,13 +366,13 @@ export function PluginDetail({
     >
       <ResourceDetailStack>
         {catalogEntry === undefined ? (
-          <ResourceDetailOverviewSection label="Summary">
+          <section data-resource-detail-section="overview">
             <PluginOverviewLead
               description={
                 plugin.description ?? "This plugin does not describe itself."
               }
             />
-          </ResourceDetailOverviewSection>
+          </section>
         ) : (
           <>
             <PluginMarketplaceListingSections entry={catalogEntry} />

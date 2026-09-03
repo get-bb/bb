@@ -216,7 +216,7 @@ function PluginScreenshotGallery({
 export function PluginOverviewLead({ description }: { description: string }) {
   return (
     <p
-      className="max-w-none text-sm leading-relaxed text-foreground"
+      className="max-w-prose text-base leading-relaxed text-foreground"
       data-plugin-summary=""
     >
       {description}
@@ -233,7 +233,6 @@ function PluginMarketplaceOverview({
     <section className="space-y-6" data-resource-detail-section="overview">
       <PluginScreenshotGallery entry={entry} />
       <div className="space-y-3">
-        <h2 className="text-sm font-medium text-foreground">Summary</h2>
         <PluginOverviewLead description={entry.description} />
         {entry.overview === undefined ? null : (
           <>

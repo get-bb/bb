@@ -1,4 +1,4 @@
-import type { ComponentPropsWithoutRef } from "react";
+import type { ComponentPropsWithoutRef, ReactNode } from "react";
 import ReactMarkdown, {
   type Components,
   type UrlTransform,
@@ -54,6 +54,21 @@ function OverviewLink({ children, href }: ComponentPropsWithoutRef<"a">) {
   );
 }
 
+function OverviewHeading({
+  children,
+  minor = false,
+}: {
+  children?: ReactNode;
+  minor?: boolean;
+}) {
+  const Tag = minor ? "h4" : "h3";
+  return (
+    <Tag className="mb-1.5 mt-5 text-xs font-semibold uppercase tracking-wide text-subtle-foreground first:mt-0">
+      {children}
+    </Tag>
+  );
+}
+
 const OVERVIEW_COMPONENTS: Components = {
   a: OverviewLink,
   blockquote: ({ children }) => (
@@ -66,36 +81,12 @@ const OVERVIEW_COMPONENTS: Components = {
       {children}
     </code>
   ),
-  h1: ({ children }) => (
-    <h3 className="mb-1.5 mt-4 text-sm font-semibold text-foreground first:mt-0">
-      {children}
-    </h3>
-  ),
-  h2: ({ children }) => (
-    <h3 className="mb-1.5 mt-4 text-sm font-semibold text-foreground first:mt-0">
-      {children}
-    </h3>
-  ),
-  h3: ({ children }) => (
-    <h4 className="mb-2 mt-3 text-sm font-semibold text-foreground first:mt-0">
-      {children}
-    </h4>
-  ),
-  h4: ({ children }) => (
-    <h5 className="mb-1 mt-3 text-sm font-medium text-foreground first:mt-0">
-      {children}
-    </h5>
-  ),
-  h5: ({ children }) => (
-    <h6 className="mb-1 mt-2 text-sm font-semibold uppercase text-muted-foreground first:mt-0">
-      {children}
-    </h6>
-  ),
-  h6: ({ children }) => (
-    <h6 className="mb-1 mt-2 text-xs font-semibold uppercase text-muted-foreground first:mt-0">
-      {children}
-    </h6>
-  ),
+  h1: ({ children }) => <OverviewHeading>{children}</OverviewHeading>,
+  h2: ({ children }) => <OverviewHeading>{children}</OverviewHeading>,
+  h3: ({ children }) => <OverviewHeading>{children}</OverviewHeading>,
+  h4: ({ children }) => <OverviewHeading minor>{children}</OverviewHeading>,
+  h5: ({ children }) => <OverviewHeading minor>{children}</OverviewHeading>,
+  h6: ({ children }) => <OverviewHeading minor>{children}</OverviewHeading>,
   hr: () => <hr className="my-4 border-t border-border" />,
   li: ({ children }) => <li className="mb-1">{children}</li>,
   ol: ({ children }) => <ol className="mb-2 list-decimal pl-5">{children}</ol>,
@@ -112,7 +103,7 @@ export function PluginOverviewMarkdown({ markdown }: { markdown: string }) {
   return (
     <div
       data-plugin-overview=""
-      className="max-w-none break-words text-sm leading-relaxed text-muted-foreground"
+      className="max-w-prose break-words text-sm leading-relaxed text-muted-foreground"
     >
       <ReactMarkdown
         allowedElements={ALLOWED_ELEMENTS}

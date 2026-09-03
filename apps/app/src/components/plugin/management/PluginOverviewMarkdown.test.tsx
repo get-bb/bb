@@ -45,6 +45,7 @@ describe("PluginOverviewMarkdown", () => {
     expect(container.textContent).not.toContain("onerror");
     expect(container.querySelector("h1")).toBeNull();
     expect(container.querySelector("h3")?.textContent).toBe("Heading");
+    expect(container.querySelector("h2")).toBeNull();
     expect(container.querySelector("pre code")?.textContent).toBe(
       "const x = 1;\n",
     );
