@@ -209,16 +209,17 @@ export function CommandPalette({
     () => [...actions, ...settingsActions, ...pluginPageActions],
     [actions, pluginPageActions, settingsActions],
   );
+  const commandQuery = query.startsWith(">") ? query.slice(1) : query;
   const ranked = useMemo(
     () =>
       rankPaletteActions({
         actions: availableActions,
-        query,
+        query: commandQuery,
         recentIds: recents,
       }),
-    [availableActions, query, recents],
+    [availableActions, commandQuery, recents],
   );
-  const isGroupedRoot = query.trim() === "";
+  const isGroupedRoot = commandQuery.trim() === "";
   const rootGroups = useMemo(() => {
     const groups = PALETTE_ACTION_BUCKETS.map((bucket) => ({
       bucket,
