@@ -211,10 +211,11 @@ getbb.app, so use a local path for a submission.
 
 ## Add the overview file
 
-The plugin author can keep a long-form description in an PLUGIN_OVERVIEW.md file beside
-the plugin package.json. The store detail page renders it below the short
-description. It is optional. Do not write one for the author. Copy the file
-only when the plugin repository holds it.
+The plugin author can keep a long-form description in a PLUGIN_OVERVIEW.md
+file beside the plugin package.json. The store detail page shows the short
+description as a lead paragraph under the plugin name, then an Overview
+section with this file. It is optional. Do not write one for the author. Copy
+the file only when the plugin repository holds it.
 
 Copy the file to overview/<plugin-id>.md in the marketplace repository. Reference
 it from the entry with the exact relative path:
@@ -239,6 +240,12 @@ opens each link in the browser.
 The build rejects raw HTML, images, tables, footnotes, task lists, and control
 characters. The store also removes such content at render time. Put images in
 screenshots instead.
+
+The store renders each heading in the file as a small uppercase label, so use
+`##` headings for sections such as What you get, How it works, and
+Requirements. Do not start the file with a `#` title. The page already shows
+the plugin name. Do not repeat the short description as the first sentence.
+The page shows it directly above.
 
 Read the file before you copy it. Confirm every claim against the behavior you
 observed. Remove private data, a local path, or an internal URL. Ask the user
