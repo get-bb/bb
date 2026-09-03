@@ -8,6 +8,7 @@ import {
   waitFor,
 } from "@testing-library/react";
 import type { Host } from "@bb/domain";
+import { makeHost as makeHostFixture } from "@bb/test-helpers/domain-fixtures";
 import type { SystemConfigResponse } from "@bb/server-contract";
 import type {
   ProviderCliKey,
@@ -19,7 +20,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { sdk } from "@/lib/sdk";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { makeSystemConfig } from "@/test/fixtures/system-config";
-import { makeProviderInfo } from "@/test/provider-info-fixture";
+import { makeProviderInfo } from "@bb/test-helpers/domain-fixtures";
 import { MachineSettingsView } from "./MachineSettingsView";
 
 vi.mock("@/lib/sdk", () => ({
@@ -55,18 +56,14 @@ vi.mock("@/hooks/useHostDaemon", () => ({
 const HOST_ID = "host_remote";
 
 function host(overrides: Partial<Host> = {}): Host {
-  return {
+  return makeHostFixture({
     id: HOST_ID,
     name: "dev-vm",
-    type: "persistent",
-    status: "connected",
-    maxPermissionMode: "full",
     lastSeenAt: Date.now(),
-    lastRejectedProtocolVersion: null,
     createdAt: Date.now() - 86_400_000,
     updatedAt: Date.now(),
     ...overrides,
-  };
+  });
 }
 
 function systemConfig(): SystemConfigResponse {

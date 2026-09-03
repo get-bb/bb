@@ -143,8 +143,9 @@ export function useHorizontalDismissDrag(options: Options) {
         settleTimeoutRef.current = null;
         if (dismiss && current.dismissTiming === "settled") {
           optionsRef.current.onDismiss();
+        } else {
+          optionsRef.current.onClear();
         }
-        optionsRef.current.onClear();
       }, DRAG_SETTLE_MS);
     },
     [clearSettle, optionsRef],

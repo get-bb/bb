@@ -253,7 +253,7 @@ export function ProfileWebViewScreen() {
         mediaPlaybackRequiresUserAction={false}
         mediaCapturePermissionGrantType="grant"
         hideKeyboardAccessoryView
-        allowsBackForwardNavigationGestures
+        allowsBackForwardNavigationGestures={false}
         pullToRefreshEnabled
         webviewDebuggingEnabled={__DEV__}
         injectedJavaScriptBeforeContentLoaded={buildBridgeInjectionScript(

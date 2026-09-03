@@ -1,7 +1,13 @@
 // @vitest-environment jsdom
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from "@testing-library/react";
 import { createPortal } from "react-dom";
 import { MemoryRouter, useLocation } from "react-router-dom";
 import { useState } from "react";
@@ -11,7 +17,6 @@ import { RouteNavigationProvider } from "@/components/ui/app-route-anchor";
 import {
   resetPluginSlotStoreForTest,
   setPluginSlotRegistrations,
-  type PluginRegistrationSet,
 } from "@/lib/plugin-slots";
 import { pluginSdkAppImplementation } from "@/lib/plugin-sdk-app-impl";
 import {
@@ -22,6 +27,7 @@ import {
 } from "@/lib/plugin-sdk-hooks";
 import { resetAllCrashedPluginSlotsForTest } from "./PluginSlotMount";
 import { PluginAppOverlays } from "./PluginAppOverlays";
+import { makePluginRegistrationSet as registrationSet } from "@/test/fixtures/plugins";
 
 vi.mock("@/components/dialogs/ThreadDeleteDialog", () => ({
   ThreadDeleteDialog: () => null,
@@ -62,21 +68,6 @@ vi.mock("@/hooks/queries/sidebar-navigation-query", () => ({
     isError: false,
   }),
 }));
-
-function registrationSet(
-  overrides: Partial<PluginRegistrationSet>,
-): PluginRegistrationSet {
-  return {
-    homepageSections: [],
-    settingsSections: [],
-    navPanels: [],
-    threadPanelActions: [],
-    sidebarFooterActions: [],
-    fileOpeners: [],
-    messageDirectives: [],
-    ...overrides,
-  };
-}
 
 function LocationProbe() {
   return <div data-testid="location">{useLocation().pathname}</div>;

@@ -12,9 +12,13 @@ import {
   SIDEBAR_BOOTSTRAP_CACHE_KEY,
   resetSidebarBootstrapCacheForTest,
 } from "@/lib/sidebar-bootstrap-cache";
-import { makeThreadListEntry } from "@/test/fixtures/thread-list-entries";
+import { makeThreadListEntry } from "@bb/test-helpers/domain-fixtures";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { useSidebarNavigation } from "./sidebar-navigation-query";
+import {
+  makeProjectWithThreadsResponse,
+  makeSidebarBootstrapResponse,
+} from "@/test/fixtures/projects";
 
 vi.mock("@/lib/api", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/api")>();
@@ -32,30 +36,27 @@ vi.mock("@/hooks/useRealtimeSubscription", () => ({
   useThreadListRealtimeSubscription: vi.fn(),
 }));
 
-const PERSONAL_PROJECT: SidebarBootstrapResponse["personalProject"] = {
-  id: "proj_personal",
-  kind: "personal",
-  name: "Personal",
-  gitRemoteUrl: null,
-  createdAt: 1,
-  updatedAt: 1,
-  sources: [],
-  threads: [],
-  defaultExecutionOptions: null,
-};
+const PERSONAL_PROJECT: SidebarBootstrapResponse["personalProject"] =
+  makeProjectWithThreadsResponse({
+    id: "proj_personal",
+    kind: "personal",
+    name: "Personal",
+    createdAt: 1,
+    updatedAt: 1,
+  });
 
-const BOOTSTRAP: SidebarBootstrapResponse = {
-  sections: [],
+const BOOTSTRAP: SidebarBootstrapResponse = makeSidebarBootstrapResponse({
   projects: [
-    {
-      ...PERSONAL_PROJECT,
+    makeProjectWithThreadsResponse({
       id: "proj_felt",
       kind: "standard",
       name: "Felt walk",
-    },
+      createdAt: 1,
+      updatedAt: 1,
+    }),
   ],
   personalProject: PERSONAL_PROJECT,
-};
+});
 
 const pendingForever = () => new Promise<never>(() => {});
 

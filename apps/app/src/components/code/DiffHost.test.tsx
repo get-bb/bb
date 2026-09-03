@@ -23,6 +23,7 @@ import {
 } from "@/lib/plugin-replacement-preference";
 import { diffRendererProviderAtom } from "./codeRendererProvider";
 import { DiffHost } from "./DiffHost";
+import { makePluginRegistrationSet } from "@/test/fixtures/plugins";
 
 const bbDiff = vi.hoisted(() => ({
   loaded: false,
@@ -90,16 +91,12 @@ const receivedProps: PluginDiffRendererProps[] = [];
 function registerDiffRenderer(
   component: (props: PluginDiffRendererProps) => React.ReactNode,
 ) {
-  setPluginSlotRegistrations("demo", {
-    homepageSections: [],
-    settingsSections: [],
-    navPanels: [],
-    threadPanelActions: [],
-    sidebarFooterActions: [],
-    fileOpeners: [],
-    messageDirectives: [],
-    diffRenderers: [{ id: "diffs", title: "Demo diffs", component }],
-  });
+  setPluginSlotRegistrations(
+    "demo",
+    makePluginRegistrationSet({
+      diffRenderers: [{ id: "diffs", title: "Demo diffs", component }],
+    }),
+  );
 }
 
 beforeEach(() => {
@@ -239,22 +236,18 @@ describe("DiffHost", () => {
       receivedProps.push(props);
       return <div data-testid="plugin-diff">first plugin</div>;
     });
-    setPluginSlotRegistrations("aardvark", {
-      homepageSections: [],
-      settingsSections: [],
-      navPanels: [],
-      threadPanelActions: [],
-      sidebarFooterActions: [],
-      fileOpeners: [],
-      messageDirectives: [],
-      diffRenderers: [
-        {
-          id: "diffs",
-          title: "Aardvark diffs",
-          component: () => <div data-testid="aardvark-diff">aardvark</div>,
-        },
-      ],
-    });
+    setPluginSlotRegistrations(
+      "aardvark",
+      makePluginRegistrationSet({
+        diffRenderers: [
+          {
+            id: "diffs",
+            title: "Aardvark diffs",
+            component: () => <div data-testid="aardvark-diff">aardvark</div>,
+          },
+        ],
+      }),
+    );
     const store = createStore();
     store.set(
       diffRendererProviderAtom,

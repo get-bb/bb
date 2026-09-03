@@ -1,25 +1,11 @@
 import { describe, expect, it } from "vitest";
-import type { DiffFileEntry } from "@bb/server-contract";
 import {
   DIFF_CARD_HEADER_HEIGHT_PX,
   estimateCardHeight,
   resolveDiffFileCardInitialState,
 } from "./diffFilesStore";
 import { GIT_DIFF_AUTO_COLLAPSE_FILE_THRESHOLD } from "./gitDiffPanelHelpers";
-
-function buildEntry(overrides: Partial<DiffFileEntry> = {}): DiffFileEntry {
-  return {
-    path: "src/file.ts",
-    previousPath: null,
-    changeKind: "modified",
-    additions: 0,
-    deletions: 0,
-    binary: false,
-    origin: "tracked",
-    loadMode: "auto",
-    ...overrides,
-  };
-}
+import { makeDiffFileEntry as buildEntry } from "@/test/fixtures/diff-files";
 
 describe("resolveDiffFileCardInitialState", () => {
   it("collapses by default once the file count exceeds the threshold", () => {

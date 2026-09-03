@@ -95,7 +95,6 @@ export default async function plugin(bb: BbPluginApi) {
       const forkArgs = {
         sourceThreadId,
         visibility: "hidden" as const,
-        workspace: "reuse" as const,
         ...(seedText !== null
           ? {
               agentContextSeed: [

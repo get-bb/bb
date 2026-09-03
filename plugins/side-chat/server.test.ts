@@ -92,7 +92,6 @@ describe("createSideChat rpc", () => {
       sourceThreadId: "thr_src",
       sourceSeqEnd: 42,
       visibility: "hidden",
-      workspace: "reuse",
       agentContextSeed: [
         {
           type: "text",
@@ -188,7 +187,6 @@ describe("createSideChat rpc", () => {
     expect(fork).toHaveBeenCalledWith({
       sourceThreadId: "thr_src",
       visibility: "hidden",
-      workspace: "reuse",
     });
   });
 });

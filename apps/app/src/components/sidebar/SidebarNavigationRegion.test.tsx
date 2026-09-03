@@ -11,9 +11,9 @@ import { resetAllCrashedPluginSlotsForTest } from "@/components/plugin/PluginSlo
 import {
   resetPluginSlotStoreForTest,
   setPluginSlotRegistrations,
-  type PluginRegistrationSet,
 } from "@/lib/plugin-slots";
 import { SidebarNavigationRegion } from "./SidebarNavigationRegion";
+import { makePluginRegistrationSet as registrationSet } from "@/test/fixtures/plugins";
 
 const mocks = vi.hoisted(() => ({
   dispatch: vi.fn(),
@@ -63,21 +63,6 @@ vi.mock("./usePaneContentSplitDrag", () => ({
     openInSplit: vi.fn(),
   }),
 }));
-
-function registrationSet(
-  overrides: Partial<PluginRegistrationSet>,
-): PluginRegistrationSet {
-  return {
-    homepageSections: [],
-    settingsSections: [],
-    navPanels: [],
-    threadPanelActions: [],
-    sidebarFooterActions: [],
-    fileOpeners: [],
-    messageDirectives: [],
-    ...overrides,
-  };
-}
 
 function Replacement({
   experimental_Original: Original,

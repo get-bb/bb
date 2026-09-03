@@ -6,6 +6,7 @@ import {
   installTestPluginRuntime,
   renderSlot,
 } from "@get-bb/plugin-sdk/testing/app";
+import { makeTask } from "../../test-fixtures.js";
 
 if (!window.matchMedia) {
   window.matchMedia = (query: string) => ({
@@ -50,22 +51,14 @@ function projectRow(linkedBbProjectId: string | null) {
   };
 }
 
-const task = {
+const task = makeTask({
   id: "01HZZZZZZZZZZZZZZZZZZZZZT5",
   projectId: PROJECT_ID,
   number: 5,
   key: "TSK-5",
   title: "Ship the rail",
-  description: "",
-  status: "todo",
-  priority: "none",
-  dueDate: null,
-  parentTaskId: null,
   position: 1,
-  createdAt: "2026-07-15T00:00:00.000Z",
-  updatedAt: "2026-07-15T00:00:00.000Z",
-  labelIds: [],
-};
+});
 
 function railProps(linkedBbProjectId: string | null) {
   return {

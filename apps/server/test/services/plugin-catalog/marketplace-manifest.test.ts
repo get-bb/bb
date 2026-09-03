@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import {
   BUNDLED_MARKETPLACE_NAME,
+  entryOverview,
   entryScreenshotUrls,
   entryRepositoryUrl,
   entrySourceDisplay,
@@ -175,6 +176,31 @@ describe("marketplace manifest schema", () => {
         }),
       ).toEqual([
         "https://getbb.app/marketplace/v2/screenshots/widgets/widgets.png",
+      ]);
+    });
+
+    it("keeps an overview text at the cap and drops a longer one with a warning", () => {
+      const warnings: string[] = [];
+      const atCap = `${"é".repeat(4000)}\n`;
+      const parsed = parseMarketplaceManifest(
+        manifestV2([
+          entry({ overview: atCap }),
+          entry({ id: "long", overview: `${"a".repeat(4001)}\n` }),
+        ]),
+        "manifest",
+      );
+      const [capped, long] = parsed.plugins;
+      if (capped === undefined || long === undefined) {
+        throw new Error("entries missing");
+      }
+      expect(entryOverview(capped, (message) => warnings.push(message))).toBe(
+        atCap,
+      );
+      expect(entryOverview(long, (message) => warnings.push(message))).toBe(
+        undefined,
+      );
+      expect(warnings).toEqual([
+        expect.stringContaining('entry "long" overview text was skipped'),
       ]);
     });
 

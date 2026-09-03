@@ -229,11 +229,10 @@ export type ThreadSpawnArgs = ThreadSpawnBaseArgs &
 
 export interface ThreadForkArgs extends Omit<
   ForkThreadRequest,
-  "origin" | "visibility" | "workspace"
+  "origin" | "visibility"
 > {
   origin?: ForkThreadRequest["origin"];
   visibility?: ForkThreadRequest["visibility"];
-  workspace?: ForkThreadRequest["workspace"];
 }
 
 export interface ThreadUpdateArgs extends UpdateThreadRequest {
@@ -700,7 +699,6 @@ function forkJson(args: ThreadForkArgs): ForkThreadRequest {
     ...args,
     origin: args.origin ?? "sdk",
     visibility: args.visibility ?? "visible",
-    workspace: args.workspace ?? "isolated",
   };
 }
 

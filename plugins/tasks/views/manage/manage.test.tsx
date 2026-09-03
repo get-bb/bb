@@ -3,6 +3,7 @@ import { cleanup, fireEvent, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
 import type { Task } from "../../shared/contract.js";
+import { makeTask } from "../../test-fixtures.js";
 
 if (!globalThis.ResizeObserver) {
   globalThis.ResizeObserver = class {
@@ -51,7 +52,7 @@ const project = {
 };
 
 function createdTask(input: Record<string, unknown>): Task {
-  return {
+  return makeTask({
     id: TASK_ID,
     projectId: PROJECT_ID,
     number: 5,
@@ -63,10 +64,8 @@ function createdTask(input: Record<string, unknown>): Task {
     dueDate: (input.dueDate as string | null) ?? null,
     parentTaskId: (input.parentTaskId as string | null) ?? null,
     position: 1,
-    createdAt: "2026-07-15T00:00:00.000Z",
-    updatedAt: "2026-07-15T00:00:00.000Z",
     labelIds: (input.labelIds as string[]) ?? [],
-  };
+  });
 }
 
 describe("derivePrefix", () => {

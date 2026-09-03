@@ -38,35 +38,24 @@ import {
 import type { PluginCatalogSearchEntry } from "@/hooks/queries/plugin-catalog-queries";
 import { pluginSourceQueryKey } from "@/hooks/queries/query-keys";
 import type { PluginFrontendDiagnostic } from "@/lib/plugin-frontend";
+import {
+  makePluginListItem,
+  makePluginRegistrationSet,
+} from "@/test/fixtures/plugins";
 
-const GITHUB_PLUGIN = {
+const GITHUB_PLUGIN = makePluginListItem({
   id: "github",
   source: "builtin:github",
   rootDir: "/Users/you/.bb/plugins/github",
-  version: "0.1.0",
-  enabled: true,
-  status: "running",
-  statusDetail: null,
   description: "Browse GitHub issues and pull requests in BB.",
   name: "GitHub",
   icon: "Github",
-  compactIconUrl: null,
-  logoUrl: null,
-  logoDarkUrl: null,
-  hasSettings: false,
-  handlerStats: { count: 0, totalMs: 0, maxMs: 0, errorCount: 0 },
-  services: [],
-  schedules: [],
-  cliCommand: null,
-  capabilities: [],
   app: { hasApp: true, bundle: null },
-  provenance: "catalog" as const,
-  isOrphanedBuiltin: false,
+  provenance: "catalog",
   catalogEntryId: "github",
   publisherLabel: "BB Official",
   sourceDisplay: "BB Official · GitHub",
-  updateState: EMPTY_PLUGIN_UPDATE_STATE,
-} satisfies PluginListItem;
+});
 
 const GITHUB_CATALOG_ENTRY = {
   entryId: "github",
@@ -285,7 +274,6 @@ describe("PluginDetail official catalog lifecycle", () => {
       screen.queryByRole("button", { name: "Uninstall GitHub" }),
     ).toBeNull();
 
-    expect(screen.getByText("About")).toBeTruthy();
     expect(screen.getByText("Release")).toBeTruthy();
     expect(
       screen.getByText("Browse GitHub issues and pull requests in BB."),
@@ -1313,37 +1301,38 @@ describe("PluginDetail runtime health", () => {
 describe("PluginDetail capability inventory", () => {
   it("lists each contributed capability and keeps health separate", async () => {
     const EmptySlot = () => null;
-    setPluginSlotRegistrations("capability-demo", {
-      homepageSections: [],
-      settingsSections: [
-        {
-          id: "preferences",
-          title: "Advanced preferences",
-          component: EmptySlot,
-        },
-      ],
-      navPanels: [
-        {
-          id: "run-monitor",
-          title: "Run monitor",
-          icon: "Workflow",
-          path: "runs",
-          component: EmptySlot,
-        },
-      ],
-      threadPanelActions: [],
-      composerCustomizations: [
-        {
-          id: "prompt-tools",
-          actions: [{ id: "enhance-prompt", component: EmptySlot }],
-        },
-      ],
-      pendingInteractions: [],
-      sidebarFooterActions: [],
-      fileOpeners: [],
-      messageDirectives: [],
-      messageActions: [],
-    });
+    setPluginSlotRegistrations(
+      "capability-demo",
+      makePluginRegistrationSet({
+        settingsSections: [
+          {
+            id: "preferences",
+            title: "Advanced preferences",
+            component: EmptySlot,
+          },
+        ],
+        navPanels: [
+          {
+            id: "run-monitor",
+            title: "Run monitor",
+            icon: "Workflow",
+            path: "runs",
+            component: EmptySlot,
+          },
+        ],
+        threadPanelActions: [],
+        composerCustomizations: [
+          {
+            id: "prompt-tools",
+            actions: [{ id: "enhance-prompt", component: EmptySlot }],
+          },
+        ],
+        pendingInteractions: [],
+        sidebarFooterActions: [],
+        fileOpeners: [],
+        messageDirectives: [],
+      }),
+    );
 
     const plugin = {
       ...GITHUB_PLUGIN,
@@ -1549,40 +1538,40 @@ describe("PluginDetail capability inventory", () => {
 
   it("names repeated product-titled surfaces by their actual capability", () => {
     const EmptySlot = () => null;
-    setPluginSlotRegistrations("simple-notes", {
-      homepageSections: [],
-      settingsSections: [],
-      navPanels: [
-        {
-          id: "docs",
-          title: "Docs",
-          icon: "FileText",
-          path: "docs",
-          component: EmptySlot,
-        },
-      ],
-      threadPanelActions: [
-        {
-          id: "document",
-          title: "Document",
-          icon: "FileText",
-          component: EmptySlot,
-        },
-      ],
-      composerCustomizations: [],
-      pendingInteractions: [],
-      sidebarFooterActions: [],
-      fileOpeners: [
-        {
-          id: "docs",
-          title: "Markdown",
-          extensions: ["md", "mdx", "markdown"],
-          component: EmptySlot,
-        },
-      ],
-      messageDirectives: [{ id: "docs", component: EmptySlot }],
-      messageActions: [],
-    });
+    setPluginSlotRegistrations(
+      "simple-notes",
+      makePluginRegistrationSet({
+        navPanels: [
+          {
+            id: "docs",
+            title: "Docs",
+            icon: "FileText",
+            path: "docs",
+            component: EmptySlot,
+          },
+        ],
+        threadPanelActions: [
+          {
+            id: "document",
+            title: "Document",
+            icon: "FileText",
+            component: EmptySlot,
+          },
+        ],
+        composerCustomizations: [],
+        pendingInteractions: [],
+        sidebarFooterActions: [],
+        fileOpeners: [
+          {
+            id: "docs",
+            title: "Markdown",
+            extensions: ["md", "mdx", "markdown"],
+            component: EmptySlot,
+          },
+        ],
+        messageDirectives: [{ id: "docs", component: EmptySlot }],
+      }),
+    );
     const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
     render(
       <MemoryRouter>

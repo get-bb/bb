@@ -25,6 +25,7 @@ export const CopyButton = forwardRef<HTMLButtonElement, CopyButtonProps>(
       label = "Copy to clipboard",
       successMessage,
       errorMessage,
+      imageUrl,
       ...rest
     },
     ref,
@@ -33,6 +34,7 @@ export const CopyButton = forwardRef<HTMLButtonElement, CopyButtonProps>(
       text,
       successMessage,
       errorMessage,
+      imageUrl,
     });
 
     return (

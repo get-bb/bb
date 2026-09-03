@@ -1,10 +1,19 @@
 // @vitest-environment jsdom
 
-import { act, cleanup, render, waitFor } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import {
+  act,
+  cleanup,
+  createEvent,
+  fireEvent,
+  render,
+  waitFor,
+} from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { toast } from "sonner";
 import { CompactViewportOverrideProvider } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { AppToaster } from "./AppToaster";
+import { ArchivedThreadToastDescription } from "./thread/ArchivedThreadToastDescription";
+import { AppToastContent } from "./ui/app-toast";
 
 afterEach(() => {
   toast.dismiss();
@@ -13,9 +22,7 @@ afterEach(() => {
 
 async function renderToaster(isCompactViewport: boolean) {
   render(
-    <CompactViewportOverrideProvider
-      isCompactViewport={isCompactViewport}
-    >
+    <CompactViewportOverrideProvider isCompactViewport={isCompactViewport}>
       <AppToaster position="bottom-right" />
     </CompactViewportOverrideProvider>,
   );
@@ -30,6 +37,43 @@ async function renderToaster(isCompactViewport: boolean) {
     );
     expect(toaster).not.toBeNull();
     return toaster;
+  });
+}
+
+function swipeToast(
+  toastElement: HTMLElement,
+  pointerId: number,
+  startX: number,
+  startY: number,
+  endX: number,
+  endY: number,
+  pointerTarget: HTMLElement = toastElement,
+): void {
+  Object.defineProperty(toastElement, "setPointerCapture", {
+    configurable: true,
+    value: () => undefined,
+  });
+  Object.defineProperty(pointerTarget, "setPointerCapture", {
+    configurable: true,
+    value: () => undefined,
+  });
+  fireEvent.pointerDown(pointerTarget, {
+    clientX: startX,
+    clientY: startY,
+    pointerId,
+    pointerType: "touch",
+  });
+  fireEvent.pointerMove(pointerTarget, {
+    clientX: endX,
+    clientY: endY,
+    pointerId,
+    pointerType: "touch",
+  });
+  fireEvent.pointerUp(pointerTarget, {
+    clientX: endX,
+    clientY: endY,
+    pointerId,
+    pointerType: "touch",
   });
 }
 
@@ -50,5 +94,202 @@ describe("AppToaster", () => {
     const toaster = await renderToaster(false);
     expect(toaster?.getAttribute("data-x-position")).toBe("right");
     expect(toaster?.getAttribute("data-y-position")).toBe("bottom");
+  });
+
+  it.each([
+    ["left", 200, 120],
+    ["right", 120, 200],
+  ] as const)(
+    "dismisses a compact toast to the %s",
+    async (_name, startX, endX) => {
+      await renderToaster(true);
+      const toastElement = document.querySelector<HTMLElement>(
+        "[data-sonner-toast]",
+      );
+      expect(toastElement).not.toBeNull();
+      if (toastElement === null) {
+        return;
+      }
+
+      swipeToast(toastElement, 1, startX, 100, endX, 100);
+
+      await waitFor(() => {
+        expect(document.querySelector("[data-sonner-toast]")).toBeNull();
+      });
+    },
+  );
+
+  it("keeps a downward drag onscreen", async () => {
+    await renderToaster(true);
+    const toastElement = document.querySelector<HTMLElement>(
+      "[data-sonner-toast]",
+    );
+    expect(toastElement).not.toBeNull();
+    if (toastElement === null) {
+      return;
+    }
+
+    swipeToast(toastElement, 1, 160, 100, 160, 180);
+
+    expect(document.querySelector("[data-sonner-toast]")).toBe(toastElement);
+  });
+
+  it("keeps movement continuous while Sonner's axis update is batched", async () => {
+    await renderToaster(true);
+    const toastElement = document.querySelector<HTMLElement>(
+      "[data-sonner-toast]",
+    );
+    expect(toastElement).not.toBeNull();
+    if (toastElement === null) {
+      return;
+    }
+    Object.defineProperty(toastElement, "setPointerCapture", {
+      configurable: true,
+      value: () => undefined,
+    });
+    fireEvent.pointerDown(toastElement, {
+      clientX: 120,
+      clientY: 100,
+      pointerId: 1,
+      pointerType: "touch",
+    });
+    const firstMove = createEvent.pointerMove(toastElement, {
+      clientX: 129,
+      clientY: 100,
+      pointerId: 1,
+      pointerType: "touch",
+    });
+    const secondMove = createEvent.pointerMove(toastElement, {
+      clientX: 142,
+      clientY: 100,
+      pointerId: 1,
+      pointerType: "touch",
+    });
+
+    act(() => {
+      toastElement.dispatchEvent(firstMove);
+      expect(toastElement.style.getPropertyValue("--swipe-amount-x")).toBe(
+        "9px",
+      );
+      toastElement.dispatchEvent(secondMove);
+      expect(toastElement.style.getPropertyValue("--swipe-amount-x")).toBe(
+        "22px",
+      );
+    });
+  });
+
+  it("keeps an archive title tappable but does not open it during a swipe", async () => {
+    const onDismiss = vi.fn();
+    const onOpenThread = vi.fn();
+    render(
+      <CompactViewportOverrideProvider isCompactViewport>
+        <AppToaster position="bottom-right" />
+      </CompactViewportOverrideProvider>,
+    );
+    act(() => {
+      toast.custom(
+        (id) => (
+          <AppToastContent
+            cancel={{ label: "Undo", onClick: vi.fn() }}
+            description={
+              <ArchivedThreadToastDescription
+                archivedThreadCount={1}
+                onOpenThread={onOpenThread}
+                threadTitle="Archive swipe target"
+              />
+            }
+            id={id}
+            title="Thread Archived"
+            tone="success"
+          />
+        ),
+        {
+          className: "bb-app-toast",
+          duration: Number.POSITIVE_INFINITY,
+          id: "archive-swipe-test",
+          onDismiss,
+        },
+      );
+    });
+    await waitFor(() => {
+      expect(document.querySelectorAll("[data-sonner-toast]")).toHaveLength(1);
+    });
+    const toastElement = document.querySelector<HTMLElement>(
+      "[data-sonner-toast]",
+    );
+    const threadTitle = document.querySelector<HTMLButtonElement>(
+      'button[title="Archive swipe target"]',
+    );
+    expect(toastElement).not.toBeNull();
+    expect(threadTitle).not.toBeNull();
+    if (toastElement === null || threadTitle === null) {
+      return;
+    }
+
+    swipeToast(toastElement, 1, 120, 100, 120, 100, threadTitle);
+    fireEvent.click(threadTitle);
+    expect(onOpenThread).toHaveBeenCalledOnce();
+    onOpenThread.mockClear();
+
+    swipeToast(toastElement, 2, 120, 100, 200, 100, threadTitle);
+    fireEvent.click(threadTitle);
+
+    expect(onDismiss).toHaveBeenCalledOnce();
+    expect(onOpenThread).not.toHaveBeenCalled();
+    await waitFor(() => {
+      expect(document.querySelector("[data-sonner-toast]")).toBeNull();
+    });
+  });
+
+  it("keeps stacked toast identity during rapid swipes", async () => {
+    const onDismissA = vi.fn();
+    const onDismissB = vi.fn();
+    const onDismissC = vi.fn();
+    render(
+      <CompactViewportOverrideProvider isCompactViewport>
+        <AppToaster position="bottom-right" />
+      </CompactViewportOverrideProvider>,
+    );
+    act(() => {
+      toast("Stack A", {
+        duration: Number.POSITIVE_INFINITY,
+        id: "stack-a",
+        onDismiss: onDismissA,
+      });
+      toast("Stack B", {
+        duration: Number.POSITIVE_INFINITY,
+        id: "stack-b",
+        onDismiss: onDismissB,
+      });
+      toast("Stack C", {
+        duration: Number.POSITIVE_INFINITY,
+        id: "stack-c",
+        onDismiss: onDismissC,
+      });
+    });
+    await waitFor(() => {
+      expect(document.querySelectorAll("[data-sonner-toast]")).toHaveLength(3);
+    });
+    const toastElements = Array.from(
+      document.querySelectorAll<HTMLElement>("[data-sonner-toast]"),
+    );
+    const toastB = toastElements.find(
+      (toastElement) => toastElement.textContent === "Stack B",
+    );
+    const toastC = toastElements.find(
+      (toastElement) => toastElement.textContent === "Stack C",
+    );
+    expect(toastB).toBeDefined();
+    expect(toastC).toBeDefined();
+    if (toastB === undefined || toastC === undefined) {
+      return;
+    }
+
+    swipeToast(toastC, 1, 120, 100, 200, 100);
+    swipeToast(toastB, 2, 200, 100, 120, 100);
+
+    expect(onDismissC).toHaveBeenCalledOnce();
+    expect(onDismissB).toHaveBeenCalledOnce();
+    expect(onDismissA).not.toHaveBeenCalled();
   });
 });

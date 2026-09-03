@@ -20,10 +20,12 @@ import {
   PluginSettingsForm,
   PluginSettingsPage,
 } from "./PluginSettings";
+import { type PluginListItem } from "@/hooks/queries/plugin-settings-queries";
 import {
-  EMPTY_PLUGIN_UPDATE_STATE,
-  type PluginListItem,
-} from "@/hooks/queries/plugin-settings-queries";
+  makeInstalledPlugin,
+  makePluginListItem,
+  makePluginRegistrationSet,
+} from "@/test/fixtures/plugins";
 
 interface RecordedRequest {
   url: string;
@@ -524,71 +526,33 @@ function rowPlugin(
   status: PluginListItem["status"],
   logoUrl: string | null = null,
 ): PluginListItem {
-  return {
+  return makePluginListItem({
     id: "linear",
     source: "path:/plugins/linear",
     rootDir: "/plugins/linear",
-    version: "0.1.0",
-    enabled: true,
     status,
-    statusDetail: null,
-    description: null,
     name: null,
-    icon: null,
-    compactIconUrl: null,
     logoUrl,
-    logoDarkUrl: null,
     hasSettings: true,
-    handlerStats: { count: 0, totalMs: 0, maxMs: 0, errorCount: 0 },
-    services: [],
-    schedules: [],
-    cliCommand: null,
-    capabilities: [],
-    app: { hasApp: false, bundle: null },
-    provenance: "direct" as const,
-    isOrphanedBuiltin: false,
-    catalogEntryId: null,
-    publisherLabel: null,
     sourceDisplay: "path · /plugins/linear",
-    updateState: EMPTY_PLUGIN_UPDATE_STATE,
-  };
+  });
 }
 
 function installedPlugin(
   enabled: boolean,
   hasSettings: boolean = enabled,
 ): InstalledPlugin {
-  return {
+  return makeInstalledPlugin({
     id: "linear",
     source: "path:/plugins/linear",
     rootDir: "/plugins/linear",
-    version: "0.1.0",
     enabled,
     status: enabled ? "running" : "disabled",
-    statusDetail: null,
     description: "Linear integration",
     name: "Linear",
-    screenshots: [],
-    collections: [],
-    icon: null,
-    iconUrl: null,
-    logoUrl: null,
-    logoDarkUrl: null,
     hasSettings,
-    handlerStats: { count: 0, totalMs: 0, maxMs: 0, errorCount: 0 },
-    services: [],
-    schedules: [],
-    cliCommand: null,
-    capabilities: [],
-    app: { hasApp: false, bundle: null },
-    provenance: "direct",
-    isOrphanedBuiltin: false,
-    publisherLabel: null,
     sourceDisplay: "path · /plugins/linear",
-    updateState: {},
-    providerIds: [],
-    icons: {},
-  };
+  });
 }
 
 describe("PluginSettingsPage", () => {
@@ -801,18 +765,14 @@ describe("PluginSettingsDetail settings gating", () => {
     function ConnectSettings() {
       return <div>Custom connect settings</div>;
     }
-    setPluginSlotRegistrations("connect", {
-      homepageSections: [],
-      settingsSections: [
-        { id: "remote", title: "Remote access", component: ConnectSettings },
-      ],
-      navPanels: [],
-      threadPanelActions: [],
-      composerCustomizations: [],
-      sidebarFooterActions: [],
-      fileOpeners: [],
-      messageDirectives: [],
-    });
+    setPluginSlotRegistrations(
+      "connect",
+      makePluginRegistrationSet({
+        settingsSections: [
+          { id: "remote", title: "Remote access", component: ConnectSettings },
+        ],
+      }),
+    );
     const { wrapper } = createQueryClientTestHarness();
     render(
       <PluginSettingsDetail

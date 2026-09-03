@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import type { Thread } from "@bb/domain";
+import { makeThread } from "@bb/test-helpers/domain-fixtures";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ThreadActionsMenu } from "./ThreadActionsMenu";
 
@@ -24,15 +24,6 @@ vi.mock("./ThreadActionsProvider", () => ({
   }),
 }));
 
-function createThread(): Thread {
-  return {
-    id: "thr_test",
-    projectId: "proj_test",
-    archivedAt: null,
-    pinnedAt: null,
-  } as Thread;
-}
-
 afterEach(() => {
   cleanup();
   mocks.copyToClipboardWithToast.mockReset();
@@ -40,7 +31,7 @@ afterEach(() => {
 
 describe("ThreadActionsMenu", () => {
   it("copies the canonical thread URL from every menu instance", () => {
-    render(<ThreadActionsMenu thread={createThread()} />);
+    render(<ThreadActionsMenu thread={makeThread()} />);
 
     fireEvent.pointerDown(
       screen.getByRole("button", { name: "Thread actions" }),

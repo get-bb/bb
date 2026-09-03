@@ -27,6 +27,7 @@ Backend (`server.ts`) — `createFakePluginHost()`:
 ```ts
 import {
   createFakePluginHost,
+  makePluginAgentConfigurationContext,
   makeThreadResponse,
 } from "@get-bb/plugin-sdk/testing";
 import plugin from "./server";
@@ -51,6 +52,9 @@ await harness.behavior.runCli(["search", "x"]); // { exitCode, stdout, stderr }
 const svc = harness.behavior.runService("watcher"); // start now; svc.controller.abort(); await svc.done
 await harness.behavior.runSchedule("sync"); // no timers, no cron sweep
 await harness.behavior.setSettings({ apiToken: "next" }); // validates + fires onChange like a host save
+await harness.behavior.resolveAgentConfiguration(
+  makePluginAgentConfigurationContext(),
+);
 await harness.behavior.emitThreadEvent("thread.idle", {
   thread: makeThreadResponse({ id: "th_1" }), // complete ThreadResponse fixture
   lastAssistantText: "done",
@@ -63,8 +67,13 @@ await harness.behavior.experimental_emitHostWorkerExit("host-test");
 await harness.lifecycle.dispose(); // abort services, hooks LIFO, close database; stale bb throws
 ```
 
-Pass a complete `PluginAgentConfigurationContext` fixture to
-`resolveAgentConfiguration` when the test drives conditional agent setup.
+The exported `makePluginAgentConfigurationContext`,
+`makeMessageDispatchHookContext`, `makeThreadResponse`, `makeQueueEntry`, and
+`makeTurnFailedEvent` fixtures return complete deterministic SDK objects with
+partial overrides, including nested context members. Use them in behavioral
+tests so a new required contract field changes one shared default. Keep schema,
+serialization, and command-output fixtures explicit when their exact complete
+shape is the assertion.
 
 New tests should use the named views: `harness.behavior` drives host inputs,
 `harness.inspection` exposes observable state, and `harness.lifecycle` owns

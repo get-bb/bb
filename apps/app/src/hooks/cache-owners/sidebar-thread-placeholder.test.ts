@@ -3,8 +3,12 @@
 import { QueryClient } from "@tanstack/react-query";
 import type { SidebarBootstrapResponse } from "@bb/server-contract";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { makeThreadListEntry } from "../../../.ladle/story-fixtures";
+import { makeThreadListEntry } from "@bb/test-helpers/domain-fixtures";
 import { sidebarNavigationQueryKey } from "@/hooks/queries/query-keys";
+import {
+  makeProjectWithThreadsResponse,
+  makeSidebarBootstrapResponse,
+} from "@/test/fixtures/projects";
 
 const readCachedSidebarBootstrap = vi.fn<() => SidebarBootstrapResponse | null>(
   () => null,
@@ -20,18 +24,16 @@ const { findSidebarNavigationThreadPlaceholder } =
 const PROJECT_ID = "proj_bb";
 
 function bootstrap(threadIds: string[]): SidebarBootstrapResponse {
-  return {
-    sections: [],
+  return makeSidebarBootstrapResponse({
     projects: [
-      {
+      makeProjectWithThreadsResponse({
         id: PROJECT_ID,
         threads: threadIds.map((id) =>
           makeThreadListEntry({ id, projectId: PROJECT_ID }),
         ),
-      },
+      }),
     ],
-    personalProject: { id: "proj_personal", threads: [] },
-  } as unknown as SidebarBootstrapResponse;
+  });
 }
 
 afterEach(() => {

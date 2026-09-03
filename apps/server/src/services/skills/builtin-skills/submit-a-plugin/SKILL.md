@@ -1,6 +1,6 @@
 ---
 name: submit-a-plugin
-description: Submit a bb plugin to the BB Community marketplace. Use whenever a user asks to submit, list, publish, or add a plugin to the BB marketplace, or asks for a marketplace pull request. This skill validates the plugin and release, creates the marketplace entry and icon, and opens the pull request.
+description: Submit a bb plugin to the BB Community marketplace. Use whenever a user asks to submit, list, publish, or add a plugin to the BB marketplace, or asks for a marketplace pull request. This skill validates the plugin and release, creates the marketplace entry, icon, screenshots, and optional long-form description, and opens the pull request.
 ---
 
 # Submit a plugin
@@ -29,9 +29,15 @@ The marketplace contract can change independently from BB releases. Read these
 files from the default branch of https://github.com/get-bb/marketplace:
 
 - README.md
-- schema/marketplace.schema.json
+- schema/marketplace-v2.schema.json
+- marketplace.base.json, for the current category IDs
 - icons/README.md
 - At least two current files in entries/
+
+An entry file uses the version 2 entry fields. Read
+schema/marketplace-v2.schema.json for those fields. The older
+schema/marketplace.schema.json file describes the frozen version 1 output
+document. Do not use it as the entry contract.
 
 Treat those files as the contract. Use this skill for workflow and quality
 rules.
@@ -42,15 +48,22 @@ rules.
 2. Validate the plugin with its package manager and bb plugin build.
 3. Select and verify one public release source.
 4. Get separate approval before any release mutation.
-5. Create one marketplace entry and a vendored icon.
-6. Validate the marketplace repository.
-7. Commit only the entry and icon.
-8. Open a pull request from the submitter account.
+5. Create one marketplace entry with a vendored icon.
+6. Install the plugin and capture its screenshots.
+7. Copy the plugin PLUGIN_OVERVIEW.md file into the marketplace when the plugin has one.
+8. Validate the marketplace repository.
+9. Commit only the entry, icon, screenshots, and overview file.
+10. Open a pull request from the submitter account.
 
 Read these references as the task reaches each stage:
 
 - Read references/plugin-release.md before validating or releasing a plugin.
-- Read references/marketplace-entry.md before creating the entry or icon.
+- Read references/marketplace-entry.md before you create the entry, icon,
+  screenshots, or overview file. It states what a good entry and description
+  hold, how to capture screenshots with a harness browser or computer
+  automation tool, what to ask the user for when the harness has no such
+  tool, and which markdown the long-form description can use. It ends with a
+  quality check to run before the pull request.
 - Read references/pull-request.md before cloning, validating, or submitting
   the marketplace repository.
 
@@ -67,4 +80,5 @@ for a merge unless the user asks.
 
 A compatible release within an existing tracking range usually needs no new
 marketplace pull request. Open another pull request when source, branding,
-description, ownership, tag, or range changes.
+description, long-form description, category, screenshots, ownership, tag, or
+range changes.

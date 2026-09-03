@@ -167,10 +167,11 @@ export const forkThreadRequestSchema = z
     title: z.string().min(1).optional(),
     permissionMode: permissionModeInputSchema.optional(),
     visibility: threadVisibilitySchema.default("visible"),
-    workspace: z.enum(["isolated", "reuse"]).default("isolated"),
+    environment: createThreadEnvironmentArgsSchema.optional(),
     origin: threadCreateOriginSchema.default("sdk"),
     originPluginId: z.string().min(1).optional(),
   })
+  .strict()
   .superRefine((value, ctx) => {
     if (value.origin === "plugin" && value.originPluginId === undefined) {
       ctx.addIssue({
