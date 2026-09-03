@@ -167,6 +167,17 @@ describe("PluginSettingsForm", () => {
     expect(retries.step).toBe("any");
     expect(retries.value).toBe("3");
 
+    const badInput = vi
+      .spyOn(retries.validity, "badInput", "get")
+      .mockReturnValue(true);
+    fireEvent.change(retries, { target: { value: "" } });
+    fireEvent.blur(retries);
+    expect((await screen.findByRole("alert")).textContent).toContain(
+      "Enter a finite number",
+    );
+    expect(retries.value).toBe("3");
+    badInput.mockRestore();
+
     fireEvent.change(retries, { target: { value: "4.5" } });
     expect(requests.some((request) => request.init?.method === "PUT")).toBe(
       false,

@@ -25,13 +25,13 @@ describe("bb plugin config", () => {
   const register: CommandRegistrar = (program) =>
     registerPluginCommands(program, () => "http://server");
 
-  it("converts a declared number before sending the settings update", async () => {
+  it("accepts a negative number while preserving unknown-option errors", async () => {
     vi.mocked(fetch)
       .mockResolvedValueOnce(settingsResponse(3))
-      .mockResolvedValueOnce(settingsResponse(4.5));
+      .mockResolvedValueOnce(settingsResponse(-4.5));
 
     await runCommand(
-      ["plugin", "config", "demo", "set", "retries", "4.5"],
+      ["plugin", "config", "demo", "set", "retries", "-4.5"],
       register,
     );
 
@@ -40,9 +40,22 @@ describe("bb plugin config", () => {
       "http://server/api/v1/plugins/demo/settings",
       expect.objectContaining({
         method: "PUT",
-        body: JSON.stringify({ values: { retries: 4.5 } }),
+        body: JSON.stringify({ values: { retries: -4.5 } }),
       }),
     );
+
+    vi.mocked(fetch).mockClear();
+    const stderr = vi
+      .spyOn(process.stderr, "write")
+      .mockImplementation(() => true);
+    await expect(
+      runCommand(
+        ["plugin", "config", "demo", "set", "retries", "3", "--bogus"],
+        register,
+      ),
+    ).rejects.toThrow("process.exit:1");
+    expect(stderr).toHaveBeenCalledWith("error: unknown option '--bogus'\n");
+    expect(fetch).not.toHaveBeenCalled();
   });
 
   it("rejects a non-finite number before sending an update", async () => {
