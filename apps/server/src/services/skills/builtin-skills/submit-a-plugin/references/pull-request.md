@@ -33,7 +33,7 @@ cd /SAFE/NEW/PATH/marketplace
 git switch -c submit-PLUGIN_ID
 ```
 
-Prepare and validate the entry, icon, screenshots, and about file.
+Prepare and validate the entry, icon, screenshots, and overview file.
 
 Return their paths, the clone path, branch name, and results. Give the user
 these remaining steps:
@@ -54,11 +54,11 @@ npm run build
 npm run check
 git status --short
 git diff --check
-git diff -- entries/PLUGIN_ID.json icons/ screenshots/PLUGIN_ID/ about/PLUGIN_ID.md
+git diff -- entries/PLUGIN_ID.json icons/ screenshots/PLUGIN_ID/ overview/PLUGIN_ID.md
 ```
 
 Omit each screenshots/PLUGIN_ID/ argument when the entry has no screenshots.
-Omit each about/PLUGIN_ID.md argument when the entry has no about file.
+Omit each overview/PLUGIN_ID.md argument when the entry has no overview file.
 
 Confirm:
 
@@ -77,19 +77,19 @@ Confirm:
 - Each screenshot meets the width, size, format, location, and reference
   rules, and shows no private data.
 - The screenshots directory holds no unreferenced file.
-- The about file, when present, is at about/PLUGIN_ID.md, is referenced from
+- The overview file, when present, is at overview/PLUGIN_ID.md, is referenced from
   the entry, and passes the build.
 - Both marketplace checks pass.
 
 ## Open the pull request
 
-Commit only the entry, icon, screenshots, and about file. Do not commit
+Commit only the entry, icon, screenshots, and overview file. Do not commit
 dist/ or unrelated files.
 
 ```sh
 git add entries/PLUGIN_ID.json icons/PLUGIN_ICON
 git add screenshots/PLUGIN_ID/
-git add about/PLUGIN_ID.md
+git add overview/PLUGIN_ID.md
 git commit -m "Add plugin entry: PLUGIN_ID"
 git push -u origin submit-PLUGIN_ID
 ```
@@ -115,4 +115,4 @@ Follow the marketplace repository instructions. The pull request body must state
 - The marketplace checks that passed.
 - Required permissions, external services, and relevant security facts.
 - What each screenshot shows, or why the entry has none.
-- Whether the entry has an about file, and where the text came from.
+- Whether the entry has an overview file, and where the text came from.

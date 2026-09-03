@@ -107,16 +107,17 @@ describe("public marketplace route rendering", () => {
     expect(html).toContain('loading="lazy"');
     expect(html).toContain('referrerPolicy="no-referrer"');
     expect(html).not.toContain("More from BB Labs");
-    expect(html).not.toContain("About");
+    expect(html).toContain("Summary</h2>");
+    expect(html).not.toContain("Overview</h2>");
     expect(html.split(entry.description)).toHaveLength(2);
     expect(html).not.toContain("Version");
     expect(html).not.toContain("Updated");
   });
 
-  it("renders the about text through the markdown allowlist", () => {
+  it("renders the overview text through the markdown allowlist", () => {
     const entry = {
       ...MARKETPLACE_V2_FIXTURE.plugins[1],
-      about: [
+      overview: [
         "## What you get",
         "",
         "Each check stays beside its review. <b>Inline</b> html goes away.",
@@ -137,23 +138,23 @@ describe("public marketplace route rendering", () => {
         stats={MARKETPLACE_STATS_FIXTURE}
       />,
     );
-    expect(html).toContain("<h2>About</h2>");
-    const about = html.slice(
-      html.indexOf('class="marketplace-about"'),
+    expect(html).toContain("Overview</h2>");
+    const overview = html.slice(
+      html.indexOf('class="marketplace-overview"'),
       html.indexOf("More from Acme"),
     );
-    expect(about).toContain("<h3>What you get</h3>");
-    expect(about).toContain("Each check stays beside its review.");
-    expect(about).not.toContain("<script");
-    expect(about).not.toContain("pwned");
-    expect(about).not.toContain("<b>");
-    expect(about).toContain("Inline html goes away.");
-    expect(about).not.toContain("<img");
-    expect(about).toContain(
+    expect(overview).toContain("<h3>What you get</h3>");
+    expect(overview).toContain("Each check stays beside its review.");
+    expect(overview).not.toContain("<script");
+    expect(overview).not.toContain("pwned");
+    expect(overview).not.toContain("<b>");
+    expect(overview).toContain("Inline html goes away.");
+    expect(overview).not.toContain("<img");
+    expect(overview).toContain(
       'href="https://example.com/docs" target="_blank" rel="noopener noreferrer"',
     );
-    expect(about).not.toContain('href="http://example.com"');
-    expect(about).toContain("plain page");
+    expect(overview).not.toContain('href="http://example.com"');
+    expect(overview).toContain("plain page");
   });
 
   it("renders author and category recommendations on a detail route", () => {
@@ -176,7 +177,7 @@ describe("public marketplace route rendering", () => {
       html.indexOf("More in Code &amp; Reviews"),
     );
     expect(html).not.toContain("marketplace-screenshots");
-    expect(html).not.toContain("About");
+    expect(html).not.toContain("Overview</h2>");
   });
 
   it("renders the category shelf alone when the author has no other plugins", () => {
@@ -202,7 +203,7 @@ describe("public marketplace route rendering", () => {
     );
     expect(html).toContain("marketplace-detail-body");
     expect(html).toContain("More in Code &amp; Reviews");
-    expect(html).not.toContain("marketplace-detail-section");
+    expect(html).not.toContain("marketplace-author-teasers");
     expect(html).not.toContain("More from Solo Reviewer");
   });
 

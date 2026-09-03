@@ -16,7 +16,7 @@ import {
   ResourceRowDetailChevron,
 } from "@bb/shared-ui/resource-list";
 import type { PluginCatalogSearchEntry } from "@/hooks/queries/plugin-catalog-queries";
-import { PluginAboutMarkdown } from "@/components/plugin/management/PluginAboutMarkdown";
+import { PluginOverviewMarkdown } from "@/components/plugin/management/PluginOverviewMarkdown";
 import { CatalogEntryIconChip, PluginCategoryLabel } from "./plugin-ui";
 import { PluginAuthorAvatar } from "./PluginAuthorAvatar";
 import { PluginAuthorLink } from "./PluginAuthorLink";
@@ -213,26 +213,48 @@ function PluginScreenshotGallery({
   );
 }
 
+function splitLeadSentence(text: string): { lead: string; rest: string } {
+  const match = /^(.*?[.!?])\s+(\S[\s\S]*)$/u.exec(text.trim());
+  return match === null
+    ? { lead: text.trim(), rest: "" }
+    : { lead: match[1] ?? text, rest: match[2] ?? "" };
+}
+
+export function PluginSummaryCard({ description }: { description: string }) {
+  const { lead, rest } = splitLeadSentence(description);
+  return (
+    <div
+      className="rounded-xl border border-border bg-surface-raised px-4 py-3.5 shadow-sm"
+      data-plugin-summary=""
+    >
+      <p className="text-sm font-medium leading-relaxed text-foreground">
+        {lead}
+      </p>
+      {rest.length === 0 ? null : (
+        <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">
+          {rest}
+        </p>
+      )}
+    </div>
+  );
+}
+
 function PluginMarketplaceOverview({
   entry,
 }: {
   entry: PluginCatalogSearchEntry;
 }) {
-  if (entry.screenshots.length === 0 && entry.description.length === 0) {
-    return null;
-  }
   return (
     <section className="space-y-6" data-resource-detail-section="overview">
       <PluginScreenshotGallery entry={entry} />
-      {entry.description.length === 0 ? null : (
+      <div className="space-y-3">
+        <h2 className="text-sm font-medium text-foreground">Summary</h2>
+        <PluginSummaryCard description={entry.description} />
+      </div>
+      {entry.overview === undefined ? null : (
         <div className="space-y-3">
-          <h2 className="text-sm font-medium text-foreground">About</h2>
-          <p className="max-w-none text-sm leading-relaxed text-muted-foreground">
-            {entry.description}
-          </p>
-          {entry.about === undefined ? null : (
-            <PluginAboutMarkdown markdown={entry.about} />
-          )}
+          <h2 className="text-sm font-medium text-foreground">Overview</h2>
+          <PluginOverviewMarkdown markdown={entry.overview} />
         </div>
       )}
     </section>

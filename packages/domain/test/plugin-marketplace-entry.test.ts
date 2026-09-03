@@ -30,17 +30,18 @@ describe("marketplace entry schemas", () => {
         .success,
     ).toBe(false);
     expect(
-      marketplaceEntryV1Schema.safeParse({ ...entry(), about: "# Notes\n" })
+      marketplaceEntryV1Schema.safeParse({ ...entry(), overview: "# Notes\n" })
         .success,
     ).toBe(false);
   });
 
-  it("accepts a v2 about text and rejects an empty one", () => {
+  it("accepts a v2 overview text and rejects an empty one", () => {
     expect(
-      marketplaceEntryV2Schema.parse({ ...entry(), about: "# Notes\n" }).about,
+      marketplaceEntryV2Schema.parse({ ...entry(), overview: "# Notes\n" })
+        .overview,
     ).toBe("# Notes\n");
     expect(
-      marketplaceEntryV2Schema.safeParse({ ...entry(), about: "" }).success,
+      marketplaceEntryV2Schema.safeParse({ ...entry(), overview: "" }).success,
     ).toBe(false);
   });
 

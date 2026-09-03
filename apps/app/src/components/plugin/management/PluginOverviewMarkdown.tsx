@@ -37,9 +37,9 @@ function httpsOnly(url: string): string | null {
   }
 }
 
-const aboutUrlTransform: UrlTransform = (url) => httpsOnly(url) ?? "";
+const overviewUrlTransform: UrlTransform = (url) => httpsOnly(url) ?? "";
 
-function AboutLink({ children, href }: ComponentPropsWithoutRef<"a">) {
+function OverviewLink({ children, href }: ComponentPropsWithoutRef<"a">) {
   const safeHref = href === undefined ? null : httpsOnly(href);
   if (safeHref === null) return <span>{children}</span>;
   return (
@@ -54,8 +54,8 @@ function AboutLink({ children, href }: ComponentPropsWithoutRef<"a">) {
   );
 }
 
-const ABOUT_COMPONENTS: Components = {
-  a: AboutLink,
+const OVERVIEW_COMPONENTS: Components = {
+  a: OverviewLink,
   blockquote: ({ children }) => (
     <blockquote className="my-2 border-l-2 border-surface-selected-border pl-3">
       {children}
@@ -108,10 +108,10 @@ const ABOUT_COMPONENTS: Components = {
   ul: ({ children }) => <ul className="mb-2 list-disc pl-5">{children}</ul>,
 };
 
-export function PluginAboutMarkdown({ markdown }: { markdown: string }) {
+export function PluginOverviewMarkdown({ markdown }: { markdown: string }) {
   return (
     <div
-      data-plugin-about=""
+      data-plugin-overview=""
       className="max-w-none break-words text-sm leading-relaxed text-muted-foreground"
     >
       <ReactMarkdown
@@ -119,8 +119,8 @@ export function PluginAboutMarkdown({ markdown }: { markdown: string }) {
         unwrapDisallowed
         skipHtml
         remarkPlugins={REMARK_PLUGINS}
-        components={ABOUT_COMPONENTS}
-        urlTransform={aboutUrlTransform}
+        components={OVERVIEW_COMPONENTS}
+        urlTransform={overviewUrlTransform}
       >
         {markdown}
       </ReactMarkdown>

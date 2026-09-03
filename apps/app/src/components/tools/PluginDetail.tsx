@@ -39,6 +39,7 @@ import {
   PluginMarketplaceHeaderMetadata,
   PluginMarketplaceListingSections,
   PluginMoreFromAuthorSection,
+  PluginSummaryCard,
 } from "@/components/plugin/management/PluginMarketplaceListing";
 import { pluginRuntimeStatusPresentation } from "@/components/plugin/management/plugin-status";
 import {
@@ -366,10 +367,12 @@ export function PluginDetail({
     >
       <ResourceDetailStack>
         {catalogEntry === undefined ? (
-          <ResourceDetailOverviewSection label="About">
-            <p className="max-w-none text-sm leading-relaxed text-muted-foreground">
-              {plugin.description ?? "This plugin does not describe itself."}
-            </p>
+          <ResourceDetailOverviewSection label="Summary">
+            <PluginSummaryCard
+              description={
+                plugin.description ?? "This plugin does not describe itself."
+              }
+            />
           </ResourceDetailOverviewSection>
         ) : (
           <>

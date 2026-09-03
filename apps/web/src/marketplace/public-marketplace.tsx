@@ -51,7 +51,10 @@ import {
   marketplaceEntryInstalls,
   type MarketplaceStats,
 } from "./marketplace-model.js";
-import { MarketplaceAbout } from "./marketplace-about.js";
+import {
+  MarketplaceOverview,
+  MarketplaceSummary,
+} from "./marketplace-overview.js";
 import type {
   MarketplaceV2Entry,
   MarketplaceV2Manifest,
@@ -812,11 +815,7 @@ export function PublicMarketplaceDetailPage({
   const installCommand = marketplaceInstallCommand(entry.id);
   const authorSiblings = moreFromMarketplaceAuthor(manifest, entry);
   const categoryEntries = moreInMarketplaceCategory(manifest, entry, stats);
-  const hasDetailBody =
-    entry.screenshots.length > 0 ||
-    entry.about !== undefined ||
-    authorSiblings.length > 0 ||
-    categoryEntries.length > 0;
+
   const authorPath =
     entry.author.github === undefined
       ? undefined
@@ -840,7 +839,6 @@ export function PublicMarketplaceDetailPage({
           <PluginArtwork entry={entry} large />
           <div className="marketplace-detail-identity">
             <h1>{entry.displayName}</h1>
-            <p>{entry.description}</p>
           </div>
           <div className="marketplace-detail-facts">
             {authorPath === undefined ? (
@@ -901,7 +899,7 @@ export function PublicMarketplaceDetailPage({
             </MarketplaceLink>
           </div>
         </header>
-        {hasDetailBody ? (
+        {
           <div className="marketplace-detail-body">
             {entry.screenshots.length === 0 ? null : (
               <div className="marketplace-screenshots">
@@ -916,10 +914,14 @@ export function PublicMarketplaceDetailPage({
                 ))}
               </div>
             )}
-            {entry.about === undefined ? null : (
-              <section className="marketplace-detail-section marketplace-about-section">
-                <h2>About</h2>
-                <MarketplaceAbout markdown={entry.about} />
+            <section className="marketplace-detail-section marketplace-summary-section">
+              <h2 className="marketplace-summary-label">Summary</h2>
+              <MarketplaceSummary description={entry.description} />
+            </section>
+            {entry.overview === undefined ? null : (
+              <section className="marketplace-detail-section marketplace-overview-section">
+                <h2>Overview</h2>
+                <MarketplaceOverview markdown={entry.overview} />
               </section>
             )}
             <MoreFromAuthor
@@ -934,7 +936,7 @@ export function PublicMarketplaceDetailPage({
               stats={stats}
             />
           </div>
-        ) : null}
+        }
       </main>
       <SiteFooter />
     </div>

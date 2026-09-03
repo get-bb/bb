@@ -7,7 +7,7 @@ import { promisify } from "node:util";
 import {
   derivePluginId,
   isPluginOwnedIconPath,
-  MARKETPLACE_ABOUT_MAX_CHARS,
+  MARKETPLACE_OVERVIEW_MAX_CHARS,
   PLUGIN_CATALOG_CATEGORIES,
   pluginCatalogCategoryIdSchema,
   pluginPackageJsonSchema,
@@ -160,9 +160,9 @@ export async function readPluginGitDates(args: {
   return dates;
 }
 
-const ABOUT_HTML_OR_IMAGE_PATTERN = /<[A-Za-z!/?]|!\[/u;
+const OVERVIEW_HTML_OR_IMAGE_PATTERN = /<[A-Za-z!/?]|!\[/u;
 
-export function normalizeBundledAboutText(text: string): string {
+export function normalizeBundledOverviewText(text: string): string {
   return `${text
     .replace(/^\uFEFF/u, "")
     .replace(/\r\n?/gu, "\n")
@@ -173,31 +173,35 @@ export function normalizeBundledAboutText(text: string): string {
     .replace(/\n+$/u, "")}\n`;
 }
 
-export async function readBundledPluginAbout(
+export async function readBundledPluginOverview(
   pluginDirectory: string,
   pluginName: string,
 ): Promise<string | undefined> {
-  const aboutPath = path.join(pluginDirectory, "ABOUT.md");
-  if (!existsSync(aboutPath)) return undefined;
-  const about = normalizeBundledAboutText(await readFile(aboutPath, "utf8"));
-  const length = [...about.replace(/\n$/u, "")].length;
+  const overviewPath = path.join(pluginDirectory, "PLUGIN_OVERVIEW.md");
+  if (!existsSync(overviewPath)) return undefined;
+  const overview = normalizeBundledOverviewText(
+    await readFile(overviewPath, "utf8"),
+  );
+  const length = [...overview.replace(/\n$/u, "")].length;
   if (length === 0) {
-    throw new Error(`bundled plugin ${pluginName} has an empty ABOUT.md`);
-  }
-  if (length > MARKETPLACE_ABOUT_MAX_CHARS) {
     throw new Error(
-      `bundled plugin ${pluginName} ABOUT.md has ${length} characters; the maximum is ${MARKETPLACE_ABOUT_MAX_CHARS}`,
+      `bundled plugin ${pluginName} has an empty PLUGIN_OVERVIEW.md`,
     );
   }
-  const prose = about
+  if (length > MARKETPLACE_OVERVIEW_MAX_CHARS) {
+    throw new Error(
+      `bundled plugin ${pluginName} PLUGIN_OVERVIEW.md has ${length} characters; the maximum is ${MARKETPLACE_OVERVIEW_MAX_CHARS}`,
+    );
+  }
+  const prose = overview
     .replace(/```[\s\S]*?```/gu, "")
     .replace(/`[^`\n]*`/gu, "");
-  if (ABOUT_HTML_OR_IMAGE_PATTERN.test(prose)) {
+  if (OVERVIEW_HTML_OR_IMAGE_PATTERN.test(prose)) {
     throw new Error(
-      `bundled plugin ${pluginName} ABOUT.md must not hold raw HTML or an image`,
+      `bundled plugin ${pluginName} PLUGIN_OVERVIEW.md must not hold raw HTML or an image`,
     );
   }
-  return about;
+  return overview;
 }
 
 function marketplaceIcon(pluginName: string, declared: string) {
@@ -232,7 +236,10 @@ export async function generateBbOfficialMarketplace(args: {
       const packageJson: unknown = JSON.parse(
         await readFile(path.join(pluginDirectory, "package.json"), "utf8"),
       );
-      const about = await readBundledPluginAbout(pluginDirectory, plugin.name);
+      const overview = await readBundledPluginOverview(
+        pluginDirectory,
+        plugin.name,
+      );
       const manifest = pluginPackageJsonSchema.parse(packageJson);
       const id = derivePluginId(manifest.name);
       if (id !== plugin.pluginId) {
@@ -259,7 +266,7 @@ export async function generateBbOfficialMarketplace(args: {
         source: { bundled: { plugin: plugin.name } },
         category: catalog.category,
         screenshots: catalog.screenshots,
-        ...(about === undefined ? {} : { about }),
+        ...(overview === undefined ? {} : { overview }),
         ...(gitDates === undefined ? {} : gitDates),
       };
     }),

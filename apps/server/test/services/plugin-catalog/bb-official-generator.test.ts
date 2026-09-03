@@ -9,7 +9,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   generateBbOfficialMarketplace,
   parseBbOfficialCatalogFields,
-  readBundledPluginAbout,
+  readBundledPluginOverview,
   readPluginGitDates,
 } from "../../../scripts/generate-bb-official-marketplace.js";
 import {
@@ -98,41 +98,41 @@ describe("bb-official marketplace generator", () => {
     ).toThrow(/unknown bundled plugin blocks: gamma/u);
   });
 
-  it("folds a bundled plugin ABOUT.md into its entry and rejects unsafe text", async () => {
-    const root = await mkdtemp(path.join(tmpdir(), "bb-official-about-"));
+  it("folds a bundled plugin PLUGIN_OVERVIEW.md into its entry and rejects unsafe text", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "bb-official-overview-"));
     cleanup.push(root);
     const pluginDirectory = path.join(root, "plugins", "sample");
     await mkdir(pluginDirectory, { recursive: true });
 
-    expect(await readBundledPluginAbout(pluginDirectory, "sample")).toBe(
+    expect(await readBundledPluginOverview(pluginDirectory, "sample")).toBe(
       undefined,
     );
 
     await writeFile(
-      path.join(pluginDirectory, "ABOUT.md"),
+      path.join(pluginDirectory, "PLUGIN_OVERVIEW.md"),
       "\uFEFF# Sample\r\n\r\nDoes one thing.  \r\n\r\n",
     );
-    expect(await readBundledPluginAbout(pluginDirectory, "sample")).toBe(
+    expect(await readBundledPluginOverview(pluginDirectory, "sample")).toBe(
       "# Sample\n\nDoes one thing.\n",
     );
 
     await writeFile(
-      path.join(pluginDirectory, "ABOUT.md"),
+      path.join(pluginDirectory, "PLUGIN_OVERVIEW.md"),
       "Run `bb keep-awake hosts <host-id>`.\n\n```sh\n<not html>\n```\n",
     );
-    expect(await readBundledPluginAbout(pluginDirectory, "sample")).toContain(
-      "<host-id>",
-    );
+    expect(
+      await readBundledPluginOverview(pluginDirectory, "sample"),
+    ).toContain("<host-id>");
 
     for (const [text, message] of [
-      ["\n\n", /empty ABOUT\.md/u],
+      ["\n\n", /empty PLUGIN_OVERVIEW\.md/u],
       [`${"a".repeat(4001)}\n`, /maximum is 4000/u],
       ["Text <b>bold</b>\n", /raw HTML or an image/u],
       ["![logo](https://example.com/logo.png)\n", /raw HTML or an image/u],
     ] as const) {
-      await writeFile(path.join(pluginDirectory, "ABOUT.md"), text);
+      await writeFile(path.join(pluginDirectory, "PLUGIN_OVERVIEW.md"), text);
       await expect(
-        readBundledPluginAbout(pluginDirectory, "sample"),
+        readBundledPluginOverview(pluginDirectory, "sample"),
       ).rejects.toThrow(message);
     }
   });
@@ -210,7 +210,7 @@ describe("bb-official marketplace generator", () => {
       }),
     );
     await writeFile(
-      path.join(origin, "plugins", "sample", "ABOUT.md"),
+      path.join(origin, "plugins", "sample", "PLUGIN_OVERVIEW.md"),
       "# Sample\n\nA long-form description.\n",
     );
     await writeFile(
@@ -254,7 +254,7 @@ describe("bb-official marketplace generator", () => {
     );
     expect(catalog.plugins[0]).not.toHaveProperty("publishedAt");
     expect(catalog.plugins[0]).not.toHaveProperty("updatedAt");
-    expect(catalog.plugins[0]?.about).toBe(
+    expect(catalog.plugins[0]?.overview).toBe(
       "# Sample\n\nA long-form description.\n",
     );
     expect(warnings).toHaveLength(1);

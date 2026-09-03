@@ -2,7 +2,7 @@
 
 import { cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
-import { PluginAboutMarkdown } from "./PluginAboutMarkdown";
+import { PluginOverviewMarkdown } from "./PluginOverviewMarkdown";
 
 afterEach(cleanup);
 
@@ -30,10 +30,10 @@ const HOSTILE_MARKDOWN = [
   "```",
 ].join("\n");
 
-describe("PluginAboutMarkdown", () => {
+describe("PluginOverviewMarkdown", () => {
   it("renders only the allowlisted markdown and https links", () => {
     const { container } = render(
-      <PluginAboutMarkdown markdown={HOSTILE_MARKDOWN} />,
+      <PluginOverviewMarkdown markdown={HOSTILE_MARKDOWN} />,
     );
 
     expect(container.querySelector("script")).toBeNull();

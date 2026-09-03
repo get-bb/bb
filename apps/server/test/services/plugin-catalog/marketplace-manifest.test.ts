@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import {
   BUNDLED_MARKETPLACE_NAME,
-  entryAbout,
+  entryOverview,
   entryScreenshotUrls,
   entryRepositoryUrl,
   entrySourceDisplay,
@@ -179,13 +179,13 @@ describe("marketplace manifest schema", () => {
       ]);
     });
 
-    it("keeps an about text at the cap and drops a longer one with a warning", () => {
+    it("keeps an overview text at the cap and drops a longer one with a warning", () => {
       const warnings: string[] = [];
       const atCap = `${"é".repeat(4000)}\n`;
       const parsed = parseMarketplaceManifest(
         manifestV2([
-          entry({ about: atCap }),
-          entry({ id: "long", about: `${"a".repeat(4001)}\n` }),
+          entry({ overview: atCap }),
+          entry({ id: "long", overview: `${"a".repeat(4001)}\n` }),
         ]),
         "manifest",
       );
@@ -193,14 +193,14 @@ describe("marketplace manifest schema", () => {
       if (capped === undefined || long === undefined) {
         throw new Error("entries missing");
       }
-      expect(entryAbout(capped, (message) => warnings.push(message))).toBe(
+      expect(entryOverview(capped, (message) => warnings.push(message))).toBe(
         atCap,
       );
-      expect(entryAbout(long, (message) => warnings.push(message))).toBe(
+      expect(entryOverview(long, (message) => warnings.push(message))).toBe(
         undefined,
       );
       expect(warnings).toEqual([
-        expect.stringContaining('entry "long" about text was skipped'),
+        expect.stringContaining('entry "long" overview text was skipped'),
       ]);
     });
 

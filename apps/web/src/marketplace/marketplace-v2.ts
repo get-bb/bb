@@ -96,7 +96,7 @@ export const marketplaceV2EntrySchema = z.object({
     .array(screenshotUrlSchema)
     .transform((screenshots) => screenshots.slice(0, 6))
     .default([]),
-  about: z.string().min(1).optional(),
+  overview: z.string().min(1).optional(),
   publishedAt: z.string().datetime({ offset: true }).optional(),
   updatedAt: z.string().datetime({ offset: true }).optional(),
 });

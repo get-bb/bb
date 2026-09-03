@@ -1,7 +1,7 @@
-# Marketplace entry, icon, screenshots, and about file
+# Marketplace entry, icon, screenshots, and overview file
 
 Read this file before you create a marketplace entry, icon, screenshots, or
-about file.
+overview file.
 Confirm every field against schema/marketplace-v2.schema.json in the
 marketplace repository.
 
@@ -11,7 +11,7 @@ Create entries/<plugin-id>.json. The filename, entry ID, and plugin manifest ID
 must match.
 
 The schema rejects an unknown field. The permitted fields are id, displayName,
-description, icon, tags, author, source, category, screenshots, and about. The
+description, icon, tags, author, source, category, screenshots, and overview. The
 schema requires id, displayName, description, icon, author, and source. The
 build writes publishedAt itself, so do not author it.
 The entry has no engines field and no version field. Read the plugin manifest
@@ -95,7 +95,7 @@ Use this shape only as a guide:
   "description": "Keeps project notes beside each BB thread.",
   "icon": { "url": "./icons/notes-1234abcd.svg" },
   "screenshots": ["./screenshots/notes/overview.png"],
-  "about": "./about/notes.md",
+  "overview": "./overview/notes.md",
   "tags": ["notes", "interface"],
   "author": {
     "name": "Acme",
@@ -209,22 +209,22 @@ Delete a file you do not reference. The build changes each local path to a CDN
 URL. Do not write a CDN URL yourself. An absolute URL must use HTTPS on
 getbb.app, so use a local path for a submission.
 
-## Add the about file
+## Add the overview file
 
-The plugin author can keep a long-form description in an ABOUT.md file beside
+The plugin author can keep a long-form description in an PLUGIN_OVERVIEW.md file beside
 the plugin package.json. The store detail page renders it below the short
 description. It is optional. Do not write one for the author. Copy the file
 only when the plugin repository holds it.
 
-Copy the file to about/<plugin-id>.md in the marketplace repository. Reference
+Copy the file to overview/<plugin-id>.md in the marketplace repository. Reference
 it from the entry with the exact relative path:
 
 ```json
-"about": "./about/notes.md"
+"overview": "./overview/notes.md"
 ```
 
 The marketplace build folds the file text into the published document. It
-rejects a file in about/ that no entry references.
+rejects a file in overview/ that no entry references.
 
 ### Follow the content rules
 
@@ -258,7 +258,7 @@ statement below before you open the pull request.
 - The tags hold words a user would search for.
 - The icon reads clearly at 40 pixels.
 - The first screenshot shows the main surface with real content.
-- The about file, when present, uses only the permitted markdown and https
+- The overview file, when present, uses only the permitted markdown and https
   links.
 - No field holds private data, a local path, or an internal URL.
 

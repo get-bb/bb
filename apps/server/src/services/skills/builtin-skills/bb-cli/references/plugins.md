@@ -34,7 +34,7 @@
     marketplace's `stats.json` sidecar has been read (`installs` in `--json`,
     null when unknown): anonymous-telemetry install counts for published
     entries. BB Official entries use the count for the same plugin id. With
-    `--json`, `about` holds the entry's long-form markdown description when
+    `--json`, `overview` holds the entry's long-form markdown description when
     the marketplace publishes one; the detail page renders it below the short
     description.
 - **Third-party marketplaces** (routes under `/api/v1/marketplaces`):

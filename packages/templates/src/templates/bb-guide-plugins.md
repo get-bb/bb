@@ -369,7 +369,7 @@ refresh changes discovery data and icons only. It never installs, updates, or
 runs plugin code. The server fetches and serves entry icons. The detail page
 loads screenshots from the URLs that the marketplace declares. An entry can
 also carry a long-form markdown description. The detail page renders it below
-the short description, and `bb plugin search --json` returns it as `about`.
+the short description, and `bb plugin search --json` returns it as `overview`.
 An install uses the normal git or npm source pipeline. bb records the source
 marketplace.
 

@@ -50,16 +50,16 @@ rules.
 4. Get separate approval before any release mutation.
 5. Create one marketplace entry with a vendored icon.
 6. Install the plugin and capture its screenshots.
-7. Copy the plugin ABOUT.md file into the marketplace when the plugin has one.
+7. Copy the plugin PLUGIN_OVERVIEW.md file into the marketplace when the plugin has one.
 8. Validate the marketplace repository.
-9. Commit only the entry, icon, screenshots, and about file.
+9. Commit only the entry, icon, screenshots, and overview file.
 10. Open a pull request from the submitter account.
 
 Read these references as the task reaches each stage:
 
 - Read references/plugin-release.md before validating or releasing a plugin.
 - Read references/marketplace-entry.md before you create the entry, icon,
-  screenshots, or about file. It states what a good entry and description
+  screenshots, or overview file. It states what a good entry and description
   hold, how to capture screenshots with a harness browser or computer
   automation tool, what to ask the user for when the harness has no such
   tool, and which markdown the long-form description can use. It ends with a

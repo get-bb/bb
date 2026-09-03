@@ -37,9 +37,9 @@ function httpsOnly(url: string): string | null {
   }
 }
 
-const aboutUrlTransform: UrlTransform = (url) => httpsOnly(url) ?? "";
+const overviewUrlTransform: UrlTransform = (url) => httpsOnly(url) ?? "";
 
-function AboutLink({ children, href }: ComponentPropsWithoutRef<"a">) {
+function OverviewLink({ children, href }: ComponentPropsWithoutRef<"a">) {
   const safeHref = href === undefined ? null : httpsOnly(href);
   if (safeHref === null) return <span>{children}</span>;
   return (
@@ -49,8 +49,8 @@ function AboutLink({ children, href }: ComponentPropsWithoutRef<"a">) {
   );
 }
 
-const ABOUT_COMPONENTS: Components = {
-  a: AboutLink,
+const OVERVIEW_COMPONENTS: Components = {
+  a: OverviewLink,
   h1: ({ children }) => <h3>{children}</h3>,
   h2: ({ children }) => <h3>{children}</h3>,
   h3: ({ children }) => <h4>{children}</h4>,
@@ -58,19 +58,36 @@ const ABOUT_COMPONENTS: Components = {
   h5: ({ children }) => <h6>{children}</h6>,
 };
 
-export function MarketplaceAbout({ markdown }: { markdown: string }) {
+export function MarketplaceOverview({ markdown }: { markdown: string }) {
   return (
-    <div className="marketplace-about">
+    <div className="marketplace-overview">
       <ReactMarkdown
         allowedElements={ALLOWED_ELEMENTS}
         unwrapDisallowed
         skipHtml
         remarkPlugins={REMARK_PLUGINS}
-        components={ABOUT_COMPONENTS}
-        urlTransform={aboutUrlTransform}
+        components={OVERVIEW_COMPONENTS}
+        urlTransform={overviewUrlTransform}
       >
         {markdown}
       </ReactMarkdown>
+    </div>
+  );
+}
+
+function splitLeadSentence(text: string): { lead: string; rest: string } {
+  const match = /^(.*?[.!?])\s+(\S[\s\S]*)$/u.exec(text.trim());
+  return match === null
+    ? { lead: text.trim(), rest: "" }
+    : { lead: match[1] ?? text, rest: match[2] ?? "" };
+}
+
+export function MarketplaceSummary({ description }: { description: string }) {
+  const { lead, rest } = splitLeadSentence(description);
+  return (
+    <div className="marketplace-summary">
+      <p className="marketplace-summary-lead">{lead}</p>
+      {rest.length === 0 ? null : <p>{rest}</p>}
     </div>
   );
 }
