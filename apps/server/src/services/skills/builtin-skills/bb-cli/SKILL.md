@@ -66,10 +66,11 @@ bb pool account disable <id>
 bb pool status [--json] [--show-key]
 ```
 
-Reload the plugin after adding its first account if it was awaiting
-configuration. The hub bearer key appears only with `status --show-key`.
-`--api-key <key>` can be recorded in shell history, so prefer `--import` for an
-existing Claude Code login.
+Newly added or enabled accounts are available without a plugin reload. The hub
+bearer key appears only with `status --show-key`. `--api-key <key>` can be
+recorded in shell history, so prefer `--import` for an existing Claude Code
+login. JSON account status reports rejected upstream bucket resets under
+`bucketExhaustion`; this diagnostic field does not affect account selection.
 
 - Inspect real status, logs, API results, or diffs instead of assumptions.
 - Keep file paths on the machine that owns the selected workspace.

@@ -37,15 +37,19 @@ export function quotaFromHeaders(
   const sevenDayResetAt = parseReset(headers.get(`${PREFIX}7d-reset`));
   const sevenDayStatus = headers.get(`${PREFIX}7d-status`);
   const representativeClaim = headers.get(`${PREFIX}representative-claim`);
-  const modelExhaustion = { ...previous.modelExhaustion };
+  const bucketExhaustion = { ...previous.bucketExhaustion };
   for (const [name, value] of headers) {
     if (!name.startsWith(PREFIX) || !name.endsWith("-status")) continue;
     if (name === `${PREFIX}5h-status` || name === `${PREFIX}7d-status`)
       continue;
-    const model = name.slice(PREFIX.length, -"-status".length);
-    if (value.toLowerCase() !== "rejected") continue;
-    const reset = parseReset(headers.get(`${PREFIX}${model}-reset`));
-    modelExhaustion[model] = reset ?? now;
+    const bucket = name.slice(PREFIX.length, -"-status".length);
+    if (bucket === "" || bucket === "overage") continue;
+    if (value.toLowerCase() !== "rejected") {
+      delete bucketExhaustion[bucket];
+      continue;
+    }
+    const reset = parseReset(headers.get(`${PREFIX}${bucket}-reset`));
+    bucketExhaustion[bucket] = reset ?? now;
   }
   const observed =
     fiveHourUtilization !== null ||
@@ -64,7 +68,7 @@ export function quotaFromHeaders(
     sevenDayResetAt: sevenDayResetAt ?? previous.sevenDayResetAt,
     sevenDayStatus: sevenDayStatus ?? previous.sevenDayStatus,
     representativeClaim: representativeClaim ?? previous.representativeClaim,
-    modelExhaustion,
+    bucketExhaustion,
     observedAt: observed ? now : previous.observedAt,
     heldUntil: previous.heldUntil,
     error: previous.error,

@@ -95,17 +95,6 @@ export class AccountPoolHub {
   constructor(private readonly options: HubOptions) {}
 
   async start(signal: AbortSignal): Promise<void> {
-    const enabled = (await this.options.accounts.list()).filter(
-      (account) => account.enabled,
-    );
-    if (enabled.length === 0) {
-      throw Object.assign(
-        new Error(
-          "Add and enable a Claude account with `bb pool account add`.",
-        ),
-        { name: "NeedsConfigurationError" },
-      );
-    }
     this.accepting = true;
     await waitForAbort(signal);
     await this.stop();
@@ -154,7 +143,6 @@ export class AccountPoolHub {
         "Account Pool is not accepting requests.",
       );
     }
-    if (request.method === "HEAD") return new Response(null, { status: 200 });
     const body = new Uint8Array(await request.arrayBuffer());
     return this.forward(request, body);
   }
@@ -180,7 +168,7 @@ export class AccountPoolHub {
           sevenDayResetAt: quota.sevenDayResetAt,
           sevenDayStatus: quota.sevenDayStatus,
           representativeClaim: quota.representativeClaim,
-          modelExhaustion: quota.modelExhaustion,
+          bucketExhaustion: quota.bucketExhaustion,
           observedAt: quota.observedAt,
           heldUntil: quota.heldUntil,
           error: quota.error,
@@ -470,6 +458,12 @@ export class AccountPoolHub {
       });
     }
     const reader = upstream.response.body.getReader();
+    const eventStream =
+      upstream.response.headers
+        .get("content-type")
+        ?.split(";", 1)[0]
+        ?.trim()
+        .toLowerCase() === "text/event-stream";
     const body = new ReadableStream<Uint8Array>({
       async pull(controller) {
         try {
@@ -482,13 +476,19 @@ export class AccountPoolHub {
           controller.enqueue(chunk.value);
         } catch (error) {
           upstream.release();
-          const message = errorMessage(error);
-          controller.enqueue(
-            new TextEncoder().encode(
-              `event: error\ndata: ${JSON.stringify({ type: "error", error: { type: "api_error", message } })}\n\n`,
-            ),
-          );
-          controller.close();
+          if (eventStream) {
+            const message = errorMessage(error);
+            controller.enqueue(
+              new TextEncoder().encode(
+                `event: error\ndata: ${JSON.stringify({ type: "error", error: { type: "api_error", message } })}\n\n`,
+              ),
+            );
+            controller.close();
+          } else {
+            controller.error(
+              error instanceof Error ? error : new Error(String(error)),
+            );
+          }
         }
       },
       async cancel() {
@@ -505,6 +505,13 @@ export class AccountPoolHub {
   }
 
   private noEligibleResponse(accounts: readonly Account[]): Response {
+    if (!accounts.some((account) => account.enabled)) {
+      return anthropicError(
+        503,
+        "api_error",
+        "Account Pool has no enabled account",
+      );
+    }
     const now = this.options.now();
     const next = accounts
       .filter((account) => account.enabled)

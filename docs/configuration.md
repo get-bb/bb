@@ -627,14 +627,15 @@ bb pool account add --provider claude --api-key <key> [--label <text>] [--priori
 
 The import path reads the Claude Code login on the bb server host. The API-key
 form necessarily places the key in the command arguments and may leave it in
-shell history; prefer import when possible. If the plugin entered
-needs-configuration before its first account was added, run
-`bb plugin reload account-pool` afterward.
+shell history; prefer import when possible. The hub starts immediately, so a
+newly added or enabled account is available without a plugin reload.
 
 `bb pool status --show-key` is the only command that reveals the hub bearer
 key. Point a client at the route printed by that command and supply the key as
 `Authorization: Bearer <key>`. Account listing, enable, disable, and removal
 are available through `bb pool account list|enable|disable|remove`.
+JSON account status includes rejected upstream bucket resets under
+`bucketExhaustion`. The field is diagnostic and does not affect selection.
 
 Two settings control routing. `switchThreshold` is the 5-hour or 7-day quota
 fraction at which an account stops receiving traffic and defaults to `0.98`.

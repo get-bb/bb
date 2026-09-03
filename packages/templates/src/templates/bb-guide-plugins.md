@@ -39,11 +39,14 @@ bb pool account disable <id>
 bb pool status [--json] [--show-key]
 ```
 
-If the plugin was awaiting its first account, reload it after `account add`.
-Only `status --show-key` reveals the hub bearer key. Passing `--api-key <key>`
-can leave the key in shell history; prefer `--import` when Claude Code is
-already signed in. The `upstreamBaseUrl` setting exists for tests and QA and
-defaults to `https://api.anthropic.com`; `switchThreshold` defaults to `0.98`.
+The hub starts immediately, even before an account is configured, so newly
+added or enabled accounts are available without a plugin reload. Only
+`status --show-key` reveals the hub bearer key. Passing `--api-key <key>` can
+leave the key in shell history; prefer `--import` when Claude Code is already
+signed in. JSON account status reports rejected upstream bucket resets under
+`bucketExhaustion`; this is diagnostic status and does not affect selection.
+The `upstreamBaseUrl` setting exists for tests and QA and defaults to
+`https://api.anthropic.com`; `switchThreshold` defaults to `0.98`.
 
 The builtin Keep Awake plugin prevents macOS idle sleep while bb is running.
 Its settings page lets you target all hosts or selected hosts. The CLI

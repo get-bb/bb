@@ -146,7 +146,7 @@ const quotaRowSchema = z
     seven_day_reset_at: z.number().int().nullable(),
     seven_day_status: z.string().nullable(),
     representative_claim: z.string().nullable(),
-    model_exhaustion_json: z.string(),
+    bucket_exhaustion_json: z.string(),
     observed_at: z.number().int().nullable(),
     held_until: z.number().int().nullable(),
     error: z.string().nullable(),
@@ -161,7 +161,7 @@ const EMPTY_QUOTA = {
   sevenDayResetAt: null,
   sevenDayStatus: null,
   representativeClaim: null,
-  modelExhaustion: {},
+  bucketExhaustion: {},
   observedAt: null,
   heldUntil: null,
   error: null,
@@ -190,7 +190,7 @@ export class QuotaStore {
       sevenDayResetAt: row.seven_day_reset_at,
       sevenDayStatus: row.seven_day_status,
       representativeClaim: row.representative_claim,
-      modelExhaustion: JSON.parse(row.model_exhaustion_json),
+      bucketExhaustion: JSON.parse(row.bucket_exhaustion_json),
       observedAt: row.observed_at,
       heldUntil: row.held_until,
       error: row.error,
@@ -204,7 +204,7 @@ export class QuotaStore {
         `INSERT INTO account_quota (
           account_id, five_hour_utilization, five_hour_reset_at,
           five_hour_status, seven_day_utilization, seven_day_reset_at,
-          seven_day_status, representative_claim, model_exhaustion_json,
+          seven_day_status, representative_claim, bucket_exhaustion_json,
           observed_at, held_until, error
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(account_id) DO UPDATE SET
@@ -215,7 +215,7 @@ export class QuotaStore {
           seven_day_reset_at = excluded.seven_day_reset_at,
           seven_day_status = excluded.seven_day_status,
           representative_claim = excluded.representative_claim,
-          model_exhaustion_json = excluded.model_exhaustion_json,
+          bucket_exhaustion_json = excluded.bucket_exhaustion_json,
           observed_at = excluded.observed_at,
           held_until = excluded.held_until,
           error = excluded.error`,
@@ -229,7 +229,7 @@ export class QuotaStore {
         value.sevenDayResetAt,
         value.sevenDayStatus,
         value.representativeClaim,
-        JSON.stringify(value.modelExhaustion),
+        JSON.stringify(value.bucketExhaustion),
         value.observedAt,
         value.heldUntil,
         value.error,
@@ -253,7 +253,7 @@ export const QUOTA_MIGRATIONS = [
     seven_day_reset_at INTEGER,
     seven_day_status TEXT,
     representative_claim TEXT,
-    model_exhaustion_json TEXT NOT NULL DEFAULT '{}',
+    bucket_exhaustion_json TEXT NOT NULL DEFAULT '{}',
     observed_at INTEGER,
     held_until INTEGER,
     error TEXT

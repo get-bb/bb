@@ -16,6 +16,7 @@ import { z } from "zod";
 import type { ImportedClaudeCredentials } from "./credentials.js";
 import {
   createAccountPoolPlugin,
+  helloResponse,
   type AccountPoolPluginOptions,
 } from "./server.js";
 
@@ -185,11 +186,13 @@ async function addApiAccount(
 }
 
 describe("Account Pool plugin", () => {
-  it("reports needs-configuration and exposes every account CLI operation", async () => {
+  it("forwards the next request after adding the first account through the CLI", async () => {
+    let forwarded = 0;
     const upstream = await startUpstream(async (request, response) => {
+      forwarded += 1;
       await readRequestBody(request);
       response.writeHead(200, { "content-type": "application/json" });
-      response.end("{}");
+      response.end('{"forwarded":true}');
     });
     cleanups.push(upstream.close);
     const dataDir = await mkdtemp(
@@ -201,12 +204,40 @@ describe("Account Pool plugin", () => {
       settings: { upstreamBaseUrl: upstream.url, switchThreshold: 0.98 },
     });
     await createAccountPoolPlugin()(host.bb);
-    const emptyService = host.harness.behavior.runService("hub");
-    await emptyService.done;
+    const service = host.harness.behavior.runService("hub");
+    cleanups.push(async () => {
+      service.controller.abort();
+      await service.done;
+      await host.harness.lifecycle.dispose();
+      await fs.rm(dataDir, { recursive: true, force: true });
+    });
+    const statusResult = await host.harness.behavior.runCli([
+      "status",
+      "--json",
+      "--show-key",
+    ]);
+    const status = statusSchema.parse(JSON.parse(statusResult.stdout));
+    expect(status.accepting).toBe(true);
+    if (status.hubKey === null) throw new Error("Expected a hub key.");
     expect(host.harness.inspection.needsConfigurationMessages).toEqual([
-      "Add a Claude account with `bb pool account add`, then reload Account Pool.",
       "Add and enable a Claude account with `bb pool account add`.",
     ]);
+    const hello = helloResponse();
+    expect(hello.status).toBe(200);
+    const unavailable = await host.harness.behavior.fetchHttp(
+      "POST",
+      "/v1/messages",
+      { headers: authHeaders(status.hubKey), body: "{}" },
+    );
+    expect(unavailable.status).toBe(503);
+    expect(await unavailable.json()).toEqual({
+      type: "error",
+      error: {
+        type: "api_error",
+        message: "Account Pool has no enabled account",
+      },
+    });
+    expect(forwarded).toBe(0);
     const added = await host.harness.behavior.runCli([
       "account",
       "add",
@@ -221,7 +252,26 @@ describe("Account Pool plugin", () => {
     ]);
     expect(added.exitCode).toBe(0);
     expect(added.stdout).not.toContain("sk-cli-secret");
-    const list = await host.harness.behavior.runCli([
+    expect(added.stdout).not.toContain("reload");
+    const forwardedResponse = await host.harness.behavior.fetchHttp(
+      "POST",
+      "/v1/messages",
+      { headers: authHeaders(status.hubKey), body: "{}" },
+    );
+    expect(forwardedResponse.status).toBe(200);
+    expect(await forwardedResponse.text()).toBe('{"forwarded":true}');
+    expect(forwarded).toBe(1);
+  });
+
+  it("exposes every account CLI operation", async () => {
+    const upstream = await startUpstream(async (request, response) => {
+      await readRequestBody(request);
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end("{}");
+    });
+    cleanups.push(upstream.close);
+    const fixture = await createFixture({ upstreamUrl: upstream.url });
+    const list = await fixture.host.harness.behavior.runCli([
       "account",
       "list",
       "--json",
@@ -232,39 +282,53 @@ describe("Account Pool plugin", () => {
       .parse(JSON.parse(list.stdout));
     const account = listed.accounts[0];
     if (account === undefined) throw new Error("CLI account was not listed.");
-    expect(account).toMatchObject({ label: "CLI account", priority: 7 });
+    expect(account).toMatchObject({ label: "Claude API key", priority: 100 });
     expect(
-      (await host.harness.behavior.runCli(["account", "disable", account.id]))
-        .exitCode,
+      (
+        await fixture.host.harness.behavior.runCli([
+          "account",
+          "disable",
+          account.id,
+        ])
+      ).exitCode,
     ).toBe(0);
     expect(
       z
         .array(accountSummarySchema)
-        .parse(await host.harness.behavior.callRpc("account.list", null))[0]
-        ?.status,
+        .parse(
+          await fixture.host.harness.behavior.callRpc("account.list", null),
+        )[0]?.status,
     ).toBe("disabled");
     expect(
-      (await host.harness.behavior.runCli(["account", "enable", account.id]))
-        .exitCode,
+      (
+        await fixture.host.harness.behavior.runCli([
+          "account",
+          "enable",
+          account.id,
+        ])
+      ).exitCode,
     ).toBe(0);
-    const runningService = host.harness.behavior.runService("hub");
-    await vi.waitFor(async () => {
-      const status = statusSchema.parse(
-        JSON.parse(
-          (await host.harness.behavior.runCli(["status", "--json"])).stdout,
-        ),
-      );
-      expect(status.accepting).toBe(true);
-      expect(status.hubKey).toBeNull();
-    });
-    const secretStatus = statusSchema.parse(
+    const publicStatus = statusSchema.parse(
       JSON.parse(
-        (await host.harness.behavior.runCli(["status", "--json", "--show-key"]))
+        (await fixture.host.harness.behavior.runCli(["status", "--json"]))
           .stdout,
       ),
     );
+    expect(publicStatus.accepting).toBe(true);
+    expect(publicStatus.hubKey).toBeNull();
+    const secretStatus = statusSchema.parse(
+      JSON.parse(
+        (
+          await fixture.host.harness.behavior.runCli([
+            "status",
+            "--json",
+            "--show-key",
+          ])
+        ).stdout,
+      ),
+    );
     if (secretStatus.hubKey === null) throw new Error("Expected a hub key.");
-    const counted = await host.harness.behavior.fetchHttp(
+    const counted = await fixture.host.harness.behavior.fetchHttp(
       "POST",
       "/v1/messages/count_tokens",
       { headers: authHeaders(secretStatus.hubKey), body: "{}" },
@@ -272,16 +336,17 @@ describe("Account Pool plugin", () => {
     expect(counted.status).toBe(200);
     expect(await counted.text()).toBe("{}");
     expect(
-      (await host.harness.behavior.runCli(["account", "remove", account.id]))
-        .exitCode,
+      (
+        await fixture.host.harness.behavior.runCli([
+          "account",
+          "remove",
+          account.id,
+        ])
+      ).exitCode,
     ).toBe(0);
-    expect(await host.harness.behavior.callRpc("account.list", null)).toEqual(
-      [],
-    );
-    runningService.controller.abort();
-    await runningService.done;
-    await host.harness.lifecycle.dispose();
-    await fs.rm(dataDir, { recursive: true, force: true });
+    expect(
+      await fixture.host.harness.behavior.callRpc("account.list", null),
+    ).toEqual([]);
   });
 
   it("requires the hub key and forwards a streaming SSE response byte for byte", async () => {
@@ -315,6 +380,10 @@ describe("Account Pool plugin", () => {
         "anthropic-ratelimit-unified-7d-reset": "4102448400",
         "anthropic-ratelimit-unified-7d-status": "allowed",
         "anthropic-ratelimit-unified-representative-claim": "claim-a",
+        "anthropic-ratelimit-unified-status": "rejected",
+        "anthropic-ratelimit-unified-overage-status": "rejected",
+        "anthropic-ratelimit-unified-7d_oi-status": "rejected",
+        "anthropic-ratelimit-unified-7d_oi-reset": "4102452000",
       });
       response.write(first);
       setTimeout(() => response.end(second), 60);
@@ -389,6 +458,7 @@ describe("Account Pool plugin", () => {
       fiveHourStatus: "allowed",
       sevenDayStatus: "allowed",
       representativeClaim: "claim-a",
+      bucketExhaustion: { "7d_oi": 4_102_452_000_000 },
     });
     expect(fixture.host.harness.inspection.registrations.httpRoutes).toEqual(
       expect.arrayContaining([
@@ -399,6 +469,29 @@ describe("Account Pool plugin", () => {
         }),
       ]),
     );
+  });
+
+  it("errors a failed non-SSE stream without appending an SSE frame", async () => {
+    const partial = Buffer.from('{"partial":');
+    const upstream = await startUpstream(async (request, response) => {
+      await readRequestBody(request);
+      response.writeHead(200, { "content-type": "application/json" });
+      response.write(partial);
+      setTimeout(() => response.destroy(new Error("upstream failed")), 30);
+    });
+    cleanups.push(upstream.close);
+    const fixture = await createFixture({ upstreamUrl: upstream.url });
+    const response = await fixture.host.harness.behavior.fetchHttp(
+      "POST",
+      "/v1/messages",
+      { headers: authHeaders(fixture.key), body: "{}" },
+    );
+    const reader = response.body?.getReader();
+    if (reader === undefined) throw new Error("Expected a streaming body.");
+    const first = await reader.read();
+    expect(first.done).toBe(false);
+    expect(Buffer.from(first.value ?? [])).toEqual(partial);
+    await expect(reader.read()).rejects.toThrow();
   });
 
   it("skips threshold-exhausted accounts and rotates quota rejections", async () => {

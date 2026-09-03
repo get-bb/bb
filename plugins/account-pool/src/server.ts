@@ -16,6 +16,10 @@ export interface AccountPoolPluginOptions {
   importCredentials?: () => Promise<ImportedClaudeCredentials>;
 }
 
+export function helloResponse(): Response {
+  return new Response(null, { status: 200 });
+}
+
 const upstreamSchema = z
   .string()
   .url()
@@ -81,7 +85,7 @@ export function createAccountPoolPlugin(
     );
     if ((await accounts.list()).every((account) => !account.enabled)) {
       bb.status.needsConfiguration(
-        "Add a Claude account with `bb pool account add`, then reload Account Pool.",
+        "Add and enable a Claude account with `bb pool account add`.",
       );
     }
     bb.rpc.register(accountPoolRpcContract, createRpcHandlers(operations));
@@ -101,7 +105,7 @@ export function createAccountPoolPlugin(
     bb.http.route(
       "HEAD",
       "/api/hello",
-      (context) => hub.handle(context.req.raw),
+      () => helloResponse(),
       { auth: "none" },
     );
     bb.background.service("hub", {

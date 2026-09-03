@@ -165,7 +165,7 @@ export function registerPoolCli(
           const account = await operations.add(input);
           return {
             exitCode: 0,
-            stdout: `Added ${account.label} (${account.id}). Reload Account Pool if it was awaiting configuration.\n`,
+            stdout: `Added ${account.label} (${account.id}).\n`,
           };
         }
         if (argv[0] === "account" && argv[1] === "list") {
