@@ -15,8 +15,10 @@ const packageRoot = resolve(commandDir, "..", "..");
 const repoRoot = resolve(packageRoot, "..", "..");
 
 export function resolveCliExecution(
-  cliArgs: string[] = process.argv.slice(2),
+  rawCliArgs: string[] = process.argv.slice(2),
 ): CliExecution {
+  const cliArgs =
+    rawCliArgs[0] === "--" ? rawCliArgs.slice(1) : rawCliArgs;
   const env = { ...process.env };
   if (process.env.NODE_ENV !== "production") {
     const devEnv = resolveCurrentDevProcessEnv(repoRoot, process.env);

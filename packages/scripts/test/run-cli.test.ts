@@ -52,4 +52,24 @@ describe("run-cli", () => {
     expect(execution.env.BB_SERVER_URL).toBe("http://localhost:4444");
     expect(execution.env.BB_HOST_DAEMON_PORT).toBe("5555");
   });
+
+  it("strips the leading -- that pnpm forwards to scripts", () => {
+    vi.stubEnv("NODE_ENV", "production");
+
+    const execution = resolveCliExecution([
+      "--",
+      "machine",
+      "show",
+      "some-id",
+      "--json",
+    ]);
+
+    expect(execution.args).toEqual([
+      "apps/cli/dist/index.js",
+      "machine",
+      "show",
+      "some-id",
+      "--json",
+    ]);
+  });
 });
