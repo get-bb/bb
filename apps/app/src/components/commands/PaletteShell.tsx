@@ -170,7 +170,6 @@ function PaletteModeChip({
         label={label}
         title={label}
         isActive
-        className={PALETTE_FOOTER_CONTROL_SURFACE_CLASS}
         onSelect={() => undefined}
         leadingVisual={<Icon name={icon} aria-hidden />}
         closeAction={{ onClose: onClear, closeLabel: clearLabel }}

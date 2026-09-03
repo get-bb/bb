@@ -528,7 +528,8 @@ describe("CommandPalette", () => {
     const modeSelect = screen.getByRole("button", { name: "Threads search" });
     expectAttribute(modeSelect, "aria-pressed", "true");
     expect(modeSelect.querySelector('[data-icon="Search"]')).not.toBeNull();
-    expectClasses(modeSelect.parentElement, "border-border/70", "bg-background/70");
+    expectClasses(modeSelect.parentElement, "bg-state-active");
+    expectNoClasses(modeSelect.parentElement, "bg-background/70");
     expectAttribute(
       screen.getByRole("button", { name: "Return to commands" }),
       "data-tab-pill-close",
