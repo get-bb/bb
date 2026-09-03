@@ -12,7 +12,6 @@ import {
 import { useStore } from "jotai";
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { cn } from "@bb/shared-ui/lib/utils";
-import { COARSE_POINTER_TEXT_SM_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
 import { isPromptDraftEmpty } from "@bb/client-core";
 import type { ThreadSearchHighlightRange } from "@bb/server-contract";
 import { usePromptDraftStorage } from "@/hooks/usePromptDraftStorage";
@@ -275,6 +274,7 @@ export function ThreadSearchPaletteMode({
         />
       }
       footerKeys={presentation.footerKeys}
+      inputDescription={presentation.inputDescription}
       inputLabel="Search threads"
       inputRef={inputRef}
       listId={listId}
@@ -451,12 +451,6 @@ function ThreadSearchPaletteRow({
     }
   }, [matchKey, row.highlightRanges.length, shouldWindowMatch]);
 
-  const stateLabel =
-    row.lifecycle === "active"
-      ? null
-      : row.lifecycle === "draft"
-        ? "Draft"
-        : "Archived";
   return (
     <div
       id={id}
@@ -479,27 +473,19 @@ function ThreadSearchPaletteRow({
             ranges={primary.highlightRanges}
           />
         </span>
-        <span
-          className={cn(
-            "block min-w-0 truncate text-xs leading-4",
-            PALETTE_FOOTER_LABEL_CLASS,
-          )}
-          title={row.metadataText}
-          data-palette-thread-metadata
-        >
-          {row.metadataText}
-        </span>
+        {row.metadataText.length === 0 ? null : (
+          <span
+            className={cn(
+              "block min-w-0 truncate text-xs leading-4",
+              PALETTE_FOOTER_LABEL_CLASS,
+            )}
+            title={row.metadataText}
+            data-palette-thread-metadata
+          >
+            {row.metadataText}
+          </span>
+        )}
       </span>
-      {stateLabel === null ? null : (
-        <span
-          className={cn(
-            "shrink-0 text-xs text-subtle-foreground",
-            COARSE_POINTER_TEXT_SM_CLASS,
-          )}
-        >
-          {stateLabel}
-        </span>
-      )}
     </div>
   );
 }

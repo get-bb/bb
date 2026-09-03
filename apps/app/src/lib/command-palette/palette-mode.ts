@@ -11,6 +11,7 @@ export interface PaletteModePresentation {
     keys: readonly string[];
     label: string;
   }[];
+  inputDescription: string;
   placeholder: string;
 }
 

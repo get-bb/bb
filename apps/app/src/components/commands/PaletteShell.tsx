@@ -1,4 +1,9 @@
-import type { KeyboardEventHandler, ReactNode, Ref } from "react";
+import {
+  useId,
+  type KeyboardEventHandler,
+  type ReactNode,
+  type Ref,
+} from "react";
 import { useComposedRefs } from "@radix-ui/react-compose-refs";
 import { Icon } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
@@ -24,6 +29,7 @@ interface PaletteShellProps {
   accessory?: ReactNode;
   children: ReactNode;
   footerKeys: readonly { keys: readonly string[]; label: string }[];
+  inputDescription: string;
   inputLabel: string;
   inputRef?: Ref<HTMLInputElement>;
   listId: string;
@@ -41,6 +47,7 @@ export function PaletteShell({
   accessory,
   children,
   footerKeys,
+  inputDescription,
   inputLabel,
   inputRef,
   listId,
@@ -52,6 +59,7 @@ export function PaletteShell({
   placeholder,
   value,
 }: PaletteShellProps) {
+  const inputDescriptionId = useId();
   const overflow = useScrollOverflowState<HTMLDivElement>({
     measureOverflow: true,
   });
@@ -83,6 +91,7 @@ export function PaletteShell({
             aria-expanded
             aria-controls={listId}
             aria-activedescendant={activeDescendantId}
+            aria-describedby={inputDescriptionId}
             aria-label={inputLabel}
             autoComplete="off"
             spellCheck={false}
@@ -92,6 +101,9 @@ export function PaletteShell({
             onChange={(event) => onInputChange(event.target.value)}
             onKeyDown={onInputKeyDown}
           />
+          <span id={inputDescriptionId} className="sr-only">
+            {inputDescription}
+          </span>
           {accessory}
         </div>
       </div>
@@ -127,6 +139,7 @@ export function PaletteShell({
         </div>
       </div>
       <div
+        aria-hidden
         className="relative z-10 flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-border bg-surface-recessed-soft-solid px-4 py-2 text-xs text-subtle-foreground"
         data-palette-footer
       >

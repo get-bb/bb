@@ -108,21 +108,46 @@ describe("buildPaletteThreadSearchRows", () => {
       "draft",
       "archived",
     ]);
+    expect(result.rows.map((row) => row.metadataText)).toEqual([
+      "Palette project · just now",
+      "Draft · Palette project · just now",
+      "Archived · Palette project · just now",
+    ]);
     expect(result.draftMatchCount).toBe(1);
   });
 
-  it("narrows lifecycle immediately without changing row anatomy", () => {
-    const result = build({
+  it("omits redundant lifecycle metadata after narrowing scope", () => {
+    const draftResult = build({
       drafts: [makeDraft("draft", "A matching local draft")],
       scope: "draft",
     });
 
-    expect(result.rows).toMatchObject([
+    expect(draftResult.rows).toMatchObject([
       {
         lifecycle: "draft",
         metadataText: "Palette project · just now",
         projectId: "project-1",
         draftSlotId: "draft",
+      },
+    ]);
+
+    const archived = makeThread("archived", { archivedAt: NOW - 1 });
+    const archivedResult = build({
+      scope: "archived",
+      searchResponse: {
+        active: { results: [], total: 0 },
+        archived: {
+          total: 1,
+          results: [{ thread: archived, matches: [] }],
+        },
+      },
+    });
+
+    expect(archivedResult.rows).toMatchObject([
+      {
+        lifecycle: "archived",
+        metadataText: "Palette project · just now",
+        threadId: "archived",
       },
     ]);
   });
