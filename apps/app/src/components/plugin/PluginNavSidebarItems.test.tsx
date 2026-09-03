@@ -8,7 +8,12 @@ import {
   waitFor,
   within,
 } from "@testing-library/react";
-import { useEffect, useState, type ComponentType } from "react";
+import {
+  useEffect,
+  useState,
+  type ComponentType,
+  type MouseEvent as ReactMouseEvent,
+} from "react";
 import { createStore, Provider } from "jotai";
 import { MemoryRouter, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -20,7 +25,10 @@ import {
   setPluginSlotRegistrations,
   type PluginRegistrationSet,
 } from "@/lib/plugin-slots";
-import { getPluginPanelRoutePath } from "@/lib/route-paths";
+import {
+  AUTOMATIONS_PLUGIN_ID,
+  getPluginPanelRoutePath,
+} from "@/lib/route-paths";
 import {
   resetAllCrashedPluginSlotsForTest,
   resetCrashedPluginSlots,
@@ -34,6 +42,8 @@ import {
   pluginNavPanelOrderAtom,
   pluginNavVisiblePanelKeysAtom,
 } from "./pluginNavSidebarAtoms";
+import { splitLayoutAtom } from "@/lib/split-layout/atoms";
+import { countPanes, findPaneByContent } from "@/lib/split-layout";
 
 function registrationSet(
   overrides: Partial<PluginRegistrationSet>,
@@ -83,6 +93,7 @@ interface RenderSidebarItemsOptions {
   compactViewport?: boolean;
   compactCustomizeMode?: boolean;
   onCompactCustomizeModeChange?: (isCustomizing: boolean) => void;
+  splitEnabled?: boolean;
 }
 
 function PluginNavSidebarItemsHarness({
@@ -106,6 +117,7 @@ function PluginNavSidebarItemsHarness({
   return (
     <PluginNavSidebarItems
       builtInEntries={options.builtInEntries}
+      splitEnabled={options.splitEnabled}
       {...compactControlProps}
     />
   );
@@ -124,6 +136,16 @@ function renderSidebarItems(options: RenderSidebarItemsOptions = {}) {
       pluginNavVisiblePanelKeysAtom,
       options.storedVisibleKeys ?? null,
     );
+  }
+  if (options.splitEnabled) {
+    store.set(splitLayoutAtom, {
+      root: {
+        type: "pane",
+        paneId: "pane-1",
+        content: { kind: "new-thread" },
+      },
+      focusedPaneId: "pane-1",
+    });
   }
   const view = render(
     <CompactViewportOverrideProvider
@@ -162,7 +184,9 @@ function panelRowNames(labels: readonly string[] = ["Docs", "GitHub"]): string[]
 function builtInEntry(
   id: string,
   title: string,
-  onActivate: () => void = vi.fn(),
+  onActivate: (
+    event: ReactMouseEvent<HTMLButtonElement>,
+  ) => void = vi.fn(),
 ): BuiltInSidebarNavEntry {
   return {
     kind: "built-in",
@@ -491,6 +515,39 @@ describe("PluginNavSidebarItems", () => {
     ).toBeNull();
   });
 
+  it("keeps built-ins visible without letting their order consume plugin slots", () => {
+    const labels = ["One", "Two", "Three", "Four"];
+    labels.forEach((label, index) => registerPanel(`plugin-${index}`, label));
+    renderSidebarItems({
+      builtInEntries: [
+        builtInEntry("new-thread", "New thread"),
+        builtInEntry("search-threads", "Search threads"),
+      ],
+      storedOrder: [
+        "plugin-0/main",
+        "__bb__/new-thread",
+        "plugin-1/main",
+        "__bb__/search-threads",
+        "plugin-2/main",
+        "plugin-3/main",
+      ],
+    });
+
+    expect(
+      Array.from(
+        screen
+          .getByTestId("plugin-nav-sidebar-items")
+          .querySelectorAll("[data-sidebar-navigation-item]"),
+      ).map((row) => row.getAttribute("data-sidebar-navigation-item")),
+    ).toEqual([
+      "plugin-0/main",
+      "__bb__/new-thread",
+      "plugin-1/main",
+      "__bb__/search-threads",
+      "plugin-2/main",
+    ]);
+  });
+
   it("keeps launch and visibility as distinct targets with a clear row hover state", async () => {
     const labels = ["One", "Two", "Three", "Four"];
     labels.forEach((label, index) => registerPanel(`plugin-${index}`, label));
@@ -693,6 +750,92 @@ describe("PluginNavSidebarItems", () => {
         screen.queryByRole("list", { name: "Sidebar navigation" }),
       ).toBeNull(),
     );
+  });
+
+  it("preserves modifier-click when launching a built-in from Customize", async () => {
+    const onActivate = vi.fn();
+    renderSidebarItems({
+      builtInEntries: [builtInEntry("new-thread", "New thread", onActivate)],
+    });
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Customize sidebar navigation" }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "New thread" }), {
+      metaKey: true,
+    });
+
+    expect(onActivate).toHaveBeenCalledOnce();
+    expect(onActivate.mock.calls[0]?.[0]).toMatchObject({ metaKey: true });
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("list", { name: "Sidebar navigation" }),
+      ).toBeNull(),
+    );
+  });
+
+  it("preserves modifier-click when launching a plugin from Customize", async () => {
+    registerPanel("docs", "Docs");
+    const { store } = renderSidebarItems({ splitEnabled: true });
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Customize sidebar navigation" }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Docs" }), {
+      metaKey: true,
+    });
+
+    const layout = store.get(splitLayoutAtom);
+    expect(layout).not.toBeNull();
+    expect(countPanes(layout!.root)).toBe(2);
+    expect(
+      findPaneByContent(layout!.root, {
+        kind: "plugin-panel",
+        pluginId: "docs",
+        panelPath: "main",
+        subPath: "",
+      }),
+    ).not.toBeNull();
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("list", { name: "Sidebar navigation" }),
+      ).toBeNull(),
+    );
+  });
+
+  it("keeps Automations on the plugin row contract with a unified identity", () => {
+    registerPanel(AUTOMATIONS_PLUGIN_ID, "Automations", () => (
+      <span>Scheduled</span>
+    ));
+    const view = renderSidebarItems({ splitEnabled: true });
+
+    expect(
+      view.container.querySelector(
+        '[data-sidebar-navigation-item="__bb__/automations"]',
+      ),
+    ).not.toBeNull();
+    expect(
+      screen.getByRole("button", { name: "Automations panel options" }),
+    ).not.toBeNull();
+    expect(
+      view.container.querySelector("[data-plugin-nav-sidebar-accessory]")
+        ?.textContent,
+    ).toBe("Scheduled");
+
+    fireEvent.click(screen.getByRole("button", { name: "Automations" }), {
+      metaKey: true,
+    });
+    const layout = view.store.get(splitLayoutAtom);
+    expect(layout).not.toBeNull();
+    expect(countPanes(layout!.root)).toBe(2);
+    expect(
+      findPaneByContent(layout!.root, {
+        kind: "plugin-panel",
+        pluginId: AUTOMATIONS_PLUGIN_ID,
+        panelPath: "main",
+        subPath: "",
+      }),
+    ).not.toBeNull();
   });
 });
 

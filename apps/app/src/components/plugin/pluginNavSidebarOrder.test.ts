@@ -72,6 +72,7 @@ describe("arrangePluginNavPanelPreferences", () => {
       panels: [github, docs, tasks, extra],
       storedOrder: ["tasks/board", "github/pulls"],
       storedVisibleKeys: null,
+      defaultVisibleKeys: [],
       defaultVisibleCount: 3,
     });
 
@@ -99,6 +100,7 @@ describe("arrangePluginNavPanelPreferences", () => {
       panels: [github, docs, tasks],
       storedOrder: [],
       storedVisibleKeys: [],
+      defaultVisibleKeys: [],
       defaultVisibleCount: 3,
     });
 
@@ -116,6 +118,7 @@ describe("arrangePluginNavPanelPreferences", () => {
       panels: [github, docs, tasks],
       storedOrder: ["future/main", "docs/vault", "github/pulls"],
       storedVisibleKeys: ["future/main", "github/pulls", "future/main"],
+      defaultVisibleKeys: [],
       defaultVisibleCount: 3,
     });
 
@@ -136,6 +139,7 @@ describe("arrangePluginNavPanelPreferences", () => {
       panels: [github, docs, tasks],
       storedOrder: ["github/pulls", "docs/vault"],
       storedVisibleKeys: ["github/pulls", "docs/vault"],
+      defaultVisibleKeys: [],
       defaultVisibleCount: 3,
     });
 
@@ -155,6 +159,7 @@ describe("arrangePluginNavPanelPreferences", () => {
       panels: [github, docs, tasks],
       storedOrder: ["tasks/board", "github/pulls", "docs/vault"],
       storedVisibleKeys: ["docs/vault", "tasks/board"],
+      defaultVisibleKeys: [],
       defaultVisibleCount: 3,
     });
 
@@ -166,6 +171,37 @@ describe("arrangePluginNavPanelPreferences", () => {
       "tasks/board",
       "github/pulls",
       "docs/vault",
+    ]);
+  });
+
+  it("keeps every default destination visible while limiting optional plugins", () => {
+    const newThread = panel("__bb__", "new-thread");
+    const searchThreads = panel("__bb__", "search-threads");
+    const extra = panel("calendar", "agenda");
+    const result = arrangePluginNavPanelPreferences({
+      panels: [newThread, searchThreads, github, docs, tasks, extra],
+      storedOrder: [
+        "github/pulls",
+        "__bb__/new-thread",
+        "docs/vault",
+        "__bb__/search-threads",
+        "tasks/board",
+        "calendar/agenda",
+      ],
+      storedVisibleKeys: null,
+      defaultVisibleKeys: [
+        "__bb__/new-thread",
+        "__bb__/search-threads",
+      ],
+      defaultVisibleCount: 3,
+    });
+
+    expect(result.visibleKeys).toEqual([
+      "github/pulls",
+      "__bb__/new-thread",
+      "docs/vault",
+      "__bb__/search-threads",
+      "tasks/board",
     ]);
   });
 });

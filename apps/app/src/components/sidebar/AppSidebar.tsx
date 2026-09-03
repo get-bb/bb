@@ -247,23 +247,26 @@ export function AppSidebar({
         onNewChat={handleNewChat}
         onSearchThreads={closeOnMobile}
       />
-      {!isCompactCustomizeModeActive ? (
-        <>
-          <div
-            aria-hidden="true"
-            className="mx-2 my-2 shrink-0 border-t border-sidebar-border/25"
-            data-testid="app-sidebar-navigation-divider"
-          />
-          <SidebarContent>
-            <PluginThreadList
-              replacement={threadListReplacement}
-              original={originalThreadList}
-              searchQuery=""
-              onNavigate={closeOnMobile}
-            />
-          </SidebarContent>
-        </>
-      ) : null}
+      <div
+        aria-hidden="true"
+        className={cn(
+          "mx-2 my-2 shrink-0 border-t border-sidebar-border/25",
+          isCompactCustomizeModeActive && "hidden",
+        )}
+        data-testid="app-sidebar-navigation-divider"
+      />
+      <SidebarContent
+        className={cn(isCompactCustomizeModeActive && "hidden")}
+        aria-hidden={isCompactCustomizeModeActive ? true : undefined}
+        inert={isCompactCustomizeModeActive ? true : undefined}
+      >
+        <PluginThreadList
+          replacement={threadListReplacement}
+          original={originalThreadList}
+          searchQuery=""
+          onNavigate={closeOnMobile}
+        />
+      </SidebarContent>
       <SidebarFooter className="relative">
         <OverflowFade placement="above" tone="sidebar" size="sm" />
         {}

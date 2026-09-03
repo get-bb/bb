@@ -37,6 +37,7 @@ interface ArrangePluginNavPanelPreferencesArgs<
   TPanel extends PluginNavPanelIdentity,
 > extends ArrangePluginNavPanelsArgs<TPanel> {
   storedVisibleKeys: readonly string[] | null;
+  defaultVisibleKeys: readonly string[];
   defaultVisibleCount: number;
 }
 
@@ -65,6 +66,7 @@ export function arrangePluginNavPanelPreferences<
   panels,
   storedOrder,
   storedVisibleKeys,
+  defaultVisibleKeys,
   defaultVisibleCount,
 }: ArrangePluginNavPanelPreferencesArgs<TPanel>): ArrangedPluginNavPanelPreferences<TPanel> {
   const { ordered, normalizedOrder } = arrangePluginNavPanels({
@@ -75,11 +77,16 @@ export function arrangePluginNavPanelPreferences<
     storedVisibleKeys === null
       ? null
       : [...new Set(storedVisibleKeys.filter((key) => key.length > 0))];
-  const visibleKeys =
-    normalizedVisibleKeys ??
-    ordered
+  const defaultVisibleKeySet = new Set(defaultVisibleKeys);
+  const visibleKeys = normalizedVisibleKeys ?? [
+    ...ordered
+      .filter((panel) => defaultVisibleKeySet.has(getPluginNavPanelKey(panel)))
+      .map(getPluginNavPanelKey),
+    ...ordered
+      .filter((panel) => !defaultVisibleKeySet.has(getPluginNavPanelKey(panel)))
       .slice(0, Math.max(0, defaultVisibleCount))
-      .map(getPluginNavPanelKey);
+      .map(getPluginNavPanelKey),
+  ];
   const visibleSet = new Set(visibleKeys);
 
   return {
