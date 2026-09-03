@@ -1576,6 +1576,75 @@ describe("providers.register", () => {
   });
 });
 
+describe("providers.experimental_contributeEnv", () => {
+  it("round trips validated entries with the provider context", async () => {
+    const { bb, harness } = createFakePluginHost({ pluginId: "auth-proxy" });
+    const contexts: unknown[] = [];
+    bb.providers.experimental_contributeEnv("claude-code", (context) => {
+      contexts.push(context);
+      return [
+        {
+          name: "PLUGIN_API_URL",
+          value: { serverPath: "/plugins/auth-proxy/api" },
+          reason: "Route provider traffic through the plugin",
+          secret: true,
+        },
+      ];
+    });
+
+    await expect(
+      harness.behavior.resolveProviderEnv("claude-code", {
+        threadId: "thread-1",
+        projectId: "project-1",
+        hostId: "host-1",
+      }),
+    ).resolves.toEqual([
+      {
+        name: "PLUGIN_API_URL",
+        value: { serverPath: "/plugins/auth-proxy/api" },
+        reason: "Route provider traffic through the plugin",
+        secret: true,
+      },
+    ]);
+    expect(contexts).toEqual([
+      {
+        threadId: "thread-1",
+        projectId: "project-1",
+        hostId: "host-1",
+      },
+    ]);
+  });
+
+  it("fails a malformed resolver closed and rejects duplicate registration", async () => {
+    const { bb, harness } = createFakePluginHost();
+    bb.providers.experimental_contributeEnv("codex", () => [
+      {
+        name: "lowercase",
+        value: "hidden",
+        reason: "invalid name",
+        secret: false,
+      },
+    ]);
+    expect(() =>
+      bb.providers.experimental_contributeEnv("codex", () => []),
+    ).toThrow("already registered");
+
+    await expect(
+      harness.behavior.resolveProviderEnv("codex", {
+        threadId: "thread-1",
+        projectId: "project-1",
+        hostId: "host-1",
+      }),
+    ).resolves.toEqual([]);
+    expect(harness.inspection.logEntries.at(-1)).toMatchObject({
+      level: "warn",
+    });
+    expect(JSON.stringify(harness.inspection.logEntries)).not.toContain(
+      "hidden",
+    );
+  });
+});
+
 describe("experimental_aiServices.register", () => {
   const declaration = {
     id: "acme-ai",

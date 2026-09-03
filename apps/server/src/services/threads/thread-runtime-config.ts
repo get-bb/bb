@@ -12,7 +12,10 @@ import type {
   WorkspaceProvisionType,
   EnvironmentStatus,
 } from "@bb/domain";
-import type { HostDaemonInjectedSkillSource } from "@bb/host-daemon-contract";
+import type {
+  HostDaemonContributedEnvEntry,
+  HostDaemonInjectedSkillSource,
+} from "@bb/host-daemon-contract";
 import { renderTemplate } from "@bb/templates";
 import { ApiError } from "../../errors.js";
 import type { AppDeps, LoggedWorkSessionDeps } from "../../types.js";
@@ -27,6 +30,7 @@ import {
   listPluginInstructionContributions,
   getPluginSkillRootContributions,
   resolvePluginAgentConfiguration,
+  resolvePluginProviderEnv,
 } from "../plugins/plugin-agent-contributions.js";
 import { resolveSkillCatalog } from "../skills/skill-catalog.js";
 import { discoverPluginSkillIds } from "../skills/injected-skills.js";
@@ -78,6 +82,7 @@ interface ResolvePermissionEscalationArgs {
 }
 
 export interface ResolvedThreadRuntimeCommandConfig {
+  contributedEnv: HostDaemonContributedEnvEntry[];
   dynamicTools: DynamicTool[];
   injectedSkillSources: HostDaemonInjectedSkillSource[];
   instructionMode: InstructionMode;
@@ -224,6 +229,14 @@ export async function resolveThreadRuntimeCommandConfig(
     },
     skillIdsByPlugin,
   });
+  const contributedEnv = await resolvePluginProviderEnv({
+    providerId: args.thread.providerId,
+    context: {
+      threadId: args.thread.id,
+      projectId: project.id,
+      hostId: host.id,
+    },
+  });
   const injectedSkillSources = resolveSkillCatalog(deps, {
     projectSkillSources,
     sharedSkillSources: sharedSkills.runtimeSources,
@@ -302,6 +315,7 @@ export async function resolveThreadRuntimeCommandConfig(
     threadId: args.thread.id,
   });
   return {
+    contributedEnv,
     dynamicTools,
     injectedSkillSources,
     instructionMode: "append",

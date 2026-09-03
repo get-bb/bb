@@ -285,6 +285,7 @@ export interface EventProjectionFileEditMessage
 
 const eventProjectionOperationTypeValues = [
   "provider-unhandled",
+  "provider-environment",
   "warning",
   "deprecation",
   "thread-interrupted",

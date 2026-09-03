@@ -676,6 +676,27 @@ const unscopedProviderEventSchema = z.discriminatedUnion("type", [
     rateLimits: providerRateLimitStateSchema,
   }),
   z.object({
+    type: z.literal("provider.env-resolved"),
+    threadId: z.string(),
+    providerThreadId: z.string(),
+    entries: z.array(
+      z
+        .object({
+          name: z.string(),
+          source: z.union([
+            z.literal("shell"),
+            z.object({ plugin: z.string() }).strict(),
+          ]),
+          value: z.union([
+            z.string(),
+            z.object({ masked: z.literal(true) }).strict(),
+          ]),
+          reason: z.string().optional(),
+        })
+        .strict(),
+    ),
+  }),
+  z.object({
     type: z.literal("thread/extensionState/updated"),
     threadId: z.string(),
     providerThreadId: z.string(),

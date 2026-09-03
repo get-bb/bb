@@ -3,6 +3,7 @@ import type {
   OwnershipChangeOperationAction,
   SystemThreadInterruptedReason,
   SystemThreadProvisioningStatus,
+  ThreadEvent,
   ThreadEventRow,
 } from "@bb/domain";
 import { decodeThreadEventRow } from "../src/event-decode.js";
@@ -73,6 +74,35 @@ function ownershipTitle(
 }
 
 describe("parseOperationMessage operation titles", () => {
+  it("renders provider environment provenance without revealing masked values", () => {
+    const event: ThreadEvent = {
+      type: "provider.env-resolved",
+      threadId: THREAD_ID,
+      providerThreadId: "provider-thread-1",
+      scope: { kind: "thread" },
+      entries: [
+        {
+          name: "PLUGIN_TOKEN",
+          source: { plugin: "auth-proxy" },
+          value: { masked: true },
+          reason: "Authenticate provider traffic",
+        },
+      ],
+    };
+    const message = parseOperationMessage(event, {
+      id: "event-provider-env",
+      seq: 1,
+      createdAt: 1,
+    });
+
+    expect(message).toMatchObject({
+      kind: "operation",
+      title: "Provider environment resolved",
+      detail:
+        "PLUGIN_TOKEN=•••••• (auth-proxy) — Authenticate provider traffic",
+    });
+  });
+
   describe("provider-unhandled", () => {
     it("uses the projected provider display name for dynamic providers", () => {
       const row = factory().providerUnhandled({

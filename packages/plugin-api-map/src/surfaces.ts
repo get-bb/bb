@@ -387,10 +387,13 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Declare what the provider supports, then serve its model list at runtime",
           "Supply a small icon that appears next to its name",
           "Receive every message in a thread started with it, through a bridge process the plugin ships",
+          "Contribute validated environment variables to any provider for each session and turn",
         ],
         apiSymbols: [
           "PluginProviderDeclaration",
           "PluginProviderIconRegistration",
+          "PluginProviderEnvContext",
+          "PluginProviderEnvEntry",
         ],
         firstParty: [
           "ACP providers",

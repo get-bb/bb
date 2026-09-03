@@ -928,9 +928,19 @@ const ACP_BRIDGE_LAUNCH = {
   providerOptions: { acpLaunchSpec: ACP_LAUNCH_SPEC },
 } as const;
 
+const CONTRIBUTED_ENV = [
+  {
+    name: "PLUGIN_API_URL",
+    value: { serverPath: "/plugins/auth-proxy/api" },
+    source: { plugin: "auth-proxy" },
+    reason: "Route provider traffic through the plugin",
+    secret: true,
+  },
+] as const;
+
 describe("host-daemon command schemas", () => {
   it("uses the current host-daemon protocol version", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(179);
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(180);
     expect(HOST_ARTIFACT_MAX_BYTES).toBe(256 * 1024 * 1024);
   });
 
@@ -1682,6 +1692,7 @@ describe("host-daemon command schemas", () => {
         },
         instructions: "Be concise.",
         dynamicTools: [],
+        contributedEnv: [],
         injectedSkillSources: [],
         instructionMode: "append",
         requestId: CLIENT_REQUEST_ID,
@@ -1717,6 +1728,7 @@ describe("host-daemon command schemas", () => {
           providerThreadId: "prov_123",
           instructions: "Be concise.",
           dynamicTools: [],
+          contributedEnv: [],
           injectedSkillSources: [],
           instructionMode: "append",
         },
@@ -1774,6 +1786,7 @@ describe("host-daemon command schemas", () => {
             inputSchema: { type: "object" },
           },
         ],
+        contributedEnv: [],
         injectedSkillSources: [],
         instructionMode: "replace",
       }),
@@ -1839,6 +1852,7 @@ describe("host-daemon command schemas", () => {
         },
         instructions: "Be concise.",
         dynamicTools: [],
+        contributedEnv: [],
         injectedSkillSources: [],
         instructionMode: "append" as const,
       };
@@ -1901,6 +1915,7 @@ describe("host-daemon command schemas", () => {
           providerThreadId: "provider_123",
           instructions: "Be a helpful coding agent.",
           dynamicTools: [],
+          contributedEnv: [],
           injectedSkillSources: [],
           instructionMode: "append",
         },
@@ -1952,6 +1967,7 @@ describe("host-daemon command schemas", () => {
       },
       instructions: "Be a helpful thread.",
       dynamicTools: [],
+      contributedEnv: [],
       injectedSkillSources: [],
       instructionMode: "replace",
     };
@@ -1996,6 +2012,7 @@ describe("host-daemon command schemas", () => {
         providerThreadId: "provider_123",
         instructions: "Be a helpful coding agent.",
         dynamicTools: [],
+        contributedEnv: [],
         injectedSkillSources: [],
         instructionMode: "append",
       },
@@ -2057,6 +2074,7 @@ describe("host-daemon command schemas", () => {
       },
       instructions: "Be a helpful thread.",
       dynamicTools: [],
+      contributedEnv: CONTRIBUTED_ENV,
       injectedSkillSources: [],
       instructionMode: "append",
     };
@@ -2094,6 +2112,7 @@ describe("host-daemon command schemas", () => {
         providerThreadId: "provider_123",
         instructions: "Be a helpful thread.",
         dynamicTools: [],
+        contributedEnv: CONTRIBUTED_ENV,
         injectedSkillSources: [],
         instructionMode: "append",
       },
@@ -2171,6 +2190,7 @@ describe("host-daemon command schemas", () => {
       },
       instructions: "Be a helpful thread.",
       dynamicTools: [],
+      contributedEnv: [],
       injectedSkillSources: [],
       instructionMode: "append",
     };
@@ -2194,6 +2214,7 @@ describe("host-daemon command schemas", () => {
         bridgeLaunch,
         instructions: "Be a helpful thread.",
         dynamicTools: [],
+        contributedEnv: [],
         injectedSkillSources: [],
         instructionMode: "append",
       },
@@ -2336,6 +2357,7 @@ describe("host-daemon command schemas", () => {
           providerThreadId: "provider_123",
           instructions: "Be a helpful coding agent.",
           dynamicTools: [],
+          contributedEnv: [],
           injectedSkillSources: [],
           instructionMode: "append",
         },
@@ -2383,6 +2405,7 @@ describe("host-daemon command schemas", () => {
           providerThreadId: "provider_123",
           instructions: "Be a helpful coding agent.",
           dynamicTools: [],
+          contributedEnv: [],
           injectedSkillSources: [],
           instructionMode: "append",
         },
@@ -2485,6 +2508,7 @@ describe("host-daemon command schemas", () => {
         },
         instructions: "Be concise.",
         dynamicTools: [],
+        contributedEnv: [],
         injectedSkillSources: [],
         instructionMode: "append",
       }),
@@ -2520,6 +2544,7 @@ describe("host-daemon command schemas", () => {
           providerThreadId: "provider_123",
           instructions: "Be a helpful coding agent.",
           dynamicTools: [],
+          contributedEnv: [],
           injectedSkillSources: [],
           instructionMode: "append",
         },

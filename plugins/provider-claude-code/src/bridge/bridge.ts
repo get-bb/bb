@@ -229,6 +229,7 @@ interface ThreadSession {
 }
 
 interface ThreadAttachment {
+  envSignature: string;
   sessionConstructionConfig: SessionConstructionConfig;
   sessionOptions: SdkSessionOptions;
   closing: boolean;
@@ -1035,6 +1036,9 @@ function createThreadAttachment(
   args: CreateThreadAttachmentArgs,
 ): ThreadAttachment {
   const attachment: ThreadAttachment = {
+    envSignature: environmentSignature(
+      readConfigEnvOverrides(args.sessionConstructionConfig.config),
+    ),
     sessionConstructionConfig: args.sessionConstructionConfig,
     sessionOptions: args.sessionOptions,
     closing: false,
@@ -1707,6 +1711,36 @@ function readConfigEnvOverrides(
 ): Record<string, string> {
   const parsed = sessionConfigEnvVarsSchema.safeParse(config?.["envVars"]);
   return parsed.success ? parsed.data : {};
+}
+
+function environmentSignature(env: Readonly<Record<string, string>>): string {
+  return JSON.stringify(
+    Object.entries(env).sort(([left], [right]) => left.localeCompare(right)),
+  );
+}
+
+function applyTurnEnvironment(
+  attachment: ThreadAttachment,
+  config: TurnStartParams["config"],
+): void {
+  if (config === undefined) {
+    return;
+  }
+  const envOverrides = readConfigEnvOverrides(config);
+  const signature = environmentSignature(envOverrides);
+  if (attachment.envSignature === signature) {
+    return;
+  }
+  attachment.envSignature = signature;
+  attachment.sessionConstructionConfig = {
+    ...attachment.sessionConstructionConfig,
+    config,
+  };
+  attachment.sessionOptions.env = buildSessionEnv(envOverrides);
+  if (attachment.residentSession) {
+    attachment.residentSession.restartBeforeNextTurnReason =
+      "Execution settings changed; the Claude session was rebuilt to apply them.";
+  }
 }
 
 function parseClaudeSuggestedPermissionUpdates(
@@ -2504,6 +2538,7 @@ async function runTurnStart(
 
   const attachment = threadAttachments.get(params.threadId);
   if (attachment) {
+    applyTurnEnvironment(attachment, params.config);
     applyIdleQueryReleaseSetting(attachment, params.idleQueryReleaseEnabled);
     applyChromeSetting(attachment, params.chromeEnabled);
   }

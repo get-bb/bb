@@ -234,6 +234,7 @@ function resolveProviderIdentifiers(event: HostDaemonEventEnvelope["event"]): {
     case "provider/warning":
     case "provider/modelFallback":
     case "provider/rateLimits/updated":
+    case "provider.env-resolved":
       return { providerThreadId: event.providerThreadId };
     case "thread/compacted":
       return { providerThreadId: event.providerThreadId };

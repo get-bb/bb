@@ -52,6 +52,7 @@ import { RuntimeThreadGoalState } from "./runtime-thread-goal-state.js";
 import { RuntimeBackgroundWorkState } from "./runtime-background-work-state.js";
 import { RuntimeTurnState } from "./runtime-turn-state.js";
 import type {
+  AgentRuntimeContributedEnvEntry,
   AgentRuntime,
   AgentRuntimeProviderRecoveryHint,
   AgentRuntimeBridgeLaunch,
@@ -59,7 +60,10 @@ import type {
   AgentRuntimeOptions,
   ReapedIdleProviderSession,
 } from "./types.js";
-import { buildThreadShellEnvironment } from "./thread-shell-environment.js";
+import {
+  resolveThreadEnvironment,
+  type ResolvedThreadEnvironmentEntry,
+} from "./thread-shell-environment.js";
 import { bridgeLaunchProcessKey } from "./bridge-launch-process-key.js";
 
 interface RecordThreadExecutionOptionsArgs {
@@ -180,11 +184,13 @@ const PREPARED_THREAD_REWIND_RETRY_MS = 30_000;
 
 interface ThreadRuntimeConfig {
   bridgeLaunch: AgentRuntimeBridgeLaunch;
+  contributedEnv: readonly AgentRuntimeContributedEnvEntry[];
   dynamicTools?: DynamicTool[];
   disallowedTools?: readonly string[];
   environmentId: string;
   instructionMode: InstructionMode;
   instructions?: string;
+  envVars: Record<string, string>;
   options: AgentRuntimeExecutionOptions;
   processKey: string;
   projectId?: string;
@@ -1032,6 +1038,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
         : {}),
       providerThreadId: args.providerThreadId,
       providerId: currentConfig.providerId,
+      contributedEnv: currentConfig.contributedEnv,
       options: args.options,
       ...(resumeInstructions !== undefined
         ? { instructions: resumeInstructions }
@@ -1106,6 +1113,54 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
     setThreadRuntimeConfig(args.threadId, {
       ...currentConfig,
       options: args.options,
+    });
+  }
+
+  function environmentRecordsEqual(
+    left: Readonly<Record<string, string>>,
+    right: Readonly<Record<string, string>>,
+  ): boolean {
+    const leftEntries = Object.entries(left);
+    const rightEntries = Object.entries(right);
+    return (
+      leftEntries.length === rightEntries.length &&
+      leftEntries.every(([name, value]) => right[name] === value)
+    );
+  }
+
+  function emitResolvedProviderEnvironment(args: {
+    entries: ResolvedThreadEnvironmentEntry[];
+    providerThreadId: string;
+    threadId: string;
+  }): void {
+    options.onEvent({
+      type: "provider.env-resolved",
+      threadId: args.threadId,
+      providerThreadId: args.providerThreadId,
+      entries: args.entries,
+      scope: { kind: "thread" },
+    });
+  }
+
+  function resolveRuntimeThreadEnvironment(args: {
+    contributedEnv: readonly AgentRuntimeContributedEnvEntry[];
+    environmentId: string;
+    projectId?: string;
+    threadId: string;
+  }): {
+    envVars: Record<string, string>;
+    entries: ResolvedThreadEnvironmentEntry[];
+  } {
+    return resolveThreadEnvironment({
+      baseShellEnv: options.shellEnv,
+      contributedEnv: args.contributedEnv,
+      environmentId: args.environmentId,
+      projectId: args.projectId,
+      threadStoragePath: resolveThreadStoragePath({
+        options,
+        threadId: args.threadId,
+      }),
+      threadId: args.threadId,
     });
   }
 
@@ -1398,6 +1453,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
       projectId,
       providerId,
       bridgeLaunch,
+      contributedEnv = [],
       clientRequestId,
       input,
       inputGroups,
@@ -1426,6 +1482,12 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
             options: execOpts,
             providerId,
           });
+          const resolvedEnvironment = resolveRuntimeThreadEnvironment({
+            contributedEnv,
+            environmentId,
+            projectId,
+            threadId,
+          });
           threadIdentityRegistry.registerThreadProvider({
             providerId,
             providerState: proc.identity,
@@ -1434,9 +1496,11 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
           });
           setThreadRuntimeConfig(threadId, {
             bridgeLaunch,
+            contributedEnv,
             dynamicTools,
             disallowedTools,
             environmentId,
+            envVars: resolvedEnvironment.envVars,
             instructionMode,
             instructions,
             options: execOpts,
@@ -1446,19 +1510,8 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
             sessionRestorable: false,
           });
 
-          const envVars = buildThreadShellEnvironment({
-            baseShellEnv: options.shellEnv,
-            environmentId,
-            projectId,
-            threadStoragePath: resolveThreadStoragePath({
-              options,
-              threadId,
-            }),
-            threadId,
-          });
-
           const providerExecutionContext = toProviderExecutionContext({
-            envVars,
+            envVars: resolvedEnvironment.envVars,
             execOpts,
             instructions,
             skillRoots,
@@ -1518,6 +1571,11 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
               result.providerThreadId,
             );
             resolved = result.providerThreadId;
+            emitResolvedProviderEnvironment({
+              entries: resolvedEnvironment.entries,
+              providerThreadId: resolved,
+              threadId,
+            });
           } catch (startError) {
             await abandonFailedSessionConstruction({ proc, threadId });
             throw startError;
@@ -1535,6 +1593,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
               ...(inputGroups !== undefined ? { inputGroups } : {}),
               clientRequestId,
               options: execOpts,
+              contributedEnv,
               instructions,
             });
           }
@@ -1551,6 +1610,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
       leaseId,
       projectId,
       providerId,
+      contributedEnv = [],
       sourceProviderThreadId,
       retainThroughProviderCheckpoint,
       bridgeLaunch,
@@ -1601,14 +1661,10 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
           let retainedForDiscard = false;
           let providerThreadIdForCleanup: string | undefined;
           try {
-            const envVars = buildThreadShellEnvironment({
-              baseShellEnv: options.shellEnv,
+            const resolvedEnvironment = resolveRuntimeThreadEnvironment({
+              contributedEnv,
               environmentId,
               projectId,
-              threadStoragePath: resolveThreadStoragePath({
-                options,
-                threadId,
-              }),
               threadId,
             });
             const adapterCommand: AdapterCommand = {
@@ -1618,7 +1674,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
               sourceProviderThreadId,
               sourceProviderCheckpointId: retainThroughProviderCheckpoint,
               options: toProviderExecutionContext({
-                envVars,
+                envVars: resolvedEnvironment.envVars,
                 execOpts,
                 instructions,
                 skillRoots,
@@ -1725,6 +1781,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
       providerThreadId,
       providerId,
       bridgeLaunch,
+      contributedEnv = [],
       options: execOpts,
       instructions,
       dynamicTools,
@@ -1749,6 +1806,12 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
             options: execOpts,
             providerId,
           });
+          const resolvedEnvironment = resolveRuntimeThreadEnvironment({
+            contributedEnv,
+            environmentId,
+            projectId,
+            threadId,
+          });
           threadIdentityRegistry.registerThreadProvider({
             providerId,
             providerState: proc.identity,
@@ -1757,9 +1820,11 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
           });
           setThreadRuntimeConfig(threadId, {
             bridgeLaunch,
+            contributedEnv,
             dynamicTools,
             disallowedTools,
             environmentId,
+            envVars: resolvedEnvironment.envVars,
             instructionMode,
             instructions,
             options: execOpts,
@@ -1773,17 +1838,6 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
             recordProviderThreadIdentity(proc, threadId, providerThreadId);
           }
 
-          const envVars = buildThreadShellEnvironment({
-            baseShellEnv: options.shellEnv,
-            environmentId,
-            projectId,
-            threadStoragePath: resolveThreadStoragePath({
-              options,
-              threadId,
-            }),
-            threadId,
-          });
-
           const adapterCommand: AdapterCommand = {
             type: "thread/resume",
             threadId,
@@ -1791,7 +1845,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
             providerThreadId:
               providerThreadId ?? requireProviderThreadId(threadId),
             options: toProviderExecutionContext({
-              envVars,
+              envVars: resolvedEnvironment.envVars,
               execOpts,
               instructions,
               skillRoots,
@@ -1802,6 +1856,11 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
           };
           const plan = proc.adapter.buildCommandPlan(adapterCommand);
           if (plan.kind === "noop") {
+            emitResolvedProviderEnvironment({
+              entries: resolvedEnvironment.entries,
+              providerThreadId: adapterCommand.providerThreadId,
+              threadId,
+            });
             return { providerThreadId: adapterCommand.providerThreadId };
           }
 
@@ -1824,6 +1883,11 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
             );
             updateSessionRestoreCapability(threadId, result.sessionRestorable);
             resolved = result.providerThreadId;
+            emitResolvedProviderEnvironment({
+              entries: resolvedEnvironment.entries,
+              providerThreadId: resolved,
+              threadId,
+            });
           } catch (resumeError) {
             await abandonFailedSessionConstruction({ proc, threadId });
             throw resumeError;
@@ -1840,6 +1904,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
       inputGroups,
       clientRequestId,
       options: execOpts,
+      contributedEnv,
       instructions,
     }) {
       return runThreadOperation({
@@ -1859,20 +1924,37 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
             options: execOpts,
             providerId: pid,
           });
+          const currentConfig = threadRuntimeConfigs.get(threadId);
+          if (!currentConfig) {
+            throw new Error(`No runtime configuration for thread ${threadId}`);
+          }
+          const resolvedContributedEnv =
+            contributedEnv ?? currentConfig.contributedEnv;
+          const resolvedEnvironment = resolveRuntimeThreadEnvironment({
+            contributedEnv: resolvedContributedEnv,
+            environmentId: currentConfig.environmentId,
+            projectId: currentConfig.projectId,
+            threadId,
+          });
+          const environmentChanged = !environmentRecordsEqual(
+            currentConfig.envVars,
+            resolvedEnvironment.envVars,
+          );
           recordThreadExecutionOptions({
             threadId,
             options: execOpts,
           });
 
+          const providerThreadId = requireProviderThreadId(threadId);
           const adapterCommand: AdapterCommand = {
             type: "turn/start",
             threadId,
-            providerThreadId: requireProviderThreadId(threadId),
+            providerThreadId,
             input,
             ...(inputGroups !== undefined ? { inputGroups } : {}),
             clientRequestId,
             options: toProviderExecutionContext({
-              envVars: {},
+              envVars: resolvedEnvironment.envVars,
               execOpts,
               instructions,
             }),
@@ -1899,6 +1981,19 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
                 threadId,
               },
             });
+            setThreadRuntimeConfig(threadId, {
+              ...currentConfig,
+              contributedEnv: resolvedContributedEnv,
+              envVars: resolvedEnvironment.envVars,
+              options: execOpts,
+            });
+            if (environmentChanged) {
+              emitResolvedProviderEnvironment({
+                entries: resolvedEnvironment.entries,
+                providerThreadId,
+                threadId,
+              });
+            }
           } catch (error) {
             pendingTurnStarts.delete(threadId);
             markHostedProviderSessionIdle(threadId);
@@ -1915,6 +2010,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
       inputGroups,
       clientRequestId,
       options: execOpts,
+      contributedEnv,
       instructions,
     }) {
       return runThreadOperation({
@@ -1945,21 +2041,38 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
             instructions,
           });
           const proc = requireProviderProcessForThread(threadId);
+          const currentConfig = threadRuntimeConfigs.get(threadId);
+          if (!currentConfig) {
+            throw new Error(`No runtime configuration for thread ${threadId}`);
+          }
+          const resolvedContributedEnv =
+            contributedEnv ?? currentConfig.contributedEnv;
+          const resolvedEnvironment = resolveRuntimeThreadEnvironment({
+            contributedEnv: resolvedContributedEnv,
+            environmentId: currentConfig.environmentId,
+            projectId: currentConfig.projectId,
+            threadId,
+          });
+          const environmentChanged = !environmentRecordsEqual(
+            currentConfig.envVars,
+            resolvedEnvironment.envVars,
+          );
           recordThreadExecutionOptions({
             threadId,
             options: execOpts,
           });
 
+          const providerThreadId = requireProviderThreadId(threadId);
           const adapterCommand: AdapterCommand = {
             type: "turn/steer",
             threadId,
-            providerThreadId: requireProviderThreadId(threadId),
+            providerThreadId,
             expectedTurnId,
             input,
             ...(inputGroups !== undefined ? { inputGroups } : {}),
             clientRequestId,
             options: toProviderExecutionContext({
-              envVars: {},
+              envVars: resolvedEnvironment.envVars,
               execOpts,
               instructions,
             }),
@@ -1980,6 +2093,19 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
                 threadId,
               },
             });
+            setThreadRuntimeConfig(threadId, {
+              ...currentConfig,
+              contributedEnv: resolvedContributedEnv,
+              envVars: resolvedEnvironment.envVars,
+              options: execOpts,
+            });
+            if (environmentChanged) {
+              emitResolvedProviderEnvironment({
+                entries: resolvedEnvironment.entries,
+                providerThreadId,
+                threadId,
+              });
+            }
           } catch (error) {
             if (
               error instanceof JsonRpcResponseError &&
@@ -2292,11 +2418,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
       return threadIdentityRegistry.getProviderSession(threadId);
     },
 
-    async reapIdleProviderSessions({
-      idleForMs,
-      nowMs,
-      runThreadExclusive,
-    }) {
+    async reapIdleProviderSessions({ idleForMs, nowMs, runThreadExclusive }) {
       const reapedSessions: ReapedIdleProviderSession[] = [];
       for (const threadId of [...threadRuntimeConfigs.keys()]) {
         const release = async (): Promise<ReapedIdleProviderSession | null> => {

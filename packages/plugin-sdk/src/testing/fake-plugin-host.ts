@@ -42,6 +42,7 @@ import {
   undeclaredIconProblem,
   validatePluginAiServiceDeclaration,
   validatePluginProviderDeclaration,
+  validatePluginProviderEnvEntries,
   validateSettingsUpdate,
   zodSchemaToJsonSchema,
   type NormalizedPluginProviderDeclaration,
@@ -79,6 +80,8 @@ import type {
   PluginAiServiceDeclaration,
   PluginAiServices,
   PluginProviderDeclaration,
+  PluginProviderEnvContext,
+  PluginProviderEnvEntry,
   PluginProviders,
   PluginRealtime,
   PluginRpc,
@@ -258,6 +261,14 @@ export interface FakePluginRegistrations {
   /** Live provider registrations from `bb.providers.register`
    * (normalized declarations, registration order; dispose removes). */
   providerRegistrations: NormalizedPluginProviderDeclaration[];
+  providerEnvResolvers: ReadonlyMap<
+    string,
+    (
+      context: PluginProviderEnvContext,
+    ) =>
+      | Promise<readonly PluginProviderEnvEntry[]>
+      | readonly PluginProviderEnvEntry[]
+  >;
   /** Live AI-service registrations from `experimental_aiServices.register`
    * (normalized declarations, registration order; dispose removes). */
   aiServiceRegistrations: PluginAiServiceDeclaration[];
@@ -378,6 +389,10 @@ export interface FakePluginBehaviorDrivers {
     skills: string[];
     instructions: string | null;
   }>;
+  resolveProviderEnv(
+    providerId: string,
+    context: PluginProviderEnvContext,
+  ): Promise<PluginProviderEnvEntry[]>;
 }
 
 /** Reload/shutdown controls, kept separate from behavior and inspection. */
@@ -1359,6 +1374,14 @@ function createFakePluginHostInternal(
   // --- agents ---
   const agentTools: FakeAgentToolRecord[] = [];
   const providerRegistrations: NormalizedPluginProviderDeclaration[] = [];
+  const providerEnvResolvers = new Map<
+    string,
+    (
+      context: PluginProviderEnvContext,
+    ) =>
+      | readonly PluginProviderEnvEntry[]
+      | Promise<readonly PluginProviderEnvEntry[]>
+  >();
   let agentConfigurationProvider:
     | ((context: PluginAgentConfigurationContext) => PluginAgentConfiguration)
     | null = null;
@@ -1941,6 +1964,25 @@ function createFakePluginHostInternal(
     register(declaration) {
       return registerProviderDeclaration(declaration);
     },
+    experimental_contributeEnv(providerId, resolve) {
+      assertLive();
+      if (typeof providerId !== "string" || providerId.trim().length === 0) {
+        throw new Error(
+          "provider environment contribution requires a provider id",
+        );
+      }
+      if (providerEnvResolvers.has(providerId)) {
+        throw new Error(
+          `provider environment contribution for "${providerId}" is already registered`,
+        );
+      }
+      if (typeof resolve !== "function") {
+        throw new Error(
+          "provider environment contribution requires a resolver function",
+        );
+      }
+      providerEnvResolvers.set(providerId, resolve);
+    },
   };
 
   const experimental_hooks: PluginHooks = {
@@ -2081,6 +2123,7 @@ function createFakePluginHostInternal(
       },
       mentionProviders,
       providerRegistrations,
+      providerEnvResolvers,
       aiServiceRegistrations,
     },
     get pendingInteractions() {
@@ -2096,6 +2139,20 @@ function createFakePluginHostInternal(
       }
       for (const handler of [...hostWorkerExitSubscriptions]) {
         await handler({ hostId });
+      }
+    },
+    async resolveProviderEnv(providerId, context) {
+      assertLive();
+      const resolve = providerEnvResolvers.get(providerId);
+      if (resolve === undefined) return [];
+      try {
+        return validatePluginProviderEnvEntries(await resolve(context));
+      } catch (error) {
+        emitLog(
+          "warn",
+          `provider environment contribution failed: ${error instanceof Error ? error.message : String(error)}`,
+        );
+        return [];
       }
     },
     async experimental_emitHostSignal(hostId, signal, payload) {

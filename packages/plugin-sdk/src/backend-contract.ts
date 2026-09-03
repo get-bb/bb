@@ -1338,6 +1338,27 @@ export interface PluginProviders {
   register(declaration: PluginProviderDeclaration): {
     dispose(): void;
   };
+  experimental_contributeEnv(
+    providerId: string,
+    resolve: (
+      context: PluginProviderEnvContext,
+    ) =>
+      | readonly PluginProviderEnvEntry[]
+      | Promise<readonly PluginProviderEnvEntry[]>,
+  ): void;
+}
+
+export interface PluginProviderEnvContext {
+  threadId: string;
+  projectId: string;
+  hostId: string;
+}
+
+export interface PluginProviderEnvEntry {
+  name: string;
+  value: string | { serverPath: string };
+  reason: string;
+  secret: boolean;
 }
 
 // ---------------------------------------------------------------------------

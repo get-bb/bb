@@ -44,6 +44,8 @@ import type {
   PluginAiServiceDeclaration,
   PluginAiServices,
   PluginProviderDeclaration,
+  PluginProviderEnvContext,
+  PluginProviderEnvEntry,
   PluginProviders,
   PluginRealtime,
   PluginRpc,
@@ -241,6 +243,7 @@ export interface PluginApiHandle {
   cli: { registration: PluginCliRegistrationRecord | null };
   agentTools: PluginAgentToolRecord[];
   listProviderDeclarations(): NormalizedPluginProviderDeclaration[];
+  providerEnvResolvers: ReadonlyMap<string, PluginProviderEnvResolver>;
   agentConfigurationProvider: PluginAgentConfigurationProvider | null;
   instructionProvider: PluginInstructionProvider | null;
   mentionProviders: PluginMentionProviderRecord[];
@@ -269,6 +272,12 @@ type PluginInstructionProvider = (ctx: {
 type PluginAgentConfigurationProvider = (
   context: PluginAgentConfigurationContext,
 ) => PluginAgentConfiguration;
+
+export type PluginProviderEnvResolver = (
+  context: PluginProviderEnvContext,
+) =>
+  | readonly PluginProviderEnvEntry[]
+  | Promise<readonly PluginProviderEnvEntry[]>;
 
 function wrapSdkForPlugin(sdk: BbSdk, pluginId: string): BbSdk {
   return {
@@ -656,9 +665,10 @@ export function createPluginApi(options: {
         );
       }
       const rows = database
-        .prepare<[], { id: number; statement_hash: string | null }>(
-          "SELECT id, statement_hash FROM _bb_migrations ORDER BY id",
-        )
+        .prepare<
+          [],
+          { id: number; statement_hash: string | null }
+        >("SELECT id, statement_hash FROM _bb_migrations ORDER BY id")
         .all();
       const applied = new Map<number, string | null>();
       for (const row of rows) applied.set(row.id, row.statement_hash);
@@ -950,6 +960,7 @@ export function createPluginApi(options: {
     isActivated: () => activated,
     disposeHooks,
   });
+  const providerEnvResolvers = new Map<string, PluginProviderEnvResolver>();
   let agentConfigurationProvider: PluginAgentConfigurationProvider | null =
     null;
   let instructionProvider: PluginInstructionProvider | null = null;
@@ -1382,6 +1393,25 @@ export function createPluginApi(options: {
 
   const providers: PluginProviders = {
     register: providerRegistrations.register,
+    experimental_contributeEnv(providerId, resolve) {
+      assertLive();
+      if (typeof providerId !== "string" || providerId.trim().length === 0) {
+        throw new Error(
+          "provider environment contribution requires a provider id",
+        );
+      }
+      if (providerEnvResolvers.has(providerId)) {
+        throw new Error(
+          `provider environment contribution for "${providerId}" is already registered`,
+        );
+      }
+      if (typeof resolve !== "function") {
+        throw new Error(
+          "provider environment contribution requires a resolver function",
+        );
+      }
+      providerEnvResolvers.set(providerId, resolve);
+    },
   };
 
   const aiServiceRegistrations = createStagedRegistrations({
@@ -1451,6 +1481,7 @@ export function createPluginApi(options: {
     cli: cliRecord,
     agentTools,
     listProviderDeclarations: providerRegistrations.values,
+    providerEnvResolvers,
     get agentConfigurationProvider() {
       return agentConfigurationProvider;
     },

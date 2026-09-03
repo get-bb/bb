@@ -48,10 +48,12 @@ function buildClaudeSkillConfigParams(
   }
 
   return {
-    plugins: skillRoots.map((skillRoot): ClaudeLocalPluginConfig => ({
-      type: "local",
-      path: skillRoot.localPluginPath,
-    })),
+    plugins: skillRoots.map(
+      (skillRoot): ClaudeLocalPluginConfig => ({
+        type: "local",
+        path: skillRoot.localPluginPath,
+      }),
+    ),
   };
 }
 
@@ -179,6 +181,7 @@ export function buildClaudeSessionParams(
   const providerOptions = claudeProviderOptionsSchema.parse(
     args.options.providerOptions ?? {},
   );
+  const config = buildClaudeCodeConfig(args.options.envVars);
   return buildInternalSessionParams({
     additionalWorkspaceWriteRoots:
       providerOptions.additionalWorkspaceWriteRoots ?? [],
@@ -227,6 +230,7 @@ export function buildClaudeTurnParams(
   const providerOptions = claudeProviderOptionsSchema.parse(
     args.options.providerOptions ?? {},
   );
+  const config = buildClaudeCodeConfig(args.options.envVars);
   return {
     threadId: args.threadId,
     providerThreadId: args.providerThreadId,
@@ -246,6 +250,7 @@ export function buildClaudeTurnParams(
     chromeEnabled: providerOptions.chromeEnabled,
     memoryEnabled: providerOptions.memoryEnabled,
     providerSubagentsEnabled: providerOptions.providerSubagentsEnabled,
+    ...(config ? { config } : {}),
     permissionEscalation: args.options.permissionEscalation,
     ...(providerOptions.claudeCodePermissionMode !== undefined
       ? { claudeCodePermissionMode: providerOptions.claudeCodePermissionMode }

@@ -6,7 +6,10 @@ import type {
   Thread,
   ThreadQueuedMessage,
 } from "@bb/domain";
-import type { HostDaemonConnectTunnelIdentity } from "@bb/host-daemon-contract";
+import type {
+  HostDaemonConnectTunnelIdentity,
+  HostDaemonContributedEnvEntry,
+} from "@bb/host-daemon-contract";
 import {
   pluginUpdateCheckEntrySchema,
   type InstalledPlugin,
@@ -116,6 +119,7 @@ export interface PluginServiceDeps {
   serviceRestartBaseMs?: number;
   mentionSearchTimeoutMs?: number;
   mentionResolveTimeoutMs?: number;
+  providerEnvResolveTimeoutMs?: number;
   stabilizationWindowMs?: number;
   artifactRetentionMs?: number;
   now?: () => number;
@@ -167,6 +171,10 @@ export interface PluginResolvedAgentConfiguration {
   dynamicInstructions: Array<{ pluginId: string; text: string }>;
 }
 
+export interface PluginResolvedProviderEnv {
+  entries: HostDaemonContributedEnvEntry[];
+}
+
 export interface PluginMentionProviderContribution {
   pluginId: string;
   id: string;
@@ -199,10 +207,7 @@ export interface PluginThreadEventEmitter {
   emitThreadFailed(thread: Thread): void;
   emitThreadArchived(thread: Thread): void;
   emitThreadDeleted(thread: Thread): void;
-  emitInteractionPending(
-    thread: Thread,
-    interaction: PendingInteraction,
-  ): void;
+  emitInteractionPending(thread: Thread, interaction: PendingInteraction): void;
   /**
    * Queue lifecycle. The row is already in its new state when these fire; the
    * DTO is built once and shared by every listener, exactly like the thread
