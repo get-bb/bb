@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   collectLogLines,
+  getHelpOutput,
   runCommand,
   setupCommandOutputTestEnvironment,
   stubServerApi,
@@ -154,54 +155,10 @@ describe("bb thread fork command output", () => {
     });
   });
 
-  it("resolves an explicit host for a new worktree", async () => {
-    const thread = fixtures.makeThread({
-      id: "thread-fork-host",
-      originKind: "fork",
-      projectId: "proj-1",
-      providerId: "codex",
-      sourceThreadId: "thread-source",
-    });
-    const post = vi.fn(async () => thread);
-    stubServerApi({
-      "v1.hosts.$get": vi.fn(async () => [
-        {
-          id: "host-source",
-          name: "builder",
-          type: "persistent",
-          status: "connected",
-          lastSeenAt: 1,
-          createdAt: 1,
-          updatedAt: 1,
-        },
-      ]),
-      "v1.threads.fork.$post": post,
-    });
+  it("does not offer a host selector", async () => {
+    const help = await getHelpOutput(["thread", "fork"], register);
 
-    await runCommand(
-      [
-        "thread",
-        "fork",
-        "thread-source",
-        "--new-environment",
-        "worktree",
-        "--host",
-        "builder",
-      ],
-      register,
-    );
-
-    expect(post).toHaveBeenCalledWith({
-      json: expect.objectContaining({
-        environment: {
-          type: "host",
-          hostId: "host-source",
-          workspace: {
-            type: "managed-worktree",
-            baseBranch: { kind: "default" },
-          },
-        },
-      }),
-    });
+    expect(help).not.toContain("--host");
+    expect(help).not.toContain("--machine");
   });
 });

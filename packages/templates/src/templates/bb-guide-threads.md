@@ -72,7 +72,6 @@ Forking:
     --environment <id-or-path>     Existing environment ID or unmanaged workspace path
     --new-environment worktree     Create a new managed worktree
     --base-branch <branch>         Exact Git ref for a new worktree; omit for the project default
-    --host <id-or-name>            Machine for a new environment or unmanaged path (--machine alias)
     --title <title>                Thread title
     --permission-mode <mode>       Inherit source by default; accepts accept-edits, auto, full
     --visibility <visibility>      visible (default) or hidden

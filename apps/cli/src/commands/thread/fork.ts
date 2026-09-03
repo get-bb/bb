@@ -8,10 +8,6 @@ import type { EnvironmentArgs } from "@bb/server-contract";
 import { action } from "../../action.js";
 import { createCliBbSdk } from "../../client.js";
 import { resolveExplicitIdFlag } from "../../context-env.js";
-import {
-  resolveMachineHostId,
-  resolveMachineTargetOption,
-} from "../machine.js";
 import { outputJson, prependErrorContext } from "../helpers.js";
 import {
   buildPromptInputs,
@@ -30,10 +26,8 @@ interface ThreadForkCommandOptions {
   baseBranch?: string;
   environment?: string;
   file?: string[];
-  host?: string;
   image?: string[];
   json?: boolean;
-  machine?: string;
   newEnvironment?: string;
   permissionMode?: string;
   prompt?: string;
@@ -119,11 +113,6 @@ export function registerForkCommand(
       "--base-branch <branch>",
       "Exact Git ref; omit for bb's project default (use origin/<branch> for a remote ref)",
     )
-    .option(
-      "--machine <id-or-name>",
-      "Execution machine ID or unambiguous name",
-    )
-    .option("--host <id-or-name>", "Alias for --machine")
     .option("--permission-mode <mode>", PERMISSION_MODE_HELP)
     .option("--visibility <visibility>", "Thread visibility: visible or hidden")
     .option(
@@ -163,25 +152,6 @@ export function registerForkCommand(
           const environmentValue = resolveSpawnEnvironmentValue(
             opts.environment,
           );
-          const machineTarget = resolveMachineTargetOption(opts);
-          if (
-            machineTarget &&
-            environmentValue &&
-            !looksLikePath(environmentValue)
-          ) {
-            throw new Error(
-              "Cannot combine --machine or --host with an existing environment ID; that environment already selects its machine.",
-            );
-          }
-          if (
-            machineTarget &&
-            environmentValue === undefined &&
-            opts.newEnvironment === undefined
-          ) {
-            throw new Error(
-              "--machine or --host requires --new-environment or an unmanaged --environment path.",
-            );
-          }
 
           let thread: Thread;
           let environment: EnvironmentArgs | undefined;
@@ -192,12 +162,7 @@ export function registerForkCommand(
               (environmentValue !== undefined &&
                 looksLikePath(environmentValue));
             const hostId = needsHostId
-              ? machineTarget
-                ? await resolveMachineHostId({
-                    serverUrl: getUrl(),
-                    target: machineTarget,
-                  })
-                : await resolveForkSourceHostId(sdk, sourceThreadId)
+              ? await resolveForkSourceHostId(sdk, sourceThreadId)
               : null;
             environment =
               environmentValue === undefined &&
