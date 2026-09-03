@@ -34,6 +34,7 @@ describe("public marketplace route rendering", () => {
     expect(html).toContain("marketplace-new-chip");
     expect(html).toContain("https://github.com/get-bb.png?size=32");
     expect(html).toContain("https://getbb.app/marketplace/v1/icons");
+    expect(html).toContain('<select aria-label="Category">');
     expect(html).toContain(
       '<option value="" selected="">All categories</option>',
     );

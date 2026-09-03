@@ -531,11 +531,9 @@ function MarketplaceToolbar({
         </header>
       )}
       <div className="marketplace-controls">
-        <label className="marketplace-category-select">
-          <span className="marketplace-visually-hidden">
-            Filter by category
-          </span>
+        <div className="marketplace-category-select">
           <select
+            aria-label="Category"
             value={state.category ?? ""}
             onChange={(event) =>
               onStateChange({
@@ -554,7 +552,7 @@ function MarketplaceToolbar({
             ))}
           </select>
           <HugeiconsIcon icon={ArrowDown01Icon} aria-hidden />
-        </label>
+        </div>
         <div
           className="marketplace-sort-control"
           role="group"
