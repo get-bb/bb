@@ -151,6 +151,8 @@ const modelListFailOnceMarkerPath = script?.modelListFailOnceMarkerPath ?? null;
  * child on archive and resumes on a fresh one.
  */
 const archiveStatePath = script?.archiveStatePath ?? null;
+const forkThread = script?.forkThread ?? null;
+const resumeThread = script?.resumeThread ?? null;
 /**
  * `renameEmptyRolloutFailures`: how many `thread/name/set` calls fail with the
  * real app-server's "rollout … is empty" error before one succeeds — the
@@ -376,7 +378,29 @@ async function handleRequest(message) {
       if (String(params.threadId).startsWith("usage-replay-")) {
         replayLastTurnUsage(params.threadId);
       }
-      respond(id, { thread: { id: params.threadId } });
+      const resumedThread =
+        resumeThread === null
+          ? { id: params.threadId }
+          : { ...resumeThread, id: params.threadId };
+      respond(id, {
+        thread:
+          params.excludeTurns === true
+            ? { ...resumedThread, turns: [] }
+            : resumedThread,
+      });
+      return;
+    }
+    case "thread/read": {
+      const readThread =
+        resumeThread === null
+          ? { id: params.threadId }
+          : { ...resumeThread, id: params.threadId };
+      respond(id, {
+        thread:
+          params.includeTurns === true
+            ? readThread
+            : { ...readThread, turns: [] },
+      });
       return;
     }
     case "thread/fork": {
@@ -398,7 +422,12 @@ async function handleRequest(message) {
       const threadId = replaysUsage
         ? `usage-replay-fork-${process.pid}-${threadCounter}`
         : `codex-fx-${process.pid}-fork-${threadCounter}`;
-      respond(id, { thread: { id: threadId } });
+      respond(id, {
+        thread:
+          forkThread === null
+            ? { id: threadId }
+            : { ...forkThread, id: threadId },
+      });
       // thread/fork replays the source rollout's last-turn usage the same way,
       // after the response, under the NEW thread id but the SOURCE turn id
       // (#1727).

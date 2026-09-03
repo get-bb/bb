@@ -89,6 +89,33 @@ interface CodexPendingDelegationTurnLink {
 
 type CodexInteractionKind = "followup" | "message";
 
+interface CodexPendingInteractionBase {
+  callId: string;
+  parentBoundaryPassed: boolean;
+  parentProviderThreadId: string;
+  parentTurnId: string;
+}
+
+interface CodexRawInteraction extends CodexPendingInteractionBase {
+  intent: CodexInteractionKind;
+  state: "raw";
+}
+
+interface CodexActivityInteraction extends CodexPendingInteractionBase {
+  activity: CodexSubAgentActivityEvent;
+  state: "activity";
+}
+
+interface CodexSettledInteraction extends CodexPendingInteractionBase {
+  childThreadId: string | null;
+  state: "settled";
+}
+
+type CodexPendingInteraction =
+  | CodexRawInteraction
+  | CodexActivityInteraction
+  | CodexSettledInteraction;
+
 const codexDelegationArgsSchema = z
   .object({
     receiverThreadIds: z.array(z.string()).optional(),
@@ -368,6 +395,14 @@ export type CodexEventTranslator = ReturnType<
   typeof createCodexEventTranslator
 >;
 
+export interface CodexSubAgentHistoryEntry {
+  agentPath: string;
+  agentThreadId: string;
+  callId: string;
+  parentProviderThreadId: string;
+  parentTurnId: string;
+}
+
 export function createCodexEventTranslator(
   options: CreateCodexEventTranslatorOptions,
 ) {
@@ -398,14 +433,9 @@ export function createCodexEventTranslator(
   >();
   const pendingDelegationCallIds = new Set<string>();
   const pendingDelegationProviderThreadIdByCallId = new Map<string, string>();
-  const processedSubAgentInteractionIds = new Set<string>();
-  const interactionKindsByProviderThreadId = new Map<
+  const pendingInteractionsByCallId = new Map<
     string,
-    Map<string, CodexInteractionKind>
-  >();
-  const unclassifiedInteractionsByProviderThreadId = new Map<
-    string,
-    CodexSubAgentActivityEvent[]
+    CodexPendingInteraction
   >();
   const trackedSubAgentsByCallId = new Map<string, CodexTrackedSubAgent>();
   const trackedSubAgentCallIdsByAgentThreadId = new Map<string, string>();
@@ -561,8 +591,20 @@ export function createCodexEventTranslator(
   function clearCodexDelegationParentState(
     providerThreadId: string,
   ): ThreadDelta[] {
-    interactionKindsByProviderThreadId.delete(providerThreadId);
-    unclassifiedInteractionsByProviderThreadId.delete(providerThreadId);
+    for (const [callId, interaction] of pendingInteractionsByCallId) {
+      const childThreadId =
+        interaction.state === "activity"
+          ? interaction.activity.item.agentThreadId
+          : interaction.state === "settled"
+            ? interaction.childThreadId
+            : null;
+      if (
+        interaction.parentProviderThreadId === providerThreadId ||
+        childThreadId === providerThreadId
+      ) {
+        pendingInteractionsByCallId.delete(callId);
+      }
+    }
     delegationParentToolCallIdsByProviderThreadId.delete(providerThreadId);
     pendingDelegationTurnLinksByProviderThreadId.delete(providerThreadId);
     const closes: ThreadDelta[] = [];
@@ -590,6 +632,29 @@ export function createCodexEventTranslator(
       trackedSubAgentsByCallId.delete(callId);
     }
     return closes;
+  }
+
+  function primeSubAgentHistory(
+    entries: readonly CodexSubAgentHistoryEntry[],
+  ): void {
+    for (const entry of entries) {
+      if (
+        trackedSubAgentsByCallId.has(entry.callId) ||
+        findTrackedSubAgentByAgentThreadId(entry.agentThreadId)
+      ) {
+        continue;
+      }
+      const tracked: CodexTrackedSubAgent = {
+        ...entry,
+        pendingFollowups: 0,
+        terminal: true,
+      };
+      trackedSubAgentsByCallId.set(entry.callId, tracked);
+      trackedSubAgentCallIdsByAgentThreadId.set(
+        entry.agentThreadId,
+        entry.callId,
+      );
+    }
   }
 
   function queueNativeTurnStartClientRequestId(args: {
@@ -987,24 +1052,6 @@ export function createCodexEventTranslator(
     return openDelta ? [openDelta] : [];
   }
 
-  function consumeCodexInteractionKind(args: {
-    callId: string;
-    providerThreadId: string;
-  }): CodexInteractionKind | undefined {
-    const interactionKinds = interactionKindsByProviderThreadId.get(
-      args.providerThreadId,
-    );
-    const kind = interactionKinds?.get(args.callId);
-    if (!kind || !interactionKinds) {
-      return undefined;
-    }
-    interactionKinds.delete(args.callId);
-    if (interactionKinds.size === 0) {
-      interactionKindsByProviderThreadId.delete(args.providerThreadId);
-    }
-    return kind;
-  }
-
   function rearmTrackedSubAgent(tracked: CodexTrackedSubAgent): void {
     trackedSubAgentCallIdsByAgentThreadId.set(
       tracked.agentThreadId,
@@ -1021,82 +1068,6 @@ export function createCodexEventTranslator(
       parentTurnId: tracked.parentTurnId,
       providerThreadId: tracked.parentProviderThreadId,
     });
-  }
-
-  function queueUnclassifiedCodexInteraction(
-    activity: CodexSubAgentActivityEvent,
-  ): void {
-    const pending =
-      unclassifiedInteractionsByProviderThreadId.get(
-        activity.providerThreadId,
-      ) ?? [];
-    pending.push(activity);
-    unclassifiedInteractionsByProviderThreadId.set(
-      activity.providerThreadId,
-      pending,
-    );
-  }
-
-  function takeUnclassifiedCodexInteraction(args: {
-    callId?: string;
-    providerThreadId: string;
-    startedTurnId?: string;
-  }): CodexSubAgentActivityEvent | undefined {
-    let interactionProviderThreadId = args.providerThreadId;
-    let pending = unclassifiedInteractionsByProviderThreadId.get(
-      interactionProviderThreadId,
-    );
-    if (!pending && args.callId === undefined) {
-      for (const [
-        candidateProviderThreadId,
-        candidates,
-      ] of unclassifiedInteractionsByProviderThreadId) {
-        if (
-          candidates.some(
-            (activity) => activity.item.agentThreadId === args.providerThreadId,
-          )
-        ) {
-          interactionProviderThreadId = candidateProviderThreadId;
-          pending = candidates;
-          break;
-        }
-      }
-    }
-    if (!pending) {
-      return undefined;
-    }
-    let index =
-      args.callId !== undefined
-        ? pending.findIndex((activity) => activity.item.id === args.callId)
-        : -1;
-    if (args.callId === undefined) {
-      for (
-        let candidateIndex = pending.length - 1;
-        candidateIndex >= 0;
-        --candidateIndex
-      ) {
-        const activity = pending[candidateIndex];
-        if (
-          activity &&
-          activity.turnId !== args.startedTurnId &&
-          (interactionProviderThreadId === args.providerThreadId ||
-            activity.item.agentThreadId === args.providerThreadId)
-        ) {
-          index = candidateIndex;
-          break;
-        }
-      }
-    }
-    if (index === -1) {
-      return undefined;
-    }
-    const [activity] = pending.splice(index, 1);
-    if (pending.length === 0) {
-      unclassifiedInteractionsByProviderThreadId.delete(
-        interactionProviderThreadId,
-      );
-    }
-    return activity;
   }
 
   function materializeCodexFollowup(
@@ -1117,18 +1088,129 @@ export function createCodexEventTranslator(
     return wasOpen ? [] : [buildCodexSubAgentOpenDelta(tracked)];
   }
 
-  function hasConsumablePendingDelegationLink(args: {
-    providerThreadId: string;
-    startedTurnId: string;
-  }): boolean {
-    return (
-      pendingDelegationTurnLinksByProviderThreadId
-        .get(args.providerThreadId)
-        ?.some((link) => link.parentTurnId !== args.startedTurnId) ?? false
-    );
+  function settleCodexInteraction(
+    interaction: CodexPendingInteractionBase,
+    childThreadId: string | null,
+  ): void {
+    pendingInteractionsByCallId.set(interaction.callId, {
+      ...interaction,
+      childThreadId,
+      state: "settled",
+    });
   }
 
-  function materializeUnclassifiedCodexInteractions(
+  function correlateCodexInteraction(args: {
+    activity: CodexSubAgentActivityEvent;
+    intent: CodexInteractionKind;
+  }): ThreadDelta[] {
+    if (args.intent === "message") {
+      return [];
+    }
+    const tracked = findTrackedSubAgentByAgentThreadId(
+      args.activity.item.agentThreadId,
+    );
+    return tracked && !tracked.terminal
+      ? []
+      : materializeCodexFollowup(args.activity);
+  }
+
+  function consumeCodexInteractionForTurnStart(
+    providerThreadId: string,
+  ): ThreadDelta[] {
+    let exactInteraction: CodexActivityInteraction | undefined;
+    let fallbackInteraction: CodexActivityInteraction | undefined;
+    let fallbackIsAmbiguous = false;
+    for (const interaction of pendingInteractionsByCallId.values()) {
+      if (interaction.state !== "activity") {
+        continue;
+      }
+      if (interaction.activity.item.agentThreadId === providerThreadId) {
+        exactInteraction = interaction;
+        break;
+      }
+      const tracked = findTrackedSubAgentByAgentThreadId(
+        interaction.activity.item.agentThreadId,
+      );
+      if (
+        interaction.parentProviderThreadId !== providerThreadId ||
+        !tracked?.terminal
+      ) {
+        continue;
+      }
+      if (fallbackInteraction) {
+        fallbackIsAmbiguous = true;
+      } else {
+        fallbackInteraction = interaction;
+      }
+    }
+    const interaction =
+      exactInteraction ??
+      (fallbackIsAmbiguous ? undefined : fallbackInteraction);
+    if (!interaction) {
+      return [];
+    }
+    const childThreadId = interaction.activity.item.agentThreadId;
+    settleCodexInteraction(interaction, childThreadId);
+    return correlateCodexInteraction({
+      activity: interaction.activity,
+      intent: "followup",
+    });
+  }
+
+  function advanceCodexInteractionBoundaries(args: {
+    providerThreadId: string;
+    turnId: string;
+  }): void {
+    for (const [callId, interaction] of pendingInteractionsByCallId) {
+      const childThreadId =
+        interaction.state === "activity"
+          ? interaction.activity.item.agentThreadId
+          : interaction.state === "settled"
+            ? interaction.childThreadId
+            : null;
+      if (
+        childThreadId === args.providerThreadId &&
+        interaction.state === "settled"
+      ) {
+        pendingInteractionsByCallId.delete(callId);
+        continue;
+      }
+      if (interaction.parentProviderThreadId !== args.providerThreadId) {
+        continue;
+      }
+      if (interaction.parentTurnId === args.turnId) {
+        if (!interaction.parentBoundaryPassed) {
+          if (interaction.state === "raw") {
+            settleCodexInteraction(
+              { ...interaction, parentBoundaryPassed: true },
+              null,
+            );
+          } else {
+            pendingInteractionsByCallId.set(callId, {
+              ...interaction,
+              parentBoundaryPassed: true,
+            });
+          }
+        }
+        continue;
+      }
+      if (interaction.parentBoundaryPassed) {
+        pendingInteractionsByCallId.delete(callId);
+      } else if (interaction.state === "raw") {
+        settleCodexInteraction(
+          { ...interaction, parentBoundaryPassed: true },
+          null,
+        );
+      } else {
+        pendingInteractionsByCallId.set(callId, {
+          ...interaction,
+          parentBoundaryPassed: true,
+        });
+      }
+    }
+  }
+
+  function correlatePendingCodexInteractions(
     deltas: ThreadDelta[],
     providerThreadId: string | undefined,
   ): ThreadDelta[] {
@@ -1140,19 +1222,11 @@ export function createCodexEventTranslator(
       if (
         delta.kind === "turn.open" &&
         delta.providerTurnId !== undefined &&
-        !hasPendingNativeTurnStart(providerThreadId) &&
-        !hasConsumablePendingDelegationLink({
-          providerThreadId,
-          startedTurnId: delta.providerTurnId,
-        })
+        !hasPendingNativeTurnStart(providerThreadId)
       ) {
-        const activity = takeUnclassifiedCodexInteraction({
-          providerThreadId,
-          startedTurnId: delta.providerTurnId,
-        });
-        if (activity) {
-          materialized.push(...materializeCodexFollowup(activity));
-        }
+        materialized.push(
+          ...consumeCodexInteractionForTurnStart(providerThreadId),
+        );
       }
       materialized.push(
         ...attachCodexDelegationParentLinks([delta], providerThreadId),
@@ -1161,21 +1235,10 @@ export function createCodexEventTranslator(
         delta.kind === "turn.boundary" &&
         delta.providerTurnId !== undefined
       ) {
-        const pending =
-          unclassifiedInteractionsByProviderThreadId.get(providerThreadId);
-        if (pending) {
-          const remaining = pending.filter(
-            (activity) => activity.turnId !== delta.providerTurnId,
-          );
-          if (remaining.length === 0) {
-            unclassifiedInteractionsByProviderThreadId.delete(providerThreadId);
-          } else if (remaining.length !== pending.length) {
-            unclassifiedInteractionsByProviderThreadId.set(
-              providerThreadId,
-              remaining,
-            );
-          }
-        }
+        advanceCodexInteractionBoundaries({
+          providerThreadId,
+          turnId: delta.providerTurnId,
+        });
       }
     }
     return materialized;
@@ -1221,30 +1284,72 @@ export function createCodexEventTranslator(
         return beginCodexTrackedSubAgent(activity);
       }
       case "interacted": {
-        if (processedSubAgentInteractionIds.has(activity.item.id)) {
+        const existing = pendingInteractionsByCallId.get(activity.item.id);
+        if (existing?.state === "settled") {
           return [];
         }
-        processedSubAgentInteractionIds.add(activity.item.id);
-        const interactionKind = consumeCodexInteractionKind({
-          callId: activity.item.id,
-          providerThreadId: activity.providerThreadId,
-        });
-        if (interactionKind === "message") {
+        if (existing?.state === "activity") {
+          if (
+            existing.parentProviderThreadId !== activity.providerThreadId ||
+            existing.parentTurnId !== activity.turnId ||
+            existing.activity.item.agentThreadId !== activity.item.agentThreadId
+          ) {
+            settleCodexInteraction(existing, null);
+          }
           return [];
         }
         const tracked = findTrackedSubAgentByAgentThreadId(
           activity.item.agentThreadId,
         );
+        if (existing?.state === "raw") {
+          const sameParent =
+            existing.parentProviderThreadId === activity.providerThreadId &&
+            existing.parentTurnId === activity.turnId;
+          settleCodexInteraction(
+            existing,
+            sameParent ? activity.item.agentThreadId : null,
+          );
+          return sameParent
+            ? correlateCodexInteraction({
+                activity,
+                intent: existing.intent,
+              })
+            : [];
+        }
         if (tracked && !tracked.terminal) {
+          settleCodexInteraction(
+            {
+              callId: activity.item.id,
+              parentBoundaryPassed: false,
+              parentProviderThreadId: activity.providerThreadId,
+              parentTurnId: activity.turnId,
+            },
+            activity.item.agentThreadId,
+          );
           return [];
         }
-        if (interactionKind === "followup") {
-          return materializeCodexFollowup(activity);
-        }
-        queueUnclassifiedCodexInteraction(activity);
+        pendingInteractionsByCallId.set(activity.item.id, {
+          activity,
+          callId: activity.item.id,
+          parentBoundaryPassed: false,
+          parentProviderThreadId: activity.providerThreadId,
+          parentTurnId: activity.turnId,
+          state: "activity",
+        });
         return [];
       }
       case "interrupted": {
+        for (const [callId, interaction] of pendingInteractionsByCallId) {
+          const childThreadId =
+            interaction.state === "activity"
+              ? interaction.activity.item.agentThreadId
+              : interaction.state === "settled"
+                ? interaction.childThreadId
+                : null;
+          if (childThreadId === activity.item.agentThreadId) {
+            pendingInteractionsByCallId.delete(callId);
+          }
+        }
         const callId = trackedSubAgentCallIdsByAgentThreadId.get(
           activity.item.agentThreadId,
         );
@@ -1312,27 +1417,42 @@ export function createCodexEventTranslator(
 
     if (item.type === "function_call") {
       if (item.name === "followup_task" || item.name === "send_message") {
-        const pendingActivity = takeUnclassifiedCodexInteraction({
-          callId: item.call_id,
-          providerThreadId,
-        });
-        if (pendingActivity) {
-          return item.name === "followup_task"
-            ? materializeCodexFollowup(pendingActivity)
+        const intent = item.name === "followup_task" ? "followup" : "message";
+        const existing = pendingInteractionsByCallId.get(item.call_id);
+        if (existing?.state === "activity") {
+          const sameParent =
+            existing.parentProviderThreadId === providerThreadId &&
+            existing.parentTurnId === paramsResult.data.turnId;
+          settleCodexInteraction(
+            existing,
+            sameParent ? existing.activity.item.agentThreadId : null,
+          );
+          return sameParent
+            ? correlateCodexInteraction({
+                activity: existing.activity,
+                intent,
+              })
             : [];
         }
-        if (!processedSubAgentInteractionIds.has(item.call_id)) {
-          const interactionKinds =
-            interactionKindsByProviderThreadId.get(providerThreadId) ??
-            new Map<string, CodexInteractionKind>();
-          interactionKinds.set(
-            item.call_id,
-            item.name === "followup_task" ? "followup" : "message",
-          );
-          interactionKindsByProviderThreadId.set(
-            providerThreadId,
-            interactionKinds,
-          );
+        if (existing?.state === "raw") {
+          if (
+            existing.intent !== intent ||
+            existing.parentProviderThreadId !== providerThreadId ||
+            existing.parentTurnId !== paramsResult.data.turnId
+          ) {
+            settleCodexInteraction(existing, null);
+          }
+          return [];
+        }
+        if (existing === undefined) {
+          pendingInteractionsByCallId.set(item.call_id, {
+            callId: item.call_id,
+            intent,
+            parentBoundaryPassed: false,
+            parentProviderThreadId: providerThreadId,
+            parentTurnId: paramsResult.data.turnId,
+            state: "raw",
+          });
         }
         return [];
       }
@@ -1552,7 +1672,7 @@ export function createCodexEventTranslator(
       );
     }
 
-    const parentLinkedDeltas = materializeUnclassifiedCodexInteractions(
+    const parentLinkedDeltas = correlatePendingCodexInteractions(
       translateCodexEventToDeltas(event, eventTranslationState),
       providerThreadId,
     );
@@ -1577,6 +1697,7 @@ export function createCodexEventTranslator(
     clearExitedChildThreadState,
     configureInjectedTools,
     getThreadGitWritableRoots,
+    primeSubAgentHistory,
     prepareTurnStart: queueNativeTurnStartClientRequestId,
     prepareWorkspaceWriteGitRoots,
     translateEvent,

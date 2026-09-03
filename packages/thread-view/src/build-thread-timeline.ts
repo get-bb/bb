@@ -113,7 +113,12 @@ interface ThreadTimelineSourceSeqRange {
   sourceSeqStart: number;
 }
 
-interface BuildThreadTimelineTurnDetailsFromEventsOptions extends ThreadTimelineSourceSeqRange {
+interface ThreadTimelineTurnSummarySelection extends ThreadTimelineSourceSeqRange {
+  turnId: string;
+}
+
+interface BuildThreadTimelineTurnDetailsFromEventsOptions extends ThreadTimelineTurnSummarySelection {
+  fallbackSelection?: ThreadTimelineTurnSummarySelection;
   includeProviderUnhandledOperations: boolean;
   providerDisplayName?: string;
   threadStatus: Thread["status"];
@@ -1216,14 +1221,15 @@ type TimelineTurnSummaryRow = Extract<TimelineRow, { kind: "turn" }>;
 
 function findMatchingTurnSummaryRow(
   rows: TimelineRow[],
-  range: ThreadTimelineSourceSeqRange,
+  selection: ThreadTimelineTurnSummarySelection,
 ): TimelineTurnSummaryRow | null {
   return (
     rows.find(
       (row): row is TimelineTurnSummaryRow =>
         row.kind === "turn" &&
-        row.sourceSeqStart === range.sourceSeqStart &&
-        row.sourceSeqEnd === range.sourceSeqEnd,
+        row.turnId === selection.turnId &&
+        row.sourceSeqStart === selection.sourceSeqStart &&
+        row.sourceSeqEnd === selection.sourceSeqEnd,
     ) ?? null
   );
 }
@@ -1414,10 +1420,11 @@ export function buildThreadTimelineTurnDetailsFromEvents(
     rowIdPrefix: ROOT_TIMELINE_ROW_ID_PREFIX,
     workspaceRoot: args.options.workspaceRoot,
   });
-  const matchingTurnSummary = findMatchingTurnSummaryRow(
-    nestedRows,
-    args.options,
-  );
+  const matchingTurnSummary =
+    findMatchingTurnSummaryRow(nestedRows, args.options) ??
+    (args.options.fallbackSelection
+      ? findMatchingTurnSummaryRow(nestedRows, args.options.fallbackSelection)
+      : null);
   if (matchingTurnSummary) {
     return {
       kind: "matched",

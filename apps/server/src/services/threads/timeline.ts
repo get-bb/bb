@@ -286,6 +286,18 @@ function tryReadClientTurnRequestedRequestId(
   return event.requestId;
 }
 
+function isExternalUserNewTurnBoundary(row: StoredEventRow): boolean {
+  if (row.type !== "client/turn/requested") {
+    return false;
+  }
+  const event = parseStoredEvent(row);
+  return (
+    event.type === "client/turn/requested" &&
+    event.initiator === "user" &&
+    event.target.kind === "new-turn"
+  );
+}
+
 function tryReadSteerClientTurnRequestedRequestId(
   row: StoredEventRow,
 ): ClientTurnRequestId | null {
@@ -558,13 +570,46 @@ function filterExactEventRowsForRequestedTurn(
   const rows: StoredEventRow[] = [];
   let removedRows = false;
   const openToolCallIds = new Set<string>();
+  const externalUserNewTurnRequestIds = new Set<ClientTurnRequestId>();
+  const hasRequestedTurnCompletedRow = args.exactEventRows.some(
+    (row) =>
+      row.type === "turn/completed" &&
+      row.scopeKind === "turn" &&
+      row.turnId === args.turnId,
+  );
+  let hasLaterRequestedTurnRow = false;
+  for (let index = args.exactEventRows.length - 1; index >= 0; index -= 1) {
+    const row = args.exactEventRows[index];
+    if (
+      hasRequestedTurnCompletedRow &&
+      hasLaterRequestedTurnRow &&
+      row !== undefined &&
+      isExternalUserNewTurnBoundary(row)
+    ) {
+      const requestId = tryReadClientTurnRequestedRequestId(row);
+      if (
+        requestId !== null &&
+        args.acceptedClientRequestIdsForOtherTurns.has(requestId)
+      ) {
+        externalUserNewTurnRequestIds.add(requestId);
+      }
+    }
+    if (row?.scopeKind === "turn" && row.turnId === args.turnId) {
+      hasLaterRequestedTurnRow = true;
+    }
+  }
   for (const row of args.exactEventRows) {
     if (row.scopeKind === "turn" && row.turnId !== args.turnId) {
       const continuesOpenToolCall =
         row.itemId !== null &&
         row.type.startsWith("item/") &&
         openToolCallIds.has(row.itemId);
-      if (!continuesOpenToolCall) {
+      const acceptsExternalUserNewTurn =
+        row.type === "turn/input/accepted" &&
+        externalUserNewTurnRequestIds.has(
+          parseAcceptedInputClientRequestId(row),
+        );
+      if (!continuesOpenToolCall && !acceptsExternalUserNewTurn) {
         removedRows = true;
         continue;
       }
@@ -583,7 +628,8 @@ function filterExactEventRowsForRequestedTurn(
     const requestId = tryReadClientTurnRequestedRequestId(row);
     if (
       requestId !== null &&
-      args.acceptedClientRequestIdsForOtherTurns.has(requestId)
+      args.acceptedClientRequestIdsForOtherTurns.has(requestId) &&
+      !externalUserNewTurnRequestIds.has(requestId)
     ) {
       removedRows = true;
       continue;
@@ -772,6 +818,21 @@ function ensureSequenceWindowWholeItemRows(
     return [...args.rows];
   }
 
+  const completedWindowItemKeys = new Set<string>();
+  const reopenedWindowItemKeys = new Set<string>();
+  for (const row of args.rows) {
+    if (row.itemId === null) {
+      continue;
+    }
+    const key = scopedItemRefKey(storedEventRowItemRef(row));
+    if (row.type === "item/started" && completedWindowItemKeys.has(key)) {
+      reopenedWindowItemKeys.add(key);
+    }
+    if (row.type === "item/completed") {
+      completedWindowItemKeys.add(key);
+    }
+  }
+
   const spans = listItemEventSpansByItems(db, {
     items: [...windowItems.values()],
     threadId: args.threadId,
@@ -782,7 +843,8 @@ function ensureSequenceWindowWholeItemRows(
     const key = scopedItemRefKey(span);
     if (
       args.beforeSequence !== undefined &&
-      span.maxSequence >= args.beforeSequence
+      span.maxSequence >= args.beforeSequence &&
+      !reopenedWindowItemKeys.has(key)
     ) {
       itemKeysOwnedByNewerWindow.add(key);
       continue;
@@ -1936,18 +1998,28 @@ export function buildTimelineTurnSummaryDetails(
         : sourceSeqStart,
     sourceRange.sourceSeqStart,
   );
+  const events = eventRowsWithBackgroundTaskState.map((row) =>
+    toThreadEventWithMeta(row),
+  );
+  const detailOptions = {
+    includeProviderUnhandledOperations,
+    providerDisplayName: options.providerDisplayName,
+    threadStatus: thread.status,
+    threadName: thread.title ?? thread.titleFallback ?? "",
+    turnId: options.turnId,
+    workspaceRoot: resolveThreadWorkspaceRoot(db, thread),
+  };
   const children = buildThreadTimelineTurnDetailsFromEvents({
-    events: eventRowsWithBackgroundTaskState.map((row) =>
-      toThreadEventWithMeta(row),
-    ),
+    events,
     options: {
-      includeProviderUnhandledOperations,
-      sourceSeqEnd: sourceRange.sourceSeqEnd,
-      sourceSeqStart: projectionSourceSeqStart,
-      providerDisplayName: options.providerDisplayName,
-      threadStatus: thread.status,
-      threadName: thread.title ?? thread.titleFallback ?? "",
-      workspaceRoot: resolveThreadWorkspaceRoot(db, thread),
+      ...detailOptions,
+      fallbackSelection: {
+        sourceSeqEnd: sourceRange.sourceSeqEnd,
+        sourceSeqStart: projectionSourceSeqStart,
+        turnId: options.turnId,
+      },
+      sourceSeqEnd: options.sourceSeqEnd,
+      sourceSeqStart: options.sourceSeqStart,
     },
   });
 

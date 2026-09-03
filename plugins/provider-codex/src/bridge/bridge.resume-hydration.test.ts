@@ -1,9 +1,4 @@
-import {
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -72,4 +67,7 @@ it("excludes turn history when it resumes a Codex thread", async () => {
     method: "thread/resume",
     params: expect.objectContaining({ excludeTurns: true }),
   });
+  expect(requests.map((request) => request.method)).not.toContain(
+    "thread/read",
+  );
 });
