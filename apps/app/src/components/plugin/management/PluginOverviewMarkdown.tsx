@@ -67,12 +67,12 @@ const OVERVIEW_COMPONENTS: Components = {
     </code>
   ),
   h1: ({ children }) => (
-    <h3 className="mb-2 mt-4 text-base font-semibold text-foreground first:mt-0">
+    <h3 className="mb-1.5 mt-4 text-sm font-semibold text-foreground first:mt-0">
       {children}
     </h3>
   ),
   h2: ({ children }) => (
-    <h3 className="mb-2 mt-4 text-base font-semibold text-foreground first:mt-0">
+    <h3 className="mb-1.5 mt-4 text-sm font-semibold text-foreground first:mt-0">
       {children}
     </h3>
   ),
