@@ -1,7 +1,6 @@
 import path from "node:path";
 import { updateEnvironmentMetadata } from "@bb/db";
 import {
-  type GitBranchRefClassification,
   resolveEnvironmentWorkspaceDisplayKind,
   type Environment,
   type ThreadPullRequest,
@@ -54,16 +53,9 @@ import {
 } from "./diff-tiering.js";
 
 const COMMIT_FALLBACK_MESSAGE = "bb: automated commit";
-const SQUASH_MERGE_FALLBACK_MESSAGE = "bb: squash merge";
-const PRE_MERGE_COMMIT_MESSAGE = "bb: pre-merge commit";
 
 const AI_MAX_DIFF_BYTES = 32_000;
 const AI_MAX_FILE_LIST_BYTES = 4_000;
-
-interface AssertSquashMergeTargetIsLocalArgs {
-  selectedBranch: GitBranchRefClassification | null;
-  targetBranch: string;
-}
 
 async function mapNoChangesTo409<TResult>(
   conflictMessage: string,
@@ -95,29 +87,6 @@ async function mapPullRequestActionFailureTo409<TResult>(
     }
     throw error;
   }
-}
-
-function assertSquashMergeTargetIsLocal({
-  selectedBranch,
-  targetBranch,
-}: AssertSquashMergeTargetIsLocalArgs): void {
-  if (selectedBranch?.kind === "local") {
-    return;
-  }
-
-  if (selectedBranch?.kind === "remote") {
-    throw new ApiError(
-      409,
-      "invalid_request",
-      `Cannot squash merge into remote branch ${targetBranch}; select a local branch`,
-    );
-  }
-
-  throw new ApiError(
-    409,
-    "invalid_request",
-    `Target branch does not exist: ${targetBranch}`,
-  );
 }
 
 function toWorkspaceDiffTarget(query: EnvironmentDiffQuery) {
@@ -662,105 +631,6 @@ export function registerEnvironmentRoutes(app: Hono, deps: AppDeps): void {
             ok: true,
             action: "commit",
             message: `Created commit ${result.commitSha}`,
-            commitSha: result.commitSha,
-            commitSubject: result.commitSubject,
-          });
-        }
-        case "squash_merge": {
-          const target = requireWorkspaceCommandTarget(environment);
-          const { workspaceContext } = target;
-          const targetBranch = payload.options.mergeBaseBranch;
-
-          const statusResult = await callEnvironmentWorkspaceStatus(deps, {
-            environment,
-            target,
-          });
-          const workspaceStatus = requireAvailableWorkspaceStatus(statusResult);
-
-          const currentBranch = workspaceStatus.branch.currentBranch;
-          if (!currentBranch) {
-            throw new ApiError(
-              409,
-              "invalid_request",
-              "Cannot squash merge from a detached workspace",
-            );
-          }
-
-          const targetBranchResult = await callHostRetryableOnlineRpc(deps, {
-            hostId: environment.hostId,
-            timeoutMs: COMMAND_TIMEOUT_MS,
-            command: {
-              type: "host.list_branch_options",
-              path: environment.path,
-              selectedBranch: targetBranch,
-              limit: 1,
-              remoteRefresh: "none",
-            },
-          });
-          assertSquashMergeTargetIsLocal({
-            selectedBranch: targetBranchResult.selectedBranch,
-            targetBranch,
-          });
-
-          if (workspaceStatus.workingTree.hasUncommittedChanges) {
-            await runLiveCommandAndWait(deps, {
-              hostId: target.hostId,
-              timeoutMs: COMMAND_TIMEOUT_MS,
-              command: {
-                type: "workspace.commit",
-                environmentId: target.environmentId,
-                workspaceContext,
-                message: PRE_MERGE_COMMIT_MESSAGE,
-              },
-            });
-          }
-
-          const diffResult = await callHostRetryableOnlineRpc(deps, {
-            hostId: target.hostId,
-            timeoutMs: COMMAND_TIMEOUT_MS,
-            command: {
-              type: "workspace.diff",
-              environmentId: target.environmentId,
-              workspaceContext,
-              target: {
-                type: "branch_committed",
-                mergeBaseBranch: targetBranch,
-              },
-              maxDiffBytes: AI_MAX_DIFF_BYTES,
-              maxFileListBytes: AI_MAX_FILE_LIST_BYTES,
-              maxUntrackedFiles: WORKSPACE_DIFF_MAX_FILES,
-            },
-          });
-          const workspaceDiff = requireAvailableWorkspaceDiff(diffResult);
-
-          const aiMessage = await generateCommitMessage(deps, {
-            diffDescription: `squash merge of ${currentBranch} into ${targetBranch}`,
-            shortstat: workspaceDiff.shortstat,
-            files: workspaceDiff.files,
-            patch: workspaceDiff.diff,
-          });
-          const commitMessage = aiMessage ?? SQUASH_MERGE_FALLBACK_MESSAGE;
-
-          const result = await mapNoChangesTo409(
-            `No changes to merge into ${targetBranch}`,
-            () =>
-              runLiveCommandAndWait(deps, {
-                hostId: target.hostId,
-                timeoutMs: COMMAND_TIMEOUT_MS,
-                command: {
-                  type: "workspace.squash_merge",
-                  environmentId: target.environmentId,
-                  workspaceContext,
-                  targetBranch,
-                  commitMessage,
-                },
-              }),
-          );
-          return context.json({
-            ok: true,
-            action: "squash_merge",
-            merged: result.merged,
-            message: "Squash merge completed",
             commitSha: result.commitSha,
             commitSubject: result.commitSubject,
           });

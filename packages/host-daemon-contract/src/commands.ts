@@ -968,14 +968,6 @@ const workspaceCommitCommandSchema = hostDaemonWorkspaceTargetSchema
   })
   .strict();
 
-const workspaceSquashMergeCommandSchema = hostDaemonWorkspaceTargetSchema
-  .extend({
-    type: z.literal("workspace.squash_merge"),
-    targetBranch: gitBranchNameSchema,
-    commitMessage: z.string().min(1),
-  })
-  .strict();
-
 const fileReadResultSchema = z.object({
   path: z.string(),
   content: z.string(),
@@ -1217,9 +1209,6 @@ const workspaceCommitResultSchema = z.object({
   commitSha: z.string().min(1),
   commitSubject: z.string().min(1),
 });
-const workspaceSquashMergeResultSchema = workspaceCommitResultSchema.extend({
-  merged: z.boolean(),
-});
 const workspacePullRequestActionResultSchema = z.object({}).strict();
 
 export { providerUsageWindowSchema };
@@ -1435,15 +1424,6 @@ export const hostDaemonCommandRegistry = {
     type: "workspace.commit",
     schema: workspaceCommitCommandSchema,
     resultSchema: workspaceCommitResultSchema,
-    transport: "settled",
-    retryable: false,
-    flushEventsBeforeResult: false,
-    envLane: "write",
-  }),
-  "workspace.squash_merge": defineHostDaemonCommandDescriptor({
-    type: "workspace.squash_merge",
-    schema: workspaceSquashMergeCommandSchema,
-    resultSchema: workspaceSquashMergeResultSchema,
     transport: "settled",
     retryable: false,
     flushEventsBeforeResult: false,

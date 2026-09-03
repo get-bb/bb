@@ -146,8 +146,8 @@ src/
                          ThreadActionsSheet (header "…" menu: handoff, new
                          thread in worktree, rename, pin, read state, move,
                          copy link, open in web, archive, delete),
-                         ThreadGitActionSheet + useThreadGitActions (commit /
-                         squash merge through the environment actions);
+                         ThreadGitActionSheet + useThreadGitActions (commit
+                         through the environment actions);
                          interactions/ — PendingInteractionBanner (approval /
                          user question / ask-user-question + secret-request
                          plugin forms / unsupported-plugin card), QuestionForm,

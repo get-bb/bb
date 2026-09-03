@@ -35,7 +35,6 @@ type GetSharedGitRefsFingerprintResult = Awaited<
   ReturnType<HostWorkspace["getSharedGitRefsFingerprint"]>
 >;
 type CommitArgs = Parameters<HostWorkspace["commit"]>;
-type SquashMergeArgs = Parameters<HostWorkspace["squashMerge"]>;
 type ProvisionWorkspaceMockArgs = Parameters<
   (options: ProvisionWorkspaceArgs) => Promise<HostWorkspace>
 >;
@@ -203,12 +202,6 @@ function createFakeWorkspace(
       commitSubject: "commit",
     })),
     reset: vi.fn(async () => undefined),
-    squashMerge: vi.fn(async (..._args: SquashMergeArgs) => ({
-      merged: true,
-      commitSha: "commit-1",
-      commitSubject: "commit",
-      targetBranch: "main",
-    })),
     setLocalStateFingerprint(value: GetLocalStateFingerprintResult) {
       localStateFingerprint = value;
     },

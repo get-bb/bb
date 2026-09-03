@@ -54,7 +54,7 @@ Conventions:
   keyed by the requested merge base + the optimistic merge-base pick persisted
   through `PATCH /environments/:id`), `useEnvironmentPullRequest` (polls open
   PRs with pending checks), `useEnvironmentMergeBaseBranches`,
-  `useEnvironmentAction` (commit / squash merge / PR ready / draft / merge;
+  `useEnvironmentAction` (commit / PR ready / draft / merge;
   owns the loading → success / 409 "blocked" warning / error toasts),
   `useUpdateEnvironment`. Pure, tested:
   `workspace-status.ts` (change tally + summary, changed-files section, git
@@ -89,8 +89,8 @@ Conventions:
   The patch cache itself lives in `@/lib/query/diff-patch-cache.ts`: the
   realtime bridge evicts it (remove + generation bump) on every
   environment change before invalidating the TOC, and
-  `invalidateEnvironmentActionQueries` does the same after a commit /
-  squash merge; `retainDiffPatchQueries` drops an environment's patches two
+  `invalidateEnvironmentActionQueries` does the same after a commit;
+  `retainDiffPatchQueries` drops an environment's patches two
   minutes after its last reader unmounts.
 - `terminals/` backs the workspace panel's Terminal tab and the full-screen
   terminal route (mirror of the web `thread-terminal-queries` +
