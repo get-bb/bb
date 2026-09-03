@@ -29,6 +29,19 @@ describe("marketplace entry schemas", () => {
       marketplaceEntryV1Schema.safeParse({ ...entry(), category: "utilities" })
         .success,
     ).toBe(false);
+    expect(
+      marketplaceEntryV1Schema.safeParse({ ...entry(), about: "# Notes\n" })
+        .success,
+    ).toBe(false);
+  });
+
+  it("accepts a v2 about text and rejects an empty one", () => {
+    expect(
+      marketplaceEntryV2Schema.parse({ ...entry(), about: "# Notes\n" }).about,
+    ).toBe("# Notes\n");
+    expect(
+      marketplaceEntryV2Schema.safeParse({ ...entry(), about: "" }).success,
+    ).toBe(false);
   });
 
   it("accepts optional v2 fields and ignores discovery metadata keys", () => {

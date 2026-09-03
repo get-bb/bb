@@ -61,6 +61,7 @@ import {
   entryIconName,
   entryIconTinted,
   entryRepositoryUrl,
+  entryAbout,
   entryScreenshotUrls,
   entrySourceDisplay,
   curatedMarketplaceManifestUrls,
@@ -485,6 +486,7 @@ export function createPluginCatalogService(deps: {
         ? { kind: "url", manifestUrl: row.manifestUrl }
         : { kind: "dir", root: row.manifestUrl },
     );
+    const about = entryAbout(entry, deps.warn);
     return {
       entryId,
       pluginId,
@@ -500,6 +502,7 @@ export function createPluginCatalogService(deps: {
           ? {}
           : { categoryId: category.id, category: category.displayName }),
       screenshots,
+      ...(about === undefined ? {} : { about }),
       collections: [...args.collections],
       ...("publishedAt" in entry && typeof entry.publishedAt === "string"
         ? { publishedAt: entry.publishedAt }

@@ -16,6 +16,7 @@ import {
   ResourceRowDetailChevron,
 } from "@bb/shared-ui/resource-list";
 import type { PluginCatalogSearchEntry } from "@/hooks/queries/plugin-catalog-queries";
+import { PluginAboutMarkdown } from "@/components/plugin/management/PluginAboutMarkdown";
 import { CatalogEntryIconChip, PluginCategoryLabel } from "./plugin-ui";
 import { PluginAuthorAvatar } from "./PluginAuthorAvatar";
 import { PluginAuthorLink } from "./PluginAuthorLink";
@@ -229,6 +230,9 @@ function PluginMarketplaceOverview({
           <p className="max-w-none text-sm leading-relaxed text-muted-foreground">
             {entry.description}
           </p>
+          {entry.about === undefined ? null : (
+            <PluginAboutMarkdown markdown={entry.about} />
+          )}
         </div>
       )}
     </section>

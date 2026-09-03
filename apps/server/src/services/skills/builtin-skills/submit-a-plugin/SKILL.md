@@ -1,6 +1,6 @@
 ---
 name: submit-a-plugin
-description: Submit a bb plugin to the BB Community marketplace. Use whenever a user asks to submit, list, publish, or add a plugin to the BB marketplace, or asks for a marketplace pull request. This skill validates the plugin and release, creates the marketplace entry, icon, and screenshots, and opens the pull request.
+description: Submit a bb plugin to the BB Community marketplace. Use whenever a user asks to submit, list, publish, or add a plugin to the BB marketplace, or asks for a marketplace pull request. This skill validates the plugin and release, creates the marketplace entry, icon, screenshots, and optional long-form description, and opens the pull request.
 ---
 
 # Submit a plugin
@@ -50,18 +50,20 @@ rules.
 4. Get separate approval before any release mutation.
 5. Create one marketplace entry with a vendored icon.
 6. Install the plugin and capture its screenshots.
-7. Validate the marketplace repository.
-8. Commit only the entry, icon, and screenshots.
-9. Open a pull request from the submitter account.
+7. Copy the plugin ABOUT.md file into the marketplace when the plugin has one.
+8. Validate the marketplace repository.
+9. Commit only the entry, icon, screenshots, and about file.
+10. Open a pull request from the submitter account.
 
 Read these references as the task reaches each stage:
 
 - Read references/plugin-release.md before validating or releasing a plugin.
-- Read references/marketplace-entry.md before you create the entry, icon, or
-  screenshots. It states what a good entry and description hold, how to capture
-  screenshots with a harness browser or computer automation tool, and what to
-  ask the user for when the harness has no such tool. It ends with a quality
-  check to run before the pull request.
+- Read references/marketplace-entry.md before you create the entry, icon,
+  screenshots, or about file. It states what a good entry and description
+  hold, how to capture screenshots with a harness browser or computer
+  automation tool, what to ask the user for when the harness has no such
+  tool, and which markdown the long-form description can use. It ends with a
+  quality check to run before the pull request.
 - Read references/pull-request.md before cloning, validating, or submitting
   the marketplace repository.
 
@@ -78,4 +80,5 @@ for a merge unless the user asks.
 
 A compatible release within an existing tracking range usually needs no new
 marketplace pull request. Open another pull request when source, branding,
-description, category, screenshots, ownership, tag, or range changes.
+description, long-form description, category, screenshots, ownership, tag, or
+range changes.

@@ -113,6 +113,22 @@ describe("submit-a-plugin skill", () => {
     expect(skill).toContain("a maximum of six");
   });
 
+  it("copies an author ABOUT.md into the marketplace about directory", async () => {
+    const skill = await readSkillTree();
+
+    expect(skill).toContain(
+      "Copy the plugin ABOUT.md file into the marketplace when the plugin has one.",
+    );
+    expect(skill).toContain("Copy the file to about/<plugin-id>.md");
+    expect(skill).toContain('"about": "./about/notes.md"');
+    expect(skill).toContain("a maximum of 4000 characters");
+    expect(skill).toContain("Each link must be an absolute https URL.");
+    expect(skill).toContain(
+      "The build rejects raw HTML, images, tables, footnotes, task lists, and control",
+    );
+    expect(skill).toContain("git add about/PLUGIN_ID.md");
+  });
+
   it("states the entry quality rules the store UI depends on", async () => {
     const skill = await readSkillTree();
 

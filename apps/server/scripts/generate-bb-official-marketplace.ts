@@ -1,11 +1,13 @@
 import { execFile } from "node:child_process";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 import {
   derivePluginId,
   isPluginOwnedIconPath,
+  MARKETPLACE_ABOUT_MAX_CHARS,
   PLUGIN_CATALOG_CATEGORIES,
   pluginCatalogCategoryIdSchema,
   pluginPackageJsonSchema,
@@ -158,6 +160,43 @@ export async function readPluginGitDates(args: {
   return dates;
 }
 
+const ABOUT_HTML_OR_IMAGE_PATTERN = /<[A-Za-z!/?]|!\[/u;
+
+export function normalizeBundledAboutText(text: string): string {
+  return `${text
+    .replace(/^\uFEFF/u, "")
+    .replace(/\r\n?/gu, "\n")
+    .split("\n")
+    .map((line) => line.replace(/[ \t]+$/u, ""))
+    .join("\n")
+    .replace(/^\n+/u, "")
+    .replace(/\n+$/u, "")}\n`;
+}
+
+export async function readBundledPluginAbout(
+  pluginDirectory: string,
+  pluginName: string,
+): Promise<string | undefined> {
+  const aboutPath = path.join(pluginDirectory, "ABOUT.md");
+  if (!existsSync(aboutPath)) return undefined;
+  const about = normalizeBundledAboutText(await readFile(aboutPath, "utf8"));
+  const length = [...about.replace(/\n$/u, "")].length;
+  if (length === 0) {
+    throw new Error(`bundled plugin ${pluginName} has an empty ABOUT.md`);
+  }
+  if (length > MARKETPLACE_ABOUT_MAX_CHARS) {
+    throw new Error(
+      `bundled plugin ${pluginName} ABOUT.md has ${length} characters; the maximum is ${MARKETPLACE_ABOUT_MAX_CHARS}`,
+    );
+  }
+  if (ABOUT_HTML_OR_IMAGE_PATTERN.test(about)) {
+    throw new Error(
+      `bundled plugin ${pluginName} ABOUT.md must not hold raw HTML or an image`,
+    );
+  }
+  return about;
+}
+
 function marketplaceIcon(pluginName: string, declared: string) {
   if (!isPluginOwnedIconPath(declared)) return declared;
   const relative = declared.replace(/^\.\//u, "");
@@ -182,17 +221,15 @@ export async function generateBbOfficialMarketplace(args: {
   });
   const entries = await Promise.all(
     args.plugins.map(async (plugin) => {
-      const packageJson: unknown = JSON.parse(
-        await readFile(
-          path.join(
-            args.repositoryRoot,
-            "plugins",
-            plugin.name,
-            "package.json",
-          ),
-          "utf8",
-        ),
+      const pluginDirectory = path.join(
+        args.repositoryRoot,
+        "plugins",
+        plugin.name,
       );
+      const packageJson: unknown = JSON.parse(
+        await readFile(path.join(pluginDirectory, "package.json"), "utf8"),
+      );
+      const about = await readBundledPluginAbout(pluginDirectory, plugin.name);
       const manifest = pluginPackageJsonSchema.parse(packageJson);
       const id = derivePluginId(manifest.name);
       if (id !== plugin.pluginId) {
@@ -219,6 +256,7 @@ export async function generateBbOfficialMarketplace(args: {
         source: { bundled: { plugin: plugin.name } },
         category: catalog.category,
         screenshots: catalog.screenshots,
+        ...(about === undefined ? {} : { about }),
         ...(gitDates === undefined ? {} : gitDates),
       };
     }),
