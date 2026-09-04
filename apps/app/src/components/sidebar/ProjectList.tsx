@@ -1046,9 +1046,6 @@ function ProjectModeSections({
   const { onOrderChange, order, persistedOrder } = useSidebarModeSectionOrder({
     mode: "project",
     entitySectionIds: projectSectionIds,
-    // Project rows carry their own actions, so an empty projectless Threads
-    // section is only noise. Keep it while there are no projects so the
-    // sidebar still has an entry point.
     hasThreadsSection: personalThreads.length > 0 || projectRows.length === 0,
     showPinnedSection,
     isReady,
