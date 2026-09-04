@@ -146,12 +146,6 @@ function getMentionKey(item: PromptMentionSuggestion): string {
 
 type CommandSectionKind = ProviderCommandSection;
 
-function getCommandSectionKind(
-  item: ComposerCommandSuggestion,
-): CommandSectionKind {
-  return providerCommandSection(item);
-}
-
 function getCommandSectionLabel(kind: CommandSectionKind): string {
   if (kind === "agent-command") {
     return "Commands";
@@ -434,7 +428,7 @@ function CommandResults({
     () =>
       groupSections({
         suggestions,
-        sectionKind: getCommandSectionKind,
+        sectionKind: providerCommandSection,
         sectionLabel: getCommandSectionLabel,
       }),
     [suggestions],

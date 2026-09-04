@@ -8,8 +8,6 @@ import {
   type PluginPendingInteraction,
   type ThreadListEntry,
   type ThreadQueuedMessage,
-  type UserQuestionPendingInteraction,
-  type UserQuestionPendingInteractionPayload,
 } from "@bb/domain";
 import type {
   ProjectWithThreadsResponse,
@@ -209,44 +207,6 @@ export function approvalInteraction(
     createdAt: 100,
     resolvedAt: null,
     payload: { kind: "approval", subject, reason, availableDecisions },
-    resolution: null,
-    ...rest,
-  };
-}
-
-export function userQuestionInteraction(
-  overrides: Partial<UserQuestionPendingInteraction> & {
-    id: string;
-    questions?: UserQuestionPendingInteractionPayload["questions"];
-  },
-): UserQuestionPendingInteraction {
-  const {
-    questions = [
-      {
-        id: "q1",
-        prompt: "Which color?",
-        shortLabel: "Color",
-        multiSelect: false,
-        options: [
-          { value: "red", label: "Red" },
-          { value: "blue", label: "Blue" },
-        ],
-        allowFreeText: true,
-      },
-    ],
-    ...rest
-  } = overrides;
-  return {
-    threadId: "t1",
-    turnId: "turn-1",
-    providerId: "fake",
-    providerThreadId: "pt-1",
-    providerRequestId: "req-1",
-    status: "pending",
-    statusReason: null,
-    createdAt: 100,
-    resolvedAt: null,
-    payload: { kind: "user_question", questions },
     resolution: null,
     ...rest,
   };
