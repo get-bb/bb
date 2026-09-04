@@ -454,6 +454,7 @@
       "dependsOn": ["//#ensure-native-modules", "@bb/cli#build", "topo"],
       "inputs": [
         "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/.github/actions/setup-workspace/**",
         "$TURBO_ROOT$/.github/APPROVED_CONTRIBUTORS",
         "$TURBO_ROOT$/.github/workflows/approve-contributor.yml",
         "$TURBO_ROOT$/.github/workflows/pr-gate.yml",

@@ -13,6 +13,12 @@ set -euo pipefail
 version="${PNPM_VERSION:?PNPM_VERSION is required}"
 action_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 checksums="${action_dir}/pnpm-${version}.sha256"
+package_manager="$(node --print 'require(process.argv[1]).packageManager' "${GITHUB_WORKSPACE:?GITHUB_WORKSPACE is required}/package.json")"
+
+if [[ "${package_manager}" != "pnpm@${version}" ]]; then
+  echo "::error::pnpm version mismatch: package.json declares ${package_manager#pnpm@}, but the action requested ${version}."
+  exit 1
+fi
 
 if [[ ! -f "${checksums}" ]]; then
   echo "::error::No checksums for pnpm ${version}. Download the release assets from https://github.com/pnpm/pnpm/releases/tag/v${version}, run sha256sum on them, and commit the output as ${checksums}."
