@@ -226,13 +226,20 @@ export function SidebarSplitContainer({
     ) {
       return;
     }
-    if (persistedValue === null) {
-      window.localStorage.removeItem(storageKey);
-    } else {
-      window.localStorage.setItem(storageKey, persistedValue);
+    try {
+      if (persistedValue === null) {
+        window.localStorage.removeItem(storageKey);
+      } else {
+        window.localStorage.setItem(storageKey, persistedValue);
+      }
+      lastPersistedValueRef.current = { storageKey, value: persistedValue };
+    } catch (error) {
+      console.warn(
+        `[secondary-panel] could not persist split layout for ${panelStateId}; keeping it in memory only`,
+        error,
+      );
     }
-    lastPersistedValueRef.current = { storageKey, value: persistedValue };
-  }, [activeTabId, availableTabIds, state, storageKey]);
+  }, [activeTabId, availableTabIds, panelStateId, state, storageKey]);
 
   const commitState = useCallback(
     (

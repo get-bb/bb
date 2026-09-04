@@ -11,6 +11,8 @@ const modelCatalogCache = createLastKnownCache({
   prefix: "bb.model-catalog",
   version: "1",
   schema: cachedModelCatalogSchema,
+  maxEntries: 8,
+  obsoletePrefixes: ["bb.claude-model-catalog"],
 });
 
 export function modelCatalogCacheKey({
