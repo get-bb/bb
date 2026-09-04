@@ -67,6 +67,45 @@ function findCommandRow(rows: readonly TimelineRow[], command: string) {
   return row;
 }
 
+function maybeFindNestedCommandRow(
+  rows: readonly TimelineRow[],
+  command: string,
+): Extract<TimelineRow, { kind: "work"; workKind: "command" }> | null {
+  for (const row of rows) {
+    if (
+      row.kind === "work" &&
+      row.workKind === "command" &&
+      row.command === command
+    ) {
+      return row;
+    }
+    const children =
+      row.kind === "turn"
+        ? row.children
+        : row.kind === "work" && row.workKind === "delegation"
+          ? row.childRows
+          : null;
+    if (children !== null) {
+      const match = maybeFindNestedCommandRow(children, command);
+      if (match !== null) {
+        return match;
+      }
+    }
+  }
+  return null;
+}
+
+function findNestedCommandRow(
+  rows: readonly TimelineRow[],
+  command: string,
+): Extract<TimelineRow, { kind: "work"; workKind: "command" }> {
+  const row = maybeFindNestedCommandRow(rows, command);
+  if (row === null) {
+    throw new Error(`nested command row ${command} not found`);
+  }
+  return row;
+}
+
 function seedRunningTurnWithCommands(harness: TestAppHarness): {
   threadId: string;
 } {
@@ -219,6 +258,148 @@ describe("GET /threads/:id/timeline inline output preview", () => {
       const big = findCommandRow(timeline.rows, "big");
       expect(big.outputPreview).toBeUndefined();
       expect(big.output).toBe(BIG_OUTPUT);
+    });
+  });
+
+  it("annotates and hydrates retained output nested in a completed delegated turn", async () => {
+    await withTestHarness(async (harness) => {
+      const { environment, thread } = seedThreadFixture(harness);
+      const providerThreadId = "provider-nested-retained";
+      const turnId = "turn-nested-retained";
+      const delegationCallId = "delegation-nested-retained";
+      const commandCallId = "command-nested-retained";
+      const command = "cat nested retained output";
+      const output = "nested-" + "n".repeat(50_000);
+      const scope = turnScope(turnId);
+
+      seedEvent(harness.deps, {
+        data: {},
+        environmentId: environment.id,
+        providerThreadId,
+        scope,
+        sequence: 1,
+        threadId: thread.id,
+        type: "turn/started",
+      });
+      seedEvent(harness.deps, {
+        data: {
+          item: {
+            arguments: { prompt: "Inspect nested retained output." },
+            id: delegationCallId,
+            status: "pending",
+            tool: "Agent",
+            type: "toolCall",
+          },
+        },
+        environmentId: environment.id,
+        providerThreadId,
+        scope,
+        sequence: 2,
+        threadId: thread.id,
+        type: "item/started",
+      });
+      seedEvent(harness.deps, {
+        data: {
+          item: {
+            approvalStatus: null,
+            command,
+            cwd: "/tmp",
+            id: commandCallId,
+            parentToolCallId: delegationCallId,
+            status: "pending",
+            type: "commandExecution",
+          },
+        },
+        environmentId: environment.id,
+        providerThreadId,
+        scope,
+        sequence: 3,
+        threadId: thread.id,
+        type: "item/started",
+      });
+      seedEvent(harness.deps, {
+        data: {
+          item: {
+            aggregatedOutput: output,
+            approvalStatus: null,
+            command,
+            cwd: "/tmp",
+            exitCode: 0,
+            id: commandCallId,
+            parentToolCallId: delegationCallId,
+            status: "completed",
+            type: "commandExecution",
+          },
+        },
+        environmentId: environment.id,
+        providerThreadId,
+        scope,
+        sequence: 4,
+        threadId: thread.id,
+        type: "item/completed",
+      });
+      seedEvent(harness.deps, {
+        data: {
+          item: {
+            arguments: { prompt: "Inspect nested retained output." },
+            id: delegationCallId,
+            result: "Done",
+            status: "completed",
+            tool: "Agent",
+            type: "toolCall",
+          },
+        },
+        environmentId: environment.id,
+        providerThreadId,
+        scope,
+        sequence: 5,
+        threadId: thread.id,
+        type: "item/completed",
+      });
+      seedEvent(harness.deps, {
+        data: { status: "completed" },
+        environmentId: environment.id,
+        providerThreadId,
+        scope,
+        sequence: 6,
+        threadId: thread.id,
+        type: "turn/completed",
+      });
+
+      const timeline = await getTimeline(
+        harness,
+        thread.id,
+        "?includeNestedRows=true",
+      );
+      const turn = timeline.rows.find(
+        (row) => row.kind === "turn" && row.turnId === turnId,
+      );
+      if (turn?.kind !== "turn" || turn.children === null) {
+        throw new Error("Expected completed turn children");
+      }
+      const delegation = turn.children.find(
+        (row) => row.kind === "work" && row.workKind === "delegation",
+      );
+      if (delegation?.kind !== "work" || delegation.workKind !== "delegation") {
+        throw new Error("Expected nested delegation row");
+      }
+      const preview = findNestedCommandRow(delegation.childRows, command);
+      expect(preview.output).not.toBe(output);
+      expect(preview.outputPreview).toEqual({
+        experimental_fullOutputAvailability: "available",
+        totalChars: output.length,
+      });
+
+      const response = await harness.app.request(
+        `/api/v1/threads/${thread.id}/timeline/turn-summary-details?turnId=${preview.turnId}&sourceSeqStart=${preview.sourceSeqStart}&sourceSeqEnd=${preview.sourceSeqEnd}`,
+      );
+      expect(response.status).toBe(200);
+      const details = timelineTurnSummaryDetailsResponseSchema.parse(
+        await readJson(response),
+      );
+      const hydrated = findNestedCommandRow(details.rows, command);
+      expect(hydrated.output).toBe(output);
+      expect(hydrated.outputPreview).toBeUndefined();
     });
   });
 

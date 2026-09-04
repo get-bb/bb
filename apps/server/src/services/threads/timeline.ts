@@ -308,16 +308,40 @@ function applyRetainedOutputPreviews(
   if (previews.size === 0) {
     return [...rows];
   }
-  return rows.map((row) => {
-    if (
-      row.kind !== "work" ||
-      (row.workKind !== "command" && row.workKind !== "tool")
-    ) {
-      return row;
-    }
-    const outputPreview = previews.get(row.callId);
-    return outputPreview === undefined ? row : { ...row, outputPreview };
-  });
+
+  const applyToRows = (nestedRows: readonly TimelineRow[]): TimelineRow[] => {
+    const nextRows = nestedRows.map((row): TimelineRow => {
+      if (row.kind === "turn") {
+        if (row.children === null) {
+          return row;
+        }
+        const originalChildren = row.children;
+        const children = applyToRows(originalChildren);
+        const changed = children.some(
+          (child, index) => child !== originalChildren[index],
+        );
+        return changed ? { ...row, children } : row;
+      }
+      if (row.kind !== "work") {
+        return row;
+      }
+      if (row.workKind === "delegation") {
+        const childRows = applyToRows(row.childRows);
+        const changed = childRows.some(
+          (child, index) => child !== row.childRows[index],
+        );
+        return changed ? { ...row, childRows } : row;
+      }
+      if (row.workKind !== "command" && row.workKind !== "tool") {
+        return row;
+      }
+      const outputPreview = previews.get(row.callId);
+      return outputPreview === undefined ? row : { ...row, outputPreview };
+    });
+    return nextRows;
+  };
+
+  return applyToRows(rows);
 }
 
 function parseAcceptedInputClientRequestId(

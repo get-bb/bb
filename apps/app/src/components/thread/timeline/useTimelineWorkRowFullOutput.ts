@@ -2,6 +2,7 @@ import { useCallback, useMemo } from "react";
 import type {
   TimelineCommandWorkRow,
   TimelineOutputPreview,
+  TimelineRow,
   TimelineToolWorkRow,
 } from "@bb/server-contract";
 import { useThreadTimelineTurnSummaryDetails } from "@/hooks/queries/thread-queries";
@@ -41,6 +42,34 @@ function loadedOutputState(
   }
 }
 
+function findPreviewableWorkRow(
+  rows: readonly TimelineRow[],
+  predicate: (row: TimelinePreviewableWorkRow) => boolean,
+): TimelinePreviewableWorkRow | null {
+  for (const row of rows) {
+    if (
+      row.kind === "work" &&
+      (row.workKind === "command" || row.workKind === "tool") &&
+      predicate(row)
+    ) {
+      return row;
+    }
+    const children =
+      row.kind === "turn"
+        ? row.children
+        : row.kind === "work" && row.workKind === "delegation"
+          ? row.childRows
+          : null;
+    if (children !== null) {
+      const match = findPreviewableWorkRow(children, predicate);
+      if (match !== null) {
+        return match;
+      }
+    }
+  }
+  return null;
+}
+
 export function useTimelineWorkRowFullOutput(
   row: TimelinePreviewableWorkRow,
 ): TimelineWorkRowFullOutput {
@@ -48,8 +77,7 @@ export function useTimelineWorkRowFullOutput(
   const isPreview = outputPreview !== undefined;
   const shouldLoad =
     isPreview &&
-    outputPreview.experimental_fullOutputAvailability !==
-      "retention-expired" &&
+    outputPreview.experimental_fullOutputAvailability !== "retention-expired" &&
     row.turnId !== null &&
     row.status !== "pending";
   const { data, isError, refetch } = useThreadTimelineTurnSummaryDetails(
@@ -72,18 +100,17 @@ export function useTimelineWorkRowFullOutput(
       return null;
     }
     const match =
-      data.rows.find((candidate) => candidate.id === row.id) ??
-      data.rows.find(
+      findPreviewableWorkRow(
+        data.rows,
+        (candidate) => candidate.id === row.id,
+      ) ??
+      findPreviewableWorkRow(
+        data.rows,
         (candidate) =>
-          candidate.kind === "work" &&
           candidate.workKind === row.workKind &&
           candidate.callId === row.callId,
       );
-    if (
-      !match ||
-      match.kind !== "work" ||
-      (match.workKind !== "command" && match.workKind !== "tool")
-    ) {
+    if (match === null) {
       return null;
     }
     return {
