@@ -275,7 +275,7 @@ function AccountPoolSettings() {
           Provider accounts
         </h3>
         <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-          Account Pool routes Claude and Codex threads through available
+          Account Pooler [Experimental] routes Claude and Codex threads through available
           accounts and moves away from accounts that reach their limits.
         </p>
       </div>
@@ -577,7 +577,7 @@ function AccountPoolSettings() {
                 <DialogTitle>Add an Anthropic API key</DialogTitle>
                 <DialogDescription>
                   The key is sent directly to this bb server and stored in its
-                  protected Account Pool secret directory.
+                  protected Account Pooler [Experimental] secret directory.
                 </DialogDescription>
               </DialogHeader>
               <Input

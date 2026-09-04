@@ -23,7 +23,7 @@ The builtin Custom instructions plugin adds a multiline editor under Settings
 → Custom instructions. Saved text is persisted on this bb host and included in
 agent task instructions; blank text contributes nothing.
 
-The builtin Account Pool plugin is disabled on fresh installations. It stores
+The builtin Account Pooler [Experimental] plugin is disabled on fresh installations. It stores
 Claude and Codex account tokens in per-account 0600 secret files and proxies
 provider API requests through the bb server. Enable it and add an account:
 

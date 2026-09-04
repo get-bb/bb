@@ -183,7 +183,7 @@ export function registerPoolCli(
   bb.cli.register({
     name: "pool",
     summary:
-      "Manage Claude and Codex accounts and inspect the Account Pool hub",
+      "Manage Claude and Codex accounts and inspect the Account Pooler [Experimental] hub",
     commands: [
       {
         name: "account-add",
@@ -230,12 +230,13 @@ export function registerPoolCli(
       },
       {
         name: "token-rotate",
-        summary: "Rotate one machine's Account Pool bearer token",
+        summary:
+          "Rotate one machine's Account Pooler [Experimental] bearer token",
         usage: "bb pool token rotate --machine <id-or-name>",
       },
       {
         name: "bypass",
-        summary: "Bypass Account Pool routing for one thread",
+        summary: "Bypass Account Pooler [Experimental] routing for one thread",
         usage: "bb pool bypass <thread-id> [--off]",
       },
     ],
@@ -427,7 +428,7 @@ export function registerPoolCli(
           const token = await operations.rotateToken(machine);
           return {
             exitCode: 0,
-            stdout: `Rotated the Account Pool token for ${token.hostName ?? token.hostId}.\n`,
+            stdout: `Rotated the Account Pooler [Experimental] token for ${token.hostName ?? token.hostId}.\n`,
           };
         }
         if (argv[0] === "bypass") {
@@ -444,7 +445,7 @@ export function registerPoolCli(
           );
           return {
             exitCode: 0,
-            stdout: `${result.bypassed ? "Enabled" : "Disabled"} Account Pool bypass for ${result.threadId}.\n`,
+            stdout: `${result.bypassed ? "Enabled" : "Disabled"} Account Pooler [Experimental] bypass for ${result.threadId}.\n`,
           };
         }
         throw new Error(HELP);

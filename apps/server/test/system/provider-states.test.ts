@@ -60,7 +60,7 @@ describe("getProviderStates", () => {
             ? {
                 label: "Proxied",
                 statusMessage:
-                  "Credentials are provided by the Account Pool hub.",
+                  "Credentials are provided by the Account Pooler [Experimental] hub.",
               }
             : null,
       });
@@ -100,7 +100,8 @@ describe("getProviderStates", () => {
           ),
         ).toMatchObject({
           status: "ready",
-          statusMessage: "Credentials are provided by the Account Pool hub.",
+          statusMessage:
+            "Credentials are provided by the Account Pooler [Experimental] hub.",
           planLabel: "Proxied",
           accountEmail: null,
           loginCommand: null,

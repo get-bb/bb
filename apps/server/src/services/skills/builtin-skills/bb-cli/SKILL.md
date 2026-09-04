@@ -52,7 +52,7 @@ BB_HOST_DAEMON_PORT only for an intentional non-default target.
 - Pass `--yes` for a confirmed destructive command in a non-interactive shell.
 - Treat plugin commands as normal top-level commands after installation.
 
-The builtin Account Pool plugin is disabled by default. Enable it, add Claude
+The builtin Account Pooler [Experimental] plugin is disabled by default. Enable it, add Claude
 or Codex credentials, and inspect its proxy routes and account quota with:
 
 ```sh

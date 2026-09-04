@@ -173,13 +173,13 @@ export function createAccountPoolPlugin(
           value: {
             serverPath: "/api/v1/plugins/account-pool/http",
           },
-          reason: "Routed through the Account Pool hub",
+          reason: "Routed through the Account Pooler [Experimental] hub",
           secret: false,
         },
         {
           name: "ANTHROPIC_AUTH_TOKEN",
           value: token,
-          reason: "Account Pool hub token for this machine",
+          reason: "Account Pooler [Experimental] hub token for this machine",
           secret: true,
         },
         {
@@ -195,7 +195,8 @@ export function createAccountPoolPlugin(
       (await operations.hasUsableEnabledAccount("claude"))
         ? {
             label: "Proxied",
-            statusMessage: "Credentials are provided by the Account Pool hub.",
+            statusMessage:
+              "Credentials are provided by the Account Pooler [Experimental] hub.",
           }
         : null,
     );
@@ -213,13 +214,13 @@ export function createAccountPoolPlugin(
           value: {
             serverPath: "/api/v1/plugins/account-pool/http/v1",
           },
-          reason: "Routed through the Account Pool hub",
+          reason: "Routed through the Account Pooler [Experimental] hub",
           secret: false,
         },
         {
           name: "CODEX_POOL_AUTH_TOKEN",
           value: token,
-          reason: "Account Pool hub token for this machine",
+          reason: "Account Pooler [Experimental] hub token for this machine",
           secret: true,
         },
       ];
@@ -228,7 +229,8 @@ export function createAccountPoolPlugin(
       (await operations.hasUsableEnabledAccount("codex"))
         ? {
             label: "Proxied",
-            statusMessage: "Credentials are provided by the Account Pool hub.",
+            statusMessage:
+              "Credentials are provided by the Account Pooler [Experimental] hub.",
           }
         : null,
     );
@@ -248,13 +250,15 @@ export function createAccountPoolPlugin(
         );
         const result = await Promise.race([inspection, timeout]);
         if (result === DISPOSE_INSPECTION_TIMEOUT) {
-          bb.log.debug("Account Pool disable inspection timed out.");
+          bb.log.debug(
+            "Account Pooler [Experimental] disable inspection timed out.",
+          );
           return;
         }
         if (result !== null) bb.log.warn(result);
       } catch (error) {
         bb.log.debug(
-          `Account Pool disable inspection skipped: ${error instanceof Error ? error.message : String(error)}`,
+          `Account Pooler [Experimental] disable inspection skipped: ${error instanceof Error ? error.message : String(error)}`,
         );
       } finally {
         if (timer !== null) clearTimeout(timer);
@@ -309,7 +313,7 @@ async function inspectDisableState(
   if (!disabled) return null;
   const warnings = await operations.routedThreadsWithoutLocalLogin();
   if (warnings.length === 0) return null;
-  return `Account Pool disabled with ${warnings.length} recently routed thread${warnings.length === 1 ? "" : "s"} on machines without a local Claude login. Run bb pool status before disabling to inspect them.`;
+  return `Account Pooler [Experimental] disabled with ${warnings.length} recently routed thread${warnings.length === 1 ? "" : "s"} on machines without a local Claude login. Run bb pool status before disabling to inspect them.`;
 }
 
 export default createAccountPoolPlugin();

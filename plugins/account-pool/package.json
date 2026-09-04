@@ -8,7 +8,7 @@
     "bb": ">=0.0"
   },
   "bb": {
-    "name": "Account Pool",
+    "name": "Account Pooler [Experimental]",
     "description": "Routes Claude and Codex API traffic across provider account pools.",
     "branding": {
       "icon": "Layers"
