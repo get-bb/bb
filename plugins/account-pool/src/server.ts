@@ -19,8 +19,12 @@ export interface AccountPoolPluginOptions {
   now?: () => number;
   refreshUrl?: string;
   drainTimeoutMs?: number;
+  disposeTimeoutMs?: number;
   importCredentials?: () => Promise<ImportedClaudeCredentials>;
 }
+
+const DISPOSE_INSPECTION_TIMEOUT_MS = 2_000;
+const DISPOSE_INSPECTION_TIMEOUT = Symbol("dispose-inspection-timeout");
 
 export function helloResponse(): Response {
   return new Response(null, { status: 200 });
@@ -140,16 +144,31 @@ export function createAccountPoolPlugin(
         : null,
     );
     bb.onDispose(async () => {
-      const installed = await bb.sdk.plugins.list();
-      const disabled =
-        installed.plugins.find((plugin) => plugin.id === bb.pluginId)
-          ?.enabled === false;
-      if (!disabled) return;
-      const warnings = await operations.routedThreadsWithoutLocalLogin();
-      if (warnings.length === 0) return;
-      bb.log.warn(
-        `Account Pool disabled with ${warnings.length} recently routed thread${warnings.length === 1 ? "" : "s"} on machines without a local Claude login. Run bb pool status before disabling to inspect them.`,
-      );
+      let timer: ReturnType<typeof setTimeout> | null = null;
+      try {
+        const inspection = inspectDisableState(bb, operations);
+        const timeout = new Promise<typeof DISPOSE_INSPECTION_TIMEOUT>(
+          (resolve) => {
+            timer = setTimeout(
+              () => resolve(DISPOSE_INSPECTION_TIMEOUT),
+              options.disposeTimeoutMs ?? DISPOSE_INSPECTION_TIMEOUT_MS,
+            );
+            timer.unref();
+          },
+        );
+        const result = await Promise.race([inspection, timeout]);
+        if (result === DISPOSE_INSPECTION_TIMEOUT) {
+          bb.log.debug("Account Pool disable inspection timed out.");
+          return;
+        }
+        if (result !== null) bb.log.warn(result);
+      } catch (error) {
+        bb.log.debug(
+          `Account Pool disable inspection skipped: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      } finally {
+        if (timer !== null) clearTimeout(timer);
+      }
     });
     bb.http.route(
       "POST",
@@ -170,6 +189,20 @@ export function createAccountPoolPlugin(
       start: (signal) => hub.start(signal),
     });
   };
+}
+
+async function inspectDisableState(
+  bb: BbPluginApi,
+  operations: PoolOperations,
+): Promise<string | null> {
+  const installed = await bb.sdk.plugins.list();
+  const disabled =
+    installed.plugins.find((plugin) => plugin.id === bb.pluginId)?.enabled ===
+    false;
+  if (!disabled) return null;
+  const warnings = await operations.routedThreadsWithoutLocalLogin();
+  if (warnings.length === 0) return null;
+  return `Account Pool disabled with ${warnings.length} recently routed thread${warnings.length === 1 ? "" : "s"} on machines without a local Claude login. Run bb pool status before disabling to inspect them.`;
 }
 
 export default createAccountPoolPlugin();

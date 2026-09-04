@@ -14,6 +14,7 @@ import {
 } from "./contracts.js";
 import { z } from "zod";
 import type { ImportedClaudeCredentials } from "./credentials.js";
+import { HubTokenStore } from "./store.js";
 import {
   createAccountPoolPlugin,
   helloResponse,
@@ -219,6 +220,39 @@ async function addApiAccount(
 }
 
 describe("Account Pool plugin", () => {
+  it("uses a single-process token cache and throttles last-use file writes", async () => {
+    let now = 1_000;
+    const dataDir = await mkdtemp(path.join(tmpdir(), "bb-pool-tokens-"));
+    cleanups.push(() => fs.rm(dataDir, { recursive: true, force: true }));
+    const tokens = new HubTokenStore(dataDir, () => now);
+    await tokens.initialize();
+    const token = await tokens.forHost("host-one");
+    const tokenFile = path.join(dataDir, "hub-token-host-one.json");
+    await fs.writeFile(
+      tokenFile,
+      `${JSON.stringify({
+        hostId: "host-one",
+        value: "A".repeat(43),
+        mintedAt: now,
+        lastUsedAt: null,
+        previous: [],
+      })}\n`,
+    );
+    const writeFile = vi.spyOn(fs, "writeFile");
+    try {
+      expect(await tokens.authenticate(token)).toBe("host-one");
+      now += 30_000;
+      expect(await tokens.authenticate(token)).toBe("host-one");
+      expect(await tokens.authenticate("A".repeat(43))).toBeNull();
+      expect(writeFile).toHaveBeenCalledTimes(1);
+      now += 30_000;
+      expect(await tokens.authenticate(token)).toBe("host-one");
+      expect(writeFile).toHaveBeenCalledTimes(2);
+    } finally {
+      writeFile.mockRestore();
+    }
+  });
+
   it("forwards the next request after adding the first account through the CLI", async () => {
     let forwarded = 0;
     const upstream = await startUpstream(async (request, response) => {
@@ -499,6 +533,15 @@ describe("Account Pool plugin", () => {
     );
     expect(current.status).toBe(200);
     await current.text();
+    const tokenFile = path.join(
+      fixture.dataDir,
+      "plugins",
+      "account-pool",
+      "secrets",
+      "accounts",
+      "hub-token-host-one.json",
+    );
+    expect(await fs.readFile(tokenFile, "utf8")).not.toContain(fixture.key);
     const status = statusSchema.parse(
       await fixture.host.harness.behavior.callRpc("status", null),
     );
@@ -555,6 +598,54 @@ describe("Account Pool plugin", () => {
       level: "warn",
       message:
         "Account Pool disabled with 1 recently routed thread on machines without a local Claude login. Run bb pool status before disabling to inspect them.",
+    });
+  });
+
+  it("does not fail disposal when disable inspection rejects", async () => {
+    const upstream = await startUpstream(async (request, response) => {
+      await readRequestBody(request);
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end("{}");
+    });
+    cleanups.push(upstream.close);
+    const fixture = await createFixture({ upstreamUrl: upstream.url });
+    fixture.host.harness.sdk.stub("plugins.list", async () => {
+      throw new Error("plugin list unavailable");
+    });
+    await expect(fixture.host.harness.lifecycle.dispose()).resolves.toBe(
+      undefined,
+    );
+    expect(fixture.host.harness.inspection.logEntries).toContainEqual({
+      level: "debug",
+      message:
+        "Account Pool disable inspection skipped: plugin list unavailable",
+    });
+  });
+
+  it("bounds disable inspection when provider states hang", async () => {
+    const upstream = await startUpstream(async (request, response) => {
+      await readRequestBody(request);
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end("{}");
+    });
+    cleanups.push(upstream.close);
+    const fixture = await createFixture({
+      upstreamUrl: upstream.url,
+      options: { disposeTimeoutMs: 10 },
+    });
+    fixture.host.harness.sdk.stub("plugins.list", async () => ({
+      plugins: [{ id: "account-pool", enabled: false }],
+    }));
+    fixture.host.harness.sdk.stub(
+      "system.providerStates",
+      () => new Promise(() => {}),
+    );
+    await expect(fixture.host.harness.lifecycle.dispose()).resolves.toBe(
+      undefined,
+    );
+    expect(fixture.host.harness.inspection.logEntries).toContainEqual({
+      level: "debug",
+      message: "Account Pool disable inspection timed out.",
     });
   });
 
