@@ -1011,8 +1011,11 @@ function resolveTimelineWindowBounds(
   args: ResolveTimelineWindowBoundsArgs,
 ): Pick<
   ResolvedTimelineSegmentWindow,
-  "effectiveSegmentLimit" | "sequenceStart" | "sequenceWindowStart"
-> & { affordableAnchorCount: number } {
+  | "effectiveSegmentLimit"
+  | "knownHasOlderSegments"
+  | "sequenceStart"
+  | "sequenceWindowStart"
+> {
   const { anchors, budgetFloorSequence, segmentLimit, threadId } = args;
   const affordable = countAffordableAnchors(
     anchors,
@@ -1036,8 +1039,8 @@ function resolveTimelineWindowBounds(
     })
   ) {
     return {
-      affordableAnchorCount: 0,
       effectiveSegmentLimit: segmentLimit,
+      knownHasOlderSegments: true,
       sequenceWindowStart: {
         kind: "event",
         sequenceStart: budgetFloorSequence,
@@ -1047,12 +1050,35 @@ function resolveTimelineWindowBounds(
     };
   }
 
+  if (budgetFloorSequence === undefined && anchors.length <= segmentLimit) {
+    return {
+      effectiveSegmentLimit: segmentLimit,
+      knownHasOlderSegments: null,
+      sequenceWindowStart: null,
+      sequenceStart: 0,
+    };
+  }
+
   const segmentCount = Math.max(1, affordable);
+  const sequenceStart = anchors[segmentCount - 1]?.sequence ?? 0;
+  const budgetHasOlderRows =
+    budgetFloorSequence !== undefined &&
+    (budgetFloorSequence < sequenceStart ||
+      (budgetFloorSequence === sequenceStart &&
+        findTimelineWindowBudgetFloorSequence(db, {
+          beforeSequence: sequenceStart,
+          eventBudget: 0,
+          excludedTypes: THREAD_TIMELINE_EXCLUDED_EVENT_TYPES,
+          threadId,
+        }) !== undefined));
   return {
-    affordableAnchorCount: segmentCount,
     effectiveSegmentLimit: segmentCount,
+    knownHasOlderSegments:
+      sequenceStart === 0
+        ? null
+        : anchors.length > segmentCount || budgetHasOlderRows,
     sequenceWindowStart: null,
-    sequenceStart: anchors[segmentCount - 1]?.sequence ?? 0,
+    sequenceStart,
   };
 }
 
@@ -1139,8 +1165,7 @@ function resolveTimelineSegmentWindow(
       effectiveSegmentLimit: bounds.effectiveSegmentLimit,
       hasAnchors: true,
       sequenceWindowStart: bounds.sequenceWindowStart,
-      knownHasOlderSegments:
-        precedingAnchors.length > bounds.affordableAnchorCount,
+      knownHasOlderSegments: bounds.knownHasOlderSegments,
       oversizedEventPlaceholder: null,
       sequenceStart: bounds.sequenceStart,
     };
@@ -1170,7 +1195,7 @@ function resolveTimelineSegmentWindow(
     effectiveSegmentLimit: bounds.effectiveSegmentLimit,
     hasAnchors: true,
     sequenceWindowStart: bounds.sequenceWindowStart,
-    knownHasOlderSegments: newestAnchors.length > bounds.affordableAnchorCount,
+    knownHasOlderSegments: bounds.knownHasOlderSegments,
     oversizedEventPlaceholder: null,
     sequenceStart: bounds.sequenceStart,
   };

@@ -73,7 +73,9 @@ export function requireHostId(hostId: string | null): string {
   return hostId;
 }
 
-function resolveSpawnEnvironmentValue(flagValue?: string): string | undefined {
+export function resolveSpawnEnvironmentValue(
+  flagValue?: string,
+): string | undefined {
   const trimmedValue = flagValue?.trim();
   if (!trimmedValue) return undefined;
   if (looksLikePath(trimmedValue)) return trimmedValue;
@@ -125,6 +127,13 @@ export function buildSpawnEnvironment(args: {
     throw new Error("--base-branch requires --new-environment worktree.");
   }
   if (newEnvironmentKind) {
+    if (newEnvironmentKind === "personal") {
+      return {
+        type: "host",
+        hostId: requireHostId(args.hostId),
+        workspace: { type: "personal" },
+      };
+    }
     if (newEnvironmentKind === "worktree") {
       return {
         type: "host",
@@ -133,7 +142,7 @@ export function buildSpawnEnvironment(args: {
       };
     }
     throw new Error(
-      `Unknown environment kind '${newEnvironmentKind}'. Supported: worktree.`,
+      `Unknown environment kind '${newEnvironmentKind}'. Supported: personal, worktree.`,
     );
   }
   if (!environmentValue) {
@@ -181,7 +190,7 @@ export function registerSpawnCommand(
     )
     .option(
       "--new-environment <kind>",
-      "Create a new managed environment of the given kind (worktree)",
+      "Create a fresh environment of the given kind (personal or worktree)",
     )
     .option(
       "--base-branch <branch>",
@@ -299,9 +308,7 @@ export function registerSpawnCommand(
           throw new Error("--source-seq-end must be a non-negative integer.");
         }
         const sendAt =
-          opts.sendAt === undefined
-            ? undefined
-            : parseSendAt(opts.sendAt);
+          opts.sendAt === undefined ? undefined : parseSendAt(opts.sendAt);
         const providerId = opts.provider?.trim();
 
         let thread: Thread;

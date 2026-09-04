@@ -9,26 +9,15 @@ import {
   getMobileRecentThreads,
   RootComposeMobileRecents,
 } from "./RootComposeMobileRecents";
+import { makeThreadListEntry } from "@bb/test-helpers/domain-fixtures";
 
 function makeThread(overrides: Partial<ThreadListEntry> = {}): ThreadListEntry {
-  return {
+  return makeThreadListEntry({
     id: "thr_mobile",
     projectId: "proj_mobile",
-    environmentId: null,
-    providerId: "codex",
     title: "Mobile activity",
     titleFallback: "Mobile activity",
-    sectionId: null,
     status: "active",
-    parentThreadId: null,
-    sourceThreadId: null,
-    originKind: null,
-    originPluginId: null,
-    visibility: "visible",
-    archivedAt: null,
-    pinnedAt: null,
-    pinSortKey: null,
-    deletedAt: null,
     lastReadAt: 1,
     latestAttentionAt: 2,
     createdAt: 1,
@@ -40,18 +29,12 @@ function makeThread(overrides: Partial<ThreadListEntry> = {}): ThreadListEntry {
       activePlanModeCount: 1,
       activeGoalCount: 1,
     },
-    hasPendingInteraction: false,
-    environmentHostId: null,
-    environmentName: null,
-    environmentBranchName: null,
-    queuedWork: "none",
-    environmentWorkspaceDisplayKind: "other",
     runtime: {
       displayStatus: "active",
       hostReconnectGraceExpiresAt: null,
     },
     ...overrides,
-  };
+  });
 }
 
 const IDLE_ACTIVITY: ThreadListEntry["activity"] = {
@@ -404,7 +387,9 @@ describe("mobile recents hierarchy interaction", () => {
       </MemoryRouter>,
     );
 
-    expect(screen.getByLabelText("Thread has unsubmitted draft")).not.toBeNull();
+    expect(
+      screen.getByLabelText("Thread has unsubmitted draft"),
+    ).not.toBeNull();
     expect(
       screen.getByRole("link", {
         name: "Open Mobile activity — Thread has unsubmitted draft",

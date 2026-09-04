@@ -1,11 +1,15 @@
 import { randomUUID } from "node:crypto";
 import {
   app,
+  BrowserWindow,
   Menu,
   WebContentsView,
   session,
+  type BrowserWindowConstructorOptions,
   type Cookie,
   type Session,
+  type WebContents,
+  type WebPreferences,
 } from "electron";
 import {
   BB_DESKTOP_BROWSER_MAX_TITLE_LENGTH,
@@ -68,7 +72,6 @@ import {
 import {
   evaluatePopupRate,
   isAllowedBrowserUrl,
-  resolveWindowOpenAction,
 } from "./desktop-browser-policy.js";
 import {
   importCookiesFromBrowserSource,
@@ -77,6 +80,14 @@ import {
 
 const POPUP_RATE_WINDOW_MS = 10_000;
 const POPUP_RATE_MAX_IN_WINDOW = 3;
+const POPUP_MAX_OPEN_PER_TAB = 3;
+const POPUP_MAX_OPEN_GLOBAL = 8;
+const POPUP_DEFAULT_WIDTH = 520;
+const POPUP_DEFAULT_HEIGHT = 700;
+const POPUP_MIN_WIDTH = 320;
+const POPUP_MIN_HEIGHT = 240;
+const POPUP_MAX_WIDTH = 960;
+const POPUP_MAX_HEIGHT = 900;
 
 const RESIZE_SNAPSHOT_HIDE_CAP_MS = 80;
 const RESIZE_SNAPSHOT_JPEG_QUALITY = 70;
@@ -214,6 +225,74 @@ function viewportParameters(profile: BbDesktopBrowserViewportProfile) {
   }
 }
 
+function clampPopupDimension(
+  value: number | undefined,
+  fallback: number,
+  min: number,
+  max: number,
+): number {
+  if (value === undefined || !Number.isFinite(value)) {
+    return fallback;
+  }
+  return Math.min(max, Math.max(min, Math.round(value)));
+}
+
+function isLoopbackHostname(hostname: string): boolean {
+  return (
+    hostname === "localhost" ||
+    hostname.endsWith(".localhost") ||
+    hostname === "[::1]" ||
+    /^127(?:\.\d{1,3}){3}$/.test(hostname)
+  );
+}
+
+function isAllowedPopupNavigationUrl(url: string): boolean {
+  if (url === "about:blank") {
+    return true;
+  }
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return false;
+  }
+  return (
+    parsed.protocol === "https:" ||
+    (parsed.protocol === "http:" && isLoopbackHostname(parsed.hostname))
+  );
+}
+
+function popupWindowTitle(url: string | null): string {
+  if (url === null || url === "about:blank" || url.length === 0) {
+    return "bb browser popup";
+  }
+  try {
+    return `bb browser — ${new URL(url).origin}`;
+  } catch {
+    return "bb browser popup";
+  }
+}
+
+type PopupCreateWindowOptions = BrowserWindowConstructorOptions & {
+  webContents?: WebContents;
+};
+
+function guardMainFrameNavigation(
+  webContents: WebContents,
+  isAllowedUrl: (url: string) => boolean,
+): void {
+  webContents.on("will-frame-navigate", (event) => {
+    if (event.isMainFrame && !isAllowedUrl(event.url)) {
+      event.preventDefault();
+    }
+  });
+  webContents.on("will-redirect", (event, url, _isInPlace, isMainFrame) => {
+    if (isMainFrame && !isAllowedUrl(url)) {
+      event.preventDefault();
+    }
+  });
+}
+
 const BB_BROWSER_PARTITION = "persist:bb-browser";
 
 const ERR_ABORTED = -3;
@@ -263,6 +342,7 @@ interface BrowserViewEntry {
   diagnostics: BrowserDiagnostics;
   desiredBounds: BbDesktopBrowserViewBounds;
   popupTimestamps: number[];
+  popupWindows: Set<BrowserWindow>;
   rendererRecoveryAttempts: number;
   rendererRecoveryState: "healthy" | "pending" | "blocked";
   rendererRecoveryTimer: ReturnType<typeof setTimeout> | null;
@@ -561,6 +641,7 @@ export function createDesktopBrowserViewManager(
   const partition = args.partition ?? BB_BROWSER_PARTITION;
   const entries = new Map<string, BrowserViewEntry>();
   const entriesByWebContentsId = new Map<number, BrowserViewEntry>();
+  const popupWindows = new Set<BrowserWindow>();
   const resizingHostIds = new Set<number>();
   let hardenedSession: Session | null = null;
   let viewportProfileGeneration = 0;
@@ -1230,6 +1311,68 @@ function rejectBrowserEventWaiters(
 }
 
 
+  const hardenedWebPreferences: WebPreferences = {
+    partition,
+    sandbox: true,
+    contextIsolation: true,
+    nodeIntegration: false,
+    webSecurity: true,
+    allowRunningInsecureContent: false,
+  };
+
+  function createPopupWindow(
+    options: PopupCreateWindowOptions,
+    url: string,
+    entry: BrowserViewEntry,
+  ): WebContents {
+    const popupOptions: PopupCreateWindowOptions = {
+      center: true,
+      frame: true,
+      height: clampPopupDimension(
+        options.height,
+        POPUP_DEFAULT_HEIGHT,
+        POPUP_MIN_HEIGHT,
+        POPUP_MAX_HEIGHT,
+      ),
+      show: true,
+      transparent: false,
+      webContents: options.webContents,
+      webPreferences: hardenedWebPreferences,
+      width: clampPopupDimension(
+        options.width,
+        POPUP_DEFAULT_WIDTH,
+        POPUP_MIN_WIDTH,
+        POPUP_MAX_WIDTH,
+      ),
+    };
+    const popupWindow = new BrowserWindow(popupOptions);
+    popupWindows.add(popupWindow);
+    entry.popupWindows.add(popupWindow);
+    popupWindow.once("closed", () => {
+      popupWindows.delete(popupWindow);
+      entry.popupWindows.delete(popupWindow);
+    });
+    const popupContents = popupWindow.webContents;
+    const updatePopupTitle = (currentUrl: string | null): void => {
+      if (!popupWindow.isDestroyed()) {
+        popupWindow.setTitle(popupWindowTitle(currentUrl));
+      }
+    };
+    updatePopupTitle(popupContents.getURL());
+    guardMainFrameNavigation(popupContents, isAllowedPopupNavigationUrl);
+    popupContents.on("did-navigate", (_event, currentUrl) => {
+      updatePopupTitle(currentUrl);
+    });
+    popupContents.on("page-title-updated", (event) => {
+      event.preventDefault();
+      updatePopupTitle(popupContents.getURL());
+    });
+    popupContents.setWindowOpenHandler(() => ({ action: "deny" }));
+    if (options.webContents === undefined) {
+      void popupWindow.loadURL(url);
+    }
+    return popupContents;
+  }
   function wireWebContents(
     hostWindow: DesktopBrowserHostWindow,
     tabId: string,
@@ -1352,52 +1495,48 @@ function rejectBrowserEventWaiters(
       });
     });
 
-    webContents.on("will-frame-navigate", (event) => {
-      if (!event.isMainFrame) {
-        return;
-      }
-      if (!isAllowedBrowserUrl(event.url)) {
-        event.preventDefault();
-      }
-    });
-    webContents.on("will-navigate", (event, url) => {
-      if (!isAllowedBrowserUrl(url)) {
-        event.preventDefault();
-      }
-    });
-    webContents.on("will-redirect", (event, url, _isInPlace, isMainFrame) => {
-      if (!isMainFrame) {
-        return;
-      }
-      if (!isAllowedBrowserUrl(url)) {
-        event.preventDefault();
-      }
-    });
+    guardMainFrameNavigation(webContents, isAllowedBrowserUrl);
 
     webContents.setWindowOpenHandler((details) => {
-      const { openTabUrl } = resolveWindowOpenAction(details.url);
-      if (openTabUrl !== null) {
-        const decision = evaluatePopupRate({
-          timestamps: entry.popupTimestamps,
-          now: Date.now(),
-          windowMs: POPUP_RATE_WINDOW_MS,
-          maxInWindow: POPUP_RATE_MAX_IN_WINDOW,
-        });
-        entry.popupTimestamps = decision.timestamps;
-        if (decision.allowed) {
-          settleMatchingBrowserEvents(entry, {
-            kind: "popup",
-            url: truncate(openTabUrl, BB_DESKTOP_BROWSER_MAX_URL_LENGTH),
-          });
-          send(hostWindow, BB_DESKTOP_BROWSER_OPEN_TAB_CHANNEL, {
-            url: openTabUrl,
-          });
-          send(hostWindow, BB_DESKTOP_BROWSER_SCOPED_OPEN_TAB_CHANNEL, {
-            tabId,
-            url: openTabUrl,
-          });
-        }
+      const opensPopup = details.disposition === "new-window";
+      const allowedUrl = opensPopup
+        ? isAllowedPopupNavigationUrl(details.url)
+        : isAllowedBrowserUrl(details.url);
+      const popupCapReached =
+        opensPopup &&
+        (entry.popupWindows.size >= POPUP_MAX_OPEN_PER_TAB ||
+          popupWindows.size >= POPUP_MAX_OPEN_GLOBAL);
+      if (!allowedUrl || popupCapReached) {
+        return { action: "deny" };
       }
+      const decision = evaluatePopupRate({
+        timestamps: entry.popupTimestamps,
+        now: Date.now(),
+        windowMs: POPUP_RATE_WINDOW_MS,
+        maxInWindow: POPUP_RATE_MAX_IN_WINDOW,
+      });
+      entry.popupTimestamps = decision.timestamps;
+      if (!decision.allowed) {
+        return { action: "deny" };
+      }
+      settleMatchingBrowserEvents(entry, {
+        kind: "popup",
+        url: truncate(details.url, BB_DESKTOP_BROWSER_MAX_URL_LENGTH),
+      });
+      if (opensPopup) {
+        return {
+          action: "allow",
+          createWindow: (options) =>
+            createPopupWindow(options, details.url, entry),
+        };
+      }
+      send(hostWindow, BB_DESKTOP_BROWSER_OPEN_TAB_CHANNEL, {
+        url: details.url,
+      });
+      send(hostWindow, BB_DESKTOP_BROWSER_SCOPED_OPEN_TAB_CHANNEL, {
+        tabId,
+        url: details.url,
+      });
       return { action: "deny" };
     });
 
@@ -1580,14 +1719,7 @@ function rejectBrowserEventWaiters(
   function createEntry(args: CreateEntryArgs): BrowserViewEntry {
     ensureHardenedSession();
     const view = new WebContentsView({
-      webPreferences: {
-        partition,
-        sandbox: true,
-        contextIsolation: true,
-        nodeIntegration: false,
-        webSecurity: true,
-        allowRunningInsecureContent: false,
-      },
+      webPreferences: hardenedWebPreferences,
     });
     const entry: BrowserViewEntry = {
       view,
@@ -1604,6 +1736,7 @@ function rejectBrowserEventWaiters(
       },
       desiredBounds: args.desiredBounds,
       popupTimestamps: [],
+      popupWindows: new Set(),
       rendererRecoveryAttempts: 0,
       rendererRecoveryState: "healthy",
       rendererRecoveryTimer: null,
@@ -2451,6 +2584,12 @@ function rejectBrowserEventWaiters(
         entriesByWebContentsId.delete(entry.view.webContents.id);
         clearEntryRendererRecoveryTimer(entry);
         cancelEntryPageScripts(entry, "window-closed");
+        for (const popupWindow of [...entry.popupWindows]) {
+          if (!popupWindow.isDestroyed()) {
+            popupWindow.destroy();
+          }
+        }
+        entry.popupWindows.clear();
         if (!entry.view.webContents.isDestroyed()) {
           entry.view.webContents.close();
         }
@@ -2458,6 +2597,12 @@ function rejectBrowserEventWaiters(
     },
     destroyAll() {
       resizingHostIds.clear();
+      for (const popupWindow of [...popupWindows]) {
+        if (!popupWindow.isDestroyed()) {
+          popupWindow.destroy();
+        }
+      }
+      popupWindows.clear();
       for (const [key, entry] of [...entries.entries()]) {
         entries.delete(key);
         entriesByWebContentsId.delete(entry.view.webContents.id);

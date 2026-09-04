@@ -2,28 +2,25 @@
 
 import type { ComponentProps } from "react";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import type { Host, ProviderInfo } from "@bb/domain";
+import type { ProviderInfo } from "@bb/domain";
+import { makeHost, makeProviderInfo } from "@bb/test-helpers/domain-fixtures";
 import { TooltipProvider } from "@bb/shared-ui/tooltip";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { UsageLimitsSettingsSectionContent } from "./UsageLimitsSettingsSection";
 
-const primaryHost: Host = {
+const primaryHost = makeHost({
   id: "host-primary",
   name: "MacBook Pro",
-  type: "persistent",
-  status: "connected",
   lastSeenAt: 1,
-  maxPermissionMode: "full",
-  lastRejectedProtocolVersion: null,
   createdAt: 1,
   updatedAt: 1,
-};
+});
 
-const remoteHost: Host = {
+const remoteHost = makeHost({
   ...primaryHost,
   id: "host-remote",
   name: "Build machine",
-};
+});
 
 function provider(
   id: string,
@@ -31,12 +28,10 @@ function provider(
   supportsUsage = true,
   strings?: ProviderInfo["strings"],
 ): ProviderInfo {
-  return {
+  return makeProviderInfo({
     id,
-    pluginId: `provider-${id}`,
     displayName,
     logoUrl: null,
-    available: true,
     maintenance: { health: true, usage: supportsUsage, installation: false },
     capabilities: {
       supportsThreadArchive: false,
@@ -48,9 +43,8 @@ function provider(
       modelCatalogScope: "workspace",
       permissionModes: ["full"],
     },
-    composerActions: [],
     ...(strings === undefined ? {} : { strings }),
-  };
+  });
 }
 
 const FIRST_PARTY_PROVIDERS: ProviderInfo[] = [

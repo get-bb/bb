@@ -6,6 +6,7 @@ const providerListCache = createLastKnownCache({
   prefix: "bb.provider-list",
   version: "2",
   schema: z.array(providerInfoSchema),
+  maxEntries: 16,
 });
 
 export function providerListCacheKey({

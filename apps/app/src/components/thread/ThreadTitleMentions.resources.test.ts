@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { makeThreadListEntry } from "@/test/fixtures/thread-list-entries";
+import { makeThreadListEntry } from "@bb/test-helpers/domain-fixtures";
 import {
   buildThreadTitleMentionResources,
   EMPTY_TITLE_MENTION_RESOURCES,

@@ -10,6 +10,7 @@ import {
 import { useContext, useLayoutEffect } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ThreadQueuedMessage } from "@bb/domain";
+import { makeThreadQueuedMessage } from "@bb/test-helpers/domain-fixtures";
 import type { Active, DroppableContainer } from "@dnd-kit/core";
 import {
   QueuedMessagesList as QueuedMessagesListComponent,
@@ -71,23 +72,11 @@ function TypeaheadLayoutFixture({
 }
 
 function makeQueuedMessage(id: string, text: string): ThreadQueuedMessage {
-  return {
+  return makeThreadQueuedMessage({
     id,
     threadId: "thr_prompt_pills",
     content: [{ type: "text", text, mentions: [] }],
-    model: "gpt-5.5",
-    reasoningLevel: "medium",
-    permissionMode: "auto",
-    serviceTier: "default",
-    groupWithNext: false,
-    sendAt: null,
-    waitingOn: null,
-    failureReason: null,
-    payload: { kind: "inline" },
-    editable: true,
-    createdAt: 0,
-    updatedAt: 0,
-  };
+  });
 }
 
 function makeQueuedFileMessage(id: string, name: string): ThreadQueuedMessage {

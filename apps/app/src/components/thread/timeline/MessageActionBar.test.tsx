@@ -301,6 +301,19 @@ describe("MessageActionBar", () => {
     expect(onAddToChat).toHaveBeenCalledWith("", [attachment]);
   });
 
+  it("renders copy for an image-only message", () => {
+    render(
+      <MessageActionBar
+        messageText=""
+        copyImageUrl="/attachments/screenshot.png"
+        alignment="end"
+        mobileActionDisplay="overflow"
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "Copy message" })).toBeTruthy();
+  });
+
   it("omits the send-to-main action when no handler is supplied", () => {
     render(
       <MessageActionBar

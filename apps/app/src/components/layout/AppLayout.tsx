@@ -110,6 +110,7 @@ import { findPaneByThread } from "@/lib/split-layout";
 import { applyThreadOpenToLayout } from "@/views/thread-detail/splitThreadNavigation";
 import { useAppSettingsRouteMemory } from "@/hooks/useAppSettingsRouteMemory";
 import { useSetRootComposeProjectId } from "@/lib/root-compose-selection";
+import { BackToAppCommandHandler } from "./BackToAppCommandHandler";
 
 const SIDEBAR_WIDTH_KEY = "bb.sidebar.width";
 const SIDEBAR_OPEN_KEY = "bb.sidebar.open";
@@ -480,6 +481,11 @@ export function AppLayout({ children }: AppLayoutProps) {
   const isGlobalSettingsView =
     matchPath(`${SETTINGS_ROUTE_PATH}/*`, location.pathname) !== null;
   const isGlobalToolsView = isToolsRoutePath(location.pathname);
+  const backToAppRoutePath = isGlobalSettingsView
+    ? appRoutePath
+    : isGlobalToolsView
+      ? toolsBackRoutePath
+      : null;
   const pluginPanelMatch = matchPath(
     PLUGIN_PANEL_ROUTE_PATH,
     location.pathname,
@@ -746,6 +752,9 @@ export function AppLayout({ children }: AppLayoutProps) {
       <ThreadTitleMentionResourcesProvider {...titleMentionResources}>
         <ThreadActionsProvider>
           <SidebarStateBridge>
+            {backToAppRoutePath !== null && !isSidebarResizing ? (
+              <BackToAppCommandHandler routePath={backToAppRoutePath} />
+            ) : null}
             <AppLayoutSidebar
               mode={
                 isGlobalSettingsView

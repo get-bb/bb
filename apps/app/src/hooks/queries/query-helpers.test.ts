@@ -14,6 +14,14 @@ import type {
   ThreadTimelineResponse,
 } from "@bb/server-contract";
 import {
+  makeProjectWithThreadsResponse,
+  makeSidebarBootstrapResponse,
+} from "@/test/fixtures/projects";
+import {
+  makeThreadResponse as makeThreadResponseFixture,
+  makeThreadTimelineResponse as makeThreadTimelineResponseFixture,
+} from "@/test/fixtures/thread-responses";
+import {
   getCachedEnvironmentRefWorkspaceStateInvalidationQueryKeys,
   getEnvironmentWorkspaceStateInvalidationQueryKeys,
   optimisticallyInsertThread,
@@ -144,80 +152,41 @@ function makeEnvironmentDiffBranchesResponse(): EnvironmentDiffBranchesResponse 
 function makeThreadResponse(
   thread: Partial<ThreadResponse> = {},
 ): ThreadResponse {
-  return {
+  return makeThreadResponseFixture({
     id: "thread-1",
     projectId: "project-1",
-    providerId: "codex",
     createdAt: 1,
     status: "active",
     updatedAt: 1,
     lastReadAt: null,
     latestAttentionAt: 1,
     environmentId: "env-1",
-    title: null,
-    titleFallback: null,
-    sectionId: null,
-    parentThreadId: null,
-    sourceThreadId: null,
-    originKind: null,
-    originPluginId: null,
-    visibility: "visible",
-    archivedAt: null,
-    pinnedAt: null,
-    deletedAt: null,
     runtime: {
       displayStatus: "waiting-for-host",
       hostReconnectGraceExpiresAt: null,
     },
-    activeBackgroundAgentCount: 0,
     canSpawnChild: false,
-    queuedMessageCount: 0,
     ...thread,
-  };
+  });
 }
 
 function makeSidebarNavigation(): SidebarBootstrapResponse {
-  return {
-    sections: [],
+  return makeSidebarBootstrapResponse({
     projects: [
-      {
+      makeProjectWithThreadsResponse({
         id: "project-1",
-        kind: "standard",
         name: "Project",
-        gitRemoteUrl: null,
         createdAt: 1,
         updatedAt: 1,
-        sources: [],
-        threads: [],
-        defaultExecutionOptions: null,
-      },
+      }),
     ],
-    personalProject: {
-      id: "proj_personal",
-      kind: "personal",
-      name: "Personal",
-      gitRemoteUrl: null,
-      createdAt: 1,
-      updatedAt: 1,
-      sources: [],
-      threads: [],
-      defaultExecutionOptions: null,
-    },
-  };
+  });
 }
 
 function makeThreadTimelineResponse(
   rows: ThreadTimelineResponse["rows"],
 ): ThreadTimelineResponse {
-  return {
-    activePromptMode: null,
-    activeThinking: null,
-    activeWorkflows: [],
-    activeBackgroundCommands: [],
-    pendingTodos: null,
-    goal: null,
-    modelFallback: null,
-    maxSeq: 0,
+  return makeThreadTimelineResponseFixture({
     rows,
     timelinePage: {
       kind: "latest",
@@ -226,7 +195,7 @@ function makeThreadTimelineResponse(
       hasOlderRows: false,
       olderCursor: null,
     },
-  };
+  });
 }
 
 describe("resolveEnvironmentWorkStatusPlaceholder", () => {

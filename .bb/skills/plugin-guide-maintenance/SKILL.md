@@ -1,14 +1,14 @@
 ---
 name: plugin-guide-maintenance
-description: Keep the Plugin Guide accurate when a public Plugin SDK change affects its documented contract or an existing Guide annotation changes order, placement, target, or overlay ownership. Use for additions, changes, renames, stabilizations, or removals in @get-bb/plugin-sdk, app.slots.*, or BbPluginApi that affect a Guide card, fixture, symbol list, or SDK inventory, and for annotation-only maintenance. Do not use for internal implementation or API work that leaves the Guide accurate.
+description: Keep the Plugin Guide accurate when a public Plugin SDK change affects its documented contract or an existing Guide annotation changes order, placement, target, or overlay ownership. Use for additions, changes, renames, stabilizations, or removals in @get-bb/plugin-sdk, app.slots.*, or BbPluginApi that affect a Guide card, fixture, or symbol list, and for annotation-only maintenance. Do not use for internal implementation or API work that leaves the Guide accurate.
 ---
 
 # Maintain the Plugin Guide
 
 The Plugin Guide is bb's public Plugin SDK reference. For a public API change,
 follow the full workflow. For annotation-only maintenance, start at Maintain
-annotation layout, skip the public-API and SDK-inventory sections, and then
-follow the annotation-only verification path.
+annotation layout, skip the public-API section, and then follow the
+annotation-only verification path.
 
 ## Confirm a public API change
 
@@ -19,8 +19,8 @@ pnpm exec turbo run build:types --filter=@get-bb/plugin-sdk
 git diff -- packages/plugin-sdk/package.json packages/plugin-sdk/src
 ```
 
-Continue only when the API change affects a Guide card, API symbol list,
-fixture, or SDK inventory. If the Guide remains accurate, do not change it.
+Continue only when the API change affects a Guide card, API symbol list, or
+fixture. If the Guide remains accurate, do not change it.
 
 New public members also require:
 
@@ -95,16 +95,6 @@ renumbered, or its target or surrounding layout changes:
 
 If responsive layouts cannot share one spatial order, fix the layout or define
 one stable readable sequence before shipping.
-
-## Refresh the SDK inventory
-
-Refresh the inventory after the Guide represents a public API change:
-
-```sh
-pnpm exec turbo run update:sdk-inventory --filter=@bb/plugin-api-map
-```
-
-Review `packages/plugin-api-map/sdk-public-api.json`. Do not edit its hashes.
 
 ## Verify the result
 

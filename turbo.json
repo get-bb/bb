@@ -23,10 +23,7 @@
     // The docs' UI-anatomy manifest is the contract this test checks the real
     // app components against, so a manifest edit must re-run it.
     "@bb/app#test": {
-      "dependsOn": [
-        "//#ensure-native-modules",
-        "topo"
-      ],
+      "dependsOn": ["//#ensure-native-modules", "topo"],
       "inputs": [
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/packages/plugin-api-map/src/anatomy-manifest.json",
@@ -38,13 +35,10 @@
     "@bb/plugin-api-map#test": {
       "dependsOn": [
         "//#ensure-native-modules",
-        "@get-bb/plugin-sdk#build:types",
         "topo"
       ],
       "inputs": [
         "$TURBO_DEFAULT$",
-        "$TURBO_ROOT$/packages/plugin-sdk/bundled-types/**",
-        "$TURBO_ROOT$/packages/plugin-sdk/package.json",
         // wireframes.test.ts asserts fixture fidelity against the real app
         // source, and maintenance-skill.test.ts reads the repository skill plus
         // Plugin Guide source; all are inputs to prevent stale cache hits.
@@ -54,10 +48,6 @@
         "$TURBO_ROOT$/plugins/plugin-api-docs/**",
         "$TURBO_ROOT$/vitest.shared.ts"
       ]
-    },
-    "@bb/plugin-api-map#update:sdk-inventory": {
-      "dependsOn": ["@get-bb/plugin-sdk#build:types"],
-      "cache": false
     },
     "@bb/plugin-api-map#scaffold:surface-entry": {
       "cache": false
@@ -211,9 +201,7 @@
     "@bb/desktop#smoke:appimage-lifecycle": {
       "cache": false,
       "outputs": [],
-      "passThroughEnv": [
-        "*"
-      ]
+      "passThroughEnv": ["*"]
     },
     "@bb/desktop#dev": {
       "dependsOn": ["bb-app#build"],
@@ -364,6 +352,7 @@
         "$TURBO_ROOT$/packages/domain/src/plugin-id.ts",
         "$TURBO_ROOT$/packages/domain/src/plugin-manifest.ts",
         "$TURBO_ROOT$/plugins/*/package.json",
+        "$TURBO_ROOT$/plugins/*/PLUGIN_OVERVIEW.md",
         "$TURBO_ROOT$/plugins/bb-official.json"
       ],
       "outputs": ["src/generated/bb-official-marketplace/marketplace.json"]
@@ -465,6 +454,9 @@
       "dependsOn": ["//#ensure-native-modules", "@bb/cli#build", "topo"],
       "inputs": [
         "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/.github/APPROVED_CONTRIBUTORS",
+        "$TURBO_ROOT$/.github/workflows/approve-contributor.yml",
+        "$TURBO_ROOT$/.github/workflows/pr-gate.yml",
         "$TURBO_ROOT$/package.json",
         "$TURBO_ROOT$/vitest.shared.ts"
       ]
@@ -811,10 +803,7 @@
       "dependsOn": ["@get-bb/plugin-sdk#build:types", "topo"]
     },
     "bb-plugin-monaco-editor#typecheck": {
-      "dependsOn": [
-        "@get-bb/plugin-sdk#build:types",
-        "topo"
-      ]
+      "dependsOn": ["@get-bb/plugin-sdk#build:types", "topo"]
     },
     "bb-plugin-pdf-preview#typecheck": {
       "dependsOn": ["@get-bb/plugin-sdk#build:types", "topo"]

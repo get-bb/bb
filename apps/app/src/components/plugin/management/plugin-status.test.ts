@@ -8,40 +8,25 @@ import {
   pluginRowSignal,
   pluginRuntimeStatusPresentation,
 } from "./plugin-status";
+import { makePluginListItem } from "@/test/fixtures/plugins";
 
 function plugin(
   updateState: Partial<PluginUpdateState> = {},
   overrides: Partial<PluginListItem> = {},
 ): PluginListItem {
-  return {
+  return makePluginListItem({
     id: "linear",
     source: "npm:@example/linear@^1.6.0",
     rootDir: "/plugins/linear",
     version: "1.6.2",
-    enabled: true,
-    status: "running",
-    statusDetail: null,
-    description: null,
     name: null,
-    icon: null,
-    compactIconUrl: null,
-    logoUrl: null,
-    logoDarkUrl: null,
-    hasSettings: false,
     provenance: "catalog",
-    isOrphanedBuiltin: false,
     catalogEntryId: "linear",
     publisherLabel: "BB Community",
     sourceDisplay: "npm · @bb-plugins/linear · tracks compatible",
     updateState: { ...EMPTY_PLUGIN_UPDATE_STATE, ...updateState },
-    handlerStats: { count: 0, totalMs: 0, maxMs: 0, errorCount: 0 },
-    services: [],
-    schedules: [],
-    cliCommand: null,
-    capabilities: [],
-    app: { hasApp: false, bundle: null },
     ...overrides,
-  };
+  });
 }
 
 describe("pluginRowSignal (the one-signal rule)", () => {

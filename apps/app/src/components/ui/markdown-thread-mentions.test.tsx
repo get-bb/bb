@@ -21,7 +21,8 @@ import { threadQueryKey } from "@/hooks/queries/query-keys";
 import { sdk } from "@/lib/sdk";
 import { setPreferredTheme } from "@/hooks/useTheme";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
-import { makeThreadListEntry } from "@/test/fixtures/thread-list-entries";
+import { makeThreadListEntry } from "@bb/test-helpers/domain-fixtures";
+import { makeThreadResponse } from "@/test/fixtures/thread-responses";
 
 vi.mock("@/lib/sdk", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/sdk")>();
@@ -61,36 +62,18 @@ function resolveUpdatedThreadLink(link: TimelineTitleLink): string | null {
 function threadResponse(
   overrides: Partial<ThreadResponse> = {},
 ): ThreadResponse {
-  return {
+  return makeThreadResponse({
     id: "thr_child",
     projectId: "proj_demo",
     environmentId: null,
-    providerId: "codex",
     title: "Rebuild comments",
     titleFallback: "Rebuild comments",
-    sectionId: null,
-    status: "idle",
-    parentThreadId: null,
-    sourceThreadId: null,
-    originKind: null,
-    originPluginId: null,
-    visibility: "visible",
-    archivedAt: null,
-    pinnedAt: null,
-    deletedAt: null,
     lastReadAt: 0,
     latestAttentionAt: 1,
     createdAt: 1,
     updatedAt: 1,
-    runtime: {
-      displayStatus: "idle",
-      hostReconnectGraceExpiresAt: null,
-    },
-    activeBackgroundAgentCount: 0,
-    canSpawnChild: true,
-    queuedMessageCount: 0,
     ...overrides,
-  };
+  });
 }
 
 function renderMarkdown(

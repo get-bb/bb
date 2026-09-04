@@ -51,11 +51,6 @@ type FakeConsoleMessageListener = (
 
 type FakeWillFrameNavigateListener = (event: FakeNavigationEvent) => void;
 
-type FakeWillNavigateListener = (
-  event: FakeNavigationEvent,
-  url: string,
-) => void;
-
 type FakeWillRedirectListener = (
   event: FakeNavigationEvent,
   url: string,
@@ -72,6 +67,11 @@ type FakeDidNavigateInPageListener = (
   event: FakeWebContentsEvent,
   url: string,
   isMainFrame: boolean,
+) => void;
+
+type FakePageTitleUpdatedListener = (
+  event: FakePreventableEvent,
+  title: string,
 ) => void;
 
 type FakeDidFailLoadListener = (
@@ -147,7 +147,6 @@ interface FakeWebContentsEventMap {
   "console-message": FakeConsoleMessageListener;
   "before-input-event": FakeBeforeInputListener;
   "will-frame-navigate": FakeWillFrameNavigateListener;
-  "will-navigate": FakeWillNavigateListener;
   "will-redirect": FakeWillRedirectListener;
   "dom-ready": FakeVoidWebContentsListener;
   "did-start-loading": FakeVoidWebContentsListener;
@@ -156,7 +155,7 @@ interface FakeWebContentsEventMap {
   "did-navigate": FakeDidNavigateListener;
   "did-navigate-in-page": FakeDidNavigateInPageListener;
   "did-start-navigation": FakeVoidWebContentsListener;
-  "page-title-updated": FakeVoidWebContentsListener;
+  "page-title-updated": FakePageTitleUpdatedListener;
   "did-fail-load": FakeDidFailLoadListener;
   "context-menu": FakeContextMenuListener;
   "render-process-gone": FakeRenderProcessGoneListener;
@@ -185,11 +184,44 @@ type FakePermissionCheckHandler = (
 ) => boolean;
 
 interface FakeWindowOpenDetails {
+  disposition: "foreground-tab" | "new-window";
+  features: string;
+  frameName: string;
   url: string;
 }
 
+interface FakeBrowserWindowOptions {
+  alwaysOnTop?: boolean;
+  center?: boolean;
+  frame?: boolean;
+  height?: number;
+  show?: boolean;
+  title?: string;
+  transparent?: boolean;
+  width?: number;
+  webContents?: FakePopupWebContents;
+  x?: number;
+  y?: number;
+  webPreferences?: {
+    allowRunningInsecureContent?: boolean;
+    contextIsolation?: boolean;
+    nodeIntegration?: boolean;
+    partition?: string;
+    sandbox?: boolean;
+    webSecurity?: boolean;
+  };
+}
+
+interface FakePopupWebContents {
+  emitWindowOpen(
+    url: string,
+    details?: Partial<Omit<FakeWindowOpenDetails, "url">>,
+  ): FakeWindowOpenDecision;
+}
+
 interface FakeWindowOpenDecision {
-  action: "deny";
+  action: "allow" | "deny";
+  createWindow?: (options: FakeBrowserWindowOptions) => FakePopupWebContents;
 }
 
 type FakeWindowOpenHandler = (
@@ -367,7 +399,6 @@ const electronMock = vi.hoisted(() => {
       focus: [],
       "before-input-event": [],
       "will-frame-navigate": [],
-      "will-navigate": [],
       "will-redirect": [],
       "did-start-loading": [],
       "did-stop-loading": [],
@@ -544,6 +575,13 @@ const electronMock = vi.hoisted(() => {
       }
     }
 
+    emitPageTitleUpdated(title: string): boolean {
+      const event = new FakePreventableEventImpl();
+      for (const listener of this.listeners["page-title-updated"]) {
+        listener(event, title);
+      }
+      return event.defaultPrevented;
+    }
     emitWillFrameNavigate(
       url: string,
       isMainFrame: boolean,
@@ -556,18 +594,6 @@ const electronMock = vi.hoisted(() => {
       });
       for (const listener of this.listeners["will-frame-navigate"]) {
         listener(event);
-      }
-      return event.defaultPrevented;
-    }
-
-    emitWillNavigate(url: string, initiatorOrigin?: string | null): boolean {
-      const event = new FakeNavigationEventImpl({
-        initiatorOrigin,
-        isMainFrame: true,
-        url,
-      });
-      for (const listener of this.listeners["will-navigate"]) {
-        listener(event, url);
       }
       return event.defaultPrevented;
     }
@@ -588,11 +614,20 @@ const electronMock = vi.hoisted(() => {
       return event.defaultPrevented;
     }
 
-    emitWindowOpen(url: string): FakeWindowOpenDecision {
+    emitWindowOpen(
+      url: string,
+      details: Partial<Omit<FakeWindowOpenDetails, "url">> = {},
+    ): FakeWindowOpenDecision {
       if (this.windowOpenHandler === null) {
         throw new Error("Expected a window open handler to be registered.");
       }
-      return this.windowOpenHandler({ url });
+      return this.windowOpenHandler({
+        disposition: "foreground-tab",
+        features: "",
+        frameName: "",
+        ...details,
+        url,
+      });
     }
   }
 
@@ -614,6 +649,54 @@ const electronMock = vi.hoisted(() => {
 
     setVisible(visible: boolean): void {
       this.visible = visible;
+    }
+  }
+
+  class FakeBrowserWindow {
+    public readonly options: FakeBrowserWindowOptions;
+    public readonly webContents: FakePopupWebContents;
+    public closeCalls = 0;
+    public destroyCalls = 0;
+    public readonly loadURLCalls: string[] = [];
+    public readonly titleCalls: string[] = [];
+    private closedListener: (() => void) | null = null;
+    private destroyed = false;
+
+    constructor(options: FakeBrowserWindowOptions) {
+      this.options = options;
+      if (options.webContents === undefined) {
+        this.webContents = new FakeWebContents(nextWebContentsId);
+        nextWebContentsId += 1;
+      } else {
+        this.webContents = options.webContents;
+      }
+    }
+
+    close(): void {
+      this.closeCalls += 1;
+    }
+
+    destroy(): void {
+      this.destroyCalls += 1;
+      this.destroyed = true;
+      this.closedListener?.();
+    }
+
+    isDestroyed(): boolean {
+      return this.destroyed;
+    }
+
+    loadURL(url: string): Promise<void> {
+      this.loadURLCalls.push(url);
+      return Promise.resolve();
+    }
+
+    once(_eventName: "closed", listener: () => void): void {
+      this.closedListener = listener;
+    }
+
+    setTitle(title: string): void {
+      this.titleCalls.push(title);
     }
   }
 
@@ -705,12 +788,25 @@ const electronMock = vi.hoisted(() => {
   const fakeSessions: FakeSession[] = [];
   const fakeViews: FakeWebContentsView[] = [];
   const certificateErrorListeners: FakeCertificateErrorListener[] = [];
+  const fakeWindows: FakeBrowserWindow[] = [];
 
   return {
     fakeCapturedImage,
     certificateErrorListeners,
     fakeSessions,
     fakeViews,
+    fakeWindows,
+    createFakeWebContents() {
+      const contents = new FakeWebContents(nextWebContentsId);
+      nextWebContentsId += 1;
+      return contents;
+    },
+    FakeBrowserWindow: class extends FakeBrowserWindow {
+      constructor(options: FakeBrowserWindowOptions) {
+        super(options);
+        fakeWindows.push(this);
+      }
+    },
     FakeWebContentsView: class extends FakeWebContentsView {
       constructor() {
         super();
@@ -733,6 +829,7 @@ const electronMock = vi.hoisted(() => {
 });
 
 vi.mock("electron", () => ({
+  BrowserWindow: electronMock.FakeBrowserWindow,
   WebContentsView: electronMock.FakeWebContentsView,
   app: electronMock.app,
   session: electronMock.session,
@@ -806,6 +903,7 @@ beforeEach(() => {
   electronMock.certificateErrorListeners.length = 0;
   electronMock.fakeSessions.length = 0;
   electronMock.fakeViews.length = 0;
+  electronMock.fakeWindows.length = 0;
 });
 
 async function settlePendingCaptures(
@@ -1919,7 +2017,11 @@ describe("DesktopBrowserViewManager", () => {
     });
     const view = requireFakeView(0);
 
-    expect(view.webContents.emitWindowOpen("http://localhost:38886/")).toEqual({
+    expect(
+      view.webContents.emitWindowOpen("http://localhost:38886/", {
+        frameName: "_blank",
+      }),
+    ).toEqual({
       action: "deny",
     });
     expect(openTabPushesOf(hostWindow)).toEqual(["http://localhost:38886/"]);
@@ -1945,11 +2047,13 @@ describe("DesktopBrowserViewManager", () => {
     });
     const view = requireFakeView(0);
 
-    expect(view.webContents.emitWindowOpen("https://example.com/docs")).toEqual(
-      {
-        action: "deny",
-      },
-    );
+    expect(
+      view.webContents.emitWindowOpen("https://example.com/docs", {
+        frameName: "_blank",
+      }),
+    ).toEqual({
+      action: "deny",
+    });
     expect(openTabPushesOf(hostWindow)).toEqual(["https://example.com/docs"]);
     expect(scopedOpenTabPushesOf(hostWindow)).toEqual([
       {
@@ -1957,6 +2061,262 @@ describe("DesktopBrowserViewManager", () => {
         url: "https://example.com/docs",
       },
     ]);
+  });
+
+  it("keeps noopener blank links in the browser panel", () => {
+    const manager = createDesktopBrowserViewManager({
+      partition: "persist:test",
+    });
+    const hostWindow = new FakeHostWindow({
+      contentBounds: { width: 700, height: 450 },
+      webContentsId: 63,
+    });
+
+    attachBrowserTab({
+      manager,
+      hostWindow,
+      tabId: "browser:a",
+      url: "https://example.com/",
+    });
+    const view = requireFakeView(0);
+
+    expect(
+      view.webContents.emitWindowOpen("https://example.com/docs", {
+        disposition: "foreground-tab",
+        features: "noopener,noreferrer",
+        frameName: "_blank",
+      }),
+    ).toEqual({ action: "deny" });
+    expect(electronMock.fakeWindows).toEqual([]);
+    expect(openTabPushesOf(hostWindow)).toEqual(["https://example.com/docs"]);
+    expect(scopedOpenTabPushesOf(hostWindow)).toEqual([
+      {
+        tabId: "browser:a",
+        url: "https://example.com/docs",
+      },
+    ]);
+  });
+
+  it("opens popup dispositions in a hardened native window", () => {
+    const manager = createDesktopBrowserViewManager({
+      partition: "persist:test",
+    });
+    const hostWindow = new FakeHostWindow({
+      contentBounds: { width: 700, height: 450 },
+      webContentsId: 62,
+    });
+
+    attachBrowserTab({
+      manager,
+      hostWindow,
+      tabId: "browser:a",
+      url: "https://www.notion.so/",
+    });
+    const view = requireFakeView(0);
+    const decision = view.webContents.emitWindowOpen(
+      "https://accounts.google.com/o/oauth2/auth",
+      {
+        disposition: "new-window",
+        features: "width=520,height=700",
+        frameName: "oauth",
+      },
+    );
+
+    expect(decision.action).toBe("allow");
+    expect(openTabPushesOf(hostWindow)).toEqual([]);
+    expect(scopedOpenTabPushesOf(hostWindow)).toEqual([]);
+    if (decision.createWindow === undefined) {
+      throw new Error("Expected the popup decision to create a window.");
+    }
+
+    const childContents = electronMock.createFakeWebContents();
+    const popupContents = decision.createWindow({
+      alwaysOnTop: true,
+      frame: false,
+      height: 4_000,
+      show: false,
+      title: "bb sign in",
+      transparent: true,
+      width: 10,
+      webContents: childContents,
+      x: 0,
+      y: 0,
+      webPreferences: {
+        contextIsolation: false,
+        nodeIntegration: true,
+        partition: "persist:untrusted",
+        sandbox: false,
+        webSecurity: false,
+      },
+    });
+    const popupWindow = electronMock.fakeWindows[0];
+    if (popupWindow === undefined) {
+      throw new Error("Expected a popup window to be created.");
+    }
+
+    expect(popupContents).toBe(childContents);
+    expect(popupWindow.loadURLCalls).toEqual([]);
+    expect(popupWindow.options).toEqual({
+      center: true,
+      frame: true,
+      height: 900,
+      show: true,
+      transparent: false,
+      width: 320,
+      webContents: childContents,
+      webPreferences: {
+        allowRunningInsecureContent: false,
+        contextIsolation: true,
+        nodeIntegration: false,
+        partition: "persist:test",
+        sandbox: true,
+        webSecurity: true,
+      },
+    });
+    expect(popupWindow.titleCalls).toEqual(["bb browser popup"]);
+    childContents.emitDidNavigate("https://accounts.google.com/oauth2/auth");
+    expect(popupWindow.titleCalls.at(-1)).toBe(
+      "bb browser — https://accounts.google.com",
+    );
+    expect(childContents.emitPageTitleUpdated("Google Sign In")).toBe(true);
+    expect(popupWindow.titleCalls.at(-1)).toBe(
+      "bb browser — https://accounts.google.com",
+    );
+    expect(popupContents.emitWindowOpen("https://example.com/nested")).toEqual({
+      action: "deny",
+    });
+    manager.destroyAll();
+    expect(popupWindow.closeCalls).toBe(0);
+    expect(popupWindow.destroyCalls).toBe(1);
+  });
+
+  it("loads the URL itself when Electron supplies no child webContents", () => {
+    const manager = createDesktopBrowserViewManager({
+      partition: "persist:test",
+    });
+    const hostWindow = new FakeHostWindow({
+      contentBounds: { width: 700, height: 450 },
+      webContentsId: 66,
+    });
+
+    attachBrowserTab({
+      manager,
+      hostWindow,
+      tabId: "browser:a",
+      url: "https://example.com/",
+    });
+    const view = requireFakeView(0);
+    const decision = view.webContents.emitWindowOpen(
+      "https://example.com/docs",
+      { disposition: "new-window" },
+    );
+
+    expect(decision.action).toBe("allow");
+    if (decision.createWindow === undefined) {
+      throw new Error("Expected the popup decision to create a window.");
+    }
+    decision.createWindow({});
+    expect(electronMock.fakeWindows[0]?.loadURLCalls).toEqual([
+      "https://example.com/docs",
+    ]);
+  });
+
+  it("supports blank-first OAuth navigation with secure remote URLs", () => {
+    const manager = createDesktopBrowserViewManager({
+      partition: "persist:test",
+    });
+    const hostWindow = new FakeHostWindow({
+      contentBounds: { width: 700, height: 450 },
+      webContentsId: 64,
+    });
+
+    attachBrowserTab({
+      manager,
+      hostWindow,
+      tabId: "browser:a",
+      url: "https://example.com/",
+    });
+    const view = requireFakeView(0);
+    const decision = view.webContents.emitWindowOpen("about:blank", {
+      disposition: "new-window",
+      features: "width=520,height=700",
+      frameName: "oauth",
+    });
+
+    expect(decision.action).toBe("allow");
+    if (decision.createWindow === undefined) {
+      throw new Error("Expected the blank OAuth popup to create a window.");
+    }
+    const childContents = electronMock.createFakeWebContents();
+    decision.createWindow({ webContents: childContents });
+
+    expect(
+      childContents.emitWillFrameNavigate(
+        "https://accounts.google.com/o/oauth2/auth",
+        true,
+      ),
+    ).toBe(false);
+    expect(
+      childContents.emitWillFrameNavigate(
+        "http://accounts.google.com/oauth2/auth",
+        true,
+      ),
+    ).toBe(true);
+    expect(
+      childContents.emitWillRedirect("http://evil.example/steal", true),
+    ).toBe(true);
+    expect(
+      childContents.emitWillFrameNavigate(
+        "http://127.0.0.1:38886/callback",
+        true,
+      ),
+    ).toBe(false);
+  });
+
+  it("caps live native popups across successive rate windows", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-09-03T12:00:00Z"));
+    const manager = createDesktopBrowserViewManager({
+      partition: "persist:test",
+    });
+    const hostWindow = new FakeHostWindow({
+      contentBounds: { width: 700, height: 450 },
+      webContentsId: 65,
+    });
+
+    attachBrowserTab({
+      manager,
+      hostWindow,
+      tabId: "browser:a",
+      url: "https://example.com/",
+    });
+    const view = requireFakeView(0);
+    const openPopup = (): FakeWindowOpenDecision => {
+      const decision = view.webContents.emitWindowOpen(
+        "https://accounts.google.com/o/oauth2/auth",
+        {
+          disposition: "new-window",
+          features: "width=520,height=700",
+          frameName: "oauth",
+        },
+      );
+      if (decision.createWindow !== undefined) {
+        decision.createWindow({
+          webContents: electronMock.createFakeWebContents(),
+        });
+      }
+      return decision;
+    };
+
+    expect(openPopup().action).toBe("allow");
+    expect(openPopup().action).toBe("allow");
+    expect(openPopup().action).toBe("allow");
+    vi.advanceTimersByTime(10_001);
+    expect(openPopup()).toEqual({ action: "deny" });
+
+    electronMock.fakeWindows[0]?.destroy();
+    expect(openPopup().action).toBe("allow");
+    manager.destroyAll();
   });
 
   it("snapshots then hides visible views on resize, revealing them clamped to the shrunken window", async () => {

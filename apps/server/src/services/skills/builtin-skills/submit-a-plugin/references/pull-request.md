@@ -33,8 +33,10 @@ cd /SAFE/NEW/PATH/marketplace
 git switch -c submit-PLUGIN_ID
 ```
 
-Prepare and validate the entry and icon. Return their paths, the clone path,
-branch name, and results. Give the user these remaining steps:
+Prepare and validate the entry, icon, screenshots, and overview file.
+
+Return their paths, the clone path, branch name, and results. Give the user
+these remaining steps:
 
 1. Fork get-bb/marketplace.
 2. Add the fork as a remote.
@@ -52,26 +54,42 @@ npm run build
 npm run check
 git status --short
 git diff --check
-git diff -- entries/PLUGIN_ID.json icons/
+git diff -- entries/PLUGIN_ID.json icons/ screenshots/PLUGIN_ID/ overview/PLUGIN_ID.md
 ```
+
+Omit each screenshots/PLUGIN_ID/ argument when the entry has no screenshots.
+Omit each overview/PLUGIN_ID.md argument when the entry has no overview file.
 
 Confirm:
 
 - The entry ID matches the filename and plugin manifest.
+- The entry holds no field that the schema rejects.
+- The category is one ID from marketplace.base.json.
+- The entry references at least one screenshot, or the pull request body states
+  why it has none.
 - The public source contains the selected release and reviewed code.
 - The source subdirectory is correct.
-- Entry engine ranges do not exceed manifest ranges.
 - The author account matches the pull request account.
-- The description states observed user value.
+- The description hook states observed user value, and survives a two-line
+  clamp.
+- The entry passes the quality check in references/marketplace-entry.md.
 - The icon meets size, format, location, and reference rules.
+- Each screenshot meets the width, size, format, location, and reference
+  rules, and shows no private data.
+- The screenshots directory holds no unreferenced file.
+- The overview file, when present, is at overview/PLUGIN_ID.md, is referenced from
+  the entry, and passes the build.
 - Both marketplace checks pass.
 
 ## Open the pull request
 
-Commit only the entry and icon. Do not commit dist/ or unrelated files.
+Commit only the entry, icon, screenshots, and overview file. Do not commit
+dist/ or unrelated files.
 
 ```sh
 git add entries/PLUGIN_ID.json icons/PLUGIN_ICON
+git add screenshots/PLUGIN_ID/
+git add overview/PLUGIN_ID.md
 git commit -m "Add plugin entry: PLUGIN_ID"
 git push -u origin submit-PLUGIN_ID
 ```
@@ -96,3 +114,5 @@ Follow the marketplace repository instructions. The pull request body must state
 - The plugin checks that passed.
 - The marketplace checks that passed.
 - Required permissions, external services, and relevant security facts.
+- What each screenshot shows, or why the entry has none.
+- Whether the entry has an overview file, and where the text came from.

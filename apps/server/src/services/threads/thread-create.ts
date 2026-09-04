@@ -95,7 +95,6 @@ interface CreateProvisioningThreadArgs {
 }
 
 interface ResolveForkPointArgs {
-  childHostId: string;
   originKind: ThreadOriginKind | null;
   providerId: string;
   sourceSeqEnd: number | undefined;
@@ -168,16 +167,40 @@ function resolveForkPoint(
     return null;
   }
   const sourceEnvironment = getEnvironment(deps.db, sourceEnvironmentId);
-  if (
-    sourceEnvironment === null ||
-    sourceEnvironment.hostId !== args.childHostId
-  ) {
+  if (sourceEnvironment === null) {
     return null;
   }
   return resolveThreadForkPoint(deps, {
     sourceSeqEnd: args.sourceSeqEnd,
     sourceThread: args.sourceThread,
   });
+}
+
+function assertForkSourceHost(
+  deps: Pick<ThreadCreateDeps, "db">,
+  args: {
+    childHostId: string;
+    originKind: ThreadOriginKind | null;
+    sourceThread: Thread | null;
+  },
+): void {
+  if (args.originKind !== "fork" || args.sourceThread === null) {
+    return;
+  }
+  const sourceEnvironment =
+    args.sourceThread.environmentId === null
+      ? null
+      : getEnvironment(deps.db, args.sourceThread.environmentId);
+  if (
+    sourceEnvironment !== null &&
+    sourceEnvironment.hostId !== args.childHostId
+  ) {
+    throw new ApiError(
+      400,
+      "invalid_request",
+      `Fork environment must use the source thread's host (${sourceEnvironment.hostId}), not ${args.childHostId}`,
+    );
+  }
 }
 
 function childHostIdForResolvedEnvironment(
@@ -702,6 +725,11 @@ export async function createThreadFromRequest(
     projectId: request.projectId,
   });
   const childHostId = childHostIdForResolvedEnvironment(resolvedEnvironment);
+  assertForkSourceHost(deps, {
+    childHostId,
+    originKind: request.originKind ?? null,
+    sourceThread,
+  });
   const hostDataDir = (
     await ensureHostSessionReadyForWork(deps, { hostId: childHostId })
   ).dataDir;
@@ -842,7 +870,6 @@ export async function createThreadFromRequest(
     await resolveEnvironmentPlacement(request.environment);
 
   const fork = resolveForkPoint(deps, {
-    childHostId,
     originKind: request.originKind ?? null,
     providerId: request.providerId,
     sourceSeqEnd: request.sourceSeqEnd,

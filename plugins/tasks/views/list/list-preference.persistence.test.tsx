@@ -5,6 +5,7 @@ import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
 import { COMPACT_VIEWPORT_QUERY } from "@bb/shared-ui/hooks/use-compact-viewport";
 import type { Task } from "../../shared/contract.js";
 import { LIST_PREFERENCE_STORAGE_KEY } from "./list-preference.js";
+import { makeTask } from "../../test-fixtures.js";
 
 window.matchMedia = (query: string) => ({
   matches: query === COMPACT_VIEWPORT_QUERY,
@@ -66,22 +67,16 @@ function task(
   priority: Task["priority"] = "none",
 ): Task {
   const prefix = projectId === PROJECT_A ? "ALP" : "BET";
-  return {
+  return makeTask({
     id: `01HZZZZZZZZZZZZZZZZZZZZT${projectId.slice(-2)}${number}`,
     projectId,
     number,
     key: `${prefix}-${number}`,
     title: `Task ${number}`,
-    description: "",
     status,
     priority,
-    dueDate: null,
-    parentTaskId: null,
     position: number,
-    createdAt: "2026-07-15T00:00:00.000Z",
-    updatedAt: "2026-07-15T00:00:00.000Z",
-    labelIds: [],
-  };
+  });
 }
 
 const tasksA = [

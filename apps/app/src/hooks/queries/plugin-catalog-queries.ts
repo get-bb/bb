@@ -228,6 +228,7 @@ export interface PluginCatalogSearchEntry {
   categoryId?: string;
   category?: string;
   screenshots: string[];
+  overview?: string;
   collections: PluginCatalogCollectionMembership[];
   publishedAt?: string;
   source: string;
@@ -258,6 +259,7 @@ function toPluginCatalogSearchEntry(
     ...(data.categoryId === undefined ? {} : { categoryId: data.categoryId }),
     ...(data.category === undefined ? {} : { category: data.category }),
     screenshots: data.screenshots,
+    ...(data.overview === undefined ? {} : { overview: data.overview }),
     collections: data.collections,
     ...(data.publishedAt === undefined
       ? {}

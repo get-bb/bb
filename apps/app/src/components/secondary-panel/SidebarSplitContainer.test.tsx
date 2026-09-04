@@ -1240,4 +1240,34 @@ describe("SidebarSplitContainer", () => {
       setItem.mock.calls.filter(([key]) => key === storageKey),
     ).toHaveLength(0);
   });
+
+  it("keeps a changed layout in memory when localStorage quota is exhausted", () => {
+    const storageKey = sidebarSplitStorageKey(PANEL_STATE_ID);
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    renderContainer({
+      renderPane: ({ group, onMoveActiveTabToSide }) => (
+        <button type="button" onClick={() => onMoveActiveTabToSide?.("right")}>
+          Split {group.activeTabId}
+        </button>
+      ),
+    });
+
+    const setItem = vi
+      .spyOn(Storage.prototype, "setItem")
+      .mockImplementation((key) => {
+        if (key === storageKey) {
+          throw new DOMException("quota", "QuotaExceededError");
+        }
+      });
+
+    expect(() =>
+      fireEvent.click(screen.getByRole("button", { name: "Split tab-a" })),
+    ).not.toThrow();
+
+    expect(document.querySelectorAll("[data-split-pane-id]")).toHaveLength(2);
+    expect(window.localStorage.getItem(storageKey)).toBeNull();
+    expect(warn).toHaveBeenCalledOnce();
+    expect(setItem).toHaveBeenCalledWith(storageKey, expect.any(String));
+  });
 });

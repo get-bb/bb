@@ -12,7 +12,60 @@ import {
   PLUGIN_AGENT_STATUS_LABEL_MAX_CHARS,
   RESERVED_BB_CLI_COMMANDS,
 } from "../../internal/host-policy.js";
-import { createFakePluginHost, makeThreadResponse } from "../index.js";
+import {
+  createFakePluginHost,
+  makeMessageDispatchHookContext,
+  makePluginAgentConfigurationContext,
+  makeThreadResponse,
+} from "../index.js";
+
+describe("fixtures", () => {
+  it("derives linked dispatch identities unless explicitly overridden", () => {
+    const inherited = makeMessageDispatchHookContext({
+      project: { id: "project-target" },
+      environment: { id: "environment-target" },
+      host: { id: "host-target" },
+    });
+    const explicit = makeMessageDispatchHookContext({
+      project: { id: "project-target" },
+      environment: {
+        id: "environment-target",
+        projectId: "environment-project-explicit",
+        hostId: "environment-host-explicit",
+      },
+      host: { id: "host-target" },
+      thread: {
+        projectId: "thread-project-explicit",
+        environmentId: "thread-environment-explicit",
+      },
+    });
+
+    expect(inherited.thread.projectId).toBe("project-target");
+    expect(inherited.thread.environmentId).toBe("environment-target");
+    expect(inherited.environment?.projectId).toBe("project-target");
+    expect(inherited.environment?.hostId).toBe("host-target");
+    expect(explicit.thread.projectId).toBe("thread-project-explicit");
+    expect(explicit.thread.environmentId).toBe("thread-environment-explicit");
+    expect(explicit.environment?.projectId).toBe(
+      "environment-project-explicit",
+    );
+    expect(explicit.environment?.hostId).toBe("environment-host-explicit");
+  });
+
+  it("keeps queued messages on the dispatch context thread by default", () => {
+    const inherited = makeMessageDispatchHookContext({
+      thread: { id: "thread-target" },
+      queuedMessage: { id: "queued-target" },
+    });
+    const explicit = makeMessageDispatchHookContext({
+      thread: { id: "thread-target" },
+      queuedMessage: { threadId: "thread-explicit" },
+    });
+
+    expect(inherited.queuedMessage?.threadId).toBe("thread-target");
+    expect(explicit.queuedMessage?.threadId).toBe("thread-explicit");
+  });
+});
 
 describe("server", () => {
   it("serves the configured public app URL and defaults to null", () => {
@@ -875,34 +928,13 @@ describe("sdk", () => {
 });
 
 describe("agent tools", () => {
-  const configurationContext = {
-    thread: {
-      id: "thread-test",
-      title: null,
-      parentThreadId: null,
-      sourceThreadId: null,
-    },
-    project: {
-      id: "project-test",
-      kind: "standard",
-      name: "Test",
-      gitRemoteUrl: null,
-    },
-    environment: {
-      id: "environment-test",
-      name: null,
-      path: "/tmp/test",
-      workspaceProvisionType: "unmanaged",
-      branchName: null,
-    },
-    host: { id: "host-test", name: "Test host" },
+  const configurationContext = makePluginAgentConfigurationContext({
     provider: {
       id: "codex",
       model: "gpt-5",
       capabilities: { supportsNativeUserQuestion: false },
     },
-    origin: { kind: null, pluginId: null },
-  } satisfies PluginAgentConfigurationContext;
+  });
 
   it("validates zod parameters per call and executes with a default context", async () => {
     const { bb, harness } = createFakePluginHost();
@@ -1172,16 +1204,14 @@ describe("agent tools", () => {
     });
 
     const alpha = await harness.resolveAgentConfiguration(configurationContext);
-    const betaContext: PluginAgentConfigurationContext = {
-      ...configurationContext,
-      thread: { ...configurationContext.thread, id: "thread-beta" },
+    const betaContext = makePluginAgentConfigurationContext({
+      thread: { id: "thread-beta" },
       host: { id: "host-beta", name: "Beta host" },
       provider: {
         id: "claude-code",
         model: "claude-opus",
-        capabilities: { supportsNativeUserQuestion: false },
       },
-    };
+    });
     const beta = await harness.resolveAgentConfiguration(betaContext);
 
     expect(alpha.tools.map((tool) => tool.name)).toEqual(["alpha_tool"]);

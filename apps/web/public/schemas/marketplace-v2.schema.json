@@ -191,6 +191,12 @@
             "pattern": "^(?:https://[^\\s]+\\.(?:png|jpg|jpeg|webp)|\\./screenshots/[a-z0-9][a-z0-9-]*/[A-Za-z0-9][A-Za-z0-9._-]*\\.(?:png|jpg|jpeg|webp))$"
           }
         },
+        "overview": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4000,
+          "$comment": "An entry file uses the path ./overview/<plugin-id>.md. The built document holds the markdown text."
+        },
         "publishedAt": {
           "type": "string",
           "format": "date-time"

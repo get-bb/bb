@@ -399,6 +399,7 @@ function buildPage(
   thread: Thread,
   eventBudget: number,
   cursor: TimelinePaginationCursor | null,
+  segmentLimit = 20,
 ) {
   return buildThreadTimelineWithProfile(db, thread, {
     eventBudget,
@@ -407,8 +408,8 @@ function buildPage(
     maxInlineOutputChars: 32_000,
     maxSeq: 0,
     page: cursor
-      ? { kind: "older", beforeCursor: cursor, segmentLimit: 20 }
-      : { kind: "latest", segmentLimit: 20 },
+      ? { kind: "older", beforeCursor: cursor, segmentLimit }
+      : { kind: "latest", segmentLimit },
   });
 }
 
@@ -1135,6 +1136,160 @@ describe("in-turn timeline windows", () => {
 });
 
 describe("timeline segment anchors", () => {
+  it("includes provisioning before the first visible user message", () => {
+    const { db, thread } = setup();
+    const fillerEvent = (sequence: number): EventInput => ({
+      threadId: thread.id,
+      sequence,
+      type: "system/operation",
+      scope: threadScope(),
+      itemId: null,
+      itemKind: null,
+      parentToolCallId: null,
+      data: JSON.stringify({
+        operation: "event_budget_filler",
+        status: "completed",
+        message: `Visible operation ${sequence}`,
+        operationId: `event-budget-${sequence}`,
+      }),
+    });
+    insertEvents(db, noopNotifier, [
+      {
+        threadId: thread.id,
+        sequence: 1,
+        type: "client/turn/requested",
+        scope: threadScope(),
+        itemId: null,
+        itemKind: null,
+        parentToolCallId: null,
+        data: JSON.stringify({
+          direction: "outbound",
+          source: "spawn",
+          initiator: "user",
+          request: { method: "turn/start", params: {} },
+          requestId: requestId(1),
+          senderThreadId: null,
+          input: [{ type: "text", text: "", mentions: [] }],
+          target: { kind: "thread-start" },
+          execution,
+        }),
+      },
+      {
+        threadId: thread.id,
+        sequence: 2,
+        type: "system/thread-provisioning",
+        scope: threadScope(),
+        itemId: null,
+        itemKind: null,
+        parentToolCallId: null,
+        data: JSON.stringify({
+          provisioningId: "tpv-first-message",
+          status: "completed",
+          environmentId: "env-first-message",
+          entries: [],
+        }),
+      },
+      {
+        threadId: thread.id,
+        sequence: 3,
+        type: "client/turn/requested",
+        scope: threadScope(),
+        itemId: null,
+        itemKind: null,
+        parentToolCallId: null,
+        data: JSON.stringify({
+          direction: "outbound",
+          source: "tell",
+          initiator: "user",
+          request: { method: "turn/start", params: {} },
+          requestId: requestId(2),
+          senderThreadId: null,
+          input: [{ type: "text", text: "Start now", mentions: [] }],
+          target: { kind: "new-turn" },
+          execution,
+        }),
+      },
+    ]);
+
+    insertEvents(
+      db,
+      noopNotifier,
+      Array.from({ length: 1_498 }, (_, index) => fillerEvent(index + 4)),
+    );
+
+    const timeline = buildPage(db, thread, 1_501, null).response;
+
+    expect(timeline.timelinePage.hasOlderRows).toBe(false);
+    expect(timeline.timelinePage.olderCursor).toBeNull();
+    expect(timeline.rows).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: "system",
+          systemKind: "operation",
+          title: "Provisioned thread",
+        }),
+        expect.objectContaining({
+          kind: "conversation",
+          role: "user",
+          text: "Start now",
+        }),
+      ]),
+    );
+
+    const budgeted = buildPage(db, thread, 1_500, null).response;
+    expect(budgeted.timelinePage.olderCursor).toEqual({
+      anchorSeq: 3,
+      anchorId: `${thread.id}:user-seed:3`,
+    });
+    expect(
+      budgeted.rows.some(
+        (row) =>
+          row.kind === "system" &&
+          row.systemKind === "operation" &&
+          row.title === "Provisioned thread",
+      ),
+    ).toBe(false);
+
+    insertEvents(db, noopNotifier, [fillerEvent(1_502), fillerEvent(1_503)]);
+    const exactFloor = buildPage(db, thread, 1_500, null).response.timelinePage;
+    expect(exactFloor.olderCursor).toEqual({
+      anchorSeq: 3,
+      anchorId: `${thread.id}:user-seed:3`,
+    });
+
+    const latest = buildPage(db, thread, LARGE_BUDGET, null, 1).response;
+    expect(latest.timelinePage.hasOlderRows).toBe(true);
+    expect(latest.rows).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: "conversation",
+          role: "user",
+          text: "Start now",
+        }),
+      ]),
+    );
+    if (latest.timelinePage.olderCursor === null) {
+      throw new Error("expected an older timeline cursor");
+    }
+
+    const older = buildPage(
+      db,
+      thread,
+      LARGE_BUDGET,
+      latest.timelinePage.olderCursor,
+      1,
+    ).response;
+    expect(older.timelinePage.hasOlderRows).toBe(false);
+    expect(older.timelinePage.olderCursor).toBeNull();
+    expect(older.rows).toEqual([
+      expect.objectContaining({
+        kind: "system",
+        systemKind: "operation",
+        title: "Provisioned thread",
+      }),
+    ]);
+  });
+
   it("treats a steer sent with nothing running as a pageable anchor", () => {
     const { db, thread } = setup();
     seedTurns(db, thread, { completeLastTurn: true, itemsPerTurn: [40] });

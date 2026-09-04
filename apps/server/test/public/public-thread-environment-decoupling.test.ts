@@ -5,6 +5,7 @@ import {
 } from "@bb/db/internal-environment-lifecycle";
 import type { EnvironmentStatus } from "@bb/domain";
 import { describe, expect, it } from "vitest";
+import { listQueuedThreadCommands } from "../helpers/commands.js";
 import { readJson } from "../helpers/json.js";
 import {
   seedEnvironment,
@@ -37,6 +38,12 @@ describe("thread environment decoupling (B*)", () => {
         environmentId: environment.id,
         status: "idle",
       });
+      const providerThreadId = "provider-unarchive-revive";
+      seedThreadRuntimeState(harness.deps, {
+        environmentId: environment.id,
+        providerThreadId,
+        threadId: thread.id,
+      });
       archiveThread(harness.db, harness.hub, thread.id);
 
       const response = await harness.app.request(
@@ -49,6 +56,17 @@ describe("thread environment decoupling (B*)", () => {
       expect(getEnvironment(harness.db, environment.id)).toMatchObject({
         status: "ready",
       });
+      expect(
+        listQueuedThreadCommands(harness, "thread.unarchive", thread.id),
+      ).toEqual([
+        expect.objectContaining({
+          environmentId: environment.id,
+          providerThreadId,
+          providerId: thread.providerId,
+          threadId: thread.id,
+          type: "thread.unarchive",
+        }),
+      ]);
     });
   });
 

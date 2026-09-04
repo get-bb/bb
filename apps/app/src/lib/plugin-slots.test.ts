@@ -11,8 +11,8 @@ import {
   resetPluginSlotStoreForTest,
   setPluginSlotRegistrations,
   subscribePluginSlots,
-  type PluginRegistrationSet,
 } from "./plugin-slots";
+import { makePluginRegistrationSet as registrationSet } from "@/test/fixtures/plugins";
 
 function SectionComponent(_props: Partial<PluginHomepageSectionProps>) {
   return null;
@@ -25,22 +25,6 @@ function DirectiveComponent(_props: PluginMessageDirectiveProps) {
 }
 function BrowserActionComponent() {
   return null;
-}
-
-function registrationSet(
-  overrides: Partial<PluginRegistrationSet> = {},
-): PluginRegistrationSet {
-  return {
-    homepageSections: [],
-    settingsSections: [],
-    navPanels: [],
-    threadPanelActions: [],
-    composerCustomizations: [],
-    sidebarFooterActions: [],
-    fileOpeners: [],
-    messageDirectives: [],
-    ...overrides,
-  };
 }
 
 afterEach(() => {

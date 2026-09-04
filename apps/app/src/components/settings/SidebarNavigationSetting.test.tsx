@@ -13,6 +13,7 @@ import {
   BUILT_IN_REPLACEMENT_PROVIDER,
 } from "@/lib/plugin-replacement-preference";
 import { SidebarNavigationSetting } from "./SidebarNavigationSetting";
+import { makePluginRegistrationSet } from "@/test/fixtures/plugins";
 
 afterEach(() => {
   cleanup();
@@ -22,22 +23,18 @@ afterEach(() => {
 
 describe("SidebarNavigationSetting", () => {
   it("defaults to automatic and lets the user pin the built-in navigation", async () => {
-    setPluginSlotRegistrations("navbar", {
-      homepageSections: [],
-      settingsSections: [],
-      navPanels: [],
-      threadPanelActions: [],
-      sidebarFooterActions: [],
-      experimentalSidebarNavigations: [
-        {
-          id: "grid",
-          title: "Navigation grid",
-          component: () => null,
-        },
-      ],
-      fileOpeners: [],
-      messageDirectives: [],
-    });
+    setPluginSlotRegistrations(
+      "navbar",
+      makePluginRegistrationSet({
+        experimentalSidebarNavigations: [
+          {
+            id: "grid",
+            title: "Navigation grid",
+            component: () => null,
+          },
+        ],
+      }),
+    );
     const store = createStore();
     render(
       <Provider store={store}>

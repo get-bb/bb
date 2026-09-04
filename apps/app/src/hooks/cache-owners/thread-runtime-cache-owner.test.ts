@@ -8,6 +8,15 @@ import { QueryObserver } from "@tanstack/react-query";
 import { describe, expect, it, vi } from "vitest";
 import { createAppQueryClient } from "@/lib/query-client";
 import {
+  makeThreadListEntry as makeThreadListEntryFixture,
+  makeThreadQueuedMessage as makeThreadQueuedMessageFixture,
+} from "@bb/test-helpers/domain-fixtures";
+import {
+  makeProjectWithThreadsResponse,
+  makeSidebarBootstrapResponse,
+} from "@/test/fixtures/projects";
+import { makeThreadTimelineResponse as makeTimelineResponse } from "@/test/fixtures/thread-responses";
+import {
   sidebarNavigationQueryKey,
   threadListQueryKey,
   threadPromptHistoryQueryKey,
@@ -36,45 +45,12 @@ import {
   rollbackUpdateQueuedMessageTransaction,
 } from "./thread-runtime-cache-owner";
 
-function makeTimelineResponse(): ThreadTimelineResponse {
-  return {
-    rows: [],
-    activePromptMode: null,
-    activeThinking: null,
-    activeWorkflows: [],
-    activeBackgroundCommands: [],
-    pendingTodos: null,
-    goal: null,
-    modelFallback: null,
-    maxSeq: 0,
-    timelinePage: {
-      kind: "latest",
-      segmentLimit: 20,
-      returnedSegmentCount: 0,
-      hasOlderRows: false,
-      olderCursor: null,
-    },
-  };
-}
-
 function makeThreadListEntry(id = "thread-1"): ThreadListEntry {
-  return {
+  return makeThreadListEntryFixture({
     id,
     projectId: "project-1",
     environmentId: "env-1",
-    providerId: "codex",
-    title: null,
-    titleFallback: null,
-    sectionId: null,
     status: "active",
-    parentThreadId: null,
-    sourceThreadId: null,
-    originKind: null,
-    originPluginId: null,
-    visibility: "visible",
-    archivedAt: null,
-    pinnedAt: null,
-    deletedAt: null,
     lastReadAt: null,
     latestAttentionAt: 50,
     createdAt: 1,
@@ -90,46 +66,27 @@ function makeThreadListEntry(id = "thread-1"): ThreadListEntry {
       activePlanModeCount: 1,
       activeGoalCount: 1,
     },
-    pinSortKey: null,
-    hasPendingInteraction: false,
     environmentHostId: "host-1",
     environmentName: "Environment",
     environmentBranchName: "main",
-    queuedWork: "none",
     environmentWorkspaceDisplayKind: "managed-worktree",
-  };
+  });
 }
 
 function makeSidebarNavigation(
   threads: ThreadListEntry[],
 ): SidebarBootstrapResponse {
-  return {
-    sections: [],
+  return makeSidebarBootstrapResponse({
     projects: [
-      {
+      makeProjectWithThreadsResponse({
         id: "project-1",
-        kind: "standard",
         name: "Project",
-        gitRemoteUrl: null,
         createdAt: 1,
         updatedAt: 1,
-        sources: [],
         threads,
-        defaultExecutionOptions: null,
-      },
+      }),
     ],
-    personalProject: {
-      id: "proj_personal",
-      kind: "personal",
-      name: "Personal",
-      gitRemoteUrl: null,
-      createdAt: 1,
-      updatedAt: 1,
-      sources: [],
-      threads: [],
-      defaultExecutionOptions: null,
-    },
-  };
+  });
 }
 
 function makeSearchResponse(thread: ThreadListEntry): ThreadSearchResponse {
@@ -145,24 +102,14 @@ function makeSearchResponse(thread: ThreadListEntry): ThreadSearchResponse {
 function makeQueuedMessage(
   message: Partial<ThreadQueuedMessage> = {},
 ): ThreadQueuedMessage {
-  return {
+  return makeThreadQueuedMessageFixture({
     id: "qmsg-1",
     threadId: "thread-1",
-    content: [{ type: "text", text: "Queued message", mentions: [] }],
     model: "codex-test",
-    reasoningLevel: "medium",
-    permissionMode: "auto",
-    serviceTier: "default",
-    groupWithNext: false,
-    sendAt: null,
-    waitingOn: null,
-    failureReason: null,
-    payload: { kind: "inline" },
-    editable: true,
     createdAt: 1,
     updatedAt: 1,
     ...message,
-  };
+  });
 }
 
 describe("thread runtime cache owner", () => {

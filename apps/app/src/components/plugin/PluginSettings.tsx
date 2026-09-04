@@ -1,4 +1,4 @@
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId, useState, type FocusEvent } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { appToast } from "@/components/ui/app-toast.js";
 import { PluginSettingsSections } from "@/components/plugin/PluginSettingsSections";
@@ -46,6 +46,7 @@ const DROPDOWN_CONTENT_CLASS =
 
 const MULTILINE_MIN_ROWS = 6;
 const MULTILINE_MAX_ROWS = 24;
+const INVALID_NUMBER_DRAFT = Symbol();
 const MULTILINE_TEXTAREA_CLASS =
   "max-h-96 min-h-32 w-full resize-y overflow-y-auto font-mono text-xs field-sizing-content";
 function multilineRows(value: string): number {
@@ -112,7 +113,7 @@ interface PluginSettingFieldProps {
   ariaInvalid: boolean;
   descriptor: PluginSettingFieldDescriptor;
   draft: string | boolean;
-  onBlur: () => void;
+  onBlur: (event: FocusEvent<HTMLInputElement | HTMLTextAreaElement>) => void;
   onChange: (value: string | boolean) => void;
   storedValue: unknown;
 }
@@ -310,7 +311,9 @@ function AutosavingPluginSetting({
   const draft = draftState.value;
   const save = useMutation({
     scope: { id: `plugin-setting:${pluginId}:${settingKey}` },
-    mutationFn: (value: string | boolean) => {
+    mutationFn: (value: string | boolean | typeof INVALID_NUMBER_DRAFT) => {
+      if (value === INVALID_NUMBER_DRAFT)
+        throw new Error("Enter a finite number");
       let settingValue: string | number | boolean | null = value;
       if (descriptor.type === "number") {
         const trimmed = typeof value === "string" ? value.trim() : "";
@@ -347,8 +350,15 @@ function AutosavingPluginSetting({
     }
   }
 
-  function saveDraft(): void {
+  function saveDraft(
+    event: FocusEvent<HTMLInputElement | HTMLTextAreaElement>,
+  ): void {
     if (descriptor.type !== "string" && descriptor.type !== "number") return;
+    if (descriptor.type === "number" && event.currentTarget.validity.badInput) {
+      setDraftState({ value: initialDraft, hasNewerDraft: false });
+      save.mutate(INVALID_NUMBER_DRAFT);
+      return;
+    }
     if (descriptor.type === "number") {
       const trimmed = typeof draft === "string" ? draft.trim() : "";
       const parsed = Number(trimmed);

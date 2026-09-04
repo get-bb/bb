@@ -2,6 +2,7 @@
 import { cleanup, fireEvent, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
+import { makeTask } from "../../test-fixtures.js";
 
 if (!window.matchMedia) {
   window.matchMedia = (query: string) => ({
@@ -23,22 +24,16 @@ afterEach(cleanup);
 const PROJECT_ID = "01HZZZZZZZZZZZZZZZZZZZZZP1";
 const TASK_ID = "01HZZZZZZZZZZZZZZZZZZZZZT1";
 
-const task = {
+const task = makeTask({
   id: TASK_ID,
   projectId: PROJECT_ID,
   number: 4,
   key: "TSK-4",
   title: "Ship task embeds",
-  description: "",
   status: "in_progress",
   priority: "high",
-  dueDate: null,
-  parentTaskId: null,
   position: 100,
-  createdAt: "2026-07-15T00:00:00.000Z",
-  updatedAt: "2026-07-15T00:00:00.000Z",
-  labelIds: [],
-};
+});
 
 function directiveProps(attributes: Record<string, string>) {
   return {

@@ -414,6 +414,7 @@ interface RestartManagedProcessArgs {
 interface SuperviseFullStackProcessesArgs {
   context: BbAppStartContext;
   delayMilliseconds: DelayMillisecondsFn;
+  isHealthyServerAnswering?: (url: string) => Promise<boolean>;
   isShutdownRequested: () => boolean;
   processes: ManagedFullStackProcesses;
   startDaemon: StartManagedProcess;
@@ -2307,6 +2308,21 @@ async function readServerHealthLaunchId(
   }
 }
 
+async function isHealthyServerAnswering(url: string): Promise<boolean> {
+  try {
+    const response = await fetch(url, {
+      signal: AbortSignal.timeout(HEALTH_CHECK_REQUEST_TIMEOUT_MS),
+    });
+    if (!response.ok) {
+      return false;
+    }
+    const health = serverHealthResponseSchema.safeParse(await response.json());
+    return health.success && health.data.ok;
+  } catch {
+    return false;
+  }
+}
+
 export async function waitForServerHealth(
   args: WaitForServerHealthArgs,
 ): Promise<void> {
@@ -3174,6 +3190,29 @@ export async function superviseFullStackProcesses(
       return "shutdown";
     }
 
+    if (exitedProcess.processName === "server") {
+      if (args.processes.serverRun === serverRun) {
+        args.processes.serverRun = null;
+      }
+      if (
+        await (args.isHealthyServerAnswering ?? isHealthyServerAnswering)(
+          `${args.context.serverUrl}/health`,
+        )
+      ) {
+        log(
+          yellow("!"),
+          `${formatManagedProcessLabel(exitedProcess.processName)} exited with ${formatProcessExitResult(
+            exitedProcess.result,
+          )} - another server is healthy; stopping host daemon`,
+        );
+        await terminateManagedFullStackProcesses({
+          processes: args.processes,
+          signal: "SIGTERM",
+        });
+        return "stopped";
+      }
+    }
+
     log(
       yellow("!"),
       `${formatManagedProcessLabel(exitedProcess.processName)} exited with ${formatProcessExitResult(
@@ -3182,9 +3221,6 @@ export async function superviseFullStackProcesses(
     );
 
     if (exitedProcess.processName === "server") {
-      if (args.processes.serverRun === serverRun) {
-        args.processes.serverRun = null;
-      }
       await args.delayMilliseconds({
         ms: MANAGED_PROCESS_RESTART_RETRY_DELAY_MS,
       });

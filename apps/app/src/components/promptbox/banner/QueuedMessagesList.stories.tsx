@@ -1,5 +1,6 @@
 import { useCallback, useState, type ReactNode } from "react";
 import type { ThreadQueuedMessage } from "@bb/domain";
+import { makeThreadQueuedMessage } from "@bb/test-helpers/domain-fixtures";
 import {
   applyQueuedMessageReorder,
   type QueuedMessageReorderRequest,
@@ -69,24 +70,14 @@ function makeQueuedMessage({
     mimeType: "image/png",
     sizeBytes: 100_000 + index * 10_000,
   }));
-  return {
+  return makeThreadQueuedMessage({
     id,
     threadId: "thr_queue",
     content: [{ type: "text", text, mentions: [] }, ...attachmentChunks],
-    model: "gpt-5.5",
-    reasoningLevel: "medium",
-    permissionMode: "auto",
-    serviceTier: "default",
-    groupWithNext: false,
-    sendAt: null,
-    waitingOn: null,
-    failureReason: null,
-    payload: { kind: "inline" },
-    editable: true,
     createdAt: STORY_NOW - 4 * MINUTE_MS,
     updatedAt: STORY_NOW - 4 * MINUTE_MS,
     ...overrides,
-  };
+  });
 }
 
 const threadBusy = { kind: "thread-busy" } as const;

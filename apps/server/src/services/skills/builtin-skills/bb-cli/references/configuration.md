@@ -31,6 +31,10 @@
 - Claude Code's `idleQueryReleaseEnabled` setting opts into closing its native
   process after 30 seconds of quiescence while keeping the bb thread resumable.
   It defaults to `false`; changes apply on the next start, resume, or turn.
+- Claude Code's `chromeEnabled` setting starts its process with `--chrome` so
+  bb threads get the Claude in Chrome browser tools. It defaults to `false`;
+  the host needs the Chrome extension and a claude.ai login. A change restarts
+  the thread's Claude process before its next turn without losing context.
 
 ## Agent Instructions
 

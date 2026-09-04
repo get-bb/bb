@@ -31,6 +31,7 @@ import {
   type SidebarSectionId,
 } from "./sidebarCollapsedAtoms";
 import { useSidebarModeSectionOrder } from "./useSidebarModeSectionOrder";
+import { makeThreadListEntry } from "@bb/test-helpers/domain-fixtures";
 
 const mockUseHosts = vi.hoisted(() => vi.fn(() => ({ data: [] })));
 
@@ -107,24 +108,12 @@ function StoredActiveModeOrderProbe() {
 }
 
 function makeThread(overrides: Partial<ThreadListEntry> = {}): ThreadListEntry {
-  return {
+  return makeThreadListEntry({
     id: "thr_machine",
     projectId: "proj_machine",
-    environmentId: null,
-    providerId: "codex",
     title: "Machine activity",
     titleFallback: "Machine activity",
-    sectionId: null,
     status: "active",
-    parentThreadId: null,
-    sourceThreadId: null,
-    originKind: null,
-    originPluginId: null,
-    visibility: "visible",
-    archivedAt: null,
-    pinnedAt: null,
-    pinSortKey: null,
-    deletedAt: null,
     lastReadAt: 1,
     latestAttentionAt: 2,
     createdAt: 1,
@@ -136,18 +125,12 @@ function makeThread(overrides: Partial<ThreadListEntry> = {}): ThreadListEntry {
       activePlanModeCount: 1,
       activeGoalCount: 0,
     },
-    hasPendingInteraction: false,
-    environmentHostId: null,
-    environmentName: null,
-    environmentBranchName: null,
-    queuedWork: "none",
-    environmentWorkspaceDisplayKind: "other",
     runtime: {
       displayStatus: "active",
       hostReconnectGraceExpiresAt: null,
     },
     ...overrides,
-  };
+  });
 }
 
 function MachineModeProbe({ threads = [] }: { threads?: ThreadListEntry[] }) {

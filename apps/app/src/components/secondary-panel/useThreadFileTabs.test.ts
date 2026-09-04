@@ -2,7 +2,6 @@
 
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import type { TerminalSession } from "@bb/server-contract";
 import { createElement, type ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
@@ -24,6 +23,8 @@ import {
   resetPluginSlotStoreForTest,
   setPluginSlotRegistrations,
 } from "@/lib/plugin-slots";
+import { makeTerminalSession as terminalSession } from "@/test/fixtures/terminal-sessions";
+import { makePluginRegistrationSet } from "@/test/fixtures/plugins";
 
 const syncMocks = vi.hoisted(() => ({
   scheduleLocalThreadTabsMigration: vi.fn(),
@@ -47,8 +48,6 @@ vi.mock("@/lib/thread-tabs-sync", async (importOriginal) => {
   };
 });
 
-type TerminalSessionOverrides = Partial<TerminalSession>;
-
 const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: false } },
 });
@@ -67,26 +66,6 @@ function createDeferred<T>() {
     resolve = nextResolve;
   });
   return { promise, resolve };
-}
-
-function terminalSession(overrides: TerminalSessionOverrides): TerminalSession {
-  return {
-    id: "term_1",
-    threadId: "thr_1",
-    environmentId: "env_1",
-    hostId: "host_1",
-    title: "Terminal",
-    initialCwd: "/workspace",
-    cols: 100,
-    rows: 30,
-    status: "running",
-    exitCode: null,
-    closeReason: null,
-    createdAt: 1,
-    updatedAt: 1,
-    lastUserInputAt: null,
-    ...overrides,
-  };
 }
 
 afterEach(() => {
@@ -959,22 +938,19 @@ describe("useThreadFileTabs file opener diversion", () => {
   }
 
   function registerNotesOpener() {
-    setPluginSlotRegistrations("notes", {
-      homepageSections: [],
-      settingsSections: [],
-      navPanels: [],
-      threadPanelActions: [],
-      sidebarFooterActions: [],
-      fileOpeners: [
-        {
-          id: "editor",
-          title: "Notes editor",
-          extensions: ["md"],
-          component: NotesEditor,
-        },
-      ],
-      messageDirectives: [],
-    });
+    setPluginSlotRegistrations(
+      "notes",
+      makePluginRegistrationSet({
+        fileOpeners: [
+          {
+            id: "editor",
+            title: "Notes editor",
+            extensions: ["md"],
+            component: NotesEditor,
+          },
+        ],
+      }),
+    );
   }
 
   it("automatically diverts matching working-tree files to the opener tab", () => {

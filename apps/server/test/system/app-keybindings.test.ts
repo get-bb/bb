@@ -152,6 +152,20 @@ describe("app keybindings", () => {
         shortcut: { key: "n", mod: true, shift: true },
       });
       expect(
+        config.keybindings.find((binding) => binding.command === "app.back"),
+      ).toMatchObject({
+        desktopOnly: false,
+        shortcut: {
+          key: "Escape",
+          mod: false,
+          meta: false,
+          control: false,
+          alt: false,
+          shift: false,
+        },
+        when: { all: ["mainSurface"], none: ["modalOpen"] },
+      });
+      expect(
         config.keybindings.find(
           (binding) => binding.command === "panel.reopenClosedTab",
         ),

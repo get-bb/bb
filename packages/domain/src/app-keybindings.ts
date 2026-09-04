@@ -50,6 +50,7 @@ export const APP_COMMAND_IDS = [
   "pane.maximize.toggle",
   "pane.close",
   "window.new",
+  "app.back",
   "settings.open",
   "settings.openServers",
   "sidebar.toggle",
