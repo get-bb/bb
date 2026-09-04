@@ -1561,6 +1561,23 @@ describe("acp bridge", () => {
     expect(agentMessageTexts()).toContain("echo:hello there");
   });
 
+  it("rebuilds the agent with environment from a later turn", async () => {
+    const envVars = { FAKE_ACP_LOAD_SESSION: "1", FAKE_ACP_PROMPT_ERROR: "1" };
+    const { providerThreadId } = await startThread({ envVars });
+    const turnId = sendTurnRequest("turn/start", providerThreadId, {
+      input: [{ type: "text", text: "fresh environment", mentions: [] }],
+      options: executionOptions({
+        envVars: { FAKE_ACP_PROMPT_ERROR: "0" },
+        providerOptions: { acpLaunchSpec: acpLaunchSpec({ envVars }) },
+      }),
+    });
+
+    expect((await waitForResponse(turnId)).error).toBeUndefined();
+    expect(await waitForTurnCompleted()).toMatchObject({ status: "completed" });
+    expect(agentMessageTexts()).toContain("echo:fresh environment");
+    expect(notifications("session/replaced")).toHaveLength(1);
+  });
+
   it("authenticates ACP sessions with cached tokens when advertised", async () => {
     const { providerThreadId } = await startThread({
       envVars: { FAKE_ACP_AUTH_METHODS: "cached_token" },

@@ -101,6 +101,12 @@ const extensionPath = flag("--extension");
 const processLogPath = process.env.FAKE_PI_PROCESS_LOG;
 const commandLogPath = process.env.FAKE_PI_COMMAND_LOG;
 const promptDumpPath = process.env.FAKE_PI_PROMPT_DUMP;
+if (process.env.FAKE_PI_ENV_LOG) {
+  appendFileSync(
+    process.env.FAKE_PI_ENV_LOG,
+    `${process.env.FAKE_PI_ENV_MARKER ?? ""}\n`,
+  );
+}
 if (sessionFile !== undefined) {
   mkdirSync(dirname(sessionFile), { recursive: true });
   if (!existsSync(sessionFile)) {

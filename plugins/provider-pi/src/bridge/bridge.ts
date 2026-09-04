@@ -9,6 +9,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { isDeepStrictEqual } from "node:util";
 import { z } from "zod";
 import {
   BRIDGE_JSON_RPC_ERRORS,
@@ -16,6 +17,7 @@ import {
   PROVIDER_BRIDGE_PROTOCOL_VERSION,
   THREAD_DELTA_GRAMMAR_V3,
   THREAD_DELTA_NOTIFICATION_METHOD,
+  buildShellEnvOverrides,
   bridgeRequestEnvelopeSchema,
   createBridgeIo,
   createBridgeLineHandler,
@@ -1031,6 +1033,13 @@ async function reconcileTurnOptions(
 ): Promise<ThreadSession> {
   const turnOptions = buildPiTurnOptions(options);
   const construction = threadSession.construction;
+  const shellEnvOverrides =
+    options.envVars && Object.keys(options.envVars).length > 0
+      ? { BB_THREAD_ID: threadId, ...buildShellEnvOverrides(options.envVars) }
+      : undefined;
+  const environmentChanged =
+    shellEnvOverrides !== undefined &&
+    !isDeepStrictEqual(shellEnvOverrides, construction.shellEnvOverrides);
   const changedModelRequest =
     turnOptions.model !== undefined && turnOptions.model !== construction.model
       ? turnOptions.model
@@ -1038,7 +1047,11 @@ async function reconcileTurnOptions(
   const thinkingLevelChanged =
     turnOptions.thinkingLevel !== undefined &&
     turnOptions.thinkingLevel !== construction.thinkingLevel;
-  if (changedModelRequest === undefined && !thinkingLevelChanged) {
+  if (
+    !environmentChanged &&
+    changedModelRequest === undefined &&
+    !thinkingLevelChanged
+  ) {
     return threadSession;
   }
   const nextModel =
@@ -1050,11 +1063,12 @@ async function reconcileTurnOptions(
     (threadSession.constructionModel === undefined ||
       threadSession.constructionModel.provider !== nextModel.provider ||
       threadSession.constructionModel.id !== nextModel.id);
-  if (!modelChanged && !thinkingLevelChanged) {
+  if (!environmentChanged && !modelChanged && !thinkingLevelChanged) {
     return threadSession;
   }
   const replacement = await rebuildThreadSession(threadId, threadSession, {
     ...construction,
+    ...(shellEnvOverrides === undefined ? {} : { shellEnvOverrides }),
     ...(turnOptions.model === undefined ? {} : { model: turnOptions.model }),
     ...(turnOptions.thinkingLevel === undefined
       ? {}
