@@ -12,6 +12,10 @@ export const BUILT_IN_SIDEBAR_NAVIGATION_KEYS = {
   automations: "__bb__/automations",
 } as const;
 
+export const DEFAULT_HIDDEN_SIDEBAR_NAVIGATION_KEYS = [
+  BUILT_IN_SIDEBAR_NAVIGATION_KEYS.searchThreads,
+] as const;
+
 export const DEFAULT_BUILT_IN_SIDEBAR_NAVIGATION_ORDER = [
   BUILT_IN_SIDEBAR_NAVIGATION_KEYS.newThread,
   BUILT_IN_SIDEBAR_NAVIGATION_KEYS.searchThreads,
@@ -37,8 +41,7 @@ interface ArrangePluginNavPanelPreferencesArgs<
   TPanel extends PluginNavPanelIdentity,
 > extends ArrangePluginNavPanelsArgs<TPanel> {
   storedVisibleKeys: readonly string[] | null;
-  defaultVisibleKeys: readonly string[];
-  defaultVisibleCount: number;
+  defaultHiddenKeys: readonly string[];
 }
 
 interface ArrangedPluginNavPanelPreferences<
@@ -66,8 +69,7 @@ export function arrangePluginNavPanelPreferences<
   panels,
   storedOrder,
   storedVisibleKeys,
-  defaultVisibleKeys,
-  defaultVisibleCount,
+  defaultHiddenKeys,
 }: ArrangePluginNavPanelPreferencesArgs<TPanel>): ArrangedPluginNavPanelPreferences<TPanel> {
   const { ordered, normalizedOrder } = arrangePluginNavPanels({
     panels,
@@ -77,16 +79,12 @@ export function arrangePluginNavPanelPreferences<
     storedVisibleKeys === null
       ? null
       : [...new Set(storedVisibleKeys.filter((key) => key.length > 0))];
-  const defaultVisibleKeySet = new Set(defaultVisibleKeys);
-  const visibleKeys = normalizedVisibleKeys ?? [
-    ...ordered
-      .filter((panel) => defaultVisibleKeySet.has(getPluginNavPanelKey(panel)))
-      .map(getPluginNavPanelKey),
-    ...ordered
-      .filter((panel) => !defaultVisibleKeySet.has(getPluginNavPanelKey(panel)))
-      .slice(0, Math.max(0, defaultVisibleCount))
-      .map(getPluginNavPanelKey),
-  ];
+  const defaultHiddenKeySet = new Set(defaultHiddenKeys);
+  const visibleKeys =
+    normalizedVisibleKeys ??
+    ordered
+      .map(getPluginNavPanelKey)
+      .filter((key) => !defaultHiddenKeySet.has(key));
   const visibleSet = new Set(visibleKeys);
 
   return {
@@ -107,7 +105,9 @@ export function togglePluginNavPanelVisibility(
   key: string,
   visible: boolean,
 ): string[] {
-  const normalized = [...new Set(visibleKeys.filter((item) => item.length > 0))];
+  const normalized = [
+    ...new Set(visibleKeys.filter((item) => item.length > 0)),
+  ];
   if (visible) {
     return normalized.includes(key) ? normalized : [...normalized, key];
   }
