@@ -488,6 +488,13 @@ describe("Account Pool plugin", () => {
         reason: "Account Pool hub token for this machine",
         secret: true,
       },
+      {
+        name: "ENABLE_TOOL_SEARCH",
+        value: "true",
+        reason:
+          "Claude Code turns tool search off behind a custom base URL; the hub forwards tool_reference blocks",
+        secret: false,
+      },
     ]);
     await expect(
       fixture.host.harness.behavior.resolveProviderEnvHealth("claude-code", {

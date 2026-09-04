@@ -44,8 +44,9 @@ bb pool bypass <thread-id> [--off]
 The hub starts immediately, even before an account is configured, so newly
 added or enabled accounts are available without a plugin reload. With an
 enabled account whose secret file remains readable and valid, the plugin
-contributes its server route and a distinct secret token to Claude Code
-sessions on every host. Tokens are never printed. `status` prunes tokens for
+contributes its server route, a distinct secret token, and
+`ENABLE_TOOL_SEARCH=true` (tool search stays on through the hub) to Claude
+Code sessions on every host. Tokens are never printed. `status` prunes tokens for
 unenrolled machines and shows token timestamps plus recently routed threads
 whose machines need a local Claude login before the pool can be disabled
 safely. Rotation keeps the prior token valid for ten minutes. Agents should use

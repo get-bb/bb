@@ -135,6 +135,13 @@ export function createAccountPoolPlugin(
           reason: "Account Pool hub token for this machine",
           secret: true,
         },
+        {
+          name: "ENABLE_TOOL_SEARCH",
+          value: "true",
+          reason:
+            "Claude Code turns tool search off behind a custom base URL; the hub forwards tool_reference blocks",
+          secret: false,
+        },
       ];
     });
     bb.providers.experimental_contributeEnvHealth("claude-code", async () =>

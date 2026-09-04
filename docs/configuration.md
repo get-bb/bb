@@ -633,8 +633,11 @@ history, and agent transcripts. The hub starts immediately, so a newly added
 or enabled account is available without a plugin reload.
 
 When the plugin has an enabled account whose secret file is readable and
-valid, it automatically contributes the hub route and a machine-specific
-secret token to Claude Code sessions on every host. Tokens are never printed
+valid, it automatically contributes the hub route, a machine-specific secret
+token, and `ENABLE_TOOL_SEARCH=true` to Claude Code sessions on every host.
+Claude Code disables tool search behind a custom base URL by default; the hub
+forwards `tool_reference` blocks unchanged, so the override keeps it on.
+Tokens are never printed
 by the CLI. Plugin startup and `bb pool status` remove token files for machines
 that are no longer enrolled. Status lists token mint and last-use timestamps
 plus recently routed threads whose machines do not have a usable local Claude
