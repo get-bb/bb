@@ -433,12 +433,19 @@ export class AccountPoolHub {
     adapter: ProviderAdapter,
   ): Promise<UpstreamResult> {
     const controller = new AbortController();
+    const abortFromRequest = () => controller.abort(request.signal.reason);
     this.activeControllers.add(controller);
     this.increment(account.id);
+    if (request.signal.aborted) abortFromRequest();
+    else
+      request.signal.addEventListener("abort", abortFromRequest, {
+        once: true,
+      });
     let released = false;
     const release = () => {
       if (released) return;
       released = true;
+      request.signal.removeEventListener("abort", abortFromRequest);
       this.activeControllers.delete(controller);
       this.decrement(account.id);
     };

@@ -474,6 +474,7 @@ describe("Account Pool plugin", () => {
         input: [{ type: "message", id: "prefix" }],
       }),
     );
+    await vi.waitFor(() => expect(socket.sent).toHaveLength(1));
     const prewarm = completedResponse(socket.sent[0]);
     await socket.receive(
       JSON.stringify({
@@ -483,6 +484,7 @@ describe("Account Pool plugin", () => {
         input: [{ type: "message", id: "delta-one" }],
       }),
     );
+    await vi.waitFor(() => expect(socket.sent).toHaveLength(3));
     expect(JSON.parse(String(socket.sent[1]))).toMatchObject({
       type: "response.created",
     });
@@ -495,6 +497,7 @@ describe("Account Pool plugin", () => {
         input: [{ type: "message", id: "delta-two" }],
       }),
     );
+    await vi.waitFor(() => expect(socket.sent).toHaveLength(5));
     expect(socket.sent.map((frame) => JSON.parse(String(frame)).type)).toEqual([
       "response.completed",
       "response.created",
@@ -604,6 +607,7 @@ describe("Account Pool plugin", () => {
         input: [],
       }),
     );
+    await vi.waitFor(() => expect(socket.closeCalls).toHaveLength(1));
     expect(JSON.parse(String(socket.sent[0]))).toMatchObject({
       type: "response.failed",
       response: { error: { code: "unknown_previous_response_id" } },
@@ -612,6 +616,103 @@ describe("Account Pool plugin", () => {
       { code: 1011, reason: "unknown previous_response_id" },
     ]);
   });
+
+  it("cancels a Codex upstream read when its WebSocket closes", async () => {
+    const dataDir = await mkdtemp(
+      path.join(tmpdir(), "bb-account-pool-codex-cancel-"),
+    );
+    let upstreamReadCanceled = false;
+    const upstreamFetch = async (
+      _input: string | URL | Request,
+      init?: RequestInit,
+    ): Promise<Response> => {
+      const signal = init?.signal;
+      if (signal === undefined || signal === null) {
+        throw new Error("Expected the upstream request to carry a signal.");
+      }
+      const body = new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(
+            new TextEncoder().encode(
+              'event: response.created\ndata: {"type":"response.created","response":{"id":"streaming"}}\n\n',
+            ),
+          );
+          signal.addEventListener(
+            "abort",
+            () => {
+              upstreamReadCanceled = true;
+              controller.error(signal.reason);
+            },
+            { once: true },
+          );
+        },
+      });
+      return new Response(body, {
+        headers: { "content-type": "text/event-stream" },
+      });
+    };
+    const host = createFakePluginHost({
+      pluginId: "account-pool",
+      dataDir,
+      settings: {
+        codexUpstreamBaseUrl: "https://example.com",
+      },
+      sdk: sdkStubs(),
+    });
+    await createAccountPoolPlugin({
+      fetch: upstreamFetch,
+      importCodexCredentials: async () => ({
+        accessToken: "access",
+        refreshToken: "refresh",
+        idToken: null,
+        accountId: "account",
+        email: null,
+        expiresAt: null,
+      }),
+    })(host.bb);
+    const service = host.harness.behavior.runService("hub");
+    cleanups.push(async () => {
+      service.controller.abort();
+      await service.done;
+      await host.harness.lifecycle.dispose();
+      await fs.rm(dataDir, { recursive: true, force: true });
+    });
+    await vi.waitFor(async () => {
+      expect(
+        statusSchema.parse(await host.harness.behavior.callRpc("status", null))
+          .accepting,
+      ).toBe(true);
+    });
+    await host.harness.behavior.callRpc("account.add", {
+      provider: "codex",
+      source: { kind: "import" },
+      label: null,
+      priority: 100,
+    });
+    const { token } = await resolveCodexToken(host);
+    const socket = await host.harness.experimental_openWebSocket(
+      "/v1/responses",
+      { headers: { "x-bb-account-pool-token": token } },
+    );
+    await socket.receive(
+      JSON.stringify({
+        type: "response.create",
+        model: "gpt-5",
+        input: [],
+      }),
+    );
+    await vi.waitFor(() => expect(socket.sent).toHaveLength(1));
+    await socket.close(1000, "interrupted");
+    await vi.waitFor(async () => {
+      expect(upstreamReadCanceled).toBe(true);
+      expect(
+        statusSchema.parse(await host.harness.behavior.callRpc("status", null))
+          .inFlight,
+      ).toBe(0);
+    });
+    expect(socket.sent).toHaveLength(1);
+  });
+
   it("prunes token files for unenrolled hosts on startup and status", async () => {
     const dataDir = await mkdtemp(path.join(tmpdir(), "bb-pool-prune-"));
     const secretDir = path.join(

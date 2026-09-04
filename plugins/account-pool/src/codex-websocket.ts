@@ -37,6 +37,9 @@ export function createCodexWebSocketHandlers(
   let lastInput: z.infer<typeof envelopeSchema>["input"] = [];
   let lastOutput: z.infer<typeof envelopeSchema>["input"] = [];
   let prewarms = 0;
+  let closed = false;
+  let activeForward: AbortController | null = null;
+  let forwardQueue = Promise.resolve();
 
   function failure(message: string, code: string): string {
     return JSON.stringify({
@@ -46,13 +49,27 @@ export function createCodexWebSocketHandlers(
     });
   }
 
+  function send(socket: ExperimentalPluginWebSocket, data: string): boolean {
+    if (socket.readyState !== 1) return false;
+    try {
+      socket.send(data);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   async function forward(
     socket: ExperimentalPluginWebSocket,
     raw: string,
+    signal: AbortSignal,
   ): Promise<void> {
     const parsed = envelopeSchema.safeParse(JSON.parse(raw));
     if (!parsed.success) {
-      socket.send(failure("Invalid response.create frame.", "invalid_request"));
+      send(
+        socket,
+        failure("Invalid response.create frame.", "invalid_request"),
+      );
       return;
     }
     const {
@@ -63,7 +80,8 @@ export function createCodexWebSocketHandlers(
     } = parsed.data;
     if (previousId !== undefined) {
       if (lastId === null || previousId !== lastId) {
-        socket.send(
+        send(
+          socket,
           failure(
             `Unknown previous_response_id ${JSON.stringify(previousId)}; reconnect and resend full input.`,
             "unknown_previous_response_id",
@@ -79,7 +97,8 @@ export function createCodexWebSocketHandlers(
       lastId = `resp_account_pool_prewarm_${prewarms}`;
       lastInput = [...body.input];
       lastOutput = [];
-      socket.send(
+      send(
+        socket,
         JSON.stringify({
           type: "response.completed",
           sequence_number: 0,
@@ -111,12 +130,14 @@ export function createCodexWebSocketHandlers(
         method: "POST",
         headers,
         body: JSON.stringify(body),
+        signal,
       }),
       "codex",
     );
     if (!response.ok || response.body === null) {
       const detail = await response.text().catch(() => "");
-      socket.send(
+      send(
+        socket,
         failure(
           detail || `Upstream returned HTTP ${response.status}.`,
           "upstream_error",
@@ -140,7 +161,7 @@ export function createCodexWebSocketHandlers(
         lastId = completed.data.response.id;
         lastOutput = completed.data.response.output;
       }
-      socket.send(JSON.stringify(event));
+      send(socket, JSON.stringify(event));
     };
     while (true) {
       const chunk = await reader.read();
@@ -170,16 +191,32 @@ export function createCodexWebSocketHandlers(
         socket.close(1003, "text frames required");
         return;
       }
-      try {
-        await forward(socket, data);
-      } catch (error) {
-        socket.send(
-          failure(
-            error instanceof Error ? error.message : String(error),
-            "proxy_error",
-          ),
-        );
-      }
+      forwardQueue = forwardQueue.then(async () => {
+        if (closed) return;
+        const controller = new AbortController();
+        activeForward = controller;
+        try {
+          await forward(socket, data, controller.signal);
+        } catch (error) {
+          if (!controller.signal.aborted) {
+            send(
+              socket,
+              failure(
+                error instanceof Error ? error.message : String(error),
+                "proxy_error",
+              ),
+            );
+          }
+        } finally {
+          if (activeForward === controller) activeForward = null;
+        }
+      });
+    },
+    onClose() {
+      closed = true;
+      activeForward?.abort(
+        new Error("Codex WebSocket closed before the response completed."),
+      );
     },
   };
 }
