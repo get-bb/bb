@@ -752,7 +752,9 @@ export function AppLayout({ children }: AppLayoutProps) {
       <ThreadTitleMentionResourcesProvider {...titleMentionResources}>
         <ThreadActionsProvider>
           <SidebarStateBridge>
-            <BackToAppCommandHandler routePath={backToAppRoutePath} />
+            {backToAppRoutePath !== null && !isSidebarResizing ? (
+              <BackToAppCommandHandler routePath={backToAppRoutePath} />
+            ) : null}
             <AppLayoutSidebar
               mode={
                 isGlobalSettingsView
