@@ -14,6 +14,7 @@ import type { BbRealtime } from "./realtime-types.js";
 import { createStatusArea, type StatusArea } from "./areas/status.js";
 import { createSkillsArea, type SkillsArea } from "./areas/skills.js";
 import { createThemeArea, type ThemeArea } from "./areas/theme.js";
+import { createCockpitArea, type CockpitArea } from "./areas/cockpit.js";
 import { createSystemArea, type SystemArea } from "./areas/system.js";
 import { createTerminalsArea, type TerminalsArea } from "./areas/terminals.js";
 import { createThreadsArea, type ThreadsArea } from "./areas/threads.js";
@@ -35,6 +36,7 @@ export interface CreateBbSdkWithGuideArgs extends CreateBbSdkArgs {
 }
 
 export interface BbSdkAreas extends BbRealtime {
+  cockpit: CockpitArea;
   environments: EnvironmentsArea;
   files: FilesArea;
   hosts: HostsArea;
@@ -64,6 +66,7 @@ export function createBbSdk(
     transport: args.transport,
   });
   const areas: BbSdkAreas = {
+    cockpit: createCockpitArea(sdkContext),
     environments: createEnvironmentsArea(sdkContext),
     files: createFilesArea(sdkContext),
     hosts: createHostsArea(sdkContext),

@@ -15,6 +15,7 @@ import { registerFileRoutes } from "./routes/files.js";
 import { registerHostRoutes } from "./routes/hosts.js";
 import { registerProjectRoutes } from "./routes/projects.js";
 import { registerThreadSectionRoutes } from "./routes/thread-sections.js";
+import { registerCockpitRoutes } from "./routes/cockpit.js";
 import { registerSystemRoutes } from "./routes/system.js";
 import { registerTerminalRoutes } from "./routes/terminals.js";
 import { registerThreadRoutes } from "./routes/threads/index.js";
@@ -633,6 +634,7 @@ export function createApp(
   registerThreadRoutes(publicApi, deps);
   registerQueueRoutes(publicApi, deps);
   registerSystemRoutes(publicApi, deps, pluginService);
+  registerCockpitRoutes(publicApi, deps);
   registerPluginCatalogRoutes(publicApi, pluginCatalogService);
   registerPluginRoutes(publicApi, deps, pluginService);
   registerSkillsRegistryRoutes(publicApi, deps);

@@ -50,3 +50,4 @@ Run `bb guide <chapter>` for command details:
   plugins              Installing plugins, plugin marketplaces, and their
                        contributed bb commands
   automations          Scheduling and editing recurring or one-shot work
+  cockpit              Discover agents, sessions, and attention; execute one control action

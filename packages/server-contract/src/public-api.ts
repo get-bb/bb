@@ -44,6 +44,10 @@ import type {
 } from "./common.js";
 import type {
   CloseTerminalRequest,
+  CockpitActionRequest,
+  CockpitDiscovery,
+  CockpitDiscoveryHttpQuery,
+  CockpitReceipt,
   CommandListResponse,
   CopyProjectAttachmentsRequest,
   CreateHostJoinCodeRequest,
@@ -304,6 +308,8 @@ import {
   terminalOutputQuerySchema,
   terminalResizeRequestSchema,
   threadTimelineQuerySchema,
+  cockpitActionRequestSchema,
+  cockpitDiscoveryHttpQuerySchema,
   systemCliSkillsStatusQuerySchema,
   systemInstallCliSkillsRequestSchema,
   timelineTurnSummaryDetailsQuerySchema,
@@ -1487,6 +1493,25 @@ export const publicApiRoutes = {
         systemVersionQuerySchema,
       ),
       response: jsonResponse<SystemVersionResponse>(),
+    }),
+  },
+
+  cockpit: {
+    discover: defineRoute({
+      path: "/cockpit",
+      method: "get",
+      request: optionalQueryRequest<EmptyInput, CockpitDiscoveryHttpQuery>(
+        cockpitDiscoveryHttpQuerySchema,
+      ),
+      response: jsonResponse<CockpitDiscovery>(),
+    }),
+    act: defineRoute({
+      path: "/cockpit/actions",
+      method: "post",
+      request: jsonRequest<EmptyInput, CockpitActionRequest>(
+        cockpitActionRequestSchema,
+      ),
+      response: jsonResponse<CockpitReceipt>(),
     }),
   },
 };

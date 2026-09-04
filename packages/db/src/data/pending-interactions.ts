@@ -189,6 +189,17 @@ export function getPendingInteractionByProviderRequest(
   );
 }
 
+export function listActivePendingInteractions(
+  db: PendingInteractionReadConnection,
+): PendingInteractionRow[] {
+  return db
+    .select()
+    .from(pendingInteractions)
+    .where(inArray(pendingInteractions.status, ["pending", "resolving"]))
+    .orderBy(desc(pendingInteractions.createdAt))
+    .all();
+}
+
 export function listActivePluginPendingInteractions(
   db: PendingInteractionReadConnection,
 ): PendingInteractionRow[] {

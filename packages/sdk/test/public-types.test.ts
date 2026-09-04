@@ -221,6 +221,7 @@ interface NodeSurface {
 }
 
 type ExpectedBbSdkKey =
+  | "cockpit"
   | "environments"
   | "files"
   | "guide"
@@ -236,6 +237,8 @@ type ExpectedBbSdkKey =
   | "theme"
   | "threadSections"
   | "threads";
+
+type ExpectedCockpitKey = "act" | "discover";
 
 type ExpectedRealtimeKey = "subscribe";
 
@@ -503,6 +506,9 @@ describe("SDK public type entrypoints", () => {
 
   it("snapshots every SDK area and nested method group", () => {
     expectTypeOf<keyof RootBbRealtime>().toEqualTypeOf<ExpectedRealtimeKey>();
+    expectTypeOf<
+      keyof RootBbSdk["cockpit"]
+    >().toEqualTypeOf<ExpectedCockpitKey>();
     expectTypeOf<
       keyof RootBbSdk["environments"]
     >().toEqualTypeOf<ExpectedEnvironmentsKey>();

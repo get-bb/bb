@@ -34,6 +34,8 @@ BB_HOST_DAEMON_PORT only for an intentional non-default target.
   projects, select machines, or create environments.
 - Read references/thread-operation.md for messages, queues, interactions,
   panes, terminals, inspection, and long-running commands.
+- Read references/cockpit.md for the authenticated cockpit-control contract
+  shared by API, CLI, and MCP.
 - Read references/failure-recovery.md when a thread fails, stops, or needs plan
   or goal recovery.
 - Read references/theme-commands.md for palette and favicon commands. Read

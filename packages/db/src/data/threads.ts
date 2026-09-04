@@ -1317,6 +1317,30 @@ export function listRunningThreads(
     .map((row) => ({ ...row, hostId: row.hostId ?? null }));
 }
 
+export interface LiveThreadWithHostRow {
+  hostId: string | null;
+  thread: ThreadRow;
+}
+
+export function listLiveThreadsWithHost(
+  db: DbQueryConnection,
+): LiveThreadWithHostRow[] {
+  return db
+    .select({
+      hostId: environments.hostId,
+      thread: getTableColumns(threads),
+    })
+    .from(threads)
+    .leftJoin(environments, eq(environments.id, threads.environmentId))
+    .where(liveThreads())
+    .orderBy(asc(threads.id))
+    .all()
+    .map((row) => ({
+      hostId: row.hostId ?? null,
+      thread: row.thread,
+    }));
+}
+
 export function listThreads(db: DbConnection, options: ListThreadsOptions) {
   let query = db
     .select()

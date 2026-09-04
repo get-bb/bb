@@ -95,6 +95,13 @@ This index lists every command path that the core CLI registers. Read the task-s
 - `bb terminal close`
 - `bb terminal stop`
 
+## cockpit
+
+- `bb cockpit`
+- `bb cockpit discover`
+- `bb cockpit act`
+- `bb cockpit mcp`
+
 ## thread
 
 - `bb thread`

@@ -6,6 +6,7 @@ export * from "./app-keybindings.js";
 export * from "./app-theme.js";
 export * from "./background-task.js";
 export * from "./change-kinds.js";
+export * from "./cockpit-control.js";
 export * from "./code-theme.js";
 export * from "./debounced-callback-scheduler.js";
 export * from "./environment-lifecycle.js";

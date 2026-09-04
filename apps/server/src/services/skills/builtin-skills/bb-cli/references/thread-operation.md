@@ -2,6 +2,11 @@
 
 ## Coordinating Work
 
+- For a tablet or other neutral client that should not call thread APIs
+  directly, use `bb cockpit discover` and `bb cockpit act`. They share one
+  authenticated cockpit-control contract with the HTTP API and MCP. See
+  references/cockpit.md.
+
 - Use one clear owner per task.
 - Spawn independent tasks separately when parallel work is useful.
 - Let threads work after spawning. Do not poll with shell sleeps, repeated log
