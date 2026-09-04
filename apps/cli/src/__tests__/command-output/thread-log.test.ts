@@ -284,9 +284,7 @@ describe("bb thread log command output", () => {
       async (input: { query: { afterSeq?: string; limit?: string } }) => {
         const afterSeq = Number(input.query.afterSeq ?? 0);
         const limit = Math.min(Number(input.query.limit), 100);
-        return events
-          .filter((event) => event.seq > afterSeq)
-          .slice(0, limit);
+        return events.filter((event) => event.seq > afterSeq).slice(0, limit);
       },
     );
     stubServerApi({
@@ -305,6 +303,51 @@ describe("bb thread log command output", () => {
     expect(collectLogLines(vi.mocked(console.error)).join("\n")).toContain(
       "--after-seq 100",
     );
+  });
+
+  it("bb thread log --json retries smaller raw-event pages after the byte limit", async () => {
+    const events = Array.from({ length: 5 }, (_, index) => ({
+      id: `evt-${index + 1}`,
+      scope: { kind: "thread" },
+      threadId: "thread-json-log",
+      type: "system/error",
+      data: { code: "provider_unavailable" },
+      createdAt: 20 + index,
+      seq: index + 1,
+    }));
+    const getEvents = vi.fn(
+      async (input: { query: { afterSeq?: string; limit?: string } }) => {
+        const limit = Number(input.query.limit);
+        if (limit > 2) {
+          return new Response(
+            JSON.stringify({
+              code: "event_data_too_large",
+              message: "Event response exceeds the 8 MiB limit",
+            }),
+            { status: 413, headers: { "Content-Type": "application/json" } },
+          );
+        }
+        const afterSeq = Number(input.query.afterSeq ?? 0);
+        return events.filter((event) => event.seq > afterSeq).slice(0, limit);
+      },
+    );
+    stubServerApi({
+      "v1.threads.:id.events.$get": getEvents,
+    });
+
+    await runCommand(
+      ["thread", "log", "thread-json-log", "--json", "--limit", "3"],
+      register,
+    );
+
+    expect(
+      JSON.parse(String(vi.mocked(console.log).mock.calls[0]?.[0])),
+    ).toEqual(events.slice(0, 3));
+    expect(getEvents.mock.calls.map((call) => call[0].query)).toEqual([
+      { limit: "4" },
+      { limit: "2" },
+      { afterSeq: "2", limit: "2" },
+    ]);
   });
 
   it("bb thread log --json stays quiet when the page is not full", async () => {
@@ -384,6 +427,68 @@ describe("bb thread log command output", () => {
       Array.from({ length: 13 }, () => "100"),
     );
     expect(collectLogLines(vi.mocked(console.error))).toEqual([]);
+  });
+
+  it("bb thread log --json --all keeps paging after reducing a byte-heavy page", async () => {
+    const events = Array.from({ length: 5 }, (_, index) => ({
+      id: `evt-${index + 1}`,
+      scope: { kind: "thread" },
+      threadId: "thread-json-log",
+      type: "system/error",
+      data: { code: "provider_unavailable" },
+      createdAt: 20 + index,
+      seq: index + 1,
+    }));
+    const getEvents = vi.fn(
+      async (input: { query: { afterSeq?: string; limit?: string } }) => {
+        const limit = Number(input.query.limit);
+        if (limit > 2) {
+          return new Response(
+            JSON.stringify({
+              code: "event_data_too_large",
+              message: "Event response exceeds the 8 MiB limit",
+            }),
+            { status: 413, headers: { "Content-Type": "application/json" } },
+          );
+        }
+        const afterSeq = Number(input.query.afterSeq ?? 0);
+        return events.filter((event) => event.seq > afterSeq).slice(0, limit);
+      },
+    );
+    stubServerApi({
+      "v1.threads.:id.events.$get": getEvents,
+    });
+
+    await runCommand(
+      ["thread", "log", "thread-json-log", "--json", "--all"],
+      register,
+    );
+
+    expect(
+      JSON.parse(String(vi.mocked(console.log).mock.calls[0]?.[0])),
+    ).toEqual(events);
+    expect(getEvents.mock.calls.map((call) => call[0].query.limit)).toEqual([
+      "100",
+      "50",
+      "25",
+      "13",
+      "7",
+      "4",
+      "2",
+      "2",
+      "2",
+    ]);
+    expect(getEvents.mock.calls.map((call) => call[0].query.afterSeq)).toEqual([
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      "2",
+      "4",
+    ]);
   });
 
   it("bb thread log prints an older-history notice when the timeline page is cut", async () => {
