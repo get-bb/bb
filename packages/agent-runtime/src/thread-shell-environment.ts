@@ -35,16 +35,23 @@ export interface ResolvedThreadEnvironmentEntry {
   reason?: string;
 }
 
+export interface DroppedThreadEnvironmentContribution {
+  name: string;
+  plugin: string;
+}
+
 interface ResolveThreadEnvironmentArgs extends ThreadShellEnvironmentArgs {
   baseShellEnv: AgentRuntimeShellEnvironment | undefined;
   contributedEnv: readonly AgentRuntimeContributedEnvEntry[];
 }
 
 export function resolveThreadEnvironment(args: ResolveThreadEnvironmentArgs): {
+  droppedContributions: DroppedThreadEnvironmentContribution[];
   envVars: Record<string, string>;
   entries: ResolvedThreadEnvironmentEntry[];
 } {
   const envVars = buildThreadShellEnvironment(args);
+  const droppedContributions: DroppedThreadEnvironmentContribution[] = [];
   const entries: ResolvedThreadEnvironmentEntry[] = Object.entries(envVars).map(
     ([name, value]) => ({ name, source: "shell", value }),
   );
@@ -55,9 +62,17 @@ export function resolveThreadEnvironment(args: ResolveThreadEnvironmentArgs): {
     } else {
       const serverUrl = args.baseShellEnv?.BB_SERVER_URL;
       if (serverUrl === undefined) {
-        throw new Error(
-          `Cannot resolve serverPath environment contribution ${contribution.name} without BB_SERVER_URL`,
-        );
+        entries.push({
+          name: contribution.name,
+          source: contribution.source,
+          value: { masked: true },
+          reason: `${contribution.reason} (dropped: no BB_SERVER_URL)`,
+        });
+        droppedContributions.push({
+          name: contribution.name,
+          plugin: contribution.source.plugin,
+        });
+        continue;
       }
       value = `${serverUrl}${contribution.value.serverPath}`;
     }
@@ -73,5 +88,5 @@ export function resolveThreadEnvironment(args: ResolveThreadEnvironmentArgs): {
       reason: contribution.reason,
     });
   }
-  return { envVars, entries };
+  return { droppedContributions, envVars, entries };
 }

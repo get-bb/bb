@@ -62,6 +62,7 @@ import type {
 } from "./types.js";
 import {
   resolveThreadEnvironment,
+  type DroppedThreadEnvironmentContribution,
   type ResolvedThreadEnvironmentEntry,
 } from "./thread-shell-environment.js";
 import { bridgeLaunchProcessKey } from "./bridge-launch-process-key.js";
@@ -1129,6 +1130,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
   }
 
   function emitResolvedProviderEnvironment(args: {
+    droppedContributions: DroppedThreadEnvironmentContribution[];
     entries: ResolvedThreadEnvironmentEntry[];
     providerThreadId: string;
     threadId: string;
@@ -1140,6 +1142,18 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
       entries: args.entries,
       scope: { kind: "thread" },
     });
+    for (const contribution of args.droppedContributions) {
+      options.onEvent({
+        type: "provider/warning",
+        threadId: args.threadId,
+        providerThreadId: args.providerThreadId,
+        category: "config",
+        summary: `Dropped environment variable "${contribution.name}" from plugin "${contribution.plugin}".`,
+        details:
+          "BB_SERVER_URL is unavailable, so its serverPath contribution was not applied.",
+        scope: { kind: "thread" },
+      });
+    }
   }
 
   function resolveRuntimeThreadEnvironment(args: {
@@ -1148,6 +1162,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
     projectId?: string;
     threadId: string;
   }): {
+    droppedContributions: DroppedThreadEnvironmentContribution[];
     envVars: Record<string, string>;
     entries: ResolvedThreadEnvironmentEntry[];
   } {
@@ -1572,6 +1587,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
             );
             resolved = result.providerThreadId;
             emitResolvedProviderEnvironment({
+              droppedContributions: resolvedEnvironment.droppedContributions,
               entries: resolvedEnvironment.entries,
               providerThreadId: resolved,
               threadId,
@@ -1857,6 +1873,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
           const plan = proc.adapter.buildCommandPlan(adapterCommand);
           if (plan.kind === "noop") {
             emitResolvedProviderEnvironment({
+              droppedContributions: resolvedEnvironment.droppedContributions,
               entries: resolvedEnvironment.entries,
               providerThreadId: adapterCommand.providerThreadId,
               threadId,
@@ -1884,6 +1901,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
             updateSessionRestoreCapability(threadId, result.sessionRestorable);
             resolved = result.providerThreadId;
             emitResolvedProviderEnvironment({
+              droppedContributions: resolvedEnvironment.droppedContributions,
               entries: resolvedEnvironment.entries,
               providerThreadId: resolved,
               threadId,
@@ -1989,6 +2007,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
             });
             if (environmentChanged) {
               emitResolvedProviderEnvironment({
+                droppedContributions: resolvedEnvironment.droppedContributions,
                 entries: resolvedEnvironment.entries,
                 providerThreadId,
                 threadId,
@@ -2101,6 +2120,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
             });
             if (environmentChanged) {
               emitResolvedProviderEnvironment({
+                droppedContributions: resolvedEnvironment.droppedContributions,
                 entries: resolvedEnvironment.entries,
                 providerThreadId,
                 threadId,

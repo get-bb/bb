@@ -333,6 +333,71 @@ describe("createAgentRuntime lifecycle", () => {
       await runtime.shutdown();
     });
 
+    it("drops unresolved server paths without preventing thread start", async () => {
+      const record = createScriptedEchoRequestRecord();
+      const events: ThreadEvent[] = [];
+      const runtime = createScriptedEchoRuntime({
+        runtime: {
+          workspacePath: tmpDir,
+          env: record.env,
+          shellEnv: { PATH: "/usr/bin" },
+          onEvent: (event) => events.push(event),
+        },
+      });
+
+      await runtime.startThread({
+        environmentId: "env-1",
+        threadId: "t1",
+        projectId: "p1",
+        providerId: "fake",
+        contributedEnv: [
+          {
+            name: "AUTH_PROXY_URL",
+            value: { serverPath: "/plugins/env-test/auth" },
+            source: { plugin: "env-test" },
+            reason: "Use the authenticated server proxy",
+            secret: true,
+          },
+        ],
+        options: fullRuntimeOptions,
+      });
+
+      const threadStart = record.last("thread/start");
+      expect(threadStart).toBeDefined();
+      expect(threadStart?.params).toEqual(
+        expect.objectContaining({
+          options: expect.objectContaining({
+            envVars: expect.not.objectContaining({
+              AUTH_PROXY_URL: expect.anything(),
+            }),
+          }),
+        }),
+      );
+      expect(
+        events.find((event) => event.type === "provider.env-resolved"),
+      ).toMatchObject({
+        entries: expect.arrayContaining([
+          {
+            name: "AUTH_PROXY_URL",
+            source: { plugin: "env-test" },
+            value: { masked: true },
+            reason:
+              "Use the authenticated server proxy (dropped: no BB_SERVER_URL)",
+          },
+        ]),
+      });
+      expect(events).toContainEqual(
+        expect.objectContaining({
+          type: "provider/warning",
+          category: "config",
+          summary:
+            'Dropped environment variable "AUTH_PROXY_URL" from plugin "env-test".',
+        }),
+      );
+
+      await runtime.shutdown();
+    });
+
     it("does not configure provider skills unless skill roots are supplied", async () => {
       const record = createScriptedEchoRequestRecord();
       const runtime = createScriptedEchoRuntime({
