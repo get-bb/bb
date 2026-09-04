@@ -84,7 +84,7 @@ interface BannerShellProps {
   initiallyExpanded: boolean;
   errorMessage?: string | null;
   footer?: (layout: BannerLayout) => ReactNode;
-  children?: ReactNode;
+  children?: (isExpanded: boolean) => ReactNode;
   sourceThread?: ThreadPendingInteractionSourceThread;
   testId: string;
 }
@@ -239,24 +239,26 @@ function PlanReviewRequestBanner({
         />
       )}
     >
-      <div
-        className="overflow-hidden rounded-lg border border-border bg-card"
-        data-testid="plan-review-request"
-      >
+      {() => (
         <div
-          className={cn(
-            getDetailScrollMaxHeightClass("base"),
-            "overflow-auto px-3 py-2",
-          )}
+          className="overflow-hidden rounded-lg border border-border bg-card"
+          data-testid="plan-review-request"
         >
-          <MarkdownPreview content={plan} className="text-xs" />
+          <div
+            className={cn(
+              getDetailScrollMaxHeightClass("base"),
+              "overflow-auto px-3 py-2",
+            )}
+          >
+            <MarkdownPreview content={plan} className="text-xs" />
+          </div>
+          {planFilePath ? (
+            <p className="truncate border-t border-border px-3 py-2 font-mono text-xs text-muted-foreground">
+              {planFilePath}
+            </p>
+          ) : null}
         </div>
-        {planFilePath ? (
-          <p className="truncate border-t border-border px-3 py-2 font-mono text-xs text-muted-foreground">
-            {planFilePath}
-          </p>
-        ) : null}
-      </div>
+      )}
     </BannerShell>
   );
 }
@@ -385,7 +387,9 @@ function BannerShell({
           </h3>
         ) : null}
         {children ? (
-          <div className={title ? "mt-2" : undefined}>{children}</div>
+          <div className={title ? "mt-2" : undefined}>
+            {children(isExpanded)}
+          </div>
         ) : null}
         {footer ? (
           <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -484,7 +488,7 @@ function ApprovalPendingInteractionBanner({
         />
       )}
     >
-      {view.body}
+      {() => view.body}
     </BannerShell>
   );
 }
@@ -507,12 +511,15 @@ function ThreadUserQuestionPendingInteractionBanner({
       sourceThread={sourceThread}
       testId="user-question-banner"
     >
-      <UserQuestionAnswerForm
-        interactionId={interaction.id}
-        isResolving={isResolving}
-        questions={questions}
-        threadId={threadId}
-      />
+      {(isExpanded) => (
+        <UserQuestionAnswerForm
+          interactionId={interaction.id}
+          isResolving={isResolving}
+          questions={questions}
+          shortcutsEnabled={isExpanded}
+          threadId={threadId}
+        />
+      )}
     </BannerShell>
   );
 }
