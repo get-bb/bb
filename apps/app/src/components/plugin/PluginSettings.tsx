@@ -494,6 +494,12 @@ function PluginSettingsContent({ plugin }: { plugin: PluginListItem }) {
   );
   const settingsAvailable =
     plugin.enabled && PLUGIN_STATUSES_WITH_SETTINGS.includes(plugin.status);
+  const showUnavailableSectionsHint =
+    enabled &&
+    plugin.enabled &&
+    hasSettingsSections &&
+    !settingsAvailable &&
+    !plugin.hasSettings;
   return (
     <div className="mx-auto w-full max-w-5xl">
       <header className="flex items-center justify-between gap-4">
@@ -527,6 +533,11 @@ function PluginSettingsContent({ plugin }: { plugin: PluginListItem }) {
         {enabled && settingsAvailable && hasSettingsSections ? (
           <PluginSettingsSections pluginId={plugin.id} />
         ) : null}
+        {showUnavailableSectionsHint ? (
+          <ResourceDetailPanel surface="recessed" className="px-3 py-3">
+            <PluginSettingsUnavailableMessage plugin={plugin} />
+          </ResourceDetailPanel>
+        ) : null}
         {enabled && plugin.enabled && plugin.hasSettings ? (
           <ResourceDetailConfigurationSection label="Configuration">
             <PluginSettingsDetail plugin={plugin} />
@@ -556,6 +567,20 @@ function PluginSettingsContent({ plugin }: { plugin: PluginListItem }) {
   );
 }
 
+function PluginSettingsUnavailableMessage({
+  plugin,
+}: {
+  plugin: PluginListItem;
+}) {
+  return (
+    <p className="text-xs text-muted-foreground">
+      {plugin.enabled
+        ? `Settings are unavailable while the plugin is ${plugin.status}.`
+        : "Enable this plugin to edit its settings."}
+    </p>
+  );
+}
+
 export function PluginSettingsDetail({ plugin }: { plugin: PluginListItem }) {
   const settingsAvailable =
     plugin.enabled && PLUGIN_STATUSES_WITH_SETTINGS.includes(plugin.status);
@@ -566,11 +591,7 @@ export function PluginSettingsDetail({ plugin }: { plugin: PluginListItem }) {
       {settingsAvailable ? (
         <PluginSettingsForm key={plugin.id} pluginId={plugin.id} />
       ) : (
-        <p className="text-xs text-muted-foreground">
-          {plugin.enabled
-            ? `Settings are unavailable while the plugin is ${plugin.status}.`
-            : "Enable this plugin to edit its settings."}
-        </p>
+        <PluginSettingsUnavailableMessage plugin={plugin} />
       )}
     </ResourceDetailPanel>
   );

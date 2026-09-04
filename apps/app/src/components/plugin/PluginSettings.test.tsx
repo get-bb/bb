@@ -762,6 +762,48 @@ describe("PluginSettingsPage", () => {
     );
     expect(screen.queryByRole("heading", { name: "Configuration" })).toBeNull();
   });
+
+  it("keeps the unavailable hint for a section-only plugin", async () => {
+    function ConnectSettings() {
+      return <div>Custom connect settings</div>;
+    }
+    setPluginSlotRegistrations(
+      "connect",
+      makePluginRegistrationSet({
+        settingsSections: [{ id: "remote", component: ConnectSettings }],
+      }),
+    );
+    const connect = makeInstalledPlugin({
+      id: "connect",
+      name: "Connect",
+      enabled: true,
+      status: "error",
+      hasSettings: false,
+      provenance: "builtin",
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => jsonOk({ plugins: [connect] })),
+    );
+
+    const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
+    render(
+      <MemoryRouter>
+        <QueryClientWrapper>
+          <PluginSettingsPage pluginId="connect" />
+        </QueryClientWrapper>
+      </MemoryRouter>,
+    );
+
+    const hint = await screen.findByText(
+      "Settings are unavailable while the plugin is error.",
+    );
+    expect(hint.closest(".overflow-hidden")?.className).toContain(
+      "bg-surface-recessed/70",
+    );
+    expect(screen.queryByText("Custom connect settings")).toBeNull();
+    expect(screen.queryByRole("heading", { name: "Configuration" })).toBeNull();
+  });
 });
 
 describe("PluginSettingsDetail settings gating", () => {
