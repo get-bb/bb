@@ -113,6 +113,9 @@ export async function executeAgentRun(
     const thread = sdkThreadSchema.parse(
       await bb.sdk.threads.spawn({
         projectId: args.automation.projectId,
+        ...(args.automation.createdByThreadId === null
+          ? {}
+          : { parentThreadId: args.automation.createdByThreadId }),
         environment: args.execution.environment,
         prompt: args.execution.prompt,
         title: args.automation.name,

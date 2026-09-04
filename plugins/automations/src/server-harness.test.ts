@@ -144,6 +144,7 @@ async function createAgentAutomation(
       | ReturnType<typeof oneShotTrigger>
       | { triggerType: "schedule"; cron: string; timezone: string };
     targetThreadId?: string;
+    createdByThreadId?: string;
   } = {},
 ) {
   return automationResponseSchema.parse(
@@ -154,6 +155,9 @@ async function createAgentAutomation(
       trigger: options.trigger ?? oneShotTrigger(),
       execution: agentExecution(options.targetThreadId),
       origin: "human",
+      ...(options.createdByThreadId === undefined
+        ? {}
+        : { createdByThreadId: options.createdByThreadId }),
     }),
   );
 }
@@ -1169,6 +1173,46 @@ describe("automations server plugin harness", () => {
     expect(next.run.status).toBe("running");
 
     await reloaded.harness.dispose();
+  });
+
+  it("parents an agent run to the thread that created its automation", async () => {
+    const { harness } = await bootAutomationsPlugin();
+    const automation = await createAgentAutomation(harness, {
+      createdByThreadId: "thr_creator",
+    });
+
+    await harness.callRpc("automations_run", {
+      projectId: PROJECT_ID,
+      automationId: automation.id,
+    });
+    await vi.waitFor(() =>
+      expect(harness.sdk.callsTo("threads.spawn")).toHaveLength(1),
+    );
+
+    expect(harness.sdk.callsTo("threads.spawn")[0]?.[0]).toMatchObject({
+      parentThreadId: "thr_creator",
+    });
+
+    await harness.dispose();
+  });
+
+  it("leaves an agent run parentless without a creating thread", async () => {
+    const { harness } = await bootAutomationsPlugin();
+    const automation = await createAgentAutomation(harness);
+
+    await harness.callRpc("automations_run", {
+      projectId: PROJECT_ID,
+      automationId: automation.id,
+    });
+    await vi.waitFor(() =>
+      expect(harness.sdk.callsTo("threads.spawn")).toHaveLength(1),
+    );
+
+    expect(
+      harness.sdk.callsTo("threads.spawn")[0]?.[0],
+    ).not.toHaveProperty("parentThreadId");
+
+    await harness.dispose();
   });
 
   it("dispatches a due agent automation from one sweep tick and closes it from thread.idle", async () => {
