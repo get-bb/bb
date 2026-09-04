@@ -1016,6 +1016,7 @@ describe("Account Pool plugin", () => {
     expect(help.stdout).toContain("--code-stdin");
     expect(help.stdout).toContain("--api-key-stdin");
     expect(help.stdout).toContain("Unsafe: exposes the key");
+    expect(help.stdout).toContain("account refresh <id>");
     const list = await fixture.host.harness.behavior.runCli([
       "account",
       "list",
@@ -1028,6 +1029,13 @@ describe("Account Pool plugin", () => {
     const account = listed.accounts[0];
     if (account === undefined) throw new Error("CLI account was not listed.");
     expect(account).toMatchObject({ label: "Claude API key", priority: 100 });
+    expect(
+      await fixture.host.harness.behavior.runCli([
+        "account",
+        "refresh",
+        account.id,
+      ]),
+    ).toMatchObject({ exitCode: 0 });
     expect(
       (
         await fixture.host.harness.behavior.runCli([
