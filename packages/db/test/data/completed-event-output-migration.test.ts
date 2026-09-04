@@ -176,10 +176,7 @@ function insertLegacyImageGeneration(args: {
     .run();
 }
 
-function migrateLegacyImageGeneration(
-  db: DbConnection,
-  migratedAt: number,
-) {
+function migrateLegacyImageGeneration(db: DbConnection, migratedAt: number) {
   return migrateNextLegacyImageGenerationOutput(db, {
     limit: 10,
     migratedAt,
@@ -443,6 +440,47 @@ describe("completed event output migration", () => {
     restarted.$client.close();
   });
 
+  it("advances past a byte-large value below the UTF-16 threshold across restart", () => {
+    const migratedAt = 1_800_000_000_000;
+    const setupResult = setup();
+    insertLegacyOutput({
+      createdAt: migratedAt - 2,
+      db: setupResult.db,
+      eventId: "evt_multibyte_below_threshold",
+      itemKind: "commandExecution",
+      output: "é".repeat(20_000),
+      outputPath: "aggregatedOutput",
+      sequence: 1,
+      threadId: setupResult.thread.id,
+    });
+    insertLegacyOutput({
+      createdAt: migratedAt - 1,
+      db: setupResult.db,
+      eventId: "evt_after_multibyte",
+      itemKind: "commandExecution",
+      output: "a".repeat(40_000),
+      outputPath: "aggregatedOutput",
+      sequence: 2,
+      threadId: setupResult.thread.id,
+    });
+
+    expect(migrateCommandOutput(setupResult.db, migratedAt)).toMatchObject({
+      action: "scanned",
+      migratedRows: 0,
+    });
+    const serialized = setupResult.db.$client.serialize();
+    setupResult.db.$client.close();
+
+    const restarted = createConnection(serialized);
+    expect(migrateCommandOutput(restarted, migratedAt)).toMatchObject({
+      action: "migrated",
+      eventId: "evt_after_multibyte",
+      migratedRows: 1,
+    });
+    expect(restarted.select().from(retainedEventOutputs).all()).toHaveLength(1);
+    restarted.$client.close();
+  });
+
   it("persists and reuses a bounded scan window across advances and restart", () => {
     const migratedAt = 1_800_000_000_000;
     const output = "window-" + "v".repeat(40_000);
@@ -619,9 +657,9 @@ describe("completed event output migration", () => {
       8 * 1024 * 1024,
       migratedAt,
     );
-    expect(
-      hydrated && readLegacyImageGenerationOutput(hydrated.data),
-    ).toBe(output);
+    expect(hydrated && readLegacyImageGenerationOutput(hydrated.data)).toBe(
+      output,
+    );
     expect(
       JSON.parse(hydrated?.data ?? "{}").rawEvent.params.item.truncation,
     ).toBeUndefined();
@@ -663,9 +701,7 @@ describe("completed event output migration", () => {
         .select()
         .from(maintenanceScanCursors)
         .all()
-        .every((cursor) =>
-          cursor.policy.startsWith("legacy_image_generation"),
-        ),
+        .every((cursor) => cursor.policy.startsWith("legacy_image_generation")),
     ).toBe(true);
     restarted.$client.close();
   });
@@ -722,15 +758,76 @@ describe("completed event output migration", () => {
       retained: false,
     });
     expect(db.select().from(retainedEventOutputs).all()).toEqual([]);
-    expect(migrateLegacyImageGeneration(db, migratedAt).action).toBe(
-      "scanned",
-    );
+    expect(migrateLegacyImageGeneration(db, migratedAt).action).toBe("scanned");
     expect(
-      db.select({ data: events.data })
+      db
+        .select({ data: events.data })
         .from(events)
         .where(eq(events.id, "evt_malformed_image"))
         .get()?.data,
     ).toBe(malformedData);
     db.$client.close();
+  });
+
+  it("advances past a malformed legacy image candidate across restart", () => {
+    const migratedAt = 1_800_000_000_000;
+    const setupResult = setup();
+    const malformedData = JSON.stringify({
+      providerId: "codex",
+      rawEvent: {
+        jsonrpc: "2.0",
+        method: "item/completed",
+        params: {
+          item: {
+            failure: null,
+            id: "malformed-image",
+            result: "malformed-" + "m".repeat(40_000),
+            status: "futureStatus",
+            type: "imageGeneration",
+          },
+        },
+      },
+      rawType: "item/completed",
+    });
+    setupResult.db
+      .insert(events)
+      .values({
+        createdAt: migratedAt - 2,
+        data: malformedData,
+        id: "evt_malformed_image_before_valid",
+        itemId: null,
+        itemKind: null,
+        parentToolCallId: null,
+        providerThreadId: "codex-thread",
+        scopeKind: "turn",
+        sequence: 1,
+        threadId: setupResult.thread.id,
+        turnId: "turn-malformed-image",
+        type: "provider/unhandled",
+      })
+      .run();
+    insertLegacyImageGeneration({
+      createdAt: migratedAt - 1,
+      db: setupResult.db,
+      eventId: "evt_valid_image_after_malformed",
+      output: "valid-" + "v".repeat(40_000),
+      sequence: 2,
+      threadId: setupResult.thread.id,
+    });
+
+    expect(
+      migrateLegacyImageGeneration(setupResult.db, migratedAt),
+    ).toMatchObject({ action: "scanned", migratedRows: 0 });
+    const serialized = setupResult.db.$client.serialize();
+    setupResult.db.$client.close();
+
+    const restarted = createConnection(serialized);
+    expect(migrateLegacyImageGeneration(restarted, migratedAt)).toMatchObject({
+      action: "migrated",
+      eventId: "evt_valid_image_after_malformed",
+      migratedRows: 1,
+    });
+    expect(restarted.select().from(retainedEventOutputs).all()).toHaveLength(1);
+    restarted.$client.close();
   });
 });

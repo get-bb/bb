@@ -29,7 +29,7 @@ const COMPLETED_EVENT_OUTPUT_MIGRATION_CURSOR_VERSION = 1;
 const COMPLETED_EVENT_OUTPUT_MIGRATION_COMPLETED_AT = -1;
 export const DEFAULT_CLOSED_SESSION_PRUNE_BATCH_SIZE = 1_000;
 export const DEFAULT_DESTROYED_ENVIRONMENT_EVENT_DETACH_BATCH_SIZE = 50;
-export const DEFAULT_COMPLETED_EVENT_OUTPUT_MIGRATION_SCAN_LIMIT = 250;
+export const DEFAULT_COMPLETED_EVENT_OUTPUT_MIGRATION_SCAN_LIMIT = 25;
 export const DEFAULT_DESTROYED_ENVIRONMENT_PRUNE_BATCH_SIZE = 10;
 export const MAX_COMPLETED_EVENT_OUTPUT_MIGRATION_EVENT_DATA_BYTES =
   8 * 1024 * 1024;
@@ -306,7 +306,7 @@ function findCompletedEventOutputCandidate(
         WHERE type = ?
           AND item_kind = ?
           AND created_at < ?
-          AND (created_at, id) >= (?, ?)
+          AND (created_at, id) > (?, ?)
           AND (created_at, id) <= (?, ?)
           AND CASE
           WHEN octet_length(data) > ? THEN 0
@@ -383,7 +383,7 @@ function findLegacyImageGenerationCandidate(
         FROM events
         WHERE type = ?
           AND created_at < ?
-          AND (created_at, id) >= (?, ?)
+          AND (created_at, id) > (?, ?)
           AND (created_at, id) <= (?, ?)
           AND CASE
           WHEN octet_length(data) > ? THEN 0
