@@ -632,11 +632,13 @@ is the default API-key path for agents. The compatibility form `--api-key
 history, and agent transcripts. The hub starts immediately, so a newly added
 or enabled account is available without a plugin reload.
 
-When the plugin has an enabled account, it automatically contributes the hub
-route and a machine-specific secret token to Claude Code sessions on every
-host. Tokens are never printed by the CLI. `bb pool status` lists token mint
-and last-use timestamps plus recently routed threads whose machines do not
-have a usable local Claude login. Rotate one machine's token with
+When the plugin has an enabled account whose secret file is readable and
+valid, it automatically contributes the hub route and a machine-specific
+secret token to Claude Code sessions on every host. Tokens are never printed
+by the CLI. Plugin startup and `bb pool status` remove token files for machines
+that are no longer enrolled. Status lists token mint and last-use timestamps
+plus recently routed threads whose machines do not have a usable local Claude
+login. Rotate one machine's token with
 `bb pool token rotate --machine <id-or-name>`; the prior token remains valid
 for ten minutes so in-flight requests can drain. Bypass or restore routing for
 one thread with `bb pool bypass <thread-id>` or

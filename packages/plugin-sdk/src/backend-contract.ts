@@ -1349,11 +1349,11 @@ export interface PluginProviders {
   experimental_contributeEnvHealth(
     providerId: string,
     resolve: (
-      context: PluginProviderEnvHealthContext,
+      context: ExperimentalPluginProviderEnvHealthContext,
     ) =>
-      | PluginProviderEnvHealth
+      | ExperimentalPluginProviderEnvHealth
       | null
-      | Promise<PluginProviderEnvHealth | null>,
+      | Promise<ExperimentalPluginProviderEnvHealth | null>,
   ): void;
 }
 
@@ -1370,11 +1370,11 @@ export interface ExperimentalPluginProviderEnvEntry {
   secret: boolean;
 }
 
-export interface PluginProviderEnvHealthContext {
+export interface ExperimentalPluginProviderEnvHealthContext {
   hostId: string;
 }
 
-export interface PluginProviderEnvHealth {
+export interface ExperimentalPluginProviderEnvHealth {
   label: string;
   statusMessage: string;
 }

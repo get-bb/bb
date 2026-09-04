@@ -263,6 +263,23 @@ export class HubTokenStore {
       .sort((left, right) => left.hostId.localeCompare(right.hostId));
   }
 
+  async prune(hostIds: readonly string[]): Promise<void> {
+    await this.initialize();
+    const enrolled = new Set(hostIds);
+    const stale = [...this.tokens.keys()].filter(
+      (hostId) => !enrolled.has(hostId),
+    );
+    await Promise.all(
+      stale.map((hostId) =>
+        this.serialized(hostId, async () => {
+          await fs.rm(this.tokenPath(hostId), { force: true });
+          this.tokens.delete(hostId);
+          this.persistedLastUsedAt.delete(hostId);
+        }),
+      ),
+    );
+  }
+
   private create(hostId: string): StoredHubToken {
     return storedHubTokenSchema.parse({
       hostId,

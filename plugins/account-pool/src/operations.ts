@@ -106,9 +106,10 @@ export class PoolOperations {
   }
 
   async status(): Promise<PoolStatus> {
-    const [status, hosts, routedThreadsWithoutLocalLogin] = await Promise.all([
+    const hosts = await this.listHosts();
+    await this.hubTokens.prune(hosts.map((host) => host.id));
+    const [status, routedThreadsWithoutLocalLogin] = await Promise.all([
       this.hub.status(),
-      this.listHosts(),
       this.routedThreadsWithoutLocalLogin(),
     ]);
     const hostNames = new Map(hosts.map((host) => [host.id, host.name]));
@@ -149,8 +150,17 @@ export class PoolOperations {
     return { threadId, bypassed };
   }
 
-  async hasEnabledAccount(): Promise<boolean> {
-    return (await this.accounts.list()).some((account) => account.enabled);
+  async hasUsableEnabledAccount(): Promise<boolean> {
+    for (const account of await this.accounts.list()) {
+      if (!account.enabled) continue;
+      try {
+        await this.accounts.readSecret(account.id);
+        return true;
+      } catch {
+        continue;
+      }
+    }
+    return false;
   }
 
   async routedThreadsWithoutLocalLogin(): Promise<RoutedThreadStatus[]> {

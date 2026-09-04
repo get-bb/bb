@@ -7,7 +7,9 @@ provider environment contribution. When the provider bridge reports
 `unauthenticated` or `expired`, the server may present the provider as ready
 with the returned label and status message. Returning `null` preserves the
 bridge result. The resolver is ignored unless the same plugin also contributes
-environment variables to that provider.
+environment variables to that provider. The resolver receives an
+`ExperimentalPluginProviderEnvHealthContext` and returns an
+`ExperimentalPluginProviderEnvHealth` or `null`.
 
 **Audit before stabilizing.**
 

@@ -220,6 +220,50 @@ async function addApiAccount(
 }
 
 describe("Account Pool plugin", () => {
+  it("prunes token files for unenrolled hosts on startup and status", async () => {
+    const dataDir = await mkdtemp(path.join(tmpdir(), "bb-pool-prune-"));
+    const secretDir = path.join(
+      dataDir,
+      "plugins",
+      "account-pool",
+      "secrets",
+      "accounts",
+    );
+    const seededTokens = new HubTokenStore(secretDir);
+    await seededTokens.initialize();
+    await seededTokens.forHost("host-gone");
+    const goneTokenFile = path.join(secretDir, "hub-token-host-gone.json");
+    await expect(fs.access(goneTokenFile)).resolves.toBeUndefined();
+    const host = createFakePluginHost({
+      pluginId: "account-pool",
+      dataDir,
+      sdk: sdkStubs(),
+    });
+    await createAccountPoolPlugin()(host.bb);
+    cleanups.push(async () => {
+      await host.harness.lifecycle.dispose();
+      await fs.rm(dataDir, { recursive: true, force: true });
+    });
+    await expect(fs.access(goneTokenFile)).rejects.toThrow();
+    await host.harness.behavior.callRpc("account.add", {
+      provider: "claude",
+      source: { kind: "api-key", apiKey: "sk-account" },
+      label: null,
+      priority: 100,
+    });
+    await resolveToken(host, "host-two", "thread-two");
+    const hostTwoTokenFile = path.join(secretDir, "hub-token-host-two.json");
+    await expect(fs.access(hostTwoTokenFile)).resolves.toBeUndefined();
+    host.harness.sdk.stub("hosts.list", async () => [
+      { id: "host-one", name: "One" },
+    ]);
+    const status = statusSchema.parse(
+      await host.harness.behavior.callRpc("status", null),
+    );
+    expect(status.hosts).toEqual([]);
+    await expect(fs.access(hostTwoTokenFile)).rejects.toThrow();
+  });
+
   it("uses a single-process token cache and throttles last-use file writes", async () => {
     let now = 1_000;
     const dataDir = await mkdtemp(path.join(tmpdir(), "bb-pool-tokens-"));
@@ -479,6 +523,37 @@ describe("Account Pool plugin", () => {
     ]);
     expect(off.exitCode).toBe(0);
     expect(await resolveToken(fixture.host)).toBe(fixture.key);
+  });
+
+  it("withholds env and proxied health when an enabled account secret is missing", async () => {
+    const upstream = await startUpstream(async (request, response) => {
+      await readRequestBody(request);
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end("{}");
+    });
+    cleanups.push(upstream.close);
+    const fixture = await createFixture({ upstreamUrl: upstream.url });
+    const accountSecretFile = path.join(
+      fixture.dataDir,
+      "plugins",
+      "account-pool",
+      "secrets",
+      "accounts",
+      `account-${fixture.account.id}.json`,
+    );
+    await fs.rm(accountSecretFile);
+    await expect(
+      fixture.host.harness.behavior.resolveProviderEnv("claude-code", {
+        threadId: "thread-without-secret",
+        projectId: "project-one",
+        hostId: "host-one",
+      }),
+    ).resolves.toEqual([]);
+    await expect(
+      fixture.host.harness.behavior.resolveProviderEnvHealth("claude-code", {
+        hostId: "host-one",
+      }),
+    ).resolves.toBeNull();
   });
 
   it("rotates a machine token with a ten-minute grace window", async () => {

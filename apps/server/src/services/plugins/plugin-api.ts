@@ -46,8 +46,8 @@ import type {
   PluginProviderDeclaration,
   ExperimentalPluginProviderEnvContext,
   ExperimentalPluginProviderEnvEntry,
-  PluginProviderEnvHealth,
-  PluginProviderEnvHealthContext,
+  ExperimentalPluginProviderEnvHealth,
+  ExperimentalPluginProviderEnvHealthContext,
   PluginProviders,
   PluginRealtime,
   PluginRpc,
@@ -286,8 +286,11 @@ export type PluginProviderEnvResolver = (
   | Promise<readonly ExperimentalPluginProviderEnvEntry[]>;
 
 export type PluginProviderEnvHealthResolver = (
-  context: PluginProviderEnvHealthContext,
-) => PluginProviderEnvHealth | null | Promise<PluginProviderEnvHealth | null>;
+  context: ExperimentalPluginProviderEnvHealthContext,
+) =>
+  | ExperimentalPluginProviderEnvHealth
+  | null
+  | Promise<ExperimentalPluginProviderEnvHealth | null>;
 
 function wrapSdkForPlugin(sdk: BbSdk, pluginId: string): BbSdk {
   return {

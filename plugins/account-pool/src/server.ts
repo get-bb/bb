@@ -76,6 +76,8 @@ export function createAccountPoolPlugin(
     const now = options.now ?? Date.now;
     const hubTokens = new HubTokenStore(secretDir, now);
     await hubTokens.initialize();
+    const enrolledHosts = await bb.sdk.hosts.list();
+    await hubTokens.prune(enrolledHosts.map((host) => host.id));
     const routing = new RoutingStore(bb.storage.kv, now);
     const db = bb.storage.database();
     bb.storage.migrate(db, QUOTA_MIGRATIONS);
@@ -112,7 +114,7 @@ export function createAccountPoolPlugin(
     bb.providers.experimental_contributeEnv("claude-code", async (context) => {
       if (
         (await routing.isBypassed(context.threadId)) ||
-        !(await operations.hasEnabledAccount())
+        !(await operations.hasUsableEnabledAccount())
       ) {
         return [];
       }
@@ -136,7 +138,7 @@ export function createAccountPoolPlugin(
       ];
     });
     bb.providers.experimental_contributeEnvHealth("claude-code", async () =>
-      (await operations.hasEnabledAccount())
+      (await operations.hasUsableEnabledAccount())
         ? {
             label: "Proxied",
             statusMessage: "Credentials are provided by the Account Pool hub.",

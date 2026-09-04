@@ -70,11 +70,13 @@ bb pool bypass <thread-id> [--off]
 ```
 
 Newly added or enabled accounts are available without a plugin reload. With an
-enabled account, Claude Code sessions receive the pool route and a distinct
-secret token for their machine. Tokens are never printed. `status` shows token
-timestamps and recently routed threads whose machines need a local Claude
-login before the pool can be disabled safely. Rotation keeps the prior token
-valid for ten minutes. Agents should pipe API keys to `--api-key-stdin`;
+enabled account whose secret file remains readable and valid, Claude Code
+sessions receive the pool route and a distinct secret token for their machine.
+Tokens are never printed. `status` prunes tokens for unenrolled machines and
+shows token timestamps plus recently routed threads whose machines need a
+local Claude login before the pool can be disabled safely. Rotation keeps the
+prior token valid for ten minutes. Agents should pipe API keys to
+`--api-key-stdin`;
 `--api-key <key>` is an unsafe compatibility form that exposes the key in
 process arguments, shell history, and agent transcripts. Prefer `--import` for
 an existing Claude Code login. JSON account status
