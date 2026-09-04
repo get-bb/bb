@@ -489,9 +489,9 @@ function PluginSettingsContent({ plugin }: { plugin: PluginListItem }) {
     onSettled: () => invalidatePluginList({ queryClient }),
   });
   const enabled = toggle.isPending ? toggle.variables : plugin.enabled;
-  const hasSettingsSections = settingsSections.some(
-    (section) => section.pluginId === plugin.id,
-  );
+  const hasAvailableSettings =
+    plugin.hasSettings ||
+    settingsSections.some((section) => section.pluginId === plugin.id);
   return (
     <div className="mx-auto w-full max-w-5xl">
       <header className="flex items-center justify-between gap-4">
@@ -522,16 +522,10 @@ function PluginSettingsContent({ plugin }: { plugin: PluginListItem }) {
         />
       </header>
       <ResourceDetailStack className="mt-6">
-        {enabled && plugin.enabled && plugin.hasSettings ? (
+        {enabled && plugin.enabled && hasAvailableSettings ? (
           <ResourceDetailConfigurationSection label="Configuration">
             <PluginSettingsDetail plugin={plugin} />
           </ResourceDetailConfigurationSection>
-        ) : null}
-        {enabled &&
-        plugin.enabled &&
-        !plugin.hasSettings &&
-        hasSettingsSections ? (
-          <PluginSettingsDetail plugin={plugin} />
         ) : null}
         <ResourceDetailOverviewSection label="Plugin details">
           <p className="max-w-none text-sm leading-relaxed text-muted-foreground">

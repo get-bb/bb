@@ -671,7 +671,7 @@ describe("PluginSettingsPage", () => {
     ).toHaveLength(1);
   });
 
-  it("renders a section-only plugin without a Configuration block", async () => {
+  it("keeps a section-only plugin in Configuration with a flat surface", async () => {
     function ConnectSettings() {
       return <div>Custom connect settings</div>;
     }
@@ -707,7 +707,7 @@ describe("PluginSettingsPage", () => {
 
     const section = await screen.findByText("Custom connect settings");
     expect(section.closest(".overflow-hidden")).toBeNull();
-    expect(screen.queryByRole("heading", { name: "Configuration" })).toBeNull();
+    expect(screen.getByRole("heading", { name: "Configuration" })).toBeTruthy();
   });
 
   it("keeps the recessed unavailable hint for a section-only plugin", async () => {
@@ -749,7 +749,7 @@ describe("PluginSettingsPage", () => {
       "bg-surface-recessed/70",
     );
     expect(screen.queryByText("Custom connect settings")).toBeNull();
-    expect(screen.queryByRole("heading", { name: "Configuration" })).toBeNull();
+    expect(screen.getByRole("heading", { name: "Configuration" })).toBeTruthy();
   });
 });
 
