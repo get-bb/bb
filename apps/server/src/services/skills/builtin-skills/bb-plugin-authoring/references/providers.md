@@ -144,6 +144,47 @@ health; bridge failures hide only that provider.
 Its plain JSON result has the same 64 KiB limit. The runtime merges the result
 over `experimental_bridgeOptions`; a derived key replaces its static key.
 
+### `bb.providers.experimental_contributeEnv` — per-command provider environment
+
+A plugin can contribute environment variables to any provider, including one
+registered by another plugin. Register one resolver per provider id:
+
+```ts
+bb.providers.experimental_contributeEnv("claude-code", async (context) => [
+  {
+    name: "ANTHROPIC_BASE_URL",
+    value: { serverPath: `/plugins/my-proxy/${context.hostId}` },
+    reason: "Route Claude through the plugin's authenticated proxy",
+    secret: true,
+  },
+]);
+```
+
+The server calls the resolver for every matching start, resume, fork, and turn
+command. Its `ExperimentalPluginProviderEnvContext` has `threadId`, `projectId`,
+and `hostId`; return at most 32 `ExperimentalPluginProviderEnvEntry` values.
+Names must match `[A-Z_][A-Z0-9_]*`; `reason` and `secret` are required. A
+literal `value` is forwarded as-is. `{ serverPath: "/..." }` is expanded by
+the selected host against its authenticated `BB_SERVER_URL`, which is the
+right form for a server route that must work from enrolled machines.
+
+Contributions override the host shell environment. If multiple plugins return
+the same name, the earlier registration wins and BB logs the conflict. A
+resolver that throws, times out after five seconds, or returns invalid entries
+contributes nothing for that command without blocking other plugins. Mark
+credentials and sensitive URLs with `secret: true`; BB passes the real value
+to the provider but masks it in `provider.env-resolved` timeline events.
+
+When the contributed environment supplies credentials that replace a local
+login, pair the resolver with
+`bb.providers.experimental_contributeEnvHealth(providerId, resolve)`. Its
+host-scoped `ExperimentalPluginProviderEnvHealthContext` contains `hostId`.
+Return an `ExperimentalPluginProviderEnvHealth` `{ label, statusMessage }` only
+while the proxy is usable, or `null` otherwise. BB uses it only when the
+provider bridge reports `unauthenticated` or `expired`, and only when the same
+plugin registered an env resolver for that provider. Installation and unknown
+failures are preserved.
+
 Use `extensionKinds` to declare provider-specific item or state payloads. Each
 kind needs an item schema, a state schema, or both. The server validates each
 payload at ingest. It persists an unhandled-provider event when validation

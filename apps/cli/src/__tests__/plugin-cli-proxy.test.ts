@@ -496,6 +496,48 @@ describe("runPluginCliCommand", () => {
     ]);
   });
 
+  it("materializes an arbitrary stdin flag only in the proxied request", async () => {
+    const requests: string[][] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url, init: RequestInit | undefined) => {
+        const parsed = JSON.parse(String(init?.body)) as { argv: string[] };
+        requests.push(parsed.argv);
+        return new Response(JSON.stringify({ exitCode: 0 }), { status: 200 });
+      }),
+    );
+    const writes: string[] = [];
+    const output = {
+      write(value: string, callback: (error?: Error | null) => void) {
+        writes.push(value);
+        callback();
+        return true;
+      },
+    };
+    const input = {
+      isTTY: false,
+      async *[Symbol.asyncIterator]() {
+        yield Buffer.from("opaque-credential\n");
+      },
+    };
+    const argv = ["deploy", "--credential-stdin", "--format", "json"];
+
+    await expect(
+      runPluginCliCommand(
+        "http://localhost",
+        "fixture",
+        argv,
+        { stdout: output, stderr: output },
+        input,
+      ),
+    ).resolves.toBe(0);
+    expect(argv).toEqual(["deploy", "--credential-stdin", "--format", "json"]);
+    expect(requests).toEqual([
+      ["deploy", "--credential", "opaque-credential", "--format", "json"],
+    ]);
+    expect(writes).toEqual([]);
+  });
+
   it("outlives the global fetch headers timeout while a plugin command waits on a human", async () => {
     const RESPONSE_DELAY_MS = 1500;
     const server: Server = createServer((request, response) => {

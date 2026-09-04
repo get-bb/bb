@@ -25,6 +25,14 @@ import type {
 
 export type AgentRuntimeShellEnvironment = Record<string, string>;
 
+export interface AgentRuntimeContributedEnvEntry {
+  name: string;
+  value: string | { serverPath: string };
+  source: { plugin: string };
+  reason: string;
+  secret: boolean;
+}
+
 export type AgentRuntimeExecutionOptions = RuntimeThreadExecutionOptions;
 
 export type AgentRuntimeSkillRoot = SkillsConfigureRoot;
@@ -113,6 +121,7 @@ export interface StartThreadArgs {
   threadId: string;
   projectId: string;
   providerId: string;
+  contributedEnv?: readonly AgentRuntimeContributedEnvEntry[];
   clientRequestId?: ClientTurnRequestId;
   input?: PromptInput[];
   inputGroups?: PromptInput[][];
@@ -138,6 +147,7 @@ interface PrepareThreadRewindArgs {
   leaseId: string;
   projectId: string;
   providerId: string;
+  contributedEnv?: readonly AgentRuntimeContributedEnvEntry[];
   sourceProviderThreadId: string;
   retainThroughProviderCheckpoint: string;
   options: AgentRuntimeExecutionOptions;
@@ -162,6 +172,7 @@ export interface ResumeThreadArgs {
   projectId?: string;
   providerThreadId?: string;
   providerId: string;
+  contributedEnv?: readonly AgentRuntimeContributedEnvEntry[];
   options: AgentRuntimeExecutionOptions;
   instructions?: string;
   dynamicTools?: DynamicTool[];
@@ -179,6 +190,7 @@ export interface RunTurnArgs {
   inputGroups?: PromptInput[][];
   clientRequestId: ClientTurnRequestId;
   options: AgentRuntimeExecutionOptions;
+  contributedEnv?: readonly AgentRuntimeContributedEnvEntry[];
   instructions?: string;
 }
 
@@ -189,6 +201,7 @@ export interface SteerTurnArgs {
   inputGroups?: PromptInput[][];
   clientRequestId: ClientTurnRequestId;
   options: AgentRuntimeExecutionOptions;
+  contributedEnv?: readonly AgentRuntimeContributedEnvEntry[];
   instructions?: string;
 }
 

@@ -262,7 +262,11 @@ export async function fetchFrontendCandidates(
       logoDarkUrl: plugin.logoDarkUrl,
       icons: new Map(Object.entries(plugin.icons)),
     });
-    if (plugin.status !== "running") {
+    if (
+      plugin.status !== "running" &&
+      plugin.status !== "needs-configuration" &&
+      plugin.status !== "degraded"
+    ) {
       continue;
     }
     const bundle = plugin.app.bundle;

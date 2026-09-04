@@ -42,6 +42,7 @@ import {
   undeclaredIconProblem,
   validatePluginAiServiceDeclaration,
   validatePluginProviderDeclaration,
+  validatePluginProviderEnvEntries,
   validateSettingsUpdate,
   zodSchemaToJsonSchema,
   type NormalizedPluginProviderDeclaration,
@@ -80,6 +81,10 @@ import type {
   PluginAiServiceDeclaration,
   PluginAiServices,
   PluginProviderDeclaration,
+  ExperimentalPluginProviderEnvContext,
+  ExperimentalPluginProviderEnvEntry,
+  ExperimentalPluginProviderEnvHealth,
+  ExperimentalPluginProviderEnvHealthContext,
   PluginProviders,
   PluginRealtime,
   PluginRpc,
@@ -259,6 +264,23 @@ export interface FakePluginRegistrations {
   /** Live provider registrations from `bb.providers.register`
    * (normalized declarations, registration order; dispose removes). */
   providerRegistrations: NormalizedPluginProviderDeclaration[];
+  providerEnvResolvers: ReadonlyMap<
+    string,
+    (
+      context: ExperimentalPluginProviderEnvContext,
+    ) =>
+      | Promise<readonly ExperimentalPluginProviderEnvEntry[]>
+      | readonly ExperimentalPluginProviderEnvEntry[]
+  >;
+  providerEnvHealthResolvers: ReadonlyMap<
+    string,
+    (
+      context: ExperimentalPluginProviderEnvHealthContext,
+    ) =>
+      | ExperimentalPluginProviderEnvHealth
+      | null
+      | Promise<ExperimentalPluginProviderEnvHealth | null>
+  >;
   /** Live AI-service registrations from `experimental_aiServices.register`
    * (normalized declarations, registration order; dispose removes). */
   aiServiceRegistrations: PluginAiServiceDeclaration[];
@@ -379,6 +401,14 @@ export interface FakePluginBehaviorDrivers {
     skills: string[];
     instructions: string | null;
   }>;
+  resolveProviderEnv(
+    providerId: string,
+    context: ExperimentalPluginProviderEnvContext,
+  ): Promise<ExperimentalPluginProviderEnvEntry[]>;
+  resolveProviderEnvHealth(
+    providerId: string,
+    context: ExperimentalPluginProviderEnvHealthContext,
+  ): Promise<ExperimentalPluginProviderEnvHealth | null>;
 }
 
 /** Reload/shutdown controls, kept separate from behavior and inspection. */
@@ -1011,10 +1041,9 @@ function createFakePluginHostInternal(
         );
       }
       const rows = database
-        .prepare<
-          [],
-          { id: number; statement_hash: string | null }
-        >("SELECT id, statement_hash FROM _bb_migrations ORDER BY id")
+        .prepare<[], { id: number; statement_hash: string | null }>(
+          "SELECT id, statement_hash FROM _bb_migrations ORDER BY id",
+        )
         .all();
       const applied = new Map<number, string | null>();
       for (const row of rows) applied.set(row.id, row.statement_hash);
@@ -1360,6 +1389,23 @@ function createFakePluginHostInternal(
   // --- agents ---
   const agentTools: FakeAgentToolRecord[] = [];
   const providerRegistrations: NormalizedPluginProviderDeclaration[] = [];
+  const providerEnvResolvers = new Map<
+    string,
+    (
+      context: ExperimentalPluginProviderEnvContext,
+    ) =>
+      | readonly ExperimentalPluginProviderEnvEntry[]
+      | Promise<readonly ExperimentalPluginProviderEnvEntry[]>
+  >();
+  const providerEnvHealthResolvers = new Map<
+    string,
+    (
+      context: ExperimentalPluginProviderEnvHealthContext,
+    ) =>
+      | ExperimentalPluginProviderEnvHealth
+      | null
+      | Promise<ExperimentalPluginProviderEnvHealth | null>
+  >();
   let agentConfigurationProvider:
     | ((context: PluginAgentConfigurationContext) => PluginAgentConfiguration)
     | null = null;
@@ -1942,6 +1988,44 @@ function createFakePluginHostInternal(
     register(declaration) {
       return registerProviderDeclaration(declaration);
     },
+    experimental_contributeEnv(providerId, resolve) {
+      assertLive();
+      if (typeof providerId !== "string" || providerId.trim().length === 0) {
+        throw new Error(
+          "provider environment contribution requires a provider id",
+        );
+      }
+      if (providerEnvResolvers.has(providerId)) {
+        throw new Error(
+          `provider environment contribution for "${providerId}" is already registered`,
+        );
+      }
+      if (typeof resolve !== "function") {
+        throw new Error(
+          "provider environment contribution requires a resolver function",
+        );
+      }
+      providerEnvResolvers.set(providerId, resolve);
+    },
+    experimental_contributeEnvHealth(providerId, resolve) {
+      assertLive();
+      if (typeof providerId !== "string" || providerId.trim().length === 0) {
+        throw new Error(
+          "provider environment health contribution requires a provider id",
+        );
+      }
+      if (providerEnvHealthResolvers.has(providerId)) {
+        throw new Error(
+          `provider environment health contribution for "${providerId}" is already registered`,
+        );
+      }
+      if (typeof resolve !== "function") {
+        throw new Error(
+          "provider environment health contribution requires a resolver function",
+        );
+      }
+      providerEnvHealthResolvers.set(providerId, resolve);
+    },
   };
 
   const browser: PluginBrowser = {
@@ -2090,6 +2174,8 @@ function createFakePluginHostInternal(
       },
       mentionProviders,
       providerRegistrations,
+      providerEnvResolvers,
+      providerEnvHealthResolvers,
       aiServiceRegistrations,
     },
     get pendingInteractions() {
@@ -2105,6 +2191,43 @@ function createFakePluginHostInternal(
       }
       for (const handler of [...hostWorkerExitSubscriptions]) {
         await handler({ hostId });
+      }
+    },
+    async resolveProviderEnv(providerId, context) {
+      assertLive();
+      const resolve = providerEnvResolvers.get(providerId);
+      if (resolve === undefined) return [];
+      try {
+        return validatePluginProviderEnvEntries(await resolve(context));
+      } catch (error) {
+        emitLog(
+          "warn",
+          `provider environment contribution failed: ${error instanceof Error ? error.message : String(error)}`,
+        );
+        return [];
+      }
+    },
+    async resolveProviderEnvHealth(providerId, context) {
+      assertLive();
+      if (!providerEnvResolvers.has(providerId)) return null;
+      const resolve = providerEnvHealthResolvers.get(providerId);
+      if (resolve === undefined) return null;
+      try {
+        const value = await resolve(context);
+        if (value === null) return null;
+        if (value.label.trim().length === 0) {
+          throw new Error("label must not be empty");
+        }
+        if (value.statusMessage.trim().length === 0) {
+          throw new Error("statusMessage must not be empty");
+        }
+        return value;
+      } catch (error) {
+        emitLog(
+          "warn",
+          `provider environment health contribution failed: ${error instanceof Error ? error.message : String(error)}`,
+        );
+        return null;
       }
     },
     async experimental_emitHostSignal(hostId, signal, payload) {

@@ -1,4 +1,8 @@
 {
+  "account-pool": {
+    "category": "agents-and-providers",
+    "screenshots": []
+  },
   "ask-user-question": {
     "category": "thread-content",
     "screenshots": []

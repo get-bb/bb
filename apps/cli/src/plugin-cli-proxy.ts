@@ -279,6 +279,57 @@ interface PluginCliOutputStreams {
   stderr: PluginCliOutputStream;
 }
 
+interface PluginCliInputStream extends AsyncIterable<Buffer | string> {
+  isTTY?: boolean;
+}
+
+const PLUGIN_CLI_STDIN_MAX_BYTES = 16 * 1024;
+const PLUGIN_CLI_STDIN_FLAG = /^--([a-z0-9](?:[a-z0-9-]*[a-z0-9])?)-stdin$/u;
+
+async function materializeStdinFlag(
+  argv: readonly string[],
+  input: PluginCliInputStream,
+): Promise<string[]> {
+  const matches = argv.flatMap((flag, index) => {
+    const match = PLUGIN_CLI_STDIN_FLAG.exec(flag);
+    const name = match?.[1];
+    return name === undefined ? [] : [{ flag, index, name }];
+  });
+  if (matches.length === 0) return [...argv];
+  if (matches.length > 1) throw new Error("Choose only one stdin input flag.");
+  const match = matches[0];
+  if (match === undefined) return [...argv];
+  const valueFlag = `--${match.name}`;
+  if (argv.includes(valueFlag)) {
+    throw new Error(`Choose only one of ${match.flag} and ${valueFlag}.`);
+  }
+  if (input.isTTY === true) {
+    throw new Error(`${match.flag} requires piped stdin.`);
+  }
+  const chunks: Buffer[] = [];
+  let bytes = 0;
+  for await (const chunk of input) {
+    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    bytes += buffer.byteLength;
+    if (bytes > PLUGIN_CLI_STDIN_MAX_BYTES) {
+      throw new Error(`${match.flag} input exceeds 16 KiB.`);
+    }
+    chunks.push(buffer);
+  }
+  const value = Buffer.concat(chunks)
+    .toString("utf8")
+    .replace(/\r?\n$/u, "");
+  if (value.length === 0 || /[\r\n]/u.test(value)) {
+    throw new Error(`${match.flag} requires exactly one non-empty stdin line.`);
+  }
+  return [
+    ...argv.slice(0, match.index),
+    valueFlag,
+    value,
+    ...argv.slice(match.index + 1),
+  ];
+}
+
 async function writePluginCliOutput(
   stream: PluginCliOutputStream,
   value: string,
@@ -310,7 +361,18 @@ export async function runPluginCliCommand(
     stdout: process.stdout,
     stderr: process.stderr,
   },
+  input: PluginCliInputStream = process.stdin,
 ): Promise<number> {
+  let resolvedArgv: string[];
+  try {
+    resolvedArgv = await materializeStdinFlag(argv, input);
+  } catch (error) {
+    await writePluginCliOutput(
+      streams.stderr,
+      error instanceof Error ? error.message : String(error),
+    );
+    return 1;
+  }
   const threadId = resolveContextThreadId();
   const projectId = resolveContextProjectId();
   const response = await cliFetch(
@@ -319,7 +381,7 @@ export async function runPluginCliCommand(
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
-        argv,
+        argv: resolvedArgv,
         cwd: process.cwd(),
         ...(threadId ? { threadId } : {}),
         ...(projectId ? { projectId } : {}),

@@ -221,6 +221,8 @@ function operationKindForMessage(
     case "warning":
     case "deprecation":
       return message.opType;
+    case "provider-environment":
+      return "generic";
     case "operation":
       return parentChange !== null ? "parent-change" : "generic";
     default:

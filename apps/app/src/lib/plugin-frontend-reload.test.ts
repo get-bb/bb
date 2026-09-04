@@ -38,6 +38,7 @@ import { PluginSlotMount } from "@/components/plugin/PluginSlotMount";
 import { PLUGIN_PANEL_ROUTE_PATH } from "./route-paths";
 import { applyAppThemeCss } from "./themes";
 import { PluginPanelView } from "@/views/PluginPanelView";
+import { makeInstalledPlugin } from "@/test/fixtures/plugins";
 
 function candidate(
   pluginId: string,
@@ -130,6 +131,40 @@ function makeDeps(initial: PluginFrontendCandidate[] = []): TestReconcileDeps {
 }
 
 describe("reconcilePluginFrontends", () => {
+  it.each(["running", "needs-configuration", "degraded"] as const)(
+    "loads frontend candidates for a plugin with %s status",
+    async (status) => {
+      const queryClient = new QueryClient({
+        defaultOptions: { queries: { retry: false } },
+      });
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(
+          async () =>
+            new Response(
+              JSON.stringify({
+                plugins: [
+                  makeInstalledPlugin({
+                    id: "account-pool",
+                    status,
+                    app: {
+                      hasApp: true,
+                      bundle: candidate("account-pool", "v1").bundle,
+                    },
+                  }),
+                ],
+              }),
+              { headers: { "content-type": "application/json" } },
+            ),
+        ),
+      );
+
+      await expect(fetchFrontendCandidates(queryClient)).resolves.toEqual([
+        candidate("account-pool", "v1"),
+      ]);
+    },
+  );
+
   it("re-imports a plugin exactly once when its bundle hash changes, replacing registrations wholesale", async () => {
     const state = createPluginFrontendReconcileState();
     const deps = makeDeps([

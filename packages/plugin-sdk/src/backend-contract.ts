@@ -1358,6 +1358,45 @@ export interface PluginProviders {
   register(declaration: PluginProviderDeclaration): {
     dispose(): void;
   };
+  experimental_contributeEnv(
+    providerId: string,
+    resolve: (
+      context: ExperimentalPluginProviderEnvContext,
+    ) =>
+      | readonly ExperimentalPluginProviderEnvEntry[]
+      | Promise<readonly ExperimentalPluginProviderEnvEntry[]>,
+  ): void;
+  experimental_contributeEnvHealth(
+    providerId: string,
+    resolve: (
+      context: ExperimentalPluginProviderEnvHealthContext,
+    ) =>
+      | ExperimentalPluginProviderEnvHealth
+      | null
+      | Promise<ExperimentalPluginProviderEnvHealth | null>,
+  ): void;
+}
+
+export interface ExperimentalPluginProviderEnvContext {
+  threadId: string;
+  projectId: string;
+  hostId: string;
+}
+
+export interface ExperimentalPluginProviderEnvEntry {
+  name: string;
+  value: string | { serverPath: string };
+  reason: string;
+  secret: boolean;
+}
+
+export interface ExperimentalPluginProviderEnvHealthContext {
+  hostId: string;
+}
+
+export interface ExperimentalPluginProviderEnvHealth {
+  label: string;
+  statusMessage: string;
 }
 
 // ---------------------------------------------------------------------------

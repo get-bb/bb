@@ -20,6 +20,8 @@ import {
 } from "@bb/domain";
 import {
   type PluginCliExecutionResult,
+  type ExperimentalPluginProviderEnvContext,
+  type ExperimentalPluginProviderEnvHealthContext,
   type PluginRpcError,
   type PluginRpcValidationIssue,
   type StandardSchemaV1,
@@ -34,6 +36,7 @@ import {
   PLUGIN_AGENT_TOOL_PARAMETERS_MAX_BYTES,
   RESERVED_AGENT_TOOL_NAMES,
   adoptHttpRouteResponse,
+  validatePluginProviderEnvEntries,
 } from "@get-bb/plugin-sdk/internal/host-policy";
 import {
   buildPluginApp,
@@ -145,6 +148,8 @@ import type {
   PluginUpdateCheckEntry,
   PluginWireLookup,
   PluginResolvedAgentConfiguration,
+  PluginResolvedProviderEnv,
+  PluginResolvedProviderEnvHealth,
 } from "./plugin-service-internal.js";
 export type {
   PluginAgentToolContribution,
@@ -306,6 +311,14 @@ export interface PluginService {
     context: PluginAgentConfigurationContext;
     skillIdsByPlugin: ReadonlyMap<string, readonly string[]>;
   }): Promise<PluginResolvedAgentConfiguration>;
+  resolveProviderEnv(args: {
+    providerId: string;
+    context: ExperimentalPluginProviderEnvContext;
+  }): Promise<PluginResolvedProviderEnv>;
+  resolveProviderEnvHealth(args: {
+    providerId: string;
+    context: ExperimentalPluginProviderEnvHealthContext;
+  }): Promise<PluginResolvedProviderEnvHealth | null>;
   listInstructionContributions(): PluginInstructionContribution[];
   findAgentTool(
     name: string,
@@ -333,6 +346,7 @@ export interface PluginService {
 
 const DEFAULT_MENTION_SEARCH_TIMEOUT_MS = 2_000;
 const DEFAULT_MENTION_RESOLVE_TIMEOUT_MS = 10_000;
+const DEFAULT_PROVIDER_ENV_RESOLVE_TIMEOUT_MS = 5_000;
 /**
  * Per-handler decision box. A hook handler is on the dispatch hot path and
  * holds a server-wide lock while it runs, so it must decide in milliseconds;
@@ -828,6 +842,8 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     deps.mentionSearchTimeoutMs ?? DEFAULT_MENTION_SEARCH_TIMEOUT_MS;
   const mentionResolveTimeoutMs =
     deps.mentionResolveTimeoutMs ?? DEFAULT_MENTION_RESOLVE_TIMEOUT_MS;
+  const providerEnvResolveTimeoutMs =
+    deps.providerEnvResolveTimeoutMs ?? DEFAULT_PROVIDER_ENV_RESOLVE_TIMEOUT_MS;
   const pluginHookTimeoutMs =
     deps.pluginHookTimeoutMs ?? DEFAULT_PLUGIN_HOOK_TIMEOUT_MS;
   const stabilizationWindowMs =
@@ -2218,6 +2234,107 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       }
 
       return { tools, selectedSkillIdsByPlugin, dynamicInstructions };
+    },
+
+    async resolveProviderEnv({ providerId, context }) {
+      const entries: PluginResolvedProviderEnv["entries"] = [];
+      const ownerByName = new Map<string, string>();
+      for (const [pluginId, plugin] of loaded) {
+        const resolve = plugin.handle.providerEnvResolvers.get(providerId);
+        if (resolve === undefined) continue;
+        const outcome = await invokeWrapped(
+          pluginId,
+          `provider environment for ${providerId}`,
+          async () => {
+            let timer: NodeJS.Timeout | undefined;
+            try {
+              return await Promise.race([
+                Promise.resolve(resolve(context)).then((value) =>
+                  validatePluginProviderEnvEntries(value),
+                ),
+                new Promise<never>((_resolve, reject) => {
+                  timer = setTimeout(
+                    () =>
+                      reject(
+                        new Error(
+                          `timed out after ${providerEnvResolveTimeoutMs}ms`,
+                        ),
+                      ),
+                    providerEnvResolveTimeoutMs,
+                  );
+                  timer.unref?.();
+                }),
+              ]);
+            } finally {
+              if (timer !== undefined) clearTimeout(timer);
+            }
+          },
+        );
+        if (!outcome.ok) continue;
+        for (const entry of outcome.value) {
+          const earlierPluginId = ownerByName.get(entry.name);
+          if (earlierPluginId !== undefined) {
+            logger.error(
+              {
+                providerId,
+                name: entry.name,
+                winnerPluginId: earlierPluginId,
+                loserPluginId: pluginId,
+              },
+              "Plugin provider environment conflict; later contribution dropped",
+            );
+            continue;
+          }
+          ownerByName.set(entry.name, pluginId);
+          entries.push({ ...entry, source: { plugin: pluginId } });
+        }
+      }
+      return { entries };
+    },
+
+    async resolveProviderEnvHealth({ providerId, context }) {
+      for (const [pluginId, plugin] of loaded) {
+        if (!plugin.handle.providerEnvResolvers.has(providerId)) continue;
+        const resolve =
+          plugin.handle.providerEnvHealthResolvers.get(providerId);
+        if (resolve === undefined) continue;
+        const outcome = await invokeWrapped(
+          pluginId,
+          `provider environment health for ${providerId}`,
+          async () => {
+            let timer: NodeJS.Timeout | undefined;
+            try {
+              const value = await Promise.race([
+                Promise.resolve(resolve(context)),
+                new Promise<never>((_resolve, reject) => {
+                  timer = setTimeout(
+                    () =>
+                      reject(
+                        new Error(
+                          `timed out after ${providerEnvResolveTimeoutMs}ms`,
+                        ),
+                      ),
+                    providerEnvResolveTimeoutMs,
+                  );
+                  timer.unref?.();
+                }),
+              ]);
+              if (value === null) return null;
+              if (value.label.trim().length === 0) {
+                throw new Error("label must not be empty");
+              }
+              if (value.statusMessage.trim().length === 0) {
+                throw new Error("statusMessage must not be empty");
+              }
+              return value;
+            } finally {
+              if (timer !== undefined) clearTimeout(timer);
+            }
+          },
+        );
+        if (outcome.ok && outcome.value !== null) return outcome.value;
+      }
+      return null;
     },
 
     listInstructionContributions() {

@@ -25,6 +25,7 @@ import type {
   PluginProviderCapabilities,
   PluginProviderComposerAction,
   PluginProviderDeclaration,
+  ExperimentalPluginProviderEnvEntry,
   PluginProviderExtensionKindDeclaration,
   PluginProviderFallbackModel,
   PluginProviderModelCatalogScope,
@@ -83,8 +84,7 @@ export const PLUGIN_HTTP_METHODS: ReadonlySet<string> = new Set([
 ]);
 
 // Rpc method names become URL path segments.
-export const RPC_METHOD_PATTERN =
-  /^[a-zA-Z0-9_-]+(?:\.[a-zA-Z0-9_-]+)*$/;
+export const RPC_METHOD_PATTERN = /^[a-zA-Z0-9_-]+(?:\.[a-zA-Z0-9_-]+)*$/;
 
 // Service/schedule names appear in status text and plugin_schedules rows.
 export const BACKGROUND_NAME_PATTERN = /^[a-zA-Z0-9_-]+$/;
@@ -94,6 +94,52 @@ export const CLI_COMMAND_NAME_PATTERN = /^[a-z0-9-]+$/;
 
 // Agent tool names are shown to (and called by) the model.
 export const AGENT_TOOL_NAME_PATTERN = /^[a-zA-Z0-9_-]+$/;
+export const PLUGIN_PROVIDER_ENV_NAME_PATTERN = /^[A-Z_][A-Z0-9_]*$/;
+export const PLUGIN_PROVIDER_ENV_MAX_ENTRIES = 32;
+
+const pluginProviderEnvEntrySchema = z
+  .object({
+    name: z.string().regex(PLUGIN_PROVIDER_ENV_NAME_PATTERN),
+    value: z.union([
+      z.string(),
+      z.object({ serverPath: z.string().startsWith("/") }).strict(),
+    ]),
+    reason: z.string(),
+    secret: z.boolean(),
+  })
+  .strict();
+
+const pluginProviderEnvEntriesSchema = z
+  .array(pluginProviderEnvEntrySchema)
+  .max(PLUGIN_PROVIDER_ENV_MAX_ENTRIES)
+  .superRefine((entries, context) => {
+    const names = new Set<string>();
+    for (let index = 0; index < entries.length; index += 1) {
+      const name = entries[index]?.name;
+      if (name !== undefined && names.has(name)) {
+        context.addIssue({
+          code: "custom",
+          path: [index, "name"],
+          message: "must be unique within one resolver",
+        });
+      }
+      if (name !== undefined) names.add(name);
+    }
+  });
+
+export function validatePluginProviderEnvEntries(
+  value: unknown,
+): ExperimentalPluginProviderEnvEntry[] {
+  const parsed = pluginProviderEnvEntriesSchema.safeParse(value);
+  if (!parsed.success) {
+    const issue = parsed.error.issues[0];
+    const path = issue?.path.length ? `[${issue.path.join(".")}] ` : "";
+    throw new Error(
+      `provider environment contribution ${path}${issue?.message ?? "is invalid"}`,
+    );
+  }
+  return parsed.data;
+}
 
 export const PLUGIN_AGENT_STATIC_INSTRUCTIONS_MAX_CHARS = 4096;
 /** Status labels ride on every tool-call event and share one timeline row. */

@@ -1,5 +1,53 @@
 # APIs To Audit
 
+## `bb.providers.experimental_contributeEnvHealth`
+
+**What it does.** Registers one host-scoped readiness resolver beside a
+provider environment contribution. When the provider bridge reports
+`unauthenticated` or `expired`, the server may present the provider as ready
+with the returned label and status message. Returning `null` preserves the
+bridge result. The resolver is ignored unless the same plugin also contributes
+environment variables to that provider. The resolver receives an
+`ExperimentalPluginProviderEnvHealthContext` and returns an
+`ExperimentalPluginProviderEnvHealth` or `null`.
+
+**Audit before stabilizing.**
+
+1. Confirm readiness should override only `unauthenticated` and `expired`, not
+   installation or unknown failures.
+2. Decide whether the contribution should report account identity or usage in
+   addition to a label and status message.
+3. Confirm the first available resolver in plugin load order is the right
+   arbitration when several credential proxies target one provider.
+4. Confirm a five-second timeout is appropriate for host-scoped credential
+   availability checks.
+
+## `bb.providers.experimental_contributeEnv`
+
+**What it does.** Registers one resolver per provider per plugin. The server
+calls it for each matching session and turn with the thread, project, and host
+ids, validates at most 32 environment entries, resolves registration conflicts
+in plugin load order, and sends the winning values to the host. A value may be
+a literal string or a server-relative path that the host expands against its
+authenticated `BB_SERVER_URL`. Contributions override the shell environment;
+entries marked `secret` are masked in provider environment events. The resolver
+receives `ExperimentalPluginProviderEnvContext` and returns
+`ExperimentalPluginProviderEnvEntry` values.
+
+**Audit before stabilizing.**
+
+1. Confirm one resolver per provider is sufficient when plugins need multiple
+   independently disposable features.
+2. Confirm plugin load order is the right deterministic conflict policy.
+3. Confirm the 32-entry cap and five-second timeout fit providers that resolve
+   short-lived credentials.
+4. Decide whether `serverPath` needs structured query parameters or non-HTTP
+   server endpoints before accepting more shapes.
+5. Confirm `reason` should remain required and whether event consumers need a
+   stable machine-readable purpose beside it.
+6. Decide whether the context and entry types should stabilize with the method
+   or remain experimental for a longer compatibility window.
+
 Every public plugin API member ships with an `experimental_` prefix and an
 entry here (see [AGENTS.md](../AGENTS.md), "Plugin API"). Dropping the prefix
 is the deliberate stabilization step: audit the entry, rename project-wide,

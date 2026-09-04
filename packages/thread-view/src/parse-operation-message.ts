@@ -469,6 +469,23 @@ export function parseOperationMessage(
     });
   }
 
+  if (decoded.type === "provider.env-resolved") {
+    const detail = decoded.entries
+      .map((entry) => {
+        const source = entry.source === "shell" ? "shell" : entry.source.plugin;
+        const value = typeof entry.value === "string" ? entry.value : "••••••";
+        const reason = entry.reason ? ` — ${entry.reason}` : "";
+        return `${entry.name}=${value} (${source})${reason}`;
+      })
+      .join("\n");
+    return op(decoded, meta, "provider-environment", {
+      opType: "provider-environment",
+      title: "Provider environment resolved",
+      detail: detail || undefined,
+      status: "completed",
+    });
+  }
+
   if (decoded.type === "provider/warning") {
     const category = decoded.category;
     const isDeprecation = category === "deprecation";

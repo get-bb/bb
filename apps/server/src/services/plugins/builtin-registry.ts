@@ -24,6 +24,11 @@ const REPO_PLUGINS_DIRECTORY_NAME = "plugins";
 
 export const BUILTIN_PLUGINS = [
   {
+    name: "account-pool",
+    pluginId: "account-pool",
+    defaultEnabled: false,
+  },
+  {
     name: "ask-user-question",
     pluginId: "ask-user-question",
     defaultEnabled: false,
