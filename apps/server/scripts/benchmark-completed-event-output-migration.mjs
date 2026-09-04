@@ -21,7 +21,7 @@ const DEFAULT_WARMUPS = 2;
 const DEFAULT_ITERATIONS = 10;
 const DEFAULT_DRAIN_ROWS_PER_TARGET = 1_000;
 const DEFAULT_LARGE_OUTPUT_CHARS = 4 * 1024 * 1024;
-const DEFAULT_SCAN_LIMIT = 250;
+const DEFAULT_SCAN_LIMIT = 25;
 
 function parsePositiveInteger(value, name) {
   const parsed = Number(value);

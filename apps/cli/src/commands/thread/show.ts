@@ -648,6 +648,10 @@ async function listThreadLogEventBatch(
   }
 }
 
+function growThreadLogEventPageSize(pageSize: number): number {
+  return Math.min(THREAD_EVENT_LIST_PAGE_SIZE, pageSize * 2);
+}
+
 async function listThreadLogEventsPage(
   sdk: BbSdk,
   args: { threadId: string; limit: number; afterSeq: string | undefined },
@@ -663,13 +667,13 @@ async function listThreadLogEventsPage(
       limit: requestedPageSize,
       afterSeq: cursor,
     });
-    pageSize = page.pageSize;
     rows.push(...page.rows);
     const last = page.rows.at(-1);
     if (!last || page.rows.length < page.pageSize) {
       break;
     }
     cursor = String(last.seq);
+    pageSize = growThreadLogEventPageSize(page.pageSize);
   }
   const hasMore = rows.length > args.limit;
   return { rows: hasMore ? rows.slice(0, args.limit) : rows, hasMore };
@@ -689,13 +693,13 @@ async function listAllThreadLogEvents(
       limit: pageSize,
       afterSeq: cursor,
     });
-    pageSize = page.pageSize;
     rows.push(...page.rows);
     const last = page.rows.at(-1);
     if (last === undefined || page.rows.length < page.pageSize) {
       return { rows, hasMore: false };
     }
     cursor = String(last.seq);
+    pageSize = growThreadLogEventPageSize(page.pageSize);
   }
 }
 

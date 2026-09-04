@@ -475,7 +475,9 @@ describe("bb thread log command output", () => {
       "7",
       "4",
       "2",
+      "4",
       "2",
+      "4",
       "2",
     ]);
     expect(getEvents.mock.calls.map((call) => call[0].query.afterSeq)).toEqual([
@@ -487,8 +489,66 @@ describe("bb thread log command output", () => {
       undefined,
       undefined,
       "2",
+      "2",
+      "4",
       "4",
     ]);
+  });
+
+  it("bb thread log --json --all restores large pages after a dense prefix", async () => {
+    const events = Array.from({ length: 1202 }, (_, index) => ({
+      id: `evt-${index + 1}`,
+      scope: { kind: "thread" },
+      threadId: "thread-json-log",
+      type: "system/error",
+      data: { code: "provider_unavailable" },
+      createdAt: 20 + index,
+      seq: index + 1,
+    }));
+    const getEvents = vi.fn(
+      async (input: { query: { afterSeq?: string; limit?: string } }) => {
+        const afterSeq = Number(input.query.afterSeq ?? 0);
+        const limit = Number(input.query.limit);
+        if (afterSeq < 2 && limit > 1) {
+          return new Response(
+            JSON.stringify({
+              code: "event_data_too_large",
+              message: "Event response exceeds the 8 MiB limit",
+            }),
+            { status: 413, headers: { "Content-Type": "application/json" } },
+          );
+        }
+        return events.filter((event) => event.seq > afterSeq).slice(0, limit);
+      },
+    );
+    stubServerApi({
+      "v1.threads.:id.events.$get": getEvents,
+    });
+
+    await runCommand(
+      ["thread", "log", "thread-json-log", "--json", "--all"],
+      register,
+    );
+
+    const printed = JSON.parse(
+      String(vi.mocked(console.log).mock.calls[0]?.[0]),
+    ) as Array<{ seq: number }>;
+    expect(printed).toHaveLength(events.length);
+    expect(printed[0]?.seq).toBe(1);
+    expect(printed.at(-1)?.seq).toBe(events.length);
+    const tailLimits = getEvents.mock.calls
+      .filter((call) => Number(call[0].query.afterSeq ?? 0) >= 2)
+      .map((call) => call[0].query.limit);
+    expect(tailLimits.slice(0, 7)).toEqual([
+      "2",
+      "4",
+      "8",
+      "16",
+      "32",
+      "64",
+      "100",
+    ]);
+    expect(getEvents.mock.calls.length).toBeLessThan(30);
   });
 
   it("bb thread log prints an older-history notice when the timeline page is cut", async () => {
