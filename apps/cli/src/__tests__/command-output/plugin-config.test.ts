@@ -58,6 +58,22 @@ describe("bb plugin config", () => {
     expect(fetch).not.toHaveBeenCalled();
   });
 
+  it("rejects a negative value passed to unset", async () => {
+    const stderr = vi
+      .spyOn(process.stderr, "write")
+      .mockImplementation(() => true);
+
+    await expect(
+      runCommand(
+        ["plugin", "config", "demo", "unset", "retries", "-1"],
+        register,
+      ),
+    ).rejects.toThrow("process.exit:1");
+
+    expect(stderr).toHaveBeenCalledWith("error: unknown option '-1'\n");
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
   it("rejects a non-finite number before sending an update", async () => {
     vi.mocked(fetch).mockResolvedValueOnce(settingsResponse(3));
 

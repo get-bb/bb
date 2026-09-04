@@ -1580,13 +1580,13 @@ export function registerPluginCommands(
             value?.startsWith("-") === true &&
             (terminatorIndex < 0 ||
               terminatorIndex > rawArgs.lastIndexOf(value));
+          const valueIsUnknownOption =
+            valueIsOption &&
+            (actionName !== "set" || !negativeNumberValuePattern.test(value));
           const unknownOption =
             [id, actionName, key, ...command.args.slice(4)].find((argument) =>
               argument?.startsWith("-"),
-            ) ??
-            (valueIsOption && !negativeNumberValuePattern.test(value)
-              ? value
-              : undefined);
+            ) ?? (valueIsUnknownOption ? value : undefined);
           if (unknownOption !== undefined)
             command.error(`error: unknown option '${unknownOption}'`);
           if (command.args.length > 4)
