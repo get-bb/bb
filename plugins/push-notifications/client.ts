@@ -33,6 +33,7 @@ export function createClientDelivery(navigate: (threadId: string) => void) {
     if (disposed || notificationPermission() !== "granted") return;
     const notification = new Notification(message.title, {
       body: message.body,
+      icon: new URL("/icon-192.png", window.location.origin).href,
       tag: `bb-${message.threadId ?? message.id}`,
     });
     active.add(notification);
