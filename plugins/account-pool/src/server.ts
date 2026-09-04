@@ -20,6 +20,8 @@ export interface AccountPoolPluginOptions {
   fetch?: typeof fetch;
   now?: () => number;
   refreshUrl?: string;
+  usageUrl?: string;
+  usageRefreshIntervalMs?: number;
   drainTimeoutMs?: number;
   disposeTimeoutMs?: number;
   importCredentials?: () => Promise<ImportedClaudeCredentials>;
@@ -60,7 +62,7 @@ export function createAccountPoolPlugin(
         type: "number",
         label: "Quota switch threshold",
         description:
-          "Stop selecting an account when its 5-hour or 7-day utilization reaches this fraction.",
+          "Stop selecting an account when its shared or requested-family quota reaches this fraction.",
         default: 0.98,
         experimental_schema: z.number().min(0).max(1),
       },
@@ -95,6 +97,9 @@ export function createAccountPoolPlugin(
       fetch: options.fetch,
       now,
       refreshUrl: options.refreshUrl,
+      usageUrl: options.usageUrl,
+      profileUrl: options.oauthProfileUrl,
+      usageRefreshIntervalMs: options.usageRefreshIntervalMs,
       drainTimeoutMs: options.drainTimeoutMs,
     });
     const operations = new PoolOperations(
@@ -109,6 +114,7 @@ export function createAccountPoolPlugin(
       now,
       options.importCredentials,
       () => bb.realtime.publish(ACCOUNT_POOL_ACCOUNTS_CHANGED, {}),
+      (accountId) => hub.refreshUsage(accountId, true),
     );
     const login = new ClaudeOAuthLogin({
       fetch: options.fetch,

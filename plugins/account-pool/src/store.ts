@@ -120,6 +120,23 @@ export class AccountStore {
     });
   }
 
+  async setAccountUuid(
+    id: string,
+    accountUuid: string,
+  ): Promise<Account | null> {
+    return this.serialized(async () => {
+      const accounts = await this.list();
+      const index = accounts.findIndex((account) => account.id === id);
+      if (index < 0) return null;
+      const current = accounts[index];
+      if (current === undefined) return null;
+      const updated = accountSchema.parse({ ...current, accountUuid });
+      accounts[index] = updated;
+      await this.kv.set(ACCOUNTS_KEY, accounts);
+      return updated;
+    });
+  }
+
   async readSecret(id: string): Promise<AccountSecret> {
     const parsed = JSON.parse(
       await fs.readFile(this.accountSecretPath(id), "utf8"),
@@ -447,6 +464,7 @@ const quotaRowSchema = z
     seven_day_status: z.string().nullable(),
     representative_claim: z.string().nullable(),
     bucket_exhaustion_json: z.string(),
+    family_weekly_json: z.string(),
     observed_at: z.number().int().nullable(),
     held_until: z.number().int().nullable(),
     error: z.string().nullable(),
@@ -461,7 +479,13 @@ const EMPTY_QUOTA = {
   sevenDayResetAt: null,
   sevenDayStatus: null,
   representativeClaim: null,
-  bucketExhaustion: {},
+  familyWeekly: {
+    fable: null,
+    sonnet: null,
+    opus: null,
+    haiku: null,
+    other: null,
+  },
   observedAt: null,
   heldUntil: null,
   error: null,
@@ -490,7 +514,7 @@ export class QuotaStore {
       sevenDayResetAt: row.seven_day_reset_at,
       sevenDayStatus: row.seven_day_status,
       representativeClaim: row.representative_claim,
-      bucketExhaustion: JSON.parse(row.bucket_exhaustion_json),
+      familyWeekly: JSON.parse(row.family_weekly_json),
       observedAt: row.observed_at,
       heldUntil: row.held_until,
       error: row.error,
@@ -505,8 +529,8 @@ export class QuotaStore {
           account_id, five_hour_utilization, five_hour_reset_at,
           five_hour_status, seven_day_utilization, seven_day_reset_at,
           seven_day_status, representative_claim, bucket_exhaustion_json,
-          observed_at, held_until, error
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          family_weekly_json, observed_at, held_until, error
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, '{}', ?, ?, ?, ?)
         ON CONFLICT(account_id) DO UPDATE SET
           five_hour_utilization = excluded.five_hour_utilization,
           five_hour_reset_at = excluded.five_hour_reset_at,
@@ -515,7 +539,7 @@ export class QuotaStore {
           seven_day_reset_at = excluded.seven_day_reset_at,
           seven_day_status = excluded.seven_day_status,
           representative_claim = excluded.representative_claim,
-          bucket_exhaustion_json = excluded.bucket_exhaustion_json,
+          family_weekly_json = excluded.family_weekly_json,
           observed_at = excluded.observed_at,
           held_until = excluded.held_until,
           error = excluded.error`,
@@ -529,7 +553,7 @@ export class QuotaStore {
         value.sevenDayResetAt,
         value.sevenDayStatus,
         value.representativeClaim,
-        JSON.stringify(value.bucketExhaustion),
+        JSON.stringify(value.familyWeekly),
         value.observedAt,
         value.heldUntil,
         value.error,
@@ -558,4 +582,5 @@ export const QUOTA_MIGRATIONS = [
     held_until INTEGER,
     error TEXT
   )`,
+  `ALTER TABLE account_quota ADD COLUMN family_weekly_json TEXT NOT NULL DEFAULT '{"fable":null,"sonnet":null,"opus":null,"haiku":null,"other":null}'`,
 ];

@@ -3,21 +3,30 @@ import type {
   Account,
   AccountQuota,
   AccountSecret,
+  ModelFamily,
   PoolStatus,
 } from "./contracts.js";
 import {
   accountStatus,
+  governingWeeklyResetAt,
   isQuotaExhausted,
   isQuotaRejection,
   quotaFromHeaders,
   retryAfterMilliseconds,
 } from "./quota.js";
+import { parseRequestBody } from "./request-body.js";
 import type { AccountStore, HubTokenStore, QuotaStore } from "./store.js";
+import { quotaFromUsage } from "./usage.js";
 
 const ROUTE = "/api/v1/plugins/account-pool/http";
 const OAUTH_CLIENT_ID = "9d1c250a-e61b-44d9-88ed-5944d1962f5e";
 const DEFAULT_REFRESH_URL = "https://platform.claude.com/v1/oauth/token";
+const DEFAULT_USAGE_URL = "https://api.anthropic.com/api/oauth/usage";
+const DEFAULT_PROFILE_URL = "https://api.anthropic.com/api/oauth/profile";
+const OAUTH_BETA = "oauth-2025-04-20";
 const REFRESH_WINDOW_MS = 5 * 60 * 1_000;
+const DEFAULT_USAGE_REFRESH_INTERVAL_MS = 5 * 60 * 1_000;
+const USAGE_REQUEST_TIMEOUT_MS = 10_000;
 const MAX_INLINE_HOLD_MS = 20_000;
 
 const ALLOWED_REQUEST_HEADERS = new Set([
@@ -51,6 +60,15 @@ const refreshResponseSchema = z
   })
   .passthrough();
 
+const profileResponseSchema = z
+  .object({
+    account: z
+      .object({ uuid: z.string().uuid().nullish() })
+      .passthrough()
+      .nullish(),
+  })
+  .passthrough();
+
 export interface HubSettings {
   upstreamBaseUrl: string;
   switchThreshold: number;
@@ -64,6 +82,9 @@ interface HubOptions {
   fetch: typeof fetch;
   now: () => number;
   refreshUrl: string;
+  usageUrl: string;
+  profileUrl: string;
+  usageRefreshIntervalMs: number;
   drainTimeoutMs: number;
 }
 
@@ -83,14 +104,112 @@ export class AccountPoolHub {
   private readonly inFlightByAccount = new Map<string, number>();
   private readonly activeControllers = new Set<AbortController>();
   private readonly refreshes = new Map<string, Promise<AccountSecret>>();
+  private readonly usageRefreshes = new Map<string, Promise<void>>();
+  private readonly lastUsageRefreshAt = new Map<string, number>();
   private readonly drainWaiters = new Set<() => void>();
 
   constructor(private readonly options: HubOptions) {}
 
   async start(signal: AbortSignal): Promise<void> {
     this.accepting = true;
-    await waitForAbort(signal);
+    while (!signal.aborted) {
+      await this.refreshUsage();
+      await waitForDelay(this.options.usageRefreshIntervalMs, signal);
+    }
     await this.stop();
+  }
+
+  async refreshUsage(accountId?: string, force = false): Promise<void> {
+    const accounts = (await this.options.accounts.list()).filter(
+      (account) =>
+        account.enabled &&
+        account.kind === "oauth" &&
+        (accountId === undefined || account.id === accountId),
+    );
+    await Promise.all(
+      accounts.map((account) => this.refreshAccountUsage(account, force)),
+    );
+  }
+
+  private async refreshAccountUsage(
+    account: Account,
+    force: boolean,
+  ): Promise<void> {
+    if ((this.inFlightByAccount.get(account.id) ?? 0) > 0) return;
+    const now = this.options.now();
+    const lastRefreshAt = this.lastUsageRefreshAt.get(account.id);
+    if (
+      !force &&
+      lastRefreshAt !== undefined &&
+      now - lastRefreshAt < this.options.usageRefreshIntervalMs
+    )
+      return;
+    const running = this.usageRefreshes.get(account.id);
+    if (running !== undefined) return running;
+    this.lastUsageRefreshAt.set(account.id, now);
+    const refresh = this.fetchAccountUsage(account).finally(() => {
+      this.usageRefreshes.delete(account.id);
+    });
+    this.usageRefreshes.set(account.id, refresh);
+    return refresh;
+  }
+
+  private async fetchAccountUsage(account: Account): Promise<void> {
+    try {
+      const secret = await this.freshSecret(account);
+      if (secret.kind !== "oauth") return;
+      const response = await this.options.fetch(this.options.usageUrl, {
+        headers: {
+          authorization: `Bearer ${secret.accessToken}`,
+          "anthropic-beta": OAUTH_BETA,
+          accept: "application/json",
+        },
+        signal: AbortSignal.timeout(USAGE_REQUEST_TIMEOUT_MS),
+      });
+      if (response.ok) {
+        const payload = await response.json().catch(() => null);
+        if (typeof payload === "object" && payload !== null) {
+          const quota = quotaFromUsage(
+            account.id,
+            payload,
+            this.options.quotas.get(account.id),
+            this.options.now(),
+          );
+          if (quota !== null) this.options.quotas.put(quota);
+        }
+      } else {
+        await response.body?.cancel();
+      }
+      if (account.accountUuid === null) {
+        await this.backfillAccountUuid(account.id, secret.accessToken);
+      }
+    } catch {}
+  }
+
+  private async backfillAccountUuid(
+    accountId: string,
+    accessToken: string,
+  ): Promise<void> {
+    const response = await this.options.fetch(this.options.profileUrl, {
+      headers: {
+        authorization: `Bearer ${accessToken}`,
+        "anthropic-beta": OAUTH_BETA,
+        accept: "application/json",
+      },
+      signal: AbortSignal.timeout(USAGE_REQUEST_TIMEOUT_MS),
+    });
+    if (!response.ok) {
+      await response.body?.cancel();
+      return;
+    }
+    const payload = await response.json().catch(() => null);
+    const parsed = profileResponseSchema.safeParse(payload);
+    const accountUuid = parsed.success
+      ? (parsed.data.account?.uuid ?? null)
+      : null;
+    if (accountUuid !== null) {
+      await this.options.accounts.setAccountUuid(accountId, accountUuid);
+    }
   }
 
   async stop(): Promise<void> {
@@ -160,7 +279,7 @@ export class AccountPoolHub {
           sevenDayResetAt: quota.sevenDayResetAt,
           sevenDayStatus: quota.sevenDayStatus,
           representativeClaim: quota.representativeClaim,
-          bucketExhaustion: quota.bucketExhaustion,
+          familyWeekly: quota.familyWeekly,
           observedAt: quota.observedAt,
           heldUntil: quota.heldUntil,
           error: quota.error,
@@ -174,9 +293,11 @@ export class AccountPoolHub {
   private async forward(request: Request, body: Uint8Array): Promise<Response> {
     const attempted = new Set<string>();
     const accounts = await this.options.accounts.list();
+    const parsedBody = parseRequestBody(body);
     while (attempted.size < accounts.length) {
-      const selected = await this.select(attempted);
-      if (selected === null) return this.noEligibleResponse(accounts);
+      const selected = await this.select(attempted, parsedBody.family);
+      if (selected === null)
+        return this.noEligibleResponse(accounts, parsedBody.family);
       attempted.add(selected.account.id);
       let secret: AccountSecret;
       try {
@@ -189,7 +310,7 @@ export class AccountPoolHub {
       try {
         upstream = await this.fetchUpstream(
           request,
-          body,
+          parsedBody.forAccount(selected.account.accountUuid),
           selected.account,
           secret,
         );
@@ -204,12 +325,13 @@ export class AccountPoolHub {
         selected.account.id,
         upstream.response.headers,
         this.options.quotas.get(selected.account.id),
+        parsedBody.family,
         this.options.now(),
       );
       this.options.quotas.put(observed);
       if (
         upstream.response.status === 429 &&
-        isQuotaRejection(observed, this.options.now())
+        isQuotaRejection(upstream.response.headers)
       ) {
         await upstream.response.body?.cancel();
         upstream.release();
@@ -231,7 +353,7 @@ export class AccountPoolHub {
           try {
             const retry = await this.fetchUpstream(
               request,
-              body,
+              parsedBody.forAccount(selected.account.accountUuid),
               selected.account,
               secret,
             );
@@ -239,6 +361,7 @@ export class AccountPoolHub {
               selected.account.id,
               retry.response.headers,
               this.options.quotas.get(selected.account.id),
+              parsedBody.family,
               this.options.now(),
             );
             if (retry.response.status === 429) {
@@ -293,11 +416,12 @@ export class AccountPoolHub {
       }
       return this.clientResponse(upstream);
     }
-    return this.noEligibleResponse(accounts);
+    return this.noEligibleResponse(accounts, parsedBody.family);
   }
 
   private async select(
     attempted: ReadonlySet<string>,
+    family: ModelFamily,
   ): Promise<SelectedAccount | null> {
     const now = this.options.now();
     const threshold = this.options.getSettings().switchThreshold;
@@ -309,7 +433,7 @@ export class AccountPoolHub {
       }))
       .filter(({ quota }) => quota.error === null)
       .filter(({ quota }) => quota.heldUntil === null || quota.heldUntil <= now)
-      .filter(({ quota }) => !isQuotaExhausted(quota, threshold, now));
+      .filter(({ quota }) => !isQuotaExhausted(quota, family, threshold, now));
     candidates.sort((left, right) => {
       const priority = left.account.priority - right.account.priority;
       if (priority !== 0) return priority;
@@ -318,8 +442,9 @@ export class AccountPoolHub {
         (this.inFlightByAccount.get(right.account.id) ?? 0);
       if (inFlight !== 0) return inFlight;
       return (
-        (left.quota.sevenDayResetAt ?? Number.MAX_SAFE_INTEGER) -
-        (right.quota.sevenDayResetAt ?? Number.MAX_SAFE_INTEGER)
+        (governingWeeklyResetAt(left.quota, family) ??
+          Number.MAX_SAFE_INTEGER) -
+        (governingWeeklyResetAt(right.quota, family) ?? Number.MAX_SAFE_INTEGER)
       );
     });
     return candidates[0] ?? null;
@@ -495,7 +620,10 @@ export class AccountPoolHub {
     });
   }
 
-  private noEligibleResponse(accounts: readonly Account[]): Response {
+  private noEligibleResponse(
+    accounts: readonly Account[],
+    family: ModelFamily,
+  ): Response {
     if (!accounts.some((account) => account.enabled)) {
       return anthropicError(
         503,
@@ -512,6 +640,7 @@ export class AccountPoolHub {
           quota.heldUntil,
           quota.fiveHourResetAt,
           quota.sevenDayResetAt,
+          governingWeeklyResetAt(quota, family),
         ].filter((value): value is number => value !== null && value > now);
       })
       .sort((left, right) => left - right)[0];
@@ -563,6 +692,9 @@ export function createHub(options: {
   fetch?: typeof fetch;
   now?: () => number;
   refreshUrl?: string;
+  usageUrl?: string;
+  profileUrl?: string;
+  usageRefreshIntervalMs?: number;
   drainTimeoutMs?: number;
 }): AccountPoolHub {
   return new AccountPoolHub({
@@ -573,6 +705,10 @@ export function createHub(options: {
     fetch: options.fetch ?? fetch,
     now: options.now ?? Date.now,
     refreshUrl: options.refreshUrl ?? DEFAULT_REFRESH_URL,
+    usageUrl: options.usageUrl ?? DEFAULT_USAGE_URL,
+    profileUrl: options.profileUrl ?? DEFAULT_PROFILE_URL,
+    usageRefreshIntervalMs:
+      options.usageRefreshIntervalMs ?? DEFAULT_USAGE_REFRESH_INTERVAL_MS,
     drainTimeoutMs: options.drainTimeoutMs ?? 60_000,
   });
 }
@@ -613,10 +749,22 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-function waitForAbort(signal: AbortSignal): Promise<void> {
+function waitForDelay(
+  milliseconds: number,
+  signal: AbortSignal,
+): Promise<void> {
   if (signal.aborted) return Promise.resolve();
   return new Promise((resolve) => {
-    signal.addEventListener("abort", () => resolve(), { once: true });
+    const timeout = setTimeout(() => {
+      signal.removeEventListener("abort", abort);
+      resolve();
+    }, milliseconds);
+    timeout.unref();
+    const abort = () => {
+      clearTimeout(timeout);
+      resolve();
+    };
+    signal.addEventListener("abort", abort, { once: true });
   });
 }
 

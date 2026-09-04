@@ -1,6 +1,20 @@
-import type { Account, AccountQuota, AccountSummary } from "./contracts.js";
+import type {
+  Account,
+  AccountQuota,
+  AccountSummary,
+  FamilyQuota,
+  ModelFamily,
+} from "./contracts.js";
 
 const PREFIX = "anthropic-ratelimit-unified-";
+const SCOPED_HEADER =
+  /^anthropic-ratelimit-unified-7d_(.+)-(utilization|reset|status)$/u;
+
+interface ScopedHeaderValues {
+  utilization: number | null;
+  resetAt: number | null;
+  status: string | null;
+}
 
 function parseNumber(value: string | null): number | null {
   if (value === null || value.trim() === "") return null;
@@ -8,8 +22,15 @@ function parseNumber(value: string | null): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-function parseReset(value: string | null): number | null {
-  if (value === null || value.trim() === "") return null;
+export function parseReset(value: string | number | null): number | null {
+  if (value === null) return null;
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) return null;
+    return value < 1_000_000_000_000
+      ? Math.round(value * 1_000)
+      : Math.round(value);
+  }
+  if (value.trim() === "") return null;
   const numeric = Number(value);
   if (Number.isFinite(numeric)) {
     return numeric < 1_000_000_000_000
@@ -20,10 +41,41 @@ function parseReset(value: string | null): number | null {
   return Number.isNaN(parsed) ? null : parsed;
 }
 
+export function modelFamily(model: string | null): ModelFamily {
+  if (model === null) return "other";
+  const normalized = model.toLowerCase();
+  if (normalized.includes("fable")) return "fable";
+  if (normalized.includes("sonnet")) return "sonnet";
+  if (normalized.includes("opus")) return "opus";
+  if (normalized.includes("haiku")) return "haiku";
+  return "other";
+}
+
+function scopedHeaderValues(headers: Headers): ScopedHeaderValues | null {
+  const buckets = new Map<string, ScopedHeaderValues>();
+  for (const [name, value] of headers) {
+    const match = SCOPED_HEADER.exec(name.toLowerCase());
+    const bucket = match?.[1];
+    const field = match?.[2];
+    if (bucket === undefined || field === undefined) continue;
+    const current = buckets.get(bucket) ?? {
+      utilization: null,
+      resetAt: null,
+      status: null,
+    };
+    if (field === "utilization") current.utilization = parseNumber(value);
+    if (field === "reset") current.resetAt = parseReset(value);
+    if (field === "status") current.status = value;
+    buckets.set(bucket, current);
+  }
+  return [...buckets.values()][0] ?? null;
+}
+
 export function quotaFromHeaders(
   accountId: string,
   headers: Headers,
   previous: AccountQuota,
+  family: ModelFamily,
   now: number,
 ): AccountQuota {
   const fiveHourUtilization = parseNumber(
@@ -37,20 +89,21 @@ export function quotaFromHeaders(
   const sevenDayResetAt = parseReset(headers.get(`${PREFIX}7d-reset`));
   const sevenDayStatus = headers.get(`${PREFIX}7d-status`);
   const representativeClaim = headers.get(`${PREFIX}representative-claim`);
-  const bucketExhaustion = { ...previous.bucketExhaustion };
-  for (const [name, value] of headers) {
-    if (!name.startsWith(PREFIX) || !name.endsWith("-status")) continue;
-    if (name === `${PREFIX}5h-status` || name === `${PREFIX}7d-status`)
-      continue;
-    const bucket = name.slice(PREFIX.length, -"-status".length);
-    if (bucket === "" || bucket === "overage") continue;
-    if (value.toLowerCase() !== "rejected") {
-      delete bucketExhaustion[bucket];
-      continue;
-    }
-    const reset = parseReset(headers.get(`${PREFIX}${bucket}-reset`));
-    bucketExhaustion[bucket] = reset ?? now;
-  }
+  const scoped = scopedHeaderValues(headers);
+  const priorFamily = previous.familyWeekly[family];
+  const familyWeekly: AccountQuota["familyWeekly"] =
+    scoped === null
+      ? previous.familyWeekly
+      : {
+          ...previous.familyWeekly,
+          [family]: {
+            utilization: scoped.utilization ?? priorFamily?.utilization ?? null,
+            resetAt: scoped.resetAt ?? priorFamily?.resetAt ?? null,
+            status: scoped.status ?? priorFamily?.status ?? null,
+            observedAt: now,
+            source: "header",
+          },
+        };
   const observed =
     fiveHourUtilization !== null ||
     fiveHourResetAt !== null ||
@@ -58,7 +111,8 @@ export function quotaFromHeaders(
     sevenDayUtilization !== null ||
     sevenDayResetAt !== null ||
     sevenDayStatus !== null ||
-    representativeClaim !== null;
+    representativeClaim !== null ||
+    scoped !== null;
   return {
     accountId,
     fiveHourUtilization: fiveHourUtilization ?? previous.fiveHourUtilization,
@@ -68,7 +122,7 @@ export function quotaFromHeaders(
     sevenDayResetAt: sevenDayResetAt ?? previous.sevenDayResetAt,
     sevenDayStatus: sevenDayStatus ?? previous.sevenDayStatus,
     representativeClaim: representativeClaim ?? previous.representativeClaim,
-    bucketExhaustion,
+    familyWeekly,
     observedAt: observed ? now : previous.observedAt,
     heldUntil: previous.heldUntil,
     error: previous.error,
@@ -89,7 +143,18 @@ function activeWindow(
   );
 }
 
-export function isQuotaExhausted(
+function activeFamilyWindow(
+  quota: FamilyQuota | null,
+  threshold: number,
+  now: number,
+): boolean {
+  return (
+    quota !== null &&
+    activeWindow(quota.utilization, quota.status, quota.resetAt, threshold, now)
+  );
+}
+
+export function isSharedQuotaExhausted(
   quota: AccountQuota,
   threshold: number,
   now: number,
@@ -112,11 +177,37 @@ export function isQuotaExhausted(
   );
 }
 
-export function isQuotaRejection(quota: AccountQuota, now: number): boolean {
+export function isQuotaExhausted(
+  quota: AccountQuota,
+  family: ModelFamily,
+  threshold: number,
+  now: number,
+): boolean {
   return (
-    activeWindow(null, quota.fiveHourStatus, quota.fiveHourResetAt, 1, now) ||
-    activeWindow(null, quota.sevenDayStatus, quota.sevenDayResetAt, 1, now)
+    isSharedQuotaExhausted(quota, threshold, now) ||
+    activeFamilyWindow(quota.familyWeekly[family], threshold, now)
   );
+}
+
+export function isQuotaRejection(headers: Headers): boolean {
+  for (const [name, value] of headers) {
+    if (value.toLowerCase() !== "rejected") continue;
+    const normalized = name.toLowerCase();
+    if (
+      normalized === `${PREFIX}5h-status` ||
+      normalized === `${PREFIX}7d-status` ||
+      SCOPED_HEADER.test(normalized)
+    )
+      return true;
+  }
+  return false;
+}
+
+export function governingWeeklyResetAt(
+  quota: AccountQuota,
+  family: ModelFamily,
+): number | null {
+  return quota.familyWeekly[family]?.resetAt ?? quota.sevenDayResetAt;
 }
 
 export function accountStatus(
@@ -128,7 +219,7 @@ export function accountStatus(
   if (!account.enabled) return "disabled";
   if (quota.error !== null) return "error";
   if (quota.heldUntil !== null && quota.heldUntil > now) return "held";
-  if (isQuotaExhausted(quota, threshold, now)) return "exhausted";
+  if (isSharedQuotaExhausted(quota, threshold, now)) return "exhausted";
   return "ready";
 }
 

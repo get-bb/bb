@@ -2,6 +2,39 @@ import { z } from "zod";
 
 export const providerSchema = z.literal("claude");
 export const accountKindSchema = z.enum(["oauth", "api-key"]);
+export const modelFamilySchema = z.enum([
+  "fable",
+  "sonnet",
+  "opus",
+  "haiku",
+  "other",
+]);
+
+export type ModelFamily = z.infer<typeof modelFamilySchema>;
+
+export const familyQuotaSchema = z
+  .object({
+    utilization: z.number().nullable(),
+    resetAt: z.number().int().nullable(),
+    status: z.string().nullable(),
+    observedAt: z.number().int(),
+    source: z.enum(["header", "usage"]),
+  })
+  .strict();
+
+export type FamilyQuota = z.infer<typeof familyQuotaSchema>;
+
+export const familyWeeklySchema = z
+  .object({
+    fable: familyQuotaSchema.nullable(),
+    sonnet: familyQuotaSchema.nullable(),
+    opus: familyQuotaSchema.nullable(),
+    haiku: familyQuotaSchema.nullable(),
+    other: familyQuotaSchema.nullable(),
+  })
+  .strict();
+
+export type FamilyWeekly = z.infer<typeof familyWeeklySchema>;
 
 export const accountSchema = z
   .object({
@@ -10,6 +43,7 @@ export const accountSchema = z
     kind: accountKindSchema,
     label: z.string().min(1),
     email: z.string().email().nullable(),
+    accountUuid: z.string().uuid().nullable().default(null),
     subscriptionType: z.string().nullable(),
     rateLimitTier: z.string().nullable(),
     enabled: z.boolean(),
@@ -53,7 +87,7 @@ export const quotaSchema = z
     sevenDayResetAt: z.number().int().nullable(),
     sevenDayStatus: z.string().nullable(),
     representativeClaim: z.string().nullable(),
-    bucketExhaustion: z.record(z.string(), z.number().int()),
+    familyWeekly: familyWeeklySchema,
     observedAt: z.number().int().nullable(),
     heldUntil: z.number().int().nullable(),
     error: z.string().nullable(),
@@ -70,7 +104,7 @@ export const accountSummarySchema = accountSchema.extend({
   sevenDayResetAt: z.number().int().nullable(),
   sevenDayStatus: z.string().nullable(),
   representativeClaim: z.string().nullable(),
-  bucketExhaustion: z.record(z.string(), z.number().int()),
+  familyWeekly: familyWeeklySchema,
   observedAt: z.number().int().nullable(),
   heldUntil: z.number().int().nullable(),
   error: z.string().nullable(),

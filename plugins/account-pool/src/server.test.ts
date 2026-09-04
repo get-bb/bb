@@ -135,6 +135,7 @@ function importedCredentials(
     subscriptionType: "max",
     rateLimitTier: "max_5x",
     email: "pool@example.com",
+    accountUuid: "11111111-1111-4111-8111-111111111111",
     ...overrides,
   };
 }
@@ -156,7 +157,10 @@ async function createFixture(args: {
     },
     sdk: sdkStubs(),
   });
-  const plugin = createAccountPoolPlugin(args.options);
+  const plugin = createAccountPoolPlugin({
+    usageUrl: "data:application/json,{}",
+    ...args.options,
+  });
   await plugin(host.bb);
   const accountMetadata = accountSchema.parse(
     await host.harness.behavior.callRpc("account.add", {
@@ -486,6 +490,7 @@ describe("Account Pool plugin", () => {
         response.end(
           JSON.stringify({
             account: {
+              uuid: "22222222-2222-4222-8222-222222222222",
               email: "login@example.com",
               display_name: "Logged-in Claude",
               has_claude_pro: true,
@@ -509,6 +514,7 @@ describe("Account Pool plugin", () => {
       oauthAuthorizeUrl: `${oauth.url}/authorize`,
       oauthTokenUrl: `${oauth.url}/token`,
       oauthProfileUrl: `${oauth.url}/profile`,
+      usageUrl: "data:application/json,{}",
     })(host.bb);
     cleanups.push(async () => {
       await host.harness.lifecycle.dispose();
@@ -970,7 +976,7 @@ describe("Account Pool plugin", () => {
     );
     expect(unauthorized.status).toBe(401);
     expect(seen).toHaveLength(0);
-    const body = Buffer.from('{"model":"claude-test","stream":true}');
+    const body = Buffer.from('{"model":"claude-fable-5","stream":true}');
     const response = await fixture.host.harness.behavior.fetchHttp(
       "POST",
       "/v1/messages?beta=true",
@@ -1040,7 +1046,15 @@ describe("Account Pool plugin", () => {
       fiveHourStatus: "allowed",
       sevenDayStatus: "allowed",
       representativeClaim: "claim-a",
-      bucketExhaustion: { "7d_oi": 4_102_452_000_000 },
+      familyWeekly: {
+        fable: {
+          utilization: null,
+          resetAt: 4_102_452_000_000,
+          status: "rejected",
+          observedAt: expect.any(Number),
+          source: "header",
+        },
+      },
     });
     expect(fixture.host.harness.inspection.registrations.httpRoutes).toEqual(
       expect.arrayContaining([
@@ -1132,6 +1146,314 @@ describe("Account Pool plugin", () => {
     expect(rotated.status).toBe(200);
     expect(await rotated.text()).toBe('{"rotated":true}');
     expect(keys).toEqual(["sk-one", "sk-two", "sk-three"]);
+  });
+
+  it("routes around a Fable-spent account while retaining it for Opus", async () => {
+    const keys: string[] = [];
+    const upstream = await startUpstream(async (request, response) => {
+      keys.push(request.headers["x-api-key"]?.toString() ?? "");
+      await readRequestBody(request);
+      if (keys.length === 1) {
+        response.writeHead(200, {
+          "content-type": "application/json",
+          "anthropic-ratelimit-unified-5h-status": "allowed",
+          "anthropic-ratelimit-unified-7d-status": "allowed",
+          "anthropic-ratelimit-unified-7d_oi-utilization": "0.99",
+          "anthropic-ratelimit-unified-7d_oi-reset": "4102452000",
+          "anthropic-ratelimit-unified-7d_oi-status": "allowed",
+        });
+      } else {
+        response.writeHead(200, { "content-type": "application/json" });
+      }
+      response.end("{}");
+    });
+    cleanups.push(upstream.close);
+    const fixture = await createFixture({
+      upstreamUrl: upstream.url,
+      apiKey: "sk-one",
+    });
+    await addApiAccount(fixture, "sk-two");
+
+    for (const model of [
+      "claude-fable-5",
+      "claude-fable-5",
+      "claude-opus-4-1",
+    ]) {
+      const response = await fixture.host.harness.behavior.fetchHttp(
+        "POST",
+        "/v1/messages",
+        {
+          headers: authHeaders(fixture.key),
+          body: JSON.stringify({ model }),
+        },
+      );
+      expect(response.status).toBe(200);
+      await response.text();
+    }
+
+    expect(keys).toEqual(["sk-one", "sk-two", "sk-one"]);
+  });
+
+  it("rotates a family-only 429 without exhausting other families", async () => {
+    const keys: string[] = [];
+    const upstream = await startUpstream(async (request, response) => {
+      keys.push(request.headers["x-api-key"]?.toString() ?? "");
+      await readRequestBody(request);
+      if (keys.length === 1) {
+        response.writeHead(429, {
+          "content-type": "application/json",
+          "anthropic-ratelimit-unified-5h-status": "allowed",
+          "anthropic-ratelimit-unified-7d-status": "allowed",
+          "anthropic-ratelimit-unified-7d_oi-reset": "4102452000",
+          "anthropic-ratelimit-unified-7d_oi-status": "rejected",
+        });
+        response.end('{"rejected":true}');
+        return;
+      }
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end("{}");
+    });
+    cleanups.push(upstream.close);
+    const fixture = await createFixture({
+      upstreamUrl: upstream.url,
+      apiKey: "sk-one",
+    });
+    await addApiAccount(fixture, "sk-two");
+
+    const fable = await fixture.host.harness.behavior.fetchHttp(
+      "POST",
+      "/v1/messages",
+      {
+        headers: authHeaders(fixture.key),
+        body: JSON.stringify({ model: "claude-fable-5" }),
+      },
+    );
+    expect(fable.status).toBe(200);
+    await fable.text();
+    const opus = await fixture.host.harness.behavior.fetchHttp(
+      "POST",
+      "/v1/messages",
+      {
+        headers: authHeaders(fixture.key),
+        body: JSON.stringify({ model: "claude-opus-4-1" }),
+      },
+    );
+    expect(opus.status).toBe(200);
+    await opus.text();
+
+    expect(keys).toEqual(["sk-one", "sk-two", "sk-one"]);
+    const accounts = z
+      .array(accountSummarySchema)
+      .parse(await fixture.host.harness.behavior.callRpc("account.list", null));
+    expect(accounts[0]).toMatchObject({
+      status: "ready",
+      familyWeekly: {
+        fable: { status: "rejected", source: "header" },
+      },
+    });
+  });
+
+  it("refreshes usage on import and routes from its family observations", async () => {
+    const authorizations: Array<string | undefined> = [];
+    const usageCalls = new Map<string, number>();
+    const upstream = await startUpstream(async (request, response) => {
+      if (request.url === "/usage") {
+        const authorization = request.headers.authorization;
+        usageCalls.set(
+          authorization ?? "",
+          (usageCalls.get(authorization ?? "") ?? 0) + 1,
+        );
+        response.writeHead(200, { "content-type": "application/json" });
+        response.end(
+          JSON.stringify({
+            five_hour: { utilization: 10, resets_at: "4102444800" },
+            seven_day: { utilization: 20, resets_at: "4102448400" },
+            limits: [
+              {
+                kind: "weekly_scoped",
+                group: "weekly",
+                percent: authorization === "Bearer oauth-a" ? 100 : 0,
+                resets_at: "4102452000",
+                scope: { model: { display_name: "Fable" } },
+              },
+            ],
+          }),
+        );
+        return;
+      }
+      if (request.url === "/profile") {
+        response.writeHead(200, { "content-type": "application/json" });
+        response.end(
+          JSON.stringify({
+            account: { uuid: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" },
+          }),
+        );
+        return;
+      }
+      authorizations.push(request.headers.authorization);
+      await readRequestBody(request);
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end("{}");
+    });
+    cleanups.push(upstream.close);
+    const imports = [
+      importedCredentials({
+        accessToken: "oauth-a",
+        accountUuid: null,
+      }),
+      importedCredentials({
+        accessToken: "oauth-b",
+        accountUuid: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+      }),
+    ];
+    let importIndex = 0;
+    const fixture = await createFixture({
+      upstreamUrl: upstream.url,
+      source: "import",
+      options: {
+        usageUrl: `${upstream.url}/usage`,
+        oauthProfileUrl: `${upstream.url}/profile`,
+        importCredentials: async () => {
+          const imported = imports[importIndex];
+          importIndex += 1;
+          if (imported === undefined) throw new Error("No import fixture.");
+          return imported;
+        },
+      },
+    });
+    const second = accountSchema.parse(
+      await fixture.host.harness.behavior.callRpc("account.add", {
+        provider: "claude",
+        source: { kind: "import" },
+        label: "second",
+        priority: 100,
+      }),
+    );
+    expect(usageCalls).toEqual(
+      new Map([
+        ["Bearer oauth-a", 1],
+        ["Bearer oauth-b", 1],
+      ]),
+    );
+    await fixture.host.harness.behavior.callRpc("account.disable", {
+      id: second.id,
+    });
+    await fixture.host.harness.behavior.callRpc("account.enable", {
+      id: second.id,
+    });
+    expect(usageCalls.get("Bearer oauth-a")).toBe(1);
+    expect(usageCalls.get("Bearer oauth-b")).toBe(2);
+    const listed = await fixture.host.harness.behavior.runCli([
+      "account",
+      "list",
+    ]);
+    expect(listed.stdout).toContain("Fable");
+    expect(listed.stdout).toContain("100% rejected");
+    expect(listed.stdout).toContain("0% allowed");
+    const accounts = z
+      .array(accountSummarySchema)
+      .parse(await fixture.host.harness.behavior.callRpc("account.list", null));
+    expect(accounts[0]?.accountUuid).toBe(
+      "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+    );
+
+    for (const model of ["claude-fable-5", "claude-opus-4-1"]) {
+      const response = await fixture.host.harness.behavior.fetchHttp(
+        "POST",
+        "/v1/messages",
+        {
+          headers: authHeaders(fixture.key),
+          body: JSON.stringify({ model }),
+        },
+      );
+      expect(response.status).toBe(200);
+      await response.text();
+    }
+
+    expect(authorizations).toEqual(["Bearer oauth-b", "Bearer oauth-a"]);
+  });
+
+  it("rewrites both known metadata account UUID formats", async () => {
+    const bodies: Buffer[] = [];
+    const upstream = await startUpstream(async (request, response) => {
+      bodies.push(await readRequestBody(request));
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end("{}");
+    });
+    cleanups.push(upstream.close);
+    const accountUuid = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+    const oldUuid = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+    const fixture = await createFixture({
+      upstreamUrl: upstream.url,
+      source: "import",
+      options: {
+        importCredentials: async () => importedCredentials({ accountUuid }),
+      },
+    });
+    const inputs = [
+      JSON.stringify({
+        model: "claude-fable-5",
+        metadata: {
+          user_id: JSON.stringify({
+            device_id: "device",
+            account_uuid: oldUuid,
+          }),
+        },
+      }),
+      JSON.stringify({
+        model: "claude-fable-5",
+        metadata: {
+          user_id: `user_hash_account_${oldUuid}_session_cccccccc-cccc-4ccc-8ccc-cccccccccccc`,
+        },
+      }),
+    ];
+    for (const body of inputs) {
+      const response = await fixture.host.harness.behavior.fetchHttp(
+        "POST",
+        "/v1/messages",
+        { headers: authHeaders(fixture.key), body },
+      );
+      await response.text();
+    }
+    expect(bodies).toHaveLength(2);
+    expect(bodies.every((body) => body.toString().includes(accountUuid))).toBe(
+      true,
+    );
+    expect(bodies.every((body) => !body.toString().includes(oldUuid))).toBe(
+      true,
+    );
+  });
+
+  it("preserves request bytes when an account UUID rewrite cannot apply", async () => {
+    const bodies: Buffer[] = [];
+    const upstream = await startUpstream(async (request, response) => {
+      bodies.push(await readRequestBody(request));
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end("{}");
+    });
+    cleanups.push(upstream.close);
+    const fixture = await createFixture({ upstreamUrl: upstream.url });
+    const inputs = [
+      JSON.stringify({
+        model: "claude-fable-5",
+        metadata: {
+          user_id: JSON.stringify({
+            account_uuid: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+          }),
+        },
+      }),
+      '{ "model": "claude-fable-5", "messages": [] }',
+      "not-json-at-all",
+    ];
+    for (const body of inputs) {
+      const response = await fixture.host.harness.behavior.fetchHttp(
+        "POST",
+        "/v1/messages",
+        { headers: authHeaders(fixture.key), body },
+      );
+      await response.text();
+    }
+    expect(bodies.map((body) => body.toString())).toEqual(inputs);
   });
 
   it("paces a per-minute 429 on the same account without rotating", async () => {

@@ -59,6 +59,7 @@ function savedAccount(authenticated: ClaudeOAuthAccount): Account {
     kind: "oauth",
     label: authenticated.label,
     email: authenticated.email,
+    accountUuid: authenticated.accountUuid,
     subscriptionType: authenticated.subscriptionType,
     rateLimitTier: authenticated.rateLimitTier,
     enabled: true,
@@ -96,6 +97,7 @@ describe("Claude OAuth login", () => {
         response.end(
           JSON.stringify({
             account: {
+              uuid: "11111111-2222-4333-8444-555555555555",
               email: "person@example.com",
               display_name: "Personal Claude",
               has_claude_max: true,
@@ -149,6 +151,7 @@ describe("Claude OAuth login", () => {
       ).resolves.toMatchObject({
         label: "Personal Claude",
         email: "person@example.com",
+        accountUuid: "11111111-2222-4333-8444-555555555555",
         subscriptionType: "max",
         rateLimitTier: "default_claude_max_5x",
       });

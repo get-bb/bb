@@ -85,9 +85,13 @@ prior token valid for ten minutes. Agents should pipe API keys to
 `--api-key-stdin`;
 `--api-key <key>` is an unsafe compatibility form that exposes the key in
 process arguments, shell history, and agent transcripts. Prefer `--import` for
-an existing Claude Code login. JSON account status
-reports rejected upstream bucket resets under `bucketExhaustion`; this
-diagnostic field does not affect account selection.
+an existing Claude Code login. OAuth quota refreshes on add or enable and every
+five minutes while an account is idle. Account tables add columns for observed
+model-family buckets; JSON status exposes their utilization, reset, status,
+observation time, and source under `familyWeekly`. Selection skips an account
+whose requested family is spent while retaining it for other families. A
+present `metadata.user_id` account UUID is aligned with the selected OAuth
+account.
 
 - Inspect real status, logs, API results, or diffs instead of assumptions.
 - Keep file paths on the machine that owns the selected workspace.

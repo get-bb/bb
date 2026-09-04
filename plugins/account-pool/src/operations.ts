@@ -46,6 +46,9 @@ export class PoolOperations {
     private readonly now: () => number = Date.now,
     private readonly importCredentials: () => Promise<ImportedClaudeCredentials> = importClaudeCredentials,
     private readonly onAccountsChanged: () => void = () => {},
+    private readonly onAccountEnabled: (
+      accountId: string,
+    ) => Promise<void> = async () => {},
   ) {}
 
   async add(input: AccountAddInput): Promise<Account> {
@@ -56,6 +59,7 @@ export class PoolOperations {
           kind: "api-key",
           label: input.label ?? "Claude API key",
           email: null,
+          accountUuid: null,
           subscriptionType: null,
           rateLimitTier: null,
           enabled: true,
@@ -64,6 +68,7 @@ export class PoolOperations {
         { kind: "api-key", apiKey: input.source.apiKey },
       );
       this.onAccountsChanged();
+      await this.onAccountEnabled(account.id);
       return account;
     }
     const imported = await this.importCredentials();
@@ -73,6 +78,7 @@ export class PoolOperations {
         kind: "oauth",
         label: input.label ?? imported.email ?? "Claude Code account",
         email: imported.email,
+        accountUuid: imported.accountUuid,
         subscriptionType: imported.subscriptionType,
         rateLimitTier: imported.rateLimitTier,
         enabled: true,
@@ -86,6 +92,7 @@ export class PoolOperations {
       },
     );
     this.onAccountsChanged();
+    await this.onAccountEnabled(account.id);
     return account;
   }
 
@@ -96,6 +103,7 @@ export class PoolOperations {
         kind: "oauth",
         label: authenticated.label,
         email: authenticated.email,
+        accountUuid: authenticated.accountUuid,
         subscriptionType: authenticated.subscriptionType,
         rateLimitTier: authenticated.rateLimitTier,
         enabled: true,
@@ -109,6 +117,7 @@ export class PoolOperations {
       },
     );
     this.onAccountsChanged();
+    await this.onAccountEnabled(account.id);
     return account;
   }
 
@@ -131,6 +140,7 @@ export class PoolOperations {
     const quota = this.quotas.get(id);
     this.quotas.put({ ...quota, error: null, heldUntil: null });
     this.onAccountsChanged();
+    await this.onAccountEnabled(account.id);
     return account;
   }
 

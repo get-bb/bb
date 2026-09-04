@@ -24,6 +24,7 @@ const profileResponseSchema = z
   .object({
     account: z
       .object({
+        uuid: z.string().uuid().nullish(),
         email: z.string().email().nullish(),
         display_name: z.string().trim().min(1).nullish(),
         has_claude_max: z.boolean().nullish(),
@@ -53,6 +54,7 @@ interface LoginSession {
 export interface ClaudeOAuthAccount {
   label: string;
   email: string | null;
+  accountUuid: string | null;
   subscriptionType: string | null;
   rateLimitTier: string | null;
   accessToken: string;
@@ -228,6 +230,7 @@ export class ClaudeOAuthLogin {
         profile.organization?.name ??
         "Claude account",
       email,
+      accountUuid: profile.account.uuid ?? null,
       subscriptionType,
       rateLimitTier:
         profile.account.rate_limit_tier ??

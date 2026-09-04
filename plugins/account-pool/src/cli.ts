@@ -6,6 +6,8 @@ import {
   loginCompleteInputSchema,
   tokenRotateInputSchema,
   type AccountSummary,
+  type FamilyQuota,
+  type ModelFamily,
   type PoolStatus,
 } from "./contracts.js";
 import type { PoolOperations } from "./operations.js";
@@ -72,10 +74,47 @@ function formatUtilization(value: number | null): string {
   return value === null ? "-" : `${Math.round(value * 100)}%`;
 }
 
+const MODEL_FAMILIES: ModelFamily[] = [
+  "fable",
+  "sonnet",
+  "opus",
+  "haiku",
+  "other",
+];
+
+function familyLabel(family: ModelFamily): string {
+  return family[0]?.toUpperCase() + family.slice(1);
+}
+
+function formatFamilyQuota(quota: FamilyQuota | null): string {
+  if (quota === null) return "-";
+  return [
+    formatUtilization(quota.utilization),
+    quota.status ?? "-",
+    formatReset(quota.resetAt),
+    quota.source,
+  ].join(" ");
+}
+
 function formatAccounts(accounts: readonly AccountSummary[]): string {
   if (accounts.length === 0) return "No accounts configured.";
+  const families = MODEL_FAMILIES.filter((family) =>
+    accounts.some((account) => account.familyWeekly[family] !== null),
+  );
   return [
-    "ID\tLabel\tKind\tEnabled\tPriority\t5h\t5h reset\t7d\t7d reset\tStatus",
+    [
+      "ID",
+      "Label",
+      "Kind",
+      "Enabled",
+      "Priority",
+      "5h",
+      "5h reset",
+      "7d",
+      "7d reset",
+      ...families.map(familyLabel),
+      "Status",
+    ].join("\t"),
     ...accounts.map((account) =>
       [
         account.id,
@@ -87,6 +126,9 @@ function formatAccounts(accounts: readonly AccountSummary[]): string {
         formatReset(account.fiveHourResetAt),
         formatUtilization(account.sevenDayUtilization),
         formatReset(account.sevenDayResetAt),
+        ...families.map((family) =>
+          formatFamilyQuota(account.familyWeekly[family]),
+        ),
         account.status,
       ].join("\t"),
     ),

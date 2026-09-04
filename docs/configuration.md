@@ -658,11 +658,18 @@ for ten minutes so in-flight requests can drain. Bypass or restore routing for
 one thread with `bb pool bypass <thread-id>` or
 `bb pool bypass <thread-id> --off`. Account listing, enable, disable, and
 removal are available through `bb pool account list|enable|disable|remove`.
-JSON account status includes rejected upstream bucket resets under
-`bucketExhaustion`. The field is diagnostic and does not affect selection.
+OAuth accounts refresh quota from Anthropic's usage endpoint when added or
+enabled and every five minutes while idle. `account list` adds columns for the
+family buckets Anthropic reports; JSON status exposes their utilization,
+reset, status, observation time, and `header` or `usage` source under
+`familyWeekly`. Requests route around an account spent for their model family
+without disabling that account for other families. Imported and newly signed-in
+accounts retain their Anthropic account UUID, and the hub aligns a present
+`metadata.user_id` account component with the selected account.
 
-Two settings control routing. `switchThreshold` is the 5-hour or 7-day quota
-fraction at which an account stops receiving traffic and defaults to `0.98`.
+Two settings control routing. `switchThreshold` is the shared or requested
+model-family quota fraction at which an account stops receiving matching
+traffic and defaults to `0.98`.
 `upstreamBaseUrl` defaults to `https://api.anthropic.com` and exists only for
 tests and QA with a controlled fake upstream:
 

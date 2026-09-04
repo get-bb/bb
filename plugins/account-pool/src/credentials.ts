@@ -24,7 +24,10 @@ const credentialsFileSchema = z
 
 const accountFileSchema = z.object({
   oauthAccount: z
-    .object({ emailAddress: z.string().email().nullish() })
+    .object({
+      emailAddress: z.string().email().nullish(),
+      accountUuid: z.string().uuid().nullish(),
+    })
     .nullish(),
 });
 
@@ -35,11 +38,12 @@ export interface ImportedClaudeCredentials {
   subscriptionType: string | null;
   rateLimitTier: string | null;
   email: string | null;
+  accountUuid: string | null;
 }
 
 function parseCredentials(
   raw: string,
-): Omit<ImportedClaudeCredentials, "email"> | null {
+): Omit<ImportedClaudeCredentials, "email" | "accountUuid"> | null {
   const trimmed = raw.trim();
   const candidates = [trimmed];
   if (/^(?:[0-9a-f]{2})+$/iu.test(trimmed)) {
@@ -77,17 +81,23 @@ async function readKeychainCredentials(): Promise<string | null> {
   return null;
 }
 
-async function readAccountEmail(): Promise<string | null> {
+async function readAccountIdentity(): Promise<{
+  email: string | null;
+  accountUuid: string | null;
+}> {
   try {
     const value = JSON.parse(
       await fs.readFile(path.join(os.homedir(), ".claude.json"), "utf8"),
     );
     const parsed = accountFileSchema.safeParse(value);
     return parsed.success
-      ? (parsed.data.oauthAccount?.emailAddress ?? null)
-      : null;
+      ? {
+          email: parsed.data.oauthAccount?.emailAddress ?? null,
+          accountUuid: parsed.data.oauthAccount?.accountUuid ?? null,
+        }
+      : { email: null, accountUuid: null };
   } catch {
-    return null;
+    return { email: null, accountUuid: null };
   }
 }
 
@@ -109,5 +119,5 @@ export async function importClaudeCredentials(): Promise<ImportedClaudeCredentia
       "Claude Code OAuth credentials were not found. Run `claude /login` on the bb server host, then retry.",
     );
   }
-  return { ...credentials, email: await readAccountEmail() };
+  return { ...credentials, ...(await readAccountIdentity()) };
 }

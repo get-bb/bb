@@ -62,9 +62,13 @@ safely. Rotation keeps the prior token valid for ten minutes. Agents should use
 `--api-key-stdin`, which reads exactly one non-empty key from piped standard
 input. The compatibility form `--api-key <key>` exposes the key in process
 arguments, shell history, and agent transcripts. Prefer `--import` when Claude
-Code is already signed in. JSON account status reports rejected upstream
-bucket resets under `bucketExhaustion`; this is diagnostic status and does not
-affect selection.
+Code is already signed in. OAuth quota refreshes on add or enable and every
+five minutes while the account is idle. Account tables add columns for the
+family buckets Anthropic reports, and JSON status exposes the same observations
+under `familyWeekly`. Selection skips an account only for a spent requested
+family while retaining it for other families. When Claude Code supplies an
+account UUID in `metadata.user_id`, the hub aligns it with the selected OAuth
+account.
 The `upstreamBaseUrl` setting exists for tests and QA and defaults to
 `https://api.anthropic.com`; `switchThreshold` defaults to `0.98`.
 
