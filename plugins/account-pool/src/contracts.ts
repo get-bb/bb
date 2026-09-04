@@ -184,6 +184,28 @@ export const loginCompleteInputSchema = z
   })
   .strict();
 
+export const codexLoginStartSchema = z
+  .object({
+    sessionId: z.string().uuid(),
+    verificationUri: z.string().url(),
+    userCode: z.string().min(1),
+    expiresAt: z.number().int().positive(),
+    intervalMs: z.number().int().positive(),
+  })
+  .strict();
+
+export const codexLoginPollInputSchema = z
+  .object({ sessionId: z.string().uuid() })
+  .strict();
+
+export const codexLoginPollSchema = z.discriminatedUnion("status", [
+  z.object({ status: z.literal("pending") }).strict(),
+  z
+    .object({ status: z.literal("complete"), account: accountSummarySchema })
+    .strict(),
+  z.object({ status: z.literal("error"), message: z.string().min(1) }).strict(),
+]);
+
 export const accountIdInputSchema = z
   .object({ id: z.string().uuid() })
   .strict();

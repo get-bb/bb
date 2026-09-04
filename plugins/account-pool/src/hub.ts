@@ -7,7 +7,10 @@ import type {
   PoolStatus,
 } from "./contracts.js";
 import { createClaudeAdapter } from "./claude-adapter.js";
-import { createCodexAdapter } from "./codex-adapter.js";
+import {
+  createCodexAdapter,
+  DEFAULT_CODEX_REFRESH_URL,
+} from "./codex-adapter.js";
 import type { ProviderAdapter } from "./provider-adapter.js";
 import type { ImportedProviderAccount } from "./provider-adapter.js";
 import type {
@@ -24,7 +27,6 @@ import type { AccountStore, HubTokenStore, QuotaStore } from "./store.js";
 
 const ROUTE = "/api/v1/plugins/account-pool/http";
 const DEFAULT_REFRESH_URL = "https://platform.claude.com/v1/oauth/token";
-const DEFAULT_CODEX_REFRESH_URL = "https://auth.openai.com/oauth/token";
 const DEFAULT_USAGE_URL = "https://api.anthropic.com/api/oauth/usage";
 const DEFAULT_PROFILE_URL = "https://api.anthropic.com/api/oauth/profile";
 const DEFAULT_USAGE_REFRESH_INTERVAL_MS = 5 * 60 * 1_000;

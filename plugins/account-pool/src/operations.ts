@@ -15,6 +15,7 @@ import type {
   RoutingStore,
 } from "./store.js";
 import type { ClaudeOAuthAccount } from "./oauth-login.js";
+import type { CodexDeviceAccount } from "./codex-device-login.js";
 
 interface PoolHost {
   id: string;
@@ -116,6 +117,39 @@ export class PoolOperations {
     this.onAccountsChanged();
     await this.onAccountEnabled(account.id);
     return account;
+  }
+
+  async addCodexOAuth(
+    authenticated: CodexDeviceAccount,
+  ): Promise<AccountSummary> {
+    const account = await this.accounts.add(
+      {
+        provider: "codex",
+        kind: "oauth",
+        label: authenticated.label,
+        email: authenticated.email,
+        accountUuid: null,
+        codexAccountId: authenticated.accountId,
+        subscriptionType: null,
+        rateLimitTier: null,
+        enabled: true,
+        priority: 100,
+      },
+      {
+        kind: "oauth",
+        accessToken: authenticated.accessToken,
+        refreshToken: authenticated.refreshToken,
+        idToken: authenticated.idToken,
+        expiresAt: authenticated.expiresAt,
+      },
+    );
+    this.onAccountsChanged();
+    await this.onAccountEnabled(account.id);
+    const summary = (await this.list()).find((item) => item.id === account.id);
+    if (summary === undefined) {
+      throw new Error("Added Codex account could not be read back.");
+    }
+    return summary;
   }
 
   async list(): Promise<AccountSummary[]> {

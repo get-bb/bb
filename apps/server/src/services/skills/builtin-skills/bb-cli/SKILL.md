@@ -59,6 +59,8 @@ or Codex credentials, and inspect its proxy routes and account quota with:
 bb plugin enable account-pool
 bb pool account add --provider claude --login
 printf '%s\n' "$CLAUDE_AUTH_CODE" | bb pool account login-complete --session <id> --code-stdin
+bb pool account add --provider codex --login
+bb pool account login-poll --session <id>
 bb pool account add --provider claude --import
 bb pool account add --provider codex --import
 printf '%s\n' "$ANTHROPIC_API_KEY" | bb pool account add --provider claude --api-key-stdin [--label <text>] [--priority <n>]
@@ -72,10 +74,12 @@ bb pool token rotate --machine <id-or-name>
 bb pool bypass <thread-id> [--off]
 ```
 
-`--login` starts a PKCE session, prints a browser URL and session ID, then
-exits. Pipe the manual Claude callback code to `account login-complete` with
-that session ID within ten minutes. The code stays out of process arguments,
-and the browser and bb server may be on different machines. Newly added or
+Claude `--login` starts a PKCE session, prints a browser URL and session ID,
+then exits. Pipe the manual callback code to `account login-complete` with that
+session ID within ten minutes. Codex `--login` prints a device verification
+URL, one-time code, session ID, and an `account login-poll` command that waits
+for authorization. The Claude code stays out of process arguments, and either
+browser may be on a different machine from the bb server. Newly added or
 enabled accounts are available without a plugin reload. With an
 enabled account whose secret file remains readable and valid, matching Claude
 Code or Codex sessions receive the pool route and a distinct secret token for
@@ -89,9 +93,9 @@ prior token valid for ten minutes. Agents should pipe API keys to
 `--api-key-stdin`;
 `--api-key <key>` is an unsafe compatibility form that exposes the key in
 process arguments, shell history, and agent transcripts. Prefer `--import` for
-an existing Claude Code login. Codex import reads `~/.codex/auth.json` on the
-bb server host. OAuth quota refreshes on add or enable and every
-five minutes while an account is idle. Account tables add columns for observed
+an existing Claude Code login. The CLI Codex import path reads
+`~/.codex/auth.json` on the bb server host. OAuth quota refreshes on add or
+enable and every five minutes while an account is idle. Account tables add columns for observed
 model-family buckets; JSON status exposes their utilization, reset, status,
 observation time, and source under `familyWeekly`. Selection skips an account
 whose requested family is spent while retaining it for other families. A

@@ -94,44 +94,104 @@ describe("Account Pool settings", () => {
     });
   });
 
-  it("imports Codex credentials from the server machine", async () => {
-    const added = {
+  it("signs in to Codex through the device-code state machine", async () => {
+    const added: AccountSummary = {
       ...account(),
-      provider: "codex" as const,
+      provider: "codex",
       label: "Codex Pro",
+      email: "codex@example.com",
+      codexAccountId: "chatgpt-account-1",
     };
     const accounts: AccountSummary[] = [];
+    const opened: string[] = [];
+    let polls = 0;
     const slot = renderSlot(
       app.settingsSections[0]!,
       {},
       {
+        openUrl: (url) => {
+          opened.push(url);
+          return true;
+        },
         rpc: {
           "account.list": () => [...accounts],
-          "account.add": () => {
+          "codexLogin.start": () => ({
+            sessionId: "33333333-3333-4333-8333-333333333333",
+            verificationUri: "https://auth.openai.com/codex/device",
+            userCode: "ABCD-1234",
+            expiresAt: Date.now() + 600_000,
+            intervalMs: 1,
+          }),
+          "codexLogin.poll": () => {
+            polls += 1;
+            if (polls === 1) return { status: "pending" };
             accounts.push(added);
-            return added;
+            return { status: "complete", account: added };
           },
         },
       },
     );
     fireEvent.click(
       await slot.findByRole("button", {
-        name: "Import Codex from this machine",
+        name: "Sign in to Codex",
       }),
     );
-    await waitFor(() =>
-      expect(slot.rpcCalls).toContainEqual({
-        method: "account.add",
-        input: {
-          provider: "codex",
-          source: { kind: "import" },
-          label: null,
-          priority: 100,
-        },
-      }),
+    expect(await slot.findByText("Finish signing in to Codex")).toBeTruthy();
+    expect(slot.getByLabelText("Codex user code").textContent).toContain(
+      "ABCD-1234",
     );
+    expect(slot.getByText("Waiting for you to authorize…")).toBeTruthy();
+    expect(opened).toEqual(["https://auth.openai.com/codex/device"]);
     expect(await slot.findByText("Codex Pro")).toBeTruthy();
     expect(slot.getByText("Codex")).toBeTruthy();
+    expect(
+      slot.rpcCalls.filter((call) => call.method === "codexLogin.poll"),
+    ).toHaveLength(2);
+  });
+
+  it("shows a Codex device-login error and allows retry", async () => {
+    const slot = renderSlot(
+      app.settingsSections[0]!,
+      {},
+      {
+        openUrl: () => true,
+        rpc: {
+          "account.list": () => [],
+          "codexLogin.start": () => ({
+            sessionId: "33333333-3333-4333-8333-333333333333",
+            verificationUri: "https://auth.openai.com/codex/device",
+            userCode: "ABCD-1234",
+            expiresAt: Date.now() + 600_000,
+            intervalMs: 1,
+          }),
+          "codexLogin.poll": () => ({
+            status: "error",
+            message: "Code expired, start again.",
+          }),
+        },
+      },
+    );
+    fireEvent.click(
+      await slot.findByRole("button", { name: "Sign in to Codex" }),
+    );
+    expect((await slot.findByRole("alert")).textContent).toContain(
+      "Code expired, start again.",
+    );
+    expect(slot.getByRole("button", { name: "Try again" })).toBeTruthy();
+  });
+
+  it("does not render a Codex import button", async () => {
+    const slot = renderSlot(
+      app.settingsSections[0]!,
+      {},
+      {
+        rpc: { "account.list": () => [] },
+      },
+    );
+    expect(await slot.findByText("No provider accounts yet")).toBeTruthy();
+    expect(
+      slot.queryByRole("button", { name: "Import Codex from this machine" }),
+    ).toBeNull();
   });
 
   it("keeps the login step open and shows a completion error inline", async () => {

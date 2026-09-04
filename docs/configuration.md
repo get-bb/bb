@@ -624,22 +624,25 @@ Enable it and add at least one account:
 bb plugin enable account-pool
 bb pool account add --provider claude --login
 printf '%s\n' "$CLAUDE_AUTH_CODE" | bb pool account login-complete --session <id> --code-stdin
+bb pool account add --provider codex --login
+bb pool account login-poll --session <id>
 bb pool account add --provider claude --import
 bb pool account add --provider codex --import
 printf '%s\n' "$ANTHROPIC_API_KEY" | bb pool account add --provider claude --api-key-stdin [--label <text>] [--priority <n>]
 ```
 
-The login start command creates a ten-minute in-memory PKCE session, prints a
-Claude browser authorization URL and session ID, then exits. After sign-in,
+The Claude login start command creates a ten-minute in-memory PKCE session,
+prints a browser authorization URL and session ID, then exits. After sign-in,
 pipe the code shown on Anthropic's manual callback page to
 `account login-complete` with that session ID. The browser can be on a different
 machine from the bb server, and the code stays out of process arguments. The
-Account Pool plugin settings page exposes the same flow with **Sign in to
-Claude**, plus provider-specific import, API-key, enable/disable, and removal
-controls. Codex has no browser sign-in flow; **Import Codex from this machine**
-reads the bb server host's `~/.codex/auth.json`.
+Codex login command prints a ChatGPT device verification URL, one-time code,
+session ID, and an `account login-poll` command that waits until authorization
+completes or expires. The Account Pool plugin settings page exposes both flows
+with **Sign in to Claude** and **Sign in to Codex**, plus Claude import,
+API-key, enable/disable, and removal controls.
 
-The import paths read the Claude Code or Codex login on the bb server host.
+The CLI import paths read the Claude Code or Codex login on the bb server host.
 `--api-key-stdin` reads exactly one non-empty key from piped standard input and
 is the default API-key path for agents. The compatibility form `--api-key
 <key>` remains available, but exposes the secret in process arguments, shell

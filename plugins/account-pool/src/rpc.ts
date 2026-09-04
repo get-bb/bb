@@ -7,6 +7,9 @@ import {
   accountSummarySchema,
   bypassInputSchema,
   bypassResultSchema,
+  codexLoginPollInputSchema,
+  codexLoginPollSchema,
+  codexLoginStartSchema,
   hubTokenSummarySchema,
   loginCompleteInputSchema,
   loginStartSchema,
@@ -15,6 +18,7 @@ import {
 } from "./contracts.js";
 import type { PoolOperations } from "./operations.js";
 import type { ClaudeOAuthLogin } from "./oauth-login.js";
+import type { CodexDeviceLogin } from "./codex-device-login.js";
 
 export const accountPoolRpcContract = defineRpcContract({
   "account.add": {
@@ -45,6 +49,14 @@ export const accountPoolRpcContract = defineRpcContract({
     input: loginCompleteInputSchema,
     output: accountSchema,
   },
+  "codexLogin.start": {
+    input: z.null(),
+    output: codexLoginStartSchema,
+  },
+  "codexLogin.poll": {
+    input: codexLoginPollInputSchema,
+    output: codexLoginPollSchema,
+  },
   status: {
     input: z.null(),
     output: statusSchema,
@@ -62,6 +74,7 @@ export const accountPoolRpcContract = defineRpcContract({
 export function createRpcHandlers(
   operations: PoolOperations,
   login: ClaudeOAuthLogin,
+  codexLogin: CodexDeviceLogin,
 ) {
   return {
     "account.add": (input: Parameters<PoolOperations["add"]>[0]) =>
@@ -79,6 +92,8 @@ export function createRpcHandlers(
     "login.start": () => login.start(),
     "login.complete": (input: { sessionId: string; pasted: string }) =>
       login.complete(input),
+    "codexLogin.start": () => codexLogin.start(),
+    "codexLogin.poll": (input: { sessionId: string }) => codexLogin.poll(input),
     status: () => operations.status(),
     "token.rotate": ({ machine }: { machine: string }) =>
       operations.rotateToken(machine),

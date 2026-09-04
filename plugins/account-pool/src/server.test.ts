@@ -9,6 +9,8 @@ import {
   accountSchema,
   accountSecretSchema,
   accountSummarySchema,
+  codexLoginPollSchema,
+  codexLoginStartSchema,
   statusSchema,
   type AccountSummary,
 } from "./contracts.js";
@@ -162,6 +164,14 @@ function importedCredentials(
     accountUuid: "11111111-1111-4111-8111-111111111111",
     ...overrides,
   };
+}
+
+function testJwt(payload: object): string {
+  return [
+    Buffer.from(JSON.stringify({ alg: "none" })).toString("base64url"),
+    Buffer.from(JSON.stringify(payload)).toString("base64url"),
+    "signature",
+  ].join(".");
 }
 
 async function createFixture(args: {
@@ -1181,6 +1191,119 @@ describe("Account Pool plugin", () => {
     });
     expect(tokenBodies).toHaveLength(2);
     expect(tokenBodies[1]).toMatchObject({ code: "cli-code", state: cliState });
+  });
+
+  it("exposes Codex device login over RPC and the two-step CLI", async () => {
+    const auth = await startUpstream(async (request, response) => {
+      await readRequestBody(request);
+      response.setHeader("content-type", "application/json");
+      if (request.url === "/api/accounts/deviceauth/usercode") {
+        response.end(
+          JSON.stringify({
+            device_auth_id: "device-secret",
+            user_code: "ABCD-1234",
+            interval: "1",
+            expires_in: 600,
+          }),
+        );
+        return;
+      }
+      if (request.url === "/api/accounts/deviceauth/token") {
+        response.end(
+          JSON.stringify({
+            authorization_code: "authorization-secret",
+            code_challenge: "challenge-secret",
+            code_verifier: "verifier-secret",
+          }),
+        );
+        return;
+      }
+      if (request.url === "/oauth/token") {
+        response.end(
+          JSON.stringify({
+            access_token: testJwt({ exp: 2_000_000_000 }),
+            refresh_token: "refresh-secret",
+            id_token: testJwt({
+              email: "codex@example.com",
+              "https://api.openai.com/auth": {
+                chatgpt_account_id: "chatgpt-account-1",
+              },
+            }),
+          }),
+        );
+        return;
+      }
+      response.statusCode = 404;
+      response.end("{}");
+    });
+    cleanups.push(auth.close);
+    const dataDir = await mkdtemp(path.join(tmpdir(), "bb-pool-codex-login-"));
+    const host = createFakePluginHost({
+      pluginId: "account-pool",
+      dataDir,
+      sdk: sdkStubs(),
+    });
+    await createAccountPoolPlugin({
+      codexAuthBaseUrl: auth.url,
+      usageUrl: "data:application/json,{}",
+    })(host.bb);
+    cleanups.push(async () => {
+      await host.harness.lifecycle.dispose();
+      await fs.rm(dataDir, { recursive: true, force: true });
+    });
+
+    const started = codexLoginStartSchema.parse(
+      await host.harness.behavior.callRpc("codexLogin.start", null),
+    );
+    expect(started).toMatchObject({
+      verificationUri: `${auth.url}/codex/device`,
+      userCode: "ABCD-1234",
+      intervalMs: 1_000,
+    });
+    const completed = codexLoginPollSchema.parse(
+      await host.harness.behavior.callRpc("codexLogin.poll", {
+        sessionId: started.sessionId,
+      }),
+    );
+    expect(completed).toMatchObject({
+      status: "complete",
+      account: {
+        provider: "codex",
+        codexAccountId: "chatgpt-account-1",
+        email: "codex@example.com",
+      },
+    });
+
+    const cliStarted = await host.harness.behavior.runCli([
+      "account",
+      "add",
+      "--provider",
+      "codex",
+      "--login",
+    ]);
+    expect(cliStarted).toMatchObject({
+      exitCode: 0,
+      stdout: expect.stringContaining("Open this URL to sign in to Codex:"),
+    });
+    expect(cliStarted.stdout).toContain("Enter this code: ABCD-1234");
+    expect(cliStarted.stdout).toContain("account login-poll --session");
+    const sessionId = cliStarted.stdout.match(/Session ID: ([0-9a-f-]+)/u)?.[1];
+    if (sessionId === undefined) {
+      throw new Error("Codex CLI login start omitted its session ID.");
+    }
+    const cliCompleted = await host.harness.behavior.runCli([
+      "account",
+      "login-poll",
+      "--session",
+      sessionId,
+    ]);
+    expect(cliCompleted).toMatchObject({
+      exitCode: 0,
+      stdout: expect.stringContaining("Added codex@example.com"),
+    });
+    expect(host.harness.inspection.logEntries.join("\n")).not.toMatch(
+      /device-secret|ABCD-1234|authorization-secret|verifier-secret|refresh-secret/u,
+    );
   });
 
   it("resolves distinct secret machine tokens and honors per-thread bypass", async () => {

@@ -11,6 +11,7 @@ import { createHub } from "./hub.js";
 import { PoolOperations } from "./operations.js";
 import { accountPoolRpcContract, createRpcHandlers } from "./rpc.js";
 import { ClaudeOAuthLogin } from "./oauth-login.js";
+import { CodexDeviceLogin } from "./codex-device-login.js";
 import { ACCOUNT_POOL_ACCOUNTS_CHANGED } from "./realtime.js";
 import {
   AccountStore,
@@ -34,6 +35,7 @@ export interface AccountPoolPluginOptions {
   oauthAuthorizeUrl?: string;
   oauthTokenUrl?: string;
   oauthProfileUrl?: string;
+  codexAuthBaseUrl?: string;
 }
 
 const DISPOSE_INSPECTION_TIMEOUT_MS = 2_000;
@@ -140,6 +142,12 @@ export function createAccountPoolPlugin(
       profileUrl: options.oauthProfileUrl,
       addAccount: (authenticated) => operations.addOAuth(authenticated),
     });
+    const codexLogin = new CodexDeviceLogin({
+      fetch: options.fetch,
+      now,
+      authBaseUrl: options.codexAuthBaseUrl,
+      addAccount: (authenticated) => operations.addCodexOAuth(authenticated),
+    });
     if ((await accounts.list()).every((account) => !account.enabled)) {
       bb.status.needsConfiguration(
         "Add and enable a Claude or Codex account with `bb pool account add`.",
@@ -147,9 +155,9 @@ export function createAccountPoolPlugin(
     }
     bb.rpc.register(
       accountPoolRpcContract,
-      createRpcHandlers(operations, login),
+      createRpcHandlers(operations, login, codexLogin),
     );
-    registerPoolCli(bb, operations, login);
+    registerPoolCli(bb, operations, login, codexLogin);
     bb.providers.experimental_contributeEnv("claude-code", async (context) => {
       if (
         (await routing.isBypassed(context.threadId)) ||

@@ -11,7 +11,9 @@ import {
   mountedUpstreamUrl,
 } from "./provider-adapter.js";
 
-const OAUTH_CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann";
+export const CODEX_AUTH_BASE_URL = "https://auth.openai.com";
+export const CODEX_OAUTH_CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann";
+export const DEFAULT_CODEX_REFRESH_URL = `${CODEX_AUTH_BASE_URL}/oauth/token`;
 const REFRESH_WINDOW_MS = 5 * 60 * 1_000;
 const ALLOWED_REQUEST_HEADERS = new Set([
   "accept",
@@ -173,7 +175,7 @@ export function createCodexAdapter(options: {
           accept: "application/json",
         },
         body: JSON.stringify({
-          client_id: OAUTH_CLIENT_ID,
+          client_id: CODEX_OAUTH_CLIENT_ID,
           grant_type: "refresh_token",
           refresh_token: secret.refreshToken,
         }),
