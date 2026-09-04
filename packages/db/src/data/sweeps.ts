@@ -11,6 +11,7 @@ import {
   insertPreparedRetainedEventOutput,
   prepareCompletedEventOutputData,
   prepareLegacyImageGenerationOutputData,
+  type PreparedCompletedEventOutputData,
 } from "./retained-event-outputs.js";
 
 export {
@@ -99,6 +100,28 @@ interface CompletedEventOutputCandidateRow {
   data: string;
   id: string;
   thread_id: string;
+}
+
+interface CompletedEventOutputMigrationStrategy {
+  cursorPolicy: string;
+  eventChangedError: string;
+  findCandidate: (
+    db: DbConnection,
+    args: MigrateNextCompletedEventItemOutputArgs,
+    cursor: CompletedEventOutputScanCursor,
+    window: CompletedEventOutputScanCursor,
+  ) => CompletedEventOutputCandidateRow | undefined;
+  listScanRows: (
+    db: DbConnection,
+    args: MigrateNextCompletedEventItemOutputArgs,
+    cursor: CompletedEventOutputScanCursor,
+  ) => CompletedEventOutputScanRow[];
+  missingScanRowError: string;
+  prepare: (
+    candidate: CompletedEventOutputCandidateRow,
+    args: MigrateNextCompletedEventItemOutputArgs,
+  ) => PreparedCompletedEventOutputData;
+  windowPolicy: string;
 }
 
 type LegacyImageGenerationScanParameters = [
@@ -324,10 +347,7 @@ function listLegacyImageGenerationScanRows(
     return [];
   }
   return db.$client
-    .prepare<
-      LegacyImageGenerationScanParameters,
-      CompletedEventOutputScanRow
-    >(
+    .prepare<LegacyImageGenerationScanParameters, CompletedEventOutputScanRow>(
       `
         SELECT id, created_at
         FROM events
@@ -430,10 +450,7 @@ function clearCompletedEventOutputMigrationWindow(
     .where(
       eq(
         maintenanceScanCursors.id,
-        buildCompletedEventOutputCursorId(
-          args,
-          windowPolicy,
-        ),
+        buildCompletedEventOutputCursorId(args, windowPolicy),
       ),
     )
     .run();
@@ -468,12 +485,16 @@ function persistCompletedEventOutputMigrationPosition(
   cursorPolicy: string = COMPLETED_EVENT_OUTPUT_MIGRATION_CURSOR_POLICY,
   windowPolicy: string = COMPLETED_EVENT_OUTPUT_MIGRATION_WINDOW_POLICY,
 ): void {
-  advanceCompletedEventOutputMigrationCursor(db, {
-    ...args,
-    lastCreatedAt: position.lastCreatedAt,
-    lastEventId: position.lastEventId,
-    updatedAt: args.migratedAt,
-  }, cursorPolicy);
+  advanceCompletedEventOutputMigrationCursor(
+    db,
+    {
+      ...args,
+      lastCreatedAt: position.lastCreatedAt,
+      lastEventId: position.lastEventId,
+      updatedAt: args.migratedAt,
+    },
+    cursorPolicy,
+  );
   if (sameCompletedEventOutputScanPosition(position, window)) {
     clearCompletedEventOutputMigrationWindow(db, args, windowPolicy);
     return;
@@ -509,10 +530,75 @@ export function migrateNextCompletedEventItemOutput(
   db: DbConnection,
   args: MigrateNextCompletedEventItemOutputArgs,
 ): MigrateNextCompletedEventItemOutputResult {
+  return migrateNextCompletedEventOutput(
+    db,
+    args,
+    COMPLETED_EVENT_ITEM_OUTPUT_MIGRATION_STRATEGY,
+  );
+}
+
+export function migrateNextLegacyImageGenerationOutput(
+  db: DbConnection,
+  args: MigrateNextLegacyImageGenerationOutputArgs,
+): MigrateNextCompletedEventItemOutputResult {
+  return migrateNextCompletedEventOutput(
+    db,
+    {
+      ...LEGACY_IMAGE_GENERATION_TARGET,
+      ...args,
+    },
+    LEGACY_IMAGE_GENERATION_OUTPUT_MIGRATION_STRATEGY,
+  );
+}
+
+const COMPLETED_EVENT_ITEM_OUTPUT_MIGRATION_STRATEGY: CompletedEventOutputMigrationStrategy =
+  {
+    cursorPolicy: COMPLETED_EVENT_OUTPUT_MIGRATION_CURSOR_POLICY,
+    eventChangedError:
+      "Completed output migration event changed during advance",
+    findCandidate: findCompletedEventOutputCandidate,
+    listScanRows: listCompletedEventOutputScanRows,
+    missingScanRowError: "Expected completed output migration scan row",
+    prepare: (candidate, args) =>
+      prepareCompletedEventOutputData({
+        createdAt: candidate.created_at,
+        data: candidate.data,
+        itemKind: args.itemKind,
+        type: "item/completed",
+      }),
+    windowPolicy: COMPLETED_EVENT_OUTPUT_MIGRATION_WINDOW_POLICY,
+  };
+
+const LEGACY_IMAGE_GENERATION_OUTPUT_MIGRATION_STRATEGY: CompletedEventOutputMigrationStrategy =
+  {
+    cursorPolicy: LEGACY_IMAGE_GENERATION_MIGRATION_CURSOR_POLICY,
+    eventChangedError:
+      "Legacy image generation migration event changed during advance",
+    findCandidate: findLegacyImageGenerationCandidate,
+    listScanRows: listLegacyImageGenerationScanRows,
+    missingScanRowError: "Expected legacy image generation migration scan row",
+    prepare: (candidate) =>
+      prepareLegacyImageGenerationOutputData({
+        createdAt: candidate.created_at,
+        data: candidate.data,
+      }),
+    windowPolicy: LEGACY_IMAGE_GENERATION_MIGRATION_WINDOW_POLICY,
+  };
+
+function migrateNextCompletedEventOutput(
+  db: DbConnection,
+  args: MigrateNextCompletedEventItemOutputArgs,
+  strategy: CompletedEventOutputMigrationStrategy,
+): MigrateNextCompletedEventItemOutputResult {
   if (args.limit <= 0) {
     return emptyCompletedEventOutputMigrationResult("idle", 0);
   }
-  const state = getCompletedEventOutputScanState(db, args);
+  const state = getCompletedEventOutputScanState(
+    db,
+    args,
+    strategy.cursorPolicy,
+    strategy.windowPolicy,
+  );
   const cursor = state.cursor;
   if (cursor.lastCreatedAt === COMPLETED_EVENT_OUTPUT_MIGRATION_COMPLETED_AT) {
     return emptyCompletedEventOutputMigrationResult("complete", 0);
@@ -524,23 +610,35 @@ export function migrateNextCompletedEventItemOutput(
       : null;
   let initialWindowScanRows: number | null = null;
   if (!window) {
-    const rows = listCompletedEventOutputScanRows(db, args, cursor);
+    const rows = strategy.listScanRows(db, args, cursor);
     if (rows.length === 0) {
       if (cursor.lastCreatedAt === 0 && cursor.lastEventId === "") {
         if (state.window) {
-          clearCompletedEventOutputMigrationWindow(db, args);
+          clearCompletedEventOutputMigrationWindow(
+            db,
+            args,
+            strategy.windowPolicy,
+          );
         }
         return emptyCompletedEventOutputMigrationResult("idle", 0);
       }
       db.transaction(
         (tx) => {
-          advanceCompletedEventOutputMigrationCursor(tx, {
-            ...args,
-            lastCreatedAt: COMPLETED_EVENT_OUTPUT_MIGRATION_COMPLETED_AT,
-            lastEventId: "",
-            updatedAt: args.migratedAt,
-          });
-          clearCompletedEventOutputMigrationWindow(tx, args);
+          advanceCompletedEventOutputMigrationCursor(
+            tx,
+            {
+              ...args,
+              lastCreatedAt: COMPLETED_EVENT_OUTPUT_MIGRATION_COMPLETED_AT,
+              lastEventId: "",
+              updatedAt: args.migratedAt,
+            },
+            strategy.cursorPolicy,
+          );
+          clearCompletedEventOutputMigrationWindow(
+            tx,
+            args,
+            strategy.windowPolicy,
+          );
         },
         { behavior: "immediate" },
       );
@@ -548,7 +646,7 @@ export function migrateNextCompletedEventItemOutput(
     }
     const lastRow = rows.at(-1);
     if (!lastRow) {
-      throw new Error("Expected completed output migration scan row");
+      throw new Error(strategy.missingScanRowError);
     }
     window = {
       lastCreatedAt: lastRow.created_at,
@@ -558,7 +656,7 @@ export function migrateNextCompletedEventItemOutput(
     initialWindowScanRows = rows.length;
   }
 
-  const candidate = findCompletedEventOutputCandidate(db, args, cursor, window);
+  const candidate = strategy.findCandidate(db, args, cursor, window);
   const candidatePosition = candidate
     ? {
         lastCreatedAt: candidate.created_at,
@@ -575,18 +673,15 @@ export function migrateNextCompletedEventItemOutput(
           args,
           candidatePosition,
           window,
+          strategy.cursorPolicy,
+          strategy.windowPolicy,
         ),
       { behavior: "immediate" },
     );
     return emptyCompletedEventOutputMigrationResult("scanned", scanRows);
   }
 
-  const prepared = prepareCompletedEventOutputData({
-    createdAt: candidate.created_at,
-    data: candidate.data,
-    itemKind: args.itemKind,
-    type: "item/completed",
-  });
+  const prepared = strategy.prepare(candidate, args);
   if (!prepared.retainedOutput) {
     db.transaction(
       (tx) =>
@@ -595,6 +690,8 @@ export function migrateNextCompletedEventItemOutput(
           args,
           candidatePosition,
           window,
+          strategy.cursorPolicy,
+          strategy.windowPolicy,
         ),
       { behavior: "immediate" },
     );
@@ -612,9 +709,7 @@ export function migrateNextCompletedEventItemOutput(
         )
         .run();
       if (update.changes !== 1) {
-        throw new Error(
-          "Completed output migration event changed during advance",
-        );
+        throw new Error(strategy.eventChangedError);
       }
       if (retained) {
         insertPreparedRetainedEventOutput(tx, {
@@ -627,178 +722,8 @@ export function migrateNextCompletedEventItemOutput(
         args,
         candidatePosition,
         window,
-      );
-    },
-    { behavior: "immediate" },
-  );
-
-  return {
-    action: "migrated",
-    eventId: candidate.id,
-    migratedBytes: Buffer.byteLength(retainedOutput.value),
-    migratedRows: 1,
-    retained,
-    scanRows,
-    threadId: candidate.thread_id,
-  };
-}
-
-export function migrateNextLegacyImageGenerationOutput(
-  db: DbConnection,
-  args: MigrateNextLegacyImageGenerationOutputArgs,
-): MigrateNextCompletedEventItemOutputResult {
-  const migrationArgs: MigrateNextCompletedEventItemOutputArgs = {
-    ...LEGACY_IMAGE_GENERATION_TARGET,
-    ...args,
-  };
-  if (args.limit <= 0) {
-    return emptyCompletedEventOutputMigrationResult("idle", 0);
-  }
-  const state = getCompletedEventOutputScanState(
-    db,
-    migrationArgs,
-    LEGACY_IMAGE_GENERATION_MIGRATION_CURSOR_POLICY,
-    LEGACY_IMAGE_GENERATION_MIGRATION_WINDOW_POLICY,
-  );
-  const cursor = state.cursor;
-  if (cursor.lastCreatedAt === COMPLETED_EVENT_OUTPUT_MIGRATION_COMPLETED_AT) {
-    return emptyCompletedEventOutputMigrationResult("complete", 0);
-  }
-
-  let window =
-    state.window && completedEventOutputScanPositionAfter(state.window, cursor)
-      ? state.window
-      : null;
-  let initialWindowScanRows: number | null = null;
-  if (!window) {
-    const rows = listLegacyImageGenerationScanRows(
-      db,
-      migrationArgs,
-      cursor,
-    );
-    if (rows.length === 0) {
-      if (cursor.lastCreatedAt === 0 && cursor.lastEventId === "") {
-        if (state.window) {
-          clearCompletedEventOutputMigrationWindow(
-            db,
-            migrationArgs,
-            LEGACY_IMAGE_GENERATION_MIGRATION_WINDOW_POLICY,
-          );
-        }
-        return emptyCompletedEventOutputMigrationResult("idle", 0);
-      }
-      db.transaction(
-        (tx) => {
-          advanceCompletedEventOutputMigrationCursor(
-            tx,
-            {
-              ...migrationArgs,
-              lastCreatedAt: COMPLETED_EVENT_OUTPUT_MIGRATION_COMPLETED_AT,
-              lastEventId: "",
-              updatedAt: args.migratedAt,
-            },
-            LEGACY_IMAGE_GENERATION_MIGRATION_CURSOR_POLICY,
-          );
-          clearCompletedEventOutputMigrationWindow(
-            tx,
-            migrationArgs,
-            LEGACY_IMAGE_GENERATION_MIGRATION_WINDOW_POLICY,
-          );
-        },
-        { behavior: "immediate" },
-      );
-      return emptyCompletedEventOutputMigrationResult("complete", 0);
-    }
-    const lastRow = rows.at(-1);
-    if (!lastRow) {
-      throw new Error("Expected legacy image generation migration scan row");
-    }
-    window = {
-      lastCreatedAt: lastRow.created_at,
-      lastEventId: lastRow.id,
-      updatedAt: args.migratedAt,
-    };
-    initialWindowScanRows = rows.length;
-  }
-
-  const candidate = findLegacyImageGenerationCandidate(
-    db,
-    migrationArgs,
-    cursor,
-    window,
-  );
-  const candidatePosition = candidate
-    ? {
-        lastCreatedAt: candidate.created_at,
-        lastEventId: candidate.id,
-        updatedAt: args.migratedAt,
-      }
-    : window;
-  const scanRows = initialWindowScanRows ?? 0;
-  if (!candidate) {
-    db.transaction(
-      (tx) =>
-        persistCompletedEventOutputMigrationPosition(
-          tx,
-          migrationArgs,
-          candidatePosition,
-          window,
-          LEGACY_IMAGE_GENERATION_MIGRATION_CURSOR_POLICY,
-          LEGACY_IMAGE_GENERATION_MIGRATION_WINDOW_POLICY,
-        ),
-      { behavior: "immediate" },
-    );
-    return emptyCompletedEventOutputMigrationResult("scanned", scanRows);
-  }
-
-  const prepared = prepareLegacyImageGenerationOutputData({
-    createdAt: candidate.created_at,
-    data: candidate.data,
-  });
-  if (!prepared.retainedOutput) {
-    db.transaction(
-      (tx) =>
-        persistCompletedEventOutputMigrationPosition(
-          tx,
-          migrationArgs,
-          candidatePosition,
-          window,
-          LEGACY_IMAGE_GENERATION_MIGRATION_CURSOR_POLICY,
-          LEGACY_IMAGE_GENERATION_MIGRATION_WINDOW_POLICY,
-        ),
-      { behavior: "immediate" },
-    );
-    return emptyCompletedEventOutputMigrationResult("scanned", scanRows);
-  }
-  const retainedOutput = prepared.retainedOutput;
-  const retained = retainedOutput.expiresAt > args.migratedAt;
-  db.transaction(
-    (tx) => {
-      const update = tx
-        .update(events)
-        .set({ data: prepared.data })
-        .where(
-          and(eq(events.id, candidate.id), eq(events.data, candidate.data)),
-        )
-        .run();
-      if (update.changes !== 1) {
-        throw new Error(
-          "Legacy image generation migration event changed during advance",
-        );
-      }
-      if (retained) {
-        insertPreparedRetainedEventOutput(tx, {
-          eventId: candidate.id,
-          output: retainedOutput,
-        });
-      }
-      persistCompletedEventOutputMigrationPosition(
-        tx,
-        migrationArgs,
-        candidatePosition,
-        window,
-      LEGACY_IMAGE_GENERATION_MIGRATION_CURSOR_POLICY,
-      LEGACY_IMAGE_GENERATION_MIGRATION_WINDOW_POLICY,
+        strategy.cursorPolicy,
+        strategy.windowPolicy,
       );
     },
     { behavior: "immediate" },
