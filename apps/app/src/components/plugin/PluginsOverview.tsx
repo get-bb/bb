@@ -1,5 +1,5 @@
 import { useMemo, useState, type ReactNode } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams, useLocation } from "react-router-dom";
 import {
   ResourceInfiniteScrollSentinel,
   useResourceInfiniteItems,
@@ -32,16 +32,10 @@ import {
 import { PLUGINS_INSTALLED_DESCRIPTION } from "@/components/plugin/plugins-collection-copy";
 import { usePluginList } from "@/hooks/queries/plugin-settings-queries";
 import {
+  SETTINGS_PLUGINS_ROUTE_PATH,
   getPluginDetailRoutePath,
   getRootComposeRoutePath,
 } from "@/lib/route-paths";
-
-type PluginsCollectionMode = "installed" | "browse";
-
-function modeFromSearchParams(value: string | null): PluginsCollectionMode {
-  if (value === "installed") return value;
-  return "browse";
-}
 
 export function PluginsOverview({
   onOpenPlugin,
@@ -55,7 +49,11 @@ export function PluginsOverview({
     () => listQuery.data?.plugins ?? [],
     [listQuery.data?.plugins],
   );
-  const activeMode = modeFromSearchParams(searchParams.get("view"));
+  const location = useLocation();
+  const activeMode =
+    location.pathname.replace(/\/+$/u, "") === SETTINGS_PLUGINS_ROUTE_PATH
+      ? "installed"
+      : "browse";
   const authorKey = searchParams.get("author");
   const [installedQuery, setInstalledQuery] = useState("");
   const [installedViewport, setInstalledViewport] =

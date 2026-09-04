@@ -93,24 +93,23 @@ describe("useSettingsNavState", () => {
     );
   });
 
-  it("keeps plugin management out of Settings", () => {
+  it("resolves installed plugin management in Settings", () => {
     const { result } = renderHook(() => useSettingsNavState(), {
-      wrapper: wrapperFor("/settings"),
+      wrapper: wrapperFor("/settings/plugins"),
     });
 
-    expect(result.current.sections.map((section) => section.id)).not.toContain(
+    expect(result.current.activeSection).toBe("plugins");
+    expect(result.current.hasUnknownSection).toBe(false);
+    expect(result.current.sections.map((section) => section.id)).toContain(
       "plugins",
     );
   });
 
-  it("keeps a disabled plugin reachable in the secondary plugin group", () => {
+  it("omits disabled plugins from individual settings entries", () => {
     const { result } = renderHook(() => useSettingsNavState(), {
       wrapper: wrapperFor("/settings", [disabledPlugin()]),
     });
 
     expect(result.current.pluginEntries).toEqual([]);
-    expect(result.current.otherPluginEntries).toEqual([
-      { icon: null, id: "linear", label: "Linear" },
-    ]);
   });
 });

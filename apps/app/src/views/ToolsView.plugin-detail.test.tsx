@@ -26,7 +26,7 @@ import {
   resetPluginSlotStoreForTest,
   setPluginSlotRegistrations,
 } from "@/lib/plugin-slots";
-import { ToolsView } from "./ToolsView";
+import { PluginDetailPaneView, ToolsView } from "./ToolsView";
 import {
   CatalogPluginDetail,
   CatalogPluginDetailBanner,
@@ -84,14 +84,19 @@ const GITHUB_CATALOG_ENTRY = {
 
 function RoutedToolsView() {
   const location = useLocation();
-  const prefix = "/extensions/plugins/";
+  const isSettings = location.pathname.startsWith("/settings/plugins/");
+  const prefix = isSettings ? "/settings/plugins/" : "/extensions/plugins/";
   const pluginId = location.pathname.startsWith(prefix)
     ? decodeURIComponent(location.pathname.slice(prefix.length))
     : undefined;
   return (
     <>
       <TooltipProvider>
-        <ToolsView pluginId={pluginId} />
+        {isSettings && pluginId ? (
+          <PluginDetailPaneView pluginId={pluginId} />
+        ) : (
+          <ToolsView pluginId={pluginId} />
+        )}
       </TooltipProvider>
       <output data-testid="route-path">{location.pathname}</output>
       <output data-testid="route-search">{location.search}</output>
@@ -748,6 +753,7 @@ describe("BB Official plugin detail routing", () => {
       >
         <Routes>
           <Route path="/extensions/plugins/*" element={<RoutedToolsView />} />
+          <Route path="/settings/plugins/*" element={<RoutedToolsView />} />
         </Routes>
       </MemoryRouter>,
       { wrapper: QueryClientWrapper },
@@ -760,7 +766,7 @@ describe("BB Official plugin detail routing", () => {
     );
     await waitFor(() => {
       expect(screen.getByTestId("route-path").textContent).toBe(
-        "/extensions/plugins/automations",
+        "/settings/plugins/automations",
       );
     });
     expect(screen.getByTestId("route-search").textContent).toBe(

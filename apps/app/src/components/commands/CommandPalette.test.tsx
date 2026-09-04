@@ -259,7 +259,7 @@ describe("CommandPalette", () => {
     expect((searchField() as HTMLInputElement).value).toBe(">");
     const titles = optionTitles();
     expect(titles?.[0]).toContain("New thread");
-    expect(titles).toHaveLength(16);
+    expect(titles).toHaveLength(17);
   });
 
   it("filters as the user types and keeps the selection on a live row", async () => {

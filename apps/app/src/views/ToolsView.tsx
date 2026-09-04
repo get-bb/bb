@@ -6,7 +6,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
+import { Navigate, useLocation, useNavigate } from "react-router-dom";
 import "@bb/shared-ui/icon-extended";
 import { useMutation } from "@tanstack/react-query";
 import { buildPluginEditThreadPrompt } from "@bb/shared-ui/resource-edit-prompt";
@@ -436,12 +436,7 @@ export function ToolsView({ pluginId }: { pluginId?: string } = {}) {
     enabled: activeSection === "plugins",
   });
   const listQuery = usePluginList({ enabled: activeSection === "plugins" });
-  const isInstalledDetail =
-    activeSection === "plugins" &&
-    pluginId !== undefined &&
-    new URLSearchParams(location.search).get("view") === "installed";
-  const isPanelOpen =
-    activeSection === "plugins" && pluginId !== undefined && !isInstalledDetail;
+  const isPanelOpen = activeSection === "plugins" && pluginId !== undefined;
 
   const openPlugin = useCallback(
     (nextPluginId: string, trigger: HTMLButtonElement) => {
@@ -513,15 +508,11 @@ export function ToolsView({ pluginId }: { pluginId?: string } = {}) {
   const mainContent = (
     <div className="min-h-0 flex-1 overflow-hidden">
       <Suspense fallback={<ToolsBodyFallback />}>
-        {isInstalledDetail && pluginId !== undefined ? (
-          <PluginDetailToolView pluginId={pluginId} />
-        ) : (
-          <ToolsSectionBody
-            activeSection={activeSection}
-            pathname={location.pathname}
-            onOpenPlugin={openPlugin}
-          />
-        )}
+        <ToolsSectionBody
+          activeSection={activeSection}
+          pathname={location.pathname}
+          onOpenPlugin={openPlugin}
+        />
       </Suspense>
     </div>
   );
@@ -560,6 +551,18 @@ export function ToolsView({ pluginId }: { pluginId?: string } = {}) {
       ) : null,
     [closePanel, isPanelOpen, panelTab?.tab, panelTabs],
   );
+
+  if (
+    activeSection === "plugins" &&
+    new URLSearchParams(location.search).get("view") === "installed"
+  ) {
+    return (
+      <Navigate
+        replace
+        to={`${pluginId === undefined ? getToolsOwnedCollectionRoutePath("plugins") : getPluginDetailRoutePath({ pluginId, view: "installed" })}${location.hash}`}
+      />
+    );
+  }
 
   return (
     <div className="-mx-4 -mb-4 -mt-4 flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden md:-mx-5 md:-mb-5 md:-mt-5">
