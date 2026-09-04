@@ -7,6 +7,7 @@ import { upsertHost } from "../../src/data/hosts.js";
 import { createProject } from "../../src/data/projects.js";
 import {
   hydrateRetainedEventOutputRows,
+  hydrateRetainedEventOutputRowsWithinDataByteLimit,
   RETAINED_EVENT_OUTPUT_TARGETS,
   type RetainedEventOutputTarget,
 } from "../../src/data/retained-event-outputs.js";
@@ -612,7 +613,12 @@ describe("completed event output migration", () => {
     expect(stored.type).toBe("provider/unhandled");
     expect(stored.itemKind).toBeNull();
     expect(readLegacyImageGenerationOutput(stored.data)).not.toBe(output);
-    const [hydrated] = hydrateRetainedEventOutputRows(db, [stored], migratedAt);
+    const [hydrated] = hydrateRetainedEventOutputRowsWithinDataByteLimit(
+      db,
+      [stored],
+      8 * 1024 * 1024,
+      migratedAt,
+    );
     expect(
       hydrated && readLegacyImageGenerationOutput(hydrated.data),
     ).toBe(output);

@@ -431,15 +431,16 @@ function retainedOutputSizeTotal(
 }
 
 function hydratedEventDataBaseBytes(
-  data: string,
+  row: HydratableStoredEventRow,
   outputPath: RetainedEventOutputPath,
 ): number {
-  const payload: unknown = JSON.parse(data);
-  if (!isJsonObject(payload) || !isJsonObject(payload.item)) {
-    throw new Error("Retained output event payload is not an item object");
+  const payload: unknown = JSON.parse(row.data);
+  if (!isJsonObject(payload)) {
+    throw new Error("Retained output event payload is not an object");
   }
-  payload.item[outputPath] = "";
-  removeOutputTruncation(payload.item, outputPath);
+  const item = hydratableOutputItem(row, payload);
+  item[outputPath] = "";
+  removeOutputTruncation(item, outputPath);
   return Buffer.byteLength(JSON.stringify(payload)) - 2;
 }
 
@@ -455,7 +456,7 @@ function projectedHydratedDataBytes<TRow extends HydratableStoredEventRow>(
     }
     return (
       total +
-      hydratedEventDataBaseBytes(row.data, size.outputPath) +
+      hydratedEventDataBaseBytes(row, size.outputPath) +
       size.valueBytes
     );
   }, 0);

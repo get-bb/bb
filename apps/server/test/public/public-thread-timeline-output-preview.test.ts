@@ -1,7 +1,11 @@
 import { eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 import { threadEventRowSchema, turnScope } from "@bb/domain";
-import { COMPLETED_EVENT_OUTPUT_RETENTION_MS, events } from "@bb/db";
+import {
+  COMPLETED_EVENT_OUTPUT_RETENTION_MS,
+  events,
+  migrateNextLegacyImageGenerationOutput,
+} from "@bb/db";
 import {
   threadTimelineResponseSchema,
   timelineTurnSummaryDetailsResponseSchema,
@@ -407,6 +411,95 @@ describe("GET /threads/:id/timeline inline output preview (tool rows)", () => {
 });
 
 describe("GET /threads/:id/events retained output", () => {
+  it("hydrates a migrated legacy image envelope in raw and detail responses", async () => {
+    await withTestHarness(async (harness) => {
+      const { environment, thread } = seedThreadFixture(harness);
+      const migratedAt = Date.now();
+      const output = "legacy-image-result-" + "i".repeat(50_000);
+      const providerThreadId = "provider-legacy-image";
+      const turnId = "turn-legacy-image";
+      seedEvent(harness.deps, {
+        data: {},
+        environmentId: environment.id,
+        providerThreadId,
+        scope: turnScope(turnId),
+        sequence: 1,
+        threadId: thread.id,
+        type: "turn/started",
+      });
+      harness.db
+        .insert(events)
+        .values({
+          createdAt: migratedAt - 1,
+          data: JSON.stringify({
+            providerId: "codex",
+            rawEvent: {
+              jsonrpc: "2.0",
+              method: "item/completed",
+              params: {
+                item: {
+                  failure: null,
+                  id: "legacy-generated-image",
+                  result: output,
+                  revisedPrompt: "Draw a compact test image",
+                  savedPath: "/tmp/generated.png",
+                  status: "completed",
+                  transparentBackground: false,
+                  type: "imageGeneration",
+                },
+                threadId: providerThreadId,
+                turnId,
+              },
+            },
+            rawType: "item/completed",
+          }),
+          environmentId: environment.id,
+          id: "evt_legacy_generated_image",
+          itemId: null,
+          itemKind: null,
+          parentToolCallId: null,
+          providerThreadId,
+          scopeKind: "turn",
+          sequence: 2,
+          threadId: thread.id,
+          turnId,
+          type: "provider/unhandled",
+        })
+        .run();
+      expect(
+        migrateNextLegacyImageGenerationOutput(harness.db, {
+          limit: 10,
+          migratedAt,
+        }),
+      ).toMatchObject({ action: "migrated", retained: true });
+
+      const rawResponse = await harness.app.request(
+        `/api/v1/threads/${thread.id}/events?types=provider%2Funhandled`,
+      );
+      expect(rawResponse.status).toBe(200);
+      const rawRows = threadEventRowSchema
+        .array()
+        .parse(await readJson(rawResponse));
+      expect(rawRows).toHaveLength(1);
+      expect(JSON.stringify(rawRows)).toContain(output);
+
+      const detailResponse = await harness.app.request(
+        `/api/v1/threads/${thread.id}/timeline/turn-summary-details?turnId=${turnId}&sourceSeqStart=2&sourceSeqEnd=2`,
+      );
+      expect(detailResponse.status).toBe(200);
+      const details = timelineTurnSummaryDetailsResponseSchema.parse(
+        await readJson(detailResponse),
+      );
+      expect(details.rows).toContainEqual(
+        expect.objectContaining({
+          callId: "legacy-generated-image",
+          kind: "work",
+          workKind: "image-generation",
+        }),
+      );
+    });
+  });
+
   it("hydrates a retained output in the raw event response", async () => {
     await withTestHarness(async (harness) => {
       const { environment, thread } = seedThreadFixture(harness);
