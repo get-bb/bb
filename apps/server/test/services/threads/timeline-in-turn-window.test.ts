@@ -12,6 +12,7 @@ import {
   getLatestThreadSequence,
   insertEvents,
   migrate,
+  migrateNextLegacyImageGenerationOutput,
   noopNotifier,
   upsertHost,
 } from "@bb/db";
@@ -891,7 +892,7 @@ describe("in-turn timeline windows", () => {
     }
   });
 
-  it("caps stored outputs before it expands a byte-budget slice", () => {
+  it("uses bounded retained previews while it expands a byte-budget slice", () => {
     const { db, thread } = setup();
     seedTurns(db, thread, {
       completeLastTurn: true,
@@ -915,12 +916,11 @@ describe("in-turn timeline windows", () => {
       row.kind === "work" && row.workKind === "command" ? [row.output] : [],
     );
 
-    expect(commandOutputs.length).toBeGreaterThan(0);
-    expect(commandOutputs.length).toBeLessThan(150);
+    expect(commandOutputs).toHaveLength(150);
     expect(commandOutputs.every((output) => output.length < 33_000)).toBe(true);
     expect(
       commandOutputs.some((output) =>
-        output.includes("more characters truncated"),
+        output.includes("output truncated by retention policy"),
       ),
     ).toBe(true);
   });
@@ -1008,6 +1008,87 @@ describe("in-turn timeline windows", () => {
       }),
     ]);
     expect(latest.profile.eventRowCount).toBe(0);
+  });
+
+  it("renders a migrated oversized Codex image generation as a compact row", () => {
+    const { db, thread } = setup();
+    seedTurns(db, thread, { completeLastTurn: false, itemsPerTurn: [0] });
+    const migratedAt = Date.now() + 1_000;
+    const result = "encoded-image-" + "i".repeat(4 * 1024 * 1024);
+    insertEvents(db, noopNotifier, [
+      {
+        createdAt: migratedAt - 1,
+        threadId: thread.id,
+        sequence: getLatestThreadSequence(db, { threadId: thread.id }) + 1,
+        type: "provider/unhandled",
+        scope: turnScope("turn-1"),
+        providerThreadId,
+        itemId: null,
+        itemKind: null,
+        parentToolCallId: null,
+        data: JSON.stringify({
+          providerId: "codex",
+          rawType: "item/completed",
+          rawEvent: {
+            jsonrpc: "2.0",
+            method: "item/completed",
+            params: {
+              threadId: providerThreadId,
+              turnId: "turn-1",
+              item: {
+                type: "imageGeneration",
+                id: "legacy-generated-image",
+                status: "completed",
+                revisedPrompt: "Draw a production-shaped image",
+                savedPath: "/tmp/generated.png",
+                transparentBackground: false,
+                failure: null,
+                result,
+              },
+            },
+          },
+        }),
+      },
+    ]);
+
+    expect(
+      migrateNextLegacyImageGenerationOutput(db, {
+        limit: 10,
+        migratedAt,
+      }),
+    ).toMatchObject({
+      action: "migrated",
+      migratedRows: 1,
+      retained: true,
+      threadId: thread.id,
+    });
+    const page = buildNestedPage(db, thread, LARGE_BUDGET, null);
+    const rows = page.response.rows.flatMap((row) =>
+      row.kind === "turn" && row.children ? row.children : [row],
+    );
+    const imageRow = rows.find(
+      (row) => row.kind === "work" && row.workKind === "image-generation",
+    );
+
+    expect(imageRow).toMatchObject({
+      kind: "work",
+      workKind: "image-generation",
+      callId: "legacy-generated-image",
+      status: "completed",
+      prompt: "Draw a production-shaped image",
+      path: "/tmp/generated.png",
+    });
+    expect(JSON.stringify(page.response)).not.toContain(result);
+    expect(page.profile.eventDataBytes).toBeLessThan(
+      THREAD_TIMELINE_EVENT_DATA_BYTE_LIMIT,
+    );
+    expect(
+      rows.some(
+        (row) =>
+          row.kind === "system" &&
+          row.title === "Timeline event is too large to display",
+      ),
+    ).toBe(false);
   });
 
   it("keeps a parented aggregate whole instead of bypassing the budget during closure", () => {
@@ -1426,9 +1507,79 @@ describe("timeline inline output reads", () => {
       throw new Error("expected command rows");
     }
     expect(uncappedRow.output).toBe(output);
-    expect(cappedRow.output).toBe(
-      `${"x".repeat(32_000)}\n…[18,000 more characters truncated]`,
+    expect(cappedRow.output).not.toBe(output);
+    expect(cappedRow.output.length).toBeLessThan(5_000);
+    expect(cappedRow.output.startsWith(output.slice(0, 2_048))).toBe(true);
+    expect(cappedRow.output.endsWith(output.slice(-2_048))).toBe(true);
+    expect(cappedRow.output).toContain("output truncated by retention policy");
+  });
+});
+
+describe("timeline retained output reads", () => {
+  it("keeps capped reads bounded and hydrates uncapped reads", () => {
+    const { db, thread } = setup();
+    seedTurns(db, thread, { completeLastTurn: false, itemsPerTurn: [1] });
+    const output = "x".repeat(50_000);
+    insertEvents(db, noopNotifier, [
+      {
+        threadId: thread.id,
+        sequence: 500,
+        type: "item/completed",
+        scope: turnScope("turn-1"),
+        providerThreadId,
+        itemId: "retained-command",
+        itemKind: "commandExecution",
+        parentToolCallId: null,
+        data: JSON.stringify({
+          item: {
+            type: "commandExecution",
+            id: "retained-command",
+            command: "cat large",
+            cwd: "/tmp/test",
+            status: "completed",
+            approvalStatus: null,
+            exitCode: 0,
+            aggregatedOutput: output,
+          },
+        }),
+      },
+    ]);
+
+    const capped = buildThreadTimeline(db, thread, {
+      eventBudget: LARGE_BUDGET,
+      includeProviderUnhandledOperations: false,
+      includeNestedRows: false,
+      maxInlineOutputChars: 32_000,
+      maxSeq: 500,
+      page: { kind: "latest", segmentLimit: 20 },
+    });
+    const uncapped = buildThreadTimeline(db, thread, {
+      eventBudget: LARGE_BUDGET,
+      includeProviderUnhandledOperations: false,
+      includeNestedRows: false,
+      maxInlineOutputChars: null,
+      maxSeq: 500,
+      page: { kind: "latest", segmentLimit: 20 },
+    });
+    const cappedRow = capped.rows.find(
+      (row) => row.kind === "work" && row.id.endsWith("retained-command"),
     );
+    const uncappedRow = uncapped.rows.find(
+      (row) => row.kind === "work" && row.id.endsWith("retained-command"),
+    );
+    if (
+      cappedRow?.kind !== "work" ||
+      cappedRow.workKind !== "command" ||
+      uncappedRow?.kind !== "work" ||
+      uncappedRow.workKind !== "command"
+    ) {
+      throw new Error("Expected retained command rows");
+    }
+    expect(cappedRow.output.length).toBeLessThan(5_000);
+    expect(cappedRow.output).toContain("output truncated by retention policy");
+    expect(uncappedRow.output).toBe(output);
+
+    db.$client.close();
   });
 });
 

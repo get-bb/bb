@@ -48,6 +48,7 @@ import {
   threadPendingInteractionsResponseSchema,
   threadResponseSchema,
   threadTimelineResponseSchema,
+  THREAD_EVENT_LIST_PAGE_SIZE,
 } from "@bb/server-contract";
 
 export interface CreateHostThreadOptions {
@@ -391,12 +392,26 @@ export async function getThreadEvents(
   api: PublicApiClient,
   threadId: string,
 ): Promise<ThreadEventRow[]> {
-  const response = await api.threads[":id"].events.$get({
-    param: { id: threadId },
-    query: { limit: "10000" },
-  });
-  await expectStatus(response, 200, `get thread events ${threadId}`);
-  return threadEventRowSchema.array().parse(await response.json());
+  const rows: ThreadEventRow[] = [];
+  let afterSeq: string | undefined;
+  for (;;) {
+    const response = await api.threads[":id"].events.$get({
+      param: { id: threadId },
+      query: {
+        ...(afterSeq === undefined ? {} : { afterSeq }),
+        limit: String(THREAD_EVENT_LIST_PAGE_SIZE),
+        order: "asc",
+      },
+    });
+    await expectStatus(response, 200, `get thread events ${threadId}`);
+    const page = threadEventRowSchema.array().parse(await response.json());
+    rows.push(...page);
+    const last = page.at(-1);
+    if (last === undefined || page.length < THREAD_EVENT_LIST_PAGE_SIZE) {
+      return rows;
+    }
+    afterSeq = String(last.seq);
+  }
 }
 
 export async function getThreadOutput(

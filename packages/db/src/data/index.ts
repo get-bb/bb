@@ -310,6 +310,17 @@ export {
   pruneResolvedItemDeltas,
   pruneThreadEventsBeforeSequence,
 } from "./events.js";
+export {
+  canHydrateRetainedEventOutputRowsWithinDataByteLimit,
+  deleteExpiredRetainedEventOutputs,
+  hydrateRetainedEventOutputRows,
+  hydrateRetainedEventOutputRowsWithinDataByteLimit,
+  RETAINED_EVENT_OUTPUT_TARGETS,
+} from "./retained-event-outputs.js";
+export type {
+  DeleteExpiredRetainedEventOutputsResult,
+  RetainedEventOutputTarget,
+} from "./retained-event-outputs.js";
 export type {
   AcceptedDaemonEvent,
   AppendDaemonEventInput,
@@ -414,14 +425,21 @@ export {
   CLOSED_SESSION_ROW_RETENTION_MS,
   COMPLETED_EVENT_OUTPUT_RETENTION_MS,
   DEFAULT_CLOSED_SESSION_PRUNE_BATCH_SIZE,
-  DEFAULT_COMPLETED_EVENT_OUTPUT_TRUNCATION_BATCH_SIZE,
   DEFAULT_DESTROYED_ENVIRONMENT_EVENT_DETACH_BATCH_SIZE,
+  DEFAULT_COMPLETED_EVENT_OUTPUT_MIGRATION_SCAN_LIMIT,
   DEFAULT_DESTROYED_ENVIRONMENT_PRUNE_BATCH_SIZE,
+  DEFAULT_LEGACY_IMAGE_GENERATION_MIGRATION_SCAN_LIMIT,
   DESTROYED_ENVIRONMENT_TTL_MS,
+  migrateNextCompletedEventItemOutput,
+  migrateNextLegacyImageGenerationOutput,
   pruneClosedSessions,
   pruneDestroyedEnvironments,
-  truncateCompletedEventItemOutputs,
   sweepManagedEnvironments,
+} from "./sweeps.js";
+export type {
+  MigrateNextCompletedEventItemOutputArgs,
+  MigrateNextCompletedEventItemOutputResult,
+  MigrateNextLegacyImageGenerationOutputArgs,
 } from "./sweeps.js";
 export {
   compactDatabase,

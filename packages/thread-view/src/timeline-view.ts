@@ -106,6 +106,7 @@ interface TimelineWorkSummaryCounts {
   tools: number;
   webFetches: number;
   webSearches: number;
+  imageGenerations: number;
   imageViews: number;
   explorationKindOrder: readonly TimelineExplorationKind[];
 }
@@ -116,6 +117,7 @@ type TimelineWorkSummaryCategory =
   | "exploration"
   | "extensions"
   | "fileChanges"
+  | "imageGenerations"
   | "imageViews"
   | "planUpdates"
   | "tools"
@@ -212,6 +214,7 @@ function summarizeTimelineWork(
     tools: 0,
     webFetches: 0,
     webSearches: 0,
+    imageGenerations: 0,
     imageViews: 0,
     explorationKindOrder,
   };
@@ -274,6 +277,9 @@ function summarizeTimelineWork(
         break;
       case "web-search":
         counts.webSearches += Math.max(1, row.queries.length);
+        break;
+      case "image-generation":
+        counts.imageGenerations += 1;
         break;
       case "image-view":
         counts.imageViews += 1;
@@ -360,6 +366,7 @@ function approvalStatusSummaryLabel(
       case "delegation":
       case "extension":
       case "file-read":
+      case "image-generation":
       case "image-view":
       case "plan-steps":
       case "search":
@@ -414,6 +421,8 @@ function getTimelineWorkSummaryCategory(
     case "web-fetch":
     case "web-search":
       return "webResearch";
+    case "image-generation":
+      return "imageGenerations";
     case "image-view":
       return "imageViews";
     case "delegation":
@@ -500,6 +509,8 @@ function completedSummaryPhrase(
       return fileChangeSummaryPhrase(counts, false);
     case "webResearch":
       return webResearchSummaryPhrase(counts, false);
+    case "imageGenerations":
+      return imageGenerationSummaryPhrase(counts, false);
     case "imageViews":
       return imageViewSummaryPhrase(counts, false);
     case "delegations":
@@ -537,6 +548,8 @@ function activeSummaryPhrase(
       return fileChangeSummaryPhrase(counts, true);
     case "webResearch":
       return webResearchSummaryPhrase(counts, true);
+    case "imageGenerations":
+      return imageGenerationSummaryPhrase(counts, true);
     case "imageViews":
       return imageViewSummaryPhrase(counts, true);
     case "delegations":
@@ -587,6 +600,15 @@ function imageViewSummaryPhrase(
   if (counts.imageViews === 0) return null;
   const verb = active ? "Viewing" : "Viewed";
   return `${verb} ${plural(counts.imageViews, "image")}`;
+}
+
+function imageGenerationSummaryPhrase(
+  counts: TimelineWorkSummaryCounts,
+  active: boolean,
+): string | null {
+  if (counts.imageGenerations === 0) return null;
+  const verb = active ? "Generating" : "Generated";
+  return `${verb} ${plural(counts.imageGenerations, "image")}`;
 }
 
 interface TimelineWorkSummaryLabelParts {
@@ -736,6 +758,8 @@ function rowConcept(row: TimelineViewWorkRow): TimelineWorkSummaryCategory {
     case "web-search":
     case "web-fetch":
       return "webResearch";
+    case "image-generation":
+      return "imageGenerations";
     case "image-view":
       return "imageViews";
     case "approval":

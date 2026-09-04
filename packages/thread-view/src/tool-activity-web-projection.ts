@@ -29,6 +29,7 @@ function settledStatus(
     case "web-fetch":
     case "image-view":
       return "completed";
+    case "image-generation":
     case "file-read":
     case "search":
     case "plan-steps":
@@ -78,6 +79,16 @@ function createWebActivityMessage(
         kind: "image-view",
         path: payload.path,
         status: status === "error" ? "completed" : status,
+      };
+    case "image-generation":
+      return {
+        ...base,
+        kind: "image-generation",
+        prompt: payload.prompt,
+        path: payload.path,
+        error: payload.error,
+        transparentBackground: payload.transparentBackground,
+        status,
       };
     case "web-fetch":
       return {
@@ -163,6 +174,17 @@ function mergeWebActivityMessage(
 
   if (target.kind === "image-view" && payload.itemKind === "image-view") {
     target.path = payload.path;
+    return;
+  }
+
+  if (
+    target.kind === "image-generation" &&
+    payload.itemKind === "image-generation"
+  ) {
+    target.prompt = payload.prompt;
+    target.path = payload.path;
+    target.error = payload.error;
+    target.transparentBackground = payload.transparentBackground;
     return;
   }
 

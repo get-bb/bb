@@ -63,8 +63,8 @@ describe("createThreadTimelineCache", () => {
     const cache = createThreadTimelineCache();
     const build = vi.fn(() => makeResponse(3));
 
-    const first = cache.getOrBuild("k", build);
-    const second = cache.getOrBuild("k", build);
+    const first = cache.getOrBuild("thr_x", "k", build);
+    const second = cache.getOrBuild("thr_x", "k", build);
 
     expect(build).toHaveBeenCalledTimes(1);
     expect(second).toBe(first);
@@ -75,8 +75,8 @@ describe("createThreadTimelineCache", () => {
     const cache = createThreadTimelineCache();
     const build = vi.fn(() => makeResponse(3));
 
-    cache.getOrBuild("k1", build);
-    cache.getOrBuild("k2", build);
+    cache.getOrBuild("thr_x", "k1", build);
+    cache.getOrBuild("thr_x", "k2", build);
 
     expect(build).toHaveBeenCalledTimes(2);
   });
@@ -85,8 +85,8 @@ describe("createThreadTimelineCache", () => {
     const cache = createThreadTimelineCache({ maxCacheableRows: 5 });
     const build = vi.fn(() => makeResponse(50));
 
-    cache.getOrBuild("k", build);
-    cache.getOrBuild("k", build);
+    cache.getOrBuild("thr_x", "k", build);
+    cache.getOrBuild("thr_x", "k", build);
 
     expect(build).toHaveBeenCalledTimes(2);
     expect(cache.size).toBe(0);
@@ -96,16 +96,30 @@ describe("createThreadTimelineCache", () => {
     const cache = createThreadTimelineCache({ maxEntries: 2 });
     const build = vi.fn(() => makeResponse(1));
 
-    cache.getOrBuild("a", build);
-    cache.getOrBuild("b", build);
-    cache.getOrBuild("a", build);
-    cache.getOrBuild("c", build);
+    cache.getOrBuild("thr_x", "a", build);
+    cache.getOrBuild("thr_x", "b", build);
+    cache.getOrBuild("thr_x", "a", build);
+    cache.getOrBuild("thr_x", "c", build);
 
     expect(cache.size).toBe(2);
     const buildAgain = vi.fn(() => makeResponse(1));
-    cache.getOrBuild("a", buildAgain);
-    cache.getOrBuild("b", buildAgain);
+    cache.getOrBuild("thr_x", "a", buildAgain);
+    cache.getOrBuild("thr_x", "b", buildAgain);
     expect(buildAgain).toHaveBeenCalledTimes(1);
+  });
+
+  it("invalidates only entries for the rewritten thread", () => {
+    const cache = createThreadTimelineCache();
+    const build = vi.fn(() => makeResponse(1));
+    cache.getOrBuild("thr_x", "x", build);
+    cache.getOrBuild("thr_y", "y", build);
+
+    cache.invalidateThread("thr_x");
+
+    cache.getOrBuild("thr_x", "x", build);
+    cache.getOrBuild("thr_y", "y", build);
+    expect(build).toHaveBeenCalledTimes(3);
+    expect(cache.size).toBe(2);
   });
 });
 

@@ -1,60 +1,94 @@
-import {
-  eq,
-  and,
-  sql,
-  lt,
-  asc,
-} from "drizzle-orm";
-import { type ThreadEventItemType } from "@bb/domain";
-import type { DbConnection } from "../connection.js";
+import { eq, and, sql, lt, asc, inArray } from "drizzle-orm";
+import type { DbConnection, DbQueryConnection } from "../connection.js";
 import type { DbNotifier } from "../notifier.js";
-import { environments, maintenanceScanCursors } from "../schema.js";
+import {
+  COMPLETED_EVENT_OUTPUT_TRUNCATION_THRESHOLD_CHARS,
+  RETAINED_EVENT_OUTPUT_TARGETS,
+  type RetainedEventOutputTarget,
+} from "../retained-event-output.js";
+import { environments, events, maintenanceScanCursors } from "../schema.js";
+import {
+  insertPreparedRetainedEventOutput,
+  prepareCompletedEventOutputData,
+  prepareLegacyImageGenerationOutputData,
+  type PreparedCompletedEventOutputData,
+} from "./retained-event-outputs.js";
+
+export {
+  COMPLETED_EVENT_OUTPUT_RETAINED_HEAD_CHARS,
+  COMPLETED_EVENT_OUTPUT_RETAINED_TAIL_CHARS,
+  COMPLETED_EVENT_OUTPUT_RETENTION_MS,
+  COMPLETED_EVENT_OUTPUT_TRUNCATION_THRESHOLD_CHARS,
+} from "../retained-event-output.js";
 
 export const DESTROYED_ENVIRONMENT_TTL_MS = 7 * 24 * 60 * 60_000;
 
 export const CLOSED_SESSION_ROW_RETENTION_MS = 7 * 24 * 60 * 60_000;
 
-export const COMPLETED_EVENT_OUTPUT_RETENTION_MS = 7 * 24 * 60 * 60_000;
-
-export const COMPLETED_EVENT_OUTPUT_TRUNCATION_THRESHOLD_CHARS = 32 * 1024;
-export const COMPLETED_EVENT_OUTPUT_RETAINED_HEAD_CHARS = 2 * 1024;
-export const COMPLETED_EVENT_OUTPUT_RETAINED_TAIL_CHARS = 2 * 1024;
-const COMPLETED_EVENT_OUTPUT_TRUNCATION_CURSOR_VERSION = 1;
+const COMPLETED_EVENT_OUTPUT_MIGRATION_CURSOR_VERSION = 1;
+const COMPLETED_EVENT_OUTPUT_MIGRATION_COMPLETED_AT = -1;
 export const DEFAULT_CLOSED_SESSION_PRUNE_BATCH_SIZE = 1_000;
-export const DEFAULT_COMPLETED_EVENT_OUTPUT_TRUNCATION_BATCH_SIZE = 250;
 export const DEFAULT_DESTROYED_ENVIRONMENT_EVENT_DETACH_BATCH_SIZE = 50;
+export const DEFAULT_COMPLETED_EVENT_OUTPUT_MIGRATION_SCAN_LIMIT = 25;
+export const DEFAULT_LEGACY_IMAGE_GENERATION_MIGRATION_SCAN_LIMIT = 250;
 export const DEFAULT_DESTROYED_ENVIRONMENT_PRUNE_BATCH_SIZE = 10;
+export const MAX_COMPLETED_EVENT_OUTPUT_MIGRATION_EVENT_DATA_BYTES =
+  8 * 1024 * 1024;
 
-const COMPLETED_EVENT_OUTPUT_TRUNCATION_MARKER =
-  "\n\n[... output truncated by retention policy; showing beginning and end ...]\n\n";
-const COMPLETED_EVENT_OUTPUT_TRUNCATION_CURSOR_POLICY =
-  "completed_event_output_truncation";
+const COMPLETED_EVENT_OUTPUT_MIGRATION_CURSOR_POLICY =
+  "legacy_completed_event_output_sidecar";
+const COMPLETED_EVENT_OUTPUT_MIGRATION_WINDOW_POLICY =
+  "legacy_completed_event_output_sidecar_window";
+const LEGACY_IMAGE_GENERATION_MIGRATION_CURSOR_POLICY =
+  "legacy_image_generation_output_sidecar";
+const LEGACY_IMAGE_GENERATION_MIGRATION_WINDOW_POLICY =
+  "legacy_image_generation_output_sidecar_window";
+
+const LEGACY_IMAGE_GENERATION_TARGET: RetainedEventOutputTarget = (() => {
+  const target = RETAINED_EVENT_OUTPUT_TARGETS.find(
+    (target) => target.itemKind === "imageGeneration",
+  );
+  if (!target) {
+    throw new Error("Missing retained image generation output target");
+  }
+  return target;
+})();
 
 type ClosedSessionState = "closed";
 type ClosedSessionDeleteParameters = [ClosedSessionState, number, number];
-type CompletedEventOutputItemKind = Extract<
-  ThreadEventItemType,
-  "commandExecution" | "toolCall" | "webSearch" | "webFetch"
->;
-type CompletedEventOutputPath = "aggregatedOutput" | "result" | "resultText";
 type CompletedEventOutputScanParameters = [
   "item/completed",
-  CompletedEventOutputItemKind,
+  RetainedEventOutputTarget["itemKind"],
   number,
   number,
   string,
   number,
 ];
-type SqliteParameter = string | number | bigint | Buffer | null;
-
-interface CompletedEventOutputPathTarget {
-  itemKind: CompletedEventOutputItemKind;
-  outputPath: CompletedEventOutputPath;
-}
-
+type CompletedEventOutputCandidateParameters = [
+  "item/completed",
+  RetainedEventOutputTarget["itemKind"],
+  number,
+  number,
+  string,
+  number,
+  string,
+  number,
+  string,
+  string,
+  string,
+  RetainedEventOutputTarget["itemKind"],
+  string,
+  number,
+];
 interface CompletedEventOutputScanCursor {
   lastCreatedAt: number;
   lastEventId: string;
+  updatedAt: number;
+}
+
+interface CompletedEventOutputScanState {
+  cursor: CompletedEventOutputScanCursor;
+  window: CompletedEventOutputScanCursor | null;
 }
 
 interface CompletedEventOutputScanRow {
@@ -62,19 +96,52 @@ interface CompletedEventOutputScanRow {
   id: string;
 }
 
-interface TruncateCompletedEventItemOutputPathArgs
-  extends CompletedEventOutputPathTarget,
-    TruncateCompletedEventItemOutputsArgs {}
-
-interface UpdateCompletedEventOutputScanRowsArgs
-  extends CompletedEventOutputPathTarget {
-  rows: CompletedEventOutputScanRow[];
-  truncatedAt: number;
+interface CompletedEventOutputCandidateRow {
+  created_at: number;
+  data: string;
+  id: string;
+  scan_created_at: number;
+  thread_id: string;
 }
 
-interface AdvanceCompletedEventOutputScanCursorArgs
-  extends CompletedEventOutputPathTarget,
-    CompletedEventOutputScanCursor {
+interface CompletedEventOutputMigrationStrategy {
+  cursorPolicy: string;
+  eventChangedError: string;
+  findCandidate: (
+    db: DbConnection,
+    args: MigrateNextCompletedEventItemOutputArgs,
+    cursor: CompletedEventOutputScanCursor,
+    window: CompletedEventOutputScanCursor,
+  ) => CompletedEventOutputCandidateRow | undefined;
+  listScanRows: (
+    db: DbConnection,
+    args: MigrateNextCompletedEventItemOutputArgs,
+    cursor: CompletedEventOutputScanCursor,
+  ) => CompletedEventOutputScanRow[];
+  missingScanRowError: string;
+  prepare: (
+    candidate: CompletedEventOutputCandidateRow,
+    args: MigrateNextCompletedEventItemOutputArgs,
+  ) => PreparedCompletedEventOutputData;
+  windowPolicy: string;
+}
+
+type LegacyImageGenerationScanParameters = [string, number];
+type LegacyImageGenerationCandidateParameters = [
+  string,
+  string,
+  "provider/unhandled",
+  number,
+  number,
+  "item/completed",
+  "item/completed",
+  "imageGeneration",
+  number,
+];
+
+interface AdvanceCompletedEventOutputMigrationCursorArgs extends RetainedEventOutputTarget {
+  lastCreatedAt: number;
+  lastEventId: string;
   updatedAt: number;
 }
 
@@ -98,17 +165,24 @@ export interface PruneDestroyedEnvironmentsResult {
   detachedEvents: number;
 }
 
-export interface TruncateCompletedEventItemOutputsArgs {
-  createdBefore: number;
+export interface MigrateNextCompletedEventItemOutputArgs extends RetainedEventOutputTarget {
   limit: number;
-  truncatedAt: number;
+  migratedAt: number;
 }
 
-export interface TruncateCompletedEventItemOutputsResult {
-  commandExecutionOutputs: number;
-  toolCallResults: number;
-  webFetchResultTexts: number;
-  webSearchResultTexts: number;
+export interface MigrateNextCompletedEventItemOutputResult {
+  action: "complete" | "idle" | "migrated" | "scanned";
+  eventId: string | null;
+  migratedBytes: number;
+  migratedRows: number;
+  retained: boolean;
+  scanRows: number;
+  threadId: string | null;
+}
+
+export interface MigrateNextLegacyImageGenerationOutputArgs {
+  limit: number;
+  migratedAt: number;
 }
 
 export function pruneClosedSessions(
@@ -136,43 +210,54 @@ export function pruneClosedSessions(
 }
 
 function buildCompletedEventOutputCursorId(
-  args: CompletedEventOutputPathTarget,
+  args: RetainedEventOutputTarget,
+  policy: string = COMPLETED_EVENT_OUTPUT_MIGRATION_CURSOR_POLICY,
 ): string {
   return [
-    COMPLETED_EVENT_OUTPUT_TRUNCATION_CURSOR_POLICY,
-    `v${COMPLETED_EVENT_OUTPUT_TRUNCATION_CURSOR_VERSION}`,
+    policy,
+    `v${COMPLETED_EVENT_OUTPUT_MIGRATION_CURSOR_VERSION}`,
     args.itemKind,
     args.outputPath,
   ].join(":");
 }
 
-function getCompletedEventOutputScanCursor(
-  db: DbConnection,
-  args: CompletedEventOutputPathTarget,
-): CompletedEventOutputScanCursor {
-  const row = db
+function getCompletedEventOutputScanState(
+  db: DbQueryConnection,
+  args: RetainedEventOutputTarget,
+  cursorPolicy: string = COMPLETED_EVENT_OUTPUT_MIGRATION_CURSOR_POLICY,
+  windowPolicy: string = COMPLETED_EVENT_OUTPUT_MIGRATION_WINDOW_POLICY,
+): CompletedEventOutputScanState {
+  const cursorId = buildCompletedEventOutputCursorId(args, cursorPolicy);
+  const windowId = buildCompletedEventOutputCursorId(args, windowPolicy);
+  const rows = db
     .select({
+      id: maintenanceScanCursors.id,
       lastCreatedAt: maintenanceScanCursors.lastCreatedAt,
       lastEventId: maintenanceScanCursors.lastEventId,
+      updatedAt: maintenanceScanCursors.updatedAt,
     })
     .from(maintenanceScanCursors)
-    .where(
-      eq(maintenanceScanCursors.id, buildCompletedEventOutputCursorId(args)),
-    )
-    .get();
+    .where(inArray(maintenanceScanCursors.id, [cursorId, windowId]))
+    .all();
+  const rowsById = new Map(rows.map((row) => [row.id, row]));
+  const cursor = rowsById.get(cursorId);
+  const window = rowsById.get(windowId);
 
-  return row ?? { lastCreatedAt: 0, lastEventId: "" };
+  return {
+    cursor: cursor ?? { lastCreatedAt: 0, lastEventId: "", updatedAt: 0 },
+    window: window ?? null,
+  };
 }
 
 function listCompletedEventOutputScanRows(
   db: DbConnection,
-  args: TruncateCompletedEventItemOutputPathArgs,
+  args: MigrateNextCompletedEventItemOutputArgs,
+  cursor: CompletedEventOutputScanCursor,
 ): CompletedEventOutputScanRow[] {
   if (args.limit <= 0) {
     return [];
   }
 
-  const cursor = getCompletedEventOutputScanCursor(db, args);
   return db.$client
     .prepare<CompletedEventOutputScanParameters, CompletedEventOutputScanRow>(
       `
@@ -189,85 +274,140 @@ function listCompletedEventOutputScanRows(
     .all(
       "item/completed",
       args.itemKind,
-      args.createdBefore,
+      args.migratedAt,
       cursor.lastCreatedAt,
       cursor.lastEventId,
       args.limit,
     );
 }
 
-function updateCompletedEventOutputScanRows(
+function findCompletedEventOutputCandidate(
   db: DbConnection,
-  args: UpdateCompletedEventOutputScanRowsArgs,
-): number {
-  if (args.rows.length === 0) {
-    return 0;
-  }
-
+  args: MigrateNextCompletedEventItemOutputArgs,
+  cursor: CompletedEventOutputScanCursor,
+  window: CompletedEventOutputScanCursor,
+): CompletedEventOutputCandidateRow | undefined {
   const valuePath = `$.item.${args.outputPath}`;
   const truncationPath = `$.item.truncation.${args.outputPath}`;
-  const rowPlaceholders = args.rows.map(() => "?").join(",");
-  const parameters: SqliteParameter[] = [
-    valuePath,
-    valuePath,
-    COMPLETED_EVENT_OUTPUT_RETAINED_HEAD_CHARS,
-    COMPLETED_EVENT_OUTPUT_TRUNCATION_MARKER,
-    valuePath,
-    COMPLETED_EVENT_OUTPUT_RETAINED_TAIL_CHARS,
-    `${truncationPath}.originalLength`,
-    valuePath,
-    `${truncationPath}.retainedHeadLength`,
-    COMPLETED_EVENT_OUTPUT_RETAINED_HEAD_CHARS,
-    `${truncationPath}.retainedTailLength`,
-    COMPLETED_EVENT_OUTPUT_RETAINED_TAIL_CHARS,
-    `${truncationPath}.truncatedAt`,
-    args.truncatedAt,
-    ...args.rows.map((row) => row.id),
-    valuePath,
-    truncationPath,
-    valuePath,
-    COMPLETED_EVENT_OUTPUT_TRUNCATION_THRESHOLD_CHARS,
-  ];
-
-  const result = db.$client
-    .prepare<SqliteParameter[]>(
+  return db.$client
+    .prepare<
+      CompletedEventOutputCandidateParameters,
+      CompletedEventOutputCandidateRow
+    >(
       `
-        UPDATE events
-        SET data = json_set(
-          data,
-          ?,
-          substr(json_extract(data, ?), 1, ?)
-            || ?
-            || substr(json_extract(data, ?), -?),
-          ?,
-          length(json_extract(data, ?)),
-          ?,
-          ?,
-          ?,
-          ?,
-          ?,
-          ?
-        )
-        WHERE id IN (${rowPlaceholders})
-          AND json_type(data, ?) = 'text'
-          AND json_type(data, ?) IS NULL
-          AND length(json_extract(data, ?)) > ?
+        SELECT id, created_at, created_at AS scan_created_at, data, thread_id
+        FROM events
+        WHERE type = ?
+          AND item_kind = ?
+          AND created_at < ?
+          AND (created_at, id) > (?, ?)
+          AND (created_at, id) <= (?, ?)
+          AND CASE
+          WHEN octet_length(data) > ? THEN 0
+          WHEN json_valid(data) THEN
+            json_type(data, ?) = 'text'
+            AND json_type(data, ?) IS NULL
+            AND json_extract(data, ?) = ?
+            AND octet_length(json_extract(data, ?)) > ?
+          ELSE 0 END
+        ORDER BY created_at, id
+        LIMIT 1
       `,
     )
-    .run(...parameters);
-
-  return result.changes;
+    .get(
+      "item/completed",
+      args.itemKind,
+      args.migratedAt,
+      cursor.lastCreatedAt,
+      cursor.lastEventId,
+      window.lastCreatedAt,
+      window.lastEventId,
+      MAX_COMPLETED_EVENT_OUTPUT_MIGRATION_EVENT_DATA_BYTES,
+      valuePath,
+      truncationPath,
+      "$.item.type",
+      args.itemKind,
+      valuePath,
+      COMPLETED_EVENT_OUTPUT_TRUNCATION_THRESHOLD_CHARS,
+    );
 }
 
-function advanceCompletedEventOutputScanCursor(
+function listLegacyImageGenerationScanRows(
   db: DbConnection,
-  args: AdvanceCompletedEventOutputScanCursorArgs,
+  args: MigrateNextCompletedEventItemOutputArgs,
+  cursor: CompletedEventOutputScanCursor,
+): CompletedEventOutputScanRow[] {
+  if (args.limit <= 0) {
+    return [];
+  }
+  return db.$client
+    .prepare<LegacyImageGenerationScanParameters, CompletedEventOutputScanRow>(
+      `
+        SELECT id, 0 AS created_at
+        FROM events
+        WHERE id > ?
+        ORDER BY id
+        LIMIT ?
+      `,
+    )
+    .all(cursor.lastEventId, args.limit);
+}
+
+function findLegacyImageGenerationCandidate(
+  db: DbConnection,
+  args: MigrateNextCompletedEventItemOutputArgs,
+  cursor: CompletedEventOutputScanCursor,
+  window: CompletedEventOutputScanCursor,
+): CompletedEventOutputCandidateRow | undefined {
+  return db.$client
+    .prepare<
+      LegacyImageGenerationCandidateParameters,
+      CompletedEventOutputCandidateRow
+    >(
+      `
+        SELECT id, created_at, 0 AS scan_created_at, data, thread_id
+        FROM events
+        WHERE id > ?
+          AND id <= ?
+          AND type = ?
+          AND created_at < ?
+          AND CASE
+          WHEN octet_length(data) > ? THEN 0
+          WHEN json_valid(data) THEN
+            json_extract(data, '$.rawType') = ?
+            AND json_extract(data, '$.rawEvent.method') = ?
+            AND json_extract(data, '$.rawEvent.params.item.type') = ?
+            AND json_type(data, '$.rawEvent.params.item.result') = 'text'
+            AND json_type(data, '$.rawEvent.params.item.truncation.result') IS NULL
+            AND octet_length(json_extract(data, '$.rawEvent.params.item.result')) > ?
+          ELSE 0 END
+        ORDER BY id
+        LIMIT 1
+      `,
+    )
+    .get(
+      cursor.lastEventId,
+      window.lastEventId,
+      "provider/unhandled",
+      args.migratedAt,
+      MAX_COMPLETED_EVENT_OUTPUT_MIGRATION_EVENT_DATA_BYTES,
+      "item/completed",
+      "item/completed",
+      "imageGeneration",
+      COMPLETED_EVENT_OUTPUT_TRUNCATION_THRESHOLD_CHARS,
+    );
+}
+
+function advanceCompletedEventOutputMigrationCursor(
+  db: DbQueryConnection,
+  args: AdvanceCompletedEventOutputMigrationCursorArgs,
+  policy: string = COMPLETED_EVENT_OUTPUT_MIGRATION_CURSOR_POLICY,
 ): void {
   db.insert(maintenanceScanCursors)
     .values({
-      id: buildCompletedEventOutputCursorId(args),
-      policy: COMPLETED_EVENT_OUTPUT_TRUNCATION_CURSOR_POLICY,
-      version: COMPLETED_EVENT_OUTPUT_TRUNCATION_CURSOR_VERSION,
+      id: buildCompletedEventOutputCursorId(args, policy),
+      policy,
+      version: COMPLETED_EVENT_OUTPUT_MIGRATION_CURSOR_VERSION,
       itemKind: args.itemKind,
       outputPath: args.outputPath,
       lastCreatedAt: args.lastCreatedAt,
@@ -285,55 +425,302 @@ function advanceCompletedEventOutputScanCursor(
     .run();
 }
 
-function truncateCompletedEventItemOutputPath(
-  db: DbConnection,
-  args: TruncateCompletedEventItemOutputPathArgs,
-): number {
-  const rows = listCompletedEventOutputScanRows(db, args);
-  const truncated = updateCompletedEventOutputScanRows(db, {
-    itemKind: args.itemKind,
-    outputPath: args.outputPath,
-    rows,
-    truncatedAt: args.truncatedAt,
-  });
-  const lastRow = rows.at(-1);
-  if (lastRow) {
-    advanceCompletedEventOutputScanCursor(db, {
-      itemKind: args.itemKind,
-      outputPath: args.outputPath,
-      lastCreatedAt: lastRow.created_at,
-      lastEventId: lastRow.id,
-      updatedAt: args.truncatedAt,
-    });
-  }
-  return truncated;
+function clearCompletedEventOutputMigrationWindow(
+  db: DbQueryConnection,
+  args: RetainedEventOutputTarget,
+  windowPolicy: string = COMPLETED_EVENT_OUTPUT_MIGRATION_WINDOW_POLICY,
+): void {
+  db.delete(maintenanceScanCursors)
+    .where(
+      eq(
+        maintenanceScanCursors.id,
+        buildCompletedEventOutputCursorId(args, windowPolicy),
+      ),
+    )
+    .run();
 }
 
-export function truncateCompletedEventItemOutputs(
-  db: DbConnection,
-  args: TruncateCompletedEventItemOutputsArgs,
-): TruncateCompletedEventItemOutputsResult {
+function sameCompletedEventOutputScanPosition(
+  left: CompletedEventOutputScanCursor,
+  right: CompletedEventOutputScanCursor,
+): boolean {
+  return (
+    left.lastCreatedAt === right.lastCreatedAt &&
+    left.lastEventId === right.lastEventId
+  );
+}
+
+function completedEventOutputScanPositionAfter(
+  left: CompletedEventOutputScanCursor,
+  right: CompletedEventOutputScanCursor,
+): boolean {
+  return (
+    left.lastCreatedAt > right.lastCreatedAt ||
+    (left.lastCreatedAt === right.lastCreatedAt &&
+      left.lastEventId > right.lastEventId)
+  );
+}
+
+function persistCompletedEventOutputMigrationPosition(
+  db: DbQueryConnection,
+  args: MigrateNextCompletedEventItemOutputArgs,
+  position: CompletedEventOutputScanCursor,
+  window: CompletedEventOutputScanCursor,
+  cursorPolicy: string = COMPLETED_EVENT_OUTPUT_MIGRATION_CURSOR_POLICY,
+  windowPolicy: string = COMPLETED_EVENT_OUTPUT_MIGRATION_WINDOW_POLICY,
+): void {
+  advanceCompletedEventOutputMigrationCursor(
+    db,
+    {
+      ...args,
+      lastCreatedAt: position.lastCreatedAt,
+      lastEventId: position.lastEventId,
+      updatedAt: args.migratedAt,
+    },
+    cursorPolicy,
+  );
+  if (sameCompletedEventOutputScanPosition(position, window)) {
+    clearCompletedEventOutputMigrationWindow(db, args, windowPolicy);
+    return;
+  }
+  advanceCompletedEventOutputMigrationCursor(
+    db,
+    {
+      ...args,
+      lastCreatedAt: window.lastCreatedAt,
+      lastEventId: window.lastEventId,
+      updatedAt: args.migratedAt,
+    },
+    windowPolicy,
+  );
+}
+
+function emptyCompletedEventOutputMigrationResult(
+  action: "complete" | "idle" | "scanned",
+  scanRows: number,
+): MigrateNextCompletedEventItemOutputResult {
   return {
-    commandExecutionOutputs: truncateCompletedEventItemOutputPath(db, {
+    action,
+    eventId: null,
+    migratedBytes: 0,
+    migratedRows: 0,
+    retained: false,
+    scanRows,
+    threadId: null,
+  };
+}
+
+export function migrateNextCompletedEventItemOutput(
+  db: DbConnection,
+  args: MigrateNextCompletedEventItemOutputArgs,
+): MigrateNextCompletedEventItemOutputResult {
+  return migrateNextCompletedEventOutput(
+    db,
+    args,
+    COMPLETED_EVENT_ITEM_OUTPUT_MIGRATION_STRATEGY,
+  );
+}
+
+export function migrateNextLegacyImageGenerationOutput(
+  db: DbConnection,
+  args: MigrateNextLegacyImageGenerationOutputArgs,
+): MigrateNextCompletedEventItemOutputResult {
+  return migrateNextCompletedEventOutput(
+    db,
+    {
+      ...LEGACY_IMAGE_GENERATION_TARGET,
       ...args,
-      itemKind: "commandExecution",
-      outputPath: "aggregatedOutput",
-    }),
-    toolCallResults: truncateCompletedEventItemOutputPath(db, {
-      ...args,
-      itemKind: "toolCall",
-      outputPath: "result",
-    }),
-    webFetchResultTexts: truncateCompletedEventItemOutputPath(db, {
-      ...args,
-      itemKind: "webFetch",
-      outputPath: "resultText",
-    }),
-    webSearchResultTexts: truncateCompletedEventItemOutputPath(db, {
-      ...args,
-      itemKind: "webSearch",
-      outputPath: "resultText",
-    }),
+    },
+    LEGACY_IMAGE_GENERATION_OUTPUT_MIGRATION_STRATEGY,
+  );
+}
+
+const COMPLETED_EVENT_ITEM_OUTPUT_MIGRATION_STRATEGY: CompletedEventOutputMigrationStrategy =
+  {
+    cursorPolicy: COMPLETED_EVENT_OUTPUT_MIGRATION_CURSOR_POLICY,
+    eventChangedError:
+      "Completed output migration event changed during advance",
+    findCandidate: findCompletedEventOutputCandidate,
+    listScanRows: listCompletedEventOutputScanRows,
+    missingScanRowError: "Expected completed output migration scan row",
+    prepare: (candidate, args) =>
+      prepareCompletedEventOutputData({
+        createdAt: candidate.created_at,
+        data: candidate.data,
+        itemKind: args.itemKind,
+        type: "item/completed",
+      }),
+    windowPolicy: COMPLETED_EVENT_OUTPUT_MIGRATION_WINDOW_POLICY,
+  };
+
+const LEGACY_IMAGE_GENERATION_OUTPUT_MIGRATION_STRATEGY: CompletedEventOutputMigrationStrategy =
+  {
+    cursorPolicy: LEGACY_IMAGE_GENERATION_MIGRATION_CURSOR_POLICY,
+    eventChangedError:
+      "Legacy image generation migration event changed during advance",
+    findCandidate: findLegacyImageGenerationCandidate,
+    listScanRows: listLegacyImageGenerationScanRows,
+    missingScanRowError: "Expected legacy image generation migration scan row",
+    prepare: (candidate) =>
+      prepareLegacyImageGenerationOutputData({
+        createdAt: candidate.created_at,
+        data: candidate.data,
+      }),
+    windowPolicy: LEGACY_IMAGE_GENERATION_MIGRATION_WINDOW_POLICY,
+  };
+
+function migrateNextCompletedEventOutput(
+  db: DbConnection,
+  args: MigrateNextCompletedEventItemOutputArgs,
+  strategy: CompletedEventOutputMigrationStrategy,
+): MigrateNextCompletedEventItemOutputResult {
+  if (args.limit <= 0) {
+    return emptyCompletedEventOutputMigrationResult("idle", 0);
+  }
+  const state = getCompletedEventOutputScanState(
+    db,
+    args,
+    strategy.cursorPolicy,
+    strategy.windowPolicy,
+  );
+  const cursor = state.cursor;
+  if (cursor.lastCreatedAt === COMPLETED_EVENT_OUTPUT_MIGRATION_COMPLETED_AT) {
+    return emptyCompletedEventOutputMigrationResult("complete", 0);
+  }
+
+  let window =
+    state.window && completedEventOutputScanPositionAfter(state.window, cursor)
+      ? state.window
+      : null;
+  let initialWindowScanRows: number | null = null;
+  if (!window) {
+    const rows = strategy.listScanRows(db, args, cursor);
+    if (rows.length === 0) {
+      if (cursor.lastCreatedAt === 0 && cursor.lastEventId === "") {
+        if (state.window) {
+          clearCompletedEventOutputMigrationWindow(
+            db,
+            args,
+            strategy.windowPolicy,
+          );
+        }
+        return emptyCompletedEventOutputMigrationResult("idle", 0);
+      }
+      db.transaction(
+        (tx) => {
+          advanceCompletedEventOutputMigrationCursor(
+            tx,
+            {
+              ...args,
+              lastCreatedAt: COMPLETED_EVENT_OUTPUT_MIGRATION_COMPLETED_AT,
+              lastEventId: "",
+              updatedAt: args.migratedAt,
+            },
+            strategy.cursorPolicy,
+          );
+          clearCompletedEventOutputMigrationWindow(
+            tx,
+            args,
+            strategy.windowPolicy,
+          );
+        },
+        { behavior: "immediate" },
+      );
+      return emptyCompletedEventOutputMigrationResult("complete", 0);
+    }
+    const lastRow = rows.at(-1);
+    if (!lastRow) {
+      throw new Error(strategy.missingScanRowError);
+    }
+    window = {
+      lastCreatedAt: lastRow.created_at,
+      lastEventId: lastRow.id,
+      updatedAt: args.migratedAt,
+    };
+    initialWindowScanRows = rows.length;
+  }
+
+  const candidate = strategy.findCandidate(db, args, cursor, window);
+  const candidatePosition = candidate
+    ? {
+        lastCreatedAt: candidate.scan_created_at,
+        lastEventId: candidate.id,
+        updatedAt: args.migratedAt,
+      }
+    : window;
+  const scanRows = initialWindowScanRows ?? 0;
+  if (!candidate) {
+    db.transaction(
+      (tx) =>
+        persistCompletedEventOutputMigrationPosition(
+          tx,
+          args,
+          candidatePosition,
+          window,
+          strategy.cursorPolicy,
+          strategy.windowPolicy,
+        ),
+      { behavior: "immediate" },
+    );
+    return emptyCompletedEventOutputMigrationResult("scanned", scanRows);
+  }
+
+  const prepared = strategy.prepare(candidate, args);
+  if (!prepared.retainedOutput) {
+    db.transaction(
+      (tx) =>
+        persistCompletedEventOutputMigrationPosition(
+          tx,
+          args,
+          candidatePosition,
+          window,
+          strategy.cursorPolicy,
+          strategy.windowPolicy,
+        ),
+      { behavior: "immediate" },
+    );
+    return emptyCompletedEventOutputMigrationResult("scanned", scanRows);
+  }
+  const retainedOutput = prepared.retainedOutput;
+  const retained = retainedOutput.expiresAt > args.migratedAt;
+  db.transaction(
+    (tx) => {
+      const update = tx
+        .update(events)
+        .set({ data: prepared.data })
+        .where(
+          and(eq(events.id, candidate.id), eq(events.data, candidate.data)),
+        )
+        .run();
+      if (update.changes !== 1) {
+        throw new Error(strategy.eventChangedError);
+      }
+      if (retained) {
+        insertPreparedRetainedEventOutput(tx, {
+          eventId: candidate.id,
+          output: retainedOutput,
+        });
+      }
+      persistCompletedEventOutputMigrationPosition(
+        tx,
+        args,
+        candidatePosition,
+        window,
+        strategy.cursorPolicy,
+        strategy.windowPolicy,
+      );
+    },
+    { behavior: "immediate" },
+  );
+
+  return {
+    action: "migrated",
+    eventId: candidate.id,
+    migratedBytes: Buffer.byteLength(retainedOutput.value),
+    migratedRows: 1,
+    retained,
+    scanRows,
+    threadId: candidate.thread_id,
   };
 }
 

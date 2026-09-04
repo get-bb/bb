@@ -13,11 +13,12 @@ import {
   type ThreadTimelinePendingTodos,
   type WorkspaceStatus,
 } from "@bb/domain";
-import type { BbSdk } from "@bb/sdk";
+import { BbHttpError, type BbSdk } from "@bb/sdk";
 import type {
   EnvironmentDiffQuery,
   ThreadTimelineResponse,
 } from "@bb/server-contract";
+import { THREAD_EVENT_LIST_PAGE_SIZE } from "@bb/server-contract";
 import { action } from "../../action.js";
 import { createCliBbSdk } from "../../client.js";
 import {
@@ -52,7 +53,6 @@ interface ThreadLogCommandOptions {
 }
 
 const THREAD_LOG_DEFAULT_EVENT_LIMIT = 100;
-const THREAD_LOG_ALL_EVENTS_PAGE_SIZE = 1000;
 const THREAD_LOG_TIMELINE_SEGMENT_LIMIT_MAX = 100;
 
 interface ThreadOutputCommandOptions {
@@ -612,15 +612,69 @@ interface ThreadLogEventsPage {
   hasMore: boolean;
 }
 
+interface ThreadLogEventBatch {
+  pageSize: number;
+  rows: ThreadEventRow[];
+}
+
+async function listThreadLogEventBatch(
+  sdk: BbSdk,
+  args: {
+    threadId: string;
+    limit: number;
+    afterSeq: string | undefined;
+  },
+): Promise<ThreadLogEventBatch> {
+  let pageSize = args.limit;
+  for (;;) {
+    try {
+      const rows = await sdk.threads.events.list({
+        threadId: args.threadId,
+        limit: String(pageSize),
+        ...(args.afterSeq === undefined ? {} : { afterSeq: args.afterSeq }),
+      });
+      return { pageSize, rows };
+    } catch (error) {
+      if (
+        !(error instanceof BbHttpError) ||
+        error.status !== 413 ||
+        error.code !== "event_data_too_large" ||
+        pageSize === 1
+      ) {
+        throw error;
+      }
+      pageSize = Math.max(1, Math.ceil(pageSize / 2));
+    }
+  }
+}
+
+function growThreadLogEventPageSize(pageSize: number): number {
+  return Math.min(THREAD_EVENT_LIST_PAGE_SIZE, pageSize * 2);
+}
+
 async function listThreadLogEventsPage(
   sdk: BbSdk,
   args: { threadId: string; limit: number; afterSeq: string | undefined },
 ): Promise<ThreadLogEventsPage> {
-  const rows = await sdk.threads.events.list({
-    threadId: args.threadId,
-    limit: String(args.limit + 1),
-    ...(args.afterSeq === undefined ? {} : { afterSeq: args.afterSeq }),
-  });
+  const requestedRows = args.limit + 1;
+  const rows: ThreadEventRow[] = [];
+  let cursor = args.afterSeq;
+  let pageSize = THREAD_EVENT_LIST_PAGE_SIZE;
+  while (rows.length < requestedRows) {
+    const requestedPageSize = Math.min(pageSize, requestedRows - rows.length);
+    const page = await listThreadLogEventBatch(sdk, {
+      threadId: args.threadId,
+      limit: requestedPageSize,
+      afterSeq: cursor,
+    });
+    rows.push(...page.rows);
+    const last = page.rows.at(-1);
+    if (!last || page.rows.length < page.pageSize) {
+      break;
+    }
+    cursor = String(last.seq);
+    pageSize = growThreadLogEventPageSize(page.pageSize);
+  }
   const hasMore = rows.length > args.limit;
   return { rows: hasMore ? rows.slice(0, args.limit) : rows, hasMore };
 }
@@ -632,18 +686,20 @@ async function listAllThreadLogEvents(
 ): Promise<ThreadLogEventsPage> {
   const rows: ThreadEventRow[] = [];
   let cursor = afterSeq;
+  let pageSize = THREAD_EVENT_LIST_PAGE_SIZE;
   for (;;) {
-    const page = await sdk.threads.events.list({
+    const page = await listThreadLogEventBatch(sdk, {
       threadId,
-      limit: String(THREAD_LOG_ALL_EVENTS_PAGE_SIZE),
-      ...(cursor === undefined ? {} : { afterSeq: cursor }),
+      limit: pageSize,
+      afterSeq: cursor,
     });
-    rows.push(...page);
-    const last = page[page.length - 1];
-    if (last === undefined || page.length < THREAD_LOG_ALL_EVENTS_PAGE_SIZE) {
+    rows.push(...page.rows);
+    const last = page.rows.at(-1);
+    if (last === undefined || page.rows.length < page.pageSize) {
       return { rows, hasMore: false };
     }
     cursor = String(last.seq);
+    pageSize = growThreadLogEventPageSize(page.pageSize);
   }
 }
 

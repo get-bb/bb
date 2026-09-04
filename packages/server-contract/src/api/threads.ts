@@ -30,6 +30,7 @@ import {
   threadWithRuntimeSchema,
 } from "@bb/domain";
 import type { CallerExecutionInputSource } from "@bb/domain";
+import { THREAD_EVENT_LIST_PAGE_SIZE } from "../common.js";
 import {
   timelineDeltaSchema,
   timelineRowSchema,
@@ -847,7 +848,13 @@ export const threadEventsQuerySchema = z
   .object({
     afterSeq: z.string().regex(/^\d+$/),
     beforeSeq: z.string().regex(/^\d+$/),
-    limit: z.string().regex(/^\d+$/),
+    limit: z
+      .string()
+      .regex(/^\d+$/)
+      .refine(
+        (value) => Number(value) <= THREAD_EVENT_LIST_PAGE_SIZE,
+        `Thread event limit cannot exceed ${THREAD_EVENT_LIST_PAGE_SIZE}`,
+      ),
     order: z.enum(["asc", "desc"]),
     types: z.string().refine(
       (value) =>

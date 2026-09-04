@@ -14,6 +14,7 @@ import type {
   TimelineApprovalWorkRow,
   ThreadContextWindowUsage,
   TimelineFileChangeWorkRow,
+  TimelineImageGenerationWorkRow,
   TimelineImageViewWorkRow,
   TimelineParentChange,
   TimelineQuestionWorkRow,
@@ -66,6 +67,13 @@ interface ImageViewItemEventArgs {
   itemId?: string;
   path?: string;
   seq: number;
+  type: "item/completed" | "item/started";
+}
+
+interface ImageGenerationItemEventArgs {
+  itemId?: string;
+  seq: number;
+  status?: ThreadEventItemStatus;
   type: "item/completed" | "item/started";
 }
 
@@ -335,6 +343,45 @@ function imageViewItemEvent({
         type: "imageView",
         id: itemId,
         path,
+      },
+    },
+    meta: {
+      id: `event-${seq}`,
+      seq,
+      createdAt: seq,
+    },
+  };
+}
+
+function imageGenerationItemEvent({
+  itemId = "image-generation-1",
+  seq,
+  status,
+  type,
+}: ImageGenerationItemEventArgs): ThreadEventWithMeta {
+  return {
+    event: {
+      type,
+      threadId: "thread-1",
+      providerThreadId: "provider-thread-1",
+      scope: turnScope("turn-1"),
+      item: {
+        type: "imageGeneration",
+        id: itemId,
+        status: status ?? (type === "item/completed" ? "completed" : "pending"),
+        prompt: "Draw a blue circle",
+        path: "/tmp/generated.png",
+        result: "encoded-image-result",
+        error: null,
+        transparentBackground: false,
+        presentation: {
+          label: {
+            pending: "Generating image",
+            completed: "Generated image",
+          },
+          icon: { glyph: "Palette" },
+          title: "generated.png",
+        },
       },
     },
     meta: {
@@ -899,6 +946,26 @@ function collectImageViewRows(
     }
   }
   return imageViewRows;
+}
+
+function collectImageGenerationRows(
+  rows: readonly TimelineRow[],
+): TimelineImageGenerationWorkRow[] {
+  const imageGenerationRows: TimelineImageGenerationWorkRow[] = [];
+  for (const row of rows) {
+    if (row.kind === "work" && row.workKind === "image-generation") {
+      imageGenerationRows.push(row);
+      continue;
+    }
+    if (row.kind === "turn" && row.children) {
+      imageGenerationRows.push(...collectImageGenerationRows(row.children));
+      continue;
+    }
+    if (row.kind === "work" && row.workKind === "delegation") {
+      imageGenerationRows.push(...collectImageGenerationRows(row.childRows));
+    }
+  }
+  return imageGenerationRows;
 }
 
 function collectConversationRows(
@@ -1647,6 +1714,87 @@ describe("buildThreadTimelineFromEvents", () => {
       status: "pending",
       completedAt: null,
     });
+  });
+
+  it("projects image generation without exposing its encoded result", () => {
+    const rows = buildTimelineRows([
+      turnStartedEvent({ seq: 1 }),
+      imageGenerationItemEvent({ seq: 2, type: "item/started" }),
+      imageGenerationItemEvent({ seq: 3, type: "item/completed" }),
+    ]);
+    const [row] = collectImageGenerationRows(rows);
+    if (!row) {
+      throw new Error("Expected an image generation row");
+    }
+
+    expect(row).toMatchObject({
+      workKind: "image-generation",
+      callId: "image-generation-1",
+      prompt: "Draw a blue circle",
+      path: "/tmp/generated.png",
+      status: "completed",
+      completedAt: 3,
+    });
+    expect(JSON.stringify(row)).not.toContain("encoded-image-result");
+    expect(
+      buildTimelineRowTitle(row, {
+        summaryStyle: "bundle",
+        workStyle: "default",
+      }).plain,
+    ).toContain("Generated image");
+  });
+
+  it("projects a legacy Codex image generation envelope as the same compact row", () => {
+    const rows = buildTimelineRows([
+      turnStartedEvent({ seq: 1 }),
+      {
+        event: {
+          type: "provider/unhandled",
+          threadId: "thread-1",
+          providerThreadId: "provider-thread-1",
+          providerId: "codex",
+          rawType: "item/completed",
+          rawEvent: {
+            jsonrpc: "2.0",
+            method: "item/completed",
+            params: {
+              threadId: "provider-thread-1",
+              turnId: "turn-1",
+              item: {
+                type: "imageGeneration",
+                id: "legacy-image-generation-1",
+                status: "completed",
+                revisedPrompt: "Draw an old image",
+                savedPath: "/tmp/legacy-generated.png",
+                result: "bounded-preview",
+                failure: null,
+              },
+            },
+          },
+          scope: turnScope("turn-1"),
+        },
+        meta: { id: "event-2", seq: 2, createdAt: 2 },
+      },
+    ]);
+    const [row] = collectImageGenerationRows(rows);
+    if (!row) {
+      throw new Error("Expected a legacy image generation row");
+    }
+
+    expect(row).toMatchObject({
+      workKind: "image-generation",
+      callId: "legacy-image-generation-1",
+      prompt: "Draw an old image",
+      path: "/tmp/legacy-generated.png",
+      status: "completed",
+    });
+    expect(JSON.stringify(row)).not.toContain("bounded-preview");
+    expect(
+      buildTimelineRowTitle(row, {
+        summaryStyle: "bundle",
+        workStyle: "default",
+      }).plain,
+    ).toBe("Generated image");
   });
 
   it("interrupts a pending image view row when its turn is interrupted", () => {

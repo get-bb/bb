@@ -13,6 +13,7 @@ import {
 } from "@bb/domain";
 import {
   publicApiRoutes,
+  THREAD_EVENT_LIST_PAGE_SIZE,
   typedRoutes,
   type PublicApiSchema,
   type ThreadConversationOutlineResponse,
@@ -299,6 +300,16 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
   const routes = publicApiRoutes.threads;
   const timelineCache = createThreadTimelineCache();
   const timelineLatestRowsCache = createTimelineLatestRowsCache();
+  deps.hub.onChangedMessage((message) => {
+    if (
+      message.entity === "thread" &&
+      message.id !== undefined &&
+      message.changes.includes("history-rewritten")
+    ) {
+      timelineCache.invalidateThread(message.id);
+      timelineLatestRowsCache.invalidateThread(message.id);
+    }
+  });
   const slowTimelineBuildLogger = createSlowThreadTimelineBuildLogger({
     logger: deps.logger,
   });
@@ -333,6 +344,7 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
       includeProviderUnhandledOperations,
     };
     const full = timelineCache.getOrBuild(
+      thread.id,
       buildThreadTimelineCacheKey({ ...keyArgs, maxSeq }),
       () => {
         const { profile, response } = buildThreadTimelineWithProfile(
@@ -372,12 +384,15 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
     const previous =
       afterSequence === undefined
         ? undefined
-        : timelineLatestRowsCache.get(paramsKey, afterSequence);
+        : timelineLatestRowsCache.get(thread.id, paramsKey, afterSequence);
     const delta =
       previous === undefined
         ? undefined
         : computeTimelineRowDelta(previous.rows, full.rows);
-    timelineLatestRowsCache.set(paramsKey, { maxSeq, rows: full.rows });
+    timelineLatestRowsCache.set(thread.id, paramsKey, {
+      maxSeq,
+      rows: full.rows,
+    });
 
     return context.json(
       delta === undefined ? full : { ...full, rows: [], delta },
@@ -486,7 +501,12 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
         threadId: context.req.param("id"),
         afterSeq: parseOptionalInteger(query.afterSeq, "afterSeq"),
         beforeSeq: parseOptionalInteger(query.beforeSeq, "beforeSeq"),
-        limit: parseOptionalInteger(query.limit, "limit") ?? 100,
+        limit: parseBoundedPositiveOptionalInteger({
+          defaultValue: THREAD_EVENT_LIST_PAGE_SIZE,
+          max: THREAD_EVENT_LIST_PAGE_SIZE,
+          name: "limit",
+          value: query.limit,
+        }),
         order: query.order,
         types: parseThreadEventTypes(query.types),
       }),
