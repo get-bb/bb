@@ -283,166 +283,50 @@ interface PluginCliInputStream extends AsyncIterable<Buffer | string> {
   isTTY?: boolean;
 }
 
-const PLUGIN_CLI_SECRET_STDIN_MAX_BYTES = 16 * 1024;
+const PLUGIN_CLI_STDIN_MAX_BYTES = 16 * 1024;
+const PLUGIN_CLI_STDIN_FLAG = /^--([a-z0-9](?:[a-z0-9-]*[a-z0-9])?)-stdin$/u;
 
-function isAccountPoolLogin(
-  pluginId: string,
-  argv: readonly string[],
-): boolean {
-  return (
-    pluginId === "account-pool" &&
-    argv.length === 5 &&
-    argv[0] === "account" &&
-    argv[1] === "add" &&
-    argv[2] === "--provider" &&
-    argv[3] === "claude" &&
-    argv[4] === "--login"
-  );
-}
-
-function rpcErrorMessage(value: object): string {
-  const error = Reflect.get(value, "error");
-  if (typeof error === "string") return error;
-  if (typeof error === "object" && error !== null) {
-    const message = Reflect.get(error, "message");
-    if (typeof message === "string") return message;
-  }
-  return "The Account Pool login request failed.";
-}
-
-async function callPluginRpc(
-  baseUrl: string,
-  pluginId: string,
-  method: string,
-  input: object | null,
-): Promise<object> {
-  const response = await cliFetch(
-    `${baseUrl}/api/v1/plugins/${encodeURIComponent(pluginId)}/rpc/${encodeURIComponent(method)}`,
-    {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(input),
-      dispatcher: getPluginCliDispatcher(),
-    },
-  );
-  const parsed: unknown = await response.json().catch(() => null);
-  if (typeof parsed !== "object" || parsed === null) {
-    throw new Error(
-      `Unexpected response from Account Pool login (HTTP ${response.status}).`,
-    );
-  }
-  if (Reflect.get(parsed, "ok") !== true)
-    throw new Error(rpcErrorMessage(parsed));
-  const result = Reflect.get(parsed, "result");
-  if (typeof result !== "object" || result === null) {
-    throw new Error("Account Pool login returned an invalid response.");
-  }
-  return result;
-}
-
-async function readLoginCode(input: PluginCliInputStream): Promise<string> {
-  const chunks: Buffer[] = [];
-  let bytes = 0;
-  let foundLine = false;
-  for await (const chunk of input) {
-    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
-    const newline = buffer.indexOf(0x0a);
-    const selected = newline >= 0 ? buffer.subarray(0, newline) : buffer;
-    chunks.push(selected);
-    bytes += selected.byteLength;
-    if (bytes > PLUGIN_CLI_SECRET_STDIN_MAX_BYTES) {
-      throw new Error("Claude authorization code exceeds 16 KiB.");
-    }
-    if (newline >= 0) {
-      foundLine = true;
-      break;
-    }
-  }
-  const pasted = Buffer.concat(chunks).toString("utf8").replace(/\r$/u, "");
-  if (pasted.trim().length === 0) {
-    throw new Error("Paste a non-empty Claude authorization code.");
-  }
-  if (!foundLine && /[\r\n]/u.test(pasted)) {
-    throw new Error("Paste exactly one Claude authorization code.");
-  }
-  return pasted;
-}
-
-async function runAccountPoolLogin(
-  baseUrl: string,
-  pluginId: string,
-  streams: PluginCliOutputStreams,
-  input: PluginCliInputStream,
-): Promise<number> {
-  try {
-    const start = await callPluginRpc(baseUrl, pluginId, "login.start", null);
-    const sessionId = Reflect.get(start, "sessionId");
-    const authorizeUrl = Reflect.get(start, "authorizeUrl");
-    if (typeof sessionId !== "string" || typeof authorizeUrl !== "string") {
-      throw new Error("Account Pool login returned an invalid start response.");
-    }
-    await writePluginCliOutput(
-      streams.stdout,
-      `Open this URL to sign in to Claude:\n${authorizeUrl}\n\nPaste the code shown after login and press Enter:`,
-    );
-    const pasted = await readLoginCode(input);
-    const account = await callPluginRpc(baseUrl, pluginId, "login.complete", {
-      sessionId,
-      pasted,
-    });
-    const id = Reflect.get(account, "id");
-    const label = Reflect.get(account, "label");
-    if (typeof id !== "string" || typeof label !== "string") {
-      throw new Error("Account Pool login returned an invalid account.");
-    }
-    await writePluginCliOutput(streams.stdout, `Added ${label} (${id}).`);
-    return 0;
-  } catch (error) {
-    await writePluginCliOutput(
-      streams.stderr,
-      error instanceof Error ? error.message : String(error),
-    );
-    return 1;
-  }
-}
-
-async function materializeApiKeyStdin(
+async function materializeStdinFlag(
   argv: readonly string[],
   input: PluginCliInputStream,
 ): Promise<string[]> {
-  const indexes = argv.flatMap((arg, index) =>
-    arg === "--api-key-stdin" ? [index] : [],
-  );
-  if (indexes.length === 0) return [...argv];
-  if (indexes.length > 1 || argv.includes("--api-key")) {
-    throw new Error("Choose only one API-key input flag.");
+  const matches = argv.flatMap((flag, index) => {
+    const match = PLUGIN_CLI_STDIN_FLAG.exec(flag);
+    const name = match?.[1];
+    return name === undefined ? [] : [{ flag, index, name }];
+  });
+  if (matches.length === 0) return [...argv];
+  if (matches.length > 1) throw new Error("Choose only one stdin input flag.");
+  const match = matches[0];
+  if (match === undefined) return [...argv];
+  const valueFlag = `--${match.name}`;
+  if (argv.includes(valueFlag)) {
+    throw new Error(`Choose only one of ${match.flag} and ${valueFlag}.`);
   }
   if (input.isTTY === true) {
-    throw new Error("--api-key-stdin requires an API key piped on stdin.");
+    throw new Error(`${match.flag} requires piped stdin.`);
   }
   const chunks: Buffer[] = [];
   let bytes = 0;
   for await (const chunk of input) {
     const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
     bytes += buffer.byteLength;
-    if (bytes > PLUGIN_CLI_SECRET_STDIN_MAX_BYTES) {
-      throw new Error("API key from stdin exceeds 16 KiB.");
+    if (bytes > PLUGIN_CLI_STDIN_MAX_BYTES) {
+      throw new Error(`${match.flag} input exceeds 16 KiB.`);
     }
     chunks.push(buffer);
   }
-  const apiKey = Buffer.concat(chunks)
+  const value = Buffer.concat(chunks)
     .toString("utf8")
-    .replace(/[\r\n]+$/u, "");
-  if (apiKey.length === 0 || /[\r\n]/u.test(apiKey)) {
-    throw new Error("--api-key-stdin requires exactly one non-empty API key.");
+    .replace(/\r?\n$/u, "");
+  if (value.length === 0 || /[\r\n]/u.test(value)) {
+    throw new Error(`${match.flag} requires exactly one non-empty stdin line.`);
   }
-  const index = indexes[0];
-  if (index === undefined) return [...argv];
   return [
-    ...argv.slice(0, index),
-    "--api-key",
-    apiKey,
-    ...argv.slice(index + 1),
+    ...argv.slice(0, match.index),
+    valueFlag,
+    value,
+    ...argv.slice(match.index + 1),
   ];
 }
 
@@ -479,12 +363,9 @@ export async function runPluginCliCommand(
   },
   input: PluginCliInputStream = process.stdin,
 ): Promise<number> {
-  if (isAccountPoolLogin(pluginId, argv)) {
-    return runAccountPoolLogin(baseUrl, pluginId, streams, input);
-  }
   let resolvedArgv: string[];
   try {
-    resolvedArgv = await materializeApiKeyStdin(argv, input);
+    resolvedArgv = await materializeStdinFlag(argv, input);
   } catch (error) {
     await writePluginCliOutput(
       streams.stderr,

@@ -496,7 +496,7 @@ describe("runPluginCliCommand", () => {
     ]);
   });
 
-  it("materializes an API key from stdin only in the proxied request", async () => {
+  it("materializes an arbitrary stdin flag only in the proxied request", async () => {
     const requests: string[][] = [];
     vi.stubGlobal(
       "fetch",
@@ -517,103 +517,25 @@ describe("runPluginCliCommand", () => {
     const input = {
       isTTY: false,
       async *[Symbol.asyncIterator]() {
-        yield Buffer.from("sk-from-stdin\n");
+        yield Buffer.from("opaque-credential\n");
       },
     };
+    const argv = ["deploy", "--credential-stdin", "--format", "json"];
 
     await expect(
       runPluginCliCommand(
         "http://localhost",
-        "account-pool",
-        ["account", "add", "--provider", "claude", "--api-key-stdin"],
+        "fixture",
+        argv,
         { stdout: output, stderr: output },
         input,
       ),
     ).resolves.toBe(0);
+    expect(argv).toEqual(["deploy", "--credential-stdin", "--format", "json"]);
     expect(requests).toEqual([
-      ["account", "add", "--provider", "claude", "--api-key", "sk-from-stdin"],
+      ["deploy", "--credential", "opaque-credential", "--format", "json"],
     ]);
     expect(writes).toEqual([]);
-  });
-
-  it("completes Account Pool login over RPC without putting the pasted code in process arguments", async () => {
-    const requests: Array<{ url: string; body: object | null }> = [];
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(
-        async (url: string | URL | Request, init: RequestInit | undefined) => {
-          const parsed: unknown = JSON.parse(String(init?.body));
-          if (typeof parsed !== "object") {
-            throw new Error("Expected an object or null body.");
-          }
-          requests.push({ url: String(url), body: parsed });
-          if (String(url).endsWith("/rpc/login.start")) {
-            return new Response(
-              JSON.stringify({
-                ok: true,
-                result: {
-                  sessionId: "session-one",
-                  authorizeUrl: "https://claude.ai/oauth/authorize?state=state",
-                },
-              }),
-            );
-          }
-          return new Response(
-            JSON.stringify({
-              ok: true,
-              result: { id: "account-one", label: "Personal Claude" },
-            }),
-          );
-        },
-      ),
-    );
-    const writes: Array<{ channel: "stdout" | "stderr"; value: string }> = [];
-    const output = (channel: "stdout" | "stderr") => ({
-      write(value: string, callback: (error?: Error | null) => void) {
-        writes.push({ channel, value });
-        callback();
-        return true;
-      },
-    });
-    const input = {
-      isTTY: true,
-      async *[Symbol.asyncIterator]() {
-        yield Buffer.from("pasted-code#state\n");
-      },
-    };
-    const argv = ["account", "add", "--provider", "claude", "--login"];
-
-    await expect(
-      runPluginCliCommand(
-        "http://localhost",
-        "account-pool",
-        argv,
-        { stdout: output("stdout"), stderr: output("stderr") },
-        input,
-      ),
-    ).resolves.toBe(0);
-    expect(argv).toEqual(["account", "add", "--provider", "claude", "--login"]);
-    expect(requests).toEqual([
-      {
-        url: "http://localhost/api/v1/plugins/account-pool/rpc/login.start",
-        body: null,
-      },
-      {
-        url: "http://localhost/api/v1/plugins/account-pool/rpc/login.complete",
-        body: { sessionId: "session-one", pasted: "pasted-code#state" },
-      },
-    ]);
-    expect(writes).toEqual([
-      {
-        channel: "stdout",
-        value:
-          "Open this URL to sign in to Claude:\nhttps://claude.ai/oauth/authorize?state=state\n\nPaste the code shown after login and press Enter:\n",
-      },
-      {
-        channel: "stdout",
-        value: "Added Personal Claude (account-one).\n",
-      },
-    ]);
   });
 
   it("outlives the global fetch headers timeout while a plugin command waits on a human", async () => {

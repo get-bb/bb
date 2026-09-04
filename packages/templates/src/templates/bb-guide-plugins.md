@@ -30,6 +30,7 @@ Messages API requests through the bb server. Enable it and add an account:
 ```
 bb plugin enable account-pool
 bb pool account add --provider claude --login
+printf '%s\n' "$CLAUDE_AUTH_CODE" | bb pool account login-complete --session <id> --code-stdin
 bb pool account add --provider claude --import
 printf '%s\n' "$ANTHROPIC_API_KEY" | bb pool account add --provider claude --api-key-stdin [--label <text>] [--priority <n>]
 bb pool account add --provider claude --api-key <key> [--label <text>] [--priority <n>]
@@ -42,11 +43,12 @@ bb pool token rotate --machine <id-or-name>
 bb pool bypass <thread-id> [--off]
 ```
 
-`--login` prints a Claude browser sign-in URL, then reads the code shown after
-sign-in from standard input. The flow uses a ten-minute in-memory PKCE session
-and a manual callback code, so the browser does not need to run on the bb
-server machine. The same flow is available in the plugin settings page through
-the **Sign in to Claude** button.
+`--login` starts a ten-minute in-memory PKCE session, prints the Claude browser
+sign-in URL and session ID, then exits. After sign-in, pipe the manual callback
+code to `account login-complete` with that session ID. The browser does not need
+to run on the bb server machine, and neither the code nor account tokens enter
+process arguments. The same flow is available in the plugin settings page
+through the **Sign in to Claude** button.
 
 The hub starts immediately, even before an account is configured, so newly
 added or enabled accounts are available without a plugin reload. With an

@@ -127,7 +127,7 @@ export function createAccountPoolPlugin(
       accountPoolRpcContract,
       createRpcHandlers(operations, login),
     );
-    registerPoolCli(bb, operations);
+    registerPoolCli(bb, operations, login);
     bb.providers.experimental_contributeEnv("claude-code", async (context) => {
       if (
         (await routing.isBypassed(context.threadId)) ||

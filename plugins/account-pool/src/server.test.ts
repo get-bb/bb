@@ -388,6 +388,8 @@ describe("Account Pool plugin", () => {
     ]);
     expect(help.exitCode).toBe(0);
     expect(help.stdout).toContain("--login");
+    expect(help.stdout).toContain("account login-complete");
+    expect(help.stdout).toContain("--code-stdin");
     expect(help.stdout).toContain("--api-key-stdin");
     expect(help.stdout).toContain("Unsafe: exposes the key");
     const list = await fixture.host.harness.behavior.runCli([
@@ -460,7 +462,7 @@ describe("Account Pool plugin", () => {
     ).toEqual([]);
   });
 
-  it("exposes manual Claude login over RPC and stores the profiled account", async () => {
+  it("exposes manual Claude login over RPC and the two-step CLI", async () => {
     const tokenBodies: object[] = [];
     const oauth = await startUpstream(async (request, response) => {
       if (request.url === "/token") {
@@ -564,6 +566,41 @@ describe("Account Pool plugin", () => {
       channel: "accounts-changed",
       payload: {},
     });
+
+    const cliStarted = await host.harness.behavior.runCli([
+      "account",
+      "add",
+      "--provider",
+      "claude",
+      "--login",
+    ]);
+    expect(cliStarted.exitCode).toBe(0);
+    expect(cliStarted.stdout).toContain("Open this URL to sign in to Claude:");
+    expect(cliStarted.stdout).toContain("account login-complete");
+    expect(cliStarted.stdout).toContain("--code-stdin");
+    const sessionId = cliStarted.stdout.match(/Session ID: ([0-9a-f-]+)/u)?.[1];
+    const authorizeUrl = cliStarted.stdout.match(
+      /Open this URL to sign in to Claude:\n([^\n]+)/u,
+    )?.[1];
+    if (sessionId === undefined || authorizeUrl === undefined) {
+      throw new Error("CLI login start did not return its session and URL.");
+    }
+    const cliState = new URL(authorizeUrl).searchParams.get("state");
+    if (cliState === null) throw new Error("CLI login start omitted state.");
+    const cliCompleted = await host.harness.behavior.runCli([
+      "account",
+      "login-complete",
+      "--session",
+      sessionId,
+      "--code",
+      `cli-code#${cliState}`,
+    ]);
+    expect(cliCompleted).toMatchObject({
+      exitCode: 0,
+      stdout: expect.stringContaining("Added Logged-in Claude"),
+    });
+    expect(tokenBodies).toHaveLength(2);
+    expect(tokenBodies[1]).toMatchObject({ code: "cli-code", state: cliState });
   });
 
   it("resolves distinct secret machine tokens and honors per-thread bypass", async () => {
