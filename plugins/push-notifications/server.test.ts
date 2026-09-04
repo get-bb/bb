@@ -52,10 +52,7 @@ function createFakeExpo(): FakeExpo {
   return { fetch, requests, ticketErrors, urls };
 }
 
-function pendingQuestion(
-  threadId: string,
-  prompt: string,
-): PendingInteraction {
+function pendingQuestion(threadId: string, prompt: string): PendingInteraction {
   return {
     id: `interaction-${threadId}`,
     threadId,
@@ -254,6 +251,9 @@ describe("push subscription RPC and CLI", () => {
       const status = await host.harness.behavior.runCli(["status", "--json"]);
       expect(JSON.parse(status.stdout)).toEqual({
         enabled: true,
+        mobileEnabled: true,
+        webEnabled: true,
+        desktopEnabled: true,
         subscriptionCount: 1,
         relayUrl: EXPO_URL,
         lastSendOutcome: { status: "never" },
@@ -303,10 +303,7 @@ describe("push sender", () => {
       });
       expect(host.expo.requests[0]?.[0]?.data).not.toHaveProperty("serverUrl");
       await vi.waitFor(async () => {
-        const result = await host.harness.behavior.runCli([
-          "status",
-          "--json",
-        ]);
+        const result = await host.harness.behavior.runCli(["status", "--json"]);
         expect(JSON.parse(result.stdout).lastSendOutcome).toMatchObject({
           status: "sent",
           sentCount: 2,
@@ -512,6 +509,109 @@ describe("push sender", () => {
       expect(JSON.stringify(host.harness.logEntries)).not.toContain(
         "ExponentPushToken",
       );
+    } finally {
+      await host.cleanup();
+    }
+  });
+});
+
+describe("web and desktop delivery", () => {
+  it("delivers without mobile subscriptions and applies channel changes immediately", async () => {
+    const host = await setup();
+    try {
+      const thread = host.setThread();
+      await host.harness.behavior.emitThreadEvent("thread.idle", {
+        thread,
+        lastAssistantText: "Done",
+      });
+      await waitForCoalesce();
+      expect(host.harness.realtimeSignals).toEqual([
+        {
+          channel: "notification",
+          payload: expect.objectContaining({
+            title: thread.title,
+            body: "Done",
+            threadId: thread.id,
+            channels: ["web", "desktop"],
+          }),
+        },
+      ]);
+      await host.addSubscription();
+      await host.harness.behavior.setSettings({
+        mobileEnabled: false,
+        webEnabled: false,
+      });
+      await host.harness.behavior.emitThreadEvent("thread.idle", {
+        thread,
+        lastAssistantText: "Desktop only",
+      });
+      await waitForCoalesce();
+      expect(host.harness.realtimeSignals.at(-1)?.payload).toMatchObject({
+        channels: ["desktop"],
+      });
+      expect(host.expo.requests).toHaveLength(0);
+      await host.harness.behavior.setSettings({ desktopEnabled: false });
+      await host.harness.behavior.emitThreadEvent("thread.idle", {
+        thread,
+        lastAssistantText: "Disabled",
+      });
+      await waitForCoalesce();
+      expect(host.harness.realtimeSignals).toHaveLength(2);
+    } finally {
+      await host.cleanup();
+    }
+  });
+
+  it("does not broadcast read, archived, or resumed threads", async () => {
+    const host = await setup();
+    try {
+      for (const overrides of [
+        { lastReadAt: Date.now() + 60_000 },
+        { archivedAt: 100 },
+        { status: "active" as const },
+      ]) {
+        const thread = host.setThread(overrides);
+        await host.harness.behavior.emitThreadEvent("thread.idle", {
+          thread,
+          lastAssistantText: "Stale",
+        });
+      }
+      await waitForCoalesce();
+      expect(host.harness.realtimeSignals).toHaveLength(0);
+    } finally {
+      await host.cleanup();
+    }
+  });
+
+  it("routes CLI and RPC tests only to the selected enabled channel", async () => {
+    const host = await setup();
+    try {
+      expect(await host.harness.behavior.runCli(["test", "web"])).toMatchObject(
+        { exitCode: 0 },
+      );
+      expect(host.harness.realtimeSignals.at(-1)?.payload).toMatchObject({
+        channels: ["web"],
+        threadId: null,
+      });
+      await host.harness.behavior.callRpc("notifications.test", {
+        channel: "desktop",
+      });
+      expect(host.harness.realtimeSignals.at(-1)?.payload).toMatchObject({
+        channels: ["desktop"],
+      });
+      await host.harness.behavior.setSettings({ desktopEnabled: false });
+      expect(
+        await host.harness.behavior.runCli(["test", "desktop"]),
+      ).toMatchObject({ exitCode: 1 });
+      await expect(
+        host.harness.behavior.callRpc("notifications.test", {
+          channel: "desktop",
+        }),
+      ).rejects.toThrow("disabled");
+      await expect(
+        host.harness.behavior.callRpc("notifications.test", { channel: "ios" }),
+      ).rejects.toMatchObject({ code: "invalid_input" });
+      expect(host.harness.realtimeSignals).toHaveLength(2);
     } finally {
       await host.cleanup();
     }

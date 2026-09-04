@@ -166,14 +166,17 @@ same resolved bindings. The complete default table is in docs/configuration.md.
 
 Push notifications
 
-The built-in Push notifications plugin sends thread updates through Expo.
-These commands inspect and repair its device registry.
+The built-in Push notifications plugin sends mobile updates through Expo and
+system notifications to connected web and desktop clients. Web tabs or desktop
+windows must stay open; browser permission is requested in the plugin settings.
 
   bb push-notifications list
   bb push-notifications add --token <expo-push-token>
       --platform <ios|android> --label <device-name>
   bb push-notifications remove <id>
   bb push-notifications status
+  bb push-notifications test <web|desktop>
+  bb plugin config push-notifications set <mobileEnabled|webEnabled|desktopEnabled> <true|false>
 
 `add` is an upsert by token: a known token refreshes its label and last-seen
 time and keeps its id. Expo tokens that are no longer registered are removed
@@ -181,6 +184,9 @@ automatically after a failed delivery. Use `bb plugin disable
 push-notifications` to stop delivery. Change the relay URL with `bb plugin
 config push-notifications set expoPushUrl <url>`. Add `--json` to `list` or
 `status` for machine-readable output. The list returns token suffixes only.
+The three channel switches default to true and apply immediately across this
+server. `test` broadcasts to all connected clients of the selected type with
+permission; OS notification settings still control whether a banner appears.
 
 Host files and voice transcription
 

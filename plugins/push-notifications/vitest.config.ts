@@ -4,7 +4,7 @@ export default defineWorkspaceTestConfig({
   test: {
     silent: "passed-only",
     name: "bb-plugin-push-notifications",
-    include: ["**/*.test.ts"],
+    include: ["**/*.test.ts", "**/*.test.tsx"],
     exclude: ["dist/**", "node_modules/**"],
   },
 });

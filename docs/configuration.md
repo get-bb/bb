@@ -168,7 +168,14 @@ server-side transcription model.
 The built-in Push notifications plugin uses `expoPushUrl` for its relay URL.
 The default is `https://exp.host/--/api/v2/push/send`. Change it with
 `bb plugin config push-notifications set expoPushUrl <url>`. The plugin reads
-the value when it sends a message.
+the value when it sends a message. Independent `mobileEnabled`, `webEnabled`,
+and `desktopEnabled` booleans default to true. Change each with
+`bb plugin config push-notifications set webEnabled false` (or the other
+channel key). Web and desktop clients receive system notifications while a bb
+tab or window remains open; browsers require HTTPS or localhost and per-device
+notification permission. Settings → Push notifications offers permission and
+test controls. `bb push-notifications test <web|desktop>` broadcasts a test to
+connected, permitted clients; it does not confirm OS display.
 
 The builtin Keep Awake plugin has one autosaving configuration page with an
 enable switch and an all-or-selected host picker. On selected macOS hosts it
