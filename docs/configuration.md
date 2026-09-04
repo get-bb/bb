@@ -621,9 +621,17 @@ Enable it and add at least one account:
 
 ```sh
 bb plugin enable account-pool
+bb pool account add --provider claude --login
 bb pool account add --provider claude --import
 printf '%s\n' "$ANTHROPIC_API_KEY" | bb pool account add --provider claude --api-key-stdin [--label <text>] [--priority <n>]
 ```
+
+The login path prints a Claude browser authorization URL and reads the code
+shown after sign-in from standard input. It uses PKCE plus Anthropic's manual
+callback page, and the ten-minute login session stays only in server memory, so
+the browser can be on a different machine from the bb server. The Account Pool
+plugin settings page exposes the same flow with **Sign in to Claude**, plus the
+account list, import, API-key, enable/disable, and removal controls.
 
 The import path reads the Claude Code login on the bb server host.
 `--api-key-stdin` reads exactly one non-empty key from piped standard input and

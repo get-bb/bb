@@ -17,6 +17,7 @@ interface ParsedFlags {
 const HELP = [
   "Usage:",
   "  bb pool account add --provider claude --import [--label <text>] [--priority <n>]",
+  "  bb pool account add --provider claude --login",
   "  bb pool account add --provider claude --api-key-stdin [--label <text>] [--priority <n>]",
   "  bb pool account add --provider claude --api-key <key> [--label <text>] [--priority <n>]  Unsafe: exposes the key in process arguments.",
   "  bb pool account list [--json]",
@@ -131,9 +132,9 @@ export function registerPoolCli(
       {
         name: "account-add",
         summary:
-          "Import Claude Code OAuth credentials or add an Anthropic API key",
+          "Sign in to Claude, import Claude Code credentials, or add an Anthropic API key",
         usage:
-          "bb pool account add --provider claude (--import | --api-key-stdin) [--label <text>] [--priority <n>]\nUnsafe compatibility form: bb pool account add --provider claude --api-key <key> [--label <text>] [--priority <n>]",
+          "bb pool account add --provider claude --login\nbb pool account add --provider claude (--import | --api-key-stdin) [--label <text>] [--priority <n>]\nUnsafe compatibility form: bb pool account add --provider claude --api-key <key> [--label <text>] [--priority <n>]",
       },
       {
         name: "account-list",
@@ -179,20 +180,27 @@ export function registerPoolCli(
         if (argv[0] === "account" && argv[1] === "add") {
           const flags = parseFlags(
             argv.slice(2),
-            ["import", "api-key-stdin"],
+            ["import", "api-key-stdin", "login"],
             ["provider", "api-key", "label", "priority"],
           );
           const imported = flags.booleans.has("import");
           const apiKeyStdin = flags.booleans.has("api-key-stdin");
+          const login = flags.booleans.has("login");
           const apiKey = flags.values.get("api-key");
           const sourceCount =
             Number(imported) +
             Number(apiKeyStdin) +
+            Number(login) +
             Number(apiKey !== undefined);
           if (sourceCount !== 1)
             throw new Error(
-              "Choose exactly one of --import, --api-key-stdin, or --api-key <key>.",
+              "Choose exactly one of --login, --import, --api-key-stdin, or --api-key <key>.",
             );
+          if (login) {
+            throw new Error(
+              "--login requires the current bb CLI so it can read the pasted code locally.",
+            );
+          }
           if (apiKeyStdin) {
             throw new Error(
               "--api-key-stdin must be invoked through the bb CLI so it can read stdin safely.",

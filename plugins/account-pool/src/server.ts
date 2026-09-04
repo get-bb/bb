@@ -6,6 +6,8 @@ import type { ImportedClaudeCredentials } from "./credentials.js";
 import { createHub } from "./hub.js";
 import { PoolOperations } from "./operations.js";
 import { accountPoolRpcContract, createRpcHandlers } from "./rpc.js";
+import { ClaudeOAuthLogin } from "./oauth-login.js";
+import { ACCOUNT_POOL_ACCOUNTS_CHANGED } from "./realtime.js";
 import {
   AccountStore,
   HubTokenStore,
@@ -21,6 +23,9 @@ export interface AccountPoolPluginOptions {
   drainTimeoutMs?: number;
   disposeTimeoutMs?: number;
   importCredentials?: () => Promise<ImportedClaudeCredentials>;
+  oauthAuthorizeUrl?: string;
+  oauthTokenUrl?: string;
+  oauthProfileUrl?: string;
 }
 
 const DISPOSE_INSPECTION_TIMEOUT_MS = 2_000;
@@ -103,13 +108,25 @@ export function createAccountPoolPlugin(
         (await bb.sdk.system.providerStates({ hostId })).providers,
       now,
       options.importCredentials,
+      () => bb.realtime.publish(ACCOUNT_POOL_ACCOUNTS_CHANGED, {}),
     );
+    const login = new ClaudeOAuthLogin({
+      fetch: options.fetch,
+      now,
+      authorizeUrl: options.oauthAuthorizeUrl,
+      tokenUrl: options.oauthTokenUrl,
+      profileUrl: options.oauthProfileUrl,
+      addAccount: (authenticated) => operations.addOAuth(authenticated),
+    });
     if ((await accounts.list()).every((account) => !account.enabled)) {
       bb.status.needsConfiguration(
         "Add and enable a Claude account with `bb pool account add`.",
       );
     }
-    bb.rpc.register(accountPoolRpcContract, createRpcHandlers(operations));
+    bb.rpc.register(
+      accountPoolRpcContract,
+      createRpcHandlers(operations, login),
+    );
     registerPoolCli(bb, operations);
     bb.providers.experimental_contributeEnv("claude-code", async (context) => {
       if (

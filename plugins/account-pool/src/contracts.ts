@@ -133,6 +133,20 @@ export const accountAddInputSchema = z
 
 export type AccountAddInput = z.infer<typeof accountAddInputSchema>;
 
+export const loginStartSchema = z
+  .object({
+    sessionId: z.string().uuid(),
+    authorizeUrl: z.string().url(),
+  })
+  .strict();
+
+export const loginCompleteInputSchema = z
+  .object({
+    sessionId: z.string().uuid(),
+    pasted: z.string().trim().min(1),
+  })
+  .strict();
+
 export const accountIdInputSchema = z
   .object({ id: z.string().uuid() })
   .strict();

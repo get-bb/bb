@@ -17,6 +17,7 @@ import type {
   QuotaStore,
   RoutingStore,
 } from "./store.js";
+import type { ClaudeOAuthAccount } from "./oauth-login.js";
 
 interface PoolHost {
   id: string;
@@ -44,11 +45,12 @@ export class PoolOperations {
     ) => Promise<PoolProviderState[]>,
     private readonly now: () => number = Date.now,
     private readonly importCredentials: () => Promise<ImportedClaudeCredentials> = importClaudeCredentials,
+    private readonly onAccountsChanged: () => void = () => {},
   ) {}
 
   async add(input: AccountAddInput): Promise<Account> {
     if (input.source.kind === "api-key") {
-      return this.accounts.add(
+      const account = await this.accounts.add(
         {
           provider: input.provider,
           kind: "api-key",
@@ -61,9 +63,11 @@ export class PoolOperations {
         },
         { kind: "api-key", apiKey: input.source.apiKey },
       );
+      this.onAccountsChanged();
+      return account;
     }
     const imported = await this.importCredentials();
-    return this.accounts.add(
+    const account = await this.accounts.add(
       {
         provider: input.provider,
         kind: "oauth",
@@ -81,6 +85,31 @@ export class PoolOperations {
         expiresAt: imported.expiresAt,
       },
     );
+    this.onAccountsChanged();
+    return account;
+  }
+
+  async addOAuth(authenticated: ClaudeOAuthAccount): Promise<Account> {
+    const account = await this.accounts.add(
+      {
+        provider: "claude",
+        kind: "oauth",
+        label: authenticated.label,
+        email: authenticated.email,
+        subscriptionType: authenticated.subscriptionType,
+        rateLimitTier: authenticated.rateLimitTier,
+        enabled: true,
+        priority: 100,
+      },
+      {
+        kind: "oauth",
+        accessToken: authenticated.accessToken,
+        refreshToken: authenticated.refreshToken,
+        expiresAt: authenticated.expiresAt,
+      },
+    );
+    this.onAccountsChanged();
+    return account;
   }
 
   async list(): Promise<AccountSummary[]> {
@@ -89,7 +118,10 @@ export class PoolOperations {
 
   async remove(id: string): Promise<boolean> {
     const removed = await this.accounts.remove(id);
-    if (removed) this.quotas.remove(id);
+    if (removed) {
+      this.quotas.remove(id);
+      this.onAccountsChanged();
+    }
     return removed;
   }
 
@@ -98,11 +130,14 @@ export class PoolOperations {
     if (account === null) return null;
     const quota = this.quotas.get(id);
     this.quotas.put({ ...quota, error: null, heldUntil: null });
+    this.onAccountsChanged();
     return account;
   }
 
   async disable(id: string): Promise<Account | null> {
-    return this.accounts.setEnabled(id, false);
+    const account = await this.accounts.setEnabled(id, false);
+    if (account !== null) this.onAccountsChanged();
+    return account;
   }
 
   async status(): Promise<PoolStatus> {
