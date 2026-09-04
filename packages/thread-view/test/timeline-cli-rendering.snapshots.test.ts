@@ -1385,7 +1385,7 @@ describe("timeline CLI rendering snapshots", () => {
     ]);
   });
 
-  it("keeps root reasoning active when a nested turn completes first", () => {
+  it("keeps root reasoning active when a nested reasoning lifecycle completes first", () => {
     const event = createTimelineEventFactory({
       providerThreadId: "root-provider",
       threadId: "thread-1",
@@ -1409,13 +1409,30 @@ describe("timeline CLI rendering snapshots", () => {
         delta: "Root is still thinking.\n",
         itemId: "root-reasoning",
       }),
-      event.turnCompleted({ turnId: "child-turn" }),
+      event.reasoningDelta({
+        delta: "Child thought.",
+        itemId: "child-reasoning",
+        parentToolCallId: "delegation-1",
+        turnId: "child-turn",
+      }),
+      event.turnCompleted({ createdAt: 5_000, turnId: "child-turn" }),
     ]);
 
     expect(timeline.projection.state.activeThinking).toMatchObject({
       id: "root-reasoning",
       text: "Root is still thinking.\n",
     });
+    expect(
+      timeline.messages.filter((message) => message.kind === "operation"),
+    ).toEqual([
+      expect.objectContaining({
+        detail: "Child thought.",
+        parentToolCallId: "delegation-1",
+        scope: { kind: "turn", turnId: "child-turn" },
+        status: "completed",
+        title: "Thought for 5s",
+      }),
+    ]);
   });
 
   it("does not attach later root turns to Claude receiver-thread delegations", () => {
@@ -2269,39 +2286,181 @@ describe("timeline CLI rendering snapshots", () => {
     `);
   });
 
-  it("omits completed reasoning from timeline rows", () => {
+  it("retains completed reasoning through the generic system operation row", () => {
     const event = createTimelineEventFactory({ threadId: "thread-1" });
-    const timeline = renderIdleTimeline([
-      event.turnStarted(),
+    const events = [
+      event.turnStarted({ createdAt: 0 }),
+      event.reasoningStarted({
+        createdAt: 1_000,
+        itemId: "reasoning-1",
+      }),
       event.reasoningDelta({
+        createdAt: 2_000,
         itemId: "reasoning-1",
         delta: "I should inspect the nearby files first.",
       }),
       event.reasoningCompleted({
+        createdAt: 4_000,
         itemId: "reasoning-1",
-        text: "I should inspect the nearby files first.",
+        text: "I should inspect the projection seam first.",
       }),
       event.toolCallCompleted({
+        createdAt: 5_000,
         itemId: "tool-1",
         arguments: { cmd: "sed -n '1,80p' packages/core-ui/src/index.ts" },
       }),
       event.assistantCompleted({
+        createdAt: 6_000,
         itemId: "assistant-1",
         text: "The extension point is the timeline row builder.",
       }),
-      event.turnCompleted(),
-    ]);
+      event.turnCompleted({ createdAt: 7_000 }),
+    ];
+    const timeline = renderIdleTimeline(events);
+    const reloadedTimeline = renderIdleTimeline(events);
 
     expect(timeline.turnRows).toHaveLength(1);
-    expect(timeline.turnRows[0]?.summaryCount).toBe(1);
-    expect(timeline.text).not.toContain("Reasoning");
+    expect(timeline.turnRows[0]?.summaryCount).toBe(2);
+    expect(
+      timeline.messages.filter((message) => message.kind === "operation"),
+    ).toEqual([
+      {
+        kind: "operation",
+        id: "thread-1:op:reasoning:kind:reasoning|turn:turn-1|parent:root|item:reasoning-1",
+        threadId: "thread-1",
+        sourceSeqStart: 2,
+        sourceSeqEnd: 4,
+        createdAt: 4_000,
+        startedAt: 1_000,
+        completedAt: 4_000,
+        scope: { kind: "turn", turnId: "turn-1" },
+        opType: "operation",
+        title: "Thought for 3s",
+        detail: "I should inspect the projection seam first.",
+        status: "completed",
+      },
+    ]);
+    expect(reloadedTimeline.text).toBe(timeline.text);
     expect(timeline.text).toMatchInlineSnapshot(`
-      "── Worked for (5ms) ────────────────────────────────────────
+      "── Worked for (7s) ─────────────────────────────────────────
+        ── Thought for 3s
+          I should inspect the projection seam first.
+
         ── Ran tool exec_command { cmd: sed -n '1,80p' packages/core-ui/src/i... }
 
       ── Assistant ───────────────────────────────────────────────
       The extension point is the timeline row builder."
     `);
+  });
+
+  it("keeps completed reasoning at root when provider parent scope is suppressed", () => {
+    const event = createTimelineEventFactory({ threadId: "thread-1" });
+    const startRequest = event.clientTurnRequested({
+      target: { kind: "thread-start" },
+      text: "Inspect the projection.",
+    });
+    const timeline = renderIdleTimeline([
+      startRequest,
+      event.turnStarted({
+        createdAt: 1_000,
+        parentToolCallId: "stale-parent",
+      }),
+      event.inputAccepted({
+        clientRequestId: startRequest.data.requestId,
+        createdAt: 1_500,
+      }),
+      event.reasoningStarted({
+        createdAt: 2_000,
+        itemId: "reasoning-1",
+        parentToolCallId: "stale-parent",
+      }),
+      event.reasoningDelta({
+        createdAt: 3_000,
+        delta: "Checking effective scope.",
+        itemId: "reasoning-1",
+        parentToolCallId: "stale-parent",
+      }),
+      event.reasoningCompleted({
+        createdAt: 4_000,
+        itemId: "reasoning-1",
+        parentToolCallId: "stale-parent",
+        text: "Checked effective scope.",
+      }),
+      event.turnCompleted({ createdAt: 5_000 }),
+    ]);
+
+    const reasoningMessages = timeline.messages.filter(
+      (message) =>
+        message.kind === "operation" && message.title === "Thought for 2s",
+    );
+    expect(reasoningMessages).toEqual([
+      expect.objectContaining({
+        detail: "Checked effective scope.",
+        scope: { kind: "turn", turnId: "turn-1" },
+      }),
+    ]);
+    expect(reasoningMessages[0]).not.toHaveProperty("parentToolCallId");
+  });
+
+  it("finalizes streamed reasoning as interrupted when its turn is interrupted", () => {
+    const event = createTimelineEventFactory({ threadId: "thread-1" });
+    const timeline = renderIdleTimeline([
+      event.turnStarted({ createdAt: 0 }),
+      event.reasoningDelta({
+        createdAt: 2_000,
+        itemId: "reasoning-1",
+        delta: "Checking the failure path.",
+      }),
+      event.turnCompleted({ createdAt: 7_000, status: "interrupted" }),
+    ]);
+
+    expect(
+      timeline.messages.filter((message) => message.kind === "operation"),
+    ).toEqual([
+      expect.objectContaining({
+        completedAt: 7_000,
+        detail: "Checking the failure path.",
+        sourceSeqEnd: 3,
+        sourceSeqStart: 2,
+        startedAt: 2_000,
+        status: "interrupted",
+        title: "Thought for 5s",
+      }),
+    ]);
+  });
+
+  it("ignores reasoning deltas after explicit completion", () => {
+    const event = createTimelineEventFactory({ threadId: "thread-1" });
+    const timeline = renderActiveTimeline([
+      event.turnStarted({ createdAt: 0 }),
+      event.reasoningDelta({
+        createdAt: 1_000,
+        itemId: "reasoning-1",
+        delta: "Initial thought.",
+      }),
+      event.reasoningCompleted({
+        createdAt: 3_000,
+        itemId: "reasoning-1",
+        text: "Final thought.",
+      }),
+      event.reasoningDelta({
+        createdAt: 5_000,
+        itemId: "reasoning-1",
+        delta: "Late duplicate.",
+      }),
+    ]);
+
+    expect(timeline.projection.state.activeThinking).toBeNull();
+    expect(
+      timeline.messages.filter((message) => message.kind === "operation"),
+    ).toEqual([
+      expect.objectContaining({
+        detail: "Final thought.",
+        sourceSeqEnd: 3,
+        status: "completed",
+        title: "Thought for 2s",
+      }),
+    ]);
   });
 
   it("omits active reasoning from timeline rows", () => {

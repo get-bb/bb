@@ -565,7 +565,6 @@ function buildFlatProjectionData(
   args: BuildFlatProjectionDataArgs,
 ): BuildFlatProjectionDataResult {
   const state = createProjectionState();
-  const shouldTrackActiveThinking = args.includeActiveThinking;
 
   const orderedEvents = args.events;
   const acceptedClientRequestById = buildAcceptedClientRequestById({
@@ -669,7 +668,7 @@ function buildFlatProjectionData(
           scope: decoded.scope,
         });
         onTurnCompleted({
-          completedAt: meta.createdAt,
+          meta,
           state,
           turnId: completedTurnId,
           status: decoded.status,
@@ -775,7 +774,6 @@ function buildFlatProjectionData(
         eventParentToolCallId,
         eventTurnId,
         meta,
-        shouldTrackActiveThinking,
         state,
       })
     ) {
