@@ -9,6 +9,8 @@ import {
   accountSchema,
   accountSecretSchema,
   accountSummarySchema,
+  accountPoolConfigSchema,
+  accountPoolConfigSetInputSchema,
   codexLoginPollSchema,
   codexLoginStartSchema,
   statusSchema,
@@ -185,11 +187,10 @@ async function createFixture(args: {
   const host = createFakePluginHost({
     pluginId: "account-pool",
     dataDir,
-    settings: {
-      upstreamBaseUrl: args.upstreamUrl,
-      switchThreshold: 0.98,
-    },
     sdk: sdkStubs(),
+  });
+  await host.bb.storage.kv.set("config", {
+    anthropicUpstreamBaseUrl: args.upstreamUrl,
   });
   const plugin = createAccountPoolPlugin({
     usageUrl: "data:application/json,{}",
@@ -272,7 +273,86 @@ async function addApiAccount(
   return found;
 }
 
+describe("Account Pool config schema", () => {
+  it("fills defaults and rejects invalid URLs and thresholds", () => {
+    expect(accountPoolConfigSchema.parse({})).toEqual({
+      anthropicUpstreamBaseUrl: "https://api.anthropic.com",
+      codexUpstreamBaseUrl: "https://chatgpt.com/backend-api/codex",
+      switchThreshold: 0.98,
+    });
+    expect(
+      accountPoolConfigSetInputSchema.safeParse({
+        anthropicUpstreamBaseUrl: "ftp://example.com",
+      }).success,
+    ).toBe(false);
+    expect(
+      accountPoolConfigSetInputSchema.safeParse({ switchThreshold: 0 }).success,
+    ).toBe(false);
+    expect(
+      accountPoolConfigSetInputSchema.safeParse({ switchThreshold: 1.01 })
+        .success,
+    ).toBe(false);
+  });
+});
+
 describe("Account Pool plugin", () => {
+  it("reads and updates one full config record through RPC and CLI", async () => {
+    const dataDir = await mkdtemp(
+      path.join(tmpdir(), "bb-account-pool-config-"),
+    );
+    const host = createFakePluginHost({
+      pluginId: "account-pool",
+      dataDir,
+      sdk: sdkStubs(),
+    });
+    await createAccountPoolPlugin()(host.bb);
+    cleanups.push(async () => {
+      await host.harness.lifecycle.dispose();
+      await fs.rm(dataDir, { recursive: true, force: true });
+    });
+
+    expect(
+      accountPoolConfigSchema.parse(
+        await host.harness.behavior.callRpc("config.get", null),
+      ),
+    ).toEqual(accountPoolConfigSchema.parse({}));
+    const cliGet = await host.harness.behavior.runCli(["config"]);
+    expect(cliGet.exitCode).toBe(0);
+    expect(cliGet.stdout).toContain(
+      "anthropicUpstreamBaseUrl: https://api.anthropic.com",
+    );
+    expect(cliGet.stdout).toContain(
+      "codexUpstreamBaseUrl: https://chatgpt.com/backend-api/codex",
+    );
+    expect(cliGet.stdout).toContain("switchThreshold: 0.98");
+
+    const cliSet = await host.harness.behavior.runCli([
+      "config",
+      "set",
+      "switchThreshold",
+      "0.75",
+    ]);
+    expect(cliSet.exitCode).toBe(0);
+    expect(cliSet.stdout).toContain("switchThreshold: 0.75");
+    const updated = accountPoolConfigSchema.parse(
+      await host.harness.behavior.callRpc("config.set", {
+        anthropicUpstreamBaseUrl: "http://127.0.0.1:9000",
+      }),
+    );
+    expect(updated).toEqual({
+      anthropicUpstreamBaseUrl: "http://127.0.0.1:9000",
+      codexUpstreamBaseUrl: "https://chatgpt.com/backend-api/codex",
+      switchThreshold: 0.75,
+    });
+    expect(
+      accountPoolConfigSchema.parse(await host.bb.storage.kv.get("config")),
+    ).toEqual(updated);
+    expect(host.harness.inspection.realtimeSignals).toContainEqual({
+      channel: "config-changed",
+      payload: {},
+    });
+  });
+
   it("imports, refreshes, and routes Codex HTTP and WebSocket sessions by provider", async () => {
     const seen: Array<{
       path: string;
@@ -377,12 +457,11 @@ describe("Account Pool plugin", () => {
     const host = createFakePluginHost({
       pluginId: "account-pool",
       dataDir,
-      settings: {
-        upstreamBaseUrl: upstream.url,
-        codexUpstreamBaseUrl: upstream.url,
-        switchThreshold: 0.98,
-      },
       sdk: sdkStubs(),
+    });
+    await host.bb.storage.kv.set("config", {
+      anthropicUpstreamBaseUrl: upstream.url,
+      codexUpstreamBaseUrl: upstream.url,
     });
     await createAccountPoolPlugin({
       codexRefreshUrl: `${upstream.url}/oauth`,
@@ -668,10 +747,10 @@ describe("Account Pool plugin", () => {
     const host = createFakePluginHost({
       pluginId: "account-pool",
       dataDir,
-      settings: {
-        codexUpstreamBaseUrl: "https://example.com",
-      },
       sdk: sdkStubs(),
+    });
+    await host.bb.storage.kv.set("config", {
+      codexUpstreamBaseUrl: "https://example.com",
     });
     await createAccountPoolPlugin({
       fetch: upstreamFetch,
@@ -750,10 +829,10 @@ describe("Account Pool plugin", () => {
     const host = createFakePluginHost({
       pluginId: "account-pool",
       dataDir,
-      settings: {
-        codexUpstreamBaseUrl: "https://example.com",
-      },
       sdk: sdkStubs(),
+    });
+    await host.bb.storage.kv.set("config", {
+      codexUpstreamBaseUrl: "https://example.com",
     });
     await createAccountPoolPlugin({
       fetch: upstreamFetch,
@@ -907,8 +986,10 @@ describe("Account Pool plugin", () => {
     const host = createFakePluginHost({
       pluginId: "account-pool",
       dataDir,
-      settings: { upstreamBaseUrl: upstream.url, switchThreshold: 0.98 },
       sdk: sdkStubs(),
+    });
+    await host.bb.storage.kv.set("config", {
+      anthropicUpstreamBaseUrl: upstream.url,
     });
     await createAccountPoolPlugin()(host.bb);
     const service = host.harness.behavior.runService("hub");
@@ -1848,7 +1929,7 @@ describe("Account Pool plugin", () => {
     await expect(reader.read()).rejects.toThrow();
   });
 
-  it("skips threshold-exhausted accounts and rotates quota rejections", async () => {
+  it("applies config threshold changes live and rotates quota rejections", async () => {
     const keys: string[] = [];
     let requestNumber = 0;
     const upstream = await startUpstream((request, response) => {
@@ -1857,7 +1938,7 @@ describe("Account Pool plugin", () => {
       if (requestNumber === 1) {
         response.writeHead(200, {
           "content-type": "application/json",
-          "anthropic-ratelimit-unified-5h-utilization": "0.99",
+          "anthropic-ratelimit-unified-5h-utilization": "0.75",
           "anthropic-ratelimit-unified-5h-reset": "4102444800",
           "anthropic-ratelimit-unified-5h-status": "allowed",
         });
@@ -1893,6 +1974,13 @@ describe("Account Pool plugin", () => {
     );
     expect(first.status).toBe(200);
     await first.text();
+    expect(
+      accountPoolConfigSchema.parse(
+        await fixture.host.harness.behavior.callRpc("config.set", {
+          switchThreshold: 0.7,
+        }),
+      ).switchThreshold,
+    ).toBe(0.7);
     const rotated = await fixture.host.harness.behavior.fetchHttp(
       "POST",
       "/v1/messages",

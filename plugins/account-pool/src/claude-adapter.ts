@@ -76,7 +76,7 @@ export function createClaudeAdapter(options: {
     prepareBody: (body, account) =>
       parseRequestBody(body).forAccount(account.accountUuid),
     upstreamUrl: (request, settings) =>
-      mountedUpstreamUrl(request, settings.upstreamBaseUrl),
+      mountedUpstreamUrl(request, settings.anthropicUpstreamBaseUrl),
     requestHeaders(inbound, _account, secret) {
       const headers = filterRequestHeaders(
         inbound,

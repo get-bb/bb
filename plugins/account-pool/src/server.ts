@@ -1,7 +1,11 @@
 import path from "node:path";
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
-import { z } from "zod";
 import { registerPoolCli } from "./cli.js";
+import {
+  accountPoolConfigSchema,
+  accountPoolConfigSetInputSchema,
+  type AccountPoolConfigController,
+} from "./contracts.js";
 import type {
   ImportedClaudeCredentials,
   ImportedCodexCredentials,
@@ -12,7 +16,10 @@ import { PoolOperations } from "./operations.js";
 import { accountPoolRpcContract, createRpcHandlers } from "./rpc.js";
 import { ClaudeOAuthLogin } from "./oauth-login.js";
 import { CodexDeviceLogin } from "./codex-device-login.js";
-import { ACCOUNT_POOL_ACCOUNTS_CHANGED } from "./realtime.js";
+import {
+  ACCOUNT_POOL_ACCOUNTS_CHANGED,
+  ACCOUNT_POOL_CONFIG_CHANGED,
+} from "./realtime.js";
 import {
   AccountStore,
   HubTokenStore,
@@ -45,48 +52,27 @@ export function helloResponse(): Response {
   return new Response(null, { status: 200 });
 }
 
-const upstreamSchema = z
-  .string()
-  .url()
-  .refine((value) => {
-    const protocol = new URL(value).protocol;
-    return protocol === "http:" || protocol === "https:";
-  }, "Must be an HTTP or HTTPS URL.");
-
 export function createAccountPoolPlugin(
   options: AccountPoolPluginOptions = {},
 ) {
   return async function accountPoolPlugin(bb: BbPluginApi): Promise<void> {
-    const settings = bb.settings.define({
-      upstreamBaseUrl: {
-        type: "string",
-        label: "Anthropic upstream base URL",
-        description:
-          "Override only for tests and QA. Production traffic uses https://api.anthropic.com.",
-        default: "https://api.anthropic.com",
-        experimental_schema: upstreamSchema,
+    let currentSettings = accountPoolConfigSchema.parse(
+      (await bb.storage.kv.get("config")) ?? {},
+    );
+    const config: AccountPoolConfigController = {
+      get: () => currentSettings,
+      set: async (input) => {
+        const update = accountPoolConfigSetInputSchema.parse(input);
+        const next = accountPoolConfigSchema.parse({
+          ...currentSettings,
+          ...update,
+        });
+        await bb.storage.kv.set("config", next);
+        currentSettings = next;
+        bb.realtime.publish(ACCOUNT_POOL_CONFIG_CHANGED, {});
+        return next;
       },
-      codexUpstreamBaseUrl: {
-        type: "string",
-        label: "Codex upstream base URL",
-        description:
-          "Override only for tests and QA. Production traffic uses the ChatGPT Codex backend.",
-        default: "https://chatgpt.com/backend-api/codex",
-        experimental_schema: upstreamSchema,
-      },
-      switchThreshold: {
-        type: "number",
-        label: "Quota switch threshold",
-        description:
-          "Stop selecting an account when its shared or requested-family quota reaches this fraction.",
-        default: 0.98,
-        experimental_schema: z.number().min(0).max(1),
-      },
-    });
-    let currentSettings = await settings.get();
-    settings.onChange((next) => {
-      currentSettings = next;
-    });
+    };
     const secretDir = path.join(
       bb.server.experimental_dataDir,
       "plugins",
@@ -157,9 +143,9 @@ export function createAccountPoolPlugin(
     }
     bb.rpc.register(
       accountPoolRpcContract,
-      createRpcHandlers(operations, login, codexLogin),
+      createRpcHandlers(operations, login, codexLogin, config),
     );
-    registerPoolCli(bb, operations, login, codexLogin);
+    registerPoolCli(bb, operations, login, codexLogin, config);
     bb.providers.experimental_contributeEnv("claude-code", async (context) => {
       if (
         !(await operations.isRoutingEnabled("claude")) ||

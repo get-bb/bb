@@ -71,6 +71,8 @@ bb pool account enable <id>
 bb pool account disable <id>
 bb pool status [--json]
 bb pool routing <claude|codex> [--off]
+bb pool config
+bb pool config set <anthropicUpstreamBaseUrl|codexUpstreamBaseUrl|switchThreshold> <value>
 bb pool token rotate --machine <id-or-name>
 bb pool bypass <thread-id> [--off]
 ```
@@ -101,7 +103,9 @@ model-family buckets; JSON status exposes their utilization, reset, status,
 observation time, and source under `familyWeekly`. Selection skips an account
 whose requested family is spent while retaining it for other families. A
 present `metadata.user_id` account UUID is aligned with the selected OAuth
-account.
+account. Use `bb pool config` to inspect the full routing configuration and
+`bb pool config set <key> <value>` to update one value. The upstream URL keys
+are QA-only overrides; `switchThreshold` must be greater than 0 and at most 1.
 
 - Inspect real status, logs, API results, or diffs instead of assumptions.
 - Keep file paths on the machine that owns the selected workspace.

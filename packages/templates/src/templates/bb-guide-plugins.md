@@ -41,6 +41,8 @@ bb pool account enable <id>
 bb pool account disable <id>
 bb pool status [--json]
 bb pool routing <claude|codex> [--off]
+bb pool config
+bb pool config set <anthropicUpstreamBaseUrl|codexUpstreamBaseUrl|switchThreshold> <value>
 bb pool token rotate --machine <id-or-name>
 bb pool bypass <thread-id> [--off]
 ```
@@ -76,9 +78,10 @@ family buckets Anthropic reports, and JSON status exposes the same observations
 under `familyWeekly`. Selection skips an account only for a spent requested
 family while retaining it for other families. When Claude Code supplies an
 account UUID in `metadata.user_id`, the hub aligns it with the selected OAuth
-account.
-The `upstreamBaseUrl` setting exists for tests and QA and defaults to
-`https://api.anthropic.com`; `switchThreshold` defaults to `0.98`.
+account. `bb pool config` prints the quota switch threshold and both upstream
+URLs. Use `bb pool config set <key> <value>` to change one; the two URL values
+are QA-only overrides. Upgrading from a build that stored these values through
+plugin settings resets the threshold and QA overrides to their defaults.
 
 The builtin Keep Awake plugin prevents macOS idle sleep while bb is running.
 Its settings page lets you target all hosts or selected hosts. The CLI

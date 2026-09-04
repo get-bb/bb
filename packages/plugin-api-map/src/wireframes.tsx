@@ -104,8 +104,8 @@ export const COMPOSE_MARKS = ["homepage-section", "new-thread-panel"] as const;
 export const EXTENSIONS_MARKS = ["plugin-status"] as const;
 
 export const SETTINGS_MARKS = [
-  "settings-section",
   "declarative-settings",
+  "settings-section",
 ] as const;
 
 function useEngagement(id: string) {
@@ -1714,30 +1714,6 @@ export function SettingsWireframe() {
 
         {}
         <div className="space-y-2">
-          <Mark
-            id="settings-section"
-            label="A React component you write, above the generated form"
-            className="block px-1 pb-2"
-          >
-            <span className="flex items-center gap-1.5 pb-2 font-medium text-foreground">
-              <PluginGlyph className="size-3.5" />
-              Your section
-            </span>
-            <span
-              aria-hidden
-              className="block space-y-2 rounded-md border border-border bg-card p-2.5"
-            >
-              <span className="flex items-center justify-between">
-                <span className="text-foreground">Connected as @acme-bot</span>
-                <span className="flex h-5.5 items-center rounded-md border border-border px-2 text-foreground">
-                  Test connection
-                </span>
-              </span>
-              <span className="block h-2 w-2/3 rounded-sm bg-muted/60" />
-            </span>
-          </Mark>
-
-          {}
           <span className="block text-subtle-foreground">Configuration</span>
           <Mark
             id="declarative-settings"
@@ -1804,6 +1780,30 @@ export function SettingsWireframe() {
               >
                 Keep answers concise and run focused tests.
               </span>
+            </span>
+          </Mark>
+
+          {}
+          <Mark
+            id="settings-section"
+            label="A React component you write, under the generated form"
+            className="block px-1 pb-2 pt-2"
+          >
+            <span className="flex items-center gap-1.5 pb-2 font-medium text-foreground">
+              <PluginGlyph className="size-3.5" />
+              Your section
+            </span>
+            <span
+              aria-hidden
+              className="block space-y-2 rounded-md border border-border bg-card p-2.5"
+            >
+              <span className="flex items-center justify-between">
+                <span className="text-foreground">Connected as @acme-bot</span>
+                <span className="flex h-5.5 items-center rounded-md border border-border px-2 text-foreground">
+                  Test connection
+                </span>
+              </span>
+              <span className="block h-2 w-2/3 rounded-sm bg-muted/60" />
             </span>
           </Mark>
         </div>

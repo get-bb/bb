@@ -74,13 +74,6 @@ describe("product-map surfaces", () => {
     );
   });
 
-  it("numbers plugin settings in the host render order", () => {
-    expect(SETTINGS_MARKS).toEqual([
-      "settings-section",
-      "declarative-settings",
-    ]);
-  });
-
   it("numbers the surfaces a fixture draws, and only those", () => {
     for (const group of SURFACE_GROUPS) {
       const numbers = group.surfaces.map((surface) =>

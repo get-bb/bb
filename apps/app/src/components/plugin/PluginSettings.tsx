@@ -492,14 +492,6 @@ function PluginSettingsContent({ plugin }: { plugin: PluginListItem }) {
   const hasSettingsSections = settingsSections.some(
     (section) => section.pluginId === plugin.id,
   );
-  const settingsAvailable =
-    plugin.enabled && PLUGIN_STATUSES_WITH_SETTINGS.includes(plugin.status);
-  const showUnavailableSectionsHint =
-    enabled &&
-    plugin.enabled &&
-    hasSettingsSections &&
-    !settingsAvailable &&
-    !plugin.hasSettings;
   return (
     <div className="mx-auto w-full max-w-5xl">
       <header className="flex items-center justify-between gap-4">
@@ -530,18 +522,16 @@ function PluginSettingsContent({ plugin }: { plugin: PluginListItem }) {
         />
       </header>
       <ResourceDetailStack className="mt-6">
-        {enabled && settingsAvailable && hasSettingsSections ? (
-          <PluginSettingsSections pluginId={plugin.id} />
-        ) : null}
-        {showUnavailableSectionsHint ? (
-          <ResourceDetailPanel surface="recessed" className="px-3 py-3">
-            <PluginSettingsUnavailableMessage plugin={plugin} />
-          </ResourceDetailPanel>
-        ) : null}
         {enabled && plugin.enabled && plugin.hasSettings ? (
           <ResourceDetailConfigurationSection label="Configuration">
             <PluginSettingsDetail plugin={plugin} />
           </ResourceDetailConfigurationSection>
+        ) : null}
+        {enabled &&
+        plugin.enabled &&
+        !plugin.hasSettings &&
+        hasSettingsSections ? (
+          <PluginSettingsDetail plugin={plugin} />
         ) : null}
         <ResourceDetailOverviewSection label="Plugin details">
           <p className="max-w-none text-sm leading-relaxed text-muted-foreground">
@@ -567,32 +557,33 @@ function PluginSettingsContent({ plugin }: { plugin: PluginListItem }) {
   );
 }
 
-function PluginSettingsUnavailableMessage({
-  plugin,
-}: {
-  plugin: PluginListItem;
-}) {
-  return (
-    <p className="text-xs text-muted-foreground">
-      {plugin.enabled
-        ? `Settings are unavailable while the plugin is ${plugin.status}.`
-        : "Enable this plugin to edit its settings."}
-    </p>
-  );
-}
-
 export function PluginSettingsDetail({ plugin }: { plugin: PluginListItem }) {
+  const { settingsSections } = usePluginSlots();
+  const hasSettingsSections = settingsSections.some(
+    (section) => section.pluginId === plugin.id,
+  );
   const settingsAvailable =
     plugin.enabled && PLUGIN_STATUSES_WITH_SETTINGS.includes(plugin.status);
-  if (!plugin.hasSettings) return null;
+  if (!plugin.hasSettings && !hasSettingsSections) return null;
 
   return (
-    <ResourceDetailPanel surface="recessed" className="px-3 py-3">
+    <div className="space-y-6" data-testid={`plugin-detail-${plugin.id}`}>
+      {plugin.hasSettings || !settingsAvailable ? (
+        <ResourceDetailPanel surface="recessed" className="px-3 py-3">
+          {settingsAvailable ? (
+            <PluginSettingsForm key={plugin.id} pluginId={plugin.id} />
+          ) : (
+            <p className="text-xs text-muted-foreground">
+              {plugin.enabled
+                ? `Settings are unavailable while the plugin is ${plugin.status}.`
+                : "Enable this plugin to edit its settings."}
+            </p>
+          )}
+        </ResourceDetailPanel>
+      ) : null}
       {settingsAvailable ? (
-        <PluginSettingsForm key={plugin.id} pluginId={plugin.id} />
-      ) : (
-        <PluginSettingsUnavailableMessage plugin={plugin} />
-      )}
-    </ResourceDetailPanel>
+        <PluginSettingsSections pluginId={plugin.id} />
+      ) : null}
+    </div>
   );
 }

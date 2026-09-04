@@ -2,6 +2,8 @@ import { defineRpcContract } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 import {
   accountAddInputSchema,
+  accountPoolConfigSchema,
+  accountPoolConfigSetInputSchema,
   accountIdInputSchema,
   accountPriorityInputSchema,
   accountSchema,
@@ -18,6 +20,7 @@ import {
   statusSchema,
   tokenRotateInputSchema,
   routingSetInputSchema,
+  type AccountPoolConfigController,
 } from "./contracts.js";
 import type { PoolOperations } from "./operations.js";
 import type { ClaudeOAuthLogin } from "./oauth-login.js";
@@ -58,6 +61,14 @@ export const accountPoolRpcContract = defineRpcContract({
       .object({ provider: z.enum(["claude", "codex"]), enabled: z.boolean() })
       .strict(),
   },
+  "config.get": {
+    input: z.null(),
+    output: accountPoolConfigSchema,
+  },
+  "config.set": {
+    input: accountPoolConfigSetInputSchema,
+    output: accountPoolConfigSchema,
+  },
   "login.start": {
     input: z.null(),
     output: loginStartSchema,
@@ -96,6 +107,7 @@ export function createRpcHandlers(
   operations: PoolOperations,
   login: ClaudeOAuthLogin,
   codexLogin: CodexDeviceLogin,
+  config: AccountPoolConfigController,
 ) {
   return {
     "account.add": (input: Parameters<PoolOperations["add"]>[0]) =>
@@ -132,6 +144,9 @@ export function createRpcHandlers(
       await operations.setRouting(provider, enabled);
       return { provider, enabled };
     },
+    "config.get": () => config.get(),
+    "config.set": (input: Parameters<AccountPoolConfigController["set"]>[0]) =>
+      config.set(input),
     "login.start": () => login.start(),
     "login.complete": (input: { sessionId: string; pasted: string }) =>
       login.complete(input),

@@ -680,22 +680,27 @@ without disabling that account for other families. Imported and newly signed-in
 accounts retain their Anthropic account UUID, and the hub aligns a present
 `metadata.user_id` account component with the selected account.
 
-Three settings control routing. `switchThreshold` is the shared or requested
-model-family quota fraction at which an account stops receiving matching
-traffic and defaults to `0.98`.
-`upstreamBaseUrl` defaults to `https://api.anthropic.com` and
+Three plugin-owned configuration values control routing. `switchThreshold` is
+the shared or requested model-family quota fraction at which an account stops
+receiving matching traffic and defaults to `0.98`.
+`anthropicUpstreamBaseUrl` defaults to `https://api.anthropic.com` and
 `codexUpstreamBaseUrl` defaults to
 `https://chatgpt.com/backend-api/codex`. Codex uses the hub's HTTP Responses
 and models routes and prefers its WebSocket Responses route; the hub keeps the
 downstream WebSocket session semantics while forwarding upstream over HTTPS
-SSE. Both URL settings exist only for tests and QA with a controlled fake
-upstream:
+SSE. Both URL values exist only for tests and QA with a controlled fake
+upstream. Inspect or update the full plugin KV-backed configuration with:
 
 ```sh
-bb plugin config account-pool set switchThreshold 0.98
-bb plugin config account-pool set upstreamBaseUrl http://127.0.0.1:9000
-bb plugin config account-pool set codexUpstreamBaseUrl http://127.0.0.1:9001
+bb pool config
+bb pool config set switchThreshold 0.98
+bb pool config set anthropicUpstreamBaseUrl http://127.0.0.1:9000
+bb pool config set codexUpstreamBaseUrl http://127.0.0.1:9001
 ```
+
+Upgrading from an Account Pooler build that stored these values through
+`bb.settings` resets the threshold and both QA-only upstream overrides to
+their defaults. Those old values are not migrated.
 
 ## bb connect
 

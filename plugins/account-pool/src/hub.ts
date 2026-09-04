@@ -45,7 +45,7 @@ const DROPPED_RESPONSE_HEADERS = new Set([
 ]);
 
 export interface HubSettings {
-  upstreamBaseUrl: string;
+  anthropicUpstreamBaseUrl: string;
   codexUpstreamBaseUrl: string;
   switchThreshold: number;
 }

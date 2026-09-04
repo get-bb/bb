@@ -1,5 +1,57 @@
 import { z } from "zod";
 
+export const DEFAULT_ACCOUNT_POOL_CONFIG = {
+  anthropicUpstreamBaseUrl: "https://api.anthropic.com",
+  codexUpstreamBaseUrl: "https://chatgpt.com/backend-api/codex",
+  switchThreshold: 0.98,
+};
+
+const httpUrlSchema = z
+  .string()
+  .url()
+  .refine((value) => {
+    const protocol = new URL(value).protocol;
+    return protocol === "http:" || protocol === "https:";
+  }, "Must be an HTTP or HTTPS URL.");
+
+const switchThresholdSchema = z
+  .number()
+  .positive("Must be greater than 0.")
+  .max(1, "Must be at most 1.");
+
+export const accountPoolConfigSchema = z
+  .object({
+    anthropicUpstreamBaseUrl: httpUrlSchema.default(
+      DEFAULT_ACCOUNT_POOL_CONFIG.anthropicUpstreamBaseUrl,
+    ),
+    codexUpstreamBaseUrl: httpUrlSchema.default(
+      DEFAULT_ACCOUNT_POOL_CONFIG.codexUpstreamBaseUrl,
+    ),
+    switchThreshold: switchThresholdSchema.default(
+      DEFAULT_ACCOUNT_POOL_CONFIG.switchThreshold,
+    ),
+  })
+  .strict();
+
+export type AccountPoolConfig = z.infer<typeof accountPoolConfigSchema>;
+
+export const accountPoolConfigSetInputSchema = z
+  .object({
+    anthropicUpstreamBaseUrl: httpUrlSchema.optional(),
+    codexUpstreamBaseUrl: httpUrlSchema.optional(),
+    switchThreshold: switchThresholdSchema.optional(),
+  })
+  .strict();
+
+export type AccountPoolConfigSetInput = z.infer<
+  typeof accountPoolConfigSetInputSchema
+>;
+
+export interface AccountPoolConfigController {
+  get: () => AccountPoolConfig;
+  set: (input: AccountPoolConfigSetInput) => Promise<AccountPoolConfig>;
+}
+
 export const providerSchema = z.enum(["claude", "codex"]);
 export type PoolProvider = z.infer<typeof providerSchema>;
 export const accountKindSchema = z.enum(["oauth", "api-key"]);

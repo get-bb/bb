@@ -459,22 +459,8 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
     title: "Plugin settings page",
     fixtureKind: "spatial",
     blurb:
-      "The settings page bb creates for every installed plugin. A plugin can add its own sections and declare fields for bb to render below them.",
+      "The settings page bb creates for every installed plugin. A plugin can declare fields for bb to render and add its own section below them.",
     surfaces: [
-      {
-        id: "settings-section",
-        title: "Custom settings section",
-        summary:
-          "Renders your own React component on the plugin's settings page, above the [fields bb generated](declarative-settings). Use it for anything that is not a value in a form. With this, a plugin can:",
-        bullets: [
-          "Render whatever UI it needs, such as a connect-account button, a test-connection result, or a preview",
-          "Run in the browser, so it stores nothing itself. It calls the plugin's own backend to do that",
-          "Supply a heading and a one-line description for bb to render above it",
-          'Opt into a panel-free layout with `experimental_surface: "flat"`; the default recessed panel remains unchanged',
-        ],
-        apiSymbols: ["PluginSettingsSectionRegistration"],
-        firstParty: ["Account Pooler", "Keep Awake", "Memory", "Remote access"],
-      },
       {
         id: "declarative-settings",
         title: "Settings fields",
@@ -500,6 +486,19 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Provider retry",
           "Workflows",
         ],
+      },
+      {
+        id: "settings-section",
+        title: "Custom settings section",
+        summary:
+          "Renders your own React component on the plugin's settings page, below the [fields bb generated](declarative-settings). Use it for anything that is not a value in a form. With this, a plugin can:",
+        bullets: [
+          "Render whatever UI it needs, such as a connect-account button, a test-connection result, or a preview",
+          "Run in the browser, so it stores nothing itself. It calls the plugin's own backend to do that",
+          "Supply a heading and a one-line description for bb to render above it",
+        ],
+        apiSymbols: ["PluginSettingsSectionRegistration"],
+        firstParty: ["Account Pooler", "Keep Awake", "Memory", "Remote access"],
       },
     ],
   },

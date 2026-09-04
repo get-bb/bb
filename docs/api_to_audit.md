@@ -1,22 +1,5 @@
 # APIs To Audit
 
-## `PluginSettingsSectionRegistration.experimental_surface`
-
-**What it does.** Lets a plugin choose the host surface around one custom
-settings section. The default `"recessed"` surface preserves the bordered,
-padded host panel. `"flat"` renders only the optional host title and
-description followed by the plugin component, with no panel or padding wrapper,
-so the plugin can align seam-based lists directly with the settings page.
-
-**Audit before stabilizing.**
-
-1. Decide whether flat should become the default surface for custom settings
-   sections.
-2. Decide whether the host should own shared list and row idioms instead of
-   asking each flat plugin section to implement them.
-3. Confirm plugins need a per-section choice rather than a page-level surface
-   policy.
-
 ## `bb.http.experimental_websocket`
 
 **What it does.** Registers an exact-path WebSocket upgrade in the plugin's

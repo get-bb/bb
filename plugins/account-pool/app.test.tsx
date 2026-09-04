@@ -2,7 +2,11 @@
 import { cleanup, fireEvent, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
-import type { AccountSummary, PoolStatus } from "./src/contracts.js";
+import type {
+  AccountPoolConfig,
+  AccountSummary,
+  PoolStatus,
+} from "./src/contracts.js";
 
 const app = await loadPluginApp(() => import("./app"));
 afterEach(cleanup);
@@ -61,6 +65,15 @@ function status(accounts: AccountSummary[] = [account()]): PoolStatus {
   };
 }
 
+function config(overrides: Partial<AccountPoolConfig> = {}): AccountPoolConfig {
+  return {
+    anthropicUpstreamBaseUrl: "https://api.anthropic.com",
+    codexUpstreamBaseUrl: "https://chatgpt.com/backend-api/codex",
+    switchThreshold: 0.98,
+    ...overrides,
+  };
+}
+
 function render(
   accounts = [account()],
   extraRpc: Record<string, () => object> = {},
@@ -69,18 +82,17 @@ function render(
     app.settingsSections[0]!,
     {},
     {
-      settings: { switchThreshold: 0.98 },
-      rpc: { "status.get": () => status(accounts), ...extraRpc },
+      rpc: {
+        "status.get": () => status(accounts),
+        "config.get": () => config(),
+        ...extraRpc,
+      },
       openUrl: () => true,
     },
   );
 }
 
 describe("Account Pool settings", () => {
-  it("uses the flat host surface", () => {
-    expect(app.settingsSections[0]?.experimental_surface).toBe("flat");
-  });
-
   it("renders fixed quota slots with missing buckets as em dashes", async () => {
     const slot = render();
     expect(await slot.findByText("person@example.com")).toBeTruthy();
@@ -180,6 +192,43 @@ describe("Account Pool settings", () => {
       expect(slot.rpcCalls).toContainEqual({
         method: "routing.set",
         input: { provider: "claude", enabled: false },
+      }),
+    );
+  });
+
+  it("edits Advanced config fields and shows URL validation inline", async () => {
+    const nextConfig = config({
+      anthropicUpstreamBaseUrl: "https://proxy.example.com",
+    });
+    const slot = render([account()], {
+      "config.set": () => nextConfig,
+    });
+    fireEvent.click(await slot.findByRole("button", { name: "Advanced" }));
+    const anthropic = await slot.findByLabelText("Anthropic upstream base URL");
+    if (!(anthropic instanceof HTMLInputElement)) {
+      throw new Error("Expected the Anthropic config field to be an input.");
+    }
+    await waitFor(() =>
+      expect(anthropic.value).toBe("https://api.anthropic.com"),
+    );
+    expect(slot.getByLabelText("Codex upstream base URL")).toBeTruthy();
+    expect(slot.getByLabelText("Quota switch threshold")).toBeTruthy();
+
+    fireEvent.change(anthropic, { target: { value: "ftp://invalid.example" } });
+    fireEvent.blur(anthropic);
+    expect(await slot.findByText("Must be an HTTP or HTTPS URL.")).toBeTruthy();
+    expect(slot.rpcCalls.some((call) => call.method === "config.set")).toBe(
+      false,
+    );
+
+    fireEvent.change(anthropic, {
+      target: { value: "https://proxy.example.com" },
+    });
+    fireEvent.blur(anthropic);
+    await waitFor(() =>
+      expect(slot.rpcCalls).toContainEqual({
+        method: "config.set",
+        input: { anthropicUpstreamBaseUrl: "https://proxy.example.com" },
       }),
     );
   });
