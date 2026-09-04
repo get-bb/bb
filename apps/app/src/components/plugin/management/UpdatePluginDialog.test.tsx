@@ -8,6 +8,10 @@ import {
   type PluginListItem,
   type PluginUpdateState,
 } from "@/hooks/queries/plugin-settings-queries";
+import {
+  getNotifications,
+  resetNotificationStore,
+} from "@/lib/notifications/notification-store";
 import { UpdatePluginDialog } from "./UpdatePluginDialog";
 import { makePluginListItem } from "@/test/fixtures/plugins";
 
@@ -35,6 +39,7 @@ function jsonResponse(body: unknown, status = 200): Response {
 
 afterEach(() => {
   cleanup();
+  resetNotificationStore();
   vi.unstubAllGlobals();
 });
 
@@ -193,6 +198,35 @@ describe("UpdatePluginDialog", () => {
         "The plugin is marked “Update failed” in the installed list until an update succeeds.",
       ),
     ).toBeTruthy();
+  });
+
+  it("records one alert when an update request fails", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        jsonResponse({ error: "plugin source is unavailable" }, 502),
+      ),
+    );
+    const { wrapper } = createQueryClientTestHarness();
+    render(
+      <UpdatePluginDialog
+        plugin={plugin({ availableVersion: "1.7.0" })}
+        open
+        onOpenChange={() => {}}
+      />,
+      { wrapper },
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Update" }));
+
+    await vi.waitFor(() => {
+      expect(getNotifications()).toEqual([
+        expect.objectContaining({
+          title: "Updating Linear failed",
+          description: "plugin source is unavailable",
+        }),
+      ]);
+    });
   });
 
   it("treats a malformed 2xx update response as an error, never success", async () => {
