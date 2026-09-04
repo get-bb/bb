@@ -51,6 +51,8 @@ export const accountSchema = z
     enabled: z.boolean(),
     priority: z.number().int(),
     createdAt: z.number().int().nonnegative(),
+    lastUsedAt: z.number().int().nonnegative().nullable().default(null),
+    lastUsedHostId: z.string().min(1).nullable().default(null),
   })
   .strict();
 
@@ -100,6 +102,7 @@ export const quotaSchema = z
 export type AccountQuota = z.infer<typeof quotaSchema>;
 
 export const accountSummarySchema = accountSchema.extend({
+  lastUsedHostName: z.string().min(1).nullable(),
   fiveHourUtilization: z.number().nullable(),
   fiveHourResetAt: z.number().int().nullable(),
   fiveHourStatus: z.string().nullable(),
@@ -149,6 +152,7 @@ export const statusSchema = z
     hosts: z.array(hubTokenSummarySchema),
     routedThreadsWithoutLocalLogin: z.array(routedThreadStatusSchema),
     accounts: z.array(accountSummarySchema),
+    routing: z.object({ claude: z.boolean(), codex: z.boolean() }).strict(),
   })
   .strict();
 
@@ -212,6 +216,14 @@ export const codexLoginPollSchema = z.discriminatedUnion("status", [
 
 export const accountIdInputSchema = z
   .object({ id: z.string().uuid() })
+  .strict();
+
+export const accountPriorityInputSchema = z
+  .object({ accountId: z.string().uuid(), priority: z.number().int() })
+  .strict();
+
+export const routingSetInputSchema = z
+  .object({ provider: providerSchema, enabled: z.boolean() })
   .strict();
 
 export const tokenRotateInputSchema = z

@@ -73,7 +73,7 @@ export class AccountStore {
   }
 
   async add(
-    input: Omit<Account, "id" | "createdAt">,
+    input: Omit<Account, "id" | "createdAt" | "lastUsedAt" | "lastUsedHostId">,
     secret: AccountSecret,
   ): Promise<Account> {
     return this.serialized(async () => {
@@ -81,6 +81,8 @@ export class AccountStore {
         ...input,
         id: randomUUID(),
         createdAt: Date.now(),
+        lastUsedAt: null,
+        lastUsedHostId: null,
       });
       await this.writeSecret(account.id, secret);
       try {
@@ -120,6 +122,22 @@ export class AccountStore {
     });
   }
 
+  async setPriority(id: string, priority: number): Promise<Account | null> {
+    return this.update(id, (account) => ({ ...account, priority }));
+  }
+
+  async recordUsed(
+    id: string,
+    lastUsedAt: number,
+    lastUsedHostId: string,
+  ): Promise<Account | null> {
+    return this.update(id, (account) => ({
+      ...account,
+      lastUsedAt,
+      lastUsedHostId,
+    }));
+  }
+
   async setAccountUuid(
     id: string,
     accountUuid: string,
@@ -131,6 +149,22 @@ export class AccountStore {
       const current = accounts[index];
       if (current === undefined) return null;
       const updated = accountSchema.parse({ ...current, accountUuid });
+      accounts[index] = updated;
+      await this.kv.set(ACCOUNTS_KEY, accounts);
+      return updated;
+    });
+  }
+
+  private async update(
+    id: string,
+    change: (account: Account) => Account,
+  ): Promise<Account | null> {
+    return this.serialized(async () => {
+      const accounts = await this.list();
+      const index = accounts.findIndex((account) => account.id === id);
+      const current = accounts[index];
+      if (index < 0 || current === undefined) return null;
+      const updated = accountSchema.parse(change(current));
       accounts[index] = updated;
       await this.kv.set(ACCOUNTS_KEY, accounts);
       return updated;
@@ -408,6 +442,17 @@ export class RoutingStore {
 
   async isBypassed(threadId: string): Promise<boolean> {
     return (await this.kv.get(this.bypassKey(threadId))) === true;
+  }
+
+  async isProviderEnabled(provider: "claude" | "codex"): Promise<boolean> {
+    return (await this.kv.get(`routing.${provider}`)) !== false;
+  }
+
+  async setProviderEnabled(
+    provider: "claude" | "codex",
+    enabled: boolean,
+  ): Promise<void> {
+    await this.kv.set(`routing.${provider}`, enabled);
   }
 
   async setBypassed(threadId: string, bypassed: boolean): Promise<void> {

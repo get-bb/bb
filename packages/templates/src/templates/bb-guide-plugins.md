@@ -40,6 +40,7 @@ bb pool account remove <id>
 bb pool account enable <id>
 bb pool account disable <id>
 bb pool status [--json]
+bb pool routing <claude|codex> [--off]
 bb pool token rotate --machine <id-or-name>
 bb pool bypass <thread-id> [--off]
 ```

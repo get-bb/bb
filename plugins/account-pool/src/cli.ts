@@ -7,6 +7,7 @@ import {
   codexLoginPollInputSchema,
   loginCompleteInputSchema,
   tokenRotateInputSchema,
+  routingSetInputSchema,
   type AccountSummary,
   type FamilyQuota,
   type ModelFamily,
@@ -36,6 +37,7 @@ const HELP = [
   "  bb pool account enable <id>",
   "  bb pool account disable <id>",
   "  bb pool status [--json]",
+  "  bb pool routing <claude|codex> [--off]",
   "  bb pool token rotate --machine <id-or-name>",
   "  bb pool bypass <thread-id> [--off]",
 ].join("\n");
@@ -229,9 +231,13 @@ export function registerPoolCli(
         usage: "bb pool status [--json]",
       },
       {
+        name: "routing",
+        summary: "Enable or disable pooled routing for one provider",
+        usage: "bb pool routing <claude|codex> [--off]",
+      },
+      {
         name: "token-rotate",
-        summary:
-          "Rotate one machine's Account Pooler bearer token",
+        summary: "Rotate one machine's Account Pooler bearer token",
         usage: "bb pool token rotate --machine <id-or-name>",
       },
       {
@@ -426,6 +432,18 @@ export function registerPoolCli(
             stdout: flags.booleans.has("json")
               ? json(status)
               : `${formatStatus(status)}\n`,
+          };
+        }
+        if (argv[0] === "routing") {
+          const flags = parseFlags(argv.slice(2), ["off"], []);
+          const input = routingSetInputSchema.parse({
+            provider: argv[1],
+            enabled: !flags.booleans.has("off"),
+          });
+          await operations.setRouting(input.provider, input.enabled);
+          return {
+            exitCode: 0,
+            stdout: `${input.enabled ? "Enabled" : "Disabled"} ${input.provider} Account Pooler routing.\n`,
           };
         }
         if (argv[0] === "token" && argv[1] === "rotate") {

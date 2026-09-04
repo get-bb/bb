@@ -32,7 +32,7 @@ export function createCodexWebSocketHandlers(
   hub: AccountPoolHub,
   log: SocketLog,
 ): ExperimentalPluginWebSocketHandlers {
-  let authenticated = false;
+  let authenticatedHostId: string | null = null;
   let lastId: string | null = null;
   let lastInput: z.infer<typeof envelopeSchema>["input"] = [];
   let lastOutput: z.infer<typeof envelopeSchema>["input"] = [];
@@ -133,6 +133,7 @@ export function createCodexWebSocketHandlers(
         signal: controller.signal,
       }),
       "codex",
+      authenticatedHostId,
     );
     if (!response.ok || response.body === null) {
       const detail = await response.text().catch(() => "");
@@ -189,8 +190,8 @@ export function createCodexWebSocketHandlers(
 
   return {
     async onOpen(socket) {
-      authenticated = await hub.authenticate(context.request);
-      if (!authenticated) {
+      authenticatedHostId = await hub.authenticate(context.request);
+      if (authenticatedHostId === null) {
         socket.close(1008, "invalid Account Pooler token");
         return;
       }
@@ -199,7 +200,7 @@ export function createCodexWebSocketHandlers(
       );
     },
     async onMessage(socket, data) {
-      if (!authenticated) return;
+      if (authenticatedHostId === null) return;
       if (typeof data !== "string") {
         socket.close(1003, "text frames required");
         return;

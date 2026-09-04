@@ -398,8 +398,9 @@ describe("Account Pool plugin", () => {
     });
     await vi.waitFor(async () => {
       expect(
-        statusSchema.parse(await host.harness.behavior.callRpc("status", null))
-          .accepting,
+        statusSchema.parse(
+          await host.harness.behavior.callRpc("status.get", null),
+        ).accepting,
       ).toBe(true);
     });
     await host.harness.behavior.callRpc("account.add", {
@@ -436,8 +437,7 @@ describe("Account Pool plugin", () => {
       }),
     ).resolves.toEqual({
       label: "Proxied",
-      statusMessage:
-        "Credentials are provided by the Account Pooler hub.",
+      statusMessage: "Credentials are provided by the Account Pooler hub.",
     });
     const httpResponse = await host.harness.behavior.fetchHttp(
       "POST",
@@ -526,7 +526,7 @@ describe("Account Pool plugin", () => {
     ]);
     await socket.close(1000, "done");
     const status = statusSchema.parse(
-      await host.harness.behavior.callRpc("status", null),
+      await host.harness.behavior.callRpc("status.get", null),
     );
     const firstCodex = status.accounts.find(
       (account) => account.codexAccountId === "chatgpt-account-1",
@@ -693,8 +693,9 @@ describe("Account Pool plugin", () => {
     });
     await vi.waitFor(async () => {
       expect(
-        statusSchema.parse(await host.harness.behavior.callRpc("status", null))
-          .accepting,
+        statusSchema.parse(
+          await host.harness.behavior.callRpc("status.get", null),
+        ).accepting,
       ).toBe(true);
     });
     await host.harness.behavior.callRpc("account.add", {
@@ -720,8 +721,9 @@ describe("Account Pool plugin", () => {
     await vi.waitFor(async () => {
       expect(upstreamReadCanceled).toBe(true);
       expect(
-        statusSchema.parse(await host.harness.behavior.callRpc("status", null))
-          .inFlight,
+        statusSchema.parse(
+          await host.harness.behavior.callRpc("status.get", null),
+        ).inFlight,
       ).toBe(0);
     });
     expect(socket.sent).toHaveLength(1);
@@ -773,8 +775,9 @@ describe("Account Pool plugin", () => {
     });
     await vi.waitFor(async () => {
       expect(
-        statusSchema.parse(await host.harness.behavior.callRpc("status", null))
-          .accepting,
+        statusSchema.parse(
+          await host.harness.behavior.callRpc("status.get", null),
+        ).accepting,
       ).toBe(true);
     });
     await host.harness.behavior.callRpc("account.add", {
@@ -850,7 +853,7 @@ describe("Account Pool plugin", () => {
       { id: "host-one", name: "One" },
     ]);
     const status = statusSchema.parse(
-      await host.harness.behavior.callRpc("status", null),
+      await host.harness.behavior.callRpc("status.get", null),
     );
     expect(status.hosts).toEqual([]);
     await expect(fs.access(hostTwoTokenFile)).rejects.toThrow();
@@ -1407,8 +1410,7 @@ describe("Account Pool plugin", () => {
       }),
     ).resolves.toEqual({
       label: "Proxied",
-      statusMessage:
-        "Credentials are provided by the Account Pooler hub.",
+      statusMessage: "Credentials are provided by the Account Pooler hub.",
     });
     const secondToken = await resolveToken(
       fixture.host,
@@ -1531,7 +1533,7 @@ describe("Account Pool plugin", () => {
     );
     expect(await fs.readFile(tokenFile, "utf8")).not.toContain(fixture.key);
     const status = statusSchema.parse(
-      await fixture.host.harness.behavior.callRpc("status", null),
+      await fixture.host.harness.behavior.callRpc("status.get", null),
     );
     expect(status.hosts).toEqual([
       {
@@ -1567,7 +1569,7 @@ describe("Account Pool plugin", () => {
       }),
     );
     const status = statusSchema.parse(
-      await fixture.host.harness.behavior.callRpc("status", null),
+      await fixture.host.harness.behavior.callRpc("status.get", null),
     );
     expect(status.routedThreadsWithoutLocalLogin).toEqual([
       {
@@ -1655,7 +1657,7 @@ describe("Account Pool plugin", () => {
       ],
     }));
     const status = statusSchema.parse(
-      await fixture.host.harness.behavior.callRpc("status", null),
+      await fixture.host.harness.behavior.callRpc("status.get", null),
     );
     expect(status.routedThreadsWithoutLocalLogin).toEqual([
       {
@@ -2363,6 +2365,118 @@ describe("Account Pool plugin", () => {
       );
     expect(authAccounts[0]?.status).toBe("error");
     expect(authAccounts[0]?.error).toContain("bad account");
+  });
+
+  it("suppresses env and health only for the provider whose routing is off", async () => {
+    const upstream = await startUpstream((_request, response) => {
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end("{}");
+    });
+    cleanups.push(upstream.close);
+    const fixture = await createFixture({
+      upstreamUrl: upstream.url,
+      options: {
+        importCodexCredentials: async () => ({
+          accessToken: "codex-access",
+          refreshToken: "codex-refresh",
+          idToken: "codex-id",
+          accountId: "chatgpt-account",
+          email: "codex@example.com",
+          expiresAt: Date.now() + 60_000,
+        }),
+      },
+    });
+    await fixture.host.harness.behavior.callRpc("account.add", {
+      provider: "codex",
+      source: { kind: "import" },
+      label: null,
+      priority: 100,
+    });
+    const disabled = await fixture.host.harness.behavior.runCli([
+      "routing",
+      "claude",
+      "--off",
+    ]);
+    expect(disabled).toMatchObject({ exitCode: 0 });
+    await expect(
+      fixture.host.harness.behavior.resolveProviderEnv("claude-code", {
+        threadId: "thread-off",
+        projectId: "project-one",
+        hostId: "host-one",
+      }),
+    ).resolves.toEqual([]);
+    await expect(
+      fixture.host.harness.behavior.resolveProviderEnvHealth("claude-code", {
+        hostId: "host-one",
+      }),
+    ).resolves.toBeNull();
+    await expect(resolveCodexToken(fixture.host)).resolves.toMatchObject({
+      baseUrl: "/api/v1/plugins/account-pool/http/v1",
+    });
+    const result = statusSchema.parse(
+      await fixture.host.harness.behavior.callRpc("status.get", null),
+    );
+    expect(result.routing).toEqual({ claude: false, codex: true });
+  });
+
+  it("records the selected account's last-use time and host", async () => {
+    const upstream = await startUpstream((_request, response) => {
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end("{}");
+    });
+    cleanups.push(upstream.close);
+    const now = 1_800_000_000_000;
+    const fixture = await createFixture({
+      upstreamUrl: upstream.url,
+      options: { now: () => now },
+    });
+    const response = await fixture.host.harness.behavior.fetchHttp(
+      "POST",
+      "/v1/messages",
+      { headers: authHeaders(fixture.key), body: "{}" },
+    );
+    await response.text();
+    const result = statusSchema.parse(
+      await fixture.host.harness.behavior.callRpc("status.get", null),
+    );
+    expect(result.accounts[0]).toMatchObject({
+      lastUsedAt: now,
+      lastUsedHostId: "host-one",
+      lastUsedHostName: "One",
+    });
+  });
+
+  it("sets priority, refreshes one account, and returns status over RPC", async () => {
+    const upstream = await startUpstream((_request, response) => {
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end("{}");
+    });
+    cleanups.push(upstream.close);
+    const fixture = await createFixture({ upstreamUrl: upstream.url });
+    const priority = z
+      .object({ account: accountSchema.nullable() })
+      .parse(
+        await fixture.host.harness.behavior.callRpc("account.setPriority", {
+          accountId: fixture.account.id,
+          priority: 42,
+        }),
+      );
+    expect(priority.account?.priority).toBe(42);
+    const refreshed = z
+      .object({ account: accountSummarySchema.nullable() })
+      .parse(
+        await fixture.host.harness.behavior.callRpc("account.refreshUsage", {
+          accountId: fixture.account.id,
+        }),
+      );
+    expect(refreshed.account?.id).toBe(
+      fixture.account.id,
+    );
+    expect(
+      statusSchema.parse(
+        await fixture.host.harness.behavior.callRpc("status.get", null),
+      ).accounts[0]?.priority,
+    ).toBe(42);
   });
 
   it("drains completed streams and aborts a stuck stream after the stop deadline", async () => {

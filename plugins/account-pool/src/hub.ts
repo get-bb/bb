@@ -60,6 +60,7 @@ interface HubOptions {
   now: () => number;
   usageRefreshIntervalMs: number;
   drainTimeoutMs: number;
+  onAccountsChanged: () => void;
 }
 
 interface SelectedAccount {
@@ -92,11 +93,11 @@ export class AccountPoolHub {
     await this.stop();
   }
 
-  async authenticate(request: Request): Promise<boolean> {
+  async authenticate(request: Request): Promise<string | null> {
     const token =
       request.headers.get("x-bb-account-pool-token") ??
       readBearer(request.headers.get("authorization"));
-    return (await this.options.hubTokens.authenticate(token)) !== null;
+    return this.options.hubTokens.authenticate(token);
   }
 
   async importAccount(
@@ -107,18 +108,17 @@ export class AccountPoolHub {
 
   async handle(request: Request, provider: PoolProvider): Promise<Response> {
     const adapter = this.adapter(provider);
-    if (!(await this.authenticate(request))) {
-      return adapter.errorResponse(
-        401,
-        "Invalid Account Pooler bearer token.",
-      );
+    const hostId = await this.authenticate(request);
+    if (hostId === null) {
+      return adapter.errorResponse(401, "Invalid Account Pooler bearer token.");
     }
-    return this.handleAuthenticated(request, provider);
+    return this.handleAuthenticated(request, provider, hostId);
   }
 
   async handleAuthenticated(
     request: Request,
     provider: PoolProvider,
+    hostId: string | null = null,
   ): Promise<Response> {
     const adapter = this.adapter(provider);
     if (!this.accepting)
@@ -130,6 +130,7 @@ export class AccountPoolHub {
       request,
       new Uint8Array(await request.arrayBuffer()),
       adapter,
+      hostId,
     );
   }
 
@@ -202,7 +203,9 @@ export class AccountPoolHub {
     }
   }
 
-  async status(): Promise<Omit<PoolStatus, "routedThreadsWithoutLocalLogin">> {
+  async status(): Promise<
+    Omit<PoolStatus, "routedThreadsWithoutLocalLogin" | "routing">
+  > {
     const settings = this.options.getSettings();
     const now = this.options.now();
     const accounts = await this.options.accounts.list();
@@ -216,6 +219,7 @@ export class AccountPoolHub {
         const quota = this.options.quotas.get(account.id);
         return {
           ...account,
+          lastUsedHostName: null,
           fiveHourUtilization: quota.fiveHourUtilization,
           fiveHourResetAt: quota.fiveHourResetAt,
           fiveHourStatus: quota.fiveHourStatus,
@@ -238,6 +242,7 @@ export class AccountPoolHub {
     request: Request,
     body: Uint8Array,
     adapter: ProviderAdapter,
+    hostId: string | null,
   ): Promise<Response> {
     const attempted = new Set<string>();
     const accounts = (await this.options.accounts.list()).filter(
@@ -249,6 +254,14 @@ export class AccountPoolHub {
       if (selected === null)
         return this.noEligibleResponse(accounts, family, adapter);
       attempted.add(selected.account.id);
+      if (hostId !== null) {
+        await this.options.accounts.recordUsed(
+          selected.account.id,
+          this.options.now(),
+          hostId,
+        );
+        this.options.onAccountsChanged();
+      }
       let secret: AccountSecret;
       try {
         secret = await this.freshSecret(selected.account, adapter);
@@ -576,9 +589,7 @@ export class AccountPoolHub {
   private adapter(provider: PoolProvider): ProviderAdapter {
     const adapter = this.options.adapters.get(provider);
     if (adapter === undefined)
-      throw new Error(
-        `Missing ${provider} Account Pooler adapter.`,
-      );
+      throw new Error(`Missing ${provider} Account Pooler adapter.`);
     return adapter;
   }
 
@@ -620,6 +631,7 @@ export function createHub(options: {
   profileUrl?: string;
   usageRefreshIntervalMs?: number;
   drainTimeoutMs?: number;
+  onAccountsChanged?: () => void;
 }): AccountPoolHub {
   const adapters: ReadonlyMap<PoolProvider, ProviderAdapter> = new Map([
     [
@@ -650,6 +662,7 @@ export function createHub(options: {
     usageRefreshIntervalMs:
       options.usageRefreshIntervalMs ?? DEFAULT_USAGE_REFRESH_INTERVAL_MS,
     drainTimeoutMs: options.drainTimeoutMs ?? 60_000,
+    onAccountsChanged: options.onAccountsChanged ?? (() => {}),
   });
 }
 

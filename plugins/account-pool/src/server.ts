@@ -120,6 +120,8 @@ export function createAccountPoolPlugin(
       importCodexCredentials: options.importCodexCredentials,
       usageRefreshIntervalMs: options.usageRefreshIntervalMs,
       drainTimeoutMs: options.drainTimeoutMs,
+      onAccountsChanged: () =>
+        bb.realtime.publish(ACCOUNT_POOL_ACCOUNTS_CHANGED, {}),
     });
     const operations = new PoolOperations(
       accounts,
@@ -160,6 +162,7 @@ export function createAccountPoolPlugin(
     registerPoolCli(bb, operations, login, codexLogin);
     bb.providers.experimental_contributeEnv("claude-code", async (context) => {
       if (
+        !(await operations.isRoutingEnabled("claude")) ||
         (await routing.isBypassed(context.threadId)) ||
         !(await operations.hasUsableEnabledAccount("claude"))
       ) {
@@ -192,6 +195,7 @@ export function createAccountPoolPlugin(
       ];
     });
     bb.providers.experimental_contributeEnvHealth("claude-code", async () =>
+      (await operations.isRoutingEnabled("claude")) &&
       (await operations.hasUsableEnabledAccount("claude"))
         ? {
             label: "Proxied",
@@ -202,6 +206,7 @@ export function createAccountPoolPlugin(
     );
     bb.providers.experimental_contributeEnv("codex", async (context) => {
       if (
+        !(await operations.isRoutingEnabled("codex")) ||
         (await routing.isBypassed(context.threadId)) ||
         !(await operations.hasUsableEnabledAccount("codex"))
       ) {
@@ -226,6 +231,7 @@ export function createAccountPoolPlugin(
       ];
     });
     bb.providers.experimental_contributeEnvHealth("codex", async () =>
+      (await operations.isRoutingEnabled("codex")) &&
       (await operations.hasUsableEnabledAccount("codex"))
         ? {
             label: "Proxied",
@@ -250,9 +256,7 @@ export function createAccountPoolPlugin(
         );
         const result = await Promise.race([inspection, timeout]);
         if (result === DISPOSE_INSPECTION_TIMEOUT) {
-          bb.log.debug(
-            "Account Pooler disable inspection timed out.",
-          );
+          bb.log.debug("Account Pooler disable inspection timed out.");
           return;
         }
         if (result !== null) bb.log.warn(result);

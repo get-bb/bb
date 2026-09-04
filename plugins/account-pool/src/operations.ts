@@ -153,7 +153,7 @@ export class PoolOperations {
   }
 
   async list(): Promise<AccountSummary[]> {
-    return (await this.hub.status()).accounts;
+    return (await this.status()).accounts;
   }
 
   async remove(id: string): Promise<boolean> {
@@ -181,6 +181,31 @@ export class PoolOperations {
     return account;
   }
 
+  async setPriority(id: string, priority: number): Promise<Account | null> {
+    const account = await this.accounts.setPriority(id, priority);
+    if (account !== null) this.onAccountsChanged();
+    return account;
+  }
+
+  async refreshUsage(id: string): Promise<AccountSummary | null> {
+    if ((await this.accounts.get(id)) === null) return null;
+    await this.hub.refreshUsage(id, true);
+    this.onAccountsChanged();
+    return (
+      (await this.status()).accounts.find((account) => account.id === id) ??
+      null
+    );
+  }
+
+  async setRouting(provider: PoolProvider, enabled: boolean): Promise<void> {
+    await this.routing.setProviderEnabled(provider, enabled);
+    this.onAccountsChanged();
+  }
+
+  isRoutingEnabled(provider: PoolProvider): Promise<boolean> {
+    return this.routing.isProviderEnabled(provider);
+  }
+
   async status(): Promise<PoolStatus> {
     const hosts = await this.listHosts();
     await this.hubTokens.prune(hosts.map((host) => host.id));
@@ -189,12 +214,24 @@ export class PoolOperations {
       this.routedThreadsWithoutLocalLogin(),
     ]);
     const hostNames = new Map(hosts.map((host) => [host.id, host.name]));
+    const [claude, codex] = await Promise.all([
+      this.routing.isProviderEnabled("claude"),
+      this.routing.isProviderEnabled("codex"),
+    ]);
     return {
       ...status,
       hosts: status.hosts.map((token) => ({
         ...token,
         hostName: hostNames.get(token.hostId) ?? null,
       })),
+      accounts: status.accounts.map((account) => ({
+        ...account,
+        lastUsedHostName:
+          account.lastUsedHostId === null
+            ? null
+            : (hostNames.get(account.lastUsedHostId) ?? null),
+      })),
+      routing: { claude, codex },
       routedThreadsWithoutLocalLogin,
     };
   }

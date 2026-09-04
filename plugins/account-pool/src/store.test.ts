@@ -75,7 +75,9 @@ describe("AccountStore", () => {
       await host.harness.lifecycle.dispose();
       await fs.rm(dataDir, { recursive: true, force: true });
     });
-    const account = (label: string): Omit<Account, "id" | "createdAt"> => ({
+    const account = (
+      label: string,
+    ): Omit<Account, "id" | "createdAt" | "lastUsedAt" | "lastUsedHostId"> => ({
       provider: "claude",
       kind: "api-key",
       label,

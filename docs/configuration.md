@@ -668,6 +668,9 @@ for ten minutes so in-flight requests can drain. Bypass or restore routing for
 one thread with `bb pool bypass <thread-id>` or
 `bb pool bypass <thread-id> --off`. Account listing, enable, disable, and
 removal are available through `bb pool account list|enable|disable|remove`.
+Provider routing is independently persisted and defaults on. Use
+`bb pool routing <claude|codex> --off` to stop contributing pool environment
+and health for one provider, and omit `--off` to enable it again.
 OAuth accounts refresh quota from Anthropic's usage endpoint when added or
 enabled and every five minutes while idle. `account list` adds columns for the
 family buckets Anthropic reports; JSON status exposes their utilization,
