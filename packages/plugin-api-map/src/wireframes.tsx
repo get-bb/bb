@@ -524,9 +524,8 @@ const FOOTER_ITEM_RENDERERS: Record<string, () => ReactNode> = {
       <span className="flex size-5.5 items-center justify-center rounded-md">
         <PluginGlyph className="size-3.5" />
       </span>
-      <span className="relative flex size-5.5 items-center justify-center rounded-md bg-state-hover">
+      <span className="flex size-5.5 items-center justify-center rounded-md bg-state-hover">
         <PluginGlyph className="size-3.5" />
-        <span className="absolute right-0.5 top-0.5 size-1.5 rounded-full bg-warning" />
       </span>
     </span>
   ),

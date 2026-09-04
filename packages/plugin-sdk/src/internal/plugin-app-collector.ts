@@ -4,10 +4,8 @@ import type {
   ExperimentalSidebarFooter,
   ExperimentalSidebarFooterActionContext,
   ExperimentalSidebarFooterActionRegistration,
-  ExperimentalSidebarFooterBadge,
   ExperimentalSidebarFooterDisclosureController,
   ExperimentalSidebarFooterDisclosureRegistration,
-  ExperimentalSidebarFooterItemController,
   ExperimentalSidebarFooterItemRegistration,
   PluginAppDefinition,
   PluginContentScriptRegistration,
@@ -46,7 +44,6 @@ import {
 export type ExperimentalSidebarFooterCommandKind = "open" | "close" | "toggle";
 
 export interface ExperimentalSidebarFooterRuntimeSnapshot {
-  badge: ExperimentalSidebarFooterBadge | null;
   command: {
     sequence: number;
     kind: ExperimentalSidebarFooterCommandKind;
@@ -103,49 +100,9 @@ const SIDEBAR_FOOTER_DISCLOSURE_KEYS: ReadonlySet<string> = new Set([
   "component",
 ]);
 
-function normalizeSidebarFooterBadge(
-  badge: ExperimentalSidebarFooterBadge | null,
-): ExperimentalSidebarFooterBadge | null {
-  const kind = "experimental_sidebarFooter.setBadge";
-  if (badge === null) return null;
-  if (typeof badge !== "object") {
-    throw new Error(`${kind}: badge must be an object or null`);
-  }
-  if (badge.kind !== "dot") {
-    throw new Error(`${kind}: badge.kind must be "dot"`);
-  }
-  if (
-    badge.tone !== "info" &&
-    badge.tone !== "warning" &&
-    badge.tone !== "critical"
-  ) {
-    throw new Error(
-      `${kind}: badge.tone must be "info", "warning", or "critical"`,
-    );
-  }
-  return {
-    kind: "dot",
-    tone: badge.tone,
-    label: requireNonEmptyString(kind, "badge.label", badge.label),
-  };
-}
-
-function sameSidebarFooterBadge(
-  previous: ExperimentalSidebarFooterBadge | null,
-  next: ExperimentalSidebarFooterBadge | null,
-): boolean {
-  if (previous === null || next === null) return previous === next;
-  return (
-    previous.kind === next.kind &&
-    previous.tone === next.tone &&
-    previous.label === next.label
-  );
-}
-
 class SidebarFooterItemRuntime implements ExperimentalSidebarFooterItemRuntime {
   private readonly listeners = new Set<() => void>();
   private snapshot: ExperimentalSidebarFooterRuntimeSnapshot = {
-    badge: null,
     command: null,
   };
 
@@ -163,27 +120,13 @@ class SidebarFooterItemRuntime implements ExperimentalSidebarFooterItemRuntime {
     this.emit();
   };
 
-  createItemController(): ExperimentalSidebarFooterItemController {
-    return Object.freeze({ setBadge: this.setBadge });
-  }
-
   createDisclosureController(): ExperimentalSidebarFooterDisclosureController {
     return Object.freeze({
-      setBadge: this.setBadge,
       open: () => this.request("open"),
       close: () => this.request("close"),
       toggle: () => this.request("toggle"),
     });
   }
-
-  private readonly setBadge = (
-    badge: ExperimentalSidebarFooterBadge | null,
-  ): void => {
-    const normalized = normalizeSidebarFooterBadge(badge);
-    if (sameSidebarFooterBadge(this.snapshot.badge, normalized)) return;
-    this.snapshot = { ...this.snapshot, badge: normalized };
-    this.emit();
-  };
 
   private request(kind: ExperimentalSidebarFooterCommandKind): void {
     sidebarFooterCommandSequence += 1;
@@ -221,17 +164,13 @@ class SidebarFooterCollector implements ExperimentalSidebarFooter {
     private readonly seenIds: Set<string>,
   ) {}
 
-  register(
-    registration: ExperimentalSidebarFooterActionRegistration,
-  ): ExperimentalSidebarFooterItemController;
+  register(registration: ExperimentalSidebarFooterActionRegistration): void;
   register(
     registration: ExperimentalSidebarFooterDisclosureRegistration,
   ): ExperimentalSidebarFooterDisclosureController;
   register(
     registration: ExperimentalSidebarFooterItemRegistration,
-  ):
-    | ExperimentalSidebarFooterItemController
-    | ExperimentalSidebarFooterDisclosureController {
+  ): void | ExperimentalSidebarFooterDisclosureController {
     const kind = "experimental_sidebarFooter.register";
     const id = requireSlotId(kind, registration?.id);
     requireUniqueId(kind, this.seenIds, id);
@@ -255,7 +194,7 @@ class SidebarFooterCollector implements ExperimentalSidebarFooter {
       };
       this.collected.push(item);
       this.allCollected.push(item);
-      return runtime.createItemController();
+      return;
     }
 
     if (registration.kind === "disclosure") {

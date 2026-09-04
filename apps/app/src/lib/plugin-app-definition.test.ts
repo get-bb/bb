@@ -200,7 +200,7 @@ describe("collectPluginAppRegistrations — experimental_threadList", () => {
 });
 
 describe("collectPluginAppRegistrations — experimental_sidebarFooter", () => {
-  it("collects actions and disclosures with live presentation controls", () => {
+  it("collects actions and disclosures with live disclosure controls", () => {
     let disclosure: ExperimentalSidebarFooterDisclosureController | null = null;
     const onActivate = vi.fn();
     const openPluginDetails = vi.fn();
@@ -268,19 +268,9 @@ describe("collectPluginAppRegistrations — experimental_sidebarFooter", () => {
     expect(legacyRun).toHaveBeenCalledOnce();
     expect(openPluginDetails).toHaveBeenCalledOnce();
 
-    disclosure!.setBadge({
-      kind: "dot",
-      tone: "warning",
-      label: "A limit is almost reached",
-    });
     disclosure!.open();
     const runtime = registrations.experimentalSidebarFooterItems[1]!.runtime;
     expect(runtime.getSnapshot()).toMatchObject({
-      badge: {
-        kind: "dot",
-        tone: "warning",
-        label: "A limit is almost reached",
-      },
       command: { kind: "open" },
     });
     const sequence = runtime.getSnapshot().command?.sequence;
@@ -309,10 +299,9 @@ describe("collectPluginAppRegistrations — experimental_sidebarFooter", () => {
     expect(() => collectPluginAppRegistrations(definition)).toThrow(/usage/);
   });
 
-  it("validates registrations and live badges at their boundaries", () => {
-    let disclosure: ExperimentalSidebarFooterDisclosureController | null = null;
+  it("validates registrations at their boundaries", () => {
     const definition = definePluginApp((app) => {
-      disclosure = app.experimental_sidebarFooter.register({
+      app.experimental_sidebarFooter.register({
         kind: "disclosure",
         id: "usage",
         label: "Usage",
@@ -321,14 +310,6 @@ describe("collectPluginAppRegistrations — experimental_sidebarFooter", () => {
       });
     });
     collectPluginAppRegistrations(definition);
-
-    expect(() =>
-      disclosure!.setBadge({
-        kind: "dot",
-        tone: "warning",
-        label: "",
-      }),
-    ).toThrow(/badge.label/);
 
     const staleDefinition = definePluginApp((app) => {
       app.experimental_sidebarFooter.register({

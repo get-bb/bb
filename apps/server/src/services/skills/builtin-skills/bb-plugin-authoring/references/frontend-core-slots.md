@@ -12,20 +12,14 @@ compatible ESM bundle.
 
 The host mounts scripts in registration order after the bundle loads and
 `definePluginApp` setup validates. `mount` receives
-`{ pluginId, generation, signal, experimental_setThreadRowStatus?, experimental_realtime? }`:
+`{ pluginId, generation, signal, experimental_setThreadRowStatus? }`:
 `generation` is a monotonic per-window mount attempt number, and `signal`
 aborts before cleanup starts. The optional experimental setter targets an
 explicit thread row with `{ icon, label, tone? }` or clears it with `null`.
 Use `tone: "running"` for the host's animated running treatment. The host
 scopes statuses to the calling plugin and automatically clears them when that
 frontend generation deactivates; feature-detect the setter for compatibility
-with older bb clients. The optional experimental realtime object exposes
-`getConnectionState()`, `subscribe(channel, handler)`, and
-`subscribeConnectionState(handler)` for durable app-wide work that cannot use
-React hooks. Signal subscriptions are scoped to the calling plugin, and bb
-releases every subscription when the generation aborts even if plugin cleanup
-does not. Reconcile durable state after a reconnect because signals are
-ephemeral and are not replayed.
+with older bb clients.
 
 A script may return nothing, a disposer, or a promise of either; async mount
 setup is time-boxed to 10 seconds. Keep long-running work outside the returned
@@ -226,9 +220,9 @@ target? })`. Inside the fixed-tab component,
   adds `{ kind: "action", onActivate }`; its callback receives
   `openPluginDetails()`. A disclosure adds
   `{ kind: "disclosure", component }`; bb toggles that component above the
-  row and passes it only `{ dismiss }`. The returned controller sets or clears
-  an accessible dot badge; a disclosure controller also requests `open`,
-  `close`, or `toggle`. BB keeps only one disclosure open across all plugins.
+  row and passes it only `{ dismiss }`. A disclosure registration returns a
+  controller that requests `open`, `close`, or `toggle`; an action registration
+  returns nothing. BB keeps only one disclosure open across all plugins.
   The component owns everything inside, including tabs and navigation.
   Experimental: see `docs/api_to_audit.md`.
 - `sidebarFooterAction` → compatibility API for a host-rendered footer action.

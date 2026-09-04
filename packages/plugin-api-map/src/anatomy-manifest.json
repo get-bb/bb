@@ -143,11 +143,10 @@
       "groupId": "app-shell",
       "fidelity": "state",
       "responsiveStrategy": "scale-together",
-      "requiredStates": ["action", "disclosure", "badge"],
+      "requiredStates": ["action", "disclosure"],
       "labels": {
         "action": ["Plugin action"],
-        "disclosure": ["5-hour limit", "18% left"],
-        "badge": ["Warning dot"]
+        "disclosure": ["5-hour limit", "18% left"]
       },
       "fixtureClassAnchors": [
         "rounded-md border border-border",
@@ -157,7 +156,6 @@
         {
           "path": "apps/app/src/components/plugin/PluginSidebarFooterItems.tsx",
           "anchors": [
-            "data-sidebar-footer-badge={snapshot.badge.tone}",
             "\"aria-expanded\": isActive",
             "onDisclosureCommand(itemKey, \"toggle\")",
             "<Component dismiss={onDismiss} />"
@@ -175,7 +173,7 @@
         {
           "path": "apps/app/src/components/plugin/PluginSidebarFooterItems.test.tsx",
           "anchors": [
-            "toggles a disclosure and presents its live badge accessibly",
+            "toggles and dismisses a disclosure accessibly",
             "lets the host coordinate disclosures from multiple plugins"
           ]
         }

@@ -23,14 +23,8 @@ import { getPluginConfigurationRoutePath } from "@/lib/route-paths";
 
 const SIDEBAR_FOOTER_ACTION_CLASS = cn(
   COARSE_POINTER_CHILD_ICON_BUTTON_CLASS,
-  "relative text-muted-foreground hover:text-sidebar-foreground [&>svg]:opacity-80",
+  "text-muted-foreground hover:text-sidebar-foreground [&>svg]:opacity-80",
 );
-
-const BADGE_TONE_CLASS = {
-  info: "bg-primary",
-  warning: "bg-warning",
-  critical: "bg-destructive",
-} as const;
 
 function footerItemKey(item: PluginSidebarFooterItemSlot): string {
   return `${item.pluginId}/${item.id}/${item.generation}`;
@@ -246,17 +240,12 @@ function SidebarFooterItemButton({
     item.runtime.acknowledgeCommand(command.sequence);
   }, [command, item, itemKey, onDisclosureCommand]);
 
-  const accessibleLabel =
-    snapshot.badge === null
-      ? item.label
-      : `${item.label}: ${snapshot.badge.label}`;
-
   return (
     <SidebarMenuItem className="min-w-0">
       <SidebarMenuButton
         id={footerTriggerId(item)}
         type="button"
-        aria-label={accessibleLabel}
+        aria-label={item.label}
         tooltip={{
           children: item.label,
           hidden: isTooltipSuppressed,
@@ -313,17 +302,7 @@ function SidebarFooterItemButton({
             aria-hidden="true"
           />
         )}
-        <span className="sr-only">{accessibleLabel}</span>
-        {snapshot.badge === null ? null : (
-          <span
-            aria-hidden="true"
-            data-sidebar-footer-badge={snapshot.badge.tone}
-            className={cn(
-              "absolute right-1 top-1 size-1.5 rounded-full ring-2 ring-sidebar",
-              BADGE_TONE_CLASS[snapshot.badge.tone],
-            )}
-          />
-        )}
+        <span className="sr-only">{item.label}</span>
       </SidebarMenuButton>
     </SidebarMenuItem>
   );

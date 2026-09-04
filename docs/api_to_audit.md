@@ -1158,27 +1158,6 @@ Before stabilization, audit:
   candidate rename. Nothing under `plugins/*` sets a status today, so the
   rename is free until the prefix drops.
 
-## `PluginContentScriptContext.experimental_realtime`
-
-Gives an app-wide content script lifecycle-bound access to its plugin's
-realtime signals and the shared server connection state. This is the
-non-React counterpart to `useRealtime` and `useRealtimeConnectionState` for
-state that must remain current while every plugin slot is unmounted.
-
-Before stabilization, audit:
-
-- whether signal and connection subscriptions should remain one nested object
-  or become first-class content-script context methods;
-- whether handlers should receive richer metadata such as the reconnect's
-  disconnect timestamp;
-- channel validation, handler failure diagnostics, and callback ordering;
-- automatic cleanup order relative to the content script's abort listener and
-  returned disposer;
-- whether `getConnectionState()` plus a change subscription is preferable to
-  one subscription that emits the current state immediately;
-- compatibility behavior while the optional surface rolls out across 0.x
-  clients.
-
 ## `bb.providers.register` (`experimental_bridgeOptions`, `experimental_visibility`, and the `experimental_providerBridge` artifact export)
 
 **Kept experimental (2026-08-22).** `bb.providers.register` and the declaration's target-state fields are stable. `experimental_bridgeOptions` and `experimental_visibility` have one consumer (the ACP plugin); docs/provider-plugin-api.md §1 lists both under "Still experimental on the declaration" — decide whether static options survive beside `deriveProviderOptions` before naming them. The `experimental_providerBridge` export name is an artifact contract read by the daemon bootstrap from every installed plugin; renaming it needs a dual-name acceptance window plus a protocol bump, so it stabilizes with the bridge kit once that deprecation policy exists.
@@ -1882,13 +1861,13 @@ Before stabilization, audit:
 **What it does.** Registers host-rendered icon items in the app sidebar footer.
 An item is either an `action`, whose `onActivate` callback runs when selected,
 or a `disclosure`, whose React component is revealed above the footer row. The
-host owns button chrome, accessibility, badges, responsive containment, and a
+host owns button chrome, accessibility, responsive containment, and a
 single active disclosure across all plugins. A disclosure component owns
 everything inside its boundary and receives only `dismiss()`.
 
-`register` returns a controller. Every item can set or clear an accessible dot
-badge; disclosures can also request `open`, `close`, or `toggle`. Those requests
-go through the host's shared active-item coordinator, so opening one plugin's
+Registering an action returns nothing. Registering a disclosure returns a
+controller that can request `open`, `close`, or `toggle`. Those requests go
+through the host's shared active-item coordinator, so opening one plugin's
 disclosure replaces another and a stale scoped `close` cannot dismiss a sibling.
 The existing `app.slots.sidebarFooterAction` remains a compatibility surface and
 renders in the same footer row.
@@ -1898,24 +1877,21 @@ renders in the same footer row.
 1. **Naming and shape.** Confirm `sidebarFooter`, `action`, and `disclosure` are
    the durable concepts, and whether the managed namespace should keep one
    discriminated `register` method or split registrations by behavior.
-2. **Imperative controller.** Validate real plugins can update badges and issue
-   open requests without leaking subscriptions across frontend generations.
-   Decide whether a declarative external-store contract would be safer.
+2. **Imperative controller.** Validate real plugins can issue open requests
+   without leaking subscriptions across frontend generations. Decide whether
+   a declarative external-store contract would be safer.
 3. **Programmatic opening.** Confirm `open()` should remain available. The
-   intended policy is direct user-driven flows; background changes should set a
-   badge rather than surprise-open sidebar content.
+   intended policy is direct user-driven flows; background changes should not
+   surprise-open sidebar content.
 4. **Disclosure lifecycle.** Components currently mount only while open and
    remount after dismissal. Confirm plugins do not require retained hidden state,
    or add an explicit retention policy before stabilizing.
-5. **Badge vocabulary.** Exercise `info`, `warning`, and `critical` dots with
-   custom palettes and assistive technology. Decide whether counts or a neutral
-   status tone are needed before expanding the union.
-6. **Footer capacity.** Establish overflow behavior when several plugins
+5. **Footer capacity.** Establish overflow behavior when several plugins
    register items, including compact viewports and icon-collapsed sidebars.
-7. **Compatibility.** Migrate representative users of
+6. **Compatibility.** Migrate representative users of
    `sidebarFooterAction`, then decide whether stabilization replaces and
    deprecates that method or keeps action registration in both surfaces.
-8. **Focus and dismissal.** Validate icon toggling, Escape, focus return,
+7. **Focus and dismissal.** Validate icon toggling, Escape, focus return,
    disclosure replacement, plugin reload, crash isolation, and removal while
    open across desktop and compact sidebar layouts.
 

@@ -225,10 +225,9 @@ describe("PluginSidebarFooterItems", () => {
     );
   });
 
-  it("toggles a disclosure and presents its live badge accessibly", () => {
-    let controller: ExperimentalSidebarFooterDisclosureController | null = null;
+  it("toggles and dismisses a disclosure accessibly", () => {
     const definition = definePluginApp((app) => {
-      controller = app.experimental_sidebarFooter.register({
+      app.experimental_sidebarFooter.register({
         kind: "disclosure",
         id: "usage",
         label: "Provider usage",
@@ -237,11 +236,6 @@ describe("PluginSidebarFooterItems", () => {
       });
     });
     const registrations = collectPluginAppRegistrations(definition);
-    controller!.setBadge({
-      kind: "dot",
-      tone: "warning",
-      label: "A provider is approaching its limit",
-    });
     setPluginLogoUrls(
       new Map([
         [
@@ -261,13 +255,8 @@ describe("PluginSidebarFooterItems", () => {
 
     renderWithProviders(<FooterHarness />);
 
-    const trigger = screen.getByRole("button", {
-      name: "Provider usage: A provider is approaching its limit",
-    });
+    const trigger = screen.getByRole("button", { name: "Provider usage" });
     expect(trigger.getAttribute("aria-expanded")).toBe("false");
-    expect(
-      document.querySelector('[data-sidebar-footer-badge="warning"]'),
-    ).not.toBeNull();
     expect(document.querySelector('[data-icon="ChartColumn"]')).not.toBeNull();
     expect(document.querySelector('[data-icon="Beaker"]')).toBeNull();
 

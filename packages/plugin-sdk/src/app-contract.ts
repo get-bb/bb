@@ -705,14 +705,6 @@ export interface PluginSidebarFooterActionRegistration {
   run(context: PluginSidebarFooterActionContext): void | Promise<void>;
 }
 
-/** A host-rendered dot attached to an experimental sidebar-footer item. */
-export interface ExperimentalSidebarFooterBadge {
-  kind: "dot";
-  tone: "info" | "warning" | "critical";
-  /** Accessible explanation appended to the footer item's label. */
-  label: string;
-}
-
 /** Context handed to an experimental sidebar-footer action. */
 export interface ExperimentalSidebarFooterActionContext {
   /** Navigate to this plugin's detail page in Tools. */
@@ -748,14 +740,8 @@ export type ExperimentalSidebarFooterItemRegistration =
   | ExperimentalSidebarFooterActionRegistration
   | ExperimentalSidebarFooterDisclosureRegistration;
 
-/** Live presentation controls shared by every experimental sidebar-footer item. */
-export interface ExperimentalSidebarFooterItemController {
-  /** Set or clear the item's host-rendered badge. */
-  setBadge(badge: ExperimentalSidebarFooterBadge | null): void;
-}
-
 /** Live controls for an experimental sidebar-footer disclosure. */
-export interface ExperimentalSidebarFooterDisclosureController extends ExperimentalSidebarFooterItemController {
+export interface ExperimentalSidebarFooterDisclosureController {
   /** Request that the host open this disclosure, replacing any open sibling. */
   open(): void;
   /** Close this disclosure if it is currently open. */
@@ -766,9 +752,7 @@ export interface ExperimentalSidebarFooterDisclosureController extends Experimen
 
 /** Managed registration surface for items in the app sidebar footer. */
 export interface ExperimentalSidebarFooter {
-  register(
-    registration: ExperimentalSidebarFooterActionRegistration,
-  ): ExperimentalSidebarFooterItemController;
+  register(registration: ExperimentalSidebarFooterActionRegistration): void;
   register(
     registration: ExperimentalSidebarFooterDisclosureRegistration,
   ): ExperimentalSidebarFooterDisclosureController;
@@ -1515,15 +1499,6 @@ export interface PluginAppComposer {
   customize(registration: ComposerCustomization): void;
 }
 
-/** App-wide counterpart to the React realtime hooks for a content script. */
-export interface ExperimentalContentScriptRealtime {
-  getConnectionState(): PluginRealtimeConnectionState;
-  subscribe(channel: string, handler: (payload: unknown) => void): () => void;
-  subscribeConnectionState(
-    handler: (state: PluginRealtimeConnectionState) => void,
-  ): () => void;
-}
-
 /** Stable lifecycle values for one content-script instance in one bb client. */
 export interface PluginContentScriptContext {
   /** The id of the plugin that owns this script. */
@@ -1547,12 +1522,6 @@ export interface PluginContentScriptContext {
     threadId: string,
     status: PluginComposerThreadRowStatus | null,
   ) => void;
-  /**
-   * Subscribe to this plugin's realtime signals and shared connection state
-   * for work that must outlive any React slot. Experimental: see
-   * docs/api_to_audit.md.
-   */
-  readonly experimental_realtime?: ExperimentalContentScriptRealtime;
 }
 
 /** Cleanup returned by a frontend content script. */
