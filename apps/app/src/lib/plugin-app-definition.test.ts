@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
-import type { ExperimentalSidebarFooterDisclosureController } from "@get-bb/plugin-sdk";
+import type {
+  ExperimentalSidebarFooterDisclosureController,
+  PluginSidebarFooterActionContext,
+} from "@get-bb/plugin-sdk";
+import { getCollectedSidebarFooterItems } from "@get-bb/plugin-sdk/internal/plugin-app-collector";
 import { loadPluginApp } from "@get-bb/plugin-sdk/testing/app";
 import {
   collectPluginAppRegistrations,
@@ -199,6 +203,10 @@ describe("collectPluginAppRegistrations — experimental_sidebarFooter", () => {
   it("collects actions and disclosures with live presentation controls", () => {
     let disclosure: ExperimentalSidebarFooterDisclosureController | null = null;
     const onActivate = vi.fn();
+    const openPluginDetails = vi.fn();
+    const legacyRun = vi.fn(
+      ({ openSettings }: PluginSidebarFooterActionContext) => openSettings(),
+    );
     const definition = definePluginApp((app) => {
       app.experimental_sidebarFooter.register({
         kind: "action",
@@ -206,6 +214,12 @@ describe("collectPluginAppRegistrations — experimental_sidebarFooter", () => {
         label: "Refresh",
         icon: "Refresh",
         onActivate,
+      });
+      app.slots.sidebarFooterAction({
+        id: "legacy",
+        title: "Legacy action",
+        icon: "Bolt",
+        run: legacyRun,
       });
       disclosure = app.experimental_sidebarFooter.register({
         kind: "disclosure",
@@ -217,6 +231,10 @@ describe("collectPluginAppRegistrations — experimental_sidebarFooter", () => {
     });
 
     const registrations = collectPluginAppRegistrations(definition);
+    const sidebarFooterItems = getCollectedSidebarFooterItems(registrations);
+    expect(sidebarFooterItems).not.toBeNull();
+    if (sidebarFooterItems === null)
+      throw new Error("expected collected sidebar footer items");
     expect(registrations.experimentalSidebarFooterItems).toHaveLength(2);
     expect(registrations.experimentalSidebarFooterItems[0]).toMatchObject({
       kind: "action",
@@ -232,6 +250,23 @@ describe("collectPluginAppRegistrations — experimental_sidebarFooter", () => {
       icon: "ChartColumn",
       component: Component,
     });
+    expect(
+      sidebarFooterItems.map(({ source, id }) => ({
+        source,
+        id,
+      })),
+    ).toEqual([
+      { source: "experimental_sidebarFooter", id: "refresh" },
+      { source: "sidebarFooterAction", id: "legacy" },
+      { source: "experimental_sidebarFooter", id: "usage" },
+    ]);
+    const compatibilityItem = sidebarFooterItems[1];
+    expect(compatibilityItem?.kind).toBe("action");
+    if (compatibilityItem?.kind !== "action")
+      throw new Error("expected action");
+    compatibilityItem.onActivate({ openPluginDetails });
+    expect(legacyRun).toHaveBeenCalledOnce();
+    expect(openPluginDetails).toHaveBeenCalledOnce();
 
     disclosure!.setBadge({
       kind: "dot",

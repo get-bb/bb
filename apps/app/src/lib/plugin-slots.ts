@@ -21,7 +21,13 @@ import type {
   PluginThreadPanelActionRegistration,
   PluginTimelineRendererRegistration,
 } from "@get-bb/plugin-sdk";
-import type { CollectedExperimentalSidebarFooterItem } from "@get-bb/plugin-sdk/internal/plugin-app-collector";
+import {
+  adaptSidebarFooterAction,
+  getCollectedSidebarFooterItems,
+  type CollectedExperimentalSidebarFooterItem,
+  type CollectedManagedSidebarFooterItem,
+  type CollectedSidebarFooterItem,
+} from "@get-bb/plugin-sdk/internal/plugin-app-collector";
 
 export interface PluginRegistrationSet {
   homepageSections: readonly PluginHomepageSectionRegistration[];
@@ -68,10 +74,8 @@ export interface PluginComposerCustomizationSlot
   extends ComposerCustomization, PluginSlotBase {}
 export interface PluginPendingInteractionSlot
   extends PluginPendingInteractionRegistration, PluginSlotBase {}
-export interface PluginSidebarFooterActionSlot
-  extends PluginSidebarFooterActionRegistration, PluginSlotBase {}
-export type ExperimentalSidebarFooterItemSlot =
-  CollectedExperimentalSidebarFooterItem & PluginSlotBase;
+export type PluginSidebarFooterItemSlot = CollectedSidebarFooterItem &
+  PluginSlotBase;
 export interface ExperimentalSidebarNavigationSlot
   extends ExperimentalSidebarNavigationRegistration, PluginSlotBase {}
 export interface PluginThreadListSlot
@@ -104,8 +108,7 @@ export interface PluginSlotSnapshot {
   newThreadPanelActions: readonly PluginNewThreadPanelActionSlot[];
   composerCustomizations: readonly PluginComposerCustomizationSlot[];
   pendingInteractions: readonly PluginPendingInteractionSlot[];
-  sidebarFooterActions: readonly PluginSidebarFooterActionSlot[];
-  experimentalSidebarFooterItems: readonly ExperimentalSidebarFooterItemSlot[];
+  sidebarFooterItems: readonly PluginSidebarFooterItemSlot[];
   experimentalSidebarNavigations: readonly ExperimentalSidebarNavigationSlot[];
   threadLists: readonly PluginThreadListSlot[];
   threadHeaderActions: readonly PluginThreadHeaderActionSlot[];
@@ -128,8 +131,7 @@ export const EMPTY_PLUGIN_SLOT_SNAPSHOT: PluginSlotSnapshot = {
   newThreadPanelActions: [],
   composerCustomizations: [],
   pendingInteractions: [],
-  sidebarFooterActions: [],
-  experimentalSidebarFooterItems: [],
+  sidebarFooterItems: [],
   experimentalSidebarNavigations: [],
   threadLists: [],
   threadHeaderActions: [],
@@ -159,8 +161,7 @@ const SLOT_KINDS: readonly SlotKind[] = [
   "newThreadPanelActions",
   "composerCustomizations",
   "pendingInteractions",
-  "sidebarFooterActions",
-  "experimentalSidebarFooterItems",
+  "sidebarFooterItems",
   "experimentalSidebarNavigations",
   "threadLists",
   "threadHeaderActions",
@@ -180,6 +181,12 @@ type FlattenedPluginSlots = {
 
 const flattenedByPluginId = new Map<string, FlattenedPluginSlots>();
 
+function adaptExperimentalSidebarFooterItem(
+  item: CollectedExperimentalSidebarFooterItem,
+): CollectedManagedSidebarFooterItem {
+  return { ...item, source: "experimental_sidebarFooter" };
+}
+
 function flattenRegistrations(
   pluginId: string,
   generation: number,
@@ -193,6 +200,12 @@ function flattenRegistrations(
       pluginId,
       generation,
     }));
+  const sidebarFooterItems = getCollectedSidebarFooterItems(set) ?? [
+    ...set.sidebarFooterActions.map(adaptSidebarFooterAction),
+    ...(set.experimentalSidebarFooterItems ?? []).map(
+      adaptExperimentalSidebarFooterItem,
+    ),
+  ];
   return {
     homepageSections: stamp(set.homepageSections),
     settingsSections: stamp(set.settingsSections),
@@ -202,11 +215,7 @@ function flattenRegistrations(
     newThreadPanelActions: stamp(set.newThreadPanelActions),
     composerCustomizations: stamp(set.composerCustomizations),
     pendingInteractions: stamp(set.pendingInteractions),
-    sidebarFooterActions: stamp(set.sidebarFooterActions),
-    experimentalSidebarFooterItems:
-      stamp<CollectedExperimentalSidebarFooterItem>(
-        set.experimentalSidebarFooterItems,
-      ),
+    sidebarFooterItems: stamp<CollectedSidebarFooterItem>(sidebarFooterItems),
     experimentalSidebarNavigations: stamp(set.experimentalSidebarNavigations),
     threadLists: stamp(set.threadLists),
     threadHeaderActions: stamp(set.threadHeaderActions),

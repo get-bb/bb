@@ -166,6 +166,7 @@
         {
           "path": "packages/plugin-sdk/src/internal/plugin-app-collector.ts",
           "anchors": [
+            "adaptSidebarFooterAction",
             "experimental_sidebarFooter.register",
             "registration.kind === \"action\"",
             "registration.kind === \"disclosure\""

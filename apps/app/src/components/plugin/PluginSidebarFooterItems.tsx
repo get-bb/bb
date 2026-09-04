@@ -17,8 +17,7 @@ import { PluginIcon, pluginIconName } from "@/components/plugin/PluginIcon";
 import { PluginSlotMount } from "@/components/plugin/PluginSlotMount";
 import {
   usePluginSlots,
-  type ExperimentalSidebarFooterItemSlot,
-  type PluginSidebarFooterActionSlot,
+  type PluginSidebarFooterItemSlot,
 } from "@/lib/plugin-slots";
 import { getPluginConfigurationRoutePath } from "@/lib/route-paths";
 
@@ -33,26 +32,23 @@ const BADGE_TONE_CLASS = {
   critical: "bg-destructive",
 } as const;
 
-function footerItemKey(item: ExperimentalSidebarFooterItemSlot): string {
+function footerItemKey(item: PluginSidebarFooterItemSlot): string {
   return `${item.pluginId}/${item.id}/${item.generation}`;
 }
 
-function footerDisclosureId(item: ExperimentalSidebarFooterItemSlot): string {
+function footerDisclosureId(item: PluginSidebarFooterItemSlot): string {
   return `plugin-sidebar-footer-disclosure-${item.pluginId}-${item.id}-${item.generation}`;
 }
 
-function footerTriggerId(item: ExperimentalSidebarFooterItemSlot): string {
+function footerTriggerId(item: PluginSidebarFooterItemSlot): string {
   return `plugin-sidebar-footer-trigger-${item.pluginId}-${item.id}-${item.generation}`;
 }
 
 export function usePluginSidebarFooterDisclosure() {
-  const { experimentalSidebarFooterItems } = usePluginSlots();
+  const { sidebarFooterItems } = usePluginSlots();
   const disclosures = useMemo(
-    () =>
-      experimentalSidebarFooterItems.filter(
-        (item) => item.kind === "disclosure",
-      ),
-    [experimentalSidebarFooterItems],
+    () => sidebarFooterItems.filter((item) => item.kind === "disclosure"),
+    [sidebarFooterItems],
   );
   const [activeKey, setActiveKey] = useState<string | null>(null);
   const [suppressedTooltipKey, setSuppressedTooltipKey] = useState<
@@ -139,7 +135,7 @@ export function PluginSidebarFooterDisclosure({
   item,
   onDismiss,
 }: {
-  item: ExperimentalSidebarFooterItemSlot | null;
+  item: PluginSidebarFooterItemSlot | null;
   onDismiss: () => void;
 }) {
   const contentRef = useRef<HTMLDivElement | null>(null);
@@ -197,25 +193,12 @@ export function PluginSidebarFooterItems({
   ) => void;
   onNavigate?: () => void;
 }) {
-  const { sidebarFooterActions, experimentalSidebarFooterItems } =
-    usePluginSlots();
-  if (
-    sidebarFooterActions.length === 0 &&
-    experimentalSidebarFooterItems.length === 0
-  ) {
-    return null;
-  }
+  const { sidebarFooterItems } = usePluginSlots();
+  if (sidebarFooterItems.length === 0) return null;
   return (
     <>
-      {sidebarFooterActions.map((action) => (
-        <LegacyFooterActionButton
-          key={`${action.pluginId}/${action.id}/${action.generation}`}
-          action={action}
-          onNavigate={onNavigate}
-        />
-      ))}
-      {experimentalSidebarFooterItems.map((item) => (
-        <ExperimentalFooterItemButton
+      {sidebarFooterItems.map((item) => (
+        <SidebarFooterItemButton
           key={footerItemKey(item)}
           item={item}
           isActive={footerItemKey(item) === activeDisclosureKey}
@@ -229,47 +212,7 @@ export function PluginSidebarFooterItems({
   );
 }
 
-function LegacyFooterActionButton({
-  action,
-  onNavigate,
-}: {
-  action: PluginSidebarFooterActionSlot;
-  onNavigate?: () => void;
-}) {
-  const navigate = useNavigate();
-  return (
-    <SidebarMenuItem className="min-w-0">
-      <SidebarMenuButton
-        className={SIDEBAR_FOOTER_ACTION_CLASS}
-        tooltip={{ children: action.title, hidden: false, side: "top" }}
-        aria-label={action.title}
-        data-testid={`plugin-sidebar-footer-action-${action.pluginId}-${action.id}`}
-        onClick={() => {
-          onNavigate?.();
-          runContainedFooterCallback(
-            action.pluginId,
-            `sidebarFooterAction "${action.id}"`,
-            () =>
-              action.run({
-                openSettings: () => {
-                  void navigate(
-                    getPluginConfigurationRoutePath({
-                      pluginId: action.pluginId,
-                    }),
-                  );
-                },
-              }),
-          );
-        }}
-      >
-        <PluginIcon pluginId={action.pluginId} icon={action.icon} />
-        <span className="sr-only">{action.title}</span>
-      </SidebarMenuButton>
-    </SidebarMenuItem>
-  );
-}
-
-function ExperimentalFooterItemButton({
+function SidebarFooterItemButton({
   item,
   isActive,
   isTooltipSuppressed,
@@ -277,7 +220,7 @@ function ExperimentalFooterItemButton({
   onDisclosureCommand,
   onNavigate,
 }: {
-  item: ExperimentalSidebarFooterItemSlot;
+  item: PluginSidebarFooterItemSlot;
   isActive: boolean;
   isTooltipSuppressed: boolean;
   onTooltipSuppressionEnd: (itemKey: string) => void;
@@ -324,7 +267,11 @@ function ExperimentalFooterItemButton({
           isActive &&
             "bg-sidebar-accent text-sidebar-accent-foreground [&>svg]:opacity-100",
         )}
-        data-testid={`plugin-sidebar-footer-item-${item.pluginId}-${item.id}`}
+        data-testid={
+          item.source === "sidebarFooterAction"
+            ? `plugin-sidebar-footer-action-${item.pluginId}-${item.id}`
+            : `plugin-sidebar-footer-item-${item.pluginId}-${item.id}`
+        }
         onBlur={() => onTooltipSuppressionEnd(itemKey)}
         onPointerLeave={() => onTooltipSuppressionEnd(itemKey)}
         {...(item.kind === "disclosure"
@@ -341,7 +288,9 @@ function ExperimentalFooterItemButton({
           onNavigate?.();
           runContainedFooterCallback(
             item.pluginId,
-            `experimental_sidebarFooter item "${item.id}"`,
+            item.source === "sidebarFooterAction"
+              ? `sidebarFooterAction "${item.id}"`
+              : `experimental_sidebarFooter item "${item.id}"`,
             () =>
               item.onActivate({
                 openPluginDetails: () => {
@@ -355,11 +304,15 @@ function ExperimentalFooterItemButton({
           );
         }}
       >
-        <Icon
-          name={pluginIconName(item.icon)}
-          className="size-4 shrink-0"
-          aria-hidden="true"
-        />
+        {item.source === "sidebarFooterAction" ? (
+          <PluginIcon pluginId={item.pluginId} icon={item.icon} />
+        ) : (
+          <Icon
+            name={pluginIconName(item.icon)}
+            className="size-4 shrink-0"
+            aria-hidden="true"
+          />
+        )}
         <span className="sr-only">{accessibleLabel}</span>
         {snapshot.badge === null ? null : (
           <span

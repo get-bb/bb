@@ -140,6 +140,9 @@ describe("PluginSidebarFooterItems", () => {
 
     renderWithProviders(<FooterHarness />);
 
+    expect(screen.getByRole("button", { name: "Remote" }).dataset.testid).toBe(
+      "plugin-sidebar-footer-action-remote-open",
+    );
     expect(document.querySelector('[data-icon="FileText"]')).not.toBeNull();
     expect(document.querySelector('[data-icon="Smartphone"]')).toBeNull();
     expect(document.querySelector("img")).toBeNull();
