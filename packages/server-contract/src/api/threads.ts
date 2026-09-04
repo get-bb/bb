@@ -267,8 +267,8 @@ export const DEFAULT_TURN_RETRY_REASON = "Retry";
 export const retryTurnRequestSchema = z
   .object({
     /**
-     * The failed turn or manually stopped unaccepted request to re-submit. Null
-     * means the thread's own most recent retryable turn.
+     * The failed turn or manually stopped unaccepted user request to re-submit.
+     * Null means the thread's own most recent retryable turn.
      */
     turnRequestId: clientTurnRequestIdSchema.nullable().default(null),
     /**

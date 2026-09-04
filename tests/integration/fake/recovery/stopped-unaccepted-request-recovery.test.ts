@@ -24,6 +24,8 @@ import {
 
 const ORIGINAL = "[stopped-unaccepted] original request";
 const PARKED = ["parked second", "parked third"] as const;
+type ThreadEvent = Awaited<ReturnType<typeof getThreadEvents>>[number];
+type TurnRequestEvent = Extract<ThreadEvent, { type: "client/turn/requested" }>;
 const providerInputSchema = z.object({
   input: z.array(
     z.object({ type: z.string(), text: z.string().optional() }).passthrough(),
@@ -71,7 +73,7 @@ async function send(
   return sendMessageResponseSchema.parse(await response.json());
 }
 
-describe.sequential("stopped unaccepted request recovery", () => {
+describe.sequential("stopped unaccepted user request recovery", () => {
   it("retries once, then drains parked messages once in order", async () => {
     const record = await recordScriptedEchoRequests();
     try {
@@ -212,11 +214,13 @@ describe.sequential("stopped unaccepted request recovery", () => {
           );
           expect(listQueuedThreadMessages(harness.db, thread.id)).toEqual([]);
 
-          const recoveryRequests = (
-            await getThreadEvents(harness.api, thread.id)
-          )
-            .slice(beforeStop.length)
-            .filter((event) => event.type === "client/turn/requested");
+          let recoveryRequests: TurnRequestEvent[] = [];
+          await waitUntil(async () => {
+            recoveryRequests = (await getThreadEvents(harness.api, thread.id))
+              .slice(beforeStop.length)
+              .filter((event) => event.type === "client/turn/requested");
+            return recoveryRequests.length === 3;
+          });
           expect(
             recoveryRequests.map((event) => inputText(event.data.input)),
           ).toEqual([ORIGINAL, ...PARKED]);

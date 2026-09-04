@@ -38,7 +38,7 @@ import type { ProviderRegistryService } from "../providers/provider-registry.js"
 import { listQueuedThreadMessageCountsByThreadIds } from "@bb/db";
 import { canThreadSpawnChild } from "./thread-parent.js";
 import { toThreadEventWithMeta } from "./timeline.js";
-import { loadStoppedUnacceptedTurn } from "./turn-retry-eligibility.js";
+import { loadStoppedUnacceptedUserTurn } from "./turn-retry-eligibility.js";
 
 type ThreadRuntimeDisplayHub = Pick<
   NotificationHub,
@@ -349,7 +349,10 @@ export function toThreadResponseFromThread(
     ...args,
     environmentHostId: resolveThreadEnvironmentHostId(deps, args.thread),
   });
-  const stoppedUnacceptedTurn = loadStoppedUnacceptedTurn(deps.db, args.thread);
+  const stoppedUnacceptedTurn = loadStoppedUnacceptedUserTurn(
+    deps.db,
+    args.thread,
+  );
   const retryableStoppedTurn =
     stoppedUnacceptedTurn !== null &&
     !hasQueuedRetryOfTurnRequest(deps.db, {

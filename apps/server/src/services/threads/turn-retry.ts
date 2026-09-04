@@ -20,7 +20,7 @@ import {
   wasFailedTurnInputAccepted,
   type FailedTurnRecord,
 } from "./turn-failed.js";
-import { loadStoppedUnacceptedTurn } from "./turn-retry-eligibility.js";
+import { loadStoppedUnacceptedUserTurn } from "./turn-retry-eligibility.js";
 
 type TurnRetryDeps = LoggedPendingInteractionWorkSessionDeps;
 
@@ -49,12 +49,12 @@ function requireRetryableTurn(
   const failed =
     thread.status === "error"
       ? loadFailedTurn(deps.db, thread.id)
-      : loadStoppedUnacceptedTurn(deps.db, thread);
+      : loadStoppedUnacceptedUserTurn(deps.db, thread);
   if (failed === null) {
     throw new ApiError(
       409,
       "no_failed_turn",
-      `Thread ${thread.id} has no failed or stopped unaccepted turn to retry: it is ${thread.status}.`,
+      `Thread ${thread.id} has no failed turn or stopped unaccepted user request to retry: it is ${thread.status}.`,
     );
   }
   if (
@@ -160,7 +160,7 @@ function retryExecution(failed: FailedTurnRecord): {
 const retriesInFlight = new Set<string>();
 
 /**
- * Re-submits a failed or manually stopped unaccepted turn.
+ * Re-submits a failed turn or manually stopped unaccepted user request.
  *
  * The retry is an ordinary dispatch attempt carrying a `retry` payload, which
  * is what makes it behave like everything else: a `sendAt` in the future queues

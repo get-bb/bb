@@ -1021,7 +1021,7 @@ export const publicApiRoutes = {
       response: jsonResponse<EditMessageResponse>(),
     }),
     /**
-     * Retry a failed turn or manually stopped unaccepted request by reference
+     * Retry a failed turn or manually stopped unaccepted user request by reference
      * as an ordinary dispatch attempt. `turnRequestId` null selects the most
      * recent retryable turn.
      */

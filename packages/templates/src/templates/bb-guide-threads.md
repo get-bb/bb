@@ -324,7 +324,7 @@ Persisted panel tabs:
 
 Lifecycle:
 
-  bb thread retry [id]                     Retry a failed or stopped unaccepted turn
+  bb thread retry [id]                     Retry a failed turn or stopped unaccepted user request
     --self                                 Target current thread
     --turn <requestId>                     Retry this turn request id specifically; fails when it is not the thread's retryable turn
     --send-at <when>                       Dispatch at an ISO 8601 timestamp or a duration from now (30s, 10m, 2h, 7d)
@@ -336,9 +336,9 @@ Lifecycle:
   never accepted is re-sent verbatim, while an accepted turn (already in the
   provider's conversation) is continued with a nudge rather than asked twice.
   With no --turn it retries the most recent failed turn, or the latest
-  unaccepted request after a manual Stop; --turn asserts which turn you mean and
-  fails when the thread has moved on, as does retrying a turn that is not
-  eligible or already has a retry queued. Without --send-at the retry is
+  unaccepted user request after a manual Stop; --turn asserts which turn you
+  mean and fails when the thread has moved on, as does retrying a turn that is
+  not eligible or already has a retry queued. Without --send-at the retry is
   attempted now, and may still queue behind a busy thread or a plugin.
 
   bb thread archive [id]                   Archive a thread (and children/hidden forks)

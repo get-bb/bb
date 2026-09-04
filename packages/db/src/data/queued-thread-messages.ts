@@ -272,7 +272,11 @@ function hasOrdinaryTurnEndWait(row: QueuedThreadMessageRow): boolean {
 export function isOrdinaryTurnEndQueuedMessage(
   row: QueuedThreadMessageRow,
 ): boolean {
-  return row.systemNotice === null && hasOrdinaryTurnEndWait(row);
+  return (
+    row.payloadKind === "inline" &&
+    row.systemNotice === null &&
+    hasOrdinaryTurnEndWait(row)
+  );
 }
 
 /**

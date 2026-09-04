@@ -9,7 +9,7 @@
   message verbatim. It re-submits the same input — it does not add a new user
   message to the timeline — and increments the attempt number (2 is the first
   retry). With no `--turn` it retries the most recent failed turn, or the latest
-  unaccepted request after a manual Stop; `--turn <requestId>` asserts which
+  unaccepted user request after a manual Stop; `--turn <requestId>` asserts which
   turn you mean and fails when the thread has moved on. It returns 409
   `no_failed_turn` when no turn is eligible, and
   `retry_already_queued` when that turn already has a retry queued. Add
@@ -19,10 +19,11 @@
   `--reason <text>` option labels the queued row. The SDK equivalent is
   `sdk.threads.retry({ threadId, turnRequestId?, sendAt?, reason? })`.
 - A provider-start watchdog warning does not fail a healthy runtime. If an
-  opening request never starts, stop it first; the latest unaccepted request is
-  then retryable whether Stop happened before or after the warning. Inputs sent
-  while it was starting stay queued and drain after the retry starts. In the
-  app, use the red **Retry request** action beneath the original message.
+  opening user request never starts, stop it first; the latest unaccepted user
+  request is then retryable whether Stop happened before or after the warning.
+  Inputs sent while it was starting stay queued and drain after the retry
+  starts. In the app, use the red **Retry request** action beneath the original
+  message.
 - The Provider retry plugin is enabled on fresh installations. When a turn fails
   on a structured Codex or Claude Code subscription-window limit that reports a
   reset, it queues that turn to be re-sent after the window opens, re-sending

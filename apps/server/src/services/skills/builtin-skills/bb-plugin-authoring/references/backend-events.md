@@ -58,10 +58,10 @@ bb.events.on("turn.failed", async (event) => {
 });
 ```
 
-`threads.retry` re-submits a failed turn, or the latest unaccepted request after
-a manual Stop: the user's message never re-enters the timeline, and what the
-provider is sent follows `inputAccepted` — an input the provider never took is
-re-sent verbatim, while an accepted turn (already in the provider's
+`threads.retry` re-submits a failed turn, or the latest unaccepted user request
+after a manual Stop: the user's message never re-enters the timeline, and what
+the provider is sent follows `inputAccepted` — an input the provider never took
+is re-sent verbatim, while an accepted turn (already in the provider's
 conversation) is continued with a nudge rather than asked twice.
 The new attempt carries a retry marker so the next failure's `attemptNumber` is
 right. A future `sendAt`

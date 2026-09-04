@@ -75,7 +75,7 @@ function nextSequence(harness: TestAppHarness, threadId: string): number {
   return getLatestThreadSequence(harness.db, { threadId }) + 1;
 }
 
-describe("retrying a manually stopped unaccepted request", () => {
+describe("retrying a manually stopped unaccepted user request", () => {
   it.each([false, true])(
     "allows retry with watchdog event: %s",
     async (withWatchdog) => {
@@ -120,6 +120,40 @@ describe("retrying a manually stopped unaccepted request", () => {
       });
     });
   });
+
+  it.each(["agent", "system"] as const)(
+    "does not offer the user-message retry action when initiator is %s",
+    async (initiator) => {
+      await withTestHarness(async (harness) => {
+        const { environment, request, thread } = seedPendingStart(harness);
+        const requestId = encodeClientTurnRequestIdNumber({ value: 99 });
+        seedEvent(harness.deps, {
+          environmentId: environment.id,
+          threadId: thread.id,
+          providerThreadId: request.providerThreadId,
+          sequence: nextSequence(harness, thread.id),
+          type: "client/turn/requested",
+          scope: { kind: "thread" },
+          data: {
+            ...JSON.parse(request.data),
+            requestId,
+            initiator,
+            senderThreadId: initiator === "agent" ? "thr_parent" : null,
+          },
+        });
+        stop(harness, thread.id);
+
+        expect(
+          toThreadResponseFromThread(harness.deps, {
+            thread: requireThread(harness, thread.id),
+          }).retryableStoppedTurnRequestId,
+        ).toBeNull();
+        await expect(
+          retry(harness, requestId, thread.id),
+        ).rejects.toMatchObject({ body: { code: "no_failed_turn" } });
+      });
+    },
+  );
 
   it.each(["accepted", "started", "rejected", "completed"] as const)(
     "refuses a request the provider %s",

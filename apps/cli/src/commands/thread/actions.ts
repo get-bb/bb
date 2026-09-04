@@ -487,7 +487,9 @@ export function registerActionsCommands(
 
   parent
     .command("retry [id]")
-    .description("Retry a failed or stopped unaccepted turn on a thread")
+    .description(
+      "Retry a failed turn or stopped unaccepted user request on a thread",
+    )
     .option("--self", "Target the current thread (from BB_THREAD_ID)")
     .option(
       "--turn <requestId>",

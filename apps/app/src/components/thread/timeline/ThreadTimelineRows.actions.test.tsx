@@ -303,6 +303,61 @@ describe("ThreadTimelineRows actions", () => {
     expect(onRetryMessage).toHaveBeenCalledTimes(1);
   });
 
+  it("does not rerender unrelated messages when retry pending changes", () => {
+    const rolesRead = vi.fn();
+    const rows = [
+      conversationRow({
+        id: "retryable_request",
+        role: "user",
+        text: "Build the sidebar",
+        turnRequest: {
+          isGrouped: false,
+          kind: "message",
+          status: "pending",
+        },
+      }),
+      conversationRow({
+        id: "unrelated_answer",
+        role: "assistant",
+        text: "Earlier answer",
+      }),
+    ];
+    const consumerAction = {
+      id: "observe-renders",
+      pluginId: null,
+      icon: null,
+      label: "Observe renders",
+      get roles(): readonly ("user" | "assistant")[] | undefined {
+        rolesRead();
+        return undefined;
+      },
+      run: vi.fn(),
+    };
+    const onRetryMessage = vi.fn();
+    const consumerMessageActions = [consumerAction];
+    const timeline = (retryMessagePending: boolean) => (
+      <ThreadTimelineRows
+        timelineRows={rows}
+        consumerMessageActions={consumerMessageActions}
+        onRetryMessage={onRetryMessage}
+        retryMessagePending={retryMessagePending}
+        threadRuntimeDisplayStatus="idle"
+        workspaceRootPath={undefined}
+      />
+    );
+    const rendered = renderWithRouter(timeline(false));
+    const initialReads = rolesRead.mock.calls.length;
+
+    rendered.rerender(<MemoryRouter>{timeline(true)}</MemoryRouter>);
+
+    expect(rolesRead).toHaveBeenCalledTimes(initialReads);
+    expect(
+      screen
+        .getByRole("button", { name: "Retry request" })
+        .getAttribute("disabled"),
+    ).not.toBeNull();
+  });
+
   it("uses inline mobile actions only for the last assistant message", () => {
     const { container } = renderWithRouter(
       <ThreadTimelineRows

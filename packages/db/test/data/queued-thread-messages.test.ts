@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
-import { threadScope, type PromptInput } from "@bb/domain";
+import {
+  encodeClientTurnRequestIdNumber,
+  threadScope,
+  type PromptInput,
+} from "@bb/domain";
 import { noopNotifier } from "../../src/notifier.js";
 import { insertEvents } from "../../src/data/events.js";
 import {
@@ -811,7 +815,7 @@ describe("queued thread messages", () => {
     ).toEqual([thirdQueuedMessage.id]);
   });
 
-  it("pauses ordinary turn-end rows without pausing system notices", () => {
+  it("pauses ordinary turn-end rows without pausing notices or retries", () => {
     const { db, project } = setup();
     const thread = createThread(db, noopNotifier, {
       projectId: project.id,
@@ -849,6 +853,27 @@ describe("queued thread messages", () => {
         },
       },
     });
+    const retry = createQueuedThreadMessage(db, noopNotifier, {
+      threadId: thread.id,
+      content: textInput("Retry the stopped request"),
+      model: "gpt-5",
+      reasoningLevel: "medium",
+      permissionMode: "full",
+      serviceTier: "default",
+      waitingOn: { kind: "host-offline", hostName: "test-host" },
+      sendAt: null,
+      payload: {
+        kind: "retry",
+        retryOfTurnRequestId: encodeClientTurnRequestIdNumber({ value: 1 }),
+        attempt: 2,
+        reason: "Stopped before acceptance",
+      },
+      systemNotice: null,
+    });
+    clearQueuedThreadMessageWaitingOn(db, noopNotifier, {
+      id: retry.id,
+      threadId: thread.id,
+    });
     insertEvents(db, noopNotifier, [
       {
         threadId: thread.id,
@@ -876,6 +901,11 @@ describe("queued thread messages", () => {
         (row) => row.id,
       ),
     ).toEqual([notice.id]);
+    expect(
+      claimNextQueuedThreadMessageGroup(db, noopNotifier, thread.id)?.map(
+        (row) => row.id,
+      ),
+    ).toEqual([retry.id]);
     expect(
       listQueuedThreadMessages(db, thread.id).map((row) => row.id),
     ).toEqual([ordinary.id]);

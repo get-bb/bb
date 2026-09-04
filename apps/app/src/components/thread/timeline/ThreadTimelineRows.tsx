@@ -183,7 +183,6 @@ interface TimelineRendererStaticContextValue {
   onForkMessage: ThreadTimelineForkMessageHandler | undefined;
   onEditMessage: ThreadTimelineEditMessageHandler | undefined;
   onRetryMessage: (() => void) | undefined;
-  retryMessagePending: boolean;
   retryableUserMessageId: string | null;
   inlineMessageEditor: ThreadTimelineInlineMessageEditor | undefined;
   onMessageAddToChat: ThreadTimelineAddToChatHandler | undefined;
@@ -379,6 +378,7 @@ const LatestActionableAssistantMessageIdContext = createContext<string | null>(
 );
 const LatestActionableUserMessageIdContext = createContext<string | null>(null);
 const StreamingAssistantMessageIdContext = createContext<string | null>(null);
+const RetryMessagePendingContext = createContext(false);
 const EMPTY_ROW_ID_SET: ReadonlySet<string> = new Set<string>();
 const TimelineSearchExpansionContext =
   createContext<ReadonlySet<string>>(EMPTY_ROW_ID_SET);
@@ -926,6 +926,14 @@ function InlineMessageEditorHost({
   );
 }
 
+function RetryMessagePendingContent({
+  children,
+}: {
+  children: (pending: boolean) => ReactNode;
+}) {
+  return children(useContext(RetryMessagePendingContext));
+}
+
 const ConversationRowContent = memo(function ConversationRowContent({
   row,
   showAssistantMessageActions,
@@ -953,7 +961,6 @@ const ConversationRowContent = memo(function ConversationRowContent({
     resolveMentionLink,
     resolveSegmentLinkHref,
     resolveUserAttachmentImageSrc,
-    retryMessagePending,
     retryableUserMessageId,
     threadId,
     workspaceRootPath,
@@ -1030,7 +1037,7 @@ const ConversationRowContent = memo(function ConversationRowContent({
       onRetryMessage !== undefined && row.id === retryableUserMessageId
         ? onRetryMessage
         : undefined;
-    return (
+    const renderMessage = (retryDisabled: boolean) => (
       <ConversationMessageContent
         attachments={row.attachments}
         originKind={originKind}
@@ -1045,7 +1052,7 @@ const ConversationRowContent = memo(function ConversationRowContent({
         projectId={projectId}
         resolveMentionLink={resolveMentionLink}
         resolveUserAttachmentImageSrc={resolveUserAttachmentImageSrc}
-        retryDisabled={retryMessagePending}
+        retryDisabled={retryDisabled}
         role="user"
         resolveSegmentLinkHref={resolveSegmentLinkHref}
         onTitleAction={onTitleAction}
@@ -1061,6 +1068,11 @@ const ConversationRowContent = memo(function ConversationRowContent({
         text={row.text}
         turnRequest={row.turnRequest}
       />
+    );
+    return onRetry === undefined ? (
+      renderMessage(false)
+    ) : (
+      <RetryMessagePendingContent>{renderMessage}</RetryMessagePendingContent>
     );
   }
   const onFork =
@@ -2178,7 +2190,6 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
       onForkMessage: props.onForkMessage,
       onEditMessage: props.onEditMessage,
       onRetryMessage: props.onRetryMessage,
-      retryMessagePending: props.retryMessagePending ?? false,
       retryableUserMessageId,
       inlineMessageEditor: props.inlineMessageEditor,
       onMessageAddToChat: props.onMessageAddToChat,
@@ -2211,7 +2222,6 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
       props.onForkMessage,
       props.onEditMessage,
       props.onRetryMessage,
-      props.retryMessagePending,
       retryableUserMessageId,
       props.inlineMessageEditor,
       props.onMessageAddToChat,
@@ -2272,27 +2282,31 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
                       value={props.timelineWindowingEnabled ?? false}
                     >
                       <AutoHeightContainer snapRevision={heightSnapRevision}>
-                        <TimelineRowsList
-                          hasOlderTimelineRows={props.hasOlderTimelineRows}
-                          isLoadingOlderTimelineRows={
-                            props.isLoadingOlderTimelineRows
-                          }
-                          navigationTargetRowId={
-                            props.timelineNavigationTargetRowId
-                          }
-                          onLoadOlderRows={props.onLoadOlderRows}
-                          rows={rows}
-                          scopeActive={scopeActive}
-                          showAssistantMessageActions={true}
-                          compactActivityIntents={false}
-                          spacing="top-level"
-                          unreadDividerAutoScroll={
-                            props.unreadDividerAutoScroll ?? true
-                          }
-                          unreadDividerPlacement={
-                            props.unreadDividerPlacement ?? null
-                          }
-                        />
+                        <RetryMessagePendingContext.Provider
+                          value={props.retryMessagePending ?? false}
+                        >
+                          <TimelineRowsList
+                            hasOlderTimelineRows={props.hasOlderTimelineRows}
+                            isLoadingOlderTimelineRows={
+                              props.isLoadingOlderTimelineRows
+                            }
+                            navigationTargetRowId={
+                              props.timelineNavigationTargetRowId
+                            }
+                            onLoadOlderRows={props.onLoadOlderRows}
+                            rows={rows}
+                            scopeActive={scopeActive}
+                            showAssistantMessageActions={true}
+                            compactActivityIntents={false}
+                            spacing="top-level"
+                            unreadDividerAutoScroll={
+                              props.unreadDividerAutoScroll ?? true
+                            }
+                            unreadDividerPlacement={
+                              props.unreadDividerPlacement ?? null
+                            }
+                          />
+                        </RetryMessagePendingContext.Provider>
                       </AutoHeightContainer>
                     </TimelineWindowingEnabledContext.Provider>
                   </TimelineWindowingMeasurementsContext.Provider>
