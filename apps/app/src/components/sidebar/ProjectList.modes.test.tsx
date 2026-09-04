@@ -40,6 +40,10 @@ vi.mock("@/hooks/queries/host-queries", () => ({
   usePrimaryHost: vi.fn(() => undefined),
 }));
 
+vi.mock("@/hooks/queries/system-queries", () => ({
+  useSystemConfig: () => ({ data: undefined }),
+}));
+
 vi.mock("@bb/client-core", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@bb/client-core")>();
   return {

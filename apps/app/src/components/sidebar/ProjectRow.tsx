@@ -54,6 +54,7 @@ import {
   COARSE_POINTER_GLYPH_BOX_CLASS,
   COARSE_POINTER_ICON_SIZE_CLASS,
   COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
+  COARSE_POINTER_ROW_HEIGHT_CLASS,
 } from "@bb/shared-ui/coarse-pointer-sizing";
 import {
   SIDEBAR_HOVER_ACTIONS_CLASS,
@@ -64,6 +65,8 @@ import {
 } from "@/components/ui/sidebar-hover-actions.js";
 import {
   getCollapsedChildActivity,
+  isBusyThread,
+  isUnreadDoneThread,
   NO_COLLAPSED_CHILD_ACTIVITY,
   type CollapsedChildActivity,
 } from "@bb/client-core";
@@ -153,6 +156,7 @@ export type ProjectThreadListState =
 export interface ProjectRowProps {
   project: ProjectResponse;
   threadListState: ProjectThreadListState;
+  progressiveDisclosureEnabled: boolean;
   selectedThreadId?: string;
   isActive: boolean;
   isCollapsed: boolean;
@@ -176,6 +180,7 @@ export interface ProjectRowProps {
 interface ProjectThreadTreeProps {
   projectId?: string;
   threadListState: ProjectThreadListState;
+  progressiveDisclosureEnabled: boolean;
   compareThreads: ThreadComparator;
   selectedThreadId?: string;
   collapsedThreadIds: Set<string>;
@@ -1833,9 +1838,26 @@ function SectionThreadTreeItems({
   );
 }
 
+const THREAD_ITEMS_ATTENTION_LIMIT = 5;
+const THREAD_ITEMS_EXPAND_SIZE = 10;
+
+function isAttentionProjectThreadItem(
+  item: ProjectThreadItem,
+  selectedThreadId: string | undefined,
+): boolean {
+  return getProjectThreadItemDescendants([item]).some(
+    (thread) =>
+      thread.hasPendingInteraction ||
+      isBusyThread(thread) ||
+      isUnreadDoneThread(thread) ||
+      thread.id === selectedThreadId,
+  );
+}
+
 export const ProjectThreadTree = memo(function ProjectThreadTree({
   projectId,
   threadListState,
+  progressiveDisclosureEnabled,
   compareThreads,
   selectedThreadId,
   collapsedThreadIds,
@@ -1850,11 +1872,31 @@ export const ProjectThreadTree = memo(function ProjectThreadTree({
       ? threadListState.threads
       : EMPTY_PROJECT_THREADS;
   const draftThreadIds = usePromptDraftInputThreadIds(projectThreads);
-  const rootItems = useMemo(
+  const [extraVisibleCount, setExtraVisibleCount] = useState(0);
+  const allRootItems = useMemo(
     () =>
       buildProjectThreadGroups(projectThreads, compareThreads, draftThreadIds),
     [compareThreads, draftThreadIds, projectThreads],
   );
+  const rootItems = useMemo(() => {
+    if (!progressiveDisclosureEnabled) {
+      return allRootItems;
+    }
+    let extraSlots = extraVisibleCount;
+    return allRootItems.filter((item, index) => {
+      if (index < THREAD_ITEMS_ATTENTION_LIMIT) return true;
+      if (isAttentionProjectThreadItem(item, selectedThreadId)) return true;
+      if (extraSlots === 0) return false;
+      extraSlots -= 1;
+      return true;
+    });
+  }, [
+    allRootItems,
+    selectedThreadId,
+    extraVisibleCount,
+    progressiveDisclosureEnabled,
+  ]);
+  const hasMoreItems = rootItems.length < allRootItems.length;
 
   if (threadListState.status === "loading") {
     return <ThreadTreeLoadingSkeleton />;
@@ -1887,19 +1929,38 @@ export const ProjectThreadTree = memo(function ProjectThreadTree({
   }
 
   return (
-    <SectionThreadTreeItems
-      items={rootItems}
-      sectionDnd={null}
-      variant={variant}
-      projectId={projectId}
-      sortableParentKey={projectId}
-      selectedThreadId={selectedThreadId}
-      collapsedThreadIds={collapsedThreadIds}
-      collapsedEnvironmentIds={collapsedEnvironmentIds}
-      onProjectSelect={onProjectSelect}
-      onToggleThreadCollapsed={onToggleThreadCollapsed}
-      onToggleEnvironmentCollapsed={onToggleEnvironmentCollapsed}
-    />
+    <>
+      <SectionThreadTreeItems
+        items={rootItems}
+        sectionDnd={null}
+        variant={variant}
+        projectId={projectId}
+        sortableParentKey={projectId}
+        selectedThreadId={selectedThreadId}
+        collapsedThreadIds={collapsedThreadIds}
+        collapsedEnvironmentIds={collapsedEnvironmentIds}
+        onProjectSelect={onProjectSelect}
+        onToggleThreadCollapsed={onToggleThreadCollapsed}
+        onToggleEnvironmentCollapsed={onToggleEnvironmentCollapsed}
+      />
+      {hasMoreItems ? (
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          onClick={() =>
+            setExtraVisibleCount((count) => count + THREAD_ITEMS_EXPAND_SIZE)
+          }
+          className={cn(
+            "mt-0.5 w-full justify-start px-2 font-normal text-subtle-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+            COARSE_POINTER_ROW_HEIGHT_CLASS,
+          )}
+        >
+          <Icon name="ChevronDown" />
+          Show more
+        </Button>
+      ) : null}
+    </>
   );
 });
 
@@ -2199,6 +2260,7 @@ export const ChronologicalSectionThreadSections = memo(
 function ProjectRowComponent({
   project,
   threadListState,
+  progressiveDisclosureEnabled,
   selectedThreadId,
   isCollapsed,
   compareThreads,
@@ -2346,6 +2408,7 @@ function ProjectRowComponent({
           <ProjectThreadTree
             projectId={project.id}
             threadListState={threadListState}
+            progressiveDisclosureEnabled={progressiveDisclosureEnabled}
             selectedThreadId={selectedThreadId}
             collapsedThreadIds={collapsedThreadIds}
             collapsedEnvironmentIds={collapsedEnvironmentIds}
@@ -2439,6 +2502,7 @@ function areProjectRowPropsEqual(
   if (
     prev.project !== next.project ||
     prev.threadListState !== next.threadListState ||
+    prev.progressiveDisclosureEnabled !== next.progressiveDisclosureEnabled ||
     prev.isActive !== next.isActive ||
     prev.isCollapsed !== next.isCollapsed ||
     prev.compareThreads !== next.compareThreads ||

@@ -114,6 +114,7 @@ function InteractiveProjectList({
     <ProjectListProjects
       status="ready"
       rows={resolvedRows}
+      progressiveDisclosureEnabled
       collapsedProjectIds={collapsedProjectIds}
       collapsedThreadIds={collapsedThreadIds}
       collapsedEnvironmentIds={collapsedEnvironmentIds}
