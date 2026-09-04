@@ -8,7 +8,9 @@ ids, validates at most 32 environment entries, resolves registration conflicts
 in plugin load order, and sends the winning values to the host. A value may be
 a literal string or a server-relative path that the host expands against its
 authenticated `BB_SERVER_URL`. Contributions override the shell environment;
-entries marked `secret` are masked in provider environment events.
+entries marked `secret` are masked in provider environment events. The resolver
+receives `ExperimentalPluginProviderEnvContext` and returns
+`ExperimentalPluginProviderEnvEntry` values.
 
 **Audit before stabilizing.**
 
@@ -21,6 +23,8 @@ entries marked `secret` are masked in provider environment events.
    server endpoints before accepting more shapes.
 5. Confirm `reason` should remain required and whether event consumers need a
    stable machine-readable purpose beside it.
+6. Decide whether the context and entry types should stabilize with the method
+   or remain experimental for a longer compatibility window.
 
 Every public plugin API member ships with an `experimental_` prefix and an
 entry here (see [AGENTS.md](../AGENTS.md), "Plugin API"). Dropping the prefix

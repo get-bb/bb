@@ -80,8 +80,8 @@ import type {
   PluginAiServiceDeclaration,
   PluginAiServices,
   PluginProviderDeclaration,
-  PluginProviderEnvContext,
-  PluginProviderEnvEntry,
+  ExperimentalPluginProviderEnvContext,
+  ExperimentalPluginProviderEnvEntry,
   PluginProviders,
   PluginRealtime,
   PluginRpc,
@@ -264,10 +264,10 @@ export interface FakePluginRegistrations {
   providerEnvResolvers: ReadonlyMap<
     string,
     (
-      context: PluginProviderEnvContext,
+      context: ExperimentalPluginProviderEnvContext,
     ) =>
-      | Promise<readonly PluginProviderEnvEntry[]>
-      | readonly PluginProviderEnvEntry[]
+      | Promise<readonly ExperimentalPluginProviderEnvEntry[]>
+      | readonly ExperimentalPluginProviderEnvEntry[]
   >;
   /** Live AI-service registrations from `experimental_aiServices.register`
    * (normalized declarations, registration order; dispose removes). */
@@ -391,8 +391,8 @@ export interface FakePluginBehaviorDrivers {
   }>;
   resolveProviderEnv(
     providerId: string,
-    context: PluginProviderEnvContext,
-  ): Promise<PluginProviderEnvEntry[]>;
+    context: ExperimentalPluginProviderEnvContext,
+  ): Promise<ExperimentalPluginProviderEnvEntry[]>;
 }
 
 /** Reload/shutdown controls, kept separate from behavior and inspection. */
@@ -1377,10 +1377,10 @@ function createFakePluginHostInternal(
   const providerEnvResolvers = new Map<
     string,
     (
-      context: PluginProviderEnvContext,
+      context: ExperimentalPluginProviderEnvContext,
     ) =>
-      | readonly PluginProviderEnvEntry[]
-      | Promise<readonly PluginProviderEnvEntry[]>
+      | readonly ExperimentalPluginProviderEnvEntry[]
+      | Promise<readonly ExperimentalPluginProviderEnvEntry[]>
   >();
   let agentConfigurationProvider:
     | ((context: PluginAgentConfigurationContext) => PluginAgentConfiguration)

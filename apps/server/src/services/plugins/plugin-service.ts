@@ -20,7 +20,7 @@ import {
 } from "@bb/domain";
 import {
   type PluginCliExecutionResult,
-  type PluginProviderEnvContext,
+  type ExperimentalPluginProviderEnvContext,
   type PluginRpcError,
   type PluginRpcValidationIssue,
   type StandardSchemaV1,
@@ -311,7 +311,7 @@ export interface PluginService {
   }): Promise<PluginResolvedAgentConfiguration>;
   resolveProviderEnv(args: {
     providerId: string;
-    context: PluginProviderEnvContext;
+    context: ExperimentalPluginProviderEnvContext;
   }): Promise<PluginResolvedProviderEnv>;
   listInstructionContributions(): PluginInstructionContribution[];
   findAgentTool(

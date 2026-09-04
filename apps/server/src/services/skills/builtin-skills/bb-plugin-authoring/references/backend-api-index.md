@@ -149,8 +149,8 @@ Read the installed declarations for exact current signatures.
 - `PluginProviderCapabilities`
 - `PluginProviderComposerAction`
 - `PluginProviderDeclaration`
-- `PluginProviderEnvContext`
-- `PluginProviderEnvEntry`
+- `ExperimentalPluginProviderEnvContext`
+- `ExperimentalPluginProviderEnvEntry`
 - `PluginProviderExtensionKindDeclaration`
 - `PluginProviderFallbackModel`
 - `PluginProviderIconRegistration`

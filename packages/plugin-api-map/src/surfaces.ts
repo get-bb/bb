@@ -392,8 +392,8 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         apiSymbols: [
           "PluginProviderDeclaration",
           "PluginProviderIconRegistration",
-          "PluginProviderEnvContext",
-          "PluginProviderEnvEntry",
+          "ExperimentalPluginProviderEnvContext",
+          "ExperimentalPluginProviderEnvEntry",
         ],
         firstParty: [
           "ACP providers",

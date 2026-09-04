@@ -25,7 +25,7 @@ import type {
   PluginProviderCapabilities,
   PluginProviderComposerAction,
   PluginProviderDeclaration,
-  PluginProviderEnvEntry,
+  ExperimentalPluginProviderEnvEntry,
   PluginProviderExtensionKindDeclaration,
   PluginProviderFallbackModel,
   PluginProviderModelCatalogScope,
@@ -129,7 +129,7 @@ const pluginProviderEnvEntriesSchema = z
 
 export function validatePluginProviderEnvEntries(
   value: unknown,
-): PluginProviderEnvEntry[] {
+): ExperimentalPluginProviderEnvEntry[] {
   const parsed = pluginProviderEnvEntriesSchema.safeParse(value);
   if (!parsed.success) {
     const issue = parsed.error.issues[0];

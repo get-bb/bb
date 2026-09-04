@@ -1,6 +1,6 @@
 import type { ToolCallResponse } from "@bb/domain";
 import type { HostDaemonContributedEnvEntry } from "@bb/host-daemon-contract";
-import type { PluginProviderEnvContext } from "@get-bb/plugin-sdk";
+import type { ExperimentalPluginProviderEnvContext } from "@get-bb/plugin-sdk";
 import type {
   PluginAgentConfigurationContext,
   PluginAgentToolContext,
@@ -66,7 +66,7 @@ export function listPluginInstructionContributions(): Array<{
 
 export async function resolvePluginProviderEnv(args: {
   providerId: string;
-  context: PluginProviderEnvContext;
+  context: ExperimentalPluginProviderEnvContext;
 }): Promise<HostDaemonContributedEnvEntry[]> {
   const active = contributions;
   if (!active?.resolveProviderEnv) return [];

@@ -44,8 +44,8 @@ import type {
   PluginAiServiceDeclaration,
   PluginAiServices,
   PluginProviderDeclaration,
-  PluginProviderEnvContext,
-  PluginProviderEnvEntry,
+  ExperimentalPluginProviderEnvContext,
+  ExperimentalPluginProviderEnvEntry,
   PluginProviders,
   PluginRealtime,
   PluginRpc,
@@ -274,10 +274,10 @@ type PluginAgentConfigurationProvider = (
 ) => PluginAgentConfiguration;
 
 export type PluginProviderEnvResolver = (
-  context: PluginProviderEnvContext,
+  context: ExperimentalPluginProviderEnvContext,
 ) =>
-  | readonly PluginProviderEnvEntry[]
-  | Promise<readonly PluginProviderEnvEntry[]>;
+  | readonly ExperimentalPluginProviderEnvEntry[]
+  | Promise<readonly ExperimentalPluginProviderEnvEntry[]>;
 
 function wrapSdkForPlugin(sdk: BbSdk, pluginId: string): BbSdk {
   return {

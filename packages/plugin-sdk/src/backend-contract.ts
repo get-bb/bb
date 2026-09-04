@@ -1341,20 +1341,20 @@ export interface PluginProviders {
   experimental_contributeEnv(
     providerId: string,
     resolve: (
-      context: PluginProviderEnvContext,
+      context: ExperimentalPluginProviderEnvContext,
     ) =>
-      | readonly PluginProviderEnvEntry[]
-      | Promise<readonly PluginProviderEnvEntry[]>,
+      | readonly ExperimentalPluginProviderEnvEntry[]
+      | Promise<readonly ExperimentalPluginProviderEnvEntry[]>,
   ): void;
 }
 
-export interface PluginProviderEnvContext {
+export interface ExperimentalPluginProviderEnvContext {
   threadId: string;
   projectId: string;
   hostId: string;
 }
 
-export interface PluginProviderEnvEntry {
+export interface ExperimentalPluginProviderEnvEntry {
   name: string;
   value: string | { serverPath: string };
   reason: string;

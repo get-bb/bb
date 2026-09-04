@@ -161,7 +161,8 @@ bb.providers.experimental_contributeEnv("claude-code", async (context) => [
 ```
 
 The server calls the resolver for every matching start, resume, fork, and turn
-command with `threadId`, `projectId`, and `hostId`. Return at most 32 entries.
+command. Its `ExperimentalPluginProviderEnvContext` has `threadId`, `projectId`,
+and `hostId`; return at most 32 `ExperimentalPluginProviderEnvEntry` values.
 Names must match `[A-Z_][A-Z0-9_]*`; `reason` and `secret` are required. A
 literal `value` is forwarded as-is. `{ serverPath: "/..." }` is expanded by
 the selected host against its authenticated `BB_SERVER_URL`, which is the
