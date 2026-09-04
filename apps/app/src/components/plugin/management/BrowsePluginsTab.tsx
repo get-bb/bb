@@ -523,6 +523,7 @@ function PluginCatalogCard({
               onInstall({
                 entryId: entry.entryId,
                 marketplace: entry.marketplace,
+                pluginId: entry.pluginId,
                 publisherLabel: entry.publisherLabel,
                 displayName: entry.displayName,
                 icon: entry.icon,

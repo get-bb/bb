@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import {
@@ -220,13 +221,18 @@ describe("UpdatePluginDialog", () => {
     fireEvent.click(screen.getByRole("button", { name: "Update" }));
 
     await vi.waitFor(() => {
-      expect(getNotifications()).toEqual([
-        expect.objectContaining({
-          title: "Updating Linear failed",
-          description: "plugin source is unavailable",
-        }),
-      ]);
+      expect(getNotifications()).toHaveLength(1);
     });
+    const notification = getNotifications()[0];
+    expect(notification?.title).toBe("Plugin update failed");
+
+    render(<MemoryRouter>{notification?.description}</MemoryRouter>);
+    expect(
+      screen.getByRole("link", { name: "Linear" }).getAttribute("href"),
+    ).toBe("/extensions/plugins/linear?view=installed");
+    expect(
+      screen.getByRole("link", { name: "Linear" }).parentElement?.textContent,
+    ).toBe("Linear — plugin source is unavailable");
   });
 
   it("treats a malformed 2xx update response as an error, never success", async () => {
