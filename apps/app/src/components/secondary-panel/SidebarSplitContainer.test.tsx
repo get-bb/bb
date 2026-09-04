@@ -1241,6 +1241,26 @@ describe("SidebarSplitContainer", () => {
     ).toHaveLength(0);
   });
 
+  it("uses the canonical layout when localStorage rejects the read", () => {
+    const storageKey = sidebarSplitStorageKey(PANEL_STATE_ID);
+    const getItem = vi
+      .spyOn(Storage.prototype, "getItem")
+      .mockImplementation((key) => {
+        if (key === storageKey) {
+          throw new DOMException("blocked", "SecurityError");
+        }
+        return null;
+      });
+
+    renderContainer({
+      renderPane: ({ paneId }) => <div data-testid="only-pane">{paneId}</div>,
+      tabs: [TABS[0] as SidebarSplitTabDescriptor],
+    });
+
+    expect(screen.getByTestId("only-pane")).not.toBeNull();
+    expect(getItem).toHaveBeenCalledWith(storageKey);
+  });
+
   it("keeps a changed layout in memory when localStorage quota is exhausted", () => {
     const storageKey = sidebarSplitStorageKey(PANEL_STATE_ID);
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});

@@ -25,6 +25,7 @@ import { dimInactiveSplitsAtom } from "@/lib/split-layout/atoms";
 import { createSplitResizeSnapSession } from "@/lib/split-resize-snap";
 import { IframeDragGuardOverlay } from "@/lib/iframe-drag-guard";
 import { MACOS_APP_REGION_NO_DRAG_CLASS } from "@/lib/bb-desktop";
+import { withLocalStorage } from "@/lib/browser-storage";
 import {
   PaneContext,
   type PaneContextValue,
@@ -110,9 +111,7 @@ export function SidebarSplitContainer({
   const availableTabIds = useMemo(() => tabs.map((tab) => tab.id), [tabs]);
   const storageKey = sidebarSplitStorageKey(panelStateId);
   const [initialStorageValue] = useState<string | null>(() =>
-    typeof window === "undefined"
-      ? null
-      : window.localStorage.getItem(storageKey),
+    withLocalStorage((storage) => storage.getItem(storageKey), null),
   );
   const [state, setState] = useState<SidebarSplitState>(() => {
     const restored =
@@ -201,13 +200,17 @@ export function SidebarSplitContainer({
   }, [activeTabId, availableTabIds]);
 
   useEffect(() => {
-    pruneSidebarSplitStorage({
-      storage: window.localStorage,
-      now: Date.now(),
-    });
+    withLocalStorage(
+      (storage) =>
+        pruneSidebarSplitStorage({
+          storage,
+          now: Date.now(),
+        }),
+      undefined,
+    );
     lastPersistedValueRef.current = {
       storageKey,
-      value: window.localStorage.getItem(storageKey),
+      value: withLocalStorage((storage) => storage.getItem(storageKey), null),
     };
   }, [storageKey]);
 

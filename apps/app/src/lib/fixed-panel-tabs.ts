@@ -236,7 +236,9 @@ const FIXED_PANEL_TABS_STORAGE_PRUNE_FALLBACK_DELAY_MS = 1_500;
 
 function scheduleIdleFixedPanelTabsStoragePrune(): void {
   const run = () => {
-    pruneFixedPanelTabsStorage({ now: Date.now() });
+    try {
+      pruneFixedPanelTabsStorage({ now: Date.now() });
+    } catch {}
   };
   if (typeof window === "undefined") {
     return;
