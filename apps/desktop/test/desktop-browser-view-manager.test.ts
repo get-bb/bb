@@ -41,11 +41,6 @@ type FakeVoidWebContentsListener = () => void;
 
 type FakeWillFrameNavigateListener = (event: FakeNavigationEvent) => void;
 
-type FakeWillNavigateListener = (
-  event: FakeNavigationEvent,
-  url: string,
-) => void;
-
 type FakeWillRedirectListener = (
   event: FakeNavigationEvent,
   url: string,
@@ -141,7 +136,6 @@ interface FakeWebContentsEventMap {
   focus: FakeVoidWebContentsListener;
   "before-input-event": FakeBeforeInputListener;
   "will-frame-navigate": FakeWillFrameNavigateListener;
-  "will-navigate": FakeWillNavigateListener;
   "will-redirect": FakeWillRedirectListener;
   "did-start-loading": FakeVoidWebContentsListener;
   "did-stop-loading": FakeVoidWebContentsListener;
@@ -178,6 +172,7 @@ type FakePermissionCheckHandler = (
 ) => boolean;
 
 interface FakeWindowOpenDetails {
+  disposition: "foreground-tab" | "new-window";
   features: string;
   frameName: string;
   url: string;
@@ -199,13 +194,9 @@ interface FakeBrowserWindowOptions {
     allowRunningInsecureContent?: boolean;
     contextIsolation?: boolean;
     nodeIntegration?: boolean;
-    nodeIntegrationInSubFrames?: boolean;
-    nodeIntegrationInWorker?: boolean;
     partition?: string;
-    preload?: string;
     sandbox?: boolean;
     webSecurity?: boolean;
-    webviewTag?: boolean;
   };
 }
 
@@ -219,7 +210,6 @@ interface FakePopupWebContents {
 interface FakeWindowOpenDecision {
   action: "allow" | "deny";
   createWindow?: (options: FakeBrowserWindowOptions) => FakePopupWebContents;
-  overrideBrowserWindowOptions?: FakeBrowserWindowOptions;
 }
 
 type FakeWindowOpenHandler = (
@@ -306,7 +296,6 @@ const electronMock = vi.hoisted(() => {
       focus: [],
       "before-input-event": [],
       "will-frame-navigate": [],
-      "will-navigate": [],
       "will-redirect": [],
       "did-start-loading": [],
       "did-stop-loading": [],
@@ -493,18 +482,6 @@ const electronMock = vi.hoisted(() => {
       return event.defaultPrevented;
     }
 
-    emitWillNavigate(url: string, initiatorOrigin?: string | null): boolean {
-      const event = new FakeNavigationEventImpl({
-        initiatorOrigin,
-        isMainFrame: true,
-        url,
-      });
-      for (const listener of this.listeners["will-navigate"]) {
-        listener(event, url);
-      }
-      return event.defaultPrevented;
-    }
-
     emitWillRedirect(
       url: string,
       isMainFrame: boolean,
@@ -529,6 +506,7 @@ const electronMock = vi.hoisted(() => {
         throw new Error("Expected a window open handler to be registered.");
       }
       return this.windowOpenHandler({
+        disposition: "foreground-tab",
         features: "",
         frameName: "",
         ...details,
@@ -563,6 +541,7 @@ const electronMock = vi.hoisted(() => {
     public readonly webContents: FakePopupWebContents;
     public closeCalls = 0;
     public destroyCalls = 0;
+    public readonly loadURLCalls: string[] = [];
     public readonly titleCalls: string[] = [];
     private closedListener: (() => void) | null = null;
     private destroyed = false;
@@ -589,6 +568,11 @@ const electronMock = vi.hoisted(() => {
 
     isDestroyed(): boolean {
       return this.destroyed;
+    }
+
+    loadURL(url: string): Promise<void> {
+      this.loadURLCalls.push(url);
+      return Promise.resolve();
     }
 
     once(_eventName: "closed", listener: () => void): void {
@@ -1114,8 +1098,8 @@ describe("DesktopBrowserViewManager", () => {
 
     expect(
       view.webContents.emitWindowOpen("https://example.com/docs", {
-        features:
-          "noopener,noreferrer,attributionsrc=https%3A%2F%2Fexample.com",
+        disposition: "foreground-tab",
+        features: "noopener,noreferrer",
         frameName: "_blank",
       }),
     ).toEqual({ action: "deny" });
@@ -1129,7 +1113,7 @@ describe("DesktopBrowserViewManager", () => {
     ]);
   });
 
-  it("opens named popup flows in a hardened native window", () => {
+  it("opens popup dispositions in a hardened native window", () => {
     const manager = createDesktopBrowserViewManager({
       partition: "persist:test",
     });
@@ -1148,6 +1132,7 @@ describe("DesktopBrowserViewManager", () => {
     const decision = view.webContents.emitWindowOpen(
       "https://accounts.google.com/o/oauth2/auth",
       {
+        disposition: "new-window",
         features: "width=520,height=700",
         frameName: "oauth",
       },
@@ -1156,28 +1141,12 @@ describe("DesktopBrowserViewManager", () => {
     expect(decision.action).toBe("allow");
     expect(openTabPushesOf(hostWindow)).toEqual([]);
     expect(scopedOpenTabPushesOf(hostWindow)).toEqual([]);
-    expect(decision.overrideBrowserWindowOptions).toEqual({
-      show: true,
-      webPreferences: {
-        allowRunningInsecureContent: false,
-        contextIsolation: true,
-        javascript: true,
-        nodeIntegration: false,
-        nodeIntegrationInSubFrames: false,
-        nodeIntegrationInWorker: false,
-        partition: "persist:test",
-        sandbox: true,
-        webSecurity: true,
-        webviewTag: false,
-        zoomFactor: 1,
-      },
-    });
     if (decision.createWindow === undefined) {
       throw new Error("Expected the popup decision to create a window.");
     }
 
     const childContents = electronMock.createFakeWebContents();
-    const options: FakeBrowserWindowOptions = {
+    const popupContents = decision.createWindow({
       alwaysOnTop: true,
       frame: false,
       height: 4_000,
@@ -1189,24 +1158,20 @@ describe("DesktopBrowserViewManager", () => {
       x: 0,
       y: 0,
       webPreferences: {
-        allowRunningInsecureContent: true,
         contextIsolation: false,
         nodeIntegration: true,
         partition: "persist:untrusted",
-        preload: "/tmp/untrusted-preload.cjs",
         sandbox: false,
         webSecurity: false,
       },
-    };
-    const popupContents = decision.createWindow(options);
+    });
     const popupWindow = electronMock.fakeWindows[0];
-    expect(popupWindow).toBeDefined();
     if (popupWindow === undefined) {
       throw new Error("Expected a popup window to be created.");
     }
 
-    expect(popupWindow.options).not.toBe(options);
     expect(popupContents).toBe(childContents);
+    expect(popupWindow.loadURLCalls).toEqual([]);
     expect(popupWindow.options).toEqual({
       center: true,
       frame: true,
@@ -1218,50 +1183,11 @@ describe("DesktopBrowserViewManager", () => {
       webPreferences: {
         allowRunningInsecureContent: false,
         contextIsolation: true,
-        javascript: true,
         nodeIntegration: false,
-        nodeIntegrationInSubFrames: false,
-        nodeIntegrationInWorker: false,
         partition: "persist:test",
         sandbox: true,
         webSecurity: true,
-        webviewTag: false,
-        zoomFactor: 1,
       },
-    });
-    expect(options).toEqual({
-      alwaysOnTop: true,
-      frame: false,
-      height: 4_000,
-      show: false,
-      title: "bb sign in",
-      transparent: true,
-      width: 10,
-      webContents: childContents,
-      x: 0,
-      y: 0,
-      webPreferences: {
-        allowRunningInsecureContent: true,
-        contextIsolation: false,
-        nodeIntegration: true,
-        partition: "persist:untrusted",
-        preload: "/tmp/untrusted-preload.cjs",
-        sandbox: false,
-        webSecurity: false,
-      },
-    });
-    expect(popupWindow.options.webPreferences).toEqual({
-      allowRunningInsecureContent: false,
-      contextIsolation: true,
-      javascript: true,
-      nodeIntegration: false,
-      nodeIntegrationInSubFrames: false,
-      nodeIntegrationInWorker: false,
-      partition: "persist:test",
-      sandbox: true,
-      webSecurity: true,
-      webviewTag: false,
-      zoomFactor: 1,
     });
     expect(popupWindow.titleCalls).toEqual(["bb browser popup"]);
     childContents.emitDidNavigate("https://accounts.google.com/oauth2/auth");
@@ -1278,6 +1204,37 @@ describe("DesktopBrowserViewManager", () => {
     manager.destroyAll();
     expect(popupWindow.closeCalls).toBe(0);
     expect(popupWindow.destroyCalls).toBe(1);
+  });
+
+  it("loads the URL itself when Electron supplies no child webContents", () => {
+    const manager = createDesktopBrowserViewManager({
+      partition: "persist:test",
+    });
+    const hostWindow = new FakeHostWindow({
+      contentBounds: { width: 700, height: 450 },
+      webContentsId: 66,
+    });
+
+    attachBrowserTab({
+      manager,
+      hostWindow,
+      tabId: "browser:a",
+      url: "https://example.com/",
+    });
+    const view = requireFakeView(0);
+    const decision = view.webContents.emitWindowOpen(
+      "https://example.com/docs",
+      { disposition: "new-window" },
+    );
+
+    expect(decision.action).toBe("allow");
+    if (decision.createWindow === undefined) {
+      throw new Error("Expected the popup decision to create a window.");
+    }
+    decision.createWindow({});
+    expect(electronMock.fakeWindows[0]?.loadURLCalls).toEqual([
+      "https://example.com/docs",
+    ]);
   });
 
   it("supports blank-first OAuth navigation with secure remote URLs", () => {
@@ -1297,6 +1254,7 @@ describe("DesktopBrowserViewManager", () => {
     });
     const view = requireFakeView(0);
     const decision = view.webContents.emitWindowOpen("about:blank", {
+      disposition: "new-window",
       features: "width=520,height=700",
       frameName: "oauth",
     });
@@ -1309,15 +1267,25 @@ describe("DesktopBrowserViewManager", () => {
     decision.createWindow({ webContents: childContents });
 
     expect(
-      childContents.emitWillNavigate(
+      childContents.emitWillFrameNavigate(
         "https://accounts.google.com/o/oauth2/auth",
+        true,
       ),
     ).toBe(false);
     expect(
-      childContents.emitWillNavigate("http://accounts.google.com/oauth2/auth"),
+      childContents.emitWillFrameNavigate(
+        "http://accounts.google.com/oauth2/auth",
+        true,
+      ),
     ).toBe(true);
     expect(
-      childContents.emitWillNavigate("http://127.0.0.1:38886/callback"),
+      childContents.emitWillRedirect("http://evil.example/steal", true),
+    ).toBe(true);
+    expect(
+      childContents.emitWillFrameNavigate(
+        "http://127.0.0.1:38886/callback",
+        true,
+      ),
     ).toBe(false);
   });
 
@@ -1343,6 +1311,7 @@ describe("DesktopBrowserViewManager", () => {
       const decision = view.webContents.emitWindowOpen(
         "https://accounts.google.com/o/oauth2/auth",
         {
+          disposition: "new-window",
           features: "width=520,height=700",
           frameName: "oauth",
         },

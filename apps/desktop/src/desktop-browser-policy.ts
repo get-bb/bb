@@ -8,14 +8,6 @@ export function isAllowedBrowserUrl(url: string): boolean {
   return parsed.protocol === "http:" || parsed.protocol === "https:";
 }
 
-interface WindowOpenDecision {
-  openTabUrl: string | null;
-}
-
-export function resolveWindowOpenAction(url: string): WindowOpenDecision {
-  return { openTabUrl: isAllowedBrowserUrl(url) ? url : null };
-}
-
 interface PopupRateDecision {
   allowed: boolean;
   timestamps: number[];

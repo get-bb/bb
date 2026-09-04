@@ -8,7 +8,6 @@ import {
 import {
   evaluatePopupRate,
   isAllowedBrowserUrl,
-  resolveWindowOpenAction,
 } from "../src/desktop-browser-policy.js";
 
 describe("isAllowedBrowserUrl", () => {
@@ -24,36 +23,6 @@ describe("isAllowedBrowserUrl", () => {
     expect(isAllowedBrowserUrl("about:blank")).toBe(false);
     expect(isAllowedBrowserUrl("not a url")).toBe(false);
     expect(isAllowedBrowserUrl("")).toBe(false);
-  });
-});
-
-describe("resolveWindowOpenAction", () => {
-  it("surfaces an allowed http(s) popup URL as a new-tab request", () => {
-    expect(resolveWindowOpenAction("https://example.com")).toEqual({
-      openTabUrl: "https://example.com",
-    });
-  });
-
-  it("denies popups to disallowed schemes (no new tab)", () => {
-    expect(resolveWindowOpenAction("file:///etc/passwd")).toEqual({
-      openTabUrl: null,
-    });
-    expect(resolveWindowOpenAction("javascript:alert(1)")).toEqual({
-      openTabUrl: null,
-    });
-  });
-
-  it("surfaces loopback and LAN popups like any other http(s) URL", () => {
-    for (const url of [
-      "http://localhost:5173/",
-      "https://app.localhost/path",
-      "http://127.0.0.1:38886/",
-      "http://[::1]:5173/",
-      "http://192.168.1.1/",
-      "http://printer.local/",
-    ]) {
-      expect(resolveWindowOpenAction(url)).toEqual({ openTabUrl: url });
-    }
   });
 });
 

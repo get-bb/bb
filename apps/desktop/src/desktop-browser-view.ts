@@ -39,7 +39,6 @@ import {
 import {
   evaluatePopupRate,
   isAllowedBrowserUrl,
-  resolveWindowOpenAction,
 } from "./desktop-browser-policy.js";
 
 const POPUP_RATE_WINDOW_MS = 10_000;
@@ -72,23 +71,6 @@ function clampPopupDimension(
     return fallback;
   }
   return Math.min(max, Math.max(min, Math.round(value)));
-}
-
-function hasPopupWindowFeatures(features: string): boolean {
-  const nonPopupFeatures = new Set([
-    "attributionsrc",
-    "noopener",
-    "noreferrer",
-  ]);
-  return features
-    .split(/[,\s]+/)
-    .map((feature) => feature.split("=", 1)[0]?.trim().toLowerCase())
-    .some(
-      (feature) =>
-        feature !== undefined &&
-        feature.length > 0 &&
-        !nonPopupFeatures.has(feature),
-    );
 }
 
 function isLoopbackHostname(hostname: string): boolean {
@@ -127,17 +109,24 @@ function popupWindowTitle(url: string | null): string {
   }
 }
 
-function isPopupWebContents(value: unknown): value is WebContents {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    "id" in value &&
-    typeof value.id === "number" &&
-    "isDestroyed" in value &&
-    typeof value.isDestroyed === "function" &&
-    "on" in value &&
-    typeof value.on === "function"
-  );
+type PopupCreateWindowOptions = BrowserWindowConstructorOptions & {
+  webContents?: WebContents;
+};
+
+function guardMainFrameNavigation(
+  webContents: WebContents,
+  isAllowedUrl: (url: string) => boolean,
+): void {
+  webContents.on("will-frame-navigate", (event) => {
+    if (event.isMainFrame && !isAllowedUrl(event.url)) {
+      event.preventDefault();
+    }
+  });
+  webContents.on("will-redirect", (event, url, _isInPlace, isMainFrame) => {
+    if (isMainFrame && !isAllowedUrl(url)) {
+      event.preventDefault();
+    }
+  });
 }
 
 const BB_BROWSER_PARTITION = "persist:bb-browser";
@@ -471,60 +460,41 @@ export function createDesktopBrowserViewManager(
     );
   }
 
-  function hardenedPopupWebPreferences(
-    webPreferences: WebPreferences | undefined,
-  ): WebPreferences {
-    const inheritedPreferences = { ...webPreferences };
-    delete inheritedPreferences.preload;
-    return {
-      ...inheritedPreferences,
-      allowRunningInsecureContent: false,
-      contextIsolation: true,
-      javascript: true,
-      nodeIntegration: false,
-      nodeIntegrationInSubFrames: false,
-      nodeIntegrationInWorker: false,
-      partition,
-      sandbox: true,
-      webSecurity: true,
-      webviewTag: false,
-      zoomFactor: 1,
-    };
-  }
+  const hardenedWebPreferences: WebPreferences = {
+    partition,
+    sandbox: true,
+    contextIsolation: true,
+    nodeIntegration: false,
+    webSecurity: true,
+    allowRunningInsecureContent: false,
+  };
 
-  function createHardenedPopupWindow(
-    options: BrowserWindowConstructorOptions,
+  function createPopupWindow(
+    options: PopupCreateWindowOptions,
+    url: string,
     entry: BrowserViewEntry,
   ): WebContents {
-    const width = clampPopupDimension(
-      options.width,
-      POPUP_DEFAULT_WIDTH,
-      POPUP_MIN_WIDTH,
-      POPUP_MAX_WIDTH,
-    );
-    const height = clampPopupDimension(
-      options.height,
-      POPUP_DEFAULT_HEIGHT,
-      POPUP_MIN_HEIGHT,
-      POPUP_MAX_HEIGHT,
-    );
-    const safeOptions: BrowserWindowConstructorOptions = {
+    const popupOptions: PopupCreateWindowOptions = {
       center: true,
       frame: true,
-      height,
+      height: clampPopupDimension(
+        options.height,
+        POPUP_DEFAULT_HEIGHT,
+        POPUP_MIN_HEIGHT,
+        POPUP_MAX_HEIGHT,
+      ),
       show: true,
       transparent: false,
-      webPreferences: hardenedPopupWebPreferences(options.webPreferences),
-      width,
+      webContents: options.webContents,
+      webPreferences: hardenedWebPreferences,
+      width: clampPopupDimension(
+        options.width,
+        POPUP_DEFAULT_WIDTH,
+        POPUP_MIN_WIDTH,
+        POPUP_MAX_WIDTH,
+      ),
     };
-    const childWebContents: unknown = Reflect.get(options, "webContents");
-    if (childWebContents !== undefined) {
-      if (!isPopupWebContents(childWebContents)) {
-        throw new Error("Invalid popup webContents");
-      }
-      Reflect.set(safeOptions, "webContents", childWebContents);
-    }
-    const popupWindow = new BrowserWindow(safeOptions);
+    const popupWindow = new BrowserWindow(popupOptions);
     popupWindows.add(popupWindow);
     entry.popupWindows.add(popupWindow);
     popupWindow.once("closed", () => {
@@ -532,40 +502,24 @@ export function createDesktopBrowserViewManager(
       entry.popupWindows.delete(popupWindow);
     });
     const popupContents = popupWindow.webContents;
-    const updatePopupTitle = (url: string | null): void => {
+    const updatePopupTitle = (currentUrl: string | null): void => {
       if (!popupWindow.isDestroyed()) {
-        popupWindow.setTitle(popupWindowTitle(url));
+        popupWindow.setTitle(popupWindowTitle(currentUrl));
       }
     };
     updatePopupTitle(popupContents.getURL());
-    popupContents.on("will-frame-navigate", (event) => {
-      if (event.isMainFrame && !isAllowedPopupNavigationUrl(event.url)) {
-        event.preventDefault();
-      }
-    });
-    popupContents.on("will-navigate", (event, url) => {
-      if (!isAllowedPopupNavigationUrl(url)) {
-        event.preventDefault();
-      }
-    });
-    popupContents.on("will-redirect", (event, url, _isInPlace, isMainFrame) => {
-      if (isMainFrame && !isAllowedPopupNavigationUrl(url)) {
-        event.preventDefault();
-      }
-    });
-    popupContents.on("did-navigate", (_event, url) => {
-      updatePopupTitle(url);
-    });
-    popupContents.on("did-navigate-in-page", (_event, url, isMainFrame) => {
-      if (isMainFrame) {
-        updatePopupTitle(url);
-      }
+    guardMainFrameNavigation(popupContents, isAllowedPopupNavigationUrl);
+    popupContents.on("did-navigate", (_event, currentUrl) => {
+      updatePopupTitle(currentUrl);
     });
     popupContents.on("page-title-updated", (event) => {
       event.preventDefault();
       updatePopupTitle(popupContents.getURL());
     });
     popupContents.setWindowOpenHandler(() => ({ action: "deny" }));
+    if (options.webContents === undefined) {
+      void popupWindow.loadURL(url);
+    }
     return popupContents;
   }
 
@@ -607,43 +561,18 @@ export function createDesktopBrowserViewManager(
       });
     });
 
-    webContents.on("will-frame-navigate", (event) => {
-      if (!event.isMainFrame) {
-        return;
-      }
-      if (!isAllowedBrowserUrl(event.url)) {
-        event.preventDefault();
-      }
-    });
-    webContents.on("will-navigate", (event, url) => {
-      if (!isAllowedBrowserUrl(url)) {
-        event.preventDefault();
-      }
-    });
-    webContents.on("will-redirect", (event, url, _isInPlace, isMainFrame) => {
-      if (!isMainFrame) {
-        return;
-      }
-      if (!isAllowedBrowserUrl(url)) {
-        event.preventDefault();
-      }
-    });
+    guardMainFrameNavigation(webContents, isAllowedBrowserUrl);
 
     webContents.setWindowOpenHandler((details) => {
-      const opensNamedPopup =
-        hasPopupWindowFeatures(details.features) ||
-        (details.frameName.length > 0 && details.frameName !== "_blank");
-      const { openTabUrl } = resolveWindowOpenAction(details.url);
-      const opensAllowedNativePopup =
-        opensNamedPopup && isAllowedPopupNavigationUrl(details.url);
-      if (openTabUrl === null && !opensAllowedNativePopup) {
-        return { action: "deny" };
-      }
-      if (
-        opensAllowedNativePopup &&
+      const opensPopup = details.disposition === "new-window";
+      const allowedUrl = opensPopup
+        ? isAllowedPopupNavigationUrl(details.url)
+        : isAllowedBrowserUrl(details.url);
+      const popupCapReached =
+        opensPopup &&
         (entry.popupWindows.size >= POPUP_MAX_OPEN_PER_TAB ||
-          popupWindows.size >= POPUP_MAX_OPEN_GLOBAL)
-      ) {
+          popupWindows.size >= POPUP_MAX_OPEN_GLOBAL);
+      if (!allowedUrl || popupCapReached) {
         return { action: "deny" };
       }
       const decision = evaluatePopupRate({
@@ -656,25 +585,19 @@ export function createDesktopBrowserViewManager(
       if (!decision.allowed) {
         return { action: "deny" };
       }
-      if (opensAllowedNativePopup) {
+      if (opensPopup) {
         return {
           action: "allow",
-          createWindow: (options) => createHardenedPopupWindow(options, entry),
-          overrideBrowserWindowOptions: {
-            show: true,
-            webPreferences: hardenedPopupWebPreferences(undefined),
-          },
+          createWindow: (options) =>
+            createPopupWindow(options, details.url, entry),
         };
       }
-      if (openTabUrl === null) {
-        return { action: "deny" };
-      }
       send(hostWindow, BB_DESKTOP_BROWSER_OPEN_TAB_CHANNEL, {
-        url: openTabUrl,
+        url: details.url,
       });
       send(hostWindow, BB_DESKTOP_BROWSER_SCOPED_OPEN_TAB_CHANNEL, {
         tabId,
-        url: openTabUrl,
+        url: details.url,
       });
       return { action: "deny" };
     });
@@ -778,14 +701,7 @@ export function createDesktopBrowserViewManager(
   function createEntry(args: CreateEntryArgs): BrowserViewEntry {
     ensureHardenedSession();
     const view = new WebContentsView({
-      webPreferences: {
-        partition,
-        sandbox: true,
-        contextIsolation: true,
-        nodeIntegration: false,
-        webSecurity: true,
-        allowRunningInsecureContent: false,
-      },
+      webPreferences: hardenedWebPreferences,
     });
     const entry: BrowserViewEntry = {
       view,
