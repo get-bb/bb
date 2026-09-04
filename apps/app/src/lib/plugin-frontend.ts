@@ -34,7 +34,10 @@ import type {
 } from "@get-bb/plugin-sdk";
 import { normalizePluginThreadRowStatus } from "@get-bb/plugin-sdk/internal/composer-customization-validation";
 import { resetCrashedPluginSlots } from "@/components/plugin/PluginSlotMount";
-import { runWithPluginDomIsolationAsync } from "./foreign-dom-mutation-guard";
+import {
+  runWithPluginDomIsolation,
+  runWithPluginDomIsolationAsync,
+} from "./foreign-dom-mutation-guard";
 import { applyPluginCss, retainPluginCss } from "./plugin-css";
 import {
   collectPluginAppRegistrations,
@@ -55,6 +58,7 @@ import {
   clearPluginThreadRowStatusesByOwner,
   setPluginThreadRowStatus,
 } from "./plugin-thread-row-status";
+import { wsManager } from "./ws";
 
 interface PluginFrontendBundle {
   jsUrl: string;
@@ -468,6 +472,33 @@ async function mountWithTimeout(
 ): Promise<PluginContentScriptDisposer | null> {
   let timeoutId: ReturnType<typeof setTimeout> | undefined;
   let timedOut = false;
+  const realtimeDisposers = new Set<() => void>();
+  const disposeRealtime = (): void => {
+    for (const dispose of realtimeDisposers) dispose();
+    realtimeDisposers.clear();
+  };
+  controller.signal.addEventListener("abort", disposeRealtime, { once: true });
+  const retainRealtimeDisposer = (dispose: () => void): (() => void) => {
+    let active = true;
+    const retainedDispose = () => {
+      if (!active) return;
+      active = false;
+      realtimeDisposers.delete(retainedDispose);
+      dispose();
+    };
+    realtimeDisposers.add(retainedDispose);
+    return retainedDispose;
+  };
+  const invokeRealtimeHandler = (handler: () => void): void => {
+    if (controller.signal.aborted) return;
+    try {
+      runWithPluginDomIsolation(handler, pluginId);
+    } catch (error) {
+      deps.warn(
+        `[plugin:${pluginId}] content script "${registration.id}" realtime handler failed: ${errorMessage(error)}`,
+      );
+    }
+  };
   const mountPromise = Promise.resolve().then(() =>
     runWithPluginDomIsolationAsync(
       () =>
@@ -504,6 +535,53 @@ async function mountWithTimeout(
               normalizedStatus,
               statusOwner,
             );
+          },
+          experimental_realtime: {
+            getConnectionState: () => wsManager.getConnectionState(),
+            subscribe: (channel, handler) => {
+              if (
+                typeof channel !== "string" ||
+                typeof handler !== "function"
+              ) {
+                deps.warn(
+                  `bb plugin "${pluginId}": contentScript.experimental_realtime.subscribe requires a channel and handler`,
+                );
+                return () => {};
+              }
+              const normalizedChannel = channel.trim();
+              if (normalizedChannel.length === 0) {
+                deps.warn(
+                  `bb plugin "${pluginId}": contentScript.experimental_realtime.subscribe: "channel" must be a non-empty string`,
+                );
+                return () => {};
+              }
+              return retainRealtimeDisposer(
+                wsManager.onPluginSignal((signal) => {
+                  if (
+                    signal.pluginId !== pluginId ||
+                    signal.channel !== normalizedChannel
+                  ) {
+                    return;
+                  }
+                  invokeRealtimeHandler(() => handler(signal.payload));
+                }),
+              );
+            },
+            subscribeConnectionState: (handler) => {
+              if (typeof handler !== "function") {
+                deps.warn(
+                  `bb plugin "${pluginId}": contentScript.experimental_realtime.subscribeConnectionState requires a handler`,
+                );
+                return () => {};
+              }
+              return retainRealtimeDisposer(
+                wsManager.onConnectionStateChange(() => {
+                  invokeRealtimeHandler(() =>
+                    handler(wsManager.getConnectionState()),
+                  );
+                }),
+              );
+            },
           },
         }),
       pluginId,

@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import type { ExperimentalSidebarFooterDisclosureController } from "@get-bb/plugin-sdk";
 import { loadPluginApp } from "@get-bb/plugin-sdk/testing/app";
 import {
   collectPluginAppRegistrations,
@@ -191,6 +192,122 @@ describe("collectPluginAppRegistrations — experimental_threadList", () => {
       } as never);
     });
     expect(() => collectPluginAppRegistrations(definition)).toThrow();
+  });
+});
+
+describe("collectPluginAppRegistrations — experimental_sidebarFooter", () => {
+  it("collects actions and disclosures with live presentation controls", () => {
+    let disclosure: ExperimentalSidebarFooterDisclosureController | null = null;
+    const onActivate = vi.fn();
+    const definition = definePluginApp((app) => {
+      app.experimental_sidebarFooter.register({
+        kind: "action",
+        id: "refresh",
+        label: "Refresh",
+        icon: "Refresh",
+        onActivate,
+      });
+      disclosure = app.experimental_sidebarFooter.register({
+        kind: "disclosure",
+        id: "usage",
+        label: "Provider usage",
+        icon: "ChartColumn",
+        component: Component,
+      });
+    });
+
+    const registrations = collectPluginAppRegistrations(definition);
+    expect(registrations.experimentalSidebarFooterItems).toHaveLength(2);
+    expect(registrations.experimentalSidebarFooterItems[0]).toMatchObject({
+      kind: "action",
+      id: "refresh",
+      label: "Refresh",
+      icon: "Refresh",
+      onActivate,
+    });
+    expect(registrations.experimentalSidebarFooterItems[1]).toMatchObject({
+      kind: "disclosure",
+      id: "usage",
+      label: "Provider usage",
+      icon: "ChartColumn",
+      component: Component,
+    });
+
+    disclosure!.setBadge({
+      kind: "dot",
+      tone: "warning",
+      label: "A limit is almost reached",
+    });
+    disclosure!.open();
+    const runtime = registrations.experimentalSidebarFooterItems[1]!.runtime;
+    expect(runtime.getSnapshot()).toMatchObject({
+      badge: {
+        kind: "dot",
+        tone: "warning",
+        label: "A limit is almost reached",
+      },
+      command: { kind: "open" },
+    });
+    const sequence = runtime.getSnapshot().command?.sequence;
+    expect(sequence).toBeTypeOf("number");
+    runtime.acknowledgeCommand(sequence!);
+    expect(runtime.getSnapshot().command).toBeNull();
+  });
+
+  it("shares ids with the compatibility footer-action surface", () => {
+    const definition = definePluginApp((app) => {
+      app.slots.sidebarFooterAction({
+        id: "usage",
+        title: "Legacy usage",
+        icon: "ChartColumn",
+        run: () => {},
+      });
+      app.experimental_sidebarFooter.register({
+        kind: "disclosure",
+        id: "usage",
+        label: "Usage",
+        icon: "ChartColumn",
+        component: Component,
+      });
+    });
+
+    expect(() => collectPluginAppRegistrations(definition)).toThrow(/usage/);
+  });
+
+  it("validates registrations and live badges at their boundaries", () => {
+    let disclosure: ExperimentalSidebarFooterDisclosureController | null = null;
+    const definition = definePluginApp((app) => {
+      disclosure = app.experimental_sidebarFooter.register({
+        kind: "disclosure",
+        id: "usage",
+        label: "Usage",
+        icon: "ChartColumn",
+        component: Component,
+      });
+    });
+    collectPluginAppRegistrations(definition);
+
+    expect(() =>
+      disclosure!.setBadge({
+        kind: "dot",
+        tone: "warning",
+        label: "",
+      }),
+    ).toThrow(/badge.label/);
+
+    const staleDefinition = definePluginApp((app) => {
+      app.experimental_sidebarFooter.register({
+        kind: "disclosure",
+        id: "usage",
+        label: "Usage",
+        icon: "ChartColumn",
+        component: Component,
+        providerId: "coupled-provider",
+      } as never);
+    });
+    expect(() => collectPluginAppRegistrations(staleDefinition)).toThrow(
+      /unknown field "providerId"/,
+    );
   });
 });
 

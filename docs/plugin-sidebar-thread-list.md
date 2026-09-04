@@ -26,7 +26,7 @@ The plugin replaces the scroll area only. The host keeps the chrome, so
 every sidebar looks like bb, resizes like bb, and collapses like bb.
 
 Two reasons the host keeps the rest. The nav rows and footer are other
-plugins' surfaces — Docs, Tasks, and every `sidebarFooterAction` live there —
+plugins' surfaces — Docs, Tasks, and every sidebar footer item live there —
 and one plugin must not be able to remove another's. The drag row and resize
 handle carry desktop window behavior that is not a plugin concern.
 

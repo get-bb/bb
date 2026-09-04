@@ -77,7 +77,10 @@ import {
 import { isComposerDraftEmpty } from "../internal/composer-view.js";
 import { normalizePluginThreadRowStatus } from "../internal/composer-customization-validation.js";
 import { normalizeExperimentalFileOpenOptions } from "../internal/file-navigation-validation.js";
-import { collectPluginAppRegistrations } from "../internal/plugin-app-collector.js";
+import {
+  collectPluginAppRegistrations,
+  type CollectedExperimentalSidebarFooterItem,
+} from "../internal/plugin-app-collector.js";
 
 /**
  * `@get-bb/plugin-sdk/testing/app` — the frontend plugin test harness. Tests a
@@ -903,6 +906,7 @@ export interface CapturedPluginApp {
   composerCustomizations: ComposerCustomization[];
   pendingInteractions: PluginPendingInteractionRegistration[];
   sidebarFooterActions: PluginSidebarFooterActionRegistration[];
+  experimentalSidebarFooterItems: CollectedExperimentalSidebarFooterItem[];
   experimentalSidebarNavigations: ExperimentalSidebarNavigationRegistration[];
   threadLists: PluginThreadListRegistration[];
   threadHeaderActions: PluginThreadHeaderActionRegistration[];
@@ -949,11 +953,15 @@ export interface ContentScriptTestMountOptions {
   pluginId: string;
   /** Defaults to 1. Pass the host generation you want the plugin to observe. */
   generation?: number;
+  /** Initial content-script realtime connection state; defaults to connected. */
+  realtimeConnectionState?: PluginRealtimeConnectionState;
   /**
    * Simulate an older compatible host that predates the optional experimental
    * thread-row status API. Current-host behavior is enabled by default.
    */
   omitExperimentalThreadRowStatus?: boolean;
+  /** Simulate an older host without content-script realtime subscriptions. */
+  omitExperimentalRealtime?: boolean;
 }
 
 export interface ContentScriptThreadRowStatusCall {
@@ -972,6 +980,12 @@ export interface MountedPluginContentScripts {
   lifecycle: {
     /** Abort, then run returned cleanup functions once in reverse order. */
     dispose(): Promise<void>;
+  };
+  behavior: {
+    experimental_emitRealtime(channel: string, payload: unknown): Promise<void>;
+    experimental_setRealtimeConnectionState(
+      state: PluginRealtimeConnectionState,
+    ): Promise<void>;
   };
 }
 
@@ -992,6 +1006,12 @@ export async function mountPluginContentScripts(
   }> = [];
   const threadRowStatuses = new Map<string, PluginComposerThreadRowStatus>();
   const threadRowStatusCalls: ContentScriptThreadRowStatusCall[] = [];
+  const realtimeHandlers = new Map<string, Set<(payload: unknown) => void>>();
+  const realtimeConnectionHandlers = new Set<
+    (state: PluginRealtimeConnectionState) => void
+  >();
+  let realtimeConnectionState =
+    options.realtimeConnectionState ?? ("connected" as const);
   let disposed = false;
   const setThreadRowStatus = (threadId: unknown, status: unknown): void => {
     if (controller.signal.aborted) return;
@@ -1023,6 +1043,8 @@ export async function mountPluginContentScripts(
     if (disposed) return;
     disposed = true;
     controller.abort();
+    realtimeHandlers.clear();
+    realtimeConnectionHandlers.clear();
     for (const script of [...mounted].reverse()) {
       if (script.dispose === null) continue;
       try {
@@ -1045,6 +1067,31 @@ export async function mountPluginContentScripts(
         ...(!options.omitExperimentalThreadRowStatus
           ? { experimental_setThreadRowStatus: setThreadRowStatus }
           : {}),
+        ...(!options.omitExperimentalRealtime
+          ? {
+              experimental_realtime: {
+                getConnectionState: () => realtimeConnectionState,
+                subscribe: (
+                  channel: string,
+                  handler: (payload: unknown) => void,
+                ) => {
+                  let listeners = realtimeHandlers.get(channel);
+                  if (listeners === undefined) {
+                    listeners = new Set();
+                    realtimeHandlers.set(channel, listeners);
+                  }
+                  listeners.add(handler);
+                  return () => listeners.delete(handler);
+                },
+                subscribeConnectionState: (
+                  handler: (state: PluginRealtimeConnectionState) => void,
+                ) => {
+                  realtimeConnectionHandlers.add(handler);
+                  return () => realtimeConnectionHandlers.delete(handler);
+                },
+              },
+            }
+          : {}),
       });
       if (result !== undefined && typeof result !== "function") {
         throw new Error(
@@ -1057,6 +1104,26 @@ export async function mountPluginContentScripts(
     await dispose();
     throw error;
   }
+
+  const experimental_emitRealtime = async (
+    channel: string,
+    payload: unknown,
+  ): Promise<void> => {
+    const normalized = strictJsonRoundTrip(payload, "realtime payload");
+    const listeners = realtimeHandlers.get(channel);
+    await act(async () => {
+      for (const listener of [...(listeners ?? [])]) listener(normalized);
+    });
+  };
+  const experimental_setRealtimeConnectionState = async (
+    state: PluginRealtimeConnectionState,
+  ): Promise<void> => {
+    if (state === realtimeConnectionState) return;
+    realtimeConnectionState = state;
+    await act(async () => {
+      for (const listener of realtimeConnectionHandlers) listener(state);
+    });
+  };
 
   return {
     inspection: {
@@ -1079,6 +1146,10 @@ export async function mountPluginContentScripts(
       },
     },
     lifecycle: { dispose },
+    behavior: {
+      experimental_emitRealtime,
+      experimental_setRealtimeConnectionState,
+    },
   };
 }
 

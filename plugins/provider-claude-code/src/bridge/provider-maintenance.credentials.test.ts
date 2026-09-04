@@ -103,4 +103,22 @@ describe("Claude Code credential loading", () => {
       usage: expect.objectContaining({ status: "ok" }),
     });
   });
+
+  it("distinguishes usage-check throttling from an exhausted Claude limit", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({ ok: false, status: 429 }),
+    );
+
+    const result = await getClaudeProviderUsage();
+
+    expect(result).toEqual({
+      supported: true,
+      usage: expect.objectContaining({
+        status: "error",
+        message:
+          "Anthropic temporarily throttled this usage check. This does not mean your Claude limit is exhausted. Try again later.",
+      }),
+    });
+  });
 });

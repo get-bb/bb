@@ -115,16 +115,30 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
       },
       {
         id: "sidebar-footer",
-        title: "Sidebar footer buttons",
+        title: "Sidebar footer items",
         summary:
-          "Adds an icon button to the row at the bottom of bb's sidebar, beside the Settings button. With this, a plugin can:",
+          "Adds a host-rendered icon item to the bottom of bb's sidebar. With this, a plugin can:",
         bullets: [
-          "Supply the button's icon and its hover tooltip",
-          "Run a callback when the button is clicked",
-          "Stay reachable wherever bb's sidebar is showing",
+          "Run an action, or reveal plugin-rendered content above the footer row",
+          "Set or clear an accessible info, warning, or critical dot on the icon",
+          "Let bb coordinate one open disclosure across every enabled plugin",
+          "Keep navigation, tabs, data, and controls inside the plugin's disclosure component",
         ],
-        apiSymbols: ["PluginSidebarFooterActionRegistration"],
-        firstParty: ["Remote access"],
+        apiSymbols: [
+          "ExperimentalSidebarFooter",
+          "ExperimentalSidebarFooterItemBase",
+          "ExperimentalSidebarFooterItemRegistration",
+          "ExperimentalSidebarFooterActionRegistration",
+          "ExperimentalSidebarFooterActionContext",
+          "ExperimentalSidebarFooterDisclosureRegistration",
+          "ExperimentalSidebarFooterDisclosureProps",
+          "ExperimentalSidebarFooterBadge",
+          "ExperimentalSidebarFooterItemController",
+          "ExperimentalSidebarFooterDisclosureController",
+          "PluginSidebarFooterActionRegistration",
+        ],
+        firstParty: ["Provider usage", "Remote access"],
+        experimental: true,
       },
       {
         id: "thread-header",
@@ -262,6 +276,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         bullets: [
           "Mount once per bb window and unmount when the window reloads",
           "Add behavior that is not tied to one screen, such as a keyboard shortcut",
+          "Subscribe to the plugin's realtime signals and reconcile after the shared connection reconnects",
           "Set a [thread row status](thread-row-status) on any thread, for as long as the script is mounted",
           "Add plugin-owned elements to app pages without taking ownership of bb's built-in layout",
           "Return a cleanup function. bb calls it once on unmount, and clears any row statuses the script set",
@@ -269,6 +284,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         apiSymbols: [
           "PluginContentScriptRegistration",
           "PluginContentScriptContext",
+          "ExperimentalContentScriptRealtime",
         ],
       },
     ],

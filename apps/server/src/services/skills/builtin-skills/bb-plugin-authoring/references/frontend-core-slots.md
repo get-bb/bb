@@ -12,14 +12,20 @@ compatible ESM bundle.
 
 The host mounts scripts in registration order after the bundle loads and
 `definePluginApp` setup validates. `mount` receives
-`{ pluginId, generation, signal, experimental_setThreadRowStatus? }`:
+`{ pluginId, generation, signal, experimental_setThreadRowStatus?, experimental_realtime? }`:
 `generation` is a monotonic per-window mount attempt number, and `signal`
 aborts before cleanup starts. The optional experimental setter targets an
 explicit thread row with `{ icon, label, tone? }` or clears it with `null`.
 Use `tone: "running"` for the host's animated running treatment. The host
 scopes statuses to the calling plugin and automatically clears them when that
 frontend generation deactivates; feature-detect the setter for compatibility
-with older bb clients.
+with older bb clients. The optional experimental realtime object exposes
+`getConnectionState()`, `subscribe(channel, handler)`, and
+`subscribeConnectionState(handler)` for durable app-wide work that cannot use
+React hooks. Signal subscriptions are scoped to the calling plugin, and bb
+releases every subscription when the generation aborts even if plugin cleanup
+does not. Reconcile durable state after a reconnect because signals are
+ephemeral and are not replayed.
 
 A script may return nothing, a disposer, or a promise of either; async mount
 setup is time-boxed to 10 seconds. Keep long-running work outside the returned
@@ -215,15 +221,21 @@ target? })`. Inside the fixed-tab component,
   `submit(value)` returns the JSON value to the waiting backend invocation,
   while `cancel()` settles it without a value. Keep sensitive field values in
   component state only.
-- `sidebarFooterAction` → host-rendered icon button in the app sidebar footer
-  (next to Settings / bug report). No plugin component — the host paints
-  the chrome so icons stay consistent. Registration:
-  `{ id, title, icon, run }`. Activating it calls
-  `run({ openSettings })` — use `openSettings()` to open this plugin's
-  detail page in Tools, or do anything else (rpc, toast). Errors from `run`
-  (sync or async) are contained and logged,
-  never breaking the sidebar. `title` is the tooltip + accessible label;
-  `icon` is a BB icon-name hint (unknown names fall back to a generic bolt).
+- `experimental_sidebarFooter.register` → managed host-rendered icon items in
+  the app sidebar footer. Both variants take `{ id, label, icon }`. An action
+  adds `{ kind: "action", onActivate }`; its callback receives
+  `openPluginDetails()`. A disclosure adds
+  `{ kind: "disclosure", component }`; bb toggles that component above the
+  row and passes it only `{ dismiss }`. The returned controller sets or clears
+  an accessible dot badge; a disclosure controller also requests `open`,
+  `close`, or `toggle`. BB keeps only one disclosure open across all plugins.
+  The component owns everything inside, including tabs and navigation.
+  Experimental: see `docs/api_to_audit.md`.
+- `sidebarFooterAction` → compatibility API for a host-rendered footer action.
+  Registration remains `{ id, title, icon, run }`, and `run` still receives
+  `{ openSettings }`. New plugins should use
+  `app.experimental_sidebarFooter.register({ kind: "action", ... })` so actions
+  and disclosures share one surface.
 - `experimental_sidebarNavigation` → replaces the bounded navigation controls
   above the thread list. Registration:
   `{ id, title, description?, component }`. The component receives semantic

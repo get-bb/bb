@@ -44,6 +44,7 @@ Read the installed SDK declarations for the exact current signatures.
 - `PluginPendingInteractionView`
 - `PluginPendingInteractionProps`
 - `PluginSidebarFooterActionProps`
+- `ExperimentalSidebarFooterDisclosureProps`
 - `ExperimentalSidebarNavigationShortcut`
 - `ExperimentalSidebarNavigationAction`
 - `ExperimentalSidebarNavigationIcon`
@@ -82,6 +83,15 @@ Read the installed SDK declarations for the exact current signatures.
 - `PluginPendingInteractionRegistration`
 - `PluginSidebarFooterActionContext`
 - `PluginSidebarFooterActionRegistration`
+- `ExperimentalSidebarFooterBadge`
+- `ExperimentalSidebarFooterActionContext`
+- `ExperimentalSidebarFooterItemBase`
+- `ExperimentalSidebarFooterActionRegistration`
+- `ExperimentalSidebarFooterDisclosureRegistration`
+- `ExperimentalSidebarFooterItemRegistration`
+- `ExperimentalSidebarFooterItemController`
+- `ExperimentalSidebarFooterDisclosureController`
+- `ExperimentalSidebarFooter`
 - `ExperimentalSidebarNavigationRegistration`
 - `PluginSidebarThreadIndicator`
 - `PluginSidebarWorkspaceKind`
@@ -119,6 +129,7 @@ Read the installed SDK declarations for the exact current signatures.
 - `PluginAppSlots`
 - `PluginAppComposer`
 - `PluginContentScriptContext`
+- `ExperimentalContentScriptRealtime`
 - `PluginContentScriptDisposer`
 - `PluginContentScriptRegistration`
 - `PluginAppContentScripts`

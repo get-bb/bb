@@ -116,11 +116,12 @@ export default definePluginApp((app) => {
     id: "credentials",
     component: CredentialForm,
   });
-  app.slots.sidebarFooterAction({
+  app.experimental_sidebarFooter.register({
+    kind: "action",
     id: "remote",
-    title: "Remote access",
+    label: "Remote access",
     icon: "Smartphone",
-    run: ({ openSettings }) => openSettings(),
+    onActivate: ({ openPluginDetails }) => openPluginDetails(),
   });
   app.slots.experimental_sidebarNavigation({
     id: "compact",

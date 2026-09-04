@@ -270,6 +270,7 @@ const APP_BUILDER_FIELDS = [
   "slots",
   "composer",
   "contentScripts",
+  "experimental_sidebarFooter",
 ] as const satisfies readonly (keyof PluginAppBuilder)[];
 
 type MissingAppBuilderField = Exclude<

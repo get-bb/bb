@@ -749,6 +749,51 @@ describe("loadPluginApp", () => {
     await mounted.lifecycle.dispose();
   });
 
+  it("models content-script realtime signals, connection state, and cleanup", async () => {
+    const events: string[] = [];
+    const captured = await loadPluginApp(
+      definePluginApp((builder) => {
+        builder.contentScripts.register({
+          id: "live-cache",
+          mount({ experimental_realtime: realtime }) {
+            events.push(`initial:${realtime?.getConnectionState()}`);
+            const unsubscribeSignal = realtime?.subscribe(
+              "changed",
+              (payload) => events.push(`signal:${JSON.stringify(payload)}`),
+            );
+            const unsubscribeConnection = realtime?.subscribeConnectionState(
+              (state) => events.push(`connection:${state}`),
+            );
+            return () => {
+              unsubscribeSignal?.();
+              unsubscribeConnection?.();
+            };
+          },
+        });
+      }),
+    );
+    const mounted = await mountPluginContentScripts(captured, {
+      pluginId: "live-cache",
+      realtimeConnectionState: "reconnecting",
+    });
+
+    await mounted.behavior.experimental_emitRealtime("other", { value: 1 });
+    await mounted.behavior.experimental_emitRealtime("changed", { value: 2 });
+    await mounted.behavior.experimental_setRealtimeConnectionState("connected");
+    expect(events).toEqual([
+      "initial:reconnecting",
+      'signal:{"value":2}',
+      "connection:connected",
+    ]);
+
+    await mounted.lifecycle.dispose();
+    await mounted.behavior.experimental_emitRealtime("changed", { value: 3 });
+    await mounted.behavior.experimental_setRealtimeConnectionState(
+      "reconnecting",
+    );
+    expect(events).toHaveLength(3);
+  });
+
   it("rolls back earlier content scripts when a later mount rejects", async () => {
     const events: string[] = [];
     const captured = await loadPluginApp(

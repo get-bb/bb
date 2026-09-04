@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import type { PluginComposerThreadRowStatus } from "@get-bb/plugin-sdk";
+import type { PluginSignal } from "@bb/server-contract";
 import { QueryClient } from "@tanstack/react-query";
 import { createElement } from "react";
 import { createRoot } from "react-dom/client";
@@ -39,6 +40,7 @@ import { PLUGIN_PANEL_ROUTE_PATH } from "./route-paths";
 import { applyAppThemeCss } from "./themes";
 import { PluginPanelView } from "@/views/PluginPanelView";
 import { makeInstalledPlugin } from "@/test/fixtures/plugins";
+import { wsManager, type WebSocketConnectionState } from "./ws";
 
 function candidate(
   pluginId: string,
@@ -79,6 +81,7 @@ function contentScriptModule(
 }
 
 afterEach(() => {
+  vi.restoreAllMocks();
   vi.unstubAllGlobals();
   resetPluginThreadRowStatusesForTest();
   resetPluginSlotStoreForTest();
@@ -589,6 +592,81 @@ describe("reconcilePluginFrontends", () => {
       "v2:abort",
       "v2:dispose",
     ]);
+  });
+
+  it("scopes content-script realtime subscriptions and releases them on deactivation", async () => {
+    const state = createPluginFrontendReconcileState();
+    const deps = makeDeps([candidate("hello", "v1")]);
+    const events: string[] = [];
+    let signalHandler = (_signal: PluginSignal): void => {};
+    let connectionHandler = (): void => {};
+    let connectionState: WebSocketConnectionState = "connecting";
+    const releaseSignal = vi.fn();
+    const releaseConnection = vi.fn();
+    vi.spyOn(wsManager, "onPluginSignal").mockImplementation((handler) => {
+      signalHandler = handler;
+      return releaseSignal;
+    });
+    vi.spyOn(wsManager, "onConnectionStateChange").mockImplementation(
+      (handler) => {
+        connectionHandler = handler;
+        return releaseConnection;
+      },
+    );
+    vi.spyOn(wsManager, "getConnectionState").mockImplementation(
+      () => connectionState,
+    );
+    deps.importModule.mockResolvedValue(
+      contentScriptModule((app) => {
+        app.contentScripts.register({
+          id: "live-cache",
+          mount({ experimental_realtime: realtime }) {
+            events.push(`initial:${realtime?.getConnectionState()}`);
+            realtime?.subscribe("changed", (payload) => {
+              events.push(`signal:${JSON.stringify(payload)}`);
+            });
+            realtime?.subscribeConnectionState((nextState) => {
+              events.push(`connection:${nextState}`);
+            });
+          },
+        });
+      }),
+    );
+
+    await reconcilePluginFrontends(state, deps);
+    expect(wsManager.onPluginSignal).toHaveBeenCalledOnce();
+    expect(wsManager.onConnectionStateChange).toHaveBeenCalledOnce();
+    signalHandler({
+      type: "plugin-signal",
+      pluginId: "other",
+      channel: "changed",
+      payload: { value: 1 },
+    });
+    signalHandler({
+      type: "plugin-signal",
+      pluginId: "hello",
+      channel: "changed",
+      payload: { value: 2 },
+    });
+    connectionState = "connected";
+    connectionHandler();
+    expect(events).toEqual([
+      "initial:connecting",
+      'signal:{"value":2}',
+      "connection:connected",
+    ]);
+
+    deps.fetchCandidates.mockResolvedValue([]);
+    await reconcilePluginFrontends(state, deps);
+    expect(releaseSignal).toHaveBeenCalledOnce();
+    expect(releaseConnection).toHaveBeenCalledOnce();
+    signalHandler({
+      type: "plugin-signal",
+      pluginId: "hello",
+      channel: "changed",
+      payload: { value: 3 },
+    });
+    expect(events).toHaveLength(3);
   });
 
   it("keeps content-script thread statuses across routes and clears them on deactivation", async () => {

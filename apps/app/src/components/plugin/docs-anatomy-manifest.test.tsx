@@ -205,7 +205,7 @@ describe("docs anatomy manifest", () => {
 
     const footerSelectors: Record<string, () => Element | null> = {
       settings: () => footer!.querySelector('a[aria-label^="Settings"]'),
-      "plugin-footer-actions": () =>
+      "plugin-footer-items": () =>
         footer!.querySelector('button[aria-label="Anatomy footer action"]'),
       "bug-report": () => footer!.querySelector('[aria-label^="Report a bug"]'),
     };

@@ -1,6 +1,13 @@
 import type {
   ComposerCustomization,
   ExperimentalAppOverlayRegistration,
+  ExperimentalSidebarFooter,
+  ExperimentalSidebarFooterActionRegistration,
+  ExperimentalSidebarFooterBadge,
+  ExperimentalSidebarFooterDisclosureController,
+  ExperimentalSidebarFooterDisclosureRegistration,
+  ExperimentalSidebarFooterItemController,
+  ExperimentalSidebarFooterItemRegistration,
   PluginAppDefinition,
   PluginContentScriptRegistration,
   PluginDiffRendererRegistration,
@@ -34,6 +41,212 @@ import {
   requireTimelineRendererKind,
   requireUniqueId,
 } from "./composer-customization-validation.js";
+
+export type ExperimentalSidebarFooterCommandKind = "open" | "close" | "toggle";
+
+export interface ExperimentalSidebarFooterRuntimeSnapshot {
+  badge: ExperimentalSidebarFooterBadge | null;
+  command: {
+    sequence: number;
+    kind: ExperimentalSidebarFooterCommandKind;
+  } | null;
+}
+
+export interface ExperimentalSidebarFooterItemRuntime {
+  subscribe(listener: () => void): () => void;
+  getSnapshot(): ExperimentalSidebarFooterRuntimeSnapshot;
+  acknowledgeCommand(sequence: number): void;
+}
+
+export type CollectedExperimentalSidebarFooterItem =
+  ExperimentalSidebarFooterItemRegistration & {
+    runtime: ExperimentalSidebarFooterItemRuntime;
+  };
+
+let sidebarFooterCommandSequence = 0;
+
+const SIDEBAR_FOOTER_ACTION_KEYS: ReadonlySet<string> = new Set([
+  "id",
+  "label",
+  "icon",
+  "kind",
+  "onActivate",
+]);
+
+const SIDEBAR_FOOTER_DISCLOSURE_KEYS: ReadonlySet<string> = new Set([
+  "id",
+  "label",
+  "icon",
+  "kind",
+  "component",
+]);
+
+function normalizeSidebarFooterBadge(
+  badge: ExperimentalSidebarFooterBadge | null,
+): ExperimentalSidebarFooterBadge | null {
+  const kind = "experimental_sidebarFooter.setBadge";
+  if (badge === null) return null;
+  if (typeof badge !== "object") {
+    throw new Error(`${kind}: badge must be an object or null`);
+  }
+  if (badge.kind !== "dot") {
+    throw new Error(`${kind}: badge.kind must be "dot"`);
+  }
+  if (
+    badge.tone !== "info" &&
+    badge.tone !== "warning" &&
+    badge.tone !== "critical"
+  ) {
+    throw new Error(
+      `${kind}: badge.tone must be "info", "warning", or "critical"`,
+    );
+  }
+  return {
+    kind: "dot",
+    tone: badge.tone,
+    label: requireNonEmptyString(kind, "badge.label", badge.label),
+  };
+}
+
+function sameSidebarFooterBadge(
+  previous: ExperimentalSidebarFooterBadge | null,
+  next: ExperimentalSidebarFooterBadge | null,
+): boolean {
+  if (previous === null || next === null) return previous === next;
+  return (
+    previous.kind === next.kind &&
+    previous.tone === next.tone &&
+    previous.label === next.label
+  );
+}
+
+class SidebarFooterItemRuntime implements ExperimentalSidebarFooterItemRuntime {
+  private readonly listeners = new Set<() => void>();
+  private snapshot: ExperimentalSidebarFooterRuntimeSnapshot = {
+    badge: null,
+    command: null,
+  };
+
+  readonly subscribe = (listener: () => void): (() => void) => {
+    this.listeners.add(listener);
+    return () => this.listeners.delete(listener);
+  };
+
+  readonly getSnapshot = (): ExperimentalSidebarFooterRuntimeSnapshot =>
+    this.snapshot;
+
+  readonly acknowledgeCommand = (sequence: number): void => {
+    if (this.snapshot.command?.sequence !== sequence) return;
+    this.snapshot = { ...this.snapshot, command: null };
+    this.emit();
+  };
+
+  createItemController(): ExperimentalSidebarFooterItemController {
+    return Object.freeze({ setBadge: this.setBadge });
+  }
+
+  createDisclosureController(): ExperimentalSidebarFooterDisclosureController {
+    return Object.freeze({
+      setBadge: this.setBadge,
+      open: () => this.request("open"),
+      close: () => this.request("close"),
+      toggle: () => this.request("toggle"),
+    });
+  }
+
+  private readonly setBadge = (
+    badge: ExperimentalSidebarFooterBadge | null,
+  ): void => {
+    const normalized = normalizeSidebarFooterBadge(badge);
+    if (sameSidebarFooterBadge(this.snapshot.badge, normalized)) return;
+    this.snapshot = { ...this.snapshot, badge: normalized };
+    this.emit();
+  };
+
+  private request(kind: ExperimentalSidebarFooterCommandKind): void {
+    sidebarFooterCommandSequence += 1;
+    this.snapshot = {
+      ...this.snapshot,
+      command: { sequence: sidebarFooterCommandSequence, kind },
+    };
+    this.emit();
+  }
+
+  private emit(): void {
+    for (const listener of this.listeners) listener();
+  }
+}
+
+class SidebarFooterCollector implements ExperimentalSidebarFooter {
+  constructor(
+    private readonly collected: CollectedExperimentalSidebarFooterItem[],
+    private readonly seenIds: Set<string>,
+  ) {}
+
+  register(
+    registration: ExperimentalSidebarFooterActionRegistration,
+  ): ExperimentalSidebarFooterItemController;
+  register(
+    registration: ExperimentalSidebarFooterDisclosureRegistration,
+  ): ExperimentalSidebarFooterDisclosureController;
+  register(
+    registration: ExperimentalSidebarFooterItemRegistration,
+  ):
+    | ExperimentalSidebarFooterItemController
+    | ExperimentalSidebarFooterDisclosureController {
+    const kind = "experimental_sidebarFooter.register";
+    const id = requireSlotId(kind, registration?.id);
+    requireUniqueId(kind, this.seenIds, id);
+    const label = requireNonEmptyString(kind, "label", registration.label);
+    const icon = requireNonEmptyString(kind, "icon", registration.icon);
+    const runtime = new SidebarFooterItemRuntime();
+
+    if (registration.kind === "action") {
+      this.rejectUnknownKeys(kind, registration, SIDEBAR_FOOTER_ACTION_KEYS);
+      if (typeof registration.onActivate !== "function") {
+        throw new Error(`${kind}: "onActivate" must be a function`);
+      }
+      this.collected.push({
+        id,
+        label,
+        icon,
+        kind: "action",
+        onActivate: registration.onActivate,
+        runtime,
+      });
+      return runtime.createItemController();
+    }
+
+    if (registration.kind === "disclosure") {
+      this.rejectUnknownKeys(
+        kind,
+        registration,
+        SIDEBAR_FOOTER_DISCLOSURE_KEYS,
+      );
+      this.collected.push({
+        id,
+        label,
+        icon,
+        kind: "disclosure",
+        component: requireComponent(kind, registration.component),
+        runtime,
+      });
+      return runtime.createDisclosureController();
+    }
+
+    throw new Error(`${kind}: "kind" must be "action" or "disclosure"`);
+  }
+
+  private rejectUnknownKeys(
+    kind: string,
+    registration: ExperimentalSidebarFooterItemRegistration,
+    allowed: ReadonlySet<string>,
+  ): void {
+    for (const key of Object.keys(registration)) {
+      if (!allowed.has(key)) throw new Error(`${kind}: unknown field "${key}"`);
+    }
+  }
+}
 
 type PluginNavPanelFixedTabRegistration = NonNullable<
   PluginNavPanelRegistration["fixedTabs"]
@@ -94,6 +307,7 @@ export interface CollectedPluginAppRegistrations {
   composerCustomizations: ComposerCustomization[];
   pendingInteractions: PluginPendingInteractionRegistration[];
   sidebarFooterActions: PluginSidebarFooterActionRegistration[];
+  experimentalSidebarFooterItems: CollectedExperimentalSidebarFooterItem[];
   experimentalSidebarNavigations: ExperimentalSidebarNavigationRegistration[];
   threadLists: PluginThreadListRegistration[];
   threadHeaderActions: PluginThreadHeaderActionRegistration[];
@@ -129,6 +343,7 @@ export function collectPluginAppRegistrations(
     composerCustomizations: [],
     pendingInteractions: [],
     sidebarFooterActions: [],
+    experimentalSidebarFooterItems: [],
     experimentalSidebarNavigations: [],
     threadLists: [],
     threadHeaderActions: [],
@@ -151,7 +366,7 @@ export function collectPluginAppRegistrations(
     newThreadPanelAction: new Set<string>(),
     composerCustomization: new Set<string>(),
     pendingInteraction: new Set<string>(),
-    sidebarFooterAction: new Set<string>(),
+    sidebarFooterItem: new Set<string>(),
     sidebarNavigation: new Set<string>(),
     threadList: new Set<string>(),
     threadHeaderAction: new Set<string>(),
@@ -391,7 +606,7 @@ export function collectPluginAppRegistrations(
       sidebarFooterAction(registration) {
         const kind = "slots.sidebarFooterAction";
         const id = requireSlotId(kind, registration?.id);
-        requireUniqueId(kind, seenIds.sidebarFooterAction, id);
+        requireUniqueId(kind, seenIds.sidebarFooterItem, id);
         if (typeof registration.run !== "function") {
           throw new Error(`${kind}: "run" must be a function`);
         }
@@ -569,6 +784,10 @@ export function collectPluginAppRegistrations(
         });
       },
     },
+    experimental_sidebarFooter: new SidebarFooterCollector(
+      collected.experimentalSidebarFooterItems,
+      seenIds.sidebarFooterItem,
+    ),
     composer: {
       customize(registration) {
         const customization = collectComposerCustomization(
