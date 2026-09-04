@@ -464,7 +464,7 @@ const retainedEventOutputsMigrationPath = resolve(
   __dirname,
   "..",
   "drizzle",
-  "0113_graceful_mojo.sql",
+  "0113_puzzling_black_knight.sql",
 );
 const providerSettingsToPluginsMigrationPath = resolve(
   __dirname,
@@ -1449,7 +1449,7 @@ describe("migrate", () => {
     prepareMigratedConnectionTemplate();
   });
 
-  it("adds retained event outputs without rewriting existing events", () => {
+  it("adds retained outputs and the image scan index without rewriting events", () => {
     const db = createMigratedConnection();
 
     try {
@@ -1472,6 +1472,9 @@ describe("migrate", () => {
       });
       const eventData = JSON.stringify({ message: "existing event" });
 
+      db.$client
+        .prepare("DROP INDEX events_provider_unhandled_migration_idx")
+        .run();
       db.$client.prepare("DROP TABLE retained_event_outputs").run();
       db.$client
         .prepare<[string, string, string]>(
@@ -1498,6 +1501,9 @@ describe("migrate", () => {
       expect(
         readIndexNames({ db, tableName: "retained_event_outputs" }),
       ).toContain("retained_event_outputs_expiry_idx");
+      expect(readIndexNames({ db, tableName: "events" })).toContain(
+        "events_provider_unhandled_migration_idx",
+      );
       expect(
         db.$client
           .prepare<[], ForeignKeyRow>(
