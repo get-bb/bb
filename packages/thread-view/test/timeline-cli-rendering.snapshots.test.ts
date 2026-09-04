@@ -2516,6 +2516,49 @@ describe("timeline CLI rendering snapshots", () => {
     ]);
   });
 
+  it("accepts the final text after fallback completion without reopening thinking", () => {
+    const event = createTimelineEventFactory({ threadId: "thread-1" });
+    const timeline = renderActiveTimeline([
+      event.turnStarted({ createdAt: 0 }),
+      event.reasoningDelta({
+        createdAt: 1_000,
+        itemId: "reasoning-1",
+        delta: "Initial thought.",
+      }),
+      event.turnCompleted({ createdAt: 3_000, status: "interrupted" }),
+      event.reasoningDelta({
+        createdAt: 4_000,
+        itemId: "reasoning-1",
+        delta: "Late delta.",
+      }),
+      event.reasoningCompleted({
+        createdAt: 5_000,
+        itemId: "reasoning-1",
+        text: "Final thought.",
+      }),
+      event.reasoningCompleted({
+        createdAt: 6_000,
+        itemId: "reasoning-1",
+        text: "Duplicate completion.",
+      }),
+    ]);
+
+    expect(timeline.projection.state.activeThinking).toBeNull();
+    expect(
+      timeline.messages.filter((message) => message.kind === "operation"),
+    ).toEqual([
+      expect.objectContaining({
+        detail: "Final thought.",
+        startedAt: 1_000,
+        completedAt: 3_000,
+        sourceSeqStart: 2,
+        sourceSeqEnd: 5,
+        status: "interrupted",
+        title: "Thought for 2s",
+      }),
+    ]);
+  });
+
   it("omits active reasoning from timeline rows", () => {
     const event = createTimelineEventFactory({ threadId: "thread-1" });
     const timeline = renderActiveTimeline([

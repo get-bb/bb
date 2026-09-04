@@ -37,6 +37,10 @@ interface ReasoningTurnLifecycleState {
 
 export interface ReasoningProjectionState {
   finalizedReasoningKeys: Set<string>;
+  reasoningMessagesAwaitingCompletion: Map<
+    string,
+    EventProjectionOperationMessage
+  >;
   openReasoningLifecyclesByKey: Map<string, ActiveThinkingLifecycle>;
   reasoningTextBuffersByKey: Map<string, VisibleTextBuffer>;
 }
@@ -75,6 +79,7 @@ interface FinalizeReasoningLifecycleArgs {
   meta: EventMeta;
   state: ReasoningLifecycleHostState;
   status: ReasoningCompletionStatus;
+  text: string | null;
 }
 
 interface FinalizeOpenReasoningLifecyclesArgs {
@@ -92,6 +97,7 @@ export function createReasoningProjectionState(): ReasoningProjectionState {
     openReasoningLifecyclesByKey: new Map(),
     reasoningTextBuffersByKey: new Map(),
     finalizedReasoningKeys: new Set(),
+    reasoningMessagesAwaitingCompletion: new Map(),
   };
 }
 
@@ -191,7 +197,7 @@ export function upsertReasoningLifecycle(
 
 function finalizeReasoningLifecycleByKey(
   args: FinalizeOpenReasoningLifecyclesArgs & { messageKey: string },
-): void {
+): EventProjectionOperationMessage | null {
   const lifecycle = args.state.openReasoningLifecyclesByKey.get(
     args.messageKey,
   );
@@ -200,15 +206,15 @@ function finalizeReasoningLifecycleByKey(
   args.state.reasoningTextBuffersByKey.delete(args.messageKey);
   args.state.finalizedReasoningKeys.add(args.messageKey);
   if (!lifecycle || !buffer) {
-    return;
+    return null;
   }
 
   const detail = getVisibleTextBufferFullText(buffer);
   if (detail.trim().length === 0) {
-    return;
+    return null;
   }
 
-  args.state.messages.push({
+  const message: EventProjectionOperationMessage = {
     kind: "operation",
     id: messageId(
       lifecycle.threadId,
@@ -231,7 +237,9 @@ function finalizeReasoningLifecycleByKey(
     )}`,
     detail: truncateReasoningDetail(detail),
     status: args.status,
-  });
+  };
+  args.state.messages.push(message);
+  return message;
 }
 
 export function finalizeReasoningLifecycle(
@@ -241,19 +249,43 @@ export function finalizeReasoningLifecycle(
     return;
   }
 
+  const messageKey = createBufferedTextInstanceKey(args.identity);
+  const message =
+    args.state.reasoningMessagesAwaitingCompletion.get(messageKey);
+  if (message) {
+    args.state.reasoningMessagesAwaitingCompletion.delete(messageKey);
+    message.sourceSeqEnd = args.meta.seq;
+    if (args.text?.trim()) {
+      message.detail = truncateReasoningDetail(args.text);
+    }
+    return;
+  }
+
   finalizeReasoningLifecycleByKey({
     meta: args.meta,
     state: args.state,
     status: args.status,
-    messageKey: createBufferedTextInstanceKey(args.identity),
+    messageKey,
   });
+}
+
+function finalizeReasoningWithoutCompletion(
+  args: FinalizeOpenReasoningLifecyclesArgs & { messageKey: string },
+): void {
+  const message = finalizeReasoningLifecycleByKey(args);
+  if (message) {
+    args.state.reasoningMessagesAwaitingCompletion.set(
+      args.messageKey,
+      message,
+    );
+  }
 }
 
 export function finalizeOpenReasoningLifecycles(
   args: FinalizeOpenReasoningLifecyclesArgs,
 ): void {
   for (const messageKey of args.state.openReasoningLifecyclesByKey.keys()) {
-    finalizeReasoningLifecycleByKey({ ...args, messageKey });
+    finalizeReasoningWithoutCompletion({ ...args, messageKey });
   }
 }
 
@@ -265,7 +297,7 @@ export function finalizeOpenReasoningLifecyclesForTurn(
     if (lifecycle.turnId !== args.turnId) {
       continue;
     }
-    finalizeReasoningLifecycleByKey({ ...args, messageKey });
+    finalizeReasoningWithoutCompletion({ ...args, messageKey });
   }
 }
 

@@ -1710,6 +1710,95 @@ function collectTurnDetailsAndChildren(
 }
 
 describe("turn details for an item that finishes in a later turn", () => {
+  it("retains interrupted thinking when the provider completes the item after Stop", () => {
+    const { db, thread } = setup();
+    seedTurns(db, thread, { completeLastTurn: false, itemsPerTurn: [0] });
+    const firstSequence = getLatestThreadSequence(db, { threadId: thread.id });
+    const turnId = "turn-1";
+    const itemId = "stopped-reasoning";
+    const text = "Checking each constraint before choosing a solution.";
+    const events: EventInput[] = [];
+    const push = (event: Omit<EventInput, "sequence" | "threadId">) => {
+      events.push({
+        ...event,
+        sequence: firstSequence + events.length + 1,
+        threadId: thread.id,
+      });
+    };
+    const base = {
+      scope: turnScope(turnId),
+      providerThreadId,
+      parentToolCallId: null,
+      itemId: null,
+      itemKind: null,
+    };
+    push({
+      ...base,
+      type: "item/started",
+      itemId,
+      itemKind: "reasoning",
+      data: JSON.stringify({
+        item: { type: "reasoning", id: itemId, summary: [], content: [] },
+      }),
+    });
+    push({
+      ...base,
+      type: "item/reasoning/textDelta",
+      itemId,
+      data: JSON.stringify({ itemId, delta: "Checking" }),
+    });
+    push({
+      ...base,
+      type: "system/thread/interrupted",
+      scope: threadScope(),
+      data: JSON.stringify({ reason: "manual-stop" }),
+    });
+    insertEvents(db, noopNotifier, events);
+    const before = buildNestedPage(db, thread, LARGE_BUDGET, null).response;
+    const beforeThought = before.rows.find(
+      (row) => row.kind === "system" && row.title.startsWith("Thought for"),
+    );
+    expect(beforeThought).toMatchObject({
+      detail: "Checking",
+      status: "interrupted",
+    });
+
+    const storedCount = events.length;
+    push({
+      ...base,
+      type: "item/completed",
+      itemId,
+      itemKind: "reasoning",
+      data: JSON.stringify({
+        item: { type: "reasoning", id: itemId, summary: [], content: [text] },
+      }),
+    });
+    push({
+      ...base,
+      type: "turn/completed",
+      data: JSON.stringify({ status: "interrupted", providerThreadId }),
+    });
+    insertEvents(db, noopNotifier, events.slice(storedCount));
+
+    const after = collectTurnDetailsAndChildren(db, thread).get(turnId);
+    const thoughts = after?.details.filter(
+      (row) => row.kind === "system" && row.title.startsWith("Thought for"),
+    );
+    expect(thoughts).toEqual([
+      expect.objectContaining({
+        id: beforeThought?.id,
+        detail: text,
+        status: "interrupted",
+        sourceSeqStart: firstSequence + 1,
+        sourceSeqEnd: firstSequence + 4,
+      }),
+    ]);
+    expect(after?.details).toEqual(after?.children);
+    expect(collectTurnDetailsAndChildren(db, thread).get(turnId)).toEqual(
+      after,
+    );
+  });
+
   it("shows the spawning turn's item completed with its late output", () => {
     const { db, thread } = setup();
     seedCrossTurnCompletion(db, thread, { reuseCallIdInLaterTurn: false });

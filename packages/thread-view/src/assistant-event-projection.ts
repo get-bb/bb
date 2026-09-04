@@ -157,6 +157,7 @@ export function projectAssistantAndReasoningEvent(
       meta: args.meta,
       state: args.state,
       status: "completed",
+      text: parseReasoningFinalText(args.decoded),
     });
   }
 
