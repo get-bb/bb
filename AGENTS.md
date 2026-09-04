@@ -34,7 +34,7 @@
 ## Plugin API
 
 - Any new public plugin API member (a `@get-bb/plugin-sdk/app` export, an `app.slots.*` method, or a `BbPluginApi` property) ships with an `experimental_` name prefix and an entry in [docs/api_to_audit.md](docs/api_to_audit.md) describing what it does and what to audit before stabilizing. Dropping the prefix is the deliberate stabilization step: audit the entry, rename project-wide, and remove it from the doc in the same change.
-- The Plugin Guide (the `plugin-api-docs` plugin, rendering `packages/plugin-api-map`) is bb's only plugin API documentation. A new surface needs a card in `packages/plugin-api-map/src/surfaces.ts` naming its SDK symbols in the same change; `packages/plugin-api-map/test/api-sync.test.ts` fails the build when the map and the SDK drift apart.
+- The Plugin Guide (the `plugin-api-docs` plugin, rendering `packages/plugin-api-map`) is bb's only plugin API documentation. A new surface needs a card in `packages/plugin-api-map/src/surfaces.ts` naming its SDK symbols in the same change.
 
 ## Data Access
 

@@ -35,13 +35,10 @@
     "@bb/plugin-api-map#test": {
       "dependsOn": [
         "//#ensure-native-modules",
-        "@get-bb/plugin-sdk#build:types",
         "topo"
       ],
       "inputs": [
         "$TURBO_DEFAULT$",
-        "$TURBO_ROOT$/packages/plugin-sdk/bundled-types/**",
-        "$TURBO_ROOT$/packages/plugin-sdk/package.json",
         // wireframes.test.ts asserts fixture fidelity against the real app
         // source, and maintenance-skill.test.ts reads the repository skill plus
         // Plugin Guide source; all are inputs to prevent stale cache hits.
@@ -51,10 +48,6 @@
         "$TURBO_ROOT$/plugins/plugin-api-docs/**",
         "$TURBO_ROOT$/vitest.shared.ts"
       ]
-    },
-    "@bb/plugin-api-map#update:sdk-inventory": {
-      "dependsOn": ["@get-bb/plugin-sdk#build:types"],
-      "cache": false
     },
     "@bb/plugin-api-map#scaffold:surface-entry": {
       "cache": false
