@@ -51,11 +51,11 @@ function renderThreadTree(
     selectedThreadId?: string;
   } = {},
 ) {
-  return render(
+  const tree = (entries: ThreadListEntry[]) => (
     <TooltipProvider>
       <MemoryRouter>
         <ProjectThreadTree
-          threadListState={{ status: "ready", threads }}
+          threadListState={{ status: "ready", threads: entries }}
           progressiveDisclosureEnabled={progressiveDisclosureEnabled}
           compareThreads={() => 0}
           selectedThreadId={selectedThreadId}
@@ -66,8 +66,14 @@ function renderThreadTree(
           onToggleEnvironmentCollapsed={vi.fn()}
         />
       </MemoryRouter>
-    </TooltipProvider>,
+    </TooltipProvider>
   );
+  const view = render(tree(threads));
+  return {
+    ...view,
+    rerenderThreads: (entries: ThreadListEntry[]) =>
+      view.rerender(tree(entries)),
+  };
 }
 
 describe("ProjectThreadTree progressive disclosure", () => {
@@ -153,7 +159,7 @@ describe("ProjectThreadTree progressive disclosure", () => {
     expect(screen.getByText("Thread 14")).not.toBeNull();
     expect(screen.queryByText("Thread 15")).toBeNull();
     expect(screen.getByRole("button", { name: "Show more" })).not.toBeNull();
-    expect(screen.queryByRole("button", { name: "Collapse" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Show less" })).toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: "Show more" }));
     expect(screen.getByText("Thread 16")).not.toBeNull();
@@ -178,5 +184,63 @@ describe("ProjectThreadTree progressive disclosure", () => {
     expect(screen.getByText("Thread 15")).not.toBeNull();
     expect(screen.getByText("Thread 17")).not.toBeNull();
     expect(screen.queryByRole("button", { name: "Show more" })).toBeNull();
+  });
+  it("retains revealed groups when attention clears or the list is reordered", () => {
+    const threads = makePlainThreads(17);
+    threads[5] = { ...threads[5], hasPendingInteraction: true };
+    const { rerenderThreads } = renderThreadTree(threads);
+    fireEvent.click(screen.getByRole("button", { name: "Show more" }));
+    expect(screen.getByText("Thread 15")).not.toBeNull();
+
+    const readThreads = threads.map((thread) => ({
+      ...thread,
+      hasPendingInteraction: false,
+    }));
+    rerenderThreads(readThreads);
+    expect(screen.getByText("Thread 15")).not.toBeNull();
+    expect(screen.queryByText("Thread 16")).toBeNull();
+
+    rerenderThreads([...readThreads].reverse());
+    expect(screen.getByText("Thread 0")).not.toBeNull();
+    expect(screen.getByText("Thread 5")).not.toBeNull();
+    expect(screen.getByText("Thread 15")).not.toBeNull();
+  });
+
+  it("focuses the first newly revealed thread for each keyboard expansion", () => {
+    renderThreadTree(makePlainThreads(17));
+    const showMore = screen.getByRole("button", { name: "Show more" });
+    showMore.focus();
+    fireEvent.click(showMore, { detail: 0 });
+    expect(document.activeElement?.getAttribute("data-sidebar-thread-id")).toBe(
+      "thr_item_5",
+    );
+
+    showMore.focus();
+    fireEvent.click(showMore, { detail: 0 });
+    expect(screen.queryByRole("button", { name: "Show more" })).toBeNull();
+    expect(document.activeElement?.getAttribute("data-sidebar-thread-id")).toBe(
+      "thr_item_15",
+    );
+  });
+
+  it("does not move focus into the list for pointer expansion", () => {
+    renderThreadTree(makePlainThreads(17));
+    const showMore = screen.getByRole("button", { name: "Show more" });
+    showMore.focus();
+    fireEvent.click(showMore, { detail: 1 });
+    expect(document.activeElement).toBe(showMore);
+  });
+
+  it("keeps a parent group visible when a nested thread needs attention", () => {
+    const threads = makePlainThreads(8);
+    threads[7] = {
+      ...threads[7],
+      parentThreadId: threads[6].id,
+      hasPendingInteraction: true,
+    };
+    renderThreadTree(threads);
+    expect(screen.queryByText("Thread 5")).toBeNull();
+    expect(screen.getByText("Thread 6")).not.toBeNull();
+    expect(screen.getByText("Thread 7")).not.toBeNull();
   });
 });

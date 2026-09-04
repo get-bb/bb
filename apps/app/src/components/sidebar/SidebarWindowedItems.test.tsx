@@ -103,6 +103,43 @@ afterEach(() => {
 });
 
 describe("SidebarWindowedItems", () => {
+  it("mounts and focuses an offscreen item on request without refocusing on updates", () => {
+    const tree = (focusItemKey?: string) => (
+      <SidebarWindowedItems
+        itemKeys={["first", "second", "third"]}
+        focusItemKey={focusItemKey}
+        estimateRows={() => 1}
+        renderItem={(index) => (
+          <a href="#thread" data-sidebar-thread-id={`thr_${index}`}>
+            Thread {index}
+          </a>
+        )}
+      />
+    );
+    const { rerender } = render(tree());
+    expect(screen.queryByText("Thread 1")).toBeNull();
+    rerender(tree("second"));
+    const target = screen.getByRole("link", { name: "Thread 1" });
+    expect(document.activeElement).toBe(target);
+    target.blur();
+    rerender(tree("second"));
+    expect(document.activeElement).not.toBe(target);
+  });
+
+  it("focuses a collapsed group disclosure when no thread link is rendered", () => {
+    render(
+      <SidebarWindowedItems
+        itemKeys={["group"]}
+        focusItemKey="group"
+        estimateRows={() => 1}
+        renderItem={() => <button aria-expanded={false}>Worktree</button>}
+      />,
+    );
+    expect(document.activeElement).toBe(
+      screen.getByRole("button", { name: "Worktree" }),
+    );
+  });
+
   it("windows a short list when every item is outside the viewport margin", () => {
     renderList();
 

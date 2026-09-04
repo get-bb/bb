@@ -789,7 +789,8 @@ workflows, and monitors keep their sessions loaded.
 The `sidebarProgressiveDisclosure` experiment is off by default. In **By
 project** and **By machine**, it shows the first five groups in the current sort
 order, keeps attention groups visible, and reveals ten more per **Show more**
-click. **Manually** is unchanged. Toggle it with `bb settings experiment
+click. Revealed groups stay visible through activity and sort-order changes.
+**Manually** is unchanged. Toggle it with `bb settings experiment
 sidebarProgressiveDisclosure <true|false>`.
 
 The `timelineWindowing` experiment is off by default. When enabled, long

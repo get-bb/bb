@@ -1690,6 +1690,7 @@ function ThreadTreeLoadingSkeleton() {
 interface SectionThreadTreeItemsProps {
   items: readonly ProjectThreadItem[];
   sectionDnd: SectionThreadDndState | null;
+  focusItemKey?: string;
   variant: ProjectThreadTreeVariant;
   projectId?: string;
   depthOffset?: number;
@@ -1759,6 +1760,7 @@ function useWindowedThreadItems({
 
 function SectionThreadTreeItems({
   items,
+  focusItemKey,
   sectionDnd,
   variant,
   projectId,
@@ -1785,6 +1787,7 @@ function SectionThreadTreeItems({
   const rows = (
     <SidebarWindowedItems
       itemKeys={itemKeys}
+      focusItemKey={focusItemKey}
       estimateRows={estimateRows}
       getNavigationEntries={getNavigationEntries}
       alwaysMountedKeys={alwaysMountedKeys}
@@ -1838,8 +1841,12 @@ function SectionThreadTreeItems({
   );
 }
 
-const THREAD_ITEMS_ATTENTION_LIMIT = 5;
+const THREAD_ITEMS_INITIAL_LIMIT = 5;
 const THREAD_ITEMS_EXPAND_SIZE = 10;
+const THREAD_DISCLOSURE_CONTROL_CLASS = cn(
+  "cursor-pointer rounded-sm pr-2 text-left text-sm font-normal text-subtle-foreground/70 outline-none transition-colors hover:text-subtle-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring",
+  COARSE_POINTER_ROW_HEIGHT_CLASS,
+);
 
 function isAttentionProjectThreadItem(
   item: ProjectThreadItem,
@@ -1872,7 +1879,10 @@ export const ProjectThreadTree = memo(function ProjectThreadTree({
       ? threadListState.threads
       : EMPTY_PROJECT_THREADS;
   const draftThreadIds = usePromptDraftInputThreadIds(projectThreads);
-  const [extraVisibleCount, setExtraVisibleCount] = useState(0);
+  const [revealedItemKeys, setRevealedItemKeys] = useState<ReadonlySet<string>>(
+    () => new Set(),
+  );
+  const [focusItemKey, setFocusItemKey] = useState<string>();
   const allRootItems = useMemo(
     () =>
       buildProjectThreadGroups(projectThreads, compareThreads, draftThreadIds),
@@ -1882,21 +1892,36 @@ export const ProjectThreadTree = memo(function ProjectThreadTree({
     if (!progressiveDisclosureEnabled) {
       return allRootItems;
     }
-    let extraSlots = extraVisibleCount;
-    return allRootItems.filter((item, index) => {
-      if (index < THREAD_ITEMS_ATTENTION_LIMIT) return true;
-      if (isAttentionProjectThreadItem(item, selectedThreadId)) return true;
-      if (extraSlots === 0) return false;
-      extraSlots -= 1;
-      return true;
-    });
+    return allRootItems.filter(
+      (item, index) =>
+        index < THREAD_ITEMS_INITIAL_LIMIT ||
+        revealedItemKeys.has(getItemKey(item)) ||
+        isAttentionProjectThreadItem(item, selectedThreadId),
+    );
   }, [
     allRootItems,
     selectedThreadId,
-    extraVisibleCount,
+    revealedItemKeys,
     progressiveDisclosureEnabled,
   ]);
-  const hasMoreItems = rootItems.length < allRootItems.length;
+  const visibleItemKeys = new Set(rootItems.map(getItemKey));
+  const hiddenItems = allRootItems.filter(
+    (item) => !visibleItemKeys.has(getItemKey(item)),
+  );
+  const hasMoreItems = hiddenItems.length > 0;
+  const handleShowMore: MouseEventHandler<HTMLButtonElement> = (event) => {
+    const nextItems = hiddenItems.slice(0, THREAD_ITEMS_EXPAND_SIZE);
+    setRevealedItemKeys(
+      new Set([
+        ...revealedItemKeys,
+        ...visibleItemKeys,
+        ...nextItems.map(getItemKey),
+      ]),
+    );
+    setFocusItemKey(
+      event.detail === 0 && nextItems[0] ? getItemKey(nextItems[0]) : undefined,
+    );
+  };
 
   if (threadListState.status === "loading") {
     return <ThreadTreeLoadingSkeleton />;
@@ -1932,6 +1957,7 @@ export const ProjectThreadTree = memo(function ProjectThreadTree({
     <>
       <SectionThreadTreeItems
         items={rootItems}
+        focusItemKey={focusItemKey}
         sectionDnd={null}
         variant={variant}
         projectId={projectId}
@@ -1944,21 +1970,18 @@ export const ProjectThreadTree = memo(function ProjectThreadTree({
         onToggleEnvironmentCollapsed={onToggleEnvironmentCollapsed}
       />
       {hasMoreItems ? (
-        <Button
+        <button
           type="button"
-          variant="ghost"
-          size="sm"
-          onClick={() =>
-            setExtraVisibleCount((count) => count + THREAD_ITEMS_EXPAND_SIZE)
-          }
-          className={cn(
-            "mt-0.5 w-full justify-start px-2 font-normal text-subtle-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
-            COARSE_POINTER_ROW_HEIGHT_CLASS,
-          )}
+          onClick={handleShowMore}
+          className={THREAD_DISCLOSURE_CONTROL_CLASS}
+          style={{
+            marginLeft: getSidebarThreadRowPaddingLeft(
+              getProjectThreadTreeRootDepthOffset(variant),
+            ),
+          }}
         >
-          <Icon name="ChevronDown" />
           Show more
-        </Button>
+        </button>
       ) : null}
     </>
   );
