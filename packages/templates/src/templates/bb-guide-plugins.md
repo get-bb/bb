@@ -24,14 +24,15 @@ The builtin Custom instructions plugin adds a multiline editor under Settings
 agent task instructions; blank text contributes nothing.
 
 The builtin Account Pool plugin is disabled on fresh installations. It stores
-Claude account tokens in per-account 0600 secret files and proxies Anthropic
-Messages API requests through the bb server. Enable it and add an account:
+Claude and Codex account tokens in per-account 0600 secret files and proxies
+provider API requests through the bb server. Enable it and add an account:
 
 ```
 bb plugin enable account-pool
 bb pool account add --provider claude --login
 printf '%s\n' "$CLAUDE_AUTH_CODE" | bb pool account login-complete --session <id> --code-stdin
 bb pool account add --provider claude --import
+bb pool account add --provider codex --import
 printf '%s\n' "$ANTHROPIC_API_KEY" | bb pool account add --provider claude --api-key-stdin [--label <text>] [--priority <n>]
 bb pool account add --provider claude --api-key <key> [--label <text>] [--priority <n>]
 bb pool account list [--json]
@@ -48,14 +49,18 @@ sign-in URL and session ID, then exits. After sign-in, pipe the manual callback
 code to `account login-complete` with that session ID. The browser does not need
 to run on the bb server machine, and neither the code nor account tokens enter
 process arguments. The same flow is available in the plugin settings page
-through the **Sign in to Claude** button.
+through the **Sign in to Claude** button. Codex import reads the bb server
+host's `~/.codex/auth.json` and has no browser sign-in flow.
 
 The hub starts immediately, even before an account is configured, so newly
 added or enabled accounts are available without a plugin reload. With an
 enabled account whose secret file remains readable and valid, the plugin
-contributes its server route, a distinct secret token, and
-`ENABLE_TOOL_SEARCH=true` (tool search stays on through the hub) to Claude
-Code sessions on every host. Tokens are never printed. `status` prunes tokens for
+contributes its provider-specific server route and a distinct secret token to
+Claude Code or Codex sessions on every host. Claude Code also receives
+`ENABLE_TOOL_SEARCH=true` so tool search stays on through the hub. Codex
+receives `CODEX_OPENAI_BASE_URL` and the secret `CODEX_POOL_AUTH_TOKEN`; its
+app server uses those values without editing `~/.codex/config.toml`. Tokens are
+never printed. `status` prunes tokens for
 unenrolled machines and shows token timestamps plus recently routed threads
 whose machines need a local Claude login before the pool can be disabled
 safely. Rotation keeps the prior token valid for ten minutes. Agents should use

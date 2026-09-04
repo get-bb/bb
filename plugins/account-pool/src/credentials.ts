@@ -31,6 +31,25 @@ const accountFileSchema = z.object({
     .nullish(),
 });
 
+const codexAuthFileSchema = z
+  .object({
+    tokens: z
+      .object({
+        access_token: z.string().min(1),
+        refresh_token: z.string().min(1),
+        account_id: z.string().min(1).nullish(),
+        id_token: z.string().min(1).nullish(),
+      })
+      .passthrough(),
+    last_refresh: z.string().nullish(),
+  })
+  .passthrough();
+
+const jwtPayloadSchema = z.record(z.string(), z.json());
+type JwtPayload = z.infer<typeof jwtPayloadSchema>;
+const CHATGPT_AUTH_CLAIM = "https://api.openai.com/auth";
+const CHATGPT_PROFILE_CLAIM = "https://api.openai.com/profile";
+
 export interface ImportedClaudeCredentials {
   accessToken: string;
   refreshToken: string;
@@ -39,6 +58,92 @@ export interface ImportedClaudeCredentials {
   rateLimitTier: string | null;
   email: string | null;
   accountUuid: string | null;
+}
+
+export interface ImportedCodexCredentials {
+  accessToken: string;
+  refreshToken: string;
+  idToken: string | null;
+  accountId: string;
+  email: string | null;
+  expiresAt: number | null;
+}
+
+function jwtPayload(token: string | null): JwtPayload | null {
+  if (token === null) return null;
+  const payload = token.split(".")[1];
+  if (payload === undefined) return null;
+  try {
+    const parsed = jwtPayloadSchema.safeParse(
+      JSON.parse(Buffer.from(payload, "base64url").toString("utf8")),
+    );
+    return parsed.success ? parsed.data : null;
+  } catch {
+    return null;
+  }
+}
+
+function nestedString(
+  payload: JwtPayload | null,
+  claim: string,
+  field: string,
+): string | null {
+  const nested = payload?.[claim];
+  if (nested === null || typeof nested !== "object" || Array.isArray(nested))
+    return null;
+  const value = nested[field];
+  return typeof value === "string" && value.length > 0 ? value : null;
+}
+
+export function codexAccessTokenExpiresAt(token: string): number | null {
+  const payload = jwtPayload(token);
+  return typeof payload?.exp === "number"
+    ? Math.round(payload.exp * 1_000)
+    : null;
+}
+
+export function parseCodexCredentials(raw: string): ImportedCodexCredentials {
+  const parsed = codexAuthFileSchema.parse(JSON.parse(raw));
+  const idToken = parsed.tokens.id_token ?? null;
+  const accessPayload = jwtPayload(parsed.tokens.access_token);
+  const idPayload = jwtPayload(idToken);
+  const accountId =
+    parsed.tokens.account_id ??
+    nestedString(accessPayload, CHATGPT_AUTH_CLAIM, "chatgpt_account_id") ??
+    nestedString(idPayload, CHATGPT_AUTH_CLAIM, "chatgpt_account_id");
+  if (accountId === null) {
+    throw new Error("Codex auth tokens do not include a ChatGPT account id.");
+  }
+  const directEmail =
+    typeof idPayload?.email === "string" ? idPayload.email : null;
+  const email =
+    directEmail ??
+    nestedString(idPayload, CHATGPT_PROFILE_CLAIM, "email") ??
+    (typeof accessPayload?.email === "string" ? accessPayload.email : null) ??
+    nestedString(accessPayload, CHATGPT_PROFILE_CLAIM, "email");
+  const expiresAt = codexAccessTokenExpiresAt(parsed.tokens.access_token);
+  return {
+    accessToken: parsed.tokens.access_token,
+    refreshToken: parsed.tokens.refresh_token,
+    idToken,
+    accountId,
+    email,
+    expiresAt,
+  };
+}
+
+export async function importCodexCredentials(): Promise<ImportedCodexCredentials> {
+  try {
+    return parseCodexCredentials(
+      await fs.readFile(path.join(os.homedir(), ".codex", "auth.json"), "utf8"),
+    );
+  } catch (error) {
+    if (error instanceof Error && error.message.includes("ChatGPT account id"))
+      throw error;
+    throw new Error(
+      "Codex OAuth credentials were not found or usable. Run `codex login` on the bb server host, then retry.",
+    );
+  }
 }
 
 function parseCredentials(

@@ -1,6 +1,7 @@
 import { z } from "zod";
 
-export const providerSchema = z.literal("claude");
+export const providerSchema = z.enum(["claude", "codex"]);
+export type PoolProvider = z.infer<typeof providerSchema>;
 export const accountKindSchema = z.enum(["oauth", "api-key"]);
 export const modelFamilySchema = z.enum([
   "fable",
@@ -44,6 +45,7 @@ export const accountSchema = z
     label: z.string().min(1),
     email: z.string().email().nullable(),
     accountUuid: z.string().uuid().nullable().default(null),
+    codexAccountId: z.string().min(1).optional(),
     subscriptionType: z.string().nullable(),
     rateLimitTier: z.string().nullable(),
     enabled: z.boolean(),
@@ -60,6 +62,7 @@ export const oauthSecretSchema = z
     accessToken: z.string().min(1),
     refreshToken: z.string().min(1),
     expiresAt: z.number().int().positive().nullable(),
+    idToken: z.string().min(1).optional(),
   })
   .strict();
 

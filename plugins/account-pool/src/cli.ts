@@ -21,6 +21,7 @@ interface ParsedFlags {
 const HELP = [
   "Usage:",
   "  bb pool account add --provider claude --import [--label <text>] [--priority <n>]",
+  "  bb pool account add --provider codex --import [--label <text>] [--priority <n>]",
   "  bb pool account add --provider claude --login",
   "  printf '%s\\n' \"$CLAUDE_AUTH_CODE\" | bb pool account login-complete --session <id> --code-stdin",
   "  bb pool account add --provider claude --api-key-stdin [--label <text>] [--priority <n>]",
@@ -105,6 +106,7 @@ function formatAccounts(accounts: readonly AccountSummary[]): string {
     [
       "ID",
       "Label",
+      "Provider",
       "Kind",
       "Enabled",
       "Priority",
@@ -119,6 +121,7 @@ function formatAccounts(accounts: readonly AccountSummary[]): string {
       [
         account.id,
         account.label,
+        account.provider,
         account.kind,
         String(account.enabled),
         String(account.priority),
@@ -173,14 +176,15 @@ export function registerPoolCli(
 ): void {
   bb.cli.register({
     name: "pool",
-    summary: "Manage Claude accounts and inspect the Account Pool hub",
+    summary:
+      "Manage Claude and Codex accounts and inspect the Account Pool hub",
     commands: [
       {
         name: "account-add",
         summary:
-          "Sign in to Claude, import Claude Code credentials, or add an Anthropic API key",
+          "Sign in to Claude, import Claude or Codex credentials, or add an Anthropic API key",
         usage:
-          "bb pool account add --provider claude --login\nbb pool account add --provider claude (--import | --api-key-stdin) [--label <text>] [--priority <n>]\nUnsafe compatibility form: bb pool account add --provider claude --api-key <key> [--label <text>] [--priority <n>]",
+          "bb pool account add --provider claude --login\nbb pool account add --provider <claude|codex> --import [--label <text>] [--priority <n>]\nbb pool account add --provider claude --api-key-stdin [--label <text>] [--priority <n>]\nUnsafe compatibility form: bb pool account add --provider claude --api-key <key> [--label <text>] [--priority <n>]",
       },
       {
         name: "account-login-complete",
@@ -273,6 +277,9 @@ export function registerPoolCli(
             throw new Error(
               "--api-key-stdin must be invoked through the bb CLI so it can read stdin safely.",
             );
+          }
+          if (!imported && flags.values.get("provider") !== "claude") {
+            throw new Error("Anthropic API keys require --provider claude.");
           }
           const priorityText = flags.values.get("priority") ?? "100";
           const input = accountAddInputSchema.parse({

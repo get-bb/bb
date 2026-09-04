@@ -2,14 +2,11 @@ import type {
   Account,
   AccountSummary,
   HubTokenSummary,
+  PoolProvider,
   PoolStatus,
   RoutedThreadStatus,
 } from "./contracts.js";
 import type { AccountAddInput } from "./contracts.js";
-import {
-  importClaudeCredentials,
-  type ImportedClaudeCredentials,
-} from "./credentials.js";
 import type { AccountPoolHub } from "./hub.js";
 import type {
   AccountStore,
@@ -44,7 +41,6 @@ export class PoolOperations {
       hostId: string,
     ) => Promise<PoolProviderState[]>,
     private readonly now: () => number = Date.now,
-    private readonly importCredentials: () => Promise<ImportedClaudeCredentials> = importClaudeCredentials,
     private readonly onAccountsChanged: () => void = () => {},
     private readonly onAccountEnabled: (
       accountId: string,
@@ -53,6 +49,9 @@ export class PoolOperations {
 
   async add(input: AccountAddInput): Promise<Account> {
     if (input.source.kind === "api-key") {
+      if (input.provider !== "claude") {
+        throw new Error("Codex accounts can only be added with --import.");
+      }
       const account = await this.accounts.add(
         {
           provider: input.provider,
@@ -71,25 +70,23 @@ export class PoolOperations {
       await this.onAccountEnabled(account.id);
       return account;
     }
-    const imported = await this.importCredentials();
+    const imported = await this.hub.importAccount(input.provider);
     const account = await this.accounts.add(
       {
         provider: input.provider,
         kind: "oauth",
-        label: input.label ?? imported.email ?? "Claude Code account",
+        label: input.label ?? imported.label,
         email: imported.email,
-        accountUuid: imported.accountUuid,
+        accountUuid: imported.accountUuid ?? null,
+        ...(imported.codexAccountId === undefined
+          ? {}
+          : { codexAccountId: imported.codexAccountId }),
         subscriptionType: imported.subscriptionType,
         rateLimitTier: imported.rateLimitTier,
         enabled: true,
         priority: input.priority,
       },
-      {
-        kind: "oauth",
-        accessToken: imported.accessToken,
-        refreshToken: imported.refreshToken,
-        expiresAt: imported.expiresAt,
-      },
+      imported.secret,
     );
     this.onAccountsChanged();
     await this.onAccountEnabled(account.id);
@@ -195,9 +192,13 @@ export class PoolOperations {
     return { threadId, bypassed };
   }
 
-  async hasUsableEnabledAccount(): Promise<boolean> {
+  async hasUsableEnabledAccount(provider?: PoolProvider): Promise<boolean> {
     for (const account of await this.accounts.list()) {
-      if (!account.enabled) continue;
+      if (
+        !account.enabled ||
+        (provider !== undefined && account.provider !== provider)
+      )
+        continue;
       try {
         await this.accounts.readSecret(account.id);
         return true;

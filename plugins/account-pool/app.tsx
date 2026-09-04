@@ -42,6 +42,7 @@ function AccountPoolSettings() {
   const navigate = useBbNavigate();
   const [accounts, setAccounts] = useState<AccountSummary[] | null>(null);
   const [loading, setLoading] = useState(false);
+  const [codexLoading, setCodexLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loginStep, setLoginStep] = useState<LoginStep | null>(null);
   const [pastedCode, setPastedCode] = useState("");
@@ -142,6 +143,20 @@ function AccountPoolSettings() {
     setLoading(false);
   }
 
+  async function importCodexAccount(): Promise<void> {
+    if (codexLoading) return;
+    setCodexLoading(true);
+    await mutate(async () => {
+      await rpc.call("account.add", {
+        provider: "codex",
+        source: { kind: "import" },
+        label: null,
+        priority: 100,
+      });
+    });
+    setCodexLoading(false);
+  }
+
   async function addApiKey(): Promise<void> {
     if (apiKey.trim().length === 0 || apiKeyPending) return;
     setApiKeyPending(true);
@@ -191,10 +206,12 @@ function AccountPoolSettings() {
   return (
     <div className="w-full space-y-5">
       <div>
-        <h3 className="text-sm font-medium text-foreground">Claude accounts</h3>
+        <h3 className="text-sm font-medium text-foreground">
+          Provider accounts
+        </h3>
         <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-          Account Pool routes Claude Code threads through an available account
-          and moves away from accounts that reach their limits.
+          Account Pool routes Claude and Codex threads through available
+          accounts and moves away from accounts that reach their limits.
         </p>
       </div>
 
@@ -205,11 +222,11 @@ function AccountPoolSettings() {
       ) : accounts.length === 0 ? (
         <div className="rounded-md border border-border/60 bg-surface-recessed px-4 py-4">
           <p className="text-sm font-medium text-foreground">
-            No Claude accounts yet
+            No provider accounts yet
           </p>
           <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-            Add an account and the plugin will route Claude Code threads through
-            the pool automatically.
+            Add an account and the plugin will route supported provider threads
+            through the pool automatically.
           </p>
         </div>
       ) : (
@@ -224,6 +241,9 @@ function AccountPoolSettings() {
                     </span>
                     <span className="text-xs text-muted-foreground">
                       {account.kind === "oauth" ? "OAuth" : "API key"}
+                    </span>
+                    <span className="rounded-full border border-border/60 px-2 py-0.5 text-xs text-muted-foreground">
+                      {account.provider === "claude" ? "Claude" : "Codex"}
                     </span>
                     <span className="text-xs text-muted-foreground">
                       {statusLabel(account.status)}
@@ -276,7 +296,15 @@ function AccountPoolSettings() {
             disabled={loading}
             onClick={() => void importAccount()}
           >
-            {loading ? "Importing…" : "Import from this machine"}
+            {loading ? "Importing…" : "Import Claude from this machine"}
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            disabled={codexLoading}
+            onClick={() => void importCodexAccount()}
+          >
+            {codexLoading ? "Importing…" : "Import Codex from this machine"}
           </Button>
           <Button
             type="button"

@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import { createHash } from "node:crypto";
 import {
   isStandaloneBuiltinCompactCommand,
   approvalInteractionOutcomeSchema,
@@ -268,6 +269,8 @@ function sendRuntimeRequest(
 
 const CODEX_APP_SERVER_COMMAND_ENV = "BB_CODEX_BRIDGE_APP_SERVER_COMMAND";
 const CODEX_APP_SERVER_ARGS_ENV = "BB_CODEX_BRIDGE_APP_SERVER_ARGS";
+const CODEX_POOL_BASE_URL_ENV = "CODEX_OPENAI_BASE_URL";
+const CODEX_POOL_AUTH_TOKEN_ENV = "CODEX_POOL_AUTH_TOKEN";
 
 const CODEX_INITIALIZE_PARAMS = {
   clientInfo: { name: "bb", version: "1.0.0", title: null },
@@ -328,21 +331,67 @@ async function delay(ms: number): Promise<void> {
 const MISSING_CODEX_CLI_GUIDANCE =
   "bb could not find the Codex CLI on this machine. Install Codex (https://developers.openai.com/codex/cli) or put `codex` on PATH, then retry.";
 
-function resolveAppServerLaunch(): { command: string; args: string[] } {
-  const command = process.env[CODEX_APP_SERVER_COMMAND_ENV];
-  if (!command) {
-    return { command: "codex", args: ["app-server"] };
-  }
-  const rawArgs = process.env[CODEX_APP_SERVER_ARGS_ENV];
-  if (!rawArgs) {
-    return { command, args: [] };
-  }
-  return { command, args: z.array(z.string()).parse(JSON.parse(rawArgs)) };
+export function resolveAppServerLaunch(env: NodeJS.ProcessEnv = process.env): {
+  command: string;
+  args: string[];
+} {
+  const command = env[CODEX_APP_SERVER_COMMAND_ENV];
+  const rawArgs = env[CODEX_APP_SERVER_ARGS_ENV];
+  const args = command
+    ? rawArgs
+      ? z.array(z.string()).parse(JSON.parse(rawArgs))
+      : []
+    : ["app-server"];
+  const poolBaseUrl = env[CODEX_POOL_BASE_URL_ENV];
+  const poolToken = env[CODEX_POOL_AUTH_TOKEN_ENV];
+  if (!poolBaseUrl || !poolToken) return { command: command ?? "codex", args };
+  return {
+    command: command ?? "codex",
+    args: [
+      ...args,
+      "-c",
+      `openai_base_url=${JSON.stringify(poolBaseUrl)}`,
+      "-c",
+      'model_provider="bb-account-pool"',
+      "-c",
+      'model_providers.bb-account-pool.name="OpenAI"',
+      "-c",
+      `model_providers.bb-account-pool.base_url=${JSON.stringify(poolBaseUrl)}`,
+      "-c",
+      'model_providers.bb-account-pool.wire_api="responses"',
+      "-c",
+      "model_providers.bb-account-pool.requires_openai_auth=true",
+      "-c",
+      "model_providers.bb-account-pool.supports_websockets=true",
+      "-c",
+      'model_providers.bb-account-pool.env_http_headers.x-bb-account-pool-token="CODEX_POOL_AUTH_TOKEN"',
+    ],
+  };
 }
 
-function buildAppServerEnv(): NodeJS.ProcessEnv {
+function appServerLaunchEnv(
+  envVars: Readonly<Record<string, string>> | undefined,
+): NodeJS.ProcessEnv {
+  const poolBaseUrl = envVars?.[CODEX_POOL_BASE_URL_ENV];
+  const poolAuthToken = envVars?.[CODEX_POOL_AUTH_TOKEN_ENV];
+  return {
+    ...process.env,
+    ...(poolBaseUrl === undefined
+      ? {}
+      : { [CODEX_POOL_BASE_URL_ENV]: poolBaseUrl }),
+    ...(poolAuthToken === undefined
+      ? {}
+      : { [CODEX_POOL_AUTH_TOKEN_ENV]: poolAuthToken }),
+  };
+}
+
+function buildAppServerEnv(
+  envVars: Readonly<Record<string, string>> | undefined,
+): NodeJS.ProcessEnv {
   return withoutBridgeRuntimeEnv(
-    sanitizeInheritedChildProcessEnv({ env: process.env }),
+    sanitizeInheritedChildProcessEnv({
+      env: appServerLaunchEnv(envVars),
+    }),
   );
 }
 
@@ -463,6 +512,8 @@ function constructionSignature(
   sessionOptions: CodexSessionOptions,
 ): string {
   const permissionSettings = toCodexThreadPermissionSettings(sessionOptions);
+  const poolBaseUrl = sessionOptions.envVars?.[CODEX_POOL_BASE_URL_ENV];
+  const poolToken = sessionOptions.envVars?.[CODEX_POOL_AUTH_TOKEN_ENV];
   return JSON.stringify({
     cwd,
     reasoningLevel: sessionOptions.reasoningLevel ?? null,
@@ -471,6 +522,13 @@ function constructionSignature(
     approvalPolicy: permissionSettings.approvalPolicy,
     approvalsReviewer: permissionSettings.approvalsReviewer,
     sandbox: permissionSettings.sandbox,
+    poolRoute:
+      poolBaseUrl === undefined || poolToken === undefined
+        ? null
+        : {
+            baseUrl: poolBaseUrl,
+            tokenHash: createHash("sha256").update(poolToken).digest("hex"),
+          },
   });
 }
 
@@ -771,6 +829,7 @@ function handleChildExit(
 }
 
 function spawnChildConnection(callbacks: {
+  envVars?: Readonly<Record<string, string>>;
   recordThreadId: string | null;
   onNotification: (method: string, params: unknown) => void;
   onRequest: (
@@ -780,13 +839,15 @@ function spawnChildConnection(callbacks: {
   ) => void;
   onExit: (info: CodexAppServerExitInfo) => void;
 }): CodexAppServerConnection {
-  const launch = resolveAppServerLaunch();
+  const env = buildAppServerEnv(callbacks.envVars);
+  const launch = resolveAppServerLaunch(appServerLaunchEnv(callbacks.envVars));
+  const { envVars: _envVars, ...connectionCallbacks } = callbacks;
   return createCodexAppServerConnection({
     command: launch.command,
     args: launch.args,
     cwd: process.cwd(),
-    env: buildAppServerEnv(),
-    ...callbacks,
+    env,
+    ...connectionCallbacks,
   });
 }
 
@@ -922,6 +983,7 @@ async function constructThreadSession(
   sendThreadDeltas(session, [{ kind: "session.reset" }]);
 
   const connection = spawnChildConnection({
+    envVars: decoded.sessionOptions.envVars,
     recordThreadId: args.threadId,
     onNotification: (method, params) =>
       handleChildNotification(args.threadId, serial, method, params),

@@ -614,9 +614,10 @@ persistently restores undimmed splits.
 ## Account Pool
 
 The builtin Account Pool plugin is disabled on fresh installations. It stores
-non-secret Claude account metadata in plugin KV, quota observations in the
-plugin SQLite database, and each account token plus per-machine hub tokens in
-0600 files under `<data-dir>/plugins/account-pool/secrets/accounts/`.
+non-secret Claude and Codex account metadata in plugin KV, quota observations
+in the plugin SQLite database, and each account token plus per-machine hub
+tokens in 0600 files under
+`<data-dir>/plugins/account-pool/secrets/accounts/`.
 Enable it and add at least one account:
 
 ```sh
@@ -624,6 +625,7 @@ bb plugin enable account-pool
 bb pool account add --provider claude --login
 printf '%s\n' "$CLAUDE_AUTH_CODE" | bb pool account login-complete --session <id> --code-stdin
 bb pool account add --provider claude --import
+bb pool account add --provider codex --import
 printf '%s\n' "$ANTHROPIC_API_KEY" | bb pool account add --provider claude --api-key-stdin [--label <text>] [--priority <n>]
 ```
 
@@ -633,10 +635,11 @@ pipe the code shown on Anthropic's manual callback page to
 `account login-complete` with that session ID. The browser can be on a different
 machine from the bb server, and the code stays out of process arguments. The
 Account Pool plugin settings page exposes the same flow with **Sign in to
-Claude**, plus the account list, import, API-key, enable/disable, and removal
-controls.
+Claude**, plus provider-specific import, API-key, enable/disable, and removal
+controls. Codex has no browser sign-in flow; **Import Codex from this machine**
+reads the bb server host's `~/.codex/auth.json`.
 
-The import path reads the Claude Code login on the bb server host.
+The import paths read the Claude Code or Codex login on the bb server host.
 `--api-key-stdin` reads exactly one non-empty key from piped standard input and
 is the default API-key path for agents. The compatibility form `--api-key
 <key>` remains available, but exposes the secret in process arguments, shell
@@ -644,8 +647,12 @@ history, and agent transcripts. The hub starts immediately, so a newly added
 or enabled account is available without a plugin reload.
 
 When the plugin has an enabled account whose secret file is readable and
-valid, it automatically contributes the hub route, a machine-specific secret
-token, and `ENABLE_TOOL_SEARCH=true` to Claude Code sessions on every host.
+valid, it automatically contributes the provider's hub route and a
+machine-specific secret token to Claude Code or Codex sessions on every host.
+Claude Code also receives `ENABLE_TOOL_SEARCH=true`.
+Codex receives `CODEX_OPENAI_BASE_URL` and the secret
+`CODEX_POOL_AUTH_TOKEN`; bb applies both when launching `codex app-server`
+without writing to `~/.codex/config.toml`.
 Claude Code disables tool search behind a custom base URL by default; the hub
 forwards `tool_reference` blocks unchanged, so the override keeps it on.
 Tokens are never printed
@@ -667,15 +674,21 @@ without disabling that account for other families. Imported and newly signed-in
 accounts retain their Anthropic account UUID, and the hub aligns a present
 `metadata.user_id` account component with the selected account.
 
-Two settings control routing. `switchThreshold` is the shared or requested
+Three settings control routing. `switchThreshold` is the shared or requested
 model-family quota fraction at which an account stops receiving matching
 traffic and defaults to `0.98`.
-`upstreamBaseUrl` defaults to `https://api.anthropic.com` and exists only for
-tests and QA with a controlled fake upstream:
+`upstreamBaseUrl` defaults to `https://api.anthropic.com` and
+`codexUpstreamBaseUrl` defaults to
+`https://chatgpt.com/backend-api/codex`. Codex uses the hub's HTTP Responses
+and models routes and prefers its WebSocket Responses route; the hub keeps the
+downstream WebSocket session semantics while forwarding upstream over HTTPS
+SSE. Both URL settings exist only for tests and QA with a controlled fake
+upstream:
 
 ```sh
 bb plugin config account-pool set switchThreshold 0.98
 bb plugin config account-pool set upstreamBaseUrl http://127.0.0.1:9000
+bb plugin config account-pool set codexUpstreamBaseUrl http://127.0.0.1:9001
 ```
 
 ## bb connect

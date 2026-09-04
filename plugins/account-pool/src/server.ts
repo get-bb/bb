@@ -2,7 +2,11 @@ import path from "node:path";
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 import { registerPoolCli } from "./cli.js";
-import type { ImportedClaudeCredentials } from "./credentials.js";
+import type {
+  ImportedClaudeCredentials,
+  ImportedCodexCredentials,
+} from "./credentials.js";
+import { createCodexWebSocketHandlers } from "./codex-websocket.js";
 import { createHub } from "./hub.js";
 import { PoolOperations } from "./operations.js";
 import { accountPoolRpcContract, createRpcHandlers } from "./rpc.js";
@@ -20,11 +24,13 @@ export interface AccountPoolPluginOptions {
   fetch?: typeof fetch;
   now?: () => number;
   refreshUrl?: string;
+  codexRefreshUrl?: string;
   usageUrl?: string;
   usageRefreshIntervalMs?: number;
   drainTimeoutMs?: number;
   disposeTimeoutMs?: number;
   importCredentials?: () => Promise<ImportedClaudeCredentials>;
+  importCodexCredentials?: () => Promise<ImportedCodexCredentials>;
   oauthAuthorizeUrl?: string;
   oauthTokenUrl?: string;
   oauthProfileUrl?: string;
@@ -56,6 +62,14 @@ export function createAccountPoolPlugin(
         description:
           "Override only for tests and QA. Production traffic uses https://api.anthropic.com.",
         default: "https://api.anthropic.com",
+        experimental_schema: upstreamSchema,
+      },
+      codexUpstreamBaseUrl: {
+        type: "string",
+        label: "Codex upstream base URL",
+        description:
+          "Override only for tests and QA. Production traffic uses the ChatGPT Codex backend.",
+        default: "https://chatgpt.com/backend-api/codex",
         experimental_schema: upstreamSchema,
       },
       switchThreshold: {
@@ -97,8 +111,11 @@ export function createAccountPoolPlugin(
       fetch: options.fetch,
       now,
       refreshUrl: options.refreshUrl,
+      codexRefreshUrl: options.codexRefreshUrl,
       usageUrl: options.usageUrl,
       profileUrl: options.oauthProfileUrl,
+      importClaudeCredentials: options.importCredentials,
+      importCodexCredentials: options.importCodexCredentials,
       usageRefreshIntervalMs: options.usageRefreshIntervalMs,
       drainTimeoutMs: options.drainTimeoutMs,
     });
@@ -112,7 +129,6 @@ export function createAccountPoolPlugin(
       async (hostId) =>
         (await bb.sdk.system.providerStates({ hostId })).providers,
       now,
-      options.importCredentials,
       () => bb.realtime.publish(ACCOUNT_POOL_ACCOUNTS_CHANGED, {}),
       (accountId) => hub.refreshUsage(accountId, true),
     );
@@ -126,7 +142,7 @@ export function createAccountPoolPlugin(
     });
     if ((await accounts.list()).every((account) => !account.enabled)) {
       bb.status.needsConfiguration(
-        "Add and enable a Claude account with `bb pool account add`.",
+        "Add and enable a Claude or Codex account with `bb pool account add`.",
       );
     }
     bb.rpc.register(
@@ -137,7 +153,7 @@ export function createAccountPoolPlugin(
     bb.providers.experimental_contributeEnv("claude-code", async (context) => {
       if (
         (await routing.isBypassed(context.threadId)) ||
-        !(await operations.hasUsableEnabledAccount())
+        !(await operations.hasUsableEnabledAccount("claude"))
       ) {
         return [];
       }
@@ -168,7 +184,40 @@ export function createAccountPoolPlugin(
       ];
     });
     bb.providers.experimental_contributeEnvHealth("claude-code", async () =>
-      (await operations.hasUsableEnabledAccount())
+      (await operations.hasUsableEnabledAccount("claude"))
+        ? {
+            label: "Proxied",
+            statusMessage: "Credentials are provided by the Account Pool hub.",
+          }
+        : null,
+    );
+    bb.providers.experimental_contributeEnv("codex", async (context) => {
+      if (
+        (await routing.isBypassed(context.threadId)) ||
+        !(await operations.hasUsableEnabledAccount("codex"))
+      ) {
+        return [];
+      }
+      const token = await hubTokens.forHost(context.hostId);
+      return [
+        {
+          name: "CODEX_OPENAI_BASE_URL",
+          value: {
+            serverPath: "/api/v1/plugins/account-pool/http/v1",
+          },
+          reason: "Routed through the Account Pool hub",
+          secret: false,
+        },
+        {
+          name: "CODEX_POOL_AUTH_TOKEN",
+          value: token,
+          reason: "Account Pool hub token for this machine",
+          secret: true,
+        },
+      ];
+    });
+    bb.providers.experimental_contributeEnvHealth("codex", async () =>
+      (await operations.hasUsableEnabledAccount("codex"))
         ? {
             label: "Proxied",
             statusMessage: "Credentials are provided by the Account Pool hub.",
@@ -205,13 +254,30 @@ export function createAccountPoolPlugin(
     bb.http.route(
       "POST",
       "/v1/messages",
-      (context) => hub.handle(context.req.raw),
+      (context) => hub.handle(context.req.raw, "claude"),
       { auth: "none" },
     );
     bb.http.route(
       "POST",
       "/v1/messages/count_tokens",
-      (context) => hub.handle(context.req.raw),
+      (context) => hub.handle(context.req.raw, "claude"),
+      { auth: "none" },
+    );
+    bb.http.route(
+      "POST",
+      "/v1/responses",
+      (context) => hub.handle(context.req.raw, "codex"),
+      { auth: "none" },
+    );
+    bb.http.route(
+      "GET",
+      "/v1/models",
+      (context) => hub.handle(context.req.raw, "codex"),
+      { auth: "none" },
+    );
+    bb.http.experimental_websocket(
+      "/v1/responses",
+      (context) => createCodexWebSocketHandlers(context, hub, bb.log),
       { auth: "none" },
     );
     bb.http.route("HEAD", "/api/hello", () => helloResponse(), {

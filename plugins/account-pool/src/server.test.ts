@@ -13,7 +13,10 @@ import {
   type AccountSummary,
 } from "./contracts.js";
 import { z } from "zod";
-import type { ImportedClaudeCredentials } from "./credentials.js";
+import type {
+  ImportedClaudeCredentials,
+  ImportedCodexCredentials,
+} from "./credentials.js";
 import { HubTokenStore } from "./store.js";
 import {
   createAccountPoolPlugin,
@@ -82,6 +85,27 @@ async function resolveToken(
     throw new Error("Account Pool token was not resolved.");
   }
   return token.value;
+}
+
+async function resolveCodexToken(
+  host: ReturnType<typeof createFakePluginHost>,
+): Promise<{ token: string; baseUrl: string }> {
+  const entries = await host.harness.behavior.resolveProviderEnv("codex", {
+    threadId: "thread-codex",
+    projectId: "project-one",
+    hostId: "host-one",
+  });
+  const token = entries.find((entry) => entry.name === "CODEX_POOL_AUTH_TOKEN");
+  const baseUrl = entries.find(
+    (entry) => entry.name === "CODEX_OPENAI_BASE_URL",
+  );
+  if (token === undefined || typeof token.value !== "string") {
+    throw new Error("Codex Account Pool token was not resolved.");
+  }
+  if (baseUrl === undefined || typeof baseUrl.value !== "object") {
+    throw new Error("Codex Account Pool base URL was not resolved.");
+  }
+  return { token: token.value, baseUrl: baseUrl.value.serverPath };
 }
 
 afterEach(async () => {
@@ -202,6 +226,21 @@ function authHeaders(key: string): Record<string, string> {
   };
 }
 
+const completedResponseSchema = z
+  .object({
+    type: z.literal("response.completed"),
+    response: z
+      .object({ id: z.string(), output: z.array(z.json()).default([]) })
+      .passthrough(),
+  })
+  .passthrough();
+
+function completedResponse(value: string | Uint8Array | undefined) {
+  if (typeof value !== "string")
+    throw new Error("Expected a text WebSocket frame.");
+  return completedResponseSchema.parse(JSON.parse(value));
+}
+
 async function addApiAccount(
   fixture: Fixture,
   apiKey: string,
@@ -224,6 +263,355 @@ async function addApiAccount(
 }
 
 describe("Account Pool plugin", () => {
+  it("imports, refreshes, and routes Codex HTTP and WebSocket sessions by provider", async () => {
+    const seen: Array<{
+      path: string;
+      authorization: string | undefined;
+      accountId: string | undefined;
+      body: string;
+    }> = [];
+    const modelRequests: string[] = [];
+    let responseNumber = 0;
+    const futureToken = `header.${Buffer.from(JSON.stringify({ exp: Math.floor(Date.now() / 1_000) + 3_600 })).toString("base64url")}.signature`;
+    const upstream = await startUpstream(async (request, response) => {
+      const body = (await readRequestBody(request)).toString("utf8");
+      if (request.url === "/oauth") {
+        const parsed = z
+          .object({
+            client_id: z.literal("app_EMoamEEZ73f0CkXaXp7hrann"),
+            grant_type: z.literal("refresh_token"),
+            refresh_token: z.string(),
+          })
+          .parse(JSON.parse(body));
+        response.writeHead(200, { "content-type": "application/json" });
+        response.end(
+          JSON.stringify({
+            access_token: futureToken,
+            refresh_token: `next-${parsed.refresh_token}`,
+            id_token: "next-id-token",
+          }),
+        );
+        return;
+      }
+      if (request.url === "/models") {
+        modelRequests.push(
+          request.headers["chatgpt-account-id"]?.toString() ?? "",
+        );
+        response.writeHead(200, { "content-type": "application/json" });
+        response.end('{"data":[]}');
+        return;
+      }
+      responseNumber += 1;
+      seen.push({
+        path: request.url ?? "",
+        authorization: request.headers.authorization,
+        accountId: z
+          .string()
+          .optional()
+          .parse(request.headers["chatgpt-account-id"]),
+        body,
+      });
+      if (responseNumber === 1) {
+        response.writeHead(200, {
+          "content-type": "application/json",
+          "x-codex-primary-used-percent": "25",
+          "x-codex-primary-reset-after-seconds": "3600",
+          "x-codex-secondary-used-percent": "40",
+          "x-codex-secondary-reset-after-seconds": "86400",
+        });
+        response.end('{"id":"http-response"}');
+        return;
+      }
+      if (responseNumber === 2) {
+        response.writeHead(429, {
+          "content-type": "application/json",
+          "x-codex-primary-used-percent": "100",
+        });
+        response.end('{"error":{"message":"quota exhausted"}}');
+        return;
+      }
+      const id = `response-${responseNumber}`;
+      response.writeHead(200, {
+        "content-type": "text/event-stream",
+      });
+      response.end(
+        `event: response.created\ndata: ${JSON.stringify({
+          type: "response.created",
+          response: { id },
+        })}\n\nevent: response.completed\ndata: ${JSON.stringify({
+          type: "response.completed",
+          response: {
+            id,
+            output: [{ type: "message", id: `message-${responseNumber}` }],
+          },
+        })}\n\ndata: [DONE]\n\n`,
+      );
+    });
+    cleanups.push(upstream.close);
+    const dataDir = await mkdtemp(
+      path.join(tmpdir(), "bb-account-pool-codex-"),
+    );
+    let imported = 0;
+    const importCodexCredentials =
+      async (): Promise<ImportedCodexCredentials> => {
+        imported += 1;
+        return {
+          accessToken: "expired-token",
+          refreshToken: `refresh-${imported}`,
+          idToken: "id-token",
+          accountId: `chatgpt-account-${imported}`,
+          email: `codex-${imported}@example.com`,
+          expiresAt: Date.now() - 1,
+        };
+      };
+    const host = createFakePluginHost({
+      pluginId: "account-pool",
+      dataDir,
+      settings: {
+        upstreamBaseUrl: upstream.url,
+        codexUpstreamBaseUrl: upstream.url,
+        switchThreshold: 0.98,
+      },
+      sdk: sdkStubs(),
+    });
+    await createAccountPoolPlugin({
+      codexRefreshUrl: `${upstream.url}/oauth`,
+      importCodexCredentials,
+      usageUrl: "data:application/json,{}",
+    })(host.bb);
+    const service = host.harness.behavior.runService("hub");
+    cleanups.push(async () => {
+      service.controller.abort();
+      await service.done;
+      await host.harness.lifecycle.dispose();
+      await fs.rm(dataDir, { recursive: true, force: true });
+    });
+    await vi.waitFor(async () => {
+      expect(
+        statusSchema.parse(await host.harness.behavior.callRpc("status", null))
+          .accepting,
+      ).toBe(true);
+    });
+    await host.harness.behavior.callRpc("account.add", {
+      provider: "claude",
+      source: { kind: "api-key", apiKey: "claude-key" },
+      label: "Claude first",
+      priority: 0,
+    });
+    const importedByCli = await host.harness.behavior.runCli([
+      "account",
+      "add",
+      "--provider",
+      "codex",
+      "--import",
+    ]);
+    expect(importedByCli.exitCode).toBe(0);
+    await host.harness.behavior.callRpc("account.add", {
+      provider: "codex",
+      source: { kind: "import" },
+      label: null,
+      priority: 100,
+    });
+    const accountTable = await host.harness.behavior.runCli([
+      "account",
+      "list",
+    ]);
+    expect(accountTable.stdout).toContain("Provider");
+    expect(accountTable.stdout).toContain("codex");
+    const routed = await resolveCodexToken(host);
+    expect(routed.baseUrl).toBe("/api/v1/plugins/account-pool/http/v1");
+    await expect(
+      host.harness.behavior.resolveProviderEnvHealth("codex", {
+        hostId: "host-one",
+      }),
+    ).resolves.toEqual({
+      label: "Proxied",
+      statusMessage: "Credentials are provided by the Account Pool hub.",
+    });
+    const httpResponse = await host.harness.behavior.fetchHttp(
+      "POST",
+      "/v1/responses",
+      {
+        headers: {
+          authorization: "Bearer local-codex-token",
+          "x-bb-account-pool-token": routed.token,
+          "content-type": "application/json",
+          "openai-beta": "responses=experimental",
+        },
+        body: JSON.stringify({ model: "gpt-5", input: [] }),
+      },
+    );
+    expect(httpResponse.status).toBe(200);
+    expect(await httpResponse.json()).toEqual({ id: "http-response" });
+    const modelsResponse = await host.harness.behavior.fetchHttp(
+      "GET",
+      "/v1/models",
+      {
+        headers: { "x-bb-account-pool-token": routed.token },
+      },
+    );
+    expect(await modelsResponse.json()).toEqual({ data: [] });
+    expect(modelRequests).toHaveLength(1);
+    expect(modelRequests[0]).toMatch(/^chatgpt-account-[12]$/u);
+    expect(seen[0]).toMatchObject({
+      path: "/responses",
+      authorization: `Bearer ${futureToken}`,
+      accountId: "chatgpt-account-1",
+    });
+    const socket = await host.harness.experimental_openWebSocket(
+      "/v1/responses",
+      {
+        headers: {
+          "x-bb-account-pool-token": routed.token,
+          "openai-beta": "responses_websockets",
+        },
+      },
+    );
+    await socket.receive(
+      JSON.stringify({
+        type: "response.create",
+        generate: false,
+        input: [{ type: "message", id: "prefix" }],
+      }),
+    );
+    const prewarm = completedResponse(socket.sent[0]);
+    await socket.receive(
+      JSON.stringify({
+        type: "response.create",
+        previous_response_id: prewarm.response.id,
+        model: "gpt-5",
+        input: [{ type: "message", id: "delta-one" }],
+      }),
+    );
+    expect(JSON.parse(String(socket.sent[1]))).toMatchObject({
+      type: "response.created",
+    });
+    const first = completedResponse(socket.sent[2]);
+    await socket.receive(
+      JSON.stringify({
+        type: "response.create",
+        previous_response_id: first.response.id,
+        model: "gpt-5",
+        input: [{ type: "message", id: "delta-two" }],
+      }),
+    );
+    expect(socket.sent.map((frame) => JSON.parse(String(frame)).type)).toEqual([
+      "response.completed",
+      "response.created",
+      "response.completed",
+      "response.created",
+      "response.completed",
+    ]);
+    expect(seen[1]?.accountId).not.toBe(seen[2]?.accountId);
+    expect(seen[2]?.accountId).toBe(seen[3]?.accountId);
+    expect(JSON.parse(seen[3]?.body ?? "{}").input).toEqual([
+      { type: "message", id: "prefix" },
+      { type: "message", id: "delta-one" },
+      { type: "message", id: "message-3" },
+      { type: "message", id: "delta-two" },
+    ]);
+    await socket.close(1000, "done");
+    const status = statusSchema.parse(
+      await host.harness.behavior.callRpc("status", null),
+    );
+    const firstCodex = status.accounts.find(
+      (account) => account.codexAccountId === "chatgpt-account-1",
+    );
+    expect(firstCodex).toMatchObject({
+      provider: "codex",
+      sevenDayUtilization: 0.4,
+    });
+    expect(
+      status.accounts.find(
+        (account) => account.codexAccountId === seen[1]?.accountId,
+      ),
+    ).toMatchObject({
+      provider: "codex",
+      fiveHourUtilization: 1,
+    });
+    const secret = accountSecretSchema.parse(
+      JSON.parse(
+        await fs.readFile(
+          path.join(
+            dataDir,
+            "plugins",
+            "account-pool",
+            "secrets",
+            "accounts",
+            `account-${firstCodex?.id}.json`,
+          ),
+          "utf8",
+        ),
+      ),
+    );
+    expect(secret).toMatchObject({
+      accessToken: futureToken,
+      refreshToken: "next-refresh-1",
+      idToken: "next-id-token",
+    });
+  });
+
+  it("fails an unknown Codex WebSocket response id and closes with 1011", async () => {
+    const dataDir = await mkdtemp(
+      path.join(tmpdir(), "bb-account-pool-codex-unknown-"),
+    );
+    const host = createFakePluginHost({
+      pluginId: "account-pool",
+      dataDir,
+      sdk: sdkStubs(),
+    });
+    await createAccountPoolPlugin({
+      importCodexCredentials: async () => ({
+        accessToken: "access",
+        refreshToken: "refresh",
+        idToken: null,
+        accountId: "account",
+        email: null,
+        expiresAt: null,
+      }),
+    })(host.bb);
+    const service = host.harness.behavior.runService("hub");
+    cleanups.push(async () => {
+      service.controller.abort();
+      await service.done;
+      await host.harness.lifecycle.dispose();
+      await fs.rm(dataDir, { recursive: true, force: true });
+    });
+    await host.harness.behavior.callRpc("account.add", {
+      provider: "codex",
+      source: { kind: "import" },
+      label: null,
+      priority: 100,
+    });
+    const { token } = await resolveCodexToken(host);
+    const rejected = await host.harness.experimental_openWebSocket(
+      "/v1/responses",
+      { headers: { "x-bb-account-pool-token": "invalid" } },
+    );
+    expect(rejected.closeCalls).toEqual([
+      { code: 1008, reason: "invalid Account Pool token" },
+    ]);
+    const socket = await host.harness.experimental_openWebSocket(
+      "/v1/responses",
+      {
+        headers: { "x-bb-account-pool-token": token },
+      },
+    );
+    await socket.receive(
+      JSON.stringify({
+        type: "response.create",
+        previous_response_id: "missing",
+        input: [],
+      }),
+    );
+    expect(JSON.parse(String(socket.sent[0]))).toMatchObject({
+      type: "response.failed",
+      response: { error: { code: "unknown_previous_response_id" } },
+    });
+    expect(socket.closeCalls).toEqual([
+      { code: 1011, reason: "unknown previous_response_id" },
+    ]);
+  });
   it("prunes token files for unenrolled hosts on startup and status", async () => {
     const dataDir = await mkdtemp(path.join(tmpdir(), "bb-pool-prune-"));
     const secretDir = path.join(
@@ -347,7 +735,7 @@ describe("Account Pool plugin", () => {
       }),
     ).resolves.toBeNull();
     expect(host.harness.inspection.needsConfigurationMessages).toEqual([
-      "Add and enable a Claude account with `bb pool account add`.",
+      "Add and enable a Claude or Codex account with `bb pool account add`.",
     ]);
     const hello = helloResponse();
     expect(hello.status).toBe(200);

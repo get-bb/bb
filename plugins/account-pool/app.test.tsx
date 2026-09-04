@@ -70,7 +70,7 @@ describe("Account Pool settings", () => {
       },
     );
 
-    expect(await slot.findByText("No Claude accounts yet")).toBeTruthy();
+    expect(await slot.findByText("No provider accounts yet")).toBeTruthy();
     fireEvent.click(slot.getByRole("button", { name: "Sign in to Claude" }));
     expect(await slot.findByText("Finish signing in to Claude")).toBeTruthy();
     expect(opened).toEqual(["https://claude.ai/oauth/authorize?state=state"]);
@@ -83,6 +83,7 @@ describe("Account Pool settings", () => {
     expect(slot.getByText("person@example.com")).toBeTruthy();
     expect(slot.getByText("5h 21%")).toBeTruthy();
     expect(slot.getByText("7d 43%")).toBeTruthy();
+    expect(slot.getByText("Claude")).toBeTruthy();
     expect(slot.queryByText("Finish signing in to Claude")).toBeNull();
     expect(slot.rpcCalls).toContainEqual({
       method: "login.complete",
@@ -91,6 +92,46 @@ describe("Account Pool settings", () => {
         pasted: "code#state",
       },
     });
+  });
+
+  it("imports Codex credentials from the server machine", async () => {
+    const added = {
+      ...account(),
+      provider: "codex" as const,
+      label: "Codex Pro",
+    };
+    const accounts: AccountSummary[] = [];
+    const slot = renderSlot(
+      app.settingsSections[0]!,
+      {},
+      {
+        rpc: {
+          "account.list": () => [...accounts],
+          "account.add": () => {
+            accounts.push(added);
+            return added;
+          },
+        },
+      },
+    );
+    fireEvent.click(
+      await slot.findByRole("button", {
+        name: "Import Codex from this machine",
+      }),
+    );
+    await waitFor(() =>
+      expect(slot.rpcCalls).toContainEqual({
+        method: "account.add",
+        input: {
+          provider: "codex",
+          source: { kind: "import" },
+          label: null,
+          priority: 100,
+        },
+      }),
+    );
+    expect(await slot.findByText("Codex Pro")).toBeTruthy();
+    expect(slot.getByText("Codex")).toBeTruthy();
   });
 
   it("keeps the login step open and shows a completion error inline", async () => {

@@ -3,13 +3,13 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Routes Anthropic Messages API traffic across a pool of Claude accounts.",
+  "description": "Routes Claude and Codex API traffic across provider account pools.",
   "engines": {
     "bb": ">=0.0"
   },
   "bb": {
     "name": "Account Pool",
-    "description": "Routes Anthropic Messages API traffic across a pool of Claude accounts.",
+    "description": "Routes Claude and Codex API traffic across provider account pools.",
     "branding": {
       "icon": "Layers"
     },
