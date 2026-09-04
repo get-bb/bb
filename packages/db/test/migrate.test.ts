@@ -4200,6 +4200,7 @@ describe("migrate", () => {
         "events_item_lifecycle_thread_item_sequence_idx",
         "events_parent_tool_call_thread_parent_sequence_idx",
         "events_plan_steps_thread_sequence_idx",
+        "events_span_idx",
         "events_thread_sequence_idx",
         "events_thread_state_thread_sequence_idx",
         "events_thread_turn_type_item_sequence_idx",

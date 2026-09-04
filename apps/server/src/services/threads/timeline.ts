@@ -782,12 +782,15 @@ function ensureSequenceWindowWholeItemRows(
   });
   const itemKeysOwnedByNewerWindow = new Set<string>();
   const itemsStartingBeforeWindow = new Map<string, ScopedItemRef>();
+  const sequenceEnd = args.beforeSequence ?? Infinity;
   for (const span of spans) {
     const key = scopedItemRefKey(span);
     if (args.ownership === "origin") {
-      if (span.completedSeq === null || span.minSequence < args.sequenceStart) {
+      const openInLaterWindow =
+        span.completedSeq === null && span.maxSequence >= sequenceEnd;
+      if (span.minSequence < args.sequenceStart || openInLaterWindow) {
         itemKeysOwnedByNewerWindow.add(key);
-      } else if (span.completedSeq >= (args.beforeSequence ?? Infinity)) {
+      } else if ((span.completedSeq ?? -1) >= sequenceEnd) {
         itemsStartingBeforeWindow.set(key, span);
       }
       continue;

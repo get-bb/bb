@@ -1754,14 +1754,6 @@ describe("turn details for an item that finishes in a later turn", () => {
       data: JSON.stringify({ reason: "manual-stop" }),
     });
     insertEvents(db, noopNotifier, events);
-    const before = buildNestedPage(db, thread, LARGE_BUDGET, null).response;
-    const beforeThought = before.rows.find(
-      (row) => row.kind === "system" && row.title.startsWith("Thought for"),
-    );
-    expect(beforeThought).toMatchObject({
-      detail: "Checking",
-      status: "interrupted",
-    });
 
     const storedCount = events.length;
     push({
@@ -1780,18 +1772,25 @@ describe("turn details for an item that finishes in a later turn", () => {
         execution,
       }),
     });
-    push({
-      ...base,
-      type: "turn/started",
-      scope: turnScope("turn-2"),
-      data: "{}",
-    });
-    push({
-      ...base,
-      type: "turn/input/accepted",
-      scope: turnScope("turn-2"),
-      data: JSON.stringify({ clientRequestId: requestId(2) }),
-    });
+    insertEvents(db, noopNotifier, events.slice(storedCount));
+    const unfinishedLatest = buildPage(
+      db,
+      thread,
+      LARGE_BUDGET,
+      null,
+      1,
+    ).response;
+    const unfinishedOlder = buildNestedPage(
+      db,
+      thread,
+      LARGE_BUDGET,
+      unfinishedLatest.timelinePage.olderCursor!,
+    ).response;
+    const beforeThought = unfinishedOlder.rows.find(
+      (row) => row.kind === "system" && row.title.startsWith("Thought for"),
+    );
+    expect(beforeThought).toMatchObject({ detail: "Checking" });
+
     push({
       ...base,
       type: "item/completed",
@@ -1806,25 +1805,12 @@ describe("turn details for an item that finishes in a later turn", () => {
       type: "turn/completed",
       data: JSON.stringify({ status: "interrupted", providerThreadId }),
     });
-    insertEvents(db, noopNotifier, events.slice(storedCount));
+    insertEvents(db, noopNotifier, events.slice(-2));
 
     const latest = buildPage(db, thread, LARGE_BUDGET, null, 1).response;
     expect(latest.rows.some((row) => row.kind === "system")).toBe(false);
-    const cursor = latest.timelinePage.olderCursor;
-    const older = buildPage(db, thread, LARGE_BUDGET, cursor!, 1).response;
-    const olderTurn = older.rows.find(
-      (row) => row.kind === "turn" && row.turnId === turnId,
-    );
-    if (olderTurn?.kind !== "turn") {
-      throw new Error("expected the older turn");
-    }
-    const details = buildTimelineTurnSummaryDetails(db, thread, {
-      includeProviderUnhandledOperations: false,
-      sourceSeqEnd: olderTurn.sourceSeqEnd,
-      sourceSeqStart: olderTurn.sourceSeqStart,
-      turnId,
-    }).rows;
-    const thoughts = details.filter(
+    const after = collectTurnDetailsAndChildren(db, thread).get(turnId);
+    const thoughts = after?.details.filter(
       (row) => row.kind === "system" && row.title.startsWith("Thought for"),
     );
     expect(thoughts).toEqual([
@@ -1833,9 +1819,12 @@ describe("turn details for an item that finishes in a later turn", () => {
         detail: text,
         status: "interrupted",
         sourceSeqStart: firstSequence + 1,
-        sourceSeqEnd: firstSequence + 7,
+        sourceSeqEnd: firstSequence + 5,
       }),
     ]);
+    expect(collectTurnDetailsAndChildren(db, thread).get(turnId)).toEqual(
+      after,
+    );
   });
 
   it("shows the spawning turn's item completed with its late output", () => {
