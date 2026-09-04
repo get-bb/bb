@@ -546,6 +546,35 @@ export type PluginHttpHandler = (
   context: Context,
 ) => Response | Promise<Response>;
 
+export interface ExperimentalPluginWebSocket {
+  send(data: string | Uint8Array): void;
+  close(code?: number, reason?: string): void;
+  readonly readyState: number;
+}
+
+export interface ExperimentalPluginWebSocketContext {
+  request: Request;
+  url: URL;
+  headers: Headers;
+}
+
+export interface ExperimentalPluginWebSocketHandlers {
+  onOpen?(socket: ExperimentalPluginWebSocket): void | Promise<void>;
+  onMessage?(
+    socket: ExperimentalPluginWebSocket,
+    data: string | Uint8Array,
+  ): void | Promise<void>;
+  onClose?(
+    socket: ExperimentalPluginWebSocket,
+    event: { code: number; reason: string },
+  ): void | Promise<void>;
+  onError?(socket: ExperimentalPluginWebSocket, error: Error): void;
+}
+
+export type ExperimentalPluginWebSocketHandler = (
+  context: ExperimentalPluginWebSocketContext,
+) => ExperimentalPluginWebSocketHandlers;
+
 export interface PluginHttp {
   /**
    * Register an HTTP route, mounted at
@@ -560,6 +589,17 @@ export interface PluginHttp {
     method: string,
     path: string,
     handler: PluginHttpHandler,
+    opts?: { auth?: PluginHttpAuthMode },
+  ): void;
+
+  /**
+   * Register a WebSocket route in the same `/http/` namespace as `route`.
+   * A GET request upgrades only when it carries `Upgrade: websocket`.
+   * Auth modes and exact-path matching are identical to HTTP routes.
+   */
+  experimental_websocket(
+    path: string,
+    handler: ExperimentalPluginWebSocketHandler,
     opts?: { auth?: PluginHttpAuthMode },
   ): void;
 }

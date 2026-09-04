@@ -684,6 +684,95 @@ describe("http", () => {
       error: "plugin route failed: http route handler must return a Response",
     });
   });
+
+  it("drives WebSocket lifecycle events and captures text and binary sends", async () => {
+    const { bb, harness } = createFakePluginHost();
+    const events: string[] = [];
+    bb.http.experimental_websocket(
+      "/socket",
+      (context) => ({
+        onOpen(socket) {
+          events.push(
+            `open:${context.url.searchParams.get("session")}:${context.headers.get("x-marker")}`,
+          );
+          socket.send("ready");
+        },
+        onMessage(socket, data) {
+          events.push(
+            typeof data === "string" ? data : `binary:${data.length}`,
+          );
+          socket.send(data);
+        },
+        onClose(_socket, event) {
+          events.push(`close:${event.code}:${event.reason}`);
+        },
+        onError(_socket, error) {
+          events.push(`error:${error.message}`);
+        },
+      }),
+      { auth: "none" },
+    );
+
+    const session = await harness.experimental_openWebSocket(
+      "/socket?session=s1",
+      { headers: { "x-marker": "test" } },
+    );
+    expect(harness.registrations.websocketRoutes).toHaveLength(1);
+    expect(session.sent).toEqual(["ready"]);
+    await session.receive("hello");
+    await session.receive(new Uint8Array([1, 2, 3]));
+    await session.error(new Error("transport"));
+    await session.close(1000, "done");
+
+    expect(session.sent).toEqual(["ready", "hello", new Uint8Array([1, 2, 3])]);
+    expect(session.closeCalls).toEqual([{ code: 1000, reason: "done" }]);
+    expect(session.readyState).toBe(3);
+    expect(events).toEqual([
+      "open:s1:test",
+      "hello",
+      "binary:3",
+      "error:transport",
+      "close:1000:done",
+    ]);
+  });
+
+  it("isolates WebSocket event failures and closes sessions on reload", async () => {
+    const { bb, harness } = createFakePluginHost();
+    const closed: string[] = [];
+    bb.http.experimental_websocket("/socket", () => ({
+      onMessage() {
+        throw new Error("message boom");
+      },
+      onClose(_socket, event) {
+        closed.push(`${event.code}:${event.reason}`);
+      },
+    }));
+    const session = await harness.experimental_openWebSocket("/socket");
+
+    await expect(session.receive("boom")).resolves.toBeUndefined();
+    expect(harness.logEntries.at(-1)?.message).toContain("message boom");
+    await harness.reload(() => {});
+
+    expect(session.closeCalls).toContainEqual({
+      code: 1012,
+      reason: "Plugin reloaded or disabled",
+    });
+    expect(session.readyState).toBe(3);
+    expect(closed).toEqual(["1012:Plugin reloaded or disabled"]);
+  });
+
+  it("rejects a throwing WebSocket factory", async () => {
+    const throwing = createFakePluginHost();
+    throwing.bb.http.experimental_websocket("/boom", () => {
+      throw new Error("factory boom");
+    });
+    await expect(
+      throwing.harness.experimental_openWebSocket("/boom"),
+    ).rejects.toThrow("factory boom");
+    expect(throwing.harness.logEntries.at(-1)?.message).toContain(
+      "factory boom",
+    );
+  });
 });
 
 describe("cli", () => {

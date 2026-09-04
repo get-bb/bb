@@ -172,6 +172,31 @@ Auth modes:
 - `"none"` — no checks. ONLY for webhooks that verify their own signature
   (e.g. Slack's `x-slack-signature` HMAC) inside the handler.
 
+`bb.http.experimental_websocket(path, handler, { auth? })` mounts an
+exact-match WebSocket at the same `/api/v1/plugins/<id>/http/<path>` namespace.
+The upgrade request uses the same `local`, `token`, and `none` auth modes. A
+plain GET does not invoke the WebSocket handler, so an HTTP route and a
+WebSocket may share one path. The handler receives the upgrade `request`,
+parsed `url`, and `headers`, then returns any of `onOpen`, `onMessage`,
+`onClose`, and `onError`. Text arrives as a string and binary data as a
+`Uint8Array`. Sockets opened by an old plugin generation close with code 1012
+when the plugin reloads or is disabled.
+
+```ts
+bb.http.experimental_websocket(
+  "/events",
+  ({ headers }) => ({
+    onOpen(socket) {
+      socket.send(`connected:${headers.get("x-request-id") ?? "none"}`);
+    },
+    onMessage(socket, data) {
+      socket.send(data);
+    },
+  }),
+  { auth: "token" },
+);
+```
+
 ### bb.rpc — the frontend data plane
 
 Define method names plus runtime input/output schemas once, then register

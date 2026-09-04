@@ -49,6 +49,10 @@ Read the installed declarations for exact current signatures.
 - `ExperimentalOpenFixedTabOptions`
 - `ExperimentalPermissionModePickerProps`
 - `ExperimentalPluginFixedTabReference`
+- `ExperimentalPluginWebSocket`
+- `ExperimentalPluginWebSocketContext`
+- `ExperimentalPluginWebSocketHandler`
+- `ExperimentalPluginWebSocketHandlers`
 - `ExperimentalProviderModelPickerProps`
 - `ExperimentalProviderModelPickerRouting`
 - `ExperimentalProviderModelPickerValue`
@@ -290,6 +294,8 @@ Read the installed declarations for exact current signatures.
 
 ## `@get-bb/plugin-sdk/testing`
 
+- `ExperimentalFakeWebSocketRouteRecord`
+- `ExperimentalFakeWebSocketSession`
 - `PluginContextStaleError`
 - `createFakePluginHost`
 - `createFakeSdk`

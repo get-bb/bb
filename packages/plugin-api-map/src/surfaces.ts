@@ -625,16 +625,24 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
       },
       {
         id: "wire",
-        tagline: "Typed RPC, webhook routes, realtime push",
-        title: "HTTP, RPC & realtime",
+        tagline: "Typed RPC, HTTP & WebSocket routes, realtime push",
+        title: "HTTP, WebSocket, RPC & realtime",
         summary:
           "Connects the plugin's own UI, its server code, and outside services. With this, a plugin can:",
         bullets: [
           "Call its server from its UI over RPC, with arguments and results checked against a schema",
-          "Serve HTTP routes other systems can call, webhooks included",
+          "Serve exact-path HTTP and WebSocket routes other systems can call, webhooks included",
           "Push messages to every open bb window, so the UI does not have to poll",
         ],
-        apiSymbols: ["PluginRpc", "PluginHttp", "PluginRealtime"],
+        apiSymbols: [
+          "PluginRpc",
+          "PluginHttp",
+          "PluginRealtime",
+          "ExperimentalPluginWebSocket",
+          "ExperimentalPluginWebSocketContext",
+          "ExperimentalPluginWebSocketHandler",
+          "ExperimentalPluginWebSocketHandlers",
+        ],
         firstParty: [
           "Automations",
           "Custom instructions",

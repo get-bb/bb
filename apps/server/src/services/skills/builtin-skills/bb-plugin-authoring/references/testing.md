@@ -48,6 +48,10 @@ await harness.behavior.fetchHttp("POST", "/events", {
   body,
   headers: { "content-type": "application/json" },
 });
+const socket = await harness.behavior.experimental_openWebSocket("/v1/echo");
+await socket.receive("hello");
+socket.sent;
+await socket.close();
 await harness.behavior.runCli(["search", "x"]); // { exitCode, stdout, stderr }
 const svc = harness.behavior.runService("watcher"); // start now; svc.controller.abort(); await svc.done
 await harness.behavior.runSchedule("sync"); // no timers, no cron sweep
@@ -87,8 +91,8 @@ Inspect: `harness.inspection.sdk.calls` /
 `harness.sdk.stub("projects.list", fn)` adds one late), `harness.logEntries`,
 `harness.realtimeSignals`, `harness.experimental_hostRpcCalls`,
 `harness.needsConfigurationMessages`, and
-`harness.registrations` (http routes, rpc methods, services, schedules, cli,
-agent tools/configure provider, mention providers). Pass
+`harness.registrations` (HTTP and WebSocket routes, rpc methods, services,
+schedules, cli, agent tools/configure provider, mention providers). Pass
 `agentSkillIds` to `createFakePluginHost` to declare the manifest skill names
 available to the configure driver.
 

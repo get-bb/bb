@@ -1,5 +1,30 @@
 # APIs To Audit
 
+## `bb.http.experimental_websocket`
+
+**What it does.** Registers an exact-path WebSocket upgrade in the plugin's
+existing `/api/v1/plugins/<id>/http/` namespace. It shares HTTP route auth
+modes, gives the plugin the upgrade request metadata, normalizes incoming text
+and binary frames, and closes sockets from a replaced or disabled plugin
+generation with code 1012. The supporting public types are
+`ExperimentalPluginWebSocket`, `ExperimentalPluginWebSocketContext`,
+`ExperimentalPluginWebSocketHandler`, and
+`ExperimentalPluginWebSocketHandlers`; the testing harness exposes
+`experimental_openWebSocket`, `ExperimentalFakeWebSocketRouteRecord`, and
+`ExperimentalFakeWebSocketSession`.
+
+**Audit before stabilizing.**
+
+1. Confirm the HTTP namespace and exact-path rule cover plugin proxy use cases
+   without a separate WebSocket namespace or parameterized routing.
+2. Decide whether subprotocol negotiation belongs in the context or returned
+   handler contract.
+3. Confirm string and `Uint8Array` are sufficient for frame data and sends.
+4. Confirm code 1012 is the right reload/disable signal and whether plugins
+   need a distinct disposal reason.
+5. Confirm the callback error policy should keep the socket open after an
+   isolated message-handler failure.
+
 ## `bb.providers.experimental_contributeEnvHealth`
 
 **What it does.** Registers one host-scoped readiness resolver beside a

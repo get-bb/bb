@@ -19,6 +19,8 @@ import {
   type ToolCallResponse,
 } from "@bb/domain";
 import {
+  type ExperimentalPluginWebSocketContext,
+  type ExperimentalPluginWebSocketHandlers,
   type PluginCliExecutionResult,
   type ExperimentalPluginProviderEnvContext,
   type ExperimentalPluginProviderEnvHealthContext,
@@ -105,6 +107,7 @@ import {
   type PluginHttpRouteRecord,
   type PluginMentionTrigger,
   type PluginRpcHandler,
+  type PluginWebSocketRouteRecord,
 } from "./plugin-api.js";
 import {
   syncPluginCommandsSkill,
@@ -281,12 +284,30 @@ export interface PluginService {
     method: string,
     path: string,
   ): PluginWireLookup<PluginHttpRouteRecord>;
+  getWebSocketRoute(
+    id: string,
+    path: string,
+  ): PluginWireLookup<PluginWebSocketRouteRecord>;
   getRpcHandler(id: string, method: string): PluginWireLookup<PluginRpcHandler>;
   invokeHttpRoute(
     id: string,
     route: PluginHttpRouteRecord,
     context: Context,
   ): Promise<Response>;
+  invokeWebSocketRoute(
+    id: string,
+    route: PluginWebSocketRouteRecord,
+    context: ExperimentalPluginWebSocketContext,
+  ): Promise<
+    | { ok: true; handlers: ExperimentalPluginWebSocketHandlers }
+    | { ok: false; error: string }
+  >;
+  invokeWebSocketEvent(
+    id: string,
+    route: PluginWebSocketRouteRecord,
+    event: "open" | "message" | "close" | "error",
+    run: () => void | Promise<void>,
+  ): Promise<void>;
   invokeRpcHandler(
     id: string,
     method: string,
@@ -2041,6 +2062,12 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       );
     },
 
+    getWebSocketRoute(id, path) {
+      return wireLookup(id, (plugin) =>
+        plugin.handle.websocketRoutes.find((route) => route.path === path),
+      );
+    },
+
     getRpcHandler(id, method) {
       return wireLookup(id, (plugin) => plugin.handle.rpcHandlers.get(method));
     },
@@ -2059,6 +2086,44 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
         { ok: false, error: `plugin route failed: ${outcome.error}` },
         500,
       );
+    },
+
+    async invokeWebSocketRoute(id, route, context) {
+      const outcome = await invokeWrapped(
+        id,
+        `websocket ${route.path} connect`,
+        () => {
+          const handlers = route.handler(context);
+          if (
+            typeof handlers !== "object" ||
+            handlers === null ||
+            Array.isArray(handlers)
+          ) {
+            throw new Error("websocket route handler must return an object");
+          }
+          for (const name of [
+            "onOpen",
+            "onMessage",
+            "onClose",
+            "onError",
+          ] as const) {
+            const callback = handlers[name];
+            if (callback !== undefined && typeof callback !== "function") {
+              throw new Error(
+                `websocket route handler ${name} must be a function`,
+              );
+            }
+          }
+          return handlers;
+        },
+      );
+      return outcome.ok
+        ? { ok: true, handlers: outcome.value }
+        : { ok: false, error: outcome.error };
+    },
+
+    async invokeWebSocketEvent(id, route, event, run) {
+      await invokeWrapped(id, `websocket ${route.path} ${event}`, run);
     },
 
     async invokeRpcHandler(id, method, handler, input) {
