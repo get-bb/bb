@@ -11,9 +11,14 @@ import { Button } from "@bb/shared-ui/button";
 import { SourceCodeHost } from "@/components/code/SourceCodeHost";
 import { COARSE_POINTER_TEXT_SM_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
 import { EmptyStatePanel } from "@bb/shared-ui/empty-state";
+import { appToast } from "@/components/ui/app-toast";
 import { CopyButton } from "@/components/ui/copy-button.js";
 import { Icon } from "@bb/shared-ui/icon";
 import { OpenInEditorButton } from "@/components/ui/open-in-editor-button.js";
+import {
+  downloadNamedFile,
+  type FileDownloadSource,
+} from "@/lib/file-download";
 import { useAppCommandShortcut } from "@/components/commands/AppCommandProvider";
 import { AppCommandShortcutHint } from "@/components/commands/AppCommandShortcutHint";
 import type { MarkdownLinkRouting } from "@/components/ui/markdown-link-routing.js";
@@ -32,6 +37,7 @@ import type {
   FilePreviewLineRange,
   WorkspaceFilePreviewStatusLabel,
 } from "@bb/client-core";
+import { fileNameFromPath } from "@bb/thread-view";
 import {
   DEFAULT_CODE_OVERFLOW_MODE,
   type CodeOverflowMode,
@@ -80,6 +86,7 @@ interface FilePreviewProps {
   state: FilePreviewState;
   path: string;
   copyPath?: string | null;
+  downloadUrl?: string | null;
   headerMode?: FilePreviewHeaderMode;
   onSelectionAddToChat?: (text: string) => void;
   onOpenInEditor?: (path: string) => void;
@@ -109,6 +116,7 @@ interface FilePreviewHeaderProps {
   path: string;
   copyPath: string | null;
   rawContents: string | null;
+  downloadSource: FileDownloadSource | null;
   externalUrl: string | null;
   onOpenInEditor?: (path: string) => void;
   onRefresh?: () => void;
@@ -120,6 +128,11 @@ interface FilePreviewHeaderProps {
   onLineOverflowModeChange: CodeOverflowModeChangeHandler;
   viewMode: FilePreviewViewMode;
   onViewModeChange: (mode: FilePreviewViewMode) => void;
+}
+
+interface FilePreviewDownloadButtonProps {
+  path: string;
+  source: FileDownloadSource;
 }
 
 interface FilePreviewLineWrapButtonProps {
@@ -212,6 +225,30 @@ function getFilePreviewExternalUrl(state: FilePreviewState): string | null {
   }
   if (state.kind === "html") {
     return state.iframe.url;
+  }
+  return null;
+}
+
+function getFilePreviewDownloadSource(
+  state: FilePreviewState,
+  downloadUrl: string | null,
+  rawContents: string | null,
+): FileDownloadSource | null {
+  if (downloadUrl !== null) {
+    return { kind: "url", url: downloadUrl };
+  }
+  if (
+    state.kind === "image" ||
+    state.kind === "video" ||
+    state.kind === "iframe"
+  ) {
+    return { kind: "url", url: state.url };
+  }
+  if (state.kind === "html") {
+    return { kind: "url", url: state.iframe.url };
+  }
+  if (rawContents !== null) {
+    return { kind: "contents", contents: rawContents };
   }
   return null;
 }
@@ -423,6 +460,7 @@ export function FilePreview({
   state,
   path,
   copyPath = null,
+  downloadUrl = null,
   headerMode = "file",
   onSelectionAddToChat,
   onOpenInEditor,
@@ -434,6 +472,11 @@ export function FilePreview({
   const toggleKind = getFilePreviewToggleKind(state);
   const filePreviewLineRange = getFilePreviewLineRange(state);
   const rawContents = getRawFilePreviewContents(state);
+  const downloadSource = getFilePreviewDownloadSource(
+    state,
+    downloadUrl,
+    rawContents,
+  );
   const externalUrl = getFilePreviewExternalUrl(state);
   const [viewMode, setViewMode] = useState<FilePreviewViewMode>(
     getInitialFilePreviewViewMode({
@@ -488,6 +531,7 @@ export function FilePreview({
           path={path}
           copyPath={copyPath}
           rawContents={rawContents}
+          downloadSource={downloadSource}
           externalUrl={externalUrl}
           onOpenInEditor={onOpenInEditor}
           onRefresh={onRefresh}
@@ -596,6 +640,7 @@ function FilePreviewHeader({
   path,
   copyPath,
   rawContents,
+  downloadSource,
   externalUrl,
   onOpenInEditor,
   onRefresh,
@@ -677,6 +722,9 @@ function FilePreviewHeader({
                   {copyFileContentsLabel}
                 </TooltipContent>
               </Tooltip>
+            )}
+            {downloadSource === null ? null : (
+              <FilePreviewDownloadButton path={path} source={downloadSource} />
             )}
             {externalUrl === null ? null : (
               <Tooltip>
@@ -811,6 +859,55 @@ function FilePreviewPath({ path, copyPath }: FilePreviewPathProps) {
         <TooltipContent side="bottom">{label}</TooltipContent>
       </Tooltip>
     </TooltipProvider>
+  );
+}
+
+function FilePreviewDownloadButton({
+  path,
+  source,
+}: FilePreviewDownloadButtonProps) {
+  const [isDownloading, setIsDownloading] = useState(false);
+  const label = isDownloading ? "Downloading file" : "Download file";
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className={cn(
+            FILE_PREVIEW_HEADER_ICON_BUTTON_CLASS,
+            "shrink-0 text-muted-foreground hover:bg-state-hover hover:text-foreground",
+          )}
+          onClick={() => {
+            if (isDownloading) {
+              return;
+            }
+            setIsDownloading(true);
+            void downloadNamedFile({
+              fileName: fileNameFromPath(path),
+              source,
+            })
+              .catch(() => {
+                appToast.error("Failed to download file");
+              })
+              .finally(() => {
+                setIsDownloading(false);
+              });
+          }}
+          disabled={isDownloading}
+          aria-label={label}
+        >
+          <Icon
+            name={isDownloading ? "Spinner" : "Download"}
+            className={cn(isDownloading && "animate-spin")}
+            aria-hidden
+          />
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent side="bottom">{label}</TooltipContent>
+    </Tooltip>
   );
 }
 

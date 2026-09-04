@@ -200,6 +200,7 @@ describe("FilePreview", () => {
     cleanup();
     vi.useRealTimers();
     vi.restoreAllMocks();
+    vi.unstubAllGlobals();
   });
 
   it("offers a manual file refresh action", () => {
@@ -221,6 +222,119 @@ describe("FilePreview", () => {
     fireEvent.click(screen.getByRole("button", { name: "Refresh file" }));
 
     expect(onRefresh).toHaveBeenCalledOnce();
+  });
+
+  it("downloads a text file from the header using the file name", async () => {
+    const createObjectURL = vi
+      .spyOn(URL, "createObjectURL")
+      .mockReturnValue("blob:notes");
+    vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
+    let downloadedName: string | null = null;
+    vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(
+      function (this: HTMLAnchorElement) {
+        downloadedName = this.download;
+      },
+    );
+
+    render(
+      <FilePreview
+        path="docs/research/gmail-setup-handoff.md"
+        state={{
+          kind: "ready",
+          file: {
+            name: "gmail-setup-handoff.md",
+            contents: "# Handoff",
+          },
+          lineRange: null,
+          textPreviewKind: "markdown",
+        }}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Download file" }));
+
+    await waitFor(() => {
+      expect(downloadedName).toBe("gmail-setup-handoff.md");
+    });
+    const blob = createObjectURL.mock.calls[0]?.[0];
+    if (!(blob instanceof Blob)) {
+      throw new Error("expected a Blob");
+    }
+    expect(await blob.text()).toBe("# Handoff");
+  });
+
+  it("downloads an image from its preview url", async () => {
+    vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:image");
+    vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
+    let downloadedName: string | null = null;
+    vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(
+      function (this: HTMLAnchorElement) {
+        downloadedName = this.download;
+      },
+    );
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      blob: async () => new Blob(["png"], { type: "image/png" }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <FilePreview
+        path="docs/screenshots/right-panel.png"
+        state={{ kind: "image", url: "/preview/right-panel.png" }}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Download file" }));
+
+    await waitFor(() => {
+      expect(downloadedName).toBe("right-panel.png");
+    });
+    expect(fetchMock).toHaveBeenCalledWith("/preview/right-panel.png");
+  });
+
+  it("hides download when the file has no bytes to save", () => {
+    render(<FilePreview path="README.md" state={{ kind: "loading" }} />);
+
+    expect(screen.queryByRole("button", { name: "Download file" })).toBeNull();
+  });
+
+  it("still offers download when preview is empty or unsupported", () => {
+    const view = render(
+      <SecondaryPanelFilePreview
+        activePath="notes.txt"
+        filePreview={{
+          kind: "text",
+          content: "",
+          mimeType: "text/plain",
+          name: "notes.txt",
+          path: "notes.txt",
+          url: "/api/v1/preview/notes.txt",
+        }}
+        isLoading={false}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "Download file" })).toBeTruthy();
+
+    view.rerender(
+      <SecondaryPanelFilePreview
+        activePath="assets/model.glb"
+        filePreview={{
+          kind: "unsupported",
+          mimeType: "model/gltf-binary",
+          name: "model.glb",
+          path: "assets/model.glb",
+          url: "/api/v1/preview/model.glb",
+        }}
+        isLoading={false}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "Download file" })).toBeTruthy();
+    expect(
+      screen.getByText("Preview not available for model/gltf-binary."),
+    ).toBeTruthy();
   });
 
   it("disables the manual refresh action while a refresh is running", () => {
@@ -562,6 +676,7 @@ describe("FilePreview", () => {
 
     const actionButtons = [
       screen.getByRole("button", { name: "Copy HTML source" }),
+      screen.getByRole("button", { name: "Download file" }),
       screen.getByRole("button", { name: /Open in editor/ }),
     ];
 

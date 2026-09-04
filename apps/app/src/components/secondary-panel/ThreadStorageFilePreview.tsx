@@ -101,12 +101,18 @@ export function SecondaryPanelFilePreview({
   onRefresh,
   statusLabel = null,
 }: SecondaryPanelFilePreviewProps) {
+  const downloadUrl =
+    error || !filePreview || filePreview.path !== activePath
+      ? null
+      : filePreview.url;
+
   if (error) {
     const isNotFound = error instanceof HttpError && error.status === 404;
     return (
       <FilePreviewSurface
         path={activePath}
         copyPath={copyPath}
+        downloadUrl={downloadUrl}
         onSelectionAddToChat={onSelectionAddToChat}
         onOpenInEditor={onOpenInEditor}
         onRefresh={onRefresh}
@@ -122,6 +128,7 @@ export function SecondaryPanelFilePreview({
       <FilePreviewSurface
         path={activePath}
         copyPath={copyPath}
+        downloadUrl={downloadUrl}
         onSelectionAddToChat={onSelectionAddToChat}
         onOpenInEditor={onOpenInEditor}
         onRefresh={onRefresh}
@@ -138,6 +145,7 @@ export function SecondaryPanelFilePreview({
         <FilePreviewSurface
           path={activePath}
           copyPath={copyPath}
+          downloadUrl={downloadUrl}
           onSelectionAddToChat={onSelectionAddToChat}
           onOpenInEditor={onOpenInEditor}
           onRefresh={onRefresh}
@@ -157,6 +165,7 @@ export function SecondaryPanelFilePreview({
       <FilePreviewSurface
         path={activePath}
         copyPath={copyPath}
+        downloadUrl={downloadUrl}
         onSelectionAddToChat={onSelectionAddToChat}
         onOpenInEditor={onOpenInEditor}
         onRefresh={onRefresh}
@@ -182,6 +191,7 @@ export function SecondaryPanelFilePreview({
         <FilePreviewSurface
           path={activePath}
           copyPath={copyPath}
+          downloadUrl={downloadUrl}
           onSelectionAddToChat={onSelectionAddToChat}
           onOpenInEditor={onOpenInEditor}
           onRefresh={onRefresh}
@@ -195,6 +205,7 @@ export function SecondaryPanelFilePreview({
       <FilePreviewSurface
         path={activePath}
         copyPath={copyPath}
+        downloadUrl={downloadUrl}
         onSelectionAddToChat={onSelectionAddToChat}
         onOpenInEditor={onOpenInEditor}
         onRefresh={onRefresh}
@@ -216,6 +227,7 @@ export function SecondaryPanelFilePreview({
       <FilePreviewSurface
         path={activePath}
         copyPath={copyPath}
+        downloadUrl={downloadUrl}
         onSelectionAddToChat={onSelectionAddToChat}
         onOpenInEditor={onOpenInEditor}
         onRefresh={onRefresh}
@@ -231,6 +243,7 @@ export function SecondaryPanelFilePreview({
       <FilePreviewSurface
         path={activePath}
         copyPath={copyPath}
+        downloadUrl={downloadUrl}
         onSelectionAddToChat={onSelectionAddToChat}
         onOpenInEditor={onOpenInEditor}
         onRefresh={onRefresh}
@@ -245,6 +258,7 @@ export function SecondaryPanelFilePreview({
     <FilePreviewSurface
       path={activePath}
       copyPath={copyPath}
+      downloadUrl={downloadUrl}
       onSelectionAddToChat={onSelectionAddToChat}
       onOpenInEditor={onOpenInEditor}
       onRefresh={onRefresh}
