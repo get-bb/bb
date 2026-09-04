@@ -16,6 +16,7 @@ import {
 } from "./contracts.js";
 
 const ACCOUNTS_KEY = "accounts:v1";
+const ACCOUNT_LAST_USED_PERSIST_MS = 60 * 1_000;
 const accountsSchema = z.array(accountSchema);
 const HUB_TOKEN_PREFIX = "hub-token-";
 const HUB_TOKEN_GRACE_MS = 10 * 60 * 1_000;
@@ -130,12 +131,27 @@ export class AccountStore {
     id: string,
     lastUsedAt: number,
     lastUsedHostId: string,
-  ): Promise<Account | null> {
-    return this.update(id, (account) => ({
-      ...account,
-      lastUsedAt,
-      lastUsedHostId,
-    }));
+  ): Promise<boolean> {
+    return this.serialized(async () => {
+      const accounts = await this.list();
+      const index = accounts.findIndex((account) => account.id === id);
+      const current = accounts[index];
+      if (index < 0 || current === undefined) return false;
+      if (
+        current.lastUsedAt !== null &&
+        current.lastUsedHostId === lastUsedHostId &&
+        lastUsedAt - current.lastUsedAt < ACCOUNT_LAST_USED_PERSIST_MS
+      ) {
+        return false;
+      }
+      accounts[index] = accountSchema.parse({
+        ...current,
+        lastUsedAt,
+        lastUsedHostId,
+      });
+      await this.kv.set(ACCOUNTS_KEY, accounts);
+      return true;
+    });
   }
 
   async setAccountUuid(

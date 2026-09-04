@@ -255,12 +255,12 @@ export class AccountPoolHub {
         return this.noEligibleResponse(accounts, family, adapter);
       attempted.add(selected.account.id);
       if (hostId !== null) {
-        await this.options.accounts.recordUsed(
+        const changed = await this.options.accounts.recordUsed(
           selected.account.id,
           this.options.now(),
           hostId,
         );
-        this.options.onAccountsChanged();
+        if (changed) this.options.onAccountsChanged();
       }
       let secret: AccountSecret;
       try {

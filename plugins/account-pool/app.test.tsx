@@ -116,6 +116,19 @@ describe("Account Pool settings", () => {
         input: { accountId: account().id },
       }),
     );
+    await open();
+    fireEvent.click(await slot.findByText("Remove"));
+    expect(await slot.findByText("Remove person@example.com?")).toBeTruthy();
+    expect(slot.rpcCalls.some((call) => call.method === "account.remove")).toBe(
+      false,
+    );
+    fireEvent.click(slot.getByRole("button", { name: "Remove" }));
+    await waitFor(() =>
+      expect(slot.rpcCalls).toContainEqual({
+        method: "account.remove",
+        input: { id: account().id },
+      }),
+    );
   });
 
   it("opens the correct provider sign-in flow from each Add account menu", async () => {
@@ -193,5 +206,27 @@ describe("Account Pool settings", () => {
     );
     expect(await slot.findByText("Fable 7 day")).toBeTruthy();
     expect(slot.getByText("Opus 7 day")).toBeTruthy();
+  });
+
+  it("offers a fresh Codex login after device-code polling fails", async () => {
+    let starts = 0;
+    const slot = render([], {
+      "codexLogin.start": () => {
+        starts += 1;
+        return {
+          sessionId: "33333333-3333-4333-8333-333333333333",
+          verificationUri: "https://auth.openai.com/codex/device",
+          userCode: "ABCD-1234",
+          expiresAt: Date.now() + 600_000,
+          intervalMs: 1,
+        };
+      },
+      "codexLogin.poll": () => ({ status: "error", message: "Code expired." }),
+    });
+    fireEvent.click(
+      await slot.findByRole("button", { name: "Sign in to Codex" }),
+    );
+    fireEvent.click(await slot.findByRole("button", { name: "Try again" }));
+    await waitFor(() => expect(starts).toBe(2));
   });
 });

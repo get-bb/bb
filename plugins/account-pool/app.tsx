@@ -53,7 +53,7 @@ interface CodexLoginStep {
   intervalMs: number;
 }
 type DrawerState =
-  | { kind: "account" | "priority"; accountId: string }
+  | { kind: "account" | "priority" | "remove"; accountId: string }
   | { kind: "claude-login" | "codex-login" | "api-key" }
   | null;
 
@@ -550,8 +550,10 @@ function AccountPoolSettings() {
           setLoginDone(result.account.label);
           setCodexStep(null);
           await refresh();
-        } else if (result.status === "error") setError(result.message);
-        else timer = setTimeout(poll, codexStep.intervalMs);
+        } else if (result.status === "error") {
+          setCodexStep(null);
+          setError(result.message);
+        } else timer = setTimeout(poll, codexStep.intervalMs);
       } catch (pollError) {
         if (!cancelled) setError(errorText(pollError));
       }
@@ -564,7 +566,9 @@ function AccountPoolSettings() {
   }, [codexStep, loginDone, refresh, rpc]);
   const accounts = status?.accounts ?? [];
   const selectedAccount =
-    drawer?.kind === "account" || drawer?.kind === "priority"
+    drawer?.kind === "account" ||
+    drawer?.kind === "priority" ||
+    drawer?.kind === "remove"
       ? (accounts.find((account) => account.id === drawer.accountId) ?? null)
       : null;
   async function run(key: string, action: () => Promise<void>): Promise<void> {
@@ -627,6 +631,10 @@ function AccountPoolSettings() {
       setDrawer({ kind: "priority", accountId: account.id });
       return;
     }
+    if (action === "remove") {
+      setDrawer({ kind: "remove", accountId: account.id });
+      return;
+    }
     await run(`${action}-${account.id}`, async () => {
       if (action === "toggle")
         await rpc.call(account.enabled ? "account.disable" : "account.enable", {
@@ -634,10 +642,6 @@ function AccountPoolSettings() {
         });
       if (action === "refresh")
         await rpc.call("account.refreshUsage", { accountId: account.id });
-      if (action === "remove") {
-        await rpc.call("account.remove", { id: account.id });
-        setDrawer(null);
-      }
     });
   }
   function closeDrawer(): void {
@@ -884,6 +888,39 @@ function AccountPoolSettings() {
             />
           </DrawerFrame>
         ) : null}
+        {drawer?.kind === "remove" && selectedAccount !== null ? (
+          <DrawerFrame
+            title={`Remove ${selectedAccount.label}?`}
+            onClose={closeDrawer}
+            footer={
+              <>
+                <span className="flex-1" />
+                <Button variant="outline" onClick={closeDrawer}>
+                  Cancel
+                </Button>
+                <Button
+                  variant="destructive"
+                  disabled={pending !== null}
+                  onClick={() =>
+                    void run(`remove-${selectedAccount.id}`, async () => {
+                      await rpc.call("account.remove", {
+                        id: selectedAccount.id,
+                      });
+                      setDrawer(null);
+                    })
+                  }
+                >
+                  Remove
+                </Button>
+              </>
+            }
+          >
+            <p className="text-sm text-muted-foreground">
+              This deletes the account&apos;s secret file. Threads fall back to
+              their machine login when no other pooled account is available.
+            </p>
+          </DrawerFrame>
+        ) : null}
         {drawer?.kind === "claude-login" ? (
           <LoginDrawer
             provider="claude"
@@ -893,6 +930,7 @@ function AccountPoolSettings() {
             pending={pending !== null}
             pastedCode={pastedCode}
             countdown={0}
+            error={error}
             close={closeDrawer}
             openUrl={navigate.openUrl}
             setPastedCode={setPastedCode}
@@ -908,6 +946,7 @@ function AccountPoolSettings() {
               })
             }
             addAnother={() => void startClaude()}
+            retry={() => void startClaude()}
           />
         ) : null}
         {drawer?.kind === "codex-login" ? (
@@ -919,11 +958,13 @@ function AccountPoolSettings() {
             pending={pending !== null}
             pastedCode=""
             countdown={countdown}
+            error={error}
             close={closeDrawer}
             openUrl={navigate.openUrl}
             setPastedCode={() => {}}
             complete={() => {}}
             addAnother={() => void startCodex()}
+            retry={() => void startCodex()}
           />
         ) : null}
       </ResponsiveDrawerShell>
@@ -953,6 +994,10 @@ function AccountDrawer({
     observedAt: account.observedAt ?? 0,
     source: "header",
   });
+  const providerId =
+    account.provider === "claude"
+      ? account.accountUuid
+      : account.codexAccountId;
   return (
     <DrawerFrame
       title={account.label}
@@ -1032,8 +1077,12 @@ function AccountDrawer({
         <dd>
           {account.observedAt === null ? "Never" : relative(account.observedAt)}
         </dd>
-        <dt className="text-muted-foreground">Account id</dt>
-        <dd className="font-mono text-xs">{`${account.id.slice(0, 4)}…${account.id.slice(-4)}`}</dd>
+        {providerId === null || providerId === undefined ? null : (
+          <>
+            <dt className="text-muted-foreground">Account id</dt>
+            <dd className="font-mono text-xs">{`${providerId.slice(0, 4)}…${providerId.slice(-4)}`}</dd>
+          </>
+        )}
       </dl>
     </DrawerFrame>
   );
@@ -1047,11 +1096,13 @@ function LoginDrawer({
   pending,
   pastedCode,
   countdown,
+  error,
   close,
   openUrl,
   setPastedCode,
   complete,
   addAnother,
+  retry,
 }: {
   provider: PoolProvider;
   loginStep: LoginStep | null;
@@ -1060,11 +1111,13 @@ function LoginDrawer({
   pending: boolean;
   pastedCode: string;
   countdown: number;
+  error: string | null;
   close: () => void;
   openUrl: (url: string) => boolean;
   setPastedCode: (value: string) => void;
   complete: () => void;
   addAnother: () => void;
+  retry: () => void;
 }) {
   const name = provider === "claude" ? "Claude" : "Codex";
   const url =
@@ -1117,7 +1170,16 @@ function LoginDrawer({
           </p>
         </div>
       ) : url === undefined ? (
-        <p className="text-sm text-muted-foreground">Starting sign-in…</p>
+        provider === "codex" && error !== null ? (
+          <div className="space-y-3">
+            <p className="text-sm text-destructive-text">{error}</p>
+            <Button variant="outline" onClick={retry}>
+              Try again
+            </Button>
+          </div>
+        ) : (
+          <p className="text-sm text-muted-foreground">Starting sign-in…</p>
+        )
       ) : (
         <>
           <div>

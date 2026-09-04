@@ -2425,24 +2425,43 @@ describe("Account Pool plugin", () => {
       response.end("{}");
     });
     cleanups.push(upstream.close);
-    const now = 1_800_000_000_000;
+    let now = 1_800_000_000_000;
     const fixture = await createFixture({
       upstreamUrl: upstream.url,
       options: { now: () => now },
     });
-    const response = await fixture.host.harness.behavior.fetchHttp(
-      "POST",
-      "/v1/messages",
-      { headers: authHeaders(fixture.key), body: "{}" },
+    const changedCount = () =>
+      fixture.host.harness.inspection.realtimeSignals.filter(
+        (signal) => signal.channel === "accounts-changed",
+      ).length;
+    const baseline = changedCount();
+    const forward = async (key: string) => {
+      const response = await fixture.host.harness.behavior.fetchHttp(
+        "POST",
+        "/v1/messages",
+        { headers: authHeaders(key), body: "{}" },
+      );
+      await response.text();
+    };
+    await forward(fixture.key);
+    expect(changedCount()).toBe(baseline + 1);
+    now += 1_000;
+    await forward(fixture.key);
+    expect(changedCount()).toBe(baseline + 1);
+    const secondHostKey = await resolveToken(
+      fixture.host,
+      "host-two",
+      "thread-two",
     );
-    await response.text();
+    await forward(secondHostKey);
+    expect(changedCount()).toBe(baseline + 2);
     const result = statusSchema.parse(
       await fixture.host.harness.behavior.callRpc("status.get", null),
     );
     expect(result.accounts[0]).toMatchObject({
       lastUsedAt: now,
-      lastUsedHostId: "host-one",
-      lastUsedHostName: "One",
+      lastUsedHostId: "host-two",
+      lastUsedHostName: "Two",
     });
   });
 
@@ -2453,14 +2472,12 @@ describe("Account Pool plugin", () => {
     });
     cleanups.push(upstream.close);
     const fixture = await createFixture({ upstreamUrl: upstream.url });
-    const priority = z
-      .object({ account: accountSchema.nullable() })
-      .parse(
-        await fixture.host.harness.behavior.callRpc("account.setPriority", {
-          accountId: fixture.account.id,
-          priority: 42,
-        }),
-      );
+    const priority = z.object({ account: accountSchema.nullable() }).parse(
+      await fixture.host.harness.behavior.callRpc("account.setPriority", {
+        accountId: fixture.account.id,
+        priority: 42,
+      }),
+    );
     expect(priority.account?.priority).toBe(42);
     const refreshed = z
       .object({ account: accountSummarySchema.nullable() })
@@ -2469,9 +2486,7 @@ describe("Account Pool plugin", () => {
           accountId: fixture.account.id,
         }),
       );
-    expect(refreshed.account?.id).toBe(
-      fixture.account.id,
-    );
+    expect(refreshed.account?.id).toBe(fixture.account.id);
     expect(
       statusSchema.parse(
         await fixture.host.harness.behavior.callRpc("status.get", null),
