@@ -146,7 +146,7 @@ export function onTurnCompleted(args: CompleteTurnArgs): void {
   finalizeOpenReasoningLifecyclesForTurn({
     meta: args.meta,
     state: args.state,
-    status: args.status === "interrupted" ? "interrupted" : "completed",
+    status: args.status === "completed" ? "completed" : "interrupted",
     turnId: args.turnId,
   });
 }

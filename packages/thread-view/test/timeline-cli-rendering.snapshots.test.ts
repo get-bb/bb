@@ -2402,6 +2402,59 @@ describe("timeline CLI rendering snapshots", () => {
     expect(reasoningMessages[0]).not.toHaveProperty("parentToolCallId");
   });
 
+  it("finalizes streamed reasoning as interrupted when its turn fails", () => {
+    const event = createTimelineEventFactory({ threadId: "thread-1" });
+    const timeline = renderIdleTimeline([
+      event.turnStarted({ createdAt: 0 }),
+      event.reasoningDelta({
+        createdAt: 2_000,
+        itemId: "reasoning-1",
+        delta: "Checking the failure path.",
+      }),
+      event.turnCompleted({ createdAt: 7_000, status: "failed" }),
+    ]);
+
+    expect(
+      timeline.messages.filter((message) => message.kind === "operation"),
+    ).toEqual([
+      expect.objectContaining({
+        completedAt: 7_000,
+        detail: "Checking the failure path.",
+        sourceSeqEnd: 3,
+        sourceSeqStart: 2,
+        startedAt: 2_000,
+        status: "interrupted",
+        title: "Thought for 5s",
+      }),
+    ]);
+  });
+
+  it("truncates very long completed reasoning detail", () => {
+    const event = createTimelineEventFactory({ threadId: "thread-1" });
+    const timeline = renderIdleTimeline([
+      event.turnStarted({ createdAt: 0 }),
+      event.reasoningStarted({
+        createdAt: 1_000,
+        itemId: "reasoning-1",
+      }),
+      event.reasoningCompleted({
+        createdAt: 4_000,
+        itemId: "reasoning-1",
+        text: "x".repeat(40_000),
+      }),
+      event.turnCompleted({ createdAt: 7_000 }),
+    ]);
+
+    const rows = timeline.messages.filter(
+      (message) => message.kind === "operation",
+    );
+    expect(rows).toHaveLength(1);
+    const detail = (rows[0] as { detail: string }).detail;
+    expect(detail).toContain("more characters truncated");
+    expect(detail.startsWith("x".repeat(32_000))).toBe(true);
+    expect(detail.length).toBeLessThan(40_000);
+  });
+
   it("finalizes streamed reasoning as interrupted when its turn is interrupted", () => {
     const event = createTimelineEventFactory({ threadId: "thread-1" });
     const timeline = renderIdleTimeline([

@@ -59,6 +59,17 @@ type ReasoningCompletionStatus = Extract<
   "completed" | "interrupted"
 >;
 
+const MAX_REASONING_DETAIL_CHARS = 32_000;
+const REASONING_DETAIL_TRUNCATION_SUFFIX_TAIL = " more characters truncated]";
+
+function truncateReasoningDetail(detail: string): string {
+  if (detail.length <= MAX_REASONING_DETAIL_CHARS) {
+    return detail;
+  }
+  const dropped = detail.length - MAX_REASONING_DETAIL_CHARS;
+  return `${detail.slice(0, MAX_REASONING_DETAIL_CHARS)}\n…[${dropped.toLocaleString("en-US")}${REASONING_DETAIL_TRUNCATION_SUFFIX_TAIL}`;
+}
+
 interface FinalizeReasoningLifecycleArgs {
   identity: BufferedTextInstanceIdentity | null;
   meta: EventMeta;
@@ -218,7 +229,7 @@ function finalizeReasoningLifecycleByKey(
     title: `Thought for ${durationToCompactString(
       args.meta.createdAt - lifecycle.startedAt,
     )}`,
-    detail,
+    detail: truncateReasoningDetail(detail),
     status: args.status,
   });
 }
