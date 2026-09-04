@@ -25,7 +25,7 @@ import {
   type CodexAuthCredentials,
 } from "../ai/codex-auth.js";
 
-const CODEX_MINIMUM_SUPPORTED_VERSION = "0.136.0";
+const CODEX_MINIMUM_SUPPORTED_VERSION = "0.153.4";
 const CODEX_REWIND_MINIMUM_SUPPORTED_VERSION = "0.143.0";
 const CODEX_USAGE_URL = "https://chatgpt.com/backend-api/wham/usage";
 const USAGE_FETCH_TIMEOUT_MS = 15_000;
@@ -64,8 +64,13 @@ async function readCredentials(): Promise<CodexAuthCredentials | null> {
 function minimumSupportedVersionForRequirement(
   requirement?: "thread_rewind",
 ): string {
-  return requirement === "thread_rewind"
-    ? CODEX_REWIND_MINIMUM_SUPPORTED_VERSION
+  const requirementVersion =
+    requirement === "thread_rewind"
+      ? CODEX_REWIND_MINIMUM_SUPPORTED_VERSION
+      : CODEX_MINIMUM_SUPPORTED_VERSION;
+  return compareVersions(requirementVersion, CODEX_MINIMUM_SUPPORTED_VERSION) >
+    0
+    ? requirementVersion
     : CODEX_MINIMUM_SUPPORTED_VERSION;
 }
 

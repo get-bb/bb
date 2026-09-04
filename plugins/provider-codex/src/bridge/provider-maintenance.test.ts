@@ -17,7 +17,7 @@ function installationStatus() {
     installSource: "npmGlobal" as const,
     currentVersion: "1.0.0",
     latestVersion: "1.1.0",
-    minimumSupportedVersion: "0.136.0",
+    minimumSupportedVersion: "0.153.4",
     npmPackageName: "@openai/codex",
     npmGlobalPackageVersion: "1.0.0",
     installAction: {
@@ -66,11 +66,14 @@ describe("Codex provider maintenance", () => {
     });
   });
 
-  it("owns the stricter CLI requirement for thread rewind", () => {
-    expect(__testing.minimumSupportedVersionForRequirement()).toBe("0.136.0");
+  it("requires the CLI release that exposes GPT-6 Astra", () => {
+    expect(__testing.minimumSupportedVersionForRequirement()).toBe("0.153.4");
+  });
+
+  it("does not lower the Astra CLI requirement for thread rewind", () => {
     expect(
       __testing.minimumSupportedVersionForRequirement("thread_rewind"),
-    ).toBe("0.143.0");
+    ).toBe("0.153.4");
   });
 
   it("resolves a fresh typed update plan and rejects a stale action", () => {
@@ -137,7 +140,7 @@ describe("Codex credential health and usage", () => {
     await fs.mkdir(binDir);
     await fs.writeFile(
       path.join(binDir, "codex"),
-      '#!/bin/sh\necho "codex-cli 0.150.0"\n',
+      '#!/bin/sh\necho "codex-cli 0.153.4"\n',
       { mode: 0o755 },
     );
     vi.stubEnv("HOME", homeDir);
@@ -156,6 +159,26 @@ describe("Codex credential health and usage", () => {
     );
   });
 
+  it.each(["0.152.1", "0.153.3"])(
+    "requires an update for Codex %s before offering Astra",
+    async (version) => {
+      await fs.writeFile(
+        path.join(homeDir, "bin", "codex"),
+        `#!/bin/sh\necho "codex-cli ${version}"\n`,
+        { mode: 0o755 },
+      );
+
+      await expect(getCodexProviderHealth()).resolves.toMatchObject({
+        health: {
+          status: "unsupported_version",
+          installedVersion: version,
+          minimumSupportedVersion: "0.153.4",
+          canUpdate: true,
+        },
+      });
+    },
+  );
+
   it("reports unauthenticated when auth.json is missing", async () => {
     await expect(getCodexProviderHealth()).resolves.toEqual({
       supported: true,
@@ -164,8 +187,8 @@ describe("Codex credential health and usage", () => {
         statusMessage: null,
         accountEmail: null,
         planLabel: null,
-        installedVersion: "0.150.0",
-        minimumSupportedVersion: "0.136.0",
+        installedVersion: "0.153.4",
+        minimumSupportedVersion: "0.153.4",
         canInstall: true,
         canUpdate: true,
         loginCommand: "codex login",
@@ -190,7 +213,7 @@ describe("Codex credential health and usage", () => {
       health: {
         status: "expired",
         accountEmail: "codex@example.com",
-        installedVersion: "0.150.0",
+        installedVersion: "0.153.4",
       },
     });
     await expect(getCodexProviderUsage()).resolves.toEqual({

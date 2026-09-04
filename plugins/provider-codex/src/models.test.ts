@@ -21,7 +21,7 @@ describe("mapBbReasoningLevelToCodex", () => {
 });
 
 describe("parseModelsResponse", () => {
-  it("parses a live-shaped Codex payload with max and ultra", () => {
+  it("preserves GPT-6 Astra metadata and its full reasoning ladder", () => {
     const models = parseModelsResponse({
       data: [
         {
@@ -36,13 +36,13 @@ describe("parseModelsResponse", () => {
             { reasoningEffort: "xhigh", description: "XHigh" },
           ],
           defaultReasoningEffort: "medium",
-          isDefault: true,
+          isDefault: false,
         },
         {
-          id: "gpt-5.6-sol",
-          model: "gpt-5.6-sol",
-          displayName: "GPT-5.6-Sol",
-          description: "Latest frontier",
+          id: "gpt-6-astra",
+          model: "gpt-6-astra",
+          displayName: "GPT-6-Astra",
+          description: "Our most capable model for complex, demanding work.",
           supportedReasoningEfforts: [
             { reasoningEffort: "low", description: "Low" },
             { reasoningEffort: "medium", description: "Medium" },
@@ -55,13 +55,21 @@ describe("parseModelsResponse", () => {
             },
           ],
           defaultReasoningEffort: "low",
-          isDefault: false,
+          isDefault: true,
         },
       ],
     });
 
     expect(models).toHaveLength(2);
     expect(models[0]?.id).toBe("gpt-5.5");
+    expect(models[0]?.isDefault).toBe(false);
+    expect(models[1]).toMatchObject({
+      id: "gpt-6-astra",
+      model: "gpt-6-astra",
+      displayName: "GPT-6-Astra",
+      description: "Our most capable model for complex, demanding work.",
+      isDefault: true,
+    });
     expect(
       models[1]?.supportedReasoningEfforts.map((e) => e.reasoningEffort),
     ).toEqual(["low", "medium", "high", "xhigh", "max", "ultra"]);

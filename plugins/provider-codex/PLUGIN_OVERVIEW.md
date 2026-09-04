@@ -4,6 +4,7 @@ Start a thread, pick Codex, and let it write and review code in your repository 
 
 - Permission modes `accept-edits`, `auto`, and `full`, plus plan and goal actions in the composer.
 - Reasoning levels from Low to Ultra. Ultra adds automatic task delegation.
+- GPT-6 Astra and other models reported by the host's Codex CLI.
 - A service tier picker with two tiers.
 - Checkpoint forks, manual compaction, thread rename, and thread archive.
 - Codex skills from your home directory and project, listed next to bb skills.
@@ -17,6 +18,6 @@ Start a thread, pick Codex, and let it write and review code in your repository 
 
 ## Requirements
 
-- Install the Codex CLI (`codex`) on the host machine, version 0.136.0 or newer. The plugin can run the npm install for you.
+- Install the Codex CLI (`codex`) on the host machine, version 0.153.4 or newer. This version exposes GPT-6 Astra in the model catalog. The plugin can run the npm install for you; run `codex update` if the installed version is older.
 - Sign in with `codex login` on that machine. A ChatGPT account or an OpenAI API key both work.
 - Usage limits show only for ChatGPT accounts.
