@@ -525,8 +525,8 @@ describe("claude item presentation", () => {
       title: "ls -la ~/.claude/ide",
       badge: {
         glyph: "SquareUnlock02",
-        label: "sandbox off",
-        hint: "Ran outside of sandbox",
+        label: "Outside of sandbox",
+        hint: "Outside of sandbox",
         tone: "destructive",
       },
     });

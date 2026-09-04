@@ -1646,8 +1646,8 @@ describe("buildTimelineRowTitle", () => {
   it("carries a presentation badge onto command and exploration titles", () => {
     const badge = {
       glyph: "SquareUnlock02",
-      label: "sandbox off",
-      hint: "Ran outside of sandbox",
+      label: "Outside of sandbox",
+      hint: "Outside of sandbox",
       tone: "destructive",
     } as const;
     const presentation = {
@@ -1658,8 +1658,8 @@ describe("buildTimelineRowTitle", () => {
     const badgeDecoration = {
       kind: "badge",
       glyph: "SquareUnlock02",
-      label: "sandbox off",
-      hint: "Ran outside of sandbox",
+      label: "Outside of sandbox",
+      hint: "Outside of sandbox",
       tone: "destructive",
     };
 
@@ -1668,7 +1668,7 @@ describe("buildTimelineRowTitle", () => {
       DEFAULT_OPTIONS,
     );
     expect(plainCommand.decorations[0]).toEqual(badgeDecoration);
-    expect(plainCommand.plain).toContain("(sandbox off)");
+    expect(plainCommand.plain).toContain("(Outside of sandbox)");
 
     const explorationTitles = buildTimelineActivityIntentTitles({
       ...commandRow(),
@@ -1677,6 +1677,33 @@ describe("buildTimelineRowTitle", () => {
     } satisfies TimelineCommandWorkRow);
     expect(explorationTitles[0]?.title.decorations).toEqual([badgeDecoration]);
     expect(explorationTitles[1]?.title.decorations).toEqual([]);
+
+    for (const [approvalStatus, status, expected] of [
+      ["waiting_for_approval", "pending", true],
+      ["denied", "interrupted", true],
+      [null, "pending", true],
+      [null, "error", true],
+      [null, "interrupted", true],
+      [null, "completed", true],
+    ] as const) {
+      const row = {
+        ...commandRow(),
+        approvalStatus,
+        status,
+        presentation,
+        activityIntents: [searchIntent("TODO", "src")],
+      } satisfies TimelineCommandWorkRow;
+      expect(
+        buildTimelineRowTitle(row, DEFAULT_OPTIONS).decorations.some(
+          (decoration) => decoration.kind === "badge",
+        ),
+      ).toBe(expected);
+      expect(
+        buildTimelineActivityIntentTitles(row)[0]?.title.decorations.some(
+          (decoration) => decoration.kind === "badge",
+        ),
+      ).toBe(expected);
+    }
   });
 
   it("appends an (interrupted) decoration to compact exploration intents on interrupted rows", () => {

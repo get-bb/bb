@@ -92,8 +92,8 @@ const SANDBOX_ESCAPED_COMMAND_PRESENTATION: ThreadEventItemPresentation = {
   title: "ls -la ~/.claude/ide",
   badge: {
     glyph: "SquareUnlock02",
-    label: "sandbox off",
-    hint: "Ran outside of sandbox",
+    label: "Outside of sandbox",
+    hint: "Outside of sandbox",
     tone: "destructive",
   },
 };
@@ -296,7 +296,7 @@ describe("v3 item projection", () => {
 
     const row = workRow(rendered.rows, "command", "cmd-1");
     expect(row.presentation).toEqual(SANDBOX_ESCAPED_COMMAND_PRESENTATION);
-    expect(plainTitle(row)).toContain("(sandbox off)");
+    expect(plainTitle(row)).toContain("(Outside of sandbox)");
   });
 
   it("groups v3 exploration rows into one exploration bundle like legacy reads", () => {
