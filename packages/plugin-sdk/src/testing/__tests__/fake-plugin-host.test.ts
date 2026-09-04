@@ -1615,6 +1615,40 @@ describe("providers.experimental_contributeEnv", () => {
     ]);
   });
 
+  it("resolves environment-backed provider health only beside an env resolver", async () => {
+    const first = createFakePluginHost();
+    first.bb.providers.experimental_contributeEnvHealth("claude-code", () => ({
+      label: "Proxied",
+      statusMessage: "Credentials are provided by a proxy.",
+    }));
+    await expect(
+      first.harness.behavior.resolveProviderEnvHealth("claude-code", {
+        hostId: "host-one",
+      }),
+    ).resolves.toBeNull();
+
+    const second = createFakePluginHost();
+    second.bb.providers.experimental_contributeEnv("claude-code", () => []);
+    second.bb.providers.experimental_contributeEnvHealth(
+      "claude-code",
+      ({ hostId }) =>
+        hostId === "host-one"
+          ? {
+              label: "Proxied",
+              statusMessage: "Credentials are provided by a proxy.",
+            }
+          : null,
+    );
+    await expect(
+      second.harness.behavior.resolveProviderEnvHealth("claude-code", {
+        hostId: "host-one",
+      }),
+    ).resolves.toEqual({
+      label: "Proxied",
+      statusMessage: "Credentials are provided by a proxy.",
+    });
+  });
+
   it("fails a malformed resolver closed and rejects duplicate registration", async () => {
     const { bb, harness } = createFakePluginHost();
     bb.providers.experimental_contributeEnv("codex", () => [

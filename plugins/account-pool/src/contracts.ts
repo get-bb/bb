@@ -80,13 +80,37 @@ export const accountSummarySchema = accountSchema.extend({
 
 export type AccountSummary = z.infer<typeof accountSummarySchema>;
 
+export const hubTokenSummarySchema = z
+  .object({
+    hostId: z.string().min(1),
+    hostName: z.string().min(1).nullable(),
+    mintedAt: z.number().int().nonnegative(),
+    lastUsedAt: z.number().int().nonnegative().nullable(),
+  })
+  .strict();
+
+export type HubTokenSummary = z.infer<typeof hubTokenSummarySchema>;
+
+export const routedThreadStatusSchema = z
+  .object({
+    threadId: z.string().min(1),
+    hostId: z.string().min(1),
+    hostName: z.string().min(1).nullable(),
+    routedAt: z.number().int().nonnegative(),
+    localClaudeStatus: z.enum(["unauthenticated", "expired", "proxied"]),
+  })
+  .strict();
+
+export type RoutedThreadStatus = z.infer<typeof routedThreadStatusSchema>;
+
 export const statusSchema = z
   .object({
     route: z.string(),
     enabledAccountCount: z.number().int().nonnegative(),
     inFlight: z.number().int().nonnegative(),
     accepting: z.boolean(),
-    hubKey: z.string().nullable(),
+    hosts: z.array(hubTokenSummarySchema),
+    routedThreadsWithoutLocalLogin: z.array(routedThreadStatusSchema),
     accounts: z.array(accountSummarySchema),
   })
   .strict();
@@ -112,3 +136,13 @@ export type AccountAddInput = z.infer<typeof accountAddInputSchema>;
 export const accountIdInputSchema = z
   .object({ id: z.string().uuid() })
   .strict();
+
+export const tokenRotateInputSchema = z
+  .object({ machine: z.string().min(1) })
+  .strict();
+
+export const bypassInputSchema = z
+  .object({ threadId: z.string().min(1), bypassed: z.boolean() })
+  .strict();
+
+export const bypassResultSchema = bypassInputSchema;

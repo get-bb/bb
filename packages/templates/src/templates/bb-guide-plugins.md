@@ -25,8 +25,7 @@ agent task instructions; blank text contributes nothing.
 
 The builtin Account Pool plugin is disabled on fresh installations. It stores
 Claude account tokens in per-account 0600 secret files and proxies Anthropic
-Messages API requests through the bb server. Enable it, add an account, then
-point Claude Code at the route and bearer key shown by `status`:
+Messages API requests through the bb server. Enable it and add an account:
 
 ```
 bb plugin enable account-pool
@@ -37,12 +36,18 @@ bb pool account list [--json]
 bb pool account remove <id>
 bb pool account enable <id>
 bb pool account disable <id>
-bb pool status [--json] [--show-key]
+bb pool status [--json]
+bb pool token rotate --machine <id-or-name>
+bb pool bypass <thread-id> [--off]
 ```
 
 The hub starts immediately, even before an account is configured, so newly
-added or enabled accounts are available without a plugin reload. Only
-`status --show-key` reveals the hub bearer key. Agents should use
+added or enabled accounts are available without a plugin reload. With an
+enabled account, the plugin contributes its server route and a distinct secret
+token to Claude Code sessions on every host. Tokens are never printed.
+`status` shows token timestamps and recently routed threads whose machines
+need a local Claude login before the pool can be disabled safely. Rotation
+keeps the prior token valid for ten minutes. Agents should use
 `--api-key-stdin`, which reads exactly one non-empty key from piped standard
 input. The compatibility form `--api-key <key>` exposes the key in process
 arguments, shell history, and agent transcripts. Prefer `--import` when Claude

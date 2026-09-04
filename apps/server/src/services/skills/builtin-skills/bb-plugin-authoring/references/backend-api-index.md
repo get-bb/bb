@@ -151,6 +151,8 @@ Read the installed declarations for exact current signatures.
 - `PluginProviderDeclaration`
 - `ExperimentalPluginProviderEnvContext`
 - `ExperimentalPluginProviderEnvEntry`
+- `PluginProviderEnvHealthContext`
+- `PluginProviderEnvHealth`
 - `PluginProviderExtensionKindDeclaration`
 - `PluginProviderFallbackModel`
 - `PluginProviderIconRegistration`

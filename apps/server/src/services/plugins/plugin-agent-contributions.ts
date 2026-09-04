@@ -23,7 +23,12 @@ type PluginAgentContributions = Pick<
   | "resolveMention"
 > &
   Partial<
-    Pick<PluginService, "resolveAgentConfiguration" | "resolveProviderEnv">
+    Pick<
+      PluginService,
+      | "resolveAgentConfiguration"
+      | "resolveProviderEnv"
+      | "resolveProviderEnvHealth"
+    >
   >;
 
 let contributions: PluginAgentContributions | undefined;
@@ -71,6 +76,18 @@ export async function resolvePluginProviderEnv(args: {
   const active = contributions;
   if (!active?.resolveProviderEnv) return [];
   return (await active.resolveProviderEnv(args)).entries;
+}
+
+export async function resolvePluginProviderEnvHealth(args: {
+  providerId: string;
+  hostId: string;
+}) {
+  const active = contributions;
+  if (!active?.resolveProviderEnvHealth) return null;
+  return active.resolveProviderEnvHealth({
+    providerId: args.providerId,
+    context: { hostId: args.hostId },
+  });
 }
 
 export function findPluginAgentTool(

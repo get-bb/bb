@@ -1,4 +1,3 @@
-import { timingSafeEqual } from "node:crypto";
 import { z } from "zod";
 import type {
   Account,
@@ -13,7 +12,7 @@ import {
   quotaFromHeaders,
   retryAfterMilliseconds,
 } from "./quota.js";
-import type { AccountStore, QuotaStore } from "./store.js";
+import type { AccountStore, HubTokenStore, QuotaStore } from "./store.js";
 
 const ROUTE = "/api/v1/plugins/account-pool/http";
 const OAUTH_CLIENT_ID = "9d1c250a-e61b-44d9-88ed-5944d1962f5e";
@@ -60,7 +59,7 @@ export interface HubSettings {
 interface HubOptions {
   accounts: AccountStore;
   quotas: QuotaStore;
-  hubKey: string;
+  hubTokens: HubTokenStore;
   getSettings: () => HubSettings;
   fetch: typeof fetch;
   now: () => number;
@@ -119,10 +118,9 @@ export class AccountPoolHub {
 
   async handle(request: Request): Promise<Response> {
     if (
-      !safeKeyEqual(
+      (await this.options.hubTokens.authenticate(
         readBearer(request.headers.get("authorization")),
-        this.options.hubKey,
-      )
+      )) === null
     ) {
       return anthropicError(
         401,
@@ -141,7 +139,7 @@ export class AccountPoolHub {
     return this.forward(request, body);
   }
 
-  async status(showKey: boolean): Promise<PoolStatus> {
+  async status(): Promise<Omit<PoolStatus, "routedThreadsWithoutLocalLogin">> {
     const settings = this.options.getSettings();
     const now = this.options.now();
     const accounts = await this.options.accounts.list();
@@ -150,7 +148,7 @@ export class AccountPoolHub {
       enabledAccountCount: accounts.filter((account) => account.enabled).length,
       inFlight: this.inFlightCount(),
       accepting: this.accepting,
-      hubKey: showKey ? this.options.hubKey : null,
+      hosts: await this.options.hubTokens.list(),
       accounts: accounts.map((account) => {
         const quota = this.options.quotas.get(account.id);
         return {
@@ -560,7 +558,7 @@ export class AccountPoolHub {
 export function createHub(options: {
   accounts: AccountStore;
   quotas: QuotaStore;
-  hubKey: string;
+  hubTokens: HubTokenStore;
   getSettings: () => HubSettings;
   fetch?: typeof fetch;
   now?: () => number;
@@ -570,7 +568,7 @@ export function createHub(options: {
   return new AccountPoolHub({
     accounts: options.accounts,
     quotas: options.quotas,
-    hubKey: options.hubKey,
+    hubTokens: options.hubTokens,
     getSettings: options.getSettings,
     fetch: options.fetch ?? fetch,
     now: options.now ?? Date.now,
@@ -597,16 +595,6 @@ function readBearer(value: string | null): string | null {
   if (value === null) return null;
   const match = /^Bearer\s+(.+)$/iu.exec(value);
   return match?.[1] ?? null;
-}
-
-function safeKeyEqual(left: string | null, right: string): boolean {
-  if (left === null) return false;
-  const leftBytes = Buffer.from(left);
-  const rightBytes = Buffer.from(right);
-  return (
-    leftBytes.length === rightBytes.length &&
-    timingSafeEqual(leftBytes, rightBytes)
-  );
 }
 
 function anthropicError(

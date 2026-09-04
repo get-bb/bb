@@ -175,6 +175,14 @@ contributes nothing for that command without blocking other plugins. Mark
 credentials and sensitive URLs with `secret: true`; BB passes the real value
 to the provider but masks it in `provider.env-resolved` timeline events.
 
+When the contributed environment supplies credentials that replace a local
+login, pair the resolver with
+`bb.providers.experimental_contributeEnvHealth(providerId, resolve)`. Its
+host-scoped resolver returns `{ label, statusMessage }` only while the proxy is
+usable, or `null` otherwise. BB uses it only when the provider bridge reports
+`unauthenticated` or `expired`, and only when the same plugin registered an env
+resolver for that provider. Installation and unknown failures are preserved.
+
 Use `extensionKinds` to declare provider-specific item or state payloads. Each
 kind needs an item schema, a state schema, or both. The server validates each
 payload at ingest. It persists an unhandled-provider event when validation

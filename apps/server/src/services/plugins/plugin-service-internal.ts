@@ -175,6 +175,11 @@ export interface PluginResolvedProviderEnv {
   entries: HostDaemonContributedEnvEntry[];
 }
 
+export interface PluginResolvedProviderEnvHealth {
+  label: string;
+  statusMessage: string;
+}
+
 export interface PluginMentionProviderContribution {
   pluginId: string;
   id: string;

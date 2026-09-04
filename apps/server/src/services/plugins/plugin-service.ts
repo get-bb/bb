@@ -21,6 +21,7 @@ import {
 import {
   type PluginCliExecutionResult,
   type ExperimentalPluginProviderEnvContext,
+  type PluginProviderEnvHealthContext,
   type PluginRpcError,
   type PluginRpcValidationIssue,
   type StandardSchemaV1,
@@ -148,6 +149,7 @@ import type {
   PluginWireLookup,
   PluginResolvedAgentConfiguration,
   PluginResolvedProviderEnv,
+  PluginResolvedProviderEnvHealth,
 } from "./plugin-service-internal.js";
 export type {
   PluginAgentToolContribution,
@@ -313,6 +315,10 @@ export interface PluginService {
     providerId: string;
     context: ExperimentalPluginProviderEnvContext;
   }): Promise<PluginResolvedProviderEnv>;
+  resolveProviderEnvHealth(args: {
+    providerId: string;
+    context: PluginProviderEnvHealthContext;
+  }): Promise<PluginResolvedProviderEnvHealth | null>;
   listInstructionContributions(): PluginInstructionContribution[];
   findAgentTool(
     name: string,
@@ -2284,6 +2290,51 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
         }
       }
       return { entries };
+    },
+
+    async resolveProviderEnvHealth({ providerId, context }) {
+      for (const [pluginId, plugin] of loaded) {
+        if (!plugin.handle.providerEnvResolvers.has(providerId)) continue;
+        const resolve =
+          plugin.handle.providerEnvHealthResolvers.get(providerId);
+        if (resolve === undefined) continue;
+        const outcome = await invokeWrapped(
+          pluginId,
+          `provider environment health for ${providerId}`,
+          async () => {
+            let timer: NodeJS.Timeout | undefined;
+            try {
+              const value = await Promise.race([
+                Promise.resolve(resolve(context)),
+                new Promise<never>((_resolve, reject) => {
+                  timer = setTimeout(
+                    () =>
+                      reject(
+                        new Error(
+                          `timed out after ${providerEnvResolveTimeoutMs}ms`,
+                        ),
+                      ),
+                    providerEnvResolveTimeoutMs,
+                  );
+                  timer.unref?.();
+                }),
+              ]);
+              if (value === null) return null;
+              if (value.label.trim().length === 0) {
+                throw new Error("label must not be empty");
+              }
+              if (value.statusMessage.trim().length === 0) {
+                throw new Error("statusMessage must not be empty");
+              }
+              return value;
+            } finally {
+              if (timer !== undefined) clearTimeout(timer);
+            }
+          },
+        );
+        if (outcome.ok && outcome.value !== null) return outcome.value;
+      }
+      return null;
     },
 
     listInstructionContributions() {

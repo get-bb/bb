@@ -1,5 +1,25 @@
 # APIs To Audit
 
+## `bb.providers.experimental_contributeEnvHealth`
+
+**What it does.** Registers one host-scoped readiness resolver beside a
+provider environment contribution. When the provider bridge reports
+`unauthenticated` or `expired`, the server may present the provider as ready
+with the returned label and status message. Returning `null` preserves the
+bridge result. The resolver is ignored unless the same plugin also contributes
+environment variables to that provider.
+
+**Audit before stabilizing.**
+
+1. Confirm readiness should override only `unauthenticated` and `expired`, not
+   installation or unknown failures.
+2. Decide whether the contribution should report account identity or usage in
+   addition to a label and status message.
+3. Confirm the first available resolver in plugin load order is the right
+   arbitration when several credential proxies target one provider.
+4. Confirm a five-second timeout is appropriate for host-scoped credential
+   availability checks.
+
 ## `bb.providers.experimental_contributeEnv`
 
 **What it does.** Registers one resolver per provider per plugin. The server

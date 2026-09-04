@@ -2,6 +2,8 @@ import type { BbPluginApi, PluginCliResult } from "@get-bb/plugin-sdk";
 import {
   accountAddInputSchema,
   accountIdInputSchema,
+  bypassInputSchema,
+  tokenRotateInputSchema,
   type AccountSummary,
   type PoolStatus,
 } from "./contracts.js";
@@ -21,7 +23,9 @@ const HELP = [
   "  bb pool account remove <id>",
   "  bb pool account enable <id>",
   "  bb pool account disable <id>",
-  "  bb pool status [--json] [--show-key]",
+  "  bb pool status [--json]",
+  "  bb pool token rotate --machine <id-or-name>",
+  "  bb pool bypass <thread-id> [--off]",
 ].join("\n");
 
 function parseFlags(
@@ -85,13 +89,28 @@ function formatAccounts(accounts: readonly AccountSummary[]): string {
   ].join("\n");
 }
 
-function formatStatus(status: PoolStatus, showKey: boolean): string {
+function formatStatus(status: PoolStatus): string {
   return [
     `Route: ${status.route}`,
     `Accepting: ${status.accepting}`,
     `Enabled accounts: ${status.enabledAccountCount}`,
     `In flight: ${status.inFlight}`,
-    ...(showKey && status.hubKey !== null ? [`Hub key: ${status.hubKey}`] : []),
+    "",
+    "Machine tokens:",
+    ...(status.hosts.length === 0
+      ? ["None minted."]
+      : status.hosts.map(
+          (host) =>
+            `${host.hostName ?? host.hostId}\t${new Date(host.mintedAt).toISOString()}\t${host.lastUsedAt === null ? "never" : new Date(host.lastUsedAt).toISOString()}`,
+        )),
+    "",
+    "Recently routed threads without a local Claude login:",
+    ...(status.routedThreadsWithoutLocalLogin.length === 0
+      ? ["None."]
+      : status.routedThreadsWithoutLocalLogin.map(
+          (thread) =>
+            `${thread.threadId}\t${thread.hostName ?? thread.hostId}\t${thread.localClaudeStatus}`,
+        )),
     "",
     formatAccounts(status.accounts),
   ].join("\n");
@@ -138,9 +157,18 @@ export function registerPoolCli(
       },
       {
         name: "status",
-        summary:
-          "Show hub status; reveal the bearer token only with --show-key",
-        usage: "bb pool status [--json] [--show-key]",
+        summary: "Show hub, machine token, routing, and account status",
+        usage: "bb pool status [--json]",
+      },
+      {
+        name: "token-rotate",
+        summary: "Rotate one machine's Account Pool bearer token",
+        usage: "bb pool token rotate --machine <id-or-name>",
+      },
+      {
+        name: "bypass",
+        summary: "Bypass Account Pool routing for one thread",
+        usage: "bb pool bypass <thread-id> [--off]",
       },
     ],
     async run(argv): Promise<PluginCliResult> {
@@ -216,14 +244,41 @@ export function registerPoolCli(
           };
         }
         if (argv[0] === "status") {
-          const flags = parseFlags(argv.slice(1), ["json", "show-key"], []);
-          const showKey = flags.booleans.has("show-key");
-          const status = await operations.status(showKey);
+          const flags = parseFlags(argv.slice(1), ["json"], []);
+          const status = await operations.status();
           return {
             exitCode: 0,
             stdout: flags.booleans.has("json")
               ? json(status)
-              : `${formatStatus(status, showKey)}\n`,
+              : `${formatStatus(status)}\n`,
+          };
+        }
+        if (argv[0] === "token" && argv[1] === "rotate") {
+          const flags = parseFlags(argv.slice(2), [], ["machine"]);
+          const { machine } = tokenRotateInputSchema.parse({
+            machine: flags.values.get("machine"),
+          });
+          const token = await operations.rotateToken(machine);
+          return {
+            exitCode: 0,
+            stdout: `Rotated the Account Pool token for ${token.hostName ?? token.hostId}.\n`,
+          };
+        }
+        if (argv[0] === "bypass") {
+          const threadId = argv[1];
+          if (threadId === undefined) throw new Error(HELP);
+          const flags = parseFlags(argv.slice(2), ["off"], []);
+          const input = bypassInputSchema.parse({
+            threadId,
+            bypassed: !flags.booleans.has("off"),
+          });
+          const result = await operations.setBypass(
+            input.threadId,
+            input.bypassed,
+          );
+          return {
+            exitCode: 0,
+            stdout: `${result.bypassed ? "Enabled" : "Disabled"} Account Pool bypass for ${result.threadId}.\n`,
           };
         }
         throw new Error(HELP);

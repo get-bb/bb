@@ -42,6 +42,47 @@ interface Fixture {
 
 const cleanups: Array<() => Promise<void>> = [];
 
+function sdkStubs() {
+  return {
+    hosts: {
+      list: async () => [
+        {
+          id: "host-one",
+          name: "One",
+        },
+        {
+          id: "host-two",
+          name: "Two",
+        },
+      ],
+    },
+    system: {
+      providerStates: async () => ({ providers: [] }),
+    },
+    plugins: {
+      list: async () => ({
+        plugins: [{ id: "account-pool", enabled: true }],
+      }),
+    },
+  };
+}
+
+async function resolveToken(
+  host: ReturnType<typeof createFakePluginHost>,
+  hostId = "host-one",
+  threadId = "thread-one",
+): Promise<string> {
+  const entries = await host.harness.behavior.resolveProviderEnv(
+    "claude-code",
+    { threadId, projectId: "project-one", hostId },
+  );
+  const token = entries.find((entry) => entry.name === "ANTHROPIC_AUTH_TOKEN");
+  if (token === undefined || typeof token.value !== "string") {
+    throw new Error("Account Pool token was not resolved.");
+  }
+  return token.value;
+}
+
 afterEach(async () => {
   while (cleanups.length > 0) await cleanups.pop()?.();
 });
@@ -112,6 +153,7 @@ async function createFixture(args: {
       upstreamBaseUrl: args.upstreamUrl,
       switchThreshold: 0.98,
     },
+    sdk: sdkStubs(),
   });
   const plugin = createAccountPoolPlugin(args.options);
   await plugin(host.bb);
@@ -128,21 +170,12 @@ async function createFixture(args: {
   );
   const service = host.harness.behavior.runService("hub");
   await vi.waitFor(async () => {
-    const result = await host.harness.behavior.runCli([
-      "status",
-      "--json",
-      "--show-key",
-    ]);
+    const result = await host.harness.behavior.runCli(["status", "--json"]);
     expect(result.exitCode).toBe(0);
     expect(statusSchema.parse(JSON.parse(result.stdout)).accepting).toBe(true);
   });
-  const statusResult = await host.harness.behavior.runCli([
-    "status",
-    "--json",
-    "--show-key",
-  ]);
+  const statusResult = await host.harness.behavior.runCli(["status", "--json"]);
   const status = statusSchema.parse(JSON.parse(statusResult.stdout));
-  if (status.hubKey === null) throw new Error("Hub key was not returned.");
   const account = status.accounts.find(
     (candidate) => candidate.id === accountMetadata.id,
   );
@@ -153,7 +186,7 @@ async function createFixture(args: {
     await host.harness.lifecycle.dispose();
     await fs.rm(dataDir, { recursive: true, force: true });
   });
-  return { dataDir, host, service, key: status.hubKey, account };
+  return { dataDir, host, service, key: await resolveToken(host), account };
 }
 
 function authHeaders(key: string): Record<string, string> {
@@ -202,6 +235,7 @@ describe("Account Pool plugin", () => {
       pluginId: "account-pool",
       dataDir,
       settings: { upstreamBaseUrl: upstream.url, switchThreshold: 0.98 },
+      sdk: sdkStubs(),
     });
     await createAccountPoolPlugin()(host.bb);
     const service = host.harness.behavior.runService("hub");
@@ -214,30 +248,27 @@ describe("Account Pool plugin", () => {
     const statusResult = await host.harness.behavior.runCli([
       "status",
       "--json",
-      "--show-key",
     ]);
     const status = statusSchema.parse(JSON.parse(statusResult.stdout));
     expect(status.accepting).toBe(true);
-    if (status.hubKey === null) throw new Error("Expected a hub key.");
+    expect(status.hosts).toEqual([]);
+    expect(
+      await host.harness.behavior.resolveProviderEnv("claude-code", {
+        threadId: "thread-empty",
+        projectId: "project-one",
+        hostId: "host-one",
+      }),
+    ).toEqual([]);
+    await expect(
+      host.harness.behavior.resolveProviderEnvHealth("claude-code", {
+        hostId: "host-one",
+      }),
+    ).resolves.toBeNull();
     expect(host.harness.inspection.needsConfigurationMessages).toEqual([
       "Add and enable a Claude account with `bb pool account add`.",
     ]);
     const hello = helloResponse();
     expect(hello.status).toBe(200);
-    const unavailable = await host.harness.behavior.fetchHttp(
-      "POST",
-      "/v1/messages",
-      { headers: authHeaders(status.hubKey), body: "{}" },
-    );
-    expect(unavailable.status).toBe(503);
-    expect(await unavailable.json()).toEqual({
-      type: "error",
-      error: {
-        type: "api_error",
-        message: "Account Pool has no enabled account",
-      },
-    });
-    expect(forwarded).toBe(0);
     const added = await host.harness.behavior.runCli([
       "account",
       "add",
@@ -253,10 +284,11 @@ describe("Account Pool plugin", () => {
     expect(added.exitCode).toBe(0);
     expect(added.stdout).not.toContain("sk-cli-secret");
     expect(added.stdout).not.toContain("reload");
+    const key = await resolveToken(host, "host-one", "thread-empty");
     const forwardedResponse = await host.harness.behavior.fetchHttp(
       "POST",
       "/v1/messages",
-      { headers: authHeaders(status.hubKey), body: "{}" },
+      { headers: authHeaders(key), body: "{}" },
     );
     expect(forwardedResponse.status).toBe(200);
     expect(await forwardedResponse.text()).toBe('{"forwarded":true}');
@@ -323,23 +355,15 @@ describe("Account Pool plugin", () => {
       ),
     );
     expect(publicStatus.accepting).toBe(true);
-    expect(publicStatus.hubKey).toBeNull();
-    const secretStatus = statusSchema.parse(
-      JSON.parse(
-        (
-          await fixture.host.harness.behavior.runCli([
-            "status",
-            "--json",
-            "--show-key",
-          ])
-        ).stdout,
-      ),
-    );
-    if (secretStatus.hubKey === null) throw new Error("Expected a hub key.");
+    expect(publicStatus.hosts).toEqual([
+      expect.objectContaining({ hostId: "host-one", hostName: "One" }),
+    ]);
+    expect(publicStatus).not.toHaveProperty("hubKey");
+    expect(JSON.stringify(publicStatus)).not.toContain(fixture.key);
     const counted = await fixture.host.harness.behavior.fetchHttp(
       "POST",
       "/v1/messages/count_tokens",
-      { headers: authHeaders(secretStatus.hubKey), body: "{}" },
+      { headers: authHeaders(fixture.key), body: "{}" },
     );
     expect(counted.status).toBe(200);
     expect(await counted.text()).toBe("{}");
@@ -357,7 +381,215 @@ describe("Account Pool plugin", () => {
     ).toEqual([]);
   });
 
-  it("requires the hub key and forwards a streaming SSE response byte for byte", async () => {
+  it("resolves distinct secret machine tokens and honors per-thread bypass", async () => {
+    const upstream = await startUpstream(async (request, response) => {
+      await readRequestBody(request);
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end("{}");
+    });
+    cleanups.push(upstream.close);
+    const fixture = await createFixture({ upstreamUrl: upstream.url });
+    const first = await fixture.host.harness.behavior.resolveProviderEnv(
+      "claude-code",
+      {
+        threadId: "thread-one",
+        projectId: "project-one",
+        hostId: "host-one",
+      },
+    );
+    expect(first).toEqual([
+      {
+        name: "ANTHROPIC_BASE_URL",
+        value: { serverPath: "/api/v1/plugins/account-pool/http" },
+        reason: "Routed through the Account Pool hub",
+        secret: false,
+      },
+      {
+        name: "ANTHROPIC_AUTH_TOKEN",
+        value: fixture.key,
+        reason: "Account Pool hub token for this machine",
+        secret: true,
+      },
+    ]);
+    await expect(
+      fixture.host.harness.behavior.resolveProviderEnvHealth("claude-code", {
+        hostId: "host-one",
+      }),
+    ).resolves.toEqual({
+      label: "Proxied",
+      statusMessage: "Credentials are provided by the Account Pool hub.",
+    });
+    const secondToken = await resolveToken(
+      fixture.host,
+      "host-two",
+      "thread-two",
+    );
+    expect(secondToken).not.toBe(fixture.key);
+    expect(
+      await fixture.host.harness.behavior.callRpc("bypass.set", {
+        threadId: "thread-one",
+        bypassed: true,
+      }),
+    ).toEqual({ threadId: "thread-one", bypassed: true });
+    expect(
+      await fixture.host.harness.behavior.resolveProviderEnv("claude-code", {
+        threadId: "thread-one",
+        projectId: "project-one",
+        hostId: "host-one",
+      }),
+    ).toEqual([]);
+    const off = await fixture.host.harness.behavior.runCli([
+      "bypass",
+      "thread-one",
+      "--off",
+    ]);
+    expect(off.exitCode).toBe(0);
+    expect(await resolveToken(fixture.host)).toBe(fixture.key);
+  });
+
+  it("rotates a machine token with a ten-minute grace window", async () => {
+    let now = 1_000;
+    const upstream = await startUpstream(async (request, response) => {
+      await readRequestBody(request);
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end("{}");
+    });
+    cleanups.push(upstream.close);
+    const fixture = await createFixture({
+      upstreamUrl: upstream.url,
+      options: { now: () => now },
+    });
+    const first = await fixture.host.harness.behavior.fetchHttp(
+      "POST",
+      "/v1/messages",
+      { headers: authHeaders(fixture.key), body: "{}" },
+    );
+    expect(first.status).toBe(200);
+    await first.text();
+    now = 2_000;
+    const rotate = await fixture.host.harness.behavior.runCli([
+      "token",
+      "rotate",
+      "--machine",
+      "One",
+    ]);
+    expect(rotate.exitCode).toBe(0);
+    expect(rotate.stdout).not.toContain(fixture.key);
+    const nextKey = await resolveToken(fixture.host);
+    expect(nextKey).not.toBe(fixture.key);
+    now += 9 * 60 * 1_000;
+    const grace = await fixture.host.harness.behavior.fetchHttp(
+      "POST",
+      "/v1/messages",
+      { headers: authHeaders(fixture.key), body: "{}" },
+    );
+    expect(grace.status).toBe(200);
+    await grace.text();
+    now = 2_000 + 10 * 60 * 1_000 + 1;
+    const expired = await fixture.host.harness.behavior.fetchHttp(
+      "POST",
+      "/v1/messages",
+      { headers: authHeaders(fixture.key), body: "{}" },
+    );
+    expect(expired.status).toBe(401);
+    const current = await fixture.host.harness.behavior.fetchHttp(
+      "POST",
+      "/v1/messages",
+      { headers: authHeaders(nextKey), body: "{}" },
+    );
+    expect(current.status).toBe(200);
+    await current.text();
+    const status = statusSchema.parse(
+      await fixture.host.harness.behavior.callRpc("status", null),
+    );
+    expect(status.hosts).toEqual([
+      {
+        hostId: "host-one",
+        hostName: "One",
+        mintedAt: 2_000,
+        lastUsedAt: now,
+      },
+    ]);
+    expect(JSON.stringify(status)).not.toContain(fixture.key);
+    expect(JSON.stringify(status)).not.toContain(nextKey);
+  });
+
+  it("reports routed threads without local login and logs them on disable", async () => {
+    const upstream = await startUpstream(async (request, response) => {
+      await readRequestBody(request);
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end("{}");
+    });
+    cleanups.push(upstream.close);
+    const fixture = await createFixture({ upstreamUrl: upstream.url });
+    await resolveToken(fixture.host, "host-two", "thread-two");
+    fixture.host.harness.sdk.stub(
+      "system.providerStates",
+      async ({ hostId }) => ({
+        providers: [
+          {
+            providerId: "claude-code",
+            status: hostId === "host-one" ? "unauthenticated" : "ready",
+            planLabel: null,
+          },
+        ],
+      }),
+    );
+    const status = statusSchema.parse(
+      await fixture.host.harness.behavior.callRpc("status", null),
+    );
+    expect(status.routedThreadsWithoutLocalLogin).toEqual([
+      {
+        threadId: "thread-one",
+        hostId: "host-one",
+        hostName: "One",
+        routedAt: expect.any(Number),
+        localClaudeStatus: "unauthenticated",
+      },
+    ]);
+    fixture.host.harness.sdk.stub("plugins.list", async () => ({
+      plugins: [{ id: "account-pool", enabled: false }],
+    }));
+    await fixture.host.harness.lifecycle.dispose();
+    expect(fixture.host.harness.inspection.logEntries).toContainEqual({
+      level: "warn",
+      message:
+        "Account Pool disabled with 1 recently routed thread on machines without a local Claude login. Run bb pool status before disabling to inspect them.",
+    });
+  });
+
+  it("keeps proxied routed hosts visible in status", async () => {
+    const upstream = await startUpstream(async (request, response) => {
+      await readRequestBody(request);
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end("{}");
+    });
+    cleanups.push(upstream.close);
+    const fixture = await createFixture({ upstreamUrl: upstream.url });
+    fixture.host.harness.sdk.stub("system.providerStates", async () => ({
+      providers: [
+        {
+          providerId: "claude-code",
+          status: "ready",
+          planLabel: "Proxied",
+        },
+      ],
+    }));
+    const status = statusSchema.parse(
+      await fixture.host.harness.behavior.callRpc("status", null),
+    );
+    expect(status.routedThreadsWithoutLocalLogin).toEqual([
+      {
+        threadId: "thread-one",
+        hostId: "host-one",
+        hostName: "One",
+        routedAt: expect.any(Number),
+        localClaudeStatus: "proxied",
+      },
+    ]);
+  });
+
+  it("requires a machine token and forwards a streaming SSE response byte for byte", async () => {
     const seen: {
       url: string;
       authorization: string | undefined;

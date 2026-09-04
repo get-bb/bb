@@ -5,7 +5,11 @@ import {
   accountIdInputSchema,
   accountSchema,
   accountSummarySchema,
+  bypassInputSchema,
+  bypassResultSchema,
+  hubTokenSummarySchema,
   statusSchema,
+  tokenRotateInputSchema,
 } from "./contracts.js";
 import type { PoolOperations } from "./operations.js";
 
@@ -34,6 +38,14 @@ export const accountPoolRpcContract = defineRpcContract({
     input: z.null(),
     output: statusSchema,
   },
+  "token.rotate": {
+    input: tokenRotateInputSchema,
+    output: hubTokenSummarySchema,
+  },
+  "bypass.set": {
+    input: bypassInputSchema,
+    output: bypassResultSchema,
+  },
 });
 
 export function createRpcHandlers(operations: PoolOperations) {
@@ -50,6 +62,15 @@ export function createRpcHandlers(operations: PoolOperations) {
     "account.disable": async ({ id }: { id: string }) => ({
       account: await operations.disable(id),
     }),
-    status: () => operations.status(false),
+    status: () => operations.status(),
+    "token.rotate": ({ machine }: { machine: string }) =>
+      operations.rotateToken(machine),
+    "bypass.set": ({
+      threadId,
+      bypassed,
+    }: {
+      threadId: string;
+      bypassed: boolean;
+    }) => operations.setBypass(threadId, bypassed),
   };
 }
