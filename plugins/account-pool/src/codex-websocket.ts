@@ -62,7 +62,7 @@ export function createCodexWebSocketHandlers(
   async function forward(
     socket: ExperimentalPluginWebSocket,
     raw: string,
-    signal: AbortSignal,
+    controller: AbortController,
   ): Promise<void> {
     const parsed = envelopeSchema.safeParse(JSON.parse(raw));
     if (!parsed.success) {
@@ -130,7 +130,7 @@ export function createCodexWebSocketHandlers(
         method: "POST",
         headers,
         body: JSON.stringify(body),
-        signal,
+        signal: controller.signal,
       }),
       "codex",
     );
@@ -148,6 +148,7 @@ export function createCodexWebSocketHandlers(
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
     let buffered = "";
+    let reachedEof = false;
     const emit = (block: string) => {
       const data = block
         .split(/\r?\n/u)
@@ -163,15 +164,27 @@ export function createCodexWebSocketHandlers(
       }
       send(socket, JSON.stringify(event));
     };
-    while (true) {
-      const chunk = await reader.read();
-      buffered += decoder.decode(chunk.value, { stream: !chunk.done });
-      const blocks = buffered.split(/\r?\n\r?\n/u);
-      buffered = blocks.pop() ?? "";
-      for (const block of blocks) emit(block);
-      if (chunk.done) break;
+    try {
+      while (true) {
+        const chunk = await reader.read();
+        buffered += decoder.decode(chunk.value, { stream: !chunk.done });
+        const blocks = buffered.split(/\r?\n\r?\n/u);
+        buffered = blocks.pop() ?? "";
+        for (const block of blocks) emit(block);
+        if (chunk.done) {
+          reachedEof = true;
+          break;
+        }
+      }
+      if (buffered.trim().length > 0) emit(buffered);
+    } finally {
+      if (!reachedEof) {
+        controller.abort(
+          new Error("Codex upstream response ended before reaching EOF."),
+        );
+        await reader.cancel().catch(() => undefined);
+      }
     }
-    if (buffered.trim().length > 0) emit(buffered);
   }
 
   return {
@@ -196,9 +209,9 @@ export function createCodexWebSocketHandlers(
         const controller = new AbortController();
         activeForward = controller;
         try {
-          await forward(socket, data, controller.signal);
+          await forward(socket, data, controller);
         } catch (error) {
-          if (!controller.signal.aborted) {
+          if (!closed) {
             send(
               socket,
               failure(

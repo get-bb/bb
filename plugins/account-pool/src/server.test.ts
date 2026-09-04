@@ -713,6 +713,91 @@ describe("Account Pool plugin", () => {
     expect(socket.sent).toHaveLength(1);
   });
 
+  it("releases a Codex request when an upstream SSE event is malformed", async () => {
+    const dataDir = await mkdtemp(
+      path.join(tmpdir(), "bb-account-pool-codex-malformed-"),
+    );
+    let upstreamReadCanceled = false;
+    const upstreamFetch = async (): Promise<Response> => {
+      const body = new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(new TextEncoder().encode("data: {\n\n"));
+        },
+        cancel() {
+          upstreamReadCanceled = true;
+        },
+      });
+      return new Response(body, {
+        headers: { "content-type": "text/event-stream" },
+      });
+    };
+    const host = createFakePluginHost({
+      pluginId: "account-pool",
+      dataDir,
+      settings: {
+        codexUpstreamBaseUrl: "https://example.com",
+      },
+      sdk: sdkStubs(),
+    });
+    await createAccountPoolPlugin({
+      fetch: upstreamFetch,
+      importCodexCredentials: async () => ({
+        accessToken: "access",
+        refreshToken: "refresh",
+        idToken: null,
+        accountId: "account",
+        email: null,
+        expiresAt: null,
+      }),
+    })(host.bb);
+    const service = host.harness.behavior.runService("hub");
+    cleanups.push(async () => {
+      service.controller.abort();
+      await service.done;
+      await host.harness.lifecycle.dispose();
+      await fs.rm(dataDir, { recursive: true, force: true });
+    });
+    await vi.waitFor(async () => {
+      expect(
+        statusSchema.parse(await host.harness.behavior.callRpc("status", null))
+          .accepting,
+      ).toBe(true);
+    });
+    await host.harness.behavior.callRpc("account.add", {
+      provider: "codex",
+      source: { kind: "import" },
+      label: null,
+      priority: 100,
+    });
+    const { token } = await resolveCodexToken(host);
+    const socket = await host.harness.experimental_openWebSocket(
+      "/v1/responses",
+      { headers: { "x-bb-account-pool-token": token } },
+    );
+    await socket.receive(
+      JSON.stringify({
+        type: "response.create",
+        model: "gpt-5",
+        input: [],
+      }),
+    );
+    await vi.waitFor(async () => {
+      expect(JSON.parse(String(socket.sent[0]))).toMatchObject({
+        type: "response.failed",
+        response: { error: { code: "proxy_error" } },
+      });
+      expect(upstreamReadCanceled).toBe(true);
+      const statusResult = await host.harness.behavior.runCli([
+        "status",
+        "--json",
+      ]);
+      expect(statusResult.exitCode).toBe(0);
+      expect(statusSchema.parse(JSON.parse(statusResult.stdout)).inFlight).toBe(
+        0,
+      );
+    });
+  });
+
   it("prunes token files for unenrolled hosts on startup and status", async () => {
     const dataDir = await mkdtemp(path.join(tmpdir(), "bb-pool-prune-"));
     const secretDir = path.join(
