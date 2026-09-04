@@ -1199,7 +1199,7 @@ export function MachineUpdatesFleetSection({
       description="Manage bb and provider CLI updates across all machines."
       title="Machine updates"
     >
-      <div className="space-y-6">{children}</div>
+      <div className="space-y-6 pt-1.5">{children}</div>
     </SettingsSection>
   );
 }
