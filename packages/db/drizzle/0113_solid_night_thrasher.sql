@@ -6,5 +6,4 @@ CREATE TABLE `retained_event_outputs` (
 	FOREIGN KEY (`event_id`) REFERENCES `events`(`id`) ON UPDATE no action ON DELETE cascade
 );
 --> statement-breakpoint
-CREATE INDEX `retained_event_outputs_expiry_idx` ON `retained_event_outputs` (`expires_at`,`event_id`);--> statement-breakpoint
-CREATE INDEX `events_provider_unhandled_migration_idx` ON `events` (`created_at`,`id`) WHERE "events"."type" = 'provider/unhandled';
+CREATE INDEX `retained_event_outputs_expiry_idx` ON `retained_event_outputs` (`expires_at`,`event_id`);

@@ -706,6 +706,54 @@ describe("completed event output migration", () => {
     restarted.$client.close();
   });
 
+  it("bounds a sparse legacy image scan by all event rows across restart", () => {
+    const migratedAt = 1_800_000_000_000;
+    const setupResult = setup();
+    for (const sequence of [1, 2]) {
+      insertLegacyOutput({
+        createdAt: migratedAt - sequence,
+        db: setupResult.db,
+        eventId: `evt_0${sequence}_unrelated`,
+        itemKind: "commandExecution",
+        output: "small",
+        outputPath: "aggregatedOutput",
+        sequence,
+        threadId: setupResult.thread.id,
+      });
+    }
+    insertLegacyImageGeneration({
+      createdAt: migratedAt - 10_000,
+      db: setupResult.db,
+      eventId: "evt_03_legacy_image",
+      output: "image-" + "i".repeat(40_000),
+      sequence: 3,
+      threadId: setupResult.thread.id,
+    });
+
+    expect(
+      migrateNextLegacyImageGenerationOutput(setupResult.db, {
+        limit: 2,
+        migratedAt,
+      }),
+    ).toMatchObject({ action: "scanned", migratedRows: 0, scanRows: 2 });
+    const serialized = setupResult.db.$client.serialize();
+    setupResult.db.$client.close();
+
+    const restarted = createConnection(serialized);
+    expect(
+      migrateNextLegacyImageGenerationOutput(restarted, {
+        limit: 2,
+        migratedAt,
+      }),
+    ).toMatchObject({
+      action: "migrated",
+      eventId: "evt_03_legacy_image",
+      migratedRows: 1,
+      scanRows: 1,
+    });
+    restarted.$client.close();
+  });
+
   it("drops expired legacy image results and skips unrelated unhandled events", () => {
     const migratedAt = 1_800_000_000_000;
     const { db, thread } = setup();

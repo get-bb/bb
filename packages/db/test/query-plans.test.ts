@@ -980,7 +980,7 @@ describe("slow query index plans", () => {
       predicate: (fields) =>
         fields.operation === "get" &&
         fields.sql.startsWith(
-          "SELECT id, created_at, data, thread_id FROM events",
+          "SELECT id, created_at, created_at AS scan_created_at, data, thread_id FROM events",
         ) &&
         fields.bindingArgumentCount === 14,
     });
@@ -1009,7 +1009,7 @@ describe("slow query index plans", () => {
     db.$client.close();
   });
 
-  it("uses the partial provider index for legacy image generation migration", () => {
+  it("bounds legacy image generation migration with the event primary key", () => {
     const { db, logger, thread } = setup();
     const migratedAt = Date.now();
     insertEvents(db, noopNotifier, [
@@ -1065,15 +1065,15 @@ describe("slow query index plans", () => {
       logger,
       predicate: (fields) =>
         fields.operation === "all" &&
-        fields.sql.startsWith("SELECT id, created_at FROM events") &&
-        fields.sql.includes("ORDER BY created_at, id") &&
-        fields.bindingArgumentCount === 5,
+        fields.sql.startsWith("SELECT id, 0 AS created_at FROM events") &&
+        fields.sql.includes("ORDER BY id") &&
+        fields.bindingArgumentCount === 2,
     });
     assertEmittedQueryPlanUsesIndex({
       db,
       debugLog: scanDebugLog,
-      indexName: "events_provider_unhandled_migration_idx",
-      params: ["provider/unhandled", migratedAt, 0, "", 10],
+      indexName: "sqlite_autoindex_events_1",
+      params: ["", 10],
     });
 
     const candidateDebugLog = findOnlyDebugLog({
@@ -1081,21 +1081,19 @@ describe("slow query index plans", () => {
       predicate: (fields) =>
         fields.operation === "get" &&
         fields.sql.startsWith(
-          "SELECT id, created_at, data, thread_id FROM events",
+          "SELECT id, created_at, 0 AS scan_created_at, data, thread_id FROM events",
         ) &&
-        fields.bindingArgumentCount === 11,
+        fields.bindingArgumentCount === 9,
     });
     assertEmittedQueryPlanUsesIndex({
       db,
       debugLog: candidateDebugLog,
-      indexName: "events_provider_unhandled_migration_idx",
+      indexName: "sqlite_autoindex_events_1",
       params: [
+        "",
+        insertedEvent.id,
         "provider/unhandled",
         migratedAt,
-        0,
-        "",
-        migratedAt - 10_000,
-        insertedEvent.id,
         MAX_COMPLETED_EVENT_OUTPUT_MIGRATION_EVENT_DATA_BYTES,
         "item/completed",
         "item/completed",

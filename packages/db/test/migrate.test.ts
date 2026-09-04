@@ -464,7 +464,7 @@ const retainedEventOutputsMigrationPath = resolve(
   __dirname,
   "..",
   "drizzle",
-  "0113_puzzling_black_knight.sql",
+  "0113_solid_night_thrasher.sql",
 );
 const providerSettingsToPluginsMigrationPath = resolve(
   __dirname,
@@ -661,9 +661,6 @@ function dropMarketplaceCatalogSchema(db: DbConnection): void {
 function dropEventToolNameColumn(db: DbConnection): void {
   db.$client.prepare("DROP TABLE IF EXISTS retained_event_outputs").run();
   dropThreadConversationOutlinesTable(db);
-  db.$client.exec(
-    "DROP INDEX IF EXISTS events_provider_unhandled_migration_idx",
-  );
   db.$client.exec("DROP INDEX IF EXISTS events_delegating_item_lookup_idx");
   db.$client.exec("DROP INDEX IF EXISTS events_plan_steps_thread_sequence_idx");
   // The same rewind also rewinds the later deferred-message table (0108).
@@ -1449,7 +1446,7 @@ describe("migrate", () => {
     prepareMigratedConnectionTemplate();
   });
 
-  it("adds retained outputs and the image scan index without rewriting events", () => {
+  it("adds retained outputs without rewriting events", () => {
     const db = createMigratedConnection();
 
     try {
@@ -1472,9 +1469,6 @@ describe("migrate", () => {
       });
       const eventData = JSON.stringify({ message: "existing event" });
 
-      db.$client
-        .prepare("DROP INDEX events_provider_unhandled_migration_idx")
-        .run();
       db.$client.prepare("DROP TABLE retained_event_outputs").run();
       db.$client
         .prepare<[string, string, string]>(
@@ -1501,9 +1495,6 @@ describe("migrate", () => {
       expect(
         readIndexNames({ db, tableName: "retained_event_outputs" }),
       ).toContain("retained_event_outputs_expiry_idx");
-      expect(readIndexNames({ db, tableName: "events" })).toContain(
-        "events_provider_unhandled_migration_idx",
-      );
       expect(
         db.$client
           .prepare<[], ForeignKeyRow>(
@@ -4296,7 +4287,6 @@ describe("migrate", () => {
         "events_item_lifecycle_thread_item_sequence_idx",
         "events_parent_tool_call_thread_parent_sequence_idx",
         "events_plan_steps_thread_sequence_idx",
-        "events_provider_unhandled_migration_idx",
         "events_thread_sequence_idx",
         "events_thread_state_thread_sequence_idx",
         "events_thread_turn_type_item_sequence_idx",

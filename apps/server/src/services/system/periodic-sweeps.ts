@@ -30,6 +30,7 @@ import {
   sweepManagedEnvironments,
   threads,
   DEFAULT_COMPLETED_EVENT_OUTPUT_MIGRATION_SCAN_LIMIT,
+  DEFAULT_LEGACY_IMAGE_GENERATION_MIGRATION_SCAN_LIMIT,
 } from "@bb/db";
 import type {
   AppDeps,
@@ -503,7 +504,7 @@ async function runCompletedEventOutputMigrationSweep(
                 migratedAt: now,
               })
             : migrateNextLegacyImageGenerationOutput(deps.db, {
-                limit: DEFAULT_COMPLETED_EVENT_OUTPUT_MIGRATION_SCAN_LIMIT,
+                limit: DEFAULT_LEGACY_IMAGE_GENERATION_MIGRATION_SCAN_LIMIT,
                 migratedAt: now,
               });
         },

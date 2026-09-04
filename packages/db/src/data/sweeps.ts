@@ -30,6 +30,7 @@ const COMPLETED_EVENT_OUTPUT_MIGRATION_COMPLETED_AT = -1;
 export const DEFAULT_CLOSED_SESSION_PRUNE_BATCH_SIZE = 1_000;
 export const DEFAULT_DESTROYED_ENVIRONMENT_EVENT_DETACH_BATCH_SIZE = 50;
 export const DEFAULT_COMPLETED_EVENT_OUTPUT_MIGRATION_SCAN_LIMIT = 25;
+export const DEFAULT_LEGACY_IMAGE_GENERATION_MIGRATION_SCAN_LIMIT = 250;
 export const DEFAULT_DESTROYED_ENVIRONMENT_PRUNE_BATCH_SIZE = 10;
 export const MAX_COMPLETED_EVENT_OUTPUT_MIGRATION_EVENT_DATA_BYTES =
   8 * 1024 * 1024;
@@ -99,6 +100,7 @@ interface CompletedEventOutputCandidateRow {
   created_at: number;
   data: string;
   id: string;
+  scan_created_at: number;
   thread_id: string;
 }
 
@@ -124,20 +126,12 @@ interface CompletedEventOutputMigrationStrategy {
   windowPolicy: string;
 }
 
-type LegacyImageGenerationScanParameters = [
-  "provider/unhandled",
-  number,
-  number,
-  string,
-  number,
-];
+type LegacyImageGenerationScanParameters = [string, number];
 type LegacyImageGenerationCandidateParameters = [
+  string,
+  string,
   "provider/unhandled",
   number,
-  number,
-  string,
-  number,
-  string,
   number,
   "item/completed",
   "item/completed",
@@ -301,7 +295,7 @@ function findCompletedEventOutputCandidate(
       CompletedEventOutputCandidateRow
     >(
       `
-        SELECT id, created_at, data, thread_id
+        SELECT id, created_at, created_at AS scan_created_at, data, thread_id
         FROM events
         WHERE type = ?
           AND item_kind = ?
@@ -349,22 +343,14 @@ function listLegacyImageGenerationScanRows(
   return db.$client
     .prepare<LegacyImageGenerationScanParameters, CompletedEventOutputScanRow>(
       `
-        SELECT id, created_at
+        SELECT id, 0 AS created_at
         FROM events
-        WHERE type = ?
-          AND created_at < ?
-          AND (created_at, id) > (?, ?)
-        ORDER BY created_at, id
+        WHERE id > ?
+        ORDER BY id
         LIMIT ?
       `,
     )
-    .all(
-      "provider/unhandled",
-      args.migratedAt,
-      cursor.lastCreatedAt,
-      cursor.lastEventId,
-      args.limit,
-    );
+    .all(cursor.lastEventId, args.limit);
 }
 
 function findLegacyImageGenerationCandidate(
@@ -379,12 +365,12 @@ function findLegacyImageGenerationCandidate(
       CompletedEventOutputCandidateRow
     >(
       `
-        SELECT id, created_at, data, thread_id
+        SELECT id, created_at, 0 AS scan_created_at, data, thread_id
         FROM events
-        WHERE type = ?
+        WHERE id > ?
+          AND id <= ?
+          AND type = ?
           AND created_at < ?
-          AND (created_at, id) > (?, ?)
-          AND (created_at, id) <= (?, ?)
           AND CASE
           WHEN octet_length(data) > ? THEN 0
           WHEN json_valid(data) THEN
@@ -395,17 +381,15 @@ function findLegacyImageGenerationCandidate(
             AND json_type(data, '$.rawEvent.params.item.truncation.result') IS NULL
             AND octet_length(json_extract(data, '$.rawEvent.params.item.result')) > ?
           ELSE 0 END
-        ORDER BY created_at, id
+        ORDER BY id
         LIMIT 1
       `,
     )
     .get(
+      cursor.lastEventId,
+      window.lastEventId,
       "provider/unhandled",
       args.migratedAt,
-      cursor.lastCreatedAt,
-      cursor.lastEventId,
-      window.lastCreatedAt,
-      window.lastEventId,
       MAX_COMPLETED_EVENT_OUTPUT_MIGRATION_EVENT_DATA_BYTES,
       "item/completed",
       "item/completed",
@@ -659,7 +643,7 @@ function migrateNextCompletedEventOutput(
   const candidate = strategy.findCandidate(db, args, cursor, window);
   const candidatePosition = candidate
     ? {
-        lastCreatedAt: candidate.created_at,
+        lastCreatedAt: candidate.scan_created_at,
         lastEventId: candidate.id,
         updatedAt: args.migratedAt,
       }

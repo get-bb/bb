@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "45acb5fa-b0ce-40b7-a9f4-f2e48038f6cd",
+  "id": "a51ac12a-7e09-4470-aa5c-f2658a217ac4",
   "prevId": "1372ccec-3fb1-4472-968f-5db67682af56",
   "tables": {
     "app_settings": {
@@ -853,15 +853,6 @@
           ],
           "isUnique": false,
           "where": "\"events\".\"type\" = 'item/completed'"
-        },
-        "events_provider_unhandled_migration_idx": {
-          "name": "events_provider_unhandled_migration_idx",
-          "columns": [
-            "created_at",
-            "id"
-          ],
-          "isUnique": false,
-          "where": "\"events\".\"type\" = 'provider/unhandled'"
         },
         "events_thread_state_thread_sequence_idx": {
           "name": "events_thread_state_thread_sequence_idx",
