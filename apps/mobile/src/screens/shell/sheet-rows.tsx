@@ -1,7 +1,5 @@
-import { Pressable, View } from "react-native";
-import { cn, ListRow, Separator, Text, type IconName } from "@/ui";
-
-const IS_IOS = process.env.EXPO_OS === "ios";
+import { View } from "react-native";
+import { Separator, Text } from "@/ui";
 
 export function SheetHeader({
   title,
@@ -24,55 +22,5 @@ export function SheetHeader({
       </View>
       <Separator />
     </>
-  );
-}
-
-export function CheckRow({
-  label,
-  icon,
-  checked,
-  onPress,
-  testID,
-}: {
-  label: string;
-  icon: IconName;
-  checked: boolean;
-  onPress: () => void;
-  testID: string;
-}) {
-  return (
-    <ListRow
-      title={label}
-      leading={icon}
-      selected={checked}
-      onPress={onPress}
-      testID={testID}
-    />
-  );
-}
-
-export function CenteredRow({
-  label,
-  onPress,
-  testID,
-}: {
-  label: string;
-  onPress: () => void;
-  testID: string;
-}) {
-  return (
-    <Pressable
-      accessibilityRole="button"
-      onPress={onPress}
-      className={cn(
-        "min-h-[44px] items-center justify-center px-4",
-        IS_IOS ? "active:bg-state-active" : "active:bg-state-hover",
-      )}
-      testID={testID}
-    >
-      <Text variant="bodyLarge" weight="semibold" tone="primary">
-        {label}
-      </Text>
-    </Pressable>
   );
 }

@@ -535,13 +535,6 @@ const PROJECT_COMMANDS_QUERY_KEY = "projectCommands";
 type PluginContributionsQueryKey = readonly [
   typeof PLUGIN_CONTRIBUTIONS_QUERY_KEY,
 ];
-type PluginMentionSearchQueryKey = readonly [
-  typeof PLUGIN_MENTION_SEARCH_QUERY_KEY,
-  string,
-  string,
-  string | null,
-  string | null,
-];
 type EnvironmentPathsQueryKey = readonly [
   typeof ENVIRONMENT_PATHS_QUERY_KEY,
   string,
@@ -572,15 +565,6 @@ type ProjectCommandsQueryKey = readonly [
 
 export function pluginContributionsQueryKey(): PluginContributionsQueryKey {
   return [PLUGIN_CONTRIBUTIONS_QUERY_KEY];
-}
-
-export function pluginMentionSearchQueryKey(
-  trigger: string,
-  query: string,
-  projectId: string | null,
-  threadId: string | null,
-): PluginMentionSearchQueryKey {
-  return [PLUGIN_MENTION_SEARCH_QUERY_KEY, trigger, query, projectId, threadId];
 }
 
 export function allPluginMentionSearchQueryKeyPrefix(): readonly [
@@ -866,10 +850,6 @@ type TerminalsQueryKey = readonly [
   typeof TERMINALS_QUERY_KEY,
   TerminalQueryScope,
 ];
-type TerminalSessionQueryKey = readonly [
-  typeof TERMINAL_SESSION_QUERY_KEY,
-  string,
-];
 
 export function terminalsQueryKey(
   scope: TerminalQueryScope,
@@ -883,12 +863,6 @@ export function allTerminalsQueryKeyPrefix(): readonly [
   return [TERMINALS_QUERY_KEY];
 }
 
-export function terminalSessionQueryKey(
-  terminalId: string,
-): TerminalSessionQueryKey {
-  return [TERMINAL_SESSION_QUERY_KEY, terminalId];
-}
-
 export function allTerminalSessionQueryKeyPrefix(): readonly [
   typeof TERMINAL_SESSION_QUERY_KEY,
 ] {
@@ -898,29 +872,15 @@ export function allTerminalSessionQueryKeyPrefix(): readonly [
 const PLUGINS_QUERY_KEY = "plugins";
 const PLUGIN_SETTINGS_QUERY_KEY = "pluginSettings";
 const PLUGIN_UPDATES_QUERY_KEY = "pluginUpdates";
-const PLUGIN_LOGS_QUERY_KEY = "pluginLogs";
 const PLUGIN_CATALOG_SEARCH_QUERY_KEY = "pluginCatalogSearch";
 const PLUGIN_CATALOG_INSTALL_PLAN_QUERY_KEY = "pluginCatalogInstallPlan";
 const PLUGIN_MARKETPLACES_QUERY_KEY = "pluginMarketplaces";
 const PROJECT_SKILLS_QUERY_KEY = "projectSkills";
 const SKILL_FILES_QUERY_KEY = "skillFiles";
 const SKILL_CONTENT_QUERY_KEY = "skillContent";
-const SKILLS_REGISTRY_QUERY_KEY = "skillsRegistry";
-const SKILLS_REGISTRY_ENTRY_QUERY_KEY = "skillsRegistryEntry";
-const SKILLS_REGISTRY_DETAIL_QUERY_KEY = "skillsRegistryDetail";
 
 type PluginsQueryKey = readonly [typeof PLUGINS_QUERY_KEY];
-type PluginSettingsQueryKey = readonly [
-  typeof PLUGIN_SETTINGS_QUERY_KEY,
-  string,
-];
 type PluginUpdatesQueryKey = readonly [typeof PLUGIN_UPDATES_QUERY_KEY];
-type PluginLogsQueryKey = readonly [
-  typeof PLUGIN_LOGS_QUERY_KEY,
-  string,
-  number,
-];
-type PluginLogsQueryKeyPrefix = readonly [typeof PLUGIN_LOGS_QUERY_KEY, string];
 type PluginCatalogSearchQueryKey = readonly [
   typeof PLUGIN_CATALOG_SEARCH_QUERY_KEY,
   string,
@@ -945,29 +905,9 @@ type SkillContentQueryKey = readonly [
   string,
   string,
 ];
-type SkillsRegistryQueryKey = readonly [
-  typeof SKILLS_REGISTRY_QUERY_KEY,
-  string,
-  number,
-];
-type SkillsRegistryEntryQueryKey = readonly [
-  typeof SKILLS_REGISTRY_ENTRY_QUERY_KEY,
-  string,
-];
-type SkillsRegistryDetailQueryKey = readonly [
-  typeof SKILLS_REGISTRY_DETAIL_QUERY_KEY,
-  string,
-  string,
-];
 
 export function pluginsQueryKey(): PluginsQueryKey {
   return [PLUGINS_QUERY_KEY];
-}
-
-export function pluginSettingsQueryKey(
-  pluginId: string,
-): PluginSettingsQueryKey {
-  return [PLUGIN_SETTINGS_QUERY_KEY, pluginId];
 }
 
 export function allPluginSettingsQueryKeyPrefix(): readonly [
@@ -978,19 +918,6 @@ export function allPluginSettingsQueryKeyPrefix(): readonly [
 
 export function pluginUpdatesQueryKey(): PluginUpdatesQueryKey {
   return [PLUGIN_UPDATES_QUERY_KEY];
-}
-
-export function pluginLogsQueryKey(
-  pluginId: string,
-  tail: number,
-): PluginLogsQueryKey {
-  return [PLUGIN_LOGS_QUERY_KEY, pluginId, tail];
-}
-
-export function pluginLogsQueryKeyPrefix(
-  pluginId: string,
-): PluginLogsQueryKeyPrefix {
-  return [PLUGIN_LOGS_QUERY_KEY, pluginId];
 }
 
 export function pluginCatalogSearchQueryKey(
@@ -1035,12 +962,6 @@ export function skillFilesQueryKey(
   return [SKILL_FILES_QUERY_KEY, projectId, skillId];
 }
 
-export function allSkillFilesQueryKeyPrefix(): readonly [
-  typeof SKILL_FILES_QUERY_KEY,
-] {
-  return [SKILL_FILES_QUERY_KEY];
-}
-
 export function skillContentQueryKey(
   projectId: string,
   skillId: string,
@@ -1049,37 +970,10 @@ export function skillContentQueryKey(
   return [SKILL_CONTENT_QUERY_KEY, projectId, skillId, path];
 }
 
-export function allSkillContentQueryKeyPrefix(): readonly [
-  typeof SKILL_CONTENT_QUERY_KEY,
-] {
-  return [SKILL_CONTENT_QUERY_KEY];
-}
-
-export function skillsRegistryQueryKey(
-  query: string,
-  page: number,
-): SkillsRegistryQueryKey {
-  return [SKILLS_REGISTRY_QUERY_KEY, query, page];
-}
-
-export function skillsRegistryEntryQueryKey(
-  registrySkillId: string,
-): SkillsRegistryEntryQueryKey {
-  return [SKILLS_REGISTRY_ENTRY_QUERY_KEY, registrySkillId];
-}
-
-export function skillsRegistryDetailQueryKey(
-  source: string,
-  skillId: string,
-): SkillsRegistryDetailQueryKey {
-  return [SKILLS_REGISTRY_DETAIL_QUERY_KEY, source, skillId];
-}
-
 const SYSTEM_USAGE_LIMITS_QUERY_KEY = "systemUsageLimits";
 const SYSTEM_CLI_SKILLS_QUERY_KEY = "systemCliSkills";
 const HOST_PROVIDER_CLI_STATUS_QUERY_KEY = "hostProviderCliStatus";
 const THEME_CATALOG_QUERY_KEY = "themeCatalog";
-const SERVER_PROTOCOL_VERSION_QUERY_KEY = "serverProtocolVersion";
 
 type SystemUsageLimitsQueryKey = readonly [
   typeof SYSTEM_USAGE_LIMITS_QUERY_KEY,
@@ -1091,9 +985,6 @@ type HostProviderCliStatusQueryKey = readonly [
   string,
 ];
 type ThemeCatalogQueryKey = readonly [typeof THEME_CATALOG_QUERY_KEY];
-type ServerProtocolVersionQueryKey = readonly [
-  typeof SERVER_PROTOCOL_VERSION_QUERY_KEY,
-];
 
 export function systemUsageLimitsQueryKey(
   hostId: string | null,
@@ -1125,17 +1016,4 @@ export function allHostProviderCliStatusQueryKeyPrefix(): readonly [
 
 export function themeCatalogQueryKey(): ThemeCatalogQueryKey {
   return [THEME_CATALOG_QUERY_KEY];
-}
-
-export function serverProtocolVersionQueryKey(): ServerProtocolVersionQueryKey {
-  return [SERVER_PROTOCOL_VERSION_QUERY_KEY];
-}
-
-const SERVER_SVG_ASSET_QUERY_KEY = "serverSvgAsset";
-type ServerSvgAssetQueryKey = readonly [
-  typeof SERVER_SVG_ASSET_QUERY_KEY,
-  string,
-];
-export function serverSvgAssetQueryKey(url: string): ServerSvgAssetQueryKey {
-  return [SERVER_SVG_ASSET_QUERY_KEY, url];
 }

@@ -226,11 +226,6 @@ function dispatchRejection(pluginId: string, message: string): ApiError {
   });
 }
 
-/** True when `error` is a handler's `reject` decision rather than a failure. */
-export function isDispatchRejectedError(error: unknown): error is ApiError {
-  return error instanceof ApiError && error.body.code === "dispatch_rejected";
-}
-
 /**
  * Runs one handler inside its decision box. A timeout resolves as a failure
  * rather than racing on: the handler's promise may never settle, and the whole
