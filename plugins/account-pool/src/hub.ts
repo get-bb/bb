@@ -21,20 +21,14 @@ const DEFAULT_REFRESH_URL = "https://platform.claude.com/v1/oauth/token";
 const REFRESH_WINDOW_MS = 5 * 60 * 1_000;
 const MAX_INLINE_HOLD_MS = 20_000;
 
-const DROPPED_REQUEST_HEADERS = new Set([
-  "authorization",
-  "x-api-key",
-  "host",
-  "content-length",
-  "connection",
-  "keep-alive",
-  "proxy-authenticate",
-  "proxy-authorization",
-  "te",
-  "trailer",
-  "transfer-encoding",
-  "upgrade",
+const ALLOWED_REQUEST_HEADERS = new Set([
+  "accept",
+  "content-type",
+  "user-agent",
+  "x-app",
 ]);
+
+const ALLOWED_REQUEST_HEADER_PREFIXES = ["anthropic-", "x-stainless-"];
 
 const DROPPED_RESPONSE_HEADERS = new Set([
   "content-encoding",
@@ -409,8 +403,7 @@ export class AccountPoolHub {
     );
     const headers = new Headers();
     for (const [name, value] of request.headers) {
-      if (!DROPPED_REQUEST_HEADERS.has(name.toLowerCase()))
-        headers.append(name, value);
+      if (isAllowedRequestHeader(name)) headers.append(name, value);
     }
     if (secret.kind === "oauth") {
       headers.set("authorization", `Bearer ${secret.accessToken}`);
@@ -584,6 +577,16 @@ export function createHub(options: {
     refreshUrl: options.refreshUrl ?? DEFAULT_REFRESH_URL,
     drainTimeoutMs: options.drainTimeoutMs ?? 60_000,
   });
+}
+
+function isAllowedRequestHeader(name: string): boolean {
+  const normalized = name.toLowerCase();
+  return (
+    ALLOWED_REQUEST_HEADERS.has(normalized) ||
+    ALLOWED_REQUEST_HEADER_PREFIXES.some((prefix) =>
+      normalized.startsWith(prefix),
+    )
+  );
 }
 
 function ensureSlash(value: string): string {

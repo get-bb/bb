@@ -271,6 +271,14 @@ describe("Account Pool plugin", () => {
     });
     cleanups.push(upstream.close);
     const fixture = await createFixture({ upstreamUrl: upstream.url });
+    const help = await fixture.host.harness.behavior.runCli([
+      "account",
+      "add",
+      "--help",
+    ]);
+    expect(help.exitCode).toBe(0);
+    expect(help.stdout).toContain("--api-key-stdin");
+    expect(help.stdout).toContain("Unsafe: exposes the key");
     const list = await fixture.host.harness.behavior.runCli([
       "account",
       "list",
@@ -357,6 +365,12 @@ describe("Account Pool plugin", () => {
       beta: string | undefined;
       version: string | undefined;
       userAgent: string | undefined;
+      app: string | undefined;
+      stainlessRetry: string | undefined;
+      cookie: string | undefined;
+      gateMachineId: string | undefined;
+      forwarded: string | undefined;
+      cfRay: string | undefined;
       body: Buffer;
     }[] = [];
     const first = Buffer.from('event: message_start\ndata: {"one":1}\n\n');
@@ -369,6 +383,12 @@ describe("Account Pool plugin", () => {
         beta: request.headers["anthropic-beta"]?.toString(),
         version: request.headers["anthropic-version"]?.toString(),
         userAgent: request.headers["user-agent"]?.toString(),
+        app: request.headers["x-app"]?.toString(),
+        stainlessRetry: request.headers["x-stainless-retry-count"]?.toString(),
+        cookie: request.headers.cookie,
+        gateMachineId: request.headers["x-bb-gate-machine-id"]?.toString(),
+        forwarded: request.headers.forwarded,
+        cfRay: request.headers["cf-ray"]?.toString(),
         body: await readRequestBody(request),
       });
       response.writeHead(200, {
@@ -411,6 +431,13 @@ describe("Account Pool plugin", () => {
           "x-api-key": "client-key-must-not-forward",
           "anthropic-beta": "feature-a,feature-b",
           "user-agent": "claude-code-test",
+          "x-app": "cli",
+          "x-stainless-retry-count": "2",
+          cookie: "bb_session=browser-secret",
+          "x-bb-gate-machine-id": "machine-stable-id",
+          forwarded: "for=192.0.2.1",
+          "cf-ray": "edge-request-id",
+          "accept-encoding": "gzip",
         },
         body,
       },
@@ -446,6 +473,12 @@ describe("Account Pool plugin", () => {
         beta: "feature-a,feature-b",
         version: "2023-06-01",
         userAgent: "claude-code-test",
+        app: "cli",
+        stainlessRetry: "2",
+        cookie: undefined,
+        gateMachineId: undefined,
+        forwarded: undefined,
+        cfRay: undefined,
         body,
       },
     ]);

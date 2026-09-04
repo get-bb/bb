@@ -14,7 +14,9 @@ interface ParsedFlags {
 
 const HELP = [
   "Usage:",
-  "  bb pool account add --provider claude (--import | --api-key <key>) [--label <text>] [--priority <n>]",
+  "  bb pool account add --provider claude --import [--label <text>] [--priority <n>]",
+  "  bb pool account add --provider claude --api-key-stdin [--label <text>] [--priority <n>]",
+  "  bb pool account add --provider claude --api-key <key> [--label <text>] [--priority <n>]  Unsafe: exposes the key in process arguments.",
   "  bb pool account list [--json]",
   "  bb pool account remove <id>",
   "  bb pool account enable <id>",
@@ -112,7 +114,7 @@ export function registerPoolCli(
         summary:
           "Import Claude Code OAuth credentials or add an Anthropic API key",
         usage:
-          "bb pool account add --provider claude (--import | --api-key <key>) [--label <text>] [--priority <n>]",
+          "bb pool account add --provider claude (--import | --api-key-stdin) [--label <text>] [--priority <n>]\nUnsafe compatibility form: bb pool account add --provider claude --api-key <key> [--label <text>] [--priority <n>]",
       },
       {
         name: "account-list",
@@ -143,18 +145,31 @@ export function registerPoolCli(
     ],
     async run(argv): Promise<PluginCliResult> {
       try {
+        if (argv.includes("--help") || argv.includes("-h")) {
+          return { exitCode: 0, stdout: `${HELP}\n` };
+        }
         if (argv[0] === "account" && argv[1] === "add") {
           const flags = parseFlags(
             argv.slice(2),
-            ["import"],
+            ["import", "api-key-stdin"],
             ["provider", "api-key", "label", "priority"],
           );
           const imported = flags.booleans.has("import");
+          const apiKeyStdin = flags.booleans.has("api-key-stdin");
           const apiKey = flags.values.get("api-key");
-          if (imported === (apiKey !== undefined))
+          const sourceCount =
+            Number(imported) +
+            Number(apiKeyStdin) +
+            Number(apiKey !== undefined);
+          if (sourceCount !== 1)
             throw new Error(
-              "Choose exactly one of --import or --api-key <key>.",
+              "Choose exactly one of --import, --api-key-stdin, or --api-key <key>.",
             );
+          if (apiKeyStdin) {
+            throw new Error(
+              "--api-key-stdin must be invoked through the bb CLI so it can read stdin safely.",
+            );
+          }
           const priorityText = flags.values.get("priority") ?? "100";
           const input = accountAddInputSchema.parse({
             provider: flags.values.get("provider"),

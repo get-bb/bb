@@ -622,13 +622,15 @@ Enable it and add at least one account:
 ```sh
 bb plugin enable account-pool
 bb pool account add --provider claude --import
-bb pool account add --provider claude --api-key <key> [--label <text>] [--priority <n>]
+printf '%s\n' "$ANTHROPIC_API_KEY" | bb pool account add --provider claude --api-key-stdin [--label <text>] [--priority <n>]
 ```
 
-The import path reads the Claude Code login on the bb server host. The API-key
-form necessarily places the key in the command arguments and may leave it in
-shell history; prefer import when possible. The hub starts immediately, so a
-newly added or enabled account is available without a plugin reload.
+The import path reads the Claude Code login on the bb server host.
+`--api-key-stdin` reads exactly one non-empty key from piped standard input and
+is the default API-key path for agents. The compatibility form `--api-key
+<key>` remains available, but exposes the secret in process arguments, shell
+history, and agent transcripts. The hub starts immediately, so a newly added
+or enabled account is available without a plugin reload.
 
 `bb pool status --show-key` is the only command that reveals the hub bearer
 key. Point a client at the route printed by that command and supply the key as

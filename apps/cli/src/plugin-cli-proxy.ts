@@ -279,6 +279,52 @@ interface PluginCliOutputStreams {
   stderr: PluginCliOutputStream;
 }
 
+interface PluginCliInputStream extends AsyncIterable<Buffer | string> {
+  isTTY?: boolean;
+}
+
+const PLUGIN_CLI_SECRET_STDIN_MAX_BYTES = 16 * 1024;
+
+async function materializeApiKeyStdin(
+  argv: readonly string[],
+  input: PluginCliInputStream,
+): Promise<string[]> {
+  const indexes = argv.flatMap((arg, index) =>
+    arg === "--api-key-stdin" ? [index] : [],
+  );
+  if (indexes.length === 0) return [...argv];
+  if (indexes.length > 1 || argv.includes("--api-key")) {
+    throw new Error("Choose only one API-key input flag.");
+  }
+  if (input.isTTY === true) {
+    throw new Error("--api-key-stdin requires an API key piped on stdin.");
+  }
+  const chunks: Buffer[] = [];
+  let bytes = 0;
+  for await (const chunk of input) {
+    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    bytes += buffer.byteLength;
+    if (bytes > PLUGIN_CLI_SECRET_STDIN_MAX_BYTES) {
+      throw new Error("API key from stdin exceeds 16 KiB.");
+    }
+    chunks.push(buffer);
+  }
+  const apiKey = Buffer.concat(chunks)
+    .toString("utf8")
+    .replace(/[\r\n]+$/u, "");
+  if (apiKey.length === 0 || /[\r\n]/u.test(apiKey)) {
+    throw new Error("--api-key-stdin requires exactly one non-empty API key.");
+  }
+  const index = indexes[0];
+  if (index === undefined) return [...argv];
+  return [
+    ...argv.slice(0, index),
+    "--api-key",
+    apiKey,
+    ...argv.slice(index + 1),
+  ];
+}
+
 async function writePluginCliOutput(
   stream: PluginCliOutputStream,
   value: string,
@@ -310,7 +356,18 @@ export async function runPluginCliCommand(
     stdout: process.stdout,
     stderr: process.stderr,
   },
+  input: PluginCliInputStream = process.stdin,
 ): Promise<number> {
+  let resolvedArgv: string[];
+  try {
+    resolvedArgv = await materializeApiKeyStdin(argv, input);
+  } catch (error) {
+    await writePluginCliOutput(
+      streams.stderr,
+      error instanceof Error ? error.message : String(error),
+    );
+    return 1;
+  }
   const threadId = resolveContextThreadId();
   const projectId = resolveContextProjectId();
   const response = await cliFetch(
@@ -319,7 +376,7 @@ export async function runPluginCliCommand(
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
-        argv,
+        argv: resolvedArgv,
         cwd: process.cwd(),
         ...(threadId ? { threadId } : {}),
         ...(projectId ? { projectId } : {}),

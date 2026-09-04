@@ -17,6 +17,8 @@ const ACCOUNTS_KEY = "accounts:v1";
 const accountsSchema = z.array(accountSchema);
 
 export class AccountStore {
+  private mutationLock: Promise<void> | null = null;
+
   constructor(
     private readonly kv: PluginKvStorage,
     private readonly secretsDir: string,
@@ -41,42 +43,48 @@ export class AccountStore {
     input: Omit<Account, "id" | "createdAt">,
     secret: AccountSecret,
   ): Promise<Account> {
-    const account = accountSchema.parse({
-      ...input,
-      id: randomUUID(),
-      createdAt: Date.now(),
+    return this.serialized(async () => {
+      const account = accountSchema.parse({
+        ...input,
+        id: randomUUID(),
+        createdAt: Date.now(),
+      });
+      await this.writeSecret(account.id, secret);
+      try {
+        const accounts = await this.list();
+        accounts.push(account);
+        await this.kv.set(ACCOUNTS_KEY, accounts);
+      } catch (error) {
+        await fs.rm(this.accountSecretPath(account.id), { force: true });
+        throw error;
+      }
+      return account;
     });
-    await this.writeSecret(account.id, secret);
-    try {
-      const accounts = await this.list();
-      accounts.push(account);
-      await this.kv.set(ACCOUNTS_KEY, accounts);
-    } catch (error) {
-      await fs.rm(this.accountSecretPath(account.id), { force: true });
-      throw error;
-    }
-    return account;
   }
 
   async remove(id: string): Promise<boolean> {
-    const accounts = await this.list();
-    const next = accounts.filter((account) => account.id !== id);
-    if (next.length === accounts.length) return false;
-    await this.kv.set(ACCOUNTS_KEY, next);
-    await fs.rm(this.accountSecretPath(id), { force: true });
-    return true;
+    return this.serialized(async () => {
+      const accounts = await this.list();
+      const next = accounts.filter((account) => account.id !== id);
+      if (next.length === accounts.length) return false;
+      await this.kv.set(ACCOUNTS_KEY, next);
+      await fs.rm(this.accountSecretPath(id), { force: true });
+      return true;
+    });
   }
 
   async setEnabled(id: string, enabled: boolean): Promise<Account | null> {
-    const accounts = await this.list();
-    const index = accounts.findIndex((account) => account.id === id);
-    if (index < 0) return null;
-    const current = accounts[index];
-    if (current === undefined) return null;
-    const updated = accountSchema.parse({ ...current, enabled });
-    accounts[index] = updated;
-    await this.kv.set(ACCOUNTS_KEY, accounts);
-    return updated;
+    return this.serialized(async () => {
+      const accounts = await this.list();
+      const index = accounts.findIndex((account) => account.id === id);
+      if (index < 0) return null;
+      const current = accounts[index];
+      if (current === undefined) return null;
+      const updated = accountSchema.parse({ ...current, enabled });
+      accounts[index] = updated;
+      await this.kv.set(ACCOUNTS_KEY, accounts);
+      return updated;
+    });
   }
 
   async readSecret(id: string): Promise<AccountSecret> {
@@ -125,6 +133,23 @@ export class AccountStore {
   private accountSecretPath(id: string): string {
     z.string().uuid().parse(id);
     return path.join(this.secretsDir, `account-${id}.json`);
+  }
+
+  private async serialized<T>(action: () => Promise<T>): Promise<T> {
+    const previous = this.mutationLock ?? Promise.resolve();
+    let release = () => {};
+    const current = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const tail = previous.then(() => current);
+    this.mutationLock = tail;
+    await previous;
+    try {
+      return await action();
+    } finally {
+      release();
+      if (this.mutationLock === tail) this.mutationLock = null;
+    }
   }
 }
 
