@@ -4,6 +4,7 @@ import {
   useState,
   type MouseEvent,
   type ReactNode,
+  type RefObject,
 } from "react";
 import { toast as sonnerToast, type Action, type ExternalToast } from "sonner";
 import { Button } from "@bb/shared-ui/button";
@@ -54,12 +55,6 @@ interface AppToastContentProps {
   onDismiss?: () => void;
   title: ReactNode;
   tone: AppToastTone;
-}
-
-interface AppToastDescriptionProps {
-  description: ReactNode;
-  notificationId: string | null;
-  onShowMore: () => void;
 }
 
 interface ShowAppToastParams {
@@ -129,44 +124,22 @@ function AppToastActionButton({
   );
 }
 
-export function AppToastDescription({
-  description,
-  notificationId,
-  onShowMore,
-}: AppToastDescriptionProps) {
-  const bodyRef = useRef<HTMLDivElement | null>(null);
+function useOverflowTruncation(
+  content: ReactNode,
+): [RefObject<HTMLDivElement | null>, boolean] {
+  const ref = useRef<HTMLDivElement | null>(null);
   const [truncated, setTruncated] = useState(false);
 
   useLayoutEffect(() => {
-    const body = bodyRef.current;
-    if (body === null) {
+    const node = ref.current;
+    if (node === null) {
+      setTruncated(false);
       return;
     }
-    setTruncated(body.scrollWidth - body.clientWidth > 1);
-  }, [description]);
+    setTruncated(node.scrollWidth - node.clientWidth > 1);
+  }, [content]);
 
-  return (
-    <>
-      <div
-        ref={bodyRef}
-        data-testid="app-toast-description"
-        className="min-w-0 flex-1 truncate"
-      >
-        {description}
-      </div>
-      {truncated && notificationId !== null ? (
-        <Button
-          type="button"
-          variant="link"
-          size="sm"
-          className="h-auto shrink-0 px-0 py-0 text-xs text-muted-foreground underline underline-offset-4"
-          onClick={onShowMore}
-        >
-          Show more
-        </Button>
-      ) : null}
-    </>
-  );
+  return [ref, truncated];
 }
 
 export function AppToastContent({
@@ -180,6 +153,11 @@ export function AppToastContent({
   title,
   tone,
 }: AppToastContentProps) {
+  const [titleRef, titleTruncated] = useOverflowTruncation(title);
+  const [descriptionRef, descriptionTruncated] =
+    useOverflowTruncation(description);
+  const canShowMore =
+    notificationId !== null && (titleTruncated || descriptionTruncated);
   const hasActions = action !== undefined || cancel !== undefined;
   const actions = hasActions ? (
     <>
@@ -205,21 +183,33 @@ export function AppToastContent({
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex min-w-0 items-center gap-2">
-            <div className="min-w-0 flex-1 truncate text-sm font-medium leading-5">
+            <div
+              ref={titleRef}
+              className="min-w-0 flex-1 truncate text-sm font-medium leading-5"
+            >
               {title}
             </div>
           </div>
-          {description || hasActions ? (
+          {description || hasActions || canShowMore ? (
             <div className="mt-0.5 flex min-w-0 flex-nowrap items-center gap-2 text-xs leading-5 text-muted-foreground">
               {description ? (
-                <AppToastDescription
-                  description={description}
-                  notificationId={notificationId}
-                  onShowMore={() => {
+                <div ref={descriptionRef} className="min-w-0 flex-1 truncate">
+                  {description}
+                </div>
+              ) : null}
+              {canShowMore ? (
+                <Button
+                  type="button"
+                  variant="link"
+                  size="sm"
+                  className="h-auto shrink-0 px-0 py-0 text-xs text-muted-foreground underline underline-offset-4"
+                  onClick={() => {
                     dismissToast(id);
                     openNotificationCenter(notificationId);
                   }}
-                />
+                >
+                  Show more
+                </Button>
               ) : null}
               {actions}
             </div>
