@@ -110,7 +110,7 @@ export class AccountPoolHub {
     if (!(await this.authenticate(request))) {
       return adapter.errorResponse(
         401,
-        "Invalid Account Pooler [Experimental] bearer token.",
+        "Invalid Account Pooler bearer token.",
       );
     }
     return this.handleAuthenticated(request, provider);
@@ -124,7 +124,7 @@ export class AccountPoolHub {
     if (!this.accepting)
       return adapter.errorResponse(
         503,
-        "Account Pooler [Experimental] is not accepting requests.",
+        "Account Pooler is not accepting requests.",
       );
     return this.forward(
       request,
@@ -196,7 +196,7 @@ export class AccountPoolHub {
     for (const controller of this.activeControllers) {
       controller.abort(
         new Error(
-          "Account Pooler [Experimental] stopped before the upstream response completed.",
+          "Account Pooler stopped before the upstream response completed.",
         ),
       );
     }
@@ -268,7 +268,7 @@ export class AccountPoolHub {
       } catch {
         return adapter.errorResponse(
           502,
-          `Account Pooler [Experimental] could not reach ${adapter.upstreamName}.`,
+          `Account Pooler could not reach ${adapter.upstreamName}.`,
         );
       }
       const observed = adapter.quotaFromHeaders(
@@ -337,7 +337,7 @@ export class AccountPoolHub {
           } catch {
             return adapter.errorResponse(
               502,
-              `Account Pooler [Experimental] could not reach ${adapter.upstreamName}.`,
+              `Account Pooler could not reach ${adapter.upstreamName}.`,
             );
           }
         }
@@ -541,7 +541,7 @@ export class AccountPoolHub {
     if (!accounts.some((account) => account.enabled)) {
       return adapter.errorResponse(
         503,
-        "Account Pooler [Experimental] has no enabled account",
+        "Account Pooler has no enabled account",
       );
     }
     const now = this.options.now();
@@ -563,7 +563,7 @@ export class AccountPoolHub {
     );
     return adapter.errorResponse(
       429,
-      "No Account Pooler [Experimental] account is currently eligible.",
+      "No Account Pooler account is currently eligible.",
       { "retry-after": String(retryAfter) },
     );
   }
@@ -577,7 +577,7 @@ export class AccountPoolHub {
     const adapter = this.options.adapters.get(provider);
     if (adapter === undefined)
       throw new Error(
-        `Missing ${provider} Account Pooler [Experimental] adapter.`,
+        `Missing ${provider} Account Pooler adapter.`,
       );
     return adapter;
   }

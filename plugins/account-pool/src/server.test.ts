@@ -437,7 +437,7 @@ describe("Account Pool plugin", () => {
     ).resolves.toEqual({
       label: "Proxied",
       statusMessage:
-        "Credentials are provided by the Account Pooler [Experimental] hub.",
+        "Credentials are provided by the Account Pooler hub.",
     });
     const httpResponse = await host.harness.behavior.fetchHttp(
       "POST",
@@ -605,7 +605,7 @@ describe("Account Pool plugin", () => {
     expect(rejected.closeCalls).toEqual([
       {
         code: 1008,
-        reason: "invalid Account Pooler [Experimental] token",
+        reason: "invalid Account Pooler token",
       },
     ]);
     const socket = await host.harness.experimental_openWebSocket(
@@ -1384,13 +1384,13 @@ describe("Account Pool plugin", () => {
       {
         name: "ANTHROPIC_BASE_URL",
         value: { serverPath: "/api/v1/plugins/account-pool/http" },
-        reason: "Routed through the Account Pooler [Experimental] hub",
+        reason: "Routed through the Account Pooler hub",
         secret: false,
       },
       {
         name: "ANTHROPIC_AUTH_TOKEN",
         value: fixture.key,
-        reason: "Account Pooler [Experimental] hub token for this machine",
+        reason: "Account Pooler hub token for this machine",
         secret: true,
       },
       {
@@ -1408,7 +1408,7 @@ describe("Account Pool plugin", () => {
     ).resolves.toEqual({
       label: "Proxied",
       statusMessage:
-        "Credentials are provided by the Account Pooler [Experimental] hub.",
+        "Credentials are provided by the Account Pooler hub.",
     });
     const secondToken = await resolveToken(
       fixture.host,
@@ -1585,7 +1585,7 @@ describe("Account Pool plugin", () => {
     expect(fixture.host.harness.inspection.logEntries).toContainEqual({
       level: "warn",
       message:
-        "Account Pooler [Experimental] disabled with 1 recently routed thread on machines without a local Claude login. Run bb pool status before disabling to inspect them.",
+        "Account Pooler disabled with 1 recently routed thread on machines without a local Claude login. Run bb pool status before disabling to inspect them.",
     });
   });
 
@@ -1606,7 +1606,7 @@ describe("Account Pool plugin", () => {
     expect(fixture.host.harness.inspection.logEntries).toContainEqual({
       level: "debug",
       message:
-        "Account Pooler [Experimental] disable inspection skipped: plugin list unavailable",
+        "Account Pooler disable inspection skipped: plugin list unavailable",
     });
   });
 
@@ -1633,7 +1633,7 @@ describe("Account Pool plugin", () => {
     );
     expect(fixture.host.harness.inspection.logEntries).toContainEqual({
       level: "debug",
-      message: "Account Pooler [Experimental] disable inspection timed out.",
+      message: "Account Pooler disable inspection timed out.",
     });
   });
 
@@ -2393,7 +2393,7 @@ describe("Account Pool plugin", () => {
     expect(Date.now() - startedAt).toBeGreaterThanOrEqual(30);
     const stopped = await reader.read();
     expect(new TextDecoder().decode(stopped.value)).toContain(
-      "Account Pooler [Experimental] stopped",
+      "Account Pooler stopped",
     );
     const rejected = await fixture.host.harness.behavior.fetchHttp(
       "POST",

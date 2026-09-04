@@ -613,7 +613,7 @@ persistently restores undimmed splits.
 
 ## Account Pooler [Experimental]
 
-The builtin Account Pooler [Experimental] plugin is disabled on fresh installations. It stores
+The builtin Account Pooler plugin is disabled on fresh installations. It stores
 non-secret Claude and Codex account metadata in plugin KV, quota observations
 in the plugin SQLite database, and each account token plus per-machine hub
 tokens in 0600 files under
@@ -638,7 +638,7 @@ pipe the code shown on Anthropic's manual callback page to
 machine from the bb server, and the code stays out of process arguments. The
 Codex login command prints a ChatGPT device verification URL, one-time code,
 session ID, and an `account login-poll` command that waits until authorization
-completes or expires. The Account Pooler [Experimental] plugin settings page exposes both flows
+completes or expires. The Account Pooler plugin settings page exposes both flows
 with **Sign in to Claude** and **Sign in to Codex**, plus Claude import,
 API-key, enable/disable, and removal controls.
 

@@ -191,11 +191,11 @@ export function createCodexWebSocketHandlers(
     async onOpen(socket) {
       authenticated = await hub.authenticate(context.request);
       if (!authenticated) {
-        socket.close(1008, "invalid Account Pooler [Experimental] token");
+        socket.close(1008, "invalid Account Pooler token");
         return;
       }
       log.debug(
-        "Account Pooler [Experimental] Codex transport: WebSocket downstream, HTTPS SSE upstream.",
+        "Account Pooler Codex transport: WebSocket downstream, HTTPS SSE upstream.",
       );
     },
     async onMessage(socket, data) {

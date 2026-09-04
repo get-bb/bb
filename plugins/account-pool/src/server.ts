@@ -173,13 +173,13 @@ export function createAccountPoolPlugin(
           value: {
             serverPath: "/api/v1/plugins/account-pool/http",
           },
-          reason: "Routed through the Account Pooler [Experimental] hub",
+          reason: "Routed through the Account Pooler hub",
           secret: false,
         },
         {
           name: "ANTHROPIC_AUTH_TOKEN",
           value: token,
-          reason: "Account Pooler [Experimental] hub token for this machine",
+          reason: "Account Pooler hub token for this machine",
           secret: true,
         },
         {
@@ -196,7 +196,7 @@ export function createAccountPoolPlugin(
         ? {
             label: "Proxied",
             statusMessage:
-              "Credentials are provided by the Account Pooler [Experimental] hub.",
+              "Credentials are provided by the Account Pooler hub.",
           }
         : null,
     );
@@ -214,13 +214,13 @@ export function createAccountPoolPlugin(
           value: {
             serverPath: "/api/v1/plugins/account-pool/http/v1",
           },
-          reason: "Routed through the Account Pooler [Experimental] hub",
+          reason: "Routed through the Account Pooler hub",
           secret: false,
         },
         {
           name: "CODEX_POOL_AUTH_TOKEN",
           value: token,
-          reason: "Account Pooler [Experimental] hub token for this machine",
+          reason: "Account Pooler hub token for this machine",
           secret: true,
         },
       ];
@@ -230,7 +230,7 @@ export function createAccountPoolPlugin(
         ? {
             label: "Proxied",
             statusMessage:
-              "Credentials are provided by the Account Pooler [Experimental] hub.",
+              "Credentials are provided by the Account Pooler hub.",
           }
         : null,
     );
@@ -251,14 +251,14 @@ export function createAccountPoolPlugin(
         const result = await Promise.race([inspection, timeout]);
         if (result === DISPOSE_INSPECTION_TIMEOUT) {
           bb.log.debug(
-            "Account Pooler [Experimental] disable inspection timed out.",
+            "Account Pooler disable inspection timed out.",
           );
           return;
         }
         if (result !== null) bb.log.warn(result);
       } catch (error) {
         bb.log.debug(
-          `Account Pooler [Experimental] disable inspection skipped: ${error instanceof Error ? error.message : String(error)}`,
+          `Account Pooler disable inspection skipped: ${error instanceof Error ? error.message : String(error)}`,
         );
       } finally {
         if (timer !== null) clearTimeout(timer);
@@ -313,7 +313,7 @@ async function inspectDisableState(
   if (!disabled) return null;
   const warnings = await operations.routedThreadsWithoutLocalLogin();
   if (warnings.length === 0) return null;
-  return `Account Pooler [Experimental] disabled with ${warnings.length} recently routed thread${warnings.length === 1 ? "" : "s"} on machines without a local Claude login. Run bb pool status before disabling to inspect them.`;
+  return `Account Pooler disabled with ${warnings.length} recently routed thread${warnings.length === 1 ? "" : "s"} on machines without a local Claude login. Run bb pool status before disabling to inspect them.`;
 }
 
 export default createAccountPoolPlugin();
