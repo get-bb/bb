@@ -22,6 +22,8 @@ Tested on September 4, 2026 using an isolated, fresh dev store, Chrome 152 and E
 
 `pnpm exec turbo run typecheck test --filter=bb-plugin-push-notifications` passed: 17 tests across four files. Coverage includes mobile delivery regression tests, channel independence, no-mobile-device delivery, read/archived/resumed suppression, RPC validation, denied permission, duplicate windows, click navigation, mobile WebView exclusion, unavailable storage, and disposal.
 
+`pnpm exec turbo run test --filter=@bb/cli -- bb-cli-skill-coverage.test.ts` passed both CLI documentation checks after moving plugin-specific guidance out of the core skill.
+
 `bb plugin build plugins/push-notifications` compiled server and frontend artifacts. The dev watcher also rebuilt and reloaded the final implementation successfully.
 
 ## Scope

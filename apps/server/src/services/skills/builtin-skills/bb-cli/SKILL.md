@@ -123,13 +123,10 @@ Confirm the command result and any affected thread, environment, plugin, or
 remote service. Report the stable ID or URL that the user needs next.
 
 
-## Push notifications
+## Plugin configuration
 
-The built-in plugin has independent `mobileEnabled`, `webEnabled`, and
-`desktopEnabled` switches (default true). Configure them with
-`bb plugin config push-notifications set <key> <true|false>`.
-`bb push-notifications status --json` shows channels and the last mobile send.
-`bb push-notifications test <web|desktop>` broadcasts to connected clients of
-that type. Browser permission must be granted from settings on each device;
-web tabs and desktop windows must remain open. OS settings can suppress banners.
-The mobile `list`, `add`, and `remove` commands manage Expo devices.
+Use `bb plugin config <id>` to inspect the plugin’s configuration and
+`bb plugin config <id> set <key> <value>` to change it. Read the plugin’s own
+guidance for its delivery commands and supported clients. A server-side
+notification switch does not grant browser or operating system permission;
+that permission is granted from the target client’s settings.
