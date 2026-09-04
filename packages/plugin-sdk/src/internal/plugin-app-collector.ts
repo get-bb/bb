@@ -39,6 +39,17 @@ type PluginNavPanelFixedTabRegistration = NonNullable<
   PluginNavPanelRegistration["fixedTabs"]
 >[number];
 
+function requireSettingsSectionSurface(
+  kind: string,
+  surface: PluginSettingsSectionRegistration["experimental_surface"],
+): "recessed" | "flat" {
+  if (surface === undefined) return "recessed";
+  if (surface === "recessed" || surface === "flat") return surface;
+  throw new Error(
+    `${kind}: "experimental_surface" must be "recessed" or "flat"`,
+  );
+}
+
 /**
  * The keys a navPanel registration may carry, pinned to the contract so a
  * renamed or removed field cannot drift out of this list unnoticed.
@@ -188,10 +199,15 @@ export function collectPluginAppRegistrations(
           "description",
           registration.description,
         );
+        const experimental_surface = requireSettingsSectionSurface(
+          kind,
+          registration.experimental_surface,
+        );
         collected.settingsSections.push({
           id,
           ...(title !== undefined ? { title } : {}),
           ...(description !== undefined ? { description } : {}),
+          experimental_surface,
           component: requireComponent(kind, registration.component),
         });
       },

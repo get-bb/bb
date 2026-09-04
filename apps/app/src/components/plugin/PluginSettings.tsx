@@ -489,9 +489,11 @@ function PluginSettingsContent({ plugin }: { plugin: PluginListItem }) {
     onSettled: () => invalidatePluginList({ queryClient }),
   });
   const enabled = toggle.isPending ? toggle.variables : plugin.enabled;
-  const hasAvailableSettings =
-    plugin.hasSettings ||
-    settingsSections.some((section) => section.pluginId === plugin.id);
+  const hasSettingsSections = settingsSections.some(
+    (section) => section.pluginId === plugin.id,
+  );
+  const settingsAvailable =
+    plugin.enabled && PLUGIN_STATUSES_WITH_SETTINGS.includes(plugin.status);
   return (
     <div className="mx-auto w-full max-w-5xl">
       <header className="flex items-center justify-between gap-4">
@@ -522,7 +524,10 @@ function PluginSettingsContent({ plugin }: { plugin: PluginListItem }) {
         />
       </header>
       <ResourceDetailStack className="mt-6">
-        {enabled && plugin.enabled && hasAvailableSettings ? (
+        {enabled && settingsAvailable && hasSettingsSections ? (
+          <PluginSettingsSections pluginId={plugin.id} />
+        ) : null}
+        {enabled && plugin.enabled && plugin.hasSettings ? (
           <ResourceDetailConfigurationSection label="Configuration">
             <PluginSettingsDetail plugin={plugin} />
           </ResourceDetailConfigurationSection>
@@ -552,32 +557,21 @@ function PluginSettingsContent({ plugin }: { plugin: PluginListItem }) {
 }
 
 export function PluginSettingsDetail({ plugin }: { plugin: PluginListItem }) {
-  const { settingsSections } = usePluginSlots();
-  const hasSettingsSections = settingsSections.some(
-    (section) => section.pluginId === plugin.id,
-  );
   const settingsAvailable =
     plugin.enabled && PLUGIN_STATUSES_WITH_SETTINGS.includes(plugin.status);
-  if (!plugin.hasSettings && !hasSettingsSections) return null;
+  if (!plugin.hasSettings) return null;
 
   return (
-    <div className="space-y-6" data-testid={`plugin-detail-${plugin.id}`}>
-      {plugin.hasSettings || !settingsAvailable ? (
-        <ResourceDetailPanel surface="recessed" className="px-3 py-3">
-          {settingsAvailable ? (
-            <PluginSettingsForm key={plugin.id} pluginId={plugin.id} />
-          ) : (
-            <p className="text-xs text-muted-foreground">
-              {plugin.enabled
-                ? `Settings are unavailable while the plugin is ${plugin.status}.`
-                : "Enable this plugin to edit its settings."}
-            </p>
-          )}
-        </ResourceDetailPanel>
-      ) : null}
+    <ResourceDetailPanel surface="recessed" className="px-3 py-3">
       {settingsAvailable ? (
-        <PluginSettingsSections pluginId={plugin.id} />
-      ) : null}
-    </div>
+        <PluginSettingsForm key={plugin.id} pluginId={plugin.id} />
+      ) : (
+        <p className="text-xs text-muted-foreground">
+          {plugin.enabled
+            ? `Settings are unavailable while the plugin is ${plugin.status}.`
+            : "Enable this plugin to edit its settings."}
+        </p>
+      )}
+    </ResourceDetailPanel>
   );
 }

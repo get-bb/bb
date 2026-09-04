@@ -77,6 +77,10 @@ function render(
 }
 
 describe("Account Pool settings", () => {
+  it("uses the flat host surface", () => {
+    expect(app.settingsSections[0]?.experimental_surface).toBe("flat");
+  });
+
   it("renders fixed quota slots with missing buckets as em dashes", async () => {
     const slot = render();
     expect(await slot.findByText("person@example.com")).toBeTruthy();

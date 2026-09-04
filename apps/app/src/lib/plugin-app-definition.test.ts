@@ -313,6 +313,7 @@ describe("collectPluginAppRegistrations", () => {
       app.slots.settingsSection({
         id: "custom-settings",
         title: "Custom settings",
+        experimental_surface: "flat",
         component: Component,
       });
       app.slots.experimental_appOverlay({
@@ -382,6 +383,7 @@ describe("collectPluginAppRegistrations", () => {
       {
         id: "custom-settings",
         title: "Custom settings",
+        experimental_surface: "flat",
         component: Component,
       },
     ]);
@@ -447,6 +449,20 @@ describe("collectPluginAppRegistrations", () => {
     ]);
     expect(registrations.contentScripts).toEqual([
       { id: "editor-enhancement", mount },
+    ]);
+  });
+
+  it("defaults settings sections to the recessed host surface", () => {
+    const definition = definePluginApp((app) => {
+      app.slots.settingsSection({ id: "settings", component: Component });
+    });
+
+    expect(collectPluginAppRegistrations(definition).settingsSections).toEqual([
+      {
+        id: "settings",
+        experimental_surface: "recessed",
+        component: Component,
+      },
     ]);
   });
 
@@ -626,6 +642,18 @@ describe("collectPluginAppRegistrations", () => {
           });
         }),
       /"title" must be a string when set/,
+    ],
+    [
+      "settings section with an invalid surface",
+      () =>
+        definePluginApp((app) => {
+          app.slots.settingsSection({
+            id: "x",
+            experimental_surface: "raised" as never,
+            component: Component,
+          });
+        }),
+      /"experimental_surface" must be "recessed" or "flat"/,
     ],
     [
       "duplicate settings section id",

@@ -670,6 +670,98 @@ describe("PluginSettingsPage", () => {
       container.querySelectorAll("[data-resource-detail-section]"),
     ).toHaveLength(1);
   });
+
+  it("renders flat custom sections before the declarative Configuration form", async () => {
+    function AccountSettings() {
+      return <div>Account settings section</div>;
+    }
+    setPluginSlotRegistrations(
+      "linear",
+      makePluginRegistrationSet({
+        settingsSections: [
+          {
+            id: "accounts",
+            experimental_surface: "flat",
+            component: AccountSettings,
+          },
+        ],
+      }),
+    );
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) =>
+        url === "/api/v1/plugins/linear/settings"
+          ? jsonOk(SETTINGS_VIEW)
+          : jsonOk({ plugins: [installedPlugin(true)] }),
+      ),
+    );
+
+    const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
+    render(
+      <MemoryRouter>
+        <QueryClientWrapper>
+          <PluginSettingsPage pluginId="linear" />
+        </QueryClientWrapper>
+      </MemoryRouter>,
+    );
+
+    const section = await screen.findByText("Account settings section");
+    const configuration = screen.getByRole("heading", {
+      name: "Configuration",
+    });
+    expect(
+      section.compareDocumentPosition(configuration) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(section.closest(".overflow-hidden")).toBeNull();
+  });
+
+  it("keeps a section-only plugin in its default recessed section without a Configuration block", async () => {
+    function ConnectSettings() {
+      return <div>Custom connect settings</div>;
+    }
+    setPluginSlotRegistrations(
+      "connect",
+      makePluginRegistrationSet({
+        settingsSections: [
+          { id: "remote", title: "Remote access", component: ConnectSettings },
+        ],
+      }),
+    );
+    const connect = makeInstalledPlugin({
+      id: "connect",
+      name: "Connect",
+      enabled: true,
+      status: "running",
+      hasSettings: false,
+      provenance: "builtin",
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => jsonOk({ plugins: [connect] })),
+    );
+
+    const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
+    render(
+      <MemoryRouter>
+        <QueryClientWrapper>
+          <PluginSettingsPage pluginId="connect" />
+        </QueryClientWrapper>
+      </MemoryRouter>,
+    );
+
+    expect(
+      await screen.findByRole("heading", {
+        level: 3,
+        name: "Remote access",
+      }),
+    ).toBeTruthy();
+    const section = screen.getByText("Custom connect settings");
+    expect(section.closest(".overflow-hidden")?.className).toContain(
+      "bg-surface-recessed/70",
+    );
+    expect(screen.queryByRole("heading", { name: "Configuration" })).toBeNull();
+  });
 });
 
 describe("PluginSettingsDetail settings gating", () => {
@@ -770,40 +862,5 @@ describe("PluginSettingsDetail settings gating", () => {
     render(<PluginSettingsDetail plugin={rowPlugin("error")} />, { wrapper });
     expect(screen.queryByLabelText("Greeting")).toBeNull();
     expect(fetchSpy).not.toHaveBeenCalled();
-  });
-
-  it("renders a slot-only plugin configuration on the detail surface", async () => {
-    function ConnectSettings() {
-      return <div>Custom connect settings</div>;
-    }
-    setPluginSlotRegistrations(
-      "connect",
-      makePluginRegistrationSet({
-        settingsSections: [
-          { id: "remote", title: "Remote access", component: ConnectSettings },
-        ],
-      }),
-    );
-    const { wrapper } = createQueryClientTestHarness();
-    render(
-      <PluginSettingsDetail
-        plugin={{
-          ...rowPlugin("running"),
-          id: "connect",
-          provenance: "builtin",
-          hasSettings: false,
-        }}
-      />,
-      { wrapper },
-    );
-
-    expect(
-      await screen.findByRole("heading", {
-        level: 3,
-        name: "Remote access",
-      }),
-    ).toBeDefined();
-    expect(screen.getByText("Custom connect settings")).toBeDefined();
-    expect(screen.queryByText("This plugin declares no settings.")).toBeNull();
   });
 });

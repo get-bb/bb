@@ -165,9 +165,7 @@ function SettingsSection({
         </div>
         <div className="shrink-0 self-start">{action}</div>
       </div>
-      <div className="rounded-lg border border-border bg-card px-4 py-3.5">
-        {children}
-      </div>
+      <div className="border-t border-border">{children}</div>
     </section>
   );
 }
@@ -225,10 +223,10 @@ function AccountRow({
 }) {
   const status = statusPresentation(account);
   return (
-    <div className="flex items-center gap-3 py-2.5 text-sm first:pt-0 last:pb-0">
+    <div className="flex items-center gap-3 text-sm">
       <div
         className={cn(
-          "group -mx-2 flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-2 transition-colors hover:bg-state-hover focus-within:bg-state-hover",
+          "group -mx-2 flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-2.5 transition-colors hover:bg-state-hover focus-within:bg-state-hover",
           !account.enabled && "opacity-55",
         )}
       >
@@ -671,7 +669,7 @@ function AccountPoolSettings() {
         </div>
       )}
       {status !== null && accounts.length === 0 ? (
-        <div className="rounded-lg border border-border bg-card px-5 py-6 text-center">
+        <div className="rounded-lg border border-dashed border-border px-5 py-6 text-center">
           <h2 className="text-sm font-semibold text-foreground">
             No accounts in the pool
           </h2>
@@ -726,9 +724,11 @@ function AccountPoolSettings() {
             }
           >
             {status === null ? (
-              <p className="text-sm text-muted-foreground">Loading…</p>
+              <p className="py-2.5 text-sm text-muted-foreground">Loading…</p>
             ) : providerAccounts.length === 0 ? (
-              <p className="text-sm text-subtle-foreground">No accounts yet.</p>
+              <p className="py-2.5 text-sm text-subtle-foreground">
+                No accounts yet.
+              </p>
             ) : (
               <div className="divide-y divide-border">
                 {providerAccounts.map((account) => (
@@ -748,8 +748,8 @@ function AccountPoolSettings() {
           </SettingsSection>
         );
       })}
-      <Collapsible>
-        <CollapsibleTrigger className="flex w-full items-center gap-2 rounded-md py-2 text-sm font-medium text-foreground">
+      <Collapsible className="rounded-lg border border-border px-4">
+        <CollapsibleTrigger className="flex w-full items-center gap-2 py-2.5 text-sm font-medium text-foreground">
           <Icon
             name="ChevronRight"
             className="size-4 transition-transform [[data-state=open]>&]:rotate-90"
@@ -757,15 +757,15 @@ function AccountPoolSettings() {
           Advanced
         </CollapsibleTrigger>
         <CollapsibleContent>
-          <div className="rounded-lg border border-border bg-card px-4 py-3.5">
+          <div className="divide-y divide-border border-t border-border">
             <div className="flex items-start justify-between gap-4">
-              <div>
+              <div className="py-2.5">
                 <div className="text-sm text-foreground">Machine tokens</div>
                 <div className="mt-0.5 text-xs text-muted-foreground">
                   {hubHosts}
                 </div>
               </div>
-              <div className="flex flex-wrap justify-end gap-2">
+              <div className="flex flex-wrap justify-end gap-2 py-2.5">
                 {status?.hosts.map((host) => (
                   <Button
                     key={host.hostId}
@@ -1233,5 +1233,9 @@ function LoginDrawer({
 }
 
 export default definePluginApp((app) => {
-  app.slots.settingsSection({ id: "accounts", component: AccountPoolSettings });
+  app.slots.settingsSection({
+    id: "accounts",
+    experimental_surface: "flat",
+    component: AccountPoolSettings,
+  });
 });

@@ -446,6 +446,13 @@ export interface PluginSettingsSectionRegistration {
    * SettingsSection idiom (ignored when `title` is absent).
    */
   description?: string;
+  /**
+   * Host surface around the section. `"recessed"` is the default; `"flat"`
+   * renders the component without a panel or padding wrapper.
+   *
+   * @experimental Audit before relying on this as a stable contract.
+   */
+  experimental_surface?: "recessed" | "flat";
   component: ComponentType<PluginSettingsSectionProps>;
 }
 

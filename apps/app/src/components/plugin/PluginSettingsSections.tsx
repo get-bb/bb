@@ -23,6 +23,23 @@ function PluginSettingsSectionList({
     <div className="space-y-6" data-testid="plugin-settings-sections">
       {sections.map((section) => {
         const key = `${section.pluginId}/${section.id}/${section.generation}`;
+        if (section.experimental_surface === "flat") {
+          return (
+            <div key={key} className="space-y-3">
+              {section.title === undefined ? null : (
+                <h3 className="text-xs font-medium text-foreground">
+                  {section.title}
+                </h3>
+              )}
+              {section.description === undefined ? null : (
+                <p className="text-xs leading-snug text-subtle-foreground/75">
+                  {section.description}
+                </p>
+              )}
+              <PluginSettingsSectionMount section={section} />
+            </div>
+          );
+        }
         return section.title === undefined ? (
           <PluginSettingsSectionPanel key={key} section={section} />
         ) : (
@@ -50,13 +67,23 @@ function PluginSettingsSectionPanel({
           {section.description}
         </p>
       ) : null}
-      <PluginSlotMount
-        pluginId={section.pluginId}
-        slotKind="settingsSection"
-        slotId={section.id}
-      >
-        <section.component />
-      </PluginSlotMount>
+      <PluginSettingsSectionMount section={section} />
     </ResourceDetailPanel>
+  );
+}
+
+function PluginSettingsSectionMount({
+  section,
+}: {
+  section: PluginSettingsSectionSlot;
+}) {
+  return (
+    <PluginSlotMount
+      pluginId={section.pluginId}
+      slotKind="settingsSection"
+      slotId={section.id}
+    >
+      <section.component />
+    </PluginSlotMount>
   );
 }
