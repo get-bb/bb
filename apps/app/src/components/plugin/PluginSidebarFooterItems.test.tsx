@@ -302,12 +302,20 @@ describe("PluginSidebarFooterItems", () => {
     );
     renderWithProviders(<FooterHarness />);
 
-    act(() => first!.open());
-    expect(screen.getByText("First content")).toBeDefined();
+    const firstTrigger = screen.getByRole("button", { name: "First status" });
+    const secondTrigger = screen.getByRole("button", {
+      name: "Second status",
+    });
 
-    act(() => second!.open());
+    fireEvent.click(firstTrigger);
+    expect(screen.getByText("First content")).toBeDefined();
+    expect(firstTrigger.getAttribute("aria-expanded")).toBe("true");
+
+    fireEvent.click(secondTrigger);
     expect(screen.queryByText("First content")).toBeNull();
     expect(screen.getByText("Second content")).toBeDefined();
+    expect(firstTrigger.getAttribute("aria-expanded")).toBe("false");
+    expect(secondTrigger.getAttribute("aria-expanded")).toBe("true");
 
     act(() => first!.close());
     expect(screen.getByText("Second content")).toBeDefined();
