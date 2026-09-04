@@ -28,6 +28,7 @@ import { makeProviderInfo } from "@bb/test-helpers/domain-fixtures";
 import { getSettingsRoutePath } from "../src/lib/route-paths";
 import {
   BbAppUpdateRows,
+  MachineUpdatesFleetSection,
   MachineUpdatesRows,
   MachineUpdatesSection,
   UpdateActionButton,
@@ -180,22 +181,23 @@ const noop = () => {};
 export function SettingsUpdatesStory() {
   const navigate = useNavigate();
   return (
-    <div className="space-y-6">
+    <MachineUpdatesFleetSection
+      action={
+        <div role="toolbar" aria-label="Bulk update actions">
+          <UpdateActionButton
+            label="Update all 1 CLI tool"
+            tooltipLabel="Update all"
+            icon={UPDATE_ACTION_ICON}
+            visibleLabel="Update all"
+            variant="default"
+            onClick={noop}
+          />
+        </div>
+      }
+    >
       <MachineUpdatesSection
         machine={settingsUpdateMachine}
         isThisMachine={false}
-        action={
-          <div role="toolbar" aria-label="Bulk update actions">
-            <UpdateActionButton
-              label="Update all 1 CLI tool"
-              tooltipLabel="Update all"
-              icon={UPDATE_ACTION_ICON}
-              visibleLabel="Update all"
-              variant="default"
-              onClick={noop}
-            />
-          </div>
-        }
       >
         <BbAppUpdateRows
           systemVersion={systemVersion}
@@ -212,7 +214,7 @@ export function SettingsUpdatesStory() {
           onOpenProvider={() => navigate(getSettingsRoutePath("providers"))}
         />
       </MachineUpdatesSection>
-    </div>
+    </MachineUpdatesFleetSection>
   );
 }
 
