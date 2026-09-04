@@ -848,11 +848,18 @@ export function settleThreadStartCommandResult(
       ...args,
       thread: currentThread,
     });
-    const outcome = applyLoggedThreadLifecycleEventInTransaction(args.deps, {
-      event: lifecycleEvent,
-      threadId: currentThread.id,
-    });
-    if (outcome.applied) {
+    const alreadyActive =
+      lifecycleEvent.type === "run.started" &&
+      currentThread.status === "active" &&
+      currentThread.archivedAt === null &&
+      currentThread.deletedAt === null;
+    const outcome = alreadyActive
+      ? null
+      : applyLoggedThreadLifecycleEventInTransaction(args.deps, {
+          event: lifecycleEvent,
+          threadId: currentThread.id,
+        });
+    if (outcome?.applied) {
       args.deps.hub.notifyThread(currentThread.id, ["status-changed"]);
       if (shouldAutoSendQueuedMessagesAfterThreadStart(args.command)) {
         postCommitActions.push({

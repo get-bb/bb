@@ -8,7 +8,7 @@ import {
   type Thread,
 } from "@bb/domain";
 import { groupHostDaemonEvents } from "@bb/host-daemon-contract";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   hasLiveThreadStartInFlight,
   requestThreadStart,
@@ -373,6 +373,55 @@ describe("live thread start handoff", () => {
       expect(getThread(harness.db, fixture.thread.id)).toMatchObject({
         status: "idle",
       });
+    });
+  });
+
+  it("does not log when a turn start wins the thread start handoff", async () => {
+    await withTestHarness(async (harness) => {
+      const info = vi.fn();
+      harness.deps.logger.info = info;
+      const fixture = await startLiveThreadStartRpc({
+        harness,
+        requestIdValue: 8,
+      });
+      const providerThreadId = "provider-turn-before-start-settlement";
+      const sessionId = fixture.startCommand.row.sessionId;
+      if (!sessionId) {
+        throw new Error("Queued thread start is missing sessionId");
+      }
+
+      const eventResponse = await harness.app.request(
+        "/internal/session/events",
+        {
+          method: "POST",
+          headers: internalAuthHeaders(harness),
+          body: JSON.stringify({
+            sessionId,
+            eventGroups: groupHostDaemonEvents([
+              createTestDaemonEventEnvelope({
+                event: {
+                  type: "turn/started",
+                  threadId: fixture.thread.id,
+                  providerThreadId,
+                  scope: turnScope("turn-before-start-settlement"),
+                },
+              }),
+            ]),
+          }),
+        },
+      );
+      expect(eventResponse.status).toBe(200);
+      expect(getThread(harness.db, fixture.thread.id)?.status).toBe("active");
+
+      await reportQueuedCommandSuccess(harness, fixture.startCommand, {
+        providerThreadId,
+      });
+
+      expect(
+        info.mock.calls.filter(
+          ([, message]) => message === "Thread lifecycle event not applied",
+        ),
+      ).toEqual([]);
     });
   });
 
