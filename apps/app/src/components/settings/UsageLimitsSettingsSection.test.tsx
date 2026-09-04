@@ -278,6 +278,11 @@ describe("UsageLimitsSettingsSectionContent", () => {
       onSelectHost,
     });
 
+    const sectionHeader = screen
+      .getByRole("heading", { name: "Usage limits" })
+      .closest("section")?.firstElementChild;
+    expect(sectionHeader?.classList.contains("flex-col")).toBe(true);
+
     fireEvent.pointerDown(
       screen.getByRole("button", { name: "Usage limits machine" }),
       { button: 0 },
@@ -299,6 +304,11 @@ describe("UsageLimitsSettingsSectionContent", () => {
       onSelectHost: vi.fn(),
     });
 
+    const sectionHeader = screen
+      .getByRole("heading", { name: "Usage limits" })
+      .closest("section")?.firstElementChild;
+    expect(sectionHeader?.classList.contains("flex-row")).toBe(true);
+    expect(sectionHeader?.classList.contains("flex-col")).toBe(false);
     expect(
       screen.queryByRole("button", { name: "Usage limits machine" }),
     ).toBeNull();

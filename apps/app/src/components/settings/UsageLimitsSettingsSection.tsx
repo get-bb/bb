@@ -391,6 +391,7 @@ export function UsageLimitsSettingsSectionContent({
         : "No providers available.";
   return (
     <SettingsSection
+      actionPlacement={showMachinePicker ? "responsive" : "inline"}
       title="Usage limits"
       description="Your provider subscription usage."
       action={
