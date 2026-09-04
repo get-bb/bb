@@ -1198,6 +1198,15 @@ describe("Account Pool plugin", () => {
   });
 
   it("exposes Codex device login over RPC and the two-step CLI", async () => {
+    let holdTokenPoll = false;
+    let markTokenPollStarted: () => void = () => {};
+    const tokenPollStarted = new Promise<void>((resolve) => {
+      markTokenPollStarted = resolve;
+    });
+    let releaseTokenPoll: () => void = () => {};
+    const tokenPollRelease = new Promise<void>((resolve) => {
+      releaseTokenPoll = resolve;
+    });
     const auth = await startUpstream(async (request, response) => {
       await readRequestBody(request);
       response.setHeader("content-type", "application/json");
@@ -1213,6 +1222,10 @@ describe("Account Pool plugin", () => {
         return;
       }
       if (request.url === "/api/accounts/deviceauth/token") {
+        if (holdTokenPoll) {
+          markTokenPollStarted();
+          await tokenPollRelease;
+        }
         response.end(
           JSON.stringify({
             authorization_code: "authorization-secret",
@@ -1326,13 +1339,14 @@ describe("Account Pool plugin", () => {
     if (cancelledSessionId === undefined) {
       throw new Error("Codex CLI login start omitted its session ID.");
     }
+    holdTokenPoll = true;
     const controller = new AbortController();
     const cancelledPoll = host.harness.behavior.runCli(
       ["account", "login-poll", "--session", cancelledSessionId],
       { signal: controller.signal },
     );
+    await tokenPollStarted;
     controller.abort(new Error("cancelled by test"));
-    expect(await cancelledPoll).toMatchObject({ exitCode: 1 });
     expect(
       codexLoginPollSchema.parse(
         await host.harness.behavior.callRpc("codexLogin.poll", {
@@ -1343,6 +1357,8 @@ describe("Account Pool plugin", () => {
       status: "error",
       message: "Login session was not found. Start again.",
     });
+    releaseTokenPoll();
+    expect(await cancelledPoll).toMatchObject({ exitCode: 1 });
     expect(host.harness.inspection.logEntries.join("\n")).not.toMatch(
       /device-secret|ABCD-1234|authorization-secret|verifier-secret|refresh-secret/u,
     );

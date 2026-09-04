@@ -264,32 +264,32 @@ export class CodexDeviceLogin {
         this.deleteSession(session.sessionId);
         return { status: "error", message: "Code expired, start again." };
       }
+      const payload = await response.json().catch(() => null);
+      const parsedError = deviceErrorResponseSchema.safeParse(payload);
+      const errorCode = parsedError.success
+        ? parsedError.data.error?.code
+        : null;
+      const normalizedCode = errorCode?.toLowerCase() ?? "";
+      if (normalizedCode.includes("slow_down")) {
+        session.intervalMs += 5_000;
+        session.nextPollAt = this.now() + session.intervalMs;
+        return { status: "pending" };
+      }
+      if (normalizedCode.includes("expired")) {
+        this.deleteSession(session.sessionId);
+        return { status: "error", message: "Code expired, start again." };
+      }
+      if (
+        normalizedCode.includes("denied") ||
+        normalizedCode.includes("declined")
+      ) {
+        this.deleteSession(session.sessionId);
+        return {
+          status: "error",
+          message: "Codex authorization was declined. Start again.",
+        };
+      }
       if (!response.ok) {
-        const payload = await response.json().catch(() => null);
-        const parsedError = deviceErrorResponseSchema.safeParse(payload);
-        const errorCode = parsedError.success
-          ? parsedError.data.error?.code
-          : null;
-        const normalizedCode = errorCode?.toLowerCase() ?? "";
-        if (normalizedCode.includes("slow_down")) {
-          session.intervalMs += 5_000;
-          session.nextPollAt = this.now() + session.intervalMs;
-          return { status: "pending" };
-        }
-        if (normalizedCode.includes("expired")) {
-          this.deleteSession(session.sessionId);
-          return { status: "error", message: "Code expired, start again." };
-        }
-        if (
-          normalizedCode.includes("denied") ||
-          normalizedCode.includes("declined")
-        ) {
-          this.deleteSession(session.sessionId);
-          return {
-            status: "error",
-            message: "Codex authorization was declined. Start again.",
-          };
-        }
         if (
           response.status === 403 ||
           response.status === 404 ||
@@ -302,7 +302,6 @@ export class CodexDeviceLogin {
           message: `Codex authorization failed (HTTP ${response.status}). Start again.`,
         };
       }
-      const payload = await response.json().catch(() => null);
       const parsed = deviceTokenResponseSchema.safeParse(payload);
       if (!parsed.success) {
         return {

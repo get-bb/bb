@@ -302,6 +302,22 @@ describe("Codex device login", () => {
     expect(tokenPolls()).toBe(2);
   });
 
+  it("extends the session interval for slow_down on HTTP 200", async () => {
+    const { clock, login, tokenPolls } = createPollingHarness({
+      tokenResponses: [
+        Response.json({ error: { code: "deviceauth_slow_down" } }),
+      ],
+    });
+    const started = await login.start();
+    clock.now += 5_000;
+
+    expect(await login.poll({ sessionId: started.sessionId })).toEqual({
+      status: "pending",
+    });
+    expect(login.nextPollDelayMs(started.sessionId)).toBe(10_000);
+    expect(tokenPolls()).toBe(1);
+  });
+
   it("keeps a session pending after a pre-expiry HTTP 500", async () => {
     const { clock, login, tokenPolls } = createPollingHarness({
       tokenResponses: [new Response(null, { status: 500 })],

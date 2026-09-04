@@ -331,7 +331,13 @@ export function registerPoolCli(
             sessionId: flags.values.get("session"),
           });
           const signal = ctx.signal;
+          const cancel = () => codexLogin.cancel(input);
+          signal?.addEventListener("abort", cancel, { once: true });
           try {
+            if (signal?.aborted) {
+              cancel();
+              throw signal.reason ?? new Error("Codex login was cancelled.");
+            }
             while (true) {
               await wait(
                 codexLogin.nextPollDelayMs(input.sessionId),
@@ -355,6 +361,8 @@ export function registerPoolCli(
           } catch (error) {
             if (signal?.aborted) codexLogin.cancel(input);
             throw error;
+          } finally {
+            signal?.removeEventListener("abort", cancel);
           }
         }
         if (argv[0] === "account" && argv[1] === "login-complete") {
