@@ -1,5 +1,9 @@
 import { and, eq, gt, inArray, lte, sql } from "drizzle-orm";
-import type { ThreadEventItemType, ThreadEventType } from "@bb/domain";
+import {
+  parseLegacyImageGenerationCompletion,
+  type ThreadEventItemType,
+  type ThreadEventType,
+} from "@bb/domain";
 import { sliceUtf16HeadAndTail } from "@bb/domain/utf16";
 import type { DbQueryConnection } from "../connection.js";
 import {
@@ -200,44 +204,14 @@ export function prepareLegacyImageGenerationOutputData(args: {
   } catch {
     return { data: args.data, retainedOutput: null };
   }
-  if (
-    !isJsonObject(payload) ||
-    payload.rawType !== "item/completed" ||
-    !isJsonObject(payload.rawEvent) ||
-    payload.rawEvent.method !== "item/completed" ||
-    !isJsonObject(payload.rawEvent.params) ||
-    !isJsonObject(payload.rawEvent.params.item) ||
-    payload.rawEvent.params.item.type !== "imageGeneration" ||
-    typeof payload.rawEvent.params.item.id !== "string" ||
-    ![
-      "inProgress",
-      "completed",
-      "failed",
-      "declined",
-    ].includes(String(payload.rawEvent.params.item.status)) ||
-    !(
-      payload.rawEvent.params.item.revisedPrompt === null ||
-      typeof payload.rawEvent.params.item.revisedPrompt === "string"
-    ) ||
-    !(
-      payload.rawEvent.params.item.savedPath === undefined ||
-      typeof payload.rawEvent.params.item.savedPath === "string"
-    ) ||
-    !(
-      payload.rawEvent.params.item.transparentBackground === undefined ||
-      typeof payload.rawEvent.params.item.transparentBackground === "boolean"
-    ) ||
-    !(
-      payload.rawEvent.params.item.failure === null ||
-      isJsonObject(payload.rawEvent.params.item.failure)
-    )
-  ) {
+  const imageGeneration = parseLegacyImageGenerationCompletion(payload);
+  if (!isJsonObject(payload) || imageGeneration === null) {
     return { data: args.data, retainedOutput: null };
   }
   return prepareRetainedOutputData({
     createdAt: args.createdAt,
     data: args.data,
-    item: payload.rawEvent.params.item,
+    item: imageGeneration.item,
     outputPath: "result",
     payload,
   });

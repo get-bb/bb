@@ -1,11 +1,12 @@
-import type {
-  ExtensionKind,
-  JsonValue,
-  ThreadEvent,
-  ThreadEventItemPresentation,
-  ThreadEventItemStatus,
-  ThreadEventPlanStep,
-  ThreadEventSearchMode,
+import {
+  parseLegacyImageGenerationCompletion,
+  type ExtensionKind,
+  type JsonValue,
+  type ThreadEvent,
+  type ThreadEventItemPresentation,
+  type ThreadEventItemStatus,
+  type ThreadEventPlanStep,
+  type ThreadEventSearchMode,
 } from "@bb/domain";
 import { getEventParentToolCallId } from "./event-decode.js";
 
@@ -183,76 +184,25 @@ export function parseWebActivityLifecycleEvent(
   }
 }
 
-function jsonObject(
-  value: JsonValue | undefined,
-): Record<string, JsonValue> | null {
-  return value !== null && typeof value === "object" && !Array.isArray(value)
-    ? value
-    : null;
-}
-
-function legacyImageGenerationStatus(
-  value: JsonValue | undefined,
-): ThreadEventItemStatus | null {
-  switch (value) {
-    case "inProgress":
-      return "pending";
-    case "failed":
-      return "failed";
-    case "declined":
-      return "interrupted";
-    case "completed":
-      return "completed";
-    default:
-      return null;
-  }
-}
-
 function parseLegacyImageGeneration(
   decoded: ThreadEvent,
 ): ImageGenerationLifecycleEvent | null {
-  if (
-    decoded.type !== "provider/unhandled" ||
-    decoded.rawType !== "item/completed" ||
-    decoded.rawEvent.method !== "item/completed"
-  ) {
+  if (decoded.type !== "provider/unhandled") {
     return null;
   }
-  const params = jsonObject(decoded.rawEvent.params);
-  const item = jsonObject(params?.item);
-  const status = legacyImageGenerationStatus(item?.status);
-  if (
-    item?.type !== "imageGeneration" ||
-    typeof item.id !== "string" ||
-    status === null ||
-    !(item.revisedPrompt === null || typeof item.revisedPrompt === "string") ||
-    !(item.savedPath === undefined || typeof item.savedPath === "string") ||
-    !(
-      item.transparentBackground === undefined ||
-      typeof item.transparentBackground === "boolean"
-    ) ||
-    !(item.failure === null || jsonObject(item.failure) !== null)
-  ) {
+  const imageGeneration = parseLegacyImageGenerationCompletion(decoded);
+  if (imageGeneration === null) {
     return null;
   }
-  const prompt =
-    typeof item.revisedPrompt === "string" ? item.revisedPrompt : null;
-  const path = typeof item.savedPath === "string" ? item.savedPath : null;
   return {
     kind: "end",
-    callId: item.id,
+    callId: imageGeneration.callId,
     itemKind: "image-generation",
-    prompt,
-    path,
-    error:
-      item.failure === null || item.failure === undefined
-        ? null
-        : "Image generation failed",
-    transparentBackground:
-      typeof item.transparentBackground === "boolean"
-        ? item.transparentBackground
-        : false,
-    status,
+    prompt: imageGeneration.prompt,
+    path: imageGeneration.path,
+    error: imageGeneration.error,
+    transparentBackground: imageGeneration.transparentBackground,
+    status: imageGeneration.status,
     ...(decoded.parentToolCallId
       ? { parentToolCallId: decoded.parentToolCallId }
       : {}),
