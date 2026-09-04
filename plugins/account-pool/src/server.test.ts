@@ -1260,6 +1260,14 @@ describe("Account Pool plugin", () => {
       userCode: "ABCD-1234",
       intervalMs: 1_000,
     });
+    expect(
+      codexLoginPollSchema.parse(
+        await host.harness.behavior.callRpc("codexLogin.poll", {
+          sessionId: started.sessionId,
+        }),
+      ),
+    ).toEqual({ status: "pending" });
+    await new Promise((resolve) => setTimeout(resolve, 1_000));
     const completed = codexLoginPollSchema.parse(
       await host.harness.behavior.callRpc("codexLogin.poll", {
         sessionId: started.sessionId,
@@ -1300,6 +1308,36 @@ describe("Account Pool plugin", () => {
     expect(cliCompleted).toMatchObject({
       exitCode: 0,
       stdout: expect.stringContaining("Added codex@example.com"),
+    });
+    const cancelledStart = await host.harness.behavior.runCli([
+      "account",
+      "add",
+      "--provider",
+      "codex",
+      "--login",
+    ]);
+    const cancelledSessionId = cancelledStart.stdout.match(
+      /Session ID: ([0-9a-f-]+)/u,
+    )?.[1];
+    if (cancelledSessionId === undefined) {
+      throw new Error("Codex CLI login start omitted its session ID.");
+    }
+    const controller = new AbortController();
+    const cancelledPoll = host.harness.behavior.runCli(
+      ["account", "login-poll", "--session", cancelledSessionId],
+      { signal: controller.signal },
+    );
+    controller.abort(new Error("cancelled by test"));
+    expect(await cancelledPoll).toMatchObject({ exitCode: 1 });
+    expect(
+      codexLoginPollSchema.parse(
+        await host.harness.behavior.callRpc("codexLogin.poll", {
+          sessionId: cancelledSessionId,
+        }),
+      ),
+    ).toEqual({
+      status: "error",
+      message: "Login session was not found. Start again.",
     });
     expect(host.harness.inspection.logEntries.join("\n")).not.toMatch(
       /device-secret|ABCD-1234|authorization-secret|verifier-secret|refresh-secret/u,

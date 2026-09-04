@@ -75,7 +75,7 @@ interface DeviceLoginSession {
   userCode: string;
   intervalMs: number;
   expiresAt: number;
-  lastPolledAt: number | null;
+  nextPollAt: number;
   polling: boolean;
 }
 
@@ -155,6 +155,10 @@ function idTokenClaims(idToken: string): {
 
 export class CodexDeviceLogin {
   private readonly sessions = new Map<string, DeviceLoginSession>();
+  private readonly expiryTimers = new Map<
+    string,
+    ReturnType<typeof setTimeout>
+  >();
   private readonly fetch: typeof fetch;
   private readonly now: () => number;
   private readonly authBaseUrl: string;
@@ -171,7 +175,7 @@ export class CodexDeviceLogin {
   async start(): Promise<CodexDeviceLoginStart> {
     const pruneBefore = this.now();
     for (const [sessionId, session] of this.sessions) {
-      if (pruneBefore >= session.expiresAt) this.sessions.delete(sessionId);
+      if (pruneBefore >= session.expiresAt) this.deleteSession(sessionId);
     }
     const response = await this.fetch(
       `${this.authBaseUrl}/api/accounts/deviceauth/usercode`,
@@ -196,16 +200,18 @@ export class CodexDeviceLogin {
       throw new Error("Codex device login returned an invalid response.");
     }
     const now = this.now();
+    const intervalMs = parsed.data.interval * 1_000;
     const session: DeviceLoginSession = {
       sessionId: randomUUID(),
       deviceAuthId: parsed.data.device_auth_id,
       userCode: parsed.data.user_code,
-      intervalMs: parsed.data.interval * 1_000,
+      intervalMs,
       expiresAt: expiresAt(parsed.data, now),
-      lastPolledAt: null,
+      nextPollAt: now + intervalMs,
       polling: false,
     };
     this.sessions.set(session.sessionId, session);
+    this.scheduleExpiry(session);
     return {
       sessionId: session.sessionId,
       verificationUri: `${this.authBaseUrl}/codex/device`,
@@ -225,18 +231,14 @@ export class CodexDeviceLogin {
     }
     const now = this.now();
     if (now >= session.expiresAt) {
-      this.sessions.delete(session.sessionId);
+      this.deleteSession(session.sessionId);
       return { status: "error", message: "Code expired, start again." };
     }
-    if (
-      session.polling ||
-      (session.lastPolledAt !== null &&
-        now - session.lastPolledAt < session.intervalMs)
-    ) {
+    if (session.polling || now < session.nextPollAt) {
       return { status: "pending" };
     }
     session.polling = true;
-    session.lastPolledAt = now;
+    session.nextPollAt = now + session.intervalMs;
     try {
       const response = await this.fetch(
         `${this.authBaseUrl}/api/accounts/deviceauth/token`,
@@ -252,23 +254,49 @@ export class CodexDeviceLogin {
           }),
         },
       );
+      if (this.sessions.get(session.sessionId) !== session) {
+        return {
+          status: "error",
+          message: "Login session was not found. Start again.",
+        };
+      }
+      if (this.now() >= session.expiresAt) {
+        this.deleteSession(session.sessionId);
+        return { status: "error", message: "Code expired, start again." };
+      }
       if (!response.ok) {
         const payload = await response.json().catch(() => null);
         const parsedError = deviceErrorResponseSchema.safeParse(payload);
         const errorCode = parsedError.success
           ? parsedError.data.error?.code
           : null;
+        const normalizedCode = errorCode?.toLowerCase() ?? "";
+        if (normalizedCode.includes("slow_down")) {
+          session.intervalMs += 5_000;
+          session.nextPollAt = this.now() + session.intervalMs;
+          return { status: "pending" };
+        }
+        if (normalizedCode.includes("expired")) {
+          this.deleteSession(session.sessionId);
+          return { status: "error", message: "Code expired, start again." };
+        }
         if (
-          response.status === 403 &&
-          errorCode === "deviceauth_authorization_pending"
+          normalizedCode.includes("denied") ||
+          normalizedCode.includes("declined")
+        ) {
+          this.deleteSession(session.sessionId);
+          return {
+            status: "error",
+            message: "Codex authorization was declined. Start again.",
+          };
+        }
+        if (
+          response.status === 403 ||
+          response.status === 404 ||
+          response.status >= 500
         ) {
           return { status: "pending" };
         }
-        if (errorCode?.includes("expired") === true) {
-          this.sessions.delete(session.sessionId);
-          return { status: "error", message: "Code expired, start again." };
-        }
-        this.sessions.delete(session.sessionId);
         return {
           status: "error",
           message: `Codex authorization failed (HTTP ${response.status}). Start again.`,
@@ -277,21 +305,18 @@ export class CodexDeviceLogin {
       const payload = await response.json().catch(() => null);
       const parsed = deviceTokenResponseSchema.safeParse(payload);
       if (!parsed.success) {
-        this.sessions.delete(session.sessionId);
         return {
           status: "error",
           message:
             "Codex authorization returned an invalid response. Start again.",
         };
       }
-      this.sessions.delete(session.sessionId);
+      this.deleteSession(session.sessionId);
       return await this.exchange(parsed.data);
     } catch {
-      this.sessions.delete(session.sessionId);
-      return {
-        status: "error",
-        message: "Codex authorization could not be completed. Start again.",
-      };
+      if (this.now() < session.expiresAt) return { status: "pending" };
+      this.deleteSession(session.sessionId);
+      return { status: "error", message: "Code expired, start again." };
     } finally {
       session.polling = false;
     }
@@ -299,11 +324,34 @@ export class CodexDeviceLogin {
 
   nextPollDelayMs(sessionId: string): number {
     const session = this.sessions.get(sessionId);
-    if (session === undefined || session.lastPolledAt === null) return 0;
-    return Math.max(
-      0,
-      session.intervalMs - (this.now() - session.lastPolledAt),
+    if (session === undefined) return 0;
+    return Math.max(0, session.nextPollAt - this.now());
+  }
+
+  cancel(input: { sessionId: string }): boolean {
+    return this.deleteSession(input.sessionId);
+  }
+
+  dispose(): void {
+    for (const timer of this.expiryTimers.values()) clearTimeout(timer);
+    this.expiryTimers.clear();
+    this.sessions.clear();
+  }
+
+  private scheduleExpiry(session: DeviceLoginSession): void {
+    const timer = setTimeout(
+      () => this.deleteSession(session.sessionId),
+      Math.max(0, session.expiresAt - this.now()),
     );
+    timer.unref();
+    this.expiryTimers.set(session.sessionId, timer);
+  }
+
+  private deleteSession(sessionId: string): boolean {
+    const timer = this.expiryTimers.get(sessionId);
+    if (timer !== undefined) clearTimeout(timer);
+    this.expiryTimers.delete(sessionId);
+    return this.sessions.delete(sessionId);
   }
 
   private async exchange(

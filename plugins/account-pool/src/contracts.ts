@@ -198,6 +198,10 @@ export const codexLoginPollInputSchema = z
   .object({ sessionId: z.string().uuid() })
   .strict();
 
+export const codexLoginCancelSchema = z
+  .object({ cancelled: z.boolean() })
+  .strict();
+
 export const codexLoginPollSchema = z.discriminatedUnion("status", [
   z.object({ status: z.literal("pending") }).strict(),
   z

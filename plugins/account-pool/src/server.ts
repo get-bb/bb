@@ -233,6 +233,7 @@ export function createAccountPoolPlugin(
         : null,
     );
     bb.onDispose(async () => {
+      codexLogin.dispose();
       let timer: ReturnType<typeof setTimeout> | null = null;
       try {
         const inspection = inspectDisableState(bb, operations);

@@ -188,6 +188,18 @@ function AccountPoolSettings() {
     }
   }
 
+  async function cancelCodexLogin(): Promise<void> {
+    if (codexLoginStep === null) return;
+    const sessionId = codexLoginStep.sessionId;
+    setCodexLoginStep(null);
+    setCodexLoginError(null);
+    try {
+      await rpc.call("codexLogin.cancel", { sessionId });
+    } catch (cancelError) {
+      setError(errorText(cancelError));
+    }
+  }
+
   async function importAccount(): Promise<void> {
     if (loading) return;
     setLoading(true);
@@ -472,10 +484,7 @@ function AccountPoolSettings() {
           <Button
             type="button"
             variant="ghost"
-            onClick={() => {
-              setCodexLoginStep(null);
-              setCodexLoginError(null);
-            }}
+            onClick={() => void cancelCodexLogin()}
           >
             Cancel
           </Button>

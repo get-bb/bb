@@ -7,6 +7,7 @@ import {
   accountSummarySchema,
   bypassInputSchema,
   bypassResultSchema,
+  codexLoginCancelSchema,
   codexLoginPollInputSchema,
   codexLoginPollSchema,
   codexLoginStartSchema,
@@ -57,6 +58,10 @@ export const accountPoolRpcContract = defineRpcContract({
     input: codexLoginPollInputSchema,
     output: codexLoginPollSchema,
   },
+  "codexLogin.cancel": {
+    input: codexLoginPollInputSchema,
+    output: codexLoginCancelSchema,
+  },
   status: {
     input: z.null(),
     output: statusSchema,
@@ -94,6 +99,9 @@ export function createRpcHandlers(
       login.complete(input),
     "codexLogin.start": () => codexLogin.start(),
     "codexLogin.poll": (input: { sessionId: string }) => codexLogin.poll(input),
+    "codexLogin.cancel": (input: { sessionId: string }) => ({
+      cancelled: codexLogin.cancel(input),
+    }),
     status: () => operations.status(),
     "token.rotate": ({ machine }: { machine: string }) =>
       operations.rotateToken(machine),

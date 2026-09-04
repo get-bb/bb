@@ -180,6 +180,37 @@ describe("Account Pool settings", () => {
     expect(slot.getByRole("button", { name: "Try again" })).toBeTruthy();
   });
 
+  it("cancels the server-side Codex login session", async () => {
+    const slot = renderSlot(
+      app.settingsSections[0]!,
+      {},
+      {
+        openUrl: () => true,
+        rpc: {
+          "account.list": () => [],
+          "codexLogin.start": () => ({
+            sessionId: "33333333-3333-4333-8333-333333333333",
+            verificationUri: "https://auth.openai.com/codex/device",
+            userCode: "ABCD-1234",
+            expiresAt: Date.now() + 600_000,
+            intervalMs: 60_000,
+          }),
+          "codexLogin.cancel": () => ({ cancelled: true }),
+        },
+      },
+    );
+    fireEvent.click(
+      await slot.findByRole("button", { name: "Sign in to Codex" }),
+    );
+    fireEvent.click(await slot.findByRole("button", { name: "Cancel" }));
+
+    expect(slot.queryByText("Finish signing in to Codex")).toBeNull();
+    expect(slot.rpcCalls).toContainEqual({
+      method: "codexLogin.cancel",
+      input: { sessionId: "33333333-3333-4333-8333-333333333333" },
+    });
+  });
+
   it("does not render a Codex import button", async () => {
     const slot = renderSlot(
       app.settingsSections[0]!,

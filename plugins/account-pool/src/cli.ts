@@ -329,20 +329,31 @@ export function registerPoolCli(
           const input = codexLoginPollInputSchema.parse({
             sessionId: flags.values.get("session"),
           });
-          while (true) {
-            const result = await codexLogin.poll(input);
-            if (result.status === "complete") {
-              return {
-                exitCode: 0,
-                stdout: `Added ${result.account.label} (${result.account.id}).\n`,
-              };
+          const signal = ctx.signal;
+          try {
+            while (true) {
+              await wait(
+                codexLogin.nextPollDelayMs(input.sessionId),
+                undefined,
+                { signal },
+              );
+              const result = await codexLogin.poll(input);
+              if (signal?.aborted) {
+                throw signal.reason ?? new Error("Codex login was cancelled.");
+              }
+              if (result.status === "complete") {
+                return {
+                  exitCode: 0,
+                  stdout: `Added ${result.account.label} (${result.account.id}).\n`,
+                };
+              }
+              if (result.status === "error") {
+                throw new Error(result.message);
+              }
             }
-            if (result.status === "error") {
-              throw new Error(result.message);
-            }
-            await wait(codexLogin.nextPollDelayMs(input.sessionId), undefined, {
-              signal: ctx.signal,
-            });
+          } catch (error) {
+            if (signal?.aborted) codexLogin.cancel(input);
+            throw error;
           }
         }
         if (argv[0] === "account" && argv[1] === "login-complete") {

@@ -14,6 +14,7 @@ type Handler = (
 const servers: Array<() => Promise<void>> = [];
 
 afterEach(async () => {
+  vi.useRealTimers();
   vi.restoreAllMocks();
   while (servers.length > 0) await servers.pop()?.();
 });
@@ -90,6 +91,37 @@ function summary(account: CodexDeviceAccount): AccountSummary {
     inFlight: 0,
     status: "ready",
   };
+}
+
+function createPollingHarness(args?: {
+  tokenResponses?: Response[];
+  expiresIn?: number;
+}) {
+  const clock = { now: Date.parse("2026-09-04T12:00:00Z") };
+  let tokenPolls = 0;
+  const tokenResponses = args?.tokenResponses ?? [];
+  const login = new CodexDeviceLogin({
+    now: () => clock.now,
+    fetch: async (input) => {
+      const url = String(input);
+      if (url.endsWith("/api/accounts/deviceauth/usercode")) {
+        return Response.json({
+          device_auth_id: "device-secret",
+          user_code: "USER-SECRET",
+          interval: 5,
+          expires_in: args?.expiresIn ?? 600,
+        });
+      }
+      if (url.endsWith("/api/accounts/deviceauth/token")) {
+        const response = tokenResponses[tokenPolls];
+        tokenPolls += 1;
+        return response ?? new Response(null, { status: 404 });
+      }
+      throw new Error(`Unexpected request to ${url}`);
+    },
+    addAccount: async (account) => summary(account),
+  });
+  return { clock, login, tokenPolls: () => tokenPolls };
 }
 
 describe("Codex device login", () => {
@@ -172,6 +204,8 @@ describe("Codex device login", () => {
     expect(await login.poll({ sessionId: started.sessionId })).toEqual({
       status: "pending",
     });
+    expect(polls).toBe(0);
+    now += 5_000;
     expect(await login.poll({ sessionId: started.sessionId })).toEqual({
       status: "pending",
     });
@@ -214,6 +248,115 @@ describe("Codex device login", () => {
     );
   });
 
+  it("returns pending for an immediate poll without fetching", async () => {
+    const { login, tokenPolls } = createPollingHarness();
+    const started = await login.start();
+
+    expect(await login.poll({ sessionId: started.sessionId })).toEqual({
+      status: "pending",
+    });
+    expect(tokenPolls()).toBe(0);
+    expect(login.nextPollDelayMs(started.sessionId)).toBe(5_000);
+  });
+
+  it("keeps a session pending after HTTP 404", async () => {
+    const { clock, login, tokenPolls } = createPollingHarness();
+    const started = await login.start();
+    clock.now += 5_000;
+
+    expect(await login.poll({ sessionId: started.sessionId })).toEqual({
+      status: "pending",
+    });
+    clock.now += 5_000;
+    expect(await login.poll({ sessionId: started.sessionId })).toEqual({
+      status: "pending",
+    });
+    expect(tokenPolls()).toBe(2);
+  });
+
+  it("extends the session interval after slow_down", async () => {
+    const { clock, login, tokenPolls } = createPollingHarness({
+      tokenResponses: [
+        Response.json(
+          { error: { code: "deviceauth_slow_down" } },
+          { status: 429 },
+        ),
+      ],
+    });
+    const started = await login.start();
+    clock.now += 5_000;
+
+    expect(await login.poll({ sessionId: started.sessionId })).toEqual({
+      status: "pending",
+    });
+    expect(login.nextPollDelayMs(started.sessionId)).toBe(10_000);
+    clock.now += 5_000;
+    expect(await login.poll({ sessionId: started.sessionId })).toEqual({
+      status: "pending",
+    });
+    expect(tokenPolls()).toBe(1);
+    clock.now += 5_000;
+    expect(await login.poll({ sessionId: started.sessionId })).toEqual({
+      status: "pending",
+    });
+    expect(tokenPolls()).toBe(2);
+  });
+
+  it("keeps a session pending after a pre-expiry HTTP 500", async () => {
+    const { clock, login, tokenPolls } = createPollingHarness({
+      tokenResponses: [new Response(null, { status: 500 })],
+    });
+    const started = await login.start();
+    clock.now += 5_000;
+
+    expect(await login.poll({ sessionId: started.sessionId })).toEqual({
+      status: "pending",
+    });
+    clock.now += 5_000;
+    expect(await login.poll({ sessionId: started.sessionId })).toEqual({
+      status: "pending",
+    });
+    expect(tokenPolls()).toBe(2);
+  });
+
+  it("removes a cancelled session", async () => {
+    const { login } = createPollingHarness();
+    const started = await login.start();
+
+    expect(login.cancel({ sessionId: started.sessionId })).toBe(true);
+    expect(await login.poll({ sessionId: started.sessionId })).toEqual({
+      status: "error",
+      message: "Login session was not found. Start again.",
+    });
+  });
+
+  it("removes an expired session with its timer", async () => {
+    vi.useFakeTimers();
+    const { login } = createPollingHarness({ expiresIn: 1 });
+    const started = await login.start();
+
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(await login.poll({ sessionId: started.sessionId })).toEqual({
+      status: "error",
+      message: "Login session was not found. Start again.",
+    });
+  });
+
+  it("clears session timers and state on dispose", async () => {
+    vi.useFakeTimers();
+    const { login } = createPollingHarness();
+    const started = await login.start();
+    expect(vi.getTimerCount()).toBe(1);
+
+    login.dispose();
+
+    expect(vi.getTimerCount()).toBe(0);
+    expect(await login.poll({ sessionId: started.sessionId })).toEqual({
+      status: "error",
+      message: "Login session was not found. Start again.",
+    });
+  });
+
   it("expires the session after ten minutes without polling auth", async () => {
     let now = Date.parse("2026-09-04T12:00:00Z");
     let tokenPolls = 0;
@@ -248,6 +391,7 @@ describe("Codex device login", () => {
   });
 
   it("redacts exchange failures and never writes codes or tokens to logs", async () => {
+    let now = Date.parse("2026-09-04T12:00:00Z");
     const logged: string[] = [];
     const methods: Array<"log" | "warn" | "error"> = ["log", "warn", "error"];
     for (const method of methods) {
@@ -283,9 +427,11 @@ describe("Codex device login", () => {
     });
     const login = new CodexDeviceLogin({
       authBaseUrl,
+      now: () => now,
       addAccount: async (account) => summary(account),
     });
     const started = await login.start();
+    now += 5_000;
     const result = await login.poll({ sessionId: started.sessionId });
     expect(result).toEqual({
       status: "error",
