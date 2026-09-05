@@ -6,6 +6,25 @@ import {
   extractCodexMacOsPermissionRequest,
 } from "./interactive-requests.js";
 import { ProviderRequestDecodeError } from "@bb/provider-bridge-protocol/bridge-kit";
+import computerUseElicitation from "./fixtures/computer-use-elicitation.json";
+
+it("surfaces a native Computer Use app permission request", () => {
+  expect(decodeCodexInteractiveRequest(computerUseElicitation)).toEqual({
+    requestId: computerUseElicitation.id,
+    method: computerUseElicitation.method,
+    providerThreadId: computerUseElicitation.params.threadId,
+    turnId: null,
+    payload: {
+      kind: "provider-codex/mcp-elicitation",
+      title: computerUseElicitation.params.message,
+      data: {
+        app: { id: "com.apple.calculator", name: "Calculator" },
+        message: computerUseElicitation.params.message,
+        scopes: ["session", "always"],
+      },
+    },
+  });
+});
 
 describe("decodeCodexInteractiveRequest", () => {
   it("maps command approval requests into pending interaction payloads", () => {
