@@ -1079,9 +1079,10 @@ enrolled to other servers. Atomic reservations under
 
 ## Source Development
 
-For source development only, `pnpm dev`, `pnpm start:worktree`, and `pnpm start`
-load the repo-root dotenv cascade. Add a repo-root `.env` only when you need to
-override the defaults described above.
+For source development only, `pnpm dev`, `pnpm start:worktree`,
+`pnpm start:worktree-remote`, and `pnpm start` load the repo-root dotenv
+cascade. Add a repo-root `.env` only when you need to override the defaults
+described above.
 
 The standard [dotenv-cli](https://github.com/entropitor/dotenv-cli) cascade
 applies to source development. `pnpm dev` loads `.env`, `.env.local`,
@@ -1101,6 +1102,10 @@ disabled for this source-development command. Its worktree data directory,
 ports, inherited skills, listener host, absent Vite port, and telemetry policy
 take precedence over conflicting values saved in that instance's `config.json`
 or `env.json`.
+`pnpm start:worktree-remote` applies the same policy while binding the main
+server to `0.0.0.0` for direct access on a trusted network. The API is
+unauthenticated and permits command execution and file reads, so protect the
+port with a trusted network boundary such as Tailscale and a host firewall.
 `pnpm start` loads `.env`, `.env.local`, `.env.production`, and
 `.env.production.local`.
 
