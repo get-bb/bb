@@ -827,6 +827,9 @@
     "bb-plugin-provider-pi#typecheck": {
       "dependsOn": ["@get-bb/plugin-sdk#build:types", "topo"]
     },
+    "bb-plugin-provider-usage#typecheck": {
+      "dependsOn": ["@get-bb/plugin-sdk#build:types", "topo"]
+    },
     "bb-plugin-provider-retry#typecheck": {
       "dependsOn": ["@get-bb/plugin-sdk#build:types", "topo"]
     },
