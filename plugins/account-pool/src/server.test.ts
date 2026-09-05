@@ -3358,6 +3358,112 @@ describe("Account Pool plugin", () => {
       return fixture;
     }
 
+    it.each(["claude", "codex"] as const)(
+      "handles %s quota exhaustion and reset with session affinity",
+      async (provider) => {
+        let now = 1_800_000_000_000;
+        const exhausted = new Set<string>();
+        const attempts: string[] = [];
+        const fixture = await affinityFixture(
+          provider,
+          async (_input, init) => {
+            const headers = new Headers(init?.headers);
+            const key =
+              headers.get("x-api-key") ??
+              headers.get("authorization")?.slice(7);
+            if (key === undefined)
+              throw new Error("Missing account credential.");
+            attempts.push(key);
+            if (!exhausted.has(key)) return Response.json({ account: key });
+            const resetSeconds = key === "sk-first" ? 60 : 120;
+            return Response.json(
+              { error: { message: "Account usage exhausted." } },
+              {
+                status: 429,
+                headers:
+                  provider === "claude"
+                    ? {
+                        "anthropic-ratelimit-unified-5h-status": "rejected",
+                        "anthropic-ratelimit-unified-5h-reset": String(
+                          now / 1000 + resetSeconds,
+                        ),
+                      }
+                    : {
+                        "x-codex-primary-used-percent": "100",
+                        "x-codex-primary-window-minutes": "300",
+                        "x-codex-primary-reset-after-seconds":
+                          String(resetSeconds),
+                      },
+              },
+            );
+          },
+          () => now,
+        );
+        const send = () =>
+          fixture.host.harness.behavior.fetchHttp(
+            "POST",
+            provider === "claude" ? "/v1/messages" : "/v1/responses",
+            {
+              headers: {
+                ...authHeaders(fixture.key),
+                "session-id": sessionId,
+                "thread-id": "quota-thread",
+              },
+              body:
+                provider === "claude"
+                  ? claudeBody(sessionId)
+                  : JSON.stringify({ model: "gpt-5", input: [] }),
+            },
+          );
+        const expectAccount = async (account: string) => {
+          const response = await send();
+          expect(response.status).toBe(200);
+          expect(await response.json()).toEqual({ account });
+        };
+
+        await expectAccount("sk-first");
+        exhausted.add("sk-first");
+        await expectAccount("sk-second");
+        await expectAccount("sk-second");
+        now += 60_000;
+        exhausted.delete("sk-first");
+        await expectAccount("sk-second");
+        expect(attempts).toEqual([
+          "sk-first",
+          "sk-first",
+          "sk-second",
+          "sk-second",
+          "sk-second",
+        ]);
+
+        exhausted.add("sk-first");
+        exhausted.add("sk-second");
+        const unavailable = await send();
+        expect(unavailable.status).toBe(429);
+        expect(unavailable.headers.get("retry-after")).toBe("60");
+        await unavailable.text();
+        expect(attempts.slice(5)).toEqual(["sk-second", "sk-first"]);
+        const stillUnavailable = await send();
+        expect(stillUnavailable.status).toBe(429);
+        expect(stillUnavailable.headers.get("retry-after")).toBe("60");
+        await stillUnavailable.text();
+        expect(attempts).toHaveLength(7);
+
+        now += 60_000;
+        exhausted.delete("sk-first");
+        await expectAccount("sk-first");
+        await expectAccount("sk-first");
+        expect(attempts.slice(7)).toEqual(["sk-first", "sk-first"]);
+        const status = statusSchema.parse(
+          await fixture.host.harness.behavior.callRpc("status.get", null),
+        );
+        expect(status.accounts.map((account) => account.status)).toEqual([
+          "ready",
+          "exhausted",
+        ]);
+      },
+    );
+
     describe("parent affinity", () => {
       type Wire =
         | "claude"
