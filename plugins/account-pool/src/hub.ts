@@ -23,9 +23,16 @@ import {
   accountStatus,
   governingWeeklyResetAt,
   isQuotaExhausted,
+  isSharedQuotaExhausted,
   retryAfterMilliseconds,
 } from "./quota.js";
-import type { AccountStore, HubTokenStore, QuotaStore } from "./store.js";
+import type {
+  AccountBinding,
+  AccountStore,
+  HubTokenStore,
+  PoolAffinityStore,
+  QuotaStore,
+} from "./store.js";
 
 const ROUTE = "/api/v1/plugins/account-pool/http";
 const DEFAULT_REFRESH_URL = "https://platform.claude.com/v1/oauth/token";
@@ -61,6 +68,7 @@ export interface HubSettings {
 interface HubOptions {
   accounts: AccountStore;
   quotas: QuotaStore;
+  affinity: PoolAffinityStore;
   hubTokens: HubTokenStore;
   getSettings: () => HubSettings;
   adapters: ReadonlyMap<PoolProvider, ProviderAdapter>;
@@ -74,6 +82,18 @@ interface HubOptions {
 interface SelectedAccount {
   account: Account;
   quota: AccountQuota;
+  keepAffinity: boolean;
+  accept: () => void;
+}
+
+interface ActiveAccount {
+  accountId: string;
+}
+
+interface RoutingAttempt {
+  binding: AccountBinding | null;
+  active: ActiveAccount | null;
+  pinnedAccountId: string | null;
 }
 interface UpstreamResult {
   response: Response;
@@ -110,10 +130,8 @@ export class AccountPoolHub {
   private readonly activeControllers = new Set<AbortController>();
   private readonly refreshes = new Map<string, SecretFlight>();
   private readonly refreshBackoffs = new Map<string, RefreshBackoff>();
-  private readonly affinityBindings = new Map<
-    string,
-    { accountId: string; lastUsedAt: number }
-  >();
+  private affinityBindings = new Map<string, AccountBinding>();
+  private activeAccounts = new Map<PoolProvider, ActiveAccount>();
   private readonly usageRefreshes = new Map<string, Promise<void>>();
   private readonly lastUsageRefreshAt = new Map<string, number>();
   private readonly drainWaiters = new Set<() => void>();
@@ -121,7 +139,11 @@ export class AccountPoolHub {
   constructor(private readonly options: HubOptions) {}
 
   async start(signal: AbortSignal): Promise<void> {
-    this.affinityBindings.clear();
+    this.affinityBindings = this.options.affinity.loadBindings(
+      this.options.now() - AFFINITY_IDLE_TTL_MS,
+      MAX_AFFINITY_BINDINGS,
+    );
+    this.activeAccounts = this.options.affinity.loadActiveAccounts();
     this.stopped = new AbortController();
     this.accepting = true;
     while (!signal.aborted) {
@@ -248,7 +270,9 @@ export class AccountPoolHub {
   > {
     const settings = this.options.getSettings();
     const now = this.options.now();
-    const accounts = await this.options.accounts.list();
+    const accounts = (await this.options.accounts.list()).sort(
+      (left, right) => left.priority - right.priority,
+    );
     return {
       route: ROUTE,
       enabledAccountCount: accounts.filter((account) => account.enabled).length,
@@ -287,6 +311,12 @@ export class AccountPoolHub {
   ): Promise<Response> {
     const signal = AbortSignal.any([request.signal, this.stopped.signal]);
     const attempted = new Set<string>();
+    const waited = new Set<string>();
+    const routing: RoutingAttempt = {
+      binding: null,
+      active: null,
+      pinnedAccountId: null,
+    };
     let previousAccountId: string | null = null;
     let failure: FailureSummary | null = null;
     const accounts = (await this.options.accounts.list()).filter(
@@ -314,9 +344,33 @@ export class AccountPoolHub {
           affinityKey,
           parentAffinityKey,
           previousAccountId,
+          routing,
           signal,
         );
         if (selected === null) break;
+        const heldMs = (selected.quota.heldUntil ?? 0) - this.options.now();
+        if (heldMs > 0) {
+          if (heldMs > MAX_INLINE_HOLD_MS || waited.has(selected.account.id)) {
+            failure = {
+              status: 429,
+              message:
+                "The current Account Pooler account is temporarily rate limited.",
+              headers: { "retry-after": String(Math.ceil(heldMs / 1_000)) },
+            };
+            if (selected.keepAffinity)
+              return adapter.errorResponse(
+                failure.status,
+                failure.message,
+                failure.headers,
+              );
+            attempted.add(selected.account.id);
+            previousAccountId = selected.account.id;
+            continue;
+          }
+          waited.add(selected.account.id);
+          await waitForDelay(heldMs, signal);
+          continue;
+        }
         previousAccountId = selected.account.id;
         attempted.add(selected.account.id);
         if (hostId !== null) {
@@ -344,7 +398,7 @@ export class AccountPoolHub {
           continue;
         }
         let authRetried = false;
-        let paced = false;
+        let paced = waited.has(selected.account.id);
         while (true) {
           signal.throwIfAborted();
           let upstream: UpstreamResult;
@@ -398,6 +452,14 @@ export class AccountPoolHub {
               await this.discardUpstream(upstream, false);
               await waitForDelay(waitMs, signal);
               continue;
+            }
+            if (!selected.keepAffinity) {
+              failure = {
+                status: 429,
+                message: await this.discardUpstream(upstream, true),
+                headers: { "retry-after": String(Math.ceil(waitMs / 1_000)) },
+              };
+              break;
             }
           }
           if (
@@ -467,6 +529,7 @@ export class AccountPoolHub {
             }
             break;
           }
+          if (response.ok) selected.accept();
           return this.clientResponse(upstream);
         }
       }
@@ -592,78 +655,143 @@ export class AccountPoolHub {
     affinityKey: string | null,
     parentAffinityKey: string | null,
     previousAccountId: string | null,
+    routing: RoutingAttempt,
     signal: AbortSignal,
   ): Promise<SelectedAccount | null> {
-    const accounts = await this.options.accounts.list();
+    const accounts = (await this.options.accounts.list()).sort(
+      (left, right) => left.priority - right.priority,
+    );
     signal.throwIfAborted();
     const now = this.options.now();
     const threshold = this.options.getSettings().switchThreshold;
-    const eligible = accounts
+    const available = accounts
       .filter((account) => account.provider === provider && account.enabled)
       .map((account) => ({
         account,
         quota: this.options.quotas.get(account.id),
       }))
       .filter(({ quota }) => quota.error === null)
-      .filter(({ quota }) => quota.heldUntil === null || quota.heldUntil <= now)
-      .filter(({ quota }) => !isQuotaExhausted(quota, family, threshold, now));
-    const candidates = eligible.filter(
+      .filter(({ quota }) => !isSharedQuotaExhausted(quota, threshold, now));
+    const eligible = available.filter(
+      ({ quota }) => !isQuotaExhausted(quota, family, threshold, now),
+    );
+    const unattempted = eligible.filter(
       ({ account }) =>
         candidateIds.has(account.id) && !attempted.has(account.id),
     );
-    candidates.sort((left, right) => {
-      const priority = left.account.priority - right.account.priority;
-      if (priority !== 0) return priority;
-      const inFlight =
-        (this.inFlightByAccount.get(left.account.id) ?? 0) -
-        (this.inFlightByAccount.get(right.account.id) ?? 0);
-      if (inFlight !== 0) return inFlight;
-      return (
-        (governingWeeklyResetAt(left.quota, family) ??
-          Number.MAX_SAFE_INTEGER) -
-        (governingWeeklyResetAt(right.quota, family) ?? Number.MAX_SAFE_INTEGER)
-      );
-    });
-    const binding =
+    const candidates = unattempted.filter(
+      ({ quota }) => quota.heldUntil === null || quota.heldUntil <= now,
+    );
+    let binding =
       affinityKey === null ? undefined : this.affinityBindings.get(affinityKey);
-    const bound =
+    const boundAccountId =
       binding !== undefined && now - binding.lastUsedAt < AFFINITY_IDLE_TTL_MS
-        ? eligible.find(({ account }) => account.id === binding.accountId)
+        ? binding.accountId
+        : null;
+    const bound =
+      boundAccountId !== null
+        ? eligible.find(({ account }) => account.id === boundAccountId)
         : undefined;
-    let inherited: SelectedAccount | undefined;
+    let inherited: (typeof candidates)[number] | undefined;
     if (bound === undefined && parentAffinityKey !== null) {
       const parent = this.affinityBindings.get(parentAffinityKey);
       if (
         parent !== undefined &&
         now - parent.lastUsedAt < AFFINITY_IDLE_TTL_MS
       ) {
-        inherited = candidates.find(
+        inherited = unattempted.find(
           ({ account }) => account.id === parent.accountId,
         );
       }
     }
+    let active = this.activeAccounts.get(provider);
+    const activeAccount = eligible.find(
+      ({ account }) => account.id === active?.accountId,
+    );
+    const anchorId = previousAccountId ?? boundAccountId ?? active?.accountId;
+    const anchorIndex = accounts.findIndex(
+      (account) => account.id === anchorId,
+    );
+    const ordered = [
+      ...accounts.slice(anchorIndex + 1),
+      ...accounts.slice(0, anchorIndex + 1),
+    ];
+    const next = ordered
+      .map((account) =>
+        candidates.find((candidate) => candidate.account.id === account.id),
+      )
+      .find((candidate) => candidate !== undefined);
     const selected =
-      bound !== undefined && candidates.includes(bound)
+      bound !== undefined && unattempted.includes(bound)
         ? bound
-        : (inherited ?? candidates[0] ?? null);
-    if (
-      affinityKey !== null &&
-      selected !== null &&
-      (bound === undefined ||
-        bound.account.id === selected.account.id ||
-        bound.account.id === previousAccountId)
-    ) {
-      this.affinityBindings.delete(affinityKey);
-      this.affinityBindings.set(affinityKey, {
-        accountId: selected.account.id,
-        lastUsedAt: now,
-      });
-      while (this.affinityBindings.size > MAX_AFFINITY_BINDINGS) {
-        const oldest = this.affinityBindings.keys().next();
-        if (!oldest.done) this.affinityBindings.delete(oldest.value);
+        : (inherited ??
+          (boundAccountId === null &&
+          previousAccountId === null &&
+          activeAccount !== undefined &&
+          unattempted.includes(activeAccount)
+            ? activeAccount
+            : next) ??
+          null);
+    if (selected === null) return null;
+    if (routing.active === null)
+      routing.pinnedAccountId = boundAccountId ?? inherited?.account.id ?? null;
+    if (affinityKey !== null && binding === undefined) {
+      binding = { accountId: selected.account.id, lastUsedAt: now };
+      this.affinityBindings.set(affinityKey, binding);
+    }
+    if (binding !== undefined && binding.accountId === selected.account.id) {
+      binding.lastUsedAt = now;
+      if (affinityKey !== null) {
+        this.affinityBindings.delete(affinityKey);
+        this.affinityBindings.set(affinityKey, binding);
       }
     }
-    return selected;
+    while (this.affinityBindings.size > MAX_AFFINITY_BINDINGS) {
+      const oldest = this.affinityBindings.keys().next();
+      if (!oldest.done) {
+        this.affinityBindings.delete(oldest.value);
+        this.options.affinity.removeBinding(oldest.value);
+      }
+    }
+    if (active === undefined) {
+      active = { accountId: selected.account.id };
+      this.activeAccounts.set(provider, active);
+    }
+    routing.binding ??= binding ?? null;
+    routing.active ??= active;
+    const familyDetour = (accountId: string | null) =>
+      available.some(({ account }) => account.id === accountId) &&
+      !eligible.some(({ account }) => account.id === accountId);
+    const rebind =
+      affinityKey !== null &&
+      !familyDetour(boundAccountId) &&
+      (bound === undefined ||
+        bound.account.id === selected.account.id ||
+        (binding === routing.binding && attempted.has(bound.account.id)));
+    const advance =
+      !familyDetour(active.accountId) &&
+      (activeAccount === undefined ||
+        active.accountId === selected.account.id ||
+        (active === routing.active && attempted.has(active.accountId)));
+    return {
+      ...selected,
+      keepAffinity: selected.account.id === routing.pinnedAccountId,
+      accept: () => {
+        if (rebind && this.affinityBindings.get(affinityKey) === binding) {
+          const accepted = {
+            accountId: selected.account.id,
+            lastUsedAt: this.options.now(),
+          };
+          this.options.affinity.putBinding(affinityKey, accepted);
+          this.affinityBindings.delete(affinityKey);
+          this.affinityBindings.set(affinityKey, accepted);
+        }
+        if (advance && this.activeAccounts.get(provider) === active) {
+          this.options.affinity.putActiveAccount(provider, selected.account.id);
+          this.activeAccounts.set(provider, { accountId: selected.account.id });
+        }
+      },
+    };
   }
 
   private async freshSecret(
@@ -992,6 +1120,7 @@ export class AccountPoolHub {
 export function createHub(options: {
   accounts: AccountStore;
   quotas: QuotaStore;
+  affinity: PoolAffinityStore;
   hubTokens: HubTokenStore;
   getSettings: () => HubSettings;
   fetch?: typeof fetch;
@@ -1029,6 +1158,7 @@ export function createHub(options: {
   return new AccountPoolHub({
     accounts: options.accounts,
     quotas: options.quotas,
+    affinity: options.affinity,
     hubTokens: options.hubTokens,
     getSettings: options.getSettings,
     adapters,

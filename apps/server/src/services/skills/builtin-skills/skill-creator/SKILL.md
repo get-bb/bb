@@ -1,121 +1,62 @@
 ---
 name: skill-creator
-description: Create new bb skills and improve existing ones. Use whenever a user asks to create, write, edit, refine, test, or optimize a skill; turn a workflow into a reusable skill; fix skill triggering; or improve a SKILL.md file.
+description: "Create or improve BB skills, including their triggers, instructions, and supporting resources."
 ---
 
 # Skill creator
 
-Create skills that trigger for the correct requests and improve agent results.
+Create skills that add useful domain knowledge and trigger only for relevant tasks.
+User skills live at `~/.bb/skills/<name>/SKILL.md`. Edit built-in and plugin
+skills at their source, not in generated runtime copies.
 
-## Workflow
+## Contract
 
-1. Read the conversation and the existing skill before asking questions.
-2. Confirm the trigger, expected result, inputs, edge cases, and dependencies.
-3. Write or revise the skill and any required resources.
-4. Test realistic prompts in fresh BB threads.
-5. Compare the results with the previous skill or no-skill baseline.
-6. Revise until further changes do not give a useful improvement.
-
-Ask only for decisions that the available context cannot answer. Match the
-amount of evaluation to the risk and the result quality that the user needs.
-
-## Skill contract
-
-A skill uses this structure:
-
-```text
-skill-name/
-├── SKILL.md
-├── references/
-├── scripts/
-└── assets/
-```
-
-Only `SKILL.md` is required. User skills live at
-`~/.bb/skills/<name>/SKILL.md`.
-
-The file starts with YAML frontmatter:
+Start `SKILL.md` with YAML frontmatter:
 
 ```yaml
 ---
 name: skill-name
-description: State what the skill does and when an agent must use it.
+description: Briefly state the capability and when it applies.
 ---
 ```
 
-The directory and `name` value must match. A name uses lowercase letters,
-numbers, and single hyphens. It cannot exceed 64 characters. The description
-cannot exceed 1024 characters.
+The directory and name must match. Names use lowercase letters, numbers, and
+single hyphens, with at most 64 characters. Descriptions have a 1024-character
+limit; use a short, discriminating sentence rather than filling that limit.
+Preserve supported metadata and invocation settings when editing.
 
-Put all trigger conditions in the description. Include concrete tasks and
-nearby user phrases. Keep procedural instructions in the body.
+BB loads names and descriptions for discovery, the body when a skill is used,
+and supporting files when needed. New threads discover revisions; existing
+threads may retain the version they started with.
 
-BB discovers edits for newly spawned threads. An existing thread does not
-receive a skill revision after it starts.
+## Write for the task
 
-## Progressive disclosure
+- Keep the purpose, essential constraints, completion criteria, and reference
+  routing in the entrypoint. A short skill needs no extra files.
+- Move substantial mode-specific procedures and examples into `references/`.
+  State when to read each file; do not require loading every reference.
+- Use `scripts/` for repeated deterministic work and `assets/` for output
+  templates or resources. Reuse existing resources before adding new ones.
+- Describe outcomes and decision boundaries. Reserve rigid steps for fragile
+  operations where order matters; avoid generic advice, repeated repository
+  rules, keyword catchalls, and model-specific scaffolding.
+- Preserve the user's scope and existing authorization. Continue through
+  authorized implementation and verification; ask only for missing decisions.
+  A skill being loaded does not itself authorize external writes or new work.
+- Keep real safety and product constraints explicit. Explain a constraint when
+  its reason helps the agent apply it correctly.
 
-BB loads skill information in three levels:
+## Verify and finish
 
-1. BB always loads the name and description.
-2. An agent reads `SKILL.md` after the skill triggers.
-3. The agent reads or runs bundled resources only when the task needs them.
+Check frontmatter, resource paths, scripts affected by the edit, and whether
+realistic requests select the right skill. Include near misses when changing
+triggers. Preserve working behavior rather than optimizing word count alone.
 
-Keep `SKILL.md` focused on routing, the main workflow, safety, and success
-criteria. Aim for fewer than 500 lines.
+For substantial workflow or boundary changes, use
+[references/evaluation.md](references/evaluation.md) for fresh-thread tests
+against the previous skill or no-skill baseline. A wording edit does not require
+full workflow execution. Keep evaluations isolated from live external actions.
 
-Move detailed variants, contracts, and examples into `references/`. Tell the
-agent exactly when to read each reference. Add a table of contents to reference
-files longer than 300 lines.
-
-Put deterministic or repeated work in `scripts/`. Put output templates, icons,
-fonts, and similar material in `assets/`.
-
-## Writing guidance
-
-- Use direct instructions and concrete examples.
-- Explain the reason for a constraint when the reason helps generalization.
-- Remove rules that repeat the system prompt or repository instructions.
-- Avoid absolute language when a clear reason and condition work better.
-- Keep shared workflow in `SKILL.md` and organize references by task variant.
-- Do not add unsafe, misleading, or unauthorized behavior.
-
-## Evaluation
-
-Create two or three realistic prompts. State the expected result for each
-prompt. Include near-miss prompts when you tune the description.
-
-Spawn a fresh thread for every test:
-
-```sh
-bb thread spawn --project "$BB_PROJECT_ID" --prompt "<test prompt>" --json
-bb thread wait <thread-id>
-bb thread output <thread-id>
-bb thread log <thread-id>
-bb thread show <thread-id> --git-diff
-```
-
-Read the transcript, not only the final answer. Check whether the skill
-triggered, whether the agent read only relevant resources, and whether the
-instructions improved the result.
-
-For an existing skill, compare the revision with the previous version. For a
-new skill, compare it with a run that does not expose the skill. Use an
-objective check when the result has a machine-verifiable contract.
-
-## Improve the revision
-
-- Generalize from evaluation failures instead of adding prompt-specific rules.
-- Remove instructions that cause delay or do not change results.
-- Add a reusable script when each run repeats the same setup.
-- Update an existing resource instead of creating overlapping guidance.
-- Keep the description broad enough for true matches and quiet for near misses.
-
-## Completion check
-
-- The directory matches the valid frontmatter name.
-- The description says what the skill does and when to use it.
-- The body stays focused and routes optional detail to bundled resources.
-- Every referenced resource exists and has a clear read condition.
-- Fresh-thread evaluations cover realistic matches and useful near misses.
-- The final revision improves results without unnecessary instructions.
+Finish after relevant checks pass and demonstrated failures are corrected.
+Report the changes and any limits of the validation; do not keep testing without
+new evidence that another run would help.

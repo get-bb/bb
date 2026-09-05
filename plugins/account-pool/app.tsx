@@ -278,16 +278,42 @@ function AccountRow({
   pending,
   onAction,
   onOpen,
+  onMoveUp,
+  onMoveDown,
 }: {
   account: AccountSummary;
   threshold: number;
   pending: boolean;
   onAction: (action: "toggle" | "priority" | "refresh" | "remove") => void;
   onOpen: () => void;
+  onMoveUp: (() => void) | null;
+  onMoveDown: (() => void) | null;
 }) {
   const status = statusPresentation(account);
   return (
     <div className="flex items-center gap-3 text-sm">
+      <div className="flex shrink-0 items-center gap-1">
+        <Button
+          variant="ghost"
+          size="icon"
+          className="size-8"
+          aria-label={`Move ${account.label} up`}
+          disabled={pending || onMoveUp === null}
+          onClick={() => onMoveUp?.()}
+        >
+          <Icon name="ArrowUp" className="size-4" />
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="size-8"
+          aria-label={`Move ${account.label} down`}
+          disabled={pending || onMoveDown === null}
+          onClick={() => onMoveDown?.()}
+        >
+          <Icon name="ArrowDown" className="size-4" />
+        </Button>
+      </div>
       <div
         className={cn(
           "group -mx-2 flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-2.5 transition-colors hover:bg-state-hover focus-within:bg-state-hover",
@@ -838,6 +864,25 @@ function AccountPoolSettings() {
         await rpc.call("account.refreshUsage", { accountId: account.id });
     });
   }
+  async function moveAccount(
+    account: AccountSummary,
+    offset: number,
+  ): Promise<void> {
+    const ordered = accounts
+      .filter((candidate) => candidate.provider === account.provider)
+      .map((candidate) => candidate.id);
+    const index = ordered.indexOf(account.id);
+    const target = index + offset;
+    if (index < 0 || target < 0 || target >= ordered.length) return;
+    ordered.splice(index, 1);
+    ordered.splice(target, 0, account.id);
+    await run(`order-${account.provider}`, async () => {
+      await rpc.call("account.reorder", {
+        provider: account.provider,
+        accountIds: ordered,
+      });
+    });
+  }
   function closeDrawer(): void {
     if (drawer?.kind === "codex-login" && codexStep !== null)
       void rpc.call("codexLogin.cancel", { sessionId: codexStep.sessionId });
@@ -927,13 +972,21 @@ function AccountPoolSettings() {
               </p>
             ) : (
               <div className="divide-y divide-border">
-                {providerAccounts.map((account) => (
+                {providerAccounts.map((account, index) => (
                   <AccountRow
                     key={account.id}
                     account={account}
                     threshold={threshold}
                     pending={pending !== null}
                     onAction={(action) => void accountAction(account, action)}
+                    onMoveUp={
+                      index === 0 ? null : () => void moveAccount(account, -1)
+                    }
+                    onMoveDown={
+                      index === providerAccounts.length - 1
+                        ? null
+                        : () => void moveAccount(account, 1)
+                    }
                     onOpen={() =>
                       setDrawer({ kind: "account", accountId: account.id })
                     }
@@ -1101,8 +1154,8 @@ function AccountPoolSettings() {
             }
           >
             <p className="text-sm text-muted-foreground">
-              Lower numbers route first. Accounts with the same priority share
-              work by availability.
+              Lower numbers come first in the failover order. Ties follow the
+              order accounts were added. Existing conversations stay pinned.
             </p>
             <Input
               type="number"

@@ -114,6 +114,45 @@ describe("codexQuotaFromUsage", () => {
 });
 
 describe("codex header quotas", () => {
+  it.each(["primary", "secondary"] as const)(
+    "honors a fresh over-limit %s header after the previous reset expires",
+    (slot) => {
+      const previous = adapter.quotaFromHeaders(
+        ACCOUNT_ID,
+        new Headers({
+          [`x-codex-${slot}-used-percent`]: "25",
+          [`x-codex-${slot}-reset-after-seconds`]: "1",
+        }),
+        emptyQuota(),
+        "other",
+        1_000,
+      );
+      const rejected = adapter.quotaFromHeaders(
+        ACCOUNT_ID,
+        new Headers({ [`x-codex-${slot}-over-limit`]: "true" }),
+        previous,
+        "other",
+        3_000,
+      );
+      expect(isQuotaExhausted(rejected, "other", 0.98, 3_000)).toBe(true);
+      expect(
+        rejected.limitWindows.find((window) => window.slot === slot)?.resetAt,
+      ).toBeNull();
+      const recovered = codexQuotaFromUsage(
+        ACCOUNT_ID,
+        {
+          rate_limit: {
+            [`${slot}_window`]: { used_percent: 10, reset_after_seconds: 60 },
+          },
+        },
+        rejected,
+        4_000,
+      );
+      if (recovered === null) throw new Error("Expected refreshed usage.");
+      expect(isQuotaExhausted(recovered, "other", 0.98, 4_000)).toBe(false);
+    },
+  );
+
   it("retains the reported window length when a later response omits it", () => {
     const fromUsage = codexQuotaFromUsage(
       ACCOUNT_ID,

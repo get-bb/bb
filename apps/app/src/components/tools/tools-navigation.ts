@@ -252,7 +252,11 @@ export function resolveToolsBreadcrumbs(
 }
 
 interface ToolsPageDefinition {
-  id: "plugins-browse" | "skills-browse" | "skills-library";
+  id:
+    | "plugins-browse"
+    | "plugins-installed"
+    | "skills-browse"
+    | "skills-library";
   section: ToolsSectionId;
   label: string;
   icon: IconName;
@@ -266,6 +270,13 @@ export const TOOLS_PAGES: readonly ToolsPageDefinition[] = [
     label: `Browse ${TOOLS_SECTIONS.plugins.label.toLowerCase()}`,
     icon: TOOLS_SECTIONS.plugins.icon,
     to: TOOLS_SECTIONS.plugins.to,
+  },
+  {
+    id: "plugins-installed",
+    section: "plugins",
+    label: "Installed plugins",
+    icon: "PackageReceive",
+    to: `${TOOLS_SECTIONS.plugins.to}?view=installed`,
   },
   {
     id: "skills-browse",
@@ -299,7 +310,9 @@ export function resolveToolsActivePage(
   }
   const section = resolveToolsSection(pathname);
   if (section === "plugins") {
-    return "plugins-browse";
+    return view === TOOLS_OWNED_COLLECTION_VIEW.plugins
+      ? "plugins-installed"
+      : "plugins-browse";
   }
   return view === TOOLS_OWNED_COLLECTION_VIEW.skills
     ? "skills-library"

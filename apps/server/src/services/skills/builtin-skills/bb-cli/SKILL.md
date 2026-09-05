@@ -1,12 +1,12 @@
 ---
 name: bb-cli
-description: Use this when controlling bb. The bb CLI inspects and manages threads, environments, projects, machines, providers, notifications, skills, plugins, settings, terminals, and other BB services.
+description: "Inspect or manage BB state with the bb CLI; use for BB commands and configuration."
 ---
 
 # BB CLI
 
-Use bb for BB state and actions. Inspect the current context before you choose
-IDs, machines, workspaces, providers, or models.
+Use bb for BB state and actions. Inspect context when the target project, host,
+workspace, or execution selection is not already established.
 
 ## Start with context
 
@@ -52,61 +52,6 @@ BB_HOST_DAEMON_PORT only for an intentional non-default target.
 - Pass `--yes` for a confirmed destructive command in a non-interactive shell.
 - Treat plugin commands as normal top-level commands after installation.
 
-The builtin Account Pooler plugin is disabled by default. Enable it, add Claude
-or Codex credentials, and inspect its proxy routes and account quota with:
-
-```sh
-bb plugin enable account-pool
-bb pool account add --provider claude --login
-printf '%s\n' "$CLAUDE_AUTH_CODE" | bb pool account login-complete --session <id> --code-stdin
-bb pool account add --provider codex --login
-bb pool account login-poll --session <id>
-bb pool account add --provider claude --import
-bb pool account add --provider codex --import
-printf '%s\n' "$ANTHROPIC_API_KEY" | bb pool account add --provider claude --api-key-stdin [--label <text>] [--priority <n>]
-bb pool account add --provider claude --api-key <key> [--label <text>] [--priority <n>]
-bb pool account list [--json]
-bb pool account remove <id>
-bb pool account enable <id>
-bb pool account disable <id>
-bb pool status [--json]
-bb pool routing <claude|codex> [--off]
-bb pool config
-bb pool config set <anthropicUpstreamBaseUrl|codexUpstreamBaseUrl|switchThreshold> <value>
-bb pool token rotate --machine <id-or-name>
-bb pool bypass <thread-id> [--off]
-```
-
-Claude `--login` starts a PKCE session, prints a browser URL and session ID,
-then exits. Pipe the manual callback code to `account login-complete` with that
-session ID within ten minutes. Codex `--login` prints a device verification
-URL, one-time code, session ID, and an `account login-poll` command that waits
-for authorization. The Claude code stays out of process arguments, and either
-browser may be on a different machine from the bb server. Newly added or
-enabled accounts are available without a plugin reload. With an
-enabled account whose secret file remains readable and valid, matching Claude
-Code or Codex sessions receive the pool route and a distinct secret token for
-their machine.
-Codex receives `CODEX_OPENAI_BASE_URL` and the secret
-`CODEX_POOL_AUTH_TOKEN`; bb applies them as in-memory app-server config.
-Tokens are never printed. `status` prunes tokens for unenrolled machines and
-shows token timestamps plus recently routed threads whose machines need a
-local Claude login before the pool can be disabled safely. Rotation keeps the
-prior token valid for ten minutes. Agents should pipe API keys to
-`--api-key-stdin`;
-`--api-key <key>` is an unsafe compatibility form that exposes the key in
-process arguments, shell history, and agent transcripts. Prefer `--import` for
-an existing Claude Code login. The CLI Codex import path reads
-`~/.codex/auth.json` on the bb server host. OAuth quota refreshes on add or
-enable and every five minutes while an account is idle. Account tables add columns for observed
-model-family buckets; JSON status exposes their utilization, reset, status,
-observation time, and source under `familyWeekly`. Selection skips an account
-whose requested family is spent while retaining it for other families. A
-present `metadata.user_id` account UUID is aligned with the selected OAuth
-account. Use `bb pool config` to inspect the full routing configuration and
-`bb pool config set <key> <value>` to update one value. The upstream URL keys
-are QA-only overrides; `switchThreshold` must be greater than 0 and at most 1.
-
 - Inspect real status, logs, API results, or diffs instead of assumptions.
 - Keep file paths on the machine that owns the selected workspace.
 
@@ -131,10 +76,14 @@ remote service. Report the stable ID or URL that the user needs next.
 
 Use `bb plugin config <id>` to inspect the plugin’s configuration and
 `bb plugin config <id> set <key> <value>` to change it. Read the plugin’s own
-guidance for its delivery commands and supported clients. A server-side
-notification switch does not grant browser or operating system permission;
-that permission is granted from the target client’s settings.
+skill for its commands, configuration meanings, and operating constraints.
+Discover contributed command paths through `bb plugin list`, the generated
+`plugin-commands` skill, or `bb plugin run <id> --help`.
+
+Keep this skill and its references focused on core BB commands. Plugin-specific
+behavior belongs in the owning plugin’s `skills/` directory, including built-in
+plugins; do not add plugin command manuals here.
 
 ## Built-in browser control
 
-Use `bb browser instances --host <host-id> --json` to discover a desktop. Commands `tabs`, `create`, `acquire`, `connection`, `release`, `reveal`, `capture`, `close`, and `watch` require explicit `--host`, `--instance`, `--generation`, and `--thread`. See `bb guide browser` and `bb browser --help` for flags. New tabs use separate automation profiles; personal-tab control needs an explicit handoff. Connection credentials are written with `connection --output <new-file>` and work only on the browser host; keep them out of chat and public port shares. The Browser Automation plugin supplies desktop scripts and headless Chrome; cloud browsers are deferred.
+Use `bb browser instances --host <host-id> --json` to discover a desktop. Commands `tabs`, `create`, `acquire`, `connection`, `release`, `reveal`, `capture`, `close`, and `watch` require explicit `--host`, `--instance`, `--generation`, and `--thread`. See `bb guide browser` and `bb browser --help` for flags. New tabs use separate automation profiles; personal-tab control needs an explicit handoff. Connection credentials are written with `connection --output <new-file>` and work only on the browser host; keep them out of chat and public port shares.

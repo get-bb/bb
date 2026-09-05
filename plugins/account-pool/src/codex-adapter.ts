@@ -87,7 +87,9 @@ function windowFromHeaders(
   const usedPercent = numberHeader(headers, `${prefix}-used-percent`);
   const reset = resetAt(headers, prefix, now);
   const minutes = numberHeader(headers, `${prefix}-window-minutes`);
-  if (usedPercent === null && reset === null) return previous;
+  const overLimit =
+    headers.get(`${prefix}-over-limit`)?.toLowerCase() === "true";
+  if (usedPercent === null && reset === null && !overLimit) return previous;
   const utilization =
     usedPercent === null
       ? (previous?.utilization ?? null)
@@ -99,8 +101,17 @@ function windowFromHeaders(
         ? Math.round(minutes)
         : (previous?.windowMinutes ?? null),
     utilization,
-    resetAt: reset ?? previous?.resetAt ?? null,
-    status: utilization !== null && utilization >= 1 ? "rejected" : null,
+    resetAt:
+      reset ??
+      (previous?.resetAt !== null &&
+      previous?.resetAt !== undefined &&
+      previous.resetAt > now
+        ? previous.resetAt
+        : null),
+    status:
+      overLimit || (utilization !== null && utilization >= 1)
+        ? "rejected"
+        : null,
     observedAt: now,
     source: "header",
   };

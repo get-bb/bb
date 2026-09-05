@@ -77,7 +77,7 @@ function config(overrides: Partial<AccountPoolConfig> = {}): AccountPoolConfig {
 
 function render(
   accounts = [account()],
-  extraRpc: Record<string, () => object> = {},
+  extraRpc: Record<string, () => object | null> = {},
 ) {
   return renderSlot(
     app.settingsSections[0]!,
@@ -316,5 +316,91 @@ describe("Account Pool settings", () => {
     );
     fireEvent.click(await slot.findByRole("button", { name: "Try again" }));
     await waitFor(() => expect(starts).toBe(2));
+  });
+  it("reorders accounts within their provider and refreshes the displayed order", async () => {
+    const first = account({ label: "First" });
+    const second = account({
+      id: "22222222-2222-4222-8222-222222222222",
+      label: "Second",
+    });
+    const codex = account({
+      id: "33333333-3333-4333-8333-333333333333",
+      provider: "codex",
+      label: "Codex",
+    });
+    const accounts = [first, second, codex];
+    const slot = render(accounts, {
+      "account.reorder": () => {
+        accounts.splice(0, 2, second, first);
+        return null;
+      },
+    });
+    expect(
+      (await slot.findByRole("button", { name: "Move First up" })).hasAttribute(
+        "disabled",
+      ),
+    ).toBe(true);
+    fireEvent.click(slot.getByRole("button", { name: "Move First down" }));
+    await waitFor(() =>
+      expect(slot.rpcCalls).toContainEqual({
+        method: "account.reorder",
+        input: { provider: "claude", accountIds: [second.id, first.id] },
+      }),
+    );
+    await waitFor(() =>
+      expect(
+        slot
+          .getByRole("button", { name: "Move Second up" })
+          .hasAttribute("disabled"),
+      ).toBe(true),
+    );
+    expect(
+      slot
+        .getByRole("button", { name: "Move First down" })
+        .hasAttribute("disabled"),
+    ).toBe(true);
+    expect(
+      slot
+        .getByRole("button", { name: "Move Codex up" })
+        .hasAttribute("disabled"),
+    ).toBe(true);
+    expect(
+      slot
+        .getByRole("button", { name: "Move Codex down" })
+        .hasAttribute("disabled"),
+    ).toBe(true);
+  });
+
+  it("keeps the displayed order and reports a rejected reorder", async () => {
+    const slot = render(
+      [
+        account({ label: "First" }),
+        account({
+          id: "22222222-2222-4222-8222-222222222222",
+          label: "Second",
+        }),
+      ],
+      {
+        "account.reorder": () => {
+          throw new Error("Refresh the account list and try again.");
+        },
+      },
+    );
+    fireEvent.click(
+      await slot.findByRole("button", { name: "Move First down" }),
+    );
+    expect(
+      await slot.findByText("Refresh the account list and try again."),
+    ).toBeTruthy();
+    expect(
+      slot
+        .getByRole("button", { name: "Move First up" })
+        .hasAttribute("disabled"),
+    ).toBe(true);
+    expect(
+      slot
+        .getByRole("button", { name: "Move First down" })
+        .hasAttribute("disabled"),
+    ).toBe(false);
   });
 });

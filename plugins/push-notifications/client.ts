@@ -31,9 +31,17 @@ export function createClientDelivery(navigate: (threadId: string) => void) {
 
   function display(message: ClientNotification): void {
     if (disposed || notificationPermission() !== "granted") return;
+    const isMacDesktop =
+      "bbDesktop" in window &&
+      typeof window.bbDesktop === "object" &&
+      window.bbDesktop !== null &&
+      "platform" in window.bbDesktop &&
+      window.bbDesktop.platform === "macos";
     const notification = new Notification(message.title, {
       body: message.body,
-      icon: new URL("/icon-192.png", window.location.origin).href,
+      ...(isMacDesktop
+        ? {}
+        : { icon: new URL("/icon-192.png", window.location.origin).href }),
       tag: `bb-${message.threadId ?? message.id}`,
     });
     active.add(notification);

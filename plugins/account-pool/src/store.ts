@@ -8,11 +8,13 @@ import {
   accountSchema,
   accountSecretSchema,
   hubTokenSummarySchema,
+  providerSchema,
   quotaSchema,
   type Account,
   type AccountQuota,
   type AccountSecret,
   type HubTokenSummary,
+  type PoolProvider,
 } from "./contracts.js";
 
 const ACCOUNTS_KEY = "accounts:v1";
@@ -125,6 +127,34 @@ export class AccountStore {
 
   async setPriority(id: string, priority: number): Promise<Account | null> {
     return this.update(id, (account) => ({ ...account, priority }));
+  }
+
+  async reorder(provider: PoolProvider, accountIds: string[]): Promise<void> {
+    return this.serialized(async () => {
+      const accounts = await this.list();
+      const current = accounts.filter(
+        (account) => account.provider === provider,
+      );
+      const positions = new Map(accountIds.map((id, index) => [id, index]));
+      if (
+        positions.size !== accountIds.length ||
+        current.length !== positions.size ||
+        current.some((account) => !positions.has(account.id))
+      ) {
+        throw new Error(
+          "Include every account for this provider exactly once. Refresh the account list and try again.",
+        );
+      }
+      await this.kv.set(
+        ACCOUNTS_KEY,
+        accounts.map((account) => {
+          const position = positions.get(account.id);
+          return position === undefined
+            ? account
+            : { ...account, priority: position + 1 };
+        }),
+      );
+    });
   }
 
   async recordUsed(
@@ -633,6 +663,85 @@ export class QuotaStore {
   }
 }
 
+const affinityRowSchema = z.object({
+  affinity_key: z.string(),
+  account_id: z.string().uuid(),
+  last_used_at: z.number().int(),
+});
+
+const activeAccountRowSchema = z.object({
+  provider: providerSchema,
+  account_id: z.string().uuid(),
+});
+
+export interface AccountBinding {
+  accountId: string;
+  lastUsedAt: number;
+}
+
+export class PoolAffinityStore {
+  constructor(private readonly db: Database.Database) {}
+
+  loadBindings(since: number, limit: number): Map<string, AccountBinding> {
+    this.db
+      .prepare("DELETE FROM pool_affinity WHERE last_used_at <= ?")
+      .run(since);
+    this.db
+      .prepare(
+        `DELETE FROM pool_affinity WHERE affinity_key NOT IN (
+        SELECT affinity_key FROM pool_affinity ORDER BY last_used_at DESC, rowid DESC LIMIT ?
+      )`,
+      )
+      .run(limit);
+    return new Map(
+      z
+        .array(affinityRowSchema)
+        .parse(
+          this.db
+            .prepare("SELECT * FROM pool_affinity ORDER BY last_used_at, rowid")
+            .all(),
+        )
+        .map((row) => [
+          row.affinity_key,
+          { accountId: row.account_id, lastUsedAt: row.last_used_at },
+        ]),
+    );
+  }
+
+  loadActiveAccounts(): Map<PoolProvider, { accountId: string }> {
+    return new Map(
+      z
+        .array(activeAccountRowSchema)
+        .parse(this.db.prepare("SELECT * FROM pool_active_account").all())
+        .map((row) => [row.provider, { accountId: row.account_id }]),
+    );
+  }
+
+  putBinding(key: string, binding: AccountBinding): void {
+    this.db
+      .prepare(
+        `INSERT INTO pool_affinity (affinity_key, account_id, last_used_at) VALUES (?, ?, ?)
+       ON CONFLICT(affinity_key) DO UPDATE SET account_id = excluded.account_id, last_used_at = excluded.last_used_at`,
+      )
+      .run(key, binding.accountId, binding.lastUsedAt);
+  }
+
+  removeBinding(key: string): void {
+    this.db
+      .prepare("DELETE FROM pool_affinity WHERE affinity_key = ?")
+      .run(key);
+  }
+
+  putActiveAccount(provider: PoolProvider, accountId: string): void {
+    this.db
+      .prepare(
+        `INSERT INTO pool_active_account (provider, account_id) VALUES (?, ?)
+       ON CONFLICT(provider) DO UPDATE SET account_id = excluded.account_id`,
+      )
+      .run(provider, accountId);
+  }
+}
+
 export const QUOTA_MIGRATIONS = [
   `CREATE TABLE account_quota (
     account_id TEXT PRIMARY KEY,
@@ -650,4 +759,13 @@ export const QUOTA_MIGRATIONS = [
   )`,
   `ALTER TABLE account_quota ADD COLUMN family_weekly_json TEXT NOT NULL DEFAULT '{"fable":null,"sonnet":null,"opus":null,"haiku":null,"other":null}'`,
   `ALTER TABLE account_quota ADD COLUMN limit_windows_json TEXT NOT NULL DEFAULT '[]'`,
+  `CREATE TABLE pool_affinity (
+    affinity_key TEXT PRIMARY KEY,
+    account_id TEXT NOT NULL,
+    last_used_at INTEGER NOT NULL
+  );
+  CREATE TABLE pool_active_account (
+    provider TEXT PRIMARY KEY,
+    account_id TEXT NOT NULL
+  )`,
 ];

@@ -8,7 +8,12 @@ import { SidebarProvider } from "@/components/ui/sidebar";
 
 afterEach(cleanup);
 
-const PAGE_ROWS = ["Browse plugins", "Browse skills", "My skills"];
+const PAGE_ROWS = [
+  "Browse plugins",
+  "Installed plugins",
+  "Browse skills",
+  "My skills",
+];
 
 function renderAt(path: string, appRoutePath = "/") {
   return render(
@@ -36,9 +41,9 @@ describe("ToolsSidebar", () => {
     expect(row("Browse plugins").getAttribute("href")).toBe(
       "/extensions/plugins",
     );
-    expect(
-      screen.queryByRole("link", { name: "Installed plugins" }),
-    ).toBeNull();
+    expect(row("Installed plugins").getAttribute("href")).toBe(
+      "/extensions/plugins?view=installed",
+    );
     expect(row("Browse skills").getAttribute("href")).toBe(
       "/extensions/skills",
     );
@@ -50,7 +55,7 @@ describe("ToolsSidebar", () => {
 
   it.each([
     ["/extensions/plugins", "Browse plugins"],
-    ["/extensions/plugins?view=installed", "Browse plugins"],
+    ["/extensions/plugins?view=installed", "Installed plugins"],
     ["/extensions/plugins/github", "Browse plugins"],
     ["/extensions/plugins/github?view=installed", "Browse plugins"],
     ["/extensions/skills", "Browse skills"],
