@@ -5,7 +5,7 @@ type PanelCollapseTransitionStyle = CSSProperties & {
 };
 
 export const PANEL_COLLAPSE_TRANSITION_CLASS =
-  "duration-[var(--panel-collapse-duration,220ms)] ease-[cubic-bezier(0.32,0.72,0,1)]";
+  "duration-[var(--panel-collapse-duration,220ms)] ease-[cubic-bezier(0.32,0.72,0,1)] motion-reduce:transition-none";
 
 export function getPanelCollapseTransitionStyle(
   transitionsReady: boolean,

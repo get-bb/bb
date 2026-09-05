@@ -333,6 +333,9 @@ describe("SecondaryPanelLayout", () => {
     expect(panelGroup.style.getPropertyValue("--panel-collapse-duration")).toBe(
       "220ms",
     );
+    expect(mainContent.parentElement?.className).toContain(
+      "motion-reduce:transition-none",
+    );
 
     view.rerenderWith({ resetKey: "plugin-page-b" });
 

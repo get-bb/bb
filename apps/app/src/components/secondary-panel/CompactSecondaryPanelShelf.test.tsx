@@ -184,6 +184,10 @@ describe("CompactSecondaryPanelShelf", () => {
     expect(shelf.className).toContain(
       "data-[state=closed]:[transition:visibility_0s_linear_220ms]",
     );
+    expect(shelf.className).toContain("motion-reduce:transition-none!");
+    expect(
+      screen.getByTestId("secondary-panel-shelf-dismiss").className,
+    ).toContain("motion-reduce:transition-none!");
   });
 
   it("marks the shelf inert while closed and interactive while open", () => {

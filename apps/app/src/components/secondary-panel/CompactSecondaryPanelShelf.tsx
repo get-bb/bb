@@ -18,7 +18,7 @@ import {
 } from "@/components/ui/secondary-panel-shelf-visibility";
 
 const SHELF_TRANSITION_CLASS =
-  "[transition:translate_220ms_cubic-bezier(0.32,0.72,0,1),width_220ms_cubic-bezier(0.32,0.72,0,1)]";
+  "[transition:translate_220ms_cubic-bezier(0.32,0.72,0,1),width_220ms_cubic-bezier(0.32,0.72,0,1)] motion-reduce:transition-none!";
 const SHELF_SETTLE_MS = 220;
 const SHELF_DRAG_SETTLE_TRANSITION =
   "translate 220ms cubic-bezier(0.32, 0.72, 0, 1)";

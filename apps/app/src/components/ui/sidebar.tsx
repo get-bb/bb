@@ -39,7 +39,7 @@ const SIDEBAR_MOBILE_SHELF_BACKDROP_SETTLE_TRANSITION = `opacity ${SIDEBAR_MOBIL
 const SIDEBAR_MOBILE_WHEEL_SWIPE_OPEN_DISTANCE_PX = 90;
 const SIDEBAR_MOBILE_WHEEL_SWIPE_RESET_MS = 250;
 const SIDEBAR_MOBILE_SHELF_INSET_TRANSITION_CLASS =
-  "max-md:[transition:translate_220ms_cubic-bezier(0.32,0.72,0,1)]";
+  "max-md:[transition:translate_220ms_cubic-bezier(0.32,0.72,0,1)] motion-reduce:transition-none!";
 const SIDEBAR_MOBILE_BACKDROP_TRANSITION_CLASS =
   "[transition:opacity_220ms_cubic-bezier(0.32,0.72,0,1),translate_220ms_cubic-bezier(0.32,0.72,0,1)]";
 const SIDEBAR_GROUP_LABEL_BASE_CLASS =
@@ -1584,9 +1584,7 @@ const SidebarInset = React.forwardRef<
       : "closed"
     : undefined;
   const panelShelfState =
-    isCompactViewport && !openMobile
-      ? secondaryPanelPresentation
-      : undefined;
+    isCompactViewport && !openMobile ? secondaryPanelPresentation : undefined;
 
   return (
     <main
