@@ -78,18 +78,45 @@ const responses: {
     response: { action: "accept", persist: "always" },
   },
   { label: "Decline", response: { action: "decline" } },
-  { label: "Cancel", response: { action: "cancel" } },
 ];
 
 describe("Codex app permission interaction", () => {
-  it("shows the requested app, identity, and permission message", () => {
+  it("shows the branded permission question without secondary helper copy", () => {
     const slot = renderPermission();
 
     expect(slot.getByText(permission.app.name)).toBeTruthy();
-    expect(slot.getByText(permission.app.id)).toBeTruthy();
-    expect(slot.getByText(permission.message)).toBeTruthy();
-    expect(slot.getByText("Low risk")).toBeTruthy();
+    expect(slot.getByRole("heading").textContent).toBe(
+      `Allow Codex to use ${permission.app.name}?`,
+    );
+    expect(slot.getByText(permission.app.name).getAttribute("title")).toBe(
+      permission.app.id,
+    );
+    expect(slot.getByText("Computer Use")).toBeTruthy();
+    expect(slot.queryByText("Low risk")).toBeNull();
+    expect(slot.queryByRole("button", { name: "Cancel" })).toBeNull();
     expect(slot.queryByRole("button", { name: "Stop turn" })).toBeNull();
+  });
+
+  it("places the host icon beside the app name and retains the name without an icon", () => {
+    const iconDataUrl = "data:image/png;base64,aWNvbg==";
+    const slot = renderPayload({
+      ...permission,
+      app: { ...permission.app, iconDataUrl },
+    });
+    const appName = slot.getByText(permission.app.name);
+    expect(appName.querySelector("img")?.getAttribute("src")).toBe(iconDataUrl);
+    expect(slot.getByRole("heading").contains(appName)).toBe(true);
+    slot.unmount();
+    const fallback = renderPayload({
+      ...permission,
+      app: { ...permission.app, iconDataUrl: null },
+    });
+    expect(
+      fallback.getByText(permission.app.name).querySelector("img"),
+    ).toBeNull();
+    expect(
+      fallback.getByRole("button", { name: "Allow for this session" }),
+    ).toBeTruthy();
   });
 
   it("shows the native warning and high risk level", () => {
@@ -110,7 +137,7 @@ describe("Codex app permission interaction", () => {
     expect(slot.queryByText("Low risk")).toBeNull();
   });
 
-  it("does not repeat the permission message used as the host heading", () => {
+  it("renders its own heading when the host title matches the request", () => {
     const slot = renderPermission({
       interaction: {
         id: "pint_codex_permission",
@@ -607,7 +634,7 @@ describe("Codex MCP URL requests", () => {
     );
   });
 
-  it.each(["Decline", "Cancel"])(
+  it.each(["Decline"])(
     "returns %s without opening the URL or stopping the turn",
     (label) => {
       const openUrl = vi.fn(() => true);
@@ -691,7 +718,7 @@ describe("Codex MCP URL requests", () => {
 });
 
 describe("unsupported Codex MCP requests", () => {
-  it.each(["Decline", "Cancel"])(
+  it.each(["Decline"])(
     "explains unsupported schemas and permits %s without acceptance",
     (label) => {
       const submit = vi.fn<PluginPendingInteractionProps["submit"]>(
@@ -715,7 +742,7 @@ describe("unsupported Codex MCP requests", () => {
       expect(
         slot.getByText("Nested object fields are not supported."),
       ).toBeTruthy();
-      expect(slot.getAllByRole("button")).toHaveLength(2);
+      expect(slot.getAllByRole("button")).toHaveLength(1);
       fireEvent.click(slot.getByRole("button", { name: label }));
       expect(submit).toHaveBeenCalledExactlyOnceWith({
         action: label.toLowerCase(),

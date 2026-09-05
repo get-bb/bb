@@ -53,14 +53,16 @@ URL sends acceptance of the external interaction, not a claim that it finished.
 bb does not load the destination automatically or collect its credentials.
 
 The `openai/form` and `openaiForm` modes can use the same standard form subset.
-Other schemas display an explanation with Decline and Cancel instead of an
+Other schemas display an explanation with Decline instead of an
 acceptance button. Invalid Computer Use metadata also takes this path, so it
 cannot fall back to a generic approval that loses its native scope or warning.
 
-When Codex requests access to a macOS app, bb displays the app name, bundle
-identifier, native risk level, and any warning above the composer. Choose
+When Codex requests access to a macOS app, bb displays the app name and native
+icon above the composer. The bundle identifier is available on hover. Native
+high-risk labels and warnings remain visible. Missing icons use a generic
+app symbol. Choose
 Allow for this session or Always allow when Codex offers that scope. Decline
-and Cancel return the corresponding native response. Stop turn interrupts the
+returns the corresponding native response. CLI/SDK callers can also cancel the request. Stop turn interrupts the
 turn instead. Codex owns permission persistence. These prompts are separate
 from macOS Accessibility and Screen Recording permissions.
 

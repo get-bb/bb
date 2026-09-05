@@ -201,6 +201,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Replace the prompt box with a form while the agent waits for an answer",
           "Receive the submitted answer, or a cancellation and its reason",
           "Supply the component that draws the form",
+          "Opt into a custom heading with PluginPendingInteractionRegistration.experimental_hideHeader; bb retains its heading when the form is unavailable or crashes",
         ],
         apiSymbols: ["PluginUi", "PluginPendingInteractionRegistration"],
         firstParty: ["Ask User Question", "Secrets"],

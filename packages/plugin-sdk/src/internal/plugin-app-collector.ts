@@ -594,8 +594,19 @@ export function collectPluginAppRegistrations(
         const kind = "slots.pendingInteraction";
         const id = requireSlotId(kind, registration?.id);
         requireUniqueId(kind, seenIds.pendingInteraction, id);
+        if (
+          registration.experimental_hideHeader !== undefined &&
+          typeof registration.experimental_hideHeader !== "boolean"
+        ) {
+          throw new Error(
+            `${kind}: "experimental_hideHeader" must be a boolean`,
+          );
+        }
         collected.pendingInteractions.push({
           id,
+          ...(registration.experimental_hideHeader !== undefined
+            ? { experimental_hideHeader: registration.experimental_hideHeader }
+            : {}),
           component: requireComponent(kind, registration.component),
         });
       },

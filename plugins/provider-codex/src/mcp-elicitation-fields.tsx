@@ -32,12 +32,16 @@ export function CodexMcpElicitationField({
   return (
     <div className="min-w-0 space-y-2">
       <div className="flex items-center gap-2">
-        <Label id={`${id}-label`} htmlFor={id} className="text-sm">
+        <Label
+          id={`${id}-label`}
+          htmlFor={id}
+          className="text-sm font-semibold"
+        >
           {field.title}
         </Label>
-        <span className="text-xs text-muted-foreground">
-          {field.required ? "Required" : "Optional"}
-        </span>
+        {!field.required ? (
+          <span className="text-xs text-muted-foreground">Optional</span>
+        ) : null}
         {!field.required && value !== undefined ? (
           <Button
             type="button"
@@ -66,12 +70,18 @@ export function CodexMcpElicitationField({
           value={typeof value === "boolean" ? String(value) : ""}
           disabled={disabled}
           onValueChange={(choice) => onChange(choice === "true")}
-          className="flex flex-wrap gap-4"
+          className="gap-0.5"
         >
           {[true, false].map((choice) => (
-            <div key={String(choice)} className="flex items-center gap-2">
+            <div
+              key={String(choice)}
+              className={`flex min-h-8 items-center gap-2.5 rounded-md px-2.5 py-1.5 ${value === choice ? "bg-surface-selected" : "hover:bg-state-hover"}`}
+            >
               <RadioGroupItem value={String(choice)} id={`${id}-${choice}`} />
-              <Label htmlFor={`${id}-${choice}`} className="font-normal">
+              <Label
+                htmlFor={`${id}-${choice}`}
+                className="flex-1 cursor-pointer text-sm font-medium"
+              >
                 {choice ? "Yes" : "No"}
               </Label>
             </div>
@@ -91,15 +101,22 @@ export function CodexMcpElicitationField({
                 )
           }
           disabled={disabled}
+          className="gap-0.5"
           onValueChange={(index) => {
             const option = field.options[Number(index)];
             if (option) onChange(option.value);
           }}
         >
           {field.options.map((option, index) => (
-            <div key={option.value} className="flex items-center gap-2">
+            <div
+              key={option.value}
+              className={`flex min-h-8 items-center gap-2.5 rounded-md px-2.5 py-1.5 ${value === option.value ? "bg-surface-selected" : "hover:bg-state-hover"}`}
+            >
               <RadioGroupItem value={String(index)} id={`${id}-${index}`} />
-              <Label htmlFor={`${id}-${index}`} className="font-normal">
+              <Label
+                htmlFor={`${id}-${index}`}
+                className="flex-1 cursor-pointer text-sm font-medium"
+              >
                 {option.label}
               </Label>
             </div>
@@ -112,12 +129,15 @@ export function CodexMcpElicitationField({
           aria-labelledby={`${id}-label`}
           aria-describedby={describedBy}
           aria-invalid={Boolean(error)}
-          className="space-y-2"
+          className="space-y-0.5"
         >
           {field.options.map((option, index) => {
             const selected = Array.isArray(value) ? value : [];
             return (
-              <div key={option.value} className="flex items-center gap-2">
+              <div
+                key={option.value}
+                className={`flex min-h-8 items-center gap-2.5 rounded-md px-2.5 py-1.5 ${selected.includes(option.value) ? "bg-surface-selected" : "hover:bg-state-hover"}`}
+              >
                 <Checkbox
                   id={`${id}-${index}`}
                   checked={selected.includes(option.value)}
@@ -130,7 +150,10 @@ export function CodexMcpElicitationField({
                     )
                   }
                 />
-                <Label htmlFor={`${id}-${index}`} className="font-normal">
+                <Label
+                  htmlFor={`${id}-${index}`}
+                  className="flex-1 cursor-pointer text-sm font-medium"
+                >
                   {option.label}
                 </Label>
               </div>

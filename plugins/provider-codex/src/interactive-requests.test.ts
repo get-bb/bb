@@ -49,7 +49,11 @@ it("surfaces a native Computer Use app permission request", () => {
       data: {
         kind: "computer_use",
         serverName: "cua_repl",
-        app: { id: "com.apple.calculator", name: "Calculator" },
+        app: {
+          id: "com.apple.calculator",
+          name: "Calculator",
+          iconDataUrl: null,
+        },
         message: computerUseElicitation.params.message,
         scopes: ["session", "always"],
         warning: null,

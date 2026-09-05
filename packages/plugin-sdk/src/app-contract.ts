@@ -673,6 +673,8 @@ export interface PluginPendingInteractionRegistration {
    * uses lowercase letters, digits, and "-" only.
    */
   id: string;
+  /** Render the form's own heading instead of the host title and byline. Omission retains the host heading, as do unavailable or crashed renderers. */
+  experimental_hideHeader?: boolean;
   component: ComponentType<PluginPendingInteractionProps>;
 }
 

@@ -22,7 +22,7 @@ const capturedParams = computerUseElicitation.params;
 const permission: CodexComputerUsePermission = {
   kind: "computer_use",
   serverName: "cua_repl",
-  app: { id: "com.apple.calculator", name: "Calculator" },
+  app: { id: "com.apple.calculator", name: "Calculator", iconDataUrl: null },
   message: capturedParams.message,
   scopes: ["session", "always"],
   warning: null,

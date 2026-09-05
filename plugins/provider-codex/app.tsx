@@ -6,6 +6,8 @@ import {
   type PluginPendingInteractionProps,
 } from "@get-bb/plugin-sdk/app";
 import { Button } from "@bb/shared-ui/button";
+import { Icon } from "@bb/shared-ui/icon";
+import { computerUseIcon } from "./src/computer-use-icon.js";
 import {
   codexMcpElicitationSchema,
   validateCodexMcpFormContent,
@@ -142,7 +144,7 @@ function CodexMcpElicitation({
 
   return (
     <form
-      className="space-y-4"
+      className="flex min-w-0 flex-col gap-3"
       aria-busy={busy}
       noValidate
       onSubmit={(event) => {
@@ -152,42 +154,71 @@ function CodexMcpElicitation({
     >
       {payload ? (
         <>
-          <div className="min-w-0 space-y-1">
-            <p className="break-words text-xs text-muted-foreground">
-              MCP server:{" "}
-              <span className="font-medium text-foreground">
-                {payload.serverName}
-              </span>
-            </p>
-            {payload.message !== interaction.title ? (
-              <p className="whitespace-pre-wrap break-words text-sm text-foreground">
-                {payload.message}
-              </p>
-            ) : null}
-          </div>
           {payload.kind === "computer_use" ? (
-            <div className="min-w-0 space-y-1">
-              <p className="break-words text-sm font-medium text-foreground">
-                {payload.app.name}
+            <>
+              <header className="flex items-center gap-2 text-xs text-muted-foreground">
+                <img
+                  src={computerUseIcon}
+                  alt=""
+                  className="size-5 rounded object-contain"
+                />
+                <span>Computer Use</span>
+              </header>
+              <div className="min-w-0 space-y-2">
+                <h3 className="break-words text-sm font-medium leading-5 text-foreground">
+                  Allow Codex to use{" "}
+                  <span
+                    className="inline-flex items-center gap-1 align-bottom"
+                    title={payload.app.id}
+                  >
+                    {payload.app.iconDataUrl ? (
+                      <img
+                        src={payload.app.iconDataUrl}
+                        alt=""
+                        className="size-5 shrink-0 object-contain"
+                      />
+                    ) : (
+                      <Icon
+                        name="AppWindow"
+                        aria-hidden
+                        className="size-4 shrink-0"
+                      />
+                    )}
+                    {payload.app.name}
+                  </span>
+                  ?
+                </h3>
+                {payload.riskLevel === "high" ? (
+                  <p className="text-xs font-medium text-destructive-text">
+                    High risk
+                  </p>
+                ) : null}
+                {payload.warning !== null ? (
+                  <p className="whitespace-pre-wrap break-words text-sm text-foreground">
+                    {payload.warning}
+                  </p>
+                ) : null}
+              </div>
+            </>
+          ) : (
+            <header className="min-w-0 space-y-0.5">
+              <h3 className="whitespace-pre-wrap break-words text-sm font-semibold text-foreground">
+                {payload.message}
+              </h3>
+              <p className="text-xs text-muted-foreground">
+                <span>{payload.serverName}</span> requests information
               </p>
-              <p className="break-all font-mono text-xs text-muted-foreground">
-                {payload.app.id}
-              </p>
-              <p
-                className={`text-xs font-medium ${payload.riskLevel === "high" ? "text-destructive-text" : "text-muted-foreground"}`}
-              >
-                {payload.riskLevel === "high" ? "High risk" : "Low risk"}
-              </p>
-              {payload.warning !== null ? (
-                <p className="whitespace-pre-wrap break-words text-sm text-foreground">
-                  {payload.warning}
-                </p>
-              ) : null}
-            </div>
-          ) : payload.kind === "form" ? (
+            </header>
+          )}
+          {payload.kind === "form" ? (
             <fieldset
               disabled={busy}
-              className="max-h-[50dvh] min-w-0 space-y-4 overflow-y-auto overscroll-contain"
+              aria-label="Form fields"
+              className="max-h-[50dvh] min-w-0 space-y-4 overflow-y-auto overscroll-contain pb-2 pr-1"
+              style={{
+                maskImage:
+                  "linear-gradient(to bottom, black calc(100% - 8px), transparent)",
+              }}
             >
               {payload.fields.map((field) => (
                 <CodexMcpElicitationField
@@ -219,14 +250,24 @@ function CodexMcpElicitation({
             </fieldset>
           ) : payload.kind === "url" ? (
             <div className="space-y-2">
-              <p className="break-all font-mono text-xs text-foreground">
-                {payload.url}
-              </p>
-              <p className="text-sm text-muted-foreground">
-                {urlOpened
-                  ? "The link was opened. Your response still needs to be sent."
-                  : "Complete any remaining steps on the destination page after opening this link."}
-              </p>
+              <div className="flex min-w-0 items-center gap-3 rounded-md border border-input p-3">
+                <span className="flex size-8 shrink-0 items-center justify-center rounded-md border border-border text-muted-foreground">
+                  <Icon name="Globe" className="size-4" aria-hidden />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="break-all text-sm font-medium text-foreground">
+                    {new URL(payload.url).host}
+                  </p>
+                  <p className="break-all text-xs text-muted-foreground">
+                    {payload.url}
+                  </p>
+                </div>
+                <Icon
+                  name="ArrowUpRight"
+                  className="size-3 shrink-0"
+                  aria-hidden
+                />
+              </div>
               {urlOpened && !busy ? (
                 <UrlLink
                   href={payload.url}
@@ -236,15 +277,40 @@ function CodexMcpElicitation({
                 </UrlLink>
               ) : null}
             </div>
-          ) : (
+          ) : payload.kind === "unsupported" ? (
             <p className="whitespace-pre-wrap break-words text-sm text-muted-foreground">
               {payload.reason}
             </p>
-          )}
-          <div className="flex flex-wrap gap-2">
-            {payload.kind === "computer_use" ? (
-              <>
-                {payload.scopes.includes("session") ? (
+          ) : null}
+          <footer
+            className={`relative flex flex-wrap items-center justify-between gap-2 ${payload.kind === "form" ? "-mt-3 pt-2" : ""}`}
+          >
+            {payload.kind === "computer_use" &&
+            payload.scopes.includes("always") ? (
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                disabled={busy}
+                onClick={() =>
+                  void respond({ action: "accept", persist: "always" })
+                }
+              >
+                Always allow
+              </Button>
+            ) : null}
+            <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                disabled={busy}
+                onClick={() => void respond({ action: "decline" })}
+              >
+                Decline
+              </Button>
+              {payload.kind === "computer_use" ? (
+                payload.scopes.includes("session") ? (
                   <Button
                     type="button"
                     size="sm"
@@ -255,56 +321,26 @@ function CodexMcpElicitation({
                   >
                     Allow for this session
                   </Button>
-                ) : null}
-                {payload.scopes.includes("always") ? (
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    disabled={busy}
-                    onClick={() =>
-                      void respond({ action: "accept", persist: "always" })
-                    }
-                  >
-                    Always allow
-                  </Button>
-                ) : null}
-              </>
-            ) : payload.kind === "form" ? (
-              <Button type="submit" size="sm" disabled={busy}>
-                Submit response
-              </Button>
-            ) : payload.kind === "url" ? (
-              <Button
-                type="button"
-                size="sm"
-                disabled={busy}
-                onClick={openRequestedUrl}
-              >
-                {urlOpened
-                  ? "Retry response"
-                  : `Open ${new URL(payload.url).host}`}
-              </Button>
-            ) : null}
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              disabled={busy}
-              onClick={() => void respond({ action: "decline" })}
-            >
-              Decline
-            </Button>
-            <Button
-              type="button"
-              size="sm"
-              variant="ghost"
-              disabled={busy}
-              onClick={() => void respond({ action: "cancel" })}
-            >
-              Cancel
-            </Button>
-          </div>
+                ) : null
+              ) : payload.kind === "form" ? (
+                <Button type="submit" size="sm" disabled={busy}>
+                  Submit response
+                </Button>
+              ) : payload.kind === "url" ? (
+                <Button
+                  type="button"
+                  size="sm"
+                  disabled={busy}
+                  onClick={openRequestedUrl}
+                >
+                  {urlOpened
+                    ? "Retry response"
+                    : `Open ${new URL(payload.url).host}`}
+                  <Icon name="ArrowUpRight" className="size-3" aria-hidden />
+                </Button>
+              ) : null}
+            </div>
+          </footer>
         </>
       ) : (
         <p className="text-sm text-muted-foreground" role="alert">
@@ -339,6 +375,7 @@ function CodexMcpElicitation({
 export default definePluginApp((app) => {
   app.slots.pendingInteraction({
     id: "mcp-elicitation",
+    experimental_hideHeader: true,
     component: CodexMcpElicitation,
   });
 });

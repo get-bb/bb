@@ -34,6 +34,11 @@ export const codexComputerUsePermissionSchema = z.strictObject({
   app: z.strictObject({
     id: z.string().trim().min(1),
     name: z.string().trim().min(1),
+    iconDataUrl: z
+      .string()
+      .max(200_000)
+      .regex(/^data:image\/png;base64,[A-Za-z0-9+/]+={0,2}$/)
+      .nullable(),
   }),
   scopes: scopesSchema,
   warning: z.string().trim().min(1).nullable(),
@@ -148,6 +153,7 @@ export function normalizeCodexMcpElicitation(input: unknown): {
         app: {
           id: metadata.tool_params.app,
           name: metadata.tool_params_display[0].value,
+          iconDataUrl: null,
         },
         scopes: metadata.persist,
         warning: metadata.subtitle ?? null,

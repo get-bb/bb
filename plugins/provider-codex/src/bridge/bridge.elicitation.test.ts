@@ -15,6 +15,12 @@ import computerUseElicitation from "../fixtures/computer-use-elicitation.json";
 import { CODEX_MCP_ELICITATION_KIND } from "../mcp-elicitation.js";
 import { handleLine } from "./bridge.js";
 
+vi.mock("../native-application-icon.js", () => ({
+  resolveNativeApplicationIconDataUrl: vi
+    .fn()
+    .mockResolvedValue("data:image/png;base64,aWNvbg=="),
+}));
+
 const fakeAppServerPath = fileURLToPath(
   new URL("./fake-codex-app-server.mjs", import.meta.url),
 );
@@ -275,7 +281,11 @@ it.sequential.each(validCases)(
       data: {
         kind: "computer_use",
         serverName: "cua_repl",
-        app: { id: "com.apple.calculator", name: "Calculator" },
+        app: {
+          id: "com.apple.calculator",
+          name: "Calculator",
+          iconDataUrl: "data:image/png;base64,aWNvbg==",
+        },
         message: computerUseElicitation.params.message,
         scopes: ["session", "always"],
         warning: null,
