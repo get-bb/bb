@@ -352,30 +352,35 @@ function BannerShell({
           {toggle}
         </div>
       ) : (
-        <div className="flex min-h-9 flex-wrap items-center gap-2 py-1 pl-3 pr-1.5 @2xl:flex-nowrap">
-          <AttentionDot />
-          <span
-            className="min-w-24 shrink truncate text-sm font-medium text-foreground"
-            title={title ?? label}
-          >
-            {title ?? label}
-          </span>
-          {summary ? (
-            <span
-              className="min-w-20 shrink-[2] truncate font-mono text-xs text-muted-foreground"
-              title={summary}
-            >
-              {summary}
-            </span>
-          ) : null}
-          {sourceThreadLink}
-          <span className="flex-1" />
+        <div className="flex min-h-9 items-center gap-2 py-1 pl-3 pr-1.5">
+          <div className="flex min-w-0 flex-1 items-center gap-2">
+            <AttentionDot />
+            <div className="flex min-w-0 flex-1 items-center gap-2">
+              <span
+                className="min-w-0 truncate text-sm font-medium text-foreground @2xl:shrink"
+                title={title ?? label}
+              >
+                {title ?? label}
+              </span>
+              {summary ? (
+                <span
+                  className="hidden min-w-0 truncate font-mono text-xs text-muted-foreground @2xl:block @2xl:shrink-[2]"
+                  title={summary}
+                >
+                  {summary}
+                </span>
+              ) : null}
+              <div className="hidden min-w-0 @2xl:contents">
+                {sourceThreadLink}
+              </div>
+            </div>
+          </div>
+          <div className="order-2 shrink-0 @2xl:order-3">{toggle}</div>
           {footer ? (
-            <div className="flex shrink-0 items-center gap-1.5">
+            <div className="order-2 hidden shrink-0 items-center gap-1.5 @2xl:flex">
               {footer("strip")}
             </div>
           ) : null}
-          {toggle}
         </div>
       )}
       <div hidden={!isExpanded} className="px-3 pb-3 pt-2.5">

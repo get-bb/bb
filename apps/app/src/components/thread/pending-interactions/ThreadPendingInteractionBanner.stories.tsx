@@ -310,3 +310,18 @@ export function Overview() {
     </StoryCard>
   );
 }
+
+export function CompactPermissions() {
+  return (
+    <div className="mx-auto flex w-full max-w-3xl flex-col gap-6 p-4">
+      <ThreadPendingInteractionBanner
+        interaction={permissionGrant}
+        threadId={permissionGrant.threadId}
+      />
+      <ThreadPendingInteractionBanner
+        interaction={commandApproval}
+        threadId={commandApproval.threadId}
+      />
+    </div>
+  );
+}

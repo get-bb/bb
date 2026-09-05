@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, screen } from "@testing-library/react";
+import { useEffect, useState } from "react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { PluginPendingInteraction } from "@bb/domain";
@@ -56,6 +57,60 @@ afterEach(() => {
 });
 
 describe("PluginPendingInteractionComposer", () => {
+  it("preserves drafts and pauses keyboard listeners while collapsed", () => {
+    const onShortcut = vi.fn();
+    function QuestionRenderer() {
+      const [answer, setAnswer] = useState("");
+      useEffect(() => {
+        window.addEventListener("keydown", onShortcut);
+        return () => window.removeEventListener("keydown", onShortcut);
+      }, []);
+      return (
+        <input
+          aria-label="Answer"
+          value={answer}
+          onChange={(event) => setAnswer(event.target.value)}
+        />
+      );
+    }
+    setPluginSlotRegistrations(
+      "secrets",
+      registrations([{ id: "secret-request", component: QuestionRenderer }]),
+    );
+    renderComposer(
+      <PluginPendingInteractionComposer
+        interaction={interaction}
+        request={{
+          pluginId: "secrets",
+          rendererId: "secret-request",
+          title: interaction.payload.title,
+          data: interaction.payload.data,
+        }}
+        dismissal="cancel"
+      />,
+    );
+    fireEvent.change(screen.getByRole("textbox", { name: "Answer" }), {
+      target: { value: "Keep my draft" },
+    });
+    fireEvent.keyDown(window, { key: "1" });
+    expect(onShortcut).toHaveBeenCalledTimes(1);
+    const toggle = screen.getByRole("button", { name: "Collapse form" });
+    toggle.focus();
+    fireEvent.click(toggle);
+    expect(screen.queryByRole("textbox")).toBeNull();
+    expect(document.activeElement).toBe(
+      screen.getByRole("button", { name: "Expand form" }),
+    );
+    fireEvent.keyDown(window, { key: "2" });
+    expect(onShortcut).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole("button", { name: "Expand form" }));
+    expect(screen.getByRole("textbox").getAttribute("value")).toBe(
+      "Keep my draft",
+    );
+    fireEvent.keyDown(window, { key: "3" });
+    expect(onShortcut).toHaveBeenCalledTimes(2);
+  });
+
   it("mounts only the renderer registered by the interaction's plugin", () => {
     function WrongRenderer() {
       return <div>wrong plugin renderer</div>;
