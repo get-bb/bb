@@ -2,7 +2,7 @@
 
 Milestone 3 of the browser-use proposal: thread-owned scripts, desktop attachment,
 and local headless Chrome on enrolled hosts. Requires the public
-`bb.sdk.experimental_desktopBrowsers` API (SDK 0.4.46 or newer).
+`bb.sdk.experimental_desktopBrowsers` API (SDK 0.4.48 or newer).
 
 The plugin was scaffolded with `bb plugin new browser-automation`. It has server, host,
 CLI, RPC, native agent tools, and a bundled skill. Screenshot tools return JPEG

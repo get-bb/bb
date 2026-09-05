@@ -6,7 +6,7 @@
   "description": "Thread-owned DevBrowser desktop and local headless sessions.",
   "engines": {
     "bb": ">=0.41",
-    "bbPluginSdk": ">=0.4.46"
+    "bbPluginSdk": ">=0.4.48"
   },
   "bb": {
     "name": "Browser Automation",
