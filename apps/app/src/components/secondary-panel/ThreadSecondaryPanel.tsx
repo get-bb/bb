@@ -174,10 +174,7 @@ export interface SecondaryPanelFixedTab {
 }
 
 export interface ThreadSecondaryPanelProps {
-  activeTab:
-    | SecondaryFixedPanelTab
-    | MarketplacePluginDetailPanelTab
-    | null;
+  activeTab: SecondaryFixedPanelTab | MarketplacePluginDetailPanelTab | null;
   canUseGitUi: boolean;
   gitDiffTabStatus?: GitDiffTabStatus;
   onRetryGitDiffEligibility?: () => void;
@@ -257,9 +254,7 @@ export function ThreadSecondaryPanel({
   );
   const activeRenderableTab =
     tabs.find((tab) => tab.tab.id === activeTab?.id) ??
-    (activeTab === null && fixedTabs.length === 0
-      ? visibleTabs[0]
-      : undefined);
+    (activeTab === null && fixedTabs.length === 0 ? visibleTabs[0] : undefined);
   const hasActiveRenderableTab = activeRenderableTab !== undefined;
   const hidePanelIconName = RIGHT_PANEL_TOGGLE_ICON_NAME;
   const conversationCollapseControl =
@@ -311,7 +306,7 @@ export function ThreadSecondaryPanel({
   );
   const hostLayout = useContext(SecondaryPanelHostLayoutContext);
   const handlePanelCollapse = useCallback(() => {
-    if (hostLayout?.isSuppressed) {
+    if (!isOpen || hostLayout?.isSuppressed) {
       return;
     }
     if (!hasPanelExpandedRef.current) {
@@ -319,7 +314,7 @@ export function ThreadSecondaryPanel({
     }
     hasPanelExpandedRef.current = false;
     onCollapse();
-  }, [hostLayout?.isSuppressed, onCollapse]);
+  }, [hostLayout?.isSuppressed, isOpen, onCollapse]);
   const handlePanelTransitionEnd = useCallback(
     (event: TransitionEvent<HTMLElement>) => {
       if (

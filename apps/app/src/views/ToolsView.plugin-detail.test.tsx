@@ -680,6 +680,7 @@ describe("BB Official plugin detail routing", () => {
         <Routes>
           <Route path="/extensions/plugins/*" element={<RoutedToolsView />} />
         </Routes>
+        <HistoryBackButton />
       </MemoryRouter>,
       { wrapper: QueryClientWrapper },
     );
@@ -723,6 +724,13 @@ describe("BB Official plugin detail routing", () => {
     expect(screen.getByRole("textbox", { name: "Search plugins" })).toBe(
       search,
     );
+
+    fireEvent.click(screen.getByRole("button", { name: "Browser back" }));
+    await waitFor(() => {
+      expect(screen.getByTestId("route-path").textContent).toBe(
+        "/extensions/plugins/github",
+      );
+    });
   });
 
   it.each([
