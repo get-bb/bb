@@ -19,9 +19,11 @@
     (`default`, `nord`, `dracula`, `solarized`, `gruvbox`, `catppuccin`), custom,
     or plugin-contributed theme. Without the flag it preserves the favicon
     color; with the flag it updates the complete appearance selection.
-  - `bb theme show [--css]` — print the active palette. For a custom theme,
-    `--css` prints its CSS. For a built-in theme, it reports that BB bundles
-    the CSS.
+  - `bb theme show [id] [--css]` — print the active palette, or resolve a
+    built-in, custom, or plugin theme by id without activating it. For a custom
+    or plugin theme, `--css` prints its CSS. For a built-in theme, it reports
+    that BB bundles the CSS. Settings → Appearance previews a palette live on
+    hover without saving; this command is the CLI counterpart.
   - `bb theme reset` — back to `default` while preserving the favicon color.
   - `bb theme favicon set <color>` — set the favicon color while preserving the
     active theme. Colors: `default`, `red`, `orange`, `yellow`, `green`, `teal`,

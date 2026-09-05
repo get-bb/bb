@@ -215,29 +215,39 @@ export function registerSystemRoutes(
     return context.json(getExperiments(deps.db));
   });
 
-  put(routes.appearance, async (context, payload) => {
-    const { themeId } = payload;
-    const pluginCss = await pluginService.readThemeCss(themeId);
-    if (!isBuiltInThemeId(themeId) && pluginCss === null) {
-      if (!customThemeNameSchema.safeParse(themeId).success) {
-        throw new ApiError(
-          400,
-          "invalid_request",
-          `Invalid theme id '${themeId}'.`,
-        );
-      }
-      if (readCustomThemeCss(themeRoot, themeId) === null) {
-        throw new ApiError(
-          404,
-          "theme_not_found",
-          `Custom theme '${themeId}' not found. Create ${resolveCustomThemeCssPath(themeRoot, themeId)} first.`,
-        );
-      }
+  async function requireKnownTheme(themeId: string): Promise<void> {
+    if (isBuiltInThemeId(themeId)) return;
+    if ((await pluginService.readThemeCss(themeId)) !== null) return;
+    if (!customThemeNameSchema.safeParse(themeId).success) {
+      throw new ApiError(
+        400,
+        "invalid_request",
+        `Invalid theme id '${themeId}'.`,
+      );
     }
-    const { faviconColor } = payload;
+    if (readCustomThemeCss(themeRoot, themeId) === null) {
+      throw new ApiError(
+        404,
+        "theme_not_found",
+        `Custom theme '${themeId}' not found. Create ${resolveCustomThemeCssPath(themeRoot, themeId)} first.`,
+      );
+    }
+  }
+
+  put(routes.appearance, async (context, payload) => {
+    const { themeId, faviconColor } = payload;
+    await requireKnownTheme(themeId);
     setStoredAppearance(deps.db, { themeId, faviconColor });
     deps.hub.notifySystem(["config-changed"]);
     return context.json(await resolveSelectedTheme(themeId, faviconColor));
+  });
+
+  get(routes.resolveTheme, async (context) => {
+    const themeId = context.req.param("id");
+    await requireKnownTheme(themeId);
+    return context.json(
+      await resolveSelectedTheme(themeId, getStoredFaviconColor(deps.db)),
+    );
   });
 
   get(routes.themes, async (context) =>

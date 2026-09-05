@@ -44,6 +44,7 @@ import {
   allThreadStorageLocationsQueryKeyPrefix,
   allThreadStoragePathsQueryKeyPrefix,
   allSystemExecutionOptionsQueryKeyPrefix,
+  allSystemThemesQueryKeyPrefix,
   allThreadQueryKeyPrefix,
   allTerminalsQueryKeyPrefix,
   environmentDiffFilesQueryKeyPrefix,
@@ -1114,7 +1115,7 @@ function dirtyHostAvailabilityQueries(): QueryKey[] {
 function dirtySystemConfigQueries({ queryClient }: RealtimeDirtyContext): void {
   invalidateQueryKeysWithoutCancelingActiveFetches({
     queryClient,
-    queryKeys: [systemConfigQueryKey()],
+    queryKeys: [systemConfigQueryKey(), allSystemThemesQueryKeyPrefix()],
   });
 }
 
