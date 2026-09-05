@@ -8,12 +8,8 @@ function truncationSuffix(dropped: number): string {
   return `\n…[${dropped.toLocaleString("en-US")}${TRUNCATION_SUFFIX_TAIL}`;
 }
 
-function isAlreadyTruncated(value: string): boolean {
-  return value.endsWith(TRUNCATION_SUFFIX_TAIL);
-}
-
 function truncateString(value: string, max: number): string {
-  if (value.length <= max || isAlreadyTruncated(value)) {
+  if (value.length <= max || value.endsWith(TRUNCATION_SUFFIX_TAIL)) {
     return value;
   }
   return `${value.slice(0, max)}${truncationSuffix(value.length - max)}`;
