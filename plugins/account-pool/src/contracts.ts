@@ -294,6 +294,13 @@ export const accountPriorityInputSchema = z
   .object({ accountId: z.string().uuid(), priority: z.number().int() })
   .strict();
 
+export const accountReorderInputSchema = z
+  .object({
+    provider: providerSchema,
+    accountIds: z.array(z.string().uuid()).min(1),
+  })
+  .strict();
+
 export const routingSetInputSchema = z
   .object({ provider: providerSchema, enabled: z.boolean() })
   .strict();

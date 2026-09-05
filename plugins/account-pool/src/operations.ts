@@ -187,6 +187,11 @@ export class PoolOperations {
     return account;
   }
 
+  async reorder(provider: PoolProvider, accountIds: string[]): Promise<void> {
+    await this.accounts.reorder(provider, accountIds);
+    this.onAccountsChanged();
+  }
+
   async refreshUsage(id: string): Promise<AccountSummary | null> {
     if ((await this.accounts.get(id)) === null) return null;
     await this.hub.refreshUsage(id, true);
