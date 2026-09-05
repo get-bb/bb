@@ -265,6 +265,7 @@ export function createCodexAdapter(options: {
       return {
         family: parsed.family,
         affinityId: parsed.affinityId,
+        parentAffinityId: parsed.parentAffinityId,
         forAccount: () => body,
       };
     },

@@ -299,6 +299,10 @@ export class AccountPoolHub {
       hostId === null || parsed.affinityId === null
         ? null
         : JSON.stringify([adapter.provider, hostId, parsed.affinityId]);
+    const parentAffinityKey =
+      affinityKey === null || parsed.parentAffinityId === null
+        ? null
+        : JSON.stringify([adapter.provider, hostId, parsed.parentAffinityId]);
     try {
       while (attempted.size < candidateIds.size) {
         signal.throwIfAborted();
@@ -308,6 +312,7 @@ export class AccountPoolHub {
           attempted,
           family,
           affinityKey,
+          parentAffinityKey,
           previousAccountId,
           signal,
         );
@@ -585,6 +590,7 @@ export class AccountPoolHub {
     attempted: ReadonlySet<string>,
     family: ModelFamily,
     affinityKey: string | null,
+    parentAffinityKey: string | null,
     previousAccountId: string | null,
     signal: AbortSignal,
   ): Promise<SelectedAccount | null> {
@@ -624,10 +630,22 @@ export class AccountPoolHub {
       binding !== undefined && now - binding.lastUsedAt < AFFINITY_IDLE_TTL_MS
         ? eligible.find(({ account }) => account.id === binding.accountId)
         : undefined;
+    let inherited: SelectedAccount | undefined;
+    if (bound === undefined && parentAffinityKey !== null) {
+      const parent = this.affinityBindings.get(parentAffinityKey);
+      if (
+        parent !== undefined &&
+        now - parent.lastUsedAt < AFFINITY_IDLE_TTL_MS
+      ) {
+        inherited = candidates.find(
+          ({ account }) => account.id === parent.accountId,
+        );
+      }
+    }
     const selected =
       bound !== undefined && candidates.includes(bound)
         ? bound
-        : (candidates[0] ?? null);
+        : (inherited ?? candidates[0] ?? null);
     if (
       affinityKey !== null &&
       selected !== null &&

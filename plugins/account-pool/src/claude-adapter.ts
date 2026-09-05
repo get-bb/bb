@@ -78,6 +78,7 @@ export function createClaudeAdapter(options: {
       return {
         family: parsed.family,
         affinityId: parsed.affinityId,
+        parentAffinityId: parsed.parentAffinityId,
         forAccount: (account) => parsed.forAccount(account.accountUuid),
       };
     },

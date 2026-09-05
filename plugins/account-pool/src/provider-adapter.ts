@@ -59,6 +59,7 @@ export interface ProviderAdapter {
   ): {
     family: ModelFamily;
     affinityId: string | null;
+    parentAffinityId: string | null;
     forAccount: (account: Account) => Uint8Array;
   };
   upstreamUrl(request: Request, settings: HubSettings): URL;

@@ -19,17 +19,16 @@ const ACCOUNT_COMPONENT =
   /(^|_)account_([0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12})(?=_|$)/iu;
 const SESSION_COMPONENT =
   /(?:^|_)session_([0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12})$/iu;
-const codexRequestSchema = z.object({ prompt_cache_key: z.string().nullish() });
 
 export interface ParsedRequestBody {
   family: ModelFamily;
   affinityId: string | null;
+  parentAffinityId: string | null;
   forAccount: (accountUuid: string | null) => Uint8Array;
 }
 
-function affinityIdentifier(value: string | null | undefined): string | null {
-  return value !== undefined &&
-    value !== null &&
+function affinityIdentifier(value: unknown): string | null {
+  return typeof value === "string" &&
     value.length <= 512 &&
     value.trim().length > 0 &&
     !/[\u0000-\u001f\u007f-\u009f]/u.test(value)
@@ -39,6 +38,7 @@ function affinityIdentifier(value: string | null | undefined): string | null {
 
 function parseUserId(userId: string): {
   sessionId: string | null;
+  parentSessionId: string | null;
   forAccount: (accountUuid: string) => string | null;
 } {
   try {
@@ -47,11 +47,16 @@ function parseUserId(userId: string): {
       const originalAccount = accountUuidSchema.safeParse(
         encoded.data.account_uuid,
       );
+      const sessionId = affinityIdentifier(encoded.data.session_id);
+      const parentSessionId = affinityIdentifier(
+        encoded.data.parent_session_id,
+      );
       return {
-        sessionId:
-          typeof encoded.data.session_id === "string"
-            ? affinityIdentifier(encoded.data.session_id)
-            : null,
+        sessionId,
+        parentSessionId:
+          sessionId === null || parentSessionId === sessionId
+            ? null
+            : parentSessionId,
         forAccount(accountUuid) {
           if (
             !originalAccount.success ||
@@ -66,6 +71,7 @@ function parseUserId(userId: string): {
   } catch {}
   return {
     sessionId: affinityIdentifier(SESSION_COMPONENT.exec(userId)?.[1]),
+    parentSessionId: null,
     forAccount(accountUuid) {
       if (!ACCOUNT_COMPONENT.test(userId)) return null;
       const rewritten = userId.replace(
@@ -84,7 +90,12 @@ export function parseRequestBody(body: Uint8Array): ParsedRequestBody {
       JSON.parse(new TextDecoder().decode(body)),
     );
     if (!parsed.success)
-      return { family: "other", affinityId: null, forAccount: () => original };
+      return {
+        family: "other",
+        affinityId: null,
+        parentAffinityId: null,
+        forAccount: () => original,
+      };
     const request = parsed.data;
     const userId = request.metadata?.user_id;
     const user =
@@ -95,6 +106,10 @@ export function parseRequestBody(body: Uint8Array): ParsedRequestBody {
         user?.sessionId === undefined || user.sessionId === null
           ? null
           : `session:${user.sessionId}`,
+      parentAffinityId:
+        user?.parentSessionId === undefined || user.parentSessionId === null
+          ? null
+          : `session:${user.parentSessionId}`,
       forAccount(accountUuid) {
         if (accountUuid === null || user === null) return original;
         const rewritten = user.forAccount(accountUuid);
@@ -108,7 +123,24 @@ export function parseRequestBody(body: Uint8Array): ParsedRequestBody {
       },
     };
   } catch {
-    return { family: "other", affinityId: null, forAccount: () => original };
+    return {
+      family: "other",
+      affinityId: null,
+      parentAffinityId: null,
+      forAccount: () => original,
+    };
+  }
+}
+
+function parseMetadata(
+  value: string | null,
+): z.infer<typeof encodedUserSchema> | null {
+  if (value === null) return null;
+  try {
+    const parsed = encodedUserSchema.safeParse(JSON.parse(value));
+    return parsed.success ? parsed.data : null;
+  } catch {
+    return null;
   }
 }
 
@@ -116,21 +148,49 @@ export function parseCodexRequestBody(
   body: Uint8Array,
   headers: Headers,
 ): ParsedRequestBody {
-  let affinityId: string | null = null;
+  const request = parseMetadata(new TextDecoder().decode(body));
+  const parsedClient = encodedUserSchema.safeParse(request?.client_metadata);
+  const client = parsedClient.success ? parsedClient.data : null;
+  const headerTurn = parseMetadata(headers.get("x-codex-turn-metadata"));
+  const bodyTurn = parseMetadata(
+    typeof client?.["x-codex-turn-metadata"] === "string"
+      ? client["x-codex-turn-metadata"]
+      : null,
+  );
   const sessionId =
+    affinityIdentifier(headers.get("thread-id")) ??
+    affinityIdentifier(headerTurn?.thread_id) ??
+    affinityIdentifier(client?.thread_id) ??
+    affinityIdentifier(bodyTurn?.thread_id) ??
     affinityIdentifier(headers.get("session-id")) ??
-    affinityIdentifier(headers.get("session_id"));
-  if (sessionId !== null) affinityId = `session:${sessionId}`;
-  else {
-    try {
-      const parsed = codexRequestSchema.safeParse(
-        JSON.parse(new TextDecoder().decode(body)),
-      );
-      const cacheKey = parsed.success
-        ? affinityIdentifier(parsed.data.prompt_cache_key)
-        : null;
-      if (cacheKey !== null) affinityId = `cache:${cacheKey}`;
-    } catch {}
-  }
-  return { family: "other", affinityId, forAccount: () => body };
+    affinityIdentifier(headers.get("session_id")) ??
+    affinityIdentifier(headerTurn?.session_id) ??
+    affinityIdentifier(client?.session_id) ??
+    affinityIdentifier(bodyTurn?.session_id);
+  const cacheKey = affinityIdentifier(request?.prompt_cache_key);
+  const parentSessionId =
+    sessionId === null
+      ? null
+      : ([
+          headerTurn?.forked_from_thread_id,
+          bodyTurn?.forked_from_thread_id,
+          headers.get("x-codex-parent-thread-id"),
+          headerTurn?.parent_thread_id,
+          client?.["x-codex-parent-thread-id"],
+          bodyTurn?.parent_thread_id,
+        ]
+          .map(affinityIdentifier)
+          .find((value) => value !== null && value !== sessionId) ?? null);
+  return {
+    family: "other",
+    affinityId:
+      sessionId !== null
+        ? `session:${sessionId}`
+        : cacheKey !== null
+          ? `cache:${cacheKey}`
+          : null,
+    parentAffinityId:
+      parentSessionId === null ? null : `session:${parentSessionId}`,
+    forAccount: () => body,
+  };
 }
