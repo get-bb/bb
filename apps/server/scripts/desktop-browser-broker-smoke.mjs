@@ -31,7 +31,7 @@ const config = z
     JSON.parse(await readFile(z.string().parse(process.argv.at(-1)), "utf8")),
   );
 const steps = [];
-const credentials = /* @__PURE__ */ new Set();
+const credentials = new Set();
 function redact(text) {
   for (const credential of credentials)
     text = text.replaceAll(credential, "<credential>");
@@ -42,7 +42,7 @@ async function run(binary, args, env) {
     const result = await execute(binary, args, {
       cwd: config.artifacts,
       env,
-      timeout: 3e4,
+      timeout: 30_000,
       maxBuffer: 1024 * 1024,
     });
     return result.stdout;
@@ -60,7 +60,7 @@ ${parsed.data.stderr ?? ""}`
     );
   }
 }
-async function until(probe, label, timeoutMs = 12e3) {
+async function until(probe, label, timeoutMs = 12_000) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     const result = await probe();
@@ -70,7 +70,7 @@ async function until(probe, label, timeoutMs = 12e3) {
   throw new Error(`Timed out: ${label}`);
 }
 async function refused(endpoint) {
-  const socket = new WebSocket(endpoint, { handshakeTimeout: 2e3 });
+  const socket = new WebSocket(endpoint, { handshakeTimeout: 2_000 });
   const outcome = await new Promise((resolve) => {
     socket.once("open", () => resolve(false));
     socket.once("error", () => resolve(true));

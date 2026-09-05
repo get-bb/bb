@@ -146,15 +146,14 @@ export default async function browserAutomationPlugin(bb: BbPluginApi) {
   }
   for (const key of await bb.storage.kv.list("sessions/")) {
     const parsed = recordSchema.safeParse(await bb.storage.kv.get(key));
-    if (
-      parsed.success &&
-      (parsed.data.session.state !== "closed" || parsed.data.cleanupPending)
-    )
-      await finish(parsed.data, "closed").catch(() =>
-        bb.log.warn(
-          "Browser Automation restart cleanup will need the owning desktop to reconnect",
-        ),
-      );
+    if (!parsed.success) continue;
+    if (parsed.data.session.state === "closed" && !parsed.data.cleanupPending)
+      continue;
+    await finish(parsed.data, "closed").catch(() =>
+      bb.log.warn(
+        "Browser Automation restart cleanup will need the owning desktop to reconnect",
+      ),
+    );
   }
   async function open(
     input: z.output<typeof rpcContract.open.input>,
@@ -504,17 +503,17 @@ export default async function browserAutomationPlugin(bb: BbPluginApi) {
   const timer = setInterval(() => {
     for (const record of active.values()) {
       if (
-        Date.now() >= record.session.expiresAt ||
-        (!busy.get(record.session.id) &&
-          Date.now() - record.lastUsed >= idleTimeoutMs)
-      ) {
-        const work = finish(record, "closed").then(
-          () => {},
-          () => {},
-        );
-        pending.add(work);
-        void work.finally(() => pending.delete(work));
-      }
+        Date.now() < record.session.expiresAt &&
+        (busy.get(record.session.id) ||
+          Date.now() - record.lastUsed < idleTimeoutMs)
+      )
+        continue;
+      const work = finish(record, "closed").then(
+        () => {},
+        () => {},
+      );
+      pending.add(work);
+      void work.finally(() => pending.delete(work));
     }
   }, 1000);
   timer.unref();

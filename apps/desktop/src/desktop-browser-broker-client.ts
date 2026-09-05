@@ -10,6 +10,28 @@ import {
 } from "@bb/host-daemon-contract";
 import type { DesktopBrowserBroker } from "./desktop-browser-broker.js";
 
+async function readBrokerDescriptor(dataDir: string) {
+  const file = await open(
+    join(dataDir, DESKTOP_BROWSER_BROKER_DESCRIPTOR_FILE),
+    constants.O_RDONLY | constants.O_NOFOLLOW,
+  );
+  try {
+    const stat = await file.stat();
+    if (
+      !stat.isFile() ||
+      stat.size > 16384 ||
+      (stat.mode & 0o077) !== 0 ||
+      (process.getuid !== undefined && stat.uid !== process.getuid())
+    )
+      throw new Error("Invalid desktop broker descriptor permissions");
+    return desktopBrowserBrokerDescriptorSchema.parse(
+      JSON.parse(await file.readFile("utf8")),
+    );
+  } finally {
+    await file.close();
+  }
+}
+
 export function createDesktopBrowserBrokerClient(args: {
   broker: DesktopBrowserBroker;
   dataDir: string;
@@ -50,27 +72,7 @@ export function createDesktopBrowserBrokerClient(args: {
       )
         args.broker.resetServer();
       registryServerOrigin = serverOrigin;
-      const file = await open(
-        join(args.dataDir, DESKTOP_BROWSER_BROKER_DESCRIPTOR_FILE),
-        constants.O_RDONLY | constants.O_NOFOLLOW,
-      );
-      const descriptor = await (async () => {
-        try {
-          const stat = await file.stat();
-          if (
-            !stat.isFile() ||
-            stat.size > 16384 ||
-            (stat.mode & 0o077) !== 0 ||
-            (process.getuid !== undefined && stat.uid !== process.getuid())
-          )
-            throw new Error("Invalid desktop broker descriptor permissions");
-          return desktopBrowserBrokerDescriptorSchema.parse(
-            JSON.parse(await file.readFile("utf8")),
-          );
-        } finally {
-          await file.close();
-        }
-      })();
+      const descriptor = await readBrokerDescriptor(args.dataDir);
       if (stopped || generation !== currentGeneration) return;
       if (new URL(args.getServerUrl()).origin !== serverOrigin) {
         schedule();
@@ -106,7 +108,7 @@ export function createDesktopBrowserBrokerClient(args: {
         if (
           stopped ||
           generation !== currentGeneration ||
-          new URL(args.getServerUrl()).origin !== new URL(serverUrl).origin
+          new URL(args.getServerUrl()).origin !== serverOrigin
         ) {
           connection.terminate();
           return;

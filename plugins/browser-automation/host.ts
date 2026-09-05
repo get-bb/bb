@@ -32,13 +32,14 @@ export function createHostEntry(
     }
   >();
   let resolved: ResolvedRuntime | null = null;
-  let job: {
+  interface RuntimePreparation {
     promise: Promise<ResolvedRuntime>;
     abort: AbortController;
     waiters: number;
     detail: string;
     abandonTimer: NodeJS.Timeout | null;
-  } | null = null;
+  }
+  let job: RuntimePreparation | null = null;
   async function attachRuntime(
     context: ExperimentalHostRpcContext,
   ): Promise<{ promise: Promise<ResolvedRuntime>; detach: () => void }> {
@@ -57,9 +58,9 @@ export function createHostEntry(
         abort,
         waiters: 0,
         detail: "preparing the DevBrowser runtime",
-        abandonTimer: null as NodeJS.Timeout | null,
       };
-      const current = Object.assign(state, {
+      const current: RuntimePreparation = Object.assign(state, {
+        abandonTimer: null,
         promise: resolver({
           dataDir: context.experimental_paths.dataDir,
           signal: AbortSignal.any([
@@ -137,21 +138,18 @@ export function createHostEntry(
         const { promise, detach } = await attachRuntime(context);
         try {
           const outcome = await Promise.race([
-            promise.then((runtime) => ({ runtime })),
-            new Promise<{ runtime: null }>((resolve) => {
-              const timeout = setTimeout(
-                () => resolve({ runtime: null }),
-                preparePollMs,
-              );
+            promise,
+            new Promise<null>((resolve) => {
+              const timeout = setTimeout(() => resolve(null), preparePollMs);
               timeout.unref();
               promise.finally(() => clearTimeout(timeout)).catch(() => {});
             }),
           ]);
-          if (outcome.runtime)
+          if (outcome)
             return {
               status: "ready",
-              version: outcome.runtime.version,
-              source: outcome.runtime.source,
+              version: outcome.version,
+              source: outcome.source,
             };
           return {
             status: "installing",
