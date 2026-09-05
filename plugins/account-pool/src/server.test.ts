@@ -21,7 +21,7 @@ import type {
   ImportedClaudeCredentials,
   ImportedCodexCredentials,
 } from "./credentials.js";
-import { HubTokenStore } from "./store.js";
+import { AccountStore, HubTokenStore } from "./store.js";
 import {
   createAccountPoolPlugin,
   helloResponse,
@@ -2405,12 +2405,12 @@ describe("Account Pool plugin", () => {
   });
 
   it("serializes refresh, writes new tokens with 0600 mode, and uses them", async () => {
+    let now = 1_800_000_000_000;
     let refreshCalls = 0;
     const authorizations: Array<string | undefined> = [];
     const upstream = await startUpstream(async (request, response) => {
       if (request.url === "/oauth/token") {
         refreshCalls += 1;
-        await new Promise((resolve) => setTimeout(resolve, 25));
         response.writeHead(200, { "content-type": "application/json" });
         response.end(
           JSON.stringify({
@@ -2431,19 +2431,53 @@ describe("Account Pool plugin", () => {
       upstreamUrl: upstream.url,
       source: "import",
       options: {
+        now: () => now,
         importCredentials: async () =>
-          importedCredentials({ expiresAt: Date.now() + 1_000 }),
+          importedCredentials({ expiresAt: now + 10 * 60 * 1_000 }),
         refreshUrl: `${upstream.url}/oauth/token`,
       },
     });
+    expect(refreshCalls).toBe(0);
+    now += 6 * 60 * 1_000;
+    let releaseSecretReads = () => {};
+    const secretReadsReleased = new Promise<void>((resolve) => {
+      releaseSecretReads = resolve;
+    });
+    const readSecret = AccountStore.prototype.readSecret;
+    const pendingSecretReads: ReturnType<typeof readSecret>[] = [];
+    const readSecretSpy = vi
+      .spyOn(AccountStore.prototype, "readSecret")
+      .mockImplementation(async function (this: AccountStore, accountId) {
+        const reading = readSecret.call(this, accountId);
+        pendingSecretReads.push(reading);
+        const secret = await reading;
+        await secretReadsReleased;
+        return secret;
+      });
+    const recordUsed = vi.spyOn(AccountStore.prototype, "recordUsed");
     const requests = [1, 2].map(() =>
       fixture.host.harness.behavior.fetchHttp("POST", "/v1/messages", {
         headers: authHeaders(fixture.key),
         body: "{}",
       }),
     );
-    const responses = await Promise.all(requests);
-    await Promise.all(responses.map((response) => response.text()));
+    try {
+      await vi.waitFor(() => {
+        expect(recordUsed).toHaveBeenCalledTimes(2);
+      });
+      await Promise.all(recordUsed.mock.results.map((result) => result.value));
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      await Promise.all(pendingSecretReads);
+      releaseSecretReads();
+      const responses = await Promise.all(requests);
+      expect(responses.map((response) => response.status)).toEqual([200, 200]);
+      await Promise.all(responses.map((response) => response.text()));
+    } finally {
+      releaseSecretReads();
+      await Promise.allSettled(requests);
+      readSecretSpy.mockRestore();
+      recordUsed.mockRestore();
+    }
     expect(refreshCalls).toBe(1);
     expect(authorizations).toEqual(["Bearer oauth-new", "Bearer oauth-new"]);
     const secretPath = path.join(
