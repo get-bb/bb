@@ -423,16 +423,18 @@ export class AccountPoolHub {
   ): Promise<AccountSecret> {
     const existing = this.refreshes.get(account.id);
     if (existing !== undefined) return existing;
-    const secret = await this.options.accounts.readSecret(account.id);
-    const refresh = adapter
-      .refreshSecret({
-        account,
-        secret,
-        accounts: this.options.accounts,
-        quotas: this.options.quotas,
-        fetch: this.options.fetch,
-        now: this.options.now,
-      })
+    const refresh = this.options.accounts
+      .readSecret(account.id)
+      .then((secret) =>
+        adapter.refreshSecret({
+          account,
+          secret,
+          accounts: this.options.accounts,
+          quotas: this.options.quotas,
+          fetch: this.options.fetch,
+          now: this.options.now,
+        }),
+      )
       .then((result) => {
         if (result.refreshed) {
           const quota = this.options.quotas.get(account.id);

@@ -2499,6 +2499,103 @@ describe("Account Pool plugin", () => {
     expect((await fs.stat(secretPath)).mode & 0o777).toBe(0o600);
   });
 
+  it("refreshes unrelated accounts independently", async () => {
+    let now = 1_800_000_000_000;
+    let releaseFirstRefresh = () => {};
+    const firstRefreshReleased = new Promise<void>((resolve) => {
+      releaseFirstRefresh = resolve;
+    });
+    const refreshes: string[] = [];
+    const authorizations: Array<string | undefined> = [];
+    const upstream = await startUpstream(async (request, response) => {
+      if (request.url === "/oauth/token") {
+        const { refresh_token } = z
+          .object({ refresh_token: z.string() })
+          .parse(JSON.parse((await readRequestBody(request)).toString()));
+        refreshes.push(refresh_token);
+        if (refresh_token === "refresh-1") await firstRefreshReleased;
+        response.writeHead(200, { "content-type": "application/json" });
+        response.end(
+          JSON.stringify({
+            access_token: `new-${refresh_token}`,
+            refresh_token: `next-${refresh_token}`,
+            expires_in: 3600,
+          }),
+        );
+        return;
+      }
+      authorizations.push(request.headers.authorization);
+      await readRequestBody(request);
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end("{}");
+    });
+    cleanups.push(upstream.close);
+    let imported = 0;
+    const fixture = await createFixture({
+      upstreamUrl: upstream.url,
+      source: "import",
+      options: {
+        now: () => now,
+        importCredentials: async () => {
+          imported += 1;
+          return importedCredentials({
+            accessToken: `access-${imported}`,
+            refreshToken: `refresh-${imported}`,
+            email: `account-${imported}@example.com`,
+            expiresAt: now + 10 * 60 * 1_000,
+          });
+        },
+        refreshUrl: `${upstream.url}/oauth/token`,
+      },
+    });
+    const second = accountSchema.parse(
+      await fixture.host.harness.behavior.callRpc("account.add", {
+        provider: "claude",
+        source: { kind: "import" },
+        label: "second",
+        priority: 200,
+      }),
+    );
+    expect(refreshes).toEqual([]);
+    now += 6 * 60 * 1_000;
+    const requests: Promise<Response>[] = [];
+    try {
+      requests.push(
+        fixture.host.harness.behavior.fetchHttp("POST", "/v1/messages", {
+          headers: authHeaders(fixture.key),
+          body: "{}",
+        }),
+      );
+      await vi.waitFor(() => {
+        expect(refreshes).toEqual(["refresh-1"]);
+      });
+      await fixture.host.harness.behavior.callRpc("account.setPriority", {
+        accountId: second.id,
+        priority: 0,
+      });
+      requests.push(
+        fixture.host.harness.behavior.fetchHttp("POST", "/v1/messages", {
+          headers: authHeaders(fixture.key),
+          body: "{}",
+        }),
+      );
+      await vi.waitFor(() => {
+        expect(authorizations).toEqual(["Bearer new-refresh-2"]);
+      });
+    } finally {
+      releaseFirstRefresh();
+      await Promise.allSettled(requests);
+    }
+    const responses = await Promise.all(requests);
+    expect(responses.map((response) => response.status)).toEqual([200, 200]);
+    await Promise.all(responses.map((response) => response.text()));
+    expect(refreshes).toEqual(["refresh-1", "refresh-2"]);
+    expect(authorizations).toEqual([
+      "Bearer new-refresh-2",
+      "Bearer new-refresh-1",
+    ]);
+  });
+
   it("marks refresh and upstream authorization failures as account errors", async () => {
     const upstream = await startUpstream((request, response) => {
       if (request.url === "/oauth/token") {
