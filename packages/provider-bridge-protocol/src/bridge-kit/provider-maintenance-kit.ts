@@ -126,6 +126,67 @@ export function npmGlobalInstallCommand(
   return { command, args, displayCommand: formatCommand(command, args) };
 }
 
+export function bunCommand(): string {
+  return "bun";
+}
+
+export function bunGlobalInstallCommand(
+  npmPackage: string,
+): ProviderInstallationCommand {
+  const command = bunCommand();
+  const args = ["add", "-g", `${npmPackage}@latest`];
+  return { command, args, displayCommand: formatCommand(command, args) };
+}
+
+export function isBunManagedPi(executablePath: string | null): boolean {
+  try {
+    // Check executable path / realpath / shim content for bun marker
+    if (executablePath !== null) {
+      if (executablePath.includes(".bun")) return true;
+      try {
+        const fs = require("node:fs") as typeof import("node:fs");
+        const real = (fs as unknown as { realpathSync?: (p: string) => string }).realpathSync?.(executablePath);
+        if (real !== undefined && real.includes(".bun")) return true;
+      } catch {}
+      try {
+        const fs = require("node:fs") as typeof import("node:fs");
+        const content = (fs as unknown as { readFileSync?: (p: string, o: string) => string }).readFileSync?.(executablePath, "utf8");
+        if (content !== undefined && content.includes(".bun")) return true;
+      } catch {}
+    }
+    // Fallback: bun global pi package exists
+    try {
+      const fs = require("node:fs") as typeof import("node:fs");
+      const homedir = process.env.HOME ?? process.env.USERPROFILE ?? "";
+      if (homedir) {
+        const bunPkg = require("node:path").join(
+          homedir,
+          ".bun",
+          "install",
+          "global",
+          "node_modules",
+          "@earendil-works",
+          "pi-coding-agent",
+          "package.json",
+        );
+        const bunBin = require("node:path").join(homedir, ".bun", "bin", "pi");
+        const existsSync = (fs as unknown as { existsSync?: (p: string) => boolean }).existsSync;
+        if (existsSync?.(bunPkg) || existsSync?.(bunBin)) return true;
+      }
+    } catch {}
+  } catch {}
+  return false;
+}
+
+export function piInstallCommand(
+  npmPackage: string,
+  executablePath: string | null,
+): ProviderInstallationCommand {
+  return isBunManagedPi(executablePath)
+    ? bunGlobalInstallCommand(npmPackage)
+    : npmGlobalInstallCommand(npmPackage);
+}
+
 export async function npmLatestVersion(
   npmPackage: string,
 ): Promise<string | null> {

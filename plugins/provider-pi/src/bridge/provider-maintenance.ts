@@ -10,6 +10,7 @@ import {
   experimental_npmGlobalInstallCommand as npmGlobalInstallCommand,
   experimental_npmGlobalInstallSource as npmGlobalInstallSource,
   experimental_npmLatestVersion as npmLatestVersion,
+  experimental_piInstallCommand as piInstallCommand,
   experimental_probeNpmGlobalPackage as probeNpmGlobalPackage,
   experimental_resolveExecutablePath as resolveExecutablePath,
   experimental_versionFrom as versionFrom,
@@ -113,7 +114,7 @@ export async function getPiProviderInstallationStatus(): Promise<ProviderInstall
         : {
             kind: actionKind,
             label: actionKind === "install" ? "Install" : "Update",
-            command: npmGlobalInstallCommand(PI_NPM_PACKAGE).displayCommand,
+            command: piInstallCommand(PI_NPM_PACKAGE, resolvedExecutable).displayCommand,
           },
     needsUpdate,
     versionUnsupported,
@@ -132,7 +133,7 @@ export async function getPiProviderInstallationRun(
   }
   return {
     available: true,
-    command: npmGlobalInstallCommand(PI_NPM_PACKAGE),
+    command: piInstallCommand(PI_NPM_PACKAGE, status.executablePath),
     verification: installationVerification(status, action),
   };
 }
