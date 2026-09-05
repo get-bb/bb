@@ -43,6 +43,18 @@ import {
   makePluginRegistrationSet,
 } from "@/test/fixtures/plugins";
 
+vi.mock("react-resizable-panels", async () => {
+  const { createRequire } = await import("node:module");
+  const { dirname, join } = await import("node:path");
+  const require = createRequire(import.meta.url);
+  return require(
+    join(
+      dirname(require.resolve("react-resizable-panels/package.json")),
+      "dist/react-resizable-panels.browser.cjs.js",
+    ),
+  );
+});
+
 const GITHUB_PLUGIN = makePluginListItem({
   id: "github",
   source: "builtin:github",
@@ -675,6 +687,11 @@ describe("BB Official plugin detail routing", () => {
     const card = await screen.findByRole("button", {
       name: "Open GitHub details",
     });
+    const panels = Array.from(document.querySelectorAll("[data-panel]"));
+    expect(panels).toHaveLength(2);
+    expect(panels[0]?.getAttribute("data-panel-size")).toBe("100.0");
+    expect(panels[1]?.getAttribute("data-panel-size")).toBe("0.0");
+    const search = screen.getByRole("textbox", { name: "Search plugins" });
     card.focus();
     fireEvent.click(card);
     expect(
@@ -684,6 +701,8 @@ describe("BB Official plugin detail routing", () => {
       screen.getByRole("textbox", { name: "Search plugins" }),
     ).toBeTruthy();
     expect(screen.getAllByRole("button", { name: /^Close /u })).toHaveLength(1);
+    expect(Array.from(document.querySelectorAll("[data-panel]"))).toEqual(panels);
+    expect(screen.getByRole("textbox", { name: "Search plugins" })).toBe(search);
 
     fireEvent.click(screen.getByRole("button", { name: "Close GitHub" }));
     await waitFor(() => {
@@ -692,6 +711,10 @@ describe("BB Official plugin detail routing", () => {
       );
       expect(document.activeElement).toBe(card);
     });
+    expect(Array.from(document.querySelectorAll("[data-panel]"))).toEqual(panels);
+    expect(panels[0]?.getAttribute("data-panel-size")).toBe("100.0");
+    expect(panels[1]?.getAttribute("data-panel-size")).toBe("0.0");
+    expect(screen.getByRole("textbox", { name: "Search plugins" })).toBe(search);
   });
 
   it("keeps related plugin navigation in the full-page detail", async () => {

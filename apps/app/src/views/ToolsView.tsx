@@ -531,28 +531,27 @@ export function ToolsView({ pluginId }: { pluginId?: string } = {}) {
       isMainCollapsed: boolean;
       onToggleMainCollapse: () => void;
       resizablePanelId?: string;
-    }) =>
-      isPanelOpen ? (
-        <ThreadSecondaryPanel
-          activeTab={panelTab?.tab ?? null}
-          canUseGitUi={false}
-          metadataContent={null}
-          tabs={panelTabs}
-          fixedTabs={[]}
-          onTabReorder={() => undefined}
-          isOpen={isPanelOpen}
-          showConversationCollapseControl
-          showNewTabButton={false}
-          onPanelFocus={() => undefined}
-          onCollapse={closePanel}
-          onClose={closePanel}
-          onOpenNewTab={() => undefined}
-          isConversationCollapsed={isMainCollapsed}
-          onToggleConversationCollapse={onToggleMainCollapse}
-          renderAsDrawer={presentation === "drawer"}
-          resizablePanelId={resizablePanelId}
-        />
-      ) : null,
+    }) => (
+      <ThreadSecondaryPanel
+        activeTab={panelTab?.tab ?? null}
+        canUseGitUi={false}
+        metadataContent={null}
+        tabs={panelTabs}
+        fixedTabs={[]}
+        onTabReorder={() => undefined}
+        isOpen={isPanelOpen}
+        showConversationCollapseControl
+        showNewTabButton={false}
+        onPanelFocus={() => undefined}
+        onCollapse={closePanel}
+        onClose={closePanel}
+        onOpenNewTab={() => undefined}
+        isConversationCollapsed={isMainCollapsed}
+        onToggleConversationCollapse={onToggleMainCollapse}
+        renderAsDrawer={presentation === "drawer"}
+        resizablePanelId={resizablePanelId}
+      />
+    ),
     [closePanel, isPanelOpen, panelTab?.tab, panelTabs],
   );
 
