@@ -14,6 +14,7 @@ import {
   type AccountPoolConfigSetInput,
   type AccountSummary,
   type FamilyQuota,
+  type LimitWindow,
   type ModelFamily,
   type PoolStatus,
 } from "./contracts.js";
@@ -100,6 +101,24 @@ function familyLabel(family: ModelFamily): string {
   return family[0]?.toUpperCase() + family.slice(1);
 }
 
+function formatWindowLabel(window: LimitWindow): string {
+  if (window.windowMinutes === null) return window.slot;
+  if (window.windowMinutes % 1_440 === 0)
+    return `${window.windowMinutes / 1_440}d`;
+  if (window.windowMinutes % 60 === 0) return `${window.windowMinutes / 60}h`;
+  return `${window.windowMinutes}m`;
+}
+
+function formatLimitWindows(windows: readonly LimitWindow[]): string {
+  if (windows.length === 0) return "-";
+  return windows
+    .map(
+      (window) =>
+        `${formatWindowLabel(window)}=${formatUtilization(window.utilization)} ${formatReset(window.resetAt)}`,
+    )
+    .join("; ");
+}
+
 function formatFamilyQuota(quota: FamilyQuota | null): string {
   if (quota === null) return "-";
   return [
@@ -127,6 +146,7 @@ function formatAccounts(accounts: readonly AccountSummary[]): string {
       "5h reset",
       "7d",
       "7d reset",
+      "Windows",
       ...families.map(familyLabel),
       "Status",
     ].join("\t"),
@@ -142,6 +162,7 @@ function formatAccounts(accounts: readonly AccountSummary[]): string {
         formatReset(account.fiveHourResetAt),
         formatUtilization(account.sevenDayUtilization),
         formatReset(account.sevenDayResetAt),
+        formatLimitWindows(account.limitWindows),
         ...families.map((family) =>
           formatFamilyQuota(account.familyWeekly[family]),
         ),

@@ -35,6 +35,7 @@ import type {
   AccountPoolConfig,
   AccountPoolConfigSetInput,
   FamilyQuota,
+  LimitWindow,
   ModelFamily,
   PoolProvider,
   PoolStatus,
@@ -139,6 +140,32 @@ function relative(timestamp: number, now = Date.now()): string {
   const hours = Math.round(minutes / 60);
   return hours < 24 ? `${hours}h ago` : `${Math.round(hours / 24)}d ago`;
 }
+function windowShortLabel(window: LimitWindow): string {
+  if (window.windowMinutes === null)
+    return window.slot === "primary" ? "LIMIT" : "LIMIT 2";
+  if (window.windowMinutes % 1_440 === 0)
+    return `${window.windowMinutes / 1_440}D`;
+  if (window.windowMinutes % 60 === 0) return `${window.windowMinutes / 60}H`;
+  return `${window.windowMinutes}M`;
+}
+function windowLongLabel(window: LimitWindow): string {
+  if (window.windowMinutes === null)
+    return window.slot === "primary" ? "Usage limit" : "Secondary limit";
+  if (window.windowMinutes === 7 * 24 * 60) return "Weekly";
+  if (window.windowMinutes % 1_440 === 0)
+    return `${window.windowMinutes / 1_440} day`;
+  if (window.windowMinutes % 60 === 0)
+    return `${window.windowMinutes / 60} hour`;
+  return `${window.windowMinutes} minute`;
+}
+function exhaustedResetAt(account: AccountSummary): number | null {
+  return (
+    account.fiveHourResetAt ??
+    account.sevenDayResetAt ??
+    account.limitWindows.find((window) => window.resetAt !== null)?.resetAt ??
+    null
+  );
+}
 function resetLabel(timestamp: number | null): string {
   if (timestamp === null) return "";
   const minutes = Math.max(1, Math.round((timestamp - Date.now()) / 60_000));
@@ -157,7 +184,7 @@ function statusPresentation(account: AccountSummary): {
     };
   if (account.status === "exhausted")
     return {
-      label: `Exhausted${account.fiveHourResetAt === null && account.sevenDayResetAt === null ? "" : ` · ${resetLabel(account.fiveHourResetAt ?? account.sevenDayResetAt)}`}`,
+      label: `Exhausted${exhaustedResetAt(account) === null ? "" : ` · ${resetLabel(exhaustedResetAt(account))}`}`,
       dot: "bg-destructive",
     };
   if (account.status === "error")
@@ -291,24 +318,47 @@ function AccountRow({
             </div>
           </div>
           <div className="hidden shrink-0 items-center gap-1 sm:flex">
-            <QuotaValue
-              label="5H"
-              utilization={account.fiveHourUtilization}
-              status={account.fiveHourStatus}
-              threshold={threshold}
-            />
-            <QuotaValue
-              label="7D"
-              utilization={account.sevenDayUtilization}
-              status={account.sevenDayStatus}
-              threshold={threshold}
-            />
-            <QuotaValue
-              label="FABLE"
-              utilization={account.familyWeekly.fable?.utilization ?? null}
-              status={account.familyWeekly.fable?.status ?? null}
-              threshold={threshold}
-            />
+            {account.provider === "codex" ? (
+              account.limitWindows.length === 0 ? (
+                <QuotaValue
+                  label="LIMIT"
+                  utilization={null}
+                  status={null}
+                  threshold={threshold}
+                />
+              ) : (
+                account.limitWindows.map((window) => (
+                  <QuotaValue
+                    key={window.slot}
+                    label={windowShortLabel(window)}
+                    utilization={window.utilization}
+                    status={window.status}
+                    threshold={threshold}
+                  />
+                ))
+              )
+            ) : (
+              <>
+                <QuotaValue
+                  label="5H"
+                  utilization={account.fiveHourUtilization}
+                  status={account.fiveHourStatus}
+                  threshold={threshold}
+                />
+                <QuotaValue
+                  label="7D"
+                  utilization={account.sevenDayUtilization}
+                  status={account.sevenDayStatus}
+                  threshold={threshold}
+                />
+                <QuotaValue
+                  label="FABLE"
+                  utilization={account.familyWeekly.fable?.utilization ?? null}
+                  status={account.familyWeekly.fable?.status ?? null}
+                  threshold={threshold}
+                />
+              </>
+            )}
           </div>
         </button>
         <DropdownMenu>
@@ -1245,35 +1295,54 @@ function AccountDrawer({
         <SettingsBadge>{statusPresentation(account).label}</SettingsBadge>
       </div>
       <div className="space-y-4">
-        <QuotaDetail
-          label="5 hour"
-          quota={shared(
-            account.fiveHourUtilization,
-            account.fiveHourResetAt,
-            account.fiveHourStatus,
-          )}
-          threshold={threshold}
-        />
-        <QuotaDetail
-          label="7 day"
-          quota={shared(
-            account.sevenDayUtilization,
-            account.sevenDayResetAt,
-            account.sevenDayStatus,
-          )}
-          threshold={threshold}
-        />
-        {MODEL_FAMILIES.flatMap((family) =>
-          account.familyWeekly[family] === null
-            ? []
-            : [
-                <QuotaDetail
-                  key={family}
-                  label={FAMILY_LABELS[family]}
-                  quota={account.familyWeekly[family]}
-                  threshold={threshold}
-                />,
-              ],
+        {account.provider === "codex" ? (
+          account.limitWindows.length === 0 ? (
+            <div className="text-sm text-muted-foreground">
+              No usage limits observed yet.
+            </div>
+          ) : (
+            account.limitWindows.map((window) => (
+              <QuotaDetail
+                key={window.slot}
+                label={windowLongLabel(window)}
+                quota={window}
+                threshold={threshold}
+              />
+            ))
+          )
+        ) : (
+          <>
+            <QuotaDetail
+              label="5 hour"
+              quota={shared(
+                account.fiveHourUtilization,
+                account.fiveHourResetAt,
+                account.fiveHourStatus,
+              )}
+              threshold={threshold}
+            />
+            <QuotaDetail
+              label="7 day"
+              quota={shared(
+                account.sevenDayUtilization,
+                account.sevenDayResetAt,
+                account.sevenDayStatus,
+              )}
+              threshold={threshold}
+            />
+            {MODEL_FAMILIES.flatMap((family) =>
+              account.familyWeekly[family] === null
+                ? []
+                : [
+                    <QuotaDetail
+                      key={family}
+                      label={FAMILY_LABELS[family]}
+                      quota={account.familyWeekly[family]}
+                      threshold={threshold}
+                    />,
+                  ],
+            )}
+          </>
         )}
       </div>
       <dl className="grid grid-cols-[7rem_1fr] gap-x-3 gap-y-2 border-t border-border pt-4 text-sm">

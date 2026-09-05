@@ -89,6 +89,24 @@ export const familyWeeklySchema = z
 
 export type FamilyWeekly = z.infer<typeof familyWeeklySchema>;
 
+export const limitWindowSlotSchema = z.enum(["primary", "secondary"]);
+
+export type LimitWindowSlot = z.infer<typeof limitWindowSlotSchema>;
+
+export const limitWindowSchema = z
+  .object({
+    slot: limitWindowSlotSchema,
+    windowMinutes: z.number().int().positive().nullable(),
+    utilization: z.number().nullable(),
+    resetAt: z.number().int().nullable(),
+    status: z.string().nullable(),
+    observedAt: z.number().int(),
+    source: z.enum(["header", "usage"]),
+  })
+  .strict();
+
+export type LimitWindow = z.infer<typeof limitWindowSchema>;
+
 export const accountSchema = z
   .object({
     id: z.string().uuid(),
@@ -145,6 +163,7 @@ export const quotaSchema = z
     sevenDayStatus: z.string().nullable(),
     representativeClaim: z.string().nullable(),
     familyWeekly: familyWeeklySchema,
+    limitWindows: z.array(limitWindowSchema),
     observedAt: z.number().int().nullable(),
     heldUntil: z.number().int().nullable(),
     error: z.string().nullable(),
@@ -163,6 +182,7 @@ export const accountSummarySchema = accountSchema.extend({
   sevenDayStatus: z.string().nullable(),
   representativeClaim: z.string().nullable(),
   familyWeekly: familyWeeklySchema,
+  limitWindows: z.array(limitWindowSchema),
   observedAt: z.number().int().nullable(),
   heldUntil: z.number().int().nullable(),
   error: z.string().nullable(),

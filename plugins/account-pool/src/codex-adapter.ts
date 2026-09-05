@@ -1,5 +1,10 @@
 import { z } from "zod";
-import type { AccountQuota, AccountSecret, FamilyQuota } from "./contracts.js";
+import type {
+  AccountQuota,
+  AccountSecret,
+  LimitWindow,
+  LimitWindowSlot,
+} from "./contracts.js";
 import {
   codexAccessTokenExpiresAt,
   importCodexCredentials,
@@ -14,7 +19,10 @@ import {
 export const CODEX_AUTH_BASE_URL = "https://auth.openai.com";
 export const CODEX_OAUTH_CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann";
 export const DEFAULT_CODEX_REFRESH_URL = `${CODEX_AUTH_BASE_URL}/oauth/token`;
+export const DEFAULT_CODEX_USAGE_URL =
+  "https://chatgpt.com/backend-api/wham/usage";
 const REFRESH_WINDOW_MS = 5 * 60 * 1_000;
+const USAGE_REQUEST_TIMEOUT_MS = 15_000;
 const ALLOWED_REQUEST_HEADERS = new Set([
   "accept",
   "content-encoding",
@@ -49,25 +57,74 @@ function resetAt(headers: Headers, prefix: string, now: number): number | null {
   return after === null ? null : now + Math.round(after * 1_000);
 }
 
-function windowQuota(
+function windowMinutesFromSeconds(
+  seconds: number | null | undefined,
+): number | null {
+  if (seconds === null || seconds === undefined || !Number.isFinite(seconds))
+    return null;
+  const minutes = Math.round(seconds / 60);
+  return minutes > 0 ? minutes : null;
+}
+
+function previousWindow(
+  previous: AccountQuota,
+  slot: LimitWindowSlot,
+): LimitWindow | null {
+  return previous.limitWindows.find((window) => window.slot === slot) ?? null;
+}
+
+function windowFromHeaders(
   headers: Headers,
-  prefix: string,
-  previous: FamilyQuota | null,
+  slot: LimitWindowSlot,
+  previous: LimitWindow | null,
   now: number,
-): FamilyQuota | null {
+): LimitWindow | null {
+  const prefix = `x-codex-${slot}`;
   const usedPercent = numberHeader(headers, `${prefix}-used-percent`);
   const reset = resetAt(headers, prefix, now);
+  const minutes = numberHeader(headers, `${prefix}-window-minutes`);
   if (usedPercent === null && reset === null) return previous;
   const utilization =
     usedPercent === null
       ? (previous?.utilization ?? null)
       : Math.max(0, Math.min(1, usedPercent / 100));
   return {
+    slot,
+    windowMinutes:
+      minutes !== null && minutes > 0
+        ? Math.round(minutes)
+        : (previous?.windowMinutes ?? null),
     utilization,
     resetAt: reset ?? previous?.resetAt ?? null,
     status: utilization !== null && utilization >= 1 ? "rejected" : null,
     observedAt: now,
     source: "header",
+  };
+}
+
+function orderedWindows(
+  windows: ReadonlyArray<LimitWindow | null>,
+): LimitWindow[] {
+  return windows.filter((window): window is LimitWindow => window !== null);
+}
+
+function withoutClaudeSlots(previous: AccountQuota): AccountQuota {
+  return {
+    ...previous,
+    fiveHourUtilization: null,
+    fiveHourResetAt: null,
+    fiveHourStatus: null,
+    sevenDayUtilization: null,
+    sevenDayResetAt: null,
+    sevenDayStatus: null,
+    representativeClaim: null,
+    familyWeekly: {
+      fable: null,
+      sonnet: null,
+      opus: null,
+      haiku: null,
+      other: null,
+    },
   };
 }
 
@@ -77,33 +134,104 @@ function codexQuotaFromHeaders(
   previous: AccountQuota,
   now: number,
 ): AccountQuota {
-  const primary = windowQuota(
+  const priorPrimary = previousWindow(previous, "primary");
+  const priorSecondary = previousWindow(previous, "secondary");
+  const primary = windowFromHeaders(headers, "primary", priorPrimary, now);
+  const secondary = windowFromHeaders(
     headers,
-    "x-codex-primary",
-    previous.familyWeekly.other,
+    "secondary",
+    priorSecondary,
     now,
   );
-  const secondary = windowQuota(headers, "x-codex-secondary", null, now);
-  if (primary === previous.familyWeekly.other && secondary === null)
-    return previous;
+  if (primary === priorPrimary && secondary === priorSecondary) return previous;
   return {
-    ...previous,
+    ...withoutClaudeSlots(previous),
     accountId,
-    fiveHourUtilization: primary?.utilization ?? previous.fiveHourUtilization,
-    fiveHourResetAt: primary?.resetAt ?? previous.fiveHourResetAt,
-    fiveHourStatus: primary === null ? previous.fiveHourStatus : primary.status,
-    sevenDayUtilization: secondary?.utilization ?? previous.sevenDayUtilization,
-    sevenDayResetAt: secondary?.resetAt ?? previous.sevenDayResetAt,
-    sevenDayStatus:
-      secondary === null ? previous.sevenDayStatus : secondary.status,
-    familyWeekly: { ...previous.familyWeekly, other: primary },
+    limitWindows: orderedWindows([primary, secondary]),
     observedAt: now,
     heldUntil: null,
   };
 }
 
+const usageWindowSchema = z
+  .object({
+    used_percent: z.number(),
+    reset_at: z.number().nullish(),
+    reset_after_seconds: z.number().nullish(),
+    limit_window_seconds: z.number().nullish(),
+  })
+  .passthrough();
+
+const usageResponseSchema = z
+  .object({
+    rate_limit: z
+      .object({
+        primary_window: usageWindowSchema.nullish(),
+        secondary_window: usageWindowSchema.nullish(),
+      })
+      .passthrough()
+      .nullish(),
+  })
+  .passthrough();
+
+function windowFromUsage(
+  slot: LimitWindowSlot,
+  value: z.infer<typeof usageWindowSchema> | null | undefined,
+  now: number,
+): LimitWindow | null {
+  if (value === null || value === undefined) return null;
+  const utilization = Math.max(0, Math.min(1, value.used_percent / 100));
+  const reset =
+    value.reset_at !== null &&
+    value.reset_at !== undefined &&
+    Number.isFinite(value.reset_at)
+      ? Math.round(
+          value.reset_at < 1_000_000_000_000
+            ? value.reset_at * 1_000
+            : value.reset_at,
+        )
+      : value.reset_after_seconds !== null &&
+          value.reset_after_seconds !== undefined &&
+          Number.isFinite(value.reset_after_seconds)
+        ? now + Math.round(value.reset_after_seconds * 1_000)
+        : null;
+  return {
+    slot,
+    windowMinutes: windowMinutesFromSeconds(value.limit_window_seconds),
+    utilization,
+    resetAt: reset,
+    status: utilization >= 1 ? "rejected" : "allowed",
+    observedAt: now,
+    source: "usage",
+  };
+}
+
+export function codexQuotaFromUsage(
+  accountId: string,
+  payload: unknown,
+  previous: AccountQuota,
+  now: number,
+): AccountQuota | null {
+  const parsed = usageResponseSchema.safeParse(payload);
+  if (!parsed.success || parsed.data.rate_limit == null) return null;
+  return {
+    ...withoutClaudeSlots(previous),
+    accountId,
+    limitWindows: orderedWindows([
+      windowFromUsage("primary", parsed.data.rate_limit.primary_window, now),
+      windowFromUsage(
+        "secondary",
+        parsed.data.rate_limit.secondary_window,
+        now,
+      ),
+    ]),
+    observedAt: now,
+  };
+}
+
 export function createCodexAdapter(options: {
   refreshUrl: string;
+  usageUrl: string;
   importCredentials?: () => Promise<ImportedCodexCredentials>;
 }): ProviderAdapter {
   return {
@@ -194,6 +322,34 @@ export function createCodexAdapter(options: {
       };
       await context.accounts.writeSecret(context.account.id, refreshed);
       return { secret: refreshed, refreshed: true };
+    },
+    async refreshUsage(context) {
+      const secret = await context.freshSecret();
+      if (
+        secret.kind !== "oauth" ||
+        context.account.codexAccountId === undefined
+      )
+        return;
+      const response = await context.fetch(options.usageUrl, {
+        headers: {
+          authorization: `Bearer ${secret.accessToken}`,
+          "chatgpt-account-id": context.account.codexAccountId,
+          originator: "bb",
+          accept: "application/json",
+        },
+        signal: AbortSignal.timeout(USAGE_REQUEST_TIMEOUT_MS),
+      });
+      if (!response.ok) {
+        await response.body?.cancel();
+        return;
+      }
+      const quota = codexQuotaFromUsage(
+        context.account.id,
+        await response.json().catch(() => null),
+        context.quotas.get(context.account.id),
+        context.now(),
+      );
+      if (quota !== null) context.quotas.put(quota);
     },
     errorResponse(status, message, headers) {
       return Response.json(

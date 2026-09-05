@@ -105,7 +105,12 @@ describe("QuotaStore", () => {
     const database = new Database(":memory:");
     const initial = QUOTA_MIGRATIONS[0];
     const familyMigration = QUOTA_MIGRATIONS[1];
-    if (initial === undefined || familyMigration === undefined) {
+    const windowMigration = QUOTA_MIGRATIONS[2];
+    if (
+      initial === undefined ||
+      familyMigration === undefined ||
+      windowMigration === undefined
+    ) {
       throw new Error("Expected quota migrations.");
     }
     database.exec(initial);
@@ -121,10 +126,12 @@ describe("QuotaStore", () => {
         '{"7d_oi":4102452000000}',
       );
     database.exec(familyMigration);
+    database.exec(windowMigration);
     const quotas = new QuotaStore(database);
 
     const migrated = quotas.get("11111111-1111-4111-8111-111111111111");
     expect(migrated.sevenDayUtilization).toBe(0.5);
+    expect(migrated.limitWindows).toEqual([]);
     expect(migrated.familyWeekly).toEqual({
       fable: null,
       sonnet: null,
@@ -148,6 +155,33 @@ describe("QuotaStore", () => {
     expect(
       quotas.get("11111111-1111-4111-8111-111111111111").familyWeekly.fable,
     ).toMatchObject({ utilization: 1, source: "usage" });
+    quotas.put({
+      ...migrated,
+      limitWindows: [
+        {
+          slot: "primary",
+          windowMinutes: 10_080,
+          utilization: 0.48,
+          resetAt: 4_102_452_000_000,
+          status: "allowed",
+          observedAt: 10,
+          source: "usage",
+        },
+      ],
+    });
+    expect(
+      quotas.get("11111111-1111-4111-8111-111111111111").limitWindows,
+    ).toEqual([
+      {
+        slot: "primary",
+        windowMinutes: 10_080,
+        utilization: 0.48,
+        resetAt: 4_102_452_000_000,
+        status: "allowed",
+        observedAt: 10,
+        source: "usage",
+      },
+    ]);
     database.close();
   });
 });

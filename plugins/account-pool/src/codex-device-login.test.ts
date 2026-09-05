@@ -88,6 +88,7 @@ function summary(account: CodexDeviceAccount): AccountSummary {
       haiku: null,
       other: null,
     },
+    limitWindows: [],
     observedAt: null,
     heldUntil: null,
     error: null,

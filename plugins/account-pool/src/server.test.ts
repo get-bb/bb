@@ -273,6 +273,9 @@ async function addApiAccount(
   return found;
 }
 
+const EMPTY_USAGE_URL = "data:application/json,{}";
+const CODEX_USAGE_STUB_URL = "https://usage.example/wham/usage";
+
 describe("Account Pool config schema", () => {
   it("fills defaults and rejects invalid URLs and thresholds", () => {
     expect(accountPoolConfigSchema.parse({})).toEqual({
@@ -383,6 +386,26 @@ describe("Account Pool plugin", () => {
         );
         return;
       }
+      if (request.url === "/usage") {
+        response.writeHead(200, { "content-type": "application/json" });
+        response.end(
+          JSON.stringify({
+            plan_type: "pro",
+            rate_limit: {
+              allowed: true,
+              limit_reached: false,
+              primary_window: {
+                used_percent: 48,
+                limit_window_seconds: 604_800,
+                reset_after_seconds: 180_092,
+                reset_at: 4_102_452_000,
+              },
+              secondary_window: null,
+            },
+          }),
+        );
+        return;
+      }
       if (request.url === "/models") {
         modelRequests.push(
           request.headers["chatgpt-account-id"]?.toString() ?? "",
@@ -405,8 +428,10 @@ describe("Account Pool plugin", () => {
         response.writeHead(200, {
           "content-type": "application/json",
           "x-codex-primary-used-percent": "25",
+          "x-codex-primary-window-minutes": "300",
           "x-codex-primary-reset-after-seconds": "3600",
           "x-codex-secondary-used-percent": "40",
+          "x-codex-secondary-window-minutes": "10080",
           "x-codex-secondary-reset-after-seconds": "86400",
         });
         response.end('{"id":"http-response"}');
@@ -465,6 +490,7 @@ describe("Account Pool plugin", () => {
     });
     await createAccountPoolPlugin({
       codexRefreshUrl: `${upstream.url}/oauth`,
+      codexUsageUrl: `${upstream.url}/usage`,
       importCodexCredentials,
       usageUrl: "data:application/json,{}",
     })(host.bb);
@@ -508,6 +534,8 @@ describe("Account Pool plugin", () => {
     ]);
     expect(accountTable.stdout).toContain("Provider");
     expect(accountTable.stdout).toContain("codex");
+    expect(accountTable.stdout).toContain("7d=48% 2100-01-01T02:00:00.000Z");
+    expect(accountTable.stdout).not.toContain("5h=");
     const routed = await resolveCodexToken(host);
     expect(routed.baseUrl).toBe("/api/v1/plugins/account-pool/http/v1");
     await expect(
@@ -610,17 +638,46 @@ describe("Account Pool plugin", () => {
     const firstCodex = status.accounts.find(
       (account) => account.codexAccountId === "chatgpt-account-1",
     );
+    expect(seen[1]?.accountId).toBe("chatgpt-account-1");
     expect(firstCodex).toMatchObject({
       provider: "codex",
-      sevenDayUtilization: 0.4,
+      status: "exhausted",
+      fiveHourUtilization: null,
+      sevenDayUtilization: null,
+      familyWeekly: { other: null },
+      limitWindows: [
+        {
+          slot: "primary",
+          windowMinutes: 300,
+          utilization: 1,
+          status: "rejected",
+          source: "header",
+        },
+        {
+          slot: "secondary",
+          windowMinutes: 10_080,
+          utilization: 0.4,
+          status: null,
+          source: "header",
+        },
+      ],
     });
     expect(
       status.accounts.find(
-        (account) => account.codexAccountId === seen[1]?.accountId,
+        (account) => account.codexAccountId === seen[2]?.accountId,
       ),
     ).toMatchObject({
       provider: "codex",
-      fiveHourUtilization: 1,
+      status: "ready",
+      limitWindows: [
+        {
+          slot: "primary",
+          windowMinutes: 10_080,
+          utilization: 0.48,
+          status: "allowed",
+          source: "usage",
+        },
+      ],
     });
     const secret = accountSecretSchema.parse(
       JSON.parse(
@@ -654,6 +711,7 @@ describe("Account Pool plugin", () => {
       sdk: sdkStubs(),
     });
     await createAccountPoolPlugin({
+      codexUsageUrl: EMPTY_USAGE_URL,
       importCodexCredentials: async () => ({
         accessToken: "access",
         refreshToken: "refresh",
@@ -716,9 +774,10 @@ describe("Account Pool plugin", () => {
     );
     let upstreamReadCanceled = false;
     const upstreamFetch = async (
-      _input: string | URL | Request,
+      input: string | URL | Request,
       init?: RequestInit,
     ): Promise<Response> => {
+      if (String(input) === CODEX_USAGE_STUB_URL) return Response.json({});
       const signal = init?.signal;
       if (signal === undefined || signal === null) {
         throw new Error("Expected the upstream request to carry a signal.");
@@ -754,6 +813,7 @@ describe("Account Pool plugin", () => {
     });
     await createAccountPoolPlugin({
       fetch: upstreamFetch,
+      codexUsageUrl: CODEX_USAGE_STUB_URL,
       importCodexCredentials: async () => ({
         accessToken: "access",
         refreshToken: "refresh",
@@ -813,7 +873,10 @@ describe("Account Pool plugin", () => {
       path.join(tmpdir(), "bb-account-pool-codex-malformed-"),
     );
     let upstreamReadCanceled = false;
-    const upstreamFetch = async (): Promise<Response> => {
+    const upstreamFetch = async (
+      input: string | URL | Request,
+    ): Promise<Response> => {
+      if (String(input) === CODEX_USAGE_STUB_URL) return Response.json({});
       const body = new ReadableStream<Uint8Array>({
         start(controller) {
           controller.enqueue(new TextEncoder().encode("data: {\n\n"));
@@ -836,6 +899,7 @@ describe("Account Pool plugin", () => {
     });
     await createAccountPoolPlugin({
       fetch: upstreamFetch,
+      codexUsageUrl: CODEX_USAGE_STUB_URL,
       importCodexCredentials: async () => ({
         accessToken: "access",
         refreshToken: "refresh",
@@ -1346,6 +1410,7 @@ describe("Account Pool plugin", () => {
     });
     await createAccountPoolPlugin({
       codexAuthBaseUrl: auth.url,
+      codexUsageUrl: EMPTY_USAGE_URL,
       usageUrl: "data:application/json,{}",
     })(host.bb);
     cleanups.push(async () => {
@@ -2464,6 +2529,7 @@ describe("Account Pool plugin", () => {
     const fixture = await createFixture({
       upstreamUrl: upstream.url,
       options: {
+        codexUsageUrl: EMPTY_USAGE_URL,
         importCodexCredentials: async () => ({
           accessToken: "codex-access",
           refreshToken: "codex-refresh",

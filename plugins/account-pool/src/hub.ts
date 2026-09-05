@@ -10,6 +10,7 @@ import { createClaudeAdapter } from "./claude-adapter.js";
 import {
   createCodexAdapter,
   DEFAULT_CODEX_REFRESH_URL,
+  DEFAULT_CODEX_USAGE_URL,
 } from "./codex-adapter.js";
 import type { ProviderAdapter } from "./provider-adapter.js";
 import type { ImportedProviderAccount } from "./provider-adapter.js";
@@ -228,6 +229,7 @@ export class AccountPoolHub {
           sevenDayStatus: quota.sevenDayStatus,
           representativeClaim: quota.representativeClaim,
           familyWeekly: quota.familyWeekly,
+          limitWindows: quota.limitWindows,
           observedAt: quota.observedAt,
           heldUntil: quota.heldUntil,
           error: quota.error,
@@ -566,6 +568,7 @@ export class AccountPoolHub {
           quota.heldUntil,
           quota.fiveHourResetAt,
           quota.sevenDayResetAt,
+          ...quota.limitWindows.map((window) => window.resetAt),
           governingWeeklyResetAt(quota, family),
         ].filter((value): value is number => value !== null && value > now);
       })
@@ -625,6 +628,7 @@ export function createHub(options: {
   now?: () => number;
   refreshUrl?: string;
   codexRefreshUrl?: string;
+  codexUsageUrl?: string;
   importClaudeCredentials?: () => Promise<ImportedClaudeCredentials>;
   importCodexCredentials?: () => Promise<ImportedCodexCredentials>;
   usageUrl?: string;
@@ -647,6 +651,7 @@ export function createHub(options: {
       "codex",
       createCodexAdapter({
         refreshUrl: options.codexRefreshUrl ?? DEFAULT_CODEX_REFRESH_URL,
+        usageUrl: options.codexUsageUrl ?? DEFAULT_CODEX_USAGE_URL,
         importCredentials: options.importCodexCredentials,
       }),
     ],

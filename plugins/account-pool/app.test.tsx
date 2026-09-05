@@ -41,6 +41,7 @@ function account(overrides: Partial<AccountSummary> = {}): AccountSummary {
       haiku: null,
       other: null,
     },
+    limitWindows: [],
     observedAt: 1,
     heldUntil: null,
     error: null,
@@ -103,6 +104,40 @@ describe("Account Pool settings", () => {
     expect(
       slot.getByText("Hub accepting · 2 in flight · used by bee"),
     ).toBeTruthy();
+  });
+
+  it("renders only the windows a Codex account reports and no Fable slot", async () => {
+    const slot = render([
+      account({
+        id: "22222222-2222-4222-8222-222222222222",
+        provider: "codex",
+        label: "pro@example.com",
+        codexAccountId: "chatgpt-account",
+        fiveHourUtilization: null,
+        limitWindows: [
+          {
+            slot: "primary",
+            windowMinutes: 10_080,
+            utilization: 0.48,
+            resetAt: Date.now() + 3_600_000,
+            status: "allowed",
+            observedAt: 1,
+            source: "usage",
+          },
+        ],
+      }),
+    ]);
+    expect(await slot.findByText("pro@example.com")).toBeTruthy();
+    expect(slot.getByText("7D")).toBeTruthy();
+    expect(slot.getByText("48%")).toBeTruthy();
+    expect(slot.queryByText("5H")).toBeNull();
+    expect(slot.queryByText("FABLE")).toBeNull();
+    fireEvent.click(
+      await slot.findByRole("button", { name: "Open pro@example.com details" }),
+    );
+    expect(await slot.findByText("Weekly")).toBeTruthy();
+    expect(slot.queryByText("5 hour")).toBeNull();
+    expect(slot.queryByText("7 day")).toBeNull();
   });
 
   it("dispatches kebab actions to their RPC contracts", async () => {

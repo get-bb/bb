@@ -33,6 +33,7 @@ export interface AccountPoolPluginOptions {
   now?: () => number;
   refreshUrl?: string;
   codexRefreshUrl?: string;
+  codexUsageUrl?: string;
   usageUrl?: string;
   usageRefreshIntervalMs?: number;
   drainTimeoutMs?: number;
@@ -100,6 +101,7 @@ export function createAccountPoolPlugin(
       now,
       refreshUrl: options.refreshUrl,
       codexRefreshUrl: options.codexRefreshUrl,
+      codexUsageUrl: options.codexUsageUrl,
       usageUrl: options.usageUrl,
       profileUrl: options.oauthProfileUrl,
       importClaudeCredentials: options.importCredentials,

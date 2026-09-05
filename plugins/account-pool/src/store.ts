@@ -526,6 +526,7 @@ const quotaRowSchema = z
     representative_claim: z.string().nullable(),
     bucket_exhaustion_json: z.string(),
     family_weekly_json: z.string(),
+    limit_windows_json: z.string(),
     observed_at: z.number().int().nullable(),
     held_until: z.number().int().nullable(),
     error: z.string().nullable(),
@@ -547,6 +548,7 @@ const EMPTY_QUOTA = {
     haiku: null,
     other: null,
   },
+  limitWindows: [],
   observedAt: null,
   heldUntil: null,
   error: null,
@@ -576,6 +578,7 @@ export class QuotaStore {
       sevenDayStatus: row.seven_day_status,
       representativeClaim: row.representative_claim,
       familyWeekly: JSON.parse(row.family_weekly_json),
+      limitWindows: JSON.parse(row.limit_windows_json),
       observedAt: row.observed_at,
       heldUntil: row.held_until,
       error: row.error,
@@ -590,8 +593,8 @@ export class QuotaStore {
           account_id, five_hour_utilization, five_hour_reset_at,
           five_hour_status, seven_day_utilization, seven_day_reset_at,
           seven_day_status, representative_claim, bucket_exhaustion_json,
-          family_weekly_json, observed_at, held_until, error
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, '{}', ?, ?, ?, ?)
+          family_weekly_json, limit_windows_json, observed_at, held_until, error
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, '{}', ?, ?, ?, ?, ?)
         ON CONFLICT(account_id) DO UPDATE SET
           five_hour_utilization = excluded.five_hour_utilization,
           five_hour_reset_at = excluded.five_hour_reset_at,
@@ -601,6 +604,7 @@ export class QuotaStore {
           seven_day_status = excluded.seven_day_status,
           representative_claim = excluded.representative_claim,
           family_weekly_json = excluded.family_weekly_json,
+          limit_windows_json = excluded.limit_windows_json,
           observed_at = excluded.observed_at,
           held_until = excluded.held_until,
           error = excluded.error`,
@@ -615,6 +619,7 @@ export class QuotaStore {
         value.sevenDayStatus,
         value.representativeClaim,
         JSON.stringify(value.familyWeekly),
+        JSON.stringify(value.limitWindows),
         value.observedAt,
         value.heldUntil,
         value.error,
@@ -644,4 +649,5 @@ export const QUOTA_MIGRATIONS = [
     error TEXT
   )`,
   `ALTER TABLE account_quota ADD COLUMN family_weekly_json TEXT NOT NULL DEFAULT '{"fable":null,"sonnet":null,"opus":null,"haiku":null,"other":null}'`,
+  `ALTER TABLE account_quota ADD COLUMN limit_windows_json TEXT NOT NULL DEFAULT '[]'`,
 ];
