@@ -52,9 +52,9 @@ import {
   subscribeAppUpdateCheck,
 } from "@/components/settings/app-update-check-store";
 import {
-  CHANGELOG_RELEASE_META,
   fetchLatestChangelogEntry,
   LATEST_CHANGELOG_ENTRY,
+  RELEASE_META,
   type ChangelogBlock,
 } from "@/components/settings/changelog-preview";
 import { appToast } from "@/components/ui/app-toast";
@@ -547,7 +547,7 @@ export function ChangelogPreviewCard() {
   ) {
     return null;
   }
-  const releaseMeta = CHANGELOG_RELEASE_META[entry.version];
+  const releaseMeta = RELEASE_META[entry.version];
   const dismissalPhase =
     dismissal?.version === entry.version ? dismissal.phase : "visible";
   const releaseVisible = dismissalPhase === "visible";
