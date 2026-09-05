@@ -24,11 +24,6 @@ interface PromptMentionPillProps {
   onActivate?: () => void;
 }
 
-interface NormalizeMentionsArgs {
-  mentions: readonly PromptTextMention[];
-  textLength: number;
-}
-
 interface ShiftMentionsToTextRangeArgs {
   mentions: readonly PromptTextMention[];
   rangeEnd: number;
@@ -44,20 +39,6 @@ interface ClipMentionTextToVisibleRangeArgs {
 interface ClipMentionTextToVisibleRangeResult {
   mentions: PromptTextMention[];
   text: string;
-}
-
-export function normalizePromptTextMentions({
-  mentions,
-  textLength,
-}: NormalizeMentionsArgs): PromptTextMention[] {
-  return mentions
-    .filter(
-      (mention) =>
-        mention.start >= 0 &&
-        mention.end > mention.start &&
-        mention.end <= textLength,
-    )
-    .sort((left, right) => left.start - right.start || left.end - right.end);
 }
 
 export function shiftMentionsToTextRange({

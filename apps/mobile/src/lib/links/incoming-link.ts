@@ -23,12 +23,6 @@ export type LinkResolution =
       path: string;
     };
 
-export interface ResolveIncomingLinkContext {
-  profiles: readonly LinkProfileLike[];
-  activeProfileId: string | null;
-  developerRoutesEnabled: boolean;
-}
-
 const ADD_SERVER_PATH = "/settings/servers/add";
 
 const DEVELOPER_ROUTE_PREFIXES = ["/dev", "/e2e"] as const;

@@ -46,9 +46,6 @@ const EXPECTED_RUNNING_BUILTIN_PLUGINS = [
 // version.ts); this script imports nothing from the workspace so it can run
 // against a packed tarball.
 const PROVIDER_BRIDGE_PROTOCOL_VERSION = 2;
-// A canonical turn/start carries a client request id (`creq_` + ten
-// Crockford-ish characters, @bb/domain's clientTurnRequestIdSchema).
-const SMOKE_CLIENT_REQUEST_ID = "creq_smkptest23";
 const BRIDGE_WAIT_TIMEOUT_MS = 10_000;
 const PROCESS_STOP_TIMEOUT_MS = 5_000;
 const DEFAULT_HOST_DAEMON_LOCAL_BIND_HOST = "127.0.0.1";
@@ -699,14 +696,6 @@ function threadDeltas(message) {
   }
   return message.params.deltas.filter(isRecord);
 }
-
-/** The full permission policy a canonical request carries in `options`. */
-const SMOKE_EXECUTION_OPTIONS = {
-  permissionMode: "full",
-  permissionScope: "full",
-  approvalReviewer: null,
-  permissionEscalation: null,
-};
 
 async function smokeHelpCommands(binDir) {
   await runCommand({

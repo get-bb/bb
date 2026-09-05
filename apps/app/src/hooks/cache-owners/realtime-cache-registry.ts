@@ -353,17 +353,17 @@ export const REALTIME_THREAD_CHANGE_REGISTRY = {
       dirtyThreadListQueries,
       dirtyThreadDetailQueries,
       dirtyThreadSearchQueries,
-      dirtyThreadTimelineRewriteQueries,
-      dirtyThreadQueueContentQueries,
+      getThreadTimelineInvalidationQueryKeys,
+      getThreadQueueContentInvalidationQueryKeys,
       dirtyProjectPromptHistoryQueries,
-      dirtyThreadPendingInteractionQueries,
+      getThreadPendingInteractionInvalidationQueryKeys,
     ],
   },
   "interactions-changed": {
     flush: "debounced",
     dirty: [
       dirtyThreadSearchQueries,
-      dirtyThreadPendingInteractionQueries,
+      getThreadPendingInteractionInvalidationQueryKeys,
       patchThreadListPendingInteractionState,
     ],
   },
@@ -377,7 +377,10 @@ export const REALTIME_THREAD_CHANGE_REGISTRY = {
   },
   "queue-changed": {
     flush: "debounced",
-    dirty: [dirtyThreadQueueContentQueries, dirtyActiveThreadListQueries],
+    dirty: [
+      getThreadQueueContentInvalidationQueryKeys,
+      dirtyActiveThreadListQueries,
+    ],
   },
   "archived-changed": {
     flush: "debounced",
@@ -469,28 +472,31 @@ export const REALTIME_ENVIRONMENT_CHANGE_REGISTRY = {
 
 export const REALTIME_PROJECT_CHANGE_REGISTRY = {
   "project-created": {
-    dirty: [dirtyProjectListQueries],
+    dirty: [getProjectListInvalidationQueryKeys],
   },
   "project-updated": {
-    dirty: [dirtyProjectListQueries],
+    dirty: [getProjectListInvalidationQueryKeys],
   },
   "project-deleted": {
-    dirty: [dirtyProjectListQueries],
+    dirty: [getProjectListInvalidationQueryKeys],
   },
   "project-sources-changed": {
-    dirty: [dirtyProjectSourceDependentQueries],
+    dirty: [getProjectSourceDependentInvalidationQueryKeys],
   },
   "threads-changed": {
-    dirty: [dirtyProjectListQueries, dirtyProjectPromptHistoryQueries],
+    dirty: [
+      getProjectListInvalidationQueryKeys,
+      dirtyProjectPromptHistoryQueries,
+    ],
   },
   "project-order-changed": {
-    dirty: [dirtyProjectListQueries],
+    dirty: [getProjectListInvalidationQueryKeys],
   },
 } satisfies ProjectChangeRegistry;
 
 const HOST_CONNECTION_DIRTY_HANDLERS = [
   dirtyHostAvailabilityQueries,
-  dirtyProjectListQueries,
+  getProjectListInvalidationQueryKeys,
   dirtySystemProviderQueries,
   dirtySystemExecutionOptionQueries,
 ] satisfies readonly RealtimeDirtyHandler<HostRealtimeDirtyContext>[];
@@ -865,18 +871,6 @@ function dirtyThreadTimelineQueries({
   }
 }
 
-function dirtyThreadTimelineRewriteQueries({
-  threadId,
-}: ThreadRealtimeDirtyContext): QueryKey[] {
-  return getThreadTimelineInvalidationQueryKeys({ threadId });
-}
-
-function dirtyThreadQueueContentQueries({
-  threadId,
-}: ThreadRealtimeDirtyContext): QueryKey[] {
-  return getThreadQueueContentInvalidationQueryKeys({ threadId });
-}
-
 function dirtyThreadPromptHistoryQueriesForTurnRequests({
   eventTypes,
   threadId,
@@ -903,12 +897,6 @@ function dirtyThreadPullRequestQueryForCompletedTurn({
     );
   const environmentId = cachedThread?.environmentId;
   return environmentId ? [environmentPullRequestQueryKey(environmentId)] : [];
-}
-
-function dirtyThreadPendingInteractionQueries({
-  threadId,
-}: ThreadRealtimeDirtyContext): QueryKey[] {
-  return getThreadPendingInteractionInvalidationQueryKeys({ threadId });
 }
 
 function dirtyThreadTerminalQueries({
@@ -1117,16 +1105,6 @@ function dirtyThreadStorageQueriesForEnvironment({
     queryKeys.push(threadStorageFilePreviewQueryKeyPrefix(threadId));
   }
   return queryKeys;
-}
-
-function dirtyProjectListQueries(): QueryKey[] {
-  return getProjectListInvalidationQueryKeys();
-}
-
-function dirtyProjectSourceDependentQueries({
-  projectId,
-}: ProjectRealtimeDirtyContext): QueryKey[] {
-  return getProjectSourceDependentInvalidationQueryKeys({ projectId });
 }
 
 function dirtyHostAvailabilityQueries(): QueryKey[] {

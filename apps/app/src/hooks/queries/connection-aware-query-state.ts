@@ -18,8 +18,6 @@ export interface ConnectionAwareQueryStateArgs extends ConnectionAwareQuerySnaps
   connectionGracePeriodElapsed: boolean;
 }
 
-interface UseConnectionAwareQueryStateArgs extends ConnectionAwareQuerySnapshot {}
-
 interface ConnectionAwareQueryState {
   status: ConnectionAwareQueryStatus;
 }
@@ -85,7 +83,7 @@ export function useConnectionAwareQueryState({
   isFetching,
   isLoadingError,
   isRecoverableLoadingError,
-}: UseConnectionAwareQueryStateArgs): ConnectionAwareQueryState {
+}: ConnectionAwareQuerySnapshot): ConnectionAwareQueryState {
   const serverConnectionState = useServerConnectionState();
   const connectionGracePeriodElapsed = useServerConnectionGracePeriodElapsed();
 

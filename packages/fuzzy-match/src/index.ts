@@ -140,10 +140,6 @@ function isPresent<T>(value: T | null): value is T {
   return value !== null;
 }
 
-function getNormalizedQuery(query: string): string {
-  return query.replaceAll("\\", "/");
-}
-
 function getBaseName(path: string): string {
   const separatorIndex = path.lastIndexOf("/");
   if (separatorIndex === -1) {
@@ -781,7 +777,7 @@ export function fuzzyMatchPaths<T>(
     }));
   }
 
-  const normalizedQuery = getNormalizedQuery(args.query);
+  const normalizedQuery = args.query.replaceAll("\\", "/");
   if (normalizedQuery.length > FUZZY_MATCH_QUERY_MAX_LENGTH) {
     return [];
   }

@@ -12,8 +12,6 @@ export const codexGoalStatusSchema = z.enum([
   "budgetLimited",
   "complete",
 ]);
-export type CodexGoalStatus = z.infer<typeof codexGoalStatusSchema>;
-
 export const codexGoalSchema = z.object({
   objective: z.string(),
   status: codexGoalStatusSchema,
@@ -21,8 +19,6 @@ export const codexGoalSchema = z.object({
   tokensUsed: z.number(),
   timeUsedSeconds: z.number(),
 });
-export type CodexGoal = z.infer<typeof codexGoalSchema>;
-
 export const codexGoalStateSchema = z.union([codexGoalSchema, z.null()]);
 export type CodexGoalState = z.infer<typeof codexGoalStateSchema>;
 

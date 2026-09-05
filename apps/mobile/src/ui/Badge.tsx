@@ -31,10 +31,6 @@ const badgeTextVariants = cva("text-xs font-semibold", {
   defaultVariants: { variant: "default" },
 });
 
-export type BadgeVariant = NonNullable<
-  VariantProps<typeof badgeVariants>["variant"]
->;
-
 export interface BadgeProps extends VariantProps<typeof badgeVariants> {
   children: ReactNode;
   className?: string;

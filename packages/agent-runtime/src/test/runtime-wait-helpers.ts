@@ -82,7 +82,7 @@ function isRuntimeErrorEvent(event: ThreadEvent): event is RuntimeErrorEvent {
   return event.type === "provider/error" || event.type === "system/error";
 }
 
-function formatRuntimeErrorEvent(event: RuntimeErrorEvent): string {
+export function formatRuntimeErrorEvent(event: RuntimeErrorEvent): string {
   const detail = event.detail ? ` detail=${event.detail}` : "";
   return `${event.type}: ${event.message}${detail}`;
 }

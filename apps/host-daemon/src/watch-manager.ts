@@ -91,12 +91,6 @@ function workspaceWatchKindsIncludeLocalState(
   );
 }
 
-function workspaceWatchKindsIncludeSharedRefs(
-  changeKinds: readonly WorkspaceStatusWatchChangeKind[],
-): boolean {
-  return changeKinds.includes("shared-git-refs-changed");
-}
-
 function sameWorkspaceTarget(
   current: HostDaemonWatchSetWorkspaceTarget,
   next: HostDaemonWatchSetWorkspaceTarget,
@@ -392,7 +386,7 @@ export class WatchManager {
       }
       if (
         args.entry.workspace.isGitRepo &&
-        workspaceWatchKindsIncludeSharedRefs(pendingKinds)
+        pendingKinds.includes("shared-git-refs-changed")
       ) {
         const nextSharedRefsFingerprint =
           await args.entry.workspace.getSharedGitRefsFingerprint();

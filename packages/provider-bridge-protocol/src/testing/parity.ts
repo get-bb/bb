@@ -19,7 +19,10 @@ import {
   diffCalibrationStreams,
   normalizeCalibrationEvents,
 } from "./calibration-diff.js";
-import type { RecordedCellReplay } from "../conformance/recorded.js";
+import {
+  countTurns,
+  type RecordedCellReplay,
+} from "../conformance/recorded.js";
 import {
   listRecordedCells,
   readBridgeRecording,
@@ -245,19 +248,6 @@ function isResponse(message: ParsedWireMessage): boolean {
   return message.id !== undefined && message.method === undefined;
 }
 
-function countTurnBoundaries(events: readonly ThreadEvent[]): {
-  started: number;
-  completed: number;
-} {
-  let started = 0;
-  let completed = 0;
-  for (const event of events) {
-    if (event.type === "turn/started") started += 1;
-    if (event.type === "turn/completed") completed += 1;
-  }
-  return { started, completed };
-}
-
 interface RuntimeStep {
   entry: BridgeRecordingEntry;
   message: ParsedWireMessage | null;
@@ -290,7 +280,7 @@ function planRuntimeSteps(
     steps.push({
       entry,
       message: parseWire(entry.line),
-      gate: countTurnBoundaries(assembled),
+      gate: countTurns(assembled),
       eventsBefore: assembled.length,
     });
   }
@@ -582,7 +572,7 @@ export async function replayRecording(
     await waitFor(
       `${step.gate.started} turn/started and ${step.gate.completed} turn/completed before ${method}`,
       () => {
-        const live = countTurnBoundaries(events);
+        const live = countTurns(events);
         return (
           live.started >= step.gate.started &&
           live.completed >= step.gate.completed

@@ -217,6 +217,7 @@ import {
 } from "@/lib/app-navigation-host";
 import { openAppFixedTabFromDestinations } from "@/lib/app-fixed-tab-navigation";
 import {
+  getFileBasename,
   normalizeExperimentalFileOpenOptions,
   toFilePreviewLineRange,
 } from "@/lib/live-file-navigation";
@@ -437,11 +438,6 @@ function buildMarkdownPreviewLinkRouting({
     localFile: localFileRouting,
     onOpenLink,
   };
-}
-
-function getLocalFileBasename(path: string): string {
-  const normalizedPath = path.replace(/[\\/]+$/u, "");
-  return normalizedPath.split(/[\\/]/u).at(-1) ?? path;
 }
 
 function buildOpenTargetMenuItemLabel(target: WorkspaceOpenTarget): string {
@@ -2292,7 +2288,7 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
           id: "copy-name",
           label: "Copy file name",
           onSelect: () => {
-            void copyToClipboardWithToast(getLocalFileBasename(link.path), {
+            void copyToClipboardWithToast(getFileBasename(link.path), {
               successMessage: "File name copied",
               errorMessage: "Failed to copy file name",
             });

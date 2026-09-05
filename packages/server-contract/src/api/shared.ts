@@ -185,3 +185,15 @@ export const workspacePathListResponseSchema = z.object({
 export type WorkspacePathListResponse = z.infer<
   typeof workspacePathListResponseSchema
 >;
+
+export function rejectMultipleWorkspaceSelectors(
+  query: { environmentId?: string; hostId?: string },
+  context: z.RefinementCtx,
+): void {
+  if (query.environmentId !== undefined && query.hostId !== undefined) {
+    context.addIssue({
+      code: "custom",
+      message: "hostId and environmentId are mutually exclusive",
+    });
+  }
+}
