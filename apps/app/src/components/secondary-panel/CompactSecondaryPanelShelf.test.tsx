@@ -76,12 +76,18 @@ describe("CompactSecondaryPanelShelf", () => {
     renderShelf(true);
 
     const shelf = screen.getByTestId("secondary-panel-shelf");
-    expect(shelf.className).toContain("pt-[env(safe-area-inset-top)]");
-    expect(shelf.className).toContain("pr-[env(safe-area-inset-right)]");
     expect(shelf.className).toContain(
-      "pb-[var(--bb-safe-area-bottom,env(safe-area-inset-bottom))]",
+      "pt-[var(--bb-native-safe-area-top,env(safe-area-inset-top))]",
     );
-    expect(shelf.className).toContain("pl-[env(safe-area-inset-left)]");
+    expect(shelf.className).toContain(
+      "pr-[var(--bb-native-safe-area-right,env(safe-area-inset-right))]",
+    );
+    expect(shelf.className).toContain(
+      "pb-[var(--bb-safe-area-bottom,var(--bb-native-safe-area-bottom,env(safe-area-inset-bottom)))]",
+    );
+    expect(shelf.className).toContain(
+      "pl-[var(--bb-native-safe-area-left,env(safe-area-inset-left))]",
+    );
   });
 
   it("fills the viewport for a full-page tab and keeps the shelf width otherwise", () => {

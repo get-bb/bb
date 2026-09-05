@@ -30,6 +30,15 @@ export function buildBridgeInjectionScript(
     var pending = {};
     var nextId = 0;
 
+    var setSafeAreaStyles = function (safeArea) {
+      var style = window.document && window.document.documentElement && window.document.documentElement.style;
+      if (!style) return;
+      style.setProperty("--bb-native-safe-area-top", String(safeArea.top) + "px");
+      style.setProperty("--bb-native-safe-area-right", String(safeArea.right) + "px");
+      style.setProperty("--bb-native-safe-area-bottom", String(safeArea.bottom) + "px");
+      style.setProperty("--bb-native-safe-area-left", String(safeArea.left) + "px");
+    };
+
     var post = function (message) {
       try {
         window.ReactNativeWebView.postMessage(JSON.stringify(message));
@@ -47,6 +56,7 @@ export function buildBridgeInjectionScript(
             native[key] = next[key];
           }
         }
+        setSafeAreaStyles(next.safeArea);
       },
       __receive: function (event) {
         if (event && event.type === "response") {
@@ -64,6 +74,7 @@ export function buildBridgeInjectionScript(
         }
         if (event && event.type === "safe-area" && event.safeArea) {
           native.safeArea = event.safeArea;
+          setSafeAreaStyles(event.safeArea);
         }
         for (var i = 0; i < listeners.length; i += 1) {
           try {
