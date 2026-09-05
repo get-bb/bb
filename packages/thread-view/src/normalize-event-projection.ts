@@ -1,3 +1,4 @@
+import { getProjectionEntryMessages } from "./event-projection-flatten.js";
 import { isLegacyDelegationToolCall } from "@bb/domain";
 import { getFirstStringField, messageId } from "./format-helpers.js";
 import type {
@@ -161,11 +162,11 @@ function mergeChildProjections(
 
   const existingMessageIds = new Set(
     existingProjection.entries
-      .flatMap((entry) => getEntryMessages(entry))
+      .flatMap((entry) => getProjectionEntryMessages(entry))
       .map((message) => message.id),
   );
   const discoveredEntries = discoveredProjection.entries.filter((entry) =>
-    getEntryMessages(entry).some(
+    getProjectionEntryMessages(entry).some(
       (message) => !existingMessageIds.has(message.id),
     ),
   );
@@ -180,27 +181,12 @@ function mergeChildProjections(
   };
 }
 
-function getEntryMessages(
-  entry: EventProjectionEntry,
-): readonly EventProjectionMessage[] {
-  if (entry.kind === "projected-message") {
-    return [entry.message];
-  }
-  if (entry.turn.messages) {
-    return entry.turn.messages;
-  }
-  if (entry.turn.terminalMessage) {
-    return [entry.turn.terminalMessage];
-  }
-  return [];
-}
-
 function getProjectionMessageBounds(
   projection: EventProjection,
 ): ProjectionMessageBounds | null {
   let bounds: ProjectionMessageBounds | null = null;
   for (const entry of projection.entries) {
-    for (const message of getEntryMessages(entry)) {
+    for (const message of getProjectionEntryMessages(entry)) {
       const startedAt = getStartedAt(message);
       bounds = bounds
         ? {
@@ -258,7 +244,7 @@ function collectProjectionMessageContexts(
       return;
     }
 
-    for (const message of getEntryMessages(entry)) {
+    for (const message of getProjectionEntryMessages(entry)) {
       contexts.push({
         kind: "turn",
         entryIndex,

@@ -39,6 +39,7 @@ import { validatePromptAttachmentReferences } from "../projects/attachments.js";
 import { resolvePluginMentionContextInputs } from "../plugins/plugin-mentions.js";
 import {
   attemptDispatch,
+  hostIdForEnvironmentIntent,
   type PendingThreadStartContext,
 } from "./dispatch-attempt.js";
 import { setThreadPendingStartContext } from "@bb/db";
@@ -416,16 +417,6 @@ function existingUnmanagedEnvironmentIntentByHostPath(
   };
 }
 
-function intentHostId(
-  deps: ThreadCreateDeps,
-  intent: ThreadProvisionEnvironmentIntent,
-): string | null {
-  if (intent.type === "reuse") {
-    return getEnvironment(deps.db, intent.environmentId)?.hostId ?? null;
-  }
-  return intent.hostId;
-}
-
 /**
  * Creates the thread row and hands its first message to the dispatch
  * checkpoint.
@@ -470,7 +461,7 @@ async function createPendingThreadAndAttemptFirstDispatch(
     }
     const executionPlanArgs = {
       projectDefaults: args.executionDefaults,
-      hostId: intentHostId(deps, args.environmentIntent),
+      hostId: hostIdForEnvironmentIntent(deps, args.environmentIntent),
       threadId: thread.id,
     };
     execution = await buildExecutionOptions(

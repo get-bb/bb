@@ -902,10 +902,6 @@ export function subscribePluginFrontendDiagnostics(
   };
 }
 
-function teardownPluginFrontends(): Promise<void> {
-  return disposePluginFrontends(state, browserReconcileDeps);
-}
-
 interface PluginFrontendPageLifecycleDeps {
   restore: () => void;
   teardown: () => void;
@@ -937,7 +933,7 @@ function installPluginFrontendPageLifecycle(): void {
   const lifecycle = createPluginFrontendPageLifecycle({
     restore: () => schedulePluginFrontendReconcile(),
     teardown: () => {
-      void teardownPluginFrontends();
+      void disposePluginFrontends(state, browserReconcileDeps);
     },
   });
   window.addEventListener("pagehide", (event) => lifecycle.onPageHide(event));

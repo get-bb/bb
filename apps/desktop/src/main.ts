@@ -446,10 +446,6 @@ function getCurrentDesktopInfo(): BbDesktopInfo | null {
   };
 }
 
-function isRegisteredApplicationWindow(browserWindow: BrowserWindow): boolean {
-  return applicationWindowWebContentsIds.has(browserWindow.webContents.id);
-}
-
 function resolveApplicationWindow(
   webContents: WebContents,
 ): BrowserWindow | null {
@@ -493,7 +489,7 @@ function sendDesktopInfoChanged(): void {
     return;
   }
   for (const browserWindow of BrowserWindow.getAllWindows()) {
-    if (isRegisteredApplicationWindow(browserWindow)) {
+    if (applicationWindowWebContentsIds.has(browserWindow.webContents.id)) {
       sendToApplicationRenderer(
         browserWindow,
         BB_DESKTOP_INFO_CHANGED_CHANNEL,

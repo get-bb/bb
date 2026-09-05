@@ -1,3 +1,4 @@
+import { SourceLoadingSkeleton } from "@/components/code/code-loading-skeletons";
 import {
   type CSSProperties,
   type ReactNode,
@@ -18,7 +19,6 @@ import {
   type VirtualFileMetrics,
 } from "@pierre/diffs";
 import { Button } from "@bb/shared-ui/button";
-import { Skeleton } from "@bb/shared-ui/skeleton";
 import { usePierreLineSelectionActions } from "@/components/git-diff/PierreLineSelectionActions.js";
 import { usePreferredTheme } from "@/hooks/useTheme";
 import { useResolvedCodeThemePair } from "@/lib/code-theme";
@@ -34,19 +34,6 @@ import {
   type SourceCodeTruncation,
 } from "./source-code-budget";
 import type { BbSourceCodeProps } from "./code-rendering";
-
-function BbSourceCodeSkeleton() {
-  return (
-    <div className="space-y-2 px-4 pt-4" aria-busy>
-      <Skeleton className="h-3 w-3/4 rounded-sm" />
-      <Skeleton className="h-3 w-full rounded-sm" />
-      <Skeleton className="h-3 w-5/6 rounded-sm" />
-      <Skeleton className="h-3 w-2/3 rounded-sm" />
-      <Skeleton className="h-3 w-full rounded-sm" />
-      <Skeleton className="h-3 w-3/5 rounded-sm" />
-    </div>
-  );
-}
 
 interface SourceCodeWorkerPoolStats {
   managerState: "waiting" | "initializing" | "initialized";
@@ -455,7 +442,7 @@ function BbSourceCode({
   ]);
 
   if (shouldWaitForWorkerPool || !isWorkerPoolReady) {
-    return <BbSourceCodeSkeleton />;
+    return <SourceLoadingSkeleton />;
   }
 
   return (

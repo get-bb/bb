@@ -89,7 +89,7 @@ type AppToastMethod = (
 
 const DEFAULT_TOAST_DURATION = 4000;
 
-function iconForTone(tone: AppToastTone): IconName {
+export function iconForTone(tone: AppToastTone): IconName {
   switch (tone) {
     case "success":
       return "CircleCheck";

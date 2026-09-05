@@ -18,7 +18,6 @@ import {
   useFileInstance,
   useStableCallback,
   useVirtualizer,
-  useWorkerPool,
 } from "@pierre/diffs/react";
 import {
   forwardRef,
@@ -92,10 +91,6 @@ function HostWorkerPoolContextProvider({ children }: { children: ReactNode }) {
   return <PierreWorkerPoolBoundary>{children}</PierreWorkerPoolBoundary>;
 }
 
-function useHostWorkerPool(): ReturnType<typeof useWorkerPool> {
-  return usePierreWorkerPool();
-}
-
 export function createGatedPierreDiffsReact(): Record<string, unknown> {
   return {
     CodeView: GatedCodeView,
@@ -118,6 +113,6 @@ export function createGatedPierreDiffsReact(): Record<string, unknown> {
     useFileInstance,
     useStableCallback,
     useVirtualizer,
-    useWorkerPool: useHostWorkerPool,
+    useWorkerPool: usePierreWorkerPool,
   };
 }
