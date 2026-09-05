@@ -3358,6 +3358,334 @@ describe("Account Pool plugin", () => {
       return fixture;
     }
 
+    describe("parent affinity", () => {
+      type Wire =
+        | "claude"
+        | "codex-fork"
+        | "codex-shared-session"
+        | "codex-body"
+        | "codex-parent-header"
+        | "codex-parent-body"
+        | "codex-spawn";
+      function forkRequest(
+        wire: Wire,
+        own: string,
+        parent: string | null,
+      ): { headers: Record<string, string>; body: string } {
+        if (wire === "claude")
+          return {
+            headers: {},
+            body: JSON.stringify({
+              model: "claude-fable-5",
+              metadata: {
+                user_id: JSON.stringify({
+                  session_id: own,
+                  parent_session_id: parent,
+                  device_id: "device",
+                  account_uuid: "invalid-account-uuid",
+                  extra: "keep",
+                }),
+              },
+              messages: [{ role: "user", content: "Identical cached prefix" }],
+            }),
+          };
+        const session =
+          (wire === "codex-shared-session" || wire === "codex-body") &&
+          parent !== null
+            ? parent
+            : own;
+        const turn = {
+          session_id: session,
+          thread_id: own,
+          forked_from_thread_id:
+            wire === "codex-fork" ||
+            wire === "codex-shared-session" ||
+            wire === "codex-body"
+              ? parent
+              : null,
+          parent_thread_id: wire === "codex-spawn" ? parent : null,
+          extra: "keep",
+        };
+        const bodyOnly = wire === "codex-body" || wire === "codex-parent-body";
+        const headers: Record<string, string> = { "session-id": session };
+        if (!bodyOnly) headers["thread-id"] = own;
+        if (!bodyOnly) headers["x-codex-turn-metadata"] = JSON.stringify(turn);
+        if (wire === "codex-parent-header" && parent !== null)
+          headers["x-codex-parent-thread-id"] = parent;
+        return {
+          headers,
+          body: JSON.stringify({
+            model: "gpt-5",
+            prompt_cache_key: "shared-parent-cache",
+            client_metadata: {
+              session_id: session,
+              thread_id: own,
+              "x-codex-turn-metadata": JSON.stringify(turn),
+              ...(wire === "codex-parent-body" && parent !== null
+                ? { "x-codex-parent-thread-id": parent }
+                : {}),
+            },
+            input: [
+              {
+                type: "message",
+                role: "user",
+                content: [
+                  { type: "input_text", text: "Identical cached prefix" },
+                ],
+              },
+              { type: "compaction", encrypted_content: "preserve" },
+            ],
+          }),
+        };
+      }
+
+      it.each<Wire>([
+        "claude",
+        "codex-fork",
+        "codex-shared-session",
+        "codex-body",
+        "codex-parent-header",
+        "codex-parent-body",
+        "codex-spawn",
+      ])(
+        "inherits the eligible %s parent once and keeps child failover independent",
+        async (wire) => {
+          const provider = wire === "claude" ? "claude" : "codex";
+          const route =
+            provider === "claude" ? "/v1/messages" : "/v1/responses";
+          const seen: Array<{ key: string | null; body: string }> = [];
+          let rejectNext = false;
+          const fixture = await affinityFixture(
+            provider,
+            async (_input, init) => {
+              const headers = new Headers(init?.headers);
+              seen.push({
+                key:
+                  headers.get("x-api-key") ??
+                  headers.get("authorization")?.slice(7) ??
+                  null,
+                body: new TextDecoder().decode(
+                  init?.body instanceof ArrayBuffer
+                    ? init.body
+                    : new ArrayBuffer(0),
+                ),
+              });
+              if (seen.length === 1) return openStream();
+              if (rejectNext) {
+                rejectNext = false;
+                return Response.json({}, { status: 503 });
+              }
+              return Response.json({});
+            },
+          );
+          const send = (own: string, parent: string | null) => {
+            const request = forkRequest(wire, own, parent);
+            return fixture.host.harness.behavior.fetchHttp("POST", route, {
+              headers: { ...authHeaders(fixture.key), ...request.headers },
+              body: request.body,
+            });
+          };
+          const held = await send("parent-session", null);
+          try {
+            const child = await send("child-session", "parent-session");
+            expect(child.status).toBe(200);
+            await child.text();
+            expect(seen[1]?.key).toBe("sk-first");
+            expect(seen[1]?.body).toBe(
+              forkRequest(wire, "child-session", "parent-session").body,
+            );
+            rejectNext = true;
+            const failover = await send("child-session", "parent-session");
+            expect(failover.status).toBe(200);
+            await failover.text();
+            const parent = await send("parent-session", null);
+            await parent.text();
+            const repeatedChild = await send("child-session", "parent-session");
+            await repeatedChild.text();
+            expect(seen.map(({ key }) => key)).toEqual([
+              "sk-first",
+              "sk-first",
+              "sk-first",
+              "sk-second",
+              "sk-first",
+              "sk-second",
+            ]);
+          } finally {
+            await held.body?.cancel();
+          }
+        },
+      );
+
+      describe.each<"claude" | "codex">(["claude", "codex"])(
+        "%s parent eligibility",
+        (provider) => {
+          const wire = provider === "claude" ? "claude" : "codex-fork";
+          const route =
+            provider === "claude" ? "/v1/messages" : "/v1/responses";
+          it.each(["disabled", "expired", "missing", "other host"])(
+            "uses ordinary selection when the parent is %s",
+            async (reason) => {
+              let now = 1_800_000_000_000;
+              const attempts: Array<string | null> = [];
+              const fixture = await affinityFixture(
+                provider,
+                async (_input, init) => {
+                  const headers = new Headers(init?.headers);
+                  attempts.push(
+                    headers.get("x-api-key") ??
+                      headers.get("authorization")?.slice(7) ??
+                      null,
+                  );
+                  return attempts.length === 1
+                    ? openStream()
+                    : Response.json({});
+                },
+                () => now,
+              );
+              const parent = forkRequest(wire, "parent-session", null);
+              const held = await fixture.host.harness.behavior.fetchHttp(
+                "POST",
+                route,
+                {
+                  headers: { ...authHeaders(fixture.key), ...parent.headers },
+                  body: parent.body,
+                },
+              );
+              try {
+                if (reason === "disabled")
+                  await fixture.host.harness.behavior.callRpc(
+                    "account.disable",
+                    { id: fixture.account.id },
+                  );
+                if (reason === "expired") now += 31 * 60 * 1_000;
+                const key =
+                  reason === "other host"
+                    ? provider === "claude"
+                      ? await resolveToken(fixture.host, "host-two")
+                      : (await resolveCodexToken(fixture.host, "host-two"))
+                          .token
+                    : fixture.key;
+                const request = forkRequest(
+                  wire,
+                  "child-session",
+                  reason === "missing" ? "missing-parent" : "parent-session",
+                );
+                const child = await fixture.host.harness.behavior.fetchHttp(
+                  "POST",
+                  route,
+                  {
+                    headers: { ...authHeaders(key), ...request.headers },
+                    body: request.body,
+                  },
+                );
+                expect(child.status).toBe(200);
+                await child.text();
+                expect(attempts).toEqual(["sk-first", "sk-second"]);
+              } finally {
+                await held.body?.cancel();
+              }
+            },
+          );
+
+          it("does not extend the parent lifetime when a child inherits its account", async () => {
+            let now = 1_800_000_000_000;
+            const attempts: Array<string | null> = [];
+            const fixture = await affinityFixture(
+              provider,
+              async (_input, init) => {
+                const headers = new Headers(init?.headers);
+                attempts.push(
+                  headers.get("x-api-key") ??
+                    headers.get("authorization")?.slice(7) ??
+                    null,
+                );
+                return attempts.length === 1 ? openStream() : Response.json({});
+              },
+              () => now,
+            );
+            const send = (own: string, parent: string | null) => {
+              const request = forkRequest(wire, own, parent);
+              return fixture.host.harness.behavior.fetchHttp("POST", route, {
+                headers: { ...authHeaders(fixture.key), ...request.headers },
+                body: request.body,
+              });
+            };
+            const held = await send("parent-session", null);
+            try {
+              now += 29 * 60 * 1_000;
+              await (await send("child-session", "parent-session")).text();
+              now += 2 * 60 * 1_000;
+              await (await send("parent-session", null)).text();
+              await (await send("child-session", "parent-session")).text();
+              expect(attempts).toEqual([
+                "sk-first",
+                "sk-first",
+                "sk-second",
+                "sk-first",
+              ]);
+            } finally {
+              await held.body?.cancel();
+            }
+          });
+        },
+      );
+
+      it("does not inherit a parent binding from another provider", async () => {
+        const attempts: Array<string | null> = [];
+        const fixture = await affinityFixture("codex", async (_input, init) => {
+          const headers = new Headers(init?.headers);
+          attempts.push(
+            headers.get("x-api-key") ??
+              headers.get("authorization")?.slice(7) ??
+              null,
+          );
+          return attempts.length <= 2 ? openStream() : Response.json({});
+        });
+        await addApiAccount(fixture, "sk-claude-parent");
+        const claude = forkRequest("claude", "parent-session", null);
+        const codex = forkRequest("codex-fork", "unrelated-session", null);
+        const held = [
+          await fixture.host.harness.behavior.fetchHttp(
+            "POST",
+            "/v1/messages",
+            { headers: authHeaders(fixture.key), body: claude.body },
+          ),
+          await fixture.host.harness.behavior.fetchHttp(
+            "POST",
+            "/v1/responses",
+            {
+              headers: { ...authHeaders(fixture.key), ...codex.headers },
+              body: codex.body,
+            },
+          ),
+        ];
+        try {
+          const request = forkRequest(
+            "codex-fork",
+            "child-session",
+            "parent-session",
+          );
+          const child = await fixture.host.harness.behavior.fetchHttp(
+            "POST",
+            "/v1/responses",
+            {
+              headers: { ...authHeaders(fixture.key), ...request.headers },
+              body: request.body,
+            },
+          );
+          expect(child.status).toBe(200);
+          await child.text();
+          expect(attempts).toEqual([
+            "sk-claude-parent",
+            "sk-first",
+            "sk-second",
+          ]);
+        } finally {
+          for (const response of held) await response.body?.cancel();
+        }
+      });
+    });
+
     it.each<{
       name: string;
       provider: "claude" | "codex";
