@@ -108,12 +108,13 @@ export function BrowserTabDeck({
     activeBrowserTabId,
   );
   const target = activeBrowserTab?.desktopTarget;
+  const targetHostId = target?.hostId;
   const [verifiedTarget, setVerifiedTarget] =
     useState<BbDesktopBrowserTarget | null>(null);
   useEffect(() => {
     let current = true;
     setVerifiedTarget(null);
-    if (target !== undefined) {
+    if (targetHostId !== undefined) {
       void desktopBrowser
         ?.getTarget?.()
         .then((actual) => {
@@ -124,7 +125,7 @@ export function BrowserTabDeck({
     return () => {
       current = false;
     };
-  }, [desktopBrowser, target?.hostId, target?.instanceId, target?.generation]);
+  }, [desktopBrowser, targetHostId, target?.instanceId, target?.generation]);
   if (activeBrowserTab === null) {
     return null;
   }
