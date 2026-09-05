@@ -41,7 +41,7 @@ const noop = () => {};
 export function Overview() {
   return (
     <StoryCard>
-      <StoryRow label="local direct" hint="selected: Work locally">
+      <StoryRow label="current checkout" hint="selected: Current checkout">
         <EnvironmentPickerUI
           value={`host:${HOST_IDS.local}:local`}
           onChange={noop}
@@ -70,8 +70,8 @@ export function Overview() {
         />
       </StoryRow>
       <StoryRow
-        label="reuse selected"
-        hint="env mode is reuse — button shows 'Reuse worktree'; the specific worktree lives in the adjacent WorktreePicker"
+        label="existing worktree selected"
+        hint="env mode is reuse — button shows 'Existing worktree'; the specific worktree lives in the adjacent WorktreePicker"
       >
         <EnvironmentPickerUI
           value="reuse"
@@ -109,7 +109,7 @@ export function Overview() {
       </StoryRow>
       <StoryRow
         label="remote host (online)"
-        hint="viewed from another device: open the menu to see the host name and 'Work remotely' enabled"
+        hint="viewed from another device: the trigger shows the selected host and 'Current checkout' workspace mode"
       >
         <EnvironmentPickerUI
           value={`host:${HOST_IDS.local}:local`}

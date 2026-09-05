@@ -42,6 +42,9 @@ interface SelectedEnvironment {
   icon: IconName;
 }
 
+const CURRENT_CHECKOUT_LABEL = "Current checkout";
+const EXISTING_WORKTREE_LABEL = "Existing worktree";
+
 export interface EnvironmentPickerMachines {
   hosts: readonly Host[];
   localDaemonHostId: string | null;
@@ -84,14 +87,14 @@ export function EnvironmentPickerUI({
   const hostId = host?.id ?? null;
   const isMachineMenu = (machines?.hosts.length ?? 0) > 1;
   const hostConnected = host?.status === "connected";
-  const hasSource = useMemo(
+  const projectSource = useMemo(
     () =>
-      hostId !== null &&
-      findLocalPathProjectSourceForHost(sources, hostId) !== undefined,
+      hostId === null
+        ? null
+        : (findLocalPathProjectSourceForHost(sources, hostId) ?? null),
     [hostId, sources],
   );
-  const localLabel = isLocal ? "Work locally" : "Work remotely";
-
+  const hasSource = projectSource !== null;
   const hostUnavailableReason = !host
     ? "No host connected"
     : !hostConnected
@@ -135,14 +138,15 @@ export function EnvironmentPickerUI({
     }
     if (parsed.type === "reuse") {
       return {
-        modeLabel: "Reuse worktree",
-        compactModeLabel: "Reuse",
+        modeLabel: EXISTING_WORKTREE_LABEL,
+        compactModeLabel: "Existing",
         icon: getEnvironmentWorkspaceLabelIconName("managed-worktree"),
       };
     }
-    const modeLabel = parsed.mode === "worktree" ? "New worktree" : localLabel;
+    const modeLabel =
+      parsed.mode === "worktree" ? "New worktree" : CURRENT_CHECKOUT_LABEL;
     const compactModeLabel =
-      parsed.mode === "worktree" ? "Worktree" : isLocal ? "Local" : "Remote";
+      parsed.mode === "worktree" ? "Worktree" : "Checkout";
     const icon = getEnvironmentWorkspaceLabelIconName(
       parsed.mode === "worktree" ? "managed-worktree" : "other",
     );
@@ -153,14 +157,7 @@ export function EnvironmentPickerUI({
       compactModeLabel,
       icon,
     };
-  }, [
-    parsed,
-    localLabel,
-    isLocal,
-    hostUnavailableReason,
-    host,
-    selectedMachineName,
-  ]);
+  }, [parsed, hostUnavailableReason, host, selectedMachineName]);
 
   return (
     <DropdownMenu defaultOpen={defaultOpen} modal={modal}>
@@ -230,7 +227,7 @@ export function EnvironmentPickerUI({
             hostId={hostId}
             hostName={isLocal ? null : (host?.name ?? null)}
             hostUnavailableReason={hostUnavailableReason}
-            localLabel={localLabel}
+            workspacePath={projectSource?.path ?? null}
             workspaceDisabledReason={workspaceDisabledReason}
             worktreeDisabledReason={newWorktreeDisabledReason}
             reuseDisabledReason={reuseDisabledReason}
@@ -248,7 +245,7 @@ interface EnvironmentOptionsSectionProps {
   hostId: string | null;
   hostName: string | null;
   hostUnavailableReason: string | null;
-  localLabel: string;
+  workspacePath: string | null;
   workspaceDisabledReason: string | null;
   worktreeDisabledReason: string | null;
   reuseDisabledReason: string | null;
@@ -263,7 +260,7 @@ function EnvironmentOptionsSection({
   hostId,
   hostName,
   hostUnavailableReason,
-  localLabel,
+  workspacePath,
   workspaceDisabledReason,
   worktreeDisabledReason,
   reuseDisabledReason,
@@ -295,8 +292,9 @@ function EnvironmentOptionsSection({
       ) : (
         <>
           <EnvironmentMenuItem
-            label={localLabel}
+            label={CURRENT_CHECKOUT_LABEL}
             description={workspaceDisabledDescription}
+            hint={workspacePath ?? undefined}
             icon={getEnvironmentWorkspaceLabelIconName("other")}
             selected={localValue !== null && value === localValue}
             disabled={workspaceDisabled || localValue === null}
@@ -315,7 +313,7 @@ function EnvironmentOptionsSection({
             }}
           />
           <EnvironmentMenuItem
-            label="Existing worktree"
+            label={EXISTING_WORKTREE_LABEL}
             description={reuseDisabledReason ?? undefined}
             icon={getEnvironmentWorkspaceLabelIconName("managed-worktree")}
             selected={selectedType === "reuse"}
@@ -384,7 +382,7 @@ function MachineGroupedEnvironmentOptions({
       <DropdownMenuSeparator />
       <DropdownMenuGroup>
         <EnvironmentMenuItem
-          label="Existing worktree"
+          label={EXISTING_WORKTREE_LABEL}
           description={reuseDisabledReason ?? undefined}
           icon={getEnvironmentWorkspaceLabelIconName("managed-worktree")}
           selected={selectedType === "reuse"}
@@ -444,7 +442,7 @@ function MachineSection({
       {source ? (
         <>
           <EnvironmentMenuItem
-            label={isThisMachine ? "Work locally" : "Work in checkout"}
+            label={CURRENT_CHECKOUT_LABEL}
             hint={source.path}
             icon={getEnvironmentWorkspaceLabelIconName("other")}
             selected={value === localValue}

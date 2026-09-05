@@ -48,12 +48,15 @@ describe("EnvironmentPickerUI", () => {
       button: 0,
     });
 
-    const localItem = screen.getByRole("menuitem", { name: /Work locally/u });
+    const checkoutItem = screen.getByRole("menuitem", {
+      name: /Current checkout/u,
+    });
     const worktreeItem = screen.getByRole("menuitem", {
       name: /New worktree/u,
     });
 
-    expect(localItem.getAttribute("aria-disabled")).toBeNull();
+    expect(checkoutItem.getAttribute("aria-disabled")).toBeNull();
+    expect(screen.getByText("/tmp/project")).toBeTruthy();
     expect(worktreeItem.getAttribute("aria-disabled")).toBe("true");
     expect(
       screen.getByText("Project source is not a git repository"),
@@ -191,10 +194,10 @@ describe("EnvironmentPickerUI multi-machine menu", () => {
       button: 0,
     });
 
-    const checkoutItem = screen.getByRole("menuitem", {
-      name: /Work in checkout/u,
+    const checkoutItems = screen.getAllByRole("menuitem", {
+      name: /Current checkout/u,
     });
-    expect(checkoutItem.getAttribute("aria-disabled")).toBe("true");
+    expect(checkoutItems[1]!.getAttribute("aria-disabled")).toBe("true");
   });
 
   it("offers guided setup for a connected machine without a source", () => {
@@ -255,11 +258,11 @@ describe("EnvironmentPickerUI multi-machine menu", () => {
     expect(placeholder.getAttribute("aria-disabled")).toBe("true");
   });
 
-  it("names the primary machine in the trigger label when multiple machines exist", () => {
-    renderMachineMenu({ value: `host:${thisMachine.id}:worktree` });
+  it("names the primary machine and workspace mode in the trigger label", () => {
+    renderMachineMenu({ value: `host:${thisMachine.id}:local` });
 
-    expect(screen.getByText("MacBook Pro · New worktree")).toBeTruthy();
-    expect(screen.getByText("Worktree")).toBeTruthy();
+    expect(screen.getByText("MacBook Pro · Current checkout")).toBeTruthy();
+    expect(screen.getByText("Checkout")).toBeTruthy();
   });
 
   it("names another selected machine in the trigger label", () => {
@@ -269,10 +272,10 @@ describe("EnvironmentPickerUI multi-machine menu", () => {
     expect(screen.getByText("Worktree")).toBeTruthy();
   });
 
-  it("keeps the single-host menu when only one host exists", () => {
+  it("keeps the single-host menu for an existing worktree selection", () => {
     render(
       <EnvironmentPickerUI
-        value={`host:${thisMachine.id}:local`}
+        value="reuse"
         onChange={vi.fn()}
         sources={machineSources}
         host={thisMachine}
@@ -285,12 +288,16 @@ describe("EnvironmentPickerUI multi-machine menu", () => {
         modal={false}
       />,
     );
+
+    expect(screen.getByText("Existing worktree")).toBeTruthy();
+    expect(screen.getByText("Existing")).toBeTruthy();
+
     fireEvent.pointerDown(screen.getByRole("button", { name: "Environment" }), {
       button: 0,
     });
 
     expect(
-      screen.getByRole("menuitem", { name: /Work locally/u }),
+      screen.getByRole("menuitem", { name: /Current checkout/u }),
     ).toBeTruthy();
     expect(screen.queryByText("MacBook Pro")).toBeNull();
   });
