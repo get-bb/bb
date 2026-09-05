@@ -37,6 +37,25 @@ afterEach(() => {
 });
 
 describe("client system notifications", () => {
+  it.each([
+    { platform: "macos", icon: undefined },
+    { platform: "linux", icon: "http://localhost:3000/icon-192.png" },
+    { platform: "web", icon: "http://localhost:3000/icon-192.png" },
+  ])(
+    "uses the appropriate notification icon on $platform",
+    async ({ platform, icon }) => {
+      if (platform !== "web") vi.stubGlobal("bbDesktop", { platform });
+      const delivery = createClientDelivery(vi.fn());
+      await delivery.deliver(
+        { ...message, channels: [platform === "web" ? "web" : "desktop"] },
+        true,
+      );
+      expect(TestNotification.instances).toHaveLength(1);
+      expect(TestNotification.instances[0]?.options.icon).toBe(icon);
+      delivery.dispose();
+    },
+  );
+
   it("deduplicates windows, navigates on click, and cleans up on disposal", async () => {
     const navigate = vi.fn();
     const first = createClientDelivery(navigate);
