@@ -24,7 +24,7 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs";
-import { availableParallelism } from "node:os";
+import { availableParallelism, totalmem } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -36,6 +36,7 @@ import {
 import { rollup } from "rollup";
 import { dts } from "rollup-plugin-dts";
 
+import { computeBundleWorkerCount } from "./build-bundled-dts-concurrency.mjs";
 import { normalizeBundledDts } from "./normalize-bundled-dts.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -177,11 +178,6 @@ function generateBundle(entry) {
   );
 }
 
-// Each bundle builds its own TypeScript program, which is CPU-bound and
-// single-threaded inside rollup-plugin-dts; the six large entries take 2–7s
-// apiece. They are independent, so this file re-runs itself as a worker per
-// entry, as many at a time as there are cores, and the serial ~27s becomes
-// roughly the longest single bundle.
 if (!isMainThread) {
   parentPort.postMessage(await generateBundle(workerData.entry));
 } else {
@@ -191,7 +187,11 @@ if (!isMainThread) {
 async function main() {
   const generated = {};
   const queue = Object.entries(outputs);
-  const workers = Math.min(queue.length, availableParallelism());
+  const workers = computeBundleWorkerCount(
+    queue.length,
+    availableParallelism(),
+    totalmem(),
+  );
   await Promise.all(
     Array.from({ length: workers }, async () => {
       for (let next = queue.shift(); next; next = queue.shift()) {
