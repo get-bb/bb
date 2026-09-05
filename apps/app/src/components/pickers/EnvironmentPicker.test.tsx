@@ -31,7 +31,7 @@ afterEach(() => {
 });
 
 describe("EnvironmentPickerUI", () => {
-  it("disables new worktree without disabling local work for non-git sources", () => {
+  it("disables new worktree without disabling the current checkout for non-git sources", () => {
     render(
       <EnvironmentPickerUI
         value={`host:${host.id}:local`}
@@ -48,12 +48,14 @@ describe("EnvironmentPickerUI", () => {
       button: 0,
     });
 
-    const localItem = screen.getByRole("menuitem", { name: /Work locally/u });
+    const checkoutItem = screen.getByRole("menuitem", {
+      name: /Current checkout/u,
+    });
     const worktreeItem = screen.getByRole("menuitem", {
       name: /New worktree/u,
     });
 
-    expect(localItem.getAttribute("aria-disabled")).toBeNull();
+    expect(checkoutItem.getAttribute("aria-disabled")).toBeNull();
     expect(worktreeItem.getAttribute("aria-disabled")).toBe("true");
     expect(
       screen.getByText("Project source is not a git repository"),
@@ -192,7 +194,7 @@ describe("EnvironmentPickerUI multi-machine menu", () => {
     });
 
     const checkoutItem = screen.getByRole("menuitem", {
-      name: /Work in checkout/u,
+      name: /~\/code\/bb/u,
     });
     expect(checkoutItem.getAttribute("aria-disabled")).toBe("true");
   });
@@ -290,7 +292,7 @@ describe("EnvironmentPickerUI multi-machine menu", () => {
     });
 
     expect(
-      screen.getByRole("menuitem", { name: /Work locally/u }),
+      screen.getByRole("menuitem", { name: /Current checkout/u }),
     ).toBeTruthy();
     expect(screen.queryByText("MacBook Pro")).toBeNull();
   });
