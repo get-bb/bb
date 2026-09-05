@@ -681,12 +681,17 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Renders bb's own conversation and prompt-box components inside the plugin's pages. With this, a plugin can:",
         bullets: [
           "Embed the thread view and the new-thread prompt box as components",
-          "Render message text with the same Markdown renderer bb uses",
+          "Render message text with the same Markdown renderer bb uses; experimental_imagePolicy=alt-text suppresses image loading while omission preserves rendered images and HTML stays disabled",
+          "Resolve local Markdown destinations with experimental_resolveFileLink(href): return a complete native file intent or null for inert selectable text; HTTP(S) and BB routes stay host-owned",
+          "Native file links preserve explicit host, workspace, or thread-storage identity in preview and context-menu actions; browser href, modified/auxiliary navigation, downloads, and URL dragging are gated until identity-preserving URLs exist",
           "Inherit bb's styling, so embedded UI matches the rest of the app",
         ],
         apiSymbols: [
           "ThreadChat",
           "Markdown",
+          "MarkdownProps",
+          "experimental_FileLink",
+          "ExperimentalFileOpenOptions",
           "experimental_NewThreadComposer",
         ],
         firstParty: ["Side chat"],

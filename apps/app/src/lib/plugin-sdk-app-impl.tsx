@@ -71,7 +71,12 @@ export const pluginSdkAppImplementation = installDeprecatedAliases(
   { experimental_UrlLink: "UrlLink" },
 );
 
-function PluginMarkdown({ content, className }: MarkdownProps) {
+function PluginMarkdown({
+  content,
+  className,
+  experimental_imagePolicy,
+  experimental_resolveFileLink,
+}: MarkdownProps) {
   const timelineNavigation = useThreadTimelineNavigation();
   const onOpenLocalFileLink = timelineNavigation?.onOpenLocalFileLink;
   const workspaceRootPath = timelineNavigation?.workspaceRootPath;
@@ -81,6 +86,9 @@ function PluginMarkdown({ content, className }: MarkdownProps) {
     [navigation],
   );
   const linkRouting = useMemo<MarkdownLinkRouting>(() => {
+    if (experimental_resolveFileLink !== undefined) {
+      return { onOpenLink, resolveFileLink: experimental_resolveFileLink };
+    }
     if (onOpenLocalFileLink === undefined) {
       return { onOpenLink };
     }
@@ -95,11 +103,17 @@ function PluginMarkdown({ content, className }: MarkdownProps) {
       };
     }
     return { localFile, onOpenLink };
-  }, [onOpenLink, onOpenLocalFileLink, workspaceRootPath]);
+  }, [
+    onOpenLink,
+    onOpenLocalFileLink,
+    workspaceRootPath,
+    experimental_resolveFileLink,
+  ]);
 
   return (
     <MarkdownPreview
       content={content}
+      imagePolicy={experimental_imagePolicy}
       className={className}
       linkRouting={linkRouting}
     />

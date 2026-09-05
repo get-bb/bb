@@ -28,6 +28,7 @@ const {
   experimental_useAppPanel,
   experimental_useFixedTabTarget,
   ThreadChat,
+  Markdown,
   useBbNavigate,
   useComposer,
   useComposerView,
@@ -1303,15 +1304,29 @@ describe("renderSlot", () => {
     ]);
   });
 
-  it("exposes a scheme-safe href for file links", () => {
+  it("gates browser hrefs for file links", () => {
     const slot = renderSlot(
       { component: SchemeLikeFileLinkProbe },
       {},
       { openFilePreview: () => true },
     );
     const link = slot.getByRole("link", { name: "Open scheme-like file" });
-    expect(link.getAttribute("href")).toBe("./vscode%3Afoo");
-    fireEvent.click(link);
+    expect(link.getAttribute("href")).toBeNull();
+    for (const modifier of ["metaKey", "ctrlKey", "altKey", "shiftKey"]) {
+      expect(fireEvent.click(link, { [modifier]: true })).toBe(false);
+    }
+    expect(
+      fireEvent(
+        link,
+        new MouseEvent("auxclick", {
+          button: 1,
+          bubbles: true,
+          cancelable: true,
+        }),
+      ),
+    ).toBe(false);
+    expect(slot.inspection.navigateCalls).toEqual([]);
+    fireEvent.keyDown(link, { key: "Enter" });
     expect(slot.inspection.navigateCalls).toEqual([
       {
         method: "experimental_openFilePreview",
@@ -1675,5 +1690,32 @@ describe("renderSlot", () => {
     expect(slot.composer.textEffectCalls).toEqual([
       { className: "cleanup-effect" },
     ]);
+  });
+});
+
+describe("Markdown harness policy inspection", () => {
+  it("records renderer options without claiming parser fidelity", () => {
+    const resolver = vi.fn(() => null);
+    const view = render(
+      <Markdown
+        content="![alt](https://beacon.invalid/image)"
+        experimental_imagePolicy="alt-text"
+        experimental_resolveFileLink={resolver}
+      />,
+    );
+    expect(
+      view.getByTestId("bb-markdown").getAttribute("data-image-policy"),
+    ).toBe("alt-text");
+    expect(
+      view.getByTestId("bb-markdown").getAttribute("data-file-link-resolver"),
+    ).toBe("true");
+    expect(resolver).not.toHaveBeenCalled();
+    view.rerender(<Markdown content="default" />);
+    expect(
+      view.getByTestId("bb-markdown").getAttribute("data-image-policy"),
+    ).toBe("render");
+    expect(
+      view.getByTestId("bb-markdown").getAttribute("data-file-link-resolver"),
+    ).toBe("false");
   });
 });

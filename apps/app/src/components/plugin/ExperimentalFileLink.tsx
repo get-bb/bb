@@ -41,6 +41,8 @@ export function ExperimentalFileLink({
   target,
   location = null,
   onClick,
+  onAuxClick,
+  onKeyDown,
   ...anchorProps
 }: ExperimentalFileLinkProps) {
   const navigation = useAppNavigationHost();
@@ -52,18 +54,38 @@ export function ExperimentalFileLink({
   const handleClick = useCallback(
     (event: ReactMouseEvent<HTMLAnchorElement>) => {
       onClick?.(event);
-      if (intent === null || !shouldHandleFileClick(event)) {
-        return;
-      }
+      const shouldOpen = intent !== null && shouldHandleFileClick(event);
       event.preventDefault();
+      if (!shouldOpen) return;
       navigation.openFilePreview(intent);
     },
     [intent, navigation, onClick],
   );
-  const href =
-    intent === null ? undefined : `./${encodeURIComponent(intent.target.path)}`;
   const anchor = (
-    <RouteAnchor {...anchorProps} href={href} onClick={handleClick} />
+    <RouteAnchor
+      {...anchorProps}
+      href={undefined}
+      role={intent === null ? undefined : "link"}
+      tabIndex={intent === null ? undefined : (anchorProps.tabIndex ?? 0)}
+      onClick={handleClick}
+      onAuxClick={(event) => {
+        onAuxClick?.(event);
+        event.preventDefault();
+      }}
+      onKeyDown={(event) => {
+        onKeyDown?.(event);
+        if (event.key === "Enter" && !event.defaultPrevented) {
+          event.preventDefault();
+          if (
+            !event.altKey &&
+            !event.ctrlKey &&
+            !event.metaKey &&
+            !event.shiftKey
+          )
+            event.currentTarget.click();
+        }
+      }}
+    />
   );
 
   if (intent === null) return anchor;

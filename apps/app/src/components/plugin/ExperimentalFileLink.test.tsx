@@ -39,7 +39,7 @@ describe("ExperimentalFileLink", () => {
     });
   });
 
-  it("leaves modifier clicks native", () => {
+  it("gates modifier clicks without a browser fallback", () => {
     const openFilePreview = vi.fn(() => true);
     render(
       <MemoryRouter>
@@ -56,7 +56,7 @@ describe("ExperimentalFileLink", () => {
     expect(openFilePreview).not.toHaveBeenCalled();
   });
 
-  it("uses a scheme-safe href for a valid scheme-like file name", () => {
+  it("keeps a scheme-like file name out of browser navigation", () => {
     const openFilePreview = vi.fn(() => true);
     render(
       <MemoryRouter>
@@ -68,7 +68,7 @@ describe("ExperimentalFileLink", () => {
       </MemoryRouter>,
     );
     const link = screen.getByRole("link", { name: "vscode:foo" });
-    expect(link.getAttribute("href")).toBe("./vscode%3Afoo");
+    expect(link.getAttribute("href")).toBeNull();
 
     fireEvent.click(link);
     expect(openFilePreview).toHaveBeenCalledWith({

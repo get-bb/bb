@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import type { ExperimentalFileOpenOptions } from "@get-bb/plugin-sdk";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PluginSlotMount } from "@/components/plugin/PluginSlotMount";
@@ -8,6 +9,25 @@ import { ThreadTimelineNavigationProvider } from "@/components/thread/timeline/T
 import { pluginSdkAppImplementation } from "./plugin-sdk-app-impl";
 import { resetDeprecatedAliasWarningsForTests } from "./plugin-sdk-deprecated-aliases";
 import { AppNavigationHostProvider } from "./app-navigation-host";
+
+const copyFilePath = vi.hoisted(() => vi.fn());
+vi.mock("@/hooks/useResolvedLiveFileTarget", () => ({
+  useResolvedLiveFileTarget: () => ({ status: "unavailable" }),
+}));
+vi.mock("@/hooks/useLocalOpenTargets", () => ({
+  useLocalOpenTargets: () => ({
+    isLoading: false,
+    canOpenPreferredFileTarget: false,
+    fileOpenTargets: [],
+  }),
+}));
+vi.mock("@/lib/plugin-slots", () => ({
+  usePluginSlots: () => ({ fileOpeners: [] }),
+}));
+vi.mock("@/lib/clipboard", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/clipboard")>()),
+  copyToClipboardWithToast: copyFilePath,
+}));
 
 afterEach(cleanup);
 
@@ -187,5 +207,277 @@ describe("plugin SDK navigation components", () => {
       },
       location: null,
     });
+  });
+});
+
+describe("plugin SDK Markdown policies at the real renderer", () => {
+  const Markdown = pluginSdkAppImplementation.Markdown;
+  const media = `![inline alt](https://beacon.invalid/inline.png)
+
+![reference alt][beacon]
+
+[beacon]: https://beacon.invalid/reference.png
+
+<img src="https://beacon.invalid/html.png"><video src="https://beacon.invalid/video" poster="https://beacon.invalid/poster"><source src="https://beacon.invalid/source"></video><audio src="https://beacon.invalid/audio"></audio><iframe src="https://beacon.invalid/frame"></iframe><object data="https://beacon.invalid/object"></object>`;
+
+  it("emits alt text without any fetchable media, and preserves default image rendering", () => {
+    const view = render(
+      <Markdown content={media} experimental_imagePolicy="alt-text" />,
+    );
+    expect(view.container.textContent).toContain("inline alt");
+    expect(view.container.textContent).toContain("reference alt");
+    expect(
+      view.container.querySelector(
+        "img,video,audio,source,iframe,object,embed,link,[src],[srcset],[poster]",
+      ),
+    ).toBeNull();
+    view.rerender(<Markdown content={media} />);
+    expect(
+      screen.getByRole("img", { name: "inline alt" }).getAttribute("src"),
+    ).toBe("https://beacon.invalid/inline.png");
+    expect(
+      screen.getByRole("img", { name: "reference alt" }).getAttribute("src"),
+    ).toBe("https://beacon.invalid/reference.png");
+    expect(
+      view.container.querySelector("video,audio,source,iframe,object,embed"),
+    ).toBeNull();
+  });
+
+  it("preserves host typography and URL routing without ambient timeline context", () => {
+    const openUrl = vi.fn(() => true);
+    const resolver = vi.fn(() => null);
+    const urls = [
+      "https://example.com/docs",
+      "http://example.com/docs",
+      "http://localhost:5173/report",
+      "https://github.com/get-bb/bb/issues/135",
+    ];
+    const view = render(
+      <AppNavigationHostProvider capabilities={{ openUrl }}>
+        <Markdown
+          experimental_imagePolicy="alt-text"
+          experimental_resolveFileLink={resolver}
+          content={`# Heading
+
+| Name | Value |
+| --- | --- |
+| result | yes |
+
+- First
+- Second
+
+\`inline code\`
+
+\`\`\`text
+block code
+\`\`\`
+
+${urls.map((url, i) => `[URL ${i}](${url})`).join(" ")}`}
+        />
+      </AppNavigationHostProvider>,
+    );
+    expect(screen.getByRole("heading", { name: "Heading" })).toBeTruthy();
+    expect(screen.getByRole("table")).toBeTruthy();
+    expect(screen.getAllByRole("listitem")).toHaveLength(2);
+    expect(
+      view.container.querySelectorAll("code").length,
+    ).toBeGreaterThanOrEqual(2);
+    for (const [i, url] of urls.entries()) {
+      fireEvent.click(screen.getByRole("link", { name: `URL ${i}` }));
+      expect(openUrl).toHaveBeenLastCalledWith({ url });
+    }
+    expect(resolver).not.toHaveBeenCalled();
+  });
+
+  it("exposes raw local anchors without a resolver: capture cannot secure context-menu or drag", () => {
+    render(
+      <Markdown content="[report](/Users/sender/report.md) [relative](reports/result.md)" />,
+    );
+    expect(
+      screen.getByRole("link", { name: "report" }).getAttribute("href"),
+    ).toBe("/Users/sender/report.md");
+    expect(
+      screen.getByRole("link", { name: "relative" }).getAttribute("href"),
+    ).toBe("reports/result.md");
+  });
+
+  it("resolves raw destinations before normalization and never borrows ambient identity", () => {
+    const openFilePreview = vi.fn(() => true);
+    const ambient = vi.fn(() => true);
+    const resolver = vi.fn((href: string) =>
+      href === "/Users/sender/.bb/thread-storage/thr_foreign/report.md"
+        ? {
+            target: {
+              kind: "host" as const,
+              hostId: "host_sender",
+              path: href,
+            },
+            location: { kind: "line" as const, line: 7, column: null },
+          }
+        : null,
+    );
+    const view = render(
+      <AppNavigationHostProvider capabilities={{ openFilePreview }}>
+        <ThreadTimelineNavigationProvider
+          environmentId="env_wrong"
+          onOpenLink={() => false}
+          onOpenLocalFileLink={ambient}
+          resolveMentionLink={() => null}
+          workspaceRootPath="/wrong"
+        >
+          <Markdown
+            experimental_resolveFileLink={resolver}
+            content="[foreign report](/Users/sender/.bb/thread-storage/thr_foreign/report.md) [traversal](../secret.md) [encoded](%2e%2e/secret.md) [double](%252e%252e/secret.md) [file](file:///tmp/report.md) [missing](missing.md)"
+          />
+        </ThreadTimelineNavigationProvider>
+      </AppNavigationHostProvider>,
+    );
+    expect(resolver.mock.calls.map(([href]) => href)).toEqual([
+      "/Users/sender/.bb/thread-storage/thr_foreign/report.md",
+      "../secret.md",
+      "%2e%2e/secret.md",
+      "%252e%252e/secret.md",
+      "file:///tmp/report.md",
+      "missing.md",
+    ]);
+    expect(view.container.querySelector("a[href]")).toBeNull();
+    expect(screen.queryByRole("link", { name: "missing" })).toBeNull();
+    fireEvent.click(screen.getByRole("link", { name: "foreign report" }));
+    expect(openFilePreview).toHaveBeenCalledWith({
+      target: {
+        kind: "host",
+        hostId: "host_sender",
+        path: "/Users/sender/.bb/thread-storage/thr_foreign/report.md",
+      },
+      location: { kind: "line", line: 7, column: null },
+    });
+    expect(ambient).not.toHaveBeenCalled();
+    view.rerender(
+      <Markdown
+        experimental_resolveFileLink={() => ({
+          target: { kind: "host", hostId: "", path: "/tmp/report.md" },
+          location: null,
+        })}
+        content="[invalid](report.md)"
+      />,
+    );
+    expect(screen.queryByRole("link")).toBeNull();
+    expect(screen.getByText("invalid").tagName).toBe("SPAN");
+  });
+});
+
+describe("resolved Markdown native file activation", () => {
+  const Markdown = pluginSdkAppImplementation.Markdown;
+  const intents: ExperimentalFileOpenOptions[] = [
+    {
+      target: {
+        kind: "host",
+        hostId: "host_sender",
+        path: "/Users/sender/.bb/thread-storage/thr_foreign/report.md",
+      },
+      location: { kind: "line", line: 9, column: 2 },
+    },
+    {
+      target: {
+        kind: "workspace",
+        environmentId: "env_sender",
+        path: "images/result.png",
+      },
+      location: null,
+    },
+    {
+      target: {
+        kind: "thread-storage",
+        threadId: "thr_sender",
+        path: "result.md",
+      },
+      location: null,
+    },
+  ];
+
+  it.each(intents)(
+    "preserves $target.kind identity and gates browser activation",
+    async (intent) => {
+      const openFilePreview = vi.fn(() => true);
+      const view = render(
+        <AppNavigationHostProvider capabilities={{ openFilePreview }}>
+          <Markdown
+            content="[result](result.md)"
+            experimental_resolveFileLink={() => intent}
+          />
+        </AppNavigationHostProvider>,
+      );
+      const link = screen.getByRole("link", { name: "result" });
+      expect(link.getAttribute("href")).toBeNull();
+      expect(link.tabIndex).toBe(0);
+      for (const modifier of ["metaKey", "ctrlKey", "altKey", "shiftKey"]) {
+        expect(fireEvent.click(link, { [modifier]: true })).toBe(false);
+      }
+      expect(
+        fireEvent(
+          link,
+          new MouseEvent("auxclick", {
+            button: 1,
+            bubbles: true,
+            cancelable: true,
+          }),
+        ),
+      ).toBe(false);
+      expect(openFilePreview).not.toHaveBeenCalled();
+      fireEvent.dragStart(link);
+      expect(view.container.querySelector("a[href]")).toBeNull();
+      expect(fireEvent.click(link)).toBe(false);
+      expect(openFilePreview).toHaveBeenLastCalledWith(intent);
+      fireEvent.keyDown(link, { key: "Enter" });
+      expect(openFilePreview).toHaveBeenCalledTimes(2);
+      expect(openFilePreview).toHaveBeenLastCalledWith(intent);
+      expect(fireEvent.contextMenu(link)).toBe(false);
+      fireEvent.click(
+        await screen.findByRole("menuitem", { name: "Copy file path" }),
+      );
+      expect(copyFilePath).toHaveBeenLastCalledWith(
+        intent.target.path,
+        expect.any(Object),
+      );
+      fireEvent.contextMenu(link);
+      fireEvent.click(
+        await screen.findByRole("menuitem", { name: "Open preview" }),
+      );
+      expect(openFilePreview).toHaveBeenLastCalledWith(intent);
+    },
+  );
+
+  it("keeps throwing, malformed, traversal, and rejected resolutions inert without ambient fallback", () => {
+    const openFilePreview = vi.fn(() => true);
+    const content = "[result](result.md)";
+    const view = render(
+      <AppNavigationHostProvider capabilities={{ openFilePreview }}>
+        <Markdown
+          content={content}
+          experimental_resolveFileLink={() => {
+            throw new Error("unavailable context");
+          }}
+        />
+      </AppNavigationHostProvider>,
+    );
+    expect(screen.queryByRole("link")).toBeNull();
+    for (const path of [
+      "../secret",
+      "/tmp/../secret",
+      String.fromCharCode(0xd800),
+    ]) {
+      view.rerender(
+        <Markdown
+          content={content}
+          experimental_resolveFileLink={() => ({
+            target: { kind: "host", hostId: "host_sender", path },
+            location: null,
+          })}
+        />,
+      );
+      expect(screen.queryByRole("link")).toBeNull();
+      expect(view.container.querySelector("[href]")).toBeNull();
+    }
+    expect(openFilePreview).not.toHaveBeenCalled();
   });
 });

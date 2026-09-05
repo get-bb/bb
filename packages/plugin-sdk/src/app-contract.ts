@@ -1900,6 +1900,18 @@ export interface NewThreadComposerProps {
 export interface MarkdownProps {
   /** Markdown source, rendered exactly like a chat message body. */
   content: string;
+  /** Omit to render images; alt-text emits image descriptions without loading media. HTML stays disabled. */
+  experimental_imagePolicy?: "render" | "alt-text";
+  /**
+   * Resolve a local Markdown destination before path normalization. HTTP(S),
+   * other URL schemes, fragments, and BB routes retain host handling. Return a
+   * complete explicit native file intent, or null for inert, selectable text.
+   * The host validates the returned intent; the caller verifies sender identity
+   * and rejects untrusted/traversal destinations. Omit for existing behavior.
+   */
+  experimental_resolveFileLink?: (
+    href: string,
+  ) => ExperimentalFileOpenOptions | null;
   className?: string;
 }
 
@@ -1935,9 +1947,11 @@ export interface ExperimentalFileOpenOptions {
 }
 
 /**
- * Props for BB's host-rendered semantic file link. Valid targets receive a
- * scheme-safe anchor href; traversal paths, ill-formed Unicode, and other
- * malformed runtime targets remain inert.
+ * Props for BB's host-rendered semantic file link. Ordinary click and Enter
+ * open the native preview. Browser navigation, modifier/auxiliary activation,
+ * download, and URL dragging are disabled until an identity-preserving URL
+ * exists. Use the native context menu for copy/open actions. Malformed targets
+ * remain inert.
  */
 export interface ExperimentalFileLinkProps extends Omit<
   ComponentPropsWithoutRef<"a">,

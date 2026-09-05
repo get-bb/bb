@@ -1,3 +1,4 @@
+import type { MarkdownProps } from "@get-bb/plugin-sdk";
 import { createContext, type ReactNode } from "react";
 import type { MarkdownPreviewLinkHandler } from "./markdown-link.js";
 import type {
@@ -53,7 +54,19 @@ export interface MarkdownLocalImageRouting {
   resolveSrc: (image: MarkdownPreviewLocalFileLink) => string;
 }
 
+export function isMarkdownLocalFileHref(href: string): boolean {
+  return (
+    href.length > 0 &&
+    !href.startsWith("#") &&
+    !href.startsWith("//") &&
+    (/^file:/iu.test(href) ||
+      /^[a-z]:[\\/]/iu.test(href) ||
+      !/^[a-z][a-z0-9+.-]*:/iu.test(href))
+  );
+}
+
 export interface MarkdownLinkRouting {
+  resolveFileLink?: MarkdownProps["experimental_resolveFileLink"];
   localFile?: MarkdownLocalFileLinkRouting;
   localImage?: MarkdownLocalImageRouting;
   onOpenLink?: MarkdownPreviewLinkHandler;

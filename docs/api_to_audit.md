@@ -658,9 +658,12 @@ external method resolves the current client's preferred file target, absolute
 path, local/remote-SSH context, and line/column support. The boolean methods
 report host acceptance; later OS failures remain host-owned. The host id added
 to file-opener sources preserves explicit host identity when a plugin page
-opens a host file without ambient thread context. Valid link targets expose a
-scheme-safe href, while traversal paths, ill-formed Unicode, and other
-malformed runtime targets remain inert in both the app and SDK test runtime.
+opens a host file without ambient thread context. File links intentionally have
+no browser href: ordinary click and Enter use the native preview; modifier and
+auxiliary activation and downloads are gated. Native context-menu copy/open
+uses the full intent. No raw path becomes browser navigation or a dragged URL.
+Malformed targets remain inert in both the app and SDK test runtime. A durable,
+identity-preserving browser URL is required before restoring browser fallback.
 
 **Audit before stabilizing.**
 
@@ -1887,3 +1890,36 @@ other pane's copy (or release its owned state). The thread-list slot omits it
 deliberately: it mounts once, and a crash there should disable it everywhere.
 Confirm that split before stabilizing, and decide whether other multi-mount
 slots need the same treatment.
+
+
+## Markdown policies (`MarkdownProps.experimental_imagePolicy`, `MarkdownProps.experimental_resolveFileLink`)
+
+**What they do.** The public host Markdown component forwards the existing
+image policy: omission or `render` retains normal images, while `alt-text`
+emits descriptions without image elements. HTML remains disabled in both modes.
+The optional synchronous file resolver receives local Markdown destinations
+before filesystem path normalization and returns `ExperimentalFileOpenOptions`
+(with explicit target and location, including null location) or null. The host
+validates the result and reuses native FileLink; null, malformed results, and
+throws render inert selectable labels without href. HTTP(S), other URL schemes,
+fragments, and BB routes retain host handling and never enter the resolver.
+Supplying the resolver replaces ambient timeline file routing. The plugin owns
+sender authorization and traversal checks; target syntax validation cannot
+prove a host/environment/thread belongs to the sender. Never infer identity
+from a file's path (a sender can reference another thread's report on its host).
+
+**Nav-panel integration.** Without the resolver, Markdown retains raw local
+anchors outside timeline context. Containing-body click/auxclick capture cannot
+secure browser context-menu opening, copying link addresses, or dragging URLs.
+Use the render-time resolver with verified sender context, returning null while
+context is absent or rejected. Do not rewrite Markdown or mutate rendered DOM.
+The SDK test harness only exposes supplied policies on its source-text wrapper;
+renderer safety evidence belongs at the real host PluginMarkdown boundary.
+
+**Audit before stabilizing.** Verify the image/reference-image/HTML-media
+negative controls, typography and web URL parity, raw encoded traversal inputs,
+resolver changes, rejection and throwing behavior, explicit target identity on
+nav panels without timeline context, native preview/menu/copy actions and
+modifier/auxiliary/drag gating. Verify installed client support separately from
+SDK declaration availability; these props require the matching host runtime.
+An identity-preserving browser file URL remains deferred, not emulated.

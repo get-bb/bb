@@ -1,3 +1,6 @@
+import { ExperimentalFileLink } from "@/components/plugin/ExperimentalFileLink";
+import { normalizeExperimentalFileOpenOptions } from "@/lib/live-file-navigation";
+import { isMarkdownLocalFileHref } from "./markdown-link-routing";
 import {
   Children,
   cloneElement,
@@ -353,6 +356,7 @@ function areMarkdownLinkRoutingsEqual({
   if (previous === next) return true;
   if (previous === undefined || next === undefined) return false;
   return (
+    previous.resolveFileLink === next.resolveFileLink &&
     previous.onOpenLink === next.onOpenLink &&
     areMarkdownLocalFileLinkRoutingsEqual({
       next: next.localFile,
@@ -599,6 +603,30 @@ function MarkdownAnchor({
     localFileLink !== null && getContextMenuItems !== null
       ? getContextMenuItems(localFileLink)
       : null;
+  if (
+    linkRouting?.resolveFileLink &&
+    href &&
+    !isAppRouteHref &&
+    isMarkdownLocalFileHref(href)
+  ) {
+    let intent;
+    try {
+      intent = normalizeExperimentalFileOpenOptions(
+        linkRouting.resolveFileLink(href),
+      );
+    } catch {
+      return <span>{children}</span>;
+    }
+    if (intent === null) return <span>{children}</span>;
+    return (
+      <ExperimentalFileLink
+        {...intent}
+        className="break-words [overflow-wrap:anywhere] underline underline-offset-2"
+      >
+        {children}
+      </ExperimentalFileLink>
+    );
+  }
   const handleAnchorClick = (event: MarkdownAnchorEvent) => {
     if (localFileLink && onOpenLocalFileLink) {
       if (onOpenLocalFileLink(localFileLink)) {
@@ -1681,16 +1709,26 @@ function MarkdownPreviewComponent({
     }
     return plugins;
   }, [threadMentions, promptMentions, messageDirectiveMounts]);
+  const resolveFileLink = linkRouting?.resolveFileLink;
   const resolvedUrlTransform = useMemo(
     () =>
-      localFileRouting || localImageRouting
-        ? buildLocalAwareUrlTransform({
-            fallbackUrlTransform: urlTransform,
-            localFileRouting,
-            localImageRouting,
-          })
-        : urlTransform,
-    [localFileRouting, localImageRouting, urlTransform],
+      resolveFileLink
+        ? (((value, key, node) =>
+            key === "href" && isMarkdownLocalFileHref(value)
+              ? value
+              : (urlTransform ?? defaultUrlTransform)(
+                  value,
+                  key,
+                  node,
+                )) satisfies UrlTransform)
+        : localFileRouting || localImageRouting
+          ? buildLocalAwareUrlTransform({
+              fallbackUrlTransform: urlTransform,
+              localFileRouting,
+              localImageRouting,
+            })
+          : urlTransform,
+    [localFileRouting, localImageRouting, urlTransform, resolveFileLink],
   );
 
   const rehypeKatex = useRehypeKatex(markdownMayContainMath(body));

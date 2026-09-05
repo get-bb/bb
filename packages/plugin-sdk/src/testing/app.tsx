@@ -327,9 +327,19 @@ function TestThreadChat({
  * recognizable wrapper so plugin tests can assert what content they passed
  * without the real renderer.
  */
-function TestMarkdown({ content, className }: MarkdownProps) {
+function TestMarkdown({
+  content,
+  className,
+  experimental_imagePolicy = "render",
+  experimental_resolveFileLink,
+}: MarkdownProps) {
   return (
-    <div data-testid="bb-markdown" className={className}>
+    <div
+      data-testid="bb-markdown"
+      data-image-policy={experimental_imagePolicy}
+      data-file-link-resolver={experimental_resolveFileLink !== undefined}
+      className={className}
+    >
       {content}
     </div>
   );
@@ -393,23 +403,41 @@ function TestFileLink({
   target,
   location = null,
   onClick,
+  onAuxClick,
+  onKeyDown,
   ...anchorProps
 }: ExperimentalFileLinkProps) {
   const navigate = useSlotEnv("experimental_FileLink").navigate;
   const options = normalizeExperimentalFileOpenOptions({ target, location });
-  const href =
-    options === null
-      ? undefined
-      : `./${encodeURIComponent(options.target.path)}`;
   return (
     <a
       {...anchorProps}
-      href={href}
+      role={options === null ? undefined : "link"}
+      tabIndex={options === null ? undefined : (anchorProps.tabIndex ?? 0)}
+      onAuxClick={(event) => {
+        onAuxClick?.(event);
+        event.preventDefault();
+      }}
+      onKeyDown={(event) => {
+        onKeyDown?.(event);
+        if (event.key === "Enter" && !event.defaultPrevented) {
+          event.preventDefault();
+          if (
+            !event.altKey &&
+            !event.ctrlKey &&
+            !event.metaKey &&
+            !event.shiftKey
+          )
+            event.currentTarget.click();
+        }
+      }}
       onClick={(event: ReactMouseEvent<HTMLAnchorElement>) => {
         onClick?.(event);
+        const prevented = event.defaultPrevented;
+        event.preventDefault();
         if (
           options === null ||
-          event.defaultPrevented ||
+          prevented ||
           event.button !== 0 ||
           event.altKey ||
           event.ctrlKey ||
@@ -419,7 +447,6 @@ function TestFileLink({
         ) {
           return;
         }
-        event.preventDefault();
         navigate.experimental_openFilePreview(options);
       }}
     />
