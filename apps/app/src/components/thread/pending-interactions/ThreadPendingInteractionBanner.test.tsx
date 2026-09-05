@@ -406,6 +406,27 @@ describe("ThreadPendingInteractionBanner collapsed strip", () => {
     expect(banner.hasAttribute("data-expanded")).toBe(false);
   });
 
+  it("toggles through the title without submitting an approval", () => {
+    renderBanner(commandApproval);
+    const title = screen.getByRole("button", {
+      name: "Not in allowlist: bash",
+    });
+    title.focus();
+    fireEvent.click(title);
+    const expandedTitle = screen.getByRole("button", {
+      name: "Approval needed",
+    });
+    expect(expandedTitle.getAttribute("aria-expanded")).toBe("true");
+    expect(document.activeElement).toBe(expandedTitle);
+    fireEvent.click(expandedTitle);
+    expect(
+      screen
+        .getByRole("button", { name: "Not in allowlist: bash" })
+        .getAttribute("aria-expanded"),
+    ).toBe("false");
+    expect(mocks.resolveMutateAsync).not.toHaveBeenCalled();
+  });
+
   it("keeps focus on the disclosure button across toggles so Escape works right after opening", () => {
     renderBanner(commandApproval);
     const show = screen.getByRole("button", { name: "Show details" });

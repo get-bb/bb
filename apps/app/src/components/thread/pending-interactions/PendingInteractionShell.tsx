@@ -1,7 +1,6 @@
 import {
   Activity,
   useId,
-  useLayoutEffect,
   useRef,
   useState,
   type KeyboardEvent,
@@ -44,21 +43,16 @@ export function PendingInteractionShell({
 }: PendingInteractionShellProps) {
   const [isExpanded, setIsExpanded] = useState(initiallyExpanded);
   const toggleRef = useRef<HTMLButtonElement>(null);
-  const shouldRestoreToggleFocusRef = useRef(false);
   const contentId = useId();
-  useLayoutEffect(() => {
-    if (!shouldRestoreToggleFocusRef.current) return;
-    shouldRestoreToggleFocusRef.current = false;
-    toggleRef.current?.focus();
-  }, [isExpanded]);
   const handleKeyDown = (event: KeyboardEvent<HTMLElement>) => {
     if (event.key === "Escape" && isExpanded && !event.defaultPrevented) {
       event.preventDefault();
       event.stopPropagation();
-      shouldRestoreToggleFocusRef.current = true;
       setIsExpanded(false);
+      toggleRef.current?.focus();
     }
   };
+  const handleToggle = () => setIsExpanded((value) => !value);
   const toggle = (
     <button
       ref={toggleRef}
@@ -66,11 +60,7 @@ export function PendingInteractionShell({
       aria-controls={contentId}
       aria-expanded={isExpanded}
       aria-label={isExpanded ? "Hide details" : "Show details"}
-      onClick={(event) => {
-        shouldRestoreToggleFocusRef.current =
-          document.activeElement === event.currentTarget;
-        setIsExpanded((value) => !value);
-      }}
+      onClick={handleToggle}
       className="flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-state-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
     >
       <Icon
@@ -108,48 +98,49 @@ export function PendingInteractionShell({
       onKeyDown={handleKeyDown}
       className="@container mb-2 min-w-0 max-w-full rounded-lg border border-border bg-surface-recessed text-xs text-muted-foreground"
     >
-      {isExpanded ? (
-        <div className="flex items-center gap-2 border-b border-border-hairline py-1.5 pl-3 pr-1.5">
+      <div
+        className={cn(
+          "flex min-h-9 items-center gap-2 pl-3 pr-1.5",
+          isExpanded ? "border-b border-border-hairline py-1.5" : "py-1",
+        )}
+      >
+        <button
+          type="button"
+          aria-controls={contentId}
+          aria-expanded={isExpanded}
+          aria-label={isExpanded ? label : (title ?? label)}
+          title={isExpanded ? label : (title ?? label)}
+          onClick={handleToggle}
+          className="flex min-h-7 min-w-0 flex-1 items-center gap-2 rounded-md text-left focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+        >
           <AttentionDot />
-          <span className="min-w-0 truncate text-sm font-semibold text-foreground">
-            {label}
+          <span
+            className={cn(
+              "min-w-0 truncate text-sm text-foreground",
+              isExpanded ? "font-semibold" : "font-medium",
+            )}
+          >
+            {isExpanded ? label : (title ?? label)}
           </span>
-          {sourceThreadLink}
-          <span className="flex-1" />
-          {toggle}
-        </div>
-      ) : (
-        <div className="flex min-h-9 items-center gap-2 py-1 pl-3 pr-1.5">
-          <div className="flex min-w-0 flex-1 items-center gap-2">
-            <AttentionDot />
-            <div className="flex min-w-0 flex-1 items-center gap-2">
-              <span
-                className="min-w-0 truncate text-sm font-medium text-foreground @2xl:shrink"
-                title={title ?? label}
-              >
-                {title ?? label}
-              </span>
-              {summary ? (
-                <span
-                  className="hidden min-w-0 truncate font-mono text-xs text-muted-foreground @2xl:block @2xl:shrink-[2]"
-                  title={summary}
-                >
-                  {summary}
-                </span>
-              ) : null}
-              <div className="hidden min-w-0 @2xl:contents">
-                {sourceThreadLink}
-              </div>
-            </div>
-          </div>
-          <div className="order-2 shrink-0 @2xl:order-3">{toggle}</div>
-          {footer ? (
-            <div className="order-2 hidden shrink-0 items-center gap-1.5 @2xl:flex">
-              {footer("strip")}
-            </div>
+          {!isExpanded && summary ? (
+            <span
+              className="hidden min-w-0 shrink-[2] truncate font-mono text-xs text-muted-foreground @2xl:block"
+              title={summary}
+            >
+              {summary}
+            </span>
           ) : null}
+        </button>
+        <div className={isExpanded ? "contents" : "hidden @2xl:contents"}>
+          {sourceThreadLink}
         </div>
-      )}
+        {!isExpanded && footer ? (
+          <div className="hidden shrink-0 items-center gap-1.5 @2xl:flex">
+            {footer("strip")}
+          </div>
+        ) : null}
+        {toggle}
+      </div>
       <Activity mode={isExpanded ? "visible" : "hidden"}>
         <div id={contentId} hidden={!isExpanded} className="px-3 pb-3 pt-2.5">
           {title ? (
