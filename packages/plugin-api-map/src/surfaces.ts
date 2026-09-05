@@ -605,9 +605,14 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         bullets: [
           "Register tools an agent calls the same way it calls bb's built-in tools",
           "Decide per thread which of its tools and skills are available",
+          "Filter BB’s staged skill catalog while retaining on-demand discovery; native harness catalogs remain separate",
           "Append instructions to a session's system prompt as that session starts",
         ],
-        apiSymbols: ["PluginAgents"],
+        apiSymbols: [
+          "PluginAgents",
+          "PluginAgentConfiguration.experimental_skillCatalog",
+          "PluginAgents.experimental_skillCatalogCapabilities",
+        ],
         firstParty: [
           "Ask User Question",
           "Custom instructions",

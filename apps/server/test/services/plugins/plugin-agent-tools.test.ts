@@ -586,6 +586,7 @@ describe("bb.agents.experimental_registerProvider (removed in SDK 0.4.16)", () =
     expect(Object.keys(api.agents).sort()).toEqual([
       "configure",
       "contributeInstructions",
+      "experimental_skillCatalogCapabilities",
       "registerTool",
     ]);
     expect(Object.keys({ ...api.agents })).not.toContain(
@@ -1076,6 +1077,70 @@ describe("plugin tools reach thread runtime config", () => {
     ).toContain("beta-skill");
     expect(turnSubmit.resumeContext.instructions).toContain(
       "factory=1;configure=5",
+    );
+
+    const policyRoot = await writePlugin(pluginsDir, {
+      name: "bb-plugin-catalog-policy",
+      serverSource: `
+        export default function plugin(bb) {
+          if (!bb.agents.experimental_skillCatalogCapabilities().injectedCatalog) throw new Error("missing capability");
+          bb.agents.configure(context => ({
+            tools: [], skills: [], experimental_skillCatalog: {
+              defaultMode: context.provider.id === "codex" ? "discover" : "off",
+              overrides: context.provider.id === "codex" ? { "alpha-skill": "always" } : {},
+            },
+          }));
+        }
+      `,
+    });
+    await harness.pluginService.installPath(policyRoot);
+    expect(
+      (await build(alpha, 14)).injectedSkillSources.map((s) => s.name),
+    ).toEqual(["alpha-skill"]);
+    expect((await build(beta, 15)).injectedSkillSources).toEqual([]);
+    expect(
+      harness.pluginService
+        .listSkillRootContributions()
+        .some((root) => root.pluginId === "conditional"),
+    ).toBe(true);
+    const filteredTurn = await prepareTurnSubmitCommandPayload(harness.deps, {
+      environment: beta.environment,
+      execution: betaExecution,
+      permissionEscalation: "ask",
+      input: textInput("next turn"),
+      providerThreadId: "provider-thread-conditional-beta",
+      target: { mode: "start" },
+      thread: beta.thread,
+    });
+    expect(filteredTurn.resumeContext.injectedSkillSources).toEqual([]);
+
+    await writeFile(
+      join(policyRoot, "server.ts"),
+      `export default function plugin(bb) {
+      bb.agents.configure(() => ({ tools: [], skills: [], experimental_skillCatalog: { defaultMode: "typo", overrides: {} } }));
+    }`,
+    );
+    await harness.pluginService.reload("catalog-policy");
+    await expect(build(alpha, 16)).rejects.toThrow(
+      "Invalid skill catalog policy",
+    );
+
+    await writeFile(
+      join(policyRoot, "server.ts"),
+      `export default function plugin(bb) {
+      bb.agents.configure(() => ({ tools: [], skills: [], experimental_skillCatalog: { defaultMode: "discover", overrides: {} } }));
+    }`,
+    );
+    await harness.pluginService.reload("catalog-policy");
+    const competitor = await writePlugin(pluginsDir, {
+      name: "bb-plugin-competing-policy",
+      serverSource: `export default function plugin(bb) {
+        bb.agents.configure(() => ({ tools: [], skills: [], experimental_skillCatalog: { defaultMode: "always", overrides: {} } }));
+      }`,
+    });
+    await harness.pluginService.installPath(competitor);
+    await expect(build(alpha, 17)).rejects.toThrow(
+      "Skill catalog policies conflict",
     );
   });
 });

@@ -1,3 +1,4 @@
+import { filterInjectedSkillCatalog } from "../skills/skill-catalog-policy.js";
 import { getEnvironment, getHost, getProject } from "@bb/db";
 import type {
   DynamicTool,
@@ -237,11 +238,14 @@ export async function resolveThreadRuntimeCommandConfig(
       hostId: host.id,
     },
   });
-  const injectedSkillSources = resolveSkillCatalog(deps, {
-    projectSkillSources,
-    sharedSkillSources: sharedSkills.runtimeSources,
-    pluginSkillSelections: conditionalConfiguration.selectedSkillIdsByPlugin,
-  }).map((entry) => entry.runtimeSource);
+  const injectedSkillSources = filterInjectedSkillCatalog(
+    resolveSkillCatalog(deps, {
+      projectSkillSources,
+      sharedSkillSources: sharedSkills.runtimeSources,
+      pluginSkillSelections: conditionalConfiguration.selectedSkillIdsByPlugin,
+    }).map((entry) => entry.runtimeSource),
+    conditionalConfiguration.skillCatalogPolicy,
+  );
   const dataDirAgentInstructions = readDataDirAgentInstructions(
     deps.logger,
     deps.config.dataDir,

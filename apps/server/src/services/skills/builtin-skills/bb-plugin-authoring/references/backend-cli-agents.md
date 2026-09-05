@@ -172,6 +172,33 @@ skills, and dynamic instructions use the same boundaries. The legacy
 only `threadId` and `projectId`. Use `configure` when the contribution must
 inspect the side-chat origin.
 
+### Optional skill catalog policy
+
+A Skill Manager can filter BB's staged catalog before session construction:
+
+```ts
+if (bb.agents.experimental_skillCatalogCapabilities?.().injectedCatalog) {
+  bb.agents.configure(() => ({
+    tools: ["skill_search", "skill_read"],
+    skills: [],
+    experimental_skillCatalog: {
+      defaultMode: "discover",
+      overrides: { "bb-cli": "always", "unused-workflow": "off" },
+    },
+  }));
+}
+```
+
+The tools in this example must be registered by the same plugin. Use one
+`configure` callback; include the field conditionally when also targeting older
+BB releases. `always` keeps the BB catalog entry, while `discover` and `off` omit
+it. The plugin owns discovery policy and its UI/CLI. Management and explicit
+slash catalogs remain intact. Two contributing plugins or malformed policy
+output fail resolution, rather than silently choosing a winner. At most 5000
+name overrides are accepted. Native-provider skill discovery is separate:
+`nativeCatalog` is currently `false`, so this does not promise removal of native
+harness metadata. Existing safe runtime/session refresh rules still apply.
+
 ### bb.experimental_aiServices — helper inference and voice transcription
 
 bb's own AI services — the server-side helper completions behind thread

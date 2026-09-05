@@ -166,6 +166,10 @@ export interface PluginInstructionContribution {
 }
 
 export interface PluginResolvedAgentConfiguration {
+  skillCatalogPolicy?: {
+    defaultMode: "always" | "discover" | "off";
+    overrides: Record<string, "always" | "discover" | "off">;
+  };
   tools: PluginAgentToolContribution[];
   selectedSkillIdsByPlugin: ReadonlyMap<string, ReadonlySet<string>>;
   dynamicInstructions: Array<{ pluginId: string; text: string }>;

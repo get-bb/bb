@@ -1024,6 +1024,10 @@ export function createPluginApi(options: {
   let instructionProvider: PluginInstructionProvider | null = null;
 
   const agents: PluginAgents = {
+    experimental_skillCatalogCapabilities: () => ({
+      injectedCatalog: true,
+      nativeCatalog: false,
+    }),
     configure(provider) {
       assertLive();
       if (agentConfigurationProvider !== null) {

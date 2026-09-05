@@ -906,6 +906,15 @@ export interface PluginAgentConfiguration {
   /** Skill frontmatter names from this plugin's manifest skill roots.
    * Duplicate or unknown names reject this plugin's complete selection. */
   skills: string[];
+  /** Filter BB's injected skill catalog before staging. Discovery and explicit
+   * slash invocation retain the installed library. Exactly one plugin may
+   * contribute a catalog policy for a resolution; conflicts fail the command.
+   * Native-provider discovery is a separate boundary and is not filtered by
+   * this field. Entries use frontmatter names, with at most 5000 overrides. */
+  experimental_skillCatalog?: {
+    defaultMode: "always" | "discover" | "off";
+    overrides: Record<string, "always" | "discover" | "off">;
+  };
   /** Optional dynamic instructions. Output is truncated to 4096 characters. */
   instructions?: string;
 }
@@ -1284,6 +1293,12 @@ export interface PluginProviderDeclaration {
 }
 
 export interface PluginAgents {
+  /** Reports the catalog boundaries this host can filter. Native discovery
+   * requires a provider-specific integration beyond BB's staged catalog. */
+  experimental_skillCatalogCapabilities(): {
+    injectedCatalog: true;
+    nativeCatalog: false;
+  };
   /**
    * Select this plugin's statically registered tools and manifest skills for
    * each thread/session resolution, with optional dynamic instructions. The

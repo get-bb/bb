@@ -1,3 +1,4 @@
+import { z } from "zod";
 import { watch } from "node:fs";
 import { readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
@@ -638,7 +639,20 @@ function normalizeMentionSearchItems(
   });
 }
 
+const skillCatalogPolicySchema = z
+  .object({
+    defaultMode: z.enum(["always", "discover", "off"]),
+    overrides: z
+      .record(z.string().min(1).max(200), z.enum(["always", "discover", "off"]))
+      .refine(
+        (value) => Object.keys(value).length <= 5000,
+        "At most 5000 skill overrides",
+      ),
+  })
+  .strict();
+
 interface NormalizedPluginAgentConfiguration {
+  skillCatalogPolicy?: z.infer<typeof skillCatalogPolicySchema>;
   toolIds: string[];
   toolParameterOverrides: Map<string, Record<string, unknown>>;
   skillIds: string[];
@@ -815,7 +829,15 @@ function normalizePluginAgentConfiguration(args: {
   }
   const output = args.value as Record<string, unknown>;
   const unknownKeys = Object.keys(output)
-    .filter((key) => !["tools", "skills", "instructions"].includes(key))
+    .filter(
+      (key) =>
+        ![
+          "tools",
+          "skills",
+          "instructions",
+          "experimental_skillCatalog",
+        ].includes(key),
+    )
     .sort();
   if (unknownKeys.length > 0) {
     throw new Error(
@@ -842,6 +864,13 @@ function normalizePluginAgentConfiguration(args: {
     value: output.tools,
   });
   return {
+    ...(output.experimental_skillCatalog === undefined
+      ? {}
+      : {
+          skillCatalogPolicy: skillCatalogPolicySchema.parse(
+            output.experimental_skillCatalog,
+          ),
+        }),
     toolIds: toolSelections.toolIds,
     toolParameterOverrides: toolSelections.parameterOverrides,
     skillIds: normalizePluginAgentSelectionIds({
@@ -2234,6 +2263,10 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     },
 
     async resolveAgentConfiguration({ context, skillIdsByPlugin }) {
+      let skillCatalogPolicy:
+        | z.infer<typeof skillCatalogPolicySchema>
+        | undefined;
+      let policyPluginId: string | undefined;
       const allTools = collectAgentTools();
       const tools: PluginAgentToolContribution[] = [];
       const selectedSkillIdsByPlugin = new Map<string, ReadonlySet<string>>();
@@ -2261,19 +2294,39 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
         const knownToolIds = new Set(
           pluginTools.map(({ record }) => record.name),
         );
-        const outcome = await invokeWrapped(pluginId, "agent configure", () =>
-          normalizePluginAgentConfiguration({
+        let catalogPolicyRequested = false;
+        const outcome = await invokeWrapped(pluginId, "agent configure", () => {
+          const value = provider(context);
+          catalogPolicyRequested =
+            value !== null &&
+            typeof value === "object" &&
+            Object.hasOwn(value, "experimental_skillCatalog");
+          return normalizePluginAgentConfiguration({
             knownSkillIds,
             knownToolIds,
             pluginId,
-            value: provider(context),
-          }),
-        );
+            value,
+          });
+        });
         if (!outcome.ok) {
+          if (catalogPolicyRequested) {
+            throw new Error(
+              `Invalid skill catalog policy from ${pluginId}: ${outcome.error}`,
+            );
+          }
           selectedSkillIdsByPlugin.set(pluginId, new Set());
           continue;
         }
 
+        if (outcome.value.skillCatalogPolicy !== undefined) {
+          if (policyPluginId !== undefined) {
+            throw new Error(
+              `Skill catalog policies conflict: ${policyPluginId} and ${pluginId}`,
+            );
+          }
+          policyPluginId = pluginId;
+          skillCatalogPolicy = outcome.value.skillCatalogPolicy;
+        }
         const selectedTools = new Set(outcome.value.toolIds);
         const parameterOverrides = outcome.value.toolParameterOverrides;
         tools.push(
@@ -2298,7 +2351,12 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
         }
       }
 
-      return { tools, selectedSkillIdsByPlugin, dynamicInstructions };
+      return {
+        tools,
+        selectedSkillIdsByPlugin,
+        dynamicInstructions,
+        ...(skillCatalogPolicy === undefined ? {} : { skillCatalogPolicy }),
+      };
     },
 
     async resolveProviderEnv({ providerId, context }) {

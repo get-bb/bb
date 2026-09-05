@@ -1025,6 +1025,30 @@ describe("agent tools", () => {
     },
   });
 
+  it("exposes catalog capability and validates global catalog policy independently of owned skills", async () => {
+    const { bb, harness } = createFakePluginHost();
+    expect(bb.agents.experimental_skillCatalogCapabilities()).toEqual({
+      injectedCatalog: true,
+      nativeCatalog: false,
+    });
+    bb.agents.configure(() => ({
+      tools: [],
+      skills: [],
+      experimental_skillCatalog: {
+        defaultMode: "discover",
+        overrides: { "another-plugin-skill": "always" },
+      },
+    }));
+    expect(
+      (await harness.resolveAgentConfiguration(configurationContext))
+        .skillCatalogPolicy,
+    ).toEqual({
+      defaultMode: "discover",
+      overrides: { "another-plugin-skill": "always" },
+    });
+    await harness.lifecycle.dispose();
+  });
+
   it("validates zod parameters per call and executes with a default context", async () => {
     const { bb, harness } = createFakePluginHost();
     bb.agents.registerTool({

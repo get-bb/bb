@@ -1,3 +1,4 @@
+import { z } from "zod";
 import { createHash } from "node:crypto";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -423,6 +424,9 @@ export interface FakePluginBehaviorDrivers {
    * semantics. With no callback, every registered tool/declared test skill is
    * selected. Callback failures are logged and return empty selections. */
   resolveAgentConfiguration(context: PluginAgentConfigurationContext): Promise<{
+    skillCatalogPolicy?: NonNullable<
+      PluginAgentConfiguration["experimental_skillCatalog"]
+    >;
     tools: FakeAgentToolRecord[];
     skills: string[];
     instructions: string | null;
@@ -882,6 +886,15 @@ function normalizeAgentConfigurationIds(args: {
   return selected;
 }
 
+const catalogPolicySchema = z
+  .object({
+    defaultMode: z.enum(["always", "discover", "off"]),
+    overrides: z
+      .record(z.string().min(1).max(200), z.enum(["always", "discover", "off"]))
+      .refine((value) => Object.keys(value).length <= 5000),
+  })
+  .strict();
+
 function normalizeAgentConfiguration(args: {
   knownSkillIds: ReadonlySet<string>;
   knownToolIds: ReadonlySet<string>;
@@ -889,6 +902,7 @@ function normalizeAgentConfiguration(args: {
   value: unknown;
 }): {
   toolIds: string[];
+  skillCatalogPolicy?: z.infer<typeof catalogPolicySchema>;
   toolParameterOverrides: Map<string, Record<string, unknown>>;
   skillIds: string[];
   instructions: string | null;
@@ -904,7 +918,15 @@ function normalizeAgentConfiguration(args: {
   }
   const output = args.value as Record<string, unknown>;
   const unknownKeys = Object.keys(output)
-    .filter((key) => !["tools", "skills", "instructions"].includes(key))
+    .filter(
+      (key) =>
+        ![
+          "tools",
+          "skills",
+          "instructions",
+          "experimental_skillCatalog",
+        ].includes(key),
+    )
     .sort();
   if (unknownKeys.length > 0) {
     throw new Error(
@@ -923,6 +945,13 @@ function normalizeAgentConfiguration(args: {
     value: output.tools,
   });
   return {
+    ...(output.experimental_skillCatalog === undefined
+      ? {}
+      : {
+          skillCatalogPolicy: catalogPolicySchema.parse(
+            output.experimental_skillCatalog,
+          ),
+        }),
     toolIds: toolSelections.toolIds,
     toolParameterOverrides: toolSelections.parameterOverrides,
     skillIds: normalizeAgentConfigurationIds({
@@ -1534,6 +1563,10 @@ function createFakePluginHostInternal(
   };
 
   const agents: PluginAgents = {
+    experimental_skillCatalogCapabilities: () => ({
+      injectedCatalog: true,
+      nativeCatalog: false,
+    }),
     configure(provider) {
       assertLive();
       if (agentConfigurationProvider !== null) {
@@ -2633,12 +2666,18 @@ function createFakePluginHostInternal(
           instructions: null,
         };
       }
+      let catalogPolicyRequested = false;
       try {
+        const value = agentConfigurationProvider(context);
+        catalogPolicyRequested =
+          value !== null &&
+          typeof value === "object" &&
+          Object.hasOwn(value, "experimental_skillCatalog");
         const normalized = normalizeAgentConfiguration({
           knownSkillIds: new Set(agentSkillIds),
           knownToolIds: new Set(agentTools.map((tool) => tool.name)),
           pluginId,
-          value: agentConfigurationProvider(context),
+          value,
         });
         const selectedTools = new Set(normalized.toolIds);
         return {
@@ -2652,11 +2691,18 @@ function createFakePluginHostInternal(
                 ? tool
                 : { ...tool, inputSchema: parameters };
             }),
+          ...(normalized.skillCatalogPolicy === undefined
+            ? {}
+            : { skillCatalogPolicy: normalized.skillCatalogPolicy }),
           skills: normalized.skillIds,
           instructions: normalized.instructions,
         };
       } catch (error) {
         emitLog("warn", `agent configure failed: ${errorMessage(error)}`);
+        if (catalogPolicyRequested)
+          throw new Error(
+            `Invalid skill catalog policy from ${pluginId}: ${errorMessage(error)}`,
+          );
         return { tools: [], skills: [], instructions: null };
       }
     },

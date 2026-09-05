@@ -2325,3 +2325,17 @@ too, after the host has restored the draft. Sole consumer:
 `bb.sdk.experimental_desktopBrowsers` and the exported `ExperimentalDesktopBrowsersArea`, `ExperimentalDesktopBrowserScope`, `ExperimentalDesktopBrowserLease`, `ExperimentalDesktopBrowserCreateInput`, and `ExperimentalDesktopBrowserAcquireInput` expose explicit host/window/thread discovery, isolated tab creation, expiring control leases, scoped CDP connections, capture, reveal, close, release, and disposable tab-state subscriptions. The matching core CLI is `bb browser`.
 
 Before stabilization, audit personal-profile handoff policy, per-tab mutual exclusion and child-target scope, native popup handling, debugger detachment, daemon/desktop disconnect and reconnect generations, expiry and cancellation races, bounded screenshot bytes, and cross-platform desktop startup. Connection credentials must remain private to workers on the browser host. `subscribe` polls every two seconds with one outstanding request; it is state observation, not a lossless event log. Cloud browsers and external provider registration are outside this surface.
+
+## Skill catalog policy
+
+`PluginAgentConfiguration.experimental_skillCatalog` selects `always`, `discover`,
+or `off` with a default and up to 5000 name overrides. A single plugin owns the
+policy per resolution; competing owners and malformed policy output fail the command. Filtering happens
+before host staging and retains the full management/slash catalog. It applies
+at the existing safe session boundary. It does not filter a harness's native
+roots. `PluginAgents.experimental_skillCatalogCapabilities()` reports that
+boundary so plugins on older BB builds can keep discovery available without
+claiming prompt reduction.
+
+Audit multi-plugin conflicts, error handling, provider-native isolation, live
+thread catalog changes, and actual assembled prompts before stabilizing.
