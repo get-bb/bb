@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, waitFor } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
 import type {
   AccountPoolConfig,
@@ -9,7 +9,30 @@ import type {
 } from "./src/contracts.js";
 
 const app = await loadPluginApp(() => import("./app"));
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.restoreAllMocks();
+});
+
+function measureAccountRows() {
+  vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(
+    function (this: HTMLElement) {
+      const handle = this.querySelector(
+        'button[aria-roledescription="sortable"]',
+      );
+      const rows = Array.from(this.parentElement?.children ?? []);
+      return new DOMRect(0, handle ? rows.indexOf(this) * 60 : 0, 600, 60);
+    },
+  );
+}
+
+async function keyboardMove(handle: HTMLElement, code = "ArrowDown") {
+  handle.focus();
+  fireEvent.keyDown(handle, { code: "Space" });
+  await waitFor(() => expect(handle.getAttribute("aria-pressed")).toBe("true"));
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  fireEvent.keyDown(document, { code });
+}
 
 function account(overrides: Partial<AccountSummary> = {}): AccountSummary {
   return {
@@ -317,61 +340,60 @@ describe("Account Pool settings", () => {
     fireEvent.click(await slot.findByRole("button", { name: "Try again" }));
     await waitFor(() => expect(starts).toBe(2));
   });
-  it("reorders accounts within their provider and refreshes the displayed order", async () => {
-    const first = account({ label: "First" });
-    const second = account({
-      id: "22222222-2222-4222-8222-222222222222",
-      label: "Second",
-    });
-    const codex = account({
-      id: "33333333-3333-4333-8333-333333333333",
-      provider: "codex",
-      label: "Codex",
-    });
-    const accounts = [first, second, codex];
-    const slot = render(accounts, {
-      "account.reorder": () => {
-        accounts.splice(0, 2, second, first);
-        return null;
-      },
-    });
-    expect(
-      (await slot.findByRole("button", { name: "Move First up" })).hasAttribute(
-        "disabled",
-      ),
-    ).toBe(true);
-    fireEvent.click(slot.getByRole("button", { name: "Move First down" }));
-    await waitFor(() =>
-      expect(slot.rpcCalls).toContainEqual({
-        method: "account.reorder",
-        input: { provider: "claude", accountIds: [second.id, first.id] },
-      }),
-    );
-    await waitFor(() =>
+  it.each(["claude", "codex"] as const)(
+    "reorders %s accounts with the keyboard and persists the displayed order",
+    async (provider) => {
+      measureAccountRows();
+      const first = account({ label: "First", provider });
+      const second = account({
+        id: "22222222-2222-4222-8222-222222222222",
+        label: "Second",
+        provider,
+      });
+      const other = account({
+        id: "33333333-3333-4333-8333-333333333333",
+        provider: provider === "claude" ? "codex" : "claude",
+        label: "Other",
+      });
+      const accounts = [first, second, other];
+      let finishSave = () => {};
+      const slot = render(accounts, {
+        "account.reorder": () =>
+          new Promise<null>((resolve) => {
+            finishSave = () => {
+              accounts.splice(0, 2, second, first);
+              resolve(null);
+            };
+          }),
+      });
+      const handle = await slot.findByRole("button", { name: "Reorder First" });
+      await keyboardMove(handle);
+      fireEvent.keyDown(document, { code: "Space" });
+      await waitFor(() =>
+        expect(slot.rpcCalls).toContainEqual({
+          method: "account.reorder",
+          input: { provider, accountIds: [second.id, first.id] },
+        }),
+      );
+      const providerOrder = () =>
+        slot
+          .getAllByRole("button", { name: /Reorder (First|Second)/ })
+          .map((button) => button.getAttribute("aria-label"));
+      expect(providerOrder()).toEqual(["Reorder Second", "Reorder First"]);
+      expect(handle.hasAttribute("disabled")).toBe(true);
+      finishSave();
+      await waitFor(() => expect(handle.hasAttribute("disabled")).toBe(false));
+      expect(providerOrder()).toEqual(["Reorder Second", "Reorder First"]);
       expect(
         slot
-          .getByRole("button", { name: "Move Second up" })
+          .getByRole("button", { name: "Reorder Other" })
           .hasAttribute("disabled"),
-      ).toBe(true),
-    );
-    expect(
-      slot
-        .getByRole("button", { name: "Move First down" })
-        .hasAttribute("disabled"),
-    ).toBe(true);
-    expect(
-      slot
-        .getByRole("button", { name: "Move Codex up" })
-        .hasAttribute("disabled"),
-    ).toBe(true);
-    expect(
-      slot
-        .getByRole("button", { name: "Move Codex down" })
-        .hasAttribute("disabled"),
-    ).toBe(true);
-  });
+      ).toBe(true);
+    },
+  );
 
-  it("keeps the displayed order and reports a rejected reorder", async () => {
+  it("restores the displayed order and reports a rejected reorder", async () => {
+    measureAccountRows();
     const slot = render(
       [
         account({ label: "First" }),
@@ -386,21 +408,47 @@ describe("Account Pool settings", () => {
         },
       },
     );
-    fireEvent.click(
-      await slot.findByRole("button", { name: "Move First down" }),
-    );
+    const handle = await slot.findByRole("button", { name: "Reorder First" });
+    await keyboardMove(handle);
+    fireEvent.keyDown(document, { code: "Space" });
     expect(
       await slot.findByText("Refresh the account list and try again."),
     ).toBeTruthy();
     expect(
       slot
-        .getByRole("button", { name: "Move First up" })
-        .hasAttribute("disabled"),
-    ).toBe(true);
-    expect(
-      slot
-        .getByRole("button", { name: "Move First down" })
-        .hasAttribute("disabled"),
-    ).toBe(false);
+        .getAllByRole("button", { name: /Reorder/ })
+        .map((button) => button.getAttribute("aria-label")),
+    ).toEqual(["Reorder First", "Reorder Second"]);
+    expect(handle.hasAttribute("disabled")).toBe(false);
   });
+
+  it.each(["cancel", "unchanged"])(
+    "does not save a %s drag",
+    async (action) => {
+      measureAccountRows();
+      const slot = render([
+        account({ label: "First" }),
+        account({
+          id: "22222222-2222-4222-8222-222222222222",
+          label: "Second",
+        }),
+      ]);
+      const handle = await slot.findByRole("button", { name: "Reorder First" });
+      await keyboardMove(handle, action === "cancel" ? "ArrowDown" : "ArrowUp");
+      fireEvent.keyDown(document, {
+        code: action === "cancel" ? "Escape" : "Space",
+      });
+      await waitFor(() =>
+        expect(handle.getAttribute("aria-pressed")).toBeNull(),
+      );
+      expect(
+        slot.rpcCalls.filter((call) => call.method === "account.reorder"),
+      ).toEqual([]);
+      expect(
+        slot
+          .getAllByRole("button", { name: /Reorder/ })
+          .map((button) => button.getAttribute("aria-label")),
+      ).toEqual(["Reorder First", "Reorder Second"]);
+    },
+  );
 });

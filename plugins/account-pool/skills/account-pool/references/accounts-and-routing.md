@@ -67,7 +67,8 @@ family without moving the session's main pin or the provider cursor. The cursor
 and session pins survive hub restarts. Session pins expire after 30 idle minutes,
 and the pool retains the 4,096 most recently used pins.
 
-Use the up/down arrows in Account Pooler settings, or
+Drag an account’s handle in Account Pooler settings (or focus the handle and use
+Space, arrow keys, and Space again), or
 `bb pool account reorder <claude|codex> <id>...`, to set the complete order for
 one provider. Include disabled accounts too. Reordering changes the next failover
 sequence without moving the current account. `bb pool account priority <id> <n>`

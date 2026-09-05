@@ -6,6 +6,24 @@ import {
   type ReactNode,
 } from "react";
 import {
+  closestCenter,
+  DndContext,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+  type Modifier,
+} from "@dnd-kit/core";
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import {
   definePluginApp,
   useBbNavigate,
   useRealtime,
@@ -272,48 +290,59 @@ function QuotaValue({
   );
 }
 
+const restrictAccountDragToVerticalAxis: Modifier = ({ transform }) => ({
+  ...transform,
+  x: 0,
+});
+const accountDragModifiers: Modifier[] = [restrictAccountDragToVerticalAxis];
+
 function AccountRow({
   account,
   threshold,
   pending,
   onAction,
   onOpen,
-  onMoveUp,
-  onMoveDown,
+  reorderDisabled,
 }: {
   account: AccountSummary;
   threshold: number;
   pending: boolean;
   onAction: (action: "toggle" | "priority" | "refresh" | "remove") => void;
   onOpen: () => void;
-  onMoveUp: (() => void) | null;
-  onMoveDown: (() => void) | null;
+  reorderDisabled: boolean;
 }) {
   const status = statusPresentation(account);
+  const {
+    attributes,
+    isDragging,
+    listeners,
+    setActivatorNodeRef,
+    setNodeRef,
+    transform,
+    transition,
+  } = useSortable({ id: account.id, disabled: pending || reorderDisabled });
   return (
-    <div className="flex items-center gap-3 text-sm">
-      <div className="flex shrink-0 items-center gap-1">
-        <Button
-          variant="ghost"
-          size="icon"
-          className="size-8"
-          aria-label={`Move ${account.label} up`}
-          disabled={pending || onMoveUp === null}
-          onClick={() => onMoveUp?.()}
-        >
-          <Icon name="ArrowUp" className="size-4" />
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="size-8"
-          aria-label={`Move ${account.label} down`}
-          disabled={pending || onMoveDown === null}
-          onClick={() => onMoveDown?.()}
-        >
-          <Icon name="ArrowDown" className="size-4" />
-        </Button>
-      </div>
+    <div
+      ref={setNodeRef}
+      style={{ transform: CSS.Translate.toString(transform), transition }}
+      className={cn(
+        "flex items-center gap-3 text-sm",
+        isDragging && "relative z-10 rounded-md bg-card opacity-90 shadow-lift",
+      )}
+    >
+      <Button
+        ref={setActivatorNodeRef}
+        type="button"
+        variant="ghost"
+        size="icon"
+        className="size-8 shrink-0 touch-none text-muted-foreground enabled:cursor-grab enabled:active:cursor-grabbing"
+        disabled={pending || reorderDisabled}
+        aria-label={`Reorder ${account.label}`}
+        {...attributes}
+        {...listeners}
+      >
+        <Icon name="DragDropVertical" aria-hidden="true" />
+      </Button>
       <div
         className={cn(
           "group -mx-2 flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-2.5 transition-colors hover:bg-state-hover focus-within:bg-state-hover",
@@ -650,6 +679,16 @@ function AccountPoolSettings() {
   const [drawer, setDrawer] = useState<DrawerState>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState<string | null>(null);
+  const [optimisticOrder, setOptimisticOrder] = useState<{
+    provider: PoolProvider;
+    ids: string[];
+  } | null>(null);
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    }),
+  );
   const [loginStep, setLoginStep] = useState<LoginStep | null>(null);
   const [codexStep, setCodexStep] = useState<CodexLoginStep | null>(null);
   const [loginDone, setLoginDone] = useState<string | null>(null);
@@ -864,24 +903,26 @@ function AccountPoolSettings() {
         await rpc.call("account.refreshUsage", { accountId: account.id });
     });
   }
-  async function moveAccount(
-    account: AccountSummary,
-    offset: number,
+  async function reorderAccounts(
+    provider: PoolProvider,
+    event: DragEndEvent,
   ): Promise<void> {
-    const ordered = accounts
-      .filter((candidate) => candidate.provider === account.provider)
-      .map((candidate) => candidate.id);
-    const index = ordered.indexOf(account.id);
-    const target = index + offset;
-    if (index < 0 || target < 0 || target >= ordered.length) return;
-    ordered.splice(index, 1);
-    ordered.splice(target, 0, account.id);
-    await run(`order-${account.provider}`, async () => {
-      await rpc.call("account.reorder", {
-        provider: account.provider,
-        accountIds: ordered,
+    if (pending !== null || event.over === null) return;
+    const ids = accounts
+      .filter((account) => account.provider === provider)
+      .map((account) => account.id);
+    const from = ids.findIndex((id) => id === event.active.id);
+    const to = ids.findIndex((id) => id === event.over?.id);
+    if (from < 0 || to < 0 || from === to) return;
+    const accountIds = arrayMove(ids, from, to);
+    setOptimisticOrder({ provider, ids: accountIds });
+    try {
+      await run(`order-${provider}`, async () => {
+        await rpc.call("account.reorder", { provider, accountIds });
       });
-    });
+    } finally {
+      setOptimisticOrder(null);
+    }
   }
   function closeDrawer(): void {
     if (drawer?.kind === "codex-login" && codexStep !== null)
@@ -934,9 +975,21 @@ function AccountPoolSettings() {
         </div>
       ) : null}
       {PROVIDERS.map((provider) => {
-        const providerAccounts = accounts.filter(
+        const serverAccounts = accounts.filter(
           (account) => account.provider === provider.id,
         );
+        const order =
+          optimisticOrder?.provider === provider.id
+            ? optimisticOrder.ids
+            : null;
+        const providerAccounts =
+          order !== null &&
+          order.length === serverAccounts.length &&
+          serverAccounts.every((account) => order.includes(account.id))
+            ? order.flatMap((id) =>
+                serverAccounts.filter((account) => account.id === id),
+              )
+            : serverAccounts;
         return (
           <SettingsSection
             key={provider.id}
@@ -971,28 +1024,35 @@ function AccountPoolSettings() {
                 No accounts yet.
               </p>
             ) : (
-              <div className="divide-y divide-border">
-                {providerAccounts.map((account, index) => (
-                  <AccountRow
-                    key={account.id}
-                    account={account}
-                    threshold={threshold}
-                    pending={pending !== null}
-                    onAction={(action) => void accountAction(account, action)}
-                    onMoveUp={
-                      index === 0 ? null : () => void moveAccount(account, -1)
-                    }
-                    onMoveDown={
-                      index === providerAccounts.length - 1
-                        ? null
-                        : () => void moveAccount(account, 1)
-                    }
-                    onOpen={() =>
-                      setDrawer({ kind: "account", accountId: account.id })
-                    }
-                  />
-                ))}
-              </div>
+              <DndContext
+                sensors={sensors}
+                collisionDetection={closestCenter}
+                modifiers={accountDragModifiers}
+                onDragEnd={(event) => void reorderAccounts(provider.id, event)}
+              >
+                <SortableContext
+                  items={providerAccounts.map((account) => account.id)}
+                  strategy={verticalListSortingStrategy}
+                >
+                  <div className="divide-y divide-border">
+                    {providerAccounts.map((account) => (
+                      <AccountRow
+                        key={account.id}
+                        account={account}
+                        threshold={threshold}
+                        pending={pending !== null}
+                        reorderDisabled={providerAccounts.length < 2}
+                        onAction={(action) =>
+                          void accountAction(account, action)
+                        }
+                        onOpen={() =>
+                          setDrawer({ kind: "account", accountId: account.id })
+                        }
+                      />
+                    ))}
+                  </div>
+                </SortableContext>
+              </DndContext>
             )}
           </SettingsSection>
         );
