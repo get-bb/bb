@@ -81,7 +81,11 @@ describe("provider usage backend", () => {
     plugin(host.bb);
 
     await expect(
-      host.harness.behavior.callRpc("getUsage", { force: false }),
+      host.harness.behavior.callRpc("getUsage", {
+        force: false,
+        machineIds: null,
+        maxAgeMs: 30 * 60_000,
+      }),
     ).resolves.toEqual({
       machines: [
         {
@@ -164,12 +168,20 @@ describe("provider usage backend", () => {
       [{ hostId: "host-m4" }],
     ]);
 
-    await host.harness.behavior.callRpc("getUsage", null);
+    await host.harness.behavior.callRpc("getUsage", {
+      force: false,
+      machineIds: null,
+      maxAgeMs: 30 * 60_000,
+    });
     expect(host.harness.sdk.callsTo("hosts.list")).toHaveLength(2);
     expect(host.harness.sdk.callsTo("providers.list")).toHaveLength(2);
     expect(host.harness.sdk.callsTo("system.usageLimits")).toHaveLength(1);
 
-    await host.harness.behavior.callRpc("getUsage", { force: true });
+    await host.harness.behavior.callRpc("getUsage", {
+      force: true,
+      machineIds: null,
+      maxAgeMs: 0,
+    });
     expect(host.harness.sdk.callsTo("hosts.list")).toHaveLength(3);
     expect(host.harness.sdk.callsTo("providers.list")).toHaveLength(4);
     expect(host.harness.sdk.callsTo("system.usageLimits")).toHaveLength(2);
@@ -186,7 +198,7 @@ describe("provider usage backend", () => {
     ]);
   });
 
-  it("coalesces thread completion refreshes onto the affected machine", async () => {
+  it("marks only the affected machine dirty after thread completion", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-09-04T12:00:00.000Z"));
     const host = createFakePluginHost({
@@ -224,11 +236,21 @@ describe("provider usage backend", () => {
       thread: makeThreadResponse({ environmentId: "environment-m5" }),
       error: "failed",
     });
-    await vi.advanceTimersByTimeAsync(2 * 60_000);
-
     expect(host.harness.sdk.callsTo("environments.get")).toEqual([
       [{ environmentId: "environment-m5" }],
     ]);
+    expect(host.harness.sdk.callsTo("system.usageLimits")).toEqual([
+      [{ hostId: "host-m4" }],
+      [{ hostId: "host-m5" }],
+    ]);
+
+    vi.setSystemTime(new Date("2026-09-04T12:02:00.000Z"));
+    await host.harness.behavior.callRpc("getUsage", {
+      force: false,
+      machineIds: null,
+      maxAgeMs: 30 * 60_000,
+    });
+
     expect(host.harness.sdk.callsTo("system.usageLimits")).toEqual([
       [{ hostId: "host-m4" }],
       [{ hostId: "host-m5" }],

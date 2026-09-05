@@ -13,22 +13,16 @@ const TINT_COLOR_PATTERN =
 
 export const providerUsageRpcContract = defineRpcContract({
   getUsage: {
-    input: z.union([
-      z.null(),
-      z.strictObject({ force: z.boolean() }),
-      z.strictObject({
-        force: z.boolean(),
-        machineIds: z.nullable(z.array(z.string().check(z.minLength(1)))),
-        maxAgeMs: z.number().check(z.int(), z.nonnegative()),
-      }),
-    ]),
+    input: z.strictObject({
+      force: z.boolean(),
+      machineIds: z.nullable(z.array(z.string().check(z.minLength(1)))),
+      maxAgeMs: z.number().check(z.int(), z.nonnegative()),
+    }),
     output: usageSnapshotSchema,
   },
 });
 
-const LEGACY_CACHE_MAX_AGE_MS = 15 * 60_000;
 const DIRTY_CACHE_MAX_AGE_MS = 2 * 60_000;
-const EVENT_DEBOUNCE_MS = 5_000;
 
 interface UsageRequest {
   force: boolean;
@@ -184,9 +178,7 @@ async function loadMachineUsage(
 export default function providerUsagePlugin(bb: BbPluginApi): void {
   const cache = new Map<string, MachineCacheEntry>();
   const pendingByMachine = new Map<string, PendingMachineUsage>();
-  const eventTimers = new Map<string, ReturnType<typeof setTimeout>>();
   const environmentHosts = new Map<string, string | null>();
-  let disposed = false;
 
   const readMachine = async (
     host: Host,
@@ -203,20 +195,18 @@ export default function providerUsagePlugin(bb: BbPluginApi): void {
       (cached.machine.status !== host.status ||
         cached.machine.displayName !== host.name);
     if (
-      !targeted ||
-      (!request.force &&
-        cached !== undefined &&
-        !hostChanged &&
-        Date.now() - cached.loadedAt < effectiveMaxAgeMs)
+      cached !== undefined &&
+      (!targeted ||
+        (!request.force &&
+          !hostChanged &&
+          Date.now() - cached.loadedAt < effectiveMaxAgeMs))
     ) {
-      if (cached !== undefined) {
-        cached.machine = {
-          ...cached.machine,
-          displayName: host.name,
-          status: host.status,
-        };
-        return cached.machine;
-      }
+      cached.machine = {
+        ...cached.machine,
+        displayName: host.name,
+        status: host.status,
+      };
+      return cached.machine;
     }
     const pending = pendingByMachine.get(host.id);
     if (pending !== undefined) {
@@ -226,11 +216,6 @@ export default function providerUsagePlugin(bb: BbPluginApi): void {
     }
     const next = loadMachineUsage(bb, host)
       .then((machine) => {
-        const scheduledRefresh = eventTimers.get(host.id);
-        if (scheduledRefresh !== undefined) {
-          clearTimeout(scheduledRefresh);
-          eventTimers.delete(host.id);
-        }
         cache.set(host.id, {
           dirty: false,
           loadedAt: Date.now(),
@@ -275,54 +260,18 @@ export default function providerUsagePlugin(bb: BbPluginApi): void {
     return { machines };
   };
 
-  const eventRefreshDelay = (machineId: string): number => {
-    const cached = cache.get(machineId);
-    if (cached === undefined) return EVENT_DEBOUNCE_MS;
-    return Math.max(
-      EVENT_DEBOUNCE_MS,
-      cached.loadedAt + DIRTY_CACHE_MAX_AGE_MS - Date.now(),
-    );
-  };
-
-  const scheduleEventRefresh = (machineId: string | null): void => {
-    const timerKey = machineId ?? "*";
+  const markDirty = (machineId: string | null): void => {
     if (machineId === null) {
       for (const entry of cache.values()) entry.dirty = true;
     } else {
       const entry = cache.get(machineId);
       if (entry !== undefined) entry.dirty = true;
     }
-    const currentTimer = eventTimers.get(timerKey);
-    if (currentTimer !== undefined) clearTimeout(currentTimer);
-    const delay =
-      machineId === null
-        ? Math.max(
-            EVENT_DEBOUNCE_MS,
-            ...[...cache.values()].map(
-              (entry) => entry.loadedAt + DIRTY_CACHE_MAX_AGE_MS - Date.now(),
-            ),
-          )
-        : eventRefreshDelay(machineId);
-    const timer = setTimeout(() => {
-      eventTimers.delete(timerKey);
-      if (disposed) return;
-      void readUsage({
-        force: false,
-        machineIds: machineId === null ? null : [machineId],
-        maxAgeMs: DIRTY_CACHE_MAX_AGE_MS,
-      }).catch((cause) => {
-        bb.log.warn(
-          "Provider usage event refresh failed: " +
-            (cause instanceof Error ? cause.message : String(cause)),
-        );
-      });
-    }, delay);
-    eventTimers.set(timerKey, timer);
   };
 
-  const scheduleForThread = async (environmentId: string | null) => {
+  const markDirtyForThread = async (environmentId: string | null) => {
     if (environmentId === null) {
-      scheduleEventRefresh(null);
+      markDirty(null);
       return;
     }
     let hostId = environmentHosts.get(environmentId);
@@ -335,37 +284,16 @@ export default function providerUsagePlugin(bb: BbPluginApi): void {
       }
       environmentHosts.set(environmentId, hostId);
     }
-    scheduleEventRefresh(hostId);
+    markDirty(hostId);
   };
 
   bb.rpc.register(providerUsageRpcContract, {
-    getUsage: (input) => {
-      if (input === null) {
-        return readUsage({
-          force: false,
-          machineIds: null,
-          maxAgeMs: LEGACY_CACHE_MAX_AGE_MS,
-        });
-      }
-      if (!("machineIds" in input)) {
-        return readUsage({
-          force: input.force,
-          machineIds: null,
-          maxAgeMs: LEGACY_CACHE_MAX_AGE_MS,
-        });
-      }
-      return readUsage(input);
-    },
+    getUsage: readUsage,
   });
   bb.events.on("thread.idle", ({ thread }) =>
-    scheduleForThread(thread.environmentId),
+    markDirtyForThread(thread.environmentId),
   );
   bb.events.on("thread.failed", ({ thread }) =>
-    scheduleForThread(thread.environmentId),
+    markDirtyForThread(thread.environmentId),
   );
-  bb.onDispose(() => {
-    disposed = true;
-    for (const timer of eventTimers.values()) clearTimeout(timer);
-    eventTimers.clear();
-  });
 }
