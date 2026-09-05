@@ -1,6 +1,20 @@
 {
   "$schema": "https://turbo.build/schema.json",
   "tasks": {
+    "@bb/desktop#smoke:browser-broker": {
+      "cache": false,
+      "dependsOn": [
+        "@bb/templates#generate:templates",
+        "@get-bb/plugin-sdk#build:types",
+        "@bb/cli#build"
+      ],
+      "outputs": []
+    },
+    "@bb/desktop#smoke:browser-cdp": {
+      "cache": false,
+      "dependsOn": ["topo"],
+      "passThroughEnv": ["DISPLAY"]
+    },
     "@bb/web#build": {
       "inputs": [
         "$TURBO_DEFAULT$",
@@ -33,10 +47,7 @@
     // The Plugin Guide's API inventory is checked against the SDK's committed
     // declarations, so those files are inputs to this test.
     "@bb/plugin-api-map#test": {
-      "dependsOn": [
-        "//#ensure-native-modules",
-        "topo"
-      ],
+      "dependsOn": ["//#ensure-native-modules", "topo"],
       "inputs": [
         "$TURBO_DEFAULT$",
         // wireframes.test.ts asserts fixture fidelity against the real app

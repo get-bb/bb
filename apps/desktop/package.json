@@ -22,16 +22,20 @@
     "prepare-runtime": "pnpm exec turbo run build --filter=bb-app --output-logs=new-only",
     "smoke:appimage-lifecycle": "node scripts/smoke-linux-appimage-lifecycle.mjs",
     "smoke:packaged": "node scripts/smoke-packaged-app.mjs",
+    "smoke:browser-cdp": "node scripts/smoke-browser-cdp.mjs",
     "start": "pnpm run package && node scripts/run-packaged-app.mjs",
     "start:linux": "pnpm run package:linux && node scripts/run-packaged-app.mjs",
     "test": "vitest run --config vitest.config.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "smoke:browser-broker": "node scripts/smoke-browser-broker.mjs"
   },
   "dependencies": {
     "@bb/connect-client": "workspace:*",
+    "@bb/host-daemon-contract": "workspace:*",
     "bb-app": "workspace:*",
     "electron-updater": "^6.8.3",
     "semver": "^7.7.0",
+    "ws": "^8.19.0",
     "zod": "^4.3.6"
   },
   "devDependencies": {
@@ -42,6 +46,7 @@
     "@bb/tsconfig": "workspace:*",
     "@types/node": "^24.9.0",
     "@types/semver": "^7.7.0",
+    "@types/ws": "^8.18.1",
     "electron": "41.7.0",
     "electron-builder": "^26.15.7",
     "electron-builder-squirrel-windows": "26.15.7",

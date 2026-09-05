@@ -47,6 +47,86 @@ eval "$(scripts/bb-dev-app env)"
 pnpm bb:dev thread spawn --project proj_personal --provider codex --permission-mode accept-edits --title "Smoke test" --prompt "Reply only with ok." --json
 ```
 
+## Desktop Browser CDP Prototype
+
+Run the isolated Electron compatibility fixture through Turbo:
+
+```bash
+pnpm exec turbo run smoke:browser-cdp --filter=@bb/desktop > /tmp/browser-cdp-smoke.log 2>&1
+```
+
+The harness currently requires Linux x64, `xvfb-run`, and network access to
+GitHub releases. It downloads checksum-pinned DevBrowser 1.0.0-rc.2 and
+agent-browser 0.36.0 into a fresh temporary directory, bundles the fixture,
+and drives real `WebContentsView` tabs through the production CDP bridge and
+native adapter. It uses a local fixture website and a separate Electron
+profile, without starting a BB core or reading an existing BB store.
+
+The command prints its artifact directory, including screenshots, protocol
+method traces, and the result summary. Connection credentials are redacted
+from the diagnostic output. Desktop startup now registers the native broker;
+`bb browser` and `bb.sdk.experimental_desktopBrowsers` expose its public API.
+This fixture also exercises service-created hidden automation tabs and leases.
+The fixture verifies simultaneous control of a hidden thread and another
+thread, in addition to both clients’ main-page workflows. It verifies trusted
+snapshot-reference clicks in same-origin and nested iframes, scrolling,
+selector clicks in a cross-origin iframe with a native child CDP session,
+and pointer input in a hidden thread’s iframe. Site isolation is enabled
+for the fixture. Unmodified RC2 omits cross-origin iframe contents from
+snapshots; use the local-build mode below for the implemented cross-origin
+ref support. Popup control remains untested.
+
+To validate a modified DevBrowser build, run:
+
+```bash
+pnpm exec turbo run smoke:browser-cdp --filter=@bb/desktop -- --dev-browser /absolute/path/to/dev-browser > /tmp/browser-cdp-local-smoke.log 2>&1
+```
+
+The `--dev-browser` option copies that binary into the artifact directory,
+records its SHA256 and local-build provenance, and adds required cross-origin
+snapshot-ref tests. These reject old refs after same-URL reloads, origin
+changes, frame removal, and parent navigation, even after a fresh snapshot
+has allocated new refs. It checks both the stale-ref error and absence of
+click side effects. Frame origin changes are driven through the parent
+iframe’s `src`: Puppeteer’s `Frame.goto()` can lose its session on a renderer
+swap, including in ordinary Chrome. The default command continues to test the unmodified
+release. Run the task with `-- --help` for usage.
+
+The native adapter uses one viewport capture before pointer input following
+attachment or navigation, so input does not race the renderer’s readiness.
+Concurrent pointer commands share that capture and preserve their order.
+Attachment enables Chromium focus emulation and temporarily disables background
+throttling, restoring the original throttling state on detach. While a CDP
+screenshot is pending, bounded native captures request frames without revealing
+the view; they stop at completion or a five-second deadline. The original CDP
+screenshot parameters are preserved.
+The image is discarded locally; pending input is rejected if navigation
+or a replacement controller invalidates it. A failed capture can be retried,
+and detaching one virtual session cancels its pending input while other
+sessions remain usable.
+
+After library cleanup and writing the result, the runner allows five seconds
+for Electron to quit. If it remains alive, the runner terminates its fixture
+process group and records `forcedExit: true`. A successful smoke command with
+that flag proves the listed browser checks, not graceful Electron shutdown.
+The [browser-use proposal](../plans/browser-use-plugin-proposal.md) tracks
+the remaining integration layers.
+
+## Desktop Browser Broker Integration
+
+```bash
+pnpm exec turbo run smoke:browser-broker --filter=@bb/desktop -- --dev-browser /absolute/path/to/dev-browser > /tmp/browser-broker-smoke.log 2>&1
+```
+
+This isolated fixture uses an in-memory migrated test server, the actual SDK
+and CLI, an authenticated host broker, the desktop broker client, and real
+Electron tabs. The test harness supplies the server-to-host RPC responder;
+it does not start a full enrolled daemon or prove remote-machine transport.
+It verifies private connection-file permissions, ownership, browser input,
+capture, revocation, and connection generations. The default downloads the
+checksum-pinned release; the optional binary path records local provenance.
+No existing BB store or browser profile is used.
+
 ## Record Provider Bridge Traffic
 
 Export `BB_PROVIDER_BRIDGE_RECORD_DIR` before you start the dev app and every

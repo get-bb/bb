@@ -62,6 +62,7 @@ interface ReadWriteLaneIdleArgs {
 type CommandRouterTask = Promise<HostDaemonCommandResultForCommand>;
 
 export interface CommandRouterOptions {
+  desktopBrowserBroker?: CommandDispatchOptions["desktopBrowserBroker"];
   dataDir: CommandDispatchOptions["dataDir"];
   fetchProjectAttachment: CommandDispatchOptions["fetchProjectAttachment"];
   fetchSkillTree?: CommandDispatchOptions["fetchSkillTree"];
@@ -282,6 +283,7 @@ export class CommandRouter {
       fetchPluginHostArtifact: this.options.fetchPluginHostArtifact,
       runtimeManager: this.options.runtimeManager,
       terminalManager: this.options.terminalManager,
+      desktopBrowserBroker: this.options.desktopBrowserBroker,
       dataDir: this.options.dataDir,
       eventSink: this.options.eventSink,
       listModels: this.options.listModels,

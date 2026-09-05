@@ -555,6 +555,51 @@ const commandHandlers: CommandHandlerMap = {
 };
 
 const onlineRpcHandlers: OnlineRpcHandlerMap = {
+  "desktop.browser.list_instances": async (command, options) => {
+    if (!options.desktopBrowserBroker)
+      throw new Error("Desktop browser broker unavailable");
+    return options.desktopBrowserBroker.request(command);
+  },
+  "desktop.browser.list_tabs": async (command, options) => {
+    if (!options.desktopBrowserBroker)
+      throw new Error("Desktop browser broker unavailable");
+    return options.desktopBrowserBroker.request(command);
+  },
+  "desktop.browser.create_tab": async (command, options) => {
+    if (!options.desktopBrowserBroker)
+      throw new Error("Desktop browser broker unavailable");
+    return options.desktopBrowserBroker.request(command);
+  },
+  "desktop.browser.reveal_tab": async (command, options) => {
+    if (!options.desktopBrowserBroker)
+      throw new Error("Desktop browser broker unavailable");
+    return options.desktopBrowserBroker.request(command);
+  },
+  "desktop.browser.close_tab": async (command, options) => {
+    if (!options.desktopBrowserBroker)
+      throw new Error("Desktop browser broker unavailable");
+    return options.desktopBrowserBroker.request(command);
+  },
+  "desktop.browser.capture_tab": async (command, options) => {
+    if (!options.desktopBrowserBroker)
+      throw new Error("Desktop browser broker unavailable");
+    return options.desktopBrowserBroker.request(command);
+  },
+  "desktop.browser.acquire_control": async (command, options) => {
+    if (!options.desktopBrowserBroker)
+      throw new Error("Desktop browser broker unavailable");
+    return options.desktopBrowserBroker.request(command);
+  },
+  "desktop.browser.open_connection": async (command, options) => {
+    if (!options.desktopBrowserBroker)
+      throw new Error("Desktop browser broker unavailable");
+    return options.desktopBrowserBroker.request(command);
+  },
+  "desktop.browser.release_control": async (command, options) => {
+    if (!options.desktopBrowserBroker)
+      throw new Error("Desktop browser broker unavailable");
+    return options.desktopBrowserBroker.request(command);
+  },
   "connect-tunnel.ensure-identity": async (_command, options) => {
     if (!options.ensureConnectTunnelIdentity) {
       throw new Error("bb connect tunnel identity is unavailable");

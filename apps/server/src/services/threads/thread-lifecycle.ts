@@ -1,3 +1,4 @@
+import { revokeThreadDesktopBrowserControl } from "../desktop-browsers.js";
 import {
   and,
   eq,
@@ -1348,6 +1349,7 @@ export async function stopThreadForCurrentState(
   thread: RequestThreadStopForCurrentStateThread,
   environment: RequestThreadStopForCurrentStateEnvironment | null,
 ): Promise<void> {
+  await revokeThreadDesktopBrowserControl(deps, thread.id);
   const hasLiveRuntime =
     thread.status === "active" ||
     hasLiveThreadStartInFlight(thread.id) ||

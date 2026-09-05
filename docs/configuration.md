@@ -1110,3 +1110,11 @@ provider child. See [provider-bridge-protocol.md](provider-bridge-protocol.md),
 "Record mode", and [debugging-and-qa.md](debugging-and-qa.md). Raw recordings
 can contain secrets; redact them with `scripts/provider-recordings/redact.mjs`
 before you share them.
+
+## Browser Automation runtime
+
+The Browser Automation plugin supports desktop attachment and headless Chrome on enrolled hosts. Cloud browsers are deferred. The plugin pins one exact `dev-browser` npm release (currently 1.0.0-rc.3) with per-platform binary digests in `plugins/browser-automation/runtime-pin.ts`; the pin, the verification steps, and the bump procedure are documented in `plugins/browser-automation/README.md`.
+
+On each selected browser host, the plugin's host worker installs that release automatically on first use under `<plugin host dataDir>/runtime/npm/`, using the host's `npm` with scripts disabled, verifying the registry signature and SLSA provenance, downloading the matching GitHub release binary, and checking its digest before launch. Later sessions reuse the verified install without network access. Headless mode discovers installed Chrome/Chromium or uses `<plugin host dataDir>/runtime/chrome`. These files belong to the plugin host storage directory; they are not paths on the server or invoking agent host, and the user's global npm installation is never modified. No runtime sandbox-disabling setting is provided.
+
+For isolated development smoke tests only, `DEV_BROWSER_SMOKE_BINARY` selects the absolute binary path for the runtime smoke, `DEV_BROWSER_SMOKE_CHROME` selects the absolute Chrome path, and `DEV_BROWSER_SMOKE_NO_SANDBOX=1` enables the fixture's no-sandbox wrapper where the test host requires it. The `smoke:install` task performs a real install of the pinned release into a disposable directory. These variables do not change normal plugin runtime behavior.
