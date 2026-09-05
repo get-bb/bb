@@ -93,11 +93,12 @@ async function resolveToken(
 
 async function resolveCodexToken(
   host: ReturnType<typeof createFakePluginHost>,
+  hostId = "host-one",
 ): Promise<{ token: string; baseUrl: string }> {
   const entries = await host.harness.behavior.resolveProviderEnv("codex", {
     threadId: "thread-codex",
     projectId: "project-one",
-    hostId: "host-one",
+    hostId,
   });
   const token = entries.find((entry) => entry.name === "CODEX_POOL_AUTH_TOKEN");
   const baseUrl = entries.find(
@@ -3292,6 +3293,507 @@ describe("Account Pool plugin", () => {
     );
     expect((await reader.read()).done).toBe(true);
     expect(attempts).toBe(1);
+  });
+
+  describe("session affinity", () => {
+    const sessionId = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+    const claudeBody = (id: string, model = "claude-fable-5") =>
+      JSON.stringify({
+        model,
+        metadata: {
+          user_id: JSON.stringify({
+            account_uuid: "invalid-account-uuid",
+            device_id: "device",
+            parent_session_id: "parent",
+            session_id: id,
+          }),
+        },
+      });
+    const openStream = () =>
+      new Response(
+        new ReadableStream({
+          start(controller) {
+            controller.enqueue(new TextEncoder().encode("data: started\n\n"));
+          },
+        }),
+        { headers: { "content-type": "text/event-stream" } },
+      );
+
+    async function affinityFixture(
+      provider: "claude" | "codex",
+      upstreamFetch: typeof fetch,
+      now = () => 1_800_000_000_000,
+    ): Promise<Fixture> {
+      let imported = 0;
+      const fixture = await createFixture({
+        upstreamUrl: "https://upstream.example",
+        provider,
+        apiKey: "sk-first",
+        source: provider === "codex" ? "import" : "api-key",
+        options: {
+          now,
+          codexUsageUrl: EMPTY_USAGE_URL,
+          fetch: (input, init) =>
+            String(input) === EMPTY_USAGE_URL
+              ? Promise.resolve(Response.json({}))
+              : upstreamFetch(input, init),
+          importCodexCredentials: async () => ({
+            accessToken: imported++ === 0 ? "sk-first" : "sk-second",
+            refreshToken: "refresh",
+            idToken: null,
+            accountId: `codex-account-${imported}`,
+            email: null,
+            expiresAt: now() + 24 * 60 * 60 * 1_000,
+          }),
+        },
+      });
+      if (provider === "claude") await addApiAccount(fixture, "sk-second");
+      else
+        await fixture.host.harness.behavior.callRpc("account.add", {
+          provider,
+          source: { kind: "import" },
+          label: null,
+          priority: 100,
+        });
+      return fixture;
+    }
+
+    it.each<{
+      name: string;
+      provider: "claude" | "codex";
+      headers: Record<string, string>;
+      body: string;
+    }>([
+      {
+        name: "Claude JSON",
+        provider: "claude",
+        headers: {},
+        body: claudeBody(sessionId),
+      },
+      {
+        name: "Claude legacy",
+        provider: "claude",
+        headers: {},
+        body: JSON.stringify({
+          metadata: {
+            user_id: `user_hash_account_aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa_session_${sessionId}`,
+          },
+        }),
+      },
+      {
+        name: "Codex native",
+        provider: "codex",
+        headers: { "session-id": sessionId, "thread-id": "native-thread" },
+        body: "{}",
+      },
+      {
+        name: "Codex legacy",
+        provider: "codex",
+        headers: { session_id: sessionId },
+        body: "{}",
+      },
+      {
+        name: "Codex cache",
+        provider: "codex",
+        headers: {},
+        body: JSON.stringify({ prompt_cache_key: sessionId }),
+      },
+    ])(
+      "keeps $name sessions sticky with host isolation and idle expiry",
+      async ({ provider, headers, body }) => {
+        let now = 1_800_000_000_000;
+        const attempts: Array<string | null> = [];
+        const fixture = await affinityFixture(
+          provider,
+          async (_input, init) => {
+            const requestHeaders = new Headers(init?.headers);
+            attempts.push(
+              provider === "claude"
+                ? requestHeaders.get("x-api-key")
+                : requestHeaders.get("authorization"),
+            );
+            return attempts.length === 1 ? openStream() : Response.json({});
+          },
+          () => now,
+        );
+        const route = provider === "claude" ? "/v1/messages" : "/v1/responses";
+        const keyFor = (key: string) =>
+          provider === "claude" ? key : `Bearer ${key}`;
+        const send = async (
+          key: string,
+          requestBody: string,
+          sessionHeaders = headers,
+        ) => {
+          const response = await fixture.host.harness.behavior.fetchHttp(
+            "POST",
+            route,
+            {
+              headers: { ...authHeaders(key), ...sessionHeaders },
+              body: requestBody,
+            },
+          );
+          await response.text();
+          expect(response.status).toBe(200);
+          return attempts.at(-1);
+        };
+        const held = await fixture.host.harness.behavior.fetchHttp(
+          "POST",
+          route,
+          {
+            headers: { ...authHeaders(fixture.key), ...headers },
+            body,
+          },
+        );
+        try {
+          const otherHost =
+            provider === "codex"
+              ? (await resolveCodexToken(fixture.host, "host-two")).token
+              : await resolveToken(fixture.host, "host-two");
+          expect(await send(fixture.key, body)).toBe(keyFor("sk-first"));
+          expect(await send(otherHost, body)).toBe(keyFor("sk-second"));
+          expect(await send(fixture.key, "{}", {})).toBe(keyFor("sk-second"));
+          now += 29 * 60 * 1_000;
+          expect(await send(fixture.key, body)).toBe(keyFor("sk-first"));
+          now += 2 * 60 * 1_000;
+          expect(await send(fixture.key, body)).toBe(keyFor("sk-first"));
+          now += 31 * 60 * 1_000;
+          expect(await send(fixture.key, body)).toBe(keyFor("sk-second"));
+        } finally {
+          await held.body?.cancel();
+        }
+      },
+    );
+
+    it("separates Codex session and cache namespaces and prefers the native header", async () => {
+      const attempts: Array<string | null> = [];
+      const fixture = await affinityFixture("codex", async (_input, init) => {
+        attempts.push(new Headers(init?.headers).get("authorization"));
+        return attempts.length === 1 ? openStream() : Response.json({});
+      });
+      const held = await fixture.host.harness.behavior.fetchHttp(
+        "POST",
+        "/v1/responses",
+        {
+          headers: { ...authHeaders(fixture.key), "session-id": sessionId },
+          body: "{}",
+        },
+      );
+      try {
+        const variants: Array<Record<string, string>> = [
+          {},
+          { session_id: sessionId },
+          { "session-id": sessionId, session_id: "different-session" },
+        ];
+        for (const headers of variants) {
+          const response = await fixture.host.harness.behavior.fetchHttp(
+            "POST",
+            "/v1/responses",
+            {
+              headers: { ...authHeaders(fixture.key), ...headers },
+              body: JSON.stringify({ prompt_cache_key: sessionId }),
+            },
+          );
+          await response.text();
+        }
+        expect(attempts).toEqual([
+          "Bearer sk-first",
+          "Bearer sk-second",
+          "Bearer sk-first",
+          "Bearer sk-first",
+        ]);
+      } finally {
+        await held.body?.cancel();
+      }
+    });
+
+    it.each(["family quota", "auth error", "disabled account"])(
+      "rebinds after %s without letting an older response completion restore the binding",
+      async (reason) => {
+        const attempts: Array<string | null> = [];
+        let finishOld = () => {};
+        const fixture = await createFixture({
+          upstreamUrl: "https://upstream.example",
+          apiKey: "sk-first",
+          options: {
+            fetch: async (_input, init) => {
+              const key = new Headers(init?.headers).get("x-api-key");
+              attempts.push(key);
+              if (attempts.length === 1)
+                return new Response(
+                  new ReadableStream({
+                    start(controller) {
+                      controller.enqueue(
+                        new TextEncoder().encode("data: old\n\n"),
+                      );
+                      finishOld = () => {
+                        controller.close();
+                        finishOld = () => {};
+                      };
+                    },
+                  }),
+                  {
+                    headers:
+                      reason === "family quota"
+                        ? {
+                            "anthropic-ratelimit-unified-7d_fable-status":
+                              "rejected",
+                            "anthropic-ratelimit-unified-7d_fable-reset":
+                              "4102444800",
+                          }
+                        : {},
+                  },
+                );
+              return Response.json(
+                {},
+                {
+                  status:
+                    reason === "auth error" &&
+                    key === "sk-first" &&
+                    attempts.length === 2
+                      ? 403
+                      : 200,
+                },
+              );
+            },
+          },
+        });
+        await addApiAccount(fixture, "sk-second");
+        const send = (model: string) =>
+          fixture.host.harness.behavior.fetchHttp("POST", "/v1/messages", {
+            headers: authHeaders(fixture.key),
+            body: claudeBody(sessionId, model),
+          });
+        const held = await send(
+          reason === "family quota" ? "claude-fable-5" : "claude-opus-4-1",
+        );
+        try {
+          if (reason === "disabled account")
+            await fixture.host.harness.behavior.callRpc("account.disable", {
+              id: fixture.account.id,
+            });
+          const rebound = await send("claude-fable-5");
+          expect(rebound.status).toBe(200);
+          await rebound.text();
+          if (reason !== "family quota")
+            await fixture.host.harness.behavior.callRpc("account.enable", {
+              id: fixture.account.id,
+            });
+          finishOld();
+          await held.text();
+          const afterCompletion = await send("claude-opus-4-1");
+          await afterCompletion.text();
+          expect(attempts).toEqual(
+            reason === "auth error"
+              ? ["sk-first", "sk-first", "sk-second", "sk-second"]
+              : ["sk-first", "sk-second", "sk-second"],
+          );
+        } finally {
+          finishOld();
+          if (!held.bodyUsed) await held.body?.cancel();
+        }
+      },
+    );
+
+    it("shares the first binding when simultaneous account listings resume under different load", async () => {
+      const attempts: Array<string | null> = [];
+      const fixture = await createFixture({
+        upstreamUrl: "https://upstream.example",
+        apiKey: "sk-first",
+        options: {
+          fetch: async (_input, init) => {
+            attempts.push(new Headers(init?.headers).get("x-api-key"));
+            return attempts.length === 1 ? openStream() : Response.json({});
+          },
+        },
+      });
+      await addApiAccount(fixture, "sk-second");
+      const gates = [deferred(), deferred()];
+      const originalList = AccountStore.prototype.list;
+      let listings = 0;
+      const list = vi
+        .spyOn(AccountStore.prototype, "list")
+        .mockImplementation(async function (this: AccountStore) {
+          const index = listings++;
+          const accounts = await originalList.call(this);
+          if (index < 2) await gates[index]?.promise;
+          return accounts;
+        });
+      const requests = [1, 2].map(() =>
+        fixture.host.harness.behavior.fetchHttp("POST", "/v1/messages", {
+          headers: authHeaders(fixture.key),
+          body: claudeBody(sessionId),
+        }),
+      );
+      try {
+        await vi.waitFor(() => expect(listings).toBe(2));
+        gates[0]?.resolve();
+        await vi.waitFor(() => expect(attempts).toHaveLength(1));
+        gates[1]?.resolve();
+        const responses = await Promise.all(requests);
+        await responses[1]?.text();
+        await responses[0]?.body?.cancel();
+        expect(attempts).toEqual(["sk-first", "sk-first"]);
+      } finally {
+        for (const gate of gates) gate.resolve();
+        await Promise.allSettled(
+          requests.map(async (request) => {
+            const response = await request;
+            if (!response.bodyUsed) await response.body?.cancel();
+          }),
+        );
+        list.mockRestore();
+      }
+    });
+
+    it("keeps native Codex HTTP and WebSocket compaction continuations on the same account", async () => {
+      const seen: Array<{ headers: Headers; body: string }> = [];
+      const compacted = {
+        type: "compaction",
+        encrypted_content: "encrypted-compaction-fixture",
+      };
+      const fixture = await affinityFixture("codex", async (_input, init) => {
+        seen.push({
+          headers: new Headers(init?.headers),
+          body: new TextDecoder().decode(
+            init?.body instanceof ArrayBuffer ? init.body : new ArrayBuffer(0),
+          ),
+        });
+        if (seen.length === 1) return openStream();
+        return new Response(
+          `data: ${JSON.stringify({ type: "response.completed", response: { id: `response-${seen.length}`, output: [compacted] } })}\n\n`,
+          { headers: { "content-type": "text/event-stream" } },
+        );
+      });
+      const headers = {
+        ...authHeaders(fixture.key),
+        "session-id": sessionId,
+        "thread-id": "native-thread",
+      };
+      const held = await fixture.host.harness.behavior.fetchHttp(
+        "POST",
+        "/v1/responses",
+        { headers, body: "{}" },
+      );
+      const socket = await fixture.host.harness.experimental_openWebSocket(
+        "/v1/responses",
+        { headers },
+      );
+      try {
+        const fields = {
+          model: "gpt-5",
+          prompt_cache_key: "cache-key",
+          client_metadata: {
+            session_id: "body-session",
+            thread_id: "body-thread",
+            "x-codex-turn-metadata": "fixture",
+          },
+          include: ["reasoning.encrypted_content"],
+          reasoning: { effort: "high" },
+        };
+        const input = [
+          {
+            type: "reasoning",
+            encrypted_content: "encrypted-reasoning-fixture",
+          },
+          { type: "compaction_trigger" },
+        ];
+        await socket.receive(
+          JSON.stringify({ type: "response.create", ...fields, input }),
+        );
+        await vi.waitFor(() => expect(socket.sent).toHaveLength(1));
+        const first = completedResponse(socket.sent[0]);
+        const delta = { type: "message", role: "user", content: "next" };
+        await socket.receive(
+          JSON.stringify({
+            type: "response.create",
+            ...fields,
+            previous_response_id: first.response.id,
+            input: [delta],
+          }),
+        );
+        await vi.waitFor(() => expect(socket.sent).toHaveLength(2));
+        expect(JSON.parse(seen[1]?.body ?? "{}")).toMatchObject({
+          ...fields,
+          input,
+        });
+        expect(JSON.parse(seen[2]?.body ?? "{}")).toMatchObject({
+          ...fields,
+          input: [...input, compacted, delta],
+        });
+        expect(seen.map(({ headers }) => headers.get("session-id"))).toEqual([
+          sessionId,
+          sessionId,
+          sessionId,
+        ]);
+        expect(seen.map(({ headers }) => headers.get("thread-id"))).toEqual([
+          "native-thread",
+          "native-thread",
+          "native-thread",
+        ]);
+        expect(seen.map(({ headers }) => headers.get("authorization"))).toEqual(
+          ["Bearer sk-first", "Bearer sk-first", "Bearer sk-first"],
+        );
+      } finally {
+        await socket.close(1000, "done");
+        await held.body?.cancel();
+      }
+    });
+
+    it("evicts the least recently used binding after 4096 sessions", async () => {
+      let lastKey: string | null = null;
+      let attempts = 0;
+      const fixture = await createFixture({
+        upstreamUrl: "https://upstream.example",
+        apiKey: "sk-first",
+        options: {
+          now: () => 1_800_000_000_000,
+          fetch: async (_input, init) => {
+            lastKey = new Headers(init?.headers).get("x-api-key");
+            attempts += 1;
+            return attempts === 1 ? openStream() : Response.json({});
+          },
+        },
+      });
+      await addApiAccount(fixture, "sk-second");
+      const send = async (id: string) => {
+        const response = await fixture.host.harness.behavior.fetchHttp(
+          "POST",
+          "/v1/messages",
+          {
+            headers: authHeaders(fixture.key),
+            body: claudeBody(id),
+          },
+        );
+        await response.text();
+        return lastKey;
+      };
+      const held = await fixture.host.harness.behavior.fetchHttp(
+        "POST",
+        "/v1/messages",
+        {
+          headers: authHeaders(fixture.key),
+          body: claudeBody("oldest"),
+        },
+      );
+      try {
+        for (let index = 1; index < 4096; index += 1)
+          await send(`session-${index}`);
+        const touched = await send("oldest");
+        await send("newest");
+        const retained = await send("oldest");
+        await held.body?.cancel();
+        const nextOldest = await send("session-2");
+        const evicted = await send("session-1");
+        expect([touched, retained, nextOldest, evicted]).toEqual([
+          "sk-first",
+          "sk-first",
+          "sk-second",
+          "sk-first",
+        ]);
+      } finally {
+        if (!held.bodyUsed) await held.body?.cancel();
+      }
+    }, 20_000);
   });
 
   it("serializes refresh, writes new tokens with 0600 mode, and uses them", async () => {
