@@ -115,11 +115,30 @@ export function pluginSdkAliasFor(runtimePath: string): Record<string, string> {
   };
 }
 
-const pluginSdkAlias: Record<string, string> | undefined = existsSync(
-  pluginSdkRuntimePath,
-)
-  ? pluginSdkAliasFor(pluginSdkRuntimePath)
-  : undefined;
+/**
+ * The packaged runtime bundle only exists after the server `build` script
+ * runs. Source dev servers (`pnpm dev`, `pnpm dev:desktop`) run straight from
+ * `src/` via tsx and never produce it, which left the legacy alias
+ * unregistered there and broke any installed plugin still on the pre-rename
+ * specifier (see #2334). `@get-bb/plugin-sdk` itself resolves naturally in
+ * that mode (doc comment above), so fall back to its resolved entry point and
+ * alias the legacy specifier to that instead of leaving it unaliased.
+ */
+export function resolvePluginSdkAliasTarget(): string | undefined {
+  if (existsSync(pluginSdkRuntimePath)) {
+    return pluginSdkRuntimePath;
+  }
+  try {
+    return fileURLToPath(import.meta.resolve(PLUGIN_SDK_SPECIFIER));
+  } catch {
+    return undefined;
+  }
+}
+
+const pluginSdkAlias: Record<string, string> | undefined = (() => {
+  const target = resolvePluginSdkAliasTarget();
+  return target === undefined ? undefined : pluginSdkAliasFor(target);
+})();
 
 interface MutableRoot {
   id: number;
