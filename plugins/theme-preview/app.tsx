@@ -825,7 +825,6 @@ const TEXT_SECTION: CSSProperties = { margin: 0, fontSize: 14, lineHeight: "20px
 const TEXT_CATEGORY: CSSProperties = { margin: 0, fontSize: 10.5, lineHeight: "16px", fontWeight: 650, letterSpacing: "0.065em", textTransform: "uppercase", color: v("foreground") };
 const TEXT_LABEL: CSSProperties = { fontSize: 12.5, lineHeight: "18px", fontWeight: 550, color: v("foreground") };
 const TEXT_VALUE: CSSProperties = { fontFamily: MONO, fontSize: 11.5, lineHeight: "17px", fontVariantNumeric: "tabular-nums", color: v("readback-foreground", v("muted-foreground")) };
-const TEXT_SUPPORT: CSSProperties = { fontSize: 11.5, lineHeight: "17px", color: v("muted-foreground") };
 const SHEET_SPACE = { block: 6, inline: 10, control: 8, group: 16, section: 20 } as const;
 
 function AreaHeading({ area }: { area: "overlays" | "components" | "stylesheet" }) {
@@ -1349,26 +1348,6 @@ function Chips({ swatch, w = 13, h = 20 }: { swatch: Swatch | null; w?: number; 
         />
       ))}
     </span>
-  );
-}
-
-/**
- * A mode cue that needs no word: a disc split into the theme's own light and
- * dark faces. Following Figma's model, mode is a switch over the theme list
- * rather than a label repeated on every row.
- */
-function ModeDisc({ entry, size = 14 }: { entry: ThemeEntry | undefined; size?: number }) {
-  const light = entry?.light?.canvas ?? "#f4f4f4";
-  const dark = entry?.dark?.canvas ?? "#1a1a1a";
-  return (
-    <span
-      aria-hidden
-      style={{
-        width: size, height: size, borderRadius: 999, flex: "none",
-        background: `linear-gradient(90deg, ${light} 0 50%, ${dark} 50% 100%)`,
-        boxShadow: `inset 0 0 0 1px ${v("border")}`,
-      }}
-    />
   );
 }
 

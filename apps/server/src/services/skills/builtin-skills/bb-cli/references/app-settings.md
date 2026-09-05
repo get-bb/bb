@@ -109,6 +109,15 @@ every window and client sees the same value.
 - Enable it with `bb settings experiment changelogPreview true` to show the
   latest release notes on Settings → Updates.
 
+## Sidebar progressive disclosure
+
+- The `sidebarProgressiveDisclosure` experiment defaults to false.
+- Enable it with `bb settings experiment sidebarProgressiveDisclosure true`.
+- In **By project** and **By machine**, it shows the first five groups in the
+  current sort order, keeps attention groups visible, and reveals ten more per
+  **Show more** click. Revealed groups stay visible through activity and
+  sort-order changes. **Manually** is unchanged.
+
 ## Timeline windowing
 
 - The `timelineWindowing` experiment defaults to false.

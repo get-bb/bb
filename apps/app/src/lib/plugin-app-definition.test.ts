@@ -1,4 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
+import type {
+  ExperimentalSidebarFooterDisclosureController,
+  PluginSidebarFooterActionContext,
+} from "@get-bb/plugin-sdk";
+import { getCollectedSidebarFooterItems } from "@get-bb/plugin-sdk/internal/plugin-app-collector";
 import { loadPluginApp } from "@get-bb/plugin-sdk/testing/app";
 import {
   collectPluginAppRegistrations,
@@ -191,6 +196,134 @@ describe("collectPluginAppRegistrations — experimental_threadList", () => {
       } as never);
     });
     expect(() => collectPluginAppRegistrations(definition)).toThrow();
+  });
+});
+
+describe("collectPluginAppRegistrations — experimental_sidebarFooter", () => {
+  it("collects actions and disclosures with live disclosure controls", () => {
+    let disclosure: ExperimentalSidebarFooterDisclosureController | null = null;
+    const onActivate = vi.fn();
+    const openPluginDetails = vi.fn();
+    const legacyRun = vi.fn(
+      ({ openSettings }: PluginSidebarFooterActionContext) => openSettings(),
+    );
+    const definition = definePluginApp((app) => {
+      app.experimental_sidebarFooter.register({
+        kind: "action",
+        id: "refresh",
+        label: "Refresh",
+        icon: "Refresh",
+        onActivate,
+      });
+      app.slots.sidebarFooterAction({
+        id: "legacy",
+        title: "Legacy action",
+        icon: "Bolt",
+        run: legacyRun,
+      });
+      disclosure = app.experimental_sidebarFooter.register({
+        kind: "disclosure",
+        id: "usage",
+        label: "Provider usage",
+        icon: "ChartColumn",
+        component: Component,
+      });
+    });
+
+    const registrations = collectPluginAppRegistrations(definition);
+    const sidebarFooterItems = getCollectedSidebarFooterItems(registrations);
+    expect(sidebarFooterItems).not.toBeNull();
+    if (sidebarFooterItems === null)
+      throw new Error("expected collected sidebar footer items");
+    expect(registrations.experimentalSidebarFooterItems).toHaveLength(2);
+    expect(registrations.experimentalSidebarFooterItems[0]).toMatchObject({
+      kind: "action",
+      id: "refresh",
+      label: "Refresh",
+      icon: "Refresh",
+      onActivate,
+    });
+    expect(registrations.experimentalSidebarFooterItems[1]).toMatchObject({
+      kind: "disclosure",
+      id: "usage",
+      label: "Provider usage",
+      icon: "ChartColumn",
+      component: Component,
+    });
+    expect(
+      sidebarFooterItems.map(({ source, id }) => ({
+        source,
+        id,
+      })),
+    ).toEqual([
+      { source: "experimental_sidebarFooter", id: "refresh" },
+      { source: "sidebarFooterAction", id: "legacy" },
+      { source: "experimental_sidebarFooter", id: "usage" },
+    ]);
+    const compatibilityItem = sidebarFooterItems[1];
+    expect(compatibilityItem?.kind).toBe("action");
+    if (compatibilityItem?.kind !== "action")
+      throw new Error("expected action");
+    compatibilityItem.onActivate({ openPluginDetails });
+    expect(legacyRun).toHaveBeenCalledOnce();
+    expect(openPluginDetails).toHaveBeenCalledOnce();
+
+    disclosure!.open();
+    const runtime = registrations.experimentalSidebarFooterItems[1]!.runtime;
+    expect(runtime.getSnapshot()).toMatchObject({
+      command: { kind: "open" },
+    });
+    const sequence = runtime.getSnapshot().command?.sequence;
+    expect(sequence).toBeTypeOf("number");
+    runtime.acknowledgeCommand(sequence!);
+    expect(runtime.getSnapshot().command).toBeNull();
+  });
+
+  it("shares ids with the compatibility footer-action surface", () => {
+    const definition = definePluginApp((app) => {
+      app.slots.sidebarFooterAction({
+        id: "usage",
+        title: "Legacy usage",
+        icon: "ChartColumn",
+        run: () => {},
+      });
+      app.experimental_sidebarFooter.register({
+        kind: "disclosure",
+        id: "usage",
+        label: "Usage",
+        icon: "ChartColumn",
+        component: Component,
+      });
+    });
+
+    expect(() => collectPluginAppRegistrations(definition)).toThrow(/usage/);
+  });
+
+  it("validates registrations at their boundaries", () => {
+    const definition = definePluginApp((app) => {
+      app.experimental_sidebarFooter.register({
+        kind: "disclosure",
+        id: "usage",
+        label: "Usage",
+        icon: "ChartColumn",
+        component: Component,
+      });
+    });
+    collectPluginAppRegistrations(definition);
+
+    const staleDefinition = definePluginApp((app) => {
+      app.experimental_sidebarFooter.register({
+        kind: "disclosure",
+        id: "usage",
+        label: "Usage",
+        icon: "ChartColumn",
+        component: Component,
+        providerId: "coupled-provider",
+      } as never);
+    });
+    expect(() => collectPluginAppRegistrations(staleDefinition)).toThrow(
+      /unknown field "providerId"/,
+    );
   });
 });
 

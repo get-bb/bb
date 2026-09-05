@@ -1,3 +1,4 @@
+import { rejectMultipleWorkspaceSelectors } from "./shared.js";
 import { z } from "zod";
 import {
   appSettingsSchema,
@@ -50,25 +51,13 @@ const systemProviderHostQueryFields = {
   environmentId: z.string().min(1),
 } as const;
 
-function rejectMultipleProviderHostSelectors(
-  query: { environmentId?: string; hostId?: string },
-  context: z.RefinementCtx,
-): void {
-  if (query.environmentId !== undefined && query.hostId !== undefined) {
-    context.addIssue({
-      code: "custom",
-      message: "hostId and environmentId are mutually exclusive",
-    });
-  }
-}
-
 export const systemProvidersQuerySchema = z
   .object({
     ...systemProviderHostQueryFields,
     capability: z.enum(["usage"]),
   })
   .partial()
-  .superRefine(rejectMultipleProviderHostSelectors);
+  .superRefine(rejectMultipleWorkspaceSelectors);
 export type SystemProvidersQuery = z.infer<typeof systemProvidersQuerySchema>;
 
 export const systemExecutionOptionsQuerySchema = z
@@ -77,7 +66,7 @@ export const systemExecutionOptionsQuerySchema = z
     providerId: z.string().min(1),
   })
   .partial()
-  .superRefine(rejectMultipleProviderHostSelectors);
+  .superRefine(rejectMultipleWorkspaceSelectors);
 export type SystemExecutionOptionsQuery = z.infer<
   typeof systemExecutionOptionsQuerySchema
 >;

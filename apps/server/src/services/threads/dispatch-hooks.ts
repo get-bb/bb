@@ -24,11 +24,7 @@ import { z } from "zod";
 import { ApiError } from "../../errors.js";
 import type { AppDeps } from "../../types.js";
 import { getNonDestroyedHostWithStatus } from "../lib/entity-lookup.js";
-import {
-  pluginHookProvider,
-  type PluginHookProvider,
-  type PluginHookRegistration,
-} from "../plugins/plugin-hook-registry.js";
+import { pluginHookProvider } from "../plugins/plugin-hook-registry.js";
 
 type DispatchHookDeps = Pick<AppDeps, "db" | "hub">;
 
@@ -226,11 +222,6 @@ function dispatchRejection(pluginId: string, message: string): ApiError {
   });
 }
 
-/** True when `error` is a handler's `reject` decision rather than a failure. */
-export function isDispatchRejectedError(error: unknown): error is ApiError {
-  return error instanceof ApiError && error.body.code === "dispatch_rejected";
-}
-
 /**
  * Runs one handler inside its decision box. A timeout resolves as a failure
  * rather than racing on: the handler's promise may never settle, and the whole
@@ -265,18 +256,6 @@ async function decideWithinBox<T>(
   } finally {
     if (timer !== undefined) clearTimeout(timer);
   }
-}
-
-/**
- * The handler chain for a hook: plugin install order, which is deterministic
- * and is the only order there is. Nothing reorders it — a chain of pure
- * decisions composes the same way whichever order it runs in, because a
- * `reject` from any handler refuses and a `wait` from any handler queues.
- */
-function orderedHooks(
-  provider: PluginHookProvider,
-): PluginHookRegistration<"message.dispatch">[] {
-  return provider.listHooks("message.dispatch");
 }
 
 /**
@@ -366,7 +345,7 @@ export async function runMessageDispatchHookPass(
   if (provider === undefined) {
     return { kind: "proceed" };
   }
-  const hooks = orderedHooks(provider);
+  const hooks = provider.listHooks("message.dispatch");
   if (hooks.length === 0) {
     return { kind: "proceed" };
   }

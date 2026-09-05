@@ -23,7 +23,6 @@ export interface SettingsNavState {
   activeSection: SettingsSectionId | null;
   hasUnknownSection: boolean;
   activePluginId: string | null;
-  otherPluginEntries: readonly PluginSettingsEntry[];
   pluginEntries: readonly PluginSettingsEntry[];
   sections: readonly SettingsNavSection[];
 }
@@ -58,7 +57,11 @@ export function useSettingsNavState(): SettingsNavState {
     location.pathname,
   );
   const pluginMatch = matchPath(SETTINGS_PLUGIN_ROUTE_PATH, location.pathname);
-  const activePluginId = pluginMatch?.params.pluginId ?? null;
+  const isInstalledDetail =
+    new URLSearchParams(location.search).get("view") === "installed";
+  const activePluginId = isInstalledDetail
+    ? null
+    : (pluginMatch?.params.pluginId ?? null);
   const machineMatch = matchPath(
     SETTINGS_MACHINE_ROUTE_PATH,
     location.pathname,
@@ -68,16 +71,18 @@ export function useSettingsNavState(): SettingsNavState {
   const hasUnknownSection =
     sectionParam !== undefined && !isSettingsSectionId(sectionParam);
   const activeSection: SettingsSectionId | null =
-    activeMachineId !== null
-      ? "machines"
-      : activePluginId !== null
-        ? null
-        : sectionParam !== undefined && isSettingsSectionId(sectionParam)
-          ? sectionParam
-          : "general";
+    isInstalledDetail && pluginMatch !== null
+      ? "plugins"
+      : activeMachineId !== null
+        ? "machines"
+        : activePluginId !== null
+          ? null
+          : sectionParam !== undefined && isSettingsSectionId(sectionParam)
+            ? sectionParam
+            : "general";
 
   const installedPlugins = pluginListQuery.data?.plugins ?? [];
-  const pluginEntryGroups = buildPluginSettingsEntries({
+  const pluginEntries = buildPluginSettingsEntries({
     installedPlugins,
     settingsSections,
   });
@@ -86,8 +91,7 @@ export function useSettingsNavState(): SettingsNavState {
     activePluginId,
     activeSection,
     hasUnknownSection,
-    otherPluginEntries: pluginEntryGroups.other,
-    pluginEntries: pluginEntryGroups.configurable,
+    pluginEntries,
     sections,
   };
 }

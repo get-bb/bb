@@ -519,9 +519,14 @@ const SIDEBAR_THREADS: readonly { title: string; glyph?: "spin" | "dot" }[] = [
 
 const FOOTER_ITEM_RENDERERS: Record<string, () => ReactNode> = {
   settings: () => <MiniIcon icon={Settings02Icon} className="size-4" />,
-  "plugin-footer-actions": () => (
-    <span className="flex size-5.5 items-center justify-center rounded-md bg-state-hover">
-      <PluginGlyph className="size-3.5" />
+  "plugin-footer-items": () => (
+    <span className="flex items-center gap-1.5">
+      <span className="flex size-5.5 items-center justify-center rounded-md">
+        <PluginGlyph className="size-3.5" />
+      </span>
+      <span className="flex size-5.5 items-center justify-center rounded-md bg-state-hover">
+        <PluginGlyph className="size-3.5" />
+      </span>
     </span>
   ),
   "bug-report": () => <MiniIcon icon={Bug01Icon} className="size-4" />,
@@ -620,12 +625,34 @@ const SIDEBAR_SECTION_RENDERERS: Record<string, () => ReactNode> = {
   footer: () => (
     <Mark
       id="sidebar-footer"
-      label="Plugin footer buttons, between Settings and Report a bug"
-      className="mx-1.5 mb-1.5 flex w-fit items-center gap-2 px-2.5 py-2"
+      label="Plugin footer items can run actions or reveal content"
+      className="mx-1.5 mb-1.5 flex w-44 flex-col gap-1.5 p-1.5"
     >
-      {anatomy.sidebarFooter.map((key) => (
-        <Fragment key={key}>{FOOTER_ITEM_RENDERERS[key]?.()}</Fragment>
-      ))}
+      <span className="block w-full overflow-hidden rounded-md border border-border bg-surface-raised-solid">
+        <span className="flex h-6 items-center gap-1 border-b border-border px-1.5">
+          <span className="flex size-4 items-center justify-center rounded bg-state-hover text-2xs text-foreground">
+            A
+          </span>
+          <span className="flex size-4 items-center justify-center rounded text-2xs">
+            B
+          </span>
+          <span className="ml-auto text-2xs">×</span>
+        </span>
+        <span className="block space-y-1.5 p-2">
+          <span className="flex items-center justify-between text-2xs">
+            <span>5-hour limit</span>
+            <span className="text-warning">18% left</span>
+          </span>
+          <span className="block h-1 overflow-hidden rounded-full bg-muted">
+            <span className="block h-full w-4/5 rounded-full bg-warning" />
+          </span>
+        </span>
+      </span>
+      <span className="flex w-full items-center gap-2 px-1 py-0.5">
+        {anatomy.sidebarFooter.map((key) => (
+          <Fragment key={key}>{FOOTER_ITEM_RENDERERS[key]?.()}</Fragment>
+        ))}
+      </span>
     </Mark>
   ),
 };

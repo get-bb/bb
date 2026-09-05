@@ -1,6 +1,7 @@
 import { appToast, AppToastContent, type AppToastTone } from "./app-toast";
 import { AppToastCommitDescription } from "./app-toast-descriptions";
 import { ArchivedThreadToastDescription } from "../thread/ArchivedThreadToastDescription";
+import { pluginNotificationDescription } from "../plugin/PluginNotificationDescription";
 import { Button } from "@bb/shared-ui/button";
 import { StoryCard, StoryRow } from "../../../.ladle/story-card";
 import { useState, type ReactNode } from "react";
@@ -104,6 +105,62 @@ const TOAST_EXAMPLES: readonly ToastExample[] = [
       title: "Codex update failed",
       description: "Command exited with code 1",
       primaryActionLabel: "View log",
+    },
+  },
+  {
+    id: "plugin-update-failed",
+    group: "Plugin management",
+    label: "update failed",
+    source: "UpdatePluginDialog / PluginUpdatesCard",
+    usage: [
+      "Plugin update fails",
+      "Plugin name opens its installed detail page",
+    ],
+    current: {
+      tone: "error",
+      title: "Plugin update failed",
+      description: pluginNotificationDescription(
+        { id: "usage", name: "Usage" },
+        "installed",
+        "bb connect: timed out waiting for the tunnel client.",
+      ),
+    },
+  },
+  {
+    id: "plugin-updated",
+    group: "Plugin management",
+    label: "update success",
+    source: "UpdatePluginDialog / PluginUpdatesCard",
+    usage: [
+      "Plugin update succeeds",
+      "Plugin name opens its installed detail page",
+    ],
+    current: {
+      tone: "success",
+      title: "Plugin updated",
+      description: pluginNotificationDescription(
+        { id: "usage", name: "Usage" },
+        "installed",
+        "Now running 1.4.0.",
+      ),
+    },
+  },
+  {
+    id: "plugin-installed",
+    group: "Plugin management",
+    label: "install success",
+    source: "AddPluginDialog",
+    usage: [
+      "Plugin install succeeds",
+      "Plugin name opens its installed detail page",
+    ],
+    current: {
+      tone: "success",
+      title: "Plugin installed",
+      description: pluginNotificationDescription(
+        { id: "linear", name: "Linear" },
+        "installed",
+      ),
     },
   },
   {

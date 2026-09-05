@@ -1317,6 +1317,32 @@ Add \`--json\` to any command when the output drives code.
 `;
 }
 
+function pluginOverviewSource(packageName: string): string {
+  const id = derivePluginId(packageName);
+  return `Keep a todo list beside the work it belongs to, in the sidebar and in
+your agent threads.
+
+## What you get
+
+- An **Example todos** page in the left sidebar that adds, completes, and
+  removes todos.
+- A \`bb ${id}\` command that does the same from a terminal.
+- Live updates, so a change made in one place reaches every open page at once.
+
+## How it works
+
+The todos live in this plugin's own storage on the BB server, one list per
+installation. Nothing leaves the machine, and the plugin needs no account, API
+key, or external service.
+
+## For agents
+
+The bundled skill tells an agent to read the list with \`bb ${id} list\`, add
+one todo at a time with \`bb ${id} add\`, and close finished work with
+\`bb ${id} done\`.
+`;
+}
+
 function readmeSource(packageName: string): string {
   const id = derivePluginId(packageName);
   return `# ${packageName}
@@ -1330,6 +1356,9 @@ A BB plugin that keeps a todo list. It shows every surface a plugin can own:
   (\`app.slots.navPanel\`) built from the vendored components.
 - \`skills/example-todos/SKILL.md\` — a skill that tells agents how to keep the list
   with \`bb ${id}\`. BB imports it into agent threads automatically.
+- \`PLUGIN_OVERVIEW.md\` — the store listing text: a longer version of
+  \`bb.description\` that the plugin detail page shows under it. See
+  [Store listing](#store-listing).
 
 Try it: install the plugin, open **Example todos** in the sidebar, then run
 \`bb ${id} add "Ship it"\` in a terminal. The page updates at once.
@@ -1385,6 +1414,22 @@ Run \`bb plugin build\` before publishing git/npm installs. It writes
 \`app.meta.json\`. Each \`*.meta.json\` stamps SDK major/version,
 \`artifactFormatVersion\`, \`pluginId\`, \`pluginVersion\`, and
 \`builtWith\` so managed installs can verify the artifacts.
+
+## Store listing
+
+Two texts describe the plugin in the store. \`bb.description\` in package.json
+is the one-sentence hook on every browse card and the lead paragraph on the
+detail page; keep it under about 140 characters. \`PLUGIN_OVERVIEW.md\` is the
+same claim at length, shown in an Overview section under that paragraph.
+Rewrite the scaffold's copy for your plugin, and update it whenever
+\`bb.description\` changes, so the two never disagree.
+
+The submission to the public BB Community marketplace requires the file. Keep
+it under 4000 characters (aim for 700 to 1800) and use headings, paragraphs,
+emphasis, code, blockquotes, lists, thematic breaks, and absolute https links
+only — raw HTML, images, tables, footnotes, and task lists are rejected. Do
+not open with a \`#\` title or repeat \`bb.description\` verbatim; the page
+shows both directly above.
 
 ## Install
 
@@ -1510,4 +1555,8 @@ export async function scaffoldPlugin(args: ScaffoldPluginArgs): Promise<void> {
   await writeFile(join(skillDir, "SKILL.md"), skillSource(packageName));
   await writeFile(join(targetDir, ".gitignore"), "dist/\nnode_modules/\n");
   await writeFile(join(targetDir, "README.md"), readmeSource(packageName));
+  await writeFile(
+    join(targetDir, "PLUGIN_OVERVIEW.md"),
+    pluginOverviewSource(packageName),
+  );
 }

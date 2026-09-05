@@ -113,12 +113,19 @@ describe("submit-a-plugin skill", () => {
     expect(skill).toContain("a maximum of six");
   });
 
-  it("copies an author PLUGIN_OVERVIEW.md into the marketplace overview directory", async () => {
+  it("requires an overview file on every public marketplace entry", async () => {
     const skill = await readSkillTree();
 
     expect(skill).toContain(
-      "Copy the plugin PLUGIN_OVERVIEW.md file into the marketplace when the plugin has one.",
+      "Every entry in the public marketplace needs an overview file.",
     );
+    expect(skill).toContain(
+      "marketplace requires an overview file on every entry.",
+    );
+    expect(skill).toContain(
+      "draft one from the behavior you observed while validating and screenshotting",
+    );
+    expect(skill).not.toContain("when the entry has no overview file");
     expect(skill).toContain("Copy the file to overview/<plugin-id>.md");
     expect(skill).toContain('"overview": "./overview/notes.md"');
     expect(skill).toContain("a maximum of 4000 characters");

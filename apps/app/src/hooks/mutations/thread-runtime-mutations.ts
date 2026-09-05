@@ -19,8 +19,7 @@ import {
   applyCreateThreadResult,
   applyQueuedMessageCreateResult,
   applyQueuedMessageDeleteResult,
-  applyQueuedMessageGroupBoundaryResult,
-  applyQueuedMessageReorderResult,
+  applyQueuedMessagesResult,
   applyQueuedMessageSendResult,
   applyQueuedMessageUpdateResult,
   applySendThreadMessageSuccess,
@@ -407,7 +406,7 @@ export function useReorderThreadQueuedMessage() {
       });
     },
     onSuccess: (queuedMessages, variables) => {
-      applyQueuedMessageReorderResult({
+      applyQueuedMessagesResult({
         queryClient,
         queuedMessages,
         request: variables,
@@ -453,7 +452,7 @@ export function useSetThreadQueuedMessageGroupBoundary() {
       });
     },
     onSuccess: (queuedMessages, variables) => {
-      applyQueuedMessageGroupBoundaryResult({
+      applyQueuedMessagesResult({
         queryClient,
         queuedMessages,
         request: variables,

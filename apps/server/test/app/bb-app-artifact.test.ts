@@ -100,6 +100,80 @@ afterEach(async () => {
   );
 });
 
+describe("bb-app artifact service (desktop packaging)", () => {
+  it(
+    "packs the runtime when Electron Builder omits the README",
+    async () => {
+      const test = await fixture("packaged");
+      await rm(join(test.packageRoot, "README.md"));
+      const service = createBbAppArtifactService({
+        dataDir: join(test.root, "data"),
+        serverEntryUrl: pathToFileURL(test.serverEntry).href,
+      });
+
+      await expect(service.getVersion()).resolves.toBe("1.2.3-test");
+      const artifact = await service.getArtifact();
+      const listing = (
+        await execFileAsync("tar", ["-tzf", artifact.path])
+      ).stdout.split("\n");
+      expect(listing).toEqual(
+        expect.arrayContaining([
+          "package/package.json",
+          "package/dist/bb-app.js",
+          "package/dist/bb-host-daemon.js",
+          "package/dist/bb.js",
+          "package/host-daemon/dist/bb",
+          "package/host-daemon/dist/bb-chunks/chunk-TEST.js",
+          "package/host-daemon/dist/bb-parcel-watcher-child.mjs",
+          "package/host-daemon/dist/bb-plugin-host-worker.mjs",
+          "package/host-daemon/dist/bb-provider-bridge-worker.mjs",
+          "package/host-daemon/dist/daemon-bundle.mjs",
+        ]),
+      );
+      expect(listing).not.toContain("package/README.md");
+      expect(listing).not.toContain("package/private.txt");
+      expect(artifact.size).toBeGreaterThan(0);
+      await expect(service.getArtifact()).resolves.toEqual(artifact);
+    },
+    ARTIFACT_LIFECYCLE_TIMEOUT_MS,
+  );
+
+  it("rejects missing runtime files even when the README is absent", async () => {
+    const test = await fixture("packaged");
+    const runtimePath = join(
+      test.packageRoot,
+      "host-daemon/dist/daemon-bundle.mjs",
+    );
+    await rm(join(test.packageRoot, "README.md"));
+    await rm(runtimePath);
+    const service = createBbAppArtifactService({
+      dataDir: join(test.root, "data"),
+      serverEntryUrl: pathToFileURL(test.serverEntry).href,
+    });
+
+    await expect(service.getArtifact()).rejects.toMatchObject({
+      code: "ENOENT",
+      path: runtimePath,
+    });
+  });
+
+  it("propagates README copy failures other than a missing file", async () => {
+    const test = await fixture("packaged");
+    const readmePath = join(test.packageRoot, "README.md");
+    await rm(readmePath);
+    await mkdir(readmePath);
+    const service = createBbAppArtifactService({
+      dataDir: join(test.root, "data"),
+      serverEntryUrl: pathToFileURL(test.serverEntry).href,
+    });
+
+    await expect(service.getArtifact()).rejects.toMatchObject({
+      code: "EISDIR",
+      path: readmePath,
+    });
+  });
+});
+
 describe.each(MODES)("bb-app artifact service (%s)", (mode) => {
   it(
     "packs only the enrolled host runtime as an exact-version npm package",

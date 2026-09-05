@@ -100,15 +100,6 @@ export function pluginCatalogCategoryMutedAccentStyle(
   };
 }
 
-export function pluginCatalogCategoryAccentStyle(
-  categoryId: string | undefined,
-): CSSProperties {
-  const accentToken = pluginCatalogCategoryAccentToken(categoryId);
-  return {
-    background: accentToken === undefined ? neutral(58) : `var(${accentToken})`,
-  };
-}
-
 export function PluginLogo({
   plugin,
   className,

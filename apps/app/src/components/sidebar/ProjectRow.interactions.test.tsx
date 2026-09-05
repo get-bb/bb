@@ -104,6 +104,7 @@ function renderProjectRow(
           isActive={isActive}
           isCollapsed={isCollapsed}
           compareThreads={() => 0}
+          progressiveDisclosureEnabled
           collapsedThreadIds={new Set()}
           collapsedEnvironmentIds={collapsedEnvironmentIds}
           isLocalPathInvalid={false}

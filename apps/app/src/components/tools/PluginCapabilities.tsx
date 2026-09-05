@@ -264,12 +264,18 @@ function pluginAppSurfaceItems(
       "input",
       "Renders a custom interaction inside a thread.",
     ),
-    ...namedSlotItems(
-      pluginId,
-      slots.sidebarFooterActions,
-      "sidebar",
-      "Adds an action to the app sidebar.",
-    ),
+    ...slots.sidebarFooterItems
+      .filter((slot) => slot.pluginId === pluginId)
+      .map((slot) =>
+        namedSurface(
+          "sidebar-footer",
+          slot.id,
+          slot.label,
+          slot.kind === "action"
+            ? "Adds an action to the app sidebar footer."
+            : "Adds content revealed from the app sidebar footer.",
+        ),
+      ),
     ...namedSlotItems(
       pluginId,
       slots.messageActions,

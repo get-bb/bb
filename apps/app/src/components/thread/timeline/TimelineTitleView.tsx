@@ -77,17 +77,6 @@ function badgeToneClass(tone: "neutral" | "destructive"): string {
     : "text-muted-foreground";
 }
 
-function decorationToneClass(tone: TimelineTitleTone): string {
-  switch (tone) {
-    case "default":
-      return "text-muted-foreground";
-    case "summary":
-      return "text-subtle-foreground";
-    default:
-      return assertNever(tone);
-  }
-}
-
 const STATUS_DECORATION_TONE_CLASS = "text-subtle-foreground";
 const STATUS_DECORATION_TEXT_CLASS = cn(
   "font-mono text-xs font-normal leading-none",
@@ -206,7 +195,7 @@ function renderDecoration(
   index: number,
   tone: TimelineTitleTone,
 ): ReactNode {
-  const baseClass = cn("shrink-0 whitespace-pre", decorationToneClass(tone));
+  const baseClass = cn("shrink-0 whitespace-pre", plainToneClass(tone));
 
   switch (decoration.kind) {
     case "duration": {

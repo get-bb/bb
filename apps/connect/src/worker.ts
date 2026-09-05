@@ -9,6 +9,7 @@ import { refreshAccountSessionCookies } from "./account-session.js";
 import { TUNNEL_OFFLINE_HEADER, TunnelDO, type Env } from "./tunnel-do.js";
 import {
   invalidateSessionCookie,
+  sha256Hex,
   parseCookie,
   markMachineSeen,
   resolveLabel,
@@ -39,16 +40,6 @@ import {
 } from "./protocol-headers.js";
 
 export { TunnelDO };
-
-async function sha256Hex(value: string): Promise<string> {
-  const digest = await crypto.subtle.digest(
-    "SHA-256",
-    new TextEncoder().encode(value),
-  );
-  return [...new Uint8Array(digest)]
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
-}
 
 function text(body: string, status: number): Response {
   return new Response(body, {

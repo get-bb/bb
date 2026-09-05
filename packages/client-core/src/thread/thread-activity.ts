@@ -54,6 +54,19 @@ export function hasActiveGoalActivity(
   return thread.activity.activeGoalCount > 0;
 }
 
+export function isBusyThread(
+  thread: ThreadRuntimeShape & ThreadActivityStateShape,
+): boolean {
+  return (
+    isRuntimeBusyThread(thread) ||
+    hasActiveWorkflowActivity(thread) ||
+    hasActiveBackgroundAgentActivity(thread) ||
+    hasActiveBackgroundCommandActivity(thread) ||
+    hasActivePlanModeActivity(thread) ||
+    hasActiveGoalActivity(thread)
+  );
+}
+
 export interface ThreadListIndicatorState {
   hasPendingInteraction: boolean;
   hasUnsubmittedDraft: boolean;
@@ -219,37 +232,13 @@ export function getCollapsedChildActivity(
     if (thread.hasPendingInteraction) {
       pending = true;
     }
-    const childRuntimeWorking = isRuntimeBusyThread(thread);
-    const childWorkflowActive = hasActiveWorkflowActivity(thread);
-    const childBackgroundAgentActive = hasActiveBackgroundAgentActivity(thread);
-    const childBackgroundCommandActive =
-      hasActiveBackgroundCommandActivity(thread);
-    const childPlanModeActive = hasActivePlanModeActivity(thread);
-    const childGoalActive = hasActiveGoalActivity(thread);
-    if (childRuntimeWorking) {
-      runtimeWorking = true;
-      working = true;
-    }
-    if (childWorkflowActive) {
-      workflow = true;
-      working = true;
-    }
-    if (childBackgroundAgentActive) {
-      backgroundAgent = true;
-      working = true;
-    }
-    if (childBackgroundCommandActive) {
-      backgroundCommand = true;
-      working = true;
-    }
-    if (childPlanModeActive) {
-      planMode = true;
-      working = true;
-    }
-    if (childGoalActive) {
-      goal = true;
-      working = true;
-    }
+    if (isBusyThread(thread)) working = true;
+    if (isRuntimeBusyThread(thread)) runtimeWorking = true;
+    if (hasActiveWorkflowActivity(thread)) workflow = true;
+    if (hasActiveBackgroundAgentActivity(thread)) backgroundAgent = true;
+    if (hasActiveBackgroundCommandActivity(thread)) backgroundCommand = true;
+    if (hasActivePlanModeActivity(thread)) planMode = true;
+    if (hasActiveGoalActivity(thread)) goal = true;
   }
   return {
     pending,

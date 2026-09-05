@@ -3,12 +3,18 @@ import { setTimeout as wait } from "node:timers/promises";
 import {
   accountAddInputSchema,
   accountIdInputSchema,
+  accountPoolConfigSetInputSchema,
   bypassInputSchema,
   codexLoginPollInputSchema,
   loginCompleteInputSchema,
   tokenRotateInputSchema,
+  routingSetInputSchema,
+  type AccountPoolConfig,
+  type AccountPoolConfigController,
+  type AccountPoolConfigSetInput,
   type AccountSummary,
   type FamilyQuota,
+  type LimitWindow,
   type ModelFamily,
   type PoolStatus,
 } from "./contracts.js";
@@ -36,6 +42,9 @@ const HELP = [
   "  bb pool account enable <id>",
   "  bb pool account disable <id>",
   "  bb pool status [--json]",
+  "  bb pool routing <claude|codex> [--off]",
+  "  bb pool config",
+  "  bb pool config set <anthropicUpstreamBaseUrl|codexUpstreamBaseUrl|switchThreshold> <value>",
   "  bb pool token rotate --machine <id-or-name>",
   "  bb pool bypass <thread-id> [--off]",
 ].join("\n");
@@ -92,6 +101,24 @@ function familyLabel(family: ModelFamily): string {
   return family[0]?.toUpperCase() + family.slice(1);
 }
 
+function formatWindowLabel(window: LimitWindow): string {
+  if (window.windowMinutes === null) return window.slot;
+  if (window.windowMinutes % 1_440 === 0)
+    return `${window.windowMinutes / 1_440}d`;
+  if (window.windowMinutes % 60 === 0) return `${window.windowMinutes / 60}h`;
+  return `${window.windowMinutes}m`;
+}
+
+function formatLimitWindows(windows: readonly LimitWindow[]): string {
+  if (windows.length === 0) return "-";
+  return windows
+    .map(
+      (window) =>
+        `${formatWindowLabel(window)}=${formatUtilization(window.utilization)} ${formatReset(window.resetAt)}`,
+    )
+    .join("; ");
+}
+
 function formatFamilyQuota(quota: FamilyQuota | null): string {
   if (quota === null) return "-";
   return [
@@ -119,6 +146,7 @@ function formatAccounts(accounts: readonly AccountSummary[]): string {
       "5h reset",
       "7d",
       "7d reset",
+      "Windows",
       ...families.map(familyLabel),
       "Status",
     ].join("\t"),
@@ -134,6 +162,7 @@ function formatAccounts(accounts: readonly AccountSummary[]): string {
         formatReset(account.fiveHourResetAt),
         formatUtilization(account.sevenDayUtilization),
         formatReset(account.sevenDayResetAt),
+        formatLimitWindows(account.limitWindows),
         ...families.map((family) =>
           formatFamilyQuota(account.familyWeekly[family]),
         ),
@@ -170,6 +199,39 @@ function formatStatus(status: PoolStatus): string {
   ].join("\n");
 }
 
+function formatConfig(config: AccountPoolConfig): string {
+  return [
+    `anthropicUpstreamBaseUrl: ${config.anthropicUpstreamBaseUrl}`,
+    `codexUpstreamBaseUrl: ${config.codexUpstreamBaseUrl}`,
+    `switchThreshold: ${config.switchThreshold}`,
+  ].join("\n");
+}
+
+function parseConfigUpdate(
+  key: string | undefined,
+  value: string | undefined,
+): AccountPoolConfigSetInput {
+  if (value === undefined) throw new Error(HELP);
+  if (key === "anthropicUpstreamBaseUrl") {
+    return accountPoolConfigSetInputSchema.parse({
+      anthropicUpstreamBaseUrl: value,
+    });
+  }
+  if (key === "codexUpstreamBaseUrl") {
+    return accountPoolConfigSetInputSchema.parse({
+      codexUpstreamBaseUrl: value,
+    });
+  }
+  if (key === "switchThreshold") {
+    return accountPoolConfigSetInputSchema.parse({
+      switchThreshold: Number(value),
+    });
+  }
+  throw new Error(
+    "Config key must be anthropicUpstreamBaseUrl, codexUpstreamBaseUrl, or switchThreshold.",
+  );
+}
+
 function json(value: object): string {
   return `${JSON.stringify(value, null, 2)}\n`;
 }
@@ -179,6 +241,7 @@ export function registerPoolCli(
   operations: PoolOperations,
   login: ClaudeOAuthLogin,
   codexLogin: CodexDeviceLogin,
+  config: AccountPoolConfigController,
 ): void {
   bb.cli.register({
     name: "pool",
@@ -229,9 +292,24 @@ export function registerPoolCli(
         usage: "bb pool status [--json]",
       },
       {
+        name: "routing",
+        summary: "Enable or disable pooled routing for one provider",
+        usage: "bb pool routing <claude|codex> [--off]",
+      },
+      {
+        name: "config",
+        summary: "Show Account Pooler routing configuration",
+        usage: "bb pool config",
+      },
+      {
+        name: "config-set",
+        summary: "Update one Account Pooler routing configuration value",
+        usage:
+          "bb pool config set <anthropicUpstreamBaseUrl|codexUpstreamBaseUrl|switchThreshold> <value>",
+      },
+      {
         name: "token-rotate",
-        summary:
-          "Rotate one machine's Account Pooler bearer token",
+        summary: "Rotate one machine's Account Pooler bearer token",
         usage: "bb pool token rotate --machine <id-or-name>",
       },
       {
@@ -427,6 +505,26 @@ export function registerPoolCli(
               ? json(status)
               : `${formatStatus(status)}\n`,
           };
+        }
+        if (argv[0] === "routing") {
+          const flags = parseFlags(argv.slice(2), ["off"], []);
+          const input = routingSetInputSchema.parse({
+            provider: argv[1],
+            enabled: !flags.booleans.has("off"),
+          });
+          await operations.setRouting(input.provider, input.enabled);
+          return {
+            exitCode: 0,
+            stdout: `${input.enabled ? "Enabled" : "Disabled"} ${input.provider} Account Pooler routing.\n`,
+          };
+        }
+        if (argv[0] === "config" && argv.length === 1) {
+          return { exitCode: 0, stdout: `${formatConfig(config.get())}\n` };
+        }
+        if (argv[0] === "config" && argv[1] === "set") {
+          if (argv.length !== 4) throw new Error(HELP);
+          const next = await config.set(parseConfigUpdate(argv[2], argv[3]));
+          return { exitCode: 0, stdout: `${formatConfig(next)}\n` };
         }
         if (argv[0] === "token" && argv[1] === "rotate") {
           const flags = parseFlags(argv.slice(2), [], ["machine"]);

@@ -36,6 +36,7 @@ interface ProjectListReorderBindings {
 interface ProjectListProjectsProps {
   status: ConnectionAwareQueryStatus;
   rows: ProjectListRowModel[];
+  progressiveDisclosureEnabled: boolean;
   selectedThreadId?: string;
   collapsedProjectIds: Set<string>;
   collapsedThreadIds: Set<string>;
@@ -79,6 +80,7 @@ export const SortableProjectRow = memo(function SortableProjectRow({
 export function ProjectListProjects({
   status,
   rows,
+  progressiveDisclosureEnabled,
   selectedThreadId,
   collapsedProjectIds,
   collapsedThreadIds,
@@ -94,6 +96,7 @@ export function ProjectListProjects({
   const sharedRowProps = (row: ProjectListRowModel) => ({
     project: row.project,
     threadListState: row.threadListState,
+    progressiveDisclosureEnabled,
     selectedThreadId,
     isActive: row.isActive,
     isCollapsed: collapsedProjectIds.has(row.project.id),

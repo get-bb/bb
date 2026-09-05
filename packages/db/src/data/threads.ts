@@ -723,15 +723,6 @@ function buildListThreadsOrderBy(options: ListThreadsOptions) {
   return buildActiveProjectThreadOrderBy();
 }
 
-function buildListThreadsForProjectsOrderBy(
-  options: ListThreadsForProjectsOptions,
-) {
-  if (options.archived === true) {
-    return [desc(threads.archivedAt), desc(threads.id)];
-  }
-  return buildActiveProjectThreadOrderBy();
-}
-
 function toThreadWithPendingInteractionState(
   row: ThreadWithPendingInteractionStateRow,
 ): ThreadWithPendingInteractionState {
@@ -1390,7 +1381,7 @@ export function listThreadsWithPendingInteractionStateForProjects(
 
   const rows = threadWithPendingInteractionBaseQuery(db)
     .where(and(...buildListThreadsForProjectsFilters(options)))
-    .orderBy(...buildListThreadsForProjectsOrderBy(options))
+    .orderBy(...buildListThreadsOrderBy(options))
     .all();
 
   return rows.map(toThreadWithPendingInteractionState);

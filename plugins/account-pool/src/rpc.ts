@@ -2,7 +2,10 @@ import { defineRpcContract } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 import {
   accountAddInputSchema,
+  accountPoolConfigSchema,
+  accountPoolConfigSetInputSchema,
   accountIdInputSchema,
+  accountPriorityInputSchema,
   accountSchema,
   accountSummarySchema,
   bypassInputSchema,
@@ -16,6 +19,8 @@ import {
   loginStartSchema,
   statusSchema,
   tokenRotateInputSchema,
+  routingSetInputSchema,
+  type AccountPoolConfigController,
 } from "./contracts.js";
 import type { PoolOperations } from "./operations.js";
 import type { ClaudeOAuthLogin } from "./oauth-login.js";
@@ -42,6 +47,28 @@ export const accountPoolRpcContract = defineRpcContract({
     input: accountIdInputSchema,
     output: z.object({ account: accountSchema.nullable() }).strict(),
   },
+  "account.setPriority": {
+    input: accountPriorityInputSchema,
+    output: z.object({ account: accountSchema.nullable() }).strict(),
+  },
+  "account.refreshUsage": {
+    input: z.object({ accountId: z.string().uuid() }).strict(),
+    output: z.object({ account: accountSummarySchema.nullable() }).strict(),
+  },
+  "routing.set": {
+    input: routingSetInputSchema,
+    output: z
+      .object({ provider: z.enum(["claude", "codex"]), enabled: z.boolean() })
+      .strict(),
+  },
+  "config.get": {
+    input: z.null(),
+    output: accountPoolConfigSchema,
+  },
+  "config.set": {
+    input: accountPoolConfigSetInputSchema,
+    output: accountPoolConfigSchema,
+  },
   "login.start": {
     input: z.null(),
     output: loginStartSchema,
@@ -62,7 +89,7 @@ export const accountPoolRpcContract = defineRpcContract({
     input: codexLoginPollInputSchema,
     output: codexLoginCancelSchema,
   },
-  status: {
+  "status.get": {
     input: z.null(),
     output: statusSchema,
   },
@@ -80,6 +107,7 @@ export function createRpcHandlers(
   operations: PoolOperations,
   login: ClaudeOAuthLogin,
   codexLogin: CodexDeviceLogin,
+  config: AccountPoolConfigController,
 ) {
   return {
     "account.add": (input: Parameters<PoolOperations["add"]>[0]) =>
@@ -94,6 +122,31 @@ export function createRpcHandlers(
     "account.disable": async ({ id }: { id: string }) => ({
       account: await operations.disable(id),
     }),
+    "account.setPriority": async ({
+      accountId,
+      priority,
+    }: {
+      accountId: string;
+      priority: number;
+    }) => ({
+      account: await operations.setPriority(accountId, priority),
+    }),
+    "account.refreshUsage": async ({ accountId }: { accountId: string }) => ({
+      account: await operations.refreshUsage(accountId),
+    }),
+    "routing.set": async ({
+      provider,
+      enabled,
+    }: {
+      provider: "claude" | "codex";
+      enabled: boolean;
+    }) => {
+      await operations.setRouting(provider, enabled);
+      return { provider, enabled };
+    },
+    "config.get": () => config.get(),
+    "config.set": (input: Parameters<AccountPoolConfigController["set"]>[0]) =>
+      config.set(input),
     "login.start": () => login.start(),
     "login.complete": (input: { sessionId: string; pasted: string }) =>
       login.complete(input),
@@ -102,7 +155,7 @@ export function createRpcHandlers(
     "codexLogin.cancel": (input: { sessionId: string }) => ({
       cancelled: codexLogin.cancel(input),
     }),
-    status: () => operations.status(),
+    "status.get": () => operations.status(),
     "token.rotate": ({ machine }: { machine: string }) =>
       operations.rotateToken(machine),
     "bypass.set": ({

@@ -54,6 +54,7 @@ import {
   COARSE_POINTER_GLYPH_BOX_CLASS,
   COARSE_POINTER_ICON_SIZE_CLASS,
   COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
+  COARSE_POINTER_ROW_HEIGHT_CLASS,
 } from "@bb/shared-ui/coarse-pointer-sizing";
 import {
   SIDEBAR_HOVER_ACTIONS_CLASS,
@@ -64,6 +65,8 @@ import {
 } from "@/components/ui/sidebar-hover-actions.js";
 import {
   getCollapsedChildActivity,
+  isBusyThread,
+  isUnreadDoneThread,
   NO_COLLAPSED_CHILD_ACTIVITY,
   type CollapsedChildActivity,
 } from "@bb/client-core";
@@ -153,6 +156,7 @@ export type ProjectThreadListState =
 export interface ProjectRowProps {
   project: ProjectResponse;
   threadListState: ProjectThreadListState;
+  progressiveDisclosureEnabled: boolean;
   selectedThreadId?: string;
   isActive: boolean;
   isCollapsed: boolean;
@@ -176,6 +180,7 @@ export interface ProjectRowProps {
 interface ProjectThreadTreeProps {
   projectId?: string;
   threadListState: ProjectThreadListState;
+  progressiveDisclosureEnabled: boolean;
   compareThreads: ThreadComparator;
   selectedThreadId?: string;
   collapsedThreadIds: Set<string>;
@@ -1685,6 +1690,7 @@ function ThreadTreeLoadingSkeleton() {
 interface SectionThreadTreeItemsProps {
   items: readonly ProjectThreadItem[];
   sectionDnd: SectionThreadDndState | null;
+  focusItemKey?: string;
   variant: ProjectThreadTreeVariant;
   projectId?: string;
   depthOffset?: number;
@@ -1754,6 +1760,7 @@ function useWindowedThreadItems({
 
 function SectionThreadTreeItems({
   items,
+  focusItemKey,
   sectionDnd,
   variant,
   projectId,
@@ -1780,6 +1787,7 @@ function SectionThreadTreeItems({
   const rows = (
     <SidebarWindowedItems
       itemKeys={itemKeys}
+      focusItemKey={focusItemKey}
       estimateRows={estimateRows}
       getNavigationEntries={getNavigationEntries}
       alwaysMountedKeys={alwaysMountedKeys}
@@ -1833,9 +1841,30 @@ function SectionThreadTreeItems({
   );
 }
 
+const THREAD_ITEMS_INITIAL_LIMIT = 5;
+const THREAD_ITEMS_EXPAND_SIZE = 10;
+const THREAD_DISCLOSURE_CONTROL_CLASS = cn(
+  "cursor-pointer rounded-sm pr-2 text-left text-sm font-normal text-subtle-foreground/70 outline-none transition-colors hover:text-subtle-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring",
+  COARSE_POINTER_ROW_HEIGHT_CLASS,
+);
+
+function isAttentionProjectThreadItem(
+  item: ProjectThreadItem,
+  selectedThreadId: string | undefined,
+): boolean {
+  return getProjectThreadItemDescendants([item]).some(
+    (thread) =>
+      thread.hasPendingInteraction ||
+      isBusyThread(thread) ||
+      isUnreadDoneThread(thread) ||
+      thread.id === selectedThreadId,
+  );
+}
+
 export const ProjectThreadTree = memo(function ProjectThreadTree({
   projectId,
   threadListState,
+  progressiveDisclosureEnabled,
   compareThreads,
   selectedThreadId,
   collapsedThreadIds,
@@ -1850,11 +1879,49 @@ export const ProjectThreadTree = memo(function ProjectThreadTree({
       ? threadListState.threads
       : EMPTY_PROJECT_THREADS;
   const draftThreadIds = usePromptDraftInputThreadIds(projectThreads);
-  const rootItems = useMemo(
+  const [revealedItemKeys, setRevealedItemKeys] = useState<ReadonlySet<string>>(
+    () => new Set(),
+  );
+  const [focusItemKey, setFocusItemKey] = useState<string>();
+  const allRootItems = useMemo(
     () =>
       buildProjectThreadGroups(projectThreads, compareThreads, draftThreadIds),
     [compareThreads, draftThreadIds, projectThreads],
   );
+  const rootItems = useMemo(() => {
+    if (!progressiveDisclosureEnabled) {
+      return allRootItems;
+    }
+    return allRootItems.filter(
+      (item, index) =>
+        index < THREAD_ITEMS_INITIAL_LIMIT ||
+        revealedItemKeys.has(getItemKey(item)) ||
+        isAttentionProjectThreadItem(item, selectedThreadId),
+    );
+  }, [
+    allRootItems,
+    selectedThreadId,
+    revealedItemKeys,
+    progressiveDisclosureEnabled,
+  ]);
+  const visibleItemKeys = new Set(rootItems.map(getItemKey));
+  const hiddenItems = allRootItems.filter(
+    (item) => !visibleItemKeys.has(getItemKey(item)),
+  );
+  const hasMoreItems = hiddenItems.length > 0;
+  const handleShowMore: MouseEventHandler<HTMLButtonElement> = (event) => {
+    const nextItems = hiddenItems.slice(0, THREAD_ITEMS_EXPAND_SIZE);
+    setRevealedItemKeys(
+      new Set([
+        ...revealedItemKeys,
+        ...visibleItemKeys,
+        ...nextItems.map(getItemKey),
+      ]),
+    );
+    setFocusItemKey(
+      event.detail === 0 && nextItems[0] ? getItemKey(nextItems[0]) : undefined,
+    );
+  };
 
   if (threadListState.status === "loading") {
     return <ThreadTreeLoadingSkeleton />;
@@ -1887,19 +1954,36 @@ export const ProjectThreadTree = memo(function ProjectThreadTree({
   }
 
   return (
-    <SectionThreadTreeItems
-      items={rootItems}
-      sectionDnd={null}
-      variant={variant}
-      projectId={projectId}
-      sortableParentKey={projectId}
-      selectedThreadId={selectedThreadId}
-      collapsedThreadIds={collapsedThreadIds}
-      collapsedEnvironmentIds={collapsedEnvironmentIds}
-      onProjectSelect={onProjectSelect}
-      onToggleThreadCollapsed={onToggleThreadCollapsed}
-      onToggleEnvironmentCollapsed={onToggleEnvironmentCollapsed}
-    />
+    <>
+      <SectionThreadTreeItems
+        items={rootItems}
+        focusItemKey={focusItemKey}
+        sectionDnd={null}
+        variant={variant}
+        projectId={projectId}
+        sortableParentKey={projectId}
+        selectedThreadId={selectedThreadId}
+        collapsedThreadIds={collapsedThreadIds}
+        collapsedEnvironmentIds={collapsedEnvironmentIds}
+        onProjectSelect={onProjectSelect}
+        onToggleThreadCollapsed={onToggleThreadCollapsed}
+        onToggleEnvironmentCollapsed={onToggleEnvironmentCollapsed}
+      />
+      {hasMoreItems ? (
+        <button
+          type="button"
+          onClick={handleShowMore}
+          className={THREAD_DISCLOSURE_CONTROL_CLASS}
+          style={{
+            marginLeft: getSidebarThreadRowPaddingLeft(
+              getProjectThreadTreeRootDepthOffset(variant),
+            ),
+          }}
+        >
+          Show more
+        </button>
+      ) : null}
+    </>
   );
 });
 
@@ -2199,6 +2283,7 @@ export const ChronologicalSectionThreadSections = memo(
 function ProjectRowComponent({
   project,
   threadListState,
+  progressiveDisclosureEnabled,
   selectedThreadId,
   isCollapsed,
   compareThreads,
@@ -2346,6 +2431,7 @@ function ProjectRowComponent({
           <ProjectThreadTree
             projectId={project.id}
             threadListState={threadListState}
+            progressiveDisclosureEnabled={progressiveDisclosureEnabled}
             selectedThreadId={selectedThreadId}
             collapsedThreadIds={collapsedThreadIds}
             collapsedEnvironmentIds={collapsedEnvironmentIds}
@@ -2439,6 +2525,7 @@ function areProjectRowPropsEqual(
   if (
     prev.project !== next.project ||
     prev.threadListState !== next.threadListState ||
+    prev.progressiveDisclosureEnabled !== next.progressiveDisclosureEnabled ||
     prev.isActive !== next.isActive ||
     prev.isCollapsed !== next.isCollapsed ||
     prev.compareThreads !== next.compareThreads ||

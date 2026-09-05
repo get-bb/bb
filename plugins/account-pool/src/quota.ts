@@ -3,6 +3,7 @@ import type {
   AccountQuota,
   AccountSummary,
   FamilyQuota,
+  LimitWindow,
   ModelFamily,
 } from "./contracts.js";
 
@@ -123,6 +124,7 @@ export function quotaFromHeaders(
     sevenDayStatus: sevenDayStatus ?? previous.sevenDayStatus,
     representativeClaim: representativeClaim ?? previous.representativeClaim,
     familyWeekly,
+    limitWindows: previous.limitWindows,
     observedAt: observed ? now : previous.observedAt,
     heldUntil: previous.heldUntil,
     error: previous.error,
@@ -173,8 +175,33 @@ export function isSharedQuotaExhausted(
       quota.sevenDayResetAt,
       threshold,
       now,
+    ) ||
+    quota.limitWindows.some((window) =>
+      activeWindow(
+        window.utilization,
+        window.status,
+        window.resetAt,
+        threshold,
+        now,
+      ),
     )
   );
+}
+
+export const WEEKLY_WINDOW_MINUTES = 7 * 24 * 60;
+
+export function longestLimitWindow(
+  windows: readonly LimitWindow[],
+): LimitWindow | null {
+  let longest: LimitWindow | null = null;
+  for (const window of windows) {
+    if (
+      longest === null ||
+      (window.windowMinutes ?? 0) > (longest.windowMinutes ?? 0)
+    )
+      longest = window;
+  }
+  return longest;
 }
 
 export function isQuotaExhausted(
@@ -207,7 +234,12 @@ export function governingWeeklyResetAt(
   quota: AccountQuota,
   family: ModelFamily,
 ): number | null {
-  return quota.familyWeekly[family]?.resetAt ?? quota.sevenDayResetAt;
+  return (
+    quota.familyWeekly[family]?.resetAt ??
+    quota.sevenDayResetAt ??
+    longestLimitWindow(quota.limitWindows)?.resetAt ??
+    null
+  );
 }
 
 export function accountStatus(

@@ -352,19 +352,6 @@ export function listQueuedThreadMessages(
     .all();
 }
 
-function getQueuedThreadMessageForMutation(
-  db: DbQueryConnection,
-  id: string,
-): QueuedThreadMessageRow | null {
-  return (
-    db
-      .select()
-      .from(queuedThreadMessages)
-      .where(eq(queuedThreadMessages.id, id))
-      .get() ?? null
-  );
-}
-
 function getLastQueuedThreadMessage(
   db: DbQueryConnection,
   threadId: string,
@@ -453,7 +440,7 @@ function resolveQueuedThreadMessageNeighbor(
     return false;
   }
 
-  const neighbor = getQueuedThreadMessageForMutation(
+  const neighbor = getQueuedThreadMessage(
     db,
     args.neighborQueuedMessageId,
   );
@@ -478,7 +465,7 @@ function applyQueuedThreadMessageGroupBoundary(
     (queuedMessage) => queuedMessage.id === groupBoundaryQueuedMessageId,
   );
   if (boundaryIndex === -1) {
-    const claimedBoundary = getQueuedThreadMessageForMutation(
+    const claimedBoundary = getQueuedThreadMessage(
       db,
       groupBoundaryQueuedMessageId,
     );
@@ -640,7 +627,7 @@ export function updateQueuedThreadMessage(
 ): UpdateQueuedThreadMessageResult {
   const result = db.transaction(
     (tx): UpdateQueuedThreadMessageResult => {
-      const existing = getQueuedThreadMessageForMutation(tx, input.id);
+      const existing = getQueuedThreadMessage(tx, input.id);
       if (!existing || existing.threadId !== input.threadId) {
         return { kind: "not_found" };
       }
@@ -674,7 +661,7 @@ export function updateQueuedThreadMessage(
   return result;
 }
 
-export function getQueuedThreadMessage(db: DbConnection, id: string) {
+export function getQueuedThreadMessage(db: DbQueryConnection, id: string) {
   return (
     db
       .select()
@@ -926,7 +913,7 @@ export function claimQueuedThreadMessageGroup(
 ): ClaimedQueuedThreadMessageRow[] | null {
   const claimedQueuedMessages = db.transaction(
     (tx) => {
-      const existing = getQueuedThreadMessageForMutation(tx, id);
+      const existing = getQueuedThreadMessage(tx, id);
       if (!existing || isQueuedThreadMessageClaimed(existing)) {
         return null;
       }
@@ -1029,7 +1016,7 @@ export function reorderQueuedThreadMessage({
   try {
     result = db.transaction(
       (tx): ReorderQueuedThreadMessageResult => {
-        const movedQueuedMessage = getQueuedThreadMessageForMutation(
+        const movedQueuedMessage = getQueuedThreadMessage(
           tx,
           queuedMessageId,
         );
@@ -1937,7 +1924,7 @@ export function deleteQueuedThreadMessage(
 ) {
   const existing = db.transaction(
     (tx) => {
-      const existing = getQueuedThreadMessageForMutation(tx, id);
+      const existing = getQueuedThreadMessage(tx, id);
       if (!existing) return null;
       clearPreviousQueuedMessageGroupEdgeInTransaction(tx, existing);
       tx.delete(queuedThreadMessages)

@@ -41,6 +41,7 @@ interface UserQuestionAnswerFormProps {
   interactionId: string;
   isResolving?: boolean;
   questions: readonly PendingInteractionUserQuestionQuestion[];
+  shortcutsEnabled: boolean;
   threadId: string;
 }
 
@@ -279,6 +280,7 @@ export function UserQuestionAnswerForm({
   interactionId,
   isResolving = false,
   questions,
+  shortcutsEnabled,
   threadId,
 }: UserQuestionAnswerFormProps) {
   const [formState, setFormState] = useState<QuestionFormState>(() =>
@@ -399,7 +401,9 @@ export function UserQuestionAnswerForm({
 
   const isFocusedPane = useOptionalPaneContext()?.isFocused ?? true;
   const selectChoiceAt = (index: number): boolean => {
-    if (!isFocusedPane || disabled || !currentQuestion) return false;
+    if (!isFocusedPane || disabled || !shortcutsEnabled || !currentQuestion) {
+      return false;
+    }
     const choice = resolveQuestionShortcutChoice(currentQuestion, index);
     if (choice?.kind === "option") {
       handleToggleOption(currentQuestion, choice.value);
@@ -412,11 +416,15 @@ export function UserQuestionAnswerForm({
     return false;
   };
 
-  useAppCommandContext("questionOpen", currentQuestion !== null && !disabled);
+  useAppCommandContext(
+    "questionOpen",
+    currentQuestion !== null && !disabled && shortcutsEnabled,
+  );
   useIndexedAppCommandHandlers(
     QUESTION_SELECT_APP_COMMAND_IDS,
     selectChoiceAt,
     100,
+    shortcutsEnabled,
   );
 
   if (!currentQuestion) {

@@ -26,7 +26,7 @@ import {
   resetPluginSlotStoreForTest,
   setPluginSlotRegistrations,
 } from "@/lib/plugin-slots";
-import { ToolsView } from "./ToolsView";
+import { PluginDetailPaneView, ToolsView } from "./ToolsView";
 import {
   CatalogPluginDetail,
   CatalogPluginDetailBanner,
@@ -42,6 +42,18 @@ import {
   makePluginListItem,
   makePluginRegistrationSet,
 } from "@/test/fixtures/plugins";
+
+vi.mock("react-resizable-panels", async () => {
+  const { createRequire } = await import("node:module");
+  const { dirname, join } = await import("node:path");
+  const require = createRequire(import.meta.url);
+  return require(
+    join(
+      dirname(require.resolve("react-resizable-panels/package.json")),
+      "dist/react-resizable-panels.browser.cjs.js",
+    ),
+  );
+});
 
 const GITHUB_PLUGIN = makePluginListItem({
   id: "github",
@@ -84,14 +96,19 @@ const GITHUB_CATALOG_ENTRY = {
 
 function RoutedToolsView() {
   const location = useLocation();
-  const prefix = "/extensions/plugins/";
+  const isSettings = location.pathname.startsWith("/settings/plugins/");
+  const prefix = isSettings ? "/settings/plugins/" : "/extensions/plugins/";
   const pluginId = location.pathname.startsWith(prefix)
     ? decodeURIComponent(location.pathname.slice(prefix.length))
     : undefined;
   return (
     <>
       <TooltipProvider>
-        <ToolsView pluginId={pluginId} />
+        {isSettings && pluginId ? (
+          <PluginDetailPaneView pluginId={pluginId} />
+        ) : (
+          <ToolsView pluginId={pluginId} />
+        )}
       </TooltipProvider>
       <output data-testid="route-path">{location.pathname}</output>
       <output data-testid="route-search">{location.search}</output>
@@ -670,6 +687,11 @@ describe("BB Official plugin detail routing", () => {
     const card = await screen.findByRole("button", {
       name: "Open GitHub details",
     });
+    const panels = Array.from(document.querySelectorAll("[data-panel]"));
+    expect(panels).toHaveLength(2);
+    expect(panels[0]?.getAttribute("data-panel-size")).toBe("100.0");
+    expect(panels[1]?.getAttribute("data-panel-size")).toBe("0.0");
+    const search = screen.getByRole("textbox", { name: "Search plugins" });
     card.focus();
     fireEvent.click(card);
     expect(
@@ -679,6 +701,8 @@ describe("BB Official plugin detail routing", () => {
       screen.getByRole("textbox", { name: "Search plugins" }),
     ).toBeTruthy();
     expect(screen.getAllByRole("button", { name: /^Close /u })).toHaveLength(1);
+    expect(Array.from(document.querySelectorAll("[data-panel]"))).toEqual(panels);
+    expect(screen.getByRole("textbox", { name: "Search plugins" })).toBe(search);
 
     fireEvent.click(screen.getByRole("button", { name: "Close GitHub" }));
     await waitFor(() => {
@@ -687,6 +711,10 @@ describe("BB Official plugin detail routing", () => {
       );
       expect(document.activeElement).toBe(card);
     });
+    expect(Array.from(document.querySelectorAll("[data-panel]"))).toEqual(panels);
+    expect(panels[0]?.getAttribute("data-panel-size")).toBe("100.0");
+    expect(panels[1]?.getAttribute("data-panel-size")).toBe("0.0");
+    expect(screen.getByRole("textbox", { name: "Search plugins" })).toBe(search);
   });
 
   it("keeps related plugin navigation in the full-page detail", async () => {
@@ -748,6 +776,7 @@ describe("BB Official plugin detail routing", () => {
       >
         <Routes>
           <Route path="/extensions/plugins/*" element={<RoutedToolsView />} />
+          <Route path="/settings/plugins/*" element={<RoutedToolsView />} />
         </Routes>
       </MemoryRouter>,
       { wrapper: QueryClientWrapper },
@@ -760,7 +789,7 @@ describe("BB Official plugin detail routing", () => {
     );
     await waitFor(() => {
       expect(screen.getByTestId("route-path").textContent).toBe(
-        "/extensions/plugins/automations",
+        "/settings/plugins/automations",
       );
     });
     expect(screen.getByTestId("route-search").textContent).toBe(

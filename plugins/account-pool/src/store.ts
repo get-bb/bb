@@ -16,6 +16,7 @@ import {
 } from "./contracts.js";
 
 const ACCOUNTS_KEY = "accounts:v1";
+const ACCOUNT_LAST_USED_PERSIST_MS = 60 * 1_000;
 const accountsSchema = z.array(accountSchema);
 const HUB_TOKEN_PREFIX = "hub-token-";
 const HUB_TOKEN_GRACE_MS = 10 * 60 * 1_000;
@@ -73,7 +74,7 @@ export class AccountStore {
   }
 
   async add(
-    input: Omit<Account, "id" | "createdAt">,
+    input: Omit<Account, "id" | "createdAt" | "lastUsedAt" | "lastUsedHostId">,
     secret: AccountSecret,
   ): Promise<Account> {
     return this.serialized(async () => {
@@ -81,6 +82,8 @@ export class AccountStore {
         ...input,
         id: randomUUID(),
         createdAt: Date.now(),
+        lastUsedAt: null,
+        lastUsedHostId: null,
       });
       await this.writeSecret(account.id, secret);
       try {
@@ -120,6 +123,37 @@ export class AccountStore {
     });
   }
 
+  async setPriority(id: string, priority: number): Promise<Account | null> {
+    return this.update(id, (account) => ({ ...account, priority }));
+  }
+
+  async recordUsed(
+    id: string,
+    lastUsedAt: number,
+    lastUsedHostId: string,
+  ): Promise<boolean> {
+    return this.serialized(async () => {
+      const accounts = await this.list();
+      const index = accounts.findIndex((account) => account.id === id);
+      const current = accounts[index];
+      if (index < 0 || current === undefined) return false;
+      if (
+        current.lastUsedAt !== null &&
+        current.lastUsedHostId === lastUsedHostId &&
+        lastUsedAt - current.lastUsedAt < ACCOUNT_LAST_USED_PERSIST_MS
+      ) {
+        return false;
+      }
+      accounts[index] = accountSchema.parse({
+        ...current,
+        lastUsedAt,
+        lastUsedHostId,
+      });
+      await this.kv.set(ACCOUNTS_KEY, accounts);
+      return true;
+    });
+  }
+
   async setAccountUuid(
     id: string,
     accountUuid: string,
@@ -131,6 +165,22 @@ export class AccountStore {
       const current = accounts[index];
       if (current === undefined) return null;
       const updated = accountSchema.parse({ ...current, accountUuid });
+      accounts[index] = updated;
+      await this.kv.set(ACCOUNTS_KEY, accounts);
+      return updated;
+    });
+  }
+
+  private async update(
+    id: string,
+    change: (account: Account) => Account,
+  ): Promise<Account | null> {
+    return this.serialized(async () => {
+      const accounts = await this.list();
+      const index = accounts.findIndex((account) => account.id === id);
+      const current = accounts[index];
+      if (index < 0 || current === undefined) return null;
+      const updated = accountSchema.parse(change(current));
       accounts[index] = updated;
       await this.kv.set(ACCOUNTS_KEY, accounts);
       return updated;
@@ -410,6 +460,17 @@ export class RoutingStore {
     return (await this.kv.get(this.bypassKey(threadId))) === true;
   }
 
+  async isProviderEnabled(provider: "claude" | "codex"): Promise<boolean> {
+    return (await this.kv.get(`routing.${provider}`)) !== false;
+  }
+
+  async setProviderEnabled(
+    provider: "claude" | "codex",
+    enabled: boolean,
+  ): Promise<void> {
+    await this.kv.set(`routing.${provider}`, enabled);
+  }
+
   async setBypassed(threadId: string, bypassed: boolean): Promise<void> {
     if (bypassed) await this.kv.set(this.bypassKey(threadId), true);
     else await this.kv.delete(this.bypassKey(threadId));
@@ -465,6 +526,7 @@ const quotaRowSchema = z
     representative_claim: z.string().nullable(),
     bucket_exhaustion_json: z.string(),
     family_weekly_json: z.string(),
+    limit_windows_json: z.string(),
     observed_at: z.number().int().nullable(),
     held_until: z.number().int().nullable(),
     error: z.string().nullable(),
@@ -486,6 +548,7 @@ const EMPTY_QUOTA = {
     haiku: null,
     other: null,
   },
+  limitWindows: [],
   observedAt: null,
   heldUntil: null,
   error: null,
@@ -515,6 +578,7 @@ export class QuotaStore {
       sevenDayStatus: row.seven_day_status,
       representativeClaim: row.representative_claim,
       familyWeekly: JSON.parse(row.family_weekly_json),
+      limitWindows: JSON.parse(row.limit_windows_json),
       observedAt: row.observed_at,
       heldUntil: row.held_until,
       error: row.error,
@@ -529,8 +593,8 @@ export class QuotaStore {
           account_id, five_hour_utilization, five_hour_reset_at,
           five_hour_status, seven_day_utilization, seven_day_reset_at,
           seven_day_status, representative_claim, bucket_exhaustion_json,
-          family_weekly_json, observed_at, held_until, error
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, '{}', ?, ?, ?, ?)
+          family_weekly_json, limit_windows_json, observed_at, held_until, error
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, '{}', ?, ?, ?, ?, ?)
         ON CONFLICT(account_id) DO UPDATE SET
           five_hour_utilization = excluded.five_hour_utilization,
           five_hour_reset_at = excluded.five_hour_reset_at,
@@ -540,6 +604,7 @@ export class QuotaStore {
           seven_day_status = excluded.seven_day_status,
           representative_claim = excluded.representative_claim,
           family_weekly_json = excluded.family_weekly_json,
+          limit_windows_json = excluded.limit_windows_json,
           observed_at = excluded.observed_at,
           held_until = excluded.held_until,
           error = excluded.error`,
@@ -554,6 +619,7 @@ export class QuotaStore {
         value.sevenDayStatus,
         value.representativeClaim,
         JSON.stringify(value.familyWeekly),
+        JSON.stringify(value.limitWindows),
         value.observedAt,
         value.heldUntil,
         value.error,
@@ -583,4 +649,5 @@ export const QUOTA_MIGRATIONS = [
     error TEXT
   )`,
   `ALTER TABLE account_quota ADD COLUMN family_weekly_json TEXT NOT NULL DEFAULT '{"fable":null,"sonnet":null,"opus":null,"haiku":null,"other":null}'`,
+  `ALTER TABLE account_quota ADD COLUMN limit_windows_json TEXT NOT NULL DEFAULT '[]'`,
 ];

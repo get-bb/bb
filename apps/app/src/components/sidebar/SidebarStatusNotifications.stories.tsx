@@ -242,6 +242,7 @@ function ProjectListStage({
         <ProjectListProjects
           status="ready"
           rows={rowModels}
+          progressiveDisclosureEnabled
           collapsedProjectIds={collapsedProjectIds}
           collapsedThreadIds={collapsedThreadIds}
           collapsedEnvironmentIds={collapsedEnvironmentIds}

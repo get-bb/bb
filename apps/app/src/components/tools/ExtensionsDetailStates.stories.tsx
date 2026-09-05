@@ -633,6 +633,7 @@ function CatalogPlugin({
         open={installOpen}
         initial={{
           entryId: entry.entryId,
+          pluginId: entry.pluginId,
           marketplace: "bb-official",
           publisherLabel: "BB Official",
           displayName: entry.displayName,

@@ -684,14 +684,6 @@ function isManagedConfigValueKey(
   return MANAGED_CONFIG_KEY_VALUES.has(value);
 }
 
-function isPortableEnvName(value: string): boolean {
-  return PORTABLE_ENV_NAME_PATTERN.test(value);
-}
-
-function isSecretShapedEnvName(value: string): boolean {
-  return SECRET_SHAPED_ENV_NAME_PATTERN.test(value);
-}
-
 function supportedConfigKeysText(): string {
   return ["BB_SERVER_URL", ...MANAGED_CONFIG_KEYS].join(", ");
 }
@@ -1576,7 +1568,7 @@ function resolveManagedConfigKey(rawKey: string): ManagedConfigKey {
   if (isManagedConfigValueKey(key)) {
     return key;
   }
-  if (isSecretShapedEnvName(key)) {
+  if (SECRET_SHAPED_ENV_NAME_PATTERN.test(key)) {
     throw new Error(
       `bb-app config does not store secrets. Use "bb-app env set ${key} <value>" instead.`,
     );
@@ -1617,7 +1609,7 @@ function unsetManagedConfigKey(
 
 function resolveManagedEnvKey(rawKey: string): string {
   const key = rawKey.trim();
-  if (!isPortableEnvName(key)) {
+  if (!PORTABLE_ENV_NAME_PATTERN.test(key)) {
     throw new Error(
       `Invalid env key "${rawKey}". Env keys must match ${PORTABLE_ENV_NAME_PATTERN.source}`,
     );

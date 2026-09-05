@@ -1,7 +1,11 @@
 import path from "node:path";
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
-import { z } from "zod";
 import { registerPoolCli } from "./cli.js";
+import {
+  accountPoolConfigSchema,
+  accountPoolConfigSetInputSchema,
+  type AccountPoolConfigController,
+} from "./contracts.js";
 import type {
   ImportedClaudeCredentials,
   ImportedCodexCredentials,
@@ -12,7 +16,10 @@ import { PoolOperations } from "./operations.js";
 import { accountPoolRpcContract, createRpcHandlers } from "./rpc.js";
 import { ClaudeOAuthLogin } from "./oauth-login.js";
 import { CodexDeviceLogin } from "./codex-device-login.js";
-import { ACCOUNT_POOL_ACCOUNTS_CHANGED } from "./realtime.js";
+import {
+  ACCOUNT_POOL_ACCOUNTS_CHANGED,
+  ACCOUNT_POOL_CONFIG_CHANGED,
+} from "./realtime.js";
 import {
   AccountStore,
   HubTokenStore,
@@ -26,6 +33,7 @@ export interface AccountPoolPluginOptions {
   now?: () => number;
   refreshUrl?: string;
   codexRefreshUrl?: string;
+  codexUsageUrl?: string;
   usageUrl?: string;
   usageRefreshIntervalMs?: number;
   drainTimeoutMs?: number;
@@ -45,48 +53,27 @@ export function helloResponse(): Response {
   return new Response(null, { status: 200 });
 }
 
-const upstreamSchema = z
-  .string()
-  .url()
-  .refine((value) => {
-    const protocol = new URL(value).protocol;
-    return protocol === "http:" || protocol === "https:";
-  }, "Must be an HTTP or HTTPS URL.");
-
 export function createAccountPoolPlugin(
   options: AccountPoolPluginOptions = {},
 ) {
   return async function accountPoolPlugin(bb: BbPluginApi): Promise<void> {
-    const settings = bb.settings.define({
-      upstreamBaseUrl: {
-        type: "string",
-        label: "Anthropic upstream base URL",
-        description:
-          "Override only for tests and QA. Production traffic uses https://api.anthropic.com.",
-        default: "https://api.anthropic.com",
-        experimental_schema: upstreamSchema,
+    let currentSettings = accountPoolConfigSchema.parse(
+      (await bb.storage.kv.get("config")) ?? {},
+    );
+    const config: AccountPoolConfigController = {
+      get: () => currentSettings,
+      set: async (input) => {
+        const update = accountPoolConfigSetInputSchema.parse(input);
+        const next = accountPoolConfigSchema.parse({
+          ...currentSettings,
+          ...update,
+        });
+        await bb.storage.kv.set("config", next);
+        currentSettings = next;
+        bb.realtime.publish(ACCOUNT_POOL_CONFIG_CHANGED, {});
+        return next;
       },
-      codexUpstreamBaseUrl: {
-        type: "string",
-        label: "Codex upstream base URL",
-        description:
-          "Override only for tests and QA. Production traffic uses the ChatGPT Codex backend.",
-        default: "https://chatgpt.com/backend-api/codex",
-        experimental_schema: upstreamSchema,
-      },
-      switchThreshold: {
-        type: "number",
-        label: "Quota switch threshold",
-        description:
-          "Stop selecting an account when its shared or requested-family quota reaches this fraction.",
-        default: 0.98,
-        experimental_schema: z.number().min(0).max(1),
-      },
-    });
-    let currentSettings = await settings.get();
-    settings.onChange((next) => {
-      currentSettings = next;
-    });
+    };
     const secretDir = path.join(
       bb.server.experimental_dataDir,
       "plugins",
@@ -114,12 +101,15 @@ export function createAccountPoolPlugin(
       now,
       refreshUrl: options.refreshUrl,
       codexRefreshUrl: options.codexRefreshUrl,
+      codexUsageUrl: options.codexUsageUrl,
       usageUrl: options.usageUrl,
       profileUrl: options.oauthProfileUrl,
       importClaudeCredentials: options.importCredentials,
       importCodexCredentials: options.importCodexCredentials,
       usageRefreshIntervalMs: options.usageRefreshIntervalMs,
       drainTimeoutMs: options.drainTimeoutMs,
+      onAccountsChanged: () =>
+        bb.realtime.publish(ACCOUNT_POOL_ACCOUNTS_CHANGED, {}),
     });
     const operations = new PoolOperations(
       accounts,
@@ -155,11 +145,12 @@ export function createAccountPoolPlugin(
     }
     bb.rpc.register(
       accountPoolRpcContract,
-      createRpcHandlers(operations, login, codexLogin),
+      createRpcHandlers(operations, login, codexLogin, config),
     );
-    registerPoolCli(bb, operations, login, codexLogin);
+    registerPoolCli(bb, operations, login, codexLogin, config);
     bb.providers.experimental_contributeEnv("claude-code", async (context) => {
       if (
+        !(await operations.isRoutingEnabled("claude")) ||
         (await routing.isBypassed(context.threadId)) ||
         !(await operations.hasUsableEnabledAccount("claude"))
       ) {
@@ -192,6 +183,7 @@ export function createAccountPoolPlugin(
       ];
     });
     bb.providers.experimental_contributeEnvHealth("claude-code", async () =>
+      (await operations.isRoutingEnabled("claude")) &&
       (await operations.hasUsableEnabledAccount("claude"))
         ? {
             label: "Proxied",
@@ -202,6 +194,7 @@ export function createAccountPoolPlugin(
     );
     bb.providers.experimental_contributeEnv("codex", async (context) => {
       if (
+        !(await operations.isRoutingEnabled("codex")) ||
         (await routing.isBypassed(context.threadId)) ||
         !(await operations.hasUsableEnabledAccount("codex"))
       ) {
@@ -226,6 +219,7 @@ export function createAccountPoolPlugin(
       ];
     });
     bb.providers.experimental_contributeEnvHealth("codex", async () =>
+      (await operations.isRoutingEnabled("codex")) &&
       (await operations.hasUsableEnabledAccount("codex"))
         ? {
             label: "Proxied",
@@ -250,9 +244,7 @@ export function createAccountPoolPlugin(
         );
         const result = await Promise.race([inspection, timeout]);
         if (result === DISPOSE_INSPECTION_TIMEOUT) {
-          bb.log.debug(
-            "Account Pooler disable inspection timed out.",
-          );
+          bb.log.debug("Account Pooler disable inspection timed out.");
           return;
         }
         if (result !== null) bb.log.warn(result);

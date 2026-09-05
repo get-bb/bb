@@ -13,6 +13,7 @@
     "ensure-native-modules": "node scripts/ensure-native-modules.mjs",
     "dev": "node scripts/ensure-native-modules.mjs && cross-env NODE_ENV=development dotenv -c development -- node --conditions=source --import tsx packages/scripts/src/commands/run-dev.ts",
     "start:worktree": "cross-env NODE_ENV=development dotenv -c development -- node --conditions=source --import tsx packages/scripts/src/commands/run-dev.ts --worktree",
+    "start:worktree-remote": "cross-env BB_SERVER_BIND_HOST=0.0.0.0 pnpm run start:worktree",
     "dev:remote": "cross-env BB_DEV_APP_HOST=0.0.0.0 BB_SERVER_BIND_HOST=0.0.0.0 pnpm run dev",
     "cloud:dev": "node --conditions=source --import tsx scripts/bb-cloud-dev.mjs",
     "dev:desktop": "scripts/bb-dev-app current --desktop",

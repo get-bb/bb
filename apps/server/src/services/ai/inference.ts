@@ -110,10 +110,6 @@ function validateStructuredResult<T extends TSchema>(
   return validateToolCall(tools, toolCall) as Static<T>;
 }
 
-function parseInferenceSchema(schema: TSchema): JsonObject {
-  return jsonObjectSchema.parse(schema);
-}
-
 function isTransientInferenceError(error: Error): boolean {
   return (
     error instanceof InferenceTimeoutError || isTransientAiServiceError(error)
@@ -266,7 +262,7 @@ async function completeWithAiService<T extends TSchema>(
       model: modelInfo.modelId,
       reasoningEffort: "none",
       prompt: args.prompt,
-      outputSchema: parseInferenceSchema(args.schema),
+      outputSchema: jsonObjectSchema.parse(args.schema),
       timeoutMs,
     },
     { hostId, timeoutMs: timeoutMs + INFERENCE_POLICY.hostRpcGraceMs },

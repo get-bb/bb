@@ -1,6 +1,7 @@
 import type { IconName } from "@bb/shared-ui/icon";
 import { matchPath } from "react-router-dom";
 import {
+  SETTINGS_PLUGINS_ROUTE_PATH,
   getPluginsRoutePath,
   getRegistrySkillsRoutePath,
   getSkillsRoutePath,
@@ -54,6 +55,7 @@ const TOOLS_OWNED_COLLECTION_VIEW = {
 } as const satisfies Record<ToolsSectionId, string>;
 
 export function getToolsOwnedCollectionRoutePath(id: ToolsSectionId): string {
+  if (id === "plugins") return SETTINGS_PLUGINS_ROUTE_PATH;
   return `${TOOLS_SECTIONS[id].to}?view=${TOOLS_OWNED_COLLECTION_VIEW[id]}`;
 }
 
@@ -250,11 +252,7 @@ export function resolveToolsBreadcrumbs(
 }
 
 interface ToolsPageDefinition {
-  id:
-    | "plugins-browse"
-    | "plugins-installed"
-    | "skills-browse"
-    | "skills-library";
+  id: "plugins-browse" | "skills-browse" | "skills-library";
   section: ToolsSectionId;
   label: string;
   icon: IconName;
@@ -268,13 +266,6 @@ export const TOOLS_PAGES: readonly ToolsPageDefinition[] = [
     label: `Browse ${TOOLS_SECTIONS.plugins.label.toLowerCase()}`,
     icon: TOOLS_SECTIONS.plugins.icon,
     to: TOOLS_SECTIONS.plugins.to,
-  },
-  {
-    id: "plugins-installed",
-    section: "plugins",
-    label: `${TOOLS_OWNED_COLLECTION_LABEL.plugins} ${TOOLS_SECTIONS.plugins.label.toLowerCase()}`,
-    icon: "PackageReceive",
-    to: getToolsOwnedCollectionRoutePath("plugins"),
   },
   {
     id: "skills-browse",
@@ -300,9 +291,7 @@ export function resolveToolsActivePage(
   for (const detail of DETAIL_ROUTES) {
     if (matchPath(detail.pattern, pathname) === null) continue;
     if (detail.section === "plugins") {
-      return view === TOOLS_OWNED_COLLECTION_VIEW.plugins
-        ? "plugins-installed"
-        : "plugins-browse";
+      return "plugins-browse";
     }
     return detail.collection.label === TOOLS_OWNED_COLLECTION_LABEL.skills
       ? "skills-library"
@@ -310,9 +299,7 @@ export function resolveToolsActivePage(
   }
   const section = resolveToolsSection(pathname);
   if (section === "plugins") {
-    return view === TOOLS_OWNED_COLLECTION_VIEW.plugins
-      ? "plugins-installed"
-      : "plugins-browse";
+    return "plugins-browse";
   }
   return view === TOOLS_OWNED_COLLECTION_VIEW.skills
     ? "skills-library"

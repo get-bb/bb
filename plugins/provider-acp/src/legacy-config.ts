@@ -9,10 +9,6 @@ const legacyConfigSchema = z
   .object({ customAcpAgents: z.array(z.unknown()).optional() })
   .passthrough();
 
-function legacyConfigPath(dataDir: string): string {
-  return join(dataDir, "config.json");
-}
-
 function withoutLegacyLogo(entry: unknown): unknown {
   if (typeof entry !== "object" || entry === null || Array.isArray(entry)) {
     return entry;
@@ -27,7 +23,7 @@ function withoutLegacyLogo(entry: unknown): unknown {
 export async function readLegacyCustomAcpAgents(
   dataDir: string,
 ): Promise<{ entries: unknown[]; problem?: string }> {
-  const path = legacyConfigPath(dataDir);
+  const path = join(dataDir, "config.json");
   let raw: string;
   try {
     raw = await readFile(path, "utf8");

@@ -97,16 +97,6 @@ export function formatQueueSendCountdown(
   return `in ${formatApproximateDuration(remainingMs)}`;
 }
 
-/** Elapsed time for the `Created` column, matching `bb machine list`. */
-export function formatQueueCreatedAge(
-  createdAt: number,
-  now = Date.now(),
-): string {
-  const elapsedMs = Math.max(0, now - createdAt);
-  if (elapsedMs < DURATION_UNIT_MS.m) return "just now";
-  return `${formatApproximateDuration(elapsedMs)} ago`;
-}
-
 function formatApproximateDuration(ms: number): string {
   if (ms < DURATION_UNIT_MS.m)
     return `${Math.max(1, Math.round(ms / DURATION_UNIT_MS.s))}s`;

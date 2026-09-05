@@ -670,6 +670,87 @@ describe("PluginSettingsPage", () => {
       container.querySelectorAll("[data-resource-detail-section]"),
     ).toHaveLength(1);
   });
+
+  it("keeps a section-only plugin in Configuration with a flat surface", async () => {
+    function ConnectSettings() {
+      return <div>Custom connect settings</div>;
+    }
+    setPluginSlotRegistrations(
+      "connect",
+      makePluginRegistrationSet({
+        settingsSections: [
+          { id: "remote", title: "Remote access", component: ConnectSettings },
+        ],
+      }),
+    );
+    const connect = makeInstalledPlugin({
+      id: "connect",
+      name: "Connect",
+      enabled: true,
+      status: "running",
+      hasSettings: false,
+      provenance: "builtin",
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => jsonOk({ plugins: [connect] })),
+    );
+
+    const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
+    render(
+      <MemoryRouter>
+        <QueryClientWrapper>
+          <PluginSettingsPage pluginId="connect" />
+        </QueryClientWrapper>
+      </MemoryRouter>,
+    );
+
+    const section = await screen.findByText("Custom connect settings");
+    expect(section.closest(".overflow-hidden")).toBeNull();
+    expect(screen.getByRole("heading", { name: "Configuration" })).toBeTruthy();
+  });
+
+  it("keeps the recessed unavailable hint for a section-only plugin", async () => {
+    function ConnectSettings() {
+      return <div>Custom connect settings</div>;
+    }
+    setPluginSlotRegistrations(
+      "connect",
+      makePluginRegistrationSet({
+        settingsSections: [{ id: "remote", component: ConnectSettings }],
+      }),
+    );
+    const connect = makeInstalledPlugin({
+      id: "connect",
+      name: "Connect",
+      enabled: true,
+      status: "error",
+      hasSettings: false,
+      provenance: "builtin",
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => jsonOk({ plugins: [connect] })),
+    );
+
+    const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
+    render(
+      <MemoryRouter>
+        <QueryClientWrapper>
+          <PluginSettingsPage pluginId="connect" />
+        </QueryClientWrapper>
+      </MemoryRouter>,
+    );
+
+    const hint = await screen.findByText(
+      "Settings are unavailable while the plugin is error.",
+    );
+    expect(hint.closest(".overflow-hidden")?.className).toContain(
+      "bg-surface-recessed/70",
+    );
+    expect(screen.queryByText("Custom connect settings")).toBeNull();
+    expect(screen.getByRole("heading", { name: "Configuration" })).toBeTruthy();
+  });
 });
 
 describe("PluginSettingsDetail settings gating", () => {
@@ -772,7 +853,7 @@ describe("PluginSettingsDetail settings gating", () => {
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
-  it("renders a slot-only plugin configuration on the detail surface", async () => {
+  it("renders a slot-only plugin configuration without a recessed panel", async () => {
     function ConnectSettings() {
       return <div>Custom connect settings</div>;
     }
@@ -803,7 +884,8 @@ describe("PluginSettingsDetail settings gating", () => {
         name: "Remote access",
       }),
     ).toBeDefined();
-    expect(screen.getByText("Custom connect settings")).toBeDefined();
+    const section = screen.getByText("Custom connect settings");
+    expect(section.closest(".overflow-hidden")).toBeNull();
     expect(screen.queryByText("This plugin declares no settings.")).toBeNull();
   });
 });

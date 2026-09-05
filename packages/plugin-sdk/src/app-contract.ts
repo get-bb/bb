@@ -113,6 +113,12 @@ export interface PluginPendingInteractionProps {
  */
 export interface PluginSidebarFooterActionProps {}
 
+/** Props passed to an experimental sidebar-footer disclosure component. */
+export interface ExperimentalSidebarFooterDisclosureProps {
+  /** Hide this disclosure without affecting another plugin's open disclosure. */
+  dismiss(): void;
+}
+
 /** Display and accessibility metadata for a host-owned sidebar shortcut. */
 export interface ExperimentalSidebarNavigationShortcut {
   label: string;
@@ -697,6 +703,59 @@ export interface PluginSidebarFooterActionRegistration {
    * contained and logged; they never break the sidebar.
    */
   run(context: PluginSidebarFooterActionContext): void | Promise<void>;
+}
+
+/** Context handed to an experimental sidebar-footer action. */
+export interface ExperimentalSidebarFooterActionContext {
+  /** Navigate to this plugin's detail page in Tools. */
+  openPluginDetails(): void;
+}
+
+/** Fields shared by both experimental sidebar-footer item behaviors. */
+export interface ExperimentalSidebarFooterItemBase {
+  /** Unique within the plugin's unified sidebar footer; letters, digits, `-`, `_`. */
+  id: string;
+  /** Tooltip and accessible label for the host-rendered icon button. */
+  label: string;
+  /** BB icon-name hint; unknown names fall back to a generic icon. */
+  icon: string;
+}
+
+/** A sidebar-footer item that runs a callback when activated. */
+export interface ExperimentalSidebarFooterActionRegistration extends ExperimentalSidebarFooterItemBase {
+  kind: "action";
+  onActivate(
+    context: ExperimentalSidebarFooterActionContext,
+  ): void | Promise<void>;
+}
+
+/** A sidebar-footer item that reveals plugin-rendered content above the row. */
+export interface ExperimentalSidebarFooterDisclosureRegistration extends ExperimentalSidebarFooterItemBase {
+  kind: "disclosure";
+  component: ComponentType<ExperimentalSidebarFooterDisclosureProps>;
+}
+
+/** One host-rendered item in the app sidebar footer. */
+export type ExperimentalSidebarFooterItemRegistration =
+  | ExperimentalSidebarFooterActionRegistration
+  | ExperimentalSidebarFooterDisclosureRegistration;
+
+/** Live controls for an experimental sidebar-footer disclosure. */
+export interface ExperimentalSidebarFooterDisclosureController {
+  /** Request that the host open this disclosure, replacing any open sibling. */
+  open(): void;
+  /** Close this disclosure if it is currently open. */
+  close(): void;
+  /** Open this disclosure, or close it when it is currently open. */
+  toggle(): void;
+}
+
+/** Managed registration surface for items in the app sidebar footer. */
+export interface ExperimentalSidebarFooter {
+  register(registration: ExperimentalSidebarFooterActionRegistration): void;
+  register(
+    registration: ExperimentalSidebarFooterDisclosureRegistration,
+  ): ExperimentalSidebarFooterDisclosureController;
 }
 
 // ---------------------------------------------------------------------------
@@ -1499,6 +1558,8 @@ export interface PluginAppBuilder {
   slots: PluginAppSlots;
   composer: PluginAppComposer;
   contentScripts: PluginAppContentScripts;
+  /** Experimental managed region for actions and disclosures in the sidebar footer. */
+  experimental_sidebarFooter: ExperimentalSidebarFooter;
 }
 
 export type PluginAppSetup = (app: PluginAppBuilder) => void;

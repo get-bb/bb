@@ -84,6 +84,11 @@ export const BUILTIN_PLUGINS = [
     defaultEnabled: true,
   },
   {
+    name: "provider-usage",
+    pluginId: "provider-usage",
+    defaultEnabled: false,
+  },
+  {
     name: "provider-acp",
     pluginId: "provider-acp",
     defaultEnabled: true,

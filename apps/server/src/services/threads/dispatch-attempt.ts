@@ -107,7 +107,7 @@ export function readPendingThreadStartContext(
   return pendingThreadStartContextSchema.parse(JSON.parse(stored));
 }
 
-function hostIdForEnvironmentIntent(
+export function hostIdForEnvironmentIntent(
   deps: Pick<LoggedPendingInteractionWorkSessionDeps, "db">,
   intent: PendingThreadStartContext["environmentIntent"],
 ): string | null {

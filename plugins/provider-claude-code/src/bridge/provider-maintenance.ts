@@ -512,7 +512,7 @@ export async function getClaudeProviderUsage(): Promise<ProviderUsageResult> {
           status: "error",
           message:
             response.status === 429
-              ? "Claude usage is rate limited right now. Try again shortly."
+              ? "Anthropic temporarily throttled this usage check. This does not mean your Claude limit is exhausted. Try again later."
               : `Claude usage request failed (HTTP ${response.status}).`,
           ...known,
         },

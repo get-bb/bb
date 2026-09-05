@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import type { InstalledPlugin } from "@bb/server-contract";
@@ -225,6 +226,7 @@ describe("AddPluginDialog", () => {
     stubFetch();
     const { unmount } = renderDialog({
       entryId: "linear",
+      pluginId: "linear",
       marketplace: "bb-official",
       publisherLabel: "BB Official",
       displayName: "Linear",
@@ -240,6 +242,7 @@ describe("AddPluginDialog", () => {
 
     const git = renderDialog({
       entryId: "thread-hover-cards",
+      pluginId: "thread-hover-cards",
       marketplace: "bb-community",
       publisherLabel: "BB Community",
       displayName: "Thread Hover Cards",
@@ -258,6 +261,7 @@ describe("AddPluginDialog", () => {
 
     renderDialog({
       entryId: "widgets",
+      pluginId: "widgets",
       marketplace: "bb-community",
       publisherLabel: "BB Community",
       displayName: "Widgets",
@@ -277,6 +281,7 @@ describe("AddPluginDialog", () => {
     stubFetch();
     renderDialog({
       entryId: "widgets",
+      pluginId: "widgets",
       displayName: "Widgets",
       icon: "Zap",
       iconUrl: null,
@@ -297,6 +302,7 @@ describe("AddPluginDialog", () => {
     const requests = stubFetch();
     renderDialog({
       entryId: "linear",
+      pluginId: "linear",
       marketplace: "bb-official",
       publisherLabel: "BB Official",
       displayName: "Linear",
@@ -329,6 +335,7 @@ describe("AddPluginDialog", () => {
       "/api/v1/plugin-catalog/icons/bb-community/widgets?h=icon-hash";
     renderDialog({
       entryId: "widgets",
+      pluginId: "widgets",
       marketplace: "bb-community",
       publisherLabel: "BB Community",
       displayName: "Widgets",
@@ -352,6 +359,7 @@ describe("AddPluginDialog", () => {
         onOpenChange={() => {}}
         initial={{
           entryId: "linear",
+          pluginId: "linear",
           marketplace: "bb-official",
           publisherLabel: "BB Official",
           displayName: "Linear",
@@ -381,33 +389,44 @@ describe("AddPluginDialog", () => {
     });
   });
 
-  it("surfaces the server's install error (e.g. incompatible source) as a toast", async () => {
+  it("names and links a catalog plugin when installation fails", async () => {
     const errorToast = vi.spyOn(appToast, "error").mockReturnValue("toast");
     stubFetch(
       { ok: false, error: "requires bb >= 0.15 — you have 0.14.1" },
       422,
     );
-    renderDialog();
-
-    fireEvent.change(screen.getByLabelText("Plugin source"), {
-      target: { value: "npm:@bb-plugins/linear@2.0.0" },
+    renderDialog({
+      entryId: "linear",
+      pluginId: "linear",
+      marketplace: "bb-official",
+      publisherLabel: "BB Official",
+      displayName: "Linear",
+      icon: null,
+      iconUrl: null,
+      iconTinted: false,
+      source: "builtin:linear",
     });
-    fireEvent.click(screen.getByRole("button", { name: /install plugin/i }));
+    fireEvent.click(screen.getByRole("button", { name: /install linear/i }));
 
     await vi.waitFor(() => {
-      expect(errorToast).toHaveBeenCalledWith(
-        "Installing the plugin failed",
-        expect.objectContaining({
-          description: "requires bb >= 0.15 — you have 0.14.1",
-        }),
-      );
+      expect(errorToast).toHaveBeenCalledTimes(1);
     });
+    expect(errorToast.mock.calls[0]?.[0]).toBe("Plugin installation failed");
+    render(
+      <MemoryRouter>{errorToast.mock.calls[0]?.[1]?.description}</MemoryRouter>,
+    );
+    const pluginLink = screen.getByRole("link", { name: "Linear" });
+    expect(pluginLink.getAttribute("href")).toBe("/extensions/plugins/linear");
+    expect(pluginLink.parentElement?.textContent).toBe(
+      "Linear — requires bb >= 0.15 — you have 0.14.1",
+    );
   });
 
   it("shows a third-party listing's resolved source before confirming", async () => {
     const requests = stubFetch();
     renderDialog({
       entryId: "notes",
+      pluginId: "notes",
       marketplace: "acme-plugins",
       publisherLabel: "Acme Plugins",
       displayName: "Acme Notes",
@@ -460,6 +479,7 @@ describe("AddPluginDialog", () => {
     const requests = stubFetch();
     renderDialog({
       entryId: "linear",
+      pluginId: "linear",
       marketplace: "bb-official",
       publisherLabel: "BB Official",
       displayName: "Linear",

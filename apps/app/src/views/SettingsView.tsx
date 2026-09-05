@@ -1,5 +1,10 @@
 import { useMemo, useState, type ReactNode } from "react";
-import { Navigate, useNavigate } from "react-router-dom";
+import {
+  Navigate,
+  useNavigate,
+  useLocation,
+  matchPath,
+} from "react-router-dom";
 import "@bb/shared-ui/icon-extended";
 import {
   builtInThemes,
@@ -46,6 +51,9 @@ import { SidebarThreadListSetting } from "@/components/settings/SidebarThreadLis
 import { SidebarNavigationSetting } from "@/components/settings/SidebarNavigationSetting";
 import { SplitDimmingSetting } from "@/components/settings/SplitDimmingSetting";
 import { useSettingsNavState } from "@/components/settings/settings-nav";
+import { PluginsOverview } from "@/components/plugin/PluginsOverview";
+import { PluginDetailPaneView } from "@/views/ToolsView";
+import { SETTINGS_PLUGIN_ROUTE_PATH } from "@/lib/route-paths";
 import { PluginSettingsPage } from "@/components/plugin/PluginSettings";
 import { FileOpenersSettingsSection } from "@/components/settings/FileOpenersSettingsSection";
 import { VoiceInputSettingsSection } from "@/components/settings/VoiceInputSettingsSection";
@@ -189,10 +197,12 @@ interface ExperimentsSettingsSectionProps {
   changelogPreviewEnabled: boolean;
   editMessagesEnabled: boolean;
   mobileAppEnabled: boolean;
+  sidebarProgressiveDisclosureEnabled: boolean;
   timelineWindowingEnabled: boolean;
   onChangelogPreviewEnabledChange: (enabled: boolean) => void;
   onEditMessagesEnabledChange: (enabled: boolean) => void;
   onMobileAppEnabledChange: (enabled: boolean) => void;
+  onSidebarProgressiveDisclosureEnabledChange: (enabled: boolean) => void;
   onTimelineWindowingEnabledChange: (enabled: boolean) => void;
 }
 
@@ -944,16 +954,20 @@ export function DebugSettingsSection({
 const CHANGELOG_PREVIEW_EXPERIMENT_LABEL = "Changelog preview";
 const EDIT_MESSAGES_EXPERIMENT_LABEL = "Edit messages";
 const MOBILE_APP_EXPERIMENT_LABEL = "Mobile app";
+const SIDEBAR_PROGRESSIVE_DISCLOSURE_EXPERIMENT_LABEL =
+  "Sidebar progressive disclosure";
 const TIMELINE_WINDOWING_EXPERIMENT_LABEL = "Timeline windowing";
 export function ExperimentsSettingsSection({
   changelogPreviewEnabled,
   disabled,
   editMessagesEnabled,
   mobileAppEnabled,
+  sidebarProgressiveDisclosureEnabled,
   timelineWindowingEnabled,
   onChangelogPreviewEnabledChange,
   onEditMessagesEnabledChange,
   onMobileAppEnabledChange,
+  onSidebarProgressiveDisclosureEnabledChange,
   onTimelineWindowingEnabledChange,
 }: ExperimentsSettingsSectionProps) {
   return (
@@ -995,6 +1009,18 @@ export function ExperimentsSettingsSection({
             disabled={disabled}
             onCheckedChange={onMobileAppEnabledChange}
             aria-label={MOBILE_APP_EXPERIMENT_LABEL}
+          />
+        </SettingsWithControl>
+
+        <SettingsWithControl
+          label={SIDEBAR_PROGRESSIVE_DISCLOSURE_EXPERIMENT_LABEL}
+          description="In By project and By machine, show the first five groups in the current sort order, keep attention groups visible, and reveal ten more per click. Manually is unchanged."
+        >
+          <Switch
+            checked={sidebarProgressiveDisclosureEnabled}
+            disabled={disabled}
+            onCheckedChange={onSidebarProgressiveDisclosureEnabledChange}
+            aria-label={SIDEBAR_PROGRESSIVE_DISCLOSURE_EXPERIMENT_LABEL}
           />
         </SettingsWithControl>
 
@@ -1042,10 +1068,25 @@ export function SettingsView() {
   const updateGeneralSettingsMutation = useUpdateGeneralSettings();
   const appearance = systemConfigQuery.data?.appearance ?? defaultAppTheme;
   const updateAppearanceMutation = useUpdateAppearance();
+  const location = useLocation();
   const { activePluginId, activeSection, hasUnknownSection } =
     useSettingsNavState();
   if (hasUnknownSection) {
     return <Navigate to={SETTINGS_ROUTE_PATH} replace />;
+  }
+
+  if (activeSection === "plugins") {
+    const pluginId = matchPath(SETTINGS_PLUGIN_ROUTE_PATH, location.pathname)
+      ?.params.pluginId;
+    return (
+      <div className="-mx-4 -mt-4 flex min-h-0 flex-1 flex-col overflow-hidden pt-4 md:-mx-5 md:-mt-5 md:pt-5">
+        {pluginId ? (
+          <PluginDetailPaneView pluginId={pluginId} />
+        ) : (
+          <PluginsOverview />
+        )}
+      </div>
+    );
   }
 
   let content: ReactNode = null;
@@ -1153,6 +1194,15 @@ export function SettingsView() {
           updateExperimentsMutation.mutate({
             ...experiments,
             mobileApp: enabled,
+          })
+        }
+        sidebarProgressiveDisclosureEnabled={
+          experiments.sidebarProgressiveDisclosure
+        }
+        onSidebarProgressiveDisclosureEnabledChange={(enabled) =>
+          updateExperimentsMutation.mutate({
+            ...experiments,
+            sidebarProgressiveDisclosure: enabled,
           })
         }
         timelineWindowingEnabled={experiments.timelineWindowing}

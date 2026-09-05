@@ -170,30 +170,6 @@ export interface CreateQueuedMessageForThreadArgs {
   thread: Thread;
 }
 
-export function queuedMessagePayloadFromSendRequest(
-  payload: SendMessageRequest,
-): CreateQueuedMessageRequest {
-  return {
-    input: payload.input,
-    ...(payload.model !== undefined ? { model: payload.model } : {}),
-    ...(payload.serviceTier !== undefined
-      ? { serviceTier: payload.serviceTier }
-      : {}),
-    ...(payload.reasoningLevel !== undefined
-      ? { reasoningLevel: payload.reasoningLevel }
-      : {}),
-    ...(payload.permissionMode !== undefined
-      ? { permissionMode: payload.permissionMode }
-      : {}),
-    ...(payload.executionInputSources !== undefined
-      ? { executionInputSources: payload.executionInputSources }
-      : {}),
-    ...(payload.senderThreadId !== undefined
-      ? { senderThreadId: payload.senderThreadId }
-      : {}),
-  };
-}
-
 function admitQueuedMessage(
   db: DbQueryConnection,
   thread: Thread,

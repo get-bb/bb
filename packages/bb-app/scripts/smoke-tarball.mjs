@@ -46,9 +46,6 @@ const EXPECTED_RUNNING_BUILTIN_PLUGINS = [
 // version.ts); this script imports nothing from the workspace so it can run
 // against a packed tarball.
 const PROVIDER_BRIDGE_PROTOCOL_VERSION = 2;
-// A canonical turn/start carries a client request id (`creq_` + ten
-// Crockford-ish characters, @bb/domain's clientTurnRequestIdSchema).
-const SMOKE_CLIENT_REQUEST_ID = "creq_smkptest23";
 const BRIDGE_WAIT_TIMEOUT_MS = 10_000;
 const PROCESS_STOP_TIMEOUT_MS = 5_000;
 const DEFAULT_HOST_DAEMON_LOCAL_BIND_HOST = "127.0.0.1";
@@ -682,57 +679,6 @@ async function smokePluginHostWorkerBundle(packageDir) {
   }
 }
 
-function collectJsonRpcMessages({ childProcess, onMessage }) {
-  const messages = [];
-  let buffer = "";
-  childProcess.stdout?.on("data", (chunk) => {
-    buffer += chunk.toString("utf8");
-    const lines = buffer.split("\n");
-    buffer = lines.pop() ?? "";
-    for (const line of lines) {
-      const trimmed = line.trim();
-      if (!trimmed) {
-        continue;
-      }
-      const message = JSON.parse(trimmed);
-      messages.push(message);
-      onMessage?.(message);
-    }
-  });
-  return messages;
-}
-
-async function waitForBridgeMessage({
-  childProcess,
-  label,
-  messages,
-  output,
-  predicate,
-}) {
-  const deadline = Date.now() + BRIDGE_WAIT_TIMEOUT_MS;
-  while (Date.now() <= deadline) {
-    const message = messages.find(predicate);
-    if (message) {
-      return message;
-    }
-    if (childProcess.exitCode !== null || childProcess.signalCode !== null) {
-      throw new Error(
-        `${label} exited before the expected message\n${formatProcessOutput(output)}`,
-      );
-    }
-    await delay(10);
-  }
-  throw new Error(
-    `${label} timed out waiting for the expected message\n${formatProcessOutput(output)}`,
-  );
-}
-
-function sendBridgeRequest(childProcess, id, method, params) {
-  childProcess.stdin.write(
-    `${JSON.stringify({ jsonrpc: "2.0", id, method, params })}\n`,
-  );
-}
-
 /**
  * The semantic deltas a `thread/delta` notification batches, or [] for
  * anything else. Bridge-protocol v2 carries no finished timeline events on
@@ -750,14 +696,6 @@ function threadDeltas(message) {
   }
   return message.params.deltas.filter(isRecord);
 }
-
-/** The full permission policy a canonical request carries in `options`. */
-const SMOKE_EXECUTION_OPTIONS = {
-  permissionMode: "full",
-  permissionScope: "full",
-  approvalReviewer: null,
-  permissionEscalation: null,
-};
 
 async function smokeHelpCommands(binDir) {
   await runCommand({

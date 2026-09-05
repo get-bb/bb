@@ -358,6 +358,9 @@ function ExperimentsStory() {
       disabled={false}
       editMessagesEnabled={state.experiments.editMessages}
       mobileAppEnabled={state.experiments.mobileApp}
+      sidebarProgressiveDisclosureEnabled={
+        state.experiments.sidebarProgressiveDisclosure
+      }
       timelineWindowingEnabled={state.experiments.timelineWindowing}
       onChangelogPreviewEnabledChange={(enabled) =>
         state.setExperiments((current) => ({
@@ -375,6 +378,12 @@ function ExperimentsStory() {
         state.setExperiments((current) => ({
           ...current,
           mobileApp: enabled,
+        }))
+      }
+      onSidebarProgressiveDisclosureEnabledChange={(enabled) =>
+        state.setExperiments((current) => ({
+          ...current,
+          sidebarProgressiveDisclosure: enabled,
         }))
       }
       onTimelineWindowingEnabledChange={(enabled) =>

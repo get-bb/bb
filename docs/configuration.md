@@ -675,6 +675,9 @@ for ten minutes so in-flight requests can drain. Bypass or restore routing for
 one thread with `bb pool bypass <thread-id>` or
 `bb pool bypass <thread-id> --off`. Account listing, enable, disable, and
 removal are available through `bb pool account list|enable|disable|remove`.
+Provider routing is independently persisted and defaults on. Use
+`bb pool routing <claude|codex> --off` to stop contributing pool environment
+and health for one provider, and omit `--off` to enable it again.
 OAuth accounts refresh quota from Anthropic's usage endpoint when added or
 enabled and every five minutes while idle. `account list` adds columns for the
 family buckets Anthropic reports; JSON status exposes their utilization,
@@ -684,22 +687,27 @@ without disabling that account for other families. Imported and newly signed-in
 accounts retain their Anthropic account UUID, and the hub aligns a present
 `metadata.user_id` account component with the selected account.
 
-Three settings control routing. `switchThreshold` is the shared or requested
-model-family quota fraction at which an account stops receiving matching
-traffic and defaults to `0.98`.
-`upstreamBaseUrl` defaults to `https://api.anthropic.com` and
+Three plugin-owned configuration values control routing. `switchThreshold` is
+the shared or requested model-family quota fraction at which an account stops
+receiving matching traffic and defaults to `0.98`.
+`anthropicUpstreamBaseUrl` defaults to `https://api.anthropic.com` and
 `codexUpstreamBaseUrl` defaults to
 `https://chatgpt.com/backend-api/codex`. Codex uses the hub's HTTP Responses
 and models routes and prefers its WebSocket Responses route; the hub keeps the
 downstream WebSocket session semantics while forwarding upstream over HTTPS
-SSE. Both URL settings exist only for tests and QA with a controlled fake
-upstream:
+SSE. Both URL values exist only for tests and QA with a controlled fake
+upstream. Inspect or update the full plugin KV-backed configuration with:
 
 ```sh
-bb plugin config account-pool set switchThreshold 0.98
-bb plugin config account-pool set upstreamBaseUrl http://127.0.0.1:9000
-bb plugin config account-pool set codexUpstreamBaseUrl http://127.0.0.1:9001
+bb pool config
+bb pool config set switchThreshold 0.98
+bb pool config set anthropicUpstreamBaseUrl http://127.0.0.1:9000
+bb pool config set codexUpstreamBaseUrl http://127.0.0.1:9001
 ```
+
+Upgrading from an Account Pooler build that stored these values through
+`bb.settings` resets the threshold and both QA-only upstream overrides to
+their defaults. Those old values are not migrated.
 
 ## bb connect
 
@@ -785,6 +793,13 @@ is off by default while the app is in early access.
 BB releases restorable provider sessions after 30 idle minutes. The daemon
 checks for these sessions every five minutes. Active turns, commands, agents,
 workflows, and monitors keep their sessions loaded.
+
+The `sidebarProgressiveDisclosure` experiment is off by default. In **By
+project** and **By machine**, it shows the first five groups in the current sort
+order, keeps attention groups visible, and reveals ten more per **Show more**
+click. Revealed groups stay visible through activity and sort-order changes.
+**Manually** is unchanged. Toggle it with `bb settings experiment
+sidebarProgressiveDisclosure <true|false>`.
 
 The `timelineWindowing` experiment is off by default. When enabled, long
 timelines and large expanded timeline details retain stable height-preserving
@@ -1064,9 +1079,10 @@ enrolled to other servers. Atomic reservations under
 
 ## Source Development
 
-For source development only, `pnpm dev`, `pnpm start:worktree`, and `pnpm start`
-load the repo-root dotenv cascade. Add a repo-root `.env` only when you need to
-override the defaults described above.
+For source development only, `pnpm dev`, `pnpm start:worktree`,
+`pnpm start:worktree-remote`, and `pnpm start` load the repo-root dotenv
+cascade. Add a repo-root `.env` only when you need to override the defaults
+described above.
 
 The standard [dotenv-cli](https://github.com/entropitor/dotenv-cli) cascade
 applies to source development. `pnpm dev` loads `.env`, `.env.local`,
@@ -1086,6 +1102,10 @@ disabled for this source-development command. Its worktree data directory,
 ports, inherited skills, listener host, absent Vite port, and telemetry policy
 take precedence over conflicting values saved in that instance's `config.json`
 or `env.json`.
+`pnpm start:worktree-remote` applies the same policy while binding the main
+server to `0.0.0.0` for direct access on a trusted network. The API is
+unauthenticated and permits command execution and file reads, so protect the
+port with a trusted network boundary such as Tailscale and a host firewall.
 `pnpm start` loads `.env`, `.env.local`, `.env.production`, and
 `.env.production.local`.
 

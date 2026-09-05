@@ -63,7 +63,7 @@ import {
   invalidateThreadQueueQueries,
   markThreadAcceptedMessageQueriesStale,
   invalidateThreadQueuedMessageSendQueries,
-  invalidateThreadStopQueries,
+  invalidateThreadListMembershipQueries,
   refetchThreadListsAfterComposerThreadCreate,
 } from "./mutation-cache-effects";
 
@@ -202,16 +202,10 @@ interface RollbackQueuedMessageTransactionArgs {
   transaction: ReorderQueuedMessageTransaction | undefined;
 }
 
-interface ApplyQueuedMessageReorderResultArgs {
+interface ApplyQueuedMessagesResultArgs {
   queryClient: QueryClient;
   queuedMessages: ThreadQueuedMessageListResponse;
-  request: ReorderQueuedMessageRequest;
-}
-
-interface ApplyQueuedMessageGroupBoundaryResultArgs {
-  queryClient: QueryClient;
-  queuedMessages: ThreadQueuedMessageListResponse;
-  request: SetQueuedMessageGroupBoundaryRequest;
+  request: Pick<ReorderQueuedMessageRequest, "id">;
 }
 
 interface StopThreadTransactionArgs extends ThreadIdCacheArgs {
@@ -233,8 +227,6 @@ interface BuildAcceptedPromptHistoryEntryArgs {
   createdAt: number;
   input: PromptHistoryEntry["input"];
 }
-
-interface ApplyOptimisticStopRequestArgs extends StopThreadTransactionArgs {}
 
 interface BuildOptimisticUserMessageRowParams {
   createdAt: number;
@@ -773,7 +765,7 @@ function applyOptimisticStopRequest({
   queryClient,
   requestedAt,
   threadId,
-}: ApplyOptimisticStopRequestArgs): void {
+}: StopThreadTransactionArgs): void {
   updateCachedThread(queryClient, threadId, (thread) => ({
     ...thread,
     status: "stopping",
@@ -1486,11 +1478,11 @@ export function rollbackReorderQueuedMessageTransaction({
   });
 }
 
-export function applyQueuedMessageReorderResult({
+export function applyQueuedMessagesResult({
   queryClient,
   queuedMessages,
   request,
-}: ApplyQueuedMessageReorderResultArgs): void {
+}: ApplyQueuedMessagesResultArgs): void {
   queryClient.setQueryData<ThreadQueuedMessageListResponse>(
     threadQueuedMessagesQueryKey(request.id),
     queuedMessages,
@@ -1523,21 +1515,6 @@ export async function beginSetQueuedMessageGroupBoundaryTransaction({
   await queryClient.cancelQueries({ queryKey });
 
   return { previousQueuedMessages };
-}
-
-export function applyQueuedMessageGroupBoundaryResult({
-  queryClient,
-  queuedMessages,
-  request,
-}: ApplyQueuedMessageGroupBoundaryResultArgs): void {
-  queryClient.setQueryData<ThreadQueuedMessageListResponse>(
-    threadQueuedMessagesQueryKey(request.id),
-    queuedMessages,
-  );
-  invalidateThreadQueueQueries({
-    queryClient,
-    threadId: request.id,
-  });
 }
 
 export function applyQueuedMessageDeleteResult({
@@ -1594,5 +1571,5 @@ export function settleStopThreadTransaction({
   queryClient,
   threadId,
 }: ThreadIdCacheArgs): void {
-  invalidateThreadStopQueries({ queryClient, threadId });
+  invalidateThreadListMembershipQueries({ queryClient, threadId });
 }

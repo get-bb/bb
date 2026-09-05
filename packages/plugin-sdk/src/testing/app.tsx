@@ -77,7 +77,10 @@ import {
 import { isComposerDraftEmpty } from "../internal/composer-view.js";
 import { normalizePluginThreadRowStatus } from "../internal/composer-customization-validation.js";
 import { normalizeExperimentalFileOpenOptions } from "../internal/file-navigation-validation.js";
-import { collectPluginAppRegistrations } from "../internal/plugin-app-collector.js";
+import {
+  collectPluginAppRegistrations,
+  type CollectedExperimentalSidebarFooterItem,
+} from "../internal/plugin-app-collector.js";
 
 /**
  * `@get-bb/plugin-sdk/testing/app` — the frontend plugin test harness. Tests a
@@ -903,6 +906,7 @@ export interface CapturedPluginApp {
   composerCustomizations: ComposerCustomization[];
   pendingInteractions: PluginPendingInteractionRegistration[];
   sidebarFooterActions: PluginSidebarFooterActionRegistration[];
+  experimentalSidebarFooterItems: CollectedExperimentalSidebarFooterItem[];
   experimentalSidebarNavigations: ExperimentalSidebarNavigationRegistration[];
   threadLists: PluginThreadListRegistration[];
   threadHeaderActions: PluginThreadHeaderActionRegistration[];

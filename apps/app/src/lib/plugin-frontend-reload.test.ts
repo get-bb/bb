@@ -79,6 +79,7 @@ function contentScriptModule(
 }
 
 afterEach(() => {
+  vi.restoreAllMocks();
   vi.unstubAllGlobals();
   resetPluginThreadRowStatusesForTest();
   resetPluginSlotStoreForTest();

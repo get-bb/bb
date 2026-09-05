@@ -170,9 +170,8 @@ jobs:
         run: pnpm install --frozen-lockfile --prefer-offline
 
       - name: Install AppImage FUSE runtime
-        run: |
-          sudo apt-get update
-          sudo apt-get install --yes libfuse2
+        uses: ./.github/actions/install-appimage-fuse
+        timeout-minutes: 5
 
       - name: Typecheck desktop and launcher
         run: pnpm exec turbo run typecheck --filter=@bb/desktop --filter=bb-app --output-logs=new-only

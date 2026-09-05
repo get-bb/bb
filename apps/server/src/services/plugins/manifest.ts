@@ -1,5 +1,5 @@
 import { lstat, readdir, readFile, realpath, stat } from "node:fs/promises";
-import { isAbsolute, join, resolve } from "node:path";
+import { join } from "node:path";
 import semver from "semver";
 import {
   derivePluginId,
@@ -10,6 +10,7 @@ import {
 } from "@bb/domain";
 import { resolvePluginCodeThemePath } from "../system/code-themes.js";
 import {
+  resolveManifestPath,
   assertValidPluginCompactIconSvg,
   assertValidPluginIconSvg,
 } from "@bb/plugin-build";
@@ -45,19 +46,6 @@ export interface PluginManifest {
   skillsRootPaths: string[];
   skillNames: string[];
   rootDir: string;
-}
-
-function resolveEntry(rootDir: string, entry: string, label: string): string {
-  if (isAbsolute(entry)) {
-    throw new Error(`manifest ${label} must be relative, got "${entry}"`);
-  }
-  const resolved = resolve(rootDir, entry);
-  if (resolved !== rootDir && !resolved.startsWith(rootDir + "/")) {
-    throw new Error(
-      `manifest ${label} escapes the plugin directory: "${entry}"`,
-    );
-  }
-  return resolved;
 }
 
 async function readSkillNames(rootPaths: string[]): Promise<string[]> {
@@ -116,7 +104,7 @@ export async function readPluginManifest(
       "invalid plugin package.json (engines.bbPluginSdk): must be a valid semver range",
     );
   }
-  const serverEntry = resolveEntry(rootDir, bb.server, "bb.server");
+  const serverEntry = resolveManifestPath(rootDir, bb.server, "bb.server");
   try {
     await stat(serverEntry);
   } catch {
@@ -125,7 +113,7 @@ export async function readPluginManifest(
     );
   }
   const hostEntry = bb.host
-    ? resolveEntry(rootDir, bb.host, "bb.host")
+    ? resolveManifestPath(rootDir, bb.host, "bb.host")
     : undefined;
   if (hostEntry !== undefined) {
     try {
@@ -135,7 +123,7 @@ export async function readPluginManifest(
     }
   }
   const skillsRootPaths = (bb.skills ?? ["skills"]).map((entry) =>
-    resolveEntry(rootDir, entry.replace(/\/\*$/, ""), "bb.skills"),
+    resolveManifestPath(rootDir, entry.replace(/\/\*$/, ""), "bb.skills"),
   );
   const resolveBrandingAsset = (entry: string, label: string): string => {
     if (!/\.(svg|png|webp)$/i.test(entry)) {
@@ -143,7 +131,7 @@ export async function readPluginManifest(
         `manifest ${label} must point at a .svg, .png, or .webp file, got "${entry}"`,
       );
     }
-    return resolveEntry(rootDir, entry, label);
+    return resolveManifestPath(rootDir, entry, label);
   };
   const brandingLogo =
     bb.branding.logo === undefined
@@ -199,7 +187,7 @@ export async function readPluginManifest(
     bb.branding.experimental_icons ?? {},
   )) {
     const label = `bb.branding.experimental_icons["${name}"]`;
-    const assetPath = resolveEntry(rootDir, entry, label);
+    const assetPath = resolveManifestPath(rootDir, entry, label);
     let assetStat;
     try {
       assetStat = await stat(assetPath);
@@ -257,7 +245,7 @@ export async function readPluginManifest(
       id: theme.id,
       name: theme.name,
       description: theme.description ?? null,
-      cssPath: resolveEntry(rootDir, theme.css, `bb.themes.${theme.id}.css`),
+      cssPath: resolveManifestPath(rootDir, theme.css, `bb.themes.${theme.id}.css`),
       codeTheme,
       codeThemePaths,
     };
@@ -297,7 +285,7 @@ export async function readPluginManifest(
     bbEngineRange: engines?.bb,
     bbPluginSdkRange: engines?.bbPluginSdk,
     serverEntry,
-    appEntry: bb.app ? resolveEntry(rootDir, bb.app, "bb.app") : undefined,
+    appEntry: bb.app ? resolveManifestPath(rootDir, bb.app, "bb.app") : undefined,
     hostEntry,
     themes,
     skillsRootPaths,

@@ -182,10 +182,19 @@ package.json is the one-sentence hook. It appears on every browse card and as
 the lead paragraph on the detail page. Keep it under about 140 characters.
 State the outcome the user gets.
 
-An optional `PLUGIN_OVERVIEW.md` beside package.json holds the long-form
-description. The detail page shows it in an Overview section under the lead
-paragraph, in the app and on the public getbb.app marketplace. The
-`submit-a-plugin` skill copies the file into the marketplace repository as
+`PLUGIN_OVERVIEW.md` beside package.json holds the long-form description. The
+detail page shows it in an Overview section under the lead paragraph, in the
+app and on the public getbb.app marketplace. `bb plugin new` scaffolds one, the
+BB Community marketplace requires one, and a plugin that is only installed from
+a local path or a private source still reads better with one.
+
+The file is the same claim as `bb.description` at length: the same outcome, the
+same surfaces, no capability the short text does not imply. Treat the two as
+one text in two lengths. Whenever you change `bb.description`, or add or remove
+a surface, update this file in the same change so the lead paragraph and the
+Overview section never disagree.
+
+The `submit-a-plugin` skill copies the file into the marketplace repository as
 `overview/<plugin-id>.md` and references it from the entry with
 `"overview": "./overview/<plugin-id>.md"`. A bundled BB plugin uses the same
 file, and the bb-official generator folds it into the built catalog.

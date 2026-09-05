@@ -524,6 +524,7 @@ describe("BrowsePluginsTab", () => {
     fireEvent.click(install);
     expect(onInstall).toHaveBeenCalledWith({
       entryId: "memory",
+      pluginId: "memory",
       marketplace: "bb-official",
       publisherLabel: "BB Official",
       displayName: "Memory",

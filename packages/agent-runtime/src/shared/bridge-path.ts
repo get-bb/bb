@@ -5,15 +5,11 @@ type BridgeProcessArgs = string[];
 
 const BRIDGE_WORKER_BUNDLE_FILE_NAME = "bb-provider-bridge-worker.mjs";
 
-function resolveTsxLoaderSpecifier(): string {
-  return import.meta.resolve("tsx");
-}
-
 function sourceTypeScriptProcessArgs(sourcePath: string): BridgeProcessArgs {
   return [
     "--conditions=source",
     "--import",
-    resolveTsxLoaderSpecifier(),
+    import.meta.resolve("tsx"),
     sourcePath,
   ];
 }

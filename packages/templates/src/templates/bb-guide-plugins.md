@@ -40,6 +40,9 @@ bb pool account remove <id>
 bb pool account enable <id>
 bb pool account disable <id>
 bb pool status [--json]
+bb pool routing <claude|codex> [--off]
+bb pool config
+bb pool config set <anthropicUpstreamBaseUrl|codexUpstreamBaseUrl|switchThreshold> <value>
 bb pool token rotate --machine <id-or-name>
 bb pool bypass <thread-id> [--off]
 ```
@@ -75,9 +78,10 @@ family buckets Anthropic reports, and JSON status exposes the same observations
 under `familyWeekly`. Selection skips an account only for a spent requested
 family while retaining it for other families. When Claude Code supplies an
 account UUID in `metadata.user_id`, the hub aligns it with the selected OAuth
-account.
-The `upstreamBaseUrl` setting exists for tests and QA and defaults to
-`https://api.anthropic.com`; `switchThreshold` defaults to `0.98`.
+account. `bb pool config` prints the quota switch threshold and both upstream
+URLs. Use `bb pool config set <key> <value>` to change one; the two URL values
+are QA-only overrides. Upgrading from a build that stored these values through
+plugin settings resets the threshold and QA overrides to their defaults.
 
 The builtin Keep Awake plugin prevents macOS idle sleep while bb is running.
 Its settings page lets you target all hosts or selected hosts. The CLI
@@ -121,7 +125,7 @@ block recovery. Its `maximumWait` setting defaults to `6 hours`; choose
 
 The builtin Workflows plugin runs durable provider-independent JavaScript
 orchestration. It is disabled on fresh installations; enable `workflows` under
-Extensions → Plugins or run `bb plugin enable workflows` before using:
+Settings → Installed plugins or run `bb plugin enable workflows` before using:
 
   bb workflows validate (--script '<javascript>'|--source '<javascript>'|
                         --file <path>|--name <name>)
@@ -706,7 +710,7 @@ Everything else (zod included) bundles from the plugin's node_modules (`npm inst
 release packages with their declared production dependencies). A crashing slot collapses to a
 "plugin <id> crashed" chip without
 touching the rest of the app. Installed plugins and their declared settings
-(same data as `bb plugin config`) also appear under Extensions → Plugins.
+(same data as `bb plugin config`) also appear under Settings → Installed plugins.
 
 Plugin CLI commands: a plugin can register one top-level subcommand (for
 example `bb github …`). Unknown `bb` commands are looked up against installed
@@ -742,6 +746,14 @@ floor rather than a ceiling; scaffold writes `">=0.4.3"` for SDK 0.4.3). Use
 default. Scoped names such as `@acme/bb-plugin-hello` are also supported. The
 plugin id is the final package-name component minus `bb-plugin-`, so both forms
 use `hello`.
+
+The scaffold also writes `PLUGIN_OVERVIEW.md` beside package.json: the
+long-form store listing, shown in an Overview section under `bb.description` on
+the plugin detail page in the app and on getbb.app. It says the same thing as
+`bb.description` at length, so update both together. Keep it under 4000
+characters, use headings, paragraphs, emphasis, code, blockquotes, lists,
+thematic breaks, and absolute https links only, and do not open with a `#`
+title. A submission to the BB Community marketplace requires the file.
 
 Plugins can contribute palettes with `bb.themes`: an array of
 `{ id, name, description?, css, codeTheme? }`, where `css` is a

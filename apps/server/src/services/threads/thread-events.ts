@@ -19,11 +19,9 @@ import {
   getThreadEventScopeTurnId,
   isStandaloneBuiltinCompactCommand,
   parseStoredThreadEvent,
-  permissionModeSchema,
   systemErrorEventDataSchema,
   threadScope,
   turnRequestEventDataSchema,
-  type PermissionMode,
 } from "@bb/domain";
 import { randomBytes } from "node:crypto";
 import type {
@@ -70,22 +68,6 @@ interface ThreadEventTransactionDeps {
 export interface TurnRequestRetryMarker {
   requestId: ClientTurnRequestId;
   attempt: number;
-}
-
-/**
- * A recorded permission mode narrowed to one the system still offers, or null.
- *
- * Persisted turns are historical facts, so a `client/turn/requested` can carry
- * a mode that has since been retired. Anything replaying such a turn — a retry
- * re-submitting it, a hook reading what it ran with — needs the current
- * vocabulary, and null (meaning "resolve it as usual") is the only honest
- * answer for a mode that no longer exists.
- */
-export function currentPermissionMode(
-  recorded: TurnRequestEventData["execution"]["permissionMode"],
-): PermissionMode | null {
-  const parsed = permissionModeSchema.safeParse(recorded);
-  return parsed.success ? parsed.data : null;
 }
 
 interface ClientTurnRequestedEventArgs {

@@ -6,7 +6,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
+import { Navigate, useLocation, useNavigate } from "react-router-dom";
 import "@bb/shared-ui/icon-extended";
 import { useMutation } from "@tanstack/react-query";
 import { buildPluginEditThreadPrompt } from "@bb/shared-ui/resource-edit-prompt";
@@ -44,6 +44,7 @@ import {
   type PluginListItem,
 } from "@/hooks/queries/plugin-settings-queries";
 import { useLocalOpenTargets } from "@/hooks/useLocalOpenTargets";
+import { pluginAdminErrorMessage } from "@/lib/plugin-admin-error";
 import {
   TOOLS_REGISTRY_SKILLS_ROUTE_PATH,
   TOOLS_SKILLS_ROUTE_PATH,
@@ -59,6 +60,7 @@ import {
 import { cn } from "@bb/shared-ui/lib/utils";
 import { SkillsLibrary } from "@/components/tools/SkillsLibrary";
 import { PluginIcon } from "@/components/plugin/PluginIcon";
+import { pluginToast } from "@/components/plugin/PluginNotificationDescription";
 import { SecondaryPanelLayout } from "@/components/secondary-panel/SecondaryPanelLayout";
 import { ThreadSecondaryPanel } from "@/components/secondary-panel/ThreadSecondaryPanel";
 import type { SecondaryPanelRenderableTab } from "@/components/secondary-panel/secondaryPanelTab";
@@ -197,25 +199,26 @@ function PluginDetailToolView({ pluginId }: { pluginId: string }) {
   });
   const pluginDelete = useMutation({
     meta: { showErrorToast: false },
-    mutationFn: async (plugin: PluginListItem) => {
-      try {
-        await removePlugin(fetch, plugin.id);
-      } catch {
-        throw new Error("Failed to delete plugin");
-      }
-    },
+    mutationFn: (plugin: PluginListItem) => removePlugin(fetch, plugin.id),
     onSuccess: (_data, deletedPlugin) => {
-      appToast.success(
-        pluginIsLocalSource(deletedPlugin)
-          ? "Plugin removed from bb"
-          : "Plugin uninstalled",
+      const isLocal = pluginIsLocalSource(deletedPlugin);
+      pluginToast.success(
+        isLocal ? "Plugin removed from bb" : "Plugin uninstalled",
+        deletedPlugin,
+        "catalog",
       );
       setDeleteTarget(null);
       navigate(getToolsOwnedCollectionRoutePath("plugins"));
       return listQuery.refetch();
     },
-    onError: (error) => {
-      appToast.error(error instanceof Error ? error.message : String(error));
+    onError: (error, plugin) => {
+      const isLocal = pluginIsLocalSource(plugin);
+      pluginToast.error(
+        isLocal ? "Plugin removal failed" : "Plugin uninstall failed",
+        plugin,
+        "installed",
+        pluginAdminErrorMessage(error),
+      );
     },
   });
   const isLoading = listQuery.isFetching && listQuery.data === undefined;
@@ -395,6 +398,7 @@ function PluginDetailToolView({ pluginId }: { pluginId: string }) {
                 : {
                     entryId: installTarget.entryId,
                     marketplace: installTarget.marketplace,
+                    pluginId: installTarget.pluginId,
                     publisherLabel: installTarget.publisherLabel,
                     displayName: installTarget.displayName,
                     icon: installTarget.icon,
@@ -436,12 +440,7 @@ export function ToolsView({ pluginId }: { pluginId?: string } = {}) {
     enabled: activeSection === "plugins",
   });
   const listQuery = usePluginList({ enabled: activeSection === "plugins" });
-  const isInstalledDetail =
-    activeSection === "plugins" &&
-    pluginId !== undefined &&
-    new URLSearchParams(location.search).get("view") === "installed";
-  const isPanelOpen =
-    activeSection === "plugins" && pluginId !== undefined && !isInstalledDetail;
+  const isPanelOpen = activeSection === "plugins" && pluginId !== undefined;
 
   const openPlugin = useCallback(
     (nextPluginId: string, trigger: HTMLButtonElement) => {
@@ -513,15 +512,11 @@ export function ToolsView({ pluginId }: { pluginId?: string } = {}) {
   const mainContent = (
     <div className="min-h-0 flex-1 overflow-hidden">
       <Suspense fallback={<ToolsBodyFallback />}>
-        {isInstalledDetail && pluginId !== undefined ? (
-          <PluginDetailToolView pluginId={pluginId} />
-        ) : (
-          <ToolsSectionBody
-            activeSection={activeSection}
-            pathname={location.pathname}
-            onOpenPlugin={openPlugin}
-          />
-        )}
+        <ToolsSectionBody
+          activeSection={activeSection}
+          pathname={location.pathname}
+          onOpenPlugin={openPlugin}
+        />
       </Suspense>
     </div>
   );
@@ -536,30 +531,41 @@ export function ToolsView({ pluginId }: { pluginId?: string } = {}) {
       isMainCollapsed: boolean;
       onToggleMainCollapse: () => void;
       resizablePanelId?: string;
-    }) =>
-      isPanelOpen ? (
-        <ThreadSecondaryPanel
-          activeTab={panelTab?.tab ?? null}
-          canUseGitUi={false}
-          metadataContent={null}
-          tabs={panelTabs}
-          fixedTabs={[]}
-          onTabReorder={() => undefined}
-          isOpen={isPanelOpen}
-          showConversationCollapseControl
-          showNewTabButton={false}
-          onPanelFocus={() => undefined}
-          onCollapse={closePanel}
-          onClose={closePanel}
-          onOpenNewTab={() => undefined}
-          isConversationCollapsed={isMainCollapsed}
-          onToggleConversationCollapse={onToggleMainCollapse}
-          renderAsDrawer={presentation === "drawer"}
-          resizablePanelId={resizablePanelId}
-        />
-      ) : null,
+    }) => (
+      <ThreadSecondaryPanel
+        activeTab={panelTab?.tab ?? null}
+        canUseGitUi={false}
+        metadataContent={null}
+        tabs={panelTabs}
+        fixedTabs={[]}
+        onTabReorder={() => undefined}
+        isOpen={isPanelOpen}
+        showConversationCollapseControl
+        showNewTabButton={false}
+        onPanelFocus={() => undefined}
+        onCollapse={closePanel}
+        onClose={closePanel}
+        onOpenNewTab={() => undefined}
+        isConversationCollapsed={isMainCollapsed}
+        onToggleConversationCollapse={onToggleMainCollapse}
+        renderAsDrawer={presentation === "drawer"}
+        resizablePanelId={resizablePanelId}
+      />
+    ),
     [closePanel, isPanelOpen, panelTab?.tab, panelTabs],
   );
+
+  if (
+    activeSection === "plugins" &&
+    new URLSearchParams(location.search).get("view") === "installed"
+  ) {
+    return (
+      <Navigate
+        replace
+        to={`${pluginId === undefined ? getToolsOwnedCollectionRoutePath("plugins") : getPluginDetailRoutePath({ pluginId, view: "installed" })}${location.hash}`}
+      />
+    );
+  }
 
   return (
     <div className="-mx-4 -mb-4 -mt-4 flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden md:-mx-5 md:-mb-5 md:-mt-5">

@@ -65,6 +65,8 @@ function savedAccount(authenticated: ClaudeOAuthAccount): Account {
     enabled: true,
     priority: 100,
     createdAt: 1,
+    lastUsedAt: null,
+    lastUsedHostId: null,
   };
 }
 

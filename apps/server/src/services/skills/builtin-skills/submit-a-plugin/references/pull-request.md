@@ -58,7 +58,6 @@ git diff -- entries/PLUGIN_ID.json icons/ screenshots/PLUGIN_ID/ overview/PLUGIN
 ```
 
 Omit each screenshots/PLUGIN_ID/ argument when the entry has no screenshots.
-Omit each overview/PLUGIN_ID.md argument when the entry has no overview file.
 
 Confirm:
 
@@ -77,8 +76,8 @@ Confirm:
 - Each screenshot meets the width, size, format, location, and reference
   rules, and shows no private data.
 - The screenshots directory holds no unreferenced file.
-- The overview file, when present, is at overview/PLUGIN_ID.md, is referenced from
-  the entry, and passes the build.
+- The overview file is at overview/PLUGIN_ID.md, is referenced from the entry,
+  and passes the build.
 - Both marketplace checks pass.
 
 ## Open the pull request
@@ -115,4 +114,4 @@ Follow the marketplace repository instructions. The pull request body must state
 - The marketplace checks that passed.
 - Required permissions, external services, and relevant security facts.
 - What each screenshot shows, or why the entry has none.
-- Whether the entry has an overview file, and where the text came from.
+- Where the overview text came from: the plugin repository, or a draft the user approved.

@@ -32,7 +32,10 @@ import type { MarkdownPreviewLinkHandler } from "@/components/ui/markdown-link";
 import { openUrlInExternalBrowser } from "@/lib/url-open-routing";
 import { useAppNavigationHost } from "@/lib/app-navigation-host";
 import { copyToClipboardWithToast } from "@/lib/clipboard";
-import type { MessageProseSelection } from "@/components/thread/timeline/SelectableMessageProse.js";
+import {
+  anchorPointFromMouseEvent,
+  type MessageProseSelection,
+} from "@/components/thread/timeline/SelectableMessageProse.js";
 import { TimelineSelectionMenu } from "@/components/thread/timeline/TimelineSelectionMenu.js";
 import { buildTerminalWebSocketUrl } from "./terminal-websocket-url";
 import { TerminalWebSocketTransport } from "@bb/client-core";
@@ -436,20 +439,11 @@ function hasVisibleTerminalSize({
   return width > 0 && height > 0;
 }
 
-function terminalSelectionAnchorPointFromEvent(
-  event: Pick<MouseEvent, "clientX" | "clientY">,
-): TerminalSelectionAnchorPoint | null {
-  if (!Number.isFinite(event.clientX) || !Number.isFinite(event.clientY)) {
-    return null;
-  }
-  return { x: event.clientX, y: event.clientY };
-}
-
 function terminalSelectionAnchorFromPointerRelease(
   startPoint: TerminalSelectionAnchorPoint | null,
   releaseEvent: Pick<MouseEvent, "clientX" | "clientY">,
 ): TerminalSelectionAnchor | null {
-  const releasePoint = terminalSelectionAnchorPointFromEvent(releaseEvent);
+  const releasePoint = anchorPointFromMouseEvent(releaseEvent);
   if (releasePoint === null) {
     return null;
   }
@@ -773,7 +767,7 @@ export function ThreadTerminalView({
     (event: ReactPointerEvent<HTMLDivElement>) => {
       pointerIsDownRef.current = true;
       pointerStartPointRef.current =
-        terminalSelectionAnchorPointFromEvent(event);
+        anchorPointFromMouseEvent(event);
     },
     [],
   );

@@ -122,8 +122,6 @@ const storyClaudeCodeProvider = makeStoryProvider(
   "Brain",
 );
 const storyCursorProvider = makeStoryProvider("acp-cursor", "Cursor", "Zap");
-
-export const STORY_CODEX_PROVIDER_ID = storyCodexProvider.id;
 export const STORY_CLAUDE_CODE_PROVIDER_ID = storyClaudeCodeProvider.id;
 export const STORY_CURSOR_PROVIDER_ID = storyCursorProvider.id;
 

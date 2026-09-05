@@ -35,7 +35,6 @@ import {
   hostProviderCliStatusQueryKey,
   systemCliSkillsQueryKey,
   themeCatalogQueryKey,
-  allPluginMentionSearchQueryKeyPrefix,
   allProjectCommandsQueryKeyPrefix,
   allProjectDefaultExecutionOptionsQueryKeyPrefix,
   allProjectPathsQueryKeyPrefix,
@@ -44,7 +43,6 @@ import {
   allSystemProvidersQueryKeyPrefix,
   pluginContributionsQueryKey,
   pluginsQueryKey,
-  allPluginSettingsQueryKeyPrefix,
   pluginUpdatesQueryKey,
   allPluginCatalogSearchQueryKeyPrefix,
   allProjectSkillsQueryKeyPrefix,
@@ -67,7 +65,6 @@ import {
   threadQueuedMessagesQueryKey,
   threadSearchQueryKeyPrefix,
   allTerminalsQueryKeyPrefix,
-  allTerminalSessionQueryKeyPrefix,
   threadTabsQueryKey,
   allThreadStoragePathsQueryKeyPrefix,
   allThreadStorageFilesQueryKeyPrefix,
@@ -140,10 +137,7 @@ export function queryKeysForChangedMessage(
         keys.push(threadQueuedMessagesQueryKey(id));
       }
       if (kinds.has("terminals-changed")) {
-        keys.push(
-          allTerminalsQueryKeyPrefix(),
-          allTerminalSessionQueryKeyPrefix(),
-        );
+        keys.push(allTerminalsQueryKeyPrefix());
       }
       if (kinds.has("tabs-changed")) {
         keys.push(threadTabsQueryKey(id));
@@ -258,10 +252,8 @@ export function queryKeysForChangedMessage(
       if (kinds.has("plugins-changed")) {
         keys.push(
           pluginContributionsQueryKey(),
-          allPluginMentionSearchQueryKeyPrefix(),
           allProjectCommandsQueryKeyPrefix(),
           pluginsQueryKey(),
-          allPluginSettingsQueryKeyPrefix(),
           pluginUpdatesQueryKey(),
           allPluginCatalogSearchQueryKeyPrefix(),
           allProjectSkillsQueryKeyPrefix(),
