@@ -49,6 +49,8 @@ BB_HOST_DAEMON_PORT only for an intentional non-default target.
 - Pass an environment or machine selector when the default host is uncertain.
 - Query provider models on the machine that will run the thread.
 - Prefer non-interactive commands and machine-readable output for automation.
+- Treat each `--json` command as its own schema. Inspect its top-level type
+  before filtering, and do not infer an envelope from another command.
 - Pass `--yes` for a confirmed destructive command in a non-interactive shell.
 - Treat plugin commands as normal top-level commands after installation.
 

@@ -7,9 +7,18 @@
   context variables. Omitted execution flags use remembered project defaults;
   without a remembered model, bb uses the explicitly requested provider or
   Codex and resolves its provider-reported default model on the target machine.
+- Do not put generated prompt text in shell source. Stage generated Markdown in
+  a file and pass it as one quoted argument:
+  `bb thread spawn --project <project-id> --prompt "$(cat "$file")"`.
+  This remains subject to the shell's argument-size limit.
 - Select a target with `--environment`, `--new-environment`, `--base-branch`,
   or `--machine`. Select execution with `--provider`, `--model`,
   `--reasoning-level`, `--service-tier`, and `--permission-mode`.
+- Before setting `--permission-mode`, inspect the selected provider on the
+  target environment or machine. Run
+  `bb provider list --environment <id> --json`, or use the matching `--machine`
+  selector, then read the provider's `capabilities.permissionModes`. Do not
+  assume every provider supports every public mode.
 - Omit `--base-branch` for bb's default. Explicit values are exact; use
   `origin/<branch>` for a remote ref.
 - Spawn also accepts `--title`, `--origin-kind`, `--source-thread`,
