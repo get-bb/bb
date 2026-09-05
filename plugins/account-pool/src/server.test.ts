@@ -179,6 +179,7 @@ function testJwt(payload: object): string {
 async function createFixture(args: {
   upstreamUrl: string;
   options?: AccountPoolPluginOptions;
+  provider?: "claude" | "codex";
   source?: "api-key" | "import";
   apiKey?: string;
   priority?: number;
@@ -191,6 +192,7 @@ async function createFixture(args: {
   });
   await host.bb.storage.kv.set("config", {
     anthropicUpstreamBaseUrl: args.upstreamUrl,
+    codexUpstreamBaseUrl: args.upstreamUrl,
   });
   const plugin = createAccountPoolPlugin({
     usageUrl: "data:application/json,{}",
@@ -199,7 +201,7 @@ async function createFixture(args: {
   await plugin(host.bb);
   const accountMetadata = accountSchema.parse(
     await host.harness.behavior.callRpc("account.add", {
-      provider: "claude",
+      provider: args.provider ?? "claude",
       source:
         args.source === "import"
           ? { kind: "import" }
@@ -226,7 +228,11 @@ async function createFixture(args: {
     await host.harness.lifecycle.dispose();
     await fs.rm(dataDir, { recursive: true, force: true });
   });
-  return { dataDir, host, service, key: await resolveToken(host), account };
+  const key =
+    args.provider === "codex"
+      ? (await resolveCodexToken(host)).token
+      : await resolveToken(host);
+  return { dataDir, host, service, key, account };
 }
 
 function authHeaders(key: string): Record<string, string> {
@@ -2594,6 +2600,137 @@ describe("Account Pool plugin", () => {
       "Bearer new-refresh-2",
       "Bearer new-refresh-1",
     ]);
+  });
+
+  describe.each<{ provider: "claude" | "codex"; route: string }>([
+    { provider: "claude", route: "/v1/messages" },
+    { provider: "codex", route: "/v1/responses" },
+  ])("$provider OAuth refresh recovery", ({ provider, route }) => {
+    it.each([
+      {
+        name: "uses valid tokens during temporary failure and retries after backoff",
+        elapsedMinutes: 6,
+        failureStatus: 503,
+        expectedStatus: 200,
+      },
+      {
+        name: "temporarily rejects expired tokens and recovers after backoff",
+        elapsedMinutes: 11,
+        failureStatus: 503,
+        expectedStatus: 503,
+      },
+      {
+        name: "keeps invalid_grant accounts excluded despite a valid access token",
+        elapsedMinutes: 6,
+        failureStatus: 400,
+        expectedStatus: 429,
+      },
+    ])("$name", async ({ elapsedMinutes, failureStatus, expectedStatus }) => {
+      let now = 1_800_000_000_000;
+      const expiresAt = now + 10 * 60 * 1_000;
+      const oldToken = testJwt({ exp: expiresAt / 1_000 });
+      const newToken = testJwt({ exp: now / 1_000 + 3600 });
+      let refreshStatus = failureStatus;
+      let refreshCalls = 0;
+      const authorizations: Array<string | undefined> = [];
+      const upstream = await startUpstream(async (request, response) => {
+        await readRequestBody(request);
+        response.writeHead(
+          request.url === "/oauth/token" ? refreshStatus : 200,
+          { "content-type": "application/json" },
+        );
+        if (request.url === "/oauth/token") {
+          refreshCalls += 1;
+          response.end(
+            JSON.stringify(
+              refreshStatus === 200
+                ? {
+                    access_token: newToken,
+                    refresh_token: "new-refresh",
+                    expires_in: 3600,
+                  }
+                : {
+                    error:
+                      refreshStatus === 400
+                        ? "invalid_grant"
+                        : "temporarily_unavailable",
+                  },
+            ),
+          );
+          return;
+        }
+        authorizations.push(request.headers.authorization);
+        response.end("{}");
+      });
+      cleanups.push(upstream.close);
+      const fixture = await createFixture({
+        upstreamUrl: upstream.url,
+        provider,
+        source: "import",
+        options: {
+          now: () => now,
+          importCredentials: async () =>
+            importedCredentials({ accessToken: oldToken, expiresAt }),
+          importCodexCredentials: async () => ({
+            accessToken: oldToken,
+            refreshToken: "old-refresh",
+            idToken: null,
+            accountId: "chatgpt-account",
+            email: "codex@example.com",
+            expiresAt,
+          }),
+          refreshUrl: `${upstream.url}/oauth/token`,
+          codexRefreshUrl: `${upstream.url}/oauth/token`,
+          codexUsageUrl: EMPTY_USAGE_URL,
+        },
+      });
+      expect(refreshCalls).toBe(0);
+      now += elapsedMinutes * 60 * 1_000;
+      for (let request = 0; request < 2; request += 1) {
+        const response = await fixture.host.harness.behavior.fetchHttp(
+          "POST",
+          route,
+          { headers: authHeaders(fixture.key), body: "{}" },
+        );
+        await response.text();
+        expect(response.status).toBe(expectedStatus);
+        expect(refreshCalls).toBe(1);
+      }
+      const accounts = z
+        .array(accountSummarySchema)
+        .parse(
+          await fixture.host.harness.behavior.callRpc("account.list", null),
+        );
+      expect(accounts[0]?.error).toEqual(
+        failureStatus === 400
+          ? expect.stringContaining("OAuth refresh failed")
+          : null,
+      );
+      expect(authorizations).toEqual(
+        expectedStatus === 200
+          ? [`Bearer ${oldToken}`, `Bearer ${oldToken}`]
+          : [],
+      );
+      refreshStatus = 200;
+      now += 1_000;
+      const recovered = await fixture.host.harness.behavior.fetchHttp(
+        "POST",
+        route,
+        { headers: authHeaders(fixture.key), body: "{}" },
+      );
+      await recovered.text();
+      expect(recovered.status).toBe(failureStatus === 400 ? 429 : 200);
+      expect(refreshCalls).toBe(failureStatus === 400 ? 1 : 2);
+      if (failureStatus !== 400) {
+        expect(authorizations.at(-1)).toBe(`Bearer ${newToken}`);
+        const recoveredAccounts = z
+          .array(accountSummarySchema)
+          .parse(
+            await fixture.host.harness.behavior.callRpc("account.list", null),
+          );
+        expect(recoveredAccounts[0]?.error).toBeNull();
+      }
+    });
   });
 
   it("marks refresh and upstream authorization failures as account errors", async () => {
