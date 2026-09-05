@@ -1,14 +1,57 @@
 ---
 name: verify-bb
-description: Verify BB user journeys in an isolated source dev app using dev-browser@next and the matching source CLI. Use after changes to project creation, thread lifecycle, appearance, or compact menus, or when asked to smoke-test BB. Read the feature map for coverage and prerequisites.
+description: Verify BB user journeys in an isolated source dev app using dev-browser@next and the matching source CLI. Use after BB feature changes or when asked to verify or smoke-test BB. The feature map covers core UI and agent interfaces, every repository plugin, desktop, mobile, and hosted services; select the affected recipes and platform prerequisites.
 ---
 
 # Verify BB
 
 Run from the repository root. Start with [the feature map](features/README.md)
 and select the affected journeys. Read `docs/debugging-and-qa.md` for the
-existing launcher's contract. This skill covers a source web app and local
-host daemon; it does not imply Safari, Electron, or remote-host verification.
+existing launcher's contract. The launch below targets the source web app and
+local host daemon. Desktop, native mobile, and hosted services have additional
+setup in their feature files. A pass on one platform does not verify another.
+
+## Coverage and selection
+
+The feature map aims to inventory every feature discoverable in this checkout,
+including disabled plugins, compatibility paths, and developer surfaces. Group
+files contain individual capability recipes. Read only the relevant files for
+a focused verification request; for an exhaustive audit, track every recipe.
+Mark each selected recipe `passed`, `failed`, `not run`, or `blocked` with its
+specific prerequisite and evidence. Group-level source coverage never upgrades
+an unexecuted recipe to a pass.
+
+Run the read-only inventory check before selecting coverage:
+
+```bash
+.bb/skills/verify-bb/scripts/inventory.py
+```
+
+Python 3 and Git are required. The check compares source declarations and
+fingerprints with [INVENTORY.md](INVENTORY.md) and `inventory.json`, and requires
+all recipe owners to exist. On drift, inspect the changed source, add/update
+recipes and their prerequisites, then run `scripts/inventory.py --write` via
+its full path above and review the diff. Never accept a new baseline merely to
+silence the check. It watches CLI families, app routes/actions/settings, public
+contracts/SDK, plugin sources, platform clients and server/daemon implementation.
+The broad fingerprints deliberately flag implementation changes too: some
+require only a recorded review, others reveal behavior missing from the map.
+Literal extraction cannot resolve every dynamic registration, and source
+fingerprints cannot judge recipe completeness; reconcile menus, help, schemas
+and actual behavior during maintenance.
+
+The four original smoke recipes have live evidence in VALIDATION.md. The
+expanded recipes are source-documented and pending execution. An exhaustive
+map is the test inventory, not a claim of a completed whole-product test run.
+
+After changing the inventory helper, run its standalone fixture tests:
+
+```bash
+.bb/skills/verify-bb/scripts/test_inventory.py
+```
+
+These use temporary Git repositories and verify drift, missing ownership,
+catalog consistency, and index coverage without starting BB.
 
 ## Launch
 

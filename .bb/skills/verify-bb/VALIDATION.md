@@ -44,7 +44,7 @@ not a behavioral benchmark of skill triggering.
 
 ## Limits
 
-This is a smoke pass over the four mapped journeys, not whole-product QA.
+This initial run was a smoke pass over four journeys, not whole-product QA.
 It does not verify Safari/iOS, Electron, remote hosts, Connect, steering,
 cancellation, tool execution, worktree creation, or performance. Existing
 drawer regression tests and iOS Simulator checks remain required when that
@@ -56,3 +56,36 @@ in the creating thread's local verification run directory. They are excluded
 from Git because they include machine paths and provider labels. The run
 restored settings, stopped its named browser and checkout-owned processes,
 and retained evidence outside the disposable dev data directory.
+
+## Exhaustive documentation expansion
+
+On 2026-09-05, the map was expanded from four smoke journeys to 49 feature
+pages, adding 344 capability recipes. The source baseline was
+`61d55e03d` plus this documentation/helper change; product source was unchanged.
+The pages cover the core app and agent interfaces, all 28 plugins in this
+checkout, desktop, the native mobile shell, hosted website/dashboard,
+cloud gateway, and developer/support surfaces. Recipes overlap where a shared
+behavior requires a provider or platform check; the recipe count is not a
+count of unique product features.
+
+The source inventory records 61 review groups, including 187 literal CLI
+command declarations, 149 API route declarations, 39 app route constants and
+aliases, 20 hosted route declarations, and 37 literal app actions. Plugin slot,
+tool and command-name candidates supplement broader source fingerprints.
+Dynamic registrations and semantic completeness still require source/help/UI
+review; a matching fingerprint does not prove a complete or passing recipe.
+
+Documentation checks passed: all feature files are indexed, every declared
+recipe owner exists, source citations resolve, Markdown links resolve, and
+recipe tables are well formed. The inventory check matches the current source.
+Six standalone tests passed in temporary Git fixtures: unchanged baseline and
+behavior drift, visible new command, unowned plugin, unmapped CLI family,
+missing recipe/stale catalog, and an unlisted feature page. Tests leave no
+fixture repositories behind.
+
+This expansion did **not** execute the additional 344 recipes. Their status is
+`not run`; platform/service prerequisites are documented on each page. The
+original four smoke results remain the only live results recorded here. A full
+maintenance sweep is still pending, including native OS/browser checks,
+additional hosts, provider interactions, test accounts, and external services.
+No production data, accounts, remote tunnels, or product behavior were changed.
