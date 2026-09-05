@@ -73,9 +73,14 @@ export function createClaudeAdapter(options: {
         },
       };
     },
-    modelFamily: (body) => parseRequestBody(body).family,
-    prepareBody: (body, account) =>
-      parseRequestBody(body).forAccount(account.accountUuid),
+    parseRequest(body) {
+      const parsed = parseRequestBody(body);
+      return {
+        family: parsed.family,
+        affinityId: parsed.affinityId,
+        forAccount: (account) => parsed.forAccount(account.accountUuid),
+      };
+    },
     upstreamUrl: (request, settings) =>
       mountedUpstreamUrl(request, settings.anthropicUpstreamBaseUrl),
     requestHeaders(inbound, _account, secret) {

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { parseCodexRequestBody } from "./request-body.js";
 import type {
   AccountQuota,
   AccountSecret,
@@ -30,7 +31,9 @@ const ALLOWED_REQUEST_HEADERS = new Set([
   "content-type",
   "openai-beta",
   "originator",
+  "session-id",
   "session_id",
+  "thread-id",
   "user-agent",
 ]);
 const ALLOWED_REQUEST_HEADER_PREFIXES = ["x-codex-", "x-stainless-"];
@@ -257,8 +260,14 @@ export function createCodexAdapter(options: {
         },
       };
     },
-    modelFamily: () => "other",
-    prepareBody: (body) => body,
+    parseRequest(body, headers) {
+      const parsed = parseCodexRequestBody(body, headers);
+      return {
+        family: parsed.family,
+        affinityId: parsed.affinityId,
+        forAccount: () => body,
+      };
+    },
     upstreamUrl: (request, settings) =>
       mountedUpstreamUrl(request, settings.codexUpstreamBaseUrl, "v1/"),
     requestHeaders(inbound, account, secret) {

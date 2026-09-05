@@ -3506,7 +3506,12 @@ describe("Account Pool plugin", () => {
       }
     });
 
-    it.each(["family quota", "auth error", "disabled account"])(
+    it.each([
+      "family quota",
+      "auth error",
+      "disabled account",
+      "network error",
+    ])(
       "rebinds after %s without letting an older response completion restore the binding",
       async (reason) => {
         const attempts: Array<string | null> = [];
@@ -3543,6 +3548,12 @@ describe("Account Pool plugin", () => {
                         : {},
                   },
                 );
+              if (
+                reason === "network error" &&
+                key === "sk-first" &&
+                attempts.length === 2
+              )
+                throw new TypeError("network failed");
               return Response.json(
                 {},
                 {
@@ -3583,7 +3594,7 @@ describe("Account Pool plugin", () => {
           const afterCompletion = await send("claude-opus-4-1");
           await afterCompletion.text();
           expect(attempts).toEqual(
-            reason === "auth error"
+            reason === "auth error" || reason === "network error"
               ? ["sk-first", "sk-first", "sk-second", "sk-second"]
               : ["sk-first", "sk-second", "sk-second"],
           );
@@ -3736,6 +3747,203 @@ describe("Account Pool plugin", () => {
       } finally {
         await socket.close(1000, "done");
         await held.body?.cancel();
+      }
+    });
+
+    it.each([false, true])(
+      "preserves a newer session binding outside an older candidate snapshot with a fallback: %s",
+      async (hasFallback) => {
+        const gate = deferred();
+        const attempts: Array<string | null> = [];
+        const fixture = await createFixture({
+          upstreamUrl: "https://upstream.example",
+          apiKey: "sk-first",
+          priority: 0,
+          options: {
+            fetch: async (_input, init) => {
+              attempts.push(new Headers(init?.headers).get("x-api-key"));
+              if (attempts.length === 1) {
+                await gate.promise;
+                return Response.json({}, { status: 503 });
+              }
+              return Response.json({});
+            },
+          },
+        });
+        const fallback = await addApiAccount(fixture, "sk-fallback", 20);
+        if (!hasFallback)
+          await fixture.host.harness.behavior.callRpc("account.disable", {
+            id: fallback.id,
+          });
+        const send = () =>
+          fixture.host.harness.behavior.fetchHttp("POST", "/v1/messages", {
+            headers: authHeaders(fixture.key),
+            body: claudeBody(sessionId),
+          });
+        const old = send();
+        try {
+          await vi.waitFor(() => expect(attempts).toEqual(["sk-first"]));
+          await addApiAccount(fixture, "sk-new", 10);
+          await fixture.host.harness.behavior.callRpc("account.disable", {
+            id: fixture.account.id,
+          });
+          const rebound = await send();
+          expect(rebound.status).toBe(200);
+          await rebound.text();
+          gate.resolve();
+          const exhausted = await old;
+          expect(exhausted.status).toBe(hasFallback ? 200 : 503);
+          await exhausted.text();
+          await fixture.host.harness.behavior.callRpc("account.enable", {
+            id: fixture.account.id,
+          });
+          const next = await send();
+          expect(next.status).toBe(200);
+          await next.text();
+          expect(attempts).toEqual(
+            hasFallback
+              ? ["sk-first", "sk-new", "sk-fallback", "sk-new"]
+              : ["sk-first", "sk-new", "sk-new"],
+          );
+        } finally {
+          gate.resolve();
+          const response = await old;
+          if (!response.bodyUsed) await response.text();
+        }
+      },
+    );
+
+    it("preserves a newer session binding to an already-attempted account", async () => {
+      const gate = deferred();
+      const attempts: Array<string | null> = [];
+      const fixture = await createFixture({
+        upstreamUrl: "https://upstream.example",
+        apiKey: "sk-first",
+        priority: 0,
+        options: {
+          fetch: async (_input, init) => {
+            const key = new Headers(init?.headers).get("x-api-key");
+            attempts.push(key);
+            if (attempts.length === 1)
+              return Response.json({}, { status: 503 });
+            if (key === "sk-second") {
+              await gate.promise;
+              return Response.json({}, { status: 503 });
+            }
+            return Response.json({});
+          },
+        },
+      });
+      const second = await addApiAccount(fixture, "sk-second", 10);
+      await addApiAccount(fixture, "sk-fallback", 20);
+      const send = () =>
+        fixture.host.harness.behavior.fetchHttp("POST", "/v1/messages", {
+          headers: authHeaders(fixture.key),
+          body: claudeBody(sessionId),
+        });
+      const old = send();
+      try {
+        await vi.waitFor(() =>
+          expect(attempts).toEqual(["sk-first", "sk-second"]),
+        );
+        await fixture.host.harness.behavior.callRpc("account.disable", {
+          id: second.id,
+        });
+        const rebound = await send();
+        expect(rebound.status).toBe(200);
+        await rebound.text();
+        gate.resolve();
+        const fallback = await old;
+        expect(fallback.status).toBe(200);
+        await fallback.text();
+        const next = await send();
+        expect(next.status).toBe(200);
+        await next.text();
+        expect(attempts).toEqual([
+          "sk-first",
+          "sk-second",
+          "sk-first",
+          "sk-fallback",
+          "sk-first",
+        ]);
+      } finally {
+        gate.resolve();
+        const response = await old;
+        if (!response.bodyUsed) await response.text();
+      }
+    });
+
+    it("isolates provider bindings and clears them on hub restart", async () => {
+      const attempts: Array<string | null> = [];
+      const started = new Set<string>();
+      const fixture = await affinityFixture("codex", async (_input, init) => {
+        const headers = new Headers(init?.headers);
+        const provider = headers.has("x-api-key") ? "claude" : "codex";
+        attempts.push(headers.get("x-api-key") ?? headers.get("authorization"));
+        if (!started.has(provider)) {
+          started.add(provider);
+          return openStream();
+        }
+        return Response.json({});
+      });
+      await addApiAccount(fixture, "sk-claude-first");
+      const claudeSecond = await addApiAccount(fixture, "sk-claude-second");
+      const accounts = z
+        .array(accountSummarySchema)
+        .parse(
+          await fixture.host.harness.behavior.callRpc("account.list", null),
+        );
+      const codexSecond = accounts.find(
+        (account) => account.codexAccountId === "codex-account-2",
+      );
+      if (codexSecond === undefined)
+        throw new Error("Missing second Codex account.");
+      const sendClaude = () =>
+        fixture.host.harness.behavior.fetchHttp("POST", "/v1/messages", {
+          headers: authHeaders(fixture.key),
+          body: claudeBody(sessionId),
+        });
+      const sendCodex = () =>
+        fixture.host.harness.behavior.fetchHttp("POST", "/v1/responses", {
+          headers: { ...authHeaders(fixture.key), "session-id": sessionId },
+          body: "{}",
+        });
+      const held = [await sendClaude(), await sendCodex()];
+      try {
+        for (const account of [claudeSecond, codexSecond])
+          await fixture.host.harness.behavior.callRpc("account.setPriority", {
+            accountId: account.id,
+            priority: 0,
+          });
+        await (await sendClaude()).text();
+        await (await sendCodex()).text();
+        for (const response of held) await response.body?.cancel();
+        fixture.service.controller.abort();
+        await fixture.service.done;
+        const restarted = fixture.host.harness.behavior.runService("hub");
+        cleanups.push(async () => {
+          restarted.controller.abort();
+          await restarted.done;
+        });
+        await vi.waitFor(async () => {
+          const status = statusSchema.parse(
+            await fixture.host.harness.behavior.callRpc("status.get", null),
+          );
+          expect(status.accepting).toBe(true);
+        });
+        await (await sendClaude()).text();
+        await (await sendCodex()).text();
+        expect(attempts).toEqual([
+          "sk-claude-first",
+          "Bearer sk-first",
+          "sk-claude-first",
+          "Bearer sk-first",
+          "sk-claude-second",
+          "Bearer sk-second",
+        ]);
+      } finally {
+        for (const response of held)
+          if (!response.bodyUsed) await response.body?.cancel();
       }
     });
 

@@ -3,7 +3,7 @@ Keep a Claude Code or Codex thread running when one account hits its limit. The 
 ## What you get
 
 - A pool of Claude and Codex accounts, added by importing the login already on the machine, signing in through the browser, or pasting an Anthropic API key.
-- Per-request selection that follows your priority order, then the account with the fewest requests in flight, then the account whose weekly window resets first.
+- New conversations follow your priority order, then the account with the fewest requests in flight, then the account whose weekly window resets first. A conversation stays on its account while that account remains eligible.
 - Live limit windows per account and model family in the plugin's settings page, and the same numbers from `bb pool status`.
 - A routing switch per provider and a bypass per thread, so one thread can go straight to its own credentials.
 

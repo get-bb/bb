@@ -53,8 +53,14 @@ export interface ProviderAdapter {
   provider: PoolProvider;
   upstreamName: string;
   importAccount(): Promise<ImportedProviderAccount>;
-  modelFamily(body: Uint8Array): ModelFamily;
-  prepareBody(body: Uint8Array, account: Account): Uint8Array;
+  parseRequest(
+    body: Uint8Array,
+    headers: Headers,
+  ): {
+    family: ModelFamily;
+    affinityId: string | null;
+    forAccount: (account: Account) => Uint8Array;
+  };
   upstreamUrl(request: Request, settings: HubSettings): URL;
   requestHeaders(
     inbound: Headers,

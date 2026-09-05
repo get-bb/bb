@@ -37,6 +37,8 @@ const MAX_REFRESH_BACKOFF_MS = 60_000;
 const MAX_REFRESH_BACKOFFS = 1_024;
 const MAX_FAILURE_DETAIL_BYTES = 1_024;
 const FAILURE_DISPOSAL_TIMEOUT_MS = 250;
+const AFFINITY_IDLE_TTL_MS = 30 * 60 * 1_000;
+const MAX_AFFINITY_BINDINGS = 4_096;
 const DROPPED_RESPONSE_HEADERS = new Set([
   "content-encoding",
   "content-length",
@@ -108,6 +110,10 @@ export class AccountPoolHub {
   private readonly activeControllers = new Set<AbortController>();
   private readonly refreshes = new Map<string, SecretFlight>();
   private readonly refreshBackoffs = new Map<string, RefreshBackoff>();
+  private readonly affinityBindings = new Map<
+    string,
+    { accountId: string; lastUsedAt: number }
+  >();
   private readonly usageRefreshes = new Map<string, Promise<void>>();
   private readonly lastUsageRefreshAt = new Map<string, number>();
   private readonly drainWaiters = new Set<() => void>();
@@ -115,6 +121,7 @@ export class AccountPoolHub {
   constructor(private readonly options: HubOptions) {}
 
   async start(signal: AbortSignal): Promise<void> {
+    this.affinityBindings.clear();
     this.stopped = new AbortController();
     this.accepting = true;
     while (!signal.aborted) {
@@ -280,12 +287,18 @@ export class AccountPoolHub {
   ): Promise<Response> {
     const signal = AbortSignal.any([request.signal, this.stopped.signal]);
     const attempted = new Set<string>();
+    let previousAccountId: string | null = null;
     let failure: FailureSummary | null = null;
     const accounts = (await this.options.accounts.list()).filter(
       (account) => account.provider === adapter.provider,
     );
     const candidateIds = new Set(accounts.map((account) => account.id));
-    const family = adapter.modelFamily(body);
+    const parsed = adapter.parseRequest(body, request.headers);
+    const family = parsed.family;
+    const affinityKey =
+      hostId === null || parsed.affinityId === null
+        ? null
+        : JSON.stringify([adapter.provider, hostId, parsed.affinityId]);
     try {
       while (attempted.size < candidateIds.size) {
         signal.throwIfAborted();
@@ -294,8 +307,12 @@ export class AccountPoolHub {
           candidateIds,
           attempted,
           family,
+          affinityKey,
+          previousAccountId,
+          signal,
         );
         if (selected === null) break;
+        previousAccountId = selected.account.id;
         attempted.add(selected.account.id);
         if (hostId !== null) {
           const changed = await this.options.accounts.recordUsed(
@@ -329,7 +346,7 @@ export class AccountPoolHub {
           try {
             upstream = await this.fetchUpstream(
               request,
-              adapter.prepareBody(body, selected.account),
+              parsed.forAccount(selected.account),
               selected.account,
               secret,
               adapter,
@@ -567,17 +584,16 @@ export class AccountPoolHub {
     candidateIds: ReadonlySet<string>,
     attempted: ReadonlySet<string>,
     family: ModelFamily,
+    affinityKey: string | null,
+    previousAccountId: string | null,
+    signal: AbortSignal,
   ): Promise<SelectedAccount | null> {
+    const accounts = await this.options.accounts.list();
+    signal.throwIfAborted();
     const now = this.options.now();
     const threshold = this.options.getSettings().switchThreshold;
-    const candidates = (await this.options.accounts.list())
-      .filter(
-        (account) =>
-          account.provider === provider &&
-          candidateIds.has(account.id) &&
-          account.enabled &&
-          !attempted.has(account.id),
-      )
+    const eligible = accounts
+      .filter((account) => account.provider === provider && account.enabled)
       .map((account) => ({
         account,
         quota: this.options.quotas.get(account.id),
@@ -585,6 +601,10 @@ export class AccountPoolHub {
       .filter(({ quota }) => quota.error === null)
       .filter(({ quota }) => quota.heldUntil === null || quota.heldUntil <= now)
       .filter(({ quota }) => !isQuotaExhausted(quota, family, threshold, now));
+    const candidates = eligible.filter(
+      ({ account }) =>
+        candidateIds.has(account.id) && !attempted.has(account.id),
+    );
     candidates.sort((left, right) => {
       const priority = left.account.priority - right.account.priority;
       if (priority !== 0) return priority;
@@ -598,7 +618,34 @@ export class AccountPoolHub {
         (governingWeeklyResetAt(right.quota, family) ?? Number.MAX_SAFE_INTEGER)
       );
     });
-    return candidates[0] ?? null;
+    const binding =
+      affinityKey === null ? undefined : this.affinityBindings.get(affinityKey);
+    const bound =
+      binding !== undefined && now - binding.lastUsedAt < AFFINITY_IDLE_TTL_MS
+        ? eligible.find(({ account }) => account.id === binding.accountId)
+        : undefined;
+    const selected =
+      bound !== undefined && candidates.includes(bound)
+        ? bound
+        : (candidates[0] ?? null);
+    if (
+      affinityKey !== null &&
+      selected !== null &&
+      (bound === undefined ||
+        bound.account.id === selected.account.id ||
+        bound.account.id === previousAccountId)
+    ) {
+      this.affinityBindings.delete(affinityKey);
+      this.affinityBindings.set(affinityKey, {
+        accountId: selected.account.id,
+        lastUsedAt: now,
+      });
+      while (this.affinityBindings.size > MAX_AFFINITY_BINDINGS) {
+        const oldest = this.affinityBindings.keys().next();
+        if (!oldest.done) this.affinityBindings.delete(oldest.value);
+      }
+    }
+    return selected;
   }
 
   private async freshSecret(
