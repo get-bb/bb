@@ -37,7 +37,6 @@ import {
   threadTimelineTurnSummaryDetailsQueryKeyPrefix,
   threadsQueryKey,
   allPluginCatalogSearchQueryKeyPrefix,
-  allPluginSettingsQueryKeyPrefix,
   allProjectSkillsQueryKeyPrefix,
   pluginMarketplacesQueryKey,
   pluginsQueryKey,
@@ -328,7 +327,6 @@ describe("queryKeysForChangedMessage", () => {
     expect(keys).toEqual(
       expect.arrayContaining([
         pluginsQueryKey(),
-        allPluginSettingsQueryKeyPrefix(),
         pluginUpdatesQueryKey(),
         allPluginCatalogSearchQueryKeyPrefix(),
         allProjectSkillsQueryKeyPrefix(),

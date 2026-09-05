@@ -527,7 +527,6 @@ export function allHostCloneDefaultPathQueryKeyPrefix(): readonly [
 }
 
 const PLUGIN_CONTRIBUTIONS_QUERY_KEY = "pluginContributions";
-const PLUGIN_MENTION_SEARCH_QUERY_KEY = "pluginMentionSearch";
 const ENVIRONMENT_PATHS_QUERY_KEY = "environmentPaths";
 const THREAD_STORAGE_PATHS_QUERY_KEY = "threadStoragePaths";
 const PROJECT_COMMANDS_QUERY_KEY = "projectCommands";
@@ -565,12 +564,6 @@ type ProjectCommandsQueryKey = readonly [
 
 export function pluginContributionsQueryKey(): PluginContributionsQueryKey {
   return [PLUGIN_CONTRIBUTIONS_QUERY_KEY];
-}
-
-export function allPluginMentionSearchQueryKeyPrefix(): readonly [
-  typeof PLUGIN_MENTION_SEARCH_QUERY_KEY,
-] {
-  return [PLUGIN_MENTION_SEARCH_QUERY_KEY];
 }
 
 export function environmentPathsQueryKey(
@@ -839,7 +832,6 @@ export function allProjectFilePreviewQueryKeyPrefix(): readonly [
 }
 
 const TERMINALS_QUERY_KEY = "terminals";
-const TERMINAL_SESSION_QUERY_KEY = "terminalSession";
 
 export type TerminalQueryScope =
   | { kind: "thread"; threadId: string }
@@ -863,14 +855,7 @@ export function allTerminalsQueryKeyPrefix(): readonly [
   return [TERMINALS_QUERY_KEY];
 }
 
-export function allTerminalSessionQueryKeyPrefix(): readonly [
-  typeof TERMINAL_SESSION_QUERY_KEY,
-] {
-  return [TERMINAL_SESSION_QUERY_KEY];
-}
-
 const PLUGINS_QUERY_KEY = "plugins";
-const PLUGIN_SETTINGS_QUERY_KEY = "pluginSettings";
 const PLUGIN_UPDATES_QUERY_KEY = "pluginUpdates";
 const PLUGIN_CATALOG_SEARCH_QUERY_KEY = "pluginCatalogSearch";
 const PLUGIN_CATALOG_INSTALL_PLAN_QUERY_KEY = "pluginCatalogInstallPlan";
@@ -908,12 +893,6 @@ type SkillContentQueryKey = readonly [
 
 export function pluginsQueryKey(): PluginsQueryKey {
   return [PLUGINS_QUERY_KEY];
-}
-
-export function allPluginSettingsQueryKeyPrefix(): readonly [
-  typeof PLUGIN_SETTINGS_QUERY_KEY,
-] {
-  return [PLUGIN_SETTINGS_QUERY_KEY];
 }
 
 export function pluginUpdatesQueryKey(): PluginUpdatesQueryKey {
