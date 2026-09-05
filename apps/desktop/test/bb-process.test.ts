@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
@@ -208,6 +208,53 @@ describe("bb app process", () => {
 
     expect(result.stdout).toBe("child mount\n");
   });
+
+  it.skipIf(process.platform !== "linux")(
+    "keeps the AppRun sandbox fallback out of Electron node mode",
+    async () => {
+      const appRun = await createTempScript({
+        contents: `#!/bin/sh
+has_no_sandbox=0
+for argument in "$@"; do
+  if [ "$argument" = "--no-sandbox" ]; then
+    has_no_sandbox=1
+  fi
+done
+if [ "$has_no_sandbox" -eq 0 ]; then
+  set -- --no-sandbox "$@"
+fi
+exec "$FAKE_APPIMAGE_NODE" "$@"
+`,
+      });
+      await chmod(appRun.path, 0o755);
+      const bridge = await createTempScript({
+        contents: 'process.stdout.write("bridge started\\n");\n',
+      });
+      const processEntry = startBbAppProcess({
+        bridgePath: bridge.path,
+        cwd: bridge.root,
+        env: {
+          ...process.env,
+          APPDIR: bridge.root,
+          FAKE_APPIMAGE_NODE: process.execPath,
+        },
+        logLineLimit: 20,
+        runtime: {
+          appDirPath: bridge.root,
+          executablePath: appRun.path,
+          kind: "appimage",
+          mode: "electron-node",
+        },
+      });
+      processes.push(processEntry);
+
+      await waitForLog({ process: processEntry, text: "bridge started" });
+      await expect(processEntry.exit).resolves.toEqual({
+        code: 0,
+        signal: null,
+      });
+    },
+  );
 
   it.skipIf(process.platform !== "linux")(
     "anchors the process group while supervising descendants after the bridge exits",

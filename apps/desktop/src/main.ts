@@ -1471,6 +1471,11 @@ async function loadLoadingView(): Promise<void> {
 
 async function loadStartupError(args: LoadStartupErrorArgs): Promise<void> {
   bbAppLoaded = false;
+  createDesktopLogger().error(
+    [`${args.title}: ${args.details}`, args.logs.trim()]
+      .filter((part) => part.length > 0)
+      .join("\n"),
+  );
   await loadWindowUrl({
     url: createLocalViewUrl({
       viewModel: {

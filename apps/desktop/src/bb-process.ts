@@ -93,6 +93,7 @@ type ResolveWaitForProcessExitWithTimeout = (
 
 const APPIMAGE_BRIDGE_RELATIVE_PATH_ENV =
   "BB_DESKTOP_APPIMAGE_BRIDGE_RELATIVE_PATH";
+const APPIMAGE_SANDBOX_SENTINEL = "--no-sandbox";
 
 async function runAppImageBridgeSupervisor(
   bridgeRelativePathEnv: string,
@@ -308,6 +309,8 @@ export function createBbAppProcessLaunch(
       "--input-type=module",
       "--eval",
       APPIMAGE_BRIDGE_BOOTSTRAP,
+      "--",
+      APPIMAGE_SANDBOX_SENTINEL,
       args.bridgePath,
     ],
     env: {
