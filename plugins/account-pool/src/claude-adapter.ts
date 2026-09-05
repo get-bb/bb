@@ -6,6 +6,7 @@ import {
 } from "./credentials.js";
 import type { ProviderAdapter } from "./provider-adapter.js";
 import {
+  fetchOAuthRefresh,
   filterRequestHeaders,
   mountedUpstreamUrl,
 } from "./provider-adapter.js";
@@ -101,22 +102,15 @@ export function createClaudeAdapter(options: {
       ) {
         return { secret, refreshed: false };
       }
-      const response = await context.fetch(options.refreshUrl, {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          accept: "application/json",
-        },
-        body: JSON.stringify({
-          grant_type: "refresh_token",
-          refresh_token: secret.refreshToken,
-          client_id: OAUTH_CLIENT_ID,
-        }),
-      });
-      if (!response.ok) {
-        throw new Error(`OAuth refresh failed with HTTP ${response.status}.`);
-      }
-      const parsed = refreshResponseSchema.parse(await response.json());
+      const parsed = refreshResponseSchema.parse(
+        JSON.parse(
+          await fetchOAuthRefresh(context, options.refreshUrl, {
+            grant_type: "refresh_token",
+            refresh_token: secret.refreshToken,
+            client_id: OAUTH_CLIENT_ID,
+          }),
+        ),
+      );
       const rawExpiresAt =
         parsed.expires_at ??
         (parsed.expires_in === undefined

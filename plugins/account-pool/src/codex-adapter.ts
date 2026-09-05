@@ -12,6 +12,7 @@ import {
 } from "./credentials.js";
 import type { ProviderAdapter } from "./provider-adapter.js";
 import {
+  fetchOAuthRefresh,
   filterRequestHeaders,
   mountedUpstreamUrl,
 } from "./provider-adapter.js";
@@ -296,21 +297,15 @@ export function createCodexAdapter(options: {
       ) {
         return { secret, refreshed: false };
       }
-      const response = await context.fetch(options.refreshUrl, {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          accept: "application/json",
-        },
-        body: JSON.stringify({
-          client_id: CODEX_OAUTH_CLIENT_ID,
-          grant_type: "refresh_token",
-          refresh_token: secret.refreshToken,
-        }),
-      });
-      if (!response.ok)
-        throw new Error(`OAuth refresh failed with HTTP ${response.status}.`);
-      const parsed = refreshResponseSchema.parse(await response.json());
+      const parsed = refreshResponseSchema.parse(
+        JSON.parse(
+          await fetchOAuthRefresh(context, options.refreshUrl, {
+            client_id: CODEX_OAUTH_CLIENT_ID,
+            grant_type: "refresh_token",
+            refresh_token: secret.refreshToken,
+          }),
+        ),
+      );
       const refreshed: AccountSecret = {
         kind: "oauth",
         accessToken: parsed.access_token,

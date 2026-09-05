@@ -14,6 +14,7 @@ import {
 } from "./codex-adapter.js";
 import type { ProviderAdapter } from "./provider-adapter.js";
 import type { ImportedProviderAccount } from "./provider-adapter.js";
+import { TransientOAuthRefreshError } from "./provider-adapter.js";
 import type {
   ImportedClaudeCredentials,
   ImportedCodexCredentials,
@@ -32,6 +33,8 @@ const DEFAULT_USAGE_URL = "https://api.anthropic.com/api/oauth/usage";
 const DEFAULT_PROFILE_URL = "https://api.anthropic.com/api/oauth/profile";
 const DEFAULT_USAGE_REFRESH_INTERVAL_MS = 5 * 60 * 1_000;
 const MAX_INLINE_HOLD_MS = 20_000;
+const MAX_REFRESH_BACKOFF_MS = 60_000;
+const MAX_REFRESH_BACKOFFS = 1_024;
 const DROPPED_RESPONSE_HEADERS = new Set([
   "content-encoding",
   "content-length",
@@ -74,11 +77,19 @@ interface UpstreamResult {
   release: () => void;
 }
 
+interface RefreshBackoff {
+  accessToken: string;
+  retryAt: number;
+  delayMs: number;
+  error: TransientOAuthRefreshError;
+}
+
 export class AccountPoolHub {
   private accepting = false;
   private readonly inFlightByAccount = new Map<string, number>();
   private readonly activeControllers = new Set<AbortController>();
   private readonly refreshes = new Map<string, Promise<AccountSecret>>();
+  private readonly refreshBackoffs = new Map<string, RefreshBackoff>();
   private readonly usageRefreshes = new Map<string, Promise<void>>();
   private readonly lastUsageRefreshAt = new Map<string, number>();
   private readonly drainWaiters = new Set<() => void>();
@@ -247,14 +258,14 @@ export class AccountPoolHub {
     hostId: string | null,
   ): Promise<Response> {
     const attempted = new Set<string>();
+    let refreshFailure: TransientOAuthRefreshError | null = null;
     const accounts = (await this.options.accounts.list()).filter(
       (account) => account.provider === adapter.provider,
     );
     const family = adapter.modelFamily(body);
     while (attempted.size < accounts.length) {
       const selected = await this.select(adapter.provider, attempted, family);
-      if (selected === null)
-        return this.noEligibleResponse(accounts, family, adapter);
+      if (selected === null) break;
       attempted.add(selected.account.id);
       if (hostId !== null) {
         const changed = await this.options.accounts.recordUsed(
@@ -268,7 +279,11 @@ export class AccountPoolHub {
       try {
         secret = await this.freshSecret(selected.account, adapter);
       } catch (error) {
-        this.markError(selected.account.id, errorMessage(error));
+        if (error instanceof TransientOAuthRefreshError) {
+          refreshFailure = error;
+        } else {
+          this.markError(selected.account.id, errorMessage(error));
+        }
         continue;
       }
       let upstream: UpstreamResult;
@@ -360,7 +375,9 @@ export class AccountPoolHub {
       await this.captureAuthError(upstream.response, selected.account, adapter);
       return this.clientResponse(upstream);
     }
-    return this.noEligibleResponse(accounts, family, adapter);
+    return refreshFailure === null
+      ? this.noEligibleResponse(accounts, family, adapter)
+      : adapter.errorResponse(503, refreshFailure.message);
   }
 
   private async captureAuthError(
@@ -425,22 +442,74 @@ export class AccountPoolHub {
     if (existing !== undefined) return existing;
     const refresh = this.options.accounts
       .readSecret(account.id)
-      .then((secret) =>
-        adapter.refreshSecret({
-          account,
-          secret,
-          accounts: this.options.accounts,
-          quotas: this.options.quotas,
-          fetch: this.options.fetch,
-          now: this.options.now,
-        }),
-      )
-      .then((result) => {
-        if (result.refreshed) {
-          const quota = this.options.quotas.get(account.id);
-          this.options.quotas.put({ ...quota, error: null });
+      .then(async (secret) => {
+        let backoff = this.refreshBackoffs.get(account.id);
+        if (
+          secret.kind !== "oauth" ||
+          backoff?.accessToken !== secret.accessToken
+        ) {
+          this.refreshBackoffs.delete(account.id);
+          backoff = undefined;
         }
-        return result.secret;
+        if (backoff !== undefined && this.options.now() < backoff.retryAt) {
+          if (
+            secret.kind === "oauth" &&
+            secret.expiresAt !== null &&
+            secret.expiresAt > this.options.now()
+          ) {
+            return secret;
+          }
+          throw backoff.error;
+        }
+        try {
+          const result = await adapter.refreshSecret({
+            account,
+            secret,
+            accounts: this.options.accounts,
+            quotas: this.options.quotas,
+            fetch: this.options.fetch,
+            now: this.options.now,
+          });
+          this.refreshBackoffs.delete(account.id);
+          if (result.refreshed) {
+            const quota = this.options.quotas.get(account.id);
+            this.options.quotas.put({ ...quota, error: null });
+          }
+          return result.secret;
+        } catch (error) {
+          if (
+            !(error instanceof TransientOAuthRefreshError) ||
+            secret.kind !== "oauth"
+          ) {
+            this.refreshBackoffs.delete(account.id);
+            throw error;
+          }
+          const delayMs = Math.min(
+            MAX_REFRESH_BACKOFF_MS,
+            Math.max(
+              backoff === undefined ? 1_000 : backoff.delayMs * 2,
+              error.retryAfterMs,
+            ),
+          );
+          this.refreshBackoffs.delete(account.id);
+          this.refreshBackoffs.set(account.id, {
+            accessToken: secret.accessToken,
+            retryAt: this.options.now() + delayMs,
+            delayMs,
+            error,
+          });
+          while (this.refreshBackoffs.size > MAX_REFRESH_BACKOFFS) {
+            const oldest = this.refreshBackoffs.keys().next();
+            if (!oldest.done) this.refreshBackoffs.delete(oldest.value);
+          }
+          if (
+            secret.expiresAt !== null &&
+            secret.expiresAt > this.options.now()
+          ) {
+            return secret;
+          }
+          throw error;
+        }
       })
       .finally(() => this.refreshes.delete(account.id));
     this.refreshes.set(account.id, refresh);

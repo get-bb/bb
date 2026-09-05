@@ -2733,6 +2733,67 @@ describe("Account Pool plugin", () => {
     });
   });
 
+  it("expires fallback tokens during refresh backoff and caps Retry-After", async () => {
+    let now = 1_800_000_000_000;
+    const expiresAt = now + 10 * 60 * 1_000;
+    let refreshCalls = 0;
+    let refreshStatus = 503;
+    const authorizations: Array<string | undefined> = [];
+    const upstream = await startUpstream(async (request, response) => {
+      await readRequestBody(request);
+      if (request.url === "/oauth/token") {
+        refreshCalls += 1;
+        response.writeHead(refreshStatus, {
+          "content-type": "application/json",
+          "retry-after": "120",
+        });
+        response.end(
+          JSON.stringify(
+            refreshStatus === 503
+              ? { error: "temporarily_unavailable" }
+              : { access_token: "oauth-new", expires_in: 3600 },
+          ),
+        );
+        return;
+      }
+      authorizations.push(request.headers.authorization);
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end("{}");
+    });
+    cleanups.push(upstream.close);
+    const fixture = await createFixture({
+      upstreamUrl: upstream.url,
+      source: "import",
+      options: {
+        now: () => now,
+        importCredentials: async () => importedCredentials({ expiresAt }),
+        refreshUrl: `${upstream.url}/oauth/token`,
+      },
+    });
+    now = expiresAt - 500;
+    const attempts: Array<
+      [advanceMs: number, expectedStatus: number, expectedRefreshes: number]
+    > = [
+      [0, 200, 1],
+      [500, 503, 1],
+      [59_499, 503, 1],
+      [1, 200, 2],
+    ];
+    for (const [advanceMs, expectedStatus, expectedRefreshes] of attempts) {
+      now += advanceMs;
+      const response = await fixture.host.harness.behavior.fetchHttp(
+        "POST",
+        "/v1/messages",
+        { headers: authHeaders(fixture.key), body: "{}" },
+      );
+      await response.text();
+      expect(response.status).toBe(expectedStatus);
+      expect(refreshCalls).toBe(expectedRefreshes);
+      refreshStatus = 200;
+    }
+    expect(authorizations).toEqual(["Bearer oauth-access", "Bearer oauth-new"]);
+  });
+
   it("marks refresh and upstream authorization failures as account errors", async () => {
     const upstream = await startUpstream((request, response) => {
       if (request.url === "/oauth/token") {

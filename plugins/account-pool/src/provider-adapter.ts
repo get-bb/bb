@@ -6,7 +6,19 @@ import type {
   PoolProvider,
 } from "./contracts.js";
 import type { HubSettings } from "./hub.js";
+import { retryAfterMilliseconds } from "./quota.js";
 import type { AccountStore, QuotaStore } from "./store.js";
+
+const OAUTH_REFRESH_TIMEOUT_MS = 15_000;
+
+export class TransientOAuthRefreshError extends Error {
+  constructor(
+    message: string,
+    readonly retryAfterMs: number,
+  ) {
+    super(message);
+  }
+}
 
 export interface AdapterSecretContext {
   account: Account;
@@ -65,6 +77,55 @@ export interface ProviderAdapter {
     message: string,
     headers?: HeadersInit,
   ): Response;
+}
+
+export async function fetchOAuthRefresh(
+  context: Pick<AdapterSecretContext, "fetch" | "now">,
+  url: string,
+  body: Record<string, string>,
+): Promise<string> {
+  const init: RequestInit = {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      accept: "application/json",
+    },
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(OAUTH_REFRESH_TIMEOUT_MS),
+  };
+  let response: Response;
+  try {
+    response = await context.fetch(url, init);
+  } catch {
+    throw new TransientOAuthRefreshError(
+      "OAuth refresh failed due to a network error or timeout.",
+      0,
+    );
+  }
+  if (!response.ok) {
+    const message = `OAuth refresh failed with HTTP ${response.status}.`;
+    const retryAfterMs = retryAfterMilliseconds(
+      response.headers.get("retry-after"),
+      context.now(),
+    );
+    await response.body?.cancel().catch(() => undefined);
+    if (
+      response.status === 408 ||
+      response.status === 429 ||
+      response.status >= 500
+    ) {
+      throw new TransientOAuthRefreshError(message, retryAfterMs);
+    }
+    throw new Error(message);
+  }
+  try {
+    return await response.text();
+  } catch {
+    throw new TransientOAuthRefreshError(
+      "OAuth refresh response failed due to a network error or timeout.",
+      0,
+    );
+  }
 }
 
 export function filterRequestHeaders(
