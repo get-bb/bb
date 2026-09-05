@@ -701,8 +701,12 @@ describe("BB Official plugin detail routing", () => {
       screen.getByRole("textbox", { name: "Search plugins" }),
     ).toBeTruthy();
     expect(screen.getAllByRole("button", { name: /^Close /u })).toHaveLength(1);
-    expect(Array.from(document.querySelectorAll("[data-panel]"))).toEqual(panels);
-    expect(screen.getByRole("textbox", { name: "Search plugins" })).toBe(search);
+    expect(Array.from(document.querySelectorAll("[data-panel]"))).toEqual(
+      panels,
+    );
+    expect(screen.getByRole("textbox", { name: "Search plugins" })).toBe(
+      search,
+    );
 
     fireEvent.click(screen.getByRole("button", { name: "Close GitHub" }));
     await waitFor(() => {
@@ -711,13 +715,20 @@ describe("BB Official plugin detail routing", () => {
       );
       expect(document.activeElement).toBe(card);
     });
-    expect(Array.from(document.querySelectorAll("[data-panel]"))).toEqual(panels);
+    expect(Array.from(document.querySelectorAll("[data-panel]"))).toEqual(
+      panels,
+    );
     expect(panels[0]?.getAttribute("data-panel-size")).toBe("100.0");
     expect(panels[1]?.getAttribute("data-panel-size")).toBe("0.0");
-    expect(screen.getByRole("textbox", { name: "Search plugins" })).toBe(search);
+    expect(screen.getByRole("textbox", { name: "Search plugins" })).toBe(
+      search,
+    );
   });
 
-  it("keeps related plugin navigation in the full-page detail", async () => {
+  it.each([
+    "/extensions/plugins/github?view=installed",
+    "/extensions/plugins?view=installed",
+  ])("opens installed plugin settings from %s", async (path) => {
     const author = {
       name: "BB",
       github: "get-bb",
@@ -771,9 +782,7 @@ describe("BB Official plugin detail routing", () => {
 
     const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
     render(
-      <MemoryRouter
-        initialEntries={["/extensions/plugins/github?view=installed"]}
-      >
+      <MemoryRouter initialEntries={[path]}>
         <Routes>
           <Route path="/extensions/plugins/*" element={<RoutedToolsView />} />
           <Route path="/settings/plugins/*" element={<RoutedToolsView />} />
@@ -781,6 +790,20 @@ describe("BB Official plugin detail routing", () => {
       </MemoryRouter>,
       { wrapper: QueryClientWrapper },
     );
+
+    if (path === "/extensions/plugins?view=installed") {
+      expect(
+        await screen.findByRole("textbox", {
+          name: "Search installed plugins",
+        }),
+      ).toBeTruthy();
+      expect(screen.getByTestId("route-path").textContent).toBe(
+        "/extensions/plugins",
+      );
+      fireEvent.click(
+        await screen.findByRole("button", { name: "GitHub plugin details" }),
+      );
+    }
 
     fireEvent.click(
       await screen.findByRole("button", {
