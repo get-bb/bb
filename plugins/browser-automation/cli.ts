@@ -27,7 +27,7 @@ export const commands = [
   },
   {
     name: "screenshot",
-    summary: "Capture a bounded JPEG; agent tool returns image content",
+    summary: "Save a bounded JPEG in session tmp; return its path and host ID",
     usage:
       "bb browser-automation screenshot <session-id> [--page <name>] [--thread <id>] [--json]",
   },

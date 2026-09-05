@@ -71,6 +71,10 @@ try {
     args.signal,
   );
   assert.equal(screenshot.images.length, 1);
+  assert.deepEqual(
+    (await readFile(screenshot.images[0]!.path)).subarray(0, 3),
+    Buffer.from([0xff, 0xd8, 0xff]),
+  );
   assert.ok(screenshot.images[0]!.width <= 960);
   const one = a.run(
     'const p = await browser.getPage("main"); await new Promise(r => setTimeout(r, 100)); await p.evaluate(() => { window.sequence = 1 }); "first"',
@@ -164,7 +168,7 @@ try {
       passed: true,
       checks: [
         "headless navigation and click",
-        "JPEG bytes",
+        "readable temporary JPEG",
         "serialized scripts",
         "cancellation isolation",
         "infinite-loop timeout",

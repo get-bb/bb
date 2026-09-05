@@ -110,8 +110,6 @@ After library cleanup and writing the result, the runner allows five seconds
 for Electron to quit. If it remains alive, the runner terminates its fixture
 process group and records `forcedExit: true`. A successful smoke command with
 that flag proves the listed browser checks, not graceful Electron shutdown.
-The [browser-use proposal](../plans/browser-use-plugin-proposal.md) tracks
-the remaining integration layers.
 
 ## Desktop Browser Broker Integration
 

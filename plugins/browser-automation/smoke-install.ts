@@ -1,4 +1,11 @@
-import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
+import {
+  readFile,
+  mkdir,
+  mkdtemp,
+  rm,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { strict as assert } from "node:assert";
@@ -67,6 +74,10 @@ try {
       signal,
     );
     assert.equal(shot.images.length, 1);
+    assert.deepEqual(
+      (await readFile(shot.images[0]!.path)).subarray(0, 3),
+      Buffer.from([0xff, 0xd8, 0xff]),
+    );
     console.log(
       JSON.stringify(
         {

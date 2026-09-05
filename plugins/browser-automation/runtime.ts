@@ -70,6 +70,7 @@ export async function decodeOutput(
 ): Promise<RunOutput> {
   const text: string[] = [];
   const images: RunOutput["images"] = [];
+  let imageBytes = 0;
   let exitCode: number | null = null;
   for (const line of stdout.split("\n").filter(Boolean)) {
     if (exitCode !== null)
@@ -102,16 +103,13 @@ export async function decodeOutput(
         const bytes = await file.readFile();
         if (bytes[0] !== 0xff || bytes[1] !== 0xd8 || bytes[2] !== 0xff)
           throw new Error("Only JPEG screenshots are supported");
-        if (
-          images.reduce((sum, image) => sum + image.data.length, 0) +
-            Math.ceil(bytes.length / 3) * 4 >
-          700_000
-        )
+        imageBytes += bytes.length;
+        if (imageBytes > 500_000)
           throw new Error(
-            "Combined screenshots exceed the 700 KB output budget",
+            "Combined screenshots exceed the 500 KB output budget",
           );
         images.push({
-          data: bytes.toString("base64"),
+          path,
           mimeType: "image/jpeg",
           width: frame.width,
           height: frame.height,

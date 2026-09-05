@@ -41,7 +41,7 @@ export const screenshotSchema = ownedSchema.extend({
 });
 export const imageSchema = z
   .object({
-    data: z.string().max(700_000),
+    path: z.string().min(1),
     mimeType: z.literal("image/jpeg"),
     width: z.number().int().positive(),
     height: z.number().int().positive(),

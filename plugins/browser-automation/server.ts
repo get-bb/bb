@@ -393,39 +393,6 @@ export default async function browserAutomationPlugin(bb: BbPluginApi) {
     };
   }
   bb.rpc.register(rpcContract, handlers(lifecycle.signal));
-  const toolNames: string[] = [];
-  function register<Method extends keyof typeof rpcContract>(method: Method) {
-    const name = `browser_automation_${method}`;
-    toolNames.push(name);
-    bb.agents.registerTool({
-      name,
-      description: commands.find((command) => command.name === method)!.summary,
-      parameters: rpcContract[method].input,
-      async execute(raw, context) {
-        if (raw.threadId !== context.threadId)
-          throw new Error("Browser tools may only access the current thread");
-        const result = await dispatch(
-          method,
-          raw,
-          AbortSignal.any([context.signal, lifecycle.signal]),
-        );
-        const parsed = rpcContract.run.output.safeParse(result);
-        if (parsed.success)
-          return {
-            content: [
-              { type: "text" as const, text: parsed.data.text },
-              ...parsed.data.images.map(({ data, mimeType }) => ({
-                type: "image" as const,
-                data,
-                mimeType,
-              })),
-            ],
-            isError: parsed.data.exitCode !== 0,
-          };
-        return JSON.stringify(result);
-      },
-    });
-  }
   function dispatch(
     method: keyof typeof rpcContract,
     input: unknown,
@@ -449,17 +416,7 @@ export default async function browserAutomationPlugin(bb: BbPluginApi) {
         return h.close(rpcContract.close.input.parse(input));
     }
   }
-  register("open");
-  register("list");
-  register("run");
-  register("pages");
-  register("screenshot");
-  register("stop");
-  register("close");
-  bb.agents.configure(() => ({
-    tools: toolNames,
-    skills: ["browser-automation"],
-  }));
+  bb.agents.configure(() => ({ tools: [], skills: ["browser-automation"] }));
   bb.cli.register({
     name: "browser-automation",
     summary: "Persistent DevBrowser desktop and headless sessions",
@@ -503,7 +460,14 @@ export default async function browserAutomationPlugin(bb: BbPluginApi) {
           ]),
         );
         const output = rpcContract.run.output.safeParse(result);
-        const printable = result;
+        const printable = output.success
+          ? {
+              ...output.data,
+              hostId: (
+                await owned(parsed.input.threadId!, parsed.input.sessionId!)
+              ).session.hostId,
+            }
+          : result;
         return {
           exitCode: output.success ? output.data.exitCode : 0,
           stdout: JSON.stringify(printable),

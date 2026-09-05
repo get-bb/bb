@@ -1,4 +1,12 @@
-import { mkdtemp, mkdir, writeFile, symlink, rm } from "node:fs/promises";
+import {
+  mkdtemp,
+  mkdir,
+  readFile,
+  realpath,
+  writeFile,
+  symlink,
+  rm,
+} from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { afterEach, describe, expect, it } from "vitest";
@@ -15,6 +23,30 @@ const endpoint = "ws://127.0.0.1:9999/cdp?token=private-secret";
 const frames = (...items: object[]) =>
   items.map((item) => JSON.stringify(item)).join("\n");
 describe("runtime output boundary", () => {
+  it("returns a readable temporary JPEG path without embedding image bytes", async () => {
+    const home = await mkdtemp(join(tmpdir(), "browser-capture-test-"));
+    dirs.push(home);
+    await mkdir(join(home, "tmp"));
+    const path = join(home, "tmp", "capture.jpg");
+    const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0xe0]);
+    await writeFile(path, jpeg);
+    const result = await decodeOutput(
+      frames({ type: "image", path, width: 640, height: 400 }, done),
+      home,
+      endpoint,
+      "1.0.0-test",
+    );
+    expect(result.images).toEqual([
+      {
+        path: await realpath(path),
+        mimeType: "image/jpeg",
+        width: 640,
+        height: 400,
+      },
+    ]);
+    expect(await readFile(result.images[0]!.path)).toEqual(jpeg);
+    expect(JSON.stringify(result)).not.toContain(jpeg.toString("base64"));
+  });
   it("does not inherit unrelated credentials or DevBrowser routing overrides", () => {
     const env = runtimeEnvironment("/tmp/session-one");
     expect(env.DEV_BROWSER_HOME).toBe("/tmp/session-one");

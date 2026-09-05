@@ -110,6 +110,35 @@ async function setup() {
 }
 
 describe("server session ownership", () => {
+  it("returns browser-host image paths through the CLI without registering tools", async () => {
+    const h = await setup();
+    try {
+      const session = await h.open();
+      const images = [
+        {
+          path: "/tmp/browser-session/tmp/capture.jpg",
+          mimeType: "image/jpeg",
+          width: 640,
+          height: 400,
+        },
+      ];
+      h.worker.mockResolvedValueOnce({ text: "captured", images, exitCode: 0 });
+      const result = await h.harness.behavior.runCli(
+        ["screenshot", session.id, "--json"],
+        { threadId: "thread-test" },
+      );
+      expect(result.exitCode).toBe(0);
+      expect(JSON.parse(result.stdout)).toEqual({
+        text: "captured",
+        images,
+        exitCode: 0,
+        hostId: "desktop-host",
+      });
+      expect(h.harness.registrations.agentTools).toEqual([]);
+    } finally {
+      await h.harness.lifecycle.dispose();
+    }
+  });
   it("routes to the desktop host without exposing the connection and preserves a handed-off tab", async () => {
     const h = await setup();
     try {
@@ -138,7 +167,7 @@ describe("server session ownership", () => {
       await h.harness.lifecycle.dispose();
     }
   });
-  it("denies cross-thread RPC and agent access before calling the worker", async () => {
+  it("denies cross-thread RPC and CLI access before calling the worker", async () => {
     const h = await setup();
     try {
       const session = await h.open();
@@ -149,13 +178,12 @@ describe("server session ownership", () => {
           script: "1",
         }),
       ).rejects.toThrow();
-      await expect(
-        h.harness.behavior.callAgentTool(
-          "browser_automation_run",
-          { threadId: "thread-test", sessionId: session.id, script: "1" },
-          { threadId: "other" },
-        ),
-      ).rejects.toThrow("current thread");
+      const denied = await h.harness.behavior.runCli(
+        ["run", session.id, "--thread", "thread-test", "--script", "1"],
+        { threadId: "other" },
+      );
+      expect(denied.exitCode).toBe(1);
+      expect(denied.stderr).toContain("another thread");
       expect(
         h.worker.mock.calls.filter(([call]) => call.method === "run"),
       ).toHaveLength(0);

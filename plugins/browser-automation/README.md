@@ -1,16 +1,15 @@
 # Browser Automation for BB
 
-Milestone 3 of the browser-use proposal: thread-owned scripts, desktop attachment,
-and local headless Chrome on enrolled hosts. Requires the public
+Thread-owned browser scripts, desktop attachment, and local headless Chrome
+on enrolled hosts. Requires the public
 `bb.sdk.experimental_desktopBrowsers` API (SDK 0.4.48 or newer).
 
 Browser Automation is optional and disabled by default. Enable it in plugin
 settings when you want to use it.
 
 The plugin was scaffolded with `bb plugin new browser-automation`. It has server, host,
-CLI, RPC, native agent tools, and a bundled skill. Screenshot tools return JPEG
-image content. Screenshot cards, streaming previews, and the sidebar viewer are
-milestone 4. Cloud provisioning and arbitrary CDP endpoints are excluded.
+CLI, RPC, and a bundled skill. Agents use the CLI through the skill. Screenshot
+commands return temporary JPEG file paths and the browser host ID. Screenshot cards, streaming previews, and a screenshot sidebar viewer are not included. Cloud provisioning and arbitrary CDP endpoints are excluded.
 
 ## Runtime installation and provenance
 
@@ -143,20 +142,25 @@ bounded to 1–120 seconds. Runs are serialized per session.
 
 DevBrowser scripts are trusted code, not a security sandbox. Script output is
 bounded to 512 KB before parsing and 160,000 text characters after parsing.
-Up to four JPEGs fit within a combined 700 KB base64 budget. Image file paths
+Up to four JPEGs fit within a combined 500 KB budget. Image file paths
 must resolve inside that session's capture directory; oversized files and
-escaping symlinks fail. CLI screenshot JSON includes image bytes; native agent
-tools return image content directly to the model. Endpoints and connection
+escaping symlinks fail. CLI `run` and `screenshot` JSON returns `hostId` plus
+`images: [{path, mimeType, width, height}]`, without inline image bytes. Paths
+are in the browser session's temporary directory on the selected host. Agents
+read them directly on that machine, or use `bb file read <path> --host <host-id>
+--json` to fetch a remote image and decode its base64 content to a local temporary
+JPEG. The bundled skill includes a copy-pasteable command. Read or copy captures
+before closing the session; cleanup removes them. Endpoints and connection
 credentials are removed from structured script text and never included in
 session records or CLI session results.
 
-Both the CLI and tools use the same validated operation handlers as RPC. The
+The CLI uses the same validated operation handlers as RPC. The
 RPC contract in `contracts.ts` exposes `open`, `list`, `run`, `pages`,
-`screenshot`, `stop`, and `close`; native tool names are `browser_automation_<operation>`.
+`screenshot`, `stop`, and `close`.
 RPC inputs include `threadId`; session operations also include `sessionId`.
 `open.selection` is `{backend:"local",hostId}` or
 `{backend:"desktop",hostId,instanceId,tabId?}`. A tab ID is an explicit handoff.
-Agents discover the exact schemas via the tools and the CLI command metadata.
+Agents discover the commands through the skill and CLI help.
 
 The host supervises Chrome and the DevBrowser daemon as separate children. Each
 child owns a process group. Closing the worker pipe also stops those groups, so
