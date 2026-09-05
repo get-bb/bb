@@ -270,6 +270,14 @@ async function createOAuthRequestFixture(
   });
 }
 
+function deferred(): { promise: Promise<void>; resolve: () => void } {
+  let resolve = () => {};
+  const promise = new Promise<void>((release) => {
+    resolve = release;
+  });
+  return { promise, resolve };
+}
+
 function authHeaders(key: string): Record<string, string> {
   return {
     authorization: `Bearer ${key}`,
@@ -2723,6 +2731,446 @@ describe("Account Pool plugin", () => {
         read.mockRestore();
       }
     });
+  });
+
+  it.each(["terminal", "same-token cooldown"])(
+    "keeps late 401 recovery bounded after a %s refresh",
+    async (outcome) => {
+      const oldResponse = deferred();
+      const refreshed = deferred();
+      let now = 1_800_000_000_000;
+      let attempts = 0;
+      let refreshCalls = 0;
+      const fixture = await createOAuthRequestFixture(
+        "claude",
+        async (input) => {
+          if (String(input).endsWith("/oauth/token")) {
+            refreshCalls += 1;
+            if (refreshCalls === 1)
+              return Response.json(
+                {
+                  error:
+                    outcome === "terminal"
+                      ? "invalid_grant"
+                      : "temporarily_unavailable",
+                },
+                { status: outcome === "terminal" ? 400 : 503 },
+              );
+            await refreshed.promise;
+            return Response.json({
+              access_token: "oauth-old",
+              expires_in: 3600,
+            });
+          }
+          attempts += 1;
+          const attempt = attempts;
+          if (attempt === 1) await oldResponse.promise;
+          return Response.json({}, { status: attempt <= 2 ? 401 : 200 });
+        },
+        () => now,
+      );
+      const send = () =>
+        fixture.host.harness.behavior.fetchHttp("POST", "/v1/messages", {
+          headers: authHeaders(fixture.key),
+          body: "{}",
+        });
+      const requests = [send()];
+      try {
+        await vi.waitFor(() => expect(attempts).toBe(1));
+        const rejected = await send();
+        expect(rejected.status).toBe(outcome === "terminal" ? 401 : 503);
+        await rejected.text();
+        if (outcome === "same-token cooldown") {
+          now += 1_000;
+          requests.push(send());
+          await vi.waitFor(() => expect(refreshCalls).toBe(2));
+        }
+        oldResponse.resolve();
+        await new Promise<void>((resolve) => setImmediate(resolve));
+        refreshed.resolve();
+        const responses = await Promise.all(requests);
+        await Promise.all(responses.map((response) => response.text()));
+        expect(responses.map((response) => response.status)).toEqual(
+          outcome === "terminal" ? [401] : [200, 200],
+        );
+        expect(refreshCalls).toBe(outcome === "terminal" ? 1 : 2);
+        expect(attempts).toBe(outcome === "terminal" ? 2 : 4);
+      } finally {
+        oldResponse.resolve();
+        refreshed.resolve();
+        await Promise.allSettled(
+          requests.map(async (request) => (await request).text()),
+        );
+      }
+    },
+  );
+
+  it.each([false, true])(
+    "separates rejection checks from credential flights when the reporting request is canceled: %s",
+    async (cancelReporter) => {
+      let attempts = 0;
+      const fixture = await createOAuthRequestFixture(
+        "claude",
+        async (input) => {
+          if (String(input).endsWith("/oauth/token"))
+            return Response.json({
+              access_token: "oauth-new",
+              expires_in: 3600,
+            });
+          attempts += 1;
+          return Response.json({}, { status: attempts <= 2 ? 401 : 200 });
+        },
+        () => 1_800_000_000_000,
+      );
+      const gate = deferred();
+      const checking = deferred();
+      const originalRead = AccountStore.prototype.readSecret;
+      let reads = 0;
+      const read = vi
+        .spyOn(AccountStore.prototype, "readSecret")
+        .mockImplementation(async function (this: AccountStore, id) {
+          const secret = await originalRead.call(this, id);
+          reads += 1;
+          if (reads === 3) {
+            checking.resolve();
+            await gate.promise;
+          }
+          return secret;
+        });
+      const recordUsed = vi.spyOn(AccountStore.prototype, "recordUsed");
+      const controller = new AbortController();
+      const requests = [
+        fixture.host.harness.behavior.fetchHttp("POST", "/v1/messages", {
+          headers: authHeaders(fixture.key),
+          body: "{}",
+          signal: controller.signal,
+        }),
+      ];
+      try {
+        await checking.promise;
+        requests.push(
+          fixture.host.harness.behavior.fetchHttp("POST", "/v1/messages", {
+            headers: authHeaders(fixture.key),
+            body: "{}",
+          }),
+        );
+        await vi.waitFor(() => expect(recordUsed).toHaveBeenCalledTimes(2));
+        await Promise.all(
+          recordUsed.mock.results.map((result) => result.value),
+        );
+        await new Promise<void>((resolve) => setImmediate(resolve));
+        if (cancelReporter) controller.abort();
+        gate.resolve();
+        const responses = await Promise.all(requests);
+        await Promise.all(responses.map((response) => response.text()));
+        expect(responses.map((response) => response.status)).toEqual(
+          cancelReporter ? [499, 200] : [401, 429],
+        );
+        expect(attempts).toBe(cancelReporter ? 3 : 2);
+      } finally {
+        gate.resolve();
+        await Promise.allSettled(
+          requests.map(async (request) => (await request).text()),
+        );
+        read.mockRestore();
+        recordUsed.mockRestore();
+      }
+    },
+  );
+
+  it("cancels one forced-refresh waiter without canceling shared recovery", async () => {
+    const gate = deferred();
+    let refreshCalls = 0;
+    const authorizations: Array<string | null> = [];
+    const fixture = await createOAuthRequestFixture(
+      "claude",
+      async (input, init) => {
+        if (String(input).endsWith("/oauth/token")) {
+          refreshCalls += 1;
+          await gate.promise;
+          return Response.json({ access_token: "oauth-new", expires_in: 3600 });
+        }
+        const authorization = new Headers(init?.headers).get("authorization");
+        authorizations.push(authorization);
+        return Response.json(
+          {},
+          { status: authorization === "Bearer oauth-old" ? 401 : 200 },
+        );
+      },
+      () => 1_800_000_000_000,
+    );
+    const controller = new AbortController();
+    const requests = [controller.signal, undefined].map((signal) =>
+      fixture.host.harness.behavior.fetchHttp("POST", "/v1/messages", {
+        headers: authHeaders(fixture.key),
+        body: "{}",
+        signal,
+      }),
+    );
+    try {
+      await vi.waitFor(() => {
+        expect(authorizations).toHaveLength(2);
+        expect(refreshCalls).toBe(1);
+      });
+      controller.abort();
+      const canceled = await requests[0];
+      expect(canceled?.status).toBe(499);
+      await canceled?.text();
+      gate.resolve();
+      const recovered = await requests[1];
+      expect(recovered?.status).toBe(200);
+      await recovered?.text();
+      expect(refreshCalls).toBe(1);
+      expect(authorizations).toEqual([
+        "Bearer oauth-old",
+        "Bearer oauth-old",
+        "Bearer oauth-new",
+      ]);
+    } finally {
+      gate.resolve();
+      await Promise.allSettled(
+        requests.map(async (request) => (await request).text()),
+      );
+    }
+  });
+
+  it("does not let a late second 401 poison a newer credential", async () => {
+    const gate = deferred();
+    let refreshCalls = 0;
+    let newAttempts = 0;
+    const fixture = await createOAuthRequestFixture(
+      "claude",
+      async (input, init) => {
+        if (String(input).endsWith("/oauth/token")) {
+          refreshCalls += 1;
+          return Response.json({
+            access_token: `oauth-new-${refreshCalls}`,
+            expires_in: 3600,
+          });
+        }
+        const authorization = new Headers(init?.headers).get("authorization");
+        if (authorization === "Bearer oauth-new-2") return Response.json({});
+        if (authorization === "Bearer oauth-new-1") {
+          newAttempts += 1;
+          if (newAttempts === 1) await gate.promise;
+        }
+        return Response.json({ error: "rejected token" }, { status: 401 });
+      },
+      () => 1_800_000_000_000,
+    );
+    const send = () =>
+      fixture.host.harness.behavior.fetchHttp("POST", "/v1/messages", {
+        headers: authHeaders(fixture.key),
+        body: "{}",
+      });
+    const first = send();
+    try {
+      await vi.waitFor(() => expect(newAttempts).toBe(1));
+      const second = await send();
+      expect(second.status).toBe(200);
+      await second.text();
+      gate.resolve();
+      const late = await first;
+      expect(late.status).toBe(401);
+      await late.text();
+      const accounts = z
+        .array(accountSummarySchema)
+        .parse(
+          await fixture.host.harness.behavior.callRpc("account.list", null),
+        );
+      expect(accounts[0]?.error).toBeNull();
+      const next = await send();
+      expect(next.status).toBe(200);
+      await next.text();
+      expect(refreshCalls).toBe(2);
+    } finally {
+      gate.resolve();
+      const response = await first;
+      if (!response.bodyUsed) await response.text();
+    }
+  });
+
+  it("honors a newer token's rejected cooldown when an older 401 arrives late", async () => {
+    const gate = deferred();
+    let now = 1_800_000_000_000;
+    let refreshCalls = 0;
+    let attempts = 0;
+    const fixture = await createOAuthRequestFixture(
+      "claude",
+      async (input) => {
+        if (String(input).endsWith("/oauth/token")) {
+          refreshCalls += 1;
+          return refreshCalls === 2
+            ? Response.json({}, { status: 503 })
+            : Response.json({
+                access_token: `oauth-new-${refreshCalls}`,
+                expires_in: 3600,
+              });
+        }
+        attempts += 1;
+        if (attempts === 1) await gate.promise;
+        return Response.json(
+          {},
+          { status: attempts === 3 || attempts >= 5 ? 200 : 401 },
+        );
+      },
+      () => now,
+    );
+    const send = () =>
+      fixture.host.harness.behavior.fetchHttp("POST", "/v1/messages", {
+        headers: authHeaders(fixture.key),
+        body: "{}",
+      });
+    const first = send();
+    try {
+      await vi.waitFor(() => expect(attempts).toBe(1));
+      const second = await send();
+      expect(second.status).toBe(200);
+      await second.text();
+      const rejected = await send();
+      expect(rejected.status).toBe(503);
+      await rejected.text();
+      gate.resolve();
+      const late = await first;
+      expect(late.status).toBe(503);
+      await late.text();
+      const held = await send();
+      expect(held.status).toBe(503);
+      await held.text();
+      expect(attempts).toBe(4);
+      now += 1_000;
+      const recovered = await send();
+      expect(recovered.status).toBe(200);
+      await recovered.text();
+      expect(refreshCalls).toBe(3);
+    } finally {
+      gate.resolve();
+      const response = await first;
+      if (!response.bodyUsed) await response.text();
+    }
+  });
+
+  it.each(["never ends", "cancel rejects", "cancel hangs"])(
+    "bounds failed response disposal when the body %s",
+    async (behavior) => {
+      const cancel = vi.fn(() =>
+        behavior === "cancel hangs"
+          ? new Promise<void>(() => {})
+          : behavior === "cancel rejects"
+            ? Promise.reject(new Error("cancel failed"))
+            : Promise.resolve(),
+      );
+      let attempts = 0;
+      const fixture: Fixture = await createFixture({
+        upstreamUrl: "https://upstream.example",
+        priority: 0,
+        options: {
+          fetch: async (_input, init) => {
+            attempts += 1;
+            if (attempts === 1)
+              return new Response(
+                new ReadableStream({
+                  start(controller) {
+                    if (behavior !== "never ends")
+                      controller.enqueue(new Uint8Array(2048).fill(65));
+                  },
+                  cancel,
+                }),
+                { status: 503 },
+              );
+            const status = statusSchema.parse(
+              await fixture.host.harness.behavior.callRpc("status.get", null),
+            );
+            expect(
+              status.accounts.find(
+                (account) => account.id === fixture.account.id,
+              )?.inFlight,
+            ).toBe(0);
+            expect(init?.signal?.aborted).toBe(false);
+            return Response.json({});
+          },
+        },
+      });
+      await addApiAccount(fixture, "sk-backup", 100);
+      const response = await fixture.host.harness.behavior.fetchHttp(
+        "POST",
+        "/v1/messages",
+        {
+          headers: authHeaders(fixture.key),
+          body: "{}",
+        },
+      );
+      expect(response.status).toBe(200);
+      await response.text();
+      expect(attempts).toBe(2);
+      expect(cancel).toHaveBeenCalledOnce();
+    },
+  );
+
+  it("finishes a successful in-flight fetch during graceful hub shutdown", async () => {
+    const gate = deferred();
+    const started = deferred();
+    const fixture = await createFixture({
+      upstreamUrl: "https://upstream.example",
+      options: {
+        fetch: async () => {
+          started.resolve();
+          await gate.promise;
+          return Response.json({});
+        },
+      },
+    });
+    const request = fixture.host.harness.behavior.fetchHttp(
+      "POST",
+      "/v1/messages",
+      {
+        headers: authHeaders(fixture.key),
+        body: "{}",
+      },
+    );
+    await started.promise;
+    fixture.service.controller.abort();
+    await vi.waitFor(async () => {
+      const status = statusSchema.parse(
+        await fixture.host.harness.behavior.callRpc("status.get", null),
+      );
+      expect(status.accepting).toBe(false);
+    });
+    gate.resolve();
+    const response = await request;
+    expect(response.status).toBe(200);
+    await response.text();
+    await fixture.service.done;
+  });
+
+  it("accepts requests after stopping and restarting the hub service", async () => {
+    const fixture = await createFixture({
+      upstreamUrl: "https://upstream.example",
+      options: { fetch: async () => Response.json({}) },
+    });
+    fixture.service.controller.abort();
+    await fixture.service.done;
+    const restarted = fixture.host.harness.behavior.runService("hub");
+    cleanups.push(async () => {
+      restarted.controller.abort();
+      await restarted.done;
+    });
+    await vi.waitFor(async () => {
+      const status = statusSchema.parse(
+        await fixture.host.harness.behavior.callRpc("status.get", null),
+      );
+      expect(status.accepting).toBe(true);
+    });
+    const response = await fixture.host.harness.behavior.fetchHttp(
+      "POST",
+      "/v1/messages",
+      {
+        headers: authHeaders(fixture.key),
+        body: "{}",
+      },
+    );
+    expect(response.status).toBe(200);
+    await response.text();
   });
 
   it.each([true, false])(

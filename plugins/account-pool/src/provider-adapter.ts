@@ -27,6 +27,7 @@ export interface AdapterSecretContext {
   quotas: QuotaStore;
   fetch: typeof fetch;
   now: () => number;
+  forceRefresh: boolean;
 }
 
 export interface AdapterUsageContext {
@@ -84,47 +85,66 @@ export async function fetchOAuthRefresh(
   url: string,
   body: Record<string, string>,
 ): Promise<string> {
-  const init: RequestInit = {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      accept: "application/json",
-    },
-    body: JSON.stringify(body),
-    signal: AbortSignal.timeout(OAUTH_REFRESH_TIMEOUT_MS),
-  };
-  let response: Response;
+  const signal = AbortSignal.timeout(OAUTH_REFRESH_TIMEOUT_MS);
+  let onTimeout = () => {};
+  const timedOut = new Promise<never>((_resolve, reject) => {
+    onTimeout = () => reject(signal.reason);
+    if (signal.aborted) onTimeout();
+    else signal.addEventListener("abort", onTimeout, { once: true });
+  });
   try {
-    response = await context.fetch(url, init);
-  } catch {
-    throw new TransientOAuthRefreshError(
-      "OAuth refresh failed due to a network error or timeout.",
-      0,
-    );
-  }
-  if (!response.ok) {
-    const message = `OAuth refresh failed with HTTP ${response.status}.`;
-    const retryAfterMs = retryAfterMilliseconds(
-      response.headers.get("retry-after"),
-      context.now(),
-    );
-    await response.body?.cancel().catch(() => undefined);
-    if (
-      response.status === 408 ||
-      response.status === 429 ||
-      response.status >= 500
-    ) {
-      throw new TransientOAuthRefreshError(message, retryAfterMs);
+    let response: Response;
+    try {
+      response = await Promise.race([
+        context
+          .fetch(url, {
+            method: "POST",
+            headers: {
+              "content-type": "application/json",
+              accept: "application/json",
+            },
+            body: JSON.stringify(body),
+            signal,
+          })
+          .then((result) => {
+            if (signal.aborted)
+              void result.body?.cancel().catch(() => undefined);
+            return result;
+          }),
+        timedOut,
+      ]);
+    } catch {
+      throw new TransientOAuthRefreshError(
+        "OAuth refresh failed due to a network error or timeout.",
+        0,
+      );
     }
-    throw new Error(message);
-  }
-  try {
-    return await response.text();
-  } catch {
-    throw new TransientOAuthRefreshError(
-      "OAuth refresh response failed due to a network error or timeout.",
-      0,
-    );
+    if (!response.ok) {
+      const message = `OAuth refresh failed with HTTP ${response.status}.`;
+      const retryAfterMs = retryAfterMilliseconds(
+        response.headers.get("retry-after"),
+        context.now(),
+      );
+      void response.body?.cancel().catch(() => undefined);
+      if (
+        response.status === 408 ||
+        response.status === 429 ||
+        response.status >= 500
+      ) {
+        throw new TransientOAuthRefreshError(message, retryAfterMs);
+      }
+      throw new Error(message);
+    }
+    try {
+      return await Promise.race([response.text(), timedOut]);
+    } catch {
+      throw new TransientOAuthRefreshError(
+        "OAuth refresh response failed due to a network error or timeout.",
+        0,
+      );
+    }
+  } finally {
+    signal.removeEventListener("abort", onTimeout);
   }
 }
 

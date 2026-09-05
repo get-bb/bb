@@ -97,8 +97,9 @@ export function createClaudeAdapter(options: {
       const secret = context.secret;
       if (
         secret.kind !== "oauth" ||
-        secret.expiresAt === null ||
-        secret.expiresAt > context.now() + REFRESH_WINDOW_MS
+        (!context.forceRefresh &&
+          (secret.expiresAt === null ||
+            secret.expiresAt > context.now() + REFRESH_WINDOW_MS))
       ) {
         return { secret, refreshed: false };
       }

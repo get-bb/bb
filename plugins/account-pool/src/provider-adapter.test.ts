@@ -5,6 +5,54 @@ import {
 } from "./provider-adapter.js";
 
 describe("OAuth refresh transport", () => {
+  it("classifies rejected responses even when cancellation never settles", async () => {
+    const cancel = vi.fn(() => new Promise<void>(() => {}));
+    await expect(
+      fetchOAuthRefresh(
+        {
+          fetch: async () =>
+            new Response(new ReadableStream({ cancel }), { status: 503 }),
+          now: () => 0,
+        },
+        "https://auth.example/token",
+        { refresh_token: "refresh" },
+      ),
+    ).rejects.toBeInstanceOf(TransientOAuthRefreshError);
+    expect(cancel).toHaveBeenCalledOnce();
+  });
+
+  it.each(["request", "body"])(
+    "bounds a %s transport that ignores abort",
+    async (stage) => {
+      const controller = new AbortController();
+      const timeout = vi
+        .spyOn(AbortSignal, "timeout")
+        .mockReturnValue(controller.signal);
+      try {
+        const refresh = fetchOAuthRefresh(
+          {
+            fetch: async () =>
+              stage === "request"
+                ? new Promise<Response>(() => {})
+                : new Response(new ReadableStream()),
+            now: () => 0,
+          },
+          "https://auth.example/token",
+          { refresh_token: "refresh" },
+        );
+        await new Promise<void>((resolve) => setImmediate(resolve));
+        controller.abort(
+          new DOMException("OAuth request timed out", "TimeoutError"),
+        );
+        await expect(refresh).rejects.toBeInstanceOf(
+          TransientOAuthRefreshError,
+        );
+      } finally {
+        timeout.mockRestore();
+      }
+    },
+  );
+
   it.each([
     { status: 400, transient: false },
     { status: 401, transient: false },
