@@ -3358,6 +3358,127 @@ describe("Account Pool plugin", () => {
       return fixture;
     }
 
+    it.each([
+      ["claude", "json"],
+      ["claude", "sse"],
+      ["codex", "json"],
+      ["codex", "sse"],
+    ] as const)(
+      "preserves reported %s cache usage through %s failover without inventing hits",
+      async (provider, transport) => {
+        const reads = [0, 1536, 0, null];
+        const payloads = reads.map((cached) => {
+          const usage =
+            provider === "claude"
+              ? {
+                  input_tokens: 64,
+                  output_tokens: 8,
+                  ...(cached === null
+                    ? {}
+                    : {
+                        cache_read_input_tokens: cached,
+                        cache_creation_input_tokens: cached === 0 ? 1536 : 0,
+                      }),
+                }
+              : {
+                  input_tokens: 1600,
+                  output_tokens: 8,
+                  total_tokens: 1608,
+                  ...(cached === null
+                    ? {}
+                    : { input_tokens_details: { cached_tokens: cached } }),
+                };
+          const response =
+            provider === "claude"
+              ? {
+                  id: "msg_usage",
+                  type: "message",
+                  role: "assistant",
+                  model: "claude-fable-5",
+                  content: [],
+                  usage,
+                }
+              : {
+                  id: "resp_usage",
+                  object: "response",
+                  status: "completed",
+                  output: [],
+                  usage,
+                };
+          if (transport === "json") return JSON.stringify(response);
+          if (provider === "claude")
+            return [
+              { type: "message_start", message: response },
+              { type: "message_delta", usage: { output_tokens: 8 } },
+              { type: "message_stop" },
+            ]
+              .map((event) => `data: ${JSON.stringify(event)}\n\n`)
+              .join("");
+          return `data: ${JSON.stringify({ type: "response.completed", response })}\n\n`;
+        });
+        const attempts: Array<string | null> = [];
+        let successes = 0;
+        const fixture = await affinityFixture(
+          provider,
+          async (_input, init) => {
+            const headers = new Headers(init?.headers);
+            attempts.push(
+              headers.get("x-api-key") ?? headers.get("authorization"),
+            );
+            if (attempts.length === 3)
+              return Response.json(
+                {
+                  usage: { cache_read_input_tokens: 9999, cached_tokens: 9999 },
+                },
+                { status: 503 },
+              );
+            const payload = payloads[successes++];
+            if (payload === undefined) throw new Error("Unexpected request.");
+            const bytes = new TextEncoder().encode(payload);
+            return new Response(
+              new ReadableStream({
+                start(controller) {
+                  for (let offset = 0; offset < bytes.length; offset += 7)
+                    controller.enqueue(bytes.slice(offset, offset + 7));
+                  controller.close();
+                },
+              }),
+              {
+                headers: {
+                  "content-type":
+                    transport === "sse"
+                      ? "text/event-stream"
+                      : "application/json",
+                },
+              },
+            );
+          },
+        );
+        for (const payload of payloads) {
+          const response = await fixture.host.harness.behavior.fetchHttp(
+            "POST",
+            provider === "claude" ? "/v1/messages" : "/v1/responses",
+            {
+              headers: { ...authHeaders(fixture.key), "session-id": sessionId },
+              body: provider === "claude" ? claudeBody(sessionId) : "{}",
+            },
+          );
+          expect(response.status).toBe(200);
+          expect(await response.text()).toBe(payload);
+        }
+        const keys = [
+          "sk-first",
+          "sk-first",
+          "sk-first",
+          "sk-second",
+          "sk-second",
+        ];
+        expect(attempts).toEqual(
+          provider === "claude" ? keys : keys.map((key) => `Bearer ${key}`),
+        );
+      },
+    );
+
     describe("parent affinity", () => {
       type Wire =
         | "claude"
@@ -3998,10 +4119,24 @@ describe("Account Pool plugin", () => {
           ),
         });
         if (seen.length === 1) return openStream();
-        return new Response(
-          `data: ${JSON.stringify({ type: "response.completed", response: { id: `response-${seen.length}`, output: [compacted] } })}\n\n`,
-          { headers: { "content-type": "text/event-stream" } },
-        );
+        const event = {
+          type: "response.completed",
+          response: {
+            id: `response-${seen.length}`,
+            output: [compacted],
+            usage: {
+              input_tokens: 1600,
+              input_tokens_details: {
+                cached_tokens: seen.length === 2 ? 0 : 1536,
+              },
+              output_tokens: 8,
+              total_tokens: 1608,
+            },
+          },
+        };
+        return new Response(`data: ${JSON.stringify(event)}\n\n`, {
+          headers: { "content-type": "text/event-stream" },
+        });
       });
       const headers = {
         ...authHeaders(fixture.key),
@@ -4041,6 +4176,12 @@ describe("Account Pool plugin", () => {
         );
         await vi.waitFor(() => expect(socket.sent).toHaveLength(1));
         const first = completedResponse(socket.sent[0]);
+        expect(first.response.usage).toEqual({
+          input_tokens: 1600,
+          input_tokens_details: { cached_tokens: 0 },
+          output_tokens: 8,
+          total_tokens: 1608,
+        });
         const delta = { type: "message", role: "user", content: "next" };
         await socket.receive(
           JSON.stringify({
@@ -4051,6 +4192,12 @@ describe("Account Pool plugin", () => {
           }),
         );
         await vi.waitFor(() => expect(socket.sent).toHaveLength(2));
+        expect(completedResponse(socket.sent[1]).response.usage).toEqual({
+          input_tokens: 1600,
+          input_tokens_details: { cached_tokens: 1536 },
+          output_tokens: 8,
+          total_tokens: 1608,
+        });
         expect(JSON.parse(seen[1]?.body ?? "{}")).toMatchObject({
           ...fields,
           input,
