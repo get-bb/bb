@@ -1352,26 +1352,6 @@ function Chips({ swatch, w = 13, h = 20 }: { swatch: Swatch | null; w?: number; 
   );
 }
 
-/**
- * A mode cue that needs no word: a disc split into the theme's own light and
- * dark faces. Following Figma's model, mode is a switch over the theme list
- * rather than a label repeated on every row.
- */
-function ModeDisc({ entry, size = 14 }: { entry: ThemeEntry | undefined; size?: number }) {
-  const light = entry?.light?.canvas ?? "#f4f4f4";
-  const dark = entry?.dark?.canvas ?? "#1a1a1a";
-  return (
-    <span
-      aria-hidden
-      style={{
-        width: size, height: size, borderRadius: 999, flex: "none",
-        background: `linear-gradient(90deg, ${light} 0 50%, ${dark} 50% 100%)`,
-        boxShadow: `inset 0 0 0 1px ${v("border")}`,
-      }}
-    />
-  );
-}
-
 function ThemeOption({ entry, mode }: { entry: ThemeEntry; mode: Mode }) {
   const swatch = mode === "dark" ? entry.dark : entry.light;
   return (

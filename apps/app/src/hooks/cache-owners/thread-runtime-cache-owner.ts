@@ -63,7 +63,7 @@ import {
   invalidateThreadQueueQueries,
   markThreadAcceptedMessageQueriesStale,
   invalidateThreadQueuedMessageSendQueries,
-  invalidateThreadStopQueries,
+  invalidateThreadListMembershipQueries,
   refetchThreadListsAfterComposerThreadCreate,
 } from "./mutation-cache-effects";
 
@@ -1594,5 +1594,5 @@ export function settleStopThreadTransaction({
   queryClient,
   threadId,
 }: ThreadIdCacheArgs): void {
-  invalidateThreadStopQueries({ queryClient, threadId });
+  invalidateThreadListMembershipQueries({ queryClient, threadId });
 }

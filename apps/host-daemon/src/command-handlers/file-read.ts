@@ -117,15 +117,6 @@ export function createMissingTargetError(
   );
 }
 
-function createDotfileDeniedError(
-  resultPath: string,
-): ExpectedCommandDispatchError {
-  return new ExpectedCommandDispatchError(
-    "ENOENT",
-    `Path does not exist: ${resultPath}`,
-  );
-}
-
 function validateRootRelativePath(
   args: ValidateRootRelativePathArgs,
 ): ValidatedRootRelativePath {
@@ -150,7 +141,7 @@ function validateRootRelativePath(
     args.dotfiles === "deny" &&
     segments.some((segment) => segment.startsWith("."))
   ) {
-    throw createDotfileDeniedError(args.relativePath);
+    throw createMissingTargetError(args.relativePath);
   }
 
   return {

@@ -682,57 +682,6 @@ async function smokePluginHostWorkerBundle(packageDir) {
   }
 }
 
-function collectJsonRpcMessages({ childProcess, onMessage }) {
-  const messages = [];
-  let buffer = "";
-  childProcess.stdout?.on("data", (chunk) => {
-    buffer += chunk.toString("utf8");
-    const lines = buffer.split("\n");
-    buffer = lines.pop() ?? "";
-    for (const line of lines) {
-      const trimmed = line.trim();
-      if (!trimmed) {
-        continue;
-      }
-      const message = JSON.parse(trimmed);
-      messages.push(message);
-      onMessage?.(message);
-    }
-  });
-  return messages;
-}
-
-async function waitForBridgeMessage({
-  childProcess,
-  label,
-  messages,
-  output,
-  predicate,
-}) {
-  const deadline = Date.now() + BRIDGE_WAIT_TIMEOUT_MS;
-  while (Date.now() <= deadline) {
-    const message = messages.find(predicate);
-    if (message) {
-      return message;
-    }
-    if (childProcess.exitCode !== null || childProcess.signalCode !== null) {
-      throw new Error(
-        `${label} exited before the expected message\n${formatProcessOutput(output)}`,
-      );
-    }
-    await delay(10);
-  }
-  throw new Error(
-    `${label} timed out waiting for the expected message\n${formatProcessOutput(output)}`,
-  );
-}
-
-function sendBridgeRequest(childProcess, id, method, params) {
-  childProcess.stdin.write(
-    `${JSON.stringify({ jsonrpc: "2.0", id, method, params })}\n`,
-  );
-}
-
 /**
  * The semantic deltas a `thread/delta` notification batches, or [] for
  * anything else. Bridge-protocol v2 carries no finished timeline events on

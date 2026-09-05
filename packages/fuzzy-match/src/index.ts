@@ -626,7 +626,7 @@ function mergeRankedMatches<T>(
 }
 
 function rankedMatchesToFuzzyMatches<T>(
-  matches: readonly RankedPathMatch<T>[],
+  matches: readonly FuzzyMatch<T>[],
   limit: number,
 ): FuzzyMatch<T>[] {
   return matches.slice(0, limit).map((match) => ({
@@ -766,17 +766,6 @@ function mergeRankedTextMatches<T>(
   return [...matchesByItemIndex.values()].sort(compareRankedTextMatches);
 }
 
-function rankedTextMatchesToFuzzyMatches<T>(
-  matches: readonly RankedTextMatch<T>[],
-  limit: number,
-): FuzzyMatch<T>[] {
-  return matches.slice(0, limit).map((match) => ({
-    item: match.item,
-    score: match.score,
-    positions: match.positions,
-  }));
-}
-
 export function fuzzyMatchPaths<T>(
   args: FuzzyMatchPathsArgs<T>,
 ): FuzzyMatch<T>[] {
@@ -830,7 +819,7 @@ export function fuzzyMatchText<T>(
     return [];
   }
 
-  return rankedTextMatchesToFuzzyMatches(
+  return rankedMatchesToFuzzyMatches(
     mergeRankedTextMatches(
       rankTextQueryMatches(
         getTextCandidates(args.items, args.getText, args.getAliases),
