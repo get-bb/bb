@@ -1,6 +1,6 @@
 # Secure credential requests
 
-Status: **source-documented; live execution pending**.
+Status: **2026-09-05: 4 passed, 1 partial/blocked**. See [the audit](../MAINTENANCE.md) and [per-recipe ledger](../validation-2026-09-05.json).
 
 ## Setup and entry points
 
@@ -25,7 +25,7 @@ SKILL.md. Inspect nested `--help` before selecting flags and IDs.
 | Request and labels | Ask for a dummy variable with a purpose and target file; inspect the card. | User sees the exact requested variable/file/purpose and masked entry field. |
 | Reveal, submit, cancel | Toggle reveal on a dummy value, submit it, then cancel another request. | Only submission writes; transcript contains completion metadata and no entered value. |
 | Dotenv updates | Use fixtures with unrelated entries and request one dummy update; inspect file mode and known synthetic contents locally. | Target value updates with unrelated entries preserved and file permissions set to 0600. |
-| Revision conflict | Modify the fixture file between request and submission. | Stale request conflicts according to the contract rather than overwriting intervening edits silently. |
+| Revision conflict | Modify the fixture file between request and submission. | The first conflict rereads and reconciles unrelated entries, then retries once; a second conflict fails without applying the requested write. |
 | Validation | Try empty/multiline/oversize dummy values around the declared single-value boundary. | Invalid input fails visibly and does not write partial data or expose the attempted value in logs. |
 
 ## Evidence and cleanup
@@ -36,3 +36,7 @@ invent a plugin CLI where the feature uses a core command instead. Preserve
 failed attempts and missing prerequisites as unverified results. Restore plugin
 configuration and remove only this run’s fixtures, registrations, and workers.
 External account changes use authorized disposable targets.
+
+## Maintenance notes
+
+- On the first optimistic write conflict, the plugin rereads and reconciles current dotenv, preserving intervening unrelated entries, then retries once. A second conflict fails without applying its write. Do not expect every first stale snapshot to be rejected. Source: `plugins/secrets/src/server.ts:230`.

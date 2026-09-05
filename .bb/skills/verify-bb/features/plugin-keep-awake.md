@@ -1,6 +1,6 @@
 # Keep machines awake
 
-Status: **source-documented; live execution pending**.
+Status: **2026-09-05: 4 passed**. See [the audit](../MAINTENANCE.md) and [per-recipe ledger](../validation-2026-09-05.json).
 
 ## Setup and entry points
 
@@ -35,3 +35,8 @@ invent a plugin CLI where the feature uses a core command instead. Preserve
 failed attempts and missing prerequisites as unverified results. Restore plugin
 configuration and remove only this run’s fixtures, registrations, and workers.
 External account changes use authorized disposable targets.
+
+## Maintenance notes
+
+- Enable against a Linux fixture, inspect configuration with keep-awake status, and inspect plugin logs for the unsupported-host warning. The status command returns desired configuration, not per-host support or effective assertion state. Source: `plugins/keep-awake/server.ts:150 and :249`.
+- On Linux, enable the preference, inspect the macOS-only UI explanation and `plugin logs keep-awake` warning, then restore it. `keep-awake status` reports configuration, not host capability or an effective OS assertion. Source: `plugins/keep-awake/server.ts:248`.

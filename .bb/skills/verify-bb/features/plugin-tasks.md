@@ -1,6 +1,6 @@
 # Tasks, boards, and delegation
 
-Status: **source-documented; live execution pending**.
+Status: **2026-09-05: 11 passed, 2 partial/blocked**. See [the audit](../MAINTENANCE.md) and [per-recipe ledger](../validation-2026-09-05.json).
 
 ## Setup and entry points
 
@@ -44,3 +44,8 @@ invent a plugin CLI where the feature uses a core command instead. Preserve
 failed attempts and missing prerequisites as unverified results. Restore plugin
 configuration and remove only this run’s fixtures, registrations, and workers.
 External account changes use authorized disposable targets.
+
+## Maintenance notes
+
+- Apply list filters before switching to Board. At narrow widths, horizontally scroll the board to see later status columns. The encoded ?view=board subpath is decoded by the plugin and is valid. Source: `plugins/tasks/shell/topbar.tsx:292; plugins/tasks/shell/routes.ts:28`.
+- For SDK coverage, verify deleteProject(force:false) refuses a nonempty project, then delete the fixture task and empty project. deleteTask has no separate confirmation field; the UI owns confirmations where provided. Source: `plugins/tasks/shared/contract.ts:455; plugins/tasks/shared/contract.ts:492`.

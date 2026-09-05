@@ -1,6 +1,6 @@
 # Developer tools, fixtures, and scope boundaries
 
-Status: **source-documented; platform execution pending**.
+Status: **2026-09-05: 2 passed, 3 partial/blocked**. See [the audit](../MAINTENANCE.md) and [per-recipe ledger](../validation-2026-09-05.json).
 
 ## Setup and entry points
 
@@ -31,3 +31,8 @@ Record each row and platform separately with the actual entry point, observed
 state, persisted side effect, and evidence. Missing hardware/service access is
 a prerequisite gap, not a pass. Stop only owned sessions/processes, restore
 preferences, and remove only synthetic resources after evidence is preserved.
+
+## Maintenance notes
+
+- Cloud preflight also requires its checkout-derived gateway/worker/web ports to be free and `.wrangler/cloud-dev` absent or owned. Preserve local R2/D1 fixtures outside the checkout after stopping only the owned invocation. Source: `scripts/bb-cloud-dev.mjs:163`.
+- The demo implements a limited fixed-data API (including sidebar-bootstrap/threads/timeline), not every current app route: /projects and /plugins may return501. Use an isolated frontend proxy to the demo API, label rendered conversation/tool events synthetic, and report unsupported app/plugin endpoints separately. Source: `apps/demo-server/src/demo-world.ts:173`.

@@ -1,5 +1,7 @@
 # Run and organize a thread
 
+Status: **2026-09-05: 1 passed**. See [the audit](../MAINTENANCE.md) and [per-recipe ledger](../validation-2026-09-05.json).
+
 ## User goal and source
 
 Send a conversation to an agent, receive its answer, and organize the thread.
@@ -30,10 +32,10 @@ from a created thread row.
 2. Capture the filled prompt and click **Submit (Enter)**. Wait for the URL
    to contain `/projects/` and `/threads/`. Record both returned IDs.
 3. Wait for a separate assistant response, **BB verification complete.**
-   Confirm with `pnpm --silent bb:dev thread output "$BB_VERIFY_THREAD_ID" --json`
-   and `pnpm --silent bb:dev thread show "$BB_VERIFY_THREAD_ID" --json`.
+   Confirm with `node apps/cli/dist/index.js thread output "$BB_VERIFY_THREAD_ID" --json`
+   and `node apps/cli/dist/index.js thread show "$BB_VERIFY_THREAD_ID" --json`.
    Set `BB_VERIFY_THREAD_ID` from the URL; do not reuse a previous run's ID.
-   Require idle status and no live active turn. Poll for up to two minutes;
+   Require `status === "idle"` and `runtime.displayStatus === "idle"`. Poll for up to two minutes;
    inspect the actual error or provider prerequisite if it does not finish.
 4. Reload the thread. Require the assistant response to remain visible.
 5. Open `main [aria-label="Thread actions"]`, select **Rename**, fill the
@@ -51,8 +53,9 @@ from a created thread row.
 
 The final output equals the requested phrase; the same thread ID persists
 through reload, rename, archive, and unarchive. Save selected API fields
-(`id`, `status`, `activeTurnId`, `title`, `archivedAt`) and the CLI final output
-with UI evidence. Check `git status --porcelain` in the fixture stays empty.
+(`id`, `status`, `runtime.displayStatus`, `title`, `archivedAt`) and the CLI final output
+with UI evidence. The thread DTO has no `activeTurnId` field; an omitted
+JSON property does not prove that a turn ended. Check `git status --porcelain` in the fixture stays empty.
 
 ## Gotchas
 

@@ -1,6 +1,6 @@
 # Pi provider
 
-Status: **source-documented; live execution pending**.
+Status: **2026-09-05: 2 passed, 3 partial/blocked**. See [the audit](../MAINTENANCE.md) and [per-recipe ledger](../validation-2026-09-05.json).
 
 ## Setup and entry points
 

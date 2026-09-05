@@ -1,13 +1,13 @@
 # Settings, keyboard, appearance controls, and usage
 
-Status: **source-documented; not live-verified in the initial smoke pass**.
+Status: **2026-09-05: 6 passed, 7 partial/blocked**. See [the audit](../MAINTENANCE.md) and [per-recipe ledger](../validation-2026-09-05.json).
 
 ## Setup and entry points
 
 Fresh browser and isolated server. Record original settings and restore every mutation. Use Settings navigation; inspect CLI help for supported values.
 
 Follow the main skill’s isolated launch, doctor, evidence, and cleanup rules.
-CLI examples below omit the `pnpm --silent bb:dev` prefix; use that source CLI
+CLI examples below omit the `node apps/cli/dist/index.js` prefix; use that source CLI
 against the same dev instance. Resolve IDs with list/show and inspect the named
 command’s `--help` before mutation. Use fresh browser snapshots for controls.
 

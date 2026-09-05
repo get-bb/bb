@@ -1,13 +1,13 @@
 # Conversation history, message actions, and rendered output
 
-Status: **source-documented; not live-verified in the initial smoke pass**.
+Status: **2026-09-05: 1 passed, 1 failed, 10 partial/blocked**. See [the audit](../MAINTENANCE.md) and [per-recipe ledger](../validation-2026-09-05.json).
 
 ## Setup and entry points
 
 A fixture conversation containing multiple turns, tool output, file edits, images, and a failed turn. Load through the real provider or trusted QA fixtures; distinguish fixture rendering from provider execution.
 
 Follow the main skill’s isolated launch, doctor, evidence, and cleanup rules.
-CLI examples below omit the `pnpm --silent bb:dev` prefix; use that source CLI
+CLI examples below omit the `node apps/cli/dist/index.js` prefix; use that source CLI
 against the same dev instance. Resolve IDs with list/show and inspect the named
 command’s `--help` before mutation. Use fresh browser snapshots for controls.
 
@@ -43,3 +43,7 @@ mutations through the available agent interface to establish parity. Preserve
 failed attempts and prerequisites; source documentation is not a passing test.
 Restore preferences and remove only the fixtures and sessions created by this
 recipe. External writes require a disposable test target and task authorization.
+
+## Maintenance notes
+
+- Check sourceThreadId for fork lineage and the recorded source checkpoint; parentThreadId can be null. Verify reuse/new environment only where the selected fork action offers it. Source: `apps/cli/src/commands/thread/fork.ts; apps/cli/src/commands/thread/show.ts`.

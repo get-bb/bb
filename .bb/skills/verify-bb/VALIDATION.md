@@ -1,5 +1,8 @@
 # Initial verification and maintenance pass
 
+For the subsequent 348-recipe audit, see [MAINTENANCE.md](MAINTENANCE.md) and
+the [per-recipe ledger](validation-2026-09-05.json). This page preserves history.
+
 Executed on 2026-09-05 against source commit
 `d284bd3ab5efcfa04105c03c9817d27504fbd69a`. Only verification documentation was
 added during the run; product code was unchanged.
@@ -17,13 +20,16 @@ A real authenticated Codex provider performed the short conversation.
 | Journey          | Observed result                                                                                                                                                                                                                                                                  |
 | ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Local project    | Added the fixture through the folder picker; selected it in compose; reloaded; API retained the exact local path, host, and default source.                                                                                                                                      |
-| Thread lifecycle | Submitted through the UI; final output was exactly `BB verification complete.`; thread returned idle with no active turn; response survived reload; rename persisted; archive set `archivedAt`; unarchive cleared it and restored the composer. Fixture Git status stayed clean. |
+| Thread lifecycle | Submitted through the UI; final output was exactly `BB verification complete.`; thread returned idle; response survived reload; rename persisted; archive set `archivedAt`; unarchive cleared it and restored the composer. Fixture Git status stayed clean. |
 | Appearance       | Dark theme survived reload in browser storage and the root class; Nord palette survived reload and the server config reported `nord`; original System/Default selections were restored.                                                                                          |
 | Compact menu     | Theme drawer opened and realized its options; Light selection persisted; content remained mounted after close; reopen and Escape worked; app root was non-inert and exposed in the sampled states; original theme was restored.                                                  |
 
 The generated launch block was executed from the skill on a second fresh
 store. All four recipes were then driven through the live UI, supplemented by
-API reads and the source CLI. Screenshots were inspected. The creation and
+API reads and CLI calls. Later maintenance discovered that inherited `BB_CLI`
+can redirect the source entrypoint to the installed client; this initial run
+did not independently establish client executable provenance. Its UI/API
+observations remain historical evidence. Screenshots were inspected. The creation and
 maintenance skills were also reviewed in a fresh agent context for creation,
 audit, and explanation-only requests; that review was a static contract check,
 not a behavioral benchmark of skill triggering.
@@ -83,9 +89,8 @@ behavior drift, visible new command, unowned plugin, unmapped CLI family,
 missing recipe/stale catalog, and an unlisted feature page. Tests leave no
 fixture repositories behind.
 
-This expansion did **not** execute the additional 344 recipes. Their status is
-`not run`; platform/service prerequisites are documented on each page. The
-original four smoke results remain the only live results recorded here. A full
-maintenance sweep is still pending, including native OS/browser checks,
-additional hosts, provider interactions, test accounts, and external services.
-No production data, accounts, remote tunnels, or product behavior were changed.
+This expansion did **not** execute the additional 344 recipes. At that point,
+they were `not run`; the four smoke results were the only live results here.
+The subsequent [full maintenance audit](MAINTENANCE.md) records assessment of
+all 348 recipes, including remaining platform and service prerequisites.
+The documentation expansion itself changed no production data or product behavior.

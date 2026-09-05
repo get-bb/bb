@@ -6,11 +6,11 @@ Each group page has separate recipes with a drive action, observable success,
 source entry points and prerequisites. Shared behaviors can appear in more than
 one recipe because provider/platform behavior needs separate verification.
 
-**Documentation coverage and test results are separate.** The four smoke
-journeys below were driven twice on an isolated Linux/Chromium dev app. All
-other recipes are source-documented and pending live execution. Hardware,
-authentication and external-service requirements stay in the map even when
-they prevent execution here. See [VALIDATION.md](../VALIDATION.md).
+**Documentation coverage and test results are separate.** The 2026-09-05
+maintenance audit assessed all 348 recipes: **166 passed, 177 partial/blocked,
+and 5 failed**. Another 27 macOS assessments overlap these recipes; iOS variants
+were excluded. See the [audit](../MAINTENANCE.md) and
+[per-recipe ledger](../validation-2026-09-05.json).
 
 ## Starting a run
 
@@ -28,70 +28,70 @@ they prevent execution here. See [VALIDATION.md](../VALIDATION.md).
 
 | Feature group | Recipes | Verification status |
 | --- | --- | --- |
-| [Add a local project](local-project.md) | 1 | Live pass at the recorded revision |
-| [Run and organize a thread](thread-lifecycle.md) | 1 | Live pass at the recorded revision |
-| [Persist appearance choices](appearance.md) | 1 | Live pass at the recorded revision |
-| [Use a compact persistent menu](compact-menu.md) | 1 | Live pass at the recorded revision |
+| [Add a local project](local-project.md) | 1 | 1 passed |
+| [Run and organize a thread](thread-lifecycle.md) | 1 | 1 passed |
+| [Persist appearance choices](appearance.md) | 1 | 1 passed |
+| [Use a compact persistent menu](compact-menu.md) | 1 | 1 passed |
 
 ## Core app and shared behavior
 
 | Feature group | Recipes | Verification status |
 | --- | --- | --- |
-| [Navigation, search, and thread organization](navigation.md) | 11 | Source-documented |
-| [Projects, sources, environments, and Git](projects-environments.md) | 15 | Source-documented |
-| [Compose, mentions, attachments, and voice](composer.md) | 12 | Source-documented |
-| [Active turns, queues, plans, goals, and recovery](execution-controls.md) | 14 | Source-documented |
-| [Approvals, questions, and permission escalation](interactions.md) | 7 | Source-documented |
-| [Conversation history, message actions, and rendered output](timeline.md) | 12 | Source-documented |
-| [Panels, files, terminals, splits, and embedded browser](workspace-panels.md) | 15 | Source-documented |
-| [Settings, keyboard, appearance controls, and usage](settings.md) | 13 | Source-documented |
-| [Skills, plugins, marketplaces, and plugin development](extensions.md) | 13 | Source-documented |
-| [Machines, daemon lifecycle, and updates](hosts-updates.md) | 8 | Source-documented |
-| [Agent interfaces, route compatibility, and error contracts](compatibility-api.md) | 8 | Source-documented |
-| [Responsive layouts, accessibility, and performance](responsive-accessibility.md) | 8 | Source-documented |
+| [Navigation, search, and thread organization](navigation.md) | 11 | 6 passed, 5 partial/blocked |
+| [Projects, sources, environments, and Git](projects-environments.md) | 15 | 4 passed, 1 failed, 10 partial/blocked |
+| [Compose, mentions, attachments, and voice](composer.md) | 12 | 6 passed, 6 partial/blocked |
+| [Active turns, queues, plans, goals, and recovery](execution-controls.md) | 14 | 3 passed, 11 partial/blocked |
+| [Approvals, questions, and permission escalation](interactions.md) | 7 | 2 passed, 5 partial/blocked |
+| [Conversation history, message actions, and rendered output](timeline.md) | 12 | 1 passed, 1 failed, 10 partial/blocked |
+| [Panels, files, terminals, splits, and embedded browser](workspace-panels.md) | 15 | 12 passed, 3 partial/blocked |
+| [Settings, keyboard, appearance controls, and usage](settings.md) | 13 | 6 passed, 7 partial/blocked |
+| [Skills, plugins, marketplaces, and plugin development](extensions.md) | 13 | 11 passed, 2 partial/blocked |
+| [Machines, daemon lifecycle, and updates](hosts-updates.md) | 8 | 2 passed, 6 partial/blocked |
+| [Agent interfaces, route compatibility, and error contracts](compatibility-api.md) | 8 | 3 passed, 5 partial/blocked |
+| [Responsive layouts, accessibility, and performance](responsive-accessibility.md) | 8 | 8 partial/blocked |
 
 ## Repository plugins
 
 | Feature group | Recipes | Verification status |
 | --- | --- | --- |
-| [Account pooling](plugin-account-pool.md) | 7 | Source-documented; enable in test store |
-| [Fallback question cards](plugin-ask-user-question.md) | 5 | Source-documented; enable in test store |
-| [Scheduled agent and script automations](plugin-automations.md) | 8 | Source-documented; enable in test store |
-| [Agent concurrency limits](plugin-concurrency-limit.md) | 5 | Source-documented; enable in test store |
-| [Remote Connect and port sharing](plugin-connect.md) | 7 | Source-documented; enable in test store |
-| [Custom agent instructions](plugin-custom-instructions.md) | 3 | Source-documented; enable in test store |
-| [Docs vaults and editing](plugin-docs.md) | 9 | Source-documented; enable in test store |
-| [GitHub issues and pull requests](plugin-github.md) | 8 | Source-documented; enable in test store |
-| [Inline HTML visualizations](plugin-inline-vis.md) | 5 | Source-documented; enable in test store |
-| [Keep machines awake](plugin-keep-awake.md) | 4 | Source-documented; enable in test store |
-| [Persistent agent memory](plugin-memory.md) | 6 | Source-documented; enable in test store |
-| [Code editor and file tree](plugin-monaco-editor.md) | 6 | Source-documented; enable in test store |
-| [PDF preview](plugin-pdf-preview.md) | 3 | Source-documented; enable in test store |
-| [Plugin Guide](plugin-plugin-api-docs.md) | 4 | Source-documented; enable in test store |
-| [Plugin API tester](plugin-plugin-api-tester.md) | 2 | Source-documented; enable in test store |
-| [ACP providers](plugin-provider-acp.md) | 6 | Source-documented; enable in test store |
-| [Claude Code provider](plugin-provider-claude-code.md) | 7 | Source-documented; enable in test store |
-| [Codex provider](plugin-provider-codex.md) | 7 | Source-documented; enable in test store |
-| [Pi provider](plugin-provider-pi.md) | 5 | Source-documented; enable in test store |
-| [Automatic provider retry](plugin-provider-retry.md) | 5 | Source-documented; enable in test store |
-| [Provider usage limits](plugin-provider-usage.md) | 3 | Source-documented; enable in test store |
-| [Web, desktop, and mobile notifications](plugin-push-notifications.md) | 6 | Source-documented; enable in test store |
-| [Scheduled messages](plugin-scheduled-send.md) | 5 | Source-documented; enable in test store |
-| [Secure credential requests](plugin-secrets.md) | 5 | Source-documented; enable in test store |
-| [Side chats](plugin-side-chat.md) | 4 | Source-documented; enable in test store |
-| [Tasks, boards, and delegation](plugin-tasks.md) | 13 | Source-documented; enable in test store |
-| [Theme preview workbench](plugin-theme-preview.md) | 4 | Source-documented; enable in test store |
-| [Durable workflows](plugin-workflows.md) | 8 | Source-documented; enable in test store |
+| [Account pooling](plugin-account-pool.md) | 7 | 7 partial/blocked |
+| [Fallback question cards](plugin-ask-user-question.md) | 5 | 3 passed, 1 failed, 1 partial/blocked |
+| [Scheduled agent and script automations](plugin-automations.md) | 8 | 8 passed |
+| [Agent concurrency limits](plugin-concurrency-limit.md) | 5 | 4 passed, 1 partial/blocked |
+| [Remote Connect and port sharing](plugin-connect.md) | 7 | 5 passed, 2 partial/blocked |
+| [Custom agent instructions](plugin-custom-instructions.md) | 3 | 2 passed, 1 partial/blocked |
+| [Docs vaults and editing](plugin-docs.md) | 9 | 7 passed, 2 partial/blocked |
+| [GitHub issues and pull requests](plugin-github.md) | 8 | 2 passed, 6 partial/blocked |
+| [Inline HTML visualizations](plugin-inline-vis.md) | 5 | 5 passed |
+| [Keep machines awake](plugin-keep-awake.md) | 4 | 4 passed |
+| [Persistent agent memory](plugin-memory.md) | 6 | 6 passed |
+| [Code editor and file tree](plugin-monaco-editor.md) | 6 | 3 passed, 1 failed, 2 partial/blocked |
+| [PDF preview](plugin-pdf-preview.md) | 3 | 2 passed, 1 partial/blocked |
+| [Plugin Guide](plugin-plugin-api-docs.md) | 4 | 3 passed, 1 partial/blocked |
+| [Plugin API tester](plugin-plugin-api-tester.md) | 2 | 2 passed |
+| [ACP providers](plugin-provider-acp.md) | 6 | 2 passed, 4 partial/blocked |
+| [Claude Code provider](plugin-provider-claude-code.md) | 7 | 2 passed, 5 partial/blocked |
+| [Codex provider](plugin-provider-codex.md) | 7 | 1 passed, 6 partial/blocked |
+| [Pi provider](plugin-provider-pi.md) | 5 | 2 passed, 3 partial/blocked |
+| [Automatic provider retry](plugin-provider-retry.md) | 5 | 5 partial/blocked |
+| [Provider usage limits](plugin-provider-usage.md) | 3 | 2 passed, 1 partial/blocked |
+| [Web, desktop, and mobile notifications](plugin-push-notifications.md) | 6 | 1 passed, 5 partial/blocked |
+| [Scheduled messages](plugin-scheduled-send.md) | 5 | 2 passed, 3 partial/blocked |
+| [Secure credential requests](plugin-secrets.md) | 5 | 4 passed, 1 partial/blocked |
+| [Side chats](plugin-side-chat.md) | 4 | 3 passed, 1 partial/blocked |
+| [Tasks, boards, and delegation](plugin-tasks.md) | 13 | 11 passed, 2 partial/blocked |
+| [Theme preview workbench](plugin-theme-preview.md) | 4 | 3 passed, 1 failed |
+| [Durable workflows](plugin-workflows.md) | 8 | 6 passed, 2 partial/blocked |
 
 ## Platform and support surfaces
 
 | Feature group | Recipes | Verification status |
 | --- | --- | --- |
-| [Desktop application](desktop.md) | 12 | Source-documented; platform setup required |
-| [Native mobile shell](mobile.md) | 12 | Source-documented; platform setup required |
-| [Hosted website, dashboard, and marketplace](hosted-web.md) | 12 | Source-documented; platform setup required |
-| [Cloud gateway and tunnel behavior](cloud-gateway.md) | 7 | Source-documented; platform setup required |
-| [Developer tools, fixtures, and scope boundaries](developer-fixtures.md) | 5 | Source-documented; platform setup required |
+| [Desktop application](desktop.md) | 12 | 12 partial/blocked |
+| [Native mobile shell](mobile.md) | 12 | 12 partial/blocked |
+| [Hosted website, dashboard, and marketplace](hosted-web.md) | 12 | 5 passed, 7 partial/blocked |
+| [Cloud gateway and tunnel behavior](cloud-gateway.md) | 7 | 4 passed, 3 partial/blocked |
+| [Developer tools, fixtures, and scope boundaries](developer-fixtures.md) | 5 | 2 passed, 3 partial/blocked |
 
 ## Scope reconciliation
 

@@ -1,6 +1,6 @@
 # ACP providers
 
-Status: **source-documented; live execution pending**.
+Status: **2026-09-05: 2 passed, 4 partial/blocked**. See [the audit](../MAINTENANCE.md) and [per-recipe ledger](../validation-2026-09-05.json).
 
 ## Setup and entry points
 
@@ -36,3 +36,7 @@ invent a plugin CLI where the feature uses a core command instead. Preserve
 failed attempts and missing prerequisites as unverified results. Restore plugin
 configuration and remove only this run’s fixtures, registrations, and workers.
 External account changes use authorized disposable targets.
+
+## Maintenance notes
+
+- Custom agents use an unprefixed slug in id; BB prefixes it with acp-. Discover the resulting provider ID from the live catalog before spawning. Configure through plugin config provider-acp customAgents and restore the original string afterward. Source: `plugins/provider-acp/src/agents.ts:9`.

@@ -1,6 +1,6 @@
 # Cloud gateway and tunnel behavior
 
-Status: **source-documented; platform execution pending**.
+Status: **2026-09-05: 4 passed, 3 partial/blocked**. See [the audit](../MAINTENANCE.md) and [per-recipe ledger](../validation-2026-09-05.json).
 
 ## Setup and entry points
 
@@ -35,3 +35,7 @@ Record each row and platform separately with the actual entry point, observed
 state, persisted side effect, and evidence. Missing hardware/service access is
 a prerequisite gap, not a pass. Stop only owned sessions/processes, restore
 preferences, and remove only synthetic resources after evidence is preserved.
+
+## Maintenance notes
+
+- For the progressive-stream check, request `Accept-Encoding: identity` and timestamp each received chunk. Record compressed delivery separately: local Wrangler gzip can coalesce decoded small chunks until stream completion. Source: `apps/connect/src/tunnel-do.ts:304`.

@@ -1,10 +1,10 @@
 # Remote Connect and port sharing
 
-Status: **source-documented; live execution pending**.
+Status: **2026-09-05: 5 passed, 2 partial/blocked**. See [the audit](../MAINTENANCE.md) and [per-recipe ledger](../validation-2026-09-05.json).
 
 ## Setup and entry points
 
-Settings → Plugins → Connect; bb connect --help. Use the local cloud stack and a fresh synthetic store/account. Never pair an imported store or use the owner’s live tunnel as a fixture.
+Settings → Remote access; use `bb connect` for command help. Use the local cloud stack and a fresh synthetic store/account. Never pair an imported store or use the owner’s live tunnel as a fixture.
 
 Use the main skill’s isolated targets and evidence rules. A plugin can be present
 in this checkout but disabled in an installation. Enable it only in the test
@@ -38,3 +38,7 @@ invent a plugin CLI where the feature uses a core command instead. Preserve
 failed attempts and missing prerequisites as unverified results. Restore plugin
 configuration and remove only this run’s fixtures, registrations, and workers.
 External account changes use authorized disposable targets.
+
+## Maintenance notes
+
+- Open Settings → Remote access (plugin id `connect`). Use `bb connect` for command help; this parser rejects `bb connect --help` as an unknown flag. Use `off` to disconnect and forget credentials, or the plugin enable toggle to suspend the tunnel while retaining pairing. Source: `plugins/connect/src/cli.ts:74`.

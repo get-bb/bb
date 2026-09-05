@@ -1,13 +1,13 @@
 # Active turns, queues, plans, goals, and recovery
 
-Status: **source-documented; not live-verified in the initial smoke pass**.
+Status: **2026-09-05: 3 passed, 11 partial/blocked**. See [the audit](../MAINTENANCE.md) and [per-recipe ledger](../validation-2026-09-05.json).
 
 ## Setup and entry points
 
 An authenticated provider and synthetic workspace; use short bounded turns. Save IDs and monitor thread show, output, and log. Capability-dependent rows need the specific provider.
 
 Follow the main skill’s isolated launch, doctor, evidence, and cleanup rules.
-CLI examples below omit the `pnpm --silent bb:dev` prefix; use that source CLI
+CLI examples below omit the `node apps/cli/dist/index.js` prefix; use that source CLI
 against the same dev instance. Resolve IDs with list/show and inspect the named
 command’s `--help` before mutation. Use fresh browser snapshots for controls.
 
@@ -33,10 +33,10 @@ command’s `--help` before mutation. Use fresh browser snapshots for controls.
 | Plan approval and cancel-plan | Request a supported plan, inspect pending state, approve or reject it, then repeat and invoke cancel-plan. | Decision reaches the provider and the plan indicator exits; rejection does not silently implement the plan. |
 | Durable goal and clear-goal | Use a provider supporting goals with a small measurable task; inspect goal status, then clear an active goal. | Goal state and continuation agree with the provider; clear stops goal-driven continuation. |
 | Compaction and clear context | On idle/failed threads call compact and clear separately; follow up afterward. | Provider reports completion or unsupported action; BB does not invent a successful compaction. |
-| Todo and context indicators | Inspect pending-todos and the context ring during a multi-step synthetic turn; expand details. | Counts, plan/todo states, and supported usage data agree with timeline events. |
+| Todo and context indicators | Inspect thread show --json pendingTodos and the context ring during a multi-step synthetic turn; expand details. | Counts, plan/todo states, and supported usage data agree with timeline events. |
 | Wait, logs, output, counts | Exercise thread wait/show/log/output/count/list over idle, active, failed, and missing IDs. | Timeouts and terminal states are distinct; pagination and output refer to the requested thread. |
 | Reconnect and late events | Briefly disconnect only the QA daemon during a turn; reconnect and inspect events after completion. | History is not duplicated; completion remains terminal; a late update cannot silently create a phantom active turn. |
-| Running state and event wait | Query running threads and events/wait with bounded cursors while a synthetic turn streams, finishes, and reconnects. | Events preserve order and identity; running state settles correctly, and a timeout is distinguished from completion. |
+| Running state and event wait | Use SDK threads.listRunning and threads.events.wait with bounded cursors while a synthetic turn streams, finishes, and reconnects. | Events preserve order and identity; running state settles correctly, and a timeout is distinguished from completion. |
 
 ## Evidence and cleanup
 
@@ -46,3 +46,8 @@ mutations through the available agent interface to establish parity. Preserve
 failed attempts and prerequisites; source documentation is not a passing test.
 Restore preferences and remove only the fixtures and sessions created by this
 recipe. External writes require a disposable test target and task authorization.
+
+## Maintenance notes
+
+- Inspect thread show --json pendingTodos and the context ring; pending-todos is an internal helper, not a CLI command. Source: `apps/cli/src/commands/thread/show.ts:313; apps/cli/src/commands/thread/pending-todos.ts`.
+- Use SDK threads.listRunning and threads.events.wait with bounded cursors; there is no standalone running or events CLI command in this revision. Source: `packages/sdk/src/areas/threads.ts; apps/cli/src/commands/thread/show.ts`.

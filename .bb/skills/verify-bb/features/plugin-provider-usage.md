@@ -1,6 +1,6 @@
 # Provider usage limits
 
-Status: **source-documented; live execution pending**.
+Status: **2026-09-05: 2 passed, 1 partial/blocked**. See [the audit](../MAINTENANCE.md) and [per-recipe ledger](../validation-2026-09-05.json).
 
 ## Setup and entry points
 
@@ -34,3 +34,7 @@ invent a plugin CLI where the feature uses a core command instead. Preserve
 failed attempts and missing prerequisites as unverified results. Restore plugin
 configuration and remove only this run’s fixtures, registrations, and workers.
 External account changes use authorized disposable targets.
+
+## Maintenance notes
+
+- Open Settings → Usage limits and the sidebar Provider usage disclosure. Compare core settings usage / sdk.system.usageLimits with plugin getUsage, which wraps per-machine providers and normalizes optional fields; it is not byte-for-byte the core response. Source: `plugins/provider-usage/app.tsx:112`.

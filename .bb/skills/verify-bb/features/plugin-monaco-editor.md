@@ -1,6 +1,6 @@
 # Code editor and file tree
 
-Status: **source-documented; live execution pending**.
+Status: **2026-09-05: 3 passed, 1 failed, 2 partial/blocked**. See [the audit](../MAINTENANCE.md) and [per-recipe ledger](../validation-2026-09-05.json).
 
 ## Setup and entry points
 
@@ -37,3 +37,7 @@ invent a plugin CLI where the feature uses a core command instead. Preserve
 failed attempts and missing prerequisites as unverified results. Restore plugin
 configuration and remove only this run’s fixtures, registrations, and workers.
 External account changes use authorized disposable targets.
+
+## Maintenance notes
+
+- Current Monaco uses a div[aria-label="Editor content"] native edit context, not necessarily a textarea. Focus that label and send keyboard input; wait for rendering before reading undo/redo results. Source: `plugins/monaco-editor/app.tsx:214`.

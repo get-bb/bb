@@ -1,5 +1,7 @@
 # Persist appearance choices
 
+Status: **2026-09-05: 1 passed**. See [the audit](../MAINTENANCE.md) and [per-recipe ledger](../validation-2026-09-05.json).
+
 ## User goal and source
 
 Change the app's appearance and keep it after reload.
@@ -28,7 +30,7 @@ Capture the starting Theme and Palette labels so they can be restored.
    label to change, then reload and check **Nord** still appears.
 5. Read `GET /api/v1/system/config` and record only `appearance.themeId`;
    require `nord`. The complete response includes more configuration than
-   this proof needs. `pnpm --silent bb:dev settings show --json` exposes the
+   this proof needs. `node apps/cli/dist/index.js settings show --json` exposes the
    same server-backed setting to agents.
 6. Capture the resulting appearance. Restore both initial selections through
    their menus and verify the restoration through storage and the config API.

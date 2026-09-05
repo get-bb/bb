@@ -1,6 +1,6 @@
 # Scheduled messages
 
-Status: **source-documented; live execution pending**.
+Status: **2026-09-05: 2 passed, 3 partial/blocked**. See [the audit](../MAINTENANCE.md) and [per-recipe ledger](../validation-2026-09-05.json).
 
 ## Setup and entry points
 
@@ -36,3 +36,7 @@ invent a plugin CLI where the feature uses a core command instead. Preserve
 failed attempts and missing prerequisites as unverified results. Restore plugin
 configuration and remove only this run’s fixtures, registrations, and workers.
 External account changes use authorized disposable targets.
+
+## Maintenance notes
+
+- For headless Chromium, first inspect matchMedia("(hover: hover)"). When false, focus the row using its Reorder button, then Tab to Send now/Edit/Delete and press Enter. Pointer-only clicks on hidden actions can silently miss. Verify queue state via CLI/API, then refresh the UI if its snapshot lags. Source: `apps/app/src/components/promptbox/banner/QueuedMessagesList.tsx:877`.

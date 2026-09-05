@@ -1,6 +1,6 @@
 # Fallback question cards
 
-Status: **source-documented; live execution pending**.
+Status: **2026-09-05: 3 passed, 1 failed, 1 partial/blocked**. See [the audit](../MAINTENANCE.md) and [per-recipe ledger](../validation-2026-09-05.json).
 
 ## Setup and entry points
 

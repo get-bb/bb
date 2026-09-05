@@ -1,6 +1,6 @@
 # Theme preview workbench
 
-Status: **source-documented; live execution pending**.
+Status: **2026-09-05: 3 passed, 1 failed**. See [the audit](../MAINTENANCE.md) and [per-recipe ledger](../validation-2026-09-05.json).
 
 ## Setup and entry points
 
@@ -35,3 +35,8 @@ invent a plugin CLI where the feature uses a core command instead. Preserve
 failed attempts and missing prerequisites as unverified results. Restore plugin
 configuration and remove only this run’s fixtures, registrations, and workers.
 External account changes use authorized disposable targets.
+
+## Maintenance notes
+
+- Wait for the catalog and computed token measurements before asserting values; initial chips can say Loading themes and contrast can show an em dash.
+- Isolate malformed or oversized CSS checks from other workers. At the audited revision, Theme Preview reads catalog CSS without the core 256,000-character bound and its block-matching regex takes quadratic time on a long brace-free input. A 256,001-space fixture stalled the shared server for roughly 38 seconds; removing only that fixture restored responsiveness. Preserve expected bounded, responsive handling as a product requirement. Source: `plugins/theme-preview/server.ts:99`, `plugins/theme-preview/server.ts:148`, `plugins/theme-preview/server.ts:340`.

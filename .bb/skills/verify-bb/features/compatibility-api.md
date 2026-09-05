@@ -1,13 +1,13 @@
 # Agent interfaces, route compatibility, and error contracts
 
-Status: **source-documented; not live-verified in the initial smoke pass**.
+Status: **2026-09-05: 3 passed, 5 partial/blocked**. See [the audit](../MAINTENANCE.md) and [per-recipe ledger](../validation-2026-09-05.json).
 
 ## Setup and entry points
 
 Isolated source server, source CLI, and SDK from this checkout. Use real IDs from targeted list/show calls.
 
 Follow the main skill’s isolated launch, doctor, evidence, and cleanup rules.
-CLI examples below omit the `pnpm --silent bb:dev` prefix; use that source CLI
+CLI examples below omit the `node apps/cli/dist/index.js` prefix; use that source CLI
 against the same dev instance. Resolve IDs with list/show and inspect the named
 command’s `--help` before mutation. Use fresh browser snapshots for controls.
 
@@ -40,3 +40,9 @@ mutations through the available agent interface to establish parity. Preserve
 failed attempts and prerequisites; source documentation is not a passing test.
 Restore preferences and remove only the fixtures and sessions created by this
 recipe. External writes require a disposable test target and task authorization.
+
+## Maintenance notes
+
+- `status` accepts --json, not --project/--environment flags. To verify in-thread context after the source env helper clears inherited context, set BB_PROJECT_ID/BB_THREAD_ID/BB_ENVIRONMENT_ID to resolved synthetic IDs before the source CLI invocation; keep BB_CLI/BB_CLI_REEXEC unset. Source: `apps/cli/src/commands/status.ts:50`.
+- Open Settings → Remote access (plugin id `connect`). Use `bb connect` for command help; this parser rejects `bb connect --help` as an unknown flag. Use `off` to disconnect and forget credentials, or the plugin enable toggle to suspend the tunnel while retaining pairing. Source: `plugins/connect/src/cli.ts:74`.
+- Verify callback presentation with `/auth/callback?status=error` and success/default. This view does not redeem a code or create a session; exercise actual authentication in its owning provider flow. `?error=` or an arbitrary `?code=` does not select the failure view. Source: `apps/app/src/views/AuthCallbackView.tsx:15`.

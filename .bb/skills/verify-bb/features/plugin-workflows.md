@@ -1,6 +1,6 @@
 # Durable workflows
 
-Status: **source-documented; live execution pending**.
+Status: **2026-09-05: 6 passed, 2 partial/blocked**. See [the audit](../MAINTENANCE.md) and [per-recipe ledger](../validation-2026-09-05.json).
 
 ## Setup and entry points
 
@@ -39,3 +39,7 @@ invent a plugin CLI where the feature uses a core command instead. Preserve
 failed attempts and missing prerequisites as unverified results. Restore plugin
 configuration and remove only this run’s fixtures, registrations, and workers.
 External account changes use authorized disposable targets.
+
+## Maintenance notes
+
+- Workflow CLI run/validate/status/history require explicit BB project+thread context. After launcher env clears inherited context, restore only IDs resolved from the synthetic source store. File paths/cwd must be inside the origin workspace. Source: `plugins/workflows/src/cli.ts:39`.

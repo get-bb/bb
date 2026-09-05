@@ -1,13 +1,13 @@
 # Compose, mentions, attachments, and voice
 
-Status: **source-documented; not live-verified in the initial smoke pass**.
+Status: **2026-09-05: 6 passed, 6 partial/blocked**. See [the audit](../MAINTENANCE.md) and [per-recipe ledger](../validation-2026-09-05.json).
 
 ## Setup and entry points
 
 A synthetic project with text/image files and one authenticated provider. Use both the root composer and a thread follow-up composer.
 
 Follow the main skill’s isolated launch, doctor, evidence, and cleanup rules.
-CLI examples below omit the `pnpm --silent bb:dev` prefix; use that source CLI
+CLI examples below omit the `node apps/cli/dist/index.js` prefix; use that source CLI
 against the same dev instance. Resolve IDs with list/show and inspect the named
 command’s `--help` before mutation. Use fresh browser snapshots for controls.
 
@@ -44,3 +44,12 @@ mutations through the available agent interface to establish parity. Preserve
 failed attempts and prerequisites; source documentation is not a passing test.
 Restore preferences and remove only the fixtures and sessions created by this
 recipe. External writes require a disposable test target and task authorization.
+
+## Maintenance notes
+
+- Rich editing is Settings → General → Markdown formatting in prompt box and is client-local. Use Shift+Enter to create a newline; wait at least the 250ms draft persistence debounce before checking stored state. Source: `apps/app/src/views/SettingsView.tsx:545`.
+- For branch/worktree coverage use a precommitted synthetic Git fixture; a new repository with no commits disables New worktree. A second enrolled test host is required for an actual host-change assertion. Source: `apps/app/src/views/RootComposeView.tsx:1067`.
+- Composer cycles use Alt+M (model), Alt+P (provider), and Alt+T (reasoning); add Shift for backward. Fast mode is the service-tier switch. Read execution from accepted turn events to prove the sent combination. Source: `apps/server/src/services/system/app-keybindings.ts:240`.
+- Use a distinct workspace filename with no same-named prior attachment for the send-time-content test. Verify the provider tool path as well as response text so an older attachment choice cannot be mistaken for stale workspace resolution. Source: `apps/app/src/hooks/pathMentionSuggestions.ts:15`.
+- For synthetic project fixtures use skill list --project <id> --environment <id>; environment alone defaults project to personal and can return Environment not found. project commands also requires --provider <id>. Source: `apps/cli/src/commands/skill.ts:173`.
+- For headless clipboard setup grant clipboard-read, clipboard-write and clipboard-sanitized-write, then write to clipboard and use real Ctrl+V. Distinguish whole-message Add to chat from selected-text quote coverage. Source: `apps/app/src/components/promptbox/PromptBoxInternal.tsx:1690`.

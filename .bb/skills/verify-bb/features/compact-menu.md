@@ -1,5 +1,7 @@
 # Use a compact persistent menu
 
+Status: **2026-09-05: 1 passed**. See [the audit](../MAINTENANCE.md) and [per-recipe ledger](../validation-2026-09-05.json).
+
 ## User goal and source
 
 Choose an appearance option in a narrow viewport and reopen the menu without

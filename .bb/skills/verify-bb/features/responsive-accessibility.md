@@ -1,6 +1,6 @@
 # Responsive layouts, accessibility, and performance
 
-Status: **source-documented; platform execution pending**.
+Status: **2026-09-05: 8 partial/blocked**. See [the audit](../MAINTENANCE.md) and [per-recipe ledger](../validation-2026-09-05.json).
 
 ## Setup and entry points
 
@@ -37,3 +37,7 @@ Record each row and platform separately with the actual entry point, observed
 state, persisted side effect, and evidence. Missing hardware/service access is
 a prerequisite gap, not a pass. Stop only owned sessions/processes, restore
 preferences, and remove only synthetic resources after evidence is preserved.
+
+## Maintenance notes
+
+- Use desktop Safari on macOS for desktop WebKit claims; use iOS Simulator Safari/WebView separately for iOS claims. Preflight Safari WebDriver remote automation without changing owner preferences. Record each client independently and exclude iOS variants when requested. Source: `packages/shared-ui/src/components/ui/responsive-overlay.tsx:208; live safari-session.json`.

@@ -1,6 +1,6 @@
 # Persistent agent memory
 
-Status: **source-documented; live execution pending**.
+Status: **2026-09-05: 6 passed**. See [the audit](../MAINTENANCE.md) and [per-recipe ledger](../validation-2026-09-05.json).
 
 ## Setup and entry points
 
@@ -37,3 +37,7 @@ invent a plugin CLI where the feature uses a core command instead. Preserve
 failed attempts and missing prerequisites as unverified results. Restore plugin
 configuration and remove only this run’s fixtures, registrations, and workers.
 External account changes use authorized disposable targets.
+
+## Maintenance notes
+
+- The instruction catalog has a fixed 3,900-character budget, including header/footer; it is not a user-configurable budget. Add enough long synthetic summaries and verify the Showing X of Y footer plus full-record retrieval. Source: `plugins/memory/server.ts:9; plugins/memory/server.ts:775`.

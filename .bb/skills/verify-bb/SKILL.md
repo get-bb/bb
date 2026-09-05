@@ -40,9 +40,11 @@ Literal extraction cannot resolve every dynamic registration, and source
 fingerprints cannot judge recipe completeness; reconcile menus, help, schemas
 and actual behavior during maintenance.
 
-The four original smoke recipes have live evidence in VALIDATION.md. The
-expanded recipes are source-documented and pending execution. An exhaustive
-map is the test inventory, not a claim of a completed whole-product test run.
+The [latest maintenance audit](MAINTENANCE.md) assessed all 348 recipes:
+166 passed, 177 partial/blocked and 5 failed. The
+[per-recipe ledger](validation-2026-09-05.json) records evidence and remaining
+subchecks. [VALIDATION.md](VALIDATION.md) preserves the initial smoke history.
+An exhaustive map is the test inventory, not a whole-product pass.
 
 After changing the inventory helper, run its standalone fixture tests:
 
@@ -122,10 +124,11 @@ and verify the processes still belong to this checkout.
 ```bash
 scripts/bb-dev-app status
 eval "$(scripts/bb-dev-app env)"
+unset BB_CLI BB_CLI_REEXEC
 curl -fsS "$BB_SERVER_URL/health"
 curl -fsS "http://127.0.0.1:$BB_HOST_DAEMON_PORT/health"
 curl -fsS "$BB_SERVER_URL/api/v1/hosts"
-pnpm --silent bb:dev project list --json
+node apps/cli/dist/index.js project list --json
 ```
 
 The server health returns `{"ok":true}` (possibly with `launchId`); daemon
@@ -137,8 +140,25 @@ current source commit and whether the tree is dirty with the launch evidence.
 
 `scripts/bb-dev-app env` deliberately clears the parent thread context,
 including `BB_THREAD_STORAGE`. Save the evidence location before evaluating
-it. It targets the dev server and daemon; use `pnpm --silent bb:dev` for CLI
-checks against this source revision. A bare `bb` may target the user's app.
+it. It targets the dev server and daemon. In that isolated shell, unset both
+`BB_CLI` and `BB_CLI_REEXEC`, then use `node apps/cli/dist/index.js` for CLI
+checks. The launcher builds this entry point through Turbo. If a separate build
+is needed, run `pnpm exec turbo run build --filter=@bb/cli` first.
+
+The source entry point otherwise reexecutes an inherited `BB_CLI`, silently
+using the installed client against the dev server. During maintenance,
+`pnpm --silent bb:dev` also changed literal newlines in arguments into
+backslash-plus-n bytes. Direct Node invocation with quoted arguments preserved
+the bytes. Check the returned content and revision, not only the exit code.
+Keep these environment changes inside the test shell or wrapper; use bare
+`bb` outside it for coordination with the parent BB thread.
+
+Commands such as workflows require thread context. After evaluating the dev
+environment, set `BB_THREAD_ID`, `BB_PROJECT_ID`, and `BB_ENVIRONMENT_ID` only
+from synthetic entities created in that instance. Never restore the parent's
+production context. A wrapper that changes directory must invoke the built
+CLI by its absolute checkout path; scaffold commands should run in an owned
+fixture directory.
 
 Run doctor after any unexpected behavior. Also check the browser URL and the
 feature's prerequisite. Provider login is required only for actual agent
@@ -155,9 +175,22 @@ quoted heredoc, get page `bb`, and follow the feature recipe. Read a fresh
 snapshot before using its `ref/eN` selector. References are observations,
 not durable selectors; never copy their numbers from another run. Prefer
 the stable selectors documented in each recipe. Wait for the expected route,
-control, or state after an action rather than repeatedly clicking.
+control, or state after an action rather than repeatedly clicking. For a rich
+composer, enter multiline text with Shift+Enter; literal newlines passed to
+`dev-browser fill()` can behave like submit keys. Wait for the draft persistence
+debounce before checking stored content.
 
-Do not run concurrent scripts against this page. Browser scripts have no
+Persistent menus can retain closed DOM nodes. Scope menu selectors to the
+visible open menu and wait for its exit transition before the next action.
+Headless Chromium can report `(hover: hover)` as false even with mouse input.
+For queued-message actions, click the row's Reorder button to establish
+focus-within, then verify the action accepts pointer input before clicking.
+
+Do not run concurrent scripts against this page. Separate browser profiles
+isolate cookies and local preferences, but `thread open` and pane controls can
+reach other clients connected to the same server. Serialize these commands
+across workers, observe the intended client, and reset each profile to its own
+fixture URL afterward. Browser scripts have no
 `process.env`; substitute the resolved run paths in screenshot arguments, or
 use `p.shot()` and copy its returned file into the evidence directory.
 

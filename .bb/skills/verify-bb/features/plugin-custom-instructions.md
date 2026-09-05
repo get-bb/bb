@@ -1,6 +1,6 @@
 # Custom agent instructions
 
-Status: **source-documented; live execution pending**.
+Status: **2026-09-05: 2 passed, 1 partial/blocked**. See [the audit](../MAINTENANCE.md) and [per-recipe ledger](../validation-2026-09-05.json).
 
 ## Setup and entry points
 
@@ -33,3 +33,7 @@ invent a plugin CLI where the feature uses a core command instead. Preserve
 failed attempts and missing prerequisites as unverified results. Restore plugin
 configuration and remove only this run’s fixtures, registrations, and workers.
 External account changes use authorized disposable targets.
+
+## Maintenance notes
+
+- Use bb instructions get|set|clear, or explicit bb plugin run custom-instructions get|set|clear. Settings route is /settings/plugins/custom-instructions. Source: `plugins/custom-instructions/server.ts:73`.

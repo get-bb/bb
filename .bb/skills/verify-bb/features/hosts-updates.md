@@ -1,13 +1,13 @@
 # Machines, daemon lifecycle, and updates
 
-Status: **source-documented; not live-verified in the initial smoke pass**.
+Status: **2026-09-05: 2 passed, 6 partial/blocked**. See [the audit](../MAINTENANCE.md) and [per-recipe ledger](../validation-2026-09-05.json).
 
 ## Setup and entry points
 
 A separate disposable host/daemon for enrollment, permission, disconnect, and update tests. Never revoke or update the host carrying this agent session.
 
 Follow the main skill’s isolated launch, doctor, evidence, and cleanup rules.
-CLI examples below omit the `pnpm --silent bb:dev` prefix; use that source CLI
+CLI examples below omit the `node apps/cli/dist/index.js` prefix; use that source CLI
 against the same dev instance. Resolve IDs with list/show and inspect the named
 command’s `--help` before mutation. Use fresh browser snapshots for controls.
 
@@ -39,3 +39,7 @@ mutations through the available agent interface to establish parity. Preserve
 failed attempts and prerequisites; source documentation is not a passing test.
 Restore preferences and remove only the fixtures and sessions created by this
 recipe. External writes require a disposable test target and task authorization.
+
+## Maintenance notes
+
+- Use UI machine ceiling and compare requested CLI execution with persisted runtime mode. SDK hosts.update is name-only; record the missing public ceiling setter as an agent-parity gap. Source: `apps/cli/src/commands/machine.ts; apps/app/src/views/MachineSettingsView.tsx; apps/app/src/hooks/mutations/host-mutations.ts:61; packages/sdk/src/areas/hosts.ts`.

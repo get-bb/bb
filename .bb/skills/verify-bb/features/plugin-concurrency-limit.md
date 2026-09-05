@@ -1,6 +1,6 @@
 # Agent concurrency limits
 
-Status: **source-documented; live execution pending**.
+Status: **2026-09-05: 4 passed, 1 partial/blocked**. See [the audit](../MAINTENANCE.md) and [per-recipe ledger](../validation-2026-09-05.json).
 
 ## Setup and entry points
 
@@ -36,3 +36,7 @@ invent a plugin CLI where the feature uses a core command instead. Preserve
 failed attempts and missing prerequisites as unverified results. Restore plugin
 configuration and remove only this run’s fixtures, registrations, and workers.
 External account changes use authorized disposable targets.
+
+## Maintenance notes
+
+- Use Settings → Concurrency limit. The global UI control is labeled Overall thread limit. Global unlimited is null; host auto uses availableParallelism. The per-host effectiveLimit field remains the host cap while globalLimit is enforced separately. Source: `plugins/concurrency-limit/app.tsx:1`.

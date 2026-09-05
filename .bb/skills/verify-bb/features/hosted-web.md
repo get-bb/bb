@@ -1,6 +1,6 @@
 # Hosted website, dashboard, and marketplace
 
-Status: **source-documented; platform execution pending**.
+Status: **2026-09-05: 5 passed, 7 partial/blocked**. See [the audit](../MAINTENANCE.md) and [per-recipe ledger](../validation-2026-09-05.json).
 
 ## Setup and entry points
 
@@ -43,3 +43,8 @@ Record each row and platform separately with the actual entry point, observed
 state, persisted side effect, and evidence. Missing hardware/service access is
 a prerequisite gap, not a pass. Stop only owned sessions/processes, restore
 preferences, and remove only synthetic resources after evidence is preserved.
+
+## Maintenance notes
+
+- The local launcher enables disposable email/password account creation from Create an account. This exercises dashboard authentication without GitHub OAuth setup. Keep OAuth/email-provider integration as separate prerequisite-gated checks. Source: `scripts/bb-cloud-dev.mjs:245`.
+- A fresh cloud store has no marketplace catalog. Seed only its LOCAL R2 bucket with the repository test v2 manifest at `v2/marketplace.json` and stats at `stats.json`, using `wrangler r2 object put ... --local --persist-to <owned-cloud-state>`. Record that fixture assets may be absent. Never seed production R2. Initial503 with an empty bucket is a setup gap, not a catalog regression. Source: `apps/web/src/marketplace/marketplace-data.ts:10`.

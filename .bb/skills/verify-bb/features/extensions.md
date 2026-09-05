@@ -1,13 +1,13 @@
 # Skills, plugins, marketplaces, and plugin development
 
-Status: **source-documented; not live-verified in the initial smoke pass**.
+Status: **2026-09-05: 11 passed, 2 partial/blocked**. See [the audit](../MAINTENANCE.md) and [per-recipe ledger](../validation-2026-09-05.json).
 
 ## Setup and entry points
 
 A trusted disposable plugin/skill fixture and isolated server. Registry/network checks need connectivity. Open Extensions and Settings → Installed plugins.
 
 Follow the main skill’s isolated launch, doctor, evidence, and cleanup rules.
-CLI examples below omit the `pnpm --silent bb:dev` prefix; use that source CLI
+CLI examples below omit the `node apps/cli/dist/index.js` prefix; use that source CLI
 against the same dev instance. Resolve IDs with list/show and inspect the named
 command’s `--help` before mutation. Use fresh browser snapshots for controls.
 
@@ -44,3 +44,12 @@ mutations through the available agent interface to establish parity. Preserve
 failed attempts and prerequisites; source documentation is not a passing test.
 Restore preferences and remove only the fixtures and sessions created by this
 recipe. External writes require a disposable test target and task authorization.
+
+## Maintenance notes
+
+- Use the isolated BB data directory for BB-user skills and disposable project .bb/.claude/.agents locations for scope tests. Provider-global skill paths still refer to real host directories; a source store does not isolate them. Source: `apps/server/src/services/skills/registry-skill-install.ts:309`.
+- Skill Edit opens a new chat composer with skill ID/path and revision-aware CLI instructions. Complete an edit through that chat or bb skill update; do not expect an inline text editor. Delete has a cancelable confirmation. Source: `packages/shared-ui/src/components/ui/resource-edit-prompt.ts:15`.
+- Source dev app version 0.0.0 deliberately skips engines.bb checks. For a live incompatibility test here, use an impossible engines.bbPluginSdk requirement; assert incompatible runtime status and absence of factory execution. Registration may succeed while activation is incompatible. Source: `apps/server/src/services/plugins/plugin-runtime.ts:750`.
+- Use plugin update <id> --yes for unattended managed updates. This revision does not accept --json on plugin update. Local path plugins are pinned; rebuild/reload them. Use a managed disposable Git source to test update history and compatibility. Source: `apps/cli/src/commands/plugin.ts:1094`.
+- Run scaffolding with a wrapper that applies isolated source environment, clears BB_CLI/BB_CLI_REEXEC, changes to an owned temporary directory, then executes the absolute built source CLI path. A repo-root wrapper can otherwise scaffold inside the checkout. Source: `apps/cli/src/commands/plugin.ts:1181`.
+- For a token-auth fixture HTTP route, send the plugin token as x-bb-plugin-token (or supported token query parameter). Do not assume an Authorization Bearer header; capture token only in memory and redact logs. Source: `apps/server/src/routes/plugins.ts:156`.

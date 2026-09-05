@@ -1,5 +1,7 @@
 # Add a local project
 
+Status: **2026-09-05: 1 passed**. See [the audit](../MAINTENANCE.md) and [per-recipe ledger](../validation-2026-09-05.json).
+
 ## User goal and source
 
 Select a folder on a connected machine and use it as a project.
@@ -36,7 +38,7 @@ or worktree creation are required. Use a fresh folder for each repeated pass.
    target. The folder listing updates asynchronously. Capture this state.
 4. Click **Add project** inside that dialog. Wait for it to close and for
    the prompt textbox and **Project: fixture** button to appear.
-5. Read `pnpm --silent bb:dev project list --json`. Match the source path
+5. Read `node apps/cli/dist/index.js project list --json`. Match the source path
    exactly; record its returned project ID. Reload the page and check the
    project remains available in the picker.
 

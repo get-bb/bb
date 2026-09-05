@@ -1,6 +1,6 @@
 # Account pooling
 
-Status: **source-documented; live execution pending**.
+Status: **2026-09-05: 7 partial/blocked**. See [the audit](../MAINTENANCE.md) and [per-recipe ledger](../validation-2026-09-05.json).
 
 ## Setup and entry points
 
@@ -38,3 +38,7 @@ invent a plugin CLI where the feature uses a core command instead. Preserve
 failed attempts and missing prerequisites as unverified results. Restore plugin
 configuration and remove only this run’s fixtures, registrations, and workers.
 External account changes use authorized disposable targets.
+
+## Maintenance notes
+
+- Open Settings → Account Pooler [Experimental] (/settings/plugins/account-pool), then Add account. API-key storage acceptance and Ready status do not prove upstream authentication; verify that separately using a disposable target. Source: `plugins/account-pool/app.tsx:88`.
