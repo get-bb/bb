@@ -13,11 +13,15 @@ import {
 } from "./interactive-requests.js";
 import {
   CODEX_MCP_ELICITATION_KIND,
+  normalizeCodexMcpElicitation,
+  buildCodexMcpElicitationResponse,
   type CodexComputerUsePermission,
 } from "./mcp-elicitation.js";
 
 const capturedParams = computerUseElicitation.params;
 const permission: CodexComputerUsePermission = {
+  kind: "computer_use",
+  serverName: "cua_repl",
   app: { id: "com.apple.calculator", name: "Calculator" },
   message: capturedParams.message,
   scopes: ["session", "always"],
@@ -106,8 +110,6 @@ describe("Computer Use elicitation decoding", () => {
   it.each([
     ["URL mode", { ...capturedParams, mode: "url" }],
     ["OpenAI form mode", { ...capturedParams, mode: "openai/form" }],
-    ["another MCP server", { ...capturedParams, serverName: "other-server" }],
-    ["missing turn ID", { ...capturedParams, turnId: undefined }],
     [
       "a form containing fields",
       {
@@ -187,22 +189,41 @@ describe("Computer Use elicitation decoding", () => {
         },
       },
     ],
-  ])("explicitly rejects %s", (_name, params) => {
-    expect(() =>
-      decodeCodexInteractiveRequest({ ...computerUseElicitation, params }),
-    ).toThrowError(ProviderRequestDecodeError);
-  });
+  ])(
+    "keeps %s unsupported instead of allowing generic form acceptance",
+    (_name, params) => {
+      const decoded = normalizeCodexMcpElicitation(params);
+      expect(decoded.elicitation.kind).toBe("unsupported");
+      expect(() =>
+        buildCodexMcpElicitationResponse(decoded.elicitation, {
+          action: "accept",
+          content: {},
+        }),
+      ).toThrow(/only be declined or cancelled/);
+      expect(
+        buildCodexMcpElicitationResponse(decoded.elicitation, {
+          action: "cancel",
+        }),
+      ).toEqual({ action: "cancel", content: null, _meta: null });
+    },
+  );
 
-  it("includes the invalid boundary field in its diagnostic", () => {
+  it("rejects an invalid request envelope before creating an interaction", () => {
     expect(() =>
       decodeCodexInteractiveRequest({
         ...computerUseElicitation,
-        params: {
-          ...capturedParams,
-          _meta: { ...capturedParams._meta, persist: ["global"] },
-        },
+        params: { ...capturedParams, turnId: undefined },
       }),
-    ).toThrowError(/Unsupported Codex MCP elicitation[\s\S]*persist/);
+    ).toThrowError(ProviderRequestDecodeError);
+  });
+
+  it("recognizes Computer Use through connector identity on another server", () => {
+    expect(
+      normalizeCodexMcpElicitation({
+        ...capturedParams,
+        serverName: "native-computer",
+      }).elicitation,
+    ).toEqual({ ...permission, serverName: "native-computer" });
   });
 });
 

@@ -31,18 +31,20 @@ const nativeResponseEnvelopeSchema = z.union([
   z.object({
     jsonrpc: z.literal("2.0"),
     id: z.string(),
-    result: z.union([
-      z.object({
-        action: z.literal("accept"),
-        content: z.object({}),
-        _meta: z.object({ persist: z.enum(["session", "always"]) }),
-      }),
-      z.object({
-        action: z.enum(["decline", "cancel"]),
-        content: z.null(),
-        _meta: z.null(),
-      }),
-    ]),
+    result: z.object({
+      action: z.enum(["accept", "decline", "cancel"]),
+      content: z.union([
+        z.record(
+          z.string(),
+          z.union([z.string(), z.number(), z.boolean(), z.array(z.string())]),
+        ),
+        z.null(),
+      ]),
+      _meta: z.union([
+        z.object({ persist: z.enum(["session", "always"]) }),
+        z.null(),
+      ]),
+    }),
   }),
   z.object({
     jsonrpc: z.literal("2.0"),
@@ -50,6 +52,84 @@ const nativeResponseEnvelopeSchema = z.union([
     error: z.object({ code: z.number(), message: z.string() }),
   }),
 ]);
+
+interface ScriptedElicitationRequest {
+  method: string;
+  id: number;
+  params: Record<string, JsonValue>;
+}
+
+const formElicitation = {
+  method: "mcpServer/elicitation/request",
+  id: 0,
+  params: {
+    threadId: "form-native-thread",
+    turnId: null,
+    serverName: "deployment-survey",
+    mode: "form",
+    message: "Configure the deployment",
+    requestedSchema: {
+      type: "object",
+      properties: {
+        project: {
+          type: "string",
+          title: "Project",
+          description: "Deployment project name",
+          minLength: 2,
+          maxLength: 20,
+        },
+        retries: {
+          type: "integer",
+          title: "Retries",
+          default: 3,
+          minimum: 1,
+          maximum: 5,
+        },
+        notify: {
+          type: "boolean",
+          title: "Send notification",
+          default: true,
+        },
+      },
+      required: ["project", "retries"],
+    },
+  },
+} satisfies ScriptedElicitationRequest;
+
+const urlElicitation = {
+  method: "mcpServer/elicitation/request",
+  id: 0,
+  params: {
+    threadId: "url-native-thread",
+    turnId: null,
+    serverName: "account-setup",
+    mode: "url",
+    message: "Connect your account",
+    url: "https://example.com/connect",
+    elicitationId: "connect-account-1",
+  },
+} satisfies ScriptedElicitationRequest;
+
+const unsupportedElicitation = {
+  method: "mcpServer/elicitation/request",
+  id: 0,
+  params: {
+    threadId: "unsupported-native-thread",
+    turnId: null,
+    serverName: "nested-form-server",
+    mode: "form",
+    message: "Configure nested settings",
+    requestedSchema: {
+      type: "object",
+      properties: {
+        settings: {
+          type: "object",
+          properties: { enabled: { type: "boolean" } },
+        },
+      },
+    },
+  },
+} satisfies ScriptedElicitationRequest;
 
 const validCases = [
   {
@@ -102,7 +182,10 @@ async function waitForInteractionRequest(
   );
 }
 
-async function runElicitation(answer: JsonValue) {
+async function runElicitation(args: {
+  answer: JsonValue;
+  request: ScriptedElicitationRequest;
+}) {
   const tempDir = mkdtempSync(join(tmpdir(), "bb-codex-elicitation-"));
   const scriptPath = join(tempDir, "script.json");
   const responseLogPath = join(tempDir, "outbound-responses.jsonl");
@@ -114,7 +197,7 @@ async function runElicitation(answer: JsonValue) {
     scriptPath,
     JSON.stringify({
       outboundResponseLogPath: responseLogPath,
-      turns: [[{ kind: "request", ...computerUseElicitation }]],
+      turns: [[{ kind: "request", ...args.request }]],
     }),
   );
   vi.stubEnv("BB_CODEX_BRIDGE_APP_SERVER_COMMAND", process.execPath);
@@ -145,34 +228,20 @@ async function runElicitation(answer: JsonValue) {
     });
     const request = await waitForInteractionRequest(harness);
     const params = interactionRequestParamsSchema.parse(request.params);
-    expect(params).toEqual({
-      providerThreadId,
-      threadId,
-      turnId: null,
-      providerNativeIds: true,
-      payload: {
-        kind: CODEX_MCP_ELICITATION_KIND,
-        title: computerUseElicitation.params.message,
-        data: {
-          app: { id: "com.apple.calculator", name: "Calculator" },
-          message: computerUseElicitation.params.message,
-          scopes: ["session", "always"],
-          warning: null,
-          riskLevel: "low",
-        },
-      },
-    });
     handleLine(
       JSON.stringify({
         jsonrpc: "2.0",
         id: request.id,
-        result: { kind: "request_answer", value: answer },
+        result: { kind: "request_answer", value: args.answer },
       }),
     );
     await harness.waitForResponse(turnRequestId);
-    return nativeResponseEnvelopeSchema.parse(
-      JSON.parse(readFileSync(responseLogPath, "utf8").trim()),
-    );
+    return {
+      interaction: params,
+      nativeResponse: nativeResponseEnvelopeSchema.parse(
+        JSON.parse(readFileSync(responseLogPath, "utf8").trim()),
+      ),
+    };
   } finally {
     if (providerThreadId !== "") {
       harness.sendRequest(stopRequestId, "thread/stop", {
@@ -192,7 +261,28 @@ async function runElicitation(answer: JsonValue) {
 it.sequential.each(validCases)(
   "round-trips a Computer Use answer that $name",
   async (testCase) => {
-    await expect(runElicitation(testCase.answer)).resolves.toEqual({
+    const { interaction, nativeResponse } = await runElicitation({
+      request: computerUseElicitation,
+      answer: testCase.answer,
+    });
+    expect(interaction).toMatchObject({
+      turnId: null,
+      providerNativeIds: true,
+    });
+    expect(interaction.payload).toEqual({
+      kind: CODEX_MCP_ELICITATION_KIND,
+      title: computerUseElicitation.params.message,
+      data: {
+        kind: "computer_use",
+        serverName: "cua_repl",
+        app: { id: "com.apple.calculator", name: "Calculator" },
+        message: computerUseElicitation.params.message,
+        scopes: ["session", "always"],
+        warning: null,
+        riskLevel: "low",
+      },
+    });
+    expect(nativeResponse).toEqual({
       jsonrpc: "2.0",
       id: "fx-req-1",
       result: testCase.nativeResponse,
@@ -202,7 +292,10 @@ it.sequential.each(validCases)(
 );
 
 it.sequential("rejects an invalid Computer Use answer without granting access", async () => {
-  const response = await runElicitation({ action: "accept" });
+  const { nativeResponse: response } = await runElicitation({
+    request: computerUseElicitation,
+    answer: { action: "accept" },
+  });
   if (!("error" in response)) {
     throw new Error(
       `Expected native rejection, received ${JSON.stringify(response)}`,
@@ -210,8 +303,129 @@ it.sequential("rejects an invalid Computer Use answer without granting access", 
   }
   expect(response.error).toEqual({
     code: BRIDGE_JSON_RPC_ERRORS.BRIDGE_ERROR,
-    message: expect.stringContaining(
-      "Invalid Computer Use permission response",
-    ),
+    message: expect.stringContaining("Computer Use permission requires"),
+  });
+}, 30_000);
+
+it.sequential("round-trips a validated generic form response", async () => {
+  const { interaction, nativeResponse } = await runElicitation({
+    request: formElicitation,
+    answer: {
+      action: "accept",
+      content: { project: "bb", retries: 4, notify: false },
+    },
+  });
+  expect(interaction.payload).toEqual({
+    kind: CODEX_MCP_ELICITATION_KIND,
+    title: formElicitation.params.message,
+    data: {
+      kind: "form",
+      serverName: "deployment-survey",
+      message: "Configure the deployment",
+      fields: [
+        {
+          kind: "string",
+          name: "project",
+          title: "Project",
+          description: "Deployment project name",
+          required: true,
+          defaultValue: null,
+          minLength: 2,
+          maxLength: 20,
+          format: null,
+        },
+        {
+          kind: "integer",
+          name: "retries",
+          title: "Retries",
+          description: null,
+          required: true,
+          defaultValue: 3,
+          minimum: 1,
+          maximum: 5,
+        },
+        {
+          kind: "boolean",
+          name: "notify",
+          title: "Send notification",
+          description: null,
+          required: false,
+          defaultValue: true,
+        },
+      ],
+    },
+  });
+  expect(nativeResponse).toEqual({
+    jsonrpc: "2.0",
+    id: "fx-req-1",
+    result: {
+      action: "accept",
+      content: { project: "bb", retries: 4, notify: false },
+      _meta: null,
+    },
+  });
+}, 30_000);
+
+it.sequential("rejects generic form values outside the native constraints", async () => {
+  const { nativeResponse } = await runElicitation({
+    request: formElicitation,
+    answer: {
+      action: "accept",
+      content: { project: "x", retries: 8, notify: false },
+    },
+  });
+  if (!("error" in nativeResponse)) {
+    throw new Error(
+      `Expected native rejection, received ${JSON.stringify(nativeResponse)}`,
+    );
+  }
+  expect(nativeResponse.error).toMatchObject({
+    code: BRIDGE_JSON_RPC_ERRORS.BRIDGE_ERROR,
+  });
+}, 30_000);
+
+it.sequential("round-trips URL acceptance without form content", async () => {
+  const { interaction, nativeResponse } = await runElicitation({
+    request: urlElicitation,
+    answer: { action: "accept" },
+  });
+  expect(interaction.payload).toEqual({
+    kind: CODEX_MCP_ELICITATION_KIND,
+    title: urlElicitation.params.message,
+    data: {
+      kind: "url",
+      serverName: "account-setup",
+      message: "Connect your account",
+      url: "https://example.com/connect",
+      elicitationId: "connect-account-1",
+    },
+  });
+  expect(nativeResponse).toEqual({
+    jsonrpc: "2.0",
+    id: "fx-req-1",
+    result: { action: "accept", content: null, _meta: null },
+  });
+}, 30_000);
+
+it.sequential("lets the user decline an unsupported elicitation", async () => {
+  const { interaction, nativeResponse } = await runElicitation({
+    request: unsupportedElicitation,
+    answer: { action: "decline" },
+  });
+  expect(interaction.payload).toMatchObject({
+    kind: CODEX_MCP_ELICITATION_KIND,
+    title: unsupportedElicitation.params.message,
+    data: {
+      kind: "unsupported",
+      serverName: "nested-form-server",
+      message: "Configure nested settings",
+      nativeMode: "form",
+      reason: expect.any(String),
+    },
+  });
+  expect(nativeResponse).toEqual({
+    jsonrpc: "2.0",
+    id: "fx-req-1",
+    result: { action: "decline", content: null, _meta: null },
   });
 }, 30_000);

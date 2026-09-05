@@ -47,6 +47,8 @@ it("surfaces a native Computer Use app permission request", () => {
       kind: "provider-codex/mcp-elicitation",
       title: computerUseElicitation.params.message,
       data: {
+        kind: "computer_use",
+        serverName: "cua_repl",
         app: { id: "com.apple.calculator", name: "Calculator" },
         message: computerUseElicitation.params.message,
         scopes: ["session", "always"],
