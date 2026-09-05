@@ -64,6 +64,7 @@ function normalizedUsage(
     case "ok":
       return {
         status: "ok",
+        accountEmail: usage.accountEmail,
         planLabel: usage.planLabel,
         windows: usage.windows.map((window) => ({
           label: window.label,

@@ -76,6 +76,7 @@ describe("provider usage footer disclosure", () => {
                       expiredHint: "Sign in to Claude Code again.",
                       usage: {
                         status: "ok",
+                        accountEmail: "claude@example.com",
                         planLabel: "Max",
                         windows: [
                           {
@@ -97,6 +98,7 @@ describe("provider usage footer disclosure", () => {
                       expiredHint: "Sign in to Codex again.",
                       usage: {
                         status: "ok",
+                        accountEmail: "codex@example.com",
                         planLabel: "Plus",
                         windows: [
                           {
@@ -126,6 +128,7 @@ describe("provider usage footer disclosure", () => {
                       expiredHint: "Sign in to Codex again.",
                       usage: {
                         status: "ok",
+                        accountEmail: "codex@example.com",
                         planLabel: "Plus",
                         windows: [
                           {
@@ -193,6 +196,8 @@ describe("provider usage footer disclosure", () => {
     const machinePicker = slot.getByRole("button", {
       name: "Usage machine: M5",
     });
+    expect(slot.getByRole("heading", { name: "Codex" })).toBeTruthy();
+    expect(slot.getByText("codex@example.com")).toBeTruthy();
     expect(slot.getByText("97% used")).toBeTruthy();
 
     fireEvent.pointerDown(machinePicker, { button: 0 });
@@ -210,9 +215,13 @@ describe("provider usage footer disclosure", () => {
     expect(
       codexTab.querySelector("[data-provider-logo*='/codex/']"),
     ).not.toBeNull();
+    expect(slot.getByRole("heading", { name: "Claude Code" })).toBeTruthy();
+    expect(slot.getByText("claude@example.com")).toBeTruthy();
     expect(slot.getByText("82% used")).toBeTruthy();
 
     fireEvent.click(codexTab);
+    expect(slot.getByRole("heading", { name: "Codex" })).toBeTruthy();
+    expect(slot.getByText("codex@example.com")).toBeTruthy();
     expect(slot.getByText("37% used")).toBeTruthy();
     fireEvent.keyDown(codexTab, { key: "ArrowLeft" });
     expect(claudeTab.getAttribute("aria-selected")).toBe("true");

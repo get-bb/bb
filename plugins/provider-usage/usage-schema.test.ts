@@ -16,6 +16,7 @@ function provider(
     expiredHint: "Sign in again.",
     usage: {
       status: "ok",
+      accountEmail: null,
       planLabel: null,
       windows: [
         {
