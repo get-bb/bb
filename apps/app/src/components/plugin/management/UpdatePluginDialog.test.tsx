@@ -229,7 +229,7 @@ describe("UpdatePluginDialog", () => {
     render(<MemoryRouter>{notification?.description}</MemoryRouter>);
     expect(
       screen.getByRole("link", { name: "Linear" }).getAttribute("href"),
-    ).toBe("/extensions/plugins/linear?view=installed");
+    ).toBe("/settings/plugins/linear?view=installed");
     expect(
       screen.getByRole("link", { name: "Linear" }).parentElement?.textContent,
     ).toBe("Linear — plugin source is unavailable");
