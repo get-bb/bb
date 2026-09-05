@@ -581,10 +581,24 @@ HTTP(S) activation uses the same client preference as first-party links while
 leaving app routes, modifiers, copying, unsupported schemes, and explicit
 targets browser-owned. A `_blank` or named target preserves your `rel` tokens
 but adds `noopener noreferrer` unless `rel` explicitly contains `opener`.
-experimental_FileLink renders a real explicit live-file anchor whose ordinary activation uses the same
-preview/file-opener controller as first-party links. Valid targets expose an
-encoded, scheme-safe href; traversal paths, ill-formed Unicode, and other
-malformed runtime targets are inert in both the app and SDK test harness. Its
+Markdown renders message text with bb's typography, tables, lists, and code.
+Its optional experimental_imagePolicy is "render" (the default) or "alt-text"
+(image descriptions without loading images); HTML stays disabled. Optional
+experimental_resolveFileLink(href) receives local destinations before path
+normalization and returns ExperimentalFileOpenOptions ({ target, location },
+including null location) or null. The host validates complete explicit targets
+and renders native FileLink; null, malformed results, and throws produce inert
+selectable labels without href. A supplied resolver replaces ambient timeline
+file routing; the caller verifies sender identity and rejects traversal.
+HTTP(S), other URL schemes, fragments, and BB routes bypass the resolver and
+retain host handling. Both policies require the matching host runtime, not
+merely updated SDK declarations.
+experimental_FileLink uses the same preview/file-opener controller as
+first-party links for ordinary click and Enter. It has no browser href until
+an identity-preserving file URL exists: modified/auxiliary navigation,
+downloads, and URL dragging are gated. Use its native context menu for copy/open
+actions. Traversal paths, ill-formed Unicode, and other malformed runtime
+targets are inert in both the app and SDK test harness. Its
 lazy context menu adds Open with, preferred-external, installed-app, and copy
 actions without reading the file or discovering editors on mount.
 experimental_ProviderModelPicker is the controlled

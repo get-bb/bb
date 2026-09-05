@@ -33,16 +33,32 @@ both forms in `navigateCalls` and accepts an `openUrl` behavior option.
 Use `experimental_FileLink` for an explicit live workspace, host, or
 thread-storage file. Ordinary activation opens the shared BB preview and its
 context menu exposes built-in/plugin viewers, preferred external opening, and
-copy actions. Valid targets expose an encoded, scheme-safe anchor href so
-modifier clicks, downloads, and copied links cannot reinterpret a file name as
-an external URL scheme. Malformed runtime targets—including traversal paths
-and ill-formed Unicode—have no active href and cannot record a preview in the
-frontend harness. Buttons and menus can call
+copy actions. File links have no browser href until an identity-preserving
+file URL exists: ordinary click and Enter open the native preview, while
+modified/auxiliary navigation, downloads, and URL dragging are gated. Use the
+native context menu for copy/open actions. Malformed runtime targets—including
+traversal paths and ill-formed Unicode—remain inert and cannot record a preview
+in the frontend harness. Buttons and menus can call
 `experimental_openFilePreview({ target, location })` or
 `experimental_openFileExternally({ target, location })`; both return whether
 the current host accepted the intent. Targets never infer an ambient workspace.
 The frontend harness records both methods and accepts `openFilePreview` and
 `openFileExternally` behavior options.
+
+Use host `Markdown` for message typography, tables, lists, and code. Its
+`experimental_imagePolicy?: "render" | "alt-text"` preserves rendered images
+when omitted; `alt-text` emits descriptions without loading images. HTML stays
+disabled. `experimental_resolveFileLink?: (href: string) =>
+ExperimentalFileOpenOptions | null` receives local destinations before path
+normalization. Return a complete verified sender target and `location` (null
+is allowed); the host validates the intent and renders native FileLink. Null,
+malformed results, and throws produce inert selectable labels without href.
+Supplying the resolver replaces ambient timeline file routing; the caller owns
+sender authorization and traversal rejection. HTTP(S), other URL schemes,
+fragments, and BB routes retain host handling and bypass the resolver. These
+props require a matching host runtime, not merely updated SDK declarations.
+The frontend harness exposes the supplied policies on its source-text wrapper;
+it does not reproduce the Markdown parser or prove renderer safety.
 
 A nav panel's `fixedTabs` entries must include the containing nav
 panel's `id` as `panelId`; each entry is also a stable reference to that

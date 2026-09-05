@@ -131,10 +131,20 @@ className? }` —
 
 - `Markdown` — bb's chat-message markdown renderer (same typography,
   spacing, and code styling as timeline messages). Props:
-  `{ content, className? }`. Use it wherever plugin UI quotes or previews
-  message content (e.g. a reply header) so it reads like the rest of the
-  chat instead of a differently-styled bundled renderer. Renderer options
-  beyond content/className stay host-internal.
+  `{ content, className?, experimental_imagePolicy?, experimental_resolveFileLink? }`.
+  Use it wherever plugin UI quotes or previews message content.
+  `experimental_imagePolicy` is `"render"` (the default) or `"alt-text"`
+  (descriptions without image loading); HTML remains disabled.
+  `experimental_resolveFileLink(href)` receives local destinations before path
+  normalization and returns `ExperimentalFileOpenOptions` (`{ target, location }`,
+  including null location) or null. The host validates the complete explicit
+  target and renders native FileLink; null, malformed results, and throws render
+  inert selectable labels without href. A supplied resolver replaces ambient
+  timeline file routing; the caller verifies sender identity and rejects
+  traversal. HTTP(S), other URL schemes, fragments, and BB routes bypass it and
+  retain host handling. These props require the matching host runtime, not just
+  updated SDK declarations. The frontend harness exposes supplied policies on
+  its source-text wrapper; renderer safety requires real host-renderer tests.
 - `UrlLink` — a real anchor whose ordinary HTTP(S) activation
   follows the current client's in-app/external-browser preference. It keeps
   internal BB routes in SPA history, preserves modifier clicks, copying,
@@ -144,15 +154,18 @@ className? }` —
   contains `opener`. Use `useBbNavigate().openUrl(url)` for
   buttons, menus, and effects; its boolean reports whether the current app
   accepted the intent, not whether a later OS launch completed.
-- `experimental_FileLink` — a real anchor for an explicit live file target:
+- `experimental_FileLink` — a native preview link for an explicit live file target:
   `{ kind: "workspace", environmentId, path }`,
   `{ kind: "host", hostId, path }` (absolute), or
   `{ kind: "thread-storage", threadId, path }`. Ordinary activation opens the
   current surface's shared BB preview. Its lazy context menu offers the
   built-in preview, matching plugin `fileOpener`s, the preferred external
-  target, available client apps, and copy actions. Valid targets expose an
-  encoded, scheme-safe href; traversal paths, ill-formed Unicode, and other
-  malformed runtime targets are inert in both the app and SDK test harness.
+  target, available client apps, and copy actions. File links have no browser
+  href until an identity-preserving file URL exists: ordinary click and Enter
+  preview remain, while modified/auxiliary navigation, downloads, and URL
+  dragging are gated. Use the native context menu for copy/open actions.
+  Traversal paths, ill-formed Unicode, and other malformed runtime targets are
+  inert in both the app and SDK test harness.
   Optional `location` is a one-based line/column or line range. For buttons and
   effects use
   `useBbNavigate().experimental_openFilePreview({ target, location })` or
