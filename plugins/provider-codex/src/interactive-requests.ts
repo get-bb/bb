@@ -1,6 +1,7 @@
 import {
   ProviderRequestDecodeError as ProviderRequestDecodeErrorValue,
   ProviderResponseEncodeError,
+  isApprovalInteractionOutcome,
   type ApprovalInteractionOutcome,
   type DecodedInteractiveRequest,
   type ProviderInboundRequest,
@@ -8,12 +9,20 @@ import {
   type PendingInteractionGrantablePermissionProfile,
   type PendingInteractionGrantedPermissionProfile,
   type PendingInteractionRequestedPermissionProfile,
+  type ProviderInteractionOutcome,
 } from "@get-bb/plugin-sdk/provider-bridge";
 import type { CodexMacOsPermissionItem } from "./extension-kinds.js";
 import { normalizePendingInteractionRequestedPermissionProfile } from "./pending-interaction-normalization.js";
 import type { CommandExecutionRequestApprovalResponse } from "./generated/codex-app-server/schema/v2/CommandExecutionRequestApprovalResponse.js";
 import type { FileChangeRequestApprovalResponse } from "./generated/codex-app-server/schema/v2/FileChangeRequestApprovalResponse.js";
 import type { PermissionsRequestApprovalResponse } from "./generated/codex-app-server/schema/v2/PermissionsRequestApprovalResponse.js";
+import {
+  CODEX_MCP_ELICITATION_KIND,
+  codexComputerUseElicitationParamsSchema,
+  codexComputerUsePermissionSchema,
+  codexComputerUsePermissionResponseSchema,
+  type CodexMcpElicitationResponse,
+} from "./mcp-elicitation.js";
 import {
   codexCommandExecutionRequestApprovalParamsSchema,
   codexFileChangeRequestApprovalParamsSchema,
@@ -29,7 +38,8 @@ import type {
 type CodexInteractiveResponse =
   | CommandExecutionRequestApprovalResponse
   | FileChangeRequestApprovalResponse
-  | PermissionsRequestApprovalResponse;
+  | PermissionsRequestApprovalResponse
+  | CodexMcpElicitationResponse;
 
 function assertNever(value: never): never {
   throw new ProviderResponseEncodeError(`Unexpected value: ${String(value)}`);
@@ -87,6 +97,37 @@ export function decodeCodexInteractiveRequest(
   }
 
   switch (request.method) {
+    case "mcpServer/elicitation/request": {
+      const parsed = codexComputerUseElicitationParamsSchema.safeParse(
+        request.params,
+      );
+      if (!parsed.success) {
+        throw new ProviderRequestDecodeErrorValue(
+          `Unsupported Codex MCP elicitation. Expected a Computer Use app permission with an empty form schema: ${parsed.error.message}`,
+        );
+      }
+      const params = parsed.data;
+      return {
+        requestId: request.id,
+        method: request.method,
+        providerThreadId: params.threadId,
+        turnId: params.turnId,
+        payload: {
+          kind: CODEX_MCP_ELICITATION_KIND,
+          title: params.message,
+          data: {
+            app: {
+              id: params._meta.tool_params.app,
+              name: params._meta.tool_params_display[0].value,
+            },
+            message: params.message,
+            scopes: params._meta.persist,
+            warning: params._meta.subtitle ?? null,
+            riskLevel: params._meta.riskLevel,
+          },
+        },
+      };
+    }
     case "item/commandExecution/requestApproval": {
       const parsed = codexCommandExecutionRequestApprovalParamsSchema.safeParse(
         request.params,
@@ -204,8 +245,49 @@ export function decodeCodexInteractiveRequest(
 }
 
 export function buildCodexInteractiveResponse(
-  args: ApprovalInteractionOutcome,
+  args: ProviderInteractionOutcome,
 ): CodexInteractiveResponse {
+  if (!isApprovalInteractionOutcome(args)) {
+    if (
+      args.payload.kind !== CODEX_MCP_ELICITATION_KIND ||
+      !("kind" in args.resolution) ||
+      args.resolution.kind !== "request_answer"
+    ) {
+      throw new ProviderResponseEncodeError(
+        `Unsupported Codex interaction outcome: ${args.payload.kind}`,
+      );
+    }
+    const permission = codexComputerUsePermissionSchema.safeParse(
+      args.payload.data,
+    );
+    if (!permission.success) {
+      throw new ProviderResponseEncodeError(
+        `Invalid Computer Use permission payload: ${permission.error.message}`,
+      );
+    }
+    const parsed = codexComputerUsePermissionResponseSchema.safeParse(
+      args.resolution.value,
+    );
+    if (!parsed.success) {
+      throw new ProviderResponseEncodeError(
+        `Invalid Computer Use permission response: ${parsed.error.message}`,
+      );
+    }
+    const response = parsed.data;
+    if (response.action !== "accept") {
+      return { action: response.action, content: null, _meta: null };
+    }
+    if (!permission.data.scopes.includes(response.persist)) {
+      throw new ProviderResponseEncodeError(
+        `Computer Use permission did not offer the requested scope: ${response.persist}`,
+      );
+    }
+    return {
+      action: "accept",
+      content: {},
+      _meta: { persist: response.persist },
+    };
+  }
   switch (args.payload.subject.kind) {
     case "command": {
       const response: CommandExecutionRequestApprovalResponse = {

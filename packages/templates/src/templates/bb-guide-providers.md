@@ -40,6 +40,33 @@ removes the native Task tool. The preferences default off and apply
 when a provider thread is started, resumed, or forked; they do not modify the
 provider's global configuration.
 
+Codex Computer Use app permissions
+
+When Codex requests access to a macOS app, bb displays the app name, bundle
+identifier, native risk level, and any warning above the composer. Choose
+Allow for this session or Always allow when Codex offers that scope. Decline
+and Cancel return the corresponding native response. Stop turn interrupts the
+turn instead. Codex owns permission persistence. These prompts are separate
+from macOS Accessibility and Screen Recording permissions.
+
+Agents can inspect and answer the same request through the existing CLI:
+
+  bb thread interactions list <thread-id> --json
+  bb thread interactions show <interaction-id> <thread-id> --json
+  bb thread interactions respond <interaction-id> <thread-id> --value '{"action":"accept","persist":"session"}'
+
+Use `persist: "always"` only when the request's `scopes` includes `always`.
+To refuse or cancel, pass `{"action":"decline"}` or `{"action":"cancel"}`.
+The SDK exposes the same operation through
+`client.threads.interactions.respond({ threadId, interactionId, value })`.
+The provider's `provider-codex/mcp-elicitation` renderer uses the Plugin SDK
+pending-interaction `submit(value)` callback.
+Invalid responses never grant access. A response rejected by the provider
+after submission can finish the interaction with a tool error.
+
+This supports Computer Use app consent with an empty form schema. Other MCP
+elicitation forms and URL requests report an unsupported-request error.
+
 Provider failure recovery
 
 The builtin Provider retry plugin is enabled on fresh installations and

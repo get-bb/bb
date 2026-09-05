@@ -3531,28 +3531,46 @@ importers:
 
   plugins/provider-codex:
     dependencies:
-      '@get-bb/plugin-sdk':
+      "@bb/shared-ui":
+        specifier: workspace:*
+        version: link:../../packages/shared-ui
+      "@get-bb/plugin-sdk":
         specifier: workspace:*
         version: link:../../packages/plugin-sdk
       zod:
         specifier: 4.3.6
         version: 4.3.6
     devDependencies:
-      '@bb/domain':
+      "@bb/domain":
         specifier: workspace:*
         version: link:../../packages/domain
-      '@bb/process-utils':
+      "@bb/process-utils":
         specifier: workspace:*
         version: link:../../packages/process-utils
-      '@bb/provider-bridge-protocol':
+      "@bb/provider-bridge-protocol":
         specifier: workspace:*
         version: link:../../packages/provider-bridge-protocol
-      '@types/node':
+      "@testing-library/react":
+        specifier: ^16.3.2
+        version: 16.3.2(@testing-library/dom@10.4.1)(@types/react-dom@19.2.3(@types/react@19.2.13))(@types/react@19.2.13)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
+      "@types/node":
         specifier: ^22.0.0
         version: 22.19.10
+      "@types/react":
+        specifier: ^19.0.0
+        version: 19.2.13
+      jsdom:
+        specifier: ^29.0.1
+        version: 29.0.1(@noble/hashes@2.4.0)
+      react:
+        specifier: ^19.0.0
+        version: 19.2.4
+      react-dom:
+        specifier: ^19.0.0
+        version: 19.2.4(react@19.2.4)
       typescript:
         specifier: npm:@typescript/typescript6@^6.0.2
-        version: '@typescript/typescript6@6.0.2'
+        version: "@typescript/typescript6@6.0.2"
       typescript-7:
         specifier: npm:typescript@^7.0.2
         version: typescript@7.0.2

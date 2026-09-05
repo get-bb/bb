@@ -3,7 +3,7 @@
 import { createHash } from "node:crypto";
 import {
   isStandaloneBuiltinCompactCommand,
-  approvalInteractionOutcomeSchema,
+  providerInteractionOutcomeSchema,
   type DynamicTool,
   type PromptInput,
   type ThreadDelta,
@@ -753,7 +753,7 @@ function handleChildRequest(
     providerNativeIds: true,
   })
     .then((result) => {
-      const outcome = approvalInteractionOutcomeSchema.parse({
+      const outcome = providerInteractionOutcomeSchema.parse({
         payload: request.payload,
         resolution: result,
       });

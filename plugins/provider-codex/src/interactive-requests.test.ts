@@ -21,6 +21,8 @@ it("surfaces a native Computer Use app permission request", () => {
         app: { id: "com.apple.calculator", name: "Calculator" },
         message: computerUseElicitation.params.message,
         scopes: ["session", "always"],
+        warning: null,
+        riskLevel: "low",
       },
     },
   });
