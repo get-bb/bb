@@ -1,0 +1,157 @@
+---
+name: verify-bb
+description: Verify BB user journeys in an isolated source dev app using dev-browser@next and the matching source CLI. Use after changes to project creation, thread lifecycle, appearance, or compact menus, or when asked to smoke-test BB. Read the feature map for coverage and prerequisites.
+---
+
+# Verify BB
+
+Run from the repository root. Start with [the feature map](features/README.md)
+and select the affected journeys. Read `docs/debugging-and-qa.md` for the
+existing launcher's contract. This skill covers a source web app and local
+host daemon; it does not imply Safari, Electron, or remote-host verification.
+
+## Launch
+
+Use Node 22.19 or newer in the Node 22 line; `.nvmrc` supplies the primary
+version. The initial run passed on Node 22.23.2. Node 24.18.0 crashed during
+native-module setup on that run. Keep the chosen Node on PATH for launch,
+source CLI calls, and cleanup. Do not bypass native-module repair or rebuild
+a shared binary manually.
+
+```bash
+node --version
+npm install -g dev-browser@next
+dev-browser --version
+dev-browser --help
+scripts/bb-dev-app status
+```
+
+If Chrome is missing, run `dev-browser install`. The browser CLI accepts
+Puppeteer scripts on stdin and keeps named pages between calls.
+
+Choose an unused checkout. The launcher assigns ports and a data directory
+from the checkout path. Read its status before starting: `current` restarts
+processes on those ports, so do not use it on someone else's instance.
+Use a fresh store, never an imported store or the user's production database.
+
+For a new run, create a unique evidence directory and a nonempty fresh dev
+directory. The marker also prevents `migrateLegacyDevData` from adopting
+legacy data from the parent `.bb-dev` directory. If `mkdir` finds an existing
+dev directory, stop this setup and use another unused checkout; do not delete
+or adopt the existing data.
+
+```bash
+export BB_VERIFY_RUN="$(mktemp -d /tmp/bb-verification-XXXXXX)"
+export BB_VERIFY_BROWSER="verify-bb-$(basename "$BB_VERIFY_RUN")"
+scripts/bb-dev-app status > "$BB_VERIFY_RUN/before-launch.txt"
+command -v lsof >/dev/null || exit 1
+for BB_VERIFY_PORT in $(sed -nE 's/^(App|Server|Host daemon): http:\/\/[^:]+:([0-9]+)$/\2/p' "$BB_VERIFY_RUN/before-launch.txt"); do
+  if lsof -nP -iTCP:"$BB_VERIFY_PORT" -sTCP:LISTEN; then
+    exit 1
+  fi
+done
+export BB_VERIFY_DATA_DIR="$(sed -n 's/^Data dir: //p' "$BB_VERIFY_RUN/before-launch.txt")"
+export BB_VERIFY_APP_URL="$(sed -n 's/^App: //p' "$BB_VERIFY_RUN/before-launch.txt")"
+test -n "$BB_VERIFY_DATA_DIR" && test -n "$BB_VERIFY_APP_URL" || exit 1
+mkdir "$BB_VERIFY_DATA_DIR" || exit 1
+printf '%s\n' "$BB_VERIFY_RUN" > "$BB_VERIFY_DATA_DIR/verify-bb-owner"
+git rev-parse HEAD > "$BB_VERIFY_RUN/source-commit.txt"
+scripts/bb-dev-app current > "$BB_VERIFY_RUN/launch.log" 2>&1
+```
+
+All three ports must be unoccupied before `current`, which stops listeners
+before it starts the app. A stopped screen session alone is insufficient;
+checkout-derived ports can collide. Run under the same OS user that owns
+the dev processes so listener inspection is complete.
+
+Run slow startup through the agent's background process facility, inspect the
+log, and provide progress while it builds. Startup must finish successfully
+before driving. If it fails, inspect the error and clean up that attempt.
+The launcher runs install, native-module checks, and Turbo builds itself.
+
+Record the variables above in your run notes so later shell calls retain the
+same targets. Never rely on variables surviving separate agent shell calls.
+When resuming this run, require its marker to contain the exact run directory
+and verify the processes still belong to this checkout.
+
+## Doctor
+
+```bash
+scripts/bb-dev-app status
+eval "$(scripts/bb-dev-app env)"
+curl -fsS "$BB_SERVER_URL/health"
+curl -fsS "http://127.0.0.1:$BB_HOST_DAEMON_PORT/health"
+curl -fsS "$BB_SERVER_URL/api/v1/hosts"
+pnpm --silent bb:dev project list --json
+```
+
+The server health returns `{"ok":true}` (possibly with `launchId`); daemon
+health returns `ok`. Require the intended host to be `connected`. Inspect
+`lsof -nP -iTCP:<port> -sTCP:LISTEN` for each port reported by status, then
+check its PID's command and working directory with `ps` and `lsof -p <pid>`.
+A responding port alone does not establish instance ownership. Record the
+current source commit and whether the tree is dirty with the launch evidence.
+
+`scripts/bb-dev-app env` deliberately clears the parent thread context,
+including `BB_THREAD_STORAGE`. Save the evidence location before evaluating
+it. It targets the dev server and daemon; use `pnpm --silent bb:dev` for CLI
+checks against this source revision. A bare `bb` may target the user's app.
+
+Run doctor after any unexpected behavior. Also check the browser URL and the
+feature's prerequisite. Provider login is required only for actual agent
+turns; inspect it through the UI or source CLI, never by printing credentials.
+
+## Drive
+
+```bash
+dev-browser --headless -b "$BB_VERIFY_BROWSER" -e "const p = await browser.getPage('bb'); await p.goto('$BB_VERIFY_APP_URL'); console.log(await p.snapshot({interactive:true}));"
+```
+
+For later steps use `dev-browser --headless -b "$BB_VERIFY_BROWSER"` with a
+quoted heredoc, get page `bb`, and follow the feature recipe. Read a fresh
+snapshot before using its `ref/eN` selector. References are observations,
+not durable selectors; never copy their numbers from another run. Prefer
+the stable selectors documented in each recipe. Wait for the expected route,
+control, or state after an action rather than repeatedly clicking.
+
+Do not run concurrent scripts against this page. Browser scripts have no
+`process.env`; substitute the resolved run paths in screenshot arguments, or
+use `p.shot()` and copy its returned file into the evidence directory.
+
+## Evidence
+
+Save before/action/after screenshots, compact text observations, selected API
+fields, and command results under `$BB_VERIFY_RUN`. Read the screenshots.
+Keep raw evidence local: provider pickers and logs can expose private model
+names and host paths. Review and redact before committing or sharing it.
+
+Prove the interaction through actual browser input. API reads and the source
+CLI verify side effects; they do not replace clicking the UI. Read persisted
+state after reload. Report source-only and blocked checks separately from
+live passes. Never treat a returned prompt or a thread title as an assistant
+response. Record the exact provider used privately, without hardcoding it
+into this skill.
+
+## Cleanup
+
+Restore settings through the UI and leave synthetic threads idle. Capture
+logs and evidence before stopping. Verify the ownership marker and inspect
+the checkout's listeners again before invoking the launcher stop command.
+
+```bash
+test "$(cat "$BB_VERIFY_DATA_DIR/verify-bb-owner")" = "$BB_VERIFY_RUN" || exit 1
+dev-browser stop "$BB_VERIFY_BROWSER"
+scripts/bb-dev-app stop
+scripts/bb-dev-app status > "$BB_VERIFY_RUN/after-stop.txt"
+test -s "$BB_VERIFY_RUN/source-commit.txt"
+```
+
+Check that the three previously recorded ports have no listeners and the
+named browser is absent from `dev-browser browsers`. Check every evidence
+file you intend to cite still exists. Remove only this run's marked dev data
+and synthetic fixture after confirming processes stopped; preserve the run
+directory and its evidence. Failed attempts need the same ownership checks.
+Never stop all browser profiles or kill processes by executable name.
+
+Use `maintain-verification-skill` to audit the map after relevant app changes.
+The initial observed results and limits are in [VALIDATION.md](VALIDATION.md).
