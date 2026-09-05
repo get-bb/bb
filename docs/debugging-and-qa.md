@@ -323,3 +323,13 @@ literals, regenerate the baseline with `--write` and commit it so the reduction
 is recorded. `--list` prints every hit. When the baseline reaches zero, delete
 it and the guard. This is guardrail G1 of the provider-plugin migration
 (the provider-plugin API design (docs/provider-plugin-api.md, added by the v3 contract PR; overview at https://get-bb.github.io/reports/design/provider-plugin-api.html)).
+
+## Linux AppImage Node runtime
+
+The AppImage launcher probes user namespaces and injects `--no-sandbox` when
+they are unavailable. Electron running as Node rejects that Chromium flag.
+The owned runtime supplies it after Node's `--` argument separator: AppRun sees
+the explicit flag and skips injection, while Node treats it as a script
+argument. The bridge subprocess receives only its script path. The AppImage
+lifecycle smoke exercises this launch and verifies that its runtime mount
+survives closing the GUI.

@@ -195,7 +195,11 @@ describe("bb app process", () => {
       },
     });
 
-    expect(launch.args).toContain(desktopMountScript.path);
+    expect(launch.args.slice(-3)).toEqual([
+      "--",
+      desktopMountScript.path,
+      "--no-sandbox",
+    ]);
     if (process.platform !== "linux") {
       return;
     }
