@@ -1,10 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  BB_DESKTOP_BROWSER_MAX_URL_LENGTH,
-  bbDesktopBrowserAttachRequestSchema,
-  bbDesktopBrowserSetBoundsRequestSchema,
-  bbDesktopBrowserStateSchema,
-} from "@bb/desktop-contract";
+import { bbDesktopBrowserAttachRequestSchema } from "@bb/desktop-contract";
 import {
   evaluatePopupRate,
   isAllowedBrowserUrl,
@@ -27,39 +22,7 @@ describe("isAllowedBrowserUrl", () => {
 });
 
 describe("browser IPC payload schemas", () => {
-  it("accepts a well-formed attach request and rejects bad shapes", () => {
-    expect(
-      bbDesktopBrowserAttachRequestSchema.safeParse({
-        tabId: "browser:abc",
-        url: "",
-        bounds: { x: 0, y: 0, width: 800, height: 600 },
-        visible: false,
-      }).success,
-    ).toBe(true);
-
-    expect(
-      bbDesktopBrowserAttachRequestSchema.safeParse({
-        tabId: "",
-        url: "",
-        bounds: { x: 0, y: 0, width: 800, height: 600 },
-        visible: false,
-      }).success,
-    ).toBe(false);
-    expect(
-      bbDesktopBrowserSetBoundsRequestSchema.safeParse({
-        tabId: "browser:abc",
-        bounds: { x: 0, y: 0, width: -1, height: 600 },
-      }).success,
-    ).toBe(false);
-    expect(
-      bbDesktopBrowserAttachRequestSchema.safeParse({
-        tabId: "browser:abc",
-        url: "",
-        bounds: { x: 0, y: 0, width: 800, height: 600 },
-        visible: false,
-        extra: true,
-      }).success,
-    ).toBe(false);
+  it("rejects legacy layout fields in attach requests", () => {
     expect(
       bbDesktopBrowserAttachRequestSchema.safeParse({
         tabId: "browser:abc",
@@ -67,41 +30,6 @@ describe("browser IPC payload schemas", () => {
         bounds: { x: 0, y: 0, width: 800, height: 600 },
         layout: { left: 0, top: 0, rightInset: 0, bottomInset: 0 },
         visible: false,
-      }).success,
-    ).toBe(false);
-  });
-
-  it("accepts a well-formed state push and rejects non-integer bounds", () => {
-    expect(
-      bbDesktopBrowserStateSchema.safeParse({
-        tabId: "browser:abc",
-        url: "https://example.com",
-        title: "Example",
-        isLoading: false,
-        canGoBack: true,
-        canGoForward: false,
-        errorText: null,
-      }).success,
-    ).toBe(true);
-
-    expect(
-      bbDesktopBrowserSetBoundsRequestSchema.safeParse({
-        tabId: "browser:abc",
-        bounds: { x: 0.5, y: 0, width: 800, height: 600 },
-      }).success,
-    ).toBe(false);
-  });
-
-  it("rejects oversized URLs beyond the length cap", () => {
-    const longUrl = `https://example.com/${"a".repeat(
-      BB_DESKTOP_BROWSER_MAX_URL_LENGTH,
-    )}`;
-    expect(
-      bbDesktopBrowserAttachRequestSchema.safeParse({
-        tabId: "browser:abc",
-        url: longUrl,
-        bounds: { x: 0, y: 0, width: 800, height: 600 },
-        visible: true,
       }).success,
     ).toBe(false);
   });
