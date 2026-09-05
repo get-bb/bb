@@ -147,7 +147,7 @@ export const OFFICIAL_PLUGINS = [
   {
     name: "browser-automation",
     pluginId: "browser-automation",
-    defaultEnabled: true,
+    defaultEnabled: false,
   },
   {
     name: "github",
