@@ -59,6 +59,7 @@ import type {
   PoolStatus,
 } from "./src/contracts.js";
 import type { accountPoolRpcContract } from "./src/rpc.js";
+import { blockingResetAt } from "./src/quota.js";
 import {
   ACCOUNT_POOL_ACCOUNTS_CHANGED,
   ACCOUNT_POOL_CONFIG_CHANGED,
@@ -176,14 +177,6 @@ function windowLongLabel(window: LimitWindow): string {
     return `${window.windowMinutes / 60} hour`;
   return `${window.windowMinutes} minute`;
 }
-function exhaustedResetAt(account: AccountSummary): number | null {
-  return (
-    account.fiveHourResetAt ??
-    account.sevenDayResetAt ??
-    account.limitWindows.find((window) => window.resetAt !== null)?.resetAt ??
-    null
-  );
-}
 function resetLabel(timestamp: number | null): string {
   if (timestamp === null) return "";
   const minutes = Math.max(1, Math.round((timestamp - Date.now()) / 60_000));
@@ -191,7 +184,10 @@ function resetLabel(timestamp: number | null): string {
     return `resets in ${minutes >= 60 ? `${Math.floor(minutes / 60)}h ${minutes % 60}m` : `${minutes}m`}`;
   return `resets ${new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" }).format(timestamp)}`;
 }
-function statusPresentation(account: AccountSummary): {
+function statusPresentation(
+  account: AccountSummary,
+  threshold: number,
+): {
   label: string;
   dot: string;
 } {
@@ -200,11 +196,13 @@ function statusPresentation(account: AccountSummary): {
       label: `Held${account.heldUntil === null ? "" : ` · retry at ${new Intl.DateTimeFormat(undefined, { hour: "2-digit", minute: "2-digit" }).format(account.heldUntil)}`}`,
       dot: "bg-warning",
     };
-  if (account.status === "exhausted")
+  if (account.status === "exhausted") {
+    const resetAt = blockingResetAt(account, null, threshold, Date.now());
     return {
-      label: `Exhausted${exhaustedResetAt(account) === null ? "" : ` · ${resetLabel(exhaustedResetAt(account))}`}`,
+      label: `Exhausted${resetAt === null ? "" : ` · ${resetLabel(resetAt)}`}`,
       dot: "bg-destructive",
     };
+  }
   if (account.status === "error")
     return { label: "Error", dot: "bg-destructive" };
   if (account.status === "disabled")
@@ -311,7 +309,7 @@ function AccountRow({
   onOpen: () => void;
   reorderDisabled: boolean;
 }) {
-  const status = statusPresentation(account);
+  const status = statusPresentation(account, threshold);
   const {
     attributes,
     isDragging,
@@ -1405,7 +1403,9 @@ function AccountDrawer({
     >
       <div className="flex items-center gap-2">
         <SettingsBadge>{tier(account)}</SettingsBadge>
-        <SettingsBadge>{statusPresentation(account).label}</SettingsBadge>
+        <SettingsBadge>
+          {statusPresentation(account, threshold).label}
+        </SettingsBadge>
       </div>
       <div className="space-y-4">
         {account.provider === "codex" ? (

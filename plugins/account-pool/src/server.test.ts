@@ -500,7 +500,7 @@ describe("Account Pool plugin", () => {
       if (responseNumber === 2) {
         response.writeHead(429, {
           "content-type": "application/json",
-          "x-codex-primary-used-percent": "100",
+          "x-codex-secondary-used-percent": "100",
         });
         response.end('{"error":{"message":"quota exhausted"}}');
         return;
@@ -684,15 +684,15 @@ describe("Account Pool plugin", () => {
         {
           slot: "primary",
           windowMinutes: 300,
-          utilization: 1,
-          status: "rejected",
+          utilization: 0.25,
+          status: null,
           source: "header",
         },
         {
           slot: "secondary",
           windowMinutes: 10_080,
-          utilization: 0.4,
-          status: null,
+          utilization: 1,
+          status: "rejected",
           source: "header",
         },
       ],
@@ -714,6 +714,24 @@ describe("Account Pool plugin", () => {
         },
       ],
     });
+    const secondCodex = status.accounts.find(
+      (account) =>
+        account.provider === "codex" && account.id !== firstCodex?.id,
+    );
+    if (secondCodex === undefined) throw new Error("Missing second account.");
+    await host.harness.behavior.callRpc("account.disable", {
+      id: secondCodex.id,
+    });
+    const blocked = await host.harness.behavior.fetchHttp(
+      "POST",
+      "/v1/responses",
+      {
+        headers: { "x-bb-account-pool-token": routed.token },
+        body: JSON.stringify({ model: "gpt-5", input: [] }),
+      },
+    );
+    expect(blocked.status).toBe(429);
+    expect(Number(blocked.headers.get("retry-after"))).toBeGreaterThan(80_000);
     const secret = accountSecretSchema.parse(
       JSON.parse(
         await fs.readFile(

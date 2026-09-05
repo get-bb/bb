@@ -21,6 +21,7 @@ import type {
 } from "./credentials.js";
 import {
   accountStatus,
+  blockingResetAt,
   governingWeeklyResetAt,
   isQuotaExhausted,
   isSharedQuotaExhausted,
@@ -1106,17 +1107,20 @@ export class AccountPoolHub {
       );
     }
     const now = this.options.now();
+    const threshold = this.options.getSettings().switchThreshold;
     const next = accounts
       .filter((account) => account.enabled)
       .flatMap((account) => {
         const quota = this.options.quotas.get(account.id);
-        return [
-          quota.heldUntil,
-          quota.fiveHourResetAt,
-          quota.sevenDayResetAt,
-          ...quota.limitWindows.map((window) => window.resetAt),
-          governingWeeklyResetAt(quota, family),
-        ].filter((value): value is number => value !== null && value > now);
+        if (quota.error !== null) return [];
+        const quotaResetAt = blockingResetAt(quota, family, threshold, now);
+        if (
+          quotaResetAt === null &&
+          isQuotaExhausted(quota, family, threshold, now)
+        )
+          return [];
+        const resetAt = Math.max(quota.heldUntil ?? 0, quotaResetAt ?? 0);
+        return resetAt > now ? [resetAt] : [];
       })
       .sort((left, right) => left - right)[0];
     const retryAfter = Math.max(

@@ -156,6 +156,43 @@ function activeFamilyWindow(
   );
 }
 
+export function blockingResetAt(
+  quota: AccountQuota | AccountSummary,
+  family: ModelFamily | null,
+  threshold: number,
+  now: number,
+): number | null {
+  let latest: number | null = null;
+  let unknown = false;
+  const include = (
+    utilization: number | null,
+    status: string | null,
+    resetAt: number | null,
+  ) => {
+    if (!activeWindow(utilization, status, resetAt, threshold, now)) return;
+    if (resetAt === null) unknown = true;
+    else latest = Math.max(latest ?? resetAt, resetAt);
+  };
+  include(
+    quota.fiveHourUtilization,
+    quota.fiveHourStatus,
+    quota.fiveHourResetAt,
+  );
+  include(
+    quota.sevenDayUtilization,
+    quota.sevenDayStatus,
+    quota.sevenDayResetAt,
+  );
+  for (const window of quota.limitWindows)
+    include(window.utilization, window.status, window.resetAt);
+  if (family !== null) {
+    const familyQuota = quota.familyWeekly[family];
+    if (familyQuota !== null)
+      include(familyQuota.utilization, familyQuota.status, familyQuota.resetAt);
+  }
+  return unknown ? null : latest;
+}
+
 export function isSharedQuotaExhausted(
   quota: AccountQuota,
   threshold: number,

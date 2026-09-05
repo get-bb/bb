@@ -130,20 +130,23 @@ describe("Account Pool settings", () => {
   });
 
   it("renders only the windows a Codex account reports and no Fable slot", async () => {
+    const blockingResetAt = Date.now() + 6 * 24 * 60 * 60 * 1_000;
     const slot = render([
       account({
         id: "22222222-2222-4222-8222-222222222222",
         provider: "codex",
         label: "pro@example.com",
         codexAccountId: "chatgpt-account",
-        fiveHourUtilization: null,
+        status: "exhausted",
+        fiveHourUtilization: 0.25,
+        fiveHourResetAt: Date.now() + 60 * 60 * 1_000,
         limitWindows: [
           {
             slot: "primary",
             windowMinutes: 10_080,
-            utilization: 0.48,
-            resetAt: Date.now() + 3_600_000,
-            status: "allowed",
+            utilization: 1,
+            resetAt: blockingResetAt,
+            status: "rejected",
             observedAt: 1,
             source: "usage",
           },
@@ -152,9 +155,14 @@ describe("Account Pool settings", () => {
     ]);
     expect(await slot.findByText("pro@example.com")).toBeTruthy();
     expect(slot.getByText("7D")).toBeTruthy();
-    expect(slot.getByText("48%")).toBeTruthy();
+    expect(slot.getByText("100%")).toBeTruthy();
     expect(slot.queryByText("5H")).toBeNull();
     expect(slot.queryByText("FABLE")).toBeNull();
+    expect(
+      slot.getByText(
+        `Exhausted · resets ${new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" }).format(blockingResetAt)}`,
+      ),
+    ).toBeTruthy();
     fireEvent.click(
       await slot.findByRole("button", { name: "Open pro@example.com details" }),
     );
