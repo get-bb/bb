@@ -211,11 +211,18 @@ getbb.app, so use a local path for a submission.
 
 ## Add the overview file
 
-The plugin author can keep a long-form description in a PLUGIN_OVERVIEW.md
-file beside the plugin package.json. The store detail page shows the short
-description as a lead paragraph under the plugin name, then an Overview
-section with this file. It is optional. Do not write one for the author. Copy
-the file only when the plugin repository holds it.
+Every entry in the public marketplace needs an overview file. The plugin author
+keeps the long-form description in a PLUGIN_OVERVIEW.md file beside the plugin
+package.json. The store detail page shows the short description as a lead
+paragraph under the plugin name, then an Overview section with this file. The
+overview is the same claim as the short description at length: the same
+outcome, the same surfaces, no capability the short text does not imply.
+
+Copy the author's file when the plugin repository holds it. When it does not,
+draft one from the behavior you observed while validating and screenshotting
+the plugin, show the full text to the user, and get approval before you commit
+it. Offer to add the same file to the plugin repository as PLUGIN_OVERVIEW.md
+so the two stay together. Never invent a capability to fill the file.
 
 Copy the file to overview/<plugin-id>.md in the marketplace repository. Reference
 it from the entry with the exact relative path:
@@ -265,8 +272,9 @@ statement below before you open the pull request.
 - The tags hold words a user would search for.
 - The icon reads clearly at 40 pixels.
 - The first screenshot shows the main surface with real content.
-- The overview file, when present, uses only the permitted markdown and https
-  links.
+- The entry references an overview file, and the overview says the same thing
+  as the short description at greater length.
+- The overview file uses only the permitted markdown and https links.
 - No field holds private data, a local path, or an internal URL.
 
 Fix the entry when one statement fails. Do not submit an entry you cannot

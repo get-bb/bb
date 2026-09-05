@@ -747,6 +747,14 @@ default. Scoped names such as `@acme/bb-plugin-hello` are also supported. The
 plugin id is the final package-name component minus `bb-plugin-`, so both forms
 use `hello`.
 
+The scaffold also writes `PLUGIN_OVERVIEW.md` beside package.json: the
+long-form store listing, shown in an Overview section under `bb.description` on
+the plugin detail page in the app and on getbb.app. It says the same thing as
+`bb.description` at length, so update both together. Keep it under 4000
+characters, use headings, paragraphs, emphasis, code, blockquotes, lists,
+thematic breaks, and absolute https links only, and do not open with a `#`
+title. A submission to the BB Community marketplace requires the file.
+
 Plugins can contribute palettes with `bb.themes`: an array of
 `{ id, name, description?, css, codeTheme? }`, where `css` is a
 plugin-relative `.css` file and optional `codeTheme` is

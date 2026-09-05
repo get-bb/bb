@@ -1,6 +1,6 @@
 ---
 name: submit-a-plugin
-description: Submit a bb plugin to the BB Community marketplace. Use whenever a user asks to submit, list, publish, or add a plugin to the BB marketplace, or asks for a marketplace pull request. This skill validates the plugin and release, creates the marketplace entry, icon, screenshots, and optional long-form description, and opens the pull request.
+description: Submit a bb plugin to the BB Community marketplace. Use whenever a user asks to submit, list, publish, or add a plugin to the BB marketplace, or asks for a marketplace pull request. This skill validates the plugin and release, creates the marketplace entry, icon, screenshots, and long-form overview, and opens the pull request.
 ---
 
 # Submit a plugin
@@ -50,7 +50,8 @@ rules.
 4. Get separate approval before any release mutation.
 5. Create one marketplace entry with a vendored icon.
 6. Install the plugin and capture its screenshots.
-7. Copy the plugin PLUGIN_OVERVIEW.md file into the marketplace when the plugin has one.
+7. Copy the plugin PLUGIN_OVERVIEW.md file into the marketplace. The public
+   marketplace requires an overview file on every entry.
 8. Validate the marketplace repository.
 9. Commit only the entry, icon, screenshots, and overview file.
 10. Open a pull request from the submitter account.
@@ -62,8 +63,9 @@ Read these references as the task reaches each stage:
   screenshots, or overview file. It states what a good entry and description
   hold, how to capture screenshots with a harness browser or computer
   automation tool, what to ask the user for when the harness has no such
-  tool, and which markdown the long-form description can use. It ends with a
-  quality check to run before the pull request.
+  tool, which markdown the long-form description can use, and what to do when
+  the plugin has no PLUGIN_OVERVIEW.md yet. It ends with a quality check to run
+  before the pull request.
 - Read references/pull-request.md before cloning, validating, or submitting
   the marketplace repository.
 
