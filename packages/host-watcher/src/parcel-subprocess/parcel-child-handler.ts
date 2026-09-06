@@ -18,6 +18,12 @@ function serializeEvents(
   return events.map((event) => ({ path: event.path, type: event.type }));
 }
 
+function joinWatchedEntry(dir: string, entry: string): string {
+  return path.win32.isAbsolute(dir) && !path.posix.isAbsolute(dir)
+    ? path.win32.join(dir, entry)
+    : path.posix.join(dir, entry);
+}
+
 interface ParcelChildHandler {
   handleMessage(message: ParentToChildMessage): void;
   dispose(): Promise<void>;
@@ -45,7 +51,7 @@ export function createParcelChildHandler(args: {
       kind: "events",
       id,
       events: entries.map((entry) => ({
-        path: path.join(dir, entry),
+        path: joinWatchedEntry(dir, entry),
         type: "update",
       })),
     });

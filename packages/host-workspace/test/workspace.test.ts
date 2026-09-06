@@ -1155,7 +1155,12 @@ describe("Workspace", () => {
 
     const files = await new Workspace(folder).listFiles();
 
-    expect(files).toHaveLength(fileCount);
+    try {
+      expect(files).toHaveLength(fileCount);
+    } finally {
+      tempDirs.splice(tempDirs.indexOf(folder), 1);
+      await fs.rm(folder, { recursive: true, force: true });
+    }
   }, 60_000);
 
   it("returns null when HEAD is unavailable in an empty repository", async () => {

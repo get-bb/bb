@@ -24,9 +24,9 @@ export function normalizeWatchEventPath(
       ? path.win32.normalize(eventPath)
       : path.win32.resolve(rootPath, eventPath);
   }
-  return path.isAbsolute(eventPath)
-    ? path.normalize(eventPath)
-    : path.resolve(rootPath, eventPath);
+  return path.posix.isAbsolute(eventPath)
+    ? path.posix.normalize(eventPath)
+    : path.posix.resolve(rootPath, eventPath);
 }
 
 function trimTrailingWindowsSeparators(candidatePath: string): string {
@@ -44,10 +44,10 @@ export function isWatchPathWithinRoot(
   platform: NodeJS.Platform = process.platform,
 ): boolean {
   if (platform !== "win32") {
-    const relativePath = path.relative(rootPath, candidatePath);
+    const relativePath = path.posix.relative(rootPath, candidatePath);
     return (
       relativePath.length === 0 ||
-      (!relativePath.startsWith("..") && !path.isAbsolute(relativePath))
+      (!relativePath.startsWith("..") && !path.posix.isAbsolute(relativePath))
     );
   }
   if (
@@ -97,7 +97,7 @@ export function toWatchRootRelativeKey(
       .split(/[/\\]/u)
       .join("/");
   }
-  return path.relative(rootPath, candidatePath).split(path.sep).join("/");
+  return path.posix.relative(rootPath, candidatePath);
 }
 
 export function dedupeWatchPathChanges<T extends { path: string; type: string }>(

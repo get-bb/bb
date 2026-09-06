@@ -176,7 +176,7 @@ describe.sequential("watchPathChanges", () => {
   });
 
   it("reports a missing watched path once and retries until it appears", async () => {
-    const threadStorageRoot = path.join("/tmp", "bb-watch-path-missing");
+    const threadStorageRoot = path.join(os.tmpdir(), "bb-watch-path-missing");
     let pathExistsCallCount = 0;
     const onWatchError = vi.fn();
     const { rootPaths, watchPathChanges } =
@@ -216,7 +216,7 @@ describe.sequential("watchPathChanges", () => {
   });
 
   it("retries path subscriptions after a startup failure", async () => {
-    const threadStorageRoot = path.join("/tmp", "bb-watch-path-retry");
+    const threadStorageRoot = path.join(os.tmpdir(), "bb-watch-path-retry");
     const onWatchError = vi.fn();
     let shouldFail = true;
     const { rootPaths, subscribeCallCount, watchPathChanges } =
@@ -254,7 +254,7 @@ describe.sequential("watchPathChanges", () => {
   });
 
   it("does not retry or unsubscribe after Parcel inotify poll interruptions", async () => {
-    const threadStorageRoot = path.join("/tmp", "bb-watch-path-poll");
+    const threadStorageRoot = path.join(os.tmpdir(), "bb-watch-path-poll");
     const onWatchError = vi.fn();
     const { callbacks, subscribeCallCount, unsubscribe, watchPathChanges } =
       await importWatchPathWithMockedWatcher({
@@ -294,7 +294,7 @@ describe.sequential("watchPathChanges", () => {
   });
 
   it("waits for late startup unsubscribe when disposed during startup", async () => {
-    const threadStorageRoot = path.join("/tmp", "bb-watch-path-late");
+    const threadStorageRoot = path.join(os.tmpdir(), "bb-watch-path-late");
     const subscriptionDeferred =
       createDeferredPromise<ParcelWatcherSubscribeResult>();
     const unsubscribeDeferred = createDeferredPromise<void>();

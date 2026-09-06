@@ -9,6 +9,7 @@ import {
 } from "@bb/domain";
 import {
   createDeferredPromise,
+  ps1SingleQuote,
   shellSingleQuote,
   waitForSetupMarkerCount,
 } from "@bb/test-helpers";
@@ -29,6 +30,46 @@ import { withGitRefMutationLock } from "../src/git-ref-mutation-lock.js";
 
 const tempDirs: string[] = [];
 
+const WINDOWS_SETUP_SCRIPT_FILE_NAME = ".bb-env-setup.ps1";
+const WINDOWS_TEARDOWN_SCRIPT_FILE_NAME = ".bb-env-teardown.ps1";
+const SETUP_SCRIPT_FILE_NAME =
+  process.platform === "win32"
+    ? WINDOWS_SETUP_SCRIPT_FILE_NAME
+    : DEFAULT_ENV_SETUP_SCRIPT_NAME;
+const TEARDOWN_SCRIPT_FILE_NAME =
+  process.platform === "win32"
+    ? WINDOWS_TEARDOWN_SCRIPT_FILE_NAME
+    : DEFAULT_ENV_TEARDOWN_SCRIPT_NAME;
+const WINDOWS_TASKKILL_FORCE_RUNS_NO_CLEANUP_MEASURED_FINALLY_MARKER_ABSENT =
+  process.platform === "win32";
+const WINDOWS_POWERSHELL_COLD_START_SLOW_MEASURED_FIRST_OUTPUT_AFTER_2600MS =
+  process.platform === "win32";
+const SETUP_MARKER_WAIT_TIMEOUT_MS =
+  WINDOWS_POWERSHELL_COLD_START_SLOW_MEASURED_FIRST_OUTPUT_AFTER_2600MS
+    ? 30_000
+    : 2_000;
+
+async function readGitWorkingTreeText(filePath: string): Promise<string> {
+  return (await fs.readFile(filePath, "utf8")).replace(/\r\n/gu, "\n");
+}
+
+async function writeSetupScriptTwins(
+  workspacePath: string,
+  sh: string,
+  ps1: string,
+): Promise<void> {
+  await fs.writeFile(
+    path.join(workspacePath, DEFAULT_ENV_SETUP_SCRIPT_NAME),
+    sh,
+    "utf8",
+  );
+  await fs.writeFile(
+    path.join(workspacePath, WINDOWS_SETUP_SCRIPT_FILE_NAME),
+    ps1,
+    "utf8",
+  );
+}
+
 async function makeTempDir(prefix: string): Promise<string> {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), prefix));
   tempDirs.push(dir);
@@ -37,6 +78,7 @@ async function makeTempDir(prefix: string): Promise<string> {
 
 async function initRepoWithOptionalSetup(
   setupScript?: string,
+  windowsSetupScript?: string,
 ): Promise<string> {
   const repoPath = await makeTempDir("bb-provisioning-repo-");
   await runGit(["init", "-b", "main"], { cwd: repoPath });
@@ -47,6 +89,13 @@ async function initRepoWithOptionalSetup(
     await fs.writeFile(
       path.join(repoPath, DEFAULT_ENV_SETUP_SCRIPT_NAME),
       setupScript,
+      "utf8",
+    );
+  }
+  if (windowsSetupScript) {
+    await fs.writeFile(
+      path.join(repoPath, WINDOWS_SETUP_SCRIPT_FILE_NAME),
+      windowsSetupScript,
       "utf8",
     );
   }
@@ -71,13 +120,26 @@ async function initRemoteBackedRepo(): Promise<{
 async function commitTeardownScript(
   repoPath: string,
   script: string,
+  windowsScript?: string,
 ): Promise<void> {
   await fs.writeFile(
     path.join(repoPath, DEFAULT_ENV_TEARDOWN_SCRIPT_NAME),
     script,
     "utf8",
   );
+  if (windowsScript !== undefined) {
+    await fs.writeFile(
+      path.join(repoPath, WINDOWS_TEARDOWN_SCRIPT_FILE_NAME),
+      windowsScript,
+      "utf8",
+    );
+  }
   await runGit(["add", DEFAULT_ENV_TEARDOWN_SCRIPT_NAME], { cwd: repoPath });
+  if (windowsScript !== undefined) {
+    await runGit(["add", WINDOWS_TEARDOWN_SCRIPT_FILE_NAME], {
+      cwd: repoPath,
+    });
+  }
   await runGit(["commit", "-m", "Add teardown script"], { cwd: repoPath });
 }
 
@@ -223,8 +285,11 @@ describe("workspace provisioning", () => {
     const worktrees = await runGit(["worktree", "list", "--porcelain"], {
       cwd: root,
     });
-    expect(worktrees.stdout.split("\n")).toContain(
-      `worktree ${await fs.realpath(targetPath)}`,
+    const listedWorktrees = worktrees.stdout
+      .split("\n")
+      .map((line) => line.replace(/\\/gu, "/"));
+    expect(listedWorktrees).toContain(
+      `worktree ${(await fs.realpath(targetPath)).replace(/\\/gu, "/")}`,
     );
   });
 
@@ -248,7 +313,7 @@ describe("workspace provisioning", () => {
     });
 
     await expect(
-      fs.readFile(path.join(targetPath, "remote.txt"), "utf8"),
+      readGitWorkingTreeText(path.join(targetPath, "remote.txt")),
     ).resolves.toBe("remote\n");
     const worktreeHead = await runGit(["rev-parse", "HEAD"], {
       cwd: targetPath,
@@ -639,6 +704,7 @@ describe("workspace provisioning", () => {
   it("rolls back failed worktree setup scripts", async () => {
     const sourceRepo = await initRepoWithOptionalSetup(
       "echo failing >&2\nexit 1\n",
+      "exit 1\n",
     );
     const parentDir = await makeTempDir("bb-worktree-fail-parent-");
     const targetPath = path.join(parentDir, "broken");
@@ -670,6 +736,15 @@ describe("workspace provisioning", () => {
         'touch "$marker_dir/started-$marker_name"',
         'while [ ! -f "$release_file" ]; do sleep 0.05; done',
         "echo setup released",
+      ].join("\n") + "\n",
+      [
+        `$markerDir=${ps1SingleQuote(markerDir)}`,
+        `$releaseFile=${ps1SingleQuote(releaseFile)}`,
+        '$markerName = "$(Split-Path (Split-Path $PWD -Parent) -Leaf)-$(Split-Path $PWD -Leaf)"',
+        'New-Item -ItemType Directory -Force -Path "$markerDir" | Out-Null',
+        'New-Item -ItemType File -Force -Path "$markerDir/started-$markerName" | Out-Null',
+        'while (-not (Test-Path -LiteralPath "$releaseFile")) { Start-Sleep -Milliseconds 50 }',
+        '"setup released"',
       ].join("\n") + "\n",
     );
     const parentDir = await makeTempDir("bb-worktree-concurrent-parent-");
@@ -749,10 +824,10 @@ describe("workspace provisioning", () => {
 
   it("streams setup script output and respects timeouts", async () => {
     const workspacePath = await makeTempDir("bb-setup-script-");
-    await fs.writeFile(
-      path.join(workspacePath, DEFAULT_ENV_SETUP_SCRIPT_NAME),
+    await writeSetupScriptTwins(
+      workspacePath,
       "echo first\necho second\n",
-      "utf8",
+      '"first"\n"second"\n',
     );
 
     const entries: string[] = [];
@@ -765,11 +840,7 @@ describe("workspace provisioning", () => {
     expect(result.output).toContain("first");
     expect(entries.some((entry) => entry.includes("first"))).toBe(true);
 
-    await fs.writeFile(
-      path.join(workspacePath, DEFAULT_ENV_SETUP_SCRIPT_NAME),
-      "sleep 2\n",
-      "utf8",
-    );
+    await writeSetupScriptTwins(workspacePath, "sleep 2\n", "Start-Sleep -Seconds 2\n");
     await expect(
       runSetupScript({
         workspacePath,
@@ -781,8 +852,8 @@ describe("workspace provisioning", () => {
   it("aborts setup scripts and emits cancellation progress", async () => {
     const workspacePath = await makeTempDir("bb-setup-abort-");
     const markerDir = await makeTempDir("bb-setup-abort-markers-");
-    await fs.writeFile(
-      path.join(workspacePath, DEFAULT_ENV_SETUP_SCRIPT_NAME),
+    await writeSetupScriptTwins(
+      workspacePath,
       [
         "set -euo pipefail",
         `marker_dir=${shellSingleQuote(markerDir)}`,
@@ -790,7 +861,11 @@ describe("workspace provisioning", () => {
         'touch "$marker_dir/started-setup"',
         "while true; do sleep 0.05; done",
       ].join("\n") + "\n",
-      "utf8",
+      [
+        `$markerDir=${ps1SingleQuote(markerDir)}`,
+        'New-Item -ItemType File -Force -Path "$markerDir/started-setup" | Out-Null',
+        "while ($true) { Start-Sleep -Milliseconds 50 }",
+      ].join("\n") + "\n",
     );
     const abortController = new AbortController();
     const entries: string[] = [];
@@ -804,25 +879,29 @@ describe("workspace provisioning", () => {
     await waitForSetupMarkerCount({
       expectedCount: 1,
       markerDir,
-      timeoutMs: 2_000,
+      timeoutMs: SETUP_MARKER_WAIT_TIMEOUT_MS,
     });
     abortController.abort(new Error("test abort"));
 
     await expect(run).rejects.toMatchObject({ code: "provision_cancelled" });
-    await waitForSetupMarkerCount({
-      expectedCount: 2,
-      markerDir,
-      timeoutMs: 2_000,
-    });
-    expect(entries).toContain("setup-cancelled:.bb-env-setup.sh cancelled");
-  });
+    if (!WINDOWS_TASKKILL_FORCE_RUNS_NO_CLEANUP_MEASURED_FINALLY_MARKER_ABSENT) {
+      await waitForSetupMarkerCount({
+        expectedCount: 2,
+        markerDir,
+        timeoutMs: 2_000,
+      });
+    }
+    expect(entries).toContain(
+      `setup-cancelled:${SETUP_SCRIPT_FILE_NAME} cancelled`,
+    );
+  }, 30_000);
 
   it("aborts setup scripts when the signal is aborted at listener registration", async () => {
     const workspacePath = await makeTempDir("bb-setup-listener-abort-");
     const markerDir = await makeTempDir("bb-setup-listener-abort-markers-");
     const completedMarker = path.join(markerDir, "completed-setup");
-    await fs.writeFile(
-      path.join(workspacePath, DEFAULT_ENV_SETUP_SCRIPT_NAME),
+    await writeSetupScriptTwins(
+      workspacePath,
       [
         "set -euo pipefail",
         `marker_dir=${shellSingleQuote(markerDir)}`,
@@ -830,7 +909,11 @@ describe("workspace provisioning", () => {
         "sleep 0.2",
         'touch "$marker_dir/completed-setup"',
       ].join("\n") + "\n",
-      "utf8",
+      [
+        `$completedMarkerPath=${ps1SingleQuote(completedMarker)}`,
+        "Start-Sleep -Milliseconds 200",
+        'New-Item -ItemType File -Force -Path "$completedMarkerPath" | Out-Null',
+      ].join("\n") + "\n",
     );
     const entries: string[] = [];
 
@@ -844,8 +927,10 @@ describe("workspace provisioning", () => {
     ).rejects.toMatchObject({ code: "provision_cancelled" });
 
     await expect(fs.stat(completedMarker)).rejects.toThrow();
-    expect(entries).toContain("setup-cancelled:.bb-env-setup.sh cancelled");
-  });
+    expect(entries).toContain(
+      `setup-cancelled:${SETUP_SCRIPT_FILE_NAME} cancelled`,
+    );
+  }, 30_000);
 
   it("removes managed worktrees after setup script cancellation", async () => {
     const markerDir = await makeTempDir("bb-worktree-abort-markers-");
@@ -856,6 +941,11 @@ describe("workspace provisioning", () => {
         'trap "touch \\"$marker_dir/started-terminated\\"; exit 0" TERM',
         'touch "$marker_dir/started-setup"',
         "while true; do sleep 0.05; done",
+      ].join("\n") + "\n",
+      [
+        `$markerDir=${ps1SingleQuote(markerDir)}`,
+        'New-Item -ItemType File -Force -Path "$markerDir/started-setup" | Out-Null',
+        "while ($true) { Start-Sleep -Milliseconds 50 }",
       ].join("\n") + "\n",
     );
     const parentDir = await makeTempDir("bb-worktree-abort-parent-");
@@ -873,31 +963,35 @@ describe("workspace provisioning", () => {
     await waitForSetupMarkerCount({
       expectedCount: 1,
       markerDir,
-      timeoutMs: 2_000,
+      timeoutMs: SETUP_MARKER_WAIT_TIMEOUT_MS,
     });
     abortController.abort(new Error("test abort"));
 
     await expect(provision).rejects.toMatchObject({
       code: "provision_cancelled",
     });
-    await waitForSetupMarkerCount({
-      expectedCount: 2,
-      markerDir,
-      timeoutMs: 2_000,
-    });
+    if (!WINDOWS_TASKKILL_FORCE_RUNS_NO_CLEANUP_MEASURED_FINALLY_MARKER_ABSENT) {
+      await waitForSetupMarkerCount({
+        expectedCount: 2,
+        markerDir,
+        timeoutMs: 2_000,
+      });
+    }
     await expect(fs.stat(targetPath)).rejects.toThrow();
     const worktrees = await runGit(["worktree", "list", "--porcelain"], {
       cwd: sourceRepo,
     });
-    expect(worktrees.stdout).not.toContain(targetPath);
-  });
+    expect(worktrees.stdout.replace(/\\/gu, "/")).not.toContain(
+      targetPath.replace(/\\/gu, "/"),
+    );
+  }, 30_000);
 
   it("compacts carriage-return setup script progress in transcript output", async () => {
     const workspacePath = await makeTempDir("bb-setup-progress-");
-    await fs.writeFile(
-      path.join(workspacePath, DEFAULT_ENV_SETUP_SCRIPT_NAME),
+    await writeSetupScriptTwins(
+      workspacePath,
       "printf 'progress 1\\rprogress 2\\rprogress done\\n'\n",
-      "utf8",
+      '[Console]::Out.Write("progress 1`rprogress 2`rprogress done`n")\n',
     );
 
     const outputEntries: string[] = [];
@@ -917,15 +1011,20 @@ describe("workspace provisioning", () => {
 
   it("closes setup script stdin so hooks do not block on input", async () => {
     const workspacePath = await makeTempDir("bb-setup-stdin-closed-");
-    await fs.writeFile(
-      path.join(workspacePath, DEFAULT_ENV_SETUP_SCRIPT_NAME),
+    await writeSetupScriptTwins(
+      workspacePath,
       "if read line; then echo unexpected-input; else echo stdin-closed; fi\n",
-      "utf8",
+      [
+        "$stdinLine = [Console]::In.ReadLine()",
+        'if ($null -eq $stdinLine) { "stdin-closed" } else { "unexpected-input" }',
+      ].join("\n") + "\n",
     );
 
     const result = await runSetupScript({
       workspacePath,
-      timeoutMs: 500,
+      timeoutMs: WINDOWS_POWERSHELL_COLD_START_SLOW_MEASURED_FIRST_OUTPUT_AFTER_2600MS
+        ? 30_000
+        : 500,
     });
 
     expect(result.ran).toBe(true);
@@ -938,8 +1037,8 @@ describe("workspace provisioning", () => {
     vi.stubEnv("NODE_ENV", "development");
     vi.stubEnv("EXTERNAL_SETUP_ENV", "external-value");
     const workspacePath = await makeTempDir("bb-setup-env-");
-    await fs.writeFile(
-      path.join(workspacePath, DEFAULT_ENV_SETUP_SCRIPT_NAME),
+    await writeSetupScriptTwins(
+      workspacePath,
       [
         'printf "%s|%s|%s|%s\\n" \\',
         '  "${BB_DATA_DIR-missing}" \\',
@@ -947,7 +1046,10 @@ describe("workspace provisioning", () => {
         '  "${NODE_ENV-missing}" \\',
         '  "${EXTERNAL_SETUP_ENV-missing}"',
       ].join("\n"),
-      "utf8",
+      [
+        "$scrubbedValues = @($env:BB_DATA_DIR, $env:BB_SERVER_PORT, $env:NODE_ENV, $env:EXTERNAL_SETUP_ENV) | ForEach-Object { if ($_) { $_ } else { 'missing' } }",
+        '[Console]::Out.Write(($scrubbedValues -join "|") + "`n")',
+      ].join("\n") + "\n",
     );
 
     const result = await runSetupScript({
@@ -962,19 +1064,30 @@ describe("workspace provisioning", () => {
   it("uses the resolved user-shell PATH for setup scripts", async () => {
     const workspacePath = await makeTempDir("bb-setup-shell-path-");
     const binPath = await makeTempDir("bb-setup-shell-bin-");
-    const executablePath = path.join(binPath, "shell-path-tool");
-    await fs.writeFile(executablePath, "#!/bin/sh\necho resolved-shell-path\n");
-    await fs.chmod(executablePath, 0o755);
-    await fs.writeFile(
-      path.join(workspacePath, DEFAULT_ENV_SETUP_SCRIPT_NAME),
+    if (process.platform === "win32") {
+      await fs.writeFile(
+        path.join(binPath, "shell-path-tool.cmd"),
+        `@echo off\r\n"${process.execPath}" -e "process.stdout.write('resolved-shell-path\\n')"\r\n`,
+        "utf8",
+      );
+    } else {
+      const executablePath = path.join(binPath, "shell-path-tool");
+      await fs.writeFile(executablePath, "#!/bin/sh\necho resolved-shell-path\n");
+      await fs.chmod(executablePath, 0o755);
+    }
+    await writeSetupScriptTwins(
+      workspacePath,
       "shell-path-tool\n",
-      "utf8",
+      "shell-path-tool\n",
     );
 
     const result = await runSetupScript({
       workspacePath,
       timeoutMs: 900000,
-      shellPath: `${binPath}${path.delimiter}/usr/bin:/bin`,
+      shellPath:
+        process.platform === "win32"
+          ? `${binPath}${path.delimiter}${process.env.PATH ?? ""}`
+          : `${binPath}${path.delimiter}/usr/bin:/bin`,
     });
 
     expect(result.ran).toBe(true);
@@ -1033,6 +1146,12 @@ describe("workspace provisioning", () => {
         `printf '%s\\n' "$PWD" "$(cat README.md)" > ${shellSingleQuote(markerPath)}`,
         'echo "released external resource"',
       ].join("\n"),
+      [
+        `$teardownMarkerPath=${ps1SingleQuote(markerPath)}`,
+        '$teardownReadme = ((Get-Content -Raw -Path README.md) -replace "`r`n", "`n").TrimEnd("`n")',
+        '[System.IO.File]::WriteAllText("$teardownMarkerPath", "$PWD`n$teardownReadme`n")',
+        '"released external resource"',
+      ].join("\n") + "\n",
     );
     const parentDir = await makeTempDir("bb-remove-teardown-parent-");
     const targetPath = path.join(parentDir, "feature");
@@ -1052,13 +1171,15 @@ describe("workspace provisioning", () => {
       onProgress: (entry) => entries.push(`${entry.key}:${entry.text}`),
     });
 
-    expect(await fs.readFile(markerPath, "utf8")).toBe(
+    expect(await readGitWorkingTreeText(markerPath)).toBe(
       `${targetPath}\nhello\n`,
     );
-    expect(entries).toContain("teardown-started:Running .bb-env-teardown.sh");
+    expect(entries).toContain(
+      `teardown-started:Running ${TEARDOWN_SCRIPT_FILE_NAME}`,
+    );
     expect(entries).toContain("teardown-output-1:released external resource");
     expect(entries).toContain(
-      "teardown-completed:.bb-env-teardown.sh finished",
+      `teardown-completed:${TEARDOWN_SCRIPT_FILE_NAME} finished`,
     );
     await expect(fs.stat(targetPath)).rejects.toThrow();
   });
@@ -1068,6 +1189,7 @@ describe("workspace provisioning", () => {
     await commitTeardownScript(
       sourceRepo,
       ["#!/usr/bin/env bash", 'echo "cleanup failed"', "exit 7"].join("\n"),
+      ['"cleanup failed"', "exit 7"].join("\n") + "\n",
     );
     const parentDir = await makeTempDir("bb-remove-failed-teardown-parent-");
     const targetPath = path.join(parentDir, "feature");
@@ -1090,7 +1212,9 @@ describe("workspace provisioning", () => {
     ).resolves.toBeUndefined();
 
     expect(entries).toContain("teardown-output-1:cleanup failed");
-    expect(entries).toContain("teardown-failed:.bb-env-teardown.sh failed");
+    expect(entries).toContain(
+      `teardown-failed:${TEARDOWN_SCRIPT_FILE_NAME} failed`,
+    );
     expect(entries.some((entry) => entry.includes("exit code 7"))).toBe(true);
     await expect(fs.stat(targetPath)).rejects.toThrow();
   });
@@ -1100,6 +1224,7 @@ describe("workspace provisioning", () => {
     await commitTeardownScript(
       sourceRepo,
       ["#!/usr/bin/env bash", 'echo "waiting"', "sleep 30"].join("\n"),
+      ['"waiting"', "Start-Sleep -Seconds 120"].join("\n") + "\n",
     );
     const parentDir = await makeTempDir("bb-remove-timeout-teardown-parent-");
     const targetPath = path.join(parentDir, "feature");
@@ -1115,17 +1240,22 @@ describe("workspace provisioning", () => {
     await expect(
       removeWorktree({
         path: targetPath,
-        timeoutMs: 50,
+        timeoutMs:
+          WINDOWS_POWERSHELL_COLD_START_SLOW_MEASURED_FIRST_OUTPUT_AFTER_2600MS
+            ? 15_000
+            : 50,
         force: true,
         onProgress: (entry) => entries.push(`${entry.key}:${entry.text}`),
       }),
     ).resolves.toBeUndefined();
 
     expect(entries).toContain("teardown-output-1:waiting");
-    expect(entries).toContain("teardown-failed:.bb-env-teardown.sh failed");
+    expect(entries).toContain(
+      `teardown-failed:${TEARDOWN_SCRIPT_FILE_NAME} failed`,
+    );
     expect(entries.some((entry) => entry.includes("timed out"))).toBe(true);
     await expect(fs.stat(targetPath)).rejects.toThrow();
-  });
+  }, 60_000);
 
   it("removes worktrees and plain directories", async () => {
     const sourceRepo = await initRepoWithOptionalSetup();
@@ -1379,9 +1509,9 @@ describe("windows lifecycle scripts", () => {
     });
 
     expect(created).toEqual({ path: targetPath });
-    expect(await fs.readFile(path.join(targetPath, "README.md"), "utf8")).toBe(
-      "hello\n",
-    );
+    expect(
+      await readGitWorkingTreeText(path.join(targetPath, "README.md")),
+    ).toBe("hello\n");
     expect(
       entries.some((entry) =>
         entry.startsWith("setup-skipped:Skipped .bb-env-setup.sh"),

@@ -10,6 +10,10 @@ export function shellSingleQuote(value: string): string {
   return `'${value.replaceAll("'", "'\\''")}'`;
 }
 
+export function ps1SingleQuote(value: string): string {
+  return `'${value.replaceAll("'", "''")}'`;
+}
+
 async function listSetupMarkers(markerDir: string): Promise<string[]> {
   try {
     return (await fs.readdir(markerDir)).filter((entry) =>

@@ -341,7 +341,7 @@ async function listWorkspaceFilesRecursively(
       for (const childResult of childResults) results.push(childResult);
       continue;
     }
-    results.push(path.relative(args.root, fullPath));
+    results.push(path.relative(args.root, fullPath).split(path.sep).join("/"));
   }
   return results;
 }
