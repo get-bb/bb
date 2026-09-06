@@ -109,12 +109,12 @@ export function PendingInteractionShell({
           aria-controls={contentId}
           aria-expanded={isExpanded}
           aria-label={isExpanded ? label : (title ?? label)}
-          title={isExpanded ? label : (title ?? label)}
           onClick={handleToggle}
           className="flex min-h-7 min-w-0 flex-1 items-center gap-2 rounded-md text-left focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
         >
           <AttentionDot />
           <span
+            title={isExpanded ? label : (title ?? label)}
             className={cn(
               "min-w-0 truncate text-sm text-foreground",
               isExpanded ? "font-semibold" : "font-medium",
