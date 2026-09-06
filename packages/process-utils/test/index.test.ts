@@ -255,12 +255,14 @@ describe("process utils", () => {
   });
 
   it("resolves paths that stay within the configured root", () => {
+    const rootPath = join(tmpdir(), "bb-test-root");
+    const candidatePath = join(rootPath, "child", "file.txt");
     expect(
       resolveContainedPath({
-        rootPath: "/tmp/root",
-        candidatePath: "/tmp/root/child/file.txt",
+        rootPath,
+        candidatePath,
       }),
-    ).toBe("/tmp/root/child/file.txt");
+    ).toBe(candidatePath);
   });
 
   it("rejects root and escaped paths", () => {
