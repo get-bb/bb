@@ -8,6 +8,7 @@ import {
   isSameProjectPath,
   normalizeProjectPathInput,
   PROJECT_PATH_ROOT_MESSAGE,
+  type ProjectPathPlatform,
 } from "../src/project-path.js";
 
 describe("project-path posix normalization", () => {
@@ -220,7 +221,7 @@ describe("project-path win32 validation", () => {
 });
 
 describe("project-path deriveProjectNameFromPath", () => {
-  it.each([
+  it.each<[string, string, ProjectPathPlatform, string]>([
     ["/srv/repos/bb", "/srv/repos/bb", "linux", "bb"],
     ["/srv/repos/bb/", "/srv/repos/bb", "linux", "bb"],
     ["/mnt/c/Users/michael/bb/", "/mnt/c/Users/michael/bb", "linux", "bb"],
@@ -247,12 +248,7 @@ describe("project-path deriveProjectNameFromPath", () => {
   ])(
     "derive(%j on %s) normalizes to %j with name %j",
     (input, _normalized, platform, expected) => {
-      expect(
-        deriveProjectNameFromPath(
-          input,
-          platform as ProjectPathPlatform,
-        ),
-      ).toBe(expected);
+      expect(deriveProjectNameFromPath(input, platform)).toBe(expected);
     },
   );
 
@@ -262,7 +258,7 @@ describe("project-path deriveProjectNameFromPath", () => {
 });
 
 describe("project-path isAbsoluteProjectPath", () => {
-  it.each([
+  it.each<[string, ProjectPathPlatform, boolean]>([
     ["/srv/repos/bb", "linux", true],
     ["/mnt/c/Users/michael/bb", "linux", true],
     ["/", "linux", true],
@@ -288,9 +284,7 @@ describe("project-path isAbsoluteProjectPath", () => {
     ["relative\\path", "win32", false],
     ["", "win32", false],
   ])("isAbsolute(%j on %s) is %s", (input, platform, expected) => {
-    expect(isAbsoluteProjectPath(input, platform as ProjectPathPlatform)).toBe(
-      expected,
-    );
+    expect(isAbsoluteProjectPath(input, platform)).toBe(expected);
   });
 });
 
@@ -318,7 +312,7 @@ describe("project-path isNativeWindowsProjectPath", () => {
 });
 
 describe("project-path isSameProjectPath", () => {
-  it.each([
+  it.each<[string, string, ProjectPathPlatform, boolean]>([
     ["C:\\bb-test", "C:/bb-test", "win32", true],
     ["C:\\", "C:", "win32", true],
     ["C:\\Foo", "c:\\foo", "win32", true],
@@ -335,9 +329,7 @@ describe("project-path isSameProjectPath", () => {
     ["/a", "/b", "linux", false],
     ["", "", "linux", false],
   ])("isSame(%j, %j on %s) is %s", (a, b, platform, expected) => {
-    expect(isSameProjectPath(a, b, platform as ProjectPathPlatform)).toBe(
-      expected,
-    );
+    expect(isSameProjectPath(a, b, platform)).toBe(expected);
   });
 
   it("folds case only on win32", () => {
