@@ -52,6 +52,9 @@ function resolveInjectedSkillSources(
 
 const tempDirs: string[] = [];
 
+const CHMOD_EXECUTABLE_BIT_IGNORED_ON_WINDOWS_NTFS_MEASURED_MODE_STAYS_0O666 =
+  process.platform === "win32";
+
 async function makeTempDir(): Promise<string> {
   const root = await mkdtemp(path.join(tmpdir(), "bb-injected-skills-"));
   tempDirs.push(root);
@@ -162,8 +165,12 @@ describe("injected skill source discovery", () => {
     expect(readSkillTreeManifest(secondRoot).treeHash).not.toBe(baseline);
     await rename(renamedReference, secondReference);
 
-    await chmod(secondReference, 0o755);
-    expect(readSkillTreeManifest(secondRoot).treeHash).not.toBe(baseline);
+    if (
+      !CHMOD_EXECUTABLE_BIT_IGNORED_ON_WINDOWS_NTFS_MEASURED_MODE_STAYS_0O666
+    ) {
+      await chmod(secondReference, 0o755);
+      expect(readSkillTreeManifest(secondRoot).treeHash).not.toBe(baseline);
+    }
   });
 
   it("hashes Unicode paths in locale-independent code-point order", () => {
