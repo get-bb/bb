@@ -21,7 +21,10 @@ export function isPathWithinDirectory(
   platform: NodeJS.Platform = process.platform,
 ): boolean {
   const paths = platform === "win32" ? win32 : posix;
-  const relativeEntry = paths.relative(rootDir, entryPath);
+  const relativeEntry =
+    platform === "win32"
+      ? paths.relative(rootDir.toLowerCase(), entryPath.toLowerCase())
+      : paths.relative(rootDir, entryPath);
   if (relativeEntry === "") {
     return true;
   }
