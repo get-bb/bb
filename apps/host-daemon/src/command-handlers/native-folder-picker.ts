@@ -120,6 +120,7 @@ async function pickWindowsFolderWithPowerShell(
       [
         "-NoLogo",
         "-NoProfile",
+        "-STA",
         "-NonInteractive",
         "-ExecutionPolicy",
         "Bypass",
