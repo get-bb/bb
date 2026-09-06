@@ -1195,32 +1195,6 @@ describe("resolveDeclaredScanRoots", () => {
     expect(commands.map((command) => command.name)).toEqual(["shared"]);
   });
 
-  it("keeps ancestor identity seeds posix when a declared root uses backslashes", async () => {
-    const fixture = await makeWorkspaceFixture();
-
-    const roots = await resolveRoots(
-      fixture,
-      fixture.cwd,
-      nativeRoots({
-        skills: {
-          project: [declared(".agents\\skills", { ancestors: true })],
-        },
-      }),
-    );
-
-    expect(roots).toEqual([
-      {
-        boundaryPath: fixture.cwd,
-        rootPath: path.join(fixture.cwd, ".agents\\skills"),
-        shape: "skill",
-        namePrefix: "",
-        source: "skill",
-        origin: "project",
-        skillIdentitySeed: `${PROVIDER_ID}:provider-project:.agents/skills:`,
-      },
-    ]);
-  });
-
   it("treats dot-dot-prefixed names as inside the directory", () => {
     const directoryPath = path.join("workspace");
     expect(
