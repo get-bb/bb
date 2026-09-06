@@ -43,7 +43,7 @@ interface SelfUpdateProcessRunner {
   (
     command: string,
     args: string[],
-    options: { env: NodeJS.ProcessEnv },
+    options: { env: NodeJS.ProcessEnv; shell?: boolean },
   ): Promise<void>;
 }
 
@@ -54,6 +54,7 @@ interface CreateProtocolSelfUpdaterOptions {
   serverUrl: string;
   fetchFn?: FetchFn;
   installTarball?: ProtocolSelfUpdateInstaller;
+  platform?: NodeJS.Platform;
   runProcess?: SelfUpdateProcessRunner;
   now?: () => number;
 }
@@ -162,6 +163,7 @@ const BB_APP_ALLOW_SCRIPTS_ARG =
 async function defaultInstallTarball(
   tarballPath: string,
   runProcess: SelfUpdateProcessRunner,
+  platform: NodeJS.Platform,
 ): Promise<void> {
   const executableDirectory = dirname(process.execPath);
   const inheritedPath = process.env.PATH;
@@ -181,6 +183,7 @@ async function defaultInstallTarball(
     ["install", "-g", BB_APP_ALLOW_SCRIPTS_ARG, ...prefixArgs, tarballPath],
     {
       env: { ...process.env, PATH: path },
+      ...(platform === "win32" ? { shell: true } : {}),
     },
   );
 }
@@ -189,12 +192,14 @@ export function createProtocolSelfUpdater(
   options: CreateProtocolSelfUpdaterOptions,
 ): ProtocolSelfUpdater {
   const fetchFn = options.fetchFn ?? fetch;
+  const platform = options.platform ?? process.platform;
   const installTarball =
     options.installTarball ??
     ((tarballPath) =>
       defaultInstallTarball(
         tarballPath,
         options.runProcess ?? defaultRunProcess,
+        platform,
       ));
   const now = options.now ?? Date.now;
   const attemptPath = join(options.dataDir, ATTEMPT_FILE_NAME);
