@@ -1,0 +1,124 @@
+name: Windows Release (bb wn)
+
+# Builds the NSIS installer on windows-latest and publishes it to a
+# versioned release. Re-running with the same version replaces the assets
+# in place instead of creating a second release (idempotent).
+#
+# Manual launch from the fork:
+#   gh workflow run win-release.yml --ref <branch> -f version=<x.y.z>
+# Omit -f version to release whatever apps/desktop/package.json says.
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Desktop version to release (default: apps/desktop/package.json)"
+        required: false
+        type: string
+        default: ""
+
+env:
+  NODE_VERSION: "22.19.0"
+  PNPM_VERSION: "9.15.0"
+  COREPACK_ENABLE_DOWNLOAD_PROMPT: "0"
+  CSC_IDENTITY_AUTO_DISCOVERY: "false"
+
+# Releases must not overlap: concurrent runs would race the
+# create-or-update step below. Queued, never cancelled.
+concurrency:
+  group: win-release
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build and publish Windows installer
+    runs-on: windows-latest
+    timeout-minutes: 90
+    defaults:
+      run:
+        shell: pwsh
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Set up pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@$env:PNPM_VERSION --activate
+          pnpm -v
+
+      - name: Resolve version
+        id: version
+        run: |
+          $version = "${{ inputs.version }}"
+          if ([string]::IsNullOrWhiteSpace($version)) {
+            $version = node -p "require('./apps/desktop/package.json').version"
+          }
+          $version = $version.Trim()
+          if ([string]::IsNullOrWhiteSpace($version)) {
+            throw "Could not resolve a desktop version."
+          }
+          "version=$version" | Out-File -Append $env:GITHUB_OUTPUT
+          "tag=desktop-win-v$version" | Out-File -Append $env:GITHUB_OUTPUT
+          Write-Host "version=$version tag=desktop-win-v$version"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build Windows installer
+        run: pnpm --filter @bb/desktop dist:win
+
+      - name: Verify installer exists
+        run: |
+          $exe = @(Get-ChildItem apps/desktop/release/*.exe -ErrorAction SilentlyContinue)
+          if ($exe.Count -eq 0) {
+            throw "No .exe found under apps/desktop/release."
+          }
+          $exe | ForEach-Object { Write-Host $_.FullName }
+
+      - name: Upload workflow artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: bb-desktop-win-x64-${{ steps.version.outputs.version }}
+          path: |
+            apps/desktop/release/*.exe
+            apps/desktop/release/*.yml
+            apps/desktop/release/*.blockmap
+          if-no-files-found: error
+
+      - name: Create or update release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = "${{ steps.version.outputs.tag }}"
+          $version = "${{ steps.version.outputs.version }}"
+          $assets = @(Get-ChildItem apps/desktop/release -Include *.exe,*.yml,*.blockmap -File | Select-Object -ExpandProperty FullName)
+          if ($assets.Count -eq 0) {
+            throw "No release assets found under apps/desktop/release."
+          }
+          gh release view $tag *> $null
+          if ($LASTEXITCODE -eq 0) {
+            Write-Host "Release $tag already exists; replacing its assets in place."
+            gh release upload $tag $assets --clobber
+          } else {
+            gh release create $tag $assets `
+              --target $env:GITHUB_SHA `
+              --title "bb desktop for Windows $version" `
+              --notes "bb desktop for Windows $version (NSIS installer, x64)."
+          }
+
+      - name: Summarize
+        run: |
+          $tag = "${{ steps.version.outputs.tag }}"
+          "## Windows release" | Out-File -Append $env:GITHUB_STEP_SUMMARY
+          "- tag: $tag" | Out-File -Append $env:GITHUB_STEP_SUMMARY
+          "- feed: https://github.com/${{ github.repository }}/releases/tag/$tag" | Out-File -Append $env:GITHUB_STEP_SUMMARY
