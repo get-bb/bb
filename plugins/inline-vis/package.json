@@ -3,13 +3,13 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Render workspace HTML visualizations inline in assistant messages.",
+  "description": "Render workspace HTML visualizations and Markdown documents inline in assistant messages.",
   "engines": {
     "bb": ">=0.0"
   },
   "bb": {
     "name": "Inline visualizations",
-    "description": "Render workspace HTML visualizations inline in assistant messages.",
+    "description": "Render workspace HTML visualizations and Markdown documents inline in assistant messages.",
     "branding": {
       "icon": "AppWindow"
     },

@@ -2,13 +2,20 @@ import path from "node:path";
 import { defineRpcContract, type BbPluginApi } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 
-export const MAX_HTML_BYTES = 5 * 1024 * 1024;
+export const MAX_PREVIEW_BYTES = 5 * 1024 * 1024;
 
-const HTML_EXTENSIONS = new Set([".html", ".htm"]);
+type PreviewKind = "html" | "markdown";
 
-interface PrepareHtmlPreviewResult {
-  file: string;
-}
+const PREVIEW_KIND_BY_EXTENSION: ReadonlyMap<string, PreviewKind> = new Map([
+  [".html", "html"],
+  [".htm", "html"],
+  [".md", "markdown"],
+  [".markdown", "markdown"],
+]);
+
+type PreparePreviewResult =
+  | { kind: "html"; file: string }
+  | { kind: "markdown"; file: string; content: string };
 
 function requireNonEmptyString(value: unknown, field: string): string {
   if (typeof value !== "string" || value.trim().length === 0) {
@@ -21,7 +28,18 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-export function requireWorkspaceHtmlFile(value: unknown): string {
+function previewKind(file: string): PreviewKind {
+  const extension = path.posix.extname(file).toLowerCase();
+  const kind = PREVIEW_KIND_BY_EXTENSION.get(extension);
+  if (kind === undefined) {
+    throw new Error(
+      `"file" must end with .html, .htm, .md, or .markdown, got ${JSON.stringify(file)}`,
+    );
+  }
+  return kind;
+}
+
+export function requireWorkspacePreviewFile(value: unknown): string {
   const file = requireNonEmptyString(value, "file");
   if (path.isAbsolute(file)) {
     throw new Error(`"file" must be workspace-relative, not absolute: ${file}`);
@@ -43,16 +61,11 @@ export function requireWorkspaceHtmlFile(value: unknown): string {
   ) {
     throw new Error(`"file" must not escape the workspace: ${file}`);
   }
-  const ext = path.posix.extname(normalized).toLowerCase();
-  if (!HTML_EXTENSIONS.has(ext)) {
-    throw new Error(
-      `"file" must end with .html or .htm, got ${JSON.stringify(file)}`,
-    );
-  }
+  previewKind(normalized);
   return normalized;
 }
 
-export function resolveContainedHtmlPath(
+export function resolveContainedPreviewPath(
   rootPath: string,
   relativeFile: string,
 ): string {
@@ -78,23 +91,31 @@ function httpStatus(error: unknown): number | null {
 }
 
 export const inlineVisRpcContract = defineRpcContract({
-  prepareHtmlPreview: {
+  preparePreview: {
     input: z
       .object({
         threadId: z.string().trim().min(1),
-        file: z.string().transform((value) => requireWorkspaceHtmlFile(value)),
+        file: z
+          .string()
+          .transform((value) => requireWorkspacePreviewFile(value)),
       })
       .strict(),
-    output: z.object({ file: z.string() }).strict(),
+    output: z.discriminatedUnion("kind", [
+      z.object({ kind: z.literal("html"), file: z.string() }).strict(),
+      z
+        .object({
+          kind: z.literal("markdown"),
+          file: z.string(),
+          content: z.string(),
+        })
+        .strict(),
+    ]),
   },
 });
 
 export default async function plugin(bb: BbPluginApi) {
   bb.rpc.register(inlineVisRpcContract, {
-    async prepareHtmlPreview({
-      threadId,
-      file,
-    }): Promise<PrepareHtmlPreviewResult> {
+    async preparePreview({ threadId, file }): Promise<PreparePreviewResult> {
       const thread = await bb.sdk.threads.get({
         threadId,
         include: "environment",
@@ -122,7 +143,7 @@ export default async function plugin(bb: BbPluginApi) {
         );
       }
 
-      const absolutePath = resolveContainedHtmlPath(rootPath, file);
+      const absolutePath = resolveContainedPreviewPath(rootPath, file);
 
       let result;
       try {
@@ -133,24 +154,27 @@ export default async function plugin(bb: BbPluginApi) {
         });
       } catch (error) {
         if (httpStatus(error) === 404) {
-          throw new Error(`HTML file not found: ${file}`);
+          throw new Error(`Preview file not found: ${file}`);
         }
         throw error;
       }
 
       if (result.contentEncoding !== "utf8") {
         throw new Error(
-          `HTML file is not valid UTF-8 text (encoding=${result.contentEncoding}).`,
+          `Preview file is not valid UTF-8 text (encoding=${result.contentEncoding}).`,
         );
       }
       const sizeBytes = result.sizeBytes;
-      if (sizeBytes > MAX_HTML_BYTES) {
+      if (sizeBytes > MAX_PREVIEW_BYTES) {
         throw new Error(
-          `HTML file is too large (${sizeBytes} bytes; max ${MAX_HTML_BYTES}).`,
+          `Preview file is too large (${sizeBytes} bytes; max ${MAX_PREVIEW_BYTES}).`,
         );
       }
 
-      return { file };
+      const kind = previewKind(file);
+      return kind === "markdown"
+        ? { kind, file, content: result.content }
+        : { kind, file };
     },
   });
 }
