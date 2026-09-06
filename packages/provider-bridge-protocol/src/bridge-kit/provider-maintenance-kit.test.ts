@@ -1,11 +1,17 @@
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
+  commandOutput,
   compareVersions,
   formatCommand,
   installationVerification,
+  npmCommand,
   npmGlobalInstallSource,
+  probeNpmGlobalPackage,
+  readCliVersion,
+  resolveExecutablePath,
   versionFrom,
+  type ExecutableProbeDeps,
 } from "./provider-maintenance-kit.js";
 
 describe("provider maintenance kit", () => {
@@ -81,5 +87,128 @@ describe("provider maintenance kit", () => {
         "install",
       ),
     ).toEqual({ kind: "installed" });
+  });
+});
+
+describe("windows executable discovery", () => {
+  it("names the npm.cmd shim on win32", () => {
+    expect(npmCommand("win32")).toBe("npm.cmd");
+    expect(npmCommand("linux")).toBe("npm");
+  });
+
+  it("asks where.exe on win32 and keeps PATHEXT order", async () => {
+    const seen: { file: string; args: string[] }[] = [];
+    const resolved = await resolveExecutablePath("codex", {
+      platform: "win32",
+      runLookup: async (file, args) => {
+        seen.push({ file, args });
+        return {
+          stdout: "C:\\tools\\codex.cmd\r\nC:\\tools\\codex.exe\r\n",
+        };
+      },
+    });
+    expect(seen).toEqual([{ file: "where.exe", args: ["codex"] }]);
+    expect(resolved).toBe("C:\\tools\\codex.cmd");
+  });
+
+  it("treats the where.exe exit code 1 as not installed", async () => {
+    const resolved = await resolveExecutablePath("codex", {
+      platform: "win32",
+      runLookup: async () => {
+        throw Object.assign(new Error("Command failed: where.exe codex"), {
+          code: 1,
+        });
+      },
+    });
+    expect(resolved).toBeNull();
+  });
+
+  it("asks which on posix", async () => {
+    const seen: { file: string; args: string[] }[] = [];
+    const resolved = await resolveExecutablePath("codex", {
+      platform: "linux",
+      runLookup: async (file, args) => {
+        seen.push({ file, args });
+        return { stdout: "/usr/local/bin/codex\n" };
+      },
+    });
+    expect(seen).toEqual([{ file: "which", args: ["codex"] }]);
+    expect(resolved).toBe("/usr/local/bin/codex");
+  });
+
+  it("runs --version against the platform npm without a shell", async () => {
+    const seen: { command: string; args: readonly string[] }[] = [];
+    const deps: ExecutableProbeDeps = {
+      platform: "win32",
+      runCommand: async (command, args) => {
+        seen.push({ command, args });
+        return { stdout: "codex-cli 0.150.0\n", stderr: "" };
+      },
+    };
+    await expect(readCliVersion("npm.cmd", deps)).resolves.toBe("0.150.0");
+    expect(seen).toEqual([{ command: "npm.cmd", args: ["--version"] }]);
+  });
+
+  it("combines stdout and stderr for registry probes", async () => {
+    await expect(
+      commandOutput("npm", ["view", "codex", "version"], {
+        platform: "linux",
+        runCommand: async () => ({
+          stdout: "0.150.0\n",
+          stderr: "warning: using registry\n",
+        }),
+      }),
+    ).resolves.toBe("0.150.0\n\nwarning: using registry");
+  });
+
+  it("keeps the npm prefix itself as the global bin on win32", async () => {
+    const seen: string[] = [];
+    const deps: ExecutableProbeDeps = {
+      platform: "win32",
+      runCommand: async (command, args) => {
+        seen.push(command);
+        if (args[0] === "prefix") {
+          return {
+            stdout: "C:\\Users\\u\\AppData\\Roaming\\npm\r\n",
+            stderr: "",
+          };
+        }
+        return {
+          stdout: JSON.stringify({
+            dependencies: { "@openai/codex": { version: "0.150.0" } },
+          }),
+          stderr: "",
+        };
+      },
+    };
+    const probe = await probeNpmGlobalPackage("@openai/codex", deps);
+    expect(seen).toEqual(["npm.cmd", "npm.cmd"]);
+    expect(probe.npmBin).toBe("C:\\Users\\u\\AppData\\Roaming\\npm");
+    expect(probe.npmGlobalPackageVersion).toBe("0.150.0");
+  });
+
+  it("appends bin to the npm prefix on posix", async () => {
+    const probe = await probeNpmGlobalPackage("@openai/codex", {
+      platform: "linux",
+      runCommand: async (_command, args) => {
+        if (args[0] === "prefix") {
+          return { stdout: "/usr/local\n", stderr: "" };
+        }
+        return { stdout: "{}", stderr: "" };
+      },
+    });
+    expect(probe.npmBin).toBe("/usr/local/bin");
+  });
+
+  it("reads --version for real on this host", async () => {
+    await expect(readCliVersion(process.execPath)).resolves.toMatch(
+      /\d+\.\d+\.\d+/u,
+    );
+  });
+
+  it("finds the node binary for real on this host", async () => {
+    await expect(resolveExecutablePath(process.execPath)).resolves.toBe(
+      process.execPath,
+    );
   });
 });

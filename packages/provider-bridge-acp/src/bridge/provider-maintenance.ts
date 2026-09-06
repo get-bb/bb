@@ -29,17 +29,24 @@ const CURSOR_KEYCHAIN_ACCOUNT = "cursor-user";
 const CURSOR_ACCESS_TOKEN_SERVICE = "cursor-access-token";
 const CURSOR_INSTALL_SCRIPT_URL = "https://cursor.com/install";
 
-function cursorAuthFilePath(): string {
-  if (process.platform === "win32") {
-    const appData =
-      process.env.APPDATA ?? path.join(os.homedir(), "AppData", "Roaming");
+export interface CursorPathDeps {
+  platform?: NodeJS.Platform;
+  env?: Readonly<Record<string, string | undefined>>;
+  homedir?: () => string;
+}
+
+export function cursorAuthFilePath(deps: CursorPathDeps = {}): string {
+  const platform = deps.platform ?? process.platform;
+  const env = deps.env ?? process.env;
+  const home = deps.homedir ?? os.homedir;
+  if (platform === "win32") {
+    const appData = env.APPDATA ?? path.join(home(), "AppData", "Roaming");
     return path.join(appData, "Cursor", "auth.json");
   }
-  if (process.platform === "darwin") {
-    return path.join(os.homedir(), ".cursor", "auth.json");
+  if (platform === "darwin") {
+    return path.join(home(), ".cursor", "auth.json");
   }
-  const configHome =
-    process.env.XDG_CONFIG_HOME ?? path.join(os.homedir(), ".config");
+  const configHome = env.XDG_CONFIG_HOME ?? path.join(home(), ".config");
   return path.join(configHome, "cursor", "auth.json");
 }
 
@@ -81,15 +88,17 @@ async function readAccessToken(): Promise<string | null> {
   }
 }
 
-function cursorStateDatabasePath(): string {
-  if (process.platform === "win32") {
-    const appData =
-      process.env.APPDATA ?? path.join(os.homedir(), "AppData", "Roaming");
+export function cursorStateDatabasePath(deps: CursorPathDeps = {}): string {
+  const platform = deps.platform ?? process.platform;
+  const env = deps.env ?? process.env;
+  const home = deps.homedir ?? os.homedir;
+  if (platform === "win32") {
+    const appData = env.APPDATA ?? path.join(home(), "AppData", "Roaming");
     return path.join(appData, "Cursor", "User", "globalStorage", "state.vscdb");
   }
-  if (process.platform === "darwin") {
+  if (platform === "darwin") {
     return path.join(
-      os.homedir(),
+      home(),
       "Library",
       "Application Support",
       "Cursor",
@@ -98,8 +107,7 @@ function cursorStateDatabasePath(): string {
       "state.vscdb",
     );
   }
-  const configHome =
-    process.env.XDG_CONFIG_HOME ?? path.join(os.homedir(), ".config");
+  const configHome = env.XDG_CONFIG_HOME ?? path.join(home(), ".config");
   return path.join(
     configHome,
     "Cursor",

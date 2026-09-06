@@ -1,6 +1,10 @@
-import { spawn, type ChildProcess } from "node:child_process";
+import type { ChildProcess } from "node:child_process";
 import { createInterface } from "node:readline";
-import { experimental_recordProviderChildIo } from "@bb/provider-bridge-protocol/bridge-kit";
+import {
+  experimental_recordProviderChildIo,
+  spawnPortableAgentProcess,
+  type PortableSpawnFn,
+} from "@bb/provider-bridge-protocol/bridge-kit";
 import type { z } from "zod";
 
 const STDERR_TAIL_MAX_CHUNKS = 40;
@@ -22,6 +26,8 @@ interface CreateAcpAgentConnectionOptions {
   args: string[];
   cwd: string;
   env: Record<string, string | undefined>;
+  platform?: NodeJS.Platform;
+  spawnImpl?: PortableSpawnFn;
   recordThreadId: string | null;
   onNotification(method: string, params: unknown): void;
   onRequest(
@@ -138,11 +144,18 @@ function parseAgentLine(line: string): ParsedAgentMessage | null {
 export function createAcpAgentConnection(
   options: CreateAcpAgentConnectionOptions,
 ): AcpAgentConnection {
-  const child: ChildProcess = spawn(options.command, options.args, {
-    cwd: options.cwd,
-    env: options.env,
-    stdio: ["pipe", "pipe", "pipe"],
-  });
+  const child: ChildProcess = spawnPortableAgentProcess(
+    {
+      command: options.command,
+      args: options.args,
+      cwd: options.cwd,
+      env: options.env,
+      ...(options.platform !== undefined
+        ? { platform: options.platform }
+        : {}),
+    },
+    options.spawnImpl,
+  );
   experimental_recordProviderChildIo(child, {
     threadId: options.recordThreadId,
   });

@@ -25,12 +25,14 @@ import {
   decodeBridgeJsonRpcResponse,
   decodeToolCallResponsePayload,
   experimental_defineProviderBridge,
+  isMissingPortableExecutable,
   mimeTypeFromExtension,
+  PortableCommandError,
+  runPortableCommandCapture,
   runBridgeRequest,
   withoutBridgeRuntimeEnv,
 } from "@bb/provider-bridge-protocol/bridge-kit";
 import type { BridgeJsonRpcResponse } from "@bb/provider-bridge-protocol/bridge-kit";
-import { execFile } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { promises as fs, readFileSync } from "node:fs";
 import { createServer, type Server, type Socket } from "node:net";
@@ -724,35 +726,41 @@ function acpClientCapabilities(
 async function loadAgentModelCatalog(
   listCommand: AcpAgentCommandParam,
 ): Promise<AgentModelCatalog | null> {
-  const stdout = await new Promise<string | null>((resolveExec, rejectExec) => {
-    execFile(
-      listCommand.command,
-      listCommand.args,
-      {
-        ...(listCommand.cwd !== undefined ? { cwd: listCommand.cwd } : {}),
-        env: {
-          ...withoutBridgeRuntimeEnv(process.env),
-          ...(listCommand.envVars ?? {}),
-        },
-        timeout: MODEL_LIST_TIMEOUT_MS,
+  let stdout: string | null;
+  try {
+    const captured = await runPortableCommandCapture({
+      command: listCommand.command,
+      args: listCommand.args,
+      ...(listCommand.cwd !== undefined ? { cwd: listCommand.cwd } : {}),
+      env: {
+        ...withoutBridgeRuntimeEnv(process.env),
+        ...(listCommand.envVars ?? {}),
       },
-      (error, out, stderr) => {
-        if (!error) {
-          resolveExec(out);
-          return;
-        }
-        if (isMissingExecutableError(error)) {
-          rejectExec(error);
-          return;
-        }
-        if (isAuthRequiredModelListError(error, out, stderr)) {
-          rejectExec(new AcpModelListAuthRequiredError());
-          return;
-        }
-        resolveExec(null);
-      },
-    );
-  });
+      timeoutMs: MODEL_LIST_TIMEOUT_MS,
+    });
+    stdout = captured.stdout;
+  } catch (error) {
+    if (
+      isMissingExecutableError(error) ||
+      isMissingPortableExecutable(error)
+    ) {
+      throw error;
+    }
+    const failureOutput =
+      error instanceof PortableCommandError
+        ? { stdout: error.stdout, stderr: error.stderr }
+        : { stdout: "", stderr: "" };
+    if (
+      isAuthRequiredModelListError(
+        error,
+        failureOutput.stdout,
+        failureOutput.stderr,
+      )
+    ) {
+      throw new AcpModelListAuthRequiredError();
+    }
+    stdout = null;
+  }
   const key = JSON.stringify(listCommand);
   if (stdout === null) {
     process.stderr.write(

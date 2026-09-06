@@ -1,5 +1,11 @@
+import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { CURSOR_ACP_MAINTENANCE, __testing } from "./provider-maintenance.js";
+import {
+  CURSOR_ACP_MAINTENANCE,
+  __testing,
+  cursorAuthFilePath,
+  cursorStateDatabasePath,
+} from "./provider-maintenance.js";
 
 function cursorMissingInstallationStatus() {
   return {
@@ -94,5 +100,82 @@ describe("ACP provider maintenance", () => {
       available: false,
       message: "opencode install is not available on this host.",
     });
+  });
+});
+
+describe("Cursor auth and state paths", () => {
+  const appData = "C:\\Users\\u\\AppData\\Roaming";
+
+  it("reads auth.json from APPDATA on win32", () => {
+    let homedirCalls = 0;
+    expect(
+      cursorAuthFilePath({
+        platform: "win32",
+        env: { APPDATA: appData },
+        homedir: () => {
+          homedirCalls += 1;
+          return "/home/u";
+        },
+      }),
+    ).toBe(path.join(appData, "Cursor", "auth.json"));
+    expect(homedirCalls).toBe(0);
+  });
+
+  it("falls back to the roaming profile under the home directory on win32", () => {
+    expect(
+      cursorAuthFilePath({
+        platform: "win32",
+        env: {},
+        homedir: () => "C:\\Users\\u",
+      }),
+    ).toBe(path.join("C:\\Users\\u", "AppData", "Roaming", "Cursor", "auth.json"));
+  });
+
+  it("reads the state database from APPDATA on win32", () => {
+    expect(
+      cursorStateDatabasePath({
+        platform: "win32",
+        env: { APPDATA: appData },
+        homedir: () => "/home/u",
+      }),
+    ).toBe(
+      path.join(appData, "Cursor", "User", "globalStorage", "state.vscdb"),
+    );
+  });
+
+  it("keeps macOS auth under the home .cursor directory", () => {
+    expect(
+      cursorAuthFilePath({
+        platform: "darwin",
+        env: { XDG_CONFIG_HOME: "/xdg" },
+        homedir: () => "/Users/u",
+      }),
+    ).toBe(path.join("/Users/u", ".cursor", "auth.json"));
+  });
+
+  it("honours XDG_CONFIG_HOME on linux and falls back to ~/.config", () => {
+    expect(
+      cursorAuthFilePath({
+        platform: "linux",
+        env: { XDG_CONFIG_HOME: "/xdg" },
+        homedir: () => "/home/u",
+      }),
+    ).toBe(path.join("/xdg", "cursor", "auth.json"));
+    expect(
+      cursorAuthFilePath({
+        platform: "linux",
+        env: {},
+        homedir: () => "/home/u",
+      }),
+    ).toBe(path.join("/home/u", ".config", "cursor", "auth.json"));
+    expect(
+      cursorStateDatabasePath({
+        platform: "linux",
+        env: {},
+        homedir: () => "/home/u",
+      }),
+    ).toBe(
+      path.join("/home/u", ".config", "Cursor", "User", "globalStorage", "state.vscdb"),
+    );
   });
 });
