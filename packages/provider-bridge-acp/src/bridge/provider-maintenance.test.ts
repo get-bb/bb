@@ -73,11 +73,27 @@ describe("ACP provider maintenance", () => {
           maintenance: CURSOR_ACP_MAINTENANCE,
           command: "cursor-agent",
           action: "install",
+          probeDeps: { platform: "linux" },
         },
       ),
     ).toMatchObject({
       available: true,
       command: { command: "sh" },
+      verification: { kind: "installed" },
+    });
+    expect(
+      __testing.buildProviderInstallationRun(
+        cursorMissingInstallationStatus(),
+        {
+          maintenance: CURSOR_ACP_MAINTENANCE,
+          command: "cursor-agent",
+          action: "install",
+          probeDeps: { platform: "win32" },
+        },
+      ),
+    ).toMatchObject({
+      available: true,
+      command: { command: "powershell.exe" },
       verification: { kind: "installed" },
     });
     expect(

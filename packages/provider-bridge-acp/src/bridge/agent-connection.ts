@@ -8,7 +8,11 @@ import {
 import type { z } from "zod";
 
 const STDERR_TAIL_MAX_CHUNKS = 40;
-const CLOSED_STDIN_ERROR_CODES = new Set(["EPIPE", "ERR_STREAM_DESTROYED"]);
+const CLOSED_STDIN_ERROR_CODES = new Set([
+  "EPIPE",
+  "EOF",
+  "ERR_STREAM_DESTROYED",
+]);
 
 export interface AcpAgentRequestResponder {
   result(value: unknown): void;

@@ -35,6 +35,15 @@ const FAKE_AGENT_PATH = resolve(
   "fake-acp-agent.mjs",
 );
 
+const WINDOWS_SIGTERM_KILL_IS_UNTRAPPABLE_TERMINATE_PROCESS =
+  process.platform === "win32";
+const WINDOWS_EXTENSIONLESS_SYMLINK_TO_NODE_IS_NOT_EXECUTABLE =
+  process.platform === "win32";
+const CURSOR_AGENT_FILE_NAME =
+  WINDOWS_EXTENSIONLESS_SYMLINK_TO_NODE_IS_NOT_EXECUTABLE
+    ? "cursor-agent.exe"
+    : "cursor-agent";
+
 let output: CapturedBridgeJsonRpcOutput;
 let workspaceDir: string;
 let nextThreadSerial = 0;
@@ -1068,11 +1077,13 @@ describe("acp bridge", () => {
       models: [{ id: "acp-default", isDefault: true }],
       selectedOnlyModels: [],
     });
-    await waitFor(
-      () => (existsSync(signalFile) ? true : undefined),
-      "discovery agent termination",
-      5_000,
-    );
+    if (!WINDOWS_SIGTERM_KILL_IS_UNTRAPPABLE_TERMINATE_PROCESS) {
+      await waitFor(
+        () => (existsSync(signalFile) ? true : undefined),
+        "discovery agent termination",
+        5_000,
+      );
+    }
   });
 
   it("serves ACP-native discovered models from cache within the TTL and re-discovers after it", async () => {
@@ -1667,7 +1678,7 @@ describe("acp bridge", () => {
   });
 
   it("approves Cursor session MCP servers for the session lifetime (#2018)", async () => {
-    const cursorAgent = join(workspaceDir, "cursor-agent");
+    const cursorAgent = join(workspaceDir, CURSOR_AGENT_FILE_NAME);
     const cursorDataDir = join(workspaceDir, "cursor-data");
     symlinkSync(process.execPath, cursorAgent);
     const { providerThreadId } = await startThread({
@@ -3205,8 +3216,10 @@ describe("acp bridge", () => {
     const start = await waitForResponse(startId);
     expect(start.result).toBeUndefined();
     expect(start.error?.message).toMatch(/exited|not running|released/u);
-    await waitForFileWithRealTimer(signalFile);
-    expect(readFileSync(signalFile, "utf8")).toContain("SIGTERM");
+    if (!WINDOWS_SIGTERM_KILL_IS_UNTRAPPABLE_TERMINATE_PROCESS) {
+      await waitForFileWithRealTimer(signalFile);
+      expect(readFileSync(signalFile, "utf8")).toContain("SIGTERM");
+    }
     expect(
       messagesForThread(threadId).filter(
         (message) => message.method === "thread/identity",
@@ -3271,7 +3284,9 @@ describe("acp bridge", () => {
     const first = await waitForResponse(firstStartId);
     expect(first.result).toBeUndefined();
     expect(first.error).toBeDefined();
-    await waitForFileWithRealTimer(slowSignalFile);
+    if (!WINDOWS_SIGTERM_KILL_IS_UNTRAPPABLE_TERMINATE_PROCESS) {
+      await waitForFileWithRealTimer(slowSignalFile);
+    }
     expect(
       messagesForThread(threadId)
         .filter((message) => message.method === "thread/identity")

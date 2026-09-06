@@ -14,6 +14,9 @@ import {
 
 const EPIPE_PAYLOAD_SIZE = 1024 * 1024;
 
+const WINDOWS_SIGTERM_KILL_IS_UNTRAPPABLE_TERMINATE_PROCESS =
+  process.platform === "win32";
+
 function deferred<T>(): {
   promise: Promise<T>;
   resolve(value: T): void;
@@ -224,10 +227,11 @@ describe("ACP agent stdio lifecycle", () => {
           resultSchema: z.unknown(),
         }),
       ).rejects.toThrow(`ACP agent "${process.execPath}" is not running`);
-      await expect(exited.promise).resolves.toMatchObject({
-        code: 0,
-        signal: null,
-      });
+      await expect(exited.promise).resolves.toMatchObject(
+        WINDOWS_SIGTERM_KILL_IS_UNTRAPPABLE_TERMINATE_PROCESS
+          ? { code: null, signal: "SIGTERM" }
+          : { code: 0, signal: null },
+      );
     } finally {
       await stopConnection(connection, exited.promise);
     }
