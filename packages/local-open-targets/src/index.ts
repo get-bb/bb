@@ -1670,6 +1670,90 @@ function getWindowsKnownExecutablePaths(
   );
 }
 
+function getWindowsJetBrainsToolbox(definition: LaunchAdapter): {
+  bundlePrefixes: string[];
+  executable: string;
+} | null {
+  if (definition.macos.openMode === "default-app") {
+    return null;
+  }
+  return definition.macos.jetBrainsToolbox ?? null;
+}
+
+async function findWindowsJetBrainsToolboxScriptPath(
+  definition: LaunchAdapter,
+  runtime: WorkspaceOpenTargetRuntime,
+): Promise<string | null> {
+  const toolbox = getWindowsJetBrainsToolbox(definition);
+  if (toolbox === null) {
+    return null;
+  }
+  const localAppData = readWindowsEnvValue(runtime, "LOCALAPPDATA")?.trim();
+  if (localAppData === undefined || localAppData.length === 0) {
+    return null;
+  }
+  const scriptsDirectory = path.join(
+    localAppData,
+    "JetBrains",
+    "Toolbox",
+    "scripts",
+  );
+  for (const extension of [".cmd", ".bat", ".exe"]) {
+    const candidatePath = path.join(
+      scriptsDirectory,
+      `${toolbox.executable}${extension}`,
+    );
+    if (await pathExists(candidatePath)) {
+      return candidatePath;
+    }
+  }
+  return null;
+}
+
+async function findWindowsJetBrainsInstallPath(
+  definition: LaunchAdapter,
+  runtime: WorkspaceOpenTargetRuntime,
+): Promise<string | null> {
+  const toolbox = getWindowsJetBrainsToolbox(definition);
+  if (toolbox === null) {
+    return null;
+  }
+  const launcherFileName = `${toolbox.executable}64.exe`;
+  const jetBrainsRoots = getWindowsInstallRoots(runtime).map((root) =>
+    path.join(root, "JetBrains"),
+  );
+  for (const jetBrainsRoot of jetBrainsRoots) {
+    let entries: import("node:fs").Dirent[];
+    try {
+      entries = await fs.readdir(jetBrainsRoot, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+    const candidateDirectories = sortNewestNameFirst(
+      entries
+        .filter((entry) => entry.isDirectory())
+        .map((entry) => entry.name)
+        .filter((name) =>
+          toolbox.bundlePrefixes.some((prefix) =>
+            name.toLowerCase().startsWith(prefix),
+          ),
+        ),
+    );
+    for (const directoryName of candidateDirectories) {
+      const candidatePath = path.join(
+        jetBrainsRoot,
+        directoryName,
+        "bin",
+        launcherFileName,
+      );
+      if (await pathExists(candidatePath)) {
+        return candidatePath;
+      }
+    }
+  }
+  return null;
+}
+
 async function isWindowsExecutableOnPath(
   executable: string,
   runtime: WorkspaceOpenTargetRuntime,
@@ -1718,6 +1802,39 @@ async function resolveWindowsCommandExecutable(
     }
     return {
       file: candidatePath,
+      argsPrefix: [],
+      env: runtime.env,
+    };
+  }
+  const toolboxScriptPath = await findWindowsJetBrainsToolboxScriptPath(
+    definition,
+    runtime,
+  );
+  if (toolboxScriptPath !== null) {
+    if (
+      WINDOWS_SCRIPT_EXECUTABLE_EXTENSIONS.has(
+        path.extname(toolboxScriptPath).toLowerCase(),
+      )
+    ) {
+      return {
+        file: WINDOWS_CMD_EXECUTABLE,
+        argsPrefix: [...WINDOWS_CMD_FLAG_ARGS, toolboxScriptPath],
+        env: runtime.env,
+      };
+    }
+    return {
+      file: toolboxScriptPath,
+      argsPrefix: [],
+      env: runtime.env,
+    };
+  }
+  const installPath = await findWindowsJetBrainsInstallPath(
+    definition,
+    runtime,
+  );
+  if (installPath !== null) {
+    return {
+      file: installPath,
       argsPrefix: [],
       env: runtime.env,
     };

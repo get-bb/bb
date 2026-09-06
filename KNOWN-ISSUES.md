@@ -155,32 +155,96 @@ Only production is redirected to `%APPDATA%/bb`. In development
 (`NODE_ENV != production`) the data directory still resolves under the home
 directory via `@bb/config`.
 
-## K10 — Auto-update is not wired
+## K10 — Auto-update feed is emitted; end-to-end install still unproven
 
 The `desktop-win-v*` tag namespace is deliberately separate from
 `desktop-v*`/`desktop-latest`, which the upstream release flow treats as
-immutable. It has not been confirmed that electron-builder emits `latest.yml` and
-`.blockmap` with `--publish never` on Windows; if `latest.yml` were missing, the
-release would ship without an update feed even though the `.exe` is present.
+immutable. What was previously unknown — whether electron-builder emits
+`latest.yml` and `.blockmap` with `--publish never` on Windows — has now been
+measured.
 
-**Workaround:** after the first green release run, inspect the artifact listing
-and tighten the globs.
+**Measured 2026-09-06 on real Windows 11 Pro (build 26200):** the `dist:win`
+output in-tree (current config, version 0.42.1, `--publish never`) contains
+`bb-wn-Setup-0.42.1.exe`, `bb-wn-Setup-0.42.1.exe.blockmap` **and `latest.yml`**.
+`latest.yml` was verified against the artifact (version 0.42.1, size 159047332,
+recomputed SHA-512 matches), so the feared feed-less release does not occur.
+The update decision was exercised locally by serving `release/` over HTTP
+through electron-updater's real `getChannelFilename`, `parseUpdateInfo` and
+`resolveFiles`: with the real feed, current version 0.42.1 reads "up to date"
+and current version 0.0.1 reads "update available". The release globs already
+covered `*.yml`/`*.blockmap`; they are now tightened to keep the internal
+`builder-debug.yml` out of the published assets (`win-release.yml`).
+No rebuild was run for this entry: the in-tree artifacts were produced from
+the current config and version, so a second build would have re-proven the
+same thing at the cost of machine contention. No competing Electron build was
+running when checked.
 
-## K11 — Editor coverage in "Open in…"
+**Still open:** (1) the full `autoUpdater` download-and-install flow inside the
+packaged app has not been exercised — that needs the Electron runtime plus a
+hosted feed, and this entry proves only feed emission, feed integrity and the
+version decision; (2) release wiring: `win-release.yml` publishes Windows
+assets to `desktop-win-v*` tags while the app's updater (`desktop-update-provider`)
+polls `desktop-latest`, so an installed Windows build still has no feed to find
+until a release-policy decision connects the two. That decision was
+ deliberately left untouched here.
 
-Only VS Code and VS Code Insiders have known Windows paths
+## K11 — Editor coverage in "Open in…" (partly closed 2026-09-06)
+
+Previously only VS Code and VS Code Insiders had known Windows paths
 (`LOCALAPPDATA`/`ProgramFiles`, and `Code.exe` directly rather than the wrapper).
-Every other editor is found only if it is on `PATH` via `where.exe`. JetBrains
-Toolbox is not mapped on Windows.
+Every other editor was found only if it was on `PATH` via `where.exe`, and
+JetBrains Toolbox was not mapped on Windows.
+
+**Measured 2026-09-06 on real Windows 11 Pro (build 26200):** `where.exe` finds
+no editor CLI on this machine, `%LOCALAPPDATA%\Programs\Microsoft VS Code`
+is absent, `%LOCALAPPDATA%\JetBrains` does not exist at all, and the one
+installed editor — Sublime Text at `C:\Program Files\Sublime Text\subl.exe`
+— resolved to nothing (listing returned only Default App and File Manager).
+
+**Since then:** `packages/local-open-targets` maps Windows install locations
+for Cursor, Sublime Text, Zed, Windsurf and Antigravity under the existing
+install roots, and JetBrains IDEs resolve two ways derived from the existing
+`jetBrainsToolbox` adapter field — Toolbox script shims under
+`%LOCALAPPDATA%\JetBrains\Toolbox\scripts` (probing `.cmd`/`.bat`/`.exe` so
+no extension guess is baked in; scripts run through `cmd.exe`, which is what
+makes `.cmd` shims spawnable) and versioned installs under
+`<root>\JetBrains\<product>\bin\<tool>64.exe`. Verified live: Sublime Text
+now lists and `subl.exe` was spawned for real (GUI process observed, then
+closed). The rest were verified by unit tests with the platform passed
+explicitly, plus negative tests (no Toolbox → no JetBrains targets); they were
+**not** observed on a real install because none is present on this machine.
+macOS and Linux resolution is untouched.
+
+**Still open / intentionally unmapped:** BBEdit, TextMate, Xcode, Finder and
+the macOS terminals have no Windows equivalent; Emacs has one but the adapter
+defines no CLI open command, so it stays PATH-only like before. Cursor/Zed/
+Windsurf/Antigravity paths are vendor defaults, not live-verified installs.
+Six macOS-Terminal/iTerm2 unit tests fail when the suite runs on Windows
+(POSIX `cd '…'` quoting around Windows tmp paths) — pre-existing on a pristine
+checkout, unrelated to this change.
 
 VS Code Remote is also advertised whenever the CLI is present even if `ssh` is
 missing — that is **exact parity with macOS**, not an oversight.
 
-## K12 — Folder picker fallback
+## K12 — Folder picker fallback (exercised 2026-09-06)
 
-The PowerShell fallback uses `FolderBrowserDialog`, which requires STA. The `-STA`
-flag has not been exercised outside Linux. The primary path is Electron's native
-dialog, which is genuinely native on Windows.
+The PowerShell fallback uses `FolderBrowserDialog`, which requires STA.
+**Exercised 2026-09-06 on real Windows 11 Pro (build 26200):** the exact
+fallback script was run for real. A visible `Browse For Folder` dialog appears
+carrying the product description text, and confirming it returns the selected
+path — `C:\Temp\bb picker space` (path with a space) and
+`C:\Temp\ñandú-probe` (UTF-8 bytes `C3-B1`/`C3-BA` verified) both round-trip.
+`powershell.exe` 5.1 already runs STA by default (apartment state reads STA
+with and without the flag), so `-STA` is now passed explicitly to declare the
+requirement at the call site rather than relying on the host default; the new
+unit tests assert the flag and the null/trimming behavior with the platform
+passed explicitly. Honest caveat: the confirm keystroke was synthetic
+(`BM_CLICK` on the real OK button found via Win32 child enumeration, because a
+background process cannot steal foreground input) — the dialog, the STA thread
+and the returned paths are all real. The primary path remains Electron's
+native dialog, which is genuinely native on Windows; in the host daemon on
+Windows there is no Electron provider, so the PowerShell fallback — the path
+exercised here — is the one that actually runs.
 
 ## K14 — Enrolling a Windows machine as a bb host does not work
 

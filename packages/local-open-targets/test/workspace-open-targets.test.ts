@@ -2956,5 +2956,211 @@ describe("workspace open targets", () => {
         await rm(workspacePath, { force: true, recursive: true });
       }
     });
+
+    it("discovers Sublime Text from Program Files install roots", async () => {
+      const programFiles = await mkdtemp(path.join(tmpdir(), "bb-progfiles-"));
+      const sublExe = path.join(programFiles, "Sublime Text", "subl.exe");
+      const workspacePath = await mkdtemp(path.join(tmpdir(), "bb-workspace-"));
+      const filePath = path.join(workspacePath, "notes.md");
+      const calls: ExecFileCall[] = [];
+
+      try {
+        await mkdir(path.dirname(sublExe), { recursive: true });
+        await writeFile(sublExe, "");
+        await writeFile(filePath, "# Notes\n");
+
+        const runtime = createWindowsRuntime({
+          calls,
+          env: { ProgramFiles: programFiles },
+        });
+        const targets = await listWorkspaceOpenTargetsWithRuntime(runtime);
+        expect(targets.map((target) => target.id)).toContain("sublime-text");
+
+        await openPathInTargetWithRuntime(
+          {
+            context: { kind: "local" },
+            columnNumber: 6,
+            lineNumber: 15,
+            path: filePath,
+            targetId: "sublime-text",
+          },
+          runtime,
+        );
+
+        expect(calls.find((call) => call.file === sublExe)).toEqual({
+          file: sublExe,
+          args: [`${filePath}:15:6`],
+          env: { ProgramFiles: programFiles },
+        });
+      } finally {
+        await rm(programFiles, { force: true, recursive: true });
+        await rm(workspacePath, { force: true, recursive: true });
+      }
+    });
+
+    it("discovers Cursor, Zed, Windsurf and Antigravity from install roots", async () => {
+      const localAppData = await mkdtemp(
+        path.join(tmpdir(), "bb-localappdata-"),
+      );
+      const cases = [
+        {
+          relativePath: ["cursor", "Cursor.exe"],
+          targetId: "cursor",
+        },
+        {
+          relativePath: ["Zed", "zed.exe"],
+          targetId: "zed",
+        },
+        {
+          relativePath: ["Windsurf", "Windsurf.exe"],
+          targetId: "devin-desktop",
+        },
+        {
+          relativePath: ["Antigravity", "Antigravity.exe"],
+          targetId: "antigravity",
+        },
+      ] as const;
+
+      try {
+        for (const testCase of cases) {
+          const executablePath = path.join(localAppData, "Programs", ...testCase.relativePath);
+          await mkdir(path.dirname(executablePath), { recursive: true });
+          await writeFile(executablePath, "");
+        }
+
+        const targets = await listWorkspaceOpenTargetsWithRuntime(
+          createWindowsRuntime({
+            env: { LOCALAPPDATA: localAppData },
+          }),
+        );
+
+        for (const testCase of cases) {
+          expect(targets.map((target) => target.id)).toContain(
+            testCase.targetId,
+          );
+        }
+      } finally {
+        await rm(localAppData, { force: true, recursive: true });
+      }
+    });
+
+    it("discovers JetBrains Toolbox script shims through cmd", async () => {
+      const localAppData = await mkdtemp(
+        path.join(tmpdir(), "bb-localappdata-"),
+      );
+      const ideaCmd = path.join(
+        localAppData,
+        "JetBrains",
+        "Toolbox",
+        "scripts",
+        "idea.cmd",
+      );
+      const workspacePath = await mkdtemp(path.join(tmpdir(), "bb-workspace-"));
+      const filePath = path.join(workspacePath, "src", "file.ts");
+      const calls: ExecFileCall[] = [];
+
+      try {
+        await mkdir(path.dirname(ideaCmd), { recursive: true });
+        await writeFile(ideaCmd, "@echo off\n");
+        await mkdir(path.dirname(filePath), { recursive: true });
+        await writeFile(filePath, "export const value = 1;\n");
+
+        const runtime = createWindowsRuntime({
+          calls,
+          env: { LOCALAPPDATA: localAppData },
+        });
+        const targets = await listWorkspaceOpenTargetsWithRuntime(runtime);
+        expect(targets.map((target) => target.id)).toContain("intellij-idea");
+
+        await openPathInTargetWithRuntime(
+          {
+            context: { kind: "local" },
+            columnNumber: 6,
+            lineNumber: 15,
+            path: filePath,
+            targetId: "intellij-idea",
+          },
+          runtime,
+        );
+
+        expect(calls.find((call) => call.file === "cmd.exe")).toEqual({
+          file: "cmd.exe",
+          args: ["/d", "/s", "/c", ideaCmd, "--line", "15", "--column", "6", filePath],
+          env: { LOCALAPPDATA: localAppData },
+        });
+      } finally {
+        await rm(localAppData, { force: true, recursive: true });
+        await rm(workspacePath, { force: true, recursive: true });
+      }
+    });
+
+    it("discovers versioned JetBrains installs under Program Files", async () => {
+      const programFiles = await mkdtemp(path.join(tmpdir(), "bb-progfiles-"));
+      const webstormExe = path.join(
+        programFiles,
+        "JetBrains",
+        "WebStorm 2024.1",
+        "bin",
+        "webstorm64.exe",
+      );
+      const workspacePath = await mkdtemp(path.join(tmpdir(), "bb-workspace-"));
+      const filePath = path.join(workspacePath, "src", "file.ts");
+      const calls: ExecFileCall[] = [];
+
+      try {
+        await mkdir(path.dirname(webstormExe), { recursive: true });
+        await writeFile(webstormExe, "");
+        await mkdir(path.dirname(filePath), { recursive: true });
+        await writeFile(filePath, "export const value = 1;\n");
+
+        const runtime = createWindowsRuntime({
+          calls,
+          env: { ProgramFiles: programFiles },
+        });
+        const targets = await listWorkspaceOpenTargetsWithRuntime(runtime);
+        expect(targets.map((target) => target.id)).toContain("webstorm");
+
+        await openPathInTargetWithRuntime(
+          {
+            context: { kind: "local" },
+            columnNumber: null,
+            lineNumber: 15,
+            path: filePath,
+            targetId: "webstorm",
+          },
+          runtime,
+        );
+
+        expect(calls.find((call) => call.file === webstormExe)).toEqual({
+          file: webstormExe,
+          args: ["--line", "15", filePath],
+          env: { ProgramFiles: programFiles },
+        });
+      } finally {
+        await rm(programFiles, { force: true, recursive: true });
+        await rm(workspacePath, { force: true, recursive: true });
+      }
+    });
+
+    it("leaves JetBrains targets unavailable without Toolbox or installs", async () => {
+      const targets = await listWorkspaceOpenTargetsWithRuntime(
+        createWindowsRuntime({
+          env: { LOCALAPPDATA: await mkdtemp(path.join(tmpdir(), "bb-empty-")) },
+        }),
+      );
+
+      for (const targetId of [
+        "intellij-idea",
+        "pycharm",
+        "webstorm",
+        "goland",
+        "rider",
+        "rustrover",
+        "phpstorm",
+        "android-studio",
+      ]) {
+        expect(targets.map((target) => target.id)).not.toContain(targetId);
+      }
+    });
   });
 });
