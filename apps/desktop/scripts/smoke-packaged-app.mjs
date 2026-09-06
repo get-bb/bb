@@ -1,5 +1,5 @@
 import { appendOutput, formatProcessOutput } from "./smoke-output.mjs";
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { createServer } from "node:http";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -325,6 +325,14 @@ async function stopPackagedApp(child) {
     return;
   }
 
+  if (process.platform === "win32" && child.pid !== undefined) {
+    spawnSync("taskkill.exe", ["/PID", String(child.pid), "/T", "/F"], {
+      stdio: "ignore",
+    });
+    await waitForProcessExit(child, exitTimeoutMs);
+    return;
+  }
+
   child.kill("SIGTERM");
   if (await waitForProcessExit(child, exitTimeoutMs)) {
     return;
@@ -335,16 +343,30 @@ async function stopPackagedApp(child) {
 }
 
 async function smokePackagedApp() {
-  if (process.platform !== "darwin" && process.platform !== "linux") {
-    throw new Error("Packaged desktop smoke only runs on macOS or Linux.");
+  if (
+    process.platform !== "darwin" &&
+    process.platform !== "linux" &&
+    process.platform !== "win32"
+  ) {
+    throw new Error(
+      "Packaged desktop smoke only runs on macOS, Linux, or Windows.",
+    );
   }
 
   const desktopVersion = await readDesktopPackageVersion();
-  const desktopPlatform = process.platform === "darwin" ? "macos" : "linux";
+  const desktopPlatform =
+    process.platform === "darwin"
+      ? "macos"
+      : process.platform === "win32"
+        ? "windows"
+        : "linux";
   const appBinary = await resolvePackagedAppBinary({
     executableName: releaseConfig.linuxExecutableName,
     platform: process.platform,
-    productName: releaseConfig.applicationName,
+    productName:
+      process.platform === "win32"
+        ? releaseConfig.windowsApplicationName
+        : releaseConfig.applicationName,
     releaseDir,
   });
   const smokeRoot = await mkdtemp(join(tmpdir(), "bb-desktop-packaged-smoke-"));
