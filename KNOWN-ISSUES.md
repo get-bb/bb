@@ -461,6 +461,52 @@ uses the shared portable command path. Measured after the fix: Pi
 The same defect class explains `spawn npm ENOENT` elsewhere — on Windows npm is
 `npm.cmd` — so check for it before assuming a new cause.
 
+## K17 — @bb/agent-runtime on Windows: 139 failures were 4 causes — FIXED 2026-09-06
+
+Measured on real Windows 11 Pro build 26200: `pnpm --filter @bb/agent-runtime
+-exec vitest run` reported **139 failed / 179 passed (318)**. After the fix it is
+**318 passed (22 files)**, stable across reruns, with `turbo typecheck
+---filter=@bb/agent-runtime` green. No production file was touched; all four
+causes lived in test invocation or test observability.
+
+1. **128 of the 139 were a missing generated artifact, not a defect.** The
+   suites spawn `dist/test-bridges/*.mjs`, built by
+   `generate:test-bridges`, which only runs as a turbo `test` dependency.
+   Invoking vitest directly without building first fails every test that
+   launches a provider with `MODULE_NOT_FOUND`. Run the suite via turbo, or
+   build the bridges first.
+2. **1 failure was a hardcoded posix join in the test** (family B shape):
+   `provider-registry.test.ts` expected `${bundleDir}/bb-...mjs` while
+   production correctly uses `resolve()`. Fixed in the test.
+3. **8 failures: child SIGTERM handlers never run on Windows.** Measured:
+   `child.kill("SIGTERM")` returns true and the child dies with
+   `signalCode SIGTERM`, but a `process.on("SIGTERM")` handler that writes a
+   file never fires — it is TerminateProcess. Every fixture that self-reported
+   shutdown from inside a SIGTERM handler was therefore silent: the scripted
+   echo bridge's `exit:` log (4 process-lifecycle reap/retire tests), the fake
+   codex app-server's `exit:` log (3 codex-topology tests), and the fake ACP
+   agent's signal file (1 acp-topology test). Production reaps correctly via
+   the taskkill process tree — every parent-side assertion already held. The
+   tests now observe the same guarantee portably on Windows (startup-logged
+   pid dead via `process.kill(pid, 0)`, `FAKE_ACP_LAUNCH_LOG` for the agent
+   pid) and keep the self-report assertions on POSIX, behind
+   `CHILD_SIGTERM_SELF_REPORT_UNAVAILABLE_ON_WINDOWS_MEASURED_KILL_IS_TERMINATE_PROCESS`.
+4. **2 failures: non-detached grandchildren die with their parent.** Measured:
+   a grandchild spawned without `detached: true` never runs its first line if
+   the parent exits immediately, and never runs its timers even with a
+   start-up handshake; with `detached: true` it survives and behaves as on
+   POSIX. The stderr-drain test now spawns its inheriting writer detached, so
+   the late write it models can occur on both platforms. The stale-output test
+   asserts the stronger Windows guarantee instead: the SIGTERM-ignoring
+   descendant is tree-reaped, so its marker never appears and no stale line
+   reaches the replacement.
+
+Not fixed because there is nothing to fix: `@bb/server` full-suite runs on
+this machine vary run to run (3, 11, 15 failures across three identical runs,
+all in `test/services/plugins/*` with timeout/esbuild shapes) while every one
+of those files passes in isolation — parallel-load contention flakes,
+untouched by and unrelated to this work.
+
 ## K13 — What this setup can never prove
 
 The runners are Windows Server with no interactive desktop. The following is out
