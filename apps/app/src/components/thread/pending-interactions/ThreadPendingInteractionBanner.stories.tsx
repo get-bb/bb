@@ -41,7 +41,7 @@ const commandApproval: PendingInteraction = {
       kind: "command",
       itemId: "item_cmd",
       command: "git push origin bb/promptbox-stories",
-      cwd: "/Users/michael/Projects/bb",
+      cwd: "/workspace/bb",
       actions: [],
       sessionGrant: null,
     },
@@ -61,7 +61,7 @@ const longCommandApproval: PendingInteraction = {
       itemId: "item_cmd_long",
       command:
         "pnpm exec turbo run typecheck --filter=@bb/app --filter=@bb/server --filter=@bb/domain --filter=@bb/server-contract --force",
-      cwd: "/Users/michael/Projects/bb",
+      cwd: "/workspace/bb",
       actions: [],
       sessionGrant: null,
     },
@@ -82,7 +82,7 @@ const multiLineCommandApproval: PendingInteraction = {
       itemId: "item_cmd_multiline",
       command:
         "`python3 -m unittest discover -s tests 2>&1 | tail -20\necho '=== bash -n ==='\nbash -n install.sh && echo OK\necho '=== watcher untouched ==='\ngit diff --stat -- watcher.py\necho '=== live telemetry flag untouched? ==='\nif [ -f \"$HOME/.immortal-agents/telemetry\" ]; then echo LIVE_FLAG_EXISTS; else echo LIVE_FLAG_ABSENT; fi`",
-      cwd: "/Users/michael/Projects/immortal-agents",
+      cwd: "/workspace/project",
       actions: [
         {
           type: "unknown",
@@ -137,13 +137,8 @@ const permissionGrant: PendingInteraction = {
       permissions: {
         network: null,
         fileSystem: {
-          read: [
-            "/Users/michael/Projects/bb/apps/app",
-            "/Users/michael/Projects/bb/packages",
-          ],
-          write: [
-            "/Users/michael/Projects/bb/apps/app/src/components/promptbox",
-          ],
+          read: ["/workspace/bb/apps/app", "/workspace/bb/packages"],
+          write: ["/workspace/bb/apps/app/src/components/promptbox"],
         },
       },
     },
@@ -178,8 +173,9 @@ const toolUse: PendingInteraction = {
 
 export function Overview() {
   return (
-    <StoryCard>
+    <StoryCard className="m-0 p-4">
       <StoryRow
+        className="grid-cols-1 gap-y-2 px-0 md:grid-cols-[210px_minmax(0,1fr)]"
         label="parent thread when a child needs approval"
         hint="the parent composer shows the child's prompt plus the needs-approval banner"
       >
@@ -215,6 +211,7 @@ export function Overview() {
         </PromptStage>
       </StoryRow>
       <StoryRow
+        className="grid-cols-1 gap-y-2 px-0 md:grid-cols-[210px_minmax(0,1fr)]"
         label="command approval from a child thread"
         hint="parent composer surfaces the child's permission prompt with a link back to that child"
       >
@@ -230,6 +227,7 @@ export function Overview() {
         </PromptStage>
       </StoryRow>
       <StoryRow
+        className="grid-cols-1 gap-y-2 px-0 md:grid-cols-[210px_minmax(0,1fr)]"
         label="command approval"
         hint="arrives as a one-line strip: reason, first command line, decisions; the chevron opens the card and Esc collapses it"
       >
@@ -241,6 +239,7 @@ export function Overview() {
         </PromptStage>
       </StoryRow>
       <StoryRow
+        className="grid-cols-1 gap-y-2 px-0 md:grid-cols-[210px_minmax(0,1fr)]"
         label="command approval (long command)"
         hint="long command scrolls inside the pre block"
       >
@@ -252,6 +251,7 @@ export function Overview() {
         </PromptStage>
       </StoryRow>
       <StoryRow
+        className="grid-cols-1 gap-y-2 px-0 md:grid-cols-[210px_minmax(0,1fr)]"
         label="command approval (multi-line script from a child)"
         hint="open the card: the preview caps at four lines with a Show more control, and the script is not repeated as an action line"
       >
@@ -267,6 +267,7 @@ export function Overview() {
         </PromptStage>
       </StoryRow>
       <StoryRow
+        className="grid-cols-1 gap-y-2 px-0 md:grid-cols-[210px_minmax(0,1fr)]"
         label="resolving"
         hint="user submitted a decision; banner shows Delivering pill and disables interaction"
       >
@@ -277,7 +278,11 @@ export function Overview() {
           />
         </PromptStage>
       </StoryRow>
-      <StoryRow label="file change approval" hint="agent wants to write a file">
+      <StoryRow
+        className="grid-cols-1 gap-y-2 px-0 md:grid-cols-[210px_minmax(0,1fr)]"
+        label="file change approval"
+        hint="agent wants to write a file"
+      >
         <PromptStage>
           <ThreadPendingInteractionBanner
             interaction={fileChange}
@@ -286,6 +291,7 @@ export function Overview() {
         </PromptStage>
       </StoryRow>
       <StoryRow
+        className="grid-cols-1 gap-y-2 px-0 md:grid-cols-[210px_minmax(0,1fr)]"
         label="permission grant"
         hint="agent requests fs read/write permission for specific paths"
       >
@@ -297,6 +303,7 @@ export function Overview() {
         </PromptStage>
       </StoryRow>
       <StoryRow
+        className="grid-cols-1 gap-y-2 px-0 md:grid-cols-[210px_minmax(0,1fr)]"
         label="tool use"
         hint="a generic tool call (MCP, provider-native) described by the bridge's presentation alone"
       >

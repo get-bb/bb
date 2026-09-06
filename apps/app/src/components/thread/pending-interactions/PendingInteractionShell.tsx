@@ -140,6 +140,15 @@ export function PendingInteractionShell({
             {footer("strip")}
           </div>
         ) : null}
+        {!isExpanded && errorMessage ? (
+          <span
+            aria-live="polite"
+            title={errorMessage}
+            className="min-w-0 flex-1 truncate text-xs text-destructive-text"
+          >
+            {errorMessage}
+          </span>
+        ) : null}
         {toggle}
       </div>
       <Activity mode={isExpanded ? "visible" : "hidden"}>
@@ -168,7 +177,7 @@ export function PendingInteractionShell({
           </div>
         </ThreadQuestionFormHost>
       </Activity>
-      {errorNode}
+      {isExpanded ? errorNode : null}
     </section>
   );
 }
