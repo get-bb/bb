@@ -89,7 +89,7 @@ jobs:
         id: tests
         continue-on-error: true
         run: |
-          pnpm exec vitest run --reporter=basic `
+          pnpm exec vitest run --reporter=dot `
             packages/domain packages/process-utils apps/host-daemon apps/desktop `
             2>&1 | Tee-Object qa-evidence/30-tests.txt
           exit $LASTEXITCODE
