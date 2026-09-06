@@ -428,7 +428,7 @@ describe("echo-provider canary: plugin install → server command → runtime �
     });
 
     expect(itemOf(rows, "fileRead").data.item).toMatchObject({
-      path: `${workspaceDir}/README.md`,
+      path: join(workspaceDir, "README.md"),
       presentation: { icon: { glyph: "FileText" } },
     });
     expect(itemOf(rows, "search").data.item).toMatchObject({
