@@ -498,6 +498,56 @@ describe("discoverProviderCommands over declared roots", () => {
     ]);
   });
 
+  it("rejects a project skill root linked outside the workspace", async () => {
+    const fixture = await makeWorkspaceFixture();
+    const outsideRoot = path.join(tempRoot, "outside-skill-root");
+    const linkedRoot = path.join(fixture.cwd, ".claude", "skills");
+    await writeFileEnsuringDir(
+      path.join(outsideRoot, "leaked", "SKILL.md"),
+      skillFile("leaked"),
+    );
+    await mkdir(path.dirname(linkedRoot), { recursive: true });
+    await symlink(outsideRoot, linkedRoot, "dir");
+
+    const commands = await discover(
+      fixture,
+      fixture.cwd,
+      nativeRoots({ skills: { project: [declared(".claude/skills")] } }),
+    );
+
+    expect(commands).toEqual([]);
+  });
+
+  it("discovers skills through a project skill root symlink inside the workspace", async () => {
+    const fixture = await makeWorkspaceFixture();
+    await writeFileEnsuringDir(
+      path.join(fixture.cwd, ".agents", "skills", "in-repo", "SKILL.md"),
+      skillFile("in-repo", "Inside the repository"),
+    );
+    await mkdir(path.join(fixture.cwd, ".claude"), { recursive: true });
+    await symlink(
+      path.join("..", ".agents", "skills"),
+      path.join(fixture.cwd, ".claude", "skills"),
+      "dir",
+    );
+
+    const commands = await discover(
+      fixture,
+      fixture.cwd,
+      nativeRoots({ skills: { project: [declared(".claude/skills")] } }),
+    );
+
+    expect(commands).toEqual([
+      {
+        name: "in-repo",
+        source: "skill",
+        origin: "project",
+        description: "Inside the repository",
+        argumentHint: null,
+      },
+    ]);
+  });
+
   it("does not follow project-origin symlinked skill directories or skill files", async () => {
     const fixture = await makeWorkspaceFixture();
     const skillsRoot = path.join(fixture.cwd, ".agent", "skills");
