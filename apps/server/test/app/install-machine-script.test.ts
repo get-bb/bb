@@ -299,7 +299,13 @@ function terminateDaemonProcess(pid: number): void {
       return;
     }
   }
-  process.kill(pid, "SIGTERM");
+  try {
+    process.kill(pid, "SIGTERM");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException)?.code !== "ESRCH") {
+      throw error;
+    }
+  }
 }
 
 afterEach(() => {
