@@ -43,7 +43,7 @@ function Write-Usage {
 
 function Test-UseColor {
   try {
-    return $Host.UI.SupportsVirtualTerminal -and [string]::IsNullOrEmpty($env:NO_COLOR)
+    return (-not [Console]::IsOutputRedirected) -and $Host.UI.SupportsVirtualTerminal -and [string]::IsNullOrEmpty($env:NO_COLOR)
   } catch {
     return $false
   }
@@ -66,7 +66,7 @@ function Format-Green { param([string]$Text) Format-Color '32' $Text }
 function Format-Red { param([string]$Text) Format-Color '31' $Text }
 function Format-Yellow { param([string]$Text) Format-Color '33' $Text }
 
-function Write-Step { param([string]$Glyph, [string]$Text) Write-Output "  $Glyph  $Text" }
+function Write-Step { param([string]$Glyph, [string]$Text) [Console]::WriteLine("  $Glyph  $Text") }
 function Write-StepError { param([string]$Glyph, [string]$Text) [Console]::Error.WriteLine("  $Glyph  $Text") }
 function Step-Active { param([string]$Text) Write-Step (Format-Dim $script:GlyphActive) $Text }
 function Step-Complete { param([string]$Text) Write-Step (Format-Green $script:GlyphOk) $Text }
@@ -230,7 +230,7 @@ function Claim-PortForDataDir {
   } catch {
     return ((Get-PortReservationOwner -Port $Port) -eq $DataDir)
   }
-  Set-Content -Path (Join-Path $claimDir 'data-dir') -Value $DataDir -Encoding utf8
+  [IO.File]::WriteAllText((Join-Path $claimDir 'data-dir'), ($DataDir + "`n"), (New-Object Text.UTF8Encoding $false))
   return $true
 }
 
@@ -300,15 +300,44 @@ function Get-ProcessAlive {
   return ($null -ne $proc)
 }
 
+function Get-ListenerProcessId {
+  param([string]$Port)
+  try {
+    $conn = Get-NetTCPConnection -LocalPort ([int]$Port) -ErrorAction Stop | Select-Object -First 1
+    if ($null -eq $conn) {
+      return 0
+    }
+    return [int]$conn.OwningProcess
+  } catch {
+    return 0
+  }
+}
+
+function Start-DetachedDaemonProcess {
+  param([string]$WrapperCmd, [string]$LogPath, [string]$WorkingDir)
+  $systemCmd = Join-Path $env:SystemRoot 'System32\cmd.exe'
+  $cmdLine = $systemCmd + ' /c ""' + $WrapperCmd + '" < NUL >> "' + $LogPath + '" 2>&1"'
+  try {
+    $created = Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{ CommandLine = $cmdLine; CurrentDirectory = $WorkingDir } -ErrorAction Stop
+  } catch {
+    Exit-Fail 'Could not start the bb host daemon.' @($_.Exception.Message)
+  }
+  if ($created.ReturnValue -ne 0) {
+    Exit-Fail 'Could not start the bb host daemon.' @("Win32_Process.Create returned $($created.ReturnValue).")
+  }
+  return [int]$created.ProcessId
+}
+
 function Stop-DaemonProcess {
   param([int]$ProcessId)
-  try {
-    Stop-Process -Id $ProcessId -Force -ErrorAction SilentlyContinue
-    $proc = Get-Process -Id $ProcessId -ErrorAction SilentlyContinue
-    if ($null -ne $proc) {
-      $proc.WaitForExit(5000) | Out-Null
+  $ErrorActionPreference = 'Continue'
+  & taskkill /F /T /PID $ProcessId 2>$null | Out-Null
+  $deadline = [DateTime]::UtcNow.AddSeconds(5)
+  while ([DateTime]::UtcNow -lt $deadline) {
+    if ($null -eq (Get-Process -Id $ProcessId -ErrorAction SilentlyContinue)) {
+      return
     }
-  } catch {
+    Start-Sleep -Milliseconds 200
   }
 }
 
@@ -327,11 +356,13 @@ function Start-HostDaemonProcess {
   $env:BB_DATA_DIR = $DataDir
   try {
     if ($PathBbApp -ne '') {
-      $quotedArgs = ($DaemonArgs | ForEach-Object { "`"$_`"" }) -join ' '
-      $proc = Start-Process -FilePath 'cmd.exe' -ArgumentList @('/c', "`"$PathBbApp`" $quotedArgs >> `"$LogPath`" 2>&1") -NoNewWindow -PassThru
+      $launchExe = $PathBbApp
     } else {
-      $proc = Start-Process -FilePath $NodeExe -ArgumentList $DaemonArgs -NoNewWindow -RedirectStandardOutput $LogPath -RedirectStandardError $LogPath -PassThru
+      $launchExe = $NodeExe
     }
+    $quotedArgs = ($DaemonArgs | ForEach-Object { "`"$_`"" }) -join ' '
+    $cmdLine = '/c ""' + $launchExe + '" ' + $quotedArgs + ' < NUL >> "' + $LogPath + '" 2>&1"'
+    $proc = Start-Process -FilePath 'cmd.exe' -ArgumentList $cmdLine -NoNewWindow -PassThru
     return $proc.Id
   } finally {
     $env:BB_APP_NPM_PREFIX = $previousPrefix
@@ -365,6 +396,11 @@ function Install-ScheduledTaskPersistence {
   $escapedWrapper = [Security.SecurityElement]::Escape($WrapperCmd)
   $escapedDataDir = [Security.SecurityElement]::Escape($DataDir)
   $escapedServer = [Security.SecurityElement]::Escape($ServerUrl)
+  $systemCmd = Join-Path $env:SystemRoot 'System32\cmd.exe'
+  $taskLog = Join-Path $DataDir 'logs\host-daemon.log'
+  $taskCommand = '/c ""' + $WrapperCmd + '" < NUL >> "' + $taskLog + '" 2>&1"'
+  $escapedSystemCmd = [Security.SecurityElement]::Escape($systemCmd)
+  $escapedTaskCommand = [Security.SecurityElement]::Escape($taskCommand)
   $taskXml = @"
 <?xml version="1.0" encoding="UTF-16"?>
 <Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
@@ -392,13 +428,13 @@ function Install-ScheduledTaskPersistence {
       <Interval>PT1M</Interval>
       <Count>9999</Count>
     </RestartOnFailure>
-    <ExecutionTimeLimit>PT0</ExecutionTimeLimit>
     <Enabled>true</Enabled>
     <Hidden>false</Hidden>
   </Settings>
   <Actions Context="Author">
     <Exec>
-      <Command>$escapedWrapper</Command>
+      <Command>$escapedSystemCmd</Command>
+      <Arguments>$escapedTaskCommand</Arguments>
       <WorkingDirectory>$escapedDataDir</WorkingDirectory>
     </Exec>
   </Actions>
@@ -406,6 +442,21 @@ function Install-ScheduledTaskPersistence {
 "@
   $xmlPath = Join-Path ([IO.Path]::GetTempPath()) ('bb-task.' + [IO.Path]::GetRandomFileName() + '.xml')
   [IO.File]::WriteAllText($xmlPath, $taskXml, [Text.Encoding]::Unicode)
+  if (Get-ScheduledTaskExists -TaskName $TaskName) {
+    Invoke-NativeCommand -FilePath 'schtasks' -Arguments @('/End', '/TN', $TaskName) -MergeErrors $true | Out-Null
+    $stopDeadline = [DateTime]::UtcNow.AddSeconds(10)
+    while (([DateTime]::UtcNow -lt $stopDeadline) -and (Get-ListenerProcessId -Port $Port) -ne 0) {
+      Start-Sleep -Milliseconds 500
+    }
+  }
+  $staleListener = Get-ListenerProcessId -Port $Port
+  if ($staleListener -ne 0) {
+    if (Test-DaemonStatusMatches -Port $Port -ExpectedHostId $script:HostIdValue -ExpectedServerUrl $ServerUrl -RequireConnected $false) {
+      Stop-DaemonProcess -ProcessId $staleListener
+    } else {
+      Exit-Fail "Host daemon local API port $Port became unavailable during installation." @('Rerun this command to select a fresh port.')
+    }
+  }
   try {
     $create = Invoke-NativeCommand -FilePath 'schtasks' -Arguments @('/Create', '/TN', $TaskName, '/XML', $xmlPath, '/F') -MergeErrors $true
     if ($create.ExitCode -ne 0) {
@@ -432,10 +483,6 @@ function Install-RunKeyPersistence {
   param(
     [string]$ValueName,
     [string]$WrapperCmd,
-    [string]$NodeExe,
-    [string]$BbAppJs,
-    [string]$PathBbApp,
-    [string]$NpmPrefix,
     [string]$DataDir,
     [string]$Port,
     [string]$ServerUrl
@@ -445,17 +492,22 @@ function Install-RunKeyPersistence {
   }
   $runKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
   New-ItemProperty -Path $runKey -Name $ValueName -Value "`"$WrapperCmd`"" -PropertyType String -Force -ErrorAction Stop | Out-Null
-  $daemonLog = Join-Path $DataDir 'install-daemon.log'
-  $daemonArgs = @('host-daemon', '--auto-update', '--host-daemon-port', $Port, '--server-url', $ServerUrl)
-  if ($BbAppJs -ne '') {
-    $daemonArgs = @($BbAppJs) + $daemonArgs
+  if (Test-DaemonStatusMatches -Port $Port -ExpectedHostId $script:HostIdValue -ExpectedServerUrl $ServerUrl -RequireConnected $false) {
+    Step-Complete 'Host daemon connected'
+    Step-Warning 'Scheduled-task registration was denied; persistence uses your per-user Run key instead.'
+    Write-Detail 'The enrolled daemon is already running and stays adopted.'
+    return @{ Kind = 'run'; Pid = 0 }
   }
-  $daemonPid = Start-HostDaemonProcess -NodeExe $NodeExe -DaemonArgs $daemonArgs -LogPath $daemonLog -NpmPrefix $NpmPrefix -DataDir $DataDir -PathBbApp $PathBbApp
+  if (-not (Test-PortAvailable -Port $Port)) {
+    Exit-Fail "Host daemon local API port $Port became unavailable during installation." @('Rerun this command to select a fresh port.')
+  }
+  $daemonLog = Join-Path $DataDir "install-daemon-$Port.log"
+  $daemonPid = Start-DetachedDaemonProcess -WrapperCmd $WrapperCmd -LogPath $daemonLog -WorkingDir $DataDir
   if (-not (Wait-DaemonConnection -Subject 'the host daemon' -Port $Port -ExpectedHostId $script:HostIdValue -ExpectedServerUrl $ServerUrl)) {
     Stop-DaemonProcess -ProcessId $daemonPid
     Exit-Fail "The bb host daemon did not connect to $ServerUrl." @("See $daemonLog")
   }
-  Set-Content -Path (Join-Path $DataDir 'install-daemon.pid') -Value "$daemonPid" -Encoding utf8
+  [IO.File]::WriteAllText((Join-Path $DataDir 'install-daemon.pid'), ("$daemonPid" + "`n"), (New-Object Text.UTF8Encoding $false))
   Step-Complete 'Host daemon connected'
   Step-Warning 'Scheduled-task registration was denied; persistence uses your per-user Run key instead.'
   Write-Detail 'The daemon starts at logon. Restart it after a crash with:'
@@ -487,9 +539,9 @@ if ($Server.Contains('"') -or $HostId.Contains('"') -or $JoinCode.Contains('"') 
 $script:HostIdValue = $HostId
 $serverUrl = $Server
 
-Write-Output ''
-Write-Output "  $(Format-Bold 'bb machine setup')"
-Write-Output ''
+[Console]::WriteLine('')
+[Console]::WriteLine("  $(Format-Bold 'bb machine setup')")
+[Console]::WriteLine('')
 Step-Active "Setting up this machine as $HostId for $serverUrl"
 
 $nodeExe = Resolve-NodeExe
@@ -564,7 +616,7 @@ if (-not [string]::IsNullOrWhiteSpace($HostDaemonPort)) {
 if ([string]::IsNullOrWhiteSpace($selectedHostDaemonPort)) {
   $selectedHostDaemonPort = Find-AvailableHostDaemonPort -DataDir $canonicalDataDir
 }
-Set-Content -Path $hostDaemonPortFile -Value $selectedHostDaemonPort -Encoding utf8
+[IO.File]::WriteAllText($hostDaemonPortFile, ($selectedHostDaemonPort + "`n"), (New-Object Text.UTF8Encoding $false))
 if ((Test-ValidPort -RawPort $previousHostDaemonPort) -and ($previousHostDaemonPort -ne $selectedHostDaemonPort)) {
   Release-PortForDataDir -Port $previousHostDaemonPort -DataDir $canonicalDataDir
 }
@@ -647,8 +699,11 @@ if (($packageStatus -eq '304') -and ($installedArtifactDigest -ne '')) {
   Step-Complete 'Downloaded the server''s bb-app package'
   Step-Active 'Installing the server''s bb-app build'
   Remove-Item -LiteralPath $hostArtifactDigestFile -Force -ErrorAction SilentlyContinue
-  $npmInstall = Invoke-NativeCommand -FilePath $npmCmd -Arguments @('install', '-g', $bbAppAllowScripts, '--prefix', $machineNpmPrefix, $packageFile) -ShowErrors $true
-  if ($npmInstall.ExitCode -ne 0) {
+  & {
+    $ErrorActionPreference = 'Continue'
+    & $npmCmd install -g $bbAppAllowScripts --prefix $machineNpmPrefix $packageFile
+  }
+  if ($LASTEXITCODE -ne 0) {
     Remove-Item -LiteralPath $packageDir -Recurse -Force -ErrorAction SilentlyContinue
     Exit-Fail 'Could not install bb-app for this machine. Check the npm error above, then rerun this command.'
   }
@@ -672,8 +727,11 @@ if (($packageStatus -eq '304') -and ($installedArtifactDigest -ne '')) {
     Remove-Item -LiteralPath $hostArtifactDigestFile -Force -ErrorAction SilentlyContinue
     Step-Warning 'The server does not provide its bb-app package'
     Step-Active 'Installing bb-app from the npm registry'
-    $npmInstall = Invoke-NativeCommand -FilePath $npmCmd -Arguments @('install', '-g', $bbAppAllowScripts, '--prefix', $machineNpmPrefix, 'bb-app') -ShowErrors $true
-    if ($npmInstall.ExitCode -ne 0) {
+    & {
+      $ErrorActionPreference = 'Continue'
+      & $npmCmd install -g $bbAppAllowScripts --prefix $machineNpmPrefix bb-app
+    }
+    if ($LASTEXITCODE -ne 0) {
       Remove-Item -LiteralPath $packageDir -Recurse -Force -ErrorAction SilentlyContinue
       Exit-Fail 'Could not install bb-app for this machine. Check the npm error above, then rerun this command.'
     }
@@ -699,7 +757,7 @@ if ($bbAppNpmPrefix -ne '') {
     exit 1
   }
   if (($packageStatusCode -ge 200) -and ($packageStatusCode -lt 300) -and ($packageDigest -ne '')) {
-    Set-Content -Path $hostArtifactDigestFile -Value $packageDigest -Encoding utf8
+    [IO.File]::WriteAllText($hostArtifactDigestFile, ($packageDigest + "`n"), (New-Object Text.UTF8Encoding $false))
   }
 }
 
@@ -727,6 +785,23 @@ if ($MachineCode -ne '') {
   Step-Complete 'Authorized this machine with bb connect'
 }
 
+$taskName = "bb-host-daemon-$serviceSlug"
+$wrapperCmd = Join-Path $dataDir "$taskName.cmd"
+$expandedPath = [Environment]::ExpandEnvironmentVariables($env:PATH)
+$wrapperLines = @(
+  '@echo off',
+  'setlocal',
+  "set `"BB_APP_NPM_PREFIX=$bbAppNpmPrefix`"",
+  "set `"BB_DATA_DIR=$dataDir`"",
+  "set `"PATH=$expandedPath`""
+)
+if ($bbAppJs -ne '') {
+  $wrapperLines += "`"$nodeExe`" `"$bbAppJs`" host-daemon --auto-update --host-daemon-port $selectedHostDaemonPort --server-url `"$serverUrl`""
+} else {
+  $wrapperLines += "call `"$pathBbApp`" host-daemon --auto-update --host-daemon-port $selectedHostDaemonPort --server-url `"$serverUrl`""
+}
+[IO.File]::WriteAllLines($wrapperCmd, $wrapperLines, [Text.Encoding]::Default)
+
 $alreadyJoined = $false
 $authFile = Join-Path $dataDir 'auth.json'
 $configFile = Join-Path $dataDir 'config.json'
@@ -744,7 +819,10 @@ if (Test-Path -LiteralPath $authFile) {
 
 $joinPid = 0
 if (-not $alreadyJoined) {
-  $joinLog = Join-Path $dataDir 'install-join.log'
+  if ((-not (Test-PortAvailable -Port $selectedHostDaemonPort)) -and (-not (Test-DaemonStatusMatches -Port $selectedHostDaemonPort -ExpectedHostId $HostId -ExpectedServerUrl $serverUrl -RequireConnected $false))) {
+    Exit-Fail "Host daemon local API port $selectedHostDaemonPort became unavailable during installation." @('Rerun this command to select a fresh port.')
+  }
+  $joinLog = Join-Path $dataDir "install-join-$selectedHostDaemonPort.log"
   Step-Active "Joining $serverUrl as $HostId"
   Write-Detail "Join progress is logged to $joinLog"
   $joinArgs = @('host-daemon', 'join', '--auto-update', '--host-daemon-port', $selectedHostDaemonPort, '--join-code', $JoinCode, '--host-id', $HostId, '--server-url', $serverUrl)
@@ -752,7 +830,7 @@ if (-not $alreadyJoined) {
     $joinArgs = @($bbAppJs) + $joinArgs
   }
   $joinPid = Start-HostDaemonProcess -NodeExe $nodeExe -DaemonArgs $joinArgs -LogPath $joinLog -NpmPrefix $bbAppNpmPrefix -DataDir $dataDir -PathBbApp $pathBbApp
-  Set-Content -Path (Join-Path $dataDir 'install-daemon.pid') -Value "$joinPid" -Encoding utf8
+  [IO.File]::WriteAllText((Join-Path $dataDir 'install-daemon.pid'), ("$joinPid" + "`n"), (New-Object Text.UTF8Encoding $false))
 
   $joined = $false
   $attempts = 0
@@ -782,15 +860,14 @@ if (-not $alreadyJoined) {
 
 if ($env:BB_INSTALL_SKIP_SERVICE -eq '1') {
   if (($joinPid -eq 0) -and (-not (Test-DaemonStatusMatches -Port $selectedHostDaemonPort -ExpectedHostId $HostId -ExpectedServerUrl $serverUrl -RequireConnected $false))) {
-    $daemonLog = Join-Path $dataDir 'install-daemon.log'
+    if (-not (Test-PortAvailable -Port $selectedHostDaemonPort)) {
+      Exit-Fail "Host daemon local API port $selectedHostDaemonPort became unavailable during installation." @('Rerun this command to select a fresh port.')
+    }
+    $daemonLog = Join-Path $dataDir "install-daemon-$selectedHostDaemonPort.log"
     Step-Active 'Starting the host daemon'
     Write-Detail "Host daemon output is logged to $daemonLog"
-    $daemonArgs = @('host-daemon', '--auto-update', '--host-daemon-port', $selectedHostDaemonPort, '--server-url', $serverUrl)
-    if ($bbAppJs -ne '') {
-      $daemonArgs = @($bbAppJs) + $daemonArgs
-    }
-    $joinPid = Start-HostDaemonProcess -NodeExe $nodeExe -DaemonArgs $daemonArgs -LogPath $daemonLog -NpmPrefix $bbAppNpmPrefix -DataDir $dataDir -PathBbApp $pathBbApp
-    Set-Content -Path (Join-Path $dataDir 'install-daemon.pid') -Value "$joinPid" -Encoding utf8
+    $joinPid = Start-DetachedDaemonProcess -WrapperCmd $wrapperCmd -LogPath $daemonLog -WorkingDir $dataDir
+    [IO.File]::WriteAllText((Join-Path $dataDir 'install-daemon.pid'), ("$joinPid" + "`n"), (New-Object Text.UTF8Encoding $false))
     if (-not (Wait-DaemonConnection -Subject 'the host daemon' -Port $selectedHostDaemonPort -ExpectedHostId $HostId -ExpectedServerUrl $serverUrl)) {
       Stop-DaemonProcess -ProcessId $joinPid
       Step-Fail "The bb host daemon did not connect to $serverUrl."
@@ -814,21 +891,6 @@ Remove-Item -LiteralPath (Join-Path $dataDir 'install-daemon.pid') -Force -Error
 
 Step-Active 'Installing the persistent bb host daemon service'
 
-$taskName = "bb-host-daemon-$serviceSlug"
-$wrapperCmd = Join-Path $dataDir "$taskName.cmd"
-$wrapperLines = @(
-  '@echo off',
-  'setlocal',
-  "set `"BB_APP_NPM_PREFIX=$bbAppNpmPrefix`"",
-  "set `"BB_DATA_DIR=$dataDir`""
-)
-if ($bbAppJs -ne '') {
-  $wrapperLines += "`"$nodeExe`" `"$bbAppJs`" host-daemon --auto-update --host-daemon-port $selectedHostDaemonPort --server-url `"$serverUrl`""
-} else {
-  $wrapperLines += "call `"$pathBbApp`" host-daemon --auto-update --host-daemon-port $selectedHostDaemonPort --server-url `"$serverUrl`""
-}
-[IO.File]::WriteAllLines($wrapperCmd, $wrapperLines, [Text.Encoding]::Default)
-
 if ($env:BB_INSTALL_FORCE_RUNKEY -eq '1') {
   $persistence = @{ Kind = 'access-denied' }
 } else {
@@ -838,9 +900,12 @@ if ($persistence.Kind -eq 'access-denied') {
   if ($env:BB_INSTALL_FORCE_RUNKEY -ne '1') {
     Step-Warning 'Registering a scheduled task requires elevation; persistence uses your per-user Run key instead.'
   }
-  $runResult = Install-RunKeyPersistence -ValueName $taskName -WrapperCmd $wrapperCmd -NodeExe $nodeExe -BbAppJs $bbAppJs -PathBbApp $pathBbApp -NpmPrefix $bbAppNpmPrefix -DataDir $dataDir -Port $selectedHostDaemonPort -ServerUrl $serverUrl
-  if ($runResult.Kind -eq 'run') {
+  $runResult = Install-RunKeyPersistence -ValueName $taskName -WrapperCmd $wrapperCmd -DataDir $dataDir -Port $selectedHostDaemonPort -ServerUrl $serverUrl
+  if (($runResult.Kind -eq 'run') -and ($runResult.Pid -ne 0)) {
     Step-Warning "Service installation used the Run key; daemon PID $($runResult.Pid) is still running."
+  }
+  if (($runResult.Kind -eq 'run') -and ($runResult.Pid -eq 0)) {
+    Step-Warning 'Service installation used the Run key; the enrolled daemon is already running.'
   }
   $serviceDesc = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run\$taskName"
 } else {
@@ -848,14 +913,14 @@ if ($persistence.Kind -eq 'access-denied') {
 }
 
 Step-Complete 'Installed and started the persistent host daemon'
-Write-Output ''
+[Console]::WriteLine('')
 Write-Step (Format-Green $script:GlyphReady) (Format-Bold 'bb machine is ready')
-Write-Output ''
+[Console]::WriteLine('')
 Write-ReadyRow 'server' (Format-Cyan $serverUrl)
 Write-ReadyRow 'daemon' "http://127.0.0.1:$selectedHostDaemonPort"
 Write-ReadyRow 'data' $dataDir
 Write-ReadyRow 'service' $serviceDesc
-Write-Output ''
+[Console]::WriteLine('')
 if ($persistence.Kind -eq 'task') {
   Write-Detail 'Starts at logon and restarts on failure.'
   Write-Detail "Uninstall: schtasks /Delete /TN '$taskName' /F"
