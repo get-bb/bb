@@ -151,6 +151,8 @@ const signingEnvironmentKeys = [
   "CSC_LINK",
   "CSC_NAME",
 ];
+const appleEventsEntitlementPattern =
+  /<key>com\.apple\.security\.automation\.apple-events<\/key>\s*<true\s*\/>/u;
 const audioInputEntitlementPattern =
   /<key>com\.apple\.security\.device\.audio-input<\/key>\s*<true\s*\/>/u;
 
@@ -509,6 +511,20 @@ describe("electron-builder signing config", () => {
     await expect(
       access(resolve(desktopPackageRoot, config.linux.icon)),
     ).resolves.toBeUndefined();
+  });
+
+  it("allows the signed app to request Apple Events access", async () => {
+    const configText = await readFile(
+      resolve(desktopPackageRoot, "electron-builder.config.json"),
+      "utf8",
+    );
+    const config = electronBuilderConfigSchema.parse(JSON.parse(configText));
+    const entitlements = await readFile(
+      resolve(desktopPackageRoot, config.mac.entitlements),
+      "utf8",
+    );
+
+    expect(entitlements).toMatch(appleEventsEntitlementPattern);
   });
 
   it("grants audio input to the signed app and helper processes", async () => {
