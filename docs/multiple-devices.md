@@ -161,6 +161,39 @@ the app drops the credential and asks the local server again.
 A remote server has no realtime link for keybindings and theme. The app re-reads
 them when it starts, when it becomes active, and every five minutes.
 
+## Keep working after the desktop window closes
+
+The desktop app is a client of a bb server, never its owner. On startup it
+probes the loopback server port: when a healthy server is already listening
+and its recorded version matches the app, the app attaches to it silently.
+Otherwise it asks — a different version, or a server it cannot identify,
+still gets the already-running dialog, and the app never stops a process it
+cannot identify. When nothing answers, the app starts its own server. The
+startup cases, in full:
+
+- No server answers: the app starts its own (owned) server.
+- The app already started one in this session: it keeps using it, and Quit
+  stops it.
+- A healthy server the app did not start, same version: attach silently, and
+  Quit leaves it running.
+- A healthy server of a different version: ask (connect, or stop it and
+  start fresh).
+- A server with a stale or unreadable process record: ask, and never stop
+  what cannot be identified.
+
+Closing the last window never ends the session. On macOS the app stays in
+the dock; on Windows it stays in the tray (Open bb brings a window back,
+Quit bb quits for real); on Linux closing the last window still quits.
+Quitting stops an owned server — in-flight turns on it end — and never
+touches an attached one.
+
+To survive Quit and reboot, run the server outside the app and let the app
+attach to it on next start. The Add-machine installer below uses exactly
+this pattern for host daemons (a per-user scheduled task, or a Run value
+when task registration needs elevation); wrapping a `bb-app` server start
+in the same per-user shape keeps it across logon, and the app attaches to
+it when the versions match.
+
 ## Add an execution machine
 
 Open Settings → Machines and choose Add machine. Run the generated one-line

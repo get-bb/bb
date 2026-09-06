@@ -750,3 +750,51 @@ before. Tests pin both forms through the same render path
 (`packages/templates/test/templates.test.ts`,
 `apps/server/test/skills/builtin-skills-shell-forms.test.ts`) and fail against
 the pre-fix wording (negative control run 2026-09-06).
+
+## K23 — Desktop as client on Windows: tray lifetime and attach-first startup — MEASURED 2026-09-06
+
+Closing the last window used to quit the Windows app (`window-all-closed` →
+`app.quit()` outside macOS), which stopped the owned server through
+`stopOwnedRuntime` and killed the in-flight turn. Measured live on Windows 11
+Pro (build 26200) with dev-shell builds of this worktree against isolated
+ports and data dirs (production 38886 left alone):
+
+- Owned server, `taskkill <main-pid>` without `/F` (graceful window close):
+  the app stayed resident with no window, the owned bridge (pid 19948) and
+  its listener kept serving the identical `launchId`, `threads/count` stayed
+  reachable, `owned-runtime.json` stayed intact, and a second launch handed
+  off through the single-instance lock so the original main pid showed its
+  window again — same server, no respawn.
+- Foreign launcher-owned server, same version: the app attached without
+  spawning (`owned-runtime.json` absent, server `launchId` unchanged), and
+  survived window close, reopen, `taskkill /F` of the app main alone, and a
+  fresh relaunch that reattached to the surviving daemon — same `launchId`
+  throughout.
+- Stale owned record: after the owned bridge was killed, the next start
+  reaped the dead pid file and spawned a fresh owned server (new pid, new
+  `launchId`). No permanent leak either way; the final sweep showed zero
+  stray `electron.exe`/`node.exe` from these runs and all six test ports
+  dead.
+- Attach policy against the live installed 0.42.1 server: recorded version
+  0.42.1 → attach with no prompt; simulated app version 0.41.0 → prompt;
+  no runtime file → prompt and never stop what cannot be identified.
+
+What changed: on Windows the app no longer quits with the last window and
+keeps a tray icon (Open bb / Quit bb); Quit still goes through `before-quit`
+→ `stopOwnedRuntime`, so an owned server stops cleanly and an attached one
+is never touched (`apps/desktop/src/desktop-tray.ts`,
+`apps/desktop/src/desktop-runtime-policy.ts`, pinned by
+`apps/desktop/test/desktop-tray.test.ts` and
+`apps/desktop/test/desktop-runtime-policy.test.ts`).
+
+Remaining differences from macOS, all intentional or cosmetic:
+
+- The Server menu and the already-running dialog still say "This Mac" /
+  "on this Mac" on Windows. Cosmetic; renaming is deferred because the
+  repo rule requires a project-wide rename for domain concepts.
+- There is a tray icon instead of a dock presence; Linux still quits with
+  the last window, unchanged.
+- Quit with an owned server still ends its in-flight turns by design. Only
+  a separately persistent server keeps them across Quit; only a logon-start
+  launcher keeps them across reboot. Closing the window (tray) needs none
+  of that.
