@@ -258,7 +258,7 @@ describe("spawnLoggedProcess", () => {
     );
 
     await startQaServer({
-      dataDir: "/tmp/standalone-server-data",
+      dataDir: path.join(tmpdir(), "standalone-server-data"),
       env: buildStandaloneRuntimeEnv({
         baseEnv: process.env,
         overrides: {
@@ -266,12 +266,12 @@ describe("spawnLoggedProcess", () => {
           BB_SERVER_PORT: "9999",
         },
       }),
-      logPath: "/tmp/standalone-server.log",
+      logPath: path.join(tmpdir(), "standalone-server.log"),
       port: 4567,
     });
 
     expect(spawnMockState.invocations[0]?.options.env).toMatchObject({
-      BB_DATA_DIR: "/tmp/standalone-server-data",
+      BB_DATA_DIR: path.join(tmpdir(), "standalone-server-data"),
       BB_SERVER_PORT: "4567",
     });
     expect(
@@ -292,8 +292,8 @@ describe("spawnLoggedProcess", () => {
     );
 
     await startQaServer({
-      dataDir: "/tmp/standalone-server-data",
-      logPath: "/tmp/standalone-server.log",
+      dataDir: path.join(tmpdir(), "standalone-server-data"),
+      logPath: path.join(tmpdir(), "standalone-server.log"),
       port: 4567,
       publicUrl: "https://standalone-public.example.test",
     });
