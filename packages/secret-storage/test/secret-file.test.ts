@@ -6,6 +6,9 @@ import { readOrCreateSecretFile } from "../src/index.js";
 
 const tempDirs: string[] = [];
 
+const NTFS_KEEPS_SECRET_MODE_AT_0O666_DESPITE_CHMOD_0600 =
+  process.platform === "win32";
+
 async function makeTempDir(): Promise<string> {
   const tempDir = await mkdtemp(path.join(os.tmpdir(), "bb-secret-file-"));
   tempDirs.push(tempDir);
@@ -38,8 +41,25 @@ describe("secret file", () => {
     });
 
     expect(second).toBe(first);
-    expect((await stat(path.join(dataDir, "secret"))).mode & 0o777).toBe(0o600);
   });
+
+  it.skipIf(NTFS_KEEPS_SECRET_MODE_AT_0O666_DESPITE_CHMOD_0600)(
+    "creates the secret file with 0600 mode",
+    async () => {
+      const dataDir = await makeTempDir();
+
+      await readOrCreateSecretFile({
+        bytes: 32,
+        dataDir,
+        encoding: "base64",
+        fileName: "secret",
+      });
+
+      expect((await stat(path.join(dataDir, "secret"))).mode & 0o777).toBe(
+        0o600,
+      );
+    },
+  );
 
   it("returns the same secret to concurrent creators", async () => {
     const dataDir = await makeTempDir();

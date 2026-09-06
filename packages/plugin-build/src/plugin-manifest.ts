@@ -15,10 +15,20 @@ export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+export function inferManifestPlatform(rootDir: string): NodeJS.Platform {
+  if (win32.isAbsolute(rootDir) && !posix.isAbsolute(rootDir)) {
+    return "win32";
+  }
+  if (!win32.isAbsolute(rootDir) && !posix.isAbsolute(rootDir)) {
+    return process.platform;
+  }
+  return "linux";
+}
+
 export function isPathWithinDirectory(
   rootDir: string,
   entryPath: string,
-  platform: NodeJS.Platform = process.platform,
+  platform: NodeJS.Platform = inferManifestPlatform(rootDir),
 ): boolean {
   const paths = platform === "win32" ? win32 : posix;
   const relativeEntry =
@@ -39,7 +49,7 @@ export function resolveManifestPath(
   rootDir: string,
   entry: string,
   label: string,
-  platform: NodeJS.Platform = process.platform,
+  platform: NodeJS.Platform = inferManifestPlatform(rootDir),
 ): string {
   const paths = platform === "win32" ? win32 : posix;
   if (paths.isAbsolute(entry)) {
