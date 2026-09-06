@@ -8,6 +8,7 @@ const HTML_EXTENSIONS = new Set([".html", ".htm"]);
 
 interface PrepareHtmlPreviewResult {
   file: string;
+  source: "workspace" | "thread-storage";
 }
 
 function requireNonEmptyString(value: unknown, field: string): string {
@@ -21,13 +22,13 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-export function requireWorkspaceHtmlFile(value: unknown): string {
+export function requireRelativeHtmlFile(value: unknown): string {
   const file = requireNonEmptyString(value, "file");
   if (path.isAbsolute(file)) {
-    throw new Error(`"file" must be workspace-relative, not absolute: ${file}`);
+    throw new Error(`"file" must be source-relative, not absolute: ${file}`);
   }
   if (/^[a-zA-Z]:[\\/]/.test(file) || file.startsWith("\\\\")) {
-    throw new Error(`"file" must be workspace-relative, not absolute: ${file}`);
+    throw new Error(`"file" must be source-relative, not absolute: ${file}`);
   }
   const slashNormalized = file.replace(/\\/g, "/");
   if (slashNormalized.split("/").includes("..")) {
@@ -41,7 +42,7 @@ export function requireWorkspaceHtmlFile(value: unknown): string {
     normalized === "." ||
     normalized.startsWith("/")
   ) {
-    throw new Error(`"file" must not escape the workspace: ${file}`);
+    throw new Error(`"file" must not escape its source: ${file}`);
   }
   const ext = path.posix.extname(normalized).toLowerCase();
   if (!HTML_EXTENSIONS.has(ext)) {
@@ -64,7 +65,7 @@ export function resolveContainedHtmlPath(
     relative.startsWith(`..${path.sep}`) ||
     path.isAbsolute(relative)
   ) {
-    throw new Error(`"file" must not escape the workspace: ${relativeFile}`);
+    throw new Error(`"file" must not escape its source: ${relativeFile}`);
   }
   return absolute;
 }
@@ -82,10 +83,20 @@ export const inlineVisRpcContract = defineRpcContract({
     input: z
       .object({
         threadId: z.string().trim().min(1),
-        file: z.string().transform((value) => requireWorkspaceHtmlFile(value)),
+        file: z.string().transform((value) => requireRelativeHtmlFile(value)),
+        source: z
+          .string()
+          .trim()
+          .pipe(z.enum(["workspace", "thread-storage"]))
+          .default("workspace"),
       })
       .strict(),
-    output: z.object({ file: z.string() }).strict(),
+    output: z
+      .object({
+        file: z.string(),
+        source: z.enum(["workspace", "thread-storage"]),
+      })
+      .strict(),
   },
 });
 
@@ -94,32 +105,44 @@ export default async function plugin(bb: BbPluginApi) {
     async prepareHtmlPreview({
       threadId,
       file,
+      source,
     }): Promise<PrepareHtmlPreviewResult> {
-      const thread = await bb.sdk.threads.get({
-        threadId,
-        include: "environment",
-      });
+      let rootPath: string;
+      let hostId: string;
 
-      if (!("environment" in thread)) {
-        throw new Error(
-          "Thread environment was not returned — inline-vis needs a live environment.",
-        );
-      }
+      if (source === "thread-storage") {
+        const storage = await bb.sdk.threads.storageLocation({ threadId });
+        rootPath = storage.storageRootPath;
+        hostId = storage.hostId;
+      } else {
+        const thread = await bb.sdk.threads.get({
+          threadId,
+          include: "environment",
+        });
 
-      const environment = thread.environment;
-      const rootPath =
-        typeof environment?.path === "string" ? environment.path : null;
-      if (!rootPath) {
-        throw new Error(
-          "This thread has no workspace path — inline-vis needs a live environment.",
-        );
-      }
-      const hostId =
-        typeof environment?.hostId === "string" ? environment.hostId : null;
-      if (!hostId) {
-        throw new Error(
-          "This thread's environment has no hostId — cannot read workspace files.",
-        );
+        if (!("environment" in thread)) {
+          throw new Error(
+            "Thread environment was not returned — inline-vis needs a live environment.",
+          );
+        }
+
+        const environment = thread.environment;
+        const workspacePath =
+          typeof environment?.path === "string" ? environment.path : null;
+        if (!workspacePath) {
+          throw new Error(
+            "This thread has no workspace path — inline-vis needs a live environment.",
+          );
+        }
+        const workspaceHostId =
+          typeof environment?.hostId === "string" ? environment.hostId : null;
+        if (!workspaceHostId) {
+          throw new Error(
+            "This thread's environment has no hostId — cannot read workspace files.",
+          );
+        }
+        rootPath = workspacePath;
+        hostId = workspaceHostId;
       }
 
       const absolutePath = resolveContainedHtmlPath(rootPath, file);
@@ -150,7 +173,7 @@ export default async function plugin(bb: BbPluginApi) {
         );
       }
 
-      return { file };
+      return { file, source };
     },
   });
 }
