@@ -19,12 +19,15 @@ import {
   settleJsonRpcResponse,
 } from "@bb/provider-bridge-protocol/bridge-kit";
 import {
+  CHILD_SIGTERM_SELF_REPORT_UNAVAILABLE_ON_WINDOWS_MEASURED_KILL_IS_TERMINATE_PROCESS,
   createScriptedEchoLaunch,
   createScriptedEchoProcessLog,
   createScriptedEchoRequestRecord,
   createScriptedEchoRuntime,
   fullRuntimeOptions,
   scriptedEchoProcessEnv,
+  wait,
+  waitForLoggedSpawnPidExit,
   waitForRuntimeState,
   waitForThreadAgentMessageText,
   waitForThreadTurnStarted,
@@ -390,6 +393,7 @@ describe("createAgentRuntime process lifecycle", () => {
       `const { spawn } = require("node:child_process");
       const writer = spawn(process.execPath, ["-e", ${JSON.stringify(delayedWriter)}], {
         stdio: ["ignore", "ignore", "inherit"],
+        detached: true,
       });
       writer.unref();
       process.exit(42);`,
@@ -624,11 +628,18 @@ describe("createAgentRuntime process lifecycle", () => {
       processKey: "fake",
       providerId: "fake",
     });
-    await waitForRuntimeState({
-      label: "old provider descendant attempted delayed output",
-      predicate: () => existsSync(writeMarker),
-    });
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    if (
+      CHILD_SIGTERM_SELF_REPORT_UNAVAILABLE_ON_WINDOWS_MEASURED_KILL_IS_TERMINATE_PROCESS
+    ) {
+      await wait(2_500);
+      expect(existsSync(writeMarker)).toBe(false);
+    } else {
+      await waitForRuntimeState({
+        label: "old provider descendant attempted delayed output",
+        predicate: () => existsSync(writeMarker),
+      });
+      await wait(100);
+    }
 
     expect(exitedPid).toBeDefined();
     expect(replacementProvider.child.pid).not.toBe(exitedPid);
@@ -838,9 +849,18 @@ describe("createAgentRuntime process lifecycle", () => {
     ).rejects.toThrow("no rollout found");
     expect(runtime.getProviderSession("t1")).toBeNull();
     expect(runtime.listRunningProviders()).toEqual([]);
-    expect(
-      processLog.read().filter((line) => line.startsWith("exit:")),
-    ).toHaveLength(1);
+    if (
+      CHILD_SIGTERM_SELF_REPORT_UNAVAILABLE_ON_WINDOWS_MEASURED_KILL_IS_TERMINATE_PROCESS
+    ) {
+      await waitForLoggedSpawnPidExit({
+        label: "the retired bridge process exited",
+        readLogLines: () => processLog.read(),
+      });
+    } else {
+      expect(
+        processLog.read().filter((line) => line.startsWith("exit:")),
+      ).toHaveLength(1);
+    }
     await runtime.shutdown();
   });
 
@@ -945,9 +965,18 @@ describe("createAgentRuntime process lifecycle", () => {
       ]);
       expect(runtime.getProviderSession("t1")).toBeNull();
       expect(runtime.listRunningProviders()).toEqual([]);
-      expect(
-        processLog.read().filter((line) => line.startsWith("exit:")),
-      ).toHaveLength(1);
+      if (
+        CHILD_SIGTERM_SELF_REPORT_UNAVAILABLE_ON_WINDOWS_MEASURED_KILL_IS_TERMINATE_PROCESS
+      ) {
+        await waitForLoggedSpawnPidExit({
+          label: "the reaped bridge process exited",
+          readLogLines: () => processLog.read(),
+        });
+      } else {
+        expect(
+          processLog.read().filter((line) => line.startsWith("exit:")),
+        ).toHaveLength(1);
+      }
     } finally {
       await runtime.shutdown();
     }
@@ -1036,9 +1065,19 @@ describe("createAgentRuntime process lifecycle", () => {
       expect(logLines.filter((line) => line.startsWith("spawn:"))).toHaveLength(
         2,
       );
-      expect(logLines.filter((line) => line.startsWith("exit:"))).toHaveLength(
-        1,
-      );
+      if (
+        CHILD_SIGTERM_SELF_REPORT_UNAVAILABLE_ON_WINDOWS_MEASURED_KILL_IS_TERMINATE_PROCESS
+      ) {
+        await waitForLoggedSpawnPidExit({
+          label: "the reaped bridge process exited",
+          readLogLines: () => processLog.read(),
+          spawnIndex: 0,
+        });
+      } else {
+        expect(
+          logLines.filter((line) => line.startsWith("exit:")),
+        ).toHaveLength(1);
+      }
       expect(
         logLines.some(
           (line) =>
@@ -1128,9 +1167,18 @@ describe("createAgentRuntime process lifecycle", () => {
       ]);
       expect(runtime.hasThread("t1")).toBe(false);
       expect(runtime.listRunningProviders()).toEqual([]);
-      expect(
-        processLog.read().filter((line) => line.startsWith("exit:")),
-      ).toHaveLength(1);
+      if (
+        CHILD_SIGTERM_SELF_REPORT_UNAVAILABLE_ON_WINDOWS_MEASURED_KILL_IS_TERMINATE_PROCESS
+      ) {
+        await waitForLoggedSpawnPidExit({
+          label: "the reaped bridge process exited",
+          readLogLines: () => processLog.read(),
+        });
+      } else {
+        expect(
+          processLog.read().filter((line) => line.startsWith("exit:")),
+        ).toHaveLength(1);
+      }
     } finally {
       await runtime.shutdown();
     }

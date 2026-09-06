@@ -10,6 +10,7 @@ import type {
   AgentRuntimeExecutionOptions,
   AgentRuntimeOptions,
 } from "../types.js";
+import { waitForRuntimeState } from "./runtime-wait-helpers.js";
 export {
   waitForRuntimeState,
   waitForRuntimeThreadEvent,
@@ -31,6 +32,39 @@ export const fullRuntimeOptions = {
 
 export function wait(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+export const CHILD_SIGTERM_SELF_REPORT_UNAVAILABLE_ON_WINDOWS_MEASURED_KILL_IS_TERMINATE_PROCESS =
+  process.platform === "win32";
+export function spawnedChildPids(logLines: readonly string[]): number[] {
+  return logLines
+    .filter((line) => line.startsWith("spawn:"))
+    .map((line) => Number(line.split(":")[1]))
+    .filter((pid) => Number.isInteger(pid));
+}
+export function isPidAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+export async function waitForLoggedSpawnPidExit(args: {
+  label: string;
+  readLogLines: () => readonly string[];
+  spawnIndex?: number;
+  timeoutMs?: number;
+}): Promise<number> {
+  const pid = spawnedChildPids(args.readLogLines())[args.spawnIndex ?? 0];
+  if (pid === undefined) {
+    throw new Error(`expected a spawned pid for ${args.label}`);
+  }
+  await waitForRuntimeState({
+    label: args.label,
+    predicate: () => !isPidAlive(pid),
+    timeoutMs: args.timeoutMs ?? 10_000,
+  });
+  return pid;
 }
 
 const prebuiltTestBridgeDir = fileURLToPath(
