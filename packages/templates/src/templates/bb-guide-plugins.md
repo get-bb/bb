@@ -168,13 +168,15 @@ each new run. Settings changes do not require a plugin reload.
 
 `status` is a bounded polling summary, and `list` returns only compact run
 summaries. Detailed run and call records are paged JSONL: redirect `history`
-into `$BB_THREAD_STORAGE` before inspecting it, and continue with the final
+into `$BB_THREAD_STORAGE` (Windows PowerShell: `$env:BB_THREAD_STORAGE`)
+before inspecting it, and continue with the final
 page record's `nextCursor`. The invoking shell writes
 that file on the thread's execution host, so this works the same on local and
 remote hosts without granting the plugin arbitrary filesystem access. Use `bb
 provider list --environment "$BB_ENVIRONMENT_ID" --json` and then `bb provider
 models <provider-id> --environment "$BB_ENVIRONMENT_ID" --json` before writing
-an explicit selection; never guess ACP model IDs.
+an explicit selection; never guess ACP model IDs. In Windows PowerShell, use
+`$env:BB_ENVIRONMENT_ID` in place of `"$BB_ENVIRONMENT_ID"`.
 
 The Memory plugin is an opt-in install, bundled with the app:
 `bb plugin install memory`. Once installed, it injects a compact global and

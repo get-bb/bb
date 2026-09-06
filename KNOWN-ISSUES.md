@@ -671,3 +671,82 @@ lifecycle scripts and future Windows ports must know:
   win32 with the pre-existing `runIf` guards: their fake-`git` sh wrappers
   need the same node-fake treatment the `gh` fakes got, which is real but
   unstarted work.
+
+## K19 — `bb` is unusable from Windows PowerShell when the install path contains a space — MEASURED 2026-09-06, NOT FIXED HERE
+
+Default install dir is `%LOCALAPPDATA%\Programs\bb wn` — note the space.
+Measured on real Windows 11 Pro (build 26200), PowerShell 5.1, with the exact
+environment a thread hands its agent (`BB_CLI=...\host-daemon\dist\bb.cmd`,
+PATH headed by the daemon `dist` dir):
+
+- `Get-Command bb` resolves to `.../dist/bb.cmd`, which looks healthy and masks
+  the bug.
+- Bare `bb status` fails: `'C:\Users\Administrator\AppData\Local\Programs\bb'
+  is not recognized as an internal or external command` — the path was split
+  at the space.
+- `& "$env:BB_CLI" status` — the documented fallback in the agent instructions
+  — fails identically.
+- `node ".../dist/bb" status` works (exit 0): the bundle is fine.
+- A space-free copy of the whole `dist` dir runs `bb.cmd status` fine.
+- The same spaced `bb.cmd` invoked quoted from `cmd.exe` works fine.
+
+So the split happens in the PowerShell-to-`.cmd` handoff, not inside `bb.cmd`
+(`@node "%~dp0bb" %*`) and not in the bundle. This single defect fully explains
+the flailing transcript that motivated the agent-experience task: the agent
+could *find* `bb` (`Get-Command` works) but never *run* it, so it listed
+Program Files, probed the asar-unpacked dir, hunted `node.exe` (named in
+`bb.cmd`), and copied the CLI to a temp dir to dodge the space. Owned by the
+concurrent "CLI paths with spaces" work; the repro above is the handoff. The
+agent-instruction wording (`"$BB_CLI"`, fixed for PowerShell syntax in K22)
+describes the intended post-fix behaviour.
+
+## K20 — Non-ASCII bytes in an ACP agent's shell output arrive as U+FFFD — MEASURED 2026-09-06, environmental
+
+Three real `acp-opencode` threads (plain `C:\bb-test`, spaced
+`C:\bb-qa-space dir`, non-ASCII `C:\proyectos\diseño`) all completed read,
+search, shell, create and report correctly — except one display corruption:
+shell `aggregatedOutput` shows `dise�o.txt` and `Directory: C:\proyectos\dise�o`
+(U+FFFD for ñ), while the `search`/`read`/`fileChange` items in the same turns
+carry `diseño` correctly. Cause is below bb: PowerShell 5.1 emits the system
+(OEM) code page and the agent process decodes those bytes as UTF-8. bb's own
+file tools round-trip UTF-8 names exactly, so nothing is lost — only the
+shell-output rendering of non-ASCII names is garbled, and only on Windows
+(macOS/Linux are UTF-8 end to end). No bb-side knob can force an agent child's
+console code page, so this stays a documented difference with the mitigation
+"prefer bb file tools over shell listings for non-ASCII names".
+
+## K21 — Leftover Bourne-isms outside the core agent path — MEASURED 2026-09-06, intentionally untouched
+
+The core agent instructions, bb-cli skill and core guides now name both shell
+forms (K22). Deliberately left alone:
+
+- `bb-guide-plugins.md` account-pool lines (`printf '%s\n' "$VAR" | bb pool …`):
+  one-time human auth flows, and `printf` exists on this machine only because
+  Git-bash leaked onto PATH — absent on clean Windows. Needs a measured
+  PowerShell stdin-piping equivalent before anyone writes one.
+- `plugins/workflows` skill (`mkdir -p "$BB_THREAD_STORAGE/…"`, `jq`, `$run`):
+  plugin-owned and deeply POSIX (`mkdir -p` and `jq` are not PowerShell 5.1);
+  dual-forming the interpolation alone would still leave broken commands.
+- The Claude Code probe failure on Windows reports the SDK-vendored text
+  "spawning a musl-linked binary on a glibc Linux host … (/lib/ld-musl-*)"
+  (only in `plugins/provider-claude-code/dist/host.js`, no bb source). It
+  fires through the extensionless-shim launch failure, so it belongs to the
+  concurrent provider-LAUNCH work, including whatever the real Windows cause
+  turns out to be.
+
+## K22 — Agent instructions told PowerShell agents to run Bourne syntax — FIXED 2026-09-06
+
+Every provider turn appends `standardAgentAppendInstructions`, and CLI users
+get the `bb-cli` skill plus `bb guide` chapters. Four Bourne-only forms were
+measured broken under the real agent shell (Windows PowerShell 5.1, where the
+agent natively runs): `"$BB_CLI"` as a command is a *parser error*
+(`Unexpected token`), and `"$BB_THREAD_ID"` / `"$BB_ENVIRONMENT_ID"` /
+`"$BB_THREAD_STORAGE"` expand to empty, so the copied command runs against no
+target. Fixed by naming the PowerShell form alongside the Bourne form in the
+standard append instructions, the bb-cli skill common checks, the providers
+guide models query, the plugins guide storage/provider lines, and the
+skill-creator evaluation spawn line. macOS/Linux forms are byte-identical to
+before. Tests pin both forms through the same render path
+(`packages/templates/test/templates.test.ts`,
+`apps/server/test/skills/builtin-skills-shell-forms.test.ts`) and fail against
+the pre-fix wording (negative control run 2026-09-06).

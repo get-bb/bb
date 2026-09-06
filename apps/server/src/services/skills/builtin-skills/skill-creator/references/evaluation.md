@@ -13,6 +13,8 @@ bb thread log <thread-id>
 bb thread show <thread-id> --git-diff
 ```
 
+In Windows PowerShell, use `$env:BB_PROJECT_ID` in place of `"$BB_PROJECT_ID"`.
+
 Read the transcript, not only the final answer. Check whether the skill
 triggered, whether the agent read only relevant resources, and whether the
 instructions improved the result.

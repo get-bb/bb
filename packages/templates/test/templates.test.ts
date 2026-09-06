@@ -121,4 +121,27 @@ describe("@bb/templates", () => {
       ).not.toThrow();
     }
   });
+
+  it("names both the POSIX and PowerShell bb CLI invocations for agents", () => {
+    const rendered = renderTemplate("standardAgentAppendInstructions", {});
+
+    expect(rendered).toContain('"$BB_CLI"');
+    expect(rendered).toContain('& "$env:BB_CLI"');
+  });
+
+  it("names both the POSIX and PowerShell environment flag for provider models", () => {
+    const rendered = renderTemplate("bbGuideProviders", {});
+
+    expect(rendered).toContain('"$BB_ENVIRONMENT_ID"');
+    expect(rendered).toContain("$env:BB_ENVIRONMENT_ID");
+  });
+
+  it("names both the POSIX and PowerShell thread storage and environment forms", () => {
+    const rendered = renderTemplate("bbGuidePlugins", {});
+
+    expect(rendered).toContain("$BB_THREAD_STORAGE");
+    expect(rendered).toContain("$env:BB_THREAD_STORAGE");
+    expect(rendered).toContain('"$BB_ENVIRONMENT_ID"');
+    expect(rendered).toContain("$env:BB_ENVIRONMENT_ID");
+  });
 });
