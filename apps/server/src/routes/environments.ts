@@ -1,4 +1,3 @@
-import path from "node:path";
 import { updateEnvironmentMetadata } from "@bb/db";
 import {
   resolveEnvironmentWorkspaceDisplayKind,
@@ -27,6 +26,7 @@ import {
   requireEnvironment,
   requireReadyEnvironment,
 } from "../services/lib/entity-lookup.js";
+import { joinHostPath } from "../services/hosts/host-paths.js";
 import { runLiveCommandAndWait } from "../services/hosts/live-command-wait.js";
 import { callHostRetryableOnlineRpc } from "../services/hosts/online-rpc.js";
 import { generateCommitMessage } from "../services/ai/commit-message.js";
@@ -479,7 +479,7 @@ export function registerEnvironmentRoutes(app: Hono, deps: AppDeps): void {
     ) {
       throw new ApiError(400, "invalid_request", "Invalid path");
     }
-    const absolutePath = path.join(environment.path, repoRelativePath);
+    const absolutePath = joinHostPath(environment.path, repoRelativePath);
     const ref = resolveDiffFileRef(query);
     const result = await callHostRetryableOnlineRpc(deps, {
       hostId: environment.hostId,
