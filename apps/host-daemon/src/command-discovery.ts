@@ -316,7 +316,9 @@ export function isPathWithinDirectory(
   const relativePath = path.relative(directoryPath, candidatePath);
   return (
     relativePath === "" ||
-    (!relativePath.startsWith("..") && !path.isAbsolute(relativePath))
+    (relativePath !== ".." &&
+      !relativePath.startsWith(`..${path.sep}`) &&
+      !path.isAbsolute(relativePath))
   );
 }
 

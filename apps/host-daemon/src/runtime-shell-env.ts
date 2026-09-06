@@ -9,6 +9,7 @@ import { assignIfDefined } from "@bb/config/objects";
 interface ResolveLocalBbExecutablePathOptions {
   cliExecutablePath?: string;
   cliRuntimePath?: string;
+  platform?: NodeJS.Platform;
 }
 
 interface PrepareRuntimeShellEnvOptions {
@@ -82,7 +83,10 @@ function getErrorCode(error: unknown): string | undefined {
   return undefined;
 }
 
-async function resolveCliEntryPath(cliExecutablePath: string): Promise<string> {
+async function resolveCliEntryPath(
+  cliExecutablePath: string,
+  platform: NodeJS.Platform,
+): Promise<string> {
   const cliEntryPath = resolve(cliExecutablePath);
 
   try {
@@ -90,7 +94,7 @@ async function resolveCliEntryPath(cliExecutablePath: string): Promise<string> {
     if (!stats.isFile()) {
       throw new Error(`Resolved bb CLI entry is not a file: ${cliEntryPath}`);
     }
-    if (process.platform !== "win32") {
+    if (platform !== "win32") {
       try {
         await fs.access(cliEntryPath, fsConstants.X_OK);
       } catch (error) {
@@ -512,9 +516,13 @@ export function createUserShellPathResolver(
 export async function resolveLocalBbExecutablePath(
   options: ResolveLocalBbExecutablePathOptions = {},
 ): Promise<string> {
+  const platform = options.platform ?? process.platform;
   const resolvedCliExecutablePath =
     options.cliExecutablePath ?? getDefaultCliExecutablePath();
-  const cliEntryPath = await resolveCliEntryPath(resolvedCliExecutablePath);
+  const cliEntryPath = await resolveCliEntryPath(
+    resolvedCliExecutablePath,
+    platform,
+  );
   const cliRuntimePath =
     options.cliRuntimePath ??
     (options.cliExecutablePath === undefined

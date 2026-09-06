@@ -438,7 +438,11 @@ describe("TerminalManager", () => {
   });
 
   it("opens a command PTY through the resolved shell", async () => {
-    const harness = createHarness();
+    const harness = createHarnessWithOptions({
+      onSendMessage: () => undefined,
+      platform: "linux",
+      resolveShell: async () => "/bin/zsh",
+    });
 
     await harness.manager.handleMessage({
       type: "terminal.open",
@@ -974,10 +978,12 @@ describe("TerminalManager", () => {
       packageDirectory,
     });
 
-    const buildHelperMode = (await fs.stat(buildHelperPath)).mode;
-    const prebuildHelperMode = (await fs.stat(prebuildHelperPath)).mode;
-    expect(buildHelperMode & 0o111).not.toBe(0);
-    expect(prebuildHelperMode & 0o111).not.toBe(0);
+    if (process.platform !== "win32") {
+      const buildHelperMode = (await fs.stat(buildHelperPath)).mode;
+      const prebuildHelperMode = (await fs.stat(prebuildHelperPath)).mode;
+      expect(buildHelperMode & 0o111).not.toBe(0);
+      expect(prebuildHelperMode & 0o111).not.toBe(0);
+    }
     expect(logger.warn).not.toHaveBeenCalled();
   });
 
@@ -1010,8 +1016,10 @@ describe("TerminalManager", () => {
       packageDirectory,
     });
 
-    const prebuildHelperMode = (await fs.stat(prebuildHelperPath)).mode;
-    expect(prebuildHelperMode & 0o111).not.toBe(0);
+    if (process.platform !== "win32") {
+      const prebuildHelperMode = (await fs.stat(prebuildHelperPath)).mode;
+      expect(prebuildHelperMode & 0o111).not.toBe(0);
+    }
     expect(logger.warn).not.toHaveBeenCalled();
   });
 
@@ -1590,7 +1598,10 @@ describe("TerminalManager", () => {
     });
 
     expect(harness.adapter.spawned).toHaveLength(1);
-    expect(harness.adapter.spawned[0]?.args.file).toBe("powershell.exe");
+    const resolvedShell = harness.adapter.spawned[0]?.args.file ?? "";
+    expect(resolvedShell.toLowerCase()).toMatch(
+      /(powershell|pwsh)(\.exe)?$/u,
+    );
     expect(harness.adapter.spawned[0]?.args.args).toEqual([
       "-NoLogo",
       "-NoProfile",

@@ -178,7 +178,10 @@ describe("protocol self-update", () => {
 
   it("finds npm beside the running Node executable when the service PATH omits it", async () => {
     vi.stubEnv("PATH", "/usr/bin:/bin");
-    const test = await createFixture({ useDefaultInstaller: true });
+    const test = await createFixture({
+      platform: "linux",
+      useDefaultInstaller: true,
+    });
 
     await expect(test.updater.handleProtocolMismatch()).resolves.toBe(
       "updated",

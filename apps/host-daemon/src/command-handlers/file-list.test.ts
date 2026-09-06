@@ -272,7 +272,7 @@ describe("listPathsRecursively", () => {
       const nested = path.join(root, "many");
       await fs.mkdir(nested, { recursive: true });
       const fileCount = 150_000;
-      const batchSize = 500;
+      const batchSize = 2_000;
       for (let start = 0; start < fileCount; start += batchSize) {
         const end = Math.min(start + batchSize, fileCount);
         await Promise.all(
@@ -293,5 +293,5 @@ describe("listPathsRecursively", () => {
     } finally {
       await fs.rm(root, { recursive: true, force: true });
     }
-  }, 60_000);
+  }, process.platform === "win32" ? 240_000 : 60_000);
 });
