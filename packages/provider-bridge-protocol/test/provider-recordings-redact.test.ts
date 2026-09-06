@@ -8,6 +8,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { expect, it } from "vitest";
 
 const REDACT_SCRIPT = new URL(
@@ -38,7 +39,7 @@ it("redacts every documented GitHub token prefix", () => {
 
     const stdout = execFileSync(
       process.execPath,
-      [REDACT_SCRIPT.pathname, inputDir, outputDir, "--home", "/home/tester"],
+      [fileURLToPath(REDACT_SCRIPT), inputDir, outputDir, "--home", "/home/tester"],
       { encoding: "utf8" },
     );
     const output = readFileSync(join(outputDir, "github.ndjson"), "utf8");

@@ -20,6 +20,9 @@ import {
 
 const tempDirs: string[] = [];
 
+const CHMOD_MODE_BITS_IGNORED_ON_WINDOWS_NTFS_MEASURED_MODE_STAYS_0O666 =
+  process.platform === "win32";
+
 afterEach(async () => {
   await Promise.all(
     tempDirs.splice(0).map((dir) => rm(dir, { force: true, recursive: true })),
@@ -214,14 +217,30 @@ describe("install global skills", () => {
       skillDirectoryPath,
       platform: "win32",
     });
+    expect(windowsHash).not.toBeNull();
+
+    if (CHMOD_MODE_BITS_IGNORED_ON_WINDOWS_NTFS_MEASURED_MODE_STAYS_0O666) {
+      const bytes = await readFile(skillFilePath);
+      const expected = createHash("sha256");
+      expected.update("bb-skill-tree-v1");
+      expected.update("\0file\0");
+      expected.update("SKILL.md");
+      expected.update("\0");
+      expected.update((0o644).toString(8));
+      expected.update("\0");
+      expected.update(String(bytes.length));
+      expected.update("\0");
+      expected.update(bytes);
+      expect(windowsHash).toBe(expected.digest("hex"));
+      return;
+    }
+
     await chmod(skillFilePath, 0o644);
     const posixHash = await hashInstalledSkillDirectory({
       name: "bb-cli",
       skillDirectoryPath,
       platform: "linux",
     });
-
-    expect(windowsHash).not.toBeNull();
     expect(windowsHash).toBe(posixHash);
   });
 });

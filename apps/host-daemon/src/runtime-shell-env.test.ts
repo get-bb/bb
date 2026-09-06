@@ -14,6 +14,9 @@ import {
 
 const tempDirs: string[] = [];
 
+const EXECUTE_BIT_UNENFORCEABLE_ON_WINDOWS_NTFS_MEASURED_ACCESS_X_OK_ALWAYS_SUCCEEDS =
+  process.platform === "win32";
+
 async function makeTempDir(prefix: string): Promise<string> {
   const directoryPath = await fs.mkdtemp(path.join(os.tmpdir(), prefix));
   tempDirs.push(directoryPath);
@@ -175,6 +178,9 @@ describe("resolveLocalBbExecutablePath", () => {
   });
 
   it("fails clearly when the built CLI entry is not executable", async () => {
+    if (EXECUTE_BIT_UNENFORCEABLE_ON_WINDOWS_NTFS_MEASURED_ACCESS_X_OK_ALWAYS_SUCCEEDS) {
+      return;
+    }
     const { cliEntryPath } = await createFakeCliPackage({
       executable: false,
     });

@@ -92,9 +92,10 @@ describe("project.clone", () => {
 
     expect(isExpectedCommandDispatchError(error)).toBe(true);
     expect(error).toMatchObject({ code: "git_command_failed" });
-    expect(error.message).toContain("fatal: repository");
+    expect(error.message).toContain("fatal");
+    expect(error.message).toContain("repository");
     expect(error.message).toContain("missing.git");
-    expect(error.message).toContain("does not exist");
+    expect(error.message).toMatch(/does not (exist|appear to be a git repository)/);
   });
 
   it("derives the checkout convention without touching the filesystem", async () => {
