@@ -85,6 +85,13 @@ jobs:
           pnpm run typecheck 2>&1 | Tee-Object qa-evidence/20-typecheck.txt
           exit $LASTEXITCODE
 
+      - name: Build
+        id: build
+        continue-on-error: true
+        run: |
+          pnpm run build 2>&1 | Tee-Object qa-evidence/40-build.txt
+          exit $LASTEXITCODE
+
       - name: Unit tests (domain / process-utils / host-daemon / desktop)
         id: tests
         continue-on-error: true
@@ -92,13 +99,6 @@ jobs:
           pnpm exec vitest run --reporter=dot `
             packages/domain packages/process-utils apps/host-daemon apps/desktop `
             2>&1 | Tee-Object qa-evidence/30-tests.txt
-          exit $LASTEXITCODE
-
-      - name: Build
-        id: build
-        continue-on-error: true
-        run: |
-          pnpm run build 2>&1 | Tee-Object qa-evidence/40-build.txt
           exit $LASTEXITCODE
 
       - name: Process snapshot
