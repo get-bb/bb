@@ -200,6 +200,47 @@ describe("CompactSecondaryPanelShelf", () => {
     },
   );
 
+  it("clears only its selected text on close so reopening restores swiping", () => {
+    const onClose = vi.fn();
+    const view = (open: boolean) => (
+      <>
+        <div data-testid="outside-selection">Outside selection</div>
+        <CompactSecondaryPanelShelf
+          open={open}
+          onClose={onClose}
+          presentation="shelf"
+          srLabel="Right panel"
+        >
+          <div data-testid="panel-body">Preview selection</div>
+        </CompactSecondaryPanelShelf>
+      </>
+    );
+    const selectContents = (element: Element) => {
+      const range = document.createRange();
+      range.selectNodeContents(element);
+      window.getSelection()?.removeAllRanges();
+      window.getSelection()?.addRange(range);
+    };
+    const { rerender } = render(view(true));
+
+    selectContents(screen.getByTestId("outside-selection"));
+    rerender(view(false));
+    expect(window.getSelection()?.toString()).toBe("Outside selection");
+
+    rerender(view(true));
+    const shelf = screen.getByTestId("secondary-panel-shelf");
+    Object.defineProperty(shelf, "clientWidth", { value: 300 });
+    selectContents(screen.getByTestId("panel-body"));
+    rerender(view(false));
+    expect(window.getSelection()?.isCollapsed).toBe(true);
+
+    rerender(view(true));
+    fireTouch(shelf, "touchstart", createTouch(60, 160));
+    fireTouch(window, "touchmove", createTouch(240, 164));
+    fireTouch(window, "touchend", createTouch(240, 164));
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
   it("ignores a closing swipe from the left browser edge", () => {
     const { onClose } = renderShelf(true);
     const shelf = screen.getByTestId("secondary-panel-shelf");
