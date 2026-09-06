@@ -670,7 +670,12 @@ describe("machine gate auth", () => {
     expect(captured).toHaveLength(0);
   });
 
-  it.each(["/install.sh", "/install/version", "/install/bb-app.tgz"])(
+  it.each([
+    "/install.sh",
+    "/install.ps1",
+    "/install/version",
+    "/install/bb-app.tgz",
+  ])(
     "forwards GET %s without session or machine auth",
     async (path) => {
       const { env, ctx, captured } = makeEnv(() => new Response("artifact"));

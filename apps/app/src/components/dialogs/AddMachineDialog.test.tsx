@@ -117,6 +117,18 @@ describe("AddMachineDialog", () => {
     expect(command.textContent).toContain("--machine-code mc_test456");
     expect(command.textContent).not.toContain(window.location.origin);
     expect(command.closest("[data-add-machine-command]")).not.toBeNull();
+    const windowsCommand = screen.getByText(/-JoinCode jc_test123/);
+    expect(windowsCommand.textContent).toContain(
+      "https://example.getbb.app/install.ps1",
+    );
+    expect(windowsCommand.textContent).toContain("-HostId host_new");
+    expect(windowsCommand.textContent).toContain(
+      "-Server https://example.getbb.app",
+    );
+    expect(windowsCommand.textContent).toContain("-MachineCode mc_test456");
+    expect(
+      windowsCommand.closest("[data-add-machine-command-windows]"),
+    ).not.toBeNull();
     expect(
       screen.getByText(
         /It installs bb and keeps the machine connected to this server/u,

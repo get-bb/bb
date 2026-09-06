@@ -132,6 +132,19 @@ function pairingCommand(
   return `curl -fL --progress-meter --connect-timeout 10 --max-time 60 --retry 2 ${serverUrl}/install.sh | sh -s -- --join-code ${joinCode} --host-id ${hostId} --server ${serverUrl}${machineFlag}`;
 }
 
+function pairingCommandWindows(
+  joinCode: string,
+  hostId: string,
+  machineCode: ConnectMachineCode | null,
+  directServerUrl: string | null,
+): string | null {
+  const serverUrl = machineCode?.serverUrl ?? directServerUrl;
+  if (serverUrl === null) return null;
+  const machineFlag =
+    machineCode === null ? "" : ` -MachineCode ${machineCode.code}`;
+  return `Invoke-RestMethod ${serverUrl}/install.ps1 -OutFile $env:TEMP\bb-install-machine.ps1; powershell -NoProfile -ExecutionPolicy Bypass -File $env:TEMP\bb-install-machine.ps1 -JoinCode ${joinCode} -HostId ${hostId} -Server ${serverUrl}${machineFlag}`;
+}
+
 const REMOTE_ACCESS_ROUTE = getPluginConfigurationRoutePath({
   pluginId: "connect",
 });
@@ -266,7 +279,17 @@ function AddMachineDialogContent({
           serverUrl,
         )
       : null;
+  const windowsCommand =
+    showCommand && joinCode !== null
+      ? pairingCommandWindows(
+          joinCode.joinCode,
+          joinCode.hostId,
+          machineCode,
+          serverUrl,
+        )
+      : null;
   const { copied, copy } = useClipboardCopy({ text: command ?? "" });
+  const windowsCopy = useClipboardCopy({ text: windowsCommand ?? "" });
 
   return (
     <>
@@ -304,47 +327,74 @@ function AddMachineDialogContent({
             reason={unreachable.reason}
           />
         ) : command !== null ? (
-          <div
-            data-add-machine-command
-            className="overflow-hidden rounded-md border border-border bg-muted/30"
-          >
-            <pre className="overflow-x-auto whitespace-pre-wrap break-all p-3 font-mono text-xs text-foreground">
-              {command}
-            </pre>
-            <div className="flex flex-wrap items-center gap-2 border-t border-border px-3 py-2">
-              {expired ? (
-                <>
-                  <span className="text-xs text-subtle-foreground">
-                    Code expired
+          <>
+            <div
+              data-add-machine-command
+              className="overflow-hidden rounded-md border border-border bg-muted/30"
+            >
+              <pre className="overflow-x-auto whitespace-pre-wrap break-all p-3 font-mono text-xs text-foreground">
+                {command}
+              </pre>
+              <div className="flex flex-wrap items-center gap-2 border-t border-border px-3 py-2">
+                {expired ? (
+                  <>
+                    <span className="text-xs text-subtle-foreground">
+                      Code expired
+                    </span>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      className="h-7 px-2 text-xs"
+                      disabled={mintJoinCode.isPending}
+                      onClick={() => mintJoinCode.mutate()}
+                    >
+                      Generate a new code
+                    </Button>
+                  </>
+                ) : remainingMs !== null ? (
+                  <span className="text-xs tabular-nums text-subtle-foreground">
+                    Code expires in {formatCountdown(remainingMs)}
                   </span>
+                ) : null}
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="ml-auto h-7 px-2.5 text-xs"
+                  disabled={expired}
+                  onClick={() => void copy()}
+                >
+                  {copied ? "Copied" : "Copy"}
+                </Button>
+              </div>
+            </div>
+            {windowsCommand !== null ? (
+              <div
+                data-add-machine-command-windows
+                className="overflow-hidden rounded-md border border-border bg-muted/30"
+              >
+                <p className="border-b border-border px-3 py-1.5 text-xs text-subtle-foreground">
+                  Windows (PowerShell)
+                </p>
+                <pre className="overflow-x-auto whitespace-pre-wrap break-all p-3 font-mono text-xs text-foreground">
+                  {windowsCommand}
+                </pre>
+                <div className="flex flex-wrap items-center gap-2 border-t border-border px-3 py-2">
                   <Button
                     type="button"
                     size="sm"
-                    variant="ghost"
-                    className="h-7 px-2 text-xs"
-                    disabled={mintJoinCode.isPending}
-                    onClick={() => mintJoinCode.mutate()}
+                    variant="outline"
+                    className="ml-auto h-7 px-2.5 text-xs"
+                    disabled={expired}
+                    onClick={() => void windowsCopy.copy()}
                   >
-                    Generate a new code
+                    {windowsCopy.copied ? "Copied" : "Copy"}
                   </Button>
-                </>
-              ) : remainingMs !== null ? (
-                <span className="text-xs tabular-nums text-subtle-foreground">
-                  Code expires in {formatCountdown(remainingMs)}
-                </span>
-              ) : null}
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                className="ml-auto h-7 px-2.5 text-xs"
-                disabled={expired}
-                onClick={() => void copy()}
-              >
-                {copied ? "Copied" : "Copy"}
-              </Button>
-            </div>
-          </div>
+                </div>
+              </div>
+            ) : null}
+          </>
         ) : (
           <p className="flex items-center gap-2 text-sm text-muted-foreground">
             <Icon name="Spinner" className="size-4 shrink-0 animate-spin" />
