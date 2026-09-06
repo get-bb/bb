@@ -1,5 +1,5 @@
 import { readFile, realpath, stat } from "node:fs/promises";
-import { isAbsolute, resolve } from "node:path";
+import { posix, win32 } from "node:path";
 import {
   isPluginOwnedIconPath,
   pluginPackageJsonSchema,
@@ -15,16 +15,35 @@ export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+export function isPathWithinDirectory(
+  rootDir: string,
+  entryPath: string,
+  platform: NodeJS.Platform = process.platform,
+): boolean {
+  const paths = platform === "win32" ? win32 : posix;
+  const relativeEntry = paths.relative(rootDir, entryPath);
+  if (relativeEntry === "") {
+    return true;
+  }
+  return (
+    relativeEntry !== ".." &&
+    !relativeEntry.startsWith(`..${paths.sep}`) &&
+    !paths.isAbsolute(relativeEntry)
+  );
+}
+
 export function resolveManifestPath(
   rootDir: string,
   entry: string,
   label: string,
+  platform: NodeJS.Platform = process.platform,
 ): string {
-  if (isAbsolute(entry)) {
+  const paths = platform === "win32" ? win32 : posix;
+  if (paths.isAbsolute(entry)) {
     throw new Error(`manifest ${label} must be relative, got "${entry}"`);
   }
-  const resolved = resolve(rootDir, entry);
-  if (resolved !== rootDir && !resolved.startsWith(rootDir + "/")) {
+  const resolved = paths.resolve(rootDir, entry);
+  if (!isPathWithinDirectory(rootDir, resolved, platform)) {
     throw new Error(
       `manifest ${label} escapes the plugin directory: "${entry}"`,
     );
@@ -76,7 +95,7 @@ export async function validatePluginBuildManifest(
       realpath(rootDir),
       realpath(assetPath),
     ]);
-    if (realAsset !== realRoot && !realAsset.startsWith(realRoot + "/")) {
+    if (!isPathWithinDirectory(realRoot, realAsset)) {
       throw new Error(
         `manifest ${label} escapes the plugin directory through a symlink`,
       );
@@ -108,7 +127,7 @@ export async function validatePluginBuildManifest(
       realpath(rootDir),
       realpath(assetPath),
     ]);
-    if (realAsset !== realRoot && !realAsset.startsWith(realRoot + "/")) {
+    if (!isPathWithinDirectory(realRoot, realAsset)) {
       throw new Error(
         `manifest ${label} escapes the plugin directory through a symlink`,
       );
