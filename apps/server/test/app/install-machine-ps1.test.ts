@@ -45,6 +45,100 @@ function resolvePowerShell(): string | null {
 const POWERSHELL_BIN = resolvePowerShell();
 const POWERSHELL_UNAVAILABLE_MEASURED = POWERSHELL_BIN === null;
 
+const INTERACTIVE_TOKEN_LAUNCH_REFUSED_RESULT_MEASURED = 2147946720;
+
+function queryTaskLastResult(taskName: string): number | null {
+  const queried = spawnSync(
+    "schtasks",
+    ["/Query", "/TN", taskName, "/FO", "LIST", "/V"],
+    { encoding: "utf8", timeout: 30000 },
+  );
+  if (queried.status !== 0) {
+    return null;
+  }
+  const line = (queried.stdout ?? "")
+    .split(/\r?\n/u)
+    .find((entry) => entry.trimStart().startsWith("Last Result"));
+  if (line === undefined) {
+    return null;
+  }
+  const parsed = Number(line.split(":").at(-1)?.trim());
+  if (!Number.isInteger(parsed)) {
+    return null;
+  }
+  return parsed >>> 0;
+}
+
+async function probeInteractiveTokenLaunchMeasured(): Promise<boolean> {
+  if (POWERSHELL_BIN === null) {
+    return false;
+  }
+  const root = mkdtempSync(join(tmpdir(), "bb-ps1-task-probe-"));
+  createdDirectories.push(root);
+  const taskName = `bb-task-probe-${Math.random().toString(36).slice(2, 8)}`;
+  try {
+    const marker = join(root, "marker.txt");
+    const logPath = join(root, "probe.log");
+    const systemCmd = `${process.env.SystemRoot ?? "C:\\Windows"}\\System32\\cmd.exe`;
+    const xml =
+      '<?xml version="1.0" encoding="UTF-16"?>' +
+      '<Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">' +
+      "<Triggers><LogonTrigger><Enabled>true</Enabled></LogonTrigger></Triggers>" +
+      '<Principals><Principal id="Author"><LogonType>InteractiveToken</LogonType><RunLevel>LeastPrivilege</RunLevel></Principal></Principals>' +
+      "<Settings><MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy><Enabled>true</Enabled><Hidden>false</Hidden></Settings>" +
+      '<Actions Context="Author"><Exec>' +
+      `<Command>${systemCmd}</Command>` +
+      `<Arguments>/c echo probe &gt; "${marker}" 2&gt;&amp;1 &gt;&gt; "${logPath}"</Arguments>` +
+      `<WorkingDirectory>${root}</WorkingDirectory>` +
+      "</Exec></Actions></Task>";
+    const xmlPath = join(root, "probe.xml");
+    writeFileSync(xmlPath, `\uFEFF${xml}`, "utf16le");
+    const created = spawnSync(
+      "schtasks",
+      ["/Create", "/TN", taskName, "/XML", xmlPath, "/F"],
+      { encoding: "utf8", timeout: 30000 },
+    );
+    if (created.status !== 0) {
+      return false;
+    }
+    createdTaskNames.push(taskName);
+    const started = spawnSync("schtasks", ["/Run", "/TN", taskName], {
+      encoding: "utf8",
+      timeout: 30000,
+    });
+    if (started.status !== 0) {
+      return false;
+    }
+    const deadline = Date.now() + 30000;
+    while (Date.now() < deadline) {
+      if (existsSync(marker)) {
+        return true;
+      }
+      if (
+        queryTaskLastResult(taskName) ===
+        INTERACTIVE_TOKEN_LAUNCH_REFUSED_RESULT_MEASURED
+      ) {
+        return false;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+    }
+    return existsSync(marker);
+  } catch {
+    return false;
+  } finally {
+    try {
+      deleteScheduledTask(taskName);
+    } catch {}
+    const index = createdTaskNames.indexOf(taskName);
+    if (index !== -1) {
+      createdTaskNames.splice(index, 1);
+    }
+    try {
+      rmSync(root, { force: true, recursive: true });
+    } catch {}
+  }
+}
+
 const createdDirectories: string[] = [];
 const createdTaskNames: string[] = [];
 const createdRunValues: string[] = [];
@@ -388,6 +482,20 @@ function killProcessOnPort(port: string, ownerRoot?: string): void {
     encoding: "utf8",
     timeout: 30000,
   });
+  waitForPortFree(port, 15000);
+}
+
+function sleepSync(ms: number): void {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
+function processAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function daemonPidOnPort(port: string): number {
@@ -405,6 +513,36 @@ function daemonPidOnPort(port: string): number {
   );
   const pid = Number((probed.stdout ?? "").toString().trim());
   return Number.isInteger(pid) && pid > 0 ? pid : 0;
+}
+
+function waitForPortFree(port: string, timeoutMs: number): void {
+  const deadline = Date.now() + timeoutMs;
+  while (daemonPidOnPort(port) !== 0 && Date.now() < deadline) {
+    sleepSync(250);
+  }
+}
+
+function waitForPidGone(pid: number, timeoutMs: number): void {
+  const deadline = Date.now() + timeoutMs;
+  while (processAlive(pid) && Date.now() < deadline) {
+    sleepSync(250);
+  }
+}
+
+async function claimParallelRunSafeLoopbackPort(): Promise<string> {
+  const server = createNetServer();
+  await new Promise<void>((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", () => resolve());
+  });
+  const address = server.address();
+  const port =
+    typeof address === "object" && address !== null ? address.port : 0;
+  await new Promise<void>((resolve) => server.close(() => resolve()));
+  if (!Number.isInteger(port) || port <= 0) {
+    throw new Error("could not claim an unused loopback port");
+  }
+  return String(port);
 }
 
 function scheduledTaskExists(taskName: string): boolean {
@@ -524,11 +662,14 @@ for (const pidFile of ["install-daemon.pid"]) {
         try {
           process.kill(pid, "SIGKILL");
         } catch {}
+        waitForPidGone(pid, 15000);
       }
     } catch {}
   }
   try {
-    killProcessOnPort(selectedPort(fixture), fixture.root);
+    const port = selectedPort(fixture);
+    killProcessOnPort(port, fixture.root);
+    waitForPortFree(port, 15000);
   } catch {}
 }
 
@@ -553,6 +694,7 @@ for (const taskName of createdTaskNames.splice(0)) {
             try {
               process.kill(pid, "SIGKILL");
             } catch {}
+            waitForPidGone(pid, 15000);
           }
         } catch {}
       }
@@ -562,11 +704,17 @@ for (const taskName of createdTaskNames.splice(0)) {
           "utf8",
         ).trim();
         if (/^\d+$/u.test(port)) {
-          killProcessOnPort(port, fixture.root);
+          killProcessOnPort(port, directory);
+          waitForPortFree(port, 15000);
         }
       } catch {}
     } catch {}
-    rmSync(directory, { force: true, recursive: true });
+    rmSync(directory, {
+      force: true,
+      recursive: true,
+      maxRetries: 10,
+      retryDelay: 250,
+    });
   }
 });
 
@@ -1235,15 +1383,19 @@ describe.skipIf(POWERSHELL_UNAVAILABLE_MEASURED)(
 
     it(
       "installs a restartable scheduled task once and replaces it with one",
-      async () => {
+      async (ctx) => {
+        if (!(await probeInteractiveTokenLaunchMeasured())) {
+          ctx.skip();
+        }
         const fixture = createFixture();
         const serverUrl = `https://${Math.random().toString(36).slice(2, 8)}.getbb.app`;
         const taskName = `bb-host-daemon-${serverUrl.replace("https://", "").replace(/\./gu, "-")}`;
         createdTaskNames.push(taskName);
         writeJoinedState(fixture, serverUrl);
+        const claimedPort = await claimParallelRunSafeLoopbackPort();
 
         const first = runInstaller(
-          ["-JoinCode", "unused-first-code", "-HostId", "host-test", "-Server", serverUrl],
+          ["-JoinCode", "unused-first-code", "-HostId", "host-test", "-Server", serverUrl, "-HostDaemonPort", claimedPort],
           fixture,
           { BB_PS1_TEST_ARTIFACT_STATUS: "404" },
           115_000,
@@ -1266,6 +1418,7 @@ describe.skipIf(POWERSHELL_UNAVAILABLE_MEASURED)(
         expect(wrapper).toContain("host-daemon --auto-update");
 
         const port = selectedPort(fixture);
+        expect(port).toBe(claimedPort);
         expect(
           (await waitForDaemonStatus(port, "host-test", 30_000)).connected,
         ).toBe(true);
@@ -1289,7 +1442,7 @@ describe.skipIf(POWERSHELL_UNAVAILABLE_MEASURED)(
         ).toBe(true);
 
         const second = runInstaller(
-          ["-JoinCode", "unused-second-code", "-HostId", "host-test", "-Server", serverUrl],
+          ["-JoinCode", "unused-second-code", "-HostId", "host-test", "-Server", serverUrl, "-HostDaemonPort", claimedPort],
           fixture,
           { BB_PS1_TEST_ARTIFACT_STATUS: "404" },
           115_000,
@@ -1307,6 +1460,7 @@ describe.skipIf(POWERSHELL_UNAVAILABLE_MEASURED)(
         expect(scheduledTaskExists(taskName)).toBe(false);
         createdTaskNames.splice(createdTaskNames.indexOf(taskName), 1);
         killProcessOnPort(port, fixture.root);
+        waitForPortFree(port, 15000);
       },
       240_000,
     );
@@ -1315,13 +1469,14 @@ describe.skipIf(POWERSHELL_UNAVAILABLE_MEASURED)(
       "persists through the per-user Run key when forced",
       async () => {
         const fixture = createFixture();
-        const serverUrl = "https://winkeytest.getbb.app";
+        const serverUrl = `https://winkey${Math.random().toString(36).slice(2, 8)}.getbb.app`;
         const valueName = `bb-host-daemon-${serverUrl.replace("https://", "").replace(/\./gu, "-")}`;
         createdRunValues.push(valueName);
         writeJoinedState(fixture, serverUrl);
+        const claimedPort = await claimParallelRunSafeLoopbackPort();
 
         const first = runInstaller(
-          ["-JoinCode", "unused-first-code", "-HostId", "host-test", "-Server", serverUrl],
+          ["-JoinCode", "unused-first-code", "-HostId", "host-test", "-Server", serverUrl, "-HostDaemonPort", claimedPort],
           fixture,
           {
             BB_PS1_TEST_ARTIFACT_STATUS: "404",
@@ -1337,6 +1492,7 @@ describe.skipIf(POWERSHELL_UNAVAILABLE_MEASURED)(
           expect(stored).toContain(`${valueName}.cmd`);
           expect(scheduledTaskExists(valueName)).toBe(false);
           const port = selectedPort(fixture);
+          expect(port).toBe(claimedPort);
           return waitForDaemonStatus(port, "host-test", 30_000).then(
             (status) => {
               expect(
@@ -1344,7 +1500,7 @@ describe.skipIf(POWERSHELL_UNAVAILABLE_MEASURED)(
                 `daemon never connected; lastError=${status.lastError}; installer said:\n${first.stdout}\n${first.stderr}`,
               ).toBe(true);
               const second = runInstaller(
-                ["-JoinCode", "unused-second-code", "-HostId", "host-test", "-Server", serverUrl],
+                ["-JoinCode", "unused-second-code", "-HostId", "host-test", "-Server", serverUrl, "-HostDaemonPort", claimedPort],
                 fixture,
                 {
                   BB_PS1_TEST_ARTIFACT_STATUS: "404",

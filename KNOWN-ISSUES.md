@@ -452,6 +452,28 @@ per-server default data dir, where the emulation shell's translated `$HOME`
 and Windows node disagree on what `$HOME` means. The `.sh` behavior for
 macOS/Linux clients is byte-identical.
 
+**Measured 2026-09-06 on this host: the scheduler refuses InteractiveToken
+launches.** Registering the task and `schtasks /Run` both succeed, the
+instance is queued and launched for the user, but the action never starts:
+no task log, no listener, `LastResult` 2147946720 (Win32 4320, "the operator
+or administrator has refused the request"), with no audit failure and no
+system error. Even a trivial `cmd /c echo` probe task fails 4/4 while the
+identical task with `S4U` succeeds and the Run-key path connects in seconds,
+so the refusal is the `InteractiveToken` principal itself, not the installer
+XML, the wrapper, or the port. An active console logon as the same user
+exists and the Schedule service is healthy; no reboot is pending. Until the
+host launches interactive tasks again, the scheduled-task persistence test
+probes that exact capability first (register, run, and observe a marker file
+from a trivial `InteractiveToken` task, gated on the measured refusal
+`INTERACTIVE_TOKEN_LAUNCH_REFUSED_RESULT_MEASURED`) and skips when the host
+refuses, while the forced Run-key test keeps asserting the fallback path a
+normal user gets. The two persistence tests also claim an OS-assigned
+loopback port and a random server name per run instead of sharing the fixed
+38888 base and `winkeytest` name, after parallel suites on this shared host
+were observed claiming the same 38888 port from separate fixture homes and
+starving each other's daemons; cleanup now waits for killed daemons and
+retries removal so `EBUSY` never fails teardown.
+
 ## K15 — Local git plugin sources can exceed MAX_PATH
 
 Installing a plugin or marketplace from a **local directory** builds a cache path
