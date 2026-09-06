@@ -42,6 +42,8 @@ interface SelectedEnvironment {
   icon: IconName;
 }
 
+const CURRENT_CHECKOUT_LABEL = "Current checkout";
+
 export interface EnvironmentPickerMachines {
   hosts: readonly Host[];
   localDaemonHostId: string | null;
@@ -90,8 +92,6 @@ export function EnvironmentPickerUI({
       findLocalPathProjectSourceForHost(sources, hostId) !== undefined,
     [hostId, sources],
   );
-  const localLabel = isLocal ? "Work locally" : "Work remotely";
-
   const hostUnavailableReason = !host
     ? "No host connected"
     : !hostConnected
@@ -140,9 +140,10 @@ export function EnvironmentPickerUI({
         icon: getEnvironmentWorkspaceLabelIconName("managed-worktree"),
       };
     }
-    const modeLabel = parsed.mode === "worktree" ? "New worktree" : localLabel;
+    const modeLabel =
+      parsed.mode === "worktree" ? "New worktree" : CURRENT_CHECKOUT_LABEL;
     const compactModeLabel =
-      parsed.mode === "worktree" ? "Worktree" : isLocal ? "Local" : "Remote";
+      parsed.mode === "worktree" ? "Worktree" : "Checkout";
     const icon = getEnvironmentWorkspaceLabelIconName(
       parsed.mode === "worktree" ? "managed-worktree" : "other",
     );
@@ -155,8 +156,6 @@ export function EnvironmentPickerUI({
     };
   }, [
     parsed,
-    localLabel,
-    isLocal,
     hostUnavailableReason,
     host,
     selectedMachineName,
@@ -230,7 +229,6 @@ export function EnvironmentPickerUI({
             hostId={hostId}
             hostName={isLocal ? null : (host?.name ?? null)}
             hostUnavailableReason={hostUnavailableReason}
-            localLabel={localLabel}
             workspaceDisabledReason={workspaceDisabledReason}
             worktreeDisabledReason={newWorktreeDisabledReason}
             reuseDisabledReason={reuseDisabledReason}
@@ -248,7 +246,6 @@ interface EnvironmentOptionsSectionProps {
   hostId: string | null;
   hostName: string | null;
   hostUnavailableReason: string | null;
-  localLabel: string;
   workspaceDisabledReason: string | null;
   worktreeDisabledReason: string | null;
   reuseDisabledReason: string | null;
@@ -263,7 +260,6 @@ function EnvironmentOptionsSection({
   hostId,
   hostName,
   hostUnavailableReason,
-  localLabel,
   workspaceDisabledReason,
   worktreeDisabledReason,
   reuseDisabledReason,
@@ -295,7 +291,7 @@ function EnvironmentOptionsSection({
       ) : (
         <>
           <EnvironmentMenuItem
-            label={localLabel}
+            label={CURRENT_CHECKOUT_LABEL}
             description={workspaceDisabledDescription}
             icon={getEnvironmentWorkspaceLabelIconName("other")}
             selected={localValue !== null && value === localValue}
@@ -444,7 +440,7 @@ function MachineSection({
       {source ? (
         <>
           <EnvironmentMenuItem
-            label={isThisMachine ? "Work locally" : "Work in checkout"}
+            label={CURRENT_CHECKOUT_LABEL}
             hint={source.path}
             icon={getEnvironmentWorkspaceLabelIconName("other")}
             selected={value === localValue}

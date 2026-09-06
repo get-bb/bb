@@ -41,7 +41,7 @@ const noop = () => {};
 export function Overview() {
   return (
     <StoryCard>
-      <StoryRow label="local direct" hint="selected: Work locally">
+      <StoryRow label="local direct" hint="selected: Current checkout">
         <EnvironmentPickerUI
           value={`host:${HOST_IDS.local}:local`}
           onChange={noop}
@@ -109,7 +109,7 @@ export function Overview() {
       </StoryRow>
       <StoryRow
         label="remote host (online)"
-        hint="viewed from another device: open the menu to see the host name and 'Work remotely' enabled"
+        hint="viewed from another device: open the menu to see the host name and current checkout enabled"
       >
         <EnvironmentPickerUI
           value={`host:${HOST_IDS.local}:local`}
