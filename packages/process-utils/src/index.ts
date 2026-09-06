@@ -1,4 +1,5 @@
 export * from "./plugin-process-paths.js";
+import { spawnSync } from "node:child_process";
 import type { ChildProcess, StdioOptions } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { mkdirSync, writeFileSync } from "node:fs";
@@ -52,26 +53,37 @@ interface KillProcessGroupArgs {
     kill: (signal: NodeJS.Signals) => unknown;
   };
   signal: NodeJS.Signals;
+  platform?: NodeJS.Platform;
+  runWindowsTaskkillSync?: (pid: number) => boolean;
 }
 
 interface StopProcessGroupLeaderFirstArgs {
   child: ChildProcess;
   timeoutMs: number;
   killGraceMs: number;
+  platform?: NodeJS.Platform;
+  runWindowsCommand?: WindowsCommandRunner;
+  isProcessAlive?: (pid: number) => boolean;
 }
 
-interface ProcessWithCwd {
+export interface ProcessWithCwd {
   pid: number;
   cwd: string;
+  approximateCwd?: boolean;
 }
 
 interface ListProcessesWithCwdUnderArgs {
   directory: string;
+  platform?: NodeJS.Platform;
+  runWindowsCommand?: WindowsCommandRunner;
 }
 
 interface KillProcessesWithCwdUnderArgs {
   directory: string;
   graceMs?: number;
+  platform?: NodeJS.Platform;
+  runWindowsCommand?: WindowsCommandRunner;
+  isProcessAlive?: (pid: number) => boolean;
 }
 
 interface ResolveContainedPathArgs {
@@ -135,11 +147,29 @@ type UncaughtExceptionMonitorHandler = (
 export function spawnPortableProcess(
   request: PortableSpawnRequest,
 ): PortableChildProcess {
-  return crossSpawn(request.command, request.args, {
+  const child = crossSpawn(request.command, request.args, {
     cwd: request.cwd,
     detached: request.detached,
     env: request.env,
     stdio: request.stdio,
+  });
+  trackSpawnedSweepRoot(request.cwd, child.pid, child);
+  return child;
+}
+
+function trackSpawnedSweepRoot(
+  cwd: string | undefined,
+  pid: number | undefined,
+  child: PortableChildProcess,
+): void {
+  if (cwd === undefined || pid === undefined) {
+    return;
+  }
+  registerSweepRootProcess({ pid, cwd });
+  child.once("exit", () => {
+    if (trackedSweepRoots.get(pid) === cwd) {
+      trackedSweepRoots.delete(pid);
+    }
   });
 }
 
@@ -181,12 +211,28 @@ export function spawnPortableOutputProcess(
   return child;
 }
 
-export function supportsProcessGroups(): boolean {
-  return process.platform !== "win32";
+export function supportsProcessGroups(platform?: NodeJS.Platform): boolean {
+  return (platform ?? process.platform) !== "win32";
 }
 
 export function killProcessGroup(args: KillProcessGroupArgs): void {
-  if (supportsProcessGroups() && args.child.pid !== undefined) {
+  const platform = args.platform ?? process.platform;
+  if (platform === "win32") {
+    if (
+      args.child.pid !== undefined &&
+      killWindowsProcessTreeSync(
+        args.child.pid,
+        args.runWindowsTaskkillSync,
+      )
+    ) {
+      return;
+    }
+    try {
+      args.child.kill(args.signal);
+    } catch {}
+    return;
+  }
+  if (args.child.pid !== undefined) {
     try {
       process.kill(-args.child.pid, args.signal);
       return;
@@ -195,10 +241,35 @@ export function killProcessGroup(args: KillProcessGroupArgs): void {
   args.child.kill(args.signal);
 }
 
-export function isProcessGroupAlive(child: {
-  pid?: number | undefined;
-}): boolean {
-  if (!supportsProcessGroups() || child.pid === undefined) {
+function killWindowsProcessTreeSync(
+  pid: number,
+  override?: (pid: number) => boolean,
+): boolean {
+  if (override !== undefined) {
+    try {
+      return override(pid);
+    } catch {
+      return false;
+    }
+  }
+  try {
+    const request = buildWindowsTaskkillRequest(pid);
+    const result = spawnSync(request.command, request.args, {
+      stdio: "ignore",
+    });
+    return result.status === 0;
+  } catch {
+    return false;
+  }
+}
+
+export function isProcessGroupAlive(
+  child: {
+    pid?: number | undefined;
+  },
+  platform?: NodeJS.Platform,
+): boolean {
+  if (!supportsProcessGroups(platform) || child.pid === undefined) {
     return false;
   }
   try {
@@ -218,8 +289,18 @@ const PROCESS_GROUP_EXIT_POLL_MS = 100;
 export function stopProcessGroupLeaderFirst(
   args: StopProcessGroupLeaderFirstArgs,
 ): Promise<void> {
+  const platform = args.platform ?? process.platform;
+  if (platform === "win32") {
+    return stopWindowsProcessTree({
+      child: args.child,
+      timeoutMs: args.timeoutMs,
+      killGraceMs: args.killGraceMs,
+      runner: args.runWindowsCommand ?? defaultWindowsCommandRunner,
+      isAlive: args.isProcessAlive ?? isProcessAlive,
+    });
+  }
   const { child, timeoutMs, killGraceMs } = args;
-  if (hasChildExited(child) && !isProcessGroupAlive(child)) {
+  if (hasChildExited(child) && !isProcessGroupAlive(child, platform)) {
     return Promise.resolve();
   }
   return new Promise<void>((resolveStop) => {
@@ -241,13 +322,13 @@ export function stopProcessGroupLeaderFirst(
       resolveStop();
     };
     const groupGone = (): boolean =>
-      hasChildExited(child) && !isProcessGroupAlive(child);
+      hasChildExited(child) && !isProcessGroupAlive(child, platform);
     const softTimer = setTimeout(() => {
       if (groupGone()) {
         finish();
         return;
       }
-      killProcessGroup({ child, signal: "SIGKILL" });
+      killProcessGroup({ child, signal: "SIGKILL", platform });
       if (killGraceMs <= 0) {
         finish();
         return;
@@ -256,13 +337,13 @@ export function stopProcessGroupLeaderFirst(
     }, timeoutMs);
 
     const stopSurvivingMembers = (): void => {
-      if (!isProcessGroupAlive(child)) {
+      if (!isProcessGroupAlive(child, platform)) {
         finish();
         return;
       }
-      killProcessGroup({ child, signal: "SIGTERM" });
+      killProcessGroup({ child, signal: "SIGTERM", platform });
       poll = setInterval(() => {
-        if (!isProcessGroupAlive(child)) {
+        if (!isProcessGroupAlive(child, platform)) {
           finish();
         }
       }, PROCESS_GROUP_EXIT_POLL_MS);
@@ -275,6 +356,68 @@ export function stopProcessGroupLeaderFirst(
     child.once("exit", stopSurvivingMembers);
     child.kill("SIGTERM");
   });
+}
+
+async function stopWindowsProcessTree(args: {
+  child: ChildProcess;
+  timeoutMs: number;
+  killGraceMs: number;
+  runner: WindowsCommandRunner;
+  isAlive: (pid: number) => boolean;
+}): Promise<void> {
+  const child = args.child;
+  if (!hasChildExited(child)) {
+    try {
+      child.kill("SIGTERM");
+    } catch {}
+    const exitDeadline = Date.now() + args.timeoutMs;
+    while (!hasChildExited(child) && Date.now() < exitDeadline) {
+      await delay(50);
+    }
+  }
+  await killWindowsProcessTreeBestEffort({
+    child,
+    runner: args.runner,
+    isAlive: args.isAlive,
+  });
+  if (child.pid !== undefined && args.killGraceMs > 0) {
+    const reapDeadline = Date.now() + args.killGraceMs;
+    while (args.isAlive(child.pid) && Date.now() < reapDeadline) {
+      await delay(50);
+    }
+  }
+  if (!hasChildExited(child)) {
+    try {
+      child.kill("SIGKILL");
+    } catch {}
+  }
+}
+
+async function killWindowsProcessTreeBestEffort(args: {
+  child: ChildProcess;
+  runner: WindowsCommandRunner;
+  isAlive: (pid: number) => boolean;
+}): Promise<void> {
+  const pid = args.child.pid;
+  let treeHandled = pid === undefined;
+  if (pid !== undefined) {
+    try {
+      const result = await args.runner(buildWindowsTaskkillRequest(pid));
+      treeHandled =
+        result.exitCode === 0 ||
+        (isWindowsProcessNotFoundOutput(
+          `${result.stdout}\n${result.stderr}`,
+        ) &&
+          !args.isAlive(pid));
+    } catch {
+      treeHandled = !args.isAlive(pid);
+    }
+  }
+  if (!treeHandled && !hasChildExited(args.child)) {
+    try {
+      args.child.kill("SIGKILL");
+    } catch {}
+  }
 }
 
 function isPathUnderDirectory(candidate: string, directory: string): boolean {
@@ -327,6 +470,477 @@ async function listLsofProcessCwds(): Promise<ProcessWithCwd[]> {
   return results;
 }
 
+export interface WindowsProcessSnapshotEntry {
+  processId: number;
+  parentProcessId: number;
+  executablePath: string | null;
+  commandLine: string | null;
+}
+
+export interface WindowsCommandRequest {
+  command: string;
+  args: string[];
+}
+
+export interface WindowsCommandResult {
+  stdout: string;
+  stderr: string;
+  exitCode: number | null;
+}
+
+export type WindowsCommandRunner = (
+  request: WindowsCommandRequest,
+) => Promise<WindowsCommandResult>;
+
+export interface MatchWindowsProcessesUnderDirectoryArgs {
+  snapshot: WindowsProcessSnapshotEntry[];
+  directory: string;
+  trackedRoots?: ReadonlyMap<number, string>;
+  selfPid?: number;
+}
+
+const WINDOWS_PROCESS_ENUM_COMMAND = "powershell.exe";
+
+const WINDOWS_PROCESS_ENUM_SCRIPT =
+  "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId,ExecutablePath,CommandLine | ConvertTo-Json -Compress";
+
+const WINDOWS_PROCESS_ENUM_ARGS: readonly string[] = [
+  "-NoLogo",
+  "-NoProfile",
+  "-NonInteractive",
+  "-Command",
+  WINDOWS_PROCESS_ENUM_SCRIPT,
+];
+
+const WINDOWS_TASKKILL_COMMAND = "taskkill.exe";
+
+export function buildWindowsProcessEnumRequest(): WindowsCommandRequest {
+  return {
+    command: WINDOWS_PROCESS_ENUM_COMMAND,
+    args: [...WINDOWS_PROCESS_ENUM_ARGS],
+  };
+}
+
+export function buildWindowsTaskkillRequest(
+  pid: number,
+): WindowsCommandRequest {
+  return {
+    command: WINDOWS_TASKKILL_COMMAND,
+    args: ["/PID", String(pid), "/T", "/F"],
+  };
+}
+
+const trackedSweepRoots = new Map<number, string>();
+
+export function registerSweepRootProcess(args: {
+  pid: number;
+  cwd: string;
+}): void {
+  if (Number.isInteger(args.pid) && args.pid > 0 && args.cwd !== "") {
+    trackedSweepRoots.set(args.pid, args.cwd);
+  }
+}
+
+export function unregisterSweepRootProcess(pid: number): void {
+  trackedSweepRoots.delete(pid);
+}
+
+export function clearSweepRootProcesses(): void {
+  trackedSweepRoots.clear();
+}
+
+function canonicalizeWindowsPath(value: string): string {
+  let rest = value.replace(/\//g, "\\");
+  let prefix = "";
+  if (/^\\\\\?\\UNC\\/i.test(rest)) {
+    prefix = "\\\\";
+    rest = rest.slice(8);
+  } else if (/^\\\\\?\\/i.test(rest)) {
+    rest = rest.slice(4);
+  } else if (rest.startsWith("\\\\")) {
+    prefix = "\\\\";
+    rest = rest.slice(2);
+  }
+  rest = rest.replace(/\\+/g, "\\");
+  if (
+    rest.length > 1 &&
+    rest.endsWith("\\") &&
+    !/^[A-Za-z]:\\$/.test(rest)
+  ) {
+    rest = rest.replace(/\\+$/, "");
+  }
+  if (rest === "") {
+    return prefix === "" ? "\\" : prefix;
+  }
+  return `${prefix}${rest}`.toLowerCase();
+}
+
+export function isWindowsPathUnderDirectory(
+  candidate: string,
+  directory: string,
+): boolean {
+  const canonicalCandidate = canonicalizeWindowsPath(candidate);
+  const canonicalDirectory = canonicalizeWindowsPath(directory);
+  if (canonicalCandidate === canonicalDirectory) {
+    return true;
+  }
+  const directoryPrefix = canonicalDirectory.endsWith("\\")
+    ? canonicalDirectory
+    : `${canonicalDirectory}\\`;
+  return canonicalCandidate.startsWith(directoryPrefix);
+}
+
+const WINDOWS_ABSOLUTE_PATH_PATTERN = /^[A-Za-z]:[\\/]/;
+
+function isWindowsAbsolutePathCandidate(token: string): boolean {
+  return (
+    WINDOWS_ABSOLUTE_PATH_PATTERN.test(token) || token.startsWith("\\\\")
+  );
+}
+
+function extractWindowsPathCandidates(commandLine: string): string[] {
+  const candidates: string[] = [];
+  const tokenPattern = /"([^"]+)"|(\S+)/g;
+  let match: RegExpExecArray | null;
+  while ((match = tokenPattern.exec(commandLine)) !== null) {
+    const token = (match[1] ?? match[2] ?? "").replace(/[,;]+$/u, "");
+    if (token !== "" && isWindowsAbsolutePathCandidate(token)) {
+      candidates.push(token);
+    }
+  }
+  return candidates;
+}
+
+function readCimStringField(
+  record: Record<string, unknown>,
+  names: string[],
+): string | null {
+  for (const name of names) {
+    const value = record[name];
+    if (typeof value === "string") {
+      return value;
+    }
+  }
+  return null;
+}
+
+export function parseWindowsProcessSnapshot(
+  stdout: string,
+): WindowsProcessSnapshotEntry[] {
+  const trimmed = stdout.trim();
+  if (trimmed === "") {
+    return [];
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(trimmed);
+  } catch {
+    throw new Error(
+      `Unable to parse Get-CimInstance Win32_Process output as JSON: ${trimmed.slice(0, 200)}`,
+    );
+  }
+  if (parsed === null || parsed === undefined) {
+    return [];
+  }
+  const items: unknown[] = Array.isArray(parsed) ? parsed : [parsed];
+  const results: WindowsProcessSnapshotEntry[] = [];
+  for (const item of items) {
+    if (typeof item !== "object" || item === null) {
+      continue;
+    }
+    const record = item as Record<string, unknown>;
+    const processId = Number(record.ProcessId ?? record.processId);
+    if (!Number.isInteger(processId) || processId <= 0) {
+      continue;
+    }
+    const parentRaw = Number(
+      record.ParentProcessId ?? record.parentProcessId ?? 0,
+    );
+    const parentProcessId =
+      Number.isInteger(parentRaw) && parentRaw >= 0 ? parentRaw : 0;
+    results.push({
+      processId,
+      parentProcessId,
+      executablePath: readCimStringField(record, [
+        "ExecutablePath",
+        "executablePath",
+      ]),
+      commandLine: readCimStringField(record, ["CommandLine", "commandLine"]),
+    });
+  }
+  return results;
+}
+
+function matchWindowsProcessPath(
+  entry: WindowsProcessSnapshotEntry,
+  directory: string,
+): string | null {
+  if (
+    entry.executablePath !== null &&
+    isWindowsPathUnderDirectory(entry.executablePath, directory)
+  ) {
+    return entry.executablePath;
+  }
+  if (entry.commandLine !== null) {
+    for (const candidate of extractWindowsPathCandidates(entry.commandLine)) {
+      if (isWindowsPathUnderDirectory(candidate, directory)) {
+        return candidate;
+      }
+    }
+  }
+  return null;
+}
+
+export function matchWindowsProcessesUnderDirectory(
+  args: MatchWindowsProcessesUnderDirectoryArgs,
+): ProcessWithCwd[] {
+  const trackedRoots = args.trackedRoots ?? new Map<number, string>();
+  const byPid = new Map<number, WindowsProcessSnapshotEntry>();
+  const childrenByParent = new Map<number, number[]>();
+  for (const entry of args.snapshot) {
+    byPid.set(entry.processId, entry);
+    const siblings = childrenByParent.get(entry.parentProcessId) ?? [];
+    siblings.push(entry.processId);
+    childrenByParent.set(entry.parentProcessId, siblings);
+  }
+  const evidenceByPid = new Map<number, string>();
+  for (const [pid, rootCwd] of trackedRoots) {
+    if (args.selfPid !== undefined && pid === args.selfPid) {
+      continue;
+    }
+    if (isWindowsPathUnderDirectory(rootCwd, args.directory)) {
+      evidenceByPid.set(pid, rootCwd);
+    }
+  }
+  for (const entry of args.snapshot) {
+    if (args.selfPid !== undefined && entry.processId === args.selfPid) {
+      continue;
+    }
+    if (evidenceByPid.has(entry.processId)) {
+      continue;
+    }
+    const evidence = matchWindowsProcessPath(entry, args.directory);
+    if (evidence !== null) {
+      evidenceByPid.set(entry.processId, evidence);
+    }
+  }
+  const queue = [...evidenceByPid.keys()];
+  const queued = new Set<number>(queue);
+  while (queue.length > 0) {
+    const pid = queue.pop();
+    if (pid === undefined) {
+      continue;
+    }
+    const inherited = evidenceByPid.get(pid);
+    if (inherited === undefined) {
+      continue;
+    }
+    for (const childPid of childrenByParent.get(pid) ?? []) {
+      if (args.selfPid !== undefined && childPid === args.selfPid) {
+        continue;
+      }
+      if (queued.has(childPid)) {
+        continue;
+      }
+      queued.add(childPid);
+      const child = byPid.get(childPid);
+      const own =
+        child === undefined
+          ? null
+          : matchWindowsProcessPath(child, args.directory);
+      evidenceByPid.set(childPid, own ?? inherited);
+      queue.push(childPid);
+    }
+  }
+  const results: ProcessWithCwd[] = [];
+  for (const [pid, cwd] of evidenceByPid) {
+    if (!byPid.has(pid)) {
+      continue;
+    }
+    results.push({ pid, cwd, approximateCwd: true });
+  }
+  return results;
+}
+
+function defaultWindowsCommandRunner(
+  request: WindowsCommandRequest,
+): Promise<WindowsCommandResult> {
+  return new Promise<WindowsCommandResult>((resolveRunner, rejectRunner) => {
+    const child = spawnPortableOutputProcess({
+      command: request.command,
+      args: request.args,
+    });
+    const stdoutChunks: Buffer[] = [];
+    const stderrChunks: Buffer[] = [];
+    child.stdout.on("data", (chunk) => stdoutChunks.push(Buffer.from(chunk)));
+    child.stderr.on("data", (chunk) => stderrChunks.push(Buffer.from(chunk)));
+    child.once("error", (error) => rejectRunner(error));
+    child.once("exit", (exitCode) => {
+      resolveRunner({
+        stdout: Buffer.concat(stdoutChunks).toString("utf8"),
+        stderr: Buffer.concat(stderrChunks).toString("utf8"),
+        exitCode,
+      });
+    });
+  });
+}
+
+function windowsCommandLabel(request: WindowsCommandRequest): string {
+  return `${request.command} ${request.args.join(" ")}`;
+}
+
+function windowsCommandErrorMessage(
+  request: WindowsCommandRequest,
+  detail: string,
+): string {
+  const trimmed = detail.trim();
+  const suffix = trimmed === "" ? "no output" : trimmed.slice(0, 2000);
+  return `Windows process command failed: ${windowsCommandLabel(request)}: ${suffix}`;
+}
+
+async function runWindowsCommandOrThrow(
+  runner: WindowsCommandRunner,
+  request: WindowsCommandRequest,
+): Promise<WindowsCommandResult> {
+  let result: WindowsCommandResult;
+  try {
+    result = await runner(request);
+  } catch (error) {
+    throw new Error(
+      windowsCommandErrorMessage(
+        request,
+        error instanceof Error ? error.message : String(error),
+      ),
+    );
+  }
+  if (result.exitCode !== 0) {
+    throw new Error(
+      windowsCommandErrorMessage(
+        request,
+        `exit code ${result.exitCode}: ${result.stderr}`,
+      ),
+    );
+  }
+  return result;
+}
+
+async function listWindowsProcessesWithCwdUnder(args: {
+  directory: string;
+  runner: WindowsCommandRunner;
+  selfPid: number;
+}): Promise<ProcessWithCwd[]> {
+  const result = await runWindowsCommandOrThrow(
+    args.runner,
+    buildWindowsProcessEnumRequest(),
+  );
+  const snapshot = parseWindowsProcessSnapshot(result.stdout);
+  const livePids = new Set(snapshot.map((entry) => entry.processId));
+  for (const pid of trackedSweepRoots.keys()) {
+    if (!livePids.has(pid)) {
+      trackedSweepRoots.delete(pid);
+    }
+  }
+  return matchWindowsProcessesUnderDirectory({
+    snapshot,
+    directory: args.directory,
+    trackedRoots: trackedSweepRoots,
+    selfPid: args.selfPid,
+  });
+}
+
+function isWindowsProcessNotFoundOutput(output: string): boolean {
+  return /not found/i.test(output);
+}
+
+function describeWindowsCommandResult(result: WindowsCommandResult): string {
+  const output = `${result.stdout}\n${result.stderr}`.trim();
+  const suffix = output === "" ? "no output" : output.slice(0, 2000);
+  return `exit code ${result.exitCode}: ${suffix}`;
+}
+
+async function killWindowsProcessesWithCwdUnder(args: {
+  directory: string;
+  graceMs: number;
+  runner: WindowsCommandRunner;
+  isAlive: (pid: number) => boolean;
+  selfPid: number;
+}): Promise<ProcessWithCwd[]> {
+  const signalled = new Map<number, ProcessWithCwd>();
+  const seen = new Map<number, ProcessWithCwd>();
+  const failures = new Map<number, string>();
+  for (let round = 0; round < MAX_CWD_SWEEP_ROUNDS; round += 1) {
+    const targets = await listWindowsProcessesWithCwdUnder({
+      directory: args.directory,
+      runner: args.runner,
+      selfPid: args.selfPid,
+    });
+    if (targets.length === 0) {
+      break;
+    }
+    for (const target of targets) {
+      seen.set(target.pid, target);
+      const request = buildWindowsTaskkillRequest(target.pid);
+      try {
+        const result = await args.runner(request);
+        if (result.exitCode === 0) {
+          signalled.set(target.pid, target);
+          failures.delete(target.pid);
+        } else if (
+          isWindowsProcessNotFoundOutput(
+            `${result.stdout}\n${result.stderr}`,
+          ) &&
+          !args.isAlive(target.pid)
+        ) {
+          signalled.set(target.pid, target);
+          failures.delete(target.pid);
+        } else {
+          failures.set(target.pid, describeWindowsCommandResult(result));
+        }
+      } catch (error) {
+        if (!args.isAlive(target.pid)) {
+          signalled.set(target.pid, target);
+          failures.delete(target.pid);
+        } else {
+          failures.set(
+            target.pid,
+            error instanceof Error ? error.message : String(error),
+          );
+        }
+      }
+    }
+    const deadline = Date.now() + args.graceMs;
+    while (
+      Date.now() < deadline &&
+      targets.some((target) => args.isAlive(target.pid))
+    ) {
+      await delay(50);
+    }
+    const survivors = await listWindowsProcessesWithCwdUnder({
+      directory: args.directory,
+      runner: args.runner,
+      selfPid: args.selfPid,
+    });
+    if (survivors.length === 0) {
+      break;
+    }
+  }
+  const outstanding: string[] = [];
+  for (const [pid, detail] of failures) {
+    const target = seen.get(pid);
+    if (target !== undefined && !args.isAlive(pid)) {
+      signalled.set(pid, target);
+      continue;
+    }
+    outstanding.push(`pid ${pid} (${detail})`);
+  }
+  if (outstanding.length > 0) {
+    throw new Error(
+      `Failed to kill Windows processes under ${args.directory}: ${outstanding.join("; ")}`,
+    );
+  }
+  return [...signalled.values()];
+}
+
 async function resolveSweepDirectory(
   directory: string,
 ): Promise<string | null> {
@@ -347,8 +961,13 @@ async function resolveSweepDirectory(
 export async function listProcessesWithCwdUnder(
   args: ListProcessesWithCwdUnderArgs,
 ): Promise<ProcessWithCwd[]> {
-  if (process.platform === "win32") {
-    return [];
+  const platform = args.platform ?? process.platform;
+  if (platform === "win32") {
+    return listWindowsProcessesWithCwdUnder({
+      directory: args.directory,
+      runner: args.runWindowsCommand ?? defaultWindowsCommandRunner,
+      selfPid: process.pid,
+    });
   }
   const directory = await resolveSweepDirectory(args.directory);
   if (directory === null) {
@@ -395,7 +1014,18 @@ function signalProcesses(
 export async function killProcessesWithCwdUnder(
   args: KillProcessesWithCwdUnderArgs,
 ): Promise<ProcessWithCwd[]> {
+  const platform = args.platform ?? process.platform;
   const graceMs = args.graceMs ?? 2000;
+  const isAlive = args.isProcessAlive ?? isProcessAlive;
+  if (platform === "win32") {
+    return killWindowsProcessesWithCwdUnder({
+      directory: args.directory,
+      graceMs,
+      runner: args.runWindowsCommand ?? defaultWindowsCommandRunner,
+      isAlive,
+      selfPid: process.pid,
+    });
+  }
   const signalled = new Map<number, ProcessWithCwd>();
   for (let round = 0; round < MAX_CWD_SWEEP_ROUNDS; round += 1) {
     const targets = await listProcessesWithCwdUnder({
@@ -408,7 +1038,7 @@ export async function killProcessesWithCwdUnder(
     const deadline = Date.now() + graceMs;
     while (
       Date.now() < deadline &&
-      targets.some((target) => isProcessAlive(target.pid))
+      targets.some((target) => isAlive(target.pid))
     ) {
       await delay(50);
     }
