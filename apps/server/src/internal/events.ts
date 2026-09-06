@@ -420,10 +420,7 @@ async function applyEventEffects(
             });
           }
         }
-        if (
-          event.status === "completed" &&
-          turnCompleted.nextStatus === "idle"
-        ) {
+        if (turnCompleted.nextStatus === "idle") {
           followUps.push({
             kind: "queued-message-dispatch",
             wake: { kind: "thread-ready", threadId: entry.threadId },
