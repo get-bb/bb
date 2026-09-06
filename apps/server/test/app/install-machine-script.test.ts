@@ -310,13 +310,22 @@ function terminateDaemonProcess(pid: number): void {
 
 afterEach(() => {
   for (const directory of createdDirectories.splice(0)) {
-    try {
-      const servicePid = Number(
-        readFileSync(join(directory, "data/service-daemon.pid"), "utf8"),
-      );
-      terminateDaemonProcess(servicePid);
-    } catch {}
-    rmSync(directory, { force: true, recursive: true });
+    for (const pidFile of ["service-daemon.pid", "install-daemon.pid"]) {
+      try {
+        const pid = Number(
+          readFileSync(join(directory, "data", pidFile), "utf8"),
+        );
+        if (Number.isInteger(pid) && pid > 0) {
+          terminateDaemonProcess(pid);
+        }
+      } catch {}
+    }
+    rmSync(directory, {
+      force: true,
+      recursive: true,
+      maxRetries: 10,
+      retryDelay: 250,
+    });
   }
 });
 

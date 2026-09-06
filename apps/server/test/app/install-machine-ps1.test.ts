@@ -515,11 +515,44 @@ function daemonPidOnPort(port: string): number {
   return Number.isInteger(pid) && pid > 0 ? pid : 0;
 }
 
-function waitForPortFree(port: string, timeoutMs: number): void {
+function treeKillPid(pid: number): void {
+  try {
+    if (process.platform === "win32") {
+      const killed = spawnSync(
+        "taskkill",
+        ["/F", "/T", "/PID", String(pid)],
+        {
+          encoding: "utf8",
+          timeout: 30000,
+        },
+      );
+      if (killed.status === 0) {
+        return;
+      }
+    }
+    process.kill(pid, "SIGKILL");
+  } catch {}
+}
+
+function isPortOccupied(port: string): boolean {
+  const probed = spawnSync(
+    process.execPath,
+    [
+      "-e",
+      "const s=require('node:net').connect(Number(process.argv[1]),'127.0.0.1');s.on('connect',()=>{s.end();process.exit(0)});s.on('error',()=>process.exit(1));setTimeout(()=>process.exit(1),8000);",
+      port,
+    ],
+    { encoding: "utf8", timeout: 15000 },
+  );
+  return probed.status === 0;
+}
+
+function waitForPortFree(port: string, timeoutMs: number): boolean {
   const deadline = Date.now() + timeoutMs;
-  while (daemonPidOnPort(port) !== 0 && Date.now() < deadline) {
+  while (isPortOccupied(port) && Date.now() < deadline) {
     sleepSync(250);
   }
+  return !isPortOccupied(port);
 }
 
 function waitForPidGone(pid: number, timeoutMs: number): void {
@@ -659,17 +692,17 @@ for (const pidFile of ["install-daemon.pid"]) {
     try {
       const pid = Number(readFileSync(join(fixture.dataDir, pidFile), "utf8"));
       if (Number.isInteger(pid) && pid > 0) {
-        try {
-          process.kill(pid, "SIGKILL");
-        } catch {}
+        treeKillPid(pid);
         waitForPidGone(pid, 15000);
       }
     } catch {}
   }
   try {
     const port = selectedPort(fixture);
-    killProcessOnPort(port, fixture.root);
-    waitForPortFree(port, 15000);
+    if (!waitForPortFree(port, 15000)) {
+      killProcessOnPort(port, fixture.root);
+      waitForPortFree(port, 15000);
+    }
   } catch {}
 }
 
@@ -691,9 +724,7 @@ for (const taskName of createdTaskNames.splice(0)) {
         try {
           const pid = Number(readFileSync(join(dataDir, pidFile), "utf8"));
           if (Number.isInteger(pid) && pid > 0) {
-            try {
-              process.kill(pid, "SIGKILL");
-            } catch {}
+            treeKillPid(pid);
             waitForPidGone(pid, 15000);
           }
         } catch {}
@@ -703,7 +734,7 @@ for (const taskName of createdTaskNames.splice(0)) {
           join(dataDir, "host-daemon-port"),
           "utf8",
         ).trim();
-        if (/^\d+$/u.test(port)) {
+        if (/^\d+$/u.test(port) && !waitForPortFree(port, 15000)) {
           killProcessOnPort(port, directory);
           waitForPortFree(port, 15000);
         }
@@ -1128,9 +1159,7 @@ describe.skipIf(POWERSHELL_UNAVAILABLE_MEASURED)(
           readFileSync(join(defaultDataDir, "host-daemon-port"), "utf8").trim(),
           fixture.root,
         );
-        try {
-          process.kill(daemonPid, "SIGKILL");
-        } catch {}
+        treeKillPid(daemonPid);
       } finally {
         try {
           const port = readFileSync(
@@ -1269,9 +1298,7 @@ describe.skipIf(POWERSHELL_UNAVAILABLE_MEASURED)(
             const pid = Number(
               readFileSync(join(dataDir, "install-daemon.pid"), "utf8"),
             );
-            try {
-              process.kill(pid, "SIGKILL");
-            } catch {}
+            treeKillPid(pid);
           } catch {}
           try {
             killProcessOnPort(
