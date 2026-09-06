@@ -6,6 +6,9 @@ import { deleteSecretFile, writeSecretFile } from "../src/index.js";
 
 const tempDirs: string[] = [];
 
+const NTFS_KEEPS_SECRET_MODE_AT_0O666_DESPITE_CHMOD_0600 =
+  process.platform === "win32";
+
 async function makeTempDir(): Promise<string> {
   const tempDir = await mkdtemp(path.join(os.tmpdir(), "bb-write-secret-"));
   tempDirs.push(tempDir);
@@ -21,15 +24,26 @@ afterEach(async () => {
 });
 
 describe("writeSecretFile", () => {
-  it("writes the value with 0600 mode, creating parent directories", async () => {
+  it("writes the value, creating parent directories", async () => {
     const dir = await makeTempDir();
     const secretPath = path.join(dir, "plugins", "slack", "secrets", "token");
 
     await writeSecretFile(secretPath, "xoxb-123");
 
     expect(await readFile(secretPath, "utf8")).toBe("xoxb-123");
-    expect((await stat(secretPath)).mode & 0o777).toBe(0o600);
   });
+
+  it.skipIf(NTFS_KEEPS_SECRET_MODE_AT_0O666_DESPITE_CHMOD_0600)(
+    "writes the secret file with 0600 mode",
+    async () => {
+      const dir = await makeTempDir();
+      const secretPath = path.join(dir, "token");
+
+      await writeSecretFile(secretPath, "xoxb-123");
+
+      expect((await stat(secretPath)).mode & 0o777).toBe(0o600);
+    },
+  );
 
   it("round-trips secrets under data dirs with spaces and non-ASCII segments", async () => {
     const dir = await makeTempDir();
