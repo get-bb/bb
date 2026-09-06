@@ -39,6 +39,47 @@ describe("InlineVisDirective", () => {
     expect(slot.rpcCalls).toEqual([]);
   });
 
+  it("renders a Markdown document with the host renderer and no iframe", async () => {
+    const openWorkspaceFile = vi.fn(() => true);
+    const slot = renderSlot(
+      app.messageDirectives[0]!,
+      {
+        attributes: { file: "reports/notes.md" },
+        source: '::inline-vis{file="reports/notes.md"}',
+        message,
+        openWorkspaceFile,
+      },
+      {
+        rpc: {
+          preparePreview: (input) => {
+            expect(input).toEqual({
+              threadId: "thr_1",
+              file: "reports/notes.md",
+            });
+            return {
+              kind: "markdown",
+              file: "reports/notes.md",
+              content: "# Notes\n\nReady for review.",
+            };
+          },
+        },
+      },
+    );
+
+    const markdown = await slot.findByTestId("bb-markdown");
+    expect(markdown.textContent).toBe("# Notes\n\nReady for review.");
+    expect(slot.container.querySelector("iframe")).toBeNull();
+    expect(markdown.parentElement?.style.height).toBe("224px");
+    expect(markdown.parentElement?.className).toContain("overflow-auto");
+
+    fireEvent.click(
+      slot.getByRole("button", {
+        name: "Open reports/notes.md in sidebar",
+      }),
+    );
+    expect(openWorkspaceFile).toHaveBeenCalledWith("reports/notes.md");
+  });
+
   it("uses the sidebar worktree route with an opaque-origin script sandbox", async () => {
     const openWorkspaceFile = vi.fn(() => true);
     const slot = renderSlot(
@@ -51,12 +92,12 @@ describe("InlineVisDirective", () => {
       },
       {
         rpc: {
-          prepareHtmlPreview: (input) => {
+          preparePreview: (input) => {
             expect(input).toEqual({
               threadId: "thr_1",
               file: "charts/demo file.html",
             });
-            return { file: "charts/demo file.html" };
+            return { kind: "html", file: "charts/demo file.html" };
           },
         },
       },
@@ -87,52 +128,57 @@ describe("InlineVisDirective", () => {
     expect(openWorkspaceFile).toHaveBeenCalledWith("charts/demo file.html");
     expect(slot.rpcCalls).toEqual([
       {
-        method: "prepareHtmlPreview",
+        method: "preparePreview",
         input: { threadId: "thr_1", file: "charts/demo file.html" },
       },
     ]);
   });
 
-  it("uses an optional bounded height attribute", async () => {
+  it("uses an optional bounded height for Markdown", async () => {
     const slot = renderSlot(
       app.messageDirectives[0]!,
       {
-        attributes: { file: "demo.html", height: "480" },
-        source: '::inline-vis{file="demo.html" height="480"}',
+        attributes: { file: "notes.md", height: "480" },
+        source: '::inline-vis{file="notes.md" height="480"}',
         message,
         openWorkspaceFile: null,
       },
       {
         rpc: {
-          prepareHtmlPreview: () => ({ file: "demo.html" }),
+          preparePreview: () => ({
+            kind: "markdown",
+            file: "notes.md",
+            content: "# Notes",
+          }),
         },
       },
     );
 
-    const iframe = await waitFor(() => {
-      const el = slot.container.querySelector("iframe");
-      expect(el).toBeTruthy();
-      return el as HTMLIFrameElement;
-    });
-    expect(iframe.style.height).toBe("480px");
+    const markdown = await slot.findByTestId("bb-markdown");
+    expect(markdown.parentElement?.style.height).toBe("480px");
   });
 
-  it("reserves the preview height while loading so the timeline does not jump", async () => {
-    let resolvePreview = (_result: { file: string }) => {};
-    const pendingPreview = new Promise<{ file: string }>((resolve) => {
+  it("reserves the Markdown preview height while loading", async () => {
+    type MarkdownPreview = {
+      kind: "markdown";
+      file: string;
+      content: string;
+    };
+    let resolvePreview = (_result: MarkdownPreview) => {};
+    const pendingPreview = new Promise<MarkdownPreview>((resolve) => {
       resolvePreview = resolve;
     });
     const slot = renderSlot(
       app.messageDirectives[0]!,
       {
-        attributes: { file: "demo.html", height: "480" },
-        source: '::inline-vis{file="demo.html" height="480"}',
+        attributes: { file: "notes.md", height: "480" },
+        source: '::inline-vis{file="notes.md" height="480"}',
         message,
         openWorkspaceFile: vi.fn(() => true),
       },
       {
         rpc: {
-          prepareHtmlPreview: () => pendingPreview,
+          preparePreview: () => pendingPreview,
         },
       },
     );
@@ -146,25 +192,24 @@ describe("InlineVisDirective", () => {
     });
     expect(loading.style.height).toBe("480px");
     expect(
-      slot.getByRole("status", { name: "Loading visualization demo.html" }),
+      slot.getByRole("status", { name: "Loading visualization notes.md" }),
     ).toBe(loading);
     const loadingCard = loading.parentElement!;
     const loadingHeader = loadingCard.firstElementChild!;
     const loadingHeaderHtml = loadingHeader.outerHTML;
 
-    resolvePreview({ file: "demo.html" });
-
-    const iframe = await waitFor(() => {
-      const el = slot.container.querySelector("iframe");
-      if (!(el instanceof HTMLIFrameElement)) {
-        throw new Error("Expected the inline visualization iframe to render");
-      }
-      return el;
+    resolvePreview({
+      kind: "markdown",
+      file: "notes.md",
+      content: "# Notes",
     });
-    expect(iframe.style.height).toBe("480px");
+
+    const markdown = await slot.findByTestId("bb-markdown");
+    const markdownBody = markdown.parentElement!;
+    expect(markdownBody.style.height).toBe("480px");
     expect(slot.queryByRole("status")).toBeNull();
 
-    const readyCard = iframe.parentElement!;
+    const readyCard = markdownBody.parentElement!;
     expect(readyCard.className).toBe(loadingCard.className);
     const readyHeader = readyCard.firstElementChild!;
     expect(readyHeader.className).toBe(loadingHeader.className);
@@ -204,15 +249,15 @@ describe("InlineVisDirective", () => {
       },
       {
         rpc: {
-          prepareHtmlPreview: () => {
-            throw new Error("HTML file not found: missing.html");
+          preparePreview: () => {
+            throw new Error("Preview file not found: missing.html");
           },
         },
       },
     );
 
     const alert = await slot.findByRole("alert");
-    expect(alert.textContent).toMatch(/HTML file not found: missing\.html/);
+    expect(alert.textContent).toMatch(/Preview file not found: missing\.html/);
     expect(slot.container.querySelector("iframe")).toBeNull();
   });
 });
