@@ -86,12 +86,31 @@ abruptly. It needs a native helper (`CreateJobObject` /
 `AssignProcessToJobObject`), i.e. a new dependency, so it was left as an explicit
 proposal rather than smuggled in.
 
-## K4 — The CIM probe has no timeout
+## K4 — The CIM probe now has a timeout — PARTLY CLOSED 2026-09-06
 
-This matches the POSIX `lsof` path, which has none either. A hung
+This matched the POSIX `lsof` path, which has none either. A hung
 `powershell.exe` would hang the sweep.
 
-**Workaround:** none automatic. If observed, add a timeout.
+Measured on real Windows 11 Pro (build 26200): the pinned
+`Get-CimInstance Win32_Process` probe answers in ~1.2s steady state
+(powershell.exe cold start included). `WINDOWS_PROCESS_ENUM_TIMEOUT_MS`
+(10s, ~8x headroom, overridable per call via `processEnumTimeoutMs`)
+now bounds both layers in `packages/process-utils`: the default runner
+kills a hung child with SIGKILL (verified to reap a hung
+powershell.exe in ~6ms on this machine) and rejects, and the
+enumeration races any runner, injected or not, against the timeout. The
+timeout degrades exactly like every other probe failure — `list`
+rejects, `kill` propagates, and the runtime-manager reaper already
+catches that and logs a warning — never an empty result, which would
+fake a successful reap while processes survive. Live check: the real
+default-runner probe still answers in ~1.4s. Tests cover a
+never-settling probe for both `list` and `kill`, plus a
+slow-but-inside probe that still enumerates.
+
+Still open: the POSIX `lsof` path has the identical theoretical hang
+(no timeout around `lsof`; it resolves partial results on error, which
+is graceful but unbounded). It should get the same treatment, left
+untouched here as outside the Windows task.
 
 ## K5 — ConPTY has now actually run — CLOSED
 
@@ -118,14 +137,32 @@ pre-fix runs green), so the CI `utf8` failure was **not** reproduced here. The
 change pins the write encoding and removes a misdiagnosis; it is not evidence
 that the CI failure is fixed.
 
-## K6 — The environment probe does load the PowerShell profile
+## K6 — The environment probe does load the PowerShell profile — HARDENED 2026-09-06
 
 The runtime environment probe deliberately does **not** pass `-NoProfile`, to
 mirror the `-ilc` behaviour of the POSIX path; marker-delimited parsing ignores
 profile noise. The interactive terminal does use `-NoProfile`, for determinism.
 
-**Risk:** a user profile that writes aggressively to stdout could confuse the
-parse. Not observed.
+Exercised on real Windows 11 Pro (build 26200) with a temporary hostile
+profile, since removed (none existed before; absence confirmed after): plain
+text, ANSI colour output and non-base64 `PATH=` lines were already ignored,
+but a fake `__BB_SHELL_ENV_START__`/`__BB_SHELL_ENV_END__` pair around a
+valid base64 `PATH=C:\evil` line made `resolveUserShellPath` return `C:\evil`
+instead of the real 1372-char PATH — silently. The old first-marker parse was
+genuinely breakable, not just theoretically.
+
+`parseWindowsPathFromUserShellEnv` now anchors on the **last** start marker:
+the profile always runs before the `-Command` payload on the same stdout pipe,
+so the real marker is always the last one. Verified live with the hostile
+profile installed (a full fake pair, then a fake start marker plus evil PATH
+with no fake end): the probe returns the real PATH in both cases. Regression
+tests feed both shapes through the real `resolveUserShellPath` and fail
+against the old parse.
+
+Still open: the POSIX `parsePathFromUserShellEnv` has the identical shape and
+the identical theoretical hole (rc/profile output precedes the payload on the
+same pipe) and should get the same one-line treatment; left untouched as
+outside this Windows task.
 
 ## K7 — Path edge cases left deliberately
 
@@ -137,15 +174,35 @@ parse. Not observed.
 - `\\.\` and `\\?\` are treated as equivalent for containment in the watcher,
   which is sufficient for its use.
 
-## K8 — Symlinks and executable bits
+## K8 — Symlinks and executable bits — EXECUTABILITY RESOLVED 2026-09-06
 
 Creating a symlink on Windows requires privilege or Developer Mode. The workspace
 package **never creates one** (it detects them via `lstat` and skips them), so
 there is no privilege dependency there. However:
 
 - `chmod(file.mode)` on injected skills does **not** preserve the POSIX execute
-  bit on win32. Executability of skill `.sh`/`.cmd` files on Windows is
-  unresolved.
+  bit on win32. Measured on real Windows 11 Pro (build 26200): even a freshly
+  `chmod`ded 0o755 source file reads back 666 on NTFS, every staged copy lands
+  at 666, and `fs.access(X_OK)` passes for everything — the mode bit carries
+  no information on Windows. File **bytes** are always preserved, so nothing is
+  lost; only the launch method needs choosing.
+- What "executable" now means on Windows (all measured on the same machine):
+  `.cmd`/`.bat` through `cmd.exe /d /c` with the raw path as its own argv
+  element (pre-quoting it, or adding `/s`, re-breaks it; arguments containing
+  spaces still misparse — inherited cmd behaviour), `.ps1` through
+  `powershell.exe -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass
+  -File` (robust including spaces everywhere), `.mjs`/`.cjs`/`.js` through the
+  daemon node runtime (robust including spaces), `.sh` and extensionless
+  shebang files through Git for Windows `sh.exe` (robust including spaces).
+  Bare execution fails loudly per kind and never silently: `.sh` dies EFTYPE,
+  `.cmd` dies EINVAL, extensionless dies ENOENT.
+  `resolveSkillScriptInvocation` in `apps/host-daemon/src/skill-script-launch.ts`
+  pins this matrix (POSIX passes through untouched; win32 maps by extension
+  and throws a loud error naming the file and the remedy for `.sh` with no
+  sh.exe, extensionless, or unknown kinds). Platform-explicit unit tests run on
+  Linux CI; win32-gated tests really spawn each mapping and assert the script
+  output. The skill-creator guide tells authors to ship Windows-runnable
+  scripts (interpreter-explicit invocations, never bare execution).
 - Repositories that contain symlinks depend on git's `core.symlinks`: without
   Developer Mode they materialise as text files containing the target path.
 
