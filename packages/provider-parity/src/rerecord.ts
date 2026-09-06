@@ -3,6 +3,7 @@ import { execFileSync } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   firstPartyReplayBridge,
   readBridgeRecording,
@@ -19,8 +20,9 @@ import {
 import { loadParityLeg, type ParityLeg } from "./leg.js";
 
 const REDACT_SCRIPT = resolve(
-  new URL("../../../scripts/provider-recordings/redact.mjs", import.meta.url)
-    .pathname,
+  fileURLToPath(
+    new URL("../../../scripts/provider-recordings/redact.mjs", import.meta.url),
+  ),
 );
 
 function redactInPlace(file: string): void {
@@ -56,7 +58,7 @@ function usage(): never {
 }
 
 const callerCwd = process.env.INIT_CWD ?? process.cwd();
-const checkoutRoot = resolve(new URL("../../..", import.meta.url).pathname);
+const checkoutRoot = fileURLToPath(new URL("../../..", import.meta.url));
 
 function parseArgs(argv: string[]): CliArgs {
   const args: CliArgs = {
