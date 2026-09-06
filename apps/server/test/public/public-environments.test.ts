@@ -367,6 +367,51 @@ describe("public environments", () => {
     });
   });
 
+  it("joins diff file paths with the host path flavour on a posix host", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps, {
+        id: "host-environment-diff-file-posix-host",
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+        path: "/tmp/posix-host-env",
+        workspaceProvisionType: "managed-worktree",
+      });
+
+      const responsePromise = harness.app.request(
+        `/api/v1/environments/${environment.id}/diff/file?target=uncommitted&path=src/app.ts&side=new`,
+      );
+      const readFileCommand = await waitForQueuedCommand(
+        harness,
+        ({ command }) => command.type === "host.read_file",
+      );
+      expect(readFileCommand.command).toEqual({
+        type: "host.read_file",
+        path: "/tmp/posix-host-env/src/app.ts",
+        rootPath: "/tmp/posix-host-env",
+      });
+      await reportQueuedCommandSuccess(harness, readFileCommand, {
+        path: "/tmp/posix-host-env/src/app.ts",
+        content: "console.log(1);\n",
+        contentEncoding: "utf8",
+        mimeType: "text/plain",
+        sizeBytes: 17,
+        sha256:
+          "2cb5ae5861d0e162c1b0f43c4c4f1e3453b0c2b7fb984a1e2e6a5f8a1b3c4d5e6",
+      });
+
+      const response = await responsePromise;
+      expect(response.status).toBe(200);
+      await expect(readJson(response)).resolves.toMatchObject({
+        path: "/tmp/posix-host-env/src/app.ts",
+      });
+    });
+  });
+
   it("returns not-ready for workspace path search on an unprovisioned environment", async () => {
     await withTestHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps, {
