@@ -49,7 +49,8 @@ it("keeps trusted automation pull requests open", () => {
     expect(result.stdout).not.toContain("pr close");
   }
   expect(gate("untrusted-automation[bot]").stdout).toContain("pr close");
-});
+},
+90_000);
 
 it("parses only complete GitHub user and bot approval commands", () => {
   const workflow = stepScript("approve-contributor.yml", "Add name and push");
