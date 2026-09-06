@@ -1,8 +1,10 @@
+import { registerCustomTheme } from "@pierre/diffs";
 import {
   getOrCreateWorkerPoolSingleton,
   terminateWorkerPoolSingleton,
   type WorkerPoolManager,
 } from "@pierre/diffs/worker";
+import { registerResolvedCodeThemeFiles } from "./code-theme-registration";
 import { createDiffWorker, getDiffWorkerPoolSize } from "./diff-worker-pool";
 import {
   useSyncPierreWorkerPoolTheme,
@@ -17,6 +19,7 @@ const WORKER_POOL_OPTIONS = {
 export function acquirePierreWorkerPool(
   theme: CodeThemePair,
 ): WorkerPoolManager {
+  registerResolvedCodeThemeFiles(registerCustomTheme);
   return getOrCreateWorkerPoolSingleton({
     poolOptions: WORKER_POOL_OPTIONS,
     highlighterOptions: { theme },
