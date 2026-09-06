@@ -1,2 +1,2 @@
-#!/bin/sh
-printf '\033]0;%s\007' "$*"
+#!/usr/bin/env node
+process.stdout.write(`\x1b]0;${process.argv.slice(2).join(" ")}\x07`);

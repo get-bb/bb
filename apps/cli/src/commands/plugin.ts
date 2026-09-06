@@ -39,6 +39,7 @@ import {
   type PluginBuildToolchain,
 } from "@bb/plugin-build";
 import { runPluginCliCommand } from "../plugin-cli-proxy.js";
+import { resolveShellExecOptions } from "../shell-exec.js";
 import { resolveBbCliVersion } from "../version.js";
 
 import { outputJson, type JsonOutputOptions } from "./helpers.js";
@@ -343,7 +344,11 @@ async function probeSdkVersionPublished(): Promise<
     const { stdout } = await promisify(execFile)(
       "npm",
       ["view", `@get-bb/plugin-sdk@${PLUGIN_SDK_VERSION}`, "version", "--json"],
-      { timeout: 5_000, killSignal: "SIGKILL" },
+      {
+        timeout: 5_000,
+        killSignal: "SIGKILL",
+        ...resolveShellExecOptions(),
+      },
     );
     return stdout.trim().length === 0 ? "missing" : "published";
   } catch (error) {
@@ -388,7 +393,7 @@ async function installScaffoldDependencies(
     await promisify(execFile)(
       "npm",
       ["install", "--include=dev", "--no-fund", "--no-audit"],
-      { cwd: targetDir },
+      { cwd: targetDir, ...resolveShellExecOptions() },
     );
   } catch (cause) {
     console.warn(

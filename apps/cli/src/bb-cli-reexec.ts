@@ -1,6 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { realpathSync } from "node:fs";
 import { resolve } from "node:path";
+import { resolveShellExecOptions } from "./shell-exec.js";
 
 export const BB_CLI_REEXEC_ENV = "BB_CLI_REEXEC";
 
@@ -61,6 +62,7 @@ export function maybeReexecViaBbCli(
   const result = spawnSync(target, argv, {
     env: childEnv,
     stdio: "inherit",
+    ...resolveShellExecOptions(),
   });
   if (result.error) {
     process.stderr.write(

@@ -18,6 +18,7 @@ interface PrepareRuntimeShellEnvOptions {
   hostDaemonPort?: number;
   serverUrl: string;
   inheritedPath?: string;
+  platform?: NodeJS.Platform;
 }
 
 export interface ResolveUserShellPathOptions {
@@ -63,8 +64,10 @@ const BASE64_VALUE_PATTERN = /^[A-Za-z0-9+/]*={0,2}$/u;
 const USER_SHELL_ENV_TIMEOUT_MS = 3_000;
 const USER_SHELL_ENV_FORCE_KILL_AFTER_MS = 1_000;
 
-function getDefaultCliExecutablePath(): string {
-  return fileURLToPath(new URL("../../cli/bin/bb", import.meta.url));
+function getDefaultCliExecutablePath(platform: NodeJS.Platform): string {
+  return fileURLToPath(
+    new URL(`../../cli/bin/${bbExecutableFileName(platform)}`, import.meta.url),
+  );
 }
 
 function getDefaultCliRuntimePath(): string {
@@ -525,7 +528,7 @@ export async function resolveLocalBbExecutablePath(
 ): Promise<string> {
   const platform = options.platform ?? process.platform;
   const resolvedCliExecutablePath =
-    options.cliExecutablePath ?? getDefaultCliExecutablePath();
+    options.cliExecutablePath ?? getDefaultCliExecutablePath(platform);
   const cliEntryPath = await resolveCliEntryPath(
     resolvedCliExecutablePath,
     platform,
@@ -541,14 +544,15 @@ export async function resolveLocalBbExecutablePath(
   return cliEntryPath;
 }
 
-function bbExecutableFileName(): string {
-  return "bb";
+function bbExecutableFileName(platform: NodeJS.Platform): string {
+  return platform === "win32" ? "bb.cmd" : "bb";
 }
 
 export function resolveBbExecutablePathInDirectory(
   bbExecutableDirectory: string,
+  platform: NodeJS.Platform = process.platform,
 ): string {
-  return resolve(bbExecutableDirectory, bbExecutableFileName());
+  return resolve(bbExecutableDirectory, bbExecutableFileName(platform));
 }
 
 export function prepareRuntimeShellEnv(
@@ -556,7 +560,10 @@ export function prepareRuntimeShellEnv(
 ): NonNullable<AgentRuntimeOptions["shellEnv"]> {
   const bbExecutablePath =
     options.bbExecutablePath ??
-    resolveBbExecutablePathInDirectory(options.bbExecutableDirectory);
+    resolveBbExecutablePathInDirectory(
+      options.bbExecutableDirectory,
+      options.platform ?? process.platform,
+    );
   const shellEnv: NonNullable<AgentRuntimeOptions["shellEnv"]> = {
     PATH: prependPath(
       options.bbExecutableDirectory,

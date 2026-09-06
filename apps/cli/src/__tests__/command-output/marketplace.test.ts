@@ -1,3 +1,4 @@
+import { resolve, sep } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import {
   collectLogPayloads,
@@ -83,8 +84,8 @@ describe("bb marketplace", () => {
     const body = JSON.parse(
       String(vi.mocked(fetch).mock.calls[0]?.[1]?.body),
     ) as { source: string };
-    expect(body.source.startsWith("path:/")).toBe(true);
-    expect(body.source.endsWith("/catalog")).toBe(true);
+    expect(body.source).toBe(`path:${resolve("catalog")}`);
+    expect(body.source.endsWith(`${sep}catalog`)).toBe(true);
   });
 
   it("lists marketplaces with their source and entry count", async () => {

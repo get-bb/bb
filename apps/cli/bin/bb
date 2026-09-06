@@ -1,14 +1,48 @@
-#!/bin/sh
-SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
-CLI_ENTRY="$SCRIPT_DIR/../dist/index.js"
+#!/usr/bin/env node
+import { spawn, spawnSync } from "node:child_process";
+import { existsSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
-if [ ! -f "$CLI_ENTRY" ]; then
-  REPO_ROOT=$(CDPATH= cd -- "$SCRIPT_DIR/../../.." && pwd)
-  if ! command -v pnpm >/dev/null 2>&1; then
-    echo "Missing built bb CLI entry at $CLI_ENTRY and pnpm is not available to build it." >&2
-    exit 1
-  fi
-  pnpm -C "$REPO_ROOT" run --silent cli:prepare 1>&2 || exit $?
-fi
+const scriptDir = dirname(fileURLToPath(import.meta.url));
+const cliEntry = resolve(scriptDir, "../dist/index.js");
 
-exec node "$CLI_ENTRY" "$@"
+function reportMissingEntry(reason) {
+  process.stderr.write(
+    `Missing built bb CLI entry at ${cliEntry}${reason}.\n`,
+  );
+}
+
+if (!existsSync(cliEntry)) {
+  const repoRoot = resolve(scriptDir, "../../..");
+  const built = spawnSync("pnpm", ["-C", repoRoot, "run", "--silent", "cli:prepare"], {
+    shell: process.platform === "win32",
+    stdio: ["inherit", process.stderr, "inherit"],
+  });
+  if (built.error) {
+    reportMissingEntry(" and pnpm is not available to build it");
+    process.exit(1);
+  }
+  if (built.status !== 0) {
+    process.exit(built.status ?? 1);
+  }
+  if (!existsSync(cliEntry)) {
+    reportMissingEntry(" even after running pnpm cli:prepare");
+    process.exit(1);
+  }
+}
+
+const child = spawn(process.execPath, [cliEntry, ...process.argv.slice(2)], {
+  stdio: "inherit",
+});
+child.on("error", (error) => {
+  process.stderr.write(`Failed to run bb CLI entry at ${cliEntry}: ${error.message}\n`);
+  process.exit(1);
+});
+child.on("exit", (code, signal) => {
+  if (signal !== null) {
+    process.kill(process.pid, signal);
+    return;
+  }
+  process.exit(code ?? 0);
+});

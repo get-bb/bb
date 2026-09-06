@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   createUserShellPathResolver,
   prepareRuntimeShellEnv,
+  resolveBbExecutablePathInDirectory,
   resolveLocalBbExecutablePath,
   resolveUserShellPath,
   type SpawnUserShellEnv,
@@ -595,6 +596,7 @@ describe("prepareRuntimeShellEnv", () => {
         hostDaemonPort: 3002,
         inheritedPath: "/usr/bin",
         serverUrl: "http://127.0.0.1:3334",
+        platform: "linux",
       }),
     ).toEqual({
       PATH: `/tmp/bb-bin${delimiter}/usr/bin`,
@@ -602,6 +604,29 @@ describe("prepareRuntimeShellEnv", () => {
       BB_SERVER_URL: "http://127.0.0.1:3334",
       BB_HOST_DAEMON_PORT: "3002",
     });
+  });
+
+  it("points BB_CLI at the bb.cmd entry point on win32", () => {
+    expect(
+      prepareRuntimeShellEnv({
+        bbExecutableDirectory: "C:\\bb-bin",
+        hostDaemonPort: 3002,
+        inheritedPath: "C:\\Windows",
+        serverUrl: "http://127.0.0.1:3334",
+        platform: "win32",
+      }),
+    ).toMatchObject({
+      BB_CLI: path.win32.resolve("C:\\bb-bin", "bb.cmd"),
+    });
+  });
+
+  it("resolves bb.cmd inside the executable directory on win32", () => {
+    expect(resolveBbExecutablePathInDirectory("/tmp/bb-bin", "linux")).toBe(
+      path.resolve("/tmp/bb-bin", "bb"),
+    );
+    expect(
+      resolveBbExecutablePathInDirectory("C:\\bb-bin", "win32"),
+    ).toBe(path.win32.resolve("C:\\bb-bin", "bb.cmd"));
   });
 
   it("uses an explicit bbExecutablePath for BB_CLI", () => {
@@ -626,6 +651,7 @@ describe("prepareRuntimeShellEnv", () => {
         bbExecutableDirectory: "/tmp/bb-bin",
         hostDaemonPort: 3002,
         serverUrl: "http://127.0.0.1:3334",
+        platform: "linux",
       }),
     ).toEqual({
       PATH: `/tmp/bb-bin${delimiter}/usr/local/bin:/usr/bin`,
@@ -641,6 +667,7 @@ describe("prepareRuntimeShellEnv", () => {
         bbExecutableDirectory: "/tmp/bb-bin",
         inheritedPath: "/usr/bin",
         serverUrl: "http://127.0.0.1:3334",
+        platform: "linux",
       }),
     ).toEqual({
       PATH: `/tmp/bb-bin${delimiter}/usr/bin`,

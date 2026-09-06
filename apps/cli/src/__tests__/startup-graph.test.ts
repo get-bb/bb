@@ -83,6 +83,7 @@ describe("bb startup module graph", () => {
     env.BB_CLI_REEXEC = "1";
     env.BB_STARTUP_GRAPH_LOG = logPath;
     if (serverUrl !== undefined) env.BB_SERVER_URL = serverUrl;
+    const registerHooksUrl = pathToFileURL(registerHooksPath).href;
     const entryArgs =
       entry === "source"
         ? [
@@ -90,10 +91,10 @@ describe("bb startup module graph", () => {
             "--import",
             "tsx",
             "--import",
-            registerHooksPath,
+            registerHooksUrl,
             "src/index.ts",
           ]
-        : ["--import", registerHooksPath, distEntry];
+        : ["--import", registerHooksUrl, distEntry];
     const { stdout } = await execFileAsync(
       process.execPath,
       [...entryArgs, ...args],

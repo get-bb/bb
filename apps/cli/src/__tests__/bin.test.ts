@@ -18,8 +18,8 @@ const execFileAsync = promisify(execFile);
 const testDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(testDir, "..", "..", "..", "..");
 
-function shellQuote(value: string): string {
-  return `'${value.replace(/'/gu, "'\\''")}'`;
+function binEntryFileName(): string {
+  return process.platform === "win32" ? "bb.cmd" : "bb";
 }
 
 describe("bb bin wrapper", () => {
@@ -41,54 +41,66 @@ describe("bb bin wrapper", () => {
       join(fakeRepoRoot, "package.json"),
       JSON.stringify({ name: "bb", private: true }),
     );
-    await copyFile(
-      join(repoRoot, "apps", "cli", "bin", "bb"),
-      join(fakeBinDir, "bb"),
-    );
+    for (const entry of ["bb", "bb.cmd"]) {
+      await copyFile(
+        join(repoRoot, "apps", "cli", "bin", entry),
+        join(fakeBinDir, entry),
+      );
+    }
     await chmod(join(fakeBinDir, "bb"), 0o755);
     return fakeRepoRoot;
   }
 
-  async function writeFakePnpm(content: string): Promise<string> {
+  async function writeFakePnpm(body: string): Promise<string> {
     const fakeBinDir = join(tempRoot, "fake-bin");
     await mkdir(fakeBinDir, { recursive: true });
     const fakePnpmPath = join(fakeBinDir, "pnpm");
-    await writeFile(fakePnpmPath, content, { mode: 0o755 });
+    await writeFile(fakePnpmPath, `#!/usr/bin/env node\n${body}`, {
+      mode: 0o755,
+    });
     await chmod(fakePnpmPath, 0o755);
+    if (process.platform === "win32") {
+      await writeFile(join(fakeBinDir, "pnpm.cmd"), `@node "%~dp0pnpm" %*\n`);
+    }
     return fakeBinDir;
   }
 
-  it("builds the source CLI before executing when dist is missing", async () => {
-    const fakeRepoRoot = await createFakeRepo();
-    const pnpmArgsPath = join(tempRoot, "pnpm-args.txt");
-    const fakePnpmDir = await writeFakePnpm(`#!/bin/sh
-printf '%s\\n' "$@" > ${shellQuote(pnpmArgsPath)}
-repo_root=""
-previous=""
-for arg do
-  if [ "$previous" = "-C" ]; then
-    repo_root="$arg"
-    break
-  fi
-  previous="$arg"
-done
-mkdir -p "$repo_root/apps/cli/dist"
-cat > "$repo_root/apps/cli/dist/index.js" <<'NODE'
-process.stdout.write(JSON.stringify({ argv: process.argv.slice(2) }));
-NODE
-`);
-
-    const result = await execFileAsync(
-      join(fakeRepoRoot, "apps", "cli", "bin", "bb"),
-      ["status", "--json"],
+  async function runBin(
+    fakeRepoRoot: string,
+    args: string[],
+    fakePnpmDir: string,
+  ) {
+    return execFileAsync(
+      join(fakeRepoRoot, "apps", "cli", "bin", binEntryFileName()),
+      args,
       {
         cwd: fakeRepoRoot,
         env: {
           ...process.env,
           PATH: `${fakePnpmDir}${delimiter}${process.env.PATH ?? ""}`,
         },
+        shell: process.platform === "win32",
       },
     );
+  }
+
+  it("builds the source CLI before executing when dist is missing", async () => {
+    const fakeRepoRoot = await createFakeRepo();
+    const pnpmArgsPath = join(tempRoot, "pnpm-args.txt");
+    const fakePnpmDir = await writeFakePnpm(`
+const { mkdirSync, writeFileSync } = require("node:fs");
+const { join } = require("node:path");
+const args = process.argv.slice(2);
+writeFileSync(${JSON.stringify(pnpmArgsPath)}, args.join("\\n") + "\\n");
+const repoRoot = args[args.indexOf("-C") + 1];
+mkdirSync(join(repoRoot, "apps", "cli", "dist"), { recursive: true });
+writeFileSync(
+  join(repoRoot, "apps", "cli", "dist", "index.js"),
+  "process.stdout.write(JSON.stringify({ argv: process.argv.slice(2) }));\\n",
+);
+`);
+
+    const result = await runBin(fakeRepoRoot, ["status", "--json"], fakePnpmDir);
 
     expect(JSON.parse(result.stdout)).toEqual({ argv: ["status", "--json"] });
     await expect(
@@ -103,9 +115,10 @@ NODE
     const fakeRepoRoot = await createFakeRepo();
     const fakeDistDir = join(fakeRepoRoot, "apps", "cli", "dist");
     const pnpmCalledPath = join(tempRoot, "pnpm-called.txt");
-    const fakePnpmDir = await writeFakePnpm(`#!/bin/sh
-echo called > ${shellQuote(pnpmCalledPath)}
-exit 42
+    const fakePnpmDir = await writeFakePnpm(`
+const { writeFileSync } = require("node:fs");
+writeFileSync(${JSON.stringify(pnpmCalledPath)}, "called\\n");
+process.exit(42);
 `);
     await mkdir(fakeDistDir, { recursive: true });
     await writeFile(
@@ -113,17 +126,7 @@ exit 42
       "process.stdout.write(process.argv.slice(2).join(' '));\n",
     );
 
-    const result = await execFileAsync(
-      join(fakeRepoRoot, "apps", "cli", "bin", "bb"),
-      ["--help"],
-      {
-        cwd: fakeRepoRoot,
-        env: {
-          ...process.env,
-          PATH: `${fakePnpmDir}${delimiter}${process.env.PATH ?? ""}`,
-        },
-      },
-    );
+    const result = await runBin(fakeRepoRoot, ["--help"], fakePnpmDir);
 
     expect(result.stdout).toBe("--help");
     await expect(readFile(pnpmCalledPath, "utf8")).rejects.toMatchObject({
