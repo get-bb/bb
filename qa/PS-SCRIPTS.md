@@ -1,37 +1,37 @@
-# Inventario `.sh` → `.ps1` (Windows nativo)
+# `.sh` → `.ps1` inventory (native Windows)
 
-El repo contiene 7 scripts `.sh` (excluyendo `node_modules`). Ninguno se borra:
-macOS y Linux siguen siendo plataformas de primera. Solo los que un QA necesita
-en Windows tienen gemelo `.ps1`, y viven bajo `qa/scripts/` porque `scripts/` de
-la raíz es de S7, `apps/desktop` es de S6 y el resto pertenece a otros equipos:
-un gemelo colocado junto al `.sh` original sería una edición fuera de ámbito y
-un conflicto de merge seguro. Si el coordinador prefiere gemelos hermanos
-(`foo.ps1` junto a `foo.sh`), estos ficheros están listos para mover.
+The repo holds 7 `.sh` scripts (excluding `node_modules`). None is deleted:
+macOS and Linux remain first-class platforms. Only the ones a QA needs on
+Windows get a `.ps1` twin, and they live under `qa/scripts/` because the root
+`scripts/` belongs to S7, `apps/desktop` belongs to S6, and the rest belongs to
+other teams: a twin placed next to the original `.sh` would be an out-of-scope
+edit and a guaranteed merge conflict. If the coordinator prefers sibling twins
+(`foo.ps1` next to `foo.sh`), these files are ready to move.
 
-Estado de verificación: **revisado línea a línea, NO ejecutado**. En este VPS
-Ubuntu no hay PowerShell (`command -v pwsh powershell` no devuelve nada), así
-que ningún `.ps1` de este repo puede probarse aquí. La verdad Windows la da el
-runner `windows-latest` (`win-native.yml`).
+Verification status: **reviewed line by line, NOT executed**. This Ubuntu VPS
+has no PowerShell (`command -v pwsh powershell` returns nothing), so no `.ps1`
+in this repo can be tested here. Windows truth comes from the `windows-latest`
+runner (`win-native.yml`).
 
-## Tabla
+## Table
 
-| `.sh` | Qué hace | ¿Hace falta en Windows? | Gemelo / decisión |
+| `.sh` | What it does | Needed on Windows? | Twin / decision |
 |---|---|---|---|
-| `.bb-env-setup.sh` | Aprovisiona el entorno dev: comprueba `pnpm` y `package.json`, corre `pnpm install` sin abortar al primer fallo | **Sí**: es el paso "instalar dependencias" del QA en Windows | `qa/scripts/bb-env-setup.ps1`, equivalencia 1:1 verificada por lectura |
-| `scripts/provider-corpus/snapshot-rows.sh` | Puertas del corpus de providers: `compare` (por defecto) o `write`, exige `BB_PROVIDER_CORPUS_DIR` con `manifest.json`, corre `turbo run test:provider-corpus --filter=@bb/server`, vuelca `rows-last-run.json` y `perf-last-run.md` | **Sí**: las puertas del corpus también se corren desde Windows | `qa/scripts/snapshot-rows.ps1`, misma interfaz (`write`/`compare`), mismas variables de entorno, mismos ficheros de salida |
-| `check.sh` | Envoltorio del escuadrón: un solo `turbo` a la vez en todo el VPS (lock global `flock`, `nice`, `--concurrency=1`) | **No**: herramienta del coordinador para este VPS Ubuntu (`flock`, `bash`); el runner Windows no lo usa | Sin gemelo |
-| `.github/actions/setup-workspace/install-pnpm.sh` | Instala el binario pinnado de pnpm en runners Linux/macOS (descarga + sha256) con `bash`, `curl`, `sha256sum`/`shasum` | **No**: en Windows el runner usa `corepack prepare pnpm --activate` (ver `win-native.yml`, paso "Set up pnpm"). Un gemelo duplicaría el camino | Sin gemelo. Dueño: S7 (CI) |
-| `apps/mobile/e2e/scripts/ci-run-flows.sh` | Corre flujos Maestro contra un simulador iOS (`xcrun simctl`, app Release + backend) | **No**: exige macOS (simulador) y toolchain Maestro/Java; no es ejecutable ni significativo en Windows | Sin gemelo |
-| `apps/server/src/assets/install-machine.sh` | Enrola una máquina macOS/Linux (launchd/systemd): descarga `bb-app.tgz`, verifica sha256, registra el servicio | **No desde QA**: el enrolamiento Windows es superficie de producto (instalador NSIS + servicio Windows), no un gemelo de este script. Además dice literalmente `supports macOS and Linux only` | Sin gemelo. Necesita coordinación: equipos de daemon/desktop para el camino Windows real |
-| `scripts/provider-recordings/convert-claude-transcripts-sample.sh` | Re-construye fixtures desde transcripciones privadas `~/.claude/projects` con `mktemp`, `trap`, `find` | **No**: herramienta dev de un solo uso con datos privados; la línea S7 decide si quiere gemelo | Sin gemelo. Dueño: S7 |
+| `.bb-env-setup.sh` | Provisions the dev environment: checks `pnpm` and `package.json`, runs `pnpm install` without aborting on the first failure | **Yes**: it is the "install dependencies" step of QA on Windows | `qa/scripts/bb-env-setup.ps1`, 1:1 equivalence verified by reading |
+| `scripts/provider-corpus/snapshot-rows.sh` | Provider-corpus gates: `compare` (default) or `write`, requires `BB_PROVIDER_CORPUS_DIR` with `manifest.json`, runs `turbo run test:provider-corpus --filter=@bb/server`, dumps `rows-last-run.json` and `perf-last-run.md` | **Yes**: the corpus gates also run from Windows | `qa/scripts/snapshot-rows.ps1`, same interface (`write`/`compare`), same environment variables, same output files |
+| `check.sh` | Squad wrapper: a single `turbo` at a time across the whole VPS (global `flock` lock, `nice`, `--concurrency=1`) | **No**: coordinator tooling for this Ubuntu VPS (`flock`, `bash`); the Windows runner does not use it | No twin |
+| `.github/actions/setup-workspace/install-pnpm.sh` | Installs the pinned pnpm binary on Linux/macOS runners (download + sha256) with `bash`, `curl`, `sha256sum`/`shasum` | **No**: on Windows the runner uses `corepack prepare pnpm --activate` (see `win-native.yml`, "Set up pnpm" step). A twin would duplicate the path | No twin. Owner: S7 (CI) |
+| `apps/mobile/e2e/scripts/ci-run-flows.sh` | Runs Maestro flows against an iOS simulator (`xcrun simctl`, Release app + backend) | **No**: requires macOS (simulator) and the Maestro/Java toolchain; neither executable nor meaningful on Windows | No twin |
+| `apps/server/src/assets/install-machine.sh` | Enrolls a macOS/Linux machine (launchd/systemd): downloads `bb-app.tgz`, verifies sha256, registers the service | **No from QA**: Windows enrollment is product surface (NSIS installer + Windows service), not a twin of this script. It also literally says `supports macOS and Linux only` | No twin. Needs coordination: daemon/desktop teams for the real Windows path |
+| `scripts/provider-recordings/convert-claude-transcripts-sample.sh` | Rebuilds fixtures from private `~/.claude/projects` transcripts with `mktemp`, `trap`, `find` | **No**: one-shot dev tool with private data; the S7 line decides whether it wants a twin | No twin. Owner: S7 |
 
-## Ficheros nuevos en `qa/scripts/`
+## New files in `qa/scripts/`
 
-| Fichero | Origen | Notas |
+| File | Source | Notes |
 |---|---|---|
-| `bb-env-setup.ps1` | Gemelo de `.bb-env-setup.sh` | Diferencia deliberada nº 1: resuelve la raíz del repo desde `$PSScriptRoot` en vez de asumir el CWD (en Windows se suele lanzar con doble clic o desde otra carpeta). Diferencia nº 2: `pnpm install` se invoca como `pnpm.cmd` explícito para no depender de la resolución PATHEXT. Todo lo demás (prefijo `[bb-env-setup]`, continuar tras un paso fallido avisando con el exit code) es idéntico |
-| `snapshot-rows.ps1` | Gemelo de `scripts/provider-corpus/snapshot-rows.sh` | Misma interfaz (`-Mode compare|write`, `compare` por defecto), mismas env (`BB_PROVIDER_CORPUS_DIR`, `BB_PROVIDER_CORPUS_ALLOWLIST`, `BB_PROVIDER_CORPUS_SNAPSHOT_DIR`, `BB_PROVIDER_CORPUS_ROW_CLASSES`, `BB_PROVIDER_CORPUS_SNAPSHOT`), mismo `turbo run test:provider-corpus --filter=@bb/server`, mismos vuelcos. `set -euo pipefail` se traduce a `$ErrorActionPreference = 'Stop'` + comprobación explícita de `$LASTEXITCODE` tras cada comando nativo |
-| `collect-evidence.ps1` | Nuevo, sin `.sh` previo | Recoge en local lo mismo que el workflow recoge en CI: `00-host.txt` (SO, node, PowerShell) y `90-tasklist.txt` + `91-processes.csv`. Los `10/20/30/40-*.txt` se generan re-corriendo los comandos documentados en `qa-evidence/README.md` con `Tee-Object` |
+| `bb-env-setup.ps1` | Twin of `.bb-env-setup.sh` | Deliberate difference #1: resolves the repo root from `$PSScriptRoot` instead of assuming the CWD (on Windows it is usually launched by double click or from another folder). Deliberate difference #2: `pnpm install` is invoked as explicit `pnpm.cmd` so it does not depend on PATHEXT resolution. Everything else (`[bb-env-setup]` prefix, continuing past a failed step while warning with the exit code) is identical |
+| `snapshot-rows.ps1` | Twin of `scripts/provider-corpus/snapshot-rows.sh` | Same interface (`-Mode compare|write`, `compare` by default), same env (`BB_PROVIDER_CORPUS_DIR`, `BB_PROVIDER_CORPUS_ALLOWLIST`, `BB_PROVIDER_CORPUS_SNAPSHOT_DIR`, `BB_PROVIDER_CORPUS_ROW_CLASSES`, `BB_PROVIDER_CORPUS_SNAPSHOT`), same `turbo run test:provider-corpus --filter=@bb/server`, same dumps. `set -euo pipefail` translates to `$ErrorActionPreference = 'Stop'` + an explicit `$LASTEXITCODE` check after every native command |
+| `collect-evidence.ps1` | New, no prior `.sh` | Collects locally the same thing the workflow collects in CI: `00-host.txt` (OS, node, PowerShell) and `90-tasklist.txt` + `91-processes.csv`. The `10/20/30/40-*.txt` files are produced by re-running the commands documented in `qa-evidence/README.md` with `Tee-Object` |
 
-`.gitattributes` ya fuerza CRLF en `*.ps1`: no hay que configurar nada al
-añadir estos ficheros.
+`.gitattributes` already forces CRLF on `*.ps1`: nothing to configure when
+adding these files.

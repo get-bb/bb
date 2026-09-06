@@ -1,34 +1,35 @@
-# Checklist QA manual — bb nativo en Windows 11 real
+# Manual QA checklist — native bb on real Windows 11
 
-Un humano, una máquina Windows 11 x64 física o VM con GUI, sin WSL implicado.
-Cada paso dice qué hacer y qué se espera ver; si lo observado difiere, es un
-fallo y va al PR con su evidencia (`qa-evidence/README.md` dice dónde).
+One human, one real Windows 11 x64 machine, physical or VM with a GUI, no WSL
+involved. Each step says what to do and what you expect to see; if what you
+observe differs, it is a failure and goes to the PR with its evidence
+(`qa-evidence/README.md` says where).
 
-Prepara antes de empezar:
+Before you start:
 
-- Windows 11 x64 actualizado, sesión de usuario normal (no SYSTEM).
-- Node.js `22.19.0` y pnpm `9.15.0` si vas a correr los pasos 1–2 desde fuente
-  (son las versiones pinnadas en `win-native.yml`); para el instalador no hacen
-  falta.
-- Carpeta `C:\bb-test`: créala con 3–4 ficheros de texto (`nota.txt`,
-  `datos.csv`, uno con eñe: `diseño.txt`). Sin git dentro a propósito: el paso 6
-  debe funcionar con una carpeta normal.
-- Decide dónde cae la evidencia de esta pasada: `qa-evidence/` del checkout o
-  una carpeta aparte (`collect-evidence.ps1 -OutDir C:\bb-test\evidencia`).
+- Updated Windows 11 x64, normal user session (not SYSTEM).
+- Node.js `22.19.0` and pnpm `9.15.0` if you are running steps 1–2 from source
+  (these are the versions pinned in `win-native.yml`); not needed for the
+  installer.
+- Folder `C:\bb-test`: create it with 3–4 text files (`nota.txt`,
+  `datos.csv`, one with an eñe: `diseño.txt`). Deliberately no git inside: step 6
+  must work with a plain folder.
+- Decide where this pass's evidence goes: the checkout's `qa-evidence/` or
+  a separate folder (`collect-evidence.ps1 -OutDir C:\bb-test\evidencia`).
 
-## 1. Instalar dependencias (solo si validas desde fuente)
+## 1. Install dependencies (only if validating from source)
 
 ```powershell
 pnpm install --frozen-lockfile 2>&1 | Tee-Object qa-evidence\10-install.txt
 ```
 
-- Se espera: `pnpm install` termina con exit 0. Sin errores `ELIFECYCLE`, sin
-  `node-gyp` rojo. Avisos amarillos de peer deps: aceptables, se adjuntan.
-- Alternativa con el gemelo QA: `qa\scripts\bb-env-setup.ps1` (mismo efecto,
-  log con prefijo `[bb-env-setup]`).
-- Evidencia: `qa-evidence\10-install.txt`.
+- Expected: `pnpm install` exits 0. No `ELIFECYCLE` errors, no red `node-gyp`.
+  Yellow peer-dep warnings: acceptable, attach them.
+- Alternative via the QA twin: `qa\scripts\bb-env-setup.ps1` (same effect,
+  log with a `[bb-env-setup]` prefix).
+- Evidence: `qa-evidence\10-install.txt`.
 
-## 2. Typecheck + tests + build (solo desde fuente)
+## 2. Typecheck + tests + build (from source only)
 
 ```powershell
 pnpm run typecheck 2>&1 | Tee-Object qa-evidence\20-typecheck.txt
@@ -36,56 +37,56 @@ pnpm exec vitest run --reporter=basic packages/domain packages/process-utils app
 pnpm run build 2>&1 | Tee-Object qa-evidence\40-build.txt
 ```
 
-- Se espera: los tres con exit 0. En `30-tests.txt`, cero `FAIL`; anota el
-  conteo `Test Files / Tests` al final del fichero.
-- Si algo falla aquí, no sigas al instalador: abre issue con estos tres
-  ficheros (ver `docs/filing-issues.md` del repo para el formato).
+- Expected: all three exit 0. In `30-tests.txt`, zero `FAIL`; note the
+  `Test Files / Tests` counts at the end of the file.
+- If anything fails here, do not move on to the installer: open an issue with
+  these three files (see the repo's `docs/filing-issues.md` for the format).
 
-## 3. Instalar la app con doble clic
+## 3. Install the app with a double click
 
-1. Consigue el instalador: `release\bb-<version>-x64.exe` (NSIS; el nombre
-   exacto lo fija el build de `apps/desktop`, confirma la versión antes).
-2. Haz **doble clic**. No lo ejecutes desde terminal: este paso valida la vía
-   del usuario normal.
-3. Se espera:
-   - Si SmartScreen dice "Windows protected your PC" (build sin firmar): es lo
-     esperado en un build interno; `More info` → `Run anyway`. En release
-     firmada NO debe aparecer: si aparece, es fallo.
-   - Asistente NSIS en español o inglés según el SO, ruta por defecto bajo
-     `%LOCALAPPDATA%` o `Program Files` (anota cuál), barra de progreso,
-     botón `Finish`/`Close` sin errores.
-   - Al terminar hay entrada "bb" en el menú Inicio.
+1. Get the installer: `release\bb-<version>-x64.exe` (NSIS; the exact name is
+   set by the `apps/desktop` build, confirm the version first).
+2. **Double-click it**. Do not run it from a terminal: this step validates the
+   normal-user path.
+3. Expected:
+   - If SmartScreen says "Windows protected your PC" (unsigned build): that is
+     expected for an internal build; `More info` → `Run anyway`. On a signed
+     release it must NOT appear: if it does, that is a failure.
+   - NSIS wizard in Spanish or English depending on the OS, default path under
+     `%LOCALAPPDATA%` or `Program Files` (note which one), progress bar,
+     `Finish`/`Close` button with no errors.
+   - When done there is a "bb" entry in the Start menu.
 
-## 4. Primera ventana: Electron real, SIN navegador
+## 4. First window: real Electron, NO browser
 
-1. Abre "bb" desde el menú Inicio (o deja marcada la casilla de abrir al final
-   del instalador).
-2. Se espera, por este orden:
-   - Una **ventana de escritorio propia** con icono y título "bb". Tiene que
-     ser Electron, no vale que se abra Edge/Chrome.
-   - La ventana **NO** te pide abrir `http://localhost:38886` ni ninguna URL en
-     el navegador. Si aparece cualquier "open in browser", es fallo directo
-     del port (ese era el comportamiento WSL, prohibido aquí).
-   - La ventana responde al primer clic en menos de ~5 s (anota el tiempo
-     real que veas).
-3. Captura: `qa-evidence\50-first-window.png` (nombre manual, ver README).
+1. Open "bb" from the Start menu (or leave the launch-on-finish checkbox
+   ticked at the end of the installer).
+2. Expected, in this order:
+   - A **native desktop window** with the "bb" icon and title. It has to be
+     Electron; Edge/Chrome opening does not count.
+   - The window does **NOT** ask you to open `http://localhost:38886` or any
+     URL in the browser. Any "open in browser" is a direct failure of the port
+     (that was the WSL behaviour, forbidden here).
+   - The window answers the first click within ~5 s (note the actual time you
+     see).
+3. Screenshot: `qa-evidence\50-first-window.png` (manual name, see README).
 
-## 5. Abrir el proyecto `C:\bb-test`
+## 5. Open the `C:\bb-test` project
 
-1. Desde la app, abre la carpeta `C:\bb-test` (File → Open / selector según la
-   UI real; anota el camino que seguiste).
-2. Se espera:
-   - Los ficheros (`nota.txt`, `datos.csv`, `diseño.txt`) listados sin
-     mojibake: la `ñ` se ve como `ñ`.
-   - Abrir `nota.txt` muestra su contenido. Editar y guardar funciona.
-3. Opcional (rutas duras del port): repite con una copia en
-   `C:\bb test\` (con espacio) y, si te atreves,
-   `C:\proyectos\diseño\`. Anota cuál probaste.
+1. From the app, open the `C:\bb-test` folder (File → Open / picker depending
+   on the real UI; note the path you followed).
+2. Expected:
+   - The files (`nota.txt`, `datos.csv`, `diseño.txt`) listed with no
+     mojibake: the `ñ` renders as `ñ`.
+   - Opening `nota.txt` shows its contents. Edit and save works.
+3. Optional (the port's hard paths): repeat with a copy at
+   `C:\bb test\` (with a space) and, if you dare,
+   `C:\proyectos\diseño\`. Note which one you tried.
 
-## 6. Terminal PowerShell dentro de la app
+## 6. PowerShell terminal inside the app
 
-1. Abre la terminal integrada de la app sobre `C:\bb-test`.
-2. Ejecuta:
+1. Open the app's integrated terminal on `C:\bb-test`.
+2. Run:
 
 ```powershell
 $PSVersionTable.PSVersion
@@ -94,20 +95,20 @@ Get-Location
 'chcp' 65001 | Out-Null; 'diseño: ñ á é'
 ```
 
-3. Se espera:
-   - Es `powershell.exe` (no `cmd`, no bash): el prompt y `$PSVersionTable`
-     lo confirman.
-   - `Get-Location` es `C:\bb-test` (la terminal arranca en el proyecto).
-   - La línea con eñes se imprime intacta (UTF-8; el `chcp 65001` es el camino
-     documentado del port si la codepage por defecto rompe acentos).
-   - Un comando largo (`dir -Recurse`) se puede interrumpir con `Ctrl+C` y la
-     terminal sigue viva.
+3. Expected:
+   - It is `powershell.exe` (not `cmd`, not bash): the prompt and
+     `$PSVersionTable` confirm it.
+   - `Get-Location` is `C:\bb-test` (the terminal starts in the project).
+   - The line with eñes prints intact (UTF-8; `chcp 65001` is the port's
+     documented path if the default codepage breaks accents).
+   - A long command (`dir -Recurse`) can be interrupted with `Ctrl+C` and the
+     terminal stays alive.
 
-## 7. Cerrar la app: no queda nada vivo
+## 7. Close the app: nothing stays alive
 
-1. Cierra la ventana (la X) y sal del todo (bandeja → Quit si hay icono
-   residente; anota si lo hay).
-2. Espera 10 s y corre:
+1. Close the window (the X) and quit fully (tray → Quit if there is a resident
+   icon; note whether there is one).
+2. Wait 10 s and run:
 
 ```powershell
 tasklist /FI "IMAGENAME eq bb.exe"
@@ -115,32 +116,32 @@ tasklist /FI "IMAGENAME eq electron.exe"
 Get-Process -Name bb, electron -ErrorAction SilentlyContinue
 ```
 
-3. Se espera: las tres consultas **vacías** (`INFO: No tasks are running` en
-   `tasklist`, nada en `Get-Process`). Cualquier `bb.exe` o `electron.exe`
-   huérfano es fallo (en Windows matar el padre NO mata a los hijos; el
-   apagado limpio es requisito del port).
-4. Guarda la prueba: `qa\scripts\collect-evidence.ps1` escribe
-   `90-tasklist.txt` + `91-processes.csv`. Adjunta también captura del
-   `tasklist` si hubo huérfanos.
+3. Expected: all three queries **empty** (`INFO: No tasks are running` in
+   `tasklist`, nothing in `Get-Process`). Any orphaned `bb.exe` or
+   `electron.exe` is a failure (on Windows killing the parent does NOT kill
+   the children; clean shutdown is a requirement of the port).
+4. Save the proof: `qa\scripts\collect-evidence.ps1` writes
+   `90-tasklist.txt` + `91-processes.csv`. Also attach a screenshot of the
+   `tasklist` if there were orphans.
 
-## 8. Desinstalar limpio
+## 8. Clean uninstall
 
-1. Configuración → Aplicaciones → "bb" → Desinstalar (o el `Uninstall.exe`
-   junto a la instalación, el que exista; anota cuál usaste).
-2. Se espera:
-   - Desinstalador sin errores; al terminar NO hay entrada "bb" en el menú
-     Inicio ni en la lista de aplicaciones.
-   - Repite el `tasklist` del paso 7: vacío.
-   - La carpeta de instalación ya no existe. Tus datos de usuario pueden
-     sobrevivir según producto (anota qué quedó bajo `%APPDATA%` /
-     `%LOCALAPPDATA%`, no lo borres a mano antes de anotarlo).
-3. Evidencia: `qa-evidence\92-tasklist-after-uninstall.txt` (copia del
-   `tasklist` post-desinstalación) + captura del menú Inicio sin "bb".
+1. Settings → Apps → "bb" → Uninstall (or the `Uninstall.exe` next to the
+   installation, whichever exists; note which one you used).
+2. Expected:
+   - Uninstaller with no errors; when done there is NO "bb" entry in the
+     Start menu or the app list.
+   - Repeat the step 7 `tasklist`: empty.
+   - The install folder is gone. Your user data may survive depending on the
+     product (note what was left under `%APPDATA%` / `%LOCALAPPDATA%`; do not
+     delete it by hand before noting it).
+3. Evidence: `qa-evidence\92-tasklist-after-uninstall.txt` (copy of the
+   post-uninstall `tasklist`) + screenshot of the Start menu without "bb".
 
-## Cierre de la pasada
+## Closing the pass
 
-Marca cada paso `PASS` / `FAIL` / `NA` (con motivo) en el PR. Un `FAIL`
-cualquiera invalida el veredicto de la pasada: no se promedia. Incluye
-siempre: `00-host.txt` (SO exacto: `Caption`, `Version`, `OSArchitecture`),
-los `*.txt` de los pasos que corriste, las capturas citadas y el
-`tasklist.txt` del paso 7.
+Mark each step `PASS` / `FAIL` / `NA` (with a reason) on the PR. Any single
+`FAIL` invalidates the pass verdict: there is no averaging. Always include:
+`00-host.txt` (exact OS: `Caption`, `Version`, `OSArchitecture`), the `*.txt`
+files for the steps you ran, the cited screenshots, and the step 7
+`tasklist.txt`.

@@ -1,89 +1,91 @@
-# Supuestos POSIX en `tests/**` que fallarían en el runner Windows
+# POSIX assumptions in `tests/**` that would fail on the Windows runner
 
-Repaso pedido por S8. Estado: **revisado en Linux, no probado en Windows**.
-Cada hallazgo dice si se arregló aquí (archivos míos: `tests/**`) o si necesita
-coordinación (comportamiento de producto o archivos de otro equipo). Los
-arreglos aplicados no cambian el comportamiento en Linux: se verificaron con la
-suite `@bb/qa` y el typecheck de `@bb/integration-tests`.
+Review requested by S8. Status: **reviewed on Linux, not tested on Windows**.
+Each finding says whether it was fixed here (my files: `tests/**`) or needs
+coordination (product behaviour or another team's files). The applied fixes do
+not change behaviour on Linux: verified with the `@bb/qa` suite and the
+`@bb/integration-tests` typecheck.
 
-## Arreglado aquí
+## Fixed here
 
-- `tests/qa/scripts/run-root-command.mjs` — `run()` lanzaba `pnpm`/`turbo` con
-  `shell: false`. En Windows `pnpm` es un shim `pnpm.cmd` y sin shell el spawn
-  falla con ENOENT, así que `standalone:start|stop|cleanup` no arrancaban.
-  Ahora `shell: process.platform === "win32"` (en Linux idéntico a antes).
-  El `ps -o ppid=` de `readParentPid` ya degradaba bien sin `ps` (cae a
-  `process.ppid`), no se tocó.
-- `tests/integration/vitest.config.ts:13` — `BB_DATA_DIR: "/tmp/bb-integration-test"`
-  fijo. En Windows `/tmp/...` cuelga de la raíz de la unidad actual y no es el
-  temp del usuario. Ahora `path.join(tmpdir(), "bb-integration-test")`
-  (en este Linux `tmpdir()` es `/tmp`: idéntico).
-- `tests/qa/test/spawn-logged-process.test.ts` — etiquetas `/tmp/standalone-server-data`
-  y `/tmp/standalone-server.log` pasadas como `dataDir`/`logPath`. Ahora bajo
-  `tmpdir()`. En Linux el valor es el mismo; en Windows ya no apuntan a la raíz
-  de la unidad.
-- `tests/qa/test/standalone-restart-command.test.ts` — los 4 tests que ejecutan
-  `sh -c` (`runShellCommand`, `runRestartProviderEnvBlock`, desacoples reales
-  del daemon) no pueden pasar en Windows: no hay `sh`, ni `kill`, ni el bloque
-  `curl | jq` que el comando generado asume. Se marcan con
-  `it.runIf(process.platform !== "win32")`: en Linux corren igual, en Windows
-  se saltan en vez de romper la suite. El comando POSIX generado sigue
-  cubierto por los tests de cadena, que sí son portables.
-- `tests/qa/test/standalone-restart-command.test.ts` — rutas `/tmp/bb root`,
-  `/tmp/bb logs/...`, `/tmp/bb-restart.pid` usadas como entrada y como
-  subcadena esperada. Ahora bajo `tmpdir()` con el mismo basename (se conserva
-  el espacio a propósito: cubre el entrecomillado).
+- `tests/qa/scripts/run-root-command.mjs` — `run()` launched `pnpm`/`turbo`
+  with `shell: false`. On Windows `pnpm` is a `pnpm.cmd` shim and spawn
+  without a shell fails with ENOENT, so `standalone:start|stop|cleanup` never
+  started. Now `shell: process.platform === "win32"` (identical to before on
+  Linux). The `ps -o ppid=` in `readParentPid` already degraded fine without
+  `ps` (falls back to `process.ppid`); untouched.
+- `tests/integration/vitest.config.ts:13` — hardcoded
+  `BB_DATA_DIR: "/tmp/bb-integration-test"`. On Windows `/tmp/...` hangs off
+  the current drive root and is not the user's temp dir. Now
+  `path.join(tmpdir(), "bb-integration-test")` (on this Linux `tmpdir()` is
+  `/tmp`: identical).
+- `tests/qa/test/spawn-logged-process.test.ts` — `/tmp/standalone-server-data`
+  and `/tmp/standalone-server.log` labels passed as `dataDir`/`logPath`. Now
+  under `tmpdir()`. On Linux the value is the same; on Windows they no longer
+  point at the drive root.
+- `tests/qa/test/standalone-restart-command.test.ts` — the 4 tests running
+  `sh -c` (`runShellCommand`, `runRestartProviderEnvBlock`, real daemon
+  detaches) cannot pass on Windows: no `sh`, no `kill`, and none of the
+  `curl | jq` block the generated command assumes. Marked
+  `it.runIf(process.platform !== "win32")`: they run as before on Linux and
+  skip on Windows instead of breaking the suite. The generated POSIX command
+  is still covered by the string tests, which are portable.
+- `tests/qa/test/standalone-restart-command.test.ts` — `/tmp/bb root`,
+  `/tmp/bb logs/...`, `/tmp/bb-restart.pid` paths used as input and as
+  expected substrings. Now under `tmpdir()` with the same basename (the space
+  is kept on purpose: it covers the quoting).
 
-## Revisado y sin bug (no tocar)
+## Reviewed, no bug (do not touch)
 
-- `tests/qa/src/shared.ts` (`loadDotEnv`) — parte por `split("\n")`, pero clave
-  y valor salen de una línea ya pasada por `trim()`, que come el `\r`. Un `.env`
-  con CRLF (Notepad) se parsea bien. Sin cambio.
-- `tests/qa/src/shared.ts` (`listStandaloneProcesses`, `listOpenFilePids`) y
-  `tests/integration/global-setup.ts` (`listOpenFilePids`) — parten salida de
-  `ps`/`lsof` por `"\n"`. En Windows esos binarios no existen y ambas funciones
-  ya devuelven `[]`/`""` ante `ENOENT`, así que el `\n` nunca ve un CRLF.
-  El problema real es otro (siguiente sección), no el salto de línea.
-- Escritor/lector del record scripted-echo (`provider-bridge.ts:recordRequest`,
-  `helpers/scripted-echo.ts:33`, `runtime-test-harness.ts:read`) — el escritor
-  añade `\n` explícito con `appendFileSync` (Node no traduce EOL) y
-  `* text=auto eol=lf` impide que git convierta el `.jsonl`. Simétrico en
-  Windows. Sin cambio.
-- `tests/integration/mobile-e2e/connect-stub.ts:612,626,630` — los `\r\n` son
-  protocolo HTTP deliberado, no EOL de fichero. Sin cambio.
-- No hay `toMatchSnapshot` / `toMatchFileSnapshot` / `toMatchInlineSnapshot` en
-  `tests/**`: el riesgo clásico "snapshot con `\n` leído con CRLF" no aplica
-  hoy. Si alguien añade snapshots de contenido de fichero, normalizar con
-  `replaceAll("\r\n", "\n")` antes de comparar.
-- `killProcess` (`SIGTERM`→`SIGKILL`, `process.kill(pid, 0)`) — en Windows Node
-  emula ambas señales con `TerminateProcess`; el sondeo con señal 0 funciona.
-  Sin cambio.
-- `spawnLoggedProcess` con `command: "node"` (`start.ts`) — `node.exe` resuelve
-  por PATHEXT sin shell. Sin cambio.
+- `tests/qa/src/shared.ts` (`loadDotEnv`) — splits on `split("\n")`, but key
+  and value come from a line already passed through `trim()`, which eats the
+  `\r`. A CRLF `.env` (Notepad) parses fine. No change.
+- `tests/qa/src/shared.ts` (`listStandaloneProcesses`, `listOpenFilePids`) and
+  `tests/integration/global-setup.ts` (`listOpenFilePids`) — split `ps`/`lsof`
+  output on `"\n"`. On Windows those binaries do not exist and both functions
+  already return `[]`/`""` on `ENOENT`, so the `\n` never meets a CRLF. The
+  real problem is a different one (next section), not the line ending.
+- Record writer/reader of scripted-echo (`provider-bridge.ts:recordRequest`,
+  `helpers/scripted-echo.ts:33`, `runtime-test-harness.ts:read`) — the writer
+  appends an explicit `\n` with `appendFileSync` (Node does no EOL
+  translation) and `* text=auto eol=lf` stops git from converting the
+  `.jsonl`. Symmetric on Windows. No change.
+- `tests/integration/mobile-e2e/connect-stub.ts:612,626,630` — the `\r\n`
+  sequences are deliberate HTTP protocol, not file EOL. No change.
+- There is no `toMatchSnapshot` / `toMatchFileSnapshot` /
+  `toMatchInlineSnapshot` in `tests/**`: the classic "`\n` snapshot read with
+  CRLF" hazard does not apply today. If anyone adds file-content snapshots,
+  normalize with `replaceAll("\r\n", "\n")` before comparing.
+- `killProcess` (`SIGTERM`→`SIGKILL`, `process.kill(pid, 0)`) — on Windows
+  Node emulates both signals with `TerminateProcess`; the signal-0 probe
+  works. No change.
+- `spawnLoggedProcess` with `command: "node"` (`start.ts`) — `node.exe`
+  resolves via PATHEXT without a shell. No change.
 
-## Necesita coordinación (no es `tests/**` o es decisión de producto)
+## Needs coordination (not `tests/**` or a product decision)
 
-- `tests/qa/src/shared.ts:556` (`lsof -t +D`) y `:605` (`ps eww -Ao
-  pid=,command=`) — en Windows no hay `lsof` ni `ps`, así que la limpieza de
-  huérfanos (`cleanupStandaloneOrphans`, `cleanupStandaloneInstance`) es ciega
-  allí: mata lo que conoce por pidfile y poco más. El camino real es
+- `tests/qa/src/shared.ts:556` (`lsof -t +D`) and `:605` (`ps eww -Ao
+  pid=,command=`) — on Windows there is no `lsof` or `ps`, so orphan cleanup
+  (`cleanupStandaloneOrphans`, `cleanupStandaloneInstance`) is blind there: it
+  kills what it knows from the pidfile and little else. The real path is
   `Get-CimInstance Win32_Process` (`ProcessId`, `ParentProcessId`,
-  `CommandLine`; el cwd NO está expuesto, hace falta otra estrategia) o
-  `tasklist`. Quién: equipo dueño del standalone QA / daemon (S2/S4).
-- `tests/qa/src/shared.ts` (`buildDaemonRestartCommand`) — genera `sh` con
-  `kill`, `. envfile`, `curl | jq`. El `RESTART_DAEMON_COMMAND` que
-  `standalone:start` escupe no corre en PowerShell. Falta el gemelo PS
-  (decisión de producto: mismo contrato en PowerShell o vía `bb` CLI). El
-  runbook (`qa/manual-runbook.md`, ~40 usos de `curl|jq`) tiene el mismo
-  problema para el operador Windows: `curl.exe` existe pero `jq` no viene con
-  el SO. Quién: dueños de daemon/CLI.
-- `tests/integration/vitest.config.ts` — el `BB_SERVER_PORT`/`BB_HOST_DAEMON_PORT`
-  fijos (49161/49162) colisionan igual en todos los SO si hay dos runners en la
-  misma máquina; no es específico Windows, se deja anotado.
-- `spawn-logged-process.test.ts` (`useIsolatedStandaloneTmpDir`) — los tests
-  fijan `TMPDIR` y esperan que `tmpdir()` lo vea. En Windows `os.tmpdir()`
-  puede ignorar `TMPDIR` (usa `TEMP`/`TMP`/perfil): pendiente de confirmar en
-  el runner; si falla, fijar las tres o `GetTempPath`. No se puede probar aquí.
-- `apps/server/src/assets/install-machine.sh` — dice `supports macOS and Linux
-  only` y registra launchd/systemd. El enrolamiento Windows (NSIS + servicio)
-  es trabajo de daemon/desktop, no un gemelo QA. Ver `qa/PS-SCRIPTS.md`.
+  `CommandLine`; cwd is NOT exposed, a different strategy is needed) or
+  `tasklist`. Owner: the team owning standalone QA / daemon (S2/S4).
+- `tests/qa/src/shared.ts` (`buildDaemonRestartCommand`) — generates `sh`
+  with `kill`, `. envfile`, `curl | jq`. The `RESTART_DAEMON_COMMAND` that
+  `standalone:start` prints does not run in PowerShell. The PS twin is missing
+  (product decision: same contract in PowerShell or via the `bb` CLI). The
+  runbook (`qa/manual-runbook.md`, ~40 uses of `curl|jq`) has the same problem
+  for the Windows operator: `curl.exe` exists but `jq` does not ship with the
+  OS. Owner: daemon/CLI owners.
+- `tests/integration/vitest.config.ts` — the hardcoded
+  `BB_SERVER_PORT`/`BB_HOST_DAEMON_PORT` (49161/49162) collide the same way on
+  every OS when two runners share a machine; not Windows-specific, noted for
+  the record.
+- `spawn-logged-process.test.ts` (`useIsolatedStandaloneTmpDir`) — the tests
+  pin `TMPDIR` and expect `tmpdir()` to see it. On Windows `os.tmpdir()` may
+  ignore `TMPDIR` (it uses `TEMP`/`TMP`/profile): pending confirmation on the
+  runner; if it fails, pin all three or `GetTempPath`. Cannot be tested here.
+- `apps/server/src/assets/install-machine.sh` — says `supports macOS and Linux
+  only` and registers launchd/systemd. Windows enrollment (NSIS + service) is
+  daemon/desktop work, not a QA twin. See `qa/PS-SCRIPTS.md`.
