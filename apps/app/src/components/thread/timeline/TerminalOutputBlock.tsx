@@ -1,8 +1,7 @@
-import { useMemo, type CSSProperties } from "react";
+import { useMemo } from "react";
 import Convert from "ansi-to-html";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { getDetailScrollMaxHeightClass } from "../../ui/detail-scroll-size.js";
-import { ExpandableLine } from "../../ui/expandable-line.js";
 import { TimelineDetailScroll } from "./TimelineDetailScroll.js";
 
 interface TerminalOutputBlockProps {
@@ -19,12 +18,6 @@ interface TerminalScrollContentKeyArgs {
   metadataLines: readonly string[];
   output: string;
 }
-
-const COMMAND_LINE_CLAMP_STYLE: CSSProperties = {
-  display: "-webkit-box",
-  WebkitBoxOrient: "vertical",
-  WebkitLineClamp: 2,
-};
 
 const ANSI_THEME_COLORS: Record<number, string> = {
   0: "var(--ansi-0)",
@@ -121,17 +114,14 @@ export function TerminalOutputBlock({
     <div className="overflow-hidden rounded-lg border border-border bg-card">
       <div className="px-4 py-3 font-mono text-xs leading-tight text-foreground opacity-70">
         {commandLine ? (
-          <ExpandableLine
-            fullText={commandLine}
-            collapsedClassName="max-h-[2lh] overflow-hidden whitespace-pre-wrap break-words"
-            collapsedStyle={COMMAND_LINE_CLAMP_STYLE}
-            expandedClassName={cn(
+          <div
+            className={cn(
               "overflow-auto whitespace-pre-wrap break-words",
               getDetailScrollMaxHeightClass("base"),
             )}
           >
             {commandLine}
-          </ExpandableLine>
+          </div>
         ) : null}
         {metadataLines.map((line, index) => (
           <div key={`${index}:${line}`} className="mt-1 text-muted-foreground">
