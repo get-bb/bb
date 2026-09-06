@@ -18,7 +18,9 @@
  *   parameters as JSON Schema) for the schema-conversion test.
  * - `--extension <path>` loads the module through a resolve hook that maps
  *   `@earendil-works/pi-coding-agent` and `typebox` onto this package's
- *   copies (pi's loader aliases them the same way), hands it a minimal
+ *   copies (pi's loader aliases them the same way); under runtimes without
+ *   `module.registerHooks` (Bun) a staged copy beside this package's
+ *   node_modules resolves the same bare imports natively. It hands a minimal
  *   extension API (registerTool, on, get/setActiveTools), and emits
  *   `session_start`, `agent_start`, `agent_end` to it in pi's order — the
  *   extension's `ready`, tool calls, `agent-end-leaf`, and fork replies all
@@ -63,9 +65,9 @@
  */
 
 import { randomUUID } from "node:crypto";
-import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { registerHooks } from "node:module";
-import { dirname } from "node:path";
+import { appendFileSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { StringDecoder } from "node:string_decoder";
 import { pathToFileURL } from "node:url";
 
@@ -250,13 +252,37 @@ async function loadExtension(path) {
     ["@earendil-works/pi-coding-agent", import.meta.resolve("@earendil-works/pi-coding-agent")],
     ["typebox", import.meta.resolve("typebox")],
   ]);
-  registerHooks({
-    resolve(specifier, context, nextResolve) {
-      const url = aliases.get(specifier);
-      return url ? { url, shortCircuit: true } : nextResolve(specifier, context);
-    },
-  });
-  const module = await import(pathToFileURL(path).href);
+  let hooksRegistered = false;
+  if (typeof Bun === "undefined") {
+    try {
+      const { registerHooks } = await import("node:module");
+      if (typeof registerHooks === "function") {
+        registerHooks({
+          resolve(specifier, context, nextResolve) {
+            const url = aliases.get(specifier);
+            return url ? { url, shortCircuit: true } : nextResolve(specifier, context);
+          },
+        });
+        hooksRegistered = true;
+      }
+    } catch {
+      hooksRegistered = false;
+    }
+  }
+  let loadPath = path;
+  if (!hooksRegistered) {
+    // Bun has no registerHooks: stage the extension copy inside this
+    // package's (gitignored) node_modules so its bare imports
+    // (@earendil-works/pi-coding-agent, typebox) resolve natively.
+    const pkgRoot = join(dirname(fileURLToPath(import.meta.url)), "../..");
+    const staging = mkdtempSync(join(pkgRoot, "node_modules", ".fake-pi-ext-"));
+    copyFileSync(path, staging + "/extension.mjs");
+    loadPath = staging + "/extension.mjs";
+    process.on("exit", () => {
+      try { rmSync(staging, { recursive: true, force: true }); } catch {}
+    });
+  }
+  const module = await import(pathToFileURL(loadPath).href);
   module.default({
     registerTool(tool) {
       extensionTools.set(tool.name, tool);
