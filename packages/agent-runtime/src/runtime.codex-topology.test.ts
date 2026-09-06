@@ -6,9 +6,11 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { ThreadEvent } from "@bb/domain";
 import { createAgentRuntime } from "./runtime.js";
 import {
+  CHILD_SIGTERM_SELF_REPORT_UNAVAILABLE_ON_WINDOWS_MEASURED_KILL_IS_TERMINATE_PROCESS,
   createScriptedEchoLaunch,
   createScriptedEchoRequestRecord,
   fullRuntimeOptions,
+  isPidAlive,
   waitForRuntimeState,
   waitForThreadAgentMessageText,
   withBridgeLaunch,
@@ -35,6 +37,7 @@ interface CodexTopologyRuntime {
   runtime: LaunchBoundAgentRuntime;
   spawned(): number;
   exited(): number;
+  reaped(): number;
   bridges(): number;
   childPids(): number[];
   bridgeExits: { expected: boolean }[];
@@ -121,11 +124,21 @@ describe("codex process topology", () => {
       childPids: () => spawnLines().map((line) => Number(line.split(":")[1])),
       spawned: () => spawnLines().length,
       exited: () => readLog().filter((line) => line.startsWith("exit:")).length,
+      reaped: () =>
+        spawnLines()
+          .map((line) => Number(line.split(":")[1]))
+          .filter((pid) => Number.isInteger(pid) && !isPidAlive(pid)).length,
       bridges: () =>
         new Set(spawnLines().map((line) => line.split(":")[2])).size,
       bridgeExits,
       launch,
     };
+  }
+
+  function exitedAppServerChildren(topology: CodexTopologyRuntime): number {
+    return CHILD_SIGTERM_SELF_REPORT_UNAVAILABLE_ON_WINDOWS_MEASURED_KILL_IS_TERMINATE_PROCESS
+      ? topology.reaped()
+      : topology.exited();
   }
 
   function hosted(runtime: AgentRuntime): string[] {
@@ -162,7 +175,7 @@ describe("codex process topology", () => {
     expect(hosted(runtime)).toEqual(["t1", "t2", "t3"]);
     expect(topology.spawned()).toBe(3);
     expect(topology.bridges()).toBe(1);
-    expect(topology.exited()).toBe(0);
+    expect(exitedAppServerChildren(topology)).toBe(0);
 
     await runtime.runTurn({
       clientRequestId: "creq_cdxtpgy222",
@@ -182,7 +195,7 @@ describe("codex process topology", () => {
     await runtime.stopThread({ threadId: "t1" });
     await waitForRuntimeState({
       label: "t1's app-server child exited",
-      predicate: () => topology.exited() === 1,
+      predicate: () => exitedAppServerChildren(topology) === 1,
       timeoutMs: 5_000,
     });
     expect(runtime.listRunningProviders()).toEqual(["codex"]);
@@ -197,7 +210,7 @@ describe("codex process topology", () => {
     });
     await waitForRuntimeState({
       label: "t2's app-server child exited",
-      predicate: () => topology.exited() === 2,
+      predicate: () => exitedAppServerChildren(topology) === 2,
       timeoutMs: 5_000,
     });
     expect(runtime.listRunningProviders()).toEqual(["codex"]);
@@ -208,14 +221,15 @@ describe("codex process topology", () => {
     await startCodexThread(runtime, "t4", v2);
     expect(topology.spawned()).toBe(4);
     expect(topology.bridges()).toBe(2);
-    expect(topology.exited()).toBe(2);
+    expect(exitedAppServerChildren(topology)).toBe(2);
     expect(topology.bridgeExits).toEqual([]);
 
     await runtime.stopThread({ threadId: "t3" });
     await waitForRuntimeState({
       label: "the superseded bridge and t3's child exited",
       predicate: () =>
-        topology.exited() === 3 && topology.bridgeExits.length === 1,
+        exitedAppServerChildren(topology) === 3 &&
+        topology.bridgeExits.length === 1,
       timeoutMs: 10_000,
     });
     expect(topology.bridgeExits).toEqual([{ expected: true }]);
@@ -240,7 +254,7 @@ describe("codex process topology", () => {
     expect(hosted(runtime)).toEqual(["t2", "t4"]);
     await waitForRuntimeState({
       label: "the maintenance child was reaped",
-      predicate: () => topology.exited() === 4,
+      predicate: () => exitedAppServerChildren(topology) === 4,
       timeoutMs: 5_000,
     });
     expect(topology.spawned()).toBe(6);
@@ -278,7 +292,7 @@ describe("codex process topology", () => {
     expect(runtime.hasThread("t1")).toBe(false);
     await waitForRuntimeState({
       label: "t1's app-server child exited after the interrupt-stop",
-      predicate: () => topology.exited() === 1,
+      predicate: () => exitedAppServerChildren(topology) === 1,
       timeoutMs: 5_000,
     });
     expect(runtime.listRunningProviders()).toEqual([]);
@@ -295,7 +309,9 @@ describe("codex process topology", () => {
     expect(runtime.hasThread("t1")).toBe(false);
     await waitForRuntimeState({
       label: "the late-constructed child was released",
-      predicate: () => topology.spawned() === 1 && topology.exited() === 1,
+      predicate: () =>
+        topology.spawned() === 1 &&
+        exitedAppServerChildren(topology) === 1,
       timeoutMs: 10_000,
     });
     expect(runtime.listRunningProviders()).toEqual([]);
