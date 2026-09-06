@@ -1,7 +1,7 @@
-import { spawn, type ChildProcess } from "node:child_process";
-import { mkdir, readdir, stat } from "node:fs/promises";
+import { mkdir, open, readdir, stat } from "node:fs/promises";
 import { watch, type FSWatcher } from "node:fs";
 import { join } from "node:path";
+import { StringDecoder } from "node:string_decoder";
 import { escapeHtmlText } from "@bb/domain";
 import {
   LOG_VIEWER_VISIBLE_LINE_LIMIT,
@@ -62,25 +62,47 @@ interface LogFileCandidate {
   timestampMs: number;
 }
 
-interface TailProcess {
-  childProcess: ChildProcess;
+interface FollowedLogFile {
+  decoder: StringDecoder;
   filePath: string;
+  mtimeMs: number;
+  offset: number;
 }
 
 interface ComponentTailState {
   component: LogViewerComponent;
   currentFilePath: string | null;
+  followedFile: FollowedLogFile | null;
   pendingText: string;
-  tailProcess: TailProcess | null;
 }
 
-interface RestartTailProcessArgs {
+interface RestartFileFollowArgs {
   filePath: string;
   state: ComponentTailState;
 }
 
-interface StopTailProcessArgs {
+interface StopFileFollowArgs {
   state: ComponentTailState;
+}
+
+interface ReadAppendedLogBytesArgs {
+  followedFile: FollowedLogFile;
+}
+
+interface AppendedLogBytes {
+  text: string | null;
+  truncated: boolean;
+}
+
+interface ReadLastLogLinesArgs {
+  filePath: string;
+  maxLines: number;
+}
+
+interface LastLogLines {
+  lines: string[];
+  mtimeMs: number;
+  size: number;
 }
 
 interface HandleDirectoryWatchErrorArgs {
@@ -481,9 +503,78 @@ function createComponentTailState(
   return {
     component: args.component,
     currentFilePath: null,
+    followedFile: null,
     pendingText: "",
-    tailProcess: null,
   };
+}
+
+async function readLastLogLines(
+  args: ReadLastLogLinesArgs,
+): Promise<LastLogLines> {
+  const handle = await open(args.filePath, "r");
+  try {
+    const fileStats = await handle.stat();
+    const size = fileStats.size;
+    const mtimeMs = fileStats.mtimeMs;
+    let windowBytes = 64 * 1024;
+    for (;;) {
+      const start = Math.max(0, size - windowBytes);
+      const length = size - start;
+      const buffer = Buffer.alloc(length);
+      await handle.read(buffer, 0, length, start);
+      const text = buffer.toString("utf8");
+      const newlineCount = text.split("\n").length - 1;
+      if (
+        start === 0 ||
+        newlineCount > args.maxLines ||
+        windowBytes >= 4 * 1024 * 1024
+      ) {
+        const lines = text.split(/\r?\n/u);
+        if (lines.length > 0 && lines[lines.length - 1] === "") {
+          lines.pop();
+        }
+        return { lines: lines.slice(-args.maxLines), mtimeMs, size };
+      }
+      windowBytes *= 2;
+    }
+  } finally {
+    await handle.close();
+  }
+}
+
+async function readAppendedLogBytes(
+  args: ReadAppendedLogBytesArgs,
+): Promise<AppendedLogBytes> {
+  const handle = await open(args.followedFile.filePath, "r");
+  try {
+    const fileStats = await handle.stat();
+    const size = fileStats.size;
+    let truncated = false;
+    if (size < args.followedFile.offset) {
+      truncated = true;
+    } else if (size === args.followedFile.offset) {
+      if (fileStats.mtimeMs === args.followedFile.mtimeMs) {
+        return { text: null, truncated };
+      }
+      truncated = true;
+    }
+    if (truncated) {
+      args.followedFile.decoder = new StringDecoder("utf8");
+      args.followedFile.offset = 0;
+    }
+    if (size <= args.followedFile.offset) {
+      args.followedFile.mtimeMs = fileStats.mtimeMs;
+      return { text: null, truncated };
+    }
+    const length = size - args.followedFile.offset;
+    const buffer = Buffer.alloc(length);
+    await handle.read(buffer, 0, length, args.followedFile.offset);
+    args.followedFile.offset = size;
+    args.followedFile.mtimeMs = fileStats.mtimeMs;
+    return { text: args.followedFile.decoder.write(buffer), truncated };
+  } finally {
+    await handle.close();
+  }
 }
 
 export function createLogTailer(args: CreateLogTailerArgs): LogTailer {
@@ -530,15 +621,10 @@ export function createLogTailer(args: CreateLogTailerArgs): LogTailer {
     });
   }
 
-  function stopTailProcess(stopArgs: StopTailProcessArgs): void {
-    const tailProcess = stopArgs.state.tailProcess;
-    stopArgs.state.tailProcess = null;
+  function stopFileFollow(stopArgs: StopFileFollowArgs): void {
+    stopArgs.state.followedFile = null;
     stopArgs.state.currentFilePath = null;
     stopArgs.state.pendingText = "";
-    if (tailProcess === null) {
-      return;
-    }
-    tailProcess.childProcess.kill("SIGTERM");
   }
 
   function handleDirectoryWatchError(
@@ -557,62 +643,71 @@ export function createLogTailer(args: CreateLogTailerArgs): LogTailer {
     });
   }
 
-  function restartTailProcess(restartArgs: RestartTailProcessArgs): void {
-    stopTailProcess({ state: restartArgs.state });
-    restartArgs.state.currentFilePath = restartArgs.filePath;
-
-    const childProcess = spawn(
-      "tail",
-      ["-n", String(LOG_VIEWER_INITIAL_TAIL_LINES), "-F", restartArgs.filePath],
-      {
-        stdio: ["ignore", "pipe", "pipe"],
-      },
-    );
-    const tailProcess: TailProcess = {
-      childProcess,
-      filePath: restartArgs.filePath,
-    };
-    restartArgs.state.tailProcess = tailProcess;
-
-    if (childProcess.stdout !== null) {
-      childProcess.stdout.setEncoding("utf8");
-      childProcess.stdout.on("data", (chunk: string) => {
-        handleTailChunk({ chunk, state: restartArgs.state });
-      });
+  async function followAppendedBytes(state: ComponentTailState): Promise<void> {
+    const followedFile = state.followedFile;
+    if (followedFile === null) {
+      return;
     }
-
-    if (childProcess.stderr !== null) {
-      childProcess.stderr.setEncoding("utf8");
-      childProcess.stderr.on("data", (chunk: string) => {
-        const text = chunk.trim();
-        if (text.length > 0) {
-          emitSystemLine({
-            text: `${restartArgs.state.component} tail: ${text}`,
-          });
-        }
-      });
+    let appended: AppendedLogBytes;
+    try {
+      appended = await readAppendedLogBytes({ followedFile });
+    } catch {
+      return;
     }
-
-    childProcess.once("error", (error) => {
-      emitSystemLine({
-        text: `${restartArgs.state.component} tail failed: ${error.message}`,
-      });
-    });
-
-    childProcess.once("exit", (code, signal) => {
-      if (stopped || restartArgs.state.tailProcess !== tailProcess) {
-        return;
-      }
-      restartArgs.state.tailProcess = null;
-      emitSystemLine({
-        text: `${restartArgs.state.component} tail stopped with ${
-          code === null ? `signal ${signal ?? "unknown"}` : `exit code ${code}`
-        }`,
-      });
-    });
+    if (state.followedFile !== followedFile) {
+      return;
+    }
+    if (appended.truncated) {
+      state.pendingText = "";
+    }
+    if (appended.text !== null && appended.text.length > 0) {
+      handleTailChunk({ chunk: appended.text, state });
+    }
   }
 
-  async function refreshTailProcesses(): Promise<void> {
+  async function restartFileFollow(
+    restartArgs: RestartFileFollowArgs,
+  ): Promise<void> {
+    stopFileFollow({ state: restartArgs.state });
+    restartArgs.state.currentFilePath = restartArgs.filePath;
+    const followedFile: FollowedLogFile = {
+      decoder: new StringDecoder("utf8"),
+      filePath: restartArgs.filePath,
+      mtimeMs: 0,
+      offset: 0,
+    };
+    restartArgs.state.followedFile = followedFile;
+    let initial: LastLogLines;
+    try {
+      initial = await readLastLogLines({
+        filePath: restartArgs.filePath,
+        maxLines: LOG_VIEWER_INITIAL_TAIL_LINES,
+      });
+    } catch (error) {
+      if (restartArgs.state.followedFile !== followedFile) {
+        return;
+      }
+      restartArgs.state.followedFile = null;
+      restartArgs.state.currentFilePath = null;
+      const message = error instanceof Error ? error.message : String(error);
+      emitSystemLine({
+        text: `${restartArgs.state.component} log read failed: ${message}`,
+      });
+      return;
+    }
+    if (stopped || restartArgs.state.followedFile !== followedFile) {
+      return;
+    }
+    followedFile.offset = initial.size;
+    followedFile.mtimeMs = initial.mtimeMs;
+    emitComponentLines({
+      component: restartArgs.state.component,
+      lines: initial.lines,
+    });
+    await followAppendedBytes(restartArgs.state);
+  }
+
+  async function refreshFileFollows(): Promise<void> {
     if (stopped) {
       return;
     }
@@ -624,16 +719,18 @@ export function createLogTailer(args: CreateLogTailerArgs): LogTailer {
       });
       if (currentFilePath === null) {
         if (state.currentFilePath !== null) {
-          stopTailProcess({ state });
+          stopFileFollow({ state });
         }
         continue;
       }
       if (currentFilePath !== state.currentFilePath) {
-        restartTailProcess({
+        await restartFileFollow({
           filePath: currentFilePath,
           state,
         });
+        continue;
       }
+      await followAppendedBytes(state);
     }
   }
 
@@ -647,7 +744,7 @@ export function createLogTailer(args: CreateLogTailerArgs): LogTailer {
     }
 
     refreshInProgress = true;
-    void refreshTailProcesses()
+    void refreshFileFollows()
       .catch((error) => {
         const message = error instanceof Error ? error.message : String(error);
         emitSystemLine({ text: `log refresh failed: ${message}` });
@@ -663,10 +760,7 @@ export function createLogTailer(args: CreateLogTailerArgs): LogTailer {
 
   return {
     processIds() {
-      return componentStates.flatMap((state) => {
-        const pid = state.tailProcess?.childProcess.pid;
-        return pid === undefined ? [] : [pid];
-      });
+      return [];
     },
     async start() {
       stopped = false;
@@ -687,7 +781,7 @@ export function createLogTailer(args: CreateLogTailerArgs): LogTailer {
         scheduleRefresh,
         LOG_VIEWER_ROTATION_POLL_INTERVAL_MS,
       );
-      await refreshTailProcesses();
+      await refreshFileFollows();
     },
     stop() {
       stopped = true;
@@ -698,7 +792,7 @@ export function createLogTailer(args: CreateLogTailerArgs): LogTailer {
         pollTimer = null;
       }
       for (const state of componentStates) {
-        stopTailProcess({ state });
+        stopFileFollow({ state });
       }
     },
   };

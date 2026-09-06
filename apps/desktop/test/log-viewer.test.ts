@@ -58,15 +58,6 @@ async function waitFor(args: WaitForArgs): Promise<void> {
   }
 }
 
-function isProcessRunning(pid: number): boolean {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
 function createTestLogLine(args: CreateTestLogLineArgs): LogViewerLine {
   return {
     source: "server",
@@ -159,27 +150,93 @@ describe("log viewer", () => {
     });
   });
 
-  it("kills tail child processes when stopped", async () => {
+  it("emits only the last 400 lines of an existing log on start", async () => {
     const tempDir = await createTempDir();
-    await writeFile(join(tempDir.path, "server.1.log"), "");
-    await writeFile(join(tempDir.path, "host-daemon.1.log"), "");
+    const totalLines = 500;
+    await writeFile(
+      join(tempDir.path, "server.1.log"),
+      `${Array.from(
+        { length: totalLines },
+        (_value, index) => `line-${index + 1}`,
+      ).join("\n")}\n`,
+    );
+    const lines: LogViewerLine[] = [];
     const tailer = createLogTailer({
       logDir: tempDir.path,
-      onLines() {},
+      onLines(newLines) {
+        lines.push(...newLines);
+      },
     });
     tailers.push(tailer);
     await tailer.start();
 
-    const processIds = tailer.processIds();
-    expect(processIds).toHaveLength(2);
-    expect(processIds.every(isProcessRunning)).toBe(true);
-
-    tailer.stop();
     await waitFor({
       predicate() {
-        return processIds.every((pid) => !isProcessRunning(pid));
+        return lines.length === 400;
       },
     });
+    expect(lines[0]?.text).toBe("[server] line-101");
+    expect(lines[399]?.text).toBe("[server] line-500");
+  });
+
+  it("re-reads the log from the start after truncation", async () => {
+    const tempDir = await createTempDir();
+    const lines: LogViewerLine[] = [];
+    await writeFile(join(tempDir.path, "server.1.log"), "old\n");
+    const tailer = createLogTailer({
+      logDir: tempDir.path,
+      onLines(newLines) {
+        lines.push(...newLines);
+      },
+    });
+    tailers.push(tailer);
+    await tailer.start();
+    await waitFor({
+      predicate() {
+        return lines.some((line) => line.text === "[server] old");
+      },
+    });
+
+    await new Promise((resolvePromise) => {
+      setTimeout(resolvePromise, 50);
+    });
+    await writeFile(join(tempDir.path, "server.1.log"), "new\n");
+
+    await waitFor({
+      predicate() {
+        return lines.some((line) => line.text === "[server] new");
+      },
+    });
+  });
+
+  it("follows logs without child processes and stops delivery when stopped", async () => {
+    const tempDir = await createTempDir();
+    await writeFile(join(tempDir.path, "server.1.log"), "first\n");
+    await writeFile(join(tempDir.path, "host-daemon.1.log"), "");
+    const lines: LogViewerLine[] = [];
+    const tailer = createLogTailer({
+      logDir: tempDir.path,
+      onLines(newLines) {
+        lines.push(...newLines);
+      },
+    });
+    tailers.push(tailer);
+    await tailer.start();
+
+    await waitFor({
+      predicate() {
+        return lines.some((line) => line.text === "[server] first");
+      },
+    });
+    expect(tailer.processIds()).toEqual([]);
+
+    tailer.stop();
+    const deliveredCount = lines.length;
+    await appendFile(join(tempDir.path, "server.1.log"), "after-stop\n");
+    await new Promise((resolvePromise) => {
+      setTimeout(resolvePromise, 300);
+    });
+    expect(lines.length).toBe(deliveredCount);
   });
 
   it("caps the in-memory line buffer to the configured line limit", () => {
