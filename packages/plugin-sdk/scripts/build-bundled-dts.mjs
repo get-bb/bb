@@ -57,6 +57,7 @@ const outDir = path.join(pkgRoot, "bundled-types");
 const outputs = {
   "bb-plugin-sdk.d.ts": path.join(pkgRoot, "src/index.ts"),
   "bb-plugin-sdk-app.d.ts": path.join(pkgRoot, "src/app.ts"),
+  "bb-plugin-sdk-browser.d.ts": path.join(pkgRoot, "src/browser.ts"),
   "bb-plugin-sdk-provider-bridge.d.ts": path.join(
     pkgRoot,
     "src/provider-bridge.ts",

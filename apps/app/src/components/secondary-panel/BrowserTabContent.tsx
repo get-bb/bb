@@ -19,7 +19,6 @@ import type {
   BbDesktopBrowserCookieImport,
   BbDesktopBrowserCookieImportSource,
   BbDesktopBrowserFindInPageRequest,
-  BbDesktopBrowserPageCaptureResult,
   BbDesktopBrowserPointerInputEvent,
   BbDesktopBrowserState,
   BbDesktopBrowserViewportBounds,
@@ -52,7 +51,6 @@ import { updateDesktopBrowserViewAperture } from "@/lib/desktop-browser-view-ape
 import { useIsBrowserDimmingModalOpen } from "@/hooks/useBrowserDimmingModal";
 import { usePointerCoarse } from "@bb/shared-ui/hooks/use-pointer-coarse";
 import { BrowserFindBar, type BrowserFindMatches } from "./BrowserFindBar";
-import { BrowserScreenshotAnnotation } from "./BrowserScreenshotAnnotation";
 import { BrowserNewTabScreen } from "./BrowserNewTabScreen";
 import { BrowserCookieImportWizard } from "./BrowserCookieImportWizard";
 import {
@@ -67,25 +65,11 @@ import {
 } from "@/components/commands/AppCommandProvider";
 import type { AppShortcutPresentation } from "@/lib/app-keybindings";
 import { CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS } from "@bb/shared-ui/chrome-style-tokens";
-import {
-  isLoopbackHostname,
-  isLocalOnlyUrl,
-} from "@/lib/loopback-hostname";
+import { isLoopbackHostname, isLocalOnlyUrl } from "@/lib/loopback-hostname";
 import { PluginBrowserActions } from "@/components/plugin/PluginBrowserActions";
-import { copyToClipboardWithToast } from "@/lib/clipboard";
+import { PluginBrowserControllers } from "@/components/plugin/PluginBrowserControllers";
+import { captureBrowserPagePreview } from "@/lib/browser-capture-assembler";
 import { parseBrowserCookieImport } from "@/lib/browser-cookie-import";
-import {
-  BROWSER_ELEMENT_ANNOTATION_INTENTS,
-  browserCancelElementPickerSource,
-  browserElementAnnotationAgentText,
-  browserElementAnnotationsAgentText,
-  browserElementAnnotationCaptureSchema,
-  browserElementPickerSource,
-  redactBrowserElementAnnotation,
-  type BrowserElementAnnotation,
-  type BrowserElementAnnotationIntent,
-  type BrowserElementAnnotationNote,
-} from "@/lib/browser-element-annotation";
 import {
   browserControlActivitySnapshot,
   registerBrowserControlTab,
@@ -96,25 +80,12 @@ import {
   setBrowserCookieImportRecord,
   subscribeBrowserCookieImportRecord,
 } from "@/lib/browser-cookie-import-state";
-import {
-  browserAnnotationSnapshot,
-  clearBrowserAnnotationRecord,
-  createEmptyBrowserScreenshotEditor,
-  markBrowserAnnotationEpoch,
-  setBrowserAnnotationElements,
-  setBrowserAnnotationScreenshot,
-  subscribeBrowserAnnotationStore,
-  type BrowserAnnotationKey,
-  type BrowserElementReviewDraft,
-  type BrowserScreenshotEditorSnapshot,
-} from "./browserAnnotationState";
 
 interface BrowserTabContentProps {
   tabId: string;
   initialUrl: string;
   addressFocusRequest: BrowserAddressFocusRequest | null;
   onAddressFocusRequestConsumed?: (request: BrowserAddressFocusRequest) => void;
-  onSelectionAddToChat?: (text: string) => void;
   canShowNativeBrowserView: boolean;
   canHandleBrowserCommands?: boolean;
   onNativeFocus?: () => void;
@@ -149,21 +120,11 @@ interface BrowserChromeProps {
   locationShortcut: AppShortcutPresentation | null;
   reloadShortcut: AppShortcutPresentation | null;
   navigationControlsRef: RefObject<HTMLDivElement | null>;
-  annotationAction: ReactNode;
   pluginActions: ReactNode;
 }
 
 interface NavButtonProps {
-  icon:
-    | "ChevronLeft"
-    | "ChevronRight"
-    | "RotateCcw"
-    | "X"
-    | "ExternalLink"
-    | "Eye"
-    | "EditFile"
-    | "File"
-    | "MessageSquarePlus";
+  icon: "ChevronLeft" | "ChevronRight" | "RotateCcw" | "X" | "ExternalLink";
   label: string;
   disabled?: boolean;
   onClick: () => void;
@@ -193,8 +154,9 @@ interface BrowserPageLoadErrorProps {
   errorText: string;
   onOpenExternal: () => void;
   onRetry: () => void;
-  url: string;
   onTrustLocalhostCertificate: () => void;
+  trustError: string | null;
+  url: string;
 }
 
 const EMPTY_BROWSER_VIEW_BOUNDS: BbDesktopBrowserViewBounds = {
@@ -262,24 +224,10 @@ function canTrustLocalhostCertificate(args: {
   if (!args.errorText.includes("ERR_CERT_")) return false;
   try {
     const parsed = new URL(args.url);
-    return (
-      parsed.protocol === "https:" && isLoopbackHostname(parsed.hostname)
-    );
+    return parsed.protocol === "https:" && isLoopbackHostname(parsed.hostname);
   } catch {
     return false;
   }
-}
-
-
-function browserElementPickerTheme() {
-  const styles = getComputedStyle(document.documentElement);
-  const outlineColor =
-    styles.getPropertyValue("--ring").trim() ||
-    styles.getPropertyValue("--foreground").trim();
-  return {
-    fillColor: `color-mix(in oklab, ${outlineColor} 14%, transparent)`,
-    outlineColor,
-  };
 }
 
 function NavButton({
@@ -332,7 +280,6 @@ function BrowserChrome({
   locationShortcut,
   reloadShortcut,
   navigationControlsRef,
-  annotationAction,
   pluginActions,
 }: BrowserChromeProps) {
   const isLoading = state?.isLoading ?? false;
@@ -434,7 +381,6 @@ function BrowserChrome({
           disabled={currentUrl.length === 0}
           onClick={onOpenExternal}
         />
-        {annotationAction}
         {pluginActions}
         {isLoading ? (
           <span className="absolute inset-x-0 bottom-0 h-0.5 overflow-hidden">
@@ -444,6 +390,13 @@ function BrowserChrome({
       </div>
     </div>
   );
+}
+
+async function preloadBrowserSnapshot(dataUrl: string): Promise<void> {
+  if (typeof Image === "undefined") return;
+  const image = new Image();
+  image.src = dataUrl;
+  if (typeof image.decode === "function") await image.decode();
 }
 
 function BrowserUnavailable() {
@@ -473,6 +426,7 @@ function BrowserPageLoadError({
   onOpenExternal,
   onRetry,
   onTrustLocalhostCertificate,
+  trustError,
   url,
 }: BrowserPageLoadErrorProps) {
   const host = getBrowserUrlHost(url);
@@ -535,363 +489,16 @@ function BrowserPageLoadError({
         <p className="max-w-full truncate pt-1 font-mono text-[11px] text-subtle-foreground">
           {errorText}
         </p>
+        {trustError === null ? null : (
+          <p
+            role="alert"
+            className="max-w-full truncate pt-1 font-mono text-[11px] text-warning"
+          >
+            {trustError}
+          </p>
+        )}
       </div>
     </div>
-  );
-}
-interface BrowserElementAnnotationReviewProps {
-  annotation: BrowserElementAnnotation;
-  dialogLabel: string;
-  screenshotUrl: string | null;
-  comment: string;
-  intent: BrowserElementAnnotationIntent;
-  onCommentChange: (comment: string) => void;
-  onIntentChange: (intent: BrowserElementAnnotationIntent) => void;
-  submitLabel: string;
-  onSubmit: (comment: string, intent: BrowserElementAnnotationIntent) => void;
-  onClose: () => void;
-}
-
-interface BrowserElementAnnotationTrayProps {
-  annotations: readonly BrowserElementAnnotationNote[];
-  onAddToChat?: (text: string) => void;
-  onClear: () => void;
-  onCopy: (text: string) => void;
-  onEdit: (note: BrowserElementAnnotationNote) => void;
-  onRemove: (noteId: string) => void;
-  onMove: (noteId: string, direction: "up" | "down") => void;
-  onSelectElement: () => void;
-  tabId: string;
-}
-
-interface CropBrowserElementScreenshotArgs {
-  annotation: BrowserElementAnnotation;
-  capture: BbDesktopBrowserPageCaptureResult;
-}
-
-async function preloadBrowserSnapshot(dataUrl: string): Promise<void> {
-  if (typeof Image === "undefined") return;
-  const image = new Image();
-  image.src = dataUrl;
-  if (typeof image.decode === "function") await image.decode();
-}
-
-async function cropBrowserElementScreenshot({
-  annotation,
-  capture,
-}: CropBrowserElementScreenshotArgs): Promise<string | null> {
-  const image = new Image();
-  image.src = capture.dataUrl;
-  try {
-    await image.decode();
-  } catch {
-    return null;
-  }
-  const scaleX = image.naturalWidth / annotation.viewport.width;
-  const scaleY = image.naturalHeight / annotation.viewport.height;
-  const sourceX = Math.max(0, Math.floor(annotation.rect.x * scaleX));
-  const sourceY = Math.max(0, Math.floor(annotation.rect.y * scaleY));
-  const sourceWidth = Math.min(
-    image.naturalWidth - sourceX,
-    Math.max(1, Math.ceil(annotation.rect.width * scaleX)),
-  );
-  const sourceHeight = Math.min(
-    image.naturalHeight - sourceY,
-    Math.max(1, Math.ceil(annotation.rect.height * scaleY)),
-  );
-  if (sourceWidth <= 0 || sourceHeight <= 0) return null;
-  const scale = Math.min(1, 640 / Math.max(sourceWidth, sourceHeight));
-  const canvas = document.createElement("canvas");
-  canvas.width = Math.max(1, Math.round(sourceWidth * scale));
-  canvas.height = Math.max(1, Math.round(sourceHeight * scale));
-  const context = canvas.getContext("2d");
-  if (context === null) return null;
-  context.drawImage(
-    image,
-    sourceX,
-    sourceY,
-    sourceWidth,
-    sourceHeight,
-    0,
-    0,
-    canvas.width,
-    canvas.height,
-  );
-  return canvas.toDataURL("image/jpeg", 0.82);
-}
-
-function BrowserElementAnnotationReview({
-  annotation,
-  dialogLabel,
-  screenshotUrl,
-  comment,
-  intent,
-  onCommentChange,
-  onIntentChange,
-  submitLabel,
-  onSubmit,
-  onClose,
-}: BrowserElementAnnotationReviewProps) {
-  const canSubmit = comment.trim().length > 0;
-  const cardWidth = 352;
-  const inset = 12;
-  const targetCenterX = annotation.rect.x + annotation.rect.width / 2;
-  const left = Math.min(
-    Math.max(inset, targetCenterX - cardWidth / 2),
-    Math.max(inset, annotation.viewport.width - cardWidth - inset),
-  );
-  const belowTop = annotation.rect.y + annotation.rect.height + 10;
-  const top =
-    belowTop + 400 <= annotation.viewport.height - inset
-      ? belowTop
-      : Math.max(inset, annotation.rect.y - 410);
-  return (
-    <aside
-      role="dialog"
-      aria-label={dialogLabel}
-      style={{ left, top }}
-      className="absolute z-30 w-[min(22rem,calc(100%-1.5rem))]"
-    >
-      <div className="rounded-xl border border-border bg-popover/95 p-3 text-popover-foreground shadow-xl backdrop-blur">
-        <div className="mb-3 flex items-center justify-between gap-3">
-          <p className="text-sm font-medium text-foreground">{dialogLabel}</p>
-          <button
-            type="button"
-            aria-label="Close page annotation"
-            onClick={onClose}
-            className="inline-flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-          >
-            <Icon name="X" className="size-3.5" aria-hidden />
-          </button>
-        </div>
-        {screenshotUrl === null ? null : (
-          <img
-            src={screenshotUrl}
-            alt="Selected page element"
-            className="mb-3 max-h-28 w-full rounded-md border border-border bg-surface-recessed object-contain"
-          />
-        )}
-        <div className="mb-3 rounded-md border border-border bg-surface-recessed px-3 py-2">
-          <p className="text-xs font-medium text-muted-foreground">
-            Selected object
-          </p>
-          <p className="mt-0.5 truncate text-sm font-medium text-foreground">
-            {(annotation.accessibility.name ?? annotation.text) ||
-              annotation.dom.tag}
-          </p>
-          <code className="mt-1 block truncate text-xs text-muted-foreground">
-            {annotation.dom.selector}
-          </code>
-        </div>
-        <label className="sr-only" htmlFor="browser-annotation-feedback">
-          Feedback
-        </label>
-        <textarea
-          id="browser-annotation-feedback"
-          value={comment}
-          maxLength={2_000}
-          autoFocus
-          onChange={(event) => onCommentChange(event.target.value)}
-          placeholder="Describe what the agent should change here..."
-          className="h-28 w-full resize-none rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground outline-none placeholder:text-muted-foreground focus-visible:ring-1 focus-visible:ring-ring"
-        />
-        <div
-          className="mt-2 grid grid-cols-2 gap-2"
-          role="group"
-          aria-label="Annotation intent"
-        >
-          {BROWSER_ELEMENT_ANNOTATION_INTENTS.map((option) => (
-            <button
-              key={option}
-              type="button"
-              aria-pressed={intent === option}
-              onClick={() => onIntentChange(option)}
-              className={cn(
-                "h-8 rounded-md border px-3 text-xs font-medium transition-colors",
-                intent === option
-                  ? "border-primary bg-primary text-primary-foreground"
-                  : "border-border bg-background text-foreground hover:bg-state-hover",
-              )}
-            >
-              {option === "fix"
-                ? "Fix"
-                : option === "change"
-                  ? "Change"
-                  : option === "question"
-                    ? "Question"
-                    : "Approve"}
-            </button>
-          ))}
-        </div>
-        <div className="mt-3 flex justify-end gap-2">
-          <button
-            type="button"
-            onClick={onClose}
-            className="inline-flex h-8 items-center rounded-md px-2.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground"
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            disabled={!canSubmit}
-            onClick={() => {
-              const trimmedComment = comment.trim();
-              if (!canSubmit) return;
-              onSubmit(trimmedComment, intent);
-            }}
-            className="inline-flex h-8 items-center gap-1.5 rounded-md bg-primary px-2.5 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:pointer-events-none disabled:opacity-40"
-          >
-            <Icon name="MessageSquarePlus" className="size-3.5" aria-hidden />
-            {submitLabel}
-          </button>
-        </div>
-      </div>
-    </aside>
-  );
-}
-
-function BrowserElementAnnotationTray({
-  annotations,
-  onAddToChat,
-  onClear,
-  onCopy,
-  onEdit,
-  onRemove,
-  onMove,
-  onSelectElement,
-  tabId,
-}: BrowserElementAnnotationTrayProps) {
-  const agentText = browserElementAnnotationsAgentText(annotations, tabId);
-  return (
-    <aside
-      aria-label="Page annotations"
-      className="absolute bottom-3 right-3 z-30 flex max-h-[55%] w-[min(24rem,calc(100%-1.5rem))] flex-col overflow-hidden rounded-xl bg-popover/95 text-popover-foreground shadow-xl backdrop-blur"
-    >
-      <header className="border-b border-border px-4 py-3">
-        <div className="flex items-center gap-3">
-          <div className="min-w-0 flex-1">
-            <p className="text-sm font-semibold text-foreground">Page annotations</p>
-            <p className="mt-0.5 text-xs text-muted-foreground">
-              Use the arrows to set the order sent to the prompt.
-            </p>
-          </div>
-          <span className="shrink-0 rounded-full bg-primary px-2 py-0.5 text-xs font-medium text-primary-foreground">
-            {annotations.length} {annotations.length === 1 ? "annotation" : "annotations"}
-          </span>
-          <button
-            type="button"
-            aria-label="Clear page annotations"
-            onClick={onClear}
-            className="inline-flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground"
-          >
-            <Icon name="Clean" className="size-3.5" aria-hidden />
-          </button>
-        </div>
-      </header>
-      <ol className="min-h-0 flex-1 space-y-2 overflow-y-auto p-3">
-        {annotations.map((note, index) => (
-          <li
-            key={note.id}
-            className="rounded-lg border border-border bg-background px-3 py-2.5 text-xs shadow-sm"
-          >
-            <div className="flex items-start gap-2">
-              <span className="mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full bg-primary text-[10px] font-semibold text-primary-foreground">
-                {index + 1}
-              </span>
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2">
-                  <p className="min-w-0 flex-1 truncate font-medium text-foreground">
-                    {(note.annotation.accessibility.name ?? note.annotation.text) ||
-                      note.annotation.dom.tag}
-                  </p>
-                  <span className="rounded-full bg-surface-recessed px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
-                    {note.intent}
-                  </span>
-                </div>
-                <code className="mt-1 block truncate text-[11px] text-muted-foreground">
-                  {note.annotation.dom.selector}
-                </code>
-                <p className="mt-1.5 whitespace-pre-wrap leading-5 text-foreground">
-                  {note.comment}
-                </p>
-              </div>
-              <div className="flex shrink-0 items-start gap-0.5">
-                <button
-                  type="button"
-                  aria-label={`Move annotation ${index + 1} up`}
-                  disabled={index === 0}
-                  onClick={() => onMove(note.id, "up")}
-                  className="inline-flex size-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground disabled:pointer-events-none disabled:opacity-30"
-                >
-                  <Icon name="ArrowUp" className="size-3.5" aria-hidden />
-                </button>
-                <button
-                  type="button"
-                  aria-label={`Move annotation ${index + 1} down`}
-                  disabled={index === annotations.length - 1}
-                  onClick={() => onMove(note.id, "down")}
-                  className="inline-flex size-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground disabled:pointer-events-none disabled:opacity-30"
-                >
-                  <Icon name="ArrowDown" className="size-3.5" aria-hidden />
-                </button>
-                <button
-                  type="button"
-                  aria-label={`Edit annotation ${index + 1}`}
-                  onClick={() => onEdit(note)}
-                  className="inline-flex size-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground"
-                >
-                  <Icon name="EditFile" className="size-3.5" aria-hidden />
-                </button>
-                <button
-                  type="button"
-                  aria-label={`Remove annotation ${index + 1}`}
-                  onClick={() => onRemove(note.id)}
-                  className="inline-flex size-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground"
-                >
-                  <Icon name="X" className="size-3.5" aria-hidden />
-                </button>
-              </div>
-            </div>
-          </li>
-        ))}
-      </ol>
-      <footer className="flex flex-wrap justify-end gap-1.5 border-t border-border bg-popover/85 px-3 py-2">
-        <button
-          type="button"
-          onClick={onSelectElement}
-          className="inline-flex h-8 items-center gap-1.5 rounded-md border border-border bg-background px-2.5 text-xs font-medium text-foreground transition-colors hover:bg-state-hover"
-        >
-          <Icon name="MessageSquarePlus" className="size-3.5" aria-hidden />
-          Add annotation
-        </button>
-        <button
-          type="button"
-          disabled={agentText === null}
-          onClick={() => {
-            if (agentText === null) return;
-            onCopy(agentText);
-          }}
-          className="inline-flex h-8 items-center gap-1.5 rounded-md border border-border bg-background px-2.5 text-xs font-medium text-foreground transition-colors hover:bg-state-hover disabled:pointer-events-none disabled:opacity-40"
-        >
-          <Icon name="Copy" className="size-3.5" aria-hidden />
-          Copy
-        </button>
-        {onAddToChat === undefined ? null : (
-          <button
-            type="button"
-            disabled={agentText === null}
-            onClick={() => {
-              if (agentText === null) return;
-              onAddToChat(agentText);
-            }}
-            className="inline-flex h-8 items-center gap-1.5 rounded-md bg-primary px-2.5 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:pointer-events-none disabled:opacity-40"
-          >
-            <Icon name="Sent" className="size-3.5" aria-hidden />
-            Add to chat
-          </button>
-        )}
-      </footer>
-    </aside>
   );
 }
 
@@ -900,7 +507,6 @@ export function BrowserTabContent({
   initialUrl,
   addressFocusRequest,
   onAddressFocusRequestConsumed,
-  onSelectionAddToChat,
   canShowNativeBrowserView,
   canHandleBrowserCommands = canShowNativeBrowserView,
   onNativeFocus,
@@ -971,6 +577,7 @@ export function BrowserTabContent({
     appToasts.length > 0,
   );
   const [toastSnapshotUrl, setToastSnapshotUrl] = useState<string | null>(null);
+  const toastSnapshotDisposeRef = useRef<(() => void) | null>(null);
   useEffect(() => {
     if (appToasts.length > 0) {
       setIsToastSnapshotActive(true);
@@ -982,48 +589,6 @@ export function BrowserTabContent({
     );
     return () => window.clearTimeout(timeout);
   }, [appToasts.length]);
-  const annotationKey = useMemo<BrowserAnnotationKey>(
-    () => ({ environmentId, threadId, tabId }),
-    [environmentId, threadId, tabId],
-  );
-  const annotationRecord = useSyncExternalStore(
-    subscribeBrowserAnnotationStore,
-    () => browserAnnotationSnapshot(annotationKey),
-    () => null,
-  );
-  const annotationRecordRef = useRef(annotationRecord);
-  annotationRecordRef.current = annotationRecord;
-  const isAnnotationTargetCurrent =
-    state !== null &&
-    annotationRecord !== null &&
-    state.tabId === tabId &&
-    state.navigationEpoch === annotationRecord.navigationEpoch;
-  const screenshotAnnotationUrl = isAnnotationTargetCurrent
-    ? (annotationRecord?.screenshot?.screenshotUrl ?? null)
-    : null;
-  const elementAnnotationPageSnapshotUrl = isAnnotationTargetCurrent
-    ? (annotationRecord?.elements?.pageSnapshotUrl ?? null)
-    : null;
-  const elementAnnotations: readonly BrowserElementAnnotationNote[] =
-    isAnnotationTargetCurrent ? (annotationRecord?.elements?.notes ?? []) : [];
-  const activeReviewDraft: BrowserElementReviewDraft | null =
-    isAnnotationTargetCurrent
-      ? (annotationRecord?.elements?.review ?? null)
-      : null;
-  const pendingElementAnnotation =
-    activeReviewDraft?.kind === "new" ? activeReviewDraft.annotation : null;
-  const editingElementAnnotation =
-    activeReviewDraft?.kind === "edit"
-      ? (elementAnnotations.find(
-          (annotation) => annotation.id === activeReviewDraft.noteId,
-        ) ?? null)
-      : null;
-  const [activeElementPickerMode, setActiveElementPickerMode] = useState<
-    "annotate" | "grab" | null
-  >(null);
-  const [isResumingElementPicker, setIsResumingElementPicker] = useState(false);
-  const elementPickerControllerRef = useRef<AbortController | null>(null);
-  const elementPickerEpochRef = useRef<number | null>(null);
   const cookieImportInputRef = useRef<HTMLInputElement | null>(null);
   const [cookieImportMessage, setCookieImportMessage] = useState<string | null>(
     null,
@@ -1054,17 +619,14 @@ export function BrowserTabContent({
     attachedBrowserViewIdentity.environmentId === environmentId &&
     attachedBrowserViewIdentity.tabId === tabId &&
     attachedBrowserViewIdentity.threadId === threadId;
-  const hasPage = currentUrl.length > 0;
+  const hasPage = (state?.url.length ?? 0) > 0 && state?.url !== "about:blank";
   const isInitialNavigationPending =
     initialUrlRef.current.length > 0 &&
     (state === null ||
       state.isLoading ||
       state.url.length === 0 ||
       state.url === "about:blank");
-  const supportsNativePaneFocus =
-    desktopBrowser?.focus !== undefined &&
-    desktopBrowser.onFocus !== undefined &&
-    desktopBrowser.setVisibleWithoutFocus !== undefined;
+  const supportsNativePaneFocus = desktopBrowser !== null;
   const browserControlRegistrationRef = useRef<ReturnType<
     typeof registerBrowserControlTab
   > | null>(null);
@@ -1121,251 +683,6 @@ export function BrowserTabContent({
       url: currentUrl,
     });
   }, [canShowNativeBrowserView, currentUrl, state]);
-  const runElementPickerCleanup = useCallback(() => {
-    const expectedNavigationEpoch =
-      elementPickerEpochRef.current ?? state?.navigationEpoch;
-    const runPageScript = desktopBrowser?.experimental_runBrowserPageScript;
-    if (runPageScript === undefined || expectedNavigationEpoch === undefined) {
-      return;
-    }
-    void runPageScript(
-      {
-        expectedNavigationEpoch,
-        input: {},
-        requestId: `cancel-element-picker-${crypto.randomUUID()}`,
-        source: browserCancelElementPickerSource,
-        tabId,
-        timeoutMs: 5_000,
-        world: "isolated",
-      },
-      {},
-    ).catch(() => {});
-  }, [desktopBrowser, state?.navigationEpoch, tabId]);
-
-  const cancelElementPicker = useCallback(() => {
-    runElementPickerCleanup();
-    elementPickerControllerRef.current?.abort();
-    elementPickerControllerRef.current = null;
-    setActiveElementPickerMode(null);
-  }, [runElementPickerCleanup]);
-
-  const closeElementAnnotation = useCallback(() => {
-    const record = annotationRecordRef.current;
-    if (record === null || record === undefined) return;
-    const elements = record.elements;
-    if (elements === null || elements.review === null) return;
-    setBrowserAnnotationElements(annotationKey, record.navigationEpoch, {
-      ...elements,
-      review: null,
-    });
-  }, [annotationKey]);
-
-  const addElementAnnotation = useCallback(
-    (comment: string, intent: BrowserElementAnnotationIntent) => {
-      const record = annotationRecordRef.current;
-      if (record === null || record === undefined) return;
-      const elements = record.elements;
-      if (elements === null) return;
-      const draft = elements.review;
-      if (draft === null || draft.kind !== "new") {
-        return;
-      }
-      const note: BrowserElementAnnotationNote = {
-        annotation: draft.annotation,
-        comment,
-        createdAt: new Date().toISOString(),
-        id: crypto.randomUUID(),
-        pageId: tabId,
-        intent,
-        screenshotUrl: draft.screenshotUrl,
-        priority: "important",
-      };
-      setBrowserAnnotationElements(annotationKey, record.navigationEpoch, {
-        pageSnapshotUrl: elements.pageSnapshotUrl,
-        notes: [...elements.notes, note],
-        review: null,
-      });
-      runElementPickerCleanup();
-    },
-    [annotationKey, runElementPickerCleanup, tabId],
-  );
-
-  const updateElementReviewDraft = useCallback(
-    (draft: BrowserElementReviewDraft) => {
-      const record = annotationRecordRef.current;
-      if (record === null || record === undefined) return;
-      const elements = record.elements;
-      if (elements === null) return;
-      setBrowserAnnotationElements(annotationKey, record.navigationEpoch, {
-        ...elements,
-        review: draft,
-      });
-    },
-    [annotationKey],
-  );
-
-  const updateElementAnnotation = useCallback(
-    (comment: string, intent: BrowserElementAnnotationIntent) => {
-      const record = annotationRecordRef.current;
-      if (record === null || record === undefined) return;
-      const elements = record.elements;
-      if (elements === null) return;
-      const draft = elements.review;
-      if (draft === null || draft.kind !== "edit") {
-        return;
-      }
-      setBrowserAnnotationElements(annotationKey, record.navigationEpoch, {
-        ...elements,
-        notes: elements.notes.map((annotation) =>
-          annotation.id === draft.noteId
-            ? { ...annotation, comment, intent }
-            : annotation,
-        ),
-        review: null,
-      });
-    },
-    [annotationKey],
-  );
-
-  const moveElementAnnotation = useCallback(
-    (noteId: string, direction: "up" | "down") => {
-      const record = annotationRecordRef.current;
-      if (record === null || record === undefined || record.elements === null) return;
-      const sourceIndex = record.elements.notes.findIndex((note) => note.id === noteId);
-      const targetIndex = sourceIndex + (direction === "up" ? -1 : 1);
-      if (sourceIndex < 0 || targetIndex < 0 || targetIndex >= record.elements.notes.length) {
-        return;
-      }
-      const notes = [...record.elements.notes];
-      [notes[sourceIndex], notes[targetIndex]] = [notes[targetIndex], notes[sourceIndex]];
-      setBrowserAnnotationElements(annotationKey, record.navigationEpoch, {
-        ...record.elements,
-        notes,
-      });
-    },
-    [annotationKey],
-  );
-
-  const clearElementAnnotations = useCallback(() => {
-    const record = annotationRecordRef.current;
-    if (record === null || record === undefined || record.elements === null) {
-      return;
-    }
-    setBrowserAnnotationElements(annotationKey, record.navigationEpoch, null);
-  }, [annotationKey]);
-
-  const editElementAnnotation = useCallback(
-    (note: BrowserElementAnnotationNote) => {
-      const record = annotationRecordRef.current;
-      if (record === null || record === undefined) return;
-      const elements = record.elements;
-      if (elements === null) return;
-      setBrowserAnnotationElements(annotationKey, record.navigationEpoch, {
-        ...elements,
-        review: {
-          comment: note.comment,
-          intent: note.intent,
-          kind: "edit",
-          noteId: note.id,
-        },
-      });
-    },
-    [annotationKey],
-  );
-
-  const removeElementAnnotation = useCallback(
-    (id: string) => {
-      const record = annotationRecordRef.current;
-      if (record === null || record === undefined) return;
-      const elements = record.elements;
-      if (elements === null) return;
-      const notes = elements.notes.filter((annotation) => annotation.id !== id);
-      setBrowserAnnotationElements(annotationKey, record.navigationEpoch, {
-        pageSnapshotUrl: notes.length > 0 ? elements.pageSnapshotUrl : null,
-        notes,
-        review:
-          elements.review?.kind === "edit" && elements.review.noteId === id
-            ? null
-            : elements.review,
-      });
-    },
-    [annotationKey],
-  );
-
-  const closeScreenshotAnnotation = useCallback(() => {
-    const record = annotationRecordRef.current;
-    if (record === null || record === undefined || record.screenshot === null) {
-      return;
-    }
-    setBrowserAnnotationScreenshot(annotationKey, record.navigationEpoch, null);
-  }, [annotationKey]);
-
-  const publishScreenshotEditor = useCallback(
-    (editor: BrowserScreenshotEditorSnapshot) => {
-      const record = annotationRecordRef.current;
-      if (record === null || record === undefined || record.screenshot === null) {
-        return;
-      }
-      setBrowserAnnotationScreenshot(annotationKey, record.navigationEpoch, {
-        ...record.screenshot,
-        editor,
-      });
-    },
-    [annotationKey],
-  );
-
-  const annotationTargetRef = useRef<{ epoch: number | null; url: string | null }>(
-    { epoch: null, url: null },
-  );
-  useEffect(() => {
-    const epoch = state?.navigationEpoch;
-    if (epoch === undefined) return;
-    const previous = annotationTargetRef.current;
-    const firstObservation = previous.epoch === null;
-    const epochChanged = previous.epoch !== epoch;
-    const urlChanged = previous.url !== null && previous.url !== currentUrl;
-    annotationTargetRef.current = { epoch, url: currentUrl };
-    if (firstObservation) {
-      markBrowserAnnotationEpoch(annotationKey, epoch);
-      const stored = annotationRecordRef.current;
-      if (stored !== null && stored.navigationEpoch !== epoch) {
-        clearBrowserAnnotationRecord(annotationKey);
-      }
-      return;
-    }
-    if (!epochChanged && !urlChanged) return;
-    if (epochChanged) {
-      markBrowserAnnotationEpoch(annotationKey, epoch);
-    }
-    clearBrowserAnnotationRecord(annotationKey);
-    cancelElementPicker();
-    setIsResumingElementPicker(false);
-  }, [annotationKey, cancelElementPicker, currentUrl, state?.navigationEpoch]);
-
-  useEffect(
-    () => () => {
-      const controller = elementPickerControllerRef.current;
-      elementPickerControllerRef.current = null;
-      controller?.abort();
-      const epoch = elementPickerEpochRef.current;
-      const runPageScript = desktopBrowser?.experimental_runBrowserPageScript;
-      if (epoch !== null && runPageScript !== undefined) {
-        void runPageScript(
-          {
-            expectedNavigationEpoch: epoch,
-            input: {},
-            requestId: `cancel-element-picker-${crypto.randomUUID()}`,
-            source: browserCancelElementPickerSource,
-            tabId,
-            timeoutMs: 5_000,
-            world: "isolated",
-          },
-          {},
-        ).catch(() => {});
-      }
-    },
-    [desktopBrowser, tabId],
-  );
   const pageLoadErrorText = state?.errorText ?? null;
   const hasPageLoadError = pageLoadErrorText !== null && hasPage;
   const isBrowserDimmingModalOpen = useIsBrowserDimmingModalOpen();
@@ -1570,11 +887,6 @@ export function BrowserTabContent({
     };
   }, [desktopBrowser, syncBoundsIfChanged]);
 
-  const isElementAnnotationOverlayOpen =
-    activeElementPickerMode === null &&
-    !isResumingElementPicker &&
-    elementAnnotationPageSnapshotUrl !== null &&
-    (pendingElementAnnotation !== null || elementAnnotations.length > 0);
   const isViewVisible =
     canShowNativeBrowserView &&
     (canHandleBrowserCommands || supportsNativePaneFocus) &&
@@ -1585,12 +897,13 @@ export function BrowserTabContent({
     !isBrowserDimmingModalOpen &&
     !isCookieImportWizardOpen &&
     resizeSnapshotUrl === null &&
-    screenshotAnnotationUrl === null &&
-    !isElementAnnotationOverlayOpen &&
     pluginOverlayLeases.size === 0;
   const isNativeBrowserViewVisible = isViewVisible && toastSnapshotUrl === null;
+  const navigationEpoch = state?.navigationEpoch;
   useEffect(() => {
     if (!isToastSnapshotActive) {
+      toastSnapshotDisposeRef.current?.();
+      toastSnapshotDisposeRef.current = null;
       setToastSnapshotUrl(null);
       return;
     }
@@ -1598,26 +911,38 @@ export function BrowserTabContent({
       toastSnapshotUrl !== null ||
       !isViewVisible ||
       state === null ||
+      navigationEpoch === undefined ||
       desktopBrowser?.experimental_captureBrowserPage === undefined
     ) {
       return;
     }
     let cancelled = false;
-    void desktopBrowser
-      .experimental_captureBrowserPage({
-        expectedNavigationEpoch: state.navigationEpoch,
-        format: "png",
-        quality: 100,
-        tabId,
-      })
+    let dispose: (() => void) | null = null;
+    void captureBrowserPagePreview(desktopBrowser, {
+      expectedNavigationEpoch: navigationEpoch,
+      format: "png",
+      quality: 100,
+      tabId,
+    })
       .then(async (snapshot) => {
-        if (snapshot.navigationEpoch !== state.navigationEpoch) return;
-        await preloadBrowserSnapshot(snapshot.dataUrl);
-        if (!cancelled) setToastSnapshotUrl(snapshot.dataUrl);
+        dispose = snapshot.dispose;
+        if (snapshot.navigationEpoch !== navigationEpoch || cancelled) {
+          snapshot.dispose();
+          return;
+        }
+        await preloadBrowserSnapshot(snapshot.url);
+        if (!cancelled) {
+          toastSnapshotDisposeRef.current = snapshot.dispose;
+          dispose = null;
+          setToastSnapshotUrl(snapshot.url);
+        } else {
+          snapshot.dispose();
+        }
       })
       .catch(() => {});
     return () => {
       cancelled = true;
+      dispose?.();
     };
   }, [
     desktopBrowser,
@@ -1651,6 +976,7 @@ export function BrowserTabContent({
       void desktopBrowser
         .experimental_sendBrowserPointerInput({
           expectedNavigationEpoch: navigationEpoch,
+          requestId: `pointer-proxy-${crypto.randomUUID()}`,
           events,
           tabId,
         })
@@ -1679,7 +1005,7 @@ export function BrowserTabContent({
       if (button === null) return;
       event.preventDefault();
       event.stopPropagation();
-      desktopBrowser?.focus?.(tabId);
+      desktopBrowser?.focus(tabId);
       sendBrowserPointerInput([
         {
           type: event.type === "pointerdown" ? "mouseDown" : "mouseUp",
@@ -1742,9 +1068,7 @@ export function BrowserTabContent({
   );
 
   useEffect(() => {
-    if (desktopBrowser?.onFocus === undefined || onNativeFocus === undefined) {
-      return;
-    }
+    if (desktopBrowser === null || onNativeFocus === undefined) return;
     return desktopBrowser.onFocus((focusedTabId) => {
       if (focusedTabId === tabId) onNativeFocus();
     });
@@ -1752,7 +1076,7 @@ export function BrowserTabContent({
 
   useEffect(() => {
     if (!isNativeBrowserViewVisible || !canHandleBrowserCommands) return;
-    desktopBrowser?.focus?.(tabId);
+    desktopBrowser?.focus(tabId);
   }, [
     canHandleBrowserCommands,
     desktopBrowser,
@@ -1822,9 +1146,27 @@ export function BrowserTabContent({
     desktopBrowser?.reload(tabId);
   }, [desktopBrowser, state?.isLoading, tabId]);
 
+  const [certificateTrustError, setCertificateTrustError] = useState<
+    string | null
+  >(null);
   const handleTrustLocalhostCertificate = useCallback(() => {
-    desktopBrowser?.experimental_trustLocalhostCertificate?.({ tabId });
-  }, [desktopBrowser, tabId]);
+    const epoch = state?.navigationEpoch;
+    if (epoch === undefined) return;
+    setCertificateTrustError(null);
+    desktopBrowser
+      ?.experimental_trustLocalhostCertificate?.({
+        tabId,
+        expectedNavigationEpoch: epoch,
+      })
+      .then(() => {
+        setCertificateTrustError(null);
+      })
+      .catch((error: unknown) => {
+        setCertificateTrustError(
+          error instanceof Error ? error.message : "Certificate trust failed",
+        );
+      });
+  }, [desktopBrowser, state?.navigationEpoch, tabId]);
 
   const handleFocusLocation = useCallback((): boolean => {
     if (!canHandleBrowserCommands || desktopBrowser === null) return false;
@@ -1928,155 +1270,6 @@ export function BrowserTabContent({
     getBbDesktopInfo()?.openExternalUrl(currentUrl);
   }, [currentUrl]);
 
-  const canPickPageElement =
-    activeElementPickerMode === null &&
-    pendingElementAnnotation === null &&
-    isViewVisible &&
-    state !== null &&
-    desktopBrowser?.experimental_runBrowserPageScript !== undefined;
-  const startElementPicker = useCallback(
-    async (mode: "annotate" | "grab") => {
-      if (
-        desktopBrowser?.experimental_runBrowserPageScript === undefined ||
-        state === null ||
-        state.navigationEpoch === undefined ||
-        !isViewVisible ||
-        activeElementPickerMode !== null
-      ) {
-        return;
-      }
-      const expectedNavigationEpoch = state.navigationEpoch;
-      const pickerTheme = browserElementPickerTheme();
-      const controller = new AbortController();
-      elementPickerControllerRef.current?.abort();
-      elementPickerControllerRef.current = controller;
-      elementPickerEpochRef.current = expectedNavigationEpoch;
-      setActiveElementPickerMode(mode);
-      desktopBrowser.focus?.(tabId);
-      try {
-        const result = await desktopBrowser.experimental_runBrowserPageScript(
-          {
-            input: pickerTheme,
-            requestId: `element-picker-${crypto.randomUUID()}`,
-            source: browserElementPickerSource,
-            tabId,
-            expectedNavigationEpoch,
-            timeoutMs: 120_000,
-            world: "isolated",
-          },
-          { signal: controller.signal },
-        );
-        if (result.navigationEpoch !== expectedNavigationEpoch) {
-          return;
-        }
-        const capture = browserElementAnnotationCaptureSchema.safeParse(
-          result.value,
-        );
-        if (!capture.success) {
-          return;
-        }
-        const annotation = redactBrowserElementAnnotation(capture.data);
-        if (annotation === null || controller.signal.aborted) {
-          return;
-        }
-        if (mode === "grab") {
-          const text = browserElementAnnotationAgentText(annotation);
-          if (text !== null) {
-            void copyToClipboardWithToast(text);
-          }
-          return;
-        }
-        let screenshotUrl: string | null = null;
-        let pageSnapshotUrl: string | null = null;
-        if (desktopBrowser.experimental_captureBrowserPage !== undefined) {
-          try {
-            const screenshot =
-              await desktopBrowser.experimental_captureBrowserPage({
-                expectedNavigationEpoch: result.navigationEpoch,
-                format: "jpeg",
-                quality: 82,
-                tabId,
-              });
-            if (
-              screenshot.navigationEpoch === result.navigationEpoch &&
-              !controller.signal.aborted
-            ) {
-              screenshotUrl = await cropBrowserElementScreenshot({
-                annotation,
-                capture: screenshot,
-              });
-              pageSnapshotUrl = screenshot.dataUrl;
-            }
-          } catch {}
-        }
-        if (controller.signal.aborted) return;
-        const existingElements = annotationRecordRef.current?.elements;
-        setBrowserAnnotationElements(
-          annotationKey,
-          expectedNavigationEpoch,
-          {
-            notes: existingElements?.notes ?? [],
-            pageSnapshotUrl,
-            review: {
-              annotation,
-              comment: "",
-              intent: "change",
-              kind: "new",
-              screenshotUrl,
-            },
-          },
-        );
-      } catch {
-      } finally {
-        if (elementPickerControllerRef.current === controller) {
-          elementPickerControllerRef.current = null;
-          setActiveElementPickerMode(null);
-        }
-      }
-    },
-    [
-      annotationKey,
-      desktopBrowser,
-      activeElementPickerMode,
-      isViewVisible,
-      state,
-      tabId,
-    ],
-  );
-  useEffect(() => {
-    if (!isResumingElementPicker || !isViewVisible) return;
-    setIsResumingElementPicker(false);
-    void startElementPicker("annotate");
-  }, [isResumingElementPicker, isViewVisible, startElementPicker]);
-  const canAnnotateScreenshot =
-    screenshotAnnotationUrl === null &&
-    isViewVisible &&
-    state !== null &&
-    desktopBrowser?.experimental_captureBrowserPage !== undefined;
-  const startScreenshotAnnotation = useCallback(async () => {
-    if (
-      desktopBrowser?.experimental_captureBrowserPage === undefined ||
-      state === null ||
-      !isViewVisible
-    ) {
-      return;
-    }
-    const expectedNavigationEpoch = state.navigationEpoch;
-    try {
-      const screenshot = await desktopBrowser.experimental_captureBrowserPage({
-        expectedNavigationEpoch,
-        format: "png",
-        quality: 100,
-        tabId,
-      });
-      if (screenshot.navigationEpoch !== expectedNavigationEpoch) return;
-      await preloadBrowserSnapshot(screenshot.dataUrl);
-      setBrowserAnnotationScreenshot(annotationKey, expectedNavigationEpoch, {
-        editor: createEmptyBrowserScreenshotEditor(),
-        screenshotUrl: screenshot.dataUrl,
-      });
-    } catch {}
-  }, [annotationKey, desktopBrowser, isViewVisible, state, tabId]);
   const canImportCookies =
     !isImportingCookies &&
     !isClearingImportedCookies &&
@@ -2251,56 +1444,8 @@ export function BrowserTabContent({
         locationShortcut={locationShortcut}
         reloadShortcut={reloadShortcut}
         navigationControlsRef={navigationControlsRef}
-        annotationAction={
+        pluginActions={
           <>
-            <NavButton
-              icon="EditFile"
-              label="Annotate screenshot"
-              disabled={!canAnnotateScreenshot}
-              onClick={() => {
-                void startScreenshotAnnotation();
-              }}
-            />
-            <NavButton
-              icon={activeElementPickerMode === "grab" ? "X" : "Eye"}
-              label={
-                activeElementPickerMode === "grab"
-                  ? "Cancel element selection"
-                  : "Grab page element"
-              }
-              disabled={
-                !canPickPageElement && activeElementPickerMode !== "grab"
-              }
-              onClick={() => {
-                if (activeElementPickerMode === "grab") {
-                  cancelElementPicker();
-                  return;
-                }
-                void startElementPicker("grab");
-              }}
-            />
-            <NavButton
-              icon={
-                activeElementPickerMode === "annotate"
-                  ? "X"
-                  : "MessageSquarePlus"
-              }
-              label={
-                activeElementPickerMode === "annotate"
-                  ? "Cancel element annotation"
-                  : "Select and annotate page element"
-              }
-              disabled={
-                !canPickPageElement && activeElementPickerMode !== "annotate"
-              }
-              onClick={() => {
-                if (activeElementPickerMode === "annotate") {
-                  cancelElementPicker();
-                  return;
-                }
-                void startElementPicker("annotate");
-              }}
-            />
             <Button
               type="button"
               variant="outline"
@@ -2315,10 +1460,6 @@ export function BrowserTabContent({
               <Icon name="File" aria-hidden />
               Import
             </Button>
-          </>
-        }
-        pluginActions={
-          <>
             {activeAgentRequestCount > 0 ? (
               <span
                 role="status"
@@ -2332,13 +1473,11 @@ export function BrowserTabContent({
             <PluginBrowserActions
               key={`${tabId}:${threadId}:${projectId ?? ""}:${currentUrl}`}
               chromeWidth={browserChromeWidth}
-              desktopBrowser={desktopBrowser}
               tabId={tabId}
               navigationEpoch={state?.navigationEpoch ?? null}
               threadId={threadId}
               projectId={projectId}
               url={currentUrl}
-              overlayRoot={pluginOverlayRoot}
               onOverlayLeaseChange={handlePluginOverlayLeaseChange}
             />
           </>
@@ -2376,6 +1515,20 @@ export function BrowserTabContent({
           data-browser-plugin-overlay-root=""
           className="pointer-events-none absolute inset-0 z-20 overflow-hidden"
         />
+        <PluginBrowserControllers
+          key={`${tabId}:${threadId}:${projectId ?? ""}`}
+          desktopBrowser={desktopBrowser}
+          environmentId={environmentId}
+          threadId={threadId}
+          projectId={projectId}
+          tabId={tabId}
+          navigationEpoch={state?.navigationEpoch ?? null}
+          url={currentUrl}
+          isVisible={isNativeBrowserViewVisible}
+          overlayRoot={pluginOverlayRoot}
+          onOverlayLeaseChange={handlePluginOverlayLeaseChange}
+        />
+
         {isCookieImportWizardOpen ? (
           <BrowserCookieImportWizard
             currentImport={currentCookieImport}
@@ -2404,101 +1557,24 @@ export function BrowserTabContent({
             className="pointer-events-none absolute inset-0 size-full"
           />
         )}
-        {isElementAnnotationOverlayOpen ? (
-          <img
-            src={elementAnnotationPageSnapshotUrl}
-            alt=""
-            draggable={false}
-            className="pointer-events-none absolute inset-0 size-full"
-          />
-        ) : null}
-        {screenshotAnnotationUrl !== null ? (
-          <BrowserScreenshotAnnotation
-            screenshotUrl={screenshotAnnotationUrl}
-            onClose={closeScreenshotAnnotation}
-            initialEditorState={annotationRecord?.screenshot?.editor}
-            onEditorStateChange={publishScreenshotEditor}
-          />
-        ) : activeReviewDraft !== null && activeReviewDraft.kind === "new" ? (
-          <BrowserElementAnnotationReview
-            key="new-annotation"
-            annotation={activeReviewDraft.annotation}
-            dialogLabel="Add page annotation"
-            screenshotUrl={activeReviewDraft.screenshotUrl}
-            comment={activeReviewDraft.comment}
-            intent={activeReviewDraft.intent}
-            onCommentChange={(comment) =>
-              updateElementReviewDraft({ ...activeReviewDraft, comment })
-            }
-            onIntentChange={(intent) =>
-              updateElementReviewDraft({ ...activeReviewDraft, intent })
-            }
-            submitLabel="Add"
-            onSubmit={addElementAnnotation}
-            onClose={closeElementAnnotation}
-          />
-        ) : activeReviewDraft !== null &&
-          activeReviewDraft.kind === "edit" &&
-          editingElementAnnotation !== null ? (
-          <BrowserElementAnnotationReview
-            key={`edit-${editingElementAnnotation.id}`}
-            annotation={editingElementAnnotation.annotation}
-            dialogLabel="Edit page annotation"
-            screenshotUrl={editingElementAnnotation.screenshotUrl}
-            comment={activeReviewDraft.comment}
-            intent={activeReviewDraft.intent}
-            onCommentChange={(comment) =>
-              updateElementReviewDraft({ ...activeReviewDraft, comment })
-            }
-            onIntentChange={(intent) =>
-              updateElementReviewDraft({ ...activeReviewDraft, intent })
-            }
-            submitLabel="Save"
-            onSubmit={updateElementAnnotation}
-            onClose={closeElementAnnotation}
-          />
-        ) : hasPageLoadError ? (
+        {hasPageLoadError ? (
           <BrowserPageLoadError
             errorText={pageLoadErrorText}
             onOpenExternal={handleOpenExternal}
             onRetry={handleReloadOrStop}
             onTrustLocalhostCertificate={handleTrustLocalhostCertificate}
+            trustError={certificateTrustError}
             url={currentUrl}
           />
-        ) : hasPage && !isBrowserDimmingModalOpen ? null : (
+        ) : hasPage &&
+          !isBrowserDimmingModalOpen ? null : isInitialNavigationPending ||
+          isBrowserViewAttached ? null : (
           <BrowserNewTabScreen
             onNavigateInput={navigateToInput}
             recent={recent}
             onClearRecent={clearRecent}
           />
         )}
-        {screenshotAnnotationUrl === null &&
-        pendingElementAnnotation === null &&
-        editingElementAnnotation === null &&
-        !activeElementPickerMode &&
-        !isResumingElementPicker &&
-        elementAnnotations.length > 0 ? (
-          <BrowserElementAnnotationTray
-            annotations={elementAnnotations}
-            tabId={tabId}
-            onAddToChat={onSelectionAddToChat}
-            onClear={() => {
-              clearElementAnnotations();
-            }}
-            onCopy={(text) => {
-              void copyToClipboardWithToast(text, {
-                successMessage: "Page annotations copied",
-                errorMessage: "Failed to copy page annotations",
-              });
-            }}
-            onEdit={(note) => editElementAnnotation(note)}
-            onRemove={(id) => removeElementAnnotation(id)}
-            onMove={moveElementAnnotation}
-            onSelectElement={() => {
-              setIsResumingElementPicker(true);
-            }}
-          />
-        ) : null}
         {hasPage && resizeSnapshotUrl !== null ? (
           <img
             src={resizeSnapshotUrl}

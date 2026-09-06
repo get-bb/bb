@@ -1134,7 +1134,6 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
         <LazyBrowserTabDeck
           browserTabs={browserTabs}
           activeBrowserTabId={activeBrowserTabId}
-          onSelectionAddToChat={handleSelectionAddToChat}
           environmentId={browserDeckEnvironmentId}
           canShowNativeBrowserView={canShowNativeBrowserView}
           canHandleBrowserCommands={canHandleBrowserCommands}
@@ -1243,21 +1242,30 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
     togglePersistedPanel: toggleDefaultPersistedSecondaryPanel,
   });
   const openControlledBrowserTab = useCallback(
-    async (url: string) => {
+    async (url: string, options: { signal?: AbortSignal } = {}) => {
+      options.signal?.throwIfAborted();
       const tab = openTab({ kind: "browser", url });
       if (tab?.kind !== "browser") {
         throw new Error("The visible Browser tab could not be created");
       }
       openCompactDrawer();
-      return waitForBrowserControlTab(tab.id);
+      try {
+        const target = await waitForBrowserControlTab(tab.id, options);
+        options.signal?.throwIfAborted();
+        return target;
+      } catch (error) {
+        closeTab(tab.id);
+        throw error;
+      }
     },
-    [openCompactDrawer, openTab],
+    [closeTab, openCompactDrawer, openTab],
   );
   const activateControlledBrowserTab = useCallback(
-    async (tabId: string) => {
+    async (tabId: string, options: { signal?: AbortSignal } = {}) => {
+      options.signal?.throwIfAborted();
       activateTab(tabId);
       openCompactDrawer();
-      return waitForBrowserControlTab(tabId);
+      return waitForBrowserControlTab(tabId, options);
     },
     [activateTab, openCompactDrawer],
   );

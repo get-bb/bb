@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useRef } from "react";
 import type { BrowserTabTarget } from "@bb/server-contract";
 import type { BrowserFixedPanelTab } from "@/lib/fixed-panel-tabs-state";
+import { notifyBrowserControllerDisposed } from "@/lib/browser-control-client";
 import { getDesktopBrowserApi } from "@/lib/bb-desktop";
 import {
   BrowserTabContent,
   type BrowserAddressFocusRequest,
 } from "./BrowserTabContent";
-import { clearBrowserAnnotationRecordsForTab } from "./browserAnnotationState";
 import {
   createBrowserViewVisibilityCoordinator,
   destroyPersistedBrowserView,
@@ -18,7 +18,6 @@ interface BrowserTabDeckProps {
   activeBrowserTabId: string | null;
   addressFocusRequest?: BrowserAddressFocusRequest | null;
   onAddressFocusRequestConsumed?: (request: BrowserAddressFocusRequest) => void;
-  onSelectionAddToChat?: (text: string) => void;
   onControlOpenTab?: (url: string) => Promise<BrowserTabTarget>;
   onControlCloseTab?: (tabId: string) => void;
   environmentId: string | null;
@@ -68,7 +67,7 @@ export function BrowserTabLifecycleObserver({
       for (const tabId of previous.tabIds) {
         if (!tabIds.has(tabId)) {
           destroyPersistedBrowserView({ desktopBrowser, tabId });
-          clearBrowserAnnotationRecordsForTab(tabId);
+          notifyBrowserControllerDisposed(tabId, "tab-closed");
         }
       }
     }
@@ -93,7 +92,6 @@ export function BrowserTabDeck({
   activeBrowserTabId,
   addressFocusRequest = null,
   onAddressFocusRequestConsumed,
-  onSelectionAddToChat,
   onControlOpenTab,
   onControlCloseTab,
   environmentId,
@@ -133,7 +131,6 @@ export function BrowserTabDeck({
             : null
         }
         onAddressFocusRequestConsumed={onAddressFocusRequestConsumed}
-        onSelectionAddToChat={onSelectionAddToChat}
         onControlOpenTab={onControlOpenTab}
         canShowNativeBrowserView={canShowNativeBrowserView}
         canHandleBrowserCommands={canHandleBrowserCommands}

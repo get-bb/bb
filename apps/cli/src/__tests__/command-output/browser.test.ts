@@ -179,7 +179,15 @@ describe("bb browser command output", () => {
 
   it("waits for visible text through the first-class Browser action", async () => {
     const control = vi.fn(async () => ({
-      value: { matched: true, kind: "text" },
+      value: {
+        kind: "text",
+        target: {
+          clientId: "client-1",
+          windowId: "window-1",
+          tabId: "tab-1",
+          navigationEpoch: 4,
+        },
+      },
     }));
     stubServerApi({ "v1.browser.control.$post": control });
 
@@ -219,6 +227,186 @@ describe("bb browser command output", () => {
         timeoutMs: 5_000,
       },
     });
+  });
+
+  it("rejects a status modifier on a URL wait before SDK construction", async () => {
+    const control = vi.fn();
+    stubServerApi({ "v1.browser.control.$post": control });
+
+    await expect(
+      runCommand(
+        [
+          "browser",
+          "wait",
+          "--client",
+          "client-1",
+          "--window",
+          "window-1",
+          "--tab",
+          "tab-1",
+          "--epoch",
+          "4",
+          "--url",
+          "https://example.test/",
+          "--status",
+          "200",
+        ],
+        register,
+      ),
+    ).rejects.toThrow("process.exit:1");
+
+    expect(control).not.toHaveBeenCalled();
+  });
+
+  it("sends a URL glob wait with its match modifier to the Browser", async () => {
+    const control = vi.fn(async () => ({
+      value: {
+        kind: "url",
+        target: {
+          clientId: "client-1",
+          windowId: "window-1",
+          tabId: "tab-1",
+          navigationEpoch: 4,
+        },
+        url: "https://example.test/docs",
+      },
+    }));
+    stubServerApi({ "v1.browser.control.$post": control });
+
+    await runCommand(
+      [
+        "browser",
+        "wait",
+        "--client",
+        "client-1",
+        "--window",
+        "window-1",
+        "--tab",
+        "tab-1",
+        "--epoch",
+        "4",
+        "--url",
+        "https://example.test/*",
+        "--match",
+        "glob",
+        "--json",
+      ],
+      register,
+    );
+
+    expect(control).toHaveBeenCalledWith({
+      json: {
+        action: {
+          kind: "wait",
+          criteria: {
+            kind: "url",
+            url: "https://example.test/*",
+            match: "glob",
+          },
+        },
+        target: {
+          clientId: "client-1",
+          navigationEpoch: 4,
+          tabId: "tab-1",
+          windowId: "window-1",
+        },
+        timeoutMs: 30_000,
+      },
+    });
+  });
+
+  it("sends a response wait with status and method modifiers to the Browser", async () => {
+    const control = vi.fn(async () => ({
+      value: {
+        kind: "response",
+        target: {
+          clientId: "client-1",
+          windowId: "window-1",
+          tabId: "tab-1",
+          navigationEpoch: 4,
+        },
+        url: "https://example.test/api",
+        method: "GET",
+        status: 200,
+      },
+    }));
+    stubServerApi({ "v1.browser.control.$post": control });
+
+    await runCommand(
+      [
+        "browser",
+        "wait",
+        "--client",
+        "client-1",
+        "--window",
+        "window-1",
+        "--tab",
+        "tab-1",
+        "--epoch",
+        "4",
+        "--response",
+        "https://example.test/api",
+        "--match",
+        "exact",
+        "--method",
+        "GET",
+        "--status",
+        "200",
+        "--json",
+      ],
+      register,
+    );
+
+    expect(control).toHaveBeenCalledWith({
+      json: {
+        action: {
+          kind: "wait",
+          criteria: {
+            kind: "response",
+            url: "https://example.test/api",
+            match: "exact",
+            method: "GET",
+            status: 200,
+          },
+        },
+        target: {
+          clientId: "client-1",
+          navigationEpoch: 4,
+          tabId: "tab-1",
+          windowId: "window-1",
+        },
+        timeoutMs: 30_000,
+      },
+    });
+  });
+
+  it("rejects a status modifier on a request wait before SDK construction", async () => {
+    const control = vi.fn();
+    stubServerApi({ "v1.browser.control.$post": control });
+
+    await expect(
+      runCommand(
+        [
+          "browser",
+          "wait",
+          "--client",
+          "client-1",
+          "--window",
+          "window-1",
+          "--tab",
+          "tab-1",
+          "--epoch",
+          "4",
+          "--request",
+          "https://example.test/api",
+          "--status",
+          "200",
+        ],
+        register,
+      ),
+    ).rejects.toThrow("process.exit:1");
+
+    expect(control).not.toHaveBeenCalled();
   });
 
   it("sends bounded explicit-target Browser batches", async () => {
@@ -284,6 +472,180 @@ describe("bb browser command output", () => {
     expect(control).not.toHaveBeenCalled();
     expect(collectLogLines(vi.mocked(console.error)).join("\n")).toContain(
       "--action must be valid JSON",
+    );
+  });
+
+  it("captures a tab and exports the bytes to a file", async () => {
+    const mkdtemp = await import("node:fs/promises").then((m) => m.mkdtemp);
+    const readFile = await import("node:fs/promises").then((m) => m.readFile);
+    const rm = await import("node:fs/promises").then((m) => m.rm);
+    const os = await import("node:os");
+    const path = await import("node:path");
+    const dir = await mkdtemp(path.join(os.tmpdir(), "bb-capture-"));
+    try {
+      const out = path.join(dir, "shot.png");
+      const expected = Buffer.alloc(262_147, 137);
+      expected.fill(62, 262_144);
+      const createCapture = vi.fn(async () => ({
+        captureId: "capture-1",
+        target: {
+          clientId: "client-1",
+          windowId: "window-1",
+          tabId: "tab-1",
+          navigationEpoch: 4,
+        },
+        mimeType: "image/png",
+        expiresAt: Date.now() + 120_000,
+        pixelSize: { width: 10, height: 10 },
+        byteLength: expected.byteLength,
+      }));
+      const captureRead = vi.fn(
+        async ({ json }: { json: { offset: number; length: number } }) => ({
+          captureId: "capture-1",
+          offset: json.offset,
+          base64: expected
+            .subarray(json.offset, json.offset + json.length)
+            .toString("base64"),
+          eof: json.offset + json.length >= expected.byteLength,
+        }),
+      );
+      const captureRelease = vi.fn(async () => ({ released: true }));
+      stubServerApi({
+        "v1.browser.capture-create.$post": createCapture,
+        "v1.browser.capture.$post": captureRead,
+        "v1.browser.capture-release.$post": captureRelease,
+      });
+
+      await runCommand(
+        [
+          "browser",
+          "capture",
+          "--client",
+          "client-1",
+          "--window",
+          "window-1",
+          "--tab",
+          "tab-1",
+          "--epoch",
+          "4",
+          "--out",
+          out,
+        ],
+        register,
+      );
+
+      expect(captureRelease).toHaveBeenCalledTimes(1);
+      const written = await readFile(out);
+      expect(written).toEqual(expected);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects a stale epoch for capture export before contacting the Browser", async () => {
+    const createCapture = vi.fn(async () => {
+      throw new Error("should not be called");
+    });
+    stubServerApi({ "v1.browser.capture-create.$post": createCapture });
+
+    await expect(
+      runCommand(
+        [
+          "browser",
+          "capture",
+          "--client",
+          "client-1",
+          "--window",
+          "window-1",
+          "--tab",
+          "tab-1",
+          "--epoch",
+          "not-a-number",
+          "--out",
+          "/tmp/never.png",
+        ],
+        register,
+      ),
+    ).rejects.toThrow("process.exit:1");
+    expect(createCapture).not.toHaveBeenCalled();
+  });
+
+  it("dispatches a plugin contribution to an exact Browser target", async () => {
+    const plugin = vi.fn(async () => ({ value: { captured: true } }));
+    stubServerApi({ "v1.browser.plugin.$post": plugin });
+
+    await runCommand(
+      [
+        "browser",
+        "plugin",
+        "--plugin",
+        "annotations",
+        "--controller",
+        "pick",
+        "--client",
+        "client-1",
+        "--window",
+        "window-1",
+        "--tab",
+        "tab-1",
+        "--epoch",
+        "4",
+        "--input",
+        '{"mode":"interactive"}',
+        "--json",
+      ],
+      register,
+    );
+
+    expect(plugin).toHaveBeenCalledWith({
+      json: {
+        pluginId: "annotations",
+        controllerId: "pick",
+        target: {
+          clientId: "client-1",
+          navigationEpoch: 4,
+          tabId: "tab-1",
+          windowId: "window-1",
+        },
+        input: { mode: "interactive" },
+        timeoutMs: 30_000,
+      },
+    });
+    expect(
+      JSON.parse(collectLogPayloads(vi.mocked(console.log)).at(-1) ?? "{}"),
+    ).toEqual({ value: { captured: true } });
+  });
+
+  it("rejects malformed plugin contribution JSON before the Browser", async () => {
+    const plugin = vi.fn();
+    stubServerApi({ "v1.browser.plugin.$post": plugin });
+
+    await expect(
+      runCommand(
+        [
+          "browser",
+          "plugin",
+          "--plugin",
+          "annotations",
+          "--controller",
+          "pick",
+          "--client",
+          "client-1",
+          "--window",
+          "window-1",
+          "--tab",
+          "tab-1",
+          "--epoch",
+          "4",
+          "--input",
+          "not-json",
+        ],
+        register,
+      ),
+    ).rejects.toThrow("process.exit:1");
+    expect(plugin).not.toHaveBeenCalled();
+    expect(collectLogLines(vi.mocked(console.error)).join("\n")).toContain(
+      "--input must be valid JSON",
     );
   });
 });

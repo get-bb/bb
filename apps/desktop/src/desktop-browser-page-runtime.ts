@@ -8,13 +8,20 @@ import {
 
 export const BB_BROWSER_PAGE_ISOLATED_WORLD_ID = 1_004;
 const PAGE_RUNTIME_REGISTRY_KEY = "__bbBrowserPageRuntimeV1";
+const COOPERATIVE_ABORT_GRACE_MS = 350;
+const HEARTBEAT_RESPONSE_LIMIT_MS = 250;
+const MAX_GRACE_PROBE_ATTEMPTS = 8;
 
 interface PageRuntimeWebContents {
   debugger: {
     attach(protocolVersion?: string): void;
     detach(): void;
     isAttached(): boolean;
-    sendCommand(method: string, params?: Record<string, unknown>): Promise<unknown>;
+    sendCommand(
+      method: string,
+      params?: Record<string, unknown>,
+      sessionId?: string,
+    ): Promise<unknown>;
   };
   executeJavaScriptInIsolatedWorld(
     worldId: number,
@@ -25,68 +32,164 @@ interface PageRuntimeWebContents {
   isDestroyed(): boolean;
 }
 
-function executeInRequestedWorld(
+const pageExecutionOrder = new WeakMap<
+  PageRuntimeWebContents,
+  Map<string, Map<string, number>>
+>();
+let nextPageExecutionOrder = 0;
+
+function markInvocationOutstanding(
   webContents: PageRuntimeWebContents,
-  world: "isolated" | "main" | undefined,
-  code: string,
-  url?: string,
-): Promise<unknown> {
-  return world === "main"
-    ? webContents.executeJavaScript(code, true)
-    : webContents.executeJavaScriptInIsolatedWorld(
-        BB_BROWSER_PAGE_ISOLATED_WORLD_ID,
-        [{ code, ...(url === undefined ? {} : { url }) }],
-        true,
-      );
+  sessionId: string | undefined,
+  requestId: string,
+): void {
+  const ordersByScope =
+    pageExecutionOrder.get(webContents) ??
+    new Map<string, Map<string, number>>();
+  const scope = sessionId ?? "";
+  const order = ordersByScope.get(scope) ?? new Map();
+  order.set(requestId, nextPageExecutionOrder);
+  nextPageExecutionOrder += 1;
+  ordersByScope.set(scope, order);
+  pageExecutionOrder.set(webContents, ordersByScope);
 }
-function executeInFrame(
+
+function clearInvocationOutstanding(
   webContents: PageRuntimeWebContents,
-  contextId: number,
-  code: string,
-): Promise<unknown> {
-  return webContents.debugger
-    .sendCommand("Runtime.evaluate", {
-      expression: code,
-      contextId,
-      awaitPromise: true,
-      returnByValue: true,
-    })
+  sessionId: string | undefined,
+  requestId: string,
+): void {
+  const ordersByScope = pageExecutionOrder.get(webContents);
+  if (ordersByScope === undefined) return;
+  const scope = sessionId ?? "";
+  const order = ordersByScope.get(scope);
+  if (order === undefined) return;
+  order.delete(requestId);
+  if (order.size === 0) ordersByScope.delete(scope);
+  if (ordersByScope.size === 0) pageExecutionOrder.delete(webContents);
+}
+
+function hasNewerOutstandingInvocation(
+  webContents: PageRuntimeWebContents,
+  sessionId: string | undefined,
+  requestId: string,
+): boolean {
+  const order = pageExecutionOrder.get(webContents)?.get(sessionId ?? "");
+  if (order === undefined) return false;
+  const own = order.get(requestId);
+  return (
+    own !== undefined &&
+    [...order.values()].some((otherOrder) => otherOrder > own)
+  );
+}
+
+function boundedHeartbeat(
+  webContents: PageRuntimeWebContents,
+  sessionId: string | undefined,
+  requestId: string,
+): Promise<boolean | null> {
+  const heartbeat = webContents.debugger
+    .sendCommand(
+      "Runtime.evaluate",
+      {
+        expression: `globalThis[${JSON.stringify(PAGE_RUNTIME_REGISTRY_KEY)}]?.has(${JSON.stringify(requestId)}) === true`,
+        returnByValue: true,
+      },
+      sessionId,
+    )
     .then((raw) => {
-      if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
-        throw new Error("Browser frame runtime returned an invalid result");
-      }
-      const resultValue = Object.getOwnPropertyDescriptor(raw, "result")?.value;
-      if (
-        typeof resultValue !== "object" ||
-        resultValue === null ||
-        Array.isArray(resultValue)
-      ) {
-        throw new Error("Browser frame runtime returned an invalid result");
-      }
-      if (Object.hasOwn(raw, "exceptionDetails")) {
-        throw new Error("Browser frame runtime execution failed");
-      }
-      return Object.getOwnPropertyDescriptor(resultValue, "value")?.value;
+      const result = raw as { result?: { value?: unknown } };
+      return result?.result?.value === true;
     });
+  return Promise.race([
+    heartbeat,
+    new Promise<null>((resolve) =>
+      setTimeout(() => resolve(null), HEARTBEAT_RESPONSE_LIMIT_MS),
+    ),
+  ]);
 }
 
-
-async function terminateUnresponsiveExecution(
+function probeExecutionStillAlive(
   webContents: PageRuntimeWebContents,
-): Promise<void> {
+  sessionId: string | undefined,
+  requestId: string,
+  attemptsLeft: number,
+): void {
   if (webContents.isDestroyed()) return;
+  if (hasNewerOutstandingInvocation(webContents, sessionId, requestId)) return;
+  if (attemptsLeft <= 0) {
+    void terminateExecution(webContents, sessionId, requestId);
+    return;
+  }
+  void boundedHeartbeat(webContents, sessionId, requestId).then((alive) => {
+    if (webContents.isDestroyed()) return;
+    if (alive === false) return;
+    if (alive === null) {
+      if (!hasNewerOutstandingInvocation(webContents, sessionId, requestId)) {
+        void terminateExecution(webContents, sessionId, requestId);
+      }
+      return;
+    }
+    setTimeout(
+      () =>
+        probeExecutionStillAlive(
+          webContents,
+          sessionId,
+          requestId,
+          attemptsLeft - 1,
+        ),
+      COOPERATIVE_ABORT_GRACE_MS,
+    );
+  });
+}
+
+async function terminateExecution(
+  webContents: PageRuntimeWebContents,
+  sessionId: string | undefined,
+  requestId: string,
+): Promise<void> {
   let attachedHere = false;
   try {
     if (!webContents.debugger.isAttached()) {
       webContents.debugger.attach("1.3");
       attachedHere = true;
     }
-    await webContents.debugger.sendCommand("Runtime.terminateExecution");
-  } catch {} finally {
+    await webContents.debugger.sendCommand(
+      "Runtime.terminateExecution",
+      {},
+      sessionId,
+    );
+    await webContents.debugger.sendCommand(
+      "Runtime.evaluate",
+      {
+        expression: `globalThis[${JSON.stringify(PAGE_RUNTIME_REGISTRY_KEY)}]?.delete(${JSON.stringify(requestId)});`,
+        returnByValue: true,
+      },
+      sessionId,
+    );
+  } catch {
+  } finally {
     if (attachedHere && webContents.debugger.isAttached()) {
       webContents.debugger.detach();
     }
   }
+}
+
+function armGraceKill(
+  webContents: PageRuntimeWebContents,
+  sessionId: string | undefined,
+  requestId: string,
+): void {
+  setTimeout(
+    () =>
+      probeExecutionStillAlive(
+        webContents,
+        sessionId,
+        requestId,
+        MAX_GRACE_PROBE_ATTEMPTS,
+      ),
+    COOPERATIVE_ABORT_GRACE_MS,
+  );
 }
 
 interface PageRuntimeEnvelope {
@@ -106,11 +209,12 @@ export interface StartDesktopBrowserPageScriptArgs {
   navigationEpoch: number;
   request: BbDesktopBrowserPageScriptRequest;
   webContents: PageRuntimeWebContents;
-  frameExecutionContextId?: number;
+  frameContext?: { uniqueContextId: string; sessionId: string };
 }
 
 function runtimeInvocationCode(
   request: BbDesktopBrowserPageScriptRequest,
+  preCancelled: () => boolean,
 ): string {
   return `(async () => {
     const registryKey = ${JSON.stringify(PAGE_RUNTIME_REGISTRY_KEY)};
@@ -118,12 +222,14 @@ function runtimeInvocationCode(
     const source = ${JSON.stringify(request.source)};
     const input = ${JSON.stringify(request.input)};
     const maxResultBytes = ${BB_DESKTOP_BROWSER_PAGE_SCRIPT_MAX_RESULT_BYTES};
+    const preCancelled = ${JSON.stringify(preCancelled())};
     const root = globalThis;
     const registry = root[registryKey] instanceof Map ? root[registryKey] : new Map();
     root[registryKey] = registry;
     registry.get(requestId)?.abort("replaced");
     const controller = new AbortController();
     registry.set(requestId, controller);
+    if (preCancelled) controller.abort("cancelled");
     try {
       const run = (0, eval)("(" + source + ")");
       if (typeof run !== "function") throw new Error("Browser page script source must evaluate to a function");
@@ -183,7 +289,9 @@ function parseEnvelope(value: unknown): PageRuntimeEnvelope {
   if (typeof errorValue !== "object" || errorValue === null) {
     return {
       ok,
-      ...(valueDescriptor === undefined ? {} : { value: valueDescriptor.value }),
+      ...(valueDescriptor === undefined
+        ? {}
+        : { value: valueDescriptor.value }),
     };
   }
   const code = Object.getOwnPropertyDescriptor(errorValue, "code");
@@ -197,24 +305,82 @@ function parseEnvelope(value: unknown): PageRuntimeEnvelope {
     },
   };
 }
+
 function executePageCode(
   args: StartDesktopBrowserPageScriptArgs,
   code: string,
   url?: string,
 ): Promise<unknown> {
-  return args.frameExecutionContextId === undefined
-    ? executeInRequestedWorld(args.webContents, args.request.world, code, url)
-    : executeInFrame(args.webContents, args.frameExecutionContextId, code);
+  if (args.frameContext === undefined) {
+    return executeInRequestedWorld(
+      args.webContents,
+      args.request.world,
+      code,
+      url,
+    );
+  }
+  return executeInFrame(args.webContents, args.frameContext, code);
 }
 
+function executeInRequestedWorld(
+  webContents: PageRuntimeWebContents,
+  world: "isolated" | "main" | undefined,
+  code: string,
+  url?: string,
+): Promise<unknown> {
+  return world === "main"
+    ? webContents.executeJavaScript(code, true)
+    : webContents.executeJavaScriptInIsolatedWorld(
+        BB_BROWSER_PAGE_ISOLATED_WORLD_ID,
+        [{ code, ...(url === undefined ? {} : { url }) }],
+        true,
+      );
+}
+
+function executeInFrame(
+  webContents: PageRuntimeWebContents,
+  selection: { uniqueContextId: string; sessionId: string },
+  code: string,
+): Promise<unknown> {
+  return webContents.debugger
+    .sendCommand(
+      "Runtime.evaluate",
+      {
+        expression: code,
+        uniqueContextId: selection.uniqueContextId,
+        awaitPromise: true,
+        returnByValue: true,
+      },
+      selection.sessionId || undefined,
+    )
+    .then((raw) => {
+      if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
+        throw new Error("Browser frame runtime returned an invalid result");
+      }
+      const resultValue = Object.getOwnPropertyDescriptor(raw, "result")?.value;
+      if (
+        typeof resultValue !== "object" ||
+        resultValue === null ||
+        Array.isArray(resultValue)
+      ) {
+        throw new Error("Browser frame runtime returned an invalid result");
+      }
+      if (Object.hasOwn(raw, "exceptionDetails")) {
+        throw new Error("Browser frame runtime execution failed");
+      }
+      return Object.getOwnPropertyDescriptor(resultValue, "value")?.value;
+    });
+}
 
 export function startDesktopBrowserPageScript(
   args: StartDesktopBrowserPageScriptArgs,
 ): DesktopBrowserPageScriptSession {
   const { request, webContents } = args;
+  const sessionId = args.frameContext?.sessionId || undefined;
   let settled = false;
   let rejectPromise: ((error: Error) => void) | null = null;
   let timeout: ReturnType<typeof setTimeout> | null = null;
+  let invocationSent = false;
 
   const cancelInPage = (reason: string): void => {
     if (webContents.isDestroyed()) return;
@@ -230,17 +396,24 @@ export function startDesktopBrowserPageScript(
       timeout = setTimeout(() => {
         if (settled) return;
         settled = true;
-        cancelInPage("timeout");
-        void terminateUnresponsiveExecution(webContents);
+        if (timeout !== null) clearTimeout(timeout);
+        if (invocationSent) {
+          cancelInPage("timeout");
+          armGraceKill(webContents, sessionId, request.requestId);
+        }
         reject(new Error("Browser page script timed out"));
       }, request.timeoutMs);
 
-      void executePageCode(
+      const invocation = executePageCode(
         args,
-        runtimeInvocationCode(request),
+        runtimeInvocationCode(request, () => settled),
         `bb-browser-page-runtime://${encodeURIComponent(request.requestId)}`,
-      )
+      );
+      invocationSent = true;
+      markInvocationOutstanding(webContents, sessionId, request.requestId);
+      invocation
         .then((rawEnvelope) => {
+          clearInvocationOutstanding(webContents, sessionId, request.requestId);
           if (settled) return;
           const envelope = parseEnvelope(rawEnvelope);
           if (!envelope.ok) {
@@ -249,12 +422,17 @@ export function startDesktopBrowserPageScript(
               envelope.error?.code === "aborted"
                 ? "AbortError"
                 : "BrowserPageScriptError";
-            throw error;
+            settled = true;
+            if (timeout !== null) clearTimeout(timeout);
+            reject(error);
+            return;
           }
           const value = bbDesktopBrowserJsonValueSchema.parse(
             envelope.value ?? null,
           ) as BbDesktopBrowserJsonValue;
+          if (settled) return;
           settled = true;
+          if (timeout !== null) clearTimeout(timeout);
           resolve({
             requestId: request.requestId,
             navigationEpoch: args.navigationEpoch,
@@ -263,12 +441,11 @@ export function startDesktopBrowserPageScript(
           });
         })
         .catch((error: unknown) => {
+          clearInvocationOutstanding(webContents, sessionId, request.requestId);
           if (settled) return;
           settled = true;
-          reject(error instanceof Error ? error : new Error(String(error)));
-        })
-        .finally(() => {
           if (timeout !== null) clearTimeout(timeout);
+          reject(error instanceof Error ? error : new Error(String(error)));
         });
     },
   );
@@ -282,6 +459,7 @@ export function startDesktopBrowserPageScript(
       settled = true;
       if (timeout !== null) clearTimeout(timeout);
       cancelInPage(reason);
+      armGraceKill(webContents, sessionId, request.requestId);
       const error = new Error(
         reason === "navigation"
           ? "Browser page changed while the script was running"

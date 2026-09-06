@@ -62,21 +62,21 @@ describe("server-to-browser timeline payload sizes", () => {
     expect(measurements).toEqual([
       {
         rowCount: 1,
-        full: { gzipBytes: 216, jsonBytes: 629 },
-        legacyDelta: { gzipBytes: 239, jsonBytes: 677 },
-        compactDelta: { gzipBytes: 227, jsonBytes: 644 },
+        full: { gzipBytes: 212, jsonBytes: 629 },
+        legacyDelta: { gzipBytes: 240, jsonBytes: 677 },
+        compactDelta: { gzipBytes: 228, jsonBytes: 644 },
       },
       {
         rowCount: 20,
         full: { gzipBytes: 552, jsonBytes: 6_627 },
-        legacyDelta: { gzipBytes: 297, jsonBytes: 1_060 },
-        compactDelta: { gzipBytes: 230, jsonBytes: 647 },
+        legacyDelta: { gzipBytes: 299, jsonBytes: 1_060 },
+        compactDelta: { gzipBytes: 228, jsonBytes: 647 },
       },
       {
         rowCount: 100,
-        full: { gzipBytes: 1_868, jsonBytes: 31_989 },
-        legacyDelta: { gzipBytes: 471, jsonBytes: 2_662 },
-        compactDelta: { gzipBytes: 230, jsonBytes: 649 },
+        full: { gzipBytes: 1_863, jsonBytes: 31_989 },
+        legacyDelta: { gzipBytes: 475, jsonBytes: 2_662 },
+        compactDelta: { gzipBytes: 228, jsonBytes: 649 },
       },
     ]);
 

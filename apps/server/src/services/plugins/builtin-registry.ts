@@ -45,6 +45,12 @@ export const BUILTIN_PLUGINS = [
     category: "Developer tools",
   },
   {
+    name: "browser-annotations",
+    pluginId: "browser-annotations",
+    defaultEnabled: true,
+    category: "Developer tools",
+  },
+  {
     name: "connect",
     pluginId: "connect",
     defaultEnabled: true,

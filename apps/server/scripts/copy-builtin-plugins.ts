@@ -107,10 +107,14 @@ async function writeRuntimePackageJson(args: {
   );
 }
 
-async function runStageAssets(sourceRoot: string): Promise<void> {
-  const scriptPath = path.join(sourceRoot, "scripts", "stage-assets.mjs");
-  if (!(await exists(scriptPath))) return;
-  await import(pathToFileURL(scriptPath).href);
+async function runPluginBuildAssets(sourceRoot: string): Promise<void> {
+  // Plugin-provided scripts are discovered at runtime from each builtin's source directory.
+  for (const scriptName of ["stage-assets.mjs", "build-client.mjs"]) {
+    const scriptPath = path.join(sourceRoot, "scripts", scriptName);
+    if (await exists(scriptPath)) {
+      await import(pathToFileURL(scriptPath).href);
+    }
+  }
 }
 
 async function copyBuiltinPlugin(args: {
@@ -136,7 +140,7 @@ async function copyBuiltinPlugin(args: {
     if (packageJson.bb.host !== undefined) {
       await buildPluginHost(args.sourceRoot, args.bbVersion, toolchain);
     }
-    await runStageAssets(args.sourceRoot);
+    await runPluginBuildAssets(args.sourceRoot);
   }
 
   const targetDir = path.join(args.targetRoot, args.name);

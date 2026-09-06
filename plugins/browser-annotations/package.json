@@ -1,0 +1,50 @@
+{
+  "name": "bb-plugin-browser-annotations",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./client": {
+      "types": "./dist/client.d.ts",
+      "import": "./dist/client.js"
+    }
+  },
+  "scripts": {
+    "build:client": "node scripts/build-client.mjs",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --config vitest.config.ts"
+  },
+  "dependencies": {
+    "@bb/shared-ui": "workspace:*",
+    "sonner": "^1.7.4",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@bb/sdk": "workspace:*",
+    "@get-bb/plugin-sdk": "workspace:*",
+    "@testing-library/react": "^16.3.2",
+    "@types/node": "^22.0.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "jsdom": "^29.0.1",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "typescript": "npm:@typescript/typescript6@^6.0.2",
+    "vitest": "^4.1.1"
+  },
+  "peerDependencies": {
+    "@bb/sdk": ">=0.0.0"
+  },
+  "bb": {
+    "name": "Browser Annotations",
+    "description": "Capture page elements, review feedback, and annotate screenshots in BB Browser tabs.",
+    "branding": {
+      "icon": "MessageSquarePlus"
+    },
+    "server": "./src/server.ts",
+    "app": "./src/app.tsx",
+    "skills": [
+      "skills"
+    ]
+  }
+}

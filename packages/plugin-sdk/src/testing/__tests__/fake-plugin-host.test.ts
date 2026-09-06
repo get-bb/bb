@@ -798,6 +798,60 @@ describe("cli", () => {
     });
   });
 
+  it("preserves a validated capture download only for successful commands", async () => {
+    const { bb, harness } = createFakePluginHost();
+    bb.cli.register({
+      name: "capture",
+      summary: "Capture Browser output",
+      run: () => ({
+        exitCode: 0,
+        experimental_browserCaptureDownload: {
+          descriptor: {
+            captureId: "capture-1",
+            mimeType: "image/png",
+            pixelSize: { width: 1280, height: 720 },
+            byteLength: 2048,
+            target: {
+              clientId: "client-1",
+              windowId: "window-1",
+              tabId: "tab-1",
+              navigationEpoch: 3,
+            },
+            expiresAt: 1_800_000_000_000,
+          },
+          out: "capture.png",
+        },
+      }),
+    });
+
+    await expect(harness.runCli([])).resolves.toMatchObject({
+      exitCode: 0,
+      experimental_browserCaptureDownload: {
+        out: "capture.png",
+        descriptor: { captureId: "capture-1" },
+      },
+    });
+  });
+
+  it("rejects malformed capture download metadata at the CLI boundary", async () => {
+    const { bb, harness } = createFakePluginHost();
+    const malformedResult = JSON.parse(
+      '{"exitCode":0,"experimental_browserCaptureDownload":{"descriptor":{"captureId":"capture-1"},"out":"capture.png"}}',
+    );
+    bb.cli.register({
+      name: "capture",
+      summary: "Capture Browser output",
+      run: () => malformedResult,
+    });
+
+    await expect(harness.runCli([])).resolves.toMatchObject({
+      exitCode: 1,
+      stdout: "",
+      stderr:
+        "bb capture failed: cli run() experimental_browserCaptureDownload.descriptor is invalid",
+    });
+  });
+
   it("mirrors production output-limit errors without truncating", async () => {
     const { bb, harness } = createFakePluginHost();
     bb.cli.register({

@@ -1,10 +1,12 @@
 import { randomUUID } from "node:crypto";
 import {
   app,
+  BaseWindow,
   BrowserWindow,
   Menu,
   WebContentsView,
   session,
+  webContents as webContentsService,
   type BrowserWindowConstructorOptions,
   type Cookie,
   type Session,
@@ -12,6 +14,10 @@ import {
   type WebPreferences,
 } from "electron";
 import {
+  BB_DESKTOP_BROWSER_CAPTURE_AGGREGATE_MAX_BYTES,
+  BB_DESKTOP_BROWSER_CAPTURE_MAX_ENCODED_BYTES,
+  BB_DESKTOP_BROWSER_CAPTURE_MAX_LIFETIME_MS,
+  BB_DESKTOP_BROWSER_CAPTURE_TTL_MS,
   BB_DESKTOP_BROWSER_MAX_TITLE_LENGTH,
   BB_DESKTOP_BROWSER_MAX_URL_LENGTH,
   clampBbDesktopBrowserViewBounds,
@@ -20,6 +26,7 @@ import {
   type BbDesktopBrowserAttachRequest,
   type BbDesktopBrowserCloseRequest,
   type BbDesktopBrowserCloseResult,
+  type BbDesktopBrowserTrustLocalhostCertificateResult,
   type BbDesktopBrowserFindInPageRequest,
   type BbDesktopBrowserFindResult,
   type BbDesktopBrowserImportCookiesFromBrowserRequest,
@@ -30,6 +37,9 @@ import {
   type BbDesktopBrowserNavigateRequest,
   type BbDesktopBrowserOpenTabRequest,
   type BbDesktopBrowserPageCaptureRequest,
+  type BbDesktopBrowserCaptureChunkRead,
+  type BbDesktopBrowserCaptureChunkResult,
+  type BbDesktopBrowserCaptureRelease,
   type BbDesktopBrowserPageCaptureResult,
   type BbDesktopBrowserPageScriptRequest,
   type BbDesktopBrowserPageScriptResult,
@@ -56,7 +66,11 @@ import {
   type BbDesktopBrowserViewportBounds,
   type BbDesktopBrowserViewBounds,
 } from "@bb/desktop-contract";
-import type { AppCommandId, AppShortcutInput } from "@bb/domain";
+import {
+  browserUrlMatches,
+  type AppCommandId,
+  type AppShortcutInput,
+} from "@bb/domain";
 import {
   BB_DESKTOP_BROWSER_FIND_RESULT_CHANNEL,
   BB_DESKTOP_BROWSER_OPEN_TAB_CHANNEL,
@@ -93,6 +107,59 @@ const RESIZE_SNAPSHOT_HIDE_CAP_MS = 80;
 const RESIZE_SNAPSHOT_JPEG_QUALITY = 70;
 const RENDERER_RECOVERY_DELAY_MS = 250;
 const RENDERER_RECOVERY_MAX_ATTEMPTS = 2;
+
+const BROWSER_VIRTUAL_KEY_CODES: Record<string, number> = {
+  Backspace: 8,
+  Tab: 9,
+  Enter: 13,
+  NumpadEnter: 13,
+  Shift: 16,
+  ShiftLeft: 16,
+  ShiftRight: 16,
+  Control: 17,
+  ControlLeft: 17,
+  ControlRight: 17,
+  Alt: 18,
+  AltLeft: 18,
+  AltRight: 18,
+  Pause: 19,
+  CapsLock: 20,
+  Escape: 27,
+  Space: 32,
+  " ": 32,
+  PageUp: 33,
+  PageDown: 34,
+  End: 35,
+  Home: 36,
+  ArrowLeft: 37,
+  ArrowUp: 38,
+  ArrowRight: 39,
+  ArrowDown: 40,
+  Insert: 45,
+  Delete: 46,
+  Meta: 91,
+  MetaLeft: 91,
+  MetaRight: 92,
+  ContextMenu: 93,
+  NumpadMultiply: 106,
+  NumpadAdd: 107,
+  NumpadSubtract: 109,
+  NumpadDecimal: 110,
+  NumpadDivide: 111,
+  NumLock: 144,
+  ScrollLock: 145,
+  Semicolon: 186,
+  Equal: 187,
+  Comma: 188,
+  Minus: 189,
+  Period: 190,
+  Slash: 191,
+  Backquote: 192,
+  BracketLeft: 219,
+  Backslash: 220,
+  BracketRight: 221,
+  Quote: 222,
+};
 
 function truncate(value: string, max: number): string {
   return value.length > max ? value.slice(0, max) : value;
@@ -157,41 +224,199 @@ async function clearSessionCookies(browserSession: Session): Promise<void> {
   await Promise.all(
     cookies.flatMap((cookie) => {
       const url = cookieRemovalUrl(cookie);
-      return url === null ? [] : [browserSession.cookies.remove(url, cookie.name)];
+      return url === null
+        ? []
+        : [browserSession.cookies.remove(url, cookie.name)];
     }),
   );
   await browserSession.clearStorageData({ storages: ["cookies"] });
+}
+
+function cookieSetDetailsFromStored(
+  cookie: Cookie,
+): BrowserCookieSetDetails | null {
+  const domain = cookie.domain?.replace(/^\./, "");
+  if (domain === undefined || domain.length === 0) return null;
+  const hostOnly = !String(cookie.domain).startsWith(".");
+  return {
+    ...(hostOnly ? {} : { domain }),
+    ...(cookie.expirationDate === undefined
+      ? {}
+      : { expirationDate: cookie.expirationDate }),
+    httpOnly: cookie.httpOnly,
+    name: cookie.name,
+    path: cookie.path,
+    sameSite: cookie.sameSite,
+    secure: cookie.secure,
+    url: `${cookie.secure === true ? "https" : "http"}://${domain}${cookie.path ?? "/"}`,
+    value: cookie.value,
+  };
+}
+
+async function snapshotSessionCookies(
+  browserSession: Session,
+): Promise<Cookie[]> {
+  return browserSession.cookies.get({});
+}
+
+function cookieIdentity(cookie: {
+  domain?: string;
+  name: string;
+  path?: string;
+}): string {
+  // Keep the leading dot: Electron stores host-only cookies as `domain`
+  // without a dot and domain cookies with one, so the raw value
+  // distinguishes the two cookie slots that can coexist in one session.
+  return [cookie.domain ?? "", cookie.name, cookie.path ?? "/"].join("\u0000");
+}
+
+function cookieEquality(left: Cookie, right: Cookie): boolean {
+  return (
+    left.name === right.name &&
+    left.value === right.value &&
+    (left.domain ?? "") === (right.domain ?? "") &&
+    (left.path ?? "/") === (right.path ?? "/") &&
+    left.httpOnly === right.httpOnly &&
+    left.secure === right.secure &&
+    left.sameSite === right.sameSite &&
+    (left.expirationDate ?? null) === (right.expirationDate ?? null)
+  );
+}
+
+async function cookiesMatchStored(
+  browserSession: Session,
+  snapshot: readonly Cookie[],
+): Promise<boolean> {
+  const current = await browserSession.cookies.get({});
+  if (current.length !== snapshot.length) return false;
+  for (const expected of snapshot) {
+    const found = current.find(
+      (cookie) => cookieIdentity(cookie) === cookieIdentity(expected),
+    );
+    if (found === undefined || !cookieEquality(found, expected)) return false;
+  }
+  return true;
+}
+
+async function restoreSessionCookies(
+  browserSession: Session,
+  snapshot: readonly Cookie[],
+): Promise<void> {
+  await clearSessionCookies(browserSession);
+  for (
+    let offset = 0;
+    offset < snapshot.length;
+    offset += COOKIE_IMPORT_BATCH_SIZE
+  ) {
+    const batch = snapshot.slice(offset, offset + COOKIE_IMPORT_BATCH_SIZE);
+    const writes = batch.flatMap((cookie) => {
+      const details = cookieSetDetailsFromStored(cookie);
+      return details === null
+        ? []
+        : [
+            browserSession.cookies.set(details).then(
+              () => ({ ok: true as const }),
+              () => ({ ok: false as const }),
+            ),
+          ];
+    });
+    const settled = await Promise.all(writes);
+    const failed = settled.filter((write): write is { ok: false } => !write.ok);
+    if (failed.length > 0) {
+      throw new Error("Browser cookie rollback write failed");
+    }
+  }
+}
+
+async function validateImportedCookiesInStaging(
+  cookies: readonly BbDesktopBrowserImportCookiesRequest["cookies"][number][],
+): Promise<{ details: BrowserCookieSetDetails[]; rejected: number }> {
+  const staging = session.fromPartition(`bb-cookie-staging-${randomUUID()}`);
+  try {
+    const unique = new Map<string, BrowserCookieSetDetails>();
+    for (const cookie of cookies) {
+      const details = importedCookieToSessionDetails(cookie);
+      if (details === null)
+        throw new Error("Browser cookie import contains an invalid cookie");
+      const key = cookieIdentity(cookie);
+      if (!unique.has(key)) unique.set(key, details);
+    }
+    for (const details of unique.values()) await staging.cookies.set(details);
+    const normalized = await staging.cookies.get({});
+    if (normalized.length !== unique.size) {
+      throw new Error(
+        "Browser cookie validation did not retain every imported cookie",
+      );
+    }
+    const details: BrowserCookieSetDetails[] = [];
+    for (const cookie of normalized) {
+      const value = cookieSetDetailsFromStored(cookie);
+      if (value === null)
+        throw new Error("Browser cookie validation returned an invalid cookie");
+      details.push(value);
+    }
+    return { details, rejected: 0 };
+  } finally {
+    await staging.clearStorageData({ storages: ["cookies"] });
+  }
+}
+
+async function replaceSessionCookiesWithCommit(
+  browserSession: Session,
+  details: readonly BrowserCookieSetDetails[],
+): Promise<number> {
+  const snapshot = await snapshotSessionCookies(browserSession);
+  try {
+    await clearSessionCookies(browserSession);
+    for (
+      let offset = 0;
+      offset < details.length;
+      offset += COOKIE_IMPORT_BATCH_SIZE
+    ) {
+      const batch = details.slice(offset, offset + COOKIE_IMPORT_BATCH_SIZE);
+      const writes = batch.map((cookie) =>
+        browserSession.cookies.set(cookie).then(
+          () => ({ ok: true as const }),
+          (error: unknown) => ({ ok: false as const, error }),
+        ),
+      );
+      const settled = await Promise.all(writes);
+      const failed = settled.filter(
+        (write): write is { ok: false; error: unknown } => !write.ok,
+      );
+      if (failed.length > 0) {
+        throw new Error(
+          `Browser cookie import failed for ${failed.length} cookie(s)`,
+        );
+      }
+    }
+    await browserSession.cookies.flushStore();
+    return details.length;
+  } catch (error) {
+    try {
+      await restoreSessionCookies(browserSession, snapshot);
+      await browserSession.cookies.flushStore();
+      const restored = await cookiesMatchStored(browserSession, snapshot);
+      if (!restored) {
+        throw new Error("Browser cookie rollback did not restore the session");
+      }
+    } catch (rollbackError) {
+      const original = error instanceof Error ? error.message : String(error);
+      throw new Error(
+        `Browser cookie import failed (${original}); rollback also failed: ${rollbackError instanceof Error ? rollbackError.message : String(rollbackError)}`,
+      );
+    }
+    throw error;
+  }
 }
 
 async function importCookiesIntoSession(
   browserSession: Session,
   cookies: readonly BbDesktopBrowserImportCookiesRequest["cookies"][number][],
 ): Promise<number> {
-  const cookieDetailsByKey = new Map<string, BrowserCookieSetDetails>();
-  for (const cookie of cookies) {
-    const details = importedCookieToSessionDetails(cookie);
-    if (details === null) continue;
-    const key = `${details.domain ?? "\0"}\0${details.name ?? ""}\0${details.path ?? "/"}`;
-    if (!cookieDetailsByKey.has(key)) {
-      cookieDetailsByKey.set(key, details);
-    }
-  }
-  const cookieDetails = [...cookieDetailsByKey.values()];
-  await clearSessionCookies(browserSession);
-  for (
-    let offset = 0;
-    offset < cookieDetails.length;
-    offset += COOKIE_IMPORT_BATCH_SIZE
-  ) {
-    await Promise.all(
-      cookieDetails
-        .slice(offset, offset + COOKIE_IMPORT_BATCH_SIZE)
-        .map((cookie) => browserSession.cookies.set(cookie)),
-    );
-  }
-  return cookieDetails.length;
+  const { details } = await validateImportedCookiesInStaging(cookies);
+  return replaceSessionCookiesWithCommit(browserSession, details);
 }
-
 
 function viewportParameters(profile: BbDesktopBrowserViewportProfile) {
   switch (profile) {
@@ -300,6 +525,55 @@ const BROWSER_DIAGNOSTIC_LIMIT = 100;
 const BROWSER_CAPTURE_MAX_DIMENSION = 32_768;
 const BROWSER_CAPTURE_MAX_PIXELS = 50_000_000;
 
+class CaptureTooLargeError extends Error {
+  constructor() {
+    super("Browser capture exceeds the resource limits");
+    this.name = "CaptureTooLarge";
+  }
+}
+
+class CaptureCapacityExceededError extends Error {
+  constructor() {
+    super("Browser capture capacity is exhausted");
+    this.name = "CaptureCapacityExceeded";
+  }
+}
+function awaitCaptureOperation<T>(
+  operation: Promise<T>,
+  signal: AbortSignal,
+): Promise<T> {
+  if (signal.aborted) {
+    return Promise.reject(
+      new DOMException("Browser capture was cancelled", "AbortError"),
+    );
+  }
+  const { promise, resolve, reject } = Promise.withResolvers<T>();
+  let settled = false;
+  const abort = () => {
+    if (settled) return;
+    settled = true;
+    signal.removeEventListener("abort", abort);
+    reject(new DOMException("Browser capture was cancelled", "AbortError"));
+  };
+  signal.addEventListener("abort", abort, { once: true });
+  void operation.then(
+    (value) => {
+      if (settled) return;
+      settled = true;
+      signal.removeEventListener("abort", abort);
+      resolve(value);
+    },
+    (error) => {
+      if (settled) return;
+      settled = true;
+      signal.removeEventListener("abort", abort);
+      reject(error);
+    },
+  );
+  return promise;
+}
+
+
 interface BrowserDialogHandler {
   behavior: "accept" | "dismiss";
   promptText?: string;
@@ -314,7 +588,18 @@ interface BrowserDiagnostics {
   permissions: BbDesktopBrowserJsonValue[];
 }
 
-interface BrowserFrameRecord {
+interface BrowserExecutionContext {
+  id: number;
+  uniqueId: string;
+}
+
+interface BrowserFrameContexts {
+  debuggerSessionId: string;
+  mainExecutionContext: BrowserExecutionContext | null;
+  isolatedExecutionContext: BrowserExecutionContext | null;
+}
+
+interface BrowserFrameRecord extends BrowserFrameContexts {
   publicFrameId: string;
   debuggerFrameId: string;
   loaderId: string | null;
@@ -324,7 +609,6 @@ interface BrowserFrameRecord {
   name: string | null;
   depth: number;
   active: boolean;
-  executionContextId: number | null;
 }
 
 interface BrowserEventWaiter {
@@ -337,8 +621,10 @@ interface BrowserEventWaiter {
 interface BrowserViewEntry {
   view: WebContentsView;
   lastErrorText: string | null;
-  allowedPermissions: Set<string>;
-  deniedPermissions: Set<string>;
+  permissionDecisionsByOrigin: Map<
+    string,
+    { allow: Set<string>; deny: Set<string> }
+  >;
   diagnostics: BrowserDiagnostics;
   desiredBounds: BbDesktopBrowserViewBounds;
   popupTimestamps: number[];
@@ -351,17 +637,39 @@ interface BrowserViewEntry {
   visible: boolean;
   frameRegistry: Map<string, BrowserFrameRecord>;
   frameRecordsByDebuggerId: Map<string, BrowserFrameRecord>;
+  childFrameSessions: Map<string, { frameId: string; ready: Promise<void> }>;
+  frameContextsByDebuggerFrameId: Map<string, BrowserFrameContexts>;
+  isolatedWorldCreationsByFrameId: Map<
+    string,
+    Promise<BrowserExecutionContext>
+  >;
   eventWaiters: Map<string, BrowserEventWaiter>;
-  pendingExecutionContextIdsByFrameId: Map<string, number>;
   nextFrameDocumentEpoch: number;
   activeFindRequestId: number | null;
   navigationEpoch: number;
   loadState: "none" | "domcontentloaded" | "load";
-  inFlightRequests: number;
+  activeRequestsByWebRequestId: Map<number, number>;
+  /**
+   * webRequest.onBeforeRequest for the main-frame navigation that starts a
+   * new document generation can fire before did-start-navigation bumps the
+   * epoch. This records that request id so did-start-navigation can
+   * reassign it to the new generation instead of dropping it.
+   */
+  triggeringMainRequestId: number | null;
   networkIdleSince: number | null;
   networkIdleTimer: ReturnType<typeof setTimeout> | null;
-  pageScriptSessions: Map<string, DesktopBrowserPageScriptSession>;
+  generationStartedAt: number | null;
+  pageScriptSessions: Map<
+    string,
+    { frameId: string | null; session: { cancel(reason?: string): void } }
+  >;
   nextDialogHandler: BrowserDialogHandler | null;
+  activeInputControllers: Map<string, AbortController>;
+  activeCaptureControllers: Map<string, AbortController>;
+  pointerButtons: number;
+  debuggerReady: Promise<void> | null;
+  backgroundWindow: BaseWindow | null;
+  renderReady: Promise<void> | null;
   viewportProfile: {
     generation: number;
     profile: BbDesktopBrowserViewportProfile;
@@ -458,7 +766,9 @@ export interface DesktopBrowserViewManager {
   setVisibleWithoutFocus(
     args: HostScopedRequestArgs<BbDesktopBrowserSetVisibleRequest>,
   ): void;
-  trustLocalhostCertificate(args: HostScopedTabArgs): void;
+  trustLocalhostCertificate(
+    args: HostScopedRequestArgs<BbDesktopBrowserCloseRequest>,
+  ): Promise<BbDesktopBrowserTrustLocalhostCertificateResult>;
   findInPage(
     args: HostScopedRequestArgs<BbDesktopBrowserFindInPageRequest>,
   ): void;
@@ -484,6 +794,9 @@ export interface DesktopBrowserViewManager {
     }>,
   ): void;
   cancelPageScript(args: HostScopedTabArgs & { requestId: string }): void;
+  cancelTrustedInput(args: HostScopedTabArgs & { requestId: string }): void;
+  cancelPointerInput(args: HostScopedTabArgs & { requestId: string }): void;
+  cancelCapture(args: HostScopedTabArgs & { requestId: string }): void;
   sendPointerInput(
     args: HostScopedRequestArgs<BbDesktopBrowserPointerInputRequest>,
   ): Promise<BbDesktopBrowserPointerInputResult>;
@@ -496,6 +809,14 @@ export interface DesktopBrowserViewManager {
   capturePage(
     args: HostScopedRequestArgs<BbDesktopBrowserPageCaptureRequest>,
   ): Promise<BbDesktopBrowserPageCaptureResult>;
+  readCaptureChunk(args: {
+    hostWindow: DesktopBrowserHostWindow;
+    request: BbDesktopBrowserCaptureChunkRead;
+  }): Promise<BbDesktopBrowserCaptureChunkResult>;
+  releaseCapture(args: {
+    hostWindow: DesktopBrowserHostWindow;
+    request: BbDesktopBrowserCaptureRelease;
+  }): void;
   runAutomation(
     args: HostScopedRequestArgs<BbDesktopBrowserAutomationRequest>,
   ): Promise<BbDesktopBrowserAutomationResult>;
@@ -561,12 +882,16 @@ function applyEntryDesiredBounds(
   entry: BrowserViewEntry,
   hostWindow: DesktopBrowserHostWindow,
 ): void {
-  entry.view.setBounds(
-    clampBbDesktopBrowserViewBounds({
-      bounds: entry.desiredBounds,
-      viewport: hostWindowViewportBounds({ hostWindow }),
-    }),
-  );
+  const bounds = clampBbDesktopBrowserViewBounds({
+    bounds: entry.desiredBounds,
+    viewport: hostWindowViewportBounds({ hostWindow }),
+  });
+  if (entry.backgroundWindow !== null) {
+    entry.backgroundWindow.setContentSize(bounds.width, bounds.height);
+    entry.view.setBounds({ ...bounds, x: 0, y: 0 });
+  } else {
+    entry.view.setBounds(bounds);
+  }
 }
 
 function setEntryDesiredBounds(args: SetEntryDesiredBoundsArgs): void {
@@ -600,8 +925,42 @@ function buildBrowserState(
   };
 }
 
+function permissionDecisionFor(
+  entry: BrowserViewEntry,
+  origin: string | null,
+  permission: string,
+): boolean {
+  if (origin === null) {
+    return false;
+  }
+  const decisions = entry.permissionDecisionsByOrigin.get(origin);
+  if (decisions === undefined) {
+    return isAllowedBrowserPermission(permission);
+  }
+  if (decisions.deny.has(permission)) return false;
+  if (decisions.allow.has(permission)) return true;
+  return isAllowedBrowserPermission(permission);
+}
+
 export function isAllowedBrowserPermission(permission: string): boolean {
   return permission === "clipboard-sanitized-write";
+}
+
+function serializePermissionOrigin(value: string | null): string | null {
+  if (typeof value !== "string" || value.length === 0) return null;
+  try {
+    const parsed = new URL(value);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+      return null;
+    }
+    return parsed.origin;
+  } catch {
+    return null;
+  }
+}
+
+function clearEntryPermissionDecisions(entry: BrowserViewEntry): void {
+  entry.permissionDecisionsByOrigin.clear();
 }
 
 function getLoopbackCertificateHost(url: string): string | null {
@@ -645,8 +1004,231 @@ export function createDesktopBrowserViewManager(
   const resizingHostIds = new Set<number>();
   let hardenedSession: Session | null = null;
   let viewportProfileGeneration = 0;
-  let nextBrowserSessionMutation: Promise<void> = Promise.resolve();
+  const sessionRequests = new Set<number>();
   const trustedCertificateHosts = new Set<string>();
+  let cookieMutationActive = false;
+  let nextBrowserSessionMutation: Promise<void> = Promise.resolve();
+  const captureRegistry = new Map<
+    string,
+    {
+      buffer: Buffer;
+      clientHost: number;
+      tabId: string;
+      createdAt: number;
+      expiresAt: number;
+      absoluteExpiresAt: number;
+      expirationTimer: ReturnType<typeof setTimeout> | null;
+      format: "png" | "jpeg";
+    }
+  >();
+  const captureAggregateBytesByHost = new Map<number, number>();
+  function releaseCaptureById(captureId: string): void {
+    const capture = captureRegistry.get(captureId);
+    if (capture === undefined) return;
+    captureRegistry.delete(captureId);
+    if (capture.expirationTimer !== null) clearTimeout(capture.expirationTimer);
+    const aggregate = captureAggregateBytesByHost.get(capture.clientHost) ?? 0;
+    const nextAggregate = aggregate - capture.buffer.byteLength;
+    if (nextAggregate <= 0) {
+      captureAggregateBytesByHost.delete(capture.clientHost);
+    } else {
+      captureAggregateBytesByHost.set(capture.clientHost, nextAggregate);
+    }
+  }
+  function scheduleCaptureExpiration(captureId: string): void {
+    const capture = captureRegistry.get(captureId);
+    if (capture === undefined) return;
+    if (capture.expirationTimer !== null) clearTimeout(capture.expirationTimer);
+    const deadline = Math.min(capture.expiresAt, capture.absoluteExpiresAt);
+    capture.expirationTimer = setTimeout(
+      () => releaseCaptureById(captureId),
+      Math.max(0, deadline - Date.now()),
+    );
+  }
+  function expireCaptures(): void {
+    const now = Date.now();
+    for (const [captureId, capture] of captureRegistry) {
+      if (now >= capture.expiresAt || now >= capture.absoluteExpiresAt) {
+        releaseCaptureById(captureId);
+      }
+    }
+  }
+  function storeCapture(args: {
+    hostWindow: DesktopBrowserHostWindow;
+    tabId: string;
+    navigationEpoch: number;
+    format: "png" | "jpeg";
+    bytes: Buffer;
+    pixelSize: { width: number; height: number };
+  }): BbDesktopBrowserPageCaptureResult {
+    const { bytes, pixelSize } = args;
+    if (
+      bytes.byteLength === 0 ||
+      bytes.byteLength > BB_DESKTOP_BROWSER_CAPTURE_MAX_ENCODED_BYTES ||
+      !Number.isSafeInteger(pixelSize.width) ||
+      !Number.isSafeInteger(pixelSize.height) ||
+      pixelSize.width <= 0 ||
+      pixelSize.height <= 0 ||
+      pixelSize.width > BROWSER_CAPTURE_MAX_DIMENSION ||
+      pixelSize.height > BROWSER_CAPTURE_MAX_DIMENSION ||
+      pixelSize.width * pixelSize.height > BROWSER_CAPTURE_MAX_PIXELS
+    ) {
+      throw new CaptureTooLargeError();
+    }
+    expireCaptures();
+    const clientHost = args.hostWindow.webContents.id;
+    if (
+      (captureAggregateBytesByHost.get(clientHost) ?? 0) + bytes.byteLength >
+      BB_DESKTOP_BROWSER_CAPTURE_AGGREGATE_MAX_BYTES
+    ) {
+      throw new CaptureCapacityExceededError();
+    }
+    const captureId = randomUUID();
+    const now = Date.now();
+    const absoluteExpiresAt = now + BB_DESKTOP_BROWSER_CAPTURE_MAX_LIFETIME_MS;
+    captureRegistry.set(captureId, {
+      buffer: bytes,
+      clientHost,
+      tabId: args.tabId,
+      createdAt: now,
+      expiresAt: now + BB_DESKTOP_BROWSER_CAPTURE_TTL_MS,
+      absoluteExpiresAt,
+      expirationTimer: null,
+      format: args.format,
+    });
+    captureAggregateBytesByHost.set(
+      clientHost,
+      (captureAggregateBytesByHost.get(clientHost) ?? 0) + bytes.byteLength,
+    );
+    scheduleCaptureExpiration(captureId);
+    return {
+      captureId,
+      navigationEpoch: args.navigationEpoch,
+      format: args.format,
+      pixelSize,
+      byteLength: bytes.byteLength,
+    };
+  }
+  function releaseCapturesForTab(
+    hostWebContentsId: number,
+    tabId: string,
+  ): void {
+    for (const [captureId, capture] of captureRegistry) {
+      if (capture.clientHost === hostWebContentsId && capture.tabId === tabId) {
+        releaseCaptureById(captureId);
+      }
+    }
+  }
+  function releaseCapturesForHost(hostWebContentsId: number): void {
+    for (const [captureId, capture] of captureRegistry) {
+      if (capture.clientHost === hostWebContentsId)
+        releaseCaptureById(captureId);
+    }
+  }
+
+  async function withQuiescentCookies<T>(
+    operation: () => Promise<T>,
+  ): Promise<T> {
+    const browserSession = ensureHardenedSession();
+    const contents = webContentsService
+      .getAllWebContents()
+      .filter((contents) => contents.session === browserSession);
+    if (
+      contents.length === 0 ||
+      contents.some(
+        (contents) =>
+          contents.isDestroyed() ||
+          contents.mainFrame.framesInSubtree.some(
+            (frame) => frame.origin !== "null",
+          ),
+      )
+    ) {
+      throw new Error(
+        "Close Browser pages and open about:blank before importing cookies; active page cookie writers cannot be isolated",
+      );
+    }
+    if (sessionRequests.size !== 0) {
+      throw new Error(
+        "Browser network requests must finish before importing cookies",
+      );
+    }
+    const owner = contents[0];
+    if (owner === undefined || owner.isDevToolsOpened()) {
+      throw new Error(
+        "Cookie import requires an exclusively controlled Browser session",
+      );
+    }
+    const debuggerApi = owner.debugger;
+    const attached = debuggerApi.isAttached();
+    if (!attached) debuggerApi.attach("1.3");
+    cookieMutationActive = true;
+    const registrations = Promise.withResolvers<void>();
+    const timeout = setTimeout(() => {
+      registrations.reject(
+        new Error("Browser service worker isolation could not be verified"),
+      );
+    }, 5_000);
+    const listener = (
+      _event: unknown,
+      method: string,
+      params: unknown,
+      sessionId?: string,
+    ): void => {
+      if (method !== "ServiceWorker.workerRegistrationUpdated" || sessionId)
+        return;
+      if (
+        !isObject(params) ||
+        !Array.isArray(params.registrations) ||
+        params.registrations.length !== 0
+      ) {
+        registrations.reject(
+          new Error(
+            "Cookie import requires a Browser session without registered service workers",
+          ),
+        );
+      } else {
+        registrations.resolve();
+      }
+    };
+    debuggerApi.on("message", listener);
+    try {
+      await Promise.all([
+        debuggerApi.sendCommand("ServiceWorker.enable"),
+        registrations.promise,
+      ]);
+      if (
+        Object.keys(browserSession.serviceWorkers.getAllRunning()).length !==
+          0 ||
+        sessionRequests.size !== 0 ||
+        webContentsService
+          .getAllWebContents()
+          .some(
+            (contents) =>
+              contents.session === browserSession &&
+              contents.mainFrame.framesInSubtree.some(
+                (frame) => frame.origin !== "null",
+              ),
+          )
+      ) {
+        throw new Error(
+          "Browser cookie writers changed while establishing isolation",
+        );
+      }
+      return await operation();
+    } finally {
+      clearTimeout(timeout);
+      debuggerApi.removeListener("message", listener);
+      try {
+        if (!owner.isDestroyed() && debuggerApi.isAttached()) {
+          await debuggerApi.sendCommand("ServiceWorker.disable");
+          if (!attached) debuggerApi.detach();
+        }
+      } finally {
+        cookieMutationActive = false;
+      }
+    }
+  }
+
   function mutateBrowserSession<T>(operation: () => Promise<T>): Promise<T> {
     const result = nextBrowserSessionMutation.then(operation, operation);
     nextBrowserSessionMutation = result.then(
@@ -667,6 +1249,69 @@ export function createDesktopBrowserViewManager(
     return resizingHostIds.has(hostWindow.webContents.id);
   }
 
+  function releaseEntryRenderSurface(entry: BrowserViewEntry): void {
+    const surface = entry.backgroundWindow;
+    entry.backgroundWindow = null;
+    if (surface !== null && !surface.isDestroyed()) {
+      surface.contentView.removeChildView(entry.view);
+      surface.destroy();
+    }
+  }
+
+  function ensureEntryRendered(
+    entry: BrowserViewEntry,
+    hostWindow: DesktopBrowserHostWindow,
+  ): Promise<void> {
+    if (entry.renderReady !== null) return entry.renderReady;
+    if (!entry.visible && entry.backgroundWindow === null) {
+      const bounds = clampBbDesktopBrowserViewBounds({
+        bounds: entry.desiredBounds,
+        viewport: hostWindowViewportBounds({ hostWindow }),
+      });
+      const surface = new BaseWindow({
+        show: false,
+        width: bounds.width,
+        height: bounds.height,
+        frame: false,
+        opacity: 0,
+        focusable: false,
+        skipTaskbar: true,
+      });
+      if (surface.getOpacity() !== 0 || surface.isFocusable()) {
+        surface.destroy();
+        throw new Error(
+          "An invisible Browser render surface is unavailable on this platform",
+        );
+      }
+      if (entry.attached && !hostWindow.isDestroyed()) {
+        hostWindow.contentView.removeChildView(entry.view);
+        entry.attached = false;
+      }
+      surface.contentView.addChildView(entry.view);
+      entry.backgroundWindow = surface;
+      applyEntryVisibility(entry, hostWindow);
+      surface.showInactive();
+    }
+    const rendered = Promise.withResolvers<void>();
+    const timeout = setTimeout(() => {
+      rendered.reject(new Error("Browser rendering did not become ready"));
+    }, 10_000);
+    const ready = rendered.promise.finally(() => {
+      clearTimeout(timeout);
+      if (!entry.view.webContents.isDestroyed()) {
+        entry.view.webContents.endFrameSubscription();
+      }
+      if (entry.renderReady === ready) entry.renderReady = null;
+    });
+    entry.renderReady = ready;
+    try {
+      entry.view.webContents.beginFrameSubscription(() => rendered.resolve());
+    } catch (error) {
+      rendered.reject(error);
+    }
+    return ready;
+  }
+
   function applyEntryVisibility(
     entry: BrowserViewEntry,
     hostWindow: DesktopBrowserHostWindow,
@@ -679,12 +1324,18 @@ export function createDesktopBrowserViewManager(
       entry.rendererRecoveryState === "healthy" &&
       !isHostResizing(hostWindow);
     if (!shouldBeVisible) {
-      entry.view.setVisible(false);
+      entry.view.setVisible(entry.backgroundWindow !== null);
       if (entry.attached && !hostWindow.isDestroyed()) {
         hostWindow.contentView.removeChildView(entry.view);
         entry.attached = false;
       }
+      if (entry.backgroundWindow !== null)
+        applyEntryDesiredBounds(entry, hostWindow);
       return;
+    }
+    if (entry.backgroundWindow !== null) {
+      releaseEntryRenderSurface(entry);
+      applyEntryDesiredBounds(entry, hostWindow);
     }
     if (!entry.attached) {
       hostWindow.contentView.addChildView(entry.view, 0);
@@ -705,9 +1356,21 @@ export function createDesktopBrowserViewManager(
     reason = "cancelled",
   ): void {
     for (const session of entry.pageScriptSessions.values()) {
-      session.cancel(reason);
+      session.session.cancel(reason);
     }
     entry.pageScriptSessions.clear();
+  }
+  function pageScriptCancellationError(reason: string): DOMException {
+    return new DOMException(
+      "Browser page script was cancelled",
+      reason === "navigation" ? "NavigationError" : "AbortError",
+    );
+  }
+  function cancelEntryCaptures(entry: BrowserViewEntry): void {
+    for (const controller of entry.activeCaptureControllers.values()) {
+      controller.abort();
+    }
+    entry.activeCaptureControllers.clear();
   }
 
   function clearEntryViewportProfile(
@@ -798,8 +1461,22 @@ export function createDesktopBrowserViewManager(
       });
   }
 
+  function activeRequestCount(entry: BrowserViewEntry): number {
+    return entry.activeRequestsByWebRequestId.size;
+  }
+
   function updateNetworkIdle(entry: BrowserViewEntry): void {
-    if (entry.inFlightRequests > 0) {
+    if (activeRequestCount(entry) > 0) {
+      entry.networkIdleSince = null;
+      if (entry.networkIdleTimer !== null) {
+        clearTimeout(entry.networkIdleTimer);
+        entry.networkIdleTimer = null;
+      }
+      return;
+    }
+    if (entry.loadState !== "load") {
+      // Only the finished current document may be considered network-idle;
+      // pre-load traffic and the previous generation must never settle it.
       entry.networkIdleSince = null;
       if (entry.networkIdleTimer !== null) {
         clearTimeout(entry.networkIdleTimer);
@@ -811,7 +1488,11 @@ export function createDesktopBrowserViewManager(
     if (entry.networkIdleTimer !== null) return;
     entry.networkIdleTimer = setTimeout(() => {
       entry.networkIdleTimer = null;
-      if (entry.inFlightRequests !== 0 || entry.networkIdleSince === null) {
+      if (
+        activeRequestCount(entry) !== 0 ||
+        entry.networkIdleSince === null ||
+        entry.loadState !== "load"
+      ) {
         return;
       }
       settleMatchingBrowserEvents(entry, {
@@ -827,18 +1508,25 @@ export function createDesktopBrowserViewManager(
     }
     const browserSession = session.fromPartition(partition);
     browserSession.setPermissionRequestHandler(
-      (webContents, permission, callback) => {
+      (webContents, permission, callback, details) => {
         const entry =
           webContents === null
             ? undefined
             : entriesByWebContentsId.get(webContents.id);
+        const requestedOrigin = serializePermissionOrigin(
+          typeof details?.requestingUrl === "string"
+            ? details.requestingUrl
+            : null,
+        );
         const allowed =
-          entry?.deniedPermissions.has(permission) === true
+          requestedOrigin === null
             ? false
-            : isAllowedBrowserPermission(permission) ||
-              entry?.allowedPermissions.has(permission) === true;
+            : entry === undefined
+              ? isAllowedBrowserPermission(permission)
+              : permissionDecisionFor(entry, requestedOrigin, permission);
         if (entry !== undefined) {
           appendDiagnostic(entry.diagnostics.permissions, {
+            origin: requestedOrigin,
             permission,
             decision: allowed ? "allow" : "deny",
             at: Date.now(),
@@ -861,16 +1549,25 @@ export function createDesktopBrowserViewManager(
         callback(true);
       },
     );
-    browserSession.setPermissionCheckHandler((webContents, permission) => {
-      const entry =
-        webContents === null
-          ? undefined
-          : entriesByWebContentsId.get(webContents.id);
-      return entry?.deniedPermissions.has(permission) === true
-        ? false
-        : isAllowedBrowserPermission(permission) ||
-            entry?.allowedPermissions.has(permission) === true;
-    });
+    browserSession.setPermissionCheckHandler(
+      (webContents, permission, requestingOrigin, details) => {
+        const entry =
+          webContents === null
+            ? undefined
+            : entriesByWebContentsId.get(webContents.id);
+        const origin =
+          typeof details?.requestingUrl === "string"
+            ? serializePermissionOrigin(details.requestingUrl)
+            : typeof requestingOrigin === "string" &&
+                requestingOrigin.length > 0
+              ? serializePermissionOrigin(requestingOrigin)
+              : null;
+        if (origin === null) return false;
+        return entry === undefined
+          ? isAllowedBrowserPermission(permission)
+          : permissionDecisionFor(entry, origin, permission);
+      },
+    );
     browserSession.setCertificateVerifyProc((request, callback) => {
       callback(trustedCertificateHosts.has(request.hostname) ? 0 : -3);
     });
@@ -893,12 +1590,23 @@ export function createDesktopBrowserViewManager(
       });
     });
     browserSession.webRequest.onBeforeRequest((details, callback) => {
+      if (cookieMutationActive) {
+        callback({ cancel: true });
+        return;
+      }
+      sessionRequests.add(details.id);
       const entry =
         details.webContentsId === undefined
           ? undefined
           : entriesByWebContentsId.get(details.webContentsId);
       if (entry !== undefined) {
-        entry.inFlightRequests += 1;
+        if (details.resourceType === "mainFrame") {
+          entry.triggeringMainRequestId = details.id;
+        }
+        entry.activeRequestsByWebRequestId.set(
+          details.id,
+          entry.navigationEpoch,
+        );
         updateNetworkIdle(entry);
         settleMatchingBrowserEvents(entry, {
           kind: "request",
@@ -910,6 +1618,7 @@ export function createDesktopBrowserViewManager(
       callback({});
     });
     browserSession.webRequest.onCompleted((details) => {
+      sessionRequests.delete(details.id);
       if (details.webContentsId === undefined) return;
       const entry = entriesByWebContentsId.get(details.webContentsId);
       if (entry === undefined) return;
@@ -920,7 +1629,7 @@ export function createDesktopBrowserViewManager(
         statusCode: details.statusCode,
         url,
       });
-      entry.inFlightRequests = Math.max(0, entry.inFlightRequests - 1);
+      entry.activeRequestsByWebRequestId.delete(details.id);
       updateNetworkIdle(entry);
       settleMatchingBrowserEvents(entry, {
         kind: "response",
@@ -930,7 +1639,20 @@ export function createDesktopBrowserViewManager(
         phase: "complete",
       });
     });
+    browserSession.webRequest.onBeforeRedirect((details) => {
+      if (details.webContentsId === undefined) return;
+      const entry = entriesByWebContentsId.get(details.webContentsId);
+      if (entry === undefined) return;
+      settleMatchingBrowserEvents(entry, {
+        kind: "response",
+        url: truncate(details.url, BB_DESKTOP_BROWSER_MAX_URL_LENGTH),
+        method: details.method,
+        status: details.statusCode,
+        phase: "complete",
+      });
+    });
     browserSession.webRequest.onErrorOccurred((details) => {
+      sessionRequests.delete(details.id);
       if (details.webContentsId === undefined) return;
       const entry = entriesByWebContentsId.get(details.webContentsId);
       if (entry === undefined) return;
@@ -940,7 +1662,7 @@ export function createDesktopBrowserViewManager(
         method: details.method,
         url: truncate(details.url, BB_DESKTOP_BROWSER_MAX_URL_LENGTH),
       });
-      entry.inFlightRequests = Math.max(0, entry.inFlightRequests - 1);
+      entry.activeRequestsByWebRequestId.delete(details.id);
       updateNetworkIdle(entry);
     });
     hardenedSession = browserSession;
@@ -951,6 +1673,19 @@ export function createDesktopBrowserViewManager(
     const browserSession = ensureHardenedSession();
     await browserSession.clearStorageData();
     await browserSession.clearCache();
+  }
+
+  function quiesceEntryNetworkTraffic(): void {
+    for (const entry of entries.values()) {
+      if (
+        entry.view.webContents.isDestroyed() ||
+        entry.view.webContents.getURL().length === 0
+      ) {
+        continue;
+      }
+      cancelEntryPageScripts(entry, "navigation");
+      entry.view.webContents.stop();
+    }
   }
 
   function reloadEntriesAfterCookieChange(): void {
@@ -995,16 +1730,55 @@ export function createDesktopBrowserViewManager(
       }
     }
     record.active = false;
+    for (const [requestId, tracked] of entry.pageScriptSessions) {
+      if (tracked.frameId !== record.publicFrameId) continue;
+      tracked.session.cancel("navigation");
+      entry.pageScriptSessions.delete(requestId);
+    }
     entry.frameRegistry.delete(record.publicFrameId);
     entry.frameRecordsByDebuggerId.delete(debuggerFrameId);
+    if (
+      entry.frameContextsByDebuggerFrameId.get(debuggerFrameId)
+        ?.debuggerSessionId === record.debuggerSessionId
+    ) {
+      entry.frameContextsByDebuggerFrameId.delete(debuggerFrameId);
+    }
+    entry.isolatedWorldCreationsByFrameId.delete(debuggerFrameId);
   }
 
   function invalidateAllFrames(entry: BrowserViewEntry): void {
     for (const record of entry.frameRecordsByDebuggerId.values()) {
       record.active = false;
     }
+    entry.pointerButtons = 0;
     entry.frameRegistry.clear();
     entry.frameRecordsByDebuggerId.clear();
+    entry.frameContextsByDebuggerFrameId.clear();
+    entry.isolatedWorldCreationsByFrameId.clear();
+  }
+
+  function ensureEntryDebugger(entry: BrowserViewEntry): Promise<void> {
+    const browserDebugger = entry.view.webContents.debugger;
+    if (entry.debuggerReady !== null && browserDebugger.isAttached())
+      return entry.debuggerReady;
+    const ready = (async () => {
+      if (!browserDebugger.isAttached()) browserDebugger.attach("1.3");
+      await Promise.all([
+        browserDebugger.sendCommand("Page.enable"),
+        browserDebugger.sendCommand("Runtime.enable"),
+        browserDebugger.sendCommand("Target.setAutoAttach", {
+          autoAttach: true,
+          waitForDebuggerOnStart: false,
+          flatten: true,
+          filter: [{ type: "iframe" }, { exclude: true }],
+        }),
+      ]);
+    })();
+    entry.debuggerReady = ready;
+    void ready.catch(() => {
+      if (entry.debuggerReady === ready) entry.debuggerReady = null;
+    });
+    return ready;
   }
 
   function frameRecordFor(
@@ -1016,26 +1790,95 @@ export function createDesktopBrowserViewManager(
       record === undefined ||
       !record.active ||
       record.documentEpoch !== frame.documentEpoch ||
+      (record.debuggerSessionId !== "" &&
+        !entry.childFrameSessions.has(record.debuggerSessionId)) ||
       entry.frameRecordsByDebuggerId.get(record.debuggerFrameId) !== record
     ) {
       throw new Error("The Browser frame target changed");
     }
     return record;
   }
+  async function ensureFrameIsolatedWorldContext(
+    entry: BrowserViewEntry,
+    debuggerFrameId: string,
+  ): Promise<BrowserExecutionContext> {
+    const existing = entry.isolatedWorldCreationsByFrameId.get(debuggerFrameId);
+    if (existing !== undefined) return existing;
+    const creation = (async () => {
+      const record = entry.frameRecordsByDebuggerId.get(debuggerFrameId);
+      if (record === undefined)
+        throw new Error("The Browser frame target changed");
+      const browserDebugger = entry.view.webContents.debugger;
+      await ensureEntryDebugger(entry);
+      if (entry.frameRecordsByDebuggerId.get(debuggerFrameId) !== record) {
+        throw new Error("The Browser frame target changed");
+      }
+      const created = await browserDebugger.sendCommand(
+        "Page.createIsolatedWorld",
+        {
+          frameId: debuggerFrameId,
+          worldName: "bb-browser-frame-v1",
+        },
+        record.debuggerSessionId || undefined,
+      );
+      const executionContextId = Object.getOwnPropertyDescriptor(
+        created,
+        "executionContextId",
+      )?.value;
+      const context = record.isolatedExecutionContext;
+      if (
+        entry.frameRecordsByDebuggerId.get(debuggerFrameId) !== record ||
+        context === null ||
+        context.id !== executionContextId
+      ) {
+        throw new Error("The Browser frame execution context is unavailable");
+      }
+      return context;
+    })().finally(() => {
+      if (
+        entry.isolatedWorldCreationsByFrameId.get(debuggerFrameId) === creation
+      ) {
+        entry.isolatedWorldCreationsByFrameId.delete(debuggerFrameId);
+      }
+    });
+    entry.isolatedWorldCreationsByFrameId.set(debuggerFrameId, creation);
+    return creation;
+  }
   async function frameViewportOffset(
     entry: BrowserViewEntry,
     frame: { frameId: string; documentEpoch: number },
+    coordinateSpace: "page" | "session",
   ): Promise<{ x: number; y: number }> {
     let record = frameRecordFor(entry, frame);
     let x = 0;
     let y = 0;
     const browserDebugger = entry.view.webContents.debugger;
-    if (!browserDebugger.isAttached()) browserDebugger.attach("1.3");
-    await browserDebugger.sendCommand("DOM.enable");
+    await ensureEntryDebugger(entry);
+    frameRecordFor(entry, frame);
     while (record.parentDebuggerFrameId !== null) {
-      const owner = await browserDebugger.sendCommand("DOM.getFrameOwner", {
-        frameId: record.debuggerFrameId,
-      });
+      if (
+        coordinateSpace === "session" &&
+        entry.childFrameSessions.get(record.debuggerSessionId)?.frameId ===
+          record.debuggerFrameId
+      )
+        break;
+      const parent = entry.frameRecordsByDebuggerId.get(
+        record.parentDebuggerFrameId,
+      );
+      if (parent === undefined)
+        throw new Error("The Browser frame target changed");
+      await browserDebugger.sendCommand(
+        "DOM.enable",
+        {},
+        parent.debuggerSessionId || undefined,
+      );
+      const owner = await browserDebugger.sendCommand(
+        "DOM.getFrameOwner",
+        {
+          frameId: record.debuggerFrameId,
+        },
+        parent.debuggerSessionId || undefined,
+      );
       const backendNodeId = isObject(owner)
         ? Object.getOwnPropertyDescriptor(owner, "backendNodeId")?.value
         : undefined;
@@ -1045,9 +1888,13 @@ export function createDesktopBrowserViewManager(
       ) {
         throw new Error("The Browser frame owner is unavailable");
       }
-      const box = await browserDebugger.sendCommand("DOM.getBoxModel", {
-        backendNodeId,
-      });
+      const box = await browserDebugger.sendCommand(
+        "DOM.getBoxModel",
+        {
+          backendNodeId,
+        },
+        parent.debuggerSessionId || undefined,
+      );
       const model = isObject(box)
         ? Object.getOwnPropertyDescriptor(box, "model")?.value
         : undefined;
@@ -1066,13 +1913,16 @@ export function createDesktopBrowserViewManager(
       }
       x += content[0];
       y += content[1];
-      const parent = entry.frameRecordsByDebuggerId.get(
-        record.parentDebuggerFrameId,
-      );
-      if (parent === undefined) {
-        throw new Error("The Browser frame target changed");
-      }
       record = parent;
+      while (record.parentDebuggerFrameId !== null) {
+        const ancestor = entry.frameRecordsByDebuggerId.get(
+          record.parentDebuggerFrameId,
+        );
+        if (ancestor === undefined)
+          throw new Error("The Browser frame target changed");
+        if (ancestor.debuggerSessionId !== record.debuggerSessionId) break;
+        record = ancestor;
+      }
     }
     frameRecordFor(entry, frame);
     return { x, y };
@@ -1086,7 +1936,7 @@ export function createDesktopBrowserViewManager(
       throw new Error("The Browser page changed before frame discovery");
     }
     const browserDebugger = entry.view.webContents.debugger;
-    if (!browserDebugger.isAttached()) browserDebugger.attach("1.3");
+    await ensureEntryDebugger(entry);
     const raw = await browserDebugger.sendCommand("Page.getFrameTree");
     if (
       typeof raw !== "object" ||
@@ -1097,11 +1947,40 @@ export function createDesktopBrowserViewManager(
     ) {
       throw new Error("Browser frame discovery returned an invalid tree");
     }
+    const externalTrees = new Map<
+      string,
+      Array<{ tree: Record<string, unknown>; sessionId: string }>
+    >();
+    for (const [sessionId, session] of entry.childFrameSessions) {
+      await session.ready;
+      if (entry.childFrameSessions.get(sessionId) !== session) continue;
+      const childRaw: unknown = await browserDebugger.sendCommand(
+        "Page.getFrameTree",
+        {},
+        sessionId,
+      );
+      if (
+        !isObject(childRaw) ||
+        !isObject(childRaw.frameTree) ||
+        !isObject(childRaw.frameTree.frame)
+      ) {
+        throw new Error(
+          "Browser child frame discovery returned an invalid tree",
+        );
+      }
+      const parentId = childRaw.frameTree.frame.parentId;
+      if (typeof parentId !== "string") continue;
+      const siblings = externalTrees.get(parentId) ?? [];
+      siblings.push({ tree: childRaw.frameTree, sessionId });
+      externalTrees.set(parentId, siblings);
+    }
+    const visited = new Set<string>();
     const frames: BbDesktopBrowserListFramesResult["frames"] = [];
     const visit = (
       node: unknown,
       parentDebuggerFrameId: string | null,
       depth: number,
+      debuggerSessionId: string,
     ): void => {
       if (frames.length >= request.maxFrames || depth > 8) return;
       if (typeof node !== "object" || node === null || Array.isArray(node)) {
@@ -1119,32 +1998,45 @@ export function createDesktopBrowserViewManager(
         frameValue,
         "id",
       )?.value;
-      if (
-        typeof debuggerFrameId !== "string" ||
-        debuggerFrameId.length === 0
-      ) {
+      if (typeof debuggerFrameId !== "string" || debuggerFrameId.length === 0) {
         return;
       }
+      if (visited.has(debuggerFrameId)) return;
+      visited.add(debuggerFrameId);
       const loaderIdValue = Object.getOwnPropertyDescriptor(
         frameValue,
         "loaderId",
       )?.value;
-      const loaderId =
-        typeof loaderIdValue === "string" ? loaderIdValue : null;
-      const urlValue = Object.getOwnPropertyDescriptor(frameValue, "url")?.value;
+      const loaderId = typeof loaderIdValue === "string" ? loaderIdValue : null;
+      const urlValue = Object.getOwnPropertyDescriptor(
+        frameValue,
+        "url",
+      )?.value;
       const nameValue = Object.getOwnPropertyDescriptor(
         frameValue,
         "name",
       )?.value;
       let record = entry.frameRecordsByDebuggerId.get(debuggerFrameId);
-      if (record !== undefined && record.loaderId !== loaderId) {
+      if (
+        record !== undefined &&
+        (record.loaderId !== loaderId ||
+          record.debuggerSessionId !== debuggerSessionId)
+      ) {
         invalidateFrameRecord(entry, debuggerFrameId);
         record = undefined;
       }
       if (record === undefined) {
+        const cached = entry.frameContextsByDebuggerFrameId.get(
+          debuggerFrameId,
+        ) ?? {
+          debuggerSessionId,
+          mainExecutionContext: null,
+          isolatedExecutionContext: null,
+        };
         record = {
           publicFrameId: randomUUID(),
           debuggerFrameId,
+          debuggerSessionId,
           loaderId,
           parentDebuggerFrameId,
           documentEpoch: entry.nextFrameDocumentEpoch++,
@@ -1152,12 +2044,18 @@ export function createDesktopBrowserViewManager(
           name: typeof nameValue === "string" ? truncate(nameValue, 256) : null,
           depth,
           active: true,
-          executionContextId:
-            entry.pendingExecutionContextIdsByFrameId.get(debuggerFrameId) ??
-            null,
+          mainExecutionContext:
+            cached.debuggerSessionId === debuggerSessionId
+              ? cached.mainExecutionContext
+              : null,
+          isolatedExecutionContext:
+            cached.debuggerSessionId === debuggerSessionId
+              ? cached.isolatedExecutionContext
+              : null,
         };
         if (depth > 0) entry.frameRegistry.set(record.publicFrameId, record);
         entry.frameRecordsByDebuggerId.set(debuggerFrameId, record);
+        entry.frameContextsByDebuggerFrameId.delete(debuggerFrameId);
       } else {
         record.url =
           typeof urlValue === "string" ? truncate(urlValue, 4_096) : "";
@@ -1174,7 +2072,7 @@ export function createDesktopBrowserViewManager(
         frames.push({
           frameId: record.publicFrameId,
           documentEpoch: record.documentEpoch,
-          parentFrameId: depth === 1 ? null : parent?.publicFrameId ?? null,
+          parentFrameId: depth === 1 ? null : (parent?.publicFrameId ?? null),
           url: record.url,
           name: record.name,
           depth: record.depth,
@@ -1184,132 +2082,122 @@ export function createDesktopBrowserViewManager(
         node,
         "childFrames",
       )?.value;
-      if (!Array.isArray(children)) return;
-      for (const child of children) {
-        visit(child, debuggerFrameId, depth + 1);
+      if (Array.isArray(children)) {
+        for (const child of children) {
+          visit(child, debuggerFrameId, depth + 1, debuggerSessionId);
+          if (frames.length >= request.maxFrames) return;
+        }
+      }
+      for (const child of externalTrees.get(debuggerFrameId) ?? []) {
+        visit(child.tree, debuggerFrameId, depth + 1, child.sessionId);
         if (frames.length >= request.maxFrames) return;
       }
     };
     const frameTree = Object.getOwnPropertyDescriptor(raw, "frameTree")?.value;
-    visit(frameTree, null, 0);
+    visit(frameTree, null, 0, "");
     if (entry.navigationEpoch !== request.expectedNavigationEpoch) {
       throw new Error("The Browser page changed during frame discovery");
     }
     return { navigationEpoch: entry.navigationEpoch, frames };
   }
 
-type BrowserWaitObservation = {
-  kind:
-    | "url"
-    | "navigation"
-    | "load-state"
-    | "popup"
-    | "request"
-    | "response"
-    | "download-blocked";
-  url?: string;
-  method?: string;
-  status?: number;
-  phase?: "start" | "commit" | "complete";
-  sameDocument?: boolean;
-  state?: "domcontentloaded" | "load" | "networkidle";
-  blocked?: boolean;
-};
+  type BrowserWaitObservation = {
+    kind:
+      | "url"
+      | "navigation"
+      | "load-state"
+      | "popup"
+      | "request"
+      | "response"
+      | "download-blocked";
+    url?: string;
+    method?: string;
+    status?: number;
+    phase?: "start" | "commit" | "complete";
+    sameDocument?: boolean;
+    state?: "domcontentloaded" | "load" | "networkidle";
+    blocked?: boolean;
+  };
 
-function browserUrlMatches(
-  url: string,
-  expected: string,
-  match: "exact" | "glob",
-): boolean {
-  if (match === "exact") return url === expected;
-  const parts = expected.split("*");
-  if (parts.length === 1) return url === expected;
-  let offset = 0;
-  for (const [index, part] of parts.entries()) {
-    const found = url.indexOf(part, offset);
-    if (found < offset || (index === 0 && found !== 0)) return false;
-    offset = found + part.length;
-  }
-  return parts.at(-1) === "" || offset === url.length;
-}
-
-function browserWaitIsTransition(
-  criteria: BbDesktopBrowserWaitRequest["criteria"],
-): boolean {
-  return (
-    criteria.kind === "url" ||
-    criteria.kind === "navigation" ||
-    (criteria.kind === "load-state" && criteria.document === "next")
-  );
-}
-function browserWaitMatches(
-  criteria: BbDesktopBrowserWaitRequest["criteria"],
-  observation: BrowserWaitObservation,
-): boolean {
-  if (criteria.kind === "url") {
+  function browserWaitIsTransition(
+    criteria: BbDesktopBrowserWaitRequest["criteria"],
+  ): boolean {
     return (
-      observation.url !== undefined &&
-      browserUrlMatches(observation.url, criteria.url, criteria.match)
+      criteria.kind === "url" ||
+      criteria.kind === "navigation" ||
+      (criteria.kind === "load-state" && criteria.document === "next")
     );
   }
-  if (criteria.kind === "navigation") {
-    return (
-      observation.kind === "navigation" &&
-      observation.phase === criteria.phase &&
-      observation.sameDocument === criteria.sameDocument
-    );
+  function browserWaitMatches(
+    criteria: BbDesktopBrowserWaitRequest["criteria"],
+    observation: BrowserWaitObservation,
+  ): boolean {
+    if (criteria.kind === "url") {
+      return (
+        observation.url !== undefined &&
+        browserUrlMatches(observation.url, criteria.url, criteria.match)
+      );
+    }
+    if (criteria.kind === "navigation") {
+      return (
+        observation.kind === "navigation" &&
+        observation.phase === criteria.phase &&
+        observation.sameDocument === criteria.sameDocument
+      );
+    }
+    if (criteria.kind === "load-state") {
+      return (
+        observation.kind === "load-state" &&
+        observation.state === criteria.state
+      );
+    }
+    if (criteria.kind === "popup") return observation.kind === "popup";
+    if (criteria.kind === "request" || criteria.kind === "response") {
+      return (
+        observation.kind === criteria.kind &&
+        observation.url !== undefined &&
+        browserUrlMatches(observation.url, criteria.url, criteria.match) &&
+        (criteria.method === undefined ||
+          observation.method === criteria.method) &&
+        (criteria.kind === "request" ||
+          criteria.status === undefined ||
+          observation.status === criteria.status)
+      );
+    }
+    if (criteria.kind === "download-blocked") {
+      return (
+        observation.kind === "download-blocked" && observation.blocked === true
+      );
+    }
+    return false;
   }
-  if (criteria.kind === "load-state") {
-    return (
-      observation.kind === "load-state" &&
-      observation.state === criteria.state
-    );
-  }
-  if (criteria.kind === "popup") return observation.kind === "popup";
-  if (criteria.kind === "request" || criteria.kind === "response") {
-    return (
-      observation.kind === criteria.kind &&
-      observation.url !== undefined &&
-      browserUrlMatches(observation.url, criteria.url, criteria.match) &&
-      (criteria.method === undefined || observation.method === criteria.method) &&
-      (criteria.kind === "request" ||
-        criteria.status === undefined ||
-        observation.status === criteria.status)
-    );
-  }
-  if (criteria.kind === "download-blocked") {
-    return observation.kind === "download-blocked" && observation.blocked === true;
-  }
-  return false;
-}
 
-function settleMatchingBrowserEvents(
-  entry: BrowserViewEntry,
-  observation: BrowserWaitObservation,
-): void {
-  for (const [requestId, waiter] of entry.eventWaiters) {
-    if (!browserWaitMatches(waiter.request.criteria, observation)) continue;
-    entry.eventWaiters.delete(requestId);
-    waiter.resolve({
-      requestId,
-      navigationEpoch: entry.navigationEpoch,
-      value: observation,
-    });
+  function settleMatchingBrowserEvents(
+    entry: BrowserViewEntry,
+    observation: BrowserWaitObservation,
+  ): void {
+    for (const [requestId, waiter] of entry.eventWaiters) {
+      if (!browserWaitMatches(waiter.request.criteria, observation)) continue;
+      entry.eventWaiters.delete(requestId);
+      waiter.resolve({
+        requestId,
+        navigationEpoch: entry.navigationEpoch,
+        value: observation,
+      });
+    }
   }
-}
 
-function rejectBrowserEventWaiters(
-  entry: BrowserViewEntry,
-  predicate: (waiter: BrowserEventWaiter) => boolean,
-  error: Error,
-): void {
-  for (const [requestId, waiter] of entry.eventWaiters) {
-    if (!predicate(waiter)) continue;
-    entry.eventWaiters.delete(requestId);
-    waiter.reject(error);
+  function rejectBrowserEventWaiters(
+    entry: BrowserViewEntry,
+    predicate: (waiter: BrowserEventWaiter) => boolean,
+    error: Error,
+  ): void {
+    for (const [requestId, waiter] of entry.eventWaiters) {
+      if (!predicate(waiter)) continue;
+      entry.eventWaiters.delete(requestId);
+      waiter.reject(error);
+    }
   }
-}
-
 
   const hardenedWebPreferences: WebPreferences = {
     partition,
@@ -1392,69 +2280,266 @@ function rejectBrowserEventWaiters(
       },
     );
     try {
-      if (!webContents.debugger.isAttached()) {
-        webContents.debugger.attach("1.3");
-      }
-      void webContents.debugger.sendCommand("Page.enable");
-      void webContents.debugger.sendCommand("Runtime.enable");
-      webContents.debugger.on("message", (_event, method, params) => {
-        if (!isObject(params)) return;
-        if (method === "Runtime.executionContextCreated") {
-          const context = params.context;
-          if (!isObject(context)) return;
-          const contextId = context.id;
-          const auxData = context.auxData;
-          if (
-            typeof contextId !== "number" ||
-            !isObject(auxData) ||
-            typeof auxData.frameId !== "string"
-          ) {
+      webContents.debugger.on("detach", () => {
+        entry.debuggerReady = null;
+        entry.childFrameSessions.clear();
+        invalidateAllFrames(entry);
+        for (const controller of entry.activeInputControllers.values())
+          controller.abort();
+        entry.activeInputControllers.clear();
+        cancelEntryPageScripts(entry, "debugger-detached");
+        cancelEntryCaptures(entry);
+      });
+      webContents.debugger.on(
+        "message",
+        (_event, method, params, debuggerSessionId = "") => {
+          if (!isObject(params)) return;
+          if (method === "Target.attachedToTarget") {
+            const childSessionId = params.sessionId;
+            const targetInfo = params.targetInfo;
+            if (
+              typeof childSessionId !== "string" ||
+              !isObject(targetInfo) ||
+              targetInfo.type !== "iframe" ||
+              typeof targetInfo.targetId !== "string"
+            )
+              return;
+            const ready = Promise.all([
+              webContents.debugger.sendCommand(
+                "Page.enable",
+                {},
+                childSessionId,
+              ),
+              webContents.debugger.sendCommand(
+                "Runtime.enable",
+                {},
+                childSessionId,
+              ),
+              webContents.debugger.sendCommand(
+                "Target.setAutoAttach",
+                {
+                  autoAttach: true,
+                  waitForDebuggerOnStart: false,
+                  flatten: true,
+                  filter: [{ type: "iframe" }, { exclude: true }],
+                },
+                childSessionId,
+              ),
+            ]).then(() => undefined);
+            entry.childFrameSessions.set(childSessionId, {
+              frameId: targetInfo.targetId,
+              ready,
+            });
+            void ready.catch((error) => {
+              appendDiagnostic(entry.diagnostics.console, {
+                at: Date.now(),
+                level: "error",
+                message: String(error),
+                line: 0,
+                sourceId: "",
+              });
+            });
             return;
           }
-          const record = entry.frameRecordsByDebuggerId.get(auxData.frameId);
-          if (record !== undefined) record.executionContextId = contextId;
-          return;
-        }
-        if (method === "Page.frameDetached") {
-          const frameId = params.frameId;
-          if (typeof frameId === "string") {
-            invalidateFrameRecord(entry, frameId);
+          if (method === "Target.detachedFromTarget") {
+            if (typeof params.sessionId !== "string") return;
+            const session = entry.childFrameSessions.get(params.sessionId);
+            entry.childFrameSessions.delete(params.sessionId);
+            if (session !== undefined)
+              invalidateFrameRecord(entry, session.frameId);
+            for (const [
+              frameId,
+              context,
+            ] of entry.frameContextsByDebuggerFrameId) {
+              if (context.debuggerSessionId === params.sessionId)
+                entry.frameContextsByDebuggerFrameId.delete(frameId);
+            }
+            return;
           }
-          return;
-        }
-        if (method === "Page.frameNavigated") {
-          const frame = params.frame;
-          if (!isObject(frame) || typeof frame.id !== "string") return;
-          const record = entry.frameRecordsByDebuggerId.get(frame.id);
-          if (record === undefined) return;
-          const loaderIdValue = Object.getOwnPropertyDescriptor(
-            frame,
-            "loaderId",
-          )?.value;
-          const loaderId =
-            typeof loaderIdValue === "string" ? loaderIdValue : null;
-          if (record.loaderId === null || record.loaderId !== loaderId) {
-            invalidateFrameRecord(entry, frame.id);
+          if (
+            debuggerSessionId !== "" &&
+            !entry.childFrameSessions.has(debuggerSessionId)
+          )
+            return;
+          if (method === "Runtime.executionContextCreated") {
+            const context = params.context;
+            if (!isObject(context)) return;
+            const contextId = context.id;
+            const uniqueId = context.uniqueId;
+            const auxData = context.auxData;
+            if (
+              typeof contextId !== "number" ||
+              !Number.isInteger(contextId) ||
+              contextId < 0 ||
+              typeof uniqueId !== "string" ||
+              uniqueId.length === 0 ||
+              !isObject(auxData) ||
+              typeof auxData.frameId !== "string"
+            ) {
+              return;
+            }
+            const isDefaultMain = auxData.isDefault === true;
+            const isBbIsolated =
+              auxData.isDefault !== true &&
+              context.name === "bb-browser-frame-v1";
+            if (!isDefaultMain && !isBbIsolated) {
+              return;
+            }
+            const executionContext = { id: contextId, uniqueId };
+            let record = entry.frameRecordsByDebuggerId.get(auxData.frameId);
+            if (
+              isDefaultMain &&
+              record !== undefined &&
+              record.debuggerSessionId === debuggerSessionId &&
+              record.mainExecutionContext !== null &&
+              record.mainExecutionContext.uniqueId !== uniqueId
+            ) {
+              invalidateFrameRecord(entry, auxData.frameId);
+              record = undefined;
+            }
+            if (
+              record !== undefined &&
+              record.debuggerSessionId === debuggerSessionId
+            ) {
+              if (isDefaultMain) {
+                record.mainExecutionContext = executionContext;
+              } else {
+                record.isolatedExecutionContext = executionContext;
+              }
+              return;
+            }
+            const previous = entry.frameContextsByDebuggerFrameId.get(
+              auxData.frameId,
+            );
+            const pending =
+              previous?.debuggerSessionId === debuggerSessionId
+                ? previous
+                : {
+                    debuggerSessionId,
+                    mainExecutionContext: null,
+                    isolatedExecutionContext: null,
+                  };
+            if (isDefaultMain) {
+              pending.mainExecutionContext = executionContext;
+            } else {
+              pending.isolatedExecutionContext = executionContext;
+            }
+            entry.frameContextsByDebuggerFrameId.set(auxData.frameId, pending);
+            return;
           }
-          return;
-        }
-        if (method !== "Page.javascriptDialogOpening") return;
-        const handler = entry.nextDialogHandler ?? { behavior: "dismiss" };
-        entry.nextDialogHandler = null;
-        appendDiagnostic(entry.diagnostics.dialogs, {
+          if (
+            method === "Runtime.executionContextDestroyed" ||
+            method === "Runtime.executionContextsCleared"
+          ) {
+            if (method === "Runtime.executionContextsCleared") {
+              for (const record of entry.frameRecordsByDebuggerId.values()) {
+                if (record.debuggerSessionId === debuggerSessionId) {
+                  invalidateFrameRecord(entry, record.debuggerFrameId);
+                }
+              }
+              for (const [
+                frameId,
+                context,
+              ] of entry.frameContextsByDebuggerFrameId) {
+                if (context.debuggerSessionId === debuggerSessionId)
+                  entry.frameContextsByDebuggerFrameId.delete(frameId);
+              }
+              return;
+            }
+            const destroyedUniqueId = params.executionContextUniqueId;
+            if (typeof destroyedUniqueId !== "string") return;
+            for (const record of entry.frameRecordsByDebuggerId.values()) {
+              if (record.debuggerSessionId !== debuggerSessionId) continue;
+              if (record.mainExecutionContext?.uniqueId === destroyedUniqueId) {
+                invalidateFrameRecord(entry, record.debuggerFrameId);
+              } else if (
+                record.isolatedExecutionContext?.uniqueId === destroyedUniqueId
+              ) {
+                record.isolatedExecutionContext = null;
+              }
+            }
+            for (const [
+              frameId,
+              pending,
+            ] of entry.frameContextsByDebuggerFrameId) {
+              if (pending.debuggerSessionId !== debuggerSessionId) continue;
+              if (pending.mainExecutionContext?.uniqueId === destroyedUniqueId)
+                pending.mainExecutionContext = null;
+              if (
+                pending.isolatedExecutionContext?.uniqueId === destroyedUniqueId
+              )
+                pending.isolatedExecutionContext = null;
+              if (
+                pending.mainExecutionContext === null &&
+                pending.isolatedExecutionContext === null
+              ) {
+                entry.frameContextsByDebuggerFrameId.delete(frameId);
+              }
+            }
+            return;
+          }
+          if (method === "Page.frameDetached") {
+            const frameId = params.frameId;
+            if (typeof frameId === "string") {
+              if (
+                entry.frameContextsByDebuggerFrameId.get(frameId)
+                  ?.debuggerSessionId === debuggerSessionId
+              ) {
+                entry.frameContextsByDebuggerFrameId.delete(frameId);
+              }
+              if (
+                entry.frameRecordsByDebuggerId.get(frameId)
+                  ?.debuggerSessionId === debuggerSessionId
+              ) {
+                invalidateFrameRecord(entry, frameId);
+              }
+            }
+            return;
+          }
+          if (method === "Page.frameNavigated") {
+            const frame = params.frame;
+            if (!isObject(frame) || typeof frame.id !== "string") return;
+            const record = entry.frameRecordsByDebuggerId.get(frame.id);
+            if (
+              record === undefined ||
+              record.debuggerSessionId !== debuggerSessionId
+            )
+              return;
+            const loaderIdValue = Object.getOwnPropertyDescriptor(
+              frame,
+              "loaderId",
+            )?.value;
+            const loaderId =
+              typeof loaderIdValue === "string" ? loaderIdValue : null;
+            if (record.loaderId === null || record.loaderId !== loaderId) {
+              invalidateFrameRecord(entry, frame.id);
+            }
+            return;
+          }
+          if (method !== "Page.javascriptDialogOpening") return;
+          const handler = entry.nextDialogHandler ?? { behavior: "dismiss" };
+          entry.nextDialogHandler = null;
+          appendDiagnostic(entry.diagnostics.dialogs, {
+            at: Date.now(),
+            message:
+              typeof params.message === "string"
+                ? truncate(params.message, 2_048)
+                : "",
+            type: typeof params.type === "string" ? params.type : "unknown",
+            behavior: handler.behavior,
+          });
+          void webContents.debugger.sendCommand("Page.handleJavaScriptDialog", {
+            accept: handler.behavior === "accept",
+            ...(handler.promptText === undefined
+              ? {}
+              : { promptText: handler.promptText }),
+          });
+        },
+      );
+      void ensureEntryDebugger(entry).catch((error) => {
+        appendDiagnostic(entry.diagnostics.pageErrors, {
           at: Date.now(),
-          message:
-            typeof params.message === "string"
-              ? truncate(params.message, 2_048)
-              : "",
-          type: typeof params.type === "string" ? params.type : "unknown",
-          behavior: handler.behavior,
-        });
-        void webContents.debugger.sendCommand("Page.handleJavaScriptDialog", {
-          accept: handler.behavior === "accept",
-          ...(handler.promptText === undefined
-            ? {}
-            : { promptText: handler.promptText }),
+          error: error instanceof Error ? error.message : String(error),
         });
       });
     } catch (error) {
@@ -1469,7 +2554,9 @@ function rejectBrowserEventWaiters(
         entry.suppressNextFocusNotification = false;
         return;
       }
-      send(hostWindow, BB_DESKTOP_BROWSER_FOCUSED_CHANNEL, { tabId });
+      if (entry.visible && entry.attached) {
+        send(hostWindow, BB_DESKTOP_BROWSER_FOCUSED_CHANNEL, { tabId });
+      }
     });
 
     webContents.on("before-input-event", (event, input) => {
@@ -1668,9 +2755,12 @@ function rejectBrowserEventWaiters(
         if (isMainFrame) {
           if (!isInPlace) {
             clearEntryViewportProfile(entry);
+            clearEntryPermissionDecisions(entry);
             entry.navigationEpoch += 1;
+            const previousEpoch = entry.navigationEpoch - 1;
             invalidateAllFrames(entry);
             cancelEntryPageScripts(entry, "navigation");
+            cancelEntryCaptures(entry);
             rejectBrowserEventWaiters(
               entry,
               (waiter) => !browserWaitIsTransition(waiter.request.criteria),
@@ -1678,6 +2768,29 @@ function rejectBrowserEventWaiters(
             );
             entry.loadState = "none";
             entry.networkIdleSince = null;
+            // The main-frame navigation request may have been tracked under
+            // the previous epoch (webRequest fires before this event);
+            // reassign it so the new document's own load is not dropped.
+            const triggeringId = entry.triggeringMainRequestId;
+            entry.triggeringMainRequestId = null;
+            if (
+              triggeringId !== null &&
+              entry.activeRequestsByWebRequestId.get(triggeringId) ===
+                previousEpoch
+            ) {
+              entry.activeRequestsByWebRequestId.set(
+                triggeringId,
+                entry.navigationEpoch,
+              );
+            }
+            for (const [requestId, requestEpoch] of [
+              ...entry.activeRequestsByWebRequestId.entries(),
+            ]) {
+              if (requestEpoch !== entry.navigationEpoch) {
+                entry.activeRequestsByWebRequestId.delete(requestId);
+              }
+            }
+            entry.generationStartedAt = Date.now();
           }
           settleMatchingBrowserEvents(entry, {
             kind: "navigation",
@@ -1724,8 +2837,7 @@ function rejectBrowserEventWaiters(
     const entry: BrowserViewEntry = {
       view,
       lastErrorText: null,
-      allowedPermissions: new Set(),
-      deniedPermissions: new Set(),
+      permissionDecisionsByOrigin: new Map(),
       diagnostics: {
         console: [],
         dialogs: [],
@@ -1744,18 +2856,28 @@ function rejectBrowserEventWaiters(
       visible: false,
       attached: true,
       frameRegistry: new Map(),
+      frameRecordsByDebuggerId: new Map(),
+      frameContextsByDebuggerFrameId: new Map(),
+      childFrameSessions: new Map(),
+      isolatedWorldCreationsByFrameId: new Map(),
       loadState: "none",
-      inFlightRequests: 0,
+      activeRequestsByWebRequestId: new Map(),
+      triggeringMainRequestId: null,
       networkIdleSince: null,
       networkIdleTimer: null,
-      frameRecordsByDebuggerId: new Map(),
+      generationStartedAt: null,
       eventWaiters: new Map(),
-      pendingExecutionContextIdsByFrameId: new Map(),
       nextFrameDocumentEpoch: 1,
       activeFindRequestId: null,
       navigationEpoch: 0,
+      activeCaptureControllers: new Map(),
       pageScriptSessions: new Map(),
       nextDialogHandler: null,
+      activeInputControllers: new Map(),
+      pointerButtons: 0,
+      debuggerReady: null,
+      backgroundWindow: null,
+      renderReady: null,
       viewportProfile: null,
     };
     wireWebContents(args.hostWindow, args.tabId, entry);
@@ -1789,6 +2911,10 @@ function rejectBrowserEventWaiters(
     }
     entries.delete(key);
     entriesByWebContentsId.delete(entry.view.webContents.id);
+    releaseCapturesForTab(
+      hostWindow.webContents.id,
+      key.slice(key.indexOf(":") + 1),
+    );
     clearEntryRendererRecoveryTimer(entry);
     if (entry.networkIdleTimer !== null) {
       clearTimeout(entry.networkIdleTimer);
@@ -1800,10 +2926,16 @@ function rejectBrowserEventWaiters(
     }
     entry.eventWaiters.clear();
     clearEntryViewportProfile(entry);
+    cancelEntryCaptures(entry);
+    for (const controller of entry.activeInputControllers.values()) {
+      controller.abort();
+    }
+    entry.activeInputControllers.clear();
     if (!hostWindow.isDestroyed() && entry.attached) {
       hostWindow.contentView.removeChildView(entry.view);
       entry.attached = false;
     }
+    releaseEntryRenderSurface(entry);
     if (!entry.view.webContents.isDestroyed()) {
       entry.view.webContents.close();
     }
@@ -1901,6 +3033,7 @@ function rejectBrowserEventWaiters(
     navigate({ hostWindow, request }) {
       withEntry({ hostWindow, tabId: request.tabId }, (entry) => {
         cancelEntryPageScripts(entry, "navigation");
+        cancelEntryCaptures(entry);
         clearEntryViewportProfile(entry);
         resetEntryRendererRecovery(entry);
         applyEntryVisibility(entry, hostWindow);
@@ -1911,6 +3044,7 @@ function rejectBrowserEventWaiters(
       withEntry({ hostWindow, tabId }, (entry) => {
         if (entry.view.webContents.navigationHistory.canGoBack()) {
           cancelEntryPageScripts(entry, "navigation");
+          cancelEntryCaptures(entry);
           clearEntryViewportProfile(entry);
           resetEntryRendererRecovery(entry);
           applyEntryVisibility(entry, hostWindow);
@@ -1922,6 +3056,7 @@ function rejectBrowserEventWaiters(
       withEntry({ hostWindow, tabId }, (entry) => {
         if (entry.view.webContents.navigationHistory.canGoForward()) {
           cancelEntryPageScripts(entry, "navigation");
+          cancelEntryCaptures(entry);
           clearEntryViewportProfile(entry);
           resetEntryRendererRecovery(entry);
           applyEntryVisibility(entry, hostWindow);
@@ -1932,6 +3067,7 @@ function rejectBrowserEventWaiters(
     reload({ hostWindow, tabId }) {
       withEntry({ hostWindow, tabId }, (entry) => {
         cancelEntryPageScripts(entry, "navigation");
+        cancelEntryCaptures(entry);
         clearEntryViewportProfile(entry);
         resetEntryRendererRecovery(entry);
         entry.view.webContents.reload();
@@ -1971,25 +3107,42 @@ function rejectBrowserEventWaiters(
     setVisibleWithoutFocus({ hostWindow, request }) {
       setEntryVisibility({ hostWindow, request }, false);
     },
-    trustLocalhostCertificate({ hostWindow, tabId }) {
-      withEntry({ hostWindow, tabId }, (entry) => {
-        const host = getLoopbackCertificateHost(entry.view.webContents.getURL());
-        if (host === null) {
-          throw new Error(
-            "Only the current localhost HTTPS page can be trusted",
-          );
-        }
-        trustedCertificateHosts.add(host);
-        entry.lastErrorText = null;
-        entry.view.webContents.reload();
-      });
+    async trustLocalhostCertificate({ hostWindow, request }) {
+      const entry = entries.get(browserViewKey(hostWindow, request.tabId));
+      if (
+        entry === undefined ||
+        entry.view.webContents.isDestroyed() ||
+        entry.navigationEpoch !== request.expectedNavigationEpoch
+      ) {
+        throw new Error(
+          "The Browser page changed before the certificate could be trusted",
+        );
+      }
+      const currentUrl = entry.view.webContents.getURL();
+      const host = getLoopbackCertificateHost(currentUrl);
+      if (host === null) {
+        throw new Error("Only the current localhost HTTPS page can be trusted");
+      }
+      let trustedOrigin: string;
+      try {
+        trustedOrigin = new URL(currentUrl).origin;
+      } catch {
+        throw new Error("Only the current localhost HTTPS page can be trusted");
+      }
+      trustedCertificateHosts.add(host);
+      entry.lastErrorText = null;
+      entry.view.webContents.reload();
+      return {
+        navigationEpoch: entry.navigationEpoch,
+        trustedOrigin,
+      };
     },
     async listFrames({ hostWindow, request }) {
       const entry = entries.get(browserViewKey(hostWindow, request.tabId));
       if (
         entry === undefined ||
         entry.view.webContents.isDestroyed() ||
-        !entry.visible
+        entry.view.webContents.getURL().length === 0
       ) {
         throw new Error("The Browser tab is unavailable for frame discovery");
       }
@@ -2005,38 +3158,82 @@ function rejectBrowserEventWaiters(
       ) {
         throw new Error("The Browser tab is not available for page scripts");
       }
-      let frameExecutionContextId: number | undefined;
-      if (request.frame !== undefined) {
-        const record = frameRecordFor(entry, request.frame);
-        frameExecutionContextId = record.executionContextId ?? undefined;
-        if (frameExecutionContextId === undefined) {
-          const created = await entry.view.webContents.debugger.sendCommand(
-            "Page.createIsolatedWorld",
-            { frameId: record.debuggerFrameId, worldName: "bb-browser-frame-v1" },
-          );
-          const executionContextId = Object.getOwnPropertyDescriptor(
-            created,
-            "executionContextId",
-          )?.value;
-          if (typeof executionContextId !== "number") {
-            throw new Error("The Browser frame execution context is unavailable");
-          }
-          frameExecutionContextId = executionContextId;
-          record.executionContextId = executionContextId;
-        }
-      }
-      entry.pageScriptSessions.get(request.requestId)?.cancel("replaced");
-      const session = startDesktopBrowserPageScript({
-        navigationEpoch: entry.navigationEpoch,
-        request,
-        webContents: entry.view.webContents,
-        ...(frameExecutionContextId === undefined ? {} : { frameExecutionContextId }),
-      });
-      entry.pageScriptSessions.set(request.requestId, session);
+      entry.pageScriptSessions
+        .get(request.requestId)
+        ?.session.cancel("replaced");
+      let cancelledReason: string | null = null;
+      let session: DesktopBrowserPageScriptSession | null = null;
+      const tracked = {
+        frameId: request.frame?.frameId ?? null,
+        session: {
+          cancel(reason = "cancelled"): void {
+            if (session === null) {
+              cancelledReason = reason;
+            } else {
+              session.cancel(reason);
+            }
+          },
+        },
+      };
+      entry.pageScriptSessions.set(request.requestId, tracked);
       try {
-        return await session.promise;
+        const world = request.world ?? "isolated";
+        let frameContext:
+          | { uniqueContextId: string; sessionId: string }
+          | undefined;
+        if (request.frame !== undefined) {
+          const record = frameRecordFor(entry, request.frame);
+          const existing =
+            world === "main"
+              ? record.mainExecutionContext
+              : record.isolatedExecutionContext;
+          if (existing !== null) {
+            frameContext = {
+              uniqueContextId: existing.uniqueId,
+              sessionId: record.debuggerSessionId,
+            };
+          } else if (world === "main") {
+            throw new Error("The Browser frame target changed");
+          } else {
+            let executionContext: BrowserExecutionContext;
+            try {
+              executionContext = await ensureFrameIsolatedWorldContext(
+                entry,
+                record.debuggerFrameId,
+              );
+            } catch (error) {
+              if (cancelledReason !== null) {
+                throw pageScriptCancellationError(cancelledReason);
+              }
+              throw error;
+            }
+            const current = frameRecordFor(entry, request.frame);
+            frameContext = {
+              uniqueContextId: executionContext.uniqueId,
+              sessionId: current.debuggerSessionId,
+            };
+          }
+        }
+        if (
+          cancelledReason !== null ||
+          entry.pageScriptSessions.get(request.requestId) !== tracked ||
+          entry.navigationEpoch !== request.expectedNavigationEpoch ||
+          entry.view.webContents.isDestroyed()
+        ) {
+          throw pageScriptCancellationError(cancelledReason ?? "cancelled");
+        }
+        session = startDesktopBrowserPageScript({
+          navigationEpoch: entry.navigationEpoch,
+          request,
+          webContents: entry.view.webContents,
+          ...(frameContext === undefined ? {} : { frameContext }),
+        });
+        if (cancelledReason !== null) session.cancel(cancelledReason);
+        const result = await session.promise;
+        if (request.frame !== undefined) frameRecordFor(entry, request.frame);
+        return result;
       } finally {
-        if (entry.pageScriptSessions.get(request.requestId) === session) {
+        if (entry.pageScriptSessions.get(request.requestId) === tracked) {
           entry.pageScriptSessions.delete(request.requestId);
         }
       }
@@ -2046,7 +3243,27 @@ function rejectBrowserEventWaiters(
         const session = entry.pageScriptSessions.get(requestId);
         if (session === undefined) return;
         entry.pageScriptSessions.delete(requestId);
-        session.cancel();
+        session.session.cancel();
+      });
+    },
+    cancelTrustedInput({ hostWindow, tabId, requestId }) {
+      withEntry({ hostWindow, tabId }, (entry) => {
+        const controller = entry.activeInputControllers.get(
+          `trusted:${requestId}`,
+        );
+        if (controller === undefined) return;
+        entry.activeInputControllers.delete(`trusted:${requestId}`);
+        controller.abort();
+      });
+    },
+    cancelPointerInput({ hostWindow, tabId, requestId }) {
+      withEntry({ hostWindow, tabId }, (entry) => {
+        const controller = entry.activeInputControllers.get(
+          `pointer:${requestId}`,
+        );
+        if (controller === undefined) return;
+        entry.activeInputControllers.delete(`pointer:${requestId}`);
+        controller.abort();
       });
     },
     close({ hostWindow, request }) {
@@ -2075,32 +3292,99 @@ function rejectBrowserEventWaiters(
       if (entry.navigationEpoch !== request.expectedNavigationEpoch) {
         throw new Error("The Browser page changed before native input");
       }
-      if (request.frame !== undefined) frameRecordFor(entry, request.frame);
-      const offset =
-        request.frame === undefined
-          ? { x: 0, y: 0 }
-          : await frameViewportOffset(entry, request.frame);
-      if (entry.navigationEpoch !== request.expectedNavigationEpoch) {
-        throw new Error("The Browser page changed before native input");
+      const controller = new AbortController();
+      const inputKey = `pointer:${request.requestId}`;
+      if (entry.activeInputControllers.has(inputKey)) {
+        throw new Error("Browser pointer input request is already running");
       }
-      for (const event of request.events) {
-        entry.view.webContents.sendInputEvent({
-          ...event,
-          x: event.x + offset.x,
-          y: event.y + offset.y,
-        });
+      entry.activeInputControllers.set(inputKey, controller);
+      const signal = controller.signal;
+      try {
+        if (request.frame !== undefined) frameRecordFor(entry, request.frame);
+        await ensureEntryDebugger(entry);
+        if (signal.aborted) {
+          throw new DOMException(
+            "Browser pointer input was cancelled",
+            "AbortError",
+          );
+        }
+        await ensureEntryRendered(entry, hostWindow);
+        const offset =
+          request.frame === undefined
+            ? { x: 0, y: 0 }
+            : await frameViewportOffset(entry, request.frame, "session");
+        if (entry.navigationEpoch !== request.expectedNavigationEpoch) {
+          throw new Error("The Browser page changed before native input");
+        }
+        if (signal.aborted) {
+          throw new DOMException(
+            "Browser pointer input was cancelled",
+            "AbortError",
+          );
+        }
+        if (request.frame !== undefined) frameRecordFor(entry, request.frame);
+        if (signal.aborted) {
+          throw new DOMException(
+            "Browser pointer input was cancelled",
+            "AbortError",
+          );
+        }
+        const sessionId =
+          request.frame === undefined
+            ? undefined
+            : frameRecordFor(entry, request.frame).debuggerSessionId ||
+              undefined;
+        const pendingCommands: Promise<unknown>[] = [];
+        for (const event of request.events) {
+          if (event.type === "mouseDown" || event.type === "mouseUp") {
+            const mask =
+              event.button === "left" ? 1 : event.button === "right" ? 2 : 4;
+            entry.pointerButtons =
+              event.type === "mouseDown"
+                ? entry.pointerButtons | mask
+                : entry.pointerButtons & ~mask;
+          }
+          pendingCommands.push(
+            entry.view.webContents.debugger.sendCommand(
+              "Input.dispatchMouseEvent",
+              {
+                ...event,
+                type:
+                  event.type === "mouseMove"
+                    ? "mouseMoved"
+                    : event.type === "mouseDown"
+                      ? "mousePressed"
+                      : event.type === "mouseUp"
+                        ? "mouseReleased"
+                        : "mouseWheel",
+                buttons: entry.pointerButtons,
+                x: event.x + offset.x,
+                y: event.y + offset.y,
+              },
+              sessionId,
+            ),
+          );
+        }
+        await Promise.all(pendingCommands);
+        if (request.frame !== undefined) frameRecordFor(entry, request.frame);
+        if (entry.navigationEpoch !== request.expectedNavigationEpoch) {
+          throw new Error("The Browser page changed during native input");
+        }
+        return {
+          navigationEpoch: entry.navigationEpoch,
+          dispatched: request.events.length,
+        };
+      } finally {
+        if (entry.activeInputControllers.get(inputKey) === controller) {
+          entry.activeInputControllers.delete(inputKey);
+        }
       }
-      return {
-        navigationEpoch: entry.navigationEpoch,
-        dispatched: request.events.length,
-      };
     },
     async sendTrustedInput({ hostWindow, request }) {
       const entry = entries.get(browserViewKey(hostWindow, request.tabId));
       if (
         entry === undefined ||
         entry.view.webContents.isDestroyed() ||
-        !entry.visible ||
         entry.view.webContents.getURL().length === 0
       ) {
         throw new Error("The Browser tab is unavailable for trusted input");
@@ -2108,113 +3392,285 @@ function rejectBrowserEventWaiters(
       if (entry.navigationEpoch !== request.expectedNavigationEpoch) {
         throw new Error("The Browser page changed before trusted input");
       }
-      if (request.frame !== undefined) frameRecordFor(entry, request.frame);
-      const offset =
-        request.frame === undefined
-          ? { x: 0, y: 0 }
-          : await frameViewportOffset(entry, request.frame);
-      focusEntryWithoutNotifying(entry);
-      if (entry.navigationEpoch !== request.expectedNavigationEpoch) {
-        throw new Error("The Browser page changed before trusted input");
+      const controller = new AbortController();
+      const inputKey = `trusted:${request.requestId}`;
+      if (entry.activeInputControllers.has(inputKey)) {
+        throw new Error("Browser trusted input request is already running");
       }
-      if (request.frame !== undefined) frameRecordFor(entry, request.frame);
-      const webContents = entry.view.webContents;
-      const action = request.action;
-      let dispatched: number;
-      if (action.kind === "click") {
-        const x = action.x + offset.x;
-        const y = action.y + offset.y;
-        webContents.sendInputEvent({
-          type: "mouseDown",
-          x,
-          y,
-          button: action.button,
-          clickCount: action.clickCount,
-        });
-        webContents.sendInputEvent({
-          type: "mouseUp",
-          x,
-          y,
-          button: action.button,
-          clickCount: action.clickCount,
-        });
-        dispatched = 2;
-      } else if (action.kind === "type") {
-        if (action.clear) {
-          const modifier = process.platform === "darwin" ? "meta" : "control";
-          webContents.sendInputEvent({
-            type: "keyDown",
-            keyCode: "A",
-            modifiers: [modifier],
-          });
-          webContents.sendInputEvent({
-            type: "keyUp",
-            keyCode: "A",
-            modifiers: [modifier],
-          });
-          webContents.sendInputEvent({
-            type: "keyDown",
-            keyCode: "Backspace",
-          });
-          webContents.sendInputEvent({
-            type: "keyUp",
-            keyCode: "Backspace",
-          });
+      entry.activeInputControllers.set(inputKey, controller);
+      const signal = controller.signal;
+      try {
+        if (request.frame !== undefined) frameRecordFor(entry, request.frame);
+        await ensureEntryDebugger(entry);
+        if (signal.aborted) {
+          throw new DOMException(
+            "Browser trusted input was cancelled",
+            "AbortError",
+          );
         }
+        await ensureEntryRendered(entry, hostWindow);
+        const offset =
+          request.action.kind !== "click" || request.frame === undefined
+            ? { x: 0, y: 0 }
+            : await frameViewportOffset(entry, request.frame, "session");
+        if (signal.aborted) {
+          throw new DOMException(
+            "Browser trusted input was cancelled",
+            "AbortError",
+          );
+        }
+        if (
+          entry.navigationEpoch !== request.expectedNavigationEpoch ||
+          entry.view.webContents.isDestroyed()
+        ) {
+          throw new Error("The Browser page changed before trusted input");
+        }
+        if (entry.visible) {
+          // Foreground dispatch may take native focus; a hidden/background tab
+          // must receive input without stealing focus from the active pane.
+          focusEntryWithoutNotifying(entry);
+          if (entry.navigationEpoch !== request.expectedNavigationEpoch) {
+            throw new Error("The Browser page changed before trusted input");
+          }
+        }
+        if (request.frame !== undefined) frameRecordFor(entry, request.frame);
+        const webContents = entry.view.webContents;
+        const inputSessionId =
+          request.frame === undefined
+            ? undefined
+            : frameRecordFor(entry, request.frame).debuggerSessionId ||
+              undefined;
+        const action = request.action;
+        let dispatched = 0;
+        if (action.kind === "click") {
+          const x = action.x + offset.x;
+          const y = action.y + offset.y;
+          const mask =
+            action.button === "left" ? 1 : action.button === "right" ? 2 : 4;
+          const pressedButtons = entry.pointerButtons | mask;
+          entry.pointerButtons &= ~mask;
+          await Promise.all([
+            webContents.debugger.sendCommand(
+              "Input.dispatchMouseEvent",
+              {
+                type: "mousePressed",
+                x,
+                y,
+                button: action.button,
+                clickCount: action.clickCount,
+                buttons: pressedButtons,
+              },
+              inputSessionId,
+            ),
+            webContents.debugger.sendCommand(
+              "Input.dispatchMouseEvent",
+              {
+                type: "mouseReleased",
+                x,
+                y,
+                button: action.button,
+                clickCount: action.clickCount,
+                buttons: entry.pointerButtons,
+              },
+              inputSessionId,
+            ),
+          ]);
+          dispatched = 2;
+        } else if (action.kind === "type") {
+          if (action.clear) {
+            const modifiers = process.platform === "darwin" ? 4 : 2;
+            await webContents.debugger.sendCommand(
+              "Input.dispatchKeyEvent",
+              {
+                type: "rawKeyDown",
+                key: "a",
+                code: "KeyA",
+                windowsVirtualKeyCode: 65,
+                modifiers,
+                commands: ["selectAll"],
+              },
+              inputSessionId,
+            );
+            dispatched += 1;
+            if (
+              signal.aborted ||
+              entry.navigationEpoch !== request.expectedNavigationEpoch
+            ) {
+              return {
+                navigationEpoch: entry.navigationEpoch,
+                ...(request.frame === undefined
+                  ? {}
+                  : { frame: request.frame }),
+                dispatched,
+              };
+            }
+            await webContents.debugger.sendCommand(
+              "Input.dispatchKeyEvent",
+              {
+                type: "keyUp",
+                key: "a",
+                code: "KeyA",
+                windowsVirtualKeyCode: 65,
+                modifiers,
+              },
+              inputSessionId,
+            );
+            dispatched += 1;
+            if (
+              signal.aborted ||
+              entry.navigationEpoch !== request.expectedNavigationEpoch
+            ) {
+              return {
+                navigationEpoch: entry.navigationEpoch,
+                ...(request.frame === undefined
+                  ? {}
+                  : { frame: request.frame }),
+                dispatched,
+              };
+            }
+            await webContents.debugger.sendCommand(
+              "Input.dispatchKeyEvent",
+              {
+                type: "rawKeyDown",
+                key: "Backspace",
+                code: "Backspace",
+                windowsVirtualKeyCode: 8,
+              },
+              inputSessionId,
+            );
+            dispatched += 1;
+            if (
+              signal.aborted ||
+              entry.navigationEpoch !== request.expectedNavigationEpoch
+            ) {
+              return {
+                navigationEpoch: entry.navigationEpoch,
+                ...(request.frame === undefined
+                  ? {}
+                  : { frame: request.frame }),
+                dispatched,
+              };
+            }
+            await webContents.debugger.sendCommand(
+              "Input.dispatchKeyEvent",
+              {
+                type: "keyUp",
+                key: "Backspace",
+                code: "Backspace",
+                windowsVirtualKeyCode: 8,
+              },
+              inputSessionId,
+            );
+            dispatched += 1;
+          }
+          if (
+            signal.aborted ||
+            entry.navigationEpoch !== request.expectedNavigationEpoch
+          ) {
+            if (dispatched > 0) {
+              return {
+                navigationEpoch: entry.navigationEpoch,
+                ...(request.frame === undefined
+                  ? {}
+                  : { frame: request.frame }),
+                dispatched,
+              };
+            }
+            signal.throwIfAborted();
+            throw new Error("The Browser page changed during trusted input");
+          }
+          if (request.frame !== undefined) frameRecordFor(entry, request.frame);
+          await webContents.debugger.sendCommand(
+            "Input.insertText",
+            { text: action.text },
+            inputSessionId,
+          );
+          dispatched += 1;
+        } else {
+          let modifiers = 0;
+          for (const modifier of action.modifiers) {
+            modifiers |=
+              modifier === "Alt"
+                ? 1
+                : modifier === "Control"
+                  ? 2
+                  : modifier === "Meta"
+                    ? 4
+                    : 8;
+          }
+          const keyName = action.code ?? action.key;
+          const windowsVirtualKeyCode =
+            (Object.hasOwn(BROWSER_VIRTUAL_KEY_CODES, keyName)
+              ? BROWSER_VIRTUAL_KEY_CODES[keyName]
+              : undefined) ??
+            (/^Key[A-Z]$/.test(keyName)
+              ? keyName.charCodeAt(3)
+              : /^Digit[0-9]$/.test(keyName)
+                ? keyName.charCodeAt(5)
+                : /^Numpad[0-9]$/.test(keyName)
+                  ? 96 + Number(keyName.at(-1))
+                  : /^F([1-9]|1[0-9]|2[0-4])$/.test(keyName)
+                    ? 111 + Number(keyName.slice(1))
+                    : action.key.length === 1
+                      ? action.key.toUpperCase().charCodeAt(0)
+                      : 0);
+          const text =
+            (modifiers & 7) !== 0
+              ? ""
+              : action.key === "Enter"
+                ? "\r"
+                : action.key.length === 1
+                  ? action.key
+                  : "";
+          const key = {
+            key: action.key,
+            ...(action.code === undefined ? {} : { code: action.code }),
+            windowsVirtualKeyCode,
+            modifiers,
+          };
+          await Promise.all([
+            webContents.debugger.sendCommand(
+              "Input.dispatchKeyEvent",
+              {
+                ...key,
+                type: text.length > 0 ? "keyDown" : "rawKeyDown",
+                text,
+                unmodifiedText: text,
+              },
+              inputSessionId,
+            ),
+            webContents.debugger.sendCommand(
+              "Input.dispatchKeyEvent",
+              {
+                ...key,
+                type: "keyUp",
+              },
+              inputSessionId,
+            ),
+          ]);
+          dispatched = 2;
+        }
+        if (request.frame !== undefined) frameRecordFor(entry, request.frame);
         if (entry.navigationEpoch !== request.expectedNavigationEpoch) {
           throw new Error("The Browser page changed during trusted input");
         }
-        if (request.frame !== undefined) frameRecordFor(entry, request.frame);
-        await webContents.insertText(action.text);
-        dispatched = action.clear ? 5 : 1;
-      } else {
-        const modifiers = action.modifiers.map((modifier) => {
-          switch (modifier) {
-            case "Alt":
-              return "alt";
-            case "Control":
-              return "control";
-            case "Meta":
-              return "meta";
-            case "Shift":
-              return "shift";
-          }
-        });
-        webContents.sendInputEvent({
-          type: "keyDown",
-          keyCode: action.code ?? action.key,
-          modifiers,
-        });
-        if (action.key.length === 1) {
-          webContents.sendInputEvent({
-            type: "char",
-            keyCode: action.key,
-            modifiers,
-          });
+        return {
+          navigationEpoch: entry.navigationEpoch,
+          ...(request.frame === undefined ? {} : { frame: request.frame }),
+          dispatched,
+        };
+      } finally {
+        if (entry.activeInputControllers.get(inputKey) === controller) {
+          entry.activeInputControllers.delete(inputKey);
         }
-        webContents.sendInputEvent({
-          type: "keyUp",
-          keyCode: action.code ?? action.key,
-          modifiers,
-        });
-        dispatched = action.key.length === 1 ? 3 : 2;
       }
-      if (request.frame !== undefined) frameRecordFor(entry, request.frame);
-      if (entry.navigationEpoch !== request.expectedNavigationEpoch) {
-        throw new Error("The Browser page changed during trusted input");
-      }
-      return {
-        navigationEpoch: entry.navigationEpoch,
-        ...(request.frame === undefined ? {} : { frame: request.frame }),
-        dispatched,
-      };
     },
     async waitForBrowserEvent({ hostWindow, request }) {
       const entry = entries.get(browserViewKey(hostWindow, request.tabId));
       if (
         entry === undefined ||
         entry.view.webContents.isDestroyed() ||
-        !entry.visible
+        entry.view.webContents.getURL().length === 0
       ) {
         throw new Error("The Browser tab is unavailable for event waiting");
       }
@@ -2229,11 +3685,20 @@ function rejectBrowserEventWaiters(
       }
       if (request.criteria.kind === "url") {
         const currentUrl = entry.view.webContents.getURL();
-        if (browserUrlMatches(currentUrl, request.criteria.url, request.criteria.match)) {
+        if (
+          browserUrlMatches(
+            currentUrl,
+            request.criteria.url,
+            request.criteria.match,
+          )
+        ) {
           return {
             requestId: request.requestId,
             navigationEpoch: entry.navigationEpoch,
-            value: { kind: "url" as const, url: truncate(currentUrl, BB_DESKTOP_BROWSER_MAX_URL_LENGTH) },
+            value: {
+              kind: "url" as const,
+              url: truncate(currentUrl, BB_DESKTOP_BROWSER_MAX_URL_LENGTH),
+            },
           };
         }
       }
@@ -2241,7 +3706,7 @@ function rejectBrowserEventWaiters(
         const currentState =
           request.criteria.state === "networkidle"
             ? entry.networkIdleSince !== null &&
-              entry.inFlightRequests === 0 &&
+              activeRequestCount(entry) === 0 &&
               Date.now() - entry.networkIdleSince >= 500
               ? "networkidle"
               : null
@@ -2276,7 +3741,9 @@ function rejectBrowserEventWaiters(
       const waiter = entry?.eventWaiters.get(request.requestId);
       if (entry === undefined || waiter === undefined) return;
       entry.eventWaiters.delete(request.requestId);
-      waiter.reject(new DOMException("Browser event wait was cancelled", "AbortError"));
+      waiter.reject(
+        new DOMException("Browser event wait was cancelled", "AbortError"),
+      );
     },
     setViewportProfile({ hostWindow, request }) {
       const entry = entries.get(browserViewKey(hostWindow, request.tabId));
@@ -2318,27 +3785,116 @@ function rejectBrowserEventWaiters(
       ) {
         throw new Error("The Browser tab is not available for capture");
       }
-      const navigationEpoch = entry.navigationEpoch;
-      if (
-        request.expectedNavigationEpoch !== undefined &&
-        request.expectedNavigationEpoch !== navigationEpoch
-      ) {
+      if (entry.navigationEpoch !== request.expectedNavigationEpoch) {
         throw new Error("The Browser page changed before capture");
       }
-      const image = await entry.view.webContents.capturePage();
-      if (entry.navigationEpoch !== navigationEpoch) {
-        throw new Error("The Browser page changed during capture");
+      const controller = new AbortController();
+      if (entry.activeCaptureControllers.has(request.requestId)) {
+        throw new Error("Browser capture request is already running");
       }
-      if (image.isEmpty()) throw new Error("Browser page capture was empty");
-      const bytes =
-        request.format === "png"
-          ? image.toPNG()
-          : image.toJPEG(request.quality);
+      entry.activeCaptureControllers.set(request.requestId, controller);
+      try {
+        await awaitCaptureOperation(
+          ensureEntryRendered(entry, hostWindow),
+          controller.signal,
+        );
+        if (
+          controller.signal.aborted ||
+          entry.navigationEpoch !== request.expectedNavigationEpoch ||
+          entry.view.webContents.isDestroyed()
+        ) {
+          throw new DOMException("Browser capture was cancelled", "AbortError");
+        }
+        const image = await awaitCaptureOperation(
+          entry.view.webContents.capturePage(),
+          controller.signal,
+        );
+        if (
+          controller.signal.aborted ||
+          entry.navigationEpoch !== request.expectedNavigationEpoch ||
+          entry.view.webContents.isDestroyed()
+        ) {
+          throw new DOMException("Browser capture was cancelled", "AbortError");
+        }
+        if (image.isEmpty()) throw new Error("Browser page capture was empty");
+        const bytes =
+          request.format === "png"
+            ? image.toPNG()
+            : image.toJPEG(request.quality);
+        if (
+          controller.signal.aborted ||
+          entry.navigationEpoch !== request.expectedNavigationEpoch ||
+          entry.view.webContents.isDestroyed()
+        ) {
+          throw new DOMException("Browser capture was cancelled", "AbortError");
+        }
+        return storeCapture({
+          hostWindow,
+          tabId: request.tabId,
+          navigationEpoch: request.expectedNavigationEpoch,
+          format: request.format,
+          bytes,
+          pixelSize: image.getSize(),
+        });
+      } finally {
+        if (
+          entry.activeCaptureControllers.get(request.requestId) === controller
+        ) {
+          entry.activeCaptureControllers.delete(request.requestId);
+        }
+      }
+    },
+    cancelCapture({ hostWindow, tabId, requestId }) {
+      withEntry({ hostWindow, tabId }, (entry) => {
+        const controller = entry.activeCaptureControllers.get(requestId);
+        if (controller === undefined) return;
+        entry.activeCaptureControllers.delete(requestId);
+        controller.abort();
+      });
+    },
+    async readCaptureChunk({ hostWindow, request }) {
+      expireCaptures();
+      const capture = captureRegistry.get(request.captureId);
+      if (capture === undefined) {
+        throw new Error("Browser capture is not available");
+      }
+      if (
+        capture.clientHost !== hostWindow.webContents.id ||
+        capture.tabId !== request.tabId
+      ) {
+        throw new Error("Browser capture is not available to this tab");
+      }
+      if (request.offset >= capture.buffer.byteLength) {
+        throw new Error("Browser capture offset is outside the resource");
+      }
+      const rawOffset = request.offset;
+      const end = Math.min(
+        capture.buffer.byteLength,
+        rawOffset + request.length,
+      );
+      const slice = capture.buffer.subarray(rawOffset, end);
+      capture.expiresAt = Math.min(
+        Date.now() + BB_DESKTOP_BROWSER_CAPTURE_TTL_MS,
+        capture.absoluteExpiresAt,
+      );
+      scheduleCaptureExpiration(request.captureId);
       return {
-        navigationEpoch,
-        dataUrl: `data:image/${request.format};base64,${bytes.toString("base64")}`,
-        pixelSize: image.getSize(),
+        captureId: request.captureId,
+        offset: rawOffset,
+        base64: slice.toString("base64"),
+        eof: end >= capture.buffer.byteLength,
       };
+    },
+    releaseCapture({ hostWindow, request }) {
+      const capture = captureRegistry.get(request.captureId);
+      if (
+        capture === undefined ||
+        capture.clientHost !== hostWindow.webContents.id ||
+        capture.tabId !== request.tabId
+      ) {
+        return;
+      }
+      releaseCaptureById(request.captureId);
     },
     async runAutomation({
       hostWindow,
@@ -2369,19 +3925,31 @@ function rejectBrowserEventWaiters(
         };
       }
       if (request.action.kind === "set-permissions") {
+        const origin = serializePermissionOrigin(request.action.origin);
+        if (origin === null) {
+          throw new Error(
+            "Browser permissions require an explicit HTTP(S) origin",
+          );
+        }
+        const decisions = entry.permissionDecisionsByOrigin.get(origin) ?? {
+          allow: new Set(),
+          deny: new Set(),
+        };
         for (const permission of request.action.permissions) {
           if (request.action.decision === "allow") {
-            entry.deniedPermissions.delete(permission);
-            entry.allowedPermissions.add(permission);
+            decisions.deny.delete(permission);
+            decisions.allow.add(permission);
           } else {
-            entry.allowedPermissions.delete(permission);
-            entry.deniedPermissions.add(permission);
+            decisions.allow.delete(permission);
+            decisions.deny.add(permission);
           }
         }
+        entry.permissionDecisionsByOrigin.set(origin, decisions);
         return {
           navigationEpoch,
           value: {
             decision: request.action.decision,
+            origin,
             permissions: request.action.permissions,
           },
         };
@@ -2400,12 +3968,12 @@ function rejectBrowserEventWaiters(
         };
       }
       const browserDebugger = entry.view.webContents.debugger;
-      if (!browserDebugger.isAttached()) browserDebugger.attach("1.3");
-      await browserDebugger.sendCommand("Page.enable");
+      await ensureEntryDebugger(entry);
+      await ensureEntryRendered(entry, hostWindow);
       const frameOffset =
         request.action.kind === "capture-clip" &&
         request.action.frame !== undefined
-          ? await frameViewportOffset(entry, request.action.frame)
+          ? await frameViewportOffset(entry, request.action.frame, "page")
           : { x: 0, y: 0 };
       let x: number;
       let y: number;
@@ -2460,13 +4028,14 @@ function rejectBrowserEventWaiters(
       }
       return {
         navigationEpoch,
-        value: {
-          dataUrl: `data:image/${request.action.format};base64,${capture.data}`,
-          pixelSize: {
-            width: Math.ceil(width),
-            height: Math.ceil(height),
-          },
-        },
+        value: storeCapture({
+          hostWindow,
+          tabId: request.tabId,
+          navigationEpoch,
+          format: request.action.format,
+          bytes: Buffer.from(capture.data, "base64"),
+          pixelSize: { width: Math.ceil(width), height: Math.ceil(height) },
+        }),
       };
     },
     importCookies({ hostWindow, request }) {
@@ -2475,11 +4044,9 @@ function rejectBrowserEventWaiters(
         if (entry === undefined || entry.view.webContents.isDestroyed()) {
           throw new Error("The Browser tab is unavailable");
         }
-        const importedCookies = await importCookiesIntoSession(
-          ensureHardenedSession(),
-          request.cookies,
+        const importedCookies = await withQuiescentCookies(async () =>
+          importCookiesIntoSession(ensureHardenedSession(), request.cookies),
         );
-        await ensureHardenedSession().cookies.flushStore();
         reloadEntriesAfterCookieChange();
         return { importedCookies };
       });
@@ -2506,11 +4073,9 @@ function rejectBrowserEventWaiters(
             "The selected browser profile has too many cookies to import",
           );
         }
-        const importedCookies = await importCookiesIntoSession(
-          ensureHardenedSession(),
-          cookies,
+        const importedCookies = await withQuiescentCookies(async () =>
+          importCookiesIntoSession(ensureHardenedSession(), cookies),
         );
-        await ensureHardenedSession().cookies.flushStore();
         reloadEntriesAfterCookieChange();
         return { importedCookies };
       });
@@ -2521,6 +4086,7 @@ function rejectBrowserEventWaiters(
         if (entry === undefined || entry.view.webContents.isDestroyed()) {
           throw new Error("The Browser tab is unavailable");
         }
+        quiesceEntryNetworkTraffic();
         await clearBrowserSessionStorage();
         await ensureHardenedSession().cookies.flushStore();
         reloadEntriesAfterCookieChange();
@@ -2574,6 +4140,7 @@ function rejectBrowserEventWaiters(
     },
     releaseWindow(hostWebContentsId) {
       resizingHostIds.delete(hostWebContentsId);
+      releaseCapturesForHost(hostWebContentsId);
       const prefix = `${hostWebContentsId}:`;
       for (const [key, entry] of [...entries.entries()]) {
         if (!key.startsWith(prefix)) {
@@ -2584,12 +4151,14 @@ function rejectBrowserEventWaiters(
         entriesByWebContentsId.delete(entry.view.webContents.id);
         clearEntryRendererRecoveryTimer(entry);
         cancelEntryPageScripts(entry, "window-closed");
+        cancelEntryCaptures(entry);
         for (const popupWindow of [...entry.popupWindows]) {
           if (!popupWindow.isDestroyed()) {
             popupWindow.destroy();
           }
         }
         entry.popupWindows.clear();
+        releaseEntryRenderSurface(entry);
         if (!entry.view.webContents.isDestroyed()) {
           entry.view.webContents.close();
         }
@@ -2597,6 +4166,10 @@ function rejectBrowserEventWaiters(
     },
     destroyAll() {
       resizingHostIds.clear();
+      for (const captureId of [...captureRegistry.keys()]) {
+        releaseCaptureById(captureId);
+      }
+      captureAggregateBytesByHost.clear();
       for (const popupWindow of [...popupWindows]) {
         if (!popupWindow.isDestroyed()) {
           popupWindow.destroy();
@@ -2609,6 +4182,8 @@ function rejectBrowserEventWaiters(
         clearEntryViewportProfile(entry);
         clearEntryRendererRecoveryTimer(entry);
         cancelEntryPageScripts(entry, "shutdown");
+        cancelEntryCaptures(entry);
+        releaseEntryRenderSurface(entry);
         if (!entry.view.webContents.isDestroyed()) {
           entry.view.webContents.close();
         }

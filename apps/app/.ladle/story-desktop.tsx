@@ -27,8 +27,10 @@ function createStoryDesktopBrowserApi(
     goForward() {},
     reload() {},
     stop() {},
+    focus() {},
     setBounds() {},
     setVisible() {},
+    setVisibleWithoutFocus() {},
     onState(listener) {
       let subscribed = true;
       if (initialState !== null) {
@@ -41,6 +43,9 @@ function createStoryDesktopBrowserApi(
       };
     },
     onOpenTab() {
+      return () => {};
+    },
+    onFocus() {
       return () => {};
     },
   };

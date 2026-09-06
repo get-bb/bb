@@ -1313,6 +1313,9 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
       runBrowserControl: (target, action, options) =>
         deps.hub.runBrowserControl?.({ target, action, ...options }) ??
         Promise.reject(new Error("Browser control is unavailable")),
+      requestBrowserPluginContribution: (args) =>
+        deps.hub.requestBrowserPluginContribution?.(args) ??
+        Promise.reject(new Error("Browser contributions are unavailable")),
       settingsChanged: () => {
         deps.onSettingsChanged?.(row.id);
         settingsChanged();

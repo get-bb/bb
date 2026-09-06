@@ -5,6 +5,7 @@ import {
   BB_DESKTOP_BROWSER_PAGE_SCRIPT_MAX_RESULT_BYTES,
   BB_DESKTOP_BROWSER_PAGE_SCRIPT_MAX_SOURCE_BYTES,
   bbDesktopBrowserAttachRequestSchema,
+  bbDesktopBrowserCaptureChunkReadSchema,
   bbDesktopBrowserPageCaptureRequestSchema,
   bbDesktopBrowserPageCaptureResultSchema,
   bbDesktopBrowserPageScriptCancelRequestSchema,
@@ -142,12 +143,14 @@ describe("experimental desktop Browser-page runtime schemas", () => {
     expect(
       bbDesktopBrowserPageCaptureRequestSchema.parse({
         tabId: "browser:a",
+        requestId: "capture-1",
         format: "png",
         quality: 85,
         expectedNavigationEpoch: 3,
       }),
     ).toEqual({
       tabId: "browser:a",
+      requestId: "capture-1",
       format: "png",
       quality: 85,
       expectedNavigationEpoch: 3,
@@ -155,10 +158,20 @@ describe("experimental desktop Browser-page runtime schemas", () => {
     expect(
       bbDesktopBrowserPageCaptureResultSchema.parse({
         navigationEpoch: 3,
-        dataUrl: "data:image/png;base64,aQ==",
+        captureId: "cap-9",
+        format: "png",
         pixelSize: { width: 800, height: 600 },
+        byteLength: 2,
       }),
-    ).toMatchObject({ navigationEpoch: 3 });
+    ).toMatchObject({ navigationEpoch: 3, captureId: "cap-9" });
+    expect(
+      bbDesktopBrowserCaptureChunkReadSchema.parse({
+        captureId: "cap-9",
+        tabId: "browser:a",
+        offset: 0,
+        length: 256,
+      }),
+    ).toEqual({ captureId: "cap-9", tabId: "browser:a", offset: 0, length: 256 });
   });
 
   it("accepts a strict JSON-only page-script request", () => {
@@ -255,6 +268,7 @@ describe("experimental native Browser input schemas", () => {
       bbDesktopBrowserPointerInputRequestSchema.parse({
         tabId: "browser:a",
         expectedNavigationEpoch: 3,
+        requestId: "req-pointer",
         events: [
           { type: "mouseMove", x: 10, y: 20 },
           { type: "mouseDown", x: 10, y: 20, button: "middle", clickCount: 1 },
@@ -267,6 +281,7 @@ describe("experimental native Browser input schemas", () => {
       bbDesktopBrowserPointerInputRequestSchema.safeParse({
         tabId: "browser:a",
         expectedNavigationEpoch: 3,
+        requestId: "req-pointer",
         events: [{ type: "mouseDown", x: -1, y: 0, button: "left", clickCount: 1 }],
       }).success,
     ).toBe(false);

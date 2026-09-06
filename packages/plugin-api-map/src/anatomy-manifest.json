@@ -76,16 +76,14 @@
       "labels": {
         "anchor": ["Browser tab controls"]
       },
-      "fixtureClassAnchors": [
-        "flex h-6.5 items-center gap-1 px-2"
-      ],
+      "fixtureClassAnchors": ["flex h-6.5 items-center gap-1 px-2"],
       "sources": [
         {
           "path": "apps/app/src/components/plugin/PluginBrowserActions.tsx",
           "anchors": [
             "export function PluginBrowserActions",
             "const { browserActions } = usePluginSlots()",
-            "experimental_runPageContentScript"
+            "const runtimeProps: PluginBrowserActionProps"
           ]
         },
         {
@@ -98,8 +96,7 @@
         {
           "path": "apps/app/src/components/secondary-panel/BrowserTabContent.chrome.test.tsx",
           "anchors": [
-            "binds generic page scripts to the exact Browser tab",
-            "suppresses and restores the native view for a plugin overlay"
+            "passes Browser actions passive tab identity only"
           ]
         }
       ]
@@ -211,6 +208,74 @@
           "anchors": [
             "toggles and dismisses a disclosure accessibly",
             "lets the host coordinate disclosures from multiple plugins"
+          ]
+        }
+      ]
+    },
+    "browser-controllers": {
+      "groupId": "app-shell",
+      "fidelity": "anchor",
+      "responsiveStrategy": "scale-together",
+      "requiredStates": ["anchor"],
+      "labels": {
+        "anchor": [
+          "Browser control for plugins",
+          "Checkout button",
+          "Add to chat"
+        ]
+      },
+      "fixtureClassAnchors": [
+        "flex h-11 shrink-0 items-center gap-1 border-b border-border-hairline px-2",
+        "rounded-full border border-border-hairline bg-background/70 px-2.5",
+        "bg-popover/95",
+        "shadow-xl",
+        "bottom-3 right-3"
+      ],
+      "sources": [
+        {
+          "path": "apps/app/src/components/secondary-panel/BrowserTabContent.tsx",
+          "anchors": [
+            "<PluginBrowserControllers",
+            "data-browser-plugin-overlay-root=\"\"",
+            "onOverlayLeaseChange={handlePluginOverlayLeaseChange}",
+            "isVisible={isNativeBrowserViewVisible}"
+          ]
+        },
+        {
+          "path": "apps/app/src/components/plugin/PluginBrowserControllers.tsx",
+          "anchors": [
+            "export function PluginBrowserControllers",
+            "const { browserControllers } = usePluginSlots()",
+            "slotKind=\"browserController\"",
+            "experimental_lifecycleSignal",
+            "experimental_onLifecycle",
+            "experimental_registerRequestHandler",
+            "experimental_capturePage: async (options = {})",
+            "experimental_createImageResource"
+          ]
+        },
+        {
+          "path": "plugins/browser-annotations/src/app.tsx",
+          "anchors": [
+            "app.slots.experimental_browserController({",
+            "component: BrowserAnnotationController"
+          ]
+        },
+        {
+          "path": "plugins/browser-annotations/src/BrowserAnnotationController.tsx",
+          "anchors": [
+            "data-browser-annotation-controller=\"\"",
+            "className=\"absolute inset-0\"",
+            "<BrowserElementAnnotationTray"
+          ]
+        },
+        {
+          "path": "plugins/browser-annotations/src/BrowserAnnotationReview.tsx",
+          "anchors": [
+            "aria-label=\"Page annotations\"",
+            "className=\"absolute bottom-3 right-3 z-30",
+            "shadow-xl",
+            "Add to chat"
           ]
         }
       ]

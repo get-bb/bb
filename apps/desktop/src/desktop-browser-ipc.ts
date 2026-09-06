@@ -36,6 +36,8 @@ export const BB_DESKTOP_BROWSER_EXPERIMENTAL_CANCEL_PAGE_SCRIPT_CHANNEL =
   "bb-desktop:browser:experimental-cancel-page-script";
 export const BB_DESKTOP_BROWSER_EXPERIMENTAL_CAPTURE_PAGE_CHANNEL =
   "bb-desktop:browser:experimental-capture-page";
+export const BB_DESKTOP_BROWSER_EXPERIMENTAL_CANCEL_CAPTURE_CHANNEL =
+  "bb-desktop:browser:experimental-cancel-capture";
 export const BB_DESKTOP_BROWSER_EXPERIMENTAL_CLOSE_TAB_CHANNEL =
   "bb-desktop:browser:experimental-close-tab";
 export const BB_DESKTOP_BROWSER_EXPERIMENTAL_SEND_POINTER_INPUT_CHANNEL =
@@ -62,3 +64,11 @@ export const BB_DESKTOP_BROWSER_EXPERIMENTAL_WAIT_EVENT_CHANNEL =
   "bb-desktop:browser:experimental-wait-event";
 export const BB_DESKTOP_BROWSER_EXPERIMENTAL_CANCEL_WAIT_EVENT_CHANNEL =
   "bb-desktop:browser:experimental-cancel-wait-event";
+export const BB_DESKTOP_BROWSER_EXPERIMENTAL_CANCEL_TRUSTED_INPUT_CHANNEL =
+  "bb-desktop:browser:experimental-cancel-trusted-input";
+export const BB_DESKTOP_BROWSER_EXPERIMENTAL_CANCEL_POINTER_INPUT_CHANNEL =
+  "bb-desktop:browser:experimental-cancel-pointer-input";
+export const BB_DESKTOP_BROWSER_EXPERIMENTAL_READ_CAPTURE_CHUNK_CHANNEL =
+  "bb-desktop:browser:experimental-read-capture-chunk";
+export const BB_DESKTOP_BROWSER_EXPERIMENTAL_RELEASE_CAPTURE_CHANNEL =
+  "bb-desktop:browser:experimental-release-capture";

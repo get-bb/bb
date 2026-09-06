@@ -14,6 +14,9 @@ This index lists every command path that the core CLI registers. Read the task-s
 - `bb browser run`
 - `bb browser batch`
 - `bb browser wait`
+- `bb browser capture`
+- `bb browser capture-download`
+- `bb browser plugin`
 
 ## settings
 

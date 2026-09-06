@@ -1,9 +1,12 @@
+import type { ExperimentalBrowserCaptureDescriptor } from "@get-bb/plugin-sdk/browser";
+
 import type {
   BrowserElementAnnotation,
   BrowserElementAnnotationIntent,
   BrowserElementAnnotationNote,
-} from "@/lib/browser-element-annotation";
+} from "./element-types";
 import type { Shape, Tool } from "./BrowserScreenshotAnnotation";
+import type { BrowserScreenshotEditorState } from "./contracts";
 
 export interface BrowserAnnotationKey {
   environmentId: string | null;
@@ -12,9 +15,11 @@ export interface BrowserAnnotationKey {
 }
 
 export interface BrowserScreenshotEditorSnapshot {
+  image: BrowserScreenshotEditorState["image"];
   color: string;
   fontSize: number;
   past: Shape[][];
+  pendingText: BrowserScreenshotEditorState["pendingText"];
   redo: Shape[][];
   shapes: Shape[];
   tool: Tool;
@@ -23,7 +28,8 @@ export interface BrowserScreenshotEditorSnapshot {
 
 export interface BrowserScreenshotSession {
   editor: BrowserScreenshotEditorSnapshot;
-  screenshotUrl: string;
+  screenshot: ExperimentalBrowserCaptureDescriptor;
+  previewUrl: string;
 }
 
 export type BrowserElementReviewDraft =
@@ -32,7 +38,9 @@ export type BrowserElementReviewDraft =
       comment: string;
       intent: BrowserElementAnnotationIntent;
       kind: "new";
-      screenshotUrl: string | null;
+      screenshot: ExperimentalBrowserCaptureDescriptor | null;
+      screenshotPreviewUrl: string | null;
+      captureError: string | null;
     }
   | {
       comment: string;
@@ -43,7 +51,8 @@ export type BrowserElementReviewDraft =
 
 export interface BrowserElementSession {
   notes: readonly BrowserElementAnnotationNote[];
-  pageSnapshotUrl: string | null;
+  pageSnapshot: ExperimentalBrowserCaptureDescriptor | null;
+  pageSnapshotPreviewUrl: string | null;
   review: BrowserElementReviewDraft | null;
 }
 
@@ -59,12 +68,42 @@ export interface BrowserAnnotationRecord {
 const records = new Map<string, BrowserAnnotationRecord>();
 const epochs = new Map<string, number>();
 const listeners = new Set<() => void>();
+const previews = new Map<string, { storeKey: string; dispose: () => void }>();
+
+function recordUsesPreview(storeKey: string, url: string): boolean {
+  const record = records.get(storeKey);
+  if (record?.screenshot?.previewUrl === url) return true;
+  const elements = record?.elements;
+  return (
+    elements?.pageSnapshotPreviewUrl === url ||
+    (elements?.review?.kind === "new" &&
+      elements.review.screenshotPreviewUrl === url)
+  );
+}
+
+export function retainBrowserAnnotationPreview(
+  key: BrowserAnnotationKey,
+  preview: { url: string; dispose: () => void },
+): void {
+  const storeKey = keyOf(key);
+  if (recordUsesPreview(storeKey, preview.url)) {
+    previews.set(preview.url, { storeKey, dispose: preview.dispose });
+  } else {
+    preview.dispose();
+  }
+}
 
 function keyOf(key: BrowserAnnotationKey): string {
   return `${key.environmentId ?? ""}\u0000${key.threadId}\u0000${key.tabId}`;
 }
 
 function notify(): void {
+  for (const [url, preview] of previews) {
+    if (!recordUsesPreview(preview.storeKey, url)) {
+      previews.delete(url);
+      preview.dispose();
+    }
+  }
   for (const listener of [...listeners]) listener();
 }
 
@@ -81,11 +120,15 @@ export function subscribeBrowserAnnotationStore(
   return () => listeners.delete(listener);
 }
 
-export function createEmptyBrowserScreenshotEditor(): BrowserScreenshotEditorSnapshot {
+export function createEmptyBrowserScreenshotEditor(
+  image: BrowserScreenshotEditorState["image"],
+): BrowserScreenshotEditorSnapshot {
   return {
+    image,
     color: "#ef4444",
     fontSize: 18,
     past: [],
+    pendingText: null,
     redo: [],
     shapes: [],
     tool: "pen",
@@ -98,6 +141,13 @@ export function markBrowserAnnotationEpoch(
   navigationEpoch: number,
 ): void {
   epochs.set(keyOf(key), navigationEpoch);
+}
+
+export function isBrowserAnnotationEpochCurrent(
+  key: BrowserAnnotationKey,
+  navigationEpoch: number,
+): boolean {
+  return epochs.get(keyOf(key)) === navigationEpoch;
 }
 
 export function setBrowserAnnotationScreenshot(
@@ -214,5 +264,7 @@ export function clearBrowserAnnotationRecordsForEnvironment(
 
 export function resetBrowserAnnotationStore(): void {
   records.clear();
+  for (const preview of previews.values()) preview.dispose();
+  previews.clear();
   epochs.clear();
 }

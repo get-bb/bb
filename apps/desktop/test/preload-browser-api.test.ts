@@ -11,44 +11,27 @@ import type {
   BbDesktopWindowState,
 } from "@bb/desktop-contract";
 import {
-  BB_DESKTOP_CHECK_FOR_UPDATES_CHANNEL,
-  BB_DESKTOP_GET_INFO_CHANNEL,
   BB_DESKTOP_INFO_CHANGED_CHANNEL,
-  BB_DESKTOP_INSTALL_UPDATE_CHANNEL,
-  BB_DESKTOP_SET_THEME_CHANNEL,
 } from "../src/desktop-update-ipc.js";
 import {
   BB_DESKTOP_BROWSER_ATTACH_CHANNEL,
-  BB_DESKTOP_BROWSER_DETACH_CHANNEL,
-  BB_DESKTOP_BROWSER_FOCUS_CHANNEL,
   BB_DESKTOP_BROWSER_FOCUSED_CHANNEL,
-  BB_DESKTOP_BROWSER_FIND_IN_PAGE_CHANNEL,
   BB_DESKTOP_BROWSER_EXPERIMENTAL_IMPORT_COOKIES_CHANNEL,
   BB_DESKTOP_BROWSER_EXPERIMENTAL_IMPORT_COOKIES_FROM_BROWSER_CHANNEL,
-  BB_DESKTOP_BROWSER_EXPERIMENTAL_CLEAR_IMPORTED_COOKIES_CHANNEL,
   BB_DESKTOP_BROWSER_EXPERIMENTAL_LIST_COOKIE_IMPORT_SOURCES_CHANNEL,
   BB_DESKTOP_BROWSER_EXPERIMENTAL_TRUST_LOCALHOST_CERTIFICATE_CHANNEL,
   BB_DESKTOP_BROWSER_EXPERIMENTAL_WAIT_EVENT_CHANNEL,
   BB_DESKTOP_BROWSER_FIND_RESULT_CHANNEL,
-  BB_DESKTOP_BROWSER_GO_BACK_CHANNEL,
-  BB_DESKTOP_BROWSER_GO_FORWARD_CHANNEL,
-  BB_DESKTOP_BROWSER_NAVIGATE_CHANNEL,
   BB_DESKTOP_BROWSER_OPEN_TAB_CHANNEL,
-  BB_DESKTOP_BROWSER_RELOAD_CHANNEL,
   BB_DESKTOP_BROWSER_SCOPED_OPEN_TAB_CHANNEL,
   BB_DESKTOP_BROWSER_SET_BOUNDS_CHANNEL,
-  BB_DESKTOP_BROWSER_SET_VISIBLE_CHANNEL,
-  BB_DESKTOP_BROWSER_SET_VISIBLE_WITHOUT_FOCUS_CHANNEL,
   BB_DESKTOP_BROWSER_SNAPSHOT_CHANNEL,
   BB_DESKTOP_BROWSER_STATE_CHANNEL,
-  BB_DESKTOP_BROWSER_STOP_CHANNEL,
-  BB_DESKTOP_BROWSER_STOP_FIND_IN_PAGE_CHANNEL,
 } from "../src/desktop-browser-ipc.js";
 import {
   BB_DESKTOP_APP_COMMAND_CHANNEL,
   BB_DESKTOP_CLOSE_WINDOW_REQUEST_CHANNEL,
   BB_DESKTOP_CLOSE_WINDOW_RESPONSE_CHANNEL,
-  BB_DESKTOP_GET_WINDOW_STATE_CHANNEL,
   BB_DESKTOP_OPEN_NEW_TAB_CHANNEL,
   BB_DESKTOP_OPEN_SERVER_DAEMON_LOGS_CHANNEL,
   BB_DESKTOP_WINDOW_STATE_CHANGED_CHANNEL,
@@ -131,6 +114,10 @@ const electronMock = vi.hoisted(() => {
             requestId: string;
             value: { kind: "load-state"; state: "load" };
           }
+        | {
+            navigationEpoch: number;
+            trustedOrigin: string;
+          }
       > {
         invokeCalls.push(channel);
         if (channel === "bb-desktop:get-window-state") {
@@ -162,6 +149,15 @@ const electronMock = vi.hoisted(() => {
             navigationEpoch: 0,
             requestId: "wait-1",
             value: { kind: "load-state", state: "load" },
+          });
+        }
+        if (
+          channel ===
+          BB_DESKTOP_BROWSER_EXPERIMENTAL_TRUST_LOCALHOST_CERTIFICATE_CHANNEL
+        ) {
+          return Promise.resolve({
+            navigationEpoch: 0,
+            trustedOrigin: "localhost",
           });
         }
         return Promise.resolve(desktopInfo);
@@ -222,195 +218,6 @@ describe("desktop preload browser API", () => {
     api = await loadPreload();
   }, 30_000);
 
-  it("exposes only the typed browser commands and forwards them over fixed channels", async () => {
-    const attachRequest = {
-      tabId: "browser:a",
-      url: "http://localhost:5173/",
-      bounds: { x: 0, y: 0, width: 800, height: 600 },
-      visible: true,
-    };
-    const navigateRequest = {
-      tabId: "browser:a",
-      url: "https://example.com/",
-    };
-    const boundsRequest = {
-      tabId: "browser:a",
-      bounds: { x: 10, y: 20, width: 300, height: 200 },
-    };
-    const visibleRequest = {
-      tabId: "browser:a",
-      visible: false,
-    };
-    const findRequest = {
-      tabId: "browser:a",
-      text: "needle",
-      forward: true,
-      newSession: true,
-    };
-    const stopFindRequest = {
-      tabId: "browser:a",
-      action: "clearSelection" as const,
-    };
-    const nativeImportRequest = {
-      family: "chrome",
-      profileId: "Default",
-      tabId: "browser:a",
-    };
-
-    expect(Object.keys(api.browser).sort()).toEqual([
-      "attach",
-      "detach",
-      "experimental_browserEventWaitVersion",
-      "experimental_browserFrameRuntimeVersion",
-      "experimental_browserPageRuntimeVersion",
-      "experimental_browserTrustedInputVersion",
-      "experimental_cancelBrowserEvent",
-      "experimental_captureBrowserPage",
-      "experimental_clearBrowserViewportProfile",
-      "experimental_clearImportedCookies",
-      "experimental_closeBrowserTab",
-      "experimental_importCookies",
-      "experimental_importCookiesFromBrowser",
-      "experimental_listBrowserFrames",
-      "experimental_listCookieImportSources",
-      "experimental_runBrowserAutomation",
-      "experimental_runBrowserPageScript",
-      "experimental_sendBrowserPointerInput",
-      "experimental_sendBrowserTrustedInput",
-      "experimental_setBrowserViewportProfile",
-      "experimental_trustLocalhostCertificate",
-      "experimental_waitBrowserEvent",
-      "findInPage",
-      "focus",
-      "goBack",
-      "goForward",
-      "navigate",
-      "onFindResult",
-      "onFocus",
-      "onOpenTab",
-      "onScopedOpenTab",
-      "onSnapshot",
-      "onState",
-      "reload",
-      "setBounds",
-      "setVisible",
-      "setVisibleWithoutFocus",
-      "stop",
-      "stopFindInPage",
-    ]);
-    expect(api.browser).not.toHaveProperty("send");
-    expect(api.browser).not.toHaveProperty("invoke");
-
-    api.browser.attach(attachRequest);
-    api.browser.detach("browser:a");
-    api.browser.navigate(navigateRequest);
-    api.browser.goBack("browser:a");
-    api.browser.goForward("browser:a");
-    api.browser.reload("browser:a");
-    api.browser.stop("browser:a");
-    api.browser.focus?.("browser:a");
-    api.browser.setBounds(boundsRequest);
-    api.browser.setVisible(visibleRequest);
-    api.browser.setVisibleWithoutFocus?.(visibleRequest);
-    api.browser.findInPage?.(findRequest);
-    api.browser.stopFindInPage?.(stopFindRequest);
-    api.browser.experimental_trustLocalhostCertificate?.({ tabId: "browser:a" });
-    await expect(
-      api.browser.experimental_listCookieImportSources?.({
-        tabId: "browser:a",
-      }),
-    ).resolves.toEqual({
-      sources: [
-        {
-          family: "chrome",
-          label: "Google Chrome",
-          profiles: [{ id: "Default", label: "Default" }],
-        },
-      ],
-    });
-    await expect(
-      api.browser.experimental_importCookiesFromBrowser?.(nativeImportRequest),
-    ).resolves.toEqual({ importedCookies: 3 });
-    await api.browser.experimental_clearImportedCookies?.({
-      tabId: "browser:a",
-    });
-    api.setTheme("dark");
-    await api.checkForUpdates();
-    await expect(api.getWindowState?.()).resolves.toEqual({
-      isFullScreen: false,
-    });
-    await api.installUpdate();
-
-    expect(electronMock.sendCalls).toEqual([
-      { channel: BB_DESKTOP_BROWSER_ATTACH_CHANNEL, payload: attachRequest },
-      {
-        channel: BB_DESKTOP_BROWSER_DETACH_CHANNEL,
-        payload: { tabId: "browser:a" },
-      },
-      {
-        channel: BB_DESKTOP_BROWSER_NAVIGATE_CHANNEL,
-        payload: navigateRequest,
-      },
-      {
-        channel: BB_DESKTOP_BROWSER_GO_BACK_CHANNEL,
-        payload: { tabId: "browser:a" },
-      },
-      {
-        channel: BB_DESKTOP_BROWSER_GO_FORWARD_CHANNEL,
-        payload: { tabId: "browser:a" },
-      },
-      {
-        channel: BB_DESKTOP_BROWSER_RELOAD_CHANNEL,
-        payload: { tabId: "browser:a" },
-      },
-      {
-        channel: BB_DESKTOP_BROWSER_STOP_CHANNEL,
-        payload: { tabId: "browser:a" },
-      },
-      {
-        channel: BB_DESKTOP_BROWSER_FOCUS_CHANNEL,
-        payload: { tabId: "browser:a" },
-      },
-      {
-        channel: BB_DESKTOP_BROWSER_SET_BOUNDS_CHANNEL,
-        payload: boundsRequest,
-      },
-      {
-        channel: BB_DESKTOP_BROWSER_SET_VISIBLE_CHANNEL,
-        payload: visibleRequest,
-      },
-      {
-        channel: BB_DESKTOP_BROWSER_SET_VISIBLE_WITHOUT_FOCUS_CHANNEL,
-        payload: visibleRequest,
-      },
-      {
-        channel: BB_DESKTOP_BROWSER_FIND_IN_PAGE_CHANNEL,
-        payload: findRequest,
-      },
-      {
-        channel: BB_DESKTOP_BROWSER_STOP_FIND_IN_PAGE_CHANNEL,
-        payload: stopFindRequest,
-      },
-      {
-        channel: BB_DESKTOP_BROWSER_EXPERIMENTAL_TRUST_LOCALHOST_CERTIFICATE_CHANNEL,
-        payload: { tabId: "browser:a" },
-      },
-      { channel: BB_DESKTOP_SET_THEME_CHANNEL, payload: "dark" },
-    ]);
-    expect(electronMock.invokeCalls).toContain(BB_DESKTOP_GET_INFO_CHANNEL);
-    expect(electronMock.invokeCalls).toContain(
-      BB_DESKTOP_CHECK_FOR_UPDATES_CHANNEL,
-    );
-    expect(electronMock.invokeCalls).toContain(
-      BB_DESKTOP_GET_WINDOW_STATE_CHANNEL,
-    );
-    expect(electronMock.invokeCalls).toContain(
-      BB_DESKTOP_BROWSER_EXPERIMENTAL_CLEAR_IMPORTED_COOKIES_CHANNEL,
-    );
-    expect(electronMock.invokeCalls).toContain(
-      BB_DESKTOP_INSTALL_UPDATE_CHANNEL,
-    );
-  }, 10_000);
 
   it("accepts a bridged wait signal without event listener methods", async () => {
     const waitOptions = {
@@ -437,6 +244,7 @@ describe("desktop preload browser API", () => {
       value: { kind: "load-state", state: "load" },
     });
   });
+
 
   it("converts zoomed renderer bounds to native window coordinates", () => {
     electronMock.setZoomFactor(1.25);

@@ -123,6 +123,9 @@ bb browser list --json
 bb browser open --thread <thread-id> --url <url> --json
 bb browser run --client <client-id> --window <window-id> --tab <tab-id> --epoch <navigation-epoch> --action '{"kind":"snapshot","mode":"interactive"}' --json
 bb browser wait --client <client-id> --window <window-id> --tab <tab-id> --epoch <navigation-epoch> (--locator <json> | --text <text> | --url <url> | --navigation <start|commit> | --load-state <state> | --popup | --request <url> | --response <url> | --download-blocked) [--match <exact|glob>] --json
+bb browser capture --client <client-id> --window <window-id> --tab <tab-id> --epoch <navigation-epoch> (--out <path> | --json) [--mode viewport|full-page|element] [--format png|jpeg] [--quality <1-100>]
+bb browser capture-download --descriptor <json-file> --out <path> --json
+bb browser plugin --plugin <plugin-id> --controller <controller-id> --client <client-id> --window <window-id> --tab <tab-id> --epoch <navigation-epoch> --input <json> [--timeout <seconds>] --json
 bb browser batch --items '[{"id":"snapshot","target":{"clientId":"<client-id>","windowId":"<window-id>","tabId":"<tab-id>","navigationEpoch":<epoch>},"action":{"kind":"snapshot","mode":"dom"}}]' --json
 ```
 
@@ -143,6 +146,21 @@ session. Every action uses the exact client, window, tab, and page revision;
 unsupported navigation and stale revisions reject instead of retargeting.
 Permission changes and viewport profiles remain scoped to the selected tab and
 clear with Browser-view teardown.
+
+`bb browser capture --out <path>` streams validated image chunks to the machine
+running the CLI and releases the resource. Use `--json` instead of `--out` to
+create a live canonical descriptor without downloading:
+`{ captureId, mimeType, pixelSize, byteLength, target, expiresAt }`.
+Save that JSON and use `bb browser capture-download --descriptor <json-file>
+--out <path>` to download and release it. Creation rejects stale epochs; immutable
+bytes remain readable after navigation, but not after release or expiry. Valid
+reads refresh the two-minute idle lease up to an absolute ten-minute lifetime.
+
+Plugin-owned Browser workflows run through `bb browser plugin`, which sends an
+opaque `--input` JSON command to the plugin's
+`experimental_browserController` registered for that exact revision; the live
+controller parses the input and answers with JSON. A disabled, reloaded, or
+crashed controller and a stale epoch reject before any handler effect.
 
 ## Common checks
 

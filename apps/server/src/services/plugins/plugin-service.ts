@@ -33,6 +33,7 @@ import {
 import {
   assertNoRecursiveJsonSchemaReferences,
   enforcePluginCliOutputLimit,
+  normalizePluginCliResult,
   PLUGIN_AGENT_DYNAMIC_INSTRUCTIONS_MAX_CHARS,
   PLUGIN_AGENT_SELECTION_MAX_IDS,
   PLUGIN_AGENT_TOOL_PARAMETERS_MAX_BYTES,
@@ -1666,6 +1667,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
               const problem = await withLifecycleLock(row.id, async () => {
                 const current = getInstalledPlugin(deps.db, row.id);
                 if (current === undefined) return null;
+                deps.hub.cancelBrowserPluginContributions?.(row.id);
                 await disposeOne(row.id);
                 return loadOne(current);
               });
@@ -1792,6 +1794,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     async remove(id) {
       return withPluginOperationLock(REGISTRATION_MUTATION_KEY, async () => {
         const row = getInstalledPlugin(deps.db, id);
+        deps.hub.cancelBrowserPluginContributions?.(id);
         await withLifecycleLock(id, () => disposeOne(id));
         statuses.delete(id);
         handlerStats.delete(id);
@@ -1851,6 +1854,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
           }
         } else {
           await withLifecycleLock(id, async () => {
+            deps.hub.cancelBrowserPluginContributions?.(id);
             await disposeOne(id);
             if ((hungServices.get(id)?.size ?? 0) === 0) {
               setStatus(id, "disabled");
@@ -1872,6 +1876,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       );
       const failures: string[] = [];
       for (const row of rows.sort((a, b) => a.id.localeCompare(b.id))) {
+        deps.hub.cancelBrowserPluginContributions?.(row.id);
         const problem = await withLifecycleLock(row.id, () => loadOne(row));
         if (problem !== null) {
           failures.push(`plugin "${row.id}" reload failed: ${problem}`);
@@ -2043,6 +2048,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
           const row = getInstalledPlugin(deps.db, id);
           if (row) {
             await withLifecycleLock(id, async () => {
+              deps.hub.cancelBrowserPluginContributions?.(id);
               await disposeOne(id);
               await loadOne(row);
             });
@@ -2201,11 +2207,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
             );
           }
           return enforcePluginCliOutputLimit(
-            {
-              exitCode: result.exitCode,
-              stdout: typeof result.stdout === "string" ? result.stdout : "",
-              stderr: typeof result.stderr === "string" ? result.stderr : "",
-            },
+            normalizePluginCliResult(result),
             argv.includes("--json"),
           );
         },

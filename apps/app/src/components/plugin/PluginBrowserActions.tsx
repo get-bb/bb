@@ -1,17 +1,5 @@
-import {
-  useCallback,
-  useContext,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
-import type { BbDesktopBrowserApi } from "@bb/desktop-contract";
-import type {
-  ExperimentalBrowserPageContentScriptRequest,
-  ExperimentalBrowserPageContentScriptResult,
-  PluginBrowserActionProps,
-} from "@get-bb/plugin-sdk";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import type { PluginBrowserActionProps } from "@get-bb/plugin-sdk";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -21,222 +9,32 @@ import { Icon } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { COARSE_POINTER_HEADER_ICON_BUTTON_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
 import { CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS } from "@bb/shared-ui/chrome-style-tokens";
-import {
-  PluginSlotOwnershipContext,
-  type PluginSlotOwnershipRegistry,
-} from "./plugin-context";
 import { PluginSlotMount } from "./PluginSlotMount";
 import {
   usePluginSlots,
   type PluginBrowserActionSlot,
 } from "@/lib/plugin-slots";
-
 const BROWSER_CORE_CHROME_RESERVE_PX = 300;
 const BROWSER_ACTION_FOOTPRINT_PX = 32;
 
-export const EXPERIMENTAL_BROWSER_PAGE_SCRIPTS_UNAVAILABLE_MESSAGE =
-  "Browser page actions require a newer BB desktop app.";
-
-const DEFAULT_BROWSER_PAGE_SCRIPT_TIMEOUT_MS = 30_000;
-
 interface PluginBrowserActionsProps {
   chromeWidth: number | null;
-  desktopBrowser: BbDesktopBrowserApi;
   tabId: string;
   navigationEpoch: number | null;
   threadId: string | null;
   projectId: string | null;
   url: string;
-  overlayRoot: HTMLElement | null;
   onOverlayLeaseChange(owner: symbol, open: boolean): void;
 }
 
-interface BrowserActionSlotRuntimeProps {
-  desktopBrowser: BbDesktopBrowserApi;
+interface BrowserActionSlotRuntimeProps extends PluginBrowserActionProps {
   slot: PluginBrowserActionSlot;
-  tabId: string;
-  navigationEpoch: number | null;
-  threadId: string | null;
-  projectId: string | null;
-  url: string;
-  overlayRoot: HTMLElement | null;
-  onOverlayLeaseChange(owner: symbol, open: boolean): void;
-}
-
-function createUnavailablePageScriptsError(): Error {
-  return Object.assign(
-    new Error(EXPERIMENTAL_BROWSER_PAGE_SCRIPTS_UNAVAILABLE_MESSAGE),
-    { name: "ExperimentalBrowserPageScriptsUnavailableError" },
-  );
-}
-
-function abortControllerFromSignal(signal: AbortSignal): {
-  controller: AbortController;
-  unlink: () => void;
-} {
-  const controller = new AbortController();
-  const abort = () => controller.abort(signal.reason);
-  if (signal.aborted) {
-    abort();
-    return { controller, unlink: () => {} };
-  }
-  signal.addEventListener("abort", abort, { once: true });
-  return {
-    controller,
-    unlink: () => signal.removeEventListener("abort", abort),
-  };
-}
-
-function useBrowserActionRuntime({
-  desktopBrowser,
-  tabId,
-  navigationEpoch,
-  threadId,
-  projectId,
-  url,
-  overlayRoot,
-  onOverlayLeaseChange,
-}: Omit<BrowserActionSlotRuntimeProps, "slot">): PluginBrowserActionProps {
-  const ownershipRegistry = useContext(PluginSlotOwnershipContext);
-  const owner = useMemo(() => Symbol("browser-action-runtime"), []);
-  const overlayOpenRef = useRef(false);
-  const controllersRef = useRef(new Set<AbortController>());
-  const registeredRef = useRef(false);
-  const activeRef = useRef(true);
-
-  const releaseAll = useCallback(() => {
-    for (const controller of controllersRef.current) controller.abort();
-    controllersRef.current.clear();
-    if (overlayOpenRef.current) {
-      overlayOpenRef.current = false;
-      onOverlayLeaseChange(owner, false);
-    }
-  }, [onOverlayLeaseChange, owner]);
-
-  const ensureRegistered = useCallback(
-    (registry: PluginSlotOwnershipRegistry | null) => {
-      if (registry === null || registeredRef.current) return;
-      registry.register(owner, releaseAll);
-      registeredRef.current = true;
-    },
-    [owner, releaseAll],
-  );
-
-  useEffect(() => {
-    activeRef.current = true;
-    ensureRegistered(ownershipRegistry);
-    return () => {
-      activeRef.current = false;
-      releaseAll();
-      if (registeredRef.current) ownershipRegistry?.unregister(owner);
-      registeredRef.current = false;
-    };
-  }, [ensureRegistered, owner, ownershipRegistry, releaseAll]);
-
-  const experimental_setOverlayOpen = useCallback(
-    (open: boolean) => {
-      if (!activeRef.current && !open) return;
-      if (!activeRef.current) {
-        throw new Error("Browser action is no longer active");
-      }
-      ensureRegistered(ownershipRegistry);
-      if (overlayOpenRef.current === open) return;
-      overlayOpenRef.current = open;
-      onOverlayLeaseChange(owner, open);
-    },
-    [ensureRegistered, onOverlayLeaseChange, owner, ownershipRegistry],
-  );
-
-  const experimental_runPageContentScript = useCallback(
-    async (
-      request: ExperimentalBrowserPageContentScriptRequest,
-      options: { signal: AbortSignal },
-    ): Promise<ExperimentalBrowserPageContentScriptResult> => {
-      if (!activeRef.current) {
-        throw new Error("Browser action is no longer active");
-      }
-      const run = desktopBrowser.experimental_runBrowserPageScript;
-      if (run === undefined) throw createUnavailablePageScriptsError();
-      if (navigationEpoch === null) {
-        throw new Error("Browser page navigation state is unavailable");
-      }
-      if (request.expectedNavigationEpoch !== navigationEpoch) {
-        throw new Error("Browser page changed before the script could run");
-      }
-      const { controller, unlink } = abortControllerFromSignal(options.signal);
-      controllersRef.current.add(controller);
-      try {
-        const result = await run(
-          {
-            tabId,
-            requestId: crypto.randomUUID(),
-            expectedNavigationEpoch: request.expectedNavigationEpoch,
-            ...(request.world === undefined ? {} : { world: request.world }),
-            source: request.source,
-            input: request.input ?? null,
-            timeoutMs:
-              request.timeoutMs ?? DEFAULT_BROWSER_PAGE_SCRIPT_TIMEOUT_MS,
-          },
-          { signal: controller.signal },
-        );
-        return {
-          navigationEpoch: result.navigationEpoch,
-          value: result.value,
-        };
-      } finally {
-        unlink();
-        controllersRef.current.delete(controller);
-      }
-    },
-    [desktopBrowser, ensureRegistered, navigationEpoch, ownershipRegistry, tabId],
-  );
-
-  const experimental_capturePage = useCallback(
-    async (
-      options: {
-        format?: "png" | "jpeg";
-        quality?: number;
-        expectedNavigationEpoch?: number;
-      } = {},
-    ) => {
-      if (!activeRef.current) {
-        throw new Error("Browser action is no longer active");
-      }
-      const capture = desktopBrowser.experimental_captureBrowserPage;
-      if (capture === undefined) throw createUnavailablePageScriptsError();
-      return capture({
-        tabId,
-        format: options.format ?? "png",
-        quality: options.quality ?? 85,
-        ...(options.expectedNavigationEpoch === undefined
-          ? {}
-          : { expectedNavigationEpoch: options.expectedNavigationEpoch }),
-      });
-    },
-    [desktopBrowser, tabId],
-  );
-
-  return {
-    tabId,
-    navigationEpoch,
-    threadId,
-    projectId,
-    url,
-    experimental_overlayRoot: overlayRoot,
-    experimental_pageContentScriptsAvailable:
-      desktopBrowser.experimental_browserPageRuntimeVersion === 1 &&
-      desktopBrowser.experimental_runBrowserPageScript !== undefined,
-    experimental_runPageContentScript,
-    experimental_capturePage,
-    experimental_setOverlayOpen,
-  };
 }
 
 function BrowserActionSlotRuntime({
   slot,
-  ...runtimeProps
+  ...props
 }: BrowserActionSlotRuntimeProps) {
-  const props = useBrowserActionRuntime(runtimeProps);
   const Component = slot.component;
   return <Component {...props} />;
 }
@@ -255,11 +53,7 @@ function BrowserActionMount({
       instanceId={runtimeProps.tabId}
       crashFallback={null}
     >
-      <span
-        role="group"
-        aria-label={slot.title}
-        className="flex size-7 shrink-0 items-center justify-center overflow-hidden [&>*]:max-h-7 [&>*]:max-w-7"
-      >
+      <span role="group" aria-label={slot.title} className="flex shrink-0">
         <BrowserActionSlotRuntime slot={slot} {...runtimeProps} />
       </span>
     </PluginSlotMount>
@@ -283,13 +77,11 @@ export function browserActionInlineCount(
 
 export function PluginBrowserActions({
   chromeWidth,
-  desktopBrowser,
   tabId,
   navigationEpoch,
   threadId,
   projectId,
   url,
-  overlayRoot,
   onOverlayLeaseChange,
 }: PluginBrowserActionsProps) {
   const { browserActions } = usePluginSlots();
@@ -302,15 +94,12 @@ export function PluginBrowserActions({
   const inline = browserActions.slice(0, inlineCount);
   const overflow = browserActions.slice(inlineCount);
   const mountIdentity = `${tabId}:${threadId ?? ""}:${projectId ?? ""}:${url}`;
-  const runtimeProps = {
-    desktopBrowser,
+  const runtimeProps: PluginBrowserActionProps = {
     tabId,
     navigationEpoch,
     threadId,
     projectId,
     url,
-    overlayRoot,
-    onOverlayLeaseChange,
   };
 
   const handleOverflowOpenChange = useCallback(

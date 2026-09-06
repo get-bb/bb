@@ -6,6 +6,7 @@ import type {
 
 export function createNoopDesktopBrowserApi(): BbDesktopBrowserApi {
   return {
+    experimental_browserControlVersion: 2,
     attach() {},
     detach() {},
     navigate() {},

@@ -120,10 +120,7 @@ export function createBrowserViewVisibilityCoordinator(
       activateDesktopBrowserViewAperture(tabId);
       syncBounds();
       const request = { tabId, visible: true };
-      if (
-        options?.focus === false &&
-        desktopBrowser.setVisibleWithoutFocus !== undefined
-      ) {
+      if (options?.focus === false) {
         desktopBrowser.setVisibleWithoutFocus(request);
       } else {
         desktopBrowser.setVisible(request);

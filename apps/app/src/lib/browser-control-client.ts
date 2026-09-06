@@ -1,3 +1,4 @@
+import { bbDesktopBrowserCaptureDescriptorSchema } from "@bb/desktop-contract";
 import type {
   BrowserActionabilityPolicy,
   BrowserControlAction,
@@ -15,14 +16,16 @@ import type {
   BbDesktopBrowserState,
 } from "@bb/desktop-contract";
 import {
+  BROWSER_CAPTURE_MAX_BYTES,
+  BROWSER_CAPTURE_AGGREGATE_MAX_BYTES,
   BROWSER_CONTROL_MAX_FRAMES,
+  browserCapturePixelSizeSchema,
+  browserWaitResultSchema,
   isAllowedBrowserNavigationUrl,
   isBrowserTransitionWaitAction,
+  type BrowserPluginRequestMessage,
+  type BrowserPluginResponseMessage,
 } from "@bb/domain";
-import {
-  browserElementAnnotationCaptureSchema,
-  redactBrowserElementAnnotation,
-} from "./browser-element-annotation";
 import { wsManager } from "./ws";
 import {
   isDocumentVisible,
@@ -32,7 +35,12 @@ import {
 interface RegisteredBrowserTab {
   descriptor: BrowserTabDescriptor;
   desktopBrowser: BbDesktopBrowserApi;
-  openTab: ((url: string) => Promise<BrowserTabTarget>) | null;
+  openTab:
+    | ((
+        url: string,
+        options?: { signal?: AbortSignal },
+      ) => Promise<BrowserTabTarget>)
+    | null;
   closeTab: (() => void) | null;
   ready: boolean;
 }
@@ -43,10 +51,16 @@ interface BrowserControlOwnerTab {
 }
 
 interface RegisteredBrowserOwner {
-  activateTab: (tabId: string) => Promise<BrowserTabTarget>;
+  activateTab: (
+    tabId: string,
+    options?: { signal?: AbortSignal },
+  ) => Promise<BrowserTabTarget>;
   closeTab: (tabId: string) => void;
   active: boolean;
-  openTab: (url: string) => Promise<BrowserTabTarget>;
+  openTab: (
+    url: string,
+    options?: { signal?: AbortSignal },
+  ) => Promise<BrowserTabTarget>;
   ownerId: string;
   projectId: string | null;
   tabs: readonly BrowserControlOwnerTab[];
@@ -66,10 +80,10 @@ interface RegisterBrowserControlTabArgs {
 }
 
 interface RegisterBrowserControlOwnerArgs {
-  activateTab: (tabId: string) => Promise<BrowserTabTarget>;
+  activateTab: RegisteredBrowserOwner["activateTab"];
   closeTab: (tabId: string) => void;
   active: boolean;
-  openTab: (url: string) => Promise<BrowserTabTarget>;
+  openTab: RegisteredBrowserOwner["openTab"];
   ownerId: string;
   projectId: string | null;
   tabs: readonly BrowserControlOwnerTab[];
@@ -110,19 +124,74 @@ export interface BrowserControlOwnerRegistration {
 }
 
 const registeredTabs = new Map<string, RegisteredBrowserTab>();
+interface RegisteredBrowserController {
+  pluginId: string;
+  controllerId: string;
+  tabId: string;
+  registrationId: string;
+  controller: AbortController;
+  handler(request: {
+    input: JsonValue;
+    target: BrowserTabTarget;
+    signal: AbortSignal;
+  }): Promise<JsonValue>;
+}
+const controllerRequestHandlers = new Map<
+  string,
+  RegisteredBrowserController
+>();
+export type BrowserControllerDisposeReason =
+  | "tab-closed"
+  | "thread-removed"
+  | "environment-removed"
+  | "client-disconnected"
+  | "plugin-disposed";
+const browserControllerDisposeListenersByTab = new Map<
+  string,
+  Set<(reason: BrowserControllerDisposeReason) => void>
+>();
+const browserControllerDisposeListenersByThread = new Map<
+  string,
+  Set<(reason: BrowserControllerDisposeReason) => void>
+>();
+const browserControllerDisposeListenersByEnvironment = new Map<
+  string,
+  Set<(reason: BrowserControllerDisposeReason) => void>
+>();
+const browserControllerDisposeListenersByPlugin = new Map<
+  string,
+  Set<(reason: BrowserControllerDisposeReason) => void>
+>();
+const browserControllerReconnectListeners = new Set<() => void>();
 const registeredOwners = new Map<string, RegisteredBrowserOwner>();
 const activeRequestCounts = new Map<string, number>();
 const activityListeners = new Set<() => void>();
 const requestControllers = new Map<string, AbortController>();
+interface GeneratedBrowserCapture {
+  blob: Blob;
+  target: BrowserTabTarget;
+}
+interface BrowserCaptureRegistrationWaiter {
+  reject(error: Error): void;
+  resolve(expiresAt: number): void;
+  timeout: ReturnType<typeof setTimeout>;
+  unlinkAbort(): void;
+}
+const generatedBrowserCaptures = new Map<string, GeneratedBrowserCapture>();
+const browserCaptureRegistrationWaiters = new Map<
+  string,
+  BrowserCaptureRegistrationWaiter
+>();
 const ownerRegistrationWaiters = new Set<BrowserOwnerRegistrationWaiter>();
 let threadOwnerActivator: BrowserThreadOwnerActivator | null = null;
+interface BrowserTabRegistrationWaiter {
+  reject: (reason: Error) => void;
+  resolve: (target: BrowserTabTarget) => void;
+  timeout: ReturnType<typeof setTimeout>;
+}
 const tabRegistrationWaiters = new Map<
   string,
-  {
-    reject: (reason: Error) => void;
-    resolve: (target: BrowserTabTarget) => void;
-    timeout: ReturnType<typeof setTimeout>;
-  }
+  Set<BrowserTabRegistrationWaiter>
 >();
 interface BrowserTargetWaiter {
   target: BrowserTabTarget;
@@ -152,6 +221,335 @@ function publicBrowserError(
 
 const clientId = randomId();
 const windowId = randomId();
+export function browserControlClientIdentity(): {
+  clientId: string;
+  windowId: string;
+} {
+  return { clientId, windowId };
+}
+export async function registerBrowserCapture(
+  blob: Blob,
+  options: {
+    target: BrowserTabTarget;
+    pixelSize?: { width: number; height: number };
+    signal?: AbortSignal;
+  },
+): Promise<{
+  captureId: string;
+  mimeType: "image/png" | "image/jpeg";
+  pixelSize: { width: number; height: number };
+  byteLength: number;
+  target: BrowserTabTarget;
+  expiresAt: number;
+}> {
+  options.signal?.throwIfAborted();
+  const tab = registeredTabs.get(options.target.tabId);
+  if (tab === undefined || !targetEquals(targetFor(tab), options.target)) {
+    throw new Error(
+      "Browser page changed before the capture could be registered",
+    );
+  }
+  if (wsManager.getConnectionState() !== "connected") {
+    throw new Error("Browser capture registration requires a connected client");
+  }
+  if (blob.size <= 0 || blob.size > BROWSER_CAPTURE_MAX_BYTES) {
+    throw new Error("Browser capture exceeds the byte limit");
+  }
+  let retainedBytes = blob.size;
+  for (const capture of generatedBrowserCaptures.values())
+    retainedBytes += capture.blob.size;
+  if (retainedBytes > BROWSER_CAPTURE_AGGREGATE_MAX_BYTES) {
+    throw new Error("Browser capture aggregate capacity is exhausted");
+  }
+  const mimeType =
+    blob.type === "image/png" || blob.type === "image/jpeg" ? blob.type : null;
+  if (mimeType === null)
+    throw new Error("Browser capture must be a PNG or JPEG image");
+  const captureId = randomId();
+  const requestId = randomId();
+  generatedBrowserCaptures.set(captureId, { blob, target: options.target });
+  let registrationSent = false;
+  try {
+    const bitmap = await createImageBitmap(blob);
+    let pixelSize: { width: number; height: number };
+    try {
+      pixelSize = browserCapturePixelSizeSchema.parse({
+        width: bitmap.width,
+        height: bitmap.height,
+      });
+    } finally {
+      bitmap.close();
+    }
+    if (
+      options.pixelSize !== undefined &&
+      (options.pixelSize.width !== pixelSize.width ||
+        options.pixelSize.height !== pixelSize.height)
+    ) {
+      throw new Error("Browser image resource pixel size does not match its blob");
+    }
+    options.signal?.throwIfAborted();
+    if (
+      !generatedBrowserCaptures.has(captureId) ||
+      registeredTabs.get(options.target.tabId) !== tab ||
+      !targetEquals(targetFor(tab), options.target)
+    ) {
+      throw new Error("Browser page changed while the capture was decoded");
+    }
+    const expiresAt = await new Promise<number>((resolve, reject) => {
+      const abort = () => {
+        const waiter = browserCaptureRegistrationWaiters.get(requestId);
+        if (waiter === undefined) return;
+        browserCaptureRegistrationWaiters.delete(requestId);
+        clearTimeout(waiter.timeout);
+        waiter.unlinkAbort();
+        reject(
+          new DOMException(
+            "Browser capture registration was cancelled",
+            "AbortError",
+          ),
+        );
+      };
+      const waiter: BrowserCaptureRegistrationWaiter = {
+        resolve,
+        reject,
+        timeout: setTimeout(() => {
+          if (browserCaptureRegistrationWaiters.get(requestId) !== waiter)
+            return;
+          browserCaptureRegistrationWaiters.delete(requestId);
+          waiter.unlinkAbort();
+          reject(new Error("Timed out registering Browser capture"));
+        }, 10_000),
+        unlinkAbort: () => options.signal?.removeEventListener("abort", abort),
+      };
+      browserCaptureRegistrationWaiters.set(requestId, waiter);
+      options.signal?.addEventListener("abort", abort, { once: true });
+      registrationSent = true;
+      wsManager.sendBrowserCaptureRegister({
+        type: "browser-capture-register",
+        requestId,
+        tabId: options.target.tabId,
+        captureId,
+        mimeType,
+        pixelSize,
+        byteLength: blob.size,
+        expectedNavigationEpoch: options.target.navigationEpoch,
+      });
+    });
+    options.signal?.throwIfAborted();
+    if (
+      registeredTabs.get(options.target.tabId) !== tab ||
+      !targetEquals(targetFor(tab), options.target)
+    ) {
+      throw new Error("Browser page changed while the capture was registered");
+    }
+    return {
+      captureId,
+      mimeType,
+      pixelSize,
+      byteLength: blob.size,
+      target: options.target,
+      expiresAt,
+    };
+  } catch (error) {
+    generatedBrowserCaptures.delete(captureId);
+    const waiter = browserCaptureRegistrationWaiters.get(requestId);
+    if (waiter !== undefined) {
+      browserCaptureRegistrationWaiters.delete(requestId);
+      clearTimeout(waiter.timeout);
+      waiter.unlinkAbort();
+    }
+    if (registrationSent)
+      wsManager.sendBrowserCaptureRelease({
+        type: "browser-capture-release",
+        requestId: randomId(),
+        captureId,
+        tabId: options.target.tabId,
+      });
+    throw error;
+  }
+}
+
+function fireBrowserControllerDisposeListeners(
+  listeners: Set<(reason: BrowserControllerDisposeReason) => void> | undefined,
+  reason: BrowserControllerDisposeReason,
+): void {
+  if (listeners === undefined) return;
+  for (const listener of [...listeners]) {
+    listener(reason);
+  }
+}
+
+/**
+ * Notify every mounted Browser controller bound to the given tab that the tab
+ * is genuinely gone. The host calls this only when the tab was closed or its
+ * view destroyed (never on a thread switch or presentation detach).
+ */
+export function notifyBrowserControllerDisposed(
+  tabId: string,
+  reason: BrowserControllerDisposeReason,
+): void {
+  removeControllerRegistrations(
+    (registration) => registration.tabId === tabId,
+    reason,
+  );
+  fireBrowserControllerDisposeListeners(
+    browserControllerDisposeListenersByTab.get(tabId),
+    reason,
+  );
+}
+
+/**
+ * Notify every mounted Browser controller whose thread was deleted. The host
+ * calls this before the tab tree unmounts so plugin controllers can clear
+ * per-(thread, tab) records.
+ */
+export function notifyBrowserControllerDisposedForThread(
+  threadId: string,
+): void {
+  fireBrowserControllerDisposeListeners(
+    browserControllerDisposeListenersByThread.get(threadId),
+    "thread-removed",
+  );
+}
+
+/**
+ * Notify every mounted Browser controller whose environment was deleted. The
+ * host calls this before the tab tree unmounts.
+ */
+export function notifyBrowserControllerDisposedForEnvironment(
+  environmentId: string,
+): void {
+  fireBrowserControllerDisposeListeners(
+    browserControllerDisposeListenersByEnvironment.get(environmentId),
+    "environment-removed",
+  );
+}
+
+/**
+ * Notify every mounted Browser controller owned by a plugin generation whose
+ * frontend bundle was reloaded, disabled, or unloaded. In-flight contribution
+ * handlers for that plugin are aborted before listeners run so the replaced
+ * generation can never answer queued requests. The runtime re-mounts the
+ * controller under a fresh plugin generation afterwards.
+ */
+export function notifyBrowserControllerDisposedForPlugin(
+  pluginId: string,
+): void {
+  removeControllerRegistrations(
+    (registration) => registration.pluginId === pluginId,
+    "plugin-disposed",
+  );
+  for (const [key, listeners] of browserControllerDisposeListenersByPlugin) {
+    if (!key.startsWith(`${pluginId}:`)) continue;
+    fireBrowserControllerDisposeListeners(listeners, "plugin-disposed");
+  }
+}
+
+/**
+ * Notify every mounted Browser controller that the controlling realtime
+ * connection dropped. Each controller tears down its exact in-flight work
+ * before any plugin-disposed/unmount notification can follow a reconnect
+ * replacement, so stale request-handler generations can never answer.
+ */
+export function notifyBrowserControllersClientDisconnected(): void {
+  // Each mounted runtime subscribes once in its tab, thread, and environment
+  // sets; the tab set has exactly one entry per runtime, so firing through it
+  // notifies every controller exactly once.
+  for (const listeners of browserControllerDisposeListenersByTab.values()) {
+    fireBrowserControllerDisposeListeners(listeners, "client-disconnected");
+  }
+}
+
+/**
+ * Invoked after a realtime reconnect has been established and the server-side
+ * registrations have been re-published (the `connected` handler sends client
+ * state first). Mounted controller runtimes re-register their live request
+ * handler generations with this hook, replacing the handlers torn down by
+ * {@link notifyBrowserControllersClientDisconnected}.
+ */
+export function subscribeBrowserControllerReconnected(
+  listener: () => void,
+): () => void {
+  browserControllerReconnectListeners.add(listener);
+  return () => browserControllerReconnectListeners.delete(listener);
+}
+
+/**
+ * Subscribe a mounted Browser controller runtime to disposal notifications for
+ * its exact scope. Returns an unsubscribe that removes only this subscription.
+ */
+export function subscribeBrowserControllerDisposed(
+  tabId: string,
+  threadId: string,
+  environmentId: string | null,
+  pluginId: string,
+  listener: (reason: BrowserControllerDisposeReason) => void,
+): () => void {
+  const tabListeners =
+    browserControllerDisposeListenersByTab.get(tabId) ?? new Set();
+  tabListeners.add(listener);
+  browserControllerDisposeListenersByTab.set(tabId, tabListeners);
+  const threadListeners =
+    browserControllerDisposeListenersByThread.get(threadId) ?? new Set();
+  threadListeners.add(listener);
+  browserControllerDisposeListenersByThread.set(threadId, threadListeners);
+  let environmentListeners:
+    | Set<(reason: BrowserControllerDisposeReason) => void>
+    | undefined;
+  if (environmentId !== null) {
+    environmentListeners =
+      browserControllerDisposeListenersByEnvironment.get(environmentId) ??
+      new Set();
+    environmentListeners.add(listener);
+    browserControllerDisposeListenersByEnvironment.set(
+      environmentId,
+      environmentListeners,
+    );
+  }
+  const pluginListeners =
+    browserControllerDisposeListenersByPlugin.get(`${pluginId}:${tabId}`) ??
+    new Set();
+  pluginListeners.add(listener);
+  browserControllerDisposeListenersByPlugin.set(
+    `${pluginId}:${tabId}`,
+    pluginListeners,
+  );
+  return () => {
+    const currentTab = browserControllerDisposeListenersByTab.get(tabId);
+    if (currentTab !== undefined) {
+      currentTab.delete(listener);
+      if (currentTab.size === 0) {
+        browserControllerDisposeListenersByTab.delete(tabId);
+      }
+    }
+    const currentThread =
+      browserControllerDisposeListenersByThread.get(threadId);
+    if (currentThread !== undefined) {
+      currentThread.delete(listener);
+      if (currentThread.size === 0) {
+        browserControllerDisposeListenersByThread.delete(threadId);
+      }
+    }
+    if (environmentListeners !== undefined) {
+      environmentListeners.delete(listener);
+      if (environmentListeners.size === 0 && environmentId !== null) {
+        browserControllerDisposeListenersByEnvironment.delete(environmentId);
+      }
+    }
+    const currentPlugin = browserControllerDisposeListenersByPlugin.get(
+      `${pluginId}:${tabId}`,
+    );
+    if (currentPlugin !== undefined) {
+      currentPlugin.delete(listener);
+      if (currentPlugin.size === 0) {
+        browserControllerDisposeListenersByPlugin.delete(
+          `${pluginId}:${tabId}`,
+        );
+      }
+    }
+  };
+}
+
 function sendClientState(): void {
   const tabs = new Map<
     string,
@@ -186,6 +584,14 @@ function sendClientState(): void {
     active: isDocumentVisible(),
     canActivateThreadOwner: threadOwnerActivator !== null,
     tabs: [...tabs.values()],
+    controllers: [...controllerRequestHandlers.values()]
+      .filter((registration) => registeredTabs.has(registration.tabId))
+      .map(({ pluginId, controllerId, tabId, registrationId }) => ({
+        pluginId,
+        controllerId,
+        tabId,
+        registrationId,
+      })),
     owners: [...registeredOwners.values()].map(
       ({ active, ownerId, projectId, threadId }) => ({
         active,
@@ -208,35 +614,62 @@ function targetEquals(a: BrowserTabTarget, b: BrowserTabTarget): boolean {
 
 export function waitForBrowserControlTab(
   tabId: string,
+  options: { signal?: AbortSignal; timeoutMs?: number } = {},
 ): Promise<BrowserTabTarget> {
+  if (options.signal?.aborted) {
+    return Promise.reject(
+      new DOMException("Browser tab creation was cancelled", "AbortError"),
+    );
+  }
   const existing = registeredTabs.get(tabId);
   if (existing?.ready === true) {
     return Promise.resolve(targetFor(existing));
   }
-  let resolve: ((target: BrowserTabTarget) => void) | undefined;
-  let reject: ((error: Error) => void) | undefined;
+  let resolve!: (target: BrowserTabTarget) => void;
+  let reject!: (reason: Error) => void;
   const promise = new Promise<BrowserTabTarget>(
     (resolvePromise, rejectPromise) => {
       resolve = resolvePromise;
       reject = rejectPromise;
     },
   );
-  if (resolve === undefined || reject === undefined) {
-    throw new Error("Browser tab registration waiter did not initialize");
-  }
-  const resolveWaiter = resolve;
-  const rejectWaiter = reject;
-  const timeout = setTimeout(() => {
-    tabRegistrationWaiters.delete(tabId);
-    rejectWaiter(
-      new Error("The new visible Browser tab did not become available"),
+  const waiterSet = tabRegistrationWaiters.get(tabId) ?? new Set();
+  const signal = options.signal;
+  const timeoutMs = options.timeoutMs ?? 30_000;
+  let settled = false;
+  const settle = (callback: () => void): void => {
+    if (settled) return;
+    settled = true;
+    clearTimeout(timeout);
+    signal?.removeEventListener("abort", onAbort);
+    waiterSet.delete(waiter);
+    if (waiterSet.size === 0) tabRegistrationWaiters.delete(tabId);
+    callback();
+  };
+  const onAbort = (): void =>
+    settle(() =>
+      reject(
+        new DOMException("Browser tab creation was cancelled", "AbortError"),
+      ),
     );
-  }, 30_000);
-  tabRegistrationWaiters.set(tabId, {
-    resolve: resolveWaiter,
-    reject: rejectWaiter,
+  if (signal?.aborted === true) {
+    return Promise.reject(
+      new DOMException("Browser tab creation was cancelled", "AbortError"),
+    );
+  }
+  signal?.addEventListener("abort", onAbort, { once: true });
+  const timeout = setTimeout(() => {
+    settle(() =>
+      reject(new Error("The new visible Browser tab did not become available")),
+    );
+  }, timeoutMs);
+  const waiter: BrowserTabRegistrationWaiter = {
+    reject: (error) => settle(() => reject(error)),
+    resolve: (target) => settle(() => resolve(target)),
     timeout,
-  });
+  };
+  waiterSet.add(waiter);
+  tabRegistrationWaiters.set(tabId, waiterSet);
   return promise;
 }
 
@@ -372,6 +805,80 @@ function setRequestActive(tabId: string, active: boolean): void {
   else activeRequestCounts.set(tabId, next);
   for (const listener of activityListeners) listener();
 }
+function normalizeBrowserWaitResult(
+  value: JsonValue,
+  target: BrowserTabTarget,
+  observedTarget: BrowserTabTarget,
+): JsonValue {
+  if (
+    typeof value !== "object" ||
+    value === null ||
+    Array.isArray(value) ||
+    typeof value.kind !== "string"
+  ) {
+    throw new Error("Browser wait returned an invalid result");
+  }
+  const transition =
+    target.clientId !== observedTarget.clientId ||
+    target.windowId !== observedTarget.windowId ||
+    target.tabId !== observedTarget.tabId ||
+    target.navigationEpoch !== observedTarget.navigationEpoch;
+  const common = {
+    target,
+    ...(transition ? { originalTarget: target, observedTarget } : {}),
+  };
+  switch (value.kind) {
+    case "locator":
+    case "text":
+      return browserWaitResultSchema.parse({ ...common, kind: value.kind });
+    case "url":
+    case "popup":
+      return browserWaitResultSchema.parse({
+        ...common,
+        kind: value.kind,
+        url: value.url,
+      });
+    case "navigation":
+      return browserWaitResultSchema.parse({
+        ...common,
+        kind: value.kind,
+        url: value.url,
+        phase: value.phase,
+        sameDocument: value.sameDocument,
+      });
+    case "load-state":
+      return browserWaitResultSchema.parse({
+        ...common,
+        kind: value.kind,
+        state: value.state,
+      });
+    case "request":
+      return browserWaitResultSchema.parse({
+        ...common,
+        kind: value.kind,
+        url: value.url,
+        method: value.method,
+      });
+    case "response":
+      return browserWaitResultSchema.parse({
+        ...common,
+        kind: value.kind,
+        url: value.url,
+        method: value.method,
+        status: value.status,
+      });
+    case "download-blocked":
+      return browserWaitResultSchema.parse({
+        ...common,
+        kind: value.kind,
+        url: value.url,
+        blocked: value.blocked,
+      });
+    default:
+      throw new Error("Browser wait returned an invalid result");
+  }
+}
+
 function browserFrameForAction(
   action: BrowserControlAction,
 ): BrowserFrameTarget | undefined {
@@ -740,11 +1247,11 @@ async function resolveTrustedInputPoint(
           requestId: randomId(),
           frame: browserFrameForAction(action),
           source:
-            action.kind === "click"
-              ? trustedClickSource
-              : action.kind === "type"
-                ? trustedTypeSource
-                : trustedCheckSource,
+            action.kind === "type"
+              ? trustedTypeSource
+              : action.kind === "check" || action.kind === "uncheck"
+                ? trustedCheckSource
+                : trustedClickSource,
           input: {
             ...action,
             stableFrameCount: actionabilityPolicy.stableFrameCount,
@@ -889,75 +1396,6 @@ async function resolveActionablePointer(
     ? lastError
     : new Error("Browser pointer target was not actionable before the timeout");
 }
-
-const annotationCaptureSource = `({ input }) => { ${resolveLocatorSource}
-  const element = input.element.target === "locator"
-    ? resolveLocator(input.element.locator)
-    : document.elementFromPoint(input.element.x, input.element.y);
-  if (!(element instanceof Element)) throw new Error("Browser annotation target was not found");
-  const rect = element.getBoundingClientRect();
-  const style = getComputedStyle(element);
-  const selectedEditable =
-    element instanceof HTMLTextAreaElement ||
-    element instanceof HTMLSelectElement ||
-    (element instanceof HTMLInputElement &&
-      !["button", "checkbox", "color", "file", "hidden", "image", "radio", "range", "reset", "submit"].includes(element.type)) ||
-    element.isContentEditable ||
-    element.closest("[contenteditable]") !== null;
-  const hasSensitiveDescendant = Array.from(element.querySelectorAll("*")).some((candidate) =>
-    candidate instanceof HTMLInputElement && candidate.type === "password" ||
-    Array.from(candidate.attributes).some((attribute) =>
-      /(?:pass(?:word)?|secret|token|api[-_]?key|credential|authorization|cookie|session)/i.test(attribute.name + attribute.value),
-    ),
-  );
-  const editable = selectedEditable || hasSensitiveDescendant;
-  const attributes = {};
-  for (const attribute of Array.from(element.attributes).slice(0, 32)) {
-    attributes[attribute.name.slice(0, 64)] = attribute.value.slice(0, 256);
-  }
-  const text = editable ? "" : (element.innerText || element.textContent || "").replace(/\\s+/g, " ").trim().slice(0, 1024);
-  return {
-    accessibility: {
-      ariaLabel: element.getAttribute("aria-label")?.slice(0, 256) || null,
-      ariaLabelledBy: element.getAttribute("aria-labelledby")?.slice(0, 256) || null,
-      description: element.getAttribute("aria-description")?.slice(0, 256) || null,
-      name: (element.getAttribute("aria-label") || text).slice(0, 256) || null,
-      role: element.getAttribute("role")?.slice(0, 128) || element.localName.slice(0, 128)
-    },
-    capturedAt: new Date().toISOString(),
-    ancestorPath: [],
-    dom: {
-      attributes,
-      classes: Array.from(element.classList).slice(0, 16).map((value) => value.slice(0, 128)),
-      id: element.id.slice(0, 256) || null,
-      selector: element.localName.slice(0, 1024),
-      tag: element.localName.slice(0, 64)
-    },
-    editable,
-    fullDomPath: element.localName.slice(0, 2048),
-    html: null,
-    nearbyText: [],
-    nearbyElements: [],
-    reactComponents: null,
-    rect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
-    rectPage: { x: rect.x + scrollX, y: rect.y + scrollY, width: rect.width, height: rect.height },
-    sourceFile: null,
-    styles: {
-      backgroundColor: style.backgroundColor, border: style.border, borderRadius: style.borderRadius,
-      color: style.color, display: style.display, fontFamily: style.fontFamily, fontSize: style.fontSize,
-      fontWeight: style.fontWeight, height: style.height, lineHeight: style.lineHeight, margin: style.margin,
-      opacity: style.opacity, padding: style.padding, position: style.position, textAlign: style.textAlign,
-      width: style.width, zIndex: style.zIndex
-    },
-    selectedText: getSelection()?.toString().replace(/\\s+/g, " ").trim().slice(0, 500) || null,
-    text,
-    title: document.title.slice(0, 1024) || null,
-    url: location.href.slice(0, 4096),
-    devicePixelRatio,
-    viewport: { width: innerWidth, height: innerHeight },
-    scroll: { x: scrollX, y: scrollY }
-  };
-}`;
 
 const snapshotScript = `async ({ input, signal }) => {
   const maxNodes = Math.max(1, Math.min(2000, Number(input.maxNodes ?? 500)));
@@ -1146,9 +1584,9 @@ function scriptForAction(
             try {
               if (input.criteria.kind === "locator") {
                 const element = resolveLocator(input.criteria.locator);
-                if (element instanceof Element) return { matched: true, kind: "locator" };
+                if (element instanceof Element) return { kind: "locator" };
               } else if ((document.body?.innerText || "").includes(input.criteria.text)) {
-                return { matched: true, kind: "text", text: input.criteria.text };
+                return { kind: "text" };
               }
             } catch {}
             const { promise, resolve } = Promise.withResolvers();
@@ -1207,6 +1645,7 @@ function scriptForAction(
         ...(action.world === undefined ? {} : { world: action.world }),
       };
     case "navigate":
+    case "capture":
     case "screenshot":
     case "screenshot-full-page":
     case "screenshot-element":
@@ -1230,10 +1669,11 @@ function scriptForAction(
     case "open-tab":
     case "close-tab":
     case "list-frames":
-    case "annotate":
     case "click":
     case "type":
     case "key":
+      return null;
+    default:
       return null;
   }
 }
@@ -1245,19 +1685,28 @@ async function executeAction(
   actionabilityPolicy: BrowserActionabilityPolicy,
   originalTarget: BrowserTabTarget,
 ): Promise<JsonValue> {
+  if (tab.desktopBrowser.experimental_browserControlVersion !== 2) {
+    throw new Error("Browser control requires a newer BB desktop app");
+  }
   if (action.kind === "activate-tab") {
     const owner = ownerForTab(tab);
     if (owner === null) {
       throw new Error("Browser tab activation is unavailable in this panel");
     }
-    return owner.activateTab(action.tabId);
+    if (signal.aborted) {
+      throw new DOMException("Browser action was cancelled", "AbortError");
+    }
+    return owner.activateTab(action.tabId, { signal });
   }
   if (action.kind === "open-tab") {
     const openTab = tab.openTab ?? ownerForTab(tab)?.openTab ?? null;
     if (openTab === null) {
       throw new Error("Browser tab creation is unavailable in this panel");
     }
-    return openTab(action.url);
+    if (signal.aborted) {
+      throw new DOMException("Browser action was cancelled", "AbortError");
+    }
+    return openTab(action.url, { signal });
   }
   if (action.kind === "close-tab") {
     const owner = ownerForTab(tab);
@@ -1266,6 +1715,9 @@ async function executeAction(
       (owner === null ? null : () => owner.closeTab(tab.descriptor.tabId));
     if (closeTab === null) {
       throw new Error("Browser tab close is unavailable in this panel");
+    }
+    if (signal.aborted) {
+      throw new DOMException("Browser action was cancelled", "AbortError");
     }
     const close = tab.desktopBrowser.experimental_closeBrowserTab;
     if (close === undefined) {
@@ -1298,44 +1750,21 @@ async function executeAction(
     }
     return result;
   }
-  if (action.kind === "annotate") {
-    const run = tab.desktopBrowser.experimental_runBrowserPageScript;
-    if (run === undefined) {
-      throw new Error("Browser annotations require a newer BB desktop app");
+  if (action.kind === "trust-localhost-certificate") {
+    const trust = tab.desktopBrowser.experimental_trustLocalhostCertificate;
+    if (trust === undefined) {
+      throw new Error(
+        "Browser certificate trust requires a newer BB desktop app",
+      );
     }
-    const result = await run(
-      {
-        tabId: tab.descriptor.tabId,
-        expectedNavigationEpoch: tab.descriptor.navigationEpoch,
-        frame: browserFrameForAction(action),
-        requestId: randomId(),
-        source: annotationCaptureSource,
-        input: action,
-        timeoutMs: 10_000,
-      },
-      { signal },
-    );
+    const result = await trust({
+      tabId: tab.descriptor.tabId,
+      expectedNavigationEpoch: tab.descriptor.navigationEpoch,
+    });
     if (result.navigationEpoch !== tab.descriptor.navigationEpoch) {
-      throw new Error("Browser tab changed while the annotation was captured");
+      throw new Error("Browser tab changed before the certificate was trusted");
     }
-    const capture = browserElementAnnotationCaptureSchema.safeParse(
-      result.value,
-    );
-    if (!capture.success) {
-      throw new Error("Browser annotation capture was invalid");
-    }
-    const annotation = redactBrowserElementAnnotation(capture.data);
-    if (annotation === null || annotation.sensitive) {
-      throw new Error("Browser annotation contains sensitive content");
-    }
-    return JSON.parse(
-      JSON.stringify({
-        annotation,
-        intent: action.intent,
-        feedback: action.feedback,
-        tab: targetFor(tab),
-      }),
-    );
+    return { trustedOrigin: result.trustedOrigin };
   }
   if (
     action.kind === "click" ||
@@ -1343,6 +1772,10 @@ async function executeAction(
     action.kind === "check" ||
     action.kind === "uncheck"
   ) {
+    const trustedAction = action as Extract<
+      BrowserControlAction,
+      { kind: "click" | "type" | "check" | "uncheck" }
+    >;
     const run = tab.desktopBrowser.experimental_runBrowserPageScript;
     const sendTrusted = tab.desktopBrowser.experimental_sendBrowserTrustedInput;
     if (run === undefined || sendTrusted === undefined) {
@@ -1353,7 +1786,7 @@ async function executeAction(
     }
     const resolved = await resolveTrustedInputPoint(
       tab,
-      action,
+      trustedAction,
       signal,
       actionabilityPolicy,
       run,
@@ -1378,6 +1811,7 @@ async function executeAction(
       {
         tabId: tab.descriptor.tabId,
         expectedNavigationEpoch: tab.descriptor.navigationEpoch,
+        requestId: randomId(),
         frame: browserFrameForAction(action),
         action:
           action.kind === "type"
@@ -1434,6 +1868,7 @@ async function executeAction(
       {
         tabId: tab.descriptor.tabId,
         expectedNavigationEpoch: tab.descriptor.navigationEpoch,
+        requestId: randomId(),
         action: {
           kind: "key",
           key: action.key,
@@ -1455,6 +1890,17 @@ async function executeAction(
     action.kind === "double-click" ||
     action.kind === "drag"
   ) {
+    const pointerAction = action as Extract<
+      BrowserControlAction,
+      {
+        kind:
+          | "hover"
+          | "right-click"
+          | "middle-click"
+          | "double-click"
+          | "drag";
+      }
+    >;
     const run = tab.desktopBrowser.experimental_runBrowserPageScript;
     const sendPointer = tab.desktopBrowser.experimental_sendBrowserPointerInput;
     if (run === undefined || sendPointer === undefined) {
@@ -1464,7 +1910,7 @@ async function executeAction(
     }
     const resolvedValue = await resolveActionablePointer(
       tab,
-      action,
+      pointerAction,
       signal,
       actionabilityPolicy,
       run,
@@ -1558,6 +2004,7 @@ async function executeAction(
       {
         tabId: tab.descriptor.tabId,
         expectedNavigationEpoch: tab.descriptor.navigationEpoch,
+        requestId: randomId(),
         frame: browserFrameForAction(action),
         events,
       },
@@ -1684,6 +2131,7 @@ async function executeAction(
       | {
           kind: "set-permissions";
           decision: "allow" | "deny";
+          origin: string;
           permissions: string[];
         }
       | { kind: "diagnostics" }
@@ -1795,20 +2243,7 @@ async function executeAction(
     if (!transition && !targetEquals(originalTarget, observedTarget)) {
       throw new Error("Browser tab changed while waiting for an event");
     }
-    if (
-      typeof result.value !== "object" ||
-      result.value === null ||
-      Array.isArray(result.value)
-    ) {
-      throw new Error("Browser event wait returned an invalid result");
-    }
-    return {
-      ...result.value,
-      target: originalTarget,
-      ...(targetEquals(originalTarget, observedTarget)
-        ? {}
-        : { originalTarget, observedTarget }),
-    };
+    return normalizeBrowserWaitResult(result.value, originalTarget, observedTarget);
   }
   if (action.kind === "navigate") {
     if (!isAllowedBrowserNavigationUrl(action.url)) {
@@ -1824,12 +2259,16 @@ async function executeAction(
     const capture = tab.desktopBrowser.experimental_captureBrowserPage;
     if (capture === undefined)
       throw new Error("Browser screenshots require a newer BB desktop app");
-    const result = await capture({
-      tabId: tab.descriptor.tabId,
-      format: action.format ?? "png",
-      quality: action.quality ?? 85,
-      expectedNavigationEpoch: tab.descriptor.navigationEpoch,
-    });
+    const result = await capture(
+      {
+        tabId: tab.descriptor.tabId,
+        requestId: randomId(),
+        format: action.format ?? "png",
+        quality: action.quality ?? 85,
+        expectedNavigationEpoch: tab.descriptor.navigationEpoch,
+      },
+      { signal },
+    );
     if (result.navigationEpoch !== tab.descriptor.navigationEpoch) {
       throw new Error("Browser tab changed while the screenshot was captured");
     }
@@ -1867,23 +2306,106 @@ async function executeAction(
     throw new Error("Browser tab changed while the action was running");
   }
   if (action.kind === "wait") {
-    if (
-      typeof result.value !== "object" ||
-      result.value === null ||
-      Array.isArray(result.value)
-    ) {
-      throw new Error("Browser wait returned an invalid result");
-    }
-    const observedTarget = targetFor(tab);
-    return {
-      ...result.value,
-      target: originalTarget,
-      ...(targetEquals(originalTarget, observedTarget)
-        ? {}
-        : { originalTarget, observedTarget }),
-    };
+    return normalizeBrowserWaitResult(result.value, originalTarget, targetFor(tab));
   }
   return result.value;
+}
+
+async function handlePluginRequest(
+  message: BrowserPluginRequestMessage,
+): Promise<void> {
+  const dispatchKey = `${message.pluginId}:${message.controllerId}:${message.target.tabId}`;
+  const controller = new AbortController();
+  requestControllers.set(message.requestId, controller);
+  let response: BrowserPluginResponseMessage;
+  try {
+    const handler = controllerRequestHandlers.get(dispatchKey);
+    if (
+      handler === undefined ||
+      handler.registrationId !== message.registrationId
+    ) {
+      throw Object.assign(
+        new Error(
+          "The requested Browser controller is not mounted for this tab",
+        ),
+        { name: "browser_controller_unavailable" },
+      );
+    }
+    const registeredTab = registeredTabs.get(message.target.tabId);
+    if (
+      registeredTab === undefined ||
+      !targetEquals(message.target, targetFor(registeredTab))
+    ) {
+      throw Object.assign(
+        new Error("The target Browser tab is no longer at that page revision"),
+        { name: "BrowserControlTargetChangedError" },
+      );
+    }
+    const signal = AbortSignal.any([
+      controller.signal,
+      handler.controller.signal,
+    ]);
+    signal.throwIfAborted();
+    const value = await handler.handler({
+      input: message.input,
+      target: message.target,
+      signal,
+    });
+    signal.throwIfAborted();
+    if (
+      registeredTabs.get(message.target.tabId) !== registeredTab ||
+      !targetEquals(message.target, targetFor(registeredTab))
+    ) {
+      throw Object.assign(
+        new Error("The target Browser tab changed during the contribution"),
+        {
+          name: "BrowserControlTargetChangedError",
+        },
+      );
+    }
+    if (controllerRequestHandlers.get(dispatchKey) !== handler) {
+      throw Object.assign(
+        new Error("The requested Browser controller was reloaded or disposed"),
+        { name: "browser_controller_unavailable" },
+      );
+    }
+    response = {
+      type: "browser-plugin-response",
+      requestId: message.requestId,
+      pluginId: message.pluginId,
+      controllerId: message.controllerId,
+      registrationId: message.registrationId,
+      ok: true,
+      value,
+    };
+  } catch (error) {
+    response = {
+      type: "browser-plugin-response",
+      requestId: message.requestId,
+      pluginId: message.pluginId,
+      controllerId: message.controllerId,
+      registrationId: message.registrationId,
+      ok: false,
+      error: publicBrowserError(error, "BrowserPluginError"),
+    };
+  } finally {
+    requestControllers.delete(message.requestId);
+  }
+  wsManager.sendBrowserPluginResponse(response);
+}
+
+function removeControllerRegistrations(
+  matches: (registration: RegisteredBrowserController) => boolean,
+  reason: BrowserControllerDisposeReason,
+): void {
+  let changed = false;
+  for (const [key, registration] of controllerRequestHandlers) {
+    if (!matches(registration)) continue;
+    controllerRequestHandlers.delete(key);
+    registration.controller.abort(new DOMException(reason, "AbortError"));
+    changed = true;
+  }
+  if (changed) sendClientState();
 }
 
 async function handleRequest(
@@ -2026,9 +2548,14 @@ async function handleOpenRequest(
   if (message.clientId !== clientId || message.windowId !== windowId) return;
   const controller = new AbortController();
   requestControllers.set(message.requestId, controller);
-  let response: BrowserOpenTabResponseMessage;
+  let response: BrowserOpenTabResponseMessage | null = null;
   let ownerId =
     message.mode === "owner" ? message.ownerId : `thread:${message.threadId}`;
+  const settle = (next: BrowserOpenTabResponseMessage): void => {
+    if (response !== null) return;
+    response = next;
+    controller.abort("settled");
+  };
   try {
     let owner: RegisteredBrowserOwner;
     if (message.mode === "owner") {
@@ -2056,13 +2583,25 @@ async function handleOpenRequest(
       ownerId = owner.ownerId;
     }
     if (controller.signal.aborted) {
-      throw new DOMException(
-        "Browser tab creation was cancelled",
-        "AbortError",
-      );
+      settle({
+        type: "browser-open-tab-response",
+        requestId: message.requestId,
+        clientId,
+        windowId,
+        ownerId,
+        ok: false,
+        error: {
+          code: "AbortError",
+          message: "Browser tab creation was cancelled",
+        },
+      });
+      return;
     }
-    const target = await owner.openTab(message.url);
-    response = {
+    const target = await owner.openTab(message.url, {
+      signal: controller.signal,
+    });
+    if (controller.signal.aborted) return;
+    settle({
       type: "browser-open-tab-response",
       requestId: message.requestId,
       clientId,
@@ -2070,9 +2609,10 @@ async function handleOpenRequest(
       ownerId,
       ok: true,
       target,
-    };
+    });
   } catch (error) {
-    response = {
+    if (response !== null) return;
+    settle({
       type: "browser-open-tab-response",
       requestId: message.requestId,
       clientId,
@@ -2080,26 +2620,262 @@ async function handleOpenRequest(
       ownerId,
       ok: false,
       error: publicBrowserError(error, "BrowserOpenTabError"),
-    };
+    });
   } finally {
     requestControllers.delete(message.requestId);
   }
-  wsManager.sendBrowserOpenTabResponse(response);
+  if (response !== null) wsManager.sendBrowserOpenTabResponse(response);
 }
 
 wsManager.onBrowserOpenTabRequest((message) => void handleOpenRequest(message));
 
 wsManager.onBrowserControlRequest((message) => void handleRequest(message));
+wsManager.onBrowserPluginRequest(
+  (message) => void handlePluginRequest(message),
+);
+
+wsManager.onBrowserCaptureReadRequest((message) => {
+  const identity = {
+    type: "browser-capture-chunk" as const,
+    requestId: message.requestId,
+    tabId: message.tabId,
+    captureId: message.captureId,
+    offset: message.offset,
+  };
+  void (async () => {
+    try {
+      const generated = generatedBrowserCaptures.get(message.captureId);
+      if (generated !== undefined) {
+        if (
+          generated.target.tabId !== message.tabId ||
+          message.offset + message.length > generated.blob.size
+        ) {
+          throw new Error("Browser capture read exceeds the capture bounds");
+        }
+        const bytes = new Uint8Array(
+          await generated.blob
+            .slice(message.offset, message.offset + message.length)
+            .arrayBuffer(),
+        );
+        let binary = "";
+        for (let index = 0; index < bytes.length; index += 0x8000) {
+          binary += String.fromCharCode(
+            ...bytes.subarray(index, index + 0x8000),
+          );
+        }
+        wsManager.sendBrowserCaptureChunk({
+          ...identity,
+          ok: true,
+          base64: btoa(binary),
+          eof: message.offset + bytes.length === generated.blob.size,
+        });
+        return;
+      }
+      const tab = registeredTabs.get(message.tabId);
+      const read = tab?.desktopBrowser.experimental_readBrowserCaptureChunk;
+      if (read === undefined) {
+        throw new Error(
+          "Browser capture reads require an available current desktop tab",
+        );
+      }
+      const chunk = await read({
+        tabId: message.tabId,
+        captureId: message.captureId,
+        offset: message.offset,
+        length: message.length,
+      });
+      if (
+        chunk.captureId !== message.captureId ||
+        chunk.offset !== message.offset
+      ) {
+        throw new Error("Browser capture returned a foreign chunk");
+      }
+      wsManager.sendBrowserCaptureChunk({ ...identity, ok: true, ...chunk });
+    } catch (error) {
+      wsManager.sendBrowserCaptureChunk({
+        ...identity,
+        ok: false,
+        error: publicBrowserError(error, "BrowserCaptureReadError"),
+      });
+    }
+  })();
+});
+
+wsManager.onBrowserCaptureRelease((message) => {
+  generatedBrowserCaptures.delete(message.captureId);
+  const tab = registeredTabs.get(message.tabId);
+  tab?.desktopBrowser.experimental_releaseBrowserCapture?.({
+    captureId: message.captureId,
+    tabId: message.tabId,
+  });
+});
+wsManager.onBrowserCaptureRegistered((message) => {
+  const waiter = browserCaptureRegistrationWaiters.get(message.requestId);
+  if (waiter === undefined) {
+    const generated = message.ok
+      ? generatedBrowserCaptures.get(message.captureId)
+      : null;
+    if (message.ok && generated !== null && generated !== undefined) {
+      wsManager.sendBrowserCaptureRelease({
+        type: "browser-capture-release",
+        requestId: randomId(),
+        tabId: generated.target.tabId,
+        captureId: message.captureId,
+      });
+    }
+    if (message.ok) generatedBrowserCaptures.delete(message.captureId);
+    return;
+  }
+  browserCaptureRegistrationWaiters.delete(message.requestId);
+  clearTimeout(waiter.timeout);
+  waiter.unlinkAbort();
+  if (message.ok) {
+    waiter.resolve(message.expiresAt);
+  } else {
+    waiter.reject(new Error(message.error.message));
+  }
+});
+
+wsManager.onBrowserCaptureCreate((message) => {
+  const controller = new AbortController();
+  requestControllers.set(message.requestId, controller);
+  void (async () => {
+    let ownedCaptureId: string | null = null;
+    const tab = registeredTabs.get(message.tabId);
+    const release = tab?.desktopBrowser.experimental_releaseBrowserCapture;
+    try {
+      if (
+        tab === undefined ||
+        tab.desktopBrowser.experimental_browserControlVersion !== 2 ||
+        release === undefined
+      ) {
+        throw new Error(
+          "Browser capture requires an available current desktop tab",
+        );
+      }
+      if (tab.descriptor.navigationEpoch !== message.expectedNavigationEpoch) {
+        throw new Error("Browser page changed before capture");
+      }
+      controller.signal.throwIfAborted();
+      let raw: unknown;
+      if (message.mode === "viewport") {
+        const capture = tab.desktopBrowser.experimental_captureBrowserPage;
+        if (capture === undefined)
+          throw new Error("Browser capture requires a newer desktop app");
+        raw = await capture(
+          {
+            tabId: message.tabId,
+            requestId: message.requestId,
+            format: message.format ?? "png",
+            quality: message.quality ?? 85,
+            expectedNavigationEpoch: message.expectedNavigationEpoch,
+          },
+          { signal: controller.signal },
+        );
+      } else if (message.mode === "full-page") {
+        const automate = tab.desktopBrowser.experimental_runBrowserAutomation;
+        if (automate === undefined)
+          throw new Error("Full-page capture requires a newer desktop app");
+        const result = await automate({
+          tabId: message.tabId,
+          expectedNavigationEpoch: message.expectedNavigationEpoch,
+          action: {
+            kind: "capture-full-page",
+            format: message.format ?? "png",
+            quality: message.quality ?? 85,
+          },
+        });
+        raw = result.value;
+      } else {
+        if (message.locator === undefined)
+          throw new Error("Element capture requires a locator");
+        raw = await executeAction(
+          tab,
+          {
+            kind: "screenshot-element",
+            locator: message.locator,
+            format: message.format ?? "png",
+            quality: message.quality ?? 85,
+          },
+          controller.signal,
+          {
+            timeoutMs: 10_000,
+            pollIntervalMs: 100,
+            stableFrameCount: 2,
+          },
+          targetFor(tab),
+        );
+      }
+      if (
+        raw !== null &&
+        typeof raw === "object" &&
+        !Array.isArray(raw) &&
+        "captureId" in raw &&
+        typeof raw.captureId === "string"
+      ) {
+        ownedCaptureId = raw.captureId;
+      }
+      const descriptor = bbDesktopBrowserCaptureDescriptorSchema.parse(raw);
+      controller.signal.throwIfAborted();
+      if (
+        registeredTabs.get(message.tabId) !== tab ||
+        descriptor.navigationEpoch !== message.expectedNavigationEpoch ||
+        tab.descriptor.navigationEpoch !== message.expectedNavigationEpoch
+      ) {
+        throw new Error("Browser page changed during capture");
+      }
+      wsManager.sendBrowserCaptureCreated({
+        type: "browser-capture-created",
+        requestId: message.requestId,
+        ok: true,
+        ...descriptor,
+      });
+      ownedCaptureId = null;
+    } catch (error) {
+      wsManager.sendBrowserCaptureCreated({
+        type: "browser-capture-created",
+        requestId: message.requestId,
+        ok: false,
+        error: publicBrowserError(error, "BrowserCaptureError"),
+      });
+    } finally {
+      requestControllers.delete(message.requestId);
+      if (ownedCaptureId !== null && release !== undefined) {
+        await release({ captureId: ownedCaptureId, tabId: message.tabId });
+      }
+    }
+  })();
+});
+
 wsManager.onBrowserControlCancel((message) => {
-  requestControllers.get(message.requestId)?.abort(message.reason);
+  requestControllers
+    .get(message.requestId)
+    ?.abort(new DOMException(message.reason, "AbortError"));
 });
 wsManager.onConnectionStateChange(() => {
   if (wsManager.getConnectionState() === "connected") return;
-  for (const controller of requestControllers.values()) {
-    controller.abort("client-disconnected");
+  generatedBrowserCaptures.clear();
+  for (const waiter of browserCaptureRegistrationWaiters.values()) {
+    clearTimeout(waiter.timeout);
+    waiter.unlinkAbort();
+    waiter.reject(
+      new DOMException("Browser capture client disconnected", "AbortError"),
+    );
   }
+  browserCaptureRegistrationWaiters.clear();
+  for (const controller of requestControllers.values()) {
+    controller.abort(new DOMException("client-disconnected", "AbortError"));
+  }
+  removeControllerRegistrations(() => true, "client-disconnected");
+  notifyBrowserControllersClientDisconnected();
 });
-wsManager.onConnected(() => sendClientState());
+wsManager.onConnected(() => {
+  sendClientState();
+  // The server has now re-registered this client's tabs/owners (the state
+  // push above). Only now may controllers re-publish their live handler
+  // generations for the fresh connection.
+  for (const listener of [...browserControllerReconnectListeners]) listener();
+});
 subscribeToDocumentVisibility(sendClientState);
 
 export function registerBrowserThreadOwnerActivator(
@@ -2166,11 +2942,13 @@ export function registerBrowserControlTab(
   };
   registeredTabs.set(args.tabId, registration);
   if (registration.ready) {
-    const waiter = tabRegistrationWaiters.get(args.tabId);
-    if (waiter !== undefined) {
+    const waiterSet = tabRegistrationWaiters.get(args.tabId);
+    if (waiterSet !== undefined) {
       tabRegistrationWaiters.delete(args.tabId);
-      clearTimeout(waiter.timeout);
-      waiter.resolve(targetFor(registration));
+      for (const waiter of waiterSet) {
+        clearTimeout(waiter.timeout);
+        waiter.resolve(targetFor(registration));
+      }
     }
   }
   notifyBrowserTargetWaiters(args.tabId);
@@ -2184,11 +2962,13 @@ export function registerBrowserControlTab(
       registration.descriptor = descriptor;
       registration.ready = (next.state?.navigationEpoch ?? 0) > 0;
       if (registration.ready) {
-        const waiter = tabRegistrationWaiters.get(args.tabId);
-        if (waiter !== undefined) {
+        const waiterSet = tabRegistrationWaiters.get(args.tabId);
+        if (waiterSet !== undefined) {
           tabRegistrationWaiters.delete(args.tabId);
-          clearTimeout(waiter.timeout);
-          waiter.resolve(targetFor(registration));
+          for (const waiter of waiterSet) {
+            clearTimeout(waiter.timeout);
+            waiter.resolve(targetFor(registration));
+          }
         }
       }
       notifyBrowserTargetWaiters(args.tabId);
@@ -2198,8 +2978,49 @@ export function registerBrowserControlTab(
       if (registeredTabs.get(args.tabId) !== registration) return;
       registeredTabs.delete(args.tabId);
       notifyBrowserTargetWaiters(args.tabId);
+      const waiterSet = tabRegistrationWaiters.get(args.tabId);
+      if (waiterSet !== undefined) {
+        tabRegistrationWaiters.delete(args.tabId);
+        for (const waiter of [...waiterSet]) {
+          clearTimeout(waiter.timeout);
+          waiter.reject(new Error("The new Browser tab was disposed"));
+        }
+      }
       sendClientState();
     },
+  };
+}
+
+export function registerBrowserControllerRequestHandler(
+  pluginId: string,
+  controllerId: string,
+  tabId: string,
+  handler: (request: {
+    input: JsonValue;
+    target: BrowserTabTarget;
+    signal: AbortSignal;
+  }) => Promise<JsonValue>,
+): () => void {
+  const key = `${pluginId}:${controllerId}:${tabId}`;
+  const previous = controllerRequestHandlers.get(key);
+  previous?.controller.abort(new DOMException("plugin-disposed", "AbortError"));
+  const registration: RegisteredBrowserController = {
+    pluginId,
+    controllerId,
+    tabId,
+    handler,
+    registrationId: crypto.randomUUID(),
+    controller: new AbortController(),
+  };
+  controllerRequestHandlers.set(key, registration);
+  sendClientState();
+  return () => {
+    if (controllerRequestHandlers.get(key) !== registration) return;
+    controllerRequestHandlers.delete(key);
+    registration.controller.abort(
+      new DOMException("plugin-disposed", "AbortError"),
+    );
+    sendClientState();
   };
 }
 

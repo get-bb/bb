@@ -313,6 +313,32 @@ describe("bb.agents.registerTool", () => {
       }),
     );
 
+    api.agents.registerTool({
+      name: "cross_thread_owner_browser",
+      description: "Cross-thread owner Browser open",
+      parameters: { type: "object" },
+      execute: async (_params, ctx) => {
+        await api.experimental_browser.openTab(
+          ctx,
+          "file:///Users/test/owner-page.html",
+          { ownerId: "owner-b" },
+        );
+        return "opened";
+      },
+    });
+    const ownerTool = service.findAgentTool("cross_thread_owner_browser")!;
+    await expect(
+      service.invokeAgentTool({ ...ownerTool, input: {}, ctx: context }),
+    ).resolves.toMatchObject({ success: true });
+    const ownerCall = openBrowserTab.mock.calls.at(-1)?.[0] as {
+      ownerId?: string;
+      threadId?: string;
+      projectId?: string;
+    };
+    expect(ownerCall.ownerId).toBe("owner-b");
+    expect(ownerCall.threadId).toBeUndefined();
+    expect(ownerCall.projectId).toBeUndefined();
+
     let detachedSignal: AbortSignal | undefined;
     runBrowserControl.mockImplementationOnce(async (rawArgs) => {
       const args = rawArgs as { signal: AbortSignal };

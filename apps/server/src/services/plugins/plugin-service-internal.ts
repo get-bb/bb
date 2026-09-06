@@ -104,10 +104,13 @@ export interface PluginServiceDeps {
     Partial<
       Pick<
         NotificationHub,
+
         | "listBrowserTabOwners"
         | "listBrowserTabs"
         | "openBrowserTab"
         | "runBrowserControl"
+        | "requestBrowserPluginContribution"
+        | "cancelBrowserPluginContributions"
       >
     >;
   logger: ServerLogger;

@@ -14,13 +14,17 @@ import {
   ArrowLeft01Icon,
   ArrowMoveDownLeftIcon,
   ArrowUp01Icon,
+  ArrowReloadHorizontalIcon,
   ArrowRight01Icon,
   Bug01Icon,
   Copy01Icon,
+  CursorRectangleSelection01Icon,
   File01Icon,
   Folder01Icon,
   GitBranchIcon,
+  GlobeIcon,
   InformationCircleIcon,
+  LockIcon,
   MessageAdd01Icon,
   Mic01Icon,
   MoreHorizontalIcon,
@@ -30,6 +34,7 @@ import {
   Search01Icon,
   Settings02Icon,
   SparklesIcon,
+  SquareArrowUpRightIcon,
   PlusMinusSquare01Icon,
   SidebarLeftIcon,
   SidebarRightIcon,
@@ -77,6 +82,7 @@ export const APP_SHELL_MARKS = [
   "sidebar-footer",
   "thread-header",
   "browser-actions",
+  "browser-controllers",
   "timeline-renderers",
   "message-directives",
   "message-actions",
@@ -678,7 +684,8 @@ export const ANATOMY_RENDERER_KEYS = {
 export type AppShellRightPanelTab =
   | "thread-panel"
   | "file-opener"
-  | "code-renderers";
+  | "code-renderers"
+  | "browser";
 
 function RightPanelTabLaneBadges({
   onTabSelect,
@@ -687,6 +694,13 @@ function RightPanelTabLaneBadges({
 }) {
   return (
     <>
+      <MeasuredBadge
+        id="browser-controllers"
+        label="Plugin controllers mounted over the exact Browser tab"
+        anchor='[data-guide-region="browser-controllers"]'
+        at="lane"
+        onActivate={() => onTabSelect("browser")}
+      />
       <MeasuredBadge
         id="code-renderers"
         label="Plugin code and diff renderers on bb's Diff tab"
@@ -935,7 +949,9 @@ export function AppShellWireframe() {
     useState<AppShellRightPanelTab>("thread-panel");
 
   useEffect(() => {
-    if (
+    if (expandedId === "browser-controllers") {
+      setRightPanelTab("browser");
+    } else if (
       expandedId === "thread-panel" ||
       expandedId === "file-opener" ||
       expandedId === "code-renderers"
@@ -1223,6 +1239,149 @@ function AppShellWireframeBody({
   );
 }
 
+function BrowserControllerFixture() {
+  const controllers = useEngagement("browser-controllers");
+  const chromeUrl = "https://docs.getbb.app/guides/browser-control";
+  return (
+    <div className="flex h-full min-h-0 flex-col">
+      <div
+        data-guide-fixture="browser-controller-chrome"
+        className="flex h-11 shrink-0 items-center gap-1 border-b border-border-hairline px-2"
+      >
+        <MiniIcon icon={ArrowLeft01Icon} className="size-4" />
+        <MiniIcon icon={ArrowRight01Icon} className="size-4" />
+        <MiniIcon icon={ArrowReloadHorizontalIcon} className="size-4" />
+        <span className="flex h-7 min-w-0 flex-1 items-center gap-1.5 rounded-full border border-border-hairline bg-background/70 px-2.5">
+          <HugeiconsIcon
+            icon={LockIcon}
+            className="size-3 shrink-0 text-success"
+            aria-hidden
+          />
+          <span className="min-w-0 truncate font-mono text-2xs text-foreground">
+            {chromeUrl}
+          </span>
+        </span>
+        <MiniIcon icon={SquareArrowUpRightIcon} className="size-3.5" />
+        <MiniIcon icon={MoreHorizontalIcon} className="size-3.5" />
+      </div>
+      <div className="relative min-h-0 flex-1 overflow-hidden">
+        <div
+          aria-hidden
+          data-guide-fixture="browser-controller-page"
+          className="absolute inset-0 bg-[linear-gradient(180deg,transparent_0,transparent_calc(100%-2px),color-mix(in_oklch,var(--border)_55%,transparent)_calc(100%-2px))] [background-size:100%_44px]"
+        >
+          <div className="flex h-full items-start justify-center px-10 pt-16">
+            <div className="w-full max-w-[26rem] space-y-3">
+              <div className="flex items-center gap-2">
+                <span className="flex size-8 items-center justify-center rounded-lg bg-state-hover text-foreground">
+                  <HugeiconsIcon
+                    icon={GlobeIcon}
+                    className="size-4"
+                    aria-hidden
+                  />
+                </span>
+                <span className="min-w-0">
+                  <span className="block truncate text-xs font-medium text-foreground">
+                    Browser control for plugins
+                  </span>
+                  <span className="block text-2xs text-subtle-foreground">
+                    docs.getbb.app
+                  </span>
+                </span>
+              </div>
+              <div className="flex items-center gap-1.5 text-2xs text-subtle-foreground">
+                <HugeiconsIcon
+                  icon={SparklesIcon}
+                  className="size-3"
+                  aria-hidden
+                />
+                <span>
+                  Run bounded scripts, create a disposable Blob-URL preview, and
+                  register generated images against this exact revision.
+                </span>
+              </div>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 px-10 pt-6 text-2xs text-subtle-foreground">
+            <span className="flex h-1.5 w-16 rounded-sm bg-muted/60" />
+            <span className="flex h-1.5 w-24 rounded-sm bg-foreground/30" />
+            <span className="flex h-1.5 w-20 rounded-sm bg-muted/60" />
+            <span className="flex h-1.5 w-10 rounded-sm bg-muted/60" />
+          </div>
+        </div>
+        <Mark
+          id="browser-controllers"
+          label="A plugin controller with a bounded capture descriptor on the exact Browser tab"
+          className="absolute bottom-3 right-3 z-10 block max-w-full"
+          showChip={false}
+        >
+          <span
+            data-guide-fixture="browser-controller"
+            className={cn(
+              "flex w-[min(24rem,calc(100%-1.5rem))] items-start gap-2 rounded-xl border border-border bg-popover/95 p-3 text-xs shadow-xl backdrop-blur",
+            )}
+          >
+            <span className="mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full bg-state-hover text-foreground">
+              <PluginGlyph className="size-3" />
+            </span>
+            <span className="min-w-0 flex-1 space-y-1.5">
+              <span className="flex items-center gap-2">
+                <span className="min-w-0 flex-1 truncate font-medium text-foreground">
+                  Checkout button
+                </span>
+                <span className="rounded-full bg-surface-recessed px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+                  fix
+                </span>
+              </span>
+              <code className="block truncate text-2xs text-muted-foreground">
+                .btn.checkout
+              </code>
+              <span className="block leading-5 text-foreground">
+                Add a retry link next to this button.
+              </span>
+              <span className="flex flex-wrap items-center gap-1.5 pt-0.5">
+                <span className="inline-flex h-6 items-center gap-1 rounded-md border border-border bg-background px-2 text-2xs font-medium text-foreground">
+                  <HugeiconsIcon
+                    icon={Copy01Icon}
+                    className="size-3"
+                    aria-hidden
+                  />
+                  Copy
+                </span>
+                <span className="inline-flex h-6 items-center gap-1 rounded-md bg-foreground px-2 text-2xs font-medium text-background">
+                  <HugeiconsIcon
+                    icon={MessageAdd01Icon}
+                    className="size-3"
+                    aria-hidden
+                  />
+                  Add to chat
+                </span>
+              </span>
+            </span>
+          </span>
+        </Mark>
+        <span
+          aria-hidden
+          data-guide-badge-ghost
+          className={cn(
+            "absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2",
+            controllers.outlined ? "opacity-100" : "opacity-0",
+          )}
+        >
+          <span className="flex items-center gap-1 rounded-md bg-foreground px-2 py-1 text-2xs text-background shadow-md">
+            <HugeiconsIcon
+              icon={CursorRectangleSelection01Icon}
+              className="size-3"
+              aria-hidden
+            />
+            Select the checkout button
+          </span>
+        </span>
+      </div>
+    </div>
+  );
+}
+
 export function AppShellRightPanel({
   activeTab,
   onTabSelect,
@@ -1272,6 +1431,23 @@ export function AppShellRightPanel({
           data-guide-fixture="right-panel-content-tabs"
           className="flex min-w-0 items-center gap-1.5"
         >
+          <span
+            data-guide-tab="browser"
+            role="tab"
+            aria-selected={activeTab === "browser"}
+            tabIndex={0}
+            onClick={() => onTabSelect("browser")}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                onTabSelect("browser");
+              }
+            }}
+            className={cn(tabClass("browser"), "gap-1.5 px-2")}
+          >
+            <MiniIcon icon={GlobeIcon} className="size-3.5" />
+            <span className="text-foreground">Browser</span>
+          </span>
           <Mark
             id="thread-panel"
             label="A plugin tab in the thread side panel"
@@ -1308,7 +1484,9 @@ export function AppShellRightPanel({
         <MiniIcon icon={SidebarRightIcon} className="size-3.5" />
       </div>
       <div data-guide-tab-body={activeTab} className="min-h-0 flex-1 p-4">
-        {activeTab === "thread-panel" ? (
+        {activeTab === "browser" ? (
+          <BrowserControllerFixture />
+        ) : activeTab === "thread-panel" ? (
           <div data-guide-fixture="thread-panel" className="space-y-2">
             <div className="flex items-center gap-1.5 text-foreground">
               <PluginGlyph className="size-3.5" />

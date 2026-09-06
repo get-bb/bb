@@ -240,7 +240,17 @@ type ExpectedBbSdkKey =
 
 type ExpectedRealtimeKey = "subscribe";
 
-type ExpectedBrowserKey = "batch" | "control" | "open" | "tabs" | "wait";
+type ExpectedBrowserKey =
+  | "batch"
+  | "capture"
+  | "captureDownload"
+  | "captureRead"
+  | "captureRelease"
+  | "control"
+  | "open"
+  | "experimental_requestContribution"
+  | "tabs"
+  | "wait";
 
 type ExpectedEnvironmentsKey =
   | "archiveThreads"

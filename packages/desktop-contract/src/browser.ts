@@ -3,6 +3,8 @@ import {
   browserFrameDescriptorSchema,
   browserFrameTargetSchema,
   browserWaitCriteriaSchema,
+  browserCaptureResultSchema,
+  browserCaptureReadResponseSchema,
 } from "@bb/domain";
 import type {
   BrowserFrameDescriptor,
@@ -415,12 +417,22 @@ export const bbDesktopBrowserTrustedInputRequestSchema = z
   .object({
     tabId: z.string().min(1).max(256),
     expectedNavigationEpoch: z.number().int().nonnegative(),
+    requestId: z.string().min(1).max(128),
     frame: bbDesktopBrowserFrameTargetSchema.optional(),
     action: bbDesktopBrowserTrustedInputActionSchema,
   })
   .strict();
 export type BbDesktopBrowserTrustedInputRequest = z.infer<
   typeof bbDesktopBrowserTrustedInputRequestSchema
+>;
+export const bbDesktopBrowserTrustedInputCancelRequestSchema = z
+  .object({
+    tabId: z.string().min(1).max(256),
+    requestId: z.string().min(1).max(128),
+  })
+  .strict();
+export type BbDesktopBrowserTrustedInputCancelRequest = z.infer<
+  typeof bbDesktopBrowserTrustedInputCancelRequestSchema
 >;
 
 export const bbDesktopBrowserTrustedInputResultSchema = z
@@ -538,12 +550,22 @@ export const bbDesktopBrowserPointerInputRequestSchema = z
   .object({
     tabId: z.string().min(1).max(256),
     expectedNavigationEpoch: z.number().int().nonnegative(),
+    requestId: z.string().min(1).max(128),
     frame: bbDesktopBrowserFrameTargetSchema.optional(),
     events: z.array(bbDesktopBrowserPointerInputEventSchema).min(1).max(32),
   })
   .strict();
 export type BbDesktopBrowserPointerInputRequest = z.infer<
   typeof bbDesktopBrowserPointerInputRequestSchema
+>;
+export const bbDesktopBrowserPointerInputCancelRequestSchema = z
+  .object({
+    tabId: z.string().min(1).max(256),
+    requestId: z.string().min(1).max(128),
+  })
+  .strict();
+export type BbDesktopBrowserPointerInputCancelRequest = z.infer<
+  typeof bbDesktopBrowserPointerInputCancelRequestSchema
 >;
 
 export const bbDesktopBrowserCloseRequestSchema = z
@@ -561,6 +583,15 @@ export const bbDesktopBrowserCloseResultSchema = z
     navigationEpoch: z.number().int().nonnegative(),
   })
   .strict();
+export const bbDesktopBrowserTrustLocalhostCertificateResultSchema = z
+  .object({
+    navigationEpoch: z.number().int().nonnegative(),
+    trustedOrigin: z.string().min(1).max(2_048),
+  })
+  .strict();
+export type BbDesktopBrowserTrustLocalhostCertificateResult = z.infer<
+  typeof bbDesktopBrowserTrustLocalhostCertificateResultSchema
+>;
 export type BbDesktopBrowserCloseResult = z.infer<
   typeof bbDesktopBrowserCloseResultSchema
 >;
@@ -619,35 +650,65 @@ export type BbDesktopBrowserViewportProfileResult = z.infer<
 export const bbDesktopBrowserPageCaptureRequestSchema = z
   .object({
     tabId: z.string().min(1).max(256),
+    requestId: z.string().min(1).max(128),
     format: z.enum(["png", "jpeg"]),
     quality: z.number().int().min(1).max(100),
-    expectedNavigationEpoch: z.number().int().nonnegative().optional(),
+    expectedNavigationEpoch: z.number().int().nonnegative(),
   })
   .strict();
 export type BbDesktopBrowserPageCaptureRequest = z.infer<
   typeof bbDesktopBrowserPageCaptureRequestSchema
 >;
+export const BB_DESKTOP_BROWSER_CAPTURE_MAX_ENCODED_BYTES = 256 * 1024 * 1024;
+export const BB_DESKTOP_BROWSER_CAPTURE_AGGREGATE_MAX_BYTES = 512 * 1024 * 1024;
+export const BB_DESKTOP_BROWSER_CAPTURE_TTL_MS = 120_000;
+export const BB_DESKTOP_BROWSER_CAPTURE_MAX_LIFETIME_MS = 10 * 60_000;
+export const BB_DESKTOP_BROWSER_CAPTURE_CHUNK_MAX_BYTES = 262_144;
 
-export const bbDesktopBrowserPageCaptureResultSchema = z
+export const bbDesktopBrowserCaptureDescriptorSchema = browserCaptureResultSchema.extend({
+  navigationEpoch: z.number().int().nonnegative(),
+});
+export type BbDesktopBrowserCaptureDescriptor = z.infer<
+  typeof bbDesktopBrowserCaptureDescriptorSchema
+>;
+export const bbDesktopBrowserCaptureChunkReadSchema = z
   .object({
-    navigationEpoch: z.number().int().nonnegative(),
-    dataUrl: z
-      .string()
-      .max(BB_DESKTOP_BROWSER_MAX_SNAPSHOT_DATA_URL_LENGTH)
-      .refine(
-        (value) =>
-          value.startsWith("data:image/png;base64,") ||
-          value.startsWith("data:image/jpeg;base64,"),
-        "Browser capture must be a PNG or JPEG data URL",
-      ),
-    pixelSize: z
-      .object({
-        width: z.number().int().positive(),
-        height: z.number().int().positive(),
-      })
-      .strict(),
+    captureId: z.string().min(1).max(256),
+    tabId: z.string().min(1).max(256),
+    offset: z.number().int().nonnegative(),
+    length: z
+      .number()
+      .int()
+      .min(1)
+      .max(BB_DESKTOP_BROWSER_CAPTURE_CHUNK_MAX_BYTES),
   })
   .strict();
+export type BbDesktopBrowserCaptureChunkRead = z.infer<
+  typeof bbDesktopBrowserCaptureChunkReadSchema
+>;
+export const bbDesktopBrowserCaptureChunkResultSchema = browserCaptureReadResponseSchema;
+export type BbDesktopBrowserCaptureChunkResult = z.infer<
+  typeof bbDesktopBrowserCaptureChunkResultSchema
+>;
+export const bbDesktopBrowserCaptureReleaseSchema = z
+  .object({
+    captureId: z.string().min(1).max(256),
+    tabId: z.string().min(1).max(256),
+  })
+  .strict();
+export type BbDesktopBrowserCaptureRelease = z.infer<
+  typeof bbDesktopBrowserCaptureReleaseSchema
+>;
+export const bbDesktopBrowserPageCaptureCancelRequestSchema = z
+  .object({
+    tabId: z.string().min(1).max(256),
+    requestId: z.string().min(1).max(128),
+  })
+  .strict();
+export type BbDesktopBrowserPageCaptureCancelRequest = z.infer<
+  typeof bbDesktopBrowserPageCaptureCancelRequestSchema
+>;
+export const bbDesktopBrowserPageCaptureResultSchema = bbDesktopBrowserCaptureDescriptorSchema;
 export type BbDesktopBrowserPageCaptureResult = z.infer<
   typeof bbDesktopBrowserPageCaptureResultSchema
 >;
@@ -667,6 +728,7 @@ export const bbDesktopBrowserAutomationRequestSchema = z
         .object({
           kind: z.literal("set-permissions"),
           decision: z.enum(["allow", "deny"]),
+          origin: z.string().min(1).max(2_048),
           permissions: z.array(z.string().min(1).max(128)).max(16),
         })
         .strict(),
@@ -800,18 +862,14 @@ export interface BbDesktopBrowserApi {
   goForward(tabId: string): void;
   reload(tabId: string): void;
   stop(tabId: string): void;
-  focus?(tabId: string): void;
+  focus(tabId: string): void;
   setBounds(request: BbDesktopBrowserSetBoundsRequest): void;
   setVisible(request: BbDesktopBrowserSetVisibleRequest): void;
-  setVisibleWithoutFocus?(request: BbDesktopBrowserSetVisibleRequest): void;
+  setVisibleWithoutFocus(request: BbDesktopBrowserSetVisibleRequest): void;
   experimental_trustLocalhostCertificate?(
-    request: BbDesktopBrowserTabRef,
-  ): void;
-  /** Optional capability marker for desktop/SPA version skew. */
-  experimental_browserPageRuntimeVersion?: 1;
-  experimental_browserFrameRuntimeVersion?: 1;
-  experimental_browserTrustedInputVersion?: 1;
-  experimental_browserEventWaitVersion?: 1;
+    request: BbDesktopBrowserCloseRequest,
+  ): Promise<BbDesktopBrowserTrustLocalhostCertificateResult>;
+  experimental_browserControlVersion?: 2;
   experimental_listBrowserFrames?(
     request: BbDesktopBrowserListFramesRequest,
   ): Promise<BbDesktopBrowserListFramesResult>;
@@ -825,6 +883,12 @@ export interface BbDesktopBrowserApi {
   ): Promise<BbDesktopBrowserWaitResult>;
   experimental_cancelBrowserEvent?(
     request: BbDesktopBrowserWaitCancelRequest,
+  ): void;
+  experimental_cancelBrowserTrustedInput?(
+    request: BbDesktopBrowserTrustedInputCancelRequest,
+  ): void;
+  experimental_cancelBrowserPointerInput?(
+    request: BbDesktopBrowserPointerInputCancelRequest,
   ): void;
   /**
    * Send a bounded, native pointer sequence to one exact Browser page
@@ -856,10 +920,16 @@ export interface BbDesktopBrowserApi {
     request: BbDesktopBrowserPageScriptRequest,
     options?: { signal?: AbortSignal },
   ): Promise<BbDesktopBrowserPageScriptResult>;
-  /** Capture the exact selected Browser tab without exposing its WebContents. */
   experimental_captureBrowserPage?(
     request: BbDesktopBrowserPageCaptureRequest,
+    options?: { signal?: AbortSignal },
   ): Promise<BbDesktopBrowserPageCaptureResult>;
+  experimental_readBrowserCaptureChunk?(
+    request: BbDesktopBrowserCaptureChunkRead,
+  ): Promise<BbDesktopBrowserCaptureChunkResult>;
+  experimental_releaseBrowserCapture?(
+    request: BbDesktopBrowserCaptureRelease,
+  ): Promise<void>;
   experimental_runBrowserAutomation?(
     request: BbDesktopBrowserAutomationRequest,
   ): Promise<BbDesktopBrowserAutomationResult>;
@@ -883,7 +953,7 @@ export interface BbDesktopBrowserApi {
   onScopedOpenTab?(
     listener: BbDesktopBrowserScopedOpenTabHandler,
   ): BbDesktopBrowserUnsubscribe;
-  onFocus?(listener: BbDesktopBrowserFocusHandler): BbDesktopBrowserUnsubscribe;
+  onFocus(listener: BbDesktopBrowserFocusHandler): BbDesktopBrowserUnsubscribe;
   onSnapshot?(
     listener: BbDesktopBrowserSnapshotHandler,
   ): BbDesktopBrowserUnsubscribe;

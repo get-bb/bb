@@ -1983,3 +1983,129 @@ describe("@bb/sdk", () => {
     ]);
   });
 });
+
+describe("browser capture download", () => {
+  const captureArgs = {
+    target: {
+      clientId: "client-a",
+      windowId: "window-a",
+      tabId: "tab-a",
+      navigationEpoch: 4,
+    },
+    expiresAt: 2_100_000_000_000,
+    captureId: "capture-1",
+    byteLength: 262_147,
+    mimeType: "image/png" as const,
+    pixelSize: { width: 2, height: 3 },
+  };
+  const chunk = (
+    base64: string,
+    offset: number,
+    eof: boolean,
+    captureId = "capture-1",
+  ) => ({
+    captureId,
+    offset,
+    base64,
+    eof,
+  });
+
+  it("downloads a byte-exact multi-chunk capture and releases once", async () => {
+    const queue = createFetchQueue([
+      { body: chunk(Buffer.alloc(262_144, 65).toString("base64"), 0, false) },
+      { body: chunk("QkJC", 262_144, true) },
+      { body: { released: true } },
+    ]);
+    const sdk = createBbSdk({
+      transport: createHttpTransport({
+        baseUrl: "http://bb.test",
+        fetch: queue.fetch,
+        runtime: "node",
+      }),
+    });
+    const result = await sdk.browser.captureDownload({
+      descriptor: captureArgs,
+    });
+    const expected = Buffer.alloc(262_147, 65);
+    expected.fill(66, 262_144);
+    expect(Buffer.compare(Buffer.from(result.bytes), expected)).toBe(0);
+    expect(queue.requests).toHaveLength(3);
+    expect(queue.requests[2]?.url).toContain("/capture-release");
+  });
+});
+
+describe("browser capture create", () => {
+  const createArgs = {
+    clientId: "client-a",
+    windowId: "window-a",
+    tabId: "tab-a",
+    mode: "viewport" as const,
+    expectedNavigationEpoch: 4,
+  };
+  const descriptor = {
+    captureId: "capture-1",
+    target: {
+      clientId: "client-a",
+      windowId: "window-a",
+      tabId: "tab-a",
+      navigationEpoch: 4,
+    },
+    expiresAt: 2_100_000_000_000,
+    mimeType: "image/png",
+    pixelSize: { width: 2, height: 3 },
+    byteLength: 700_000,
+  };
+
+  it("rejects a malformed create result with a meaningful local error", async () => {
+    const queue = createFetchQueue([
+      { body: { captureId: "capture-1", byteLength: "not-a-number" } },
+    ]);
+    const sdk = createBbSdk({
+      transport: createHttpTransport({
+        baseUrl: "http://bb.test",
+        fetch: queue.fetch,
+        runtime: "node",
+      }),
+    });
+    await expect(sdk.browser.capture(createArgs)).rejects.toThrow(
+      "invalid descriptor",
+    );
+  });
+
+  it("rejects a zero-byte or empty descriptor before any download", async () => {
+    const queue = createFetchQueue([
+      { body: { ...descriptor, byteLength: 0 } },
+    ]);
+    const sdk = createBbSdk({
+      transport: createHttpTransport({
+        baseUrl: "http://bb.test",
+        fetch: queue.fetch,
+        runtime: "node",
+      }),
+    });
+    await expect(sdk.browser.capture(createArgs)).rejects.toThrow(
+      "invalid descriptor",
+    );
+  });
+
+  it("rejects a descriptor whose navigation epoch advanced past the request", async () => {
+    const queue = createFetchQueue([
+      {
+        body: {
+          ...descriptor,
+          target: { ...descriptor.target, navigationEpoch: 5 },
+        },
+      },
+    ]);
+    const sdk = createBbSdk({
+      transport: createHttpTransport({
+        baseUrl: "http://bb.test",
+        fetch: queue.fetch,
+        runtime: "node",
+      }),
+    });
+    await expect(sdk.browser.capture(createArgs)).rejects.toThrow(
+      "Browser tab changed before the capture completed",
+    );
+  });
+});

@@ -27,6 +27,7 @@ import { markEnabledPluginListStale } from "@/hooks/cache-owners/plugin-cache-ow
 import { pluginListQueryOptions } from "@/hooks/queries/plugin-settings-queries";
 import { createRecordingToast } from "@/lib/notifications/plugin-toast-recording";
 import { appQueryClient } from "./app-query-client";
+import { notifyBrowserControllerDisposedForPlugin } from "./browser-control-client";
 import type {
   PluginContentScriptDisposer,
   PluginContentScriptRegistration,
@@ -447,6 +448,7 @@ async function deactivateCommittedGeneration(
     clearPluginThreadRowStatuses(pluginId);
     return [];
   }
+  if (!active.disposed) notifyBrowserControllerDisposedForPlugin(pluginId);
   const failures = await disposeGeneration(pluginId, active, deps);
   clearPluginThreadRowStatuses(pluginId);
   state.activeGenerations.delete(pluginId);
@@ -812,6 +814,7 @@ export async function disposePluginFrontends(
     ...state.activeGenerations.keys(),
   ]);
   for (const pluginId of pluginIds) {
+    notifyBrowserControllerDisposedForPlugin(pluginId);
     const active = state.activeGenerations.get(pluginId);
     if (active !== undefined) {
       await disposeGeneration(pluginId, active, deps);

@@ -12,6 +12,7 @@ import {
   providerNativeRootsSchema,
   type ProviderNativeRoots,
 } from "@bb/domain";
+import { browserCaptureDescriptorSchema } from "@bb/server-contract";
 import { PLUGIN_CLI_OUTPUT_MAX_BYTES } from "../backend-contract.js";
 import type {
   PluginAgentToolPresentation,
@@ -19,6 +20,7 @@ import type {
   PluginAiServiceKind,
   PluginCliExecutionResult,
   PluginCliOutputLimitError,
+  PluginCliResult,
   PluginHookHandler,
   PluginHookName,
   PluginMentionTrigger,
@@ -2000,6 +2002,47 @@ export function summarizeParseIssues(error: unknown): string {
       .join("; ");
   }
   return error instanceof Error ? error.message : String(error);
+}
+
+export function normalizePluginCliResult(
+  result: PluginCliResult,
+): Omit<PluginCliExecutionResult, "error"> {
+  const normalized = {
+    exitCode: result.exitCode,
+    stdout: typeof result.stdout === "string" ? result.stdout : "",
+    stderr: typeof result.stderr === "string" ? result.stderr : "",
+  };
+  const captureDownload = result.experimental_browserCaptureDownload;
+  if (captureDownload === undefined) return normalized;
+  if (result.exitCode !== 0) {
+    throw new Error(
+      "cli run() may return experimental_browserCaptureDownload only on success",
+    );
+  }
+  if (
+    typeof captureDownload.out !== "string" ||
+    captureDownload.out.length === 0 ||
+    captureDownload.out.length > 4_096
+  ) {
+    throw new Error(
+      "cli run() experimental_browserCaptureDownload.out must be a non-empty path",
+    );
+  }
+  const descriptor = browserCaptureDescriptorSchema.safeParse(
+    captureDownload.descriptor,
+  );
+  if (!descriptor.success) {
+    throw new Error(
+      "cli run() experimental_browserCaptureDownload.descriptor is invalid",
+    );
+  }
+  return {
+    ...normalized,
+    experimental_browserCaptureDownload: {
+      descriptor: descriptor.data,
+      out: captureDownload.out,
+    },
+  };
 }
 
 export function enforcePluginCliOutputLimit(

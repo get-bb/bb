@@ -23,6 +23,7 @@ This release adds Account Pooler for Claude and Codex, push notifications across
 - **Provider Usage.** Enable this new plugin to see limits and reset times across machines in the sidebar footer.
 - **Theme Preview.** Install this optional plugin to compare themes across bb screens and components.
 - **Side chat.** Fixes for pending questions, queued messages, and compact layouts.
+- **Browser annotations.** Compact drawers retain drafts and drawings when closed. Screenshot text stays in source-image coordinates across resizing, and the drawing canvas remains aligned with the preview. Native capture downloads release their image resource before completing.
 
 ### Agent providers
 
@@ -40,6 +41,7 @@ This release adds Account Pooler for Claude and Codex, push notifications across
 - Set branch prefixes with `bb settings general managedBranchPrefix <prefix>`.
 - `bb plugin new` scaffolds a store overview.
 - Use `bb environment branches`; `bb thread show --merge-base-branches` has been removed.
+- `bb browser capture` exports a Browser tab image to a local file through a bounded capture resource, and `bb browser capture-download --descriptor <file> --out <path>` re-exports a saved descriptor; `bb browser plugin` sends an exact-tab contribution command to a plugin's Browser controller.
 
 ### Performance
 
@@ -70,6 +72,8 @@ This release adds Account Pooler for Claude and Codex, push notifications across
 - `app.experimental_sidebarFooter.register()` adds footer actions and disclosures.
 - `bb.providers.experimental_contributeEnv()` supplies provider environment variables.
 - `bb.http.experimental_websocket()` registers plugin WebSocket routes.
+- `app.slots.experimental_browserController` mounts one full-surface controller per logical Browser tab with exact-target lifecycle, script, and capture members (`experimental_lifecycleSignal`, `experimental_onLifecycle`, `experimental_registerRequestHandler`, `experimental_runBrowserPageScript`, `experimental_capturePage`, and `experimental_registerCapture`); `bb.experimental_browser.experimental_requestContribution` and `bb browser plugin` address a controller's request handler by exact revision.
+- `experimental_capturePage` returns a disposable Blob-URL preview (`url`, `navigationEpoch`, `pixelSize`, `dispose()`), while `experimental_registerCapture(blob, { target, signal? })` registers a plugin-generated bounded capture descriptor. `@get-bb/plugin-sdk/browser` exports `experimental_browserCaptureDescriptorSchema`, `experimental_browserFrameTargetSchema`, `experimental_browserPageLocatorSchema`, and `experimental_browserTabTargetSchema`.
 
 ### Thanks
 

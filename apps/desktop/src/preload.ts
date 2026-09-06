@@ -10,12 +10,19 @@ import {
   bbDesktopBrowserListCookieImportSourcesResultSchema,
   bbDesktopBrowserPageScriptRequestSchema,
   bbDesktopBrowserPageCaptureResultSchema,
+  bbDesktopBrowserPageCaptureRequestSchema,
+  bbDesktopBrowserPageCaptureCancelRequestSchema,
   bbDesktopBrowserListFramesResultSchema,
   bbDesktopBrowserListFramesRequestSchema,
   bbDesktopBrowserTrustedInputRequestSchema,
   bbDesktopBrowserTrustedInputResultSchema,
+  bbDesktopBrowserTrustedInputCancelRequestSchema,
+  bbDesktopBrowserPointerInputCancelRequestSchema,
   bbDesktopBrowserWaitRequestSchema,
   bbDesktopBrowserWaitResultSchema,
+  bbDesktopBrowserCaptureChunkReadSchema,
+  bbDesktopBrowserCaptureChunkResultSchema,
+  bbDesktopBrowserCaptureReleaseSchema,
   bbDesktopBrowserPageScriptResultSchema,
   bbDesktopBrowserPointerInputRequestSchema,
   bbDesktopBrowserPointerInputResultSchema,
@@ -24,6 +31,7 @@ import {
   bbDesktopBrowserOpenTabRequestSchema,
   bbDesktopBrowserScopedOpenTabRequestSchema,
   bbDesktopBrowserTabRefSchema,
+  bbDesktopBrowserTrustLocalhostCertificateResultSchema,
   bbDesktopBrowserSnapshotSchema,
   bbDesktopBrowserStateSchema,
   bbDesktopInfoSchema,
@@ -58,6 +66,8 @@ import {
 } from "./desktop-update-ipc.js";
 import {
   BB_DESKTOP_BROWSER_ATTACH_CHANNEL,
+  BB_DESKTOP_BROWSER_EXPERIMENTAL_CANCEL_POINTER_INPUT_CHANNEL,
+  BB_DESKTOP_BROWSER_EXPERIMENTAL_CANCEL_TRUSTED_INPUT_CHANNEL,
   BB_DESKTOP_BROWSER_EXPERIMENTAL_LIST_FRAMES_CHANNEL,
   BB_DESKTOP_BROWSER_EXPERIMENTAL_SEND_TRUSTED_INPUT_CHANNEL,
   BB_DESKTOP_BROWSER_EXPERIMENTAL_WAIT_EVENT_CHANNEL,
@@ -68,9 +78,12 @@ import {
   BB_DESKTOP_BROWSER_FIND_IN_PAGE_CHANNEL,
   BB_DESKTOP_BROWSER_FIND_RESULT_CHANNEL,
   BB_DESKTOP_BROWSER_EXPERIMENTAL_CANCEL_PAGE_SCRIPT_CHANNEL,
+  BB_DESKTOP_BROWSER_EXPERIMENTAL_CANCEL_CAPTURE_CHANNEL,
   BB_DESKTOP_BROWSER_EXPERIMENTAL_AUTOMATION_CHANNEL,
   BB_DESKTOP_BROWSER_EXPERIMENTAL_CLOSE_TAB_CHANNEL,
   BB_DESKTOP_BROWSER_EXPERIMENTAL_CAPTURE_PAGE_CHANNEL,
+  BB_DESKTOP_BROWSER_EXPERIMENTAL_READ_CAPTURE_CHUNK_CHANNEL,
+  BB_DESKTOP_BROWSER_EXPERIMENTAL_RELEASE_CAPTURE_CHANNEL,
   BB_DESKTOP_BROWSER_EXPERIMENTAL_CLEAR_VIEWPORT_PROFILE_CHANNEL,
   BB_DESKTOP_BROWSER_EXPERIMENTAL_SEND_POINTER_INPUT_CHANNEL,
   BB_DESKTOP_BROWSER_EXPERIMENTAL_SET_VIEWPORT_PROFILE_CHANNEL,
@@ -264,9 +277,6 @@ const bbBrowserApi: BbDesktopBrowserApi = {
       bounds: browserViewBoundsAtWindowScale(request.bounds),
     });
   },
-  experimental_browserFrameRuntimeVersion: 1,
-  experimental_browserTrustedInputVersion: 1,
-  experimental_browserEventWaitVersion: 1,
   async experimental_listBrowserFrames(request) {
     const payload: unknown = await ipcRenderer.invoke(
       BB_DESKTOP_BROWSER_EXPERIMENTAL_LIST_FRAMES_CHANNEL,
@@ -274,16 +284,53 @@ const bbBrowserApi: BbDesktopBrowserApi = {
     );
     return bbDesktopBrowserListFramesResultSchema.parse(payload);
   },
+  experimental_cancelBrowserTrustedInput(request) {
+    ipcRenderer.send(
+      BB_DESKTOP_BROWSER_EXPERIMENTAL_CANCEL_TRUSTED_INPUT_CHANNEL,
+      bbDesktopBrowserTrustedInputCancelRequestSchema.parse(request),
+    );
+  },
+  experimental_cancelBrowserPointerInput(request) {
+    ipcRenderer.send(
+      BB_DESKTOP_BROWSER_EXPERIMENTAL_CANCEL_POINTER_INPUT_CHANNEL,
+      bbDesktopBrowserPointerInputCancelRequestSchema.parse(request),
+    );
+  },
   async experimental_sendBrowserTrustedInput(request, options) {
     const signal = options?.signal;
     if (signal?.aborted === true) {
-      throw new DOMException("Browser trusted input was cancelled", "AbortError");
+      throw new DOMException(
+        "Browser trusted input was cancelled",
+        "AbortError",
+      );
     }
-    const payload: unknown = await ipcRenderer.invoke(
-      BB_DESKTOP_BROWSER_EXPERIMENTAL_SEND_TRUSTED_INPUT_CHANNEL,
-      bbDesktopBrowserTrustedInputRequestSchema.parse(request),
-    );
-    return bbDesktopBrowserTrustedInputResultSchema.parse(payload);
+    const cancel = (): void => {
+      ipcRenderer.send(
+        BB_DESKTOP_BROWSER_EXPERIMENTAL_CANCEL_TRUSTED_INPUT_CHANNEL,
+        { tabId: request.tabId, requestId: request.requestId },
+      );
+    };
+    if (typeof signal?.addEventListener === "function") {
+      signal.addEventListener("abort", cancel, { once: true });
+    }
+    try {
+      const payload: unknown = await ipcRenderer.invoke(
+        BB_DESKTOP_BROWSER_EXPERIMENTAL_SEND_TRUSTED_INPUT_CHANNEL,
+        bbDesktopBrowserTrustedInputRequestSchema.parse(request),
+      );
+      const result = bbDesktopBrowserTrustedInputResultSchema.parse(payload);
+      if (signal !== undefined && signal.aborted && result.dispatched === 0) {
+        throw new DOMException(
+          "Browser trusted input was cancelled",
+          "AbortError",
+        );
+      }
+      return result;
+    } finally {
+      if (typeof signal?.removeEventListener === "function") {
+        signal.removeEventListener("abort", cancel);
+      }
+    }
   },
   async experimental_waitBrowserEvent(request, options) {
     const signal = options?.signal;
@@ -326,32 +373,50 @@ const bbBrowserApi: BbDesktopBrowserApi = {
       request,
     );
   },
-  experimental_trustLocalhostCertificate(request): void {
-    ipcRenderer.send(
-      BB_DESKTOP_BROWSER_EXPERIMENTAL_TRUST_LOCALHOST_CERTIFICATE_CHANNEL,
-      bbDesktopBrowserTabRefSchema.parse(request),
-    );
-  },
-  experimental_browserPageRuntimeVersion: 1,
-  async experimental_sendBrowserPointerInput(request, options) {
-    const isCancelled = () => options?.signal?.aborted === true;
-    if (isCancelled()) {
-      throw new DOMException(
-        "Browser pointer input was cancelled",
-        "AbortError",
-      );
-    }
+  async experimental_trustLocalhostCertificate(request) {
     const payload: unknown = await ipcRenderer.invoke(
-      BB_DESKTOP_BROWSER_EXPERIMENTAL_SEND_POINTER_INPUT_CHANNEL,
-      bbDesktopBrowserPointerInputRequestSchema.parse(request),
+      BB_DESKTOP_BROWSER_EXPERIMENTAL_TRUST_LOCALHOST_CERTIFICATE_CHANNEL,
+      bbDesktopBrowserCloseRequestSchema.parse(request),
     );
+    return bbDesktopBrowserTrustLocalhostCertificateResultSchema.parse(payload);
+  },
+  experimental_browserControlVersion: 2,
+  async experimental_sendBrowserPointerInput(request, options) {
+    const signal = options?.signal;
+    const isCancelled = () => signal?.aborted === true;
     if (isCancelled()) {
       throw new DOMException(
         "Browser pointer input was cancelled",
         "AbortError",
       );
     }
-    return bbDesktopBrowserPointerInputResultSchema.parse(payload);
+    const cancel = (): void => {
+      ipcRenderer.send(
+        BB_DESKTOP_BROWSER_EXPERIMENTAL_CANCEL_POINTER_INPUT_CHANNEL,
+        { tabId: request.tabId, requestId: request.requestId },
+      );
+    };
+    if (typeof signal?.addEventListener === "function") {
+      signal.addEventListener("abort", cancel, { once: true });
+    }
+    try {
+      const payload: unknown = await ipcRenderer.invoke(
+        BB_DESKTOP_BROWSER_EXPERIMENTAL_SEND_POINTER_INPUT_CHANNEL,
+        bbDesktopBrowserPointerInputRequestSchema.parse(request),
+      );
+      const result = bbDesktopBrowserPointerInputResultSchema.parse(payload);
+      if (isCancelled() && result.dispatched === 0) {
+        throw new DOMException(
+          "Browser pointer input was cancelled",
+          "AbortError",
+        );
+      }
+      return result;
+    } finally {
+      if (typeof signal?.removeEventListener === "function") {
+        signal.removeEventListener("abort", cancel);
+      }
+    }
   },
   async experimental_closeBrowserTab(request) {
     const payload: unknown = await ipcRenderer.invoke(
@@ -399,12 +464,60 @@ const bbBrowserApi: BbDesktopBrowserApi = {
       }
     }
   },
-  async experimental_captureBrowserPage(request) {
+  async experimental_captureBrowserPage(request, options) {
+    const signal = options?.signal;
+    if (signal?.aborted === true) {
+      throw new DOMException("Browser capture was cancelled", "AbortError");
+    }
+    const cancel = (): void => {
+      ipcRenderer.send(
+        BB_DESKTOP_BROWSER_EXPERIMENTAL_CANCEL_CAPTURE_CHANNEL,
+        bbDesktopBrowserPageCaptureCancelRequestSchema.parse({
+          tabId: request.tabId,
+          requestId: request.requestId,
+        }),
+      );
+    };
+    if (typeof signal?.addEventListener === "function") {
+      signal.addEventListener("abort", cancel, { once: true });
+    }
+    try {
+      const payload: unknown = await ipcRenderer.invoke(
+        BB_DESKTOP_BROWSER_EXPERIMENTAL_CAPTURE_PAGE_CHANNEL,
+        bbDesktopBrowserPageCaptureRequestSchema.parse(request),
+      );
+      return bbDesktopBrowserPageCaptureResultSchema.parse(payload);
+    } catch (error) {
+      if (error instanceof Error) {
+        if (
+          error.message.includes("Browser capture exceeds the resource limits")
+        ) {
+          error.name = "CaptureTooLarge";
+        } else if (
+          error.message.includes("Browser capture capacity is exhausted")
+        ) {
+          error.name = "CaptureCapacityExceeded";
+        }
+      }
+      throw error;
+    } finally {
+      if (typeof signal?.removeEventListener === "function") {
+        signal.removeEventListener("abort", cancel);
+      }
+    }
+  },
+  async experimental_readBrowserCaptureChunk(request) {
     const payload: unknown = await ipcRenderer.invoke(
-      BB_DESKTOP_BROWSER_EXPERIMENTAL_CAPTURE_PAGE_CHANNEL,
-      request,
+      BB_DESKTOP_BROWSER_EXPERIMENTAL_READ_CAPTURE_CHUNK_CHANNEL,
+      bbDesktopBrowserCaptureChunkReadSchema.parse(request),
     );
-    return bbDesktopBrowserPageCaptureResultSchema.parse(payload);
+    return bbDesktopBrowserCaptureChunkResultSchema.parse(payload);
+  },
+  async experimental_releaseBrowserCapture(request) {
+    await ipcRenderer.invoke(
+      BB_DESKTOP_BROWSER_EXPERIMENTAL_RELEASE_CAPTURE_CHANNEL,
+      bbDesktopBrowserCaptureReleaseSchema.parse(request),
+    );
   },
   async experimental_runBrowserAutomation(request) {
     const payload: unknown = await ipcRenderer.invoke(

@@ -1,5 +1,6 @@
 import type { BbPluginApi, PluginAgentToolResult } from "@get-bb/plugin-sdk";
 import {
+  browserAgentOperationSchema,
   browserOperationSchema,
   executeBrowserOperation,
 } from "./contracts.js";
@@ -42,15 +43,16 @@ export default function plugin(bb: BbPluginApi) {
       },
       icon: { glyph: "Globe" },
     },
-    parameters: browserOperationSchema,
+    parameters: browserAgentOperationSchema,
     async execute(operation, context) {
       try {
         const { homepageUrl } = await settings.get();
+        const parsedOperation = browserOperationSchema.parse(operation);
         const result = await executeBrowserOperation({
           browser: bb,
           context,
           defaultHomepageUrl: homepageUrl,
-          operation,
+          operation: parsedOperation,
         });
         return JSON.stringify(result);
       } catch (error) {

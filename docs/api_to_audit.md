@@ -948,33 +948,54 @@ malformed runtime targets remain inert in both the app and SDK test runtime.
 7. Confirm `PluginFileOpenerSource.experimental_hostId` can become a stable
    required `hostId` field without breaking older opener implementations.
 
-## Browser-page runtime (`app.slots.experimental_browserAction` and `bb.experimental_browser`)
+## Browser-page runtime (`app.slots.experimental_browserAction`, `app.slots.experimental_browserController`, and `bb.experimental_browser.experimental_requestContribution`)
 
-**What it does.** Lets a plugin contribute one compact Browser-tab action and
-run bounded JSON content scripts against that exact tab. Scripts default to an
-isolated world; an explicit main world exists for page-owned JavaScript state.
-Both worlds expose page DOM/session authority but no Node, Electron, or BB
-app-shell APIs. Script and screenshot results carry a navigation epoch so a
-consumer can reject mixed-revision captures. Frame discovery returns bounded
-opaque frame targets carrying a document epoch; locators and snapshots use those
-targets instead of selector-based frame traversal. Locator-backed click, type,
-and pointer actions use bounded actionability checks and dispatch native input
-only after one final attachment, visibility, geometry, and hit-test check.
-Keyboard actions require an eligible focused target. Waits use typed URL,
-navigation, load-state, popup, request, response, and blocked-download criteria
-with current-versus-next document semantics. The server-side
-`bb.experimental_browser` bridge lists connected client/window/tab revisions,
-including each tab and owner’s thread/project. It discovers foreground and
-background thread owners before they contain a Browser tab. When a destination
-thread is not mounted, it runs that thread's native Browser in the background
-without changing the visible app layout. Explicit thread/project selection can
-target another destination, while implicit calls remain in the caller's thread.
-The bridge runs the same snapshot, click, type, keyboard, scroll, navigation,
-screenshot, wait, and bounded script substrate for approved agent tools and
-audited plugin CLI calls. Requests are concurrent, cancellable, size/time
-limited, disconnect-aware, and never silently retargeted. Discovery, creation,
-and control require the live native-tool or CLI context; they cannot outlive the
-audited timeline row or CLI request.
+**What it does.** Lets a plugin contribute a compact Browser-tab action or one
+full-surface controller per logical tab. Actions receive passive tab identity;
+controllers run bounded JSON content scripts against that exact tab.
+Scripts default to an isolated world; an explicit main world exists for
+page-owned JavaScript state. Both worlds expose page
+DOM/session authority but no Node, Electron, or BB app-shell APIs. Script and
+capture results carry a navigation epoch so a consumer can reject
+mixed-revision captures. Frame discovery returns bounded opaque frame targets
+carrying a document epoch; locators and snapshots use those targets instead of
+selector-based frame traversal. Locator-backed click, type, and pointer actions
+use bounded actionability checks and dispatch native input only after one final
+attachment, visibility, geometry, and hit-test check. Keyboard actions require
+an eligible focused target. Waits use typed URL, navigation, load-state, popup,
+request, response, and blocked-download criteria with current-versus-next
+document semantics.
+
+`ExperimentalBrowserControllerProps` exposes
+`experimental_browserControlAvailable`, `experimental_lifecycleSignal`,
+`experimental_onLifecycle`, `experimental_registerRequestHandler`,
+`experimental_runBrowserPageScript`, `experimental_capturePage`, and
+`experimental_createImageResource`. The capture preview resolves `{ url,
+navigationEpoch, pixelSize, dispose() }`: `url` is a Blob URL, and the
+controller must call `dispose()` when it no longer renders the preview.
+`experimental_createImageResource({ blob, pixelSize? }, { signal? })` returns
+a bounded descriptor for the controller's current target. Its canonical fields
+are `captureId`, `mimeType`, `pixelSize`, `byteLength`, `target` (the full
+`BrowserTabTarget`), and `expiresAt`. The public schema exports from
+`@get-bb/plugin-sdk/browser` are
+`experimental_browserCaptureDescriptorSchema`,
+`experimental_browserFrameTargetSchema`, `experimental_browserPageLocatorSchema`,
+and `experimental_browserTabTargetSchema`.
+
+The server-side `bb.experimental_browser.experimental_requestContribution`
+bridge lists connected client/window/tab revisions, including each tab and
+owner’s thread/project, and dispatches an opaque command to an exact controller
+revision. It discovers foreground and background thread owners before they
+contain a Browser tab. When a destination thread is not mounted, it runs that
+thread's native Browser in the background without changing the visible app
+layout. Explicit thread/project selection can target another destination, while
+implicit calls remain in the caller's thread. The bridge runs the same snapshot,
+click, type, keyboard, scroll, navigation, screenshot, wait, and bounded script
+substrate for approved agent tools and audited plugin CLI calls. Requests are
+concurrent, cancellable, size/time limited, disconnect-aware, and never
+silently retargeted. Discovery, creation, and control require the live
+native-tool or CLI context; they cannot outlive the audited timeline row or CLI
+request.
 
 **Audit before stabilizing.**
 
@@ -982,9 +1003,12 @@ audited timeline row or CLI request.
    right boundary for page-owned framework state, and audit hostile-page
    tampering of main-world results.
 2. Confirm the source/input/result, screenshot, traversal, and timeout limits
-   against real control and selection consumers. Revisit the hard-timeout
-   fallback, which terminates page execution only after cooperative abort has
-   failed.
+   against real control and selection consumers. **Release blocker:** native
+   verification reproduced page mutations after script cancellation. No
+   request-owned hard stop that preserves unrelated page work has been proven.
+   Resolve this by removing arbitrary scripts, explicitly accepting a soft
+   cancellation contract, or implementing and verifying an isolated runtime;
+   do not claim that abort or timeout terminates page execution.
 3. Exercise navigation, tab/window/client disconnect, concurrent request,
    cancellation, and desktop/SPA version-skew behavior before freezing the
    epoch and targeting contracts.
@@ -997,12 +1021,36 @@ audited timeline row or CLI request.
    selection and client/window ambiguity handling.
 6. Audit the normal agent-tool approval and timeline treatment for full-trust
    custom scripts. Decide whether particular operations need finer permissions
-   without making the runtime Browser Context-specific.
-7. Validate browser-action overlay leases, stale callback rejection, compact
-   chrome, multiple plugins, split panes, and tab disposal.
+7. Validate passive Browser actions, compact chrome, multiple plugins, split
+   panes, controller overlay leases, stale callback rejection, and tab disposal.
 8. Verify actionability cannot retry after native input dispatch, that focused
    keyboard input uses native key events, and that wait criteria do not expose
    headers, cookies, bodies, paths, ports, or native objects.
+9. Audit whole-tab controllers (`app.slots.experimental_browserController`):
+   one mount per logical tab, lifecycle events (navigation/disposed), exact
+   request-handler generation revalidation, and overlay-lease ownership that
+   never hides page-owned pickers or lets native content obscure DOM review.
+10. Audit `bb.experimental_browser.experimental_requestContribution` routing:
+    the live plugin and controller generation must be authorized before
+    dispatch and rechecked before accepting results;
+    disabled/reloaded/crashed controllers and stale epochs reject before
+    handler effects. The controller-props members
+    `experimental_lifecycleSignal`, `experimental_onLifecycle`, and
+    `experimental_registerRequestHandler` keep their prefixed names until
+    stabilization.
+11. Audit bounded capture descriptors (create/read/release/download):
+    provenance (client/window/tab), byte-length and decoded-range limits,
+    navigation-surviving immutable reads, expiry reclamation, and exactly once
+    release on success, failure, or abort. Plugin-generated images registered
+    through `experimental_createImageResource({ blob, pixelSize? }, { signal? })`
+    use the same bounded read/release lifecycle as native captures. Verify that
+    `experimental_capturePage` creates a Blob URL rather than an inline data
+    URL and that consumers call its explicit `dispose()` method. The canonical
+    schemas are `experimental_browserCaptureDescriptorSchema`,
+    `experimental_browserFrameTargetSchema`,
+    `experimental_browserPageLocatorSchema`, and
+    `experimental_browserTabTargetSchema`; they back the CLI
+    `bb browser capture-download --descriptor` flow.
 
 ## Host plugin foundation (`bb.hosts.experimental_client`, `ExperimentalHostClient.experimental_onWorkerExit`, `ExperimentalHostClient.experimental_onSignal`, `ExperimentalHostRpcContext.experimental_retainWorker`, `experimental_defineHostEntry`, and `experimental_createHostEntryHarness`)
 

@@ -1,9 +1,15 @@
 import ReconnectingWebSocket from "partysocket/ws";
 import {
   changedMessageLenientSchema,
+  browserCaptureCreateMessageSchema,
+  browserCaptureReadRequestMessageSchema,
+  browserCaptureReadResponseMessageSchema,
+  browserCaptureRegisteredMessageSchema,
+  browserCaptureReleaseMessageSchema,
   browserControlCancelMessageSchema,
   browserControlRequestMessageSchema,
   browserOpenTabRequestMessageSchema,
+  browserPluginRequestMessageSchema,
   pluginSignalLenientSchema,
   pongMessageLenientSchema,
   realtimeSubscriptionTargetKey,
@@ -13,11 +19,20 @@ import {
 import type {
   ClientMessage,
   ChangedMessage,
+  BrowserCaptureCreateMessage,
+  BrowserCaptureDescriptorMessage,
+  BrowserCaptureReadRequestMessage,
+  BrowserCaptureReadResponseMessage,
+  BrowserCaptureRegisterMessage,
+  BrowserCaptureRegisteredMessage,
+  BrowserCaptureReleaseMessage,
   BrowserClientStateMessage,
   BrowserControlRequestMessage,
   BrowserControlResponseMessage,
   BrowserOpenTabRequestMessage,
   BrowserOpenTabResponseMessage,
+  BrowserPluginRequestMessage,
+  BrowserPluginResponseMessage,
   PluginSignal,
   RealtimeSubscriptionTarget,
   ThreadOpenFile,
@@ -50,8 +65,24 @@ type BrowserOpenTabRequestCallback = (
 ) => void;
 type BrowserControlCancelCallback = (message: {
   requestId: string;
-  reason: "cancelled" | "timeout" | "client-disconnected";
+  reason: "cancelled" | "timeout" | "client-disconnected" | "target-changed";
 }) => void;
+type BrowserPluginRequestCallback = (message: BrowserPluginRequestMessage) => void;
+type BrowserCaptureReadRequestCallback = (
+  message: BrowserCaptureReadRequestMessage,
+) => void;
+type BrowserCaptureReleaseCallback = (
+  message: BrowserCaptureReleaseMessage,
+) => void;
+type BrowserCaptureCreateCallback = (
+  message: BrowserCaptureCreateMessage,
+) => void;
+type BrowserCaptureRegisteredCallback = (
+  message: BrowserCaptureRegisteredMessage,
+) => void;
+type BrowserCaptureChunkResponseCallback = (
+  message: BrowserCaptureReadResponseMessage,
+) => void;
 export type WebSocketConnectionState =
   | "connecting"
   | "connected"
@@ -100,6 +131,18 @@ export class WebSocketManager {
     new Set<BrowserOpenTabRequestCallback>();
   private browserControlCancelCallbacks =
     new Set<BrowserControlCancelCallback>();
+  private browserPluginRequestCallbacks =
+    new Set<BrowserPluginRequestCallback>();
+  private browserCaptureReadRequestCallbacks =
+    new Set<BrowserCaptureReadRequestCallback>();
+  private browserCaptureReleaseCallbacks =
+    new Set<BrowserCaptureReleaseCallback>();
+  private browserCaptureCreateCallbacks =
+    new Set<BrowserCaptureCreateCallback>();
+  private browserCaptureRegisteredCallbacks =
+    new Set<BrowserCaptureRegisteredCallback>();
+  private browserCaptureChunkResponseCallbacks =
+    new Set<BrowserCaptureChunkResponseCallback>();
   // Ephemeral "open this file in the secondary panel" intents, keyed by thread.
   // Held in memory only (cleared on reload) so a thread that is not currently
   // viewed opens the file when it is next viewed. Last write wins per thread.
@@ -349,6 +392,60 @@ export class WebSocketManager {
       return;
     }
 
+    const browserPluginRequest =
+      browserPluginRequestMessageSchema.safeParse(parsed);
+    if (browserPluginRequest.success) {
+      for (const callback of this.browserPluginRequestCallbacks) {
+        callback(browserPluginRequest.data);
+      }
+      return;
+    }
+
+    const browserCaptureReadRequest =
+      browserCaptureReadRequestMessageSchema.safeParse(parsed);
+    if (browserCaptureReadRequest.success) {
+      for (const callback of this.browserCaptureReadRequestCallbacks) {
+        callback(browserCaptureReadRequest.data);
+      }
+      return;
+    }
+
+    const browserCaptureCreate =
+      browserCaptureCreateMessageSchema.safeParse(parsed);
+    if (browserCaptureCreate.success) {
+      for (const callback of this.browserCaptureCreateCallbacks) {
+        callback(browserCaptureCreate.data);
+      }
+      return;
+    }
+
+    const browserCaptureRegistered =
+      browserCaptureRegisteredMessageSchema.safeParse(parsed);
+    if (browserCaptureRegistered.success) {
+      for (const callback of this.browserCaptureRegisteredCallbacks) {
+        callback(browserCaptureRegistered.data);
+      }
+      return;
+    }
+
+    const browserCaptureRelease =
+      browserCaptureReleaseMessageSchema.safeParse(parsed);
+    if (browserCaptureRelease.success) {
+      for (const callback of this.browserCaptureReleaseCallbacks) {
+        callback(browserCaptureRelease.data);
+      }
+      return;
+    }
+
+    const browserCaptureChunk =
+      browserCaptureReadResponseMessageSchema.safeParse(parsed);
+    if (browserCaptureChunk.success) {
+      for (const callback of this.browserCaptureChunkResponseCallbacks) {
+        callback(browserCaptureChunk.data);
+      }
+      return;
+    }
+
     const threadPaneAction =
       threadPaneActionSignalLenientSchema.safeParse(parsed);
     if (threadPaneAction.success) {
@@ -466,6 +563,46 @@ export class WebSocketManager {
     return () => this.browserControlCancelCallbacks.delete(callback);
   }
 
+  onBrowserPluginRequest(callback: BrowserPluginRequestCallback): () => void {
+    this.browserPluginRequestCallbacks.add(callback);
+    return () => this.browserPluginRequestCallbacks.delete(callback);
+  }
+
+  onBrowserCaptureReadRequest(
+    callback: BrowserCaptureReadRequestCallback,
+  ): () => void {
+    this.browserCaptureReadRequestCallbacks.add(callback);
+    return () => this.browserCaptureReadRequestCallbacks.delete(callback);
+  }
+
+  onBrowserCaptureRelease(
+    callback: BrowserCaptureReleaseCallback,
+  ): () => void {
+    this.browserCaptureReleaseCallbacks.add(callback);
+    return () => this.browserCaptureReleaseCallbacks.delete(callback);
+  }
+
+  onBrowserCaptureCreate(
+    callback: BrowserCaptureCreateCallback,
+  ): () => void {
+    this.browserCaptureCreateCallbacks.add(callback);
+    return () => this.browserCaptureCreateCallbacks.delete(callback);
+  }
+  onBrowserCaptureRegistered(
+    callback: BrowserCaptureRegisteredCallback,
+  ): () => void {
+    this.browserCaptureRegisteredCallbacks.add(callback);
+    return () => this.browserCaptureRegisteredCallbacks.delete(callback);
+  }
+
+
+  onBrowserCaptureChunk(
+    callback: BrowserCaptureChunkResponseCallback,
+  ): () => void {
+    this.browserCaptureChunkResponseCallbacks.add(callback);
+    return () => this.browserCaptureChunkResponseCallbacks.delete(callback);
+  }
+
   sendBrowserClientState(message: BrowserClientStateMessage): void {
     this.sendMessage(message);
   }
@@ -475,6 +612,24 @@ export class WebSocketManager {
   }
 
   sendBrowserControlResponse(message: BrowserControlResponseMessage): void {
+    this.sendMessage(message);
+  }
+
+  sendBrowserPluginResponse(message: BrowserPluginResponseMessage): void {
+    this.sendMessage(message);
+  }
+
+  sendBrowserCaptureChunk(message: BrowserCaptureReadResponseMessage): void {
+    this.sendMessage(message);
+  }
+
+  sendBrowserCaptureCreated(message: BrowserCaptureDescriptorMessage): void {
+    this.sendMessage(message);
+  }
+  sendBrowserCaptureRegister(message: BrowserCaptureRegisterMessage): void {
+    this.sendMessage(message);
+  }
+  sendBrowserCaptureRelease(message: BrowserCaptureReleaseMessage): void {
     this.sendMessage(message);
   }
 

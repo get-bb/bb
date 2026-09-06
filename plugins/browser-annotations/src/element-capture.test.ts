@@ -1,13 +1,13 @@
 // @vitest-environment jsdom
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   browserElementAnnotationAgentText,
   browserElementAnnotationsAgentText,
   browserElementAnnotationCaptureSchema,
   browserElementPickerSource,
   redactBrowserElementAnnotation,
-} from "./browser-element-annotation";
+} from "./element-capture";
 
 function capture(overrides: Record<string, unknown> = {}) {
   return browserElementAnnotationCaptureSchema.parse({
@@ -206,7 +206,7 @@ Ancestors: main > body`);
           id: "one",
           pageId: "browser:7",
           intent: "change",
-          screenshotUrl: null,
+          screenshot: null,
           priority: "important",
         },
         {
@@ -216,7 +216,7 @@ Ancestors: main > body`);
           id: "two",
           intent: "question",
           pageId: "browser:7",
-          screenshotUrl: null,
+          screenshot: null,
           priority: "important",
         },
         {
@@ -226,7 +226,7 @@ Ancestors: main > body`);
           id: "three",
           intent: "fix",
           pageId: "browser:7",
-          screenshotUrl: null,
+          screenshot: null,
           priority: "blocking",
         },
         {
@@ -236,7 +236,7 @@ Ancestors: main > body`);
           id: "four",
           intent: "approve",
           pageId: "browser:7",
-          screenshotUrl: null,
+          screenshot: null,
           priority: "suggestion",
         },
       ],
@@ -276,5 +276,185 @@ Ancestors: main > body`);
     expect(annotations).toContain(
       '**Accessible name:** "Purchase a subscription"',
     );
+  });
+
+  it("structurally sanitizes nested and percent-encoded credential URLs", () => {
+    const nested = "See https://user:hunter2@example.test/docs?token=abc#top";
+    const annotation = redactBrowserElementAnnotation(
+      capture({
+        dom: {
+          attributes: {
+            href: "https://user:hunter2@example.test/login",
+            role: "button",
+          },
+          classes: [],
+          id: "link",
+          selector: "a#link",
+          tag: "a",
+        },
+        html: '<a href="https://user:hunter2@example.test/login">Log in</a>',
+        nearbyText: [nested],
+        text: "open https://user:hunter2@example.test/secure",
+        url: "https://user:hunter2@example.test/pricing?checkout=secret#plans",
+      }),
+    );
+
+    expect(annotation).not.toBeNull();
+    expect(annotation!.pageUrl).toBe("https://example.test/pricing");
+    expect(annotation!.dom.attributes.href).toBe("[REDACTED-URL]");
+    expect(annotation!.dom.attributes.role).toBe("button");
+    expect(annotation!.html).toContain("[REDACTED-URL]");
+    expect(annotation!.html).not.toContain("hunter2");
+    expect(annotation!.text).not.toContain("hunter2");
+    expect(annotation!.nearbyText.join(" ")).not.toContain("hunter2");
+    expect(annotation!.text).not.toContain("token=abc");
+  });
+
+  it("strips credentials-free query and hash from boundary URLs", () => {
+    const annotation = redactBrowserElementAnnotation(
+      capture({
+        dom: {
+          attributes: {
+            href: "https://alice:summerfruit@example.test/account?code=demo-code#private",
+            role: "link",
+          },
+          classes: [],
+          id: "account",
+          selector: "a#account",
+          tag: "a",
+        },
+        html: '<a href="https://example.test/account?code=summerfruit#private">Account</a>',
+        nearbyText: ["https://example.test/account?code=summerfruit#private"],
+        text: "open https://example.test/account?code=summerfruit#private",
+        url: "https://example.test/account?code=demo-code#private",
+      }),
+    );
+    expect(annotation).not.toBeNull();
+    expect(annotation!.pageUrl).toBe("https://example.test/account");
+    expect(annotation!.sensitive).toBe(false);
+    expect(annotation!.dom.attributes.href).toBe("[REDACTED-URL]");
+    expect(annotation!.html).not.toContain("?code=");
+    expect(annotation!.html).not.toContain("#private");
+    expect(annotation!.html).not.toContain("summerfruit");
+    expect(annotation!.text).not.toContain("?code=");
+    expect(annotation!.text).not.toContain("summerfruit");
+    expect(annotation!.nearbyText.join(" ")).not.toContain("?code=");
+    expect(annotation!.nearbyText.join(" ")).not.toContain("summerfruit");
+  });
+
+  it("rejects unsupported and relative top-level page schemes", () => {
+    expect(
+      redactBrowserElementAnnotation(capture({ url: "file:///etc/passwd" })),
+    ).toBeNull();
+    expect(
+      redactBrowserElementAnnotation(capture({ url: "javascript:alert(1)" })),
+    ).toBeNull();
+    expect(
+      redactBrowserElementAnnotation(capture({ url: "/relative/path" })),
+    ).toBeNull();
+  });
+
+  it("serializes a deep synthetic DOM without cloning the whole subtree", async () => {
+    const deep: string[] = [];
+    for (let index = 0; index < 60; index += 1) {
+      deep.push(`<span class="layer-${index}">L${index}</span>`);
+    }
+    document.body.innerHTML = `<div id="deep-target">${deep.join("")}</div>`;
+    const target = document.getElementById("deep-target");
+    expect(target).not.toBeNull();
+    Object.defineProperty(target, "getBoundingClientRect", {
+      value: () => new DOMRect(0, 0, 300, 300),
+    });
+    const cloneSpy = vi.spyOn(Node.prototype, "cloneNode");
+    const picker: (args: {
+      input: { fillColor: string; outlineColor: string };
+      signal: AbortSignal;
+    }) => Promise<unknown> = new Function(
+      `return (${browserElementPickerSource})`,
+    )();
+    const controller = new AbortController();
+    const pending = picker({
+      input: {
+        fillColor: "color-mix(in oklab, rgb(1, 2, 3) 14%, transparent)",
+        outlineColor: "rgb(1, 2, 3)",
+      },
+      signal: controller.signal,
+    });
+    target?.dispatchEvent(new Event("pointermove", { bubbles: true }));
+    target?.dispatchEvent(
+      new MouseEvent("click", { bubbles: true, cancelable: true }),
+    );
+    const captured = browserElementAnnotationCaptureSchema.parse(await pending);
+    expect(captured.html?.length ?? 0).toBeLessThanOrEqual(4_096);
+    expect(captured.html).not.toContain("<style");
+    expect(captured.html).not.toContain("<script");
+    expect(captured.text).toContain("L0");
+    expect(cloneSpy.mock.calls.filter((call) => call[0] === true)).toEqual([]);
+    cloneSpy.mockRestore();
+  });
+
+  it("keeps captured HTML inert by escaping formatting attributes", async () => {
+    document.body.innerHTML = `<div id="inert-wrap"><a id="inert-target" href="https://user:pass@example.test/ok?q=1#x">Go</a><img src="https://user:pass@example.test/x.png" onerror="window.pwned=1" style="position:fixed"></div>`;
+    const target = document.getElementById("inert-target");
+    expect(target).not.toBeNull();
+    Object.defineProperty(target, "getBoundingClientRect", {
+      value: () => new DOMRect(0, 0, 200, 200),
+    });
+    const picker: (args: {
+      input: { fillColor: string; outlineColor: string };
+      signal: AbortSignal;
+    }) => Promise<unknown> = new Function(
+      `return (${browserElementPickerSource})`,
+    )();
+    const controller = new AbortController();
+    const pending = picker({
+      input: {
+        fillColor: "color-mix(in oklab, rgb(1, 2, 3) 14%, transparent)",
+        outlineColor: "rgb(1, 2, 3)",
+      },
+      signal: controller.signal,
+    });
+    target?.dispatchEvent(new Event("pointermove", { bubbles: true }));
+    target?.dispatchEvent(
+      new MouseEvent("click", { bubbles: true, cancelable: true }),
+    );
+    const captured = browserElementAnnotationCaptureSchema.parse(await pending);
+    expect(captured.dom.attributes.href).toBe("https://example.test/ok");
+    expect(captured.html).not.toContain("onerror");
+    expect(captured.html).not.toContain("style=");
+    expect(captured.html).not.toContain("user:pass");
+    expect(captured.html).toContain("https://example.test/ok");
+  });
+  it("captures an explicit point immediately without installing picker interaction", async () => {
+    document.body.innerHTML =
+      '<a id="target" href="/account?token=secret#profile">Account</a>';
+    const target = document.getElementById("target");
+    expect(target).not.toBeNull();
+    Object.defineProperty(document, "elementFromPoint", {
+      configurable: true,
+      value: () => target,
+    });
+    const picker: (args: {
+      input: {
+        element: { target: "point"; x: number; y: number };
+        fillColor: string;
+        outlineColor: string;
+      };
+      signal: AbortSignal;
+    }) => Promise<unknown> = new Function(
+      `return (${browserElementPickerSource})`,
+    )();
+    const captured = browserElementAnnotationCaptureSchema.parse(
+      await picker({
+        input: {
+          element: { target: "point", x: 12, y: 24 },
+          fillColor: "color-mix(in oklab, rgb(1, 2, 3) 14%, transparent)",
+          outlineColor: "rgb(1, 2, 3)",
+        },
+        signal: new AbortController().signal,
+      }),
+    );
+    expect(captured.dom.attributes.href).toBe("/account");
+    expect(document.getElementById("__bb-browser-element-picker")).toBeNull();
   });
 });

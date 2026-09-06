@@ -1,5 +1,10 @@
-import type { RenderProcessGoneDetails, WebContentsView } from "electron";
+import type {
+  CookiesSetDetails,
+  RenderProcessGoneDetails,
+  WebContentsView,
+} from "electron";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { bbDesktopBrowserCaptureDescriptorSchema } from "@bb/desktop-contract";
 import type {
   BbDesktopBrowserImportCookiesRequest,
   BbDesktopBrowserViewBounds,
@@ -176,11 +181,14 @@ type FakePermissionRequestHandler = (
   webContents: unknown,
   permission: string,
   callback: (granted: boolean) => void,
+  details?: { requestingUrl?: string },
 ) => void;
 
 type FakePermissionCheckHandler = (
   webContents: unknown,
   permission: string,
+  requestingOrigin?: string,
+  details?: { requestingUrl?: string },
 ) => boolean;
 
 interface FakeWindowOpenDetails {
@@ -300,6 +308,8 @@ const electronMock = vi.hoisted(() => {
     toPNG: () => Buffer.from("png-bytes"),
   };
 
+  let currentSession: object | null = null;
+
   interface FakeDebuggerCommand {
     method: string;
     params:
@@ -311,6 +321,8 @@ const electronMock = vi.hoisted(() => {
     public attached = false;
     public readonly attachCalls: string[] = [];
     public detachCalls = 0;
+    public detachOnGate = false;
+    public readonly gates = new Map<string, Promise<void>>();
     public readonly sendCommandCalls: FakeDebuggerCommand[] = [];
     public getFrameTreeResult?: object;
     private readonly messageListeners: Array<
@@ -318,23 +330,42 @@ const electronMock = vi.hoisted(() => {
         event: FakeWebContentsEvent,
         method: string,
         params: Record<string, unknown>,
+        sessionId?: string,
       ) => void
     > = [];
 
     on(
+      eventName: "message" | "detach",
+      listener: (
+        event: FakeWebContentsEvent,
+        method: string,
+        params: Record<string, unknown>,
+        sessionId?: string,
+      ) => void,
+    ): void {
+      if (eventName === "message") this.messageListeners.push(listener);
+    }
+
+    removeListener(
       _eventName: "message",
       listener: (
         event: FakeWebContentsEvent,
         method: string,
         params: Record<string, unknown>,
+        sessionId?: string,
       ) => void,
     ): void {
-      this.messageListeners.push(listener);
+      const index = this.messageListeners.indexOf(listener);
+      if (index !== -1) this.messageListeners.splice(index, 1);
     }
 
-    emitMessage(method: string, params: Record<string, unknown>): void {
+    emitMessage(
+      method: string,
+      params: Record<string, unknown>,
+      sessionId?: string,
+    ): void {
       for (const listener of this.messageListeners) {
-        listener(fakeWebContentsEvent, method, params);
+        listener(fakeWebContentsEvent, method, params, sessionId);
       }
     }
 
@@ -355,8 +386,23 @@ const electronMock = vi.hoisted(() => {
     async sendCommand(
       method: string,
       params?: Record<string, unknown>,
+      sessionId?: string,
     ): Promise<object> {
       this.sendCommandCalls.push({ method, params });
+      const gate = this.gates.get(method);
+      if (gate !== undefined) {
+        await gate;
+        if (this.attached === false && this.detachOnGate) {
+          throw new Error("debugger detached");
+        }
+      }
+      if (method === "ServiceWorker.enable") {
+        queueMicrotask(() => {
+          this.emitMessage("ServiceWorker.workerRegistrationUpdated", {
+            registrations: [],
+          });
+        });
+      }
       if (method === "Page.getLayoutMetrics") {
         return { cssContentSize: { width: 1_200, height: 2_400 } };
       }
@@ -365,6 +411,34 @@ const electronMock = vi.hoisted(() => {
       }
       if (method === "Page.getFrameTree") {
         return this.getFrameTreeResult ?? {};
+      }
+      if (method === "Runtime.evaluate") {
+        return {
+          result: {
+            type: "string",
+            value: JSON.stringify({ ok: true, value: null }),
+          },
+        };
+      }
+      if (method === "Page.createIsolatedWorld") {
+        const frameId = params?.frameId;
+        if (typeof frameId === "string") {
+          queueMicrotask(() => {
+            this.emitMessage(
+              "Runtime.executionContextCreated",
+              {
+                context: {
+                  id: 900,
+                  uniqueId: `bb-isolated-${frameId}`,
+                  name: "bb-browser-frame-v1",
+                  auxData: { frameId, isDefault: false, type: "isolated" },
+                },
+              },
+              sessionId,
+            );
+          });
+        }
+        return { executionContextId: 900 };
       }
       if (method === "DOM.getFrameOwner") return { backendNodeId: 1 };
       if (method === "DOM.getBoxModel") {
@@ -380,6 +454,8 @@ const electronMock = vi.hoisted(() => {
     public canGoForwardResult = false;
     public destroyed = false;
     public readonly debugger = new FakeDebugger();
+    public readonly mainFrame = { framesInSubtree: [{ origin: "null" }] };
+    public readonly session: object | null;
     public focusCalls = 0;
     public readonly goBackCalls: string[] = [];
     public readonly goForwardCalls: string[] = [];
@@ -389,7 +465,7 @@ const electronMock = vi.hoisted(() => {
     public readonly findInPageCalls: FakeFindInPageCall[] = [];
     public readonly stopFindInPageCalls: string[] = [];
     public reloadCalls = 0;
-    public readonly sentInputEvents: Array<Record<string, unknown>> = [];
+    public stopCalls = 0;
     public readonly pendingCaptureResolvers: Array<
       (image: FakeNativeImage) => void
     > = [];
@@ -418,6 +494,7 @@ const electronMock = vi.hoisted(() => {
 
     constructor(id: number) {
       this.id = id;
+      this.session = currentSession;
     }
 
     public readonly navigationHistory = {
@@ -433,6 +510,12 @@ const electronMock = vi.hoisted(() => {
         this.goForwardCalls.push("goForward");
       },
     };
+
+    beginFrameSubscription(callback: () => void): void {
+      callback();
+    }
+
+    endFrameSubscription(): void {}
 
     capturePage(): Promise<FakeNativeImage> {
       return new Promise((resolve) => {
@@ -467,6 +550,10 @@ const electronMock = vi.hoisted(() => {
       }
     }
 
+    isDevToolsOpened(): boolean {
+      return false;
+    }
+
     getTitle(): string {
       return this.title;
     }
@@ -499,15 +586,14 @@ const electronMock = vi.hoisted(() => {
     reload(): void {
       this.reloadCalls += 1;
     }
-    sendInputEvent(event: Record<string, unknown>): void {
-      this.sentInputEvents.push(event);
-    }
 
     setWindowOpenHandler(handler: FakeWindowOpenHandler): void {
       this.windowOpenHandler = handler;
     }
 
-    stop(): void {}
+    stop(): void {
+      this.stopCalls += 1;
+    }
 
     emitDidFailLoad(args: FakeDidFailLoadArgs): void {
       for (const listener of this.listeners["did-fail-load"]) {
@@ -706,25 +792,76 @@ const electronMock = vi.hoisted(() => {
       { storages: string[] } | undefined
     > = [];
     public flushStoreCalls = 0;
-    public readonly cookieSetCalls: Record<string, unknown>[] = [];
+    public failNextCookieSets = 0;
+    public readonly cookieSetCalls: CookiesSetDetails[] = [];
     public readonly cookieGetResults: Array<{
       domain?: string;
+      expirationDate?: number | null;
+      hostOnly?: boolean;
+      httpOnly?: boolean;
       name: string;
       path?: string;
+      sameSite?: string;
       secure?: boolean;
+      value?: string;
     }> = [];
-    public readonly cookieRemoveCalls: Array<{ name: string; url: string }> = [];
+    public readonly cookieRemoveCalls: Array<{ name: string; url: string }> =
+      [];
     public readonly cookies = {
       flushStore: async (): Promise<void> => {
         this.flushStoreCalls += 1;
       },
       get: async (): Promise<typeof this.cookieGetResults> =>
-        this.cookieGetResults,
+        this.cookieGetResults.map((cookie) => ({ ...cookie })),
       remove: async (url: string, name: string): Promise<void> => {
         this.cookieRemoveCalls.push({ name, url });
+        const target = new URL(url);
+        for (
+          let index = this.cookieGetResults.length - 1;
+          index >= 0;
+          index -= 1
+        ) {
+          const cookie = this.cookieGetResults[index];
+          if (
+            cookie?.name === name &&
+            cookie.domain?.replace(/^\./u, "") === target.hostname &&
+            target.pathname.startsWith(cookie.path ?? "/")
+          ) {
+            this.cookieGetResults.splice(index, 1);
+          }
+        }
       },
-      set: async (details: Record<string, unknown>): Promise<void> => {
+      set: async (details: CookiesSetDetails): Promise<void> => {
+        if (this.failNextCookieSets > 0) {
+          this.failNextCookieSets -= 1;
+          throw new Error("simulated cookie write failure");
+        }
         this.cookieSetCalls.push(details);
+        const url = new URL(details.url);
+        const cookie = {
+          domain:
+            details.domain === undefined
+              ? url.hostname
+              : `.${details.domain.replace(/^\./u, "")}`,
+          hostOnly: details.domain === undefined,
+          name: details.name ?? "",
+          value: details.value ?? "",
+          path: details.path ?? "/",
+          httpOnly: details.httpOnly ?? false,
+          secure: details.secure ?? false,
+          sameSite: details.sameSite ?? "unspecified",
+          ...(details.expirationDate === undefined
+            ? {}
+            : { expirationDate: details.expirationDate }),
+        };
+        const index = this.cookieGetResults.findIndex(
+          (stored) =>
+            stored.domain === cookie.domain &&
+            stored.name === cookie.name &&
+            stored.path === cookie.path,
+        );
+        if (index === -1) this.cookieGetResults.push(cookie);
+        else this.cookieGetResults.splice(index, 1, cookie);
       },
     };
     async clearCache(): Promise<void> {
@@ -732,36 +869,109 @@ const electronMock = vi.hoisted(() => {
     }
     async clearStorageData(options?: { storages: string[] }): Promise<void> {
       this.clearStorageDataCalls.push(options);
+      if (options === undefined || options.storages.includes("cookies")) {
+        this.cookieGetResults.length = 0;
+      }
     }
+    public readonly serviceWorkers = {
+      getAllRunning: (): Record<string, never> => ({}),
+    };
     public readonly webRequest = {
       onBeforeRequest: (
-        _listener: (
-          details: { url: string; method: string; webContentsId?: number },
+        listener: (
+          details: {
+            id: number;
+            method: string;
+            url: string;
+            resourceType?: string;
+            webContentsId?: number;
+          },
           callback: (response: Record<string, never>) => void,
         ) => void,
-      ): void => {},
+      ): void => {
+        this.onBeforeRequestListener = listener;
+      },
       onCompleted: (
-        _listener: (details: {
+        listener: (details: {
+          id: number;
           method: string;
           statusCode: number;
           url: string;
           webContentsId?: number;
         }) => void,
-      ): void => {},
+      ): void => {
+        this.onCompletedListener = listener;
+      },
+      onBeforeRedirect: (
+        listener: (details: {
+          id: number;
+          method: string;
+          statusCode: number;
+          url: string;
+          webContentsId?: number;
+        }) => void,
+      ): void => {
+        this.onBeforeRedirectListener = listener;
+      },
       onErrorOccurred: (
-        _listener: (details: {
+        listener: (details: {
+          id: number;
           error: string;
           method: string;
           url: string;
           webContentsId?: number;
         }) => void,
-      ): void => {},
+      ): void => {
+        this.onErrorOccurredListener = listener;
+      },
     };
+    public onBeforeRequestListener:
+      | ((
+          details: {
+            id: number;
+            method: string;
+            url: string;
+            resourceType?: string;
+            webContentsId?: number;
+          },
+          callback: (response: Record<string, never>) => void,
+        ) => void)
+      | null = null;
+    public onCompletedListener:
+      | ((details: {
+          id: number;
+          method: string;
+          statusCode: number;
+          url: string;
+          webContentsId?: number;
+        }) => void)
+      | null = null;
+    public onBeforeRedirectListener:
+      | ((details: {
+          id: number;
+          method: string;
+          statusCode: number;
+          url: string;
+          webContentsId?: number;
+        }) => void)
+      | null = null;
+    public onErrorOccurredListener:
+      | ((details: {
+          id: number;
+          error: string;
+          method: string;
+          url: string;
+          webContentsId?: number;
+        }) => void)
+      | null = null;
     public readonly willDownloadListeners: FakeSessionListener[] = [];
     public permissionCheckHandler: FakePermissionCheckHandler | null = null;
     public permissionRequestHandler: FakePermissionRequestHandler | null = null;
     public certificateVerifyProc:
-      | ((request: { hostname: string }, callback: (result: number) => void) => void)
+      | ((
+          request: { hostname: string },
+          callback: (result: number) => void,
+        ) => void)
       | null = null;
     on(eventName: "will-download", listener: FakeSessionListener): void {
       this.willDownloadListeners.push(listener);
@@ -791,6 +1001,14 @@ const electronMock = vi.hoisted(() => {
   const fakeWindows: FakeBrowserWindow[] = [];
 
   return {
+    app: {
+      on(event: string, listener: FakeCertificateErrorListener): void {
+        if (event !== "certificate-error") {
+          throw new Error(`Unexpected native application event: ${event}`);
+        }
+        certificateErrorListeners.push(listener);
+      },
+    },
     fakeCapturedImage,
     certificateErrorListeners,
     fakeSessions,
@@ -800,6 +1018,27 @@ const electronMock = vi.hoisted(() => {
       const contents = new FakeWebContents(nextWebContentsId);
       nextWebContentsId += 1;
       return contents;
+    },
+    FakeBaseWindow: class {
+      private destroyed = false;
+      readonly contentView = {
+        addChildView(_view: FakeWebContentsView): void {},
+        removeChildView(_view: FakeWebContentsView): void {},
+      };
+      destroy(): void {
+        this.destroyed = true;
+      }
+      isDestroyed(): boolean {
+        return this.destroyed;
+      }
+      getOpacity(): number {
+        return 0;
+      }
+      isFocusable(): boolean {
+        return false;
+      }
+      setContentSize(_width: number, _height: number): void {}
+      showInactive(): void {}
     },
     FakeBrowserWindow: class extends FakeBrowserWindow {
       constructor(options: FakeBrowserWindowOptions) {
@@ -816,23 +1055,24 @@ const electronMock = vi.hoisted(() => {
     session: {
       fromPartition() {
         const fakeSession = new FakeSession();
+        currentSession = fakeSession;
         fakeSessions.push(fakeSession);
         return fakeSession;
       },
     },
-    app: {
-      on(_eventName: "certificate-error", listener: FakeCertificateErrorListener): void {
-        certificateErrorListeners.push(listener);
-      },
+    webContents: {
+      getAllWebContents: () => fakeViews.map((view) => view.webContents),
     },
   };
 });
 
 vi.mock("electron", () => ({
+  BaseWindow: electronMock.FakeBaseWindow,
   BrowserWindow: electronMock.FakeBrowserWindow,
   WebContentsView: electronMock.FakeWebContentsView,
   app: electronMock.app,
   session: electronMock.session,
+  webContents: electronMock.webContents,
 }));
 
 interface FakeHostWindowArgs {
@@ -1071,7 +1311,7 @@ describe("DesktopBrowserViewManager", () => {
     expect(view.visible).toBe(true);
   });
 
-  it("replaces the global Browser session and reloads every live tab", async () => {
+  it("imports cookies atomically across live tabs and clears them", async () => {
     const manager = createDesktopBrowserViewManager({
       partition: "persist:test",
     });
@@ -1083,7 +1323,7 @@ describe("DesktopBrowserViewManager", () => {
       manager,
       hostWindow,
       tabId: "browser:a",
-      url: "https://example.com",
+      url: "about:blank",
     });
     const otherHostWindow = new FakeHostWindow({
       contentBounds: { width: 700, height: 450 },
@@ -1093,8 +1333,10 @@ describe("DesktopBrowserViewManager", () => {
       manager,
       hostWindow: otherHostWindow,
       tabId: "browser:b",
-      url: "https://example.org",
+      url: "about:blank",
     });
+    await requireFakeView(0).webContents.loadURL("about:blank");
+    await requireFakeView(1).webContents.loadURL("about:blank");
     const request = {
       tabId: "browser:a",
       cookies: [
@@ -1153,77 +1395,74 @@ describe("DesktopBrowserViewManager", () => {
 
     await expect(
       manager.importCookies({ hostWindow, request }),
-    ).resolves.toEqual({ importedCookies: 4 });
+    ).rejects.toBeInstanceOf(Error);
     const browserSession = requireFakeSession(0);
-    expect(browserSession.cookieSetCalls).toEqual([
-      {
-        httpOnly: true,
+    expect(await browserSession.cookies.get()).toEqual([]);
+    expect(requireFakeView(0).webContents.reloadCalls).toBe(0);
+    expect(requireFakeView(1).webContents.reloadCalls).toBe(0);
+    const validRequest = {
+      tabId: "browser:a",
+      cookies: request.cookies.filter(
+        (cookie) => cookie.name !== "__Host-invalid",
+      ),
+    } satisfies BbDesktopBrowserImportCookiesRequest;
+    await expect(
+      manager.importCookies({ hostWindow, request: validRequest }),
+    ).resolves.toEqual({ importedCookies: 4 });
+    const stored = await browserSession.cookies.get();
+    expect(stored).toEqual([
+      expect.objectContaining({
+        domain: "example.com",
+        hostOnly: true,
         name: "__Host-session",
         path: "/",
-        sameSite: "lax",
-        secure: true,
-        url: "https://example.com/",
-        value: "host-value",
-      },
-      {
-        domain: "example.com",
         httpOnly: true,
+        secure: true,
+        sameSite: "lax",
+        value: "host-value",
+      }),
+      expect.objectContaining({
+        domain: ".example.com",
+        hostOnly: false,
         name: "__Secure-session",
         path: "/",
-        sameSite: "strict",
-        secure: true,
-        url: "https://example.com/",
-        value: "secure-value",
-      },
-      {
-        domain: "example.com",
         httpOnly: true,
+        secure: true,
+        sameSite: "strict",
+        value: "secure-value",
+      }),
+      expect.objectContaining({
+        domain: ".example.com",
+        hostOnly: false,
         name: "overlap",
         path: "/",
-        sameSite: "lax",
+        httpOnly: true,
         secure: true,
-        url: "https://example.com/",
+        sameSite: "lax",
         value: "secure-overlap",
-      },
-      {
-        httpOnly: false,
+      }),
+      expect.objectContaining({
+        domain: "sub.example.com",
+        hostOnly: true,
         name: "overlap",
         path: "/account",
-        sameSite: "lax",
+        httpOnly: false,
         secure: false,
-        url: "https://sub.example.com/account",
+        sameSite: "lax",
         value: "insecure-overlap",
-      },
+      }),
     ]);
-    expect(browserSession.clearStorageDataCalls).toEqual([
-      { storages: ["cookies"] },
-    ]);
-    expect(browserSession.flushStoreCalls).toBe(1);
-    expect(browserSession.clearCacheCalls).toBe(0);
-    expect(electronMock.fakeSessions).toHaveLength(1);
     expect(requireFakeView(0).webContents.reloadCalls).toBe(1);
     expect(requireFakeView(1).webContents.reloadCalls).toBe(1);
 
     await expect(
-      manager.importCookies({ hostWindow, request }),
+      manager.importCookies({ hostWindow, request: validRequest }),
     ).resolves.toEqual({ importedCookies: 4 });
-    expect(browserSession.cookieSetCalls).toHaveLength(8);
-    expect(browserSession.flushStoreCalls).toBe(2);
-    expect(browserSession.clearStorageDataCalls).toEqual([
-      { storages: ["cookies"] },
-      { storages: ["cookies"] },
-    ]);
-    expect(browserSession.clearCacheCalls).toBe(0);
+    expect(await browserSession.cookies.get()).toEqual(stored);
     expect(requireFakeView(0).webContents.reloadCalls).toBe(2);
     expect(requireFakeView(1).webContents.reloadCalls).toBe(2);
     await manager.clearImportedCookies({ hostWindow, tabId: "browser:a" });
-    expect(browserSession.flushStoreCalls).toBe(3);
-    expect(browserSession.clearStorageDataCalls).toEqual([
-      { storages: ["cookies"] },
-      { storages: ["cookies"] },
-      undefined,
-    ]);
-    expect(browserSession.clearCacheCalls).toBe(1);
+    expect(await browserSession.cookies.get()).toEqual([]);
     expect(requireFakeView(0).webContents.reloadCalls).toBe(3);
     expect(requireFakeView(1).webContents.reloadCalls).toBe(3);
     await expect(
@@ -1232,13 +1471,7 @@ describe("DesktopBrowserViewManager", () => {
         request: { tabId: "browser:a", cookies: [] },
       }),
     ).resolves.toEqual({ importedCookies: 0 });
-    expect(browserSession.clearStorageDataCalls).toEqual([
-      { storages: ["cookies"] },
-      { storages: ["cookies"] },
-      undefined,
-      { storages: ["cookies"] },
-    ]);
-    expect(browserSession.clearCacheCalls).toBe(1);
+    expect(await browserSession.cookies.get()).toEqual([]);
     expect(requireFakeView(0).webContents.reloadCalls).toBe(4);
     expect(requireFakeView(1).webContents.reloadCalls).toBe(4);
   });
@@ -1255,7 +1488,7 @@ describe("DesktopBrowserViewManager", () => {
       manager,
       hostWindow,
       tabId: "browser:a",
-      url: "https://github.com",
+      url: "about:blank",
     });
     const browserSession = requireFakeSession(0);
     browserSession.cookieGetResults.push({
@@ -1286,12 +1519,9 @@ describe("DesktopBrowserViewManager", () => {
       }),
     ).resolves.toEqual({ importedCookies: 1 });
 
-    expect(browserSession.cookieRemoveCalls).toEqual([
-      { name: "user_session", url: "https://github.com/" },
-    ]);
-    expect(browserSession.cookieSetCalls).toEqual([
+    expect(await browserSession.cookies.get()).toEqual([
       expect.objectContaining({
-        domain: "github.com",
+        domain: ".github.com",
         httpOnly: true,
         name: "user_session",
         value: "replacement",
@@ -1311,7 +1541,7 @@ describe("DesktopBrowserViewManager", () => {
       manager,
       hostWindow,
       tabId: "browser:a",
-      url: "https://github.com",
+      url: "about:blank",
     });
 
     await expect(
@@ -1355,9 +1585,99 @@ describe("DesktopBrowserViewManager", () => {
       }),
     ).resolves.toEqual({ importedCookies: 2 });
 
-    expect(requireFakeSession(0).cookieSetCalls).toEqual([
-      expect.objectContaining({ value: "host-only" }),
-      expect.objectContaining({ domain: "github.com", value: "domain" }),
+    expect(await requireFakeSession(0).cookies.get()).toEqual([
+      expect.objectContaining({
+        domain: "github.com",
+        hostOnly: true,
+        value: "host-only",
+      }),
+      expect.objectContaining({
+        domain: ".github.com",
+        hostOnly: false,
+        value: "domain",
+      }),
+    ]);
+  });
+
+  it("rolls back to the exact prior cookies when a commit write fails", async () => {
+    const manager = createDesktopBrowserViewManager({
+      partition: "persist:test",
+    });
+    const hostWindow = new FakeHostWindow({
+      contentBounds: { width: 700, height: 450 },
+      webContentsId: 55,
+    });
+    attachBrowserTab({
+      manager,
+      hostWindow,
+      tabId: "browser:a",
+      url: "about:blank",
+    });
+    const browserSession = requireFakeSession(0);
+    browserSession.cookieGetResults.push(
+      {
+        domain: "github.com",
+        name: "prior",
+        path: "/",
+        secure: true,
+        httpOnly: true,
+        value: "prior-value",
+        sameSite: "lax",
+      },
+      {
+        domain: ".github.com",
+        name: "prior-domain",
+        path: "/",
+        secure: true,
+        httpOnly: false,
+        value: "prior-domain-value",
+        sameSite: "lax",
+      },
+    );
+
+    browserSession.failNextCookieSets = 1;
+    await expect(
+      manager.importCookies({
+        hostWindow,
+        request: {
+          tabId: "browser:a",
+          cookies: [
+            {
+              domain: ".github.com",
+              expirationDate: null,
+              httpOnly: true,
+              name: "replacement",
+              path: "/",
+              sameSite: "lax",
+              secure: true,
+              value: "replacement-value",
+            },
+          ],
+        },
+      }),
+    ).rejects.toBeInstanceOf(Error);
+
+    expect(await browserSession.cookies.get()).toEqual([
+      expect.objectContaining({
+        domain: "github.com",
+        hostOnly: true,
+        name: "prior",
+        path: "/",
+        secure: true,
+        httpOnly: true,
+        sameSite: "lax",
+        value: "prior-value",
+      }),
+      expect.objectContaining({
+        domain: ".github.com",
+        hostOnly: false,
+        name: "prior-domain",
+        path: "/",
+        secure: true,
+        httpOnly: false,
+        sameSite: "lax",
+        value: "prior-domain-value",
+      }),
     ]);
   });
 
@@ -1377,14 +1697,16 @@ describe("DesktopBrowserViewManager", () => {
       manager,
       hostWindow: firstHostWindow,
       tabId: "browser:a",
-      url: "https://example.com",
+      url: "about:blank",
     });
     attachBrowserTab({
       manager,
       hostWindow: secondHostWindow,
       tabId: "browser:b",
-      url: "https://example.org",
+      url: "about:blank",
     });
+    await requireFakeView(0).webContents.loadURL("about:blank");
+    await requireFakeView(1).webContents.loadURL("about:blank");
     const firstImport = manager.importCookies({
       hostWindow: firstHostWindow,
       request: {
@@ -1427,13 +1749,12 @@ describe("DesktopBrowserViewManager", () => {
       { importedCookies: 1 },
     ]);
     const browserSession = requireFakeSession(0);
-    expect(browserSession.clearStorageDataCalls).toEqual([
-      { storages: ["cookies"] },
-      { storages: ["cookies"] },
-    ]);
-    expect(browserSession.cookieSetCalls).toEqual([
-      expect.objectContaining({ name: "first", value: "first-value" }),
-      expect.objectContaining({ name: "second", value: "second-value" }),
+    expect(await browserSession.cookies.get()).toEqual([
+      expect.objectContaining({
+        domain: ".example.org",
+        name: "second",
+        value: "second-value",
+      }),
     ]);
     expect(requireFakeView(0).webContents.reloadCalls).toBe(2);
     expect(requireFakeView(1).webContents.reloadCalls).toBe(2);
@@ -1451,7 +1772,7 @@ describe("DesktopBrowserViewManager", () => {
       manager,
       hostWindow,
       tabId: "browser:a",
-      url: "https://example.com",
+      url: "about:blank",
     });
     const request = {
       tabId: "browser:a",
@@ -1471,18 +1792,12 @@ describe("DesktopBrowserViewManager", () => {
       manager.importCookies({ hostWindow, request }),
     ).resolves.toEqual({ importedCookies: 251 });
     const browserSession = requireFakeSession(0);
-    expect(browserSession.clearStorageDataCalls).toEqual([
-      { storages: ["cookies"] },
-    ]);
-    expect(browserSession.cookieSetCalls).toHaveLength(251);
-    expect(browserSession.cookieSetCalls[0]).toMatchObject({
-      name: "session-0",
-      value: "value-0",
-    });
-    expect(browserSession.cookieSetCalls[250]).toMatchObject({
-      name: "session-250",
-      value: "value-250",
-    });
+    expect(
+      (await browserSession.cookies.get()).map(({ name, value }) => ({
+        name,
+        value,
+      })),
+    ).toEqual(request.cookies.map(({ name, value }) => ({ name, value })));
   });
 
   it("binds page captures to the exact navigation epoch", async () => {
@@ -1505,47 +1820,133 @@ describe("DesktopBrowserViewManager", () => {
       hostWindow,
       request: {
         tabId: "browser:a",
+        requestId: "capture-1",
         format: "png",
         quality: 85,
         expectedNavigationEpoch: 0,
       },
     });
+    await vi.waitUntil(
+      () => view.webContents.pendingCaptureResolvers.length > 0,
+    );
     view.webContents.pendingCaptureResolvers.shift()?.(
       electronMock.fakeCapturedImage,
     );
-    await expect(capture).resolves.toEqual({
+    await expect(capture).resolves.toMatchObject({
       navigationEpoch: 0,
-      dataUrl: `data:image/png;base64,${Buffer.from("png-bytes").toString("base64")}`,
+      format: "png",
       pixelSize: { width: 1_200, height: 800 },
     });
+    const captureResult = await capture;
+
+    const chunk = await manager.readCaptureChunk({
+      hostWindow,
+      request: {
+        captureId: captureResult.captureId,
+        tabId: "browser:a",
+        offset: 0,
+        length: 262_144,
+      },
+    });
+    expect(chunk).toMatchObject({
+      captureId: captureResult.captureId,
+      offset: 0,
+      eof: true,
+    });
+    expect(Buffer.from(chunk.base64, "base64")).toEqual(
+      Buffer.from("png-bytes"),
+    );
+    manager.releaseCapture({
+      hostWindow,
+      request: { captureId: captureResult.captureId, tabId: "browser:a" },
+    });
+    await expect(
+      manager.readCaptureChunk({
+        hostWindow,
+        request: {
+          captureId: captureResult.captureId,
+          tabId: "browser:a",
+          offset: 0,
+          length: 100,
+        },
+      }),
+    ).rejects.toThrow("Browser capture is not available");
 
     const invalidatedCapture = manager.capturePage({
       hostWindow,
       request: {
         tabId: "browser:a",
+        requestId: "capture-2",
         format: "jpeg",
         quality: 75,
         expectedNavigationEpoch: 0,
       },
     });
+    const invalidatedCaptureFailed = expect(
+      invalidatedCapture,
+    ).rejects.toMatchObject({
+      name: "AbortError",
+    });
+    await vi.waitUntil(
+      () => view.webContents.pendingCaptureResolvers.length > 0,
+    );
     view.webContents.emitDidStartNavigation();
     view.webContents.pendingCaptureResolvers.shift()?.(
       electronMock.fakeCapturedImage,
     );
-    await expect(invalidatedCapture).rejects.toThrow(
-      "Browser page changed during capture",
-    );
+    await invalidatedCaptureFailed;
     await expect(
       manager.capturePage({
         hostWindow,
         request: {
           tabId: "browser:a",
+          requestId: "capture-3",
           format: "png",
           quality: 85,
           expectedNavigationEpoch: 0,
         },
       }),
     ).rejects.toThrow("Browser page changed before capture");
+  });
+  it("aborts an in-flight capture when explicit navigation supersedes it", async () => {
+    const manager = createDesktopBrowserViewManager({
+      partition: "persist:test",
+    });
+    const hostWindow = new FakeHostWindow({
+      contentBounds: { width: 700, height: 450 },
+      webContentsId: 79,
+    });
+    attachBrowserTab({
+      manager,
+      hostWindow,
+      tabId: "browser:capture-cancel",
+      url: "https://example.com",
+    });
+    const view = requireFakeView(0);
+    const capture = manager.capturePage({
+      hostWindow,
+      request: {
+        tabId: "browser:capture-cancel",
+        requestId: "capture-cancel",
+        format: "png",
+        quality: 85,
+        expectedNavigationEpoch: 0,
+      },
+    });
+    await vi.waitUntil(
+      () => view.webContents.pendingCaptureResolvers.length === 1,
+    );
+    manager.navigate({
+      hostWindow,
+      request: {
+        tabId: "browser:capture-cancel",
+        url: "https://next.example.com",
+      },
+    });
+    await expect(capture).rejects.toMatchObject({ name: "AbortError" });
+    view.webContents.pendingCaptureResolvers.shift()?.(
+      electronMock.fakeCapturedImage,
+    );
   });
   it("captures full pages and scopes dialogs, permissions, and diagnostics to one tab", async () => {
     const manager = createDesktopBrowserViewManager({
@@ -1580,6 +1981,7 @@ describe("DesktopBrowserViewManager", () => {
           action: {
             kind: "set-permissions",
             decision: "allow",
+            origin: "https://example.com",
             permissions: ["media"],
           },
         },
@@ -1588,14 +1990,30 @@ describe("DesktopBrowserViewManager", () => {
       navigationEpoch: 0,
       value: { decision: "allow", permissions: ["media"] },
     });
-    expect(fakeSession.permissionCheckHandler(view.webContents, "media")).toBe(
-      true,
-    );
+    expect(
+      fakeSession.permissionCheckHandler(
+        view.webContents,
+        "media",
+        "https://example.com",
+        { requestingUrl: "https://example.com/" },
+      ),
+    ).toBe(true);
     const permissionDecisions: boolean[] = [];
-    fakeSession.permissionRequestHandler(view.webContents, "media", (allowed) =>
-      permissionDecisions.push(allowed),
+    fakeSession.permissionRequestHandler(
+      view.webContents,
+      "media",
+      (allowed) => permissionDecisions.push(allowed),
+      { requestingUrl: "https://example.com/" },
     );
     expect(permissionDecisions).toEqual([true]);
+    expect(
+      fakeSession.permissionCheckHandler(
+        view.webContents,
+        "media",
+        "https://other.example",
+        { requestingUrl: "https://other.example/" },
+      ),
+    ).toBe(false);
     await manager.runAutomation({
       hostWindow,
       request: {
@@ -1604,6 +2022,7 @@ describe("DesktopBrowserViewManager", () => {
         action: {
           kind: "set-permissions",
           decision: "deny",
+          origin: "https://example.com",
           permissions: ["clipboard-sanitized-write"],
         },
       },
@@ -1612,8 +2031,18 @@ describe("DesktopBrowserViewManager", () => {
       fakeSession.permissionCheckHandler(
         view.webContents,
         "clipboard-sanitized-write",
+        "https://example.com",
+        { requestingUrl: "https://example.com/" },
       ),
     ).toBe(false);
+    expect(
+      fakeSession.permissionCheckHandler(
+        view.webContents,
+        "clipboard-sanitized-write",
+        "https://example.org",
+        { requestingUrl: "https://example.org/" },
+      ),
+    ).toBe(true);
 
     await manager.runAutomation({
       hostWindow,
@@ -1636,25 +2065,34 @@ describe("DesktopBrowserViewManager", () => {
       params: { accept: true, promptText: "approved" },
     });
 
+    const captured = await manager.runAutomation({
+      hostWindow,
+      request: {
+        tabId: "browser:a",
+        expectedNavigationEpoch: 0,
+        action: { kind: "capture-full-page", format: "png", quality: 100 },
+      },
+    });
+    const descriptor = bbDesktopBrowserCaptureDescriptorSchema.parse(
+      captured.value,
+    );
+    expect(descriptor).toMatchObject({
+      navigationEpoch: 0,
+      pixelSize: { width: 1_200, height: 2_400 },
+    });
     await expect(
-      manager.runAutomation({
+      manager.readCaptureChunk({
         hostWindow,
         request: {
           tabId: "browser:a",
-          expectedNavigationEpoch: 0,
-          action: {
-            kind: "capture-full-page",
-            format: "png",
-            quality: 100,
-          },
+          captureId: descriptor.captureId,
+          offset: 0,
+          length: descriptor.byteLength,
         },
       }),
-    ).resolves.toEqual({
-      navigationEpoch: 0,
-      value: {
-        dataUrl: `data:image/png;base64,${Buffer.from("full-page").toString("base64")}`,
-        pixelSize: { width: 1_200, height: 2_400 },
-      },
+    ).resolves.toMatchObject({
+      base64: Buffer.from("full-page").toString("base64"),
+      eof: true,
     });
 
     await expect(
@@ -1683,6 +2121,429 @@ describe("DesktopBrowserViewManager", () => {
       },
     });
   });
+
+  it("never synthesizes the main world from an isolated world for a frame", async () => {
+    const manager = createDesktopBrowserViewManager({
+      partition: "persist:test",
+    });
+    const hostWindow = new FakeHostWindow({
+      contentBounds: { width: 700, height: 450 },
+      webContentsId: 52,
+    });
+    attachBrowserTab({
+      manager,
+      hostWindow,
+      tabId: "browser:c",
+      url: "https://example.com",
+    });
+    const view = requireFakeView(0);
+    view.webContents.debugger.getFrameTreeResult = {
+      frameTree: {
+        frame: {
+          id: "root",
+          loaderId: "root-loader",
+          name: "",
+          url: "https://example.com",
+        },
+        childFrames: [
+          {
+            frame: {
+              id: "child",
+              loaderId: "child-loader",
+              name: "",
+              url: "https://child.example.com",
+            },
+          },
+        ],
+      },
+    };
+    const listed = await manager.listFrames({
+      hostWindow,
+      request: { tabId: "browser:c", expectedNavigationEpoch: 0, maxFrames: 8 },
+    });
+    const child = listed.frames[0];
+    if (child === undefined) throw new Error("Expected a child frame.");
+    const target = {
+      frameId: child.frameId,
+      documentEpoch: child.documentEpoch,
+    };
+
+    // Only an isolated context has surfaced for the first child; a
+    // main-world request must not create a synthetic world. It fails fast.
+    view.webContents.debugger.emitMessage("Runtime.executionContextCreated", {
+      context: {
+        id: 21,
+        uniqueId: "isolated-child-21",
+        name: "bb-browser-frame-v1",
+        auxData: { frameId: "child", isDefault: false, type: "isolated" },
+      },
+    });
+    const createCallsBefore = view.webContents.debugger.sendCommandCalls.filter(
+      (command) => command.method === "Page.createIsolatedWorld",
+    ).length;
+
+    await expect(
+      manager.runPageScript({
+        hostWindow,
+        request: {
+          tabId: "browser:c",
+          expectedNavigationEpoch: 0,
+          requestId: "req-main-missing",
+          frame: target,
+          world: "main",
+          source: "() => ({ w: 2 })",
+          input: null,
+          timeoutMs: 1000,
+        },
+      }),
+    ).rejects.toThrow("The Browser frame target changed");
+    const createCallsAfter = view.webContents.debugger.sendCommandCalls.filter(
+      (command) => command.method === "Page.createIsolatedWorld",
+    );
+    expect(createCallsAfter).toHaveLength(createCallsBefore);
+
+    // A second child frame has no isolated context yet: requesting the
+    // isolated world must create it, and only with the BB world name.
+    view.webContents.debugger.getFrameTreeResult = {
+      frameTree: {
+        frame: {
+          id: "root",
+          loaderId: "root-loader",
+          name: "",
+          url: "https://example.com",
+        },
+        childFrames: [
+          {
+            frame: {
+              id: "child",
+              loaderId: "child-loader",
+              name: "",
+              url: "https://child.example.com",
+            },
+            childFrames: [
+              {
+                frame: {
+                  id: "grandchild",
+                  loaderId: "grandchild-loader",
+                  name: "",
+                  url: "https://grand.example.com",
+                },
+              },
+            ],
+          },
+        ],
+      },
+    };
+    const relisted = await manager.listFrames({
+      hostWindow,
+      request: { tabId: "browser:c", expectedNavigationEpoch: 0, maxFrames: 8 },
+    });
+    const grandchild = relisted.frames.find((frame) => frame.depth === 2);
+    if (grandchild === undefined) {
+      throw new Error("Expected a grandchild frame.");
+    }
+    const grandchildTarget = {
+      frameId: grandchild.frameId,
+      documentEpoch: grandchild.documentEpoch,
+    };
+    await expect(
+      manager.runPageScript({
+        hostWindow,
+        request: {
+          tabId: "browser:c",
+          expectedNavigationEpoch: 0,
+          requestId: "req-iso-create",
+          frame: grandchildTarget,
+          world: "isolated",
+          source: "() => ({ w: 1 })",
+          input: null,
+          timeoutMs: 1000,
+        },
+      }),
+    ).resolves.toMatchObject({ requestId: "req-iso-create" });
+    const created = [...view.webContents.debugger.sendCommandCalls]
+      .reverse()
+      .find((command) => command.method === "Page.createIsolatedWorld");
+    expect(created?.params?.worldName).toBe("bb-browser-frame-v1");
+    expect(created?.params?.frameId).toBe("grandchild");
+  });
+
+  it("never adopts an unrelated non-default world as the BB isolated world", async () => {
+    const manager = createDesktopBrowserViewManager({
+      partition: "persist:test",
+    });
+    const hostWindow = new FakeHostWindow({
+      contentBounds: { width: 700, height: 450 },
+      webContentsId: 55,
+    });
+    attachBrowserTab({
+      manager,
+      hostWindow,
+      tabId: "browser:worlds",
+      url: "https://example.com",
+    });
+    const view = requireFakeView(0);
+    view.webContents.debugger.getFrameTreeResult = {
+      frameTree: {
+        frame: {
+          id: "root",
+          loaderId: "root-loader",
+          name: "",
+          url: "https://example.com",
+        },
+        childFrames: [
+          {
+            frame: {
+              id: "child",
+              loaderId: "child-loader",
+              name: "",
+              url: "https://child.example.com",
+            },
+          },
+        ],
+      },
+    };
+    const listed = await manager.listFrames({
+      hostWindow,
+      request: {
+        tabId: "browser:worlds",
+        expectedNavigationEpoch: 0,
+        maxFrames: 8,
+      },
+    });
+    const child = listed.frames[0];
+    if (child === undefined)
+      throw new Error("Expected a discovered child frame.");
+    const target = {
+      frameId: child.frameId,
+      documentEpoch: child.documentEpoch,
+    };
+    // An extension/content-script world without the BB world name arrives.
+    view.webContents.debugger.emitMessage("Runtime.executionContextCreated", {
+      context: {
+        id: 71,
+        uniqueId: "extension-child-71",
+        name: "chrome-extension://abc",
+        auxData: { frameId: "child", isDefault: false, type: "isolated" },
+      },
+    });
+    // A default context arrives too (must still be adopted as main).
+    view.webContents.debugger.emitMessage("Runtime.executionContextCreated", {
+      context: {
+        id: 70,
+        uniqueId: "main-child-70",
+        auxData: { frameId: "child", isDefault: true, type: "default" },
+      },
+    });
+    const isolated = await manager.runPageScript({
+      hostWindow,
+      request: {
+        tabId: "browser:worlds",
+        expectedNavigationEpoch: 0,
+        requestId: "req-world-iso",
+        frame: target,
+        world: "isolated",
+        source: "() => ({ w: 1 })",
+        input: null,
+        timeoutMs: 1000,
+      },
+    });
+    expect(isolated).toMatchObject({ requestId: "req-world-iso" });
+    const created = view.webContents.debugger.sendCommandCalls.find(
+      (command) => command.method === "Page.createIsolatedWorld",
+    );
+    expect(created).toBeDefined();
+    expect(created?.params?.frameId).toBe("child");
+    const isolatedEvaluate = [...view.webContents.debugger.sendCommandCalls]
+      .reverse()
+      .find((command) => command.method === "Runtime.evaluate");
+    // The evaluation must not use the unrelated world's context (71).
+    expect(isolatedEvaluate?.params?.contextId).not.toBe(71);
+  });
+
+  it("creates the isolated world once for concurrent frame scripts", async () => {
+    const manager = createDesktopBrowserViewManager({
+      partition: "persist:test",
+    });
+    const hostWindow = new FakeHostWindow({
+      contentBounds: { width: 700, height: 450 },
+      webContentsId: 54,
+    });
+    attachBrowserTab({
+      manager,
+      hostWindow,
+      tabId: "browser:e",
+      url: "https://example.com",
+    });
+    const view = requireFakeView(0);
+    view.webContents.debugger.getFrameTreeResult = {
+      frameTree: {
+        frame: {
+          id: "root",
+          loaderId: "root-loader",
+          name: "",
+          url: "https://example.com",
+        },
+        childFrames: [
+          {
+            frame: {
+              id: "fresh-child",
+              loaderId: "fresh-loader",
+              name: "",
+              url: "https://fresh.example.com",
+            },
+          },
+        ],
+      },
+    };
+    const listed = await manager.listFrames({
+      hostWindow,
+      request: { tabId: "browser:e", expectedNavigationEpoch: 0, maxFrames: 8 },
+    });
+    const child = listed.frames[0];
+    if (child === undefined) throw new Error("Expected a child frame.");
+    const target = {
+      frameId: child.frameId,
+      documentEpoch: child.documentEpoch,
+    };
+
+    let openCreateGate!: () => void;
+    const createGate = new Promise<void>((resolve) => {
+      openCreateGate = resolve;
+    });
+    view.webContents.debugger.gates.set("Page.createIsolatedWorld", createGate);
+
+    const first = manager.runPageScript({
+      hostWindow,
+      request: {
+        tabId: "browser:e",
+        expectedNavigationEpoch: 0,
+        requestId: "req-dedupe-1",
+        frame: target,
+        world: "isolated",
+        source: "() => ({ w: 1 })",
+        input: null,
+        timeoutMs: 1000,
+      },
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const second = manager.runPageScript({
+      hostWindow,
+      request: {
+        tabId: "browser:e",
+        expectedNavigationEpoch: 0,
+        requestId: "req-dedupe-2",
+        frame: target,
+        world: "isolated",
+        source: "() => ({ w: 2 })",
+        input: null,
+        timeoutMs: 1000,
+      },
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(
+      view.webContents.debugger.sendCommandCalls.filter(
+        (command) => command.method === "Page.createIsolatedWorld",
+      ),
+    ).toHaveLength(1);
+    openCreateGate();
+    await expect(Promise.all([first, second])).resolves.toMatchObject([
+      { requestId: "req-dedupe-1" },
+      { requestId: "req-dedupe-2" },
+    ]);
+    expect(
+      view.webContents.debugger.sendCommandCalls.filter(
+        (command) => command.method === "Page.createIsolatedWorld",
+      ),
+    ).toHaveLength(1);
+  });
+  it("cancels a frame script while its isolated-world setup is pending", async () => {
+    const manager = createDesktopBrowserViewManager({
+      partition: "persist:test",
+    });
+    const hostWindow = new FakeHostWindow({
+      contentBounds: { width: 700, height: 450 },
+      webContentsId: 51,
+    });
+    attachBrowserTab({
+      manager,
+      hostWindow,
+      tabId: "browser:cancelled-frame",
+      url: "https://example.com",
+    });
+    const view = requireFakeView(0);
+    view.webContents.debugger.getFrameTreeResult = {
+      frameTree: {
+        frame: {
+          id: "root",
+          loaderId: "root-loader",
+          name: "",
+          url: "https://example.com",
+        },
+        childFrames: [
+          {
+            frame: {
+              id: "child",
+              loaderId: "child-loader",
+              name: "",
+              url: "https://child.example.com",
+            },
+          },
+        ],
+      },
+    };
+    const frames = await manager.listFrames({
+      hostWindow,
+      request: {
+        tabId: "browser:cancelled-frame",
+        expectedNavigationEpoch: 0,
+        maxFrames: 8,
+      },
+    });
+    const child = frames.frames[0];
+    if (child === undefined) throw new Error("Expected a child frame.");
+    const frame = {
+      frameId: child.frameId,
+      documentEpoch: child.documentEpoch,
+    };
+    const worldCreation = Promise.withResolvers<void>();
+    view.webContents.debugger.gates.set(
+      "Page.createIsolatedWorld",
+      worldCreation.promise,
+    );
+    const running = manager.runPageScript({
+      hostWindow,
+      request: {
+        tabId: "browser:cancelled-frame",
+        expectedNavigationEpoch: 0,
+        requestId: "cancelled-frame-script",
+        frame,
+        world: "isolated",
+        source: "() => ({ value: 1 })",
+        input: null,
+        timeoutMs: 1_000,
+      },
+    });
+    const rejection = expect(running).rejects.toMatchObject({
+      name: "NavigationError",
+    });
+    await vi.waitFor(() =>
+      expect(
+        view.webContents.debugger.sendCommandCalls.some(
+          (command) => command.method === "Page.createIsolatedWorld",
+        ),
+      ).toBe(true),
+    );
+    view.webContents.emitDidStartNavigation();
+    worldCreation.resolve();
+    await rejection;
+    expect(
+      view.webContents.debugger.sendCommandCalls.filter(
+        (command) => command.method === "Runtime.evaluate",
+      ),
+    ).toEqual([]);
+  });
+
   it("retains a discovered child frame through a same-loader navigation event", async () => {
     const manager = createDesktopBrowserViewManager({
       partition: "persist:test",
@@ -1723,7 +2584,8 @@ describe("DesktopBrowserViewManager", () => {
       request: { tabId: "browser:a", expectedNavigationEpoch: 0, maxFrames: 8 },
     });
     const child = first.frames[0];
-    if (child === undefined) throw new Error("Expected a discovered child frame.");
+    if (child === undefined)
+      throw new Error("Expected a discovered child frame.");
     const target = {
       frameId: child.frameId,
       documentEpoch: child.documentEpoch,
@@ -1740,6 +2602,7 @@ describe("DesktopBrowserViewManager", () => {
           tabId: "browser:a",
           expectedNavigationEpoch: 0,
           frame: target,
+          requestId: "req-child-click",
           action: {
             kind: "click",
             x: 10,
@@ -1754,22 +2617,6 @@ describe("DesktopBrowserViewManager", () => {
       frame: target,
       dispatched: 2,
     });
-    expect(view.webContents.sentInputEvents).toEqual([
-      {
-        type: "mouseDown",
-        x: 30,
-        y: 50,
-        button: "left",
-        clickCount: 1,
-      },
-      {
-        type: "mouseUp",
-        x: 30,
-        y: 50,
-        button: "left",
-        clickCount: 1,
-      },
-    ]);
 
     view.webContents.debugger.emitMessage("Page.frameNavigated", {
       frame: { id: "child", loaderId: "next-child-loader" },
@@ -1782,6 +2629,7 @@ describe("DesktopBrowserViewManager", () => {
           tabId: "browser:a",
           expectedNavigationEpoch: 0,
           frame: target,
+          requestId: "req-child-click-stale",
           action: {
             kind: "click",
             x: 10,
@@ -1794,6 +2642,707 @@ describe("DesktopBrowserViewManager", () => {
     ).rejects.toThrow("The Browser frame target changed");
   });
 
+  it("aborts pointer input before dispatch when cancelled during frame offset resolution", async () => {
+    const manager = createDesktopBrowserViewManager({
+      partition: "persist:test",
+    });
+    const hostWindow = new FakeHostWindow({
+      contentBounds: { width: 700, height: 450 },
+      webContentsId: 62,
+    });
+    attachBrowserTab({
+      manager,
+      hostWindow,
+      tabId: "browser:a",
+      url: "https://example.com",
+    });
+    const view = requireFakeView(0);
+    view.webContents.debugger.getFrameTreeResult = {
+      frameTree: {
+        frame: {
+          id: "root",
+          loaderId: "root-loader",
+          name: "",
+          url: "https://example.com",
+        },
+        childFrames: [
+          {
+            frame: {
+              id: "child",
+              loaderId: "child-loader",
+              name: "",
+              url: "https://child.example.com",
+            },
+          },
+        ],
+      },
+    };
+    const listed = await manager.listFrames({
+      hostWindow,
+      request: { tabId: "browser:a", expectedNavigationEpoch: 0, maxFrames: 8 },
+    });
+    const child = listed.frames[0];
+    if (child === undefined) throw new Error("Expected a child frame.");
+    const frame = {
+      frameId: child.frameId,
+      documentEpoch: child.documentEpoch,
+    };
+
+    let openOwnerGate!: () => void;
+    const ownerGate = new Promise<void>((resolve) => {
+      openOwnerGate = resolve;
+    });
+    view.webContents.debugger.gates.set("DOM.getFrameOwner", ownerGate);
+
+    const input = manager.sendPointerInput({
+      hostWindow,
+      request: {
+        tabId: "browser:a",
+        expectedNavigationEpoch: 0,
+        requestId: "req-pointer-abort",
+        frame,
+        events: [
+          {
+            type: "mouseDown",
+            x: 10,
+            y: 20,
+            button: "left",
+            clickCount: 1,
+          },
+          {
+            type: "mouseUp",
+            x: 10,
+            y: 20,
+            button: "left",
+            clickCount: 1,
+          },
+        ],
+      },
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    manager.cancelPointerInput({
+      hostWindow,
+      tabId: "browser:a",
+      requestId: "req-pointer-abort",
+    });
+    openOwnerGate();
+    await expect(input).rejects.toMatchObject({ name: "AbortError" });
+  });
+
+  it("returns the dispatched pointer count when cancellation lands after dispatch", async () => {
+    const manager = createDesktopBrowserViewManager({
+      partition: "persist:test",
+    });
+    const hostWindow = new FakeHostWindow({
+      contentBounds: { width: 700, height: 450 },
+      webContentsId: 63,
+    });
+    attachBrowserTab({
+      manager,
+      hostWindow,
+      tabId: "browser:a",
+      url: "https://example.com",
+    });
+
+    const dispatched = await manager.sendPointerInput({
+      hostWindow,
+      request: {
+        tabId: "browser:a",
+        expectedNavigationEpoch: 0,
+        requestId: "req-pointer-done",
+        events: [
+          {
+            type: "mouseDown",
+            x: 10,
+            y: 20,
+            button: "left",
+            clickCount: 1,
+          },
+          {
+            type: "mouseUp",
+            x: 10,
+            y: 20,
+            button: "left",
+            clickCount: 1,
+          },
+        ],
+      },
+    });
+    expect(dispatched).toEqual({ navigationEpoch: 0, dispatched: 2 });
+    // A late cancel must not surface as an error once dispatch completed.
+    manager.cancelPointerInput({
+      hostWindow,
+      tabId: "browser:a",
+      requestId: "req-pointer-done",
+    });
+    expect(dispatched).toEqual({ navigationEpoch: 0, dispatched: 2 });
+  });
+
+  it("cancels trusted input without cancelling same-ID pointer input", async () => {
+    const manager = createDesktopBrowserViewManager({
+      partition: "persist:test",
+    });
+    const hostWindow = new FakeHostWindow({
+      contentBounds: { width: 700, height: 450 },
+      webContentsId: 64,
+    });
+    attachBrowserTab({
+      manager,
+      hostWindow,
+      tabId: "browser:a",
+      url: "https://example.com",
+    });
+    const view = requireFakeView(0);
+    view.webContents.debugger.getFrameTreeResult = {
+      frameTree: {
+        frame: {
+          id: "root",
+          loaderId: "root-loader",
+          name: "",
+          url: "https://example.com",
+        },
+        childFrames: [
+          {
+            frame: {
+              id: "child",
+              loaderId: "child-loader",
+              name: "",
+              url: "https://child.example.com",
+            },
+          },
+        ],
+      },
+    };
+    const listed = await manager.listFrames({
+      hostWindow,
+      request: { tabId: "browser:a", expectedNavigationEpoch: 0, maxFrames: 8 },
+    });
+    const child = listed.frames[0];
+    if (child === undefined) throw new Error("Expected a child frame.");
+    const frame = {
+      frameId: child.frameId,
+      documentEpoch: child.documentEpoch,
+    };
+
+    let openOwnerGate!: () => void;
+    const ownerGate = new Promise<void>((resolve) => {
+      openOwnerGate = resolve;
+    });
+    view.webContents.debugger.gates.set("DOM.getFrameOwner", ownerGate);
+    const focusCallsAtStart = view.webContents.focusCalls;
+
+    const input = manager.sendTrustedInput({
+      hostWindow,
+      request: {
+        tabId: "browser:a",
+        expectedNavigationEpoch: 0,
+        requestId: "req-trusted-abort",
+        frame,
+        action: {
+          kind: "click",
+          x: 10,
+          y: 20,
+          button: "left",
+          clickCount: 1,
+        },
+      },
+    });
+    const pointer = manager.sendPointerInput({
+      hostWindow,
+      request: {
+        tabId: "browser:a",
+        expectedNavigationEpoch: 0,
+        requestId: "req-trusted-abort",
+        frame,
+        events: [{ type: "mouseMove", x: 10, y: 20 }],
+      },
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    manager.cancelTrustedInput({
+      hostWindow,
+      tabId: "browser:a",
+      requestId: "req-trusted-abort",
+    });
+    openOwnerGate();
+    await expect(input).rejects.toMatchObject({ name: "AbortError" });
+    await expect(pointer).resolves.toMatchObject({ dispatched: 1 });
+    expect(view.webContents.focusCalls).toBe(focusCallsAtStart);
+  });
+
+  it("returns the dispatched trusted count when cancellation lands after dispatch", async () => {
+    const manager = createDesktopBrowserViewManager({
+      partition: "persist:test",
+    });
+    const hostWindow = new FakeHostWindow({
+      contentBounds: { width: 700, height: 450 },
+      webContentsId: 65,
+    });
+    attachBrowserTab({
+      manager,
+      hostWindow,
+      tabId: "browser:a",
+      url: "https://example.com",
+    });
+
+    const result = await manager.sendTrustedInput({
+      hostWindow,
+      request: {
+        tabId: "browser:a",
+        expectedNavigationEpoch: 0,
+        requestId: "req-trusted-done",
+        action: {
+          kind: "click",
+          x: 10,
+          y: 20,
+          button: "left",
+          clickCount: 1,
+        },
+      },
+    });
+    expect(result).toEqual({ navigationEpoch: 0, dispatched: 2 });
+    // Cancel after dispatch resolves must not surface as an error.
+    manager.cancelTrustedInput({
+      hostWindow,
+      tabId: "browser:a",
+      requestId: "req-trusted-done",
+    });
+    expect(result).toEqual({ navigationEpoch: 0, dispatched: 2 });
+  });
+
+  it("settles network-idle only after redirect-chain request identity completes", async () => {
+    const manager = createDesktopBrowserViewManager({
+      partition: "persist:test",
+    });
+    const hostWindow = new FakeHostWindow({
+      contentBounds: { width: 700, height: 450 },
+      webContentsId: 60,
+    });
+    attachBrowserTab({
+      manager,
+      hostWindow,
+      tabId: "browser:c",
+      url: "https://example.com",
+    });
+    const fakeSession = requireFakeSession(0);
+    const view = requireFakeView(0);
+    const idle = manager.waitForBrowserEvent({
+      hostWindow,
+      request: {
+        tabId: "browser:c",
+        expectedNavigationEpoch: 0,
+        requestId: "idle-req",
+        criteria: {
+          kind: "load-state",
+          document: "next",
+          state: "networkidle",
+        },
+      },
+    });
+    const emitRequest = (id: number, url: string): void => {
+      fakeSession.onBeforeRequestListener?.(
+        { id, method: "GET", url, webContentsId: view.webContents.id },
+        () => ({}),
+      );
+    };
+    const emitComplete = (id: number, url: string, statusCode = 200): void => {
+      fakeSession.onCompletedListener?.({
+        id,
+        method: "GET",
+        statusCode,
+        url,
+        webContentsId: view.webContents.id,
+      });
+    };
+    emitRequest(1, "https://example.com/redirect-a");
+    emitRequest(1, "https://example.com/redirect-b");
+    emitRequest(2, "https://example.com/final.js");
+    emitRequest(1, "https://example.com/final");
+    emitComplete(2, "https://example.com/final.js");
+    emitComplete(1, "https://example.com/final");
+    view.webContents.emitDidFinishLoad();
+    await expect(idle).resolves.toMatchObject({
+      value: { kind: "load-state", state: "networkidle" },
+    });
+  });
+
+  it("keeps a handed-off navigation request active through a main-frame navigation", async () => {
+    const manager = createDesktopBrowserViewManager({
+      partition: "persist:test",
+    });
+    const hostWindow = new FakeHostWindow({
+      contentBounds: { width: 700, height: 450 },
+      webContentsId: 63,
+    });
+    attachBrowserTab({
+      manager,
+      hostWindow,
+      tabId: "browser:handoff",
+      url: "https://example.com",
+    });
+    const fakeSession = requireFakeSession(0);
+    const view = requireFakeView(0);
+    const idle = manager.waitForBrowserEvent({
+      hostWindow,
+      request: {
+        tabId: "browser:handoff",
+        expectedNavigationEpoch: 0,
+        requestId: "idle-handoff",
+        criteria: {
+          kind: "load-state",
+          document: "next",
+          state: "networkidle",
+        },
+      },
+    });
+    // A main-frame navigation request for the *next* document is tracked by
+    // webRequest under the current (previous) epoch before the navigation
+    // transition fires; the transition must reassign it to the new generation
+    // instead of deleting it as stale while it is still in flight.
+    fakeSession.onBeforeRequestListener?.(
+      {
+        id: 61,
+        method: "GET",
+        url: "https://example.com/next",
+        resourceType: "mainFrame",
+        webContentsId: view.webContents.id,
+      },
+      () => ({}),
+    );
+    await view.webContents.loadURL("https://example.com/next");
+    view.webContents.emitDidStartNavigation(true);
+    view.webContents.emitDidFinishLoad();
+    // The new document finished loading but its navigation request is still
+    // in flight: idle must not settle early.
+    // The new document finished loading but its navigation request is still
+    // in flight: idle must not settle early.
+    await expect(
+      Promise.race([
+        idle.then(() => "idle"),
+        new Promise((resolve) => setTimeout(() => resolve("pending"), 700)),
+      ]),
+    ).resolves.toBe("pending");
+    fakeSession.onCompletedListener?.({
+      id: 61,
+      method: "GET",
+      statusCode: 200,
+      url: "https://example.com/next",
+      webContentsId: view.webContents.id,
+    });
+    await expect(idle).resolves.toMatchObject({
+      value: { kind: "load-state", state: "networkidle" },
+    });
+  });
+
+  it("ignores late completions from a previous navigation generation for idle", async () => {
+    const manager = createDesktopBrowserViewManager({
+      partition: "persist:test",
+    });
+    const hostWindow = new FakeHostWindow({
+      contentBounds: { width: 700, height: 450 },
+      webContentsId: 61,
+    });
+    attachBrowserTab({
+      manager,
+      hostWindow,
+      tabId: "browser:d",
+      url: "https://example.com",
+    });
+    const fakeSession = requireFakeSession(0);
+    const view = requireFakeView(0);
+    {
+      const idle = manager.waitForBrowserEvent({
+        hostWindow,
+        request: {
+          tabId: "browser:d",
+          expectedNavigationEpoch: 0,
+          requestId: "idle-late",
+          criteria: {
+            kind: "load-state",
+            document: "next",
+            state: "networkidle",
+          },
+        },
+      });
+      fakeSession.onBeforeRequestListener?.(
+        {
+          id: 10,
+          method: "GET",
+          url: "https://example.com/old.js",
+          webContentsId: view.webContents.id,
+        },
+        () => ({}),
+      );
+      await view.webContents.loadURL("https://example.com/next");
+      view.webContents.emitDidStartNavigation(true);
+      fakeSession.onCompletedListener?.({
+        id: 10,
+        method: "GET",
+        statusCode: 200,
+        url: "https://example.com/old.js",
+        webContentsId: view.webContents.id,
+      });
+      fakeSession.onBeforeRequestListener?.(
+        {
+          id: 11,
+          method: "GET",
+          url: "https://example.com/next.js",
+          webContentsId: view.webContents.id,
+        },
+        () => ({}),
+      );
+      fakeSession.onCompletedListener?.({
+        id: 11,
+        method: "GET",
+        statusCode: 200,
+        url: "https://example.com/next.js",
+        webContentsId: view.webContents.id,
+      });
+      view.webContents.emitDidFinishLoad();
+      await expect(idle).resolves.toMatchObject({
+        value: { kind: "load-state", state: "networkidle" },
+      });
+    }
+  });
+
+  it("discovers frames and waits for events on a live hidden tab without focusing", async () => {
+    const manager = createDesktopBrowserViewManager({
+      partition: "persist:test",
+    });
+    const hostWindow = new FakeHostWindow({
+      contentBounds: { width: 700, height: 450 },
+      webContentsId: 66,
+    });
+    manager.attach({
+      hostWindow,
+      request: {
+        tabId: "browser:hidden",
+        url: "https://example.com",
+        bounds: { x: 100, y: 50, width: 500, height: 350 },
+        visible: false,
+      },
+    });
+    const view = requireFakeView(0);
+    expect(view.visible).toBe(false);
+    view.webContents.debugger.getFrameTreeResult = {
+      frameTree: {
+        frame: {
+          id: "root",
+          loaderId: "root-loader",
+          name: "",
+          url: "https://example.com",
+        },
+        childFrames: [
+          {
+            frame: {
+              id: "child",
+              loaderId: "child-loader",
+              name: "",
+              url: "https://child.example.com",
+            },
+          },
+        ],
+      },
+    };
+    const listed = await manager.listFrames({
+      hostWindow,
+      request: {
+        tabId: "browser:hidden",
+        expectedNavigationEpoch: 0,
+        maxFrames: 8,
+      },
+    });
+    expect(listed.frames).toHaveLength(1);
+
+    view.webContents.emitDidFinishLoad();
+    const waited = await manager.waitForBrowserEvent({
+      hostWindow,
+      request: {
+        tabId: "browser:hidden",
+        expectedNavigationEpoch: 0,
+        requestId: "hidden-wait",
+        criteria: { kind: "load-state", document: "current", state: "load" },
+      },
+    });
+    expect(waited.value).toEqual({ kind: "load-state", state: "load" });
+    expect(view.visible).toBe(false);
+    expect(view.webContents.focusCalls).toBe(0);
+  });
+
+  it("dispatches pointer input to a live hidden tab without focusing it", async () => {
+    const manager = createDesktopBrowserViewManager({
+      partition: "persist:test",
+    });
+    const hostWindow = new FakeHostWindow({
+      contentBounds: { width: 700, height: 450 },
+      webContentsId: 67,
+    });
+    manager.attach({
+      hostWindow,
+      request: {
+        tabId: "browser:hidden-pointer",
+        url: "https://example.com",
+        bounds: { x: 100, y: 50, width: 500, height: 350 },
+        visible: false,
+      },
+    });
+    const view = requireFakeView(0);
+    const result = await manager.sendPointerInput({
+      hostWindow,
+      request: {
+        tabId: "browser:hidden-pointer",
+        expectedNavigationEpoch: 0,
+        requestId: "hidden-pointer-req",
+        events: [
+          {
+            type: "mouseDown",
+            x: 10,
+            y: 20,
+            button: "left",
+            clickCount: 1,
+          },
+          {
+            type: "mouseUp",
+            x: 10,
+            y: 20,
+            button: "left",
+            clickCount: 1,
+          },
+        ],
+      },
+    });
+    expect(result).toEqual({ navigationEpoch: 0, dispatched: 2 });
+    expect(view.webContents.focusCalls).toBe(0);
+  });
+
+  it("dispatches trusted input to a hidden background tab without focusing it", async () => {
+    const manager = createDesktopBrowserViewManager({
+      partition: "persist:test",
+    });
+    const hostWindow = new FakeHostWindow({
+      contentBounds: { width: 700, height: 450 },
+      webContentsId: 68,
+    });
+    manager.attach({
+      hostWindow,
+      request: {
+        tabId: "browser:hidden-trusted",
+        url: "https://example.com",
+        bounds: { x: 100, y: 50, width: 500, height: 350 },
+        visible: false,
+      },
+    });
+    const view = requireFakeView(0);
+    const focusCallsBefore = view.webContents.focusCalls;
+    const result = await manager.sendTrustedInput({
+      hostWindow,
+      request: {
+        tabId: "browser:hidden-trusted",
+        expectedNavigationEpoch: 0,
+        requestId: "hidden-trusted-req",
+        action: {
+          kind: "click",
+          x: 10,
+          y: 20,
+          button: "left",
+          clickCount: 1,
+        },
+      },
+    });
+    expect(result).toEqual({ navigationEpoch: 0, dispatched: 2 });
+    expect(view.webContents.focusCalls).toBe(focusCallsBefore);
+  });
+
+  it("dispatches trusted input to a tab hidden during frame offset resolution without focusing", async () => {
+    const manager = createDesktopBrowserViewManager({
+      partition: "persist:test",
+    });
+    const hostWindow = new FakeHostWindow({
+      contentBounds: { width: 700, height: 450 },
+      webContentsId: 69,
+    });
+    manager.attach({
+      hostWindow,
+      request: {
+        tabId: "browser:vis-race",
+        url: "https://example.com",
+        bounds: { x: 100, y: 50, width: 500, height: 350 },
+        visible: true,
+      },
+    });
+    const view = requireFakeView(0);
+    const focusCallsAfterAttach = view.webContents.focusCalls;
+    view.webContents.debugger.getFrameTreeResult = {
+      frameTree: {
+        frame: {
+          id: "root",
+          loaderId: "root-loader",
+          name: "",
+          url: "https://example.com",
+        },
+        childFrames: [
+          {
+            frame: {
+              id: "child",
+              loaderId: "child-loader",
+              name: "",
+              url: "https://child.example.com",
+            },
+          },
+        ],
+      },
+    };
+    const listed = await manager.listFrames({
+      hostWindow,
+      request: {
+        tabId: "browser:vis-race",
+        expectedNavigationEpoch: 0,
+        maxFrames: 8,
+      },
+    });
+    const child = listed.frames[0];
+    if (child === undefined)
+      throw new Error("Expected a discovered child frame.");
+    const frame = {
+      frameId: child.frameId,
+      documentEpoch: child.documentEpoch,
+    };
+    let openOwnerGate!: () => void;
+    const ownerGate = new Promise<void>((resolve) => {
+      openOwnerGate = resolve;
+    });
+    view.webContents.debugger.gates.set("DOM.getFrameOwner", ownerGate);
+    const input = manager.sendTrustedInput({
+      hostWindow,
+      request: {
+        tabId: "browser:vis-race",
+        expectedNavigationEpoch: 0,
+        requestId: "vis-race-req",
+        frame,
+        action: {
+          kind: "click",
+          x: 10,
+          y: 20,
+          button: "left",
+          clickCount: 1,
+        },
+      },
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    // The tab becomes hidden while the frame offset is still resolving; the
+    // dispatch must still complete without taking native focus.
+    manager.setVisible({
+      hostWindow,
+      request: { tabId: "browser:vis-race", visible: false },
+    });
+    openOwnerGate();
+    const result = await input;
+    expect(result).toEqual({
+      navigationEpoch: 0,
+      frame,
+      dispatched: 2,
+    });
+    expect(view.webContents.focusCalls).toBe(focusCallsAfterAttach);
+  });
 
   it("forwards resolved browser shortcuts and suppresses the untrusted page", () => {
     const dispatchAppCommand = vi.fn();
@@ -3006,6 +4555,7 @@ describe("DesktopBrowserViewManager", () => {
       tabId: "browser:a",
       url: "https://example.com/",
     });
+    const view = requireFakeView(0);
 
     const fakeSession = electronMock.fakeSessions.at(-1);
     expect(fakeSession).toBeDefined();
@@ -3020,7 +4570,7 @@ describe("DesktopBrowserViewManager", () => {
       throw new Error("Expected permission handlers to be registered.");
     }
 
-    expect(checkHandler(null, "clipboard-sanitized-write")).toBe(true);
+    expect(checkHandler(null, "clipboard-sanitized-write")).toBe(false);
     expect(checkHandler(null, "clipboard-read")).toBe(false);
     expect(checkHandler(null, "media")).toBe(false);
 
@@ -3034,9 +4584,30 @@ describe("DesktopBrowserViewManager", () => {
     requestHandler(null, "media", (granted) => {
       requestGrants.push(granted);
     });
-    expect(requestGrants).toEqual([true, false, false]);
+    expect(requestGrants).toEqual([false, false, false]);
+    expect(
+      checkHandler(view.webContents, "clipboard-sanitized-write", undefined, {
+        requestingUrl: "https://example.com/",
+      }),
+    ).toBe(true);
+    // A requester without requesting-origin evidence must be denied even when
+    // the webContents belongs to a Browser entry: it must not inherit the
+    // top-level origin's grants.
+    expect(
+      checkHandler(
+        view.webContents,
+        "clipboard-sanitized-write",
+        undefined,
+        {},
+      ),
+    ).toBe(false);
+    const opaqueGrants: boolean[] = [];
+    requestHandler(view.webContents, "clipboard-sanitized-write", (granted) => {
+      opaqueGrants.push(granted);
+    });
+    expect(opaqueGrants).toEqual([false]);
   });
-  it("trusts only the current loopback HTTPS certificate for this Browser session", () => {
+  it("trusts only the current loopback HTTPS certificate for this Browser session", async () => {
     const manager = createDesktopBrowserViewManager();
     const hostWindow = new FakeHostWindow({
       contentBounds: { height: 700, width: 900 },
@@ -3049,7 +4620,13 @@ describe("DesktopBrowserViewManager", () => {
       url: "https://localhost:8443/",
     });
 
-    manager.trustLocalhostCertificate({ hostWindow, tabId: "browser:a" });
+    const trustPromise = manager.trustLocalhostCertificate({
+      hostWindow,
+      request: { tabId: "browser:a", expectedNavigationEpoch: 0 },
+    });
+    await expect(trustPromise).resolves.toMatchObject({
+      trustedOrigin: "https://localhost:8443",
+    });
 
     const verifyProc = requireFakeSession(0).certificateVerifyProc;
     expect(verifyProc).not.toBeNull();

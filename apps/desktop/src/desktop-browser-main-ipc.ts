@@ -13,13 +13,18 @@ import {
   bbDesktopBrowserImportCookiesRequestSchema,
   bbDesktopBrowserListCookieImportSourcesRequestSchema,
   bbDesktopBrowserNavigateRequestSchema,
+  bbDesktopBrowserCaptureChunkReadSchema,
+  bbDesktopBrowserCaptureReleaseSchema,
+  bbDesktopBrowserPageCaptureCancelRequestSchema,
   bbDesktopBrowserPageCaptureRequestSchema,
-  bbDesktopBrowserPageScriptCancelRequestSchema,
   bbDesktopBrowserListFramesRequestSchema,
+  bbDesktopBrowserTrustedInputCancelRequestSchema,
   bbDesktopBrowserTrustedInputRequestSchema,
   bbDesktopBrowserWaitCancelRequestSchema,
   bbDesktopBrowserWaitRequestSchema,
   bbDesktopBrowserPageScriptRequestSchema,
+  bbDesktopBrowserPageScriptCancelRequestSchema,
+  bbDesktopBrowserPointerInputCancelRequestSchema,
   bbDesktopBrowserPointerInputRequestSchema,
   bbDesktopBrowserSetViewportProfileRequestSchema,
   bbDesktopBrowserClearViewportProfileRequestSchema,
@@ -32,12 +37,17 @@ import {
   BB_DESKTOP_BROWSER_DETACH_CHANNEL,
   BB_DESKTOP_BROWSER_ATTACH_CHANNEL,
   BB_DESKTOP_BROWSER_EXPERIMENTAL_LIST_FRAMES_CHANNEL,
+  BB_DESKTOP_BROWSER_EXPERIMENTAL_CANCEL_POINTER_INPUT_CHANNEL,
+  BB_DESKTOP_BROWSER_EXPERIMENTAL_CANCEL_TRUSTED_INPUT_CHANNEL,
   BB_DESKTOP_BROWSER_EXPERIMENTAL_SEND_TRUSTED_INPUT_CHANNEL,
   BB_DESKTOP_BROWSER_EXPERIMENTAL_WAIT_EVENT_CHANNEL,
   BB_DESKTOP_BROWSER_EXPERIMENTAL_CANCEL_WAIT_EVENT_CHANNEL,
   BB_DESKTOP_BROWSER_EXPERIMENTAL_CANCEL_PAGE_SCRIPT_CHANNEL,
+  BB_DESKTOP_BROWSER_EXPERIMENTAL_CANCEL_CAPTURE_CHANNEL,
   BB_DESKTOP_BROWSER_EXPERIMENTAL_AUTOMATION_CHANNEL,
   BB_DESKTOP_BROWSER_EXPERIMENTAL_CAPTURE_PAGE_CHANNEL,
+  BB_DESKTOP_BROWSER_EXPERIMENTAL_READ_CAPTURE_CHUNK_CHANNEL,
+  BB_DESKTOP_BROWSER_EXPERIMENTAL_RELEASE_CAPTURE_CHANNEL,
   BB_DESKTOP_BROWSER_EXPERIMENTAL_CLOSE_TAB_CHANNEL,
   BB_DESKTOP_BROWSER_EXPERIMENTAL_CLEAR_VIEWPORT_PROFILE_CHANNEL,
   BB_DESKTOP_BROWSER_EXPERIMENTAL_SEND_POINTER_INPUT_CHANNEL,
@@ -180,6 +190,29 @@ export function registerDesktopBrowserIpc(
     },
   );
   ipcMain.handle(
+    BB_DESKTOP_BROWSER_EXPERIMENTAL_READ_CAPTURE_CHUNK_CHANNEL,
+    (event, payload: unknown) => {
+      const hostWindow = hostWindowFromBrowserIpcEvent(event);
+      if (hostWindow === null) {
+        throw new Error("The Browser host window is unavailable");
+      }
+      const request = bbDesktopBrowserCaptureChunkReadSchema.parse(payload);
+      return manager.readCaptureChunk({ hostWindow, request });
+    },
+  );
+
+  ipcMain.handle(
+    BB_DESKTOP_BROWSER_EXPERIMENTAL_RELEASE_CAPTURE_CHANNEL,
+    (event, payload: unknown) => {
+      const hostWindow = hostWindowFromBrowserIpcEvent(event);
+      if (hostWindow === null)
+        throw new Error("The Browser host window is unavailable");
+      const request = bbDesktopBrowserCaptureReleaseSchema.parse(payload);
+      return manager.releaseCapture({ hostWindow, request });
+    },
+  );
+
+  ipcMain.handle(
     BB_DESKTOP_BROWSER_EXPERIMENTAL_AUTOMATION_CHANNEL,
     async (event, payload: unknown) => {
       const hostWindow = hostWindowFromBrowserIpcEvent(event);
@@ -291,15 +324,62 @@ export function registerDesktopBrowserIpc(
     },
   );
   ipcMain.on(
+    BB_DESKTOP_BROWSER_EXPERIMENTAL_CANCEL_CAPTURE_CHANNEL,
+    (event, payload: unknown) => {
+      const hostWindow = hostWindowFromBrowserIpcEvent(event);
+      if (hostWindow === null) return;
+      const request =
+        bbDesktopBrowserPageCaptureCancelRequestSchema.safeParse(payload);
+      if (!request.success) return;
+      manager.cancelCapture({
+        hostWindow,
+        tabId: request.data.tabId,
+        requestId: request.data.requestId,
+      });
+    },
+  );
+  ipcMain.on(
     BB_DESKTOP_BROWSER_EXPERIMENTAL_CANCEL_WAIT_EVENT_CHANNEL,
     (event, payload: unknown) => {
       const hostWindow = hostWindowFromBrowserIpcEvent(event);
       if (hostWindow === null) return;
-      const request = bbDesktopBrowserWaitCancelRequestSchema.safeParse(payload);
+      const request =
+        bbDesktopBrowserWaitCancelRequestSchema.safeParse(payload);
       if (!request.success) return;
       manager.cancelBrowserEvent({
         hostWindow,
         request: request.data,
+      });
+    },
+  );
+  ipcMain.on(
+    BB_DESKTOP_BROWSER_EXPERIMENTAL_CANCEL_TRUSTED_INPUT_CHANNEL,
+    (event, payload: unknown) => {
+      const hostWindow = hostWindowFromBrowserIpcEvent(event);
+      if (hostWindow === null) return;
+      const request =
+        bbDesktopBrowserTrustedInputCancelRequestSchema.safeParse(payload);
+      if (!request.success) return;
+      manager.cancelTrustedInput({
+        hostWindow,
+        tabId: request.data.tabId,
+        requestId: request.data.requestId,
+      });
+    },
+  );
+
+  ipcMain.on(
+    BB_DESKTOP_BROWSER_EXPERIMENTAL_CANCEL_POINTER_INPUT_CHANNEL,
+    (event, payload: unknown) => {
+      const hostWindow = hostWindowFromBrowserIpcEvent(event);
+      if (hostWindow === null) return;
+      const request =
+        bbDesktopBrowserPointerInputCancelRequestSchema.safeParse(payload);
+      if (!request.success) return;
+      manager.cancelPointerInput({
+        hostWindow,
+        tabId: request.data.tabId,
+        requestId: request.data.requestId,
       });
     },
   );
@@ -412,10 +492,17 @@ export function registerDesktopBrowserIpc(
     channel: BB_DESKTOP_BROWSER_RELOAD_CHANNEL,
     run: (args) => manager.reload(args),
   });
-  registerTabCommand({
-    channel: BB_DESKTOP_BROWSER_EXPERIMENTAL_TRUST_LOCALHOST_CERTIFICATE_CHANNEL,
-    run: (args) => manager.trustLocalhostCertificate(args),
-  });
+  ipcMain.handle(
+    BB_DESKTOP_BROWSER_EXPERIMENTAL_TRUST_LOCALHOST_CERTIFICATE_CHANNEL,
+    async (event, payload: unknown) => {
+      const hostWindow = hostWindowFromBrowserIpcEvent(event);
+      if (hostWindow === null) {
+        throw new Error("The Browser host window is unavailable");
+      }
+      const request = bbDesktopBrowserCloseRequestSchema.parse(payload);
+      return manager.trustLocalhostCertificate({ hostWindow, request });
+    },
+  );
   registerTabCommand({
     channel: BB_DESKTOP_BROWSER_STOP_CHANNEL,
     run: (args) => manager.stop(args),

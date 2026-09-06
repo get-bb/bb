@@ -24,6 +24,11 @@ const NODE_ESM_REQUIRE_BANNER = [
 const entries = [
   { source: "src/index.ts", output: "dist/index.js", external: [] },
   { source: "src/app.ts", output: "dist/app.js", external: [] },
+  {
+    source: "src/browser.ts",
+    output: "dist/browser.js",
+    external: ["zod", "zod/*"],
+  },
   // Real code, not a stub: the provider-bridge surface is schemas and pure
   // helpers, so the published bundle carries them. zod stays external (peer
   // dependency).

@@ -441,6 +441,14 @@ export function createPluginApi(options: {
     action: BrowserControlAction,
     options: { signal?: AbortSignal; timeoutMs: number },
   ) => Promise<JsonValue>;
+  requestBrowserPluginContribution?: (args: {
+    pluginId: string;
+    target: BrowserTabTarget;
+    controllerId: string;
+    input: JsonValue;
+    timeoutMs: number;
+    signal?: AbortSignal;
+  }) => Promise<JsonValue>;
   settingsChanged: () => void;
   /** Marks the plugin needs-configuration in the loader's status table. */
   reportNeedsConfiguration: (message: string) => void;
@@ -519,6 +527,10 @@ export function createPluginApi(options: {
       ),
     runBrowserControl = () =>
       Promise.reject(new Error("Browser control is unavailable in this host")),
+    requestBrowserPluginContribution = () =>
+      Promise.reject(
+        new Error("Browser contributions are unavailable in this host"),
+      ),
     settingsChanged,
     reportNeedsConfiguration,
     isAgentToolNameTaken,
@@ -1432,6 +1444,32 @@ export function createPluginApi(options: {
         signal.addEventListener("abort", abort, { once: true });
       }
       controllers.add(controller);
+      const explicitDestination =
+        openOptions.ownerId !== undefined ||
+        openOptions.clientId !== undefined ||
+        openOptions.windowId !== undefined ||
+        openOptions.threadId !== undefined ||
+        openOptions.projectId !== undefined;
+      const ownerId =
+        openOptions.ownerId === undefined &&
+        openOptions.clientId === undefined &&
+        openOptions.windowId === undefined
+          ? undefined
+          : openOptions.ownerId;
+      const contextThread =
+        context.threadId === null || context.threadId === undefined
+          ? undefined
+          : context.threadId;
+      const contextProject =
+        context.projectId === null || context.projectId === undefined
+          ? undefined
+          : context.projectId;
+      const threadId =
+        openOptions.threadId ??
+        (explicitDestination ? undefined : contextThread);
+      const projectId =
+        openOptions.projectId ??
+        (explicitDestination ? undefined : contextProject);
       return openBrowserTab({
         url,
         ...(openOptions.clientId === undefined
@@ -1440,19 +1478,9 @@ export function createPluginApi(options: {
         ...(openOptions.windowId === undefined
           ? {}
           : { windowId: openOptions.windowId }),
-        ...(openOptions.ownerId === undefined
-          ? {}
-          : { ownerId: openOptions.ownerId }),
-        ...(openOptions.threadId === undefined
-          ? context.threadId === null || context.threadId === undefined
-            ? {}
-            : { threadId: context.threadId }
-          : { threadId: openOptions.threadId }),
-        ...(openOptions.projectId === undefined
-          ? context.projectId === null || context.projectId === undefined
-            ? {}
-            : { projectId: context.projectId }
-          : { projectId: openOptions.projectId }),
+        ...(ownerId === undefined ? {} : { ownerId }),
+        ...(threadId === undefined ? {} : { threadId }),
+        ...(projectId === undefined ? {} : { projectId }),
         timeoutMs,
         signal: controller.signal,
       }).finally(() => {
@@ -1489,6 +1517,44 @@ export function createPluginApi(options: {
       }
       controllers.add(controller);
       return runBrowserControl(target, action, {
+        timeoutMs,
+        signal: controller.signal,
+      }).finally(() => {
+        controllers.delete(controller);
+        if (typeof signal?.removeEventListener === "function") {
+          signal.removeEventListener("abort", abort);
+        }
+      });
+    },
+    experimental_requestContribution(target, options, contributionOptions) {
+      assertLive();
+      const controllers = activeBrowserRuns.get(contributionOptions.context);
+      if (controllers === undefined) {
+        throw new Error(
+          "Browser contributions are available only during an active native agent tool or CLI call",
+        );
+      }
+      const timeoutMs = contributionOptions.timeoutMs ?? 30_000;
+      if (
+        !Number.isInteger(timeoutMs) ||
+        timeoutMs < 100 ||
+        timeoutMs > 120_000
+      ) {
+        throw new Error("Browser contribution timeout must be 100–120000 ms");
+      }
+      const controller = new AbortController();
+      const signal = contributionOptions.context.signal;
+      const abort = () => controller.abort(signal?.reason);
+      if (signal?.aborted) abort();
+      else if (typeof signal?.addEventListener === "function") {
+        signal.addEventListener("abort", abort, { once: true });
+      }
+      controllers.add(controller);
+      return requestBrowserPluginContribution({
+        pluginId,
+        target,
+        controllerId: options.controllerId,
+        input: options.input,
         timeoutMs,
         signal: controller.signal,
       }).finally(() => {

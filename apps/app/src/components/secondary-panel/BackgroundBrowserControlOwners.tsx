@@ -54,19 +54,28 @@ function BackgroundThreadBrowserOwner({
     terminalSessions: undefined,
   });
   const openControlledBrowserTab = useCallback(
-    async (url: string): Promise<BrowserTabTarget> => {
+    async (url: string, options: { signal?: AbortSignal } = {}): Promise<BrowserTabTarget> => {
+      options.signal?.throwIfAborted();
       const tab = openTab({ kind: "browser", url });
       if (tab?.kind !== "browser") {
         throw new Error("The background Browser tab could not be created");
       }
-      return waitForBrowserControlTab(tab.id);
+      try {
+        const target = await waitForBrowserControlTab(tab.id, options);
+        options.signal?.throwIfAborted();
+        return target;
+      } catch (error) {
+        closeTab(tab.id);
+        throw error;
+      }
     },
-    [openTab],
+    [closeTab, openTab],
   );
   const activateControlledBrowserTab = useCallback(
-    async (tabId: string): Promise<BrowserTabTarget> => {
+    async (tabId: string, options: { signal?: AbortSignal } = {}): Promise<BrowserTabTarget> => {
+      options.signal?.throwIfAborted();
       activateTab(tabId);
-      return waitForBrowserControlTab(tabId);
+      return waitForBrowserControlTab(tabId, options);
     },
     [activateTab],
   );

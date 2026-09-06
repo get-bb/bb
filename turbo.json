@@ -33,10 +33,7 @@
     // The Plugin Guide's API inventory is checked against the SDK's committed
     // declarations, so those files are inputs to this test.
     "@bb/plugin-api-map#test": {
-      "dependsOn": [
-        "//#ensure-native-modules",
-        "topo"
-      ],
+      "dependsOn": ["//#ensure-native-modules", "topo"],
       "inputs": [
         "$TURBO_DEFAULT$",
         // wireframes.test.ts asserts fixture fidelity against the real app
@@ -117,7 +114,8 @@
         "@bb/host-daemon#build",
         "@bb/cli#build",
         "@bb/sdk#build",
-        "@get-bb/plugin-sdk#build"
+        "@get-bb/plugin-sdk#build",
+        "bb-plugin-browser-annotations#build:client"
       ],
       "inputs": [
         "$TURBO_DEFAULT$",
@@ -746,6 +744,22 @@
     // ---- In-repo plugins typecheck against the SDK's bundled .d.ts ----------
     // Either through a tsconfig `paths` map or through the workspace symlink's
     // package `types` field; both land on bundled-types/, a build output.
+    "bb-plugin-browser#typecheck": {
+      "dependsOn": ["@get-bb/plugin-sdk#build:types", "topo"]
+    },
+    "bb-plugin-browser-annotations#typecheck": {
+      "dependsOn": ["@get-bb/plugin-sdk#build:types", "topo"]
+    },
+    "bb-plugin-browser-annotations#build:client": {
+      "dependsOn": ["@get-bb/plugin-sdk#build:types", "topo"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/packages/plugin-sdk/bundled-types/**",
+        "$TURBO_ROOT$/plugins/browser-annotations/scripts/build-client.mjs",
+        "$TURBO_ROOT$/plugins/browser-annotations/tsconfig.client.json"
+      ],
+      "outputs": ["dist/client.js", "dist/client.d.ts"]
+    },
     "bb-plugin-composer-customization#typecheck": {
       "dependsOn": ["@get-bb/plugin-sdk#build:types", "topo"]
     },

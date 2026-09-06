@@ -576,6 +576,7 @@ export function createApp(
       deps.providerRegistry.forgetAllInstalled();
     },
     onPluginUnregistered: (pluginId) => {
+      deps.hub.cancelBrowserPluginContributions(pluginId);
       requestQueuedMessageDispatch(deps, {
         kind: "plugin-unregistered",
         pluginId,
@@ -629,7 +630,7 @@ export function createApp(
   registerThreadSectionRoutes(publicApi, deps);
   registerFileRoutes(publicApi, deps);
   registerHostRoutes(publicApi, deps, pluginService);
-  registerBrowserRoutes(publicApi, deps);
+  registerBrowserRoutes(publicApi, deps, pluginService);
   registerTerminalRoutes(publicApi, deps);
   registerEnvironmentRoutes(publicApi, deps);
   registerThreadRoutes(publicApi, deps);

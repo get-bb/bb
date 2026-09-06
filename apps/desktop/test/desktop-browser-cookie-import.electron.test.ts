@@ -6,12 +6,13 @@ const electronPath: string = require("electron");
 import { build } from "esbuild";
 import { expect, it } from "vitest";
 
-it("imports an HttpOnly cookie into a real Electron session", async () => {
+it("imports normalized cookies and preserves real session state on unsafe or failed transactions", async () => {
   const directory = mkdtempSync(join(tmpdir(), "bb-electron-cookie-test-"));
   const output = join(directory, "probe.cjs");
   try {
     await build({
       bundle: true,
+      conditions: ["source"],
       entryPoints: [
         join(__dirname, "desktop-browser-cookie-import.electron-probe.ts"),
       ],
@@ -25,6 +26,7 @@ it("imports an HttpOnly cookie into a real Electron session", async () => {
       execFileSync(electronPath, [output], {
         cwd: __dirname,
         encoding: "utf8",
+        timeout: 45_000,
       }),
     );
     expect(result).toEqual({
@@ -32,6 +34,9 @@ it("imports an HttpOnly cookie into a real Electron session", async () => {
         { httpOnly: true, name: "session", value: "imported" },
       ],
       importedCount: 1,
+      rollbackRestored: true,
+      invalidStagingPreservedDestination: true,
+      activeWritersRejected: true,
     });
   } finally {
     rmSync(directory, { force: true, recursive: true });

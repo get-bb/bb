@@ -230,44 +230,62 @@ target? })`. Inside the fixed-tab component,
   `{ openSettings }`. New plugins should use
   `app.experimental_sidebarFooter.register({ kind: "action", ... })` so actions
   and disclosures share one surface.
-- `experimental_browserAction` → a compact plugin-owned control in the
-  visible Browser tab's navigation chrome. Registration is
-  `PluginBrowserActionRegistration`:
-  `{ id, title, component }`. `id` is plugin-local and may contain only
-  letters, digits, `-`, and `_`; `title` supplies the accessible label and
-  overflow-row label; `component` renders exactly one accessible 28px control.
-  Portal menus and dialogs instead of expanding the chrome control.
+- `experimental_browserAction` → compact plugin-owned controls in the visible
+  Browser tab's navigation chrome. Registration is
+  `PluginBrowserActionRegistration`: `{ id, title, component }`. `id` is
+  plugin-local and may contain only letters, digits, `-`, and `_`; `title`
+  supplies the accessible label and overflow-row label. Keep controls compact
+  and provide accessible names.
 
   `component` receives `PluginBrowserActionProps`:
-  `{ tabId, navigationEpoch, threadId, projectId, url,
-  experimental_pageContentScriptsAvailable, experimental_runPageContentScript,
-  experimental_capturePage, experimental_overlayRoot,
-  experimental_setOverlayOpen }`. The tab, thread, project, URL, and page
-  revision identify only the Browser tab currently on screen; component state
-  must tolerate each nullable owner and unmount as the user changes panes. When
-  `experimental_pageContentScriptsAvailable` is false, keep the control visible
-  but disabled and explain that the desktop app must be upgraded.
+  `{ tabId, navigationEpoch, threadId, projectId, url }`. These fields identify
+  only the Browser tab currently on screen; component state must tolerate each
+  nullable owner and unmount as the user changes panes. Browser actions do not
+  receive page-script, capture, or native-overlay capabilities. Register an
+  `experimental_browserController` for tab-local Browser work.
 
-  `experimental_runPageContentScript(request, { signal })` takes an
-  `ExperimentalBrowserPageContentScriptRequest` with the exact current
-  `expectedNavigationEpoch`, a function-expression `source`, JSON-only
-  `input?`, `timeoutMs?`, and `world?: "isolated" | "main"`. It returns
-  `ExperimentalBrowserPageContentScriptResult` with that exact
-  `navigationEpoch` and JSON-only `value`. The default isolated world can reach
-  the page DOM but never Electron, Node, or the BB app shell; use `main` only
-  to inspect page-owned JavaScript state. Abort on unmount and treat
-  cancellation, navigation, timeout, and lifecycle failures as terminal for
-  that request.
+- `experimental_browserController` → a full-surface controller mounted once
+  per logical Browser tab. Registration is
+  `ExperimentalBrowserControllerRegistration`: `{ id, component }`.
+  The component receives `ExperimentalBrowserControllerProps`:
+  `{ target, environmentId, threadId, projectId, url, isVisible,
+experimental_browserControlAvailable, experimental_lifecycleSignal,
+experimental_onLifecycle, experimental_registerRequestHandler,
+experimental_capturePage, experimental_createImageResource,
+experimental_runBrowserPageScript, experimental_setOverlayOpen,
+experimental_overlayRoot }`.
 
-  `experimental_capturePage({ format?, quality?, expectedNavigationEpoch? })`
-  returns `ExperimentalBrowserPageCapture` with `navigationEpoch`, `dataUrl`,
-  and `pixelSize`. Bind related script and capture results with
-  `expectedNavigationEpoch`; do not present a capture from a newer page as if
-  it described the earlier one. `experimental_overlayRoot` is a tab-local
-  portal host. While a portalled menu or dialog is open, call
-  `experimental_setOverlayOpen(true)` and always release it with `false`; BB
-  also releases the lease when the slot lifecycle ends. Experimental: see
-  `docs/api_to_audit.md`.
+  `target` is the canonical exact `BrowserTabTarget`:
+  `{ clientId, windowId, tabId, navigationEpoch }`, or `null` before the first
+  committed revision. `experimental_lifecycleSignal` aborts when the controller
+  generation is disposed. `experimental_onLifecycle` reports navigation and
+  disposal events and returns an unsubscribe function. Keep plugin state in a
+  module store keyed by client, window, thread, project, environment, tab, and
+  navigation epoch so drafts survive remounts and overflow.
+
+  `experimental_registerRequestHandler` registers a handler and returns an
+  unregister function. The handler receives JSON `input`, the exact `target`,
+  and an abort `signal`; it must return JSON. The host routes
+  `bb.experimental_browser.experimental_requestContribution` and `bb browser
+plugin` commands to that handler only for the matching exact target.
+
+  `experimental_capturePage` returns an owned Blob URL preview; call its
+  `dispose()` method when finished. `experimental_createImageResource(
+{ blob, pixelSize? }, { signal? })` registers a plugin-generated image for the
+  controller's current exact target and returns the canonical immutable
+  `ExperimentalBrowserCaptureDescriptor`: `{ captureId, mimeType, pixelSize,
+byteLength, target, expiresAt }`. Its `target` remains the full original tab
+  identity, including `navigationEpoch`; bytes remain readable after
+  navigation, but creation rejects a stale target.
+
+  `experimental_browserControlAvailable` is false when the desktop app cannot
+  provide the bounded page-script and capture runtime. Keep controller UI
+  available but do not start Browser work until it is true.
+  `experimental_runBrowserPageScript(request, { signal })` runs the bounded
+  exact-target page-script runtime, accepting `{ requestId?,
+expectedNavigationEpoch?, world?, frame?, source, input?, timeoutMs? }` and
+  returning `{ navigationEpoch, value }`; the default world is `isolated`.
+
 - `experimental_sidebarNavigation` → replaces the bounded navigation controls
   above the thread list. Registration:
   `{ id, title, description?, component }`. The component receives semantic

@@ -19,6 +19,7 @@ import type {
 import type { ProviderFork } from "@bb/domain/provider-fork";
 import type { BbSdk } from "@bb/sdk";
 import type {
+  BrowserCaptureDescriptor,
   BrowserControlAction,
   BrowserControlError,
   BrowserFrameDescriptor,
@@ -723,6 +724,10 @@ export interface PluginCliResult {
   exitCode: number;
   stdout?: string;
   stderr?: string;
+  experimental_browserCaptureDownload?: {
+    descriptor: BrowserCaptureDescriptor;
+    out: string;
+  };
 }
 
 /**
@@ -746,6 +751,10 @@ export interface PluginCliExecutionResult {
   stdout: string;
   stderr: string;
   error?: PluginCliOutputLimitError;
+  experimental_browserCaptureDownload?: {
+    descriptor: BrowserCaptureDescriptor;
+    out: string;
+  };
 }
 
 export interface PluginCliRegistration {
@@ -1647,6 +1656,19 @@ export interface PluginBrowser {
     target: BrowserTabTarget,
     action: BrowserControlAction,
     options: {
+      context: PluginAgentToolContext | PluginCliContext;
+      timeoutMs?: number;
+    },
+  ): Promise<JsonValue>;
+  /**
+   * Send an opaque command to the plugin-owned `experimental_browserController`
+   * registered for an exact tab revision. The plugin id is taken from the
+   * bound plugin API; the receiving controller parses `input` itself.
+   */
+  experimental_requestContribution(
+    target: BrowserTabTarget,
+    options: { controllerId: string; input: JsonValue },
+    contributionOptions: {
       context: PluginAgentToolContext | PluginCliContext;
       timeoutMs?: number;
     },

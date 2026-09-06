@@ -1,4 +1,5 @@
 import type {
+  ExperimentalBrowserControllerRegistration,
   ComposerCustomization,
   ExperimentalAppOverlayRegistration,
   ExperimentalSidebarFooter,
@@ -296,6 +297,7 @@ export interface CollectedPluginAppRegistrations {
   threadLists: PluginThreadListRegistration[];
   threadHeaderActions: PluginThreadHeaderActionRegistration[];
   browserActions: PluginBrowserActionRegistration[];
+  browserControllers: ExperimentalBrowserControllerRegistration[];
   fileOpeners: PluginFileOpenerRegistration[];
   sourceCodeRenderers: PluginSourceCodeRendererRegistration[];
   diffRenderers: PluginDiffRendererRegistration[];
@@ -345,6 +347,7 @@ export function collectPluginAppRegistrations(
     threadLists: [],
     threadHeaderActions: [],
     browserActions: [],
+    browserControllers: [],
     fileOpeners: [],
     sourceCodeRenderers: [],
     diffRenderers: [],
@@ -370,6 +373,7 @@ export function collectPluginAppRegistrations(
     threadList: new Set<string>(),
     threadHeaderAction: new Set<string>(),
     browserAction: new Set<string>(),
+    browserController: new Set<string>(),
     fileOpener: new Set<string>(),
     sourceCodeRenderer: new Set<string>(),
     diffRenderer: new Set<string>(),
@@ -668,6 +672,15 @@ export function collectPluginAppRegistrations(
         collected.browserActions.push({
           id,
           title: requireNonEmptyString(kind, "title", registration.title),
+          component: requireComponent(kind, registration.component),
+        });
+      },
+      experimental_browserController(registration) {
+        const kind = "slots.experimental_browserController";
+        const id = requireSlotId(kind, registration?.id);
+        requireUniqueId(kind, seenIds.browserController, id);
+        collected.browserControllers.push({
+          id,
           component: requireComponent(kind, registration.component),
         });
       },

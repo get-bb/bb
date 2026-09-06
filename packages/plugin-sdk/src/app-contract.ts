@@ -9,6 +9,9 @@ import type {
 import type {
   CreateExecutionInputSources,
   CreateThreadEnvironmentArgs,
+  BrowserCaptureDescriptor,
+  BrowserFrameTarget,
+  BrowserTabTarget,
 } from "@bb/server-contract";
 import type { JsonValue } from "./json-value.js";
 import type {
@@ -244,9 +247,15 @@ export interface ExperimentalBrowserPageContentScriptRequest {
 }
 
 export interface ExperimentalBrowserPageCapture {
+  url: string;
   navigationEpoch: number;
-  dataUrl: string;
   pixelSize: { width: number; height: number };
+  dispose(): void;
+}
+
+export interface ExperimentalBrowserImageResourceInput {
+  blob: Blob;
+  pixelSize?: { width: number; height: number };
 }
 
 export interface ExperimentalBrowserPageContentScriptResult {
@@ -261,42 +270,6 @@ export interface PluginBrowserActionProps {
   threadId: string | null;
   projectId: string | null;
   url: string;
-  /**
-   * False when the running desktop shell predates Browser-page scripts. Plugins
-   * should keep their action visible but disabled and explain the upgrade.
-   */
-  experimental_pageContentScriptsAvailable: boolean;
-  /**
-   * Execute a bounded content script against this exact Browser tab. Results
-   * are JSON-only. Cancellation, navigation, timeout, and lifecycle failures
-   * reject without retargeting another tab.
-   */
-  experimental_runPageContentScript(
-    request: ExperimentalBrowserPageContentScriptRequest,
-    options: { signal: AbortSignal },
-  ): Promise<ExperimentalBrowserPageContentScriptResult>;
-  /**
-   * Capture this exact Browser tab for plugin-owned preview UI. Bind the
-   * capture to a prior script with `expectedNavigationEpoch` when they must
-   * describe the same immutable page revision.
-   */
-  experimental_capturePage(options?: {
-    format?: "png" | "jpeg";
-    quality?: number;
-    expectedNavigationEpoch?: number;
-  }): Promise<ExperimentalBrowserPageCapture>;
-  /**
-   * Tab-local host for plugin overlays. Portal modal or selection chrome here
-   * so it stays clipped to the Browser panel and the host can hide the native
-   * page view beneath it.
-   */
-  experimental_overlayRoot?: HTMLElement | null;
-  /**
-   * Hide the native Browser view while a portalled menu or dialog is open.
-   * Calls are idempotent; the host also releases the lease on every slot
-   * lifecycle edge.
-   */
-  experimental_setOverlayOpen(open: boolean): void;
 }
 
 /**
@@ -742,6 +715,82 @@ export interface PluginBrowserActionRegistration {
   title: string;
   /** Render exactly one accessible 28px control; portal larger UI. */
   component: ComponentType<PluginBrowserActionProps>;
+}
+
+export type ExperimentalBrowserControllerLifecycle =
+  | {
+      kind: "navigation";
+      previousTarget: BrowserTabTarget | null;
+      target: BrowserTabTarget;
+      url: string;
+    }
+  | {
+      kind: "disposed";
+      target: BrowserTabTarget;
+      reason:
+        | "tab-closed"
+        | "thread-removed"
+        | "environment-removed"
+        | "client-disconnected"
+        | "plugin-disposed";
+    };
+
+/** Props passed to an `experimental_browserController` component. */
+export interface ExperimentalBrowserControllerProps {
+  target: BrowserTabTarget | null;
+  environmentId: string | null;
+  threadId: string;
+  projectId: string | null;
+  url: string;
+  isVisible: boolean;
+  experimental_browserControlAvailable: boolean;
+  experimental_lifecycleSignal: AbortSignal;
+  experimental_onLifecycle(
+    listener: (event: ExperimentalBrowserControllerLifecycle) => void,
+  ): () => void;
+  experimental_registerRequestHandler(
+    handler: (request: {
+      input: JsonValue;
+      target: BrowserTabTarget;
+      signal: AbortSignal;
+    }) => Promise<JsonValue>,
+  ): () => void;
+  experimental_capturePage(options?: {
+    format?: "png" | "jpeg";
+    quality?: number;
+    expectedNavigationEpoch?: number;
+    signal?: AbortSignal;
+  }): Promise<ExperimentalBrowserPageCapture>;
+  experimental_createImageResource(
+    input: ExperimentalBrowserImageResourceInput,
+    options?: { signal?: AbortSignal },
+  ): Promise<BrowserCaptureDescriptor>;
+  experimental_runBrowserPageScript(
+    request: {
+      requestId?: string;
+      expectedNavigationEpoch?: number;
+      world?: "isolated" | "main";
+      frame?: BrowserFrameTarget;
+      source: string;
+      input?: JsonValue;
+      timeoutMs?: number;
+    },
+    options: { signal: AbortSignal },
+  ): Promise<{ navigationEpoch: number; value: JsonValue }>;
+  experimental_setOverlayOpen(open: boolean): void;
+  experimental_overlayRoot: HTMLElement | null;
+}
+
+/**
+ * A whole-Browser-tab plugin controller: a full-surface component mounted
+ * once per logical tab that can own selection workflows, review trays, and
+ * drawing editors without living in the navigation chrome. Experimental:
+ * see docs/api_to_audit.md.
+ */
+export interface ExperimentalBrowserControllerRegistration {
+  /** Unique within this slot for the plugin; letters, digits, `-`, `_`. */
+  id: string;
+  component: ComponentType<ExperimentalBrowserControllerProps>;
 }
 
 export interface PluginPendingInteractionRegistration {
@@ -1543,6 +1592,14 @@ export interface PluginAppSlots {
    */
   experimental_browserAction(
     registration: PluginBrowserActionRegistration,
+  ): void;
+  /**
+   * Mount one full-surface controller per logical Browser tab (see
+   * {@link ExperimentalBrowserControllerRegistration}). Experimental: see
+   * docs/api_to_audit.md.
+   */
+  experimental_browserController(
+    registration: ExperimentalBrowserControllerRegistration,
   ): void;
   fileOpener(registration: PluginFileOpenerRegistration): void;
   /**

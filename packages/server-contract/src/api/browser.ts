@@ -1,42 +1,34 @@
 import {
   BROWSER_CONTROL_MAX_TIMEOUT_MS,
   BROWSER_CONTROL_MIN_TIMEOUT_MS,
-  browserActionabilityPolicySchema,
   browserControlActionSchema,
+  browserControlActionVariants,
+  browserCaptureDescriptorSchema,
+  browserCaptureReadResponseSchema as domainBrowserCaptureReadResponseSchema,
+  assembleBrowserCapture,
   browserControlErrorSchema,
-  browserFrameDescriptorSchema,
+  browserFrameTargetSchema,
+  browserPageLocatorSchema,
+  browserTabDescriptorSchema,
+  browserTabOwnerDescriptorSchema,
+  browserTabTargetSchema,
+  jsonValueSchema,
+} from "@bb/domain";
+export {
+  browserControlActionSchema,
+  browserControlActionVariants,
+  assembleBrowserCapture,
+  browserCaptureDescriptorSchema,
+  browserControlErrorSchema,
   browserFrameTargetSchema,
   browserTabDescriptorSchema,
   browserTabOwnerDescriptorSchema,
   browserTabTargetSchema,
-  browserWaitCriteriaSchema,
-  browserWaitResultSchema,
   jsonValueSchema,
-} from "@bb/domain";
-import type {
-  BrowserControlError,
-  BrowserFrameDescriptor,
-  BrowserFrameTarget,
-  BrowserWaitCriteria,
-  BrowserWaitResult,
-} from "@bb/domain";
+};
+export type { BrowserCaptureDescriptor, BrowserControlError } from "@bb/domain";
 import { z } from "zod";
 
-export {
-  browserActionabilityPolicySchema,
-  browserControlErrorSchema,
-  browserFrameDescriptorSchema,
-  browserFrameTargetSchema,
-  browserWaitCriteriaSchema,
-  browserWaitResultSchema,
-};
-export type {
-  BrowserControlError,
-  BrowserFrameDescriptor,
-  BrowserFrameTarget,
-  BrowserWaitCriteria,
-  BrowserWaitResult,
-};
 export const browserTabsResponseSchema = z
   .object({
     tabs: z.array(browserTabDescriptorSchema),
@@ -88,6 +80,74 @@ export const browserControlResponseSchema = z
 export type BrowserControlResponse = z.infer<
   typeof browserControlResponseSchema
 >;
+export const browserCaptureReadRequestSchema = z
+  .object({
+    clientId: z.string().min(1).max(128),
+    windowId: z.string().min(1).max(128),
+    tabId: z.string().min(1).max(256),
+    captureId: z.string().min(1).max(256),
+    offset: z.number().int().nonnegative(),
+    length: z.number().int().min(1).max(262_144),
+  })
+  .strict();
+export type BrowserCaptureReadRequest = z.infer<
+  typeof browserCaptureReadRequestSchema
+>;
+export const browserCaptureReadResponseSchema =
+  domainBrowserCaptureReadResponseSchema;
+export type BrowserCaptureReadResponse = z.infer<
+  typeof browserCaptureReadResponseSchema
+>;
+export const browserCaptureCreateRequestSchema = z
+  .object({
+    clientId: z.string().min(1).max(128),
+    windowId: z.string().min(1).max(128),
+    tabId: z.string().min(1).max(256),
+    mode: z.enum(["viewport", "full-page", "element"]),
+    format: z.enum(["png", "jpeg"]).optional(),
+    quality: z.number().int().min(1).max(100).optional(),
+    locator: browserPageLocatorSchema.optional(),
+    expectedNavigationEpoch: z.number().int().nonnegative(),
+  })
+  .strict();
+export type BrowserCaptureCreateRequest = z.infer<
+  typeof browserCaptureCreateRequestSchema
+>;
+export const browserCaptureReleaseRequestSchema = z
+  .object({
+    clientId: z.string().min(1).max(128),
+    windowId: z.string().min(1).max(128),
+    tabId: z.string().min(1).max(256),
+    captureId: z.string().min(1).max(256),
+  })
+  .strict();
+export type BrowserCaptureReleaseRequest = z.infer<
+  typeof browserCaptureReleaseRequestSchema
+>;
+export const browserPluginContributionRequestSchema = z
+  .object({
+    pluginId: z.string().min(1).max(256),
+    controllerId: z.string().min(1).max(256),
+    target: browserTabTargetSchema,
+    input: jsonValueSchema,
+    timeoutMs: z
+      .number()
+      .int()
+      .min(BROWSER_CONTROL_MIN_TIMEOUT_MS)
+      .max(BROWSER_CONTROL_MAX_TIMEOUT_MS)
+      .default(30_000),
+  })
+  .strict();
+export type BrowserPluginContributionRequest = z.infer<
+  typeof browserPluginContributionRequestSchema
+>;
+export const browserPluginContributionResponseSchema = z
+  .object({ value: jsonValueSchema })
+  .strict();
+export type BrowserPluginContributionResponse = z.infer<
+  typeof browserPluginContributionResponseSchema
+>;
+
 const browserBatchItemSchema = z
   .object({
     id: z.string().min(1).max(128),

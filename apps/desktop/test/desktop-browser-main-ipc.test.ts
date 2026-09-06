@@ -14,10 +14,14 @@ import {
   BB_DESKTOP_BROWSER_FOCUS_CHANNEL,
   BB_DESKTOP_BROWSER_FIND_IN_PAGE_CHANNEL,
   BB_DESKTOP_BROWSER_EXPERIMENTAL_CANCEL_PAGE_SCRIPT_CHANNEL,
+  BB_DESKTOP_BROWSER_EXPERIMENTAL_CANCEL_CAPTURE_CHANNEL,
+  BB_DESKTOP_BROWSER_EXPERIMENTAL_CAPTURE_PAGE_CHANNEL,
   BB_DESKTOP_BROWSER_EXPERIMENTAL_IMPORT_COOKIES_CHANNEL,
   BB_DESKTOP_BROWSER_EXPERIMENTAL_IMPORT_COOKIES_FROM_BROWSER_CHANNEL,
   BB_DESKTOP_BROWSER_EXPERIMENTAL_CLEAR_IMPORTED_COOKIES_CHANNEL,
   BB_DESKTOP_BROWSER_EXPERIMENTAL_LIST_COOKIE_IMPORT_SOURCES_CHANNEL,
+  BB_DESKTOP_BROWSER_EXPERIMENTAL_READ_CAPTURE_CHUNK_CHANNEL,
+  BB_DESKTOP_BROWSER_EXPERIMENTAL_RELEASE_CAPTURE_CHANNEL,
   BB_DESKTOP_BROWSER_EXPERIMENTAL_TRUST_LOCALHOST_CERTIFICATE_CHANNEL,
   BB_DESKTOP_BROWSER_EXPERIMENTAL_RUN_PAGE_SCRIPT_CHANNEL,
   BB_DESKTOP_BROWSER_GO_BACK_CHANNEL,
@@ -166,7 +170,10 @@ class RecordingDesktopBrowserViewManager implements DesktopBrowserViewManager {
   public readonly navigateCalls: NavigateCall[] = [];
   public readonly releaseWindowCalls: number[] = [];
   public readonly reloadCalls: TabCommandCall[] = [];
-  public readonly trustLocalhostCertificateCalls: TabCommandCall[] = [];
+  public readonly trustLocalhostCertificateCalls: Array<{
+    hostWindow: unknown;
+    request: { tabId: string; expectedNavigationEpoch: number };
+  }> = [];
   public readonly setBoundsCalls: SetBoundsCall[] = [];
   public readonly setVisibleCalls: SetVisibleCall[] = [];
   public readonly setVisibleWithoutFocusCalls: SetVisibleCall[] = [];
@@ -176,7 +183,30 @@ class RecordingDesktopBrowserViewManager implements DesktopBrowserViewManager {
   public readonly setViewportProfileCalls: SetViewportProfileCall[] = [];
   public readonly clearViewportProfileCalls: ClearViewportProfileCall[] = [];
   public readonly cancelPageScriptCalls: CancelPageScriptCall[] = [];
+  public readonly cancelTrustedInputCalls: Array<{
+    hostWindow: unknown;
+    tabId: string;
+    requestId: string;
+  }> = [];
+  public readonly cancelPointerInputCalls: Array<{
+    hostWindow: unknown;
+    tabId: string;
+    requestId: string;
+  }> = [];
+  public readonly cancelCaptureCalls: Array<{
+    hostWindow: unknown;
+    tabId: string;
+    requestId: string;
+  }> = [];
   public readonly capturePageCalls: CapturePageCall[] = [];
+  public readonly readCaptureChunkCalls: Array<{
+    hostWindow: unknown;
+    request: { captureId: string; offset: number; length: number };
+  }> = [];
+  public readonly releaseCaptureCalls: Array<{
+    hostWindow: unknown;
+    request: { captureId: string };
+  }> = [];
   public readonly importCookiesCalls: ImportCookiesCall[] = [];
   public readonly listCookieImportSourcesCalls: ListCookieImportSourcesCall[] =
     [];
@@ -275,10 +305,13 @@ class RecordingDesktopBrowserViewManager implements DesktopBrowserViewManager {
   reload(args: TabCommandCall): void {
     this.reloadCalls.push(args);
   }
-  trustLocalhostCertificate(args: TabCommandCall): void {
+  async trustLocalhostCertificate(args: {
+    hostWindow: unknown;
+    request: { tabId: string; expectedNavigationEpoch: number };
+  }) {
     this.trustLocalhostCertificateCalls.push(args);
+    return { navigationEpoch: 0, trustedOrigin: "localhost" };
   }
-
 
   setBounds(args: SetBoundsCall): void {
     this.setBoundsCalls.push(args);
@@ -307,6 +340,21 @@ class RecordingDesktopBrowserViewManager implements DesktopBrowserViewManager {
 
   cancelPageScript(args: CancelPageScriptCall): void {
     this.cancelPageScriptCalls.push(args);
+  }
+  cancelTrustedInput(args: {
+    hostWindow: unknown;
+    tabId: string;
+    requestId: string;
+  }): void {
+    this.cancelTrustedInputCalls.push(args);
+  }
+
+  cancelPointerInput(args: {
+    hostWindow: unknown;
+    tabId: string;
+    requestId: string;
+  }): void {
+    this.cancelPointerInputCalls.push(args);
   }
 
   sendPointerInput(args: PointerInputCall) {
@@ -339,7 +387,6 @@ class RecordingDesktopBrowserViewManager implements DesktopBrowserViewManager {
 
   cancelBrowserEvent(_args: CancelBrowserEventCall): void {}
 
-
   setViewportProfile(args: SetViewportProfileCall) {
     this.setViewportProfileCalls.push(args);
     return {
@@ -353,13 +400,42 @@ class RecordingDesktopBrowserViewManager implements DesktopBrowserViewManager {
     this.clearViewportProfileCalls.push(args);
   }
 
+  cancelCapture(args: {
+    hostWindow: unknown;
+    tabId: string;
+    requestId: string;
+  }): void {
+    this.cancelCaptureCalls.push(args);
+  }
   capturePage(args: CapturePageCall) {
     this.capturePageCalls.push(args);
     return Promise.resolve({
       navigationEpoch: 0,
-      dataUrl: "data:image/png;base64,cG5n",
+      captureId: "cap-1",
+      format: "png" as const,
       pixelSize: { width: 800, height: 600 },
+      byteLength: 4,
     });
+  }
+
+  readCaptureChunk(args: {
+    hostWindow: unknown;
+    request: { captureId: string; offset: number; length: number };
+  }) {
+    this.readCaptureChunkCalls.push(args);
+    return Promise.resolve({
+      captureId: args.request.captureId,
+      offset: args.request.offset,
+      base64: "cG5n",
+      eof: true,
+    });
+  }
+
+  releaseCapture(args: {
+    hostWindow: unknown;
+    request: { captureId: string };
+  }): void {
+    this.releaseCaptureCalls.push(args);
   }
 }
 
@@ -388,7 +464,6 @@ function createUntrustedSender(): FakeWebContents {
 
 function sendBrowserIpc(args: SendBrowserIpcArgs): void {
   const listener = electronMock.listeners.get(args.channel);
-  expect(listener).toBeDefined();
   if (listener === undefined) {
     throw new Error(`Expected listener for ${args.channel}.`);
   }
@@ -397,7 +472,6 @@ function sendBrowserIpc(args: SendBrowserIpcArgs): void {
 
 async function invokeBrowserIpc(args: SendBrowserIpcArgs): Promise<unknown> {
   const handler = electronMock.handlers.get(args.channel);
-  expect(handler).toBeDefined();
   if (handler === undefined) {
     throw new Error(`Expected handler for ${args.channel}.`);
   }
@@ -445,9 +519,10 @@ describe("registerDesktopBrowserIpc", () => {
       payload: { tabId: "browser:a" },
       sender: renderer.sender,
     });
-    sendBrowserIpc({
-      channel: BB_DESKTOP_BROWSER_EXPERIMENTAL_TRUST_LOCALHOST_CERTIFICATE_CHANNEL,
-      payload: { tabId: "browser:a" },
+    void invokeBrowserIpc({
+      channel:
+        BB_DESKTOP_BROWSER_EXPERIMENTAL_TRUST_LOCALHOST_CERTIFICATE_CHANNEL,
+      payload: { tabId: "browser:a", expectedNavigationEpoch: 0 },
       sender: renderer.sender,
     });
     sendBrowserIpc({
@@ -466,7 +541,10 @@ describe("registerDesktopBrowserIpc", () => {
       { hostWindow: renderer.hostWindow, tabId: "browser:a" },
     ]);
     expect(manager.trustLocalhostCertificateCalls).toEqual([
-      { hostWindow: renderer.hostWindow, tabId: "browser:a" },
+      {
+        hostWindow: renderer.hostWindow,
+        request: { tabId: "browser:a", expectedNavigationEpoch: 0 },
+      },
     ]);
     expect(manager.focusCalls).toEqual([
       { hostWindow: renderer.hostWindow, tabId: "browser:a" },
@@ -571,7 +649,7 @@ describe("registerDesktopBrowserIpc", () => {
     expect(manager.navigateCalls).toEqual([]);
   });
 
-  it("rejects malformed bounds, visibility, and tab-command payloads", () => {
+  it("rejects malformed bounds, visibility, and tab-command payloads", async () => {
     const manager = new RecordingDesktopBrowserViewManager();
     registerDesktopBrowserIpc(manager);
     const renderer = createTrustedRenderer("main-window");
@@ -620,7 +698,6 @@ describe("registerDesktopBrowserIpc", () => {
       BB_DESKTOP_BROWSER_GO_FORWARD_CHANNEL,
       BB_DESKTOP_BROWSER_RELOAD_CHANNEL,
       BB_DESKTOP_BROWSER_STOP_CHANNEL,
-      BB_DESKTOP_BROWSER_EXPERIMENTAL_TRUST_LOCALHOST_CERTIFICATE_CHANNEL,
     ]) {
       sendBrowserIpc({
         channel,
@@ -629,6 +706,14 @@ describe("registerDesktopBrowserIpc", () => {
       });
     }
 
+    await expect(
+      invokeBrowserIpc({
+        channel:
+          BB_DESKTOP_BROWSER_EXPERIMENTAL_TRUST_LOCALHOST_CERTIFICATE_CHANNEL,
+        payload: { tabId: "", extra: true },
+        sender: renderer.sender,
+      }),
+    ).rejects.toBeTruthy();
     sendBrowserIpc({
       channel: BB_DESKTOP_BROWSER_DETACH_CHANNEL,
       payload: { tabId: "browser:a" },
@@ -796,6 +881,76 @@ describe("registerDesktopBrowserIpc", () => {
     ]);
     expect(manager.clearImportedCookiesCalls).toEqual([
       { hostWindow: renderer.hostWindow, tabId: "browser:a" },
+    ]);
+  });
+
+  it("rejects malformed capture requests and renderers without an owned window", async () => {
+    const manager = new RecordingDesktopBrowserViewManager();
+    registerDesktopBrowserIpc(manager);
+    const renderer = createTrustedRenderer("main-window");
+    const untrustedSender = createUntrustedSender();
+
+    await expect(
+      invokeBrowserIpc({
+        channel: BB_DESKTOP_BROWSER_EXPERIMENTAL_CAPTURE_PAGE_CHANNEL,
+        payload: { tabId: "browser:a", format: "webp" },
+        sender: renderer.sender,
+      }),
+    ).rejects.toMatchObject({ name: "ZodError" });
+    await expect(
+      invokeBrowserIpc({
+        channel: BB_DESKTOP_BROWSER_EXPERIMENTAL_READ_CAPTURE_CHUNK_CHANNEL,
+        payload: { captureId: "cap-1", tabId: "browser:a", offset: 0 },
+        sender: renderer.sender,
+      }),
+    ).rejects.toMatchObject({ name: "ZodError" });
+    await expect(
+      invokeBrowserIpc({
+        channel: BB_DESKTOP_BROWSER_EXPERIMENTAL_RELEASE_CAPTURE_CHANNEL,
+        payload: { captureId: "cap-1", tabId: "browser:a", extra: true },
+        sender: renderer.sender,
+      }),
+    ).rejects.toMatchObject({ name: "ZodError" });
+    await expect(
+      invokeBrowserIpc({
+        channel: BB_DESKTOP_BROWSER_EXPERIMENTAL_CAPTURE_PAGE_CHANNEL,
+        payload: { tabId: "browser:a", format: "png", quality: 85 },
+        sender: untrustedSender,
+      }),
+    ).rejects.toBeInstanceOf(Error);
+    await expect(
+      invokeBrowserIpc({
+        channel: BB_DESKTOP_BROWSER_EXPERIMENTAL_RELEASE_CAPTURE_CHANNEL,
+        payload: { captureId: "cap-1", tabId: "browser:a" },
+        sender: untrustedSender,
+      }),
+    ).rejects.toBeInstanceOf(Error);
+    expect(manager.capturePageCalls).toEqual([]);
+    expect(manager.readCaptureChunkCalls).toEqual([]);
+    expect(manager.releaseCaptureCalls).toEqual([]);
+  });
+  it("forwards capture cancellation only from the owning Browser renderer", () => {
+    const manager = new RecordingDesktopBrowserViewManager();
+    registerDesktopBrowserIpc(manager);
+    const renderer = createTrustedRenderer("main-window");
+
+    sendBrowserIpc({
+      channel: BB_DESKTOP_BROWSER_EXPERIMENTAL_CANCEL_CAPTURE_CHANNEL,
+      payload: { tabId: "browser:a", requestId: "capture-1" },
+      sender: renderer.sender,
+    });
+    sendBrowserIpc({
+      channel: BB_DESKTOP_BROWSER_EXPERIMENTAL_CANCEL_CAPTURE_CHANNEL,
+      payload: { tabId: "browser:a" },
+      sender: renderer.sender,
+    });
+
+    expect(manager.cancelCaptureCalls).toEqual([
+      {
+        hostWindow: renderer.hostWindow,
+        tabId: "browser:a",
+        requestId: "capture-1",
+      },
     ]);
   });
 });

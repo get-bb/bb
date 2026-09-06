@@ -35,6 +35,7 @@ describe("product-map surfaces", () => {
       "sidebar-footer",
       "thread-header",
       "browser-actions",
+      "browser-controllers",
       "timeline-renderers",
       "message-directives",
       "message-actions",

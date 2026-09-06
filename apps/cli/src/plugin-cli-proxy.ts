@@ -1,9 +1,11 @@
+import { writeFile } from "node:fs/promises";
+import { browserCaptureDescriptorSchema } from "@bb/server-contract";
 import {
   resolveContextProjectId,
   resolveContextThreadId,
 } from "./context-env.js";
 import { Agent, type Dispatcher } from "undici";
-import { cliFetch } from "./client.js";
+import { cliFetch, createCliBbSdk } from "./client.js";
 
 export interface PluginCliContributionEntry {
   pluginId: string;
@@ -344,6 +346,53 @@ async function writePluginCliOutput(
   });
 }
 
+function explicitCaptureDestination(argv: readonly string[]): string | null {
+  let destination: string | null = null;
+  for (let index = 0; index < argv.length; index += 1) {
+    const argument = argv[index];
+    if (argument === "--out") {
+      const value = argv[index + 1];
+      if (typeof value !== "string" || value.length === 0) return null;
+      if (destination !== null) return null;
+      destination = value;
+      index += 1;
+      continue;
+    }
+    if (argument?.startsWith("--out=")) {
+      const value = argument.slice("--out=".length);
+      if (value.length === 0 || destination !== null) return null;
+      destination = value;
+    }
+  }
+  return destination;
+}
+
+async function writePluginCapture(
+  baseUrl: string,
+  argv: readonly string[],
+  result: {
+    experimental_browserCaptureDownload?: {
+      descriptor?: unknown;
+      out?: unknown;
+    };
+  },
+): Promise<void> {
+  const destination = explicitCaptureDestination(argv);
+  const capture = result.experimental_browserCaptureDownload;
+  if (
+    destination === null ||
+    capture === undefined ||
+    capture.out !== destination
+  ) {
+    return;
+  }
+  const descriptor = browserCaptureDescriptorSchema.parse(capture.descriptor);
+  const download = await createCliBbSdk(baseUrl).browser.captureDownload({
+    descriptor,
+  });
+  await writeFile(destination, download.bytes);
+}
+
 export const PLUGIN_CLI_HEADERS_TIMEOUT_MS = 65 * 60 * 1000;
 let pluginCliDispatcher: Dispatcher | undefined;
 function getPluginCliDispatcher(): Dispatcher {
@@ -394,6 +443,10 @@ export async function runPluginCliCommand(
     stdout?: unknown;
     stderr?: unknown;
     error?: unknown;
+    experimental_browserCaptureDownload?: {
+      descriptor?: unknown;
+      out?: unknown;
+    };
   } | null;
   if (result === null || typeof result.exitCode !== "number") {
     await writePluginCliOutput(
@@ -409,6 +462,17 @@ export async function runPluginCliCommand(
   }
   if (typeof result.stderr === "string" && result.stderr.length > 0) {
     await writePluginCliOutput(streams.stderr, result.stderr);
+  }
+  if (response.ok && result.exitCode === 0) {
+    try {
+      await writePluginCapture(baseUrl, argv, result);
+    } catch (error) {
+      await writePluginCliOutput(
+        streams.stderr,
+        error instanceof Error ? error.message : String(error),
+      );
+      return 1;
+    }
   }
   return result.exitCode;
 }

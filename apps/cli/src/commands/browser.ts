@@ -1,12 +1,24 @@
+import { createWriteStream } from "node:fs";
+import { readFile } from "node:fs/promises";
+import { Readable } from "node:stream";
+import { pipeline } from "node:stream/promises";
+import {
+  BROWSER_CAPTURE_CHUNK_BYTES,
+  decodeBrowserCaptureChunk,
+  type BrowserCaptureDescriptor,
+} from "@bb/domain";
+import type { BbSdk } from "@bb/sdk";
 import { Command } from "commander";
 import {
   browserBatchRequestSchema,
+  browserCaptureDescriptorSchema,
   browserControlActionSchema,
   browserPageLocatorSchema,
   browserTabTargetSchema,
   browserWaitCriteriaSchema,
   type BrowserTabDescriptor,
   type BrowserTabOwnerDescriptor,
+  type JsonValue,
 } from "@bb/server-contract";
 import { action, CliExitError } from "../action.js";
 import { createCliBbSdk } from "../client.js";
@@ -66,6 +78,33 @@ interface BrowserWaitOptions extends BrowserJsonOptions {
   text?: string;
   timeout?: string;
   url?: string;
+  window: string;
+}
+
+interface BrowserCaptureExportOptions extends BrowserJsonOptions {
+  client: string;
+  epoch: string;
+  format?: string;
+  locator?: string;
+  mode?: string;
+  out?: string;
+  quality?: string;
+  tab: string;
+  window: string;
+}
+interface BrowserCaptureDownloadOptions extends BrowserJsonOptions {
+  descriptor: string;
+  out: string;
+}
+
+interface BrowserPluginOptions extends BrowserJsonOptions {
+  client: string;
+  controller: string;
+  epoch: string;
+  input: string;
+  plugin: string;
+  tab: string;
+  timeout?: string;
   window: string;
 }
 
@@ -238,13 +277,13 @@ export function registerBrowserCommands(
       "--load-state <state>",
       "Load state: domcontentloaded, load, or networkidle",
     )
-    .option("--document <current|next>", "Load-state document", "current")
+    .option("--document <current|next>", "Load-state document")
     .option("--popup", "A new Browser tab opened")
     .option("--request <url>", "Request URL matched")
     .option("--response <url>", "Response URL matched")
     .option("--method <method>", "Request or response method")
     .option("--status <code>", "Response status code")
-    .option("--match <exact|glob>", "URL matching mode", "exact")
+    .option("--match <exact|glob>", "URL matching mode")
     .option("--download-blocked", "A download was blocked")
     .option("--timeout <seconds>", "Wait timeout in seconds", "30")
     .option("--json", "Print machine-readable JSON output")
@@ -263,6 +302,52 @@ export function registerBrowserCommands(
         ];
         if (criteriaFlags.filter(Boolean).length !== 1) {
           throw new CliExitError("Specify exactly one wait criterion", 1);
+        }
+        const explicitMatch = opts.match !== undefined;
+        const responseSelected = opts.response !== undefined;
+        const requestSelected = opts.request !== undefined;
+        const urlSelected = opts.url !== undefined;
+        const secondaryIncompatible =
+          (opts.text !== undefined &&
+            (opts.status !== undefined ||
+              opts.method !== undefined ||
+              explicitMatch)) ||
+          (urlSelected && opts.sameDocument === true) ||
+          (opts.navigation !== undefined &&
+            (opts.status !== undefined ||
+              opts.method !== undefined ||
+              explicitMatch)) ||
+          (opts.loadState !== undefined &&
+            (opts.status !== undefined || opts.method !== undefined)) ||
+          (opts.locator !== undefined &&
+            (opts.status !== undefined ||
+              opts.method !== undefined ||
+              explicitMatch)) ||
+          (opts.popup === true &&
+            (opts.status !== undefined ||
+              opts.method !== undefined ||
+              explicitMatch ||
+              opts.sameDocument === true ||
+              opts.document !== undefined)) ||
+          (opts.downloadBlocked === true &&
+            (opts.status !== undefined ||
+              opts.method !== undefined ||
+              explicitMatch ||
+              opts.sameDocument === true ||
+              opts.document !== undefined)) ||
+          (opts.sameDocument === true && opts.navigation === undefined) ||
+          (opts.document !== undefined && opts.loadState === undefined) ||
+          (explicitMatch &&
+            !urlSelected &&
+            !requestSelected &&
+            !responseSelected) ||
+          (opts.status !== undefined && !responseSelected) ||
+          (opts.method !== undefined && !requestSelected && !responseSelected);
+        if (secondaryIncompatible) {
+          throw new CliExitError(
+            "Wait modifier flags are only valid with their matching criterion",
+            1,
+          );
         }
         const match = opts.match ?? "exact";
         const status =
@@ -324,15 +409,174 @@ export function registerBrowserCommands(
           tabId: opts.tab,
           windowId: opts.window,
         });
-        const result = await createCliBbSdk(getUrl()).browser.control({
-          action: { kind: "wait", criteria: parsedCriteria.data },
+        const result = await createCliBbSdk(getUrl()).browser.wait({
+          criteria: parsedCriteria.data,
           target,
           timeoutMs,
+        });
+        if (outputJson(opts, result)) return;
+        console.log(JSON.stringify(result, null, 2));
+      }),
+    );
+
+  browser
+    .command("capture")
+    .description("Create a Browser capture descriptor or export its image")
+    .requiredOption(
+      "--client <clientId>",
+      "Browser client ID from `bb browser list`",
+    )
+    .requiredOption(
+      "--window <windowId>",
+      "Browser window ID from `bb browser list`",
+    )
+    .requiredOption("--tab <tabId>", "Browser tab ID from `bb browser list`")
+    .requiredOption("--epoch <n>", "Navigation epoch from `bb browser list`")
+    .option("--out <path>", "Export image to a local file and release the capture")
+    .option(
+      "--mode <mode>",
+      "Capture mode: viewport, full-page, or element",
+      "viewport",
+    )
+    .option("--format <png|jpeg>", "Image format", "png")
+    .option("--quality <n>", "JPEG quality (1-100)")
+    .option("--locator <json>", "Element locator for mode=element")
+    .option("--json", "Print a live capture descriptor without downloading")
+    .action(
+      action(async (opts: BrowserCaptureExportOptions) => {
+        if ((opts.out !== undefined) === (opts.json === true)) {
+          throw new CliExitError("Choose exactly one of --out <path> or --json", 1);
+        }
+        const target = browserTabTargetSchema.parse({
+          clientId: opts.client,
+          navigationEpoch: parseNavigationEpoch(opts.epoch),
+          tabId: opts.tab,
+          windowId: opts.window,
+        });
+        const mode = parseCaptureMode(opts.mode);
+        const format = parseCaptureFormat(opts.format);
+        const quality = parseCaptureQuality(opts.quality);
+        const locator =
+          opts.locator === undefined ? undefined : parseLocator(opts.locator);
+        const sdk = createCliBbSdk(getUrl()).browser;
+        const descriptor = await sdk.capture({
+          clientId: target.clientId,
+          windowId: target.windowId,
+          tabId: target.tabId,
+          mode,
+          format,
+          ...(quality === undefined ? {} : { quality }),
+          ...(locator === undefined ? {} : { locator }),
+          expectedNavigationEpoch: target.navigationEpoch,
+        });
+        if (outputJson(opts, descriptor)) return;
+        if (opts.out === undefined) throw new CliExitError("--out is required", 1);
+        await exportCapture(sdk, descriptor, opts.out);
+        console.log(`Capture exported: ${opts.out}`);
+      }),
+    );
+
+  browser
+    .command("capture-download")
+    .description("Download a saved Browser capture descriptor to a local file")
+    .requiredOption(
+      "--descriptor <json-file>",
+      "Canonical capture descriptor JSON file",
+    )
+    .requiredOption("--out <path>", "Destination file path")
+    .option("--json", "Print machine-readable export metadata")
+    .action(
+      action(async (opts: BrowserCaptureDownloadOptions) => {
+        const descriptor = browserCaptureDescriptorSchema.parse(
+          JSON.parse(await readFile(opts.descriptor, "utf8")),
+        );
+        await exportCapture(createCliBbSdk(getUrl()).browser, descriptor, opts.out);
+        const metadata = {
+          captureId: descriptor.captureId,
+          file: opts.out,
+          mimeType: descriptor.mimeType,
+          pixelSize: descriptor.pixelSize,
+          sizeBytes: descriptor.byteLength,
+        };
+        if (outputJson(opts, metadata)) return;
+        console.log(`Capture exported: ${opts.out}`);
+      }),
+    );
+
+  browser
+    .command("plugin")
+    .description("Send a contribution command to a Browser controller plugin")
+    .requiredOption("--plugin <pluginId>", "Installed plugin ID")
+    .requiredOption(
+      "--controller <controllerId>",
+      "Controller ID in the plugin",
+    )
+    .requiredOption(
+      "--client <clientId>",
+      "Browser client ID from `bb browser list`",
+    )
+    .requiredOption(
+      "--window <windowId>",
+      "Browser window ID from `bb browser list`",
+    )
+    .requiredOption("--tab <tabId>", "Browser tab ID from `bb browser list`")
+    .requiredOption("--epoch <n>", "Navigation epoch from `bb browser list`")
+    .requiredOption("--input <json>", "JSON contribution input")
+    .option("--timeout <seconds>", "Action timeout in seconds", "30")
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(async (opts: BrowserPluginOptions) => {
+        let input: unknown;
+        try {
+          input = JSON.parse(opts.input);
+        } catch {
+          throw new CliExitError("--input must be valid JSON", 1);
+        }
+        const target = browserTabTargetSchema.parse({
+          clientId: opts.client,
+          navigationEpoch: parseNavigationEpoch(opts.epoch),
+          tabId: opts.tab,
+          windowId: opts.window,
+        });
+        const result = await createCliBbSdk(
+          getUrl(),
+        ).browser.experimental_requestContribution({
+          pluginId: opts.plugin,
+          controllerId: opts.controller,
+          target,
+          input: input as JsonValue,
+          timeoutMs: parseTimeoutMs(opts.timeout),
         });
         if (outputJson(opts, result)) return;
         console.log(JSON.stringify(result.value, null, 2));
       }),
     );
+}
+
+async function exportCapture(
+  sdk: BbSdk["browser"],
+  descriptor: BrowserCaptureDescriptor,
+  path: string,
+): Promise<void> {
+  const { clientId, windowId, tabId } = descriptor.target;
+  async function* chunks() {
+    for (let offset = 0; offset < descriptor.byteLength;) {
+      const request = {
+        captureId: descriptor.captureId,
+        offset,
+        length: Math.min(BROWSER_CAPTURE_CHUNK_BYTES, descriptor.byteLength - offset),
+      };
+      const chunk = await sdk.captureRead({ ...request, clientId, windowId, tabId });
+      const bytes = decodeBrowserCaptureChunk(chunk, request, descriptor.byteLength);
+      offset += bytes.byteLength;
+      yield bytes;
+    }
+  }
+  try {
+    await pipeline(Readable.from(chunks()), createWriteStream(path));
+  } finally {
+    await sdk.captureRelease({ captureId: descriptor.captureId, clientId, windowId, tabId });
+  }
 }
 
 function parseAction(value: string) {
@@ -372,6 +616,33 @@ function parseNavigationEpoch(value: string): number {
   const parsed = Number(value);
   if (!Number.isInteger(parsed) || parsed < 0) {
     throw new CliExitError("--epoch must be a non-negative integer", 1);
+  }
+  return parsed;
+}
+
+function parseCaptureMode(
+  value: string | undefined,
+): "viewport" | "full-page" | "element" {
+  const mode = value ?? "viewport";
+  if (mode !== "viewport" && mode !== "full-page" && mode !== "element") {
+    throw new CliExitError("--mode must be viewport, full-page, or element", 1);
+  }
+  return mode;
+}
+
+function parseCaptureFormat(value: string | undefined): "png" | "jpeg" {
+  const format = value ?? "png";
+  if (format !== "png" && format !== "jpeg") {
+    throw new CliExitError("--format must be png or jpeg", 1);
+  }
+  return format;
+}
+
+function parseCaptureQuality(value: string | undefined): number | undefined {
+  if (value === undefined) return undefined;
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < 1 || parsed > 100) {
+    throw new CliExitError("--quality must be an integer from 1 to 100", 1);
   }
   return parsed;
 }

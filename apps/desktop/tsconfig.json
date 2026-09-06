@@ -4,6 +4,7 @@
     "@bb/tsconfig/typecheck-overrides.json"
   ],
   "compilerOptions": {
+    "target": "ES2024",
     "rootDir": ".",
     "types": ["node", "vitest/globals"]
   },

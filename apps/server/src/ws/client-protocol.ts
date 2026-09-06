@@ -74,6 +74,24 @@ export function onClientSocketMessage(
     case "browser-open-tab-response":
       deps.hub.recordBrowserOpenTabResponse(socket, parsed);
       break;
+    case "browser-capture-chunk":
+      deps.hub.recordBrowserCaptureChunk(socket, parsed);
+      break;
+    case "browser-capture-created":
+      deps.hub.recordBrowserCaptureCreated(socket, parsed);
+      break;
+    case "browser-capture-register":
+      deps.hub.recordBrowserCaptureRegister(socket, parsed);
+      break;
+    case "browser-capture-release":
+      deps.hub.releaseBrowserCaptureFromClient(socket, {
+        tabId: parsed.tabId,
+        captureId: parsed.captureId,
+      });
+      break;
+    case "browser-plugin-response":
+      deps.hub.recordBrowserPluginResponse(socket, parsed);
+      break;
     default: {
       const _exhaustive: never = parsed;
       throw new Error(`Unhandled client message: ${_exhaustive}`);

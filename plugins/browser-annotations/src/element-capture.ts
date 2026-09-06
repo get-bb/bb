@@ -98,41 +98,14 @@ export type BrowserElementAnnotationCapture = z.infer<
   typeof browserElementAnnotationCaptureSchema
 >;
 
-export interface BrowserElementAnnotation {
-  accessibility: {
-    ariaLabel: string | null;
-    ariaLabelledBy: string | null;
-    description: string | null;
-    name: string | null;
-    role: string | null;
-  };
-  ancestorPath: readonly string[];
-  capturedAt: string;
-  devicePixelRatio: number;
-  dom: {
-    attributes: Readonly<Record<string, string>>;
-    classes: readonly string[];
-    id: string | null;
-    selector: string;
-    tag: string;
-  };
-  fullDomPath: string;
-  html: string | null;
-  nearbyElements: readonly string[];
-  nearbyText: readonly string[];
-  pageUrl: string;
-  reactComponents: string | null;
-  rect: z.infer<typeof annotationRectSchema>;
-  rectPage: z.infer<typeof annotationRectSchema>;
-  scroll: { x: number; y: number };
-  selectedText: string | null;
-  sensitive: boolean;
-  sourceFile: string | null;
-  styles: BrowserElementAnnotationCapture["styles"];
-  text: string;
-  title: string | null;
-  viewport: BrowserElementAnnotationCapture["viewport"];
-}
+export type BrowserElementAnnotation =
+  import("./element-types").BrowserElementAnnotation;
+export type BrowserElementAnnotationStyles =
+  import("./element-types").BrowserElementAnnotationStyles;
+export type BrowserElementAnnotationPriority =
+  import("./element-types").BrowserElementAnnotationPriority;
+export type BrowserElementAnnotationNote =
+  import("./element-types").BrowserElementAnnotationNote;
 
 export const BROWSER_ELEMENT_ANNOTATION_INTENTS = [
   "fix",
@@ -159,21 +132,6 @@ function annotationIntentInstruction(
   }
 }
 
-export type BrowserElementAnnotationPriority =
-  | "blocking"
-  | "important"
-  | "suggestion";
-
-export interface BrowserElementAnnotationNote {
-  annotation: BrowserElementAnnotation;
-  comment: string;
-  createdAt: string;
-  id: string;
-  pageId: string;
-  intent: BrowserElementAnnotationIntent;
-  screenshotUrl: string | null;
-  priority: BrowserElementAnnotationPriority;
-}
 export const browserCancelElementPickerSource = `async () => {
   globalThis.__bbBrowserElementPickerCleanup?.();
   document.getElementById("__bb-browser-element-picker")?.remove();
@@ -192,6 +150,7 @@ export const browserElementPickerSource = `async ({ input, signal }) => {
   ) {
     throw new Error("Browser element picker theme is unavailable");
   }
+  const directCapture = input?.element !== undefined;
   document.getElementById(overlayId)?.remove();
   const overlay = document.createElement("div");
   overlay.id = overlayId;
@@ -206,7 +165,7 @@ export const browserElementPickerSource = `async ({ input, signal }) => {
     top: "0",
     zIndex: "2147483647"
   });
-  document.documentElement.append(overlay);
+  if (!directCapture) document.documentElement.append(overlay);
   const cleanup = () => {
     document.removeEventListener("pointermove", onPointerMove, true);
     document.removeEventListener("click", onClick, true);
@@ -215,7 +174,7 @@ export const browserElementPickerSource = `async ({ input, signal }) => {
     overlay.remove();
     if (globalThis[cleanupKey] === cleanup) delete globalThis[cleanupKey];
   };
-  globalThis[cleanupKey] = cleanup;
+  if (!directCapture) globalThis[cleanupKey] = cleanup;
   const truncate = (value, max) => value.length > max
     ? value.slice(0, Math.max(0, max - 12)) + " (truncated)"
     : value;
@@ -232,7 +191,13 @@ export const browserElementPickerSource = `async ({ input, signal }) => {
     if (element.id) return tag + "#" + cssEscape(element.id.slice(0, 256));
     return tag + stableClasses(element, 2).map((name) => "." + cssEscape(name)).join("");
   };
+  const budget = { remaining: 600 };
+  const spend = (count) => {
+    budget.remaining -= count;
+    return budget.remaining >= 0;
+  };
   const isUniqueSelector = (selector) => {
+    if (!spend(1)) return false;
     try {
       return document.querySelectorAll(selector).length === 1;
     } catch {
@@ -240,16 +205,30 @@ export const browserElementPickerSource = `async ({ input, signal }) => {
     }
   };
   const nthOfType = (element) => {
-    const siblings = element.parentElement ? Array.from(element.parentElement.children).filter((candidate) => candidate.localName === element.localName) : [];
-    if (siblings.length <= 1) return "";
-    return ":nth-of-type(" + (siblings.indexOf(element) + 1) + ")";
+    const parent = element.parentElement;
+    if (!parent || !spend(1)) return "";
+    let sameType = 0;
+    for (const candidate of parent.children) {
+      if (!spend(1)) return "";
+      if (candidate.localName !== element.localName) continue;
+      sameType += 1;
+      if (candidate === element) return sameType <= 1 ? "" : ":nth-of-type(" + sameType + ")";
+    }
+    return "";
   };
   const stableSelector = (element) => {
     const parts = [];
     let current = element;
-    while (current instanceof Element && current !== document.body && parts.length < 10) {
+    while (
+      current instanceof Element &&
+      current !== document.body &&
+      parts.length < 10 &&
+      spend(1)
+    ) {
       let part = domLabel(current);
-      if (!isUniqueSelector([part, ...parts].join(" > "))) part += nthOfType(current);
+      if (!isUniqueSelector([part, ...parts].join(" > "))) {
+        part += nthOfType(current);
+      }
       parts.unshift(part);
       const selector = parts.join(" > ");
       if (isUniqueSelector(selector)) return truncate(selector, 700);
@@ -260,7 +239,11 @@ export const browserElementPickerSource = `async ({ input, signal }) => {
   const domPath = (element) => {
     const path = [];
     let current = element;
-    while (current instanceof Element && path.length < 12) {
+    while (
+      current instanceof Element &&
+      path.length < 12 &&
+      spend(1)
+    ) {
       path.unshift(domLabel(current));
       if (current === document.body) break;
       current = current.parentElement;
@@ -270,7 +253,11 @@ export const browserElementPickerSource = `async ({ input, signal }) => {
   const ancestorPath = (element) => {
     const path = [];
     let current = element.parentElement;
-    while (current instanceof Element && path.length < 10) {
+    while (
+      current instanceof Element &&
+      path.length < 10 &&
+      spend(1)
+    ) {
       const role = current.getAttribute("role");
       path.push(current.localName.slice(0, 64) + (role ? "[role=" + role.slice(0, 64) + "]" : ""));
       if (current === document.body) break;
@@ -279,57 +266,52 @@ export const browserElementPickerSource = `async ({ input, signal }) => {
     return path;
   };
   const boundedText = (element, max) => {
-    const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT, {
-      acceptNode(node) {
-        const parent = node.parentElement;
-        if (!parent || parent.closest(noiseSelector)) return NodeFilter.FILTER_REJECT;
-        const style = getComputedStyle(parent);
-        if (style.display === "none" || style.visibility === "hidden") return NodeFilter.FILTER_REJECT;
-        return NodeFilter.FILTER_ACCEPT;
-      }
-    });
     let text = "";
-    let node = walker.nextNode();
-    let inspected = 0;
-    while (node && text.length < max + 20 && inspected < 80) {
-      const value = (node.nodeValue || "").replace(/\\s+/g, " ").trim();
-      if (value) text += (text ? " " : "") + value;
-      inspected += 1;
-      node = walker.nextNode();
+    let visited = 0;
+    const stack = [element];
+    while (
+      stack.length > 0 &&
+      text.length < max + 20 &&
+      visited < 80 &&
+      spend(1)
+    ) {
+      visited += 1;
+      const node = stack.pop();
+      if (node.nodeType === Node.TEXT_NODE) {
+        const parent = node.parentElement;
+        if (parent && !parent.closest(noiseSelector)) {
+          const style = getComputedStyle(parent);
+          if (style.display !== "none" && style.visibility !== "hidden") {
+            const value = (node.nodeValue || "").replace(/\\s+/g, " ").trim();
+            if (value) text += (text ? " " : "") + value;
+          }
+        }
+        continue;
+      }
+      if (!(node instanceof Element)) continue;
+      if (node.matches(noiseSelector)) continue;
+      const style = getComputedStyle(node);
+      if (style.display === "none" || style.visibility === "hidden") continue;
+      const children = node.childNodes;
+      for (let index = children.length - 1; index >= 0; index -= 1) {
+        stack.push(children[index]);
+      }
     }
     return truncate(text, max);
-  };
-  const reactMetadata = (element) => {
-    const key = Object.keys(element).find((name) => name.startsWith("__reactFiber$") || name.startsWith("__reactInternalInstance$"));
-    let fiber = key ? element[key] : null;
-    const names = [];
-    const seen = new Set();
-    let sourceFile = null;
-    for (let index = 0; fiber && index < 32; index += 1, fiber = fiber.return) {
-      const source = fiber._debugSource;
-      if (sourceFile === null && source?.fileName) {
-        sourceFile = truncate(source.fileName + ":" + (source.lineNumber || 0) + ":" + (source.columnNumber || 0), 500);
-      }
-      const type = fiber.elementType || fiber.type;
-      const name = typeof type === "function" ? type.displayName || type.name : typeof type === "object" && type ? type.displayName || type.name : null;
-      if (name && !seen.has(name)) {
-        seen.add(name);
-        names.push("<" + name + ">");
-      }
-    }
-    return {
-      reactComponents: names.length === 0 ? null : truncate(names.join(" "), 500),
-      sourceFile
-    };
   };
   const nearbySiblings = (element, max) => {
     const result = [];
     let previous = element.previousElementSibling;
     let next = element.nextElementSibling;
     let inspected = 0;
-    while (result.length < max && inspected < 80 && (previous || next)) {
+    while (
+      result.length < max &&
+      inspected < 60 &&
+      spend(1) &&
+      (previous || next)
+    ) {
       for (const candidate of [previous, next]) {
-        if (!candidate || result.length >= max || inspected >= 80) continue;
+        if (!candidate || result.length >= max || inspected >= 60) continue;
         inspected += 1;
         if (candidate === previous) previous = previous.previousElementSibling;
         if (candidate === next) next = next.nextElementSibling;
@@ -350,67 +332,277 @@ export const browserElementPickerSource = `async ({ input, signal }) => {
       const text = boundedText(candidate, 50);
       return truncate(domLabel(candidate) + (text ? ' "' + text + '"' : ""), 160);
     });
-  const compactHtml = (element) => {
-    const clone = element.cloneNode(true);
-    for (const node of Array.from(clone.querySelectorAll(noiseSelector))) node.remove();
-    for (const node of [clone, ...Array.from(clone.querySelectorAll("*"))]) {
-      for (const attribute of Array.from(node.attributes)) {
-        const name = attribute.name.toLowerCase();
-        const safe = ["id", "class", "name", "type", "role", "href", "src", "alt", "title", "placeholder", "for", "action", "method"].includes(name) || name.startsWith("aria-") || name === "data-testid";
-        if (!safe || name.startsWith("on") || name === "style" || name === "value" || name === "srcdoc") {
-          node.removeAttribute(attribute.name);
-          continue;
+  const safeUrl = (rawValue) => {
+    const value = String(rawValue).trim();
+    if (
+      value.length === 0 ||
+      [...value].some((char) => {
+        const code = char.charCodeAt(0);
+        return code <= 31 || code === 127;
+      })
+    ) {
+      return null;
+    }
+    try {
+      if (/^[a-z][a-z0-9+.-]*:/i.test(value) || value.slice(0, 2) === "//") {
+        const url = new URL(value, location.href);
+        if (url.protocol !== "http:" && url.protocol !== "https:") return null;
+        url.username = "";
+        url.password = "";
+        url.search = "";
+        url.hash = "";
+        return url.origin + url.pathname;
+      }
+      const relative = value.split(/[?#]/, 1)[0];
+      if (relative.length === 0) return null;
+      return relative;
+    } catch {
+      return null;
+    }
+  };
+  const sanitizeAttributeValue = (name, value) => {
+    const urlAttribute = ["href", "src", "action", "cite", "data", "formaction", "poster"].includes(name);
+    if (urlAttribute) return safeUrl(value);
+    const urlPattern = new RegExp(
+      "https?:" +
+        String.fromCharCode(47, 47) +
+        "[^ " +
+        String.fromCharCode(9, 13, 10, 34, 60, 62, 41) +
+        "]+",
+      "giu",
+    );
+    return String(value).replace(
+      urlPattern,
+      (match) => safeUrl(match) ?? "[REDACTED-URL]",
+    );
+  };
+  const resolveTarget = (target) => {
+    if (!target || typeof target !== "object") throw new Error("Browser capture target is invalid");
+    if (target.target === "point") {
+      if (!Number.isFinite(target.x) || !Number.isFinite(target.y)) throw new Error("Browser capture point is invalid");
+      const element = document.elementFromPoint(target.x, target.y);
+      if (!(element instanceof Element) || !element.isConnected) throw new Error("Browser capture target was not found");
+      return element;
+    }
+    if (target.target !== "locator" || !target.locator || typeof target.locator !== "object") {
+      throw new Error("Browser capture target is invalid");
+    }
+    const firstMatch = (root, predicate) => {
+      const walker = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT);
+      let matched = null;
+      let visited = 0;
+      for (let current = walker.nextNode(); current !== null; current = walker.nextNode()) {
+        visited += 1;
+        if (visited > 200) throw new Error("Browser capture lookup exceeded its node budget");
+        if (!predicate(current)) continue;
+        if (matched !== null) throw new Error("Browser locator matched multiple targets");
+        matched = current;
+      }
+      if (matched === null) throw new Error("Browser target was not found");
+      return matched;
+    };
+    const locator = target.locator;
+    if (Array.isArray(locator.selectors)) {
+      let root = document;
+      let element = null;
+      for (let index = 0; index < locator.selectors.length; index += 1) {
+        const selector = locator.selectors[index];
+        if (typeof selector !== "string" || selector.length === 0) throw new Error("Browser locator is invalid");
+        try {
+          element = firstMatch(root, (candidate) => candidate.matches(selector));
+        } catch (error) {
+          if (error instanceof SyntaxError) throw new Error("Browser locator is invalid");
+          throw error;
         }
-        if (name === "class") {
-          const classes = stableClasses(node, 4);
-          if (classes.length === 0) node.removeAttribute(attribute.name);
-          else node.setAttribute(attribute.name, classes.join(" "));
-        }
-        if (name === "href" || name === "src" || name === "action") {
-          try {
-            const url = new URL(attribute.value, location.href);
-            if (url.protocol === "http:" || url.protocol === "https:") {
-              url.search = "";
-              url.hash = "";
-              node.setAttribute(attribute.name, url.toString());
-            } else {
-              node.removeAttribute(attribute.name);
-            }
-          } catch {
-            node.removeAttribute(attribute.name);
-          }
+        if (index < locator.selectors.length - 1) {
+          if (!(element.shadowRoot instanceof ShadowRoot)) throw new Error("Browser target shadow root is unavailable");
+          root = element.shadowRoot;
         }
       }
+      return element;
     }
-    const html = clone.outerHTML;
-    if (html.length <= 4096) return html;
-    const shell = clone.cloneNode(false);
-    const shellHtml = shell.outerHTML;
-    const close = "</" + element.localName + ">";
-    const opening = shellHtml.endsWith(close) ? shellHtml.slice(0, -close.length) : shellHtml;
-    return truncate(opening + "… " + element.children.length + " child elements omitted …" + close, 4096);
+    if (typeof locator.role !== "string" || locator.role.length === 0) throw new Error("Browser locator is invalid");
+    const expectedRole = locator.role.toLowerCase();
+    const expectedName = typeof locator.name === "string" ? locator.name.toLocaleLowerCase() : null;
+    const implicitRole = (element) => {
+      if (element instanceof HTMLAnchorElement && element.hasAttribute("href")) return "link";
+      if (element instanceof HTMLButtonElement) return "button";
+      if (element instanceof HTMLSelectElement) return element.multiple ? "listbox" : "combobox";
+      if (element instanceof HTMLTextAreaElement) return "textbox";
+      if (element instanceof HTMLInputElement) {
+        if (element.type === "checkbox") return "checkbox";
+        if (element.type === "radio") return "radio";
+        if (["button", "reset", "submit"].includes(element.type)) return "button";
+        return "textbox";
+      }
+      if (/^H[1-6]$/.test(element.tagName)) return "heading";
+      if (element instanceof HTMLImageElement) return "img";
+      return null;
+    };
+    return firstMatch(document, (candidate) => {
+      const role = (candidate.getAttribute("role") || implicitRole(candidate) || "").toLowerCase();
+      if (role !== expectedRole) return false;
+      if (expectedName === null) return true;
+      const labelledBy = candidate.getAttribute("aria-labelledby");
+      const labelledText = labelledBy
+        ? labelledBy.split(/\s+/).map((id) => document.getElementById(id)?.textContent || "").join(" ")
+        : "";
+      const name = (candidate.getAttribute("aria-label") || labelledText ||
+        (candidate instanceof HTMLInputElement ? candidate.labels?.[0]?.textContent || "" : "") ||
+        candidate.getAttribute("alt") || candidate.getAttribute("title") || candidate.textContent || "")
+        .replace(/\s+/g, " ").trim().toLocaleLowerCase();
+      return name === expectedName;
+    });
+  };
+  const sensitiveField = (node) => node instanceof Element && (node.matches("input[type=password], textarea, select, [contenteditable]") || node.matches("input[type=text][name*=password], input[type=text][name*=secret], input[type=text][name*=token]"));
+  const compactHtml = (element) => {
+    const MAX_NODES = 200;
+    const MAX_DEPTH = 12;
+    const MAX_ATTRS = 32;
+    const MAX_OUTPUT = 4096;
+    let foundSensitive = false;
+    const htmlEscape = (value) => String(value)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+    const safeAttribute = (owner, attribute) => {
+      const name = attribute.name.toLowerCase();
+      if (name.startsWith("on") || name === "style" || name === "value" || name === "srcdoc") return null;
+      const safe = ["id", "class", "name", "type", "role", "href", "src", "alt", "title", "placeholder", "for", "action", "method", "cite", "data", "formaction", "poster"].includes(name) || name.startsWith("aria-") || name === "data-testid";
+      if (!safe) return null;
+      if (name === "class") {
+        const classes = stableClasses(owner, 4);
+        return classes.length === 0 ? null : [name, htmlEscape(classes.join(" "))];
+      }
+      const value = sanitizeAttributeValue(name, attribute.value.slice(0, 256));
+      return value === null ? null : [name, htmlEscape(value.slice(0, 256))];
+    };
+    const isNoiseElement = (node) => node instanceof Element && node.matches(noiseSelector);
+    const isHiddenElement = (node) => {
+      if (!(node instanceof Element)) return false;
+      const style = getComputedStyle(node);
+      return style.display === "none" || style.visibility === "hidden";
+    };
+    let output = "";
+    let visited = 0;
+    let truncated = false;
+    const note = () => {
+      if (truncated) return;
+      truncated = true;
+      const suffix = "… " + (element.children.length > 0 ? element.children.length + " child elements " : "") + "omitted …";
+      if (output.length + suffix.length <= MAX_OUTPUT) output += suffix;
+    };
+    const pushText = (text) => {
+      const value = text.replace(/\s+/g, " ").trim();
+      if (value.length === 0) return true;
+      const escaped = htmlEscape(value.slice(0, 200));
+      if (output.length + escaped.length > MAX_OUTPUT) {
+        note();
+        return false;
+      }
+      output += escaped;
+      return true;
+    };
+    const writeOpen = (current) => {
+      const tag = current.localName.slice(0, 64);
+      let open = "<" + tag;
+      let attributes = 0;
+      for (const attribute of current.attributes) {
+        if (attributes >= MAX_ATTRS) break;
+        const cleaned = safeAttribute(current, attribute);
+        if (cleaned === null) continue;
+        open += " " + cleaned[0] + '="' + cleaned[1] + '"';
+        attributes += 1;
+      }
+      open += ">";
+      if (output.length + open.length > MAX_OUTPUT) {
+        note();
+        return null;
+      }
+      output += open;
+      return tag;
+    };
+    visited += 1;
+    const rootTag = writeOpen(element);
+    if (rootTag === null) return { html: output, foundSensitive: sensitiveField(element) };
+    if (sensitiveField(element)) foundSensitive = true;
+    const stack = [{ node: element, tag: rootTag, index: 0 }];
+    while (stack.length > 0 && !truncated) {
+      const frame = stack[stack.length - 1];
+      const children = frame.node.childNodes;
+      let advanced = false;
+      while (frame.index < children.length && !truncated) {
+        if (visited >= MAX_NODES) {
+          note();
+          break;
+        }
+        const child = children[frame.index];
+        frame.index += 1;
+        visited += 1;
+        advanced = true;
+        if (sensitiveField(child)) foundSensitive = true;
+        if (child.nodeType === Node.TEXT_NODE) {
+          if (pushText(child.nodeValue || "") === false) break;
+          continue;
+        }
+        if (!(child instanceof Element)) continue;
+        if (isNoiseElement(child) || isHiddenElement(child)) continue;
+        if (stack.length >= MAX_DEPTH) {
+          note();
+          continue;
+        }
+        const tag = writeOpen(child);
+        if (tag === null) break;
+        stack.push({ node: child, tag, index: 0 });
+        advanced = false;
+        break;
+      }
+      if (advanced === false && frame.index >= children.length) {
+        const closing = "</" + frame.tag + ">";
+        if (output.length + closing.length > MAX_OUTPUT) note();
+        else output += closing;
+        stack.pop();
+      }
+    }
+    if (stack.length > 0) note();
+    return { html: output, foundSensitive };
   };
   const describe = (element) => {
     const rect = element.getBoundingClientRect();
     const style = getComputedStyle(element);
-    const containsSensitiveField = element.matches("input[type=password], textarea, select, [contenteditable]") || element.querySelector("input[type=password], textarea, select, [contenteditable]") !== null;
+    const rootSensitiveField = sensitiveField(element);
+    const walkResult =
+      element instanceof HTMLElement &&
+      !(element instanceof HTMLInputElement) &&
+      !(element instanceof HTMLSelectElement) &&
+      !(element instanceof HTMLTextAreaElement) &&
+      !element.isContentEditable &&
+      !rootSensitiveField
+        ? compactHtml(element)
+        : { html: "", foundSensitive: rootSensitiveField };
+    const containsSensitiveField = rootSensitiveField || walkResult.foundSensitive;
     const editable = element instanceof HTMLInputElement || element instanceof HTMLSelectElement || element instanceof HTMLTextAreaElement || element.isContentEditable || element.closest("[contenteditable]") !== null || containsSensitiveField;
     const attributes = {};
-    for (const name of ["id", "class", "name", "type", "role", "href", "src", "alt", "title", "placeholder", "for", "action", "method"]) {
+    for (const name of ["id", "class", "name", "type", "role", "href", "src", "alt", "title", "placeholder", "for", "action", "method", "cite", "data", "formaction", "poster"]) {
       const value = element.getAttribute(name);
-      if (value) attributes[name] = value.slice(0, 256);
+      if (value) {
+        const sanitized = sanitizeAttributeValue(name, value);
+        if (sanitized !== null) attributes[name] = sanitized.slice(0, 256);
+      }
     }
-    for (const attribute of Array.from(element.attributes)) {
+    for (const attribute of element.attributes) {
       if (attribute.name.startsWith("aria-") && attribute.value) {
-        attributes[attribute.name] = attribute.value.slice(0, 256);
+        const sanitized = sanitizeAttributeValue(attribute.name.toLowerCase(), attribute.value);
+        if (sanitized !== null) attributes[attribute.name] = sanitized.slice(0, 256);
       }
     }
     const path = domPath(element);
-    const metadata = reactMetadata(element);
+    const metadata = { reactComponents: null, sourceFile: null };
     const ariaLabel = element.getAttribute("aria-label")?.slice(0, 256) || null;
     const ariaLabelledBy = element.getAttribute("aria-labelledby")?.slice(0, 256) || null;
     const labelledText = ariaLabelledBy
-      ? ariaLabelledBy.split(/\\s+/g).map((id) => document.getElementById(id)).filter(Boolean).map((label) => boundedText(label, 256)).filter(Boolean).join(" ")
+      ? ariaLabelledBy.split(/\s+/g).map((id) => document.getElementById(id)).filter(Boolean).map((label) => boundedText(label, 256)).filter(Boolean).join(" ")
       : "";
     const accessibleName = ariaLabel || labelledText || (editable ? "" : boundedText(element, 256));
     return {
@@ -433,14 +625,14 @@ export const browserElementPickerSource = `async ({ input, signal }) => {
       },
       editable,
       fullDomPath: truncate(path.join(" > "), 900),
-      html: editable ? null : compactHtml(element),
+      html: editable ? null : (walkResult.html.length > 0 ? walkResult.html : null),
       nearbyElements: nearbyElements(element),
       nearbyText: nearbyText(element),
       reactComponents: metadata.reactComponents,
       rect: { height: rect.height, width: rect.width, x: rect.x, y: rect.y },
       rectPage: { height: rect.height, width: rect.width, x: rect.x + scrollX, y: rect.y + scrollY },
       scroll: { x: scrollX, y: scrollY },
-      selectedText: truncate(getSelection()?.toString().replace(/\\s+/g, " ").trim() || "", 500) || null,
+      selectedText: truncate(getSelection()?.toString().replace(/\s+/g, " ").trim() || "", 500) || null,
       sourceFile: metadata.sourceFile,
       styles: {
         backgroundColor: style.backgroundColor,
@@ -467,6 +659,7 @@ export const browserElementPickerSource = `async ({ input, signal }) => {
       viewport: { height: innerHeight, width: innerWidth }
     };
   };
+  if (directCapture) return describe(resolveTarget(input.element));
   let hovered = null;
   const show = (element) => {
     const rect = element.getBoundingClientRect();
@@ -516,14 +709,100 @@ export const browserElementPickerSource = `async ({ input, signal }) => {
   }
 }`;
 
+export const browserElementReactMetadataSource = `async ({ input }) => {
+  const target = input?.target;
+  if (!target || typeof target !== "object") return { reactComponents: null, sourceFile: null };
+  const resolve = () => {
+    if (target.target === "point") {
+      return document.elementFromPoint(target.x, target.y);
+    }
+    if (target.target !== "locator" || !target.locator || !Array.isArray(target.locator.selectors)) return null;
+    let root = document;
+    let element = null;
+    for (let index = 0; index < target.locator.selectors.length; index += 1) {
+      const selector = target.locator.selectors[index];
+      if (typeof selector !== "string") return null;
+      const walker = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT);
+      let matches = 0;
+      for (let current = walker.nextNode(), visited = 0; current !== null; current = walker.nextNode()) {
+        visited += 1;
+        if (visited > 200) return null;
+        if (!current.matches(selector)) continue;
+        matches += 1;
+        element = current;
+        if (matches > 1) return null;
+      }
+      if (matches !== 1 || !(element instanceof Element)) return null;
+      if (index < target.locator.selectors.length - 1) {
+        if (!(element.shadowRoot instanceof ShadowRoot)) return null;
+        root = element.shadowRoot;
+      }
+    }
+    return element;
+  };
+  const element = resolve();
+  if (!(element instanceof Element)) return { reactComponents: null, sourceFile: null };
+  const key = Object.keys(element).find((name) => name.startsWith("__reactFiber$") || name.startsWith("__reactInternalInstance$"));
+  let fiber = key ? element[key] : null;
+  const names = [];
+  const seen = new Set();
+  let sourceFile = null;
+  for (let index = 0; fiber && index < 32; index += 1, fiber = fiber.return) {
+    const source = fiber._debugSource;
+    if (sourceFile === null && typeof source?.fileName === "string") {
+      sourceFile = (source.fileName + ":" + (source.lineNumber || 0) + ":" + (source.columnNumber || 0)).slice(0, 500);
+    }
+    const type = fiber.elementType || fiber.type;
+    const name = typeof type === "function" ? type.displayName || type.name : typeof type === "object" && type ? type.displayName || type.name : null;
+    if (typeof name === "string" && name.length > 0 && !seen.has(name)) {
+      seen.add(name);
+      names.push("<" + name + ">");
+      if (names.length >= 32) break;
+    }
+  }
+  return { reactComponents: names.length === 0 ? null : names.join(" ").slice(0, 500), sourceFile };
+}`;
+
 function redactText(value: string): string {
   return value.replace(SENSITIVE_VALUE, "[REDACTED]");
 }
 
-function sanitizePageUrl(value: string): string | null {
+function decodePercent(value: string): string {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
+function sanitizeUrlAttribute(value: string): string | null {
   try {
     const url = new URL(value);
     if (url.protocol !== "http:" && url.protocol !== "https:") return null;
+    if (url.username.length > 0 || url.password.length > 0) return null;
+    url.search = "";
+    url.hash = "";
+    return `${url.origin}${url.pathname}`;
+  } catch {
+    return null;
+  }
+}
+
+function sanitizeNestedUrlText(value: string): string {
+  return value.replace(
+    /\bhttps?:\/\/[^\s"<>)\]]+/giu,
+    (match) => sanitizeUrlAttribute(decodePercent(match)) ?? "[REDACTED-URL]",
+  );
+}
+
+function sanitizePageUrl(value: string): string | null {
+  try {
+    const url = new URL(decodePercent(value));
+    if (url.protocol !== "http:" && url.protocol !== "https:") return null;
+    url.username = "";
+    url.password = "";
+    url.search = "";
+    url.hash = "";
     return `${url.origin}${url.pathname}`;
   } catch {
     return null;
@@ -532,7 +811,8 @@ function sanitizePageUrl(value: string): string | null {
 
 function nullableRedactedText(value: string | null): string | null {
   if (value === null) return null;
-  return redactText(value);
+  const withSensitive = redactText(value);
+  return sanitizeNestedUrlText(withSensitive);
 }
 
 export function redactBrowserElementAnnotation(
@@ -585,7 +865,13 @@ export function redactBrowserElementAnnotation(
               .filter(
                 ([name, value]) => !SENSITIVE_FIELD_NAME.test(name + value),
               )
-              .map(([name, value]) => [name, redactText(value)]),
+              .map(([name, value]) => {
+                if (name === "href" || name === "src" || name === "action") {
+                  const sanitized = sanitizeUrlAttribute(decodePercent(value));
+                  return [name, sanitized ?? "[REDACTED-URL]"];
+                }
+                return [name, redactText(value)];
+              }),
           ),
       classes: sensitive
         ? []
@@ -602,10 +888,14 @@ export function redactBrowserElementAnnotation(
     },
     nearbyText: sensitive
       ? []
-      : capture.nearbyText.map((value) => redactText(value)),
+      : capture.nearbyText.map((value) =>
+          sanitizeNestedUrlText(redactText(value)),
+        ),
     nearbyElements: sensitive
       ? []
-      : capture.nearbyElements.map((value) => redactText(value)),
+      : capture.nearbyElements.map((value) =>
+          sanitizeNestedUrlText(redactText(value)),
+        ),
     fullDomPath: sensitive ? capture.dom.tag : redactText(capture.fullDomPath),
     html: sensitive ? null : nullableRedactedText(capture.html),
     pageUrl,
@@ -619,7 +909,7 @@ export function redactBrowserElementAnnotation(
     sensitive,
     sourceFile: sensitive ? null : nullableRedactedText(capture.sourceFile),
     styles: capture.styles,
-    text: sensitive ? "" : redactText(capture.text),
+    text: sensitive ? "" : sanitizeNestedUrlText(redactText(capture.text)),
     title: sensitive ? null : nullableRedactedText(capture.title),
     viewport: capture.viewport,
   };

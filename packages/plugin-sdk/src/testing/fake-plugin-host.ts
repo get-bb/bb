@@ -17,6 +17,7 @@ import {
   BACKGROUND_NAME_PATTERN,
   CLI_COMMAND_NAME_PATTERN,
   enforcePluginCliOutputLimit,
+  normalizePluginCliResult,
   isStandardSchema,
   isZodSchemaLike,
   storePluginHook,
@@ -2089,6 +2090,10 @@ function createFakePluginHostInternal(
       Promise.reject(new Error("Browser tab creation is unavailable in tests")),
     run: () =>
       Promise.reject(new Error("Browser control is unavailable in tests")),
+    experimental_requestContribution: () =>
+      Promise.reject(
+        new Error("Browser contributions are unavailable in tests"),
+      ),
   };
   const experimental_hooks: PluginHooks = {
     on(hook, handler) {
@@ -2374,11 +2379,7 @@ function createFakePluginHostInternal(
           );
         }
         return enforcePluginCliOutputLimit(
-          {
-            exitCode: result.exitCode,
-            stdout: typeof result.stdout === "string" ? result.stdout : "",
-            stderr: typeof result.stderr === "string" ? result.stderr : "",
-          },
+          normalizePluginCliResult(result),
           argv.includes("--json"),
         );
       } catch (error) {

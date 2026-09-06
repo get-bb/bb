@@ -42,7 +42,7 @@ import {
   type ThreadDeleteDialogTarget,
 } from "@/components/dialogs/ThreadDeleteDialog";
 import { ArchivedThreadToastDescription } from "@/components/thread/ArchivedThreadToastDescription";
-import { clearBrowserAnnotationRecordsForThread } from "@/components/secondary-panel/browserAnnotationState";
+import { notifyBrowserControllerDisposedForThread } from "@/lib/browser-control-client";
 import { destroyPersistedBrowserViewsForThread } from "@/components/secondary-panel/browserViewVisibilityCoordinator";
 import { getThreadReadToggleAction } from "@bb/client-core";
 import { getRootComposeRoutePath, getThreadRoutePath } from "@/lib/route-paths";
@@ -249,7 +249,7 @@ export function ThreadActionsProvider({
               desktopBrowser: getDesktopBrowserApi(),
               threadId: thread.id,
             });
-            clearBrowserAnnotationRecordsForThread(thread.id);
+            notifyBrowserControllerDisposedForThread(thread.id);
             closeDialog();
             syncNavigationAfterClose(closePanesForThreads([thread.id]), () =>
               navigateAwayIfViewing(thread),

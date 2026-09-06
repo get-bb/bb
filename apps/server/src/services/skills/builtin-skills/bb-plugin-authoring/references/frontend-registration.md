@@ -151,13 +151,12 @@ app.slots.experimental_threadHeaderAction({
 });
 ```
 
-The row is a 48px chrome row with 28px controls. Render one inline control.
-Put taller content in a portalled popover. The host limits the layout box, but
-it does not clip painted overflow. `title`
-names the host's wrapper region — your icon-only button still needs its own
-accessible name. A split layout renders one header
-per pane, so your component mounts once per visible thread — keep per-thread
-state in the component, never in a module-level singleton.
+The row is a 48px chrome row. Keep controls compact and give every interactive
+element an accessible name; use a portalled popover for taller content. The host
+limits the layout box, but it does not clip painted overflow. `title` names the
+host's wrapper region. A split layout renders one header per pane, so your
+component mounts once per visible thread — keep per-thread state in the
+component, never in a module-level singleton.
 
 A common pairing with a replaced sidebar: hide child threads from the list and
 surface them here instead, filtering `experimental_useSidebarThreads()` by

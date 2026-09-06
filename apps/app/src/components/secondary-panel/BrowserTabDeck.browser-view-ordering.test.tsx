@@ -16,13 +16,6 @@ import {
 } from "@/test/bb-desktop-test-utils";
 import { POINTER_COARSE_QUERY } from "@bb/shared-ui/hooks/use-pointer-coarse";
 import { TooltipProvider } from "@bb/shared-ui/tooltip";
-import {
-  browserAnnotationSnapshot,
-  createEmptyBrowserScreenshotEditor,
-  markBrowserAnnotationEpoch,
-  resetBrowserAnnotationStore,
-  setBrowserAnnotationScreenshot,
-} from "./browserAnnotationState";
 import { BrowserTabDeck, BrowserTabLifecycleObserver } from "./BrowserTabDeck";
 import { resetBrowserViewPersistence } from "./browserViewVisibilityCoordinator";
 
@@ -69,12 +62,6 @@ function makeBrowserTab(id: string, url: string): BrowserFixedPanelTab {
   };
 }
 
-function screenshotSessionForTest() {
-  return {
-    editor: createEmptyBrowserScreenshotEditor(),
-    screenshotUrl: "data:image/png;base64,session",
-  };
-}
 
 function createRecordingBrowserApi(): RecordingBrowserApi {
   const calls: BrowserCall[] = [];
@@ -195,7 +182,6 @@ describe("BrowserTabLifecycleObserver", () => {
     cleanup();
     vi.restoreAllMocks();
     resetBrowserViewPersistence();
-    resetBrowserAnnotationStore();
     delete window.bbDesktop;
   });
 
@@ -218,28 +204,9 @@ describe("BrowserTabLifecycleObserver", () => {
     ).toEqual([{ tabId: "tab-closed", visible: false }]);
   });
 
-  it("clears a closed tab's annotation record but keeps another tab's", async () => {
+  it("detaches only the closed tab", async () => {
     const { api, detachments } = createRecordingBrowserApi();
     installDesktopBrowser(api);
-    const keyClosed = {
-      environmentId: null,
-      tabId: "tab-closed",
-      threadId: "thread-1",
-    };
-    const keyKept = {
-      environmentId: null,
-      tabId: "tab-kept",
-      threadId: "thread-1",
-    };
-    markBrowserAnnotationEpoch(keyClosed, 7);
-    setBrowserAnnotationScreenshot(
-      keyClosed,
-      7,
-      screenshotSessionForTest(),
-    );
-    markBrowserAnnotationEpoch(keyKept, 7);
-    setBrowserAnnotationScreenshot(keyKept, 7, screenshotSessionForTest());
-
     const view = render(
       <BrowserTabLifecycleObserver
         browserTabs={[
@@ -256,39 +223,26 @@ describe("BrowserTabLifecycleObserver", () => {
         threadId="thread-1"
       />,
     );
-
     await waitFor(() => expect(detachments).toEqual(["tab-closed"]));
-    expect(browserAnnotationSnapshot(keyClosed)).toBeNull();
-    expect(browserAnnotationSnapshot(keyKept)?.screenshot).not.toBeNull();
   });
 
-  it("keeps the annotation record when only the thread changes", async () => {
+  it("does not treat a thread change as a tab close", async () => {
     const { api, detachments } = createRecordingBrowserApi();
     installDesktopBrowser(api);
-    const key = {
-      environmentId: null,
-      tabId: "tab-closed",
-      threadId: "thread-1",
-    };
-    markBrowserAnnotationEpoch(key, 7);
-    setBrowserAnnotationScreenshot(key, 7, screenshotSessionForTest());
-
     const view = render(
       <BrowserTabLifecycleObserver
-        browserTabs={[makeBrowserTab("tab-closed", "https://example.com")]}
+        browserTabs={[makeBrowserTab("tab-a", "https://example.com")]}
         threadId="thread-1"
       />,
     );
     await waitFor(() => expect(detachments).toHaveLength(0));
     view.rerender(
       <BrowserTabLifecycleObserver
-        browserTabs={[makeBrowserTab("tab-closed", "https://example.com")]}
+        browserTabs={[makeBrowserTab("tab-a", "https://example.com")]}
         threadId="thread-2"
       />,
     );
-
     expect(detachments).toHaveLength(0);
-    expect(browserAnnotationSnapshot(key)?.screenshot).not.toBeNull();
   });
 });
 
@@ -480,27 +434,6 @@ describe("BrowserTabDeck native browser first-show ordering", () => {
     expect(restoredShowIndex).toBeGreaterThan(restoredBoundsIndex);
   });
 
-  it("keeps an unfocused split view hidden on a legacy desktop focus bridge", async () => {
-    const { api, attachments, visibility } = createRecordingBrowserApi();
-    const { focus: _focus, onFocus: _onFocus, ...legacyApi } = api;
-    installDesktopBrowser(legacyApi);
-
-    render(
-      <BrowserTabDeck
-        browserTabs={[makeBrowserTab("tab-url", "https://example.com")]}
-        activeBrowserTabId="tab-url"
-        environmentId="env-1"
-        canShowNativeBrowserView
-        canHandleBrowserCommands={false}
-        threadId="thread-1"
-        onUpdate={() => {}}
-      />,
-      { wrapper: TooltipProvider },
-    );
-
-    await waitFor(() => expect(attachments).toHaveLength(1));
-    expect(visibility.some((request) => request.visible)).toBe(false);
-  });
 
   it("shows an unfocused split view without moving native focus", async () => {
     const { api, attachments, emitState, visibility, visibilityWithoutFocus } =

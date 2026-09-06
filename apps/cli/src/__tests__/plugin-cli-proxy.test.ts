@@ -1,3 +1,6 @@
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -494,6 +497,77 @@ describe("runPluginCliCommand", () => {
       { channel: "stdout", value: `${stdout}\n` },
       { channel: "stderr", value: "warning\n" },
     ]);
+  });
+
+  it("downloads a successful plugin capture only to its explicit matching destination", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "bb-plugin-capture-"));
+    const out = join(directory, "capture.png");
+    const descriptor = {
+      captureId: "capture-1",
+      mimeType: "image/png",
+      pixelSize: { width: 2, height: 1 },
+      byteLength: 3,
+      target: {
+        clientId: "client-1",
+        windowId: "window-1",
+        tabId: "tab-1",
+        navigationEpoch: 2,
+      },
+      expiresAt: 1_800_000_000_000,
+    };
+    const requests: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        requests.push(url);
+        if (url.includes("/plugins/fixture/cli")) {
+          return new Response(
+            JSON.stringify({
+              exitCode: 0,
+              experimental_browserCaptureDownload: { descriptor, out },
+            }),
+            { status: 200 },
+          );
+        }
+        if (url.includes("/capture-release")) {
+          return new Response(JSON.stringify({ released: true }), { status: 200 });
+        }
+        return new Response(
+          JSON.stringify({
+            captureId: descriptor.captureId,
+            offset: 0,
+            base64: "UE5H",
+            eof: true,
+          }),
+          { status: 200 },
+        );
+      }),
+    );
+    const writes: string[] = [];
+    const stream = {
+      write(value: string, callback: (error?: Error | null) => void) {
+        writes.push(value);
+        callback();
+        return true;
+      },
+    };
+
+    try {
+      await expect(
+        runPluginCliCommand(
+          "http://bb.test",
+          "fixture",
+          ["export", "--out", out],
+          { stdout: stream, stderr: stream },
+        ),
+      ).resolves.toBe(0);
+      await expect(readFile(out)).resolves.toEqual(Buffer.from("PNG"));
+      expect(requests.some((url) => url.includes("/capture-release"))).toBe(true);
+      expect(writes).toEqual([]);
+    } finally {
+      await rm(directory, { force: true, recursive: true });
+    }
   });
 
   it("materializes an arbitrary stdin flag only in the proxied request", async () => {
