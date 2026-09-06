@@ -48,7 +48,6 @@ import {
   requirePublicStandardProject,
 } from "../services/lib/entity-lookup.js";
 import { PROMPT_HISTORY_ENTRY_LIMIT } from "@bb/domain";
-import { resolveCreateThreadExecutionDefaults } from "../services/threads/thread-default-policy.js";
 import { toThreadListEntryResponses } from "../services/threads/thread-runtime-display.js";
 import { callHostRetryableOnlineRpc } from "../services/hosts/online-rpc.js";
 import { runLiveHostCommand } from "../services/hosts/live-command.js";
@@ -244,12 +243,7 @@ function buildProjectsWithThreadsResponseFromRows(
   return projects.map((project) => ({
     ...project,
     threads: threadsByProjectId.get(project.id) ?? [],
-    defaultExecutionOptions: resolveCreateThreadExecutionDefaults(
-      deps.providerRegistry,
-      {
-        storedDefaults: defaultsByProjectId.get(project.id) ?? null,
-      },
-    ).executionDefaults,
+    defaultExecutionOptions: defaultsByProjectId.get(project.id) ?? null,
   }));
 }
 
@@ -395,15 +389,10 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
     context.json(buildProjectResponses(deps, context.req.param("id"))[0]),
   );
 
-  get(routes.defaultExecutionOptions, (context, query) => {
+  get(routes.defaultExecutionOptions, (context) => {
     const projectId = context.req.param("id");
     requirePublicProject(deps.db, projectId);
-    const storedDefaults = getProjectExecutionDefaults(deps.db, { projectId });
-    return context.json(
-      resolveCreateThreadExecutionDefaults(deps.providerRegistry, {
-        storedDefaults,
-      }).executionDefaults,
-    );
+    return context.json(getProjectExecutionDefaults(deps.db, { projectId }));
   });
 
   get(routes.promptHistory, (context, query) => {
