@@ -136,22 +136,32 @@ export function runPortableCommand(
 
     child.stdout.on("data", (chunk: Buffer) => {
       if (settled || timedOut || stdoutOverflow || stderrOverflow) return;
-      stdoutBytes += chunk.length;
-      if (stdoutBytes > request.maxBufferBytes) {
+      const remaining = request.maxBufferBytes - stdoutBytes;
+      if (chunk.length > remaining) {
+        if (remaining > 0) {
+          stdoutChunks.push(Buffer.from(chunk.subarray(0, remaining)));
+          stdoutBytes += remaining;
+        }
         stdoutOverflow = true;
         killChild();
         return;
       }
+      stdoutBytes += chunk.length;
       stdoutChunks.push(Buffer.from(chunk));
     });
     child.stderr.on("data", (chunk: Buffer) => {
       if (settled || timedOut || stdoutOverflow || stderrOverflow) return;
-      stderrBytes += chunk.length;
-      if (stderrBytes > request.maxBufferBytes) {
+      const remaining = request.maxBufferBytes - stderrBytes;
+      if (chunk.length > remaining) {
+        if (remaining > 0) {
+          stderrChunks.push(Buffer.from(chunk.subarray(0, remaining)));
+          stderrBytes += remaining;
+        }
         stderrOverflow = true;
         killChild();
         return;
       }
+      stderrBytes += chunk.length;
       stderrChunks.push(Buffer.from(chunk));
     });
     child.once("error", (error) => {

@@ -5,37 +5,16 @@ import {
   runPullRequestActionForCurrentBranch,
   type GitHostPullRequestAction,
 } from "../src/git-host.js";
+import type { PortableCommandRequest } from "../src/portable-command.js";
 
-const execFileMock = vi.hoisted(() => vi.fn());
+const runPortableCommandMock = vi.hoisted(() => vi.fn());
 
-vi.mock("node:child_process", async () => {
-  const actual =
-    await vi.importActual<typeof import("node:child_process")>(
-      "node:child_process",
-    );
-  const { promisify } = await import("node:util");
-  Object.defineProperty(execFileMock, promisify.custom, {
-    value: (file: string, args: readonly string[], options: object) =>
-      new Promise((resolve, reject) => {
-        execFileMock(
-          file,
-          args,
-          options,
-          (error: Error | null, stdout = "", stderr = "") => {
-            if (error) reject(error);
-            else resolve({ stdout, stderr });
-          },
-        );
-      }),
-  });
-  return {
-    ...actual,
-    execFile: execFileMock,
-  };
-});
+vi.mock("../src/portable-command.js", () => ({
+  runPortableCommand: runPortableCommandMock,
+}));
 
 beforeEach(() => {
-  execFileMock.mockReset();
+  runPortableCommandMock.mockReset();
 });
 
 function ghJson(overrides: Record<string, unknown> = {}): string {
@@ -191,20 +170,11 @@ describe("runPullRequestActionForCurrentBranch", () => {
   };
 
   function mockGhSuccess(): void {
-    execFileMock.mockImplementation(
-      (
-        file: string,
-        _args: readonly string[],
-        _options: object,
-        callback: (error: Error | null, stdout: string, stderr: string) => void,
-      ) => {
-        if (file === "git") {
-          callback(null, "", "");
-          return;
-        }
-        callback(null, "", "");
-      },
-    );
+    runPortableCommandMock.mockImplementation(async () => ({
+      stdout: "",
+      stderr: "",
+      exitCode: 0,
+    }));
   }
 
   it.each([
@@ -235,19 +205,18 @@ describe("runPullRequestActionForCurrentBranch", () => {
         action,
       });
 
-      expect(execFileMock).toHaveBeenCalledWith(
-        "gh",
-        expectedArgs,
+      expect(runPortableCommandMock).toHaveBeenCalledWith(
         expect.objectContaining({
+          command: "gh",
+          args: expectedArgs,
           cwd: "/tmp/workspace",
-          encoding: "utf8",
           env: expect.objectContaining({
             PATH: "/Users/test/.local/bin:/usr/bin",
           }),
-          maxBuffer: 16 * 1024 * 1024,
-          timeout: 60_000,
+          maxBufferBytes: 16 * 1024 * 1024,
+          timeoutMs: 60_000,
+          encoding: "utf8",
         }),
-        expect.any(Function),
       );
     },
   );
@@ -256,22 +225,12 @@ describe("runPullRequestActionForCurrentBranch", () => {
     const error = Object.assign(new Error("spawn gh ENOENT"), {
       code: "ENOENT",
     });
-    execFileMock.mockImplementation(
-      (
-        file: string,
-        _args: readonly string[],
-        _options: object,
-        callback: (
-          error: Error | null,
-          stdout?: string,
-          stderr?: string,
-        ) => void,
-      ) => {
-        if (file === "git") {
-          callback(null, "", "");
-          return;
+    runPortableCommandMock.mockImplementation(
+      async (request: PortableCommandRequest) => {
+        if (request.command === "git") {
+          return { stdout: "", stderr: "", exitCode: 0 };
         }
-        callback(error);
+        throw error;
       },
     );
 
@@ -295,39 +254,23 @@ describe("getPullRequestForCurrentBranch", () => {
   };
 
   function mockGhStdout(stdout: string): void {
-    execFileMock.mockImplementation(
-      (
-        file: string,
-        _args: readonly string[],
-        _options: object,
-        callback: (error: Error | null, stdout: string, stderr: string) => void,
-      ) => {
-        if (file === "git") {
-          callback(null, "", "");
-          return;
+    runPortableCommandMock.mockImplementation(
+      async (request: PortableCommandRequest) => {
+        if (request.command === "git") {
+          return { stdout: "", stderr: "", exitCode: 0 };
         }
-        callback(null, stdout, "");
+        return { stdout, stderr: "", exitCode: 0 };
       },
     );
   }
 
   function mockGhFailure(error: Error): void {
-    execFileMock.mockImplementation(
-      (
-        file: string,
-        _args: readonly string[],
-        _options: object,
-        callback: (
-          error: Error | null,
-          stdout?: string,
-          stderr?: string,
-        ) => void,
-      ) => {
-        if (file === "git") {
-          callback(null, "", "");
-          return;
+    runPortableCommandMock.mockImplementation(
+      async (request: PortableCommandRequest) => {
+        if (request.command === "git") {
+          return { stdout: "", stderr: "", exitCode: 0 };
         }
-        callback(error);
+        throw error;
       },
     );
   }
@@ -340,16 +283,15 @@ describe("getPullRequestForCurrentBranch", () => {
       outcome: "found",
       pullRequest: { number: 42, state: "OPEN" },
     });
-    expect(execFileMock).toHaveBeenCalledWith(
-      "gh",
-      ["pr", "view", "--json", expect.any(String)],
+    expect(runPortableCommandMock).toHaveBeenCalledWith(
       expect.objectContaining({
+        command: "gh",
+        args: ["pr", "view", "--json", expect.any(String)],
         cwd: "/tmp/workspace",
         env: expect.objectContaining({
           PATH: "/Users/test/.local/bin:/usr/bin",
         }),
       }),
-      expect.any(Function),
     );
   });
 
