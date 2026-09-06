@@ -2353,6 +2353,43 @@ describe("timeline CLI rendering snapshots", () => {
     `);
   });
 
+  it("preserves interleaved reasoning order across live and restored timelines", () => {
+    const event = createTimelineEventFactory({ threadId: "thread-1" });
+    const itemId = "reasoning-1";
+    const streamingEvents = [
+      event.turnStarted(),
+      event.reasoningStarted({ itemId }),
+      event.reasoningSummaryDelta({ delta: "Summary 1.\n", itemId }),
+      event.reasoningDelta({ delta: "Body.\n", itemId }),
+      event.reasoningSummaryDelta({ delta: "Summary 2.\n", itemId }),
+    ];
+    const completedEvents = [
+      ...streamingEvents,
+      event.reasoningCompleted({
+        itemId,
+        summary: "Summary 1.\nSummary 2.\n",
+        text: "Body.\n",
+      }),
+      event.turnCompleted(),
+    ];
+    const expectedText = "Summary 1.\nBody.\nSummary 2.\n";
+
+    expect(
+      renderActiveTimeline(streamingEvents).projection.state.activeThinking?.text,
+    ).toBe(expectedText);
+    const completedMessages = renderActiveTimeline(
+      completedEvents.slice(0, -1),
+    ).messages;
+    expect(
+      completedMessages.filter((message) => message.kind === "operation"),
+    ).toEqual([
+      expect.objectContaining({ detail: expectedText, status: "completed" }),
+    ]);
+    expect(renderIdleTimeline(completedEvents).messages).toEqual(
+      completedMessages,
+    );
+  });
+
   it("keeps completed reasoning at root when provider parent scope is suppressed", () => {
     const event = createTimelineEventFactory({ threadId: "thread-1" });
     const startRequest = event.clientTurnRequested({
