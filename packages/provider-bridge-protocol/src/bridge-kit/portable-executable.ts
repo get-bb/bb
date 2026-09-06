@@ -3,7 +3,7 @@ import {
   type ChildProcess,
   type SpawnOptions,
 } from "node:child_process";
-import { join } from "node:path";
+import path from "node:path";
 import {
   spawnPortableOutputProcess,
   spawnPortablePipedProcess,
@@ -29,12 +29,22 @@ export function resolveBinaryLookupCommand(
   return platform === "win32" ? "where.exe" : "which";
 }
 
-export function parseBinaryLookupOutput(stdout: string): string | null {
+const WINDOWS_EXECUTABLE_EXTENSION_PATTERN = /\.(?:com|exe|bat|cmd|ps1)$/iu;
+
+export function parseBinaryLookupOutput(
+  stdout: string,
+  platform: NodeJS.Platform = process.platform,
+): string | null {
+  const lines = stdout
+    .split(/\r?\n/u)
+    .map((line) => line.trim())
+    .filter((line) => line !== "");
+  if (lines.length === 0) return null;
+  if (platform !== "win32") return lines[0] ?? null;
   return (
-    stdout
-      .split(/\r?\n/u)
-      .find((line) => line.trim() !== "")
-      ?.trim() ?? null
+    lines.find((line) => WINDOWS_EXECUTABLE_EXTENSION_PATTERN.test(line)) ??
+    lines[0] ??
+    null
   );
 }
 
@@ -62,7 +72,7 @@ export function resolveNpmGlobalBinDir(
   if (platform === "win32") {
     return npmPrefix;
   }
-  return join(npmPrefix, "bin");
+  return path.posix.join(npmPrefix, "bin");
 }
 
 function pipedSpawnOptions(call: PortableProcessCall): SpawnOptions {

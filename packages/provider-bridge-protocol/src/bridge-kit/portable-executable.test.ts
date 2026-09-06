@@ -70,19 +70,57 @@ describe("parseBinaryLookupOutput", () => {
     expect(
       parseBinaryLookupOutput(
         "C:\\tools\\codex.cmd\r\nC:\\tools\\codex.exe\r\n",
+        "win32",
       ),
     ).toBe("C:\\tools\\codex.cmd");
   });
 
   it("skips blank lines and trims the winner", () => {
-    expect(parseBinaryLookupOutput("\r\n  /usr/local/bin/codex  \n")).toBe(
-      "/usr/local/bin/codex",
-    );
+    expect(
+      parseBinaryLookupOutput("\r\n  /usr/local/bin/codex  \n", "linux"),
+    ).toBe("/usr/local/bin/codex");
   });
 
   it("returns null when the lookup printed nothing", () => {
-    expect(parseBinaryLookupOutput("")).toBeNull();
-    expect(parseBinaryLookupOutput("  \r\n  \n")).toBeNull();
+    expect(parseBinaryLookupOutput("", "win32")).toBeNull();
+    expect(parseBinaryLookupOutput("  \r\n  \n", "linux")).toBeNull();
+  });
+});
+
+describe("parseBinaryLookupOutput PATHEXT", () => {
+  it("prefers a Windows executable over an extensionless shim on win32", () => {
+    expect(
+      parseBinaryLookupOutput(
+        "C:\\Users\\u\\AppData\\Roaming\\npm\\codex\r\nC:\\Users\\u\\AppData\\Roaming\\npm\\codex.cmd\r\n",
+        "win32",
+      ),
+    ).toBe("C:\\Users\\u\\AppData\\Roaming\\npm\\codex.cmd");
+  });
+
+  it("prefers pi.cmd over an extensionless pi shim on win32", () => {
+    expect(
+      parseBinaryLookupOutput(
+        "C:\\Users\\Administrator\\AppData\\Local\\pi-node\\current\\pi\r\nC:\\Users\\Administrator\\AppData\\Local\\pi-node\\current\\pi.cmd\r\n",
+        "win32",
+      ),
+    ).toBe(
+      "C:\\Users\\Administrator\\AppData\\Local\\pi-node\\current\\pi.cmd",
+    );
+  });
+
+  it("keeps the lookup order on posix even when a cmd sibling exists", () => {
+    expect(
+      parseBinaryLookupOutput(
+        "/usr/local/bin/codex\n/usr/local/bin/codex.cmd\n",
+        "linux",
+      ),
+    ).toBe("/usr/local/bin/codex");
+    expect(
+      parseBinaryLookupOutput(
+        "/usr/local/bin/codex\n/usr/local/bin/codex.cmd\n",
+        "darwin",
+      ),
+    ).toBe("/usr/local/bin/codex");
   });
 });
 
