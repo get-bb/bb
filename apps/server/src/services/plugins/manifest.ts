@@ -10,6 +10,7 @@ import {
 } from "@bb/domain";
 import { resolvePluginCodeThemePath } from "../system/code-themes.js";
 import {
+  isPathWithinDirectory,
   resolveManifestPath,
   assertValidPluginCompactIconSvg,
   assertValidPluginIconSvg,
@@ -173,7 +174,7 @@ export async function readPluginManifest(
       realpath(rootDir),
       realpath(assetPath),
     ]);
-    if (realAsset !== realRoot && !realAsset.startsWith(realRoot + "/")) {
+    if (!isPathWithinDirectory(realRoot, realAsset)) {
       throw new Error(
         `manifest ${label} escapes the plugin directory through a symlink`,
       );
@@ -201,7 +202,7 @@ export async function readPluginManifest(
       realpath(rootDir),
       realpath(assetPath),
     ]);
-    if (realAsset !== realRoot && !realAsset.startsWith(realRoot + "/")) {
+    if (!isPathWithinDirectory(realRoot, realAsset)) {
       throw new Error(
         `manifest ${label} escapes the plugin directory through a symlink`,
       );

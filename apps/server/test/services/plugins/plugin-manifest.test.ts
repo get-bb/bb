@@ -239,6 +239,19 @@ describe("plugin manifest", () => {
     );
   });
 
+  it("accepts a branding asset nested in a plugin subdirectory", async () => {
+    await mkdir(join(rootDir, "icons"), { recursive: true });
+    await writeFile(join(rootDir, "icons", "logo.svg"), "<svg/>");
+    await writeManifest(undefined, {
+      ...validBb,
+      branding: { logo: { light: "./icons/logo.svg" } },
+    });
+    const manifest = await readPluginManifest(rootDir);
+    expect(manifest.branding.logo?.lightPath).toBe(
+      join(rootDir, "icons", "logo.svg"),
+    );
+  });
+
   it("rejects a branding asset symlink that escapes the plugin directory", async () => {
     const outsideDir = await mkdtemp(
       join(tmpdir(), "bb-plugin-branding-outside-"),
