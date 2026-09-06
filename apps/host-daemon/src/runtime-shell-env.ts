@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { constants as fsConstants } from "node:fs";
+import { constants as fsConstants, existsSync } from "node:fs";
 import fs from "node:fs/promises";
 import { basename, delimiter, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -19,8 +19,9 @@ interface PrepareRuntimeShellEnvOptions {
   inheritedPath?: string;
 }
 
-interface ResolveUserShellPathOptions {
+export interface ResolveUserShellPathOptions {
   env?: NodeJS.ProcessEnv;
+  fileExists?: (filePath: string) => boolean;
   platform?: NodeJS.Platform;
   spawnUserShellEnv?: SpawnUserShellEnv;
   timeoutMs?: number;
@@ -52,6 +53,12 @@ const SHELL_ENV_COMMAND = [
   "env",
   `printf '%s\\n' ${SHELL_ENV_END_MARKER}`,
 ].join("; ");
+const POWERSHELL_SHELL_ENV_COMMAND = [
+  `Write-Output '${SHELL_ENV_START_MARKER}'`,
+  "Get-ChildItem Env: | ForEach-Object { Write-Output ($_.Name + '=' + [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($_.Value))) }",
+  `Write-Output '${SHELL_ENV_END_MARKER}'`,
+].join("; ");
+const BASE64_VALUE_PATTERN = /^[A-Za-z0-9+/]*={0,2}$/u;
 const USER_SHELL_ENV_TIMEOUT_MS = 3_000;
 const USER_SHELL_ENV_FORCE_KILL_AFTER_MS = 1_000;
 
@@ -269,21 +276,99 @@ function defaultSpawnUserShellEnv(
   });
 }
 
+function readWindowsEnvValue(
+  env: NodeJS.ProcessEnv,
+  name: string,
+): string | undefined {
+  const target = name.toLowerCase();
+  for (const [key, value] of Object.entries(env)) {
+    if (value !== undefined && key.toLowerCase() === target) {
+      return value;
+    }
+  }
+  return undefined;
+}
+
+function normalizeWindowsDir(directory: string): string {
+  const stripped = directory.replace(/\\+$/u, "");
+  return stripped.length > 0 ? stripped : "C:\\Windows";
+}
+
+export function isWindowsShLikeShell(shell: string): boolean {
+  const baseName = shell.toLowerCase().replace(/\\/g, "/").split("/").pop() ?? "";
+  const stem = baseName.endsWith(".exe")
+    ? baseName.slice(0, -".exe".length)
+    : baseName;
+  return (
+    stem === "sh" ||
+    stem === "bash" ||
+    stem === "dash" ||
+    stem === "zsh" ||
+    stem === "fish"
+  );
+}
+
+function resolveWindowsShellCommand(
+  env: NodeJS.ProcessEnv,
+  fileExists: (filePath: string) => boolean,
+): string {
+  const pathValue = readWindowsEnvValue(env, "Path") ?? "";
+  for (const directory of pathValue.split(";")) {
+    const trimmed = directory.trim();
+    if (trimmed.length === 0) {
+      continue;
+    }
+    const candidate = `${normalizeWindowsDir(trimmed)}\\pwsh.exe`;
+    if (fileExists(candidate)) {
+      return candidate;
+    }
+  }
+  const programFiles = readWindowsEnvValue(env, "ProgramFiles");
+  if (programFiles !== undefined && programFiles.length > 0) {
+    const candidate = `${normalizeWindowsDir(programFiles)}\\PowerShell\\7\\pwsh.exe`;
+    if (fileExists(candidate)) {
+      return candidate;
+    }
+  }
+  const systemRoot = normalizeWindowsDir(
+    readWindowsEnvValue(env, "SystemRoot") ?? "C:\\Windows",
+  );
+  const systemPowerShell = `${systemRoot}\\System32\\WindowsPowerShell\\v1.0\\powershell.exe`;
+  if (fileExists(systemPowerShell)) {
+    return systemPowerShell;
+  }
+  return "powershell.exe";
+}
+
 function resolveUserShellCommand(
   env: NodeJS.ProcessEnv,
   platform: NodeJS.Platform,
+  fileExists: (filePath: string) => boolean,
 ): string | null {
-  if (platform === "win32") {
-    return null;
-  }
   const configuredShell = env.SHELL?.trim();
+  if (platform === "win32") {
+    if (
+      configuredShell &&
+      configuredShell.length > 0 &&
+      isWindowsShLikeShell(configuredShell)
+    ) {
+      return configuredShell;
+    }
+    return resolveWindowsShellCommand(env, fileExists);
+  }
   if (configuredShell && configuredShell.length > 0) {
     return configuredShell;
   }
   return platform === "darwin" ? "/bin/zsh" : "/bin/sh";
 }
 
-function userShellEnvArgSets(shell: string): string[][] {
+function userShellEnvArgSets(
+  shell: string,
+  platform: NodeJS.Platform,
+): string[][] {
+  if (platform === "win32" && !isWindowsShLikeShell(shell)) {
+    return [["-NoLogo", "-Command", POWERSHELL_SHELL_ENV_COMMAND]];
+  }
   const shellName = basename(shell);
   if (shellName === "sh" || shellName === "dash") {
     return [["-lc", SHELL_ENV_COMMAND]];
@@ -292,6 +377,50 @@ function userShellEnvArgSets(shell: string): string[][] {
     ["-ilc", SHELL_ENV_COMMAND],
     ["-lc", SHELL_ENV_COMMAND],
   ];
+}
+
+function parseWindowsPathFromUserShellEnv(stdout: string): string | null {
+  const lines = stdout.split(/\r?\n/u);
+  const startIndex = lines.findIndex(
+    (line) => line.trim() === SHELL_ENV_START_MARKER,
+  );
+  if (startIndex === -1) {
+    return null;
+  }
+  const endIndex = lines.findIndex(
+    (line, index) => index > startIndex && line.trim() === SHELL_ENV_END_MARKER,
+  );
+  if (endIndex === -1) {
+    return null;
+  }
+
+  for (const line of lines.slice(startIndex + 1, endIndex)) {
+    const separator = line.indexOf("=");
+    if (separator === -1) {
+      continue;
+    }
+    if (line.slice(0, separator).toLowerCase() !== "path") {
+      continue;
+    }
+    const encoded = line.slice(separator + 1).trim();
+    if (!BASE64_VALUE_PATTERN.test(encoded)) {
+      continue;
+    }
+    const pathValue = Buffer.from(encoded, "base64").toString("utf8").trim();
+    return pathValue.length > 0 ? pathValue : null;
+  }
+  return null;
+}
+
+function parsePathForUserShell(
+  stdout: string,
+  shell: string,
+  platform: NodeJS.Platform,
+): string | null {
+  if (platform === "win32" && !isWindowsShLikeShell(shell)) {
+    return parseWindowsPathFromUserShellEnv(stdout);
+  }
+  return parsePathFromUserShellEnv(stdout);
 }
 
 function parsePathFromUserShellEnv(stdout: string): string | null {
@@ -330,17 +459,16 @@ async function resolveUserShellPathWithPrevious(
   previousPath: string | null,
 ): Promise<string | null> {
   const env = options.env ?? process.env;
-  const shell = resolveUserShellCommand(
-    env,
-    options.platform ?? process.platform,
-  );
+  const platform = options.platform ?? process.platform;
+  const fileExists = options.fileExists ?? existsSync;
+  const shell = resolveUserShellCommand(env, platform, fileExists);
   if (!shell) {
     return null;
   }
 
   const spawnUserShellEnv =
     options.spawnUserShellEnv ?? defaultSpawnUserShellEnv;
-  const shellArgSets = userShellEnvArgSets(shell);
+  const shellArgSets = userShellEnvArgSets(shell, platform);
   for (const [index, shellArgs] of shellArgSets.entries()) {
     const result = await spawnUserShellEnv({
       command: shell,
@@ -358,7 +486,7 @@ async function resolveUserShellPathWithPrevious(
       }
       continue;
     }
-    const path = parsePathFromUserShellEnv(result.stdout);
+    const path = parsePathForUserShell(result.stdout, shell, platform);
     if (path !== null) {
       return path;
     }

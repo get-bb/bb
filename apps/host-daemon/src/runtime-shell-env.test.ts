@@ -386,24 +386,146 @@ describe("resolveUserShellPath", () => {
     expect(fakeSpawn.calls[0]?.args[0]).toBe("-ilc");
   });
 
-  it("skips shell probing on Windows", async () => {
+  it("probes PATH through PowerShell with base64 pairs on Windows", async () => {
+    const pathValue = "C:\\Tools;C:\\Windows";
+    const encodedPath = Buffer.from(pathValue, "utf8").toString("base64");
+    const encodedTricky = Buffer.from("a=b\nc=d", "utf8").toString("base64");
     const fakeSpawn = createFakeShellEnvSpawn({
       results: [
         createShellEnvSpawnResult({
-          stdout: createMarkedShellEnvOutput("C:\\Windows"),
+          stdout: [
+            "profile noise",
+            "__BB_SHELL_ENV_START__",
+            `TRICKY=${encodedTricky}`,
+            `Path=${encodedPath}`,
+            "__BB_SHELL_ENV_END__",
+            "more noise",
+          ].join("\r\n"),
         }),
       ],
     });
 
     await expect(
       resolveUserShellPath({
-        env: { SHELL: "/bin/bash", PATH: "C:\\Windows" },
+        env: { SystemRoot: "C:\\Windows", Path: "C:\\Windows" },
+        platform: "win32",
+        spawnUserShellEnv: fakeSpawn.spawn,
+      }),
+    ).resolves.toBe(pathValue);
+
+    expect(fakeSpawn.calls).toHaveLength(1);
+    expect(fakeSpawn.calls[0]?.command).toBe("powershell.exe");
+    expect(fakeSpawn.calls[0]?.args[0]).toBe("-NoLogo");
+    expect(fakeSpawn.calls[0]?.args[1]).toBe("-Command");
+    expect(fakeSpawn.calls[0]?.args[2]).toContain("Get-ChildItem Env:");
+    expect(fakeSpawn.calls[0]?.args[2]).toContain("__BB_SHELL_ENV_START__");
+  });
+
+  it("prefers pwsh.exe found on the Windows PATH", async () => {
+    const pathValue = "C:\\Tools";
+    const fakeSpawn = createFakeShellEnvSpawn({
+      results: [
+        createShellEnvSpawnResult({
+          stdout: [
+            "__BB_SHELL_ENV_START__",
+            `Path=${Buffer.from(pathValue, "utf8").toString("base64")}`,
+            "__BB_SHELL_ENV_END__",
+          ].join("\n"),
+        }),
+      ],
+    });
+
+    await expect(
+      resolveUserShellPath({
+        env: { Path: "C:\\Tools;C:\\Windows" },
+        fileExists: (filePath) => filePath === "C:\\Tools\\pwsh.exe",
+        platform: "win32",
+        spawnUserShellEnv: fakeSpawn.spawn,
+      }),
+    ).resolves.toBe(pathValue);
+
+    expect(fakeSpawn.calls[0]?.command).toBe("C:\\Tools\\pwsh.exe");
+  });
+
+  it("honors an sh-like SHELL on Windows with the POSIX probe", async () => {
+    const shellPath = "/c/tools/bin:/usr/bin";
+    const fakeSpawn = createFakeShellEnvSpawn({
+      results: [
+        createShellEnvSpawnResult({
+          stdout: createMarkedShellEnvOutput(shellPath),
+        }),
+      ],
+    });
+
+    await expect(
+      resolveUserShellPath({
+        env: {
+          SHELL: "C:\\Program Files\\Git\\bin\\bash.exe",
+          PATH: "C:\\Windows",
+        },
+        platform: "win32",
+        spawnUserShellEnv: fakeSpawn.spawn,
+      }),
+    ).resolves.toBe(shellPath);
+
+    expect(fakeSpawn.calls[0]?.command).toBe(
+      "C:\\Program Files\\Git\\bin\\bash.exe",
+    );
+    expect(fakeSpawn.calls[0]?.args[0]).toBe("-ilc");
+  });
+
+  it("skips corrupt base64 Path lines and returns null for an empty Path", async () => {
+    const fallbackSpawn = createFakeShellEnvSpawn({
+      results: [
+        createShellEnvSpawnResult({
+          stdout: [
+            "__BB_SHELL_ENV_START__",
+            "Path=!!!not-base64!!!",
+            `Path=${Buffer.from("C:\\Later", "utf8").toString("base64")}`,
+            "__BB_SHELL_ENV_END__",
+          ].join("\n"),
+        }),
+        createShellEnvSpawnResult({
+          stdout: [
+            "__BB_SHELL_ENV_START__",
+            `Path=${Buffer.from("", "utf8").toString("base64")}`,
+            "__BB_SHELL_ENV_END__",
+          ].join("\n"),
+        }),
+      ],
+    });
+
+    const win32Options = {
+      env: { Path: "C:\\Windows" },
+      platform: "win32" as const,
+      spawnUserShellEnv: fallbackSpawn.spawn,
+    };
+
+    await expect(resolveUserShellPath(win32Options)).resolves.toBe(
+      "C:\\Later",
+    );
+    await expect(resolveUserShellPath(win32Options)).resolves.toBeNull();
+  });
+
+  it("returns null when the PowerShell probe fails on Windows", async () => {
+    const fakeSpawn = createFakeShellEnvSpawn({
+      results: [
+        createShellEnvSpawnResult({
+          status: 1,
+          stderr: "powershell failed",
+        }),
+      ],
+    });
+
+    await expect(
+      resolveUserShellPath({
+        env: { Path: "C:\\Windows" },
         platform: "win32",
         spawnUserShellEnv: fakeSpawn.spawn,
       }),
     ).resolves.toBeNull();
 
-    expect(fakeSpawn.calls).toEqual([]);
+    expect(fakeSpawn.calls).toHaveLength(1);
   });
 });
 
