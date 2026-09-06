@@ -333,12 +333,11 @@ function ThreadUserQuestionPendingInteractionBanner({
       sourceThread={sourceThread}
       testId="user-question-banner"
     >
-      {(isExpanded) => (
+      {() => (
         <UserQuestionAnswerForm
           interactionId={interaction.id}
           isResolving={isResolving}
           questions={questions}
-          shortcutsEnabled={isExpanded}
           threadId={threadId}
         />
       )}

@@ -1,3 +1,4 @@
+import { ThreadQuestionFormHost } from "../user-questions/ThreadQuestionFormHost";
 import {
   Activity,
   useId,
@@ -142,28 +143,30 @@ export function PendingInteractionShell({
         {toggle}
       </div>
       <Activity mode={isExpanded ? "visible" : "hidden"}>
-        <div id={contentId} hidden={!isExpanded} className="px-3 pb-3 pt-2.5">
-          {title ? (
-            <h3 className="min-w-0 text-sm font-medium text-foreground">
-              <ExpandableLine
-                fullText={title}
-                collapsedClassName="line-clamp-2"
-              >
-                {title}
-              </ExpandableLine>
-            </h3>
-          ) : null}
-          {children ? (
-            <div className={title ? "mt-2" : undefined}>
-              {children(isExpanded)}
-            </div>
-          ) : null}
-          {footer ? (
-            <div className="mt-3 flex flex-wrap items-center gap-2">
-              {footer("card")}
-            </div>
-          ) : null}
-        </div>
+        <ThreadQuestionFormHost>
+          <div id={contentId} hidden={!isExpanded} className="px-3 pb-3 pt-2.5">
+            {title ? (
+              <h3 className="min-w-0 text-sm font-medium text-foreground">
+                <ExpandableLine
+                  fullText={title}
+                  collapsedClassName="line-clamp-2"
+                >
+                  {title}
+                </ExpandableLine>
+              </h3>
+            ) : null}
+            {children ? (
+              <div className={title ? "mt-2" : undefined}>
+                {children(isExpanded)}
+              </div>
+            ) : null}
+            {footer ? (
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                {footer("card")}
+              </div>
+            ) : null}
+          </div>
+        </ThreadQuestionFormHost>
       </Activity>
       {errorNode}
     </section>

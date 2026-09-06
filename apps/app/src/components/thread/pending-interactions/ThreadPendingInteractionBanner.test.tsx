@@ -539,5 +539,16 @@ describe("ThreadPendingInteractionBanner collapsed strip", () => {
         .getByRole("button", { name: "AOption A" })
         .getAttribute("aria-pressed"),
     ).toBe("true");
+    fireEvent.click(screen.getByRole("button", { name: "Submit answer" }));
+    expect(mocks.resolveMutateAsync).toHaveBeenCalledWith({
+      threadId: "thr_1",
+      interactionId: "pint_question",
+      resolution: {
+        kind: "user_answer",
+        answers: { path: { selected: ["a"] } },
+      },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(mocks.stopMutateAsync).toHaveBeenCalledWith("thr_1");
   });
 });
