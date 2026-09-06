@@ -41,9 +41,7 @@ let nextRequestId = 1;
 const WINDOWS_KILLED_CHILDREN_RELEASE_DIR_LOCKS_ASYNCHRONOUSLY =
   process.platform === "win32";
 
-async function removeTempDirWithWindowsLockRetries(
-  dir: string,
-): Promise<void> {
+async function removeTempDirWithWindowsLockRetries(dir: string): Promise<void> {
   if (!WINDOWS_KILLED_CHILDREN_RELEASE_DIR_LOCKS_ASYNCHRONOUSLY) {
     rmSync(dir, { recursive: true, force: true });
     return;

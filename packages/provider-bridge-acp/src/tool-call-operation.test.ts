@@ -121,14 +121,9 @@ describe("resolveAcpFileChangeWriteScope", () => {
   });
 
   it("ignores blank paths and never yields an empty scope", () => {
+    expect(resolveAcpFileChangeWriteScope(["", "  "], "linux")).toBeNull();
     expect(
-      resolveAcpFileChangeWriteScope(["", "  "], "linux"),
-    ).toBeNull();
-    expect(
-      resolveAcpFileChangeWriteScope(
-        ["", "/tmp/qa-1719/notes.md"],
-        "linux",
-      ),
+      resolveAcpFileChangeWriteScope(["", "/tmp/qa-1719/notes.md"], "linux"),
     ).toBe("/tmp/qa-1719/notes.md");
   });
 });

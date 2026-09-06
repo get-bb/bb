@@ -154,9 +154,7 @@ export function createAcpAgentConnection(
       args: options.args,
       cwd: options.cwd,
       env: options.env,
-      ...(options.platform !== undefined
-        ? { platform: options.platform }
-        : {}),
+      ...(options.platform !== undefined ? { platform: options.platform } : {}),
     },
     options.spawnImpl,
   );

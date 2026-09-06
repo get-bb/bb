@@ -40,9 +40,7 @@ export interface AcpToolCallPathOptions {
 function acpPathFlavor(
   platform: NodeJS.Platform | undefined,
 ): typeof path.posix {
-  return (platform ?? process.platform) === "win32"
-    ? path.win32
-    : path.posix;
+  return (platform ?? process.platform) === "win32" ? path.win32 : path.posix;
 }
 
 export function resolveAcpToolCallPath(
@@ -51,11 +49,7 @@ export function resolveAcpToolCallPath(
 ): string {
   const cwd = options?.cwd;
   const flavor = acpPathFlavor(options?.platform);
-  if (
-    cwd === undefined ||
-    flavor.isAbsolute(value) ||
-    value.startsWith("~")
-  ) {
+  if (cwd === undefined || flavor.isAbsolute(value) || value.startsWith("~")) {
     return value;
   }
   return flavor.resolve(cwd, value);

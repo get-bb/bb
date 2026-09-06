@@ -97,9 +97,7 @@ function buildAcpSkillsInstructions(
     return undefined;
   }
 
-  const joinSkillPath = (
-    ...segments: string[]
-  ): string =>
+  const joinSkillPath = (...segments: string[]): string =>
     platform === "win32"
       ? path.win32.join(...segments)
       : path.posix.join(...segments);

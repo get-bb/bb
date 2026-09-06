@@ -16,6 +16,8 @@ const EPIPE_PAYLOAD_SIZE = 1024 * 1024;
 
 const WINDOWS_SIGTERM_KILL_IS_UNTRAPPABLE_TERMINATE_PROCESS =
   process.platform === "win32";
+const WINDOWS_WRITES_TO_CLOSED_CHILD_STDIN_NEVER_FAIL_NOR_FLUSH =
+  process.platform === "win32";
 
 function deferred<T>(): {
   promise: Promise<T>;
@@ -108,62 +110,65 @@ describe("ACP agent stdio lifecycle", () => {
     }
   });
 
-  it("rejects requests and stops an agent that closes stdin but stays alive", async () => {
-    const ready = deferred<void>();
-    const exited = deferred<AcpAgentExitInfo>();
-    const connection = createAcpAgentConnection({
-      recordThreadId: null,
-      command: process.execPath,
-      args: [
-        "-e",
-        [
-          'require("node:fs").closeSync(0);',
-          'process.stdout.write(JSON.stringify({ jsonrpc: "2.0", method: "ready" }) + "\\n");',
-          "setInterval(() => {}, 1000);",
-        ].join(" "),
-      ],
-      cwd: process.cwd(),
-      env: process.env,
-      onNotification(method) {
-        if (method === "ready") ready.resolve();
-      },
-      onRequest() {},
-      onExit: exited.resolve,
-    });
-
-    try {
-      await ready.promise;
-      const pendingRequest = connection.request({
-        method: "fixture/pending",
-        params: { payload: "x".repeat(EPIPE_PAYLOAD_SIZE) },
-        resultSchema: z.unknown(),
+  it.skipIf(WINDOWS_WRITES_TO_CLOSED_CHILD_STDIN_NEVER_FAIL_NOR_FLUSH)(
+    "rejects requests and stops an agent that closes stdin but stays alive",
+    async () => {
+      const ready = deferred<void>();
+      const exited = deferred<AcpAgentExitInfo>();
+      const connection = createAcpAgentConnection({
+        recordThreadId: null,
+        command: process.execPath,
+        args: [
+          "-e",
+          [
+            'require("node:fs").closeSync(0);',
+            'process.stdout.write(JSON.stringify({ jsonrpc: "2.0", method: "ready" }) + "\\n");',
+            "setInterval(() => {}, 1000);",
+          ].join(" "),
+        ],
+        cwd: process.cwd(),
+        env: process.env,
+        onNotification(method) {
+          if (method === "ready") ready.resolve();
+        },
+        onRequest() {},
+        onExit: exited.resolve,
       });
-      const requestWithDeadline = Promise.race([
-        pendingRequest,
-        delay(500).then(() => {
-          throw new Error("ACP request remained pending after stdin closed");
-        }),
-      ]);
 
-      await expect(requestWithDeadline).rejects.toBeInstanceOf(
-        AcpAgentExitedError,
-      );
-      expect(connection.exited).toBe(true);
-      await expect(
-        connection.request({
-          method: "fixture/future",
-          params: null,
+      try {
+        await ready.promise;
+        const pendingRequest = connection.request({
+          method: "fixture/pending",
+          params: { payload: "x".repeat(EPIPE_PAYLOAD_SIZE) },
           resultSchema: z.unknown(),
-        }),
-      ).rejects.toBeInstanceOf(AcpAgentExitedError);
-      await expect(exited.promise).resolves.toMatchObject({
-        code: null,
-        signal: null,
-      });
-    } finally {
-      await stopConnection(connection, exited.promise);
-    }
-  });
+        });
+        const requestWithDeadline = Promise.race([
+          pendingRequest,
+          delay(500).then(() => {
+            throw new Error("ACP request remained pending after stdin closed");
+          }),
+        ]);
+
+        await expect(requestWithDeadline).rejects.toBeInstanceOf(
+          AcpAgentExitedError,
+        );
+        expect(connection.exited).toBe(true);
+        await expect(
+          connection.request({
+            method: "fixture/future",
+            params: null,
+            resultSchema: z.unknown(),
+          }),
+        ).rejects.toBeInstanceOf(AcpAgentExitedError);
+        await expect(exited.promise).resolves.toMatchObject({
+          code: null,
+          signal: null,
+        });
+      } finally {
+        await stopConnection(connection, exited.promise);
+      }
+    },
+  );
 
   it("makes an intentionally stopped connection unavailable before stdin teardown", async () => {
     const ready = deferred<void>();
