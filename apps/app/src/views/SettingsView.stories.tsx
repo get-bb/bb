@@ -314,6 +314,8 @@ function AppearanceSettingsStory() {
       onAppearanceThemeChange={(themeId) =>
         state.setAppearance((current) => ({ ...current, themeId }))
       }
+      onAppearanceThemePrefetch={() => undefined}
+      onAppearanceThemePreview={() => undefined}
       onCreatePalette={() => undefined}
       onFaviconColorChange={(faviconColor) =>
         state.setAppearance((current) => ({ ...current, faviconColor }))

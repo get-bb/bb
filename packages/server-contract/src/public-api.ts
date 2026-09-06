@@ -1515,6 +1515,18 @@ export const publicApiRoutes = {
       request: noRequest(),
       response: jsonResponse<ThemeCatalogResponse>(),
     }),
+    /**
+     * Resolve a built-in, custom, or plugin theme exactly as activating it
+     * would, without persisting anything. The Settings palette hover preview
+     * and `bb theme show <id>` read it; `faviconColor` echoes the stored
+     * appearance because the response is a full `AppTheme`.
+     */
+    resolveTheme: defineRoute({
+      path: "/settings/themes/:id",
+      method: "get",
+      request: noRequest<PathId>(),
+      response: jsonResponse<AppTheme>(),
+    }),
     reloadConfig: defineRoute({
       path: "/system/config/reload",
       method: "post",

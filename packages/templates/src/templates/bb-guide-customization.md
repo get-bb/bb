@@ -20,7 +20,8 @@ app uses ~/.bb/theme/…). The folder name is the theme id.
   bb theme set <id> [--favicon-color <color>]
                                  Activate a theme, preserving the favicon color
                                  unless the flag supplies the complete selection
-  bb theme show [--css]          Print the active palette; --css dumps the CSS
+  bb theme show [id] [--css]     Print the active palette, or resolve <id> without
+                                 activating it; --css dumps the CSS
   bb theme reset                 Back to the default theme; preserve favicon color
   bb theme favicon set <color>   Set favicon color; preserve the active theme
   bb theme favicon reset         Reset favicon color; preserve the active theme
@@ -34,6 +35,9 @@ the bb-cli skill (references/theming.md).
 Favicon colors are `default`, `red`, `orange`, `yellow`, `green`, `teal`,
 `blue`, `purple`, and `pink`. Theme and favicon-only commands carry the other
 appearance value forward explicitly.
+
+Hovering a palette in Settings → Appearance previews it live in that window
+without saving; `bb theme show <id>` is the CLI counterpart.
 
 Add --json to any theme command for machine-readable output.
 

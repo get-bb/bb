@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from "react";
+import { useMemo, useRef, useState, type ReactNode } from "react";
 import {
   Navigate,
   useNavigate,
@@ -44,6 +44,7 @@ import {
   type ThemePreference,
 } from "@/hooks/useTheme";
 import { useHostDaemon, useLocalHostDaemonAccess } from "@/hooks/useHostDaemon";
+import { useAppThemePreview } from "@/hooks/useAppThemePreview";
 import { UsageLimitsSettingsSection } from "@/components/settings/UsageLimitsSettingsSection";
 import { ProvidersSettingsSection } from "@/components/settings/ProvidersSettingsSection";
 import { CodeRendererSettings } from "@/components/settings/CodeRendererSettings";
@@ -147,6 +148,8 @@ interface AppearanceSettingsSectionProps {
   pluginThemes: readonly PluginThemeMeta[];
   faviconColor: FaviconColorPreference;
   onAppearanceThemeChange: (themeId: string) => void;
+  onAppearanceThemePrefetch: (themeIds: readonly string[]) => void;
+  onAppearanceThemePreview: (themeId: string | null) => void;
   onCreatePalette: () => void;
   onFaviconColorChange: (faviconColor: FaviconColorPreference) => void;
   onThemePreferenceChange: (themePreference: ThemePreference) => void;
@@ -251,6 +254,40 @@ const CREATE_CUSTOM_PALETTE_PROMPT =
   "Create a custom bb palette. First run `bb theme dir` to find the custom theme directory. Ask me for the palette name and visual direction, then create `<theme-dir>/<name>/theme.css` with light and dark theme variables compatible with bb's theme tokens.";
 const PALETTE_SETTING_DESCRIPTION =
   "Palettes change bb's colors, including syntax colors in diffs and file previews. Choose a built-in palette or create one from a prompt.";
+
+interface PaletteMenuItemProps {
+  active: boolean;
+  children: ReactNode;
+  onPreview: (themeId: string | null) => void;
+  onSelect: (themeId: string) => void;
+  themeId: string;
+}
+
+function PaletteMenuItem({
+  active,
+  children,
+  onPreview,
+  onSelect,
+  themeId,
+}: PaletteMenuItemProps) {
+  return (
+    <DropdownMenuItem
+      onFocus={() => onPreview(themeId)}
+      onBlur={() => onPreview(null)}
+      onSelect={() => onSelect(themeId)}
+    >
+      {children}
+      <Icon
+        name="Check"
+        className={cn(
+          "ml-auto",
+          !active && "opacity-0",
+          COARSE_POINTER_ICON_SIZE_CLASS,
+        )}
+      />
+    </DropdownMenuItem>
+  );
+}
 
 function FaviconColorPreview({ value }: { value: FaviconColorPreference }) {
   return (
@@ -641,11 +678,22 @@ export function AppearanceSettingsSection({
   pluginThemes,
   faviconColor,
   onAppearanceThemeChange,
+  onAppearanceThemePrefetch,
+  onAppearanceThemePreview,
   onFaviconColorChange,
   onCreatePalette,
   onThemePreferenceChange,
   themePreference,
 }: AppearanceSettingsSectionProps) {
+  const paletteSelectedRef = useRef(false);
+  const previewPalette = (themeId: string | null) => {
+    if (themeId === null && paletteSelectedRef.current) return;
+    onAppearanceThemePreview(themeId);
+  };
+  const selectPalette = (themeId: string) => {
+    paletteSelectedRef.current = true;
+    onAppearanceThemeChange(themeId);
+  };
   return (
     <SettingsSection title="Appearance">
       <div className="space-y-5">
@@ -696,7 +744,20 @@ export function AppearanceSettingsSection({
           label="Palette"
           description={PALETTE_SETTING_DESCRIPTION}
         >
-          <DropdownMenu>
+          <DropdownMenu
+            onOpenChange={(open) => {
+              if (open) {
+                paletteSelectedRef.current = false;
+                onAppearanceThemePrefetch([
+                  ...builtInThemes.map((entry) => entry.id),
+                  ...customThemes,
+                  ...pluginThemes.map((theme) => theme.id),
+                ]);
+                return;
+              }
+              previewPalette(null);
+            }}
+          >
             <DropdownMenuTrigger asChild>
               <Button
                 variant="outline"
@@ -719,55 +780,40 @@ export function AppearanceSettingsSection({
               className={SETTINGS_DROPDOWN_CONTENT_CLASS}
             >
               {builtInThemes.map((entry) => (
-                <DropdownMenuItem
+                <PaletteMenuItem
                   key={entry.id}
-                  onSelect={() => onAppearanceThemeChange(entry.id)}
+                  themeId={entry.id}
+                  active={appearance.themeId === entry.id}
+                  onPreview={previewPalette}
+                  onSelect={selectPalette}
                 >
                   {entry.name}
-                  <Icon
-                    name="Check"
-                    className={cn(
-                      "ml-auto",
-                      appearance.themeId !== entry.id && "opacity-0",
-                      COARSE_POINTER_ICON_SIZE_CLASS,
-                    )}
-                  />
-                </DropdownMenuItem>
+                </PaletteMenuItem>
               ))}
               {customThemes.map((name) => (
-                <DropdownMenuItem
+                <PaletteMenuItem
                   key={`custom:${name}`}
-                  onSelect={() => onAppearanceThemeChange(name)}
+                  themeId={name}
+                  active={appearance.themeId === name}
+                  onPreview={previewPalette}
+                  onSelect={selectPalette}
                 >
                   {name}
-                  <Icon
-                    name="Check"
-                    className={cn(
-                      "ml-auto",
-                      appearance.themeId !== name && "opacity-0",
-                      COARSE_POINTER_ICON_SIZE_CLASS,
-                    )}
-                  />
-                </DropdownMenuItem>
+                </PaletteMenuItem>
               ))}
               {pluginThemes.map((theme) => (
-                <DropdownMenuItem
+                <PaletteMenuItem
                   key={theme.id}
-                  onSelect={() => onAppearanceThemeChange(theme.id)}
+                  themeId={theme.id}
+                  active={appearance.themeId === theme.id}
+                  onPreview={previewPalette}
+                  onSelect={selectPalette}
                 >
                   {theme.name}
                   <span className="text-muted-foreground">
                     ({theme.pluginId})
                   </span>
-                  <Icon
-                    name="Check"
-                    className={cn(
-                      "ml-auto",
-                      appearance.themeId !== theme.id && "opacity-0",
-                      COARSE_POINTER_ICON_SIZE_CLASS,
-                    )}
-                  />
-                </DropdownMenuItem>
+                </PaletteMenuItem>
               ))}
               <DropdownMenuSeparator />
               <DropdownMenuItem onSelect={onCreatePalette}>
@@ -1068,6 +1114,7 @@ export function SettingsView() {
   const updateGeneralSettingsMutation = useUpdateGeneralSettings();
   const appearance = systemConfigQuery.data?.appearance ?? defaultAppTheme;
   const updateAppearanceMutation = useUpdateAppearance();
+  const appThemePreview = useAppThemePreview();
   const location = useLocation();
   const { activePluginId, activeSection, hasUnknownSection } =
     useSettingsNavState();
@@ -1118,11 +1165,16 @@ export function SettingsView() {
         faviconColor={appearance.faviconColor}
         themePreference={themePreference}
         onAppearanceThemeChange={(themeId) =>
-          updateAppearanceMutation.mutate({
-            themeId,
-            faviconColor: appearance.faviconColor,
-          })
+          updateAppearanceMutation.mutate(
+            {
+              themeId,
+              faviconColor: appearance.faviconColor,
+            },
+            { onError: () => appThemePreview.previewTheme(null) },
+          )
         }
+        onAppearanceThemePrefetch={appThemePreview.prefetchThemes}
+        onAppearanceThemePreview={appThemePreview.previewTheme}
         onCreatePalette={() =>
           navigate(getRootComposeRoutePath(), {
             state: {

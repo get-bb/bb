@@ -345,7 +345,7 @@ type ExpectedSystemKey =
   | "usageLimits"
   | "version";
 
-type ExpectedThemeKey = "catalog" | "get" | "set";
+type ExpectedThemeKey = "catalog" | "get" | "resolve" | "set";
 
 type ExpectedThreadSectionsKey = "create" | "delete" | "list" | "update";
 

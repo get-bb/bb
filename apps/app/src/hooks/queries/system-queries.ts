@@ -46,6 +46,7 @@ import {
   systemExecutionOptionsQueryKey,
   systemProvidersQueryKey,
   systemProviderStatesQueryKey,
+  systemThemeQueryKey,
   systemUsageLimitsQueryKey,
   systemVersionQueryKey,
 } from "./query-keys";
@@ -334,6 +335,14 @@ export function systemConfigQueryOptions() {
   return queryOptions({
     queryKey: systemConfigQueryKey(),
     queryFn: ({ signal }) => sdk.system.config({ signal }),
+    staleTime: 60_000,
+  });
+}
+
+export function systemThemeQueryOptions(themeId: string) {
+  return queryOptions({
+    queryKey: systemThemeQueryKey(themeId),
+    queryFn: ({ signal }) => sdk.theme.resolve({ signal, themeId }),
     staleTime: 60_000,
   });
 }

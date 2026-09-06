@@ -293,6 +293,38 @@ describe("@bb/sdk", () => {
     ]);
   });
 
+  it("resolves a theme by id without touching the active appearance", async () => {
+    const resolved = {
+      themeId: "plugin:pack:ocean",
+      customCss: ":root { --canvas: black; }",
+      faviconColor: "purple" as const,
+      resolvedCodeTheme: {
+        dark: "github-dark",
+        light: "github-light",
+        files: {},
+      },
+    };
+    const queue = createFetchQueue([{ body: resolved }]);
+    const sdk = createBbSdk({
+      transport: createHttpTransport({
+        baseUrl: "http://bb.test",
+        fetch: queue.fetch,
+        runtime: "node",
+      }),
+    });
+
+    await expect(
+      sdk.theme.resolve({ themeId: "plugin:pack:ocean" }),
+    ).resolves.toEqual(resolved);
+    expect(queue.requests).toEqual([
+      {
+        bodyText: undefined,
+        method: "GET",
+        url: "http://bb.test/api/v1/settings/themes/plugin:pack:ocean",
+      },
+    ]);
+  });
+
   it("uploads client-local binary attachments as authenticated multipart data", async () => {
     const binary = new Uint8Array([0, 255, 1, 128, 42]);
     let forwardedRequest: Request | undefined;
