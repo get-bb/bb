@@ -15,7 +15,7 @@ import {
   type DesktopUpdateService,
 } from "./desktop-update-check.js";
 import {
-  DESKTOP_AUTO_UPDATE_FEED_CONFIG,
+  createDesktopAutoUpdateFeedConfig,
   type DesktopAutoUpdateFeedConfig,
 } from "./desktop-update-provider.js";
 
@@ -360,7 +360,7 @@ export function createDesktopAutoUpdateService(
 
   if (args.enabled) {
     args.updater.setLogger(logger);
-    args.updater.setFeedURL(DESKTOP_AUTO_UPDATE_FEED_CONFIG);
+    args.updater.setFeedURL(createDesktopAutoUpdateFeedConfig(args.platform));
     args.updater.setAutoDownload(false);
     args.updater.setAutoInstallOnAppQuit(true);
     args.updater.setForceDevUpdateConfig(args.forceDevUpdateConfig);

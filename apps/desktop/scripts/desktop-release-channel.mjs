@@ -42,7 +42,9 @@ export function createDesktopReleaseConfig(channel) {
       updateMetadataFileNames: {
         linux: "nightly-linux.yml",
         macos: "nightly-mac.yml",
+        windows: "nightly.yml",
       },
+      windowsReleaseTag: "desktop-win-nightly",
       windowsAppId: "cl.bb.wn.nightly",
       windowsApplicationName: "bb wn Nightly",
       windowsArtifactName: "bb-wn-Setup-${version}.exe",
@@ -61,7 +63,9 @@ export function createDesktopReleaseConfig(channel) {
     updateMetadataFileNames: {
       linux: "latest-linux.yml",
       macos: "latest-mac.yml",
+      windows: "latest.yml",
     },
+    windowsReleaseTag: "desktop-win-latest",
     windowsAppId: "cl.bb.wn",
     windowsApplicationName: "bb wn",
     windowsArtifactName: "bb-wn-Setup-${version}.exe",

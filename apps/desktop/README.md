@@ -182,6 +182,12 @@ tag:
 | -------- | ---------------------- | ------------------------- | ---------------------------- |
 | macOS    | `.dmg`, `.zip` (arm64) | `latest-mac.yml`          | `desktop-version.json`       |
 | Linux    | `.AppImage` (x64)      | `latest-linux.yml`        | `desktop-version-linux.json` |
+| Windows  | NSIS `.exe` (x64)      | `latest.yml`              | none (installer path only)   |
+
+Windows polls its own moving release, `desktop-win-latest` (nightly:
+`desktop-win-nightly`), which `win-release.yml` resets to the same assets on
+every run. It never reads or moves the shared `desktop-latest` tag, so the
+single-publisher rule above still holds per namespace.
 
 macOS keeps the unsuffixed feed name because released macOS builds already
 request it. Linux artifacts are unsigned; only the macOS binaries wait on the
@@ -289,7 +295,8 @@ checks run in parallel on launch, hourly, and when the app becomes active: the
 JSON feed can show "update available" even when CI has published metadata only,
 while the Electron updater only flips the toast to "ready to install" after a
 signed update has actually downloaded. Local dev builds skip Electron auto-update
-unless `BB_DESKTOP_AUTO_UPDATE=1` is set.
+unless `BB_DESKTOP_AUTO_UPDATE=1` is set. Windows installers resolve the same
+generic provider against `desktop-win-latest` and read `latest.yml`.
 
 `bb Nightly` follows the equivalent isolated `desktop-nightly` release and
 `nightly-mac.yml`; it never reads or moves the stable feed. The scheduled

@@ -705,6 +705,47 @@ describe("electron-builder signing config", () => {
     );
   });
 
+  it("resolves the shared update feed for non-Windows builds", async () => {
+    const { config } = await readResolvedConfig({});
+
+    expect(config.publish).toEqual([
+      {
+        channel: "latest",
+        provider: "generic",
+        url: "https://github.com/get-bb/bb/releases/download/desktop-latest/",
+      },
+    ]);
+  });
+
+  it("resolves the Windows update feed inside the desktop-win namespace", async () => {
+    const { config } = await readResolvedConfig({}, ["--win", "--x64"]);
+
+    expect(config.publish).toEqual([
+      {
+        channel: "latest",
+        provider: "generic",
+        url: "https://github.com/get-bb/bb/releases/download/desktop-win-latest/",
+      },
+    ]);
+  });
+
+  it("resolves the Windows nightly update feed inside the desktop-win namespace", async () => {
+    const { config } = await readResolvedConfig(
+      {
+        BB_DESKTOP_RELEASE_CHANNEL: "nightly",
+      },
+      ["--win", "--x64"],
+    );
+
+    expect(config.publish).toEqual([
+      {
+        channel: "nightly",
+        provider: "generic",
+        url: "https://github.com/get-bb/bb/releases/download/desktop-win-nightly/",
+      },
+    ]);
+  });
+
   it("creates a separate nightly app identity and update feed", async () => {
     const { config } = await readResolvedConfig({
       BB_DESKTOP_RELEASE_CHANNEL: "nightly",

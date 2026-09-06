@@ -229,6 +229,29 @@ describe("desktop auto-update service", () => {
     expect(updater.logger).not.toBeNull();
   });
 
+  it("points the Windows updater at the desktop-win-latest feed", () => {
+    const updater = new DesktopAutoUpdaterAdapterStub();
+    const messages = createLoggerMessages();
+
+    createDesktopAutoUpdateService({
+      currentVersion: "0.0.1",
+      enabled: true,
+      forceDevUpdateConfig: false,
+      logger: createLogger(messages),
+      now: () => Date.parse(checkedAt),
+      platform: "windows",
+      updater,
+    });
+
+    expect(updater.feedConfigs).toEqual([
+      {
+        channel: "latest",
+        provider: "generic",
+        url: "https://github.com/get-bb/bb/releases/download/desktop-win-latest/",
+      },
+    ]);
+  });
+
   it("updates state from updater events and downloads available updates in the background", () => {
     const updater = new DesktopAutoUpdaterAdapterStub();
     const messages = createLoggerMessages();

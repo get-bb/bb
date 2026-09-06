@@ -214,11 +214,14 @@ function resolveElectronBuilderConfig(baseConfig, env, electronBuilderArgs = [])
   if (isWindowsBuild(electronBuilderArgs)) {
     applyWindowsOverrides(config, releaseConfig);
   }
+  const updateReleaseTag = isWindowsBuild(electronBuilderArgs)
+    ? releaseConfig.windowsReleaseTag
+    : releaseConfig.releaseTag;
   config.publish = [
     {
       channel: releaseChannel,
       provider: "generic",
-      url: createDesktopUpdateReleaseBaseUrl(releaseConfig.releaseTag),
+      url: createDesktopUpdateReleaseBaseUrl(updateReleaseTag),
     },
   ];
 

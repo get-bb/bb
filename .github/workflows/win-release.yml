@@ -2,7 +2,9 @@ name: Windows Release (bb wn)
 
 # Builds the NSIS installer on windows-latest and publishes it to a
 # versioned release. Re-running with the same version replaces the assets
-# in place instead of creating a second release (idempotent).
+# in place instead of creating a second release (idempotent). Each run also
+# resets the desktop-win-latest moving release to the same assets, which is
+# the feed Windows installs poll.
 #
 # Manual launch from the fork:
 #   gh workflow run win-release.yml --ref <branch> -f version=<x.y.z>
@@ -117,9 +119,46 @@ jobs:
               --notes "bb desktop for Windows $version (NSIS installer, x64)."
           }
 
+      - name: Update desktop-win-latest moving release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $version = "${{ steps.version.outputs.version }}"
+          $movingTag = "desktop-win-latest"
+          $assets = @(Get-ChildItem apps/desktop/release/* -Include *.exe,*.yml,*.blockmap -File | Where-Object { $_.Name -ne "builder-debug.yml" } | Select-Object -ExpandProperty FullName)
+          if ($assets.Count -eq 0) {
+            throw "No release assets found under apps/desktop/release."
+          }
+          git tag -f $movingTag $env:GITHUB_SHA
+          git push --force origin "refs/tags/$movingTag"
+          gh release view $movingTag *> $null
+          if ($LASTEXITCODE -eq 0) {
+            Write-Host "Release $movingTag already exists; resetting its assets to Windows $version."
+            gh release edit $movingTag `
+              --target $env:GITHUB_SHA `
+              --title "bb desktop for Windows latest" `
+              --notes "Latest stable bb desktop for Windows release metadata." `
+              --latest=false
+            $existing = @(gh release view $movingTag --json assets --jq '.assets[].name')
+            foreach ($assetName in $existing) {
+              if (-not [string]::IsNullOrWhiteSpace($assetName)) {
+                gh release delete-asset $movingTag $assetName --yes
+              }
+            }
+            gh release upload $movingTag $assets
+          } else {
+            gh release create $movingTag $assets `
+              --target $env:GITHUB_SHA `
+              --title "bb desktop for Windows latest" `
+              --notes "Latest stable bb desktop for Windows release metadata." `
+              --latest=false
+          }
+
       - name: Summarize
         run: |
           $tag = "${{ steps.version.outputs.tag }}"
           "## Windows release" | Out-File -Append $env:GITHUB_STEP_SUMMARY
           "- tag: $tag" | Out-File -Append $env:GITHUB_STEP_SUMMARY
           "- feed: https://github.com/${{ github.repository }}/releases/tag/$tag" | Out-File -Append $env:GITHUB_STEP_SUMMARY
+          "- moving feed: https://github.com/${{ github.repository }}/releases/tag/desktop-win-latest" | Out-File -Append $env:GITHUB_STEP_SUMMARY
+          "- update base: https://github.com/${{ github.repository }}/releases/download/desktop-win-latest/" | Out-File -Append $env:GITHUB_STEP_SUMMARY

@@ -155,13 +155,15 @@ Only production is redirected to `%APPDATA%/bb`. In development
 (`NODE_ENV != production`) the data directory still resolves under the home
 directory via `@bb/config`.
 
-## K10 — Auto-update feed is emitted; end-to-end install still unproven
+## K10 — Windows updates now poll their own namespace; end-to-end install still unproven
 
 The `desktop-win-v*` tag namespace is deliberately separate from
 `desktop-v*`/`desktop-latest`, which the upstream release flow treats as
-immutable. What was previously unknown — whether electron-builder emits
-`latest.yml` and `.blockmap` with `--publish never` on Windows — has now been
-measured.
+immutable (`build-desktop.yml` refuses to mutate an existing `desktop-v*`
+tag, and a single job resets the moving `desktop-latest` so one platform
+cannot delete another's binaries). What was previously unknown — whether
+electron-builder emits `latest.yml` and `.blockmap` with `--publish never`
+on Windows — has now been measured.
 
 **Measured 2026-09-06 on real Windows 11 Pro (build 26200):** the `dist:win`
 output in-tree (current config, version 0.42.1, `--publish never`) contains
@@ -179,14 +181,41 @@ the current config and version, so a second build would have re-proven the
 same thing at the cost of machine contention. No competing Electron build was
 running when checked.
 
+**Wiring fix 2026-09-06 on real Windows 11 Pro (build 26200), no rebuild:**
+the packaged Windows app polled
+`https://github.com/get-bb/bb/releases/download/desktop-latest/` and therefore
+asked for `.../desktop-latest/latest.yml`, which was measured live to return
+HTTP 404 (while `.../desktop-latest/latest-linux.yml` returns 302), so a
+Windows install could never find an update. Windows assets live under
+`desktop-win-v*` (verified: `desktop-win-v0.42.1` on the fork holds the `.exe`,
+`.blockmap` and `latest.yml`). The fix keeps the namespaces split and moves
+Windows into its own moving tag: the provider
+(`desktop-update-provider.ts`), the auto-update service
+(`desktop-auto-update.ts`, now per-platform via
+`createDesktopAutoUpdateFeedConfig`) and the baked `app-update.yml`
+(`run-electron-builder.mjs` for `--win` builds) resolve Windows stable to
+`https://github.com/get-bb/bb/releases/download/desktop-win-latest/`
+(`latest.yml`) and Windows nightly to `.../desktop-win-nightly/`
+(`nightly.yml`); macOS and Linux resolve unchanged. `win-release.yml` now
+resets `desktop-win-latest` to the same assets on every run, mirroring the
+upstream moving-tag pattern without touching `desktop-v*`/`desktop-latest`.
+Exercised without a build: the in-tree `release/` directory served over HTTP
+through the real `getChannelFilename`/`parseUpdateInfo`/`resolveFiles`
+resolves version 0.42.1 to "up to date" and 0.0.1 to "update available",
+and the resolved `--win` publish config prints the `desktop-win-latest` base
+(non-Windows prints `desktop-latest`, nightly `--win` prints
+`desktop-win-nightly`). `@bb/desktop` vitest is 40 files / 322 passed /
+3 skipped / 0 failed.
+
 **Still open:** (1) the full `autoUpdater` download-and-install flow inside the
 packaged app has not been exercised — that needs the Electron runtime plus a
 hosted feed, and this entry proves only feed emission, feed integrity and the
-version decision; (2) release wiring: `win-release.yml` publishes Windows
-assets to `desktop-win-v*` tags while the app's updater (`desktop-update-provider`)
-polls `desktop-latest`, so an installed Windows build still has no feed to find
-until a release-policy decision connects the two. That decision was
- deliberately left untouched here.
+version decision; (2) the `desktop-win-latest` moving release does not exist
+on `get-bb/bb` yet — it appears the first time the updated `win-release.yml`
+runs there, so live Windows installs still 404 until then; the nightly
+`desktop-win-nightly` tag has no publisher at all (`win-release.yml` is
+stable-only), so nightly Windows installs poll the right namespace but find
+nothing by design.
 
 ## K11 — Editor coverage in "Open in…" (partly closed 2026-09-06)
 
