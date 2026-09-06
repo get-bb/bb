@@ -22,7 +22,7 @@ const localProjectPathRequestSchema = z
   .string()
   .trim()
   .min(1)
-  .transform(normalizeProjectPathInput)
+  .transform((value) => normalizeProjectPathInput(value))
   .superRefine((path, ctx) => {
     const validationMessage = getProjectPathValidationMessage(path);
     if (!validationMessage) {
