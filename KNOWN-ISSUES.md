@@ -1,164 +1,165 @@
-# bb wn — problemas conocidos
+# bb wn — known issues
 
-Recopilado de los informes de los trece agentes que hicieron el port, sin
-suavizar. La regla que se les impuso fue: **nunca afirmar un comportamiento de
-Windows que no se haya ejecutado**. Lo que sigue respeta esa regla.
+Collected from the reports of the agents that built this port, unsoftened. The
+rule they worked under was: **never claim a Windows behaviour you did not
+execute**. What follows respects that rule.
 
-## La limitación que enmarca todo lo demás
+## The limitation that frames everything else
 
-El port se escribió íntegro en Linux. La única máquina Windows disponible fue
-`windows-latest` de GitHub Actions (**Windows Server 2025, build 10.0.26100**,
-el mismo kernel que Windows 11 24H2). Eso da compilación, tests y empaquetado
-reales, pero **no** un escritorio interactivo.
+The port was written entirely on Linux. The only Windows machine available was
+GitHub Actions `windows-latest` (**Windows Server 2025, build 10.0.26100** — the
+same kernel as Windows 11 24H2). That gives real compilation, real tests and real
+packaging, but **no interactive desktop**.
 
-Por eso el diseño obliga a inyectar la plataforma como parámetro en vez de leer
-`process.platform`: hace que la rama de Windows sea comprobable desde Linux. Un
-test que fija «se pidió lanzar `powershell.exe` con estos argumentos» es una
-afirmación fuerte y verificable — pero **no es lo mismo** que «PowerShell
-arrancó y escribió». Donde esa distinción importa, está dicho abajo.
+This is why the design injects the platform as a parameter instead of reading
+`process.platform`: it makes the Windows branch checkable from Linux. A test
+asserting "`powershell.exe` was requested with these arguments" is a strong,
+verifiable claim — but it is **not** the same as "PowerShell started and echoed".
+Where that distinction matters, it is called out below.
 
 ---
 
-## K1 — Sin firma de código
+## K1 — No code signing
 
-El instalador no está firmado (`sign:false`, no hay certificado). Windows
-SmartScreen mostrará «Windows protegió su PC» en la primera ejecución.
+The installer is unsigned (`sign: false`, no certificate available). Windows
+SmartScreen will show "Windows protected your PC" on first run.
 
-**Workaround:** Más información → Ejecutar de todas formas. Para distribución
-real hace falta un certificado EV de firma de código.
+**Workaround:** More info → Run anyway. Real distribution needs an EV code
+signing certificate.
 
-## K2 — Los permisos POSIX no protegen nada en Windows
+## K2 — POSIX permissions protect nothing on Windows
 
-`chmod 0600` sobre secretos, credenciales, host-id y descriptores es
-**best-effort** en NTFS: Node solo aplica el bit de sólo-lectura; el control
-real son las ACL, y Node no expone API para ellas.
+`chmod 0600` on secrets, credentials, host id and descriptors is **best-effort**
+on NTFS: Node only applies the read-only bit, the real control is ACLs, and Node
+exposes no API for them.
 
-Se decidió deliberadamente **no fingir protección**: el código no pretende que
-el fichero esté endurecido. En Windows los secretos quedan protegidos sólo por
-los permisos heredados del perfil del usuario.
+The code deliberately does **not fake protection** — it never pretends the file
+is hardened. On Windows those secrets are protected only by the permissions
+inherited from the user profile.
 
-**Consecuencia práctica:** en una máquina multiusuario, otro usuario con
-permisos sobre el perfil podría leerlos. **Workaround:** usar `%APPDATA%` del
-perfil (que es lo que se hace) y no compartir la cuenta de Windows.
+**Practical consequence:** on a multi-user machine, another user with rights over
+the profile could read them. **Workaround:** keep them under the profile's
+`%APPDATA%` (which is what happens) and do not share the Windows account.
 
-## K3 — El cwd de un proceso no es barato en Windows
+## K3 — A process's working directory is not cheap on Windows
 
-`Win32_Process` da PID, PPID, ExecutablePath y CommandLine, pero **no** el
-directorio de trabajo. La enumeración usa tres estrategias combinadas: árbol por
-PPID, coincidencia por CommandLine/ExecutablePath, y registro propio de los PID
-que lanzamos nosotros.
+`Win32_Process` exposes PID, PPID, ExecutablePath and CommandLine, but **not** the
+working directory. Enumeration therefore combines three strategies: a tree walk
+by PPID, matching on CommandLine/ExecutablePath, and an internal registry of the
+PIDs we spawned ourselves.
 
-Es **parcial a propósito** y el tipo lo refleja (`approximateCwd: true` en todo
-resultado win32). Hay dos modos de error reales:
+It is **deliberately partial**, and the type says so (`approximateCwd: true` on
+every win32 result). There are two real failure modes:
 
-- **Sobre-coincidencia:** un proceso que sólo menciona el directorio en su línea
-  de comandos puede contarse como si estuviera dentro.
-- **Sub-coincidencia:** un proceso cuyo cwd es invisible y que no lanzamos
-  nosotros no aparece.
+- **Over-match:** a process that merely mentions the directory in its command
+  line can be counted as being inside it.
+- **Under-match:** a process whose cwd is invisible and which we did not spawn
+  does not appear at all.
 
-**Workaround:** lanzar con `spawnPortableProcess` + `cwd`, que auto-registra el
-PID, o registrarlo a mano.
+**Workaround:** spawn through `spawnPortableProcess` with `cwd`, which registers
+the PID automatically, or register it manually.
 
-Detalles adicionales en `packages/process-utils/known-issues.md`: los nombres
-8.3 no casan con la forma larga, symlinks y junctions se comparan léxicamente
-(pasar ruta canónica), y el reciclado rápido de PID puede mal-atribuir un
-subárbol dentro de la ventana de un barrido.
+Further detail in `packages/process-utils/known-issues.md`: 8.3 short names do
+not match their long form, symlinks and junctions are compared lexically (pass a
+canonical path), and fast PID reuse can misattribute a subtree within the window
+of a single sweep.
 
-**Mejora propuesta, no implementada:** Job Objects con
-`JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE` matan a los hijos aunque el padre caiga en
-bruto. Requiere un helper nativo (`CreateJobObject`/`AssignProcessToJobObject`),
-es decir una dependencia nueva — se dejó como propuesta explícita.
+**Proposed improvement, not implemented:** Job Objects with
+`JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE` kill children even when the parent dies
+abruptly. It needs a native helper (`CreateJobObject` /
+`AssignProcessToJobObject`), i.e. a new dependency, so it was left as an explicit
+proposal rather than smuggled in.
 
-## K4 — La sonda CIM no tiene timeout
+## K4 — The CIM probe has no timeout
 
-Paridad con el camino `lsof` de POSIX, que tampoco lo tiene. Un `powershell.exe`
-colgado colgaría el barrido.
+This matches the POSIX `lsof` path, which has none either. A hung
+`powershell.exe` would hang the sweep.
 
-**Workaround:** ninguno automático. Si se observa, hay que añadir timeout.
+**Workaround:** none automatic. If observed, add a timeout.
 
-## K5 — ConPTY no se ha ejecutado nunca de verdad
+## K5 — ConPTY has never actually run
 
-Todo el trabajo del terminal está verificado contra un adaptador de PTY falso.
-Se afirma qué se pide lanzar, no que arranque. **Lo más expuesto es UTF-8**: si
-`chcp 65001` no basta, acentos y caracteres de caja saldrán rotos y nadie lo ha
-visto todavía.
+All terminal work is verified against a fake PTY adapter. It asserts what is
+requested, not that it starts. **UTF-8 is the most exposed part**: if
+`chcp 65001` is not enough, accented and box-drawing characters will come back
+mangled, and nobody has seen it happen either way yet.
 
-`.github/workflows/win-smoke.yml` existe precisamente para cerrar esto: lanza un
-ConPTY real, escribe texto con acentos y comprueba que vuelve intacto.
+`.github/workflows/win-smoke.yml` exists precisely to close this: it starts a real
+ConPTY, writes accented text, and asserts it survives the round trip.
 
-**Estado:** pendiente de su primera ejecución verde.
+**Status:** awaiting its first green run.
 
-## K6 — El perfil de PowerShell sí se carga en la sonda de entorno
+## K6 — The environment probe does load the PowerShell profile
 
-La sonda de entorno de ejecución **no** usa `-NoProfile`, a propósito, para
-reflejar el `-ilc` de POSIX. El parseo por marcadores ignora el ruido del perfil.
-El terminal interactivo sí usa `-NoProfile` por determinismo.
+The runtime environment probe deliberately does **not** pass `-NoProfile`, to
+mirror the `-ilc` behaviour of the POSIX path; marker-delimited parsing ignores
+profile noise. The interactive terminal does use `-NoProfile`, for determinism.
 
-**Riesgo:** un perfil de usuario que escriba en stdout de forma agresiva podría
-confundir al parseo. No observado.
+**Risk:** a user profile that writes aggressively to stdout could confuse the
+parse. Not observed.
 
-## K7 — Casos límite de rutas que se dejaron conscientemente
+## K7 — Path edge cases left deliberately
 
-- `isSameProjectPath` sobre rutas `\\?\` con y sin barra final devuelve `false`.
-  Es la consecuencia honesta de **no re-normalizar** los prefijos `\\?\`, que es
-  justo lo que Windows espera de ellos. Si se quiere igualdad ahí, hay que
-  decidirlo explícitamente.
-- `\\?\` a secas devuelve `false`; es un degenerado inválido de todas formas.
-- `\\.\` y `\\?\` se tratan como equivalentes a efectos de contención en el
-  watcher; suficiente para su uso.
+- `isSameProjectPath` on `\\?\` paths with and without a trailing slash returns
+  `false`. That is the honest consequence of **not re-normalising** `\\?\`
+  prefixes, which is exactly what Windows expects of them. Making those equal is
+  a decision that has to be taken explicitly.
+- A bare `\\?\` returns `false`; it is an invalid degenerate form anyway.
+- `\\.\` and `\\?\` are treated as equivalent for containment in the watcher,
+  which is sufficient for its use.
 
-## K8 — Symlinks y bits de ejecución
+## K8 — Symlinks and executable bits
 
-Crear symlinks en Windows requiere privilegio o Modo Desarrollador. El paquete
-de workspace **nunca los crea** (los detecta por `lstat` y los salta), así que
-no hay dependencia de privilegio. Pero:
+Creating a symlink on Windows requires privilege or Developer Mode. The workspace
+package **never creates one** (it detects them via `lstat` and skips them), so
+there is no privilege dependency there. However:
 
-- `chmod(file.mode)` sobre skills inyectadas **no preserva** el bit de
-  ejecución POSIX en win32. La ejecutabilidad de `.sh`/`.cmd` de skills en
-  Windows queda sin resolver.
-- Los repos que contengan symlinks dependen de `core.symlinks` de git: sin Modo
-  Desarrollador quedan como ficheros de texto con la ruta destino dentro.
+- `chmod(file.mode)` on injected skills does **not** preserve the POSIX execute
+  bit on win32. Executability of skill `.sh`/`.cmd` files on Windows is
+  unresolved.
+- Repositories that contain symlinks depend on git's `core.symlinks`: without
+  Developer Mode they materialise as text files containing the target path.
 
-## K9 — Directorio de datos en desarrollo
+## K9 — Development data directory
 
-Sólo producción se redirige a `%APPDATA%/bb`. En modo desarrollo
-(`NODE_ENV != production`) el directorio de datos sigue resolviéndose bajo el
-home vía `@bb/config`.
+Only production is redirected to `%APPDATA%/bb`. In development
+(`NODE_ENV != production`) the data directory still resolves under the home
+directory via `@bb/config`.
 
-## K10 — Actualizador automático sin cablear
+## K10 — Auto-update is not wired
 
-El espacio de tags `desktop-win-v*` es deliberadamente distinto de
-`desktop-v*`/`desktop-latest`, que el flujo de release upstream trata como
-inmutables. No se ha comprobado que electron-builder emita `latest.yml` y
-`.blockmap` con `--publish never` en Windows; si faltara `latest.yml`, el
-release quedaría sin feed de actualización aunque el `.exe` esté.
+The `desktop-win-v*` tag namespace is deliberately separate from
+`desktop-v*`/`desktop-latest`, which the upstream release flow treats as
+immutable. It has not been confirmed that electron-builder emits `latest.yml` and
+`.blockmap` with `--publish never` on Windows; if `latest.yml` were missing, the
+release would ship without an update feed even though the `.exe` is present.
 
-**Workaround:** tras el primer release verde, inspeccionar los artefactos y
-ajustar los globs.
+**Workaround:** after the first green release run, inspect the artifact listing
+and tighten the globs.
 
-## K11 — Cobertura de editores en «Abrir en…»
+## K11 — Editor coverage in "Open in…"
 
-Sólo VS Code y VS Code Insiders tienen rutas conocidas en Windows
-(`LOCALAPPDATA`/`ProgramFiles` y `Code.exe` directo). El resto de editores sólo
-se detectan si están en el `PATH` vía `where.exe`. JetBrains Toolbox no está
-mapeado en Windows.
+Only VS Code and VS Code Insiders have known Windows paths
+(`LOCALAPPDATA`/`ProgramFiles`, and `Code.exe` directly rather than the wrapper).
+Every other editor is found only if it is on `PATH` via `where.exe`. JetBrains
+Toolbox is not mapped on Windows.
 
-Además, VS Code remoto se anuncia con sólo el CLI presente aunque falte `ssh`:
-es **paridad exacta con macOS**, no un descuido.
+VS Code Remote is also advertised whenever the CLI is present even if `ssh` is
+missing — that is **exact parity with macOS**, not an oversight.
 
-## K12 — Diálogo de carpeta de respaldo
+## K12 — Folder picker fallback
 
-El respaldo en PowerShell usa `FolderBrowserDialog`, que requiere STA. El flag
-`-STA` no se ha probado fuera de Linux. El camino principal es el diálogo nativo
-de Electron, que sí es nativo en Windows.
+The PowerShell fallback uses `FolderBrowserDialog`, which requires STA. The `-STA`
+flag has not been exercised outside Linux. The primary path is Electron's native
+dialog, which is genuinely native on Windows.
 
-## K13 — Lo que este montaje no puede probar nunca
+## K13 — What this setup can never prove
 
-Los runners son Windows Server sin escritorio interactivo. Queda fuera de
-alcance y **debe hacerlo una persona** en un Windows 11 real, siguiendo
+The runners are Windows Server with no interactive desktop. The following is out
+of scope and **must be done by a person** on real Windows 11, following
 `qa/CHECKLIST-WIN11.md`:
 
-- el doble clic sobre el instalador y el flujo de SmartScreen/Defender
-- que la ventana de Electron abra sin pedir navegador
-- desinstalación limpia
-- comportamiento tras reinicio
+- double-clicking the installer, and the SmartScreen / Defender flow
+- the Electron window opening without asking for a browser
+- clean uninstall
+- behaviour after a reboot
