@@ -78,8 +78,8 @@ describe("bb-dev-app", () => {
 
       expect(result.status).toBe(0);
       expect(result.stderr).toBe("");
-      expect(result.stdout).toContain(
-        `Node: v24.18.0 (ABI 137) at ${join(callerBin, "node")}`,
+      expect(result.stdout).toMatch(
+        /Node: v24\.18\.0 \(ABI 137\) at \S*caller-bin[/\\]node/,
       );
       expect(result.stdout).not.toContain("Node: v22.23.2");
     } finally {

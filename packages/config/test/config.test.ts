@@ -80,7 +80,7 @@ describe("common config", () => {
         },
         homeDir: "/Users/tester",
       }).BB_DATA_DIR,
-    ).toBe("/Users/tester/.bb");
+    ).toBe(path.join("/Users/tester", ".bb"));
   });
 
   it("requires repoRoot or BB_DATA_DIR for development data dir resolution", () => {
@@ -106,7 +106,7 @@ describe("common config", () => {
         homeDir,
         repoRoot,
       }).BB_DATA_DIR,
-    ).toBe("/Users/tester/.bb-dev/src-bb-9039de53a76a");
+    ).toBe(path.join(homeDir, ".bb-dev", "src-bb-9039de53a76a"));
   });
 
   it("expands home-directory overrides for BB_DATA_DIR", () => {
@@ -179,7 +179,7 @@ describe("data-dir helpers", () => {
         mode: "dev",
         repoRoot,
       }),
-    ).toBe("/Users/tester/.bb-dev/src-bb-9039de53a76a");
+    ).toBe(path.join(homeDir, ".bb-dev", "src-bb-9039de53a76a"));
   });
 
   it("keeps the legacy fallback label for degenerate checkout labels", () => {
@@ -190,7 +190,7 @@ describe("data-dir helpers", () => {
         mode: "dev",
         repoRoot: "/Users/tester/---",
       }),
-    ).toBe("/Users/tester/.bb-dev/worktree-41987f975862");
+    ).toBe(path.join("/Users/tester", ".bb-dev", "worktree-41987f975862"));
   });
 });
 
@@ -299,7 +299,9 @@ describe("consumer-specific config", () => {
 
     expect(serverConfig.BB_SERVER_PORT).toBe(4444);
     expect(serverConfig.BB_HOST_DAEMON_PORT).toBe(5555);
-    expect(serverConfig.databasePath).toBe("/tmp/bb-data/bb.db");
+    expect(serverConfig.databasePath).toBe(
+      path.join(path.resolve("/tmp/bb-data"), "bb.db"),
+    );
     expect(serverConfig.BB_APP_URL).toBe("");
     expect(serverConfig.BB_APP_SURFACE).toBe("web");
     expect(serverConfig.BB_APP_VERSION).toBe("0.0.0-dev");
@@ -470,7 +472,9 @@ describe("consumer-specific config", () => {
       },
     });
 
-    expect(databaseConfig.databasePath).toBe("/tmp/bb-data/bb.db");
+    expect(databaseConfig.databasePath).toBe(
+      path.join(path.resolve("/tmp/bb-data"), "bb.db"),
+    );
   });
 
   it("requires provider/model format for BB_INFERENCE", () => {
@@ -588,7 +592,7 @@ describe("consumer-specific config", () => {
       },
     });
 
-    expect(hostDaemonConfig.BB_DATA_DIR).toBe("/tmp/bb-data");
+    expect(hostDaemonConfig.BB_DATA_DIR).toBe(path.resolve("/tmp/bb-data"));
     expect(hostDaemonConfig.BB_SERVER_URL).toBe("http://localhost:9999");
     expect(hostDaemonConfig.BB_HOST_DAEMON_PORT).toBe(3999);
   });
@@ -603,7 +607,9 @@ describe("consumer-specific config", () => {
       },
     });
 
-    expect(hostDaemonStartConfig.dataDir).toBe("/tmp/bb-data");
+    expect(hostDaemonStartConfig.dataDir).toBe(
+      path.resolve("/tmp/bb-data"),
+    );
     expect(hostDaemonStartConfig.connectionConfig.BB_SERVER_URL).toBe(
       "http://localhost:9999",
     );
