@@ -13,15 +13,37 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { createServer as createNetServer } from "node:net";
-import { delimiter, join } from "node:path";
+import { delimiter, dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 
 const SCRIPT_PATH = new URL(
   "../../src/assets/install-machine.sh",
   import.meta.url,
 );
-const INSTALL_SCRIPT_POSIX_ONLY_MEASURED_UNSUPPORTED_ON_WINDOWS =
-  process.platform === "win32";
+const SCRIPT_SPAWN_PATH =
+  process.platform === "win32"
+    ? fileURLToPath(SCRIPT_PATH)
+    : SCRIPT_PATH.pathname;
+function findWindowsShellBinDir(): string | null {
+  if (process.platform !== "win32") {
+    return null;
+  }
+  try {
+    const located = spawnSync("where", ["sh"], { encoding: "utf8" });
+    const first = (located.stdout ?? "")
+      .split(/\r?\n/u)
+      .map((line) => line.trim())
+      .find((line) => line !== "");
+    return first === undefined ? null : dirname(first);
+  } catch {
+    return null;
+  }
+}
+
+const WINDOWS_SHELL_BIN_DIR = findWindowsShellBinDir();
+const INSTALL_SCRIPT_SHELL_UNAVAILABLE_MEASURED_ON_WINDOWS =
+  process.platform === "win32" && WINDOWS_SHELL_BIN_DIR === null;
 const createdDirectories: string[] = [];
 const FIXTURE_ARTIFACT_DIGEST = createHash("sha256")
   .update("fixture-tarball")
@@ -38,6 +60,9 @@ function createFixture(): { binDir: string; dataDir: string; homeDir: string } {
   mkdirSync(homeDir, { recursive: true });
   writeFileSync(join(root, "package.json"), '{"type":"commonjs"}\n');
   symlinkSync(process.execPath, join(binDir, "node"));
+  if (process.platform === "win32") {
+    writeExecutable(join(binDir, "uname"), "#!/bin/sh\necho Linux\n");
+  }
   return { binDir, dataDir, homeDir };
 }
 
@@ -52,11 +77,17 @@ function createScriptEnv(
   fixture: Fixture,
   env: Record<string, string>,
 ): NodeJS.ProcessEnv {
+  const scriptPath =
+    process.platform === "win32"
+      ? [fixture.binDir, WINDOWS_SHELL_BIN_DIR, process.env.PATH]
+      : [fixture.binDir, "/usr/bin", "/bin"];
   return {
     ...process.env,
     BB_DATA_DIR: fixture.dataDir,
     HOME: fixture.homeDir,
-    PATH: [fixture.binDir, "/usr/bin", "/bin"].join(delimiter),
+    PATH: scriptPath
+      .filter((entry) => entry !== null && entry !== undefined)
+      .join(delimiter),
     ...env,
   };
 }
@@ -66,7 +97,7 @@ function runScript(
   fixture: Fixture,
   env: Record<string, string> = {},
 ) {
-  return spawnSync("sh", [SCRIPT_PATH.pathname, ...args], {
+  return spawnSync("sh", [SCRIPT_SPAWN_PATH, ...args], {
     encoding: "utf8",
     env: createScriptEnv(fixture, env),
   });
@@ -77,7 +108,7 @@ async function runScriptAsync(
   fixture: Fixture,
   env: Record<string, string> = {},
 ): Promise<{ status: number | null; stderr: string; stdout: string }> {
-  const child = spawn("sh", [SCRIPT_PATH.pathname, ...args], {
+  const child = spawn("sh", [SCRIPT_SPAWN_PATH, ...args], {
     env: createScriptEnv(fixture, env),
   });
   child.stderr.setEncoding("utf8");
@@ -261,20 +292,52 @@ printf '%s' '${artifactStatus}'
   );
 }
 
+function terminateDaemonProcess(pid: number): void {
+  if (process.platform === "win32") {
+    const stopped = spawnSync("sh", ["-c", `kill ${pid}`]);
+    if (stopped.status === 0) {
+      return;
+    }
+  }
+  process.kill(pid, "SIGTERM");
+}
+
 afterEach(() => {
   for (const directory of createdDirectories.splice(0)) {
     try {
       const servicePid = Number(
         readFileSync(join(directory, "data/service-daemon.pid"), "utf8"),
       );
-      process.kill(servicePid, "SIGTERM");
+      terminateDaemonProcess(servicePid);
     } catch {}
     rmSync(directory, { force: true, recursive: true });
   }
 });
 
-describe.skipIf(INSTALL_SCRIPT_POSIX_ONLY_MEASURED_UNSUPPORTED_ON_WINDOWS)(
-  "machine install script", () => {
+function probeShellValue(fixture: Fixture, command: string): string {
+  const probed = spawnSync("sh", ["-c", command], {
+    encoding: "utf8",
+    env: createScriptEnv(fixture, {}),
+  });
+  if (probed.status !== 0) {
+    throw new Error(`Probe ${command} failed: ${probed.stderr}`);
+  }
+  return probed.stdout.trim();
+}
+
+function escapeSystemdValue(value: string): string {
+  return value
+    .replace(/\\/gu, "\\\\")
+    .replace(/"/gu, '\\"')
+    .replace(/%/gu, "%%");
+}
+
+const INSTALL_SCRIPT_DEFAULT_DATA_DIR_UNSUPPORTED_MEASURED_ON_WINDOWS =
+  process.platform === "win32";
+
+describe.skipIf(INSTALL_SCRIPT_SHELL_UNAVAILABLE_MEASURED_ON_WINDOWS)(
+  "machine install script",
+  () => {
   it("rejects missing required flags with usage", () => {
     const fixture = createFixture();
     const result = runScript(["--join-code", "code-only"], fixture);
@@ -352,7 +415,7 @@ describe.skipIf(INSTALL_SCRIPT_POSIX_ONLY_MEASURED_UNSUPPORTED_ON_WINDOWS)(
     const daemonPid = Number(
       readFileSync(join(fixture.dataDir, "install-daemon.pid"), "utf8"),
     );
-    process.kill(daemonPid, "SIGTERM");
+    terminateDaemonProcess(daemonPid);
   });
 
   it("starts the daemon for an existing enrollment when service setup is skipped", () => {
@@ -381,7 +444,7 @@ describe.skipIf(INSTALL_SCRIPT_POSIX_ONLY_MEASURED_UNSUPPORTED_ON_WINDOWS)(
       ]);
     } finally {
       if (existsSync(daemonPidPath)) {
-        process.kill(Number(readFileSync(daemonPidPath, "utf8")), "SIGTERM");
+        terminateDaemonProcess(Number(readFileSync(daemonPidPath, "utf8")));
       }
     }
   });
@@ -413,7 +476,7 @@ describe.skipIf(INSTALL_SCRIPT_POSIX_ONLY_MEASURED_UNSUPPORTED_ON_WINDOWS)(
     const daemonPid = Number(
       readFileSync(join(fixture.dataDir, "install-daemon.pid"), "utf8"),
     );
-    process.kill(daemonPid, "SIGTERM");
+    terminateDaemonProcess(daemonPid);
   });
 
   it("installs the server tarball even when a same-version bb-app is on PATH", () => {
@@ -430,12 +493,12 @@ describe.skipIf(INSTALL_SCRIPT_POSIX_ONLY_MEASURED_UNSUPPORTED_ON_WINDOWS)(
       "utf8",
     );
     expect(npmInvocation).toMatch(
-      /^install -g --allow-scripts=better-sqlite3,node-pty,@parcel\/watcher --prefix \/.*\/data\/npm \/.*bb-app\..*\.tgz$/mu,
+      /^install -g --allow-scripts=better-sqlite3,node-pty,@parcel\/watcher --prefix .*[/\\]data[/\\]npm .*bb-app\..*\.tgz$/mu,
     );
     const daemonPid = Number(
       readFileSync(join(fixture.dataDir, "install-daemon.pid"), "utf8"),
     );
-    process.kill(daemonPid, "SIGTERM");
+    terminateDaemonProcess(daemonPid);
   });
 
   it("prefers the server-matched tarball when bb-app is absent", () => {
@@ -451,7 +514,7 @@ describe.skipIf(INSTALL_SCRIPT_POSIX_ONLY_MEASURED_UNSUPPORTED_ON_WINDOWS)(
       "utf8",
     );
     expect(npmInvocation).toMatch(
-      /^install -g --allow-scripts=better-sqlite3,node-pty,@parcel\/watcher --prefix \/.*\/data\/npm \/.*bb-app\..*\.tgz$/mu,
+      /^install -g --allow-scripts=better-sqlite3,node-pty,@parcel\/watcher --prefix .*[/\\]data[/\\]npm .*bb-app\..*\.tgz$/mu,
     );
     expect(npmInvocation).not.toContain("bb-app\n");
     expect(readFileSync(join(fixture.dataDir, "curl.log"), "utf8")).toContain(
@@ -481,7 +544,7 @@ describe.skipIf(INSTALL_SCRIPT_POSIX_ONLY_MEASURED_UNSUPPORTED_ON_WINDOWS)(
     const daemonPid = Number(
       readFileSync(join(fixture.dataDir, "install-daemon.pid"), "utf8"),
     );
-    process.kill(daemonPid, "SIGTERM");
+    terminateDaemonProcess(daemonPid);
   });
 
   it("skips downloading and installing an identical host artifact", () => {
@@ -512,7 +575,7 @@ describe.skipIf(INSTALL_SCRIPT_POSIX_ONLY_MEASURED_UNSUPPORTED_ON_WINDOWS)(
     const daemonPid = Number(
       readFileSync(join(fixture.dataDir, "install-daemon.pid"), "utf8"),
     );
-    process.kill(daemonPid, "SIGTERM");
+    terminateDaemonProcess(daemonPid);
   });
 
   it("rejects a server host artifact whose digest does not match", () => {
@@ -540,12 +603,12 @@ describe.skipIf(INSTALL_SCRIPT_POSIX_ONLY_MEASURED_UNSUPPORTED_ON_WINDOWS)(
 
     expect(result.status, result.stderr).toBe(0);
     expect(readFileSync(join(fixture.dataDir, "npm.log"), "utf8")).toMatch(
-      /^install -g --allow-scripts=better-sqlite3,node-pty,@parcel\/watcher --prefix \/.*\/data\/npm bb-app\n$/u,
+      /^install -g --allow-scripts=better-sqlite3,node-pty,@parcel\/watcher --prefix .*[/\\]data[/\\]npm bb-app\n$/u,
     );
     const daemonPid = Number(
       readFileSync(join(fixture.dataDir, "install-daemon.pid"), "utf8"),
     );
-    process.kill(daemonPid, "SIGTERM");
+    terminateDaemonProcess(daemonPid);
   });
 
   it("fails loudly when npm skipped the native add-on install scripts", () => {
@@ -566,7 +629,9 @@ describe.skipIf(INSTALL_SCRIPT_POSIX_ONLY_MEASURED_UNSUPPORTED_ON_WINDOWS)(
     expect(existsSync(join(fixture.dataDir, "install-daemon.pid"))).toBe(false);
   });
 
-  it("defaults the data dir to a per-server directory under ~/.bb-machines", () => {
+  it.skipIf(INSTALL_SCRIPT_DEFAULT_DATA_DIR_UNSUPPORTED_MEASURED_ON_WINDOWS)(
+    "defaults the data dir to a per-server directory under ~/.bb-machines",
+    () => {
     const fixture = createFixture();
     writeServerInstallTools(fixture, 200);
     const result = runScript(JOIN_ARGS, fixture, {
@@ -585,8 +650,9 @@ describe.skipIf(INSTALL_SCRIPT_POSIX_ONLY_MEASURED_UNSUPPORTED_ON_WINDOWS)(
     const daemonPid = Number(
       readFileSync(join(defaultDataDir, "install-daemon.pid"), "utf8"),
     );
-    process.kill(daemonPid, "SIGTERM");
-  });
+    terminateDaemonProcess(daemonPid);
+    },
+  );
 
   it("refuses a data dir enrolled for a different host instead of faking success", () => {
     const fixture = createFixture();
@@ -644,7 +710,7 @@ describe.skipIf(INSTALL_SCRIPT_POSIX_ONLY_MEASURED_UNSUPPORTED_ON_WINDOWS)(
       const daemonPid = Number(
         readFileSync(join(fixture.dataDir, "install-daemon.pid"), "utf8"),
       );
-      process.kill(daemonPid, "SIGTERM");
+      terminateDaemonProcess(daemonPid);
     } finally {
       if (occupiedByTest) {
         await new Promise<void>((resolve, reject) => {
@@ -697,13 +763,11 @@ describe.skipIf(INSTALL_SCRIPT_POSIX_ONLY_MEASURED_UNSUPPORTED_ON_WINDOWS)(
     ).toEqual(
       new Set([realpathSync(firstDataDir), realpathSync(secondDataDir)]),
     );
-    process.kill(
+    terminateDaemonProcess(
       Number(readFileSync(join(firstDataDir, "install-daemon.pid"), "utf8")),
-      "SIGTERM",
     );
-    process.kill(
+    terminateDaemonProcess(
       Number(readFileSync(join(secondDataDir, "install-daemon.pid"), "utf8")),
-      "SIGTERM",
     );
   });
 
@@ -745,7 +809,7 @@ describe.skipIf(INSTALL_SCRIPT_POSIX_ONLY_MEASURED_UNSUPPORTED_ON_WINDOWS)(
     const daemonPid = Number(
       readFileSync(join(fixture.dataDir, "install-daemon.pid"), "utf8"),
     );
-    process.kill(daemonPid, "SIGTERM");
+    terminateDaemonProcess(daemonPid);
   });
 
   it("reports periodic progress while a host daemon is still joining", () => {
@@ -831,13 +895,9 @@ fi
     expect(secondResult.stdout).toContain("already joined");
     expect(secondResult.stdout).toContain("  ●  bb machine is ready");
     expect(secondResult.stdout).toContain("server  https://machine.getbb.app");
-    expect(secondResult.stdout).toContain(
-      "service " +
-        join(
-          fixture.homeDir,
-          "Library/LaunchAgents/app.getbb.host-daemon.machine-getbb-app.plist",
-        ),
-    );
+    const shellHome = probeShellValue(fixture, "echo $HOME");
+    const shellServiceFile = `${shellHome}/Library/LaunchAgents/app.getbb.host-daemon.machine-getbb-app.plist`;
+    expect(secondResult.stdout).toContain(`service ${shellServiceFile}`);
     const plist = readFileSync(
       join(
         fixture.homeDir,
@@ -867,9 +927,11 @@ fi
       fixture.homeDir,
       "Library/LaunchAgents/app.getbb.host-daemon.machine-getbb-app.plist",
     );
-    const domain = `gui/${process.getuid?.()}`;
+    expect(existsSync(serviceFile)).toBe(true);
+    const shellUid = probeShellValue(fixture, "id -u");
+    const domain = `gui/${shellUid}`;
     expect(readFileSync(join(fixture.dataDir, "launchctl.log"), "utf8")).toBe(
-      `bootout ${domain} ${serviceFile}\nbootstrap ${domain} ${serviceFile}\nbootout ${domain} ${serviceFile}\nbootstrap ${domain} ${serviceFile}\n`,
+      `bootout ${domain} ${shellServiceFile}\nbootstrap ${domain} ${shellServiceFile}\nbootout ${domain} ${shellServiceFile}\nbootstrap ${domain} ${shellServiceFile}\n`,
     );
     expect(
       readFileSync(join(fixture.dataDir, "launchctl-starts.log"), "utf8"),
@@ -977,10 +1039,12 @@ fi
       `host-daemon --auto-update --host-daemon-port "${selectedPort}" --server-url "https://machine.getbb.app"`,
     );
     expect(unit).toContain(
-      `Environment="BB_APP_NPM_PREFIX=${realpathSync(fixture.dataDir)}/npm"`,
+      `Environment="BB_APP_NPM_PREFIX=${escapeSystemdValue(realpathSync(fixture.dataDir))}/npm"`,
     );
     expect(readFileSync(join(fixture.dataDir, "systemctl.log"), "utf8")).toBe(
       "--user daemon-reload\n--user enable bb-host-daemon-machine-getbb-app.service\n--user restart bb-host-daemon-machine-getbb-app.service\n",
     );
   });
-});
+  },
+  60_000,
+);

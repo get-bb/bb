@@ -328,72 +328,72 @@ function AddMachineDialogContent({
           />
         ) : command !== null ? (
           <>
-          <div
-            data-add-machine-command
-            className="overflow-hidden rounded-md border border-border bg-muted/30"
-          >
-            <pre className="overflow-x-auto whitespace-pre-wrap break-all p-3 font-mono text-xs text-foreground">
-              {command}
-            </pre>
-            <div className="flex flex-wrap items-center gap-2 border-t border-border px-3 py-2">
-              {expired ? (
-                <>
-                  <span className="text-xs text-subtle-foreground">
-                    Code expired
-                  </span>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="ghost"
-                    className="h-7 px-2 text-xs"
-                    disabled={mintJoinCode.isPending}
-                    onClick={() => mintJoinCode.mutate()}
-                  >
-                    Generate a new code
-                  </Button>
-                </>
-              ) : remainingMs !== null ? (
-                <span className="text-xs tabular-nums text-subtle-foreground">
-                  Code expires in {formatCountdown(remainingMs)}
-                </span>
-              ) : null}
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                className="ml-auto h-7 px-2.5 text-xs"
-                disabled={expired}
-                onClick={() => void copy()}
-              >
-                {copied ? "Copied" : "Copy"}
-              </Button>
-            </div>
-          </div>
-          {windowsCommand !== null ? (
             <div
-              data-add-machine-command-windows
+              data-add-machine-command
               className="overflow-hidden rounded-md border border-border bg-muted/30"
             >
-              <p className="border-b border-border px-3 py-1.5 text-xs text-subtle-foreground">
-                Windows (PowerShell)
-              </p>
               <pre className="overflow-x-auto whitespace-pre-wrap break-all p-3 font-mono text-xs text-foreground">
-                {windowsCommand}
+                {command}
               </pre>
               <div className="flex flex-wrap items-center gap-2 border-t border-border px-3 py-2">
+                {expired ? (
+                  <>
+                    <span className="text-xs text-subtle-foreground">
+                      Code expired
+                    </span>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      className="h-7 px-2 text-xs"
+                      disabled={mintJoinCode.isPending}
+                      onClick={() => mintJoinCode.mutate()}
+                    >
+                      Generate a new code
+                    </Button>
+                  </>
+                ) : remainingMs !== null ? (
+                  <span className="text-xs tabular-nums text-subtle-foreground">
+                    Code expires in {formatCountdown(remainingMs)}
+                  </span>
+                ) : null}
                 <Button
                   type="button"
                   size="sm"
                   variant="outline"
                   className="ml-auto h-7 px-2.5 text-xs"
                   disabled={expired}
-                  onClick={() => void windowsCopy.copy()}
+                  onClick={() => void copy()}
                 >
-                  {windowsCopy.copied ? "Copied" : "Copy"}
+                  {copied ? "Copied" : "Copy"}
                 </Button>
               </div>
             </div>
-          ) : null}
+            {windowsCommand !== null ? (
+              <div
+                data-add-machine-command-windows
+                className="overflow-hidden rounded-md border border-border bg-muted/30"
+              >
+                <p className="border-b border-border px-3 py-1.5 text-xs text-subtle-foreground">
+                  Windows (PowerShell)
+                </p>
+                <pre className="overflow-x-auto whitespace-pre-wrap break-all p-3 font-mono text-xs text-foreground">
+                  {windowsCommand}
+                </pre>
+                <div className="flex flex-wrap items-center gap-2 border-t border-border px-3 py-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="ml-auto h-7 px-2.5 text-xs"
+                    disabled={expired}
+                    onClick={() => void windowsCopy.copy()}
+                  >
+                    {windowsCopy.copied ? "Copied" : "Copy"}
+                  </Button>
+                </div>
+              </div>
+            ) : null}
           </>
         ) : (
           <p className="flex items-center gap-2 text-sm text-muted-foreground">
