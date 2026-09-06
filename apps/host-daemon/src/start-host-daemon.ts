@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { dirname } from "node:path";
 import { loadHostDaemonStartConfig } from "@bb/config/host-daemon";
+import { resolveHostDaemonDataDirOverride } from "./data-dir.js";
 import type { HostType } from "@bb/domain";
 import {
   createHostWatcher,
@@ -46,7 +47,10 @@ interface StartHostDaemonOptions {
 export async function startHostDaemon(
   options: StartHostDaemonOptions = {},
 ): Promise<HostDaemon> {
-  const resolvedConfig = loadHostDaemonStartConfig({});
+  const dataDirOverride = resolveHostDaemonDataDirOverride();
+  const resolvedConfig = loadHostDaemonStartConfig(
+    dataDirOverride === undefined ? {} : { dataDir: dataDirOverride },
+  );
   const dataDir = resolvedConfig.dataDir;
   const hostDaemonConfig = resolvedConfig.connectionConfig;
   let lockDiagnosticsLogger: HostDaemonLogger | null = null;

@@ -31,6 +31,18 @@ describe("writeSecretFile", () => {
     expect((await stat(secretPath)).mode & 0o777).toBe(0o600);
   });
 
+  it("round-trips secrets under data dirs with spaces and non-ASCII segments", async () => {
+    const dir = await makeTempDir();
+    const secretPath = path.join(dir, "proyectos diseño", "mi dir", "token");
+
+    await writeSecretFile(secretPath, "s3cret-ñ");
+
+    expect(await readFile(secretPath, "utf8")).toBe("s3cret-ñ");
+    expect(await readdir(path.join(dir, "proyectos diseño", "mi dir"))).toEqual([
+      "token",
+    ]);
+  });
+
   it("overwrites an existing secret and leaves no temp files behind", async () => {
     const dir = await makeTempDir();
     const secretPath = path.join(dir, "token");

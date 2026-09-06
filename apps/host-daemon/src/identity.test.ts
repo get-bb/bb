@@ -119,6 +119,34 @@ describe("identity", () => {
     ).rejects.toThrow(/does not match persisted host ID/u);
   });
 
+  it("resolves the host name with hostname on win32, never scutil", async () => {
+    const execFile = vi.fn(async () => ({ stdout: "WIN-PC\n" }));
+
+    await expect(
+      detectHostName({ execFile, platform: "win32" }),
+    ).resolves.toBe("WIN-PC");
+    expect(execFile).toHaveBeenCalledTimes(1);
+    expect(execFile).toHaveBeenCalledWith("hostname", []);
+  });
+
+  it("prefers scutil over hostname on darwin", async () => {
+    const execFile = vi.fn(async (file: string) =>
+      file === "scutil"
+        ? { stdout: "" }
+        : { stdout: "mac-host\n" },
+    );
+
+    await expect(
+      detectHostName({ execFile, platform: "darwin" }),
+    ).resolves.toBe("mac-host");
+    expect(execFile).toHaveBeenCalledTimes(2);
+    expect(execFile).toHaveBeenNthCalledWith(1, "scutil", [
+      "--get",
+      "ComputerName",
+    ]);
+    expect(execFile).toHaveBeenNthCalledWith(2, "hostname", []);
+  });
+
   it("uses BB_HOST_NAME when provided instead of detecting a hostname", async () => {
     const dataDir = await makeTempDir("bb-host-daemon-identity-host-name-");
     const execFile = vi.fn();

@@ -3,6 +3,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadHostDaemonStartConfig } from "@bb/config/host-daemon";
 import { loadHostDaemonEntrypointConfig } from "@bb/config/host-daemon-entrypoint";
+import { resolveHostDaemonDataDirOverride } from "./data-dir.js";
 import {
   installSafeProcessDiagnostics,
   writeSafeProcessDiagnosticReport,
@@ -24,7 +25,10 @@ function resolveEntrypointBridgeBundleDir(): string | undefined {
 }
 
 function resolveDiagnosticsLogsDir(): string {
-  const hostDaemonStartConfig = loadHostDaemonStartConfig({});
+  const dataDirOverride = resolveHostDaemonDataDirOverride();
+  const hostDaemonStartConfig = loadHostDaemonStartConfig(
+    dataDirOverride === undefined ? {} : { dataDir: dataDirOverride },
+  );
 
   return join(hostDaemonStartConfig.dataDir, "logs");
 }
