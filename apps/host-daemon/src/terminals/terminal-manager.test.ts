@@ -13,11 +13,15 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { HostDaemonLogger } from "../logger.js";
 import { RuntimeManager } from "../runtime-manager.js";
 import {
+  buildTerminalEnv,
   ensureNodePtySpawnHelpersExecutableInPackage,
+  resolveDefaultTerminalShell,
   resolveNodePtySpawnHelperPaths,
+  terminalSpawnArgsForStart,
   TerminalManager,
   type ResolveTerminalShell,
   type SpawnTerminalPtyArgs,
+  type TerminalOpenMessage,
   type TerminalPtyAdapter,
   type TerminalPtyDisposable,
   type TerminalPtyExit,
@@ -56,7 +60,8 @@ type TerminalMessageObserver = (message: HostDaemonDaemonWsMessage) => void;
 interface CreateHarnessOptions {
   closeGracePeriodMs?: number;
   onSendMessage: TerminalMessageObserver;
-  resolveShell: ResolveTerminalShell;
+  platform?: NodeJS.Platform;
+  resolveShell?: ResolveTerminalShell;
 }
 
 interface CreateHarnessWithShellArgs {
@@ -168,6 +173,10 @@ class FakeTerminalPty implements TerminalPtyProcess {
     for (const listener of [...this.exitListeners]) {
       listener({ exitCode });
     }
+  }
+
+  activeListenerCount(): number {
+    return this.dataListeners.length + this.exitListeners.length;
   }
 
   emitStaleData(data: string): void {
@@ -314,6 +323,7 @@ function createHarnessWithOptions(
   const manager = new TerminalManager({
     closeGracePeriodMs: args.closeGracePeriodMs,
     logger: createFakeLogger(),
+    platform: args.platform,
     ptyAdapter: adapter,
     resolveShell: args.resolveShell,
     runtimeManager,
@@ -1398,25 +1408,17 @@ describe("TerminalManager", () => {
     ]);
   });
 
-  it("rejects native Windows opens", async () => {
-    const harness = createHarness();
-    const manager = new TerminalManager({
-      logger: {
-        debug: vi.fn(),
-        error: vi.fn(),
-        info: vi.fn(),
-        warn: vi.fn(),
-      },
+  it("opens PowerShell on win32 with deterministic flags and a UTF-8 bootstrap", async () => {
+    vi.stubEnv("Path", "C:\\inherited");
+    const shell =
+      "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe";
+    const harness = createHarnessWithOptions({
+      onSendMessage: () => undefined,
       platform: "win32",
-      ptyAdapter: harness.adapter,
-      runtimeManager: harness.runtimeManager,
-      sendMessage: (message) => {
-        harness.messages.push(message);
-        return true;
-      },
+      resolveShell: async () => shell,
     });
 
-    await manager.handleMessage({
+    await harness.manager.handleMessage({
       type: "terminal.open",
       requestId: "open-1",
       terminalId: "term-1",
@@ -1434,16 +1436,324 @@ describe("TerminalManager", () => {
       start: DEFAULT_TERMINAL_START,
     });
 
-    expect(harness.adapter.spawned).toHaveLength(0);
-    expect(harness.messages).toEqual([
+    expect(harness.adapter.spawned).toHaveLength(1);
+    expect(harness.adapter.spawned[0]?.args).toMatchObject({
+      cols: 100,
+      cwd: "/tmp/terminal-workspace",
+      file: shell,
+      rows: 30,
+    });
+    expect(harness.adapter.spawned[0]?.args.args).toEqual([
+      "-NoLogo",
+      "-NoProfile",
+      "-NoExit",
+      "-Command",
+      "chcp 65001 >$null",
+    ]);
+    const pathKeys = Object.keys(
+      harness.adapter.spawned[0]?.args.env ?? {},
+    ).filter((key) => key.toLowerCase() === "path");
+    expect(pathKeys).toEqual(["Path"]);
+    expect(harness.messages).toContainEqual(
+      expect.objectContaining({
+        type: "terminal.opened",
+        terminalId: "term-1",
+        shell,
+        title: "powershell.exe",
+      }),
+    );
+  });
+
+  it("routes command mode through PowerShell -Command after the code page bootstrap", async () => {
+    const harness = createHarnessWithOptions({
+      onSendMessage: () => undefined,
+      platform: "win32",
+      resolveShell: async () => "powershell.exe",
+    });
+
+    await harness.manager.handleMessage({
+      type: "terminal.open",
+      requestId: "open-command",
+      terminalId: "term-command",
+      threadId: "thr-1",
+      target: {
+        kind: "workspace",
+        environmentId: "env-1",
+        workspaceContext: {
+          workspacePath: "/tmp/terminal-workspace",
+          workspaceProvisionType: "unmanaged",
+        },
+      },
+      cols: 100,
+      rows: 30,
+      start: { mode: "command", command: "pnpm dev" },
+    });
+
+    expect(harness.adapter.spawned[0]?.args).toMatchObject({
+      file: "powershell.exe",
+    });
+    expect(harness.adapter.spawned[0]?.args.args).toEqual([
+      "-NoLogo",
+      "-NoProfile",
+      "-Command",
+      "chcp 65001 >$null; pnpm dev",
+    ]);
+    expect(harness.messages).toContainEqual(
+      expect.objectContaining({
+        type: "terminal.opened",
+        terminalId: "term-command",
+        title: "pnpm dev",
+      }),
+    );
+  });
+
+  it("opens cmd.exe with deterministic flags and a code page bootstrap", async () => {
+    const shell = "C:\\Windows\\System32\\cmd.exe";
+    const harness = createHarnessWithOptions({
+      onSendMessage: () => undefined,
+      platform: "win32",
+      resolveShell: async () => shell,
+    });
+
+    await harness.manager.handleMessage({
+      type: "terminal.open",
+      requestId: "open-cmd",
+      terminalId: "term-cmd",
+      threadId: "thr-1",
+      target: {
+        kind: "workspace",
+        environmentId: "env-1",
+        workspaceContext: {
+          workspacePath: "/tmp/terminal-workspace",
+          workspaceProvisionType: "unmanaged",
+        },
+      },
+      cols: 100,
+      rows: 30,
+      start: DEFAULT_TERMINAL_START,
+    });
+    await harness.manager.handleMessage({
+      type: "terminal.open",
+      requestId: "open-cmd-command",
+      terminalId: "term-cmd-command",
+      threadId: "thr-1",
+      target: {
+        kind: "workspace",
+        environmentId: "env-1",
+        workspaceContext: {
+          workspacePath: "/tmp/terminal-workspace",
+          workspaceProvisionType: "unmanaged",
+        },
+      },
+      cols: 100,
+      rows: 30,
+      start: { mode: "command", command: "dir" },
+    });
+
+    expect(harness.adapter.spawned).toHaveLength(2);
+    expect(harness.adapter.spawned[0]?.args.args).toEqual([
+      "/d",
+      "/s",
+      "/k",
+      "chcp 65001>nul",
+    ]);
+    expect(harness.adapter.spawned[1]?.args.args).toEqual([
+      "/d",
+      "/s",
+      "/c",
+      "chcp 65001>nul & dir",
+    ]);
+  });
+
+  it("resolves powershell.exe by default on win32 without ambient platform detection", async () => {
+    const harness = createHarnessWithOptions({
+      onSendMessage: () => undefined,
+      platform: "win32",
+    });
+
+    await harness.manager.handleMessage({
+      type: "terminal.open",
+      requestId: "open-default-shell",
+      terminalId: "term-default-shell",
+      threadId: "thr-1",
+      target: {
+        kind: "workspace",
+        environmentId: "env-1",
+        workspaceContext: {
+          workspacePath: "/tmp/terminal-workspace",
+          workspaceProvisionType: "unmanaged",
+        },
+      },
+      cols: 100,
+      rows: 30,
+      start: DEFAULT_TERMINAL_START,
+    });
+
+    expect(harness.adapter.spawned).toHaveLength(1);
+    expect(harness.adapter.spawned[0]?.args.file).toBe("powershell.exe");
+    expect(harness.adapter.spawned[0]?.args.args).toEqual([
+      "-NoLogo",
+      "-NoProfile",
+      "-NoExit",
+      "-Command",
+      "chcp 65001 >$null",
+    ]);
+  });
+
+  it("disposes a spawned PTY when opening fails after spawn", async () => {
+    const adapter = new FakeTerminalPtyAdapter();
+    const messages: HostDaemonDaemonWsMessage[] = [];
+    const runtime = createFakeRuntime();
+    const runtimeManager = new RuntimeManager({
+      createRuntime: () => runtime,
+      provisionWorkspace: async () =>
+        createFakeWorkspace("/tmp/terminal-workspace"),
+      shellEnv: {},
+    });
+    let failOpened = true;
+    const manager = new TerminalManager({
+      logger: createFakeLogger(),
+      ptyAdapter: adapter,
+      resolveShell: async () => "/bin/zsh",
+      runtimeManager,
+      sendMessage: (message) => {
+        if (failOpened && message.type === "terminal.opened") {
+          throw new Error("transport broke");
+        }
+        messages.push(message);
+        return true;
+      },
+    });
+    const openMessage = {
+      type: "terminal.open",
+      requestId: "open-1",
+      terminalId: "term-1",
+      threadId: "thr-1",
+      target: {
+        kind: "workspace",
+        environmentId: "env-1",
+        workspaceContext: {
+          workspacePath: "/tmp/terminal-workspace",
+          workspaceProvisionType: "unmanaged",
+        },
+      },
+      cols: 100,
+      rows: 30,
+      start: DEFAULT_TERMINAL_START,
+    } as const;
+
+    await manager.handleMessage(openMessage);
+
+    const failedPty = adapter.spawned[0]?.pty;
+    if (!failedPty) {
+      throw new Error("Expected terminal PTY to spawn");
+    }
+    expect(failedPty.killCalls).toEqual([null]);
+    expect(failedPty.disposeCount).toBe(1);
+    expect(failedPty.activeListenerCount()).toBe(0);
+    expect(messages).toEqual([
       {
         type: "terminal.error",
         requestId: "open-1",
         terminalId: "term-1",
-        code: "unsupported_platform",
-        message: "Native Windows terminals are not supported",
+        code: "terminal_open_failed",
+        message: "transport broke",
       },
     ]);
+
+    failOpened = false;
+    await manager.handleMessage({ ...openMessage, requestId: "open-2" });
+    expect(adapter.spawned).toHaveLength(2);
+    expect(messages).toContainEqual(
+      expect.objectContaining({
+        type: "terminal.opened",
+        requestId: "open-2",
+        terminalId: "term-1",
+      }),
+    );
+    await manager.shutdownAll();
+  });
+
+  it("runs 50 open/write/resize/kill cycles without leaking sessions or disposables", async () => {
+    const cwd = await makeTempDir("bb-terminal-leak-");
+    const harness = createHarness();
+    const cycles = 50;
+
+    for (let index = 0; index < cycles; index += 1) {
+      const terminalId = `term-leak-${index}`;
+      await harness.manager.handleMessage({
+        type: "terminal.open",
+        requestId: `open-${index}`,
+        terminalId,
+        target: { kind: "host_path", cwd },
+        cols: 80,
+        rows: 24,
+        start: DEFAULT_TERMINAL_START,
+      });
+      const spawned = harness.adapter.spawned[index];
+      if (!spawned) {
+        throw new Error(`Expected terminal PTY to spawn at cycle ${index}`);
+      }
+      await harness.manager.handleMessage({
+        type: "terminal.input",
+        terminalId,
+        dataBase64: Buffer.from("echo hi\n", "utf8").toString("base64"),
+      });
+      await harness.manager.handleMessage({
+        type: "terminal.resize",
+        terminalId,
+        cols: 100,
+        rows: 30,
+      });
+      await harness.manager.handleMessage({
+        type: "terminal.close",
+        terminalId,
+        reason: "user",
+      });
+      spawned.pty.emitExit(0);
+      await vi.waitFor(() =>
+        expect(
+          harness.messages.filter(
+            (message) =>
+              message.type === "terminal.exited" &&
+              message.terminalId === terminalId,
+          ),
+        ).toHaveLength(1),
+      );
+    }
+
+    expect(harness.adapter.spawned).toHaveLength(cycles);
+    for (const spawned of harness.adapter.spawned) {
+      expect(spawned.pty.killCalls).toEqual([null]);
+      expect(spawned.pty.disposeCount).toBe(1);
+      expect(spawned.pty.activeListenerCount()).toBe(0);
+      expect(spawned.pty.writeCalls).toHaveLength(1);
+      expect(spawned.pty.resizeCalls).toEqual([{ cols: 100, rows: 30 }]);
+    }
+
+    for (let index = 0; index < cycles; index += 1) {
+      const terminalId = `term-leak-${index}`;
+      await harness.manager.handleMessage({
+        type: "terminal.open",
+        requestId: `reopen-${index}`,
+        terminalId,
+        target: { kind: "host_path", cwd },
+        cols: 80,
+        rows: 24,
+        start: DEFAULT_TERMINAL_START,
+      });
+    }
+
+    expect(
+      harness.messages.filter((message) => message.type === "terminal.error"),
+    ).toHaveLength(0);
+    expect(harness.adapter.spawned).toHaveLength(cycles * 2);
+
+    await harness.manager.shutdownAll();
+    for (const spawned of harness.adapter.spawned) {
+      expect(spawned.pty.disposeCount).toBe(1);
+      expect(spawned.pty.activeListenerCount()).toBe(0);
+    }
   });
 
   it("runs commands in one persistent shell from the workspace cwd", async () => {
@@ -1516,4 +1826,230 @@ describe("TerminalManager", () => {
     });
     await manager.shutdownAll();
   }, 10_000);
+});
+
+describe("resolveDefaultTerminalShell", () => {
+  it("prefers pwsh.exe located on PATH on win32", async () => {
+    await expect(
+      resolveDefaultTerminalShell({
+        env: {
+          SystemRoot: "C:\\Windows",
+          ProgramFiles: "C:\\Program Files",
+        },
+        locateOnPath: async (fileName) =>
+          fileName === "pwsh.exe" ? "C:\\Tools\\pwsh.exe" : null,
+        pathIsExecutable: async () => false,
+        platform: "win32",
+      }),
+    ).resolves.toBe("C:\\Tools\\pwsh.exe");
+  });
+
+  it("falls back to the Program Files pwsh install on win32", async () => {
+    await expect(
+      resolveDefaultTerminalShell({
+        env: {
+          SystemRoot: "C:\\Windows",
+          ProgramFiles: "C:\\Program Files",
+        },
+        locateOnPath: async () => null,
+        pathIsExecutable: async (filePath) =>
+          filePath === "C:\\Program Files\\PowerShell\\7\\pwsh.exe",
+        platform: "win32",
+      }),
+    ).resolves.toBe("C:\\Program Files\\PowerShell\\7\\pwsh.exe");
+  });
+
+  it("falls back to the SystemRoot powershell on win32", async () => {
+    await expect(
+      resolveDefaultTerminalShell({
+        env: { SystemRoot: "C:\\Windows" },
+        locateOnPath: async () => null,
+        pathIsExecutable: async (filePath) =>
+          filePath ===
+          "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+        platform: "win32",
+      }),
+    ).resolves.toBe(
+      "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+    );
+  });
+
+  it("reads Windows env names case-insensitively", async () => {
+    await expect(
+      resolveDefaultTerminalShell({
+        env: { systemroot: "D:\\Win" },
+        locateOnPath: async () => null,
+        pathIsExecutable: async (filePath) =>
+          filePath === "D:\\Win\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+        platform: "win32",
+      }),
+    ).resolves.toBe(
+      "D:\\Win\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+    );
+  });
+
+  it("uses cmd.exe as a last resort on win32", async () => {
+    await expect(
+      resolveDefaultTerminalShell({
+        env: {
+          SystemRoot: "C:\\Windows",
+          ComSpec: "C:\\Windows\\System32\\cmd.exe",
+        },
+        locateOnPath: async () => null,
+        pathIsExecutable: async (filePath) =>
+          filePath === "C:\\Windows\\System32\\cmd.exe",
+        platform: "win32",
+      }),
+    ).resolves.toBe("C:\\Windows\\System32\\cmd.exe");
+  });
+
+  it("falls back to bare powershell.exe when nothing verifies on win32", async () => {
+    await expect(
+      resolveDefaultTerminalShell({
+        env: {},
+        locateOnPath: async () => null,
+        pathIsExecutable: async () => false,
+        platform: "win32",
+      }),
+    ).resolves.toBe("powershell.exe");
+  });
+
+  it("keeps POSIX resolution untouched", async () => {
+    await expect(
+      resolveDefaultTerminalShell({
+        env: { SHELL: "/bin/custom-sh" },
+        pathIsExecutable: async (filePath) => filePath === "/bin/custom-sh",
+        platform: "linux",
+      }),
+    ).resolves.toBe("/bin/custom-sh");
+  });
+});
+
+describe("buildTerminalEnv", () => {
+  it("merges PATH and Path into a single Path entry on win32", async () => {
+    vi.stubEnv("Path", "C:\\inherited");
+
+    const env = buildTerminalEnv({
+      platform: "win32",
+      shellEnv: { PATH: "C:\\shell" },
+      terminalId: "term-1",
+    });
+
+    expect(
+      Object.keys(env).filter((key) => key.toLowerCase() === "path"),
+    ).toEqual(["Path"]);
+    expect(env.Path).toBe("C:\\shell");
+    expect(env.BB_TERMINAL_SESSION_ID).toBe("term-1");
+  });
+
+  it("keeps the inherited Path when the shell env sets none on win32", async () => {
+    vi.stubEnv("Path", "C:\\inherited");
+
+    const env = buildTerminalEnv({
+      platform: "win32",
+      shellEnv: { BB_BASE_ENV: "1" },
+      terminalId: "term-1",
+    });
+
+    expect(
+      Object.keys(env).filter((key) => key.toLowerCase() === "path"),
+    ).toEqual(["Path"]);
+    expect(env.Path).toBe(
+      process.env.PATH ?? process.env.Path ?? "C:\\inherited",
+    );
+  });
+
+  it("keeps keys untouched on POSIX", async () => {
+    const env = buildTerminalEnv({
+      platform: "linux",
+      shellEnv: { PATH: "/custom/bin" },
+      terminalId: "term-1",
+    });
+
+    expect(env.PATH).toBe("/custom/bin");
+  });
+});
+
+describe("terminalSpawnArgsForStart", () => {
+  function shellOpenMessage(): TerminalOpenMessage {
+    return {
+      type: "terminal.open",
+      requestId: "open-1",
+      terminalId: "term-1",
+      target: { kind: "host_path", cwd: "/tmp" },
+      cols: 80,
+      rows: 24,
+      start: { mode: "shell" },
+    };
+  }
+
+  function commandOpenMessage(command: string): TerminalOpenMessage {
+    return {
+      type: "terminal.open",
+      requestId: "open-1",
+      terminalId: "term-1",
+      target: { kind: "host_path", cwd: "/tmp" },
+      cols: 80,
+      rows: 24,
+      start: { mode: "command", command },
+    };
+  }
+
+  it("uses POSIX login shell args off Windows", () => {
+    expect(
+      terminalSpawnArgsForStart(shellOpenMessage(), "/bin/zsh", "linux"),
+    ).toEqual([]);
+    expect(
+      terminalSpawnArgsForStart(
+        commandOpenMessage("pnpm dev"),
+        "/bin/zsh",
+        "linux",
+      ),
+    ).toEqual(["-lc", "pnpm dev"]);
+  });
+
+  it("launches PowerShell without profile and bootstraps the UTF-8 code page", () => {
+    expect(
+      terminalSpawnArgsForStart(
+        shellOpenMessage(),
+        "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+        "win32",
+      ),
+    ).toEqual([
+      "-NoLogo",
+      "-NoProfile",
+      "-NoExit",
+      "-Command",
+      "chcp 65001 >$null",
+    ]);
+    expect(
+      terminalSpawnArgsForStart(
+        commandOpenMessage("pnpm dev"),
+        "C:\\Program Files\\PowerShell\\7\\pwsh.exe",
+        "win32",
+      ),
+    ).toEqual([
+      "-NoLogo",
+      "-NoProfile",
+      "-Command",
+      "chcp 65001 >$null; pnpm dev",
+    ]);
+  });
+
+  it("launches cmd.exe with /d and bootstraps the UTF-8 code page", () => {
+    expect(
+      terminalSpawnArgsForStart(
+        shellOpenMessage(),
+        "C:\\Windows\\System32\\cmd.exe",
+        "win32",
+      ),
+    ).toEqual(["/d", "/s", "/k", "chcp 65001>nul"]);
+    expect(
+      terminalSpawnArgsForStart(
+        commandOpenMessage("dir"),
+        "C:\\Windows\\System32\\cmd.exe",
+        "win32",
+      ),
+    ).toEqual(["/d", "/s", "/c", "chcp 65001>nul & dir"]);
+  });
 });
