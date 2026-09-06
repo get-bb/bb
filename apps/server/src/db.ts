@@ -33,6 +33,7 @@ export function initDb(
       logger: options.logger,
     });
   } else if (hasLegacyAutomationsToExport(db)) {
+    db.$client.close();
     throw new Error(
       "Cannot migrate legacy automations without dataDir and logger; refusing to drop kernel automation rows before exporting them for the automations plugin",
     );
