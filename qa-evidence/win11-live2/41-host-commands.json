@@ -1,0 +1,110 @@
+{
+  "hosts": {
+    "status": 200,
+    "json": [
+      {
+        "id": "host_w4znqq4hr5",
+        "name": "SapphireOS",
+        "type": "persistent",
+        "status": "connected",
+        "maxPermissionMode": "full",
+        "lastSeenAt": 1788691331052,
+        "lastRejectedProtocolVersion": null,
+        "createdAt": 1788680402669,
+        "updatedAt": 1788691331052
+      }
+    ]
+  },
+  "folders": {
+    "C:/bb-test": {
+      "listStatus": 200,
+      "listBody": "{\"files\":[{\"path\":\"datos.csv\",\"name\":\"datos.csv\"},{\"path\":\"diseño.txt\",\"name\":\"diseño.txt\"},{\"path\":\"nota.txt\",\"name\":\"nota.txt\"},{\"path\":\"resultado-qa.txt\",\"name\":\"resultado-qa.txt\"}],\"truncated\":false}",
+      "pathsStatus": 200,
+      "pathsBody": "{\"paths\":[{\"kind\":\"file\",\"path\":\"datos.csv\",\"name\":\"datos.csv\",\"score\":0,\"positions\":[]},{\"kind\":\"file\",\"path\":\"diseño.txt\",\"name\":\"diseño.txt\",\"score\":0,\"positions\":[]},{\"kind\":\"file\",\"path\":\"nota.txt\",\"name\":\"nota.txt\",\"score\":0,\"positions\":[]},{\"kind\":\"file\",\"path\":\"resultado-qa.txt\",\"name\":\"resultado-qa.txt\",\"score\":0,\"positions\":[]}],\"truncated\":false}"
+    },
+    "C:/bb test": {
+      "listStatus": 200,
+      "listBody": "{\"files\":[{\"path\":\"datos.csv\",\"name\":\"datos.csv\"},{\"path\":\"diseño.txt\",\"name\":\"diseño.txt\"},{\"path\":\"nota.txt\",\"name\":\"nota.txt\"}],\"truncated\":false}",
+      "pathsStatus": 200,
+      "pathsBody": "{\"paths\":[{\"kind\":\"file\",\"path\":\"datos.csv\",\"name\":\"datos.csv\",\"score\":0,\"positions\":[]},{\"kind\":\"file\",\"path\":\"diseño.txt\",\"name\":\"diseño.txt\",\"score\":0,\"positions\":[]},{\"kind\":\"file\",\"path\":\"nota.txt\",\"name\":\"nota.txt\",\"score\":0,\"positions\":[]}],\"truncated\":false}"
+    },
+    "C:/proyectos/diseño": {
+      "listStatus": 200,
+      "listBody": "{\"files\":[{\"path\":\"datos.csv\",\"name\":\"datos.csv\"},{\"path\":\"diseño.txt\",\"name\":\"diseño.txt\"},{\"path\":\"nota.txt\",\"name\":\"nota.txt\"}],\"truncated\":false}",
+      "pathsStatus": 200,
+      "pathsBody": "{\"paths\":[{\"kind\":\"file\",\"path\":\"datos.csv\",\"name\":\"datos.csv\",\"score\":0,\"positions\":[]},{\"kind\":\"file\",\"path\":\"diseño.txt\",\"name\":\"diseño.txt\",\"score\":0,\"positions\":[]},{\"kind\":\"file\",\"path\":\"nota.txt\",\"name\":\"nota.txt\",\"score\":0,\"positions\":[]}],\"truncated\":false}"
+    }
+  },
+  "reads": {
+    "C:/bb-test/nota.txt": {
+      "status": 200,
+      "sizeBytes": 19,
+      "content": "﻿nota de prueba\r\n"
+    },
+    "C:/bb-test/diseño.txt": {
+      "status": 200,
+      "sizeBytes": 20,
+      "content": "﻿archivo con ene\r\n"
+    },
+    "C:/bb test/nota.txt": {
+      "status": 200,
+      "sizeBytes": 19,
+      "content": "﻿nota de prueba\r\n"
+    },
+    "C:/proyectos/diseño/nota.txt": {
+      "status": 200,
+      "sizeBytes": 19,
+      "content": "﻿nota de prueba\r\n"
+    },
+    "C:/proyectos/diseño/diseño.txt": {
+      "status": 200,
+      "sizeBytes": 20,
+      "content": "﻿archivo con ene\r\n"
+    }
+  },
+  "projects": {
+    "status": 200,
+    "json": [
+      {
+        "id": "proj_zps6ugiqg8",
+        "kind": "standard",
+        "name": "Muse Playground",
+        "gitRemoteUrl": null,
+        "createdAt": 1788680448596,
+        "updatedAt": 1788680448596,
+        "sources": [
+          {
+            "id": "src_dx4k9sjyx7",
+            "projectId": "proj_zps6ugiqg8",
+            "type": "local_path",
+            "hostId": "host_w4znqq4hr5",
+            "path": "C:\\Users\\Administrator\\Desktop\\Projects\\Muse Playground",
+            "isDefault": true,
+            "createdAt": 1788680448596,
+            "updatedAt": 1788680448596
+          }
+        ]
+      },
+      {
+        "id": "proj_aubu55zpi5",
+        "kind": "standard",
+        "name": "win11-qa-bb-test",
+        "gitRemoteUrl": null,
+        "createdAt": 1788690058879,
+        "updatedAt": 1788690058879,
+        "sources": [
+          {
+            "id": "src_q8z6uyh7n7",
+            "projectId": "proj_aubu55zpi5",
+            "type": "local_path",
+            "hostId": "host_w4znqq4hr5",
+            "path": "C:\\bb-test",
+            "isDefault": true,
+            "createdAt": 1788690058879,
+            "updatedAt": 1788690058879
+          }
+        ]
+      }
+    ]
+  }
+}

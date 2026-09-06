@@ -1,0 +1,564 @@
+CREATE status=201 id=term_3t7cxnvrs6
+===== after-version-and-cwd (freshBytes=634) =====
+[?9001h[?1004h[?25l[2J[m[H]0;Administrator: C:\Program Files\WindowsApps\Microsoft.PowerShell_7.6.5.0_x64__8wekyb3d8bbwe\pwsh.exe[?25hPS C:\bb-test> [?25l[1;14H> [92m$PSVersionTable[37m.PSVersion[K[m
+                                                                                    [2;1H[?25h[?25l[32m[1m
+Major  Minor  Patch  PreReleaseLabel BuildLabel
+----- [m [32m[1m----- [m [32m[1m----- [m [32m[1m---------------[m [32m[1m----------[m
+7      6      5[22X[7;1HPS C:\bb-test> [?25h[?25l[93mGet-Location[30X
+[?25h[m
+[?25l[32m[1mPath
+----[m
+C:\bb-test[13;1HPS C:\bb-test> [?25h
+===== after-utf8-echo (freshBytes=89) =====
+[?25l[13;14H> [93mWrite-Output [36m'diseño ✓'[9X
+[?25h[mdiseño ✓
+PS C:\bb-test> 
+RESIZE status=200 body={"id":"term_3t7cxnvrs6","threadId":null,"environmentId":null,"hostId":"host_w4znqq4hr5","title":"qa-terminal2","initialCwd":"C:\\bb-test","cols":120,"rows":40,"status":"running","exitCode":null,"close
+CTRLC status=200
+===== after-ctrlc-and-alive (freshBytes=55989) =====
+re-TroubleShooting-Package~31bf3856ad364e35~amd64~es-M [40;1H
+                                                  X~10.0.26100.1.cat
+-a---            9/5/2024  4:15 PM          13924 Microsoft-OneCore-TroubleShooting-WOW64-Package~31bf3856ad364e35~amd6 [40;1H
+                                                  4~~10.0.26100.1591.cat
+-a---           4/14/2026 11:44 AM          13890 Microsoft-OneCore-TroubleShooting-WOW64-Package~31bf3856ad364e35~amd6 [40;1H
+                                                  4~~10.0.26100.8313.cat
+-a---           3/31/2024  6:37 PM          10012 Microsoft-OneCore-TroubleShooting-WOW64-Package~31bf3856ad364e35~amd6 [40;1H
+                                                  4~en-US~10.0.26100.1.cat
+-a---            4/1/2024 12:21 PM          10122 Microsoft-OneCore-TroubleShooting-WOW64-Package~31bf3856ad364e35~amd6 [40;1H
+                                                  4~es-MX~10.0.26100.1.cat
+-a---            9/5/2024  4:16 PM          15853 Microsoft-OneCore-UtilityVM-Containers-Shared-merged-Package~31bf3856 [40;1H
+                                                  ad364e35~amd64~~10.0.26100.1742.cat
+-a---           4/14/2026 11:44 AM          15845 Microsoft-OneCore-UtilityVM-Containers-Shared-merged-Package~31bf3856 [40;1H
+                                                  ad364e35~amd64~~10.0.26100.8313.cat
+-a---           3/31/2024  6:38 PM          11548 Microsoft-OneCore-UtilityVM-Containers-Shared-merged-Package~31bf3856 [40;1H
+                                                  ad364e35~amd64~en-US~10.0.26100.1.cat
+-a---            4/1/2024 12:20 PM          11563 Microsoft-OneCore-UtilityVM-Containers-Shared-merged-Package~31bf3856 [40;1H
+                                                  ad364e35~amd64~es-MX~10.0.26100.1.cat
+-a---            9/5/2024  4:15 PM           9962 Microsoft-OneCore-UtilityVM-Containers-Shared-Package~31bf3856ad364e3 [40;1H
+                                                  5~amd64~~10.0.26100.1742.cat
+-a---           4/14/2026 11:44 AM          10073 Microsoft-OneCore-UtilityVM-Containers-Shared-Package~31bf3856ad364e3 [40;1H
+                                                  5~amd64~~10.0.26100.8313.cat
+-a---           3/31/2024  6:37 PM           9933 Microsoft-OneCore-UtilityVM-Containers-Shared-Package~31bf3856ad364e3 [40;1H
+                                                  5~amd64~en-US~10.0.26100.1.cat
+-a---           4/14/2026 11:44 AM          10110 Microsoft-OneCore-UtilityVM-Containers-Shared-Package~31bf3856ad364e3 [40;1H
+                                                  5~amd64~en-US~10.0.26100.8313.cat
+-a---            4/1/2024 12:21 PM           9826 Microsoft-OneCore-UtilityVM-Containers-Shared-Package~31bf3856ad364e3 [40;1H
+                                                  5~amd64~es-MX~10.0.26100.1.cat
+-a---            9/1/2026  1:11 AM          10070 Microsoft-OneCore-UtilityVM-Containers-Shared-Package~31bf3856ad364e3 [40;1H
+                                                  5~amd64~es-MX~10.0.26100.8313.cat
+-a---            9/5/2024  4:15 PM          10799 Microsoft-OneCore-UtilityVm-SetupAgent-Package~31bf3856ad364e35~amd64 [40;1H
+                                                  ~~10.0.26100.1150.cat
+-a---           4/14/2026 11:44 AM          10909 Microsoft-OneCore-UtilityVm-SetupAgent-Package~31bf3856ad364e35~amd64 [40;1H
+                                                  ~~10.0.26100.8115.cat
+-a---           3/31/2024  6:37 PM          10136 Microsoft-OneCore-UtilityVm-SetupAgent-Package~31bf3856ad364e35~amd64 [40;1H
+                                                  ~en-US~10.0.26100.1.cat
+-a---            4/1/2024 12:19 PM          10137 Microsoft-OneCore-UtilityVm-SetupAgent-Package~31bf3856ad364e35~amd64 [40;1H
+                                                  ~es-MX~10.0.26100.1.cat
+-a---            9/5/2024  4:15 PM          10095 Microsoft-OneCore-VirtualizationBasedSecurity-Package~31bf3856ad364e3 [40;1H
+                                                  5~amd64~~10.0.26100.1742.cat
+-a---           4/14/2026 11:44 AM          10110 Microsoft-OneCore-VirtualizationBasedSecurity-Package~31bf3856ad364e3 [40;1H
+                                                  5~amd64~~10.0.26100.8313.cat
+-a---           3/31/2024  6:37 PM           9933 Microsoft-OneCore-VirtualizationBasedSecurity-Package~31bf3856ad364e3 [40;1H
+                                                  5~amd64~en-US~10.0.26100.1.cat
+-a---            9/5/2024  4:15 PM           9961 Microsoft-OneCore-VirtualizationBasedSecurity-Package~31bf3856ad364e3[40;1H
+                                                  5~amd64~en-US~10.0.26100.1591.cat
+-a---           4/14/2026 11:44 AM          10073 Microsoft-OneCore-VirtualizationBasedSecurity-Package~31bf3856ad364e3 [40;1H
+                                                  5~amd64~en-US~10.0.26100.8117.cat
+-a---            4/1/2024 12:20 PM           9933 Microsoft-OneCore-VirtualizationBasedSecurity-Package~31bf3856ad364e3 [40;1H
+                                                  5~amd64~es-MX~10.0.26100.1.cat
+-a---            9/5/2024  4:15 PM          10085 Microsoft-OneCore-VirtualizationBasedSecurity-Package~31bf3856ad364e3 [40;1H
+                                                  5~amd64~es-MX~10.0.26100.1591.cat
+-a---            9/1/2026  1:11 AM          10112 Microsoft-OneCore-VirtualizationBasedSecurity-Package~31bf3856ad364e3 [40;1H
+                                                  5~amd64~es-MX~10.0.26100.8117.cat
+-a---            9/5/2024  4:15 PM          10941 Microsoft-OneCore-WebService-Package~31bf3856ad364e35~amd64~~10.0.261 [40;1H
+                                                  00.1150.cat
+-a---           4/14/2026 11:44 AM          11049 Microsoft-OneCore-WebService-Package~31bf3856ad364e35~amd64~~10.0.261 [40;1H
+                                                  00.8313.cat
+-a---           3/31/2024  6:37 PM          10506 Microsoft-OneCore-WebService-Package~31bf3856ad364e35~amd64~en-US~10. [40;1H
+                                                  0.26100.1.cat
+-a---            4/1/2024 12:18 PM          10521 Microsoft-OneCore-WebService-Package~31bf3856ad364e35~amd64~es-MX~10. [40;1H
+                                                  0.26100.1.cat
+-a---            9/5/2024  4:15 PM          11066 Microsoft-OneCore-WebService-WOW64-Package~31bf3856ad364e35~amd64~~10 [40;1H
+                                                  .0.26100.1150.cat
+-a---           4/14/2026 11:44 AM          11064 Microsoft-OneCore-WebService-WOW64-Package~31bf3856ad364e35~amd64~~10 [40;1H
+                                                  .0.26100.8115.cat
+-a---           3/31/2024  6:37 PM          10027 Microsoft-OneCore-WebService-WOW64-Package~31bf3856ad364e35~amd64~en- [40;1H
+                                                  US~10.0.26100.1.cat
+-a---            4/1/2024 12:22 PM          10030 Microsoft-OneCore-WebService-WOW64-Package~31bf3856ad364e35~amd64~es- [40;1H
+                                                  MX~10.0.26100.1.cat
+-a---            9/5/2024  4:15 PM          10016 Microsoft-OneCore-Wer-Package~31bf3856ad364e35~amd64~~10.0.26100.1591 [40;1H
+                                                  .cat
+-a---           4/14/2026 11:44 AM          10019 Microsoft-OneCore-Wer-Package~31bf3856ad364e35~amd64~~10.0.26100.8313 [40;1H
+                                                  .cat
+-a---           3/31/2024  6:38 PM           9948 Microsoft-OneCore-Wer-Package~31bf3856ad364e35~amd64~en-US~10.0.26100 [40;1H
+                                                  .1.cat
+-a---           4/14/2026 11:44 AM          10057 Microsoft-OneCore-Wer-Package~31bf3856ad364e35~amd64~en-US~10.0.26100 [40;1H
+                                                  .7019.cat
+-a---            4/1/2024 12:21 PM           9945 Microsoft-OneCore-Wer-Package~31bf3856ad364e35~amd64~es-MX~10.0.26100 [40;1H
+                                                  .1.cat
+-a---            9/1/2026  1:11 AM          10019 Microsoft-OneCore-Wer-Package~31bf3856ad364e35~amd64~es-MX~10.0.26100 [40;1H
+                                                  .7019.cat
+-a---            9/5/2024  4:16 PM          10413 Microsoft-OSClient-Layer-Data-Package~31bf3856ad364e35~amd64~~10.0.26 [40;1H
+                                                  100.1742.cat
+-a---           4/14/2026 11:44 AM          10413 Microsoft-OSClient-Layer-Data-Package~31bf3856ad364e35~amd64~~10.0.26 [40;1H
+                                                  100.8313.cat
+-a---           3/31/2024  6:37 PM          10122 Microsoft-OSClient-Layer-Data-Package~31bf3856ad364e35~amd64~en-US~10 [40;1H
+                                                  .0.26100.1.cat
+-a---            4/1/2024 12:18 PM          10015 Microsoft-OSClient-Layer-Data-Package~31bf3856ad364e35~amd64~es-MX~10 [40;1H
+                                                  .0.26100.1.cat
+-a---           3/31/2024  5:25 PM          10366 Microsoft-Shared-Ink-Directory-Package-drivers-Package~31bf3856ad364e [40;1H
+                                                  35~amd64~~10.0.26100.1.cat
+-a---           3/31/2024  5:25 PM          10378 Microsoft-Shared-Ink-Directory-Package-drivers-WOW64-Package~31bf3856 [40;1H
+                                                  ad364e35~wow64~~10.0.26100.1.cat
+-a---            9/5/2024  4:15 PM          14430 Microsoft-Shielded-VM-Service-Package~31bf3856ad364e35~amd64~~10.0.26 [40;1H
+                                                  100.1150.cat
+-a---           4/14/2026 11:44 AM          14540 Microsoft-Shielded-VM-Service-Package~31bf3856ad364e35~amd64~~10.0.26 [40;1H
+                                                  100.8313.cat
+-a---           3/31/2024  6:37 PM          12033 Microsoft-Shielded-VM-Service-Package~31bf3856ad364e35~amd64~en-US~10 [40;1H
+                                                  .0.26100.1.cat
+-a---            4/1/2024 12:20 PM          11923 Microsoft-Shielded-VM-Service-Package~31bf3856ad364e35~amd64~es-MX~10 [40;1H
+                                                  .0.26100.1.cat
+-a---            4/1/2024  2:20 AM          10361 Microsoft-UtilityVM-Containers-merged-Package~31bf3856ad364e35~amd64~ [40;1H
+                                                  ~10.0.26100.1.cat
+-a---           3/31/2024  6:37 PM          10027 Microsoft-UtilityVM-Containers-merged-Package~31bf3856ad364e35~amd64~ [40;1H
+                                                  en-US~10.0.26100.1.cat
+-a---            4/1/2024 12:21 PM          10027 Microsoft-UtilityVM-Containers-merged-Package~31bf3856ad364e35~amd64~ [40;1H
+                                                  es-MX~10.0.26100.1.cat
+-a---            9/5/2024  4:15 PM           9928 Microsoft-UtilityVM-Containers-Package~31bf3856ad364e35~amd64~~10.0.2 [40;1H
+                                                  6100.1742.cat
+-a---           4/14/2026 11:44 AM          10078 Microsoft-UtilityVM-Containers-Package~31bf3856ad364e35~amd64~~10.0.2 [40;1H
+                                                  6100.8313.cat
+-a---            9/5/2024  4:15 PM          10035 Microsoft-UtilityVM-Containers-Package~31bf3856ad364e35~amd64~en-US~1 [40;1H
+                                                  0.0.26100.1591.cat
+-a---           4/14/2026 11:44 AM          10035 Microsoft-UtilityVM-Containers-Package~31bf3856ad364e35~amd64~en-US~1 [40;1H
+                                                  0.0.26100.8313.cat
+-a---            4/1/2024 12:21 PM           9945 Microsoft-UtilityVM-Containers-Package~31bf3856ad364e35~amd64~es-MX~1 [40;1H
+                                                  0.0.26100.1.cat
+-a---            9/5/2024  4:15 PM          10035 Microsoft-UtilityVM-Containers-Package~31bf3856ad364e35~amd64~es-MX~1 [40;1H
+                                                  0.0.26100.1591.cat
+-a---            9/1/2026  1:11 AM          10078 Microsoft-UtilityVM-Containers-Package~31bf3856ad364e35~amd64~es-MX~1 [40;1H
+                                                  0.0.26100.8313.cat
+-a---            4/1/2024  2:20 AM          10871 Microsoft-UtilityVM-Containers-Setup-Shared-merged-Package~31bf3856ad [40;1H
+                                                  364e35~amd64~~10.0.26100.1.cat
+-a---           3/31/2024  6:37 PM          10122 Microsoft-UtilityVM-Containers-Setup-Shared-merged-Package~31bf3856ad [40;1H
+                                                  364e35~amd64~en-US~10.0.26100.1.cat
+-a---            4/1/2024 12:21 PM          10122 Microsoft-UtilityVM-Containers-Setup-Shared-merged-Package~31bf3856ad [40;1H
+                                                  364e35~amd64~es-MX~10.0.26100.1.cat
+-a---            9/5/2024  4:15 PM          10081 Microsoft-UtilityVM-Containers-Setup-Shared-Package~31bf3856ad364e35~ [40;1H
+                                                  amd64~~10.0.26100.1150.cat
+-a---           4/14/2026 11:44 AM          10069 Microsoft-UtilityVM-Containers-Setup-Shared-Package~31bf3856ad364e35~ [40;1H
+                                                  amd64~~10.0.26100.8115.cat
+-a---           3/31/2024  6:36 PM           9824 Microsoft-UtilityVM-Containers-Setup-Shared-Package~31bf3856ad364e35~ [40;1H
+                                                  amd64~en-US~10.0.26100.1.cat
+-a---            4/1/2024 12:21 PM           9933 Microsoft-UtilityVM-Containers-Setup-Shared-Package~31bf3856ad364e35~ [40;1H
+                                                  amd64~es-MX~10.0.26100.1.cat
+-a---            9/5/2024  4:15 PM          10092 Microsoft-UtilityVM-Containers-Shared-Package~31bf3856ad364e35~amd64~ [40;1H
+                                                  ~10.0.26100.1742.cat
+-a---           4/14/2026 11:44 AM          10055 Microsoft-UtilityVM-Containers-Shared-Package~31bf3856ad364e35~amd64~ [40;1H
+                                                  ~10.0.26100.8313.cat
+-a---            9/5/2024  4:15 PM          10070 Microsoft-UtilityVM-Containers-Shared-Package~31bf3856ad364e35~amd64~ [40;1H
+                                                  en-US~10.0.26100.1591.cat
+-a---           4/14/2026 11:44 AM          10091 Microsoft-UtilityVM-Containers-Shared-Package~31bf3856ad364e35~amd64~ [40;1H
+                                                  en-US~10.0.26100.8313.cat
+-a---            4/1/2024 12:21 PM           9945 Microsoft-UtilityVM-Containers-Shared-Package~31bf3856ad364e35~amd64~ [40;1H
+                                                  es-MX~10.0.26100.1.cat
+-a---            9/5/2024  4:15 PM          10094 Microsoft-UtilityVM-Containers-Shared-Package~31bf3856ad364e35~amd64~ [40;1H
+                                                  es-MX~10.0.26100.1591.cat
+-a---            9/1/2026  1:11 AM          10052 Microsoft-UtilityVM-Containers-Shared-Package~31bf3856ad364e35~amd64~ [40;1H
+                                                  es-MX~10.0.26100.8313.cat
+-a---            9/5/2024  4:15 PM          10020 Microsoft-Win2-MSXML6-Feature~31bf3856ad364e35~amd64~~10.0.26100.1591 [40;1H
+                                                  .cat
+-a---           4/14/2026 11:44 AM          10020 Microsoft-Win2-MSXML6-Feature~31bf3856ad364e35~amd64~~10.0.26100.8313 [40;1H
+                                                  .cat
+-a---           3/31/2024  6:37 PM           9948 Microsoft-Win2-MSXML6-Feature~31bf3856ad364e35~amd64~en-US~10.0.26100 [40;1H
+                                                  .1.cat
+-a---            4/1/2024 12:19 PM           9933 Microsoft-Win2-MSXML6-Feature~31bf3856ad364e35~amd64~es-MX~10.0.26100 [40;1H
+                                                  .1.cat
+-a---            9/5/2024  4:15 PM           9924 Microsoft-Win2-MSXML6-WOW64-Feature~31bf3856ad364e35~amd64~~10.0.2610 [40;1H
+                                                  0.1591.cat
+-a---           4/14/2026 11:44 AM          10029 Microsoft-Win2-MSXML6-WOW64-Feature~31bf3856ad364e35~amd64~~10.0.2610 [40;1H
+                                                  0.8313.cat
+-a---           3/31/2024  6:36 PM           9932 Microsoft-Win2-MSXML6-WOW64-Feature~31bf3856ad364e35~amd64~en-US~10.0 [40;1H
+                                                  .26100.1.cat
+-a---            4/1/2024 12:19 PM           9945 Microsoft-Win2-MSXML6-WOW64-Feature~31bf3856ad364e35~amd64~es-MX~10.0 [40;1H
+                                                  .26100.1.cat
+-a---            9/5/2024  4:15 PM          10006 Microsoft-Win4-Feature~31bf3856ad364e35~amd64~~10.0.26100.1742.cat    
+-a---           4/14/2026 11:44 AM          10006 Microsoft-Win4-Feature~31bf3856ad364e35~amd64~~10.0.26100.8313.cat    
+-a---            9/5/2024  4:15 PM          10021 Microsoft-Win4-Feature~31bf3856ad364e35~amd64~en-US~10.0.26100.1591.c [40;1H
+                                                  at
+-a---           4/14/2026 11:44 AM          10003 Microsoft-Win4-Feature~31bf3856ad364e35~amd64~en-US~10.0.26100.8313.c [40;1H
+                                                  at
+-a---            4/1/2024 12:19 PM           9945 Microsoft-Win4-Feature~31bf3856ad364e35~amd64~es-MX~10.0.26100.1.cat  
+-a---            9/5/2024  4:15 PM           9914 Microsoft-Win4-Feature~31bf3856ad364e35~amd64~es-MX~10.0.26100.1591.c [40;1H
+                                                  at
+-a---            9/1/2026  1:11 AM          10003 Microsoft-Win4-Feature~31bf3856ad364e35~amd64~es-MX~10.0.26100.8313.c [40;1H
+                                                  at
+-a---            9/5/2024  4:15 PM          10040 Microsoft-Win4-WOW64-Feature~31bf3856ad364e35~amd64~~10.0.26100.1742. [40;1H
+                                                  cat
+-a---           4/14/2026 11:44 AM          10058 Microsoft-Win4-WOW64-Feature~31bf3856ad364e35~amd64~~10.0.26100.8313. [40;1H
+                                                  cat
+-a---            9/5/2024  4:15 PM          10040 Microsoft-Win4-WOW64-Feature~31bf3856ad364e35~amd64~en-US~10.0.26100. [40;1H
+                                                  1591.cat
+-a---           4/14/2026 11:44 AM          10018 Microsoft-Win4-WOW64-Feature~31bf3856ad364e35~amd64~en-US~10.0.26100. [40;1H
+                                                  8313.cat
+-a---            4/1/2024 12:19 PM           9930 Microsoft-Win4-WOW64-Feature~31bf3856ad364e35~amd64~es-MX~10.0.26100. [40;1H
+                                                  1.cat
+-a---            9/5/2024  4:15 PM          10015 Microsoft-Win4-WOW64-Feature~31bf3856ad364e35~amd64~es-MX~10.0.26100. [40;1H
+                                                  1591.cat
+-a---            9/1/2026  1:11 AM          10015 Microsoft-Win4-WOW64-Feature~31bf3856ad364e35~amd64~es-MX~10.0.26100. [40;1H
+                                                  8313.cat
+-a---            4/1/2024  2:20 AM          12047 Microsoft-Windows-3DAudio-HrtfData-Package~31bf3856ad364e35~amd64~~10 [40;1H
+                                                  .0.26100.1.cat
+-a---            4/1/2024  2:20 AM          10660 Microsoft-Windows-Accessories-Migration-Package~31bf3856ad364e35~amd6 [40;1H
+                                                  4~~10.0.26100.1.cat
+-a---           3/31/2024  6:37 PM          10137 Microsoft-Windows-Accessories-Migration-Package~31bf3856ad364e35~amd6 [40;1H
+                                                  4~en-US~10.0.26100.1.cat
+-a---            4/1/2024 12:18 PM          10015 Microsoft-Windows-Accessories-Migration-Package~31bf3856ad364e35~amd6 [40;1H
+                                                  4~es-MX~10.0.26100.1.cat
+-a---            9/5/2024  4:15 PM          10094 Microsoft-Windows-All-Client-Ge-Beta-Version-EKB-Package~31bf3856ad36[40;1H
+                                                  4e35~amd64~~10.0.26100.1742.cat
+-a---           4/14/2026 11:44 AM          10079 Microsoft-Windows-All-Client-Ge-Beta-Version-EKB-Package~31bf3856ad36 [40;1H
+                                                  4e35~amd64~~10.0.26100.8313.cat
+-a---            9/5/2024  4:15 PM           9969 Microsoft-Windows-All-Client-Ge-Beta-Version-EKB-Package~31bf3856ad36 [40;1H
+                                                  4e35~amd64~en-US~10.0.26100.712.cat
+-a---            9/5/2024  4:15 PM          10091 Microsoft-Windows-All-Client-Ge-Beta-Version-EKB-Package~31bf3856ad36 [40;1H
+                                                  4e35~amd64~es-MX~10.0.26100.712.cat
+-a---           4/14/2026 11:44 AM          10093 Microsoft-Windows-All-Client-Ge-Consolidated-Version-EKB-Package~31bf [40;1H
+                                                  3856ad364e35~amd64~~10.0.26100.8313.cat
+-a---           4/14/2026 11:44 AM          10093 Microsoft-Windows-All-Client-Ge-Consolidated-Version-EKB-Package~31bf [40;1H
+                                                  3856ad364e35~amd64~en-US~10.0.26100.6725.cat
+-a---            9/1/2026  1:11 AM          10096 Microsoft-Windows-All-Client-Ge-Consolidated-Version-EKB-Package~31bf [40;1H
+                                                  3856ad364e35~amd64~es-MX~10.0.26100.6725.cat
+-a---            4/1/2024  2:20 AM          10952 Microsoft-Windows-ApiSetSchemaExtension-HyperV-ComputeCore-Package~31 [40;1H
+                                                  bf3856ad364e35~amd64~~10.0.26100.1.cat
+-a---           4/14/2026 11:44 AM          11044 Microsoft-Windows-ApiSetSchemaExtension-HyperV-ComputeCore-Package~31 [40;1H
+                                                  bf3856ad364e35~amd64~~10.0.26100.7705.cat
+-a---            4/1/2024  2:20 AM          10975 Microsoft-Windows-ApiSetSchemaExtension-HyperV-ComputeLegacy-Package~ [40;1H
+                                                  31bf3856ad364e35~amd64~~10.0.26100.1.cat
+-a---           4/14/2026 11:44 AM          11052 Microsoft-Windows-ApiSetSchemaExtension-HyperV-ComputeLegacy-Package~ [40;1H
+                                                  31bf3856ad364e35~amd64~~10.0.26100.7705.cat
+-a---            4/1/2024  2:20 AM          10964 Microsoft-Windows-ApiSetSchemaExtension-HyperV-ComputeNetwork-Package [40;1H
+                                                  ~31bf3856ad364e35~amd64~~10.0.26100.1.cat
+-a---           4/14/2026 11:44 AM          11056 Microsoft-Windows-ApiSetSchemaExtension-HyperV-ComputeNetwork-Package [40;1H
+                                                  ~31bf3856ad364e35~amd64~~10.0.26100.7705.cat
+-a---            4/1/2024  2:20 AM          10964 Microsoft-Windows-ApiSetSchemaExtension-HyperV-ComputeStorage-Package [40;1H
+                                                  ~31bf3856ad364e35~amd64~~10.0.26100.1.cat
+-a---           4/14/2026 11:44 AM          11056 Microsoft-Windows-ApiSetSchemaExtension-HyperV-ComputeStorage-Package [40;1H
+                                                  ~31bf3856ad364e35~amd64~~10.0.26100.7705.cat
+-a---            4/1/2024  2:20 AM          10988 Microsoft-Windows-ApiSetSchemaExtension-HyperV-DeviceVirtualization-P [40;1H
+                                                  ackage~31bf3856ad364e35~amd64~~10.0.26100.1.cat
+-a---           4/14/2026 11:44 AM          11077 Microsoft-Windows-ApiSetSchemaExtension-HyperV-DeviceVirtualization-P [40;1H
+                                                  ackage~31bf3856ad364e35~amd64~~10.0.26100.7705.cat
+-a---            4/1/2024  2:20 AM          10948 Microsoft-Windows-ApiSetSchemaExtension-HyperV-IsolatedVM-Package~31b [40;1H
+                                                  f3856ad364e35~amd64~~10.0.26100.1.cat
+-a---           4/14/2026 11:44 AM          11040 Microsoft-Windows-ApiSetSchemaExtension-HyperV-IsolatedVM-Package~31b [40;1H
+                                                  f3856ad364e35~amd64~~10.0.26100.7705.cat
+-a---            9/5/2024  4:15 PM          11519 Microsoft-Windows-AppManagement-Common-Package~31bf3856ad364e35~amd64 [40;1H
+                                                  ~~10.0.26100.1591.cat
+-a---           4/14/2026 11:44 AM          11670 Microsoft-Windows-AppManagement-Common-Package~31bf3856ad364e35~amd64 [40;1H
+                                                  ~~10.0.26100.8313.cat
+-a---           3/31/2024  6:37 PM          10137 Microsoft-Windows-AppManagement-Common-Package~31bf3856ad364e35~amd64 [40;1H
+                                                  ~en-US~10.0.26100.1.cat
+-a---            4/1/2024 12:19 PM          10015 Microsoft-Windows-AppManagement-Common-Package~31bf3856ad364e35~amd64 [40;1H
+                                                  ~es-MX~10.0.26100.1.cat
+-a---            4/1/2024  2:20 AM          10880 Microsoft-Windows-AppManagement-Common-WOW64-Package~31bf3856ad364e35 [40;1H
+                                                  ~amd64~~10.0.26100.1.cat
+-a---           4/14/2026 11:44 AM          10997 Microsoft-Windows-AppManagement-Common-WOW64-Package~31bf3856ad364e35 [40;1H
+                                                  ~amd64~~10.0.26100.8115.cat
+-a---           3/31/2024  6:36 PM          10134 Microsoft-Windows-AppManagement-Common-WOW64-Package~31bf3856ad364e35 [40;1H
+                                                  ~amd64~en-US~10.0.26100.1.cat
+-a---            4/1/2024 12:20 PM          10014 Microsoft-Windows-AppManagement-Common-WOW64-Package~31bf3856ad364e35 [40;1H
+                                                  ~amd64~es-MX~10.0.26100.1.cat
+-a---           3/31/2024  5:25 PM          20216 Microsoft-Windows-AppServerClient-OptGroup-merged-Package~31bf3856ad3 [40;1H
+                                                  64e35~amd64~~10.0.26100.1.cat
+-a---           4/14/2026 11:44 AM          20418 Microsoft-Windows-AppServerClient-OptGroup-merged-Package~31bf3856ad3 [40;1H
+                                                  64e35~amd64~~10.0.26100.7623.cat
+-a---           3/31/2024  5:25 PM          14566 Microsoft-Windows-AppServerClient-OptGroup-merged-Package~31bf3856ad3 [40;1H
+                                                  64e35~amd64~en-US~10.0.26100.1.cat
+-a---           4/14/2026 11:44 AM          15765 Microsoft-Windows-AppServerClient-OptGroup-merged-Package~31bf3856ad3 [40;1H
+                                                  64e35~amd64~en-US~10.0.26100.8117.cat
+-a---            4/1/2024  9:08 PM          14566 Microsoft-Windows-AppServerClient-OptGroup-merged-Package~31bf3856ad3 [40;1H
+                                                  64e35~amd64~es-MX~10.0.26100.1.cat
+-a---            9/1/2026  1:11 AM          15765 Microsoft-Windows-AppServerClient-OptGroup-merged-Package~31bf3856ad3 [40;1H
+                                                  64e35~amd64~es-MX~10.0.26100.8117.cat
+-a---           3/31/2024  5:26 PM          10091 Microsoft-Windows-AppServerClient-OptGroup-Package~31bf3856ad364e35~a [40;1H
+                                                  md64~~10.0.26100.1.cat
+-a---           4/14/2026 11:44 AM          10107 Microsoft-Windows-AppServerClient-OptGroup-Package~31bf3856ad364e35~a [40;1H
+                                                  md64~~10.0.26100.8313.cat
+-a---           3/31/2024  5:26 PM          10106 Microsoft-Windows-AppServerClient-OptGroup-Package~31bf3856ad364e35~a [40;1H
+                                                  md64~en-US~10.0.26100.1.cat
+-a---           4/14/2026 11:44 AM          10067 Microsoft-Windows-AppServerClient-OptGroup-Package~31bf3856ad364e35~a [40;1H
+                                                  md64~en-US~10.0.26100.8117.cat
+-a---            4/1/2024  9:08 PM          10103 Microsoft-Windows-AppServerClient-OptGroup-Package~31bf3856ad364e35~a [40;1H
+                                                  md64~es-MX~10.0.26100.1.cat
+-a---            9/1/2026  1:11 AM          10064 Microsoft-Windows-AppServerClient-OptGroup-Package~31bf3856ad364e35~a [40;1H
+                                                  md64~es-MX~10.0.26100.8117.cat
+-a---           3/31/2024  3:40 PM          16389 Microsoft-Windows-AppServerClient-OptGroup-WOW64-merged-Package~31bf3 [40;1H
+                                                  856ad364e35~wow64~~10.0.26100.1.cat
+-a---           4/14/2026 11:44 AM          16538 Microsoft-Windows-AppServerClient-OptGroup-WOW64-merged-Package~31bf3 [40;1H
+                                                  856ad364e35~wow64~~10.0.26100.7623.cat
+-a---           3/31/2024  3:40 PM          12948 Microsoft-Windows-AppServerClient-OptGroup-WOW64-merged-Package~31bf3 [40;1H
+                                                  856ad364e35~wow64~en-US~10.0.26100.1.cat
+-a---           4/14/2026 11:44 AM          13019 Microsoft-Windows-AppServerClient-OptGroup-WOW64-merged-Package~31bf3 [40;1H
+                                                  856ad364e35~wow64~en-US~10.0.26100.8117.cat
+-a---            4/1/2024  2:10 PM          13043 Microsoft-Windows-AppServerClient-OptGroup-WOW64-merged-Package~31bf3 [40;1H
+                                                  856ad364e35~wow64~es-MX~10.0.26100.1.cat
+-a---            9/1/2026  1:11 AM          13016 Microsoft-Windows-AppServerClient-OptGroup-WOW64-merged-Package~31bf3 [40;1H
+                                                  856ad364e35~wow64~es-MX~10.0.26100.8117.cat
+-a---           3/31/2024  3:40 PM          10008 Microsoft-Windows-AppServerClient-OptGroup-WOW64-Package~31bf3856ad36 [40;1H
+                                                  4e35~wow64~~10.0.26100.1.cat
+-a---           4/14/2026 11:44 AM          10079 Microsoft-Windows-AppServerClient-OptGroup-WOW64-Package~31bf3856ad36 [40;1H
+                                                  4e35~wow64~~10.0.26100.8115.cat
+-a---           3/31/2024  3:40 PM          10008 Microsoft-Windows-AppServerClient-OptGroup-WOW64-Package~31bf3856ad36 [40;1H
+                                                  4e35~wow64~en-US~10.0.26100.1.cat
+-a---           4/14/2026 11:44 AM          10076 Microsoft-Windows-AppServerClient-OptGroup-WOW64-Package~31bf3856ad36 [40;1H
+                                                  4e35~wow64~en-US~10.0.26100.8117.cat
+-a---            4/1/2024  2:10 PM          10100 Microsoft-Windows-AppServerClient-OptGroup-WOW64-Package~31bf3856ad36 [40;1H
+                                                  4e35~wow64~es-MX~10.0.26100.1.cat
+-a---            9/1/2026  1:11 AM          10119 Microsoft-Windows-AppServerClient-OptGroup-WOW64-Package~31bf3856ad36 [40;1H
+                                                  4e35~wow64~es-MX~10.0.26100.8117.cat
+-a---            9/5/2024  4:15 PM          11499 Microsoft-Windows-Basic-Http-Minio-Package~31bf3856ad364e35~amd64~~10 [40;1H
+                                                  .0.26100.1591.cat
+-a---           4/14/2026 11:44 AM          11515 Microsoft-Windows-Basic-Http-Minio-Package~31bf3856ad364e35~amd64~~10 [40;1H
+                                                  .0.26100.8313.cat
+-a---            9/5/2024  4:15 PM          11003 Microsoft-Windows-Basic-Http-Minio-Package~31bf3856ad364e35~amd64~en- [40;1H
+                                                  US~10.0.26100.1301.cat
+-a---           4/14/2026 11:44 AM          11005 Microsoft-Windows-Basic-Http-Minio-Package~31bf3856ad364e35~amd64~en- [40;1H
+                                                  US~10.0.26100.8117.cat
+-a---            4/1/2024 12:21 PM          10780 Microsoft-Windows-Basic-Http-Minio-Package~31bf3856ad364e35~amd64~es- [40;1H
+                                                  MX~10.0.26100.1.cat
+-a---            9/5/2024  4:15 PM          10911 Microsoft-Windows-Basic-Http-Minio-Package~31bf3856ad364e35~amd64~es- [40;1H
+                                                  MX~10.0.26100.1301.cat
+-a---            9/1/2026  1:11 AM          11003 Microsoft-Windows-Basic-Http-Minio-Package~31bf3856ad364e35~amd64~es- [40;1H
+                                                  MX~10.0.26100.8117.cat
+-a---            9/5/2024  4:15 PM          10879 Microsoft-Windows-Basic-Http-Minio-WOW64-Package~31bf3856ad364e35~amd [40;1H
+                                                  64~~10.0.26100.1591.cat
+-a---           4/14/2026 11:44 AM          10916 Microsoft-Windows-Basic-Http-Minio-WOW64-Package~31bf3856ad364e35~amd [40;1H
+                                                  64~~10.0.26100.8313.cat
+-a---           3/31/2024  6:37 PM          10122 Microsoft-Windows-Basic-Http-Minio-WOW64-Package~31bf3856ad364e35~amd [40;1H
+                                                  64~en-US~10.0.26100.1.cat
+-a---            4/1/2024 12:21 PM          10027 Microsoft-Windows-Basic-Http-Minio-WOW64-Package~31bf3856ad364e35~amd [40;1H
+                                                  64~es-MX~10.0.26100.1.cat
+-a---            9/5/2024  4:15 PM          12570 Microsoft-Windows-BioEnrollment-UX-Package~31bf3856ad364e35~amd64~~10 [40;1H
+                                                  .0.26100.1591.cat
+-a---           4/14/2026 11:44 AM          12570 Microsoft-Windows-BioEnrollment-UX-Package~31bf3856ad364e35~amd64~~10 [40;1H
+                                                  .0.26100.8313.cat
+-a---            4/1/2024  2:20 AM          10549 Microsoft-Windows-BootEnvironment-Core-Group-Package~31bf3856ad364e35 [40;1H
+                                                  ~amd64~~10.0.26100.1.cat
+-a---           3/31/2024  6:36 PM          10119 Microsoft-Windows-BootEnvironment-Core-Group-Package~31bf3856ad364e35 [40;1H
+                                                  ~amd64~en-US~10.0.26100.1.cat
+-a---            4/1/2024 12:21 PM          10134 Microsoft-Windows-BootEnvironment-Core-Group-Package~31bf3856ad364e35 [40;1H
+                                                  ~amd64~es-MX~10.0.26100.1.cat
+-a---            9/5/2024  4:15 PM          13145 Microsoft-Windows-BootEnvironment-Dvd-Package~31bf3856ad364e35~amd64~ [40;1H
+                                                  ~10.0.26100.1455.cat
+-a---           4/14/2026 11:44 AM          13252 Microsoft-Windows-BootEnvironment-Dvd-Package~31bf3856ad364e35~amd64~ [40;1H
+                                                  ~10.0.26100.7019.cat
+-a---            4/1/2024  2:20 AM          10453 Microsoft-Windows-Branding-Enterprise-Package~31bf3856ad364e35~amd64~ [40;1H
+                                                  ~10.0.26100.1.cat
+-a---            9/5/2024  4:15 PM          12351 Microsoft-Windows-Browser-Brokers-Package~31bf3856ad364e35~amd64~~11. [40;1H
+                                                  0.26100.1150.cat
+-a---           4/14/2026 11:44 AM          12458 Microsoft-Windows-Browser-Brokers-Package~31bf3856ad364e35~amd64~~11. [40;1H
+                                                  0.26100.8313.cat
+-a---            9/5/2024  4:15 PM          10856 Microsoft-Windows-Browser-Package~31bf3856ad364e35~amd64~~10.0.26100. [40;1H
+                                                  1591.cat
+-a---           4/14/2026 11:44 AM          10896 Microsoft-Windows-Browser-Package~31bf3856ad364e35~amd64~~10.0.26100. [40;1H
+                                                  8313.cat
+-a---           3/31/2024  6:36 PM          10506 Microsoft-Windows-Browser-Package~31bf3856ad364e35~amd64~en-US~10.0.2 [40;1H
+                                                  6100.1.cat
+-a---            4/1/2024 12:19 PM          10396 Microsoft-Windows-Browser-Package~31bf3856ad364e35~amd64~es-MX~10.0.2 [40;1H
+                                                  6100.1.cat
+-a---            9/5/2024  4:15 PM         155290 Microsoft-Windows-Client-Desktop-Required-Package~31bf3856ad364e35~am [40;1H
+                                                  d64~~10.0.26100.1742.cat
+-a---           4/14/2026 11:44 AM         200239 Microsoft-Windows-Client-Desktop-Required-Package~31bf3856ad364e35~am [40;1H
+                                                  d64~~10.0.26100.8313.cat
+-a---            9/5/2024  4:15 PM          67342 Microsoft-Windows-Client-Desktop-Required-Package~31bf3856ad364e35~am [40;1H
+                                                  d64~en-US~10.0.26100.1742.cat
+-a---           4/14/2026 11:44 AM          75176 Microsoft-Windows-Client-Desktop-Required-Package~31bf3856ad364e35~am [40;1H
+                                                  d64~en-US~10.0.26100.8313.cat
+-a---            4/1/2024 12:19 PM          66335 Microsoft-Windows-Client-Desktop-Required-Package~31bf3856ad364e35~am [40;1H
+                                                  d64~es-MX~10.0.26100.1.cat
+-a---            9/5/2024  4:15 PM          67367 Microsoft-Windows-Client-Desktop-Required-Package~31bf3856ad364e35~am [40;1H
+                                                  d64~es-MX~10.0.26100.1742.cat
+-a---            9/1/2026  1:11 AM          75213 Microsoft-Windows-Client-Desktop-Required-Package~31bf3856ad364e35~am [40;1H
+                                                  d64~es-MX~10.0.26100.8313.cat
+-a---            9/5/2024  4:15 PM         127518 Microsoft-Windows-Client-Desktop-Required-Package00~31bf3856ad364e35~ [40;1H
+                                                  amd64~~10.0.26100.1742.cat
+-a---           4/14/2026 11:44 AM         148714 Microsoft-Windows-Client-Desktop-Required-Package00~31bf3856ad364e35~ [40;1H
+                                                  amd64~~10.0.26100.8313.cat
+-a---            9/5/2024  4:15 PM          55471 Microsoft-Windows-Client-Desktop-Required-Package00~31bf3856ad364e35~ [40;1H
+                                                  amd64~en-US~10.0.26100.1591.cat
+-a---           4/14/2026 11:44 AM          55077 Microsoft-Windows-Client-Desktop-Required-Package00~31bf3856ad364e35~ [40;1H
+                                                  amd64~en-US~10.0.26100.8313.cat
+-a---            4/1/2024 12:21 PM          55993 Microsoft-Windows-Client-Desktop-Required-Package00~31bf3856ad364e35~ [40;1H
+                                                  amd64~es-MX~10.0.26100.1.cat
+-a---            9/5/2024  4:15 PM          55456 Microsoft-Windows-Client-Desktop-Required-Package00~31bf3856ad364e35~ [40;1H
+                                                  amd64~es-MX~10.0.26100.1591.cat
+-a---            9/1/2026  1:11 AM          55117 Microsoft-Windows-Client-Desktop-Required-Package00~31bf3856ad364e35~ [40;1H
+                                                  amd64~es-MX~10.0.26100.8313.cat
+-a---            9/5/2024  4:15 PM         142399 Microsoft-Windows-Client-Desktop-Required-Package0010~31bf3856ad364e3 [40;1H
+                                                  5~amd64~~10.0.26100.1742.cat
+-a---           4/14/2026 11:44 AM          13207 Microsoft-Windows-Client-Desktop-Required-Package0010~31bf3856ad364e3 [40;1H
+                                                  5~amd64~~10.0.26100.8313.cat
+-a---            9/5/2024  4:15 PM         146749 Microsoft-Windows-Client-Desktop-Required-Package0010~31bf3856ad364e3 [40;1H
+                                                  5~amd64~en-US~10.0.26100.1591.cat
+-a---           4/14/2026 11:44 AM          11446 Microsoft-Windows-Client-Desktop-Required-Package0010~31bf3856ad364e3 [40;1H
+                                                  5~amd64~en-US~10.0.26100.8246.cat
+-a---            4/1/2024 12:21 PM         146713 Microsoft-Windows-Client-Desktop-Required-Package0010~31bf3856ad364e3 [40;1H
+                                                  5~amd64~es-MX~10.0.26100.1.cat
+-a---            9/5/2024  4:16 PM         146838 Microsoft-Windows-Client-Desktop-Required-Package0010~31bf3856ad364e3 [40;1H
+                                                  5~amd64~es-MX~10.0.26100.1591.cat
+-a---            9/1/2026  1:11 AM          11403 Microsoft-Windows-Client-Desktop-Required-Package0010~31bf3856ad364e3 [40;1H
+                                                  5~amd64~es-MX~10.0.26100.8246.cat
+-a---            9/5/2024  4:15 PM         205623 Microsoft-Windows-Client-Desktop-Required-Package001020~31bf3856ad364 [40;1H
+                                                  e35~amd64~~10.0.26100.1742.cat
+-a---            9/5/2024  4:16 PM         138590 Microsoft-Windows-Client-Desktop-Required-Package0011~31bf3856ad364e3 [40;1H
+                                                  5~amd64~~10.0.26100.1742.cat
+-a---           4/14/2026 11:44 AM         147567 Microsoft-Windows-Client-Desktop-Required-Package0011~31bf3856ad364e3 [40;1H
+                                                  5~amd64~~10.0.26100.8313.cat
+-a---           4/14/2026 11:44 AM         145490 Microsoft-Windows-Client-Desktop-Required-Package0011~31bf3856ad364e3 [40;1H
+                                                  5~amd64~en-US~10.0.26100.8246.cat
+-a---            9/1/2026  1:11 AM         145490 Microsoft-Windows-Client-Desktop-Required-Package0011~31bf3856ad364e3 [40;1H
+                                                  5~amd64~es-MX~10.0.26100.8246.cat
+-a---           4/14/2026 11:44 AM         198090 Microsoft-Windows-Client-Desktop-Required-Package001120~31bf3856ad364 [40;1H
+                                                  e35~amd64~~10.0.26100.8313.cat
+-a---           4/14/2026 11:44 AM          11807 Microsoft-Windows-Client-Desktop-Required-Package001120~31bf3856ad364 [40;1H
+                                                  e35~amd64~en-US~10.0.26100.8246.cat
+-a---            9/1/2026  1:11 AM          11807 Microsoft-Windows-Client-Desktop-Required-Package001120~31bf3856ad364 [40;1H
+                                                  e35~amd64~es-MX~10.0.26100.8246.cat
+-a---           4/14/2026 11:44 AM          12580 Microsoft-Windows-Client-Desktop-Required-Package00112030~31bf3856ad3 [40;1H
+                                                  64e35~amd64~~10.0.26100.8313.cat
+-a---           4/14/2026 11:44 AM         141543 Microsoft-Windows-Client-Desktop-Required-Package0012~31bf3856ad364e3 [40;1H
+                                                  5~amd64~~10.0.26100.8313.cat
+-a---            9/5/2024  4:16 PM          51923 Microsoft-Windows-Client-Desktop-Required-Package01~31bf3856ad364e35~ [40;1H
+                                                  amd64~~10.0.26100.1742.cat
+-a---           4/14/2026 11:44 AM          68245 Microsoft-Windows-Client-Desktop-Required-Package01~31bf3856ad364e35~ [40;1H
+                                                  amd64~~10.0.26100.8313.cat
+-a---            9/5/2024  4:15 PM         140081 Microsoft-Windows-Client-Desktop-Required-Package01~31bf3856ad364e35~ [40;1H
+                                                  amd64~en-US~10.0.26100.1742.cat
+-a---           4/14/2026 11:44 AM          99476 Microsoft-Windows-Client-Desktop-Required-Package01~31bf3856ad364e35~ [40;1H
+                                                  amd64~en-US~10.0.26100.8313.cat
+-a---            4/1/2024 12:21 PM         147399 Microsoft-Windows-Client-Desktop-Required-Package01~31bf3856ad364e35~ [40;1H
+                                                  amd64~es-MX~10.0.26100.1.cat
+-a---            9/5/2024  4:15 PM         147548 Microsoft-Windows-Client-Desktop-Required-Package01~31bf3856ad364e35~ [40;1H
+                                                  amd64~es-MX~10.0.26100.1742.cat
+-a---            9/1/2026  1:11 AM          99477 Microsoft-Windows-Client-Desktop-Required-Package01~31bf3856ad364e35~ [40;1H
+                                                  amd64~es-MX~10.0.26100.8313.cat
+-a---            9/5/2024  4:16 PM         140987 Microsoft-Windows-Client-Desktop-Required-Package0110~31bf3856ad364e3 [40;1H
+                                                  5~amd64~en-US~10.0.26100.1742.cat
+-a---           4/14/2026 11:44 AM          12611 Microsoft-Windows-Client-Desktop-Required-Package0110~31bf3856ad364e3 [40;1H
+                                                  5~amd64~en-US~10.0.26100.8313.cat
+-a---            4/1/2024 12:21 PM         141314 Microsoft-Windows-Client-Desktop-Required-Package0110~31bf3856ad364e3 [40;1H
+                                                  5~amd64~es-MX~10.0.26100.1.cat
+-a---            9/5/2024  4:16 PM         141190 Microsoft-Windows-Client-Desktop-Required-Package0110~31bf3856ad364e3 [40;1H
+                                                  5~amd64~es-MX~10.0.26100.1742.cat
+-a---            9/1/2026  1:11 AM          12571 Microsoft-Windows-Client-Desktop-Required-Package0110~31bf3856ad364e3 [40;1H
+                                                  5~amd64~es-MX~10.0.26100.8313.cat
+-a---            9/5/2024  4:15 PM         137044 Microsoft-Windows-Client-Desktop-Required-Package0111~31bf3856ad364e3 [40;1H
+                                                  5~amd64~en-US~10.0.26100.1591.cat
+-a---           4/14/2026 11:44 AM         143845 Microsoft-Windows-Client-Desktop-Required-Package0111~31bf3856ad364e3 [40;1H
+                                                  5~amd64~en-US~10.0.26100.8313.cat
+-a---            4/1/2024 12:21 PM         139622 Microsoft-Windows-Client-Desktop-Required-Package0111~31bf3856ad364e3 [40;1H
+                                                  5~amd64~es-MX~10.0.26100.1.cat
+-a---            9/5/2024  4:15 PM         139852 Microsoft-Windows-Client-Desktop-Required-Package0111~31bf3856ad364e3 [40;1H
+                                                  5~amd64~es-MX~10.0.26100.1591.cat
+-a---            9/1/2026  1:11 AM         111220 Microsoft-Windows-Client-Desktop-Required-Package0111~31bf3856ad364e3 [40;1H
+                                                  5~amd64~es-MX~10.0.26100.8313.cat
+-a---            9/5/2024  4:15 PM          96726 Microsoft-Windows-Client-Desktop-Required-Package0112~31bf3856ad364e3 [40;1H
+                                                  5~amd64~en-US~10.0.26100.1591.cat
+-a---           4/14/2026 11:44 AM         106074 Microsoft-Windows-Client-Desktop-Required-Package0112~31bf3856ad364e3 [40;1H
+                                                  5~amd64~en-US~10.0.26100.8313.cat
+-a---            4/1/2024 12:21 PM          91219 Microsoft-Windows-Client-Desktop-Required-Package0112~31bf3856ad364e3 [40;1H
+                                                  5~amd64~es-MX~10.0.26100.1.cat
+-a---            9/5/2024  4:15 PM          91245 Microsoft-Windows-Client-Desktop-Required-Package0112~31bf3856ad364e3 [40;1H
+                                                  5~amd64~es-MX~10.0.26100.1591.cat
+-a---            9/1/2026  1:11 AM         110162 Microsoft-Windows-Client-Desktop-Required-Package0112~31bf3856ad364e3 [40;1H
+                                                  5~amd64~es-MX~10.0.26100.8313.cat
+-a---           4/14/2026 11:44 AM          10647 Microsoft-Windows-Client-Desktop-Required-Package011220~31bf3856ad364 [40;1H
+                                                  e35~amd64~en-US~10.0.26100.8117.cat
+-a---            9/1/2026  1:11 AM          10647 Microsoft-Windows-Client-Desktop-Required-Package011220~31bf3856ad364 [40;1H
+                                                  e35~amd64~es-MX~10.0.26100.8117.cat
+-a---           4/14/2026 11:44 AM          12386 Microsoft-Windows-Client-Desktop-Required-Package011221~31bf3856ad364 [40;1H
+                                                  e35~amd64~en-US~10.0.26100.8246.cat
+-a---            9/1/2026  1:11 AM          12430 Microsoft-Windows-Client-Desktop-Required-Package011221~31bf3856ad364 [40;1H
+                                                  e35~amd64~es-MX~10.0.26100.8246.cat
+-a---           4/14/2026 11:44 AM         111716 Microsoft-Windows-Client-Desktop-Required-Package0113~31bf3856ad364e3 [40;1H
+                                                  5~amd64~en-US~10.0.26100.8313.cat
+-a---            9/1/2026  1:11 AM         113284 Microsoft-Windows-Client-Desktop-Required-Package0113~31bf3856ad364e3 [40;1H
+                                                  5~amd64~es-MX~10.0.26100.8313.cat
+-a---           4/14/2026 11:44 AM          18986 Microsoft-Windows-Client-Desktop-Required-Package011320~31bf3856ad364 [40;1H
+                                                  e35~amd64~en-US~10.0.26100.7019.cat
+-a---            9/1/2026  1:11 AM          16127 Microsoft-Windows-Client-Desktop-Required-Package011320~31bf3856ad364 [40;1H
+                                                  e35~amd64~es-MX~10.0.26100.7019.cat
+-a---           4/14/2026 11:44 AM          92862 Microsoft-Windows-Client-Desktop-Required-Package0114~31bf3856ad364e3 [40;1H
+                                                  5~amd64~en-US~10.0.26100.8313.cat
+-a---            9/1/2026  1:11 AM          94444 Microsoft-Windows-Client-Desktop-Required-Package0114~31bf3856ad364e3 [40;1H
+                                                  5~amd64~es-MX~10.0.26100.8313.cat
+-a---            9/5/2024  4:16 PM         153870 Microsoft-Windows-Client-Desktop-Required-Package02~31bf3856ad364e35~ [40;1H
+                                                  amd64~~10.0.26100.1742.cat
+-a---           4/14/2026 11:44 AM         195080 Microsoft-Windows-Client-Desktop-Required-Package02~31bf3856ad364e35~ [40;1H
+                                                  amd64~~10.0.26100.8313.cat
+-a---            9/5/2024  4:15 PM          36613 Microsoft-Windows-Client-Desktop-Required-Package03~31bf3856ad364e35~ [40;1H
+                                                  amd64~~10.0.26100.1591.cat
+-a---           4/14/2026 11:44 AM          39204 Microsoft-Windows-Client-Desktop-Required-Package03~31bf3856ad364e35~ [40;1H
+                                                  amd64~~10.0.26100.8246.cat
+-a---            9/5/2024  4:15 PM         193661 Microsoft-Windows-Client-Desktop-Required-Package04~31bf3856ad364e35~ [40;1H
+                                                  amd64~~10.0.26100.1742.cat
+-a---           4/14/2026 11:44 AM         192865 Microsoft-Windows-Client-Desktop-Required-Package04~31bf3856ad364e35~ [40;1H
+                                                  amd64~~10.0.26100.8313.cat
+-a---            9/5/2024  4:16 PM         473349 Microsoft-Windows-Client-Desktop-Required-Package0410~31bf3856ad364e3 [40;1H
+                                                  5~amd64~~10.0.26100.1742.cat
+-a---           4/14/2026 11:44 AM         459834 Microsoft-Windows-Client-Desktop-Required-Package0410~31bf3856ad364e3 [40;1H
+                                                  5~amd64~~10.0.26100.8313.cat
+-a---            9/5/2024  4:16 PM         637898 Microsoft-Windows-Client-Desktop-Required-Package041020~31bf3856ad364 [40;1H
+                                                  e35~amd64~~10.0.26100.1742.cat
+-a---           4/14/2026 11:44 AM          28387 Microsoft-Windows-Client-Desktop-Required-Package041020~31bf3856ad364 [40;1H
+                                                  e35~amd64~~10.0.26100.8313.cat
+-a---            9/5/2024  4:15 PM         127515 Microsoft-Windows-Client-Desktop-Required-Package04102030~31bf3856ad3 [40;1H
+                                                  64e35~amd64~~10.0.26100.1591.cat
+-a---           4/14/2026 11:44 AM         640953 Microsoft-Windows-Client-Desktop-Required-Package041021~31bf3856ad364 [40;1H
+                                                  e35~amd64~~10.0.26100.8313.cat
+-a---           4/14/2026 11:44 AM         133924 Microsoft-Windows-Client-Desktop-Required-Package04102130~31bf3856ad3 [40;1H
+                                                  64e35~amd64~~10.0.26100.8313.cat
+-a---            9/5/2024  4:16 PM         245824 Microsoft-Windows-Client-Desktop-Required-Package0411~31bf3856ad364e3 [40;1H
+                                                  5~amd64~~10.0.26100.1742.cat
+-a---           4/14/2026 11:44 AM         252047 Microsoft-Windows-Client-Desktop-Required-Package0411~31bf3856ad364e3 [40;1H
+                                                  5~amd64~~10.0.26100.8313.cat
+-a---            9/5/2024  4:15 PM         296148 Microsoft-Windows-Client-Desktop-Required-Package04110~31bf3856ad364e [40;1H
+                                                  35~amd64~~10.0.26100.1591.cat
+-a---           4/14/2026 11:44 AM         320486 Microsoft-Windows-Client-Desktop-Required-Package04110~31bf3856ad364e [40;1H
+                                                  35~amd64~~10.0.26100.8313.cat
+-a---            9/5/2024  4:16 PM         498755 Microsoft-Windows-Client-Desktop-Required-Package04111~31bf3856ad364e [40;1H
+                                                  35~amd64~~10.0.26100.1742.cat
+-a---           4/14/2026 11:44 AM         339571 Microsoft-Windows-Client-Desktop-Required-Package04111~31bf3856ad364e [40;1H
+                                                  35~amd64~~10.0.26100.8313.cat
+-a---            9/5/2024  4:16 PM         220829 Microsoft-Windows-Client-Desktop-Required-Package04112~31bf3856ad364e [40;1H
+                                                  35~amd64~~10.0.26100.1742.cat
+-a---           4/14/2026 11:44 AM         227057 Microsoft-Windows-Client-Desktop-Required-Package04112~31bf3856ad364e[40;1H
+                                                  35~amd64~~10.0.26100.8313.cat
+-a---           4/14/2026 11:44 AM          85106 Microsoft-Windows-Client-Desktop-Required-Package0411220~31bf3856ad36 [40;1H
+                                                  4e35~amd64~~10.0.26100.8313.cat
+-a---            9/5/2024  4:16 PM         598549 Microsoft-Windows-Client-Desktop-Required-Package04113~31bf3856ad364e [40;1H
+                                                  35~amd64~~10.0.26100.1742.cat
+-a---           4/14/2026 11:44 AM         609060 Microsoft-Windows-Client-Desktop-Required-Package04113~31bf3856ad364e [40;1H
+                                                  35~amd64~~10.0.26100.8313.cat
+-a---            9/5/2024  4:16 PM         175988 Microsoft-Windows-Client-Desktop-Required-Package0412~31bf3856ad364e3 [40;1H
+                                                  5~amd64~~10.0.26100.1742.cat
+-a---           4/14/2026 11:44 AM         316381 Microsoft-Windows-Client-Desktop-Required-Package0412~31bf3856ad364e3 [40;1H
+                                                  5~amd64~~10.0.26100.8313.cat
+-a---            9/5/2024  4:16 PM         199076 Microsoft-Windows-Client-Desktop-Required-Package0413~31bf3856ad364e3 [40;1H
+                                                  5~amd64~~10.0.26100.1742.cat
+-a---           4/14/2026 11:44 AM         205192 Microsoft-Windows-Client-Desktop-Required-Package0413~31bf3856ad364e3 [40;1H
+                                                  5~amd64~~10.0.26100.8313.cat
+-a---            9/5/2024  4:16 PM         201779 Microsoft-Windows-Client-Desktop-Required-Package0414~31bf3856ad364e3 [40;1H
+                                                  5~amd64~~10.0.26100.1742.cat
+-a---           4/14/2026 11:44 AM         161286 Microsoft-Windows-Client-Desktop-Required-Package0414~31bf3856ad364e3 [40;1H
+                                                  5~amd64~~10.0.26100.8313.cat
+-a---           4/14/2026 11:44 AM          24094 Microsoft-Windows-Client-Desktop-Required-Package041420~31bf3856ad364 [40;1H
+                                                  e35~amd64~~10.0.26100.8313.cat
+-a---            9/5/2024  4:16 PM         473592 Microsoft-Windows-Client-Desktop-Required-Package0415~31bf3856ad364e3 [40;1H
+                                                  5~amd64~~10.0.26100.1742.cat
+-a---           4/14/2026 11:44 AM         503572 Microsoft-Windows-Client-Desktop-Required-Package0415~31bf3856ad364e3 [40;1H
+                                                  5~amd64~~10.0.26100.8313.cat
+PS C:\bb-test>[1C[?25l[40;14H> [93mWrite-Output [36m'ALIVE_AFTER_CTRLC'[?25h[m
+ALIVE_AFTER_CTRLC
+PS C:\bb-test>[1C

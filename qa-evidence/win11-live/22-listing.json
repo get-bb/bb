@@ -1,0 +1,28 @@
+{
+  "r1": {
+    "files": [
+      {
+        "path": "datos.csv",
+        "name": "datos.csv"
+      },
+      {
+        "path": "diseño.txt",
+        "name": "diseño.txt"
+      },
+      {
+        "path": "nota.txt",
+        "name": "nota.txt"
+      }
+    ],
+    "truncated": false
+  },
+  "r2": {
+    "path": "C:/bb-test/nota.txt",
+    "content": "﻿nota de prueba\r\n",
+    "contentEncoding": "utf8",
+    "mimeType": "text/plain",
+    "sizeBytes": 19,
+    "modifiedAtMs": 1788689809154.0083,
+    "sha256": "84ac3876cd9af6f3b1586e3a68f44b3748abe407f5e6ba6970fb0222010c0d57"
+  }
+}

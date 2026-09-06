@@ -1,0 +1,218 @@
+﻿
+Image Name                     PID Session Name        Session#    Mem Usage
+========================= ======== ================ =========== ============
+System Idle Process              0 Services                   0          8 K
+System                           4 Services                   0        172 K
+Registry                       324 Services                   0     66,960 K
+smss.exe                       604 Services                   0      1,680 K
+csrss.exe                      960 Services                   0      6,544 K
+wininit.exe                    728 Services                   0      9,136 K
+csrss.exe                      724 Console                    1      8,432 K
+winlogon.exe                  1076 Console                    1     15,408 K
+services.exe                  1096 Services                   0     10,600 K
+lsass.exe                     1140 Services                   0     29,472 K
+svchost.exe                   1276 Services                   0     35,952 K
+fontdrvhost.exe               1308 Services                   0      4,624 K
+fontdrvhost.exe               1316 Console                    1     11,364 K
+svchost.exe                   1364 Services                   0     17,620 K
+dwm.exe                       1504 Console                    1    187,712 K
+svchost.exe                   1564 Services                   0     19,320 K
+svchost.exe                   1640 Services                   0     88,248 K
+svchost.exe                   1720 Services                   0     31,916 K
+svchost.exe                   1768 Services                   0     13,088 K
+svchost.exe                   1804 Services                   0     20,452 K
+vmms.exe                      1856 Services                   0     29,944 K
+svchost.exe                   1912 Services                   0     27,320 K
+svchost.exe                   2008 Services                   0     11,676 K
+NVDisplay.Container.exe        952 Services                   0     51,804 K
+amdfendrsr.exe                2096 Services                   0      9,188 K
+atiesrxx.exe                  2104 Services                   0      8,960 K
+svchost.exe                   2232 Services                   0      8,512 K
+svchost.exe                   2300 Services                   0     18,756 K
+atieclxx.exe                  2324 Console                    1     20,368 K
+svchost.exe                   2368 Services                   0     23,096 K
+svchost.exe                   2476 Services                   0     19,448 K
+svchost.exe                   2508 Services                   0     10,980 K
+svchost.exe                   2572 Services                   0     12,396 K
+svchost.exe                   2752 Services                   0     20,440 K
+svchost.exe                   2860 Services                   0      9,536 K
+vds.exe                       2872 Services                   0      8,664 K
+wslservice.exe                2884 Services                   0     27,904 K
+Everything.exe                2904 Services                   0     10,368 K
+tailscaled.exe                3056 Services                   0     32,284 K
+vmcompute.exe                 3112 Services                   0      9,936 K
+NVDisplay.Container.exe       3296 Console                    1    180,572 K
+WmiPrvSE.exe                  3400 Services                   0     58,852 K
+tailscaled.exe                3560 Services                   0     74,708 K
+svchost.exe                   3872 Services                   0     16,968 K
+svchost.exe                   4040 Services                   0     12,048 K
+sihost.exe                    4860 Console                    1     48,128 K
+svchost.exe                   4884 Console                    1     41,208 K
+svchost.exe                   4916 Console                    1      6,732 K
+taskhostw.exe                 4992 Console                    1     20,332 K
+MicrosoftEdgeUpdate.exe       5016 Services                   0      5,328 K
+AUEPMaster.exe                5080 Console                    1      4,028 K
+dllhost.exe                   5276 Console                    1      9,144 K
+BraveCrashHandler.exe         5656 Services                   0      1,796 K
+BraveCrashHandler64.exe       5664 Services                   0        400 K
+explorer.exe                  5848 Console                    1    376,420 K
+ShellHost.exe                 4460 Console                    1     63,180 K
+CrossDeviceResume.exe         5580 Console                    1     69,392 K
+svchost.exe                   5540 Services                   0     28,916 K
+ctfmon.exe                    6972 Console                    1     33,940 K
+iCUE.exe                      6440 Console                    1    197,120 K
+crashpad_handler.exe          6688 Console                    1      7,868 K
+iCUEUpdateService.exe         6184 Services                   0     17,428 K
+crashpad_handler.exe          6308 Services                   0      6,724 K
+CorsairCpuIdService.exe       6420 Services                   0     72,196 K
+crashpad_handler.exe          6544 Services                   0      6,736 K
+CorsairDeviceControlServi     6596 Services                   0     13,916 K
+crashpad_handler.exe          6652 Services                   0      6,740 K
+flameshot.exe                 6968 Console                    1     88,832 K
+svchost.exe                   7036 Services                   0     15,488 K
+TextInputHost.exe             6804 Console                    1    188,344 K
+WmiApSrv.exe                  6380 Services                   0     10,560 K
+QmlRenderer.exe               8028 Console                    1    147,520 K
+conhost.exe                   7044 Console                    1      6,136 K
+WmiPrvSE.exe                  8616 Services                   0     16,980 K
+svchost.exe                   8820 Console                    1     26,380 K
+tailscale-ipn.exe             8148 Console                    1     58,884 K
+Everything.exe                8984 Console                    1    295,240 K
+svchost.exe                   9252 Services                   0      9,360 K
+RadeonSoftware.exe            9588 Console                    1    105,136 K
+CPUMetricsServer.exe          9844 Console                    1      2,444 K
+cncmd.exe                     9932 Console                    1        608 K
+cmd.exe                      10008 Console                    1        492 K
+conhost.exe                  10016 Console                    1        584 K
+AMDRSServ.exe                10048 Console                    1     71,308 K
+amdow.exe                    10128 Console                    1      1,580 K
+Wispr Flow.exe                5112 Console                    1    236,180 K
+Wispr Flow.exe                7544 Console                    1     42,220 K
+Wispr Flow.exe                9536 Console                    1    109,184 K
+Wispr Flow.exe                7408 Console                    1     61,768 K
+Wispr Flow.exe                9716 Console                    1    181,632 K
+Wispr Flow.exe                9876 Console                    1    168,604 K
+Wispr Flow.exe                9444 Console                    1    263,024 K
+Wispr Flow.exe                7184 Console                    1    160,664 K
+Wispr Flow Helper.exe        10268 Console                    1     56,904 K
+conhost.exe                  10276 Console                    1      6,140 K
+Wispr Flow.exe               10672 Console                    1     91,632 K
+Wispr Flow.exe               10716 Console                    1     96,048 K
+svchost.exe                  11256 Services                   0     15,976 K
+yasb.exe                      8600 Console                    1    144,456 K
+Raycast.exe                   4720 Console                    1    279,868 K
+Raycast.UIAccess.exe         12316 Console                    1     18,808 K
+node.exe                     12576 Console                    1    280,896 K
+conhost.exe                  12596 Console                    1      6,340 K
+msedgewebview2.exe           13292 Console                    1    116,140 K
+msedgewebview2.exe           12256 Console                    1     12,252 K
+msedgewebview2.exe           13352 Console                    1     90,404 K
+msedgewebview2.exe           13360 Console                    1     37,144 K
+msedgewebview2.exe           13400 Console                    1     20,784 K
+msedgewebview2.exe           13576 Console                    1    169,360 K
+RuntimeBroker.exe             6788 Console                    1      8,476 K
+AUEPDU.exe                    9228 Services                   0     18,748 K
+sppsvc.exe                   16008 Services                   0     12,728 K
+svchost.exe                  15160 Services                   0     12,424 K
+AMDRSSrcExt.exe              15864 Console                    1    119,532 K
+Discord.exe                    240 Console                    1    171,092 K
+Discord.exe                  13984 Console                    1     30,684 K
+Discord.exe                   2204 Console                    1    130,140 K
+Discord.exe                   1948 Console                    1     61,340 K
+Discord.exe                   9352 Console                    1    501,692 K
+Discord.exe                  10944 Console                    1     91,368 K
+dllhost.exe                  16128 Console                    1     21,244 K
+conhost.exe                  17004 Console                    1      6,704 K
+opencode.exe                  8172 Console                    1    397,772 K
+conhost.exe                   5592 Console                    1      6,712 K
+opencode.exe                 17264 Console                    1    348,792 K
+conhost.exe                  16276 Console                    1      6,712 K
+opencode.exe                  3424 Console                    1    379,456 K
+mcp-server-windows-x64.ex     5892 Console                    1      7,968 K
+conhost.exe                  15200 Console                    1      6,544 K
+WindowsTerminal.exe          14204 Console                    1    209,636 K
+herdr.exe                     9944 Console                    1     68,336 K
+OpenConsole.exe               6568 Console                    1     12,552 K
+powershell.exe               15868 Console                    1     78,408 K
+claude.exe                   12096 Console                    1    486,772 K
+mcp-server-windows-x64.ex     9068 Console                    1      8,140 K
+conhost.exe                  10920 Console                    1      6,596 K
+cmd.exe                      21424 Console                    1      6,636 K
+conhost.exe                  17512 Console                    1      9,600 K
+OpenConsole.exe              19256 Console                    1     20,480 K
+node.exe                     12404 Console                    1    149,748 K
+cmd.exe                      18496 Console                    1      6,436 K
+conhost.exe                  16100 Console                    1      9,536 K
+OpenConsole.exe              21644 Console                    1     15,308 K
+claude.exe                   18808 Console                    1    420,424 K
+mcp-server-windows-x64.ex    17636 Console                    1      8,068 K
+conhost.exe                   2856 Console                    1      6,736 K
+OpenConsole.exe              19904 Console                    1     15,092 K
+pwsh.exe                     20652 Console                    1    129,620 K
+OpenConsole.exe              20400 Console                    1     12,048 K
+powershell.exe               10924 Console                    1     72,780 K
+cmd.exe                      21488 Console                    1      6,624 K
+node.exe                      7612 Console                    1    101,928 K
+herdr.exe                    20932 Console                    1     20,488 K
+ApplicationFrameHost.exe     10360 Console                    1     47,864 K
+OpenConsole.exe              11412 Console                    1     12,152 K
+powershell.exe                8464 Console                    1     72,320 K
+cmd.exe                      18040 Console                    1      6,636 K
+node.exe                     19156 Console                    1    138,636 K
+OpenConsole.exe              14932 Console                    1     12,184 K
+powershell.exe               15268 Console                    1     72,496 K
+cmd.exe                       7476 Console                    1      6,692 K
+node.exe                      8516 Console                    1    146,200 K
+OpenConsole.exe              16248 Console                    1     12,232 K
+powershell.exe               11292 Console                    1     72,380 K
+cmd.exe                      16196 Console                    1      6,704 K
+node.exe                     10876 Console                    1    142,296 K
+conhost.exe                  10936 Console                    1      7,080 K
+bb wn.exe                    16988 Console                    1    155,776 K
+bb wn.exe                     8852 Console                    1    101,128 K
+bb wn.exe                    14948 Console                    1     52,472 K
+bb wn.exe                    13636 Console                    1     91,024 K
+bb wn.exe                    18652 Console                    1    312,868 K
+OpenConsole.exe               9184 Console                    1     12,028 K
+powershell.exe               17476 Console                    1     72,212 K
+bb wn.exe                    15604 Console                    1    162,236 K
+cmd.exe                      11300 Console                    1      6,520 K
+node.exe                     10864 Console                    1    127,824 K
+svchost.exe                  22504 Services                   0      9,520 K
+bash.exe                     16200 Console                    1      7,420 K
+bash.exe                     16004 Console                    1     10,544 K
+conhost.exe                  18488 Console                    1      6,956 K
+sh.exe                       19408 Console                    1      9,748 K
+tail.exe                     16760 Console                    1      5,296 K
+node.exe                     21936 Console                    1     53,512 K
+WmiPrvSE.exe                 18936 Services                   0     18,480 K
+conhost.exe                   2280 Console                    1      7,196 K
+bash.exe                     12652 Console                    1      7,608 K
+bash.exe                     19808 Console                    1      7,576 K
+sh.exe                       20304 Console                    1      9,636 K
+node.exe                     12840 Console                    1     86,908 K
+cmd.exe                      18764 Console                    1      6,752 K
+head.exe                      3016 Console                    1      5,224 K
+powershell.exe               20236 Console                    1     93,360 K
+bb wn.exe                    21580 Console                    1    157,236 K
+bb wn.exe                    16504 Console                    1    104,652 K
+bb wn.exe                    19724 Console                    1    107,484 K
+bb wn.exe                    10948 Console                    1    107,424 K
+svchost.exe                  12284 Services                   0      9,612 K
+bb wn.exe                    16952 Console                    1    137,780 K
+node.exe                      6312 Console                    1     96,280 K
+cmd.exe                       7548 Console                    1      6,660 K
+node.exe                     19728 Console                    1     47,748 K
+node.exe                     19296 Console                    1    180,252 K
+bash.exe                     14980 Console                    1      7,764 K
+conhost.exe                  16636 Console                    1      7,312 K
+bash.exe                      5232 Console                    1     10,584 K
+find.exe                     19264 Console                    1      9,600 K
+head.exe                     18876 Console                    1      5,216 K
+bash.exe                     18300 Console                    1      7,764 K
+conhost.exe                   8352 Console                    1      7,368 K
+bash.exe                     17280 Console                    1     10,588 K
+bash.exe                     18600 Console                    1      7,888 K
+powershell.exe               14448 Console                    1     67,376 K
+head.exe                      8832 Console                    1      5,220 K
+tasklist.exe                 10468 Console                    1     10,992 K

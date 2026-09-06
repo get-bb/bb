@@ -1,0 +1,9 @@
+Installer: apps/desktop/release/bb-wn-Setup-0.42.1.exe (NSIS)
+Install (silent, this pass): "Uninstall bb wn.exe" /S for removal, bb-wn-Setup-0.42.1.exe /S for install; both exit 0
+Default path: %LOCALAPPDATA%\Programs\bb wn  (C:\Users\Administrator\AppData\Local\Programs\bb wn)
+Start menu: bb wn.lnk present after install, absent after uninstall
+Installed image: bb wn.exe + locales/ + resources/ (app.asar.unpacked with bb-app-bridge.mjs, server, host-daemon daemon-bundle.mjs)
+NOT exercised: interactive double-click, SmartScreen/Defender flow (no interactive user in this shell session)
+Process image name (all components): bb wn.exe — Electron main, bb-app-bridge, server index.js, host-daemon daemon-bundle.mjs,
+  bb-parcel-watcher-child, bb-plugin-host-worker, bb-provider-bridge-worker, renderer, gpu-process, utility
+Step 3 verdict: PASS for mechanics, SmartScreen gap open

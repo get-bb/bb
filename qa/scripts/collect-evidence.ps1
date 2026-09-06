@@ -51,7 +51,7 @@ $TasklistFile = Join-Path $OutDir '90-tasklist.txt'
 tasklist /FO TABLE | Tee-Object $TasklistFile
 
 $ProcessesFile = Join-Path $OutDir '91-processes.csv'
-$Watched = @(Get-Process -Name bb, node, electron -ErrorAction SilentlyContinue)
+$Watched = @(Get-Process -Name 'bb wn', bb, node, electron -ErrorAction SilentlyContinue)
 if ($Watched.Count -gt 0) {
     $Watched |
         Select-Object Name, Id, CPU, WorkingSet64, Path |

@@ -1,0 +1,54 @@
+
+-a---           3/31/2024  4:56 PM          53152 Microsoft-Edge-WebView-FOD-Package~31bf3856ad364e35~amd64~~10.0.26100 [40;1H
+                                                  .1.cat
+-a---           4/14/2026 11:44 AM          70066 Microsoft-Edge-WebView-FOD-Package~31bf3856ad364e35~amd64~~10.0.26100 [40;1H
+                                                  .8313.cat
+-a---            9/5/2024  4:15 PM          10065 Microsoft-Hyper-V-ClientEdition-Package~31bf3856ad364e35~amd64~~10.0. [40;1H
+                                                  26100.1742.cat
+-a---           4/14/2026 11:44 AM          10081 Microsoft-Hyper-V-ClientEdition-Package~31bf3856ad364e35~amd64~~10.0. [40;1H
+                                                  26100.8313.cat
+-a---            9/5/2024  4:15 PM          10081 Microsoft-Hyper-V-ClientEdition-Package~31bf3856ad364e35~amd64~en-US~ [40;1H
+                                                  10.0.26100.1591.cat
+-a---           4/14/2026 11:44 AM          10078 Microsoft-Hyper-V-ClientEdition-Package~31bf3856ad364e35~amd64~en-US~ [40;1H
+                                                  10.0.26100.8313.cat
+-a---            4/1/2024 12:19 PM           9825 Microsoft-Hyper-V-ClientEdition-Package~31bf3856ad364e35~amd64~es-MX~ [40;1H
+                                                  10.0.26100.1.cat
+-a---            9/5/2024  4:15 PM          10038 Microsoft-Hyper-V-ClientEdition-Package~31bf3856ad364e35~amd64~es-MX~ [40;1H
+                                                  10.0.26100.1591.cat
+-a---            9/1/2026  1:11 AM          10038 Microsoft-Hyper-V-ClientEdition-Package~31bf3856ad364e35~amd64~es-MX~ [40;1H
+                                                  10.0.26100.8313.cat
+-a---            9/5/2024  4:15 PM          10055 Microsoft-Hyper-V-ClientEdition-WOW64-Package~31bf3856ad364e35~amd64~ [40;1H
+                                                  ~10.0.26100.1591.cat
+-a---           4/14/2026 11:44 AM          10052 Microsoft-Hyper-V-ClientEdition-WOW64-Package~31bf3856ad364e35~amd64~ [40;1H
+                                                  ~10.0.26100.8313.cat
+-a---           3/31/2024  6:36 PM           9933 Microsoft-Hyper-V-ClientEdition-WOW64-Package~31bf3856ad364e35~amd64~ [40;1H
+                                                  en-US~10.0.26100.1.cat
+-a---            4/1/2024 12:20 PM           9841 Microsoft-Hyper-V-ClientEdition-WOW64-Package~31bf3856ad364e35~amd64~ [40;1H
+                                                  es-MX~10.0.26100.1.cat
+-a---            4/1/2024  2:20 AM          10359 Microsoft-Hyper-V-Hypervisor-merged-Package~31bf3856ad364e35~amd64~~1 [40;1H
+                                                  0.0.26100.1.cat
+-a---           3/31/2024  6:37 PM          10027 Microsoft-Hyper-V-Hypervisor-merged-Package~31bf3856ad364e35~amd64~en [40;1H
+                                                  -US~10.0.26100.1.cat
+-a---            4/1/2024 12:20 PM          10012 Microsoft-Hyper-V-Hypervisor-merged-Package~31bf3856ad364e35~amd64~es [40;1H
+                                                  -MX~10.0.26100.1.cat
+-a---            9/5/2024  4:15 PM          10034 Microsoft-Hyper-V-Hypervisor-Package~31bf3856ad364e35~amd64~~10.0.261 [40;1H
+                                                  00.1742.cat
+-a---           4/14/2026 11:44 AM          10071 Microsoft-Hyper-V-Hypervisor-Package~31bf3856ad364e35~amd64~~10.0.261 [40;1H
+                                                  00.8313.cat
+-a---           3/31/2024  6:37 PM           9948 Microsoft-Hyper-V-Hypervisor-Package~31bf3856ad364e35~amd64~en-US~10. [40;1H
+                                                  0.26100.1.cat
+-a---            9/5/2024  4:15 PM          10034 Microsoft-Hyper-V-Hypervisor-Package~31bf3856ad364e35~amd64~en-US~10. [40;1H
+                                                  0.26100.1591.cat
+-a---           4/14/2026 11:44 AM          10030 Microsoft-Hyper-V-Hypervisor-Package~31bf3856ad364e35~amd64~en-US~10. [40;1H
+                                                  0.26100.8117.cat
+-a---            4/1/2024 12:20 PM           9945 Microsoft-Hyper-V-Hypervisor-Package~31bf3856ad364e35~amd64~es-MX~10. [40;1H
+                                                  0.26100.1.cat
+-a---            9/5/2024  4:15 PM           9941 Microsoft-Hyper-V-Hypervisor-Package~31bf3856ad364e35~amd64~es-MX~10. [40;1H
+                                                  0.26100.1591.cat
+-a---            9/1/2026  1:11 AM          10034 Microsoft-Hyper-V-Hypervisor-Package~31bf3856ad364e35~amd64~es-MX~10. [40;1H
+                                                  0.26100.8117.cat
+-a---            9/5/2024  4:15 PM          12632 Microsoft-Hyper-V-Offline-Common-merged-Package~31bf3856ad364e35~amd6 [40;1H
+                                                  4~~10.0.26100.1455.cat
+PS C:\bb-test>[1C[?25l[40;14H> [93mWrite-Output [36m'ALIVE_AFTER_CTRLC'[?25h[m
+ALIVE_AFTER_CTRLC
+PS C:\bb-test>[1C

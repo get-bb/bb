@@ -44,7 +44,8 @@ pnpm run build 2>&1 | Tee-Object qa-evidence\40-build.txt
 
 ## 3. Install the app with a double click
 
-1. Get the installer: `release\bb-<version>-x64.exe` (NSIS; the exact name is
+1. Get the installer: `apps\desktop\release\bb-wn-Setup-<version>.exe`
+   (NSIS; the exact name is
    set by the `apps/desktop` build, confirm the version first).
 2. **Double-click it**. Do not run it from a terminal: this step validates the
    normal-user path.
@@ -111,15 +112,17 @@ Get-Location
 2. Wait 10 s and run:
 
 ```powershell
-tasklist /FI "IMAGENAME eq bb.exe"
-tasklist /FI "IMAGENAME eq electron.exe"
-Get-Process -Name bb, electron -ErrorAction SilentlyContinue
+tasklist /FI "IMAGENAME eq bb wn.exe"
+Get-Process -Name 'bb wn', bb, electron -ErrorAction SilentlyContinue
 ```
 
-3. Expected: all three queries **empty** (`INFO: No tasks are running` in
-   `tasklist`, nothing in `Get-Process`). Any orphaned `bb.exe` or
-   `electron.exe` is a failure (on Windows killing the parent does NOT kill
-   the children; clean shutdown is a requirement of the port).
+3. Expected: both queries **empty** (`INFO: No tasks are running` in
+   `tasklist`, nothing in `Get-Process`). Any orphaned `bb wn.exe` is a
+   failure (on Windows killing the parent does NOT kill
+   the children; clean shutdown is a requirement of the port). The product
+   process is `bb wn.exe` (Electron main, server bridge, host daemon and
+   renderers all share this image name); there is no separate `bb.exe` or
+   `electron.exe`.
 4. Save the proof: `qa\scripts\collect-evidence.ps1` writes
    `90-tasklist.txt` + `91-processes.csv`. Also attach a screenshot of the
    `tasklist` if there were orphans.
@@ -133,7 +136,9 @@ Get-Process -Name bb, electron -ErrorAction SilentlyContinue
      Start menu or the app list.
    - Repeat the step 7 `tasklist`: empty.
    - The install folder is gone. Your user data may survive depending on the
-     product (note what was left under `%APPDATA%` / `%LOCALAPPDATA%`; do not
+     product (note what was left under `%USERPROFILE%\.bb` (product data:
+     database, logs, runtime file), `%APPDATA%\bb` (Electron/Chromium
+     profile) and `%LOCALAPPDATA%`; do not
      delete it by hand before noting it).
 3. Evidence: `qa-evidence\92-tasklist-after-uninstall.txt` (copy of the
    post-uninstall `tasklist`) + screenshot of the Start menu without "bb".
@@ -145,3 +150,69 @@ Mark each step `PASS` / `FAIL` / `NA` (with a reason) on the PR. Any single
 `00-host.txt` (exact OS: `Caption`, `Version`, `OSArchitecture`), the `*.txt`
 files for the steps you ran, the cited screenshots, and the step 7
 `tasklist.txt`.
+
+## Recorded pass — 2026-09-06, real Windows 11 Pro 10.0.26200 x64
+
+Machine `SapphireOS`, installer `apps\desktop\release\bb-wn-Setup-0.42.1.exe`,
+default path `%LOCALAPPDATA%\Programs\bb wn`. Evidence committed under
+`qa-evidence/win11-live/` (first attempt) and `qa-evidence/win11-live2/`
+(second attempt, supersedes where noted). Server `http://127.0.0.1:38886`,
+local API needs no auth. Product data dir `%USERPROFILE%\.bb`, logs
+`%USERPROFILE%\.bb\logs`.
+
+- Step 3 (install): PASS for install mechanics — silent `/S` install exit 0,
+  Start-menu `bb wn.lnk` present, install dir populated. NOT exercised:
+  interactive double-click and the SmartScreen/Defender flow (no interactive
+  user in this session); that gap stays open for a human pass.
+- Step 4 (first window): PARTIAL — a native Electron window provably exists
+  (process with nonzero MainWindowHandle, title `bb`, `--type=renderer` and
+  `--type=gpu-process` children of the same `bb wn.exe` image; no Edge/Chrome
+  window involved, never asked for a browser URL), but it could not be brought
+  to the foreground from a non-interactive shell session
+  (`SetForegroundWindow`/`SetWindowPos TOPMOST` ignored while another app owns
+  the foreground), so no pixels were captured and first-click latency was not
+  measured. No misleading screenshot is attached.
+- Step 5 (open `C:\bb-test`): PASS at the daemon/API level — `files/list`,
+  `files/paths` and `files/read` return 200 with `ñ` intact for `C:/bb-test`,
+  `C:/bb test` (space) and `C:/proyectos/diseño` (non-ASCII), with both `/`
+  and `\` separators (`41-host-commands.json`, backslash spot-check
+  console log). The in-app File → Open picker clicks were not performed
+  (headless session). Note: `win11-live/21-host-commands.json` from the first
+  attempt is INVALID evidence — its script built paths with single-`\`
+  JS string escapes (`"C:\bb-test"` → backspace + `bb-test`), so every
+  `invalid_path / Path must be absolute` there is a script bug, not a product
+  defect; it is superseded by `win11-live2/41-host-commands.json`.
+- Step 6 (PowerShell terminal): PASS over the real daemon ConPTY path —
+  `powershell.exe` confirmed, cwd `C:\bb-test`, `Write-Output 'diseño ✓'`
+  round-trips intact, resize 200, `Get-ChildItem -Recurse` interrupted with
+  Ctrl+C and shell stays alive (`ALIVE_AFTER_CTRLC`), close 200, and the
+  ConPTY shell PID is reaped (no `powershell.exe` orphan parented to the
+  daemon; `43-terminal-orphans.txt`). Staged transcript:
+  `42-terminal-staged.txt`. (The first attempt's `23-terminal-output.txt`
+  only kept the final 8000-byte tail, so its `diseño ✓` check was unobserved;
+  re-run staged in `win11-live2`.)
+- Step 7 (close, nothing stays alive): PASS — graceful `taskkill /PID` on the
+  Electron main (WM_CLOSE, equivalent of window X) leaves zero `bb wn.exe`
+  and port 38886 in TIME_WAIT only (`45-pre-close-*`, `46-post-close-*`).
+  KNOWN-ISSUES K3 partiality does not bite on clean shutdown.
+- Step 8 (uninstall): PASS — `Uninstall bb wn.exe /S` exit 0, install folder
+  gone, Start-menu entry gone, `tasklist` empty (`47-*`). `%USERPROFILE%\.bb`
+  (database, logs, thread storage) deliberately survives; after reinstall the
+  same host identity (`host_w4znqq4hr5`) and threads reattach intact.
+- Daemon kill-recovery (beyond the checklist, core of this pass): PASS —
+  `taskkill /F` on the daemon process: server logs `Daemon WebSocket closed`,
+  host reads 502 while down, ~6 s later a new session replaces the old one
+  (`replacedSessionId`), new `Host daemon started` with a new instanceId,
+  fresh worker children, and the old subtree fully reaped (no orphans).
+  Post-recovery `files/*` calls return 200.
+- Real agent turn (provider `acp-opencode`, thread `thr_jqysbdei7z`): PASS —
+  read `nota.txt`, wrote `C:\bb-test\resultado-qa.txt` (`nota de prueba` +
+  `VERIFICADO-WIN11`), verified on disk and via `turn/completed` +
+  `fileChange completed` events (`44-agent-turn.txt`).
+- Script fix in this pass: `qa\scripts\collect-evidence.ps1` watched
+  `Get-Process -Name bb, node, electron` and therefore recorded ZERO `bb wn`
+  rows while 19 `bb wn.exe` ran; now watches `'bb wn'` too. Checklist
+  corrections: installer file name, `bb wn.exe` process names, product data
+  dir `%USERPROFILE%\.bb`.
+- Machine left WITH the app installed, running and connected (reinstalled
+  after the uninstall step, host `connected`).

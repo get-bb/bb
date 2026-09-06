@@ -1,0 +1,70 @@
+{
+  "codex": {
+    "displayName": "Codex",
+    "executableName": "codex",
+    "executablePath": "C:\\Users\\Administrator\\AppData\\Roaming\\npm\\codex",
+    "installed": true,
+    "installSource": "npmGlobal",
+    "currentVersion": "0.153.2",
+    "latestVersion": "0.153.4",
+    "minimumSupportedVersion": "0.136.0",
+    "npmPackageName": "@openai/codex",
+    "npmGlobalPackageVersion": "0.153.2",
+    "installAction": {
+      "kind": "update",
+      "label": "Update",
+      "command": "codex update"
+    },
+    "needsUpdate": true,
+    "versionUnsupported": false
+  },
+  "claude-code": {
+    "displayName": "Claude Code",
+    "executableName": "claude",
+    "executablePath": "C:\\Users\\Administrator\\AppData\\Roaming\\npm\\claude",
+    "installed": true,
+    "installSource": "npmGlobal",
+    "currentVersion": "2.1.263",
+    "latestVersion": "2.1.263",
+    "minimumSupportedVersion": null,
+    "npmPackageName": "@anthropic-ai/claude-code",
+    "npmGlobalPackageVersion": "2.1.263",
+    "installAction": null,
+    "needsUpdate": false,
+    "versionUnsupported": false
+  },
+  "pi": {
+    "displayName": "Pi",
+    "executableName": "pi",
+    "executablePath": "C:\\tools\\bin\\pi.cmd",
+    "installed": true,
+    "installSource": "external",
+    "currentVersion": null,
+    "latestVersion": "0.85.1",
+    "minimumSupportedVersion": "0.84.0",
+    "npmPackageName": "@earendil-works/pi-coding-agent",
+    "npmGlobalPackageVersion": null,
+    "installAction": null,
+    "needsUpdate": false,
+    "versionUnsupported": false
+  },
+  "acp-cursor": {
+    "displayName": "Cursor",
+    "executableName": "cursor-agent",
+    "executablePath": null,
+    "installed": false,
+    "installSource": "notInstalled",
+    "currentVersion": null,
+    "latestVersion": null,
+    "minimumSupportedVersion": null,
+    "npmPackageName": null,
+    "npmGlobalPackageVersion": null,
+    "installAction": {
+      "kind": "install",
+      "label": "Install",
+      "command": "powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -Command \"$ErrorActionPreference = 'Stop'; $tmp = Join-Path $env:TEMP ('provider-installation-' + [Guid]::NewGuid().ToString('N') + '.sh'); try { Invoke-WebRequest -Uri 'https://cursor.com/install' -OutFile $tmp; $bash = Get-Command bash -ErrorAction SilentlyContinue; if (-not $bash) { throw 'bash not found: install Git for Windows or run the provider installer manually' }; & $bash.Source $tmp } finally { Remove-Item $tmp -ErrorAction SilentlyContinue }\""
+    },
+    "needsUpdate": false,
+    "versionUnsupported": false
+  }
+}
