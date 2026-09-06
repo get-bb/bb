@@ -1,4 +1,5 @@
 import { existsSync } from "node:fs";
+import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { createProviderForId } from "./provider-registry.js";
 import type { AgentRuntimeBridgeLaunch } from "./types.js";
@@ -88,7 +89,7 @@ function expectBridgeSpawn(
     expect(workerArgs.at(-1)).toMatch(/bridge-worker-entry\.ts$/u);
   } else {
     expect(workerArgs).toEqual([
-      `${expected.bundleDir}/bb-provider-bridge-worker.mjs`,
+      resolve(expected.bundleDir, "bb-provider-bridge-worker.mjs"),
     ]);
   }
 }
