@@ -2,6 +2,7 @@ import {
   isStandaloneBuiltinCompactCommand,
   pendingInteractionResolutionSchema,
   reasoningEffortsForLevels,
+  removeCommandMentionsFromPromptInput,
 } from "@bb/domain";
 import type { AvailableModel, PromptInput, ReasoningLevel } from "@bb/domain";
 import { acpLaunchSpecSchema, type AcpLaunchSpec } from "../launch-spec.js";
@@ -98,6 +99,9 @@ import {
   acpSessionForkResultSchema,
   acpSessionNewResultSchema,
   acpSessionNotificationParamsSchema,
+  acpCurrentModeUpdateSchema,
+  acpSetModeResultSchema,
+  type AcpSessionModes,
   acpAgentMessageChunkUpdateSchema,
   extractAcpContentText,
   acpUsageUpdateSchema,
@@ -154,7 +158,14 @@ interface PendingAcpPermission {
 interface AcpPendingTurnInput {
   clientRequestId: string;
   input: PromptInput[];
+  promptMode: "plan" | undefined;
   requestId: AcpBridgeRequestId | null;
+}
+
+interface AcpSessionModeState {
+  planModeId: string;
+  resetModeId: string;
+  currentModeId: string;
 }
 
 interface AcpThreadSession {
@@ -166,6 +177,7 @@ interface AcpThreadSession {
   connection: AcpAgentConnection;
   supportsImageInput: boolean;
   supportsLoadSession: boolean;
+  modeState: AcpSessionModeState | null;
   policy: AcpSessionPolicy;
   pendingInstructions: string | undefined;
   activePromptKind: "turn" | "compaction" | null;
@@ -1298,6 +1310,64 @@ function buildPromptContentBlocks(
   return blocks;
 }
 
+const ACP_PLAN_MODE_ID = "plan";
+
+function acpSessionModeState(
+  modes: AcpSessionModes | undefined,
+): AcpSessionModeState | null {
+  if (modes === undefined) {
+    return null;
+  }
+  const planMode = modes.availableModes.find(
+    (mode) => mode.id === ACP_PLAN_MODE_ID,
+  );
+  if (planMode === undefined) {
+    return null;
+  }
+  return {
+    planModeId: planMode.id,
+    resetModeId: modes.currentModeId,
+    currentModeId: modes.currentModeId,
+  };
+}
+
+function planModeTurnInput(
+  session: AcpThreadSession,
+  pending: AcpPendingTurnInput,
+): PromptInput[] {
+  if (pending.promptMode !== "plan" || session.modeState === null) {
+    return pending.input;
+  }
+  return removeCommandMentionsFromPromptInput(pending.input, {
+    trigger: "/",
+    name: ACP_PLAN_MODE_ID,
+  });
+}
+
+async function reconcilePlanMode(
+  session: AcpThreadSession,
+  pending: AcpPendingTurnInput,
+): Promise<void> {
+  const modeState = session.modeState;
+  if (modeState === null) {
+    return;
+  }
+  const targetModeId =
+    pending.promptMode === "plan" ? modeState.planModeId : modeState.resetModeId;
+  if (modeState.currentModeId === targetModeId) {
+    return;
+  }
+  await session.connection.request({
+    method: "session/set_mode",
+    params: {
+      sessionId: session.providerThreadId,
+      modeId: targetModeId,
+    },
+    resultSchema: acpSetModeResultSchema,
+  });
+  modeState.currentModeId = targetModeId;
+}
+
 function findOptionIdByKinds(
   options: AcpPermissionOption[],
   kinds: AcpPermissionOption["kind"][],
@@ -1706,6 +1776,7 @@ async function startAgentSession(
     connection,
     supportsImageInput: false,
     supportsLoadSession: false,
+    modeState: null,
     policy: {
       permissionMode: params.permissionMode,
       workspaceWriteRoots: params.workspaceWriteRoots,
@@ -1776,6 +1847,7 @@ async function startAgentSession(
     let sessionId: string | undefined;
     let loadedConfigOptions: readonly AcpConfigOption[] | undefined;
     let loadedModels: AcpSessionModels | undefined;
+    let loadedModes: AcpSessionModes | undefined;
     if (request.kind === "fork") {
       const forkedSession = await connection.request({
         method: "session/fork",
@@ -1797,6 +1869,7 @@ async function startAgentSession(
       sessionId = forkedSession.sessionId;
       loadedConfigOptions = forkedSession.configOptions;
       loadedModels = forkedSession.models;
+      loadedModes = forkedSession.modes;
     } else if (request.kind === "resume" && supportsLoadSession) {
       session.loading = true;
       session.loadingSessionId = request.resumeProviderThreadId;
@@ -1813,6 +1886,7 @@ async function startAgentSession(
         });
         loadedConfigOptions = configState?.configOptions;
         loadedModels = configState?.models;
+        loadedModes = configState?.modes;
         sessionId = request.resumeProviderThreadId;
       } catch {
         sessionId = undefined;
@@ -1832,6 +1906,7 @@ async function startAgentSession(
         resultSchema: acpSessionNewResultSchema,
       });
       sessionId = newSession.sessionId;
+      loadedModes = newSession.modes;
       await selectAcpNativeModel({
         connection,
         sessionId,
@@ -1866,6 +1941,8 @@ async function startAgentSession(
         });
       }
     }
+
+    session.modeState = acpSessionModeState(loadedModes);
 
     if (session.stopping) {
       throw new Error(
@@ -2050,11 +2127,15 @@ function runTurn(
       session.cancelRequested = false;
       try {
         session.promptRequestPending = true;
+        await reconcilePlanMode(session, pending);
         const promptResult = session.connection.request({
           method: "session/prompt",
           params: {
             sessionId: session.providerThreadId,
-            prompt: buildPromptContentBlocks(session, pending.input),
+            prompt: buildPromptContentBlocks(
+              session,
+              planModeTurnInput(session, pending),
+            ),
           },
           resultSchema: acpPromptResultSchema,
         });
@@ -2241,6 +2322,14 @@ function handleAgentNotification(
   }
   if (parsed.data.sessionId !== session.providerThreadId) {
     return;
+  }
+  if (session.modeState !== null) {
+    const modeUpdate = acpCurrentModeUpdateSchema.safeParse(
+      parsed.data.update,
+    );
+    if (modeUpdate.success) {
+      session.modeState.currentModeId = modeUpdate.data.currentModeId;
+    }
   }
   if (session.activePromptKind === "compaction") {
     const chunk = acpAgentMessageChunkUpdateSchema.safeParse(
@@ -2602,6 +2691,7 @@ async function handleRequest(
       const pending: AcpPendingTurnInput = {
         clientRequestId: params.clientRequestId,
         input: params.input,
+        promptMode: params.options.promptMode,
         requestId: request.id,
       };
       if (isStandaloneBuiltinCompactCommand(params.input)) {
@@ -2629,6 +2719,7 @@ async function handleRequest(
       session.queuedInputs.push({
         clientRequestId: params.clientRequestId,
         input: params.input,
+        promptMode: params.options.promptMode,
         requestId: null,
       });
       requestSteerCancel(session);

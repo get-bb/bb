@@ -100,7 +100,9 @@ Editing a sent message (requires the default-on `editMessages` experiment):
     --expected-request-sequence <seq>   Select the message and reject a stale target
 
   Without --expected-request-sequence, the latest eligible message is edited.
-  Codex, Claude Code, and Pi threads are supported. The original conversation
+  Threads whose provider can restore an earlier checkpoint are supported
+  (Codex, Claude Code, and Pi today); ACP agents cannot offer it because ACP
+  session/fork only clones a session's current end. The original conversation
   remains unchanged until the provider prepares the replacement history.
   Failed and incomplete turns are eligible. If the thread is running,
   submission stops the current turn and waits for it to settle. It then
@@ -227,9 +229,11 @@ Messaging:
   that failed while it was deferred, and delivers when the thread is retried.
 
   --plan sends the same structured /plan command the composer's plan action
-  sends, so the agent proposes a plan for approval before executing (Claude
-  Code and Codex threads). Plain "/plan ..." text is not recognized; it reaches
-  the provider as literal text. Approve or deny the proposed plan with
+  sends, so the agent proposes a plan for approval before executing. Providers
+  that declare the plan action offer it (Claude Code, Codex, and ACP agents
+  like omp whose ACP layer exposes a plan session mode). Plain "/plan ..." text
+  is not recognized; it reaches the provider as literal text. Approve or deny
+  the proposed plan with
   `bb thread interactions`; `bb thread cancel-plan` leaves Plan mode early.
   SDK callers build the same input with
   `createBuiltinPlanCommandTextInput(text)` from `@bb/sdk` and pass it as

@@ -26,6 +26,7 @@ export interface AcpAgentDefinition {
   installUrl?: string;
   iconTint?: { light: string; dark: string };
   supportsManualCompaction?: boolean;
+  supportsPlan?: boolean;
   fork?: "none" | "tip";
   reasoningLevels?: readonly PluginProviderReasoningLevel[];
   providerUsage?: boolean;
@@ -53,6 +54,7 @@ export const customAcpAgentSchema = z
     nativeSkillRoots: launchSpecFields.nativeSkillRoots,
     permissionCli: launchSpecFields.permissionCli,
     supportsManualCompaction: z.boolean().default(false),
+    supportsPlan: z.boolean().default(false),
   })
   .strict();
 export type CustomAcpAgent = z.infer<typeof customAcpAgentSchema>;
@@ -94,6 +96,7 @@ export function customAcpAgentDefinition(
     visibility: "always",
     fork: "none",
     supportsManualCompaction: agent.supportsManualCompaction,
+    supportsPlan: agent.supportsPlan,
   };
 }
 

@@ -11,7 +11,10 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createStandaloneBuiltinCompactCommandInput } from "@bb/domain";
+import {
+  createBuiltinPlanCommandTextInput,
+  createStandaloneBuiltinCompactCommandInput,
+} from "@bb/domain";
 import type { DynamicTool, ReasoningLevel } from "@bb/domain";
 import {
   PROVIDER_BRIDGE_PROTOCOL_VERSION,
@@ -145,6 +148,7 @@ function executionOptions(args: {
   envVars?: Record<string, string>;
   instructions?: string;
   model?: string;
+  promptMode?: "plan";
   reasoningLevel?: ReasoningLevel;
   serviceTier?: "default" | "fast";
   providerOptions?: Record<string, unknown>;
@@ -167,6 +171,7 @@ function executionOptions(args: {
     ...(args.envVars ? { envVars: args.envVars } : {}),
     ...(args.instructions ? { instructions: args.instructions } : {}),
     ...(args.model ? { model: args.model } : {}),
+    ...(args.promptMode ? { promptMode: args.promptMode } : {}),
     ...(args.reasoningLevel ? { reasoningLevel: args.reasoningLevel } : {}),
     ...(args.serviceTier ? { serviceTier: args.serviceTier } : {}),
     ...(args.providerOptions ? { providerOptions: args.providerOptions } : {}),
@@ -492,6 +497,24 @@ function agentMessageTexts(): string[] {
     textsByItemId.set(typedItem.id, typedItem.text ?? "");
   }
   return order.map((id) => textsByItemId.get(id) ?? "");
+}
+
+function promptTexts(request: LoggedAcpRequest | undefined): string[] {
+  const prompt = request?.params?.["prompt"];
+  if (!Array.isArray(prompt)) {
+    return [];
+  }
+  return prompt.flatMap((block) => {
+    if (
+      typeof block === "object" &&
+      block !== null &&
+      "text" in block &&
+      typeof block.text === "string"
+    ) {
+      return [block.text];
+    }
+    return [];
+  });
 }
 
 function callDynamicToolBridge(args: {
@@ -3317,5 +3340,95 @@ describe("acp bridge", () => {
       code: -32602,
       message: expect.stringContaining("acpLaunchSpec"),
     });
+  });
+
+  it("enters the agent's plan session mode and strips the plan command mention", async () => {
+    const requestLog = join(workspaceDir, "plan-mode-requests.jsonl");
+    const { providerThreadId } = await startThread({
+      envVars: {
+        FAKE_ACP_SESSION_MODES: "1",
+        FAKE_ACP_REQUEST_LOG: requestLog,
+      },
+    });
+
+    const id = sendTurnRequest("turn/start", providerThreadId, {
+      input: [createBuiltinPlanCommandTextInput("ship it")],
+      options: executionOptions({ promptMode: "plan" }),
+    });
+    await waitForResponse(id);
+    await waitForTurnCompleted();
+
+    const requests = loggedAcpRequests(requestLog);
+    const setModeIndex = requests.findIndex(
+      (request) => request.method === "session/set_mode",
+    );
+    const promptIndex = requests.findIndex(
+      (request) => request.method === "session/prompt",
+    );
+    expect(setModeIndex).toBeGreaterThanOrEqual(0);
+    expect(setModeIndex).toBeLessThan(promptIndex);
+    expect(requests[setModeIndex]?.params).toMatchObject({ modeId: "plan" });
+    expect(promptTexts(requests[promptIndex])).toEqual(["ship it"]);
+  });
+
+  it("leaves plan turns untouched for agents that report no session modes", async () => {
+    const requestLog = join(workspaceDir, "no-modes-requests.jsonl");
+    const { providerThreadId } = await startThread({
+      envVars: {
+        FAKE_ACP_REQUEST_LOG: requestLog,
+      },
+    });
+
+    const id = sendTurnRequest("turn/start", providerThreadId, {
+      input: [createBuiltinPlanCommandTextInput("ship it")],
+      options: executionOptions({ promptMode: "plan" }),
+    });
+    await waitForResponse(id);
+    await waitForTurnCompleted();
+
+    const requests = loggedAcpRequests(requestLog);
+    expect(
+      requests.filter((request) => request.method === "session/set_mode"),
+    ).toEqual([]);
+    expect(
+      promptTexts(
+        requests.find((request) => request.method === "session/prompt"),
+      ),
+    ).toEqual(["/plan ship it"]);
+  });
+
+  it("returns the agent to its initial session mode after a plan turn", async () => {
+    const requestLog = join(workspaceDir, "plan-mode-reset-requests.jsonl");
+    const { providerThreadId } = await startThread({
+      envVars: {
+        FAKE_ACP_SESSION_MODES: "1",
+        FAKE_ACP_REQUEST_LOG: requestLog,
+      },
+    });
+
+    const planTurnId = sendTurnRequest("turn/start", providerThreadId, {
+      input: [createBuiltinPlanCommandTextInput("look around")],
+      options: executionOptions({ promptMode: "plan" }),
+    });
+    await waitForResponse(planTurnId);
+    await waitForTurnCompleted();
+
+    const normalTurnId = sendTurnRequest("turn/start", providerThreadId, {
+      input: [{ type: "text", text: "go ahead" }],
+    });
+    await waitForResponse(normalTurnId);
+    await waitForTurnCompleted();
+
+    expect(
+      loggedAcpRequests(requestLog)
+        .filter((request) => request.method === "session/set_mode")
+        .map((request) => request.params?.["modeId"]),
+    ).toEqual(["plan", "default"]);
+    const promptRequests = loggedAcpRequests(requestLog).filter(
+      (request) => request.method === "session/prompt",
+    );
+    expect(promptTexts(promptRequests[promptRequests.length - 1])).toEqual([
+      "go ahead",
+    ]);
   });
 });

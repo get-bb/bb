@@ -102,6 +102,8 @@ const sessionNewDelayMs = Number(
 const updatesWithSessionResponse =
   process.env.FAKE_ACP_UPDATES_WITH_SESSION_RESPONSE === "1";
 const ignoreCancel = process.env.FAKE_ACP_IGNORE_CANCEL === "1";
+const sessionModes = process.env.FAKE_ACP_SESSION_MODES === "1";
+let currentModeId = "default";
 // `--list-models` is the agent's own model-list mode: the bridge derives its
 // list command from the launch spec's agent binary plus `modelCli.listArgs`,
 // so a list command can only ever be this binary.
@@ -311,6 +313,15 @@ function configState() {
   const options = configOptions();
   if (options !== undefined) {
     state.configOptions = options;
+  }
+  if (sessionModes) {
+    state.modes = {
+      currentModeId,
+      availableModes: [
+        { id: "default", name: "Default" },
+        { id: "plan", name: "Plan" },
+      ],
+    };
   }
   if (cursorParameterizedModels) {
     const availableModels = cursorModelOptions();
@@ -733,6 +744,27 @@ async function handleMessage(message) {
       }
       selectedModel = modelId;
       send({ jsonrpc: "2.0", id: message.id, result: configState() });
+      return;
+    }
+    case "session/set_mode": {
+      const modeId = message.params?.modeId;
+      if (
+        !sessionModes ||
+        (modeId !== "default" && modeId !== "plan")
+      ) {
+        send({
+          jsonrpc: "2.0",
+          id: message.id,
+          error: { code: -32602, message: `unsupported mode: ${modeId}` },
+        });
+        return;
+      }
+      currentModeId = modeId;
+      notifyUpdate({
+        sessionUpdate: "current_mode_update",
+        currentModeId,
+      });
+      send({ jsonrpc: "2.0", id: message.id, result: {} });
       return;
     }
     case "session/set_config_option": {

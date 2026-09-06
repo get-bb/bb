@@ -127,7 +127,9 @@ and `null` clears a preference that can be unset.
 The default-off `changelogPreview` experiment shows the latest release notes
 as a compact, dismissible card on Settings → Updates.
 The default-on `editMessages` experiment enables editing eligible, accepted
-root user messages in Codex, Claude Code, and Pi threads, including failed or
+root user messages in threads whose provider can restore an earlier checkpoint
+(Codex, Claude Code, and Pi today; ACP agents cannot offer it because ACP
+session/fork only clones a session's current end), including failed or
 incomplete turns; turn it off to hide the editor. Opening the editor is
 client-local; submitting stops and settles a running thread, then replaces the
 selected turn and all later conversation history while retaining workspace side

@@ -415,8 +415,13 @@ entry is a path or `{"path": ..., "recursive": true, "ancestors": true}` for
 an agent that nests skills or reads them from every ancestor directory),
 `permissionCli` (permission-mode launch flags), `supportsManualCompaction`
 (only if the agent accepts an explicit compaction request — bb hides
-`/compact` otherwise), and `dialect` (the vendor side channels bb reads for
-the agent: `cursor`, `opencode`, `omp`, or `grok`).
+`/compact` otherwise), `supportsPlan` (only if the agent exposes a `plan`
+session mode over ACP — bb offers the composer's `/plan` action and switches
+the session into that mode for plan turns), and `dialect` (the vendor side
+channels bb reads for the agent: `cursor`, `opencode`, `omp`, or `grok`).
+Editing a past message (session rewind) stays unavailable for ACP agents:
+ACP `session/fork` can only fork a session's current end, never an earlier
+point, so no `fork` declaration is offered for these entries.
 
 The change applies immediately: the plugin re-registers its providers when the
 setting changes, with no restart and no `config refresh`.

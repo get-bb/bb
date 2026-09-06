@@ -185,6 +185,14 @@ export const acpPlanUpdateSchema = z
   })
   .passthrough();
 
+export const acpCurrentModeUpdateSchema = z
+  .object({
+    sessionUpdate: z.literal("current_mode_update"),
+    currentModeId: z.string().min(1),
+  })
+  .passthrough();
+export type AcpCurrentModeUpdate = z.infer<typeof acpCurrentModeUpdateSchema>;
+
 export const acpUsageUpdateSchema = z
   .object({
     sessionUpdate: z.literal("usage_update"),
@@ -205,6 +213,7 @@ export const acpSessionUpdateSchema = z.union([
   acpAgentThoughtChunkUpdateSchema,
   acpToolCallUpdateEventSchema,
   acpPlanUpdateSchema,
+  acpCurrentModeUpdateSchema,
   acpUsageUpdateSchema,
   acpOtherSessionUpdateSchema,
 ]);
@@ -351,6 +360,25 @@ function parseAcpConfigOptions(
   return parsedOptions;
 }
 
+export const acpSessionModeSchema = z
+  .object({
+    id: z.string().min(1),
+    name: z.string(),
+    description: z.string().optional(),
+  })
+  .passthrough();
+export type AcpSessionMode = z.infer<typeof acpSessionModeSchema>;
+
+export const acpSessionModesSchema = z
+  .object({
+    currentModeId: z.string().min(1),
+    availableModes: z.array(acpSessionModeSchema),
+  })
+  .passthrough();
+export type AcpSessionModes = z.infer<typeof acpSessionModesSchema>;
+
+export const acpSetModeResultSchema = z.object({}).passthrough();
+
 export const acpSessionNewResultSchema = z
   .object({
     sessionId: z.string(),
@@ -360,6 +388,7 @@ export const acpSessionNewResultSchema = z
       .nullable()
       .optional()
       .transform((options, ctx) => parseAcpConfigOptions(options, ctx)),
+    modes: acpSessionModesSchema.optional(),
   })
   .passthrough();
 
@@ -371,6 +400,7 @@ export const acpConfigStateResultSchema = z
       .nullable()
       .optional()
       .transform((options, ctx) => parseAcpConfigOptions(options, ctx)),
+    modes: acpSessionModesSchema.optional(),
   })
   .passthrough();
 export type AcpConfigStateResult = z.infer<typeof acpConfigStateResultSchema>;

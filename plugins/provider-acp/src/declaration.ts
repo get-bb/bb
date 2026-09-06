@@ -98,6 +98,6 @@ export function acpProviderDeclaration(
           ? [...ACP_BASE_CAPABILITIES.reasoningLevels]
           : [...agent.reasoningLevels],
     },
-    composerActions: [],
+    composerActions: agent.supportsPlan === true ? ["plan"] : [],
   };
 }
