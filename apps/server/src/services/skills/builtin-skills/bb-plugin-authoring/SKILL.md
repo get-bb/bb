@@ -18,6 +18,14 @@ Inspect the affected package and current SDK declarations to select backend,
 frontend, or both. Build the plugin and verify the affected contracts and user
 workflow. Install or reload when a live check is needed for the requested work.
 
+Treat delivery as part of every plugin source change. Unless the user explicitly
+requests local-only work or repository instructions prohibit it, commit only the
+scoped plugin changes and push the current branch after verification. Never
+force-push or include unrelated changes. Verify that the remote branch SHA
+matches the local commit before calling the change complete. If the configured
+remote rejects the push, use an authorized fork and open a pull request when the
+repository workflow supports it; otherwise report the exact blocker.
+
 Use bb plugin new <name> for a new plugin. The scaffold includes frontend files.
 Remove `bb.app` and those files when the plugin is headless.
 
