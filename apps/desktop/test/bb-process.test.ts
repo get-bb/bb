@@ -179,7 +179,9 @@ describe("bb app process", () => {
     });
   });
 
-  it("imports the bridge from the child AppImage mount", async () => {
+  it.skipIf(process.platform !== "linux")(
+    "imports the bridge from the child AppImage mount",
+    async () => {
     const desktopMountScript = await createTempScript({
       contents: 'process.stdout.write("desktop mount\\n");\n',
     });
@@ -202,9 +204,6 @@ describe("bb app process", () => {
       desktopMountScript.path,
       "--no-sandbox",
     ]);
-    if (process.platform !== "linux") {
-      return;
-    }
     const result = await execFileAsync(launch.executablePath, launch.args, {
       env: {
         ...launch.env,
@@ -213,7 +212,8 @@ describe("bb app process", () => {
     });
 
     expect(result.stdout).toBe("child mount\n");
-  });
+    },
+  );
 
   it.skipIf(process.platform !== "linux")(
     "anchors the process group while supervising descendants after the bridge exits",
@@ -317,7 +317,9 @@ process.stdout.write(\`grandchild=\${grandchild.pid}\\n\`);
     });
   });
 
-  it("escalates to SIGKILL when the bridge ignores SIGTERM", async () => {
+  it.skipIf(process.platform === "win32")(
+    "escalates to SIGKILL when the bridge ignores SIGTERM",
+    async () => {
     const script = await createTempScript({
       contents: `
 process.on("SIGTERM", () => {
@@ -363,7 +365,8 @@ setInterval(() => undefined, 1000);
     expect(killSpy).toHaveBeenNthCalledWith(1, "SIGTERM");
     expect(killSpy).toHaveBeenNthCalledWith(2, "SIGKILL");
     expect(exit.signal).toBe("SIGKILL");
-  });
+    },
+  );
 
   it("hides the console window for Windows executables", () => {
     expect(
@@ -445,7 +448,11 @@ setInterval(() => undefined, 1000);
       { pid: processEntry.pid, timeoutMs: 5_000 },
     ]);
     expect(killSpy).not.toHaveBeenCalled();
-    expect(exit.signal).toBe("SIGKILL");
+    if (process.platform === "win32") {
+      expect(exit).toEqual({ code: 1, signal: null });
+    } else {
+      expect(exit.signal).toBe("SIGKILL");
+    }
   });
 
   it("falls back to the kill signal when the Windows tree survives taskkill", async () => {

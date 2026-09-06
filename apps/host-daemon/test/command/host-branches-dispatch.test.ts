@@ -74,7 +74,7 @@ async function initStaleOriginMainRepo(): Promise<StaleOriginMainRepo> {
     `#!/bin/sh\ntouch ${JSON.stringify(refreshStartedPath)}\nwhile [ ! -f ${JSON.stringify(releaseRefreshPath)} ]; do sleep 0.01; done\nsleep 0.2\nexec git-upload-pack "$@"\n`,
     { encoding: "utf8", mode: 0o755 },
   );
-  await runGitCommand(["config", "remote.origin.uploadpack", uploadPackPath], {
+  await runGitCommand(["config", "remote.origin.uploadpack", uploadPackPath.split(path.sep).join("/")], {
     cwd: repoPath,
   });
   return { releaseRefreshPath, refreshStartedPath, repoPath };
@@ -130,6 +130,8 @@ async function waitForFile(filePath: string): Promise<void> {
   throw new Error(`File did not appear within 2000ms: ${filePath}`);
 }
 
+const gitWrapperNotResolvedByWindowsSpawn = process.platform === "win32";
+
 describe("host.inspect_git_source dispatch", () => {
   it("reports checkout and default-ref metadata without branch pages", async () => {
     const repoPath = await initBranchRepo();
@@ -154,7 +156,7 @@ describe("host.inspect_git_source dispatch", () => {
     });
   });
 
-  it.runIf(process.platform !== "win32")(
+  it(
     "returns cached metadata while refreshing remotes in the background", async () => {
     const { releaseRefreshPath, refreshStartedPath, repoPath } =
       await initStaleOriginMainRepo();
@@ -198,7 +200,7 @@ describe("host.inspect_git_source dispatch", () => {
     });
   });
 
-  it.runIf(process.platform !== "win32")(
+  it(
     "waits for a blocking refresh before reading default-ref metadata", async () => {
     const { releaseRefreshPath, refreshStartedPath, repoPath } =
       await initStaleOriginMainRepo();
@@ -335,7 +337,7 @@ describe("host.inspect_git_source dispatch", () => {
     });
   });
 
-  it.runIf(process.platform !== "win32")(
+  it.skipIf(gitWrapperNotResolvedByWindowsSpawn)(
     "serializes branch refresh and provisioning fetches for one repository",
     async () => {
       const repoPath = await initBranchRepo();
@@ -358,7 +360,7 @@ describe("host.inspect_git_source dispatch", () => {
         { encoding: "utf8", mode: 0o755 },
       );
       await runGitCommand(
-        ["config", "remote.origin.uploadpack", uploadPackPath],
+        ["config", "remote.origin.uploadpack", uploadPackPath.split(path.sep).join("/")],
         { cwd: repoPath },
       );
 
@@ -539,7 +541,7 @@ describe("host.list_branch_options dispatch", () => {
     expect(result.remoteBranchesTruncated).toBe(true);
   });
 
-  it.runIf(process.platform !== "win32")(
+  it(
     "returns cached refs while a remote refresh continues in the background", async () => {
     const repoPath = await initBranchRepo();
     const remotePath = await makeTempDir("bb-host-branch-options-remote-");
@@ -578,7 +580,7 @@ describe("host.list_branch_options dispatch", () => {
       { encoding: "utf8", mode: 0o755 },
     );
     await runGitCommand(
-      ["config", "remote.origin.uploadpack", uploadPackPath],
+      ["config", "remote.origin.uploadpack", uploadPackPath.split(path.sep).join("/")],
       {
         cwd: repoPath,
       },
