@@ -7,7 +7,6 @@ import type {
   WorkspaceFileStatusKind,
   WorkspaceStatus,
 } from "@bb/domain";
-import os from "node:os";
 import path from "node:path";
 import {
   getPullRequestForCurrentBranch,
@@ -457,7 +456,7 @@ async function readEmptyTreeSha(
   workspacePath: string,
   options: Pick<RunGitOptions, "shellPath" | "timeoutMs"> = {},
 ): Promise<string> {
-  const emptyTree = await runGit(["hash-object", "-t", "tree", os.devNull], {
+  const emptyTree = await runGit(["hash-object", "-t", "tree", "/dev/null"], {
     cwd: workspacePath,
     ...options,
   });

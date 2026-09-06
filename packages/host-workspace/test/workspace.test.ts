@@ -105,6 +105,23 @@ afterEach(async () => {
 });
 
 describe("Workspace", () => {
+  it("diffs an unborn HEAD against the empty tree", async () => {
+    const repoPath = await makeTempDir("bb-workspace-unborn-");
+    await runGit(["init", "-b", "main"], { cwd: repoPath });
+    await runGit(["config", "user.name", "BB Tests"], { cwd: repoPath });
+    await runGit(["config", "user.email", "bb@example.com"], {
+      cwd: repoPath,
+    });
+    await fs.writeFile(path.join(repoPath, "README.md"), "hello\n", "utf8");
+    const workspace = new Workspace(repoPath);
+
+    const diff = await workspace.getDiff();
+
+    expect(diff.truncated).toBe(false);
+    expect(diff.shortstat).toContain("1 file changed");
+    expect(diff.files).toContain("README.md");
+  });
+
   it("reports clean, dirty, untracked-only, and mixed workspace states", async () => {
     const repoPath = await initRepo();
     const workspace = new Workspace(repoPath);
