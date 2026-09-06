@@ -1,3 +1,4 @@
+import { isAbsoluteFilePath } from "@/lib/absolute-file-path";
 import {
   parseLocalFileHref,
   type MarkdownAbsoluteLocalFileLinkRouting,
@@ -362,7 +363,9 @@ function unescapeMarkdownEscapes(value: string): string {
 }
 
 function isLocalFileMarkdownDestination(destination: string): boolean {
-  return destination.startsWith("/") || destination.startsWith("file://");
+  return (
+    destination.startsWith("file://") || isAbsoluteFilePath(destination)
+  );
 }
 
 function buildLocalFileMarkdownLinkRepair(

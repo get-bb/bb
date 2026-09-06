@@ -507,6 +507,39 @@ all in `test/services/plugins/*` with timeout/esbuild shapes) while every one
 of those files passes in isolation — parallel-load contention flakes,
 untouched by and unrelated to this work.
 
+## K18 — Packaged daemon bundle ships an extensionless `bb` with no Windows launcher — OPEN, MEASURED 2026-09-06
+
+Two halves of one defect, both read from the tree on real Windows 11 Pro
+(build 26200) without running a build (`pnpm run dist:win` was out of scope,
+and `apps/host-daemon/dist` does not exist on this checkout, so nothing below
+is claimed from a built bundle listing).
+
+- **Bundle contents:** `packages/bb-app/scripts/build-host.mjs` copies exactly
+one CLI file into the enrolled-host package — `copyFile(hostDaemonSource/"bb",
+hostDaemonTarget/"bb")` plus `chmod 0755` — and never writes a `bb.cmd`
+alongside it. The generated `host-package/package.json` `files` list carries
+`host-daemon/dist/bb` with no `.cmd` entry. Contrast `apps/cli/bin/`, which
+ships both `bb` and `bb.cmd` (`@node "%~dp0bb" %*`, verified with `ls` on
+this machine): the dev CLI is launchable on Windows, the packaged daemon copy
+is not.
+- **Launcher:** `packages/bb-app/src/launcher.ts` names the extensionless file
+in three places — `requiredHostArtifactPaths` (`join(context.daemonBundleDir,
+"bb")`, line ~2105), `createServerEnv` (`BB_CLI: join(..., "bb")`, line
+~2613), and `runBundledCliCommand` (`join(args.context.daemonBundleDir, "bb")`
+plus a raw `spawn(cliPath, ...)` with `stdio: "inherit"` and no `shell`, line
+~2761). The `join` itself is platform-aware (`node:path`), but the artifact
+name and the spawn are POSIX-only: the existence check looks for `bb`, the
+environment advertises `...\bb`, and the spawn targets it with no PATHEXT
+search and no `cmd.exe` wrap — the same defect class as K16.
+
+**Expected failure mode (not exercised here, for the reason above):** on a
+Windows install the artifact check still passes (`bb` exists), then the bundled
+CLI spawn fails (`ENOENT` on the extensionless shebang file), and any consumer
+spawning `$BB_CLI` raw hits the same wall. Fix shape, when scheduled: ship a
+`bb.cmd` forwarder in the daemon bundle next to `dist/bb` (mirroring
+`apps/cli/bin/bb.cmd`) and resolve the CLI name per platform at all three call
+sites, or route the spawn through the shared portable-command path.
+
 ## K13 — What this setup can never prove
 
 The runners are Windows Server with no interactive desktop. The following is out

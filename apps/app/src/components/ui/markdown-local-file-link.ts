@@ -1,5 +1,8 @@
 import {
+  buildAbsoluteFilePath,
+  isAbsoluteFilePath,
   isAbsoluteFilePathWithinRoot,
+  isWindowsAbsoluteFilePath,
   normalizeAbsoluteFilePath,
 } from "@/lib/absolute-file-path";
 import {
@@ -191,7 +194,7 @@ function parseLineSuffix(value: string): LocalFileHrefParts | null {
 }
 
 function hasLikelyFileBasename(path: string): boolean {
-  const segments = path.split("/");
+  const segments = path.split(/[/\\]/u);
   const basename = segments[segments.length - 1] ?? "";
   return basename.startsWith(".") || basename.includes(".");
 }
@@ -211,6 +214,18 @@ function isValidAbsoluteLocalFilePath({
   path,
   requireLikelyFileBasename,
 }: LocalFilePathValidationArgs): boolean {
+  if (isWindowsAbsoluteFilePath(path)) {
+    return (
+      !path.endsWith("/") &&
+      !path.endsWith("\\") &&
+      !path.includes("\n") &&
+      !path.includes("\r") &&
+      !path.includes("?") &&
+      !path.includes("#") &&
+      !hasControlCharacter(path) &&
+      (!requireLikelyFileBasename || hasLikelyFileBasename(path))
+    );
+  }
   return (
     path.startsWith("/") &&
     !path.startsWith("//") &&
@@ -225,6 +240,8 @@ function isValidAbsoluteLocalFilePath({
   );
 }
 
+const WINDOWS_DRIVE_FILE_URL_PATH_PATTERN = /^\/[A-Za-z]:(?:\/|$)/u;
+
 function parseAbsoluteLocalFileHref(
   href: string,
   requireLikelyFileBasename: boolean,
@@ -232,7 +249,7 @@ function parseAbsoluteLocalFileHref(
   if (
     href.length === 0 ||
     href.trim() !== href ||
-    !href.startsWith("/") ||
+    !isAbsoluteFilePath(href) ||
     href.startsWith("//")
   ) {
     return null;
@@ -272,7 +289,7 @@ export function resolveRelativeLocalFileHref({
     decodedHref.trim() !== decodedHref ||
     parsedHref === null ||
     parsedHref.path.length === 0 ||
-    parsedHref.path.startsWith("/") ||
+    isAbsoluteFilePath(parsedHref.path) ||
     HOME_RELATIVE_PATH_PATTERN.test(parsedHref.path) ||
     parsedHref.path.startsWith("#") ||
     parsedHref.path.startsWith("?") ||
@@ -294,10 +311,10 @@ export function resolveRelativeLocalFileHref({
     return null;
   }
 
-  const joinedPath =
-    normalizedBaseDir === "/"
-      ? `/${parsedHref.path}`
-      : `${normalizedBaseDir}/${parsedHref.path}`;
+  const joinedPath = buildAbsoluteFilePath({
+    path: parsedHref.path,
+    rootPath: normalizedBaseDir,
+  });
   const normalizedHrefPath = normalizeAbsoluteFilePath({ path: joinedPath });
   if (
     normalizedHrefPath === null ||
@@ -356,8 +373,11 @@ export function parseLocalFileHref({
       if (url.search.length > 0) {
         return null;
       }
+      const filePath = WINDOWS_DRIVE_FILE_URL_PATH_PATTERN.test(url.pathname)
+        ? url.pathname.slice(1) + url.hash
+        : url.pathname + url.hash;
       link = parseAbsoluteLocalFileHref(
-        url.pathname + url.hash,
+        filePath,
         requireLikelyFileBasename,
       );
     } catch {
@@ -381,6 +401,38 @@ function encodeFileUrlPath(path: string): string {
   return path.split("/").map(encodeURIComponent).join("/");
 }
 
+const WINDOWS_DRIVE_PATH_PATTERN = /^([A-Za-z]:)([\\/].*)?$/u;
+const WINDOWS_UNC_PATH_PATTERN = /^\\\\([^\\/]+)[\\/]+([^\\/]+)([\\/].*)?$/u;
+const WINDOWS_EXTENDED_PREFIX_PATTERN = /^\\\\[?.]\\/u;
+
+function buildAbsoluteFileUrl(path: string): string | null {
+  if (path.startsWith("/") && !path.startsWith("//")) {
+    return `file://${encodeFileUrlPath(path)}`;
+  }
+  if (
+    !isWindowsAbsoluteFilePath(path) ||
+    WINDOWS_EXTENDED_PREFIX_PATTERN.test(path)
+  ) {
+    return null;
+  }
+  const driveMatch = WINDOWS_DRIVE_PATH_PATTERN.exec(path);
+  if (driveMatch) {
+    const drive = driveMatch[1] ?? "";
+    const rest = (driveMatch[2] ?? "/").replace(/\\/gu, "/");
+    const encodedRest = rest.split("/").map(encodeURIComponent).join("/");
+    return `file:///${drive}${encodedRest}`;
+  }
+  const uncMatch = WINDOWS_UNC_PATH_PATTERN.exec(path);
+  if (uncMatch) {
+    const server = uncMatch[1] ?? "";
+    const share = uncMatch[2] ?? "";
+    const rest = (uncMatch[3] ?? "").replace(/\\/gu, "/");
+    const encodedRest = rest.split("/").map(encodeURIComponent).join("/");
+    return `file://${server}/${encodeURIComponent(share)}${encodedRest}`;
+  }
+  return null;
+}
+
 function buildLineRangeAnchorFragment(
   lineRange: FilePreviewLineRange | null,
 ): string {
@@ -397,11 +449,12 @@ export function buildLocalFileAnchorHref(
   link: MarkdownPreviewLocalFileLink | null,
   originalHref: string | undefined,
 ): string | undefined {
-  if (!link || !link.path.startsWith("/")) {
+  if (!link) {
     return originalHref;
   }
-
-  return `file://${encodeFileUrlPath(link.path)}${buildLineRangeAnchorFragment(
-    link.lineRange,
-  )}`;
+  const fileUrl = buildAbsoluteFileUrl(link.path);
+  if (fileUrl === null) {
+    return originalHref;
+  }
+  return `${fileUrl}${buildLineRangeAnchorFragment(link.lineRange)}`;
 }
