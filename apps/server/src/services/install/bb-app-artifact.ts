@@ -53,6 +53,7 @@ interface CreateBbAppArtifactServiceOptions {
   commandRunner?: BbAppArtifactCommandRunner;
   protocolVersion?: number;
   serverEntryUrl?: string;
+  platform?: NodeJS.Platform;
 }
 
 interface BbAppPackageJson {
@@ -63,16 +64,17 @@ interface BbAppPackageJson {
   version: string;
 }
 
-async function defaultCommandRunner(
-  command: string,
-  args: readonly string[],
-  cwd: string,
-): Promise<string> {
-  const result = await execFileAsync(command, [...args], {
-    cwd,
-    maxBuffer: 10 * 1024 * 1024,
-  });
-  return result.stdout;
+function createDefaultCommandRunner(
+  platform: NodeJS.Platform,
+): BbAppArtifactCommandRunner {
+  return async (command, args, cwd) => {
+    const result = await execFileAsync(command, [...args], {
+      cwd,
+      maxBuffer: 10 * 1024 * 1024,
+      ...(platform === "win32" ? { shell: true } : {}),
+    });
+    return result.stdout;
+  };
 }
 
 function isStringRecord(value: unknown): value is Record<string, string> {
@@ -231,7 +233,9 @@ function sha256(bytes: Uint8Array): string {
 export function createBbAppArtifactService(
   options: CreateBbAppArtifactServiceOptions,
 ): BbAppArtifactService {
-  const commandRunner = options.commandRunner ?? defaultCommandRunner;
+  const platform = options.platform ?? process.platform;
+  const commandRunner =
+    options.commandRunner ?? createDefaultCommandRunner(platform);
   const serverEntryUrl = options.serverEntryUrl ?? import.meta.url;
   const cacheDir = join(options.dataDir, "install-cache");
   const protocolVersion =
