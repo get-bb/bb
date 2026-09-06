@@ -15,21 +15,39 @@ absolute-path tokens in its command line falls under the directory, or when it
 is a descendant (via `ParentProcessId`) of a match or of a pid this package
 launched itself with a `cwd` under the directory (`spawnPortableProcess`
 registers `{pid, cwd}` automatically; `registerSweepRootProcess` covers
-processes spawned elsewhere, e.g. node-pty terminals).
+processes spawned elsewhere — the host daemon wires its node-pty terminals
+through it, retrying briefly while the ConPTY pid is still 0).
+
+Every Windows result carries `matchEvidence` alongside `approximateCwd: true`:
+`spawn-registry` (cwd recorded at spawn), `executable-path`, `command-line`,
+or `descendant` (reached only through the PPID walk, which covers both
+children of registered roots and children of guesses). The host daemon's reap
+log prints `pid:evidence` so the guess quality travels with the action.
 
 - Over-match: a process that merely references the directory (a `--log`
   argument, a script path) is swept even if its real cwd is elsewhere.
-  Workaround: keep workspace-external logs and tool binaries outside swept
-  directories; the sweep only needs pids, the caller decides.
+  Measured on Windows 11: a node child run from another directory whose argv
+  trailed with the sweep directory was listed with that directory as its cwd
+  (`command-line` evidence). Token matching is deliberately not tightened
+  further — a standalone path argument is indistinguishable from a mention —
+  and PPID propagation is kept for the kill path. Workaround: keep
+  workspace-external logs and tool binaries outside swept directories; the
+  sweep only needs pids, the caller decides.
 - Under-match: a process whose cwd is under the directory but whose
   executable and command line reveal nothing about it is missed unless it
-  descends from a tracked root.
+  descends from a tracked root. Measured on Windows 11: a raw-spawned
+  powershell sleeper with cwd inside the sweep directory was invisible.
   Workaround: launch workspace processes through `spawnPortableProcess` with
   `cwd` set (auto-registered), or call `registerSweepRootProcess` right after
   spawning by other means and `unregisterSweepRootProcess` once reaped.
-- 8.3 short paths (`C:\PROGRA~1\...`) never match their long form; non-ASCII,
-  spaces, forward slashes, UNC (`\\server\share`), `\\?\`-prefixed and
-  drive-letter-case variants are normalised before comparison.
+- 8.3 short paths (`C:\PROGRA~1\...`) are expanded best-effort before
+  comparison via an injectable `canonicalizePath` hook (default
+  `expandWindowsShortPath`, backed by `realpathSync.native` with an input
+  fallback; only `~`-segment paths touch the filesystem, so injected-platform
+  unit tests stay hermetic by passing the identity function). Measured on
+  Windows 11: short against long matched neither way before, both ways after.
+  Non-ASCII, spaces, forward slashes, UNC (`\\server\share`), `\\?\`-prefixed
+  and drive-letter-case variants are normalised before comparison.
 - Symlinked or junctioned workspace roots are compared lexically on Windows
   (no `realpath` check, so the injected-platform unit tests stay hermetic).
   Workaround: pass the canonical path to the sweep functions.

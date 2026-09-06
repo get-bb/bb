@@ -57,7 +57,7 @@ inherited from the user profile.
 the profile could read them. **Workaround:** keep them under the profile's
 `%APPDATA%` (which is what happens) and do not share the Windows account.
 
-## K3 — A process's working directory is not cheap on Windows
+## K3 — A process's working directory is not cheap on Windows — MEASURED 2026-09-06
 
 `Win32_Process` exposes PID, PPID, ExecutablePath and CommandLine, but **not** the
 working directory. Enumeration therefore combines three strategies: a tree walk
@@ -65,26 +65,57 @@ by PPID, matching on CommandLine/ExecutablePath, and an internal registry of the
 PIDs we spawned ourselves.
 
 It is **deliberately partial**, and the type says so (`approximateCwd: true` on
-every win32 result). There are two real failure modes:
+every win32 result). There is no "running processes" list UI; the user-facing
+surface is the sweep behind environment-destroy reaping
+(`killProcessesWithCwdUnder` in the host daemon) and what it kills and logs.
 
-- **Over-match:** a process that merely mentions the directory in its command
-  line can be counted as being inside it.
-- **Under-match:** a process whose cwd is invisible and which we did not spawn
-  does not appear at all.
+Both failure modes were driven for real on Windows 11 Pro (build 26200) with a
+fresh temp project directory as the sweep target (real CIM probe, ~1.4s):
 
-**Workaround:** spawn through `spawnPortableProcess` with `cwd`, which registers
-the PID automatically, or register it manually.
+- **Over-match, reproduced:** a node child whose real cwd was a *different* temp
+directory but whose argv trailed with the project path was listed under the
+project with that project path as its `cwd`, `approximateCwd: true`. A user
+sees this pid reported as running in their project, and on environment destroy
+it gets `taskkill /T /F` along with its whole subtree even though it never ran
+there.
+- **Under-match, reproduced:** a raw-spawned `powershell.exe Start-Sleep 30`
+with cwd *inside* the project (spawned without the registry, so bb did not
+track it) did not appear in the sweep at all. A user sees nothing, and on
+environment destroy that process survives as an orphan.
+- **Control:** the same workload spawned through `spawnPortableProcess` with
+`cwd` inside the project was listed with its exact cwd.
 
-Further detail in `packages/process-utils/known-issues.md`: 8.3 short names do
-not match their long form, symlinks and junctions are compared lexically (pass a
-canonical path), and fast PID reuse can misattribute a subtree within the window
-of a single sweep.
+**What changed 2026-09-06 (no new dependencies):**
 
-**Proposed improvement, not implemented:** Job Objects with
-`JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE` kill children even when the parent dies
-abruptly. It needs a native helper (`CreateJobObject` /
-`AssignProcessToJobObject`), i.e. a new dependency, so it was left as an explicit
-proposal rather than smuggled in.
+- Every Windows result now carries `matchEvidence` — `spawn-registry`,
+`executable-path`, `command-line` or `descendant` — and the
+destroyed-environment reap log prints `pid:evidence` (`exact` on POSIX), so the
+guess quality is visible where it is acted on instead of a bare flag.
+- node-pty terminals now register their pid as sweep roots on open and
+unregister on session end (with a short retry while the ConPTY pid is still 0),
+so processes started inside a terminal stay reachable through the PPID walk
+even after the terminal exits. Previously that registry cover existed only on
+paper: nothing outside `spawnPortableProcess` ever called it.
+- 8.3 short names now expand best-effort (`realpathSync.native` through an
+injectable `canonicalizePath` hook, input fallback, filesystem touched only for
+`~`-segment paths), so short executables match long sweeps in both directions.
+Measured before: `C:\PROGRA~1` against `C:\Program Files` matched neither
+way; after: matches. Non-tilde paths behave byte-identically to before.
+
+**Deliberately not changed:** command-line token matching was not tightened — a
+standalone path argument (`--workspace <dir>`) is textually indistinguishable
+from a mere mention (`--log <dir>`), while attached `--flag=value` forms were
+already ignored; PPID propagation was kept for the kill path, where missing a
+child (orphan leak) is worse than sweeping a mentioner. Job Objects with
+`JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE` still need a native helper
+(`CreateJobObject` / `AssignProcessToJobObject`), i.e. a new dependency, so
+that proposal stays open.
+
+**Stays open:** over-match still kills mentioners on destroy (the log evidence
+says why); under-match still misses processes bb never spawned that reveal
+nothing; symlinks and junctions are still compared lexically (pass a canonical
+path); fast PID reuse can still misattribute a registry subtree within one
+sweep interval. Further detail in `packages/process-utils/known-issues.md`.
 
 ## K4 — The CIM probe now has a timeout — PARTLY CLOSED 2026-09-06
 
@@ -164,15 +195,31 @@ the identical theoretical hole (rc/profile output precedes the payload on the
 same pipe) and should get the same one-line treatment; left untouched as
 outside this Windows task.
 
-## K7 — Path edge cases left deliberately
+## K7 — Path edge cases — trailing slash FIXED 2026-09-06, rest confirmed
 
-- `isSameProjectPath` on `\\?\` paths with and without a trailing slash returns
-  `false`. That is the honest consequence of **not re-normalising** `\\?\`
-  prefixes, which is exactly what Windows expects of them. Making those equal is
-  a decision that has to be taken explicitly.
-- A bare `\\?\` returns `false`; it is an invalid degenerate form anyway.
-- `\\.\` and `\\?\` are treated as equivalent for containment in the watcher,
-  which is sufficient for its use.
+Re-measured on real Windows 11 Pro (build 26200); the trailing-slash asymmetry
+was reachable through a real path, so it was fixed rather than re-documented.
+
+- **Trailing slash on `\\?\` paths: was `false`, now `true`.** Validation
+accepts both `\\?\C:\work\bb` and `\\?\C:\work\bb\`, and the
+server-contract project schema stores `normalizeProjectPathInput` output
+verbatim — so one directory could be opened as two project identities by any
+caller passing `\\?\` form (CLI, SDK, scripts resolving long paths; UI file
+pickers return plain already-trimmed paths and never hit this). `normalize` now
+trims trailing separators on extended-length non-roots (`\\?\C:\` folds to
+`\\?\C:`, which still detects as root), both variants store the identical
+string (verified through `createProjectRequestSchema`), and `isSame` is
+symmetric. The remaining `\\?\`-vs-plain difference is intended and
+untouched, and the watcher needed no change — it already trims, so
+`isWatchPathWithinRoot` was symmetric for trailing slashes in both directions
+before and after.
+- **Bare `\\?\`, clarified:** `isAbsoluteProjectPath` returns `false` and
+validation rejects it everywhere, so it can never become a stored project
+path. (`isSame` of the bare form with itself is `true` — equal degenerate
+strings — which is why this entry now names the functions instead of saying
+"returns false".)
+- **`\\.\` and `\\?\` watcher equivalence: still true**, confirmed in both
+directions (`isWatchPathWithinRoot` with either prefix as root or candidate).
 
 ## K8 — Symlinks and executable bits — EXECUTABILITY RESOLVED 2026-09-06
 
@@ -206,11 +253,34 @@ there is no privilege dependency there. However:
 - Repositories that contain symlinks depend on git's `core.symlinks`: without
   Developer Mode they materialise as text files containing the target path.
 
-## K9 — Development data directory
+## K9 — Development data directory — CORRECTED 2026-09-06
 
-Only production is redirected to `%APPDATA%/bb`. In development
-(`NODE_ENV != production`) the data directory still resolves under the home
-directory via `@bb/config`.
+The old text said only production is redirected to `%APPDATA%/bb`. Measured on
+real Windows 11 Pro (build 26200), that description was wrong: **neither mode
+uses `%APPDATA%\bb` in practice.**
+
+- Production default (`@bb/config` `resolveProdDataDir`, desktop
+`resolveDataDirFromEnv` with no `BB_DATA_DIR`): `C:\Users\Administrator\.bb`
+(home, not `%APPDATA%`). The packaged app's real data dir on this machine is
+`~\.bb` (`bb.db`, `auth.json`, `host-id` present).
+- Development default (`resolveRuntimeDataDir` dev, no `BB_DATA_DIR`):
+`~\.bb-dev\<repo-label>-<hash>` — `C:\Users\Administrator\.bb-dev\c-wt-picli-9ea25e156488`
+for `C:\wt-picli` — with per-instance ports.
+- The `%APPDATA%\bb` redirect exists only in the host daemon's
+`resolveHostDaemonDataDirOverride`, and only when `BB_DATA_DIR` is unset **and**
+`NODE_ENV=production`. The desktop launcher always passes `BB_DATA_DIR`
+explicitly, so the override never fires for app-spawned daemons; it fires only
+for a standalone prod daemon without `BB_DATA_DIR` (e.g. a manually installed
+service) — a third location.
+- `%APPDATA%\bb` *does* exist on disk here, but it is Electron `userData`
+(`Cache`, `Preferences`, …), not bb data — a confusingly similar path to a
+different thing.
+
+**Plainly for Windows contributors:** dev and prod disagree
+(`~\.bb-dev\<instance>` vs `~\.bb`), so data created in dev never appears in
+the packaged app and vice versa; and neither is `%APPDATA%\bb` despite what
+this entry used to say. Hunting a prod database on Windows? Look in
+`%USERPROFILE%\.bb`, not `%APPDATA%\bb`.
 
 ## K10 — Windows updates now poll their own namespace; end-to-end install still unproven
 
