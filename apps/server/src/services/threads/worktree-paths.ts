@@ -58,7 +58,7 @@ interface ResolvePersonalTargetPathArgs {
 export function resolveManagedTargetPath(
   args: ResolveManagedTargetPathArgs,
 ): string {
-  return path.posix.join(
+  return path.join(
     args.dataDir,
     "worktrees",
     args.environmentId,
@@ -69,7 +69,7 @@ export function resolveManagedTargetPath(
 export function resolvePersonalTargetPath(
   args: ResolvePersonalTargetPathArgs,
 ): string {
-  return path.posix.join(
+  return path.join(
     args.dataDir,
     "personal-workspaces",
     args.environmentId,
@@ -81,7 +81,12 @@ export function isBbManagedWorkspacePath(args: {
   path: string;
 }): boolean {
   return [
-    path.posix.join(args.dataDir, "worktrees"),
-    path.posix.join(args.dataDir, "personal-workspaces"),
-  ].some((root) => args.path === root || args.path.startsWith(`${root}/`));
+    path.join(args.dataDir, "worktrees"),
+    path.join(args.dataDir, "personal-workspaces"),
+  ].some((root) => {
+    const relative = path.relative(root, args.path);
+    if (relative === "") return true;
+    if (path.isAbsolute(relative)) return false;
+    return relative.split(path.sep)[0] !== "..";
+  });
 }
