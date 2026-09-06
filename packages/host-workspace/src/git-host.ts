@@ -1,5 +1,5 @@
-import { execFile, type ExecFileException } from "node:child_process";
-import { promisify } from "node:util";
+import type { ExecFileException } from "node:child_process";
+import { sanitizeInheritedChildProcessEnv } from "@bb/process-utils";
 import {
   type GitHostPullRequest,
   type GitHostPullRequestCheck,
@@ -10,10 +10,9 @@ import {
   type GitHostPullRequestReviewDecision,
   gitHostPullRequestSchema,
 } from "@bb/domain";
-import { sanitizeInheritedChildProcessEnv } from "@bb/process-utils";
 import { runGit, type GitCommandResult, WorkspaceError } from "./git.js";
 
-const execFileAsync = promisify(execFile);
+import { runPortableCommand } from "./portable-command.js";
 
 const GH_PR_VIEW_TIMEOUT_MS = 10_000;
 const GIT_UPSTREAM_LOOKUP_TIMEOUT_MS = 10_000;
@@ -589,16 +588,19 @@ export async function getPullRequestForCurrentBranch(
   ];
   let stdout: string;
   try {
-    ({ stdout } = await execFileAsync("gh", ghArgs, {
+    const result = await runPortableCommand({
+      command: "gh",
+      args: ghArgs,
       cwd: args.cwd,
-      encoding: "utf8",
       env: sanitizeInheritedChildProcessEnv({
         env: process.env,
         ...(args.shellPath !== undefined ? { shellPath: args.shellPath } : {}),
       }),
-      timeout: GH_PR_VIEW_TIMEOUT_MS,
-      maxBuffer: GH_PR_VIEW_MAX_BUFFER_BYTES,
-    }));
+      timeoutMs: GH_PR_VIEW_TIMEOUT_MS,
+      maxBufferBytes: GH_PR_VIEW_MAX_BUFFER_BYTES,
+      encoding: "utf8",
+    });
+    stdout = result.stdout;
   } catch (error) {
     return classifyPullRequestViewError(error);
   }
@@ -624,15 +626,17 @@ export async function runPullRequestActionForCurrentBranch(
     target.outcome === "upstream-branch" ? target.selector : null,
   );
   try {
-    await execFileAsync("gh", ghArgs, {
+    await runPortableCommand({
+      command: "gh",
+      args: ghArgs,
       cwd: args.cwd,
-      encoding: "utf8",
       env: sanitizeInheritedChildProcessEnv({
         env: process.env,
         ...(args.shellPath !== undefined ? { shellPath: args.shellPath } : {}),
       }),
-      timeout: GH_PR_ACTION_TIMEOUT_MS,
-      maxBuffer: GH_PR_ACTION_MAX_BUFFER_BYTES,
+      timeoutMs: GH_PR_ACTION_TIMEOUT_MS,
+      maxBufferBytes: GH_PR_ACTION_MAX_BUFFER_BYTES,
+      encoding: "utf8",
     });
   } catch (error) {
     throw createGitHostCommandFailedError(ghArgs, error);

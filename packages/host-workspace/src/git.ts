@@ -1,16 +1,19 @@
-import { execFile, spawn, type ExecFileException } from "node:child_process";
+import type { ExecFileException } from "node:child_process";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { promisify } from "node:util";
 import type {
   DefaultBranchRelation,
   GitCheckoutRef,
   WorkspaceGitOperation,
 } from "@bb/domain";
-import { sanitizeInheritedChildProcessEnv } from "@bb/process-utils";
+import {
+  sanitizeInheritedChildProcessEnv,
+  spawnPortableOutputProcess,
+  spawnPortablePipedProcess,
+} from "@bb/process-utils";
+import { runPortableCommand } from "./portable-command.js";
 
-const execFileAsync = promisify(execFile);
 const DEFAULT_BUFFER_BYTES = 16 * 1024 * 1024;
 
 export class WorkspaceError extends Error {
@@ -87,15 +90,17 @@ export async function runGitOutputPipeline(
     env: options.env,
     shellPath: options.shellPath,
   });
-  const producer = spawn("git", producerArgs, {
+  const producer = spawnPortablePipedProcess({
+    command: "git",
+    args: producerArgs,
     cwd: options.cwd,
     env,
-    stdio: ["ignore", "pipe", "pipe"],
   });
-  const consumer = spawn("git", consumerArgs, {
+  const consumer = spawnPortablePipedProcess({
+    command: "git",
+    args: consumerArgs,
     cwd: options.cwd,
     env,
-    stdio: ["pipe", "pipe", "pipe"],
   });
   producer.stdout.pipe(consumer.stdin);
   producer.stdout.on("error", () => {});
@@ -367,16 +372,18 @@ export async function runGit(
     throw createGitCommandCancelledError(args, options.signal.reason);
   }
   try {
-    const result = await execFileAsync("git", args, {
+    const result = await runPortableCommand({
+      command: "git",
+      args,
       cwd: options.cwd,
-      encoding: "utf8",
       env: resolveGitProcessEnv({
         env: options.env,
         shellPath: options.shellPath,
       }),
-      maxBuffer: options.maxBufferBytes ?? DEFAULT_BUFFER_BYTES,
+      maxBufferBytes: options.maxBufferBytes ?? DEFAULT_BUFFER_BYTES,
       signal: options.signal,
-      timeout: options.timeoutMs,
+      timeoutMs: options.timeoutMs,
+      encoding: "utf8",
     });
     return {
       stdout: result.stdout,
@@ -439,13 +446,14 @@ export async function runGitWithNullRecordLimit(
   }
 
   return new Promise((resolve, reject) => {
-    const child = spawn("git", args, {
+    const child = spawnPortableOutputProcess({
+      command: "git",
+      args,
       cwd: options.cwd,
       env: resolveGitProcessEnv({
         env: options.env,
         shellPath: options.shellPath,
       }),
-      stdio: ["ignore", "pipe", "pipe"],
     });
     const stdoutRecords: Buffer[] = [];
     const stderrChunks: Buffer[] = [];
@@ -1461,14 +1469,16 @@ export async function readGitBlob(
   }
 
   try {
-    const result = await execFileAsync("git", ["cat-file", "blob", target], {
+    const result = await runPortableCommand({
+      command: "git",
+      args: ["cat-file", "blob", target],
       cwd,
-      encoding: "buffer",
       env: resolveGitProcessEnv({
         env: undefined,
         shellPath: options.shellPath,
       }),
-      maxBuffer: maxBytes,
+      maxBufferBytes: maxBytes,
+      encoding: "buffer",
     });
     const contents = Buffer.from(result.stdout);
     return { contents, sizeBytes: size };
