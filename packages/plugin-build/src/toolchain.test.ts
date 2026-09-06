@@ -32,7 +32,7 @@ describe("plugin build toolchain", () => {
     for (const version of Object.values(PLUGIN_TOOLCHAIN_PINS)) {
       expect(basename(dir)).toContain(version);
     }
-    expect(dir.startsWith("/data/")).toBe(true);
+    expect(dir).toBe(join("/data", basename(dir)));
   });
 
   it("prefers a locally resolvable toolchain over fetching", async () => {
