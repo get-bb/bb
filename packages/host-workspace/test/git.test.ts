@@ -513,8 +513,22 @@ describe("user-shell Git resolution", () => {
     );
     tempDirs.push(workspacePath, binPath);
     const gitPath = path.join(binPath, "git");
-    await fs.writeFile(gitPath, "#!/bin/sh\nprintf 'user-shell-git\\n'\n");
-    await fs.chmod(gitPath, 0o755);
+    if (process.platform === "win32") {
+      const fakePath = path.join(binPath, "git-fake.mjs");
+      await fs.writeFile(
+        fakePath,
+        'process.stdout.write("user-shell-git\\n");\n',
+        "utf8",
+      );
+      await fs.writeFile(
+        `${gitPath}.cmd`,
+        `@echo off\r\n"${process.execPath}" "${fakePath}" %*\r\n`,
+        "utf8",
+      );
+    } else {
+      await fs.writeFile(gitPath, "#!/bin/sh\nprintf 'user-shell-git\\n'\n");
+      await fs.chmod(gitPath, 0o755);
+    }
 
     await expect(
       runGit(["--version"], { cwd: workspacePath, shellPath: binPath }),
