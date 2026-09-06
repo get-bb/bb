@@ -19,7 +19,7 @@ import {
 import { RUNTIME_EXPORT_MANIFEST } from "./generated/runtime-export-manifest.generated.js";
 import { type PluginBuildToolchain } from "./toolchain.js";
 import { createPluginArtifactMeta } from "./plugin-artifact-meta.js";
-import { isRecord, validatePluginBuildManifest } from "./plugin-manifest.js";
+import { isRecord, isPathWithinDirectory, validatePluginBuildManifest } from "./plugin-manifest.js";
 import {
   LEGACY_PLUGIN_SDK_APP_SPECIFIER,
   PLUGIN_SDK_APP_SPECIFIER,
@@ -284,7 +284,7 @@ async function readPluginAppConfig(rootDir: string): Promise<PluginAppConfig> {
     throw new Error(`manifest bb.app must be relative, got "${app}"`);
   }
   const appEntry = resolve(rootDir, app);
-  if (appEntry !== rootDir && !appEntry.startsWith(rootDir + "/")) {
+  if (!isPathWithinDirectory(rootDir, appEntry)) {
     throw new Error(`manifest bb.app escapes the plugin directory: "${app}"`);
   }
   try {

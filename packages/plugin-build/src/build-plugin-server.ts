@@ -9,7 +9,7 @@ import {
 } from "node:fs/promises";
 import { isAbsolute, join, resolve } from "node:path";
 import { createPluginArtifactMeta } from "./plugin-artifact-meta.js";
-import { isRecord, validatePluginBuildManifest } from "./plugin-manifest.js";
+import { isRecord, isPathWithinDirectory, validatePluginBuildManifest } from "./plugin-manifest.js";
 import {
   installedPluginSdkDirectory,
   installedPluginSdkExportTarget,
@@ -94,7 +94,7 @@ async function readPluginServerConfig(
     throw new Error(`manifest bb.server must be relative, got "${server}"`);
   }
   const serverEntry = resolve(rootDir, server);
-  if (serverEntry !== rootDir && !serverEntry.startsWith(rootDir + "/")) {
+  if (!isPathWithinDirectory(rootDir, serverEntry)) {
     throw new Error(
       `manifest bb.server escapes the plugin directory: "${server}"`,
     );

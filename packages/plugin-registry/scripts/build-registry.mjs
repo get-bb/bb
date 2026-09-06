@@ -47,6 +47,10 @@ function sourcePathFor(relPath) {
   return path.join(srcRoot, relPath);
 }
 
+function toPosixPath(filePath) {
+  return filePath.replace(/\\/g, "/");
+}
+
 /** Resolve an import specifier from `importerRel` to an app-src-relative path. */
 function resolveLocal(specifier, importerRel) {
   let base;
@@ -67,8 +71,9 @@ function resolveLocal(specifier, importerRel) {
     `${base}/index.ts`,
     `${base}/index.tsx`,
   ]) {
-    if (existsSync(path.join(srcRoot, candidate)) || overrides.has(candidate)) {
-      return candidate;
+    const relPath = toPosixPath(candidate);
+    if (existsSync(path.join(srcRoot, relPath)) || overrides.has(relPath)) {
+      return relPath;
     }
   }
   throw new Error(
