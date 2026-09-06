@@ -60,9 +60,26 @@ export function createDesktopBrowserBroker(args: {
   const snapshots = new Map<string, string>();
   let hostId: string | null = null;
 
+  function liveWebContentsId(window: BrokerWindow): number | undefined {
+    try {
+      return window.isDestroyed() ? undefined : window.webContents.id;
+    } catch {
+      return undefined;
+    }
+  }
+
+  function forgetDestroyedInstances(): void {
+    for (const [instanceId, entry] of [...instances]) {
+      if (liveWebContentsId(entry.window) !== undefined) continue;
+      for (const lease of [...leases.values()])
+        if (lease.instance === entry) revoke(lease);
+      instances.delete(instanceId);
+    }
+  }
+
   function instanceForWindow(webContentsId: number): InstanceEntry | undefined {
     return [...instances.values()].find(
-      (entry) => entry.window.webContents.id === webContentsId,
+      (entry) => liveWebContentsId(entry.window) === webContentsId,
     );
   }
 
@@ -79,10 +96,9 @@ export function createDesktopBrowserBroker(args: {
     instance: InstanceEntry,
     threadId: string,
   ): DesktopBrowserNativeTab[] {
-    return args.manager.listTabs({
-      hostWebContentsId: instance.window.webContents.id,
-      threadId,
-    });
+    const hostWebContentsId = liveWebContentsId(instance.window);
+    if (hostWebContentsId === undefined) return [];
+    return args.manager.listTabs({ hostWebContentsId, threadId });
   }
 
   function wireTab(
@@ -118,7 +134,7 @@ export function createDesktopBrowserBroker(args: {
     snapshots.set(key, serialized);
     for (const listener of listeners) listener(event);
     if (
-      instance.window.isDestroyed() ||
+      liveWebContentsId(instance.window) === undefined ||
       instance.window.webContents.isDestroyed()
     )
       return;
@@ -151,9 +167,12 @@ export function createDesktopBrowserBroker(args: {
       )
         revoke(lease);
     }
+    forgetDestroyedInstances();
     for (const instance of instances.values()) {
+      const hostWebContentsId = liveWebContentsId(instance.window);
+      if (hostWebContentsId === undefined) continue;
       for (const tab of args.manager.listTabs({
-        hostWebContentsId: instance.window.webContents.id,
+        hostWebContentsId,
         threadId: null,
       }))
         instance.threads.add(tab.threadId);
@@ -170,7 +189,7 @@ export function createDesktopBrowserBroker(args: {
     if (
       !instance ||
       instance.descriptor.generation !== target.generation ||
-      instance.window.isDestroyed()
+      liveWebContentsId(instance.window) === undefined
     )
       throw new Error("Desktop instance is unavailable or has reconnected");
     return instance;
@@ -194,6 +213,8 @@ export function createDesktopBrowserBroker(args: {
     requireTab(instance, threadId, tabId);
     if (hostId === null)
       throw new Error("Desktop is not connected to its host daemon");
+    if (liveWebContentsId(instance.window) === undefined)
+      throw new Error("Desktop instance is unavailable or has reconnected");
     if (instance.window.isMinimized()) instance.window.restore();
     instance.window.show();
     instance.window.focus();
@@ -210,10 +231,10 @@ export function createDesktopBrowserBroker(args: {
 
   async function openConnection(lease: ControlLease) {
     if (lease.connection !== null) return lease.connection;
-    const scope = {
-      hostWebContentsId: lease.instance.window.webContents.id,
-      threadId: lease.threadId,
-    };
+    const hostWebContentsId = liveWebContentsId(lease.instance.window);
+    if (hostWebContentsId === undefined)
+      throw new Error("Desktop instance is unavailable or has reconnected");
+    const scope = { hostWebContentsId, threadId: lease.threadId };
     const ensureLease = () => {
       if (
         leases.get(lease.metadata.leaseId) !== lease ||
@@ -298,11 +319,13 @@ export function createDesktopBrowserBroker(args: {
 
   return {
     registerWindow(window: BrokerWindow) {
-      if (instanceForWindow(window.webContents.id)) return;
+      const webContentsId = liveWebContentsId(window);
+      if (webContentsId === undefined) return;
+      if (instanceForWindow(webContentsId)) return;
       const descriptor = {
         instanceId: randomUUID(),
         generation: randomUUID(),
-        label: `BB window ${window.webContents.id}`,
+        label: `BB window ${webContentsId}`,
       };
       instances.set(descriptor.instanceId, {
         window,
@@ -314,7 +337,11 @@ export function createDesktopBrowserBroker(args: {
     },
     releaseWindow(webContentsId: number) {
       const instance = instanceForWindow(webContentsId);
-      if (!instance) return;
+      forgetDestroyedInstances();
+      if (!instance) {
+        for (const listener of registryListeners) listener();
+        return;
+      }
       for (const lease of [...leases.values()])
         if (lease.instance === instance) revoke(lease);
       instances.delete(instance.descriptor.instanceId);
@@ -393,10 +420,10 @@ export function createDesktopBrowserBroker(args: {
       if (command.type === "desktop.browser.list_instances")
         return { instances: this.listInstances() };
       const instance = requireInstance(command);
-      const scope = {
-        hostWebContentsId: instance.window.webContents.id,
-        threadId: command.threadId,
-      };
+      const hostWebContentsId = liveWebContentsId(instance.window);
+      if (hostWebContentsId === undefined)
+        throw new Error("Desktop instance is unavailable or has reconnected");
+      const scope = { hostWebContentsId, threadId: command.threadId };
       switch (command.type) {
         case "desktop.browser.list_tabs":
           return {
