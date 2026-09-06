@@ -92,6 +92,8 @@ Read the installed declarations for exact current signatures.
 - `experimental_recordProviderChildIo`
 - `experimental_resolveExecutablePath`
 - `experimental_searchPresentation`
+- `experimental_spawnPortablePipedProcess`
+- `experimental_spawnPortableProcess`
 - `experimental_toolPresentation`
 - `experimental_versionFrom`
 - `experimental_webFetchPresentation`

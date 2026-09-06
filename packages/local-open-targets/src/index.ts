@@ -491,6 +491,7 @@ async function defaultExecFile(
 ): Promise<ExecFileResult> {
   const result = await execFileAsync(file, args, {
     env: sanitizeInheritedChildProcessEnv({ env: options?.env ?? process.env }),
+    windowsHide: true,
   });
   return {
     stdout: result.stdout,

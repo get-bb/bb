@@ -1,11 +1,25 @@
-import { type AvailableModel } from "@get-bb/plugin-sdk/provider-bridge";
-import { query, type Options } from "@anthropic-ai/claude-agent-sdk";
+import {
+  experimental_spawnPortablePipedProcess,
+  type AvailableModel,
+} from "@get-bb/plugin-sdk/provider-bridge";
+import {
+  query,
+  type Options,
+  type SpawnedProcess,
+  type SpawnOptions,
+} from "@anthropic-ai/claude-agent-sdk";
 import { buildClaudeCodeModels } from "../model-list.js";
 import { translateMissingClaudeCliError } from "./missing-cli-error.js";
 import { resolveClaudeCodeExecutable } from "./session-options.js";
 
-function buildModelProbeOptions(env: NodeJS.ProcessEnv): Options {
-  const pathToClaudeCodeExecutable = resolveClaudeCodeExecutable({ env });
+function buildModelProbeOptions(
+  env: NodeJS.ProcessEnv,
+  platform: NodeJS.Platform = process.platform,
+): Options {
+  const pathToClaudeCodeExecutable = resolveClaudeCodeExecutable({
+    env,
+    platform,
+  });
   return {
     cwd: process.cwd(),
     maxTurns: 0,
@@ -14,6 +28,25 @@ function buildModelProbeOptions(env: NodeJS.ProcessEnv): Options {
     permissionMode: "bypassPermissions",
     settingSources: [],
     ...(pathToClaudeCodeExecutable ? { pathToClaudeCodeExecutable } : {}),
+    ...(platform === "win32"
+      ? {
+          spawnClaudeCodeProcess: (spawnOptions: SpawnOptions) =>
+            experimental_spawnPortablePipedProcess({
+              command: spawnOptions.command,
+              args: [...spawnOptions.args],
+              ...(spawnOptions.cwd !== undefined
+                ? { cwd: spawnOptions.cwd }
+                : {}),
+              ...(spawnOptions.env !== undefined
+                ? { env: spawnOptions.env }
+                : {}),
+              ...(spawnOptions.signal !== undefined
+                ? { signal: spawnOptions.signal }
+                : {}),
+              platform,
+            }) as unknown as SpawnedProcess,
+        }
+      : {}),
   };
 }
 

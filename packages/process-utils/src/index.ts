@@ -23,6 +23,8 @@ interface PortableSpawnRequest {
   detached?: boolean;
   env?: NodeJS.ProcessEnv;
   stdio?: StdioOptions;
+  platform?: NodeJS.Platform;
+  signal?: AbortSignal;
 }
 
 export type PortableChildProcess = ChildProcess;
@@ -33,6 +35,8 @@ interface PortablePipedSpawnRequest {
   cwd?: string;
   detached?: boolean;
   env?: NodeJS.ProcessEnv;
+  platform?: NodeJS.Platform;
+  signal?: AbortSignal;
 }
 
 interface PortablePipedChildProcess extends PortableChildProcess {
@@ -156,11 +160,14 @@ type UncaughtExceptionMonitorHandler = (
 export function spawnPortableProcess(
   request: PortableSpawnRequest,
 ): PortableChildProcess {
+  const platform = request.platform ?? process.platform;
   const child = crossSpawn(request.command, request.args, {
     cwd: request.cwd,
     detached: request.detached,
     env: request.env,
     stdio: request.stdio,
+    ...(request.signal !== undefined ? { signal: request.signal } : {}),
+    ...(platform === "win32" ? { windowsHide: true } : {}),
   });
   trackSpawnedSweepRoot(request.cwd, child.pid, child);
   return child;

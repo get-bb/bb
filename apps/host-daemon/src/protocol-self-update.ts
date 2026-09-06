@@ -43,7 +43,11 @@ interface SelfUpdateProcessRunner {
   (
     command: string,
     args: string[],
-    options: { env: NodeJS.ProcessEnv; shell?: boolean },
+    options: {
+      env: NodeJS.ProcessEnv;
+      shell?: boolean;
+      windowsHide?: boolean;
+    },
   ): Promise<void>;
 }
 
@@ -183,7 +187,9 @@ async function defaultInstallTarball(
     ["install", "-g", BB_APP_ALLOW_SCRIPTS_ARG, ...prefixArgs, tarballPath],
     {
       env: { ...process.env, PATH: path },
-      ...(platform === "win32" ? { shell: true } : {}),
+      ...(platform === "win32"
+        ? { shell: true, windowsHide: true }
+        : {}),
     },
   );
 }

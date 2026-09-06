@@ -2325,3 +2325,13 @@ too, after the host has restored the draft. Sole consumer:
 `bb.sdk.experimental_desktopBrowsers` and the exported `ExperimentalDesktopBrowsersArea`, `ExperimentalDesktopBrowserScope`, `ExperimentalDesktopBrowserLease`, `ExperimentalDesktopBrowserCreateInput`, and `ExperimentalDesktopBrowserAcquireInput` expose explicit host/window/thread discovery, isolated tab creation, expiring control leases, scoped CDP connections, capture, reveal, close, release, and disposable tab-state subscriptions. The matching core CLI is `bb browser`.
 
 Before stabilization, audit personal-profile handoff policy, per-tab mutual exclusion and child-target scope, native popup handling, debugger detachment, daemon/desktop disconnect and reconnect generations, expiry and cancellation races, bounded screenshot bytes, and cross-platform desktop startup. Connection credentials must remain private to workers on the browser host. `subscribe` polls every two seconds with one outstanding request; it is state observation, not a lossless event log. Cloud browsers and external provider registration are outside this surface.
+
+## Portable provider spawning (`experimental_spawnPortableProcess`, `experimental_spawnPortablePipedProcess`)
+
+**What it does.** Re-exports bb's Windows-safe child spawning for provider bridges so every provider CLI launches the same way the version probe does. On win32 the helpers resolve through PATHEXT via cross-spawn (extensionless npm shims find their `.cmd` sibling) and hide the backing `cmd.exe` window with `windowsHide: true`; on POSIX they spawn directly with no shell and byte-identical options. `experimental_spawnPortableProcess` takes an explicit `stdio` plan (Pi needs five pipes); `experimental_spawnPortablePipedProcess` pins piped stdio for ACP/Codex/Claude children. Both take an optional injected `platform` so tests pin win32 without ambient reads.
+
+**Audit before stabilizing.**
+
+1. Confirm the two-function shape covers bridges that need custom stdio versus piped stdio without exposing cross-spawn directly.
+2. Decide whether `platform` should remain optional (ambient default at the edge) or become required once all bridges pass it explicitly.
+3. Confirm `windowsHide: true` on win32 is sufficient to keep `cmd.exe` windows hidden for `.cmd` shims launched through cross-spawn.

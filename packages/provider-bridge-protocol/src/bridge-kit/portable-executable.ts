@@ -107,6 +107,7 @@ export function spawnPortableAgentProcess(
       args: [...call.args],
       ...(call.cwd !== undefined ? { cwd: call.cwd } : {}),
       ...(call.env !== undefined ? { env: call.env } : {}),
+      platform,
     });
   }
   return nodeSpawn(call.command, [...call.args], pipedSpawnOptions(call));
@@ -173,6 +174,7 @@ function spawnForCapture(
       args: [...call.args],
       ...(call.cwd !== undefined ? { cwd: call.cwd } : {}),
       ...(call.env !== undefined ? { env: call.env } : {}),
+      platform,
     });
   }
   return nodeSpawn(call.command, [...call.args], outputSpawnOptions(call));

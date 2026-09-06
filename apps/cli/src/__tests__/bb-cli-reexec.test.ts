@@ -3,7 +3,11 @@ import { chmod, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { BB_CLI_REEXEC_ENV, maybeReexecViaBbCli } from "../bb-cli-reexec.js";
+import {
+  BB_CLI_REEXEC_ENV,
+  maybeReexecViaBbCli,
+  resolveBbCliReexecSpawnPlan,
+} from "../bb-cli-reexec.js";
 
 describe("maybeReexecViaBbCli", () => {
   let tempRoot: string;
@@ -87,5 +91,73 @@ describe("maybeReexecViaBbCli", () => {
       reexec,
     });
     expect(reexec).not.toHaveBeenCalled();
+  });
+});
+
+describe("resolveBbCliReexecSpawnPlan", () => {
+  let planRoot: string;
+
+  beforeEach(async () => {
+    planRoot = await mkdtemp(join(tmpdir(), "bb-cli-reexec-plan-"));
+  });
+
+  afterEach(async () => {
+    await rm(planRoot, { recursive: true, force: true });
+  });
+
+  it("spawns posix targets directly without a shell", () => {
+    expect(
+      resolveBbCliReexecSpawnPlan(join(planRoot, "bb"), "linux"),
+    ).toEqual({
+      argsPrefix: [],
+      command: join(planRoot, "bb"),
+      shell: false,
+    });
+  });
+
+  it("spawns a win32 .cmd beside a space-free sibling through the sibling without a shell", async () => {
+    const sibling = join(planRoot, "bb");
+    await writeFile(sibling, "console.log(1)", { mode: 0o755 });
+    const launcher = `${sibling}.cmd`;
+    await writeFile(launcher, "@node %~dp0bb %*", { mode: 0o755 });
+    expect(resolveBbCliReexecSpawnPlan(launcher, "win32")).toEqual({
+      argsPrefix: [sibling],
+      command: process.execPath,
+      shell: false,
+    });
+  });
+
+  it("spawns a win32 .cmd beside a sibling in a path containing a space without a shell", async () => {
+    const spacedDir = join(planRoot, "bb wn");
+    const { mkdir } = await import("node:fs/promises");
+    await mkdir(spacedDir, { recursive: true });
+    const sibling = join(spacedDir, "bb");
+    await writeFile(sibling, "console.log(1)", { mode: 0o755 });
+    const launcher = `${sibling}.cmd`;
+    await writeFile(launcher, "@node %~dp0bb %*", { mode: 0o755 });
+    const plan = resolveBbCliReexecSpawnPlan(launcher, "win32");
+    expect(plan).toEqual({
+      argsPrefix: [sibling],
+      command: process.execPath,
+      shell: false,
+    });
+    const { spawnSync } = await import("node:child_process");
+    const result = spawnSync(
+      plan.command,
+      [...plan.argsPrefix, "--version"],
+      { encoding: "utf8" },
+    );
+    expect(result.error).toBeUndefined();
+    expect(result.status).toBe(0);
+  });
+
+  it("keeps a shell for a foreign win32 .cmd with no sibling", () => {
+    expect(
+      resolveBbCliReexecSpawnPlan(join(planRoot, "missing.cmd"), "win32"),
+    ).toEqual({
+      argsPrefix: [],
+      command: join(planRoot, "missing.cmd"),
+      shell: true,
+    });
   });
 });

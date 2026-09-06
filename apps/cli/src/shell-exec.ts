@@ -4,10 +4,10 @@ interface ResolveShellExecOptionsArgs {
 
 export function resolveShellExecOptions(
   args: ResolveShellExecOptionsArgs = {},
-): { shell: true } | Record<string, never> {
+): { shell: true; windowsHide: true } | Record<string, never> {
   const platform = args.platform ?? process.platform;
   if (platform === "win32") {
-    return { shell: true };
+    return { shell: true, windowsHide: true };
   }
   return {};
 }

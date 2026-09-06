@@ -42,7 +42,11 @@ async function createFixture(
     async (
       _command: string,
       _args: string[],
-      _options: { env: NodeJS.ProcessEnv; shell?: boolean },
+      _options: {
+        env: NodeJS.ProcessEnv;
+        shell?: boolean;
+        windowsHide?: boolean;
+      },
     ) => undefined,
   );
   const fetchFn = vi.fn(async (input: RequestInfo | URL) => {
@@ -204,7 +208,7 @@ describe("protocol self-update", () => {
     );
   });
 
-  it("runs npm through a shell on win32 where npm is a .cmd shim", async () => {
+  it("runs npm through a hidden shell on win32 where npm is a .cmd shim", async () => {
     const test = await createFixture({
       platform: "win32",
       useDefaultInstaller: true,
@@ -218,7 +222,7 @@ describe("protocol self-update", () => {
     expect(test.runProcess).toHaveBeenCalledWith(
       "npm",
       expect.arrayContaining(["install"]),
-      expect.objectContaining({ shell: true }),
+      expect.objectContaining({ shell: true, windowsHide: true }),
     );
   });
 

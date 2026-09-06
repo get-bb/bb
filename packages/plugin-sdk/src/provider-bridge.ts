@@ -257,6 +257,10 @@ export type {
  * (incident rule: ambient env leaks).
  */
 export { sanitizeInheritedChildProcessEnv } from "@bb/process-utils";
+export {
+  spawnPortablePipedProcess as experimental_spawnPortablePipedProcess,
+  spawnPortableProcess as experimental_spawnPortableProcess,
+} from "@bb/process-utils";
 
 // ---------------------------------------------------------------------------
 // 4. The domain vocabulary the protocol's payloads reference

@@ -1,4 +1,3 @@
-import { spawn } from "node:child_process";
 import {
   query,
   type CanUseTool,
@@ -13,6 +12,7 @@ import {
 import {
   experimental_isProviderBridgeRecording,
   experimental_recordProviderChildIo,
+  experimental_spawnPortablePipedProcess,
 } from "@get-bb/plugin-sdk/provider-bridge";
 import type { ClaudePermissionMode } from "../interactive-contract.js";
 import {
@@ -42,6 +42,7 @@ export interface SdkSessionOptions {
   settings?: Options["settings"];
   extraArgs?: Options["extraArgs"];
   recordThreadId?: () => string;
+  platform?: NodeJS.Platform;
 }
 
 export type ClaudeSdkReasoningEffort =
@@ -116,23 +117,46 @@ function buildSdkDoneErrorMessage(args: BuildSdkDoneErrorMessageArgs): string {
   return `${errorMessage}\n\nClaude Code stderr:\n${stderrTail}`;
 }
 
-function spawnRecordedClaudeProcess(args: {
+function spawnPortableClaudeProcess(args: {
   onStderr: (data: string) => void;
   spawnOptions: SpawnOptions;
   threadId: string | null;
+  platform?: NodeJS.Platform;
 }): SpawnedProcess {
-  const child = spawn(args.spawnOptions.command, args.spawnOptions.args, {
-    cwd: args.spawnOptions.cwd,
-    env: args.spawnOptions.env,
-    signal: args.spawnOptions.signal,
-    stdio: ["pipe", "pipe", "pipe"],
-    windowsHide: true,
+  const child = experimental_spawnPortablePipedProcess({
+    command: args.spawnOptions.command,
+    args: [...args.spawnOptions.args],
+    ...(args.spawnOptions.cwd !== undefined
+      ? { cwd: args.spawnOptions.cwd }
+      : {}),
+    ...(args.spawnOptions.env !== undefined
+      ? { env: args.spawnOptions.env }
+      : {}),
+    ...(args.spawnOptions.signal !== undefined
+      ? { signal: args.spawnOptions.signal }
+      : {}),
+    ...(args.platform !== undefined ? { platform: args.platform } : {}),
   });
   child.stderr?.setEncoding("utf8").on("data", (data: string) => {
     args.onStderr(data);
   });
   experimental_recordProviderChildIo(child, { threadId: args.threadId });
-  return child as SpawnedProcess;
+  return child as unknown as SpawnedProcess;
+}
+
+function spawnRecordedClaudeProcess(args: {
+  onStderr: (data: string) => void;
+  spawnOptions: SpawnOptions;
+  threadId: string | null;
+  platform?: NodeJS.Platform;
+}): SpawnedProcess {
+  return spawnPortableClaudeProcess(args);
+}
+
+function resolveClaudeSpawnPlatform(
+  platform: NodeJS.Platform | undefined,
+): NodeJS.Platform {
+  return platform ?? process.platform;
 }
 
 function buildSdkPermissionOptions(
@@ -227,18 +251,21 @@ export class SdkSession {
       });
     };
     const recordThreadId = this.options.recordThreadId;
+    const spawnPlatform = resolveClaudeSpawnPlatform(this.options.platform);
+    const needsPortableSpawn = spawnPlatform === "win32";
     const sdkOptions: Options = {
       abortController: this.abortController,
       cwd: this.options.cwd,
       systemPrompt: this.options.systemPrompt,
       ...permissionOptions,
-      ...(experimental_isProviderBridgeRecording()
+      ...(experimental_isProviderBridgeRecording() || needsPortableSpawn
         ? {
             spawnClaudeCodeProcess: (spawnOptions: SpawnOptions) =>
-              spawnRecordedClaudeProcess({
+              spawnPortableClaudeProcess({
                 onStderr,
                 spawnOptions,
                 threadId: recordThreadId?.() ?? null,
+                platform: spawnPlatform,
               }),
           }
         : {}),

@@ -43,10 +43,13 @@ export interface PermissionEscalationWorkContext {
 interface ResolveExecutableOnPathArgs {
   executableName: string;
   pathEnv: string | undefined;
+  platform?: NodeJS.Platform;
+  pathExtEnv?: string | undefined;
 }
 
 interface ResolveClaudeCodeExecutableArgs {
   env: NodeJS.ProcessEnv;
+  platform?: NodeJS.Platform;
 }
 
 const READONLY_ALLOWED_TOOLS = new Set([
@@ -218,23 +221,67 @@ function isExecutableFile(candidatePath: string): boolean {
   }
 }
 
+function windowsExecutableExtensions(
+  pathExtEnv: string | undefined,
+): string[] {
+  const raw = pathExtEnv ?? ".COM;.EXE;.BAT;.CMD;.PS1";
+  const extensions = raw
+    .split(";")
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.length > 0)
+    .map((entry) => (entry.startsWith(".") ? entry : `.${entry}`));
+  return extensions.length > 0 ? extensions : [".COM", ".EXE", ".BAT", ".CMD", ".PS1"];
+}
+
+function resolveExplicitWindowsExecutable(candidate: string): string | null {
+  if (/\.(?:com|exe|bat|cmd|ps1)$/iu.test(candidate)) {
+    return isExecutableFile(candidate) ? candidate : null;
+  }
+  const extensions = windowsExecutableExtensions(process.env.PATHEXT);
+  for (const extension of extensions) {
+    const sibling = `${candidate}${extension}`;
+    if (isExecutableFile(sibling)) {
+      return sibling;
+    }
+  }
+  return isExecutableFile(candidate) ? candidate : null;
+}
+
 function resolveExecutableOnPath(
   args: ResolveExecutableOnPathArgs,
 ): string | null {
   if (!args.pathEnv) {
     return null;
   }
-
-  for (const searchDir of args.pathEnv.split(delimiter)) {
-    if (!searchDir) {
-      continue;
+  const platform = args.platform ?? process.platform;
+  if (platform !== "win32") {
+    for (const searchDir of args.pathEnv.split(delimiter)) {
+      if (!searchDir) {
+        continue;
+      }
+      const candidate = join(searchDir, args.executableName);
+      if (isExecutableFile(candidate)) {
+        return candidate;
+      }
     }
+    return null;
+  }
+  const extensions = windowsExecutableExtensions(args.pathExtEnv ?? process.env.PATHEXT);
+  const searchDirs = args.pathEnv.split(delimiter).filter((dir) => dir !== "");
+  for (const searchDir of searchDirs) {
+    for (const extension of extensions) {
+      const candidate = join(searchDir, `${args.executableName}${extension}`);
+      if (isExecutableFile(candidate)) {
+        return candidate;
+      }
+    }
+  }
+  for (const searchDir of searchDirs) {
     const candidate = join(searchDir, args.executableName);
     if (isExecutableFile(candidate)) {
       return candidate;
     }
   }
-
   return null;
 }
 
@@ -257,9 +304,19 @@ function wellKnownClaudeExecutablePaths(env: NodeJS.ProcessEnv): string[] {
 export function resolveClaudeCodeExecutable(
   args: ResolveClaudeCodeExecutableArgs,
 ): string | null {
+  const platform = args.platform ?? process.platform;
   const explicitPath = args.env[CLAUDE_CODE_EXECUTABLE_ENV];
   const trimmedExplicitPath = explicitPath?.trim();
   if (trimmedExplicitPath && trimmedExplicitPath.length > 0) {
+    if (platform === "win32") {
+      const resolved = resolveExplicitWindowsExecutable(trimmedExplicitPath);
+      if (resolved !== null) {
+        return resolved;
+      }
+      throw new Error(
+        `${CLAUDE_CODE_EXECUTABLE_ENV} must point to an executable Claude CLI path: ${trimmedExplicitPath}`,
+      );
+    }
     try {
       accessSync(trimmedExplicitPath, constants.X_OK);
       return trimmedExplicitPath;
@@ -273,6 +330,8 @@ export function resolveClaudeCodeExecutable(
   const executableOnPath = resolveExecutableOnPath({
     executableName: "claude",
     pathEnv: args.env.PATH,
+    platform,
+    pathExtEnv: args.env.PATHEXT,
   });
   if (executableOnPath) {
     return executableOnPath;

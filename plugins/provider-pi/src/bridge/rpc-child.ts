@@ -1,9 +1,10 @@
-import { spawn, type ChildProcess } from "node:child_process";
+import type { ChildProcess } from "node:child_process";
 import { PassThrough, Writable, type Readable } from "node:stream";
 import {
   experimental_isProviderBridgeRecording,
   experimental_readBoundedLines,
   experimental_recordProviderChildIo,
+  experimental_spawnPortableProcess,
   sanitizeInheritedChildProcessEnv,
   withoutBridgeRuntimeEnv,
 } from "@get-bb/plugin-sdk/provider-bridge";
@@ -38,6 +39,7 @@ export interface PiRpcResponse {
 export interface SpawnPiRpcChildArgs {
   cwd: string;
   env: NodeJS.ProcessEnv;
+  platform?: NodeJS.Platform;
   args: readonly string[];
   onEvent: (event: Record<string, unknown>) => void;
   onChannelMessage: (message: Record<string, unknown>) => void;
@@ -119,10 +121,13 @@ export class PiRpcChild {
       resolveSettledExit = resolve;
     });
     const launch = resolvePiLaunch(process.env);
-    this.child = spawn(launch.command, [...launch.args, ...args.args], {
+    this.child = experimental_spawnPortableProcess({
+      command: launch.command,
+      args: [...launch.args, ...args.args],
       cwd: args.cwd,
       env: args.env,
       stdio: ["pipe", "pipe", "pipe", "pipe", "pipe"],
+      ...(args.platform !== undefined ? { platform: args.platform } : {}),
     });
     experimental_recordProviderChildIo(this.child, {
       threadId: args.recordThreadId,

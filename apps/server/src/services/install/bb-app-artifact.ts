@@ -71,7 +71,9 @@ function createDefaultCommandRunner(
     const result = await execFileAsync(command, [...args], {
       cwd,
       maxBuffer: 10 * 1024 * 1024,
-      ...(platform === "win32" ? { shell: true } : {}),
+      ...(platform === "win32"
+        ? { shell: true, windowsHide: true }
+        : {}),
     });
     return result.stdout;
   };

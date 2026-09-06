@@ -1,7 +1,6 @@
 import { spawnSync } from "node:child_process";
-import { realpathSync } from "node:fs";
+import { existsSync, realpathSync } from "node:fs";
 import { resolve } from "node:path";
-import { resolveShellExecOptions } from "./shell-exec.js";
 
 export const BB_CLI_REEXEC_ENV = "BB_CLI_REEXEC";
 
@@ -9,11 +8,29 @@ interface MaybeReexecViaBbCliArgs {
   env?: NodeJS.ProcessEnv;
   argv?: string[];
   currentExecutablePath?: string;
+  platform?: NodeJS.Platform;
   reexec?: (args: {
     target: string;
     argv: string[];
     env: NodeJS.ProcessEnv;
   }) => void;
+}
+
+export function resolveBbCliReexecSpawnPlan(
+  cliPath: string,
+  platform: NodeJS.Platform,
+): { argsPrefix: string[]; command: string; shell: boolean } {
+  if (platform !== "win32") {
+    return { argsPrefix: [], command: cliPath, shell: false };
+  }
+  if (!cliPath.toLowerCase().endsWith(".cmd")) {
+    return { argsPrefix: [], command: cliPath, shell: false };
+  }
+  const target = cliPath.slice(0, -".cmd".length);
+  if (!existsSync(target)) {
+    return { argsPrefix: [], command: cliPath, shell: true };
+  }
+  return { argsPrefix: [target], command: process.execPath, shell: false };
 }
 
 function tryRealpath(path: string): string | null {
@@ -59,10 +76,12 @@ export function maybeReexecViaBbCli(
     return;
   }
 
-  const result = spawnSync(target, argv, {
+  const platform = options.platform ?? process.platform;
+  const plan = resolveBbCliReexecSpawnPlan(target, platform);
+  const result = spawnSync(plan.command, [...plan.argsPrefix, ...argv], {
     env: childEnv,
     stdio: "inherit",
-    ...resolveShellExecOptions(),
+    ...(plan.shell ? { shell: true, windowsHide: true } : {}),
   });
   if (result.error) {
     process.stderr.write(
