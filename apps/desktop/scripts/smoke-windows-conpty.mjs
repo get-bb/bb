@@ -93,6 +93,16 @@ function taskkillTree(pid) {
   } catch {}
 }
 
+function currentShellPid(session) {
+  const pid = session.pty.pid;
+  if (typeof pid !== "number" || !Number.isInteger(pid) || pid <= 0) {
+    throw new Error(
+      `node-pty has no usable shell PID (got ${String(pid)}); refusing to probe PID 0.`,
+    );
+  }
+  return pid;
+}
+
 function spawnShell(nodePty) {
   const pty = nodePty.spawn(shellFile, shellArgs, {
     cols: 80,
@@ -116,7 +126,6 @@ function spawnShell(nodePty) {
     exit,
     getOutput: () => output,
     isExited: () => exited,
-    pid: pty.pid,
     pty,
   };
 }
@@ -141,8 +150,9 @@ async function destroyShell(session) {
     session.pty.kill();
   } catch {}
   await Promise.race([session.exit, sleep(5_000)]);
-  if (typeof session.pid === "number") {
-    taskkillTree(session.pid);
+  const pid = session.pty.pid;
+  if (typeof pid === "number" && Number.isInteger(pid) && pid > 0) {
+    taskkillTree(pid);
     await Promise.race([session.exit, sleep(5_000)]);
   }
   releasePty(session.pty);
@@ -201,7 +211,7 @@ async function smokeWindowsConpty() {
           `PowerShell exited during startup.\noutput tail:\n${outputTail(session.getOutput())}`,
         );
       }
-      session.pty.write("Write-Output ('BB_' + 'WN_OK')\r");
+      session.pty.write(Buffer.from("Write-Output ('BB_' + 'WN_OK')\r", "utf8"));
       const match = await waitForPattern(
         session.getOutput,
         /BB_WN_OK/,
@@ -212,7 +222,7 @@ async function smokeWindowsConpty() {
           `BB_WN_OK never appeared in shell output.\noutput tail:\n${outputTail(session.getOutput())}`,
         );
       }
-      return { detail: `pid=${String(session.pid)}`, session };
+      return { detail: `pid=${String(currentShellPid(session))}`, session };
     } catch (error) {
       await destroyShell(session);
       throw error;
@@ -223,18 +233,22 @@ async function smokeWindowsConpty() {
     const session = spawnShell(nodePty);
     try {
       await sleep(shellStartupMs);
-      session.pty.write("Write-Output ('dise' + 'ño ✓')\r");
+      session.pty.write(
+        Buffer.from("Write-Output ('dise' + 'ño ✓')\r", "utf8"),
+      );
       const match = await waitForPattern(
         session.getOutput,
         /diseño ✓/,
         stepTimeoutMs,
       );
       if (match === null) {
+        const output = session.getOutput();
+        const sawEnye = output.includes("diseño");
         throw new Error(
-          `UTF-8 round-trip failed: "diseño ✓" never appeared intact (chcp 65001 bootstrap suspect).\noutput tail:\n${outputTail(session.getOutput())}`,
+          `UTF-8 round-trip failed: "diseño ✓" never appeared intact (input was written as explicit UTF-8 bytes, chcp 65001 bootstrap untouched${sawEnye ? "; ñ decodes in output so ConPTY output decoding works and the missing ✓ points at input encoding, not chcp" : ""}).\noutput tail:\n${outputTail(output)}`,
         );
       }
-      return { detail: `pid=${String(session.pid)}`, session };
+      return { detail: `pid=${String(currentShellPid(session))}`, session };
     } catch (error) {
       await destroyShell(session);
       throw error;
@@ -252,7 +266,9 @@ async function smokeWindowsConpty() {
       if (session.isExited()) {
         throw new Error("PowerShell died after resize.");
       }
-      session.pty.write("Write-Output ('BB_WN_' + 'RESIZE_OK')\r");
+      session.pty.write(
+        Buffer.from("Write-Output ('BB_WN_' + 'RESIZE_OK')\r", "utf8"),
+      );
       const match = await waitForPattern(
         session.getOutput,
         /BB_WN_RESIZE_OK/,
@@ -263,7 +279,7 @@ async function smokeWindowsConpty() {
           `Shell stopped responding after resize.\noutput tail:\n${outputTail(session.getOutput())}`,
         );
       }
-      return { detail: `pid=${String(session.pid)}`, session };
+      return { detail: `pid=${String(currentShellPid(session))}`, session };
     } catch (error) {
       await destroyShell(session);
       throw error;
@@ -274,10 +290,7 @@ async function smokeWindowsConpty() {
     const session = spawnShell(nodePty);
     try {
       await sleep(shellStartupMs);
-      const pid = session.pid;
-      if (typeof pid !== "number") {
-        throw new Error("node-pty did not expose a shell PID.");
-      }
+      const pid = currentShellPid(session);
       session.pty.kill();
       const exited = await waitForExit(session.exit, 10_000);
       if (!exited) {
@@ -304,12 +317,12 @@ async function smokeWindowsConpty() {
     let childPid = null;
     try {
       await sleep(shellStartupMs);
-      const parentPid = session.pid;
-      if (typeof parentPid !== "number") {
-        throw new Error("node-pty did not expose a shell PID.");
-      }
+      const parentPid = currentShellPid(session);
       session.pty.write(
-        "$bbWnChild = Start-Process -FilePath powershell.exe -ArgumentList '-NoLogo','-NoProfile','-Command','Start-Sleep -Seconds 60' -PassThru; Write-Output ('BB_WN_CHILD_' + $bbWnChild.Id)\r",
+        Buffer.from(
+          "$bbWnChild = Start-Process -FilePath powershell.exe -ArgumentList '-NoLogo','-NoProfile','-Command','Start-Sleep -Seconds 60' -PassThru; Write-Output ('BB_WN_CHILD_' + $bbWnChild.Id)\r",
+          "utf8",
+        ),
       );
       const match = await waitForPattern(
         session.getOutput,
