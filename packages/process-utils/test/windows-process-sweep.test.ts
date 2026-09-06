@@ -17,6 +17,7 @@ import {
   spawnPortableProcess,
   stopProcessGroupLeaderFirst,
   unregisterSweepRootProcess,
+  WINDOWS_PROCESS_ENUM_TIMEOUT_MS,
   type WindowsCommandRequest,
   type WindowsCommandResult,
   type WindowsProcessSnapshotEntry,
@@ -322,6 +323,39 @@ describe("listProcessesWithCwdUnder on win32", () => {
       }),
     ).rejects.toThrow(/spawn powershell\.exe ENOENT/);
   });
+
+  it("pins the default CIM probe timeout", () => {
+    expect(WINDOWS_PROCESS_ENUM_TIMEOUT_MS).toBe(10_000);
+  });
+
+  it("rejects instead of hanging when the CIM probe never settles", async () => {
+    await expect(
+      listProcessesWithCwdUnder({
+        directory: SWEEP_DIRECTORY,
+        platform: "win32",
+        processEnumTimeoutMs: 50,
+        runWindowsCommand: () => new Promise<WindowsCommandResult>(() => {}),
+      }),
+    ).rejects.toThrow(/powershell\.exe.*timed out after 50ms/);
+  });
+
+  it("still enumerates when the CIM probe answers within the timeout", async () => {
+    const found = await listProcessesWithCwdUnder({
+      directory: SWEEP_DIRECTORY,
+      platform: "win32",
+      processEnumTimeoutMs: 5_000,
+      runWindowsCommand: async () => {
+        await new Promise((resolveDelay) => setTimeout(resolveDelay, 20));
+        return okResult(CIM_SAMPLE);
+      },
+    });
+    expect(
+      found
+        .map((entry) => entry.pid)
+        .filter((pid) => pid !== process.pid)
+        .sort((a, b) => a - b),
+    ).toEqual([1234, 4242, 4243, 4244]);
+  });
 });
 
 describe("killProcessesWithCwdUnder on win32", () => {
@@ -440,6 +474,18 @@ describe("killProcessesWithCwdUnder on win32", () => {
         isProcessAlive: () => false,
       }),
     ).rejects.toThrow(/CIM probe exploded/);
+  });
+
+  it("rejects on a hung CIM probe instead of hanging the sweep", async () => {
+    await expect(
+      killProcessesWithCwdUnder({
+        directory: SWEEP_DIRECTORY,
+        platform: "win32",
+        processEnumTimeoutMs: 50,
+        runWindowsCommand: () => new Promise<WindowsCommandResult>(() => {}),
+        isProcessAlive: () => false,
+      }),
+    ).rejects.toThrow(/timed out after 50ms/);
   });
 });
 

@@ -75,6 +75,7 @@ export interface ProcessWithCwd {
 interface ListProcessesWithCwdUnderArgs {
   directory: string;
   platform?: NodeJS.Platform;
+  processEnumTimeoutMs?: number;
   runWindowsCommand?: WindowsCommandRunner;
 }
 
@@ -82,6 +83,7 @@ interface KillProcessesWithCwdUnderArgs {
   directory: string;
   graceMs?: number;
   platform?: NodeJS.Platform;
+  processEnumTimeoutMs?: number;
   runWindowsCommand?: WindowsCommandRunner;
   isProcessAlive?: (pid: number) => boolean;
 }
@@ -762,6 +764,8 @@ export function matchWindowsProcessesUnderDirectory(
   return results;
 }
 
+export const WINDOWS_PROCESS_ENUM_TIMEOUT_MS = 10_000;
+
 function defaultWindowsCommandRunner(
   request: WindowsCommandRequest,
 ): Promise<WindowsCommandResult> {
@@ -772,10 +776,40 @@ function defaultWindowsCommandRunner(
     });
     const stdoutChunks: Buffer[] = [];
     const stderrChunks: Buffer[] = [];
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      try {
+        child.kill("SIGKILL");
+      } catch {}
+      rejectRunner(
+        new Error(
+          windowsCommandErrorMessage(
+            request,
+            `timed out after ${WINDOWS_PROCESS_ENUM_TIMEOUT_MS}ms`,
+          ),
+        ),
+      );
+    }, WINDOWS_PROCESS_ENUM_TIMEOUT_MS);
     child.stdout.on("data", (chunk) => stdoutChunks.push(Buffer.from(chunk)));
     child.stderr.on("data", (chunk) => stderrChunks.push(Buffer.from(chunk)));
-    child.once("error", (error) => rejectRunner(error));
+    child.once("error", (error) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      clearTimeout(timer);
+      rejectRunner(error);
+    });
     child.once("exit", (exitCode) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      clearTimeout(timer);
       resolveRunner({
         stdout: Buffer.concat(stdoutChunks).toString("utf8"),
         stderr: Buffer.concat(stderrChunks).toString("utf8"),
@@ -824,15 +858,46 @@ async function runWindowsCommandOrThrow(
   return result;
 }
 
+async function runWindowsCommandWithTimeout(args: {
+  runner: WindowsCommandRunner;
+  request: WindowsCommandRequest;
+  timeoutMs: number;
+}): Promise<WindowsCommandResult> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      runWindowsCommandOrThrow(args.runner, args.request),
+      new Promise<WindowsCommandResult>((_resolve, reject) => {
+        timer = setTimeout(() => {
+          reject(
+            new Error(
+              windowsCommandErrorMessage(
+                args.request,
+                `timed out after ${args.timeoutMs}ms`,
+              ),
+            ),
+          );
+        }, args.timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timer !== undefined) {
+      clearTimeout(timer);
+    }
+  }
+}
+
 async function listWindowsProcessesWithCwdUnder(args: {
   directory: string;
   runner: WindowsCommandRunner;
   selfPid: number;
+  timeoutMs: number;
 }): Promise<ProcessWithCwd[]> {
-  const result = await runWindowsCommandOrThrow(
-    args.runner,
-    buildWindowsProcessEnumRequest(),
-  );
+  const result = await runWindowsCommandWithTimeout({
+    runner: args.runner,
+    request: buildWindowsProcessEnumRequest(),
+    timeoutMs: args.timeoutMs,
+  });
   const snapshot = parseWindowsProcessSnapshot(result.stdout);
   const livePids = new Set(snapshot.map((entry) => entry.processId));
   for (const pid of trackedSweepRoots.keys()) {
@@ -864,6 +929,7 @@ async function killWindowsProcessesWithCwdUnder(args: {
   runner: WindowsCommandRunner;
   isAlive: (pid: number) => boolean;
   selfPid: number;
+  timeoutMs: number;
 }): Promise<ProcessWithCwd[]> {
   const signalled = new Map<number, ProcessWithCwd>();
   const seen = new Map<number, ProcessWithCwd>();
@@ -873,6 +939,7 @@ async function killWindowsProcessesWithCwdUnder(args: {
       directory: args.directory,
       runner: args.runner,
       selfPid: args.selfPid,
+      timeoutMs: args.timeoutMs,
     });
     if (targets.length === 0) {
       break;
@@ -919,6 +986,7 @@ async function killWindowsProcessesWithCwdUnder(args: {
       directory: args.directory,
       runner: args.runner,
       selfPid: args.selfPid,
+      timeoutMs: args.timeoutMs,
     });
     if (survivors.length === 0) {
       break;
@@ -967,6 +1035,7 @@ export async function listProcessesWithCwdUnder(
       directory: args.directory,
       runner: args.runWindowsCommand ?? defaultWindowsCommandRunner,
       selfPid: process.pid,
+      timeoutMs: args.processEnumTimeoutMs ?? WINDOWS_PROCESS_ENUM_TIMEOUT_MS,
     });
   }
   const directory = await resolveSweepDirectory(args.directory);
@@ -1024,6 +1093,7 @@ export async function killProcessesWithCwdUnder(
       runner: args.runWindowsCommand ?? defaultWindowsCommandRunner,
       isAlive,
       selfPid: process.pid,
+      timeoutMs: args.processEnumTimeoutMs ?? WINDOWS_PROCESS_ENUM_TIMEOUT_MS,
     });
   }
   const signalled = new Map<number, ProcessWithCwd>();
