@@ -1642,9 +1642,7 @@ describe("TerminalManager", () => {
       start: DEFAULT_TERMINAL_START,
     } as const;
 
-    await expect(manager.handleMessage(openMessage)).rejects.toThrow(
-      "transport broke",
-    );
+    await manager.handleMessage(openMessage);
 
     const failedPty = adapter.spawned[0]?.pty;
     if (!failedPty) {

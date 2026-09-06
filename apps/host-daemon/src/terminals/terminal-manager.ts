@@ -807,6 +807,8 @@ export class TerminalManager {
       }
       session.disposables.push(
         pty.onData((data) => this.handleTerminalOutput(session, data)),
+      );
+      session.disposables.push(
         pty.onExit((event) => {
           void this.runTerminalOperation({
             operation: () =>
