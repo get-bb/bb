@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { createRequire } from "node:module";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -18,12 +19,9 @@ const generatedConfigPath = resolve(
   desktopPackageRoot,
   ".electron-builder.generated.json",
 );
-const electronBuilderBin = resolve(
-  desktopPackageRoot,
-  "node_modules",
-  ".bin",
-  "electron-builder",
-);
+const electronBuilderCli = createRequire(
+  resolve(desktopPackageRoot, "package.json"),
+).resolve("electron-builder/cli.js");
 
 const codeSigningKeys = ["CSC_LINK", "CSC_KEY_PASSWORD"];
 const notarizationKeys = [
@@ -259,8 +257,8 @@ async function removeGeneratedConfig() {
 
 async function runElectronBuilder(args, signingPlan) {
   const child = spawn(
-    electronBuilderBin,
-    ["--config", generatedConfigPath, ...args],
+    process.execPath,
+    [electronBuilderCli, "--config", generatedConfigPath, ...args],
     {
       cwd: desktopPackageRoot,
       env: createElectronBuilderEnv(signingPlan),
@@ -269,7 +267,12 @@ async function runElectronBuilder(args, signingPlan) {
   );
 
   const exitCode = await new Promise((resolveExitCode) => {
-    child.on("error", () => {
+    child.on("error", (error) => {
+      console.error(
+        `Failed to start electron-builder at ${electronBuilderCli}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
       resolveExitCode(1);
     });
     child.on("close", resolveExitCode);
