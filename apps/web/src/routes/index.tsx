@@ -884,7 +884,7 @@ function Composer({ thread }: { thread?: MockThread }) {
           ) : (
             <FolderGitIcon className="ctx-ic" />
           )}
-          <span>{isNew ? "Work locally" : "Worktree"}</span>
+          <span>{isNew ? "Current checkout" : "Worktree"}</span>
           <ChevronDown className="ctx-chev" />
         </span>
         <span className="ctx">
