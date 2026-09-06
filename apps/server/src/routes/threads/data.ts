@@ -1,4 +1,7 @@
-import path from "node:path";
+import {
+  isAbsoluteHostPath,
+  joinHostPath,
+} from "../../services/hosts/host-paths.js";
 import {
   getAppSettings,
   getLatestThreadSequence,
@@ -93,7 +96,7 @@ function resolveThreadProviderDisplayName(
 
 function validateFilePath(filePath: string): void {
   if (
-    filePath.startsWith("/") ||
+    isAbsoluteHostPath(filePath) ||
     filePath.split("/").includes("..") ||
     filePath.split("\\").includes("..")
   ) {
@@ -254,7 +257,7 @@ async function serveThreadStorageRawFile(
       timeoutMs: COMMAND_TIMEOUT_MS,
       command: {
         type: "host.read_file",
-        path: path.join(target.storagePath, filePath.relativePath),
+        path: joinHostPath(target.storagePath, filePath.relativePath),
         rootPath: target.storagePath,
       },
     });
@@ -282,7 +285,7 @@ async function serveThreadWorktreeRawFile(
       timeoutMs: COMMAND_TIMEOUT_MS,
       command: {
         type: "host.read_file",
-        path: path.join(environment.path, filePath.relativePath),
+        path: joinHostPath(environment.path, filePath.relativePath),
         rootPath: environment.path,
       },
     });
@@ -659,7 +662,7 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
         timeoutMs: COMMAND_TIMEOUT_MS,
         command: {
           type: "host.read_file",
-          path: path.join(target.storagePath, query.path),
+          path: joinHostPath(target.storagePath, query.path),
           rootPath: target.storagePath,
         },
       });

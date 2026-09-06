@@ -1,4 +1,4 @@
-import path from "node:path";
+import { dirnameHostPath } from "../hosts/host-paths.js";
 import {
   EMPTY_PROVIDER_NATIVE_ROOTS,
   EMPTY_PROVIDER_RESOLVED_NATIVE_ROOTS,
@@ -17,9 +17,7 @@ interface ResolvedSharedSkills {
 }
 
 export function hostPathDirname(filePath: string): string {
-  return /^[a-zA-Z]:[\\/]/u.test(filePath)
-    ? path.win32.dirname(filePath)
-    : path.posix.dirname(filePath);
+  return dirnameHostPath(filePath);
 }
 
 function toSharedSkill(

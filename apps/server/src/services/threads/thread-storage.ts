@@ -1,4 +1,4 @@
-import path from "node:path";
+import { joinHostPath } from "../hosts/host-paths.js";
 import type { WorkSessionDeps } from "../../types.js";
 import { ensureHostSessionReadyForWork } from "../hosts/host-lifecycle.js";
 
@@ -14,5 +14,5 @@ export async function requireThreadStoragePath(
   const session = await ensureHostSessionReadyForWork(deps, {
     hostId: args.hostId,
   });
-  return path.join(session.dataDir, "thread-storage", args.threadId);
+  return joinHostPath(session.dataDir, "thread-storage", args.threadId);
 }

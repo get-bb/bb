@@ -1,4 +1,8 @@
-import path from "node:path";
+import {
+  isAbsoluteHostPath,
+  joinHostPath,
+  normalizeHostPath,
+} from "../services/hosts/host-paths.js";
 import { randomUUID } from "node:crypto";
 import type { Hono } from "hono";
 import mimeTypes from "mime-types";
@@ -47,22 +51,6 @@ function normalizeMimeType(value: string | null | undefined): string | null {
   return normalizedValue && normalizedValue.length > 0 ? normalizedValue : null;
 }
 
-function isAbsoluteHostPath(value: string): boolean {
-  return path.posix.isAbsolute(value) || path.win32.isAbsolute(value);
-}
-
-function normalizeHostPath(value: string): string {
-  return path.win32.isAbsolute(value) && !path.posix.isAbsolute(value)
-    ? path.win32.normalize(value)
-    : path.posix.normalize(value);
-}
-
-function joinHostPath(rootPath: string, segments: string[]): string {
-  return path.win32.isAbsolute(rootPath) && !path.posix.isAbsolute(rootPath)
-    ? path.win32.join(rootPath, ...segments)
-    : path.posix.join(rootPath, ...segments);
-}
-
 function isHtmlMimeType(value: string | null | undefined): boolean {
   return normalizeMimeType(value) === HTML_MIME_TYPE;
 }
@@ -81,10 +69,10 @@ function createRawFilesystemPathUnsupportedError(): ApiError {
 }
 
 function parseRawFilesystemPath(rawPath: string): string {
-  if (rawPath.includes("\0") || !path.isAbsolute(rawPath)) {
+  if (rawPath.includes("\0") || !isAbsoluteHostPath(rawPath)) {
     throw createRawFilesystemPathInvalidError();
   }
-  return path.resolve(rawPath);
+  return normalizeHostPath(rawPath);
 }
 
 function assertHtmlPreviewPath(filePath: string): void {
@@ -415,7 +403,7 @@ export function registerFileRoutes(app: Hono, deps: AppDeps): void {
         timeoutMs: COMMAND_TIMEOUT_MS,
         command: {
           type: "host.read_file",
-          path: joinHostPath(lease.rootPath, segments),
+          path: joinHostPath(lease.rootPath, ...segments),
           rootPath: lease.rootPath,
         },
       });
