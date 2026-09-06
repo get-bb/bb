@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   buildWindowsTaskkillRequest,
   clearSweepRootProcesses,
+  expandWindowsShortPath,
   isWindowsPathUnderDirectory,
   killProcessGroup,
   killProcessesWithCwdUnder,
@@ -175,6 +176,7 @@ describe("matchWindowsProcessesUnderDirectory", () => {
       pid: 4242,
       cwd: "C:\\work\\bb\\tools\\agent.exe",
       approximateCwd: true,
+      matchEvidence: "executable-path",
     });
   });
 
@@ -187,6 +189,7 @@ describe("matchWindowsProcessesUnderDirectory", () => {
       pid: 1234,
       cwd: "C:\\work\\bb\\scripts\\start-bb.mjs",
       approximateCwd: true,
+      matchEvidence: "command-line",
     });
   });
 
@@ -202,6 +205,7 @@ describe("matchWindowsProcessesUnderDirectory", () => {
       pid: 4244,
       cwd: "C:\\work\\bb\\tools\\agent.exe",
       approximateCwd: true,
+      matchEvidence: "descendant",
     });
   });
 
@@ -238,7 +242,14 @@ describe("matchWindowsProcessesUnderDirectory", () => {
         directory: SWEEP_DIRECTORY,
         trackedRoots: tracked,
       }),
-    ).toEqual([{ pid: 9001, cwd: SWEEP_DIRECTORY, approximateCwd: true }]);
+    ).toEqual([
+      {
+        pid: 9001,
+        cwd: SWEEP_DIRECTORY,
+        approximateCwd: true,
+        matchEvidence: "spawn-registry",
+      },
+    ]);
     expect(
       matchWindowsProcessesUnderDirectory({
         snapshot: ownSnapshot,
@@ -264,9 +275,201 @@ describe("matchWindowsProcessesUnderDirectory", () => {
         directory: SWEEP_DIRECTORY,
         trackedRoots: tracked,
       }),
-    ).toEqual([{ pid: 9001, cwd: SWEEP_DIRECTORY, approximateCwd: true }]);
+    ).toEqual([
+      {
+        pid: 9001,
+        cwd: SWEEP_DIRECTORY,
+        approximateCwd: true,
+        matchEvidence: "descendant",
+      },
+    ]);
   });
 });
+
+describe("windows sweep match evidence", () => {
+  const evidenceSnapshot: WindowsProcessSnapshotEntry[] =
+    parseWindowsProcessSnapshot(CIM_SAMPLE);
+
+  it("reports how each match was reached", () => {
+    const found = matchWindowsProcessesUnderDirectory({
+      snapshot: evidenceSnapshot,
+      directory: SWEEP_DIRECTORY,
+    });
+    const evidence = new Map(
+      found.map((entry) => [entry.pid, entry.matchEvidence]),
+    );
+    expect(evidence.get(1234)).toBe("command-line");
+    expect(evidence.get(4242)).toBe("executable-path");
+    expect(evidence.get(4243)).toBe("descendant");
+    expect(evidence.get(4244)).toBe("descendant");
+  });
+
+  it("prefers a child direct match over inheritance", () => {
+    const snapshot: WindowsProcessSnapshotEntry[] = [
+      {
+        processId: 100,
+        parentProcessId: 1,
+        executablePath: "C:\\work\\bb\\tools\\agent.exe",
+        commandLine: `"C:\\work\\bb\\tools\\agent.exe"`,
+      },
+      {
+        processId: 101,
+        parentProcessId: 100,
+        executablePath:
+          "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+        commandLine: `powershell.exe --config C:\\work\\bb\\cfg.json`,
+      },
+    ];
+    const found = matchWindowsProcessesUnderDirectory({
+      snapshot,
+      directory: SWEEP_DIRECTORY,
+    });
+    expect(found).toContainEqual({
+      pid: 100,
+      cwd: "C:\\work\\bb\\tools\\agent.exe",
+      approximateCwd: true,
+      matchEvidence: "executable-path",
+    });
+    expect(found).toContainEqual({
+      pid: 101,
+      cwd: "C:\\work\\bb\\cfg.json",
+      approximateCwd: true,
+      matchEvidence: "command-line",
+    });
+  });
+});
+
+describe("windows sweep short-path canonicalization", () => {
+  const shortSnapshot: WindowsProcessSnapshotEntry[] = [
+    {
+      processId: 7001,
+      parentProcessId: 1,
+      executablePath: "C:\\PROGRA~1\\nodejs\\node.exe",
+      commandLine: `"C:\\PROGRA~1\\nodejs\\node.exe"`,
+    },
+  ];
+
+  it("misses short names against their long form without canonicalization", () => {
+    expect(
+      matchWindowsProcessesUnderDirectory({
+        snapshot: shortSnapshot,
+        directory: "C:\\Program Files",
+        canonicalizePath: (value) => value,
+      }),
+    ).toEqual([]);
+  });
+
+  it("matches short executables once canonicalized to the long form", () => {
+    const found = matchWindowsProcessesUnderDirectory({
+      snapshot: shortSnapshot,
+      directory: "C:\\Program Files",
+      canonicalizePath: (value) =>
+        value.replace("C:\\PROGRA~1", "C:\\Program Files"),
+    });
+    expect(found).toEqual([
+      {
+        pid: 7001,
+        cwd: "C:\\PROGRA~1\\nodejs\\node.exe",
+        approximateCwd: true,
+        matchEvidence: "executable-path",
+      },
+    ]);
+  });
+
+  it("matches long executables against a short sweep directory", () => {
+    const longSnapshot: WindowsProcessSnapshotEntry[] = [
+      {
+        processId: 7002,
+        parentProcessId: 1,
+        executablePath: "C:\\Program Files\\nodejs\\node.exe",
+        commandLine: `"C:\\Program Files\\nodejs\\node.exe"`,
+      },
+    ];
+    const found = matchWindowsProcessesUnderDirectory({
+      snapshot: longSnapshot,
+      directory: "C:\\PROGRA~1",
+      canonicalizePath: (value) =>
+        value.replace("C:\\PROGRA~1", "C:\\Program Files"),
+    });
+    expect(found).toEqual([
+      {
+        pid: 7002,
+        cwd: "C:\\Program Files\\nodejs\\node.exe",
+        approximateCwd: true,
+        matchEvidence: "executable-path",
+      },
+    ]);
+  });
+
+  it("leaves paths without short segments untouched", () => {
+    expect(
+      expandWindowsShortPath("C:\\work\\bb\\tools\\agent.exe"),
+    ).toBe("C:\\work\\bb\\tools\\agent.exe");
+  });
+
+  it("falls back to the input when a short path cannot be resolved", () => {
+    expect(expandWindowsShortPath("C:\\NOPE~1\\missing-target-xyz")).toBe(
+      "C:\\NOPE~1\\missing-target-xyz",
+    );
+  });
+});
+
+describe.runIf(process.platform === "win32")(
+  "windows sweep short paths live",
+  () => {
+    it("expands a real short name with the default canonicalizer", async () => {
+      const { execFileSync } = await import("node:child_process");
+      const { homedir } = await import("node:os");
+      const homeDir = homedir();
+      const shortHome = execFileSync(
+        "powershell.exe",
+        [
+          "-NoLogo",
+          "-NoProfile",
+          "-NonInteractive",
+          "-Command",
+          `(New-Object -ComObject Scripting.FileSystemObject).GetFolder('${homeDir}').ShortPath`,
+        ],
+        { encoding: "utf8" },
+      ).trim();
+      if (shortHome === homeDir) {
+        return;
+      }
+      expect(expandWindowsShortPath(shortHome)).toBe(homeDir);
+      const { existsSync } = await import("node:fs");
+      if (!existsSync(`${homeDir}\\AppData`)) {
+        return;
+      }
+      const snapshot: WindowsProcessSnapshotEntry[] = [
+        {
+          processId: 7003,
+          parentProcessId: 1,
+          executablePath: `${shortHome}\\AppData`,
+          commandLine: `"${shortHome}\\AppData"`,
+        },
+      ];
+      expect(
+        matchWindowsProcessesUnderDirectory({
+          snapshot,
+          directory: homeDir,
+          canonicalizePath: (value) => value,
+        }),
+      ).toEqual([]);
+      const found = matchWindowsProcessesUnderDirectory({
+        snapshot,
+        directory: homeDir,
+      });
+      expect(found).toEqual([
+        {
+          pid: 7003,
+          cwd: `${shortHome}\\AppData`,
+          approximateCwd: true,
+          matchEvidence: "executable-path",
+        },
+      ]);
+    });
+  },
+);
 
 describe("listProcessesWithCwdUnder on win32", () => {
   beforeEach(() => {
@@ -295,6 +498,7 @@ describe("listProcessesWithCwdUnder on win32", () => {
     ).toEqual([1234, 4242, 4243, 4244]);
     for (const entry of found) {
       expect(entry.approximateCwd).toBe(true);
+      expect(entry.matchEvidence).toBeDefined();
     }
   });
 
@@ -456,6 +660,7 @@ describe("killProcessesWithCwdUnder on win32", () => {
         pid: 4242,
         cwd: "C:\\work\\bb\\tools\\agent.exe",
         approximateCwd: true,
+        matchEvidence: "executable-path",
       },
     ]);
   });
@@ -630,7 +835,12 @@ describe("sweep root registry", () => {
   it("finds registered processes and forgets them on unregister", async () => {
     registerSweepRootProcess({ pid: 9501, cwd: "C:\\work\\bb" });
     expect(await listTracked(SWEEP_DIRECTORY)).toEqual([
-      { pid: 9501, cwd: "C:\\work\\bb", approximateCwd: true },
+      {
+        pid: 9501,
+        cwd: "C:\\work\\bb",
+        approximateCwd: true,
+        matchEvidence: "spawn-registry",
+      },
     ]);
     unregisterSweepRootProcess(9501);
     expect(await listTracked(SWEEP_DIRECTORY)).toEqual([]);
@@ -679,7 +889,9 @@ describe("spawnPortableProcess sweep tracking", () => {
         platform: "win32",
         runWindowsCommand: async () => okResult(snapshot),
       });
-      expect(found).toEqual([{ pid, cwd: dir, approximateCwd: true }]);
+      expect(found).toEqual([
+        { pid, cwd: dir, approximateCwd: true, matchEvidence: "spawn-registry" },
+      ]);
     } finally {
       child.kill("SIGKILL");
     }

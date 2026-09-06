@@ -2,7 +2,7 @@ export * from "./plugin-process-paths.js";
 import { spawnSync } from "node:child_process";
 import type { ChildProcess, StdioOptions } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, realpathSync, writeFileSync } from "node:fs";
 import { lstat, readdir, readlink, realpath } from "node:fs/promises";
 import {
   basename,
@@ -66,10 +66,17 @@ interface StopProcessGroupLeaderFirstArgs {
   isProcessAlive?: (pid: number) => boolean;
 }
 
+export type WindowsSweepMatchEvidence =
+  | "spawn-registry"
+  | "executable-path"
+  | "command-line"
+  | "descendant";
+
 export interface ProcessWithCwd {
   pid: number;
   cwd: string;
   approximateCwd?: boolean;
+  matchEvidence?: WindowsSweepMatchEvidence;
 }
 
 interface ListProcessesWithCwdUnderArgs {
@@ -499,6 +506,7 @@ export interface MatchWindowsProcessesUnderDirectoryArgs {
   directory: string;
   trackedRoots?: ReadonlyMap<number, string>;
   selfPid?: number;
+  canonicalizePath?: (value: string) => string;
 }
 
 const WINDOWS_PROCESS_ENUM_COMMAND = "powershell.exe";
@@ -575,6 +583,19 @@ function canonicalizeWindowsPath(value: string): string {
     return prefix === "" ? "\\" : prefix;
   }
   return `${prefix}${rest}`.toLowerCase();
+}
+
+const WINDOWS_SHORT_NAME_SEGMENT_PATTERN = /~\d+(?=[\\/]|$)/u;
+
+export function expandWindowsShortPath(value: string): string {
+  if (!WINDOWS_SHORT_NAME_SEGMENT_PATTERN.test(value)) {
+    return value;
+  }
+  try {
+    return realpathSync.native(value);
+  } catch {
+    return value;
+  }
 }
 
 export function isWindowsPathUnderDirectory(
@@ -673,20 +694,31 @@ export function parseWindowsProcessSnapshot(
   return results;
 }
 
-function matchWindowsProcessPath(
-  entry: WindowsProcessSnapshotEntry,
-  directory: string,
-): string | null {
+function matchWindowsProcessPath(args: {
+  entry: WindowsProcessSnapshotEntry;
+  directory: string;
+  canonicalizePath: (value: string) => string;
+}): { path: string; evidence: WindowsSweepMatchEvidence } | null {
   if (
-    entry.executablePath !== null &&
-    isWindowsPathUnderDirectory(entry.executablePath, directory)
+    args.entry.executablePath !== null &&
+    isWindowsPathUnderDirectory(
+      args.canonicalizePath(args.entry.executablePath),
+      args.directory,
+    )
   ) {
-    return entry.executablePath;
+    return { path: args.entry.executablePath, evidence: "executable-path" };
   }
-  if (entry.commandLine !== null) {
-    for (const candidate of extractWindowsPathCandidates(entry.commandLine)) {
-      if (isWindowsPathUnderDirectory(candidate, directory)) {
-        return candidate;
+  if (args.entry.commandLine !== null) {
+    for (const candidate of extractWindowsPathCandidates(
+      args.entry.commandLine,
+    )) {
+      if (
+        isWindowsPathUnderDirectory(
+          args.canonicalizePath(candidate),
+          args.directory,
+        )
+      ) {
+        return { path: candidate, evidence: "command-line" };
       }
     }
   }
@@ -697,6 +729,18 @@ export function matchWindowsProcessesUnderDirectory(
   args: MatchWindowsProcessesUnderDirectoryArgs,
 ): ProcessWithCwd[] {
   const trackedRoots = args.trackedRoots ?? new Map<number, string>();
+  const canonicalizePath = args.canonicalizePath ?? expandWindowsShortPath;
+  const canonicalCache = new Map<string, string>();
+  const canonicalize = (value: string): string => {
+    const cached = canonicalCache.get(value);
+    if (cached !== undefined) {
+      return cached;
+    }
+    const canonical = canonicalizePath(value);
+    canonicalCache.set(value, canonical);
+    return canonical;
+  };
+  const directory = canonicalize(args.directory);
   const byPid = new Map<number, WindowsProcessSnapshotEntry>();
   const childrenByParent = new Map<number, number[]>();
   for (const entry of args.snapshot) {
@@ -705,13 +749,16 @@ export function matchWindowsProcessesUnderDirectory(
     siblings.push(entry.processId);
     childrenByParent.set(entry.parentProcessId, siblings);
   }
-  const evidenceByPid = new Map<number, string>();
+  const evidenceByPid = new Map<
+    number,
+    { cwd: string; evidence: WindowsSweepMatchEvidence }
+  >();
   for (const [pid, rootCwd] of trackedRoots) {
     if (args.selfPid !== undefined && pid === args.selfPid) {
       continue;
     }
-    if (isWindowsPathUnderDirectory(rootCwd, args.directory)) {
-      evidenceByPid.set(pid, rootCwd);
+    if (isWindowsPathUnderDirectory(canonicalize(rootCwd), directory)) {
+      evidenceByPid.set(pid, { cwd: rootCwd, evidence: "spawn-registry" });
     }
   }
   for (const entry of args.snapshot) {
@@ -721,9 +768,16 @@ export function matchWindowsProcessesUnderDirectory(
     if (evidenceByPid.has(entry.processId)) {
       continue;
     }
-    const evidence = matchWindowsProcessPath(entry, args.directory);
-    if (evidence !== null) {
-      evidenceByPid.set(entry.processId, evidence);
+    const match = matchWindowsProcessPath({
+      entry,
+      directory,
+      canonicalizePath: canonicalize,
+    });
+    if (match !== null) {
+      evidenceByPid.set(entry.processId, {
+        cwd: match.path,
+        evidence: match.evidence,
+      });
     }
   }
   const queue = [...evidenceByPid.keys()];
@@ -749,17 +803,31 @@ export function matchWindowsProcessesUnderDirectory(
       const own =
         child === undefined
           ? null
-          : matchWindowsProcessPath(child, args.directory);
-      evidenceByPid.set(childPid, own ?? inherited);
+          : matchWindowsProcessPath({
+              entry: child,
+              directory,
+              canonicalizePath: canonicalize,
+            });
+      evidenceByPid.set(
+        childPid,
+        own === null
+          ? { cwd: inherited.cwd, evidence: "descendant" }
+          : { cwd: own.path, evidence: own.evidence },
+      );
       queue.push(childPid);
     }
   }
   const results: ProcessWithCwd[] = [];
-  for (const [pid, cwd] of evidenceByPid) {
+  for (const [pid, match] of evidenceByPid) {
     if (!byPid.has(pid)) {
       continue;
     }
-    results.push({ pid, cwd, approximateCwd: true });
+    results.push({
+      pid,
+      cwd: match.cwd,
+      approximateCwd: true,
+      matchEvidence: match.evidence,
+    });
   }
   return results;
 }
