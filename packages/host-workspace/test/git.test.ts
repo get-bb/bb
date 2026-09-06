@@ -21,6 +21,9 @@ import {
 
 const tempDirs: string[] = [];
 
+const WIN32_FILENAME_CANNOT_END_IN_TAB_MEASURED_WRITE_THROWS_ENOENT =
+  process.platform === "win32";
+
 async function initReadGitBlobRepo() {
   const repoPath = await fs.mkdtemp(
     path.join(os.tmpdir(), "bb-read-git-blob-"),
@@ -263,6 +266,12 @@ describe("runGitWithNullRecordLimit", () => {
   });
 
   it("does not confuse a regular numstat path ending in a tab with a rename", async () => {
+    expect(parseNumstatEntriesZ("1\t0\ttrailing-tab\t\0")).toEqual([
+      { path: "trailing-tab\t", insertions: 1, deletions: 0 },
+    ]);
+    if (WIN32_FILENAME_CANNOT_END_IN_TAB_MEASURED_WRITE_THROWS_ENOENT) {
+      return;
+    }
     const repoPath = await initReadGitBlobRepo();
     const unusualPath = "trailing-tab\t";
     await fs.writeFile(path.join(repoPath, unusualPath), "one\n");
