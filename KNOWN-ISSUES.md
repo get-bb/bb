@@ -471,3 +471,42 @@ of scope and **must be done by a person** on real Windows 11, following
 - the Electron window opening without asking for a browser
 - clean uninstall
 - behaviour after a reboot
+
+## K17 — Host-layer Windows execution realities — MEASURED 2026-09-06
+
+Facts established while bringing `@bb/host-workspace`, `@bb/host-watcher`
+and `@bb/host-daemon-contract` to zero failures on Windows 11 Pro build
+26200. All are encoded in tests; this entry records what authors of
+lifecycle scripts and future Windows ports must know:
+
+- `git`/`gh` are spawned through cross-spawn now (`portable-command.ts` in
+  `@bb/host-workspace`), because raw Node `spawn`/`execFile` never apply
+  PATHEXT: a `git.cmd` or extensionless shim first on PATH failed with
+  `ENOENT`. The runner mirrors the `execFile` contract, including the
+  sharp edge that an overflowing stream is truncated to `maxBufferBytes`
+  rather than dropped. Real Git for Windows installs `git.exe`, so this
+  only ever bit test fakes and shims.
+- `powershell.exe` cold start takes about 2.6 s to first script output, so
+  lifecycle-script timeouts in the low milliseconds cannot observe script
+  output on Windows; the tests carry Windows patience for that reason.
+- `taskkill /PID /T /F` runs no user-mode cleanup: a `try/finally` marker
+  never lands in a force-killed `powershell.exe` (measured), so there is
+  no Windows equivalent of the POSIX `TERM`-trap graceful stop. Abort
+  still cancels provisioning; only the trap half is POSIX-only.
+- Windows PowerShell 5.1 `Out-File` has no `utf8NoBOM` encoding, writes a
+  BOM with plain `utf8`, and non-terminating errors still exit 0.
+  Lifecycle scripts that must fail the provision need an explicit
+  `exit N`; markers that are read back byte-exact should use
+  `[System.IO.File]::WriteAllText`.
+- Win32 filenames cannot end in a tab (creation throws `ENOENT`, measured)
+  or the numstat tab-terminator ambiguity could never be round-tripped;
+  the parser half of that test runs everywhere.
+- `git worktree list --porcelain` prints forward slashes while
+  `fs.realpath` returns backslashes, and a machine-global
+  `core.autocrlf=true` rewrites worktree checkouts to CRLF. Both are
+  environment output, not product defects; the tests normalize.
+- Two fetch-race tests (`recovers from known concurrent remote-ref
+  update failures`, `waits for a live remote-ref lock`) stay skipped on
+  win32 with the pre-existing `runIf` guards: their fake-`git` sh wrappers
+  need the same node-fake treatment the `gh` fakes got, which is real but
+  unstarted work.
