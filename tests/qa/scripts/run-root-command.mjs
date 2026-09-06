@@ -48,7 +48,7 @@ function resolveStandaloneParentPid() {
 function run(commandName, commandArgs, stdio, env = process.env) {
   const result = spawnSync(commandName, commandArgs, {
     env,
-    shell: false,
+    shell: process.platform === "win32",
     stdio,
   });
   if (result.error) {
