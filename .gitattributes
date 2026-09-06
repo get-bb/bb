@@ -1,1 +1,17 @@
 * text=auto eol=lf
+
+# Windows-native scripts must keep CRLF: PowerShell and cmd.exe mis-parse
+# LF-only files in some code pages, and .cmd shims break outright.
+*.ps1 text eol=crlf
+*.psm1 text eol=crlf
+*.psd1 text eol=crlf
+*.cmd text eol=crlf
+*.bat text eol=crlf
+
+# Never let eol normalisation touch binaries used by the Windows installer.
+*.ico binary
+*.icns binary
+*.png binary
+*.exe binary
+*.dll binary
+*.node binary

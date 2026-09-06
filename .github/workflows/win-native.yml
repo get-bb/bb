@@ -1,0 +1,134 @@
+name: Windows Native (bb wn)
+
+# The port's ground truth. This fork has no access to the upstream
+# blacksmith-* runners, and no Windows box is reachable from the dev host, so
+# GitHub's windows-latest runner IS the Windows machine for this work: real
+# ConPTY, real NSIS, real node-gyp, real tasklist.
+#
+# Every check runs with continue-on-error so one dispatch returns the whole
+# failure surface instead of stopping at the first error. The final gate step
+# is what actually fails the job.
+
+on:
+  push:
+    branches:
+      - feat/windows-nativo-bb-wn
+  workflow_dispatch:
+    inputs:
+      run_dist:
+        description: "Build the NSIS installer (slow)"
+        required: false
+        type: boolean
+        default: false
+
+env:
+  NODE_VERSION: "22.19.0"
+  PNPM_VERSION: "9.15.0"
+  COREPACK_ENABLE_DOWNLOAD_PROMPT: "0"
+  CSC_IDENTITY_AUTO_DISCOVERY: "false"
+
+concurrency:
+  group: win-native-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  probe:
+    name: Windows x64 probe
+    runs-on: windows-latest
+    timeout-minutes: 90
+    defaults:
+      run:
+        shell: pwsh
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Set up pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@$env:PNPM_VERSION --activate
+          pnpm -v
+
+      - name: Host facts
+        run: |
+          New-Item -ItemType Directory -Force -Path qa-evidence | Out-Null
+          "=== OS ==="                                  | Tee-Object qa-evidence/00-host.txt
+          (Get-CimInstance Win32_OperatingSystem |
+            Select-Object Caption,Version,OSArchitecture | Out-String) |
+            Tee-Object -Append qa-evidence/00-host.txt
+          "=== node ==="        | Tee-Object -Append qa-evidence/00-host.txt
+          node -p "process.version + ' ' + process.platform + ' ' + process.arch" |
+            Tee-Object -Append qa-evidence/00-host.txt
+          "=== PowerShell ==="  | Tee-Object -Append qa-evidence/00-host.txt
+          $PSVersionTable.PSVersion.ToString() | Tee-Object -Append qa-evidence/00-host.txt
+
+      - name: Install dependencies
+        id: install
+        continue-on-error: true
+        run: |
+          pnpm install --frozen-lockfile 2>&1 | Tee-Object qa-evidence/10-install.txt
+          exit $LASTEXITCODE
+
+      - name: Typecheck
+        id: typecheck
+        continue-on-error: true
+        run: |
+          pnpm run typecheck 2>&1 | Tee-Object qa-evidence/20-typecheck.txt
+          exit $LASTEXITCODE
+
+      - name: Unit tests (domain / process-utils / host-daemon / desktop)
+        id: tests
+        continue-on-error: true
+        run: |
+          pnpm exec vitest run --reporter=basic `
+            packages/domain packages/process-utils apps/host-daemon apps/desktop `
+            2>&1 | Tee-Object qa-evidence/30-tests.txt
+          exit $LASTEXITCODE
+
+      - name: Build
+        id: build
+        continue-on-error: true
+        run: |
+          pnpm run build 2>&1 | Tee-Object qa-evidence/40-build.txt
+          exit $LASTEXITCODE
+
+      - name: Process snapshot
+        if: always()
+        continue-on-error: true
+        run: |
+          tasklist /FO TABLE | Tee-Object qa-evidence/90-tasklist.txt
+
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: win-probe-evidence-${{ github.run_number }}
+          path: qa-evidence/
+          retention-days: 30
+
+      - name: Report
+        if: always()
+        run: |
+          $rows = @(
+            @{ n = "install";   r = "${{ steps.install.outcome }}" }
+            @{ n = "typecheck"; r = "${{ steps.typecheck.outcome }}" }
+            @{ n = "tests";     r = "${{ steps.tests.outcome }}" }
+            @{ n = "build";     r = "${{ steps.build.outcome }}" }
+          )
+          "## Windows probe`n" | Out-File -Append $env:GITHUB_STEP_SUMMARY
+          foreach ($row in $rows) {
+            $icon = if ($row.r -eq "success") { ":white_check_mark:" } else { ":x:" }
+            "$icon **$($row.n)**: $($row.r)" | Out-File -Append $env:GITHUB_STEP_SUMMARY
+          }
+          foreach ($row in $rows) {
+            Write-Host "$($row.n)=$($row.r)"
+          }
