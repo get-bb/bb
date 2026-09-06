@@ -16,7 +16,9 @@ export function normalizeWatchEventPath(
   }
   if (platform === "win32") {
     if (isExtendedLengthWindowsPath(rootPath)) {
-      return `${rootPath}\\${eventPath}`;
+      return path.win32.isAbsolute(eventPath)
+        ? path.win32.normalize(eventPath)
+        : `${rootPath}\\${eventPath}`;
     }
     return path.win32.isAbsolute(eventPath)
       ? path.win32.normalize(eventPath)
@@ -30,6 +32,10 @@ export function normalizeWatchEventPath(
 function trimTrailingWindowsSeparators(candidatePath: string): string {
   const trimmed = candidatePath.replace(/[\\/]+$/u, "");
   return trimmed.length === 0 ? candidatePath : trimmed;
+}
+
+function stripExtendedLengthWindowsPrefix(candidatePath: string): string {
+  return candidatePath.replace(/^\\\\[?.]\\/u, "");
 }
 
 export function isWatchPathWithinRoot(
@@ -48,8 +54,12 @@ export function isWatchPathWithinRoot(
     isExtendedLengthWindowsPath(rootPath) ||
     isExtendedLengthWindowsPath(candidatePath)
   ) {
-    const foldedRoot = trimTrailingWindowsSeparators(rootPath).toLowerCase();
-    const foldedCandidate = candidatePath.toLowerCase();
+    const foldedRoot = trimTrailingWindowsSeparators(
+      stripExtendedLengthWindowsPrefix(rootPath),
+    ).toLowerCase();
+    const foldedCandidate = stripExtendedLengthWindowsPrefix(
+      candidatePath,
+    ).toLowerCase();
     return (
       foldedCandidate === foldedRoot ||
       foldedCandidate.startsWith(`${foldedRoot}\\`)
@@ -88,27 +98,6 @@ export function toWatchRootRelativeKey(
       .join("/");
   }
   return path.relative(rootPath, candidatePath).split(path.sep).join("/");
-}
-
-export function splitWatchRelativePath(
-  relativePath: string,
-  platform: NodeJS.Platform = process.platform,
-): string[] {
-  return (
-    platform === "win32"
-      ? relativePath.split(/[/\\]/u)
-      : relativePath.split(path.sep)
-  ).filter(Boolean);
-}
-
-export function relativeWatchPath(
-  rootPath: string,
-  candidatePath: string,
-  platform: NodeJS.Platform = process.platform,
-): string {
-  return platform === "win32"
-    ? path.win32.relative(rootPath, candidatePath)
-    : path.relative(rootPath, candidatePath);
 }
 
 export function dedupeWatchPathChanges<T extends { path: string; type: string }>(

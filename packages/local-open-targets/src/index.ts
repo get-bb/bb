@@ -1725,21 +1725,27 @@ async function resolveWindowsCommandExecutable(
   return null;
 }
 
+function getWindowsCliOpenCommand(
+  adapter: LaunchAdapter,
+): MacCommandAdapter | null {
+  if (adapter.macos.openMode === "default-app") {
+    return null;
+  }
+  return (
+    adapter.macos.pathOpenCommand ?? adapter.macos.lineOpenCommand ?? null
+  );
+}
+
 async function isWindowsCliTargetAvailable(
   adapter: LaunchAdapter,
   runtime: WorkspaceOpenTargetRuntime,
 ): Promise<boolean> {
-  if (adapter.macos.openMode === "default-app") {
-    return false;
-  }
-  const executable = getCliOpenExecutable(adapter);
-  return executable === null
-    ? false
-    : (await resolveWindowsCommandExecutable(
-        adapter,
-        { executable },
-        runtime,
-      )) !== null;
+  const command = getWindowsCliOpenCommand(adapter);
+  return (
+    command !== null &&
+    (await resolveWindowsCommandExecutable(adapter, command, runtime)) !==
+      null
+  );
 }
 
 async function findUnavailableWindowsRemoteSshExecutable(
@@ -1776,10 +1782,9 @@ async function toWindowsCliWorkspaceOpenTarget(
       definition,
       definition.macos.remoteSshOpenCommand,
       runtime,
-    )) === null
+    )) !== null
   ) {
-    target.remoteSshCapabilities =
-      definition.macos.remoteSshOpenCommand.capabilities;
+    delete target.remoteSshCapabilities;
   }
   return target;
 }

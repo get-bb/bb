@@ -60,7 +60,7 @@ function toPickFolderResult(selectedPath: string): PickFolderResult {
   const trimmedPath = selectedPath.trim();
   return {
     path:
-      trimmedPath === "" ? null : trimmedPath.replace(/\/$/, ""),
+      trimmedPath === "" ? null : trimmedPath.replace(/[/\\]$/, ""),
   };
 }
 

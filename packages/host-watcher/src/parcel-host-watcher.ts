@@ -1,5 +1,9 @@
 import path from "node:path";
 import { RootSubscription } from "./root-subscription.js";
+import {
+  dedupeWatchPathChanges,
+  normalizeWatchEventPath,
+} from "./watch-event-path.js";
 import { watchPathChanges } from "./watch-path.js";
 import { watchWorkspaceStatus } from "./watch-status.js";
 import type {
@@ -204,12 +208,12 @@ function watchPathRoot(args: WatchPathRootArgs): () => Promise<void> {
     maxRetryDelayMs: 30_000,
     onEvents: (events) => {
       args.onChange(
-        events.map((event) => ({
-          path: path.isAbsolute(event.path)
-            ? path.normalize(event.path)
-            : path.resolve(args.rootPath, event.path),
-          type: event.type,
-        })),
+        dedupeWatchPathChanges(
+          events.map((event) => ({
+            path: normalizeWatchEventPath(args.rootPath, event.path),
+            type: event.type,
+          })),
+        ),
       );
     },
     onReady: args.onReady,

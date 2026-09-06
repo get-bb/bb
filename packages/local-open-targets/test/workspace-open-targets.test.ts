@@ -341,7 +341,7 @@ describe("workspace open targets", () => {
   });
 
   it("lists Windows platform targets without POSIX editor paths", async () => {
-    const execFile = vi.fn(async () => {
+    const execFile = vi.fn<ExecFileHandler>(async () => {
       throw new Error("Executable not found");
     });
 
@@ -2540,6 +2540,61 @@ describe("workspace open targets", () => {
           openFileAtLine: true,
         },
       });
+    });
+
+    it("advertises VS Code remote support when its CLI is present without ssh", async () => {
+      const targets = await listWorkspaceOpenTargetsWithRuntime(
+        createWindowsRuntime({
+          availableExecutables: ["code"],
+        }),
+      );
+
+      expect(targets.find((target) => target.id === "vscode")).toMatchObject({
+        remoteSshCapabilities: {
+          openDirectory: true,
+          openFile: true,
+          openFileAtColumn: true,
+          openFileAtLine: true,
+        },
+      });
+    });
+
+    it("discovers fallback executables on Windows PATH", async () => {
+      const workspacePath = await mkdtemp(path.join(tmpdir(), "bb-workspace-"));
+      const filePath = path.join(workspacePath, "main.ts");
+      const calls: ExecFileCall[] = [];
+
+      try {
+        await writeFile(filePath, "export const value = 1;\n");
+
+        const targets = await listWorkspaceOpenTargetsWithRuntime(
+          createWindowsRuntime({ availableExecutables: ["windsurf"] }),
+        );
+        expect(targets.map((target) => target.id)).toContain(
+          "devin-desktop",
+        );
+
+        await openPathInTargetWithRuntime(
+          {
+            context: { kind: "local" },
+            columnNumber: 6,
+            lineNumber: 15,
+            path: filePath,
+            targetId: "devin-desktop",
+          },
+          createWindowsRuntime({
+            availableExecutables: ["windsurf"],
+            calls,
+          }),
+        );
+
+        expect(calls.find((call) => call.file === "cmd.exe")).toEqual({
+          file: "cmd.exe",
+          args: ["/d", "/s", "/c", "windsurf", "-g", `${filePath}:15:6`],
+        });
+      } finally {
+        await rm(workspacePath, { force: true, recursive: true });
+      }
     });
 
     it("reports VS Code remote support unavailable when its CLI is missing", async () => {
