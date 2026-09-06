@@ -90,7 +90,6 @@ describe("project-path win32 UNC normalization", () => {
 describe("project-path win32 extended-length pass-through", () => {
   it.each([
     ["\\\\?\\C:\\ruta\\muy\\larga", "\\\\?\\C:\\ruta\\muy\\larga"],
-    ["\\\\?\\C:\\ruta\\muy\\larga\\", "\\\\?\\C:\\ruta\\muy\\larga\\"],
     ["\\\\?\\C:/ruta/muy/larga", "\\\\?\\C:/ruta/muy/larga"],
     [
       "\\\\?\\C:\\Users\\Admin\\Mis proyectos\\diseño",
@@ -98,6 +97,27 @@ describe("project-path win32 extended-length pass-through", () => {
     ],
   ])("passes %j through untouched", (input, expected) => {
     expect(normalizeProjectPathInput(input, "win32")).toBe(expected);
+  });
+
+  it.each([
+    ["\\\\?\\C:\\ruta\\muy\\larga\\", "\\\\?\\C:\\ruta\\muy\\larga"],
+    ["\\\\?\\C:\\ruta\\muy\\larga\\\\", "\\\\?\\C:\\ruta\\muy\\larga"],
+    ["\\\\?\\C:/ruta/muy/larga/", "\\\\?\\C:/ruta/muy/larga"],
+    [
+      "\\\\?\\UNC\\server\\share\\proyecto\\",
+      "\\\\?\\UNC\\server\\share\\proyecto",
+    ],
+  ])("trims trailing separators on %j to %j", (input, expected) => {
+    expect(normalizeProjectPathInput(input, "win32")).toBe(expected);
+  });
+
+  it("keeps extended roots detectable after trimming", () => {
+    expect(normalizeProjectPathInput("\\\\?\\C:\\", "win32")).toBe(
+      "\\\\?\\C:",
+    );
+    expect(normalizeProjectPathInput("\\\\?\\", "win32")).toBe(
+      "\\\\?\\",
+    );
   });
 });
 
@@ -319,6 +339,8 @@ describe("project-path isSameProjectPath", () => {
     ["C:\\Foo\\Bar", "c:/foo/bar/", "win32", true],
     ["\\\\server\\share\\a", "//server/share/a", "win32", true],
     ["\\\\?\\C:\\Foo", "\\\\?\\c:\\foo", "win32", true],
+    ["\\\\?\\C:\\Foo\\", "\\\\?\\C:\\Foo", "win32", true],
+    ["\\\\?\\C:\\", "\\\\?\\C:", "win32", true],
     ["C:\\a", "C:\\b", "win32", false],
     ["C:\\a", "D:\\a", "win32", false],
     ["C:\\a", "", "win32", false],

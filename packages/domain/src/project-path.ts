@@ -108,7 +108,14 @@ export function normalizeProjectPathInput(
   }
 
   if (WINDOWS_EXTENDED_LENGTH_PREFIX_PATTERN.test(trimmedPath)) {
-    return trimmedPath;
+    const remainder = trimmedPath.replace(
+      WINDOWS_EXTENDED_LENGTH_PREFIX_PATTERN,
+      "",
+    );
+    if (remainder === "") {
+      return trimmedPath;
+    }
+    return trimmedPath.replace(/[\\/]+$/u, "");
   }
 
   const unifiedPath = trimmedPath.replace(/\//gu, "\\");
