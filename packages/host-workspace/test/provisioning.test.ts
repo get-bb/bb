@@ -15,9 +15,12 @@ import {
 import { Workspace } from "../src/workspace.js";
 import {
   buildSetupScriptCommand,
+  buildTeardownScriptCommand,
   createWorktree,
   fetchRemoteBaseBranch,
   removeWorktree,
+  resolveLifecycleScript,
+  resolveWorktreeGitCommonDir,
   runSetupScript,
   runTeardownScript,
 } from "../src/provisioning.js";
@@ -1190,5 +1193,303 @@ describe("workspace provisioning", () => {
     await removeWorktree({ path: targetPath, timeoutMs: 900000, force: false });
 
     await expect(fs.stat(targetPath)).rejects.toThrow();
+  });
+});
+
+describe("windows lifecycle scripts", () => {
+  it("builds a powershell command for the setup twin on win32", () => {
+    expect(
+      buildSetupScriptCommand({
+        platform: "win32",
+        scriptPath: "C:\\repo\\.bb-env-setup.ps1",
+      }),
+    ).toEqual({
+      command: "powershell.exe",
+      args: [
+        "-NoLogo",
+        "-NoProfile",
+        "-NonInteractive",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "C:\\repo\\.bb-env-setup.ps1",
+      ],
+      text: "powershell.exe -File .bb-env-setup.ps1",
+    });
+  });
+
+  it("builds a powershell command for the teardown twin on win32", () => {
+    expect(
+      buildTeardownScriptCommand({
+        platform: "win32",
+        scriptPath: "C:\\repo\\.bb-env-teardown.ps1",
+      }),
+    ).toMatchObject({
+      command: "powershell.exe",
+      text: "powershell.exe -File .bb-env-teardown.ps1",
+    });
+  });
+
+  it("rejects powershell twins off Windows", () => {
+    expect(() =>
+      buildSetupScriptCommand({
+        platform: "darwin",
+        scriptPath: "/tmp/.bb-env-setup.ps1",
+      }),
+    ).toThrow(/PowerShell setup scripts are not supported/u);
+    expect(() =>
+      buildTeardownScriptCommand({
+        platform: "linux",
+        scriptPath: "/tmp/.bb-env-teardown.ps1",
+      }),
+    ).toThrow(/PowerShell teardown scripts are not supported/u);
+  });
+
+  it("rejects POSIX teardown scripts on Windows", () => {
+    expect(() =>
+      buildTeardownScriptCommand({
+        platform: "win32",
+        scriptPath: "C:\\repo\\.bb-env-teardown.sh",
+      }),
+    ).toThrow(/not supported on Windows/u);
+  });
+
+  it("prefers the powershell twin when both scripts exist", async () => {
+    const workspacePath = await makeTempDir("bb-resolve-twins-");
+    await fs.writeFile(
+      path.join(workspacePath, DEFAULT_ENV_SETUP_SCRIPT_NAME),
+      "exit 0\n",
+      "utf8",
+    );
+    await fs.writeFile(
+      path.join(workspacePath, ".bb-env-setup.ps1"),
+      "exit 0\n",
+      "utf8",
+    );
+
+    const resolved = await resolveLifecycleScript({
+      workspacePath,
+      kind: "setup",
+      platform: "win32",
+    });
+
+    expect(resolved?.scriptFileName).toBe(".bb-env-setup.ps1");
+    expect(resolved?.posixOnly).toBe(false);
+  });
+
+  it("marks a lone shell script as posix-only on win32", async () => {
+    const workspacePath = await makeTempDir("bb-resolve-posix-only-");
+    await fs.writeFile(
+      path.join(workspacePath, DEFAULT_ENV_SETUP_SCRIPT_NAME),
+      "exit 0\n",
+      "utf8",
+    );
+
+    const resolved = await resolveLifecycleScript({
+      workspacePath,
+      kind: "setup",
+      platform: "win32",
+    });
+
+    expect(resolved?.scriptFileName).toBe(DEFAULT_ENV_SETUP_SCRIPT_NAME);
+    expect(resolved?.posixOnly).toBe(true);
+  });
+
+  it("ignores powershell twins on posix", async () => {
+    const workspacePath = await makeTempDir("bb-resolve-posix-");
+    await fs.writeFile(
+      path.join(workspacePath, ".bb-env-setup.ps1"),
+      "exit 0\n",
+      "utf8",
+    );
+
+    await expect(
+      resolveLifecycleScript({
+        workspacePath,
+        kind: "setup",
+        platform: "linux",
+      }),
+    ).resolves.toBeNull();
+  });
+
+  it("skips a lone shell setup script on win32 instead of failing", async () => {
+    const workspacePath = await makeTempDir("bb-skip-setup-win32-");
+    await fs.writeFile(
+      path.join(workspacePath, DEFAULT_ENV_SETUP_SCRIPT_NAME),
+      "#!/usr/bin/env bash\nexit 3\n",
+      "utf8",
+    );
+    const entries: string[] = [];
+
+    const result = await runSetupScript({
+      workspacePath,
+      timeoutMs: 900000,
+      platform: "win32",
+      onProgress: (entry) => entries.push(`${entry.key}:${entry.text}`),
+    });
+
+    expect(result).toEqual({ ran: false });
+    expect(
+      entries.some((entry) =>
+        entry.startsWith("setup-skipped:Skipped .bb-env-setup.sh"),
+      ),
+    ).toBe(true);
+  });
+
+  it("skips a lone shell teardown script on win32 instead of failing", async () => {
+    const workspacePath = await makeTempDir("bb-skip-teardown-win32-");
+    await fs.writeFile(
+      path.join(workspacePath, DEFAULT_ENV_TEARDOWN_SCRIPT_NAME),
+      "#!/usr/bin/env bash\nexit 7\n",
+      "utf8",
+    );
+    const entries: string[] = [];
+
+    const result = await runTeardownScript({
+      workspacePath,
+      timeoutMs: 900000,
+      platform: "win32",
+      onProgress: (entry) => entries.push(`${entry.key}:${entry.text}`),
+    });
+
+    expect(result).toEqual({ ran: false });
+    expect(
+      entries.some((entry) =>
+        entry.startsWith("teardown-skipped:Skipped .bb-env-teardown.sh"),
+      ),
+    ).toBe(true);
+  });
+
+  it("creates the worktree when the setup script is skipped on win32", async () => {
+    const sourceRepo = await initRepoWithOptionalSetup(
+      "#!/usr/bin/env bash\nexit 3\n",
+    );
+    const parentDir = await makeTempDir("bb-win32-skip-parent-");
+    const targetPath = path.join(parentDir, "feature");
+    const entries: string[] = [];
+
+    const created = await createWorktree({
+      sourcePath: sourceRepo,
+      targetPath,
+      branchName: "feature-win32-skip",
+      baseBranch: "main",
+      timeoutMs: 900000,
+      platform: "win32",
+      onProgress: (entry) => entries.push(`${entry.key}:${entry.text}`),
+    });
+
+    expect(created).toEqual({ path: targetPath });
+    expect(await fs.readFile(path.join(targetPath, "README.md"), "utf8")).toBe(
+      "hello\n",
+    );
+    expect(
+      entries.some((entry) =>
+        entry.startsWith("setup-skipped:Skipped .bb-env-setup.sh"),
+      ),
+    ).toBe(true);
+    expect(
+      entries.some((entry) => entry.startsWith("setup-failed:")),
+    ).toBe(false);
+  });
+
+  it("removes the worktree when the teardown script is skipped on win32", async () => {
+    const sourceRepo = await initRepoWithOptionalSetup();
+    await commitTeardownScript(
+      sourceRepo,
+      ["#!/usr/bin/env bash", 'echo "cleanup failed"', "exit 7"].join("\n"),
+    );
+    const parentDir = await makeTempDir("bb-win32-teardown-parent-");
+    const targetPath = path.join(parentDir, "feature");
+    await createWorktree({
+      sourcePath: sourceRepo,
+      targetPath,
+      branchName: "feature-win32-teardown",
+      baseBranch: "main",
+      timeoutMs: 900000,
+      platform: "win32",
+    });
+    const entries: string[] = [];
+
+    await expect(
+      removeWorktree({
+        path: targetPath,
+        timeoutMs: 900000,
+        force: true,
+        platform: "win32",
+        onProgress: (entry) => entries.push(`${entry.key}:${entry.text}`),
+      }),
+    ).resolves.toBeUndefined();
+
+    expect(
+      entries.some((entry) =>
+        entry.startsWith("teardown-skipped:Skipped .bb-env-teardown.sh"),
+      ),
+    ).toBe(true);
+    expect(
+      entries.some((entry) => entry.startsWith("teardown-failed:")),
+    ).toBe(false);
+    await expect(fs.stat(targetPath)).rejects.toThrow();
+  });
+});
+
+describe("windows worktree paths", () => {
+  it("resolves a relative common dir against the workspace", () => {
+    expect(
+      resolveWorktreeGitCommonDir({
+        workspacePath: "/tmp/ws/feat",
+        gitCommonDirOutput: "../repo/.git\n",
+        platform: "linux",
+      }),
+    ).toBe("/tmp/ws/repo/.git");
+  });
+
+  it("keeps a same-drive absolute common dir on win32", () => {
+    expect(
+      resolveWorktreeGitCommonDir({
+        workspacePath: "C:\\ws\\feat",
+        gitCommonDirOutput: "C:/repo/.git/worktrees/feat\n",
+        platform: "win32",
+      }),
+    ).toBe("C:\\repo\\.git\\worktrees\\feat");
+  });
+
+  it("follows a cross-drive absolute common dir on win32", () => {
+    expect(
+      resolveWorktreeGitCommonDir({
+        workspacePath: "D:\\ws\\feat",
+        gitCommonDirOutput: "C:/repo/.git\n",
+        platform: "win32",
+      }),
+    ).toBe("C:\\repo\\.git");
+  });
+
+  it("resolves a relative common dir on win32", () => {
+    expect(
+      resolveWorktreeGitCommonDir({
+        workspacePath: "C:\\ws\\feat",
+        gitCommonDirOutput: "../../repo/.git/worktrees/feat\n",
+        platform: "win32",
+      }),
+    ).toBe("C:\\repo\\.git\\worktrees\\feat");
+  });
+
+  it("keeps UNC common dirs on win32", () => {
+    expect(
+      resolveWorktreeGitCommonDir({
+        workspacePath: "\\\\server\\share\\ws\\feat",
+        gitCommonDirOutput: "\\\\server\\share\\repo\\.git\n",
+        platform: "win32",
+      }),
+    ).toBe("\\\\server\\share\\repo\\.git");
+  });
+
+  it("never re-normalises extended-length common dirs", () => {
+    expect(
+      resolveWorktreeGitCommonDir({
+        workspacePath: "C:\\ws\\feat",
+        gitCommonDirOutput: "\\\\?\\C:\\repo\\.git\n",
+        platform: "win32",
+      }),
+    ).toBe("\\\\?\\C:\\repo\\.git");
   });
 });

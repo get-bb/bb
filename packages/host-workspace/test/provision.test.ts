@@ -10,6 +10,10 @@ import {
 import { createDeferredPromise } from "@bb/test-helpers";
 import { provisionWorkspace } from "../src/index.js";
 import { listBranches, runGit } from "../src/git.js";
+import {
+  isWorktreeGitDir,
+  validatePersonalWorkspaceTargetPath,
+} from "../src/provision.js";
 import { withCheckoutMutationLock } from "../src/checkout-mutation-lock.js";
 
 const tempDirs: string[] = [];
@@ -746,5 +750,93 @@ describe("provisionWorkspace", () => {
         }),
       ).rejects.toThrow("path does not exist");
     });
+  });
+});
+
+describe("windows worktree detection", () => {
+  it("detects posix linked-worktree git dirs", () => {
+    expect(isWorktreeGitDir("/repo/.git/worktrees/feat")).toBe(true);
+    expect(isWorktreeGitDir(".git/worktrees/feat")).toBe(true);
+  });
+
+  it("detects win32 linked-worktree git dirs with backslashes", () => {
+    expect(isWorktreeGitDir("C:\\repo\\.git\\worktrees\\feat")).toBe(
+      true,
+    );
+  });
+
+  it("detects win32 linked-worktree git dirs with forward slashes", () => {
+    expect(isWorktreeGitDir("C:/repo/.git/worktrees/feat")).toBe(true);
+  });
+
+  it("detects extended-length linked-worktree git dirs", () => {
+    expect(
+      isWorktreeGitDir("\\\\?\\C:\\repo\\.git\\worktrees\\feat"),
+    ).toBe(true);
+  });
+
+  it("rejects main worktree git dirs on every platform", () => {
+    expect(isWorktreeGitDir("/repo/.git")).toBe(false);
+    expect(isWorktreeGitDir(".git")).toBe(false);
+    expect(isWorktreeGitDir("C:\\repo\\.git")).toBe(false);
+    expect(isWorktreeGitDir("C:/repo/.git")).toBe(false);
+    expect(isWorktreeGitDir("../.git/modules/sub")).toBe(false);
+  });
+});
+
+describe("windows personal workspace paths", () => {
+  it("accepts matching win32 target paths", () => {
+    expect(
+      validatePersonalWorkspaceTargetPath({
+        environmentId: "env_personal",
+        personalWorkspaceRoot: "C:\\data\\personal-workspaces",
+        targetPath: "C:\\data\\personal-workspaces\\env_personal",
+        platform: "win32",
+      }),
+    ).toBe("C:\\data\\personal-workspaces\\env_personal");
+  });
+
+  it("accepts forward-slash win32 target paths", () => {
+    expect(
+      validatePersonalWorkspaceTargetPath({
+        environmentId: "env_personal",
+        personalWorkspaceRoot: "C:/data/personal-workspaces",
+        targetPath: "C:/data/personal-workspaces/env_personal",
+        platform: "win32",
+      }),
+    ).toBe("C:\\data\\personal-workspaces\\env_personal");
+  });
+
+  it("matches win32 target paths case-insensitively", () => {
+    expect(
+      validatePersonalWorkspaceTargetPath({
+        environmentId: "env_personal",
+        personalWorkspaceRoot: "C:\\DATA\\personal-workspaces",
+        targetPath: "c:\\data\\personal-workspaces\\env_personal",
+        platform: "win32",
+      }),
+    ).toBe("c:\\data\\personal-workspaces\\env_personal");
+  });
+
+  it("rejects cross-drive win32 target paths", () => {
+    expect(() =>
+      validatePersonalWorkspaceTargetPath({
+        environmentId: "env_personal",
+        personalWorkspaceRoot: "C:\\data\\personal-workspaces",
+        targetPath: "D:\\data\\personal-workspaces\\env_personal",
+        platform: "win32",
+      }),
+    ).toThrow("Personal workspace target path must match");
+  });
+
+  it("rejects UNC escapes on win32", () => {
+    expect(() =>
+      validatePersonalWorkspaceTargetPath({
+        environmentId: "env_personal",
+        personalWorkspaceRoot: "C:\\data\\personal-workspaces",
+        targetPath: "\\\\server\\share\\env_personal",
+        platform: "win32",
+      }),
+    ).toThrow("Personal workspace target path must match");
   });
 });
