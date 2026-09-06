@@ -20,7 +20,7 @@ async function readBrokerDescriptor(dataDir: string) {
     if (
       !stat.isFile() ||
       stat.size > 16384 ||
-      (stat.mode & 0o077) !== 0 ||
+      (process.platform !== "win32" && (stat.mode & 0o077) !== 0) ||
       (process.getuid !== undefined && stat.uid !== process.getuid())
     )
       throw new Error("Invalid desktop broker descriptor permissions");
