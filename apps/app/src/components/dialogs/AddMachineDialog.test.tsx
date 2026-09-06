@@ -7,6 +7,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import type { Host } from "@bb/domain";
 import { makeHost as host } from "@bb/test-helpers/domain-fixtures";
@@ -139,10 +140,38 @@ describe("AddMachineDialog", () => {
     expect(waiting).toBeDefined();
     expect(waiting.parentElement?.className).not.toContain("border-border");
 
-    fireEvent.click(screen.getByRole("button", { name: "Copy" }));
+    const posixBlock = command.closest("[data-add-machine-command]");
+    expect(posixBlock).not.toBeNull();
+    fireEvent.click(
+      within(posixBlock as HTMLElement).getByRole("button", {
+        name: "Copy",
+      }),
+    );
     await waitFor(() => {
       expect(writeTextMock).toHaveBeenCalledWith(command.textContent);
-      expect(screen.getByRole("button", { name: "Copied" })).toBeDefined();
+      expect(
+        within(posixBlock as HTMLElement).getByRole("button", {
+          name: "Copied",
+        }),
+      ).toBeDefined();
+    });
+
+    const windowsBlock = windowsCommand.closest(
+      "[data-add-machine-command-windows]",
+    );
+    expect(windowsBlock).not.toBeNull();
+    fireEvent.click(
+      within(windowsBlock as HTMLElement).getByRole("button", {
+        name: "Copy",
+      }),
+    );
+    await waitFor(() => {
+      expect(writeTextMock).toHaveBeenCalledWith(windowsCommand.textContent);
+      expect(
+        within(windowsBlock as HTMLElement).getByRole("button", {
+          name: "Copied",
+        }),
+      ).toBeDefined();
     });
 
     await waitFor(() => {
