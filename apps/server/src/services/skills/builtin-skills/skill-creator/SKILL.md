@@ -37,6 +37,16 @@ threads may retain the version they started with.
   State when to read each file; do not require loading every reference.
 - Use `scripts/` for repeated deterministic work and `assets/` for output
   templates or resources. Reuse existing resources before adding new ones.
+- Keep skill scripts runnable on Windows as well as POSIX. The staging layer
+  preserves file bytes but NTFS has no execute bit, so nothing in a skill is
+  directly executable on Windows: invoke `.cmd`/`.bat` files through
+  `cmd.exe /d /c`, `.ps1` files through
+  `powershell.exe -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File`,
+  and `.mjs`/`.cjs`/`.js` files through `node` (as in
+  `node /PATH/TO/THIS/SKILL/scripts/derive-plugin-id.mjs ...`). A `.sh` file
+  needs Git for Windows `sh.exe` and must never be executed bare; files with
+  no extension or an unfamiliar extension cannot be launched deterministically
+  on Windows, so give them an extension or name the interpreter in SKILL.md.
 - Describe outcomes and decision boundaries. Reserve rigid steps for fragile
   operations where order matters; avoid generic advice, repeated repository
   rules, keyword catchalls, and model-specific scaffolding.
