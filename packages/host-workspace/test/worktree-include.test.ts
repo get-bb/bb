@@ -223,6 +223,10 @@ describe("createWorktree with .worktreeinclude", () => {
       "set -eu\ncp .env copied-by-setup\n",
     );
     await writeFile(
+      path.join(sourcePath, ".bb-env-setup.ps1"),
+      "Copy-Item -Path .env -Destination copied-by-setup\n",
+    );
+    await writeFile(
       path.join(sourcePath, WORKTREE_INCLUDE_FILE_NAME),
       ".env\n",
     );

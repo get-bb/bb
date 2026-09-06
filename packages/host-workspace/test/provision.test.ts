@@ -18,13 +18,18 @@ import { withCheckoutMutationLock } from "../src/checkout-mutation-lock.js";
 
 const tempDirs: string[] = [];
 
+const WINDOWS_SETUP_SCRIPT_FILE_NAME = ".bb-env-setup.ps1";
+
 async function makeTempDir(prefix: string): Promise<string> {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), prefix));
   tempDirs.push(dir);
   return dir;
 }
 
-async function initRepo(opts?: { setupScript?: string }): Promise<string> {
+async function initRepo(opts?: {
+  setupScript?: string;
+  windowsSetupScript?: string;
+}): Promise<string> {
   const repoPath = await makeTempDir("bb-provision-repo-");
   await runGit(["init", "-b", "main"], { cwd: repoPath });
   await runGit(["config", "user.name", "BB Tests"], { cwd: repoPath });
@@ -34,6 +39,13 @@ async function initRepo(opts?: { setupScript?: string }): Promise<string> {
     await fs.writeFile(
       path.join(repoPath, DEFAULT_ENV_SETUP_SCRIPT_NAME),
       opts.setupScript,
+      "utf8",
+    );
+  }
+  if (opts?.windowsSetupScript) {
+    await fs.writeFile(
+      path.join(repoPath, WINDOWS_SETUP_SCRIPT_FILE_NAME),
+      opts.windowsSetupScript,
       "utf8",
     );
   }
@@ -534,6 +546,8 @@ describe("provisionWorkspace", () => {
     it("runs the supported setup script after provisioning", async () => {
       const repoPath = await initRepo({
         setupScript: "echo worktree-setup-ran > setup-marker.txt\n",
+        windowsSetupScript:
+          '[System.IO.File]::WriteAllText("setup-marker.txt", "worktree-setup-ran`n")\n',
       });
       const parentDir = await makeTempDir("bb-provision-mwt-script-");
       const targetPath = path.join(parentDir, "env");
@@ -557,6 +571,7 @@ describe("provisionWorkspace", () => {
     it("rolls back on setup script failure", async () => {
       const repoPath = await initRepo({
         setupScript: "echo failing >&2\nexit 1\n",
+        windowsSetupScript: "exit 1\n",
       });
       const parentDir = await makeTempDir("bb-provision-mwt-fail-");
       const envDir = path.join(parentDir, "env");
