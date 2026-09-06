@@ -10,6 +10,7 @@ describe("desktop app paths", () => {
     const paths: DesktopPathContext = {
       appPath: "/Applications/bb.app/Contents/Resources/app.asar",
       isPackaged: true,
+      platform: "darwin",
       resourcesPath: "/Applications/bb.app/Contents/Resources",
     };
 
@@ -22,6 +23,7 @@ describe("desktop app paths", () => {
     const paths: DesktopPathContext = {
       appPath: "/Applications/bb.app/Contents/Resources/app-arm64.asar",
       isPackaged: true,
+      platform: "darwin",
       resourcesPath: "/Applications/bb.app/Contents/Resources",
     };
 
@@ -34,6 +36,7 @@ describe("desktop app paths", () => {
     const paths: DesktopPathContext = {
       appPath: "/Applications/bb Nightly.app/Contents/Resources/app.asar",
       isPackaged: true,
+      platform: "darwin",
       resourcesPath: "/Applications/bb Nightly.app/Contents/Resources",
     };
 
@@ -51,6 +54,7 @@ describe("desktop app paths", () => {
     const paths: DesktopPathContext = {
       appPath: "/checkout/apps/desktop",
       isPackaged: false,
+      platform: "linux",
       resourcesPath: "/checkout/apps/desktop",
     };
 
@@ -60,5 +64,34 @@ describe("desktop app paths", () => {
         paths,
       }),
     ).toBe("/checkout/apps/desktop/assets/icon-dev.png");
+  });
+
+  it("resolves the packaged bb-app bridge with Windows separators", () => {
+    const paths: DesktopPathContext = {
+      appPath: "C:\\Program Files\\bb wn\\resources\\app.asar",
+      isPackaged: true,
+      platform: "win32",
+      resourcesPath: "C:\\Program Files\\bb wn\\resources",
+    };
+
+    expect(resolveDesktopBridgePath({ paths })).toBe(
+      "C:\\Program Files\\bb wn\\resources\\app.asar.unpacked\\dist\\bb-app-bridge.mjs",
+    );
+  });
+
+  it("resolves the development icon with Windows separators", () => {
+    const paths: DesktopPathContext = {
+      appPath: "C:\\checkout\\apps\\desktop",
+      isPackaged: false,
+      platform: "win32",
+      resourcesPath: "C:\\checkout\\apps\\desktop",
+    };
+
+    expect(
+      resolveDesktopIconPath({
+        packagedIconFileName: "icon-nightly.png",
+        paths,
+      }),
+    ).toBe("C:\\checkout\\apps\\desktop\\assets\\icon-dev.png");
   });
 });
