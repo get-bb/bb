@@ -37,6 +37,7 @@ const requiredSigningEnvironmentKeys = [
 ];
 
 const printConfigFlag = "--print-config";
+const windowsBuildFlag = "--win";
 
 function envValueIsSet(value) {
   return typeof value === "string" && value.trim().length > 0;
@@ -158,7 +159,32 @@ function createSigningPlan(env) {
   };
 }
 
-function resolveElectronBuilderConfig(baseConfig, env) {
+function isWindowsBuild(electronBuilderArgs) {
+  return electronBuilderArgs.includes(windowsBuildFlag);
+}
+
+function applyWindowsOverrides(config, releaseConfig) {
+  const baseWin = config.win ?? {};
+  config.appId = releaseConfig.windowsAppId;
+  config.productName = releaseConfig.windowsApplicationName;
+  config.win = {
+    ...baseWin,
+    artifactName: releaseConfig.windowsArtifactName,
+    icon: releaseConfig.windowsIconPath,
+    target: baseWin.target ?? [{ arch: ["x64"], target: "nsis" }],
+  };
+  const baseNsis = config.nsis ?? {};
+  config.nsis = {
+    ...baseNsis,
+    allowToChangeInstallationDirectory: true,
+    createDesktopShortcut: true,
+    oneClick: false,
+    perMachine: false,
+    shortcutName: releaseConfig.windowsApplicationName,
+  };
+}
+
+function resolveElectronBuilderConfig(baseConfig, env, electronBuilderArgs = []) {
   const signingPlan = createSigningPlan(env);
   const releaseChannel = resolveDesktopReleaseChannel(env);
   const releaseConfig = createDesktopReleaseConfig(releaseChannel);
@@ -187,6 +213,9 @@ function resolveElectronBuilderConfig(baseConfig, env) {
   config.appId = releaseConfig.appId;
   config.artifactName = releaseConfig.artifactName;
   config.productName = releaseConfig.applicationName;
+  if (isWindowsBuild(electronBuilderArgs)) {
+    applyWindowsOverrides(config, releaseConfig);
+  }
   config.publish = [
     {
       channel: releaseChannel,
@@ -262,6 +291,7 @@ async function main() {
   const { config, signingPlan } = resolveElectronBuilderConfig(
     baseConfig,
     process.env,
+    electronBuilderArgs,
   );
 
   if (printConfig) {

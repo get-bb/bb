@@ -1,4 +1,8 @@
-import { spawn, type ChildProcess } from "node:child_process";
+import {
+  spawn,
+  type ChildProcess,
+  type SpawnOptions,
+} from "node:child_process";
 import { posix as posixPath } from "node:path";
 
 interface RuntimeLogBuffer {
@@ -15,6 +19,7 @@ interface StartBbAppProcessArgs {
   cwd: string;
   env: NodeJS.ProcessEnv;
   logLineLimit: number;
+  platform: NodeJS.Platform;
   runtime: BbAppProcessRuntime;
 }
 
@@ -34,9 +39,25 @@ export interface BbAppProcessExit {
 interface StopBbAppProcessArgs {
   killSignal: NodeJS.Signals;
   killTimeoutMs: number;
+  platform: NodeJS.Platform;
+  runTaskkill?: RunTaskkillProcessTree;
   signal: NodeJS.Signals;
   timeoutMs: number;
 }
+
+interface ResolveBbAppProcessSpawnOptionsArgs {
+  executablePath: string;
+  platform: NodeJS.Platform;
+}
+
+interface RunTaskkillProcessTreeArgs {
+  pid: number;
+  timeoutMs: number;
+}
+
+export type RunTaskkillProcessTree = (
+  args: RunTaskkillProcessTreeArgs,
+) => Promise<void>;
 
 type BbAppProcessRuntimeMode = "electron-node" | "node";
 
@@ -221,6 +242,46 @@ function createRuntimeLogBuffer(
   };
 }
 
+export function resolveBbAppProcessSpawnOptions(
+  args: ResolveBbAppProcessSpawnOptionsArgs,
+): SpawnOptions {
+  if (args.platform !== "win32") {
+    return {};
+  }
+  if (/\.cmd$/iu.test(args.executablePath) || /\.bat$/iu.test(args.executablePath)) {
+    return { shell: true, windowsHide: true };
+  }
+  return { windowsHide: true };
+}
+
+function runTaskkillProcessTree(
+  args: RunTaskkillProcessTreeArgs,
+): Promise<void> {
+  return new Promise<void>((resolvePromise) => {
+    let settled = false;
+    const timer = setTimeout(finish, args.timeoutMs);
+    timer.unref();
+    function finish(): void {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      clearTimeout(timer);
+      resolvePromise();
+    }
+    const taskkill = spawn(
+      "taskkill.exe",
+      ["/PID", String(args.pid), "/T", "/F"],
+      {
+        stdio: "ignore",
+        windowsHide: true,
+      },
+    );
+    taskkill.once("error", finish);
+    taskkill.once("exit", finish);
+  });
+}
+
 export function createBbAppProcessEnv(
   args: CreateBbAppProcessEnvArgs,
 ): NodeJS.ProcessEnv {
@@ -387,6 +448,10 @@ export function startBbAppProcess(args: StartBbAppProcessArgs): BbAppProcess {
     detached: args.runtime.kind === "appimage",
     env: launch.env,
     stdio: ["ignore", "pipe", "pipe"],
+    ...resolveBbAppProcessSpawnOptions({
+      executablePath: launch.executablePath,
+      platform: args.platform,
+    }),
   });
   const pid = childProcess.pid;
   if (pid === undefined) {
@@ -414,6 +479,25 @@ export function startBbAppProcess(args: StartBbAppProcessArgs): BbAppProcess {
     pid,
     async stop(stopArgs) {
       if (hasProcessExited(childProcess)) {
+        return;
+      }
+      if (stopArgs.platform === "win32") {
+        const runTaskkill = stopArgs.runTaskkill ?? runTaskkillProcessTree;
+        await runTaskkill({ pid, timeoutMs: stopArgs.timeoutMs });
+        const reaped = await waitForProcessExitWithTimeout({
+          childProcess,
+          timeoutMs: stopArgs.killTimeoutMs,
+        });
+        if (reaped === "exited") {
+          return;
+        }
+        if (!hasProcessExited(childProcess)) {
+          childProcess.kill(stopArgs.killSignal);
+        }
+        await waitForProcessExitWithTimeout({
+          childProcess,
+          timeoutMs: stopArgs.killTimeoutMs,
+        });
         return;
       }
       childProcess.kill(stopArgs.signal);

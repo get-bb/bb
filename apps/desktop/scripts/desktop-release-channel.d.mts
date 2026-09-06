@@ -15,6 +15,10 @@ export interface DesktopReleaseConfig {
   macIconPath: "assets/icon.icns" | "assets/icon-nightly.icns";
   releaseTag: "desktop-latest" | "desktop-nightly";
   updateMetadataFileNames: DesktopUpdateMetadataFileNames;
+  windowsAppId: "cl.bb.wn" | "cl.bb.wn.nightly";
+  windowsApplicationName: "bb wn" | "bb wn Nightly";
+  windowsArtifactName: "bb-wn-Setup-${version}.exe";
+  windowsIconPath: "assets/icon.ico" | "assets/icon-nightly.ico";
 }
 
 export function resolveDesktopReleaseChannel(
