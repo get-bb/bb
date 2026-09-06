@@ -58,6 +58,21 @@ describe("server skeleton", () => {
     });
   });
 
+  it("serves the Windows machine install script bytes without auth", async () => {
+    await withTestHarness(async (harness) => {
+      const expected = readFileSync(
+        new URL("../../src/assets/install-machine.ps1", import.meta.url),
+      );
+      const response = await harness.app.request("/install.ps1");
+
+      expect(response.status).toBe(200);
+      expect(response.headers.get("content-type")).toBe(
+        "text/plain; charset=utf-8",
+      );
+      expect(Buffer.from(await response.arrayBuffer())).toEqual(expected);
+    });
+  });
+
   it("serves install version metadata without auth", async () => {
     const harness = await createTestAppHarness();
     const { app } = createApp(harness.deps, {

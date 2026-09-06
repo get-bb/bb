@@ -147,6 +147,9 @@ const SLOW_API_REQUEST_LOG_THRESHOLD_MS = 1_000;
 const INSTALL_MACHINE_SCRIPT_PATH = fileURLToPath(
   new URL("./assets/install-machine.sh", import.meta.url),
 );
+const INSTALL_MACHINE_POWERSHELL_SCRIPT_PATH = fileURLToPath(
+  new URL("./assets/install-machine.ps1", import.meta.url),
+);
 const THREAD_EVENT_WAIT_PATH_PATTERN =
   /^\/api\/v1\/threads\/[^/]+\/events\/wait$/u;
 const PLUGIN_APP_ASSET_PATH_PATTERN =
@@ -471,6 +474,15 @@ export function createApp(
       headers: {
         "cache-control": "no-store",
         "content-type": "text/x-shellscript; charset=utf-8",
+      },
+    });
+  });
+  app.get("/install.ps1", async (context) => {
+    const script = await readFile(INSTALL_MACHINE_POWERSHELL_SCRIPT_PATH);
+    return new Response(script, {
+      headers: {
+        "cache-control": "no-store",
+        "content-type": "text/plain; charset=utf-8",
       },
     });
   });
