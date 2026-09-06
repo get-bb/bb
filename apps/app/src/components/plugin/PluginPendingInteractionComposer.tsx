@@ -81,37 +81,43 @@ export function PluginPendingInteractionComposer({
     }
   }, [dismissal, interaction.id, interaction.threadId, stopThread]);
   const dismissLabel = dismissal === "cancel" ? "Cancel" : "Stop turn";
+  const header = (
+    <header className="mb-4 min-w-0">
+      <h3 className="text-pretty text-sm font-semibold text-foreground">
+        {request.title}
+      </h3>
+      <p className="mt-0.5 text-xs text-muted-foreground">
+        {dismissal === "cancel" ? "Requested by " : "The agent asks through "}
+        <span className="capitalize">{request.pluginId}</span>
+      </p>
+    </header>
+  );
 
   return (
     <section className="mb-2 rounded-lg border border-border bg-surface-recessed px-4 py-3 text-xs text-muted-foreground">
-      <header className="mb-4 min-w-0">
-        <h3 className="text-pretty text-sm font-semibold text-foreground">
-          {request.title}
-        </h3>
-        <p className="mt-0.5 text-xs text-muted-foreground">
-          {dismissal === "cancel" ? "Requested by " : "The agent asks through "}
-          <span className="capitalize">{request.pluginId}</span>
-        </p>
-      </header>
+      {slot?.experimental_hideHeader ? null : header}
       {slot ? (
         <PluginSlotMount
           pluginId={slot.pluginId}
           slotKind="pendingInteraction"
           slotId={slot.id}
           crashFallback={
-            <div className="space-y-3">
-              <p className="text-sm text-muted-foreground">
-                The plugin form crashed. {dismissLabel} to continue.
-              </p>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => void cancel()}
-                disabled={submitting}
-              >
-                {dismissLabel}
-              </Button>
-            </div>
+            <>
+              {slot.experimental_hideHeader ? header : null}
+              <div className="space-y-3">
+                <p className="text-sm text-muted-foreground">
+                  The plugin form crashed. {dismissLabel} to continue.
+                </p>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => void cancel()}
+                  disabled={submitting}
+                >
+                  {dismissLabel}
+                </Button>
+              </div>
+            </>
           }
         >
           <fieldset disabled={submitting}>

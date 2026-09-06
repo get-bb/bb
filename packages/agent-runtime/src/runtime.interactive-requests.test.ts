@@ -456,44 +456,52 @@ describe("createAgentRuntime interactive requests", () => {
     await runtime.shutdown();
   });
 
-  it("forwards a plugin-defined request even under a deny escalation and returns its answer", async () => {
-    const onInteractiveRequest = vi.fn(
-      async (): Promise<PendingInteractionResolution> => ({
-        kind: "request_answer",
-        value: { TOKEN: "x" },
-      }),
-    );
-    const answer = await answerDirectRequest({
-      rawRequest: {
-        jsonrpc: "2.0",
-        id: 90,
-        method: "interaction/request",
-        params: {
-          providerThreadId: "prov-1",
-          threadId: "t1",
-          turnId: "turn-1",
-          payload: {
-            kind: "secrets/secret-request",
-            title: "Add a token",
-            data: { fields: ["TOKEN"] },
+  it.each([
+    ["explicit turn", "turn-1", "turn-1"],
+    ["active turn", null, "bb-active-turn"],
+  ])(
+    "forwards a plugin-defined request for an %s even under a deny escalation",
+    async (_name, providerTurnId, expectedTurnId) => {
+      const onInteractiveRequest = vi.fn(
+        async (): Promise<PendingInteractionResolution> => ({
+          kind: "request_answer",
+          value: { TOKEN: "x" },
+        }),
+      );
+      const answer = await answerDirectRequest({
+        rawRequest: {
+          jsonrpc: "2.0",
+          id: 90,
+          method: "interaction/request",
+          params: {
+            providerThreadId: "prov-1",
+            threadId: "t1",
+            turnId: providerTurnId,
+            payload: {
+              kind: "secrets/secret-request",
+              title: "Add a token",
+              data: { fields: ["TOKEN"] },
+            },
           },
         },
-      },
-      handshake: { approvalEnforcedBy: "runtime" },
-      getThreadExecutionOptions: () => deniedEscalationOptions,
-      onInteractiveRequest,
-    });
-    expect(onInteractiveRequest).toHaveBeenCalledWith(
-      expect.objectContaining({
-        payload: expect.objectContaining({ kind: "secrets/secret-request" }),
-      }),
-    );
-    expect(answer).toMatchObject({
-      jsonrpc: "2.0",
-      id: 90,
-      result: { kind: "request_answer", value: { TOKEN: "x" } },
-    });
-  });
+        handshake: { approvalEnforcedBy: "runtime" },
+        getActiveTurnId: () => "bb-active-turn",
+        getThreadExecutionOptions: () => deniedEscalationOptions,
+        onInteractiveRequest,
+      });
+      expect(onInteractiveRequest).toHaveBeenCalledWith(
+        expect.objectContaining({
+          turnId: expectedTurnId,
+          payload: expect.objectContaining({ kind: "secrets/secret-request" }),
+        }),
+      );
+      expect(answer).toMatchObject({
+        jsonrpc: "2.0",
+        id: 90,
+        result: { kind: "request_answer", value: { TOKEN: "x" } },
+      });
+    },
+  );
 
   it("refuses a plugin-defined request whose data exceeds 64 KiB at the wire", async () => {
     const onInteractiveRequest = vi.fn(

@@ -6,6 +6,62 @@ import {
   extractCodexMacOsPermissionRequest,
 } from "./interactive-requests.js";
 import { ProviderRequestDecodeError } from "@bb/provider-bridge-protocol/bridge-kit";
+import computerUseElicitation from "./fixtures/computer-use-elicitation.json";
+
+it("surfaces a standard elicitation from another MCP server", () => {
+  expect(
+    decodeCodexInteractiveRequest({
+      id: 41,
+      method: "mcpServer/elicitation/request",
+      params: {
+        threadId: "thread-1",
+        turnId: "turn-1",
+        serverName: "travel",
+        mode: "form",
+        _meta: null,
+        message: "Choose your destination",
+        requestedSchema: {
+          type: "object",
+          properties: { destination: { type: "string", minLength: 1 } },
+          required: ["destination"],
+        },
+      },
+    }),
+  ).toMatchObject({
+    requestId: 41,
+    turnId: "turn-1",
+    payload: {
+      kind: "provider-codex/mcp-elicitation",
+      data: { kind: "form", serverName: "travel" },
+    },
+  });
+});
+
+it("surfaces a native Computer Use app permission request", () => {
+  expect(decodeCodexInteractiveRequest(computerUseElicitation)).toEqual({
+    requestId: computerUseElicitation.id,
+    method: computerUseElicitation.method,
+    providerThreadId: computerUseElicitation.params.threadId,
+    turnId: null,
+    payload: {
+      kind: "provider-codex/mcp-elicitation",
+      title: computerUseElicitation.params.message,
+      data: {
+        kind: "computer_use",
+        serverName: "cua_repl",
+        app: {
+          id: "com.apple.calculator",
+          name: "Calculator",
+          iconDataUrl: null,
+        },
+        message: computerUseElicitation.params.message,
+        scopes: ["session", "always"],
+        warning: null,
+        riskLevel: "low",
+      },
+    },
+  });
+});
 
 describe("decodeCodexInteractiveRequest", () => {
   it("maps command approval requests into pending interaction payloads", () => {

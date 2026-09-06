@@ -40,6 +40,51 @@ removes the native Task tool. The preferences default off and apply
 when a provider thread is started, resumed, or forked; they do not modify the
 provider's global configuration.
 
+Codex MCP elicitation
+
+Codex can relay a request from any MCP server through a pending interaction
+above the composer. The prompt identifies the requesting server. Standard
+forms support text, numbers, integers, booleans, and single or multiple choices,
+including titles, descriptions, defaults, required fields, and supported
+constraints. Answers are validated in the UI and again before reaching Codex.
+
+URL requests display the destination and ask the user to open it. Opening a
+URL sends acceptance of the external interaction, not a claim that it finished.
+bb does not load the destination automatically or collect its credentials.
+
+The `openai/form` and `openaiForm` modes can use the same standard form subset.
+Other schemas display an explanation with Decline instead of an
+acceptance button. Invalid Computer Use metadata also takes this path, so it
+cannot fall back to a generic approval that loses its native scope or warning.
+
+When Codex requests access to a macOS app, bb displays the app name and native
+icon above the composer. The bundle identifier is available on hover. Native
+high-risk labels and warnings remain visible. Missing icons use a generic
+app symbol. Choose
+Allow for this session or Always allow when Codex offers that scope. Decline
+returns the corresponding native response. CLI/SDK callers can also cancel the request. Stop turn interrupts the
+turn instead. Codex owns permission persistence. These prompts are separate
+from macOS Accessibility and Screen Recording permissions.
+
+Agents can inspect and answer any of these requests through the existing CLI:
+
+  bb thread interactions list <thread-id> --json
+  bb thread interactions show <interaction-id> <thread-id> --json
+  bb thread interactions respond <interaction-id> <thread-id> --value '{"action":"accept","persist":"session"}'
+
+Use `persist: "always"` only when the request's `scopes` includes `always`.
+For standard forms, respond with the field values, for example
+`{"action":"accept","content":{"destination":"Tokyo","travelers":2}}`.
+For URL requests, `{"action":"accept"}` records consent. CLI and SDK clients
+must arrange the user-approved navigation themselves.
+To refuse or cancel, pass `{"action":"decline"}` or `{"action":"cancel"}`.
+The SDK exposes the same operation through
+`client.threads.interactions.respond({ threadId, interactionId, value })`.
+The provider's `provider-codex/mcp-elicitation` renderer uses the Plugin SDK
+pending-interaction `submit(value)` callback.
+Invalid responses never grant access. A response rejected by the provider
+after submission can finish the interaction with a tool error.
+
 Provider failure recovery
 
 The builtin Provider retry plugin is enabled on fresh installations and

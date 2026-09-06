@@ -1,5 +1,20 @@
 # APIs To Audit
 
+## `PluginPendingInteractionRegistration.experimental_hideHeader`
+
+**What it does.** Lets an in-thread form render its own heading in place of
+the host title and plugin byline. Omission retains the host heading. The host
+keeps its composer-width card and restores its heading for unavailable or
+crashed renderers.
+
+**Audit before stabilizing.**
+
+1. Confirm a registration-wide opt-in covers forms with different payloads.
+2. Confirm custom headings preserve enough request identity and accessible
+   structure without enforcing a specific heading component.
+3. Verify plugin reload and crash recovery always retain the request title
+   and dismissal action.
+
 ## `bb.http.experimental_websocket`
 
 **What it does.** Registers an exact-path WebSocket upgrade in the plugin's

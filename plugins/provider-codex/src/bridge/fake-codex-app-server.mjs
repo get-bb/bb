@@ -1,28 +1,5 @@
 #!/usr/bin/env node
 
-/**
- * Minimal scripted `codex app-server` for hermetic codex-bridge tests.
- *
- * Speaks the subset of the app-server dialect the bridge drives: initialize,
- * thread/start|resume|fork returning a thread identity (plus the
- * thread/started notification a real app-server emits), and turn/start
- * answering with a full scripted turn. The scripted turn is deliberately
- * DELTA-FIRST — `item/agentMessage/delta` arrives before any `item/started`
- * for that item — so the bridge's item-opening synthesis is exercised for
- * real by the conformance kit's item/opens-before-delta rule.
- *
- * An optional argv[2] script file replaces that hardcoded turn:
- * `{ "turns": [[{ "method", "params" }, …], …] }`, where the Nth accepted
- * `turn/start` emits the Nth turn's notifications verbatim. It exists so the
- * dual-path calibration suite can drive this process and the legacy adapter
- * from ONE script. An entry marked `"kind": "request"` is sent as a JSON-RPC
- * *request* toward the client (an approval) and blocks the rest of the turn
- * until the client answers, exactly as a real app-server does. Every
- * `threadId` in the script is rewritten to the thread id this process minted,
- * because only this process knows it. Without the argument the hardcoded
- * behavior below is unchanged.
- */
-
 import {
   appendFileSync,
   closeSync,
@@ -54,28 +31,13 @@ function respondError(id, code, message) {
   send({ jsonrpc: "2.0", id, error: { code, message } });
 }
 
-/** The prompt the kit's turn/settles-without-activity scenario sends. */
 const ZERO_WORK_PROMPT_TEXT = "/clear";
 
-/**
- * A prompt answered BEFORE any turn notification, whose real turn then arrives
- * late. Codex normally emits `turn/started` ahead of its `turn/start`
- * response; this inverts that order so the bridge's zero-work settlement has
- * to lose the race to the real turn (fabricating a turn from a late signal is
- * the ACP bug 0c2f4cc9a).
- */
 const LATE_TURN_START_PROMPT_TEXT = "/late-start";
 const LATE_TURN_START_DELAY_MS = 60;
 
-/** A prompt that stays open until the client sends turn/interrupt. */
 const INTERRUPTIBLE_PROMPT_TEXT = "/wait-for-interrupt";
 
-/**
- * A prompt that spawns a native subagent (open thread work) and then dies with
- * the subagent still running — the crash/OOM shape. The bridge has to settle
- * the open turn AND retract the open-work claim, or the runtime never reaps
- * the thread.
- */
 const SUBAGENT_THEN_CRASH_PROMPT_TEXT = "/subagent-then-crash";
 
 function firstInputText(input) {
@@ -112,8 +74,7 @@ function runScriptedTurn(threadId) {
     threadId,
     turn: { id: turnId, status: "inProgress" },
   });
-  // Delta-first: no item/started for the agent message. The bridge must
-  // synthesize the opening event.
+
   notify("item/agentMessage/delta", { threadId, turnId, itemId, delta: text });
   notify("item/completed", {
     threadId,
@@ -121,8 +82,6 @@ function runScriptedTurn(threadId) {
     item: { type: "agentMessage", id: itemId, text },
   });
   if (String(threadId).startsWith("usage-replay-")) {
-    // Usage-replay threads also report the turn's own usage, like the real
-    // app-server, so tests can tell a replay from live turn usage (#1727).
     notify("thread/tokenUsage/updated", {
       threadId,
       turnId,
@@ -136,36 +95,20 @@ function runScriptedTurn(threadId) {
   openTurnIdsByThreadId.delete(threadId);
 }
 
-// argv, not an env var: the bridge builds its child's environment from an
-// allowlist, so an env var set by a test never reaches this process.
 const scriptPath = process.argv[2];
 const script = scriptPath ? JSON.parse(readFileSync(scriptPath, "utf8")) : null;
 const scriptedTurns = script?.turns ?? null;
 const requestLogPath = script?.requestLogPath ?? null;
+const outboundResponseLogPath = script?.outboundResponseLogPath ?? null;
 const modelListFailOnceMarkerPath = script?.modelListFailOnceMarkerPath ?? null;
-/**
- * `archiveStatePath`: a JSON file of archived thread ids shared by every fake
- * child the bridge spawns from one script. The real app-server keeps archive
- * state on disk (the rollout moves to an archived dir), so an archive seen by
- * one child must refuse a resume in the next — the bridge kills a thread's
- * child on archive and resumes on a fresh one.
- */
+
 const archiveStatePath = script?.archiveStatePath ?? null;
-/**
- * `renameEmptyRolloutFailures`: how many `thread/name/set` calls fail with the
- * real app-server's "rollout … is empty" error before one succeeds — the
- * window between a rollout file's creation and its first record.
- */
+
 let renameEmptyRolloutFailuresLeft = script?.renameEmptyRolloutFailures ?? 0;
 const archivedThreadIds = new Set();
-/**
- * `processLogPath`: one line per child lifecycle step (`spawn:<pid>:<ppid>`,
- * `exit:<pid>:<ppid>`), so a test can count how many app-server children the
- * bridge runs, how many bridge processes spawned them (distinct ppids), and
- * see the children die on release, archive, and bridge shutdown.
- */
+
 const processLogPath = script?.processLogPath ?? null;
-/** `startDelayMs`: answer `thread/start` only after this many milliseconds. */
+
 const startDelayMs = script?.startDelayMs ?? 0;
 const sigtermDelayMs = script?.sigtermDelayMs ?? 0;
 
@@ -233,7 +176,6 @@ function shouldFailThisModelList() {
   }
 }
 
-/** Rewrite every `threadId` to the id this process minted for the session. */
 function withThreadId(value, threadId) {
   if (Array.isArray(value)) {
     return value.map((entry) => withThreadId(entry, threadId));
@@ -251,12 +193,6 @@ function withThreadId(value, threadId) {
   return rewritten;
 }
 
-/**
- * Requests this process originates toward its client (approvals). A real
- * app-server blocks the turn until the client answers, so the scripted turn
- * does too — an entry marked `"kind": "request"` is sent as a JSON-RPC request
- * rather than a notification.
- */
 let outboundRequestCounter = 0;
 const pendingOutboundRequests = new Map();
 
@@ -269,12 +205,6 @@ function requestFromClient(method, params) {
   });
 }
 
-/**
- * `turnCursorPath`: persists the scripted-turn cursor across child processes,
- * so a script whose Nth turn must run on a REBUILT child (the bridge replaces
- * a thread's app-server after a terminal account error) keeps counting where
- * the previous child stopped.
- */
 const turnCursorPath = script?.turnCursorPath ?? null;
 
 function takeScriptedTurnIndex() {
@@ -364,9 +294,6 @@ async function handleRequest(message) {
       return;
     }
     case "thread/resume": {
-      // Scripted archived-session rejection: the real app-server refuses to
-      // resume an archived thread with an error naming the session. Tests use
-      // an `archived-` provider-thread-id prefix to trigger it.
       if (
         String(params.threadId).startsWith("archived-") ||
         isThreadArchived(params.threadId)
@@ -378,10 +305,7 @@ async function handleRequest(message) {
         );
         return;
       }
-      // Mirror the real app-server (codex-cli 0.147.0, observed live for
-      // #1727): thread/resume replays the rollout's last-turn token usage,
-      // scoped to that PREVIOUS turn's id, before any new turn is started.
-      // Opt-in via a `usage-replay-` provider-thread-id prefix.
+
       if (String(params.threadId).startsWith("usage-replay-")) {
         replayLastTurnUsage(params.threadId);
       }
@@ -389,8 +313,6 @@ async function handleRequest(message) {
       return;
     }
     case "thread/fork": {
-      // The real app-server reads the source rollout; an archived source is
-      // refused with the same wording a resume gets.
       if (
         String(params.threadId).startsWith("archived-") ||
         isThreadArchived(params.threadId)
@@ -408,18 +330,13 @@ async function handleRequest(message) {
         ? `usage-replay-fork-${process.pid}-${threadCounter}`
         : `codex-fx-${process.pid}-fork-${threadCounter}`;
       respond(id, { thread: { id: threadId } });
-      // thread/fork replays the source rollout's last-turn usage the same way,
-      // after the response, under the NEW thread id but the SOURCE turn id
-      // (#1727).
+
       if (replaysUsage) {
         replayLastTurnUsage(threadId);
       }
       return;
     }
     case "turn/start": {
-      // A prompt the provider handles locally: accepted and answered, but with
-      // no turn/started and no turn/completed, so nothing in the child's
-      // output can open or settle a bb turn (#1431).
       if (firstInputText(params.input) === ZERO_WORK_PROMPT_TEXT) {
         respond(id, {});
         return;
@@ -490,8 +407,6 @@ async function handleRequest(message) {
       return;
     }
     case "thread/archive":
-      // The real app-server moves the rollout into its archived dir, so a
-      // second archive finds no live rollout; the reverse holds for unarchive.
       if (isThreadArchived(params.threadId)) {
         respondError(
           id,
@@ -556,7 +471,10 @@ stdinLines.on("line", (line) => {
     return;
   }
   if (parsed.id !== undefined) {
-    // A response to a request this process originated (an approval answer).
+    if (outboundResponseLogPath !== null) {
+      appendFileSync(outboundResponseLogPath, `${JSON.stringify(parsed)}\n`);
+    }
+
     const resolve = pendingOutboundRequests.get(parsed.id);
     if (resolve) {
       pendingOutboundRequests.delete(parsed.id);

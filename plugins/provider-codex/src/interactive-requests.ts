@@ -1,6 +1,7 @@
 import {
   ProviderRequestDecodeError as ProviderRequestDecodeErrorValue,
   ProviderResponseEncodeError,
+  isApprovalInteractionOutcome,
   type ApprovalInteractionOutcome,
   type DecodedInteractiveRequest,
   type ProviderInboundRequest,
@@ -8,12 +9,21 @@ import {
   type PendingInteractionGrantablePermissionProfile,
   type PendingInteractionGrantedPermissionProfile,
   type PendingInteractionRequestedPermissionProfile,
+  type ProviderInteractionOutcome,
 } from "@get-bb/plugin-sdk/provider-bridge";
 import type { CodexMacOsPermissionItem } from "./extension-kinds.js";
 import { normalizePendingInteractionRequestedPermissionProfile } from "./pending-interaction-normalization.js";
 import type { CommandExecutionRequestApprovalResponse } from "./generated/codex-app-server/schema/v2/CommandExecutionRequestApprovalResponse.js";
 import type { FileChangeRequestApprovalResponse } from "./generated/codex-app-server/schema/v2/FileChangeRequestApprovalResponse.js";
 import type { PermissionsRequestApprovalResponse } from "./generated/codex-app-server/schema/v2/PermissionsRequestApprovalResponse.js";
+import {
+  CODEX_MCP_ELICITATION_KIND,
+  normalizeCodexMcpElicitation,
+  codexMcpElicitationSchema,
+  codexMcpElicitationResponseSchema,
+  buildCodexMcpElicitationResponse,
+  type CodexNativeMcpElicitationResponse,
+} from "./mcp-elicitation.js";
 import {
   codexCommandExecutionRequestApprovalParamsSchema,
   codexFileChangeRequestApprovalParamsSchema,
@@ -29,7 +39,8 @@ import type {
 type CodexInteractiveResponse =
   | CommandExecutionRequestApprovalResponse
   | FileChangeRequestApprovalResponse
-  | PermissionsRequestApprovalResponse;
+  | PermissionsRequestApprovalResponse
+  | CodexNativeMcpElicitationResponse;
 
 function assertNever(value: never): never {
   throw new ProviderResponseEncodeError(`Unexpected value: ${String(value)}`);
@@ -87,6 +98,28 @@ export function decodeCodexInteractiveRequest(
   }
 
   switch (request.method) {
+    case "mcpServer/elicitation/request": {
+      try {
+        const { threadId, turnId, elicitation } = normalizeCodexMcpElicitation(
+          request.params,
+        );
+        return {
+          requestId: request.id,
+          method: request.method,
+          providerThreadId: threadId,
+          turnId,
+          payload: {
+            kind: CODEX_MCP_ELICITATION_KIND,
+            title: elicitation.message,
+            data: elicitation,
+          },
+        };
+      } catch (error) {
+        throw new ProviderRequestDecodeErrorValue(
+          `Invalid Codex MCP elicitation envelope: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+    }
     case "item/commandExecution/requestApproval": {
       const parsed = codexCommandExecutionRequestApprovalParamsSchema.safeParse(
         request.params,
@@ -204,8 +237,30 @@ export function decodeCodexInteractiveRequest(
 }
 
 export function buildCodexInteractiveResponse(
-  args: ApprovalInteractionOutcome,
+  args: ProviderInteractionOutcome,
 ): CodexInteractiveResponse {
+  if (!isApprovalInteractionOutcome(args)) {
+    if (
+      args.payload.kind !== CODEX_MCP_ELICITATION_KIND ||
+      !("kind" in args.resolution) ||
+      args.resolution.kind !== "request_answer"
+    ) {
+      throw new ProviderResponseEncodeError(
+        `Unsupported Codex interaction outcome: ${args.payload.kind}`,
+      );
+    }
+    try {
+      const elicitation = codexMcpElicitationSchema.parse(args.payload.data);
+      const response = codexMcpElicitationResponseSchema.parse(
+        args.resolution.value,
+      );
+      return buildCodexMcpElicitationResponse(elicitation, response);
+    } catch (error) {
+      throw new ProviderResponseEncodeError(
+        `Invalid Codex MCP elicitation response: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
   switch (args.payload.subject.kind) {
     case "command": {
       const response: CommandExecutionRequestApprovalResponse = {

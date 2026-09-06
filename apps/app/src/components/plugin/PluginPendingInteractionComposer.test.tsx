@@ -88,6 +88,7 @@ describe("PluginPendingInteractionComposer", () => {
     );
 
     expect(screen.getByText("form Add secrets")).toBeDefined();
+    expect(screen.getByRole("heading", { name: "Add secrets" })).toBeDefined();
     expect(screen.queryByText("wrong plugin renderer")).toBeNull();
   });
 
@@ -105,7 +106,41 @@ describe("PluginPendingInteractionComposer", () => {
       />,
     );
     expect(screen.getByText(/form is unavailable/i)).toBeDefined();
+    expect(screen.getByRole("heading", { name: "Add secrets" })).toBeDefined();
     expect(screen.getByRole("button", { name: "Cancel" })).toBeDefined();
+  });
+
+  it("lets an opted-in renderer own the heading", () => {
+    function Renderer() {
+      return <h3>Enter your API key</h3>;
+    }
+    setPluginSlotRegistrations(
+      "secrets",
+      registrations([
+        {
+          id: "secret-request",
+          experimental_hideHeader: true,
+          component: Renderer,
+        },
+      ]),
+    );
+    renderComposer(
+      <PluginPendingInteractionComposer
+        interaction={interaction}
+        request={{
+          pluginId: "secrets",
+          rendererId: "secret-request",
+          title: interaction.payload.title,
+          data: interaction.payload.data,
+        }}
+        dismissal="cancel"
+      />,
+    );
+    expect(
+      screen.getByRole("heading", { name: "Enter your API key" }),
+    ).toBeDefined();
+    expect(screen.queryByRole("heading", { name: "Add secrets" })).toBeNull();
+    expect(screen.queryByText(/Requested by/)).toBeNull();
   });
 
   it("resolves the form through the slot store once the renderer registers", () => {
@@ -143,29 +178,41 @@ describe("PluginPendingInteractionComposer", () => {
     expect(screen.getByText("form Add secrets")).toBeDefined();
   });
 
-  it("keeps cancel available when the renderer crashes", () => {
-    vi.spyOn(console, "error").mockImplementation(() => {});
-    vi.spyOn(console, "warn").mockImplementation(() => {});
-    function Crashed(): never {
-      throw new Error("boom");
-    }
-    setPluginSlotRegistrations(
-      "secrets",
-      registrations([{ id: "secret-request", component: Crashed }]),
-    );
-    renderComposer(
-      <PluginPendingInteractionComposer
-        interaction={interaction}
-        request={{
-          pluginId: "secrets",
-          rendererId: "secret-request",
-          title: interaction.payload.title,
-          data: interaction.payload.data,
-        }}
-        dismissal="cancel"
-      />,
-    );
-    expect(screen.getByText(/form crashed/i)).toBeDefined();
-    expect(screen.getByRole("button", { name: "Cancel" })).toBeDefined();
-  });
+  it.each([false, true])(
+    "keeps the heading and cancel when a renderer crashes with hideHeader=%s",
+    (hideHeader) => {
+      vi.spyOn(console, "error").mockImplementation(() => {});
+      vi.spyOn(console, "warn").mockImplementation(() => {});
+      function Crashed(): never {
+        throw new Error("boom");
+      }
+      setPluginSlotRegistrations(
+        "secrets",
+        registrations([
+          {
+            id: "secret-request",
+            experimental_hideHeader: hideHeader,
+            component: Crashed,
+          },
+        ]),
+      );
+      renderComposer(
+        <PluginPendingInteractionComposer
+          interaction={interaction}
+          request={{
+            pluginId: "secrets",
+            rendererId: "secret-request",
+            title: interaction.payload.title,
+            data: interaction.payload.data,
+          }}
+          dismissal="cancel"
+        />,
+      );
+      expect(screen.getByText(/form crashed/i)).toBeDefined();
+      expect(
+        screen.getAllByRole("heading", { name: "Add secrets" }),
+      ).toHaveLength(1);
+      expect(screen.getByRole("button", { name: "Cancel" })).toBeDefined();
+    },
+  );
 });
