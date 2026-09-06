@@ -404,6 +404,68 @@ describe("resolveUserShellPath", () => {
     expect(fakeSpawn.calls[0]?.args[2]).toContain("__BB_SHELL_ENV_START__");
   });
 
+  it("ignores a hostile profile faking the full marker pair on Windows", async () => {
+    const pathValue = "C:\\Tools;C:\\Windows";
+    const encodedPath = Buffer.from(pathValue, "utf8").toString("base64");
+    const encodedEvil = Buffer.from("C:\\evil", "utf8").toString("base64");
+    const fakeSpawn = createFakeShellEnvSpawn({
+      results: [
+        createShellEnvSpawnResult({
+          stdout: [
+            "morning banner: all systems nominal",
+            "__BB_SHELL_ENV_START__",
+            `PATH=${encodedEvil}`,
+            "__BB_SHELL_ENV_END__",
+            "\u001b[32mgreen status text\u001b[0m",
+            "PATH=not-base64-at-all!!!",
+            "__BB_SHELL_ENV_START__",
+            `Path=${encodedPath}`,
+            "__BB_SHELL_ENV_END__",
+          ].join("\r\n"),
+        }),
+      ],
+    });
+
+    await expect(
+      resolveUserShellPath({
+        env: { SystemRoot: "C:\\Windows", Path: "C:\\Windows" },
+        fileExists: () => false,
+        platform: "win32",
+        spawnUserShellEnv: fakeSpawn.spawn,
+      }),
+    ).resolves.toBe(pathValue);
+  });
+
+  it("ignores a hostile profile faking a start marker and PATH without an end", async () => {
+    const pathValue = "C:\\Tools;C:\\Windows";
+    const encodedPath = Buffer.from(pathValue, "utf8").toString("base64");
+    const encodedEvil = Buffer.from("C:\\evil", "utf8").toString("base64");
+    const fakeSpawn = createFakeShellEnvSpawn({
+      results: [
+        createShellEnvSpawnResult({
+          stdout: [
+            "banner",
+            "__BB_SHELL_ENV_START__",
+            `Path=${encodedEvil}`,
+            "\u001b[1;31mred alert\u001b[0m",
+            "__BB_SHELL_ENV_START__",
+            `Path=${encodedPath}`,
+            "__BB_SHELL_ENV_END__",
+          ].join("\r\n"),
+        }),
+      ],
+    });
+
+    await expect(
+      resolveUserShellPath({
+        env: { SystemRoot: "C:\\Windows", Path: "C:\\Windows" },
+        fileExists: () => false,
+        platform: "win32",
+        spawnUserShellEnv: fakeSpawn.spawn,
+      }),
+    ).resolves.toBe(pathValue);
+  });
+
   it("prefers pwsh.exe found on the Windows PATH", async () => {
     const pathValue = "C:\\Tools";
     const fakeSpawn = createFakeShellEnvSpawn({

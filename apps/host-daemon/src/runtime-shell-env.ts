@@ -383,11 +383,18 @@ function userShellEnvArgSets(
   ];
 }
 
+function findLastMarkerIndex(lines: string[], marker: string): number {
+  for (let index = lines.length - 1; index >= 0; index -= 1) {
+    if (lines[index]?.trim() === marker) {
+      return index;
+    }
+  }
+  return -1;
+}
+
 function parseWindowsPathFromUserShellEnv(stdout: string): string | null {
   const lines = stdout.split(/\r?\n/u);
-  const startIndex = lines.findIndex(
-    (line) => line.trim() === SHELL_ENV_START_MARKER,
-  );
+  const startIndex = findLastMarkerIndex(lines, SHELL_ENV_START_MARKER);
   if (startIndex === -1) {
     return null;
   }
