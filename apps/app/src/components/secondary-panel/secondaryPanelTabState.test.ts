@@ -44,6 +44,7 @@ describe("secondaryPanelTabState", () => {
       },
       threadId: "thr-1",
     });
+    const terminalTab = createTerminalFixedPanelTab({ terminalId: "term-1" });
     const tabs = [
       createThreadInfoFixedPanelTab(),
       createGitDiffFixedPanelTab(),
@@ -57,7 +58,7 @@ describe("secondaryPanelTabState", () => {
       }),
       createBrowserFixedPanelTab({ environmentId: "env-1", url: "" }),
       createNewTabFixedPanelTab(),
-      createTerminalFixedPanelTab({ terminalId: "term-1" }),
+      terminalTab,
     ];
     let state = createEmptyFixedPanelTabsState();
 
@@ -74,10 +75,71 @@ describe("secondaryPanelTabState", () => {
     expect(state.secondary.activeTabId).toBe(workspaceTab.id);
 
     state = closeSecondaryPanelTabInState(state, workspaceTab.id);
-    expect(state.secondary.activeTabId).toBe(hostTab.id);
+    expect(state.secondary.activeTabId).toBe(terminalTab.id);
     expect(state.secondary.tabs.some((tab) => tab.id === workspaceTab.id)).toBe(
       false,
     );
+  });
+
+  it("returns to the source tab after closing a tab opened from it", () => {
+    const sourceTab = createHostFilePreviewFixedPanelTab({
+      environmentId: "env-1",
+      tab: { lineRange: null, path: "/tmp/source.txt" },
+      threadId: "thr-1",
+    });
+    const neighborTab = createHostFilePreviewFixedPanelTab({
+      environmentId: "env-1",
+      tab: { lineRange: null, path: "/tmp/neighbor.txt" },
+      threadId: "thr-1",
+    });
+    const openedTab = createHostFilePreviewFixedPanelTab({
+      environmentId: "env-1",
+      tab: { lineRange: null, path: "/tmp/opened.txt" },
+      threadId: "thr-1",
+    });
+    let state = createEmptyFixedPanelTabsState({
+      secondary: {
+        activeTabId: sourceTab.id,
+        isOpen: true,
+        tabs: [neighborTab, sourceTab],
+      },
+    });
+
+    state = openSecondaryPanelTabInState({ state, tab: openedTab });
+    expect(state.secondary.activeTabId).toBe(openedTab.id);
+
+    state = closeSecondaryPanelTabInState(state, openedTab.id);
+    expect(state.secondary.activeTabId).toBe(sourceTab.id);
+  });
+
+  it("falls back to the positional neighbor when the source tab is gone", () => {
+    const sourceTab = createHostFilePreviewFixedPanelTab({
+      environmentId: "env-1",
+      tab: { lineRange: null, path: "/tmp/source.txt" },
+      threadId: "thr-1",
+    });
+    const neighborTab = createHostFilePreviewFixedPanelTab({
+      environmentId: "env-1",
+      tab: { lineRange: null, path: "/tmp/neighbor.txt" },
+      threadId: "thr-1",
+    });
+    const openedTab = createHostFilePreviewFixedPanelTab({
+      environmentId: "env-1",
+      tab: { lineRange: null, path: "/tmp/opened.txt" },
+      threadId: "thr-1",
+    });
+    let state = createEmptyFixedPanelTabsState({
+      secondary: {
+        activeTabId: sourceTab.id,
+        isOpen: true,
+        tabs: [neighborTab, sourceTab],
+      },
+    });
+
+    state = openSecondaryPanelTabInState({ state, tab: openedTab });
+    state = closeSecondaryPanelTabInState(state, sourceTab.id);
+    state = closeSecondaryPanelTabInState(state, openedTab.id);
+    expect(state.secondary.activeTabId).toBe(neighborTab.id);
   });
 
   it("activates the previous file tab when closing the last active file tab", () => {
