@@ -1,5 +1,8 @@
 import { z } from "zod";
-import { withoutBridgeRuntimeEnv } from "@bb/provider-bridge-protocol/bridge-kit";
+import {
+  withoutBridgeRuntimeEnv,
+  type PortableSpawnFn,
+} from "@bb/provider-bridge-protocol/bridge-kit";
 import {
   AcpAgentExitedError,
   createAcpAgentConnection,
@@ -14,6 +17,8 @@ export interface AcpAgentProbeRequest {
   env?: Record<string, string>;
   cwd: string;
   timeoutMs?: number;
+  platform?: NodeJS.Platform;
+  spawnImpl?: PortableSpawnFn;
 }
 
 export type AcpAgentProbe =
@@ -41,6 +46,12 @@ export async function probeAcpAgent(
       args: [...request.args],
       cwd: request.cwd,
       env: withoutBridgeRuntimeEnv({ ...process.env, ...(request.env ?? {}) }),
+      ...(request.platform !== undefined
+        ? { platform: request.platform }
+        : {}),
+      ...(request.spawnImpl !== undefined
+        ? { spawnImpl: request.spawnImpl }
+        : {}),
       recordThreadId: null,
       onNotification: () => {},
       onRequest: (_method, _params, responder) => {

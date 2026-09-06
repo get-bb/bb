@@ -4,6 +4,14 @@ import { access } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 import { z } from "zod";
+import {
+  parseBinaryLookupOutput,
+  resolveBinaryLookupCommand,
+  resolveNpmCommand,
+  resolveNpmGlobalBinDir,
+  runPortableCommandCapture,
+  type PortableSpawnFn,
+} from "./portable-executable.js";
 import type {
   ProviderInstallationCommand,
   ProviderInstallationSource,
@@ -16,10 +24,25 @@ const execFileAsync = promisify(execFile);
 const CLI_PROBE_TIMEOUT_MS = 5_000;
 const INSTALLATION_CHECK_TIMEOUT_MS = 15_000;
 
+export interface ExecutableProbeDeps {
+  platform?: NodeJS.Platform;
+  runLookup?: (
+    file: string,
+    args: string[],
+  ) => Promise<{ stdout: string }>;
+  runCommand?: (
+    command: string,
+    args: readonly string[],
+  ) => Promise<{ stdout: string; stderr: string }>;
+  spawnImpl?: PortableSpawnFn;
+}
+
 export async function resolveExecutablePath(
   command: string,
+  deps: ExecutableProbeDeps = {},
 ): Promise<string | null> {
-  if (path.isAbsolute(command)) {
+  const platform = deps.platform ?? process.platform;
+  if (isAbsoluteForPlatform(command, platform)) {
     try {
       await access(command, fsConstants.X_OK);
       return command;
@@ -27,17 +50,16 @@ export async function resolveExecutablePath(
       return null;
     }
   }
+  const runLookup =
+    deps.runLookup ??
+    ((file, args) =>
+      execFileAsync(file, args, { timeout: CLI_PROBE_TIMEOUT_MS }));
   try {
-    const lookup = process.platform === "win32" ? "where" : "which";
-    const { stdout } = await execFileAsync(lookup, [command], {
-      timeout: CLI_PROBE_TIMEOUT_MS,
-    });
-    return (
-      stdout
-        .split(/\r?\n/u)
-        .find((line) => line.trim())
-        ?.trim() ?? null
+    const { stdout } = await runLookup(
+      resolveBinaryLookupCommand(platform),
+      [command],
     );
+    return parseBinaryLookupOutput(stdout);
   } catch {
     return null;
   }
@@ -46,11 +68,15 @@ export async function resolveExecutablePath(
 export async function commandOutput(
   command: string,
   args: readonly string[],
+  deps: ExecutableProbeDeps = {},
 ): Promise<string | null> {
   try {
-    const { stdout, stderr } = await execFileAsync(command, [...args], {
-      timeout: INSTALLATION_CHECK_TIMEOUT_MS,
-    });
+    const { stdout, stderr } = await runProbeCommand(
+      command,
+      args,
+      INSTALLATION_CHECK_TIMEOUT_MS,
+      deps,
+    );
     return `${stdout}\n${stderr}`.trim();
   } catch {
     return null;
@@ -63,11 +89,17 @@ export function versionFrom(value: string | null): string | null {
   );
 }
 
-export async function readCliVersion(command: string): Promise<string | null> {
+export async function readCliVersion(
+  command: string,
+  deps: ExecutableProbeDeps = {},
+): Promise<string | null> {
   try {
-    const { stdout, stderr } = await execFileAsync(command, ["--version"], {
-      timeout: CLI_PROBE_TIMEOUT_MS,
-    });
+    const { stdout, stderr } = await runProbeCommand(
+      command,
+      ["--version"],
+      CLI_PROBE_TIMEOUT_MS,
+      deps,
+    );
     return (
       `${stdout}\n${stderr}`.match(/\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?/u)?.[0] ??
       null
@@ -75,6 +107,37 @@ export async function readCliVersion(command: string): Promise<string | null> {
   } catch {
     return null;
   }
+}
+
+function platformPaths(platform: NodeJS.Platform): typeof path.posix {
+  return platform === "win32" ? path.win32 : path.posix;
+}
+
+function isAbsoluteForPlatform(
+  candidate: string,
+  platform: NodeJS.Platform,
+): boolean {
+  return platformPaths(platform).isAbsolute(candidate);
+}
+
+function runProbeCommand(
+  command: string,
+  args: readonly string[],
+  timeoutMs: number,
+  deps: ExecutableProbeDeps,
+): Promise<{ stdout: string; stderr: string }> {
+  if (deps.runCommand !== undefined) {
+    return deps.runCommand(command, args);
+  }
+  return runPortableCommandCapture(
+    {
+      command,
+      args,
+      timeoutMs,
+      ...(deps.platform !== undefined ? { platform: deps.platform } : {}),
+    },
+    deps.spawnImpl,
+  );
 }
 
 export function compareVersions(left: string, right: string): number {
@@ -101,8 +164,10 @@ export function compareVersions(left: string, right: string): number {
   return 0;
 }
 
-export function npmCommand(): string {
-  return process.platform === "win32" ? "npm.cmd" : "npm";
+export function npmCommand(
+  platform: NodeJS.Platform = process.platform,
+): string {
+  return resolveNpmCommand(platform);
 }
 
 export function formatCommand(
@@ -120,17 +185,23 @@ export function formatCommand(
 
 export function npmGlobalInstallCommand(
   npmPackage: string,
+  platform: NodeJS.Platform = process.platform,
 ): ProviderInstallationCommand {
-  const command = npmCommand();
+  const command = npmCommand(platform);
   const args = ["install", "-g", `${npmPackage}@latest`];
   return { command, args, displayCommand: formatCommand(command, args) };
 }
 
 export async function npmLatestVersion(
   npmPackage: string,
+  deps: ExecutableProbeDeps = {},
 ): Promise<string | null> {
   return versionFrom(
-    await commandOutput(npmCommand(), ["view", npmPackage, "version"]),
+    await commandOutput(
+      npmCommand(deps.platform),
+      ["view", npmPackage, "version"],
+      deps,
+    ),
   );
 }
 
@@ -141,20 +212,20 @@ export interface NpmGlobalPackageProbe {
 
 export async function probeNpmGlobalPackage(
   npmPackage: string,
+  deps: ExecutableProbeDeps = {},
 ): Promise<NpmGlobalPackageProbe> {
-  const npm = npmCommand();
+  const platform = deps.platform ?? process.platform;
+  const npm = npmCommand(platform);
   const [prefixOutput, listOutput] = await Promise.all([
-    commandOutput(npm, ["prefix", "-g"]),
-    commandOutput(npm, ["list", "-g", npmPackage, "--depth=0", "--json"]),
+    commandOutput(npm, ["prefix", "-g"], deps),
+    commandOutput(npm, ["list", "-g", npmPackage, "--depth=0", "--json"], deps),
   ]);
   const npmPrefix = firstLine(prefixOutput);
   return {
     npmBin:
       npmPrefix === null
         ? null
-        : process.platform === "win32"
-          ? npmPrefix
-          : path.join(npmPrefix, "bin"),
+        : resolveNpmGlobalBinDir(npmPrefix, platform),
     npmGlobalPackageVersion: npmGlobalPackageVersion(listOutput, npmPackage),
   };
 }
@@ -189,11 +260,26 @@ function npmGlobalPackageVersion(
   }
 }
 
-function pathIsInside(child: string, parent: string): boolean {
-  const relativePath = path.relative(path.resolve(parent), path.resolve(child));
+function pathIsInside(
+  child: string,
+  parent: string,
+  platform: NodeJS.Platform,
+): boolean {
+  const paths = platformPaths(platform);
+  const relativePath = paths.relative(
+    paths.resolve(parent),
+    paths.resolve(child),
+  );
+  if (platform === "win32") {
+    const lowered = relativePath.toLowerCase();
+    return (
+      lowered === "" ||
+      (!lowered.startsWith("..") && !paths.isAbsolute(relativePath))
+    );
+  }
   return (
     relativePath === "" ||
-    (!relativePath.startsWith("..") && !path.isAbsolute(relativePath))
+    (!relativePath.startsWith("..") && !paths.isAbsolute(relativePath))
   );
 }
 
@@ -201,12 +287,14 @@ export function npmGlobalInstallSource(args: {
   installed: boolean;
   executablePath: string | null;
   npmBin: string | null;
+  platform?: NodeJS.Platform;
 }): ProviderInstallationSource {
+  const platform = args.platform ?? process.platform;
   return !args.installed
     ? "notInstalled"
     : args.executablePath !== null &&
         args.npmBin !== null &&
-        pathIsInside(args.executablePath, args.npmBin)
+        pathIsInside(args.executablePath, args.npmBin, platform)
       ? "npmGlobal"
       : "external";
 }
@@ -225,13 +313,52 @@ export function installationVerification(
         };
 }
 
+function quotePosixShellWord(value: string): string {
+  return `'${value.replace(/'/gu, "'\\''")}'`;
+}
+
+function quotePowerShellSingleQuoted(value: string): string {
+  return `'${value.replace(/'/gu, "''")}'`;
+}
+
+function assertHttpsInstallerUrl(url: string): void {
+  if (!/^https:\/\/\S+$/u.test(url)) {
+    throw new Error(
+      `Refusing to build an installer command for a non-HTTPS URL: ${url}`,
+    );
+  }
+}
+
 export function downloadedInstallerCommand(
   url: string,
+  platform: NodeJS.Platform = process.platform,
 ): ProviderInstallationCommand {
+  assertHttpsInstallerUrl(url);
+  if (platform === "win32") {
+    const script = [
+      "$ErrorActionPreference = 'Stop'",
+      "$tmp = Join-Path $env:TEMP ('provider-installation-' + [Guid]::NewGuid().ToString('N') + '.sh')",
+      `try { Invoke-WebRequest -Uri ${quotePowerShellSingleQuoted(url)} -OutFile $tmp; $bash = Get-Command bash -ErrorAction SilentlyContinue; if (-not $bash) { throw 'bash not found: install Git for Windows or run the provider installer manually' }; & $bash.Source $tmp } finally { Remove-Item $tmp -ErrorAction SilentlyContinue }`,
+    ].join("; ");
+    const command = "powershell.exe";
+    const args = [
+      "-NoLogo",
+      "-NoProfile",
+      "-ExecutionPolicy",
+      "Bypass",
+      "-Command",
+      script,
+    ];
+    return {
+      command,
+      args,
+      displayCommand: `${command} -NoLogo -NoProfile -ExecutionPolicy Bypass -Command "${script}"`,
+    };
+  }
   const script = [
     'tmp=$(mktemp "${TMPDIR:-/tmp}/provider-installation.XXXXXX")',
     "trap 'rm -f \"$tmp\"' EXIT",
-    `curl -fsSL ${url} -o "$tmp"`,
+    `curl -fsSL ${quotePosixShellWord(url)} -o "$tmp"`,
     'bash "$tmp"',
   ].join(" && ");
   return { command: "sh", args: ["-c", script], displayCommand: script };
