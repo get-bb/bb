@@ -312,6 +312,12 @@ function projectSourceHostConflict(): ApiError {
   );
 }
 
+function joinHostPath(rootPath: string, segments: string[]): string {
+  return path.win32.isAbsolute(rootPath) && !path.posix.isAbsolute(rootPath)
+    ? path.win32.join(rootPath, ...segments)
+    : path.posix.join(rootPath, ...segments);
+}
+
 async function inspectProjectGitRemoteBestEffort(
   deps: AppDeps,
   args: { hostId: string; path: string },
@@ -654,7 +660,7 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
         timeoutMs: COMMAND_TIMEOUT_MS,
         command: {
           type: "host.read_file",
-          path: path.join(target.path, filePath.relativePath),
+          path: joinHostPath(target.path, [filePath.relativePath]),
           rootPath: target.path,
         },
       });

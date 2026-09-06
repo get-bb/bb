@@ -6,6 +6,9 @@ import { internalAuthHeaders } from "../helpers/commands.js";
 import { seedHostSession } from "../helpers/seed.js";
 import { withTestHarness } from "../helpers/test-app.js";
 
+const CHMOD_MODE_NOT_PRESERVED_ON_WINDOWS_NTFS_MEASURED_MODE_IS_0O666 =
+  process.platform === "win32";
+
 describe("internal skill tree routes", () => {
   it("returns a registered tree manifest to an authenticated daemon", async () => {
     await withTestHarness(async (harness) => {
@@ -28,7 +31,9 @@ describe("internal skill tree routes", () => {
         entries: [
           {
             path: "SKILL.md",
-            mode: 0o644,
+            mode: CHMOD_MODE_NOT_PRESERVED_ON_WINDOWS_NTFS_MEASURED_MODE_IS_0O666
+              ? 0o666
+              : 0o644,
             contentBase64: Buffer.from("tree route bytes\n").toString("base64"),
           },
         ],

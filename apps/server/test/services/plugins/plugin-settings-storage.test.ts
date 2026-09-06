@@ -33,6 +33,9 @@ import { createNoopTelemetryService } from "../../../src/services/system/telemet
 
 const logger = testLogger as unknown as Logger;
 
+const SECRET_FILE_MODE_0O600_IGNORED_ON_WINDOWS_NTFS_MEASURED_MODE_IS_0O666 =
+  process.platform === "win32";
+
 async function countOpenFdsFor(file: string): Promise<number> {
   let count = 0;
   for (const fd of await readdir("/proc/self/fd")) {
@@ -184,7 +187,11 @@ describe("plugin settings + storage", () => {
         "apiKey",
       );
       expect(await readFile(secretPath, "utf8")).toBe("sk-secret-123");
-      expect((await stat(secretPath)).mode & 0o777).toBe(0o600);
+      if (
+        !SECRET_FILE_MODE_0O600_IGNORED_ON_WINDOWS_NTFS_MEASURED_MODE_IS_0O666
+      ) {
+        expect((await stat(secretPath)).mode & 0o777).toBe(0o600);
+      }
 
       expect(view?.values.apiKey).toEqual({ set: true });
       expect(JSON.stringify(view)).not.toContain("sk-secret-123");

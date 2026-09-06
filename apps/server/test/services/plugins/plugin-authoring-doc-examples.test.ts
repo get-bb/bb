@@ -25,6 +25,10 @@ function readSkillTree(directory = SKILL_ROOT): string {
 }
 
 const repoRoot = resolve(import.meta.dirname, "..", "..", "..", "..", "..");
+const NPM_SHIM_NEEDS_CMD_EXTENSION_ON_WINDOWS_MEASURED_SPAWN_ENOENT_WITHOUT_IT =
+  process.platform === "win32";
+const SPAWN_CMD_SHIM_NEEDS_SHELL_ON_WINDOWS_MEASURED_EINVAL_WITHOUT_IT =
+  process.platform === "win32";
 const pluginSdkEntry = join(
   repoRoot,
   "packages",
@@ -32,7 +36,14 @@ const pluginSdkEntry = join(
   "src",
   "index.ts",
 );
-const tsc = join(repoRoot, "node_modules", ".bin", "tsc");
+const tsc = join(
+  repoRoot,
+  "node_modules",
+  ".bin",
+  NPM_SHIM_NEEDS_CMD_EXTENSION_ON_WINDOWS_MEASURED_SPAWN_ENOENT_WITHOUT_IT
+    ? "tsc.cmd"
+    : "tsc",
+);
 
 interface SdkReference {
   path: string;
@@ -165,7 +176,12 @@ describe("bb-plugin-authoring skill examples", () => {
       "utf8",
     );
 
-    const result = spawnSync(tsc, ["--project", workDir], { encoding: "utf8" });
+    const result = spawnSync(tsc, ["--project", workDir], {
+      encoding: "utf8",
+      ...(SPAWN_CMD_SHIM_NEEDS_SHELL_ON_WINDOWS_MEASURED_EINVAL_WITHOUT_IT
+        ? { shell: true }
+        : {}),
+    });
     if (result.error !== undefined) throw result.error;
     expect(result.status, `${result.stdout}${result.stderr}`).toBe(0);
   }, 60_000);
