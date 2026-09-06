@@ -616,6 +616,7 @@ function hashStoredTreeFiles(files: readonly CollectedSkillFile[]): string {
 export async function hashInstalledSkillDirectory(args: {
   name: string;
   skillDirectoryPath: string;
+  platform?: NodeJS.Platform;
 }): Promise<string | null> {
   try {
     const tree = await collectSkillDirectory({
@@ -623,11 +624,17 @@ export async function hashInstalledSkillDirectory(args: {
       sourceRootPath: args.skillDirectoryPath,
       skillFilePath: path.join(args.skillDirectoryPath, SKILL_FILE_NAME),
     });
-    return hashStoredTreeFiles(
-      [...tree.files].sort((left, right) =>
+    const platform = args.platform ?? process.platform;
+    const files = [...tree.files]
+      .sort((left, right) =>
         compareStringsByCodePoint(left.relativePath, right.relativePath),
-      ),
-    );
+      )
+      .map((file) =>
+        platform === "win32"
+          ? { ...file, mode: file.mode & 0o644 }
+          : file,
+      );
+    return hashStoredTreeFiles(files);
   } catch {
     return null;
   }

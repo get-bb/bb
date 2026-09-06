@@ -338,3 +338,110 @@ describe("project-path isSameProjectPath", () => {
     expect(isSameProjectPath("/Foo", "/foo", "linux")).toBe(false);
   });
 });
+
+describe("project-path permissive normalization", () => {
+  it.each([
+    ["/srv/repos/bb", "/srv/repos/bb"],
+    ["/srv/repos/bb/", "/srv/repos/bb"],
+    ["/", "/"],
+    ["", ""],
+    ["   ", ""],
+    ["relative/path/", "relative/path"],
+    ["/mnt/c/Users/michael/bb", "/mnt/c/Users/michael/bb"],
+    ["C:\\bb-test", "C:\\bb-test"],
+    ["C:/bb-test", "C:\\bb-test"],
+    ["c:\\bb-test\\", "C:\\bb-test"],
+    ["C:", "C:\\"],
+    ["C:foo", "C:foo"],
+    ["\\\\server\\share\\proyecto", "\\\\server\\share\\proyecto"],
+    ["//server/share/proyecto", "\\\\server\\share\\proyecto"],
+    ["\\\\?\\C:\\ruta\\muy\\larga", "\\\\?\\C:\\ruta\\muy\\larga"],
+    [
+      "C:/Users/Admin/Mis proyectos/diseño/",
+      "C:\\Users\\Admin\\Mis proyectos\\diseño",
+    ],
+  ])("normalize(%j) is %j", (input, expected) => {
+    expect(normalizeProjectPathInput(input)).toBe(expected);
+  });
+});
+
+describe("project-path permissive validation", () => {
+  it.each([
+    "/srv/repos/bb",
+    "/srv/repos/bb/",
+    "/mnt/c/Users/michael/bb",
+    "C:\\bb-test",
+    "C:/bb-test",
+    "c:\\bb-test",
+    "C:\\Users\\Admin\\Mis proyectos\\diseño",
+    "\\\\server\\share\\proyecto",
+    "//server/share/proyecto",
+    "\\\\?\\C:\\ruta\\muy\\larga",
+  ])("accepts %j as a project path", (input) => {
+    expect(getProjectPathValidationMessage(input)).toBeNull();
+  });
+
+  it.each(["/", "C:\\", "C:", "\\\\server\\share"])(
+    "rejects root %j as a project directory",
+    (input) => {
+      expect(getProjectPathValidationMessage(input)).toBe(
+        PROJECT_PATH_ROOT_MESSAGE,
+      );
+    },
+  );
+
+  it.each([
+    "",
+    "   ",
+    "relative/path",
+    "relative\\path",
+    "C:foo",
+    "C:Users\\michael\\bb",
+    "\\\\server",
+    "\\\\?\\",
+  ])("rejects %j as not absolute", (input) => {
+    expect(getProjectPathValidationMessage(input)).toBe(
+      INVALID_PROJECT_PATH_MESSAGE,
+    );
+  });
+});
+
+describe("project-path permissive derivation and comparison", () => {
+  it.each<[string, string]>([
+    ["/srv/repos/bb/", "bb"],
+    ["C:\\bb-test", "bb-test"],
+    ["C:/bb-test", "bb-test"],
+    ["\\\\server\\share\\proyecto", "proyecto"],
+    ["\\\\?\\C:\\ruta\\muy\\larga", "larga"],
+    ["/", ""],
+    ["C:\\", ""],
+    ["", ""],
+    ["relative/path", ""],
+  ])("derive(%j) is %j", (input, expected) => {
+    expect(deriveProjectNameFromPath(input)).toBe(expected);
+  });
+
+  it.each<[string, boolean]>([
+    ["/srv/repos/bb", true],
+    ["C:\\bb-test", true],
+    ["C:/bb-test", true],
+    ["\\\\server\\share\\bb", true],
+    ["\\\\?\\C:\\ruta\\muy\\larga", true],
+    ["relative/path", false],
+    ["C:foo", false],
+    ["", false],
+  ])("isAbsolute(%j) is %s", (input, expected) => {
+    expect(isAbsoluteProjectPath(input)).toBe(expected);
+  });
+
+  it.each<[string, string, boolean]>([
+    ["C:\\Foo", "c:/foo/", true],
+    ["C:\\bb-test", "C:/bb-test", true],
+    ["/a/b/", "/a/b", true],
+    ["/Foo", "/foo", false],
+    ["C:\\a", "D:\\a", false],
+    ["", "", false],
+  ])("isSame(%j, %j) is %s", (a, b, expected) => {
+    expect(isSameProjectPath(a, b)).toBe(expected);
+  });
+});

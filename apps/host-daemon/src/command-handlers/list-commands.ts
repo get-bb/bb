@@ -171,10 +171,11 @@ async function ancestorScanRoots(args: {
   workspace: Workspace;
 }): Promise<CommandScanRoot[]> {
   const { directories, projectRootPath } = await args.workspace.ancestors();
+  const posixRelativePath = args.relativePath.split(path.sep).join("/");
   return directories.map((directoryPath) =>
     directoryScanRoot({
       boundaryPath: projectRootPath,
-      identity: `${args.relativePath}:${toPosixRelativePath(projectRootPath, directoryPath)}`,
+      identity: `${posixRelativePath}:${toPosixRelativePath(projectRootPath, directoryPath)}`,
       namePrefix: args.namePrefix,
       origin: "project",
       providerId: args.providerId,

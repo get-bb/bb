@@ -49,30 +49,6 @@ interface CreateFakeShellEnvSpawnArgs {
   results: UserShellEnvSpawnResult[];
 }
 
-async function withPlatform<T>(
-  platform: NodeJS.Platform,
-  action: () => Promise<T>,
-): Promise<T> {
-  const originalDescriptor = Object.getOwnPropertyDescriptor(
-    process,
-    "platform",
-  );
-  if (!originalDescriptor) {
-    throw new Error("Expected process.platform descriptor");
-  }
-
-  Object.defineProperty(process, "platform", {
-    configurable: true,
-    value: platform,
-  });
-
-  try {
-    return await action();
-  } finally {
-    Object.defineProperty(process, "platform", originalDescriptor);
-  }
-}
-
 async function createFakeCliPackage(
   options: FakeCliPackageOptions = {},
 ): Promise<FakeCliPackage> {
@@ -206,6 +182,7 @@ describe("resolveLocalBbExecutablePath", () => {
     await expect(
       resolveLocalBbExecutablePath({
         cliExecutablePath: cliEntryPath,
+        platform: "linux",
       }),
     ).rejects.toThrow(
       `Resolved bb CLI entry is not executable: ${cliEntryPath}. Build @bb/cli before starting the host daemon.`,
@@ -218,11 +195,10 @@ describe("resolveLocalBbExecutablePath", () => {
     });
 
     await expect(
-      withPlatform("win32", () =>
-        resolveLocalBbExecutablePath({
-          cliExecutablePath: cliEntryPath,
-        }),
-      ),
+      resolveLocalBbExecutablePath({
+        cliExecutablePath: cliEntryPath,
+        platform: "win32",
+      }),
     ).resolves.toBe(cliEntryPath);
   });
 });
@@ -408,6 +384,7 @@ describe("resolveUserShellPath", () => {
     await expect(
       resolveUserShellPath({
         env: { SystemRoot: "C:\\Windows", Path: "C:\\Windows" },
+        fileExists: () => false,
         platform: "win32",
         spawnUserShellEnv: fakeSpawn.spawn,
       }),

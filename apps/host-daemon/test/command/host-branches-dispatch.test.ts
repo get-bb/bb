@@ -154,7 +154,8 @@ describe("host.inspect_git_source dispatch", () => {
     });
   });
 
-  it("returns cached metadata while refreshing remotes in the background", async () => {
+  it.runIf(process.platform !== "win32")(
+    "returns cached metadata while refreshing remotes in the background", async () => {
     const { releaseRefreshPath, refreshStartedPath, repoPath } =
       await initStaleOriginMainRepo();
     const harness = createHarness();
@@ -197,7 +198,8 @@ describe("host.inspect_git_source dispatch", () => {
     });
   });
 
-  it("waits for a blocking refresh before reading default-ref metadata", async () => {
+  it.runIf(process.platform !== "win32")(
+    "waits for a blocking refresh before reading default-ref metadata", async () => {
     const { releaseRefreshPath, refreshStartedPath, repoPath } =
       await initStaleOriginMainRepo();
     const harness = createHarness();
@@ -537,7 +539,8 @@ describe("host.list_branch_options dispatch", () => {
     expect(result.remoteBranchesTruncated).toBe(true);
   });
 
-  it("returns cached refs while a remote refresh continues in the background", async () => {
+  it.runIf(process.platform !== "win32")(
+    "returns cached refs while a remote refresh continues in the background", async () => {
     const repoPath = await initBranchRepo();
     const remotePath = await makeTempDir("bb-host-branch-options-remote-");
     await runGitCommand(["init", "--bare"], { cwd: remotePath });

@@ -70,8 +70,10 @@ describe("auth state", () => {
     await expect(fs.readFile(authStatePath, "utf8")).resolves.not.toContain(
       "serverUrl",
     );
-    const stats = await fs.stat(authStatePath);
-    expect(stats.mode & 0o777).toBe(0o600);
+    if (process.platform !== "win32") {
+      const stats = await fs.stat(authStatePath);
+      expect(stats.mode & 0o777).toBe(0o600);
+    }
   });
 
   it("reads legacy auth state that still contains server URL", async () => {

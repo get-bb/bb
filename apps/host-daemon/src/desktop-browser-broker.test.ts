@@ -89,7 +89,9 @@ describe("desktop browser broker", () => {
   it("writes a private bound descriptor and removes it at shutdown", async () => {
     const { broker, dataDir } = await setup();
     const path = join(dataDir, DESKTOP_BROWSER_BROKER_DESCRIPTOR_FILE);
-    expect((await stat(path)).mode & 0o777).toBe(0o600);
+    if (process.platform !== "win32") {
+      expect((await stat(path)).mode & 0o777).toBe(0o600);
+    }
     expect(JSON.parse(await readFile(path, "utf8"))).toEqual(broker.descriptor);
     expect(broker.descriptor.url).toMatch(
       /^ws:\/\/127\.0\.0\.1:\d+\/desktop-browser$/u,

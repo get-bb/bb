@@ -266,6 +266,9 @@ describe("writeHostFile", () => {
   });
 
   it("uses mode for creation without chmodding an existing file", async () => {
+    if (process.platform === "win32") {
+      return;
+    }
     const dir = await makeTempDir("bb-file-write-mode-");
     const created = path.join(dir, "created.env");
     await writeHostFile(writeCommand({ path: created, mode: 0o600 }));

@@ -43,11 +43,20 @@ export function isNativeWindowsProjectPath(path: string): boolean {
 
 export function isAbsoluteProjectPath(
   path: string,
-  platform: ProjectPathPlatform,
+  platform?: ProjectPathPlatform,
 ): boolean {
   const trimmedPath = path.trim();
   if (!trimmedPath) {
     return false;
+  }
+
+  if (platform === undefined) {
+    return (
+      trimmedPath.startsWith("/") ||
+      WINDOWS_DRIVE_PATH_PATTERN.test(trimmedPath) ||
+      WINDOWS_UNC_ABSOLUTE_PATTERN.test(trimmedPath) ||
+      WINDOWS_EXTENDED_ABSOLUTE_PATTERN.test(trimmedPath)
+    );
   }
 
   if (platform !== "win32") {
@@ -61,16 +70,36 @@ export function isAbsoluteProjectPath(
   );
 }
 
+const WINDOWS_FORWARD_UNC_PATTERN = /^\/\/[^/]+\/[^/]+/u;
+
+function looksLikeWindowsPath(trimmedPath: string): boolean {
+  return (
+    isNativeWindowsProjectPath(trimmedPath) ||
+    WINDOWS_FORWARD_UNC_PATTERN.test(trimmedPath)
+  );
+}
+
+function detectProjectPathPlatform(
+  trimmedPath: string,
+): ProjectPathPlatform {
+  if (WINDOWS_EXTENDED_LENGTH_PREFIX_PATTERN.test(trimmedPath)) {
+    return "win32";
+  }
+  return looksLikeWindowsPath(trimmedPath) ? "win32" : "linux";
+}
+
 export function normalizeProjectPathInput(
   path: string,
-  platform: ProjectPathPlatform,
+  platform?: ProjectPathPlatform,
 ): string {
   const trimmedPath = path.trim();
   if (!trimmedPath) {
     return "";
   }
 
-  if (platform !== "win32") {
+  const resolvedPlatform =
+    platform ?? detectProjectPathPlatform(trimmedPath);
+  if (resolvedPlatform !== "win32") {
     if (trimmedPath === "/") {
       return trimmedPath;
     }
@@ -135,7 +164,7 @@ function isRootProjectPath(
 
 export function getProjectPathValidationMessage(
   path: string,
-  platform: ProjectPathPlatform,
+  platform?: ProjectPathPlatform,
 ): string | null {
   const normalizedPath = normalizeProjectPathInput(path, platform);
   if (!normalizedPath) {
@@ -144,7 +173,9 @@ export function getProjectPathValidationMessage(
   if (!isAbsoluteProjectPath(normalizedPath, platform)) {
     return INVALID_PROJECT_PATH_MESSAGE;
   }
-  if (isRootProjectPath(normalizedPath, platform)) {
+  const resolvedPlatform =
+    platform ?? detectProjectPathPlatform(normalizedPath);
+  if (isRootProjectPath(normalizedPath, resolvedPlatform)) {
     return PROJECT_PATH_ROOT_MESSAGE;
   }
   return null;
@@ -152,18 +183,21 @@ export function getProjectPathValidationMessage(
 
 export function deriveProjectNameFromPath(
   path: string,
-  platform: ProjectPathPlatform,
+  platform?: ProjectPathPlatform,
 ): string {
   const normalizedPath = normalizeProjectPathInput(path, platform);
   if (
     !normalizedPath ||
     !isAbsoluteProjectPath(normalizedPath, platform) ||
-    isRootProjectPath(normalizedPath, platform)
+    isRootProjectPath(
+      normalizedPath,
+      platform ?? detectProjectPathPlatform(normalizedPath),
+    )
   ) {
     return "";
   }
 
-  if (platform === "win32") {
+  if ((platform ?? detectProjectPathPlatform(normalizedPath)) === "win32") {
     const segments = normalizedPath.split(/[\\/]+/u).filter(Boolean);
     return segments.at(-1) ?? "";
   }
@@ -175,7 +209,7 @@ export function deriveProjectNameFromPath(
 export function isSameProjectPath(
   a: string,
   b: string,
-  platform: ProjectPathPlatform,
+  platform?: ProjectPathPlatform,
 ): boolean {
   const normalizedA = normalizeProjectPathInput(a, platform);
   const normalizedB = normalizeProjectPathInput(b, platform);
@@ -183,7 +217,13 @@ export function isSameProjectPath(
     return false;
   }
 
-  if (platform === "win32") {
+  const resolvedPlatform =
+    platform ??
+    (detectProjectPathPlatform(normalizedA) === "win32" &&
+    detectProjectPathPlatform(normalizedB) === "win32"
+      ? ("win32" as const)
+      : ("linux" as const));
+  if (resolvedPlatform === "win32") {
     return normalizedA.toLowerCase() === normalizedB.toLowerCase();
   }
 

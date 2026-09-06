@@ -21,6 +21,7 @@ import type { HostProviderCommand } from "@bb/host-daemon-contract";
 import {
   type CommandScanRoot,
   discoverProviderCommands,
+  isPathWithinDirectory,
 } from "./command-discovery.js";
 import { resolveDeclaredScanRoots } from "./command-handlers/list-commands.js";
 
@@ -1192,5 +1193,22 @@ describe("resolveDeclaredScanRoots", () => {
     ]);
     const commands = await discoverProviderCommands({ roots });
     expect(commands.map((command) => command.name)).toEqual(["shared"]);
+  });
+
+  it("treats dot-dot-prefixed names as inside the directory", () => {
+    const directoryPath = path.join("workspace");
+    expect(
+      isPathWithinDirectory(
+        directoryPath,
+        path.join(directoryPath, "..secrets"),
+      ),
+    ).toBe(true);
+    expect(
+      isPathWithinDirectory(
+        directoryPath,
+        path.join(directoryPath, "..", "outside"),
+      ),
+    ).toBe(false);
+    expect(isPathWithinDirectory(directoryPath, directoryPath)).toBe(true);
   });
 });

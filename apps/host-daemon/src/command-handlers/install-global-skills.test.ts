@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import {
+  chmod,
   mkdtemp,
   mkdir,
   readFile,
@@ -11,6 +12,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { HostDaemonSkillTree } from "@bb/host-daemon-contract";
+import { hashInstalledSkillDirectory } from "../injected-skills.js";
 import {
   installGlobalSkills,
   readGlobalSkillsStatus,
@@ -120,11 +122,12 @@ describe("install global skills", () => {
     await expect(
       readFile(path.join(claudeRoot, "bb-cli", "SKILL.md"), "utf8"),
     ).resolves.toContain("fresh body");
-    expect(await readdir(path.join(claudeRoot, "bb-cli"))).toEqual([
-      "SKILL.md",
-      "references",
-    ]);
-    expect(await readdir(claudeRoot)).toEqual(["bb-cli", "unrelated"]);
+    expect((await readdir(path.join(claudeRoot, "bb-cli"))).sort()).toEqual(
+      ["SKILL.md", "references"].sort(),
+    );
+    expect((await readdir(claudeRoot)).sort()).toEqual(
+      ["bb-cli", "unrelated"].sort(),
+    );
   });
 
   it("leaves the installed copy intact when the tree cannot be fetched", async () => {
@@ -196,5 +199,29 @@ describe("install global skills", () => {
     const drifted = await readGlobalSkillsStatus(statusCommand, { homeDir });
     expect(drifted.entries[1]?.treeHash).not.toBe(payload.treeHash);
     expect(drifted.entries[0]?.treeHash).toBe(payload.treeHash);
+  });
+
+  it("hashes a windows-collected mode the same as its posix mode", async () => {
+    const homeDir = await makeTempDir();
+    const skillDirectoryPath = path.join(homeDir, "bb-cli");
+    await mkdir(skillDirectoryPath, { recursive: true });
+    const skillFilePath = path.join(skillDirectoryPath, "SKILL.md");
+    await writeFile(skillFilePath, "body\n", "utf8");
+    await chmod(skillFilePath, 0o666);
+
+    const windowsHash = await hashInstalledSkillDirectory({
+      name: "bb-cli",
+      skillDirectoryPath,
+      platform: "win32",
+    });
+    await chmod(skillFilePath, 0o644);
+    const posixHash = await hashInstalledSkillDirectory({
+      name: "bb-cli",
+      skillDirectoryPath,
+      platform: "linux",
+    });
+
+    expect(windowsHash).not.toBeNull();
+    expect(windowsHash).toBe(posixHash);
   });
 });
