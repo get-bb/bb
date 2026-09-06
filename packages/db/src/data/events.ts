@@ -1643,6 +1643,7 @@ function scopedItemRefsPredicate(
 }
 
 export interface ItemEventSpanRow {
+  completedSeq: number | null;
   itemId: string;
   maxSequence: number;
   minSequence: number;
@@ -1666,6 +1667,7 @@ export function listItemEventSpansByItems(
 
   return db
     .select({
+      completedSeq: sql<number | null>`MAX(CASE WHEN ${events.type} = 'item/completed' THEN ${events.sequence} END)`,
       itemId: sql<string>`${events.itemId}`,
       maxSequence: sql<number>`MAX(${events.sequence})`,
       minSequence: sql<number>`MIN(${events.sequence})`,
