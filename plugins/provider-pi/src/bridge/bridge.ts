@@ -532,7 +532,11 @@ async function handleRequest(
       const missingCwd = resumedSessionMissingCwd(
         request.params.providerThreadId,
       );
-      if (missingCwd !== null) {
+      const requestedCwd = request.params.cwd;
+      // The persisted cwd is stale when bb already moved the thread to a
+      // new environment directory and the old one was removed; resume at
+      // the requested, existing cwd instead of failing the whole turn.
+      if (missingCwd !== null && !existsSync(requestedCwd ?? "")) {
         sendError(
           request.id,
           -32000,
@@ -750,7 +754,7 @@ async function constructPiThreadSession(
     sessionSerial,
     closing: false,
     providerThreadId,
-    cwd: persistedSessionCwd(providerThreadId) ?? params.cwd,
+    cwd: usablePersistedSessionCwd(providerThreadId) ?? params.cwd,
     construction: params,
     constructionModel: sessionOptions.model,
   };
@@ -857,6 +861,11 @@ async function handleThreadConstruction(
 function resumedSessionMissingCwd(providerThreadId: string): string | null {
   const cwd = persistedSessionCwd(providerThreadId);
   return cwd !== null && !existsSync(cwd) ? cwd : null;
+}
+
+function usablePersistedSessionCwd(providerThreadId: string): string | null {
+  const cwd = persistedSessionCwd(providerThreadId);
+  return cwd !== null && existsSync(cwd) ? cwd : null;
 }
 
 function persistedSessionCwd(providerThreadId: string): string | null {
