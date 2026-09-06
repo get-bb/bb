@@ -373,10 +373,16 @@ export async function replayRecording(
   });
 
   const recordedCwd = recordedWorkspaceDir(recording);
-  const restoreRecordedWorkspace = (line: string): string =>
-    recordedCwd === null || recordedCwd === workspaceDir
-      ? line
-      : line.split(workspaceDir).join(recordedCwd);
+  const restoreRecordedWorkspace = (line: string): string => {
+    if (recordedCwd === null || recordedCwd === workspaceDir) return line;
+    const jsonEscapedWorkspaceDir = JSON.stringify(workspaceDir).slice(1, -1);
+    const jsonEscapedRecordedCwd = JSON.stringify(recordedCwd).slice(1, -1);
+    return line
+      .split(jsonEscapedWorkspaceDir)
+      .join(jsonEscapedRecordedCwd)
+      .split(workspaceDir)
+      .join(recordedCwd);
+  };
 
   const initializeId = PARITY_INITIALIZE_ID;
   const startedAt = Date.now();
