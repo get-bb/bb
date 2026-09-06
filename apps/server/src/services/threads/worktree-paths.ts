@@ -13,9 +13,10 @@ export function deriveRepoDirName(sourcePath: string): string {
     remotePathPart === null || remotePathPart === undefined
       ? localBasename(trimmed)
       : path.posix.basename(remotePathPart);
-  const candidate = basename.endsWith(".git")
+  const stripped = basename.endsWith(".git")
     ? basename.slice(0, -".git".length)
     : basename;
+  const candidate = toSafeRepoDirName(stripped);
 
   if (
     !candidate ||
@@ -32,12 +33,23 @@ export function deriveRepoDirName(sourcePath: string): string {
   return candidate;
 }
 
+function toSafeRepoDirName(value: string): string {
+  if (value === "." || value === "..") {
+    return value;
+  }
+  return value
+    .replace(/[^A-Za-z0-9._-]+/g, "-")
+    .replace(/^[-.]+/, (run) => run.replace(/-/g, ""))
+    .replace(/-+$/, "");
+}
+
 function localBasename(value: string): string {
   const lastSeparator = Math.max(
     value.lastIndexOf("/"),
     value.lastIndexOf("\\"),
   );
-  return lastSeparator === -1 ? value : value.slice(lastSeparator + 1);
+  const tail = lastSeparator === -1 ? value : value.slice(lastSeparator + 1);
+  return /^[A-Za-z]:$/.test(tail) ? "" : tail;
 }
 
 function tryParseUrlPath(value: string): string | null {

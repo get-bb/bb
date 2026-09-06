@@ -26,6 +26,20 @@ describe("deriveRepoDirName", () => {
       "my-repo",
     ],
     ["unc path", String.raw`\\server\share\my-repo`, "my-repo"],
+    ["whitespace in name", "/tmp/my repo", "my-repo"],
+    [
+      "whitespace in a windows name",
+      String.raw`C:\Users\me\Muse Playground`,
+      "Muse-Playground",
+    ],
+    ["run of unsafe characters", "/tmp/my  weird   repo", "my-weird-repo"],
+    ["non-ascii name", String.raw`C:\proyectos\diseño`, "dise-o"],
+    ["leading dash is dropped, not rejected", "/tmp/-dangerous", "dangerous"],
+    [
+      "url with query parameter encoded into basename",
+      "https://host/foo/bar.git;param=x",
+      "bar.git-param-x",
+    ],
   ])("derives %s", (_label, input, expected) => {
     expect(deriveRepoDirName(input)).toBe(expected);
   });
@@ -36,14 +50,8 @@ describe("deriveRepoDirName", () => {
     ["bare .git", "/Users/me/code/.git"],
     ["parent traversal", "/Users/me/code/.."],
     ["current dir", "/Users/me/code/."],
-    ["leading dash (could be interpreted as flag)", "/tmp/-dangerous"],
-    ["whitespace in name", "/tmp/my repo"],
-    ["whitespace in a windows name", String.raw`C:\Users\me\my repo`],
     ["windows drive root", "C:\\"],
-    [
-      "url with query parameter encoded into basename",
-      "https://host/foo/bar.git;param=x",
-    ],
+    ["a name with nothing safe left", "/tmp/   "],
   ])("rejects %s", (_label, input) => {
     expect(() => deriveRepoDirName(input)).toThrowError(ApiError);
   });
