@@ -34,6 +34,7 @@ import type { PluginSourceSelection } from "@bb/server-contract";
 import { resolveSelectedSubdirectory } from "./collection-manifest.js";
 import {
   gitArtifactCacheDir,
+  gitScratchCloneDir,
   hashInstallDir,
   nestedPluginRoots,
   npmArtifactCacheDir,
@@ -546,11 +547,13 @@ export function createManagedPluginArtifacts(
       args.parsed.cachePath,
       args.candidate.commit,
     );
-    const stagingDir = `${targetDir}.install-probe-${randomUUID()}`;
+    const stagingDir = gitScratchCloneDir(deps.dataDir);
     await mkdir(dirname(stagingDir), { recursive: true });
     try {
       deps.onArtifactMaterialize?.({ path: targetDir });
       await runInstallCommand("git", [
+        "-c",
+        "core.symlinks=true",
         "clone",
         "--quiet",
         args.parsed.url,
@@ -747,7 +750,14 @@ export function createManagedPluginArtifacts(
         deps.onArtifactMaterialize?.({ path: targetDir });
         await runInstallCommand(
           "git",
-          ["clone", "--quiet", parsed.url, stagingDir],
+          [
+            "-c",
+            "core.symlinks=true",
+            "clone",
+            "--quiet",
+            parsed.url,
+            stagingDir,
+          ],
           { notFoundHint },
         );
         await runInstallCommand("git", [
@@ -1236,12 +1246,12 @@ export function createManagedPluginArtifacts(
     }
     const stagingDir = args.promote
       ? `${targetDir}.staging`
-      : `${targetDir}.update-staging-${randomUUID()}`;
+      : gitScratchCloneDir(deps.dataDir);
     await rm(stagingDir, { recursive: true, force: true });
     await mkdir(dirname(stagingDir), { recursive: true });
     try {
       deps.onArtifactMaterialize?.({ path: targetRoot });
-      await runInstallCommand("git", ["clone", "--quiet", url, stagingDir], {
+      await runInstallCommand("git", ["-c", "core.symlinks=true", "clone", "--quiet", url, stagingDir], {
         notFoundHint:
           '"git" was not found on PATH — git plugin updates require git',
       });

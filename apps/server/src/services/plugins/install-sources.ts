@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { constants } from "node:fs";
 import {
   cp,
@@ -66,12 +66,26 @@ function isLocalAbsolutePath(value: string): boolean {
   );
 }
 
-function toLocalRepoPath(value: string): string {
-  return value
+function localGitCachePath(value: string): string {
+  const normalized = value
     .replace(/\\/g, "/")
     .replace(/^([a-zA-Z]):/, "$1")
-    .replace(/^\/+/, "")
+    .replace(/\/+$/, "")
     .replace(/\.git$/, "");
+  const digest = createHash("sha256")
+    .update(normalized)
+    .digest("hex")
+    .slice(0, 16);
+  const rawBase = normalized.split("/").filter((part) => part.length > 0).pop() ?? "";
+  const sanitized = rawBase
+    .replace(/[^A-Za-z0-9._-]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 32)
+    .replace(/^-+|-+$/g, "");
+  if (sanitized.length === 0 || sanitized === "." || sanitized === "..") {
+    return `local/${digest}`;
+  }
+  return `local/${sanitized}-${digest}`;
 }
 
 function assertSafeSegments(value: string, label: string): void {
@@ -198,7 +212,7 @@ function parseGitSource(spec: string): ParsedPluginSource {
   } else if (isLocalAbsolutePath(urlish)) {
     url = urlish;
     host = "local";
-    repoPath = toLocalRepoPath(urlish);
+    repoPath = localGitCachePath(urlish);
   } else if (/^[a-z0-9]/i.test(urlish)) {
     url = `https://${urlish}`;
     const parsed = new URL(url);
@@ -219,7 +233,8 @@ function parseGitSource(spec: string): ParsedPluginSource {
     url,
     spec: ref,
     selector,
-    cachePath: `${host}/${repoPath}`,
+    cachePath:
+      host === "local" ? repoPath : `${host}/${repoPath}`,
   };
 }
 
@@ -385,6 +400,16 @@ export function gitArtifactCacheDir(
     join(dataDir, "plugins", "cache", "git"),
     [...cachePath.split("/"), commit],
     "git artifact",
+  );
+}
+
+export function gitScratchCloneDir(dataDir: string): string {
+  return join(
+    dataDir,
+    "plugins",
+    "cache",
+    "git",
+    `.probe-${randomUUID()}`,
   );
 }
 

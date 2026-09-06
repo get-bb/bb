@@ -17,7 +17,7 @@ import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { existsSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -331,6 +331,38 @@ describe("plugin install sources", () => {
     });
   });
 
+  it("maps local git paths to short stable hashed cache keys", () => {
+    const first = parsePluginSource("git:C:\\Users\\tester\\repo-range@main");
+    const second = parsePluginSource("git:C:/Users/tester/repo-range.git@main");
+    if (first.kind !== "git" || second.kind !== "git") {
+      throw new Error("expected git sources");
+    }
+    expect(second.cachePath).toBe(first.cachePath);
+    expect(first.cachePath).toMatch(/^local\/[A-Za-z0-9._-]+-[0-9a-f]{16}$/);
+    expect(first.cachePath).toContain("repo-range");
+    expect(first.cachePath.length).toBeLessThan(60);
+    const other = parsePluginSource("git:C:/Users/tester/other-repo@main");
+    if (other.kind !== "git") throw new Error("expected git source");
+    expect(other.cachePath).not.toBe(first.cachePath);
+    expect(
+      gitArtifactCacheDir("/data", first.cachePath, "abcdef1234567"),
+    ).toBe(
+      resolve(
+        join(
+          "/data",
+          "plugins",
+          "cache",
+          "git",
+          ...first.cachePath.split("/"),
+          "abcdef1234567",
+        ),
+      ),
+    );
+    expect(() =>
+      gitArtifactCacheDir("/data", `${first.cachePath}/../evil`, "abcdef1"),
+    ).toThrow(/invalid git artifact/);
+  });
+
   it("enforces parsed command output limits in UTF-8 bytes", async () => {
     await expect(
       runInstallCommand(
@@ -369,7 +401,9 @@ describe("plugin install sources", () => {
 
   it("keeps scoped npm and nested git cache paths inside their roots", () => {
     expect(npmArtifactCacheDir("/data", "@acme/plugin", "1.2.3")).toBe(
-      "/data/plugins/cache/npm/@acme/plugin/1.2.3",
+      resolve(
+        join("/data", "plugins", "cache", "npm", "@acme", "plugin", "1.2.3"),
+      ),
     );
     expect(
       gitArtifactCacheDir(
@@ -378,7 +412,19 @@ describe("plugin install sources", () => {
         "abcdef1234567",
       ),
     ).toBe(
-      "/data/plugins/cache/git/github.com/acme/nested/plugin/abcdef1234567",
+      resolve(
+        join(
+          "/data",
+          "plugins",
+          "cache",
+          "git",
+          "github.com",
+          "acme",
+          "nested",
+          "plugin",
+          "abcdef1234567",
+        ),
+      ),
     );
     expect(() => npmArtifactCacheDir("/data", "../plugin", "1.2.3")).toThrow(
       /invalid npm package/,
@@ -606,16 +652,10 @@ describe("plugin install flows", () => {
       expect(entry.id).toBe("gitty");
       expect(entry.status).toBe("running");
       expect(entry.source).toBe(source);
+      const parsed = parsePluginSource(source);
+      if (parsed.kind !== "git") throw new Error("expected git source");
       expect(entry.rootDir).toBe(
-        join(
-          dataDir,
-          "plugins",
-          "cache",
-          "git",
-          "local",
-          ...repoDir.replace(/^\/+/, "").split("/"),
-          commit,
-        ),
+        gitArtifactCacheDir(dataDir, parsed.cachePath, commit),
       );
       await stat(join(entry.rootDir, "package.json"));
       expect(getInstalledPluginRegistration(db, "gitty")).toMatchObject({
@@ -955,21 +995,22 @@ describe("plugin install flows", () => {
         engines: ">=99.0.0",
       });
       await initGitRepo(repoDir);
-      await commitAll(repoDir, "init");
+      const commit = await commitAll(repoDir, "init");
 
       const source = `git:${repoDir}@main`;
       await expect(
         service.install(source, { kind: "root" }),
       ).rejects.toThrowError(/install refused.*requires bb >=99\.0\.0/);
       expect(service.list()).toHaveLength(0);
-      const managed = join(
+      const parsed = parsePluginSource(source);
+      if (parsed.kind !== "git") throw new Error("expected git source");
+      const targetDir = gitArtifactCacheDir(
         dataDir,
-        "plugins",
-        "git",
-        "local",
-        ...repoDir.replace(/^\/+/, "").split("/"),
+        parsed.cachePath,
+        commit,
       );
-      await expect(stat(`${managed}@main`)).rejects.toThrowError();
+      await expect(stat(targetDir)).rejects.toThrowError();
+      await expect(stat(`${targetDir}.staging`)).rejects.toThrowError();
     });
 
     it("hard-fails managed install on an engines.bbPluginSdk mismatch", async () => {
@@ -1290,9 +1331,11 @@ describe("plugin install flows", () => {
 
         expect(alpha.status).toBe("running");
         expect(beta.status).toBe("running");
+        const parsed = parsePluginSource(`git:${repoDir}@main`);
+        if (parsed.kind !== "git") throw new Error("expected git source");
         const checkout = gitArtifactCacheDir(
           dataDir,
-          `local${repoDir}`,
+          parsed.cachePath,
           commit,
         );
         expect(alpha.rootDir).toBe(join(checkout, "plugins", "alpha"));
@@ -1448,9 +1491,11 @@ describe("plugin install flows", () => {
           name: "alpha",
         });
         expect(await service.remove("collection-alpha")).toBe(true);
+        const parsed = parsePluginSource(`git:${repoDir}@main`);
+        if (parsed.kind !== "git") throw new Error("expected git source");
         const checkout = gitArtifactCacheDir(
           dataDir,
-          `local${repoDir}`,
+          parsed.cachePath,
           commit,
         );
         await rm(join(checkout, "plugins"), { recursive: true, force: true });
