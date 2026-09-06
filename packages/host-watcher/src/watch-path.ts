@@ -1,6 +1,10 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import {
+  isWatchPathWithinRoot,
+  normalizeWatchEventPath,
+} from "./watch-event-path.js";
+import {
   RootSubscription,
   type ParcelWatcherEventBatch,
 } from "./root-subscription.js";
@@ -41,17 +45,11 @@ function isPathWithinTarget(
   targetPath: string,
   candidatePath: string,
 ): boolean {
-  const relativePath = path.relative(targetPath, candidatePath);
-  return (
-    relativePath.length === 0 ||
-    (!relativePath.startsWith("..") && !path.isAbsolute(relativePath))
-  );
+  return isWatchPathWithinRoot(targetPath, candidatePath);
 }
 
 function resolveEventPath(watchedPath: string, eventPath: string): string {
-  return path.isAbsolute(eventPath)
-    ? path.normalize(eventPath)
-    : path.resolve(watchedPath, eventPath);
+  return normalizeWatchEventPath(watchedPath, eventPath);
 }
 
 function collectTouchedTargetPaths(

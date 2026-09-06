@@ -132,6 +132,12 @@ export const LAUNCH_ADAPTERS: LaunchAdapter[] = [
     kind: "editor",
     label: "VS Code",
     fileOpenBehavior: "direct",
+    windows: {
+      knownRelativePaths: [
+        ["Microsoft VS Code", "bin", "code.cmd"],
+        ["Microsoft VS Code", "Code.exe"],
+      ],
+    },
     macos: {
       openMode: "application",
       appName: "Visual Studio Code",
@@ -195,6 +201,12 @@ export const LAUNCH_ADAPTERS: LaunchAdapter[] = [
     kind: "editor",
     label: "VS Code Insiders",
     fileOpenBehavior: "direct",
+    windows: {
+      knownRelativePaths: [
+        ["Microsoft VS Code Insiders", "bin", "code-insiders.cmd"],
+        ["Microsoft VS Code Insiders", "Code - Insiders.exe"],
+      ],
+    },
     macos: {
       openMode: "application",
       appName: "Visual Studio Code - Insiders",

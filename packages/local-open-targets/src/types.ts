@@ -80,6 +80,11 @@ export interface LaunchAdapter {
   kind: WorkspaceOpenTargetKind;
   label: string;
   macos: MacLaunchAdapter;
+  windows?: WindowsLaunchAdapter;
+}
+
+export interface WindowsLaunchAdapter {
+  knownRelativePaths?: string[][];
 }
 
 export interface ExecFileInvocation {
