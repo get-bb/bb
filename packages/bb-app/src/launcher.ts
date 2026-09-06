@@ -483,6 +483,7 @@ interface CreateSharedEnvArgs {
 interface CreateServerEnvArgs {
   context: BbAppStartContext;
   env: NodeJS.ProcessEnv;
+  platform?: NodeJS.Platform;
 }
 
 interface CreateServerBaseEnvArgs {
@@ -614,6 +615,7 @@ interface RunBundledCliCommandArgs {
   args: string[];
   context: BbAppStartContext;
   env: NodeJS.ProcessEnv;
+  platform?: NodeJS.Platform;
 }
 
 interface ResolveHostDaemonCommandResult {
@@ -2096,14 +2098,56 @@ async function runClientCommand(args: RunClientCommandArgs): Promise<void> {
   );
 }
 
-function requiredHostArtifactPaths(context: BbAppStartContext): ArtifactPath[] {
-  return [
+export function resolveBundledBbCliFileName(
+  platform: NodeJS.Platform,
+): string {
+  return platform === "win32" ? "bb.cmd" : "bb";
+}
+
+export function resolveBundledBbCliPath(
+  daemonBundleDir: string,
+  platform: NodeJS.Platform,
+): string {
+  return join(daemonBundleDir, resolveBundledBbCliFileName(platform));
+}
+
+export function resolveBundledCliSpawnPlan(
+  cliPath: string,
+  platform: NodeJS.Platform,
+): { argsPrefix: string[]; command: string } {
+  if (platform !== "win32") {
+    return { argsPrefix: [], command: cliPath };
+  }
+  if (!cliPath.toLowerCase().endsWith(".cmd")) {
+    return { argsPrefix: [], command: cliPath };
+  }
+  const target = cliPath.slice(0, -".cmd".length);
+  if (!existsSync(target)) {
+    return { argsPrefix: [], command: cliPath };
+  }
+  return { argsPrefix: [target], command: process.execPath };
+}
+
+function requiredHostArtifactPaths(
+  context: BbAppStartContext,
+  platform: NodeJS.Platform = process.platform,
+): ArtifactPath[] {
+  const artifacts: ArtifactPath[] = [
     { kind: "file", label: "host daemon entry", path: context.daemonEntry },
     {
       kind: "file",
       label: "bundled bb CLI",
-      path: join(context.daemonBundleDir, "bb"),
+      path: resolveBundledBbCliPath(context.daemonBundleDir, platform),
     },
+  ];
+  if (platform === "win32") {
+    artifacts.push({
+      kind: "file",
+      label: "bundled bb CLI executable",
+      path: join(context.daemonBundleDir, "bb"),
+    });
+  }
+  artifacts.push(
     {
       kind: "chunk-dir",
       label: "bundled bb CLI chunks",
@@ -2124,14 +2168,16 @@ function requiredHostArtifactPaths(context: BbAppStartContext): ArtifactPath[] {
       label: "plugin host worker",
       path: join(context.daemonBundleDir, "bb-plugin-host-worker.mjs"),
     },
-  ];
+  );
+  return artifacts;
 }
 
 function requiredFullStackArtifactPaths(
   context: BbAppStartContext,
+  platform: NodeJS.Platform = process.platform,
 ): ArtifactPath[] {
   return [
-    ...requiredHostArtifactPaths(context),
+    ...requiredHostArtifactPaths(context, platform),
     { kind: "file", label: "server entry", path: context.serverEntry },
     {
       kind: "file",
@@ -2161,10 +2207,14 @@ function artifactPresent(artifact: ArtifactPath): boolean {
   }
 }
 
-export function assertBbAppArtifacts(context: BbAppStartContext): void {
-  const missingArtifact = requiredFullStackArtifactPaths(context).find(
-    (artifact) => !artifactPresent(artifact),
-  );
+export function assertBbAppArtifacts(
+  context: BbAppStartContext,
+  platform: NodeJS.Platform = process.platform,
+): void {
+  const missingArtifact = requiredFullStackArtifactPaths(
+    context,
+    platform,
+  ).find((artifact) => !artifactPresent(artifact));
   if (missingArtifact) {
     throw new Error(
       `Missing ${missingArtifact.label} at ${missingArtifact.path}. Rebuild bb-app before running this package.`,
@@ -2172,8 +2222,11 @@ export function assertBbAppArtifacts(context: BbAppStartContext): void {
   }
 }
 
-export function assertBbHostArtifacts(context: BbAppStartContext): void {
-  const missingArtifact = requiredHostArtifactPaths(context).find(
+export function assertBbHostArtifacts(
+  context: BbAppStartContext,
+  platform: NodeJS.Platform = process.platform,
+): void {
+  const missingArtifact = requiredHostArtifactPaths(context, platform).find(
     (artifact) => !artifactPresent(artifact),
   );
   if (missingArtifact) {
@@ -2610,7 +2663,10 @@ export function createServerEnv(args: CreateServerEnvArgs): NodeJS.ProcessEnv {
     ...args.env,
     BB_APP_VERSION: args.context.appVersion,
     [APP_SURFACE_ENV_NAME]: resolveServerAppSurface(args.env),
-    BB_CLI: join(args.context.daemonBundleDir, "bb"),
+    BB_CLI: resolveBundledBbCliPath(
+      args.context.daemonBundleDir,
+      args.platform ?? process.platform,
+    ),
     BB_CLI_DIR: args.context.daemonBundleDir,
     BB_DATA_DIR: args.context.dataDir,
     BB_HOST_DAEMON_PORT: String(args.context.daemonPort),
@@ -2757,9 +2813,12 @@ export async function createHostDaemonJoinEnv(
 export async function runBundledCliCommand(
   args: RunBundledCliCommandArgs,
 ): Promise<number> {
+  const platform = args.platform ?? process.platform;
   const bbCliOverride = toOptionalString(args.env.BB_CLI);
-  const cliPath = bbCliOverride ?? join(args.context.daemonBundleDir, "bb");
-  const childProcess = spawn(cliPath, args.args, {
+  const cliPath =
+    bbCliOverride ?? resolveBundledBbCliPath(args.context.daemonBundleDir, platform);
+  const plan = resolveBundledCliSpawnPlan(cliPath, platform);
+  const childProcess = spawn(plan.command, [...plan.argsPrefix, ...args.args], {
     cwd: process.cwd(),
     env: createCliEnv({ context: args.context, env: args.env }),
     stdio: "inherit",

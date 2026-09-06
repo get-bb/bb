@@ -1,5 +1,6 @@
 import { execFileSync, spawn } from "node:child_process";
 import {
+  chmodSync,
   mkdirSync,
   mkdtempSync,
   readdirSync,
@@ -34,6 +35,9 @@ import {
   resolveDataDir,
   resolveBbAppStartContext,
   resolveBbAppCommand,
+  resolveBundledBbCliFileName,
+  resolveBundledBbCliPath,
+  resolveBundledCliSpawnPlan,
   resolveServerListenerUrl,
   resolveWorktreeRuntimePolicy,
   runBbApp,
@@ -43,9 +47,6 @@ import {
   waitForHostDaemonStatus,
   waitForProcessExit,
 } from "../src/launcher.js";
-const SECRET_FILE_MODE_0O600_UNENFORCEABLE_ON_WINDOWS_NTFS_MEASURED_MODE_IS_0O666 =
-  process.platform === "win32";
-
 import type {
   BbAppStartContext,
   DelayMillisecondsArgs,
@@ -248,6 +249,43 @@ function delay(args: DelayArgs): Promise<DelayResult> {
 const immediateDelay: DelayMillisecondsFn = () => {
   return Promise.resolve();
 };
+
+function expectedSecretFileMode(): number {
+  return process.platform === "win32" ? 0o666 : 0o600;
+}
+
+function writeHostArtifactFixture(options: {
+  bb: boolean;
+  bbCmd: boolean;
+}): BbAppStartContext {
+  const root = mkdtempSync(join(tmpdir(), "bb-app-host-fixture-"));
+  const daemonBundleDir = join(root, "host-daemon", "dist");
+  mkdirSync(daemonBundleDir, { recursive: true });
+  const daemonEntry = join(daemonBundleDir, "daemon-bundle.mjs");
+  writeFileSync(daemonEntry, "");
+  if (options.bb) {
+    writeFileSync(join(daemonBundleDir, "bb"), "");
+  }
+  if (options.bbCmd) {
+    writeFileSync(join(daemonBundleDir, "bb.cmd"), "");
+  }
+  const chunkDir = join(daemonBundleDir, "bb-chunks");
+  mkdirSync(chunkDir);
+  writeFileSync(join(chunkDir, "chunk-AAAAAAAA.js"), "");
+  for (const name of [
+    "bb-provider-bridge-worker.mjs",
+    "bb-parcel-watcher-child.mjs",
+    "bb-plugin-host-worker.mjs",
+  ]) {
+    writeFileSync(join(daemonBundleDir, name), "");
+  }
+  return {
+    ...createTestStartContext(),
+    daemonBundleDir,
+    daemonEntry,
+    packageRoot: root,
+  };
+}
 
 function createTestStartContext(): BbAppStartContext {
   return {
@@ -584,22 +622,19 @@ describe("bb-app launcher", () => {
 
     expect(context.dataDir).toBe(join("/home/tester", ".bb"));
     expect(context.configFile).toBe(
-      join("/home/tester", ".bb", "config.json"),
+      join(join("/home/tester", ".bb"), "config.json"),
     );
-    expect(context.envFile).toBe(join("/home/tester", ".bb", "env.json"));
+    expect(context.envFile).toBe(
+      join(join("/home/tester", ".bb"), "env.json"),
+    );
     expect(context.serverPort).toBe(38886);
     expect(context.daemonPort).toBe(38887);
     expect(context.serverUrl).toBe("http://127.0.0.1:38886");
     expect(context.serverEntry).toBe(
-      resolve("/repo/packages/bb-app", "server", "dist", "index.js"),
+      resolve("/repo/packages/bb-app/server/dist/index.js"),
     );
     expect(context.daemonEntry).toBe(
-      resolve(
-        "/repo/packages/bb-app",
-        "host-daemon",
-        "dist",
-        "daemon-bundle.mjs",
-      ),
+      resolve("/repo/packages/bb-app/host-daemon/dist/daemon-bundle.mjs"),
     );
     expect(context.appVersion).toBe("0.0.0-dev");
   });
@@ -1150,12 +1185,12 @@ describe("bb-app launcher", () => {
         },
       },
     );
-    if (
-      !SECRET_FILE_MODE_0O600_UNENFORCEABLE_ON_WINDOWS_NTFS_MEASURED_MODE_IS_0O666
-    ) {
-      expect(statSync(join(dataDir, "config.json")).mode & 0o777).toBe(0o600);
-      expect(statSync(join(dataDir, "env.json")).mode & 0o777).toBe(0o600);
-    }
+    expect(statSync(join(dataDir, "config.json")).mode & 0o777).toBe(
+      expectedSecretFileMode(),
+    );
+    expect(statSync(join(dataDir, "env.json")).mode & 0o777).toBe(
+      expectedSecretFileMode(),
+    );
   });
 
   it("stores client SSH targets from the client command", async () => {
@@ -1193,13 +1228,9 @@ describe("bb-app launcher", () => {
           },
         },
       });
-      if (
-        !SECRET_FILE_MODE_0O600_UNENFORCEABLE_ON_WINDOWS_NTFS_MEASURED_MODE_IS_0O666
-      ) {
-        expect(statSync(join(dataDir, "client.json")).mode & 0o777).toBe(
-          0o600,
-        );
-      }
+      expect(statSync(join(dataDir, "client.json")).mode & 0o777).toBe(
+        expectedSecretFileMode(),
+      );
 
       await runBbApp([
         "--data-dir",
@@ -1471,11 +1502,9 @@ describe("bb-app launcher", () => {
         },
       },
     );
-    if (
-      !SECRET_FILE_MODE_0O600_UNENFORCEABLE_ON_WINDOWS_NTFS_MEASURED_MODE_IS_0O666
-    ) {
-      expect(statSync(join(dataDir, "env.json")).mode & 0o777).toBe(0o600);
-    }
+    expect(statSync(join(dataDir, "env.json")).mode & 0o777).toBe(
+      expectedSecretFileMode(),
+    );
   });
 
   it("rejects invalid server bind hosts before writing managed env", async () => {
@@ -2178,6 +2207,7 @@ describe("bb-app launcher", () => {
       "host-daemon/dist/bb-plugin-host-worker.mjs",
     );
     expect(metadata.files).toContain("host-daemon/dist/bb");
+    expect(metadata.files).toContain("host-daemon/dist/bb.cmd");
     expect(metadata.files).toContain("host-daemon/dist/bb-chunks");
     expect(metadata.os).toEqual(["darwin", "linux", "win32"]);
   });
@@ -2194,6 +2224,7 @@ describe("bb-app launcher", () => {
         context.serverEntry,
         context.daemonEntry,
         join(context.daemonBundleDir, "bb"),
+        join(context.daemonBundleDir, "bb.cmd"),
         join(context.daemonBundleDir, "bb-provider-bridge-worker.mjs"),
         join(context.daemonBundleDir, "bb-parcel-watcher-child.mjs"),
         join(context.daemonBundleDir, "bb-plugin-host-worker.mjs"),
@@ -2275,4 +2306,192 @@ describe("bb-app launcher", () => {
     expect(webServerEnv.BB_APP_SURFACE).toBe("web");
     expect(invalidSurfaceServerEnv.BB_APP_SURFACE).toBe("web");
   });
+
+  it("resolves the bundled bb CLI file name per platform", () => {
+    expect(resolveBundledBbCliFileName("linux")).toBe("bb");
+    expect(resolveBundledBbCliFileName("darwin")).toBe("bb");
+    expect(resolveBundledBbCliFileName("win32")).toBe("bb.cmd");
+  });
+
+  it("resolves the bundled bb CLI path per platform", () => {
+    const bundleDir = mkdtempSync(join(tmpdir(), "bb-app-cli-path-"));
+    try {
+      expect(resolveBundledBbCliPath(bundleDir, "linux")).toBe(
+        join(bundleDir, "bb"),
+      );
+      expect(resolveBundledBbCliPath(bundleDir, "darwin")).toBe(
+        join(bundleDir, "bb"),
+      );
+      expect(resolveBundledBbCliPath(bundleDir, "win32")).toBe(
+        join(bundleDir, "bb.cmd"),
+      );
+    } finally {
+      rmSync(bundleDir, { recursive: true, force: true });
+    }
+  });
+
+  it("spawns the bundled CLI through the node runtime on Windows", () => {
+    const bundleDir = mkdtempSync(join(tmpdir(), "bb-app-cli-plan-"));
+    try {
+      const entry = join(bundleDir, "bb");
+      const launcher = join(bundleDir, "bb.cmd");
+      writeFileSync(entry, "");
+      writeFileSync(launcher, "");
+      const upperEntry = join(bundleDir, "BB");
+      const upperLauncher = join(bundleDir, "BB.CMD");
+      writeFileSync(upperEntry, "");
+      writeFileSync(upperLauncher, "");
+      expect(resolveBundledCliSpawnPlan(entry, "linux")).toEqual({
+        argsPrefix: [],
+        command: entry,
+      });
+      expect(resolveBundledCliSpawnPlan(entry, "darwin")).toEqual({
+        argsPrefix: [],
+        command: entry,
+      });
+      expect(resolveBundledCliSpawnPlan(entry, "win32")).toEqual({
+        argsPrefix: [],
+        command: entry,
+      });
+      expect(resolveBundledCliSpawnPlan(launcher, "linux")).toEqual({
+        argsPrefix: [],
+        command: launcher,
+      });
+      expect(resolveBundledCliSpawnPlan(launcher, "win32")).toEqual({
+        argsPrefix: [entry],
+        command: process.execPath,
+      });
+      expect(resolveBundledCliSpawnPlan(upperLauncher, "win32")).toEqual({
+        argsPrefix: [upperEntry],
+        command: process.execPath,
+      });
+      expect(
+        resolveBundledCliSpawnPlan(
+          join(bundleDir, "missing.cmd"),
+          "win32",
+        ),
+      ).toEqual({
+        argsPrefix: [],
+        command: join(bundleDir, "missing.cmd"),
+      });
+    } finally {
+      rmSync(bundleDir, { recursive: true, force: true });
+    }
+  });
+
+  it("advertises the platform CLI entry in BB_CLI", () => {
+    const context = createTestStartContext();
+    expect(
+      createServerEnv({ context, env: {}, platform: "linux" }).BB_CLI,
+    ).toBe(join(context.daemonBundleDir, "bb"));
+    expect(
+      createServerEnv({ context, env: {}, platform: "darwin" }).BB_CLI,
+    ).toBe(join(context.daemonBundleDir, "bb"));
+    expect(
+      createServerEnv({ context, env: {}, platform: "win32" }).BB_CLI,
+    ).toBe(join(context.daemonBundleDir, "bb.cmd"));
+  });
+
+  it("requires only the extensionless CLI on POSIX hosts", () => {
+    for (const platform of ["linux", "darwin"] as const) {
+      const context = writeHostArtifactFixture({ bb: true, bbCmd: false });
+      try {
+        expect(() => assertBbHostArtifacts(context, platform)).not.toThrow();
+        rmSync(join(context.daemonBundleDir, "bb"));
+        expect(() => assertBbHostArtifacts(context, platform)).toThrow(
+          /bundled bb CLI/,
+        );
+      } finally {
+        rmSync(context.packageRoot, { recursive: true, force: true });
+      }
+    }
+  });
+
+  it("requires the Windows launcher and its target on Windows hosts", () => {
+    const context = writeHostArtifactFixture({ bb: true, bbCmd: true });
+    try {
+      expect(() => assertBbHostArtifacts(context, "win32")).not.toThrow();
+      rmSync(join(context.daemonBundleDir, "bb.cmd"));
+      expect(() => assertBbHostArtifacts(context, "win32")).toThrow(
+        /bb\.cmd/,
+      );
+      writeFileSync(join(context.daemonBundleDir, "bb.cmd"), "");
+      rmSync(join(context.daemonBundleDir, "bb"));
+      expect(() => assertBbHostArtifacts(context, "win32")).toThrow(
+        /bundled bb CLI executable/,
+      );
+    } finally {
+      rmSync(context.packageRoot, { recursive: true, force: true });
+    }
+  });
+
+  it.runIf(process.platform === "win32")(
+    "runs the bundled CLI through bb.cmd on Windows",
+    async () => {
+      const testDir = dirname(fileURLToPath(import.meta.url));
+      const repoRoot = resolve(testDir, "..", "..", "..");
+      const root = mkdtempSync(join(tmpdir(), "bb-app-cli-live-"));
+      try {
+        const daemonBundleDir = join(root, "host-daemon", "dist");
+        mkdirSync(daemonBundleDir, { recursive: true });
+        writeFileSync(
+          join(daemonBundleDir, "bb.cmd"),
+          readFileSync(join(repoRoot, "apps", "cli", "bin", "bb.cmd")),
+        );
+        const marker = join(root, "ran.txt");
+        writeFileSync(
+          join(daemonBundleDir, "bb"),
+          `require("node:fs").writeFileSync(${JSON.stringify(marker)}, process.argv.slice(2).join("\\n"));\n`,
+        );
+        const context = {
+          ...createTestStartContext(),
+          daemonBundleDir,
+          packageRoot: root,
+        };
+        const exitCode = await runBundledCliCommand({
+          args: ["hello", "world"],
+          context,
+          env: {},
+          platform: "win32",
+        });
+        expect(exitCode).toBe(0);
+        expect(readFileSync(marker, "utf8")).toBe("hello\nworld");
+      } finally {
+        rmSync(root, { recursive: true, force: true });
+      }
+    },
+  );
+
+  it.runIf(process.platform !== "win32")(
+    "runs the extensionless bundled CLI without a shell on POSIX",
+    async () => {
+      const root = mkdtempSync(join(tmpdir(), "bb-app-cli-live-"));
+      try {
+        const daemonBundleDir = join(root, "host-daemon", "dist");
+        mkdirSync(daemonBundleDir, { recursive: true });
+        const marker = join(root, "ran.txt");
+        const entry = join(daemonBundleDir, "bb");
+        writeFileSync(
+          entry,
+          `#!/bin/sh\nprintf '%s\\n' "$@" > ${marker}\n`,
+        );
+        chmodSync(entry, 0o755);
+        const context = {
+          ...createTestStartContext(),
+          daemonBundleDir,
+          packageRoot: root,
+        };
+        const exitCode = await runBundledCliCommand({
+          args: ["hello"],
+          context,
+          env: {},
+          platform: "linux",
+        });
+        expect(exitCode).toBe(0);
+        expect(readFileSync(marker, "utf8")).toBe("hello\n");
+      } finally {
+        rmSync(root, { recursive: true, force: true });
+      }
+    },
+  );
 });

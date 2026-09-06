@@ -507,38 +507,72 @@ all in `test/services/plugins/*` with timeout/esbuild shapes) while every one
 of those files passes in isolation — parallel-load contention flakes,
 untouched by and unrelated to this work.
 
-## K18 — Packaged daemon bundle ships an extensionless `bb` with no Windows launcher — OPEN, MEASURED 2026-09-06
+## K18 — Packaged daemon bundle shipped an extensionless `bb` with no Windows launcher — FIXED 2026-09-06
 
-Two halves of one defect, both read from the tree on real Windows 11 Pro
-(build 26200) without running a build (`pnpm run dist:win` was out of scope,
-and `apps/host-daemon/dist` does not exist on this checkout, so nothing below
-is claimed from a built bundle listing).
+Confirmed against a real built bundle on Windows 11 Pro (build 26200) before
+fixing (`turbo run bundle --filter=@bb/host-daemon`, then direct probes):
 
-- **Bundle contents:** `packages/bb-app/scripts/build-host.mjs` copies exactly
-one CLI file into the enrolled-host package — `copyFile(hostDaemonSource/"bb",
-hostDaemonTarget/"bb")` plus `chmod 0755` — and never writes a `bb.cmd`
-alongside it. The generated `host-package/package.json` `files` list carries
-`host-daemon/dist/bb` with no `.cmd` entry. Contrast `apps/cli/bin/`, which
-ships both `bb` and `bb.cmd` (`@node "%~dp0bb" %*`, verified with `ls` on
-this machine): the dev CLI is launchable on Windows, the packaged daemon copy
-is not.
-- **Launcher:** `packages/bb-app/src/launcher.ts` names the extensionless file
-in three places — `requiredHostArtifactPaths` (`join(context.daemonBundleDir,
-"bb")`, line ~2105), `createServerEnv` (`BB_CLI: join(..., "bb")`, line
-~2613), and `runBundledCliCommand` (`join(args.context.daemonBundleDir, "bb")`
-plus a raw `spawn(cliPath, ...)` with `stdio: "inherit"` and no `shell`, line
-~2761). The `join` itself is platform-aware (`node:path`), but the artifact
-name and the spawn are POSIX-only: the existence check looks for `bb`, the
-environment advertises `...\bb`, and the spawn targets it with no PATHEXT
-search and no `cmd.exe` wrap — the same defect class as K16.
+- Raw `spawnSync(dist/bb, ["--version"])` → `ENOENT`. The artifact check would
+still have passed (`bb` exists), then the spawn died — exactly as predicted.
+- `node dist/bb --version` → `0.42.1`: the bundle was fine, only the launch
+was broken. `dist/bb` is an extensionless `#!/usr/bin/env node` esbuild
+bundle, `chmod 0755`.
+- A probe `bb.cmd` (`@node "%~dp0bb" %*`) spawned raw → `EINVAL` (a `.cmd`
+is not directly spawnable either — same defect class as K16); with
+`shell: true` → `0.42.1`.
 
-**Expected failure mode (not exercised here, for the reason above):** on a
-Windows install the artifact check still passes (`bb` exists), then the bundled
-CLI spawn fails (`ENOENT` on the extensionless shebang file), and any consumer
-spawning `$BB_CLI` raw hits the same wall. Fix shape, when scheduled: ship a
-`bb.cmd` forwarder in the daemon bundle next to `dist/bb` (mirroring
-`apps/cli/bin/bb.cmd`) and resolve the CLI name per platform at all three call
-sites, or route the spawn through the shared portable-command path.
+Fix, no new dependencies:
+
+- `apps/host-daemon/scripts/build-bundles.mjs` now emits `dist/bb.cmd`
+byte-identical to `apps/cli/bin/bb.cmd` (verified with `cmp`), next to the
+existing `apps/cli/bin/title` → `dist/title` copy.
+- `packages/bb-app/scripts/build-host.mjs` copies it into the enrolled-host
+package; `packages/bb-app/package.json` `files` lists
+`host-daemon/dist/bb.cmd`; `build.mjs` already copies the whole dist
+directory, so the npm tarball carries it with no script change. The
+generated host-package `package.json` lists whole directories and needed
+no change.
+- `packages/bb-app/src/launcher.ts` resolves the CLI name per platform at
+all three call sites through `resolveBundledBbCliFileName` /
+`resolveBundledBbCliPath`, which take platform as a required parameter and
+never read `process.platform`. The boundary functions
+(`requiredHostArtifactPaths`, `assertBbAppArtifacts`,
+`assertBbHostArtifacts`, `createServerEnv`, `runBundledCliCommand`) accept
+an optional `platform` defaulting to ambient at the edge, matching repo
+idiom. On win32 the artifact check requires both `bb.cmd` and its `bb`
+target; the POSIX required set is byte-identical to before. `BB_CLI`
+advertises `...\bb.cmd` on win32 (thread-env `BB_CLI` already did via
+`runtime-shell-env`).
+- The spawn deliberately does **not** use `shell: true`: the first version
+did, and it broke the `-e` CLI-override test on win32 (cmd.exe reparses
+parentheses inside the eval string). `resolveBundledCliSpawnPlan` maps a
+win32 `.cmd` target with an existing sibling to a direct
+`process.execPath` spawn of the sibling extensionless file — the same shape
+as `apps/cli/bin/bb` — so arbitrary user args never pass through cmd
+quoting. Shells and `BB_CLI` consumers keep using `bb.cmd` (verified via
+PowerShell `& '...\bb.cmd' --version` → `0.42.1`). A foreign `.cmd`
+whose sibling is absent still spawns raw and fails loudly instead of
+launching the wrong file.
+
+Verified live after the fix, against the real `host-package` bundle output:
+`runBundledCliCommand(["--version"])` → exit 0,
+`assertBbHostArtifacts` PASS, `createServerEnv BB_CLI` →
+`...\host-daemon\dist\bb.cmd`.
+
+Tests pin, per platform explicitly: the file-name and path resolvers, the
+spawn plan (including a missing forwarder target and case-variant names),
+`BB_CLI` per platform, the required-artifact sets (POSIX ignores a stray
+`bb.cmd`; win32 demands both files), plus a win32-gated live
+forwarder run with argument forwarding and a POSIX-gated live raw run.
+`bb-app` vitest went from 8 failed / 66 passed to 81 passed / 1 skipped /
+0 failed on this machine. The 8 were pre-existing POSIX assumptions in the
+same file, fixed alongside: three tests building expectations from posix
+literals now use `join`/`resolve` like production, three `0o600` mode
+assertions pin the measured NTFS `0o666` on win32 (K2 class), the npm `os`
+allowlist now matches the shipped manifest (`darwin`, `linux`, `win32`),
+and the chunk-dir regex accepts both separators. `@bb/cli` 538 passed /
+0 failed, `@bb/desktop` 324 passed / 3 skipped / 0 failed, `@bb/server`
+2228 passed / 26 skipped / 0 failed.
 
 ## K13 — What this setup can never prove
 
