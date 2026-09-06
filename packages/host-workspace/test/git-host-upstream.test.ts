@@ -102,6 +102,41 @@ async function installFakeGh(mode: "found" | "none" | "auth"): Promise<{
   const binPath = await makeTempDir("bb-pr-upstream-bin-");
   const logPath = path.join(binPath, "gh.log");
   const ghPath = path.join(binPath, "gh");
+  if (process.platform === "win32") {
+    const fakePath = path.join(binPath, "gh-fake.mjs");
+    await fs.writeFile(
+      fakePath,
+      [
+        'import fs from "node:fs";',
+        "const args = process.argv.slice(2);",
+        'fs.appendFileSync(process.env.TEST_GH_LOG, `${args.join("\\t")}\\n`);',
+        'if (process.env.TEST_GH_MODE === "auth") {',
+        '  process.stderr.write("gh: To get started with GitHub CLI, please run: gh auth login\\n");',
+        "  process.exit(4);",
+        "}",
+        'if (args[0] === "pr" && args[1] === "view") {',
+        '  if (process.env.TEST_GH_MODE === "none") {',
+        '    process.stderr.write(`no pull requests found for branch "${args[2]}"\\n`);',
+        "    process.exit(1);",
+        "  }",
+        '  process.stdout.write(`${process.env.TEST_GH_PR_JSON}\\n`);',
+        "  process.exit(0);",
+        "}",
+        'if (args[0] === "pr" && (args[1] === "ready" || args[1] === "merge")) {',
+        "  process.exit(0);",
+        "}",
+        'process.stderr.write(`unexpected gh arguments: ${args.join(" ")}\\n`);',
+        "process.exit(2);",
+        "",
+      ].join("\n"),
+      "utf8",
+    );
+    await fs.writeFile(
+      `${ghPath}.cmd`,
+      `@echo off\r\n"${process.execPath}" "${fakePath}" %*\r\n`,
+      "utf8",
+    );
+  } else {
   await fs.writeFile(
     ghPath,
     [
@@ -135,6 +170,7 @@ async function installFakeGh(mode: "found" | "none" | "auth"): Promise<{
     "utf8",
   );
   await fs.chmod(ghPath, 0o755);
+  }
 
   vi.stubEnv("TEST_GH_LOG", logPath);
   vi.stubEnv("TEST_GH_MODE", mode);
@@ -307,10 +343,28 @@ describe("pull request lookup for differently named upstream branches", () => {
   it("returns unavailable when gh is not installed", async () => {
     const workspacePath = await createTrackedForkWorkspace();
     const binPath = await makeTempDir("bb-pr-upstream-no-gh-");
-    const { stdout } = await execFileAsync("which", ["git"], {
-      encoding: "utf8",
-    });
-    await fs.symlink(stdout.trim(), path.join(binPath, "git"));
+    if (process.platform === "win32") {
+      const { stdout } = await execFileAsync("where.exe", ["git"], {
+        encoding: "utf8",
+      });
+      const candidates = stdout
+        .split(/\r?\n/u)
+        .map((line) => line.trim())
+        .filter(Boolean);
+      const realGit =
+        candidates.find((line) => line.toLowerCase().endsWith(".exe")) ??
+        candidates[0];
+      await fs.writeFile(
+        path.join(binPath, "git.cmd"),
+        `@echo off\r\n"${realGit}" %*\r\n`,
+        "utf8",
+      );
+    } else {
+      const { stdout } = await execFileAsync("which", ["git"], {
+        encoding: "utf8",
+      });
+      await fs.symlink(stdout.trim(), path.join(binPath, "git"));
+    }
     vi.stubEnv("PATH", binPath);
 
     await expect(
