@@ -284,6 +284,92 @@ describe("ACP agent stdio lifecycle", () => {
     }
   });
 
+  it("reaps the killed agent before waitForExit resolves so its cwd can be removed", async () => {
+    const workspace = mkdtempSync(join(tmpdir(), "bb-acp-wait-exit-"));
+    const exited = deferred<AcpAgentExitInfo>();
+    const connection = createAcpAgentConnection({
+      recordThreadId: null,
+      command: process.execPath,
+      args: ["-e", "setInterval(() => {}, 1000);"],
+      cwd: workspace,
+      env: process.env,
+      onNotification() {},
+      onRequest() {},
+      onExit: exited.resolve,
+    });
+
+    try {
+      connection.kill();
+      await connection.waitForExit();
+      rmSync(workspace, { recursive: true, force: true });
+      expect(existsSync(workspace)).toBe(false);
+      await exited.promise;
+    } finally {
+      await stopConnection(connection, exited.promise);
+      rmSync(workspace, { recursive: true, force: true });
+    }
+  });
+
+  it("resolves waitForExit when the agent exits on its own", async () => {
+    const exited = deferred<AcpAgentExitInfo>();
+    const connection = createAcpAgentConnection({
+      recordThreadId: null,
+      command: process.execPath,
+      args: ["-e", "process.exit(3);"],
+      cwd: process.cwd(),
+      env: process.env,
+      onNotification() {},
+      onRequest() {},
+      onExit: exited.resolve,
+    });
+
+    await connection.waitForExit();
+    await expect(exited.promise).resolves.toMatchObject({
+      code: 3,
+      signal: null,
+    });
+  });
+
+  it.skipIf(WINDOWS_SIGTERM_KILL_IS_UNTRAPPABLE_TERMINATE_PROCESS)(
+    "escalates to SIGKILL when the agent traps SIGTERM",
+    async () => {
+      const exited = deferred<AcpAgentExitInfo>();
+      const connection = createAcpAgentConnection({
+        recordThreadId: null,
+        command: process.execPath,
+        args: [
+          "-e",
+          [
+            'process.on("SIGTERM", () => {});',
+            "setInterval(() => {}, 1000);",
+          ].join(" "),
+        ],
+        cwd: process.cwd(),
+        env: process.env,
+        onNotification() {},
+        onRequest() {},
+        onExit: exited.resolve,
+      });
+
+      try {
+        connection.kill();
+        const reapedAfterSigterm = await Promise.race([
+          connection.waitForExit().then(() => true),
+          delay(300).then(() => false),
+        ]);
+        expect(reapedAfterSigterm).toBe(false);
+        connection.kill("SIGKILL");
+        await connection.waitForExit();
+        await expect(exited.promise).resolves.toMatchObject({
+          code: null,
+          signal: "SIGKILL",
+        });
+      } finally {
+        await stopConnection(connection, exited.promise);
+      }
+    },
+  );
+
   it("rejects pending requests when the agent exits", async () => {
     const exited = deferred<AcpAgentExitInfo>();
     const connection = createAcpAgentConnection({
