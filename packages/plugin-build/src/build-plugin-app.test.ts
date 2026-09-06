@@ -85,7 +85,8 @@ describe("plugin app runtime shim", () => {
           `import { twMerge } from "tailwind-merge";`,
           `import { cva } from "class-variance-authority";`,
           `import { Icon } from "@bb/shared-ui/icon";`,
-          `export { clsx, twMerge, cva, Icon };`,
+          `import { useQuestionFormHost } from "@bb/shared-ui/question-form-host";`,
+          `export { clsx, twMerge, cva, Icon, useQuestionFormHost };`,
         ].join("\n"),
         loader: "js",
         resolveDir: dir,
@@ -103,6 +104,7 @@ describe("plugin app runtime shim", () => {
       "tailwindMerge",
       "classVarianceAuthority",
       "sharedUiIcon",
+      "questionFormHost",
     ]) {
       expect(js).toMatch(new RegExp(`runtime\\d*\\.${slot}\\b`));
     }
@@ -111,11 +113,13 @@ describe("plugin app runtime shim", () => {
     const twMergeFn = () => "merged";
     const cvaFn = () => "cva";
     const IconComponent = () => null;
+    const useQuestionFormHost = () => null;
     (globalThis as { __bbPluginRuntime?: unknown }).__bbPluginRuntime = {
       clsx: { default: clsxFn, clsx: clsxFn },
       tailwindMerge: { twMerge: twMergeFn },
       classVarianceAuthority: { cva: cvaFn },
       sharedUiIcon: { Icon: IconComponent, ICON_NAMES: [] },
+      questionFormHost: { useQuestionFormHost },
     };
     try {
       const bundlePath = join(dir, "bundle.mjs");
@@ -128,6 +132,7 @@ describe("plugin app runtime shim", () => {
       expect(loaded.twMerge).toBe(twMergeFn);
       expect(loaded.cva).toBe(cvaFn);
       expect(loaded.Icon).toBe(IconComponent);
+      expect(loaded.useQuestionFormHost).toBe(useQuestionFormHost);
     } finally {
       delete (globalThis as { __bbPluginRuntime?: unknown }).__bbPluginRuntime;
     }
