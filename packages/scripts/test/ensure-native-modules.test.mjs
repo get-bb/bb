@@ -427,7 +427,9 @@ describe("ensure-native-modules", () => {
 
     expect(result.status).not.toBe(0);
     expect(`${result.stdout}${result.stderr}`).toContain(
-      "better-sqlite3 still failed to load after rebuild",
+      process.platform === "win32"
+        ? "better-sqlite3 has no usable native binary on Windows"
+        : "better-sqlite3 still failed to load after rebuild",
     );
   });
 });
