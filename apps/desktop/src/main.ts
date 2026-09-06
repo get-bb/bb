@@ -8,12 +8,14 @@ import {
   clipboard,
   dialog,
   ipcMain,
+  Menu,
   nativeImage,
   nativeTheme,
   net,
   safeStorage,
   session,
   shell,
+  Tray,
   type Event,
   type IpcMainInvokeEvent,
   type WebContents,
@@ -174,6 +176,15 @@ import {
 import { parseDesktopSystemConfig } from "./desktop-system-config.js";
 import { ensurePackagedUserShellPath } from "./desktop-shell-path.js";
 import { resolveDesktopReloadShortcut } from "./desktop-reload-shortcut.js";
+import {
+  shouldAutoAttachToForeignRuntime,
+  shouldStopRuntimeOnQuit,
+} from "./desktop-runtime-policy.js";
+import {
+  createDesktopTray,
+  shouldQuitOnWindowAllClosed,
+  type DesktopTrayHandle,
+} from "./desktop-tray.js";
 import {
   createLogTailer,
   createLogLineBuffer,
@@ -347,6 +358,7 @@ let desktopBridgePath: string | null = null;
 let desktopUserDataPath: string | null = null;
 let serverUrlDialogPreloadPath: string | null = null;
 let existingServerDialogPreloadPath: string | null = null;
+let desktopTray: DesktopTrayHandle | null = null;
 
 function resolveDesktopServerUrl(args: ResolveDesktopServerUrlArgs): string {
   const rawPort = args.env.BB_SERVER_PORT?.trim();
@@ -1534,7 +1546,7 @@ async function createApplicationWindow(
 
 async function stopOwnedRuntime(): Promise<void> {
   const runtime = currentRuntime;
-  if (runtime === null || runtime.ownership !== "spawned") {
+  if (runtime === null || !shouldStopRuntimeOnQuit({ ownership: runtime.ownership })) {
     setCurrentRuntime(null);
     return;
   }
@@ -1571,6 +1583,8 @@ function handleBeforeQuit(event: Event): void {
 async function finishQuit(): Promise<void> {
   desktopBrowserBrokerClient?.stop();
   desktopBrowserBroker?.dispose();
+  desktopTray?.destroy();
+  desktopTray = null;
   stopSystemConfigSync();
   connectSessionRenewal?.stop();
   desktopUpdateService?.stop();
@@ -1790,6 +1804,7 @@ async function startOwnedRuntime(
 
 interface InitializeRuntimeArgs {
   bridgePath: string;
+  desktopVersion: string | null;
   serverUrl: string;
   userDataPath: string;
 }
@@ -1825,6 +1840,7 @@ type ExistingServerDecision = "attach" | "quit" | "start-fresh";
 
 async function decideOnExistingServer(
   probe: CompatibleServerProbeResult,
+  desktopVersion: string | null,
 ): Promise<ExistingServerDecision> {
   if (!shouldAskBeforeAttaching()) {
     return "attach";
@@ -1839,6 +1855,9 @@ async function decideOnExistingServer(
     dataDir: probe.dataDir,
     serverUrl: probe.serverUrl,
   });
+  if (shouldAutoAttachToForeignRuntime({ desktopVersion, details })) {
+    return "attach";
+  }
   const choice = await openExistingServerDialog({
     details,
     parentWindow: getFocusedApplicationWindow(),
@@ -1904,7 +1923,7 @@ async function initializeRuntime(args: InitializeRuntimeArgs): Promise<void> {
   });
 
   if (existingProbe.kind === "compatible") {
-    const decision = await decideOnExistingServer(existingProbe);
+    const decision = await decideOnExistingServer(existingProbe, args.desktopVersion);
     if (decision === "quit") {
       app.quit();
       return;
@@ -1992,7 +2011,7 @@ async function runDesktopApp(): Promise<void> {
   });
   app.on("before-quit", handleBeforeQuit);
   app.on("window-all-closed", () => {
-    if (process.platform !== "darwin") {
+    if (shouldQuitOnWindowAllClosed({ platform: process.platform })) {
       app.quit();
     }
   });
@@ -2314,6 +2333,42 @@ async function runDesktopApp(): Promise<void> {
   });
   installLogViewerIpcHandlers();
 
+  desktopTray = createDesktopTray({
+    deps: {
+      buildMenu: (menuArgs) =>
+        Menu.buildFromTemplate([
+          {
+            click() {
+              menuArgs.onShow();
+            },
+            label: "Open bb",
+          },
+          { type: "separator" },
+          {
+            click() {
+              menuArgs.onQuit();
+            },
+            label: "Quit bb",
+          },
+        ]),
+      createIcon: (imagePath) => new Tray(imagePath),
+    },
+    iconPath,
+    onQuit() {
+      app.quit();
+    },
+    onShow() {
+      if (desktopWindowFactory?.focusFirstWindow() === true) {
+        return;
+      }
+      void createApplicationWindow({
+        initialUrl: currentWindowUrl,
+        stateKey: null,
+      });
+    },
+    platform: process.platform,
+  });
+
   refreshApplicationMenu();
   await loadLoadingView();
   const restoredWindows = await desktopWindowFactory.restoreSavedWindows({
@@ -2323,7 +2378,12 @@ async function runDesktopApp(): Promise<void> {
     registerApplicationWindow(browserWindow);
   }
   if (serverTargetStore.getTarget().kind === "builtin") {
-    await initializeRuntime({ bridgePath, serverUrl, userDataPath });
+    await initializeRuntime({
+      bridgePath,
+      desktopVersion,
+      serverUrl,
+      userDataPath,
+    });
   } else {
     await applyServerTarget();
     connectServerSync.syncNow().catch(() => {});
