@@ -20,6 +20,8 @@ const SCRIPT_PATH = new URL(
   "../../src/assets/install-machine.sh",
   import.meta.url,
 );
+const INSTALL_SCRIPT_POSIX_ONLY_MEASURED_UNSUPPORTED_ON_WINDOWS =
+  process.platform === "win32";
 const createdDirectories: string[] = [];
 const FIXTURE_ARTIFACT_DIGEST = createHash("sha256")
   .update("fixture-tarball")
@@ -271,7 +273,8 @@ afterEach(() => {
   }
 });
 
-describe("machine install script", () => {
+describe.skipIf(INSTALL_SCRIPT_POSIX_ONLY_MEASURED_UNSUPPORTED_ON_WINDOWS)(
+  "machine install script", () => {
   it("rejects missing required flags with usage", () => {
     const fixture = createFixture();
     const result = runScript(["--join-code", "code-only"], fixture);
