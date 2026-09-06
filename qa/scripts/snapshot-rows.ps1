@@ -12,7 +12,10 @@
   turbo run test:provider-corpus --filter=@bb/server from the repo root, then
   prints snapshots/rows-last-run.json and snapshots/perf-last-run.md.
   set -euo pipefail becomes $ErrorActionPreference = 'Stop' plus an explicit
-  $LASTEXITCODE check after every native command.
+  $LASTEXITCODE check after every native command. Error paths write to stderr
+  with [Console]::Error.WriteLine so the exit codes (2 for bad corpus dir,
+  1 for missing pnpm) survive: Write-Error would throw under 'Stop' and the
+  exit code would be lost.
   Reviewed line by line against scripts/provider-corpus/snapshot-rows.sh.
   NOT executed: there is no PowerShell on the Linux machine where this was written.
 .EXAMPLE
@@ -40,7 +43,7 @@ if ([string]::IsNullOrEmpty($CorpusDir)) {
     }
 }
 if ([string]::IsNullOrEmpty($CorpusDir) -or -not (Test-Path (Join-Path $CorpusDir 'manifest.json'))) {
-    Write-Error 'BB_PROVIDER_CORPUS_DIR must point at a corpus directory with manifest.json'
+    [Console]::Error.WriteLine('BB_PROVIDER_CORPUS_DIR must point at a corpus directory with manifest.json')
     exit 2
 }
 $env:BB_PROVIDER_CORPUS_DIR = $CorpusDir
@@ -51,7 +54,7 @@ if (-not $PnpmCommand) {
     $PnpmCommand = Get-Command pnpm -ErrorAction SilentlyContinue
 }
 if (-not $PnpmCommand) {
-    Write-Error 'pnpm is not available on PATH'
+    [Console]::Error.WriteLine('pnpm is not available on PATH')
     exit 1
 }
 
