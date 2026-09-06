@@ -1964,7 +1964,10 @@ describe("acp delta translation (raw payloads and real results)", () => {
   });
 
   it("resolves a relative location and grok's target_file against the session cwd", () => {
-    const translator = createAcpDeltaTranslator({ cwd: "/workspace/app" });
+    const translator = createAcpDeltaTranslator({
+      cwd: "/workspace/app",
+      platform: "linux",
+    });
     const assembler = createDeltaAssembler({
       providerId: "acp",
       entropyPrefix: ENTROPY,

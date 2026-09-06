@@ -75,6 +75,7 @@ interface AcpDeltaTranslationContext {
 
 export interface AcpDeltaTranslatorOptions {
   cwd?: string | undefined;
+  platform?: NodeJS.Platform | undefined;
   dialect?: AcpDialect | undefined;
 }
 
@@ -169,7 +170,7 @@ export function createAcpDeltaTranslator(
   options: AcpDeltaTranslatorOptions = {},
 ) {
   const dialect = options.dialect ?? GENERIC_ACP_DIALECT;
-  const pathOptions = { cwd: options.cwd };
+  const pathOptions = { cwd: options.cwd, platform: options.platform };
   const mergedToolCalls = new Map<string, AcpOpenToolCall>();
 
   let injectedToolsByName = new Map<string, AcpInjectedTool>();

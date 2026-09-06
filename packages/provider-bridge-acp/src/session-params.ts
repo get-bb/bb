@@ -91,14 +91,22 @@ function sanitizeAcpSkillDescription(description: string): string {
 
 function buildAcpSkillsInstructions(
   skillRoots: readonly AcpSkillRoot[] | undefined,
+  platform: NodeJS.Platform = process.platform,
 ): string | undefined {
   if (!skillRoots || skillRoots.length === 0) {
     return undefined;
   }
 
+  const joinSkillPath = (
+    ...segments: string[]
+  ): string =>
+    platform === "win32"
+      ? path.win32.join(...segments)
+      : path.posix.join(...segments);
+
   const skillLines = skillRoots.flatMap((skillRoot) => {
     return skillRoot.skills.map((skill) => {
-      const skillFilePath = path.join(
+      const skillFilePath = joinSkillPath(
         skillRoot.skillDirectoryRootPath,
         skill.name,
         "SKILL.md",
@@ -120,9 +128,13 @@ function buildAcpSkillsInstructions(
 
 function buildAcpSessionInstructions(
   options: AcpSessionExecutionOptions,
+  platform: NodeJS.Platform = process.platform,
 ): string | undefined {
   const baseInstructions = options.instructions?.trim();
-  const skillsInstructions = buildAcpSkillsInstructions(options.skillRoots);
+  const skillsInstructions = buildAcpSkillsInstructions(
+    options.skillRoots,
+    platform,
+  );
   const instructions = [baseInstructions, skillsInstructions].filter(
     (value): value is string => value !== undefined && value.length > 0,
   );
@@ -261,6 +273,7 @@ interface BuildAcpSessionParamsArgs {
   dynamicTools?: readonly DynamicTool[] | undefined;
   launchSpec: AcpLaunchSpec;
   options: AcpSessionExecutionOptions;
+  platform?: NodeJS.Platform | undefined;
   providerLabel: string;
   threadId: string;
   parameterizedModelPicker: boolean;
@@ -270,7 +283,10 @@ export function buildAcpSessionParams(
   args: BuildAcpSessionParamsArgs,
 ): AcpSessionParams {
   const { options, launchSpec } = args;
-  const instructions = buildAcpSessionInstructions(options);
+  const instructions = buildAcpSessionInstructions(
+    options,
+    args.platform ?? process.platform,
+  );
   const cwd = launchSpec.cwd ?? args.cwd;
   const envVars = {
     ...launchSpec.env,

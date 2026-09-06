@@ -34,6 +34,15 @@ const acpRawInputPathSchema = z
 
 export interface AcpToolCallPathOptions {
   cwd?: string | undefined;
+  platform?: NodeJS.Platform | undefined;
+}
+
+function acpPathFlavor(
+  platform: NodeJS.Platform | undefined,
+): typeof path.posix {
+  return (platform ?? process.platform) === "win32"
+    ? path.win32
+    : path.posix;
 }
 
 export function resolveAcpToolCallPath(
@@ -41,10 +50,15 @@ export function resolveAcpToolCallPath(
   options: AcpToolCallPathOptions | undefined,
 ): string {
   const cwd = options?.cwd;
-  if (cwd === undefined || path.isAbsolute(value) || value.startsWith("~")) {
+  const flavor = acpPathFlavor(options?.platform);
+  if (
+    cwd === undefined ||
+    flavor.isAbsolute(value) ||
+    value.startsWith("~")
+  ) {
     return value;
   }
-  return path.resolve(cwd, value);
+  return flavor.resolve(cwd, value);
 }
 
 export function extractAcpCommand(
@@ -117,10 +131,12 @@ export function classifyAcpToolCall(
 
 export function resolveAcpFileChangeWriteScope(
   paths: readonly string[],
+  platform: NodeJS.Platform = process.platform,
 ): string | null {
+  const flavor = acpPathFlavor(platform);
   const normalized = paths.filter(isNonBlank).map((entry) => {
-    const value = path.normalize(entry);
-    return value.length > 1 && value.endsWith(path.sep)
+    const value = flavor.normalize(entry);
+    return value.length > 1 && value.endsWith(flavor.sep)
       ? value.slice(0, -1)
       : value;
   });
@@ -134,9 +150,9 @@ export function resolveAcpFileChangeWriteScope(
       candidate = entry;
     }
   }
-  const prefix = candidate.endsWith(path.sep)
+  const prefix = candidate.endsWith(flavor.sep)
     ? candidate
-    : candidate + path.sep;
+    : candidate + flavor.sep;
   for (const entry of normalized) {
     if (entry !== candidate && !entry.startsWith(prefix)) {
       return null;
