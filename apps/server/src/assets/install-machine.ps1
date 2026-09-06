@@ -922,7 +922,8 @@ Write-ReadyRow 'data' $dataDir
 Write-ReadyRow 'service' $serviceDesc
 [Console]::WriteLine('')
 if ($persistence.Kind -eq 'task') {
-  Write-Detail 'Starts at logon and restarts on failure.'
+  Write-Detail 'Starts at logon. If the daemon stops, restart it with:'
+  Write-Detail "schtasks /Run /TN '$taskName'"
   Write-Detail "Uninstall: schtasks /Delete /TN '$taskName' /F"
 } else {
   Write-Detail 'Starts at logon.'

@@ -188,7 +188,10 @@ prefix, so enrollment needs neither `sudo` nor a PATH change.
 
 Each joined server gets its own daemon instance, data directory
 (`~/.bb-machines/<server-host>`, override with `BB_DATA_DIR` when running the
-installer), local API port, and launchd/systemd service. The installer persists
+installer), local API port, and persistent service: a launchd agent on macOS,
+a systemd user unit on Linux, and on Windows a per-user scheduled task at
+logon (when the installer runs elevated) or otherwise a per-user Run registry
+value that starts the daemon at logon. The installer persists
 the selected port in that data directory and atomically reserves it under
 `~/.bb-machines/host-daemon-ports/`, including when `BB_DATA_DIR` points
 elsewhere. Subsequent runs reuse the reservation; pass `--host-daemon-port
@@ -198,7 +201,9 @@ install's `~/.bb`. Each instance keeps its own `bb-app` under that data
 directory and self-updates against its own server, so servers running different
 bb versions on one machine remain isolated.
 
-The installed launchd/systemd service enables `--auto-update`. If session open
+The installed service enables `--auto-update`: the launchd agent, the systemd
+user unit, the Windows scheduled task, and the Windows Run-key launcher all
+start the same per-enrollment wrapper. If session open
 reports a newer server protocol, the daemon downloads the server artifact,
 verifies its SHA-256 digest, updates its private install, then exits so the
 service manager restarts it. If the identical artifact is already installed,
@@ -209,9 +214,19 @@ exponential retry backoff from 5 seconds to 5 minutes. Settings → Machines and
 `bb machine retry-update <id-or-name>` can bypass the current backoff. A daemon
 never downgrades itself to an older server protocol. To opt out, remove
 `--auto-update` from
-`~/Library/LaunchAgents/app.getbb.host-daemon.<server>.plist` or
-`~/.config/systemd/user/bb-host-daemon-<server>.service`, then reload the
-service.
+`~/Library/LaunchAgents/app.getbb.host-daemon.<server>.plist`,
+`~/.config/systemd/user/bb-host-daemon-<server>.service`, or on Windows the
+`bb-host-daemon-<server>.cmd` launcher in the enrollment data directory, then
+reload or restart the service.
+
+On Windows, run the generated PowerShell command from `Add machine` instead
+of the POSIX one-liner: it downloads `install.ps1`, then runs it with
+`-ExecutionPolicy Bypass` for that process only. No elevation is needed: an
+unelevated installer enrolls with a Run-key launcher and says so. Crash
+restarts are best-effort there (see K14 in `KNOWN-ISSUES.md`); use
+`schtasks /Run /TN <task>` or rerun the installer to revive a stopped daemon,
+and `schtasks /Delete /TN <task> /F` to uninstall the scheduled-task
+persistence.
 
 After it connects:
 

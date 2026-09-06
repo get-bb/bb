@@ -182,29 +182,55 @@ The PowerShell fallback uses `FolderBrowserDialog`, which requires STA. The `-ST
 flag has not been exercised outside Linux. The primary path is Electron's native
 dialog, which is genuinely native on Windows.
 
-## K14 — Enrolling a Windows machine as a bb host does not work
+## K14 — Enrolling a Windows machine as a bb host works, with measured limits
 
-`apps/server/src/assets/install-machine.sh` (served at `GET /install.sh`) is the
-"add another machine as a host" installer. Its platform guard admits **macOS and
-Linux only**, and persistence knows only launchd plists and systemd user units.
-Driven on Windows 11 with Git for Windows `sh.exe` it exits 1 with
-`bb machine installation supports macOS and Linux only`; git-bash's `sh` existing
-does not help, because the installer refuses Windows by design.
+**History.** `apps/server/src/assets/install-machine.sh` (served at
+`GET /install.sh`) used to admit macOS and Linux only, and persistence knew
+only launchd plists and systemd user units. Driven on Windows 11 with Git for
+Windows `sh.exe` it exited 1 with
+`bb machine installation supports macOS and Linux only`. That guard is still
+there for the `.sh` itself; Windows enrollment goes through a separate asset.
 
-**What a Windows user can do today:** run the server, app and CLI on Windows, and
-join and control non-Windows hosts. **What they cannot do:** enrol *this* Windows
-machine as a bb host. There is no Windows installer path.
+**What changed.** `apps/server/src/assets/install-machine.ps1`, served at
+`GET /install.ps1` (also forwarded as a public path by the connect worker),
+reaches the same end state as the `.sh`: per-server data dir under
+`$HOME\.bb-machines\<server-host>`, server-matched `bb-app` tarball with
+SHA-256 verification and `304` reuse, `npm.cmd` prefix install, machine-code
+redeem, join, and a persistent launcher. The Add-machine dialog shows the
+Windows PowerShell command next to the POSIX one-liner. Proven live on Windows
+11 Pro build 26200, elevated and unelevated: download, npm install, join,
+`connected`, `bb machine list`, and clean removal, all captured in the
+closing report. Deepest installed path measured 180 characters against the
+260 `MAX_PATH` limit with `LongPathsEnabled` 0.
 
-`apps/server/test/app/install-machine-script.test.ts` is skipped on win32 through
-`INSTALL_SCRIPT_POSIX_ONLY_MEASURED_UNSUPPORTED_ON_WINDOWS`, a named constant
-rather than a bare platform guard, so the reason travels with the skip. The suite
-still runs in full on macOS and Linux.
+**Persistence is a scheduled task, or a Run value.** A real Windows service was
+rejected on measurement: `sc.exe create` fails `OpenSCManager FAILED 5`
+without elevation, node has no service-main (a wrapper would be a new
+dependency), and session 0 breaks user-profile assumptions. A scheduled task
+(LogonTrigger, InteractiveToken, LeastPrivilege) is used when registration
+succeeds; both `schtasks.exe` and the ScheduledTasks COM API return Access
+Denied without elevation (measured with a stripped token), so an unelevated
+installer falls back to an `HKCU\...\Run` value with a loud warning and
+never requires an elevated prompt. Exactly one unit survives either path.
 
-**Scope of the missing work, if it is ever scheduled:** a Windows installer asset
-(or a Windows branch serving a `.ps1`), Windows service persistence,
-`npm.cmd`/shell-aware spawning, and Windows-native fixtures — no shebang or
-extensionless exec, no `PATH` wipe, no `nohup`/`mktemp`/`launchctl`/`systemctl`
-assumptions.
+**Honest limits, all measured on this machine.** `RestartOnFailure` (PT1M x
+9999) is registered but does not restart: three experiments (on-demand
+`cmd /c exit 1`, on-demand external kill, time-trigger-fired `exit 1`)
+showed no restart within 3-4 minutes, so the installer no longer promises
+one — revive with `schtasks /Run /TN <task>` or rerun it. Logon start is
+configured, not observed (no reboot was performed). The documented command
+needs `-ExecutionPolicy Bypass` for that process (default Restricted policy).
+No `chmod` hardening is faked on NTFS (see K2).
+
+**Tests.** `apps/server/test/app/install-machine-ps1.test.ts` covers the `.ps1`
+end to end against fixtures (usage, loud failures, digest/`304` handling,
+port registry, machine-code redeem, task replace/run/delete and Run-key
+replace, all with real scheduler/task/registry on Windows). The POSIX suite
+(`install-machine-script.test.ts`) now also runs on Windows via `sh.exe`:
+the skip narrowed to a shell-availability gate plus one case — the
+per-server default data dir, where the emulation shell's translated `$HOME`
+and Windows node disagree on what `$HOME` means. The `.sh` behavior for
+macOS/Linux clients is byte-identical.
 
 ## K15 — Local git plugin sources can exceed MAX_PATH
 
