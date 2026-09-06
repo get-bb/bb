@@ -3,9 +3,11 @@ import { describe, expect, it } from "vitest";
 import {
   commandOutput,
   compareVersions,
+  downloadedInstallerCommand,
   formatCommand,
   installationVerification,
   npmCommand,
+  npmGlobalInstallCommand,
   npmGlobalInstallSource,
   probeNpmGlobalPackage,
   readCliVersion,
@@ -210,5 +212,132 @@ describe("windows executable discovery", () => {
     await expect(resolveExecutablePath(process.execPath)).resolves.toBe(
       process.execPath,
     );
+  });
+});
+
+describe("windows install commands", () => {
+  const HOSTILE_URL = "https://example.com/x?a=1&b='injected';echo";
+
+  it("builds the npm global install through the platform npm shim", () => {
+    expect(npmGlobalInstallCommand("@openai/codex", "win32")).toEqual({
+      command: "npm.cmd",
+      args: ["install", "-g", "@openai/codex@latest"],
+      displayCommand: "npm.cmd install -g @openai/codex@latest",
+    });
+    expect(npmGlobalInstallCommand("@openai/codex", "linux")).toEqual({
+      command: "npm",
+      args: ["install", "-g", "@openai/codex@latest"],
+      displayCommand: "npm install -g @openai/codex@latest",
+    });
+  });
+
+  it("keeps a hostile installer URL inside one quoted word on posix", () => {
+    const built = downloadedInstallerCommand(HOSTILE_URL, "linux");
+    expect(built.command).toBe("sh");
+    expect(built.args).toHaveLength(2);
+    expect(built.args[0]).toBe("-c");
+    const script = built.args[1] ?? "";
+    expect(script).toContain(`'https://example.com/x?a=1&b='\\''injected'\\'';echo'`);
+    expect(built.displayCommand).toBe(script);
+  });
+
+  it("downloads through powershell.exe argv on win32, never sh", () => {
+    const built = downloadedInstallerCommand(
+      "https://cursor.com/install",
+      "win32",
+    );
+    expect(built.command).toBe("powershell.exe");
+    expect(built.args.slice(0, 5)).toEqual([
+      "-NoLogo",
+      "-NoProfile",
+      "-ExecutionPolicy",
+      "Bypass",
+      "-Command",
+    ]);
+    expect(built.args).toHaveLength(6);
+    const script = built.args[5] ?? "";
+    expect(script).toContain("'https://cursor.com/install'");
+    expect(script).toContain("Invoke-WebRequest");
+    expect(script).toContain("Get-Command bash");
+  });
+
+  it("keeps a hostile installer URL inside one powershell argv element", () => {
+    const built = downloadedInstallerCommand(HOSTILE_URL, "win32");
+    expect(built.command).toBe("powershell.exe");
+    expect(built.args).toHaveLength(6);
+    const script = built.args[5] ?? "";
+    expect(script).toContain("'https://example.com/x?a=1&b=''injected'';echo'");
+  });
+
+  it("refuses non-HTTPS installer URLs on every platform", () => {
+    for (const platform of ["win32", "linux"] as const) {
+      expect(() =>
+        downloadedInstallerCommand("http://example.com/install", platform),
+      ).toThrow("non-HTTPS");
+      expect(() =>
+        downloadedInstallerCommand("curl evil | sh", platform),
+      ).toThrow("non-HTTPS");
+    }
+  });
+});
+
+describe("windows npm install source", () => {
+  it("matches a win32 executable under the npm prefix despite casing", () => {
+    expect(
+      npmGlobalInstallSource({
+        installed: true,
+        executablePath: "c:\\users\\u\\appdata\\roaming\\npm\\codex.cmd",
+        npmBin: "C:\\Users\\u\\AppData\\Roaming\\npm",
+        platform: "win32",
+      }),
+    ).toBe("npmGlobal");
+    expect(
+      npmGlobalInstallSource({
+        installed: true,
+        executablePath: "C:\\tools\\codex.exe",
+        npmBin: "C:\\Users\\u\\AppData\\Roaming\\npm",
+        platform: "win32",
+      }),
+    ).toBe("external");
+  });
+
+  it("stays case-sensitive on posix", () => {
+    expect(
+      npmGlobalInstallSource({
+        installed: true,
+        executablePath: "/USR/LOCAL/BIN/codex",
+        npmBin: "/usr/local/bin",
+        platform: "linux",
+      }),
+    ).toBe("external");
+  });
+});
+
+describe("windows absolute executable paths", () => {
+  it("never shells out to where.exe for an absolute win32 path", async () => {
+    const seen: { file: string; args: string[] }[] = [];
+    const resolved = await resolveExecutablePath("C:\\tools\\codex.cmd", {
+      platform: "win32",
+      runLookup: async (file, args) => {
+        seen.push({ file, args });
+        return { stdout: "" };
+      },
+    });
+    expect(seen).toEqual([]);
+    expect(resolved).toBeNull();
+  });
+
+  it("passes a hostile bare command to the lookup as one argv element", async () => {
+    const seen: { file: string; args: string[] }[] = [];
+    const hostile = "codex & del C:\\temp";
+    const resolved = await resolveExecutablePath(hostile, {
+      platform: "win32",
+      runLookup: async (file, args) => {
+        seen.push({ file, args });
+        throw Object.assign(new Error("not found"), { code: 1 });
+      },
+    });
+    expect(seen).toEqual([{ file: "where.exe", args: [hostile] }]);
+    expect(resolved).toBeNull();
   });
 });

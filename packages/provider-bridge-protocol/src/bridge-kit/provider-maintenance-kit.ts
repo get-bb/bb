@@ -41,7 +41,8 @@ export async function resolveExecutablePath(
   command: string,
   deps: ExecutableProbeDeps = {},
 ): Promise<string | null> {
-  if (path.isAbsolute(command)) {
+  const platform = deps.platform ?? process.platform;
+  if (isAbsoluteForPlatform(command, platform)) {
     try {
       await access(command, fsConstants.X_OK);
       return command;
@@ -49,7 +50,6 @@ export async function resolveExecutablePath(
       return null;
     }
   }
-  const platform = deps.platform ?? process.platform;
   const runLookup =
     deps.runLookup ??
     ((file, args) =>
@@ -107,6 +107,17 @@ export async function readCliVersion(
   } catch {
     return null;
   }
+}
+
+function platformPaths(platform: NodeJS.Platform): typeof path.posix {
+  return platform === "win32" ? path.win32 : path.posix;
+}
+
+function isAbsoluteForPlatform(
+  candidate: string,
+  platform: NodeJS.Platform,
+): boolean {
+  return platformPaths(platform).isAbsolute(candidate);
 }
 
 function runProbeCommand(
@@ -174,8 +185,9 @@ export function formatCommand(
 
 export function npmGlobalInstallCommand(
   npmPackage: string,
+  platform: NodeJS.Platform = process.platform,
 ): ProviderInstallationCommand {
-  const command = npmCommand();
+  const command = npmCommand(platform);
   const args = ["install", "-g", `${npmPackage}@latest`];
   return { command, args, displayCommand: formatCommand(command, args) };
 }
@@ -248,11 +260,26 @@ function npmGlobalPackageVersion(
   }
 }
 
-function pathIsInside(child: string, parent: string): boolean {
-  const relativePath = path.relative(path.resolve(parent), path.resolve(child));
+function pathIsInside(
+  child: string,
+  parent: string,
+  platform: NodeJS.Platform,
+): boolean {
+  const paths = platformPaths(platform);
+  const relativePath = paths.relative(
+    paths.resolve(parent),
+    paths.resolve(child),
+  );
+  if (platform === "win32") {
+    const lowered = relativePath.toLowerCase();
+    return (
+      lowered === "" ||
+      (!lowered.startsWith("..") && !paths.isAbsolute(relativePath))
+    );
+  }
   return (
     relativePath === "" ||
-    (!relativePath.startsWith("..") && !path.isAbsolute(relativePath))
+    (!relativePath.startsWith("..") && !paths.isAbsolute(relativePath))
   );
 }
 
@@ -260,12 +287,14 @@ export function npmGlobalInstallSource(args: {
   installed: boolean;
   executablePath: string | null;
   npmBin: string | null;
+  platform?: NodeJS.Platform;
 }): ProviderInstallationSource {
+  const platform = args.platform ?? process.platform;
   return !args.installed
     ? "notInstalled"
     : args.executablePath !== null &&
         args.npmBin !== null &&
-        pathIsInside(args.executablePath, args.npmBin)
+        pathIsInside(args.executablePath, args.npmBin, platform)
       ? "npmGlobal"
       : "external";
 }
@@ -284,13 +313,52 @@ export function installationVerification(
         };
 }
 
+function quotePosixShellWord(value: string): string {
+  return `'${value.replace(/'/gu, "'\\''")}'`;
+}
+
+function quotePowerShellSingleQuoted(value: string): string {
+  return `'${value.replace(/'/gu, "''")}'`;
+}
+
+function assertHttpsInstallerUrl(url: string): void {
+  if (!/^https:\/\/\S+$/u.test(url)) {
+    throw new Error(
+      `Refusing to build an installer command for a non-HTTPS URL: ${url}`,
+    );
+  }
+}
+
 export function downloadedInstallerCommand(
   url: string,
+  platform: NodeJS.Platform = process.platform,
 ): ProviderInstallationCommand {
+  assertHttpsInstallerUrl(url);
+  if (platform === "win32") {
+    const script = [
+      "$ErrorActionPreference = 'Stop'",
+      "$tmp = Join-Path $env:TEMP ('provider-installation-' + [Guid]::NewGuid().ToString('N') + '.sh')",
+      `try { Invoke-WebRequest -Uri ${quotePowerShellSingleQuoted(url)} -OutFile $tmp; $bash = Get-Command bash -ErrorAction SilentlyContinue; if (-not $bash) { throw 'bash not found: install Git for Windows or run the provider installer manually' }; & $bash.Source $tmp } finally { Remove-Item $tmp -ErrorAction SilentlyContinue }`,
+    ].join("; ");
+    const command = "powershell.exe";
+    const args = [
+      "-NoLogo",
+      "-NoProfile",
+      "-ExecutionPolicy",
+      "Bypass",
+      "-Command",
+      script,
+    ];
+    return {
+      command,
+      args,
+      displayCommand: `${command} -NoLogo -NoProfile -ExecutionPolicy Bypass -Command "${script}"`,
+    };
+  }
   const script = [
     'tmp=$(mktemp "${TMPDIR:-/tmp}/provider-installation.XXXXXX")',
     "trap 'rm -f \"$tmp\"' EXIT",
-    `curl -fsSL ${url} -o "$tmp"`,
+    `curl -fsSL ${quotePosixShellWord(url)} -o "$tmp"`,
     'bash "$tmp"',
   ].join(" && ");
   return { command: "sh", args: ["-c", script], displayCommand: script };

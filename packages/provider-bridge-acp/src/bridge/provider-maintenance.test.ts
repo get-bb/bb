@@ -5,6 +5,8 @@ import {
   __testing,
   cursorAuthFilePath,
   cursorStateDatabasePath,
+  getAcpProviderHealth,
+  getAcpProviderInstallationRun,
 } from "./provider-maintenance.js";
 
 function cursorMissingInstallationStatus() {
@@ -177,5 +179,93 @@ describe("Cursor auth and state paths", () => {
     ).toBe(
       path.join("/home/u", ".config", "Cursor", "User", "globalStorage", "state.vscdb"),
     );
+  });
+});
+
+describe("Windows provider discovery through injected probes", () => {
+  it("resolves health through where.exe and the exact --version argv", async () => {
+    const lookups: { file: string; args: string[] }[] = [];
+    const commands: { command: string; args: readonly string[] }[] = [];
+    const health = await getAcpProviderHealth({
+      maintenance: undefined,
+      command: "codex",
+      probeDeps: {
+        platform: "win32",
+        runLookup: async (file, args) => {
+          lookups.push({ file, args });
+          return { stdout: "C:\\tools\\codex.cmd\r\nC:\\tools\\codex.exe\r\n" };
+        },
+        runCommand: async (command, args) => {
+          commands.push({ command, args });
+          return { stdout: "codex-cli 0.150.0\r\n", stderr: "" };
+        },
+      },
+    });
+    expect(lookups).toEqual([{ file: "where.exe", args: ["codex"] }]);
+    expect(commands).toEqual([{ command: "codex", args: ["--version"] }]);
+    expect(health).toMatchObject({
+      supported: true,
+      health: { status: "ready", installedVersion: "0.150.0" },
+    });
+  });
+
+  it("reports not_installed when where.exe exits 1", async () => {
+    const health = await getAcpProviderHealth({
+      maintenance: undefined,
+      command: "codex",
+      probeDeps: {
+        platform: "win32",
+        runLookup: async () => {
+          throw Object.assign(new Error("Command failed: where.exe codex"), {
+            code: 1,
+          });
+        },
+      },
+    });
+    expect(health).toMatchObject({
+      supported: true,
+      health: { status: "not_installed" },
+    });
+  });
+
+  it("keeps a hostile command inside one lookup argv element", async () => {
+    const lookups: { file: string; args: string[] }[] = [];
+    await getAcpProviderHealth({
+      maintenance: undefined,
+      command: "codex & del C:\\temp",
+      probeDeps: {
+        platform: "win32",
+        runLookup: async (file, args) => {
+          lookups.push({ file, args });
+          throw Object.assign(new Error("not found"), { code: 1 });
+        },
+      },
+    });
+    expect(lookups).toEqual([
+      { file: "where.exe", args: ["codex & del C:\\temp"] },
+    ]);
+  });
+
+  it("runs the win32 installer through powershell.exe, never sh", async () => {
+    const run = await getAcpProviderInstallationRun({
+      maintenance: CURSOR_ACP_MAINTENANCE,
+      command: "cursor-agent",
+      action: "install",
+      probeDeps: {
+        platform: "win32",
+        runLookup: async () => {
+          throw Object.assign(new Error("not found"), { code: 1 });
+        },
+      },
+    });
+    expect(run.available).toBe(true);
+    expect(run).toMatchObject({
+      command: { command: "powershell.exe" },
+      verification: { kind: "installed" },
+    });
+    if (run.available) {
+      expect(run.command.args[0]).toBe("-NoLogo");
+      expect(run.command.displayCommand).toContain("powershell.exe");
+    }
   });
 });

@@ -18,6 +18,7 @@ import {
   downloadedInstallerCommand,
   readCliVersion,
   resolveExecutablePath,
+  type ExecutableProbeDeps,
 } from "@bb/provider-bridge-protocol/bridge-kit";
 import { z } from "zod";
 
@@ -138,7 +139,9 @@ function readAccountEmail(): string | null {
 
 export interface AcpMaintenanceDialect {
   loginCommand: string;
-  installer(): { command: string; args: string[]; displayCommand: string };
+  installer(
+    platform?: NodeJS.Platform,
+  ): { command: string; args: string[]; displayCommand: string };
   readAccount(): Promise<{ email: string | null } | null>;
   readUsage(): Promise<ProviderUsageResult>;
 }
@@ -170,8 +173,10 @@ function healthResult(args: {
 export async function getAcpProviderHealth(args: {
   maintenance: AcpMaintenanceDialect | undefined;
   command: string | null;
+  probeDeps?: ExecutableProbeDeps;
 }): Promise<ProviderHealthResult> {
   const maintenance = args.maintenance;
+  const probeDeps = args.probeDeps ?? {};
   if (args.command === null) {
     return healthResult({
       maintenance,
@@ -179,10 +184,10 @@ export async function getAcpProviderHealth(args: {
       statusMessage: "The ACP provider has no launch command.",
     });
   }
-  if ((await resolveExecutablePath(args.command)) === null) {
+  if ((await resolveExecutablePath(args.command, probeDeps)) === null) {
     return healthResult({ maintenance, status: "not_installed" });
   }
-  const version = await readCliVersion(args.command);
+  const version = await readCliVersion(args.command, probeDeps);
   if (maintenance === undefined) {
     return healthResult({
       maintenance,
@@ -211,21 +216,26 @@ export async function getAcpProviderHealth(args: {
 export async function getAcpProviderInstallationStatus(args: {
   maintenance: AcpMaintenanceDialect | undefined;
   command: string | null;
+  probeDeps?: ExecutableProbeDeps;
 }): Promise<ProviderInstallationStatus> {
   const executableName = args.command ?? "";
+  const probeDeps = args.probeDeps ?? {};
   const resolvedExecutable =
-    args.command === null ? null : await resolveExecutablePath(args.command);
+    args.command === null
+      ? null
+      : await resolveExecutablePath(args.command, probeDeps);
   const installed = resolvedExecutable !== null;
   const currentVersion =
     installed && args.command !== null
-      ? await readCliVersion(args.command)
+      ? await readCliVersion(args.command, probeDeps)
       : null;
   const installAction =
     args.maintenance !== undefined && !installed
       ? {
           kind: "install" as const,
           label: "Install" as const,
-          command: args.maintenance.installer().displayCommand,
+          command: args.maintenance.installer(probeDeps.platform)
+            .displayCommand,
         }
       : null;
   return {
@@ -248,6 +258,7 @@ export async function getAcpProviderInstallationRun(args: {
   maintenance: AcpMaintenanceDialect | undefined;
   command: string | null;
   action: "install" | "update";
+  probeDeps?: ExecutableProbeDeps;
 }): Promise<ProviderInstallationRunResult> {
   const status = await getAcpProviderInstallationStatus(args);
   return buildAcpProviderInstallationRun(status, args);
@@ -259,6 +270,7 @@ function buildAcpProviderInstallationRun(
     maintenance: AcpMaintenanceDialect | undefined;
     command: string | null;
     action: "install" | "update";
+    probeDeps?: ExecutableProbeDeps;
   },
 ): ProviderInstallationRunResult {
   if (
@@ -272,7 +284,7 @@ function buildAcpProviderInstallationRun(
   }
   return {
     available: true,
-    command: args.maintenance.installer(),
+    command: args.maintenance.installer(args.probeDeps?.platform),
     verification: { kind: "installed" },
   };
 }
@@ -383,11 +395,12 @@ function fetchDashboard(
 export async function getAcpProviderUsage(args: {
   maintenance: AcpMaintenanceDialect | undefined;
   command: string | null;
+  probeDeps?: ExecutableProbeDeps;
 }): Promise<ProviderUsageResult> {
   if (args.maintenance === undefined) return { supported: false };
   if (
     args.command === null ||
-    (await resolveExecutablePath(args.command)) === null
+    (await resolveExecutablePath(args.command, args.probeDeps ?? {})) === null
   ) {
     return { supported: true, usage: { status: "not_installed" } };
   }
@@ -396,7 +409,8 @@ export async function getAcpProviderUsage(args: {
 
 export const CURSOR_ACP_MAINTENANCE: AcpMaintenanceDialect = {
   loginCommand: "cursor-agent login",
-  installer: () => downloadedInstallerCommand(CURSOR_INSTALL_SCRIPT_URL),
+  installer: (platform) =>
+    downloadedInstallerCommand(CURSOR_INSTALL_SCRIPT_URL, platform),
   readAccount: async () => {
     const accessToken = await readAccessToken();
     return accessToken === null ? null : { email: readAccountEmail() };
