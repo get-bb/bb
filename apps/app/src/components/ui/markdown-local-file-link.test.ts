@@ -340,3 +340,208 @@ describe("resolveRelativeLocalFileHref", () => {
     ).toBeNull();
   });
 });
+
+const CONTAINED_WINDOWS_WORKSPACE_ABSOLUTE_LINKS = {
+  kind: "contained",
+  rootPath: "C:\\workspace",
+} satisfies MarkdownAbsoluteLocalFileLinkRouting;
+
+describe("parseLocalFileHref with Windows host paths", () => {
+  it("parses drive-absolute paths with either separator and optional line numbers", () => {
+    expect(
+      parseLocalFileHref({
+        absoluteLinks: TRUSTED_HOST_ABSOLUTE_LINKS,
+        href: "C:\\workspace\\src\\app.ts",
+      }),
+    ).toEqual({
+      path: "C:\\workspace\\src\\app.ts",
+      lineRange: null,
+    });
+    expect(
+      parseLocalFileHref({
+        absoluteLinks: TRUSTED_HOST_ABSOLUTE_LINKS,
+        href: "C:/workspace/src/app.ts:12",
+      }),
+    ).toEqual({
+      path: "C:/workspace/src/app.ts",
+      lineRange: { startLineNumber: 12, endLineNumber: 12 },
+    });
+    expect(
+      parseLocalFileHref({
+        absoluteLinks: TRUSTED_HOST_ABSOLUTE_LINKS,
+        href: "C:\\workspace\\src\\app.ts#L12-L15",
+      }),
+    ).toEqual({
+      path: "C:\\workspace\\src\\app.ts",
+      lineRange: { startLineNumber: 12, endLineNumber: 15 },
+    });
+    expect(
+      parseLocalFileHref({
+        absoluteLinks: TRUSTED_HOST_ABSOLUTE_LINKS,
+        href: "file:///C:/workspace/src/file-url.ts#L4",
+      }),
+    ).toEqual({
+      path: "C:/workspace/src/file-url.ts",
+      lineRange: { startLineNumber: 4, endLineNumber: 4 },
+    });
+    expect(
+      parseLocalFileHref({
+        absoluteLinks: TRUSTED_HOST_ABSOLUTE_LINKS,
+        href: "file:///C:/work%20space/app.ts:3",
+      }),
+    ).toEqual({
+      path: "C:/work space/app.ts",
+      lineRange: { startLineNumber: 3, endLineNumber: 3 },
+    });
+  });
+
+  it("applies the same containment policy to drive paths and file URLs", () => {
+    expect(
+      parseLocalFileHref({
+        absoluteLinks: CONTAINED_WINDOWS_WORKSPACE_ABSOLUTE_LINKS,
+        href: "C:\\workspace\\src\\..\\README",
+      }),
+    ).toEqual({
+      lineRange: null,
+      path: "C:\\workspace\\README",
+    });
+    expect(
+      parseLocalFileHref({
+        absoluteLinks: CONTAINED_WINDOWS_WORKSPACE_ABSOLUTE_LINKS,
+        href: "file:///C:/workspace/src/../README",
+      }),
+    ).toEqual({
+      lineRange: null,
+      path: "C:\\workspace\\README",
+    });
+    expect(
+      parseLocalFileHref({
+        absoluteLinks: CONTAINED_WINDOWS_WORKSPACE_ABSOLUTE_LINKS,
+        href: "C:\\other\\file.ts",
+      }),
+    ).toBeNull();
+    expect(
+      parseLocalFileHref({
+        absoluteLinks: CONTAINED_WINDOWS_WORKSPACE_ABSOLUTE_LINKS,
+        href: "file:///C:/other/file.ts",
+      }),
+    ).toBeNull();
+    expect(
+      parseLocalFileHref({
+        absoluteLinks: CONTAINED_WINDOWS_WORKSPACE_ABSOLUTE_LINKS,
+        href: "/workspace/src/app.ts",
+      }),
+    ).toBeNull();
+  });
+
+  it("requires a likely file basename for bare drive paths but not file URLs", () => {
+    for (const href of [
+      "C:\\workspace\\no-extension",
+      "C:/workspace/no-extension",
+      "C:\\workspace\\app.ts:0",
+    ]) {
+      expect(
+        parseLocalFileHref({
+          absoluteLinks: TRUSTED_HOST_ABSOLUTE_LINKS,
+          href,
+        }),
+      ).toBeNull();
+    }
+    expect(
+      parseLocalFileHref({
+        absoluteLinks: TRUSTED_HOST_ABSOLUTE_LINKS,
+        href: "file:///C:/workspace/no-extension",
+      }),
+    ).toEqual({
+      path: "C:/workspace/no-extension",
+      lineRange: null,
+    });
+  });
+
+  it("does not resolve drive-absolute hrefs as relative links", () => {
+    expect(
+      resolveRelativeLocalFileHref({
+        baseDir: "/workspace",
+        href: "C:\\workspace\\app.ts",
+        rootPath: "/workspace",
+      }),
+    ).toBeNull();
+    expect(
+      resolveRelativeLocalFileHref({
+        baseDir: "C:\\workspace",
+        href: "docs/notes.md",
+        rootPath: "C:\\workspace",
+      }),
+    ).toBe("C:\\workspace\\docs\\notes.md");
+  });
+});
+
+describe("buildLocalFileAnchorHref with Windows host paths", () => {
+  it("builds file URLs for drive paths with either separator", () => {
+    expect(
+      buildLocalFileAnchorHref(
+        {
+          path: "C:\\workspace\\src\\app.ts",
+          lineRange: { startLineNumber: 12, endLineNumber: 12 },
+        },
+        "C:\\workspace\\src\\app.ts:12",
+      ),
+    ).toBe("file:///C:/workspace/src/app.ts#L12");
+    expect(
+      buildLocalFileAnchorHref(
+        {
+          path: "C:/workspace/src/app.ts",
+          lineRange: { startLineNumber: 12, endLineNumber: 12 },
+        },
+        "C:/workspace/src/app.ts:12",
+      ),
+    ).toBe("file:///C:/workspace/src/app.ts#L12");
+    expect(
+      buildLocalFileAnchorHref(
+        {
+          path: "C:/work space/app.ts",
+          lineRange: { startLineNumber: 3, endLineNumber: 5 },
+        },
+        "C:/work space/app.ts#L3-L5",
+      ),
+    ).toBe("file:///C:/work%20space/app.ts#L3-L5");
+    expect(
+      buildLocalFileAnchorHref(
+        {
+          path: "/workspace/src/app.ts",
+          lineRange: { startLineNumber: 12, endLineNumber: 12 },
+        },
+        "/workspace/src/app.ts:12",
+      ),
+    ).toBe("file:///workspace/src/app.ts#L12");
+  });
+
+  it("round-trips file URLs through parse and build on both flavours", () => {
+    const windowsLink = parseLocalFileHref({
+      absoluteLinks: TRUSTED_HOST_ABSOLUTE_LINKS,
+      href: "file:///C:/workspace/src/app.ts#L12",
+    });
+    expect(buildLocalFileAnchorHref(windowsLink, "file:///C:/workspace/src/app.ts#L12")).toBe(
+      "file:///C:/workspace/src/app.ts#L12",
+    );
+    const posixLink = parseLocalFileHref({
+      absoluteLinks: TRUSTED_HOST_ABSOLUTE_LINKS,
+      href: "file:///workspace/src/app.ts#L12",
+    });
+    expect(buildLocalFileAnchorHref(posixLink, "file:///workspace/src/app.ts#L12")).toBe(
+      "file:///workspace/src/app.ts#L12",
+    );
+  });
+
+  it("leaves non-absolute paths alone", () => {
+    expect(
+      buildLocalFileAnchorHref(
+        {
+          path: "docs\\notes.md",
+          lineRange: { startLineNumber: 4, endLineNumber: 4 },
+        },
+        "docs\\notes.md:4",
+      ),
+    ).toBe("docs\\notes.md:4");
+  });
+});
