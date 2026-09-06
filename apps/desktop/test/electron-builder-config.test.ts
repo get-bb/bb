@@ -94,7 +94,7 @@ const electronBuilderFilePatternSchema = z.union([
 
 const windowsConfigSchema = z
   .object({
-    artifactName: z.literal("bb-wn-Setup-${version}.exe"),
+    artifactName: z.literal("wbb-Setup-${version}.exe"),
     icon: z.string().min(1),
     target: z.tuple([
       z
@@ -568,7 +568,7 @@ describe("electron-builder signing config", () => {
     const config = electronBuilderConfigSchema.parse(JSON.parse(configText));
 
     expect(config.win).toMatchObject({
-      artifactName: "bb-wn-Setup-${version}.exe",
+      artifactName: "wbb-Setup-${version}.exe",
       icon: "assets/icon.ico",
       target: [{ arch: ["x64"], target: "nsis" }],
     });
@@ -577,7 +577,7 @@ describe("electron-builder signing config", () => {
       createDesktopShortcut: true,
       oneClick: false,
       perMachine: false,
-      shortcutName: "bb wn",
+      shortcutName: "wbb",
     });
     await expect(
       access(resolve(desktopPackageRoot, config.win.icon)),
@@ -636,14 +636,14 @@ describe("electron-builder signing config", () => {
     expect(config.artifactName).toBe("${productName}-${version}-${arch}.${ext}");
   });
 
-  it("uses the bb wn identity for Windows builds only", async () => {
+  it("uses the wbb identity for Windows builds only", async () => {
     const { config } = await readResolvedConfig({}, ["--win", "--x64"]);
 
     expect(config.appId).toBe("cl.bb.wn");
-    expect(config.productName).toBe("bb wn");
+    expect(config.productName).toBe("wbb");
     expect(config.artifactName).toBe("${productName}-${version}-${arch}.${ext}");
     expect(config.win).toMatchObject({
-      artifactName: "bb-wn-Setup-${version}.exe",
+      artifactName: "wbb-Setup-${version}.exe",
       icon: "assets/icon.ico",
       target: [{ arch: ["x64"], target: "nsis" }],
     });
@@ -652,11 +652,11 @@ describe("electron-builder signing config", () => {
       createDesktopShortcut: true,
       oneClick: false,
       perMachine: false,
-      shortcutName: "bb wn",
+      shortcutName: "wbb",
     });
   });
 
-  it("uses the bb wn nightly identity for Windows nightly builds", async () => {
+  it("uses the wbb nightly identity for Windows nightly builds", async () => {
     const { config } = await readResolvedConfig(
       {
         BB_DESKTOP_RELEASE_CHANNEL: "nightly",
@@ -665,10 +665,10 @@ describe("electron-builder signing config", () => {
     );
 
     expect(config.appId).toBe("cl.bb.wn.nightly");
-    expect(config.productName).toBe("bb wn Nightly");
+    expect(config.productName).toBe("wbb Nightly");
     expect(config.win.icon).toBe("assets/icon-nightly.ico");
-    expect(config.win.artifactName).toBe("bb-wn-Setup-${version}.exe");
-    expect(config.nsis.shortcutName).toBe("bb wn Nightly");
+    expect(config.win.artifactName).toBe("wbb-Setup-${version}.exe");
+    expect(config.nsis.shortcutName).toBe("wbb Nightly");
   });
 
   it("grants audio input to the signed app and helper processes", async () => {

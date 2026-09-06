@@ -46,8 +46,8 @@ export function createDesktopReleaseConfig(channel) {
       },
       windowsReleaseTag: "desktop-win-nightly",
       windowsAppId: "cl.bb.wn.nightly",
-      windowsApplicationName: "bb wn Nightly",
-      windowsArtifactName: "bb-wn-Setup-${version}.exe",
+      windowsApplicationName: "wbb Nightly",
+      windowsArtifactName: "wbb-Setup-${version}.exe",
       windowsIconPath: "assets/icon-nightly.ico",
     };
   }
@@ -67,8 +67,8 @@ export function createDesktopReleaseConfig(channel) {
     },
     windowsReleaseTag: "desktop-win-latest",
     windowsAppId: "cl.bb.wn",
-    windowsApplicationName: "bb wn",
-    windowsArtifactName: "bb-wn-Setup-${version}.exe",
+    windowsApplicationName: "wbb",
+    windowsArtifactName: "wbb-Setup-${version}.exe",
     windowsIconPath: "assets/icon.ico",
   };
 }

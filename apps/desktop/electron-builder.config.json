@@ -58,7 +58,7 @@
     "target": [{ "target": "AppImage", "arch": ["x64"] }]
   },
   "win": {
-    "artifactName": "bb-wn-Setup-${version}.exe",
+    "artifactName": "wbb-Setup-${version}.exe",
     "icon": "assets/icon.ico",
     "target": [{ "target": "nsis", "arch": ["x64"] }]
   },
@@ -67,7 +67,7 @@
     "createDesktopShortcut": true,
     "oneClick": false,
     "perMachine": false,
-    "shortcutName": "bb wn"
+    "shortcutName": "wbb"
   },
   "dmg": {
     "sign": false
