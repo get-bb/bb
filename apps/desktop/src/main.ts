@@ -1544,6 +1544,7 @@ async function stopOwnedRuntime(): Promise<void> {
     await runtime.bbProcess?.stop({
       killSignal: "SIGKILL",
       killTimeoutMs: OWNED_RUNTIME_KILL_TIMEOUT_MS,
+      platform: process.platform,
       signal: "SIGTERM",
       timeoutMs: OWNED_RUNTIME_STOP_TIMEOUT_MS,
     });
@@ -1707,6 +1708,7 @@ async function startOwnedRuntime(
       [APP_SURFACE_ENV_NAME]: APP_SURFACE_DESKTOP,
     },
     logLineLimit: PROCESS_LOG_LINE_LIMIT,
+    platform: process.platform,
     runtime: resolveBbAppProcessRuntime({
       env: process.env,
       isPackaged: app.isPackaged,

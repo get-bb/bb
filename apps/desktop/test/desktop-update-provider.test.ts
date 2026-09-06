@@ -13,6 +13,12 @@ describe("desktop update feed url", () => {
       "https://github.com/get-bb/bb/releases/download/desktop-latest/desktop-version-linux.json",
     );
   });
+
+  it("falls back to the release base url on Windows until a feed file exists", () => {
+    expect(createDesktopUpdateFeedUrl("windows")).toBe(
+      "https://github.com/get-bb/bb/releases/download/desktop-latest/",
+    );
+  });
 });
 
 const APP_IMAGE_PATH = "/home/user/Apps/bb-0.37.0-x86_64.AppImage";
@@ -68,6 +74,22 @@ describe("desktop update support", () => {
       }),
     ).toEqual({ autoUpdate: false, versionCheck: true });
     expect(checked).toEqual([APP_IMAGE_PATH]);
+  });
+
+  it("serves Windows updates through the installer without the version feed", () => {
+    let consulted = false;
+
+    expect(
+      resolveDesktopUpdateSupport({
+        canReplaceAppImage: () => {
+          consulted = true;
+          return false;
+        },
+        env: { APPIMAGE: APP_IMAGE_PATH },
+        platform: "windows",
+      }),
+    ).toEqual({ autoUpdate: true, versionCheck: false });
+    expect(consulted).toBe(false);
   });
 
   it("does not consult the filesystem on macOS", () => {

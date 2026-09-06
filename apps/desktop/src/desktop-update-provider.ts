@@ -1,6 +1,6 @@
 import {
   createBbDesktopVersionFeedFileName,
-  type BbDesktopVersionFeedPlatform,
+  type BbDesktopInfo,
 } from "@bb/desktop-contract";
 
 type DesktopReleaseChannel = "latest" | "nightly";
@@ -53,8 +53,11 @@ const DESKTOP_UPDATE_RELEASE_BASE_URL =
   DESKTOP_RELEASE_INFO.updateReleaseBaseUrl;
 
 export function createDesktopUpdateFeedUrl(
-  platform: BbDesktopVersionFeedPlatform,
+  platform: BbDesktopInfo["platform"],
 ): string {
+  if (platform === "windows") {
+    return DESKTOP_UPDATE_RELEASE_BASE_URL;
+  }
   return `${DESKTOP_UPDATE_RELEASE_BASE_URL}${createBbDesktopVersionFeedFileName(platform)}`;
 }
 
@@ -78,7 +81,7 @@ interface DesktopUpdateSupport {
 interface ResolveDesktopUpdateSupportArgs {
   canReplaceAppImage: (appImagePath: string) => boolean;
   env: NodeJS.ProcessEnv;
-  platform: BbDesktopVersionFeedPlatform;
+  platform: BbDesktopInfo["platform"];
 }
 
 export function resolveDesktopUpdateSupport(
@@ -86,6 +89,10 @@ export function resolveDesktopUpdateSupport(
 ): DesktopUpdateSupport {
   if (args.platform === "macos") {
     return { autoUpdate: true, versionCheck: true };
+  }
+
+  if (args.platform === "windows") {
+    return { autoUpdate: true, versionCheck: false };
   }
 
   const appImagePath = args.env.APPIMAGE?.trim() ?? "";

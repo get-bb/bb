@@ -37,6 +37,12 @@ const requiredSigningEnvironmentKeys = [
 ];
 
 const printConfigFlag = "--print-config";
+const windowsBuildFlag = "--win";
+const windowsStableAppId = "cl.bb.wn";
+const windowsNightlyAppId = "cl.bb.wn.nightly";
+const windowsStableProductName = "bb wn";
+const windowsNightlyProductName = "bb wn Nightly";
+const windowsArtifactName = "bb-wn-Setup-${version}.exe";
 
 function envValueIsSet(value) {
   return typeof value === "string" && value.trim().length > 0;
@@ -158,7 +164,41 @@ function createSigningPlan(env) {
   };
 }
 
-function resolveElectronBuilderConfig(baseConfig, env) {
+function isWindowsBuild(electronBuilderArgs) {
+  return electronBuilderArgs.includes(windowsBuildFlag);
+}
+
+function resolveWindowsIconAsset(releaseChannel) {
+  return releaseChannel === "nightly"
+    ? "assets/icon-nightly.ico"
+    : "assets/icon.ico";
+}
+
+function applyWindowsOverrides(config, releaseChannel) {
+  const nightly = releaseChannel === "nightly";
+  config.appId = nightly ? windowsNightlyAppId : windowsStableAppId;
+  config.productName = nightly
+    ? windowsNightlyProductName
+    : windowsStableProductName;
+  const baseWin = config.win ?? {};
+  config.win = {
+    ...baseWin,
+    artifactName: windowsArtifactName,
+    icon: resolveWindowsIconAsset(releaseChannel),
+    target: baseWin.target ?? [{ arch: ["x64"], target: "nsis" }],
+  };
+  const baseNsis = config.nsis ?? {};
+  config.nsis = {
+    ...baseNsis,
+    allowToChangeInstallationDirectory: true,
+    createDesktopShortcut: true,
+    oneClick: false,
+    perMachine: false,
+    shortcutName: windowsStableProductName,
+  };
+}
+
+function resolveElectronBuilderConfig(baseConfig, env, electronBuilderArgs = []) {
   const signingPlan = createSigningPlan(env);
   const releaseChannel = resolveDesktopReleaseChannel(env);
   const releaseConfig = createDesktopReleaseConfig(releaseChannel);
@@ -187,6 +227,9 @@ function resolveElectronBuilderConfig(baseConfig, env) {
   config.appId = releaseConfig.appId;
   config.artifactName = releaseConfig.artifactName;
   config.productName = releaseConfig.applicationName;
+  if (isWindowsBuild(electronBuilderArgs)) {
+    applyWindowsOverrides(config, releaseChannel);
+  }
   config.publish = [
     {
       channel: releaseChannel,
@@ -262,6 +305,7 @@ async function main() {
   const { config, signingPlan } = resolveElectronBuilderConfig(
     baseConfig,
     process.env,
+    electronBuilderArgs,
   );
 
   if (printConfig) {

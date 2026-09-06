@@ -57,6 +57,18 @@
     "icon": "assets/icon.png",
     "target": [{ "target": "AppImage", "arch": ["x64"] }]
   },
+  "win": {
+    "artifactName": "bb-wn-Setup-${version}.exe",
+    "icon": "assets/icon.ico",
+    "target": [{ "target": "nsis", "arch": ["x64"] }]
+  },
+  "nsis": {
+    "allowToChangeInstallationDirectory": true,
+    "createDesktopShortcut": true,
+    "oneClick": false,
+    "perMachine": false,
+    "shortcutName": "bb wn"
+  },
   "dmg": {
     "sign": false
   },

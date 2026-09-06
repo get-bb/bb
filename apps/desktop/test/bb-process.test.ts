@@ -8,6 +8,7 @@ import {
   createBbAppProcessLaunch,
   createBbAppProcessEnv,
   resolveBbAppProcessRuntime,
+  resolveBbAppProcessSpawnOptions,
   startBbAppProcess,
   type BbAppProcess,
 } from "../src/bb-process.js";
@@ -111,6 +112,7 @@ afterEach(async () => {
       await processEntry.stop({
         killSignal: "SIGKILL",
         killTimeoutMs: 1_000,
+        platform: process.platform,
         signal: "SIGTERM",
         timeoutMs: 5_000,
       });
@@ -235,6 +237,7 @@ process.stdout.write(\`grandchild=\${grandchild.pid}\\n\`);
           APPDIR: script.root,
         },
         logLineLimit: 20,
+        platform: "linux",
         runtime: {
           appDirPath: script.root,
           executablePath: process.execPath,
@@ -264,6 +267,7 @@ process.stdout.write(\`grandchild=\${grandchild.pid}\\n\`);
       await processEntry.stop({
         killSignal: "SIGKILL",
         killTimeoutMs: 1_000,
+        platform: "linux",
         signal: "SIGTERM",
         timeoutMs: 5_000,
       });
@@ -328,6 +332,7 @@ setInterval(() => undefined, 1000);
       cwd: script.root,
       env: process.env,
       logLineLimit: 20,
+      platform: "linux",
       runtime: {
         executablePath: process.execPath,
         kind: "direct",
@@ -349,6 +354,7 @@ setInterval(() => undefined, 1000);
     await processEntry.stop({
       killSignal: "SIGKILL",
       killTimeoutMs: 1_000,
+      platform: "linux",
       signal: "SIGTERM",
       timeoutMs: 50,
     });
@@ -356,6 +362,130 @@ setInterval(() => undefined, 1000);
     const exit = await processEntry.exit;
     expect(killSpy).toHaveBeenNthCalledWith(1, "SIGTERM");
     expect(killSpy).toHaveBeenNthCalledWith(2, "SIGKILL");
+    expect(exit.signal).toBe("SIGKILL");
+  });
+
+  it("hides the console window for Windows executables", () => {
+    expect(
+      resolveBbAppProcessSpawnOptions({
+        executablePath: "C:\\Program Files\\bb wn\\bb wn.exe",
+        platform: "win32",
+      }),
+    ).toEqual({ windowsHide: true });
+  });
+
+  it("uses a shell for Windows script shims", () => {
+    expect(
+      resolveBbAppProcessSpawnOptions({
+        executablePath: "C:\\tools\\node\\node.cmd",
+        platform: "win32",
+      }),
+    ).toEqual({ shell: true, windowsHide: true });
+    expect(
+      resolveBbAppProcessSpawnOptions({
+        executablePath: "C:\\tools\\run.bat",
+        platform: "win32",
+      }),
+    ).toEqual({ shell: true, windowsHide: true });
+  });
+
+  it("leaves POSIX spawn options untouched", () => {
+    expect(
+      resolveBbAppProcessSpawnOptions({
+        executablePath: "/opt/bb/bb",
+        platform: "linux",
+      }),
+    ).toEqual({});
+    expect(
+      resolveBbAppProcessSpawnOptions({
+        executablePath: "/Applications/bb.app/Contents/MacOS/bb",
+        platform: "darwin",
+      }),
+    ).toEqual({});
+  });
+
+  it("reaps the process tree with taskkill on Windows", async () => {
+    const script = await createTempScript({
+      contents: `process.stdout.write("ready\\n");\nsetInterval(() => undefined, 1000);\n`,
+    });
+    const processEntry = startBbAppProcess({
+      bridgePath: script.path,
+      cwd: script.root,
+      env: process.env,
+      logLineLimit: 20,
+      platform: "linux",
+      runtime: {
+        executablePath: process.execPath,
+        kind: "direct",
+        mode: "node",
+      },
+    });
+    processes.push(processEntry);
+    await waitForLog({
+      process: processEntry,
+      text: "ready",
+    });
+    const taskkillCalls: { pid: number; timeoutMs: number }[] = [];
+    const killSpy = vi.spyOn(processEntry.childProcess, "kill");
+
+    await processEntry.stop({
+      killSignal: "SIGKILL",
+      killTimeoutMs: 1_000,
+      platform: "win32",
+      runTaskkill: async (args) => {
+        taskkillCalls.push(args);
+        process.kill(args.pid, "SIGKILL");
+      },
+      signal: "SIGTERM",
+      timeoutMs: 5_000,
+    });
+
+    const exit = await processEntry.exit;
+    expect(taskkillCalls).toEqual([
+      { pid: processEntry.pid, timeoutMs: 5_000 },
+    ]);
+    expect(killSpy).not.toHaveBeenCalled();
+    expect(exit.signal).toBe("SIGKILL");
+  });
+
+  it("falls back to the kill signal when the Windows tree survives taskkill", async () => {
+    const script = await createTempScript({
+      contents: `process.stdout.write("ready\\n");\nsetInterval(() => undefined, 1000);\n`,
+    });
+    const processEntry = startBbAppProcess({
+      bridgePath: script.path,
+      cwd: script.root,
+      env: process.env,
+      logLineLimit: 20,
+      platform: "linux",
+      runtime: {
+        executablePath: process.execPath,
+        kind: "direct",
+        mode: "node",
+      },
+    });
+    processes.push(processEntry);
+    await waitForLog({
+      process: processEntry,
+      text: "ready",
+    });
+    let taskkillCalls = 0;
+    const killSpy = vi.spyOn(processEntry.childProcess, "kill");
+
+    await processEntry.stop({
+      killSignal: "SIGKILL",
+      killTimeoutMs: 2_000,
+      platform: "win32",
+      runTaskkill: async () => {
+        taskkillCalls += 1;
+      },
+      signal: "SIGTERM",
+      timeoutMs: 50,
+    });
+
+    const exit = await processEntry.exit;
+    expect(taskkillCalls).toBe(1);
+    expect(killSpy).toHaveBeenCalledWith("SIGKILL");
     expect(exit.signal).toBe("SIGKILL");
   });
 });
