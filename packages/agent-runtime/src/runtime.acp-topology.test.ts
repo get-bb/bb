@@ -5,8 +5,10 @@ import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createAgentRuntime } from "./runtime.js";
 import {
+  CHILD_SIGTERM_SELF_REPORT_UNAVAILABLE_ON_WINDOWS_MEASURED_KILL_IS_TERMINATE_PROCESS,
   createScriptedEchoLaunch,
   fullRuntimeOptions,
+  isPidAlive,
   waitForRuntimeState,
   withBridgeLaunch,
 } from "./test/runtime-test-harness.js";
@@ -38,6 +40,7 @@ describe("acp process topology", () => {
   it("releases the thread on the bridge when a construction times out on the runtime's side", async () => {
     const readyFile = join(workspaceDir, "agent-ready");
     const signalFile = join(workspaceDir, "agent-signal");
+    const launchLog = join(workspaceDir, "agent-launches");
     const runtime = withBridgeLaunch(
       createAgentRuntime({
         workspacePath: workspaceDir,
@@ -61,6 +64,7 @@ describe("acp process topology", () => {
               FAKE_ACP_SESSION_NEW_DELAY_MS: "1500",
               FAKE_ACP_READY_FILE: readyFile,
               FAKE_ACP_SIGNAL_FILE: signalFile,
+              FAKE_ACP_LAUNCH_LOG: launchLog,
             },
           },
         },
@@ -83,12 +87,27 @@ describe("acp process topology", () => {
       predicate: () => existsSync(readyFile),
       timeoutMs: 10_000,
     });
-    await waitForRuntimeState({
-      label: "the agent under construction was released",
-      predicate: () => existsSync(signalFile),
-      timeoutMs: 10_000,
-    });
-    expect(readFileSync(signalFile, "utf8")).toContain("SIGTERM");
+    if (
+      CHILD_SIGTERM_SELF_REPORT_UNAVAILABLE_ON_WINDOWS_MEASURED_KILL_IS_TERMINATE_PROCESS
+    ) {
+      const agentPid = Number(
+        readFileSync(launchLog, "utf8").split(" ")[1],
+      );
+      expect(Number.isInteger(agentPid)).toBe(true);
+      await waitForRuntimeState({
+        label: "the agent under construction was released",
+        predicate: () => !isPidAlive(agentPid),
+        timeoutMs: 10_000,
+      });
+      expect(existsSync(signalFile)).toBe(false);
+    } else {
+      await waitForRuntimeState({
+        label: "the agent under construction was released",
+        predicate: () => existsSync(signalFile),
+        timeoutMs: 10_000,
+      });
+      expect(readFileSync(signalFile, "utf8")).toContain("SIGTERM");
+    }
     expect(runtime.listRunningProviders()).toEqual([]);
   }, 30_000);
 });
