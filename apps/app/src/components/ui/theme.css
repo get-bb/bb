@@ -191,6 +191,10 @@
     min-height: var(--bb-sidebar-sticky-tier-height);
     z-index: var(--bb-sidebar-sticky-tier-z-index);
     isolation: isolate;
+    /* Native vibrancy can make a sidebar paint translucent. The image keeps
+       opaque themes unchanged. The shield below blurs rows beneath a
+       translucent tier instead of letting them collide with its label. */
+    background-image: linear-gradient(var(--sidebar), var(--sidebar));
   }
 
   [data-sidebar-sticky-stack] [data-sidebar-sticky-tier]::before,
@@ -202,11 +206,14 @@
     z-index: -1;
     pointer-events: none;
     background-color: var(--sidebar);
+    background-image: linear-gradient(var(--sidebar), var(--sidebar));
+    backdrop-filter: blur(16px);
   }
 
   [data-sidebar-sticky-stack] [data-sidebar-sticky-tier]::before {
-    bottom: 100%;
-    height: var(--bb-sidebar-sticky-tier-shield-top-height, 0);
+    top: calc(-1 * var(--bb-sidebar-sticky-tier-shield-top-height, 0));
+    bottom: auto;
+    height: calc(100% + var(--bb-sidebar-sticky-tier-shield-top-height, 0));
   }
 
   [data-sidebar-sticky-stack] [data-sidebar-sticky-tier]::after {
