@@ -38,6 +38,31 @@ const bridgeLines: BridgeLine[] = [];
 let bridgeStderr = "";
 let nextRequestId = 1;
 
+const WINDOWS_KILLED_CHILDREN_RELEASE_DIR_LOCKS_ASYNCHRONOUSLY =
+  process.platform === "win32";
+
+async function removeTempDirWithWindowsLockRetries(dir: string): Promise<void> {
+  if (!WINDOWS_KILLED_CHILDREN_RELEASE_DIR_LOCKS_ASYNCHRONOUSLY) {
+    rmSync(dir, { recursive: true, force: true });
+    return;
+  }
+  const deadline = Date.now() + 10_000;
+  for (;;) {
+    try {
+      rmSync(dir, { recursive: true, force: true });
+      return;
+    } catch (error) {
+      if (
+        (error as NodeJS.ErrnoException)?.code !== "EBUSY" ||
+        Date.now() > deadline
+      ) {
+        throw error;
+      }
+      await new Promise((resolveDelay) => setTimeout(resolveDelay, 100));
+    }
+  }
+}
+
 function makeTempDir(prefix: string): string {
   const dir = mkdtempSync(join(tmpdir(), prefix));
   tempDirs.push(dir);
@@ -241,12 +266,24 @@ async function runMcpInitialize(config: AdvertisedMcpServer): Promise<{
   return { exitCode, stderr, stdoutLines };
 }
 
-afterEach(() => {
-  for (const child of children.splice(0)) {
+afterEach(async () => {
+  const stopped = children.splice(0).map((child) => {
     child.kill("SIGKILL");
-  }
+    return new Promise<void>((resolveExit) => {
+      if (child.exitCode !== null || child.signalCode !== null) {
+        resolveExit();
+        return;
+      }
+      const timer = setTimeout(resolveExit, 10_000);
+      child.once("exit", () => {
+        clearTimeout(timer);
+        resolveExit();
+      });
+    });
+  });
+  await Promise.all(stopped);
   for (const dir of tempDirs.splice(0)) {
-    rmSync(dir, { recursive: true, force: true });
+    await removeTempDirWithWindowsLockRetries(dir);
   }
   bridgeLines.length = 0;
   bridgeStderr = "";

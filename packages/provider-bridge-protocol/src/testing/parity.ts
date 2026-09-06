@@ -8,7 +8,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { isAbsolute, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import type { ThreadEvent } from "@bb/domain";
 import { readBoundedLines } from "../bridge-kit/bounded-line-reader.js";
 import type { BridgeRecordingEntry } from "../bridge-kit/bridge-recorder.js";
@@ -316,6 +316,31 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolveSleep) => setTimeout(resolveSleep, ms));
 }
 
+function isWindowsFileLockError(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    "code" in error &&
+    (error.code === "EBUSY" ||
+      error.code === "EPERM" ||
+      error.code === "ENOTEMPTY")
+  );
+}
+
+async function removeReplayDir(dir: string): Promise<void> {
+  const deadline = Date.now() + 10_000;
+  for (;;) {
+    try {
+      rmSync(dir, { recursive: true, force: true });
+      return;
+    } catch (error) {
+      if (!isWindowsFileLockError(error) || Date.now() > deadline) {
+        throw error;
+      }
+      await sleep(100);
+    }
+  }
+}
+
 export async function replayRecording(
   options: ReplayRecordingOptions,
 ): Promise<ParityRun> {
@@ -354,7 +379,7 @@ export async function replayRecording(
     [
       "#!/usr/bin/env node",
       `process.argv.splice(2, 0, ${JSON.stringify(replayCommand.slice(2)).slice(1, -1)});`,
-      `await import(${JSON.stringify(REPLAY_CHILD_PATH)});`,
+      `await import(${JSON.stringify(pathToFileURL(REPLAY_CHILD_PATH).href)});`,
       "",
     ].join("\n"),
     { mode: 0o755 },
@@ -373,10 +398,16 @@ export async function replayRecording(
   });
 
   const recordedCwd = recordedWorkspaceDir(recording);
-  const restoreRecordedWorkspace = (line: string): string =>
-    recordedCwd === null || recordedCwd === workspaceDir
-      ? line
-      : line.split(workspaceDir).join(recordedCwd);
+  const restoreRecordedWorkspace = (line: string): string => {
+    if (recordedCwd === null || recordedCwd === workspaceDir) return line;
+    const jsonEscapedWorkspaceDir = JSON.stringify(workspaceDir).slice(1, -1);
+    const jsonEscapedRecordedCwd = JSON.stringify(recordedCwd).slice(1, -1);
+    return line
+      .split(jsonEscapedWorkspaceDir)
+      .join(jsonEscapedRecordedCwd)
+      .split(workspaceDir)
+      .join(recordedCwd);
+  };
 
   const initializeId = PARITY_INITIALIZE_ID;
   const startedAt = Date.now();
@@ -653,8 +684,8 @@ export async function replayRecording(
       return null;
     }),
   ]);
-  rmSync(stateDir, { recursive: true, force: true });
-  rmSync(workspaceDir, { recursive: true, force: true });
+  await removeReplayDir(stateDir);
+  await removeReplayDir(workspaceDir);
 
   return {
     providerId,

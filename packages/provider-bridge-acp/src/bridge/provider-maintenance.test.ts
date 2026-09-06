@@ -73,11 +73,27 @@ describe("ACP provider maintenance", () => {
           maintenance: CURSOR_ACP_MAINTENANCE,
           command: "cursor-agent",
           action: "install",
+          probeDeps: { platform: "linux" },
         },
       ),
     ).toMatchObject({
       available: true,
       command: { command: "sh" },
+      verification: { kind: "installed" },
+    });
+    expect(
+      __testing.buildProviderInstallationRun(
+        cursorMissingInstallationStatus(),
+        {
+          maintenance: CURSOR_ACP_MAINTENANCE,
+          command: "cursor-agent",
+          action: "install",
+          probeDeps: { platform: "win32" },
+        },
+      ),
+    ).toMatchObject({
+      available: true,
+      command: { command: "powershell.exe" },
       verification: { kind: "installed" },
     });
     expect(
@@ -130,7 +146,9 @@ describe("Cursor auth and state paths", () => {
         env: {},
         homedir: () => "C:\\Users\\u",
       }),
-    ).toBe(path.join("C:\\Users\\u", "AppData", "Roaming", "Cursor", "auth.json"));
+    ).toBe(
+      path.join("C:\\Users\\u", "AppData", "Roaming", "Cursor", "auth.json"),
+    );
   });
 
   it("reads the state database from APPDATA on win32", () => {
@@ -177,7 +195,14 @@ describe("Cursor auth and state paths", () => {
         homedir: () => "/home/u",
       }),
     ).toBe(
-      path.join("/home/u", ".config", "Cursor", "User", "globalStorage", "state.vscdb"),
+      path.join(
+        "/home/u",
+        ".config",
+        "Cursor",
+        "User",
+        "globalStorage",
+        "state.vscdb",
+      ),
     );
   });
 });
