@@ -1,0 +1,147 @@
+name: Windows Smoke (bb wn)
+
+# S13: prove the port DOES something on real Windows. This workflow runs the
+# smoke scripts against a real ConPTY and the packaged app on windows-latest:
+# a real PowerShell echo/UTF-8/resize/close/tree check via node-pty, the
+# packaged-app preload-bridge smoke, and process-hygiene around the app
+# lifecycle. It never claims anything it did not run: every step uses
+# continue-on-error and the final summary plus gate report the whole failure
+# surface in a single dispatch.
+
+on:
+  push:
+    branches:
+      - feat/windows-nativo-bb-wn
+  workflow_dispatch:
+
+env:
+  NODE_VERSION: "22.19.0"
+  PNPM_VERSION: "9.15.0"
+  COREPACK_ENABLE_DOWNLOAD_PROMPT: "0"
+  CSC_IDENTITY_AUTO_DISCOVERY: "false"
+
+concurrency:
+  group: win-smoke-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    name: Windows smoke (ConPTY + packaged app)
+    runs-on: windows-latest
+    timeout-minutes: 90
+    defaults:
+      run:
+        shell: pwsh
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Set up pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@$env:PNPM_VERSION --activate
+          pnpm -v
+
+      - name: Host facts
+        run: |
+          New-Item -ItemType Directory -Force -Path qa-evidence | Out-Null
+          "=== OS ==="                                  | Tee-Object qa-evidence/00-host.txt
+          (Get-CimInstance Win32_OperatingSystem |
+            Select-Object Caption,Version,OSArchitecture | Out-String) |
+            Tee-Object -Append qa-evidence/00-host.txt
+          "=== node ==="        | Tee-Object -Append qa-evidence/00-host.txt
+          node -p "process.version + ' ' + process.platform + ' ' + process.arch" |
+            Tee-Object -Append qa-evidence/00-host.txt
+          "=== PowerShell ==="  | Tee-Object -Append qa-evidence/00-host.txt
+          $PSVersionTable.PSVersion.ToString() | Tee-Object -Append qa-evidence/00-host.txt
+
+      - name: Install dependencies
+        id: install
+        continue-on-error: true
+        run: |
+          pnpm install --frozen-lockfile 2>&1 | Tee-Object qa-evidence/10-install.txt
+          exit $LASTEXITCODE
+
+      - name: Package Windows app (dir, no installer)
+        id: package
+        continue-on-error: true
+        run: |
+          pnpm --filter @bb/desktop package:win 2>&1 | Tee-Object qa-evidence/20-package.txt
+          exit $LASTEXITCODE
+
+      - name: ConPTY smoke (real node-pty, no adapters)
+        id: conpty
+        continue-on-error: true
+        run: |
+          node apps/desktop/scripts/smoke-windows-conpty.mjs 2>&1 | Tee-Object qa-evidence/30-conpty.txt
+          exit $LASTEXITCODE
+
+      - name: Packaged app smoke (preload bridge)
+        id: packaged
+        continue-on-error: true
+        run: |
+          node apps/desktop/scripts/smoke-packaged-app.mjs 2>&1 | Tee-Object qa-evidence/40-packaged.txt
+          exit $LASTEXITCODE
+
+      - name: Process hygiene smoke (tasklist before/after)
+        id: processes
+        continue-on-error: true
+        run: |
+          node apps/desktop/scripts/smoke-windows-processes.mjs --evidence-dir qa-evidence 2>&1 | Tee-Object qa-evidence/50-processes.txt
+          exit $LASTEXITCODE
+
+      - name: Process snapshot
+        if: always()
+        continue-on-error: true
+        run: |
+          tasklist /FO TABLE | Tee-Object qa-evidence/90-tasklist.txt
+
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: win-smoke-evidence-${{ github.run_number }}
+          path: qa-evidence/
+          retention-days: 30
+
+      - name: Report
+        if: always()
+        run: |
+          $rows = @(
+            @{ n = "install";   r = "${{ steps.install.outcome }}" }
+            @{ n = "package";   r = "${{ steps.package.outcome }}" }
+            @{ n = "conpty";    r = "${{ steps.conpty.outcome }}" }
+            @{ n = "packaged";  r = "${{ steps.packaged.outcome }}" }
+            @{ n = "processes"; r = "${{ steps.processes.outcome }}" }
+          )
+          "## Windows smoke`n" | Out-File -Append $env:GITHUB_STEP_SUMMARY
+          foreach ($row in $rows) {
+            $icon = if ($row.r -eq "success") { ":white_check_mark:" } else { ":x:" }
+            "$icon **$($row.n)**: $($row.r)" | Out-File -Append $env:GITHUB_STEP_SUMMARY
+          }
+          foreach ($row in $rows) {
+            Write-Host "$($row.n)=$($row.r)"
+          }
+
+      - name: Gate
+        if: always()
+        run: |
+          $failed = @(
+            "${{ steps.install.outcome }}",
+            "${{ steps.package.outcome }}",
+            "${{ steps.conpty.outcome }}",
+            "${{ steps.packaged.outcome }}",
+            "${{ steps.processes.outcome }}"
+          ) | Where-Object { $_ -ne "success" }
+          if ($failed.Count -gt 0) {
+            throw "Windows smoke failed: one or more steps did not succeed. See the summary above and the qa-evidence artifact."
+          }
