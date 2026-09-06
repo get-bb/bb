@@ -54,6 +54,7 @@ export interface DestroyWorkspaceArgs {
 interface ProvisionBase {
   onProgress?: ProvisionProgressCallback;
   shellPath?: string;
+  platform?: NodeJS.Platform;
   signal?: AbortSignal;
 }
 
@@ -108,6 +109,7 @@ interface ValidatePersonalWorkspaceTargetPathArgs {
   environmentId: string;
   personalWorkspaceRoot: string;
   targetPath: string;
+  platform?: NodeJS.Platform;
 }
 
 const WORKSPACE_BRANCH_GIT_TIMEOUT_MS = 15_000;
@@ -143,6 +145,10 @@ export interface HostWorkspace {
   destroy(args: DestroyWorkspaceArgs): Promise<void>;
 }
 
+export function isWorktreeGitDir(gitDir: string): boolean {
+  return gitDir.replace(/\\/gu, "/").includes("/worktrees/");
+}
+
 async function detectWorktree(
   cwd: string,
   options: GitProcessOptions,
@@ -155,7 +161,7 @@ async function detectWorktree(
   if (gitDirResult.exitCode !== 0) return false;
 
   const gitDir = gitDirResult.stdout.trim();
-  return gitDir.includes("/worktrees/");
+  return isWorktreeGitDir(gitDir);
 }
 
 class ProvisionedHostWorkspace implements HostWorkspace {
@@ -286,22 +292,26 @@ export async function provisionWorkspace(
   }
 }
 
-function isRelativeChildPath(relativePath: string): boolean {
+function isRelativeChildPath(
+  relativePath: string,
+  pathImpl: path.PlatformPath = path,
+): boolean {
   return (
     relativePath.length > 0 &&
     relativePath !== "." &&
-    !relativePath.startsWith(`..${path.sep}`) &&
+    !relativePath.startsWith(`..${pathImpl.sep}`) &&
     relativePath !== ".." &&
-    !path.isAbsolute(relativePath)
+    !pathImpl.isAbsolute(relativePath)
   );
 }
 
 function isSamePathOrNestedUnder(
   candidatePath: string,
   rootPath: string,
+  pathImpl: path.PlatformPath = path,
 ): boolean {
-  const relativePath = path.relative(rootPath, candidatePath);
-  return relativePath === "" || isRelativeChildPath(relativePath);
+  const relativePath = pathImpl.relative(rootPath, candidatePath);
+  return relativePath === "" || isRelativeChildPath(relativePath, pathImpl);
 }
 
 async function hasContainedPersonalGitMetadata(
@@ -330,8 +340,10 @@ export function getPersonalWorkspaceRoot(dataDir: string): string {
 export function validatePersonalWorkspaceTargetPath(
   args: ValidatePersonalWorkspaceTargetPathArgs,
 ): string {
+  const pathImpl =
+    (args.platform ?? process.platform) === "win32" ? path.win32 : path;
   if (
-    path.basename(args.environmentId) !== args.environmentId ||
+    pathImpl.basename(args.environmentId) !== args.environmentId ||
     args.environmentId === "." ||
     args.environmentId === ".."
   ) {
@@ -341,18 +353,22 @@ export function validatePersonalWorkspaceTargetPath(
     );
   }
 
-  const root = path.resolve(args.personalWorkspaceRoot);
-  const expectedTargetPath = path.resolve(root, args.environmentId);
-  const rootRelativeExpectedPath = path.relative(root, expectedTargetPath);
-  if (!isRelativeChildPath(rootRelativeExpectedPath)) {
+  const root = pathImpl.resolve(args.personalWorkspaceRoot);
+  const expectedTargetPath = pathImpl.resolve(root, args.environmentId);
+  const rootRelativeExpectedPath = pathImpl.relative(root, expectedTargetPath);
+  if (!isRelativeChildPath(rootRelativeExpectedPath, pathImpl)) {
     throw new WorkspaceError(
       "invalid_personal_workspace_path",
       "Personal workspace target path must be under the personal workspace root",
     );
   }
 
-  const targetPath = path.resolve(args.targetPath);
-  if (targetPath !== expectedTargetPath) {
+  const targetPath = pathImpl.resolve(args.targetPath);
+  const matchesExpected =
+    pathImpl === path.win32
+      ? targetPath.toLowerCase() === expectedTargetPath.toLowerCase()
+      : targetPath === expectedTargetPath;
+  if (!matchesExpected) {
     throw new WorkspaceError(
       "invalid_personal_workspace_path",
       "Personal workspace target path must match the environment id",
@@ -666,6 +682,7 @@ async function provisionWorktree(
     baseBranch: opts.baseBranch,
     timeoutMs: opts.timeoutMs,
     shellPath: opts.shellPath,
+    ...(opts.platform !== undefined ? { platform: opts.platform } : {}),
     onProgress: opts.onProgress,
     pruneEmptyParent: true,
     signal: opts.signal,
@@ -684,6 +701,7 @@ async function provisionWorktree(
         force: true,
         pruneEmptyParent: true,
         shellPath: opts.shellPath,
+        ...(opts.platform !== undefined ? { platform: opts.platform } : {}),
         ...(args.onProgress !== undefined
           ? { onProgress: args.onProgress }
           : {}),
@@ -775,6 +793,7 @@ async function reconnectManagedWorktree(
         force: true,
         pruneEmptyParent: true,
         shellPath: opts.shellPath,
+        ...(opts.platform !== undefined ? { platform: opts.platform } : {}),
         ...(args.onProgress !== undefined
           ? { onProgress: args.onProgress }
           : {}),

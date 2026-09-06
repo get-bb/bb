@@ -84,6 +84,23 @@ describe("copyWorktreeIncludeFiles", () => {
     expect(result.copied).toEqual(["secrets/keep.pem"]);
   });
 
+  it("copies dotted names instead of mistaking them for escapes", async () => {
+    const sourcePath = await initRepo("..secrets/\n");
+    await writeFile(path.join(sourcePath, "..secrets/key.pem"), "pem\n");
+    await writeFile(
+      path.join(sourcePath, WORKTREE_INCLUDE_FILE_NAME),
+      "..secrets/\n",
+    );
+    const targetPath = await makeTempDir("bb-worktree-include-target-");
+
+    const result = await copyWorktreeIncludeFiles({ sourcePath, targetPath });
+
+    expect(result.copied).toEqual(["..secrets/key.pem"]);
+    await expect(
+      fs.readFile(path.join(targetPath, "..secrets/key.pem"), "utf8"),
+    ).resolves.toBe("pem\n");
+  });
+
   it("skips symlinks instead of copying what they point at", async () => {
     const sourcePath = await initRepo(".env\n");
     const outsideDir = await makeTempDir("bb-worktree-include-outside-");

@@ -7,7 +7,6 @@ import type {
   WorkspaceFileStatusKind,
   WorkspaceStatus,
 } from "@bb/domain";
-import os from "node:os";
 import path from "node:path";
 import {
   getPullRequestForCurrentBranch,
@@ -32,6 +31,7 @@ import {
   parsePatchId,
   revParse,
   runGit,
+  runGitOutputPipeline,
   runGitWithNullRecordLimit,
   type GitCommandResult,
   type GitProcessOptions,
@@ -40,7 +40,6 @@ import {
   type NameStatusSourceEntry,
   type NumstatEntry,
   type RunGitOptions,
-  runShellPipeline,
   summarizeNumstat,
   WorkspaceError,
 } from "./git.js";
@@ -457,7 +456,7 @@ async function readEmptyTreeSha(
   workspacePath: string,
   options: Pick<RunGitOptions, "shellPath" | "timeoutMs"> = {},
 ): Promise<string> {
-  const emptyTree = await runGit(["hash-object", "-t", "tree", os.devNull], {
+  const emptyTree = await runGit(["hash-object", "-t", "tree", "/dev/null"], {
     cwd: workspacePath,
     ...options,
   });
@@ -570,12 +569,12 @@ export class Workspace {
     );
   }
 
-  private runShellPipeline(
-    script: string,
-    positionalArgs: string[],
-    options: Parameters<typeof runShellPipeline>[2],
+  private runGitOutputPipeline(
+    producerArgs: string[],
+    consumerArgs: string[],
+    options: Parameters<typeof runGitOutputPipeline>[2],
   ): Promise<GitCommandResult> {
-    return runShellPipeline(script, positionalArgs, {
+    return runGitOutputPipeline(producerArgs, consumerArgs, {
       ...options,
       ...this.gitProcessOptions,
     });
@@ -1219,9 +1218,9 @@ export class Workspace {
     mergeBaseBranch: string,
     timeoutMs?: number,
   ): Promise<boolean> {
-    const branchPatchIdResult = await this.runShellPipeline(
-      'git diff "$1".."$2" | git patch-id --stable',
-      [mergeBaseRef, "HEAD"],
+    const branchPatchIdResult = await this.runGitOutputPipeline(
+      ["diff", `${mergeBaseRef}..HEAD`],
+      ["patch-id", "--stable"],
       { cwd: this.path, allowFailure: true, timeoutMs },
     );
     if (branchPatchIdResult.exitCode !== 0) {
@@ -1237,9 +1236,16 @@ export class Workspace {
       return false;
     }
 
-    const basePatchIdsResult = await this.runShellPipeline(
-      'git log -p -n 1000 --format="commit %H" "$1".."$2" | git patch-id --stable',
-      [mergeBaseRef, mergeBaseBranch],
+    const basePatchIdsResult = await this.runGitOutputPipeline(
+      [
+        "log",
+        "-p",
+        "-n",
+        "1000",
+        "--format=commit %H",
+        `${mergeBaseRef}..${mergeBaseBranch}`,
+      ],
+      ["patch-id", "--stable"],
       { cwd: this.path, allowFailure: true, timeoutMs },
     );
     if (basePatchIdsResult.exitCode !== 0) {

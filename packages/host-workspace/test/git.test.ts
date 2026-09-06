@@ -14,8 +14,8 @@ import {
   readGitBlob,
   readGitRepositoryState,
   runGit,
+  runGitOutputPipeline,
   runGitWithNullRecordLimit,
-  runShellPipeline,
   summarizeNumstat,
 } from "../src/git.js";
 
@@ -113,20 +113,89 @@ afterEach(async () => {
   );
 });
 
-describe("runShellPipeline", () => {
-  it("scrubs inherited bb runtime env vars and node mode", async () => {
+describe("runGitOutputPipeline", () => {
+  it("pipes producer stdout into the consumer without a shell", async () => {
     const repoPath = await initEmptyRepo();
     vi.stubEnv("BB_DATA_DIR", "/tmp/leaked-bb-data");
-    vi.stubEnv("NODE_ENV", "development");
     vi.stubEnv("OPENAI_API_KEY", "external-secret");
 
-    const result = await runShellPipeline(
-      `printf '%s|%s|%s' "\${BB_DATA_DIR-missing}" "\${NODE_ENV-missing}" "\${OPENAI_API_KEY-missing}"`,
-      [],
+    const result = await runGitOutputPipeline(
+      ["--version"],
+      ["hash-object", "--stdin"],
       { cwd: repoPath },
     );
 
-    expect(result.stdout).toBe("missing|missing|external-secret");
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout.trim()).toMatch(/^[0-9a-f]{40}$/u);
+  });
+
+  it("computes a stable patch id for a diff without shell quoting", async () => {
+    const repoPath = await initReadGitBlobRepo();
+    await fs.writeFile(path.join(repoPath, "README.md"), "hello\nmore\n");
+    await runGit(["commit", "-am", "Second commit"], { cwd: repoPath });
+
+    const result = await runGitOutputPipeline(
+      ["diff", "HEAD~1..HEAD"],
+      ["patch-id", "--stable"],
+      { cwd: repoPath },
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout.trim()).toMatch(/^[0-9a-f]{40} [0-9a-f]{40}$/u);
+  });
+
+  it("reports producer failures without a shell exit-code mask", async () => {
+    const repoPath = await initEmptyRepo();
+
+    const allowed = await runGitOutputPipeline(
+      ["diff", "missing-base..missing-head"],
+      ["patch-id", "--stable"],
+      { cwd: repoPath, allowFailure: true },
+    );
+    expect(allowed.stdout).toBe("");
+
+    await expect(
+      runGitOutputPipeline(
+        ["diff", "missing-base..missing-head"],
+        ["patch-id", "--stable"],
+        { cwd: repoPath },
+      ),
+    ).rejects.toMatchObject({
+      code: "git_command_failed",
+      name: "WorkspaceError",
+    });
+  });
+
+  it("classifies pipeline timeouts as git command timeouts", async () => {
+    const repoPath = await initEmptyRepo();
+
+    await expect(
+      runGitOutputPipeline(
+        ["-c", "alias.bb-sleep=!sleep 5", "bb-sleep"],
+        ["patch-id", "--stable"],
+        { cwd: repoPath, allowFailure: true, timeoutMs: 10 },
+      ),
+    ).rejects.toMatchObject({
+      code: "git_command_timeout",
+      name: "WorkspaceError",
+    });
+  });
+
+  it("classifies aborted pipelines as cancellations", async () => {
+    const repoPath = await initEmptyRepo();
+    const controller = new AbortController();
+    controller.abort(new Error("test abort"));
+
+    await expect(
+      runGitOutputPipeline(
+        ["--version"],
+        ["hash-object", "--stdin"],
+        { cwd: repoPath, signal: controller.signal },
+      ),
+    ).rejects.toMatchObject({
+      code: "provision_cancelled",
+      name: "WorkspaceError",
+    });
   });
 });
 
@@ -405,17 +474,21 @@ describe("command timeouts", () => {
     });
   });
 
-  it("classifies shell pipeline timeouts as hard failures when allowFailure is true", async () => {
+  it("classifies git pipeline timeouts as hard failures when allowFailure is true", async () => {
     const repoPath = await initEmptyRepo();
 
     await expect(
-      runShellPipeline("sleep 5", [], {
-        cwd: repoPath,
-        allowFailure: true,
-        timeoutMs: 10,
-      }),
+      runGitOutputPipeline(
+        ["-c", "alias.bb-sleep=!sleep 5", "bb-sleep"],
+        ["patch-id", "--stable"],
+        {
+          cwd: repoPath,
+          allowFailure: true,
+          timeoutMs: 10,
+        },
+      ),
     ).rejects.toMatchObject({
-      code: "shell_pipeline_timeout",
+      code: "git_command_timeout",
       name: "WorkspaceError",
     });
   });
@@ -438,10 +511,14 @@ describe("user-shell Git resolution", () => {
       runGit(["--version"], { cwd: workspacePath, shellPath: binPath }),
     ).resolves.toMatchObject({ stdout: "user-shell-git\n" });
     await expect(
-      runShellPipeline("git --version", [], {
-        cwd: workspacePath,
-        shellPath: binPath,
-      }),
+      runGitOutputPipeline(
+        ["--version"],
+        ["hash-object", "--stdin"],
+        {
+          cwd: workspacePath,
+          shellPath: binPath,
+        },
+      ),
     ).resolves.toMatchObject({ stdout: "user-shell-git\n" });
   });
 });

@@ -100,7 +100,9 @@ function isInside(parentRealPath: string, childRealPath: string): boolean {
   const relative = path.relative(parentRealPath, childRealPath);
   return (
     relative === "" ||
-    (!relative.startsWith("..") && !path.isAbsolute(relative))
+    (relative !== ".." &&
+      !relative.startsWith(`..${path.sep}`) &&
+      !path.isAbsolute(relative))
   );
 }
 

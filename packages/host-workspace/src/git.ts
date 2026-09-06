@@ -62,10 +62,133 @@ interface BranchRefsWithDefaults {
   remoteBranches: string[];
 }
 
-interface RunShellPipelineOptions extends GitTimeoutOptions {
+interface RunGitOutputPipelineOptions extends GitProcessOptions {
   cwd: string;
+  timeoutMs?: number;
   allowFailure?: boolean;
+  env?: NodeJS.ProcessEnv;
   signal?: AbortSignal;
+}
+
+export async function runGitOutputPipeline(
+  producerArgs: string[],
+  consumerArgs: string[],
+  options: RunGitOutputPipelineOptions,
+): Promise<GitCommandResult> {
+  const pipelineText = `git ${producerArgs.join(" ")} | git ${consumerArgs.join(" ")}`;
+  if (options.signal?.aborted) {
+    throw new WorkspaceError(
+      "provision_cancelled",
+      `${pipelineText} was cancelled`,
+      { cause: options.signal.reason },
+    );
+  }
+  const env = resolveGitProcessEnv({
+    env: options.env,
+    shellPath: options.shellPath,
+  });
+  const producer = spawn("git", producerArgs, {
+    cwd: options.cwd,
+    env,
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  const consumer = spawn("git", consumerArgs, {
+    cwd: options.cwd,
+    env,
+    stdio: ["pipe", "pipe", "pipe"],
+  });
+  producer.stdout.pipe(consumer.stdin);
+  producer.stdout.on("error", () => {});
+  consumer.stdin.on("error", () => {});
+
+  const stdoutChunks: Buffer[] = [];
+  const stderrChunks: Buffer[] = [];
+  producer.stderr.on("data", (chunk: Buffer) => {
+    stderrChunks.push(Buffer.from(chunk));
+  });
+  consumer.stdout.on("data", (chunk: Buffer) => {
+    stdoutChunks.push(Buffer.from(chunk));
+  });
+  consumer.stderr.on("data", (chunk: Buffer) => {
+    stderrChunks.push(Buffer.from(chunk));
+  });
+
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  let timedOut = false;
+  const onAbort = (): void => {
+    producer.kill();
+    consumer.kill();
+  };
+  options.signal?.addEventListener("abort", onAbort, { once: true });
+  if (options.timeoutMs !== undefined) {
+    timeout = setTimeout(() => {
+      timedOut = true;
+      onAbort();
+    }, options.timeoutMs);
+  }
+
+  try {
+    const [producerClose, consumerClose] = await Promise.all([
+      new Promise<{ exitCode: number | null; error?: Error }>(
+        (resolveProducer) => {
+          producer.once("error", (error) =>
+            resolveProducer({ exitCode: null, error }),
+          );
+          producer.once("close", (exitCode) =>
+            resolveProducer({ exitCode }),
+          );
+        },
+      ),
+      new Promise<{ exitCode: number | null; error?: Error }>(
+        (resolveConsumer) => {
+          consumer.once("error", (error) =>
+            resolveConsumer({ exitCode: null, error }),
+          );
+          consumer.once("close", (exitCode) =>
+            resolveConsumer({ exitCode }),
+          );
+        },
+      ),
+    ]);
+    const stdout = Buffer.concat(stdoutChunks).toString("utf8");
+    const stderr = Buffer.concat(stderrChunks).toString("utf8");
+    if (options.signal?.aborted) {
+      throw new WorkspaceError(
+        "provision_cancelled",
+        `${pipelineText} was cancelled`,
+        { cause: options.signal.reason },
+      );
+    }
+    if (timedOut && options.timeoutMs !== undefined) {
+      throw new WorkspaceError(
+        "git_command_timeout",
+        `${pipelineText} timed out after ${options.timeoutMs}ms`,
+      );
+    }
+    const spawnError = producerClose.error ?? consumerClose.error;
+    const producerFailed =
+      producerClose.error !== undefined || (producerClose.exitCode ?? 1) !== 0;
+    const consumerFailed =
+      consumerClose.error !== undefined || (consumerClose.exitCode ?? 1) !== 0;
+    if (!options.allowFailure && (producerFailed || consumerFailed)) {
+      const detail = trimOutput(stderr) ? `: ${trimOutput(stderr)}` : "";
+      throw new WorkspaceError(
+        "git_command_failed",
+        `${pipelineText} failed${detail}`,
+        spawnError === undefined ? {} : { cause: spawnError },
+      );
+    }
+    return {
+      stdout,
+      stderr,
+      exitCode: consumerClose.exitCode ?? 1,
+    };
+  } finally {
+    if (timeout !== undefined) {
+      clearTimeout(timeout);
+    }
+    options.signal?.removeEventListener("abort", onAbort);
+  }
 }
 
 export interface GitCommandResult {
@@ -220,27 +343,6 @@ function createGitCommandCancelledError(
     "provision_cancelled",
     `git ${args.join(" ")} was cancelled`,
     { cause },
-  );
-}
-
-function createShellPipelineTimedOutError(
-  timeoutMs: number,
-  cause?: unknown,
-): WorkspaceError {
-  return new WorkspaceError(
-    "shell_pipeline_timeout",
-    `shell pipeline timed out after ${timeoutMs}ms`,
-    { cause },
-  );
-}
-
-function createShellPipelineCancelledError(cause?: unknown): WorkspaceError {
-  return new WorkspaceError(
-    "provision_cancelled",
-    "Shell pipeline was cancelled",
-    {
-      cause,
-    },
   );
 }
 
@@ -503,57 +605,6 @@ export async function getGitCommonDir(
     );
   }
   return path.resolve(cwd, commonDir);
-}
-
-export async function runShellPipeline(
-  script: string,
-  positionalArgs: string[],
-  options: RunShellPipelineOptions,
-): Promise<GitCommandResult> {
-  if (options.signal?.aborted) {
-    throw createShellPipelineCancelledError(options.signal.reason);
-  }
-  try {
-    const result = await execFileAsync(
-      "/bin/sh",
-      ["-c", script, "sh", ...positionalArgs],
-      {
-        cwd: options.cwd,
-        encoding: "utf8",
-        env: resolveGitProcessEnv({
-          env: undefined,
-          shellPath: options.shellPath,
-        }),
-        maxBuffer: DEFAULT_BUFFER_BYTES,
-        signal: options.signal,
-        timeout: options.timeoutMs,
-      },
-    );
-    return { stdout: result.stdout, stderr: result.stderr, exitCode: 0 };
-  } catch (error) {
-    if (options.signal?.aborted) {
-      throw createShellPipelineCancelledError(error);
-    }
-    const execError = toExecError(error);
-    const timeoutMs = readCommandTimeoutMs(execError, options.timeoutMs);
-    if (timeoutMs !== null) {
-      throw createShellPipelineTimedOutError(timeoutMs, error);
-    }
-    if (options.allowFailure) {
-      return {
-        stdout: execError?.stdout ?? "",
-        stderr: execError?.stderr ?? "",
-        exitCode: getExitCode(execError),
-      };
-    }
-    const stderr = trimOutput(execError?.stderr ?? "");
-    const detail = stderr ? `: ${stderr}` : "";
-    throw new WorkspaceError(
-      "shell_pipeline_failed",
-      `shell pipeline failed${detail}`,
-      { cause: error },
-    );
-  }
 }
 
 export function parsePatchId(line: string | undefined): string | undefined {

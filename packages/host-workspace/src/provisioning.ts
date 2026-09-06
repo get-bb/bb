@@ -13,7 +13,6 @@ import {
   killProcessGroup,
   sanitizeInheritedChildProcessEnv,
   spawnPortableOutputProcess,
-  supportsProcessGroups,
 } from "@bb/process-utils";
 import { Workspace } from "./workspace.js";
 import { tryWithCheckoutMutationLock } from "./checkout-mutation-lock.js";
@@ -54,6 +53,7 @@ interface CreateWorkspaceArgs {
   baseBranch: string | null;
   timeoutMs: number;
   shellPath?: string;
+  platform?: NodeJS.Platform;
   onProgress?: ProgressCallback;
   pruneEmptyParent?: boolean;
   signal?: AbortSignal;
@@ -63,6 +63,7 @@ interface RunSetupScriptArgs {
   workspacePath: string;
   timeoutMs: number;
   shellPath?: string;
+  platform?: NodeJS.Platform;
   onProgress?: ProgressCallback;
   signal?: AbortSignal;
 }
@@ -72,6 +73,7 @@ interface RunTeardownScriptArgs {
   timeoutMs: number;
   /** Resolved user-shell PATH. Falls back to the daemon process PATH. */
   shellPath?: string;
+  platform?: NodeJS.Platform;
   onProgress?: ProgressCallback;
 }
 
@@ -82,6 +84,7 @@ interface RemoveWorktreeArgs {
   force?: boolean;
   pruneEmptyParent?: boolean;
   shellPath?: string;
+  platform?: NodeJS.Platform;
   onProgress?: ProgressCallback;
 }
 
@@ -96,9 +99,14 @@ interface BuildLifecycleScriptCommandArgs {
   scriptPath: string;
 }
 
-interface RunLifecycleScriptArgs extends RunSetupScriptArgs {
+interface RunLifecycleScriptArgs {
+  workspacePath: string;
+  timeoutMs: number;
+  shellPath?: string;
+  platform?: NodeJS.Platform;
+  onProgress?: ProgressCallback;
+  signal?: AbortSignal;
   kind: "setup" | "teardown";
-  scriptName: string;
 }
 
 const SETUP_SCRIPT_ABORT_KILL_GRACE_MS = 2_000;
@@ -251,9 +259,96 @@ async function resolveLifecycleScriptPath(
   return (await pathExists(scriptPath)) ? scriptPath : null;
 }
 
+export interface ResolvedLifecycleScript {
+  scriptPath: string;
+  scriptFileName: string;
+  posixOnly: boolean;
+}
+
+const WINDOWS_ENV_SETUP_SCRIPT_NAME = ".bb-env-setup.ps1";
+const WINDOWS_ENV_TEARDOWN_SCRIPT_NAME = ".bb-env-teardown.ps1";
+
+function lifecycleScriptNames(kind: "setup" | "teardown"): {
+  posix: string;
+  windows: string;
+} {
+  return kind === "setup"
+    ? {
+        posix: DEFAULT_ENV_SETUP_SCRIPT_NAME,
+        windows: WINDOWS_ENV_SETUP_SCRIPT_NAME,
+      }
+    : {
+        posix: DEFAULT_ENV_TEARDOWN_SCRIPT_NAME,
+        windows: WINDOWS_ENV_TEARDOWN_SCRIPT_NAME,
+      };
+}
+
+export async function resolveLifecycleScript(args: {
+  workspacePath: string;
+  kind: "setup" | "teardown";
+  platform?: NodeJS.Platform;
+}): Promise<ResolvedLifecycleScript | null> {
+  const names = lifecycleScriptNames(args.kind);
+  if ((args.platform ?? process.platform) === "win32") {
+    const windowsPath = path.join(args.workspacePath, names.windows);
+    if (await pathExists(windowsPath)) {
+      return {
+        scriptPath: windowsPath,
+        scriptFileName: names.windows,
+        posixOnly: false,
+      };
+    }
+    const posixPath = path.join(args.workspacePath, names.posix);
+    if (await pathExists(posixPath)) {
+      return {
+        scriptPath: posixPath,
+        scriptFileName: names.posix,
+        posixOnly: true,
+      };
+    }
+    return null;
+  }
+  const scriptPath = await resolveLifecycleScriptPath(
+    args.workspacePath,
+    names.posix,
+  );
+  return scriptPath === null
+    ? null
+    : {
+        scriptPath,
+        scriptFileName: names.posix,
+        posixOnly: false,
+      };
+}
+
+function isPowerShellScriptPath(scriptPath: string): boolean {
+  return scriptPath.toLowerCase().endsWith(".ps1");
+}
+
 export function buildSetupScriptCommand(
   args: BuildLifecycleScriptCommandArgs,
 ): LifecycleScriptCommand {
+  if (isPowerShellScriptPath(args.scriptPath)) {
+    if (args.platform !== "win32") {
+      throw new WorkspaceError(
+        "setup_script_failed",
+        `PowerShell setup scripts are not supported on this platform: ${WINDOWS_ENV_SETUP_SCRIPT_NAME}`,
+      );
+    }
+    return {
+      command: "powershell.exe",
+      args: [
+        "-NoLogo",
+        "-NoProfile",
+        "-NonInteractive",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        args.scriptPath,
+      ],
+      text: `powershell.exe -File ${path.win32.basename(args.scriptPath)}`,
+    };
+  }
   if (args.platform === "win32") {
     throw new WorkspaceError(
       "setup_script_failed",
@@ -268,7 +363,30 @@ export function buildSetupScriptCommand(
   };
 }
 
-function buildTeardownScriptCommand(args: BuildLifecycleScriptCommandArgs) {
+export function buildTeardownScriptCommand(
+  args: BuildLifecycleScriptCommandArgs,
+): LifecycleScriptCommand {
+  if (isPowerShellScriptPath(args.scriptPath)) {
+    if (args.platform !== "win32") {
+      throw new WorkspaceError(
+        "setup_script_failed",
+        `PowerShell teardown scripts are not supported on this platform: ${WINDOWS_ENV_TEARDOWN_SCRIPT_NAME}`,
+      );
+    }
+    return {
+      command: "powershell.exe",
+      args: [
+        "-NoLogo",
+        "-NoProfile",
+        "-NonInteractive",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        args.scriptPath,
+      ],
+      text: `powershell.exe -File ${path.win32.basename(args.scriptPath)}`,
+    };
+  }
   if (args.platform === "win32") {
     throw new WorkspaceError(
       "setup_script_failed",
@@ -590,6 +708,7 @@ export async function createWorktree(
       workspacePath: args.targetPath,
       timeoutMs: args.timeoutMs,
       shellPath: args.shellPath,
+      ...(args.platform !== undefined ? { platform: args.platform } : {}),
       onProgress: args.onProgress,
       signal: args.signal,
     });
@@ -611,6 +730,7 @@ export async function createWorktree(
       force: true,
       pruneEmptyParent: args.pruneEmptyParent,
       shellPath: args.shellPath,
+      ...(args.platform !== undefined ? { platform: args.platform } : {}),
     });
     throw error;
   }
@@ -696,14 +816,29 @@ async function copyIncludedFiles(args: {
 async function runLifecycleScript(
   args: RunLifecycleScriptArgs,
 ): Promise<{ ran: boolean; exitCode?: number; output?: string }> {
+  const platform = args.platform ?? process.platform;
   if (args.kind === "setup") {
     throwIfProvisionAborted(args.signal);
   }
-  const scriptPath = await resolveLifecycleScriptPath(
-    args.workspacePath,
-    args.scriptName,
-  );
-  if (!scriptPath) {
+  const resolved = await resolveLifecycleScript({
+    workspacePath: args.workspacePath,
+    kind: args.kind,
+    platform,
+  });
+  if (!resolved) {
+    return { ran: false };
+  }
+  if (resolved.posixOnly) {
+    const skippedAt = Date.now();
+    const windowsName = lifecycleScriptNames(args.kind).windows;
+    emitStep({
+      onProgress: args.onProgress,
+      key: `${args.kind}-skipped`,
+      text: `Skipped ${resolved.scriptFileName}: POSIX shell scripts are not supported on Windows (add ${windowsName})`,
+      status: "completed",
+      startedAt: skippedAt,
+      metadata: { durationMs: Date.now() - skippedAt },
+    });
     return { ran: false };
   }
 
@@ -712,13 +847,16 @@ async function runLifecycleScript(
   }
   const command =
     args.kind === "setup"
-      ? buildSetupScriptCommand({ platform: process.platform, scriptPath })
-      : buildTeardownScriptCommand({ platform: process.platform, scriptPath });
+      ? buildSetupScriptCommand({ platform, scriptPath: resolved.scriptPath })
+      : buildTeardownScriptCommand({
+          platform,
+          scriptPath: resolved.scriptPath,
+        });
   const startedAt = Date.now();
   emitStep({
     onProgress: args.onProgress,
     key: `${args.kind}-started`,
-    text: `Running ${args.scriptName}`,
+    text: `Running ${resolved.scriptFileName}`,
     status: "started",
     startedAt,
   });
@@ -732,7 +870,7 @@ async function runLifecycleScript(
     command: command.command,
     args: command.args,
     cwd: args.workspacePath,
-    detached: supportsProcessGroups(),
+    detached: platform !== "win32",
     env,
   });
 
@@ -807,7 +945,7 @@ async function runLifecycleScript(
       emitStep({
         onProgress: args.onProgress,
         key: `${args.kind}-cancelled`,
-        text: `${args.scriptName} cancelled`,
+        text: `${resolved.scriptFileName} cancelled`,
         status: "failed",
         startedAt,
         metadata: { durationMs },
@@ -819,14 +957,14 @@ async function runLifecycleScript(
       emitStep({
         onProgress: args.onProgress,
         key: `${args.kind}-failed`,
-        text: `${args.scriptName} failed`,
+        text: `${resolved.scriptFileName} failed`,
         status: "failed",
         startedAt,
         metadata: { durationMs },
       });
       throw new WorkspaceError(
         "setup_script_failed",
-        `${args.kind === "setup" ? "Setup" : "Teardown"} script timed out after ${timeoutMs}ms: ${scriptPath}`,
+        `${args.kind === "setup" ? "Setup" : "Teardown"} script timed out after ${timeoutMs}ms: ${resolved.scriptPath}`,
       );
     }
 
@@ -834,14 +972,14 @@ async function runLifecycleScript(
       emitStep({
         onProgress: args.onProgress,
         key: `${args.kind}-failed`,
-        text: `${args.scriptName} failed`,
+        text: `${resolved.scriptFileName} failed`,
         status: "failed",
         startedAt,
         metadata: { durationMs },
       });
       throw new WorkspaceError(
         "setup_script_failed",
-        `${args.kind === "setup" ? "Setup" : "Teardown"} script exited via signal ${result.signal}: ${scriptPath}`,
+        `${args.kind === "setup" ? "Setup" : "Teardown"} script exited via signal ${result.signal}: ${resolved.scriptPath}`,
       );
     }
 
@@ -849,21 +987,21 @@ async function runLifecycleScript(
       emitStep({
         onProgress: args.onProgress,
         key: `${args.kind}-failed`,
-        text: `${args.scriptName} failed`,
+        text: `${resolved.scriptFileName} failed`,
         status: "failed",
         startedAt,
         metadata: { durationMs },
       });
       throw new WorkspaceError(
         "setup_script_failed",
-        `${args.kind === "setup" ? "Setup" : "Teardown"} script failed with exit code ${result.exitCode}: ${scriptPath}`,
+        `${args.kind === "setup" ? "Setup" : "Teardown"} script failed with exit code ${result.exitCode}: ${resolved.scriptPath}`,
       );
     }
 
     emitStep({
       onProgress: args.onProgress,
       key: `${args.kind}-completed`,
-      text: `${args.scriptName} finished`,
+      text: `${resolved.scriptFileName} finished`,
       status: "completed",
       startedAt,
       metadata: { durationMs },
@@ -886,7 +1024,6 @@ export function runSetupScript(
   return runLifecycleScript({
     ...args,
     kind: "setup",
-    scriptName: DEFAULT_ENV_SETUP_SCRIPT_NAME,
   });
 }
 
@@ -906,7 +1043,6 @@ export async function runTeardownScript(
       ...args,
       onProgress,
       kind: "teardown",
-      scriptName: DEFAULT_ENV_TEARDOWN_SCRIPT_NAME,
     });
   } catch (error) {
     if (!failureReported) {
@@ -928,6 +1064,20 @@ export async function runTeardownScript(
   }
 }
 
+export function resolveWorktreeGitCommonDir(args: {
+  workspacePath: string;
+  gitCommonDirOutput: string;
+  platform?: NodeJS.Platform;
+}): string {
+  const trimmed = args.gitCommonDirOutput.trim();
+  if (trimmed.startsWith("\\\\?\\")) {
+    return trimmed;
+  }
+  const pathImpl =
+    (args.platform ?? process.platform) === "win32" ? path.win32 : path.posix;
+  return pathImpl.resolve(args.workspacePath, trimmed);
+}
+
 export async function removeWorktree(args: RemoveWorktreeArgs): Promise<void> {
   const force = args.force !== false;
   const workspacePath = path.resolve(args.path);
@@ -943,6 +1093,7 @@ export async function removeWorktree(args: RemoveWorktreeArgs): Promise<void> {
     workspacePath,
     timeoutMs: args.timeoutMs,
     ...(args.shellPath !== undefined ? { shellPath: args.shellPath } : {}),
+    ...(args.platform !== undefined ? { platform: args.platform } : {}),
     ...(args.onProgress !== undefined ? { onProgress: args.onProgress } : {}),
   });
 
@@ -953,10 +1104,11 @@ export async function removeWorktree(args: RemoveWorktreeArgs): Promise<void> {
   });
 
   if (commonDirResult.exitCode === 0) {
-    const commonDir = path.resolve(
+    const commonDir = resolveWorktreeGitCommonDir({
       workspacePath,
-      commonDirResult.stdout.trim(),
-    );
+      gitCommonDirOutput: commonDirResult.stdout,
+      ...(args.platform !== undefined ? { platform: args.platform } : {}),
+    });
     await tryWithCheckoutMutationLock(
       workspacePath,
       () =>
