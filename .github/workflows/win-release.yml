@@ -101,7 +101,7 @@ jobs:
         run: |
           $tag = "${{ steps.version.outputs.tag }}"
           $version = "${{ steps.version.outputs.version }}"
-          $assets = @(Get-ChildItem apps/desktop/release -Include *.exe,*.yml,*.blockmap -File | Select-Object -ExpandProperty FullName)
+          $assets = @(Get-ChildItem apps/desktop/release/* -Include *.exe,*.yml,*.blockmap -File | Select-Object -ExpandProperty FullName)
           if ($assets.Count -eq 0) {
             throw "No release assets found under apps/desktop/release."
           }
