@@ -19,6 +19,13 @@ describe("deriveRepoDirName", () => {
       "Hello-World",
     ],
     ["dotted name", "/Users/me/code/my.repo", "my.repo"],
+    ["windows absolute path", String.raw`C:\Users\me\code\my-repo`, "my-repo"],
+    [
+      "windows path with trailing separator",
+      "C:\\Users\\me\\code\\my-repo\\",
+      "my-repo",
+    ],
+    ["unc path", String.raw`\\server\share\my-repo`, "my-repo"],
   ])("derives %s", (_label, input, expected) => {
     expect(deriveRepoDirName(input)).toBe(expected);
   });
@@ -31,6 +38,8 @@ describe("deriveRepoDirName", () => {
     ["current dir", "/Users/me/code/."],
     ["leading dash (could be interpreted as flag)", "/tmp/-dangerous"],
     ["whitespace in name", "/tmp/my repo"],
+    ["whitespace in a windows name", String.raw`C:\Users\me\my repo`],
+    ["windows drive root", "C:\\"],
     [
       "url with query parameter encoded into basename",
       "https://host/foo/bar.git;param=x",

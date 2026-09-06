@@ -4,13 +4,15 @@ import { ApiError } from "../../errors.js";
 const REPO_DIR_NAME_PATTERN = /^[A-Za-z0-9._][A-Za-z0-9._-]*$/;
 
 export function deriveRepoDirName(sourcePath: string): string {
-  const trimmed = sourcePath.replace(/\/+$/, "");
+  const trimmed = sourcePath.replace(/[\\/]+$/, "");
 
   const scpMatch = /^[^:/]+@[^:]+:(?<path>.+)$/.exec(trimmed);
-  const pathPart =
-    scpMatch?.groups?.path ?? tryParseUrlPath(trimmed) ?? trimmed;
+  const remotePathPart = scpMatch?.groups?.path ?? tryParseUrlPath(trimmed);
 
-  const basename = path.posix.basename(pathPart);
+  const basename =
+    remotePathPart === null || remotePathPart === undefined
+      ? localBasename(trimmed)
+      : path.posix.basename(remotePathPart);
   const candidate = basename.endsWith(".git")
     ? basename.slice(0, -".git".length)
     : basename;
@@ -28,6 +30,14 @@ export function deriveRepoDirName(sourcePath: string): string {
     );
   }
   return candidate;
+}
+
+function localBasename(value: string): string {
+  const lastSeparator = Math.max(
+    value.lastIndexOf("/"),
+    value.lastIndexOf("\\"),
+  );
+  return lastSeparator === -1 ? value : value.slice(lastSeparator + 1);
 }
 
 function tryParseUrlPath(value: string): string | null {
