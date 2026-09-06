@@ -4,12 +4,28 @@ Collected from the reports of the agents that built this port, unsoftened. The
 rule they worked under was: **never claim a Windows behaviour you did not
 execute**. What follows respects that rule.
 
-## The limitation that frames everything else
+## The limitation that framed everything else — now partly lifted
 
 The port was written entirely on Linux. The only Windows machine available was
 GitHub Actions `windows-latest` (**Windows Server 2025, build 10.0.26100** — the
 same kernel as Windows 11 24H2). That gives real compilation, real tests and real
 packaging, but **no interactive desktop**.
+
+**Since 2026-09-06 this document also contains findings measured on a real
+Windows 11 Pro desktop (build 26200).** Read the difference carefully, because it
+was larger than expected:
+
+- `@bb/desktop` had **9 failing tests on real Windows, not the 7 previously
+  recorded**, and a baseline run on a pristine checkout confirmed all 9 predated
+  any of this work. They are now **0**.
+- `@bb/server` had **170** failing tests on real Windows.
+- The ConPTY smoke went from 2/5 to **5/5** — see K5, where the harness, not the
+  product, held both defects.
+
+Treat "green on Windows Server CI" as necessary and not sufficient. Several of
+the defects found here — a POSIX permission check on NTFS, `Start-Process`
+resolution of an extensionless shim, `MAX_PATH` — only appear on a real desktop
+with a real user profile.
 
 This is why the design injects the platform as a parameter instead of reading
 `process.platform`: it makes the Windows branch checkable from Linux. A test
@@ -77,17 +93,30 @@ This matches the POSIX `lsof` path, which has none either. A hung
 
 **Workaround:** none automatic. If observed, add a timeout.
 
-## K5 — ConPTY has never actually run
+## K5 — ConPTY has now actually run — CLOSED
 
-All terminal work is verified against a fake PTY adapter. It asserts what is
-requested, not that it starts. **UTF-8 is the most exposed part**: if
-`chcp 65001` is not enough, accented and box-drawing characters will come back
-mangled, and nobody has seen it happen either way yet.
+Superseded. ConPTY has been exercised on a real Windows 11 Pro (build 26200)
+desktop: `apps/desktop/scripts/smoke-windows-conpty.mjs` is **5/5 green**,
+including `spawn-echo`, `resize`, `utf8`, `close` and `tree`.
 
-`.github/workflows/win-smoke.yml` exists precisely to close this: it starts a real
-ConPTY, writes accented text, and asserts it survives the round trip.
+Two defects found were in the **harness**, not the product:
 
-**Status:** awaiting its first green run.
+- The harness read `pty.pid` synchronously at spawn. `node-pty`
+  `1.25.260303002`/`1.2.0-beta.15` still reports `0` at that moment
+  (`WindowsTerminal` copies `agent.innerPid = 0` at construct; the real PID
+  only lands once the ConPTY connect completes). Measured: `0` at t0,
+  a real PID from t+500ms. The `close` and `tree` cases were therefore running
+  `tasklist`/`taskkill` **against PID 0** and reading back
+  `"System Idle Process","0"`. The harness now reads the PID lazily and
+  **refuses loudly rather than probing PID 0**.
+- The `utf8` case blamed `chcp 65001`, which was innocent — its own output
+  showed `diseño` intact, and what was lost was a character on the **input**
+  side. Writes now send explicit UTF-8 bytes, matching the daemon product path.
+
+**Honest caveat:** `utf8` passed on this machine even before that change (three
+pre-fix runs green), so the CI `utf8` failure was **not** reproduced here. The
+change pins the write encoding and removes a misdiagnosis; it is not evidence
+that the CI failure is fixed.
 
 ## K6 — The environment probe does load the PowerShell profile
 
@@ -152,6 +181,65 @@ missing — that is **exact parity with macOS**, not an oversight.
 The PowerShell fallback uses `FolderBrowserDialog`, which requires STA. The `-STA`
 flag has not been exercised outside Linux. The primary path is Electron's native
 dialog, which is genuinely native on Windows.
+
+## K14 — Enrolling a Windows machine as a bb host does not work
+
+`apps/server/src/assets/install-machine.sh` (served at `GET /install.sh`) is the
+"add another machine as a host" installer. Its platform guard admits **macOS and
+Linux only**, and persistence knows only launchd plists and systemd user units.
+Driven on Windows 11 with Git for Windows `sh.exe` it exits 1 with
+`bb machine installation supports macOS and Linux only`; git-bash's `sh` existing
+does not help, because the installer refuses Windows by design.
+
+**What a Windows user can do today:** run the server, app and CLI on Windows, and
+join and control non-Windows hosts. **What they cannot do:** enrol *this* Windows
+machine as a bb host. There is no Windows installer path.
+
+`apps/server/test/app/install-machine-script.test.ts` is skipped on win32 through
+`INSTALL_SCRIPT_POSIX_ONLY_MEASURED_UNSUPPORTED_ON_WINDOWS`, a named constant
+rather than a bare platform guard, so the reason travels with the skip. The suite
+still runs in full on macOS and Linux.
+
+**Scope of the missing work, if it is ever scheduled:** a Windows installer asset
+(or a Windows branch serving a `.ps1`), Windows service persistence,
+`npm.cmd`/shell-aware spawning, and Windows-native fixtures — no shebang or
+extensionless exec, no `PATH` wipe, no `nohup`/`mktemp`/`launchctl`/`systemctl`
+assumptions.
+
+## K15 — Local git plugin sources can exceed MAX_PATH
+
+Installing a plugin or marketplace from a **local directory** builds a cache path
+of the shape `…/plugins/cache/git/local/<the entire source path>/<sha>.staging`,
+so the source path is embedded whole. On Windows that runs past the 260-character
+`MAX_PATH` limit and git refuses with `Filename too long` on clone and on unlink.
+
+Two separate defects were found here. The first is fixed: `parseGitSource`
+decided a source was local with `urlish.startsWith("/")`, true only on posix, so
+`C:\repo` became `https://C:\repo` and git answered *"URL rejected: Port number
+was not a decimal number between 0 and 65535"*. Drive-letter and UNC paths are
+now recognised. Removing that wrong error is what exposed the MAX_PATH one
+underneath it.
+
+**Status:** the MAX_PATH half is open. Installing a plugin from a **remote** git
+URL is unaffected; only local-directory sources hit this.
+
+## K16 — A provider CLI must be resolved with PATHEXT — FIXED
+
+`where.exe` lists an npm extensionless `sh` shim first, and raw Node
+`execFile`/`spawn` can execute neither that shim (`ENOENT`) nor a `.cmd`
+directly (`EINVAL`). Codex and Claude Code happened to survive because their
+version probes go through `runPortableCommandCapture` (cross-spawn, which does a
+PATHEXT search and wraps in `cmd.exe`); **Pi probed with a raw
+`execFile pi --version`** and so reported `currentVersion: null`. The app then
+treated Pi as unusable and offered none of its models.
+
+Binary lookup now prefers `.com/.exe/.bat/.cmd/.ps1` on win32, absolute
+extensionless Windows paths resolve to their executable sibling, and the Pi probe
+uses the shared portable command path. Measured after the fix: Pi
+`0.85.1`, Codex `0.153.2`, Claude Code `2.1.263`.
+
+The same defect class explains `spawn npm ENOENT` elsewhere — on Windows npm is
+`npm.cmd` — so check for it before assuming a new cause.
 
 ## K13 — What this setup can never prove
 
