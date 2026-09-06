@@ -112,6 +112,8 @@ appears automatically. Discover and select one with:
   bb provider models acp-opencode --environment "$BB_ENVIRONMENT_ID"
   bb thread spawn --provider acp-opencode --model <provider/model>
 
+In Windows PowerShell, pass `--environment $env:BB_ENVIRONMENT_ID`.
+
 bb applies the selected model to the ACP session before the first prompt.
 
 An OpenCode model and an OpenCode agent are different selections. An OpenCode

@@ -67,6 +67,8 @@ bb plugin list --json
 bb skill list --environment "$BB_ENVIRONMENT_ID" --json
 ```
 
+In Windows PowerShell, `"$BB_ENVIRONMENT_ID"` and `"$BB_THREAD_ID"` expand to empty; use `$env:BB_ENVIRONMENT_ID` and `$env:BB_THREAD_ID` instead.
+
 ## Completion
 
 Confirm the command result and any affected thread, environment, plugin, or
