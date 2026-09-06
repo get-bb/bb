@@ -565,6 +565,33 @@ function callDynamicToolBridge(args: {
   });
 }
 
+function isBridgeWorkspaceLockError(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    "code" in error &&
+    (error.code === "EBUSY" ||
+      error.code === "EPERM" ||
+      error.code === "ENOTEMPTY")
+  );
+}
+
+async function removeBridgeWorkspaceDir(dir: string): Promise<void> {
+  const deadline = Date.now() + 10_000;
+  for (;;) {
+    try {
+      rmSync(dir, { recursive: true, force: true });
+      return;
+    } catch (error) {
+      if (!isBridgeWorkspaceLockError(error) || Date.now() > deadline) {
+        throw error;
+      }
+      await new Promise<void>((resolveSleep) =>
+        realSetTimeout(resolveSleep, 100),
+      );
+    }
+  }
+}
+
 beforeEach(() => {
   workspaceDir = mkdtempSync(join(tmpdir(), "bb-acp-bridge-test-"));
   output = captureBridgeJsonRpcOutput();
@@ -576,7 +603,7 @@ afterEach(async () => {
   }
   vi.unstubAllEnvs();
   output.restore();
-  rmSync(workspaceDir, { recursive: true, force: true });
+  await removeBridgeWorkspaceDir(workspaceDir);
 });
 
 describe("acp bridge", () => {

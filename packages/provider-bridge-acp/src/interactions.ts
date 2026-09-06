@@ -151,11 +151,10 @@ export function buildAcpPermissionInteractionPayload(args: {
   toolCall: AcpPermissionToolCall | undefined;
   options: readonly { kind: AcpPermissionOptionKind }[];
   cwd?: string | undefined;
-  platform?: NodeJS.Platform | undefined;
   classifyToolCall?: AcpDialectToolCallClassifier | undefined;
 }): PendingInteractionPayload {
   const toolCall = args.toolCall;
-  const pathOptions = { cwd: args.cwd, platform: args.platform };
+  const pathOptions = { cwd: args.cwd };
   const availableDecisions = buildAcpApprovalDecisions(args.options);
   const reason = permissionReason(toolCall) ?? null;
   const operation = toolCall
@@ -170,7 +169,6 @@ export function buildAcpPermissionInteractionPayload(args: {
         itemId: toolCall.toolCallId,
         writeScope: resolveAcpFileChangeWriteScope(
           ownPaths.length > 0 ? ownPaths : operation.paths,
-          pathOptions.platform ?? process.platform,
         ),
         sessionGrant: null,
       },

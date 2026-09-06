@@ -1,6 +1,11 @@
 import path from "node:path";
 import { toOptionalString } from "@bb/provider-bridge-protocol/bridge-kit";
 import { z } from "zod";
+import {
+  agentPathFlavorForAnchor,
+  isWin32ShapedPath,
+  type AgentPathFlavor,
+} from "./agent-paths.js";
 import type { AcpToolCallContent } from "./wire.js";
 
 export interface AcpToolCallOperationInput {
@@ -34,13 +39,12 @@ const acpRawInputPathSchema = z
 
 export interface AcpToolCallPathOptions {
   cwd?: string | undefined;
-  platform?: NodeJS.Platform | undefined;
 }
 
-function acpPathFlavor(
-  platform: NodeJS.Platform | undefined,
-): typeof path.posix {
-  return (platform ?? process.platform) === "win32" ? path.win32 : path.posix;
+function resolveFlavor(value: string, cwd: string): AgentPathFlavor {
+  if (isWin32ShapedPath(value)) return agentPathFlavorForAnchor(value);
+  if (value.startsWith("/")) return agentPathFlavorForAnchor(value);
+  return agentPathFlavorForAnchor(cwd);
 }
 
 export function resolveAcpToolCallPath(
@@ -48,8 +52,11 @@ export function resolveAcpToolCallPath(
   options: AcpToolCallPathOptions | undefined,
 ): string {
   const cwd = options?.cwd;
-  const flavor = acpPathFlavor(options?.platform);
-  if (cwd === undefined || flavor.isAbsolute(value) || value.startsWith("~")) {
+  if (cwd === undefined || value.startsWith("~")) {
+    return value;
+  }
+  const flavor = resolveFlavor(value, cwd);
+  if (flavor.isAbsolute(value)) {
     return value;
   }
   return flavor.resolve(cwd, value);
@@ -125,10 +132,19 @@ export function classifyAcpToolCall(
 
 export function resolveAcpFileChangeWriteScope(
   paths: readonly string[],
-  platform: NodeJS.Platform = process.platform,
 ): string | null {
-  const flavor = acpPathFlavor(platform);
-  const normalized = paths.filter(isNonBlank).map((entry) => {
+  const nonBlank = paths.filter(isNonBlank);
+  if (nonBlank.length === 0) {
+    return null;
+  }
+  if (
+    nonBlank.some((entry) => isWin32ShapedPath(entry)) &&
+    nonBlank.some((entry) => !isWin32ShapedPath(entry))
+  ) {
+    return null;
+  }
+  const flavor = nonBlank.some(isWin32ShapedPath) ? path.win32 : path.posix;
+  const normalized = nonBlank.map((entry) => {
     const value = flavor.normalize(entry);
     return value.length > 1 && value.endsWith(flavor.sep)
       ? value.slice(0, -1)

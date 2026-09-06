@@ -245,7 +245,6 @@ describe("buildAcpPermissionInteractionPayload file-change subjects", () => {
         locations: [{ path: "/tmp/qa-1719/notes.md" }],
       },
       options: allowDenyOptions,
-      platform: "linux",
     });
 
     expect(payload).toMatchObject({
@@ -282,7 +281,6 @@ describe("buildAcpPermissionInteractionPayload file-change subjects", () => {
         },
       },
       options: allowDenyOptions,
-      platform: "linux",
     });
 
     expect(payload).toMatchObject({
@@ -372,7 +370,6 @@ describe("buildAcpPermissionInteractionPayload file-change subjects", () => {
         rawInput: { path: "/tmp/qa-1719/notes.md" },
       },
       options: allowDenyOptions,
-      platform: "linux",
     });
 
     expect(payload).toMatchObject({
@@ -460,7 +457,6 @@ describe("permission reason", () => {
       },
       options: allowDenyOptions,
       cwd: "/workspace/app",
-      platform: "linux",
     });
 
     expect(payload).toMatchObject({
@@ -472,7 +468,7 @@ describe("permission reason", () => {
     });
   });
 
-  it("resolves paths with the injected Windows platform", () => {
+  it("resolves Windows-shaped relative permission paths against the session cwd", () => {
     const payload = buildAcpPermissionInteractionPayload({
       toolCall: {
         toolCallId: "call-win",
@@ -482,7 +478,6 @@ describe("permission reason", () => {
       },
       options: allowDenyOptions,
       cwd: "C:\\workspace\\app",
-      platform: "win32",
     });
 
     expect(payload).toMatchObject({

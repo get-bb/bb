@@ -68,62 +68,50 @@ describe("classifyAcpToolCall", () => {
 describe("resolveAcpFileChangeWriteScope", () => {
   it("returns the location that contains every other location", () => {
     expect(
-      resolveAcpFileChangeWriteScope(
-        ["/tmp/qa-1719/notes.md", "/tmp/qa-1719/"],
-        "linux",
-      ),
+      resolveAcpFileChangeWriteScope([
+        "/tmp/qa-1719/notes.md",
+        "/tmp/qa-1719/",
+      ]),
     ).toBe("/tmp/qa-1719");
     expect(
-      resolveAcpFileChangeWriteScope(
-        ["C:\\repo\\notes.md", "C:\\repo"],
-        "win32",
-      ),
+      resolveAcpFileChangeWriteScope(["C:\\repo\\notes.md", "C:\\repo"]),
     ).toBe("C:\\repo");
   });
 
   it("normalizes .. segments so a path outside the candidate does not pass a raw prefix test", () => {
     expect(
-      resolveAcpFileChangeWriteScope(["/repo/../secret/key", "/repo"], "linux"),
+      resolveAcpFileChangeWriteScope(["/repo/../secret/key", "/repo"]),
     ).toBeNull();
     expect(
-      resolveAcpFileChangeWriteScope(
-        ["/repo/src/../notes.md", "/repo"],
-        "linux",
-      ),
+      resolveAcpFileChangeWriteScope(["/repo/src/../notes.md", "/repo"]),
     ).toBe("/repo");
     expect(
-      resolveAcpFileChangeWriteScope(
-        ["C:\\repo\\src\\..\\notes.md", "C:\\repo"],
-        "win32",
-      ),
+      resolveAcpFileChangeWriteScope([
+        "C:\\repo\\src\\..\\notes.md",
+        "C:\\repo",
+      ]),
     ).toBe("C:\\repo");
   });
 
   it("returns null for paths in different directories and for a lookalike prefix", () => {
     expect(
-      resolveAcpFileChangeWriteScope(
-        ["/tmp/a/notes.md", "/tmp/b/notes.md"],
-        "linux",
-      ),
+      resolveAcpFileChangeWriteScope(["/tmp/a/notes.md", "/tmp/b/notes.md"]),
     ).toBeNull();
     expect(
-      resolveAcpFileChangeWriteScope(
-        ["/tmp/qa-17190/x", "/tmp/qa-1719"],
-        "linux",
-      ),
+      resolveAcpFileChangeWriteScope(["/tmp/qa-17190/x", "/tmp/qa-1719"]),
     ).toBeNull();
     expect(
-      resolveAcpFileChangeWriteScope(
-        ["C:\\a\\notes.md", "C:\\b\\notes.md"],
-        "win32",
-      ),
+      resolveAcpFileChangeWriteScope(["C:\\a\\notes.md", "C:\\b\\notes.md"]),
+    ).toBeNull();
+    expect(
+      resolveAcpFileChangeWriteScope(["C:\\a\\notes.md", "/tmp/a"]),
     ).toBeNull();
   });
 
   it("ignores blank paths and never yields an empty scope", () => {
-    expect(resolveAcpFileChangeWriteScope(["", "  "], "linux")).toBeNull();
-    expect(
-      resolveAcpFileChangeWriteScope(["", "/tmp/qa-1719/notes.md"], "linux"),
-    ).toBe("/tmp/qa-1719/notes.md");
+    expect(resolveAcpFileChangeWriteScope(["", "  "])).toBeNull();
+    expect(resolveAcpFileChangeWriteScope(["", "/tmp/qa-1719/notes.md"])).toBe(
+      "/tmp/qa-1719/notes.md",
+    );
   });
 });

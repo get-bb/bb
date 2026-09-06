@@ -4,15 +4,14 @@ import type {
   ReasoningLevel,
   ServiceTier,
 } from "@bb/domain";
-import path from "node:path";
-
+import { cursorParameterizedSelection } from "./cursor-model-selection.js";
+import { agentPathFlavorForAnchor } from "./agent-paths.js";
 import {
   ACP_DEFAULT_MODEL_ID,
   type AcpBridgeNativeReasoning,
   type AcpBridgePermissionCli,
   type AcpBridgeReasoningCli,
 } from "./bridge-protocol.js";
-import { cursorParameterizedSelection } from "./cursor-model-selection.js";
 import type { AcpLaunchSpec } from "./launch-spec.js";
 
 export interface AcpSessionExecutionOptions {
@@ -91,24 +90,16 @@ function sanitizeAcpSkillDescription(description: string): string {
 
 function buildAcpSkillsInstructions(
   skillRoots: readonly AcpSkillRoot[] | undefined,
-  platform: NodeJS.Platform = process.platform,
 ): string | undefined {
   if (!skillRoots || skillRoots.length === 0) {
     return undefined;
   }
 
-  const joinSkillPath = (...segments: string[]): string =>
-    platform === "win32"
-      ? path.win32.join(...segments)
-      : path.posix.join(...segments);
-
   const skillLines = skillRoots.flatMap((skillRoot) => {
     return skillRoot.skills.map((skill) => {
-      const skillFilePath = joinSkillPath(
+      const skillFilePath = agentPathFlavorForAnchor(
         skillRoot.skillDirectoryRootPath,
-        skill.name,
-        "SKILL.md",
-      );
+      ).join(skillRoot.skillDirectoryRootPath, skill.name, "SKILL.md");
       return `- ${skill.name}: ${sanitizeAcpSkillDescription(skill.description)} (SKILL.md: ${skillFilePath})`;
     });
   });
@@ -126,13 +117,9 @@ function buildAcpSkillsInstructions(
 
 function buildAcpSessionInstructions(
   options: AcpSessionExecutionOptions,
-  platform: NodeJS.Platform = process.platform,
 ): string | undefined {
   const baseInstructions = options.instructions?.trim();
-  const skillsInstructions = buildAcpSkillsInstructions(
-    options.skillRoots,
-    platform,
-  );
+  const skillsInstructions = buildAcpSkillsInstructions(options.skillRoots);
   const instructions = [baseInstructions, skillsInstructions].filter(
     (value): value is string => value !== undefined && value.length > 0,
   );
@@ -271,7 +258,6 @@ interface BuildAcpSessionParamsArgs {
   dynamicTools?: readonly DynamicTool[] | undefined;
   launchSpec: AcpLaunchSpec;
   options: AcpSessionExecutionOptions;
-  platform?: NodeJS.Platform | undefined;
   providerLabel: string;
   threadId: string;
   parameterizedModelPicker: boolean;
@@ -281,10 +267,7 @@ export function buildAcpSessionParams(
   args: BuildAcpSessionParamsArgs,
 ): AcpSessionParams {
   const { options, launchSpec } = args;
-  const instructions = buildAcpSessionInstructions(
-    options,
-    args.platform ?? process.platform,
-  );
+  const instructions = buildAcpSessionInstructions(options);
   const cwd = launchSpec.cwd ?? args.cwd;
   const envVars = {
     ...launchSpec.env,

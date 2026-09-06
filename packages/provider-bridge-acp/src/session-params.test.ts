@@ -409,7 +409,6 @@ describe("buildAcpSessionParams skill instructions", () => {
       cwd: "/workspace",
       options: { ...BASE_OPTIONS, ...options },
       parameterizedModelPicker: false,
-      platform: "linux",
       launchSpec: launchSpecFor({
         displayName: "Custom ACP",
         command: "custom-agent",
@@ -488,7 +487,7 @@ describe("buildAcpSessionParams skill instructions", () => {
     expect(paramsWithOptions({})).not.toHaveProperty("instructions");
   });
 
-  it("joins skill paths with the injected platform", () => {
+  it("joins Windows-shaped skill roots with backslashes on any host", () => {
     const params = buildAcpSessionParams({
       additionalWorkspaceWriteRoots: [],
       cwd: "C:\\workspace",
@@ -503,7 +502,6 @@ describe("buildAcpSessionParams skill instructions", () => {
         ],
       },
       parameterizedModelPicker: false,
-      platform: "win32",
       launchSpec: launchSpecFor({
         displayName: "Custom ACP",
         command: "custom-agent",
