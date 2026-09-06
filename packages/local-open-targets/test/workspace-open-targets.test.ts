@@ -340,18 +340,30 @@ describe("workspace open targets", () => {
     });
   });
 
-  it("returns no targets for unsupported win32 runtime", async () => {
-    const execFile = vi.fn(async () => ({ stdout: "" }));
+  it("lists Windows platform targets without POSIX editor paths", async () => {
+    const execFile = vi.fn<ExecFileHandler>(async () => {
+      throw new Error("Executable not found");
+    });
 
-    await expect(
-      listWorkspaceOpenTargetsWithRuntime(
-        createRuntime({
-          execFile,
-          platform: "win32",
-        }),
-      ),
-    ).resolves.toEqual([]);
-    expect(execFile).not.toHaveBeenCalled();
+    const targets = await listWorkspaceOpenTargetsWithRuntime(
+      createRuntime({
+        execFile,
+        platform: "win32",
+      }),
+    );
+
+    expect(targets.map((target) => target.id)).toEqual([
+      "default-app",
+      "file-manager",
+    ]);
+    expect(execFile).toHaveBeenCalledWith(
+      "where",
+      expect.anything(),
+      expect.anything(),
+    );
+    expect(
+      execFile.mock.calls.some((call) => call[0] === "which"),
+    ).toBe(false);
   });
 
   it("opens WSL paths with the configured default app bridge", async () => {
@@ -438,7 +450,7 @@ describe("workspace open targets", () => {
           path: "/tmp/workspace",
           targetId: "default-app",
         },
-        createRuntime({ platform: "win32" }),
+        createRuntime({ platform: "freebsd" }),
       ),
     ).rejects.toMatchObject({
       code: "unsupported_platform",
@@ -2453,5 +2465,496 @@ describe("workspace open targets", () => {
     } finally {
       await rm(workspacePath, { force: true, recursive: true });
     }
+  });
+
+  describe("windows", () => {
+    function createWindowsExecFile(args: {
+      availableExecutables?: string[];
+      calls?: ExecFileCall[];
+      failWithCode?: (file: string) => number | null;
+    }): ExecFileHandler {
+      const available = new Set(args.availableExecutables ?? []);
+      return async (file, commandArgs, options) => {
+        if (args.calls !== undefined) {
+          const call: ExecFileCall = { file, args: commandArgs };
+          if (options?.env !== undefined) {
+            call.env = options.env;
+          }
+          args.calls.push(call);
+        }
+        if (file === "where") {
+          const executable = commandArgs[0];
+          if (executable && available.has(executable)) {
+            return { stdout: `C:\\Reported\\${executable}.exe\n` };
+          }
+          throw new Error("Executable not found");
+        }
+        const failCode = args.failWithCode?.(file) ?? null;
+        if (failCode !== null) {
+          throw Object.assign(new Error(`Process exited with ${failCode}`), {
+            code: failCode,
+          });
+        }
+        return { stdout: "" };
+      };
+    }
+
+    function createWindowsRuntime(args: {
+      availableExecutables?: string[];
+      calls?: ExecFileCall[];
+      env?: NodeJS.ProcessEnv;
+      failWithCode?: (file: string) => number | null;
+    }): WorkspaceOpenTargetRuntime {
+      return createRuntime({
+        env: args.env,
+        execFile: createWindowsExecFile(args),
+        platform: "win32",
+      });
+    }
+
+    it("discovers VS Code through where with line, column and remote support", async () => {
+      const targets = await listWorkspaceOpenTargetsWithRuntime(
+        createWindowsRuntime({
+          availableExecutables: ["code", "ssh"],
+        }),
+      );
+
+      expect(targets.map((target) => target.id)).toEqual([
+        "vscode",
+        "default-app",
+        "file-manager",
+      ]);
+      expect(targets.find((target) => target.id === "vscode")).toMatchObject({
+        capabilities: {
+          openDirectory: true,
+          openFile: true,
+          openFileAtColumn: true,
+          openFileAtLine: true,
+        },
+        kind: "editor",
+        label: "VS Code",
+        remoteSshCapabilities: {
+          openDirectory: true,
+          openFile: true,
+          openFileAtColumn: true,
+          openFileAtLine: true,
+        },
+      });
+    });
+
+    it("advertises VS Code remote support when its CLI is present without ssh", async () => {
+      const targets = await listWorkspaceOpenTargetsWithRuntime(
+        createWindowsRuntime({
+          availableExecutables: ["code"],
+        }),
+      );
+
+      expect(targets.find((target) => target.id === "vscode")).toMatchObject({
+        remoteSshCapabilities: {
+          openDirectory: true,
+          openFile: true,
+          openFileAtColumn: true,
+          openFileAtLine: true,
+        },
+      });
+    });
+
+    it("discovers fallback executables on Windows PATH", async () => {
+      const workspacePath = await mkdtemp(path.join(tmpdir(), "bb-workspace-"));
+      const filePath = path.join(workspacePath, "main.ts");
+      const calls: ExecFileCall[] = [];
+
+      try {
+        await writeFile(filePath, "export const value = 1;\n");
+
+        const targets = await listWorkspaceOpenTargetsWithRuntime(
+          createWindowsRuntime({ availableExecutables: ["windsurf"] }),
+        );
+        expect(targets.map((target) => target.id)).toContain(
+          "devin-desktop",
+        );
+
+        await openPathInTargetWithRuntime(
+          {
+            context: { kind: "local" },
+            columnNumber: 6,
+            lineNumber: 15,
+            path: filePath,
+            targetId: "devin-desktop",
+          },
+          createWindowsRuntime({
+            availableExecutables: ["windsurf"],
+            calls,
+          }),
+        );
+
+        expect(calls.find((call) => call.file === "cmd.exe")).toEqual({
+          file: "cmd.exe",
+          args: ["/d", "/s", "/c", "windsurf", "-g", `${filePath}:15:6`],
+        });
+      } finally {
+        await rm(workspacePath, { force: true, recursive: true });
+      }
+    });
+
+    it("reports VS Code remote support unavailable when its CLI is missing", async () => {
+      await expect(
+        openPathInTargetWithRuntime(
+          {
+            context: {
+              kind: "remote-ssh",
+              sshAuthority: "devbox",
+            },
+            columnNumber: null,
+            lineNumber: null,
+            path: "/home/me/project",
+            targetId: "vscode",
+          },
+          createWindowsRuntime({}),
+        ),
+      ).rejects.toMatchObject({
+        code: "target_unavailable",
+      });
+    });
+
+    it("opens folders with explorer.exe", async () => {
+      const workspacePath = await mkdtemp(path.join(tmpdir(), "bb-workspace-"));
+      const calls: ExecFileCall[] = [];
+
+      try {
+        await openPathInTargetWithRuntime(
+          {
+            context: { kind: "local" },
+            columnNumber: null,
+            lineNumber: null,
+            path: workspacePath,
+            targetId: "file-manager",
+          },
+          createWindowsRuntime({
+            availableExecutables: ["explorer.exe"],
+            calls,
+          }),
+        );
+
+        expect(calls.find((call) => call.file === "explorer.exe")).toEqual({
+          file: "explorer.exe",
+          args: [workspacePath],
+        });
+      } finally {
+        await rm(workspacePath, { force: true, recursive: true });
+      }
+    });
+
+    it("opens files with the default app through cmd start", async () => {
+      const workspacePath = await mkdtemp(path.join(tmpdir(), "bb-workspace-"));
+      const filePath = path.join(workspacePath, "notes.md");
+      const calls: ExecFileCall[] = [];
+
+      try {
+        await writeFile(filePath, "# Notes\n");
+
+        await openPathInTargetWithRuntime(
+          {
+            context: { kind: "local" },
+            columnNumber: null,
+            lineNumber: null,
+            path: filePath,
+            targetId: "default-app",
+          },
+          createWindowsRuntime({ calls }),
+        );
+
+        expect(calls.find((call) => call.file === "cmd.exe")).toEqual({
+          file: "cmd.exe",
+          args: ["/d", "/s", "/c", "start", "", filePath],
+        });
+      } finally {
+        await rm(workspacePath, { force: true, recursive: true });
+      }
+    });
+
+    it("opens file-manager targets at the Windows containing directory", async () => {
+      const workspacePath = await mkdtemp(path.join(tmpdir(), "bb-workspace-"));
+      const nestedDirectory = `${workspacePath}\\sub`;
+      const filePath = `${nestedDirectory}\\notes.md`;
+      const calls: ExecFileCall[] = [];
+
+      try {
+        await mkdir(nestedDirectory, { recursive: true });
+        await writeFile(filePath, "# Notes\n");
+
+        await openPathInTargetWithRuntime(
+          {
+            context: { kind: "local" },
+            columnNumber: null,
+            lineNumber: null,
+            path: filePath,
+            targetId: "file-manager",
+          },
+          createWindowsRuntime({ calls }),
+        );
+
+        expect(calls.find((call) => call.file === "explorer.exe")).toEqual({
+          file: "explorer.exe",
+          args: [nestedDirectory],
+        });
+      } finally {
+        await rm(workspacePath, { force: true, recursive: true });
+      }
+    });
+
+    it("opens files in VS Code at line and column through code.cmd", async () => {
+      const workspacePath = await mkdtemp(path.join(tmpdir(), "bb-workspace-"));
+      const filePath = path.join(workspacePath, "src", "file.ts");
+      const calls: ExecFileCall[] = [];
+
+      try {
+        await mkdir(path.dirname(filePath), { recursive: true });
+        await writeFile(filePath, "export const value = 1;\n");
+
+        await openPathInTargetWithRuntime(
+          {
+            context: { kind: "local" },
+            columnNumber: 6,
+            lineNumber: 15,
+            path: filePath,
+            targetId: "vscode",
+          },
+          createWindowsRuntime({
+            availableExecutables: ["code"],
+            calls,
+          }),
+        );
+
+        expect(calls.find((call) => call.file === "cmd.exe")).toEqual({
+          file: "cmd.exe",
+          args: ["/d", "/s", "/c", "code", "-g", `${filePath}:15:6`],
+        });
+        expect(
+          calls.find((call) => call.file === "where")?.args,
+        ).toEqual(["code"]);
+        expect(calls.some((call) => call.file === "which")).toBe(false);
+      } finally {
+        await rm(workspacePath, { force: true, recursive: true });
+      }
+    });
+
+    it("treats explorer.exe exit code 1 as success", async () => {
+      const workspacePath = await mkdtemp(path.join(tmpdir(), "bb-workspace-"));
+
+      try {
+        await expect(
+          openPathInTargetWithRuntime(
+            {
+              context: { kind: "local" },
+              columnNumber: null,
+              lineNumber: null,
+              path: workspacePath,
+              targetId: "file-manager",
+            },
+            createWindowsRuntime({
+              failWithCode: (file) => (file === "explorer.exe" ? 1 : null),
+            }),
+          ),
+        ).resolves.toBeUndefined();
+      } finally {
+        await rm(workspacePath, { force: true, recursive: true });
+      }
+    });
+
+    it("still surfaces non-1 explorer.exe failures", async () => {
+      const workspacePath = await mkdtemp(path.join(tmpdir(), "bb-workspace-"));
+
+      try {
+        await expect(
+          openPathInTargetWithRuntime(
+            {
+              context: { kind: "local" },
+              columnNumber: null,
+              lineNumber: null,
+              path: workspacePath,
+              targetId: "file-manager",
+            },
+            createWindowsRuntime({
+              failWithCode: (file) => (file === "explorer.exe" ? 2 : null),
+            }),
+          ),
+        ).rejects.toMatchObject({ code: 2 });
+      } finally {
+        await rm(workspacePath, { force: true, recursive: true });
+      }
+    });
+
+    it("detects VS Code from Windows install roots when where misses", async () => {
+      const root = await mkdtemp(path.join(tmpdir(), "bb-localappdata-"));
+      const codeCmd = path.join(
+        root,
+        "Programs",
+        "Microsoft VS Code",
+        "bin",
+        "code.cmd",
+      );
+      const workspacePath = await mkdtemp(path.join(tmpdir(), "bb-workspace-"));
+      const filePath = path.join(workspacePath, "notes.md");
+      const calls: ExecFileCall[] = [];
+
+      try {
+        await mkdir(path.dirname(codeCmd), { recursive: true });
+        await writeFile(codeCmd, "@echo off\n");
+        await writeFile(filePath, "# Notes\n");
+
+        const runtime = createWindowsRuntime({
+          calls,
+          env: { LOCALAPPDATA: root },
+        });
+        const targets = await listWorkspaceOpenTargetsWithRuntime(runtime);
+        expect(targets.map((target) => target.id)).toContain("vscode");
+
+        await openPathInTargetWithRuntime(
+          {
+            context: { kind: "local" },
+            columnNumber: null,
+            lineNumber: null,
+            path: filePath,
+            targetId: "vscode",
+          },
+          runtime,
+        );
+
+        expect(calls.find((call) => call.file === "cmd.exe")).toEqual({
+          file: "cmd.exe",
+          args: ["/d", "/s", "/c", codeCmd, filePath],
+          env: { LOCALAPPDATA: root },
+        });
+      } finally {
+        await rm(root, { force: true, recursive: true });
+        await rm(workspacePath, { force: true, recursive: true });
+      }
+    });
+
+    it("launches installed Code.exe directly without a cmd wrapper", async () => {
+      const root = await mkdtemp(path.join(tmpdir(), "bb-localappdata-"));
+      const codeExe = path.join(
+        root,
+        "Programs",
+        "Microsoft VS Code",
+        "Code.exe",
+      );
+      const workspacePath = await mkdtemp(path.join(tmpdir(), "bb-workspace-"));
+      const calls: ExecFileCall[] = [];
+
+      try {
+        await mkdir(path.dirname(codeExe), { recursive: true });
+        await writeFile(codeExe, "");
+
+        await openPathInTargetWithRuntime(
+          {
+            context: { kind: "local" },
+            columnNumber: null,
+            lineNumber: null,
+            path: workspacePath,
+            targetId: "vscode",
+          },
+          createWindowsRuntime({
+            calls,
+            env: { LOCALAPPDATA: root },
+          }),
+        );
+
+        expect(calls.find((call) => call.file === codeExe)).toEqual({
+          file: codeExe,
+          args: [workspacePath],
+          env: { LOCALAPPDATA: root },
+        });
+        expect(calls.some((call) => call.file === "cmd.exe")).toBe(false);
+      } finally {
+        await rm(root, { force: true, recursive: true });
+        await rm(workspacePath, { force: true, recursive: true });
+      }
+    });
+
+    it("opens remote SSH paths in VS Code through code.cmd", async () => {
+      const calls: ExecFileCall[] = [];
+
+      await openPathInTargetWithRuntime(
+        {
+          context: {
+            kind: "remote-ssh",
+            sshAuthority: "devbox",
+          },
+          columnNumber: 9,
+          lineNumber: 42,
+          path: "/home/me/missing-on-client.ts",
+          targetId: "vscode",
+        },
+        createWindowsRuntime({
+          availableExecutables: ["code", "ssh"],
+          calls,
+        }),
+      );
+
+      expect(calls.find((call) => call.file === "cmd.exe")).toEqual({
+        file: "cmd.exe",
+        args: [
+          "/d",
+          "/s",
+          "/c",
+          "code",
+          "--remote",
+          "ssh-remote+devbox",
+          "-g",
+          "/home/me/missing-on-client.ts:42:9",
+        ],
+      });
+    });
+
+    it("rejects remote SSH opens for targets without remote support", async () => {
+      await expect(
+        openPathInTargetWithRuntime(
+          {
+            context: {
+              kind: "remote-ssh",
+              sshAuthority: "devbox",
+            },
+            columnNumber: null,
+            lineNumber: null,
+            path: "/home/me/project",
+            targetId: "file-manager",
+          },
+          createWindowsRuntime({}),
+        ),
+      ).rejects.toMatchObject({
+        code: "remote_target_unsupported",
+      });
+    });
+
+    it("rejects desktop and macOS app targets as unavailable", async () => {
+      const workspacePath = await mkdtemp(path.join(tmpdir(), "bb-workspace-"));
+
+      try {
+        for (const targetId of [
+          "desktop-app:mockedit",
+          "mac-app:com.example.MockEdit",
+          "terminal",
+        ]) {
+          await expect(
+            openPathInTargetWithRuntime(
+              {
+                context: { kind: "local" },
+                columnNumber: null,
+                lineNumber: null,
+                path: workspacePath,
+                targetId,
+              },
+              createWindowsRuntime({}),
+            ),
+          ).rejects.toMatchObject({
+            code: "target_unavailable",
+          });
+        }
+      } finally {
+        await rm(workspacePath, { force: true, recursive: true });
+      }
+    });
   });
 });

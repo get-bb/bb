@@ -501,9 +501,16 @@ async function execInvocation(
   invocation: ExecFileInvocation,
   runtime: WorkspaceOpenTargetRuntime,
 ): Promise<void> {
-  await runtime.execFile(invocation.file, invocation.args, {
-    env: invocation.env,
-  });
+  try {
+    await runtime.execFile(invocation.file, invocation.args, {
+      env: invocation.env,
+    });
+  } catch (error) {
+    if (isWindowsExplorerInvocation(invocation) && isExitCodeOneError(error)) {
+      return;
+    }
+    throw error;
+  }
 }
 
 export function createWorkspaceOpenTargetRuntime(
@@ -928,6 +935,9 @@ export async function listWorkspaceOpenTargetsWithRuntime(
   runtime: WorkspaceOpenTargetRuntime,
   options: ListWorkspaceOpenTargetsOptions = {},
 ): Promise<WorkspaceOpenTarget[]> {
+  if (runtime.platform === "win32") {
+    return listWindowsWorkspaceOpenTargets(runtime);
+  }
   if (runtime.platform !== "darwin") {
     if (runtime.platform !== "linux") {
       return [];
@@ -1576,6 +1586,504 @@ async function resolveCliOpenInvocation(
   });
 }
 
+const WINDOWS_CMD_EXECUTABLE = "cmd.exe";
+const WINDOWS_CMD_FLAG_ARGS = ["/d", "/s", "/c"];
+const WINDOWS_EXPLORER_EXECUTABLE = "explorer.exe";
+const WINDOWS_WHERE_EXECUTABLE = "where";
+const WINDOWS_START_EMPTY_TITLE_ARG = "";
+const WINDOWS_SCRIPT_EXECUTABLE_EXTENSIONS = new Set([".bat", ".cmd"]);
+const WINDOWS_INSTALL_ROOT_ENV_VARIABLES = [
+  "ProgramFiles",
+  "ProgramFiles(x86)",
+] as const;
+
+interface ResolvedWindowsCommandExecutable {
+  argsPrefix: string[];
+  env?: NodeJS.ProcessEnv;
+  file: string;
+}
+
+function isWindowsExplorerInvocation(
+  invocation: ExecFileInvocation,
+): boolean {
+  const segments = invocation.file.split(/[\\/]/u);
+  const baseName = segments[segments.length - 1] ?? invocation.file;
+  return baseName.toLowerCase() === WINDOWS_EXPLORER_EXECUTABLE;
+}
+
+function isExitCodeOneError(error: unknown): boolean {
+  return error instanceof Error && "code" in error && error.code === 1;
+}
+
+function readWindowsEnvValue(
+  runtime: WorkspaceOpenTargetRuntime,
+  name: string,
+): string | undefined {
+  const env = runtime.env;
+  if (env === undefined) {
+    return undefined;
+  }
+  const direct = env[name];
+  if (direct !== undefined) {
+    return direct;
+  }
+  const lowerName = name.toLowerCase();
+  for (const [key, value] of Object.entries(env)) {
+    if (key.toLowerCase() === lowerName) {
+      return value;
+    }
+  }
+  return undefined;
+}
+
+function getWindowsInstallRoots(
+  runtime: WorkspaceOpenTargetRuntime,
+): string[] {
+  const roots: string[] = [];
+  const localAppData = readWindowsEnvValue(runtime, "LOCALAPPDATA")?.trim();
+  if (localAppData !== undefined && localAppData.length > 0) {
+    roots.push(path.join(localAppData, "Programs"));
+  }
+  for (const variableName of WINDOWS_INSTALL_ROOT_ENV_VARIABLES) {
+    const root = readWindowsEnvValue(runtime, variableName)?.trim();
+    if (
+      root !== undefined &&
+      root.length > 0 &&
+      !roots.includes(root)
+    ) {
+      roots.push(root);
+    }
+  }
+  return roots;
+}
+
+function getWindowsKnownExecutablePaths(
+  definition: LaunchAdapter,
+  runtime: WorkspaceOpenTargetRuntime,
+): string[] {
+  const relativePaths = definition.windows?.knownRelativePaths ?? [];
+  if (relativePaths.length === 0) {
+    return [];
+  }
+  return getWindowsInstallRoots(runtime).flatMap((root) =>
+    relativePaths.map((relativePath) => path.join(root, ...relativePath)),
+  );
+}
+
+async function isWindowsExecutableOnPath(
+  executable: string,
+  runtime: WorkspaceOpenTargetRuntime,
+): Promise<boolean> {
+  try {
+    await runtime.execFile(WINDOWS_WHERE_EXECUTABLE, [executable], {
+      env: runtime.env,
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function resolveWindowsCommandExecutable(
+  definition: LaunchAdapter,
+  command: MacCommandAdapter,
+  runtime: WorkspaceOpenTargetRuntime,
+): Promise<ResolvedWindowsCommandExecutable | null> {
+  for (const candidate of [command, ...(command.fallbackExecutables ?? [])]) {
+    if (await isWindowsExecutableOnPath(candidate.executable, runtime)) {
+      return {
+        file: WINDOWS_CMD_EXECUTABLE,
+        argsPrefix: [...WINDOWS_CMD_FLAG_ARGS, candidate.executable],
+        env: runtime.env,
+      };
+    }
+  }
+  for (const candidatePath of getWindowsKnownExecutablePaths(
+    definition,
+    runtime,
+  )) {
+    if (!(await pathExists(candidatePath))) {
+      continue;
+    }
+    if (
+      WINDOWS_SCRIPT_EXECUTABLE_EXTENSIONS.has(
+        path.extname(candidatePath).toLowerCase(),
+      )
+    ) {
+      return {
+        file: WINDOWS_CMD_EXECUTABLE,
+        argsPrefix: [...WINDOWS_CMD_FLAG_ARGS, candidatePath],
+        env: runtime.env,
+      };
+    }
+    return {
+      file: candidatePath,
+      argsPrefix: [],
+      env: runtime.env,
+    };
+  }
+  return null;
+}
+
+function getWindowsCliOpenCommand(
+  adapter: LaunchAdapter,
+): MacCommandAdapter | null {
+  if (adapter.macos.openMode === "default-app") {
+    return null;
+  }
+  return (
+    adapter.macos.pathOpenCommand ?? adapter.macos.lineOpenCommand ?? null
+  );
+}
+
+async function isWindowsCliTargetAvailable(
+  adapter: LaunchAdapter,
+  runtime: WorkspaceOpenTargetRuntime,
+): Promise<boolean> {
+  const command = getWindowsCliOpenCommand(adapter);
+  return (
+    command !== null &&
+    (await resolveWindowsCommandExecutable(adapter, command, runtime)) !==
+      null
+  );
+}
+
+async function findUnavailableWindowsRemoteSshExecutable(
+  definition: LaunchAdapter,
+  command: MacRemoteSshOpenCommandAdapter,
+  runtime: WorkspaceOpenTargetRuntime,
+): Promise<string | null> {
+  for (const executable of command.requiredExecutables ?? []) {
+    if (!(await isWindowsExecutableOnPath(executable, runtime))) {
+      return executable;
+    }
+  }
+  return (await resolveWindowsCommandExecutable(
+    definition,
+    command,
+    runtime,
+  )) === null
+    ? command.executable
+    : null;
+}
+
+async function toWindowsCliWorkspaceOpenTarget(
+  definition: LaunchAdapter,
+  runtime: WorkspaceOpenTargetRuntime,
+): Promise<WorkspaceOpenTarget | null> {
+  if (!(await isWindowsCliTargetAvailable(definition, runtime))) {
+    return null;
+  }
+  const target = toCliWorkspaceOpenTarget(definition);
+  if (
+    definition.macos.openMode !== "default-app" &&
+    definition.macos.remoteSshOpenCommand !== undefined &&
+    (await findUnavailableWindowsRemoteSshExecutable(
+      definition,
+      definition.macos.remoteSshOpenCommand,
+      runtime,
+    )) !== null
+  ) {
+    delete target.remoteSshCapabilities;
+  }
+  return target;
+}
+
+async function listWindowsWorkspaceOpenTargets(
+  runtime: WorkspaceOpenTargetRuntime,
+): Promise<WorkspaceOpenTarget[]> {
+  const editors = await Promise.all(
+    LAUNCH_ADAPTERS.map((adapter) =>
+      toWindowsCliWorkspaceOpenTarget(adapter, runtime),
+    ),
+  );
+  return [
+    ...editors.filter(isWorkspaceOpenTarget),
+    {
+      id: "default-app",
+      label: "Default App",
+      kind: "default-app",
+      icon: { kind: "symbol", name: "default-app" },
+      capabilities: BASIC_FILE_OPEN_CAPABILITIES,
+    },
+    {
+      id: "file-manager",
+      label: "File Manager",
+      kind: "file-manager",
+      icon: { kind: "symbol", name: "file-manager" },
+      capabilities: FILE_MANAGER_OPEN_CAPABILITIES,
+    },
+  ];
+}
+
+async function maybeResolveWindowsLineOpenInvocation(
+  args: ResolveMacOpenInvocationArgs,
+  runtime: WorkspaceOpenTargetRuntime,
+): Promise<ExecFileInvocation | null> {
+  if (args.lineNumber === null || args.existingPath.type !== "file") {
+    return null;
+  }
+  if (args.definition.macos.openMode === "default-app") {
+    return null;
+  }
+  const lineOpenCommand = args.definition.macos.lineOpenCommand;
+  if (!lineOpenCommand) {
+    return null;
+  }
+  const commandExecutable = await resolveWindowsCommandExecutable(
+    args.definition,
+    lineOpenCommand,
+    runtime,
+  );
+  if (commandExecutable === null) {
+    return null;
+  }
+  return {
+    file: commandExecutable.file,
+    args: [
+      ...commandExecutable.argsPrefix,
+      ...lineOpenCommand.toArgs({
+        columnNumber: lineOpenCommand.supportsColumn ? args.columnNumber : null,
+        lineNumber: args.lineNumber,
+        path: args.existingPath.path,
+      }),
+    ],
+    env: commandExecutable.env,
+  };
+}
+
+async function maybeResolveWindowsPathOpenInvocation(
+  args: ResolveMacOpenInvocationArgs,
+  runtime: WorkspaceOpenTargetRuntime,
+): Promise<ExecFileInvocation | null> {
+  if (args.definition.macos.openMode === "default-app") {
+    return null;
+  }
+  const pathOpenCommand = args.definition.macos.pathOpenCommand;
+  if (!pathOpenCommand) {
+    return null;
+  }
+  const commandExecutable = await resolveWindowsCommandExecutable(
+    args.definition,
+    pathOpenCommand,
+    runtime,
+  );
+  if (commandExecutable === null) {
+    return null;
+  }
+  const openPath = resolveTargetOpenPath({
+    definition: args.definition,
+    existingPath: args.existingPath,
+  });
+  return {
+    file: commandExecutable.file,
+    args: [
+      ...commandExecutable.argsPrefix,
+      ...pathOpenCommand.toArgs(openPath),
+    ],
+    env: commandExecutable.env,
+  };
+}
+
+async function resolveWindowsCliOpenInvocation(
+  args: PlatformOpenInvocationArgs & {
+    definition: LaunchAdapter;
+  },
+  runtime: WorkspaceOpenTargetRuntime,
+): Promise<ExecFileInvocation> {
+  const lineOpenInvocation = await maybeResolveWindowsLineOpenInvocation(
+    args,
+    runtime,
+  );
+  if (lineOpenInvocation) {
+    return lineOpenInvocation;
+  }
+  const pathOpenInvocation = await maybeResolveWindowsPathOpenInvocation(
+    args,
+    runtime,
+  );
+  if (pathOpenInvocation) {
+    return pathOpenInvocation;
+  }
+  throw new WorkspaceOpenTargetError({
+    code: "target_unavailable",
+    message: `Workspace open target is unavailable: ${args.definition.label}`,
+  });
+}
+
+function resolveWindowsDefaultAppOpenInvocation(
+  existingPath: ExistingPath,
+  runtime: WorkspaceOpenTargetRuntime,
+): ExecFileInvocation {
+  if (existingPath.type === "directory") {
+    return {
+      file: WINDOWS_EXPLORER_EXECUTABLE,
+      args: [existingPath.path],
+      env: runtime.env,
+    };
+  }
+  return {
+    file: WINDOWS_CMD_EXECUTABLE,
+    args: [
+      ...WINDOWS_CMD_FLAG_ARGS,
+      "start",
+      WINDOWS_START_EMPTY_TITLE_ARG,
+      existingPath.path,
+    ],
+    env: runtime.env,
+  };
+}
+
+function resolveWindowsFileManagerOpenInvocation(
+  existingPath: ExistingPath,
+  runtime: WorkspaceOpenTargetRuntime,
+): ExecFileInvocation {
+  const openPath =
+    existingPath.type === "file"
+      ? path.win32.dirname(existingPath.path)
+      : existingPath.path;
+  return {
+    file: WINDOWS_EXPLORER_EXECUTABLE,
+    args: [openPath],
+    env: runtime.env,
+  };
+}
+
+async function resolveWindowsRemoteSshOpenInvocation(
+  args: ResolveMacRemoteSshOpenInvocationArgs,
+  runtime: WorkspaceOpenTargetRuntime,
+): Promise<ExecFileInvocation> {
+  if (args.definition.macos.openMode === "default-app") {
+    throw new WorkspaceOpenTargetError({
+      code: "remote_target_unsupported",
+      message: `${args.definition.label} cannot open remote SSH paths`,
+    });
+  }
+  const remoteSshOpenCommand = args.definition.macos.remoteSshOpenCommand;
+  if (remoteSshOpenCommand === undefined) {
+    throw new WorkspaceOpenTargetError({
+      code: "remote_target_unsupported",
+      message: `${args.definition.label} cannot open remote SSH paths`,
+    });
+  }
+  const unavailableExecutable =
+    await findUnavailableWindowsRemoteSshExecutable(
+      args.definition,
+      remoteSshOpenCommand,
+      runtime,
+    );
+  if (unavailableExecutable !== null) {
+    throw new WorkspaceOpenTargetError({
+      code: "target_unavailable",
+      message: `${args.definition.label} remote SSH opener is unavailable: ${unavailableExecutable}`,
+    });
+  }
+  const commandExecutable = await resolveWindowsCommandExecutable(
+    args.definition,
+    remoteSshOpenCommand,
+    runtime,
+  );
+  if (commandExecutable === null) {
+    throw new WorkspaceOpenTargetError({
+      code: "target_unavailable",
+      message: `${args.definition.label} remote SSH opener is unavailable: ${remoteSshOpenCommand.executable}`,
+    });
+  }
+  return {
+    file: commandExecutable.file,
+    args: [
+      ...commandExecutable.argsPrefix,
+      ...remoteSshOpenCommand.toArgs({
+        columnNumber: remoteSshOpenCommand.capabilities.openFileAtColumn
+          ? args.columnNumber
+          : null,
+        lineNumber: remoteSshOpenCommand.capabilities.openFileAtLine
+          ? args.lineNumber
+          : null,
+        path: args.path,
+        sshAuthority: args.sshAuthority,
+      }),
+    ],
+    env: commandExecutable.env,
+  };
+}
+
+async function resolveWindowsOpenInvocation(
+  args: OpenPathInTargetArgs,
+  runtime: WorkspaceOpenTargetRuntime,
+): Promise<ExecFileInvocation> {
+  if (args.context.kind === "remote-ssh") {
+    if (parseDesktopApplicationTargetId(args.targetId) !== null) {
+      throw new WorkspaceOpenTargetError({
+        code: "remote_target_unsupported",
+        message: `${args.targetId} cannot open remote SSH paths`,
+      });
+    }
+    const definition = findLaunchAdapter(args.targetId);
+    if (
+      definition !== null &&
+      definition.macos.openMode !== "default-app" &&
+      definition.macos.remoteSshOpenCommand !== undefined
+    ) {
+      return resolveWindowsRemoteSshOpenInvocation(
+        {
+          definition,
+          columnNumber: args.columnNumber,
+          lineNumber: args.lineNumber,
+          path: args.path,
+          sshAuthority: args.context.sshAuthority,
+        },
+        runtime,
+      );
+    }
+    throw new WorkspaceOpenTargetError({
+      code: "remote_target_unsupported",
+      message: `${args.targetId} cannot open remote SSH paths`,
+    });
+  }
+  const existingPath = await requireOpenablePath(args.path);
+  if (parseDesktopApplicationTargetId(args.targetId) !== null) {
+    throw new WorkspaceOpenTargetError({
+      code: "target_unavailable",
+      message: `Workspace open target is unavailable: ${args.targetId}`,
+    });
+  }
+  if (parseMacApplicationTargetId(args.targetId) !== null) {
+    throw new WorkspaceOpenTargetError({
+      code: "target_unavailable",
+      message: `Workspace open target is unavailable: ${args.targetId}`,
+    });
+  }
+  const platformArgs: PlatformOpenInvocationArgs = {
+    columnNumber: args.columnNumber,
+    existingPath,
+    lineNumber: args.lineNumber,
+  };
+  const definition = findLaunchAdapter(args.targetId);
+  if (
+    definition !== null &&
+    (await isWindowsCliTargetAvailable(definition, runtime))
+  ) {
+    return resolveWindowsCliOpenInvocation(
+      {
+        ...platformArgs,
+        definition,
+      },
+      runtime,
+    );
+  }
+  if (args.targetId === "default-app") {
+    return resolveWindowsDefaultAppOpenInvocation(existingPath, runtime);
+  }
+  if (args.targetId === "file-manager") {
+    return resolveWindowsFileManagerOpenInvocation(existingPath, runtime);
+  }
+  throw new WorkspaceOpenTargetError({
+    code: "target_unavailable",
+    message: `Workspace open target is unavailable: ${args.targetId}`,
+  });
+}
+
 async function resolvePlatformDefaultOpenInvocation(
   args: PlatformOpenInvocationArgs,
   runtime: WorkspaceOpenTargetRuntime,
@@ -1936,6 +2444,11 @@ export async function openPathInTargetWithRuntime(
   args: OpenPathInTargetArgs,
   runtime: WorkspaceOpenTargetRuntime,
 ): Promise<void> {
+  if (runtime.platform === "win32") {
+    const invocation = await resolveWindowsOpenInvocation(args, runtime);
+    await execInvocation(invocation, runtime);
+    return;
+  }
   if (runtime.platform !== "darwin") {
     const invocation = await resolvePlatformOpenInvocation(args, runtime);
     await execInvocation(invocation, runtime);
