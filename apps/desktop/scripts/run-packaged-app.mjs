@@ -26,7 +26,10 @@ const child = spawn(
   await resolvePackagedAppBinary({
     executableName: releaseConfig.linuxExecutableName,
     platform: process.platform,
-    productName: releaseConfig.applicationName,
+    productName:
+      process.platform === "win32"
+        ? releaseConfig.windowsApplicationName
+        : releaseConfig.applicationName,
     releaseDir,
   }),
   [],

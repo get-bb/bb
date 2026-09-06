@@ -38,11 +38,6 @@ const requiredSigningEnvironmentKeys = [
 
 const printConfigFlag = "--print-config";
 const windowsBuildFlag = "--win";
-const windowsStableAppId = "cl.bb.wn";
-const windowsNightlyAppId = "cl.bb.wn.nightly";
-const windowsStableProductName = "bb wn";
-const windowsNightlyProductName = "bb wn Nightly";
-const windowsArtifactName = "bb-wn-Setup-${version}.exe";
 
 function envValueIsSet(value) {
   return typeof value === "string" && value.trim().length > 0;
@@ -168,23 +163,14 @@ function isWindowsBuild(electronBuilderArgs) {
   return electronBuilderArgs.includes(windowsBuildFlag);
 }
 
-function resolveWindowsIconAsset(releaseChannel) {
-  return releaseChannel === "nightly"
-    ? "assets/icon-nightly.ico"
-    : "assets/icon.ico";
-}
-
-function applyWindowsOverrides(config, releaseChannel) {
-  const nightly = releaseChannel === "nightly";
-  config.appId = nightly ? windowsNightlyAppId : windowsStableAppId;
-  config.productName = nightly
-    ? windowsNightlyProductName
-    : windowsStableProductName;
+function applyWindowsOverrides(config, releaseConfig) {
   const baseWin = config.win ?? {};
+  config.appId = releaseConfig.windowsAppId;
+  config.productName = releaseConfig.windowsApplicationName;
   config.win = {
     ...baseWin,
-    artifactName: windowsArtifactName,
-    icon: resolveWindowsIconAsset(releaseChannel),
+    artifactName: releaseConfig.windowsArtifactName,
+    icon: releaseConfig.windowsIconPath,
     target: baseWin.target ?? [{ arch: ["x64"], target: "nsis" }],
   };
   const baseNsis = config.nsis ?? {};
@@ -194,7 +180,7 @@ function applyWindowsOverrides(config, releaseChannel) {
     createDesktopShortcut: true,
     oneClick: false,
     perMachine: false,
-    shortcutName: windowsStableProductName,
+    shortcutName: releaseConfig.windowsApplicationName,
   };
 }
 
@@ -228,7 +214,7 @@ function resolveElectronBuilderConfig(baseConfig, env, electronBuilderArgs = [])
   config.artifactName = releaseConfig.artifactName;
   config.productName = releaseConfig.applicationName;
   if (isWindowsBuild(electronBuilderArgs)) {
-    applyWindowsOverrides(config, releaseChannel);
+    applyWindowsOverrides(config, releaseConfig);
   }
   config.publish = [
     {

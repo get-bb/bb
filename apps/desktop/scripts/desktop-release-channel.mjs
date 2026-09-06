@@ -43,6 +43,10 @@ export function createDesktopReleaseConfig(channel) {
         linux: "nightly-linux.yml",
         macos: "nightly-mac.yml",
       },
+      windowsAppId: "cl.bb.wn.nightly",
+      windowsApplicationName: "bb wn Nightly",
+      windowsArtifactName: "bb-wn-Setup-${version}.exe",
+      windowsIconPath: "assets/icon-nightly.ico",
     };
   }
 
@@ -58,6 +62,10 @@ export function createDesktopReleaseConfig(channel) {
       linux: "latest-linux.yml",
       macos: "latest-mac.yml",
     },
+    windowsAppId: "cl.bb.wn",
+    windowsApplicationName: "bb wn",
+    windowsArtifactName: "bb-wn-Setup-${version}.exe",
+    windowsIconPath: "assets/icon.ico",
   };
 }
 

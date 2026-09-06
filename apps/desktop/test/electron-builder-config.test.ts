@@ -663,6 +663,7 @@ describe("electron-builder signing config", () => {
     expect(config.productName).toBe("bb wn Nightly");
     expect(config.win.icon).toBe("assets/icon-nightly.ico");
     expect(config.win.artifactName).toBe("bb-wn-Setup-${version}.exe");
+    expect(config.nsis.shortcutName).toBe("bb wn Nightly");
   });
 
   it("grants audio input to the signed app and helper processes", async () => {
