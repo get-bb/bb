@@ -1124,7 +1124,10 @@ export class RuntimeManager {
           {
             environmentId: entry.environmentId,
             workspacePath: entry.workspace.path,
-            pids: killed.map((process) => process.pid),
+            pids: killed.map(
+              (killedProcess) =>
+                `${killedProcess.pid}:${killedProcess.matchEvidence ?? "exact"}`,
+            ),
           },
           "Killed processes still running in a destroyed environment",
         );

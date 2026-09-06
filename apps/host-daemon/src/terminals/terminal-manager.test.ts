@@ -9,6 +9,10 @@ import {
   makeWorkspaceMergeBase,
   makeWorkspaceStatus,
 } from "@bb/test-helpers";
+import {
+  clearSweepRootProcesses,
+  listProcessesWithCwdUnder,
+} from "@bb/process-utils";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { HostDaemonLogger } from "../logger.js";
 import { RuntimeManager } from "../runtime-manager.js";
@@ -99,6 +103,7 @@ async function cleanupTempDirs(): Promise<void> {
 }
 
 class FakeTerminalPty implements TerminalPtyProcess {
+  pid?: number;
   disposeCount: number;
   readonly killCalls: (string | null)[];
   readonly resizeCalls: ResizeCall[];
@@ -194,6 +199,7 @@ class FakeTerminalPty implements TerminalPtyProcess {
 
 class FakeTerminalPtyAdapter implements TerminalPtyAdapter {
   readonly spawned: SpawnedTerminal[];
+  ptyPid?: number;
 
   constructor() {
     this.spawned = [];
@@ -201,6 +207,9 @@ class FakeTerminalPtyAdapter implements TerminalPtyAdapter {
 
   spawn(args: SpawnTerminalPtyArgs): TerminalPtyProcess {
     const pty = new FakeTerminalPty();
+    if (this.ptyPid !== undefined) {
+      pty.pid = this.ptyPid;
+    }
     this.spawned.push({ args, pty });
     return pty;
   }
@@ -401,6 +410,7 @@ describe("TerminalManager", () => {
   afterEach(async () => {
     vi.useRealTimers();
     vi.unstubAllEnvs();
+    clearSweepRootProcesses();
     await cleanupTempDirs();
   });
 
@@ -1979,6 +1989,99 @@ describe("buildTerminalEnv", () => {
 
     expect(env.PATH).toBe("/custom/bin");
   });
+});
+
+describe("terminal sweep registration", () => {
+  const SWEEP_PID = 42420;
+
+  function sweepSnapshot(): string {
+    return JSON.stringify([
+      {
+        ProcessId: SWEEP_PID,
+        ParentProcessId: 1,
+        ExecutablePath: "C:\\Windows\\System32\\conhost.exe",
+        CommandLine: "conhost.exe --headless",
+      },
+      {
+        ProcessId: SWEEP_PID + 1,
+        ParentProcessId: SWEEP_PID,
+        ExecutablePath: "C:\\Windows\\System32\\conhost.exe",
+        CommandLine: "conhost.exe --headless",
+      },
+    ]);
+  }
+
+  async function listSwept() {
+    return listProcessesWithCwdUnder({
+      directory: "/tmp/terminal-workspace",
+      platform: "win32",
+      runWindowsCommand: async () => ({
+        stdout: sweepSnapshot(),
+        stderr: "",
+        exitCode: 0,
+      }),
+    });
+  }
+
+  it("registers the terminal pid while the session is open and unregisters on exit", async () => {
+    const harness = createHarness();
+    harness.adapter.ptyPid = SWEEP_PID;
+    const pty = await openTerminal(harness);
+    expect(pty.pid).toBe(SWEEP_PID);
+
+    expect(await listSwept()).toContainEqual({
+      pid: SWEEP_PID,
+      cwd: "/tmp/terminal-workspace",
+      approximateCwd: true,
+      matchEvidence: "spawn-registry",
+    });
+    expect(await listSwept()).toContainEqual({
+      pid: SWEEP_PID + 1,
+      cwd: "/tmp/terminal-workspace",
+      approximateCwd: true,
+      matchEvidence: "descendant",
+    });
+
+    pty.emitExit(0);
+    await vi.waitFor(() =>
+      expect(
+        harness.messages.filter(
+          (message) => message.type === "terminal.exited",
+        ),
+      ).toHaveLength(1),
+    );
+    expect(await listSwept()).toEqual([]);
+  });
+
+  it(
+    "registers late when the pty pid arrives after spawn",
+    async () => {
+      const harness = createHarness();
+      harness.adapter.ptyPid = 0;
+      const pty = await openTerminal(harness);
+      expect(await listSwept()).toEqual([]);
+
+      pty.pid = SWEEP_PID;
+      await vi.waitFor(
+        async () =>
+          expect(await listSwept()).toContainEqual(
+            expect.objectContaining({ pid: SWEEP_PID }),
+          ),
+        { timeout: 5000 },
+      );
+
+      pty.emitExit(0);
+      await vi.waitFor(() =>
+        expect(
+          harness.messages.filter(
+            (message) => message.type === "terminal.exited",
+          ),
+        ).toHaveLength(1),
+      );
+      expect(await listSwept()).toEqual([]);
+    },
+    15000,
+  );
 });
 
 describe("terminalSpawnArgsForStart", () => {

@@ -9,7 +9,9 @@ import type { TerminalSessionCloseReason } from "@bb/domain";
 import type { HostDaemonDaemonWsMessage } from "@bb/host-daemon-contract";
 import {
   killProcessGroup,
+  registerSweepRootProcess,
   sanitizeInheritedChildProcessEnv,
+  unregisterSweepRootProcess,
 } from "@bb/process-utils";
 import type { HostDaemonServerTerminalMessage } from "../server-connection-support.js";
 import type { HostDaemonLogger } from "../logger.js";
@@ -23,6 +25,8 @@ const DEFAULT_SCROLLBACK_MAX_CHUNKS = 10_000;
 const MAX_OUTPUT_CHUNK_BYTES = 64 * 1024;
 const DEFAULT_OUTPUT_BATCH_DELAY_MS = 4;
 const DEFAULT_TERMINAL_CLOSE_GRACE_PERIOD_MS = 2_000;
+const TERMINAL_SWEEP_REGISTER_RETRY_MS = 500;
+const TERMINAL_SWEEP_REGISTER_RETRIES = 6;
 const PRIMARY_DEVICE_ATTRIBUTES_QUERY_PATTERN = /\u001b\[(?:0)?c/g;
 const PRIMARY_DEVICE_ATTRIBUTES_RESPONSE = "\u001b[?1;2c";
 const MAX_PRIMARY_DEVICE_ATTRIBUTES_REPLIES_PER_CHUNK = 8;
@@ -46,6 +50,7 @@ export interface TerminalPtyExit {
 }
 
 export interface TerminalPtyProcess {
+  readonly pid?: number;
   dispose(): void;
   kill(signal?: NodeJS.Signals): void;
   onData(listener: (data: string) => void): TerminalPtyDisposable;
@@ -112,6 +117,8 @@ interface ScrollbackEntry {
 interface TerminalSession {
   closeReason: TerminalSessionCloseReason | null;
   closeTimeout: ReturnType<typeof setTimeout> | null;
+  sweepPid: number | null;
+  sweepTimer: ReturnType<typeof setTimeout> | null;
   cols: number;
   disposables: TerminalPtyDisposable[];
   environmentId: string | null;
@@ -220,6 +227,9 @@ const nodePtyAdapter: TerminalPtyAdapter = {
       rows: args.rows,
     });
     return {
+      get pid() {
+        return pty.pid;
+      },
       dispose: () => disposeNodePty(pty),
       kill: (signal) =>
         killProcessGroup({
@@ -730,6 +740,59 @@ export class TerminalManager {
     );
   }
 
+  private registerTerminalSweepRoot(
+    session: TerminalSession,
+    cwd: string,
+  ): void {
+    if (session.pty.pid === undefined) {
+      return;
+    }
+    if (this.tryRegisterTerminalSweepRoot(session, cwd)) {
+      return;
+    }
+    let attempts = 0;
+    const retry = (): void => {
+      if (this.sessions.get(session.terminalId) !== session) {
+        return;
+      }
+      if (this.tryRegisterTerminalSweepRoot(session, cwd)) {
+        session.sweepTimer = null;
+        return;
+      }
+      attempts += 1;
+      if (attempts >= TERMINAL_SWEEP_REGISTER_RETRIES) {
+        session.sweepTimer = null;
+        return;
+      }
+      session.sweepTimer = setTimeout(retry, TERMINAL_SWEEP_REGISTER_RETRY_MS);
+    };
+    session.sweepTimer = setTimeout(retry, TERMINAL_SWEEP_REGISTER_RETRY_MS);
+  }
+
+  private tryRegisterTerminalSweepRoot(
+    session: TerminalSession,
+    cwd: string,
+  ): boolean {
+    const pid = session.pty.pid;
+    if (pid === undefined || !Number.isInteger(pid) || pid <= 0) {
+      return false;
+    }
+    registerSweepRootProcess({ pid, cwd });
+    session.sweepPid = pid;
+    return true;
+  }
+
+  private unregisterTerminalSweepRoot(session: TerminalSession): void {
+    if (session.sweepTimer !== null) {
+      clearTimeout(session.sweepTimer);
+      session.sweepTimer = null;
+    }
+    if (session.sweepPid !== null) {
+      unregisterSweepRootProcess(session.sweepPid);
+      session.sweepPid = null;
+    }
+  }
+
   async shutdownAll(
     reason: TerminalSessionCloseReason = "daemon-disconnect",
   ): Promise<void> {
@@ -796,9 +859,12 @@ export class TerminalManager {
         rows: message.rows,
         scrollback: [],
         scrollbackBytes: 0,
+        sweepPid: null,
+        sweepTimer: null,
         terminalId: message.terminalId,
       };
       this.sessions.set(message.terminalId, session);
+      this.registerTerminalSweepRoot(session, target.cwd);
       if (target.environmentId !== null) {
         this.options.runtimeManager.markTerminalActive(
           target.environmentId,
@@ -872,6 +938,7 @@ export class TerminalManager {
     const session = this.sessions.get(args.terminalId);
     if (session !== undefined) {
       this.sessions.delete(args.terminalId);
+      this.unregisterTerminalSweepRoot(session);
       if (session.outputFlushTimeout !== null) {
         clearTimeout(session.outputFlushTimeout);
         session.outputFlushTimeout = null;
@@ -1226,6 +1293,7 @@ export class TerminalManager {
       args.session.closeTimeout = null;
     }
     this.sessions.delete(args.session.terminalId);
+    this.unregisterTerminalSweepRoot(args.session);
     if (args.session.environmentId !== null) {
       this.options.runtimeManager.markTerminalInactive(
         args.session.environmentId,
