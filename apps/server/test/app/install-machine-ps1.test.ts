@@ -277,6 +277,8 @@ function createScriptEnv(
     HOMEDRIVE: "C:",
     HOMEPATH: fixture.homeDir.slice(2),
     USERPROFILE: fixture.homeDir,
+    APPDATA: join(fixture.homeDir, "AppData", "Roaming"),
+    LOCALAPPDATA: join(fixture.homeDir, "AppData", "Local"),
     PATH: [fixture.binDir, ...(process.env.PATH ?? "").split(delimiter)].join(
       delimiter,
     ),
@@ -358,19 +360,34 @@ function selectedPort(fixture: Ps1Fixture): string {
   return readFileSync(join(fixture.dataDir, "host-daemon-port"), "utf8").trim();
 }
 
-function killProcessOnPort(port: string): void {
+function holderCommandLine(pid: number): string {
   if (POWERSHELL_BIN === null) {
-    return;
+    return "";
   }
-  spawnSync(
+  const probed = spawnSync(
     POWERSHELL_BIN,
     [
       "-NoProfile",
       "-Command",
-      `Get-NetTCPConnection -LocalPort ${port} -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force }`,
+      `Get-CimInstance Win32_Process -Filter "ProcessId=${pid}" | Select-Object -ExpandProperty CommandLine`,
     ],
-    { encoding: "utf8", timeout: 30000 },
+    { encoding: "utf8", timeout: 15000 },
   );
+  return (probed.stdout ?? "").toString();
+}
+
+function killProcessOnPort(port: string, ownerRoot?: string): void {
+  const pid = daemonPidOnPort(port);
+  if (pid === 0) {
+    return;
+  }
+  if (ownerRoot !== undefined && !holderCommandLine(pid).includes(ownerRoot)) {
+    return;
+  }
+  spawnSync("taskkill", ["/F", "/T", "/PID", String(pid)], {
+    encoding: "utf8",
+    timeout: 30000,
+  });
 }
 
 function daemonPidOnPort(port: string): number {
@@ -511,7 +528,7 @@ for (const pidFile of ["install-daemon.pid"]) {
     } catch {}
   }
   try {
-    killProcessOnPort(selectedPort(fixture));
+    killProcessOnPort(selectedPort(fixture), fixture.root);
   } catch {}
 }
 
@@ -545,7 +562,7 @@ for (const taskName of createdTaskNames.splice(0)) {
           "utf8",
         ).trim();
         if (/^\d+$/u.test(port)) {
-          killProcessOnPort(port);
+          killProcessOnPort(port, fixture.root);
         }
       } catch {}
     } catch {}
@@ -961,6 +978,7 @@ describe.skipIf(POWERSHELL_UNAVAILABLE_MEASURED)(
         expect(Number.isInteger(daemonPid)).toBe(true);
         killProcessOnPort(
           readFileSync(join(defaultDataDir, "host-daemon-port"), "utf8").trim(),
+          fixture.root,
         );
         try {
           process.kill(daemonPid, "SIGKILL");
@@ -974,7 +992,7 @@ describe.skipIf(POWERSHELL_UNAVAILABLE_MEASURED)(
             ),
             "utf8",
           ).trim();
-          killProcessOnPort(port);
+          killProcessOnPort(port, fixture.root);
         } catch {}
       }
       expect(stdout).toContain("Using local host-daemon port");
@@ -1110,6 +1128,7 @@ describe.skipIf(POWERSHELL_UNAVAILABLE_MEASURED)(
           try {
             killProcessOnPort(
               readFileSync(join(dataDir, "host-daemon-port"), "utf8").trim(),
+              fixture.root,
             );
           } catch {}
         }
@@ -1256,7 +1275,7 @@ describe.skipIf(POWERSHELL_UNAVAILABLE_MEASURED)(
         const daemonPidBefore = daemonPidOnPort(port);
         expect(daemonPidBefore).toBeGreaterThan(0);
 
-        killProcessOnPort(port);
+        killProcessOnPort(port, fixture.root);
         expect(
           (await waitForDaemonStatus(port, "host-test", 5_000)).connected,
         ).toBe(false);
@@ -1287,7 +1306,7 @@ describe.skipIf(POWERSHELL_UNAVAILABLE_MEASURED)(
         deleteScheduledTask(taskName);
         expect(scheduledTaskExists(taskName)).toBe(false);
         createdTaskNames.splice(createdTaskNames.indexOf(taskName), 1);
-        killProcessOnPort(port);
+        killProcessOnPort(port, fixture.root);
       },
       240_000,
     );
