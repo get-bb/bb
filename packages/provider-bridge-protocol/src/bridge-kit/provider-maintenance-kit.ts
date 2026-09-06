@@ -35,6 +35,48 @@ export interface ExecutableProbeDeps {
     args: readonly string[],
   ) => Promise<{ stdout: string; stderr: string }>;
   spawnImpl?: PortableSpawnFn;
+  fileIsExecutable?: (candidate: string) => Promise<boolean>;
+}
+
+const WINDOWS_ABSOLUTE_EXECUTABLE_SUFFIXES = [
+  ".com",
+  ".exe",
+  ".bat",
+  ".cmd",
+  ".ps1",
+] as const;
+
+const WINDOWS_ABSOLUTE_EXECUTABLE_PATTERN = /\.(?:com|exe|bat|cmd|ps1)$/iu;
+
+async function checkExecutableFile(
+  candidate: string,
+  deps: ExecutableProbeDeps,
+): Promise<boolean> {
+  if (deps.fileIsExecutable !== undefined) {
+    return deps.fileIsExecutable(candidate);
+  }
+  try {
+    await access(candidate, fsConstants.X_OK);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function resolveWindowsAbsoluteExecutable(
+  command: string,
+  deps: ExecutableProbeDeps,
+): Promise<string | null> {
+  if (!WINDOWS_ABSOLUTE_EXECUTABLE_PATTERN.test(command)) {
+    const platform = deps.platform ?? process.platform;
+    if (platformPaths(platform).extname(command) === "") {
+      for (const suffix of WINDOWS_ABSOLUTE_EXECUTABLE_SUFFIXES) {
+        const candidate = `${command}${suffix}`;
+        if (await checkExecutableFile(candidate, deps)) return candidate;
+      }
+    }
+  }
+  return (await checkExecutableFile(command, deps)) ? command : null;
 }
 
 export async function resolveExecutablePath(
@@ -43,12 +85,10 @@ export async function resolveExecutablePath(
 ): Promise<string | null> {
   const platform = deps.platform ?? process.platform;
   if (isAbsoluteForPlatform(command, platform)) {
-    try {
-      await access(command, fsConstants.X_OK);
-      return command;
-    } catch {
-      return null;
+    if (platform === "win32") {
+      return resolveWindowsAbsoluteExecutable(command, deps);
     }
+    return (await checkExecutableFile(command, deps)) ? command : null;
   }
   const runLookup =
     deps.runLookup ??
@@ -59,7 +99,7 @@ export async function resolveExecutablePath(
       resolveBinaryLookupCommand(platform),
       [command],
     );
-    return parseBinaryLookupOutput(stdout);
+    return parseBinaryLookupOutput(stdout, platform);
   } catch {
     return null;
   }

@@ -313,6 +313,76 @@ describe("windows npm install source", () => {
   });
 });
 
+describe("windows PATHEXT executable resolution", () => {
+  it("prefers codex.cmd when where.exe lists the sh shim first on win32", async () => {
+    const resolved = await resolveExecutablePath("codex", {
+      platform: "win32",
+      runLookup: async () => ({
+        stdout:
+          "C:\\Users\\u\\AppData\\Roaming\\npm\\codex\r\nC:\\Users\\u\\AppData\\Roaming\\npm\\codex.cmd\r\n",
+      }),
+    });
+    expect(resolved).toBe(
+      "C:\\Users\\u\\AppData\\Roaming\\npm\\codex.cmd",
+    );
+  });
+
+  it("prefers pi.cmd when where.exe lists the sh shim first on win32", async () => {
+    const resolved = await resolveExecutablePath("pi", {
+      platform: "win32",
+      runLookup: async () => ({
+        stdout:
+          "C:\\Users\\Administrator\\AppData\\Local\\pi-node\\current\\pi\r\nC:\\Users\\Administrator\\AppData\\Local\\pi-node\\current\\pi.cmd\r\n",
+      }),
+    });
+    expect(resolved).toBe(
+      "C:\\Users\\Administrator\\AppData\\Local\\pi-node\\current\\pi.cmd",
+    );
+  });
+
+  it("keeps the sh shim first on posix", async () => {
+    for (const platform of ["linux", "darwin"] as const) {
+      const resolved = await resolveExecutablePath("codex", {
+        platform,
+        runLookup: async () => ({
+          stdout: "/usr/local/bin/codex\n/usr/local/bin/codex.cmd\n",
+        }),
+      });
+      expect(resolved).toBe("/usr/local/bin/codex");
+    }
+  });
+
+  it("resolves an absolute extensionless sibling to its cmd launcher on win32", async () => {
+    const seen: string[] = [];
+    const resolved = await resolveExecutablePath("C:\\tools\\pi", {
+      platform: "win32",
+      fileIsExecutable: async (candidate) => {
+        seen.push(candidate);
+        return candidate.toLowerCase().endsWith(".cmd");
+      },
+    });
+    expect(resolved).toBe("C:\\tools\\pi.cmd");
+    expect(seen[0]).toBe("C:\\tools\\pi.com");
+  });
+
+  it("falls back to the extensionless file itself when no Windows launcher exists", async () => {
+    const resolved = await resolveExecutablePath("C:\\tools\\pi", {
+      platform: "win32",
+      fileIsExecutable: async (candidate) =>
+        candidate === "C:\\tools\\pi",
+    });
+    expect(resolved).toBe("C:\\tools\\pi");
+  });
+
+  it("returns an absolute posix path itself when it is executable", async () => {
+    const resolved = await resolveExecutablePath("/usr/local/bin/codex", {
+      platform: "linux",
+      fileIsExecutable: async () => true,
+    });
+    expect(resolved).toBe("/usr/local/bin/codex");
+  });
+});
+
 describe("windows absolute executable paths", () => {
   it("never shells out to where.exe for an absolute win32 path", async () => {
     const seen: { file: string; args: string[] }[] = [];
@@ -322,6 +392,7 @@ describe("windows absolute executable paths", () => {
         seen.push({ file, args });
         return { stdout: "" };
       },
+      fileIsExecutable: async () => false,
     });
     expect(seen).toEqual([]);
     expect(resolved).toBeNull();

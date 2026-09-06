@@ -13,7 +13,11 @@ vi.mock("@get-bb/plugin-sdk/provider-bridge", async (importOriginal) => {
     await importOriginal<typeof import("@get-bb/plugin-sdk/provider-bridge")>();
   return {
     ...original,
-    experimental_commandOutput: vi.fn(async () => probeState.bunBin),
+    experimental_commandOutput: vi.fn(async (command: string) =>
+      command === "bun" || command === "bun.exe"
+        ? probeState.bunBin
+        : "pi 0.84.0",
+    ),
     experimental_npmLatestVersion: vi.fn(async () => "0.85.0"),
     experimental_probeNpmGlobalPackage: vi.fn(async () => ({
       npmBin: path.join(path.sep, "npm", "bin"),
@@ -49,7 +53,10 @@ describe("Pi provider maintenance with a Bun-managed executable", () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "bb-pi-bun-update-"));
     temporaryDirectories.push(root);
     probeState.bunBin = path.join(root, ".bun", "bin");
-    const bunPi = path.join(probeState.bunBin, "pi");
+    const bunPi = path.join(
+      probeState.bunBin,
+      process.platform === "win32" ? "pi.exe" : "pi",
+    );
     probeState.executablePath = path.join(root, "bin", "pi");
     await Promise.all([
       mkdir(probeState.bunBin, { recursive: true }),
@@ -71,13 +78,15 @@ describe("Pi provider maintenance with a Bun-managed executable", () => {
     const status = await getPiProviderInstallationStatus();
     const run = await getPiProviderInstallationRun("update");
 
-    expect(status.installAction?.command).toBe(
-      "bun add -g @earendil-works/pi-coding-agent@latest",
-    );
+    const bunDisplay =
+      process.platform === "win32"
+        ? "bun.exe add -g @earendil-works/pi-coding-agent@latest"
+        : "bun add -g @earendil-works/pi-coding-agent@latest";
+    expect(status.installAction?.command).toBe(bunDisplay);
     expect(run).toMatchObject({
       available: true,
       command: {
-        command: "bun",
+        command: process.platform === "win32" ? "bun.exe" : "bun",
         args: ["add", "-g", "@earendil-works/pi-coding-agent@latest"],
       },
     });

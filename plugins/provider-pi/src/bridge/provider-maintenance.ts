@@ -1,8 +1,6 @@
-import { execFile } from "node:child_process";
 import { open, realpath } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { promisify } from "node:util";
 import {
   type ProviderHealthResult,
   type ProviderInstallationCommand,
@@ -21,7 +19,6 @@ import {
 } from "@get-bb/plugin-sdk/provider-bridge";
 import { resolvePiLaunch } from "./rpc-child.js";
 
-const execFileAsync = promisify(execFile);
 export const PI_MINIMUM_SUPPORTED_VERSION = "0.84.0";
 export const PI_NPM_PACKAGE = "@earendil-works/pi-coding-agent";
 const VERSION_PROBE_TIMEOUT_MS = 15_000;
@@ -31,8 +28,8 @@ type PiVersionProbe =
   | { version: string; failure: null }
   | { version: null; failure: string };
 
-function bunCommand(): string {
-  return process.platform === "win32" ? "bun.exe" : "bun";
+function bunCommand(platform: NodeJS.Platform = process.platform): string {
+  return platform === "win32" ? "bun.exe" : "bun";
 }
 
 function bunGlobalInstallCommand(
@@ -129,25 +126,23 @@ async function piGlobalInstallCommand(
     : npmGlobalInstallCommand(PI_NPM_PACKAGE);
 }
 
-export async function probePiVersion(): Promise<PiVersionProbe> {
+export async function probePiVersion(args: {
+  platform?: NodeJS.Platform;
+} = {}): Promise<PiVersionProbe> {
   const launch = resolvePiLaunch(process.env);
   const display = formatCommand(launch.command, [...launch.args, "--version"]);
-  let stdout: string;
-  try {
-    ({ stdout } = await execFileAsync(
-      launch.command,
-      [...launch.args, "--version"],
-      {
-        timeout: VERSION_PROBE_TIMEOUT_MS,
-      },
-    ));
-  } catch (error) {
+  const output = await commandOutput(
+    launch.command,
+    [...launch.args, "--version"],
+    args.platform === undefined ? {} : { platform: args.platform },
+  );
+  if (output === null) {
     return {
       version: null,
-      failure: `\`${display}\` ${describePiVersionProbeFailure(error)}`,
+      failure: `\`${display}\` could not be run`,
     };
   }
-  const version = versionFrom(stdout);
+  const version = versionFrom(output);
   return version === null
     ? { version: null, failure: `\`${display}\` printed no version` }
     : { version, failure: null };
