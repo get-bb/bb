@@ -56,6 +56,24 @@ export function isCommitSha(ref: string): boolean {
   return COMMIT_SHA_PATTERN.test(ref);
 }
 
+const LOCAL_DRIVE_PATH_PATTERN = /^[a-zA-Z]:[\\/]/;
+
+function isLocalAbsolutePath(value: string): boolean {
+  return (
+    value.startsWith("/") ||
+    value.startsWith("\\\\") ||
+    LOCAL_DRIVE_PATH_PATTERN.test(value)
+  );
+}
+
+function toLocalRepoPath(value: string): string {
+  return value
+    .replace(/\\/g, "/")
+    .replace(/^([a-zA-Z]):/, "$1")
+    .replace(/^\/+/, "")
+    .replace(/\.git$/, "");
+}
+
 function assertSafeSegments(value: string, label: string): void {
   const segments = value.split("/");
   if (
@@ -169,7 +187,7 @@ function parseGitSource(spec: string): ParsedPluginSource {
   } catch {
     throw new Error(`invalid git url "${urlish}"`);
   }
-  if (decodedUrlish.split("/").some((segment) => segment === "..")) {
+  if (decodedUrlish.split(/[/\\]/).some((segment) => segment === "..")) {
     throw new Error(`invalid git repository path "${urlish}"`);
   }
   if (/^https?:\/\//.test(urlish)) {
@@ -177,10 +195,10 @@ function parseGitSource(spec: string): ParsedPluginSource {
     url = urlish;
     host = parsed.host;
     repoPath = parsed.pathname.replace(/^\/+|\/+$/g, "").replace(/\.git$/, "");
-  } else if (urlish.startsWith("/")) {
+  } else if (isLocalAbsolutePath(urlish)) {
     url = urlish;
     host = "local";
-    repoPath = urlish.replace(/^\/+/, "").replace(/\.git$/, "");
+    repoPath = toLocalRepoPath(urlish);
   } else if (/^[a-z0-9]/i.test(urlish)) {
     url = `https://${urlish}`;
     const parsed = new URL(url);
