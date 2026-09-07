@@ -24,6 +24,7 @@ import type {
   PluginHookHandler,
   PluginHookName,
   PluginMentionTrigger,
+  PluginMachineProviderDeclaration,
   PluginProviderCapabilities,
   PluginProviderComposerAction,
   PluginProviderDeclaration,
@@ -2424,3 +2425,196 @@ const environmentProviderPolicySchema = z
   .strict();
 
 export const MACHINE_PROVIDER_REQUIREMENT_NAMES = ["gitRemote"] as const;
+
+export type NormalizedPluginMachineProviderRequirements = {
+  [K in (typeof MACHINE_PROVIDER_REQUIREMENT_NAMES)[number]]: boolean;
+};
+
+export interface NormalizedPluginMachineProvider {
+  id: string;
+  displayName: string;
+  icon: string | null;
+  requires: NormalizedPluginMachineProviderRequirements;
+  inputs: StandardSchemaV1 | null;
+  inputsJsonSchema: JsonValue | null;
+  availability: NonNullable<
+    PluginMachineProviderDeclaration["availability"]
+  > | null;
+  validate: NonNullable<PluginMachineProviderDeclaration["validate"]> | null;
+  environmentRow:
+    | import("../machine-provider.js").PluginMachineProviderEnvironmentRow
+    | null;
+  policy: import("../machine-provider.js").PluginMachineProviderPolicy;
+  create: PluginMachineProviderDeclaration["create"];
+  suspend: NonNullable<PluginMachineProviderDeclaration["suspend"]> | null;
+  resume: NonNullable<PluginMachineProviderDeclaration["resume"]> | null;
+  remove: PluginMachineProviderDeclaration["remove"];
+}
+
+export function validatePluginMachineProviderDeclaration(
+  declaration: PluginMachineProviderDeclaration,
+): NormalizedPluginMachineProvider {
+  if (typeof declaration !== "object" || declaration === null) {
+    throw new Error("machine provider declaration must be an object");
+  }
+  const id = declaration.id;
+  if (typeof id !== "string" || !ENVIRONMENT_PROVIDER_ID_PATTERN.test(id)) {
+    throw new Error(
+      `invalid machine provider id ${JSON.stringify(id)} — use 2-64 lowercase letters, digits, or "-", starting with a letter or digit`,
+    );
+  }
+  const displayName =
+    typeof declaration.displayName === "string"
+      ? declaration.displayName.trim()
+      : "";
+  if (
+    displayName.length === 0 ||
+    displayName.length > ENVIRONMENT_PROVIDER_DISPLAY_NAME_MAX_CHARS
+  ) {
+    throw new Error(
+      `machine provider "${id}" needs a displayName of 1-${ENVIRONMENT_PROVIDER_DISPLAY_NAME_MAX_CHARS} characters`,
+    );
+  }
+  const icon =
+    declaration.icon === undefined
+      ? null
+      : z.string().min(1).parse(declaration.icon).trim();
+  if (icon !== null) {
+    if (isPluginOwnedIconPath(icon)) {
+      validateProviderRelativePath(icon, `"${id}" icon`);
+    } else if (!isNamespacedGlyph(icon) && /[/\\]/u.test(icon)) {
+      throw new Error(
+        `machine provider "${id}" icon must be a glyph, declared icon, or plugin-relative path`,
+      );
+    }
+    if (icon.length === 0) {
+      throw new Error(`machine provider "${id}" declares an empty icon`);
+    }
+  }
+  const requires = declaration.requires ?? {};
+  if (
+    typeof requires !== "object" ||
+    requires === null ||
+    Array.isArray(requires)
+  ) {
+    throw new Error(
+      `machine provider "${id}" declares a requires that is not an object`,
+    );
+  }
+  const gitRemote = requires.gitRemote;
+  if (gitRemote !== undefined && typeof gitRemote !== "boolean") {
+    throw new Error(
+      `machine provider "${id}" declares a requires.gitRemote that is not a boolean`,
+    );
+  }
+  const inputs = normalizeMachineProviderInputs(id, declaration);
+  if (
+    typeof declaration.create !== "function" ||
+    typeof declaration.remove !== "function"
+  ) {
+    throw new Error(
+      `machine provider "${id}" must declare create and remove functions`,
+    );
+  }
+  const hasSuspend = typeof declaration.suspend === "function";
+  const hasResume = typeof declaration.resume === "function";
+  if (hasSuspend !== hasResume) {
+    throw new Error(
+      `machine provider "${id}" must declare suspend and resume together`,
+    );
+  }
+  if (
+    declaration.validate !== undefined &&
+    typeof declaration.validate !== "function"
+  ) {
+    throw new Error(
+      `machine provider "${id}" declares a validate that is not a function`,
+    );
+  }
+  if (
+    declaration.availability !== undefined &&
+    typeof declaration.availability !== "function"
+  ) {
+    throw new Error(
+      `machine provider "${id}" declares availability that is not a function`,
+    );
+  }
+  const environmentRow =
+    declaration.environmentRow === undefined
+      ? null
+      : z
+          .object({
+            displayName: z.string().trim().min(1).max(80),
+            environmentProviderId: z
+              .string()
+              .regex(ENVIRONMENT_PROVIDER_ID_PATTERN),
+          })
+          .strict()
+          .parse(declaration.environmentRow);
+  const policy = machineProviderPolicySchema.parse(declaration.policy);
+  if (!hasSuspend && policy.idleSuspendMs !== null) {
+    throw new Error(
+      `machine provider "${id}" must set policy.idleSuspendMs to null without suspend and resume`,
+    );
+  }
+  return {
+    id,
+    displayName,
+    icon,
+    requires: { gitRemote: gitRemote === true },
+    inputs: inputs === null ? null : inputs.schema,
+    inputsJsonSchema: inputs === null ? null : inputs.jsonSchema,
+    availability: declaration.availability ?? null,
+    validate: declaration.validate ?? null,
+    environmentRow,
+    policy,
+    create: declaration.create,
+    suspend: declaration.suspend ?? null,
+    resume: declaration.resume ?? null,
+    remove: declaration.remove,
+  };
+}
+
+function normalizeMachineProviderInputs(
+  id: string,
+  declaration: PluginMachineProviderDeclaration,
+): { schema: StandardSchemaV1; jsonSchema: JsonValue } | null {
+  const inputs = declaration.inputs;
+  if (inputs === undefined) return null;
+  if (!isStandardSchema(inputs)) {
+    throw new Error(
+      `machine provider "${id}" declares an inputs that is not a Standard Schema v1 validator`,
+    );
+  }
+  let converted: unknown;
+  try {
+    converted = JSON.parse(JSON.stringify(standardSchemaToJsonSchema(inputs)));
+  } catch (error) {
+    throw new Error(
+      `machine provider "${id}" declares an inputs validator that cannot be published as JSON Schema (${error instanceof Error ? error.message : String(error)}) — declare it with zod 4 or a validator exposing toJSONSchema()`,
+    );
+  }
+  const jsonSchema = jsonValueSchema.safeParse(converted);
+  if (!jsonSchema.success) {
+    throw new Error(
+      `machine provider "${id}" declares an inputs schema whose JSON Schema is not JSON-serializable`,
+    );
+  }
+  return { schema: inputs, jsonSchema: jsonSchema.data };
+}
+
+const machineProviderPolicySchema = z
+  .object({
+    idleSuspendMs: z.number().int().nonnegative().nullable(),
+    retire: z.discriminatedUnion("after", [
+      z
+        .object({
+          after: z.literal("last-thread"),
+          graceMs: z.number().int().nonnegative(),
+        })
+        .strict(),
+      z.object({ after: z.literal("never") }).strict(),
+    ]),
+    removeRetryMs: z.number().int().positive(),
+  })
+  .strict();

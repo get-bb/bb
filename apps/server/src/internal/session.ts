@@ -69,7 +69,6 @@ export function registerInternalSessionRoutes(
     const daemon = getAuthenticatedDaemon(context);
     assertAuthenticatedHostMatches(daemon, {
       hostId: compatibility.data.hostId,
-      hostType: daemon.hostType,
     });
 
     if (compatibility.data.protocolVersion !== HOST_DAEMON_PROTOCOL_VERSION) {
@@ -118,7 +117,6 @@ export function registerInternalSessionRoutes(
       ...(connectMachineId !== undefined ? { connectMachineId } : {}),
       id: daemon.hostId,
       name: payload.hostName,
-      type: daemon.hostType,
     });
     updateHost(deps.db, deps.hub, daemon.hostId, {
       lastRejectedProtocolVersion: null,
@@ -127,7 +125,6 @@ export function registerInternalSessionRoutes(
       hostId: daemon.hostId,
       instanceId: payload.instanceId,
       hostName: payload.hostName,
-      hostType: daemon.hostType,
       dataDir: payload.dataDir,
       protocolVersion: payload.protocolVersion,
       heartbeatIntervalMs: HEARTBEAT_INTERVAL_MS,

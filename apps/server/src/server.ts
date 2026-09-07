@@ -34,6 +34,7 @@ import {
   setEnvironmentProviderRecheckHandler,
   setPluginEnvironmentProviderBridge,
 } from "./services/plugins/plugin-environment-provider-registry.js";
+import { setPluginMachineProviderBridge } from "./services/plugins/plugin-machine-provider-registry.js";
 import { recheckEnvironmentProviderLaunches } from "./services/threads/thread-environment-providers.js";
 import { invalidateEnvironmentProviderAvailability } from "./services/environments/provider-availability.js";
 import { requestQueuedMessageDispatch } from "./services/threads/queued-message-dispatch.js";
@@ -611,6 +612,7 @@ export function createApp(
   // there are no hooks, which is exactly the zero-overhead path.
   setPluginHookProvider(pluginService.hooks);
   setPluginEnvironmentProviderBridge(pluginService.environmentProviders);
+  setPluginMachineProviderBridge(pluginService.machineProviders);
   setEnvironmentProviderRecheckHandler((pluginId) => {
     invalidateEnvironmentProviderAvailability();
     deps.hub.notifySystem(["config-changed"]);

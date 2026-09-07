@@ -30,6 +30,10 @@ import {
   getEnvironmentProvider,
   listEnvironmentProviders,
 } from "../services/plugins/plugin-environment-provider-registry.js";
+import {
+  getMachineProvider,
+  listMachineProviders,
+} from "../services/plugins/plugin-machine-provider-registry.js";
 import type { ServerAppDeps, ServerRuntimeConfig } from "../types.js";
 import type { PluginService } from "../services/plugins/plugin-service.js";
 import { ApiError } from "../errors.js";
@@ -61,6 +65,10 @@ import {
   environmentProviderAcceptsEmptyInputs,
   resolveEnvironmentProviderAvailability,
 } from "../services/environments/provider-availability.js";
+import {
+  machineProviderAcceptsEmptyInputs,
+  resolveMachineProviderAvailability,
+} from "../services/machines/provider-availability.js";
 import { requirePublicProject } from "../services/lib/entity-lookup.js";
 
 const LEADING_ENVIRONMENT_PROVIDER_IDS: readonly string[] = [
@@ -358,6 +366,34 @@ export function registerSystemRoutes(
     });
   });
 
+  get(routes.machineProviders, async (context, query) => {
+    return context.json({
+      providers: await Promise.all(
+        listMachineProviders().map(async (record) => ({
+          id: record.provider.id,
+          displayName: record.provider.displayName,
+          icon: record.provider.icon,
+          logoUrl:
+            record.icon === undefined
+              ? null
+              : `/api/v1/system/providers/${encodeURIComponent(`machine:${record.provider.id}`)}/logo?h=${record.icon.hash}`,
+          pluginId: record.pluginId,
+          requires: record.provider.requires,
+          inputs: record.provider.inputsJsonSchema,
+          acceptsEmptyInputs: await machineProviderAcceptsEmptyInputs(record),
+          supportsSuspend: record.provider.suspend !== null,
+          environmentRow: record.provider.environmentRow,
+          policy: record.provider.policy,
+          availability: await resolveMachineProviderAvailability(
+            deps,
+            record,
+            query,
+          ),
+        })),
+      ),
+    });
+  });
+
   get(routes.providers, async (context, query) =>
     context.json(await listSystemProviderInfos(deps, query)),
   );
@@ -366,7 +402,9 @@ export function registerSystemRoutes(
     const providerId = context.req.param("id");
     const registration = providerId.startsWith("environment:")
       ? getEnvironmentProvider(providerId.slice("environment:".length))
-      : deps.providerRegistry.get(providerId);
+      : providerId.startsWith("machine:")
+        ? getMachineProvider(providerId.slice("machine:".length))
+        : deps.providerRegistry.get(providerId);
     if (registration?.icon !== undefined) {
       return pluginImageResponse(
         context,

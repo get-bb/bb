@@ -247,6 +247,72 @@ A per-environment lock serializes removal; failures persist and retry.
 Environment responses expose only the read-only lifecycle projection:
 phase, retireAt, and teardown status/attempt/message.
 
+### Machine providers: core-owned machines
+
+Register machine resource operations with `bb.experimental_machines.register`.
+Machine providers compose with environment providers: a picker sugar row first
+creates the machine, then asks its named environment provider for a workspace
+on that machine. The Machines page and `bb.sdk.hosts.create` can instead create
+a standalone machine with `project: null`; create is not required to enrol a
+project source in that case.
+
+`icon` is optional. Omit it when provider-created machines should look like
+ordinary enrolled machines: the Machines page and Add machine show neither a
+provider logo nor a provider badge. Declaring it enables the normal provider
+glyph, plugin-relative SVG, declared icon, or React icon-slot presentation.
+
+```ts
+bb.experimental_machines.register({
+  id: "custom-machine",
+  displayName: "Custom machine",
+  icon: "Server",
+  inputs: z.object({ target: z.string() }),
+  policy: {
+    idleSuspendMs: null,
+    retire: { after: "never" },
+    removeRetryMs: 60_000,
+  },
+  async create({ project, inputs, key, attempt, report, signal }) {
+    report.step(`Connecting to ${inputs.target}`);
+    const hostId = await ensureEnrolledHost({
+      project,
+      target: inputs.target,
+      key,
+      attempt,
+      signal,
+    });
+    return { status: "created", hostId, resource: { target: inputs.target } };
+  },
+  async remove({ resource }) {
+    await disconnectTarget(resource.target);
+    return { status: "removed" };
+  },
+});
+```
+
+`requires.gitRemote` makes the remote non-null when a project is supplied and
+filters out projects without one. Optional Standard Schema `inputs` are parsed
+before create and persisted in `hosts.machine_provider_selection`. Every plugin
+can read them, so never put secrets there. Store credentials in plugin settings
+and pass a non-secret reference such as a target name in inputs.
+
+Create receives a nullable project, nullable gitRemote, parsed inputs, a stable
+key, monotonic attempt, durable progress reporter, and abort signal. It must be
+idempotent by key: if enrolment completed before the server crashed, the next
+call returns the already-enrolled host instead of creating another resource.
+Return the host id plus a private JSON resource for later lifecycle operations.
+
+Suspend and resume are optional but must be declared together. Without them,
+`policy.idleSuspendMs` must be null. With them, core suspends only after every
+live thread is idle and no terminal is open, then resumes before the next send.
+Suspend receives `checkpoint(resource)`, which synchronously
+persists a recoverable private resource before destructive cleanup. Use it
+after creating a recovery artifact and before terminating the live machine or
+deleting an older artifact. A replay receives the last checkpoint.
+Retirement is either last-thread plus a grace period or never. Removal always
+cascades through the machine's environment providers before machine remove;
+failures persist and retry after `removeRetryMs`.
+
 ### bb.http — HTTP routes
 
 `bb.http.route(method, path, handler, { auth? })` mounts an exact-match route

@@ -18,7 +18,7 @@ import type {
   JsonValue,
   EnvironmentStatus,
   FaviconColorPreference,
-  HostType,
+  MachineProviderSelection,
   PendingInteractionStatus,
   PermissionMode,
   PromptHistoryScope,
@@ -93,8 +93,23 @@ export const hosts = sqliteTable(
   {
     id: text("id").primaryKey(),
     name: text("name").notNull(),
-    type: text("type").$type<HostType>().notNull(),
     connectMachineId: text("connect_machine_id"),
+    machineProviderId: text("machine_provider_id"),
+    resource: text("resource", { mode: "json" }).$type<JsonValue>(),
+    machineProviderSelection: text("machine_provider_selection", {
+      mode: "json",
+    }).$type<MachineProviderSelection>(),
+    phase: text("phase")
+      .$type<"active" | "suspending" | "suspended" | "retiring" | "destroyed">()
+      .notNull()
+      .default("active"),
+    suspendedAt: integer("suspended_at"),
+    retireAt: integer("retire_at"),
+    teardownAttempt: integer("teardown_attempt").notNull().default(0),
+    teardownStatus: text("teardown_status").$type<
+      "running" | "failed" | "removed"
+    >(),
+    teardownMessage: text("teardown_message"),
     maxPermissionMode: text("max_permission_mode")
       .$type<PermissionMode>()
       .notNull()
@@ -917,7 +932,6 @@ export const hostDaemonSessions = sqliteTable(
       .references(() => hosts.id, { onDelete: "cascade" }),
     instanceId: text("instance_id").notNull(),
     hostName: text("host_name").notNull(),
-    hostType: text("host_type").$type<HostType>().notNull(),
     dataDir: text("data_dir").notNull(),
     protocolVersion: integer("protocol_version").notNull(),
     heartbeatIntervalMs: integer("heartbeat_interval_ms").notNull(),
@@ -1076,4 +1090,29 @@ export const environmentLaunches = sqliteTable(
     cancelPending: integer("cancel_pending", { mode: "boolean" }).notNull(),
   },
   (table) => [index("environment_launches_phase_idx").on(table.phase)],
+);
+
+export const machineLaunches = sqliteTable(
+  "machine_launches",
+  {
+    key: text("key").primaryKey(),
+    providerId: text("provider_id").notNull(),
+    projectId: text("project_id"),
+    inputs: text("inputs", { mode: "json" }).$type<JsonValue>(),
+    attempt: integer("attempt").notNull(),
+    phase: text("phase")
+      .$type<"creating" | "ready" | "failed" | "cancelled">()
+      .notNull(),
+    startedAt: integer("started_at").notNull(),
+    failedAt: integer("failed_at"),
+    failure: text("failure").$type<"terminal" | "transient">(),
+    message: text("message"),
+    transientFailures: integer("transient_failures").notNull(),
+    hostId: text("host_id"),
+    resource: text("resource", { mode: "json" }).$type<JsonValue>(),
+    stepText: text("step_text").notNull(),
+    pendingLog: text("pending_log").notNull(),
+    cancelPending: integer("cancel_pending", { mode: "boolean" }).notNull(),
+  },
+  (table) => [index("machine_launches_phase_idx").on(table.phase)],
 );

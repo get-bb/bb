@@ -633,7 +633,9 @@ export async function createThreadFromRequest(
     resolvedEnvironment !== null
       ? childHostIdForResolvedEnvironment(resolvedEnvironment)
       : request.environment.type === "provider"
-        ? request.environment.machine.hostId
+        ? request.environment.machine.type === "existing"
+          ? request.environment.machine.hostId
+          : null
         : null;
   assertForkSourceHost(deps, {
     childHostId,
@@ -646,7 +648,8 @@ export async function createThreadFromRequest(
   const modelCatalogCwd =
     resolvedEnvironment !== null
       ? modelCatalogCwdForResolvedEnvironment(resolvedEnvironment)
-      : request.environment.type === "provider"
+      : request.environment.type === "provider" &&
+          request.environment.machine.type === "existing"
         ? projectCheckoutPathOnHost(
             deps,
             request.projectId,

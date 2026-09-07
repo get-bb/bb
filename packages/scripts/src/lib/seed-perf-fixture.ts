@@ -770,7 +770,6 @@ export function seedPerfFixture(
     .values({
       id: options.hostId,
       name: "seed-host",
-      type: "persistent",
       maxPermissionMode: "full",
       lastSeenAt: now,
       createdAt: fixtureStart,

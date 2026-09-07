@@ -20,6 +20,12 @@
   `--environment-inputs <json>` only when the provider's schema does not accept
   an empty object; otherwise the CLI supplies `{}` when the flag is omitted.
   `--machine` picks the existing machine.
+- List machine providers with `bb machine providers [--project <id>]`. Create a
+  new provider machine and its advertised environment row with
+  `bb thread spawn --new-machine <provider-id>`. Pass
+  `--machine-inputs <json>` when required. These inputs are persisted and
+  readable by plugins, so keep credentials in plugin settings and send only
+  non-secret configuration or references.
 - Omit `--base-branch` for bb's default. Explicit values are exact; use
   `origin/<branch>` for a remote ref. It applies to `--new-environment
 worktree` only; a provider takes its branch through `--environment-inputs`.
@@ -79,8 +85,8 @@ worktree` only; a provider takes its branch through `--environment-inputs`.
   surface that sets it, and machine credentials are refused — so read it from
   `bb machine list --json` or `bb machine show` and ask the user to change it
   in the app.
-- `bb machine list`, `show`, `join-code`, `rename`, `retry-update`,
-  and `remove` cover the Settings →
+- `bb machine providers`, `show`, `join-code`, `rename`, `retry-update`,
+  `suspend`, `resume`, `retry-cleanup`, and `remove` cover the Settings →
   Machines lifecycle. Use `bb machine provider-cli status|install` to inspect
   or install provider CLIs on a selected machine.
 - `bb updates` runs the default `bb updates status` action. It aggregates BB and provider

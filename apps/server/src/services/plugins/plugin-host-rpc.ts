@@ -8,7 +8,7 @@ import type {
 import type { JsonValue } from "@bb/domain";
 import { COMMAND_TIMEOUT_MS } from "../../constants.js";
 import type { WorkSessionDeps } from "../../types.js";
-import { callHostOnlineRpc } from "../hosts/online-rpc.js";
+import { callHostOnlineRpcWithoutAdmission } from "../hosts/online-rpc.js";
 import type { PluginHostArtifactSnapshot } from "./plugin-service-internal.js";
 
 const HOST_RPC_TRANSPORT_GRACE_MS = 6_000;
@@ -81,7 +81,7 @@ export async function callPluginHostRpc(
   );
   const callId = randomUUID();
   const timeoutMs = args.timeoutMs ?? COMMAND_TIMEOUT_MS;
-  const rpc = callHostOnlineRpc(deps, {
+  const rpc = callHostOnlineRpcWithoutAdmission(deps, {
     hostId: args.hostId,
     timeoutMs: timeoutMs + HOST_RPC_TRANSPORT_GRACE_MS,
     command: {
@@ -113,7 +113,7 @@ export async function callPluginHostRpc(
           };
           const onAbort = (): void => {
             aborted = true;
-            void callHostOnlineRpc(deps, {
+            void callHostOnlineRpcWithoutAdmission(deps, {
               hostId: args.hostId,
               timeoutMs: HOST_RPC_TRANSPORT_GRACE_MS,
               command: {
@@ -143,7 +143,7 @@ export async function disposePluginHostWorkers(
   const calls = listPublicHosts(deps.db)
     .filter((host) => deps.hub.hasDaemonForHost(host.id))
     .map((host) =>
-      callHostOnlineRpc(deps, {
+      callHostOnlineRpcWithoutAdmission(deps, {
         hostId: host.id,
         timeoutMs: HOST_RPC_TRANSPORT_GRACE_MS,
         command: {

@@ -4,6 +4,7 @@ import {
   PERSONAL_PROJECT_ID,
   threadVisibilitySchema,
   type GitBranchSelection,
+  type EnvironmentMachineSelection,
   type Thread,
   type JsonValue,
 } from "@bb/domain";
@@ -57,6 +58,8 @@ interface ThreadSpawnCommandOptions {
   parentSelf?: boolean;
   machine?: string;
   host?: string;
+  newMachine?: string;
+  machineInputs?: string;
   file?: string[];
   image?: string[];
   section?: string;
@@ -188,6 +191,17 @@ function parseEnvironmentInputs(
   return jsonValueSchema.parse(parsed);
 }
 
+function parseMachineInputs(flagValue: string | undefined): JsonValue | null {
+  if (flagValue === undefined) return null;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(flagValue);
+  } catch {
+    throw new Error("--machine-inputs must be valid JSON.");
+  }
+  return jsonValueSchema.parse(parsed);
+}
+
 async function buildProviderSpawnEnvironment(args: {
   serverUrl: string;
   environmentProvider: string;
@@ -196,6 +210,7 @@ async function buildProviderSpawnEnvironment(args: {
   newEnvironmentKind: string | undefined;
   baseBranch: string | undefined;
   machineHostId: string | null;
+  machine: EnvironmentMachineSelection | null;
   projectId: string;
   resolveDefaultHostId: () => Promise<string | null>;
 }): Promise<CreateThreadEnvironmentArgs> {
@@ -235,7 +250,7 @@ async function buildProviderSpawnEnvironment(args: {
       `The '${match.id}' environment provider takes no --environment-inputs.`,
     );
   }
-  const machine = {
+  const machine = args.machine ?? {
     type: "existing" as const,
     hostId: requireHostId(
       args.machineHostId ?? (await args.resolveDefaultHostId()),
@@ -278,6 +293,14 @@ export function registerSpawnCommand(
       "Execution machine ID or unambiguous name",
     )
     .option("--host <id-or-name>", "Alias for --machine")
+    .option(
+      "--new-machine <provider-id>",
+      "Create the thread on a new machine from this machine provider",
+    )
+    .option(
+      "--machine-inputs <json>",
+      "Persisted non-secret inputs for --new-machine; store credentials in plugin settings",
+    )
     .option("--parent-thread <id>", "Parent thread ID for worker thread links")
     .option("--parent-self", "Parent the new thread to BB_THREAD_ID")
     .option("--provider <id>", PROVIDER_HELP)
@@ -335,12 +358,26 @@ export function registerSpawnCommand(
           throw new Error("Missing required option --project <id>.");
         }
         const environmentValue = resolveSpawnEnvironmentValue(opts.environment);
-        if (opts.environmentInputs !== undefined && !opts.environmentProvider) {
+        if (
+          opts.environmentInputs !== undefined &&
+          !opts.environmentProvider &&
+          !opts.newMachine
+        ) {
           throw new Error(
             "--environment-inputs requires --environment-provider <id>.",
           );
         }
         const machineTarget = resolveMachineTargetOption(opts);
+        if (machineTarget && opts.newMachine) {
+          throw new Error(
+            "Cannot combine --new-machine with --machine or --host.",
+          );
+        }
+        if (opts.machineInputs !== undefined && !opts.newMachine) {
+          throw new Error(
+            "--machine-inputs requires --new-machine <provider-id>.",
+          );
+        }
         if (
           machineTarget &&
           environmentValue &&
@@ -350,9 +387,57 @@ export function registerSpawnCommand(
             "Cannot combine --machine or --host with an existing environment ID; that environment already selects its machine.",
           );
         }
-        const selectedEnvironmentProvider = opts.environmentProvider;
+        const machineProvider = opts.newMachine
+          ? (
+              await createCliBbSdk(getUrl()).hosts.listProviders({ projectId })
+            ).find((provider) => provider.id === opts.newMachine?.trim())
+          : undefined;
+        if (opts.newMachine && machineProvider === undefined) {
+          throw new Error(
+            `Unknown machine provider '${opts.newMachine.trim()}'.`,
+          );
+        }
+        let machineInputs = parseMachineInputs(opts.machineInputs);
+        if (
+          machineProvider &&
+          machineProvider.inputs !== null &&
+          machineInputs === null
+        ) {
+          if (machineProvider.acceptsEmptyInputs) machineInputs = {};
+          else {
+            throw new Error(
+              `The '${machineProvider?.id}' machine provider needs --machine-inputs <json>; \`bb machine providers --json\` shows its schema.`,
+            );
+          }
+        }
+        if (
+          machineProvider &&
+          machineProvider.inputs === null &&
+          machineInputs !== null
+        ) {
+          throw new Error(
+            `The '${machineProvider.id}' machine provider takes no --machine-inputs.`,
+          );
+        }
+        const newMachineSelection =
+          machineProvider === undefined
+            ? null
+            : {
+                type: "new" as const,
+                machineProviderId: machineProvider.id,
+                inputs: machineInputs,
+              };
+        const selectedEnvironmentProvider =
+          opts.environmentProvider ??
+          machineProvider?.environmentRow?.environmentProviderId;
+        if (machineProvider && selectedEnvironmentProvider === undefined) {
+          throw new Error(
+            `The '${machineProvider.id}' machine provider has no environment row; combine --new-machine with --environment-provider <id>.`,
+          );
+        }
         const needsHostId =
           !opts.environmentProvider &&
+          !opts.newMachine &&
           (Boolean(opts.newEnvironment) ||
             (environmentValue !== undefined &&
               looksLikePath(environmentValue)));
@@ -373,6 +458,7 @@ export function registerSpawnCommand(
               newEnvironmentKind: opts.newEnvironment,
               baseBranch: opts.baseBranch,
               machineHostId: hostId,
+              machine: newMachineSelection,
               projectId,
               resolveDefaultHostId: resolveLocalHostId,
             })

@@ -81,6 +81,10 @@ vi.mock("@/hooks/queries/environment-provider-queries", () => ({
   ) => new Map(hostIds.map((hostId) => [hostId, mocks.environmentProviders])),
 }));
 
+vi.mock("@/hooks/queries/machine-provider-queries", () => ({
+  useSystemMachineProviders: () => ({ providers: [] }),
+}));
+
 vi.mock("@/lib/sdk", () => ({
   sdk: { projects: { attachments: { copy: mocks.copyAttachments } } },
 }));
@@ -152,7 +156,7 @@ vi.mock("@/hooks/queries/host-queries", () => ({
   useHosts: () => ({
     data: [{ id: "host_1", name: "Machine" }],
   }),
-  selectPersistentHosts: <T,>(hosts: T[] | undefined) => hosts ?? [],
+  selectHosts: <T,>(hosts: T[] | undefined) => hosts ?? [],
   selectPrimaryHost: (
     hosts: Array<{ id: string }> | undefined,
     primaryHostId: string | null,

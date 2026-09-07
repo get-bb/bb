@@ -165,6 +165,11 @@ export const OFFICIAL_PLUGINS = [
     defaultEnabled: false,
   },
   {
+    name: "environment-modal-sandbox",
+    pluginId: "environment-modal-sandbox",
+    defaultEnabled: true,
+  },
+  {
     name: "github",
     pluginId: "github",
     defaultEnabled: true,

@@ -21,7 +21,9 @@ import {
   isZodSchemaLike,
   storePluginHook,
   validatePluginEnvironmentProviderDeclaration,
+  validatePluginMachineProviderDeclaration,
   type NormalizedPluginEnvironmentProvider,
+  type NormalizedPluginMachineProvider,
   KV_VALUE_MAX_BYTES,
   MENTION_PROVIDER_ID_PATTERN,
   normalizeMentionProviderTriggers,
@@ -65,6 +67,7 @@ import type {
   PluginCliResult,
   PluginHookHandler,
   PluginEnvironments,
+  PluginMachines,
   PluginHookName,
   PluginHooks,
   PluginEvents,
@@ -288,6 +291,7 @@ export interface FakePluginRegistrations {
     string,
     NormalizedPluginEnvironmentProvider
   >;
+  machineProviders: ReadonlyMap<string, NormalizedPluginMachineProvider>;
   mentionProviders: FakeMentionProviderRecord[];
   /** Live provider registrations from `bb.providers.register`
    * (normalized declarations, registration order; dispose removes). */
@@ -1801,6 +1805,7 @@ function createFakePluginHostInternal(
     string,
     NormalizedPluginEnvironmentProvider
   >();
+  const machineProviders = new Map<string, NormalizedPluginMachineProvider>();
   const disposeHooks: Array<() => void | Promise<void>> = [];
   const serviceControllers: AbortController[] = [];
   let nextInteractionId = 1;
@@ -2129,6 +2134,21 @@ function createFakePluginHostInternal(
     },
   };
 
+  const experimental_machines: PluginMachines = {
+    register(declaration) {
+      assertLive();
+      const target = validatePluginMachineProviderDeclaration(declaration);
+      const problem =
+        target.icon === null
+          ? null
+          : undeclaredIconProblem(pluginId, declaredIconNames, target.icon);
+      if (problem !== null) {
+        throw new Error(providerIconRefusalMessage(target.id, problem));
+      }
+      machineProviders.set(target.id, target);
+    },
+  };
+
   const bb: BbPluginApi = {
     pluginId,
     log,
@@ -2145,6 +2165,7 @@ function createFakePluginHostInternal(
     events,
     experimental_hooks,
     experimental_environments,
+    experimental_machines,
     status,
     server,
     hosts,
@@ -2258,7 +2279,9 @@ function createFakePluginHostInternal(
       get environmentProviders() {
         return new Map(environmentProviders);
       },
-
+      get machineProviders() {
+        return new Map(machineProviders);
+      },
       mentionProviders,
       providerRegistrations,
       providerEnvResolvers,

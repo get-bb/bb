@@ -68,11 +68,12 @@ import {
   type ExperimentalOpenFixedTabOptions,
   type ExperimentalPluginFixedTabReference,
   type NewThreadComposerProps,
-  type BranchPickerProps,
+  type ExperimentalBranchPickerProps,
   type CheckoutState,
   type ExperimentalPermissionModePickerProps,
   type ExperimentalProviderModelPickerProps,
   type PluginEnvironmentProviderInputsRegistration,
+  type PluginMachineProviderInputsRegistration,
   type ThreadChatProps,
   type DiffProps,
   type SourceCodeProps,
@@ -621,7 +622,7 @@ function TestBranchPicker({
   label,
   placeholder,
   disabled,
-}: BranchPickerProps) {
+}: ExperimentalBranchPickerProps) {
   const inert = hostId === null || projectId === null || disabled === true;
   return (
     <div
@@ -966,6 +967,7 @@ export interface CapturedPluginApp {
   providerIcons: PluginProviderIconRegistration[];
   timelineRenderers: PluginTimelineRendererRegistration[];
   environmentProviderInputs: PluginEnvironmentProviderInputsRegistration[];
+  machineProviderInputs: PluginMachineProviderInputsRegistration[];
   contentScripts: PluginContentScriptRegistration[];
 }
 

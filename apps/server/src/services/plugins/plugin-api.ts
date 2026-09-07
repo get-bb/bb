@@ -42,6 +42,7 @@ import type {
   PluginMentionItem,
   PluginMentionSearchContext,
   PluginMentionTrigger,
+  PluginMachines,
   PluginAiServiceDeclaration,
   PluginAiServices,
   PluginProviderDeclaration,
@@ -92,6 +93,7 @@ import {
   pluginHookAlreadyRegisteredMessage,
   storePluginHook,
   validatePluginEnvironmentProviderDeclaration,
+  validatePluginMachineProviderDeclaration,
   providerAlreadyRegisteredMessage,
   providerIconRefusalMessage,
   undeclaredIconProblem,
@@ -103,6 +105,7 @@ import {
 import type {
   AiServiceHostBinding,
   NormalizedPluginEnvironmentProvider,
+  NormalizedPluginMachineProvider,
   NormalizedPluginProviderDeclaration,
 } from "@get-bb/plugin-sdk/internal/host-policy";
 import type { BbSdk, ThreadForkArgs, ThreadSpawnArgs } from "@bb/sdk";
@@ -250,6 +253,7 @@ export interface PluginApiHandle {
   /** Hook handlers recorded by `bb.experimental_hooks.on`. */
   hooks: PluginHookRecords;
   environmentProviders: Map<string, NormalizedPluginEnvironmentProvider>;
+  machineProviders: Map<string, NormalizedPluginMachineProvider>;
   /** HTTP routes recorded by `bb.http.route`; dropped with the handle. */
   httpRoutes: PluginHttpRouteRecord[];
   websocketRoutes: PluginWebSocketRouteRecord[];
@@ -430,6 +434,7 @@ export function createPluginApi(options: {
   reportNeedsConfiguration: (message: string) => void;
   isAgentToolNameTaken: (name: string) => string | undefined;
   isEnvironmentProviderIdTaken: (id: string) => string | undefined;
+  isMachineProviderIdTaken: (id: string) => string | undefined;
   reportAgentToolProblem: (message: string) => void;
   /**
    * Schedules a re-attempt of every plugin-queued row
@@ -549,6 +554,7 @@ export function createPluginApi(options: {
     string,
     NormalizedPluginEnvironmentProvider
   >();
+  const machineProviders = new Map<string, NormalizedPluginMachineProvider>();
   const httpRoutes: PluginHttpRouteRecord[] = [];
   const websocketRoutes: PluginWebSocketRouteRecord[] = [];
   const rpcHandlers = new Map<string, PluginRpcHandler>();
@@ -1539,6 +1545,27 @@ export function createPluginApi(options: {
     },
   };
 
+  const experimental_machines: PluginMachines = {
+    register(declaration) {
+      assertLive();
+      const provider = validatePluginMachineProviderDeclaration(declaration);
+      const problem =
+        provider.icon === null
+          ? null
+          : undeclaredIconProblem(pluginId, declaredIconNames, provider.icon);
+      if (problem !== null) {
+        throw new Error(providerIconRefusalMessage(provider.id, problem));
+      }
+      const owner = options.isMachineProviderIdTaken(provider.id);
+      if (owner !== undefined) {
+        throw new Error(
+          `machine provider "${provider.id}" is already registered by plugin "${owner}"`,
+        );
+      }
+      machineProviders.set(provider.id, provider);
+    },
+  };
+
   const aiServiceRegistrations = createStagedRegistrations({
     validate: validatePluginAiServiceDeclaration,
     bind: assertAiServiceRegistrable,
@@ -1569,6 +1596,7 @@ export function createPluginApi(options: {
     events,
     experimental_hooks,
     experimental_environments,
+    experimental_machines,
     status,
     server,
     hosts,
@@ -1599,6 +1627,7 @@ export function createPluginApi(options: {
     threadEventHandlers,
     hooks,
     environmentProviders,
+    machineProviders,
     httpRoutes,
     websocketRoutes,
     rpcHandlers,

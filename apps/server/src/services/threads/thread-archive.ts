@@ -3,6 +3,10 @@ import {
   sweepProviderEnvironment,
 } from "../environments/provider-orchestration.js";
 import {
+  cancelMachineLaunch,
+  sweepProviderMachine,
+} from "../machines/provider-orchestration.js";
+import {
   listLiveThreadsInEnvironment,
   listUnarchivedAssignedChildThreads,
   listUnarchivedHiddenSourceThreads,
@@ -104,10 +108,18 @@ function archiveThreadWithLifecycleEffects(
   void cancelProviderLaunch(deps, archivedThread.id).catch((error) =>
     deps.logger.warn({ error }, "Environment launch cancellation failed"),
   );
+  void cancelMachineLaunch(deps, archivedThread.id).catch((error) =>
+    deps.logger.warn({ error }, "Machine launch cancellation failed"),
+  );
   if (archivedThread.environmentId !== null)
     void sweepProviderEnvironment(deps, archivedThread.environmentId).catch(
       (error) => deps.logger.warn({ error }, "Environment retirement failed"),
     );
+  if (args.environment !== null) {
+    void sweepProviderMachine(deps, args.environment.hostId).catch((error) =>
+      deps.logger.warn({ error }, "Machine retirement failed"),
+    );
+  }
   emitPluginThreadArchived(archivedThread);
 
   return archivedThread;

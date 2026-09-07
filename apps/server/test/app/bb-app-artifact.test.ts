@@ -168,7 +168,7 @@ describe("bb-app artifact service (desktop packaging)", () => {
     });
 
     await expect(service.getArtifact()).rejects.toMatchObject({
-      code: expect.stringMatching(/^(EISDIR|ENOTSUP)$/u),
+      code: "EISDIR",
       path: readmePath,
     });
   });

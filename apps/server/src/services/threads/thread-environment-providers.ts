@@ -3,6 +3,7 @@ import {
   cancelProviderLaunch,
   persistPendingProviderRequest,
 } from "../environments/provider-orchestration.js";
+import { cancelMachineLaunch } from "../machines/provider-orchestration.js";
 import {
   getAppSettings,
   getEnvironment,
@@ -51,6 +52,8 @@ import { advanceThreadProvisioning } from "./thread-provisioning.js";
 import { toThreadResponseFromThread } from "./thread-runtime-display.js";
 import { toEnvironmentResponse } from "../environments/environment-response.js";
 import type { ThreadProvisioningDeps } from "./thread-provisioning-environment.js";
+import { askMachineLaunch } from "../machines/provider-orchestration.js";
+import { getMachineProvider } from "../plugins/plugin-machine-provider-registry.js";
 
 const PROVIDER_UNAVAILABLE_RETRY_MS = 30_000;
 
@@ -162,6 +165,9 @@ export function cancelAbandonedProviderLaunches(
 ): void {
   void cancelProviderLaunch(deps, threadId).catch((error) =>
     deps.logger.warn({ threadId, error }, "Environment cancellation failed"),
+  );
+  void cancelMachineLaunch(deps, threadId).catch((error) =>
+    deps.logger.warn({ threadId, error }, "Machine cancellation failed"),
   );
 }
 
@@ -337,8 +343,48 @@ export async function resolveEnvironmentProvider(
       error instanceof Error ? error.message : String(error),
     );
   }
-  const host = getNonDestroyedHostWithStatus(deps, selection.machine.hostId);
+  let machineLog = "";
+  const machine = selection.machine;
+  const host =
+    machine.type === "existing"
+      ? getNonDestroyedHostWithStatus(deps, machine.hostId)
+      : await (async () => {
+          const machineRecord = getMachineProvider(machine.machineProviderId);
+          if (machineRecord === undefined) {
+            throw providerFailure(
+              intent.environmentProviderId,
+              record.pluginId,
+              `needs the "${machine.machineProviderId}" machine provider, which is not registered`,
+            );
+          }
+          const machineDecision = askMachineLaunch(deps, {
+            key: thread.id,
+            record: machineRecord,
+            projectId: thread.projectId,
+            inputs: machine.inputs,
+          });
+          if (machineDecision.action === "reject") {
+            throw new ApiError(
+              409,
+              "machine_provider_rejected",
+              machineDecision.message,
+            );
+          }
+          if (machineDecision.action === "wait") {
+            recordWait(deps, {
+              context,
+              log: machineDecision.log,
+              reason: machineDecision.reason,
+              sendAt: machineDecision.sendAt,
+              thread,
+            });
+            return null;
+          }
+          machineLog = machineDecision.log;
+          return machineDecision.host;
+        })();
   if (host === null) {
+    if (selection.machine.type === "new") return { kind: "waiting" };
     throw providerFailure(
       intent.environmentProviderId,
       record.pluginId,
@@ -408,7 +454,7 @@ export async function resolveEnvironmentProvider(
   if (decision.action === "wait") {
     recordWait(deps, {
       context,
-      log: decision.log,
+      log: machineLog + decision.log,
       reason: decision.reason,
       sendAt: decision.sendAt ?? null,
       thread,
@@ -421,7 +467,7 @@ export async function resolveEnvironmentProvider(
   }
   const entries = launchEntries({
     ask,
-    log: decision.log,
+    log: machineLog + decision.log,
     now: Date.now(),
     step:
       ask.lastStep === null

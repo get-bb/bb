@@ -5,7 +5,10 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import type { Host } from "@bb/domain";
 import { makeHost } from "@bb/test-helpers/domain-fixtures";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { SystemEnvironmentProvider } from "@bb/server-contract";
+import type {
+  SystemEnvironmentProvider,
+  SystemMachineProvider,
+} from "@bb/server-contract";
 import {
   ProjectlessEnvSlot,
   ProjectlessMachineSlot,
@@ -203,13 +206,37 @@ describe("ProjectlessEnvSlot", () => {
     inputs: null,
   };
 
+  const modalMachineProvider: SystemMachineProvider = {
+    id: "modal-sandbox",
+    displayName: "Modal sandbox",
+    icon: "Box",
+    logoUrl: null,
+    pluginId: "environment-modal-sandbox",
+    requires: { gitRemote: true },
+    inputs: null,
+    acceptsEmptyInputs: true,
+    supportsSuspend: true,
+    environmentRow: {
+      displayName: "Modal sandbox",
+      environmentProviderId: personalProvider.id,
+    },
+    policy: {
+      idleSuspendMs: 60_000,
+      retire: { after: "last-thread", graceMs: 60_000 },
+      removeRetryMs: 60_000,
+    },
+    availability: null,
+  };
+
   function makeEnvironment(overrides: {
     value?: string;
     providers?: readonly SystemEnvironmentProvider[];
+    machineProviders?: readonly SystemMachineProvider[];
     onSelectProvider?: (
       provider: SystemEnvironmentProvider,
       hostId: string | null,
     ) => void;
+    onSelectMachineProvider?: (provider: SystemMachineProvider) => void;
   }) {
     return {
       value: overrides.value ?? "provider:personal-workspace",
@@ -225,6 +252,8 @@ describe("ProjectlessEnvSlot", () => {
       providers: overrides.providers ?? [personalProvider],
       selectedProviderHostId: host.id,
       onSelectProvider: overrides.onSelectProvider ?? vi.fn(),
+      machineProviders: overrides.machineProviders,
+      onSelectMachineProvider: overrides.onSelectMachineProvider,
     };
   }
 
@@ -272,6 +301,26 @@ describe("ProjectlessEnvSlot", () => {
     expect(screen.getByRole("button", { name: "Machine" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Environment" })).toBeNull();
     expect(screen.queryByText("Modal sandbox")).toBeNull();
+  });
+
+  it("shows machine-provider sugar after the personal workspace option", () => {
+    render(
+      <ProjectlessEnvSlot
+        environment={makeEnvironment({
+          providers: [personalProvider],
+          machineProviders: [modalMachineProvider],
+          onSelectMachineProvider: vi.fn(),
+        })}
+        worktree={makeWorktree()}
+      />,
+    );
+
+    expect(screen.queryByRole("button", { name: "Machine" })).toBeNull();
+    const trigger = screen.getByRole("button", { name: "Environment" });
+    fireEvent.pointerDown(trigger, { button: 0 });
+    const items = screen.getAllByRole("menuitem");
+    expect(items[0]?.textContent).toContain("Personal workspace");
+    expect(items.at(-1)?.textContent).toContain("Modal sandbox");
   });
 
   it("shows the reused environment instead of the machine slot when a thread reuses one", () => {

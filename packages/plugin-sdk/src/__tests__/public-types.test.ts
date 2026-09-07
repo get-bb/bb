@@ -10,6 +10,7 @@ type ExpectedBbPluginApiKey =
   | "experimental_aiServices"
   | "experimental_environments"
   | "experimental_hooks"
+  | "experimental_machines"
   | "hosts"
   | "http"
   | "log"
@@ -77,6 +78,10 @@ const EXPECTED_BACKEND_ROOT_TYPE_EXPORTS = [
   "PluginInteractionResult",
   "PluginKvStorage",
   "PluginLogger",
+  "PluginMachineProviderDeclaration",
+  "PluginMachineProviderRequirements",
+  "PluginMachineValidateDecision",
+  "PluginMachines",
   "PluginMentionItem",
   "PluginMentionProviderRegistration",
   "PluginMentionSearchContext",

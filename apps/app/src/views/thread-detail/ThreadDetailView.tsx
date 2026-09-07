@@ -100,7 +100,7 @@ import { assertNever } from "@bb/thread-view";
 import { useCreateThreadInEnvironment } from "@/hooks/useCreateThreadInEnvironment";
 import { useHostDaemon } from "@/hooks/useHostDaemon";
 import { useLocalOpenTargets } from "@/hooks/useLocalOpenTargets";
-import { selectPersistentHosts, useHosts } from "@/hooks/queries/host-queries";
+import { selectHosts, useHosts } from "@/hooks/queries/host-queries";
 import { useSystemConfig } from "@/hooks/queries/system-queries";
 import { useConnectionAwareQueryState } from "@/hooks/queries/connection-aware-query-state";
 import {
@@ -936,7 +936,7 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
     if (!environmentHostId) return null;
     return hosts.find((host) => host.id === environmentHostId) ?? null;
   }, [environment?.hostId, hostsQuery.data]);
-  const hasMultipleMachines = selectPersistentHosts(hostsQuery.data).length > 1;
+  const hasMultipleMachines = selectHosts(hostsQuery.data).length > 1;
   const threadEnvironmentHost = shouldShowEnvironmentHostIdentity(
     hasMultipleMachines,
     thread?.projectId === PERSONAL_PROJECT_ID,

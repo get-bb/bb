@@ -19,6 +19,7 @@ import {
   type PluginMessageActionContext,
   type PluginMessageActionRegistration,
   type PluginMessageDirectiveProps,
+  type PluginMachineProviderInputsProps,
   type PluginNavPanelProps,
   type PluginNavPanelRegistration,
   type PluginNewThreadPanelProps,
@@ -165,6 +166,7 @@ const BB_PLUGIN_API_KEYS = [
   "experimental_aiServices",
   "experimental_hooks",
   "experimental_environments",
+  "experimental_machines",
   "sdk",
   "onDispose",
 ] as const satisfies readonly (keyof BbPluginApi)[];
@@ -265,6 +267,7 @@ type SlotPropsByName = {
   experimental_providerIcon: PluginProviderIconRegistration;
   experimental_timelineRenderer: PluginTimelineRendererProps;
   experimental_environmentProviderInputs: PluginEnvironmentProviderInputsProps;
+  experimental_machineProviderInputs: PluginMachineProviderInputsProps;
 };
 
 type MissingSlot = Exclude<keyof PluginAppSlots, keyof SlotPropsByName>;
@@ -383,6 +386,7 @@ const FRONTEND_SLOT_PROP_FIELDS = {
     "value",
     "onChange",
   ],
+  experimental_machineProviderInputs: ["projectId", "value", "onChange"],
 } as const satisfies {
   [S in keyof SlotPropsByName]: readonly (keyof SlotPropsByName[S])[];
 };
@@ -640,7 +644,7 @@ describe("bb-plugin-authoring skill", () => {
     const backendIndex = readReference("backend-api-index.md");
     const appSymbols = [
       "experimental_BranchPicker",
-      "BranchPickerProps",
+      "ExperimentalBranchPickerProps",
       "experimental_useBranches",
       "UseBranchesArgs",
       "BranchesState",

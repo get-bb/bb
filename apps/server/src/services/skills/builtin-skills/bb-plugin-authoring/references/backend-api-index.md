@@ -73,6 +73,11 @@ Read the installed declarations for exact current signatures.
 - `PluginDispatchExecutionSources`
 - `PluginEnvironments` — `bb.experimental_environments`: `register` +
   `recheck` (see backend-events.md, environment providers)
+- `PluginMachines` — `bb.experimental_machines.register` (see
+  backend-events.md, machine providers)
+- `PluginMachineProviderDeclaration`
+- `PluginMachineProviderRequirements` — optional `gitRemote`
+- `PluginMachineValidateDecision`
 - `PluginEnvironmentProviderDeclaration`
 - `PluginEnvironmentProviderRequirements` — `requires`, e.g.
   `{ gitCheckout: true }`; also `projectCheckout`, `gitRemote` and `projectless`.
@@ -279,6 +284,26 @@ Read the installed declarations for exact current signatures.
 - `PluginEnvironmentProviderRemoveContext` — includes the private
   `resource` returned by the launch that made the environment
 - `PluginEnvironmentProviderRemoveResult`
+
+## `@get-bb/plugin-sdk/machine-provider`
+
+- `PluginMachineProviderDefinition` — id, display, optional icon, inputs, availability,
+  validation, optional picker sugar, policy, create, optional paired
+  suspend/resume, and remove
+- `PluginMachineProviderInputsSchema`
+- `PluginMachineProviderPolicy` — idle suspension, retirement, and removal retry
+- `PluginMachineProviderEnvironmentRow`
+- `PluginMachineProviderAvailabilityContext`
+- `PluginMachineProviderAvailability`
+- `PluginMachineProviderValidateContext`
+- `PluginMachineProviderCreateContext`
+- `PluginMachineProviderCreateResult`
+- `PluginMachineProviderLifecycleContext`
+- `PluginMachineProviderSuspendContext` — suspend context with a durable
+  `checkpoint` resource callback
+- `PluginMachineProviderProgress`
+- `PluginMachineProviderResourceResult`
+- `PluginMachineProviderRemoveResult`
 
 ## `@get-bb/plugin-sdk/ai-services`
 

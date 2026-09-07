@@ -47,7 +47,6 @@ function setup() {
   const db = createMigratedConnection();
   const host = upsertHost(db, noopNotifier, {
     name: "test-host",
-    type: "persistent",
   });
   const { project } = createProject(db, noopNotifier, {
     name: "test-project",
@@ -1312,7 +1311,7 @@ describe("threads", () => {
 
   it("lists canonical thread environments for a host", () => {
     const { db, project, host } = setup();
-    const otherHost = upsertHost(db, noopNotifier, { type: "persistent",
+    const otherHost = upsertHost(db, noopNotifier, {
       name: "other-host",
     });
     const environment = createEnvironment(db, noopNotifier, {
@@ -1355,7 +1354,7 @@ describe("threads", () => {
 
   it("lists host thread ids and detects pending shutdowns by environment", () => {
     const { db, project, host } = setup();
-    const otherHost = upsertHost(db, noopNotifier, { type: "persistent",
+    const otherHost = upsertHost(db, noopNotifier, {
       name: "other-host",
     });
     const environment = createEnvironment(db, noopNotifier, {

@@ -208,6 +208,16 @@ describe("surface card copy", () => {
     expect(eventCopy).toContain("cancelled before dispatch");
   });
 
+  it("documents durable machine suspension checkpoints", () => {
+    const machineProviders = SURFACES_BY_ID.get("machine-providers");
+    expect(machineProviders?.apiSymbols).toContain(
+      "PluginMachineProviderSuspendContext",
+    );
+    expect(machineProviders?.bullets.join(" ")).toContain(
+      "Checkpoint a recoverable private resource during suspend",
+    );
+  });
+
   it("follows the lead-then-bullets template", () => {
     for (const group of SURFACE_GROUPS) {
       for (const surface of group.surfaces) {

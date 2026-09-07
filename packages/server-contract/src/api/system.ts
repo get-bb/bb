@@ -299,3 +299,60 @@ export const systemEnvironmentProvidersQuerySchema = z
 export type SystemEnvironmentProvidersQuery = z.infer<
   typeof systemEnvironmentProvidersQuerySchema
 >;
+
+export const systemMachineProviderSchema = z.object({
+  id: z.string().min(1),
+  displayName: z.string().min(1),
+  icon: z.string().min(1).nullable(),
+  logoUrl: z.string().min(1).nullable(),
+  pluginId: z.string().min(1),
+  requires: z.object({ gitRemote: z.boolean() }),
+  inputs: jsonValueSchema.nullable(),
+  acceptsEmptyInputs: z.boolean(),
+  supportsSuspend: z.boolean(),
+  environmentRow: z
+    .object({
+      displayName: z.string().min(1),
+      environmentProviderId: z.string().min(1),
+    })
+    .nullable(),
+  policy: z.object({
+    idleSuspendMs: z.number().int().nonnegative().nullable(),
+    retire: z.discriminatedUnion("after", [
+      z.object({
+        after: z.literal("last-thread"),
+        graceMs: z.number().int().nonnegative(),
+      }),
+      z.object({ after: z.literal("never") }),
+    ]),
+    removeRetryMs: z.number().int().positive(),
+  }),
+  availability: z
+    .discriminatedUnion("status", [
+      z.object({ status: z.literal("available") }),
+      z.object({
+        status: z.literal("setup-required"),
+        message: z.string().min(1),
+      }),
+      z.object({
+        status: z.literal("unavailable"),
+        message: z.string().min(1),
+      }),
+    ])
+    .nullable(),
+});
+export type SystemMachineProvider = z.infer<typeof systemMachineProviderSchema>;
+
+export const systemMachineProvidersResponseSchema = z.object({
+  providers: z.array(systemMachineProviderSchema),
+});
+export type SystemMachineProvidersResponse = z.infer<
+  typeof systemMachineProvidersResponseSchema
+>;
+
+export const systemMachineProvidersQuerySchema = z.object({
+  projectId: z.string().min(1).optional(),
+});
+export type SystemMachineProvidersQuery = z.infer<
+  typeof systemMachineProvidersQuerySchema
+>;

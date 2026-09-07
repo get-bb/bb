@@ -410,6 +410,36 @@ export interface PluginEnvironments {
   recheck(): Promise<void>;
 }
 
+export interface PluginMachineProviderRequirements {
+  gitRemote?: boolean;
+}
+
+export type PluginMachineValidateDecision =
+  | { action: "accept" }
+  | { action: "refuse"; message: string };
+
+export type PluginMachineProviderDeclaration<
+  Requires extends PluginMachineProviderRequirements =
+    PluginMachineProviderRequirements,
+  Inputs extends
+    import("./machine-provider.js").PluginMachineProviderInputsSchema =
+    import("./machine-provider.js").PluginMachineProviderInputsSchema,
+> = import("./machine-provider.js").PluginMachineProviderDefinition<
+  Requires,
+  Inputs
+>;
+
+export interface PluginMachines {
+  register<
+    const Requires extends PluginMachineProviderRequirements,
+    const Inputs extends
+      import("./machine-provider.js").PluginMachineProviderInputsSchema =
+      undefined,
+  >(
+    declaration: PluginMachineProviderDeclaration<Requires, Inputs>,
+  ): void;
+}
+
 /**
  * Where a thread is going to run, as far as core knows at the checkpoint.
  * Before provisioning attaches an environment this is the start intent the
@@ -421,7 +451,13 @@ export type PluginDispatchEnvironmentIntent =
   | {
       kind: "provider";
       environmentProviderId: string;
-      machine: { type: "existing"; hostId: string };
+      machine:
+        | { type: "existing"; hostId: string }
+        | {
+            type: "new";
+            machineProviderId: string;
+            inputs: JsonValue | null;
+          };
       inputs: JsonValue | null;
     };
 
@@ -1796,6 +1832,8 @@ export interface BbPluginApi {
    * docs/api_to_audit.md.
    */
   readonly experimental_environments: PluginEnvironments;
+  /** Machine providers provision execution machines. Experimental: see docs/api_to_audit.md. */
+  readonly experimental_machines: PluginMachines;
   /** Plugin-reported status (needs-configuration). */
   readonly status: PluginStatusApi;
   /** Read-only facts about the running server (loopback base URL). */

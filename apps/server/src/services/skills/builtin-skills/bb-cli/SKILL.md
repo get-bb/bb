@@ -57,6 +57,14 @@ BB_HOST_DAEMON_PORT only for an intentional non-default target.
   providers that accept `{}` use it when the flag is omitted
   (`bb environment providers --json` prints both facts). `--base-branch`
   belongs to `--new-environment worktree` only.
+- List plugin-provisioned machine choices with `bb machine providers`. Create a
+  machine and its picker-sugar environment with
+  `bb thread spawn --new-machine <provider-id>`; add
+  `--machine-inputs <json>` when its schema requires inputs. Machine inputs are
+  persisted and non-secret; credentials belong in plugin settings.
+- Use `bb machine suspend|resume <id-or-name>` only for providers that expose
+  suspend and resume. Use `bb machine retry-cleanup <id-or-name>` to retry a
+  failed provider teardown immediately.
 - `bb environment providers` lists Project checkout, Worktree, then other
   installed providers by display name. Read or set `managedBranchPrefix`
   through `bb settings show` and `bb settings general <key> <value>`.

@@ -1,3 +1,4 @@
+import { advanceThreadProvisioning } from "../../src/services/threads/thread-provisioning.js";
 import {
   providerOperations,
   type TestEnvironmentProviderContext,
@@ -7,34 +8,48 @@ import {
   createEnvironment,
   createProjectSource,
   ensurePersonalProject,
-  getEnvironment,
   getEnvironmentLaunch,
+  getEnvironment,
+  getHost,
+  getMachineLaunch,
   getDefaultProjectSource,
   getThread,
   listEnvironments,
   listEvents,
 } from "@bb/db";
-import { PERSONAL_PROJECT_ID, type JsonValue } from "@bb/domain";
+import {
+  encodeClientTurnRequestIdNumber,
+  PERSONAL_PROJECT_ID,
+  type JsonValue,
+} from "@bb/domain";
 import type {
   PluginDispatchEnvironmentIntent,
   PluginEnvironmentProviderDeclaration,
+  PluginMachineProviderDeclaration,
   PluginEnvironmentValidateDecision,
   PluginHookName,
 } from "@get-bb/plugin-sdk";
 import type { PluginEnvironmentProviderValidateContext } from "@get-bb/plugin-sdk/environment-provider";
-import { validatePluginEnvironmentProviderDeclaration } from "@get-bb/plugin-sdk/internal/host-policy";
+import {
+  validatePluginEnvironmentProviderDeclaration,
+  validatePluginMachineProviderDeclaration,
+} from "@get-bb/plugin-sdk/internal/host-policy";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { ApiError } from "../../src/errors.js";
+import { persistPendingProviderRequest } from "../../src/services/environments/provider-orchestration.js";
 import {
+  listEnvironmentProviders,
   requestEnvironmentProviderRecheck,
   setPluginEnvironmentProviderBridge,
   type PluginEnvironmentProviderRecord,
 } from "../../src/services/plugins/plugin-environment-provider-registry.js";
+import { setPluginMachineProviderBridge } from "../../src/services/plugins/plugin-machine-provider-registry.js";
 import {
   setPluginHookProvider,
   type PluginHookRegistration,
 } from "../../src/services/plugins/plugin-hook-registry.js";
+import { setPluginThreadEventEmitter } from "../../src/services/plugins/plugin-thread-events.js";
 import { attemptDispatch } from "../../src/services/threads/dispatch-attempt.js";
 import {
   recheckEnvironmentProviderLaunches,
@@ -45,7 +60,11 @@ import {
   forgetAllActiveThreadProvisionContexts,
   getActiveThreadProvisionContext,
 } from "../../src/services/threads/thread-provisioning-active-context.js";
-import { registerTestHostRpcCapture } from "../helpers/commands.js";
+import { createMetadataPendingContext } from "../../src/services/threads/thread-provisioning-context.js";
+import {
+  listQueuedThreadCommands,
+  registerTestHostRpcCapture,
+} from "../helpers/commands.js";
 import { readJson } from "../helpers/json.js";
 import { textInput } from "../helpers/prompt-input.js";
 import {
@@ -54,6 +73,7 @@ import {
   seedPrimaryHost,
   seedProjectWithSource,
   seedThread,
+  seedThreadRuntimeState,
 } from "../helpers/seed.js";
 import { withTestHarness, type TestAppHarness } from "../helpers/test-app.js";
 
@@ -155,6 +175,7 @@ function installEnvironmentIntentProbe(): PluginDispatchEnvironmentIntent[] {
 afterEach(() => {
   forgetAllActiveThreadProvisionContexts();
   setPluginEnvironmentProviderBridge(undefined);
+  setPluginMachineProviderBridge(undefined);
   setPluginHookProvider(undefined);
 });
 
@@ -1390,3 +1411,703 @@ describe("environment provider listing", () => {
     });
   });
 });
+
+describe("machine and environment provider composition", () => {
+  it("creates a machine plus checkout, then a worktree on the same machine", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, session } = seedHostSession(harness.deps, {
+        id: "host-provider-composition",
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+        path: WORKSPACE_PATH,
+      });
+      registerTestHostRpcCapture(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+      });
+      const machineProvider = validatePluginMachineProviderDeclaration({
+        id: "test-machine",
+        displayName: "Test machine",
+        environmentRow: {
+          displayName: "Test machine",
+          environmentProviderId: "project-checkout",
+        },
+        policy: {
+          idleSuspendMs: null,
+          retire: { after: "never" },
+          removeRetryMs: 30_000,
+        },
+        create: async ({ key }) => ({
+          status: "created",
+          hostId: host.id,
+          resource: { key },
+        }),
+        remove: async () => ({ status: "removed" }),
+      } satisfies PluginMachineProviderDeclaration);
+      const machineRecord = {
+        pluginId: "test-machine-plugin",
+        provider: machineProvider,
+      };
+      setPluginMachineProviderBridge({
+        listMachineProviders: () => [machineRecord],
+        getMachineProvider: (id) =>
+          id === machineProvider.id ? machineRecord : undefined,
+        invokeProvider: async (_pluginId, _label, run) => ({
+          ok: true,
+          value: await run(),
+        }),
+        decisionTimeoutMs: 10_000,
+      });
+      const worktreeContexts: TestEnvironmentProviderContext[] = [];
+      installTargets([
+        {
+          id: "project-checkout",
+          requiresProjectCheckout: true,
+          provision: () => ({
+            action: "ready",
+            environment: {
+              type: "host",
+              hostId: host.id,
+              path: WORKSPACE_PATH,
+              ownsPath: false,
+            },
+          }),
+        },
+        {
+          id: "git-worktree",
+          requiresProjectCheckout: true,
+          requiresGitCheckout: true,
+          inputs: z.object({
+            branch: z.object({ kind: z.literal("default") }),
+          }),
+          provision: (context) => {
+            worktreeContexts.push(context);
+            return {
+              action: "ready",
+              environment: {
+                type: "host",
+                hostId: host.id,
+                path: "/tmp/provider-composition-worktree",
+              },
+            };
+          },
+        },
+      ]);
+
+      const checkoutThread = await createThreadFromRequest(harness.deps, {
+        environment: {
+          type: "provider",
+          environmentProviderId: "project-checkout",
+          machine: {
+            type: "new",
+            machineProviderId: "test-machine",
+            inputs: null,
+          },
+          inputs: null,
+        },
+        input: textInput("Create the machine"),
+        origin: "app",
+        projectId: project.id,
+        providerId: "codex",
+        model: "requested-model",
+        startedOnBehalfOf: null,
+      });
+      await vi.waitFor(
+        () => {
+          expect(
+            getThread(harness.db, checkoutThread.id)?.environmentId,
+          ).not.toBeNull();
+        },
+        { timeout: 3_000 },
+      );
+      expect(getMachineLaunch(harness.db, checkoutThread.id)).toMatchObject({
+        phase: "ready",
+        hostId: host.id,
+      });
+      expect(getHost(harness.db, host.id)).toMatchObject({
+        machineProviderId: "test-machine",
+      });
+      const checkoutEnvironment = getEnvironment(
+        harness.db,
+        getThread(harness.db, checkoutThread.id)?.environmentId ?? "",
+      );
+      expect(checkoutEnvironment?.environmentProviderSelection).toEqual({
+        machine: {
+          type: "new",
+          machineProviderId: "test-machine",
+          inputs: null,
+        },
+        inputs: null,
+      });
+
+      const worktreeThread = await createThreadFromRequest(harness.deps, {
+        environment: {
+          type: "provider",
+          environmentProviderId: "git-worktree",
+          machine: { type: "existing", hostId: host.id },
+          inputs: { branch: { kind: "default" } },
+        },
+        input: textInput("Create a worktree"),
+        origin: "app",
+        projectId: project.id,
+        providerId: "codex",
+        model: "requested-model",
+        startedOnBehalfOf: null,
+      });
+      await vi.waitFor(
+        () => {
+          expect(
+            getThread(harness.db, worktreeThread.id)?.environmentId,
+          ).not.toBeNull();
+        },
+        { timeout: 3_000 },
+      );
+      expect(worktreeContexts).toHaveLength(1);
+      expect(worktreeContexts[0]?.host.id).toBe(host.id);
+      expect(
+        getEnvironment(
+          harness.db,
+          getThread(harness.db, worktreeThread.id)?.environmentId ?? "",
+        )?.hostId,
+      ).toBe(host.id);
+    });
+  });
+});
+
+describe("core's worktree beside providers", () => {
+  it("lists only registered providers and turns a worktree request into a worktree provider intent", async () => {
+    await withTestHarness(async (harness) => {
+      installTarget({ provision: () => ({ action: "wait", reason: "…" }) });
+      expect(
+        listEnvironmentProviders().map(
+          (record) => `${record.pluginId}:${record.provider.id}`,
+        ),
+      ).toEqual([`${PLUGIN_ID}:${PROVIDER_ID}`]);
+
+      const environmentIntents = installEnvironmentIntentProbe();
+      const { host, project, session } = seedTargetFixture(
+        harness,
+        "host-core-worktree",
+      );
+      registerTestHostRpcCapture(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+      });
+      const created = await createThreadFromRequest(harness.deps, {
+        environment: {
+          type: "host",
+          hostId: host.id,
+          workspace: {
+            type: "managed-worktree",
+            baseBranch: { kind: "named", name: "main" },
+          },
+        },
+        input: textInput("Do the thing"),
+        origin: "app",
+        projectId: project.id,
+        providerId: "codex",
+        model: "requested-model",
+        startedOnBehalfOf: null,
+      });
+      expect(
+        getActiveThreadProvisionContext(created.id)?.request.environmentIntent,
+      ).toEqual({
+        type: "provider",
+        environmentProviderId: "git-worktree",
+        machine: { type: "existing", hostId: host.id },
+        inputs: { branch: { kind: "named", name: "main" } },
+        selectionResolved: false,
+        produced: null,
+      });
+      expect(environmentIntents).toEqual([
+        {
+          kind: "provider",
+          environmentProviderId: "git-worktree",
+          machine: { type: "existing", hostId: host.id },
+          inputs: { branch: { kind: "named", name: "main" } },
+        },
+      ]);
+    });
+  });
+});
+
+describe("a provider-produced environment over its life", () => {
+  it("records the producing provider on the environment it creates", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, project, session } = seedTargetFixture(
+        harness,
+        "host-target-provenance",
+      );
+      registerTestHostRpcCapture(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+      });
+      installTarget({
+        inputs: CONTAINER_INPUTS,
+        provision: () => ({
+          action: "ready",
+          environment: {
+            type: "host",
+            hostId: host.id,
+            path: "/tmp/environment-providers-fresh",
+          },
+        }),
+      });
+      const created = await createTargetThread(harness, {
+        projectId: project.id,
+        inputs: { image: "img" },
+      });
+      await vi.waitFor(() => {
+        expect(getThread(harness.db, created.id)?.environmentId).not.toBeNull();
+      });
+      const environmentId = getThread(harness.db, created.id)?.environmentId;
+      const environment = getEnvironment(harness.db, environmentId ?? "");
+      expect(environment?.environmentProviderId).toBe(PROVIDER_ID);
+      expect(environment?.environmentProviderSelection).toEqual({
+        machine: { type: "existing", hostId: host.id },
+        inputs: { image: "img", cpus: 2 },
+      });
+      expect(environment?.environmentProviderInstanceKey).toBe(created.id);
+      expect(environment?.providerOwnsPath).toBe(true);
+
+      const listed = (await readJson(
+        await harness.app.request(
+          `/api/v1/environments?environmentProviderId=${PROVIDER_ID}&instanceKey=${created.id}`,
+        ),
+      )) as Array<{ id: string }>;
+      expect(listed.map((row) => row.id)).toEqual([environmentId]);
+    });
+  });
+
+  it("records that a provider only attached to a directory it does not own", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, project, session } = seedTargetFixture(
+        harness,
+        "host-target-attached",
+      );
+      registerTestHostRpcCapture(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+      });
+      installTarget({
+        inputs: CONTAINER_INPUTS,
+        provision: () => ({
+          action: "ready",
+          environment: {
+            type: "host",
+            hostId: host.id,
+            path: "/tmp/environment-providers-attached",
+            ownsPath: false,
+          },
+        }),
+      });
+      const created = await createTargetThread(harness, {
+        projectId: project.id,
+        inputs: { image: "img" },
+      });
+      await vi.waitFor(() => {
+        expect(getThread(harness.db, created.id)?.environmentId).not.toBeNull();
+      });
+      const environment = getEnvironment(
+        harness.db,
+        getThread(harness.db, created.id)?.environmentId ?? "",
+      );
+      expect(environment?.providerOwnsPath).toBe(false);
+
+      const response = (await readJson(
+        await harness.app.request(`/api/v1/environments/${environment?.id}`),
+      )) as { managed: boolean; workspaceProvisionType: string | null };
+      expect(response.managed).toBe(false);
+      expect(response.workspaceProvisionType).toBeNull();
+    });
+  });
+
+  it("records the base branch a provider says it branched from", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, project, session } = seedTargetFixture(
+        harness,
+        "host-target-merge-base",
+      );
+      registerTestHostRpcCapture(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+      });
+      installTarget({
+        inputs: CONTAINER_INPUTS,
+        provision: () => ({
+          action: "ready",
+          environment: {
+            type: "host",
+            hostId: host.id,
+            path: "/tmp/environment-providers-merge-base",
+            mergeBaseBranch: "origin/main",
+          },
+        }),
+      });
+      const created = await createTargetThread(harness, {
+        projectId: project.id,
+        inputs: { image: "img" },
+      });
+      await vi.waitFor(() => {
+        const environmentId = getThread(harness.db, created.id)?.environmentId;
+        expect(getEnvironment(harness.db, environmentId ?? "")?.status).toBe(
+          "ready",
+        );
+      });
+      const environment = getEnvironment(
+        harness.db,
+        getThread(harness.db, created.id)?.environmentId ?? "",
+      );
+      expect(environment?.mergeBaseBranch).toBe("origin/main");
+      expect(environment?.baseBranch).toBeNull();
+    });
+  });
+
+  it("generates the instance key from the core launch path key", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, project, session } = seedTargetFixture(
+        harness,
+        "host-target-no-key",
+      );
+      registerTestHostRpcCapture(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+      });
+      installTarget({
+        provision: () => ({
+          action: "ready",
+          environment: {
+            type: "host",
+            hostId: host.id,
+            path: "/tmp/environment-providers-unkeyed",
+          },
+        }),
+      });
+      const created = await createTargetThread(harness, {
+        projectId: project.id,
+      });
+      await vi.waitFor(() => {
+        expect(getThread(harness.db, created.id)?.environmentId).not.toBeNull();
+      });
+      const environmentId = getThread(harness.db, created.id)?.environmentId;
+      expect(
+        getEnvironment(harness.db, environmentId ?? "")
+          ?.environmentProviderInstanceKey,
+      ).toBe(created.id);
+    });
+  });
+
+  it("asks the provider again, with the old environment, when a send finds it destroyed", async () => {
+    await withTestHarness(async (harness) => {
+      const asks: TestEnvironmentProviderContext[] = [];
+      const { host, project } = seedTargetFixture(harness, "host-target-reask");
+      const replacement = seedEnvironment(harness.deps, {
+        environmentProviderId: PROVIDER_ID,
+        hostId: host.id,
+        path: "/tmp/environment-providers-replacement",
+        projectId: project.id,
+      });
+      const gone = createEnvironment(harness.db, harness.hub, {
+        providerOwnsPath: false,
+        hostId: host.id,
+        projectId: project.id,
+        path: "/tmp/environment-providers-gone",
+        status: "destroyed",
+        environmentProvider: {
+          environmentProviderId: PROVIDER_ID,
+          instanceKey: null,
+          selection: {
+            machine: { type: "existing", hostId: host.id },
+            inputs: { image: "img", cpus: 2 },
+          },
+        },
+      });
+      const thread = seedThread(harness.deps, {
+        environmentId: gone.id,
+        projectId: project.id,
+        status: "idle",
+      });
+      seedThreadRuntimeState(harness.deps, {
+        environmentId: gone.id,
+        providerThreadId: "provider-reask",
+        threadId: thread.id,
+      });
+      installTarget({
+        inputs: CONTAINER_INPUTS,
+        provision: (context) => {
+          asks.push(context);
+          return {
+            action: "ready",
+            environment: {
+              type: "host",
+              hostId: replacement.hostId,
+              path: replacement.path!,
+            },
+          };
+        },
+      });
+
+      const outcome = await attemptDispatch(harness.deps, {
+        thread,
+        payload: { input: textInput("Keep going"), mode: "start" },
+        source: { kind: "inline" },
+        queuePayload: { kind: "inline" },
+        origin: null,
+        originPluginId: null,
+        startedOnBehalfOf: null,
+        trigger: "user",
+      });
+      expect(outcome.kind).toBe("dispatched");
+      await vi.waitFor(() => {
+        expect(getThread(harness.db, thread.id)?.environmentId).toBe(
+          replacement.id,
+        );
+      });
+      expect(asks).toHaveLength(1);
+      expect(asks[0]?.environment?.id).toBe(gone.id);
+      expect(asks[0]?.inputs).toEqual({ image: "img", cpus: 2 });
+      expect(getThread(harness.db, thread.id)?.status).toBe("starting");
+    });
+  });
+
+  it("aborts create and asks the provider to remove by path key when stopped", async () => {
+    await withTestHarness(async (harness) => {
+      const cancelled: string[] = [];
+      installTarget({
+        provision: () => ({ action: "wait", reason: "Starting container…" }),
+        remove: async ({ pathKey }) => {
+          cancelled.push(pathKey);
+          return { status: "removed" };
+        },
+      });
+      const { project } = seedTargetFixture(harness, "host-target-cancel");
+      const created = await createTargetThread(harness, {
+        projectId: project.id,
+      });
+      await vi.waitFor(() => {
+        expect(scheduledEnvironmentProviderAskCount()).toBe(1);
+      });
+
+      const response = await harness.app.request(
+        `/api/v1/threads/${created.id}/stop`,
+        { method: "POST" },
+      );
+      expect(response.status).toBe(200);
+      await vi.waitFor(() => {
+        expect(cancelled).toEqual([created.id]);
+      });
+      expect(scheduledEnvironmentProviderAskCount()).toBe(0);
+      expect(getThread(harness.db, created.id)?.status).not.toBe("starting");
+      expect(provisioningEvents(harness, created.id).at(-1)?.status).toBe(
+        "cancelled",
+      );
+    });
+  });
+
+  it("never asks again about a thread deleted while it was waiting", async () => {
+    await withTestHarness(async (harness) => {
+      const asks: string[] = [];
+      const cancelled: string[] = [];
+      installTarget({
+        provision: (context) => {
+          asks.push(context.thread.id);
+          return { action: "wait", reason: "Starting container…" };
+        },
+        remove: async (context) => {
+          cancelled.push(context.pathKey);
+          return { status: "removed" };
+        },
+      });
+      const { project } = seedTargetFixture(harness, "host-target-deleted");
+      const created = await createTargetThread(harness, {
+        projectId: project.id,
+      });
+      await vi.waitFor(() => {
+        expect(scheduledEnvironmentProviderAskCount()).toBe(1);
+      });
+
+      const response = await harness.app.request(
+        `/api/v1/threads/${created.id}`,
+        {
+          method: "DELETE",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ childThreadsConfirmed: false }),
+        },
+      );
+      expect(response.status).toBe(200);
+
+      recheckEnvironmentProviderLaunches(harness.deps, PLUGIN_ID);
+      await vi.waitFor(() => {
+        expect(scheduledEnvironmentProviderAskCount()).toBe(0);
+      });
+      expect(new Set(asks)).toEqual(new Set([created.id]));
+      await vi.waitFor(() => {
+        expect(cancelled).toEqual([created.id]);
+      });
+    });
+  });
+
+  it("fires thread.unarchived and dispatches provider unarchive when a thread comes back", async () => {
+    await withTestHarness(async (harness) => {
+      const unarchived: string[] = [];
+      setPluginThreadEventEmitter({
+        emitThreadCreated: () => {},
+        emitThreadActive: () => {},
+        emitThreadIdle: () => {},
+        emitThreadFailed: () => {},
+        emitThreadArchived: () => {},
+        emitThreadUnarchived: (thread) => {
+          unarchived.push(thread.id);
+        },
+        emitThreadDeleted: () => {},
+        emitMessageQueued: () => {},
+        emitMessageDispatched: () => {},
+        emitMessageCancelled: () => {},
+        emitInteractionPending: () => {},
+        emitTurnFailed: () => 0,
+      });
+      try {
+        const { environment, host, project, session } = seedTargetFixture(
+          harness,
+          "host-target-unarchive",
+        );
+        registerTestHostRpcCapture(harness, {
+          hostId: host.id,
+          sessionId: session.id,
+        });
+        const thread = seedThread(harness.deps, {
+          environmentId: environment.id,
+          projectId: project.id,
+          status: "idle",
+        });
+        const providerThreadId = "provider-unarchive";
+        seedThreadRuntimeState(harness.deps, {
+          environmentId: environment.id,
+          providerThreadId,
+          threadId: thread.id,
+        });
+        expect(
+          (
+            await harness.app.request(`/api/v1/threads/${thread.id}/archive`, {
+              method: "POST",
+            })
+          ).status,
+        ).toBe(200);
+        expect(
+          (
+            await harness.app.request(
+              `/api/v1/threads/${thread.id}/unarchive`,
+              {
+                method: "POST",
+              },
+            )
+          ).status,
+        ).toBe(200);
+        expect(unarchived).toEqual([thread.id]);
+        expect(
+          listQueuedThreadCommands(harness, "thread.unarchive", thread.id),
+        ).toEqual([
+          expect.objectContaining({
+            environmentId: environment.id,
+            providerThreadId,
+            providerId: thread.providerId,
+            threadId: thread.id,
+            type: "thread.unarchive",
+          }),
+        ]);
+      } finally {
+        setPluginThreadEventEmitter(undefined);
+      }
+    });
+  });
+});
+
+it("resumes a provider launch and its original request after the in-memory context is lost", async () =>
+  withTestHarness(async (harness) => {
+    const { host, project } = seedTargetFixture(harness, "host-restart", {
+      environmentProviderId: PROVIDER_ID,
+    });
+    let ready = false;
+    installTarget({
+      provision: () =>
+        ready ? readyAt(host) : { action: "wait", reason: "Creating" },
+    });
+    const created = await createTargetThread(harness, {
+      projectId: project.id,
+    });
+    await vi.waitFor(() =>
+      expect(getEnvironmentLaunch(harness.db, created.id)?.phase).toBe(
+        "creating",
+      ),
+    );
+    const attempt = getEnvironmentLaunch(harness.db, created.id)?.attempt;
+    const storedRequest = getEnvironmentLaunch(harness.db, created.id)?.request;
+    expect(storedRequest).not.toBeNull();
+    forgetAllActiveThreadProvisionContexts();
+    ready = true;
+    await advanceThreadProvisioning(harness.deps, { threadId: created.id });
+    await vi.waitFor(() =>
+      expect(getEnvironmentLaunch(harness.db, created.id)?.phase).toBe("ready"),
+    );
+    await advanceThreadProvisioning(harness.deps, { threadId: created.id });
+    await vi.waitFor(() =>
+      expect(getThread(harness.db, created.id)?.environmentId).not.toBeNull(),
+    );
+    expect(getEnvironmentLaunch(harness.db, created.id)?.attempt).toBe(attempt);
+    expect(getThread(harness.db, created.id)?.status).not.toBe("error");
+  }));
+
+it("keeps an existing request waiting when its provider is not registered", async () =>
+  withTestHarness(async (harness) => {
+    installTarget(null);
+    const { host, project } = seedTargetFixture(
+      harness,
+      "host-register-later",
+      { environmentProviderId: PROVIDER_ID },
+    );
+    const thread = seedThread(harness.deps, {
+      projectId: project.id,
+      status: "starting",
+    });
+    const context = createMetadataPendingContext({
+      clientRequestId: encodeClientTurnRequestIdNumber({ value: 1 }),
+      environmentIntent: {
+        type: "provider",
+        environmentProviderId: PROVIDER_ID,
+        machine: { type: "existing", hostId: host.id },
+        inputs: null,
+        selectionResolved: true,
+        produced: null,
+      },
+      execution: {
+        model: "requested-model",
+        serviceTier: "default",
+        reasoningLevel: "medium",
+        permissionMode: "full",
+        source: "client/turn/requested",
+      },
+      fork: null,
+      input: textInput("Do the thing"),
+      seedWithoutRun: false,
+      titleProvided: true,
+    });
+    persistPendingProviderRequest(harness.db, thread.id, context.request);
+    await advanceThreadProvisioning(harness.deps, { threadId: thread.id });
+    await vi.waitFor(() =>
+      expect(getEnvironmentLaunch(harness.db, thread.id)?.attempt).toBe(0),
+    );
+    forgetAllActiveThreadProvisionContexts();
+    installTarget({ provision: () => readyAt(host) });
+    await advanceThreadProvisioning(harness.deps, { threadId: thread.id });
+    await vi.waitFor(
+      () =>
+        expect({
+          thread: getThread(harness.db, thread.id),
+          launch: getEnvironmentLaunch(harness.db, thread.id),
+          events: provisioningEvents(harness, thread.id),
+        }).toMatchObject({ thread: { environmentId: expect.any(String) } }),
+      { timeout: 2000 },
+    );
+    expect(getEnvironmentLaunch(harness.db, thread.id)?.attempt).toBe(1);
+  }));

@@ -542,6 +542,69 @@ and owns the existing/new selection, labels, blocker copy, and emitted inputs.
    has to report ready from an effect on mount, as the worktree does.
    Decide whether the registration should instead declare a default value.
 
+## `bb.experimental_machines` (`register`)
+
+**What it does.** Lets a plugin create and own execution machines. A machine
+provider declares its id, display name, optional icon, optional git-remote requirement,
+optional Standard Schema inputs, availability, validation, optional picker
+sugar row, lifecycle policy, and idempotent create/remove operations. Create is
+keyed durably and may enrol a project checkout, but standalone machine creation
+passes a nullable project and does not require a checkout. The returned JSON
+resource is private to the provider and capped at 16 KiB.
+
+Core persists launch attempts and machine lifecycle state on hosts. It suspends
+an idle machine only when the provider declares both suspend and resume; a
+provider without that pair must set `idleSuspendMs: null`. Sending work resumes
+a suspended machine. Suspend can persist a recoverable resource before
+destructive cleanup with `checkpoint`. The experimental namespace carries the
+stability signal; supporting public types and declaration members stay
+unprefixed. A last-thread policy
+retires after its grace period and removes every environment through its own
+provider before removing the machine; a never policy retires only on explicit
+user removal. Inputs are
+persisted in `hosts.machine_provider_selection` and readable by every plugin.
+They must never contain secrets: credentials belong in plugin settings and
+inputs carry non-secret references such as a target name.
+When `icon` is omitted, Machines and Add machine show no provider logo or
+provider badge, so the machine has the same presentation as a manually
+enrolled machine.
+
+**Audit before stabilizing.** Verify create-key ownership and retry timing,
+crash recovery when enrolment completed before create returned, cancellation
+cleanup, resource privacy, removal serialization, and lifecycle progress
+presentation. Confirm the requirement vocabulary is sufficient for future
+remote and VM providers, the picker-sugar coupling to one environment provider,
+and whether policies need per-machine overrides before dropping the prefix.
+
+## `@get-bb/plugin-sdk/machine-provider`
+
+**What it does.** Exports the typed contexts and results used by
+`bb.experimental_machines.register`: availability and validation, idempotent
+create with project/gitRemote/inputs/key/attempt/report/signal, optional paired
+suspend/resume, remove, environment-row sugar, and retirement policy.
+
+**Audit before stabilizing.** Audit the same lifecycle, retry, privacy, and
+composition questions as `bb.experimental_machines`, whether an omitted icon
+should continue to suppress provider branding, plus whether suspend and
+resume need distinct result unions beyond an updated private resource. Audit
+the `PluginMachineProviderSuspendContext.checkpoint` durability and whether
+other lifecycle operations need the same checkpoint.
+
+## `app.slots.experimental_machineProviderInputs` (`@get-bb/plugin-sdk/app`)
+
+**What it does.** Registers the app control for one machine provider's inputs
+with `{ machineProviderId, component }`. The component receives
+`{ projectId, value, onChange }` and reports ready JSON or a blocked reason.
+It is used by the picker sugar row and Add machine flow. The resulting value is
+persisted and readable by every plugin, so it must contain no secrets;
+credentials belong in plugin settings and the value should carry only
+non-secret configuration or credential references.
+
+**Audit before stabilizing.** Confirm the shared control suits both composer
+and standalone machine creation, ready/blocked is sufficient, schema validation
+belongs only at the server boundary, and missing-control behavior matches
+environment provider inputs.
+
 ## `bb.branding.experimental_icons` (manifest) and namespaced presentation glyphs
 
 **What it does.** A plugin ships SVG files and declares a name → file map in
@@ -1680,13 +1743,13 @@ while a palette switch resolves, so a consumer never paints an unthemed frame.
 ## `app.slots.experimental_providerIcon` (`@get-bb/plugin-sdk/app`)
 
 **Kept experimental (2026-08-22).** zero shipped registrations — first-party
-agent and environment providers use declared glyphs or SVG assets,
+agent, environment, and machine providers use declared glyphs or SVG assets,
 and the provider catalogs' `glyph` / `logoUrl` icon metadata covers both forms
 without a frontend bundle; the open questions are id squatting and whether the
 slot should exist at all (deleting it is the owner's call).
 
 **What it does.** Lets a plugin frontend supply the React component bb draws
-as one agent or environment provider's icon: `{ providerId, icon }`,
+as one agent, environment, or machine provider's icon: `{ providerId, icon }`,
 where `icon` receives only the host's `className` (sizing; agent providers also
 have the declared `strings.iconTint`). The component wins over the provider's
 served `logoUrl`, which the host otherwise draws as a `currentColor` mask.

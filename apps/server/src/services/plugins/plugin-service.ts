@@ -156,6 +156,7 @@ import type {
   PluginResolvedProviderEnv,
   PluginResolvedProviderEnvHealth,
 } from "./plugin-service-internal.js";
+import type { PluginMachineProviderBridge } from "./plugin-machine-provider-registry.js";
 export type {
   PluginAgentToolContribution,
   PluginMentionResolveResult,
@@ -186,6 +187,7 @@ export interface PluginService {
   /** The hook chain the dispatch pipeline consults; registered in createApp. */
   hooks: PluginHookProvider;
   environmentProviders: PluginEnvironmentProviderBridge;
+  machineProviders: PluginMachineProviderBridge;
   /**
    * Bind the in-process BB SDK to the running server. Call once the HTTP
    * listener is up, before start(): bb.sdk throws until this runs.
@@ -918,6 +920,8 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     listPluginHooks,
     listPluginEnvironmentProviders,
     getPluginEnvironmentProvider,
+    listPluginMachineProviders,
+    getPluginMachineProvider,
     isPackagedBuiltinEntry,
     loadAll,
     loaded,
@@ -1608,6 +1612,18 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     environmentProviders: {
       listEnvironmentProviders: listPluginEnvironmentProviders,
       getEnvironmentProvider: getPluginEnvironmentProvider,
+      invokeProvider: async (pluginId, label, run) => {
+        const outcome = await invokeWrapped(pluginId, label, run);
+        return outcome.ok
+          ? { ok: true, value: outcome.value }
+          : { ok: false, error: outcome.error };
+      },
+      decisionTimeoutMs: pluginHookTimeoutMs,
+    },
+
+    machineProviders: {
+      listMachineProviders: listPluginMachineProviders,
+      getMachineProvider: getPluginMachineProvider,
       invokeProvider: async (pluginId, label, run) => {
         const outcome = await invokeWrapped(pluginId, label, run);
         return outcome.ok

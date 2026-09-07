@@ -274,16 +274,21 @@ type ExpectedGuideKey = "render";
 
 type ExpectedHostsKey =
   | "cloneDefaultPath"
+  | "create"
   | "createJoinCode"
   | "delete"
   | "directory"
   | "get"
   | "installProviderCli"
   | "list"
+  | "listProviders"
   | "pathsExist"
   | "pickFolder"
   | "providerCliStatus"
+  | "resume"
+  | "retryCleanup"
   | "retryUpdate"
+  | "suspend"
   | "update";
 
 type ExpectedPluginsKey =

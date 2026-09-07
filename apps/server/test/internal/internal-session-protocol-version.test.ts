@@ -15,7 +15,6 @@ describe("internal session protocol version", () => {
     try {
       const hostKey = createTestDaemonHostKey({ hostId: "host-protocol" });
       upsertHost(server.db, server.hub, {
-        type: "persistent",
         id: "host-protocol",
         name: "Protocol Host",
       });
@@ -71,7 +70,6 @@ describe("internal session protocol version", () => {
             hostId: "host-protocol",
             instanceId: "instance-pre-local-api-port",
             hostName: "Protocol Host",
-            hostType: "persistent",
             hasMachineCredential: false,
             platform: "darwin",
             dataDir: "/tmp/host-protocol-data",
@@ -99,7 +97,6 @@ describe("internal session protocol version", () => {
           hostId: "host-protocol",
           instanceId: "instance-1",
           hostName: "Protocol Host",
-          hostType: "persistent",
           hasMachineCredential: false,
           platform: "darwin",
           dataDir: "/tmp/host-protocol-data",
@@ -136,7 +133,6 @@ describe("internal session protocol version", () => {
           hostId: "host-protocol",
           instanceId: "instance-retry",
           hostName: "Protocol Host",
-          hostType: "persistent",
           hasMachineCredential: false,
           platform: "darwin",
           dataDir: "/tmp/host-protocol-data",
@@ -155,7 +151,6 @@ describe("internal session protocol version", () => {
           hostId: "host-protocol",
           instanceId: "instance-retry-consumed",
           hostName: "Protocol Host",
-          hostType: "persistent",
           hasMachineCredential: false,
           platform: "darwin",
           dataDir: "/tmp/host-protocol-data",
@@ -174,7 +169,6 @@ describe("internal session protocol version", () => {
           hostId: "host-protocol",
           instanceId: "instance-2",
           hostName: "Protocol Host",
-          hostType: "persistent",
           hasMachineCredential: false,
           platform: "darwin",
           dataDir: "/tmp/host-protocol-data",

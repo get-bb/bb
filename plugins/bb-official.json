@@ -133,5 +133,9 @@
   "environment-personal-workspace": {
     "category": "environments",
     "screenshots": []
+  },
+  "environment-modal-sandbox": {
+    "category": "environments",
+    "screenshots": []
   }
 }

@@ -2051,6 +2051,67 @@ describe("environment targets", () => {
     });
   });
 
+  it("accepts a machine provider without suspend and resume when idle suspension is disabled", () => {
+    const { bb, harness } = createFakePluginHost();
+    bb.experimental_machines.register({
+      id: "test-machine",
+      displayName: "Test machine",
+      policy: {
+        idleSuspendMs: null,
+        retire: { after: "never" },
+        removeRetryMs: 1_000,
+      },
+      create: async () => ({
+        status: "created",
+        hostId: "host-test-machine",
+        resource: { target: "staging" },
+      }),
+      remove: async () => ({ status: "removed" }),
+    });
+    expect(
+      harness.registrations.machineProviders.get("test-machine"),
+    ).toMatchObject({
+      icon: null,
+      suspend: null,
+      resume: null,
+      policy: { idleSuspendMs: null },
+    });
+  });
+
+  it("requires machine suspend and resume as a pair and disables idle suspension without them", () => {
+    const create = async () => ({
+      status: "created" as const,
+      hostId: "host-machine",
+      resource: null,
+    });
+    const remove = async () => ({ status: "removed" as const });
+    const lifecycle = async () => ({ resource: null });
+    const policy = {
+      idleSuspendMs: null,
+      retire: { after: "never" as const },
+      removeRetryMs: 1_000,
+    };
+    expect(() =>
+      createFakePluginHost().bb.experimental_machines.register({
+        id: "half-lifecycle",
+        displayName: "Half lifecycle",
+        policy,
+        create,
+        suspend: lifecycle,
+        remove,
+      }),
+    ).toThrow(/declare suspend and resume together/);
+    expect(() =>
+      createFakePluginHost().bb.experimental_machines.register({
+        id: "idle-without-lifecycle",
+        displayName: "Idle without lifecycle",
+        policy: { ...policy, idleSuspendMs: 1_000 },
+        create,
+        remove,
+      }),
+    ).toThrow(/idleSuspendMs to null without suspend and resume/);
+  });
+
   it("delivers message.cancelled to a listener", async () => {
     const { bb, harness } = createFakePluginHost();
     const seen: string[] = [];

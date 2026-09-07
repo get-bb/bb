@@ -785,7 +785,49 @@ function rewindEnvironmentRowFactsMigration(db: DbConnection): void {
 
 function rewindEnvironmentProvidersMigration(db: DbConnection): void {
   db.$client.exec("DROP TABLE IF EXISTS environment_launches");
+  db.$client.exec("DROP TABLE IF EXISTS machine_launches");
   db.$client.exec("DROP INDEX IF EXISTS environments_project_host_path_idx");
+  const hostColumns = new Set(
+    db.$client
+      .prepare<[], TableInfoRow>("PRAGMA table_info(hosts)")
+      .all()
+      .map((column) => column.name),
+  );
+  if (!hostColumns.has("type")) {
+    db.$client
+      .prepare(
+        "ALTER TABLE hosts ADD COLUMN type text NOT NULL DEFAULT 'persistent'",
+      )
+      .run();
+  }
+  for (const column of [
+    "machine_provider_id",
+    "resource",
+    "machine_provider_selection",
+    "phase",
+    "suspended_at",
+    "retire_at",
+    "teardown_attempt",
+    "teardown_status",
+    "teardown_message",
+  ]) {
+    const columns = db.$client
+      .prepare<[], TableInfoRow>("PRAGMA table_info(hosts)")
+      .all();
+    if (columns.some((entry) => entry.name === column)) {
+      db.$client.exec(`ALTER TABLE hosts DROP COLUMN ${column}`);
+    }
+  }
+  const sessionColumns = db.$client
+    .prepare<[], TableInfoRow>("PRAGMA table_info(host_daemon_sessions)")
+    .all();
+  if (!sessionColumns.some((column) => column.name === "host_type")) {
+    db.$client
+      .prepare(
+        "ALTER TABLE host_daemon_sessions ADD COLUMN host_type text NOT NULL DEFAULT 'persistent'",
+      )
+      .run();
+  }
   const lifecycleColumns = [
     "canonical_path",
     "retire_at",
@@ -2052,7 +2094,6 @@ describe("migrate", () => {
       migrate(db);
       const host = upsertHost(db, noopNotifier, {
         name: "side-chat-adoption-host",
-        type: "persistent",
       });
       const { project } = createProject(db, noopNotifier, {
         name: "side-chat-adoption-project",
@@ -2132,7 +2173,6 @@ describe("migrate", () => {
       migrate(db);
       const host = upsertHost(db, noopNotifier, {
         name: "permission-migration-host",
-        type: "persistent",
       });
       const { project } = createProject(db, noopNotifier, {
         name: "permission-migration-project",
@@ -3544,7 +3584,6 @@ describe("migrate", () => {
         INSERT INTO hosts (
           id,
           name,
-          type,
           command_cursor,
           created_at,
           updated_at
@@ -3552,7 +3591,6 @@ describe("migrate", () => {
         VALUES (
           'host_deferred_cleanup',
           'Deferred cleanup host',
-          'persistent',
           0,
           1000,
           1000
@@ -5282,7 +5320,6 @@ describe("migrate", () => {
       const host = upsertHost(db, noopNotifier, {
         id: "host-side-chat-visibility",
         name: "Migration Host",
-        type: "persistent",
       });
       const { project } = createProject(db, noopNotifier, {
         name: "Migration Project",
@@ -5351,7 +5388,6 @@ describe("migrate", () => {
       migrate(db);
       const host = upsertHost(db, noopNotifier, {
         name: "event-parent-migration-host",
-        type: "persistent",
       });
       const { project } = createProject(db, noopNotifier, {
         name: "event-parent-migration-project",
@@ -5801,4 +5837,5 @@ describe("environment providers migration", () => {
       closeConnection(db);
     }
   });
+
 });

@@ -17,6 +17,7 @@ import {
   STORY_BRANCH_OPTIONS,
   STORY_PROJECTS,
   STORY_ENVIRONMENT_PROVIDERS,
+  STORY_MACHINE_PROVIDERS,
   STORY_PROJECT_SOURCES,
   STORY_WORKTREE_OPTIONS,
 } from "../../../.ladle/story-fixtures";
@@ -68,6 +69,8 @@ function EnvironmentOptionsStrip({
           projectless={projectless}
           selectedProviderHostId={HOST_IDS.local}
           onSelectProvider={noop}
+          machineProviders={STORY_MACHINE_PROVIDERS}
+          onSelectMachineProvider={noop}
           muted
           modal={false}
           {...environment}

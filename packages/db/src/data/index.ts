@@ -445,3 +445,5 @@ export {
   shouldRunIncrementalVacuum,
 } from "./maintenance.js";
 export * from "./environment-launches.js";
+export * from "./machine-launches.js";
+export * from "./machines.js";
