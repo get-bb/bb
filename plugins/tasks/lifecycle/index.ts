@@ -193,5 +193,4 @@ export async function registerLifecycle(
   });
 
   await reconcileTrackedThreads(bb, store);
-  await reconcileTrackedThreads(bb, store);
 }
