@@ -101,6 +101,39 @@
       ],
       "outputs": ["dist/**"]
     },
+    "@bb/server#build": {
+      "dependsOn": ["topo"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/package.json",
+        "$TURBO_ROOT$/packages/tsconfig/*.json",
+        "$TURBO_ROOT$/pnpm-lock.yaml",
+        "$TURBO_ROOT$/pnpm-workspace.yaml",
+        "$TURBO_ROOT$/scripts/build-node-entry.mjs",
+        "$TURBO_ROOT$/scripts/build-package.mjs",
+        "$TURBO_ROOT$/scripts/build-utils.mjs",
+        "$TURBO_ROOT$/scripts/precompress-app-dist.mjs",
+        "$TURBO_ROOT$/turbo.json"
+      ],
+      "outputs": ["dist/**", "!dist/builtin-plugins/**"]
+    },
+    "@bb/server#build:plugins": {
+      "dependsOn": ["@bb/server#build", "@get-bb/plugin-sdk#build"],
+      "inputs": [
+        "scripts/copy-builtin-plugins.ts",
+        "src/services/plugins/builtin-registry.ts",
+        "src/services/plugin-catalog/bundled-marketplace-paths.ts",
+        "$TURBO_ROOT$/packages/bb-app/package.json",
+        "$TURBO_ROOT$/packages/plugin-build/src/**",
+        "$TURBO_ROOT$/packages/domain/src/**",
+        "$TURBO_ROOT$/plugins/**",
+        "!$TURBO_ROOT$/plugins/*/dist/**",
+        "!$TURBO_ROOT$/plugins/*/node_modules/**",
+        "$TURBO_ROOT$/pnpm-lock.yaml",
+        "$TURBO_ROOT$/turbo.json"
+      ],
+      "outputs": ["dist/builtin-plugins/**"]
+    },
     "@bb/sdk#test": {
       "dependsOn": ["//#ensure-native-modules", "topo"],
       "inputs": [

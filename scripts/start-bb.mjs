@@ -64,6 +64,7 @@ async function buildRuntimeArtifacts() {
       turboEntrypoint,
       "run",
       "build",
+      "build:plugins",
       "--filter=@get-bb/plugin-sdk",
       "--filter=@bb/app",
       "--filter=@bb/server",
@@ -85,29 +86,6 @@ async function buildRuntimeArtifacts() {
     throw new Error(`Runtime build stopped by ${result.signal}`);
   }
   throw new Error(`Runtime build failed with exit code ${result.code ?? 1}`);
-}
-
-async function buildBundledPlugins() {
-  const result = await runBuildProcess({
-    args: [
-      "--conditions=source",
-      "--import",
-      "tsx",
-      resolve(repoRoot, "apps/server/scripts/copy-builtin-plugins.ts"),
-    ],
-    command: process.execPath,
-    cwd: repoRoot,
-    env: process.env,
-  });
-  if (result.code === 0) {
-    return;
-  }
-  if (result.signal !== null) {
-    throw new Error(`Bundled plugin build stopped by ${result.signal}`);
-  }
-  throw new Error(
-    `Bundled plugin build failed with exit code ${result.code ?? 1}`,
-  );
 }
 
 export async function runNativeModulePreflight({
@@ -148,7 +126,6 @@ export function parseStartBbArgs(args) {
 export async function main(args = process.argv.slice(2)) {
   const parsedArgs = parseStartBbArgs(args);
   await buildRuntimeArtifacts();
-  await buildBundledPlugins();
   const { resolveWorktreeRuntimePolicy, runBbApp } =
     await import("../packages/bb-app/src/launcher.ts");
   await runBbApp(parsedArgs.cliArgs, {
