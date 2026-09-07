@@ -3,15 +3,15 @@ import { useRouteNavigate } from "@/components/ui/app-route-anchor";
 import { getRootComposeRoutePath } from "@/lib/route-paths";
 import { useSetRootComposeProjectId } from "@/lib/root-compose-selection";
 
-interface UseCreateThreadInWorktreeArgs {
+interface UseCreateThreadInEnvironmentArgs {
   projectId: string;
   environmentId: string;
 }
 
-export function useCreateThreadInWorktree({
+export function useCreateThreadInEnvironment({
   projectId,
   environmentId,
-}: UseCreateThreadInWorktreeArgs): () => void {
+}: UseCreateThreadInEnvironmentArgs): () => void {
   const navigate = useRouteNavigate();
   const setRootComposeProjectId = useSetRootComposeProjectId();
   return useCallback(() => {

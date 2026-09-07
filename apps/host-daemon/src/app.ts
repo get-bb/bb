@@ -833,11 +833,6 @@ export async function createHostDaemonApp(
     getActiveThreads: () => runtimeManager.listActiveThreads(),
     getLoadedEnvironments: () => runtimeManager.listLoadedEnvironments(),
     onHostRpcRequest: async (message) => {
-      if (message.command.type === "environment.destroy") {
-        await watchManager.removeEnvironmentWorkspaceWatch(
-          message.command.environmentId,
-        );
-      }
       const response = await router.handleOnlineRpcRequest(message);
       sendServerMessage(response);
     },

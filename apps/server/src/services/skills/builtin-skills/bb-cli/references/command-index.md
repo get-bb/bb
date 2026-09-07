@@ -155,6 +155,9 @@ This index lists every command path that the core CLI registers. Read the task-s
 ## environment
 
 - `bb environment`
+- `bb environment providers`
+- `bb environment list`
+- `bb environment delete`
 - `bb environment show`
 - `bb environment status`
 - `bb environment branches`

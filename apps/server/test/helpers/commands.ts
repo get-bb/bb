@@ -65,32 +65,6 @@ export function listQueuedCommands(
     .map((queued) => hostDaemonRpcCommandSchema.parse(queued.command));
 }
 
-type ManagedWorktreeEnvironmentProvisionCommand = Extract<
-  HostDaemonCommand,
-  { type: "environment.provision"; workspaceProvisionType: "managed-worktree" }
->;
-
-type ManagedWorktreeEnvironmentProvisionLiveCommand =
-  QueuedCommand<ManagedWorktreeEnvironmentProvisionCommand>;
-
-function isManagedWorktreeEnvironmentProvisionLiveCommand(
-  queued: QueuedCommand,
-): queued is ManagedWorktreeEnvironmentProvisionLiveCommand {
-  return (
-    queued.command.type === "environment.provision" &&
-    queued.command.workspaceProvisionType === "managed-worktree"
-  );
-}
-
-export function requireManagedWorktreeEnvironmentProvisionLiveCommand(
-  queued: QueuedCommand,
-): ManagedWorktreeEnvironmentProvisionLiveCommand {
-  if (isManagedWorktreeEnvironmentProvisionLiveCommand(queued)) {
-    return queued;
-  }
-  throw new Error("Expected managed-worktree environment.provision command");
-}
-
 export function listQueuedThreadCommands(
   harness: TestAppHarness,
   type: HostDaemonCommand["type"],
@@ -273,6 +247,7 @@ function respondToProviderModelListCommand(
 
 function buildDefaultGitSourceInspectionResult(): HostDaemonOnlineRpcResult<"host.inspect_git_source"> {
   return {
+    isWorktree: false,
     checkout: {
       kind: "branch",
       branchName: "main",

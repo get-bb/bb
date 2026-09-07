@@ -44,6 +44,21 @@ export const BUILTIN_PLUGINS = [
     defaultEnabled: true,
   },
   {
+    name: "environment-project-checkout",
+    pluginId: "environment-project-checkout",
+    defaultEnabled: true,
+  },
+  {
+    name: "environment-git-worktree",
+    pluginId: "environment-git-worktree",
+    defaultEnabled: true,
+  },
+  {
+    name: "environment-personal-workspace",
+    pluginId: "environment-personal-workspace",
+    defaultEnabled: true,
+  },
+  {
     name: "custom-instructions",
     pluginId: "custom-instructions",
     defaultEnabled: true,

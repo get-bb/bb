@@ -39,6 +39,7 @@ import {
   listDueScheduledQueuedThreadMessages,
   listQueuedThreadMessagesByWaitHolder,
 } from "../src/data/queued-thread-messages.js";
+import { listEnvironments } from "../src/data/environments.js";
 import { upsertHost } from "../src/data/hosts.js";
 import { createProject } from "../src/data/projects.js";
 import { createEnvironment } from "../src/data/environments.js";
@@ -268,6 +269,30 @@ describe("slow query index plans", () => {
       /USING INDEX queued_thread_messages_wait_holder_idx/u,
     );
     expect(details).not.toMatch(/SCAN queued_thread_messages/u);
+
+    db.$client.close();
+  });
+
+  it("finds a provider's own environment through the provider/instance index", () => {
+    const { db } = setup();
+
+    const captured = captureStatements(db, () => {
+      expect(
+        listEnvironments(db, {
+          environmentProviderId: "git-worktree",
+          instanceKey: "thr_1",
+          statuses: ["provisioning", "ready", "error"],
+        }),
+      ).toEqual([]);
+    });
+    expect(captured).toHaveLength(1);
+    const details = queryPlanDetails({
+      db,
+      params: captured[0]!.params,
+      sql: captured[0]!.sql,
+    });
+    expect(details).toMatch(/USING INDEX environments_provider_instance_idx/u);
+    expect(details).not.toMatch(/SCAN environments/u);
 
     db.$client.close();
   });
@@ -641,11 +666,10 @@ describe("slow query index plans", () => {
     const { db, host, logger, project, thread } = setup();
     const now = Date.now();
     const environment = createEnvironment(db, noopNotifier, {
+      providerOwnsPath: false,
       hostId: host.id,
-      managed: true,
       projectId: project.id,
       status: "destroyed",
-      workspaceProvisionType: "managed-worktree",
     });
     insertEvents(db, noopNotifier, [
       {

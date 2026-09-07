@@ -30,9 +30,9 @@ function setup() {
     },
   });
   const environment = createEnvironment(db, noopNotifier, {
+      providerOwnsPath: false,
     projectId: project.id,
     hostId: host.id,
-    workspaceProvisionType: "unmanaged",
     status: "ready",
   });
   const thread = createThread(db, noopNotifier, {

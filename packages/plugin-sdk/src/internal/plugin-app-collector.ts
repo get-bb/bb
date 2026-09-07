@@ -10,6 +10,7 @@ import type {
   PluginAppDefinition,
   PluginContentScriptRegistration,
   PluginDiffRendererRegistration,
+  PluginEnvironmentProviderInputsRegistration,
   PluginFileOpenerRegistration,
   PluginHomepageSectionRegistration,
   PluginCommandPaletteActionRegistration,
@@ -32,6 +33,7 @@ import {
   collectComposerCustomization,
   PLUGIN_SLOT_ID_PATTERN,
   requireComponent,
+  requireEnvironmentProviderId,
   requireMessageDirectiveId,
   requireNonEmptyString,
   requireOptionalString,
@@ -302,6 +304,7 @@ export interface CollectedPluginAppRegistrations {
   commandPaletteActions: PluginCommandPaletteActionRegistration[];
   providerIcons: PluginProviderIconRegistration[];
   timelineRenderers: PluginTimelineRendererRegistration[];
+  environmentProviderInputs: PluginEnvironmentProviderInputsRegistration[];
   contentScripts: PluginContentScriptRegistration[];
 }
 
@@ -350,6 +353,7 @@ export function collectPluginAppRegistrations(
     commandPaletteActions: [],
     providerIcons: [],
     timelineRenderers: [],
+    environmentProviderInputs: [],
     contentScripts: [],
   };
   sidebarFooterItemsByRegistrationSet.set(collected, sidebarFooterItems);
@@ -374,6 +378,7 @@ export function collectPluginAppRegistrations(
     commandPaletteAction: new Set<string>(),
     providerIcon: new Set<string>(),
     timelineRenderer: new Set<string>(),
+    environmentProviderInputs: new Set<string>(),
     contentScript: new Set<string>(),
   };
 
@@ -778,6 +783,22 @@ export function collectPluginAppRegistrations(
         requireUniqueId(kind, seenIds.timelineRenderer, itemKind);
         collected.timelineRenderers.push({
           kind: itemKind,
+          component: requireComponent(kind, registration.component),
+        });
+      },
+      experimental_environmentProviderInputs(registration) {
+        const kind = "slots.experimental_environmentProviderInputs";
+        const environmentProviderId = requireEnvironmentProviderId(
+          kind,
+          registration?.environmentProviderId,
+        );
+        requireUniqueId(
+          kind,
+          seenIds.environmentProviderInputs,
+          environmentProviderId,
+        );
+        collected.environmentProviderInputs.push({
+          environmentProviderId,
           component: requireComponent(kind, registration.component),
         });
       },
