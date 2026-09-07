@@ -77,6 +77,7 @@ interface HubOptions {
   usageRefreshIntervalMs: number;
   drainTimeoutMs: number;
   onAccountsChanged: () => void;
+  onUpstreamError: (provider: PoolProvider, error: unknown) => void;
 }
 
 interface SelectedAccount {
@@ -978,8 +979,12 @@ export class AccountPoolHub {
             : { body: upstreamBody }),
           signal: controller.signal,
         })
-        .catch(() => {
-          throw new UpstreamConnectionError("Upstream connection failed.");
+        .catch((cause: unknown) => {
+          if (!controller.signal.aborted)
+            this.options.onUpstreamError(adapter.provider, cause);
+          throw new UpstreamConnectionError("Upstream connection failed.", {
+            cause,
+          });
         });
       return { response, controller, release };
     } catch (error) {
@@ -1135,6 +1140,7 @@ export function createHub(options: {
   usageRefreshIntervalMs?: number;
   drainTimeoutMs?: number;
   onAccountsChanged?: () => void;
+  onUpstreamError?: (provider: PoolProvider, error: unknown) => void;
 }): AccountPoolHub {
   const adapters: ReadonlyMap<PoolProvider, ProviderAdapter> = new Map([
     [
@@ -1168,6 +1174,7 @@ export function createHub(options: {
       options.usageRefreshIntervalMs ?? DEFAULT_USAGE_REFRESH_INTERVAL_MS,
     drainTimeoutMs: options.drainTimeoutMs ?? 60_000,
     onAccountsChanged: options.onAccountsChanged ?? (() => {}),
+    onUpstreamError: options.onUpstreamError ?? (() => {}),
   });
 }
 

@@ -2769,6 +2769,9 @@ importers:
       '@dnd-kit/utilities':
         specifier: ^3.2.2
         version: 3.2.2(react@19.2.4)
+      undici:
+        specifier: ^7.28.0
+        version: 7.28.0
       zod:
         specifier: 4.3.6
         version: 4.3.6
