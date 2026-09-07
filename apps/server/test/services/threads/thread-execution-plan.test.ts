@@ -1,4 +1,4 @@
-import { updateHost, upsertProjectExecutionDefaults } from "@bb/db";
+import { updateHost, upsertProjectExecutionDefaults, setThreadExecutionOverride } from "@bb/db";
 import type { PermissionMode } from "@bb/domain";
 import { describe, expect, it } from "vitest";
 import {
@@ -272,6 +272,127 @@ describe("machine permission ceiling", () => {
       });
 
       expect(plan.resolvedExecution.permissionMode).toBe("full");
+    });
+  });
+});
+
+describe("thread execution plan model explicitness", () => {
+  it("marks remembered project-default model as not explicit", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps, {
+        id: "host-model-explicit-default",
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      upsertProjectExecutionDefaults(harness.deps.db, {
+        projectId: project.id,
+        providerId: "codex",
+        model: "gpt-5",
+        reasoningLevel: "medium",
+        permissionMode: "auto",
+        serviceTier: "default",
+      });
+      const thread = seedThread(harness.deps, {
+        projectId: project.id,
+        providerId: "codex",
+      });
+
+      // No caller-supplied model: resolution falls through to the remembered
+      // project default. That is not a deliberate user choice.
+      const plan = await resolveExistingThreadExecutionPlan(harness.deps, {
+        executionSource: "client/turn/requested",
+        input: {},
+        projectDefaults: {
+          providerId: "codex",
+          model: "gpt-5",
+          reasoningLevel: "medium",
+          permissionMode: "auto",
+          serviceTier: "default",
+        },
+        threadId: thread.id,
+      });
+
+      expect(plan.resolvedExecution.model).toBe("gpt-5");
+      expect(plan.resolvedExecution.modelIsExplicit).toBe(false);
+    });
+  });
+
+  it("marks a caller-supplied explicit model as explicit", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps, {
+        id: "host-model-explicit-supplied",
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const thread = seedThread(harness.deps, {
+        projectId: project.id,
+        providerId: "codex",
+      });
+
+      const plan = await resolveExistingThreadExecutionPlan(harness.deps, {
+        executionSource: "client/turn/requested",
+        input: { model: { source: "explicit", value: "xai/grok-4.6" } },
+        threadId: thread.id,
+      });
+
+      expect(plan.resolvedExecution.model).toBe("xai/grok-4.6");
+      expect(plan.resolvedExecution.modelIsExplicit).toBe(true);
+    });
+  });
+
+  it("marks a caller-supplied client-preference model as not explicit", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps, {
+        id: "host-model-explicit-preference",
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const thread = seedThread(harness.deps, {
+        projectId: project.id,
+        providerId: "codex",
+      });
+
+      const plan = await resolveExistingThreadExecutionPlan(harness.deps, {
+        executionSource: "client/turn/requested",
+        input: {
+          model: { source: "client-preference", value: "xai/grok-4.6" },
+        },
+        threadId: thread.id,
+      });
+
+      expect(plan.resolvedExecution.model).toBe("xai/grok-4.6");
+      expect(plan.resolvedExecution.modelIsExplicit).toBe(false);
+    });
+  });
+
+  it("marks a sticky thread model override as explicit", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps, {
+        id: "host-model-explicit-override",
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const thread = seedThread(harness.deps, {
+        projectId: project.id,
+        providerId: "codex",
+      });
+      setThreadExecutionOverride(harness.deps.db, {
+        threadId: thread.id,
+        modelOverride: "xai/grok-4.6",
+      });
+
+      const plan = await resolveExistingThreadExecutionPlan(harness.deps, {
+        executionSource: "client/turn/requested",
+        input: {},
+        threadId: thread.id,
+      });
+
+      expect(plan.resolvedExecution.model).toBe("xai/grok-4.6");
+      expect(plan.resolvedExecution.modelIsExplicit).toBe(true);
     });
   });
 });

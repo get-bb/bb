@@ -209,6 +209,7 @@ function toRuntimeExecutionOptions(
     }) ?? {};
   const base = {
     model: args.execution.model,
+    modelIsExplicit: args.execution.modelIsExplicit,
     serviceTier: args.execution.serviceTier,
     reasoningLevel: args.execution.reasoningLevel,
     ...(promptMode !== undefined ? { promptMode } : {}),

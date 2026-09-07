@@ -278,6 +278,12 @@ export async function resolveExistingThreadExecutionPlan(
     parentThread !== null
       ? getLastExecutionOptions(deps, parentThread.id)
       : null;
+  // Only a caller-supplied model marked `explicit` (or a sticky thread-level
+  // override) is a deliberate user choice. Remembered defaults are not.
+  const modelIsExplicit =
+    (args.input.model?.source === "explicit" &&
+      args.input.model?.value !== undefined) ||
+    thread.modelOverride !== null;
   const model = resolveRequiredField<string>([
     args.input.model?.value,
     thread.modelOverride ?? undefined,
@@ -338,6 +344,7 @@ export async function resolveExistingThreadExecutionPlan(
 
   const resolvedExecution = {
     model,
+    modelIsExplicit,
     permissionMode,
     reasoningLevel,
     serviceTier,

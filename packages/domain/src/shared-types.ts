@@ -465,6 +465,13 @@ export type ThreadExecutionOptions = z.infer<
 export const resolvedThreadExecutionOptionsSchema =
   threadExecutionOptionsSchema.extend({
     model: z.string().min(1),
+    /**
+     * True when the resolved model is a deliberate user choice: a caller
+     * supplied it with the `explicit` source, or a sticky thread-level
+     * override exists. Remembered defaults (last execution, project
+     * defaults) are not user choices.
+     */
+    modelIsExplicit: z.boolean().optional(),
     serviceTier: serviceTierSchema,
     reasoningLevel: reasoningLevelSchema,
     permissionMode: permissionModeSchema,
@@ -520,6 +527,12 @@ export type PromptMode = z.infer<typeof promptModeSchema>;
 
 const runtimeThreadExecutionBaseOptionsSchema = z.object({
   model: z.string().min(1),
+  /**
+   * Whether `model` is a deliberate user choice (see
+   * `resolvedThreadExecutionOptionsSchema`). Providers whose agents carry
+   * their own configured model may honor that config when this is false.
+   */
+  modelIsExplicit: z.boolean().optional(),
   serviceTier: serviceTierSchema,
   reasoningLevel: reasoningLevelSchema,
   promptMode: promptModeSchema.optional(),
