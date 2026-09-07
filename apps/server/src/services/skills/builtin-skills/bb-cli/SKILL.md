@@ -47,6 +47,19 @@ BB_HOST_DAEMON_PORT only for an intentional non-default target.
 - Resolve names and IDs with a list or show command before mutation.
 - Pass an explicit project when a command can act across projects.
 - Pass an environment or machine selector when the default host is uncertain.
+- Spawn onto a plugin-provisioned environment with
+  `bb thread spawn --environment-provider <id>` (list them with
+  `bb environment providers`).
+  Read the provider's `requires` (`projectCheckout`, `gitCheckout`, `gitRemote`,
+  `projectless`): these facts decide where
+  the provider is offered. A provider whose `inputs` schema does not accept an
+  empty object needs `--environment-inputs <json>` matching that JSON Schema;
+  providers that accept `{}` use it when the flag is omitted
+  (`bb environment providers --json` prints both facts). `--base-branch`
+  belongs to `--new-environment worktree` only.
+- `bb environment providers` lists Project checkout, Worktree, then other
+  installed providers by display name. Read or set `managedBranchPrefix`
+  through `bb settings show` and `bb settings general <key> <value>`.
 - Query provider models on the machine that will run the thread.
 - Prefer non-interactive commands and machine-readable output for automation.
 - Pass `--yes` for a confirmed destructive command in a non-interactive shell.
@@ -60,6 +73,7 @@ BB_HOST_DAEMON_PORT only for an intentional non-default target.
 ```sh
 bb project list --json
 bb machine list --json
+bb environment providers --json
 bb provider list --environment "$BB_ENVIRONMENT_ID" --json
 bb thread show "$BB_THREAD_ID" --json
 bb environment status "$BB_ENVIRONMENT_ID" --json
@@ -71,6 +85,8 @@ bb skill list --environment "$BB_ENVIRONMENT_ID" --json
 
 Confirm the command result and any affected thread, environment, plugin, or
 remote service. Report the stable ID or URL that the user needs next.
+
+`bb environment show <id>` reports core-owned lifecycle, retirement deadline and teardown attempts. Archive/delete of the last live thread starts the provider grace; unarchive cancels pending retirement. Teardown errors remain visible and retry automatically. `bb environment delete <id>` requests cleanup immediately, including under a never-retire policy; destroyed is recorded after cleanup completes. Removal waits for live or stopping runtimes. Project source deletion remains available during project deletion, including removal of the last source, so providers can finish cleanup.
 
 ## Plugin configuration
 

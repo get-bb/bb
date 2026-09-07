@@ -8,14 +8,22 @@ import {
   DropdownMenuLabel,
   DropdownMenuTrigger,
 } from "@bb/shared-ui/dropdown-menu";
-import { Icon } from "@bb/shared-ui/icon";
+import { Icon, type IconName } from "@bb/shared-ui/icon";
 import { LIST_HOVER_TRANSITION } from "@bb/shared-ui/motion";
 import {
   COARSE_POINTER_COMPACT_ICON_SIZE_CLASS,
   COARSE_POINTER_COMPACT_ICON_SIZE_SHRINK_CLASS,
   COARSE_POINTER_ICON_SIZE_CLASS,
 } from "@bb/shared-ui/coarse-pointer-sizing";
-import { getEnvironmentWorkspaceLabelIconName } from "@/lib/environment-workspace-display";
+import {
+  findEnvironmentDisplayProvider,
+  getEnvironmentLabelIconName,
+  REUSE_ENVIRONMENT_ICON_NAME,
+  UNNAMED_ENVIRONMENT_LABEL,
+} from "@/lib/environment-workspace-display";
+import { useSystemEnvironmentProviders } from "@/hooks/queries/environment-provider-queries";
+import { resolveEnvironmentDisplayName } from "@bb/core-ui";
+import type { SystemEnvironmentProvider } from "@bb/server-contract";
 import {
   OPTION_BASE_CLASS_NAME,
   OPTION_INTERACTIVE_CLASS_NAME,
@@ -30,11 +38,37 @@ export interface ReuseThreadOption {
   environmentId: string;
   branchName: string | null;
   name: string | null;
+  path: string | null;
+  environmentProviderId: string | null;
   hostName?: string | null;
   threads: ReadonlyArray<{ id: string; title: string }>;
 }
 
-interface WorktreePickerProps {
+export function reuseThreadOptionDisplay(
+  option: ReuseThreadOption,
+  providers: readonly SystemEnvironmentProvider[] | undefined,
+): { label: string; icon: IconName; secondaryText: string | null } {
+  const providerLookup = findEnvironmentDisplayProvider(
+    providers,
+    option.environmentProviderId,
+  );
+  return {
+    label:
+      resolveEnvironmentDisplayName(
+        {
+          name: option.name,
+          branchName: option.branchName,
+          path: option.path,
+          environmentProviderId: option.environmentProviderId,
+        },
+        providerLookup,
+      ) ?? UNNAMED_ENVIRONMENT_LABEL,
+    icon: getEnvironmentLabelIconName(providerLookup),
+    secondaryText: option.hostName ?? null,
+  };
+}
+
+interface ReuseEnvironmentPickerProps {
   options: readonly ReuseThreadOption[];
   value: string | null;
   onChange: (environmentId: string) => void;
@@ -44,7 +78,7 @@ interface WorktreePickerProps {
   modal?: boolean;
 }
 
-export function WorktreePicker({
+export function ReuseEnvironmentPicker({
   options,
   value,
   onChange,
@@ -52,14 +86,16 @@ export function WorktreePicker({
   disabled = false,
   defaultOpen,
   modal,
-}: WorktreePickerProps) {
-  const branchIcon = getEnvironmentWorkspaceLabelIconName("managed-worktree");
+}: ReuseEnvironmentPickerProps) {
+  const { providers } = useSystemEnvironmentProviders();
   const activeOption = useMemo(
     () => options.find((option) => option.environmentId === value) ?? null,
     [options, value],
   );
-  const triggerLabel =
-    activeOption?.name ?? activeOption?.branchName ?? "Pick a worktree";
+  const trigger =
+    activeOption === null
+      ? { label: "Pick an environment", icon: REUSE_ENVIRONMENT_ICON_NAME }
+      : reuseThreadOptionDisplay(activeOption, providers);
   return (
     <DropdownMenu defaultOpen={defaultOpen} modal={modal}>
       <DropdownMenuTrigger asChild disabled={disabled}>
@@ -67,7 +103,7 @@ export function WorktreePicker({
           type="button"
           variant="ghost"
           size="sm"
-          aria-label="Worktree"
+          aria-label="Environment"
           disabled={disabled}
           data-promptbox-icon-only-control=""
           className={cn(
@@ -80,11 +116,11 @@ export function WorktreePicker({
         >
           <span className={OPTION_TRIGGER_CONTENT_CLASS_NAME}>
             <Icon
-              name={branchIcon}
+              name={trigger.icon}
               className={COARSE_POINTER_COMPACT_ICON_SIZE_SHRINK_CLASS}
             />
             <span className="min-w-0 truncate" data-promptbox-full-label="">
-              {triggerLabel}
+              {trigger.label}
             </span>
           </span>
           {disabled ? null : (
@@ -101,18 +137,19 @@ export function WorktreePicker({
       <DropdownMenuContent
         align="start"
         className={cn(OPTION_MENU_CONTENT_CLASS_NAME, "max-w-80")}
-        mobileTitle="Worktree"
+        mobileTitle="Environment"
       >
-        <DropdownMenuLabel>Reuse existing worktree</DropdownMenuLabel>
+        <DropdownMenuLabel>Reuse an existing environment</DropdownMenuLabel>
         {options.length === 0 ? (
           <div className="px-2 py-2 text-xs text-muted-foreground">
-            No worktrees in this project yet.
+            Nothing to reuse yet.
           </div>
         ) : (
           options.map((option) => (
-            <WorktreeMenuItem
+            <ReuseEnvironmentMenuItem
               key={option.environmentId}
               option={option}
+              providers={providers}
               isSelected={option.environmentId === value}
               onSelect={onChange}
             />
@@ -123,21 +160,25 @@ export function WorktreePicker({
   );
 }
 
-interface WorktreeMenuItemProps {
+interface ReuseEnvironmentMenuItemProps {
   option: ReuseThreadOption;
+  providers: readonly SystemEnvironmentProvider[] | undefined;
   isSelected: boolean;
   onSelect: (environmentId: string) => void;
 }
 
-function WorktreeMenuItem({
+function ReuseEnvironmentMenuItem({
   option,
+  providers,
   isSelected,
   onSelect,
-}: WorktreeMenuItemProps) {
+}: ReuseEnvironmentMenuItemProps) {
   const previewThreads = option.threads.slice(0, REUSE_THREAD_PREVIEW_LIMIT);
   const additionalCount = option.threads.length - previewThreads.length;
-  const branchIcon = getEnvironmentWorkspaceLabelIconName("managed-worktree");
-  const label = option.name ?? option.branchName ?? "Worktree";
+  const { label, icon, secondaryText } = reuseThreadOptionDisplay(
+    option,
+    providers,
+  );
   const branchDetail = option.name ? option.branchName : null;
   return (
     <DropdownMenuItem
@@ -149,7 +190,7 @@ function WorktreeMenuItem({
     >
       <span className="flex min-w-0 items-center gap-2">
         <Icon
-          name={branchIcon}
+          name={icon}
           className={cn(
             "shrink-0 text-muted-foreground",
             COARSE_POINTER_COMPACT_ICON_SIZE_SHRINK_CLASS,
@@ -163,11 +204,6 @@ function WorktreeMenuItem({
             </span>
           ) : null}
         </span>
-        {option.hostName ? (
-          <span className="max-w-24 shrink-0 truncate text-xs text-muted-foreground">
-            {option.hostName}
-          </span>
-        ) : null}
         <Icon
           name="Check"
           className={cn(
@@ -176,6 +212,11 @@ function WorktreeMenuItem({
           )}
         />
       </span>
+      {secondaryText ? (
+        <span className="truncate pl-6 text-xs text-muted-foreground">
+          {secondaryText}
+        </span>
+      ) : null}
       {previewThreads.length > 0 ? (
         <span className="flex flex-col gap-0.5 pl-6 text-xs text-muted-foreground">
           {previewThreads.map((thread) => (

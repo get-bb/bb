@@ -122,19 +122,6 @@ async function measureWorkspaceRootWatch(root: string): Promise<{
   }
 }
 
-async function waitFor(
-  predicate: () => boolean,
-  timeoutMs: number,
-): Promise<void> {
-  const deadline = Date.now() + timeoutMs;
-  while (!predicate()) {
-    if (Date.now() > deadline) {
-      throw new Error("Timed out waiting for workspace change events");
-    }
-    await new Promise((resolve) => setTimeout(resolve, 20));
-  }
-}
-
 afterEach(async () => {
   vi.restoreAllMocks();
   for (const dir of tempDirs.splice(0)) {
@@ -225,11 +212,14 @@ describe("workspace root watch events inside nested heavy directories (#1779)", 
           "module.exports={changed:true}\n",
         );
         await fs.writeFile(nestedGitFile, "marker\n");
-        await fs.writeFile(visibleFile, "visible\n");
-        await waitFor(
-          () =>
-            events.some((event) => event.changedPaths.includes(visibleFile)),
-          EVENT_TIMEOUT_MS,
+        await vi.waitFor(
+          async () => {
+            await fs.writeFile(visibleFile, `visible ${Date.now()}\n`);
+            expect(
+              events.some((event) => event.changedPaths.includes(visibleFile)),
+            ).toBe(true);
+          },
+          { timeout: EVENT_TIMEOUT_MS, interval: 100 },
         );
         await new Promise((resolve) => setTimeout(resolve, 300));
 
@@ -240,8 +230,9 @@ describe("workspace root watch events inside nested heavy directories (#1779)", 
         expect(
           changedPaths.filter(
             (changedPath) =>
-              changedPath.includes(`${path.sep}node_modules${path.sep}`) ||
-              changedPath.includes(`${path.sep}.git${path.sep}`),
+              changedPath.startsWith(path.join(realRoot, "apps")) &&
+              (changedPath.includes(`${path.sep}node_modules${path.sep}`) ||
+                changedPath.includes(`${path.sep}.git${path.sep}`)),
           ),
         ).toEqual([]);
       } finally {

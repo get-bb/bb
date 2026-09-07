@@ -1,11 +1,4 @@
-import {
-  createThread,
-  getAppSettings,
-  getEnvironment,
-  getThread,
-  listEvents,
-  setAppSettings,
-} from "@bb/db";
+import { createThread, getThread, listEvents } from "@bb/db";
 import {
   type ResolvedThreadExecutionOptions,
   systemThreadProvisioningEventDataSchema,
@@ -16,9 +9,7 @@ import { groupHostDaemonEvents } from "@bb/host-daemon-contract";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   internalAuthHeaders,
-  listQueuedEnvironmentCommands,
   listQueuedThreadCommands,
-  requireManagedWorktreeEnvironmentProvisionLiveCommand,
   reportQueuedCommandError,
   reportQueuedCommandSuccess,
   waitForQueuedCommand,
@@ -33,7 +24,12 @@ import {
   seedThread,
   seedTurnStarted,
 } from "../helpers/seed.js";
-import { createTestAppHarness, withTestHarness } from "../helpers/test-app.js";
+import {
+  createTestAppHarness,
+  withTestHarness,
+  type TestAppHarness,
+} from "../helpers/test-app.js";
+import { installFakeGitWorktreeProvider } from "../helpers/environment-provider.js";
 import { AiServiceCallError } from "../../src/services/ai/ai-service-call.js";
 import { InferenceTimeoutError } from "../../src/services/ai/inference.js";
 import { runEnvironmentProvisioningSweep } from "../../src/services/system/periodic-sweeps.js";
@@ -51,7 +47,6 @@ const piAiMocks = vi.hoisted(() => ({
 }));
 
 interface MockThreadMetadata {
-  branchSlug?: string;
   title?: string;
 }
 
@@ -81,6 +76,24 @@ function mockThreadMetadata(metadata: MockThreadMetadata): void {
   piAiMocks.complete.mockResolvedValue(mockThreadMetadataCompletion(metadata));
 }
 
+function pendingThreadMetadata(): (metadata: MockThreadMetadata) => void {
+  let resolveMetadata: (metadata: MockThreadMetadata) => void = () => {
+    throw new Error("Metadata inference was not started");
+  };
+  piAiMocks.getModel.mockReturnValue({ provider: "test" });
+  piAiMocks.complete.mockImplementation(
+    () =>
+      new Promise((resolve) => {
+        resolveMetadata = (metadata) => {
+          resolve(mockThreadMetadataCompletion(metadata));
+        };
+      }),
+  );
+  return (metadata) => {
+    resolveMetadata(metadata);
+  };
+}
+
 const THREAD_START_EXECUTION = {
   model: "gpt-5",
   serviceTier: "default",
@@ -89,18 +102,61 @@ const THREAD_START_EXECUTION = {
   source: "client/turn/requested",
 } satisfies ResolvedThreadExecutionOptions;
 
-describe("generated managed branch names", () => {
+interface CreateManagedWorktreeThreadArgs {
+  hostId: string;
+  projectId: string;
+  text: string;
+  title?: string;
+}
+
+async function createManagedWorktreeThread(
+  harness: TestAppHarness,
+  args: CreateManagedWorktreeThreadArgs,
+) {
+  const response = await harness.app.request("/api/v1/threads", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      origin: "app",
+      projectId: args.projectId,
+      providerId: "codex",
+      model: "gpt-5",
+      ...(args.title === undefined ? {} : { title: args.title }),
+      input: [{ type: "text", text: args.text }],
+      environment: {
+        type: "host",
+        hostId: args.hostId,
+        workspace: {
+          type: "managed-worktree",
+          baseBranch: { kind: "default" },
+        },
+      },
+    }),
+  });
+  expect(response.status).toBe(201);
+  return threadSchema.parse(await readJson(response));
+}
+
+function provisioningEntries(harness: TestAppHarness, threadId: string) {
+  return listEvents(harness.db, { threadId })
+    .filter((event) => event.type === "system/thread-provisioning")
+    .flatMap(
+      (event) =>
+        systemThreadProvisioningEventDataSchema.parse(JSON.parse(event.data))
+          .entries,
+    );
+}
+
+describe("generated thread titles", () => {
   beforeEach(() => {
     piAiMocks.complete.mockReset();
     piAiMocks.getModel.mockReset();
   });
 
-  it("uses generated branch slugs for managed worktree provisioning", async () => {
-    mockThreadMetadata({
-      branchSlug: "unrelated-slug",
-      title: "Improve Branch Names",
-    });
+  it("resolves a managed-worktree request to the worktree provider once the title is generated", async () => {
+    mockThreadMetadata({ title: "Improve Branch Names" });
     await withTestHarness(async (harness) => {
+      const provider = installFakeGitWorktreeProvider();
       const { host } = seedHostSession(harness.deps, {
         id: "host-generated-branch",
       });
@@ -109,119 +165,30 @@ describe("generated managed branch names", () => {
         path: "/tmp/generated-branch-project",
       });
 
-      const response = await harness.app.request("/api/v1/threads", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          origin: "app",
-          projectId: project.id,
-          providerId: "codex",
-          model: "gpt-5",
-          input: [
-            {
-              type: "text",
-              text: "Improve the generated branch naming path",
-            },
-          ],
-          environment: {
-            type: "host",
-            hostId: host.id,
-            workspace: {
-              type: "managed-worktree",
-              baseBranch: { kind: "default" },
-            },
-          },
-        }),
+      const thread = await createManagedWorktreeThread(harness, {
+        hostId: host.id,
+        projectId: project.id,
+        text: "Improve the generated branch naming path",
       });
-
-      expect(response.status).toBe(201);
-      const thread = threadSchema.parse(await readJson(response));
       expect(thread.title).toBeNull();
 
-      const queued = await waitForQueuedCommand(
-        harness,
-        ({ command }) => command.type === "environment.provision",
-      );
+      const context = await provider.waitForProvision();
+      expect(context.thread.id).toBe(thread.id);
+      expect(context.thread.title).toBe("Improve Branch Names");
+      expect(context.host?.id).toBe(host.id);
+      expect(context.inputs).toEqual({ branch: { kind: "default" } });
       expect(getThread(harness.db, thread.id)?.title).toBe(
         "Improve Branch Names",
-      );
-      const managedCommand =
-        requireManagedWorktreeEnvironmentProvisionLiveCommand(queued);
-      expect(managedCommand.command.branchName).toBe(
-        `bb/improve-branch-names-${thread.id}`,
       );
       expect(piAiMocks.complete).toHaveBeenCalledTimes(1);
     });
   });
 
-  it("applies the configured managed branch prefix", async () => {
-    mockThreadMetadata({
-      branchSlug: "unrelated-slug",
-      title: "Custom Prefix Branch",
-    });
-    await withTestHarness(async (harness) => {
-      const { host } = seedHostSession(harness.deps, {
-        id: "host-custom-branch-prefix",
-      });
-      const { project } = seedProjectWithSource(harness.deps, {
-        hostId: host.id,
-        path: "/tmp/custom-branch-prefix-project",
-      });
-      setAppSettings(harness.db, {
-        ...getAppSettings(harness.db),
-        managedBranchPrefix: "sawyer/wt-",
-      });
-
-      const response = await harness.app.request("/api/v1/threads", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          origin: "app",
-          projectId: project.id,
-          providerId: "codex",
-          model: "gpt-5",
-          input: [{ type: "text", text: "Use the configured branch prefix" }],
-          environment: {
-            type: "host",
-            hostId: host.id,
-            workspace: {
-              type: "managed-worktree",
-              baseBranch: { kind: "default" },
-            },
-          },
-        }),
-      });
-
-      expect(response.status).toBe(201);
-      const thread = threadSchema.parse(await readJson(response));
-
-      const queued = await waitForQueuedCommand(
-        harness,
-        ({ command }) => command.type === "environment.provision",
-      );
-      const managedCommand =
-        requireManagedWorktreeEnvironmentProvisionLiveCommand(queued);
-      expect(managedCommand.command.branchName).toBe(
-        `sawyer/wt-custom-prefix-branch-${thread.id}`,
-      );
-    });
-  });
-
-  it("shows child thread provisioning before metadata inference completes", async () => {
-    let resolveMetadata: (metadata: MockThreadMetadata) => void = () => {
-      throw new Error("Metadata inference was not started");
-    };
-    piAiMocks.getModel.mockReturnValue({ provider: "test" });
-    piAiMocks.complete.mockImplementation(
-      () =>
-        new Promise((resolve) => {
-          resolveMetadata = (metadata) => {
-            resolve(mockThreadMetadataCompletion(metadata));
-          };
-        }),
-    );
+  it("opens the workspace-setup block before metadata inference completes", async () => {
+    const resolveMetadata = pendingThreadMetadata();
 
     await withTestHarness(async (harness) => {
+      const provider = installFakeGitWorktreeProvider();
       const { host } = seedHostSession(harness.deps, {
         id: "host-managed-early-provisioning-row",
       });
@@ -230,102 +197,37 @@ describe("generated managed branch names", () => {
         path: "/tmp/managed-early-provisioning-row-project",
       });
 
-      const response = await harness.app.request("/api/v1/threads", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          origin: "app",
-          projectId: project.id,
-          providerId: "codex",
-          model: "gpt-5",
-          input: [
-            {
-              type: "text",
-              text: "Show provisioning before generated branch metadata finishes",
-            },
-          ],
-          environment: {
-            type: "host",
-            hostId: host.id,
-            workspace: {
-              type: "managed-worktree",
-              baseBranch: { kind: "default" },
-            },
-          },
-        }),
+      const thread = await createManagedWorktreeThread(harness, {
+        hostId: host.id,
+        projectId: project.id,
+        text: "Show provisioning before generated branch metadata finishes",
       });
-
-      expect(response.status).toBe(201);
-      const thread = threadSchema.parse(await readJson(response));
 
       await vi.waitFor(() => {
-        const provisioningRows = listEvents(harness.db, {
-          threadId: thread.id,
-        }).filter((event) => event.type === "system/thread-provisioning");
-        expect(provisioningRows.length).toBeGreaterThan(0);
+        expect(piAiMocks.complete).toHaveBeenCalledTimes(1);
+        expect(provisioningEntries(harness, thread.id)[0]?.key).toBe(
+          "workspace-started",
+        );
       });
+      expect(getThread(harness.db, thread.id)?.environmentId).toBeNull();
+      expect(provider.contexts).toHaveLength(0);
 
-      const updatedThread = getThread(harness.db, thread.id);
-      if (!updatedThread?.environmentId) {
-        throw new Error("Expected provisioning thread to have an environment");
-      }
-      expect(
-        listQueuedEnvironmentCommands(
-          harness,
-          "environment.provision",
-          updatedThread.environmentId,
-        ),
-      ).toEqual([]);
-      expect(piAiMocks.complete).toHaveBeenCalledTimes(1);
+      resolveMetadata({ title: "Early Visible Provisioning" });
 
-      const [firstProvisioningRow] = listEvents(harness.db, {
-        threadId: thread.id,
-      }).filter((event) => event.type === "system/thread-provisioning");
-      if (!firstProvisioningRow) {
-        throw new Error("Expected thread provisioning row");
-      }
-      const firstProvisioning = systemThreadProvisioningEventDataSchema.parse(
-        JSON.parse(firstProvisioningRow.data),
-      );
-      expect(firstProvisioning.environmentId).toBe(updatedThread.environmentId);
-      expect(firstProvisioning.entries[0]?.key).toBe("workspace-started");
-
-      resolveMetadata({
-        branchSlug: "early-visible-provisioning",
-        title: "Early Visible Provisioning",
-      });
-
-      const queued = await waitForQueuedCommand(
-        harness,
-        ({ command }) => command.type === "environment.provision",
-      );
-      const managedCommand =
-        requireManagedWorktreeEnvironmentProvisionLiveCommand(queued);
-      expect(managedCommand.command.branchName).toBe(
-        `bb/early-visible-provisioning-${thread.id}`,
-      );
+      const context = await provider.waitForProvision();
+      expect(context.thread.title).toBe("Early Visible Provisioning");
     });
   });
 
   it("does not fail a stopped thread when metadata inference settles", async () => {
-    let resolveMetadata: (metadata: MockThreadMetadata) => void = () => {
-      throw new Error("Metadata inference was not started");
-    };
-    piAiMocks.getModel.mockReturnValue({ provider: "test" });
-    piAiMocks.complete.mockImplementation(
-      () =>
-        new Promise((resolve) => {
-          resolveMetadata = (metadata) => {
-            resolve(mockThreadMetadataCompletion(metadata));
-          };
-        }),
-    );
+    const resolveMetadata = pendingThreadMetadata();
 
     await withTestHarness(async (harness) => {
+      const provider = installFakeGitWorktreeProvider();
       const { host } = seedHostSession(harness.deps, {
         id: "host-stop-during-metadata",
       });
-      const { project, source } = seedProjectWithSource(harness.deps, {
+      const { project } = seedProjectWithSource(harness.deps, {
         hostId: host.id,
         path: "/tmp/stop-during-metadata-project",
       });
@@ -338,11 +240,12 @@ describe("generated managed branch names", () => {
       const input = textInput("Stop during metadata inference before setup");
       const context = requestThreadProvision(harness.deps, {
         environmentIntent: {
-          type: "direct-managed",
-          hostId: host.id,
-          sourcePath: source.path,
-          baseBranch: { kind: "default" },
-          workspaceProvisionType: "managed-worktree",
+          type: "provider",
+          environmentProviderId: "git-worktree",
+          machine: { type: "existing", hostId: host.id },
+          inputs: { branch: { kind: "default" } },
+          selectionResolved: true,
+          produced: null,
         },
         execution: THREAD_START_EXECUTION,
         fork: null,
@@ -358,32 +261,19 @@ describe("generated managed branch names", () => {
 
       await vi.waitFor(() => {
         expect(piAiMocks.complete).toHaveBeenCalledTimes(1);
-        expect(getThread(harness.db, thread.id)?.environmentId).toBeTruthy();
       });
 
-      const preparingThread = getThread(harness.db, thread.id);
-      if (!preparingThread?.environmentId) {
-        throw new Error("Expected prepared thread to have an environment");
+      const startingThread = getThread(harness.db, thread.id);
+      if (!startingThread) {
+        throw new Error("Expected the starting thread");
       }
-      const environment = getEnvironment(
-        harness.db,
-        preparingThread.environmentId,
-      );
-      if (!environment) {
-        throw new Error("Expected prepared thread environment");
-      }
-
-      requestThreadStopForCurrentState(harness.deps, preparingThread, {
-        hostId: environment.hostId,
-        id: environment.id,
-      });
+      expect(startingThread.environmentId).toBeNull();
+      requestThreadStopForCurrentState(harness.deps, startingThread, null);
       expect(getThread(harness.db, thread.id)).toMatchObject({
         status: "idle",
       });
 
-      resolveMetadata({
-        title: "Stopped Metadata Race",
-      });
+      resolveMetadata({ title: "Stopped Metadata Race" });
       await advance;
 
       expect(getThread(harness.db, thread.id)).toMatchObject({
@@ -391,40 +281,16 @@ describe("generated managed branch names", () => {
       });
       const events = listEvents(harness.db, { threadId: thread.id });
       expect(events.map((event) => event.type)).not.toContain("system/error");
-      const provisioningStatuses = events
-        .filter((event) => event.type === "system/thread-provisioning")
-        .map(
-          (event) =>
-            systemThreadProvisioningEventDataSchema.parse(
-              JSON.parse(event.data),
-            ).status,
-        );
-      expect(provisioningStatuses).toContain("cancelled");
-      expect(
-        listQueuedEnvironmentCommands(
-          harness,
-          "environment.provision",
-          environment.id,
-        ),
-      ).toEqual([]);
+      expect(provider.contexts).toHaveLength(0);
+      expect(getThread(harness.db, thread.id)?.environmentId).toBeNull();
     });
   });
 
-  it("does not fail prepared managed environments during provisioning sweeps", async () => {
-    let resolveMetadata: (metadata: MockThreadMetadata) => void = () => {
-      throw new Error("Metadata inference was not started");
-    };
-    piAiMocks.getModel.mockReturnValue({ provider: "test" });
-    piAiMocks.complete.mockImplementation(
-      () =>
-        new Promise((resolve) => {
-          resolveMetadata = (metadata) => {
-            resolve(mockThreadMetadataCompletion(metadata));
-          };
-        }),
-    );
+  it("does not fail a thread waiting on metadata during provisioning sweeps", async () => {
+    const resolveMetadata = pendingThreadMetadata();
 
     await withTestHarness(async (harness) => {
+      const provider = installFakeGitWorktreeProvider();
       const { host } = seedHostSession(harness.deps, {
         id: "host-managed-prepared-sweep",
       });
@@ -433,104 +299,34 @@ describe("generated managed branch names", () => {
         path: "/tmp/managed-prepared-sweep-project",
       });
 
-      const response = await harness.app.request("/api/v1/threads", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          origin: "app",
-          projectId: project.id,
-          providerId: "codex",
-          model: "gpt-5",
-          input: [
-            {
-              type: "text",
-              text: "Keep prepared provisioning safe during sweeps",
-            },
-          ],
-          environment: {
-            type: "host",
-            hostId: host.id,
-            workspace: {
-              type: "managed-worktree",
-              baseBranch: { kind: "default" },
-            },
-          },
-        }),
+      const thread = await createManagedWorktreeThread(harness, {
+        hostId: host.id,
+        projectId: project.id,
+        text: "Keep prepared provisioning safe during sweeps",
       });
-
-      expect(response.status).toBe(201);
-      const thread = threadSchema.parse(await readJson(response));
 
       await vi.waitFor(() => {
-        const updatedThread = getThread(harness.db, thread.id);
-        expect(updatedThread?.environmentId).toBeTruthy();
         expect(piAiMocks.complete).toHaveBeenCalledTimes(1);
-        const provisioningRows = listEvents(harness.db, {
-          threadId: thread.id,
-        }).filter((event) => event.type === "system/thread-provisioning");
-        expect(provisioningRows.length).toBeGreaterThan(0);
+        expect(provisioningEntries(harness, thread.id)).not.toHaveLength(0);
       });
-
-      const preparedThread = getThread(harness.db, thread.id);
-      if (!preparedThread?.environmentId) {
-        throw new Error("Expected prepared thread to have an environment");
-      }
-      const preparedEnvironment = getEnvironment(
-        harness.db,
-        preparedThread.environmentId,
-      );
-      expect(preparedEnvironment?.status).toBe("ready");
-      expect(preparedEnvironment?.path).toBeNull();
-      expect(
-        listQueuedEnvironmentCommands(
-          harness,
-          "environment.provision",
-          preparedThread.environmentId,
-        ),
-      ).toEqual([]);
 
       await runEnvironmentProvisioningSweep(harness.deps);
 
-      const sweptEnvironment = getEnvironment(
-        harness.db,
-        preparedThread.environmentId,
-      );
-      expect(sweptEnvironment?.status).toBe("ready");
       expect(getThread(harness.db, thread.id)?.status).toBe("starting");
       expect(
         listEvents(harness.db, { threadId: thread.id }).map(
           (event) => event.type,
         ),
       ).not.toContain("system/error");
-      expect(
-        listQueuedEnvironmentCommands(
-          harness,
-          "environment.provision",
-          preparedThread.environmentId,
-        ),
-      ).toEqual([]);
 
-      resolveMetadata({
-        branchSlug: "prepared-sweep-safe",
-        title: "Prepared Sweep Safe",
-      });
+      resolveMetadata({ title: "Prepared Sweep Safe" });
 
-      const queued = await waitForQueuedCommand(
-        harness,
-        ({ command }) => command.type === "environment.provision",
-      );
-      const managedCommand =
-        requireManagedWorktreeEnvironmentProvisionLiveCommand(queued);
-      expect(managedCommand.command.branchName).toBe(
-        `bb/prepared-sweep-safe-${thread.id}`,
-      );
-      expect(
-        getEnvironment(harness.db, preparedThread.environmentId)?.status,
-      ).toBe("provisioning");
+      const context = await provider.waitForProvision();
+      expect(context.thread.title).toBe("Prepared Sweep Safe");
     });
   });
 
-  it("uses two timeout attempts for managed worktree metadata inference", async () => {
+  it("uses two timeout attempts for provider-path metadata inference", async () => {
     piAiMocks.getModel.mockReturnValue({ provider: "test" });
     piAiMocks.complete
       .mockRejectedValueOnce(new InferenceTimeoutError({ timeoutMs: 2_500 }))
@@ -540,6 +336,7 @@ describe("generated managed branch names", () => {
         }),
       );
     await withTestHarness(async (harness) => {
+      const provider = installFakeGitWorktreeProvider();
       const { host } = seedHostSession(harness.deps, {
         id: "host-managed-metadata-retry",
       });
@@ -548,51 +345,23 @@ describe("generated managed branch names", () => {
         path: "/tmp/managed-metadata-retry-project",
       });
 
-      const response = await harness.app.request("/api/v1/threads", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          origin: "app",
-          projectId: project.id,
-          providerId: "codex",
-          model: "gpt-5",
-          input: [
-            {
-              type: "text",
-              text: "Recover managed metadata after transient timeout",
-            },
-          ],
-          environment: {
-            type: "host",
-            hostId: host.id,
-            workspace: {
-              type: "managed-worktree",
-              baseBranch: { kind: "default" },
-            },
-          },
-        }),
+      const thread = await createManagedWorktreeThread(harness, {
+        hostId: host.id,
+        projectId: project.id,
+        text: "Recover managed metadata after transient timeout",
       });
 
-      expect(response.status).toBe(201);
-      const thread = threadSchema.parse(await readJson(response));
-      const queued = await waitForQueuedCommand(
-        harness,
-        ({ command }) => command.type === "environment.provision",
-      );
-      const managedCommand =
-        requireManagedWorktreeEnvironmentProvisionLiveCommand(queued);
-      expect(managedCommand.command.branchName).toBe(
-        `bb/recovered-managed-metadata-${thread.id}`,
+      const context = await provider.waitForProvision();
+      expect(context.thread.title).toBe("Recovered Managed Metadata");
+      expect(getThread(harness.db, thread.id)?.title).toBe(
+        "Recovered Managed Metadata",
       );
       expect(piAiMocks.complete).toHaveBeenCalledTimes(2);
     });
   });
 
   it("queues a daemon rename after a generated title thread starts", async () => {
-    mockThreadMetadata({
-      branchSlug: "generated-rename-branch",
-      title: "Generated Rename Title",
-    });
+    mockThreadMetadata({ title: "Generated Rename Title" });
     await withTestHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps, {
         id: "host-generated-title-rename",
@@ -601,60 +370,28 @@ describe("generated managed branch names", () => {
         hostId: host.id,
         path: "/tmp/generated-title-rename-project",
       });
-
-      const response = await harness.app.request("/api/v1/threads", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          origin: "app",
-          projectId: project.id,
-          providerId: "codex",
-          model: "gpt-5",
-          input: [
-            {
-              type: "text",
-              text: "Generate a title then sync it after startup",
-            },
-          ],
-          environment: {
-            type: "host",
-            hostId: host.id,
-            workspace: {
-              type: "managed-worktree",
-              baseBranch: { kind: "default" },
-            },
-          },
-        }),
+      seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+        path: "/tmp/generated-title-rename-workspace",
+        status: "ready",
       });
-
-      expect(response.status).toBe(201);
-      const thread = threadSchema.parse(await readJson(response));
-      const provision = await waitForQueuedCommand(
-        harness,
-        ({ command }) => command.type === "environment.provision",
-      );
-      if (
-        provision.command.type !== "environment.provision" ||
-        provision.command.workspaceProvisionType === "unmanaged"
-      ) {
-        throw new Error("Expected environment.provision command");
-      }
-      await reportQueuedCommandSuccess(
-        harness,
-        provision,
-        {
-          path: "/tmp/generated-title-rename-project/.bb-worktrees/thread",
-          branchName: `bb/generated-rename-title-${thread.id}`,
-          defaultBranch: "main",
-          isGitRepo: true,
-          isWorktree: true,
-          transcript: [],
+      installFakeGitWorktreeProvider(() => ({
+        action: "ready",
+        environment: {
+          type: "host",
+          hostId: host.id,
+          path: "/tmp/generated-title-rename-workspace",
         },
-        { hostId: host.id },
-      );
-      const start = await waitForQueuedCommandAfter(
+      }));
+
+      const thread = await createManagedWorktreeThread(harness, {
+        hostId: host.id,
+        projectId: project.id,
+        text: "Generate a title then sync it after startup",
+      });
+      const start = await waitForQueuedCommand(
         harness,
-        provision.row.cursor,
         ({ command }) =>
           command.type === "thread.start" && command.threadId === thread.id,
       );
@@ -695,7 +432,6 @@ describe("generated managed branch names", () => {
         projectId: project.id,
         path: "/tmp/generated-fork-title-project",
         status: "ready",
-        workspaceProvisionType: "unmanaged",
       });
       const sourceThread = seedThread(harness.deps, {
         projectId: project.id,
@@ -751,8 +487,8 @@ describe("generated managed branch names", () => {
       });
     });
   });
-
   it("does not queue a daemon rename for user-supplied titles", async () => {
+    mockThreadMetadata({ title: "Generated Title" });
     await withTestHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps, {
         id: "host-user-title-no-rename",
@@ -761,60 +497,29 @@ describe("generated managed branch names", () => {
         hostId: host.id,
         path: "/tmp/user-title-no-rename-project",
       });
-
-      const response = await harness.app.request("/api/v1/threads", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          origin: "app",
-          projectId: project.id,
-          providerId: "codex",
-          model: "gpt-5",
-          title: "User Picked Title",
-          input: [
-            {
-              type: "text",
-              text: "Use the user supplied title without daemon rename",
-            },
-          ],
-          environment: {
-            type: "host",
-            hostId: host.id,
-            workspace: {
-              type: "managed-worktree",
-              baseBranch: { kind: "default" },
-            },
-          },
-        }),
+      seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+        path: "/tmp/user-title-no-rename-workspace",
+        status: "ready",
       });
-
-      expect(response.status).toBe(201);
-      const thread = threadSchema.parse(await readJson(response));
-      const provision = await waitForQueuedCommand(
-        harness,
-        ({ command }) => command.type === "environment.provision",
-      );
-      const managedProvision =
-        requireManagedWorktreeEnvironmentProvisionLiveCommand(provision);
-      expect(managedProvision.command.branchName).toBe(
-        `bb/user-picked-title-${thread.id}`,
-      );
-      await reportQueuedCommandSuccess(
-        harness,
-        provision,
-        {
-          path: "/tmp/user-title-no-rename-project/.bb-worktrees/thread",
-          branchName: `bb/user-picked-title-${thread.id}`,
-          defaultBranch: "main",
-          isGitRepo: true,
-          isWorktree: true,
-          transcript: [],
+      installFakeGitWorktreeProvider(() => ({
+        action: "ready",
+        environment: {
+          type: "host",
+          hostId: host.id,
+          path: "/tmp/user-title-no-rename-workspace",
         },
-        { hostId: host.id },
-      );
-      const start = await waitForQueuedCommandAfter(
+      }));
+
+      const thread = await createManagedWorktreeThread(harness, {
+        hostId: host.id,
+        projectId: project.id,
+        text: "Use the user supplied title without daemon rename",
+        title: "User Picked Title",
+      });
+      const start = await waitForQueuedCommand(
         harness,
-        provision.row.cursor,
         ({ command }) =>
           command.type === "thread.start" && command.threadId === thread.id,
       );
@@ -834,6 +539,7 @@ describe("generated managed branch names", () => {
           100,
         ),
       ).rejects.toThrow("Timed out waiting for queued command");
+      expect(piAiMocks.complete).not.toHaveBeenCalled();
     });
   });
 
@@ -872,7 +578,6 @@ describe("generated managed branch names", () => {
         projectId: project.id,
         path: "/tmp/idle-late-title-rename-workspace",
         status: "ready",
-        workspaceProvisionType: "unmanaged",
       });
       const thread = createThread(harness.db, harness.hub, {
         projectId: project.id,
@@ -1006,7 +711,6 @@ describe("generated managed branch names", () => {
         projectId: project.id,
         path: "/tmp/errored-late-title-no-rename-workspace",
         status: "ready",
-        workspaceProvisionType: "unmanaged",
       });
       const thread = createThread(harness.db, harness.hub, {
         projectId: project.id,
@@ -1066,109 +770,22 @@ describe("generated managed branch names", () => {
       ).toEqual([]);
     });
   });
-
-  it("falls back to the thread ID when no title is returned", async () => {
-    mockThreadMetadata({
-      branchSlug: "Slug Only Branch",
-    });
-    await withTestHarness(async (harness) => {
-      const { host } = seedHostSession(harness.deps, {
-        id: "host-generated-branch-slug-only",
-      });
-      const { project } = seedProjectWithSource(harness.deps, {
-        hostId: host.id,
-        path: "/tmp/generated-branch-slug-only-project",
-      });
-
-      const response = await harness.app.request("/api/v1/threads", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          origin: "app",
-          projectId: project.id,
-          providerId: "codex",
-          model: "gpt-5",
-          input: [
-            {
-              type: "text",
-              text: "Improve branch names using slug only metadata path",
-            },
-          ],
-          environment: {
-            type: "host",
-            hostId: host.id,
-            workspace: {
-              type: "managed-worktree",
-              baseBranch: { kind: "default" },
-            },
-          },
-        }),
-      });
-
-      expect(response.status).toBe(201);
-      const thread = threadSchema.parse(await readJson(response));
-      expect(thread.title).toBeNull();
-
-      const queued = await waitForQueuedCommand(
-        harness,
-        ({ command }) => command.type === "environment.provision",
-      );
-      const managedCommand =
-        requireManagedWorktreeEnvironmentProvisionLiveCommand(queued);
-      expect(managedCommand.command.branchName).toBe(`bb/${thread.id}`);
-      expect(piAiMocks.complete).toHaveBeenCalledTimes(1);
-    });
-  });
-
-  it("falls back to thread ID branch names when inference is unavailable", async () => {
+  it("skips inference entirely when no inference model is configured", async () => {
     await withTestHarness(
       {
         inferenceModel: "openai/gpt-4o-mini",
         openAiApiKey: "",
       },
       async (harness) => {
-        const { host } = seedHostSession(harness.deps, {
-          id: "host-generated-branch-fallback",
-        });
-        const { project } = seedProjectWithSource(harness.deps, {
-          hostId: host.id,
-          path: "/tmp/generated-branch-fallback-project",
-        });
-
-        const response = await harness.app.request("/api/v1/threads", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({
-            origin: "app",
-            projectId: project.id,
-            providerId: "codex",
-            model: "gpt-5",
-            input: [
-              {
-                type: "text",
-                text: "Improve the generated branch naming fallback path",
-              },
-            ],
-            environment: {
-              type: "host",
-              hostId: host.id,
-              workspace: {
-                type: "managed-worktree",
-                baseBranch: { kind: "default" },
-              },
-            },
+        await expect(
+          generateThreadMetadataWithOutcome(harness.deps, {
+            input: textInput("Improve the generated title fallback path"),
+            threadId: "thr_inference_unavailable",
           }),
+        ).resolves.toMatchObject({
+          metadata: null,
+          reason: "inference-unavailable",
         });
-
-        expect(response.status).toBe(201);
-        const thread = threadSchema.parse(await readJson(response));
-        const queued = await waitForQueuedCommand(
-          harness,
-          ({ command }) => command.type === "environment.provision",
-        );
-        const managedCommand =
-          requireManagedWorktreeEnvironmentProvisionLiveCommand(queued);
-        expect(managedCommand.command.branchName).toBe(`bb/${thread.id}`);
         expect(piAiMocks.getModel).toHaveBeenCalledWith(
           "openai",
           "gpt-4o-mini",
@@ -1176,64 +793,6 @@ describe("generated managed branch names", () => {
         expect(piAiMocks.complete).not.toHaveBeenCalled();
       },
     );
-  });
-
-  it("ignores independently generated branch slugs when a title is available", async () => {
-    mockThreadMetadata({
-      branchSlug: "wrong-slug",
-      title: "Canonical Generated Title",
-    });
-    await withTestHarness(async (harness) => {
-      const { host } = seedHostSession(harness.deps, {
-        id: "host-generated-branch-invalid",
-      });
-      const { project } = seedProjectWithSource(harness.deps, {
-        hostId: host.id,
-        path: "/tmp/generated-branch-invalid-project",
-      });
-
-      const response = await harness.app.request("/api/v1/threads", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          origin: "app",
-          projectId: project.id,
-          providerId: "codex",
-          model: "gpt-5",
-          input: [
-            {
-              type: "text",
-              text: "Improve invalid generated branch slug handling",
-            },
-          ],
-          environment: {
-            type: "host",
-            hostId: host.id,
-            workspace: {
-              type: "managed-worktree",
-              baseBranch: { kind: "default" },
-            },
-          },
-        }),
-      });
-
-      expect(response.status).toBe(201);
-      const thread = threadSchema.parse(await readJson(response));
-      expect(thread.title).toBeNull();
-      const queued = await waitForQueuedCommand(
-        harness,
-        ({ command }) => command.type === "environment.provision",
-      );
-      expect(getThread(harness.db, thread.id)?.title).toBe(
-        "Canonical Generated Title",
-      );
-      const managedCommand =
-        requireManagedWorktreeEnvironmentProvisionLiveCommand(queued);
-      expect(managedCommand.command.branchName).toBe(
-        `bb/canonical-generated-title-${thread.id}`,
-      );
-      expect(piAiMocks.complete).toHaveBeenCalledTimes(1);
-    });
   });
 
   it("returns no metadata when inference times out", async () => {
@@ -1287,10 +846,7 @@ describe("generated managed branch names", () => {
           timeoutMs: 1,
         }),
       ).resolves.toMatchObject({
-        metadata: {
-          branchSlug: "recovered-metadata",
-          title: "Recovered Metadata",
-        },
+        metadata: { title: "Recovered Metadata" },
       });
       expect(piAiMocks.complete).toHaveBeenCalledTimes(2);
       expect(piAiMocks.getModel).toHaveBeenNthCalledWith(
@@ -1351,10 +907,7 @@ describe("generated managed branch names", () => {
           timeoutMs: 1_000,
         }),
       ).resolves.toMatchObject({
-        metadata: {
-          branchSlug: "recovered-metadata",
-          title: "Recovered Metadata",
-        },
+        metadata: { title: "Recovered Metadata" },
       });
       expect(piAiMocks.complete).toHaveBeenCalledTimes(2);
       expect(piAiMocks.getModel).toHaveBeenNthCalledWith(

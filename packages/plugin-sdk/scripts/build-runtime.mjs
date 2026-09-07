@@ -73,6 +73,11 @@ const entries = [
   },
   { source: "src/host.ts", output: "dist/host.js", external: [] },
   {
+    source: "src/environment-provider.ts",
+    output: "dist/environment-provider.js",
+    external: ["zod", "zod/*"],
+  },
+  {
     source: "src/internal/composer-customization-validation.ts",
     output: "dist/internal/composer-customization-validation.js",
     external: [],
