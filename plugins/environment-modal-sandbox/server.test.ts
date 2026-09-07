@@ -5,7 +5,7 @@ import type {
 } from "@get-bb/plugin-sdk/machine-provider";
 import { createFakePluginHost } from "@get-bb/plugin-sdk/testing";
 import { readFileSync } from "node:fs";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type {
   SandboxBackend,
   SandboxCreateRequest,
@@ -27,7 +27,6 @@ const PROJECT = {
 const SETTINGS = {
   tokenId: "tok-id",
   tokenSecret: "tok-secret",
-  serverUrl: "https://bb.example.com",
 };
 const report: PluginMachineProviderProgress = {
   step() {},
@@ -60,7 +59,6 @@ function host(status: Host["status"]): Host {
 interface FakeSandboxState {
   id: string;
   name: string;
-  enrolledHostId: string | null;
   connected: boolean;
   terminated: boolean;
 }
@@ -85,17 +83,8 @@ function createBackend(
       sandboxId: state.id,
       async exec(command) {
         const script = command.at(-1) ?? "";
-        if (script.includes("/opt/bb-machine/auth.json")) {
-          return {
-            exitCode: 0,
-            stdout: state.enrolledHostId ?? "",
-            stderr: "",
-          };
-        }
-        if (script.includes("--join-code")) {
-          state.enrolledHostId = HOST_ID;
-          state.connected = true;
-        }
+        if (command[0] === "bootstrap-test") state.connected = true;
+        if (script.includes("machine stop --host-id")) state.connected = false;
         if (options.failClone && script.includes("git clone --progress")) {
           return {
             exitCode: 128,
@@ -103,8 +92,6 @@ function createBackend(
             stderr: "Host key verification failed.",
           };
         }
-        if (script.includes('kill -TERM "-$pid"')) state.connected = false;
-        if (script.includes("supervisor restarted")) state.connected = true;
         return { exitCode: 0, stdout: "ok", stderr: "" };
       },
       async terminate() {
@@ -119,6 +106,8 @@ function createBackend(
         return state.terminated ? 0 : null;
       },
       async snapshotFilesystem() {
+        if (state.connected)
+          throw new Error("snapshot requires a stopped daemon");
         if (failSnapshot) {
           failSnapshot = false;
           throw new Error("snapshot creation failed");
@@ -136,7 +125,6 @@ function createBackend(
       const state = {
         id: `sandbox-${nextSandbox}`,
         name: request.name,
-        enrolledHostId: request.image.type === "snapshot" ? HOST_ID : null,
         connected: false,
         terminated: false,
       } satisfies FakeSandboxState;
@@ -193,7 +181,6 @@ async function setup(
   const deletedHosts: string[] = [];
   const providerCliInstalls: string[] = [];
   let codexInstalled = false;
-  let joinCodes = 0;
   const fake = createFakePluginHost({
     pluginId: PLUGIN_ID,
     settings,
@@ -202,14 +189,6 @@ async function setup(
         delete: async ({ hostId }) => {
           deletedHosts.push(hostId);
           return { ok: true as const };
-        },
-        createJoinCode: async () => {
-          joinCodes += 1;
-          return {
-            joinCode: `join-${joinCodes}`,
-            hostId: HOST_ID,
-            expiresAt: 10_000,
-          };
         },
         list: async () => [
           host(
@@ -281,13 +260,33 @@ async function setup(
       },
     },
   });
+  const bootstrap = vi.fn(
+    async (request: {
+      key: string;
+      executor: {
+        exec(request: {
+          command: string[];
+          timeoutMs: number;
+          signal: AbortSignal;
+          stdin?: string;
+        }): Promise<{ exitCode: number; stdout: string; stderr: string }>;
+      };
+      daemon: { kind: "install" | "preinstalled" };
+      report: PluginMachineProviderProgress;
+      signal: AbortSignal;
+    }) => {
+      await request.executor.exec({
+        command: ["bootstrap-test"],
+        timeoutMs: 1000,
+        signal: request.signal,
+        stdin: "bootstrap-secret",
+      });
+      return { hostId: HOST_ID };
+    },
+  );
+  Object.assign(fake.bb.experimental_machines, { bootstrap });
   await createModalSandboxPlugin({
     backendFactory: () => backend.backend,
-    fetch: async () => ({
-      status: 200,
-      contentType: "text/x-shellscript",
-      text: async () => "#!/bin/sh",
-    }),
     now: () => Date.now(),
     sleep: async () => {},
   })(fake.bb);
@@ -302,9 +301,7 @@ async function setup(
     deletedSources,
     deletedHosts,
     providerCliInstalls,
-    get joinCodes() {
-      return joinCodes;
-    },
+    bootstrap,
   };
 }
 
@@ -367,8 +364,63 @@ describe("Modal machine provider", () => {
     expect(second).toEqual(first);
     expect(harness.backend.creates).toHaveLength(1);
     expect(harness.sources).toHaveLength(1);
-    expect(harness.joinCodes).toBe(1);
+    expect(harness.bootstrap).toHaveBeenCalledTimes(2);
+    expect(harness.bootstrap).toHaveBeenLastCalledWith({
+      key: "modal-machine-key",
+      executor: { exec: expect.any(Function) },
+      daemon: { kind: "install" },
+      report,
+      signal: expect.any(AbortSignal),
+    });
     expect(harness.providerCliInstalls).toEqual(["codex"]);
+  });
+
+  it("reuses vendor allocation after bootstrap fails and passes cancellation through", async () => {
+    const harness = await setup();
+    const context = createContext();
+    harness.bootstrap.mockRejectedValueOnce(new Error("connection timed out"));
+    await expect(harness.provider.create(context)).resolves.toMatchObject({
+      status: "failed",
+      failure: "transient",
+    });
+    expect(harness.backend.states[0]?.terminated).toBe(false);
+    await expect(harness.provider.create(context)).resolves.toMatchObject({
+      status: "created",
+      hostId: HOST_ID,
+    });
+    expect(harness.backend.creates).toHaveLength(1);
+    expect(harness.bootstrap).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        key: context.key,
+        signal: context.signal,
+      }),
+    );
+  });
+
+  it("rejects a changed bootstrap identity on resume without deleting the snapshot", async () => {
+    const harness = await setup();
+    const created = await harness.provider.create(createContext());
+    if (created.status !== "created") throw new Error(created.message);
+    const context = {
+      hostId: HOST_ID,
+      resource: created.resource,
+      report,
+      signal: new AbortController().signal,
+      checkpoint() {},
+    };
+    const suspended = await harness.provider.suspend?.(context);
+    if (suspended === undefined) throw new Error("suspend not registered");
+    harness.bootstrap.mockResolvedValueOnce({ hostId: "different-host" });
+    await expect(
+      harness.provider.resume?.({ ...context, resource: suspended.resource }),
+    ).rejects.toThrow("different machine identity");
+    expect(harness.backend.deletedSnapshots).toEqual([]);
+    await expect(
+      harness.provider.resume?.({ ...context, resource: suspended.resource }),
+    ).resolves.toMatchObject({
+      resource: { sandboxId: "sandbox-2", snapshotImageId: "image-1" },
+    });
+    expect(harness.backend.creates).toHaveLength(2);
   });
 
   it("creates a projectless machine without assuming a checkout", async () => {
@@ -382,13 +434,13 @@ describe("Modal machine provider", () => {
     expect(harness.sources).toHaveLength(0);
   });
 
-  it("cleans up a sandbox and unowned enrolled host after a terminal create failure", async () => {
+  it("cleans up vendor compute but leaves core-owned identity after a terminal create failure", async () => {
     const harness = await setup(SETTINGS, { failClone: true });
     await expect(
       harness.provider.create(createContext()),
     ).resolves.toMatchObject({ status: "failed", failure: "terminal" });
     expect(harness.backend.states[0]?.terminated).toBe(true);
-    expect(harness.deletedHosts).toEqual([HOST_ID]);
+    expect(harness.deletedHosts).toEqual([]);
   });
 
   it("suspends to a snapshot, resumes, and removes the machine resource", async () => {
@@ -411,6 +463,13 @@ describe("Modal machine provider", () => {
     const resumed = await harness.provider.resume?.({
       ...lifecycleContext,
       resource: suspended.resource,
+    });
+    expect(harness.bootstrap).toHaveBeenLastCalledWith({
+      key: "modal-machine-key",
+      executor: { exec: expect.any(Function) },
+      daemon: { kind: "preinstalled" },
+      report,
+      signal: lifecycleContext.signal,
     });
     expect(resumed?.resource).toMatchObject({
       sandboxId: "sandbox-2",

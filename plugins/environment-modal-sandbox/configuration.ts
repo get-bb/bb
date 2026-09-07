@@ -13,12 +13,6 @@ export const SETTING_DESCRIPTORS = {
     secret: true,
     description: "The token secret half of the same Modal API token.",
   },
-  serverUrl: {
-    type: "string",
-    label: "bb server URL (optional)",
-    description:
-      "Only for a tunnel you run yourself. Leave blank to use bb connect: this bb's own https://<handle>.getbb.app apex, which sandboxes reach without a login. Set it to a tunnel URL if this bb is not paired with bb connect. The server's own loopback address is not reachable from Modal, and a bb connect port share is not either — it sits behind connect's browser login.",
-  },
   appName: {
     type: "string",
     label: "Modal app name",
@@ -71,7 +65,6 @@ export const SETTING_DESCRIPTORS = {
 export interface ResolvedSettings {
   tokenId: string;
   tokenSecret: string;
-  serverUrl: string | null;
   appName: string;
   image: string;
   environmentVariables: Readonly<Record<string, string>>;
@@ -88,7 +81,6 @@ export type SettingsResolution =
 export interface RawSettings {
   tokenId: string | undefined;
   tokenSecret: string | undefined;
-  serverUrl: string | undefined;
   appName: string;
   image: string;
   environmentVariables: string | undefined;
@@ -142,7 +134,6 @@ function parseNumber(raw: string): number | null {
 export function resolveSettings(raw: RawSettings): SettingsResolution {
   const tokenId = (raw.tokenId ?? "").trim();
   const tokenSecret = (raw.tokenSecret ?? "").trim();
-  const serverUrl = (raw.serverUrl ?? "").trim().replace(/\/+$/u, "");
   const missing: string[] = [];
   if (tokenId.length === 0) missing.push("tokenId");
   if (tokenSecret.length === 0) missing.push("tokenSecret");
@@ -150,12 +141,6 @@ export function resolveSettings(raw: RawSettings): SettingsResolution {
     return {
       ok: false,
       message: `Modal sandbox is not configured: set ${missing.join(", ")} in the plugin's settings.`,
-    };
-  }
-  if (serverUrl.length > 0 && !/^https?:\/\//u.test(serverUrl)) {
-    return {
-      ok: false,
-      message: `Modal sandbox serverUrl must be an http(s) URL the sandbox can reach, not ${serverUrl}.`,
     };
   }
   const appName = raw.appName.trim();
@@ -211,7 +196,6 @@ export function resolveSettings(raw: RawSettings): SettingsResolution {
     settings: {
       tokenId,
       tokenSecret,
-      serverUrl: serverUrl.length === 0 ? null : serverUrl,
       appName,
       image,
       environmentVariables: environmentVariables.value,

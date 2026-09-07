@@ -5,7 +5,6 @@ function settings(overrides: Partial<RawSettings> = {}): RawSettings {
   return {
     tokenId: "token-id",
     tokenSecret: "token-secret",
-    serverUrl: "",
     appName: "bb-sandboxes",
     image: "node:22-bookworm",
     environmentVariables: undefined,

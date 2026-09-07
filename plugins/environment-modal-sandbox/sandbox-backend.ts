@@ -10,7 +10,7 @@ export interface SandboxHandle {
   readonly sandboxId: string;
   exec(
     command: readonly string[],
-    options: { timeoutMs: number },
+    options: { timeoutMs: number; signal: AbortSignal; stdin?: string },
   ): Promise<SandboxExecResult>;
   terminate(): Promise<void>;
   poll(): Promise<number | null>;
@@ -18,6 +18,17 @@ export interface SandboxHandle {
     timeoutMs: number;
     ttlMs: number | null;
   }): Promise<string>;
+}
+
+export function createSandboxExecutor(sandbox: SandboxHandle) {
+  return {
+    exec: ({
+      command,
+      ...options
+    }: Parameters<SandboxHandle["exec"]>[1] & {
+      command: string[];
+    }) => sandbox.exec(command, options),
+  };
 }
 
 export type SandboxImage =
@@ -55,18 +66,44 @@ function wrapSandbox(sandbox: Sandbox): SandboxHandle {
   return {
     sandboxId: sandbox.sandboxId,
     async exec(command, options) {
-      const process = await sandbox.exec([...command], {
-        mode: "text",
-        stdout: "pipe",
-        stderr: "pipe",
-        timeoutMs: options.timeoutMs,
+      options.signal.throwIfAborted();
+      let onAbort: () => void = () => {};
+      const aborted = new Promise<never>((_resolve, reject) => {
+        onAbort = () => reject(options.signal.reason);
+        options.signal.addEventListener("abort", onAbort, { once: true });
       });
-      const [stdout, stderr] = await Promise.all([
-        process.stdout.readText(),
-        process.stderr.readText(),
-      ]);
-      const exitCode = await process.wait();
-      return { exitCode, stdout, stderr };
+      try {
+        return await Promise.race([
+          aborted,
+          (async () => {
+            const process = await sandbox.exec([...command], {
+              mode: "text",
+              stdout: "pipe",
+              stderr: "pipe",
+              timeoutMs: options.timeoutMs,
+            });
+            const input = async () => {
+              try {
+                options.signal.throwIfAborted();
+                if (options.stdin !== undefined) {
+                  await process.stdin.writeText(options.stdin);
+                }
+              } finally {
+                await process.stdin.close();
+              }
+            };
+            const [stdout, stderr, exitCode] = await Promise.all([
+              process.stdout.readText(),
+              process.stderr.readText(),
+              process.wait(),
+              input(),
+            ]);
+            return { exitCode, stdout, stderr };
+          })(),
+        ]);
+      } finally {
+        options.signal.removeEventListener("abort", onAbort);
+      }
     },
     async terminate() {
       await sandbox.terminate();

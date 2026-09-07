@@ -41,21 +41,25 @@ server or plugin crash.
 
 ## How the sandbox reaches this bb
 
-Leave `serverUrl` blank to use the bb connect apex associated with this bb.
-The plugin obtains a one-time machine credential, downloads `/install.sh`, and
-enrols the sandbox through that tunnel.
+Configure the instance's default server-access provider so the sandbox can
+reach bb. Core's public machine bootstrap helper owns access grants,
+enrollment, durable identity, daemon startup, and waiting for a connection.
+The plugin supplies Modal exec as the transport, including stdin for secret
+bootstrap data. It does not store enrollment credentials in machine resources.
 
-Alternatively set `serverUrl` to a tunnel that reaches this bb's HTTP port
-directly. A `bb connect expose` port-share URL is unsuitable because anonymous
-sandbox requests receive its browser login instead of the installer.
+Creation calls bootstrap with the durable creation key and installs the daemon.
+Resume calls the same helper with the original key and a preinstalled daemon,
+including when a previous attempt left the sandbox running. Core reuses the
+identity and restarts the daemon when needed. The plugin has no `serverUrl`
+setting; configure access centrally.
 
-The plugin validates the installer URL before it creates a sandbox. After the
-machine connects, it installs or updates Codex, applies configured credentials,
-and verifies provider readiness before the machine becomes available.
+After the machine connects, the plugin installs or updates Codex, applies
+configured credentials, and verifies provider readiness. Private repositories
+need credentials in the image or injected environment.
 
-GitHub's common SSH remote forms are converted to HTTPS so public repositories
-work without copying an SSH key. Private repositories still need credentials
-in the image or injected environment.
+The exec adapter stops waiting when cancellation is requested. Modal does not
+expose per-exec cancellation, so a command already submitted may continue until
+its process timeout. Retries reuse the named sandbox and the bootstrap key.
 
 ## Settings
 
@@ -63,7 +67,6 @@ in the image or injected environment.
 | ---------------------- | -------- | ----------------------------------------------------------------------------- |
 | `tokenId`              | yes      | The token id half of a Modal API token.                                       |
 | `tokenSecret`          | yes      | The token secret half of the same token.                                      |
-| `serverUrl`            | no       | A tunnel URL the sandbox can reach. Blank uses bb connect.                    |
 | `appName`              | no       | The Modal app for sandboxes. Defaults to `bb-sandboxes`.                      |
 | `image`                | no       | Registry tag with Node 22+, npm, git, and curl.                               |
 | `environmentVariables` | no       | Secret JSON object injected into the sandbox.                                 |

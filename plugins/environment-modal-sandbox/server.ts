@@ -14,26 +14,19 @@ import {
   type ResolvedSettings,
 } from "./configuration.js";
 import {
-  enrolmentScript,
   prerequisitesScript,
   providerAuthenticationScript,
   projectClonePath,
-  restartSupervisorScript,
   shellCommand,
   shellQuote,
-  stopSupervisorScript,
-} from "./enrolment.js";
+} from "./sandbox-setup.js";
 import {
   createModalBackend,
+  createSandboxExecutor,
   type SandboxBackend,
   type SandboxBackendFactory,
   type SandboxHandle,
 } from "./sandbox-backend.js";
-import {
-  resolveSandboxEnrolment,
-  resolveSandboxServerUrl,
-  type PreflightFetch,
-} from "./enrolment-target.js";
 import {
   readModalMachineResource,
   type ModalMachineResource,
@@ -43,8 +36,8 @@ export const PROVIDER_ID = "modal-sandbox";
 
 const HOST_CONNECT_TIMEOUT_MS = 240_000;
 const HOST_POLL_INTERVAL_MS = 3_000;
+const DAEMON_STOP_TIMEOUT_MS = 60_000;
 const PREREQUISITES_TIMEOUT_MS = 300_000;
-const ENROLMENT_TIMEOUT_MS = 600_000;
 const PROVIDER_AUTHENTICATION_TIMEOUT_MS = 120_000;
 const CLONE_TIMEOUT_MS = 900_000;
 const SNAPSHOT_TIMEOUT_MS = 300_000;
@@ -77,13 +70,8 @@ function reportTerminalOutput(
 
 export interface ModalSandboxDeps {
   backendFactory: SandboxBackendFactory;
-  fetch: PreflightFetch;
   now: () => number;
   sleep: (delayMs: number) => Promise<void>;
-}
-
-export function modalSandboxHostName(sandboxId: string): string {
-  return `Modal sandbox ${sandboxId.slice(-4)}`;
 }
 
 export function createModalSandboxPlugin(
@@ -120,9 +108,11 @@ export function createModalSandboxPlugin(
       timeoutMs: number;
       what: string;
       report: PluginMachineProviderProgress;
+      signal: AbortSignal;
     }) {
       const result = await args.sandbox.exec(shellCommand(args.script), {
         timeoutMs: args.timeoutMs,
+        signal: args.signal,
       });
       const output = `${result.stdout}\n${result.stderr}`;
       reportTerminalOutput(args.report, output);
@@ -143,10 +133,9 @@ export function createModalSandboxPlugin(
       return result;
     }
 
-    async function waitForHost(
+    async function waitForHostDisconnection(
       hostId: string,
       signal: AbortSignal,
-      connected: boolean,
     ): Promise<void> {
       const deadline = deps.now() + HOST_CONNECT_TIMEOUT_MS;
       for (;;) {
@@ -154,35 +143,12 @@ export function createModalSandboxPlugin(
         const host = (await bb.sdk.hosts.list()).find(
           (candidate) => candidate.id === hostId,
         );
-        if (
-          connected
-            ? host?.status === "connected"
-            : host?.status !== "connected"
-        ) {
-          return;
-        }
+        if (host?.status !== "connected") return;
         if (deps.now() >= deadline) {
-          throw new Error(
-            connected
-              ? `host ${hostId} did not connect within ${HOST_CONNECT_TIMEOUT_MS / 1000}s`
-              : `host ${hostId} remained connected after suspension`,
-          );
+          throw new Error(`host ${hostId} remained connected after suspension`);
         }
         await deps.sleep(HOST_POLL_INTERVAL_MS);
       }
-    }
-
-    async function readEnrolledHostId(
-      sandbox: SandboxHandle,
-    ): Promise<string | null> {
-      const source =
-        "const fs=require('node:fs');try{const v=JSON.parse(fs.readFileSync('/opt/bb-machine/auth.json','utf8'));if(typeof v.hostId==='string')process.stdout.write(v.hostId)}catch{}";
-      const result = await sandbox.exec(
-        shellCommand(`node -e ${shellQuote(source)}`),
-        { timeoutMs: 10_000 },
-      );
-      const hostId = result.stdout.trim();
-      return result.exitCode === 0 && hostId.length > 0 ? hostId : null;
     }
 
     async function providerCliStatusesWhenConnected(args: {
@@ -263,6 +229,7 @@ export function createModalSandboxPlugin(
           timeoutMs: PROVIDER_AUTHENTICATION_TIMEOUT_MS,
           what: "authenticating Codex",
           report: args.report,
+          signal: args.signal,
         });
       }
       const states = await bb.sdk.system.providerStates({
@@ -313,6 +280,7 @@ export function createModalSandboxPlugin(
         timeoutMs: CLONE_TIMEOUT_MS,
         what: `cloning ${args.project.name}`,
         report: args.report,
+        signal: args.signal,
       });
       guard(args.signal);
       const project = await bb.sdk.projects.get({
@@ -352,7 +320,6 @@ export function createModalSandboxPlugin(
       }
       const backend = backendFor(resolved.settings);
       let sandbox: SandboxHandle | null = null;
-      let hostId: string | null = null;
       try {
         guard(context.signal);
         sandbox = await backend.fromName(
@@ -385,55 +352,16 @@ export function createModalSandboxPlugin(
           script: prerequisitesScript(),
           timeoutMs: PREREQUISITES_TIMEOUT_MS,
           what: "installing prerequisites",
+          signal: context.signal,
           report: context.report,
         });
-        hostId = await readEnrolledHostId(sandbox);
-        if (hostId === null) {
-          const enrolment = await resolveSandboxEnrolment({
-            bb,
-            serverUrl: resolved.settings.serverUrl,
-            fetch: deps.fetch,
-          });
-          if (!enrolment.ok) throw new LaunchTerminalError(enrolment.message);
-          guard(context.signal);
-          const join = await bb.sdk.hosts.createJoinCode();
-          hostId = join.hostId;
-          context.report.step("Enrolling the sandbox as a bb machine…");
-          await run({
-            sandbox,
-            script: enrolmentScript({
-              joinCode: join.joinCode,
-              hostId,
-              hostName: modalSandboxHostName(sandbox.sandboxId),
-              serverUrl: enrolment.enrolment.serverUrl,
-              machineCode: enrolment.enrolment.machineCode,
-            }),
-            timeoutMs: ENROLMENT_TIMEOUT_MS,
-            what: "enrolling the sandbox",
-            report: context.report,
-          });
-        } else {
-          const connected = (await bb.sdk.hosts.list()).some(
-            (host) => host.id === hostId && host.status === "connected",
-          );
-          if (!connected) {
-            const serverUrl = await resolveSandboxServerUrl({
-              bb,
-              serverUrl: resolved.settings.serverUrl,
-            });
-            if (!serverUrl.ok) throw new LaunchTerminalError(serverUrl.message);
-            context.report.step("Reconnecting the bb machine…");
-            await run({
-              sandbox,
-              script: restartSupervisorScript(serverUrl.serverUrl),
-              timeoutMs: ENROLMENT_TIMEOUT_MS,
-              what: "reconnecting the bb machine",
-              report: context.report,
-            });
-          }
-        }
-        context.report.step("Waiting for the machine to connect…");
-        await waitForHost(hostId, context.signal, true);
+        const { hostId } = await bb.experimental_machines.bootstrap({
+          key: context.key,
+          executor: createSandboxExecutor(sandbox),
+          daemon: { kind: "install" },
+          report: context.report,
+          signal: context.signal,
+        });
         await ensureCodexReady({
           hostId,
           sandbox,
@@ -476,14 +404,6 @@ export function createModalSandboxPlugin(
           TERMINAL_LAUNCH_FAILURE_PATTERN.test(message);
         if (terminal) {
           await sandbox?.terminate().catch(() => {});
-          if (hostId !== null) {
-            const host = (await bb.sdk.hosts.list()).find(
-              (candidate) => candidate.id === hostId,
-            );
-            if (host?.machineProviderId === null) {
-              await bb.sdk.hosts.delete({ hostId }).catch(() => {});
-            }
-          }
         }
         return {
           status: "failed",
@@ -579,12 +499,13 @@ export function createModalSandboxPlugin(
         context.report.step("Stopping the bb machine…");
         await run({
           sandbox,
-          script: stopSupervisorScript(),
-          timeoutMs: ENROLMENT_TIMEOUT_MS,
+          script: `bb_bin=$(command -v bb || true); if [ -z "$bb_bin" ]; then bb_bin="$HOME/.local/bin/bb"; fi; exec "$bb_bin" machine stop --host-id ${shellQuote(context.hostId)}`,
+          timeoutMs: DAEMON_STOP_TIMEOUT_MS,
+          signal: context.signal,
           what: "stopping the bb machine",
           report: context.report,
         });
-        await waitForHost(context.hostId, context.signal, false);
+        await waitForHostDisconnection(context.hostId, context.signal);
         context.report.step("Saving the Modal filesystem…");
         const snapshotImageId = await sandbox.snapshotFilesystem({
           timeoutMs: SNAPSHOT_TIMEOUT_MS,
@@ -646,27 +567,18 @@ export function createModalSandboxPlugin(
                   },
           });
         }
-        const connected = (await bb.sdk.hosts.list()).some(
-          (host) => host.id === context.hostId && host.status === "connected",
-        );
-        if (connected) {
-          return {
-            resource: { ...resource, sandboxId: sandbox.sandboxId },
-          };
-        }
-        const serverUrl = await resolveSandboxServerUrl({
-          bb,
-          serverUrl: resolved.settings.serverUrl,
-        });
-        if (!serverUrl.ok) throw new Error(serverUrl.message);
-        await run({
-          sandbox,
-          script: restartSupervisorScript(serverUrl.serverUrl),
-          timeoutMs: ENROLMENT_TIMEOUT_MS,
-          what: "restarting the bb machine",
+        const { hostId } = await bb.experimental_machines.bootstrap({
+          key: resource.key,
+          executor: createSandboxExecutor(sandbox),
+          daemon: { kind: "preinstalled" },
           report: context.report,
+          signal: context.signal,
         });
-        await waitForHost(context.hostId, context.signal, true);
+        if (hostId !== context.hostId) {
+          throw new Error(
+            "Modal bootstrap returned a different machine identity.",
+          );
+        }
         return {
           resource: { ...resource, sandboxId: sandbox.sandboxId },
         };
@@ -714,12 +626,4 @@ export default createModalSandboxPlugin({
   backendFactory: createModalBackend,
   now: () => Date.now(),
   sleep: (delayMs) => new Promise((resolve) => setTimeout(resolve, delayMs)),
-  fetch: async (url, init) => {
-    const response = await fetch(url, init);
-    return {
-      status: response.status,
-      contentType: response.headers.get("content-type"),
-      text: () => response.text(),
-    };
-  },
 });
