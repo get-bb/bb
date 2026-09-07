@@ -429,6 +429,38 @@ export type PluginMachineProviderDeclaration<
   Inputs
 >;
 
+export type ServerAccessClient =
+  | { kind: "direct" }
+  | { kind: "connect"; machineCode: string; expiresAt: number };
+
+export interface ServerAccessGrant {
+  id: string;
+  serverUrl: string;
+  client: ServerAccessClient;
+}
+
+export interface ServerAccessSelection {
+  providerId: string;
+}
+
+export interface ServerAccessProviderDeclaration {
+  id: string;
+  displayName: string;
+  availability():
+    | import("./machine-provider.js").PluginMachineProviderAvailability
+    | Promise<import("./machine-provider.js").PluginMachineProviderAvailability>;
+  acquire(context: {
+    key: string;
+    hostId: string;
+    signal: AbortSignal;
+  }): Promise<ServerAccessGrant>;
+  release(context: { key: string; grantId: string }): Promise<void>;
+}
+
+export interface PluginServerAccess {
+  register(declaration: ServerAccessProviderDeclaration): void;
+}
+
 export interface PluginMachines {
   register<
     const Requires extends PluginMachineProviderRequirements,
@@ -1834,6 +1866,7 @@ export interface BbPluginApi {
   readonly experimental_environments: PluginEnvironments;
   /** Machine providers provision execution machines. Experimental: see docs/api_to_audit.md. */
   readonly experimental_machines: PluginMachines;
+  readonly experimental_serverAccess: PluginServerAccess;
   /** Plugin-reported status (needs-configuration). */
   readonly status: PluginStatusApi;
   /** Read-only facts about the running server (loopback base URL). */
