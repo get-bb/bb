@@ -93,7 +93,7 @@ const FIRST_PARTY_PROVIDER_DECLARATIONS = [
     supportsThreadRename: false,
     fork: "none",
     supportsManualCompaction: false,
-    supportsUsage: false,
+    supportsUsage: true,
     visibility: "installed",
     hasLogo: true,
   },

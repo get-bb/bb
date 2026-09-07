@@ -2372,6 +2372,31 @@ describe("acp bridge", () => {
     expect(agentMessageTexts()).not.toContain("echo:/compact");
   });
 
+  it("reports Cursor's terminal PING timeout as a failed turn", async () => {
+    const { providerThreadId } = await startThread({ dialectId: "cursor", envVars: { FAKE_ACP_TEXT_FAILURE: "1" } });
+    const id = sendTurnRequest("turn/start", providerThreadId, { input: [{ type: "text", text: "probe" }] });
+    expect((await waitForResponse(id)).error).toBeUndefined();
+    expect(await waitForTurnCompleted()).toMatchObject({ status: "failed" });
+    expect(notifications("error")).toEqual(expect.arrayContaining([
+      expect.objectContaining({ params: expect.objectContaining({ message: "RetriableError: [unavailable] PING timed out" }) }),
+    ]));
+  });
+
+  it.each([
+    { dialectId: "cursor", parts: ["\n\nError: RetriableError: [unavailable] ", "PING timed out"], status: "failed" },
+    { dialectId: "cursor", parts: ["The log says: Error: RetriableError: [unavailable] PING timed out"], status: "completed" },
+    { dialectId: "cursor", parts: ["```\nError: RetriableError: [unavailable] PING timed out\n```"], status: "completed" },
+    { dialectId: "cursor", parts: ["\n\nError: RetriableError: [unavailable] PING timed out", "\nI recovered and completed the task."], status: "completed" },
+    { dialectId: "cursor", parts: ["Error: RetriableError: [unavailable] PING timed out"], status: "completed" },
+    { dialectId: "cursor", parts: ["\n\nError: RetriableError: [unavailable] PING timed out" + " ".repeat(512) + "Recovered"], status: "completed" },
+    { dialectId: "generic", parts: ["\n\nError: RetriableError: [unavailable] PING timed out"], status: "completed" },
+  ])("normalizes only a terminal Cursor transport failure: $dialectId $parts", async ({ dialectId, parts, status }) => {
+    const { providerThreadId } = await startThread({ dialectId, envVars: { FAKE_ACP_TEXT_FAILURE: "1", FAKE_ACP_TEXT_PARTS: JSON.stringify(parts) } });
+    const id = sendTurnRequest("turn/start", providerThreadId, { input: [{ type: "text", text: "probe" }] });
+    expect((await waitForResponse(id)).error).toBeUndefined();
+    expect(await waitForTurnCompleted()).toMatchObject({ status });
+  });
+
   it("fails the compaction turn legibly when the agent rejects the request", async () => {
     const { providerThreadId } = await startThread({
       envVars: { FAKE_ACP_PROMPT_ERROR: "1" },

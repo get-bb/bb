@@ -4,20 +4,35 @@ import { PERSONAL_PROJECT_ID, type ThreadListEntry } from "@bb/domain";
 import type { SidebarBootstrapResponse } from "@bb/server-contract";
 import { listSidebarNavigationThreads } from "@/hooks/cache-owners/query-cache";
 import { apiClient } from "@/lib/api-server";
-import { request, requestOptions } from "@/lib/api";
+import { HttpError, request, requestOptions } from "@/lib/api";
 import {
   useEnvironmentListRealtimeSubscription,
   useHostListRealtimeSubscription,
   useProjectListRealtimeSubscription,
   useThreadListRealtimeSubscription,
 } from "@/hooks/useRealtimeSubscription";
-import type { QueryOptions } from "./query-helpers";
+import { isTransientReadError, type QueryOptions } from "./query-helpers";
 import { sidebarNavigationQueryKey } from "./query-keys";
 import { REALTIME_OWNED_STATIC_CACHE_QUERY_POLICY } from "./query-policies";
 import {
   readCachedSidebarBootstrap,
   writeCachedSidebarBootstrap,
 } from "@/lib/sidebar-bootstrap-cache";
+
+function isRecoverableSidebarError(error: unknown): boolean {
+  return isTransientReadError(error) ||
+    (error instanceof HttpError && [502, 503, 504].includes(error.status));
+}
+
+const SIDEBAR_BOOTSTRAP_RECOVERY_POLICY = {
+  retry: (failureCount: number, error: Error) =>
+    failureCount < 10 && isRecoverableSidebarError(error),
+  retryDelay: (attempt: number) => Math.min(250 * 2 ** attempt, 5_000),
+  refetchInterval: (query: { state: { status: string; error: Error | null } }) =>
+    query.state.status === "error" && isRecoverableSidebarError(query.state.error)
+      ? 5_000
+      : false,
+} as const;
 
 function fetchSidebarNavigation(
   signal?: AbortSignal,
@@ -43,6 +58,7 @@ export function useSidebarNavigation(options?: QueryOptions) {
     },
     enabled,
     ...REALTIME_OWNED_STATIC_CACHE_QUERY_POLICY,
+    ...SIDEBAR_BOOTSTRAP_RECOVERY_POLICY,
     placeholderData: () => readCachedSidebarBootstrap() ?? undefined,
   });
 }
@@ -54,6 +70,7 @@ export function useProjectDisplayName(
     queryKey: sidebarNavigationQueryKey(),
     queryFn: ({ signal }) => fetchSidebarNavigation(signal),
     ...REALTIME_OWNED_STATIC_CACHE_QUERY_POLICY,
+    ...SIDEBAR_BOOTSTRAP_RECOVERY_POLICY,
     enabled: Boolean(projectId),
   });
   if (!data || !projectId) {
@@ -82,6 +99,7 @@ export function useSidebarNavigationThreadSelection<T>(
     queryKey: sidebarNavigationQueryKey(),
     queryFn: ({ signal }) => fetchSidebarNavigation(signal),
     ...REALTIME_OWNED_STATIC_CACHE_QUERY_POLICY,
+    ...SIDEBAR_BOOTSTRAP_RECOVERY_POLICY,
     enabled: false,
     select: selectFromNavigation,
   });

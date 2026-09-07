@@ -422,6 +422,16 @@ async function handlePrompt(message) {
     );
   }
 
+  if (process.env.FAKE_ACP_TEXT_FAILURE === "1") {
+    const parts = JSON.parse(process.env.FAKE_ACP_TEXT_PARTS ?? '["\\n\\nError: RetriableError: [unavailable] PING timed out"]');
+    for (const text of parts) {
+      notifyUpdate({ sessionUpdate: "agent_message_chunk", content: { type: "text", text } });
+    }
+    activePromptId = null;
+    send({ jsonrpc: "2.0", id: message.id, result: { stopReason: "end_turn" } });
+    return;
+  }
+
   if (process.env.FAKE_ACP_PROMPT_ERROR === "1") {
     activePromptId = null;
     send({

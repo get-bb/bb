@@ -172,6 +172,7 @@ interface AcpThreadSession {
   compactionAgentMessage: string;
   queuedInputs: AcpPendingTurnInput[];
   promptRequestPending: boolean;
+  cursorTerminalErrorText: string;
   cancelRequested: boolean;
   loading: boolean;
   loadingSessionId: string | undefined;
@@ -1715,6 +1716,7 @@ async function startAgentSession(
     compactionAgentMessage: "",
     queuedInputs: [],
     promptRequestPending: false,
+    cursorTerminalErrorText: "",
     cancelRequested: false,
     loading: false,
     loadingSessionId: undefined,
@@ -2049,6 +2051,7 @@ function runTurn(
       let stopReason: z.infer<typeof acpStopReasonSchema>;
       session.cancelRequested = false;
       try {
+        session.cursorTerminalErrorText = "";
         session.promptRequestPending = true;
         const promptResult = session.connection.request({
           method: "session/prompt",
@@ -2064,6 +2067,15 @@ function runTurn(
         }
         const result = await promptResult;
         stopReason = result.stopReason;
+        if (
+          stopReason === "end_turn" &&
+          session.dialect.id === "cursor" &&
+          session.cursorTerminalErrorText.startsWith("\n\nError:") &&
+          session.cursorTerminalErrorText.trim() ===
+            "Error: RetriableError: [unavailable] PING timed out"
+        ) {
+          throw new Error("RetriableError: [unavailable] PING timed out");
+        }
       } catch (error) {
         session.promptRequestPending = false;
         dropTurnInput(pending, "ACP turn failed before the prompt was sent");
@@ -2249,6 +2261,26 @@ function handleAgentNotification(
     if (chunk.success) {
       session.compactionAgentMessage +=
         extractAcpContentText(chunk.data.content) ?? "";
+    }
+  }
+  if (session.dialect.id === "cursor" && session.activePromptKind === "turn") {
+    const event = parsed.data.update;
+    const chunk =
+      event.sessionUpdate === "agent_message_chunk"
+        ? acpAgentMessageChunkUpdateSchema.safeParse(event)
+        : null;
+    const text =
+      chunk?.success === true
+        ? extractAcpContentText(chunk.data.content)
+        : undefined;
+    if (text !== undefined) {
+      if (text.startsWith("\n\nError:")) {
+        session.cursorTerminalErrorText = "";
+      }
+      const combined = session.cursorTerminalErrorText + text;
+      session.cursorTerminalErrorText = combined.length <= 512 ? combined : "<non-terminal-text>";
+    } else if (event.sessionUpdate !== "usage_update") {
+      session.cursorTerminalErrorText = "";
     }
   }
   emitForSession(session, ACP_UPDATE_METHOD, update);

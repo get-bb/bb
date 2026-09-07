@@ -28,6 +28,10 @@ const CURSOR_DASHBOARD_URL =
 const CURSOR_KEYCHAIN_ACCOUNT = "cursor-user";
 const CURSOR_ACCESS_TOKEN_SERVICE = "cursor-access-token";
 const CURSOR_INSTALL_SCRIPT_URL = "https://cursor.com/install";
+const OPENCODE_GO_USAGE_URL = "https://opencode.ai/zen/go/v1/usage";
+const GROK_BILLING_URL =
+  "https://cli-chat-proxy.grok.com/v1/billing?format=credits";
+const GROK_SETTINGS_URL = "https://cli-chat-proxy.grok.com/v1/settings";
 
 function cursorAuthFilePath(): string {
   if (process.platform === "win32") {
@@ -129,10 +133,10 @@ function readAccountEmail(): string | null {
 }
 
 export interface AcpMaintenanceDialect {
-  loginCommand: string;
-  installer(): { command: string; args: string[]; displayCommand: string };
-  readAccount(): Promise<{ email: string | null } | null>;
-  readUsage(): Promise<ProviderUsageResult>;
+  loginCommand?: string;
+  installer?(): { command: string; args: string[]; displayCommand: string };
+  readAccount?(): Promise<{ email: string | null } | null>;
+  readUsage?(): Promise<ProviderUsageResult>;
 }
 
 function healthResult(args: {
@@ -142,7 +146,7 @@ function healthResult(args: {
   installedVersion?: string | null;
   statusMessage?: string | null;
 }): ProviderHealthResult {
-  const maintained = args.maintenance !== undefined;
+  const installable = args.maintenance?.installer !== undefined;
   return {
     supported: true,
     health: {
@@ -152,8 +156,8 @@ function healthResult(args: {
       planLabel: null,
       installedVersion: args.installedVersion ?? null,
       minimumSupportedVersion: null,
-      canInstall: maintained,
-      canUpdate: maintained && args.status !== "not_installed",
+      canInstall: installable,
+      canUpdate: installable && args.status !== "not_installed",
       loginCommand: args.maintenance?.loginCommand ?? null,
     },
   };
@@ -175,7 +179,7 @@ export async function getAcpProviderHealth(args: {
     return healthResult({ maintenance, status: "not_installed" });
   }
   const version = await readCliVersion(args.command);
-  if (maintenance === undefined) {
+  if (maintenance?.readAccount === undefined) {
     return healthResult({
       maintenance,
       status: "ready",
@@ -213,7 +217,7 @@ export async function getAcpProviderInstallationStatus(args: {
       ? await readCliVersion(args.command)
       : null;
   const installAction =
-    args.maintenance !== undefined && !installed
+    args.maintenance?.installer !== undefined && !installed
       ? {
           kind: "install" as const,
           label: "Install" as const,
@@ -255,7 +259,7 @@ function buildAcpProviderInstallationRun(
 ): ProviderInstallationRunResult {
   if (
     status.installAction?.kind !== args.action ||
-    args.maintenance === undefined
+    args.maintenance?.installer === undefined
   ) {
     return {
       available: false,
@@ -276,11 +280,29 @@ const cursorNonNegativeIntegerSchema = z
   ])
   .refine(Number.isSafeInteger);
 
+const cursorPercentSchema = z
+  .union([
+    z.number().nonnegative(),
+    z
+      .string()
+      .regex(/^\d+(\.\d+)?$/u)
+      .transform(Number),
+  ])
+  .refine(Number.isFinite);
+
 const cursorUsageResponseSchema = z
   .object({
     billingCycleEnd: cursorNonNegativeIntegerSchema.nullish(),
     planUsage: z
-      .object({ totalPercentUsed: z.number().nonnegative().default(0) })
+      .object({
+        autoPercentUsed: cursorPercentSchema.nullish(),
+        apiPercentUsed: cursorPercentSchema.nullish(),
+        totalPercentUsed: cursorPercentSchema.nullish(),
+        totalSpend: cursorNonNegativeIntegerSchema.nullish(),
+        includedSpend: cursorNonNegativeIntegerSchema.nullish(),
+        bonusSpend: cursorNonNegativeIntegerSchema.nullish(),
+        limit: cursorNonNegativeIntegerSchema.nullish(),
+      })
       .nullish(),
     spendLimitUsage: z
       .object({
@@ -321,10 +343,34 @@ function normalizeUsage(
       ? null
       : new Date(usage.data.billingCycleEnd).toISOString();
   const windows: ProviderUsageWindow[] = [];
-  if (usage.data.planUsage?.totalPercentUsed != null) {
+  const planUsage = usage.data.planUsage;
+  const hasModelBuckets =
+    planUsage?.autoPercentUsed != null || planUsage?.apiPercentUsed != null;
+  if (planUsage?.autoPercentUsed != null) {
+    windows.push({
+      label: "Included models",
+      usedPercent: clampPercent(planUsage.autoPercentUsed),
+      resetsAt,
+    });
+  }
+  if (planUsage?.apiPercentUsed != null) {
+    windows.push({
+      label: "Other models",
+      usedPercent: clampPercent(planUsage.apiPercentUsed),
+      resetsAt,
+    });
+  }
+  if (!hasModelBuckets && planUsage != null) {
     windows.push({
       label: "Plan usage",
-      usedPercent: clampPercent(usage.data.planUsage.totalPercentUsed),
+      usedPercent: clampPercent(planUsage.totalPercentUsed ?? 0),
+      resetsAt,
+    });
+  }
+  if (hasModelBuckets && planUsage?.totalPercentUsed != null) {
+    windows.push({
+      label: "Total usage",
+      usedPercent: clampPercent(planUsage.totalPercentUsed),
       resetsAt,
     });
   }
@@ -343,6 +389,16 @@ function normalizeUsage(
       usedPercent: clampPercent((pair.used / pair.limit) * 100),
       resetsAt,
       cost: { usedUsdCents: pair.used, limitUsdCents: pair.limit },
+    });
+  }
+  const bonusSpend = planUsage?.bonusSpend ?? 0;
+  const totalSpend = planUsage?.totalSpend ?? 0;
+  if (bonusSpend > 0 && totalSpend > 0) {
+    windows.push({
+      label: "Bonus spend",
+      usedPercent: clampPercent((bonusSpend / totalSpend) * 100),
+      resetsAt,
+      cost: { usedUsdCents: bonusSpend, limitUsdCents: totalSpend },
     });
   }
   return {
@@ -376,7 +432,7 @@ export async function getAcpProviderUsage(args: {
   maintenance: AcpMaintenanceDialect | undefined;
   command: string | null;
 }): Promise<ProviderUsageResult> {
-  if (args.maintenance === undefined) return { supported: false };
+  if (args.maintenance?.readUsage === undefined) return { supported: false };
   if (
     args.command === null ||
     (await resolveExecutablePath(args.command)) === null
@@ -441,7 +497,285 @@ async function readCursorUsage(): Promise<ProviderUsageResult> {
   }
 }
 
+async function readOpenCodeUsageKey(): Promise<string> {
+  try {
+    const text = await fs.readFile(
+      path.join(os.homedir(), ".bb", "opencode-usage.env"),
+      "utf8",
+    );
+    const line = text
+      .split(/\r?\n/u)
+      .find((entry) => /^OPENCODE_API_KEY=/u.test(entry));
+    if (line === undefined) return "";
+    const raw = line.slice(line.indexOf("=") + 1).trim();
+    if (
+      raw.length >= 2 &&
+      ((raw.startsWith('"') && raw.endsWith('"')) ||
+        (raw.startsWith("'") && raw.endsWith("'")))
+    ) {
+      return raw.slice(1, -1);
+    }
+    return raw;
+  } catch {
+    return "";
+  }
+}
+
+function normalizeOpenCodeUsage(data: unknown): ProviderUsage {
+  if (
+    data === null ||
+    typeof data !== "object" ||
+    (data as { usage?: unknown }).usage === null ||
+    typeof (data as { usage?: unknown }).usage !== "object"
+  ) {
+    return {
+      status: "error",
+      message: "OpenCode Go usage response was malformed.",
+      planLabel: "Go · shared",
+      accountEmail: null,
+    };
+  }
+  const usage = (data as { usage: Record<string, unknown> }).usage;
+  const labels = [
+    ["rolling", "Rolling (5h)"],
+    ["weekly", "Weekly"],
+    ["monthly", "Monthly"],
+  ] as const;
+  const windows = labels.flatMap(([key, label]) => {
+    const value = usage[key];
+    if (value === null || typeof value !== "object") return [];
+    const rawPercent = Number((value as { percent?: unknown }).percent);
+    return [
+      {
+        label,
+        usedPercent: clampPercent(rawPercent),
+        resetsAt:
+          typeof (value as { resetsAt?: unknown }).resetsAt === "string"
+            ? (value as { resetsAt: string }).resetsAt
+            : null,
+      },
+    ];
+  });
+  return {
+    status: "ok",
+    accountEmail: null,
+    planLabel: "Go · shared",
+    windows,
+  };
+}
+
+async function readOpenCodeUsage(): Promise<ProviderUsageResult> {
+  const accessToken = await readOpenCodeUsageKey();
+  if (accessToken === "") {
+    return { supported: true, usage: { status: "unauthenticated" } };
+  }
+  try {
+    const response = await fetch(OPENCODE_GO_USAGE_URL, {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "User-Agent": "bb-provider-acp/0.1.0",
+      },
+      signal: AbortSignal.timeout(USAGE_FETCH_TIMEOUT_MS),
+    });
+    if (response.status === 401 || response.status === 403) {
+      return { supported: true, usage: { status: "expired" } };
+    }
+    if (!response.ok) {
+      return {
+        supported: true,
+        usage: {
+          status: "error",
+          message: `OpenCode Go usage request failed (HTTP ${response.status}).`,
+          planLabel: "Go · shared",
+          accountEmail: null,
+        },
+      };
+    }
+    return {
+      supported: true,
+      usage: normalizeOpenCodeUsage(await response.json()),
+    };
+  } catch (error) {
+    return {
+      supported: true,
+      usage: {
+        status: "error",
+        message: error instanceof Error ? error.message : String(error),
+        planLabel: "Go · shared",
+        accountEmail: null,
+      },
+    };
+  }
+}
+
+type JsonRecord = Record<string, unknown>;
+
+function jsonRecord(value: unknown): JsonRecord | null {
+  return value !== null && typeof value === "object" && !Array.isArray(value)
+    ? (value as JsonRecord)
+    : null;
+}
+
+function finiteNumber(value: unknown): number | null {
+  const number = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
+function grokUsagePercent(config: JsonRecord): number {
+  const direct = finiteNumber(config.creditUsagePercent);
+  if (direct !== null) return direct;
+  const history = Array.isArray(config.history) ? config.history : [];
+  for (let index = history.length - 1; index >= 0; index -= 1) {
+    const percentage = finiteNumber(
+      jsonRecord(history[index])?.creditUsagePercent,
+    );
+    if (percentage !== null) return percentage;
+  }
+  const includedUsed = finiteNumber(
+    jsonRecord(config.includedUsed)?.val ?? config.includedUsed,
+  );
+  const monthlyLimit = finiteNumber(
+    jsonRecord(config.monthlyLimit)?.val ?? config.monthlyLimit,
+  );
+  return includedUsed !== null && monthlyLimit !== null && monthlyLimit > 0
+    ? (includedUsed / monthlyLimit) * 100
+    : 0;
+}
+
+function grokPeriodLabel(type: unknown): string {
+  if (typeof type !== "string") return "Usage limit";
+  if (type.includes("WEEKLY")) return "Weekly limit";
+  if (type.includes("MONTHLY")) return "Monthly limit";
+  if (type.includes("DAILY")) return "Daily limit";
+  return "Usage limit";
+}
+
+function normalizeGrokUsage(
+  billingPayload: unknown,
+  settingsPayload: unknown,
+): ProviderUsage {
+  const config = jsonRecord(jsonRecord(billingPayload)?.config);
+  if (config === null) {
+    return {
+      status: "error",
+      message: "Grok usage response was malformed.",
+      planLabel: null,
+      accountEmail: null,
+    };
+  }
+  const period = jsonRecord(config.currentPeriod);
+  const plan = jsonRecord(settingsPayload)?.subscription_tier_display;
+  return {
+    status: "ok",
+    accountEmail: null,
+    planLabel:
+      typeof plan === "string" && plan.trim() !== "" ? plan : "Grok Build",
+    windows: [
+      {
+        label: grokPeriodLabel(period?.type),
+        usedPercent: clampPercent(grokUsagePercent(config)),
+        resetsAt:
+          typeof period?.end === "string"
+            ? period.end
+            : typeof config.billingPeriodEnd === "string"
+              ? config.billingPeriodEnd
+              : null,
+      },
+    ],
+  };
+}
+
+async function readGrokBearerKey(): Promise<string | null> {
+  const grokHome =
+    process.env.GROK_HOME?.trim() || path.join(os.homedir(), ".grok");
+  try {
+    const root = jsonRecord(
+      JSON.parse(await fs.readFile(path.join(grokHome, "auth.json"), "utf8")),
+    );
+    if (root === null) return null;
+    for (const candidate of Object.values(root)) {
+      const key = jsonRecord(candidate)?.key;
+      if (typeof key === "string" && key.trim() !== "") return key;
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+
+async function readGrokUsage(): Promise<ProviderUsageResult> {
+  const key = await readGrokBearerKey();
+  if (key === null) {
+    return { supported: true, usage: { status: "unauthenticated" } };
+  }
+  const headers = {
+    Authorization: `Bearer ${key}`,
+    "x-grok-client-mode": "billing",
+    "User-Agent": "bb-provider-acp/0.1.0",
+  };
+  try {
+    const [billing, settings] = await Promise.all([
+      fetch(GROK_BILLING_URL, {
+        headers,
+        signal: AbortSignal.timeout(USAGE_FETCH_TIMEOUT_MS),
+      }),
+      fetch(GROK_SETTINGS_URL, {
+        headers,
+        signal: AbortSignal.timeout(USAGE_FETCH_TIMEOUT_MS),
+      }),
+    ]);
+    if (
+      billing.status === 401 ||
+      billing.status === 403 ||
+      settings.status === 401 ||
+      settings.status === 403
+    ) {
+      return { supported: true, usage: { status: "expired" } };
+    }
+    if (!billing.ok) {
+      return {
+        supported: true,
+        usage: {
+          status: "error",
+          message: `Grok usage request failed (HTTP ${billing.status}).`,
+          planLabel: null,
+          accountEmail: null,
+        },
+      };
+    }
+    return {
+      supported: true,
+      usage: normalizeGrokUsage(
+        await billing.json(),
+        settings.ok ? await settings.json() : {},
+      ),
+    };
+  } catch (error) {
+    return {
+      supported: true,
+      usage: {
+        status: "error",
+        message: error instanceof Error ? error.message : String(error),
+        planLabel: null,
+        accountEmail: null,
+      },
+    };
+  }
+}
+
+export const OPENCODE_ACP_MAINTENANCE: AcpMaintenanceDialect = {
+  loginCommand: "opencode auth login",
+  readUsage: readOpenCodeUsage,
+};
+
+export const GROK_ACP_MAINTENANCE: AcpMaintenanceDialect = {
+  loginCommand: "grok login",
+  readUsage: readGrokUsage,
+};
+
 export const __testing = {
   buildProviderInstallationRun: buildAcpProviderInstallationRun,
+  normalizeGrokUsage,
+  normalizeOpenCodeUsage,
   normalizeUsage,
 };
