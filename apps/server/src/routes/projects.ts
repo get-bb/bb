@@ -338,12 +338,13 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
   });
   const routes = publicApiRoutes.projects;
 
-  get(routes.list, (context, query) => {
+  get(routes.list, async (context, query) => {
     const includes = parseProjectListIncludes(query);
     const options: ProjectListOptions = {
       includePersonal: query.includePersonal === "true",
     };
     if (includes.has("threads")) {
+      await deps.providerRegistry.whenRegistrationsSettled();
       return context.json(buildProjectsWithThreadsResponse(deps, options));
     }
     return context.json(
@@ -354,9 +355,10 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
     );
   });
 
-  get(routes.sidebarBootstrap, (context) =>
-    context.json(buildSidebarBootstrapResponse(deps)),
-  );
+  get(routes.sidebarBootstrap, async (context) => {
+    await deps.providerRegistry.whenRegistrationsSettled();
+    return context.json(buildSidebarBootstrapResponse(deps));
+  });
 
   post(routes.create, async (context, payload) => {
     const { source } = payload;

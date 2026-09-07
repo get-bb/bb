@@ -16,6 +16,7 @@ import { waitForQueuedCommand } from "../helpers/commands.js";
 import { availableModelFixture } from "../helpers/available-models.js";
 import { registerProviderHostRpcResponder } from "../helpers/host-rpc.js";
 import { readJson } from "../helpers/json.js";
+import { registerFirstPartyProviders } from "../helpers/provider-registry.js";
 import {
   seedEnvironment,
   seedHostSession,
@@ -25,6 +26,7 @@ import {
   seedThread,
 } from "../helpers/seed.js";
 import { withTestHarness } from "../helpers/test-app.js";
+import { createProviderRegistryService } from "../../src/services/providers/provider-registry.js";
 import { beforeEach, describe, expect, it } from "vitest";
 
 describe("public thread default routes", () => {
@@ -673,6 +675,56 @@ describe("public thread default routes", () => {
         }),
       ).toBeNull();
     });
+  });
+
+  it("waits for provider registrations before listing projects without stored defaults", async () => {
+    await withTestHarness(
+      { seedFirstPartyProviders: false },
+      async (harness) => {
+        const registry = createProviderRegistryService({
+          deferRegistrationsSettled: true,
+        });
+        harness.deps.providerRegistry = registry;
+
+        const responsesPromise = Promise.all([
+          harness.app.request("/api/v1/sidebar-bootstrap"),
+          harness.app.request(
+            "/api/v1/projects?include=threads&includePersonal=true",
+          ),
+        ]);
+        const earlyResult = await Promise.race([
+          responsesPromise.then((responses) =>
+            responses.map((response) => response.status),
+          ),
+          new Promise<"pending">((resolve) =>
+            setTimeout(() => resolve("pending"), 20),
+          ),
+        ]);
+
+        await registerFirstPartyProviders(registry);
+        registry.markRegistrationsSettled();
+        const firstStatuses =
+          earlyResult === "pending"
+            ? (await responsesPromise).map((response) => response.status)
+            : earlyResult;
+        const settledResponses = await Promise.all([
+          harness.app.request("/api/v1/sidebar-bootstrap"),
+          harness.app.request(
+            "/api/v1/projects?include=threads&includePersonal=true",
+          ),
+        ]);
+
+        expect({
+          beforeSettled: earlyResult,
+          firstStatuses,
+          afterSettled: settledResponses.map((response) => response.status),
+        }).toEqual({
+          beforeSettled: "pending",
+          firstStatuses: [200, 200],
+          afterSettled: [200, 200],
+        });
+      },
+    );
   });
 
   it("excludes side-chat threads from sidebar bootstrap", async () => {
