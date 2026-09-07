@@ -6,7 +6,8 @@ import {
   type SidebarBootstrapResponse,
 } from "@bb/server-contract";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { request } from "@/lib/api";
+import { HttpError, request } from "@/lib/api";
+import { shouldRetryTransientReadQuery } from "./query-helpers";
 import {
   MAX_CACHED_SIDEBAR_THREADS_PER_PROJECT,
   SIDEBAR_BOOTSTRAP_CACHE_KEY,
@@ -68,6 +69,62 @@ afterEach(() => {
 });
 
 describe("useSidebarNavigation", () => {
+  it.each([
+    new TypeError("Failed to fetch"),
+    new HttpError({ status: 503, message: "Server starting" }),
+  ])("recovers the startup project and thread list after a temporary outage: %s", async (error) => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const harness = createQueryClientTestHarness({ queries: { retry: shouldRetryTransientReadQuery } });
+    try {
+      vi.mocked(request).mockReset();
+      vi.mocked(request).mockRejectedValueOnce(error).mockRejectedValueOnce(error).mockRejectedValueOnce(error).mockRejectedValueOnce(error).mockResolvedValue(BOOTSTRAP);
+      const { result } = renderHook(() => useSidebarNavigation(), { wrapper: harness.wrapper });
+      await act(async () => { await vi.advanceTimersByTimeAsync(35_000); });
+      expect(result.current.data).toEqual(BOOTSTRAP);
+      expect(result.current.isError).toBe(false);
+      expect(request).toHaveBeenCalledTimes(5);
+    } finally {
+      harness.queryClient.clear();
+      vi.useRealTimers();
+    }
+  });
+
+  it("recovers after a startup outage outlasts the initial retry budget", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const harness = createQueryClientTestHarness();
+    try {
+      vi.mocked(request).mockReset();
+      for (let index = 0; index < 11; index += 1) {
+        vi.mocked(request).mockRejectedValueOnce(new HttpError({ status: 503, message: "Starting" }));
+      }
+      vi.mocked(request).mockResolvedValue(BOOTSTRAP);
+      const { result } = renderHook(() => useSidebarNavigation(), { wrapper: harness.wrapper });
+      await act(async () => { await vi.advanceTimersByTimeAsync(40_000); });
+      expect(result.current.data).toEqual(BOOTSTRAP);
+      expect(request).toHaveBeenCalledTimes(12);
+      await act(async () => { await vi.advanceTimersByTimeAsync(20_000); });
+      expect(request).toHaveBeenCalledTimes(12);
+    } finally {
+      harness.queryClient.clear();
+      vi.useRealTimers();
+    }
+  });
+
+  it.each([401, 403, 404, 500])("does not repeatedly retry a permanent HTTP %s error", async (status) => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const harness = createQueryClientTestHarness();
+    try {
+      vi.mocked(request).mockReset().mockRejectedValue(new HttpError({ status, message: "Permanent error" }));
+      const { result } = renderHook(() => useSidebarNavigation(), { wrapper: harness.wrapper });
+      await act(async () => { await vi.advanceTimersByTimeAsync(60_000); });
+      expect(result.current.isError).toBe(true);
+      expect(request).toHaveBeenCalledTimes(1);
+    } finally {
+      harness.queryClient.clear();
+      vi.useRealTimers();
+    }
+  });
+
   it("replays the last bootstrap while the live one loads", async () => {
     sidebarBootstrapResponseSchema.parse(BOOTSTRAP);
 

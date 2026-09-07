@@ -1,15 +1,15 @@
 {
   "name": "bb-plugin-provider-acp",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
-  "description": "Run bb threads with ACP agents (supports Cursor, opencode, omp and more).",
+  "description": "Current BB ACP providers with Cursor, Grok, and shared OpenCode usage for desktop and remote clients.",
   "engines": {
     "bb": ">=0.0"
   },
   "bb": {
-    "name": "ACP providers",
-    "description": "Run bb threads with ACP agents (supports Cursor, opencode, omp and more).",
+    "name": "ACP providers with native usage",
+    "description": "Current BB ACP providers with Cursor, Grok, and shared OpenCode usage for desktop and remote clients.",
     "branding": {
       "icon": "./icons/acp.svg",
       "experimental_icons": {
