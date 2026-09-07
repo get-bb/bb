@@ -6,6 +6,7 @@ import {
   buildPluginHost,
   buildPluginServer,
   resolvePluginBuildToolchain,
+  type PluginBuildToolchain,
 } from "@bb/plugin-build";
 import { isPluginOwnedIconPath, pluginPackageJsonSchema } from "@bb/domain";
 import { z } from "zod";
@@ -115,15 +116,13 @@ async function runStageAssets(sourceRoot: string): Promise<void> {
 
 async function copyBuiltinPlugin(args: {
   bbVersion: string;
-  build: boolean;
+  toolchain: PluginBuildToolchain | null;
   name: string;
   sourceRoot: string;
   targetRoot: string;
 }): Promise<void> {
-  if (args.build) {
-    const toolchain = await resolvePluginBuildToolchain(
-      path.join(serverRoot, "node_modules", ".bb-toolchain"),
-    );
+  if (args.toolchain !== null) {
+    const toolchain = args.toolchain;
     await buildPluginServer(args.sourceRoot, args.bbVersion, toolchain);
     const raw = await readFile(
       path.join(args.sourceRoot, "package.json"),
@@ -206,17 +205,32 @@ export async function copyBuiltinPlugins(args: {
     path.join(resolvedTargetRoot, BUNDLED_MARKETPLACE_FILENAME),
   );
 
-  for (const plugin of plugins) {
-    await copyBuiltinPlugin({
-      bbVersion: args.bbVersion,
-      build,
-      name: plugin.name,
-      sourceRoot: resolveBuiltinPluginRootPathForModuleDir({
-        moduleDir: resolvedSourceModuleDir,
-        name: plugin.name,
-      }),
-      targetRoot: resolvedTargetRoot,
-    });
+  const toolchain =
+    build && plugins.length > 0
+      ? await resolvePluginBuildToolchain(
+          path.join(serverRoot, "node_modules", ".bb-toolchain"),
+        )
+      : null;
+  let nextPlugin = 0;
+  const results = await Promise.allSettled(
+    Array.from({ length: Math.min(4, plugins.length) }, async () => {
+      while (nextPlugin < plugins.length) {
+        const plugin = plugins[nextPlugin++];
+        await copyBuiltinPlugin({
+          bbVersion: args.bbVersion,
+          toolchain,
+          name: plugin.name,
+          sourceRoot: resolveBuiltinPluginRootPathForModuleDir({
+            moduleDir: resolvedSourceModuleDir,
+            name: plugin.name,
+          }),
+          targetRoot: resolvedTargetRoot,
+        });
+      }
+    }),
+  );
+  for (const result of results) {
+    if (result.status === "rejected") throw result.reason;
   }
 }
 
