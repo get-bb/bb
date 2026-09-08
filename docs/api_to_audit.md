@@ -2635,6 +2635,15 @@ first-party environment host module consumes them for checkout and worktree.
   including after failure. Stabilize after restart, cancellation,
   competing checkout, and path-normalization behavior has been audited.
 
+## `ServerAccessProviderDeclaration.experimental_attention`
+
+Optional sync/async hook returning a deliberate user-safe diagnostic or null.
+Core fills null for providers without the hook and exposes `attention` in system
+configuration; General → Machine access displays it independently of availability.
+Use durable state for diagnostics that must survive plugin reload. Never return
+credentials or raw provider payloads. Stabilization requires verifying reload,
+cleared diagnostics, multiple providers, and no impact on provider selection.
+
 ## `bb.experimental_serverAccess.register`
 
 `PluginServerAccess` registers server access through `ServerAccessProviderDeclaration`: id,

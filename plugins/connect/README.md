@@ -45,3 +45,14 @@ Release revokes both the stored grant device and any distinct trusted Cloud
 identity reported by the host. This covers a delivered v1 bundle redeemed after
 the server separately upgraded its pending copy; both identities are retained
 for retry until revocation completes.
+
+Malformed legacy payloads are scrubbed from KV during initialization. Only
+validated cleanup identities and a quarantine flag remain; raw malformed data
+is discarded. A safe diagnostic is logged, and General → Machine access shows
+“N legacy access records need attention” without disabling healthy grants.
+Quarantined hosts cannot acquire replacement access until their known device is
+revoked through normal removal; records without a recoverable device identity
+retain the dashboard-revocation diagnostic.
+
+The same diagnostic is available in `serverAccess.providers[].attention` through
+SDK `system.config()` and `bb settings show --json`.

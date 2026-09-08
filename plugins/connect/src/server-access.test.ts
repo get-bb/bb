@@ -466,3 +466,78 @@ it.each(["expired", "valid", "legacy"])(
     });
   },
 );
+
+it.each(["invalid-url", "invalid-headers", "unexpected-headers"])(
+  "scrubs malformed legacy payloads among valid and migrated records: %s",
+  async (kind) => {
+    const warnings = vi.fn();
+    const valid = {
+      connectMachineId: "valid-device",
+      grant: {
+        id: "valid",
+        serverUrl: credential.serverUrl,
+        headers: { authorization: "valid-private" },
+      },
+    };
+    const migrated = {
+      connectMachineId: "migrated-device",
+      grantId: "migrated",
+    };
+    const bad =
+      kind === "unexpected-headers"
+        ? { ...migrated, headers: { authorization: "malformed-private" } }
+        : {
+            connectMachineId: "cloud-id",
+            grant: {
+              id: "bad",
+              serverUrl:
+                kind === "invalid-url" ? "invalid" : credential.serverUrl,
+              headers:
+                kind === "invalid-headers"
+                  ? ["malformed-private"]
+                  : { authorization: "malformed-private" },
+            },
+          };
+    const host = await setup(async (host) => {
+      vi.spyOn(host.bb.log, "warn").mockImplementation(warnings);
+      await host.bb.storage.kv.set("server-access-grant:valid", valid);
+      await host.bb.storage.kv.set("server-access-grant:migrated", migrated);
+      await host.bb.storage.kv.set("server-access-grant:bad", bad);
+    });
+    expect(
+      JSON.stringify(databases.at(-1)!.select().from(pluginKv).all()),
+    ).not.toContain("private");
+    expect(
+      await host.bb.storage.kv.get("server-access-grant:migrated"),
+    ).toEqual(migrated);
+    expect(await host.bb.storage.kv.get("server-access-grant:bad")).toEqual({
+      grantId: "bad",
+      connectMachineId: bad.connectMachineId,
+      quarantined: true,
+    });
+    expect(warnings).toHaveBeenCalledWith(
+      "Malformed legacy access record scrubbed; cleanup requires attention",
+    );
+    expect(JSON.stringify(warnings.mock.calls)).not.toContain("private");
+    expect(await provider(host).experimental_attention?.()).toBe(
+      "1 legacy access records need attention",
+    );
+    expect(await provider(host).availability()).toEqual({
+      status: "available",
+    });
+    expect(
+      await provider(host).acquire({ ...request, hostId: "valid" }),
+    ).toEqual(valid.grant);
+    await expect(
+      provider(host).acquire({ ...request, hostId: "bad" }),
+    ).rejects.toThrow("Legacy access record needs attention");
+    const restarted = await host.harness.lifecycle.reload(async (bb) => {
+      Object.assign(bb.storage.kv, host.bb.storage.kv);
+      await registerServerAccess(bb, tunnel);
+    });
+    hosts.push(restarted);
+    expect(await provider(restarted).experimental_attention?.()).toBe(
+      "1 legacy access records need attention",
+    );
+  },
+);

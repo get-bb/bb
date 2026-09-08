@@ -16,7 +16,11 @@ const grantSchema = z.object({
   }),
 });
 
-const metadataSchema = z.object({
+const metadataSchema = z.strictObject({
+  grantId: z.string().optional(),
+  key: z.string().optional(),
+  message: z.string().optional(),
+  quarantined: z.boolean().optional(),
   connectMachineId: z.string().optional(),
   connectMachineIds: z.array(z.string()).optional(),
   codeId: z.string().optional(),
@@ -84,9 +88,8 @@ export async function registerServerAccess(
   }
   async function load(hostId: string) {
     const state = await readState();
-    const legacy = grantSchema.safeParse(
-      await bb.storage.kv.get(grantKey(hostId)),
-    );
+    const raw = await bb.storage.kv.get(grantKey(hostId));
+    const legacy = grantSchema.safeParse(raw);
     if (legacy.success) {
       state[hostId] = { result: legacy.data };
       await storeState(state);
@@ -94,6 +97,21 @@ export async function registerServerAccess(
         connectMachineId: legacy.data.connectMachineId,
         grantId: legacy.data.grant.id,
       });
+    } else if (raw !== undefined && !metadataSchema.safeParse(raw).success) {
+      const identifiers = z
+        .object({
+          connectMachineId: z.string().optional().catch(undefined),
+          connectMachineIds: z.array(z.string()).optional().catch(undefined),
+        })
+        .safeParse(raw);
+      await bb.storage.kv.set(grantKey(hostId), {
+        ...(identifiers.success ? identifiers.data : {}),
+        grantId: hostId,
+        quarantined: true,
+      });
+      bb.log.warn(
+        "Malformed legacy access record scrubbed; cleanup requires attention",
+      );
     }
     return state;
   }
@@ -132,6 +150,14 @@ export async function registerServerAccess(
   bb.experimental_serverAccess.register({
     id: "connect",
     displayName: "bb Cloud",
+    experimental_attention: async () => {
+      let count = 0;
+      for (const key of await bb.storage.kv.list("server-access-grant:")) {
+        const metadata = metadataSchema.safeParse(await bb.storage.kv.get(key));
+        if (metadata.success && metadata.data.quarantined) count += 1;
+      }
+      return count > 0 ? `${count} legacy access records need attention` : null;
+    },
     availability: () =>
       tunnel.status().paired
         ? { status: "available" }
@@ -150,6 +176,10 @@ export async function registerServerAccess(
         const metadata = metadataSchema.safeParse(
           await bb.storage.kv.get(grantKey(hostId)),
         );
+        if (metadata.success && metadata.data.quarantined)
+          throw recoveryError(
+            "Legacy access record needs attention before machine access can be acquired",
+          );
         if (!existing?.intent && metadata.success) {
           if (metadata.data.connectMachineId)
             await revokeMachine(credential, metadata.data.connectMachineId);
@@ -248,6 +278,10 @@ export async function registerServerAccess(
               : []),
           ]),
         ];
+        if (ids.length === 0 && metadata.success && metadata.data.quarantined)
+          throw recoveryError(
+            "Cloud device may need dashboard revocation: malformed legacy access record has no device identity",
+          );
         if (ids.length > 0) {
           const credential = tunnel.getCredential();
           if (!credential)
@@ -258,6 +292,9 @@ export async function registerServerAccess(
             grantId,
             connectMachineId,
             connectMachineIds: ids,
+            ...(metadata.success && metadata.data.quarantined
+              ? { quarantined: true }
+              : {}),
           });
           for (const id of ids) await revokeMachine(credential, id);
         }

@@ -49,6 +49,17 @@ export function MachineAccessSettings() {
   );
   return (
     <SettingsSection title="Machine access">
+      {access?.providers.map((provider) =>
+        provider.attention ? (
+          <p
+            key={provider.id}
+            role="status"
+            className="text-sm text-destructive-text"
+          >
+            {provider.displayName}: {provider.attention}
+          </p>
+        ) : null,
+      )}
       <SettingsWithControl
         label="Server URL reachable by machines"
         description={

@@ -441,6 +441,8 @@ export interface ServerAccessSelection {
 }
 
 export interface ServerAccessProviderDeclaration {
+  /** A deliberate user-safe diagnostic shown in General settings without changing availability. Return null when no attention is needed. */
+  experimental_attention?(): string | null | Promise<string | null>;
   id: string;
   displayName: string;
   availability():

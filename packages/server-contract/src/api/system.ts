@@ -126,6 +126,7 @@ export type SystemAiServices = z.infer<typeof systemAiServicesSchema>;
 export const serverAccessStatusSchema = z.object({
   providers: z.array(
     z.object({
+      attention: z.string().nullable(),
       id: z.string(),
       displayName: z.string(),
       availability: z.discriminatedUnion("status", [

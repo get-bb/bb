@@ -63,6 +63,7 @@ const SYSTEM_CONFIG = systemConfigResponseSchema.parse({
       {
         id: "direct",
         displayName: "Direct URL",
+        attention: null,
         availability: { status: "available" },
       },
     ],
