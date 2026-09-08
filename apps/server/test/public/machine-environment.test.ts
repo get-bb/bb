@@ -1,6 +1,11 @@
 import { readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
-import { appSettingsValues, machineEnrollments } from "@bb/db";
+import {
+  appSettingsValues,
+  machineEnrollments,
+  upsertHost,
+  updateHost,
+} from "@bb/db";
 import { createBbSdk } from "@bb/sdk/core";
 import { createHttpTransport } from "@bb/sdk/node";
 import { describe, expect, it, vi } from "vitest";
@@ -70,6 +75,13 @@ describe("machine environment settings", () => {
             projectId: null,
           }),
         ).toEqual([]);
+        upsertHost(harness.db, harness.hub, {
+          id: "machine",
+          name: "Machine",
+        });
+        updateHost(harness.db, harness.hub, "machine", {
+          machineProviderId: "manual",
+        });
         harness.db
           .insert(machineEnrollments)
           .values({

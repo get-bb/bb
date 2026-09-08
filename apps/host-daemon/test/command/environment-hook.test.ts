@@ -209,3 +209,78 @@ it.each(["setup", "teardown"] as const)(
     expect(process.env.GH_TOKEN).not.toBe(secret);
   },
 );
+
+it.each(["setup", "teardown"] as const)(
+  "redacts multiline secrets before streaming %s hook lines",
+  async (kind) => {
+    const path = await makeTempDir("bb-hook-multiline-");
+    await writeFile(
+      join(path, `.bb-env-${kind}.sh`),
+      'printf "%s\\n" "$MULTILINE" | while IFS= read -r line; do printf "%s\\n" "$line"; sleep 0.05; done\nprintf "%s\\n" "$MULTILINE" | while IFS= read -r line; do printf "%s\\n" "$line"; sleep 0.05; done >&2\n',
+    );
+    const output: string[] = [];
+    const options = createHarness().dispatchOptions({ dataDir: path });
+    options.emitEnvironmentHookProgress = (message) => {
+      output.push(message.entry.text);
+    };
+    await dispatchOnlineRpcCommand(
+      {
+        type: "environment.hook.run",
+        contributedEnv: [
+          {
+            name: "MULTILINE",
+            value: "HEADER\nPRIVATE_BODY\nFOOTER",
+            secret: true,
+            source: { core: "machine-environment" as const },
+            reason: "test",
+          },
+        ],
+        resumeOnly: false,
+        operationId: `redact-${kind}`,
+        path,
+        kind,
+        timeoutMs: 5000,
+      },
+      options,
+    );
+    expect(output.join("\n")).not.toContain("PRIVATE_BODY");
+    expect(output.join("\n")).toContain("[redacted]");
+  },
+);
+
+it("applies hook NODE_ENV and PATH contributions after sanitizing inherited state", async () => {
+  const path = await makeTempDir("bb-hook-overrides-");
+  await writeFile(
+    join(path, ".bb-env-setup.sh"),
+    'printf "NODE_ENV=%s\\nPATH=%s\\n" "$NODE_ENV" "$PATH"; sleep 0.1\n',
+  );
+  const output: string[] = [];
+  const options = createHarness().dispatchOptions({ dataDir: path });
+  options.emitEnvironmentHookProgress = (message) => {
+    output.push(message.entry.text);
+  };
+  const contributedEnv = Object.entries({
+    NODE_ENV: "production",
+    PATH: "/review-toolchain:/usr/bin:/bin",
+  }).map(([name, value]) => ({
+    name,
+    value,
+    secret: false,
+    source: { core: "machine-environment" as const },
+    reason: "test",
+  }));
+  await dispatchOnlineRpcCommand(
+    {
+      type: "environment.hook.run",
+      contributedEnv,
+      resumeOnly: false,
+      operationId: "overrides",
+      path,
+      kind: "setup",
+      timeoutMs: 5000,
+    },
+    options,
+  );
+  expect(output).toContain("NODE_ENV=production");
+  expect(output).toContain("PATH=/review-toolchain:/usr/bin:/bin");
+});

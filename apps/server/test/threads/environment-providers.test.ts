@@ -1,3 +1,4 @@
+import * as gitCredentials from "../../src/services/machines/git-credentials.js";
 import { advanceThreadProvisioning } from "../../src/services/threads/thread-provisioning.js";
 import {
   providerOperations,
@@ -38,7 +39,7 @@ import {
   validatePluginEnvironmentProviderDeclaration,
   validatePluginMachineProviderDeclaration,
 } from "@get-bb/plugin-sdk/internal/host-policy";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { ApiError } from "../../src/errors.js";
 import { persistPendingProviderRequest } from "../../src/services/environments/provider-orchestration.js";
@@ -179,7 +180,12 @@ function installEnvironmentIntentProbe(): PluginDispatchEnvironmentIntent[] {
   return environmentIntents;
 }
 
+beforeEach(() => {
+  vi.spyOn(gitCredentials, "resolveGitCredentials").mockResolvedValue([]);
+});
+
 afterEach(() => {
+  vi.restoreAllMocks();
   forgetAllActiveThreadProvisionContexts();
   setPluginEnvironmentProviderBridge(undefined);
   setPluginMachineProviderBridge(undefined);

@@ -1,12 +1,18 @@
-import { createSecretStreamRedactor } from "@bb/process-utils";
+import {
+  createSecretStreamRedactor,
+  sanitizeInheritedChildProcessEnv,
+} from "@bb/process-utils";
 import type { JsonValue } from "@bb/domain";
 import type { HostDaemonContributedEnvEntry } from "@bb/host-daemon-contract";
 
 export function operationEnvironment(
   entries: readonly HostDaemonContributedEnvEntry[],
   base: NodeJS.ProcessEnv,
+  inherited = false,
 ): NodeJS.ProcessEnv {
-  const env = { ...base };
+  const env = inherited
+    ? sanitizeInheritedChildProcessEnv({ env: base })
+    : { ...base };
   for (const entry of entries) {
     if (typeof entry.value === "string") env[entry.name] = entry.value;
     else {
@@ -62,3 +68,20 @@ export function redactOperationContent(
 }
 
 export { createSecretStreamRedactor };
+
+export function daemonPrivateEnvironmentValues(
+  env: NodeJS.ProcessEnv,
+): string[] {
+  const values = Object.entries(env).flatMap(([key, value]) =>
+    key.startsWith("BB_") && value ? [value] : [],
+  );
+  if (env.BB_SERVER_HEADERS) {
+    try {
+      const headers: unknown = JSON.parse(env.BB_SERVER_HEADERS);
+      if (headers && typeof headers === "object")
+        for (const value of Object.values(headers))
+          if (typeof value === "string" && value) values.push(value);
+    } catch {}
+  }
+  return values;
+}

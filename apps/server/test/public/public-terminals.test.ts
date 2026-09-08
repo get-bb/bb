@@ -1,6 +1,6 @@
 import { updateMachineEnvironment } from "../../src/services/machines/environment-settings.js";
 import * as gitCredentials from "../../src/services/machines/git-credentials.js";
-import { machineEnrollments } from "@bb/db";
+import { machineEnrollments, updateHost } from "@bb/db";
 import {
   createTerminalSession,
   getTerminalSession,
@@ -404,6 +404,10 @@ describe("public terminal routes", () => {
       for (const enrolled of [false, true]) {
         const fixture = await createTerminalRouteFixture();
         harnesses.push(fixture.harness);
+        if (enrolled)
+          updateHost(fixture.harness.db, fixture.harness.hub, fixture.host.id, {
+            machineProviderId: "manual",
+          });
         if (enrolled)
           fixture.harness.db
             .insert(machineEnrollments)

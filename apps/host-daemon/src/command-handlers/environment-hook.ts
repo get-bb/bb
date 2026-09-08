@@ -1,5 +1,4 @@
 import {
-  operationEnvironment,
   operationSecrets,
   redactOperationSecrets,
 } from "../operation-environment.js";
@@ -101,10 +100,11 @@ export async function runEnvironmentHook(
           command.kind === "setup" ? runSetupScript : runTeardownScript;
         await run({
           workspacePath: command.path,
-          env: operationEnvironment(command.contributedEnv, {
+          contributedEnv: command.contributedEnv,
+          env: {
             ...process.env,
             ...options.runtimeManager.getShellEnv(),
-          }),
+          },
           timeoutMs: command.timeoutMs,
           shellPath: options.runtimeManager.getShellEnv().PATH,
           signal: controller.signal,

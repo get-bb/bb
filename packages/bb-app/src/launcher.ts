@@ -1093,6 +1093,12 @@ function mergeManagedConfig(
   if (patchConfig.serverUrl !== undefined) {
     nextConfig.serverUrl = patchConfig.serverUrl;
   }
+  if (patchConfig.serverHeaders !== undefined) {
+    nextConfig.serverHeaders = patchConfig.serverHeaders;
+  }
+  if (patchConfig.sharedSkillRoots !== undefined) {
+    nextConfig.sharedSkillRoots = patchConfig.sharedSkillRoots;
+  }
   if (patchConfig.machineCredential !== undefined) {
     nextConfig.machineCredential = patchConfig.machineCredential;
   }
@@ -1120,28 +1126,12 @@ function mergeManagedConfig(
 function pruneManagedConfig(
   config: ManagedConfigForWrite,
 ): ManagedConfigForWrite {
-  const nextConfig: ManagedConfigForWrite = {};
-  if (config.serverUrl !== undefined) {
-    nextConfig.serverUrl = config.serverUrl;
-  }
-  if (config.machineCredential !== undefined) {
-    nextConfig.machineCredential = config.machineCredential;
-  }
-  if (config.connectMachineId !== undefined) {
-    nextConfig.connectMachineId = config.connectMachineId;
-  }
-  if (config.config !== undefined && Object.keys(config.config).length > 0) {
-    nextConfig.config = config.config;
-  }
-  if (config.customModels !== undefined && config.customModels.length > 0) {
-    nextConfig.customModels = config.customModels;
-  }
-  if (
-    config.customAcpAgents !== undefined &&
-    config.customAcpAgents.length > 0
-  ) {
-    nextConfig.customAcpAgents = config.customAcpAgents;
-  }
+  const nextConfig: ManagedConfigForWrite = { ...config };
+  if (nextConfig.config && Object.keys(nextConfig.config).length === 0)
+    delete nextConfig.config;
+  if (nextConfig.customModels?.length === 0) delete nextConfig.customModels;
+  if (nextConfig.customAcpAgents?.length === 0)
+    delete nextConfig.customAcpAgents;
   return nextConfig;
 }
 

@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
-import { machineEnrollments } from "@bb/db";
+import { machineEnrollments, updateHost } from "@bb/db";
 import { expect, it } from "vitest";
 import { updateMachineEnvironment } from "../../../../apps/server/src/services/machines/environment-settings.js";
 import {
@@ -16,6 +16,10 @@ it.each([true, false])(
     withHarness(
       { builtinPlugins: ["environment-git-worktree"] },
       async (harness) => {
+        if (machine)
+          updateHost(harness.db, harness.server.hub, harness.hostId, {
+            machineProviderId: "manual",
+          });
         if (machine)
           harness.db
             .insert(machineEnrollments)

@@ -1,0 +1,74 @@
+import {
+  createConnection,
+  migrate,
+  upsertHost,
+  noopNotifier,
+  getHost,
+} from "@bb/db";
+import { mkdtemp, writeFile, mkdir, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { expect, it, vi } from "vitest";
+import { resolveHostEnvironment } from "./host-environment.js";
+import { updateMachineEnvironment } from "../machines/environment-settings.js";
+
+it("gives backfilled manual machines user and gh environment without enrollment while excluding the local daemon", async () => {
+  const db = createConnection(":memory:");
+  const dataDir = await mkdtemp(join(tmpdir(), "bb-backfilled-env-"));
+  try {
+    migrate(db);
+    upsertHost(db, noopNotifier, { id: "legacy-remote", name: "Remote" });
+    upsertHost(db, noopNotifier, { id: "local-daemon", name: "Local" });
+    db.$client.exec(
+      "DELETE FROM __drizzle_migrations WHERE created_at = (SELECT MAX(created_at) FROM __drizzle_migrations)",
+    );
+    migrate(db);
+    await writeFile(join(dataDir, "host-id"), "local-daemon");
+    expect(getHost(db, "legacy-remote")?.machineProviderId).toBe("manual");
+    await updateMachineEnvironment(db, dataDir, "MACHINE_VALUE", {
+      name: "MACHINE_VALUE",
+      value: "configured",
+      secret: false,
+      note: null,
+    });
+    const bin = join(dataDir, "bin");
+    await mkdir(bin);
+    await writeFile(
+      join(bin, "gh"),
+      `#!/bin/sh
+if [ "$1" = auth ]; then printf 'test-gh-secret\\n'; else printf '{"login":"octocat","id":123,"email":null}\\n'; fi
+`,
+      { mode: 0o700 },
+    );
+    vi.stubEnv("PATH", `${bin}:${process.env.PATH}`);
+    const deps = { db, config: { dataDir } };
+    expect(
+      await resolveHostEnvironment(deps, {
+        hostId: "legacy-remote",
+        projectId: null,
+      }),
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ name: "MACHINE_VALUE", value: "configured" }),
+        expect.objectContaining({
+          name: "GH_TOKEN",
+          value: "test-gh-secret",
+          secret: true,
+        }),
+      ]),
+    );
+    expect(
+      await resolveHostEnvironment(deps, {
+        hostId: "local-daemon",
+        projectId: null,
+      }),
+    ).toEqual([]);
+    expect(
+      db.$client.prepare("SELECT COUNT(*) AS n FROM machine_enrollments").get(),
+    ).toEqual({ n: 0 });
+  } finally {
+    vi.unstubAllEnvs();
+    db.$client.close();
+    await rm(dataDir, { recursive: true, force: true });
+  }
+});

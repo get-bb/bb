@@ -1,8 +1,11 @@
+import { getHost } from "@bb/db";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { HOST_ID_FILE_NAME } from "@bb/host-daemon-contract";
 import { resolveUserMachineEnvironment } from "../machines/environment-settings.js";
 import type { AppDeps } from "../../types.js";
 import type { HostDaemonContributedEnvEntry } from "@bb/host-daemon-contract";
 import {
-  isEnrolledMachine,
   githubGitConfiguration,
   resolveGitCredentials,
 } from "../machines/git-credentials.js";
@@ -17,10 +20,21 @@ const contributors: readonly HostEnvironmentContributor[] = [
 ];
 
 export async function resolveHostEnvironment(
-  deps: Pick<AppDeps, "db" | "config">,
+  deps: { db: AppDeps["db"]; config: Pick<AppDeps["config"], "dataDir"> },
   context: HostEnvironmentContext,
 ): Promise<HostDaemonContributedEnvEntry[]> {
-  if (!isEnrolledMachine(deps.db, context.hostId)) return [];
+  const host = getHost(deps.db, context.hostId);
+  if (!host || host.machineProviderId === null || host.destroyedAt !== null)
+    return [];
+  try {
+    if (
+      readFileSync(
+        join(deps.config.dataDir, HOST_ID_FILE_NAME),
+        "utf8",
+      ).trim() === context.hostId
+    )
+      return [];
+  } catch {}
   const resolved = await Promise.all(
     contributors.map((resolve) => resolve(context)),
   );

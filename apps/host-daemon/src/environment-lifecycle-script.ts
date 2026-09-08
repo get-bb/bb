@@ -1,7 +1,13 @@
+import { StringDecoder } from "node:string_decoder";
+import {
+  operationEnvironment,
+  operationSecrets,
+  createSecretStreamRedactor,
+} from "./operation-environment.js";
+import type { HostDaemonContributedEnvEntry } from "@bb/host-daemon-contract";
 import {
   isProcessGroupAlive,
   killProcessGroup,
-  sanitizeInheritedChildProcessEnv,
   spawnPortablePipedProcess,
   supportsProcessGroups,
 } from "@bb/process-utils";
@@ -26,6 +32,7 @@ export interface RunSetupScriptArgs {
   timeoutMs: number;
   shellPath?: string;
   env?: NodeJS.ProcessEnv;
+  contributedEnv?: readonly HostDaemonContributedEnvEntry[];
   onProgress?: ProgressCallback;
   signal?: AbortSignal;
   onProcessSpawn?: (pid: number) => void;
@@ -123,10 +130,14 @@ async function runLifecycleScript(
   });
 
   const { timeoutMs } = args;
-  const env = sanitizeInheritedChildProcessEnv({
-    env: args.env ?? process.env,
-    ...(args.shellPath !== undefined ? { shellPath: args.shellPath } : {}),
-  });
+  const env = operationEnvironment(
+    args.contributedEnv ?? [],
+    {
+      ...(args.env ?? process.env),
+      ...(args.shellPath !== undefined ? { PATH: args.shellPath } : {}),
+    },
+    true,
+  );
   const child = spawnPortablePipedProcess({
     command: command.command,
     args: [
@@ -154,14 +165,20 @@ async function runLifecycleScript(
     }
   };
 
-  const handleChunk = (chunk: Buffer) => {
-    const text = chunk.toString("utf8");
-    outputChunks.push(text);
-    emitScriptOutputLines(outputLineReader.push(text));
-  };
-
-  child.stdout.on("data", handleChunk);
-  child.stderr.on("data", handleChunk);
+  const readers = [child.stdout, child.stderr].map((stream) => {
+    const decoder = new StringDecoder("utf8");
+    const redactor = createSecretStreamRedactor(
+      operationSecrets(args.contributedEnv ?? []),
+    );
+    const emit = (text: string) => {
+      outputChunks.push(text);
+      emitScriptOutputLines(outputLineReader.push(text));
+    };
+    stream.on("data", (chunk: Buffer) =>
+      emit(redactor.push(decoder.write(chunk))),
+    );
+    return () => emit(redactor.push(decoder.end()) + redactor.flush());
+  });
 
   const timeout = setTimeout(() => {
     timedOut = true;
@@ -205,6 +222,7 @@ async function runLifecycleScript(
     if (abortRequested || timedOut)
       while (isProcessGroupAlive(child)) await delay(25);
 
+    for (const flush of readers) flush();
     const output = outputChunks.join("");
     emitScriptOutputLines(outputLineReader.flush());
     const durationMs = Date.now() - startedAt;

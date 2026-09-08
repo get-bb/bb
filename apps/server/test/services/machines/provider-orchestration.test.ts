@@ -1,9 +1,10 @@
+import * as gitCredentials from "../../../src/services/machines/git-credentials.js";
 import { createBbSdk } from "@bb/sdk/core";
 import { createHttpTransport } from "@bb/sdk";
 import { archiveThreadAndHiddenSourceForks } from "../../../src/services/threads/thread-archive.js";
 import { cancelAbandonedProviderLaunches } from "../../../src/services/threads/thread-environment-providers.js";
 import { serverAccess } from "../../../src/services/machines/server-access.js";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
 import { eq } from "drizzle-orm";
 import {
   createProjectSource,
@@ -130,6 +131,10 @@ function adoptMachine(
     resource,
   });
 }
+
+beforeEach(() => {
+  vi.spyOn(gitCredentials, "resolveGitCredentials").mockResolvedValue([]);
+});
 
 afterEach(() => {
   vi.restoreAllMocks();

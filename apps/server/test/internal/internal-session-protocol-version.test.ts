@@ -36,9 +36,9 @@ describe("internal session protocol version", () => {
       expect(response.status).toBe(400);
       expect(await response.json()).toMatchObject({
         code: "protocol_version_mismatch",
-        details: { serverProtocolVersion: 192 },
+        details: { serverProtocolVersion: 193 },
         message:
-          "Daemon protocol version 191 does not match server protocol version 192",
+          "Daemon protocol version 191 does not match server protocol version 193",
       });
       expect(getHost(server.db, hostId)?.lastRejectedProtocolVersion).toBe(191);
     } finally {

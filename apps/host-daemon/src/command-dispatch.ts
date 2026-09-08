@@ -1,4 +1,7 @@
-import { operationEnvironment } from "./operation-environment.js";
+import {
+  operationEnvironment,
+  daemonPrivateEnvironmentValues,
+} from "./operation-environment.js";
 import {
   runEnvironmentHook,
   cancelEnvironmentHook,
@@ -468,7 +471,15 @@ const commandHandlers: CommandHandlerMap = {
     cloneProject({
       dataDir: options.dataDir,
       projectSlug: command.projectSlug,
-      env: operationEnvironment(command.contributedEnv, {
+      env: operationEnvironment(
+        command.contributedEnv,
+        {
+          ...process.env,
+          ...options.runtimeManager.getShellEnv(),
+        },
+        true,
+      ),
+      redactValues: daemonPrivateEnvironmentValues({
         ...process.env,
         ...options.runtimeManager.getShellEnv(),
       }),
