@@ -6,7 +6,6 @@ import {
   useState,
   type RefObject,
 } from "react";
-import { useDebounceValue } from "usehooks-ts";
 import { Button } from "@bb/shared-ui/button";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
 import { LIST_HOVER_TRANSITION } from "@bb/shared-ui/motion";
@@ -23,6 +22,7 @@ import {
 import { Input } from "@bb/shared-ui/input";
 import { blurActiveKeyboardInputWithin } from "@bb/shared-ui/overlay-trigger";
 import { Popover, PopoverContent, PopoverTrigger } from "@bb/shared-ui/popover";
+import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import {
   OPTION_BASE_CLASS_NAME,
   OPTION_INTERACTIVE_CLASS_NAME,
@@ -438,7 +438,7 @@ export function BranchPicker({
   const inputRef = useRef<HTMLInputElement>(null);
   const normalizedQuery = deferredQuery.trim().toLowerCase();
   const isSearching = normalizedQuery.length > 0;
-  const [debouncedNormalizedQuery] = useDebounceValue(
+  const debouncedNormalizedQuery = useDebouncedValue(
     normalizedQuery,
     BRANCH_SEARCH_DEBOUNCE_MS,
   );

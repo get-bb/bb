@@ -1,6 +1,5 @@
 import { useMemo } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { useDebounceValue } from "usehooks-ts";
 import { Icon } from "@bb/shared-ui/icon";
 import {
   ResourceCollectionViewport,
@@ -10,6 +9,7 @@ import {
 } from "@bb/shared-ui/resource-list";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { TOOLS_PAGE_BAND_CLASSES } from "@/components/tools/tools-navigation";
+import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import {
   type PluginCatalogSearchEntry,
   usePluginCatalogSearch,
@@ -80,7 +80,7 @@ export function PluginAuthorPage({
 }) {
   const [searchParams, setSearchParams] = useSearchParams();
   const query = searchParams.get("query") ?? "";
-  const [debouncedQuery] = useDebounceValue(query.trim(), 300);
+  const debouncedQuery = useDebouncedValue(query.trim(), 300);
   const selectedCategories = searchParams.getAll("category");
   const requestedSort = pluginBrowseSort(searchParams.get("sort"));
   const sortDirection =

@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { useDebounceValue } from "usehooks-ts";
 import { Button } from "@bb/shared-ui/button";
 import { PLUGIN_CATALOG_CATEGORIES, pluginCatalogCategory } from "@bb/domain";
 import {
@@ -11,6 +10,7 @@ import {
 } from "@bb/shared-ui/dropdown-menu";
 import { Icon } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
+import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import {
   ResourceBrowseCard,
   ResourceBrowseGrid,
@@ -87,7 +87,7 @@ export function BrowsePluginsTab({
   const [expandedShelves, setExpandedShelves] = useState<Set<string>>(
     () => new Set(),
   );
-  const [debouncedQuery] = useDebounceValue(query.trim(), 300);
+  const debouncedQuery = useDebouncedValue(query.trim(), 300);
   const searchQuery = usePluginCatalogSearch(debouncedQuery, { enabled: true });
   const catalog = searchQuery.data ?? { entries: [], collections: [] };
   const entries = useMemo(
