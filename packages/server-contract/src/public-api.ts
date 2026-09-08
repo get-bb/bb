@@ -725,6 +725,12 @@ export const publicApiRoutes = {
       request: noRequest<PathId>(),
       response: jsonResponse<MachineLaunchStatus>(),
     }),
+    experimental_enrollmentCommand: defineRoute({
+      path: "/hosts/launches/:id/enrollment-command",
+      method: "get",
+      request: noRequest<PathId>(),
+      response: jsonResponse<{ command: string | null }>(),
+    }),
     cancelLaunch: defineRoute({
       path: "/hosts/launches/:id/cancel",
       method: "post",

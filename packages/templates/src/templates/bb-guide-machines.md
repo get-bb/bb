@@ -193,7 +193,9 @@ follows the launch until the daemon connects. Run that command on the target
 machine; it installs bb if needed. Server access is resolved through the selected
 default access provider, just like SSH or cloud machines. `--no-wait` returns the
 launch ID and command once enrollment is prepared; `--json` includes the command
-in `step`. Treat this short-lived command as a credential.
+in `command`. This command is fetched transiently from the encrypted pending
+bundle; durable progress contains no credential. After enrollment or cancellation,
+the command endpoint returns nothing. Treat this short-lived command as a credential.
 
 Use `bb machine status <launch-id>` to recover progress and
 `bb machine cancel <launch-id>` to cancel and revoke enrollment/access. Stopping

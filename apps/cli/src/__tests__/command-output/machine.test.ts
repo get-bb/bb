@@ -174,6 +174,47 @@ describe("bb machine command output", () => {
     );
   });
 
+  it.each([true, false])(
+    "prints manual credentials only from the transient endpoint (no-wait=%s)",
+    async (noWait) => {
+      const command = "bb machine enroll --bootstrap-env TRANSIENT_SECRET";
+      const readCommand = vi.fn(async () => ({ command }));
+      stubServerApi({
+        "v1.hosts.$post": vi.fn(async () => ({
+          ...launch,
+          phase: "creating",
+          terminal: false,
+          step: "Run the enrollment command shown in the picker",
+        })),
+        "v1.hosts.launches.:id.enrollment-command.$get": readCommand,
+        "v1.hosts.launches.:id.$get": vi.fn(async () => launch),
+        "v1.hosts.:id.$get": vi.fn(async () => hosts[1]),
+      });
+      await runCommand(
+        [
+          "machine",
+          "create",
+          "--provider",
+          "manual",
+          ...(noWait ? ["--no-wait", "--json"] : []),
+        ],
+        register,
+      );
+      expect(readCommand).toHaveBeenCalledWith(
+        { param: { id: launch.id } },
+        { init: { signal: expect.any(AbortSignal) } },
+      );
+      if (noWait) {
+        const result = JSON.parse(
+          collectLogPayloads(vi.mocked(console.log))[0],
+        );
+        expect(result.command).toBe(command);
+        expect(result.step).not.toContain("TRANSIENT_SECRET");
+      } else
+        expect(collectLogPayloads(vi.mocked(console.error))).toContain(command);
+    },
+  );
+
   it("cancels only through the explicit launch cancellation endpoint", async () => {
     const cancel = vi.fn(async () => ({ ...launch, phase: "cancelled" }));
     stubServerApi({ "v1.hosts.launches.:id.cancel.$post": cancel });

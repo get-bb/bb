@@ -1,9 +1,5 @@
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
 
-function quote(value: string): string {
-  return "'" + value.replaceAll("'", "'\"'\"'") + "'";
-}
-
 export default function manualMachinePlugin(bb: BbPluginApi): void {
   bb.experimental_machines.register({
     id: "manual",
@@ -22,15 +18,7 @@ export default function manualMachinePlugin(bb: BbPluginApi): void {
       const resource = { version: 1, hostId: enrollment.hostId };
       await context.checkpoint(resource);
       context.signal.throwIfAborted();
-      if (enrollment.state === "pending") {
-        context.report.step(
-          `Run on the target machine:\nexport BB_ENROLLMENT=${quote(JSON.stringify(enrollment.bootstrap))}\nif command -v bb >/dev/null 2>&1 && bb machine enroll --help >/dev/null 2>&1; then\n  bb machine enroll --bootstrap-env BB_ENROLLMENT && bb machine start --host-id ${quote(enrollment.hostId)}\nelse\n  node -e 'for (const [name,value] of Object.entries(JSON.parse(process.env.BB_ENROLLMENT).headers ?? {})) console.log("header = " + JSON.stringify(name + ": " + value))' | curl --config - -fL --progress-meter --connect-timeout 10 --max-time 60 --retry 2 ${quote(new URL("/install.sh", enrollment.bootstrap.serverUrl).href)} | sh -s -- --bootstrap-env BB_ENROLLMENT\nfi\nunset BB_ENROLLMENT`,
-        );
-      } else {
-        context.report.step(
-          `Run on the target machine:\nbb machine start --host-id ${quote(enrollment.hostId)}`,
-        );
-      }
+      context.report.step("Run the enrollment command shown in the picker");
       const { hostId } =
         await bb.experimental_machines.enrollments.waitForConnection({
           enrollmentId: enrollment.id,
@@ -45,7 +33,7 @@ export default function manualMachinePlugin(bb: BbPluginApi): void {
     },
     async remove(context) {
       context.report.step(
-        `Uninstall manually on the machine: bb machine uninstall --host-id ${quote(context.hostId)}`,
+        `Uninstall manually on the machine: bb machine uninstall --host-id ${context.hostId}`,
       );
       return { status: "removed" };
     },

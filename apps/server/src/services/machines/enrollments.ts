@@ -480,6 +480,61 @@ export function createMachineEnrollmentService(
   }
   return {
     forOwner: scoped,
+    async pendingBootstrapForLaunch(
+      launchId: string,
+    ): Promise<EnrollmentBootstrap | null> {
+      const read = () =>
+        deps.db
+          .select({ enrollment: machineEnrollments, launch: machineLaunches })
+          .from(machineEnrollments)
+          .innerJoin(
+            machineLaunches,
+            and(
+              eq(machineEnrollments.key, machineLaunches.key),
+              eq(machineEnrollments.hostId, machineLaunches.hostId),
+            ),
+          )
+          .where(
+            and(
+              eq(machineLaunches.key, launchId),
+              eq(machineLaunches.providerId, "manual"),
+              eq(machineLaunches.phase, "creating"),
+              eq(machineLaunches.cancelPending, false),
+              eq(machineEnrollments.state, "pending"),
+              gt(machineEnrollments.expiresAt, Date.now()),
+            ),
+          )
+          .get();
+      const row = read();
+      if (
+        !row?.enrollment.encryptedBootstrap ||
+        row.enrollment.owner !== getMachineProvider("manual")?.pluginId ||
+        deps.isConnected(row.enrollment.hostId) ||
+        hasIssuedDaemonCredential(row.enrollment.hostId)
+      )
+        return null;
+      const bootstrap = await open(
+        row.enrollment.id,
+        row.enrollment.encryptedBootstrap,
+      );
+      if (
+        !(await hasUnusedEnrollmentCredential(
+          row.enrollment.hostId,
+          bootstrap.credential,
+          Date.now(),
+        ))
+      )
+        return null;
+      const current = read();
+      if (
+        current?.enrollment.encryptedBootstrap !==
+          row.enrollment.encryptedBootstrap ||
+        deps.isConnected(row.enrollment.hostId) ||
+        hasIssuedDaemonCredential(row.enrollment.hostId)
+      )
+        return null;
+      return bootstrap.version === 2 ? bootstrap : null;
+    },
     async cancelByKey(
       owner: string,
       key: string,

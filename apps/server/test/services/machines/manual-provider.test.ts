@@ -1,3 +1,8 @@
+import { buildHostDaemonWebSocketProtocols } from "@bb/host-daemon-contract";
+import {
+  onDaemonSocketMessage,
+  validateDaemonWebSocket,
+} from "../../../src/ws/daemon-protocol.js";
 import { expect, it, vi } from "vitest";
 import { defaultAppSettings } from "@bb/domain";
 import {
@@ -6,6 +11,8 @@ import {
   machineEnrollments,
   setAppSettings,
   hosts,
+  openSession,
+  getSessionById,
 } from "@bb/db";
 import { withTestHarness } from "../../helpers/test-app.js";
 import {
@@ -31,7 +38,11 @@ it("creates, cancels, and removes manual machines through the production lifecyc
     if (!api) throw new Error("Manual provider did not load");
     const release = vi.spyOn(serverAccess, "release");
     try {
-      for (const key of ["manual-cancel", "manual-connect"]) {
+      for (const key of [
+        "manual-cancel",
+        "manual-cancel-connected",
+        "manual-connect",
+      ]) {
         await submitMachine(h.deps, {
           key,
           machineProviderId: "manual",
@@ -39,8 +50,8 @@ it("creates, cancels, and removes manual machines through the production lifecyc
           inputs: null,
         });
         await vi.waitFor(() =>
-          expect(getMachineLaunch(h.db, key)?.stepText).toContain(
-            "bb machine enroll --bootstrap-env",
+          expect(getMachineLaunch(h.db, key)?.stepText).not.toContain(
+            "Run the enrollment command shown in the picker",
           ),
         );
         const enrollment = await api.experimental_machines.prepareEnrollment({
@@ -48,10 +59,71 @@ it("creates, cancels, and removes manual machines through the production lifecyc
         });
         if (enrollment.state !== "pending")
           throw new Error("Expected pending enrollment");
-        expect(getMachineLaunch(h.db, key)?.stepText).toContain(
+        expect(getMachineLaunch(h.db, key)?.stepText).not.toContain(
           enrollment.bootstrap.credential,
         );
-        if (key === "manual-cancel") {
+        const commandUrl = `/api/v1/hosts/launches/${key}/enrollment-command`;
+        const commandResponse = await h.app.request(commandUrl);
+        expect(commandResponse.headers.get("cache-control")).toBe("no-store");
+        expect((await commandResponse.json()).command).toContain(
+          enrollment.bootstrap.credential,
+        );
+        const denied = await h.app.request(commandUrl, {
+          headers: {
+            "x-bb-gate-auth": "machine",
+            "x-bb-gate-machine-id": "other-machine",
+          },
+        });
+        expect(denied.status).toBe(403);
+        let daemonKey: string | null = null;
+        const close = vi.fn();
+        const sent: string[] = [];
+        const socket = {
+          close,
+          send(value: string) {
+            sent.push(value);
+          },
+        };
+        let sessionId: string | null = null;
+        if (key !== "manual-cancel") {
+          const enrolled = await h.deps.machineAuth.enrollHost({
+            hostId: enrollment.hostId,
+            token: enrollment.bootstrap.credential,
+            allowPublicEnrollment: true,
+          });
+          if (!enrolled) throw new Error("Enrollment failed");
+          daemonKey = enrolled.hostKey;
+          expect(await (await h.app.request(commandUrl)).json()).toEqual({
+            command: null,
+          });
+          const session = openSession(h.db, {
+            hostId: enrollment.hostId,
+            instanceId: key,
+            hostName: "Manual",
+            dataDir: "/tmp/manual-test",
+            protocolVersion: 1,
+            heartbeatIntervalMs: 5000,
+            leaseTimeoutMs: 30000,
+          });
+          sessionId = session.id;
+          h.hub.registerDaemon(session.id, enrollment.hostId, socket);
+          expect(
+            await validateDaemonWebSocket(h.deps, {
+              sessionId,
+              authorizationHeader: `Bearer ${daemonKey}`,
+              protocolHeader: buildHostDaemonWebSocketProtocols().join(","),
+            }),
+          ).toMatchObject({ hostId: enrollment.hostId });
+          onDaemonSocketMessage(h.deps, {
+            hostId: enrollment.hostId,
+            sessionId,
+            socket,
+            raw: JSON.stringify({ type: "heartbeat" }),
+          });
+          expect(sent).toContain(JSON.stringify({ type: "heartbeat-ack" }));
+          sent.length = 0;
+        }
+        if (key.startsWith("manual-cancel")) {
           await cancelMachineLaunch(h.deps, key);
           expect(getMachineLaunch(h.db, key)).toMatchObject({
             phase: "cancelled",
@@ -59,16 +131,6 @@ it("creates, cancels, and removes manual machines through the production lifecyc
           });
           expect(getHost(h.db, enrollment.hostId)?.destroyedAt).not.toBeNull();
         } else {
-          const enrolled = await h.deps.machineAuth.enrollHost({
-            hostId: enrollment.hostId,
-            token: enrollment.bootstrap.credential,
-            allowPublicEnrollment: true,
-          });
-          expect(enrolled).not.toBeNull();
-          h.hub.registerDaemon("manual-session", enrollment.hostId, {
-            close() {},
-            send() {},
-          });
           await vi.waitFor(() =>
             expect(getMachineLaunch(h.db, key)?.phase).toBe("ready"),
           );
@@ -85,6 +147,38 @@ it("creates, cancels, and removes manual machines through the production lifecyc
             serverAccessGrantId: null,
           });
         }
+        expect(await (await h.app.request(commandUrl)).json()).toEqual({
+          command: null,
+        });
+        expect(JSON.stringify(getMachineLaunch(h.db, key))).not.toContain(
+          enrollment.bootstrap.credential,
+        );
+        if (sessionId !== null) {
+          onDaemonSocketMessage(h.deps, {
+            hostId: enrollment.hostId,
+            sessionId,
+            socket,
+            raw: JSON.stringify({ type: "heartbeat" }),
+          });
+          expect(getSessionById(h.db, { sessionId })).toMatchObject({
+            status: "closed",
+            closeReason: "expired",
+          });
+          expect(close).toHaveBeenCalledWith(1000, "expired");
+          await expect(
+            validateDaemonWebSocket(h.deps, {
+              sessionId,
+              authorizationHeader: `Bearer ${daemonKey}`,
+              protocolHeader: buildHostDaemonWebSocketProtocols().join(","),
+            }),
+          ).rejects.toMatchObject({ status: 401 });
+          expect(sent).not.toContain(JSON.stringify({ type: "heartbeat-ack" }));
+          expect(h.hub.hasDaemonForHost(enrollment.hostId)).toBe(false);
+        }
+        if (daemonKey !== null)
+          expect(
+            await h.deps.machineAuth.verifyDaemonHostKey(daemonKey),
+          ).toBeNull();
         expect(
           h.db
             .select()
@@ -100,7 +194,7 @@ it("creates, cancels, and removes manual machines through the production lifecyc
           }),
         ).toBeNull();
       }
-      expect(release).toHaveBeenCalledTimes(2);
+      expect(release).toHaveBeenCalledTimes(3);
     } finally {
       release.mockRestore();
     }

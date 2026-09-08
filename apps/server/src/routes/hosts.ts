@@ -1,3 +1,5 @@
+import { getMachineEnrollmentService } from "../services/machines/machine-services.js";
+import { manualEnrollmentCommand } from "../services/machines/manual-enrollment-command.js";
 import { serverAccess } from "../services/machines/server-access.js";
 import { getNonDestroyedHost, updateHost } from "@bb/db";
 import {
@@ -117,6 +119,17 @@ export function registerHostRoutes(
   get(routes.launch, (context) => {
     assertHostManagementAllowed(context);
     return context.json(machineLaunchStatus(deps, context.req.param("id")));
+  });
+
+  get(routes.experimental_enrollmentCommand, async (context) => {
+    assertHostManagementAllowed(context);
+    context.header("Cache-Control", "no-store");
+    const bootstrap = await getMachineEnrollmentService(
+      deps,
+    ).pendingBootstrapForLaunch(context.req.param("id"));
+    return context.json({
+      command: bootstrap === null ? null : manualEnrollmentCommand(bootstrap),
+    });
   });
 
   post(routes.cancelLaunch, async (context) => {

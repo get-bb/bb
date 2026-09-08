@@ -18,6 +18,9 @@ vi.mock("@/lib/sdk", async (importOriginal) => ({
   sdk: {
     hosts: {
       submit: vi.fn(),
+      experimental_enrollmentCommand: vi.fn().mockResolvedValue({
+        command: "bb machine enroll --bootstrap-env BB_ENROLLMENT",
+      }),
       follow: vi.fn(),
       cancel: vi.fn(),
       createJoinCode: vi.fn(),
@@ -61,7 +64,7 @@ it("lists manual alongside other providers and never mints a legacy join code", 
     projectId: null,
     hostId: null,
     phase: "creating" as const,
-    step: "Run on the target machine:\nbb machine enroll --bootstrap-env BB_ENROLLMENT",
+    step: "Run the enrollment command shown in the picker",
     message: null,
     log: "",
     cancelPending: false,
@@ -92,8 +95,15 @@ it("lists manual alongside other providers and never mints a legacy join code", 
     screen.getByRole("button", { name: "Create Existing machine" }),
   );
   expect((await screen.findByRole("status")).textContent).toContain(
-    "bb machine enroll",
+    "Run the enrollment command shown in the picker",
   );
+  expect(
+    await screen.findByText("bb machine enroll --bootstrap-env BB_ENROLLMENT"),
+  ).toBeTruthy();
+  expect(sdk.hosts.experimental_enrollmentCommand).toHaveBeenCalledWith({
+    id: "launch-manual",
+    signal: expect.any(AbortSignal),
+  });
   fireEvent.click(screen.getByRole("button", { name: "Cancel enrollment" }));
   await waitFor(() =>
     expect(sdk.hosts.cancel).toHaveBeenCalledWith({ id: "launch-manual" }),

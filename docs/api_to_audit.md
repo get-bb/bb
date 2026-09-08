@@ -2721,3 +2721,18 @@ unresolved cleanup remains recorded. Known resources and access release keep
 retrying at removeRetryMs indefinitely. An explicit cancel retries cleanup even
 after automatic retries are exhausted. Stabilization requires distinguishing
 definitive vendor rejection from transport timeouts and ambiguous submissions.
+
+## Transient manual enrollment command
+
+`@bb/sdk` exposes `hosts.experimental_enrollmentCommand({ id, signal? })`, backed
+by `GET /hosts/launches/:id/enrollment-command`. Authorized host-management
+followers receive `{ command: string | null }` with `Cache-Control: no-store`.
+Machine-gated callers are rejected. The server decrypts the pending bundle on
+demand, checks provider ownership, launch state, expiry and unused credentials,
+and returns null after exchange, cancellation or connection. Clients must keep
+it in transient view state, never progress events, logs, persisted query caches
+or transcripts. No new plugin registration contract was introduced.
+
+Stabilization requires authorization, settlement races, no-store and credential
+non-persistence coverage, plus a provider-neutral transient-action contract if
+other machine providers need this interaction.

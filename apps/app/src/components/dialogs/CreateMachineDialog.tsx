@@ -1,3 +1,4 @@
+import { MachineEnrollmentCommand } from "./MachineEnrollmentCommand";
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useMutation } from "@tanstack/react-query";
@@ -257,20 +258,12 @@ function CreateMachineContent({
             >
               {progress}
             </pre>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() =>
-                void navigator.clipboard.writeText(
-                  progress.replace(/^Run on the target machine:\n/u, ""),
-                )
-              }
-            >
-              Copy command
-            </Button>
           </div>
         ) : null}
       </div>
+      {open && createMachine.isPending && launchId ? (
+        <MachineEnrollmentCommand launchId={launchId} />
+      ) : null}
       <DialogFooter>
         {createMachine.isPending && launchId ? (
           <Button

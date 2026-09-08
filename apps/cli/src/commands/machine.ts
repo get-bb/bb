@@ -213,24 +213,37 @@ export function registerMachineCommands(
             ...(key === undefined ? {} : { key }),
             signal: controller.signal,
           });
-          if (!opts.wait) {
-            if (machineProviderId === "manual") {
-              while (
-                launch.phase === "creating" &&
-                !launch.step.startsWith("Run on the target machine:")
-              ) {
-                controller.signal.throwIfAborted();
-                await new Promise<void>((resolve) => setTimeout(resolve, 100));
-                launch = await sdk.hosts.launch({
+          let command: string | null = null;
+          if (machineProviderId === "manual") {
+            while (launch.phase === "creating" && command === null) {
+              controller.signal.throwIfAborted();
+              command = (
+                await sdk.hosts.experimental_enrollmentCommand({
                   id: launch.id,
                   signal: controller.signal,
-                });
-              }
+                })
+              ).command;
+              if (command !== null) break;
+              await new Promise<void>((resolve) => setTimeout(resolve, 100));
+              launch = await sdk.hosts.launch({
+                id: launch.id,
+                signal: controller.signal,
+              });
             }
-            if (!outputJson(opts, launch))
-              console.log(`${launch.id}\n${launch.step}`);
+          }
+          if (!opts.wait) {
+            if (
+              !outputJson(
+                opts,
+                machineProviderId === "manual"
+                  ? { ...launch, command }
+                  : launch,
+              )
+            )
+              console.log([launch.id, command ?? launch.step].join("\n"));
             return;
           }
+          if (command !== null) console.error(command);
           console.error(`Following machine launch ${launch.id}`);
           let step = "";
           const host = await sdk.hosts.follow({
