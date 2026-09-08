@@ -1,3 +1,4 @@
+import { createDeferredPromise } from "@bb/test-helpers";
 import { resolveGitCheckoutAvailability } from "../../src/services/environments/provider-availability.js";
 import {
   providerOperations,
@@ -429,70 +430,81 @@ describe("environment providers are asked inside provisioning", () => {
   it("re-asks on recheck and streams steps and output into the block", async () => {
     await withTestHarness(async (harness) => {
       let ask = 0;
+      const cloning = createDeferredPromise<void>();
+      const ready = createDeferredPromise<void>();
       const { environment, host, project } = seedTargetFixture(
         harness,
         "host-target-recheck",
         { environmentProviderId: PROVIDER_ID },
       );
       installTarget({
-        provision: () => {
+        provision: async () => {
           ask += 1;
           if (ask === 1) {
             return { action: "wait", reason: "Starting container…" };
           }
           if (ask === 2) {
+            await cloning.promise;
             return {
               action: "wait",
               reason: "Cloning repository…",
               log: "cloned 100 objects",
             };
           }
+          await ready.promise;
           return { ...readyAt(host), log: "scripts/setup.sh: done" };
         },
       });
-      const created = await createTargetThread(harness, {
-        projectId: project.id,
-      });
-      await vi.waitFor(() => {
-        expect(blockEntries(harness, created.id)).toContainEqual([
-          "step",
-          "Starting container…",
-        ]);
-      });
+      try {
+        const created = await createTargetThread(harness, {
+          projectId: project.id,
+        });
+        await vi.waitFor(() => {
+          expect(blockEntries(harness, created.id)).toContainEqual([
+            "step",
+            "Starting container…",
+          ]);
+        });
 
-      recheckEnvironmentProviderLaunches(harness.deps, PLUGIN_ID);
-      await vi.waitFor(() => {
-        expect(blockEntries(harness, created.id)).toContainEqual([
-          "output",
-          "cloned 100 objects",
-        ]);
-      });
-      recheckEnvironmentProviderLaunches(harness.deps, PLUGIN_ID);
-      await vi.waitFor(() => {
-        expect(getThread(harness.db, created.id)?.environmentId).toBe(
-          environment.id,
+        cloning.resolve();
+        recheckEnvironmentProviderLaunches(harness.deps, PLUGIN_ID);
+        await vi.waitFor(() => {
+          expect(blockEntries(harness, created.id)).toContainEqual([
+            "output",
+            "cloned 100 objects",
+          ]);
+        });
+        ready.resolve();
+        recheckEnvironmentProviderLaunches(harness.deps, PLUGIN_ID);
+        await vi.waitFor(() => {
+          expect(getThread(harness.db, created.id)?.environmentId).toBe(
+            environment.id,
+          );
+        });
+
+        const entries = blockEntries(harness, created.id);
+        const targetEntries = entries.filter(
+          ([, text]) =>
+            text.includes("container") ||
+            text.includes("repository") ||
+            text.includes("cloned") ||
+            text.includes("setup.sh"),
         );
-      });
-
-      const entries = blockEntries(harness, created.id);
-      const targetEntries = entries.filter(
-        ([, text]) =>
-          text.includes("container") ||
-          text.includes("repository") ||
-          text.includes("cloned") ||
-          text.includes("setup.sh"),
-      );
-      expect(targetEntries).toEqual([
-        ["step", "Preparing Fake container…"],
-        ["step", "Preparing Fake container…"],
-        ["step", "Starting container…"],
-        ["step", "Starting container…"],
-        ["step", "Cloning repository…"],
-        ["output", "cloned 100 objects"],
-        ["step", "Cloning repository…"],
-        ["output", "scripts/setup.sh: done"],
-      ]);
-      expect(scheduledEnvironmentProviderAskCount()).toBe(0);
+        expect(targetEntries).toEqual([
+          ["step", "Preparing Fake container…"],
+          ["step", "Preparing Fake container…"],
+          ["step", "Starting container…"],
+          ["step", "Starting container…"],
+          ["step", "Cloning repository…"],
+          ["output", "cloned 100 objects"],
+          ["step", "Cloning repository…"],
+          ["output", "scripts/setup.sh: done"],
+        ]);
+        expect(scheduledEnvironmentProviderAskCount()).toBe(0);
+      } finally {
+        cloning.resolve();
+        ready.resolve();
+      }
     });
   });
 
