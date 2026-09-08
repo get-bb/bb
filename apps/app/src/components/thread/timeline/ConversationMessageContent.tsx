@@ -517,7 +517,7 @@ function AssistantConversationMessage({
     if (!streaming || STREAMING_MARKDOWN_BYPASS_PATTERN.test(tail)) {
       return tail;
     }
-    return remend(tail, {
+    return remend(closeUnterminatedMarkdownCodeSpan(tail), {
       linkMode: "text-only",
       comparisonOperators: false,
       htmlTags: false,

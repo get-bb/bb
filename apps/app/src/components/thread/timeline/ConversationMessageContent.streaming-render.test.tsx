@@ -95,6 +95,25 @@ describe("assistant streaming Markdown rendering", () => {
     },
   );
 
+  it.each([
+    ["**Live bold and `live code", ["strong"]],
+    ["__Live bold and `live code", ["strong"]],
+    ["*Live italic and `live code", ["em"]],
+    ["_Live italic and `live code", ["em"]],
+    ["***Live bold italic and `live code", ["strong", "em"]],
+  ])(
+    "keeps repaired inline code inside outer emphasis: %s",
+    (source, outer) => {
+      const view = render(assistant(source));
+      for (const selector of outer) {
+        expect(
+          view.container.querySelector(`${selector} code`)?.textContent,
+        ).toBe("live code");
+      }
+      expect(view.container.textContent).not.toMatch(/[*_]/u);
+    },
+  );
+
   it("shows incomplete links as text and mounts links only after their destination completes", () => {
     const view = render(assistant("Read [the docs](https://example"));
     expect(screen.queryByRole("link")).toBeNull();
