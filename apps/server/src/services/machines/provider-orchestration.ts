@@ -986,11 +986,15 @@ export async function requestMachineResume(
   hostId: string,
 ): Promise<void> {
   const row = requireSuspendableMachine(deps, hostId);
-  if (row.phase !== "suspended" && row.phase !== "suspending") {
+  if (
+    row.phase !== "active" &&
+    row.phase !== "suspended" &&
+    row.phase !== "suspending"
+  ) {
     throw new ApiError(
       409,
       "machine_not_suspended",
-      "Only a suspended machine can be resumed",
+      "Only an active or suspended machine can be resumed",
     );
   }
   await resumeMachine(deps, hostId);

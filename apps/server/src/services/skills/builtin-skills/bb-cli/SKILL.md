@@ -69,7 +69,8 @@ BB_HOST_DAEMON_PORT only for an intentional non-default target.
   `bb machine start|stop|uninstall --host-id <id>` for an owned installation;
   see references/thread-creation.md for isolation and ownership checks.
 - Use `bb machine suspend|resume <id-or-name>` only for providers that expose
-  suspend and resume. Use `bb machine retry-cleanup <id-or-name>` to retry a
+  suspend and resume. Resume waits for pending suspension and is a no-op
+  when already active. Use `bb machine retry-cleanup <id-or-name>` to retry a
   failed provider teardown immediately.
 - `bb environment providers` lists Project checkout, Worktree, then other
   installed providers by display name. Read or set `managedBranchPrefix`

@@ -51,7 +51,7 @@ unless you pass `--auto-update` explicitly.
   bb machine rename <id-or-name> <name>   Rename a machine
   bb machine retry-update <id-or-name>    Retry a pending daemon update now
   bb machine suspend <id-or-name>         Suspend a provider-managed machine
-  bb machine resume <id-or-name>          Resume a suspended machine
+  bb machine resume <id-or-name>          Resume a machine (already active is a no-op)
   bb machine retry-cleanup <id-or-name>   Retry failed teardown now
   bb machine remove <id-or-name> [--yes]  Revoke and remove a machine
   bb machine provider-cli status <machine>
@@ -180,3 +180,9 @@ https://docs.digitalocean.com/products/snapshots/details/pricing/ . Configure a
 weekday schedule from the plugin settings or CLI on an always-on BB server.
 The latest missed action within eight days runs after recovery; busy sleep
 retries each minute until superseded. See the plugin skill for DST and cleanup.
+
+Resume waits for any in-progress suspension before waking; an already-active
+machine is left active. DigitalOcean sleep JSON retains saved power/backup
+status if inventory is unavailable (`details.values.cost: null` and
+`inventoryError`). Shared inventory reads cache for 30 seconds and invalidate
+on mutations. Schedule changes invalidate selected, undispatched runs.

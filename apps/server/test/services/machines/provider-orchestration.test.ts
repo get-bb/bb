@@ -33,6 +33,8 @@ import {
   createMachine,
   prepareMachineProviderSelection,
   requestMachineRemoval,
+  requestMachineResume,
+  requestMachineSuspension,
   resolveThreadMachineLaunchKey,
   sweepMachineLifecycles,
   sweepProviderMachine,
@@ -1519,6 +1521,47 @@ describe("core machine provider orchestration", () => {
         suspendedAt: null,
         teardownStatus: "removed",
       });
+    }));
+
+  it("scheduled resume is idempotent when active and waits for manual snapshot suspension", async () =>
+    withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps, {
+        id: "host_scheduled_wake",
+      });
+      const entered = createDeferredPromise<void>();
+      const finish = createDeferredPromise<void>();
+      let resumes = 0;
+      installMachineProvider(
+        machineDeclaration(host.id, {
+          suspend: async () => {
+            entered.resolve();
+            await finish.promise;
+            return { resource: { snapshot: "fresh" } };
+          },
+          resume: async () => {
+            resumes += 1;
+            return { resource: { snapshot: "fresh" } };
+          },
+        }),
+      );
+      adoptMachine(harness, host.id, { sandbox: "live" });
+      await requestMachineResume(harness.deps, host.id);
+      expect(resumes).toBe(0);
+      const sleeping = requestMachineSuspension(harness.deps, host.id);
+      await entered.promise;
+      let completed = false;
+      const waking = requestMachineResume(harness.deps, host.id).then(() => {
+        completed = true;
+      });
+      await Promise.resolve();
+      expect(completed).toBe(false);
+      expect(resumes).toBe(0);
+      finish.resolve();
+      await Promise.all([sleeping, waking]);
+      expect(resumes).toBe(1);
+      expect(getHost(harness.db, host.id)?.phase).toBe("active");
+      await requestMachineResume(harness.deps, host.id);
+      expect(resumes).toBe(1);
     }));
 
   it("waits for an in-flight suspension and resumes before dispatching new work", async () =>
