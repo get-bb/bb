@@ -103,6 +103,7 @@
     },
     "build:bundled": {
       "dependsOn": [
+        "build",
         "topo",
         "@bb/plugin-build#build",
         "@get-bb/plugin-sdk#build"
@@ -192,6 +193,9 @@
         "$TURBO_ROOT$/scripts/build-utils.mjs"
       ],
       "outputs": ["host-package/**"]
+    },
+    "bb-plugin-browser-automation#build": {
+      "dependsOn": ["topo", "@bb/cli#build"]
     },
     "bb-plugin-tasks#build": {
       // The tasks plugin's app bundle imports the @get-bb/plugin-sdk root at
