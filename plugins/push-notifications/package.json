@@ -22,7 +22,7 @@
   "scripts": {
     "test": "vitest run --config vitest.config.ts",
     "typecheck": "tsc --noEmit",
-    "build:bundled": "node ../../packages/plugin-build/scripts/build-bundled-plugin.mjs"
+    "build:bundled": "node ../../packages/plugin-build/dist/build-bundled-plugin.js"
   },
   "dependencies": {
     "undici": "^7.28.0",

@@ -26,7 +26,7 @@
     "test": "vitest run --config vitest.config.ts",
     "smoke": "tsx --tsconfig tsconfig.smoke.json --conditions=source smoke.ts",
     "smoke:install": "tsx --tsconfig tsconfig.smoke.json --conditions=source smoke-install.ts",
-    "build:bundled": "node ../../packages/plugin-build/scripts/build-bundled-plugin.mjs"
+    "build:bundled": "node ../../packages/plugin-build/dist/build-bundled-plugin.js"
   },
   "dependencies": {
     "zod": "^4.3.6"

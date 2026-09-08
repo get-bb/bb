@@ -14,7 +14,8 @@
     "clean": "rimraf tsconfig.tsbuildinfo",
     "test": "vitest run --config vitest.config.ts",
     "generate": "node ./scripts/generate-plugin-theme.mjs && node ./scripts/generate-runtime-export-manifest.mjs",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "build": "node ../../scripts/build-node-entry.mjs src/build-bundled-plugin.ts dist/build-bundled-plugin.js"
   },
   "dependencies": {
     "@bb/domain": "workspace:*",

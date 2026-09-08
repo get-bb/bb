@@ -102,7 +102,11 @@
       "outputs": ["dist/**"]
     },
     "build:bundled": {
-      "dependsOn": ["topo", "@get-bb/plugin-sdk#build"],
+      "dependsOn": [
+        "topo",
+        "@bb/plugin-build#build",
+        "@get-bb/plugin-sdk#build"
+      ],
       "inputs": [
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/packages/bb-app/package.json"

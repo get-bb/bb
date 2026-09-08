@@ -6,9 +6,9 @@ import { z } from "zod";
 import { copyBuiltinPlugin } from "./copy-builtin-plugin.js";
 import { resolvePluginBuildToolchain } from "./toolchain.js";
 
-const sourceRoot = process.argv[2];
-if (!sourceRoot) throw new Error("Missing plugin source directory");
+const sourceRoot = process.cwd();
 const repoRoot = path.resolve(import.meta.dirname, "../../..");
+process.chdir(repoRoot);
 const { version: bbVersion } = z
   .object({ version: z.string().min(1) })
   .parse(

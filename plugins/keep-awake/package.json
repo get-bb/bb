@@ -20,7 +20,7 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "vitest run --config vitest.config.ts",
-    "build:bundled": "node ../../packages/plugin-build/scripts/build-bundled-plugin.mjs"
+    "build:bundled": "node ../../packages/plugin-build/dist/build-bundled-plugin.js"
   },
   "dependencies": {
     "@bb/shared-ui": "workspace:*",

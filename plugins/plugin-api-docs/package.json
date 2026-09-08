@@ -23,7 +23,7 @@
   ],
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "build:bundled": "node ../../packages/plugin-build/scripts/build-bundled-plugin.mjs"
+    "build:bundled": "node ../../packages/plugin-build/dist/build-bundled-plugin.js"
   },
   "dependencies": {
     "@bb/plugin-api-map": "workspace:*"

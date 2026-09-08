@@ -44,7 +44,7 @@
     "build": "node --conditions=source --import tsx ../../scripts/build-official-plugins.mjs docs",
     "typecheck": "tsc --noEmit",
     "test": "vitest run --config vitest.config.ts",
-    "build:bundled": "node ../../packages/plugin-build/scripts/build-bundled-plugin.mjs"
+    "build:bundled": "node ../../packages/plugin-build/dist/build-bundled-plugin.js"
   },
   "devDependencies": {
     "@get-bb/plugin-sdk": "workspace:*",
