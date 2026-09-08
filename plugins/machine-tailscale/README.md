@@ -58,8 +58,9 @@ WebSocket, account-pool and plugin runtime traffic all use this endpoint.
 bb authentication remains required. A machine's grant uses `kind: direct`;
 releasing one grant leaves the shared mapping alone. Every availability check
 and acquisition rereads Tailscale status/configuration, including after a bb
-restart. Changing the saved authority is refused: restore it rather than
-stranding existing machines. If intentionally migrating endpoints, remove
+restart. Certificate eligibility must include the server's DNS name; a stale
+mapping is not ready when tailnet HTTPS has been disabled. Changing the saved
+authority is refused: restore it rather than stranding existing machines. If intentionally migrating endpoints, remove
 all dependent machines first and reinstall the plugin to clear its state.
 
 “Server URL reachable by machines” may remain empty. It applies only to
@@ -76,9 +77,14 @@ bb tailscale devices
 bb tailscale status
 bb tailscale configure 8443
 bb machine create --provider tailscale --inputs '{"deviceId":"<id-from-devices>","username":"dev"}'
-bb thread spawn --new-machine tailscale --machine-inputs '{"deviceId":"<id>","username":"dev"}' --prompt 'Inspect the workspace'
+bb thread spawn --project <git-project-id> --new-machine tailscale --machine-inputs '{"deviceId":"<id>","username":"dev"}' --environment-provider project-checkout --environment-inputs '{}' --prompt 'Inspect the workspace'
 bb machine remove <host-id>
 ```
+
+The thread example uses a project with a Git remote accessible from the new
+machine. Core clones that project before attaching the checkout; empty checkout
+inputs select its default path. Tailscale declares no default environment row,
+so `--environment-provider` is required with `--new-machine`.
 
 The core SDK equivalent is `sdk.hosts.create({ machineProviderId: "tailscale",
 projectId: null, inputs: { deviceId, username } })`. Full inputs add

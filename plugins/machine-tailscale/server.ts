@@ -176,12 +176,24 @@ export function createTailscalePlugin(client: TailscaleClient, ssh: SshRunner) {
               command: [
                 "sh",
                 "-c",
-                "command -v npm >/dev/null && node -e 'const [a,b]=process.versions.node.split(\".\").map(Number);process.exit(a>22||(a===22&&b>=19)?0:1)'",
+                "if ! command -v node >/dev/null || ! command -v npm >/dev/null; then exit 42; fi; node -e 'const [a,b]=process.versions.node.split(\".\").map(Number);process.exit(a>22||(a===22&&b>=19)?0:42)'",
               ],
               timeoutMs: 15_000,
               signal: context.signal,
+            }).catch((error: unknown) => {
+              if (context.signal.aborted) throw error;
+              throw new Error(
+                "SSH prerequisite check could not complete. Check the device connection and SSH access, then retry.",
+              );
             });
-            if (probe.exitCode !== 0)
+            if (probe.exitCode !== 0 && probe.exitCode !== 42)
+              return {
+                status: "failed",
+                failure: "transient",
+                message:
+                  "SSH prerequisite check could not complete. Check the device connection and SSH access, then retry.",
+              };
+            if (probe.exitCode === 42)
               return {
                 status: "failed",
                 failure: "terminal",

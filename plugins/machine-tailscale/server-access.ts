@@ -9,6 +9,10 @@ const endpointSchema = z
 export function registerAccess(bb: BbPluginApi, client: TailscaleClient) {
   async function inspect(port: number, signal: AbortSignal) {
     const state = await client.status(signal);
+    if (!state.certDomains.includes(state.self.DNSName))
+      throw new Error(
+        "Enable HTTPS in the Tailscale tailnet settings so this server's DNS name is eligible for a certificate.",
+      );
     return validateServe(
       await client.serveStatus(signal),
       state.self.DNSName,

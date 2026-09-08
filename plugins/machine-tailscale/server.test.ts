@@ -1,4 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  createConnection,
+  migrate,
+  getPluginKvValue,
+  setPluginKvValue,
+  deletePluginKvValue,
+  listPluginKvKeys,
+} from "@bb/db";
 import { createFakePluginHost } from "@get-bb/plugin-sdk/testing";
 import type {
   JsonValue,
@@ -20,10 +28,33 @@ async function setup() {
     pluginId: "machine-tailscale",
     loopbackBaseUrl: "http://127.0.0.1:23354",
   });
-  dispose.push(() => f.harness.lifecycle.dispose());
+  const db = createConnection(":memory:");
+  migrate(db);
+  f.bb.storage.kv = {
+    async get<T>(key: string): Promise<T | undefined> {
+      const raw = getPluginKvValue(db, "machine-tailscale", key);
+      return raw === undefined ? undefined : JSON.parse(raw);
+    },
+    async set(key, value) {
+      const raw = JSON.stringify(value);
+      if (raw === undefined) throw new Error("KV value must be JSON");
+      setPluginKvValue(db, "machine-tailscale", key, raw);
+    },
+    async delete(key) {
+      deletePluginKvValue(db, "machine-tailscale", key);
+    },
+    async list(prefix) {
+      return listPluginKvKeys(db, "machine-tailscale", prefix);
+    },
+  };
+  dispose.push(async () => {
+    await f.harness.lifecycle.dispose();
+    db.$client.close();
+  });
   const state = parseStatus(
     JSON.stringify({
       BackendState: "Running",
+      CertDomains: ["server.example.ts.net"],
       Self: {
         ID: "self",
         HostName: "Server",
@@ -175,7 +206,7 @@ describe("Tailscale lifecycle and access", () => {
   });
   it("reports missing Node before enrollment or remote installation", async () => {
     const f = await setup();
-    f.exec.mockResolvedValueOnce({ exitCode: 1, stdout: "", stderr: "" });
+    f.exec.mockResolvedValueOnce({ exitCode: 42, stdout: "", stderr: "" });
     expect(await f.provider.create(f.context)).toMatchObject({
       status: "failed",
       failure: "terminal",
@@ -183,6 +214,46 @@ describe("Tailscale lifecycle and access", () => {
     });
     expect(f.prepareEnrollment).not.toHaveBeenCalled();
     expect(f.bootstrap).not.toHaveBeenCalled();
+  });
+  it.each([255, 1])(
+    "keeps SSH preflight exit %i retryable with the same launch key",
+    async (exitCode) => {
+      const f = await setup();
+      f.exec.mockResolvedValueOnce({
+        exitCode,
+        stdout: "",
+        stderr: "connection lost",
+      });
+      expect(await f.provider.create(f.context)).toMatchObject({
+        status: "failed",
+        failure: "transient",
+        message: expect.stringContaining(
+          "SSH prerequisite check could not complete",
+        ),
+      });
+      expect(f.prepareEnrollment).not.toHaveBeenCalled();
+      expect(f.bootstrap).not.toHaveBeenCalled();
+      expect(await f.bb.storage.kv.list()).toEqual([]);
+      expect(
+        await f.provider.create({ ...f.context, attempt: 2 }),
+      ).toMatchObject({ status: "created" });
+      expect(f.bootstrap).toHaveBeenCalledOnce();
+    },
+  );
+  it("keeps connection exceptions retryable without reporting missing Node", async () => {
+    const f = await setup();
+    f.exec.mockRejectedValueOnce(new Error("connect ECONNRESET"));
+    expect(await f.provider.create(f.context)).toMatchObject({
+      status: "failed",
+      failure: "transient",
+      message: expect.stringContaining(
+        "Check the device connection and SSH access",
+      ),
+    });
+    expect(f.prepareEnrollment).not.toHaveBeenCalled();
+    expect(await f.provider.create({ ...f.context, attempt: 2 })).toMatchObject(
+      { status: "created" },
+    );
   });
   it("does not bootstrap or uninstall when cancelled at a fresh checkpoint", async () => {
     const f = await setup();
@@ -265,6 +336,31 @@ describe("Tailscale lifecycle and access", () => {
     expect(req?.command).toContain("/home/dev/my node/bin");
     expect(req?.command.join(" ")).not.toContain("private-bundle");
   });
+  it.each([{ domains: [] }, { domains: ["another.example.ts.net"] }])(
+    "requires this endpoint's certificate eligibility for every access operation (%j)",
+    async ({ domains }) => {
+      const f = await setup();
+      await f.harness.behavior.callRpc("configure", { port: 8443 });
+      f.state.certDomains = domains;
+      await expect(
+        f.harness.behavior.callRpc("configure", { port: 8443 }),
+      ).rejects.toThrow("Enable HTTPS");
+      expect(await f.access.availability()).toMatchObject({
+        status: "setup-required",
+        message: expect.stringContaining("Enable HTTPS"),
+      });
+      expect(
+        await f.harness.behavior.callRpc("accessStatus", null),
+      ).toMatchObject({ available: false });
+      await expect(
+        f.access.acquire({
+          key: "launch",
+          hostId: "host_test",
+          signal: f.context.signal,
+        }),
+      ).rejects.toThrow("Enable HTTPS");
+    },
+  );
   it("validates explicit endpoints through CLI/RPC, detects drift, never tears down shared Serve", async () => {
     const f = await setup();
     expect(await f.access.availability()).toMatchObject({

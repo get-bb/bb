@@ -17,6 +17,7 @@ const peer = {
 };
 export const fixture = {
   BackendState: "Running",
+  CertDomains: ["SERVER.example.ts.net."],
   Self: self,
   Peer: { a: peer },
 };
@@ -59,6 +60,22 @@ describe("tailnet boundaries", () => {
         online: false,
       },
     ]);
+  });
+  it("normalizes certificate eligibility and defaults absent eligibility to empty", () => {
+    expect(parseStatus(JSON.stringify(fixture)).certDomains).toEqual([
+      "server.example.ts.net",
+    ]);
+    expect(
+      parseStatus(JSON.stringify({ ...fixture, CertDomains: undefined }))
+        .certDomains,
+    ).toEqual([]);
+    expect(
+      parseStatus(JSON.stringify({ ...fixture, CertDomains: null }))
+        .certDomains,
+    ).toEqual([]);
+    expect(() =>
+      parseStatus(JSON.stringify({ ...fixture, CertDomains: ["bad/domain"] })),
+    ).toThrow();
   });
   it("rejects logged-out and malformed states or unsafe DNS", () => {
     expect(() => parseStatus("not json")).toThrow();

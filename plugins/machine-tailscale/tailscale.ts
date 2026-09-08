@@ -16,6 +16,11 @@ const peerSchema = z.object({
 const statusSchema = z.object({
   BackendState: z.string(),
   Self: peerSchema,
+  CertDomains: z
+    .array(dnsName)
+    .max(1000)
+    .nullish()
+    .transform((domains) => domains ?? []),
   Peer: z.record(z.string(), peerSchema).default({}),
 });
 export function parseStatus(raw: string) {
@@ -37,7 +42,7 @@ export function parseStatus(raw: string) {
       online: p.Online,
     }))
     .sort((a, b) => a.label.localeCompare(b.label));
-  return { self: status.Self, devices };
+  return { self: status.Self, devices, certDomains: status.CertDomains };
 }
 const serveSchema = z.object({
   TCP: z
