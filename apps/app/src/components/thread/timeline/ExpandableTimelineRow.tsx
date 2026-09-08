@@ -118,7 +118,7 @@ function ExpandableTimelineRowComponent({
     timelineRowHorizontalPaddingClassName(horizontalPadding);
   const handleToggle = useCallback((): void => {
     setManualExpansionOverride(!isExpanded);
-  }, [isExpanded]);
+  }, [isExpanded, setManualExpansionOverride]);
   const handleCollapsedPreviewClick = useCallback(
     (event: CollapsedPreviewClickEvent): void => {
       if (
