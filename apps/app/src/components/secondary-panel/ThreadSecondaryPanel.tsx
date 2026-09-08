@@ -49,10 +49,7 @@ import type {
   SecondaryPanelTabReorderHandler,
 } from "./secondaryPanelTab";
 import { useEnvironmentDiffFiles } from "@/hooks/queries/environment-queries";
-import {
-  DEFAULT_CODE_OVERFLOW_MODE,
-  type CodeOverflowMode,
-} from "@/lib/code-overflow-mode";
+import { useGitDiffLineOverflowModePreference } from "@/lib/git-diff-view-preferences";
 import type { DiffPresentation } from "@/components/code/code-rendering";
 import { useGitDiffPanelState } from "./git-diff/useGitDiffPanelState";
 import { useResponsiveGitDiffPanelDisplay } from "./git-diff/useResponsiveGitDiffPanelDisplay";
@@ -267,11 +264,10 @@ export function ThreadSecondaryPanel({
   const {
     gitDiffDisplayMode,
     handleGitDiffDisplayModeChange,
-    handleSecondaryPanelResizeStart,
     handleSecondaryPanelWidthChange,
   } = useResponsiveGitDiffPanelDisplay({ isSecondaryPanelOpen: isOpen });
   const {
-    handleSecondaryPanelDragging: handleResizeDragging,
+    handleSecondaryPanelDragging,
     handleSecondaryPanelResize,
     handleSecondaryPanelResizePointerDownCapture,
     persistedWidthPercent,
@@ -281,16 +277,6 @@ export function ThreadSecondaryPanel({
     isSecondaryPanelOpen: isOpen,
     onPanelWidthChange: handleSecondaryPanelWidthChange,
   });
-  const handleSecondaryPanelDragging: SecondaryPanelDraggingHandler =
-    useCallback(
-      (isDragging) => {
-        if (isDragging) {
-          handleSecondaryPanelResizeStart();
-        }
-        handleResizeDragging(isDragging);
-      },
-      [handleResizeDragging, handleSecondaryPanelResizeStart],
-    );
   const hasPanelExpandedRef = useRef(false);
   useLayoutEffect(() => {
     hasPanelExpandedRef.current = false;
@@ -395,7 +381,7 @@ export function ThreadSecondaryPanel({
   );
   const [desktopInfo] = useState(getBbDesktopInfo);
   const [gitDiffLineOverflowMode, setGitDiffLineOverflowMode] =
-    useState<CodeOverflowMode>(DEFAULT_CODE_OVERFLOW_MODE);
+    useGitDiffLineOverflowModePreference();
   const usesDesktopChrome = shouldUseMacosDesktopChrome(desktopInfo);
   const desktopWindowState = useDesktopWindowState();
   const isSidebarShowing = useOptionalIsSidebarShowing();
