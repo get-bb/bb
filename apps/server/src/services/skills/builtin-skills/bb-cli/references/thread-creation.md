@@ -10,7 +10,7 @@
 - Select a target with `--environment`, `--new-environment`, `--base-branch`,
   or `--machine`. Select execution with `--provider`, `--model`,
   `--reasoning-level`, `--service-tier`, and `--permission-mode`.
-- List plugin-provisioned environment choices with `bb environment providers`.
+- List plugin-provisioned environment choices with `bb environment providers`. Add `--project <id>` and optionally `--machine <id>` to omit providers whose requirements are unmet; eligible providers retain setup or availability messages. Without a machine, the project listing includes providers eligible on any persistent machine.
   Add `--project <id>` and `--machine <id-or-name>` (`--host` is an alias) to
   resolve each provider's `available`, `setup-required`, or `unavailable`
   status for that project and machine. `--json` includes availability, each

@@ -393,11 +393,17 @@ function attachThreadToEnvironment(
   deps: Pick<AppDeps, "db" | "hub">,
   args: AttachThreadToEnvironmentArgs,
 ): ThreadProvisionProvisionableContext {
-  if (args.thread.environmentId !== args.environment.id) {
-    updateThread(deps.db, deps.hub, args.thread.id, {
-      environmentId: args.environment.id,
-    });
-  }
+  deps.db.transaction(
+    (tx) => {
+      if (args.thread.environmentId !== args.environment.id) {
+        updateThread(tx, deps.hub, args.thread.id, {
+          environmentId: args.environment.id,
+        });
+      }
+      attachProviderLaunch(tx, args.thread.id, args.environment.id);
+    },
+    { behavior: "immediate" },
+  );
   if (
     isProvisionableContext(args.context) &&
     args.context.state.environmentId === args.environment.id

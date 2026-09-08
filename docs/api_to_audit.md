@@ -2516,3 +2516,9 @@ first-party environment host module consumes them for checkout and worktree.
    `child.kill`, so a plugin's script teardown leaks grandchildren on Windows.
    Confirm whether the SDK should expose the platform check at all, or offer
    one `stopScript` that is correct everywhere.
+
+- `PluginEnvironmentProviderCreateContext.experimental_claimPath(path)`: durable,
+  atomic host/path reservation on the launch row before provider mutation; false
+  for competing claims or stale attempts. Released by attachment, settled failure,
+  or completed cancellation cleanup. Stabilize after restart, cancellation,
+  competing checkout, and path-normalization behavior has been audited.

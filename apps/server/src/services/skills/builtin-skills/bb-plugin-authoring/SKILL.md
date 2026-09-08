@@ -43,7 +43,7 @@ the same change.
 - Read references/backend-api-index.md to check every public backend, host,
   AI-service, and test export.
 - Read references/backend-events.md for lifecycle events, environment and
-  machine providers, HTTP, RPC, realtime, background services, and schedules.
+  HTTP, RPC, realtime, background services, and schedules.
 - Read references/backend-cli-agents.md for CLI commands, input forms, agent
   tools, agent configuration, and helper AI services.
 - Read references/providers.md only when the plugin registers an agent provider.

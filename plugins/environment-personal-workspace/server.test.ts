@@ -106,6 +106,7 @@ async function setup() {
     attempt: 1,
     pathKey: THREAD_ID,
     rebuild: false,
+    experimental_claimPath: () => true,
     previous: null,
     report,
     signal: new AbortController().signal,

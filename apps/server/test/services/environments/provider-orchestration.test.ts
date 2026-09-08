@@ -1,3 +1,7 @@
+import { z } from "zod";
+import type { BbPluginApi } from "@get-bb/plugin-sdk";
+import { createFakePluginHost } from "@get-bb/plugin-sdk/testing";
+import { handleUpdateEnvironmentDirectoryToolCall } from "../../../src/services/threads/thread-environment-directory.js";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { eq } from "drizzle-orm";
 import {
@@ -20,6 +24,7 @@ import {
   attachProviderLaunch,
   cancelProviderLaunch,
   sweepProviderEnvironment,
+  sweepProviderLifecycles,
 } from "../../../src/services/environments/provider-orchestration.js";
 import { toEnvironmentResponse } from "../../../src/services/environments/environment-response.js";
 import { setPluginEnvironmentProviderBridge } from "../../../src/services/plugins/plugin-environment-provider-registry.js";
@@ -35,6 +40,7 @@ import {
   seedHostSession,
   seedProjectWithSource,
   seedThread,
+  seedTurnStarted,
 } from "../../helpers/seed.js";
 import {
   withTestHarness,
@@ -136,6 +142,221 @@ afterEach(() => {
 });
 
 describe("core environment orchestration", () => {
+  it("reserves a checkout before concurrent branch mutations until attachment", async () =>
+    withTestHarness(async (harness) => {
+      const fixture = setup(harness);
+      let release: () => void = () => {};
+      const gate = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const switched: string[] = [];
+      const fake = createFakePluginHost({
+        pluginId: "environment-project-checkout",
+        sdk: { environments: { list: () => [] }, threads: { list: () => [] } },
+        experimental_callHostRpc: async ({ input }) => {
+          const parsed = z
+            .object({
+              path: z.string(),
+              branch: z.object({ name: z.string() }),
+            })
+            .parse(input);
+          switched.push(parsed.branch.name);
+          await gate;
+          return {
+            status: "attached",
+            path: parsed.path,
+            branchName: parsed.branch.name,
+          };
+        },
+      });
+      const module = z
+        .object({
+          default: z.custom<(bb: BbPluginApi) => Promise<void>>(
+            (value) => typeof value === "function",
+          ),
+        })
+        .parse(
+          await import(
+            new URL(
+              "../../../../../plugins/environment-project-checkout/server.ts",
+              import.meta.url,
+            ).href
+          ),
+        );
+      await module.default(fake.bb);
+      const provider =
+        fake.harness.registrations.environmentProviders.get("project-checkout");
+      if (provider === undefined) throw new Error("Missing checkout provider");
+      const record = { pluginId: "environment-project-checkout", provider };
+      setPluginEnvironmentProviderBridge({
+        listEnvironmentProviders: () => [record],
+        getEnvironmentProvider: () => record,
+        invokeProvider: async (_id, _label, run) => ({
+          ok: true,
+          value: await run(),
+        }),
+        decisionTimeoutMs: 10_000,
+      });
+      const second = seedThread(harness.deps, {
+        projectId: fixture.context.project.id,
+        status: "starting",
+      });
+      const context = {
+        ...fixture.context,
+        projectCheckout: { path: "/tmp/project" },
+        inputs: { branch: { kind: "existing", name: "release" } },
+      };
+      try {
+        askProviderLaunch(harness.deps, record, context, null);
+        askProviderLaunch(
+          harness.deps,
+          record,
+          {
+            ...context,
+            thread: toThreadResponseFromThread(harness.deps, {
+              thread: second,
+            }),
+            inputs: { branch: { kind: "existing", name: "feature" } },
+          },
+          null,
+        );
+        await expect
+          .poll(() => getEnvironmentLaunch(harness.db, second.id)?.phase)
+          .toBe("failed");
+        expect(getEnvironmentLaunch(harness.db, second.id)?.message).toContain(
+          "another thread is using this workspace",
+        );
+        expect(switched).toEqual(["release"]);
+        expect(fixture.row()).toMatchObject({
+          hostId: fixture.host.id,
+          path: "/tmp/project",
+          environmentId: null,
+          phase: "creating",
+        });
+      } finally {
+        release();
+        await fixture.settled();
+      }
+      expect(fixture.row().phase).toBe("ready");
+    }));
+
+  it("reuses a same-project worktree before checkout validation", async () =>
+    withTestHarness(async (harness) => {
+      const validate = vi.fn(() => ({
+        action: "refuse" as const,
+        message: "reuse that environment instead",
+      }));
+      const fixture = setup(harness, { id: "project-checkout", validate });
+      fixture.ask();
+      await fixture.settled();
+      const currentId = fixture.attach();
+      const current = getEnvironment(harness.db, currentId)!;
+      updateThread(harness.db, harness.hub, fixture.thread.id, {
+        environmentId: currentId,
+      });
+      const target = createEnvironment(harness.db, harness.hub, {
+        projectId: fixture.context.project.id,
+        hostId: fixture.host.id,
+        path: "/tmp/same-project-worktree",
+        status: "ready",
+        providerOwnsPath: true,
+        environmentProvider: {
+          environmentProviderId: "git-worktree",
+          instanceKey: "worktree",
+          selection: fixture.row().selection,
+        },
+      });
+      seedTurnStarted(harness.deps, {
+        environmentId: currentId,
+        providerThreadId: "provider_directory",
+        sequence: 1,
+        threadId: fixture.thread.id,
+        turnId: "turn_directory",
+      });
+      const result = await handleUpdateEnvironmentDirectoryToolCall(
+        harness.deps,
+        {
+          currentEnvironment: current,
+          thread: { ...fixture.thread, environmentId: currentId },
+          turnId: "turn_directory",
+          input: { path: target.path },
+        },
+      );
+      expect(result.success).toBe(true);
+      expect(validate).not.toHaveBeenCalled();
+    }));
+
+  it.each(["removal", "cancellation"])(
+    "starts unrelated %s cleanup while the first operation is pending",
+    async (kind) =>
+      withTestHarness(async (harness) => {
+        let release: () => void = () => {};
+        const gate = new Promise<void>((resolve) => {
+          release = resolve;
+        });
+        const calls: string[] = [];
+        const fixture = setup(harness, {
+          policy: { retireGraceMs: 0 },
+          remove: async ({ pathKey }) => {
+            calls.push(pathKey);
+            if (pathKey === fixture.thread.id) await gate;
+            return { status: "removed" };
+          },
+        });
+        fixture.ask();
+        await fixture.settled();
+        const second = seedThread(harness.deps, {
+          projectId: fixture.context.project.id,
+          status: "starting",
+        });
+        saveEnvironmentLaunch(harness.db, {
+          ...fixture.row(),
+          threadId: second.id,
+          pathKey: second.id,
+          path: "/tmp/second",
+        });
+        if (kind === "removal") {
+          fixture.attach();
+          const env = createEnvironment(harness.db, harness.hub, {
+            projectId: fixture.context.project.id,
+            hostId: fixture.host.id,
+            path: "/tmp/second",
+            status: "ready",
+            providerOwnsPath: true,
+            environmentProvider: {
+              environmentProviderId: fixture.record.provider.id,
+              instanceKey: second.id,
+              selection: fixture.row().selection,
+            },
+          });
+          attachProviderLaunch(harness.db, second.id, env.id);
+        } else {
+          for (const id of [fixture.thread.id, second.id]) {
+            saveEnvironmentLaunch(harness.db, {
+              ...getEnvironmentLaunch(harness.db, id)!,
+              phase: "cancelled",
+              cancelPending: true,
+            });
+          }
+        }
+        let enumerated = false;
+        const sweep = sweepProviderLifecycles(harness.deps).then(() => {
+          enumerated = true;
+        });
+        try {
+          await expect.poll(() => calls).toContain(second.id);
+          await expect.poll(() => enumerated).toBe(true);
+          await sweepProviderLifecycles(harness.deps);
+          expect(calls.filter((id) => id === fixture.thread.id)).toHaveLength(
+            1,
+          );
+        } finally {
+          release();
+          await sweep;
+        }
+      }),
+  );
+
   it("runs one long create call and records the ready result", async () =>
     withTestHarness(async (harness) => {
       const fixture = setup(harness);

@@ -1,6 +1,5 @@
 import {
   askProviderLaunch,
-  attachProviderLaunch,
   cancelProviderLaunch,
   persistPendingProviderRequest,
 } from "../environments/provider-orchestration.js";
@@ -463,11 +462,6 @@ export async function resolveEnvironmentProvider(
     placement.environmentIntent.type === "reuse" &&
     decision.environment.type === "host"
   ) {
-    attachProviderLaunch(
-      deps.db,
-      thread.id,
-      placement.environmentIntent.environmentId,
-    );
     await refreshAttachedEnvironmentBranch(deps, {
       environmentId: placement.environmentIntent.environmentId,
       hostId: decision.environment.hostId,

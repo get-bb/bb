@@ -9,6 +9,7 @@ import { callHostRetryableOnlineRpc } from "../hosts/online-rpc.js";
 import {
   getNonDestroyedHostWithStatus,
   requirePublicProject,
+  listPublicHostsWithStatus,
 } from "../lib/entity-lookup.js";
 import {
   environmentProviderDecisionTimeoutMs,
@@ -81,8 +82,22 @@ export function resolveEnvironmentProviderAvailability(
   deps: WorkSessionDeps,
   record: PluginEnvironmentProviderRecord,
   query: { projectId: string; hostId?: string },
-): Promise<Availability> {
-  return resolveAvailability(deps, record, query);
+): Promise<Availability | null> {
+  if (query.hostId !== undefined)
+    return resolveAvailability(deps, record, query);
+  const hosts = listPublicHostsWithStatus(deps).filter(
+    (host) => host.type === "persistent",
+  );
+  return Promise.all(
+    hosts.map((host) =>
+      resolveAvailability(deps, record, { ...query, hostId: host.id }),
+    ),
+  ).then(
+    (rows) =>
+      rows.find((row) => row?.status === "available") ??
+      rows.find((row) => row !== null) ??
+      null,
+  );
 }
 
 function resolvePluginAvailability(
@@ -181,56 +196,32 @@ async function resolveAvailability(
   deps: WorkSessionDeps,
   record: PluginEnvironmentProviderRecord,
   query: { projectId: string; hostId?: string },
-): Promise<Availability> {
+): Promise<Availability | null> {
   const project = requirePublicProject(deps.db, query.projectId);
   const host =
     query.hostId === undefined
       ? null
       : getNonDestroyedHostWithStatus(deps, query.hostId);
-  if (query.hostId !== undefined && host === null) {
-    return {
-      status: "unavailable",
-      message: "The selected machine is unavailable.",
-    };
-  }
+  if (host === null || host.type !== "persistent") return null;
   const requires = record.provider.requires;
-  if (requires.projectless && project.id !== PERSONAL_PROJECT_ID) {
-    return {
-      status: "unavailable",
-      message: "This environment provider is only available without a project.",
-    };
-  }
+  if (requires.projectless !== (project.id === PERSONAL_PROJECT_ID))
+    return null;
   const source =
     host === null ? null : getProjectSourceByHost(deps.db, project.id, host.id);
   const projectCheckout =
     source !== null && isLocalPathProjectSource(source)
       ? { path: source.path }
       : null;
-  if (requires.projectCheckout && projectCheckout === null) {
-    return {
-      status: "unavailable",
-      message: "This project has no checkout on the selected machine.",
-    };
-  }
+  if (requires.projectCheckout && projectCheckout === null) return null;
   if (requires.gitCheckout) {
-    if (host === null || projectCheckout === null) {
-      return {
-        status: "unavailable",
-        message: "This project has no git checkout on the selected machine.",
-      };
-    }
+    if (projectCheckout === null) return null;
     const availability = await resolveGitCheckoutAvailability(deps, {
       hostId: host.id,
       path: projectCheckout.path,
     });
-    if (availability.status !== "available") return availability;
+    if (availability.status !== "available") return null;
   }
-  if (requires.gitRemote && project.gitRemoteUrl === null) {
-    return {
-      status: "unavailable",
-      message: "This project has no git remote.",
-    };
-  }
+  if (requires.gitRemote && project.gitRemoteUrl === null) return null;
   return resolvePluginAvailability(record, {
     project,
     host,

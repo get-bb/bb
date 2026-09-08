@@ -741,6 +741,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Use experimental_BranchPicker for a standard branch choice, or compose experimental_useBranches with experimental_useCheckoutState when it needs checkout-aware branch selection",
           "Run one idempotent long create call that returns a created directory or terminal/transient failure; core owns attempts and retry behavior",
           "Use core's pathKey for stable resource identity; core records it as the environment instance key",
+          "Reserve a shared checkout before mutation with create.experimental_claimPath; core holds the host/path claim through attachment or cleanup",
           "Name a branch the way bb would, from the suggestedBranchName core hands every create, and stream progress with report.step and report.log",
           "Honor create and remove abort signals; core aborts create before asking remove to clean everything under the same path key",
           "Work on the existing or newly provider-created machine carried by the selection, returning the path it produced",

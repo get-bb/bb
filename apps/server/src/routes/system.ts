@@ -308,56 +308,63 @@ export function registerSystemRoutes(
         ? null
         : requirePublicProject(deps.db, query.projectId);
     return context.json({
-      providers: await Promise.all(
-        listEnvironmentProviders()
-          .filter(
-            (record) =>
-              project === null ||
-              record.provider.requires.projectless ===
-                (project.id === PERSONAL_PROJECT_ID),
-          )
-          .sort((left, right) => {
-            const leftIndex = LEADING_ENVIRONMENT_PROVIDER_IDS.indexOf(
-              left.provider.id,
-            );
-            const rightIndex = LEADING_ENVIRONMENT_PROVIDER_IDS.indexOf(
-              right.provider.id,
-            );
-            if (leftIndex !== -1 || rightIndex !== -1) {
-              if (leftIndex === -1) return 1;
-              if (rightIndex === -1) return -1;
-              return leftIndex - rightIndex;
-            }
-            return (
-              left.provider.displayName.localeCompare(
-                right.provider.displayName,
-              ) || left.provider.id.localeCompare(right.provider.id)
-            );
-          })
-          .map(async (record) => ({
-            id: record.provider.id,
-            displayName: record.provider.displayName,
-            icon: record.provider.icon,
-            logoUrl:
-              record.icon === undefined
-                ? null
-                : `/api/v1/system/providers/${encodeURIComponent(`environment:${record.provider.id}`)}/logo?h=${record.icon.hash}`,
-            pluginId: record.pluginId,
-            requires: record.provider.requires,
-            inputs: record.provider.inputsJsonSchema,
-            acceptsEmptyInputs:
-              await environmentProviderAcceptsEmptyInputs(record),
-            availability:
-              query.projectId === undefined
-                ? null
-                : await resolveEnvironmentProviderAvailability(deps, record, {
-                    projectId: query.projectId,
-                    ...(query.hostId === undefined
-                      ? {}
-                      : { hostId: query.hostId }),
-                  }),
-          })),
-      ),
+      providers: (
+        await Promise.all(
+          listEnvironmentProviders()
+            .filter(
+              (record) =>
+                project === null ||
+                record.provider.requires.projectless ===
+                  (project.id === PERSONAL_PROJECT_ID),
+            )
+            .sort((left, right) => {
+              const leftIndex = LEADING_ENVIRONMENT_PROVIDER_IDS.indexOf(
+                left.provider.id,
+              );
+              const rightIndex = LEADING_ENVIRONMENT_PROVIDER_IDS.indexOf(
+                right.provider.id,
+              );
+              if (leftIndex !== -1 || rightIndex !== -1) {
+                if (leftIndex === -1) return 1;
+                if (rightIndex === -1) return -1;
+                return leftIndex - rightIndex;
+              }
+              return (
+                left.provider.displayName.localeCompare(
+                  right.provider.displayName,
+                ) || left.provider.id.localeCompare(right.provider.id)
+              );
+            })
+            .map(async (record) => {
+              const availability =
+                query.projectId === undefined
+                  ? null
+                  : await resolveEnvironmentProviderAvailability(deps, record, {
+                      projectId: query.projectId,
+                      ...(query.hostId === undefined
+                        ? {}
+                        : { hostId: query.hostId }),
+                    });
+              if (query.projectId !== undefined && availability === null)
+                return null;
+              return {
+                id: record.provider.id,
+                displayName: record.provider.displayName,
+                icon: record.provider.icon,
+                logoUrl:
+                  record.icon === undefined
+                    ? null
+                    : `/api/v1/system/providers/${encodeURIComponent(`environment:${record.provider.id}`)}/logo?h=${record.icon.hash}`,
+                pluginId: record.pluginId,
+                requires: record.provider.requires,
+                inputs: record.provider.inputsJsonSchema,
+                acceptsEmptyInputs:
+                  await environmentProviderAcceptsEmptyInputs(record),
+                availability,
+              };
+            }),
+        )
+      ).filter((provider) => provider !== null),
     });
   });
 
