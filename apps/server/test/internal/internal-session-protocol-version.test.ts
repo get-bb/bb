@@ -38,7 +38,7 @@ describe("internal session protocol version", () => {
             platform: "darwin",
             dataDir: "/tmp/host-protocol-data",
             localApiPort: 38_888,
-            protocolVersion: 187,
+            protocolVersion: 188,
             activeThreads: [],
             loadedEnvironments: [],
           }),
@@ -51,11 +51,11 @@ describe("internal session protocol version", () => {
           retryUpdate: false,
           serverProtocolVersion: HOST_DAEMON_PROTOCOL_VERSION,
         },
-        message: `Daemon protocol version 187 does not match server protocol version ${HOST_DAEMON_PROTOCOL_VERSION}`,
+        message: `Daemon protocol version 188 does not match server protocol version ${HOST_DAEMON_PROTOCOL_VERSION}`,
       });
       expect(
         getHost(server.db, "host-protocol")?.lastRejectedProtocolVersion,
-      ).toBe(187);
+      ).toBe(188);
 
       const preLocalApiPortProtocolVersion = 139;
       const oldDaemonResponse = await fetch(

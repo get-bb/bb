@@ -1,8 +1,8 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "89da8091-09f9-4ee9-90cb-1b8bf3ceca73",
-  "prevId": "0b0b3298-0afd-4466-99ff-c2360d426e74",
+  "id": "9eb00245-e3a7-4c84-be42-505cceea5521",
+  "prevId": "927f2864-53bc-4bd4-b416-3a7eba2b39e8",
   "tables": {
     "app_settings": {
       "name": "app_settings",
@@ -539,6 +539,13 @@
           "notNull": false,
           "autoincrement": false
         },
+        "claim_path": {
+          "name": "claim_path",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
         "owns_path": {
           "name": "owns_path",
           "type": "integer",
@@ -657,6 +664,13 @@
         },
         "path": {
           "name": "path",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "canonical_path": {
+          "name": "canonical_path",
           "type": "text",
           "primaryKey": false,
           "notNull": false,
