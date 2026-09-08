@@ -718,6 +718,9 @@ importers:
       '@parcel/watcher':
         specifier: 2.5.6
         version: 2.5.6
+      bb-environment-provider-host:
+        specifier: workspace:*
+        version: link:../../packages/environment-provider-host
       better-sqlite3:
         specifier: 12.10.0
         version: 12.10.0

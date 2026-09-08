@@ -20,7 +20,6 @@ import {
   withGitRefMutationLock,
   withWorktreeMetadataLock,
 } from "bb-environment-provider-host/locks";
-import { runSetupScript, runTeardownScript } from "./setup-script.js";
 import {
   createProvisionCancelledError,
   emitCwd,
@@ -483,13 +482,6 @@ async function finishWorktreeSetup(args: CreateWorktreeArgs): Promise<void> {
     shellPath: args.shellPath,
     signal: args.signal,
   });
-  await runSetupScript({
-    workspacePath: args.targetPath,
-    timeoutMs: args.timeoutMs,
-    ...(args.shellPath !== undefined ? { shellPath: args.shellPath } : {}),
-    ...(args.onProgress !== undefined ? { onProgress: args.onProgress } : {}),
-    ...(args.signal !== undefined ? { signal: args.signal } : {}),
-  });
   await fs.writeFile(args.completionPath, `${args.branchName}\n`, "utf8");
 }
 
@@ -688,13 +680,6 @@ export async function removeWorktree(args: RemoveWorktreeArgs): Promise<void> {
 
   await experimental_killProcessesWithCwdUnder({ directory: workspacePath });
   throwIfProvisionAborted(args.signal);
-  await runTeardownScript({
-    workspacePath,
-    timeoutMs: args.timeoutMs,
-    ...(args.shellPath !== undefined ? { shellPath: args.shellPath } : {}),
-    ...(args.onProgress !== undefined ? { onProgress: args.onProgress } : {}),
-    ...(args.signal !== undefined ? { signal: args.signal } : {}),
-  });
 
   const commonDirResult = await runGit(["rev-parse", "--git-common-dir"], {
     cwd: workspacePath,

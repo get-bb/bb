@@ -401,6 +401,20 @@ export async function resolveEnvironmentProvider(
     context.request,
   );
   if (decision.action === "reject") {
+    const entries = launchEntries({
+      ask,
+      log: decision.log,
+      now: Date.now(),
+      step: null,
+    });
+    if (entries.length > 0)
+      appendThreadProvisioningEvent(deps, {
+        threadId: thread.id,
+        environmentId: null,
+        provisioningId: context.state.provisioningId,
+        status: "active",
+        entries,
+      });
     throw new ApiError(409, "environment_provider_rejected", decision.message, {
       details: { environmentProviderId: intent.environmentProviderId },
     });

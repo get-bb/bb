@@ -1,3 +1,4 @@
+import { runEnvironmentHook } from "./environment-hooks.js";
 import { canonicalEnvironmentPath } from "./path-admission.js";
 import {
   createMetadataPendingContext,
@@ -268,6 +269,25 @@ async function runCreate(
       record.provider.policy.createTimeoutMs,
       controller,
     );
+    if (result.status === "created") {
+      mutateLaunch(deps, launch, ["creating", "cancelled"], (row) => {
+        row.hostId = context.host.id;
+        row.path = result.path;
+        row.ownsPath = result.ownsPath;
+        row.mergeBaseBranch = result.mergeBaseBranch ?? null;
+        row.resource = result.resource ?? null;
+      });
+      controller.signal.throwIfAborted();
+      if (result.ownsPath) {
+        await runEnvironmentHook(deps, {
+          hostId: context.host.id,
+          path: result.path,
+          kind: "setup",
+          report: launchReporter(deps, record, launch),
+          signal: controller.signal,
+        });
+      }
+    }
     changed = mutateLaunch(deps, launch, ["creating"], (row) => {
       if (result.status === "created") {
         row.phase = "ready";
@@ -324,7 +344,7 @@ function startCreate(
 
 export type ProviderLaunchDecision =
   | { action: "wait"; reason: string; sendAt: number; log: string }
-  | { action: "reject"; message: string }
+  | { action: "reject"; message: string; log: string }
   | {
       action: "ready";
       environment: {
@@ -502,6 +522,7 @@ export function askProviderLaunch(
     return {
       action: "reject",
       message: row.message ?? "Environment creation failed",
+      log,
     };
   }
   if (row.phase === "creating") startCreate(deps, record, row, context);
@@ -536,6 +557,22 @@ async function runCancel(
     throw new Error(
       `Environment provider "${launch.providerId}" is unavailable.`,
     );
+  if (launch.ownsPath && launch.hostId !== null && launch.path !== null) {
+    await runEnvironmentHook(deps, {
+      hostId: launch.hostId,
+      path: launch.path,
+      kind: "teardown",
+      report: {
+        step: () => undefined,
+        log: (text) =>
+          deps.logger.warn(
+            { threadId: launch.threadId, text },
+            "Environment cleanup hook",
+          ),
+      },
+      signal,
+    });
+  }
   const invocation = await invokeEnvironmentProvider(
     record,
     "environment cancel cleanup",
@@ -589,7 +626,11 @@ export async function cancelProviderLaunch(
         create.controller.abort();
         await create.done;
       }
-      await runCancel(deps, cancelled, signal);
+      await runCancel(
+        deps,
+        getEnvironmentLaunch(deps.db, threadId) ?? cancelled,
+        signal,
+      );
     },
   });
   await operation.done;
@@ -648,6 +689,22 @@ async function runRemove(
     deps.hub.notifyEnvironment(environmentId, ["metadata-changed"]);
   };
   try {
+    if (row.providerOwnsPath && row.hostId !== null && row.path !== null) {
+      await runEnvironmentHook(deps, {
+        hostId: row.hostId,
+        path: row.path,
+        kind: "teardown",
+        report: {
+          step: () => undefined,
+          log: (text) =>
+            deps.logger.warn(
+              { environmentId, text },
+              "Environment teardown hook",
+            ),
+        },
+        signal,
+      });
+    }
     const invocation = await invokeEnvironmentProvider(
       record,
       "environment remove",

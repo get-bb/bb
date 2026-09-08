@@ -95,7 +95,7 @@ function createInput(args: {
     ...args,
     baseBranch: { kind: "default" as const },
     branchMode: "reset" as const,
-    setupTimeoutMs: 30_000,
+    timeoutMs: 30_000,
   };
 }
 
@@ -131,7 +131,7 @@ describe("worktree host entry", () => {
       branchName: "bb/named-thr_1",
       baseBranch: { kind: "named", name: "release" },
       branchMode: "reset",
-      setupTimeoutMs: 30_000,
+      timeoutMs: 30_000,
     });
     expect(result).toMatchObject({
       status: "created",
@@ -157,7 +157,7 @@ describe("worktree host entry", () => {
       branchName: "bb/detached-thr",
       baseBranch: { kind: "named", name: "v1.0" },
       branchMode: "reset",
-      setupTimeoutMs: 30_000,
+      timeoutMs: 30_000,
     });
     expect(result).toMatchObject({
       status: "created",
@@ -193,7 +193,7 @@ describe("worktree host entry", () => {
     await restartedHarness.experimental_dispose();
   });
 
-  it("resumes setup when a crash leaves the worktree without a completion record", async () => {
+  it("completes a recovered worktree without running core setup", async () => {
     const { root, sourcePath, dataDir } = await createSourceRepository();
     const setupMarker = join(root, "setup.marker");
     await writeFile(
@@ -228,8 +228,8 @@ describe("worktree host entry", () => {
     );
 
     expect(resumed).toMatchObject({ status: "created", path: targetPath });
-    expect(existsSync(setupMarker)).toBe(true);
-    expect(progressText(harness)).toContain("Running .bb-env-setup.sh");
+    expect(existsSync(setupMarker)).toBe(false);
+    expect(progressText(harness)).not.toContain("Running .bb-env-setup.sh");
     await harness.experimental_dispose();
   });
 
@@ -256,7 +256,7 @@ describe("worktree host entry", () => {
     await harness.experimental_dispose();
   });
 
-  it("streams setup progress through host signals", async () => {
+  it("leaves setup execution to core", async () => {
     const { sourcePath, dataDir } = await createSourceRepository();
     await writeFile(
       join(sourcePath, ".bb-env-setup.sh"),
@@ -276,9 +276,9 @@ describe("worktree host entry", () => {
         }),
       ),
     ).toMatchObject({ status: "created" });
-    expect(progressText(harness)).toContain("Running .bb-env-setup.sh");
-    expect(progressText(harness)).toContain("setup-line-one");
-    expect(progressText(harness)).toContain("setup-line-two");
+    expect(progressText(harness)).not.toContain("Running .bb-env-setup.sh");
+    expect(progressText(harness)).not.toContain("setup-line-one");
+    expect(progressText(harness)).not.toContain("setup-line-two");
     expect(
       harness
         .experimental_getSignals()
@@ -318,45 +318,7 @@ describe("worktree host entry", () => {
     await harness.experimental_dispose();
   });
 
-  it("aborts setup and then removes the partial path by path key", async () => {
-    const { sourcePath, dataDir } = await createSourceRepository();
-    await writeFile(
-      join(sourcePath, ".bb-env-setup.sh"),
-      "#!/usr/bin/env bash\necho started\nsleep 120\n",
-    );
-    await git(sourcePath, "add", ".");
-    await git(sourcePath, "commit", "-m", "add slow setup script");
-    const harness = createHarness(dataDir);
-    const controller = new AbortController();
-    const creating = harness.experimental_call(
-      "create",
-      {
-        ...createInput({
-          operationId: "cancel",
-          sourcePath,
-          pathKey: "thr_5",
-          branchName: "bb/cancel-thr_5",
-        }),
-        setupTimeoutMs: 120_000,
-      },
-      { signal: controller.signal },
-    );
-    await expect.poll(() => progressText(harness)).toContain("started");
-    controller.abort();
-    await expect(creating).rejects.toThrow(/cancel/i);
-    expect(
-      await harness.experimental_call("remove", {
-        operationId: "cleanup",
-        pathKey: "thr_5",
-        path: null,
-        teardownTimeoutMs: 30_000,
-      }),
-    ).toEqual({ status: "removed" });
-    expect(existsSync(join(dataDir, "worktrees", "thr_5"))).toBe(false);
-    await harness.experimental_dispose();
-  });
-
-  it("runs teardown, kills workspace processes, and prunes the path-key parent", async () => {
+  it("leaves teardown to core, kills workspace processes, and prunes the path-key parent", async () => {
     const { root, sourcePath, dataDir } = await createSourceRepository();
     await writeFile(
       join(sourcePath, ".bb-env-teardown.sh"),
@@ -385,14 +347,14 @@ describe("worktree host entry", () => {
       operationId: "remove",
       pathKey: "thr_6",
       path: created.path,
-      teardownTimeoutMs: 30_000,
+      timeoutMs: 30_000,
     });
     const lingeringAlive = isPidAlive(lingering.pid ?? 0);
     lingering.kill("SIGKILL");
     expect(removed).toEqual({ status: "removed" });
     expect(lingeringAlive).toBe(false);
-    expect(progressText(harness)).toContain("tearing-down");
-    expect(existsSync(join(root, "teardown.marker"))).toBe(true);
+    expect(progressText(harness)).not.toContain("tearing-down");
+    expect(existsSync(join(root, "teardown.marker"))).toBe(false);
     expect(existsSync(created.path)).toBe(false);
     expect(await readdir(join(dataDir, "worktrees"))).toEqual([]);
     await harness.experimental_dispose();

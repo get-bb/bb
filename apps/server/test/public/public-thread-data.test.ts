@@ -46,7 +46,10 @@ import {
   reportQueuedCommandSuccess,
   waitForQueuedCommand,
 } from "../helpers/commands.js";
-import { registerHostRpcResponder } from "../helpers/host-rpc.js";
+import {
+  registerHostRpcResponder,
+  type HostRpcHandlerResult,
+} from "../helpers/host-rpc.js";
 import { readJson } from "../helpers/json.js";
 import { textInput } from "../helpers/prompt-input.js";
 import {
@@ -3688,7 +3691,10 @@ describe("public thread data routes", () => {
       const responder = registerHostRpcResponder(harness, {
         hostId: host.id,
         sessionId: session.id,
-        handle: (request) => {
+        handle: (request): HostRpcHandlerResult => {
+          if (request.command.type === "environment.hook.run") {
+            return { ok: true, result: {} };
+          }
           if (request.command.type === "host.canonical_path") {
             return { ok: true, result: { path: request.command.path } };
           }

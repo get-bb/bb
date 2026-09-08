@@ -3,6 +3,7 @@ import type { AgentRuntimeBridgeLaunch } from "@bb/agent-runtime";
 import type { AvailableModel } from "@bb/domain";
 import type { EventSinkInput } from "./event-sink.js";
 import type {
+  EnvironmentHookProgressMessage,
   HostDaemonCommand,
   ProviderHealthResult,
   ProviderUsageResult,
@@ -47,6 +48,9 @@ export const noopEventSink: EventSink = {
 };
 
 export interface CommandDispatchOptions {
+  emitEnvironmentHookProgress?: (
+    message: EnvironmentHookProgressMessage,
+  ) => void;
   desktopBrowserBroker?: DesktopBrowserBroker;
   dataDir: string;
   logger: Pick<HostDaemonLogger, "debug" | "warn">;
