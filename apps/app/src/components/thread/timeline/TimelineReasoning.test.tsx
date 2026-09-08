@@ -27,10 +27,12 @@ function Fixture({
   phase,
   id = reasoningId,
   text = "Compare both render paths.",
+  nested = false,
 }: {
   phase: "live" | "completed";
   id?: string;
   text?: string;
+  nested?: boolean;
 }) {
   return (
     <QueryClientProvider client={client}>
@@ -45,7 +47,18 @@ function Fixture({
             />
           ) : (
             <ThreadTimelineRows
-              timelineRows={[thought]}
+              timelineRows={[
+                nested
+                  ? {
+                      ...thought,
+                      id: "delegation:child:" + reasoningId,
+                      systemKind: "operation",
+                      operationKind: "reasoning",
+                      reasoningId,
+                      completedAt: 13_000,
+                    }
+                  : thought,
+              ]}
               threadRuntimeDisplayStatus="idle"
               workspaceRootPath={undefined}
             />
@@ -62,32 +75,37 @@ afterEach(() => {
 });
 
 describe("reasoning disclosure lifecycle", () => {
-  it("keeps expansion and prose styling while adding an icon when thinking completes", () => {
-    const { container, rerender } = render(<Fixture phase="live" />);
-    fireEvent.click(screen.getByRole("button", { name: "Thinking…" }));
-    expect(
-      screen
-        .getByRole("button", { name: "Thinking…" })
-        .getAttribute("aria-expanded"),
-    ).toBe("true");
-    expect(container.querySelector('[data-icon="AiBrain01"]')).toBeNull();
-    rerender(<Fixture phase="completed" />);
-    expect(
-      screen
-        .getByRole("button", { name: /Thought.*12s/ })
-        .getAttribute("aria-expanded"),
-    ).toBe("true");
-    expect(container.querySelector('[data-icon="AiBrain01"]')).not.toBeNull();
-    expect(
-      screen.getByText("Compare both render paths.").closest("pre"),
-    ).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: /Thought.*12s/ }));
-    expect(
-      screen
-        .getByRole("button", { name: /Thought.*12s/ })
-        .getAttribute("aria-expanded"),
-    ).toBe("false");
-  });
+  it.each([false, true])(
+    "keeps expansion and prose styling on completion (nested: %s)",
+    (nested) => {
+      const { container, rerender } = render(
+        <Fixture phase="live" nested={nested} />,
+      );
+      fireEvent.click(screen.getByRole("button", { name: "Thinking…" }));
+      expect(
+        screen
+          .getByRole("button", { name: "Thinking…" })
+          .getAttribute("aria-expanded"),
+      ).toBe("true");
+      expect(container.querySelector('[data-icon="AiBrain01"]')).toBeNull();
+      rerender(<Fixture phase="completed" nested={nested} />);
+      expect(
+        screen
+          .getByRole("button", { name: /Thought.*12s/ })
+          .getAttribute("aria-expanded"),
+      ).toBe("true");
+      expect(container.querySelector('[data-icon="AiBrain01"]')).not.toBeNull();
+      expect(
+        screen.getByText("Compare both render paths.").closest("pre"),
+      ).toBeNull();
+      fireEvent.click(screen.getByRole("button", { name: /Thought.*12s/ }));
+      expect(
+        screen
+          .getByRole("button", { name: /Thought.*12s/ })
+          .getAttribute("aria-expanded"),
+      ).toBe("false");
+    },
+  );
 
   it("does not inherit expansion for the next thought and omits the icon before text arrives", () => {
     const { container, rerender } = render(<Fixture phase="live" text="" />);

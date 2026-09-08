@@ -1646,7 +1646,7 @@ function TimelineExpandableRowView({
         row.kind === "system" &&
         row.systemKind === "operation" &&
         row.operationKind === "reasoning"
-          ? row.id
+          ? (row.reasoningId ?? row.id)
           : undefined
       }
       title={title}

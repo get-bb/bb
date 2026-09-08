@@ -313,7 +313,7 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
     const page = parseThreadTimelinePage(query);
     const includeNestedRows = query.includeNestedRows === "true";
     const summaryOnly = query.summaryOnly === "true";
-    const maxSeq = getLatestThreadSequence(deps.db, { threadId: thread.id });
+
     const providerDisplayName = resolveThreadProviderDisplayName(
       deps,
       thread.providerId,
@@ -321,6 +321,10 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
     const includeDiagnosticOperations = getAppSettings(
       deps.db,
     ).showDiagnosticEvents;
+    const maxSeq = getLatestThreadSequence(deps.db, {
+      threadId: thread.id,
+      excludeDiagnosticEvents: !includeDiagnosticOperations,
+    });
     const eventBudget = deps.config.featureFlags.timelineWindowEventBudget;
     const keyArgs = {
       threadId: thread.id,
@@ -386,6 +390,7 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
 
   get(routes.conversationOutline, (context) => {
     const thread = requirePublicThread(deps.db, context.req.param("id"));
+
     const maxSeq = getLatestThreadSequence(deps.db, { threadId: thread.id });
     const outlineSequence = getLatestStoredConversationOutlineSequence(
       deps.db,

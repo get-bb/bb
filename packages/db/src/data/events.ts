@@ -1015,6 +1015,7 @@ export interface FindStoredEventRowArgs {
 }
 
 export interface ListStoredEventRowsByParentToolCallIdsArgs {
+  excludeDiagnosticEvents?: boolean;
   beforeSequence?: number;
   excludedTypes?: readonly ThreadEventType[];
   maxInlineOutputChars: InlineOutputCharLimit;
@@ -1124,6 +1125,7 @@ export interface ListStoredTurnStartedKeysArgs {
 }
 
 export interface ListRecentStoredEventRowsArgs {
+  excludeDiagnosticEvents?: boolean;
   excludedTypes?: readonly ThreadEventType[];
   maxInlineOutputChars: InlineOutputCharLimit;
   sequenceStart: number;
@@ -1140,6 +1142,7 @@ export interface GetLatestStoredConversationOutlineSequenceArgs {
 }
 
 export interface ListStoredTimelineWindowEventRowsArgs {
+  excludeDiagnosticEvents?: boolean;
   beforeSequence?: number;
   excludedTypes?: readonly ThreadEventType[];
   maxInlineOutputChars: InlineOutputCharLimit;
@@ -1186,6 +1189,7 @@ export interface GetLatestThreadSystemErrorEventRowArgs {
 }
 
 export interface GetLatestThreadSequenceArgs {
+  excludeDiagnosticEvents?: boolean;
   threadId: string;
 }
 
@@ -1506,6 +1510,7 @@ function storedEventRowsByParentToolCallIdsConditions(
     isNotSupersededBackgroundTaskProgress,
     inArray(events.parentToolCallId, parentToolCallIds),
   ];
+  if (args.excludeDiagnosticEvents) conditions.push(isNotDiagnosticEvent);
   if (args.excludedTypes && args.excludedTypes.length > 0) {
     conditions.push(notInArray(events.type, [...args.excludedTypes]));
   }
@@ -2474,6 +2479,7 @@ export function listRecentStoredEventRows(
     gte(events.sequence, args.sequenceStart),
     isNotSupersededBackgroundTaskProgress,
   ];
+  if (args.excludeDiagnosticEvents) conditions.push(isNotDiagnosticEvent);
   if (args.excludedTypes && args.excludedTypes.length > 0) {
     conditions.push(notInArray(events.type, [...args.excludedTypes]));
   }
@@ -2725,6 +2731,7 @@ export interface ListTimelineSegmentAnchorsDescendingArgs {
 }
 
 export interface FindTimelineWindowBudgetFloorSequenceArgs {
+  excludeDiagnosticEvents?: boolean;
   excludedTypes: readonly ThreadEventType[];
   eventBudget: number;
   sequenceStart: number;
@@ -2741,6 +2748,7 @@ export function findTimelineWindowBudgetFloorSequence(
     gte(events.sequence, args.sequenceStart),
     isNotSupersededBackgroundTaskProgress,
   ];
+  if (args.excludeDiagnosticEvents) conditions.push(isNotDiagnosticEvent);
   if (args.excludedTypes.length > 0) {
     conditions.push(notInArray(events.type, [...args.excludedTypes]));
   }
@@ -2760,6 +2768,7 @@ export function findTimelineWindowBudgetFloorSequence(
 }
 
 export interface TimelineTurnBoundaryLookupArgs {
+  excludeDiagnosticEvents?: boolean;
   sequence: number;
   threadId: string;
 }
@@ -2776,6 +2785,7 @@ export function hasParentedEventCrossingSequence(
         eq(events.threadId, args.threadId),
         gte(events.sequence, args.sequence),
         isNotNull(events.parentToolCallId),
+        args.excludeDiagnosticEvents ? isNotDiagnosticEvent : undefined,
         sql`EXISTS (
           SELECT 1
           FROM events AS parent_event
@@ -2881,6 +2891,7 @@ function storedTimelineWindowConditions(
   if (args.beforeSequence !== undefined) {
     conditions.push(lt(events.sequence, args.beforeSequence));
   }
+  if (args.excludeDiagnosticEvents) conditions.push(isNotDiagnosticEvent);
   if (args.excludedTypes && args.excludedTypes.length > 0) {
     conditions.push(notInArray(events.type, [...args.excludedTypes]));
   }
@@ -2943,6 +2954,7 @@ export function findStoredTimelineWindowByteBudgetFloor(
   const preflight = getStoredTimelineWindowEventDataBytesPreflight(db, {
     beforeSequence: args.beforeSequence,
     excludedTypes: args.excludedTypes,
+    excludeDiagnosticEvents: args.excludeDiagnosticEvents,
     maxInlineOutputChars: args.maxInlineOutputChars,
     sequenceStart: args.sequenceStart,
     threadId: args.threadId,
@@ -3140,6 +3152,23 @@ export function getLatestThreadSystemErrorEventRow(
   );
 }
 
+const isNotDiagnosticEvent = sql`(
+  ${events.type} <> 'provider.env-resolved'
+  AND (
+    ${events.type} <> 'provider/unhandled'
+    OR COALESCE((
+      json_extract(${events.data}, '$.providerId') = 'claude-code'
+      AND json_extract(${events.data}, '$.rawEvent.method') = 'sdk/message'
+      AND json_extract(${events.data}, '$.rawEvent.params.message.subtype')
+        IN ('model_fallback', 'model_refusal_fallback')
+      AND json_type(${events.data}, '$.rawEvent.params.message.original_model') = 'text'
+      AND length(json_extract(${events.data}, '$.rawEvent.params.message.original_model')) > 0
+      AND json_type(${events.data}, '$.rawEvent.params.message.fallback_model') = 'text'
+      AND length(json_extract(${events.data}, '$.rawEvent.params.message.fallback_model')) > 0
+    ), 0)
+  )
+)`;
+
 export function getLatestThreadSequence(
   db: DbConnection,
   args: GetLatestThreadSequenceArgs,
@@ -3149,7 +3178,12 @@ export function getLatestThreadSequence(
       maxSequence: max(events.sequence),
     })
     .from(events)
-    .where(eq(events.threadId, args.threadId))
+    .where(
+      and(
+        eq(events.threadId, args.threadId),
+        args.excludeDiagnosticEvents ? isNotDiagnosticEvent : undefined,
+      ),
+    )
     .get();
 
   return row?.maxSequence ?? 0;

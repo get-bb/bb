@@ -12,6 +12,7 @@ import {
 } from "@bb/db";
 import {
   applyAppKeybindingOverrides,
+  appSettingsSchema,
   customThemeNameSchema,
   isBuiltInThemeId,
   resolveCodeTheme,
@@ -153,7 +154,7 @@ export function registerSystemRoutes(
       ]),
     ];
     return {
-      generalSettings: getAppSettings(deps.db),
+      generalSettings: compatibleGeneralSettings(),
       keybindings: applyAppKeybindingOverrides(
         DEFAULT_APP_KEYBINDINGS,
         keybindingOverrides,
@@ -197,10 +198,35 @@ export function registerSystemRoutes(
     return context.json(await buildSystemConfigResponse(serverUrl));
   });
 
+  function compatibleGeneralSettings() {
+    const settings = getAppSettings(deps.db);
+    return {
+      ...settings,
+      showUnhandledProviderEvents: settings.showDiagnosticEvents,
+    };
+  }
+
   put(routes.generalSettings, (context, payload) => {
-    setAppSettings(deps.db, payload);
+    const { showUnhandledProviderEvents, ...settings } = payload;
+    const current = getAppSettings(deps.db);
+    const diagnosticValue =
+      "showDiagnosticEvents" in settings
+        ? settings.showDiagnosticEvents
+        : undefined;
+    setAppSettings(
+      deps.db,
+      appSettingsSchema.parse({
+        ...settings,
+        showDiagnosticEvents:
+          diagnosticValue === undefined ||
+          (showUnhandledProviderEvents !== undefined &&
+            diagnosticValue === current.showDiagnosticEvents)
+            ? showUnhandledProviderEvents
+            : diagnosticValue,
+      }),
+    );
     deps.hub.notifySystem(["config-changed"]);
-    return context.json(getAppSettings(deps.db));
+    return context.json(compatibleGeneralSettings());
   });
 
   put(routes.keyboardSettings, (context, payload) => {

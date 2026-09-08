@@ -123,7 +123,9 @@ export const systemAiServicesSchema = z.object({
 export type SystemAiServices = z.infer<typeof systemAiServicesSchema>;
 
 export const systemConfigResponseSchema = z.object({
-  generalSettings: appSettingsSchema,
+  generalSettings: appSettingsSchema.extend({
+    showUnhandledProviderEvents: z.boolean().optional(),
+  }),
   keybindings: appKeybindingsSchema,
   defaultKeybindings: appDefaultKeybindingsSchema,
   keybindingOverrides: appKeybindingOverridesSchema,

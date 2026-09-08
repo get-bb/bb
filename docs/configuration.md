@@ -210,6 +210,11 @@ It defaults to off in all builds. Warnings, errors, and model fallback remain
 visible. An existing unhandled-provider-events preference is preserved.
 Set it with `bb settings general showDiagnosticEvents <true|false>` or
 `bb.sdk.system.updateGeneralSettings` using the `showDiagnosticEvents` field.
+For older SDK callers, the general-settings API still accepts and returns
+`showUnhandledProviderEvents` as a deprecated alias. Both names control the same
+setting. When a read-modify-write payload contains conflicting values, the
+value changed from the saved setting wins. Hidden diagnostics do not count
+toward timeline event or byte limits.
 
 The "Default thread followup behavior" picker in Settings → General changes the
 active-thread composer shortcuts when no typeahead suggestion is active. A

@@ -207,6 +207,7 @@ export const timelineGenericOperationSystemRowSchema =
   timelineSystemRowBaseSchema.extend({
     systemKind: z.literal("operation"),
     operationKind: timelineGenericSystemOperationKindSchema,
+    reasoningId: z.string().optional(),
     completedAt: z.number().nullable(),
   });
 

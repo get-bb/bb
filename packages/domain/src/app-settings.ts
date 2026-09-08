@@ -34,3 +34,13 @@ export const defaultAppSettings: AppSettings = {
   streamerMode: false,
   managedBranchPrefix: DEFAULT_MANAGED_BRANCH_PREFIX,
 };
+
+export const appSettingsUpdateSchema = z.union([
+  appSettingsSchema.extend({
+    showUnhandledProviderEvents: z.boolean().optional(),
+  }),
+  appSettingsSchema.omit({ showDiagnosticEvents: true }).extend({
+    showUnhandledProviderEvents: z.boolean(),
+  }),
+]);
+export type AppSettingsUpdate = z.infer<typeof appSettingsUpdateSchema>;
