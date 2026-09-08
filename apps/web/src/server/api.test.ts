@@ -20,6 +20,7 @@ import {
   claimHandle,
   createConnectCode,
   createMachineCodeForServerCredential,
+  lookupMachineCodeForServerCredential,
   createServer,
   disconnectServer,
   removeServer,
@@ -542,8 +543,38 @@ describe("server-authenticated machine-code round trip", () => {
     if ("status" in minted) throw new Error(minted.error);
     expect(minted.serverUrl).toBe("https://sawyer-desktop.getbb.app");
 
+    expect(
+      await lookupMachineCodeForServerCredential(
+        deps,
+        serverCredential,
+        minted.code,
+      ),
+    ).toEqual({ consumed: false, machineId: null });
     const redeemed = await redeemMachineCode(deps, minted.code);
     if ("error" in redeemed) throw new Error(redeemed.error);
+    expect(
+      await lookupMachineCodeForServerCredential(
+        deps,
+        serverCredential,
+        minted.code,
+      ),
+    ).toEqual({ consumed: true, machineId: redeemed.machineId });
+    expect(
+      await lookupMachineCodeForServerCredential(deps, "bogus", minted.code),
+    ).toMatchObject({ status: 401 });
+    const other = await createServer(deps, "u1", "sawyer-other");
+    if (!("ok" in other)) throw new Error("server setup failed");
+    db.update(server)
+      .set({ credentialHash: await sha256Hex("bbcred_other") })
+      .where(eq(server.id, other.server.id))
+      .run();
+    expect(
+      await lookupMachineCodeForServerCredential(
+        deps,
+        "bbcred_other",
+        minted.code,
+      ),
+    ).toMatchObject({ status: 404 });
     expect(redeemed.credential.startsWith("bbcm_")).toBe(true);
     expect(redeemed.serverUrl).toBe("https://sawyer-desktop.getbb.app");
     expect(db.select().from(machine).all()).toHaveLength(1);

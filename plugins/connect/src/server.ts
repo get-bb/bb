@@ -1,3 +1,4 @@
+import { registerServerAccess } from "./server-access.js";
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import { registerConnectCli } from "./cli.js";
 import { createKvCredentialStore } from "./credential.js";
@@ -47,6 +48,8 @@ export default async function plugin(bb: BbPluginApi) {
     onStatusChange: (status) =>
       bb.realtime.publish(CONNECT_REALTIME_CHANNEL, status),
   });
+
+  await registerServerAccess(bb, tunnel);
 
   const mobilePairing: MobilePairingGate = {
     enabled: async () => (await bb.sdk.system.config()).experiments.mobileApp,
