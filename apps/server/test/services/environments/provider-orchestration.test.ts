@@ -1062,29 +1062,6 @@ describe("core environment orchestration", () => {
       await fixture.settled();
     }));
 
-  it("aborts create at its timeout and records a transient failure", async () =>
-    withTestHarness(async (harness) => {
-      let aborted = false;
-      const fixture = setup(harness, {
-        policy: { createTimeoutMs: 5, transientRetryLimit: 0 },
-        create: async (context) => {
-          context.signal.addEventListener("abort", () => {
-            aborted = true;
-          });
-          return pendingUntilAbort(context.signal);
-        },
-      });
-      fixture.ask();
-      await fixture.settled();
-      expect(aborted).toBe(true);
-      expect(fixture.row()).toMatchObject({
-        phase: "failed",
-        failure: "transient",
-        transientFailures: 1,
-        message: "Environment creation timed out after 5 ms.",
-      });
-    }));
-
   it("aborts create before removing everything under its path key", async () =>
     withTestHarness(async (harness) => {
       const events: string[] = [];
@@ -1159,8 +1136,6 @@ describe("core environment orchestration", () => {
       const fixture = setup(harness, {
         policy: {
           pathKeys: "per-attempt",
-          transientRetryMs: 1,
-          transientRetryLimit: 1,
         },
         create: async (context) => {
           creates.push(context.pathKey);
@@ -1177,37 +1152,45 @@ describe("core environment orchestration", () => {
       });
       fixture.ask();
       await fixture.settled();
-      expect(fixture.ask()).toMatchObject({
-        action: "wait",
-        reason: "offline; cleaning up before retry",
-      });
-      await expect.poll(() => removes).toEqual([`${fixture.thread.id}-1`]);
-      await expect
-        .poll(() => fixture.row())
-        .toMatchObject({
-          phase: "cancelled",
-          cancelPending: false,
+      for (let attempt = 1; attempt <= 3; attempt += 1) {
+        const failedAt = fixture.row().failedAt!;
+        expect(fixture.ask()).toMatchObject({
+          action: "wait",
+          reason: "offline; cleaning up before retry",
         });
-      vi.setSystemTime(Date.now() + 2);
-      fixture.ask();
-      await fixture.settled();
+        await expect
+          .poll(() => fixture.row())
+          .toMatchObject({
+            phase: "cancelled",
+            cancelPending: false,
+          });
+        expect(removes).toHaveLength(attempt);
+        expect(fixture.ask()).toMatchObject({
+          action: "wait",
+          sendAt: failedAt + 30_000,
+        });
+        expect(creates).toHaveLength(attempt);
+        vi.setSystemTime(failedAt + 30_000);
+        fixture.ask();
+        await fixture.settled();
+      }
       expect(fixture.ask()).toMatchObject({
         action: "reject",
         message: "offline",
       });
       await expect
-        .poll(() => removes)
-        .toEqual([`${fixture.thread.id}-1`, `${fixture.thread.id}-2`]);
-      expect(creates).toEqual([
-        `${fixture.thread.id}-1`,
-        `${fixture.thread.id}-2`,
-      ]);
-      expect(fixture.row()).toMatchObject({
-        attempt: 2,
-        transientFailures: 2,
-        phase: "cancelled",
-        cancelPending: false,
-      });
+        .poll(() => fixture.row())
+        .toMatchObject({
+          attempt: 4,
+          transientFailures: 4,
+          phase: "cancelled",
+          cancelPending: false,
+        });
+      const expectedKeys = [1, 2, 3, 4].map(
+        (attempt) => `${fixture.thread.id}-${attempt}`,
+      );
+      expect(creates).toEqual(expectedKeys);
+      expect(removes).toEqual(expectedKeys);
     }));
 
   it("round-trips a private resource handle into remove", async () =>
@@ -1343,12 +1326,12 @@ describe("core environment orchestration", () => {
       });
     }));
 
-  it("records a failed remove and retries after the declared delay", async () =>
+  it("records a failed remove and retries after the core retry delay", async () =>
     withTestHarness(async (harness) => {
       vi.useFakeTimers({ toFake: ["Date"] });
       let removes = 0;
       const fixture = setup(harness, {
-        policy: { retireGraceMs: 0, removeRetryMs: 10 },
+        policy: { retireGraceMs: 0 },
         remove: async () => {
           removes += 1;
           return removes === 1
@@ -1366,7 +1349,7 @@ describe("core environment orchestration", () => {
       });
       await sweepProviderEnvironment(harness.deps, environmentId);
       expect(removes).toBe(1);
-      vi.setSystemTime(Date.now() + 11);
+      vi.setSystemTime(Date.now() + 60_001);
       await sweepProviderEnvironment(harness.deps, environmentId);
       expect(getEnvironment(harness.db, environmentId)).toMatchObject({
         status: "destroyed",

@@ -266,8 +266,7 @@ Read the installed declarations for exact current signatures.
 - `PluginEnvironmentProviderInputsSchema` — the `inputs` type parameter:
   a Standard Schema v1 validator (a zod schema is one), or `undefined` for
   `inputs: null` in `create`
-- `PluginEnvironmentProviderPolicy` — `retireGraceMs`, `removeRetryMs`,
-  `transientRetryMs`, `transientRetryLimit`, `pathKeys`, `createTimeoutMs`
+- `PluginEnvironmentProviderPolicy` — `retireGraceMs`, `pathKeys`
 - `PluginEnvironmentProviderValidateContext` — the `validate` context
   typed from `requires` and `inputs`, like the create context
 - `PluginEnvironmentProviderCreateContext` — a replacement create's

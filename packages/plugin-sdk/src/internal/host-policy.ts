@@ -2415,11 +2415,7 @@ function normalizeEnvironmentProviderRequirements(
 const environmentProviderPolicySchema = z
   .object({
     retireGraceMs: z.number().int().nonnegative().nullable().default(300_000),
-    removeRetryMs: z.number().int().positive().default(60_000),
-    transientRetryMs: z.number().int().positive().default(30_000),
-    transientRetryLimit: z.number().int().nonnegative().default(3),
     pathKeys: z.enum(["per-thread", "per-attempt"]).default("per-thread"),
-    createTimeoutMs: z.number().int().positive().nullable().default(null),
   })
   .strict();
 

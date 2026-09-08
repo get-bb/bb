@@ -420,7 +420,10 @@ once when resolved. Host-dependent preflight requires connectivity; creation
 must still check mutable conditions and report resource-operation failures.
 
 Core invokes `create` and `remove` and records results directly. Policy drives
-retries, cancellation and retirement; providers return resource-operation
+cancellation and retirement; core fixes removal retries at 60 seconds and
+transient creation retries at 30 seconds with a limit of three. Policy exposes
+only retirement grace and path-key strategy; creation has no overall core
+timeout. Providers return resource-operation
 results. Created directories include explicit ownsPath. The core lifecycle
 table owns attempt identity and private resources. Core admits and claims the
 returned path before lifecycle hooks and uses that path for execution.

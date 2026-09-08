@@ -176,42 +176,23 @@ function runTrackedOperation(args: {
   return operation;
 }
 
-class CreateTimeoutError extends Error {
-  constructor(timeoutMs: number) {
-    super(`Environment creation timed out after ${timeoutMs} ms.`);
-  }
-}
+const REMOVE_RETRY_MS = 60_000;
+const TRANSIENT_RETRY_MS = 30_000;
+const TRANSIENT_RETRY_LIMIT = 3;
 
 async function invokeCreate(
   record: PluginEnvironmentProviderRecord,
   context: Parameters<PluginEnvironmentProviderRecord["provider"]["create"]>[0],
-  timeoutMs: number | null,
-  controller: AbortController,
 ): Promise<PluginEnvironmentProviderCreateResult> {
-  let timedOut = false;
-  let timer: ReturnType<typeof setTimeout> | null = null;
-  if (timeoutMs !== null)
-    timer = setTimeout(() => {
-      timedOut = true;
-      controller.abort();
-    }, timeoutMs);
-  try {
-    const invocation = await invokeEnvironmentProvider(
-      record,
-      "environment create",
-      () => record.provider.create(context),
-    );
-    if (timedOut) throw new CreateTimeoutError(timeoutMs ?? 0);
-    if (!invocation.ok) throw new Error(invocation.error);
-    if (invocation.value === null)
-      throw new Error("The environment provider became unavailable.");
-    return createResultSchema.parse(invocation.value);
-  } catch (error) {
-    if (timedOut) throw new CreateTimeoutError(timeoutMs ?? 0);
-    throw error;
-  } finally {
-    if (timer !== null) clearTimeout(timer);
-  }
+  const invocation = await invokeEnvironmentProvider(
+    record,
+    "environment create",
+    () => record.provider.create(context),
+  );
+  if (!invocation.ok) throw new Error(invocation.error);
+  if (invocation.value === null)
+    throw new Error("The environment provider became unavailable.");
+  return createResultSchema.parse(invocation.value);
 }
 
 async function runCreate(
@@ -242,49 +223,44 @@ async function runCreate(
             mergeBaseBranch: launch.mergeBaseBranch ?? undefined,
             resource: launch.resource ?? undefined,
           }
-        : await invokeCreate(
-            record,
-            {
-              thread: context.thread,
-              project: context.project,
-              host: context.host,
-              projectCheckout: context.projectCheckout,
-              gitRemote: context.gitRemote,
-              inputs: context.inputs,
-              suggestedBranchName: context.suggestedBranchName,
-              pathKey: launch.pathKey,
-              attempt: launch.attempt,
-              rebuild: previous !== null,
-              experimental_claimPath: async (value) => {
-                const path = z
-                  .string()
-                  .min(1)
-                  .startsWith("/")
-                  .refine((path) => !path.includes("\0"))
-                  .parse(value);
-                if (controller.signal.aborted) return false;
-                return claimEnvironmentLaunchPath(
-                  deps.db,
-                  launch,
-                  path.replace(/\/+$/u, "") || "/",
-                );
-              },
-              previous:
-                previous === null
-                  ? null
-                  : {
-                      environment: toEnvironmentResponse(previous),
-                      resource:
-                        previous.teardownStatus === "removed"
-                          ? null
-                          : previous.resource,
-                    },
-              report: launchReporter(deps, launch),
-              signal: controller.signal,
+        : await invokeCreate(record, {
+            thread: context.thread,
+            project: context.project,
+            host: context.host,
+            projectCheckout: context.projectCheckout,
+            gitRemote: context.gitRemote,
+            inputs: context.inputs,
+            suggestedBranchName: context.suggestedBranchName,
+            pathKey: launch.pathKey,
+            attempt: launch.attempt,
+            rebuild: previous !== null,
+            experimental_claimPath: async (value) => {
+              const path = z
+                .string()
+                .min(1)
+                .startsWith("/")
+                .refine((path) => !path.includes("\0"))
+                .parse(value);
+              if (controller.signal.aborted) return false;
+              return claimEnvironmentLaunchPath(
+                deps.db,
+                launch,
+                path.replace(/\/+$/u, "") || "/",
+              );
             },
-            record.provider.policy.createTimeoutMs,
-            controller,
-          );
+            previous:
+              previous === null
+                ? null
+                : {
+                    environment: toEnvironmentResponse(previous),
+                    resource:
+                      previous.teardownStatus === "removed"
+                        ? null
+                        : previous.resource,
+                  },
+            report: launchReporter(deps, launch),
+            signal: controller.signal,
+          });
     if (result.status === "created") {
       try {
         const producedPath = result.path.replace(/\/+$/u, "") || "/";
@@ -390,14 +366,9 @@ async function runCreate(
       return;
     changed = mutateLaunch(deps, launch, ["creating"], (row) => {
       row.phase = "failed";
-      row.failure =
-        error instanceof CreateTimeoutError ? "transient" : "terminal";
-      row.message =
-        error instanceof CreateTimeoutError
-          ? error.message
-          : `The "${record.provider.id}" environment provider (plugin "${record.pluginId}") failed: ${message(error)}`;
+      row.failure = "terminal";
+      row.message = `The "${record.provider.id}" environment provider (plugin "${record.pluginId}") failed: ${message(error)}`;
       row.failedAt = Date.now();
-      if (row.failure === "transient") row.transientFailures += 1;
     });
   } finally {
     outerSignal.removeEventListener("abort", abort);
@@ -476,7 +447,7 @@ export function askProviderLaunch(
   const retryableFailure =
     row?.phase === "failed" &&
     row.failure === "transient" &&
-    row.transientFailures <= policy.transientRetryLimit;
+    row.transientFailures <= TRANSIENT_RETRY_LIMIT;
   const changed =
     row !== null &&
     (row.providerId !== record.provider.id ||
@@ -526,10 +497,10 @@ export function askProviderLaunch(
     row?.phase === "cancelled" &&
     row.failure === "transient" &&
     !changed &&
-    row.transientFailures <= policy.transientRetryLimit
+    row.transientFailures <= TRANSIENT_RETRY_LIMIT
       ? row
       : null;
-  const retryAt = (retryRow?.failedAt ?? now) + policy.transientRetryMs;
+  const retryAt = (retryRow?.failedAt ?? now) + TRANSIENT_RETRY_MS;
   if (retryRow !== null && now < retryAt)
     return {
       action: "wait",
@@ -846,7 +817,7 @@ async function runRemove(
       write({
         teardownStatus: "failed",
         teardownMessage: result.message,
-        retireAt: Date.now() + record.provider.policy.removeRetryMs,
+        retireAt: Date.now() + REMOVE_RETRY_MS,
       });
       return;
     }
@@ -864,7 +835,7 @@ async function runRemove(
     write({
       teardownStatus: "failed",
       teardownMessage: message(error),
-      retireAt: Date.now() + record.provider.policy.removeRetryMs,
+      retireAt: Date.now() + REMOVE_RETRY_MS,
     });
   }
 }

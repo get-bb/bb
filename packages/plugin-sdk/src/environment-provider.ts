@@ -98,16 +98,8 @@ export type PluginEnvironmentProviderRemoveResult =
 export interface PluginEnvironmentProviderPolicy {
   /** Default five minutes; null keeps the environment indefinitely. */
   retireGraceMs: number | null;
-  /** Default 60 seconds. */
-  removeRetryMs: number;
-  /** Default 30 seconds. */
-  transientRetryMs: number;
-  /** Default three retries. */
-  transientRetryLimit: number;
   /** Default per-thread; rebuilds use a fresh key to avoid dead paths. */
   pathKeys: "per-thread" | "per-attempt";
-  /** Default null; a timeout is recorded as a transient failure. */
-  createTimeoutMs: number | null;
 }
 
 /** Resource operations only. Core owns durable launches, retries and retirement. */

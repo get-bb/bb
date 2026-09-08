@@ -238,10 +238,11 @@ clears it. On cancellation core aborts create, waits for it to stop, then calls
 for the pathKey even when create never returned a path, and returns removed or
 failed(message).
 
-Policy defaults are normalized at registration: retireGraceMs 5 minutes
-(null means never), removeRetryMs 60 seconds, transientRetryMs 30 seconds,
-transientRetryLimit 3, pathKeys per-thread (or per-attempt), and createTimeoutMs
-null (a positive value aborts and records a transient failure). Rebuilds use
+Policy exposes retireGraceMs (five minutes by default; null means never) and
+pathKeys (per-thread by default, or per-attempt). Core retries failed removal
+after 60 seconds and permits three transient creation retries, 30 seconds apart.
+Core imposes no overall provider-create timeout. These are internal core
+behaviors, not provider settings. Rebuilds use
 fresh path keys. Retirement starts after the last live thread archives or is deleted.
 A per-environment lock serializes removal; failures persist and retry.
 Environment responses expose only the read-only lifecycle projection:
