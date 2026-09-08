@@ -149,7 +149,7 @@ async function resolve(
     throw new Error(
       (available?.availability.status !== "available" &&
         available?.availability.message) ||
-        "Configure default machine access in General settings",
+        "Configure default machine access in Machines settings",
     );
   }
   let grant: ServerAccessGrant;

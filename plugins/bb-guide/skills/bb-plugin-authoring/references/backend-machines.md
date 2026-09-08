@@ -126,10 +126,10 @@ metadata belongs in KV. Delivered v1 bundles upgrade locally to v2 headers in th
 CLI and installer, including one-time legacy Connect redemption.
 
 `experimental_attention()` optionally returns a user-safe diagnostic or null,
-synchronously or asynchronously. General settings displays it independently of
+synchronously or asynchronously. Machines settings displays it independently of
 availability; never include credentials or raw provider payloads.
 
-General settings select the default. Plugins can pass ServerAccessSelection
+Machines settings select the default. Plugins can pass ServerAccessSelection
 to the machine enrolment/bootstrap APIs. The direct provider reads
 machineServerUrl, falling back to BB_EXTERNAL_URL. Declaring a URL does not
 prove reachability from a sandbox.

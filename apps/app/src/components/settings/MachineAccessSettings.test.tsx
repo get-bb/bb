@@ -27,7 +27,7 @@ vi.mock("@/hooks/mutations/settings-mutations", () => ({
   useUpdateGeneralSettings: () => ({ isPending: false }),
 }));
 afterEach(cleanup);
-it("shows access attention in General settings even when automatic access is available", () => {
+it("shows access attention in Machines settings even when automatic access is available", () => {
   render(<MachineAccessSettings />);
   expect(screen.getByRole("status").textContent).toBe(
     "bb Cloud: 2 legacy access records need attention",

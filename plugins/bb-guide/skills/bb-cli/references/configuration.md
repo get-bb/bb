@@ -91,7 +91,7 @@ available through their own sources.
 
 ## Machine access and isolated data
 
-General `machineServerUrl` is the URL reachable by machines; unset uses
+Machine access `machineServerUrl` is the URL reachable by machines; unset uses
 `BB_EXTERNAL_URL`. `defaultMachineAccess` selects an access provider; unset
 prefers paired Connect, then direct when a URL exists. Inspect effective values
 with `bb settings show --json` and change them with `bb settings general`.
@@ -115,5 +115,5 @@ These settings apply globally to enrolled machines, not local hosts, on each
 agent turn, setup command, and new BB terminal. User values override built-ins;
 agent-provider entries override host values. Reopen existing terminals after a
 change. The server gh login provides GitHub Git/gh authentication and commit
-identity by default; a user GH_TOKEN replaces it. See Settings → General →
+identity by default; a user GH_TOKEN replaces it. See Settings → Machines →
 Machine environment, and `bb settings show --json` for machineGit readiness.

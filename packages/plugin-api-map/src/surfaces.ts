@@ -876,7 +876,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Registers server access for enrolment and ongoing machine runtime requests. With this, a plugin can:",
         bullets: [
           "Register bb.experimental_serverAccess with availability, idempotent acquire and release",
-          "Return a user-safe experimental_attention diagnostic for General settings without disabling healthy access",
+          "Return a user-safe experimental_attention diagnostic for Machines settings without disabling healthy access",
           "Return { id, serverUrl, headers? }; machines attach headers to all server requests without provider-specific redemption",
           "Choose a General default or override access for a machine; automatic selection prefers paired bb Cloud then a configured direct URL",
           "Use the Server URL reachable by machines setting or BB_EXTERNAL_URL fallback; the URL is not a reachability guarantee",

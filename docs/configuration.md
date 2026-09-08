@@ -1194,10 +1194,10 @@ agent configuration is next assembled, not retroactively to existing text.
 
 ### Machine server access
 
-General settings expose **Server URL reachable by machines** (`machineServerUrl`)
+Machines settings expose **Server URL reachable by machines** (`machineServerUrl`)
 and **Default machine access** (`defaultMachineAccess`). The URL must be HTTP
 or HTTPS without embedded credentials. An unset URL falls back to
-`BB_EXTERNAL_URL`. General displays the effective URL and its source; it does
+`BB_EXTERNAL_URL`. Machines displays the effective URL and its source; it does
 not claim the remote machine can reach it. An unset access provider selects
 paired Connect, otherwise direct when a URL exists. An explicit provider must
 be installed and available. Configure these with `bb settings general
@@ -1230,7 +1230,7 @@ the daemon applies them to the hook child process and redacts secrets from
 progress and errors. Machine selection and precedence stay in the server
 resolver, which returns no contributions for the local host.
 
-Settings → General → Machine environment defines variables for all enrolled
+Settings → Machines → Machine environment defines variables for all enrolled
 machine hosts. Local hosts do not receive them. Add plain values or mark a value
 secret; secrets use core's 0600 secret files and are never returned by settings
 reads. `GH_TOKEN` is always secret. Notes are public metadata.

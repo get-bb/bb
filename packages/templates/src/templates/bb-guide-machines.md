@@ -145,9 +145,9 @@ instead of `--path` to clone the project's Git remote there; `--remote-url` and
 
 ## Server access
 
-Set General → Server URL reachable by machines, or run `bb settings general
+Set Machines → Server URL reachable by machines, or run `bb settings general
 machineServerUrl https://bb.example.com`. An unset value uses BB_EXTERNAL_URL.
-General shows the effective URL and source. Set Default machine access with
+Machines settings show the effective URL and source. Set Default machine access with
 `bb settings general defaultMachineAccess direct` or `connect`; `null` uses
 paired Connect first, then direct when a URL exists. `bb settings show --json`
 includes provider availability and the effective selection. Machines use this
@@ -246,7 +246,7 @@ from stdin, removing one trailing newline; values are never accepted in argv.
 `bb machine env unset NAME --json` removes an override. GH_TOKEN is always secret.
 Secret values use private files and are never returned by list or set.
 
-Settings → General → Machine environment has the same controls. User variables
+Settings → Machines → Machine environment has the same controls. User variables
 override built-in values for all enrolled machine hosts, excluding local hosts.
 Agent-provider variables win over these host values for agent turns. Changes
 apply to the next turn, setup operation, or newly opened BB terminal; existing

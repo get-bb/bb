@@ -48,7 +48,7 @@ for retry until revocation completes.
 
 Malformed legacy payloads are scrubbed from KV during initialization. Only
 validated cleanup identities and a quarantine flag remain; raw malformed data
-is discarded. A safe diagnostic is logged, and General → Machine access shows
+is discarded. A safe diagnostic is logged, and Machines → Machine access shows
 “N legacy access records need attention” without disabling healthy grants.
 Quarantined hosts cannot acquire replacement access until their known device is
 revoked through normal removal; records without a recoverable device identity

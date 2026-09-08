@@ -2660,7 +2660,7 @@ describing it as merely too large.
 
 Optional sync/async hook returning a deliberate user-safe diagnostic or null.
 Core fills null for providers without the hook and exposes `attention` in system
-configuration; General → Machine access displays it independently of availability.
+configuration; Machines → Machine access displays it independently of availability.
 Use durable state for diagnostics that must survive plugin reload. Never return
 credentials or raw provider payloads. Stabilization requires verifying reload,
 cleared diagnostics, multiple providers, and no impact on provider selection.
@@ -2674,8 +2674,8 @@ Machines attach these optional headers to enrollment, HTTP, WebSocket and runtim
 requests. A direct grant omits headers; access providers own credential redemption.
 `ServerAccessSelection` selects a provider explicitly. Core persists only
 provider id and grant id per host; credentials travel in bootstrap delivery.
-Direct access reads General's machineServerUrl with BB_EXTERNAL_URL fallback.
-General's defaultMachineAccess selects a provider; automatic prefers paired
+Direct access reads machineServerUrl with BB_EXTERNAL_URL fallback.
+defaultMachineAccess selects a provider; automatic prefers paired
 Connect, then an available direct URL. Access covers account-pool and other
 runtime requests after enrolment. Connect redeems Cloud codes server-side and persists connectMachineId with the
 grant before returning it, allowing release to revoke even before enrollment.

@@ -1217,7 +1217,13 @@ export function SettingsView() {
   } else if (activeSection === "projects") {
     content = <ProjectsSettingsSection />;
   } else if (activeSection === "machines") {
-    content = <MachinesSettingsSection />;
+    content = (
+      <>
+        <MachinesSettingsSection />
+        <MachineAccessSettings />
+        <MachineEnvironmentSettings />
+      </>
+    );
   } else if (activeSection === "updates") {
     content = (
       <UpdatesSettingsSection
@@ -1279,8 +1285,6 @@ export function SettingsView() {
   } else {
     content = (
       <>
-        <MachineAccessSettings />
-        <MachineEnvironmentSettings />
         <GeneralSettingsSection
           desktopBrowserAvailable={desktopBrowserAvailable}
           managedBranchPrefix={generalSettings.managedBranchPrefix}

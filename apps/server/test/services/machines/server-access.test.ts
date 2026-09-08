@@ -44,7 +44,7 @@ function provider(): ServerAccessProviderDeclaration {
 }
 
 describe("machine server access", () => {
-  it("surfaces access attention in General settings without changing availability", async () => {
+  it("surfaces access attention in Machines settings without changing availability", async () => {
     await withTestHarness(async ({ deps }) => {
       installProvider({
         ...provider(),
