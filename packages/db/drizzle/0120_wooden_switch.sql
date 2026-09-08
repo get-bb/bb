@@ -1,14 +1,3 @@
-CREATE TABLE `environment_hook_operations` (
-	`id` text PRIMARY KEY NOT NULL,
-	`operation_id` text NOT NULL,
-	`host_id` text NOT NULL,
-	`path` text NOT NULL,
-	`kind` text NOT NULL,
-	`started_at` integer NOT NULL,
-	`finished_at` integer,
-	`error` text
-);
---> statement-breakpoint
 CREATE TABLE `environment_setup_outcomes` (
 	`host_id` text NOT NULL,
 	`path` text NOT NULL,

@@ -2776,6 +2776,11 @@ server/daemon wire fields.
 `{status:"blocked",code,stage,message,retryable}`. Core checks CLI compatibility
 through the registered installer, validates credential routing from the machine,
 and checks the recorded checkout setup outcome. Provider-managed turns use the same barrier.
+The server contract exports `experimental_hostReadinessRequestSchema`,
+`experimental_hostReadinessResponseSchema`, `experimental_HostReadinessRequest`
+and `experimental_HostReadinessResponse` for these same validated shapes. Their
+stabilization follows the readiness audit below.
+
 The provider context's `projectCheckout.experimental_ownsPath` identifies a
 checkout materialised by core; absence from older servers means unowned. Core
 supplies an explicit boolean, derived from persisted source ownership, never
@@ -2812,9 +2817,14 @@ Omitting keep is read-only; true prevents automatic retention removal and false
 restores it. Explicit machine removal remains available. CLI parity is
 `bb machine lifecycle MACHINE [--keep|--no-keep] --json`.
 
+The corresponding server contract schemas and types are
+`experimental_hostLifecycleRequestSchema`, `experimental_hostLifecycleResponseSchema`,
+`experimental_HostLifecycleRequest` and `experimental_HostLifecycleResponse`. They
+share the same lifecycle behavior and stabilization criteria.
+
 Stabilization requires controlled-clock restart, lease, dispatch, loss and retention
 coverage, vendor deadline reconciliation, snapshot-before-terminate evidence, and
 review of recoverable failures and account changes. Planned rotation cannot protect
 against a server outage spanning vendor expiry without independent storage/watchdogs.
 
-Restore setup hooks use the same recorded core hook path as creation and receive the shared core machine environment contributions. Hook output redacts contributed secrets across stream boundaries. Daemon protocol 194 adds these contributions to the hook RPC; enrolled machines update before use. Failed restore hooks block readiness.
+Restore setup hooks use the same recorded core hook path as creation and receive the shared core machine environment contributions. Hook output redacts contributed secrets across stream boundaries. Daemon protocol 194 includes these contributions in the hook RPC; enrolled machines update before use. Failed restore hooks block readiness.
