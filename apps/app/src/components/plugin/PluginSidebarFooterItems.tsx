@@ -25,9 +25,20 @@ const SIDEBAR_FOOTER_ACTION_CLASS = cn(
   COARSE_POINTER_CHILD_ICON_BUTTON_CLASS,
   "text-muted-foreground hover:text-sidebar-foreground [&>svg]:opacity-80",
 );
+let rememberedActiveDisclosureKey: string | null = null;
 
 function footerItemKey(item: PluginSidebarFooterItemSlot): string {
   return `${item.pluginId}/${item.id}/${item.generation}`;
+}
+
+function nextActiveDisclosureKey(
+  current: string | null,
+  itemKey: string,
+  command: ExperimentalSidebarFooterCommandKind,
+): string | null {
+  if (command === "open") return itemKey;
+  if (command === "close") return current === itemKey ? null : current;
+  return current === itemKey ? null : itemKey;
 }
 
 function footerDisclosureId(item: PluginSidebarFooterItemSlot): string {
@@ -44,7 +55,9 @@ export function usePluginSidebarFooterDisclosure() {
     () => sidebarFooterItems.filter((item) => item.kind === "disclosure"),
     [sidebarFooterItems],
   );
-  const [activeKey, setActiveKey] = useState<string | null>(null);
+  const [activeKey, setActiveKey] = useState<string | null>(
+    rememberedActiveDisclosureKey,
+  );
   const [suppressedTooltipKey, setSuppressedTooltipKey] = useState<
     string | null
   >(null);
@@ -76,9 +89,9 @@ export function usePluginSidebarFooterDisclosure() {
         (command === "toggle" && activeKey === itemKey);
       setSuppressedTooltipKey(isClosing ? itemKey : null);
       setActiveKey((current) => {
-        if (command === "open") return itemKey;
-        if (command === "close") return current === itemKey ? null : current;
-        return current === itemKey ? null : itemKey;
+        const next = nextActiveDisclosureKey(current, itemKey, command);
+        rememberedActiveDisclosureKey = next;
+        return next;
       });
     },
     [activeKey],
@@ -88,6 +101,7 @@ export function usePluginSidebarFooterDisclosure() {
     if (activeItem !== null) {
       setSuppressedTooltipKey(footerItemKey(activeItem));
     }
+    rememberedActiveDisclosureKey = null;
     setActiveKey(null);
   }, [activeItem]);
 
