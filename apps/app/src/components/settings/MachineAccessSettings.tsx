@@ -1,12 +1,6 @@
 import { useState } from "react";
 import { Input } from "@bb/shared-ui/input";
-import { Button } from "@bb/shared-ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@bb/shared-ui/dropdown-menu";
+import { OptionPicker } from "@/components/pickers/OptionPicker";
 import { useSystemConfig } from "@/hooks/queries/system-queries";
 import { useUpdateGeneralSettings } from "@/hooks/mutations/settings-mutations";
 import {
@@ -50,7 +44,7 @@ export function MachineAccessSettings() {
   return (
     <SettingsSection
       title="Machine access"
-      description="Choose how other machines connect to this server."
+      description="Choose how other machines connect to the server."
       bodyClassName="space-y-5"
     >
       {access?.providers.map((provider) =>
@@ -65,74 +59,70 @@ export function MachineAccessSettings() {
         ) : null,
       )}
       <SettingsWithControl
-        label="Server URL reachable by machines"
+        label="Default machine access"
         description={
-          error ??
-          (access?.effectiveUrl
-            ? `${access.effectiveUrl} · ${access.urlSource === "setting" ? "Machines setting" : "BB_EXTERNAL_URL"}`
-            : access?.defaultProviderId && access.defaultProviderId !== "direct"
-              ? "Only used by Direct URL. The selected access provider supplies its own endpoint."
-              : "Set the URL machines use with Direct URL access.")
+          selected
+            ? effective?.availability.status === "available"
+              ? "New machines use this access provider."
+              : (effective?.availability.message ??
+                "This access provider is not installed.")
+            : `Uses bb Cloud when paired, otherwise Direct URL. ${effective ? `Currently: ${effective.displayName}.` : "Pair bb Cloud or configure a direct server URL to get started."}`
         }
-        controlPlacement="below"
       >
-        <Input
-          className="max-w-lg"
-          aria-label="Server URL reachable by machines"
-          aria-invalid={error !== null}
-          value={draft ?? value}
-          placeholder="https://bb.example.com"
+        <OptionPicker
+          label="Default machine access"
+          value={selected ?? "automatic"}
           disabled={disabled}
-          onChange={(event) => setDraft(event.target.value)}
-          onBlur={() => void commitUrl()}
-          onKeyDown={(event) => {
-            if (event.key === "Enter") void commitUrl();
+          align="end"
+          options={[
+            {
+              value: "automatic",
+              label: "Automatic",
+              description: "Use bb Cloud when paired, otherwise Direct URL.",
+            },
+            ...(access?.providers ?? []).map((provider) => ({
+              value: provider.id,
+              label: provider.displayName,
+              description:
+                provider.availability.status !== "available"
+                  ? provider.availability.message
+                  : provider.id === "direct"
+                    ? "Use the server address configured below."
+                    : "Use this provider for new machine connections.",
+            })),
+          ]}
+          onChange={(providerId) => {
+            if (settings)
+              update.mutate({
+                ...settings,
+                defaultMachineAccess:
+                  providerId === "automatic" ? null : providerId,
+              });
           }}
         />
       </SettingsWithControl>
       <div className="border-t border-border pt-5">
         <SettingsWithControl
-          label="Default machine access"
+          label="Server URL reachable by machines"
           description={
-            selected
-              ? effective?.availability.status === "available"
-                ? "New machines use this access provider."
-                : (effective?.availability.message ??
-                  "This access provider is not installed.")
-              : `Automatic: ${effective?.displayName ?? "configure an access provider"}`
+            error ??
+            "Used only by Direct URL access. Enter an address where other machines can already reach the server, such as a LAN address or your own domain. This does not set up networking; bb Cloud supplies its own address."
           }
+          controlPlacement="below"
         >
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline" disabled={disabled}>
-                {selected ? (effective?.displayName ?? selected) : "Automatic"}
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem
-                onSelect={() => {
-                  if (settings)
-                    update.mutate({ ...settings, defaultMachineAccess: null });
-                }}
-              >
-                Automatic
-              </DropdownMenuItem>
-              {access?.providers.map((provider) => (
-                <DropdownMenuItem
-                  key={provider.id}
-                  onSelect={() => {
-                    if (settings)
-                      update.mutate({
-                        ...settings,
-                        defaultMachineAccess: provider.id,
-                      });
-                  }}
-                >
-                  {provider.displayName}
-                </DropdownMenuItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
+          <Input
+            className="max-w-lg"
+            aria-label="Server URL reachable by machines"
+            aria-invalid={error !== null}
+            value={draft ?? value}
+            placeholder={access?.effectiveUrl ?? "https://bb.example.com"}
+            disabled={disabled}
+            onChange={(event) => setDraft(event.target.value)}
+            onBlur={() => void commitUrl()}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") void commitUrl();
+            }}
+          />
         </SettingsWithControl>
       </div>
     </SettingsSection>

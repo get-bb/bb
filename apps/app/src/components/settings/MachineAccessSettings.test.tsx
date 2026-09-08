@@ -32,5 +32,5 @@ it("shows access attention in Machines settings even when automatic access is av
   expect(screen.getByRole("status").textContent).toBe(
     "bb Cloud: 2 legacy access records need attention",
   );
-  expect(screen.getByText("Automatic: bb Cloud")).toBeTruthy();
+  expect(screen.getByText(/Currently: bb Cloud/)).toBeTruthy();
 });
