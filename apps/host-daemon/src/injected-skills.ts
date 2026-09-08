@@ -613,15 +613,29 @@ function hashStoredTreeFiles(files: readonly CollectedSkillFile[]): string {
   return hash.digest("hex");
 }
 
+async function resolveInstalledSkillDirectoryPath(
+  skillDirectoryPath: string,
+): Promise<string> {
+  if (!path.isAbsolute(skillDirectoryPath)) {
+    throw new Error(
+      `Injected skill source root must be absolute: ${skillDirectoryPath}`,
+    );
+  }
+  return fs.realpath(skillDirectoryPath);
+}
+
 export async function hashInstalledSkillDirectory(args: {
   name: string;
   skillDirectoryPath: string;
 }): Promise<string | null> {
   try {
+    const skillDirectoryPath = await resolveInstalledSkillDirectoryPath(
+      args.skillDirectoryPath,
+    );
     const tree = await collectSkillDirectory({
       name: args.name,
-      sourceRootPath: args.skillDirectoryPath,
-      skillFilePath: path.join(args.skillDirectoryPath, SKILL_FILE_NAME),
+      sourceRootPath: skillDirectoryPath,
+      skillFilePath: path.join(skillDirectoryPath, SKILL_FILE_NAME),
     });
     return hashStoredTreeFiles(
       [...tree.files].sort((left, right) =>

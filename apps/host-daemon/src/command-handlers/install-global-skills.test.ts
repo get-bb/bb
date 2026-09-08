@@ -1,10 +1,12 @@
 import { createHash } from "node:crypto";
 import {
+  lstat,
   mkdtemp,
   mkdir,
   readFile,
   readdir,
   rm,
+  symlink,
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -94,6 +96,42 @@ describe("install global skills", () => {
         ),
       ).resolves.toBe("# bb-cli\n");
     }
+  });
+
+  it("reports matching status through a valid .claude skill alias after install", async () => {
+    const dataDir = await makeTempDir();
+    const homeDir = await makeTempDir();
+    const agentsRoot = path.join(homeDir, ".agents", "skills");
+    const claudeRoot = path.join(homeDir, ".claude", "skills");
+    const payload = createTreePayload("bb-cli", "aliased body");
+    const command = {
+      type: "host.install_global_skills" as const,
+      skills: [
+        { name: "bb-cli", treeHash: payload.treeHash, entryPath: "SKILL.md" },
+      ],
+    };
+
+    await installGlobalSkills(command, {
+      dataDir,
+      fetchSkillTree: async () => payload,
+      homeDir,
+    });
+    const agentsSkillPath = path.join(agentsRoot, "bb-cli");
+    const claudeSkillPath = path.join(claudeRoot, "bb-cli");
+    await rm(claudeSkillPath, { force: true, recursive: true });
+    await symlink(agentsSkillPath, claudeSkillPath, "dir");
+
+    const status = await readGlobalSkillsStatus(
+      { type: "host.global_skills_status", names: ["bb-cli"] },
+      { homeDir },
+    );
+    expect(status.entries.map((entry) => entry.treeHash)).toEqual([
+      payload.treeHash,
+      payload.treeHash,
+    ]);
+    await expect(
+      lstat(claudeSkillPath).then((stat) => stat.isSymbolicLink()),
+    ).resolves.toBe(true);
   });
 
   it("replaces a stale copy without leaving its removed files or staging dirs behind", async () => {

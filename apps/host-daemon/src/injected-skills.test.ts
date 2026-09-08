@@ -23,6 +23,7 @@ import type {
 import {
   cleanupInjectedSkillStagingDirs,
   ensureDataDirSkillsRootPath,
+  hashInstalledSkillDirectory,
   MAX_SKILL_STORE_TREES,
   stageInjectedSkillSources,
 } from "./injected-skills.js";
@@ -655,6 +656,39 @@ describe("injected skill staging", () => {
     }
   });
 
+  it("skips symlinked source roots during staging", async () => {
+    const dataDir = await makeTempDir();
+    const realSkillRoot = await writeSkill({
+      rootPath: path.join(dataDir, "real-skills"),
+      name: "release-notes",
+    });
+    const symlinkedSkillRoot = path.join(dataDir, "linked-skill");
+    await symlink(realSkillRoot, symlinkedSkillRoot, "dir");
+    const warnings: CapturedWarning[] = [];
+
+    const staged = await stageInjectedSkillSources({
+      dataDir,
+      injectedSkillSources: [
+        createDataDirSource({
+          dataDir,
+          skillName: "release-notes",
+          skillRootPath: symlinkedSkillRoot,
+        }),
+      ],
+      logger: {
+        debug: () => undefined,
+        warn: (context, message) => warnings.push({ context, message }),
+      },
+    });
+
+    expect(staged.skillRoots).toEqual([]);
+    expect(warnings).toEqual([
+      expect.objectContaining({
+        message: "Skipping injected skill during staging",
+      }),
+    ]);
+  });
+
   it("skips symlinked files during staging", async () => {
     const dataDir = await makeTempDir();
     const outsideDir = await makeTempDir();
@@ -692,6 +726,77 @@ describe("injected skill staging", () => {
         message: "Skipping injected skill during staging",
       }),
     ]);
+  });
+});
+
+describe("installed skill hashing", () => {
+  it("resolves a valid root alias before hashing", async () => {
+    const dataDir = await makeTempDir();
+    const agentsRoot = path.join(dataDir, ".agents", "skills");
+    const skillRootPath = await writeSkill({
+      rootPath: agentsRoot,
+      name: "release-notes",
+    });
+    const claudeRoot = path.join(dataDir, ".claude", "skills");
+    await mkdir(claudeRoot, { recursive: true });
+    const aliasedSkillRoot = path.join(claudeRoot, "release-notes");
+    await symlink(skillRootPath, aliasedSkillRoot, "dir");
+
+    const expected = await hashInstalledSkillDirectory({
+      name: "release-notes",
+      skillDirectoryPath: skillRootPath,
+    });
+    const actual = await hashInstalledSkillDirectory({
+      name: "release-notes",
+      skillDirectoryPath: aliasedSkillRoot,
+    });
+
+    expect(expected).not.toBeNull();
+    expect(actual).toBe(expected);
+  });
+
+  it("returns null for a broken root alias", async () => {
+    const dataDir = await makeTempDir();
+    const claudeRoot = path.join(dataDir, ".claude", "skills");
+    await mkdir(claudeRoot, { recursive: true });
+    await symlink(
+      path.join(dataDir, "missing-skill"),
+      path.join(claudeRoot, "release-notes"),
+      "dir",
+    );
+
+    await expect(
+      hashInstalledSkillDirectory({
+        name: "release-notes",
+        skillDirectoryPath: path.join(claudeRoot, "release-notes"),
+      }),
+    ).resolves.toBeNull();
+  });
+
+  it("returns null when a descendant is a symlink", async () => {
+    const dataDir = await makeTempDir();
+    const outsideDir = await makeTempDir();
+    const skillRootPath = await writeSkill({
+      rootPath: path.join(dataDir, "agents", "skills"),
+      name: "release-notes",
+    });
+    const outsideFilePath = path.join(outsideDir, "escape.md");
+    await writeFile(outsideFilePath, "escape\n", "utf8");
+    await symlink(
+      outsideFilePath,
+      path.join(skillRootPath, "references", "escape.md"),
+    );
+    const claudeSkillRoot = path.join(dataDir, ".claude", "skills");
+    await mkdir(claudeSkillRoot, { recursive: true });
+    const aliasedSkillRoot = path.join(claudeSkillRoot, "release-notes");
+    await symlink(skillRootPath, aliasedSkillRoot, "dir");
+
+    await expect(
+      hashInstalledSkillDirectory({
+        name: "release-notes",
+        skillDirectoryPath: aliasedSkillRoot,
+      }),
+    ).resolves.toBeNull();
   });
 });
 
