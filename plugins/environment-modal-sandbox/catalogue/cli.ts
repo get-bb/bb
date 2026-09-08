@@ -16,6 +16,8 @@ const commandFlags: Record<string, readonly string[]> = {
     "revision",
     "reviewed-dirty-json",
   ],
+  "image verify": ["provider", "key"],
+  "image use": ["project", "provider", "expected-revision"],
   "image build": ["project", "recipe", "revision", "context", "key"],
   "image logs": ["follow", "cursor", "limit"],
   "image status": [],
@@ -199,6 +201,21 @@ export function registerCatalogueCli(
               };
             break;
           }
+          case "image verify":
+            result = await invoke("verification.start", {
+              buildId: positional[0],
+              agentProviderId: required("provider"),
+              key: required("key"),
+            });
+            break;
+          case "image use":
+            result = await invoke("project.useImage", {
+              buildId: positional[0],
+              projectId: await projectId(),
+              agentProviderId: flags.get("--provider") ?? "codex",
+              expectedRevision: number("expected-revision"),
+            });
+            break;
           case "image status":
             result = await invoke("build.get", { buildId: positional[0] });
             break;

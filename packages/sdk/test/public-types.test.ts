@@ -274,6 +274,7 @@ type ExpectedGuideKey = "render";
 
 type ExpectedHostsKey =
   | "experimental_enrollmentCommand"
+  | "experimental_ensureReady"
   | "submit"
   | "launch"
   | "follow"

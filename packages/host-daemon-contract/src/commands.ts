@@ -1,4 +1,12 @@
 import {
+  readinessInspectCommandSchema,
+  readinessInspectResultSchema,
+  readinessRunCommandSchema,
+  readinessRunResultSchema,
+  readinessProbeCommandSchema,
+  readinessProbeResultSchema,
+} from "./readiness.js";
+import {
   desktopBrowserCommandSchemas,
   desktopBrowserResultSchemas,
 } from "./desktop-browser.js";
@@ -1782,6 +1790,33 @@ export const hostDaemonCommandRegistry = {
     type: "provider.health",
     schema: providerHealthCommandSchema,
     resultSchema: providerHealthResultSchema,
+    transport: "onlineRpc",
+    retryable: true,
+    flushEventsBeforeResult: false,
+    envLane: null,
+  }),
+  "workspace.readiness.inspect": defineHostDaemonCommandDescriptor({
+    type: "workspace.readiness.inspect",
+    schema: readinessInspectCommandSchema,
+    resultSchema: readinessInspectResultSchema,
+    transport: "onlineRpc",
+    retryable: true,
+    flushEventsBeforeResult: false,
+    envLane: null,
+  }),
+  "workspace.readiness.run": defineHostDaemonCommandDescriptor({
+    type: "workspace.readiness.run",
+    schema: readinessRunCommandSchema,
+    resultSchema: readinessRunResultSchema,
+    transport: "onlineRpc",
+    retryable: false,
+    flushEventsBeforeResult: false,
+    envLane: null,
+  }),
+  "host.readiness.probe": defineHostDaemonCommandDescriptor({
+    type: "host.readiness.probe",
+    schema: readinessProbeCommandSchema,
+    resultSchema: readinessProbeResultSchema,
     transport: "onlineRpc",
     retryable: true,
     flushEventsBeforeResult: false,

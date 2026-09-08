@@ -1,5 +1,7 @@
 import { getMachineEnrollmentService } from "../services/machines/machine-services.js";
 import { manualEnrollmentCommand } from "../services/machines/manual-enrollment-command.js";
+import { ensureHostReady } from "../services/machines/readiness.js";
+import { ensureProjectSourceOnHost } from "../services/projects/project-source-setup.js";
 import { serverAccess } from "../services/machines/server-access.js";
 import { getNonDestroyedHost, updateHost } from "@bb/db";
 import {
@@ -10,7 +12,10 @@ import {
 import type { Hono } from "hono";
 import { HOST_DAEMON_PROTOCOL_VERSION } from "@bb/host-daemon-contract";
 import type { AppDeps } from "../types.js";
-import { getProviderInstallations } from "../services/system/provider-installations.js";
+import {
+  getProviderInstallations,
+  serializeProviderInstallation,
+} from "../services/system/provider-installations.js";
 import { resolveBridgeLaunchForProviderId } from "../services/system/provider-bridge-launch.js";
 import type { PluginService } from "../services/plugins/plugin-service.js";
 import { COMMAND_TIMEOUT_MS } from "../constants.js";
@@ -355,6 +360,37 @@ export function registerHostRoutes(
     return context.json(result);
   });
 
+  post(routes.experimental_ensureReady, async (context, payload) => {
+    const hostId = context.req.param("id");
+    assertUsableHostId(deps, { hostId });
+    const project = requirePublicStandardProject(deps.db, payload.projectId);
+    try {
+      const source = await ensureProjectSourceOnHost(deps, {
+        projectId: project.id,
+        projectName: project.name,
+        hostId,
+        remoteUrl: project.gitRemoteUrl,
+      });
+      return context.json(
+        await ensureHostReady(deps, {
+          ...payload,
+          hostId,
+          threadId: null,
+          path: source.path,
+        }),
+      );
+    } catch {
+      return context.json({
+        status: "blocked" as const,
+        code: "checkout_failed",
+        stage: "workspace" as const,
+        message:
+          "Project checkout could not be prepared; check repository access",
+        retryable: true,
+      });
+    }
+  });
+
   get(routes.providerCliStatus, async (context) => {
     const hostId = context.req.param("id");
     assertUsableHostId(deps, { hostId });
@@ -385,16 +421,18 @@ export function registerHostRoutes(
         `Provider bridge is unavailable for ${payload.provider}`,
       );
     }
-    const result = await callHostOnlineRpc(deps, {
-      hostId,
-      timeoutMs: PROVIDER_CLI_INSTALL_TIMEOUT_MS,
-      command: {
-        type: "provider.installation.run",
-        providerId: payload.provider,
-        action: payload.actionKind,
-        bridgeLaunch,
-      },
-    });
+    const result = await serializeProviderInstallation(deps, hostId, () =>
+      callHostOnlineRpc(deps, {
+        hostId,
+        timeoutMs: PROVIDER_CLI_INSTALL_TIMEOUT_MS,
+        command: {
+          type: "provider.installation.run",
+          providerId: payload.provider,
+          action: payload.actionKind,
+          bridgeLaunch,
+        },
+      }),
+    );
     if (
       result.events.some((event) => event.type === "completed" && event.success)
     ) {

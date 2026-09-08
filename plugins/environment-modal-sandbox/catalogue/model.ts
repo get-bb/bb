@@ -145,3 +145,35 @@ export class CatalogueError extends experimental_PluginRpcConflict {
     if (status !== 409) this.name = "CatalogueError";
   }
 }
+
+export const verificationSchema = z.object({
+  verificationId: idSchema,
+  buildId: idSchema,
+  agentProviderId: idSchema,
+  key: idSchema,
+  state: z.enum([
+    "queued",
+    "allocating",
+    "starting",
+    "running",
+    "checking",
+    "suspending",
+    "resuming",
+    "restoring",
+    "retaining",
+    "passed",
+    "failed",
+  ]),
+  hostId: idSchema.nullable(),
+  environmentId: idSchema.nullable(),
+  threadId: idSchema.nullable(),
+  completedTurnSeq: z.number().int().nullable(),
+  restored: z.boolean().default(false),
+  checks: z.array(
+    z.object({ command: z.string(), exitCode: z.number().int() }),
+  ),
+  failure: z.string().nullable(),
+  createdAt: z.number(),
+  updatedAt: z.number(),
+});
+export type Verification = z.infer<typeof verificationSchema>;

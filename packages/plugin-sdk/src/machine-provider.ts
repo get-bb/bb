@@ -144,6 +144,16 @@ export interface PluginMachineProviderDefinition<
     report: PluginMachineProviderProgress;
     signal: AbortSignal;
   }): Promise<PluginMachineProviderRemoveResult>;
+  experimental_workspaceSetup?(context: {
+    hostId: string;
+    projectId: string;
+    resource: JsonValue;
+  }): Promise<{
+    scriptText: string;
+    scriptHash: string;
+    cacheManifest: JsonValue;
+    checks: string[];
+  } | null>;
   suspend?(
     context: PluginMachineProviderSuspendContext,
   ): Promise<PluginMachineProviderResourceResult>;

@@ -134,3 +134,42 @@ export const machineEnrollmentCommandQuerySchema = z.object({
 export type MachineEnrollmentCommandQuery = z.input<
   typeof machineEnrollmentCommandQuerySchema
 >;
+export const experimental_hostReadinessRequestSchema = z
+  .object({
+    providerId: z.string().min(1),
+    projectId: z.string().min(1),
+  })
+  .strict();
+export type experimental_HostReadinessRequest = z.infer<
+  typeof experimental_hostReadinessRequestSchema
+>;
+export const experimental_hostReadinessResponseSchema = z.discriminatedUnion(
+  "status",
+  [
+    z
+      .object({
+        status: z.literal("ready"),
+        checks: z.array(
+          z
+            .object({
+              kind: z.enum(["cli", "auth", "workspace"]),
+              status: z.literal("passed"),
+            })
+            .strict(),
+        ),
+      })
+      .strict(),
+    z
+      .object({
+        status: z.literal("blocked"),
+        code: z.string(),
+        stage: z.enum(["cli", "auth", "workspace"]),
+        message: z.string(),
+        retryable: z.boolean(),
+      })
+      .strict(),
+  ],
+);
+export type experimental_HostReadinessResponse = z.infer<
+  typeof experimental_hostReadinessResponseSchema
+>;

@@ -1614,9 +1614,11 @@ export interface ExperimentalPluginProviderEnvEntry {
 
 export interface ExperimentalPluginProviderEnvHealthContext {
   hostId: string;
+  experimental_readiness?: { threadId: string | null };
 }
 
 export interface ExperimentalPluginProviderEnvHealth {
+  experimental_probe?: { serverPath: string; headers: Record<string, string> };
   label: string;
   statusMessage: string;
 }

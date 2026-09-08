@@ -37,6 +37,8 @@ unless you pass `--auto-update` explicitly.
   bb machine list                         List machines with ID, connection
                                           status, and relative last-seen time
     --json                                Print the raw host list
+  bb machine ready <machine> --provider <id> --project <id> --json
+                                         Check CLI, auth and checkout readiness
   bb machine providers [--project <id>]   List installed machine providers
     --json                                Include inputs schemas and policy
   bb machine create --provider <id>       Create a standalone machine
@@ -184,6 +186,7 @@ to the daemon for enrollment, connection and runtime requests. Server-access
 plugins redeem provider codes on the server. Pending encrypted v1 bundles are
 upgraded by the server when prepared again.
 
+
 Delivered enrollment bundles from v1 remain valid until their expiry. The CLI accepts both file and environment forms, upgrades the bundle to v2 headers locally, and persists legacy Connect redemption before enrollment so a retry reuses it. The installer upgrades v1 environment bundles before authenticated artifact downloads.
 ## DigitalOcean dev boxes
 
@@ -254,3 +257,10 @@ helper and SSH rewrites, and commit identity. The built-in row reports logged in
 not logged in, or overridden. No credentials are installed in images or global
 Git config. SDK: system.machineEnvironment(), system.setMachineEnvironment({
 name, value, secret, note }), and system.unsetMachineEnvironment(name).
+
+Provider-managed machine turns check readiness before dispatch. `bb machine ready`
+checks the same CLI installation, credential routing reachability, and project
+workspace setup. It returns ready checks or a blocked stage/code/message.
+Compatible CLIs are reused. Stored setup runs only when input/ABI/script hashes
+change or dependency checks fail; tracked dirty edits block a required setup.
+

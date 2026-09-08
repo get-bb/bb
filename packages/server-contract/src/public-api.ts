@@ -5,6 +5,11 @@ import {
   type MachineEnvironmentList,
 } from "./api/machine-environment.js";
 import {
+  experimental_hostReadinessRequestSchema,
+  type experimental_HostReadinessRequest,
+  type experimental_HostReadinessResponse,
+} from "./api/hosts.js";
+import {
   desktopBrowserHostRequestSchema,
   desktopBrowserScopeSchema,
   desktopBrowserCreateRequestSchema,
@@ -848,6 +853,14 @@ export const publicApiRoutes = {
         hostPickFolderRequestSchema,
       ),
       response: jsonResponse<HostPickFolderResponse>(),
+    }),
+    experimental_ensureReady: defineRoute({
+      path: "/hosts/:id/ready",
+      method: "post",
+      request: jsonRequest<PathId, experimental_HostReadinessRequest>(
+        experimental_hostReadinessRequestSchema,
+      ),
+      response: jsonResponse<experimental_HostReadinessResponse>(),
     }),
     providerCliStatus: defineRoute({
       path: "/hosts/:id/provider-clis/status",

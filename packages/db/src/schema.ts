@@ -1167,3 +1167,16 @@ export const environmentHookOperations = sqliteTable(
     error: text("error"),
   },
 );
+
+export const machineWorkspaceSetups = sqliteTable(
+  "machine_workspace_setups",
+  {
+    hostId: text("host_id")
+      .notNull()
+      .references(() => hosts.id, { onDelete: "cascade" }),
+    path: text("path").notNull(),
+    stamp: text("stamp").notNull(),
+    updatedAt: integer("updated_at").notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.hostId, table.path] })],
+);

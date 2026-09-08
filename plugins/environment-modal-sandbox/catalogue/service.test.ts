@@ -66,7 +66,7 @@ async function fixture() {
     dockerfileText: "RUN true",
     setupScriptText: "",
     contextRules: { include: [], exclude: [] },
-    smoke: { commands: [], timeoutSeconds: 120 },
+    smoke: { commands: ["node --version"], timeoutSeconds: 120 },
   });
   const context = service.store.putContext(project.id, {
     recipeId: recipe.recipeId,
@@ -225,4 +225,78 @@ it("redacts credentials split across vendor log chunks", async () => {
   expect(JSON.stringify(page)).not.toContain("private-");
   expect(JSON.stringify(page)).not.toContain("value");
   expect(JSON.stringify(page)).toContain("[REDACTED]");
+});
+
+it("rejects failed smoke and incomplete proof, then promotes the selected agent with CAS", async () => {
+  const test = await fixture();
+  const build = await test.service.handlers["build.start"](test.input);
+  await test.service.sweep();
+  const job = await test.service.verifications.start({
+    buildId: build.buildId,
+    agentProviderId: "codex",
+    key: "verify",
+  });
+  expect(
+    await test.service.verifications.start({
+      buildId: build.buildId,
+      agentProviderId: "codex",
+      key: "verify",
+    }),
+  ).toEqual(job);
+  await expect(
+    test.service.verifications.start({
+      buildId: build.buildId,
+      agentProviderId: "claude-code",
+      key: "verify",
+    }),
+  ).rejects.toThrow(/different payload/);
+  const use = {
+    projectId: "project",
+    buildId: build.buildId,
+    agentProviderId: "codex",
+    expectedRevision: 0,
+  };
+  const save = (
+    state: "failed" | "passed",
+    exitCode: number,
+    completedTurnSeq: number | null,
+  ) => {
+    const data = {
+      ...job,
+      restored: true,
+      state,
+      hostId: "machine",
+      environmentId: "checkout",
+      threadId: "smoke-thread",
+      completedTurnSeq,
+      checks: [{ command: "node --version", exitCode }],
+    };
+    test.service.store.db
+      .prepare("UPDATE verifications SET state=?,data=? WHERE id=?")
+      .run(state, JSON.stringify(data), job.verificationId);
+  };
+  save("failed", 1, 42);
+  expect(() => test.service.verifications.promote(use)).toThrow(
+    /successful verification/,
+  );
+  save("passed", 1, 42);
+  expect(() => test.service.verifications.promote(use)).toThrow(
+    /independent command/,
+  );
+  save("passed", 0, null);
+  expect(() => test.service.verifications.promote(use)).toThrow(/agent/);
+  save("passed", 0, 42);
+  expect(() =>
+    test.service.verifications.promote({
+      ...use,
+      agentProviderId: "claude-code",
+    }),
+  ).toThrow(/successful verification/);
+  expect(test.service.verifications.promote(use)).toMatchObject({
+    usableBuildId: build.buildId,
+    available: true,
+    revision: 1,
+  });
+  expect(() => test.service.verifications.promote(use)).toThrow(/revision/);
+  expect(test.service.store.protected(build.buildId)).toBe(true);
 });

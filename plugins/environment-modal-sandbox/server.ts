@@ -1,3 +1,4 @@
+import { hash, resourcesSchema, policySchema } from "./catalogue/model.js";
 import { createWorkerImageBackend } from "./catalogue/worker.js";
 export { runImageBuildWorker } from "./catalogue/worker.js";
 import type { ImageBackendFactory } from "./catalogue/backend.js";
@@ -128,10 +129,13 @@ export function createModalSandboxPlugin(
       try {
         if (!context.project)
           throw new Error("Modal image launches require a project");
-        const { buildId } = z
-          .object({ buildId: z.string().min(1) })
-          .strict()
-          .parse(context.inputs);
+        const inputs = machineInputsSchema.parse(context.inputs ?? {});
+        const configured = catalogue.store.project(context.project.id);
+        const buildId = inputs.buildId ?? configured.usableBuildId;
+        if (!buildId)
+          throw new Error(
+            "Verify and promote a project image, or provide an explicit ready build ID",
+          );
         const build = catalogue.store.build(buildId);
         if (
           build.projectId !== context.project.id ||
@@ -154,7 +158,21 @@ export function createModalSandboxPlugin(
           throw new Error(
             "Selected Modal image is missing; explicitly rebuild before launch",
           );
-        const project = catalogue.store.project(context.project.id);
+        if (inputs.appName && inputs.appName !== build.appName)
+          throw new Error(
+            "The selected build is pinned to a different Modal app",
+          );
+        const project = {
+          ...configured,
+          resources: resourcesSchema.parse({
+            ...configured.resources,
+            ...inputs.resources,
+          }),
+          policy: policySchema.parse({
+            ...configured.policy,
+            ...inputs.policy,
+          }),
+        };
         context.signal.throwIfAborted();
         await bb.experimental_machines.prepareEnrollment({ key: context.key });
         catalogue.store.reference(buildId, "allocation", context.key);
@@ -313,7 +331,7 @@ export function createModalSandboxPlugin(
           ? { status: "available" }
           : { status: "setup-required", message: resolved.message };
       },
-      inputs: z.object({ buildId: z.string().min(1) }).strict(),
+      inputs: machineInputsSchema,
       create: launch,
       async experimental_reconcileCleanup(context) {
         const stored = await bb.storage.kv.get<unknown>(
@@ -476,6 +494,26 @@ export function createModalSandboxPlugin(
           resource: { ...resource, sandboxId: sandbox.sandboxId },
         };
       },
+      async experimental_workspaceSetup(context) {
+        const resource = readModalMachineResource(context.resource);
+        if (resource.version !== 4) return null;
+        const build = catalogue.store.build(resource.buildId);
+        if (build.projectId !== context.projectId)
+          throw new Error(
+            "This image was built for a different project; create a compatible sandbox",
+          );
+        const recipe = catalogue.store.recipe(build.projectId, build.revision);
+        return {
+          scriptText: recipe.setupScriptText,
+          scriptHash: hash(recipe.setupScriptText),
+          cacheManifest: {
+            buildId: build.buildId,
+            baseArtifact: build.baseArtifact,
+            contextHash: catalogue.store.context(build.contextId).manifestHash,
+          },
+          checks: recipe.smoke.commands,
+        };
+      },
       async remove(context) {
         const resource = readModalMachineResource(context.resource);
         const resolved = await currentSettings();
@@ -503,6 +541,16 @@ export function createModalSandboxPlugin(
     if (!loaded.ok) bb.status.needsConfiguration(loaded.message);
   };
 }
+
+const machineInputsSchema = z
+  .object({
+    buildId: z.string().min(1).optional(),
+    accountRef: z.literal("default").default("default"),
+    appName: z.string().min(1).optional(),
+    resources: resourcesSchema.partial().optional(),
+    policy: policySchema.partial().optional(),
+  })
+  .strict();
 
 export default createModalSandboxPlugin({
   backendFactory: createModalBackend,

@@ -62,6 +62,7 @@ This index lists every command path that the core CLI registers. Read the task-s
 ## machine
 
 - `bb machine`
+- `bb machine ready`
 - `bb machine providers`
 - `bb machine enroll`
 - `bb machine env`

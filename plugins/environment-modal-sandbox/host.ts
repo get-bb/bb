@@ -1,3 +1,4 @@
+import { spawn } from "node:child_process";
 import { isLockfile } from "./catalogue/source-contract.js";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
@@ -199,6 +200,29 @@ export default experimental_defineHostEntry({
       )
         throw new CatalogueError(413, "Context exceeds 256 MiB");
       return manifest;
+    },
+    async smoke({ path, commands, timeoutMs, expectedCommit }) {
+      const commit = (await git(path, ["rev-parse", "HEAD"]))
+        .toString("utf8")
+        .trim();
+      if (commit !== expectedCommit)
+        throw new Error(
+          "Verification checkout does not match the recorded build commit",
+        );
+      const results = [];
+      for (const command of commands) {
+        const exitCode = await new Promise<number>((resolve, reject) => {
+          const child = spawn("sh", ["-eu", "-c", command], {
+            cwd: path,
+            stdio: "ignore",
+            timeout: timeoutMs,
+          });
+          child.once("error", reject);
+          child.once("exit", (code) => resolve(code ?? 1));
+        });
+        results.push({ command, exitCode });
+      }
+      return { commit, results };
     },
     async upload({ path, manifest, url, token, contextId }) {
       for (const file of manifest.files) {

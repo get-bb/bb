@@ -9,7 +9,8 @@ have core clone and register that project's checkout, and run the thread through
 the Project checkout provider. The machine remains a normal bb execution
 target, so later threads can create Git worktrees or use other environment
 providers on the same sandbox. New machines require a project and an explicitly
-built catalogue image. Pass its `buildId` to `bb machine create`.
+built catalogue image. Pass its `buildId` to `bb machine create`, or promote a
+verified image to select it for future Modal machines in the project.
 
 Creation prepares enrollment before vendor allocation and awaits a core resource
 checkpoint as soon as the allocation ID is known. The checkpoint contains no
@@ -17,7 +18,9 @@ bootstrap credentials. Core can remove a cancelled allocation directly from
 that checkpoint without rerunning creation, enrollment, or bootstrap.
 Core owns project checkout setup and source registration after the machine
 connects, using the `project-checkout` environment row. Agent-provider
-installation and login are configured independently of the machine provider.
+readiness runs before dispatch: compatible installed CLIs are reused, missing
+CLIs use their registered installer, and credential routes are checked from
+the machine. Account Pooler injects credentials at runtime.
 
 ## Project images
 
@@ -37,8 +40,24 @@ Images contain no enrollment or agent login state. Credentials enter only during
 runtime bootstrap. Rebuilding requires an explicit request; inspection reports
 staleness. GC marks owned images, waits 60 seconds, and rechecks references before
 deletion. Machine allocations, project promotion pointers, and verification records
-protect builds. Readiness verification, promotion, and the settings editor are
-subsequent parts of Modal v1.0.
+protect builds.
+
+Run `bb modal image verify BUILD --provider codex --key KEY --json` to start a
+durable verification. Repeating its key returns the current result. Verification
+runs a real agent turn, independently checks the recorded smoke commands and
+commit, then suspends and restores the same machine with a filesystem sentinel.
+Readiness and smoke checks run again after restore. Successful verification
+retains a suspended machine; failed machines remain available for inspection.
+
+`bb modal image use BUILD --project PROJECT --provider codex --expected-revision N`
+requires successful verification for that agent. It changes only the project's
+Modal image pointer, leaving environment preferences and existing machines alone.
+`bb machine ready MACHINE --provider codex --project PROJECT --json` exposes the
+same generic readiness checks used before agent dispatch. The recipe's runtime
+setup script runs when lockfiles, manifests, ABI or setup inputs change, or when
+its smoke checks find missing dependency outputs. Unchanged inputs reuse the
+setup stamp. Changed inputs in a dirty tracked checkout block setup for review.
+Deadline maintenance and the settings editor follow in parts C and D.
 
 ## Lifecycle
 

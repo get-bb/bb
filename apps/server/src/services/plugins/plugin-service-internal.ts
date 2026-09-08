@@ -178,6 +178,7 @@ export interface PluginResolvedProviderEnv {
 }
 
 export interface PluginResolvedProviderEnvHealth {
+  experimental_probe?: { serverPath: string; headers: Record<string, string> };
   label: string;
   statusMessage: string;
 }

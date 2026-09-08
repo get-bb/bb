@@ -12,6 +12,22 @@ export const inspectionSchema = z.object({
   missing: z.array(z.string()),
 });
 export const sourceContract = defineRpcContract({
+  smoke: {
+    input: z
+      .object({
+        path: z.string(),
+        commands: z.array(z.string()).min(1).max(32),
+        timeoutMs: z.number().int().positive().max(600000),
+        expectedCommit: z.string(),
+      })
+      .strict(),
+    output: z.object({
+      commit: z.string(),
+      results: z.array(
+        z.object({ command: z.string(), exitCode: z.number().int() }),
+      ),
+    }),
+  },
   inspect: {
     input: z.object({ path: z.string(), hostId: z.string() }).strict(),
     output: inspectionSchema,

@@ -2754,6 +2754,7 @@ launch. With `scope: "thread"`, `id` identifies a thread and the server resolves
 its current launch through the machine replacement history on every request.
 Consumed original launches remain unavailable through launch scope. The thread
 picker uses thread scope; machine creation and CLI follow use launch scope.
+
 ## `PluginCliResult.experimental_continue`, `experimental_PluginCliContinuation`, and `experimental_PluginRpcConflict`
 
 `experimental_continue: {argv, delayMs}` asks the invoking CLI to print the
@@ -2766,3 +2767,26 @@ Before stabilization, verify interruption and reconnect behavior across remote
 CLIs, validate continuation bounds at both boundaries, and confirm revision and
 idempotency conflicts need the same error shape. These surfaces do not add
 server/daemon wire fields.
+
+## Machine readiness and pinned workspace setup
+
+`hosts.experimental_ensureReady({hostId,providerId,projectId})` is the SDK twin of
+`bb machine ready`. It returns `{status:"ready",checks}` or
+`{status:"blocked",code,stage,message,retryable}`. Core checks CLI compatibility
+through the registered installer, validates credential routing from the machine,
+and serializes dependency setup. Provider-managed turns use the same barrier.
+`PluginMachineProviderDefinition.experimental_workspaceSetup` supplies a pinned
+script/hash/cache manifest and command checks. Core owns input/ABI stamps and
+refuses required setup over tracked dirty edits. The daemon returns host facts
+and exit codes via protocol 190; it does not choose product defaults.
+
+`ExperimentalPluginProviderEnvHealthContext.experimental_readiness` requests a
+fresh thread-aware check (null threadId means a standalone readiness request).
+`ExperimentalPluginProviderEnvHealth.experimental_probe` contains a server-relative
+path and private headers for a bounded authenticated probe from the machine.
+Core never includes these headers in readiness responses or durable stamps.
+
+Before stabilization: audit first dispatch and resumed turns, concurrent install/
+setup, unavailable installers, route rotation/bypass and reachability, dirty
+checkout protection, missing dependencies, ABI/lockfile changes, private clone
+failure, and parity between public CLI/SDK and plugin/provider-managed dispatch.

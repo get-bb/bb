@@ -1,6 +1,7 @@
 import { defineRpcContract } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 import {
+  verificationSchema,
   buildSchema,
   contextSchema,
   eventSchema,
@@ -82,6 +83,22 @@ export const modalRpcContract = defineRpcContract({
   },
   "build.get": { input: build, output: buildSchema },
   "build.cancel": { input: build, output: buildSchema },
+  "verification.start": {
+    input: build.extend({ agentProviderId: idSchema, key: idSchema }),
+    output: verificationSchema,
+  },
+  "verification.get": {
+    input: z.object({ verificationId: idSchema }).strict(),
+    output: verificationSchema,
+  },
+  "project.useImage": {
+    input: project.extend({
+      buildId: idSchema,
+      agentProviderId: idSchema.default("codex"),
+      expectedRevision: z.number().int().nonnegative(),
+    }),
+    output: projectSchema.extend({ available: z.literal(true) }),
+  },
   "image.list": {
     input: page.extend({ projectId: idSchema.nullable().default(null) }),
     output: z.object({

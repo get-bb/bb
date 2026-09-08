@@ -1,3 +1,4 @@
+import { createVerificationService } from "./verification.js";
 import { randomBytes } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
 import type { BbPluginApi, PluginRpcHandlers } from "@get-bb/plugin-sdk";
@@ -35,6 +36,7 @@ export function createCatalogueService(
     fetchBaseArtifact(bb.server.loopbackBaseUrl),
 ) {
   const store = new Catalogue(bb.storage.database(), bb.storage, now);
+  const verifications = createVerificationService(bb, store);
   const hosts = bb.hosts.experimental_client({ contract: sourceContract });
   const uploadPath = "/context-chunk";
   const uploadUrl = () =>
@@ -169,6 +171,25 @@ export function createCatalogueService(
         );
       }
       return { buildId: build.buildId, state: build.state, reused };
+    },
+    "verification.start": (input) => verifications.start(input),
+    "verification.get": ({ verificationId }) =>
+      verifications.get(verificationId),
+    "project.useImage": async (input) => {
+      await assertProject(input.projectId);
+      const build = store.build(input.buildId);
+      const resolved = await settings();
+      if (
+        build.accountIdentity !==
+          (await accountIdentity(resolved, backendFactory)) ||
+        !build.imageId ||
+        !(await backendFactory(resolved).resolve(build.imageId))
+      )
+        throw new CatalogueError(
+          409,
+          "Published image is missing or belongs to a different account",
+        );
+      return verifications.promote(input);
     },
     "build.events": ({ buildId, cursor, limit }) =>
       store.events(buildId, cursor, limit),
@@ -451,6 +472,7 @@ export function createCatalogueService(
       while (!signal.aborted) {
         try {
           await sweep(signal);
+          await verifications.sweep();
           backoff = 1000;
         } catch (error) {
           bb.log.warn(
@@ -465,6 +487,6 @@ export function createCatalogueService(
     },
   });
   bb.rpc.register(modalRpcContract, handlers);
-  return { store, handlers, sweep, backendFactory, settings };
+  return { store, handlers, sweep, backendFactory, settings, verifications };
 }
 export type CatalogueService = ReturnType<typeof createCatalogueService>;

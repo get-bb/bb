@@ -785,6 +785,7 @@ function rewindEnvironmentRowFactsMigration(db: DbConnection): void {
 
 function rewindEnvironmentProvidersMigration(db: DbConnection): void {
   db.$client.exec("DROP TABLE IF EXISTS environment_hook_operations");
+  db.$client.exec("DROP TABLE IF EXISTS machine_workspace_setups");
   db.$client.exec("DROP TABLE IF EXISTS environment_launches");
   db.$client.exec("DROP TABLE IF EXISTS machine_launches");
   db.$client.exec("DROP TABLE IF EXISTS machine_enrollments");

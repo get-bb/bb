@@ -1,4 +1,5 @@
 import * as gitCredentials from "../../src/services/machines/git-credentials.js";
+import { answerMachineReadiness } from "../helpers/machine-readiness.js";
 import { advanceThreadProvisioning } from "../../src/services/threads/thread-provisioning.js";
 import {
   providerOperations,
@@ -1613,6 +1614,7 @@ describe("machine and environment provider composition", () => {
             getThread(harness.db, checkoutThread.id)?.environmentId ?? "",
           )?.status,
         ).toBe("ready");
+        await answerMachineReadiness(harness);
         const start = await waitForQueuedCommand(
           harness,
           ({ command }) =>

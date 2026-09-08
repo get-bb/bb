@@ -619,6 +619,31 @@ describe("Account Pool plugin", () => {
       label: "Proxied",
       statusMessage: "Credentials are provided by the Account Pooler hub.",
     });
+    const readiness = await host.harness.behavior.resolveProviderEnvHealth(
+      "codex",
+      {
+        hostId: "host-one",
+        experimental_readiness: { threadId: "thread-ready" },
+      },
+    );
+    expect(readiness?.experimental_probe?.serverPath).toBe(
+      "/api/v1/plugins/account-pool/http/readiness/codex",
+    );
+    const probe = await host.harness.behavior.fetchHttp(
+      "GET",
+      "/readiness/codex",
+      {
+        headers: readiness?.experimental_probe?.headers,
+      },
+    );
+    expect(probe.status).toBe(200);
+    expect(await probe.json()).toEqual({ ready: true });
+    const unauthenticatedProbe = await host.harness.behavior.fetchHttp(
+      "GET",
+      "/readiness/codex",
+      {},
+    );
+    expect(unauthenticatedProbe.status).toBe(401);
     const httpResponse = await host.harness.behavior.fetchHttp(
       "POST",
       "/v1/responses",

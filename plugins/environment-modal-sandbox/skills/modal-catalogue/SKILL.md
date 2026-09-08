@@ -51,14 +51,21 @@ Never include enrollment, server URLs, provider credentials or runtime secrets.
 
 New machines accept `--machine-inputs '{"buildId":"B"}'` with an explicit ready
 build for the project. They pin image/account/app/resources/policy in v4 state.
-Verification/promotion, readiness setup, lifecycle enforcement and the Settings
-editor are subsequent implementation parts; stored smoke/setup/policy fields
-are their durable inputs, not evidence that readiness has passed.
+Use `bb modal image verify B --provider codex --key K --json` to start or inspect
+a durable verification. It allocates a dedicated machine, runs a real agent smoke
+turn and independently checks the stored smoke commands. Failed resources remain
+inspectable. Successful verification suspends its machine. Use
+`bb modal image use B --project X --provider codex --expected-revision N --json`
+to promote only a successfully verified build for that agent. Promotion updates
+the Modal image pointer and never changes project environment defaults.
+New launches may omit buildId to select that pointer. Optional accountRef (default),
+appName, resources and policy are validated and pinned at launch; appName must match
+the build. Deadline/retention enforcement and the Settings editor remain later work.
 
 SDK callers import `modalRpcContract` from the plugin and call
 `bb.sdk.plugins.callRpc({pluginId:"environment-modal-sandbox", method:"build.get",
 input:{buildId}, outputSchema:modalRpcContract["build.get"].output})`.
 The RPC method names are `project.inspect`, `recipe.put/get/list`,
 `context.prepare/upload/complete`, `build.start/events/get/cancel`, `image.list/gc`,
-and `project.configure/show`. Context upload tokens are scoped transport credentials
+`verification.start/get`, and `project.configure/show/useImage`. Context upload tokens are scoped transport credentials
 and never part of reusable image provenance.
