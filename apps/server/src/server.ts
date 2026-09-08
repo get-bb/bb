@@ -1,3 +1,4 @@
+import { enrolledInstallerScript } from "./services/machines/manual-enrollment-command.js";
 import { recheckEnvironmentLaunch } from "./services/threads/thread-environment-providers.js";
 import { getMachineEnrollmentService } from "./services/machines/machine-services.js";
 import { registerDesktopBrowserRoutes } from "./routes/desktop-browsers.js";
@@ -477,13 +478,35 @@ export function createApp(
     ),
   );
   app.get("/install.sh", async (context) => {
-    const script = await readFile(INSTALL_MACHINE_SCRIPT_PATH);
-    return new Response(script, {
-      headers: {
-        "cache-control": "no-store",
-        "content-type": "text/x-shellscript; charset=utf-8",
+    const script = await readFile(INSTALL_MACHINE_SCRIPT_PATH, "utf8");
+    const credential = context.req.header("X-BB-Enrollment");
+    const bootstrap =
+      credential === undefined
+        ? null
+        : await getMachineEnrollmentService(deps).pendingBootstrapForCredential(
+            credential,
+          );
+    if (credential !== undefined && bootstrap === null) {
+      return new Response(
+        "Enrollment is expired or unavailable. Generate a new command in bb.\n",
+        {
+          status: 403,
+          headers: {
+            "cache-control": "no-store",
+            "content-type": "text/plain",
+          },
+        },
+      );
+    }
+    return new Response(
+      bootstrap === null ? script : enrolledInstallerScript(script, bootstrap),
+      {
+        headers: {
+          "cache-control": "no-store",
+          "content-type": "text/x-shellscript; charset=utf-8",
+        },
       },
-    });
+    );
   });
   app.get("/install/version", async (context) => {
     return context.json({

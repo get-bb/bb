@@ -558,7 +558,10 @@ compatibility roots follow the related config and environment switches.
 
 Settings → Machines offers Existing machine (the built-in `manual` provider)
 alongside installed cloud, SSH and Tailscale providers. Existing machine prints
-a private enrollment command and waits for the daemon. `bb machine create
+a private enrollment command and waits for the daemon. The one-line command
+downloads `/install.sh` with a short-lived enrollment header. The server embeds
+the pending bootstrap in its uncached response; cancelled, expired, or consumed
+enrollments are rejected. `bb machine create
 --provider manual` follows the same lifecycle; `--no-wait` returns the launch ID
 and command. Manual machines never suspend or retire automatically. Removal
 revokes access; run `bb machine uninstall --host-id <id>` on that machine to

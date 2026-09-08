@@ -1,6 +1,12 @@
+import { eq } from "drizzle-orm";
 import { expect, it, vi } from "vitest";
 import { defaultAppSettings } from "@bb/domain";
-import { getMachineLaunch, setAppSettings, listEvents } from "@bb/db";
+import {
+  getMachineLaunch,
+  setAppSettings,
+  listEvents,
+  machineEnrollments,
+} from "@bb/db";
 import { withTestHarness } from "../../helpers/test-app.js";
 import { seedHostSession, seedProjectWithSource } from "../../helpers/seed.js";
 import { textInput } from "../../helpers/prompt-input.js";
@@ -135,6 +141,24 @@ it("returns the current thread replacement command without reviving consumed lau
         throw new Error("Expected enrollment");
       const response = await h.app.request(threadUrl);
       expect(response.headers.get("cache-control")).toBe("no-store");
+      const install = () =>
+        h.app.request("/install.sh", {
+          headers: { "X-BB-Enrollment": enrollment.bootstrap.credential },
+        });
+      const installer = await install();
+      expect(installer.status).toBe(200);
+      expect(installer.headers.get("cache-control")).toBe("no-store");
+      expect(await installer.text()).toContain(
+        "set -- --bootstrap-env BB_ENROLLMENT",
+      );
+      expect(
+        (
+          await h.app.request("/install.sh", {
+            headers: { "X-BB-Enrollment": "invalid-enrollment" },
+          })
+        ).status,
+      ).toBe(403);
+
       expect((await response.json()).command).toContain(
         enrollment.bootstrap.credential,
       );
@@ -157,7 +181,19 @@ it("returns the current thread replacement command without reviving consumed lau
       });
       expect(forbidden.status).toBe(403);
       if (generation === 2) {
+        h.db
+          .update(machineEnrollments)
+          .set({ expiresAt: Date.now() - 1 })
+          .where(eq(machineEnrollments.id, enrollment.id))
+          .run();
+        expect((await install()).status).toBe(403);
+        h.db
+          .update(machineEnrollments)
+          .set({ expiresAt: enrollment.expiresAt })
+          .where(eq(machineEnrollments.id, enrollment.id))
+          .run();
         await cancelMachineLaunch(h.deps, key);
+        expect((await install()).status).toBe(403);
         expect(await (await h.app.request(threadUrl)).json()).toEqual({
           command: null,
         });
@@ -170,6 +206,7 @@ it("returns the current thread replacement command without reviving consumed lau
           allowPublicEnrollment: true,
         }),
       ).not.toBeNull();
+      expect((await install()).status).toBe(403);
       h.hub.registerDaemon(
         `replacement-session-${generation}`,
         enrollment.hostId,
