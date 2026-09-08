@@ -30,6 +30,7 @@ let hangOnDispose = false;
 export default {
   experimental_apiVersion: 1,
   contract: {
+    environment: { input: anySchema, output: anySchema },
     echo: { input: anySchema, output: anySchema },
     wait: { input: anySchema, output: anySchema },
     crash: { input: anySchema, output: anySchema },
@@ -43,6 +44,11 @@ export default {
   },
   experimental_signals: { changed: { payload: anySchema } },
   handlers: {
+    async environment(input) {
+      const before = process.env.GATE_VALUE;
+      await new Promise((resolve) => setTimeout(resolve, input.delay ?? 0));
+      return { before: before ?? null, after: process.env.GATE_VALUE ?? null, token: process.env.GH_TOKEN ?? null };
+    },
     echo(input) { return { input, pid: process.pid }; },
     wait(_input, context) {
       return new Promise((resolve) => {
@@ -104,6 +110,7 @@ export default {
 function callCommand(overrides: Partial<PluginCall> = {}): PluginCall {
   return {
     type: "plugin.host.call",
+    contributedEnv: [],
     pluginId: "fixture",
     generation: "generation-1",
     artifact: {
@@ -166,6 +173,58 @@ describe("PluginHostManager", () => {
       Reflect.get(Object(second.output), "pid"),
     );
     expect(fetchArtifact).toHaveBeenCalledOnce();
+  });
+
+  it("scopes setup env, waits for rotation, and redacts secrets returned by a worker", async () => {
+    const manager = await createManager({
+      shellEnv: () => ({ npm_config_user_agent: "test" }),
+    });
+    const contribution = (value: string) => [
+      {
+        name: "GATE_VALUE",
+        value,
+        secret: false,
+        reason: "Gate",
+        source: { core: "machine-environment" as const },
+      },
+      {
+        name: "GH_TOKEN",
+        value: 'worker-secret\nwith"quotes',
+        secret: true,
+        reason: "Git",
+        source: { core: "machine-git" as const },
+      },
+    ];
+    const [first, rotated] = await Promise.all([
+      manager.call(
+        callCommand({
+          method: "environment",
+          input: { delay: 100 },
+          contributedEnv: contribution("first"),
+        }),
+      ),
+      manager.call(
+        callCommand({
+          method: "environment",
+          input: {},
+          contributedEnv: contribution("rotated"),
+        }),
+      ),
+    ]);
+    expect(first.output).toEqual({
+      before: "first",
+      after: "first",
+      token: "[redacted]",
+    });
+    expect(rotated.output).toEqual({
+      before: "rotated",
+      after: "rotated",
+      token: "[redacted]",
+    });
+    expect(
+      (await manager.call(callCommand({ method: "environment", input: {} })))
+        .output,
+    ).toEqual({ before: null, after: null, token: null });
   });
 
   it("migrates a verified legacy host.js cache entry without downloading", async () => {

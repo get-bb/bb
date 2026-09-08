@@ -1,3 +1,8 @@
+import {
+  operationEnvironment,
+  operationSecrets,
+  redactOperationSecrets,
+} from "./operation-environment.js";
 import { fork, type ChildProcess } from "node:child_process";
 import { existsSync } from "node:fs";
 import { rm } from "node:fs/promises";
@@ -60,6 +65,7 @@ interface WorkerState {
   retainedLeaseIds: Set<string>;
   idleTimer: NodeJS.Timeout | null;
   watches: Map<string, WorkerWatchState>;
+  secrets: Set<string>;
 }
 
 interface WorkerWatchState {
@@ -270,6 +276,8 @@ export class PluginHostManager {
           `host plugin ${command.pluginId} has too many pending calls`,
         );
       }
+      for (const secret of operationSecrets(command.contributedEnv))
+        worker.secrets.add(secret);
       return await new Promise<PluginHostCallResult>((resolve, reject) => {
         const deadlineTimer = setTimeout(
           () =>
@@ -296,6 +304,10 @@ export class PluginHostManager {
             callId: command.callId,
             method: command.method,
             input: command.input,
+            envVars: operationEnvironment(
+              command.contributedEnv,
+              this.options.shellEnv?.() ?? {},
+            ),
           })
         ) {
           worker.pending.delete(command.callId);
@@ -506,6 +518,7 @@ export class PluginHostManager {
       retainedLeaseIds: new Set(),
       idleTimer: null,
       watches: new Map(),
+      secrets: new Set(),
     };
     let unexpectedExitReported = false;
     const failWorker = (
@@ -543,7 +556,11 @@ export class PluginHostManager {
     if (child.stderr !== null) {
       observeBoundedStderr(child.stderr, (line) => {
         this.options.logger.warn(
-          { pluginId: worker.pluginId, origin: "host", stderr: line },
+          {
+            pluginId: worker.pluginId,
+            origin: "host",
+            stderr: redactOperationSecrets(line, [...worker.secrets]),
+          },
           "Host plugin stderr",
         );
       });
@@ -556,7 +573,18 @@ export class PluginHostManager {
     });
     child.on("message", (message: unknown) => {
       if (typeof message !== "object" || message === null) return;
-      const record = Object.fromEntries(Object.entries(message));
+      const record = Object.fromEntries(
+        Object.entries(
+          JSON.parse(
+            redactOperationSecrets(
+              JSON.stringify(message),
+              [...worker.secrets].map((secret) =>
+                JSON.stringify(secret).slice(1, -1),
+              ),
+            ),
+          ),
+        ),
+      );
       if (
         record.type === "ready" &&
         record.protocolVersion === HOST_WORKER_PROTOCOL_VERSION &&

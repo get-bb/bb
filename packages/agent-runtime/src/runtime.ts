@@ -2,6 +2,7 @@ import path from "node:path";
 import { z } from "zod";
 import {
   normalizeProviderThreadNameEvent,
+  threadEventSchema,
   toProviderExternalThreadName,
 } from "@bb/domain";
 import type { DynamicTool, InstructionMode, ThreadEvent } from "@bb/domain";
@@ -249,6 +250,25 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
   let nextRequestId = 1;
   const threadIdentityRegistry = new RuntimeThreadIdentityRegistry();
   const threadRuntimeConfigs = new Map<string, ThreadRuntimeConfig>();
+  function redactSecrets(text: string, serialized = false): string {
+    for (const config of threadRuntimeConfigs.values()) {
+      for (const entry of config.contributedEnv) {
+        if (!entry.secret || typeof entry.value !== "string" || !entry.value)
+          continue;
+        const secret = serialized
+          ? JSON.stringify(entry.value).slice(1, -1)
+          : entry.value;
+        text = text.replaceAll(secret, "[redacted]");
+      }
+    }
+    return text;
+  }
+  function reportStderr(
+    ...[text, context]: Parameters<NonNullable<AgentRuntimeOptions["onStderr"]>>
+  ): void {
+    options.onStderr?.(redactSecrets(text), context);
+  }
+
   const rateLimitedRetryDelaysMs =
     options.rateLimitRetry?.delaysMs ?? DEFAULT_RATE_LIMITED_RETRY_DELAYS_MS;
   const threadCreationRequestTimeoutMs =
@@ -321,7 +341,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
       backgroundWorkState.clearThread(threadId);
       threadEventGrammar.clearThread(threadId);
     },
-    onStderr: options.onStderr,
+    onStderr: reportStderr,
     skillRoots,
     workspacePath: options.workspacePath,
   });
@@ -374,7 +394,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
         timeoutMs: FAILED_CONSTRUCTION_RELEASE_TIMEOUT_MS,
       });
     } catch (error) {
-      options.onStderr?.(
+      reportStderr(
         `Best-effort release of thread "${args.threadId}" after a failed session construction did not complete: ${error instanceof Error ? error.message : String(error)}`,
         args.threadId,
       );
@@ -402,7 +422,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
     try {
       await releaseIdleProviderProcess(args.proc);
     } catch (shutdownError) {
-      options.onStderr?.(
+      reportStderr(
         `Failed to retire the provider after thread "${args.threadId}" session construction failed: ${shutdownError instanceof Error ? shutdownError.message : String(shutdownError)}`,
       );
     }
@@ -536,7 +556,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
     args: RetryableRequestArgs<TResult>,
   ): Promise<TResult> {
     const { error, recovery } = args;
-    options.onStderr?.(
+    reportStderr(
       `Session "${recovery.providerThreadId}" is archived; unarchiving before retrying thread "${recovery.threadId}".`,
     );
     let retryProc: ProviderProcess;
@@ -571,7 +591,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
     let lastError = args.error;
     let lastHint = args.hint;
     for (const retryDelayMs of rateLimitedRetryDelaysMs) {
-      options.onStderr?.(
+      reportStderr(
         `Provider "${args.recovery.providerId}" is rate limited; retrying thread "${args.recovery.threadId}" in ${retryDelayMs}ms.`,
       );
       await delay(retryDelayMs);
@@ -927,7 +947,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
         });
       },
     }).catch((error: unknown) => {
-      options.onStderr?.(
+      reportStderr(
         `Bridge restart for thread "${args.threadId}" failed: ${error instanceof Error ? error.message : String(error)}`,
         args.threadId,
       );
@@ -964,7 +984,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
         backgroundWorkState.hasOpenThreadWork(threadId),
     );
     if (busyThreadId !== undefined) {
-      options.onStderr?.(
+      reportStderr(
         `Deferring the "${currentConfig.providerId}" bridge restart recommended for thread "${args.threadId}": thread "${busyThreadId}" is mid-turn or has open background work on the same process.`,
         args.threadId,
       );
@@ -980,7 +1000,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
         ? [{ config, providerThreadId: hostedProviderThreadId, threadId }]
         : [];
     });
-    options.onStderr?.(
+    reportStderr(
       `Restarting the "${currentConfig.providerId}" bridge for thread "${args.threadId}": ${hint.message}`,
       args.threadId,
     );
@@ -1013,7 +1033,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
           threadId: hosted.threadId,
         });
       } catch (error) {
-        options.onStderr?.(
+        reportStderr(
           `Failed to resume thread "${hosted.threadId}" after the bridge restart: ${error instanceof Error ? error.message : String(error)}`,
           hosted.threadId,
         );
@@ -1216,7 +1236,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
         });
 
       if (!resolvedBbThreadId) {
-        options.onStderr?.(
+        reportStderr(
           `Dropping unscoped provider event ${event.type}; no bb thread could be resolved`,
         );
         continue;
@@ -1235,13 +1255,20 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
 
       const grammarResult = threadEventGrammar.observe(stampedEvent);
       if (grammarResult.kind === "violation") {
-        options.onStderr?.(
+        reportStderr(
           `Dropping ${stampedEvent.type} from provider "${args.proc.providerId}" in thread "${targetThreadId}" (${grammarResult.rule}): ${grammarResult.reason}.`,
         );
         continue;
       }
 
-      const normalizedEvent = normalizeProviderThreadNameEvent(stampedEvent);
+      const normalizedEvent = threadEventSchema.parse(
+        JSON.parse(
+          redactSecrets(
+            JSON.stringify(normalizeProviderThreadNameEvent(stampedEvent)),
+            true,
+          ),
+        ),
+      );
       turnState.observe(normalizedEvent);
       backgroundWorkState.observe(normalizedEvent);
       observeProviderSessionIdleState(normalizedEvent);
@@ -1264,7 +1291,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
         recoveryHint.threadId !== undefined &&
         !args.proc.identity.threadIds.has(recoveryHint.threadId)
       ) {
-        options.onStderr?.(
+        reportStderr(
           `Dropping provider/recovery ${recoveryHint.kind} from "${args.proc.providerId}": it names thread "${recoveryHint.threadId}", which that process does not host.`,
         );
         return;
@@ -1289,7 +1316,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
       parsedLine.kind === "non_json" ||
       parsedLine.kind === "invalid_json_rpc"
     ) {
-      options.onStderr?.(line);
+      reportStderr(line);
       return;
     }
 
@@ -1421,7 +1448,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
           prepared,
           PREPARED_THREAD_REWIND_RETRY_MS,
         );
-        options.onStderr?.(
+        reportStderr(
           `Failed to discard staged rewind ${leaseId}; retrying: ${error instanceof Error ? error.message : String(error)}`,
         );
         return;
@@ -1435,7 +1462,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
       try {
         await releaseIdleProviderProcess(proc);
       } catch (error) {
-        options.onStderr?.(
+        reportStderr(
           `Failed to stop the idle provider after discarding staged rewind ${leaseId}: ${error instanceof Error ? error.message : String(error)}`,
         );
       }
@@ -1752,7 +1779,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
                     providerThreadIdForCleanup,
                   );
                 } catch (error) {
-                  options.onStderr?.(
+                  reportStderr(
                     `Failed to discard unretained staged rewind ${leaseId}: ${error instanceof Error ? error.message : String(error)}`,
                   );
                 }
@@ -2045,7 +2072,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
 
           const activeTurnId = turnState.getActiveTurnId(threadId);
           if (activeTurnId !== expectedTurnId) {
-            options.onStderr?.(
+            reportStderr(
               `Ignoring stale steer for thread "${threadId}" on turn "${expectedTurnId}"; active turn is ${activeTurnId ?? "none"}.`,
             );
             return {
@@ -2131,7 +2158,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
               error instanceof JsonRpcResponseError &&
               error.recovery?.kind === "staleTurn"
             ) {
-              options.onStderr?.(
+              reportStderr(
                 `Dropping stale steer for thread "${threadId}": ${error.recovery.message}`,
                 threadId,
               );
@@ -2466,7 +2493,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
           try {
             await runtime.stopThread({ threadId: candidate.threadId });
           } catch (error) {
-            options.onStderr?.(
+            reportStderr(
               `Provider session release failed for ${candidate.threadId}: ${
                 error instanceof Error ? error.message : String(error)
               }`,

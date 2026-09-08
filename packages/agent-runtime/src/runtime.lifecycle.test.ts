@@ -333,6 +333,84 @@ describe("createAgentRuntime lifecycle", () => {
       await runtime.shutdown();
     });
 
+    it("reinjects rotated machine credentials on the next turn and resume without exposing them in events", async () => {
+      const record = createScriptedEchoRequestRecord();
+      const events: ThreadEvent[] = [];
+      const runtime = createScriptedEchoRuntime({
+        runtime: {
+          workspacePath: tmpDir,
+          env: record.env,
+          onEvent: (event) => events.push(event),
+        },
+      });
+      const credentials = (value: string) => [
+        {
+          name: "GH_TOKEN",
+          value,
+          source: { core: "machine-git" as const },
+          reason: "Server gh login",
+          secret: true,
+        },
+      ];
+      try {
+        await runtime.startThread({
+          environmentId: "env-1",
+          projectId: "p1",
+          threadId: "git-thread",
+          providerId: "fake",
+          contributedEnv: credentials("first-git-token"),
+          options: fullRuntimeOptions,
+        });
+        await runtime.runTurn({
+          clientRequestId: "creq_222222224c",
+          threadId: "git-thread",
+          input: [promptTextInput({ text: "rotated-git-token" })],
+          contributedEnv: credentials("rotated-git-token"),
+          options: fullRuntimeOptions,
+        });
+        expect(record.last("turn/start")?.params).toMatchObject({
+          options: { envVars: { GH_TOKEN: "rotated-git-token" } },
+        });
+        await waitForThreadAgentMessageText({
+          events,
+          providerId: "fake",
+          runtime,
+          text: "[redacted]",
+          threadId: "git-thread",
+        });
+        await runtime.resumeThread({
+          environmentId: "env-1",
+          threadId: "git-resumed",
+          providerId: "fake",
+          providerThreadId: "old-git-thread",
+          contributedEnv: credentials("resumed-git-token"),
+          options: fullRuntimeOptions,
+        });
+        expect(record.last("thread/resume")?.params).toMatchObject({
+          options: { envVars: { GH_TOKEN: "resumed-git-token" } },
+        });
+        expect(JSON.stringify(events)).not.toContain("first-git-token");
+        expect(JSON.stringify(events)).not.toContain("rotated-git-token");
+        expect(JSON.stringify(events)).not.toContain("resumed-git-token");
+        expect(
+          events.filter((event) => event.type === "provider.env-resolved"),
+        ).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              entries: expect.arrayContaining([
+                expect.objectContaining({
+                  name: "GH_TOKEN",
+                  value: { masked: true },
+                }),
+              ]),
+            }),
+          ]),
+        );
+      } finally {
+        await runtime.shutdown();
+      }
+    });
+
     it("drops unresolved server paths without preventing thread start", async () => {
       const record = createScriptedEchoRequestRecord();
       const events: ThreadEvent[] = [];
