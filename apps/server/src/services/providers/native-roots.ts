@@ -108,7 +108,8 @@ export function createProviderListingBudget(
 }
 
 export type ProviderNativeRootsDeps = WorkSessionDeps &
-  Pick<AppDeps, "logger" | "providerNativeRoots">;
+  Pick<AppDeps, "logger"> &
+  Partial<Pick<AppDeps, "providerNativeRoots">>;
 
 export function providerHasNativeRootSurface(
   registration: ProviderRegistration,
@@ -186,6 +187,9 @@ export async function resolveProviderResolvedNativeRoots(
   if (!registration.resolvesNativeRoots) {
     return EMPTY_PROVIDER_RESOLVED_NATIVE_ROOTS;
   }
+  if (deps.providerNativeRoots === undefined) {
+    return callResolveNativeRoots(deps, args);
+  }
   const pluginId = registration.pluginId;
   const key = cacheKey({
     pluginId,
@@ -236,6 +240,7 @@ type ProviderNativeRootScanResult<TType extends ProviderNativeRootScanType> =
   >;
 
 interface ScanProviderNativeRootsArgs {
+  includeContentHashes?: boolean;
   registration: ProviderRegistration;
   hostId: string;
   cwd: string | null;
@@ -271,6 +276,12 @@ export async function scanProviderNativeRoots(
     command:
       args.type === "host.list_commands"
         ? { type: "host.list_commands", ...scan }
-        : { type: "host.list_skills", ...scan },
+        : {
+            type: "host.list_skills",
+            ...scan,
+            ...(args.includeContentHashes === true
+              ? { includeContentHashes: true }
+              : {}),
+          },
   });
 }

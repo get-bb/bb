@@ -10,6 +10,7 @@ import type {
   HostProviderCommand,
   SkillRootKind,
 } from "@bb/host-daemon-contract";
+import { hashInstalledSkillDirectory } from "./injected-skills.js";
 
 const SKILL_FILE_NAME = "SKILL.md";
 const MARKDOWN_FILE_EXTENSION = ".md";
@@ -505,19 +506,28 @@ export type SkillScanRoot = CommandScanRoot & {
 };
 
 interface DiscoverSkillsArgs {
+  includeContentHashes?: boolean;
   roots: readonly SkillScanRoot[];
 }
 
-function buildSkillRecord(
+async function buildSkillRecord(
   root: SkillScanRoot,
   match: SkillFileMatch,
-): DiscoveredSkill {
+  includeContentHashes: boolean,
+): Promise<DiscoveredSkill> {
   const rootPath =
     "rootPath" in root ? root.rootPath : path.dirname(root.filePath);
   const logicalPath = path
     .relative(rootPath, match.filePath)
     .split(path.sep)
     .join("/");
+  const contentHash =
+    includeContentHashes
+      ? await hashInstalledSkillDirectory({
+          name: match.name,
+          skillDirectoryPath: path.dirname(match.filePath),
+        })
+      : null;
   return {
     id: `skill_${createHash("sha256")
       .update(`${root.identitySeed}\0${logicalPath}`)
@@ -527,6 +537,7 @@ function buildSkillRecord(
     filePath: match.filePath,
     rootKind: root.rootKind,
     linked: match.linked,
+    ...(contentHash === null ? {} : { contentHash }),
   };
 }
 
@@ -537,7 +548,13 @@ export async function discoverSkills(
   const budget = { remainingEntries: MAX_SCAN_ENTRY_COUNT };
   for (const root of args.roots) {
     for (const match of await scanSkillFiles({ budget, root })) {
-      records.push(buildSkillRecord(root, match));
+      records.push(
+        await buildSkillRecord(
+          root,
+          match,
+          args.includeContentHashes === true,
+        ),
+      );
     }
   }
   const uniqueRecords: DiscoveredSkill[] = [];

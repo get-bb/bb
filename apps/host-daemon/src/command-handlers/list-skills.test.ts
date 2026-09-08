@@ -153,6 +153,56 @@ describe("resolveSkillScanRoots + discoverSkills", () => {
     expect(byName(skills, "user-agent")?.filePath).toBe(files["user-agent"]);
   });
 
+  it("adds a whole-skill content hash only when requested", async () => {
+    const fixture = await makeWorkspaceFixture();
+    const skillFilePath = path.join(
+      fixture.homeDir,
+      ".agent",
+      "skills",
+      "review",
+      "SKILL.md",
+    );
+    await writeSkill(skillFilePath, "review");
+    const roots = await resolveSkillScanRoots({
+      providerId: "test-provider",
+      cwd: fixture.cwd,
+      homeDir: fixture.homeDir,
+      nativeRoots: AGENT_SKILL_ROOTS,
+    });
+
+    const unrequested = await discoverSkills({ roots });
+    expect(byName(unrequested, "review")?.contentHash).toBeUndefined();
+
+    const first = await discoverSkills({
+      roots,
+      includeContentHashes: true,
+    });
+    const firstHash = byName(first, "review")?.contentHash;
+    expect(firstHash).toMatch(/^[a-f0-9]{64}$/u);
+
+    await writeFile(
+      path.join(path.dirname(skillFilePath), ".bb-registry-skill.json"),
+      "{\"registry\":\"metadata\"}\n",
+      "utf8",
+    );
+    const withRegistryMetadata = await discoverSkills({
+      roots,
+      includeContentHashes: true,
+    });
+    expect(byName(withRegistryMetadata, "review")?.contentHash).toBe(firstHash);
+
+    await writeFile(
+      path.join(path.dirname(skillFilePath), "references.md"),
+      "changed reference content\n",
+      "utf8",
+    );
+    const second = await discoverSkills({
+      roots,
+      includeContentHashes: true,
+    });
+    expect(byName(second, "review")?.contentHash).not.toBe(firstHash);
+  });
+
   it("keeps native skill IDs stable when the workspace root moves", async () => {
     const firstRoot = path.join(tempRoot, "checkout-a", ".bb", "skills");
     const secondRoot = path.join(tempRoot, "checkout-b", ".bb", "skills");

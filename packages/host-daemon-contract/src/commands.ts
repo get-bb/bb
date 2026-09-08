@@ -144,6 +144,7 @@ export const hostDaemonInjectedSkillSourceSchema = z.discriminatedUnion(
       .extend({
         kind: z.literal("host-path"),
         sourceType: z.enum(["shared-user", "shared-project"]),
+        contentHash: z.string().regex(/^[a-f0-9]{64}$/u).optional(),
         sourceRootPath: z.string().min(1),
         skillFilePath: z.string().min(1),
       })
@@ -658,6 +659,7 @@ const skillRootKindSchema = z.enum([
 export type SkillRootKind = z.infer<typeof skillRootKindSchema>;
 
 const discoveredSkillSchema = z.object({
+  contentHash: z.string().regex(/^[a-f0-9]{64}$/u).optional(),
   id: z.string().regex(/^skill_[a-f0-9]{64}$/u),
   name: z.string(),
   description: z.string().nullable(),
@@ -670,6 +672,7 @@ export type DiscoveredSkill = z.infer<typeof discoveredSkillSchema>;
 const hostListSkillsCommandSchema = z
   .object({
     type: z.literal("host.list_skills"),
+    includeContentHashes: z.boolean().optional(),
     providerId: z.string().min(1),
     cwd: z.string().min(1).nullable(),
     nativeRoots: providerNativeRootSetSchema,

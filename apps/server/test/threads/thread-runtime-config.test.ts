@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
@@ -99,6 +99,7 @@ function registerRemoteRuntimeFileResponder(
   args: {
     files: ReadonlyMap<string, string>;
     hostId: string;
+    providerSkills?: DiscoveredSkill[];
     sessionId: string;
     sharedSkills?: DiscoveredSkill[];
   },
@@ -148,7 +149,12 @@ function registerRemoteRuntimeFileResponder(
       if (command.type === "host.list_skills") {
         return {
           ok: true,
-          result: { skills: args.sharedSkills ?? [] },
+          result: {
+            skills:
+              command.providerId === "bb-shared"
+                ? (args.sharedSkills ?? [])
+                : (args.providerSkills ?? []),
+          },
         };
       }
       throw new Error(`Unexpected remote runtime RPC ${command.type}`);
@@ -764,8 +770,18 @@ describe("thread runtime config", () => {
         name: "project-helper",
         rootPath: path.join(workspacePath, ".bb", "skills"),
       });
-      const { host } = seedHostSession(harness.deps, {
+      const { host, session } = seedHostSession(harness.deps, {
         id: "host-runtime-injected-skills",
+      });
+      registerRemoteRuntimeFileResponder(harness, {
+        files: new Map([
+          [
+            path.join(projectSourceRootPath, "SKILL.md"),
+            await readFile(path.join(projectSourceRootPath, "SKILL.md"), "utf8"),
+          ],
+        ]),
+        hostId: host.id,
+        sessionId: session.id,
       });
       const { project } = seedProjectWithSource(harness.deps, {
         hostId: host.id,
@@ -1503,6 +1519,206 @@ describe("thread runtime config", () => {
           sourceRootPath: path.dirname(skillFilePath),
           skillFilePath,
         });
+      },
+    );
+  });
+
+  it("keeps a byte-identical BB user skill out of injection when the selected provider loads it natively", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, session } = seedHostSession(harness.deps, {
+        id: "host-runtime-native-shared-skill",
+      });
+      const workspacePath = "/remote/runtime-native-shared-skill";
+      const userSkillPath = await writeRuntimeSkill({
+        name: "coder",
+        rootPath: path.join(harness.config.dataDir, "skills"),
+      });
+      const contentHash = readSkillTreeManifest(userSkillPath).treeHash;
+      const nativeSkill = {
+        id: `skill_${"c".repeat(64)}`,
+        name: "coder",
+        description: "Implement a bounded change.",
+        contentHash,
+        filePath: "/home/test/.agents/skills/coder/SKILL.md",
+        rootKind: "provider-user" as const,
+        linked: false,
+      };
+      const responder = registerRemoteRuntimeFileResponder(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+        files: new Map(),
+        providerSkills: [nativeSkill],
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+        path: workspacePath,
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+        path: workspacePath,
+      });
+      const thread = seedThread(harness.deps, {
+        environmentId: environment.id,
+        projectId: project.id,
+        providerId: "codex",
+      });
+
+      const runtimeConfig = await resolveThreadRuntimeCommandConfig(
+        harness.deps,
+        { thread, environment, model: "test-model" },
+      );
+
+      expect(runtimeConfig.injectedSkillSources).not.toContainEqual(
+        expect.objectContaining({ name: "coder" }),
+      );
+      expect(responder.requests).toContainEqual(
+        expect.objectContaining({
+          command: expect.objectContaining({
+            providerId: "codex",
+            includeContentHashes: true,
+            type: "host.list_skills",
+          }),
+        }),
+      );
+    });
+  });
+
+  it("keeps an identical shared user skill out of injection when its provider-native copy uses another path", async () => {
+    await withTestHarness(
+      {
+        sharedSkillRoots: { user: [".bb/skills"], project: [] },
+      },
+      async (harness) => {
+        const { host, session } = seedHostSession(harness.deps, {
+          id: "host-runtime-native-shared-user-skill",
+        });
+        const workspacePath = "/remote/runtime-native-shared-user-skill";
+        const contentHash = "d".repeat(64);
+        const responder = registerRemoteRuntimeFileResponder(harness, {
+          hostId: host.id,
+          sessionId: session.id,
+          files: new Map(),
+          providerSkills: [
+            {
+              id: `skill_${"e".repeat(64)}`,
+              name: "coder",
+              description: "Implement a bounded change.",
+              contentHash,
+              filePath: "/home/test/.agents/skills/coder/SKILL.md",
+              rootKind: "provider-user",
+              linked: false,
+            },
+          ],
+          sharedSkills: [
+            {
+              id: `skill_${"f".repeat(64)}`,
+              name: "coder",
+              description: "Implement a bounded change.",
+              contentHash,
+              filePath: "/home/test/.bb/skills/coder/SKILL.md",
+              rootKind: "shared-user",
+              linked: false,
+            },
+          ],
+        });
+        const { project } = seedProjectWithSource(harness.deps, {
+          hostId: host.id,
+          path: workspacePath,
+        });
+        const environment = seedEnvironment(harness.deps, {
+          hostId: host.id,
+          projectId: project.id,
+          path: workspacePath,
+        });
+        const thread = seedThread(harness.deps, {
+          environmentId: environment.id,
+          projectId: project.id,
+          providerId: "codex",
+        });
+
+        const runtimeConfig = await resolveThreadRuntimeCommandConfig(
+          harness.deps,
+          { thread, environment, model: "test-model" },
+        );
+
+        expect(runtimeConfig.injectedSkillSources).not.toContainEqual(
+          expect.objectContaining({ name: "coder" }),
+        );
+        expect(responder.requests).toContainEqual(
+          expect.objectContaining({
+            command: expect.objectContaining({
+              providerId: "bb-shared",
+              includeContentHashes: true,
+              type: "host.list_skills",
+            }),
+          }),
+        );
+      },
+    );
+  });
+
+  it("leaves injected skills available without native discovery for a provider with no native roots", async () => {
+    await withTestHarness(
+      {
+        extraProviders: [
+          await configuredAcpProvider({
+            id: "no-native-roots",
+            displayName: "No Native Roots",
+            command: "no-native-roots-agent",
+            modelCli: {
+              listArgs: ["models"],
+              selectFlag: "--model",
+              primaryModels: ["model-a"],
+            },
+          }),
+        ],
+      },
+      async (harness) => {
+        const { host, session } = seedHostSession(harness.deps, {
+          id: "host-runtime-no-native-roots",
+        });
+        const workspacePath = "/remote/runtime-no-native-roots";
+        await writeRuntimeSkill({
+          name: "release-notes",
+          rootPath: path.join(harness.config.dataDir, "skills"),
+        });
+        const responder = registerRemoteRuntimeFileResponder(harness, {
+          hostId: host.id,
+          sessionId: session.id,
+          files: new Map(),
+        });
+        const { project } = seedProjectWithSource(harness.deps, {
+          hostId: host.id,
+          path: workspacePath,
+        });
+        const environment = seedEnvironment(harness.deps, {
+          hostId: host.id,
+          projectId: project.id,
+          path: workspacePath,
+        });
+        const thread = seedThread(harness.deps, {
+          environmentId: environment.id,
+          projectId: project.id,
+          providerId: "acp-no-native-roots",
+        });
+
+        const runtimeConfig = await resolveThreadRuntimeCommandConfig(
+          harness.deps,
+          { thread, environment, model: "model-a" },
+        );
+
+        expect(runtimeConfig.injectedSkillSources).toContainEqual(
+          expect.objectContaining({ name: "release-notes" }),
+        );
+        expect(responder.requests).not.toContainEqual(
+          expect.objectContaining({
+            command: expect.objectContaining({
+              providerId: "acp-no-native-roots",
+              type: "host.list_skills",
+            }),
+          }),
+        );
       },
     );
   });

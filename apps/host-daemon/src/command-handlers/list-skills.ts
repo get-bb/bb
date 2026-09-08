@@ -114,7 +114,10 @@ export async function listHostSkills(
     providerId: command.providerId,
     nativeRoots: command.nativeRoots,
   });
-  const skills = await discoverSkills({ roots });
+  const skills = await discoverSkills({
+    roots,
+    includeContentHashes: command.includeContentHashes === true,
+  });
   return { skills };
 }
 

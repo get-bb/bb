@@ -35,7 +35,14 @@ import {
 import { resolveSkillCatalog } from "../skills/skill-catalog.js";
 import { discoverPluginSkillIds } from "../skills/injected-skills.js";
 import { resolveWorkspaceProjectSkills } from "../skills/workspace-skills.js";
-import { resolveSharedSkills } from "../skills/shared-skills.js";
+import {
+  excludeNativeSkillDuplicates,
+  resolveSharedSkills,
+} from "../skills/shared-skills.js";
+import {
+  providerHasNativeRootSurface,
+  scanProviderNativeRoots,
+} from "../providers/native-roots.js";
 import { UPDATE_ENVIRONMENT_DIRECTORY_TOOL } from "./thread-environment-directory.js";
 import {
   DATA_DIR_AGENT_INSTRUCTIONS_RELATIVE_PATH,
@@ -180,6 +187,7 @@ export async function resolveThreadRuntimeCommandConfig(
       resolveSharedSkills(deps, {
         hostId: args.environment.hostId,
         cwd: workspacePath,
+        includeContentHashes: true,
       }),
       readWorkspaceAgentInstructions(deps, {
         hostId: args.environment.hostId,
@@ -237,11 +245,51 @@ export async function resolveThreadRuntimeCommandConfig(
       hostId: host.id,
     },
   });
-  const injectedSkillSources = resolveSkillCatalog(deps, {
+  const skillCatalog = resolveSkillCatalog(deps, {
     projectSkillSources,
     sharedSkillSources: sharedSkills.runtimeSources,
     pluginSkillSelections: conditionalConfiguration.selectedSkillIdsByPlugin,
-  }).map((entry) => entry.runtimeSource);
+  });
+  const providerRegistration = deps.providerRegistry.get(args.thread.providerId);
+  const nativeSkills =
+    providerRegistration === null ||
+    !providerHasNativeRootSurface(providerRegistration) ||
+    !skillCatalog.some(
+      (entry) =>
+        entry.provenance.kind !== "project" &&
+        (entry.runtimeSource.sourceType === "data-dir" ||
+          entry.runtimeSource.sourceType === "shared-project" ||
+          entry.runtimeSource.sourceType === "shared-user"),
+    )
+      ? null
+      : await scanProviderNativeRoots(deps, {
+          type: "host.list_skills",
+          includeContentHashes: true,
+          registration: providerRegistration,
+          hostId: args.environment.hostId,
+          cwd: workspacePath,
+        })
+          .then((result) => result.skills)
+          .catch((error) => {
+            deps.logger.warn(
+              {
+                err: error,
+                providerId: args.thread.providerId,
+                threadId: args.thread.id,
+              },
+              "Unable to inspect provider native skill content; retaining injected skills",
+            );
+            return null;
+          });
+  const injectedSkillSources = (
+    nativeSkills === null
+      ? skillCatalog
+      : excludeNativeSkillDuplicates(deps.logger, {
+          nativeSkills,
+          providerId: args.thread.providerId,
+          skillCatalog,
+        })
+  ).map((entry) => entry.runtimeSource);
   const dataDirAgentInstructions = readDataDirAgentInstructions(
     deps.logger,
     deps.config.dataDir,

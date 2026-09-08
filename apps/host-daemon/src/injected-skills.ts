@@ -17,6 +17,7 @@ const STORE_LAST_USED_MARKER = ".last-used";
 export const MAX_SKILL_STORE_TREES = 64;
 const STALE_TEMP_STAGING_DIR_AGE_MS = 60 * 60 * 1000;
 const SKILL_FILE_NAME = "SKILL.md";
+const REGISTRY_SKILL_PROVENANCE_FILE_NAME = ".bb-registry-skill.json";
 const SKILL_NAME_PATTERN = /^(?!.*--)[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$/u;
 const MAX_STAGED_SKILL_FILES = 1_000;
 const MAX_STAGED_SKILL_BYTES = 10 * 1024 * 1024;
@@ -274,6 +275,12 @@ async function walkSkillTree(args: WalkSkillTreeArgs): Promise<void> {
   ).sort(sortDirentsByName);
 
   for (const entry of entries) {
+    if (
+      args.currentPath === args.rootPath &&
+      entry.name === REGISTRY_SKILL_PROVENANCE_FILE_NAME
+    ) {
+      continue;
+    }
     const sourcePath = path.join(args.currentPath, entry.name);
     if (!isPathWithinRoot(args.rootPath, sourcePath)) {
       throw new Error(`Skill tree entry escapes source root: ${sourcePath}`);

@@ -271,6 +271,51 @@ function respondToProviderModelListCommand(
   return true;
 }
 
+function respondToSkillListCommand(
+  deps: Pick<TestAppHarness, "hub">,
+  args: RegisterTestHostRpcCaptureArgs,
+  message: HostDaemonOnlineRpcRequestMessage,
+): boolean {
+  if (message.command.type !== "host.list_skills") return false;
+
+  deps.hub.recordHostOnlineRpcResponse({
+    message: hostDaemonOnlineRpcResponseMessageSchema.parse({
+      type: "host-rpc.response",
+      requestId: message.requestId,
+      commandType: message.command.type,
+      ok: true,
+      result: { skills: [] },
+    }),
+    sessionId: args.sessionId,
+  });
+  return true;
+}
+
+function respondToProviderNativeRootsCommand(
+  deps: Pick<TestAppHarness, "hub">,
+  args: RegisterTestHostRpcCaptureArgs,
+  message: HostDaemonOnlineRpcRequestMessage,
+): boolean {
+  if (
+    message.command.type !== "plugin.host.call" ||
+    message.command.method !== "resolveNativeRoots"
+  ) {
+    return false;
+  }
+
+  deps.hub.recordHostOnlineRpcResponse({
+    message: hostDaemonOnlineRpcResponseMessageSchema.parse({
+      type: "host-rpc.response",
+      requestId: message.requestId,
+      commandType: message.command.type,
+      ok: true,
+      result: { output: { skills: [], commands: [] } },
+    }),
+    sessionId: args.sessionId,
+  });
+  return true;
+}
+
 function buildDefaultGitSourceInspectionResult(): HostDaemonOnlineRpcResult<"host.inspect_git_source"> {
   return {
     checkout: {
@@ -396,6 +441,12 @@ export function registerTestHostRpcCapture(
         return;
       }
       if (respondToRuntimeWorkspaceFileCommand(deps, args, message)) {
+        return;
+      }
+      if (respondToProviderNativeRootsCommand(deps, args, message)) {
+        return;
+      }
+      if (respondToSkillListCommand(deps, args, message)) {
         return;
       }
       if (respondToProviderModelListCommand(deps, args, message)) {
