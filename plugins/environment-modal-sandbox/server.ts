@@ -226,6 +226,7 @@ export function createModalSandboxPlugin(
           appName: build.appName,
           resources: project.resources,
           policy: project.policy,
+          policyRevision: project.revision,
           expiresAt: deps.now() + project.policy.lifetimeMinutes * 60000,
           key: context.key,
           sandboxId: sandbox.sandboxId,
@@ -376,6 +377,83 @@ export function createModalSandboxPlugin(
         catalogue.store.release("allocation", context.key);
         return { status: "removed" };
       },
+      async experimental_observe(context) {
+        let resource = readModalMachineResource(context.resource);
+        const resolved = await currentSettings();
+        if (!resolved.ok) throw new Error(resolved.message);
+        context.signal.throwIfAborted();
+        const sandbox = await findSandbox(resource, resolved.settings);
+        if (resource.version === 4) {
+          const project = catalogue.store.project(
+            catalogue.store.build(resource.buildId).projectId,
+          );
+          if (project.revision !== resource.policyRevision)
+            resource = {
+              ...resource,
+              policy: project.policy,
+              policyRevision: project.revision,
+            };
+        }
+        if (sandbox === null)
+          return {
+            state:
+              resource.sandboxId === null && resource.snapshotImageId !== null
+                ? "suspended"
+                : "missing",
+            expiresAt: null,
+            resource,
+          };
+        const observed = await backendFor(resolved.settings).observe({
+          sandboxId: sandbox.sandboxId,
+          appName:
+            resource.version === 4
+              ? resource.appName
+              : resolved.settings.appName,
+          key: resource.key,
+        });
+        return {
+          state: observed.running ? "running" : "missing",
+          expiresAt: observed.expiresAt,
+          resource:
+            resource.version === 4
+              ? { ...resource, expiresAt: observed.expiresAt }
+              : resource,
+        };
+      },
+      async experimental_policy(context) {
+        const resource = readModalMachineResource(context.resource);
+        const resolved = await currentSettings();
+        if (!resolved.ok) throw new Error(resolved.message);
+        const project =
+          resource.version === 4
+            ? catalogue.store.project(
+                catalogue.store.build(resource.buildId).projectId,
+              )
+            : null;
+        const policy =
+          resource.version === 4
+            ? project !== null && project.revision !== resource.policyRevision
+              ? project.policy
+              : resource.policy
+            : null;
+        const lifetime =
+          policy === null
+            ? resolved.settings.timeoutMs
+            : policy.lifetimeMinutes * 60_000;
+        return {
+          idleSuspendMs:
+            policy === null
+              ? resolved.settings.idleMs
+              : policy.idleMinutes === 0
+                ? null
+                : policy.idleMinutes * 60_000,
+          retireAfterMs:
+            policy === null
+              ? 30 * 24 * 60 * 60_000
+              : policy.retentionDays * 24 * 60 * 60_000,
+          deadlineLeadMs: Math.min(15 * 60_000, Math.floor(lifetime / 2)),
+        };
+      },
       async suspend(context) {
         const resource = readModalMachineResource(context.resource);
         const resolved = await currentSettings();
@@ -427,7 +505,7 @@ export function createModalSandboxPlugin(
             ]),
           ],
         } satisfies ModalMachineResource;
-        context.checkpoint(checkpoint);
+        context.checkpoint(checkpoint, deps.now());
         await sandbox.terminate();
         const suspended = { ...checkpoint, sandboxId: null };
         context.checkpoint(suspended);

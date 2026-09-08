@@ -301,6 +301,29 @@ export function registerMachineCommands(
     );
 
   machine
+    .command("lifecycle <machine>")
+    .description("Show deadline, preservation and retention state")
+    .option("--keep", "Keep this machine past automatic retention deletion")
+    .option("--no-keep", "Restore automatic retention deletion")
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(
+        async (target: string, opts: { keep?: boolean; json?: boolean }) => {
+          const sdk = createCliBbSdk(getUrl());
+          const hostId = resolveMachineId(await sdk.hosts.list(), target);
+          const result = await sdk.hosts.experimental_lifecycle({
+            hostId,
+            keep: opts.keep,
+          });
+          if (!outputJson(opts, result))
+            console.log(
+              `${result.phase}: ${result.recoveryState}${result.message === null ? "" : ` — ${result.message}`}`,
+            );
+        },
+      ),
+    );
+
+  machine
     .command("ready <machine>")
     .description("Check CLI, authentication and project workspace readiness")
     .requiredOption("--provider <id>", "Agent provider")

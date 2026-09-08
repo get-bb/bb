@@ -1344,6 +1344,7 @@ export async function stopThreadForCurrentState(
   deps: RequestThreadStopForCurrentStateDeps,
   thread: RequestThreadStopForCurrentStateThread,
   environment: RequestThreadStopForCurrentStateEnvironment | null,
+  options?: { requireStopped: true },
 ): Promise<void> {
   await revokeThreadDesktopBrowserControl(deps, thread.id);
   const hasLiveRuntime =
@@ -1362,6 +1363,7 @@ export async function stopThreadForCurrentState(
     };
     if (markThreadStopRequested(deps, args)) {
       await runAwaitedThreadStopCommand(deps, {
+        requireStopped: options?.requireStopped,
         command: buildThreadStopCommand({ ...args, intent: "interrupt" }),
         hostId: args.hostId,
         threadId: thread.id,
@@ -1415,6 +1417,7 @@ async function runAwaitedThreadStopCommand(
   deps: RequestThreadStopForCurrentStateDeps,
   args: {
     command: ThreadStopCommand;
+    requireStopped?: boolean;
     hostId: string;
     threadId: string;
   },
@@ -1432,6 +1435,7 @@ async function runAwaitedThreadStopCommand(
         { err: error, intent: args.command.intent, threadId: args.threadId },
         "Awaited thread stop command failed",
       );
+      if (args.requireStopped) throw error;
       if (
         args.command.intent === "release" &&
         !isHostUnavailableApiError(error)

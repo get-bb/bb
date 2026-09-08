@@ -265,3 +265,9 @@ Compatible CLIs are reused. Core owns repository setup and teardown for
 environments whose provider returns ownsPath: true. Readiness checks the recorded
 setup outcome against the checkout inputs; it never runs a separate recipe script.
 The repo hook owns dependency caching and its unchanged-input no-op path.
+
+`bb machine lifecycle MACHINE --json` shows the vendor expiry, planned maintenance,
+last successful snapshot, recovery state and automatic retention removal deadline.
+Use `--keep` to prevent automatic retention removal, or `--no-keep` to restore it.
+Maintenance interrupts active turns and closes terminals before saving. Submit a
+new continuation turn after restore; interrupted turns are never reported successful.

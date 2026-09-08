@@ -1280,3 +1280,11 @@ not repository files. See the Modal catalogue skill for the command contract.
 
 Modal `project.configure` also accepts `usableBuildId: null` to clear the project's
 selected image with the same revision guard before explicit image cleanup.
+
+Modal machines default to a 15-minute idle pause, 24-hour compute lifetime and
+30-day retention after the last thread. Project policy changes apply to existing
+machines on the next lifecycle observation. Open terminals prevent idle pause,
+but deadline maintenance closes them. Inspect retention and keep a machine with
+`bb machine lifecycle MACHINE --keep --json`; explicit removal is still available.
+Preservation covers planned rotation. A server outage spanning the vendor deadline
+can lose changes since the last snapshot; lifecycle status reports this risk.

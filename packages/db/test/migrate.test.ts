@@ -795,6 +795,7 @@ function rewindEnvironmentProvidersMigration(db: DbConnection): void {
   }
   db.$client.exec("DROP TABLE IF EXISTS machine_workspace_setups");
   db.$client.exec("DROP TABLE IF EXISTS environment_setup_outcomes");
+  db.$client.exec("DROP TABLE IF EXISTS machine_lifecycles");
   db.$client.exec("DROP TABLE IF EXISTS environment_launches");
   db.$client.exec("DROP TABLE IF EXISTS machine_launches");
   db.$client.exec("DROP TABLE IF EXISTS machine_enrollments");

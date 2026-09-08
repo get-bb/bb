@@ -1,3 +1,8 @@
+import {
+  observeMachineLifecycle,
+  assertMachineLifecycleAdmission,
+  waitForMachineMaintenance,
+} from "../machines/lifecycle.js";
 import { getHost } from "@bb/db";
 import type { WorkSessionDeps } from "../../types.js";
 import { ApiError } from "../../errors.js";
@@ -21,7 +26,10 @@ export async function ensureHostSessionReadyForWork(
     );
   }
 
+  await observeMachineLifecycle(deps, host.id);
+  await waitForMachineMaintenance(deps, host.id);
   await resumeMachine(deps, host.id);
+  assertMachineLifecycleAdmission(deps, host.id);
   const current = getHost(deps.db, host.id);
   if (current?.removalStartedAt !== null) {
     throw new ApiError(

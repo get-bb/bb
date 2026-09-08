@@ -1,4 +1,6 @@
 import type {
+  experimental_HostLifecycleRequest,
+  experimental_HostLifecycleResponse,
   experimental_HostReadinessRequest,
   experimental_HostReadinessResponse,
 } from "@bb/server-contract";
@@ -103,6 +105,9 @@ export interface HostsArea {
   experimental_providerDetails(
     args: HostGetArgs,
   ): Promise<{ summary: string; values: JsonValue } | null>;
+  experimental_lifecycle(
+    args: experimental_HostLifecycleRequest & { hostId: string },
+  ): Promise<experimental_HostLifecycleResponse>;
   experimental_ensureReady(
     args: experimental_HostReadinessRequest & { hostId: string },
   ): Promise<experimental_HostReadinessResponse>;
@@ -156,6 +161,14 @@ export function createHostsArea(args: CreateSdkAreaArgs): HostsArea {
           { param: { id: input.hostId } },
           ...signalRequestArgs(input.signal),
         ),
+      );
+    },
+    async experimental_lifecycle(input) {
+      return transport.readJson(
+        transport.api.v1.hosts[":id"].lifecycle.$post({
+          param: { id: input.hostId },
+          json: { keep: input.keep },
+        }),
       );
     },
     async experimental_ensureReady(input) {

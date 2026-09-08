@@ -32,7 +32,7 @@ export const SETTING_DESCRIPTORS = {
     label: "Sandbox lifetime (minutes)",
     description:
       "Modal terminates the sandbox after this long. Between 1 and 1440.",
-    default: "60",
+    default: "1440",
   },
   idleMinutes: {
     type: "string",

@@ -1,4 +1,18 @@
 import * as gitCredentials from "../../../src/services/machines/git-credentials.js";
+import {
+  createTerminalSession,
+  terminalSessions,
+  events,
+  getThread,
+} from "@bb/db";
+import { seedTurnStarted } from "../../helpers/seed.js";
+import { machineLifecycles } from "@bb/db";
+import {
+  assertMachineLifecycleAdmission,
+  getMachineLifecycle,
+  machineLifecycleStatus,
+  observeMachineLifecycle,
+} from "../../../src/services/machines/lifecycle.js";
 import { createBbSdk } from "@bb/sdk/core";
 import { createHttpTransport } from "@bb/sdk";
 import { answerMachineReadiness } from "../../helpers/machine-readiness.js";
@@ -3015,3 +3029,346 @@ it("periodic retirement does not invalidate an in-flight resume allocation", asy
     await sweepProviderMachine(h.deps, host.id);
     expect(getHost(h.db, host.id)?.phase).toBe("retiring");
   }));
+
+describe("finite machine lifecycle", () => {
+  it("excludes dispatch and durably saves before terminating a machine with no live threads", async () =>
+    withTestHarness(async (h) => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(10_000);
+      const { host } = seedHostSession(h.deps, { id: "host_deadline" });
+      adoptMachine(h, host.id);
+      const saving = createDeferredPromise<void>();
+      const proceed = createDeferredPromise<void>();
+      let terminated = false;
+      installMachineProvider(
+        machineDeclaration(host.id, {
+          experimental_observe: async ({ resource }) => ({
+            state: "running",
+            expiresAt: 20_000,
+            resource,
+          }),
+          experimental_policy: async () => ({
+            idleSuspendMs: null,
+            retireAfterMs: 30 * 86400_000,
+            deadlineLeadMs: 15_000,
+          }),
+          suspend: async ({ checkpoint }) => {
+            saving.resolve();
+            await proceed.promise;
+            checkpoint({ snapshot: "durable" }, Date.now());
+            expect(getHost(h.db, host.id)?.resource).toEqual({
+              snapshot: "durable",
+            });
+            expect(getMachineLifecycle(h.deps, host.id)?.lastSnapshotAt).toBe(
+              10_000,
+            );
+            terminated = true;
+            return { resource: { snapshot: "durable" } };
+          },
+          resume: async ({ resource }) => ({ resource }),
+        }),
+      );
+      const sweep = sweepProviderMachine(h.deps, host.id);
+      await saving.promise;
+      expect(() => assertMachineLifecycleAdmission(h.deps, host.id)).toThrow(
+        "Saving the filesystem",
+      );
+      expect(terminated).toBe(false);
+      proceed.resolve();
+      await sweep;
+      expect(terminated).toBe(true);
+      expect(getHost(h.db, host.id)?.phase).toBe("suspended");
+      expect(machineLifecycleStatus(h.deps, host.id, {})).toMatchObject({
+        recoveryState: "saved",
+        lastSnapshotAt: 10_000,
+        expiresAt: null,
+      });
+    }));
+
+  it("retains compute after failed save and retries after a durable lease expires", async () =>
+    withTestHarness(async (h) => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(10_000);
+      const { host } = seedHostSession(h.deps, { id: "host_failed_save" });
+      adoptMachine(h, host.id);
+      let fails = true;
+      let saves = 0;
+      installMachineProvider(
+        machineDeclaration(host.id, {
+          experimental_observe: async ({ resource }) => ({
+            state: "running",
+            expiresAt: 100_000,
+            resource,
+          }),
+          experimental_policy: async () => ({
+            idleSuspendMs: null,
+            retireAfterMs: null,
+            deadlineLeadMs: 95_000,
+          }),
+          suspend: async ({ checkpoint }) => {
+            saves += 1;
+            if (fails) throw new Error("snapshot unavailable");
+            checkpoint({ snapshot: "saved" }, Date.now());
+            return { resource: { snapshot: "saved" } };
+          },
+          resume: async ({ resource }) => ({ resource }),
+        }),
+      );
+      await expect(sweepProviderMachine(h.deps, host.id)).rejects.toThrow(
+        "snapshot unavailable",
+      );
+      expect(getHost(h.db, host.id)?.phase).toBe("active");
+      expect(getMachineLifecycle(h.deps, host.id)).toMatchObject({
+        recoveryState: "recoverable",
+        lastSnapshotAt: null,
+        leaseId: null,
+      });
+      await sweepProviderMachine(h.deps, host.id);
+      expect(saves).toBe(1);
+      h.db
+        .update(machineLifecycles)
+        .set({
+          leaseId: "previous-server",
+          leaseUntil: 40_000,
+          recoveryState: "saving",
+        })
+        .where(eq(machineLifecycles.hostId, host.id))
+        .run();
+      vi.setSystemTime(30_000);
+      await sweepProviderMachine(h.deps, host.id);
+      expect(saves).toBe(1);
+      fails = false;
+      vi.setSystemTime(40_001);
+      await sweepProviderMachine(h.deps, host.id);
+      expect(saves).toBe(2);
+      expect(getMachineLifecycle(h.deps, host.id)?.recoveryState).toBe("saved");
+    }));
+
+  it("discloses disappearance without silently restoring an older snapshot", async () =>
+    withTestHarness(async (h) => {
+      const { host } = seedHostSession(h.deps, { id: "host_lost_save" });
+      adoptMachine(h, host.id, { snapshot: "old" });
+      const resume = vi.fn(async ({ resource }: { resource: JsonValue }) => ({
+        resource,
+      }));
+      installMachineProvider(
+        machineDeclaration(host.id, {
+          experimental_observe: async ({ resource }) => ({
+            state: "missing",
+            expiresAt: null,
+            resource,
+          }),
+          experimental_policy: async () => ({
+            idleSuspendMs: null,
+            retireAfterMs: null,
+            deadlineLeadMs: 900_000,
+          }),
+          suspend: async ({ resource }) => ({ resource }),
+          resume,
+        }),
+      );
+      await expect(
+        ensureHostSessionReadyForWork(h.deps, { hostId: host.id }),
+      ).rejects.toThrow(
+        "Changes since the last successful snapshot may be lost",
+      );
+      expect(resume).not.toHaveBeenCalled();
+      expect(machineLifecycleStatus(h.deps, host.id, {}).recoveryState).toBe(
+        "lost-since-last-snapshot",
+      );
+    }));
+
+  it("updates retention and idle policy without reloading and honors keep", async () =>
+    withTestHarness(async (h) => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(10_000);
+      const { host } = seedHostSession(h.deps, { id: "host_live_policy" });
+      adoptMachine(h, host.id);
+      let idleSuspendMs = 100_000;
+      let retireAfterMs = 200_000;
+      let removed = false;
+      installMachineProvider(
+        machineDeclaration(host.id, {
+          experimental_observe: async ({ resource }) => ({
+            state: "running",
+            expiresAt: 1_000_000,
+            resource,
+          }),
+          experimental_policy: async () => ({
+            idleSuspendMs,
+            retireAfterMs,
+            deadlineLeadMs: 10_000,
+          }),
+          remove: async () => {
+            removed = true;
+            return { status: "removed" };
+          },
+          suspend: async ({ resource, checkpoint }) => {
+            checkpoint(resource, Date.now());
+            return { resource };
+          },
+          resume: async ({ resource }) => ({ resource }),
+        }),
+      );
+      await sweepProviderMachine(h.deps, host.id);
+      expect(machineLifecycleStatus(h.deps, host.id, {}).retentionAt).toBe(
+        210_000,
+      );
+      machineLifecycleStatus(h.deps, host.id, { keep: true });
+      vi.setSystemTime(15_000);
+      idleSuspendMs = 1_000;
+      retireAfterMs = 1_000;
+      await sweepProviderMachine(h.deps, host.id);
+      expect(getHost(h.db, host.id)?.phase).toBe("suspended");
+      expect(removed).toBe(false);
+      expect(
+        machineLifecycleStatus(h.deps, host.id, {}).retentionAt,
+      ).toBeNull();
+      machineLifecycleStatus(h.deps, host.id, { keep: false });
+      await sweepProviderMachine(h.deps, host.id);
+      expect(removed).toBe(true);
+    }));
+
+  it("fails observation closed on an account identity mismatch", async () =>
+    withTestHarness(async (h) => {
+      const { host } = seedHostSession(h.deps, { id: "host_account_changed" });
+      adoptMachine(h, host.id);
+      installMachineProvider(
+        machineDeclaration(host.id, {
+          experimental_observe: async () => {
+            throw new Error("Restore the pinned account");
+          },
+          experimental_policy: async () => ({
+            idleSuspendMs: null,
+            retireAfterMs: null,
+            deadlineLeadMs: null,
+          }),
+        }),
+      );
+      await expect(observeMachineLifecycle(h.deps, host.id)).rejects.toThrow(
+        "Restore the pinned account",
+      );
+    }));
+});
+
+it.each([false, true])(
+  "deadline drain preserves an interrupted active turn and refuses failed stop (%s)",
+  async (stopFails) =>
+    withTestHarness(async (h) => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(10_000);
+      const { host, session } = seedHostSession(h.deps, {
+        id: "host_drain_active",
+      });
+      const { project } = seedProjectWithSource(h.deps, {
+        hostId: host.id,
+        path: "/tmp/drain-active",
+      });
+      const environment = createEnvironment(h.db, h.hub, {
+        projectId: project.id,
+        hostId: host.id,
+        path: "/tmp/drain-active",
+        providerOwnsPath: false,
+        status: "ready",
+        environmentProvider: null,
+      });
+      const thread = seedThread(h.deps, {
+        projectId: project.id,
+        environmentId: environment.id,
+        status: "active",
+      });
+      seedThreadRuntimeState(h.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        providerThreadId: "provider-drain",
+      });
+      seedTurnStarted(h.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        turnId: "turn-drain",
+      });
+      const terminal = createTerminalSession(h.db, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        hostId: host.id,
+        daemonSessionId: null,
+        title: "open terminal",
+        initialCwd: "/tmp/drain-active",
+        cols: 80,
+        rows: 24,
+        status: "disconnected",
+      });
+      adoptMachine(h, host.id);
+      const responder = registerHostRpcResponder(h, {
+        hostId: host.id,
+        sessionId: session.id,
+        handle: (request) => {
+          expect(request.command.type).toBe("thread.stop");
+          return stopFails
+            ? {
+                ok: false,
+                errorCode: "stop_failed",
+                errorMessage: "Provider refused stop",
+              }
+            : { ok: true, result: { providerCheckpointId: null } };
+        },
+      });
+      let saves = 0;
+      installMachineProvider(
+        machineDeclaration(host.id, {
+          experimental_observe: async ({ resource }) => ({
+            state: "running",
+            expiresAt: 20_000,
+            resource,
+          }),
+          experimental_policy: async () => ({
+            idleSuspendMs: 1,
+            retireAfterMs: null,
+            deadlineLeadMs: 15_000,
+          }),
+          suspend: async ({ resource, checkpoint }) => {
+            saves += 1;
+            checkpoint(resource, Date.now());
+            return { resource };
+          },
+          resume: async ({ resource }) => ({ resource }),
+        }),
+      );
+      if (stopFails) {
+        await expect(sweepProviderMachine(h.deps, host.id)).rejects.toThrow(
+          "Provider refused stop",
+        );
+        expect(saves).toBe(0);
+        expect(getHost(h.db, host.id)?.phase).toBe("active");
+      } else {
+        await sweepProviderMachine(h.deps, host.id);
+        expect(saves).toBe(1);
+        expect(getThread(h.db, thread.id)?.status).not.toBe("active");
+        expect(
+          h.db
+            .select()
+            .from(terminalSessions)
+            .where(eq(terminalSessions.id, terminal.id))
+            .get()?.status,
+        ).toBe("exited");
+        const recorded = h.db
+          .select()
+          .from(events)
+          .where(eq(events.threadId, thread.id))
+          .all();
+        expect(
+          recorded.some((event) => event.type === "system/thread/interrupted"),
+        ).toBe(true);
+        expect(
+          recorded
+            .filter((event) => event.type === "turn/completed")
+            .map((event) => event.data),
+        ).not.toContainEqual(expect.objectContaining({ status: "completed" }));
+      }
+      expect(
+        responder.requests.some(
+          (request) => request.command.type === "thread.stop",
+        ),
+      ).toBe(true);
+    }),
+);

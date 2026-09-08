@@ -1185,3 +1185,36 @@ export const environmentSetupOutcomes = sqliteTable(
   },
   (table) => [primaryKey({ columns: [table.hostId, table.path] })],
 );
+
+export const machineLifecycles = sqliteTable("machine_lifecycles", {
+  hostId: text("host_id")
+    .primaryKey()
+    .references(() => hosts.id, { onDelete: "cascade" }),
+  observedState: text("observed_state", {
+    enum: ["running", "suspended", "missing", "unknown"],
+  }).notNull(),
+  observedAt: integer("observed_at").notNull(),
+  expiresAt: integer("expires_at"),
+  maintenanceAt: integer("maintenance_at"),
+  lastSnapshotAt: integer("last_snapshot_at"),
+  recoveryState: text("recovery_state", {
+    enum: [
+      "healthy",
+      "draining",
+      "saving",
+      "saved",
+      "recoverable",
+      "lost-since-last-snapshot",
+    ],
+  }).notNull(),
+  message: text("message"),
+  leaseId: text("lease_id"),
+  leaseUntil: integer("lease_until"),
+  retryAt: integer("retry_at"),
+  idleSuspendMs: integer("idle_suspend_ms"),
+  retireAfterMs: integer("retire_after_ms"),
+  deadlineLeadMs: integer("deadline_lead_ms"),
+  unusedSince: integer("unused_since"),
+  retentionAt: integer("retention_at"),
+  keep: integer("keep", { mode: "boolean" }).notNull().default(false),
+});

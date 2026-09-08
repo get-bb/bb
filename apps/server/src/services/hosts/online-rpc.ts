@@ -1,4 +1,8 @@
-import { getHost } from "@bb/db";
+import {
+  getMachineLifecycle,
+  assertMachineLifecycleAdmission,
+} from "../machines/lifecycle.js";
+import { getHost, getThread } from "@bb/db";
 import { randomUUID } from "node:crypto";
 import {
   type HostDaemonOnlineRpcResponseMessage,
@@ -125,6 +129,21 @@ async function callHostOnlineRpcWithRetry(
         await waitForRetryableHostRpcTransport(deps, args.hostId);
       },
     );
+  }
+  if (options.admitWork) {
+    assertMachineLifecycleAdmission(deps, args.hostId);
+    if (
+      (args.command.type === "thread.start" ||
+        args.command.type === "turn.submit") &&
+      getMachineLifecycle(deps, args.hostId) !== undefined &&
+      getThread(deps.db, args.command.threadId)?.status !== "active"
+    ) {
+      throw new ApiError(
+        409,
+        "machine_dispatch_interrupted",
+        "This turn was interrupted while waiting for machine preservation; submit a new continuation turn",
+      );
+    }
   }
   const timeoutRetryDeadline =
     options.retryOnTransportFailure && args.timeoutMs > 1

@@ -21,6 +21,7 @@ export const pinnedResourceSchema = legacyResourceSchema
     resources: resourcesSchema,
     policy: policySchema,
     expiresAt: z.number().nullable(),
+    policyRevision: z.number().int().nonnegative().default(0),
   })
   .strict();
 export const modalMachineResourceSchema = z.union([

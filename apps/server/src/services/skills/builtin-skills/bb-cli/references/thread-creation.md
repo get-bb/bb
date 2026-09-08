@@ -216,3 +216,9 @@ a turn. A blocked result names cli/auth/workspace and the actionable failure.
 Provider-created machine turns run these checks automatically. A connected daemon
 alone does not establish agent readiness.
 
+
+`bb machine lifecycle MACHINE --json` shows the vendor expiry, planned maintenance,
+last successful snapshot, recovery state and automatic retention removal deadline.
+Use `--keep` to prevent automatic retention removal, or `--no-keep` to restore it.
+Maintenance interrupts active turns and closes terminals before saving. Submit a
+new continuation turn after restore; interrupted turns are never reported successful.

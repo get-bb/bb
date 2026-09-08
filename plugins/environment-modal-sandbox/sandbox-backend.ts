@@ -47,6 +47,11 @@ export interface SandboxCreateRequest {
 }
 
 export interface SandboxBackend {
+  observe(request: {
+    sandboxId: string;
+    appName: string;
+    key: string;
+  }): Promise<{ running: boolean; expiresAt: number | null }>;
   create(request: SandboxCreateRequest): Promise<SandboxHandle>;
   deleteSnapshot(imageId: string): Promise<void>;
   fromId(sandboxId: string): Promise<SandboxHandle | null>;
@@ -121,6 +126,24 @@ export const createModalBackend: SandboxBackendFactory = (credentials) => {
     tokenSecret: credentials.tokenSecret,
   });
   return {
+    async observe(request) {
+      const app = await client.apps.fromName(request.appName);
+      const result = await client.cpClient.sandboxList({
+        appId: app.appId,
+        beforeTimestamp: 0,
+        environmentName: client.environmentName(),
+        includeFinished: false,
+        tags: [{ tagName: "bbMachineKey", tagValue: request.key }],
+      });
+      const sandbox = result.sandboxes.find(
+        (candidate) => candidate.id === request.sandboxId,
+      );
+      if (sandbox === undefined) return { running: false, expiresAt: null };
+      const expiresAt = (sandbox.createdAt + sandbox.timeoutSecs) * 1000;
+      if (!Number.isFinite(expiresAt) || sandbox.timeoutSecs <= 0)
+        throw new Error("Modal did not report a finite sandbox deadline");
+      return { running: true, expiresAt };
+    },
     async create(request) {
       const app = await client.apps.fromName(request.appName, {
         createIfMissing: true,

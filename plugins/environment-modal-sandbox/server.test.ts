@@ -110,6 +110,14 @@ function createBackend(
   }
 
   const backend: SandboxBackend = {
+    async observe({ sandboxId }) {
+      return {
+        running: states.some(
+          (state) => state.id === sandboxId && !state.terminated,
+        ),
+        expiresAt: 24 * 60 * 60_000,
+      };
+    },
     async create(request) {
       creates.push(request);
       nextSandbox += 1;

@@ -4,10 +4,19 @@ import {
   createSandboxExecutor,
 } from "./sandbox-backend.js";
 
-const vendor = vi.hoisted(() => ({ exec: vi.fn(), poll: vi.fn() }));
+const vendor = vi.hoisted(() => ({
+  exec: vi.fn(),
+  poll: vi.fn(),
+  list: vi.fn(),
+}));
 vi.mock("modal", () => ({
   NotFoundError: class extends Error {},
   ModalClient: class {
+    apps = { fromName: async () => ({ appId: "app-owned" }) };
+    cpClient = { sandboxList: vendor.list };
+    environmentName() {
+      return "main";
+    }
     sandboxes = {
       fromId: async () => ({
         sandboxId: "sandbox-1",
@@ -121,4 +130,32 @@ describe("Modal bootstrap executor", () => {
     expect(vendor.exec).toHaveBeenCalledOnce();
     finish("finished");
   });
+});
+
+it("uses the vendor start and timeout for expiry and scopes inventory to the owned key", async () => {
+  vendor.list.mockResolvedValue({
+    sandboxes: [{ id: "sandbox-1", createdAt: 100, timeoutSecs: 60 }],
+  });
+  const backend = createModalBackend({ tokenId: "id", tokenSecret: "secret" });
+  expect(
+    await backend.observe({
+      sandboxId: "sandbox-1",
+      appName: "app",
+      key: "owned-key",
+    }),
+  ).toEqual({ running: true, expiresAt: 160_000 });
+  expect(vendor.list).toHaveBeenCalledWith(
+    expect.objectContaining({
+      appId: "app-owned",
+      includeFinished: false,
+      tags: [{ tagName: "bbMachineKey", tagValue: "owned-key" }],
+    }),
+  );
+  expect(
+    await backend.observe({
+      sandboxId: "missing",
+      appName: "app",
+      key: "owned-key",
+    }),
+  ).toEqual({ running: false, expiresAt: null });
 });

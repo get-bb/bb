@@ -5,7 +5,10 @@ import { randomUUID } from "node:crypto";
 import type { EnvironmentHookProgressMessage } from "@bb/host-daemon-contract";
 import type { PluginEnvironmentProviderProgress } from "@get-bb/plugin-sdk/environment-provider";
 import type { WorkSessionDeps } from "../../types.js";
-import { callHostOnlineRpc } from "../hosts/online-rpc.js";
+import {
+  callHostOnlineRpc,
+  callHostOnlineRpcWithoutAdmission,
+} from "../hosts/online-rpc.js";
 import {
   beginEnvironmentSetupOutcome,
   finishEnvironmentSetupOutcome,
@@ -62,6 +65,13 @@ export async function runEnvironmentHook(
   if (existing?.finishedAt != null) {
     if (existing.error !== null && args.kind === "setup")
       throw new Error(existing.error);
+    if (args.kind === "setup")
+      await finishEnvironmentSetupOutcome(deps, {
+        hostId: args.hostId,
+        path: args.path,
+        operationId: existing.operationId,
+        succeeded: true,
+      });
     return;
   }
   const operationId = existing?.operationId ?? randomUUID();
@@ -79,7 +89,7 @@ export async function runEnvironmentHook(
       .run();
   active.set(operationId, { hostId: args.hostId, report: args.report });
   const abort = (): void => {
-    void callHostOnlineRpc(deps, {
+    void callHostOnlineRpcWithoutAdmission(deps, {
       hostId: args.hostId,
       timeoutMs: TRANSPORT_GRACE_MS,
       command: { type: "environment.hook.cancel", operationId },
@@ -154,7 +164,7 @@ export async function cancelPendingEnvironmentHook(
     .where(eq(environmentHookOperations.id, id))
     .get();
   if (operation === undefined || operation.finishedAt !== null) return;
-  const result = await callHostOnlineRpc(deps, {
+  const result = await callHostOnlineRpcWithoutAdmission(deps, {
     hostId: operation.hostId,
     timeoutMs: TRANSPORT_GRACE_MS,
     command: {

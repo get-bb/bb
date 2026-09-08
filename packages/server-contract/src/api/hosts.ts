@@ -173,3 +173,32 @@ export const experimental_hostReadinessResponseSchema = z.discriminatedUnion(
 export type experimental_HostReadinessResponse = z.infer<
   typeof experimental_hostReadinessResponseSchema
 >;
+
+export const experimental_hostLifecycleRequestSchema = z
+  .object({ keep: z.boolean().optional() })
+  .strict();
+export type experimental_HostLifecycleRequest = z.infer<
+  typeof experimental_hostLifecycleRequestSchema
+>;
+export const experimental_hostLifecycleResponseSchema = z
+  .object({
+    phase: z.string(),
+    expiresAt: z.number().nullable(),
+    maintenanceAt: z.number().nullable(),
+    lastSnapshotAt: z.number().nullable(),
+    recoveryState: z.enum([
+      "healthy",
+      "draining",
+      "saving",
+      "saved",
+      "recoverable",
+      "lost-since-last-snapshot",
+    ]),
+    message: z.string().nullable(),
+    retentionAt: z.number().nullable(),
+    keep: z.boolean(),
+  })
+  .strict();
+export type experimental_HostLifecycleResponse = z.infer<
+  typeof experimental_hostLifecycleResponseSchema
+>;

@@ -73,7 +73,8 @@ export interface PluginMachineProviderLifecycleContext {
 }
 
 export interface PluginMachineProviderSuspendContext extends PluginMachineProviderLifecycleContext {
-  checkpoint(resource: JsonValue): void;
+  /** Persist before terminating compute; supply the time only after a successful filesystem save. */
+  checkpoint(resource: JsonValue, experimental_snapshotAt?: number): void;
 }
 
 export interface PluginMachineProviderResumeContext extends PluginMachineProviderLifecycleContext {
@@ -144,6 +145,25 @@ export interface PluginMachineProviderDefinition<
     report: PluginMachineProviderProgress;
     signal: AbortSignal;
   }): Promise<PluginMachineProviderRemoveResult>;
+  /** Read vendor state without allocation or identity changes. Deadlines use UTC milliseconds. */
+  experimental_observe?(context: {
+    hostId: string;
+    resource: JsonValue;
+    signal: AbortSignal;
+  }): Promise<{
+    state: "running" | "suspended" | "missing" | "unknown";
+    expiresAt: number | null;
+    resource: JsonValue;
+  }>;
+  /** Evaluate current effective policy on every sweep; null disables the corresponding deadline. */
+  experimental_policy?(context: {
+    hostId: string;
+    resource: JsonValue;
+  }): Promise<{
+    idleSuspendMs: number | null;
+    retireAfterMs: number | null;
+    deadlineLeadMs: number | null;
+  }>;
   suspend?(
     context: PluginMachineProviderSuspendContext,
   ): Promise<PluginMachineProviderResourceResult>;

@@ -5,6 +5,9 @@ import {
   type MachineEnvironmentList,
 } from "./api/machine-environment.js";
 import {
+  experimental_hostLifecycleRequestSchema,
+  type experimental_HostLifecycleRequest,
+  type experimental_HostLifecycleResponse,
   experimental_hostReadinessRequestSchema,
   type experimental_HostReadinessRequest,
   type experimental_HostReadinessResponse,
@@ -853,6 +856,14 @@ export const publicApiRoutes = {
         hostPickFolderRequestSchema,
       ),
       response: jsonResponse<HostPickFolderResponse>(),
+    }),
+    experimental_lifecycle: defineRoute({
+      path: "/hosts/:id/lifecycle",
+      method: "post",
+      request: jsonRequest<PathId, experimental_HostLifecycleRequest>(
+        experimental_hostLifecycleRequestSchema,
+      ),
+      response: jsonResponse<experimental_HostLifecycleResponse>(),
     }),
     experimental_ensureReady: defineRoute({
       path: "/hosts/:id/ready",

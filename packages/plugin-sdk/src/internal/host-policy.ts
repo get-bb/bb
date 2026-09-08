@@ -2461,6 +2461,8 @@ export interface NormalizedPluginMachineProvider {
   > | null;
   experimental_reconcileCleanup: PluginMachineProviderDeclaration["experimental_reconcileCleanup"];
   create: PluginMachineProviderDeclaration["create"];
+  experimental_observe?: PluginMachineProviderDeclaration["experimental_observe"];
+  experimental_policy?: PluginMachineProviderDeclaration["experimental_policy"];
   suspend: NonNullable<PluginMachineProviderDeclaration["suspend"]> | null;
   resume: NonNullable<PluginMachineProviderDeclaration["resume"]> | null;
   remove: PluginMachineProviderDeclaration["remove"];
@@ -2531,6 +2533,15 @@ export function validatePluginMachineProviderDeclaration(
     throw new Error(
       `machine provider "${id}" must declare create, experimental_reconcileCleanup and remove functions`,
     );
+  }
+  for (const name of ["experimental_observe", "experimental_policy"] as const) {
+    if (
+      declaration[name] !== undefined &&
+      typeof declaration[name] !== "function"
+    )
+      throw new Error(
+        `machine provider "${id}" declares a ${name} that is not a function`,
+      );
   }
   const hasSuspend = typeof declaration.suspend === "function";
   const hasResume = typeof declaration.resume === "function";
@@ -2604,6 +2615,8 @@ export function validatePluginMachineProviderDeclaration(
     experimental_details: declaration.experimental_details ?? null,
     experimental_reconcileCleanup: declaration.experimental_reconcileCleanup,
     create: declaration.create,
+    experimental_observe: declaration.experimental_observe,
+    experimental_policy: declaration.experimental_policy,
     suspend: declaration.suspend ?? null,
     resume: declaration.resume ?? null,
     remove: declaration.remove,
