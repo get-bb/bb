@@ -206,13 +206,13 @@ export function createTailscalePlugin(client: TailscaleClient, ssh: SshRunner) {
               throw new Error(
                 "Tailscale enrollment returned another identity.",
               );
-            await bb.storage.kv.set(ownerKey, context.key);
             launch = {
               ...resource,
               started: launch?.started ?? false,
               completed: launch?.completed ?? false,
             };
             await bb.storage.kv.set(storageKey, launch);
+            await bb.storage.kv.set(ownerKey, context.key);
             await context.checkpoint(resource);
             context.signal.throwIfAborted();
             if (!launch.completed) {
@@ -246,6 +246,29 @@ export function createTailscalePlugin(client: TailscaleClient, ssh: SshRunner) {
               message: message(error),
             };
           }
+        });
+      },
+      async experimental_reconcileCleanup(context) {
+        const storageKey = `launch:${context.key}`;
+        const stored = await bb.storage.kv.get(storageKey);
+        if (stored === undefined) return { status: "removed" };
+        const launch = launchSchema.parse(stored);
+        return serialize(launch.deviceId, async () => {
+          context.signal.throwIfAborted();
+          const current = await bb.storage.kv.get(storageKey);
+          if (current === undefined) return { status: "removed" };
+          const reservation = launchSchema.parse(current);
+          if (reservation.key !== context.key || reservation.started)
+            return {
+              status: "failed",
+              message:
+                "Bootstrap may have started. Recover the saved machine checkpoint before cleanup.",
+            };
+          const ownerKey = `device:${reservation.deviceId}`;
+          if ((await bb.storage.kv.get(ownerKey)) === context.key)
+            await bb.storage.kv.delete(ownerKey);
+          await bb.storage.kv.delete(storageKey);
+          return { status: "removed" };
         });
       },
       async remove(context) {
@@ -292,10 +315,10 @@ export function createTailscalePlugin(client: TailscaleClient, ssh: SshRunner) {
                   "Identity-checked bb uninstall failed. Cleanup will retry.",
                 );
             }
-            await bb.storage.kv.delete(key);
             const ownerKey = `device:${resource.deviceId}`;
             if ((await bb.storage.kv.get(ownerKey)) === resource.key)
               await bb.storage.kv.delete(ownerKey);
+            await bb.storage.kv.delete(key);
             return { status: "removed" };
           });
         } catch (error) {

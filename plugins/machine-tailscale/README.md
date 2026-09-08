@@ -93,7 +93,10 @@ Device ownership is reserved across concurrent
 Tailscale launches; core's remote identity guard protects cross-provider
 conflicts. Offline/renamed devices block cleanup until the original trusted
 target returns. Cancellation never stores bootstrap bundles in resource/KV
-records or logs. Core owns enrolment credentials and daemon lifecycle.
+records or logs. Core owns enrolment credentials and daemon lifecycle. If a launch was cancelled
+before its checkpoint, `experimental_reconcileCleanup` releases only a saved
+reservation proven not to have started bootstrap. An uncertain started
+installation requires its checkpoint for identity-checked cleanup.
 
 ## Verification
 

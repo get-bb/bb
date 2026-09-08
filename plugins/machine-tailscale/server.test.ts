@@ -139,6 +139,40 @@ describe("Tailscale lifecycle and access", () => {
       }),
     ).toMatchObject({ status: "failed", failure: "terminal" });
   });
+  it("reconciles a reservation whose checkpoint failed without installing or stranding device ownership", async () => {
+    const f = await setup();
+    f.checkpoint.mockRejectedValueOnce(new Error("checkpoint failed"));
+    expect(await f.provider.create(f.context)).toMatchObject({
+      status: "failed",
+    });
+    const result = await f.provider.experimental_reconcileCleanup({
+      key: f.context.key,
+      signal: f.context.signal,
+      report: f.context.report,
+    });
+    expect(result).toEqual({ status: "removed" });
+    expect(await f.bb.storage.kv.get("device:peer")).toBeUndefined();
+    expect(await f.bb.storage.kv.get("launch:launch")).toBeUndefined();
+    expect(f.bootstrap).not.toHaveBeenCalled();
+    expect(
+      await f.provider.create({ ...f.context, key: "replacement" }),
+    ).toMatchObject({ status: "created" });
+  });
+  it("does not report uncertain installed machines cleaned up without their checkpoint", async () => {
+    const f = await setup();
+    f.bootstrap.mockRejectedValueOnce(new Error("connection failed"));
+    await f.provider.create(f.context);
+    f.exec.mockClear();
+    expect(
+      await f.provider.experimental_reconcileCleanup({
+        key: f.context.key,
+        signal: f.context.signal,
+        report: f.context.report,
+      }),
+    ).toMatchObject({ status: "failed" });
+    expect(await f.bb.storage.kv.get("device:peer")).toBeDefined();
+    expect(f.exec).not.toHaveBeenCalled();
+  });
   it("reports missing Node before enrollment or remote installation", async () => {
     const f = await setup();
     f.exec.mockResolvedValueOnce({ exitCode: 1, stdout: "", stderr: "" });
