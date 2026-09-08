@@ -5,6 +5,11 @@ import path from "node:path";
 const root = path.resolve(import.meta.dirname, "../src");
 const output = path.join(root, "generated/build-fingerprint.generated.ts");
 const hash = createHash("sha256");
+for (const file of [
+  path.resolve(root, "../package.json"),
+  path.resolve(root, "../../../pnpm-lock.yaml"),
+])
+  hash.update(await readFile(file));
 async function visit(directory) {
   for (const entry of (await readdir(directory, { withFileTypes: true })).sort(
     (a, b) => a.name.localeCompare(b.name),
