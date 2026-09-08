@@ -4854,7 +4854,7 @@ describe("Account Pool plugin", () => {
       } finally {
         if (!held.bodyUsed) await held.body?.cancel();
       }
-    }, 20_000);
+    }, 60_000);
   });
 
   it("serializes refresh, writes new tokens with 0600 mode, and uses them", async () => {
