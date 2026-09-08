@@ -24,14 +24,18 @@ export async function canonicalEnvironmentPath(
   return result.path;
 }
 
-export async function resolveEnvironmentPathIdentity(
-  deps: WorkSessionDeps,
-  hostId: string,
-  path: string,
-): Promise<string> {
-  const canonicalPath = await canonicalEnvironmentPath(deps, hostId, path);
-  const rows = deps.db
-    .select({ id: environments.id, path: environments.path })
+const backfillWarnings = new WeakMap<
+  WorkSessionDeps["db"],
+  Map<string, number>
+>();
+
+function unresolvedEnvironmentPaths(deps: WorkSessionDeps, hostId: string) {
+  return deps.db
+    .select({
+      id: environments.id,
+      path: environments.path,
+      status: environments.status,
+    })
     .from(environments)
     .where(
       and(
@@ -41,24 +45,78 @@ export async function resolveEnvironmentPathIdentity(
       ),
     )
     .all();
-  for (const row of rows) {
-    if (row.path === null) continue;
-    const identity =
-      row.path === path
-        ? canonicalPath
-        : await canonicalEnvironmentPath(deps, hostId, row.path);
-    deps.db
-      .update(environments)
-      .set({ canonicalPath: identity })
-      .where(
-        and(
-          eq(environments.id, row.id),
-          eq(environments.path, row.path),
-          isNull(environments.canonicalPath),
-        ),
-      )
-      .run();
-  }
+}
+
+export function backfillEnvironmentPathIdentities(
+  deps: WorkSessionDeps,
+  hostId: string,
+): Promise<void> {
+  return deps.lifecycleDedupers.environmentPathBackfill.run(
+    hostId,
+    async () => {
+      let warnings = backfillWarnings.get(deps.db);
+      if (warnings === undefined) {
+        warnings = new Map();
+        backfillWarnings.set(deps.db, warnings);
+      }
+      const now = Date.now();
+      for (const [id, loggedAt] of warnings) {
+        if (now - loggedAt >= 60_000) warnings.delete(id);
+      }
+      for (const row of unresolvedEnvironmentPaths(deps, hostId)) {
+        if (row.path === null) continue;
+        let identity: string;
+        try {
+          identity = await canonicalEnvironmentPath(deps, hostId, row.path);
+        } catch (error) {
+          if (!warnings.has(row.id)) {
+            warnings.set(row.id, Date.now());
+            deps.logger.warn(
+              { err: error, environmentId: row.id, hostId, path: row.path },
+              "Cannot backfill environment canonical path; will retry on next request",
+            );
+          }
+          continue;
+        }
+        deps.db
+          .update(environments)
+          .set({ canonicalPath: identity })
+          .where(
+            and(
+              eq(environments.id, row.id),
+              eq(environments.path, row.path),
+              isNull(environments.canonicalPath),
+            ),
+          )
+          .run();
+        warnings.delete(row.id);
+      }
+    },
+  );
+}
+
+export async function resolveEnvironmentPathIdentity(
+  deps: WorkSessionDeps,
+  hostId: string,
+  path: string,
+): Promise<string> {
+  await backfillEnvironmentPathIdentities(deps, hostId);
+  const unresolved = unresolvedEnvironmentPaths(deps, hostId);
+  const assertNoUnresolvedOverlap = (candidate: string) => {
+    for (const row of unresolved) {
+      if (row.path === null || row.status === "destroyed") continue;
+      const rawPath = row.path.replace(/\/+$/u, "") || "/";
+      if (
+        candidate === rawPath ||
+        candidate.startsWith(rawPath === "/" ? "/" : `${rawPath}/`)
+      ) {
+        throw new ApiError(409, "workspace_busy", CHECKOUT_BUSY_MESSAGE);
+      }
+    }
+  };
+  assertNoUnresolvedOverlap(path);
+  const canonicalPath = await canonicalEnvironmentPath(deps, hostId, path);
+  assertNoUnresolvedOverlap(canonicalPath);
   return canonicalPath;
 }
 
