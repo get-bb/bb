@@ -152,6 +152,25 @@ export function createE2BPlugin(deps: {
           resource,
         };
       },
+      async experimental_reconcileCleanup(context) {
+        const stored = await bb.storage.kv.get<unknown>(
+          `allocation/${context.key}`,
+        );
+        if (stored === undefined) return { status: "removed" };
+        const intent = allocationSchema.parse(stored);
+        const api = await vendor();
+        const sandboxId =
+          intent.sandboxId ?? (await api.find(context.key, context.signal));
+        if (sandboxId === null)
+          return {
+            status: "failed",
+            message:
+              "E2B allocation intent is unresolved; retry metadata reconciliation.",
+          };
+        await bb.storage.kv.set(`allocation/${context.key}`, { sandboxId });
+        await api.kill(sandboxId, context.signal);
+        return { status: "removed" };
+      },
       async suspend(context) {
         const resource = resourceSchema.parse(context.resource);
         await (

@@ -247,3 +247,31 @@ describe("DigitalOcean machine provider", () => {
     await test.harness.lifecycle.dispose();
   });
 });
+
+it("reconciles uncertain tag allocations without create or enrollment", async () => {
+  const test = await setup();
+  const request = context();
+  expect(await test.provider.experimental_reconcileCleanup(request)).toEqual({
+    status: "removed",
+  });
+  await test.bb.storage.kv.set(`allocation/${allocationName(request.key)}`, {
+    dropletId: null,
+  });
+  expect(
+    await test.provider.experimental_reconcileCleanup(request),
+  ).toMatchObject({ status: "failed" });
+  test.api.find.mockResolvedValue(droplet());
+  expect(await test.provider.experimental_reconcileCleanup(request)).toEqual({
+    status: "removed",
+  });
+  expect(test.api.destroy).toHaveBeenCalledWith(42, request.signal);
+  test.api.find.mockResolvedValue(null);
+  expect(await test.provider.experimental_reconcileCleanup(request)).toEqual({
+    status: "removed",
+  });
+  expect(test.api.create).not.toHaveBeenCalled();
+  expect(test.prepare).not.toHaveBeenCalled();
+  expect(test.installerCommand).not.toHaveBeenCalled();
+  expect(test.waitForConnection).not.toHaveBeenCalled();
+  await test.harness.lifecycle.dispose();
+});

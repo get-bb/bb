@@ -2445,6 +2445,7 @@ export interface NormalizedPluginMachineProvider {
     | import("../machine-provider.js").PluginMachineProviderEnvironmentRow
     | null;
   policy: import("../machine-provider.js").PluginMachineProviderPolicy;
+  experimental_reconcileCleanup: PluginMachineProviderDeclaration["experimental_reconcileCleanup"];
   create: PluginMachineProviderDeclaration["create"];
   suspend: NonNullable<PluginMachineProviderDeclaration["suspend"]> | null;
   resume: NonNullable<PluginMachineProviderDeclaration["resume"]> | null;
@@ -2510,10 +2511,11 @@ export function validatePluginMachineProviderDeclaration(
   const inputs = normalizeMachineProviderInputs(id, declaration);
   if (
     typeof declaration.create !== "function" ||
+    typeof declaration.experimental_reconcileCleanup !== "function" ||
     typeof declaration.remove !== "function"
   ) {
     throw new Error(
-      `machine provider "${id}" must declare create and remove functions`,
+      `machine provider "${id}" must declare create, experimental_reconcileCleanup and remove functions`,
     );
   }
   const hasSuspend = typeof declaration.suspend === "function";
@@ -2568,6 +2570,7 @@ export function validatePluginMachineProviderDeclaration(
     validate: declaration.validate ?? null,
     environmentRow,
     policy,
+    experimental_reconcileCleanup: declaration.experimental_reconcileCleanup,
     create: declaration.create,
     suspend: declaration.suspend ?? null,
     resume: declaration.resume ?? null,

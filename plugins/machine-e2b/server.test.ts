@@ -209,3 +209,33 @@ describe("E2B machine provider", () => {
     await test.harness.lifecycle.dispose();
   });
 });
+
+it("reconciles uncertain metadata allocations without create or bootstrap", async () => {
+  const test = await setup();
+  const request = context();
+  expect(await test.provider.experimental_reconcileCleanup(request)).toEqual({
+    status: "removed",
+  });
+  await test.bb.storage.kv.set(`allocation/${request.key}`, {
+    sandboxId: null,
+  });
+  expect(
+    await test.provider.experimental_reconcileCleanup(request),
+  ).toMatchObject({ status: "failed" });
+  test.api.find.mockResolvedValue("sandbox-uncertain");
+  expect(await test.provider.experimental_reconcileCleanup(request)).toEqual({
+    status: "removed",
+  });
+  expect(test.api.kill).toHaveBeenCalledWith(
+    "sandbox-uncertain",
+    request.signal,
+  );
+  test.api.find.mockResolvedValue(null);
+  await test.provider.experimental_reconcileCleanup(request);
+  expect(test.api.kill).toHaveBeenCalledTimes(2);
+  expect(test.api.create).not.toHaveBeenCalled();
+  expect(test.api.connect).not.toHaveBeenCalled();
+  expect(test.bootstrap).not.toHaveBeenCalled();
+  expect(test.prepareEnrollment).not.toHaveBeenCalled();
+  await test.harness.lifecycle.dispose();
+});

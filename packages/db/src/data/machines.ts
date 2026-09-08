@@ -44,8 +44,7 @@ export function machineIdleSince(
     .where(
       and(
         eq(environments.hostId, hostId),
-        isNull(threads.archivedAt),
-        isNull(threads.deletedAt),
+        liveThreadCondition,
       ),
     )
     .all();

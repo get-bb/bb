@@ -106,6 +106,7 @@ export const hosts = sqliteTable(
       .notNull()
       .default("active"),
     suspendedAt: integer("suspended_at"),
+    removalStartedAt: integer("removal_started_at"),
     retireAt: integer("retire_at"),
     teardownAttempt: integer("teardown_attempt").notNull().default(0),
     teardownStatus: text("teardown_status").$type<
@@ -1135,6 +1136,7 @@ export const machineLaunches = sqliteTable(
     resource: text("resource", { mode: "json" }).$type<JsonValue>(),
     stepText: text("step_text").notNull(),
     pendingLog: text("pending_log").notNull(),
+    cleanupRetryAt: integer("cleanup_retry_at"),
     cleanupResourceRemoved: integer("cleanup_resource_removed", {
       mode: "boolean",
     })

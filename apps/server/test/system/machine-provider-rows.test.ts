@@ -76,6 +76,7 @@ describe("machine checkout picker rows", () => {
         const machineRecord = {
           pluginId: "test-machine",
           provider: validatePluginMachineProviderDeclaration({
+            experimental_reconcileCleanup: async () => ({ status: "removed" }),
             id: "test-machine",
             displayName: "Test machine",
             policy,

@@ -137,6 +137,9 @@ export function createSshMachinePlugin(deps: {
           };
         }
       },
+      async experimental_reconcileCleanup() {
+        return { status: "removed" };
+      },
       async remove(context) {
         try {
           const resource = resourceSchema.parse(context.resource);

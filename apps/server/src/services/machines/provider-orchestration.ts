@@ -529,7 +529,12 @@ export function resolveThreadMachineLaunchKey(
     const launch = getMachineLaunch(deps.db, key);
     if (launch?.phase !== "ready" || launch.hostId === null) return key;
     const host = getHost(deps.db, launch.hostId);
-    if (host !== null && host.destroyedAt === null) return key;
+    if (
+      host !== null &&
+      host.destroyedAt === null &&
+      host.removalStartedAt === null
+    )
+      return key;
     key = `${threadId}:replacement:${launch.hostId}`;
   }
 }
@@ -559,7 +564,11 @@ export function askMachineLaunch(
   }
   if (row?.phase === "ready") {
     const host = row.hostId === null ? null : getHost(deps.db, row.hostId);
-    if (host !== null && host.destroyedAt === null) {
+    if (
+      host !== null &&
+      host.destroyedAt === null &&
+      host.removalStartedAt === null
+    ) {
       return {
         action: "ready",
         host: machineHostResponse(host, deps),
@@ -611,6 +620,7 @@ export function askMachineLaunch(
       pendingLog: "",
       cancelPending: false,
       cleanupResourceRemoved: false,
+      cleanupRetryAt: null,
     };
     upsertMachineLaunch(deps.db, row);
     startCreate(deps, args.record, row);
@@ -692,7 +702,12 @@ export async function cancelMachineLaunch(
     await create.done;
   }
   row = getMachineLaunch(deps.db, key);
-  if (row === null || !row.cancelPending) return;
+  if (
+    row === null ||
+    !row.cancelPending ||
+    (row.cleanupRetryAt !== null && row.cleanupRetryAt > Date.now())
+  )
+    return;
   const record = getMachineProvider(row.providerId);
   if (record === undefined) return;
   const operation = runTrackedOperation({
@@ -702,23 +717,30 @@ export async function cancelMachineLaunch(
       let current = getMachineLaunch(deps.db, key);
       if (current === null || !current.cancelPending) return;
       if (!current.cleanupResourceRemoved) {
-        if (current.hostId === null || current.resource === null) {
-          const recovered = await invokeCreate(record, current, deps, signal);
-          if (recovered.status === "failed") throw new Error(recovered.message);
-          current = {
-            ...current,
-            hostId: recovered.hostId,
-            resource: recovered.resource,
-          };
-          updateMachineLaunchAttempt(deps.db, current);
+        if (current.resource === null) {
+          const launch = current;
+          const invocation = await invokeMachineProvider(
+            record,
+            "machine cleanup reconciliation",
+            () =>
+              record.provider.experimental_reconcileCleanup({
+                key: launch.key,
+                report: launchReporter(deps, launch),
+                signal,
+              }),
+          );
+          if (!invocation.ok) throw new Error(invocation.error);
+          const result = removeResultSchema.parse(invocation.value);
+          if (result.status === "failed") throw new Error(result.message);
+        } else {
+          if (current.hostId === null)
+            throw new Error("Machine cleanup has no reserved host");
+          await removeResource(deps, record, {
+            hostId: current.hostId,
+            resource: current.resource,
+            signal,
+          });
         }
-        if (current.hostId === null)
-          throw new Error("Machine cleanup has no reserved host");
-        await removeResource(deps, record, {
-          hostId: current.hostId,
-          resource: current.resource,
-          signal,
-        });
         current = { ...current, cleanupResourceRemoved: true };
         updateMachineLaunchAttempt(deps.db, current);
       }
@@ -745,11 +767,23 @@ export async function cancelMachineLaunch(
       updateMachineLaunchAttempt(deps.db, {
         ...current,
         cancelPending: false,
+        cleanupRetryAt: null,
         resource: null,
       });
     },
   });
-  await operation.done;
+  try {
+    await operation.done;
+  } catch (error) {
+    const current = getMachineLaunch(deps.db, key);
+    if (current !== null && current.cancelPending) {
+      updateMachineLaunchAttempt(deps.db, {
+        ...current,
+        cleanupRetryAt: Date.now() + record.provider.policy.removeRetryMs,
+      });
+    }
+    throw error;
+  }
 }
 
 export async function createMachine(
@@ -974,7 +1008,12 @@ async function resumeMachineWithIntent(
   preserveRetirement: boolean,
 ): Promise<void> {
   let row = getHost(deps.db, hostId);
-  if (row === null || row.machineProviderId === null) return;
+  if (
+    row === null ||
+    row.machineProviderId === null ||
+    row.removalStartedAt !== null
+  )
+    return;
   const hasLiveThreads = machineHasLiveThreads(deps.db, hostId);
   if (row.phase === "retiring" && row.suspendedAt === null && hasLiveThreads) {
     updateHost(deps.db, deps.hub, hostId, {
@@ -1115,7 +1154,12 @@ async function removeMachine(deps: Deps, hostId: string): Promise<void> {
     return;
   }
   const row = getHost(deps.db, hostId);
-  if (row === null || row.machineProviderId === null) {
+  if (
+    row === null ||
+    row.machineProviderId === null ||
+    row.destroyedAt !== null ||
+    (row.removalStartedAt === null && machineHasLiveThreads(deps.db, hostId))
+  ) {
     return;
   }
   const record = getMachineProvider(row.machineProviderId);
@@ -1131,6 +1175,7 @@ async function removeMachine(deps: Deps, hostId: string): Promise<void> {
   const resource = row.resource;
   const attempt = row.teardownAttempt + 1;
   updateHost(deps.db, deps.hub, hostId, {
+    removalStartedAt: row.removalStartedAt ?? Date.now(),
     teardownAttempt: attempt,
     teardownStatus: "running",
     teardownMessage: null,
@@ -1194,8 +1239,21 @@ export async function sweepProviderMachine(
     return;
   }
   const now = Date.now();
+  if (row.removalStartedAt !== null) {
+    if (
+      !operations(removeOperations, deps.db).has(hostId) &&
+      (row.retireAt === null || row.retireAt <= now)
+    ) {
+      await removeMachine(deps, hostId);
+    }
+    return;
+  }
   const hasLiveThreads = machineHasLiveThreads(deps.db, hostId);
-  if (row.phase === "retiring" && hasLiveThreads) {
+  if (
+    row.phase === "retiring" &&
+    row.removalStartedAt === null &&
+    hasLiveThreads
+  ) {
     updateHost(deps.db, deps.hub, hostId, {
       phase: row.suspendedAt === null ? "active" : "suspended",
       retireAt: null,
@@ -1255,7 +1313,7 @@ export async function sweepProviderMachine(
   ) {
     return;
   }
-  if (machineHasLiveThreads(deps.db, hostId)) {
+  if (row.removalStartedAt === null && machineHasLiveThreads(deps.db, hostId)) {
     updateHost(deps.db, deps.hub, hostId, {
       phase: row.suspendedAt === null ? "active" : "suspended",
       retireAt: null,

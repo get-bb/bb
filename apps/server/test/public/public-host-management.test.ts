@@ -98,6 +98,7 @@ describe("public host management", () => {
           retire: { after: "never" },
           removeRetryMs: 60_000,
         },
+        experimental_reconcileCleanup: async () => ({ status: "removed" }),
         create: async () => ({
           status: "created",
           hostId: "host-plain",
@@ -465,6 +466,7 @@ describe("public host management", () => {
           retire: { after: "never" },
           removeRetryMs: 10,
         },
+        experimental_reconcileCleanup: async () => ({ status: "removed" }),
         create: async () => ({
           status: "created",
           hostId: host.id,
@@ -515,6 +517,7 @@ describe("public host management", () => {
           retire: { after: "never" },
           removeRetryMs: 60_000,
         },
+        experimental_reconcileCleanup: async () => ({ status: "removed" }),
         create: async () => ({
           status: "created",
           hostId: host.id,

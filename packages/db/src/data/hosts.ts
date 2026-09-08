@@ -28,6 +28,7 @@ export interface UpdateHostInput {
   machineProviderSelection?: MachineProviderSelection | null;
   phase?: "active" | "suspending" | "suspended" | "retiring" | "destroyed";
   resource?: JsonValue | null;
+  removalStartedAt?: number | null;
   retireAt?: number | null;
   suspendedAt?: number | null;
   teardownAttempt?: number;
@@ -210,6 +211,9 @@ export function updateHost(
         : {}),
       ...(input.phase !== undefined ? { phase: input.phase } : {}),
       ...(input.resource !== undefined ? { resource: input.resource } : {}),
+      ...(input.removalStartedAt !== undefined
+        ? { removalStartedAt: input.removalStartedAt }
+        : {}),
       ...(input.retireAt !== undefined ? { retireAt: input.retireAt } : {}),
       ...(input.suspendedAt !== undefined
         ? { suspendedAt: input.suspendedAt }

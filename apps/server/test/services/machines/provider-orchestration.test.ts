@@ -100,6 +100,7 @@ function machineDeclaration(
       retire: { after: "never" },
       removeRetryMs: 10,
     },
+    experimental_reconcileCleanup: async () => ({ status: "removed" }),
     create: async ({ key }) => ({
       status: "created",
       hostId,
@@ -287,24 +288,22 @@ describe("core machine provider orchestration", () => {
       const record = installMachineProvider(
         machineDeclaration(host.id, {
           create: ({ key, signal }) =>
-            new Promise((resolve, reject) => {
+            new Promise((_resolve, reject) => {
               calls.push(`create:${key}`);
-              if (calls.length > 1) {
-                resolve({
-                  status: "created",
-                  hostId: host.id,
-                  resource: { key },
-                });
-                return;
-              }
+              const row = getMachineLaunch(harness.db, key);
+              if (row === null) throw new Error("Missing launch");
+              updateMachineLaunchAttempt(harness.db, {
+                ...row,
+                hostId: host.id,
+              });
               signal.addEventListener(
                 "abort",
                 () => reject(new Error("aborted")),
                 { once: true },
               );
             }),
-          remove: async ({ resource }) => {
-            calls.push(`remove:${JSON.stringify(resource)}`);
+          experimental_reconcileCleanup: async ({ key }) => {
+            calls.push(`reconcile:${key}`);
             return { status: "removed" };
           },
         }),
@@ -318,11 +317,7 @@ describe("core machine provider orchestration", () => {
       });
       await cancelMachineLaunch(harness.deps, "cancel-key");
 
-      expect(calls).toEqual([
-        "create:cancel-key",
-        "create:cancel-key",
-        'remove:{"key":"cancel-key"}',
-      ]);
+      expect(calls).toEqual(["create:cancel-key", "reconcile:cancel-key"]);
       expect(getMachineLaunch(harness.db, "cancel-key")).toMatchObject({
         phase: "cancelled",
         cancelPending: false,
@@ -335,6 +330,8 @@ describe("core machine provider orchestration", () => {
 
   it("removes checkpointed allocations without reconnecting and retries access independently", async () =>
     withTestHarness(async (harness) => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(20_000);
       const { host } = seedHostSession(harness.deps, {
         id: "host_checkpoint_cancel",
       });
@@ -383,7 +380,14 @@ describe("core machine provider orchestration", () => {
         cleanupResourceRemoved: true,
         cancelPending: true,
       });
-      await cancelMachineLaunch(harness.deps, "checkpoint-cancel");
+      await sweepMachineLifecycles(harness.deps);
+      expect(revoke).toHaveBeenCalledOnce();
+      expect(
+        getMachineLaunch(harness.db, "checkpoint-cancel")?.cleanupRetryAt,
+      ).toBe(20_010);
+      vi.setSystemTime(20_010);
+      await sweepMachineLifecycles(harness.deps);
+      expect(revoke).toHaveBeenCalledTimes(2);
       expect(create).toHaveBeenCalledOnce();
       expect(remove).toHaveBeenCalledOnce();
       expect(remove).toHaveBeenCalledWith(
@@ -459,20 +463,8 @@ describe("core machine provider orchestration", () => {
               ...row,
               phase: "cancelled",
               cancelPending: true,
-              resource: null,
-            });
-            await expect(
-              cancelMachineLaunch(harness.deps, key),
-            ).rejects.toThrow("instead of reserved host");
-            expect(getMachineLaunch(harness.db, key)).toMatchObject({
-              hostId: reserved.id,
               resource,
-              cancelPending: true,
             });
-            expect(remove).not.toHaveBeenCalled();
-            expect(release).not.toHaveBeenCalled();
-            expect(revokeEnroll).not.toHaveBeenCalled();
-            expect(revokeAuth).not.toHaveBeenCalled();
             await cancelMachineLaunch(harness.deps, key);
           } else {
             askMachineLaunch(harness.deps, {
@@ -497,7 +489,7 @@ describe("core machine provider orchestration", () => {
             complete.resolve();
             await cancellation;
           }
-          expect(create).toHaveBeenCalledOnce();
+          expect(create).toHaveBeenCalledTimes(scenario === "recovery" ? 0 : 1);
           expect(remove).toHaveBeenCalledExactlyOnceWith(
             expect.objectContaining({ hostId: reserved.id, resource }),
           );
@@ -626,8 +618,10 @@ describe("core machine provider orchestration", () => {
       }),
   );
 
-  it("keeps cancellation pending after a transient recovery failure and retries on the next sweep", async () =>
+  it("keeps cancellation pending after a transient recovery failure and retries after the retry deadline", async () =>
     withTestHarness(async (harness) => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(20_000);
       const { host } = seedHostSession(harness.deps, {
         id: "host_cancel_retry",
       });
@@ -635,19 +629,16 @@ describe("core machine provider orchestration", () => {
       let attempts = 0;
       const record = installMachineProvider(
         machineDeclaration(host.id, {
-          create: async ({ key }) => {
+          experimental_reconcileCleanup: async () => {
             attempts += 1;
-            calls.push(`create:${attempts}`);
+            calls.push(`reconcile:${attempts}`);
             return attempts === 1
               ? {
                   status: "failed",
-                  failure: "transient",
                   message: "Modal lookup timed out",
                 }
               : {
-                  status: "created",
-                  hostId: host.id,
-                  resource: { key },
+                  status: "removed",
                 };
           },
           remove: async () => {
@@ -676,14 +667,17 @@ describe("core machine provider orchestration", () => {
       });
 
       await sweepMachineLifecycles(harness.deps);
-      expect(calls).toEqual(["create:1"]);
+      expect(calls).toEqual(["reconcile:1"]);
       expect(getMachineLaunch(harness.db, "cancel-retry-key")).toMatchObject({
         phase: "cancelled",
         cancelPending: true,
       });
 
       await sweepMachineLifecycles(harness.deps);
-      expect(calls).toEqual(["create:1", "create:2", "remove"]);
+      expect(calls).toEqual(["reconcile:1"]);
+      vi.setSystemTime(20_010);
+      await sweepMachineLifecycles(harness.deps);
+      expect(calls).toEqual(["reconcile:1", "reconcile:2"]);
       expect(getMachineLaunch(harness.db, "cancel-retry-key")).toMatchObject({
         phase: "cancelled",
         cancelPending: false,
@@ -1026,24 +1020,22 @@ describe("core machine provider orchestration", () => {
       const record = installMachineProvider(
         machineDeclaration(host.id, {
           create: ({ key, signal }) =>
-            new Promise((resolve, reject) => {
+            new Promise((_resolve, reject) => {
               calls.push(`create:${key}`);
-              if (calls.length > 1) {
-                resolve({
-                  status: "created",
-                  hostId: host.id,
-                  resource: { key },
-                });
-                return;
-              }
+              const row = getMachineLaunch(harness.db, key);
+              if (row === null) throw new Error("Missing launch");
+              updateMachineLaunchAttempt(harness.db, {
+                ...row,
+                hostId: host.id,
+              });
               signal.addEventListener(
                 "abort",
                 () => reject(new Error("aborted")),
                 { once: true },
               );
             }),
-          remove: async ({ resource }) => {
-            calls.push(`remove:${JSON.stringify(resource)}`);
+          experimental_reconcileCleanup: async ({ key }) => {
+            calls.push(`reconcile:${key}`);
             return { status: "removed" };
           },
         }),
@@ -1070,8 +1062,7 @@ describe("core machine provider orchestration", () => {
       await vi.waitFor(() => {
         expect(calls).toEqual([
           `create:${thread.id}`,
-          `create:${thread.id}`,
-          `remove:{\"key\":\"${thread.id}\"}`,
+          `reconcile:${thread.id}`,
         ]);
       });
       await vi.waitFor(() => {
@@ -2121,3 +2112,314 @@ describe("core machine provider orchestration", () => {
       ).toBe(false);
     }));
 });
+
+describe("machine lifecycle safety regressions", () => {
+  it("archived stopping thread blocks idle suspension", async () =>
+    withTestHarness(async (harness) => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(10_000);
+      const { host } = seedHostSession(harness.deps, { id: "host_suspend" });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+        path: "/tmp/suspend",
+      });
+      const environment = createEnvironment(harness.db, harness.hub, {
+        projectId: project.id,
+        hostId: host.id,
+        path: "/tmp/suspend",
+        providerOwnsPath: false,
+        status: "ready",
+        environmentProvider: null,
+      });
+      const thread = seedThread(harness.deps, {
+        projectId: project.id,
+        environmentId: environment.id,
+        status: "idle",
+      });
+      harness.db
+        .update(threads)
+        .set({ updatedAt: 1_000 })
+        .where(eq(threads.id, thread.id))
+        .run();
+      const busy = seedThread(harness.deps, {
+        projectId: project.id,
+        environmentId: environment.id,
+        status: "stopping",
+      });
+      harness.db
+        .update(threads)
+        .set({ archivedAt: 9_000 })
+        .where(eq(threads.id, busy.id))
+        .run();
+      let suspends = 0;
+      installMachineProvider(
+        machineDeclaration(host.id, {
+          policy: {
+            idleSuspendMs: 5_000,
+            retire: { after: "never" },
+            removeRetryMs: 10,
+          },
+          suspend: async () => {
+            suspends += 1;
+            return { resource: { snapshot: "snap-1" } };
+          },
+          resume: async ({ resource }) => ({ resource }),
+        }),
+      );
+      adoptMachine(harness, host.id);
+
+      await sweepProviderMachine(harness.deps, host.id);
+      expect(suspends).toBe(0);
+    }));
+
+  it("restoring during machine removal preserves the durable claim and requires replacement", async () =>
+    withTestHarness(async (harness) => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(20_000);
+      const { host } = seedHostSession(harness.deps, { id: "host_retire" });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+        path: "/tmp/retire",
+      });
+      const environment = createEnvironment(harness.db, harness.hub, {
+        projectId: project.id,
+        hostId: host.id,
+        path: "/tmp/retire",
+        providerOwnsPath: true,
+        status: "ready",
+        environmentProvider: {
+          environmentProviderId: "test-environment",
+          instanceKey: "retire-environment",
+          selection: {
+            machine: { type: "existing", hostId: host.id },
+            inputs: null,
+          },
+        },
+      });
+      const thread = seedThread(harness.deps, {
+        projectId: project.id,
+        environmentId: environment.id,
+        status: "idle",
+      });
+      harness.db
+        .update(threads)
+        .set({ archivedAt: 20_000 })
+        .where(eq(threads.id, thread.id))
+        .run();
+      const order: string[] = [];
+      const cleanupStarted = createDeferredPromise<void>();
+      const cleanupRelease = createDeferredPromise<void>();
+      const environmentProvider = validatePluginEnvironmentProviderDeclaration({
+        id: "test-environment",
+        displayName: "Test environment",
+        create: async () => ({
+          status: "created",
+          path: "/tmp/retire",
+          ownsPath: true,
+        }),
+        remove: async () => {
+          order.push("environment");
+          return { status: "removed" };
+        },
+      });
+      setPluginEnvironmentProviderBridge({
+        listEnvironmentProviders: () => [
+          {
+            pluginId: "test-environment-plugin",
+            provider: environmentProvider,
+          },
+        ],
+        getEnvironmentProvider: (id) =>
+          id === environmentProvider.id
+            ? {
+                pluginId: "test-environment-plugin",
+                provider: environmentProvider,
+              }
+            : undefined,
+        invokeProvider: async (_pluginId, _label, run) => ({
+          ok: true,
+          value: await run(),
+        }),
+        decisionTimeoutMs: 10_000,
+      });
+      installMachineProvider(
+        machineDeclaration(host.id, {
+          policy: {
+            idleSuspendMs: null,
+            retire: { after: "last-thread", graceMs: 5_000 },
+            removeRetryMs: 10,
+          },
+          remove: async () => {
+            order.push("machine");
+            cleanupStarted.resolve();
+            await cleanupRelease.promise;
+            return { status: "removed" };
+          },
+        }),
+      );
+      adoptMachine(harness, host.id);
+
+      await sweepProviderMachine(harness.deps, host.id);
+      expect(getHost(harness.db, host.id)).toMatchObject({
+        phase: "retiring",
+        retireAt: 25_000,
+      });
+      expect(order).toEqual([]);
+      vi.setSystemTime(25_001);
+      const removing = sweepProviderMachine(harness.deps, host.id);
+      await cleanupStarted.promise;
+      const response = await harness.app.request(
+        `/api/v1/threads/${thread.id}/unarchive`,
+        { method: "POST" },
+      );
+      expect(response.status).toBe(200);
+      await sweepProviderMachine(harness.deps, host.id);
+      expect(getHost(harness.db, host.id)).toMatchObject({
+        phase: "retiring",
+        teardownStatus: "running",
+        removalStartedAt: 25_001,
+      });
+      await expect(
+        ensureHostSessionReadyForWork(harness.deps, { hostId: host.id }),
+      ).rejects.toThrow("Machine removal has begun");
+      seedReadyLaunch(harness, { key: thread.id, hostId: host.id });
+      expect(resolveThreadMachineLaunchKey(harness.deps, thread.id)).toBe(
+        thread.id + ":replacement:" + host.id,
+      );
+      cleanupRelease.resolve();
+      await removing;
+      expect(getHost(harness.db, host.id)?.phase).toBe("destroyed");
+    }));
+});
+
+it("cancelled launch cleanup persists and honors removeRetryMs", async () =>
+  withTestHarness(async (harness) => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(20000);
+    const { host } = seedHostSession(harness.deps, {
+      id: "host_cleanup_backoff",
+    });
+    let removes = 0;
+    installMachineProvider(
+      machineDeclaration(host.id, {
+        policy: {
+          idleSuspendMs: null,
+          retire: { after: "never" },
+          removeRetryMs: 60000,
+        },
+        remove: async () => {
+          removes++;
+          return { status: "failed", message: "vendor rate limit" };
+        },
+      }),
+    );
+    seedReadyLaunch(harness, { key: "failed-cleanup", hostId: host.id });
+    const launch = getMachineLaunch(harness.db, "failed-cleanup")!;
+    updateMachineLaunchAttempt(harness.db, {
+      ...launch,
+      phase: "cancelled",
+      cancelPending: true,
+      cleanupResourceRemoved: false,
+    });
+    for (let n = 0; n < 3; n++) await sweepMachineLifecycles(harness.deps);
+    expect(removes).toBe(1);
+    expect(getMachineLaunch(harness.db, "failed-cleanup")?.cleanupRetryAt).toBe(
+      80000,
+    );
+    vi.setSystemTime(79999);
+    await sweepMachineLifecycles(harness.deps);
+    expect(removes).toBe(1);
+    vi.setSystemTime(80000);
+    await sweepMachineLifecycles(harness.deps);
+    expect(removes).toBe(2);
+  }));
+
+it("cancel before allocation reconciles without starting a fresh allocation", async () =>
+  withTestHarness(async (harness) => {
+    const { host } = seedHostSession(harness.deps, {
+      id: "host_cancel_before_alloc",
+    });
+    const started = createDeferredPromise<void>();
+    let creates = 0;
+    let allocations = 0;
+    const record = installMachineProvider(
+      machineDeclaration(host.id, {
+        create: async ({ signal }) => {
+          creates++;
+          if (creates === 1) {
+            started.resolve();
+            await new Promise<void>((resolve) =>
+              signal.addEventListener("abort", () => resolve(), { once: true }),
+            );
+            signal.throwIfAborted();
+          }
+          allocations++;
+          return {
+            status: "created",
+            hostId: host.id,
+            resource: { allocated: true },
+          };
+        },
+      }),
+    );
+    askMachineLaunch(harness.deps, {
+      key: "cancel-before-allocation",
+      record,
+      projectId: null,
+      inputs: null,
+    });
+    await started.promise;
+    await cancelMachineLaunch(harness.deps, "cancel-before-allocation");
+    expect(allocations).toBe(0);
+    expect(creates).toBe(1);
+    expect(
+      getMachineLaunch(harness.db, "cancel-before-allocation"),
+    ).toMatchObject({ cancelPending: false, cleanupResourceRemoved: true });
+  }));
+
+it("retains a persisted removal claim after restart even when live work is restored", async () =>
+  withTestHarness(async (harness) => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(20_000);
+    const { host } = seedHostSession(harness.deps, {
+      id: "claimed-after-restart",
+    });
+    const { project } = seedProjectWithSource(harness.deps, {
+      hostId: host.id,
+      path: "/tmp/claimed",
+    });
+    const environment = createEnvironment(harness.db, harness.hub, {
+      projectId: project.id,
+      hostId: host.id,
+      path: "/tmp/claimed",
+      providerOwnsPath: false,
+      status: "ready",
+      environmentProvider: null,
+    });
+    seedThread(harness.deps, {
+      projectId: project.id,
+      environmentId: environment.id,
+      status: "idle",
+    });
+    const remove = vi.fn(async () => ({ status: "removed" as const }));
+    installMachineProvider(machineDeclaration(host.id, { remove }));
+    adoptMachine(harness, host.id);
+    updateHost(harness.db, harness.hub, host.id, {
+      phase: "retiring",
+      removalStartedAt: 10_000,
+      retireAt: 20_001,
+      teardownStatus: "failed",
+    });
+    await sweepProviderMachine(harness.deps, host.id);
+    expect(remove).not.toHaveBeenCalled();
+    await expect(
+      ensureHostSessionReadyForWork(harness.deps, { hostId: host.id }),
+    ).rejects.toThrow("Machine removal has begun");
+    vi.setSystemTime(20_001);
+    await sweepProviderMachine(harness.deps, host.id);
+    expect(remove).toHaveBeenCalledOnce();
+    expect(getHost(harness.db, host.id)).toMatchObject({
+      phase: "destroyed",
+      removalStartedAt: 10_000,
+    });
+  }));

@@ -189,6 +189,30 @@ export function createDigitalOceanPlugin(deps: {
           };
         }
       },
+      async experimental_reconcileCleanup(context) {
+        const name = allocationName(context.key);
+        const stored = await bb.storage.kv.get<unknown>(`allocation/${name}`);
+        if (stored === undefined) return { status: "removed" };
+        const intent = intentSchema.parse(stored);
+        const api = await vendor();
+        const droplet =
+          intent.dropletId === null
+            ? await api.find(name, context.signal)
+            : await owned(api, intent.dropletId, context.key, context.signal);
+        if (droplet === null && intent.dropletId === null)
+          return {
+            status: "failed",
+            message:
+              "DigitalOcean allocation intent is unresolved; retry tag reconciliation.",
+          };
+        if (droplet !== null) {
+          await bb.storage.kv.set(`allocation/${name}`, {
+            dropletId: droplet.id,
+          });
+          await api.destroy(droplet.id, context.signal);
+        }
+        return { status: "removed" };
+      },
       async suspend(context) {
         const resource = resourceSchema.parse(context.resource);
         const api = await vendor();

@@ -601,3 +601,35 @@ describe("Modal machine provider", () => {
     );
   });
 });
+
+it("reconciles uncertain named allocations without creating or bootstrapping", async () => {
+  const test = await setup();
+  const request = createContext();
+  expect(await test.provider.experimental_reconcileCleanup(request)).toEqual({
+    status: "removed",
+  });
+  await test.bb.storage.kv.set(`allocation/${request.key}`, {
+    appName: "bb",
+    sandboxId: null,
+  });
+  expect(
+    await test.provider.experimental_reconcileCleanup(request),
+  ).toMatchObject({ status: "failed" });
+  test.backend.states.push({
+    id: "uncertain",
+    name: request.key,
+    connected: false,
+    terminated: false,
+  });
+  expect(await test.provider.experimental_reconcileCleanup(request)).toEqual({
+    status: "removed",
+  });
+  expect(test.backend.states[0]?.terminated).toBe(true);
+  expect(await test.provider.experimental_reconcileCleanup(request)).toEqual({
+    status: "removed",
+  });
+  expect(test.backend.creates).toHaveLength(0);
+  expect(test.bootstrap).not.toHaveBeenCalled();
+  expect(test.prepareEnrollment).not.toHaveBeenCalled();
+  await test.harness.lifecycle.dispose();
+});

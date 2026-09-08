@@ -1,3 +1,4 @@
+import { z } from "zod";
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import type {
   PluginMachineProviderCreateContext,
@@ -21,6 +22,13 @@ import {
 } from "./lifecycle.js";
 
 export const PROVIDER_ID = "modal-sandbox";
+
+const allocationSchema = z
+  .object({
+    appName: z.string().min(1),
+    sandboxId: z.string().min(1).nullable(),
+  })
+  .strict();
 
 const HOST_CONNECT_TIMEOUT_MS = 240_000;
 const HOST_POLL_INTERVAL_MS = 3_000;
@@ -101,7 +109,23 @@ export function createModalSandboxPlugin(
           resolved.settings.appName,
           context.key,
         );
+        const intentKey = `allocation/${context.key}`;
+        const stored = await bb.storage.kv.get<unknown>(intentKey);
+        if (sandbox === null && stored !== undefined) {
+          allocationSchema.parse(stored);
+          return {
+            status: "failed",
+            failure: "transient",
+            message:
+              "Modal allocation intent is unresolved; reconcile its name before retrying.",
+          };
+        }
         if (sandbox === null) {
+          context.signal.throwIfAborted();
+          await bb.storage.kv.set(intentKey, {
+            appName: resolved.settings.appName,
+            sandboxId: null,
+          });
           context.report.step("Creating the Modal sandbox…");
           sandbox = await backend.create({
             appName: resolved.settings.appName,
@@ -122,6 +146,10 @@ export function createModalSandboxPlugin(
           pendingSnapshotImageIds: [],
         };
         await context.checkpoint(allocation);
+        await bb.storage.kv.set(intentKey, {
+          appName: resolved.settings.appName,
+          sandboxId: sandbox.sandboxId,
+        });
         context.signal.throwIfAborted();
         const { hostId } = await bb.experimental_machines.bootstrap({
           key: context.key,
@@ -196,6 +224,36 @@ export function createModalSandboxPlugin(
           : { status: "setup-required", message: resolved.message };
       },
       create: launch,
+      async experimental_reconcileCleanup(context) {
+        const stored = await bb.storage.kv.get<unknown>(
+          `allocation/${context.key}`,
+        );
+        if (stored === undefined) return { status: "removed" };
+        const intent = allocationSchema.parse(stored);
+        const resolved = await currentSettings();
+        if (!resolved.ok)
+          return { status: "failed", message: resolved.message };
+        context.signal.throwIfAborted();
+        const backend = backendFor(resolved.settings);
+        const sandbox =
+          intent.sandboxId === null
+            ? await backend.fromName(intent.appName, context.key)
+            : await backend.fromId(intent.sandboxId);
+        if (sandbox === null && intent.sandboxId === null)
+          return {
+            status: "failed",
+            message:
+              "Modal allocation intent is unresolved; retry name reconciliation.",
+          };
+        if (sandbox !== null) {
+          await bb.storage.kv.set(`allocation/${context.key}`, {
+            ...intent,
+            sandboxId: sandbox.sandboxId,
+          });
+          await sandbox.terminate();
+        }
+        return { status: "removed" };
+      },
       async suspend(context) {
         const resource = readModalMachineResource(context.resource);
         const resolved = await currentSettings();

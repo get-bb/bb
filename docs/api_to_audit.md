@@ -2669,3 +2669,16 @@ allocated resource with `await checkpoint(resource)`, then bootstrap with the
 same key. Never checkpoint a bootstrap bundle. Stabilization must verify cleanup
 of checkpointed allocation before successful enrollment, including safe no-op
 uninstall when installation never began, and retry after partial installation.
+
+## Machine provider `experimental_reconcileCleanup`
+
+Required reconciliation-only cancellation callback on `PluginMachineProviderDefinition`.
+Core supplies the durable launch key, progress reporter and a cleanup signal.
+Providers discover and remove uncertain allocations using a persisted submission intent
+and vendor tags, names or metadata; the callback must never allocate or bootstrap.
+Return removed only after cleanup is settled (including no submitted allocation), or
+failed while the allocation is unresolved. Core persists the removeRetryMs deadline
+across sweeps and restarts, including subsequent access release failures.
+Stabilization requires crash/abort coverage before submission, after submission but
+before checkpoint, eventual vendor discovery, and access-release retry coverage for
+each shipped provider.

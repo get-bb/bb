@@ -1471,6 +1471,7 @@ describe("machine and environment provider composition", () => {
             retire: { after: "never" },
             removeRetryMs: 30_000,
           },
+          experimental_reconcileCleanup: async () => ({ status: "removed" }),
           create: async ({ key }) => ({
             status: "created",
             hostId: host.id,
@@ -1947,6 +1948,7 @@ describe("a provider-produced environment over its life", () => {
                 retire: { after: "never" },
                 removeRetryMs: 30_000,
               },
+              experimental_reconcileCleanup: async () => ({ status: "removed" }),
               create: async ({ key }) => {
                 machineKeys.push(key);
                 return {

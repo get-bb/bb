@@ -13,7 +13,23 @@ export async function ensureHostSessionReadyForWork(
     throw new ApiError(404, "host_not_found", "Host not found");
   }
 
+  if (host.removalStartedAt !== null) {
+    throw new ApiError(
+      409,
+      "machine_removing",
+      "Machine removal has begun; wait for a replacement machine",
+    );
+  }
+
   await resumeMachine(deps, host.id);
+  const current = getHost(deps.db, host.id);
+  if (current?.removalStartedAt !== null) {
+    throw new ApiError(
+      409,
+      "machine_removing",
+      "Machine removal has begun; wait for a replacement machine",
+    );
+  }
 
   return requireConnectedHostSession(deps, host.id);
 }
