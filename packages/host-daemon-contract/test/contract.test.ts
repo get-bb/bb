@@ -449,7 +449,6 @@ const ONLINE_RPC_RESPONSE_RESULT_FIXTURES: OnlineRpcResponseResultFixtures = {
     files: [],
     abi: "linux/x64/node-127",
   },
-  "workspace.readiness.run": { exitCode: 0 },
   "host.readiness.probe": { reachable: true, status: 200 },
   "workspace.status": WORKSPACE_UNAVAILABLE_RESULT,
   "workspace.diff": WORKSPACE_UNAVAILABLE_RESULT,

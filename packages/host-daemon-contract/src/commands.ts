@@ -1,8 +1,6 @@
 import {
   readinessInspectCommandSchema,
   readinessInspectResultSchema,
-  readinessRunCommandSchema,
-  readinessRunResultSchema,
   readinessProbeCommandSchema,
   readinessProbeResultSchema,
 } from "./readiness.js";
@@ -1801,15 +1799,6 @@ export const hostDaemonCommandRegistry = {
     resultSchema: readinessInspectResultSchema,
     transport: "onlineRpc",
     retryable: true,
-    flushEventsBeforeResult: false,
-    envLane: null,
-  }),
-  "workspace.readiness.run": defineHostDaemonCommandDescriptor({
-    type: "workspace.readiness.run",
-    schema: readinessRunCommandSchema,
-    resultSchema: readinessRunResultSchema,
-    transport: "onlineRpc",
-    retryable: false,
     flushEventsBeforeResult: false,
     envLane: null,
   }),

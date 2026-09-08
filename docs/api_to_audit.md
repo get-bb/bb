@@ -2774,11 +2774,14 @@ server/daemon wire fields.
 `bb machine ready`. It returns `{status:"ready",checks}` or
 `{status:"blocked",code,stage,message,retryable}`. Core checks CLI compatibility
 through the registered installer, validates credential routing from the machine,
-and serializes dependency setup. Provider-managed turns use the same barrier.
-`PluginMachineProviderDefinition.experimental_workspaceSetup` supplies a pinned
-script/hash/cache manifest and command checks. Core owns input/ABI stamps and
-refuses required setup over tracked dirty edits. The daemon returns host facts
-and exit codes via protocol 190; it does not choose product defaults.
+and checks the recorded checkout setup outcome. Provider-managed turns use the same barrier.
+The provider context's `projectCheckout.experimental_ownsPath` identifies a
+checkout materialised by core; absence from older servers means unowned. Core
+supplies an explicit boolean, derived from persisted source ownership, never
+from caller inputs. Project checkout reports ownsPath only for that exact path,
+so core's environment hook policy applies to fresh machine clones and leaves
+user-maintained attachments alone. Readiness consumes core hook outcomes rather
+than executing setup. Audit ownership propagation and recovery before stabilizing.
 
 `ExperimentalPluginProviderEnvHealthContext.experimental_readiness` requests a
 fresh thread-aware check (null threadId means a standalone readiness request).

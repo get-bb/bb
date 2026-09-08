@@ -57,7 +57,7 @@ interface ProviderOperationContext {
   project: Project;
   host: Host;
   machine: EnvironmentMachineSelection;
-  projectCheckout: { path: string } | null;
+  projectCheckout: { path: string; experimental_ownsPath?: boolean } | null;
   gitRemote: string | null;
   inputs: JsonValue | null;
   suggestedBranchName: string;

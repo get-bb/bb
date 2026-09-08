@@ -8,7 +8,8 @@ import { COMMAND_TIMEOUT_MS } from "../../constants.js";
 import { ApiError } from "../../errors.js";
 import {
   callHostRetryableOnlineRpcWithoutAdmission,
-  callHostOnlineRpcWithoutAdmission,
+  callHostRetryableOnlineRpc,
+  callHostOnlineRpc,
   isHostUnavailableApiError,
 } from "../hosts/online-rpc.js";
 import { listSystemProviderInfos } from "./execution-options.js";
@@ -139,7 +140,7 @@ export async function ensureProviderInstallation(
         message: "This provider has no registered CLI installer",
       };
     const status = () =>
-      callHostRetryableOnlineRpcWithoutAdmission(deps, {
+      callHostRetryableOnlineRpc(deps, {
         hostId: args.hostId,
         timeoutMs: COMMAND_TIMEOUT_MS,
         command: {
@@ -159,7 +160,7 @@ export async function ensureProviderInstallation(
         ready: false,
         message: "The provider cannot install a compatible CLI on this host",
       };
-    const result = await callHostOnlineRpcWithoutAdmission(deps, {
+    const result = await callHostOnlineRpc(deps, {
       hostId: args.hostId,
       timeoutMs: 10 * 60 * 1000,
       command: {

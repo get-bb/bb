@@ -14,22 +14,6 @@ export const readinessInspectResultSchema = z
     abi: z.string(),
   })
   .strict();
-export const readinessRunCommandSchema = z
-  .object({
-    type: z.literal("workspace.readiness.run"),
-    path: z.string().min(1),
-    script: z.string().max(256 * 1024),
-    env: z.record(z.string(), z.string()),
-    timeoutMs: z
-      .number()
-      .int()
-      .min(1)
-      .max(10 * 60 * 1000),
-  })
-  .strict();
-export const readinessRunResultSchema = z
-  .object({ exitCode: z.number().int() })
-  .strict();
 export const readinessProbeCommandSchema = z
   .object({
     type: z.literal("host.readiness.probe"),

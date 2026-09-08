@@ -53,6 +53,7 @@ export {
   listProjectSourcesByProjectIds,
   listProjectSourcesByHost,
   getProjectSourceByHost,
+  projectSourceOwnsPath,
   getDefaultProjectSource,
   updateProjectSource,
   deleteProjectSource,

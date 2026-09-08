@@ -433,7 +433,6 @@ const hostDaemonOnlineRpcResponseSuccessSchema = z.discriminatedUnion(
     onlineRpcResponseSuccessSchemaFor("provider.list_models"),
     onlineRpcResponseSuccessSchemaFor("provider.health"),
     onlineRpcResponseSuccessSchemaFor("workspace.readiness.inspect"),
-    onlineRpcResponseSuccessSchemaFor("workspace.readiness.run"),
     onlineRpcResponseSuccessSchemaFor("host.readiness.probe"),
     onlineRpcResponseSuccessSchemaFor("provider.installation.status"),
     onlineRpcResponseSuccessSchemaFor("provider.installation.run"),

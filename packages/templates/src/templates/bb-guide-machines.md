@@ -261,6 +261,7 @@ name, value, secret, note }), and system.unsetMachineEnvironment(name).
 Provider-managed machine turns check readiness before dispatch. `bb machine ready`
 checks the same CLI installation, credential routing reachability, and project
 workspace setup. It returns ready checks or a blocked stage/code/message.
-Compatible CLIs are reused. Stored setup runs only when input/ABI/script hashes
-change or dependency checks fail; tracked dirty edits block a required setup.
-
+Compatible CLIs are reused. Core owns repository setup and teardown for
+environments whose provider returns ownsPath: true. Readiness checks the recorded
+setup outcome against the checkout inputs; it never runs a separate recipe script.
+The repo hook owns dependency caching and its unchanged-input no-op path.

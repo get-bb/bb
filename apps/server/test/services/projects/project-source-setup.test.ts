@@ -1,4 +1,4 @@
-import { getProjectSourceByHost } from "@bb/db";
+import { getProjectSourceByHost, projectSourceOwnsPath } from "@bb/db";
 import { describe, expect, it } from "vitest";
 import { ensureProjectSourceOnHost } from "../../../src/services/projects/project-source-setup.js";
 import {
@@ -85,6 +85,14 @@ describe("automatic project source setup", () => {
           });
         }
         const results = await setup;
+        expect(
+          projectSourceOwnsPath(
+            harness.db,
+            project.id,
+            fresh.host.id,
+            targetPath,
+          ),
+        ).toBe(target === "missing");
         if (target === "foreign") {
           expect(results).toEqual([
             {

@@ -8,7 +8,6 @@ import {
 } from "./command-handlers/environment-hook.js";
 import {
   inspectReadiness,
-  runReadiness,
   probeReadiness,
 } from "./command-handlers/readiness.js";
 import {
@@ -678,8 +677,6 @@ const onlineRpcHandlers: OnlineRpcHandlerMap = {
     });
   },
   "workspace.readiness.inspect": (command) => inspectReadiness(command.path),
-  "workspace.readiness.run": (command, options) =>
-    runReadiness(command, options.runtimeManager.getShellEnv()),
   "host.readiness.probe": (command, options) =>
     probeReadiness(command, options.runtimeManager.getShellEnv().BB_SERVER_URL),
   "provider.installation.status": async (command, options) => {

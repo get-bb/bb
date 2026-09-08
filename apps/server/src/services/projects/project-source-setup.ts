@@ -26,6 +26,7 @@ export function registerProjectSourceOnHost(
     hostId: string;
     path: string;
     gitRemoteUrl: string | null;
+    ownsPath?: boolean;
   },
 ) {
   let source;
@@ -35,6 +36,7 @@ export function registerProjectSourceOnHost(
       type: "local_path",
       hostId: args.hostId,
       path: args.path,
+      ownsPath: args.ownsPath ?? false,
     });
   } catch (error) {
     if (
@@ -95,6 +97,7 @@ export async function cloneProjectSourceOnHost(
     projectId: args.projectId,
     hostId: args.hostId,
     ...resolved,
+    ownsPath: true,
   });
 }
 

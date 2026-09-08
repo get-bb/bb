@@ -1,0 +1,1 @@
+ALTER TABLE `project_sources` ADD `owns_path` integer DEFAULT false NOT NULL;

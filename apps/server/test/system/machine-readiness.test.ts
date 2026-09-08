@@ -1,15 +1,17 @@
 import { expect, it } from "vitest";
 import { eq } from "drizzle-orm";
-import { hosts, machineWorkspaceSetups } from "@bb/db";
-import { validatePluginMachineProviderDeclaration } from "@get-bb/plugin-sdk/internal/host-policy";
+import { hosts, projectSources, environmentSetupOutcomes } from "@bb/db";
+import {
+  beginEnvironmentSetupOutcome,
+  finishEnvironmentSetupOutcome,
+} from "../../src/services/environments/setup-outcomes.js";
 import { ensureHostReady } from "../../src/services/machines/readiness.js";
-import { setPluginMachineProviderBridge } from "../../src/services/plugins/plugin-machine-provider-registry.js";
 import { setPluginAgentContributions } from "../../src/services/plugins/plugin-agent-contributions.js";
 import { withTestHarness } from "../helpers/test-app.js";
 import { seedHostSession, seedProjectWithSource } from "../helpers/seed.js";
 import { registerHostRpcResponder } from "../helpers/host-rpc.js";
 
-it("serializes installation and setup, checks outputs, and invalidates on lockfile, ABI and auth changes", async () => {
+it("serializes CLI installation and reads fenced core hook outcomes across lockfile, ABI and auth changes", async () => {
   await withTestHarness(async (harness) => {
     const { host, session } = seedHostSession(harness.deps);
     const { project } = seedProjectWithSource(harness.deps, {
@@ -22,47 +24,18 @@ it("serializes installation and setup, checks outputs, and invalidates on lockfi
       .run();
     let installed = false;
     let installCount = 0;
-    let setupCount = 0;
     let lock = "a";
     let abi = "linux/x64/node-127";
     let dirty: string[] = [];
     let route = true;
     let reachable = true;
-    let outputs = false;
     let observedToken = "";
     let token = "first-token";
-    const provider = validatePluginMachineProviderDeclaration({
-      id: "fixture-machine",
-      displayName: "Fixture",
-      policy: {
-        idleSuspendMs: null,
-        retire: { after: "never" },
-        removeRetryMs: 1000,
-      },
-      create: async () => ({
-        status: "failed",
-        failure: "terminal",
-        message: "unused",
-      }),
-      remove: async () => ({ status: "removed" }),
-      experimental_reconcileCleanup: async () => ({ status: "removed" }),
-      experimental_workspaceSetup: async () => ({
-        scriptText: "install-dependencies",
-        scriptHash: "script",
-        cacheManifest: {},
-        checks: ["check-dependencies"],
-      }),
-    });
-    const record = { pluginId: "fixture", provider };
-    setPluginMachineProviderBridge({
-      listMachineProviders: () => [record],
-      getMachineProvider: () => record,
-      invokeProvider: async (_id, _label, run) => ({
-        ok: true,
-        value: await run(),
-      }),
-      decisionTimeoutMs: 1000,
-    });
+    harness.deps.db
+      .update(projectSources)
+      .set({ ownsPath: true })
+      .where(eq(projectSources.projectId, project.id))
+      .run();
     setPluginAgentContributions({
       listSkillRootContributions: () => [],
       listAgentTools: () => [],
@@ -159,12 +132,6 @@ it("serializes installation and setup, checks outputs, and invalidates on lockfi
                 abi,
               },
             };
-          case "workspace.readiness.run":
-            if (command.script === "install-dependencies") {
-              setupCount++;
-              outputs = true;
-            }
-            return { ok: true, result: { exitCode: outputs ? 0 : 1 } };
           default:
             throw new Error(`Unexpected ${command.type}`);
         }
@@ -179,34 +146,88 @@ it("serializes installation and setup, checks outputs, and invalidates on lockfi
         path: "/tmp/test-project",
       };
       const ready = () => ensureHostReady(harness.deps, args);
+      expect(await ready()).toMatchObject({
+        status: "blocked",
+        code: "setup_required",
+      });
+      const identity = {
+        hostId: host.id,
+        path: args.path,
+        operationId: "setup-1",
+      };
+      const recordSetup = async (operationId: string) => {
+        await beginEnvironmentSetupOutcome(harness.deps, {
+          ...identity,
+          operationId,
+        });
+        await finishEnvironmentSetupOutcome(harness.deps, {
+          ...identity,
+          operationId,
+          succeeded: true,
+        });
+      };
+      await recordSetup("setup-1");
       expect(await Promise.all([ready(), ready()])).toEqual([
         expect.objectContaining({ status: "ready" }),
         expect.objectContaining({ status: "ready" }),
       ]);
       expect(installCount).toBe(1);
-      expect(setupCount).toBe(1);
-      expect(
-        harness.deps.db.select().from(machineWorkspaceSetups).all(),
-      ).toHaveLength(1);
       token = "rotated-token";
       expect((await ready()).status).toBe("ready");
       expect(observedToken).toBe(token);
-      expect(setupCount).toBe(1);
-      outputs = false;
-      await ready();
-      expect(setupCount).toBe(2);
       lock = "b";
       dirty = [" M package-lock.json"];
       expect(await ready()).toMatchObject({
         status: "blocked",
         code: "dirty_checkout",
       });
-      expect(setupCount).toBe(2);
       dirty = [];
-      await ready();
+      expect(await ready()).toMatchObject({
+        status: "blocked",
+        code: "setup_stale",
+      });
+      await recordSetup("setup-2");
+      expect((await ready()).status).toBe("ready");
       abi = "linux/arm64/node-127";
-      await ready();
-      expect(setupCount).toBe(4);
+      expect(await ready()).toMatchObject({
+        status: "blocked",
+        code: "setup_stale",
+      });
+      await beginEnvironmentSetupOutcome(harness.deps, {
+        ...identity,
+        operationId: "old",
+      });
+      await beginEnvironmentSetupOutcome(harness.deps, {
+        ...identity,
+        operationId: "new",
+      });
+      await finishEnvironmentSetupOutcome(harness.deps, {
+        ...identity,
+        operationId: "old",
+        succeeded: true,
+      });
+      expect(
+        harness.deps.db
+          .select()
+          .from(environmentSetupOutcomes)
+          .where(eq(environmentSetupOutcomes.hostId, host.id))
+          .get(),
+      ).toMatchObject({ operationId: "new", state: "running" });
+      expect(await ready()).toMatchObject({
+        status: "blocked",
+        code: "setup_required",
+      });
+      await finishEnvironmentSetupOutcome(harness.deps, {
+        ...identity,
+        operationId: "new",
+        succeeded: false,
+      });
+      expect(await ready()).toMatchObject({
+        status: "blocked",
+        code: "setup_failed",
+      });
+      await recordSetup("setup-3");
+      expect((await ready()).status).toBe("ready");
       reachable = false;
       expect(await ready()).toMatchObject({
         status: "blocked",
@@ -229,7 +250,6 @@ it("serializes installation and setup, checks outputs, and invalidates on lockfi
         code: "credential_route_unavailable",
       });
     } finally {
-      setPluginMachineProviderBridge(undefined);
       setPluginAgentContributions(undefined);
     }
   });

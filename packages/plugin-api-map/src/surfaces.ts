@@ -746,6 +746,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Declare what it needs from the request as a zod inputs schema; bb parses the request with it before the thread exists, publishes it as JSON Schema for the CLI, and hands create the parsed value as inputs",
           "Refuse a request it cannot serve with validate, at create time and with the same facts create gets, so the caller sees the provider's own message and no thread is created",
           "Read the facts as typed values on the create context: host is always non-null, while projectCheckout and gitRemote are non-null exactly when required",
+          "Read projectCheckout.experimental_ownsPath to distinguish core clones from user-maintained attachments; core readiness consumes the environment hook outcome",
           "Render its own control for those inputs beside the picked provider with app.slots.experimental_environmentProviderInputs, reporting either ready inputs or a blocked reason",
           "Use experimental_BranchPicker for a standard branch choice, or compose experimental_useBranches with experimental_useCheckoutState when it needs checkout-aware branch selection",
           "Run one idempotent long create call that returns a created directory or terminal/transient failure; core owns attempts and retry behavior",
@@ -816,7 +817,6 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Resolve per-machine idle timeouts with experimental_idleSuspendMs; core checks activity and terminals and persists the empty-machine idle baseline",
           "Publish inventory and estimates through experimental_details; read them with bb.sdk.hosts.experimental_providerDetails, machine rows/details and bb machine show --json",
 
-          "Return pinned setup scripts and dependency checks through experimental_workspaceSetup; core serializes setup and records validated input/ABI stamps",
           "Call bb.sdk.hosts.experimental_ensureReady for CLI, credential-route reachability and checkout checks before dispatch",
           "Credential health may supply an experimental_probe for authenticated machine-to-proxy reachability without exposing its headers to clients",
           "Optionally declare suspend and resume together; core suspends after idle and resumes on the next send",

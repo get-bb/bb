@@ -451,6 +451,9 @@ export const projectSources = sqliteTable(
     type: text("type").$type<ProjectSourceType>().notNull(),
     hostId: text("host_id").references(() => hosts.id, { onDelete: "cascade" }),
     path: text("path"),
+    ownsPath: integer("owns_path", { mode: "boolean" })
+      .notNull()
+      .default(false),
     isDefault: integer("is_default", { mode: "boolean" })
       .notNull()
       .default(false),
@@ -1168,14 +1171,16 @@ export const environmentHookOperations = sqliteTable(
   },
 );
 
-export const machineWorkspaceSetups = sqliteTable(
-  "machine_workspace_setups",
+export const environmentSetupOutcomes = sqliteTable(
+  "environment_setup_outcomes",
   {
     hostId: text("host_id")
       .notNull()
       .references(() => hosts.id, { onDelete: "cascade" }),
     path: text("path").notNull(),
-    stamp: text("stamp").notNull(),
+    operationId: text("operation_id").notNull(),
+    state: text("state", { enum: ["running", "passed", "failed"] }).notNull(),
+    inputHash: text("input_hash"),
     updatedAt: integer("updated_at").notNull(),
   },
   (table) => [primaryKey({ columns: [table.hostId, table.path] })],

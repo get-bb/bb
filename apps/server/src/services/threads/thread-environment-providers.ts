@@ -1,3 +1,4 @@
+import { projectSourceOwnsPath } from "@bb/db";
 import {
   askProviderLaunch,
   cancelProviderLaunch,
@@ -433,7 +434,15 @@ export async function resolveEnvironmentProvider(
   }
   const projectCheckout =
     checkout !== null && isLocalPathProjectSource(checkout)
-      ? { path: checkout.path }
+      ? {
+          path: checkout.path,
+          experimental_ownsPath: projectSourceOwnsPath(
+            deps.db,
+            project.id,
+            host.id,
+            checkout.path,
+          ),
+        }
       : null;
   if (requires.projectCheckout && projectCheckout === null) {
     throw providerFailure(

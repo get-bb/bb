@@ -1,4 +1,4 @@
-import { execFile, spawn } from "node:child_process";
+import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import { lstat, readFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -45,24 +45,6 @@ export async function inspectReadiness(path: string) {
     files,
     abi: `${process.platform}/${process.arch}/node-${process.versions.modules}`,
   };
-}
-export async function runReadiness(
-  input: Extract<
-    HostDaemonOnlineRpcCommand,
-    { type: "workspace.readiness.run" }
-  >,
-  shellEnv: Record<string, string>,
-): Promise<{ exitCode: number }> {
-  return new Promise((resolve, reject) => {
-    const child = spawn("sh", ["-eu", "-c", input.script], {
-      cwd: input.path,
-      env: { ...process.env, ...shellEnv, ...input.env },
-      stdio: "ignore",
-      timeout: input.timeoutMs,
-    });
-    child.once("error", reject);
-    child.once("exit", (code) => resolve({ exitCode: code ?? 1 }));
-  });
 }
 export async function probeReadiness(
   input: Extract<HostDaemonOnlineRpcCommand, { type: "host.readiness.probe" }>,
