@@ -1,3 +1,4 @@
+import { MachineLifecycleNotice } from "@/components/machines/MachineLifecycleNotice";
 import { MachineProviderDetails } from "@/components/machines/MachineProviderDetails";
 import { useMemo, useState, type ReactNode } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
@@ -472,7 +473,13 @@ export function MachineSettingsView() {
         </SettingsSection>
 
         {host.machineProviderId ? (
-          <MachineProviderDetails hostId={host.id} expanded />
+          <>
+            <MachineProviderDetails hostId={host.id} expanded />
+            <MachineLifecycleNotice
+              hostId={host.id}
+              onRemove={() => setRemoveOpen(true)}
+            />
+          </>
         ) : null}
         <SettingsSection title="Machine information">
           <SettingsRowList>
@@ -571,6 +578,7 @@ export function MachineSettingsView() {
       />
 
       <ConfirmDeleteDialog
+        modal={false}
         open={removeOpen}
         onOpenChange={(open) => {
           if (!open && !removeHost.isPending) setRemoveOpen(false);
@@ -579,9 +587,11 @@ export function MachineSettingsView() {
         <DialogHeader>
           <DialogTitle>Remove {host.name}?</DialogTitle>
           <DialogDescription>
-            This revokes {host.name}'s access to this server. Project checkouts
-            stay on its disk, but its environments become read-only history and
-            it can't run new work until it's paired again.
+            This revokes {host.name}'s access to this server.
+            {host.machineProviderId !== null &&
+            host.machineProviderId !== "manual"
+              ? "This deletes the managed compute and saved snapshots. Its environments remain as read-only history."
+              : "Project checkouts stay on its disk, but its environments become read-only history and it cannot run new work until paired again."}
           </DialogDescription>
         </DialogHeader>
         {removeHost.isError ? (

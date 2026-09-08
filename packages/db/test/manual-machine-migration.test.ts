@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, it } from "vitest";
@@ -23,10 +23,11 @@ it("backfills only non-local hosts, preserves all other columns and is idempoten
       )
       .run("digitalocean", JSON.stringify({ dropletId: 123 }), "managed-host");
     const before = db.$client.prepare("SELECT * FROM hosts ORDER BY id").all();
-    db.$client.exec(
-      "DELETE FROM __drizzle_migrations WHERE created_at = (SELECT MAX(created_at) FROM __drizzle_migrations)",
+    const sql = readFileSync(
+      new URL("../drizzle/0119_manual-machines.sql", import.meta.url),
+      "utf8",
     );
-    migrate(db);
+    db.$client.exec(sql);
     const after = db.$client.prepare("SELECT * FROM hosts ORDER BY id").all();
     expect(after).toEqual(
       before.map((row) => {
@@ -41,6 +42,7 @@ it("backfills only non-local hosts, preserves all other columns and is idempoten
       }),
     );
     expect(db.$client.pragma("foreign_key_check")).toEqual([]);
+    db.$client.exec(sql);
     migrate(db);
     expect(db.$client.prepare("SELECT * FROM hosts ORDER BY id").all()).toEqual(
       after,

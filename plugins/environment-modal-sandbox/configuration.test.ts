@@ -6,7 +6,6 @@ function settings(overrides: Partial<RawSettings> = {}): RawSettings {
     tokenId: "token-id",
     tokenSecret: "token-secret",
     appName: "bb-sandboxes",
-    environmentVariables: undefined,
     timeoutMinutes: "60",
     idleMinutes: "15",
     cpu: "",
@@ -14,44 +13,6 @@ function settings(overrides: Partial<RawSettings> = {}): RawSettings {
     ...overrides,
   };
 }
-
-describe("sandbox environment variables", () => {
-  it("parses a JSON object without exposing it elsewhere in the settings", () => {
-    const result = resolveSettings(
-      settings({
-        environmentVariables: JSON.stringify({
-          WORKLOAD_TOKEN: "sk-secret",
-          LOWER_CASE_VALUE: "allowed",
-        }),
-      }),
-    );
-
-    expect(result).toMatchObject({
-      ok: true,
-      settings: {
-        environmentVariables: {
-          WORKLOAD_TOKEN: "sk-secret",
-          LOWER_CASE_VALUE: "allowed",
-        },
-      },
-    });
-  });
-
-  it("rejects malformed names and values without repeating a secret", () => {
-    const result = resolveSettings(
-      settings({
-        environmentVariables: '{"BAD-NAME":"do-not-repeat","PORT":22}',
-      }),
-    );
-
-    expect(result).toEqual({
-      ok: false,
-      message:
-        "Modal sandbox environmentVariables must be a JSON object whose keys are environment variable names and whose values are strings.",
-    });
-    if (!result.ok) expect(result.message).not.toContain("do-not-repeat");
-  });
-});
 
 describe("idle hibernation", () => {
   it("defaults to a concrete delay and allows disabling it", () => {

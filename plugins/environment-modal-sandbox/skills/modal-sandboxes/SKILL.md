@@ -70,9 +70,9 @@ the build. Settings → Plugins → Modal sandbox exposes the same catalogue, bu
 SDK callers import `modalRpcContract` from the plugin and call
 `bb.sdk.plugins.callRpc({pluginId:"environment-modal-sandbox", method:"build.get",
 input:{buildId}, outputSchema:modalRpcContract["build.get"].output})`.
-The RPC method names are `project.inspect`, `recipe.put/get/list`,
+The RPC method names are `catalogue.projects`, `account.inspect`, `project.sources/inspect/preflight`, `recipe.put/get/list`,
 `context.prepare/upload/complete`, `build.start/events/get/cancel`, `image.list/gc`,
-`verification.start/get`, and `project.configure/show/useImage`. Context upload tokens are scoped transport credentials
+`verification.start/get/list`, and `project.configure/show/useImage`. Context upload tokens are scoped transport credentials
 and never part of reusable image provenance.
 
 Core runs `.bb-env-setup.sh` after materialising an owned environment and
@@ -86,7 +86,7 @@ for the checkout's commit and lockfile inputs; it resumes any outstanding record
 source checkout on that host. Supply local files and secrets through core Machine
 environment settings, and keep reusable images credential-free.
 
-Clear the selected image before GC with `project configure --project X --expected-revision N --json-input '{"usableBuildId":null}' --json`. This clears availability for future launches; existing machines and their references remain pinned.
+Clear the selected image before GC with `project configure --project X --expected-revision N --json-input CONFIG --json`, supplying the current resources and policy from `project show` and setting `usableBuildId` to null. This clears availability for future launches; existing machines and their references remain pinned.
 
 Inspect preservation and retention with `bb machine lifecycle MACHINE --json`.
 Defaults are 15-minute idle pause, 24-hour lifetime and 30 days after the last
@@ -100,7 +100,6 @@ A failed snapshot retains compute and reports the last successful save. Planned
 rotation does not cover a server outage spanning Modal expiry. Lost-since-last-snapshot
 blocks dispatch; explain the loss risk before explicitly requesting `bb machine resume`
 to recover the last save. Missing snapshot images never become empty checkouts.
-
 
 ## Run the complete project setup
 

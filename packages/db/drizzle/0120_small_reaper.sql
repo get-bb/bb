@@ -27,6 +27,7 @@ CREATE TABLE `machine_lifecycles` (
 	`expires_at` integer,
 	`maintenance_at` integer,
 	`last_snapshot_at` integer,
+	`restore_operation_id` text,
 	`recovery_state` text NOT NULL,
 	`message` text,
 	`lease_id` text,

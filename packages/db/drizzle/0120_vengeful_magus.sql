@@ -1,1 +1,0 @@
-ALTER TABLE `machine_lifecycles` ADD `restore_operation_id` text;

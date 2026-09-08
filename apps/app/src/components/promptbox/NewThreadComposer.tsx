@@ -179,6 +179,15 @@ export interface NewThreadComposerState {
   renderPromptBox: (options: NewThreadComposerPromptOptions) => ReactNode;
 }
 
+export function resolveSubmittedExecutionSources(
+  environment: NewThreadRequest["environment"],
+  sources: CreateExecutionInputSources,
+): CreateExecutionInputSources {
+  return environment.type === "provider" && environment.machine?.type === "new"
+    ? { ...sources, model: "explicit" }
+    : sources;
+}
+
 export interface NewThreadComposerSubmission extends NewThreadRequest {
   sendAt?: number;
 }
@@ -988,6 +997,12 @@ export function NewThreadComposer({
             : null;
   const environmentProviderInputsSlot = useMemo(() => {
     if (environmentProviderInputsRegistration === undefined) return null;
+    if (
+      providerMachine?.type === "new" &&
+      selectedEnvironmentProvider?.id ===
+        PROJECT_CHECKOUT_ENVIRONMENT_PROVIDER_ID
+    )
+      return null;
     const InputsComponent = environmentProviderInputsRegistration.component;
     return (
       <PluginSlotMount
@@ -1010,6 +1025,8 @@ export function NewThreadComposer({
     providerHostId,
     submissionProviderInputs,
     environmentProviderInputsRegistration,
+    providerMachine?.type,
+    selectedEnvironmentProvider?.id,
   ]);
 
   const machineProviderInputsSlots = pluginSlots.machineProviderInputs;
@@ -1455,7 +1472,10 @@ export function NewThreadComposer({
         reasoningLevel,
         permissionMode,
         ...(supportsServiceTier && serviceTier ? { serviceTier } : {}),
-        executionInputSources: sources,
+        executionInputSources: resolveSubmittedExecutionSources(
+          submissionEnvironment,
+          sources,
+        ),
         environment: submissionEnvironment,
         input,
         ...(sendAt === null ? {} : { sendAt }),

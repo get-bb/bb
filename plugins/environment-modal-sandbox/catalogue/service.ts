@@ -89,11 +89,15 @@ export function createCatalogueService(
     "project.sources": async ({ projectId }) => {
       await assertProject(projectId);
       const sources = await bb.sdk.environments.list({ projectId });
+      const primary = (await bb.sdk.hosts.list()).find(
+        (host) => host.machineProviderId === null,
+      );
       return sources
         .filter((row) => row.status === "ready" && row.path !== null)
         .map((row) => ({
           id: row.id,
           hostId: row.hostId,
+          primaryHost: row.hostId === primary?.id,
           path: row.path!,
           name: row.path!,
         }));
@@ -103,7 +107,7 @@ export function createCatalogueService(
         const resolved = await settings();
         return {
           available: true,
-          accountIdentity: await accountIdentity(resolved, backendFactory),
+          accountIdentity: await backendFactory(resolved).accountIdentity(),
           appName: resolved.appName,
           baseVersion: baseManifest.version,
           message: "Modal account is reachable",

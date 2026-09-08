@@ -34,7 +34,7 @@ export function CreateMachineDialog({
   onOpenChange: (open: boolean) => void;
 }) {
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={onOpenChange} modal={false}>
       <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto">
         <CreateMachineContent open={open} onOpenChange={onOpenChange} />
       </DialogContent>

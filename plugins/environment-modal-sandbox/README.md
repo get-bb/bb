@@ -123,16 +123,15 @@ its process timeout. Retries reuse the named sandbox and the bootstrap key.
 
 ## Settings
 
-| Setting                | Required | What it is                                                                    |
-| ---------------------- | -------- | ----------------------------------------------------------------------------- |
-| `tokenId`              | yes      | The token id half of a Modal API token.                                       |
-| `tokenSecret`          | yes      | The token secret half of the same token.                                      |
-| `appName`              | no       | The Modal app for sandboxes. Defaults to `bb-sandboxes`.                      |
-| `environmentVariables` | no       | Secret JSON object injected into the sandbox.                                 |
-| `timeoutMinutes`       | no       | Modal sandbox timeout, 1–1440 minutes.                                        |
-| `idleMinutes`          | no       | Snapshot after this many idle minutes. Defaults to 15; 0 disables suspension. |
-| `cpu`                  | no       | Reserved cores. Blank uses Modal's default.                                   |
-| `memoryMiB`            | no       | Reserved memory in MiB. Blank uses Modal's default.                           |
+| Setting          | Required | What it is                                                                    |
+| ---------------- | -------- | ----------------------------------------------------------------------------- |
+| `tokenId`        | yes      | The token id half of a Modal API token.                                       |
+| `tokenSecret`    | yes      | The token secret half of the same token.                                      |
+| `appName`        | no       | The Modal app for sandboxes. Defaults to `bb-sandboxes`.                      |
+| `timeoutMinutes` | no       | Modal sandbox timeout, 1–1440 minutes.                                        |
+| `idleMinutes`    | no       | Snapshot after this many idle minutes. Defaults to 15; 0 disables suspension. |
+| `cpu`            | no       | Reserved cores. Blank uses Modal's default.                                   |
+| `memoryMiB`      | no       | Reserved memory in MiB. Blank uses Modal's default.                           |
 
 ## Logo and trademark
 

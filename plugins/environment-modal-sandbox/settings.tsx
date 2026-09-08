@@ -21,7 +21,13 @@ import {
 
 type Rpc = ReturnType<typeof useRpc<typeof modalRpcContract>>;
 type ProjectState = Project & { staleness: Staleness };
-type Source = { id: string; hostId: string; path: string; name: string };
+type Source = {
+  id: string;
+  hostId: string;
+  path: string;
+  name: string;
+  primaryHost: boolean;
+};
 
 export function ModalSettings() {
   const rpc = useRpc<typeof modalRpcContract>();
@@ -148,7 +154,7 @@ function ProjectCatalogue({ projectId, rpc }: { projectId: string; rpc: Rpc }) {
         setSources(nextSources);
         setImages(nextImages.images);
         setCursor(nextImages.nextCursor);
-        setSourceId(nextSources[0]?.id ?? "");
+        setSourceId(nextSources.find((source) => source.primaryHost)?.id ?? "");
         setLoaded(true);
       })
       .catch((error) => {
@@ -221,7 +227,15 @@ function ProjectCatalogue({ projectId, rpc }: { projectId: string; rpc: Rpc }) {
   return (
     <div className="flex min-w-0 flex-col gap-6">
       <p role="status" className="rounded-md border border-border p-3 text-xs">
-        {stalenessLabel(project.staleness)}
+        {stalenessLabel(
+          inspection === null
+            ? {
+                ...project.staleness,
+                lockfilesChanged: null,
+                reason: "Source not checked in this view",
+              }
+            : project.staleness,
+        )}
         {project.staleness.lastCheckedAt
           ? ` · checked ${new Date(project.staleness.lastCheckedAt).toLocaleString()}`
           : ""}
@@ -269,6 +283,18 @@ function ProjectCatalogue({ projectId, rpc }: { projectId: string; rpc: Rpc }) {
               {inspection.evidence.length} inspected files · setup hooks:{" "}
               {inspection.setupHooks.join(", ") || "none"}
             </p>
+            <details>
+              <summary className="cursor-pointer">
+                Inspect source evidence
+              </summary>
+              <ul className="max-h-48 overflow-auto font-mono">
+                {inspection.evidence.map((file) => (
+                  <li key={file.path}>
+                    {file.path} · {file.kind} · {file.sha256.slice(0, 12)}
+                  </li>
+                ))}
+              </ul>
+            </details>
             {inspection.missing.map((item) => (
               <p key={item}>{item}</p>
             ))}

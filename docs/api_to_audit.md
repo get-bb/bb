@@ -2816,3 +2816,5 @@ Stabilization requires controlled-clock restart, lease, dispatch, loss and reten
 coverage, vendor deadline reconciliation, snapshot-before-terminate evidence, and
 review of recoverable failures and account changes. Planned rotation cannot protect
 against a server outage spanning vendor expiry without independent storage/watchdogs.
+
+Restore setup hooks use the same recorded core hook path as creation and receive the shared core machine environment contributions. Hook output redacts contributed secrets across stream boundaries. Daemon protocol 194 adds these contributions to the hook RPC; enrolled machines update before use. Failed restore hooks block readiness.

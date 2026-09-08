@@ -65,9 +65,10 @@ function ModalInputs({
     }
     void (async () => {
       const sources = await rpc.call("project.sources", { projectId });
-      if (sources[0])
+      const source = sources.find((source) => source.primaryHost);
+      if (source)
         await rpc
-          .call("project.inspect", { projectId, environmentId: sources[0].id })
+          .call("project.inspect", { projectId, environmentId: source.id })
           .catch(() => undefined);
       const [configured, preflight, available] = await Promise.all([
         rpc.call("project.show", { projectId }),

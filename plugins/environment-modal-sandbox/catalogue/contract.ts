@@ -33,6 +33,7 @@ export const modalRpcContract = defineRpcContract({
       z.object({
         id: idSchema,
         hostId: idSchema,
+        primaryHost: z.boolean(),
         path: z.string(),
         name: z.string(),
       }),

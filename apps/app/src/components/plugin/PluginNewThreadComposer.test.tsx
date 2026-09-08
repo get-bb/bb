@@ -30,6 +30,7 @@ import type {
 import type { SystemEnvironmentProvider } from "@bb/server-contract";
 import {
   NewThreadComposer,
+  resolveSubmittedExecutionSources,
   type NewThreadComposerState,
 } from "@/components/promptbox/NewThreadComposer";
 import {
@@ -1815,4 +1816,33 @@ describe("NewThreadComposer environment providers", () => {
       inputs: null,
     });
   });
+});
+
+it("submits the visible model explicitly when a new machine cannot resolve a catalog default", () => {
+  expect(
+    resolveSubmittedExecutionSources(
+      {
+        type: "provider",
+        environmentProviderId: "project-checkout",
+        inputs: null,
+        machine: {
+          type: "new",
+          machineProviderId: "modal-sandbox",
+          inputs: null,
+        },
+      },
+      {},
+    ),
+  ).toEqual({ model: "explicit" });
+  expect(
+    resolveSubmittedExecutionSources(
+      {
+        type: "provider",
+        environmentProviderId: "project-checkout",
+        inputs: null,
+        machine: { type: "existing", hostId: "host_1" },
+      },
+      {},
+    ),
+  ).toEqual({});
 });
