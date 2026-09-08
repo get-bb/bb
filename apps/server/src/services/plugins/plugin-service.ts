@@ -1,3 +1,4 @@
+import { ensurePluginArtifacts } from "@bb/plugin-build";
 import { watch } from "node:fs";
 import { readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
@@ -41,11 +42,7 @@ import {
   adoptHttpRouteResponse,
   validatePluginProviderEnvEntries,
 } from "@get-bb/plugin-sdk/internal/host-policy";
-import {
-  buildPluginApp,
-  buildPluginHost,
-  createPluginDevLoop,
-} from "@bb/plugin-build";
+import { createPluginDevLoop } from "@bb/plugin-build";
 import { getPluginBuildToolchain } from "./build-toolchain.js";
 import {
   marketplacePublisherLabel,
@@ -1644,6 +1641,12 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
             pluginId: row.id,
             targets: async () => {
               const manifest = await readPluginManifest(bundled.rootDir);
+              await ensurePluginArtifacts({
+                rootDir: bundled.rootDir,
+                bbVersion: deps.appVersion,
+                toolchain: await getPluginBuildToolchain(deps),
+                targets: [],
+              });
               const hasApp = manifest.appEntry !== undefined;
               const hasHost = manifest.hostEntry !== undefined;
               // A dropped entry can no longer rebuild, so its last build
@@ -1654,11 +1657,12 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
             },
             buildApp: async () => {
               try {
-                await buildPluginApp(
-                  bundled.rootDir,
-                  deps.appVersion,
-                  await getPluginBuildToolchain(deps),
-                );
+                await ensurePluginArtifacts({
+                  rootDir: bundled.rootDir,
+                  bbVersion: deps.appVersion,
+                  toolchain: await getPluginBuildToolchain(deps),
+                  targets: ["app"],
+                });
                 setDevBuildProblem(row.id, "frontend", null);
                 notifyPluginsChanged();
               } catch (error) {
@@ -1673,11 +1677,12 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
             },
             buildHost: async () => {
               try {
-                await buildPluginHost(
-                  bundled.rootDir,
-                  deps.appVersion,
-                  await getPluginBuildToolchain(deps),
-                );
+                await ensurePluginArtifacts({
+                  rootDir: bundled.rootDir,
+                  bbVersion: deps.appVersion,
+                  toolchain: await getPluginBuildToolchain(deps),
+                  targets: ["host"],
+                });
                 setDevBuildProblem(row.id, "host", null);
                 notifyPluginsChanged();
               } catch (error) {

@@ -1,3 +1,4 @@
+import { ensurePluginArtifacts } from "@bb/plugin-build";
 import { randomUUID } from "node:crypto";
 import { mkdir, readFile, rm, stat } from "node:fs/promises";
 import { dirname, join, relative, sep } from "node:path";
@@ -16,11 +17,7 @@ import {
   type PluginProvenance,
   type PluginSourceIntent,
 } from "@bb/db";
-import {
-  buildPluginApp,
-  buildPluginHost,
-  buildPluginServer,
-} from "@bb/plugin-build";
+import {} from "@bb/plugin-build";
 import {
   assertPublicMarketplaceUrl,
   boundedResponseJson,
@@ -280,11 +277,12 @@ export function createManagedPluginArtifacts(
         })
       ) {
         try {
-          await buildPluginApp(
-            args.rootDir,
-            deps.appVersion,
-            await getPluginBuildToolchain(deps),
-          );
+          await ensurePluginArtifacts({
+            rootDir: args.rootDir,
+            bbVersion: deps.appVersion,
+            toolchain: await getPluginBuildToolchain(deps),
+            targets: ["app"],
+          });
         } catch (error) {
           throw new Error(
             `install failed: frontend bundle build for "${manifest.id}" failed: ${error instanceof Error ? error.message : String(error)}`,
@@ -294,11 +292,12 @@ export function createManagedPluginArtifacts(
     }
     if (kind === "git") {
       try {
-        await buildPluginServer(
-          args.rootDir,
-          deps.appVersion,
-          await getPluginBuildToolchain(deps),
-        );
+        await ensurePluginArtifacts({
+          rootDir: args.rootDir,
+          bbVersion: deps.appVersion,
+          toolchain: await getPluginBuildToolchain(deps),
+          targets: ["server"],
+        });
       } catch (error) {
         throw new Error(
           `install failed: server bundle build for "${manifest.id}" failed: ${error instanceof Error ? error.message : String(error)}`,
@@ -306,11 +305,12 @@ export function createManagedPluginArtifacts(
       }
       if (manifest.hostEntry !== undefined) {
         try {
-          await buildPluginHost(
-            args.rootDir,
-            deps.appVersion,
-            await getPluginBuildToolchain(deps),
-          );
+          await ensurePluginArtifacts({
+            rootDir: args.rootDir,
+            bbVersion: deps.appVersion,
+            toolchain: await getPluginBuildToolchain(deps),
+            targets: ["host"],
+          });
         } catch (error) {
           throw new Error(
             `install failed: host bundle build for "${manifest.id}" failed: ${error instanceof Error ? error.message : String(error)}`,

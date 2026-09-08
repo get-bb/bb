@@ -1,3 +1,4 @@
+import { pluginBuildInputPaths } from "./plugin-build-inputs.js";
 import { createHash } from "node:crypto";
 import {
   mkdir,
@@ -340,6 +341,7 @@ async function readPluginHostConfig(rootDir: string): Promise<{
 }
 
 interface PluginHostBuildResult {
+  inputPaths: string[];
   jsPath: string;
   mapPath: string;
   metaPath: string;
@@ -387,10 +389,11 @@ export async function buildPluginHost(
       toolchain.esbuild
     )) as typeof import("esbuild");
     const packageNameByDirectory = new Map<string, string | null>();
-    await esbuild.build({
+    const bundle = await esbuild.build({
       entryPoints: [hostEntry],
       outfile: stagedJsPath,
       bundle: true,
+      metafile: true,
       format: "esm",
       platform: "node",
       plugins: [
@@ -538,7 +541,13 @@ export async function buildPluginHost(
     await rename(stagedJsPath, jsPath);
     await rename(join(stageDir, "host.js.map"), mapPath);
     await rename(stagedMetaPath, metaPath);
-    return { jsPath, mapPath, metaPath, artifactDigest };
+    return {
+      jsPath,
+      mapPath,
+      metaPath,
+      artifactDigest,
+      inputPaths: pluginBuildInputPaths(bundle.metafile, process.cwd()),
+    };
   } finally {
     await rm(stageDir, { recursive: true, force: true });
   }

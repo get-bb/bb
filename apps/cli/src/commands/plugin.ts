@@ -30,9 +30,7 @@ import {
 import { action } from "../action.js";
 import { cliFetch, createCliBbSdk } from "../client.js";
 import {
-  buildPluginApp,
-  buildPluginHost,
-  buildPluginServer,
+  ensurePluginArtifacts,
   createPluginDevLoop,
   PLUGIN_TOOLCHAIN_PINS,
   resolvePluginBuildToolchain,
@@ -1388,21 +1386,16 @@ export function registerPluginCommands(
         const bbVersion = resolveBbCliVersion();
         const manifest = await readPluginManifest(rootDir);
         const hasApp = typeof manifest?.bb?.app === "string";
-        const hasHost = typeof manifest?.bb?.host === "string";
         if (typeof manifest?.bb?.server === "string") {
           await refreshPluginTypes(rootDir, hasApp);
         }
         const toolchain = await cliBuildToolchain();
-        const server = await buildPluginServer(rootDir, bbVersion, toolchain);
-        const files = [server.jsPath, server.mapPath, server.metaPath];
-        if (hasApp) {
-          const app = await buildPluginApp(rootDir, bbVersion, toolchain);
-          files.push(app.jsPath, app.cssPath, app.metaPath);
-        }
-        if (hasHost) {
-          const host = await buildPluginHost(rootDir, bbVersion, toolchain);
-          files.push(host.jsPath, host.mapPath, host.metaPath);
-        }
+        const { files } = await ensurePluginArtifacts({
+          rootDir,
+          bbVersion,
+          toolchain,
+          minify: true,
+        });
         for (const file of files) {
           console.log(relative(process.cwd(), file));
         }
@@ -1440,25 +1433,33 @@ export function registerPluginCommands(
           // never succeed again.
           targets: async () => {
             const current = await requirePluginManifest(rootDir);
+            await ensurePluginArtifacts({
+              rootDir,
+              bbVersion: resolveBbCliVersion(),
+              toolchain: await cliBuildToolchain(),
+              targets: [],
+            });
             return {
               hasApp: typeof current.bb?.app === "string",
               hasHost: typeof current.bb?.host === "string",
             };
           },
           buildApp: async () => {
-            await buildPluginApp(
+            await ensurePluginArtifacts({
               rootDir,
-              resolveBbCliVersion(),
-              await cliBuildToolchain(),
-              { minify: false },
-            );
+              bbVersion: resolveBbCliVersion(),
+              toolchain: await cliBuildToolchain(),
+              targets: ["app"],
+              minify: false,
+            });
           },
           buildHost: async () => {
-            await buildPluginHost(
+            await ensurePluginArtifacts({
               rootDir,
-              resolveBbCliVersion(),
-              await cliBuildToolchain(),
-            );
+              bbVersion: resolveBbCliVersion(),
+              toolchain: await cliBuildToolchain(),
+              targets: ["host"],
+            });
           },
           reloadPlugin: async () => {
             const result = pluginMutationResponseSchema.parse(

@@ -13,7 +13,7 @@
   "scripts": {
     "clean": "rimraf tsconfig.tsbuildinfo",
     "test": "vitest run --config vitest.config.ts",
-    "generate": "node ./scripts/generate-plugin-theme.mjs && node ./scripts/generate-runtime-export-manifest.mjs",
+    "generate": "node ./scripts/generate-plugin-theme.mjs && node ./scripts/generate-runtime-export-manifest.mjs && node ./scripts/generate-build-fingerprint.mjs",
     "typecheck": "tsc --noEmit",
     "build": "node ../../scripts/build-node-entry.mjs src/build-bundled-plugin.ts dist/build-bundled-plugin.js"
   },
@@ -23,7 +23,8 @@
     "@get-bb/plugin-sdk": "workspace:*",
     "saxes": "^6.0.0",
     "tar": "7.5.22",
-    "zod": "^4.3.6"
+    "zod": "^4.3.6",
+    "proper-lockfile": "^4.1.2"
   },
   "devDependencies": {
     "@bb/tsconfig": "workspace:*",

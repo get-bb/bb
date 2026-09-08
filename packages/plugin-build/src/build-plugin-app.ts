@@ -1,3 +1,4 @@
+import { pluginBuildInputPaths } from "./plugin-build-inputs.js";
 import {
   mkdir,
   mkdtemp,
@@ -390,6 +391,7 @@ async function bundledInputPaths(
 }
 
 interface PluginAppBuildResult {
+  inputPaths: string[];
   jsPath: string;
   cssPath: string;
   metaPath: string;
@@ -415,6 +417,7 @@ export async function buildPluginApp(
   const cssPath = join(distDir, "app.css");
   const metaPath = join(distDir, "app.meta.json");
 
+  let inputPaths: string[] = [];
   const stageDir = await mkdtemp(join(distDir, ".stage-"));
   try {
     const stagedJsPath = join(stageDir, "app.js");
@@ -429,7 +432,7 @@ export async function buildPluginApp(
       outfile: stagedJsPath,
       absWorkingDir: rootDir,
       bundle: true,
-      metafile: dependencySources.length > 0,
+      metafile: true,
       format: "esm",
       platform: "browser",
       target: "es2022",
@@ -445,6 +448,7 @@ export async function buildPluginApp(
       plugins: [runtimeShimPlugin()],
     });
 
+    inputPaths = pluginBuildInputPaths(bundle.metafile, rootDir);
     let authoredCss = "";
     try {
       authoredCss = await readFile(stagedCssPath, "utf8");
@@ -491,5 +495,5 @@ export async function buildPluginApp(
   } finally {
     await rm(stageDir, { recursive: true, force: true });
   }
-  return { jsPath, cssPath, metaPath };
+  return { jsPath, cssPath, metaPath, inputPaths };
 }

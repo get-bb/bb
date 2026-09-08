@@ -603,6 +603,13 @@ against a mismatched host runtime. Cache the toolchain directory in CI to skip
 the download on later runs. Only `bb plugin dev` needs a running bb, because
 it reloads the installed plugin after each rebuild.
 
+Development, CLI builds, and bundled packaging share the same artifact builder.
+Successful builds record content fingerprints under
+`node_modules/.cache/bb-plugin-build/`; unchanged inputs and intact outputs can
+be reused. Source, dependency, SDK/compiler, or build-option changes invalidate
+the record. Deleting the cache is safe. Build requests for a plugin are serialized,
+so a watcher and reload do not compile its host bundle concurrently.
+
 The backend half is prebuilt too: when a builtin/official/git/npm install ships
 a dist/server.js built for the running SDK major, the server loads it instead
 of the TypeScript source. A declared `bb.host` is bundled into a self-contained

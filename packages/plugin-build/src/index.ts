@@ -22,3 +22,8 @@ export {
 
 export { resolveManifestPath } from "./plugin-manifest.js";
 export { copyBuiltinPlugin } from "./copy-builtin-plugin.js";
+
+export {
+  ensurePluginArtifacts,
+  type PluginArtifactTarget,
+} from "./ensure-plugin-artifacts.js";

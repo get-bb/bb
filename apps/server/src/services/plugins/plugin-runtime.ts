@@ -1,3 +1,4 @@
+import { ensurePluginArtifacts } from "@bb/plugin-build";
 import { AsyncLocalStorage } from "node:async_hooks";
 import {
   assertAiServiceRegistrable,
@@ -12,7 +13,7 @@ import {
   realpathSync,
   type FSWatcher,
 } from "node:fs";
-import { readFile, readdir, stat } from "node:fs/promises";
+import { readFile, stat } from "node:fs/promises";
 import { dirname, extname, join, resolve, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { createRequire, registerHooks } from "node:module";
@@ -28,11 +29,7 @@ import {
   type Thread,
   type ThreadQueuedMessage,
 } from "@bb/domain";
-import {
-  buildPluginApp,
-  buildPluginHost,
-  isIgnoredPluginDevPath,
-} from "@bb/plugin-build";
+import {} from "@bb/plugin-build";
 import { PluginHostArtifactRegistry } from "./plugin-host-artifact-registry.js";
 import { getPluginBuildToolchain } from "./build-toolchain.js";
 import { createNodeBbSdk, type BbSdk } from "@bb/sdk";
@@ -50,7 +47,6 @@ import {
   loadPluginAppBundle,
   loadPluginBrandingAssets,
   parsePluginAppBundleMeta,
-  readPluginAppBundleMeta,
   validatePluginArtifactMeta,
   type PluginAppBundleSnapshot,
   type PluginBrandingAssetSet,
@@ -929,43 +925,6 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     return true;
   }
 
-  async function isMutableAppBundleStale(rootDir: string): Promise<boolean> {
-    let artifactMtimeMs: number;
-    try {
-      artifactMtimeMs = (await stat(join(rootDir, "dist", "app.js"))).mtimeMs;
-    } catch {
-      return true;
-    }
-
-    const pendingDirectories = [""];
-    while (pendingDirectories.length > 0) {
-      const relativeDirectory = pendingDirectories.pop();
-      if (relativeDirectory === undefined) break;
-      const directory = join(rootDir, relativeDirectory);
-      let entries;
-      try {
-        const directoryStats = await stat(directory);
-        if (directoryStats.mtimeMs > artifactMtimeMs) return true;
-        entries = await readdir(directory, { withFileTypes: true });
-      } catch {
-        return true;
-      }
-
-      for (const entry of entries) {
-        const relativePath = join(relativeDirectory, entry.name);
-        if (isIgnoredPluginDevPath(relativePath)) continue;
-        try {
-          const entryStats = await stat(join(rootDir, relativePath));
-          if (entryStats.mtimeMs > artifactMtimeMs) return true;
-        } catch {
-          return true;
-        }
-        if (entry.isDirectory()) pendingDirectories.push(relativePath);
-      }
-    }
-    return false;
-  }
-
   async function resolveServerEntry(
     row: InstalledPluginRow,
     manifest: PluginManifest,
@@ -1026,33 +985,23 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
         artifact: "app",
       })
     ) {
-      const meta = await readPluginAppBundleMeta(row.rootDir);
-      const sdkChanged = meta?.sdkVersion !== PLUGIN_SDK_VERSION;
-      const sourceChanged =
-        !sdkChanged && (await isMutableAppBundleStale(row.rootDir));
-      if (sdkChanged || sourceChanged) {
-        const reason = sdkChanged
-          ? `built with SDK ${meta?.sdkVersion ?? "unknown"}, running SDK is ${PLUGIN_SDK_VERSION}`
-          : "plugin source is newer than dist/app.js";
-        logger.info(`plugin ${row.id}: rebuilding frontend bundle (${reason})`);
-        try {
-          await buildPluginApp(
-            row.rootDir,
-            deps.appVersion,
-            await getPluginBuildToolchain(deps),
-          );
-          setDevBuildProblem(row.id, "frontend", null);
-        } catch (error) {
-          const message =
-            error instanceof Error ? error.message : String(error);
-          logger.warn(
-            `plugin ${row.id}: frontend bundle rebuild failed: ${message}`,
-          );
-          return {
-            snapshot: { state: { hasApp: true, bundle: null }, assets: null },
-            problem: `frontend bundle rebuild failed: ${message}`,
-          };
-        }
+      try {
+        await ensurePluginArtifacts({
+          rootDir: row.rootDir,
+          bbVersion: deps.appVersion,
+          toolchain: await getPluginBuildToolchain(deps),
+          targets: ["app"],
+        });
+        setDevBuildProblem(row.id, "frontend", null);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        logger.warn(
+          `plugin ${row.id}: frontend bundle rebuild failed: ${message}`,
+        );
+        return {
+          snapshot: { state: { hasApp: true, bundle: null }, assets: null },
+          problem: `frontend bundle rebuild failed: ${message}`,
+        };
       }
     }
     return {
@@ -1076,11 +1025,12 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
         artifact: "host",
       })
     ) {
-      await buildPluginHost(
-        row.rootDir,
-        deps.appVersion,
-        await getPluginBuildToolchain(deps),
-      );
+      await ensurePluginArtifacts({
+        rootDir: row.rootDir,
+        bbVersion: deps.appVersion,
+        toolchain: await getPluginBuildToolchain(deps),
+        targets: ["host"],
+      });
       setDevBuildProblem(row.id, "host", null);
     }
     const jsPath = join(row.rootDir, "dist", "host.js");

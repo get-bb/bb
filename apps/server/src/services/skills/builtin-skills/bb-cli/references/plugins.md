@@ -157,7 +157,10 @@
     self-contained host artifact `host.js` + `host.js.map` +
     `host.meta.json` (its digest; host daemons download and verify the bundle
     by that digest, and run it as a host RPC worker, a provider bridge, or
-    both). None of it needs the server.
+    both). None of it needs the server. The shared builder reuses intact
+    artifacts when their content fingerprints match; its disposable records
+    live in `node_modules/.cache/bb-plugin-build/`. Dev reloads use the same
+    checks and serialize builds of the same plugin.
   - `bb plugin types [path]` — sync the plugin's `@get-bb/plugin-sdk` surface
     to the running bb (default: cwd). For a plugin that depends on the npm
     package it rewrites the exact `devDependencies` pin to this bb's SDK

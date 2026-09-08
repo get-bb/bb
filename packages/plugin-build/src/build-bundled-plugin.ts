@@ -21,7 +21,6 @@ const { version: bbVersion } = z
   );
 const staging = await mkdtemp(path.join(tmpdir(), "bb-bundled-plugin-"));
 try {
-  await rm(path.join(sourceRoot, "dist"), { recursive: true, force: true });
   const toolchain = await resolvePluginBuildToolchain(
     path.join(repoRoot, "node_modules/.bb-toolchain"),
   );

@@ -1,9 +1,7 @@
-import { readFile, rm } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import {
-  buildPluginApp,
-  buildPluginHost,
-  buildPluginServer,
+  ensurePluginArtifacts,
   resolvePluginBuildToolchain,
 } from "../packages/plugin-build/src/index.ts";
 import { OFFICIAL_PLUGINS } from "../apps/server/src/services/plugins/builtin-registry.ts";
@@ -43,26 +41,12 @@ if (typeof bbPackage.version !== "string") {
 
 for (const plugin of selected) {
   const rootDirectory = resolve(repositoryRoot, "plugins", plugin);
-  await rm(resolve(rootDirectory, "dist"), { recursive: true, force: true });
-  const manifest = JSON.parse(
-    await readFile(resolve(rootDirectory, "package.json"), "utf8"),
-  );
-
-  const server = await buildPluginServer(
-    rootDirectory,
-    bbPackage.version,
+  const { files } = await ensurePluginArtifacts({
+    rootDir: rootDirectory,
+    bbVersion: bbPackage.version,
     toolchain,
-  );
-  const app = manifest.bb?.app
-    ? await buildPluginApp(rootDirectory, bbPackage.version, toolchain)
-    : null;
-  const host = manifest.bb?.host
-    ? await buildPluginHost(rootDirectory, bbPackage.version, toolchain)
-    : null;
-  const outputs = [server.jsPath, server.metaPath];
-  if (app !== null) {
-    outputs.push(app.jsPath, app.cssPath, app.metaPath);
-  }
-  if (host !== null) outputs.push(host.jsPath, host.mapPath, host.metaPath);
-  console.log(`${plugin}: built ${outputs.join(", ")}`);
+    minify: true,
+    clean: true,
+  });
+  console.log(`${plugin}: built ${files.join(", ")}`);
 }

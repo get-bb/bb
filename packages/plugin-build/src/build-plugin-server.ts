@@ -1,3 +1,4 @@
+import { pluginBuildInputPaths } from "./plugin-build-inputs.js";
 import {
   mkdir,
   mkdtemp,
@@ -112,6 +113,7 @@ async function readPluginServerConfig(
 }
 
 interface PluginServerBuildResult {
+  inputPaths: string[];
   jsPath: string;
   mapPath: string;
   metaPath: string;
@@ -130,6 +132,7 @@ export async function buildPluginServer(
   const mapPath = join(distDir, "server.js.map");
   const metaPath = join(distDir, "server.meta.json");
 
+  let inputPaths: string[] = [];
   const stageDir = await mkdtemp(join(distDir, ".stage-"));
   try {
     const stagedJsPath = join(stageDir, "server.js");
@@ -138,10 +141,11 @@ export async function buildPluginServer(
     const esbuild = (await import(
       toolchain.esbuild
     )) as typeof import("esbuild");
-    await esbuild.build({
+    const bundle = await esbuild.build({
       entryPoints: [serverEntry],
       outfile: stagedJsPath,
       bundle: true,
+      metafile: true,
       format: "esm",
       platform: "node",
       target: "node22",
@@ -191,6 +195,7 @@ export async function buildPluginServer(
       ],
       logLevel: "error",
     });
+    inputPaths = pluginBuildInputPaths(bundle.metafile, process.cwd());
     await writeFile(
       stagedMetaPath,
       JSON.stringify(
@@ -206,5 +211,5 @@ export async function buildPluginServer(
   } finally {
     await rm(stageDir, { recursive: true, force: true });
   }
-  return { jsPath, mapPath, metaPath };
+  return { jsPath, mapPath, metaPath, inputPaths };
 }
