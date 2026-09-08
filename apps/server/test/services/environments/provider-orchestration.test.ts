@@ -1,3 +1,4 @@
+import { recordProvisionedEnvironmentWorkspace } from "@bb/db/internal-environment-lifecycle";
 import { createThreadFromRequest } from "../../../src/services/threads/thread-create.js";
 import { encodeClientTurnRequestIdNumber } from "@bb/domain";
 import { requireThreadCommandEnvironment } from "../../../src/services/threads/thread-command-environment.js";
@@ -18,6 +19,7 @@ import {
   environments,
   getEnvironment,
   getEnvironmentLaunch,
+  getThread,
   getProject,
   pruneDestroyedEnvironments,
   saveEnvironmentLaunch,
@@ -120,7 +122,7 @@ function setup(
     const environment = createEnvironment(harness.db, harness.hub, {
       projectId: project.id,
       hostId: launch.hostId,
-      path: launch.path,
+      path: null,
       providerOwnsPath: launch.ownsPath,
       status: "ready",
       environmentProvider: {
@@ -130,6 +132,18 @@ function setup(
       },
     });
     attachProviderLaunch(harness.db, thread.id, environment.id);
+    recordProvisionedEnvironmentWorkspace(
+      harness.db,
+      harness.hub,
+      environment.id,
+      {
+        path: launch.path,
+        isGitRepo: false,
+        isWorktree: false,
+        branchName: null,
+        defaultBranch: null,
+      },
+    );
     return environment.id;
   };
   return { ask, attach, context, host, record, row, settled, source, thread };
@@ -327,6 +341,98 @@ describe("core environment orchestration", () => {
       expect(fixture.row().path).toBe("/tmp/project/");
     }));
 
+  it("preserves canonical identity after attachment for live checkout exclusion", async () =>
+    withTestHarness(async (harness) => {
+      const fixture = setup(harness, {
+        id: "project-checkout",
+        create: async (context) => {
+          await context.experimental_claimPath("/tmp/project/");
+          return { status: "created", path: "/tmp/project/", ownsPath: false };
+        },
+      });
+      fixture.ask();
+      await fixture.settled();
+      const environmentId = fixture.attach();
+      updateThread(harness.db, harness.hub, fixture.thread.id, {
+        environmentId,
+      });
+      harness.db
+        .update(threads)
+        .set({ status: "active" })
+        .where(eq(threads.id, fixture.thread.id))
+        .run();
+      expect(getEnvironment(harness.db, environmentId)?.canonicalPath).toBe(
+        "/tmp/project",
+      );
+      const response = await harness.app.request(
+        `/api/v1/environments?hostId=${fixture.host.id}&path=%2Ftmp%2Fproject`,
+      );
+      expect(response.status).toBe(200);
+      expect(
+        z
+          .array(z.object({ id: z.string() }))
+          .parse(await response.json())
+          .map((row) => row.id),
+      ).toContain(environmentId);
+      const fake = createFakePluginHost({
+        pluginId: "environment-project-checkout",
+        sdk: {
+          environments: {
+            list: async (filters) => {
+              if (filters?.hostId === undefined || filters.path === undefined)
+                throw new Error("Missing host/path filter");
+              const response = await harness.app.request(
+                `/api/v1/environments?${new URLSearchParams({ hostId: filters.hostId, path: filters.path })}`,
+              );
+              expect(response.status).toBe(200);
+              return response.json();
+            },
+          },
+          threads: {
+            list: async (filters) => {
+              if (filters?.environmentId === undefined)
+                throw new Error("Missing environment filter");
+              const response = await harness.app.request(
+                `/api/v1/threads?${new URLSearchParams({ environmentId: filters.environmentId })}`,
+              );
+              expect(response.status).toBe(200);
+              return response.json();
+            },
+          },
+        },
+      });
+      const module = z
+        .object({
+          default: z.custom<(bb: BbPluginApi) => Promise<void>>(
+            (value) => typeof value === "function",
+          ),
+        })
+        .parse(
+          await import(
+            new URL(
+              "../../../../../plugins/environment-project-checkout/server.ts",
+              import.meta.url,
+            ).href
+          ),
+        );
+      await module.default(fake.bb);
+      const provider =
+        fake.harness.registrations.environmentProviders.get("project-checkout");
+      if (provider?.validate === null || provider === undefined)
+        throw new Error("Missing checkout provider");
+      expect(
+        await provider.validate({
+          ...fixture.context,
+          projectCheckout: { path: "/tmp/project" },
+          inputs: { branch: { kind: "existing", name: "release" } },
+        }),
+      ).toEqual({
+        action: "refuse",
+        message:
+          "Cannot checkout branch while another thread is using this workspace",
+      });
+    }));
+
   it("reserves a checkout before concurrent branch mutations until attachment", async () =>
     withTestHarness(async (harness) => {
       const fixture = setup(harness);
@@ -442,7 +548,7 @@ describe("core environment orchestration", () => {
       const target = createEnvironment(harness.db, harness.hub, {
         projectId: fixture.context.project.id,
         hostId: fixture.host.id,
-        path: "/tmp/same-project-worktree",
+        path: "/tmp/same-project-worktree/",
         status: "ready",
         providerOwnsPath: true,
         environmentProvider: {
@@ -464,11 +570,14 @@ describe("core environment orchestration", () => {
           currentEnvironment: current,
           thread: { ...fixture.thread, environmentId: currentId },
           turnId: "turn_directory",
-          input: { path: target.path },
+          input: { path: "/tmp/same-project-worktree" },
         },
       );
       expect(result.success).toBe(true);
       expect(validate).not.toHaveBeenCalled();
+      expect(getThread(harness.db, fixture.thread.id)?.environmentId).toBe(
+        target.id,
+      );
     }));
 
   it.each(["removal", "cancellation"])(

@@ -1,4 +1,9 @@
-import { findEnvironmentLaunchPathClaim, getEnvironmentLaunch } from "@bb/db";
+import { and, eq, isNull, isNotNull } from "drizzle-orm";
+import {
+  environments,
+  findEnvironmentLaunchPathClaim,
+  getEnvironmentLaunch,
+} from "@bb/db";
 import type { WorkSessionDeps } from "../../types.js";
 import { ApiError } from "../../errors.js";
 import { callHostOnlineRpc } from "../hosts/online-rpc.js";
@@ -17,6 +22,44 @@ export async function canonicalEnvironmentPath(
     timeoutMs: 10_000,
   });
   return result.path;
+}
+
+export async function resolveEnvironmentPathIdentity(
+  deps: WorkSessionDeps,
+  hostId: string,
+  path: string,
+): Promise<string> {
+  const canonicalPath = await canonicalEnvironmentPath(deps, hostId, path);
+  const rows = deps.db
+    .select({ id: environments.id, path: environments.path })
+    .from(environments)
+    .where(
+      and(
+        eq(environments.hostId, hostId),
+        isNull(environments.canonicalPath),
+        isNotNull(environments.path),
+      ),
+    )
+    .all();
+  for (const row of rows) {
+    if (row.path === null) continue;
+    const identity =
+      row.path === path
+        ? canonicalPath
+        : await canonicalEnvironmentPath(deps, hostId, row.path);
+    deps.db
+      .update(environments)
+      .set({ canonicalPath: identity })
+      .where(
+        and(
+          eq(environments.id, row.id),
+          eq(environments.path, row.path),
+          isNull(environments.canonicalPath),
+        ),
+      )
+      .run();
+  }
+  return canonicalPath;
 }
 
 export async function withEnvironmentPathAdmission<T>(

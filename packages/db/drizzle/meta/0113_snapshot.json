@@ -1,8 +1,6 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "0b0b3298-0afd-4466-99ff-c2360d426e74",
-  "prevId": "1372ccec-3fb1-4472-968f-5db67682af56",
   "tables": {
     "app_settings": {
       "name": "app_settings",
@@ -539,6 +537,13 @@
           "notNull": false,
           "autoincrement": false
         },
+        "claim_path": {
+          "name": "claim_path",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
         "owns_path": {
           "name": "owns_path",
           "type": "integer",
@@ -657,6 +662,13 @@
         },
         "path": {
           "name": "path",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "canonical_path": {
+          "name": "canonical_path",
           "type": "text",
           "primaryKey": false,
           "notNull": false,
@@ -4069,11 +4081,12 @@
   "views": {},
   "enums": {},
   "_meta": {
-    "schemas": {},
     "tables": {},
     "columns": {}
   },
   "internal": {
     "indexes": {}
-  }
+  },
+  "id": "927f2864-53bc-4bd4-b416-3a7eba2b39e8",
+  "prevId": "1372ccec-3fb1-4472-968f-5db67682af56"
 }

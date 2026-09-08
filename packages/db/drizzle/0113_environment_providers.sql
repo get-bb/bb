@@ -11,6 +11,7 @@ CREATE TABLE `environment_launches` (
 	`path_key` text NOT NULL,
 	`host_id` text,
 	`path` text,
+	`claim_path` text,
 	`owns_path` integer NOT NULL,
 	`merge_base_branch` text,
 	`resource` text,
@@ -179,3 +180,6 @@ ALTER TABLE `environments` DROP COLUMN `destroy_attempt_id`;
 ALTER TABLE `environments` DROP COLUMN `retire_requested_at`;
 --> statement-breakpoint
 ALTER TABLE `environments` DROP COLUMN `workspace_provision_type`;
+
+--> statement-breakpoint
+ALTER TABLE `environments` ADD `canonical_path` text;

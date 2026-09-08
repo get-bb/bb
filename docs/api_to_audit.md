@@ -2521,6 +2521,10 @@ first-party environment host module consumes them for checkout and worktree.
   asynchronous atomic host/path reservation on the launch row before provider
   mutation; resolves false for competing claims or stale attempts. Core resolves
   the canonical path on the selected host and stores it separately from the
-  display path. Released by attachment or completed cancellation cleanup,
+  display path. Attachment persists that identity on the environment row.
+  SDK environment path filters resolve aliases on the selected host and compare
+  the persisted identity, including for live-thread exclusion and foreign-path
+  refusal. Legacy rows resolve their identity on first path lookup. The claim
+  is released by attachment or completed cancellation cleanup,
   including after failure. Stabilize after restart, cancellation,
   competing checkout, and path-normalization behavior has been audited.

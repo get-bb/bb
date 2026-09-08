@@ -516,7 +516,11 @@ export function attachProviderLaunch(
   const row = getEnvironmentLaunch(db, threadId);
   if (row === null || row.phase !== "ready") return;
   db.update(environments)
-    .set({ resource: row.resource, retireAt: null })
+    .set({
+      resource: row.resource,
+      retireAt: null,
+      ...(row.claimPath === null ? {} : { canonicalPath: row.claimPath }),
+    })
     .where(eq(environments.id, environmentId))
     .run();
   updateEnvironmentLaunch(db, { ...row, environmentId });
