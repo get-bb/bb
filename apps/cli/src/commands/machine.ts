@@ -4,8 +4,8 @@ import {
   type MachineEnrollmentOptions,
 } from "./machine-enrollment.js";
 import { Command } from "commander";
-import type { Host } from "@bb/domain";
-import { action } from "../action.js";
+import { jsonValueSchema, type Host, type JsonValue } from "@bb/domain";
+import { action, CliExitError } from "../action.js";
 import { createCliBbSdk } from "../client.js";
 import { renderBorderlessTable } from "../table.js";
 import { outputJson } from "./helpers.js";
@@ -14,6 +14,12 @@ import { confirmDestructiveAction } from "./helpers.js";
 interface MachineListCommandOptions {
   json?: boolean;
   project?: string;
+}
+
+interface MachineCreateCommandOptions extends MachineListCommandOptions {
+  provider: string;
+  key?: string;
+  inputs?: string;
 }
 
 interface MachineMutationCommandOptions extends MachineListCommandOptions {
@@ -145,6 +151,71 @@ export function registerMachineCommands(
       action(async (options: MachineEnrollmentOptions) => {
         const result = await enrollMachine(options);
         console.log(`Machine ${result.hostId} enrolled`);
+      }),
+    );
+
+  machine
+    .command("create")
+    .description("Create a machine using an installed provider")
+    .requiredOption("--provider <id>", "Machine provider ID")
+    .option("--key <idempotency-key>", "Reuse a stable key when retrying creation")
+    .option("--inputs <JSON>", "Provider inputs as JSON")
+    .option("--project <id/name>", "Project ID or exact project name")
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(async (opts: MachineCreateCommandOptions) => {
+        const machineProviderId = parseProviderCliKey(opts.provider);
+        const key = opts.key?.trim();
+        if (key === "") throw new Error("Creation key must not be empty.");
+        let inputs: JsonValue = null;
+        if (opts.inputs !== undefined) {
+          try {
+            inputs = jsonValueSchema.parse(JSON.parse(opts.inputs));
+          } catch {
+            throw new Error("--inputs must be valid JSON.");
+          }
+        }
+        const controller = new AbortController();
+        const cancel = () => controller.abort();
+        process.once("SIGINT", cancel);
+        try {
+          const sdk = createCliBbSdk(getUrl());
+          let projectId: string | null = null;
+          if (opts.project !== undefined) {
+            const target = opts.project.trim();
+            if (!target) throw new Error("Project must not be empty.");
+            const projects = await sdk.projects.list({
+              includePersonal: true,
+              signal: controller.signal,
+            });
+            const byId = projects.find((project) => project.id === target);
+            const matches = byId
+              ? [byId]
+              : projects.filter((project) => project.name === target);
+            if (matches.length === 0) throw new Error("Project was not found.");
+            if (matches.length > 1) {
+              throw new Error("Project name is ambiguous; use its ID.");
+            }
+            projectId = matches[0].id;
+          }
+          controller.signal.throwIfAborted();
+          const host = await sdk.hosts.create({
+            machineProviderId,
+            projectId,
+            inputs,
+            ...(key === undefined ? {} : { key }),
+            signal: controller.signal,
+          });
+          controller.signal.throwIfAborted();
+          if (!outputJson(opts, host)) console.log(`Machine ${host.id} created`);
+        } catch (error) {
+          if (controller.signal.aborted) {
+            throw new CliExitError("Machine creation cancelled.", 130);
+          }
+          throw error;
+        } finally {
+          process.off("SIGINT", cancel);
+        }
       }),
     );
 

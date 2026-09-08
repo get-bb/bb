@@ -60,6 +60,87 @@ describe("bb machine command output", () => {
   const register: CommandRegistrar = (program) =>
     registerMachineCommands(program, () => "http://server");
 
+  it("creates with a stable key, JSON inputs, and a project resolved by name", async () => {
+    const create = vi.fn(async () => hosts[1]);
+    const projects = vi.fn(async () => [{ id: "project-1", name: "Example" }]);
+    stubServerApi({ "v1.hosts.$post": create, "v1.projects.$get": projects });
+
+    await runCommand([
+      "machine", "create", "--provider", "ssh", "--key", "retry-1",
+      "--inputs", '{"address":"example.test"}', "--project", "Example", "--json",
+    ], register);
+
+    expect(create).toHaveBeenCalledWith({
+      json: {
+        machineProviderId: "ssh", key: "retry-1", projectId: "project-1",
+        inputs: { address: "example.test" },
+      },
+    }, { init: { signal: expect.any(AbortSignal) } });
+    expect(JSON.parse(collectLogPayloads(vi.mocked(console.log))[0])).toEqual(hosts[1]);
+  });
+
+  it("creates globally with absent inputs and lets the server choose the key", async () => {
+    const create = vi.fn(async () => hosts[1]);
+    stubServerApi({ "v1.hosts.$post": create });
+
+    await runCommand(["machine", "create", "--provider", "ssh"], register);
+
+    expect(create).toHaveBeenCalledWith({
+      json: { machineProviderId: "ssh", projectId: null, inputs: null },
+    }, { init: { signal: expect.any(AbortSignal) } });
+    expect(collectLogPayloads(vi.mocked(console.log))).toEqual(["Machine host-remote created"]);
+  });
+
+  it("rejects malformed JSON without submitting or echoing provider inputs", async () => {
+    const create = vi.fn(async () => hosts[1]);
+    stubServerApi({ "v1.hosts.$post": create });
+
+    await expect(runCommand([
+      "machine", "create", "--provider", "ssh", "--inputs", '{"credential":"secret"',
+    ], register)).rejects.toThrow("process.exit:1");
+
+    expect(create).not.toHaveBeenCalled();
+    expect(collectLogPayloads(vi.mocked(console.error))).toEqual(["Error: --inputs must be valid JSON."]);
+  });
+
+  it("refuses ambiguous project names before creating", async () => {
+    const create = vi.fn(async () => hosts[1]);
+    stubServerApi({
+      "v1.hosts.$post": create,
+      "v1.projects.$get": vi.fn(async () => [
+        { id: "project-1", name: "Example" }, { id: "project-2", name: "Example" },
+      ]),
+    });
+
+    await expect(runCommand([
+      "machine", "create", "--provider", "ssh", "--project", "Example",
+    ], register)).rejects.toThrow("process.exit:1");
+
+    expect(create).not.toHaveBeenCalled();
+    expect(collectLogPayloads(vi.mocked(console.error))).toEqual([
+      "Error: Project name is ambiguous; use its ID.",
+    ]);
+  });
+
+  it("aborts the create request on SIGINT and removes its signal listener", async () => {
+    const listeners = process.listenerCount("SIGINT");
+    const create = vi.fn(async (_request: object, options: { init: { signal: AbortSignal } }) => {
+      process.emit("SIGINT");
+      expect(options.init.signal.aborted).toBe(true);
+      throw new Error("remote error containing sensitive input");
+    });
+    stubServerApi({ "v1.hosts.$post": create });
+
+    await expect(runCommand([
+      "machine", "create", "--provider", "ssh",
+    ], register)).rejects.toThrow("process.exit:130");
+
+    expect(create).toHaveBeenCalledOnce();
+    expect(process.listenerCount("SIGINT")).toBe(listeners);
+    expect(collectLogPayloads(vi.mocked(console.log))).toEqual([]);
+    expect(collectLogPayloads(vi.mocked(console.error))).toEqual(["Error: Machine creation cancelled."]);
+  });
+
   it("bb machine list --json prints the raw host list", async () => {
     stubServerApi({ "v1.hosts.$get": vi.fn(async () => hosts) });
 
