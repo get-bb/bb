@@ -558,10 +558,12 @@ function QuotaDetail({
   label,
   quota,
   threshold,
+  showRoutingHint = true,
 }: {
   label: string;
   quota: FamilyQuota | null;
   threshold: number;
+  showRoutingHint?: boolean;
 }) {
   const utilization = quota?.utilization ?? null;
   return (
@@ -588,7 +590,9 @@ function QuotaDetail({
           {quota?.resetAt === null || quota === null
             ? ""
             : ` · ${resetLabel(quota.resetAt)}`}{" "}
-          · will be skipped at {Math.round(threshold * 100)}%
+          {showRoutingHint
+            ? ` · will be skipped at ${Math.round(threshold * 100)}%`
+            : null}
         </div>
       </div>
     </div>
@@ -1353,16 +1357,14 @@ function AccountPoolSettings() {
   );
 }
 
-function AccountDrawer({
+function AccountQuotaDetails({
   account,
   threshold,
-  close,
-  act,
+  showRoutingHint = true,
 }: {
   account: AccountSummary;
   threshold: number;
-  close: () => void;
-  act: (action: "toggle" | "refresh" | "remove") => void;
+  showRoutingHint?: boolean;
 }) {
   const shared = (
     utilization: number | null,
@@ -1375,6 +1377,76 @@ function AccountDrawer({
     observedAt: account.observedAt ?? 0,
     source: "header",
   });
+  return (
+    <div className="space-y-4">
+      {account.provider === "codex" ? (
+        account.limitWindows.length === 0 ? (
+          <div className="text-sm text-muted-foreground">
+            No usage limits observed yet.
+          </div>
+        ) : (
+          account.limitWindows.map((window) => (
+            <QuotaDetail
+              key={window.slot}
+              label={windowLongLabel(window)}
+              quota={window}
+              threshold={threshold}
+              showRoutingHint={showRoutingHint}
+            />
+          ))
+        )
+      ) : (
+        <>
+          <QuotaDetail
+            label="5 hour"
+            quota={shared(
+              account.fiveHourUtilization,
+              account.fiveHourResetAt,
+              account.fiveHourStatus,
+            )}
+            threshold={threshold}
+            showRoutingHint={showRoutingHint}
+          />
+          <QuotaDetail
+            label="7 day"
+            quota={shared(
+              account.sevenDayUtilization,
+              account.sevenDayResetAt,
+              account.sevenDayStatus,
+            )}
+            threshold={threshold}
+            showRoutingHint={showRoutingHint}
+          />
+          {MODEL_FAMILIES.flatMap((family) =>
+            account.familyWeekly[family] === null
+              ? []
+              : [
+                  <QuotaDetail
+                    key={family}
+                    label={FAMILY_LABELS[family]}
+                    quota={account.familyWeekly[family]}
+                    threshold={threshold}
+                    showRoutingHint={showRoutingHint}
+                  />,
+                ],
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+function AccountDrawer({
+  account,
+  threshold,
+  close,
+  act,
+}: {
+  account: AccountSummary;
+  threshold: number;
+  close: () => void;
+  act: (action: "toggle" | "refresh" | "remove") => void;
+}) {
   const providerId =
     account.provider === "claude"
       ? account.accountUuid
@@ -1407,57 +1479,7 @@ function AccountDrawer({
         <SettingsBadge>{tier(account)}</SettingsBadge>
         <SettingsBadge>{statusPresentation(account).label}</SettingsBadge>
       </div>
-      <div className="space-y-4">
-        {account.provider === "codex" ? (
-          account.limitWindows.length === 0 ? (
-            <div className="text-sm text-muted-foreground">
-              No usage limits observed yet.
-            </div>
-          ) : (
-            account.limitWindows.map((window) => (
-              <QuotaDetail
-                key={window.slot}
-                label={windowLongLabel(window)}
-                quota={window}
-                threshold={threshold}
-              />
-            ))
-          )
-        ) : (
-          <>
-            <QuotaDetail
-              label="5 hour"
-              quota={shared(
-                account.fiveHourUtilization,
-                account.fiveHourResetAt,
-                account.fiveHourStatus,
-              )}
-              threshold={threshold}
-            />
-            <QuotaDetail
-              label="7 day"
-              quota={shared(
-                account.sevenDayUtilization,
-                account.sevenDayResetAt,
-                account.sevenDayStatus,
-              )}
-              threshold={threshold}
-            />
-            {MODEL_FAMILIES.flatMap((family) =>
-              account.familyWeekly[family] === null
-                ? []
-                : [
-                    <QuotaDetail
-                      key={family}
-                      label={FAMILY_LABELS[family]}
-                      quota={account.familyWeekly[family]}
-                      threshold={threshold}
-                    />,
-                  ],
-            )}
-          </>
-        )}
-      </div>
+      <AccountQuotaDetails account={account} threshold={threshold} />
       <dl className="grid grid-cols-[7rem_1fr] gap-x-3 gap-y-2 border-t border-border pt-4 text-sm">
         <dt className="text-muted-foreground">Kind</dt>
         <dd>
@@ -1632,9 +1654,149 @@ function LoginDrawer({
   );
 }
 
+function AccountPoolUsage() {
+  const rpc = useRpc<typeof accountPoolRpcContract>();
+  const [accounts, setAccounts] = useState<AccountSummary[] | null>(null);
+  const [threshold, setThreshold] = useState(0.98);
+  const [error, setError] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const mounted = useRef(false);
+  const request = useRef(0);
+  const load = useCallback(async () => {
+    const current = ++request.current;
+    try {
+      const [next, config] = await Promise.all([
+        rpc.call("account.list", null),
+        rpc.call("config.get", null),
+      ]);
+      if (!mounted.current || current !== request.current) return;
+      setAccounts(next);
+      setThreshold(config.switchThreshold);
+      setError(null);
+    } catch (loadError) {
+      if (mounted.current && current === request.current)
+        setError(errorText(loadError));
+    }
+  }, [rpc]);
+  useEffect(() => {
+    mounted.current = true;
+    void load();
+    return () => {
+      mounted.current = false;
+      request.current++;
+    };
+  }, [load]);
+  useRealtime(ACCOUNT_POOL_ACCOUNTS_CHANGED, () => void load());
+  useRealtime(ACCOUNT_POOL_CONFIG_CHANGED, () => void load());
+
+  const refresh = async () => {
+    setRefreshing(true);
+    setError(null);
+    const failures: string[] = [];
+    try {
+      const current = await rpc.call("account.list", null);
+      for (const account of current) {
+        if (!mounted.current) return;
+        try {
+          await rpc.call("account.refreshUsage", { accountId: account.id });
+        } catch (refreshError) {
+          failures.push(`${account.label}: ${errorText(refreshError)}`);
+        }
+      }
+      await load();
+      if (mounted.current && failures.length > 0) setError(failures.join("; "));
+    } catch (refreshError) {
+      if (mounted.current) setError(errorText(refreshError));
+    } finally {
+      if (mounted.current) setRefreshing(false);
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex justify-end">
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={refreshing}
+          onClick={() => void refresh()}
+        >
+          {refreshing ? "Reloading pooled usage…" : "Reload pooled usage"}
+        </Button>
+      </div>
+      {error === null ? null : (
+        <p role="alert" className="text-sm text-destructive-text">
+          {error}
+        </p>
+      )}
+      {accounts === null ? (
+        error === null ? (
+          <p className="text-sm text-muted-foreground">
+            Loading pooled accounts…
+          </p>
+        ) : null
+      ) : accounts.length === 0 ? (
+        <p className="text-sm text-muted-foreground">
+          No pooled accounts configured.
+        </p>
+      ) : (
+        <div className="divide-y divide-border">
+          {accounts.map((account) => (
+            <section
+              key={account.id}
+              aria-label={account.label}
+              className="space-y-3 py-4 first:pt-0 last:pb-0"
+            >
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <h3 className="break-words text-sm font-semibold">
+                    {account.label}
+                  </h3>
+                  <p className="text-xs text-muted-foreground">
+                    {account.provider === "claude" ? "Claude" : "Codex"}
+                    {account.email !== null && account.email !== account.label
+                      ? ` · ${account.email}`
+                      : ""}
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  <SettingsBadge>{tier(account)}</SettingsBadge>
+                  <SettingsBadge>
+                    {statusPresentation(account).label}
+                  </SettingsBadge>
+                </div>
+              </div>
+              <AccountQuotaDetails
+                account={account}
+                threshold={threshold}
+                showRoutingHint={false}
+              />
+              {account.error === null ? null : (
+                <p className="text-xs text-destructive-text">{account.error}</p>
+              )}
+              <p className="text-xs text-muted-foreground">
+                {account.observedAt === null
+                  ? "Usage has not been observed yet."
+                  : `Updated ${relative(account.observedAt)}`}
+              </p>
+            </section>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default definePluginApp((app) => {
   app.slots.settingsSection({
     id: "accounts",
     component: AccountPoolSettings,
+  });
+  app.slots.settingsSection({
+    id: "usage",
+    title: "Pooled accounts",
+    description: "Account pool usage shared across all machines.",
+    experimental_placement: "usage",
+    component: AccountPoolUsage,
   });
 });

@@ -9,6 +9,12 @@ Use `bb pool` for this plugin's accounts and routes. Inspect current state with
 `bb pool status --json` and `bb pool account list --json` before changing routing.
 Use `bb pool --help` for available commands.
 
+Settings → Usage shows pooled accounts across all machines, including their
+quota windows, reset times, and status. Reload pooled usage refreshes each account.
+The same data is available through `bb pool account list --json` and plugin RPC
+`account.list`; refresh one account with `bb pool account refresh <id>` or RPC
+`account.refreshUsage`.
+
 For account login/import, secret handling, routing settings, ordering, or failover,
 read [references/accounts-and-routing.md](references/accounts-and-routing.md).
 

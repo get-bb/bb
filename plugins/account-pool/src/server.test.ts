@@ -1217,6 +1217,27 @@ describe("Account Pool plugin", () => {
     const account = listed.accounts[0];
     if (account === undefined) throw new Error("CLI account was not listed.");
     expect(account).toMatchObject({ label: "Claude API key", priority: 100 });
+    const refreshed = await fixture.host.harness.behavior.runCli([
+      "account",
+      "refresh",
+      account.id,
+      "--json",
+    ]);
+    expect(refreshed.exitCode).toBe(0);
+    expect(
+      z
+        .object({ account: accountSummarySchema })
+        .strict()
+        .parse(JSON.parse(refreshed.stdout)).account.id,
+    ).toBe(account.id);
+    const missing = await fixture.host.harness.behavior.runCli([
+      "account",
+      "refresh",
+      "00000000-0000-4000-8000-000000000000",
+      "--json",
+    ]);
+    expect(missing.exitCode).toBe(1);
+
     expect(
       (
         await fixture.host.harness.behavior.runCli([

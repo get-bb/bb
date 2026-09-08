@@ -23,3 +23,8 @@ This plugin is experimental. Routing behavior, stored data, and the CLI can chan
 ## For agents
 
 `bb pool account add|list|remove|enable|disable|priority|reorder`, `bb pool status`, `bb pool routing <claude|codex> [--off]`, `bb pool config`, `bb pool config set`, `bb pool token rotate`, and `bb pool bypass <thread-id>`. `list` and `status` take `--json`.
+
+Settings → Usage includes a pooled-account section with Claude and Codex quota
+windows, reset times, account status, and a reload action. These accounts are
+shared across machines. Use `bb pool account list --json` to inspect the same
+data and `bb pool account refresh <id> --json` to refresh one account.

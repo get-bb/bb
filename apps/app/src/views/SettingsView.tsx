@@ -44,6 +44,7 @@ import {
   type ThemePreference,
 } from "@/hooks/useTheme";
 import { useHostDaemon, useLocalHostDaemonAccess } from "@/hooks/useHostDaemon";
+import { PluginUsageSettingsSections } from "@/components/plugin/PluginSettingsSections";
 import { UsageLimitsSettingsSection } from "@/components/settings/UsageLimitsSettingsSection";
 import { ProvidersSettingsSection } from "@/components/settings/ProvidersSettingsSection";
 import { CodeRendererSettings } from "@/components/settings/CodeRendererSettings";
@@ -1141,7 +1142,12 @@ export function SettingsView() {
       />
     );
   } else if (activeSection === "usage") {
-    content = <UsageLimitsSettingsSection />;
+    content = (
+      <div className="space-y-6">
+        <UsageLimitsSettingsSection />
+        <PluginUsageSettingsSections />
+      </div>
+    );
   } else if (activeSection === "keyboard") {
     content = <KeyboardSettingsSection />;
   } else if (activeSection === "files") {

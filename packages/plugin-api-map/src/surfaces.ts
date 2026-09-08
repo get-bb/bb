@@ -507,6 +507,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Render whatever UI it needs, such as a connect-account button, a test-connection result, or a preview",
           "Run in the browser, so it stores nothing itself. It calls the plugin's own backend to do that",
           "Supply a heading and a one-line description for bb to render above it",
+          'Set experimental_placement to "usage" to render below provider limits in Settings → Usage instead of the plugin page; omitted or "plugin" preserves the existing page',
         ],
         apiSymbols: ["PluginSettingsSectionRegistration"],
         firstParty: ["Account Pooler", "Keep Awake", "Memory", "Remote access"],

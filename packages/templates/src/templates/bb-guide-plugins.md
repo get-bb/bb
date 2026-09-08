@@ -36,6 +36,7 @@ bb pool account add --provider codex --import
 printf '%s\n' "$ANTHROPIC_API_KEY" | bb pool account add --provider claude --api-key-stdin [--label <text>] [--priority <n>]
 bb pool account add --provider claude --api-key <key> [--label <text>] [--priority <n>]
 bb pool account list [--json]
+bb pool account refresh <id> [--json]
 bb pool account remove <id>
 bb pool account enable <id>
 bb pool account disable <id>

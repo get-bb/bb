@@ -399,8 +399,21 @@ export function collectPluginAppRegistrations(
           "description",
           registration.description,
         );
+        const placement = registration.experimental_placement;
+        if (
+          placement !== undefined &&
+          placement !== "plugin" &&
+          placement !== "usage"
+        ) {
+          throw new Error(
+            `${kind}: "experimental_placement" must be "plugin" or "usage" when set`,
+          );
+        }
         collected.settingsSections.push({
           id,
+          ...(placement === undefined
+            ? {}
+            : { experimental_placement: placement }),
           ...(title !== undefined ? { title } : {}),
           ...(description !== undefined ? { description } : {}),
           component: requireComponent(kind, registration.component),

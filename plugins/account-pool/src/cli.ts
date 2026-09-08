@@ -40,6 +40,7 @@ const HELP = [
   "  bb pool account add --provider claude --api-key-stdin [--label <text>] [--priority <n>]",
   "  bb pool account add --provider claude --api-key <key> [--label <text>] [--priority <n>]  Unsafe: exposes the key in process arguments.",
   "  bb pool account list [--json]",
+  "  bb pool account refresh <id> [--json]",
   "  bb pool account remove <id>",
   "  bb pool account enable <id>",
   "  bb pool account disable <id>",
@@ -507,6 +508,19 @@ export function registerPoolCli(
           return {
             exitCode: 0,
             stdout: `Added ${account.label} (${account.id}).\n`,
+          };
+        }
+        if (argv[0] === "account" && argv[1] === "refresh") {
+          const { id } = accountIdInputSchema.parse({ id: argv[2] });
+          const flags = parseFlags(argv.slice(3), ["json"], []);
+          const account = await operations.refreshUsage(id);
+          if (account === null)
+            throw new Error(`Account ${id} does not exist.`);
+          return {
+            exitCode: 0,
+            stdout: flags.booleans.has("json")
+              ? json({ account })
+              : `${formatAccounts([account])}\n`,
           };
         }
         if (argv[0] === "account" && argv[1] === "list") {

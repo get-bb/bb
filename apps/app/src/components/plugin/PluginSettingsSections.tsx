@@ -7,7 +7,18 @@ import { PluginSlotMount } from "./PluginSlotMount";
 export function PluginSettingsSections({ pluginId }: { pluginId: string }) {
   const { settingsSections } = usePluginSlots();
   const sections = settingsSections.filter(
-    (section) => section.pluginId === pluginId,
+    (section) =>
+      section.pluginId === pluginId &&
+      section.experimental_placement !== "usage",
+  );
+  if (sections.length === 0) return null;
+  return <PluginSettingsSectionList sections={sections} />;
+}
+
+export function PluginUsageSettingsSections() {
+  const { settingsSections } = usePluginSlots();
+  const sections = settingsSections.filter(
+    (section) => section.experimental_placement === "usage",
   );
   if (sections.length === 0) return null;
   return <PluginSettingsSectionList sections={sections} />;

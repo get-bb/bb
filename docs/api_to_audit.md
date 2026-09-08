@@ -1,5 +1,17 @@
 # APIs To Audit
 
+## `PluginSettingsSectionRegistration.experimental_placement`
+
+**What it does.** Selects the host page for a settings section. Omitted or
+`"plugin"` preserves the plugin settings page; `"usage"` mounts the section
+below provider limits in Settings → Usage, with the same plugin context and
+crash isolation. Usage sections receive no machine filter: pooled quotas may
+be shared across machines.
+
+**Audit before stabilizing.** Confirm the page destinations, whether usage
+sections need host selection or a shared refresh contract, and discoverability
+for plugins that only register a usage section.
+
 ## `bb.http.experimental_websocket`
 
 **What it does.** Registers an exact-path WebSocket upgrade in the plugin's

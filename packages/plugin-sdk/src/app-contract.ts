@@ -443,6 +443,8 @@ export interface PluginHomepageSectionRegistration {
 }
 
 export interface PluginSettingsSectionRegistration {
+  /** Render on Settings → Usage instead of the plugin page. Defaults to "plugin". */
+  experimental_placement?: "plugin" | "usage";
   /** Unique within the plugin; letters, digits, `-`, `_`. */
   id: string;
   /** Optional host-rendered section heading. */

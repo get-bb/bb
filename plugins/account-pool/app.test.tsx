@@ -452,3 +452,124 @@ describe("Account Pool settings", () => {
     },
   );
 });
+
+function renderUsage(
+  accounts: AccountSummary[],
+  extraRpc: Record<string, (input: { accountId: string }) => unknown> = {},
+) {
+  const registration = app.settingsSections.find(
+    (section) => section.experimental_placement === "usage",
+  );
+  if (registration === undefined)
+    throw new Error("Missing pooled usage section");
+  return renderSlot(
+    registration,
+    {},
+    {
+      rpc: {
+        "account.list": () => accounts,
+        "config.get": () => config(),
+        ...extraRpc,
+      },
+    },
+  );
+}
+
+describe("Pooled account usage", () => {
+  it("updates quotas when the pool reports background changes", async () => {
+    const accounts = [account()];
+    const slot = renderUsage(accounts);
+    expect(await slot.findByText(/21%/)).toBeTruthy();
+    accounts[0] = account({ fiveHourUtilization: 0.56 });
+    await slot.behavior.emitRealtime("accounts-changed", null);
+    expect(await slot.findByText("56%")).toBeTruthy();
+  });
+
+  it("shows Claude and Codex quotas, resets, disabled accounts and errors", async () => {
+    const slot = renderUsage([
+      account({
+        label: "Claude work",
+        sevenDayUtilization: 0.45,
+        fiveHourResetAt: Date.now() + 3_600_000,
+      }),
+      account({
+        id: "22222222-2222-4222-8222-222222222222",
+        label: "Codex personal",
+        provider: "codex",
+        enabled: false,
+        status: "disabled",
+        subscriptionType: "Pro",
+        error: "Sign in again",
+        limitWindows: [
+          {
+            slot: "secondary",
+            windowMinutes: 10080,
+            utilization: 0.73,
+            resetAt: null,
+            status: "allowed",
+            observedAt: 1,
+            source: "usage",
+          },
+        ],
+      }),
+    ]);
+    expect(await slot.findByText("Claude work")).toBeTruthy();
+    expect(slot.getByText("Codex personal")).toBeTruthy();
+    expect(slot.getByText("Weekly")).toBeTruthy();
+    expect(slot.getByText(/21%.*resets in/)).toBeTruthy();
+    expect(slot.getByText("73%")).toBeTruthy();
+    expect(slot.getByText("Disabled")).toBeTruthy();
+    expect(slot.getByText("Sign in again")).toBeTruthy();
+    expect(slot.queryByText(/will be skipped/)).toBeNull();
+  });
+
+  it("refreshes remaining accounts after a failure and retains refreshed quotas", async () => {
+    const accounts = [
+      account({ label: "First" }),
+      account({ id: "22222222-2222-4222-8222-222222222222", label: "Second" }),
+    ];
+    const refresh = vi.fn(({ accountId }: { accountId: string }) => {
+      if (accountId === accounts[0]!.id) throw new Error("Refresh unavailable");
+      accounts[1] = account({ ...accounts[1], fiveHourUtilization: 0.67 });
+      return { account: accounts[1] };
+    });
+    const slot = renderUsage(accounts, { "account.refreshUsage": refresh });
+    await slot.findByText("First");
+    fireEvent.click(slot.getByRole("button", { name: "Reload pooled usage" }));
+    expect(await slot.findByText("67%")).toBeTruthy();
+    expect(slot.getByRole("alert").textContent).toContain(
+      "First: Refresh unavailable",
+    );
+    expect(refresh).toHaveBeenCalledTimes(2);
+  });
+
+  it("distinguishes empty pools from missing usage", async () => {
+    const slot = renderUsage([]);
+    expect(
+      await slot.findByText("No pooled accounts configured."),
+    ).toBeTruthy();
+    slot.lifecycle.unmount();
+    const unknown = renderUsage([
+      account({ provider: "codex", observedAt: null, limitWindows: [] }),
+    ]);
+    expect(
+      await unknown.findByText("No usage limits observed yet."),
+    ).toBeTruthy();
+    expect(unknown.getByText("Usage has not been observed yet.")).toBeTruthy();
+    expect(unknown.queryByText("0%")).toBeNull();
+  });
+
+  it("recovers from an initial load error using reload", async () => {
+    const list = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("Pool unavailable"))
+      .mockResolvedValue([]);
+    const slot = renderUsage([], { "account.list": list });
+    expect(await slot.findByRole("alert")).toBeTruthy();
+    fireEvent.click(slot.getByRole("button", { name: "Reload pooled usage" }));
+    expect(
+      await slot.findByText("No pooled accounts configured."),
+    ).toBeTruthy();
+    expect(slot.queryByRole("alert")).toBeNull();
+  });
+});

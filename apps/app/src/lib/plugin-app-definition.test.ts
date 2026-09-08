@@ -15,6 +15,35 @@ function Component() {
   return null;
 }
 
+describe("settings section placement", () => {
+  it("preserves usage placement through collection", () => {
+    const definition = definePluginApp((app) => {
+      app.slots.settingsSection({
+        id: "usage",
+        experimental_placement: "usage",
+        component: Component,
+      });
+    });
+    expect(
+      collectPluginAppRegistrations(definition).settingsSections[0]
+        ?.experimental_placement,
+    ).toBe("usage");
+  });
+
+  it("rejects unknown placements at the plugin boundary", () => {
+    const definition = definePluginApp((app) => {
+      app.slots.settingsSection({
+        id: "usage",
+        experimental_placement: "other" as never,
+        component: Component,
+      });
+    });
+    expect(() => collectPluginAppRegistrations(definition)).toThrow(
+      /experimental_placement/,
+    );
+  });
+});
+
 describe("definePluginApp", () => {
   it("brands the setup for host detection", () => {
     const definition = definePluginApp(() => {});
