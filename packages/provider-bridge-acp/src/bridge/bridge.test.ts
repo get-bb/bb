@@ -3154,19 +3154,86 @@ describe("acp bridge", () => {
     expect(threadEventsOfType("provider/warning")).not.toHaveLength(0);
   });
 
-  it("reports unexpected agent exits as a single provider error", async () => {
-    const { bbThreadId, providerThreadId } = await startThread();
-    const turnId = sendTurnRequest("turn/start", providerThreadId, {
-      input: [{ type: "text", text: "die", mentions: [] }],
-    });
-    await waitForResponse(turnId);
+  it.each(["die", "die-zero"])(
+    "requests recovery after an unexpected agent exit (%s)",
+    async (text) => {
+      const { bbThreadId, providerThreadId } = await startThread();
+      const turnId = sendTurnRequest("turn/start", providerThreadId, {
+        input: [{ type: "text", text, mentions: [] }],
+      });
+      await waitForResponse(turnId);
 
-    const errors = await waitFor(() => {
-      const errorNotifications = notifications("error");
-      return errorNotifications.length > 0 ? errorNotifications : undefined;
-    }, "agent exit error notification");
-    expect(errors).toHaveLength(1);
-    expect(errors[0]?.params).toMatchObject({ threadId: bbThreadId });
+      const errors = await waitFor(() => {
+        const errorNotifications = notifications("error");
+        return errorNotifications.length > 0 ? errorNotifications : undefined;
+      }, "agent exit error notification");
+      expect(errors).toHaveLength(1);
+      expect(errors[0]?.params).toMatchObject({ threadId: bbThreadId });
+      expect(notifications("provider/recovery")).toMatchObject([
+        {
+          params: {
+            threadId: bbThreadId,
+            providerThreadId,
+            kind: "restartRecommended",
+            retryable: false,
+          },
+        },
+      ]);
+      for (const method of ["turn/start", "turn/steer"] as const) {
+        const retry = sendTurnRequest(method, providerThreadId, {
+          expectedTurnId: "old-turn",
+          input: [{ type: "text", text: "next request", mentions: [] }],
+        });
+        expect((await waitForResponse(retry)).error).toMatchObject({
+          message: "No active ACP session",
+          data: {
+            recovery: {
+              kind: "restartRecommended",
+              message: "No active ACP session",
+              retryable: false,
+            },
+          },
+        });
+      }
+      startedProviderThreadIds.pop();
+    },
+  );
+
+  it("requests recovery when an idle agent exits with code zero", async () => {
+    const { bbThreadId, providerThreadId } = await startThread();
+    const pid = Number(providerThreadId.replace("fake-sess-", ""));
+    expect(Number.isSafeInteger(pid) && pid > 0).toBe(true);
+    process.kill(pid, "SIGTERM");
+    await waitFor(
+      () => notifications("provider/recovery")[0],
+      "idle exit recovery",
+    );
+    expect(notifications("provider/recovery")).toMatchObject([
+      {
+        params: {
+          threadId: bbThreadId,
+          providerThreadId,
+          kind: "restartRecommended",
+          message: expect.stringContaining("(code 0)"),
+          retryable: false,
+        },
+      },
+    ]);
+    expect(threadEventsOfType("turn/completed")).toHaveLength(0);
+    startedProviderThreadIds.pop();
+  });
+
+  it("does not recommend restarting an intentionally released session", async () => {
+    const { bbThreadId, providerThreadId } = await startThread();
+    const stop = sendRequest("thread/stop", {
+      threadId: bbThreadId,
+      providerThreadId,
+      intent: "release",
+      activeTurnId: null,
+    });
+    expect((await waitForResponse(stop)).result).toEqual({ ok: true });
+    expect(notifications("provider/recovery")).toEqual([]);
+    expect(notifications("error")).toEqual([]);
     startedProviderThreadIds.pop();
   });
 

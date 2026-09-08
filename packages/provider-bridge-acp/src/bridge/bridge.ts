@@ -1689,12 +1689,18 @@ async function startAgentSession(
         return;
       }
       void releaseCursorMcpApproval(session);
-      emitSessionError(
-        session,
+      const message =
         `ACP agent "${agentLabel}" exited unexpectedly` +
-          `${info.code !== null ? ` (code ${info.code})` : ""}` +
-          `${info.stderrTail ? `: ${info.stderrTail}` : ""}`,
-      );
+        `${info.code !== null ? ` (code ${info.code})` : ""}` +
+        `${info.stderrTail ? `: ${info.stderrTail}` : ""}`;
+      emitSessionError(session, message);
+      sendNotification(BRIDGE_NOTIFICATION_METHODS.providerRecovery, {
+        threadId: session.bbThreadId,
+        providerThreadId: session.providerThreadId,
+        kind: "restartRecommended",
+        message,
+        retryable: false,
+      });
     },
   });
   session = {
@@ -2592,7 +2598,10 @@ async function handleRequest(
       const params = request.params;
       const session = liveSessionForThread(params.threadId);
       if (session === undefined) {
-        sendError(request.id, -32000, "No active ACP session");
+        const message = "No active ACP session";
+        sendError(request.id, -32000, message, {
+          recovery: { kind: "restartRecommended", message, retryable: false },
+        });
         return;
       }
       if (session.activePromptKind !== null) {
@@ -2616,7 +2625,10 @@ async function handleRequest(
       const params = request.params;
       const session = liveSessionForThread(params.threadId);
       if (session === undefined) {
-        sendError(request.id, -32000, "No active ACP session");
+        const message = "No active ACP session";
+        sendError(request.id, -32000, message, {
+          recovery: { kind: "restartRecommended", message, retryable: false },
+        });
         return;
       }
       if (session.activePromptKind !== "turn") {

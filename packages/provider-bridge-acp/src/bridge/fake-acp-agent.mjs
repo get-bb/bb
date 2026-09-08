@@ -528,7 +528,7 @@ async function handlePrompt(message) {
     // Stay pending until the client sends session/cancel.
     return;
   } else if (text.includes("die")) {
-    process.exit(7);
+    process.exit(text.includes("die-zero") ? 0 : 7);
   } else if (text.includes("slow")) {
     notifyUpdate(messageChunk(`echo:${text}`));
     await sleep(300);
