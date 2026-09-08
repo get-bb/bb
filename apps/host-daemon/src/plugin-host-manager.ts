@@ -2,6 +2,7 @@ import {
   operationEnvironment,
   operationSecrets,
   redactOperationSecrets,
+  redactOperationContent,
 } from "./operation-environment.js";
 import { fork, type ChildProcess } from "node:child_process";
 import { existsSync } from "node:fs";
@@ -10,6 +11,7 @@ import { isAbsolute } from "node:path";
 import { performance } from "node:perf_hooks";
 import { fileURLToPath } from "node:url";
 import type { Readable } from "node:stream";
+import { StringDecoder } from "node:string_decoder";
 import type {
   HostDaemonOnlineRpcCommand,
   HostDaemonOnlineRpcResult,
@@ -18,6 +20,7 @@ import type { HostPathWatchChange, HostWatcher } from "@bb/host-watcher";
 import { jsonValueSchema, type JsonValue } from "@bb/domain";
 import {
   createPluginProcessTempDir,
+  createSecretStreamRedactor,
   ensurePluginProcessDataDir,
   sanitizeInheritedChildProcessEnv,
 } from "@bb/process-utils";
@@ -175,7 +178,10 @@ function errorMessage(error: unknown): string {
 function observeBoundedStderr(
   source: Readable,
   onLine: (line: string) => void,
+  getSecrets: () => readonly string[],
 ): void {
+  const decoder = new StringDecoder("utf8");
+  const redactor = createSecretStreamRedactor(getSecrets);
   let tail = Buffer.alloc(0);
   let emittedLines = 0;
   let truncated = false;
@@ -204,7 +210,7 @@ function observeBoundedStderr(
     onLine(tail.toString("utf8").replace(/\r$/u, ""));
     tail = Buffer.alloc(0);
   };
-  source.on("data", (chunk: Buffer) => {
+  const consume = (chunk: Buffer): void => {
     if (truncated) return;
     let remaining = chunk;
     while (remaining.length > 0 && !truncated) {
@@ -217,8 +223,14 @@ function observeBoundedStderr(
       emit();
       remaining = remaining.subarray(newline + 1);
     }
+  };
+  source.on("data", (chunk: Buffer) => {
+    consume(Buffer.from(redactor.push(decoder.write(chunk))));
   });
-  source.on("end", emit);
+  source.once("end", () => {
+    consume(Buffer.from(redactor.push(decoder.end()) + redactor.flush()));
+    emit();
+  });
 }
 
 function sendToWorker(child: ChildProcess, message: object): boolean {
@@ -554,16 +566,20 @@ export class PluginHostManager {
     }, START_TIMEOUT_MS);
     startTimer.unref?.();
     if (child.stderr !== null) {
-      observeBoundedStderr(child.stderr, (line) => {
-        this.options.logger.warn(
-          {
-            pluginId: worker.pluginId,
-            origin: "host",
-            stderr: redactOperationSecrets(line, [...worker.secrets]),
-          },
-          "Host plugin stderr",
-        );
-      });
+      observeBoundedStderr(
+        child.stderr,
+        (line) => {
+          this.options.logger.warn(
+            {
+              pluginId: worker.pluginId,
+              origin: "host",
+              stderr: line,
+            },
+            "Host plugin stderr",
+          );
+        },
+        () => [...worker.secrets],
+      );
     }
     child.once("error", (error) => {
       clearTimeout(startTimer);
@@ -573,18 +589,7 @@ export class PluginHostManager {
     });
     child.on("message", (message: unknown) => {
       if (typeof message !== "object" || message === null) return;
-      const record = Object.fromEntries(
-        Object.entries(
-          JSON.parse(
-            redactOperationSecrets(
-              JSON.stringify(message),
-              [...worker.secrets].map((secret) =>
-                JSON.stringify(secret).slice(1, -1),
-              ),
-            ),
-          ),
-        ),
-      );
+      const record = Object.fromEntries(Object.entries(message));
       if (
         record.type === "ready" &&
         record.protocolVersion === HOST_WORKER_PROTOCOL_VERSION &&
@@ -611,7 +616,7 @@ export class PluginHostManager {
       }
       if (record.type === "startup-error" && typeof record.error === "string") {
         clearTimeout(startTimer);
-        failWorker(record.error);
+        failWorker(redactOperationSecrets(record.error, [...worker.secrets]));
         return;
       }
       if (
@@ -629,7 +634,7 @@ export class PluginHostManager {
           pluginId: worker.pluginId,
           generation: worker.generation,
           signal: record.signal,
-          payload: payload.data,
+          payload: redactOperationContent(payload.data, [...worker.secrets]),
         });
         return;
       }
@@ -953,13 +958,16 @@ export class PluginHostManager {
       pending.reject(pending.cancellationError);
     } else if (result.ok) {
       const output = jsonValueSchema.safeParse(result.output);
-      if (output.success) pending.resolve({ output: output.data });
+      if (output.success)
+        pending.resolve({
+          output: redactOperationContent(output.data, [...worker.secrets]),
+        });
       else pending.reject(new Error("host handler returned invalid JSON"));
     } else {
       pending.reject(
         new Error(
           typeof result.error === "string"
-            ? result.error
+            ? redactOperationSecrets(result.error, [...worker.secrets])
             : "host handler failed",
         ),
       );
