@@ -1161,27 +1161,45 @@ interface ExtractedInput {
   images: ImageContent[];
 }
 
+type TextPromptInput = Extract<
+  TurnStartParams["input"][number],
+  { type: "text" }
+>;
+
+function toPiPromptText(input: TextPromptInput): string {
+  let text = input.text;
+  const mentions = [...input.mentions].sort(
+    (left, right) => right.start - left.start || right.end - left.end,
+  );
+  for (const mention of mentions) {
+    const resource = mention.resource;
+    if (
+      resource.kind !== "command" ||
+      resource.source !== "skill" ||
+      input.text.slice(mention.start, mention.end) !==
+        `${resource.trigger}${resource.name}`
+    ) {
+      continue;
+    }
+    text = `${text.slice(0, mention.start)}${resource.trigger}skill:${resource.name}${text.slice(mention.end)}`;
+  }
+  return text;
+}
+
 function extractInput(input: TurnStartParams["input"]): ExtractedInput {
   const chunks: string[] = [];
   const images: ImageContent[] = [];
   for (const item of input) {
-    if (!item || typeof item !== "object") continue;
-    const typed = item as {
-      type?: string;
-      text?: string;
-      path?: string;
-      mimeType?: string;
-    };
-    if (typed.type === "text" && typeof typed.text === "string") {
-      chunks.push(typed.text);
-    } else if (typed.type === "localImage" && typeof typed.path === "string") {
+    if (item.type === "text") {
+      chunks.push(toPiPromptText(item));
+    } else if (item.type === "localImage") {
       try {
-        const data = readFileSync(typed.path).toString("base64");
-        const mimeType = typed.mimeType ?? mimeTypeFromExtension(typed.path);
+        const data = readFileSync(item.path).toString("base64");
+        const mimeType = mimeTypeFromExtension(item.path);
         images.push({ type: "image", data, mimeType });
       } catch {}
-    } else if (typed.type === "localFile" && typeof typed.path === "string") {
-      chunks.push(`[Attached file: ${typed.path}]`);
+    } else if (item.type === "localFile") {
+      chunks.push(`[Attached file: ${item.path}]`);
     }
   }
   return { text: chunks.length > 0 ? chunks.join("\n") : undefined, images };
