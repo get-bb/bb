@@ -73,7 +73,7 @@ export function createSshRunner(executable = "ssh"): SshRunner {
             "ControlPath=none",
             "--",
             target,
-            request.command.map(shellQuote).join(" "),
+            `exec "\${SHELL:-/bin/sh}" -lc ${shellQuote(`exec ${request.command.map(shellQuote).join(" ")}`)}`,
           ],
           { stdio: ["pipe", "pipe", "pipe"] },
         );

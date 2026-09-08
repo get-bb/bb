@@ -41,9 +41,7 @@ describe("plain SSH executor", () => {
     });
     const received = JSON.parse(result.stdout);
     expect(received.input).toBe("credential");
-    expect(received.args.at(-1)).toBe(
-      "'printf' '%s' 'a'\\''b $(touch /bad)\nnext'",
-    );
+    expect(received.args.at(-1)).toMatch(/^exec "\$\{SHELL:-\/bin\/sh\}" -lc /u);
     expect(received.args).toEqual(
       expect.arrayContaining([
         "-T",
@@ -56,6 +54,35 @@ describe("plain SSH executor", () => {
       ]),
     );
     expect(received.args.join(" ")).not.toContain("credential");
+  });
+  it("round-trips literal argv and stdin through the remote login shell", async () => {
+    const runner = await fixture(`
+      const { spawn } = require("node:child_process");
+      const child = spawn("/bin/sh", ["-c", process.argv.at(-1)], {
+        env: { ...process.env, SHELL: "/bin/sh" },
+        stdio: ["pipe", "pipe", "pipe"],
+      });
+      process.stdin.pipe(child.stdin);
+      child.stdout.pipe(process.stdout);
+      child.stderr.pipe(process.stderr);
+      child.on("close", code => process.exit(code ?? 1));
+    `);
+    const argument = "a'b $(printf INJECTED)\nnext; \"quoted\"";
+    const result = await runner.exec("box", {
+      ...request(),
+      command: [
+        process.execPath,
+        "-e",
+        'let input="";process.stdin.on("data",chunk=>input+=chunk);process.stdin.on("end",()=>process.stdout.write(JSON.stringify({argument:process.argv[1],input})));',
+        argument,
+      ],
+      stdin: "private bootstrap payload",
+    });
+    expect(result.exitCode).toBe(0);
+    expect(JSON.parse(result.stdout)).toEqual({
+      argument,
+      input: "private bootstrap payload",
+    });
   });
   it("returns stderr and nonzero remote exit codes", async () => {
     const runner = await fixture(
