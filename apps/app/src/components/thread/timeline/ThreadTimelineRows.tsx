@@ -1433,7 +1433,7 @@ export function systemOperationLeadingIcon(
 ): IconName | undefined {
   switch (operationKind) {
     case "reasoning":
-      return "Brain";
+      return "AiBrain01";
     case "parent-change":
       return parentChangeAction === "release" ? "UserRound" : "UserRoundPlus";
     case "thread-provisioning":

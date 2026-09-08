@@ -70,14 +70,14 @@ describe("reasoning disclosure lifecycle", () => {
         .getByRole("button", { name: "Thinking…" })
         .getAttribute("aria-expanded"),
     ).toBe("true");
-    expect(container.querySelector('[data-icon="Brain"]')).not.toBeNull();
+    expect(container.querySelector('[data-icon="AiBrain01"]')).not.toBeNull();
     rerender(<Fixture phase="completed" />);
     expect(
       screen
         .getByRole("button", { name: /Thought.*12s/ })
         .getAttribute("aria-expanded"),
     ).toBe("true");
-    expect(container.querySelector('[data-icon="Brain"]')).not.toBeNull();
+    expect(container.querySelector('[data-icon="AiBrain01"]')).not.toBeNull();
     expect(
       screen.getByText("Compare both render paths.").closest("pre"),
     ).toBeNull();
@@ -91,7 +91,7 @@ describe("reasoning disclosure lifecycle", () => {
 
   it("does not inherit expansion for the next thought and keeps the icon before text arrives", () => {
     const { container, rerender } = render(<Fixture phase="live" text="" />);
-    expect(container.querySelector('[data-icon="Brain"]')).not.toBeNull();
+    expect(container.querySelector('[data-icon="AiBrain01"]')).not.toBeNull();
     expect(screen.queryByRole("button")).toBeNull();
     rerender(<Fixture phase="live" />);
     fireEvent.click(screen.getByRole("button", { name: "Thinking…" }));

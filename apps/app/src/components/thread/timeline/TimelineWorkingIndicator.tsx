@@ -26,7 +26,7 @@ export function TimelineWorkingIndicator({
       <div className={cn("mt-4", className)}>
         <ExpandableTimelineRow
           reasoningExpansionKey={reasoningId}
-          leadingIcon={isThinking ? "Brain" : undefined}
+          leadingIcon={isThinking ? "AiBrain01" : undefined}
           expandable={hasDetails}
           title={{
             segments: [

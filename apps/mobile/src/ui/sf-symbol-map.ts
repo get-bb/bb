@@ -20,6 +20,7 @@ export type SFSymbolWeight = keyof typeof SF_SYMBOL_WEIGHTS;
 export const SF_SYMBOL_WEIGHT: SFSymbolWeight = "medium";
 
 export const SF_SYMBOL_MAP = {
+  AiBrain01: "brain",
   AiBrowser: "sparkles.rectangle.stack",
   AiContentGenerator01: "sparkles",
   AlertCircle: "exclamationmark.circle",
