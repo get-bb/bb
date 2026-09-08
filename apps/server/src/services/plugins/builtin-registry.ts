@@ -23,6 +23,7 @@ export const BUILTIN_PLUGINS_DIRECTORY_NAME = "builtin-plugins";
 const REPO_PLUGINS_DIRECTORY_NAME = "plugins";
 
 export const BUILTIN_PLUGINS = [
+  { name: "machine-manual", pluginId: "machine-manual", defaultEnabled: true },
   {
     name: "account-pool",
     pluginId: "account-pool",
