@@ -10,6 +10,42 @@ import {
 } from "../helpers/test-app.js";
 
 describe("internal session protocol version", () => {
+  it("requires a PR-2-only version 190 daemon to upgrade before accepting its session", async () => {
+    const server = await startTestServer();
+    try {
+      const hostId = "host-pr2-only";
+      upsertHost(server.db, server.hub, { id: hostId, name: "PR 2 daemon" });
+      const daemon = createHostDaemonClient(
+        server.baseUrl,
+        createTestDaemonHostKey({ hostId }),
+      );
+      const response = await daemon.session.open.$post({
+        json: {
+          hostId,
+          instanceId: "instance-pr2",
+          hostName: "PR 2 daemon",
+          hasMachineCredential: true,
+          platform: "linux",
+          dataDir: "/tmp/pr2-machine",
+          localApiPort: 38888,
+          protocolVersion: 190,
+          activeThreads: [],
+          loadedEnvironments: [],
+        },
+      });
+      expect(response.status).toBe(400);
+      expect(await response.json()).toMatchObject({
+        code: "protocol_version_mismatch",
+        details: { serverProtocolVersion: 191 },
+        message:
+          "Daemon protocol version 190 does not match server protocol version 191",
+      });
+      expect(getHost(server.db, hostId)?.lastRejectedProtocolVersion).toBe(190);
+    } finally {
+      await server.close();
+    }
+  });
+
   it("rejects a session open whose protocol version does not match the server", async () => {
     const server = await startTestServer();
     try {

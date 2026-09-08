@@ -1206,6 +1206,9 @@ the environment they started with: open a new terminal after a change. Agent
 turns receive refreshed values on their next turn and after resume. Codex rebuilds
 its loaded session from the existing conversation when the environment changes.
 
+Machine environment commands require host-daemon protocol 191. This follows PR 2
+protocol 190 and adds contribution fields for setup commands and terminals.
+
 The built-in GitHub row uses `gh auth token --hostname github.com` and `gh api
 --hostname github.com user` on the server host. It supplies `GH_TOKEN`, Git's
 `GIT_CONFIG_*` environment entries for an HTTPS credential helper and SSH URL
