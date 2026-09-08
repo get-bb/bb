@@ -17,28 +17,15 @@ env:
   SERVER_URL: "http://127.0.0.1:41999"
 ---
 - runFlow: ../subflows/launch-app.yaml
-- extendedWaitUntil:
-    visible: "Connect to a bb server"
-    timeout: 30000
-- tapOn:
-    id: "server-url-input"
-- inputText: "${SERVER_URL}"
-- tapOn:
-    id: "server-label-input"
-- inputText: "E2E backend"
-- tapOn: "Server URL"
-- tapOn:
-    id: "add-server-submit"
+- runFlow: ../subflows/pair-direct-server.yaml
 # Pairing lands in the shell, which loads the page the server serves. The
 # composer is page content.
 - runFlow:
     file: ../subflows/open-bb-link.yaml
     env:
       LINK: "bb://"
-- extendedWaitUntil:
-    visible:
-      id: "shell-webview"
-    timeout: 30000
+- assertVisible:
+    id: "shell-webview"
 - extendedWaitUntil:
     visible: ".*Ask anything.*"
     timeout: 60000

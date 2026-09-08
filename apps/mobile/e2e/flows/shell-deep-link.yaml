@@ -35,7 +35,10 @@ env:
     timeout: 60000
 - takeScreenshot: shell-deep-link-page
 
-- openLink: "bb://settings/notifications"
+- runFlow:
+    file: ../subflows/open-bb-link.yaml
+    env:
+      LINK: "bb://settings/notifications"
 - extendedWaitUntil:
     visible:
       id: "notifications-settings-screen"
