@@ -103,13 +103,13 @@ export function createVendor(token: string, requestFetch: VendorFetch = fetch) {
       type: "power_off" | "power_on",
       signal: AbortSignal,
     ): Promise<void> {
+      const deadline = AbortSignal.any([signal, AbortSignal.timeout(300_000)]);
       const result = z
         .object({ action: actionSchema })
         .parse(
-          await request("POST", `/droplets/${id}/actions`, signal, { type }),
+          await request("POST", `/droplets/${id}/actions`, deadline, { type }),
         );
       let action = result.action;
-      const deadline = AbortSignal.any([signal, AbortSignal.timeout(300_000)]);
       while (action.status === "in-progress") {
         await setTimeout(3000, undefined, { signal: deadline });
         action = z
@@ -124,6 +124,17 @@ export function createVendor(token: string, requestFetch: VendorFetch = fetch) {
       }
       if (action.status !== "completed")
         throw new Error(`DigitalOcean ${type} action failed.`);
+      const desiredStatus = type === "power_off" ? "off" : "active";
+      while (true) {
+        const value = await request("GET", `/droplets/${id}`, deadline);
+        if (value === null)
+          throw new Error(
+            "DigitalOcean Droplet disappeared during power action.",
+          );
+        const { droplet } = z.object({ droplet: dropletSchema }).parse(value);
+        if (droplet.status === desiredStatus) return;
+        await setTimeout(3000, undefined, { signal: deadline });
+      }
     },
     async destroy(id: number, signal: AbortSignal): Promise<void> {
       await request("DELETE", `/droplets/${id}`, signal);

@@ -1,3 +1,4 @@
+import { getHost } from "@bb/db";
 import { randomUUID } from "node:crypto";
 import {
   type HostDaemonOnlineRpcResponseMessage,
@@ -77,6 +78,26 @@ export async function callHostRetryableOnlineRpc(
   });
 }
 
+export function callHostRetryableOnlineRpcWithoutAdmission<
+  TCommand extends HostDaemonRetryableOnlineRpcCommand,
+>(
+  deps: WorkSessionDeps,
+  args: CallHostRetryableOnlineRpcArgs<TCommand>,
+): Promise<HostDaemonOnlineRpcResultForCommand<TCommand>>;
+export async function callHostRetryableOnlineRpcWithoutAdmission(
+  deps: WorkSessionDeps,
+  args: CallHostRetryableOnlineRpcArgs<HostDaemonRetryableOnlineRpcCommand>,
+): Promise<HostDaemonOnlineRpcResultForCommand> {
+  const host = getHost(deps.db, args.hostId);
+  if (host !== null && host.phase !== "active") {
+    throw new ApiError(502, "host_unavailable", "Host is not connected", false);
+  }
+  return callHostOnlineRpcWithRetry(deps, args, {
+    admitWork: false,
+    retryOnTransportFailure: true,
+  });
+}
+
 async function callHostOnlineRpcWithRetry(
   deps: WorkSessionDeps,
   args: CallHostOnlineRpcArgs<HostDaemonRpcCommand>,
@@ -124,6 +145,7 @@ async function callHostOnlineRpcWithRetry(
       throwOnlineRpcError(error);
     }
     if (error instanceof HostOnlineRpcUnavailableError) {
+      if (!options.admitWork) throwOnlineRpcError(error);
       await waitForRetryableHostRpcTransport(deps, args.hostId);
       return requestHostOnlineRpcResponse(deps, args).catch((retryError) => {
         throwOnlineRpcError(retryError);

@@ -72,6 +72,9 @@ describe("DigitalOcean REST adapter", () => {
         response({ action: { id: 9, status: "completed" } }),
       )
       .mockResolvedValueOnce(
+        response({ droplet: { ...droplet, status: "off" } }),
+      )
+      .mockResolvedValueOnce(
         response({ action: { id: 10, status: "errored" } }, 201),
       );
     const api = createVendor("secret", request);
@@ -83,6 +86,43 @@ describe("DigitalOcean REST adapter", () => {
     await expect(api.power(42, "power_on", signal())).rejects.toThrow(
       "action failed",
     );
+  });
+
+  it.each([
+    { type: "power_off", stale: "active", desired: "off" },
+    { type: "power_on", stale: "off", desired: "active" },
+  ] as const)(
+    "waits for $desired after the $type action completes",
+    async ({ type, stale, desired }) => {
+      const observed: string[] = [];
+      const request = vi.fn<VendorFetch>(async (_url, options) => {
+        if (options?.method === "POST")
+          return response({ action: { id: 9, status: "completed" } });
+        const status = observed.length === 0 ? stale : desired;
+        observed.push(status);
+        return response({ droplet: { ...droplet, status } });
+      });
+      await createVendor("secret", request).power(42, type, signal());
+      expect(observed).toEqual([stale, desired]);
+      expect(request.mock.calls.slice(1).map(([url]) => url)).toEqual([
+        "https://api.digitalocean.com/v2/droplets/42",
+        "https://api.digitalocean.com/v2/droplets/42",
+      ]);
+    },
+  );
+
+  it("cancels stale-state polling after action completion", async () => {
+    const controller = new AbortController();
+    const request = vi.fn<VendorFetch>(async (_url, options) => {
+      if (options?.method === "POST")
+        return response({ action: { id: 9, status: "completed" } });
+      controller.abort();
+      return response({ droplet });
+    });
+    await expect(
+      createVendor("secret", request).power(42, "power_off", controller.signal),
+    ).rejects.toThrow();
+    expect(request).toHaveBeenCalledTimes(2);
   });
 
   it("aborts an in-progress power action before the next vendor poll", async () => {

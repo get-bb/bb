@@ -18,7 +18,10 @@ import type { ProviderModelListMemoValue } from "../../lifecycle-dedupers.js";
 import type { LoggedWorkSessionDeps } from "../../types.js";
 import { COMMAND_TIMEOUT_MS } from "../../constants.js";
 import { ApiError } from "../../errors.js";
-import { callHostRetryableOnlineRpc } from "../hosts/online-rpc.js";
+import {
+  callHostRetryableOnlineRpc,
+  callHostRetryableOnlineRpcWithoutAdmission,
+} from "../hosts/online-rpc.js";
 import { getHostPermissionCeiling } from "../hosts/permission-ceiling.js";
 import { requireEnvironment } from "../lib/entity-lookup.js";
 import { createProviderListingBudget } from "../providers/native-roots.js";
@@ -192,18 +195,19 @@ async function listInstalledPluginProviderInfos(
         const installed =
           cached ??
           (async () => {
-            const result = await callHostRetryableOnlineRpc(deps, {
-              hostId,
-              timeoutMs: budget.remainingMs(),
-              command: {
-                type: "provider.health",
-                providerId: registration.info.id,
-                bridgeLaunch,
+            const result = await callHostRetryableOnlineRpcWithoutAdmission(
+              deps,
+              {
+                hostId,
+                timeoutMs: budget.remainingMs(),
+                command: {
+                  type: "provider.health",
+                  providerId: registration.info.id,
+                  bridgeLaunch,
+                },
               },
-            });
-            return (
-              result.supported && result.health.status !== "not_installed"
             );
+            return result.supported && result.health.status !== "not_installed";
           })();
         if (cached === undefined) {
           deps.providerRegistry.rememberInstalled(cacheKey, installed);
