@@ -117,8 +117,13 @@
       ],
       "outputs": ["dist/**", "!dist/builtin-plugins/**"]
     },
+    "@bb/server#clean:plugins": {
+      "dependsOn": ["@bb/server#build"],
+      "cache": false,
+      "outputs": []
+    },
     "@bb/server#build:plugins": {
-      "dependsOn": ["@bb/server#build", "@get-bb/plugin-sdk#build"],
+      "dependsOn": ["@bb/server#clean:plugins", "@get-bb/plugin-sdk#build"],
       "inputs": [
         "scripts/copy-builtin-plugins.ts",
         "src/services/plugins/builtin-registry.ts",
@@ -516,7 +521,10 @@
         "$TURBO_ROOT$/.github/APPROVED_CONTRIBUTORS",
         "$TURBO_ROOT$/.github/workflows/approve-contributor.yml",
         "$TURBO_ROOT$/.github/workflows/pr-gate.yml",
+        "$TURBO_ROOT$/apps/server/package.json",
         "$TURBO_ROOT$/package.json",
+        "$TURBO_ROOT$/scripts/start-bb.mjs",
+        "$TURBO_ROOT$/turbo.json",
         "$TURBO_ROOT$/vitest.shared.ts"
       ]
     },
