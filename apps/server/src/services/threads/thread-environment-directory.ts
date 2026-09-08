@@ -1,4 +1,8 @@
-import { withEnvironmentPathAdmission } from "../environments/path-admission.js";
+import {
+  canonicalEnvironmentPath,
+  resolveEnvironmentPathIdentity,
+  withEnvironmentPathAdmission,
+} from "../environments/path-admission.js";
 import { z } from "zod";
 import { DEFAULT_ENVIRONMENT_PROVIDER_ID } from "../environments/environment-provider-ids.js";
 import {
@@ -283,7 +287,7 @@ export async function handleUpdateEnvironmentDirectoryToolCall(
     );
   }
 
-  const normalizedPath = normalizeDirectoryPath(input.data.path);
+  let normalizedPath = normalizeDirectoryPath(input.data.path);
   const pathFailure = validateDirectoryPath(normalizedPath);
   if (pathFailure) {
     return toolCallFailure(pathFailure);
@@ -295,6 +299,11 @@ export async function handleUpdateEnvironmentDirectoryToolCall(
   }
 
   try {
+    normalizedPath = await resolveEnvironmentPathIdentity(
+      deps,
+      args.currentEnvironment.hostId,
+      normalizedPath,
+    );
     await withEnvironmentPathAdmission(
       deps,
       {
@@ -310,7 +319,10 @@ export async function handleUpdateEnvironmentDirectoryToolCall(
     );
   }
 
-  if (args.currentEnvironment.path === normalizedPath) {
+  if (
+    getEnvironment(deps.db, args.currentEnvironment.id)?.canonicalPath ===
+    normalizedPath
+  ) {
     return toolCallSuccess(
       `This thread is already using ${normalizedPath} as its environment directory.`,
     );
@@ -332,8 +344,16 @@ export async function handleUpdateEnvironmentDirectoryToolCall(
     }
     targetEnvironment = ready;
   } else {
+    const dataDir = findHostDataDir(deps, args.currentEnvironment.hostId);
     const refusal = foreignProviderOwnedPathRefusal(deps.db, {
-      dataDir: findHostDataDir(deps, args.currentEnvironment.hostId),
+      dataDir:
+        dataDir === null
+          ? null
+          : await canonicalEnvironmentPath(
+              deps,
+              args.currentEnvironment.hostId,
+              dataDir,
+            ),
       hostId: args.currentEnvironment.hostId,
       path: normalizedPath,
       projectId: args.thread.projectId,

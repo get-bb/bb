@@ -3689,6 +3689,9 @@ describe("public thread data routes", () => {
         hostId: host.id,
         sessionId: session.id,
         handle: (request) => {
+          if (request.command.type === "host.canonical_path") {
+            return { ok: true, result: { path: request.command.path } };
+          }
           if (request.command.type === "host.inspect_git_source") {
             stateAtProvisionStart = {
               activeContextStage:

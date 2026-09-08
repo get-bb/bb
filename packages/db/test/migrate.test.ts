@@ -787,6 +787,7 @@ function rewindEnvironmentProvidersMigration(db: DbConnection): void {
   db.$client.exec("DROP TABLE IF EXISTS environment_launches");
   db.$client.exec("DROP INDEX IF EXISTS environments_project_host_path_idx");
   const lifecycleColumns = [
+    "canonical_path",
     "retire_at",
     "teardown_attempt",
     "teardown_status",
