@@ -257,7 +257,10 @@ function classifyPiToolUse(
       changes: [
         {
           path: parsed.data.path,
-          kind: parsed.data.oldText === undefined ? "add" : "update",
+          kind:
+            toolName === "edit" || parsed.data.oldText !== undefined
+              ? "update"
+              : "add",
           ...(parsed.data.oldText === undefined
             ? {}
             : { oldText: parsed.data.oldText }),

@@ -1104,6 +1104,31 @@ describe("pi delta translation equivalence", () => {
     );
   });
 
+  it("tool_execution_start with edit batch args marks the change as an update", () => {
+    const harness = createHarness();
+    harness.translate(loadFixture("agent-start.json"));
+
+    const events = harness.translate({
+      type: "tool_execution_start",
+      toolCallId: "tool-edit-batch",
+      toolName: "edit",
+      args: {
+        path: "src/app.ts",
+        edits: [{ oldText: "before", newText: "after" }],
+      },
+    } as AgentSessionEvent);
+
+    const started = events.find(
+      (event): event is Extract<ThreadEvent, { type: "item/started" }> =>
+        event.type === "item/started",
+    );
+    expect(started?.item).toMatchObject({
+      type: "fileChange",
+      status: "pending",
+      changes: [{ path: "src/app.ts", kind: "update" }],
+    });
+  });
+
   it("tool_execution_start with content-only write args marks the change as an add", () => {
     const harness = createHarness();
     harness.translate(loadFixture("agent-start.json"));
