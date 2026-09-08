@@ -1102,7 +1102,9 @@ export const environmentLaunches = sqliteTable(
     hostId: text("host_id"),
     path: text("path"),
     claimPath: text("claim_path"),
-    ownsPath: integer("owns_path", { mode: "boolean" }).notNull(),
+    ownsPath: integer("owns_path", { mode: "boolean" })
+      .notNull()
+      .default(false),
     mergeBaseBranch: text("merge_base_branch"),
     resource: text("resource", { mode: "json" }).$type<JsonValue>(),
     stepText: text("step_text").notNull(),
@@ -1150,4 +1152,18 @@ export const machineLaunches = sqliteTable(
     index("machine_launches_phase_idx").on(table.phase),
     index("machine_launches_host_id_idx").on(table.hostId),
   ],
+);
+
+export const environmentHookOperations = sqliteTable(
+  "environment_hook_operations",
+  {
+    id: text("id").primaryKey(),
+    operationId: text("operation_id").notNull(),
+    hostId: text("host_id").notNull(),
+    path: text("path").notNull(),
+    kind: text("kind").$type<"setup" | "teardown">().notNull(),
+    startedAt: integer("started_at").notNull(),
+    finishedAt: integer("finished_at"),
+    error: text("error"),
+  },
 );

@@ -575,6 +575,25 @@ const pluginHostArtifactSchema = z
 
 const MAX_NODE_TIMER_DELAY_MS = 2_147_483_647;
 
+const environmentHookRunCommandSchema = z
+  .object({
+    type: z.literal("environment.hook.run"),
+    contributedEnv: z.array(hostDaemonContributedEnvEntrySchema).default([]),
+    resumeOnly: z.boolean().default(false),
+    operationId: z.string().min(1),
+    path: z.string().min(1),
+    kind: z.enum(["setup", "teardown"]),
+    timeoutMs: z.number().int().positive().max(MAX_NODE_TIMER_DELAY_MS),
+  })
+  .strict();
+
+const environmentHookCancelCommandSchema = z
+  .object({
+    type: z.literal("environment.hook.cancel"),
+    operationId: z.string().min(1),
+  })
+  .strict();
+
 const pluginHostCallCommandSchema = z
   .object({
     type: z.literal("plugin.host.call"),
@@ -1563,6 +1582,26 @@ export const hostDaemonCommandRegistry = {
     resultSchema: pickFolderResponseSchema,
     transport: "onlineRpc",
     retryable: false,
+    flushEventsBeforeResult: false,
+    envLane: null,
+  }),
+  "environment.hook.run": defineHostDaemonCommandDescriptor({
+    type: "environment.hook.run",
+    schema: environmentHookRunCommandSchema,
+    resultSchema: emptyCommandResultSchema,
+    transport: "onlineRpc",
+    retryable: false,
+    flushEventsBeforeResult: false,
+    envLane: null,
+  }),
+  "environment.hook.cancel": defineHostDaemonCommandDescriptor({
+    type: "environment.hook.cancel",
+    schema: environmentHookCancelCommandSchema,
+    resultSchema: z
+      .object({ status: z.enum(["never-started", "terminated"]) })
+      .strict(),
+    transport: "onlineRpc",
+    retryable: true,
     flushEventsBeforeResult: false,
     envLane: null,
   }),

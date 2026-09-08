@@ -411,6 +411,8 @@ const hostDaemonOnlineRpcResponseSuccessSchema = z.discriminatedUnion(
     onlineRpcResponseSuccessSchemaFor("project.inspect"),
     onlineRpcResponseSuccessSchemaFor("project.clone_default_path"),
     onlineRpcResponseSuccessSchemaFor("host.pick_folder"),
+    onlineRpcResponseSuccessSchemaFor("environment.hook.run"),
+    onlineRpcResponseSuccessSchemaFor("environment.hook.cancel"),
     onlineRpcResponseSuccessSchemaFor("plugin.host.call"),
     onlineRpcResponseSuccessSchemaFor("plugin.host.cancel"),
     onlineRpcResponseSuccessSchemaFor("plugin.host.dispose"),
@@ -630,6 +632,24 @@ const pluginHostWorkerExitedMessageSchema = z
   })
   .strict();
 
+export const environmentHookProgressMessageSchema = z
+  .object({
+    type: z.literal("environment.hook.progress"),
+    operationId: z.string().min(1),
+    entry: z
+      .object({
+        type: z.enum(["step", "output"]),
+        text: z.string(),
+        status: z.enum(["started", "completed", "failed"]).nullable(),
+      })
+      .strict(),
+  })
+  .strict();
+
+export type EnvironmentHookProgressMessage = z.infer<
+  typeof environmentHookProgressMessageSchema
+>;
+
 const pluginHostSignalMessageSchema = z
   .object({
     type: z.literal("plugin-host.signal"),
@@ -699,6 +719,7 @@ export const hostDaemonDaemonWsMessageSchema = z.union([
   hostDaemonConnectTunnelIdentityMessageSchema,
   pluginHostWorkerExitedMessageSchema,
   pluginHostSignalMessageSchema,
+  environmentHookProgressMessageSchema,
   hostDaemonTerminalOpenedMessageSchema,
   hostDaemonTerminalOutputMessageSchema,
   hostDaemonTerminalReplayMessageSchema,

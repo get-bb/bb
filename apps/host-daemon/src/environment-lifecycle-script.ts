@@ -1,10 +1,12 @@
 import {
-  experimental_killProcessGroup as killProcessGroup,
-  experimental_sanitizeInheritedChildProcessEnv as sanitizeInheritedChildProcessEnv,
-  experimental_spawnPortableOutputProcess as spawnPortableOutputProcess,
-  experimental_supportsProcessGroups as supportsProcessGroups,
-} from "@get-bb/plugin-sdk/host";
+  isProcessGroupAlive,
+  killProcessGroup,
+  sanitizeInheritedChildProcessEnv,
+  spawnPortablePipedProcess,
+  supportsProcessGroups,
+} from "@bb/process-utils";
 import fs from "node:fs/promises";
+import { setTimeout as delay } from "node:timers/promises";
 import path from "node:path";
 import { WorkspaceError } from "bb-environment-provider-host/git";
 import { createTerminalOutputLineReader } from "bb-environment-provider-host/terminal-output";
@@ -19,14 +21,14 @@ import {
 export const DEFAULT_ENV_SETUP_SCRIPT_NAME = ".bb-env-setup.sh";
 export const DEFAULT_ENV_TEARDOWN_SCRIPT_NAME = ".bb-env-teardown.sh";
 
-const SETUP_SCRIPT_ABORT_KILL_GRACE_MS = 2_000;
-
 export interface RunSetupScriptArgs {
   workspacePath: string;
   timeoutMs: number;
   shellPath?: string;
+  env?: NodeJS.ProcessEnv;
   onProgress?: ProgressCallback;
   signal?: AbortSignal;
+  onProcessSpawn?: (pid: number) => void;
 }
 
 type RunTeardownScriptArgs = RunSetupScriptArgs;
@@ -122,12 +124,18 @@ async function runLifecycleScript(
 
   const { timeoutMs } = args;
   const env = sanitizeInheritedChildProcessEnv({
-    env: process.env,
+    env: args.env ?? process.env,
     ...(args.shellPath !== undefined ? { shellPath: args.shellPath } : {}),
   });
-  const child = spawnPortableOutputProcess({
+  const child = spawnPortablePipedProcess({
     command: command.command,
-    args: command.args,
+    args: [
+      "bash",
+      "-c",
+      'IFS= read -r permit && [ "$permit" = start ] && exec env bash "$1" </dev/null',
+      "bb-environment-hook",
+      scriptPath,
+    ],
     cwd: args.workspacePath,
     detached: supportsProcessGroups(),
     env,
@@ -136,7 +144,6 @@ async function runLifecycleScript(
   const outputChunks: string[] = [];
   const outputLineReader = createTerminalOutputLineReader();
   let outputIndex = 0;
-  let abortKillTimeout: ReturnType<typeof setTimeout> | undefined;
   let abortRequested = false;
   let timedOut = false;
 
@@ -165,10 +172,7 @@ async function runLifecycleScript(
       return;
     }
     abortRequested = true;
-    killProcessGroup({ child, signal: "SIGTERM" });
-    abortKillTimeout = setTimeout(() => {
-      killProcessGroup({ child, signal: "SIGKILL" });
-    }, SETUP_SCRIPT_ABORT_KILL_GRACE_MS);
+    killProcessGroup({ child, signal: "SIGKILL" });
   };
   args.signal?.addEventListener("abort", abortLifecycleScript, {
     once: true,
@@ -184,7 +188,22 @@ async function runLifecycleScript(
     }>((resolve, reject) => {
       child.on("error", reject);
       child.on("close", (exitCode, signal) => resolve({ exitCode, signal }));
+      child.stdin.on("error", reject);
+      try {
+        if (child.pid === undefined)
+          throw new Error("Environment hook process did not start");
+        args.onProcessSpawn?.(child.pid);
+        throwIfProvisionAborted(args.signal);
+        child.stdin.end("start\n");
+      } catch (error) {
+        child.stdin.destroy();
+        killProcessGroup({ child, signal: "SIGKILL" });
+        child.once("close", () => reject(error));
+      }
     });
+
+    if (abortRequested || timedOut)
+      while (isProcessGroupAlive(child)) await delay(25);
 
     const output = outputChunks.join("");
     emitScriptOutputLines(outputLineReader.flush());
@@ -257,9 +276,6 @@ async function runLifecycleScript(
     return { ran: true, exitCode: result.exitCode ?? 0, output };
   } finally {
     clearTimeout(timeout);
-    if (abortKillTimeout) {
-      clearTimeout(abortKillTimeout);
-    }
     args.signal?.removeEventListener("abort", abortLifecycleScript);
   }
 }

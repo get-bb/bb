@@ -338,7 +338,6 @@ Read the installed declarations for exact current signatures.
 
 - `experimental_defineHostEntry`
 - `experimental_filterResolvedNativeRoots`
-- `experimental_killProcessGroup` — signal a child and its process group
 - `experimental_killProcessesWithCwdUnder` — reap processes whose cwd is under a
   workspace a provider is tearing down, before removing the directory
 - `experimental_nativeRootsHostContract`
@@ -348,7 +347,6 @@ Read the installed declarations for exact current signatures.
 - `experimental_resolveVendorPluginRoots`
 - `experimental_sanitizeInheritedChildProcessEnv`
 - `experimental_spawnPortableOutputProcess`
-- `experimental_supportsProcessGroups`
 - `ExperimentalClaudePluginRoots`
 - `ExperimentalClaudePluginRootsArgs`
 - `ExperimentalDroppedNativeRoot`

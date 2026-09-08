@@ -731,6 +731,7 @@ export async function createHostDaemonApp(
   });
 
   const router = new CommandRouter({
+    emitEnvironmentHookProgress: (message) => sendServerMessage(message),
     desktopBrowserBroker,
     dataDir: options.dataDir,
     fetchProjectAttachment: (args) =>

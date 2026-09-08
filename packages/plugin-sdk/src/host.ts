@@ -44,14 +44,12 @@ export {
 export { killProcessesWithCwdUnder as experimental_killProcessesWithCwdUnder } from "@bb/process-utils";
 
 /**
- * Spawns and stops child processes portably, for a provider plugin that runs
- * a user-supplied setup or teardown script on an enrolled machine.
+ * Spawns output-only child processes with a sanitized inherited environment
+ * for host-local plugin operations such as git.
  * Experimental: see docs/api_to_audit.md.
  */
 export {
-  killProcessGroup as experimental_killProcessGroup,
   sanitizeInheritedChildProcessEnv as experimental_sanitizeInheritedChildProcessEnv,
   spawnPortableOutputProcess as experimental_spawnPortableOutputProcess,
-  supportsProcessGroups as experimental_supportsProcessGroups,
 } from "@bb/process-utils";
 export type { SanitizeInheritedChildProcessEnvArgs as ExperimentalSanitizeInheritedChildProcessEnvArgs } from "@bb/process-utils";

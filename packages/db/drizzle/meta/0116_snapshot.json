@@ -1,8 +1,6 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "773166b2-fb83-4051-9517-546afe9e9937",
-  "prevId": "b43ad1a1-7c9e-4a4a-ae9d-5a0cd7a49ad0",
   "tables": {
     "app_settings": {
       "name": "app_settings",
@@ -4398,16 +4396,83 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "checkConstraints": {}
+    },
+    "environment_hook_operations": {
+      "name": "environment_hook_operations",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "operation_id": {
+          "name": "operation_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "host_id": {
+          "name": "host_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "path": {
+          "name": "path",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "kind": {
+          "name": "kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "started_at": {
+          "name": "started_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "finished_at": {
+          "name": "finished_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "error": {
+          "name": "error",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
     }
   },
   "views": {},
   "enums": {},
   "_meta": {
-    "schemas": {},
     "tables": {},
     "columns": {}
   },
   "internal": {
     "indexes": {}
-  }
+  },
+  "id": "7db87a57-3930-465a-a823-81a942251bf6",
+  "prevId": "af1a45f7-e398-4c65-bba3-512b237c9167"
 }

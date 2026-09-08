@@ -10,7 +10,7 @@ import {
 } from "../helpers/test-app.js";
 
 describe("internal session protocol version", () => {
-  it("requires a PR-2-only version 190 daemon to upgrade before accepting its session", async () => {
+  it("requires a PR-1 version 191 daemon to upgrade before accepting its session", async () => {
     const server = await startTestServer();
     try {
       const hostId = "host-pr2-only";
@@ -28,7 +28,7 @@ describe("internal session protocol version", () => {
           platform: "linux",
           dataDir: "/tmp/pr2-machine",
           localApiPort: 38888,
-          protocolVersion: 190,
+          protocolVersion: 191,
           activeThreads: [],
           loadedEnvironments: [],
         },
@@ -36,11 +36,11 @@ describe("internal session protocol version", () => {
       expect(response.status).toBe(400);
       expect(await response.json()).toMatchObject({
         code: "protocol_version_mismatch",
-        details: { serverProtocolVersion: 191 },
+        details: { serverProtocolVersion: 192 },
         message:
-          "Daemon protocol version 190 does not match server protocol version 191",
+          "Daemon protocol version 191 does not match server protocol version 192",
       });
-      expect(getHost(server.db, hostId)?.lastRejectedProtocolVersion).toBe(190);
+      expect(getHost(server.db, hostId)?.lastRejectedProtocolVersion).toBe(191);
     } finally {
       await server.close();
     }

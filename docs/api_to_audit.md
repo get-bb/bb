@@ -2599,29 +2599,17 @@ Before stabilization, audit personal-profile handoff policy, per-tab mutual excl
 
 ## Host process primitives (`@get-bb/plugin-sdk/host`)
 
-`experimental_spawnPortableOutputProcess`, `experimental_killProcessGroup`,
-`experimental_supportsProcessGroups`,
-`experimental_sanitizeInheritedChildProcessEnv`, and the type
-`ExperimentalSanitizeInheritedChildProcessEnvArgs`.
+`experimental_spawnPortableOutputProcess`,
+`experimental_sanitizeInheritedChildProcessEnv`, and
+`ExperimentalSanitizeInheritedChildProcessEnvArgs` expose output-only child
+process spawning and inherited-environment sanitization for host-local plugin
+operations. The private environment host module uses these for git commands.
+Core runs `.bb-env-setup.sh` after an owned-path create and
+`.bb-env-teardown.sh` before removal; providers must not run those hooks.
+The unused public process-group kill and platform-check exports were removed.
 
-**What it does.** Gives a host entry the child-process helpers a provider
-needs to run a user's setup or teardown script on an enrolled machine: a
-portable output-only spawn, a process-group kill, the platform check that kill
-depends on, and the sanitizer that strips bb's own variables out of the
-environment a child inherits. The worktree plugin also builds its own `git`
-runner on the spawn and the sanitizer, because git is that plugin's business
-rather than a host capability bb publishes.
-
-These are re-exports of `@bb/process-utils`, not new code. The private
-first-party environment host module consumes them for checkout and worktree.
-
-**Audit before stabilizing.**
-
-1. **Process groups on Windows.** `experimental_supportsProcessGroups`
-   returns `false` there and `experimental_killProcessGroup` degrades to
-   `child.kill`, so a plugin's script teardown leaks grandchildren on Windows.
-   Confirm whether the SDK should expose the platform check at all, or offer
-   one `stopScript` that is correct everywhere.
+Before stabilization, audit command cancellation, inherited environment filtering,
+and portable output handling for host-local plugin commands on every supported OS.
 
 - `PluginEnvironmentProviderCreateContext.experimental_claimPath(path)`: durable,
   asynchronous atomic host/path reservation on the launch row before provider

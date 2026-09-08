@@ -104,6 +104,12 @@ interface RegisterTestHostRpcCaptureArgs {
   hostId: string;
   sessionId: string;
   queueBranchOptions?: boolean;
+  onEnvironmentHook?: (
+    command: Extract<HostDaemonRpcCommand, { type: "environment.hook.run" }>,
+  ) => Promise<void>;
+  onEnvironmentHookCancel?: (
+    operationId: string,
+  ) => Promise<void | { status: "never-started" | "terminated" }>;
   gitBranchOptionsResult?: HostDaemonOnlineRpcResult<"host.list_branch_options">;
   onListBranchOptions?: (
     command: Extract<
@@ -366,6 +372,47 @@ export function registerTestHostRpcCapture(
           }),
           sessionId: args.sessionId,
         });
+        return;
+      }
+      if (
+        command.type === "environment.hook.run" ||
+        command.type === "environment.hook.cancel"
+      ) {
+        void Promise.resolve()
+          .then(() =>
+            command.type === "environment.hook.run"
+              ? args.onEnvironmentHook?.(command)
+              : args.onEnvironmentHookCancel?.(command.operationId),
+          )
+          .then(
+            (result) =>
+              deps.hub.recordHostOnlineRpcResponse({
+                message: hostDaemonOnlineRpcResponseMessageSchema.parse({
+                  type: "host-rpc.response",
+                  requestId: message.requestId,
+                  commandType: command.type,
+                  ok: true,
+                  result:
+                    command.type === "environment.hook.cancel"
+                      ? (result ?? { status: "terminated" })
+                      : {},
+                }),
+                sessionId: args.sessionId,
+              }),
+            (error: unknown) =>
+              deps.hub.recordHostOnlineRpcResponse({
+                message: hostDaemonOnlineRpcResponseMessageSchema.parse({
+                  type: "host-rpc.response",
+                  requestId: message.requestId,
+                  commandType: command.type,
+                  ok: false,
+                  errorCode: "setup_script_failed",
+                  errorMessage:
+                    error instanceof Error ? error.message : String(error),
+                }),
+                sessionId: args.sessionId,
+              }),
+          );
         return;
       }
       if (command.type === "host.canonical_path") {

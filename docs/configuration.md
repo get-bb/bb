@@ -1201,14 +1201,12 @@ Without an explicit directory, lifecycle commands locate the unique matching hos
 
 ### Machine environment
 
-Server-side operations resolve machine contributions through
-`apps/server/src/services/hosts/host-environment.ts` before dispatch. On this
-base, setup and teardown scripts run in the Git worktree host plugin: the
-`plugin.host.call` command carries `contributedEnv`, and the worker scopes those
-values around the operation and its child processes. When rebasing onto the core
-hook runner, connect its dispatch to this resolver and pass `contributedEnv` to
-the daemon's `operationEnvironment` and operation redaction helpers. Machine
-selection and precedence stay in the server resolver.
+Core resolves machine contributions through
+`apps/server/src/services/hosts/host-environment.ts` before dispatching setup and
+teardown hooks. The `environment.hook.run` command carries `contributedEnv`;
+the daemon applies them to the hook child process and redacts secrets from
+progress and errors. Machine selection and precedence stay in the server
+resolver, which returns no contributions for the local host.
 
 Settings → General → Machine environment defines variables for all enrolled
 machine hosts. Local hosts do not receive them. Add plain values or mark a value
@@ -1222,8 +1220,8 @@ the environment they started with: open a new terminal after a change. Agent
 turns receive refreshed values on their next turn and after resume. Codex rebuilds
 its loaded session from the existing conversation when the environment changes.
 
-Machine environment commands require host-daemon protocol 191. This follows PR 2
-protocol 190 and adds contribution fields for setup commands and terminals.
+Machine environment commands require host-daemon protocol 192, covering machine
+lifecycle and contribution fields for core hooks, host plugins, and terminals.
 
 The built-in GitHub row uses `gh auth token --hostname github.com` and `gh api
 --hostname github.com user` on the server host. It supplies `GH_TOKEN`, Git's
