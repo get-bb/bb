@@ -1,3 +1,8 @@
+import {
+  beginMachineRestoreSetup,
+  runMachineRestoreSetup,
+} from "../../src/services/machines/restore-setup.js";
+import { runEnvironmentHook } from "../../src/services/environments/environment-hooks.js";
 import { expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import {
@@ -320,3 +325,78 @@ it("serializes CLI installation and reads fenced core hook outcomes across lockf
     }
   });
 });
+
+it("limits restore setup to the persisted generation and does not rerun creation setup for later worktrees", async () =>
+  withTestHarness(async (h) => {
+    const { host, session } = seedHostSession(h.deps);
+    const { project } = seedProjectWithSource(h.deps, { hostId: host.id });
+    const runs: string[] = [];
+    registerHostRpcResponder(h, {
+      hostId: host.id,
+      sessionId: session.id,
+      handle: async ({ command }): Promise<HostRpcHandlerResult> => {
+        if (command.type === "workspace.readiness.inspect")
+          return {
+            ok: true,
+            result: {
+              commit: "a".repeat(40),
+              dirty: [],
+              files: [],
+              abi: "linux/x64/node-127",
+            },
+          };
+        if (command.type === "environment.hook.run") {
+          runs.push(command.path);
+          return { ok: true, result: {} };
+        }
+        throw new Error(`Unexpected RPC ${command.type}`);
+      },
+    });
+    const original = createEnvironment(h.db, h.hub, {
+      projectId: project.id,
+      hostId: host.id,
+      path: "/tmp/old-checkout",
+      providerOwnsPath: true,
+      status: "ready",
+    });
+    h.db
+      .insert(machineLifecycles)
+      .values({
+        hostId: host.id,
+        observedState: "running",
+        observedAt: Date.now(),
+        recoveryState: "healthy",
+      })
+      .run();
+    beginMachineRestoreSetup(h.deps, host.id, "earlier-resume");
+    const pending = h.db.select().from(machineLifecycles).get();
+    expect(pending?.restoreCheckouts).toEqual([
+      { id: original.id, path: "/tmp/old-checkout" },
+    ]);
+    await runEnvironmentHook(h.deps, {
+      id: "new-environment-normal-setup",
+      hostId: host.id,
+      path: "/tmp/new-worktree",
+      kind: "setup",
+      report: { step() {}, log() {} },
+      signal: AbortSignal.timeout(10_000),
+    });
+    createEnvironment(h.db, h.hub, {
+      projectId: project.id,
+      hostId: host.id,
+      path: "/tmp/new-worktree",
+      providerOwnsPath: true,
+      status: "ready",
+    });
+    await Promise.all([
+      runMachineRestoreSetup(h.deps, host.id),
+      runMachineRestoreSetup(h.deps, host.id),
+    ]);
+    expect(runs).toEqual(["/tmp/new-worktree", "/tmp/old-checkout"]);
+    expect(h.db.select().from(machineLifecycles).get()).toMatchObject({
+      restoreOperationId: null,
+      restoreCheckouts: null,
+    });
+    await runMachineRestoreSetup(h.deps, host.id);
+    expect(runs).toHaveLength(2);
+  }));

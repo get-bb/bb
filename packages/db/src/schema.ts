@@ -1198,6 +1198,9 @@ export const machineLifecycles = sqliteTable("machine_lifecycles", {
   maintenanceAt: integer("maintenance_at"),
   lastSnapshotAt: integer("last_snapshot_at"),
   restoreOperationId: text("restore_operation_id"),
+  restoreCheckouts: text("restore_checkouts", { mode: "json" }).$type<
+    Array<{ id: string; path: string }>
+  >(),
   recoveryState: text("recovery_state", {
     enum: [
       "healthy",

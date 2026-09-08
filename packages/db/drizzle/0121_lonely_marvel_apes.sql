@@ -1,0 +1,1 @@
+ALTER TABLE `machine_lifecycles` ADD `restore_checkouts` text;

@@ -1,7 +1,10 @@
 import { and, eq } from "drizzle-orm";
 import { hostDaemonSessions } from "@bb/db";
 import { handleHostRemoved } from "../../internal/session-owner-side-effects.js";
-import { runMachineRestoreSetup } from "./restore-setup.js";
+import {
+  beginMachineRestoreSetup,
+  runMachineRestoreSetup,
+} from "./restore-setup.js";
 import type { WorkSessionDeps } from "../../types.js";
 import { machineLifecycles } from "@bb/db";
 import {
@@ -1286,11 +1289,7 @@ async function resumeMachineWithIntent(
       }
       const keepRetiring =
         current.phase === "retiring" && !machineHasLiveThreads(deps.db, hostId);
-      deps.db
-        .update(machineLifecycles)
-        .set({ restoreOperationId: operationId })
-        .where(eq(machineLifecycles.hostId, hostId))
-        .run();
+      beginMachineRestoreSetup(deps, hostId, operationId);
       updateHost(deps.db, deps.hub, hostId, {
         phase: keepRetiring ? "retiring" : "active",
         resource: result.resource,
