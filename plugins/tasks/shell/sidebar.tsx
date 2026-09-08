@@ -310,7 +310,7 @@ export function TasksSidebar({
                         setPresetDialog({ key: Date.now(), editing: preset })
                       }
                     >
-                      <Icon name="Brain" className="size-3.5 shrink-0" />
+                      <Icon name="Bot" className="size-3.5 shrink-0" />
                       <span className="min-w-0 flex-1 truncate">
                         {preset.name}
                       </span>

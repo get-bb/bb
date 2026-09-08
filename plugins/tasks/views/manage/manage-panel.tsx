@@ -320,7 +320,7 @@ function PresetsSection() {
                   <td className="px-3 py-2">
                     <span className="flex items-center gap-2">
                       <Icon
-                        name="Brain"
+                        name="Bot"
                         className="size-3.5 text-muted-foreground"
                       />
                       {preset.name}
