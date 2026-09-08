@@ -2928,9 +2928,6 @@ importers:
         specifier: 4.3.6
         version: 4.3.6
     devDependencies:
-      '@bb/plugin-build':
-        specifier: workspace:*
-        version: link:../../packages/plugin-build
       '@get-bb/plugin-sdk':
         specifier: workspace:*
         version: link:../../packages/plugin-sdk
@@ -2980,9 +2977,6 @@ importers:
         specifier: 4.3.6
         version: 4.3.6
     devDependencies:
-      '@bb/plugin-build':
-        specifier: workspace:*
-        version: link:../../packages/plugin-build
       '@get-bb/plugin-sdk':
         specifier: workspace:*
         version: link:../../packages/plugin-sdk
@@ -3032,9 +3026,6 @@ importers:
         specifier: 4.3.6
         version: 4.3.6
     devDependencies:
-      '@bb/plugin-build':
-        specifier: workspace:*
-        version: link:../../packages/plugin-build
       '@get-bb/plugin-sdk':
         specifier: workspace:*
         version: link:../../packages/plugin-sdk
@@ -3090,9 +3081,6 @@ importers:
         specifier: 4.3.6
         version: 4.3.6
     devDependencies:
-      '@bb/plugin-build':
-        specifier: workspace:*
-        version: link:../../packages/plugin-build
       '@get-bb/plugin-sdk':
         specifier: workspace:*
         version: link:../../packages/plugin-sdk
@@ -3118,9 +3106,6 @@ importers:
         specifier: 4.3.6
         version: 4.3.6
     devDependencies:
-      '@bb/plugin-build':
-        specifier: workspace:*
-        version: link:../../packages/plugin-build
       '@get-bb/plugin-sdk':
         specifier: workspace:*
         version: link:../../packages/plugin-sdk
@@ -3176,9 +3161,6 @@ importers:
         specifier: 4.3.6
         version: 4.3.6
     devDependencies:
-      '@bb/plugin-build':
-        specifier: workspace:*
-        version: link:../../packages/plugin-build
       '@get-bb/plugin-sdk':
         specifier: workspace:*
         version: link:../../packages/plugin-sdk
@@ -3234,9 +3216,6 @@ importers:
         specifier: 4.3.6
         version: 4.3.6
     devDependencies:
-      '@bb/plugin-build':
-        specifier: workspace:*
-        version: link:../../packages/plugin-build
       '@get-bb/plugin-sdk':
         specifier: workspace:*
         version: link:../../packages/plugin-sdk
@@ -3319,9 +3298,6 @@ importers:
         specifier: 4.3.6
         version: 4.3.6
     devDependencies:
-      '@bb/plugin-build':
-        specifier: workspace:*
-        version: link:../../packages/plugin-build
       '@get-bb/plugin-sdk':
         specifier: workspace:*
         version: link:../../packages/plugin-sdk
@@ -3371,9 +3347,6 @@ importers:
         specifier: 4.3.6
         version: 4.3.6
     devDependencies:
-      '@bb/plugin-build':
-        specifier: workspace:*
-        version: link:../../packages/plugin-build
       '@get-bb/plugin-sdk':
         specifier: workspace:*
         version: link:../../packages/plugin-sdk
@@ -3408,9 +3381,6 @@ importers:
         specifier: 4.3.6
         version: 4.3.6
     devDependencies:
-      '@bb/plugin-build':
-        specifier: workspace:*
-        version: link:../../packages/plugin-build
       '@get-bb/plugin-sdk':
         specifier: workspace:*
         version: link:../../packages/plugin-sdk
@@ -3436,9 +3406,6 @@ importers:
         specifier: 4.3.6
         version: 4.3.6
     devDependencies:
-      '@bb/plugin-build':
-        specifier: workspace:*
-        version: link:../../packages/plugin-build
       '@get-bb/plugin-sdk':
         specifier: workspace:*
         version: link:../../packages/plugin-sdk
@@ -3479,9 +3446,6 @@ importers:
         specifier: 4.3.6
         version: 4.3.6
     devDependencies:
-      '@bb/plugin-build':
-        specifier: workspace:*
-        version: link:../../packages/plugin-build
       '@get-bb/plugin-sdk':
         specifier: workspace:*
         version: link:../../packages/plugin-sdk
@@ -3531,9 +3495,6 @@ importers:
         specifier: 4.3.6
         version: 4.3.6
     devDependencies:
-      '@bb/plugin-build':
-        specifier: workspace:*
-        version: link:../../packages/plugin-build
       '@get-bb/plugin-sdk':
         specifier: workspace:*
         version: link:../../packages/plugin-sdk
@@ -3574,9 +3535,6 @@ importers:
         specifier: 4.3.6
         version: 4.3.6
     devDependencies:
-      '@bb/plugin-build':
-        specifier: workspace:*
-        version: link:../../packages/plugin-build
       '@get-bb/plugin-sdk':
         specifier: workspace:*
         version: link:../../packages/plugin-sdk
@@ -3617,9 +3575,6 @@ importers:
         specifier: 4.3.6
         version: 4.3.6
     devDependencies:
-      '@bb/plugin-build':
-        specifier: workspace:*
-        version: link:../../packages/plugin-build
       '@get-bb/plugin-sdk':
         specifier: workspace:*
         version: link:../../packages/plugin-sdk
@@ -3675,9 +3630,6 @@ importers:
         specifier: 4.3.6
         version: 4.3.6
     devDependencies:
-      '@bb/plugin-build':
-        specifier: workspace:*
-        version: link:../../packages/plugin-build
       '@get-bb/plugin-sdk':
         specifier: workspace:*
         version: link:../../packages/plugin-sdk
@@ -3720,9 +3672,6 @@ importers:
 
   plugins/pdf-preview:
     devDependencies:
-      '@bb/plugin-build':
-        specifier: workspace:*
-        version: link:../../packages/plugin-build
       '@get-bb/plugin-sdk':
         specifier: workspace:*
         version: link:../../packages/plugin-sdk
@@ -3760,9 +3709,6 @@ importers:
         specifier: workspace:*
         version: link:../../packages/plugin-api-map
     devDependencies:
-      '@bb/plugin-build':
-        specifier: workspace:*
-        version: link:../../packages/plugin-build
       '@get-bb/plugin-sdk':
         specifier: workspace:*
         version: link:../../packages/plugin-sdk
@@ -3781,9 +3727,6 @@ importers:
 
   plugins/plugin-api-tester:
     devDependencies:
-      '@bb/plugin-build':
-        specifier: workspace:*
-        version: link:../../packages/plugin-build
       '@get-bb/plugin-sdk':
         specifier: workspace:*
         version: link:../../packages/plugin-sdk
@@ -3830,9 +3773,6 @@ importers:
         specifier: 4.3.6
         version: 4.3.6
     devDependencies:
-      '@bb/plugin-build':
-        specifier: workspace:*
-        version: link:../../packages/plugin-build
       '@modelcontextprotocol/sdk':
         specifier: ^1.29.0
         version: 1.29.0(zod@4.3.6)
@@ -3867,9 +3807,6 @@ importers:
       '@bb/domain':
         specifier: workspace:*
         version: link:../../packages/domain
-      '@bb/plugin-build':
-        specifier: workspace:*
-        version: link:../../packages/plugin-build
       '@bb/provider-bridge-protocol':
         specifier: workspace:*
         version: link:../../packages/provider-bridge-protocol
@@ -3898,9 +3835,6 @@ importers:
       '@bb/domain':
         specifier: workspace:*
         version: link:../../packages/domain
-      '@bb/plugin-build':
-        specifier: workspace:*
-        version: link:../../packages/plugin-build
       '@bb/process-utils':
         specifier: workspace:*
         version: link:../../packages/process-utils
@@ -3935,9 +3869,6 @@ importers:
       '@bb/domain':
         specifier: workspace:*
         version: link:../../packages/domain
-      '@bb/plugin-build':
-        specifier: workspace:*
-        version: link:../../packages/plugin-build
       '@bb/provider-bridge-protocol':
         specifier: workspace:*
         version: link:../../packages/provider-bridge-protocol
@@ -3984,9 +3915,6 @@ importers:
         specifier: 4.3.6
         version: 4.3.6
     devDependencies:
-      '@bb/plugin-build':
-        specifier: workspace:*
-        version: link:../../packages/plugin-build
       '@get-bb/plugin-sdk':
         specifier: workspace:*
         version: link:../../packages/plugin-sdk
@@ -4012,9 +3940,6 @@ importers:
         specifier: 4.3.6
         version: 4.3.6
     devDependencies:
-      '@bb/plugin-build':
-        specifier: workspace:*
-        version: link:../../packages/plugin-build
       '@get-bb/plugin-sdk':
         specifier: workspace:*
         version: link:../../packages/plugin-sdk
@@ -4055,9 +3980,6 @@ importers:
         specifier: 4.3.6
         version: 4.3.6
     devDependencies:
-      '@bb/plugin-build':
-        specifier: workspace:*
-        version: link:../../packages/plugin-build
       '@get-bb/plugin-sdk':
         specifier: workspace:*
         version: link:../../packages/plugin-sdk
@@ -4095,9 +4017,6 @@ importers:
         specifier: workspace:*
         version: link:../../packages/shared-ui
     devDependencies:
-      '@bb/plugin-build':
-        specifier: workspace:*
-        version: link:../../packages/plugin-build
       '@get-bb/plugin-sdk':
         specifier: workspace:*
         version: link:../../packages/plugin-sdk
@@ -4147,9 +4066,6 @@ importers:
         specifier: 4.3.6
         version: 4.3.6
     devDependencies:
-      '@bb/plugin-build':
-        specifier: workspace:*
-        version: link:../../packages/plugin-build
       '@get-bb/plugin-sdk':
         specifier: workspace:*
         version: link:../../packages/plugin-sdk
@@ -4181,9 +4097,6 @@ importers:
         specifier: 4.3.6
         version: 4.3.6
     devDependencies:
-      '@bb/plugin-build':
-        specifier: workspace:*
-        version: link:../../packages/plugin-build
       '@get-bb/plugin-sdk':
         specifier: workspace:*
         version: link:../../packages/plugin-sdk
@@ -4345,9 +4258,6 @@ importers:
         specifier: 4.3.6
         version: 4.3.6
     devDependencies:
-      '@bb/plugin-build':
-        specifier: workspace:*
-        version: link:../../packages/plugin-build
       '@get-bb/plugin-sdk':
         specifier: workspace:*
         version: link:../../packages/plugin-sdk
@@ -4418,9 +4328,6 @@ importers:
         specifier: 4.3.6
         version: 4.3.6
     devDependencies:
-      '@bb/plugin-build':
-        specifier: workspace:*
-        version: link:../../packages/plugin-build
       '@get-bb/plugin-sdk':
         specifier: workspace:*
         version: link:../../packages/plugin-sdk

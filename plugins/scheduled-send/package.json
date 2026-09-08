@@ -37,7 +37,6 @@
     "react-dom": "^19.0.0",
     "sonner": "^1.7.4",
     "typescript": "npm:@typescript/typescript6@^6.0.2",
-    "vitest": "^4.1.1",
-    "@bb/plugin-build": "workspace:*"
+    "vitest": "^4.1.1"
   }
 }
