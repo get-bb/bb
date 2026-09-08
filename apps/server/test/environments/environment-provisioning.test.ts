@@ -5,7 +5,10 @@ import {
   listEvents,
   threads,
 } from "@bb/db";
-import { systemThreadProvisioningEventDataSchema } from "@bb/domain";
+import {
+  systemErrorEventDataSchema,
+  systemThreadProvisioningEventDataSchema,
+} from "@bb/domain";
 import { describe, expect, it, vi } from "vitest";
 import { ApiError } from "../../src/errors.js";
 import {
@@ -331,6 +334,87 @@ describe("environment reprovisioning", () => {
       expect(
         harness.db.select({ id: environments.id }).from(environments).all(),
       ).toEqual([]);
+    });
+  });
+
+  it("reports a stable error when concurrent unmanaged provisions resolve to the same path", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps, {
+        id: "host-concurrent-unmanaged-path",
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+        path: "/tmp/concurrent-unmanaged-project",
+      });
+      const createThread = (input: string) =>
+        createThreadFromRequest(harness.deps, {
+          startedOnBehalfOf: null,
+          environment: {
+            type: "host",
+            hostId: host.id,
+            workspace: {
+              type: "unmanaged",
+              path: "/tmp/concurrent-unmanaged-workspace",
+            },
+          },
+          input: textInput(input),
+          origin: "cli",
+          projectId: project.id,
+          providerId: "codex",
+        });
+
+      const firstThread = await createThread("first concurrent provision");
+      const secondThread = await createThread("second concurrent provision");
+      const firstProvision = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "environment.provision" &&
+          command.initiator?.threadId === firstThread.id,
+      );
+      const secondProvision = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "environment.provision" &&
+          command.initiator?.threadId === secondThread.id,
+      );
+      if (
+        firstProvision.command.type !== "environment.provision" ||
+        secondProvision.command.type !== "environment.provision"
+      ) {
+        throw new Error("Expected environment provision commands");
+      }
+      expect(firstProvision.command.environmentId).not.toBe(
+        secondProvision.command.environmentId,
+      );
+      expect(
+        getEnvironment(harness.db, firstProvision.command.environmentId)?.path,
+      ).toBeNull();
+      expect(
+        getEnvironment(harness.db, secondProvision.command.environmentId)?.path,
+      ).toBeNull();
+
+      const result = {
+        path: "/tmp/concurrent-unmanaged-workspace",
+        isGitRepo: true,
+        isWorktree: false,
+        branchName: "main",
+        defaultBranch: "main",
+        transcript: [],
+      };
+      await reportQueuedCommandSuccess(harness, firstProvision, result);
+      await reportQueuedCommandSuccess(harness, secondProvision, result);
+
+      const secondError = listEvents(harness.db, {
+        threadId: secondThread.id,
+      }).find((event) => event.type === "system/error");
+      expect(secondError).toBeDefined();
+      expect(
+        systemErrorEventDataSchema.parse(JSON.parse(secondError?.data ?? "{}")),
+      ).toMatchObject({
+        code: "thread_provisioning_failed",
+        message: "Provisioning thread failed",
+        detail: "Workspace path is already attached to another environment",
+      });
     });
   });
 
