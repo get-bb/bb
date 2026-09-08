@@ -435,6 +435,13 @@ export class PiRpcSession {
     this.child?.kill();
   }
 
+  waitForChildExit(): Promise<void> {
+    const child = this.child;
+    return child === undefined
+      ? Promise.resolve()
+      : child.waitForExit().then(() => undefined);
+  }
+
   static async forkSessionFile(args: {
     sourceFile: string;
     targetFile: string;

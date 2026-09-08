@@ -1,4 +1,6 @@
 import { spawn, type ChildProcess } from "node:child_process";
+import { createServer, type Server, type Socket } from "node:net";
+import { extname } from "node:path";
 import { PassThrough, Writable, type Readable } from "node:stream";
 import {
   experimental_isProviderBridgeRecording,
@@ -10,6 +12,7 @@ import {
 
 export const PI_BRIDGE_COMMAND_ENV = "BB_PI_BRIDGE_COMMAND";
 export const PI_BRIDGE_ARGS_ENV = "BB_PI_BRIDGE_ARGS";
+export const PI_CHANNEL_PIPE_ENV = "BB_PI_BRIDGE_CHANNEL_PIPE";
 
 export const PI_CHANNEL_RECORDING_KEY = "bbChannel";
 
@@ -87,6 +90,83 @@ export function resolvePiLaunch(env: NodeJS.ProcessEnv): {
   return { command, args: parsed };
 }
 
+const WINDOWS_BATCH_EXTENSIONS = new Set([".bat", ".cmd"]);
+
+export function piLaunchRequiresWindowsShell(
+  command: string,
+  platform: NodeJS.Platform = process.platform,
+): boolean {
+  if (platform !== "win32") {
+    return false;
+  }
+  const extension = extname(command).toLowerCase();
+  return extension === "" || WINDOWS_BATCH_EXTENSIONS.has(extension);
+}
+
+let windowsChannelPipeCounter = 0;
+
+class WindowsChannelPipe {
+  readonly pipePath: string;
+  private readonly server: Server;
+  private socket: Socket | null = null;
+  private readonly pendingWrites: string[] = [];
+
+  constructor(onLine: (line: string) => void) {
+    windowsChannelPipeCounter += 1;
+    this.pipePath = `\\\\.\\pipe\\bb-pi-${process.pid}-${windowsChannelPipeCounter}`;
+    this.server = createServer((socket) => {
+      if (this.socket !== null) {
+        socket.destroy();
+        return;
+      }
+      this.socket = socket;
+      socket.on("error", () => undefined);
+      socket.on("close", () => {
+        if (this.socket === socket) {
+          this.socket = null;
+        }
+      });
+      experimental_readBoundedLines({
+        input: socket,
+        onLine,
+        onOverflow: (bytes) => {
+          process.stderr.write(
+            `pi bridge: dropped a ${bytes}-byte channel line\n`,
+          );
+        },
+      });
+      for (const line of this.pendingWrites.splice(0)) {
+        socket.write(line);
+      }
+    });
+    this.server.on("error", () => undefined);
+    this.server.listen(this.pipePath);
+    this.server.unref();
+  }
+
+  write(line: string): void {
+    const socket = this.socket;
+    if (socket === null || socket.destroyed || socket.writableEnded) {
+      this.pendingWrites.push(line);
+      return;
+    }
+    socket.write(line);
+  }
+
+  endWrites(): void {
+    const socket = this.socket;
+    if (socket !== null && !socket.destroyed && !socket.writableEnded) {
+      socket.end();
+    }
+  }
+
+  close(): void {
+    this.socket?.destroy();
+    this.socket = null;
+    this.server.close();
+  }
+}
+
 export function buildPiChildEnv(
   overrides: Record<string, string>,
 ): NodeJS.ProcessEnv {
@@ -109,6 +189,8 @@ export class PiRpcChild {
   private readonly channelWriter: Writable | null;
   private readonly channelRecorder: ChannelRecorder | null;
   private killEscalation: ReturnType<typeof setTimeout> | null = null;
+  private readonly windowsChannel: WindowsChannelPipe | null;
+  private readonly windowsShellChild: boolean;
   private readonly stdoutLines: string[] = [];
   private stdoutDraining = false;
 
@@ -119,10 +201,25 @@ export class PiRpcChild {
       resolveSettledExit = resolve;
     });
     const launch = resolvePiLaunch(process.env);
+    let childEnv = args.env;
+    this.windowsShellChild = piLaunchRequiresWindowsShell(launch.command);
+    this.windowsChannel = this.windowsShellChild
+      ? new WindowsChannelPipe((line) => this.handleChannelLine(line))
+      : null;
+    if (this.windowsChannel !== null) {
+      childEnv = {
+        ...args.env,
+        [PI_CHANNEL_PIPE_ENV]: this.windowsChannel.pipePath,
+      };
+    }
     this.child = spawn(launch.command, [...launch.args, ...args.args], {
       cwd: args.cwd,
-      env: args.env,
-      stdio: ["pipe", "pipe", "pipe", "pipe", "pipe"],
+      env: childEnv,
+      stdio: this.windowsShellChild
+        ? ["pipe", "pipe", "pipe"]
+        : ["pipe", "pipe", "pipe", "pipe", "pipe"],
+      shell: this.windowsShellChild,
+      windowsHide: process.platform === "win32",
     });
     experimental_recordProviderChildIo(this.child, {
       threadId: args.recordThreadId,
@@ -171,6 +268,7 @@ export class PiRpcChild {
         clearTimeout(this.killEscalation);
         this.killEscalation = null;
       }
+      this.windowsChannel?.close();
       const info: PiRpcChildExitInfo = {
         code,
         signal,
@@ -242,6 +340,11 @@ export class PiRpcChild {
   }
 
   sendChannel(message: Record<string, unknown>): void {
+    if (this.windowsChannel !== null) {
+      this.channelRecorder?.toChild(message);
+      this.windowsChannel.write(`${JSON.stringify(message)}\n`);
+      return;
+    }
     const writer = this.channelWriter;
     if (!writer || writer.destroyed || writer.writableEnded) {
       return;
@@ -272,12 +375,37 @@ export class PiRpcChild {
       this.killEscalation = setTimeout(() => {
         this.killEscalation = null;
         if (this.exitInfo === null) {
-          this.child.kill("SIGKILL");
+          this.escalateKill();
         }
       }, SIGKILL_ESCALATION_MS);
       this.killEscalation.unref?.();
     }
+    if (process.platform === "win32") {
+      return;
+    }
     this.child.kill("SIGTERM");
+  }
+
+  private escalateKill(): void {
+    if (!this.windowsShellChild) {
+      this.child.kill("SIGKILL");
+      return;
+    }
+    const pid = this.child.pid;
+    if (pid === undefined) {
+      return;
+    }
+    try {
+      const taskkill = spawn("taskkill", ["/pid", String(pid), "/T", "/F"], {
+        stdio: "ignore",
+        windowsHide: true,
+      });
+      taskkill.on("error", () => {
+        this.child.kill("SIGKILL");
+      });
+    } catch {
+      this.child.kill("SIGKILL");
+    }
   }
 
   private endWriters(): void {
@@ -287,6 +415,7 @@ export class PiRpcChild {
     try {
       this.channelWriter?.end();
     } catch {}
+    this.windowsChannel?.endWrites();
   }
 
   private writeStdin(line: string): void {

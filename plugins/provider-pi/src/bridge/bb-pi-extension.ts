@@ -7,10 +7,22 @@ import { Type } from "typebox";
 
 const CHILD_TO_BRIDGE_FD = 3;
 const BRIDGE_TO_CHILD_FD = 4;
+const CHANNEL_PIPE_PATH = process.env.BB_PI_BRIDGE_CHANNEL_PIPE || null;
+
+let channelSocket = null;
+const channelWriteQueue = [];
 
 function writeLine(fd, message) {
   const line = JSON.stringify(message) + "\n";
   try {
+    if (CHANNEL_PIPE_PATH !== null) {
+      if (channelSocket === null) {
+        channelWriteQueue.push(line);
+      } else {
+        channelSocket.write(line);
+      }
+      return;
+    }
     // Synchronous: tool results and fork replies must never interleave.
     writeSyncAll(fd, line);
   } catch {
@@ -45,6 +57,32 @@ function readLines(input, onLine) {
       onLine(line.endsWith("\r") ? line.slice(0, -1) : line);
     }
   });
+}
+
+// Windows cannot pass the fd 3/4 pipes into a child spawned through cmd.exe,
+// so the bridge exposes a named pipe instead and points us at it via the env.
+function connectChannelPipe(pipePath, onLine, attemptsLeft) {
+  const socket = new Socket();
+  socket.on("error", () => undefined);
+  socket.unref();
+  socket.once("connect", () => {
+    channelSocket = socket;
+    for (const queued of channelWriteQueue.splice(0)) {
+      socket.write(queued);
+    }
+  });
+  socket.once("close", () => {
+    if (channelSocket === socket) {
+      channelSocket = null;
+    }
+    if (attemptsLeft <= 0) return;
+    const retry = setTimeout(() => {
+      connectChannelPipe(pipePath, onLine, attemptsLeft - 1);
+    }, 50);
+    retry.unref();
+  });
+  socket.connect(pipePath);
+  readLines(socket, onLine);
 }
 
 // ---- JSON Schema → TypeBox (the bb tool definitions carry JSON Schema) ----
@@ -172,12 +210,7 @@ export default function bbExtension(pi) {
   let nextId = 0;
   let sessionContext = null;
 
-  // Non-blocking: libuv polls the pipe, so pi's process.exit is never held
-  // up by an outstanding read; EOF (the bridge ended its writer) closes it.
-  const bridgeIn = new Socket({ fd: BRIDGE_TO_CHILD_FD, readable: true, writable: false });
-  bridgeIn.on("error", () => undefined);
-  bridgeIn.unref();
-  readLines(bridgeIn, (line) => {
+  function handleBridgeLine(line) {
     const trimmed = line.trim();
     if (!trimmed) return;
     let message;
@@ -200,7 +233,18 @@ export default function bbExtension(pi) {
     if (message.kind === "request") {
       void handleBridgeRequest(message);
     }
-  });
+  }
+
+  if (CHANNEL_PIPE_PATH !== null) {
+    connectChannelPipe(CHANNEL_PIPE_PATH, handleBridgeLine, 100);
+  } else {
+    // Non-blocking: libuv polls the pipe, so pi's process.exit is never held
+    // up by an outstanding read; EOF (the bridge ended its writer) closes it.
+    const bridgeIn = new Socket({ fd: BRIDGE_TO_CHILD_FD, readable: true, writable: false });
+    bridgeIn.on("error", () => undefined);
+    bridgeIn.unref();
+    readLines(bridgeIn, handleBridgeLine);
+  }
 
   async function handleBridgeRequest(message) {
     try {

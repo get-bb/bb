@@ -1228,7 +1228,11 @@ export function experimental_scratchDirForTests(): string {
  * remove it).
  */
 export async function experimental_closeAllForTests(): Promise<void> {
+  const openSessions = Array.from(sessions.values()).map(
+    (threadSession) => threadSession.session,
+  );
   await closeThreadSessionsGracefully("Pi bridge test teardown");
+  await Promise.all(openSessions.map((session) => session.waitForChildExit()));
   await closeAllPiCatalogs();
   resetPiInstallGateForTests();
   if (scratchDir !== null && scratchDirIsPrivate) {
