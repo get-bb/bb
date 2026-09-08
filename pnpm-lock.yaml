@@ -3266,6 +3266,9 @@ importers:
 
   plugins/environment-modal-sandbox:
     dependencies:
+      '@bb/shared-ui':
+        specifier: workspace:*
+        version: link:../../packages/shared-ui
       modal:
         specifier: 0.10.0
         version: 0.10.0
@@ -3276,12 +3279,27 @@ importers:
       '@get-bb/plugin-sdk':
         specifier: workspace:*
         version: link:../../packages/plugin-sdk
+      '@testing-library/react':
+        specifier: ^16.3.2
+        version: 16.3.2(@testing-library/dom@10.4.1)(@types/react-dom@19.2.3(@types/react@19.2.13))(@types/react@19.2.13)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
       '@types/node':
         specifier: ^22.0.0
         version: 22.19.10
+      '@types/react':
+        specifier: ^19.0.0
+        version: 19.2.13
       better-sqlite3:
         specifier: ^12.6.2
         version: 12.10.0
+      jsdom:
+        specifier: ^29.0.1
+        version: 29.0.1(@noble/hashes@2.4.0)
+      react:
+        specifier: ^19.0.0
+        version: 19.2.4
+      react-dom:
+        specifier: ^19.0.0
+        version: 19.2.4(react@19.2.4)
       typescript:
         specifier: npm:@typescript/typescript6@^6.0.2
         version: '@typescript/typescript6@6.0.2'
@@ -4435,12 +4453,12 @@ importers:
         specifier: 4.3.6
         version: 4.3.6
     devDependencies:
-      '@get-bb/plugin-sdk':
-        specifier: workspace:*
-        version: link:../../packages/plugin-sdk
       '@bb/tsconfig':
         specifier: workspace:*
         version: link:../../packages/tsconfig
+      '@get-bb/plugin-sdk':
+        specifier: workspace:*
+        version: link:../../packages/plugin-sdk
       '@types/node':
         specifier: ^22.0.0
         version: 22.19.10

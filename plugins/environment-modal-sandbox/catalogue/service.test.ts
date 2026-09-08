@@ -364,6 +364,7 @@ it("keeps failed allocation reconcilable and retains the machine when preparatio
     log: "",
     message: "Retryable transport failure",
     cancelPending: false,
+    terminal: true,
   });
   test.harness.sdk.stub("hosts.submit", submit);
   const job = await test.service.verifications.start({
@@ -384,6 +385,7 @@ it("keeps failed allocation reconcilable and retains the machine when preparatio
     log: "",
     message: null,
     cancelPending: false,
+    terminal: true,
   });
   test.harness.sdk.stub("projects.sources.add", async () => {
     throw new Error("Repository access denied");
@@ -449,4 +451,32 @@ it("reconciles a failed smoke turn after restart and refuses promotion", async (
       expectedRevision: 0,
     }),
   ).toThrow(/successful verification/);
+});
+
+it("preflights the selected agent without allocation and never returns account secrets", async () => {
+  const test = await fixture();
+  const account = await test.service.handlers["account.inspect"]({});
+  expect(account).toMatchObject({ available: true, appName: "test-app" });
+  expect(JSON.stringify(account)).not.toContain("private-value");
+  const empty = await test.service.handlers["project.preflight"]({
+    projectId: "project",
+    agentProviderId: "codex",
+    buildId: null,
+  });
+  expect(empty.ready).toBe(false);
+  const build = await test.service.handlers["build.start"](test.input);
+  await test.service.sweep();
+  const unverified = await test.service.handlers["project.preflight"]({
+    projectId: "project",
+    agentProviderId: "claude-code",
+    buildId: build.buildId,
+  });
+  expect(unverified).toMatchObject({ ready: false, build: null });
+  expect(unverified.message).toContain("successful verification");
+  test.backend.accountIdentity = async () => {
+    throw new Error("private-value");
+  };
+  const failed = await test.service.handlers["account.inspect"]({});
+  expect(failed.available).toBe(false);
+  expect(JSON.stringify(failed)).not.toContain("private-value");
 });

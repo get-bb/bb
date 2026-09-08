@@ -1,9 +1,9 @@
 ---
-name: modal-catalogue
-description: Inspect project inputs, store Dockerfile recipes, and explicitly build or manage Modal images through bb modal.
+name: modal-sandboxes
+description: Set up Modal sandboxes for a project, build and verify its stored Dockerfile image, promote it, and manage reusable machines, preservation and cleanup.
 ---
 
-# Modal recipe catalogue
+# Set up Modal sandboxes
 
 Dockerfile recipes are stored per server owner/project in plugin SQLite.
 Runtime setup has one repo-owned entry point: `.bb-env-setup.sh`. Inspect the
@@ -65,7 +65,7 @@ to promote only a successfully verified build for that agent. Promotion updates
 the Modal image pointer and never changes project environment defaults.
 New launches may omit buildId to select that pointer. Optional accountRef (default),
 appName, resources and policy are validated and pinned at launch; appName must match
-the build. The Settings editor remains later work.
+the build. Settings → Plugins → Modal sandbox exposes the same catalogue, build logs, verification, promotion, and per-project policy. The composer’s New machine section has a New sandbox row; existing machine sections show the name and state. Selecting an existing paused sandbox wakes it.
 
 SDK callers import `modalRpcContract` from the plugin and call
 `bb.sdk.plugins.callRpc({pluginId:"environment-modal-sandbox", method:"build.get",
@@ -80,7 +80,7 @@ Core runs `.bb-env-setup.sh` after materialising an owned environment and
 machines. Setup failure blocks readiness. Teardown has a separate 15-minute
 timeout; failure is reported without blocking removal. Attaching a user-maintained
 local checkout runs neither hook. Readiness checks core's recorded hook outcome
-for the checkout's commit and lockfile inputs; it never runs setup itself.
+for the checkout's commit and lockfile inputs; it resumes any outstanding recorded restore hook before checking readiness.
 
 `.worktreeinclude` does not apply to a fresh clone on a new machine: there is no
 source checkout on that host. Supply local files and secrets through core Machine
@@ -100,3 +100,16 @@ A failed snapshot retains compute and reports the last successful save. Planned
 rotation does not cover a server outage spanning Modal expiry. Lost-since-last-snapshot
 blocks dispatch; explain the loss risk before explicitly requesting `bb machine resume`
 to recover the last save. Missing snapshot images never become empty checkouts.
+
+
+## Run the complete project setup
+
+1. Resolve project X with `bb project list --json`, then run `bb modal account inspect --json` and `bb modal project sources --project X --json`. Configure missing Modal secrets through plugin Settings and select a reachable local source. Do not echo credentials or put them in recipes.
+2. Inspect that source with `bb modal project inspect --project X --environment E --json`. Read the package manifests, lockfiles and existing hooks. Write or update the repo’s `.bb-env-setup.sh` when missing. It must be idempotent: validate commit/lockfile/toolchain ABI inputs, install from the image’s warm cache only when needed, and start or restart project services. It runs after creation and after every filesystem restore; a restored filesystem does not preserve running processes. Hook failure blocks readiness. Commit the hook, or review its dirty overlay explicitly.
+3. Read the stored recipe before editing. Save at its current expected revision, with explicit context include patterns and real smoke commands. Warm dependencies in the Dockerfile without runtime credentials; never enroll a daemon while building. On revision conflict, read and reconcile the latest text without overwriting another editor’s changes.
+4. Review context paths and dirty contents, upload, and explicitly build with a unique request key. Follow logs to ready. Retry unchanged inputs to reuse the build; changed Dockerfile or lockfiles require a new explicit build. Unavailable source inspection means “not checked,” never “fresh.” A stale usable image remains selectable.
+5. Verify using the agent intended for the thread, inspect verification until passed, then promote with the project’s latest expected revision. A failed smoke cannot be promoted. `bb modal project preflight --project X --provider codex --json` checks verification, account identity and vendor image availability without allocating compute.
+6. In the project composer select **New sandbox** under **New machine**, review physical cores, memory and effective policy, then send a real task. Confirm the thread reaches idle and dependency setup used its warm-cache path. Start a second thread from that existing machine’s named section to share the sandbox. Idle pause preserves files; dispatch wakes the same machine and reruns setup to restart services.
+7. Inspect lifecycle warnings and the last successful save. Keep a machine with `bb machine lifecycle MACHINE --keep --json`, or remove with `--remove --yes --json`. Archive test threads and remove verification machines too. Clear the project image pointer before GC, preview candidates, apply, wait the grace interval, apply again, and verify the owned Modal inventory is clean. Never delete unrelated account artifacts.
+
+Settings keeps each project’s recipe draft isolated. Save before building; build logs are bounded and follow a monotonic cursor. Import/export moves only Dockerfile text. Verify/use can select a previously verified image as a rollback for future launches. Settings resource estimates use physical cores and GiB memory at linked Modal rates; build, network and agent costs are additional and snapshot storage cost is unknown. There is no invented cost ceiling or automatic build.

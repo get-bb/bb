@@ -305,19 +305,44 @@ export function registerMachineCommands(
     .description("Show deadline, preservation and retention state")
     .option("--keep", "Keep this machine past automatic retention deletion")
     .option("--no-keep", "Restore automatic retention deletion")
+    .option("--remove", "Remove the machine and its retained snapshots")
+    .option("--yes", "Skip removal confirmation")
     .option("--json", "Print machine-readable JSON output")
     .action(
       action(
-        async (target: string, opts: { keep?: boolean; json?: boolean }) => {
+        async (
+          target: string,
+          opts: {
+            keep?: boolean;
+            remove?: boolean;
+            yes?: boolean;
+            json?: boolean;
+          },
+        ) => {
           const sdk = createCliBbSdk(getUrl());
           const hostId = resolveMachineId(await sdk.hosts.list(), target);
+          if (opts.remove) {
+            if (opts.keep !== undefined)
+              throw new Error("Cannot combine --remove and --keep/--no-keep");
+            if (
+              !opts.yes &&
+              !(await confirmDestructiveAction(
+                `Remove machine ${hostId} and its snapshots?`,
+              ))
+            )
+              return;
+            const removed = await sdk.hosts.delete({ hostId });
+            if (!outputJson(opts, removed))
+              console.log(`Machine ${hostId} removed`);
+            return;
+          }
           const result = await sdk.hosts.experimental_lifecycle({
             hostId,
             keep: opts.keep,
           });
           if (!outputJson(opts, result))
             console.log(
-              `${result.phase}: ${result.recoveryState}${result.message === null ? "" : ` — ${result.message}`}`,
+              `${result.phase}: ${result.recoveryState}${result.message === null ? "" : ` — ${result.message}`}\nMaintenance: ${result.maintenanceAt === null ? "none" : new Date(result.maintenanceAt).toISOString()}\nExpiry: ${result.expiresAt === null ? "none" : new Date(result.expiresAt).toISOString()}\nAutomatic deletion: ${result.keep ? "disabled (kept)" : result.retentionAt === null ? "not scheduled" : new Date(result.retentionAt).toISOString()}\nControls: --keep, --no-keep, --remove --yes`,
             );
         },
       ),

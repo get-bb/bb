@@ -824,7 +824,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Optionally declare suspend and resume together; core suspends after idle and resumes on the next send",
           "Choose last-thread plus grace retirement with environment-removal cascade, or never retirement with explicit user removal",
           "Return an opaque private JSON resource that core persists and passes back to lifecycle operations",
-          "Render inputs in both the picker sugar row and Add machine with app.slots.experimental_machineProviderInputs",
+          "Render inputs in both the picker sugar row and Add machine with app.slots.experimental_machineProviderInputs; PluginMachineProviderInputsProps.experimental_agentProviderId identifies the selected composer agent",
         ],
         apiSymbols: [
           "PluginMachines",

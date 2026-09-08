@@ -13,7 +13,12 @@ import { baseManifest } from "./base.js";
 import { createImageBackend, type ImageBackendFactory } from "./backend.js";
 import { acceptChunk, chunkSchema, contextFiles } from "./context.js";
 import { modalRpcContract } from "./contract.js";
-import { CatalogueError, hash, type Build } from "./model.js";
+import {
+  CatalogueError,
+  hash,
+  verificationSchema,
+  type Build,
+} from "./model.js";
 import {
   inspectionSchema,
   sourceContract,
@@ -52,23 +57,132 @@ export function createCatalogueService(
     return environment;
   }
   async function inspect(projectId: string, environmentId: string) {
-    const environment = await source(projectId, environmentId);
-    const result = await hosts.call(
-      "inspect",
-      { path: environment.path!, hostId: environment.hostId },
-      { hostId: environment.hostId },
-    );
-    store.db
-      .prepare(
-        "INSERT INTO source_observations VALUES (?,?,?,?) ON CONFLICT(user_id,project_id) DO UPDATE SET data=excluded.data,checked_at=excluded.checked_at",
-      )
-      .run(store.owner, projectId, JSON.stringify(result), now());
-    return result;
+    await assertProject(projectId);
+    try {
+      const environment = await source(projectId, environmentId);
+      const result = await hosts.call(
+        "inspect",
+        { path: environment.path!, hostId: environment.hostId },
+        { hostId: environment.hostId },
+      );
+      store.db
+        .prepare(
+          "INSERT INTO source_observations VALUES (?,?,?,?) ON CONFLICT(user_id,project_id) DO UPDATE SET data=excluded.data,checked_at=excluded.checked_at",
+        )
+        .run(store.owner, projectId, JSON.stringify(result), now());
+      return result;
+    } catch (error) {
+      store.db
+        .prepare(
+          "DELETE FROM source_observations WHERE user_id=? AND project_id=?",
+        )
+        .run(store.owner, projectId);
+      throw error;
+    }
   }
   async function assertProject(projectId: string) {
     await bb.sdk.projects.get({ projectId });
   }
   const handlers: PluginRpcHandlers<typeof modalRpcContract> = {
+    "catalogue.projects": async () =>
+      (await bb.sdk.projects.list()).map(({ id, name }) => ({ id, name })),
+    "project.sources": async ({ projectId }) => {
+      await assertProject(projectId);
+      const sources = await bb.sdk.environments.list({ projectId });
+      return sources
+        .filter((row) => row.status === "ready" && row.path !== null)
+        .map((row) => ({
+          id: row.id,
+          hostId: row.hostId,
+          path: row.path!,
+          name: row.path!,
+        }));
+    },
+    "account.inspect": async () => {
+      try {
+        const resolved = await settings();
+        return {
+          available: true,
+          accountIdentity: await accountIdentity(resolved, backendFactory),
+          appName: resolved.appName,
+          baseVersion: baseManifest.version,
+          message: "Modal account is reachable",
+        };
+      } catch {
+        return {
+          available: false,
+          accountIdentity: null,
+          appName: null,
+          baseVersion: baseManifest.version,
+          message:
+            "Configure the Modal token and app above, then test the connection",
+        };
+      }
+    },
+    "verification.list": ({ buildId }) =>
+      store.db
+        .prepare(
+          "SELECT data FROM verifications WHERE user_id=? AND build_id=? ORDER BY rowid DESC LIMIT 50",
+        )
+        .all(store.owner, buildId)
+        .map((row) =>
+          verificationSchema.parse(
+            JSON.parse(z.object({ data: z.string() }).parse(row).data),
+          ),
+        ),
+    "project.preflight": async ({ projectId, agentProviderId, buildId }) => {
+      await assertProject(projectId);
+      const selected = buildId ?? store.project(projectId).usableBuildId;
+      if (!selected)
+        return {
+          ready: false,
+          message:
+            "Build, verify and use an image for this project in Modal settings",
+          build: null,
+        };
+      try {
+        const build = store.build(selected);
+        if (
+          build.projectId !== projectId ||
+          build.state !== "ready" ||
+          build.imageId === null
+        )
+          throw new CatalogueError(
+            409,
+            "Choose a ready image for this project",
+          );
+        verifications.assertPassed(selected, agentProviderId);
+        const resolved = await settings();
+        if (
+          build.accountIdentity !==
+          (await accountIdentity(resolved, backendFactory))
+        )
+          throw new CatalogueError(
+            409,
+            "The image belongs to a different account; restore its account configuration",
+          );
+        if (!(await backendFactory(resolved).resolve(build.imageId)))
+          throw new CatalogueError(
+            409,
+            "The image is missing; explicitly build a replacement",
+          );
+        return {
+          ready: true,
+          message:
+            "Verified image available; checkout and credentials are checked before the first turn",
+          build,
+        };
+      } catch (error) {
+        return {
+          ready: false,
+          message:
+            error instanceof CatalogueError
+              ? error.message
+              : "Image preflight failed; check account configuration and vendor availability",
+          build: null,
+        };
+      }
+    },
     "project.inspect": ({ projectId, environmentId }) =>
       inspect(projectId, environmentId),
     "recipe.put": async (input) => {

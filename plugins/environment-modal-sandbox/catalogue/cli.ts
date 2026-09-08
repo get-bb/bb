@@ -5,6 +5,9 @@ import { CatalogueError } from "./model.js";
 import type { CatalogueService } from "./service.js";
 
 const commandFlags: Record<string, readonly string[]> = {
+  "account inspect": [],
+  "project sources": ["project"],
+  "project preflight": ["project", "provider"],
   "project inspect": ["project", "environment"],
   "recipe put": ["project", "expected-revision", "input-text", "json-input"],
   "recipe show": ["project"],
@@ -122,6 +125,9 @@ export function registerCatalogueCli(
         let result: unknown;
         let continuation: { argv: string[]; delayMs: number } | undefined;
         switch (`${group} ${action}`) {
+          case "account inspect": result = await invoke("account.inspect", {}); break;
+          case "project sources": result = await invoke("project.sources", { projectId: await projectId() }); break;
+          case "project preflight": result = await invoke("project.preflight", { projectId: await projectId(), agentProviderId: flags.get("--provider") ?? "codex", buildId: null }); break;
           case "project inspect":
             result = await invoke("project.inspect", {
               projectId: await projectId(),

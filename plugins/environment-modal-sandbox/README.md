@@ -4,7 +4,7 @@ Creates resumable bb machines in [Modal](https://modal.com) Sandboxes. It is
 an official catalog plugin, not installed by default. Installing it adds the
 `modal-sandbox` machine provider; it does not add an environment provider.
 
-Choose Modal sandbox in a project's environment picker to create a machine,
+Choose **New sandbox** under **New machine** in a project's environment picker to create a machine,
 have core clone and register that project's checkout, and run the thread through
 the Project checkout provider. The machine remains a normal bb execution
 target, so later threads can create Git worktrees or use other environment
@@ -29,7 +29,7 @@ Use `bb modal project inspect`, `recipe put --stdin --expected-revision 0`,
 support `--json`; `image logs BUILD --follow` streams bounded cursor pages.
 Recipes live in plugin SQLite storage. Context uploads contain tracked files at
 an identified commit plus an explicitly reviewed dirty overlay. See the bundled
-[command reference](skills/modal-catalogue/SKILL.md) for flags and typed RPC names.
+[command reference](skills/modal-sandboxes/SKILL.md) for flags and typed RPC names.
 
 The TypeScript builder prepends a versioned Debian bookworm / Node 22.19 base,
 installs pinned Codex and Claude Code CLIs, and embeds the server's credential-free
@@ -64,7 +64,7 @@ Core runs `.bb-env-teardown.sh` before removing an owned environment with a sepa
 15-minute timeout. Teardown failure is reported and does not block removal.
 `.worktreeinclude` does not apply to fresh machine clones. Use core Machine
 environment settings for local files and secrets on machines.
-The settings editor follows in part D.
+Settings → Plugins → Modal sandbox includes a per-project Dockerfile editor, reviewed context upload, explicit builds with log follow/cancel, staleness, image verification/promotion, and resources/lifecycle policy. The recipe lives in bb storage; import/export does not write it to the repository. Account connection checks return no secrets.
 
 ## Lifecycle
 
@@ -78,7 +78,7 @@ lifetimes. Core excludes new work, interrupts active turns, closes terminals and
 bounds drain to five minutes. The daemon stops its managed runtimes before the
 plugin saves a private filesystem snapshot with no expiry. A durable checkpoint
 precedes compute termination. Dispatch then restores the same host identity;
-provider credentials are supplied again by core on the new continuation turn.
+provider credentials are supplied again by core on the new continuation turn. Core reruns the repo’s `.bb-env-setup.sh` through its durable hook path to restart services. The hook must be idempotent and may start services; a failed restore hook blocks readiness.
 An interrupted turn is never reported as a successful completion or replayed.
 
 `bb machine lifecycle MACHINE --json` shows expiry, maintenance, the last successful

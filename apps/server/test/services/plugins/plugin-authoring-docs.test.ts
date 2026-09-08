@@ -233,7 +233,9 @@ const THREAD_EVENT_PAYLOAD_FIELDS = {
     "attemptNumber",
   ],
 } as const satisfies {
-  [E in keyof PluginThreadEventPayloads]: readonly (keyof PluginThreadEventPayloads[E])[];
+  [
+    E in keyof PluginThreadEventPayloads
+  ]: readonly (keyof PluginThreadEventPayloads[E])[];
 };
 
 type MissingThreadEventField = {
@@ -387,7 +389,12 @@ const FRONTEND_SLOT_PROP_FIELDS = {
     "value",
     "onChange",
   ],
-  experimental_machineProviderInputs: ["projectId", "value", "onChange"],
+  experimental_machineProviderInputs: [
+    "projectId",
+    "value",
+    "onChange",
+    "experimental_agentProviderId",
+  ],
 } as const satisfies {
   [S in keyof SlotPropsByName]: readonly (keyof SlotPropsByName[S])[];
 };
@@ -518,7 +525,9 @@ describe("bb-plugin-authoring skill", () => {
     expect(backend).toContain("prepareEnrollment({ key })");
     expect(backend).toContain("await checkpoint(resource)");
     expect(backend).toContain("bb.experimental_machines.bootstrap({");
-    expect(backend).toMatch(/Never put the\s+bootstrap bundle in resource JSON/);
+    expect(backend).toMatch(
+      /Never put the\s+bootstrap bundle in resource JSON/,
+    );
     expect(backend.indexOf("prepareEnrollment({ key })")).toBeLessThan(
       backend.indexOf("await checkpoint(resource)"),
     );

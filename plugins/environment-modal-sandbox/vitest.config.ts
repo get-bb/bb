@@ -10,7 +10,7 @@ export default defineWorkspaceTestConfig({
     projects: sharedWorkerProjects({
       pkgDir: fileURLToPath(new URL(".", import.meta.url)),
       name: "bb-plugin-environment-modal-sandbox",
-      include: ["**/*.test.ts"],
+      include: ["**/*.test.ts", "**/*.test.tsx"],
     }),
   },
 });

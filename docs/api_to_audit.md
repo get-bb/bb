@@ -637,7 +637,7 @@ Supporting app exports are `PluginMachineProviderInputsRegistration`,
 
 **What it does.** Registers the app control for one machine provider's inputs
 with `{ machineProviderId, component }`. The component receives
-`{ projectId, value, onChange }` and reports ready JSON or a blocked reason.
+`{ projectId, value, onChange, experimental_agentProviderId? }` and reports ready JSON or a blocked reason. The experimental agent field is the selected composer provider, null outside the composer, and may be omitted by older hosts. Image controls must validate verification for this selected agent before reporting ready. Stabilization requires coverage of provider changes and project switches without stale launch inputs.
 It is used by the picker sugar row and Add machine flow. The resulting value is
 persisted and readable by every plugin, so it must contain no secrets;
 credentials belong in plugin settings and the value should carry only

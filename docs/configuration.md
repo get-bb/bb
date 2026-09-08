@@ -1288,3 +1288,5 @@ but deadline maintenance closes them. Inspect retention and keep a machine with
 `bb machine lifecycle MACHINE --keep --json`; explicit removal is still available.
 Preservation covers planned rotation. A server outage spanning the vendor deadline
 can lose changes since the last snapshot; lifecycle status reports this risk.
+
+Modal project catalogue Settings and commands are documented in [modal-sandboxes](../plugins/environment-modal-sandbox/skills/modal-sandboxes/SKILL.md). `bb modal account inspect`, `project sources`, and `project preflight` support `--json` and typed plugin RPC. Settings edits bb-owned Dockerfile text with revision checks, follows explicit builds, and verifies/promotes images for future launches. `bb machine lifecycle --remove --yes` complements keep/automatic-retention controls.

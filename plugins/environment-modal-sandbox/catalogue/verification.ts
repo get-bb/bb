@@ -97,6 +97,42 @@ export function createVerificationService(bb: BbPluginApi, store: Catalogue) {
       })
       .immediate();
   }
+  function assertPassed(buildId: string, agentProviderId: string) {
+    const build = store.build(buildId);
+    const passed = store.db
+      .prepare(
+        "SELECT data FROM verifications WHERE user_id=? AND build_id=? AND state='passed' AND json_extract(data,'$.agentProviderId')=? ORDER BY rowid DESC LIMIT 1",
+      )
+      .get(store.owner, buildId, agentProviderId);
+    if (!passed)
+      throw new CatalogueError(
+        409,
+        "A successful verification for the selected agent is required",
+      );
+    const proof = verificationSchema.parse(
+      JSON.parse(rowSchema.parse(passed).data),
+    );
+    const commands = store.recipe(build.projectId, build.revision).smoke
+      .commands;
+    if (
+      !proof.restored ||
+      proof.completedTurnSeq === null ||
+      proof.threadId === null ||
+      proof.hostId === null ||
+      proof.environmentId === null ||
+      !commands.length ||
+      proof.checks.length !== commands.length ||
+      proof.checks.some(
+        (check, index) =>
+          check.command !== commands[index] || check.exitCode !== 0,
+      )
+    )
+      throw new CatalogueError(
+        409,
+        "Verification lacks successful agent and independent command evidence",
+      );
+    return proof;
+  }
   function promote(input: {
     projectId: string;
     buildId: string;
@@ -111,38 +147,7 @@ export function createVerificationService(bb: BbPluginApi, store: Catalogue) {
             409,
             "Choose a ready image for this project",
           );
-        const passed = store.db
-          .prepare(
-            "SELECT data FROM verifications WHERE user_id=? AND build_id=? AND state='passed' AND json_extract(data,'$.agentProviderId')=? ORDER BY rowid DESC LIMIT 1",
-          )
-          .get(store.owner, input.buildId, input.agentProviderId);
-        if (!passed)
-          throw new CatalogueError(
-            409,
-            "A successful verification for the selected agent is required",
-          );
-        const proof = verificationSchema.parse(
-          JSON.parse(rowSchema.parse(passed).data),
-        );
-        const commands = store.recipe(build.projectId, build.revision).smoke
-          .commands;
-        if (
-          !proof.restored ||
-          proof.completedTurnSeq === null ||
-          proof.threadId === null ||
-          proof.hostId === null ||
-          proof.environmentId === null ||
-          !commands.length ||
-          proof.checks.length !== commands.length ||
-          proof.checks.some(
-            (check, index) =>
-              check.command !== commands[index] || check.exitCode !== 0,
-          )
-        )
-          throw new CatalogueError(
-            409,
-            "Verification lacks successful agent and independent command evidence",
-          );
+        assertPassed(input.buildId, input.agentProviderId);
         const previous = store.project(input.projectId);
         if (previous.revision !== input.expectedRevision)
           throw new CatalogueError(
@@ -470,5 +475,5 @@ export function createVerificationService(bb: BbPluginApi, store: Catalogue) {
       }
     }
   }
-  return { start, get, promote, sweep };
+  return { start, get, promote, sweep, assertPassed };
 }

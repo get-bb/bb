@@ -415,6 +415,7 @@ function MachineProviderEnvironmentOptions({
     <>
       <DropdownMenuSeparator />
       <DropdownMenuGroup>
+        <DropdownMenuLabel>New machine</DropdownMenuLabel>
         {rows.map((provider) => {
           const disabledReason = machineProviderDisabledReason(
             provider,
@@ -600,12 +601,24 @@ function MachineSection({
 }: MachineSectionProps) {
   const connected = host.status === "connected";
   const hostProviders = machineProviders;
+  const selectable =
+    connected ||
+    (host.machineProviderId !== null && host.lifecycle.phase === "suspended");
   return (
     <DropdownMenuGroup>
       <DropdownMenuLabel className="min-w-0 text-muted-foreground">
         <span className="flex items-center gap-1.5">
           <MachineStatusDot connected={connected} />
           <span className="min-w-0 truncate">{host.name}</span>
+          {host.machineProviderId ? (
+            <span className={MACHINE_BADGE_CLASS_NAME}>
+              {host.lifecycle.phase === "suspended"
+                ? "paused"
+                : host.lifecycle.phase === "active" && connected
+                  ? "running"
+                  : host.lifecycle.phase}
+            </span>
+          ) : null}
           {isThisMachine ? (
             <span className={MACHINE_BADGE_CLASS_NAME}>this machine</span>
           ) : null}
@@ -642,7 +655,7 @@ function MachineSection({
                   providerValueSelected(value, provider) &&
                   selectedProviderHostId === host.id
                 }
-                disabled={!connected || disabledReason !== null}
+                disabled={!selectable || disabledReason !== null}
                 onSelect={() => onSelectProvider(provider, host.id)}
               />
             );

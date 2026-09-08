@@ -316,7 +316,7 @@ export function createModalSandboxPlugin(
       displayName: "Modal sandbox",
       icon: "./modal-logo.svg",
       environmentRow: {
-        displayName: "Modal sandbox",
+        displayName: "New sandbox",
         environmentProviderId: "project-checkout",
       },
       policy: {

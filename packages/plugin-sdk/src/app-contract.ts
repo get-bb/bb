@@ -1455,6 +1455,8 @@ export interface PluginEnvironmentProviderInputsRegistration {
  * settings.
  */
 export interface PluginMachineProviderInputsProps {
+  /** Selected composer agent, or null outside a composer; older hosts may omit this field. */
+  experimental_agentProviderId?: string | null;
   /** Project selected in the composer; null outside a project. */
   projectId: string | null;
   /** The value persisted with the machine selection. */

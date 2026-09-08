@@ -1,3 +1,4 @@
+import { MachineLifecycleNotice } from "@/components/machines/MachineLifecycleNotice";
 import { MachineProviderDetails } from "@/components/machines/MachineProviderDetails";
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
@@ -155,6 +156,7 @@ function MachineRow({
 
   return (
     <SettingsRow>
+      <div className="flex min-w-0 flex-1 flex-col gap-2">
       <div
         data-machine-row
         className="group group/machine -mx-2 flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-2 transition-colors hover:bg-state-hover focus-within:bg-state-hover"
@@ -296,6 +298,8 @@ function MachineRow({
           </TooltipProvider>
           <ResourceRowDetailChevron />
         </div>
+      </div>
+      {host.machineProviderId !== null && <MachineLifecycleNotice hostId={host.id} onRemove={onRemove} />}
       </div>
     </SettingsRow>
   );

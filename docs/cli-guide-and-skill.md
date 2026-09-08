@@ -14,3 +14,5 @@ keeps cleanup pending until the daemon confirms hook termination. Hook identity
 and completion persist across server restarts. Attached checkout and
 personal-workspace paths skip both hooks. These semantics apply equally to CLI,
 SDK, and app launches; see [worktrees.md](worktrees.md).
+
+Modal project catalogue Settings and commands are documented in [modal-sandboxes](../plugins/environment-modal-sandbox/skills/modal-sandboxes/SKILL.md). `bb modal account inspect`, `project sources`, and `project preflight` support `--json` and typed plugin RPC. Settings edits bb-owned Dockerfile text with revision checks, follows explicit builds, and verifies/promotes images for future launches. `bb machine lifecycle --remove --yes` complements keep/automatic-retention controls.

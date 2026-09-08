@@ -149,8 +149,8 @@ describe("real migrated image catalogue", () => {
     expect(store.recipe("p", 1).dockerfileText).toBe(recipe.dockerfileText);
     expect(next.revision).toBe(2);
     const project = store.project("p");
-    store.configure({ ...project, expectedRevision: 0 });
-    expect(() => store.configure({ ...project, expectedRevision: 0 })).toThrow(
+    store.configure({ ...project, usableBuildId: null, expectedRevision: 0 });
+    expect(() => store.configure({ ...project, usableBuildId: null, expectedRevision: 0 })).toThrow(
       /revision conflict/,
     );
   });

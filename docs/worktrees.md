@@ -201,3 +201,5 @@ Fresh machine clones do not apply `.worktreeinclude`: no local source checkout
 exists on the new host. Supply local files and secrets through core Machine
 environment settings. Keep the repo hook's cache/no-op logic in the repository;
 Modal's stored Dockerfile recipe contains image-build instructions only.
+
+After a provider restores a machine filesystem, core reruns `.bb-env-setup.sh` for each owned checkout using the recorded hook path. Make the hook idempotent and use it to restart project services; processes are not restored with filesystem snapshots. A failed hook blocks readiness. Fresh machine clones do not apply `.worktreeinclude`; supply local files and secrets through Machine environment settings.

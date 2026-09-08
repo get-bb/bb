@@ -17,7 +17,8 @@
     "host": "./host.ts",
     "skills": [
       "skills"
-    ]
+    ],
+    "app": "./app.tsx"
   },
   "keywords": [
     "bb-plugin"
@@ -29,13 +30,19 @@
   },
   "dependencies": {
     "modal": "0.10.0",
-    "zod": "^4.3.6"
+    "zod": "^4.3.6",
+    "@bb/shared-ui": "workspace:*"
   },
   "devDependencies": {
     "@get-bb/plugin-sdk": "workspace:*",
     "@types/node": "^22.0.0",
     "typescript": "npm:@typescript/typescript6@^6.0.2",
     "vitest": "^4.1.1",
-    "better-sqlite3": "^12.6.2"
+    "better-sqlite3": "^12.6.2",
+    "@testing-library/react": "^16.3.2",
+    "@types/react": "^19.0.0",
+    "jsdom": "^29.0.1",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
   }
 }

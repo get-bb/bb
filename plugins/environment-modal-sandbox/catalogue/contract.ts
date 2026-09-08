@@ -23,6 +23,46 @@ const page = z
   })
   .strict();
 export const modalRpcContract = defineRpcContract({
+  "catalogue.projects": {
+    input: z.object({}).strict(),
+    output: z.array(z.object({ id: idSchema, name: z.string() })),
+  },
+  "project.sources": {
+    input: project,
+    output: z.array(
+      z.object({
+        id: idSchema,
+        hostId: idSchema,
+        path: z.string(),
+        name: z.string(),
+      }),
+    ),
+  },
+  "account.inspect": {
+    input: z.object({}).strict(),
+    output: z.object({
+      available: z.boolean(),
+      accountIdentity: z.string().nullable(),
+      appName: z.string().nullable(),
+      baseVersion: z.string(),
+      message: z.string(),
+    }),
+  },
+  "project.preflight": {
+    input: project.extend({
+      agentProviderId: idSchema.default("codex"),
+      buildId: idSchema.nullable().default(null),
+    }),
+    output: z.object({
+      ready: z.boolean(),
+      message: z.string(),
+      build: buildSchema.nullable(),
+    }),
+  },
+  "verification.list": {
+    input: build,
+    output: z.array(verificationSchema),
+  },
   "project.inspect": {
     input: project.extend({ environmentId: idSchema }),
     output: inspectionSchema,
