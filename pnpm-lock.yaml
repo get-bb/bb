@@ -2115,6 +2115,9 @@ importers:
       tar:
         specifier: 7.5.22
         version: 7.5.22
+      tsconfck:
+        specifier: 3.1.6
+        version: 3.1.6(@typescript/typescript6@6.0.2)
       zod:
         specifier: 4.3.6
         version: 4.3.6

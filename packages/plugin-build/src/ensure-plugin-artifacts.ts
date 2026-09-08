@@ -14,6 +14,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import lockfile from "proper-lockfile";
 import { z } from "zod";
+import { tsconfigInputs } from "./tsconfig-inputs.js";
 import { validatePluginBuildManifest } from "./plugin-manifest.js";
 import { PLUGIN_BUILD_FINGERPRINT } from "./generated/build-fingerprint.generated.js";
 import { PLUGIN_SDK_VERSION } from "@bb/domain";
@@ -143,6 +144,7 @@ async function fingerprint(
       if (directories.has(directory)) break;
       directories.add(directory);
       files.add(join(directory, "package.json"));
+      files.add(join(directory, "tsconfig.json"));
       if ((await digest(join(directory, "package.json"))) !== "missing") {
         packageRoots.add(directory);
         if (
@@ -165,6 +167,10 @@ async function fingerprint(
     if (parent === directory) break;
     directory = parent;
   }
+  for (const file of await tsconfigInputs(
+    [...files].filter((file) => file.endsWith("/tsconfig.json")),
+  ))
+    files.add(file);
   const hash = createHash("sha256").update(settings);
   for (const packageRoot of [...packageRoots].sort())
     hash.update(await dependencyIdentity(packageRoot, packageRoot === root));

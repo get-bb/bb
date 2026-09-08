@@ -202,3 +202,30 @@ console.log(JSON.stringify(await ensurePluginArtifacts(${JSON.stringify({ ...arg
     (await ensurePluginArtifacts({ ...args, targets: ["host"] })).rebuilt,
   ).toEqual([]);
 }, 30_000);
+
+it("invalidates an extended TypeScript configuration outside the plugin", async () => {
+  const { root, args } = await fixture();
+  const configRoot = await mkdtemp(join(tmpdir(), "bb-plugin-tsconfig-"));
+  roots.push(configRoot);
+  const config = join(configRoot, "base.json");
+  await writeFile(
+    config,
+    '{ "compilerOptions": { "useDefineForClassFields": false } }',
+  );
+  await writeFile(
+    join(root, "tsconfig.json"),
+    JSON.stringify({ extends: config }),
+  );
+  await writeFile(
+    join(root, "server.ts"),
+    "export class Example { field = 1; }\n",
+  );
+  const request = { ...args, targets: ["server"] as const };
+  await ensurePluginArtifacts(request);
+  expect((await ensurePluginArtifacts(request)).rebuilt).toEqual([]);
+  await writeFile(
+    config,
+    '{ "compilerOptions": { "useDefineForClassFields": true } }',
+  );
+  expect((await ensurePluginArtifacts(request)).rebuilt).toEqual(["server"]);
+});
