@@ -187,7 +187,7 @@ export function registerSystemRoutes(
     return {
       generalSettings: compatibleGeneralSettings(),
       serverAccess: await serverAccessStatus(deps),
-      machineGit: await effectiveMachineGitHealth(deps.db),
+      machineGit: await effectiveMachineGitHealth(deps.db, deps.config.dataDir),
       keybindings: applyAppKeybindingOverrides(
         DEFAULT_APP_KEYBINDINGS,
         keybindingOverrides,
@@ -239,7 +239,7 @@ export function registerSystemRoutes(
     };
   }
   get(routes.machineEnvironment, async (context) =>
-    context.json(await machineEnvironmentView(deps.db)),
+    context.json(await machineEnvironmentView(deps.db, deps.config.dataDir)),
   );
   put(routes.setMachineEnvironment, async (context, payload) => {
     if (getGateAuthKind(context) === "machine")
@@ -255,7 +255,9 @@ export function registerSystemRoutes(
       payload,
     );
     deps.hub.notifySystem(["config-changed"]);
-    return context.json(await machineEnvironmentView(deps.db));
+    return context.json(
+      await machineEnvironmentView(deps.db, deps.config.dataDir),
+    );
   });
   del(routes.unsetMachineEnvironment, async (context) => {
     if (getGateAuthKind(context) === "machine")
@@ -271,7 +273,9 @@ export function registerSystemRoutes(
       null,
     );
     deps.hub.notifySystem(["config-changed"]);
-    return context.json(await machineEnvironmentView(deps.db));
+    return context.json(
+      await machineEnvironmentView(deps.db, deps.config.dataDir),
+    );
   });
 
   put(routes.generalSettings, (context, payload) => {

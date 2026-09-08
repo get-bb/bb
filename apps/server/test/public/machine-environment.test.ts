@@ -1,4 +1,4 @@
-import { readFile, stat } from "node:fs/promises";
+import { stat } from "node:fs/promises";
 import { join } from "node:path";
 import {
   appSettingsValues,
@@ -39,13 +39,11 @@ describe("machine environment settings", () => {
         await sdk.system.setMachineEnvironment({
           name: "DEPLOY_REGION",
           value: "test-region",
-          secret: false,
           note: "Gate",
         });
         const result = await sdk.system.setMachineEnvironment({
           name: "GH_TOKEN",
           value: "user-private-token",
-          secret: false,
           note: null,
         });
         expect(result.builtInGit.status).toBe("overridden");
@@ -67,8 +65,15 @@ describe("machine environment settings", () => {
           "machine-environment",
           "GH_TOKEN",
         );
-        expect((await stat(path)).mode & 0o777).toBe(0o600);
-        expect(await readFile(path, "utf8")).toBe("user-private-token");
+        await expect(stat(path)).rejects.toMatchObject({ code: "ENOENT" });
+        expect(
+          (await stat(join(harness.config.dataDir, "machine-environment-key")))
+            .mode & 0o777,
+        ).toBe(0o600);
+        expect(
+          JSON.stringify(harness.db.select().from(appSettingsValues).all()),
+        ).not.toContain("test-region");
+        expect(JSON.stringify(result)).not.toContain("test-region");
         expect(
           await resolveHostEnvironment(harness.deps, {
             hostId: "local",

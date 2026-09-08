@@ -1,5 +1,4 @@
 import { Icon } from "@bb/shared-ui/icon";
-import { Checkbox } from "@bb/shared-ui/checkbox";
 import { useState } from "react";
 import { Switch } from "@bb/shared-ui/switch";
 import { useSystemConfig } from "@/hooks/queries/system-queries";
@@ -20,7 +19,11 @@ import { invalidateSystemConfig } from "@/hooks/cache-owners/system-cache-effect
 import { parseMachineEnvironmentImport } from "./machine-environment-import";
 
 const queryKey = ["machine-environment"];
-type DraftRow = MachineEnvironmentVariable & { id: string; existing: boolean };
+type DraftRow = Omit<MachineEnvironmentVariable, "value"> & {
+  id: string;
+  existing: boolean;
+  value: string | null;
+};
 
 export function MachineEnvironmentSettings() {
   const queryClient = useQueryClient();
@@ -49,7 +52,6 @@ export function MachineEnvironmentSettings() {
     const result = machineEnvironmentSetSchema.safeParse({
       name: row.name,
       value: row.value ?? "",
-      secret: row.secret,
       note: row.note,
     });
     return result.success
@@ -61,21 +63,10 @@ export function MachineEnvironmentSettings() {
   const mutation = useMutation({
     mutationFn: async () => {
       for (const row of rows) {
-        const original = query.data?.variables.find(
-          (entry) => entry.name === row.name,
-        );
-        if (
-          row.value === null ||
-          (original &&
-            row.value === original.value &&
-            row.secret === original.secret &&
-            row.note === original.note)
-        )
-          continue;
+        if (row.value === null) continue;
         await sdk.system.setMachineEnvironment({
           name: row.name,
           value: row.value,
-          secret: row.secret,
           note: row.note,
         });
       }
@@ -99,7 +90,7 @@ export function MachineEnvironmentSettings() {
     },
   });
   const disabled = !query.data || mutation.isPending;
-  const change = (id: string, patch: Partial<MachineEnvironmentVariable>) => {
+  const change = (id: string, patch: Partial<DraftRow>) => {
     setDraft(rows.map((row) => (row.id === id ? { ...row, ...patch } : row)));
     setError(null);
   };
@@ -285,9 +276,6 @@ export function MachineEnvironmentSettings() {
               onChange={(event) =>
                 change(row.id, {
                   name: event.target.value,
-                  ...(event.target.value === "GH_TOKEN"
-                    ? { secret: true }
-                    : {}),
                 })
               }
             />
@@ -341,20 +329,6 @@ export function MachineEnvironmentSettings() {
             >
               <Icon name="X" className="size-4" />
             </Button>
-          </div>
-          <div className="flex items-center gap-2">
-            <label className="flex items-center gap-2 text-xs text-subtle-foreground">
-              <Checkbox
-                checked={row.secret}
-                disabled={
-                  disabled || row.name === "GH_TOKEN" || row.value === null
-                }
-                onCheckedChange={(checked) =>
-                  change(row.id, { secret: checked === true })
-                }
-              />
-              Store as secret
-            </label>
           </div>
           {row.name === "GH_TOKEN" && (
             <p className="text-xs text-subtle-foreground">

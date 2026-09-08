@@ -40,7 +40,6 @@ async function withStoredSecret(
     await updateMachineEnvironment(db, dir, "TEST_SECRET", {
       name: "TEST_SECRET",
       value,
-      secret: true,
       note: null,
     });
     await run(await resolveUserMachineEnvironment(db, dir), dir);

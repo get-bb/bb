@@ -40,7 +40,6 @@ it("gives backfilled manual machines user and gh environment without enrollment 
     await updateMachineEnvironment(db, dataDir, "MACHINE_VALUE", {
       name: "MACHINE_VALUE",
       value: "configured",
-      secret: false,
       note: null,
     });
     const bin = join(dataDir, "bin");
@@ -88,7 +87,6 @@ if [ "$1" = auth ]; then printf 'test-gh-secret\\n'; else printf '{"login":"octo
     await updateMachineEnvironment(db, dataDir, "GH_TOKEN", {
       name: "GH_TOKEN",
       value: "custom-token",
-      secret: true,
       note: null,
     });
     const overridden = await resolveHostEnvironment(deps, {

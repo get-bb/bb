@@ -44,7 +44,6 @@ export function parseMachineEnvironmentImport(text: string) {
       !machineEnvironmentSetSchema.safeParse({
         name,
         value,
-        secret: true,
         note: null,
       }).success
     )

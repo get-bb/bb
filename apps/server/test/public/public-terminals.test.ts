@@ -428,7 +428,6 @@ describe("public terminal routes", () => {
           {
             name: "CUSTOM_TERMINAL",
             value: "terminal-value",
-            secret: false,
             note: null,
           },
         );

@@ -14,7 +14,6 @@ export const machineEnvironmentSetSchema = z
         (value) => !value.includes("\0"),
         "Environment values cannot contain NUL",
       ),
-    secret: z.boolean().default(false),
     note: z.string().max(1024).nullable().default(null),
   })
   .strict();
@@ -22,8 +21,8 @@ export type MachineEnvironmentSet = z.infer<typeof machineEnvironmentSetSchema>;
 export const machineEnvironmentVariableSchema = z
   .object({
     name: machineEnvironmentNameSchema,
-    value: z.string().nullable(),
-    secret: z.boolean(),
+    value: z.null(),
+    secret: z.literal(true),
     note: z.string().nullable(),
   })
   .strict();

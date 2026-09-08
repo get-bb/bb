@@ -34,14 +34,13 @@ describe("machine env commands", () => {
     });
     try {
       await runCommand(
-        ["machine", "env", "set", "GH_TOKEN", "--secret", "--json"],
+        ["machine", "env", "set", "GH_TOKEN", "--json"],
         register,
       );
       expect(collectLogPayloads(vi.mocked(console.error))).toEqual([]);
       expect(await requests[0].json()).toEqual({
         name: "GH_TOKEN",
         value: "cli-secret",
-        secret: true,
         note: null,
       });
       expect(requests[0].method).toBe("PUT");

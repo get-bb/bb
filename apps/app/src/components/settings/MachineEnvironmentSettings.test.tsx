@@ -82,7 +82,6 @@ it("stages additions and preserves an unchanged saved secret", async () => {
     expect(mocks.set).toHaveBeenCalledExactlyOnceWith({
       name: "NEW_VALUE",
       value: "example",
-      secret: true,
       note: null,
     }),
   );

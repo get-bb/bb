@@ -291,5 +291,5 @@ environment. Add `--environment-provider <id>` when the machine provider has no
 
 Machine creation is durable: `create --no-wait` returns the launch ID, `status <launch-id>` polls it, and `cancel <launch-id>` explicitly cancels it. SIGINT only stops following. Following continues through retryable failures until ready or terminal failure; launch status exposes `terminal`.
 
-Machine environment: `bb machine env list`, `bb machine env set NAME --secret`
+Machine environment: `bb machine env list`, `bb machine env set NAME`
 (value from stdin), and `bb machine env unset NAME`; all accept `--json`.

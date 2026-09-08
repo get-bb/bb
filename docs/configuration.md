@@ -1231,9 +1231,13 @@ progress and errors. Machine selection and precedence stay in the server
 resolver, which returns no contributions for the local host.
 
 Settings → Machines → Machine environment defines variables for all enrolled
-machine hosts. Local hosts do not receive them. Add plain values or mark a value
-secret; secrets use core's 0600 secret files and are never returned by settings
-reads. `GH_TOKEN` is always secret. Notes are public metadata.
+machine hosts. Local hosts do not receive them. All values are encrypted in the
+database using AES-256-GCM and are never returned by settings reads. The server
+keeps the encryption key in its data directory's `machine-environment-key` file
+(mode 0600); include this file with database backups. Names and notes are public
+metadata. Existing plaintext settings and private secret files migrate on first
+access; each old secret file is removed only after its encrypted record is saved.
+Historical backups may still contain values stored before migration.
 
 Core resolves the environment for each agent turn, project-source clone, host
 setup call, and new BB terminal. User variables override built-ins; agent-provider
@@ -1255,15 +1259,15 @@ A user `GH_TOKEN` overrides the built-in token, and the row shows overridden.
 Tokens obtained from gh are never persisted by the server. Image construction
 and Modal filesystem snapshot settings do not receive these contributions.
 
-Use `bb machine env list --json`, `bb machine env set NAME [--secret] [--note
+Use `bb machine env list --json`, `bb machine env set NAME [--note
 text] --json`, and `bb machine env unset NAME --json`. Set reads its value from
 stdin, removes one trailing newline, and never accepts a value in argv. For
 example, `printf '%s' staging | bb machine env set DEPLOY_REGION`. Pipe secrets
 from a secure source instead of putting them in shell history.
 
 SDK parity: `sdk.system.machineEnvironment()`,
-`sdk.system.setMachineEnvironment({ name, value, secret, note })`, and
-`sdk.system.unsetMachineEnvironment(name)`. Secret list rows have `value: null`.
+`sdk.system.setMachineEnvironment({ name, value, note })`, and
+`sdk.system.unsetMachineEnvironment(name)`. All list rows have `value: null` and `secret: true`.
 `bb settings show --json` exposes the built-in readiness as `machineGit`.
 
 Automatic machine GitHub credentials are enabled by default. Use

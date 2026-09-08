@@ -241,10 +241,9 @@ original `BB_DATA_DIR` if explicitly configured, to remove its installation.
 ## Machine environment
 
 `bb machine env list --json` lists global machine variables and built-in GitHub
-health. `bb machine env set NAME [--secret] [--note text] --json` reads its value
+health. `bb machine env set NAME [--note text] --json` reads its value
 from stdin, removing one trailing newline; values are never accepted in argv.
-`bb machine env unset NAME --json` removes an override. GH_TOKEN is always secret.
-Secret values use private files and are never returned by list or set.
+`bb machine env unset NAME --json` removes an override. All values are encrypted in the database and never returned by list or set.
 
 Settings → Machines → Machine environment edits variables inline. Add, remove,
 or import .env rows, then Save variables; Discard changes leaves saved values
@@ -259,7 +258,7 @@ The server's gh login provides GitHub credentials, a Git environment-only HTTPS
 helper and SSH rewrites, and commit identity. The built-in row reports logged in,
 not logged in, or overridden. No credentials are installed in images or global
 Git config. SDK: system.machineEnvironment(), system.setMachineEnvironment({
-name, value, secret, note }), and system.unsetMachineEnvironment(name).
+name, value, note }), and system.unsetMachineEnvironment(name).
 
 Provider-managed machine turns check readiness before dispatch. `bb machine ready`
 checks the same CLI installation, credential routing reachability, and project

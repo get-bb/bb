@@ -84,7 +84,6 @@ describe("project clone sources", () => {
           {
             name: "CUSTOM_SETUP",
             value: "setup-value",
-            secret: false,
             note: null,
           },
         );

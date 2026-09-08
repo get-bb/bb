@@ -53,21 +53,16 @@ export function registerMachineEnvironmentCommands(
   env
     .command("set <NAME>")
     .description("Read a value from stdin; remove one trailing newline")
-    .option("--secret", "Store the value in a private file")
     .option("--note <text>", "Describe this variable")
     .option("--json", "Print machine-readable JSON output")
     .action(
       action(
-        async (
-          name: string,
-          options: { secret?: boolean; note?: string; json?: boolean },
-        ) => {
+        async (name: string, options: { note?: string; json?: boolean }) => {
           const result = await createCliBbSdk(
             getUrl(),
           ).system.setMachineEnvironment({
             name,
             value: await readValue(),
-            secret: options.secret ?? false,
             note: options.note ?? null,
           });
           printEnvironment(result, options);
