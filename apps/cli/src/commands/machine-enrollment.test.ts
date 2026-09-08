@@ -47,6 +47,20 @@ async function harness() {
 }
 
 describe("machine enroll", () => {
+  it("retries a lost exchange with replacement bootstrap while preserving the reserved identity", async () => {
+    const h = await harness();
+    h.fetchFn.mockRejectedValueOnce(new Error("Response lost"));
+    await expect(h.run()).rejects.toThrow("Could not exchange");
+    await expect(readFile(join(h.dir, "auth.json"))).rejects.toMatchObject({ code: "ENOENT" });
+    h.env.BB_ENROLLMENT = JSON.stringify({ ...bundle(), credential: "replacement-bootstrap" });
+    await expect(h.run()).resolves.toEqual({ hostId: "host_test" });
+    expect(h.fetchFn).toHaveBeenCalledTimes(2);
+    expect(h.fetchFn.mock.calls[1]?.[1]?.headers).toMatchObject({
+      authorization: "Bearer replacement-bootstrap",
+    });
+    expect((await stat(join(h.dir, "auth.json"))).mode & 0o777).toBe(0o600);
+  });
+
   it("exchanges through authorization, persists private credentials, and no-ops on same identity with expired material", async () => {
     const h = await harness();
     expect(await h.run()).toEqual({ hostId: "host_test" });

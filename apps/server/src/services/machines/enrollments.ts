@@ -1,3 +1,4 @@
+import { defaultKeyHasher } from "@better-auth/api-key";
 import { getMachineProvider } from "../plugins/plugin-machine-provider-registry.js";
 import { z } from "zod";
 import { readOrCreateSecretFile } from "@bb/secret-storage";
@@ -8,7 +9,7 @@ import {
   randomUUID,
 } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, gt, sql } from "drizzle-orm";
 import {
   authApiKeys,
   createHostId,
@@ -133,7 +134,7 @@ export function createMachineEnrollmentService(
     }
   }
 
-  function enrolled(hostId: string): boolean {
+  function hasIssuedDaemonCredential(hostId: string): boolean {
     return (
       deps.db
         .select({ id: authApiKeys.id })
@@ -142,6 +143,31 @@ export function createMachineEnrollmentService(
           and(
             eq(authApiKeys.configId, "daemon-host"),
             eq(authApiKeys.enabled, true),
+            sql`json_extract(${authApiKeys.metadata}, '$.hostId') = ${hostId}`,
+          ),
+        )
+        .limit(1)
+        .get() !== undefined
+    );
+  }
+
+  async function hasUnusedEnrollmentCredential(
+    hostId: string,
+    credential: string,
+    now: number,
+  ): Promise<boolean> {
+    const hashedCredential = await defaultKeyHasher(credential);
+    return (
+      deps.db
+        .select({ id: authApiKeys.id })
+        .from(authApiKeys)
+        .where(
+          and(
+            eq(authApiKeys.configId, "daemon-enroll"),
+            eq(authApiKeys.key, hashedCredential),
+            eq(authApiKeys.enabled, true),
+            gt(authApiKeys.remaining, 0),
+            gt(authApiKeys.expiresAt, new Date(now)),
             sql`json_extract(${authApiKeys.metadata}, '$.hostId') = ${hostId}`,
           ),
         )
@@ -232,6 +258,7 @@ export function createMachineEnrollmentService(
           const host = deps.db
             .select({
               phase: hosts.phase,
+              lastSeenAt: hosts.lastSeenAt,
               accessProviderId: hosts.serverAccessProviderId,
             })
             .from(hosts)
@@ -252,7 +279,10 @@ export function createMachineEnrollmentService(
             throw new Error(
               "Machine enrollment identity has been removed; use a new creation key",
             );
-          if (row.state === "enrolled" || enrolled(row.hostId)) {
+          if (
+            (host && host.lastSeenAt !== null) ||
+            deps.isConnected(row.hostId)
+          ) {
             deps.db
               .update(machineEnrollments)
               .set({
@@ -277,13 +307,15 @@ export function createMachineEnrollmentService(
               bootstrap.expiresAt !== row.expiresAt
             )
               throw new Error("Pending machine enrollment identity is invalid");
-            return {
-              id: row.id,
-              hostId: row.hostId,
-              state: "pending",
-              bootstrap,
-              expiresAt: row.expiresAt,
-            };
+            if (await hasUnusedEnrollmentCredential(row.hostId, bootstrap.credential, now)) {
+              return {
+                id: row.id,
+                hostId: row.hostId,
+                state: "pending",
+                bootstrap,
+                expiresAt: row.expiresAt,
+              };
+            }
           }
           deps.db
             .insert(hosts)
@@ -361,9 +393,10 @@ export function createMachineEnrollmentService(
         const key = JSON.stringify([owner, initial.key]);
         await serialized(key, async () => {
           const row = rowForId(enrollmentId);
-          if (row.state === "enrolled" || enrolled(row.hostId)) return;
+          if (row.state === "enrolled" || hasIssuedDaemonCredential(row.hostId))
+            return;
           await deps.machineAuth.revokeHostEnrollKeys({ hostId: row.hostId });
-          if (enrolled(row.hostId)) return;
+          if (hasIssuedDaemonCredential(row.hostId)) return;
           deps.db
             .update(machineEnrollments)
             .set({

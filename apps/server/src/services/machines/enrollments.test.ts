@@ -147,14 +147,14 @@ describe("machine enrollments", () => {
     ]);
     expect(result).not.toBeNull();
     expect(h.serverAccess.release).not.toHaveBeenCalled();
-    expect(await h.api.prepare({ key: "race" })).toEqual({
+    expect(await h.api.prepare({ key: "race" })).toMatchObject({
       id: prepared.id,
       hostId: prepared.hostId,
-      state: "enrolled",
+      state: "pending",
     });
   });
 
-  it("recovers enrolled state after a crash and rejects credential replay", async () => {
+  it("recovers enrolled state after an authenticated connection and rejects credential replay", async () => {
     const h = await harness();
     const prepared = await h.api.prepare({ key: "create" });
     if (prepared.state !== "pending")
@@ -167,6 +167,8 @@ describe("machine enrollments", () => {
     const result = await h.machineAuth.enrollHost(request);
     expect(result).not.toBeNull();
     expect(await h.machineAuth.enrollHost(request)).toBeNull();
+    h.db.update(hosts).set({ lastSeenAt: Date.now() })
+      .where(eq(hosts.id, prepared.hostId)).run();
     const restarted = h.create().forOwner("plugin-a");
     expect(await restarted.prepare({ key: "create" })).toEqual({
       id: prepared.id,
@@ -177,6 +179,42 @@ describe("machine enrollments", () => {
     expect(
       await h.machineAuth.verifyDaemonHostKey(result!.hostKey),
     ).not.toBeNull();
+  });
+
+  it("recovers a lost exchange response with a fresh credential for the same identity", async () => {
+    const h = await harness();
+    const first = await h.api.prepare({ key: "lost-response" });
+    if (first.state !== "pending") throw new Error("Expected pending enrollment");
+    const lostResponse = await h.machineAuth.enrollHost({
+      token: first.bootstrap.credential,
+      hostId: first.hostId,
+      allowPublicEnrollment: true,
+    });
+    expect(lostResponse).not.toBeNull();
+    await h.machineAuth.issueHostEnrollKey({
+      hostId: first.hostId,
+      enrollSource: "public-multi-machine",
+    });
+    const retry = await h.create().forOwner("plugin-a").prepare({ key: "lost-response" });
+    if (retry.state !== "pending") throw new Error("Expected recoverable pending enrollment");
+    expect(retry.hostId).toBe(first.hostId);
+    expect(retry.bootstrap.credential === first.bootstrap.credential).toBe(false);
+    const recovered = await h.machineAuth.enrollHost({
+      token: retry.bootstrap.credential,
+      hostId: retry.hostId,
+      allowPublicEnrollment: true,
+    });
+    if (!recovered || !lostResponse) throw new Error("Expected successful exchanges");
+    expect(await h.machineAuth.verifyDaemonHostKey(recovered.hostKey)).not.toBeNull();
+    expect(await h.machineAuth.verifyDaemonHostKey(lostResponse.hostKey)).toBeNull();
+    const beforeStart = await h.api.prepare({ key: "lost-response" });
+    expect(beforeStart.state).toBe("pending");
+    expect(await h.machineAuth.verifyDaemonHostKey(recovered.hostKey)).not.toBeNull();
+    h.db.update(hosts).set({ lastSeenAt: Date.now() })
+      .where(eq(hosts.id, first.hostId)).run();
+    expect(await h.create().forOwner("plugin-a").prepare({ key: "lost-response" })).toEqual({
+      id: first.id, hostId: first.hostId, state: "enrolled",
+    });
   });
 
   it("isolates owners and cancellation revokes only the pending credential", async () => {
