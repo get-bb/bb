@@ -7,7 +7,6 @@ function settings(overrides: Partial<RawSettings> = {}): RawSettings {
     tokenSecret: "token-secret",
     appName: "bb-sandboxes",
     image: "node:22-bookworm",
-    environmentVariables: undefined,
     timeoutMinutes: "60",
     idleMinutes: "15",
     cpu: "",
@@ -16,41 +15,12 @@ function settings(overrides: Partial<RawSettings> = {}): RawSettings {
   };
 }
 
-describe("sandbox environment variables", () => {
-  it("parses a JSON object without exposing it elsewhere in the settings", () => {
-    const result = resolveSettings(
-      settings({
-        environmentVariables: JSON.stringify({
-          WORKLOAD_TOKEN: "sk-secret",
-          LOWER_CASE_VALUE: "allowed",
-        }),
-      }),
-    );
-
-    expect(result).toMatchObject({
+describe("sandbox environment", () => {
+  it("leaves runtime environment contributions out of image and sandbox settings", () => {
+    expect(resolveSettings(settings())).toMatchObject({
       ok: true,
-      settings: {
-        environmentVariables: {
-          WORKLOAD_TOKEN: "sk-secret",
-          LOWER_CASE_VALUE: "allowed",
-        },
-      },
+      settings: { environmentVariables: {} },
     });
-  });
-
-  it("rejects malformed names and values without repeating a secret", () => {
-    const result = resolveSettings(
-      settings({
-        environmentVariables: '{"BAD-NAME":"do-not-repeat","PORT":22}',
-      }),
-    );
-
-    expect(result).toEqual({
-      ok: false,
-      message:
-        "Modal sandbox environmentVariables must be a JSON object whose keys are environment variable names and whose values are strings.",
-    });
-    if (!result.ok) expect(result.message).not.toContain("do-not-repeat");
   });
 });
 

@@ -427,7 +427,10 @@ describe("Modal machine provider", () => {
   });
 
   it("suspends to a snapshot, resumes, and removes the machine resource", async () => {
-    const harness = await setup();
+    const harness = await setup({
+      ...SETTINGS,
+      environmentVariables: "GH_TOKEN=image-secret-sentinel",
+    });
     const created = await harness.provider.create(createContext());
     if (created.status !== "created") throw new Error(created.message);
     const lifecycleContext = {
@@ -437,6 +440,18 @@ describe("Modal machine provider", () => {
       signal: new AbortController().signal,
       async checkpoint() {},
     };
+    expect(JSON.stringify(harness.backend.creates)).not.toContain(
+      "image-secret-sentinel",
+    );
+    expect(harness.backend.creates[0]?.environmentVariables).not.toHaveProperty(
+      "GH_TOKEN",
+    );
+    expect(harness.backend.creates[0]?.environmentVariables).not.toHaveProperty(
+      "GIT_CONFIG_COUNT",
+    );
+    expect(harness.bootstrap.mock.calls[0]?.[0]).not.toHaveProperty(
+      "contributedEnv",
+    );
     const suspended = await harness.provider.suspend?.(lifecycleContext);
     expect(suspended?.resource).toMatchObject({
       sandboxId: null,
@@ -454,6 +469,15 @@ describe("Modal machine provider", () => {
       report,
       signal: lifecycleContext.signal,
     });
+    expect(harness.backend.creates[1]?.environmentVariables).not.toHaveProperty(
+      "GH_TOKEN",
+    );
+    expect(harness.backend.creates[1]?.environmentVariables).not.toHaveProperty(
+      "GIT_CONFIG_COUNT",
+    );
+    expect(JSON.stringify(harness.backend.creates)).not.toContain(
+      "contributedEnv",
+    );
     expect(resumed?.resource).toMatchObject({
       sandboxId: "sandbox-2",
       snapshotImageId: "image-1",
