@@ -1,1 +1,0 @@
-DROP TABLE `environment_hook_operations`;

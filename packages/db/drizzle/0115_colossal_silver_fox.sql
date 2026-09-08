@@ -1,1 +1,0 @@
-ALTER TABLE `environments` DROP COLUMN `canonical_path`;

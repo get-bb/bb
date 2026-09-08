@@ -1,6 +1,8 @@
 {
   "version": "6",
   "dialect": "sqlite",
+  "id": "461ff072-1617-4ce2-b12a-731f82ec3629",
+  "prevId": "1372ccec-3fb1-4472-968f-5db67682af56",
   "tables": {
     "app_settings": {
       "name": "app_settings",
@@ -450,72 +452,6 @@
       "uniqueConstraints": {},
       "checkConstraints": {}
     },
-    "environment_hook_operations": {
-      "name": "environment_hook_operations",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "operation_id": {
-          "name": "operation_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "host_id": {
-          "name": "host_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "path": {
-          "name": "path",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "kind": {
-          "name": "kind",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "started_at": {
-          "name": "started_at",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "finished_at": {
-          "name": "finished_at",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "error": {
-          "name": "error",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "checkConstraints": {}
-    },
     "environment_launches": {
       "name": "environment_launches",
       "columns": {
@@ -532,6 +468,21 @@
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
+        },
+        "provider_plugin_id": {
+          "name": "provider_plugin_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "path_rejected": {
+          "name": "path_rejected",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": false
         },
         "attempt": {
           "name": "attempt",
@@ -689,6 +640,15 @@
             "phase"
           ],
           "isUnique": false
+        },
+        "environment_launches_active_claim_idx": {
+          "name": "environment_launches_active_claim_idx",
+          "columns": [
+            "host_id",
+            "claim_path"
+          ],
+          "isUnique": false,
+          "where": "\"environment_launches\".\"environment_id\" is null and \"environment_launches\".\"claim_path\" is not null"
         }
       },
       "foreignKeys": {},
@@ -729,13 +689,6 @@
         },
         "path": {
           "name": "path",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "canonical_path": {
-          "name": "canonical_path",
           "type": "text",
           "primaryKey": false,
           "notNull": false,
@@ -787,6 +740,13 @@
         },
         "environment_provider_id": {
           "name": "environment_provider_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "environment_provider_plugin_id": {
+          "name": "environment_provider_plugin_id",
           "type": "text",
           "primaryKey": false,
           "notNull": false,
@@ -4148,12 +4108,11 @@
   "views": {},
   "enums": {},
   "_meta": {
+    "schemas": {},
     "tables": {},
     "columns": {}
   },
   "internal": {
     "indexes": {}
-  },
-  "id": "666780d2-ce0b-4ae5-82a0-7d4f2849723a",
-  "prevId": "1372ccec-3fb1-4472-968f-5db67682af56"
+  }
 }
