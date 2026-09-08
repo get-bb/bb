@@ -1,1 +1,0 @@
-DROP TABLE `machine_workspace_setups`;

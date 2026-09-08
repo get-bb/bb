@@ -1254,6 +1254,7 @@ It never changes Serve configuration. Use General `defaultMachineAccess:
 access choice. `machineServerUrl` may be empty for this provider. Machine
 inputs are `deviceId`, `username`, optional absolute `nodeDirectory`, and
 `accessProviderId` (`tailscale` or `default`). See the plugin’s skill and README.
+
 ### DigitalOcean dev boxes
 
 The `machine-digitalocean` plugin's `DIGITALOCEAN_TOKEN` is a secret setting.
@@ -1267,7 +1268,6 @@ Core owns idle/dispatch/retirement; DigitalOcean retirement remains never.
 Powered-off droplets still bill; snapshot storage bills per GB. Official pricing:
 https://docs.digitalocean.com/products/droplets/details/pricing/ and
 https://docs.digitalocean.com/products/snapshots/details/pricing/ .
-
 
 ## Modal project image configuration
 
