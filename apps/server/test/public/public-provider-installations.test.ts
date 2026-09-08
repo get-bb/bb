@@ -291,7 +291,7 @@ describe("public provider installation routes", () => {
               retire: { after: "never" },
               removeRetryMs: 30_000,
             },
-            experimental_reconcileCleanup: async () => ({ status: "removed" }),
+            reconcileCleanup: async () => ({ status: "removed" }),
             create: async () => ({
               status: "created",
               hostId: host.id,

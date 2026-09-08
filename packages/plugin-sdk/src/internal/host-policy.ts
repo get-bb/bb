@@ -2455,7 +2455,7 @@ export interface NormalizedPluginMachineProvider {
   experimental_details: NonNullable<
     PluginMachineProviderDeclaration["experimental_details"]
   > | null;
-  experimental_reconcileCleanup: PluginMachineProviderDeclaration["experimental_reconcileCleanup"];
+  reconcileCleanup: PluginMachineProviderDeclaration["reconcileCleanup"];
   create: PluginMachineProviderDeclaration["create"];
   experimental_observe?: PluginMachineProviderDeclaration["experimental_observe"];
   experimental_policy?: PluginMachineProviderDeclaration["experimental_policy"];
@@ -2523,11 +2523,11 @@ export function validatePluginMachineProviderDeclaration(
   const inputs = normalizeMachineProviderInputs(id, declaration);
   if (
     typeof declaration.create !== "function" ||
-    typeof declaration.experimental_reconcileCleanup !== "function" ||
+    typeof declaration.reconcileCleanup !== "function" ||
     typeof declaration.remove !== "function"
   ) {
     throw new Error(
-      `machine provider "${id}" must declare create, experimental_reconcileCleanup and remove functions`,
+      `machine provider "${id}" must declare create, reconcileCleanup and remove functions`,
     );
   }
   for (const name of ["experimental_observe", "experimental_policy"] as const) {
@@ -2609,7 +2609,7 @@ export function validatePluginMachineProviderDeclaration(
     policy,
     experimental_idleSuspendMs: declaration.experimental_idleSuspendMs ?? null,
     experimental_details: declaration.experimental_details ?? null,
-    experimental_reconcileCleanup: declaration.experimental_reconcileCleanup,
+    reconcileCleanup: declaration.reconcileCleanup,
     create: declaration.create,
     experimental_observe: declaration.experimental_observe,
     experimental_policy: declaration.experimental_policy,

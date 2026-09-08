@@ -124,7 +124,7 @@ function machineDeclaration(
       retire: { after: "never" },
       removeRetryMs: 10,
     },
-    experimental_reconcileCleanup: async () => ({ status: "removed" }),
+    reconcileCleanup: async () => ({ status: "removed" }),
     create: async ({ key }) => ({
       status: "created",
       hostId,
@@ -331,7 +331,7 @@ describe("core machine provider orchestration", () => {
                 { once: true },
               );
             }),
-          experimental_reconcileCleanup: async ({ key }) => {
+          reconcileCleanup: async ({ key }) => {
             calls.push(`reconcile:${key}`);
             return { status: "removed" };
           },
@@ -657,7 +657,7 @@ describe("core machine provider orchestration", () => {
       let attempts = 0;
       const record = installMachineProvider(
         machineDeclaration(host.id, {
-          experimental_reconcileCleanup: async () => {
+          reconcileCleanup: async () => {
             attempts += 1;
             calls.push(`reconcile:${attempts}`);
             return attempts === 1
@@ -1062,7 +1062,7 @@ describe("core machine provider orchestration", () => {
                 { once: true },
               );
             }),
-          experimental_reconcileCleanup: async ({ key }) => {
+          reconcileCleanup: async ({ key }) => {
             calls.push(`reconcile:${key}`);
             return { status: "removed" };
           },
@@ -2691,7 +2691,7 @@ it("definitive pre-allocation rejection fails immediately without reconciliation
     installMachineProvider(
       machineDeclaration(host.id, {
         create,
-        experimental_reconcileCleanup: reconcile,
+        reconcileCleanup: reconcile,
       }),
     );
     await submitMachine(harness.deps, {
@@ -2824,7 +2824,7 @@ it("bounds unresolved allocation cleanup retries and keeps the failed host tombs
       message: "Allocation outcome unknown",
     }));
     installMachineProvider(
-      machineDeclaration(host.id, { experimental_reconcileCleanup: reconcile }),
+      machineDeclaration(host.id, { reconcileCleanup: reconcile }),
     );
     seedReadyLaunch(harness, { key: "bounded-reconcile", hostId: host.id });
     updateHost(harness.db, harness.hub, host.id, { machineProviderId: null });

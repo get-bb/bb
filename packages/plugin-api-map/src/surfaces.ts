@@ -810,7 +810,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Prepare an encrypted v2 enrollment bundle with optional request headers; core upgrades pending v1 bundles on preparation",
           "Prepare enrollment, then await create.checkpoint(resource) immediately after allocation so cancellation can remove it without waiting for bootstrap; never checkpoint the bootstrap bundle",
           "Return a failed create with allocation: none only for definitive rejection before allocation; core skips allocation reconciliation and settles enrollment immediately",
-          "Implement experimental_reconcileCleanup to discover and remove uncertain allocations by durable key or metadata, never create or bootstrap; return failed while allocation intent is unresolved so core retries after removeRetryMs",
+          "Implement reconcileCleanup to discover and remove uncertain allocations by durable key or metadata, never create or bootstrap; return failed while allocation intent is unresolved so core retries after removeRetryMs",
           "Checkpoint a recoverable private resource during suspend before destructive cleanup",
           "Await resume.checkpoint(resource) before bootstrap; core fences provider ownership, phase and operation and recovers the same enrollment after restart",
           "Allocation checkpoints are recovery records, not filesystem saves; daemon-connected does not mean agent-ready",

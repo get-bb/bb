@@ -804,7 +804,7 @@ export async function cancelMachineLaunch(
               record,
               "machine cleanup reconciliation",
               () =>
-                record.provider.experimental_reconcileCleanup({
+                record.provider.reconcileCleanup({
                   key: launch.key,
                   report: launchReporter(deps, launch),
                   signal,

@@ -140,7 +140,7 @@ export interface PluginMachineProviderDefinition<
     context: PluginMachineProviderCreateContext<R, S>,
   ): Promise<PluginMachineProviderCreateResult>;
   /** Reconcile and remove an uncertain allocation by durable key without creating or bootstrapping. Return failed while allocation intent remains unresolved. */
-  experimental_reconcileCleanup(context: {
+  reconcileCleanup(context: {
     key: string;
     report: PluginMachineProviderProgress;
     signal: AbortSignal;

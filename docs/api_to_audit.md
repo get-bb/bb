@@ -2715,9 +2715,11 @@ same key. Never checkpoint a bootstrap bundle. Stabilization must verify cleanup
 of checkpointed allocation before successful enrollment, including safe no-op
 uninstall when installation never began, and retry after partial installation.
 
-## Machine provider `experimental_reconcileCleanup`
+## Machine provider `reconcileCleanup`
 
 Required reconciliation-only cancellation callback on `PluginMachineProviderDefinition`.
+It remains experimental through `bb.experimental_machines`; the unprefixed callback
+name does not indicate stabilization.
 Core supplies the durable launch key, progress reporter and a cleanup signal.
 Providers discover and remove uncertain allocations using a persisted submission intent
 and vendor tags, names or metadata; the callback must never allocate or bootstrap.
