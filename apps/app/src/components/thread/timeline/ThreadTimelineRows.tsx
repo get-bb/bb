@@ -1400,9 +1400,7 @@ export function pastRowDimClassName({
     case "system":
       if (
         row.systemKind === "operation" &&
-        (row.operationKind === "reasoning" ||
-          row.operationKind === "warning" ||
-          row.operationKind === "deprecation")
+        (row.operationKind === "warning" || row.operationKind === "deprecation")
       )
         return undefined;
       return row.status === "completed" ? PAST_ROW_DIM_CLASS_NAME : undefined;
