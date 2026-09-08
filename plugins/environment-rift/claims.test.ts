@@ -62,6 +62,8 @@ async function fixture() {
   const launch: EnvironmentLaunchRow = {
     threadId: "rift-thread",
     providerId: "rift",
+    providerPluginId: "environment-rift",
+    pathRejected: false,
     attempt: 1,
     phase: "creating",
     startedAt: 0,
@@ -88,6 +90,7 @@ async function fixture() {
     ...launch,
     threadId: "checkout-thread",
     providerId: "project-checkout",
+    providerPluginId: "environment-project-checkout",
     pathKey: "checkout-attempt",
   };
   saveEnvironmentLaunch(db, launch);
@@ -145,15 +148,7 @@ async function fixture() {
     host: {
       id: "host",
       name: "test",
-      machineProviderId: null,
-      machineProviderSelection: null,
-      lifecycle: {
-        phase: "active",
-        suspendedAt: null,
-        retireAt: null,
-        progress: null,
-        teardown: null,
-      },
+      type: "persistent",
       status: "connected",
       maxPermissionMode: "full",
       lastSeenAt: null,
