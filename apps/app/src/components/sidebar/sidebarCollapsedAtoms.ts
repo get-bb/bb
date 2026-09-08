@@ -1,5 +1,9 @@
 import { atomWithStorage } from "jotai/utils";
 import type { CollapsibleSidebarSectionId } from "@bb/client-core";
+import type {
+  SidebarChronologicalSort,
+  SidebarOrganizationMode,
+} from "@bb/domain";
 import {
   createJsonLocalStorage,
   type SyncStorage,
@@ -29,8 +33,7 @@ export type {
   SidebarSectionId,
 } from "@bb/client-core";
 
-export type SidebarOrganizationMode = "project" | "chronological" | "machine";
-export type SidebarChronologicalSort = "updated" | "created" | "alpha" | "none";
+export type { SidebarChronologicalSort, SidebarOrganizationMode };
 
 const DEFAULT_SIDEBAR_SECTION_ORDER: readonly string[] = [
   "pinned",

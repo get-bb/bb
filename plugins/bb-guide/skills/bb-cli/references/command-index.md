@@ -18,6 +18,11 @@ This index lists every command path that the core CLI registers. Read the task-s
 - `bb settings keyboard list`
 - `bb settings keyboard set`
 - `bb settings keyboard reset`
+- `bb settings ui`
+- `bb settings ui list`
+- `bb settings ui get`
+- `bb settings ui set`
+- `bb settings ui reset`
 - `bb settings usage`
 - `bb settings version`
 - `bb settings reload`

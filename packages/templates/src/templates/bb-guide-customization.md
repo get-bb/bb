@@ -214,9 +214,29 @@ Voice transcription uses the `BB_TRANSCRIPTION` model, which defaults to
 commands to confine access beneath an absolute directory. Use `--json` for
 metadata and machine-readable results.
 
+Server-backed sidebar preferences
+
+The server keeps a keyed, revisioned registry of sidebar layout preferences
+that the CLI and SDK read and write: organization mode, chronological sort,
+section orders, collapsed rows and sections, navigation entry order and
+visibility, and the navigation and thread-list provider pickers. The app still
+keeps its own browser copy until a follow-up wires the sidebar to it.
+
+  bb settings ui list [--json]
+  bb settings ui get <key> [--json]
+  bb settings ui set <key> <value> [--json]
+  bb settings ui reset <key> [--json]
+
+`bb settings ui list` prints every key with its value, revision, and a short
+description. `set` takes plain strings for enum and provider keys and JSON for
+lists and `null`; it reads the current revision, writes with it, and retries
+once on a conflict. `reset` writes the default. The SDK offers
+`sdk.system.uiPreferences.list()`, `.set()`, and `.reset()`.
+
 Client-local UI preferences
 
-Some Settings values live only in the current browser/client. The Voice Input
+Some Settings values live only in the current browser/client. Sidebar width
+and open state stay local because they depend on the window size. The Voice Input
 microphone picker stores the selected browser MediaDevices device id in
 localStorage as `bb.voiceInput.audioInputDeviceId`; it does not have a `bb`
 command and does not change the server-side transcription model.

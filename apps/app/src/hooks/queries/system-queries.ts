@@ -49,6 +49,7 @@ import {
   systemThemeQueryKey,
   systemUsageLimitsQueryKey,
   systemVersionQueryKey,
+  uiPreferencesQueryKey,
 } from "./query-keys";
 import { requireEnabledQueryArg, type QueryOptions } from "./query-helpers";
 import {
@@ -252,9 +253,7 @@ export function useSystemProviders(args: UseSystemProvidersArgs = {}) {
       const eligible =
         capability === null
           ? remembered
-          : remembered.filter(
-              (provider) => provider.maintenance[capability],
-            );
+          : remembered.filter((provider) => provider.maintenance[capability]);
       return eligible.length > 0 ? eligible : undefined;
     },
   });
@@ -336,6 +335,24 @@ export function systemConfigQueryOptions() {
     queryKey: systemConfigQueryKey(),
     queryFn: ({ signal }) => sdk.system.config({ signal }),
     staleTime: 60_000,
+  });
+}
+
+export function uiPreferencesQueryOptions() {
+  return queryOptions({
+    queryKey: uiPreferencesQueryKey(),
+    queryFn: ({ signal }) => sdk.system.uiPreferences.list({ signal }),
+    staleTime: 60_000,
+  });
+}
+
+export function useUiPreferences(options?: QueryOptions) {
+  const enabled = options?.enabled ?? true;
+  useSystemRealtimeSubscription({ enabled });
+
+  return useQuery({
+    ...uiPreferencesQueryOptions(),
+    enabled,
   });
 }
 

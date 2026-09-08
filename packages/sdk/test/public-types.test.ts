@@ -341,12 +341,15 @@ type ExpectedSystemKey =
   | "installCliSkills"
   | "reloadConfig"
   | "transcribeVoice"
+  | "uiPreferences"
   | "updateExperiments"
   | "updateGeneralSettings"
   | "updateKeyboardSettings"
   | "providerStates"
   | "usageLimits"
   | "version";
+
+type ExpectedSystemUiPreferencesKey = "list" | "reset" | "set";
 
 type ExpectedThemeKey = "catalog" | "get" | "resolve" | "set";
 
@@ -541,6 +544,9 @@ describe("SDK public type entrypoints", () => {
     expectTypeOf<
       keyof RootBbSdk["system"]
     >().toEqualTypeOf<ExpectedSystemKey>();
+    expectTypeOf<
+      keyof RootBbSdk["system"]["uiPreferences"]
+    >().toEqualTypeOf<ExpectedSystemUiPreferencesKey>();
     expectTypeOf<
       keyof RootBbSdk["terminals"]
     >().toEqualTypeOf<ExpectedTerminalsKey>();

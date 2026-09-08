@@ -602,6 +602,56 @@ from 5 seconds to 5 minutes, and never downgrade a daemon. Settings → Machines
 and `bb machine retry-update <id-or-name>` can bypass the current backoff after
 a transient failure.
 
+## Sidebar preferences
+
+Sidebar layout preferences have a keyed registry on the server that the CLI
+and SDK read and write. Each key has a typed schema, a default, and a revision
+that increments on every write. Writes name the revision they expect and
+receive `409 ui_preference_conflict` when another client wrote first, so a
+stale writer cannot silently clobber a newer value. The app still keeps its
+own copy of these values in the browser; a follow-up makes the sidebar read
+and write the server registry.
+
+| Key                               | Value                                                        |
+| --------------------------------- | ------------------------------------------------------------ |
+| `sidebar.organizationMode`        | `project`, `chronological`, or `machine`                     |
+| `sidebar.chronologicalSort`       | `updated`, `created`, `alpha`, or `none`                     |
+| `sidebar.sectionOrder`            | Section id list for **By project**                           |
+| `sidebar.manualSectionOrder`      | Section id list for **Manually**                             |
+| `sidebar.machineSectionOrder`     | Section id list for **By machine**                           |
+| `sidebar.collapsedSections`       | Collapsed built-in sections (`pinned`, `threads`)            |
+| `sidebar.collapsedProjects`       | Collapsed project ids                                        |
+| `sidebar.collapsedThreads`        | Thread ids whose children are collapsed                      |
+| `sidebar.collapsedEnvironments`   | Collapsed environment ids                                    |
+| `sidebar.collapsedThreadSections` | Collapsed thread section ids                                 |
+| `sidebar.collapsedMachines`       | Collapsed machine ids                                        |
+| `sidebar.pluginPanelOrder`        | Navigation entry order                                       |
+| `sidebar.visiblePluginPanels`     | Navigation entries shown, or `null` for every entry          |
+| `sidebar.navigationProvider`      | Plugin key, `__automatic__`, or `__builtin__`                |
+| `sidebar.threadListProvider`      | Plugin key, `__automatic__`, or `__builtin__`                |
+
+Read and write them with:
+
+```sh
+bb settings ui list [--json]
+bb settings ui get <key> [--json]
+bb settings ui set <key> <value> [--json]
+bb settings ui reset <key> [--json]
+```
+
+`set` takes a plain string for enum and provider keys and JSON for lists and
+`null`, for example `bb settings ui set sidebar.organizationMode machine` or
+`bb settings ui set sidebar.sectionOrder '["threads","pinned","projects"]'`.
+It reads the current revision first and retries once on a conflict. `reset`
+writes the default and advances the revision. The SDK exposes the same
+operations as `sdk.system.uiPreferences.list()`, `.set({ key, value,
+expectedRevision })`, and `.reset({ key })` over `GET /preferences/ui`,
+`PUT /preferences/ui/:key`, and `DELETE /preferences/ui/:key`. Every write
+broadcasts a `ui-preferences-changed` system change to connected clients.
+
+Sidebar width and open state stay in the browser because they depend on the
+window size.
+
 ## Thread splits
 
 Thread splits enable up to eight panes in the app's multi-pane thread view and

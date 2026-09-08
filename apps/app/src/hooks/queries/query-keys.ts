@@ -57,6 +57,7 @@ const THREAD_TIMELINE_TURN_SUMMARY_DETAILS_QUERY_KEY =
   "threadTimelineTurnSummaryDetails";
 const SYSTEM_PROVIDERS_QUERY_KEY = "systemProviders";
 const SYSTEM_CONFIG_QUERY_KEY = "systemConfig";
+const UI_PREFERENCES_QUERY_KEY = "uiPreferences";
 const SYSTEM_THEME_QUERY_KEY = "systemTheme";
 export const SYSTEM_EXECUTION_OPTIONS_QUERY_KEY = "systemExecutionOptions";
 const SYSTEM_CLI_SKILLS_QUERY_KEY = "systemCliSkills";
@@ -446,6 +447,7 @@ type AllSystemProvidersQueryKeyPrefix = readonly [
   typeof SYSTEM_PROVIDERS_QUERY_KEY,
 ];
 type SystemConfigQueryKey = readonly [typeof SYSTEM_CONFIG_QUERY_KEY];
+type UiPreferencesQueryKey = readonly [typeof UI_PREFERENCES_QUERY_KEY];
 type SystemThemeQueryKey = readonly [typeof SYSTEM_THEME_QUERY_KEY, string];
 type AllSystemThemesQueryKeyPrefix = readonly [typeof SYSTEM_THEME_QUERY_KEY];
 type SystemCliSkillsQueryKey = readonly [typeof SYSTEM_CLI_SKILLS_QUERY_KEY];
@@ -1079,6 +1081,10 @@ export function systemCliSkillsQueryKey(): SystemCliSkillsQueryKey {
 
 export function systemConfigQueryKey(): SystemConfigQueryKey {
   return [SYSTEM_CONFIG_QUERY_KEY];
+}
+
+export function uiPreferencesQueryKey(): UiPreferencesQueryKey {
+  return [UI_PREFERENCES_QUERY_KEY];
 }
 
 export function systemThemeQueryKey(themeId: string): SystemThemeQueryKey {

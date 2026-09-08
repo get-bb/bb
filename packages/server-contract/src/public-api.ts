@@ -245,6 +245,13 @@ import type {
   UpdateThreadTabsRequest,
 } from "./api/thread-tabs.js";
 import { updateThreadTabsRequestSchema } from "./api/thread-tabs.js";
+import type {
+  PathUiPreferenceKey,
+  UiPreferenceResponse,
+  UiPreferencesResponse,
+  UpdateUiPreferenceRequest,
+} from "./api/ui-preferences.js";
+import { updateUiPreferenceRequestSchema } from "./api/ui-preferences.js";
 import {
   closeTerminalRequestSchema,
   copyProjectAttachmentsRequestSchema,
@@ -1536,6 +1543,33 @@ export const publicApiRoutes = {
         appThemeSelectionSchema,
       ),
       response: jsonResponse<AppTheme>(),
+    }),
+    uiPreferences: defineRoute({
+      path: "/preferences/ui",
+      method: "get",
+      request: noRequest(),
+      response: jsonResponse<UiPreferencesResponse>(),
+    }),
+    updateUiPreference: defineRoute({
+      path: "/preferences/ui/:key",
+      method: "put",
+      request: jsonRequest<PathUiPreferenceKey, UpdateUiPreferenceRequest>(
+        updateUiPreferenceRequestSchema,
+      ),
+      response: [
+        jsonResponse<UiPreferenceResponse>(),
+        jsonResponse<ApiError>({ status: 404 }),
+        jsonResponse<ApiError>({ status: 409 }),
+      ],
+    }),
+    resetUiPreference: defineRoute({
+      path: "/preferences/ui/:key",
+      method: "delete",
+      request: noRequest<PathUiPreferenceKey>(),
+      response: [
+        jsonResponse<UiPreferenceResponse>(),
+        jsonResponse<ApiError>({ status: 404 }),
+      ],
     }),
     themes: defineRoute({
       path: "/settings/themes",

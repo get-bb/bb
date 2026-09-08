@@ -123,6 +123,13 @@ export {
   setAppSettings,
 } from "./app-settings.js";
 export { getStoredThreadTabs, replaceStoredThreadTabs } from "./thread-tabs.js";
+export {
+  listStoredUiPreferences,
+  overwriteStoredUiPreference,
+  replaceStoredUiPreference,
+  type ReplaceUiPreferenceResult,
+  type StoredUiPreference,
+} from "./ui-preferences.js";
 export { getExperiments, setExperiments } from "./experiments.js";
 export {
   deleteInstalledPlugin,

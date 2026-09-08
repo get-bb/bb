@@ -161,6 +161,13 @@ export const appSettingsValues = sqliteTable("app_settings_values", {
   updatedAt: integer("updated_at").notNull(),
 });
 
+export const uiPreferences = sqliteTable("ui_preferences", {
+  key: text("key").primaryKey(),
+  valueJson: text("value_json").notNull(),
+  revision: integer("revision").notNull(),
+  updatedAt: integer("updated_at").notNull(),
+});
+
 export const appSettings = sqliteTable("app_settings", {
   id: text("id").primaryKey(),
   caffeinate: integer("caffeinate", { mode: "boolean" })

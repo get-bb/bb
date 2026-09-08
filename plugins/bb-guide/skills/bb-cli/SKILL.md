@@ -60,6 +60,9 @@ BB_HOST_DAEMON_PORT only for an intentional non-default target.
 - `bb environment providers` lists Project checkout, Worktree, then other
   installed providers by display name. Read or set `managedBranchPrefix`
   through `bb settings show` and `bb settings general <key> <value>`.
+- The server keeps a registry of sidebar layout preferences (organization
+  mode, section order, collapsed rows, navigation entries): `bb settings ui
+  list`, `get`, `set`, and `reset`.
 - Query provider models on the machine that will run the thread.
 - Prefer non-interactive commands and machine-readable output for automation.
 - Pass `--yes` for a confirmed destructive command in a non-interactive shell.

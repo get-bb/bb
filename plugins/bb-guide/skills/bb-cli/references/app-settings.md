@@ -11,6 +11,21 @@ every window and client sees the same value.
 - Unknown keys and values of the wrong shape are rejected; the error names the
   keys bb knows.
 
+## Sidebar preferences
+
+- The server keeps a keyed, revisioned registry of sidebar layout preferences
+  (`sidebar.organizationMode`, `sidebar.chronologicalSort`, the section
+  orders, the collapsed-id lists, `sidebar.pluginPanelOrder`,
+  `sidebar.visiblePluginPanels`, `sidebar.navigationProvider`,
+  `sidebar.threadListProvider`).
+- `bb settings ui list [--json]` prints every key with its value, revision,
+  and description; `bb settings ui get <key> [--json]` prints one.
+- `bb settings ui set <key> <value> [--json]` takes a plain string for enum
+  and provider keys and JSON for lists or `null`; it reads the current
+  revision, writes with it, and retries once on a conflict.
+- `bb settings ui reset <key> [--json]` writes the default and advances the
+  revision.
+
 ## Keyboard shortcuts
 
 - `showKeyboardHints` defaults to true. Set it with

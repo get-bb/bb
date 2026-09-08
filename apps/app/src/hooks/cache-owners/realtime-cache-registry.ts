@@ -54,6 +54,7 @@ import {
   hostsQueryKey,
   sidebarNavigationQueryKey,
   systemConfigQueryKey,
+  uiPreferencesQueryKey,
   allSystemProvidersQueryKeyPrefix,
   threadDefaultExecutionOptionsQueryKey,
   threadQueryKey,
@@ -533,6 +534,9 @@ export const REALTIME_SYSTEM_CHANGE_REGISTRY = {
   },
   "provider-registrations-changed": {
     dirty: [dirtySystemProviderQueries, dirtySystemExecutionOptionQueries],
+  },
+  "ui-preferences-changed": {
+    dirty: [dirtyUiPreferencesQueries],
   },
 } satisfies SystemChangeRegistry;
 
@@ -1119,6 +1123,15 @@ function dirtySystemConfigQueries({ queryClient }: RealtimeDirtyContext): void {
   invalidateQueryKeysWithoutCancelingActiveFetches({
     queryClient,
     queryKeys: [systemConfigQueryKey(), allSystemThemesQueryKeyPrefix()],
+  });
+}
+
+function dirtyUiPreferencesQueries({
+  queryClient,
+}: RealtimeDirtyContext): void {
+  invalidateQueryKeysWithoutCancelingActiveFetches({
+    queryClient,
+    queryKeys: [uiPreferencesQueryKey()],
   });
 }
 
