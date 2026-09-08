@@ -59,6 +59,21 @@ async function setup() {
 }
 
 describe("E2B machine provider", () => {
+  it("declares checkout picker sugar without requiring a project for machine creation", async () => {
+    const test = await setup();
+    expect(test.provider.environmentRow).toEqual({
+      displayName: "E2B",
+      environmentProviderId: "project-checkout",
+    });
+    expect(test.provider.requires?.gitRemote ?? false).toBe(false);
+    const request = context();
+    expect(test.provider.inputs).toBeNull();
+    expect(await test.provider.create(request)).toMatchObject({
+      status: "created",
+    });
+    await test.harness.lifecycle.dispose();
+  });
+
   it("uses the same allocation and core key across create retries", async () => {
     const test = await setup();
     const request = context();

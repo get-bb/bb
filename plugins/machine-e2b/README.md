@@ -4,7 +4,13 @@ Catalog plugin providing the `e2b` machine provider through the official E2B
 JavaScript SDK. Create a machine from Settings → Machines or the public machines
 SDK / `bb machine create`. Configure project sources and agent credentials on
 that machine separately. This plugin intentionally registers no environment
-provider, picker shortcut, or provider icon.
+provider or provider icon.
+
+For a project with a Git remote, the E2B environment-picker shortcut creates a
+machine and selects Project checkout. Core clones/registers the project source;
+the machine adapter stays project-agnostic and takes no machine inputs. Without
+a project Git remote the checkout shortcut is hidden. Standalone creation and
+an explicit Personal workspace selection remain available.
 
 Creation prepares enrollment before vendor allocation and awaits a core resource
 checkpoint as soon as the allocation ID is known. The checkpoint contains no

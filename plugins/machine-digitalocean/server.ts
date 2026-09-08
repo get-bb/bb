@@ -81,6 +81,10 @@ export function createDigitalOceanPlugin(deps: {
     bb.experimental_machines.register({
       id: "digitalocean",
       displayName: "DigitalOcean",
+      environmentRow: {
+        displayName: "DigitalOcean",
+        environmentProviderId: "project-checkout",
+      },
       inputs: inputsSchema,
       policy: {
         idleSuspendMs: null,

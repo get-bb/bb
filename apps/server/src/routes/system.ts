@@ -69,6 +69,7 @@ import {
 import {
   machineProviderAcceptsEmptyInputs,
   resolveMachineProviderAvailability,
+  resolveMachineProviderEnvironmentRow,
 } from "../services/machines/provider-availability.js";
 import { requirePublicProject } from "../services/lib/entity-lookup.js";
 
@@ -384,7 +385,11 @@ export function registerSystemRoutes(
           inputs: record.provider.inputsJsonSchema,
           acceptsEmptyInputs: await machineProviderAcceptsEmptyInputs(record),
           supportsSuspend: record.provider.suspend !== null,
-          environmentRow: record.provider.environmentRow,
+          environmentRow: resolveMachineProviderEnvironmentRow(
+            deps,
+            record,
+            query,
+          ),
           policy: record.provider.policy,
           availability: await resolveMachineProviderAvailability(
             deps,

@@ -74,6 +74,24 @@ async function setup() {
 }
 
 describe("DigitalOcean machine provider", () => {
+  it("declares checkout picker sugar without requiring a project for machine creation", async () => {
+    const test = await setup();
+    expect(test.provider.environmentRow).toEqual({
+      displayName: "DigitalOcean",
+      environmentProviderId: "project-checkout",
+    });
+    expect(test.provider.requires?.gitRemote ?? false).toBe(false);
+    const request = context();
+    expect(await test.provider.create(request)).toMatchObject({
+      status: "created",
+    });
+    expect(test.api.create).toHaveBeenCalledWith(
+      expect.objectContaining({ region: "nyc3", size: "s-2vcpu-4gb" }),
+      expect.any(AbortSignal),
+    );
+    await test.harness.lifecycle.dispose();
+  });
+
   it("allocates once and keeps cloud-init secrets out of resource/progress", async () => {
     const test = await setup();
     const request = context();

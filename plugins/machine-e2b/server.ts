@@ -60,6 +60,10 @@ export function createE2BPlugin(deps: {
     bb.experimental_machines.register({
       id: "e2b",
       displayName: "E2B",
+      environmentRow: {
+        displayName: "E2B",
+        environmentProviderId: "project-checkout",
+      },
       policy: {
         idleSuspendMs: 15 * 60_000,
         retire: { after: "last-thread", graceMs: 30 * 24 * 60 * 60_000 },
