@@ -108,3 +108,14 @@ it("retains a secret replacement when saving fails", async () => {
   await screen.findByText(/Some changes could not be saved/);
   expect(screen.getByDisplayValue("replacement")).toBeTruthy();
 });
+
+it("does not show a validation error until a new name field loses focus", async () => {
+  await show();
+  fireEvent.click(screen.getByRole("button", { name: "Add variable" }));
+  expect(screen.queryByRole("alert")).toBeNull();
+  const name = screen.getByLabelText("Variable name 2");
+  fireEvent.blur(name);
+  expect(screen.getByRole("alert").textContent).toBe("Enter a variable name.");
+  fireEvent.change(name, { target: { value: "VALID_NAME" } });
+  expect(screen.queryByRole("alert")).toBeNull();
+});

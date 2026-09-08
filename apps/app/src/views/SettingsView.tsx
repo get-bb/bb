@@ -1225,8 +1225,12 @@ export function SettingsView() {
           open={location.hash === "#advanced-machine-settings" || undefined}
           className="group space-y-6"
         >
-          <summary className="cursor-pointer text-sm font-medium text-subtle-foreground">
+          <summary className="flex w-fit cursor-pointer list-none items-center gap-1.5 text-sm font-medium text-subtle-foreground [&::-webkit-details-marker]:hidden">
             Advanced settings
+            <Icon
+              name="ChevronDown"
+              className="size-3.5 transition-transform group-open:rotate-180"
+            />
           </summary>
           <MachineAccessSettings />
           <MachineEnvironmentSettings />

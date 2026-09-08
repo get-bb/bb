@@ -1,3 +1,5 @@
+import { Icon } from "@bb/shared-ui/icon";
+import { Checkbox } from "@bb/shared-ui/checkbox";
 import { useState } from "react";
 import { Switch } from "@bb/shared-ui/switch";
 import { useSystemConfig } from "@/hooks/queries/system-queries";
@@ -30,6 +32,7 @@ export function MachineEnvironmentSettings() {
   });
   const [draft, setDraft] = useState<DraftRow[] | null>(null);
   const [visible, setVisible] = useState<Set<string>>(new Set());
+  const [touched, setTouched] = useState<Set<string>>(new Set());
   const [importOpen, setImportOpen] = useState(false);
   const [importText, setImportText] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -51,7 +54,9 @@ export function MachineEnvironmentSettings() {
     });
     return result.success
       ? null
-      : "Use an uppercase variable name (letters, numbers, underscores) and a valid value.";
+      : !row.name
+        ? "Enter a variable name."
+        : "Use uppercase letters, numbers, and underscores; start with a letter or underscore.";
   });
   const mutation = useMutation({
     mutationFn: async () => {
@@ -263,18 +268,18 @@ export function MachineEnvironmentSettings() {
         </div>
       )}
       {rows.map((row, index) => (
-        <div
-          key={row.id}
-          className="space-y-2 rounded-md border border-border p-3"
-        >
-          <div className="grid min-w-0 gap-2 sm:grid-cols-2">
+        <div key={row.id} className="space-y-2 border-t border-border pt-3">
+          <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
             <Input
-              className="font-mono"
+              className="col-span-2 font-mono sm:col-span-1"
               aria-label={`Variable name ${index + 1}`}
               placeholder="KEY"
               value={row.name}
               disabled={disabled || row.existing}
-              aria-invalid={issues[index] !== null}
+              aria-invalid={touched.has(row.id) && issues[index] !== null}
+              onBlur={() =>
+                setTouched((current) => new Set(current).add(row.id))
+              }
               onChange={(event) =>
                 change(row.id, {
                   name: event.target.value,
@@ -284,9 +289,9 @@ export function MachineEnvironmentSettings() {
                 })
               }
             />
-            <div className="flex min-w-0 gap-1">
+            <div className="relative min-w-0">
               <Input
-                className="min-w-0 font-mono"
+                className="min-w-0 pr-9 font-mono"
                 aria-label={`Value for ${row.name || `variable ${index + 1}`}`}
                 type={visible.has(row.id) ? "text" : "password"}
                 placeholder={
@@ -302,8 +307,9 @@ export function MachineEnvironmentSettings() {
                 }
               />
               <Button
-                size="sm"
+                size="icon"
                 variant="ghost"
+                className="absolute inset-y-0 right-0 my-auto size-8 text-subtle-foreground"
                 aria-label={`${visible.has(row.id) ? "Hide" : "Show"} ${row.name || "value"}`}
                 disabled={disabled || row.value === null}
                 onClick={() =>
@@ -315,26 +321,15 @@ export function MachineEnvironmentSettings() {
                   })
                 }
               >
-                {visible.has(row.id) ? "Hide" : "Show"}
+                <Icon
+                  name={visible.has(row.id) ? "EyeOff" : "Eye"}
+                  className="size-4"
+                />
               </Button>
             </div>
-          </div>
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <label className="flex items-center gap-2 text-xs text-subtle-foreground">
-              <input
-                type="checkbox"
-                checked={row.secret}
-                disabled={
-                  disabled || row.name === "GH_TOKEN" || row.value === null
-                }
-                onChange={(event) =>
-                  change(row.id, { secret: event.target.checked })
-                }
-              />
-              Secret
-            </label>
             <Button
-              size="sm"
+              size="icon"
+              className="size-8 text-subtle-foreground hover:text-destructive-text"
               variant="ghost"
               aria-label={`Remove ${row.name || "variable"}`}
               disabled={disabled}
@@ -342,8 +337,22 @@ export function MachineEnvironmentSettings() {
                 setDraft(rows.filter((entry) => entry.id !== row.id))
               }
             >
-              Remove
+              <Icon name="X" className="size-4" />
             </Button>
+          </div>
+          <div className="flex items-center gap-2">
+            <label className="flex items-center gap-2 text-xs text-subtle-foreground">
+              <Checkbox
+                checked={row.secret}
+                disabled={
+                  disabled || row.name === "GH_TOKEN" || row.value === null
+                }
+                onCheckedChange={(checked) =>
+                  change(row.id, { secret: checked === true })
+                }
+              />
+              Store as secret
+            </label>
           </div>
           {row.name === "GH_TOKEN" && (
             <p className="text-xs text-subtle-foreground">
@@ -353,7 +362,7 @@ export function MachineEnvironmentSettings() {
           {row.note && (
             <p className="text-xs text-subtle-foreground">{row.note}</p>
           )}
-          {issues[index] && (
+          {touched.has(row.id) && issues[index] && (
             <p role="alert" className="text-xs text-destructive-text">
               {issues[index]}
             </p>
