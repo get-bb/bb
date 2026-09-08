@@ -316,6 +316,23 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolveSleep) => setTimeout(resolveSleep, ms));
 }
 
+async function removeDirectoryForTests(target: string): Promise<void> {
+  const deadline = Date.now() + 2_000;
+  for (;;) {
+    try {
+      rmSync(target, { recursive: true, force: true });
+      return;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "EBUSY") throw error;
+    }
+    if (Date.now() >= deadline) {
+      rmSync(target, { recursive: true, force: true });
+      return;
+    }
+    await sleep(100);
+  }
+}
+
 export async function replayRecording(
   options: ReplayRecordingOptions,
 ): Promise<ParityRun> {
@@ -653,8 +670,8 @@ export async function replayRecording(
       return null;
     }),
   ]);
-  rmSync(stateDir, { recursive: true, force: true });
-  rmSync(workspaceDir, { recursive: true, force: true });
+  await removeDirectoryForTests(stateDir);
+  await removeDirectoryForTests(workspaceDir);
 
   return {
     providerId,

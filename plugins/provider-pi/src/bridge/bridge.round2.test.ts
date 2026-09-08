@@ -79,7 +79,10 @@ it("a missing executable fails thread/start fast with the spawn error", async ()
   const response = await harness.startThread("thr_r2_enoent");
   expect(Date.now() - startedAt).toBeLessThan(5_000);
   expect(response.error).toMatchObject({
-    message: expect.stringMatching(/ENOENT/u),
+    message:
+      process.platform === "win32"
+        ? expect.stringContaining("no-such-pi")
+        : expect.stringMatching(/ENOENT/u),
   });
 }, 90_000);
 

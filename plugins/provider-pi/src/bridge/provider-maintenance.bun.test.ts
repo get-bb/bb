@@ -44,7 +44,9 @@ afterEach(async () => {
   );
 });
 
-describe("Pi provider maintenance with a Bun-managed executable", () => {
+describe.skipIf(process.platform === "win32")(
+  "Pi provider maintenance with a Bun-managed executable",
+  () => {
   it("updates through Bun when the resolved Pi command is a wrapper around Bun's global binary", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "bb-pi-bun-update-"));
     temporaryDirectories.push(root);
@@ -82,4 +84,5 @@ describe("Pi provider maintenance with a Bun-managed executable", () => {
       },
     });
   });
-});
+},
+);

@@ -1,6 +1,6 @@
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import path, { join } from "node:path";
 import { experimental_nativeRootsResolveOutputSchema } from "@get-bb/plugin-sdk/host";
 import { afterEach, beforeEach, expect, it } from "vitest";
 import { resolvePiNativeRoots } from "./native-roots.js";
@@ -18,6 +18,10 @@ afterEach(() => {
 function writeSettings(agentDir: string, settings: unknown): void {
   mkdirSync(agentDir, { recursive: true });
   writeFileSync(join(agentDir, "settings.json"), JSON.stringify(settings));
+}
+
+function rootRelativePath(value: string): string {
+  return path.resolve(path.parse(homeDir).root, value);
 }
 
 async function resolvedSkillPaths(
@@ -61,7 +65,7 @@ it("resolves plain skill entries against home, the agent dir, or as given, and d
   });
   await expect(resolvedSkillPaths({})).resolves.toEqual(
     [
-      "/opt/team-skills",
+      rootRelativePath("/opt/team-skills"),
       join(homeDir, ".pi", "agent", "local-skills"),
       join(homeDir, "shared", "skills"),
     ].sort(),
@@ -91,10 +95,10 @@ it("never answers a root the contract would refuse", async () => {
   });
   await expect(resolvedSkillPaths({})).resolves.toEqual(
     [
-      "/etc/skills",
-      "/opt/skills",
+      rootRelativePath("/opt/../etc/skills"),
+      rootRelativePath("/opt//skills"),
       join(homeDir, ".pi", "agent", "escape"),
-      "/srv/skills",
+      rootRelativePath("/srv/skills/"),
       join(homeDir, "team-skills"),
     ].sort(),
   );

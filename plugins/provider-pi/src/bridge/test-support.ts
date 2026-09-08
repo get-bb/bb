@@ -29,6 +29,23 @@ const INITIALIZE_ID = 100;
 const FIRST_HARNESS_REQUEST_ID = 1_000_000;
 const RESPONSE_DEADLINE_MS = 60_000;
 
+async function removeWorkspaceDir(workspaceDir: string): Promise<void> {
+  const deadline = Date.now() + 2_000;
+  for (;;) {
+    try {
+      rmSync(workspaceDir, { recursive: true, force: true });
+      return;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "EBUSY") throw error;
+    }
+    if (Date.now() >= deadline) {
+      rmSync(workspaceDir, { recursive: true, force: true });
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+}
+
 const threadDeltaParamsSchema = z.object({
   threadId: z.string(),
   deltas: z.array(z.record(z.string(), z.unknown())),
@@ -167,7 +184,7 @@ export async function startFakePiBridge(
       await experimental_closeAllForTests();
       harness.restore();
       vi.unstubAllEnvs();
-      rmSync(workspaceDir, { recursive: true, force: true });
+      await removeWorkspaceDir(workspaceDir);
     },
   };
   if (options.initialize) {
