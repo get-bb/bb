@@ -905,7 +905,11 @@ function buildFlatProjectionData(
       continue;
     }
 
-    const compactionEvent = parseCompactionLifecycleEvent(decoded, meta);
+    const compactionEvent = parseCompactionLifecycleEvent(
+      decoded,
+      meta,
+      eventParentToolCallId,
+    );
     if (compactionEvent) {
       flushToolActivityBeforeNonToolMessage(state);
       if (compactionEvent.kind === "begin") {
