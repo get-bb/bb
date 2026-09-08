@@ -58,6 +58,8 @@ import {
 import { getOrderedThreadEvents } from "./group-event-projection-turns.js";
 import {
   groupCompletedTurnMessages,
+  groupPendingTurnMessages,
+  shouldGroupPendingTurnMessages,
   type CompletedTurnSummaryItem,
 } from "./completed-turn-grouping.js";
 import { extractThreadContextWindowUsage } from "./thread-context-window-usage.js";
@@ -1130,7 +1132,7 @@ function buildTurnSummaryRow({
   };
 }
 
-function buildCompletedTurnSummaryRows({
+function buildTurnSummaryRows({
   includeNestedRows,
   rowIdPrefix,
   summaryItems,
@@ -1186,8 +1188,10 @@ function buildTurnRows({
   const messages = turn.messages ?? [];
   const isCompletedTurn =
     turn.status !== "pending" && turn.completedAt !== null;
+  const shouldGroupPendingTurn =
+    turn.status === "pending" && shouldGroupPendingTurnMessages(turn);
 
-  if (!isCompletedTurn) {
+  if (!isCompletedTurn && !shouldGroupPendingTurn) {
     return messages.flatMap((message) =>
       convertMessage(message, {
         includeNestedRows,
@@ -1197,15 +1201,16 @@ function buildTurnRows({
     );
   }
 
-  const { summaryItems, terminalMessages, trailingMessages } =
-    groupCompletedTurnMessages(turn);
+  const { summaryItems, terminalMessages, trailingMessages } = isCompletedTurn
+    ? groupCompletedTurnMessages(turn)
+    : groupPendingTurnMessages(turn);
   const terminalRows = terminalMessages.flatMap((message) =>
     convertMessage(message, { includeNestedRows, rowIdPrefix, workspaceRoot }),
   );
   const trailingRows = trailingMessages.flatMap((message) =>
     convertMessage(message, { includeNestedRows, rowIdPrefix, workspaceRoot }),
   );
-  const summaryRows = buildCompletedTurnSummaryRows({
+  const summaryRows = buildTurnSummaryRows({
     includeNestedRows,
     rowIdPrefix,
     summaryItems,

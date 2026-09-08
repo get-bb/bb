@@ -26,6 +26,16 @@ function renderCompletedTimeline(args: RenderCompletedTimelineArgs) {
   });
 }
 
+function renderPendingTimeline(args: RenderCompletedTimelineArgs) {
+  return renderTimelineFixture({
+    events: args.events,
+    projectionOptions: {
+      threadStatus: "active",
+      turnMessageDetail: "summary",
+    },
+  });
+}
+
 function rowSignature(row: TimelineRow): string {
   if (row.kind === "conversation") {
     return `conversation:${row.role}`;
@@ -62,6 +72,129 @@ function requireOnlyTurnRow(rows: readonly TimelineRow[]): TimelineTurnRow {
 }
 
 describe("completed turn summary rendering", () => {
+  it("folds assistant narration after later work arrives in a pending turn", () => {
+    const event = createTimelineEventFactory({ threadId: "thread-1" });
+    const request = event.clientTurnRequested({
+      target: { kind: "new-turn" },
+      text: "Find the remaining ledger gaps",
+    });
+    const narration =
+      "I'll ground this in the actual ledger code before giving an answer.";
+
+    const timeline = renderPendingTimeline({
+      events: [
+        request,
+        event.turnStarted(),
+        event.inputAccepted({ clientRequestId: request.data.requestId }),
+        event.reasoningCompleted({
+          itemId: "reasoning-1",
+          text: "I should inspect the ledger implementation.",
+        }),
+        event.assistantCompleted({
+          itemId: "assistant-narration",
+          text: narration,
+        }),
+        event.fileReadCompleted({
+          itemId: "read-1",
+          path: "src/domain/costing/cogs-assignment.ts",
+        }),
+        event.reasoningCompleted({
+          itemId: "reasoning-2",
+          text: "The first read exposed another path to inspect.",
+        }),
+        event.searchCompleted({
+          itemId: "search-1",
+          mode: "content",
+          query: "inbounded",
+          path: "src/domain/costing/cogs-assignment.ts",
+        }),
+      ],
+    });
+
+    expect(rowSignatures(timeline.rows)).toEqual([
+      "conversation:user",
+      "turn:4-8",
+    ]);
+    const turnRow = requireOnlyTurnRow(timeline.rows);
+    expect(turnRow).toMatchObject({
+      completedAt: 8,
+      sourceSeqEnd: 8,
+      sourceSeqStart: 4,
+      startedAt: 2,
+      status: "pending",
+      summaryCount: 5,
+    });
+    expect(rowSignatures(turnRow.children ?? [])).toEqual([
+      "system:operation",
+      "conversation:assistant",
+      "work:file-read",
+      "system:operation",
+      "work:search",
+    ]);
+    expect(
+      timeline.rows.flatMap((row) =>
+        row.kind === "conversation" && row.role === "assistant"
+          ? [row.text]
+          : [],
+      ),
+    ).toEqual([]);
+    expect(
+      (turnRow.children ?? []).flatMap((row) =>
+        row.kind === "conversation" && row.role === "assistant"
+          ? [row.text]
+          : [],
+      ),
+    ).toEqual([narration]);
+  });
+
+  it("keeps the current assistant update visible after folding earlier narration", () => {
+    const event = createTimelineEventFactory({ threadId: "thread-1" });
+    const request = event.clientTurnRequested({
+      target: { kind: "new-turn" },
+      text: "Find the remaining ledger gaps",
+    });
+
+    const timeline = renderPendingTimeline({
+      events: [
+        request,
+        event.turnStarted(),
+        event.inputAccepted({ clientRequestId: request.data.requestId }),
+        event.assistantCompleted({
+          itemId: "assistant-narration",
+          text: "I'll inspect the ledger implementation first.",
+        }),
+        event.fileReadCompleted({
+          itemId: "read-1",
+          path: "src/domain/costing/cogs-assignment.ts",
+        }),
+        event.assistantCompleted({
+          itemId: "assistant-current",
+          text: "The ledger path confirms the remaining gap.",
+        }),
+      ],
+    });
+
+    expect(rowSignatures(timeline.rows)).toEqual([
+      "conversation:user",
+      "turn:4-5",
+      "conversation:assistant",
+    ]);
+    const turnRow = timeline.rows.find((row) => row.kind === "turn");
+    expect(turnRow).toBeDefined();
+    if (!turnRow || turnRow.kind !== "turn") {
+      throw new Error("Expected a pending turn summary row");
+    }
+    expect(rowSignatures(turnRow.children ?? [])).toEqual([
+      "conversation:assistant",
+      "work:file-read",
+    ]);
+    expect(timeline.rows[2]).toMatchObject({
+      kind: "conversation",
+      role: "assistant",
+      text: "The ledger path confirms the remaining gap.",
+    });
+  });
+
   it("emits a summary row for a completed final turn after accepted user input", () => {
     const event = createTimelineEventFactory({ threadId: "thread-1" });
     const request = event.clientTurnRequested({

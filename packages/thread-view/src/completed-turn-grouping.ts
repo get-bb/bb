@@ -303,3 +303,45 @@ export function groupCompletedTurnMessages(
     trailingMessages,
   };
 }
+
+export function groupPendingTurnMessages(
+  turn: EventProjectionTurn,
+): CompletedTurnMessageGroups {
+  const messages = turn.messages ?? [];
+  const lastMessage = messages.at(-1);
+  const terminalMessage =
+    turn.terminalMessage?.kind === "error" ||
+    lastMessage?.id === turn.terminalMessage?.id
+      ? turn.terminalMessage
+      : undefined;
+  const { summaryMessages, terminalMessages, trailingMessages } =
+    splitCompletedTurnMessages(messages, terminalMessage);
+  return {
+    summaryItems: unwrapSingletonContextManagementGroups(
+      groupCompletedTurnSummaryMessages(
+        turn,
+        summaryMessages,
+        terminalMessages[0],
+      ),
+    ),
+    terminalMessages,
+    trailingMessages,
+  };
+}
+
+export function shouldGroupPendingTurnMessages(
+  turn: EventProjectionTurn,
+): boolean {
+  const messages = turn.messages ?? [];
+  return messages.some(
+    (message, index) =>
+      isAssistantResponseMessage(message) &&
+      messages
+        .slice(index + 1)
+        .some(
+          (laterMessage) =>
+            !isAssistantResponseMessage(laterMessage) &&
+            !isTimelineUngroupableMessage(laterMessage),
+        ),
+  );
+}
