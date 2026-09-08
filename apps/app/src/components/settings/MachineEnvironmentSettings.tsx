@@ -204,12 +204,10 @@ export function MachineEnvironmentSettings() {
         </div>
       )}
       {!hasOverride && (
-        <div
-          className={`space-y-2 rounded-md border p-3 ${gitMissing ? "border-destructive/40 bg-destructive/5" : "border-border bg-muted/20"}`}
-        >
-          <div className="grid min-w-0 gap-2 sm:grid-cols-2">
+        <div className="space-y-2">
+          <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
             <Input
-              className="font-mono"
+              className="col-span-2 font-mono sm:col-span-1"
               aria-label="Automatic variable name"
               value="GH_TOKEN"
               readOnly
@@ -227,6 +225,7 @@ export function MachineEnvironmentSettings() {
               }
               readOnly
             />
+            <span aria-hidden="true" className="size-8" />
           </div>
           <div className="flex flex-wrap items-center gap-2 text-xs">
             <SettingsBadge>Automatic</SettingsBadge>
