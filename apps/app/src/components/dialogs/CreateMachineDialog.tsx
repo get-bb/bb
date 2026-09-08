@@ -1,7 +1,7 @@
 import { MachineEnrollmentCommand } from "./MachineEnrollmentCommand";
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import type { JsonValue } from "@bb/domain";
 import type { PluginMachineProviderInputsChange } from "@get-bb/plugin-sdk";
 import type { SystemMachineProvider } from "@bb/server-contract";
@@ -61,6 +61,12 @@ function CreateMachineContent({
   }, [open]);
   useEffect(() => () => createController.current?.abort(), []);
   const hostsQuery = useHosts();
+  const projects = useQuery({
+    queryKey: ["machine-create-projects"],
+    queryFn: () => sdk.projects.list(),
+    enabled: open,
+  });
+  const [projectId, setProjectId] = useState<string | null>(null);
   const { providers: machineProviders } = useSystemMachineProviders();
   const machineProviderInputsSlots = usePluginSlots().machineProviderInputs;
   const [selectedMachineProvider, setSelectedMachineProvider] =
@@ -112,7 +118,7 @@ function CreateMachineContent({
         const launch = await sdk.hosts.submit({
           key: createKey.current,
           machineProviderId: selectedMachineProvider.id,
-          projectId: null,
+          projectId,
           inputs: machineInputs,
           signal: controller.signal,
         });
@@ -186,6 +192,37 @@ function CreateMachineContent({
             </div>
             {selectedMachineProvider === null ? null : (
               <div className="space-y-2 rounded-md border border-border bg-muted/30 p-3">
+                <label className="flex flex-col gap-1 text-sm">
+                  Project
+                  <select
+                    aria-label="Machine project"
+                    className="rounded-md border border-input bg-background px-3 py-2"
+                    value={projectId ?? ""}
+                    onChange={(event) => {
+                      createKey.current = null;
+                      setProjectId(event.target.value || null);
+                      setMachineInputs(null);
+                      setMachineInputsBlocked(
+                        machineInputsRegistration
+                          ? "Checking project inputs"
+                          : null,
+                      );
+                    }}
+                  >
+                    <option value="">No project</option>
+                    {(projects.data ?? []).map((project) => (
+                      <option key={project.id} value={project.id}>
+                        {project.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                {projects.error && (
+                  <p role="alert">
+                    Could not load projects: {projects.error.message}
+                  </p>
+                )}
+
                 {machineInputsRegistration === undefined ||
                 MachineInputsComponent === undefined ? null : (
                   <PluginSlotMount
@@ -194,7 +231,8 @@ function CreateMachineContent({
                     slotId={machineInputsRegistration.machineProviderId}
                   >
                     <MachineInputsComponent
-                      projectId={null}
+                      key={`${selectedMachineProvider.id}:${projectId}`}
+                      projectId={projectId}
                       value={machineInputs}
                       onChange={handleMachineInputsChange}
                     />

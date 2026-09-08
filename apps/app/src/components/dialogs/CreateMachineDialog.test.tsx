@@ -16,6 +16,7 @@ import { CreateMachineDialog } from "./CreateMachineDialog";
 vi.mock("@/lib/sdk", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/sdk")>()),
   sdk: {
+    projects: { list: vi.fn().mockResolvedValue([]) },
     hosts: {
       submit: vi.fn(),
       experimental_enrollmentCommand: vi.fn().mockResolvedValue({
@@ -58,6 +59,17 @@ it("lists manual alongside other providers and never mints a legacy join code", 
       availability: { status: "available" },
     })),
   );
+  vi.mocked(sdk.projects.list).mockResolvedValue([
+    {
+      id: "project-fixture",
+      kind: "standard",
+      name: "Fixture",
+      gitRemoteUrl: null,
+      createdAt: 1,
+      updatedAt: 1,
+      sources: [],
+    },
+  ]);
   const launch = {
     id: "launch-manual",
     machineProviderId: "manual",
@@ -91,6 +103,10 @@ it("lists manual alongside other providers and never mints a legacy join code", 
   );
   for (const name of ["ssh", "modal", "digitalocean", "tailscale"])
     expect(screen.getByRole("button", { name })).toBeDefined();
+  await screen.findByRole("option", { name: "Fixture" });
+  fireEvent.change(screen.getByRole("combobox", { name: "Machine project" }), {
+    target: { value: "project-fixture" },
+  });
   fireEvent.click(
     screen.getByRole("button", { name: "Create Existing machine" }),
   );
@@ -108,6 +124,9 @@ it("lists manual alongside other providers and never mints a legacy join code", 
   fireEvent.click(screen.getByRole("button", { name: "Cancel enrollment" }));
   await waitFor(() =>
     expect(sdk.hosts.cancel).toHaveBeenCalledWith({ id: "launch-manual" }),
+  );
+  expect(sdk.hosts.submit).toHaveBeenCalledWith(
+    expect.objectContaining({ projectId: "project-fixture" }),
   );
   expect(sdk.hosts.createJoinCode).not.toHaveBeenCalled();
 });

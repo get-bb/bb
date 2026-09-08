@@ -170,7 +170,7 @@ export function EnvironmentPickerUI({
   disabled = false,
   className,
   defaultOpen,
-  modal,
+  modal = false,
   machines,
   onRequestMachineSetup,
   providers = [],
