@@ -78,7 +78,7 @@ describe("DigitalOcean REST adapter", () => {
         response({ action: { id: 10, status: "errored" } }, 201),
       );
     const api = createVendor("secret", request);
-    const pending = api.power(42, "power_off", signal());
+    const pending = api.power(42, "shutdown", signal());
     await pending;
     expect(request.mock.calls[1]?.[0]).toBe(
       "https://api.digitalocean.com/v2/droplets/42/actions/9",
@@ -89,7 +89,7 @@ describe("DigitalOcean REST adapter", () => {
   });
 
   it.each([
-    { type: "power_off", stale: "active", desired: "off" },
+    { type: "shutdown", stale: "active", desired: "off" },
     { type: "power_on", stale: "off", desired: "active" },
   ] as const)(
     "waits for $desired after the $type action completes",
@@ -120,7 +120,7 @@ describe("DigitalOcean REST adapter", () => {
       return response({ droplet });
     });
     await expect(
-      createVendor("secret", request).power(42, "power_off", controller.signal),
+      createVendor("secret", request).power(42, "shutdown", controller.signal),
     ).rejects.toThrow();
     expect(request).toHaveBeenCalledTimes(2);
   });
@@ -132,7 +132,7 @@ describe("DigitalOcean REST adapter", () => {
       return response({ action: { id: 9, status: "in-progress" } }, 201);
     });
     await expect(
-      createVendor("secret", request).power(42, "power_off", controller.signal),
+      createVendor("secret", request).power(42, "shutdown", controller.signal),
     ).rejects.toThrow();
     expect(request).toHaveBeenCalledOnce();
   });

@@ -161,3 +161,22 @@ refuse the default BB data directory. Stopping a daemon is distinct from
 The CLI refuses another host or server identity in the selected machine directory. Repeating enrollment with the same persisted identity succeeds without exchanging the credential again, including when the original bundle expired. Machine data defaults to `~/.bb-machines/<server-host>`; `BB_DATA_DIR` can select another isolated machine directory, but enrollment refuses the default `~/.bb` directory.
 
 The installer accepts `--bootstrap-env <NAME>` and uses the same enrollment command. It installs a private CLI and supplies `~/.local/bin/bb` without replacing an existing path. Non-login transports can use `command -v bb` with `~/.local/bin/bb` as a fallback. Linux machines without a systemd user session run a detached daemon; systemd and launchd machines receive a persistent service.
+
+## DigitalOcean dev boxes
+
+`bb digitalocean configure <host-id> '<config-json>'` sets `idleMinutes` (null
+turns idle stop off), `retention` (default 2), and `schedule` (null disables;
+otherwise `weekdays` 0–6, `sleep`/`wake` HH:mm, and explicit IANA `timezone`).
+`bb digitalocean snapshot-now <host-id>` drains through core, gracefully shuts
+down, confirms off, snapshots and remains off. `sleep` does the same; `wake`
+resumes through core. Busy threads and open terminals prevent sleep. Core also
+wakes on dispatch. Empty boxes participate in opt-in idle stop; retirement stays
+never. `status` and `cost` show live inventory and estimates; all accept `--json`.
+`bb machine show <host-id> --json` includes provider inventory in `providerDetails`.
+
+Powered-off droplets still bill; snapshot storage bills per GB. See
+https://docs.digitalocean.com/products/droplets/details/pricing/ and
+https://docs.digitalocean.com/products/snapshots/details/pricing/ . Configure a
+weekday schedule from the plugin settings or CLI on an always-on BB server.
+The latest missed action within eight days runs after recovery; busy sleep
+retries each minute until superseded. See the plugin skill for DST and cleanup.

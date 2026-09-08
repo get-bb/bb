@@ -1,8 +1,20 @@
+import { devboxRpc, hostInput } from "./rpc.js";
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import { setTimeout } from "node:timers/promises";
 import { z } from "zod";
 import { cloudInit } from "./cloud-init.js";
 import { inputsSchema } from "./inputs.js";
+import {
+  BILLING,
+  PRICING,
+  configSchema,
+  createDevboxStore,
+  computeCost,
+  latestScheduledAction,
+  pruneSnapshots,
+  recordPower,
+  sleepWithBackup,
+} from "./devbox.js";
 import {
   allocationName,
   createVendor,
@@ -28,9 +40,17 @@ class AllocationError extends Error {}
 export function createDigitalOceanPlugin(deps: {
   vendor: (token: string) => Vendor;
   sleep: (signal: AbortSignal) => Promise<void>;
+  now?: () => number;
 }) {
   return async (bb: BbPluginApi) => {
+    const now = deps.now ?? Date.now;
+    const store = createDevboxStore(bb.storage.kv, now);
     const settings = bb.settings.define({
+      snapshotRetention: {
+        type: "number",
+        default: 2,
+        label: "Snapshots to retain (1–100); snapshot storage bills per GB",
+      },
       DIGITALOCEAN_TOKEN: {
         type: "string",
         secret: true,
@@ -78,6 +98,192 @@ export function createDigitalOceanPlugin(deps: {
         droplet = next;
       }
     }
+    async function machine(hostId: string) {
+      const host = await bb.sdk.hosts.get({ hostId });
+      if (host.machineProviderId !== "digitalocean")
+        throw new Error("Select a DigitalOcean machine.");
+      let stored = await bb.storage.kv.get<unknown>(`resource/${hostId}`);
+      if (stored === undefined) {
+        await bb.sdk.hosts.experimental_providerDetails({ hostId });
+        stored = await bb.storage.kv.get<unknown>(`resource/${hostId}`);
+      }
+      return { host, resource: resourceSchema.parse(stored) };
+    }
+    async function details(
+      hostId: string,
+      resource: z.infer<typeof resourceSchema>,
+      signal: AbortSignal,
+    ) {
+      await bb.storage.kv.set(`resource/${hostId}`, resource);
+      if (
+        (await bb.storage.kv.get<unknown>(`devbox/${hostId}`)) === undefined
+      ) {
+        await store.set(hostId, await store.get(hostId));
+      }
+      const state = await store.get(hostId);
+      const api = await vendor();
+      await owned(api, resource.dropletId, resource.key, signal);
+      const inventory = await api.inventory(resource.dropletId, signal);
+      if (
+        inventory.droplet?.status === "active" ||
+        inventory.droplet?.status === "off"
+      ) {
+        recordPower(state, inventory.droplet.status, now());
+      }
+      const cost = computeCost(inventory, state, hostId, now());
+      const latest = state.snapshots.at(-1);
+      return {
+        summary: `${BILLING}. $${cost.monthlyEstimate.toFixed(2)}/month + account unassigned IPs $${cost.accountUnassignedIpMonthlyEstimate.toFixed(2)}/month. Snapshots: ${cost.snapshotGb.toFixed(2)} GB ($${cost.snapshotMonthlyEstimate.toFixed(2)}/month). Observed running ${cost.runningHoursObserved.toFixed(2)} h / off ${cost.offHoursObserved.toFixed(2)} h. Backup: ${state.backupStatus}${latest ? ` · ${latest.id}, ${latest.size_gigabytes} GB, ${latest.created_at}` : ""}.`,
+        values: { ...state, cost },
+      };
+    }
+    const handlers = {
+      async machines() {
+        return (await bb.sdk.hosts.list())
+          .filter(
+            (host) =>
+              host.machineProviderId === "digitalocean" &&
+              host.lifecycle.phase !== "destroyed",
+          )
+          .map(({ id, name }) => ({ id, name }));
+      },
+      async configuration({ hostId }: z.infer<typeof hostInput>) {
+        await machine(hostId);
+        return (await store.get(hostId)).config;
+      },
+      async status({ hostId }: z.infer<typeof hostInput>) {
+        const { resource } = await machine(hostId);
+        return details(hostId, resource, AbortSignal.timeout(WAIT_MS));
+      },
+      async configure({
+        hostId,
+        config,
+      }: {
+        hostId: string;
+        config: z.infer<typeof configSchema>;
+      }) {
+        return store.exclusive(hostId, async () => {
+          await machine(hostId);
+          const state = await store.get(hostId);
+          state.config = config;
+          state.scheduleCursor = now();
+          state.scheduleError = null;
+          await store.set(hostId, state);
+          return config;
+        });
+      },
+      async sleep({ hostId }: z.infer<typeof hostInput>) {
+        await machine(hostId);
+        await bb.sdk.hosts.suspend({ hostId });
+        const state = await store.get(hostId);
+        return {
+          ok: true as const,
+          backupStatus: state.backupStatus,
+          snapshotId: state.snapshots.at(-1)?.id ?? null,
+        };
+      },
+      async wake({ hostId }: z.infer<typeof hostInput>) {
+        await machine(hostId);
+        await bb.sdk.hosts.resume({ hostId });
+        return { ok: true as const };
+      },
+    };
+    bb.rpc.register(devboxRpc, handlers);
+    bb.cli.register({
+      name: "digitalocean",
+      summary: `Manage long-lived dev boxes. ${BILLING}. ${PRICING}`,
+      commands: [
+        {
+          name: "status",
+          summary: "Live inventory, backups, schedule and estimated cost",
+          usage: "bb digitalocean status <host-id> [--json]",
+        },
+        {
+          name: "configure",
+          summary:
+            "Set idleMinutes (null disables), retention and weekday schedule with explicit timezone",
+          usage: "bb digitalocean configure <host-id> <config-json> [--json]",
+        },
+        {
+          name: "snapshot-now",
+          summary: "Quiesce, gracefully shut down, snapshot and remain off",
+          usage: "bb digitalocean snapshot-now <host-id> [--json]",
+        },
+        {
+          name: "sleep",
+          summary: "Sleep with backup through core",
+          usage: "bb digitalocean sleep <host-id> [--json]",
+        },
+        {
+          name: "wake",
+          summary: "Resume through core",
+          usage: "bb digitalocean wake <host-id> [--json]",
+        },
+        {
+          name: "cost",
+          summary: "Show estimated live costs",
+          usage: "bb digitalocean cost <host-id> [--json]",
+        },
+      ],
+      async run(argv) {
+        const [command, hostId, config, ...extra] = argv.filter(
+          (arg) => arg !== "--json",
+        );
+        const input = hostInput.parse({ hostId });
+        if (extra.length || (command !== "configure" && config !== undefined))
+          throw new Error("Unexpected arguments");
+        let result;
+        let exitCode = 0;
+        if (command === "configure")
+          result = await handlers.configure({
+            ...input,
+            config: configSchema.parse(JSON.parse(config ?? "null")),
+          });
+        else if (command === "status" || command === "cost")
+          result = await handlers.status(input);
+        else if (command === "sleep" || command === "snapshot-now") {
+          const slept = await handlers.sleep(input);
+          exitCode = slept.backupStatus === "off, backup failed" ? 1 : 0;
+          result = await handlers.status(input);
+        } else if (command === "wake") result = await handlers.wake(input);
+        else
+          throw new Error(
+            "Use status, configure, snapshot-now, sleep, wake or cost.",
+          );
+        return { exitCode, stdout: JSON.stringify(result, null, 2) };
+      },
+    });
+    bb.background.schedule("devbox-schedules", "* * * * *", async () => {
+      for (const hostId of await store.hosts()) {
+        const state = await store.get(hostId);
+        if (state.config.schedule === null) continue;
+        const scheduled = latestScheduledAction(
+          state.config.schedule,
+          state.scheduleCursor,
+          now(),
+        );
+        if (!scheduled) continue;
+        try {
+          const { host } = await machine(hostId);
+          if (scheduled.action === "sleep" && host.lifecycle.phase === "active")
+            await bb.sdk.hosts.suspend({ hostId });
+          if (
+            scheduled.action === "wake" &&
+            host.lifecycle.phase === "suspended"
+          )
+            await bb.sdk.hosts.resume({ hostId });
+          const current = await store.get(hostId);
+          current.scheduleCursor = scheduled.at;
+          current.scheduleError = null;
+          await store.set(hostId, current);
+        } catch {
+          const current = await store.get(hostId);
+          current.scheduleError =
+            "Scheduled action failed or machine is busy; retry next minute until superseded by the next scheduled action.";
+          await store.set(hostId, current);
+        }
+      }
+    });
     bb.experimental_machines.register({
       id: "digitalocean",
       displayName: "DigitalOcean",
@@ -92,6 +298,13 @@ export function createDigitalOceanPlugin(deps: {
         retire: { after: "never" },
         removeRetryMs: 30_000,
       },
+      async experimental_idleSuspendMs({ hostId }) {
+        const { idleMinutes } = (await store.get(hostId)).config;
+        return idleMinutes === null ? null : idleMinutes * 60_000;
+      },
+      async experimental_details({ hostId, resource, signal }) {
+        return details(hostId, resourceSchema.parse(resource), signal);
+      },
       async availability() {
         return (await settings.get()).DIGITALOCEAN_TOKEN?.trim()
           ? { status: "available" }
@@ -103,6 +316,10 @@ export function createDigitalOceanPlugin(deps: {
       async create(context) {
         try {
           const api = await vendor();
+          const initialConfig = configSchema.parse({
+            idleMinutes: inputsSchema.parse(context.inputs).idleMinutes,
+            retention: (await settings.get()).snapshotRetention,
+          });
           const name = allocationName(context.key);
           const intentKey = `allocation/${name}`;
           const stored = await bb.storage.kv.get<unknown>(intentKey);
@@ -160,6 +377,16 @@ export function createDigitalOceanPlugin(deps: {
             enrollmentId: enrollment.id,
           };
           await context.checkpoint(resource);
+          await bb.storage.kv.set(`resource/${enrollment.hostId}`, resource);
+          if (
+            (await bb.storage.kv.get<unknown>(
+              `devbox/${enrollment.hostId}`,
+            )) === undefined
+          ) {
+            const state = await store.get(enrollment.hostId);
+            state.config = initialConfig;
+            await store.set(enrollment.hostId, state);
+          }
           await bb.storage.kv.set(intentKey, { dropletId: droplet.id });
           signal.throwIfAborted();
           await active(api, droplet, signal);
@@ -215,56 +442,84 @@ export function createDigitalOceanPlugin(deps: {
         return { status: "removed" };
       },
       async suspend(context) {
-        const resource = resourceSchema.parse(context.resource);
-        const api = await vendor();
-        const droplet = await owned(
-          api,
-          resource.dropletId,
-          resource.key,
-          context.signal,
-        );
-        if (droplet === null)
-          throw new AllocationError("DigitalOcean Droplet no longer exists.");
-        if (droplet.status !== "off")
-          await api.power(droplet.id, "power_off", context.signal);
-        return { resource };
+        return store.exclusive(context.hostId, async () => {
+          const resource = resourceSchema.parse(context.resource);
+          const api = await vendor();
+          const droplet = await owned(
+            api,
+            resource.dropletId,
+            resource.key,
+            context.signal,
+          );
+          if (droplet === null)
+            throw new AllocationError("DigitalOcean Droplet no longer exists.");
+          context.report.step("Graceful shutdown, then snapshot…");
+          const state = await sleepWithBackup({
+            hostId: context.hostId,
+            dropletId: droplet.id,
+            api,
+            store,
+            signal: context.signal,
+            now,
+          });
+          context.report.step(state.backupStatus);
+          context.checkpoint(resource);
+          return { resource };
+        });
       },
       async resume(context) {
-        const resource = resourceSchema.parse(context.resource);
-        const api = await vendor();
-        const droplet = await owned(
-          api,
-          resource.dropletId,
-          resource.key,
-          context.signal,
-        );
-        if (droplet === null)
-          throw new AllocationError("DigitalOcean Droplet no longer exists.");
-        if (droplet.status !== "active")
-          await api.power(droplet.id, "power_on", context.signal);
-        const { hostId } =
-          await bb.experimental_machines.enrollments.waitForConnection({
-            enrollmentId: resource.enrollmentId,
-            timeoutMs: WAIT_MS,
-            signal: context.signal,
-          });
-        if (hostId !== context.hostId)
-          throw new AllocationError(
-            "DigitalOcean enrollment returned a different machine identity.",
+        return store.exclusive(context.hostId, async () => {
+          const resource = resourceSchema.parse(context.resource);
+          const api = await vendor();
+          const droplet = await owned(
+            api,
+            resource.dropletId,
+            resource.key,
+            context.signal,
           );
-        return { resource };
+          if (droplet === null)
+            throw new AllocationError("DigitalOcean Droplet no longer exists.");
+          if (droplet.status !== "active")
+            await api.power(droplet.id, "power_on", context.signal);
+          const state = await store.get(context.hostId);
+          recordPower(state, "active", now());
+          await store.set(context.hostId, state);
+          const { hostId } =
+            await bb.experimental_machines.enrollments.waitForConnection({
+              enrollmentId: resource.enrollmentId,
+              timeoutMs: WAIT_MS,
+              signal: context.signal,
+            });
+          if (hostId !== context.hostId)
+            throw new AllocationError(
+              "DigitalOcean enrollment returned a different machine identity.",
+            );
+          return { resource };
+        });
       },
       async remove(context) {
-        const resource = resourceSchema.parse(context.resource);
-        const api = await vendor();
-        const droplet = await owned(
-          api,
-          resource.dropletId,
-          resource.key,
-          context.signal,
-        );
-        if (droplet !== null) await api.destroy(droplet.id, context.signal);
-        return { status: "removed" };
+        return store.exclusive(context.hostId, async () => {
+          const resource = resourceSchema.parse(context.resource);
+          const api = await vendor();
+          const droplet = await owned(
+            api,
+            resource.dropletId,
+            resource.key,
+            context.signal,
+          );
+          if (droplet !== null) await api.destroy(droplet.id, context.signal);
+          await pruneSnapshots({
+            hostId: context.hostId,
+            dropletId: resource.dropletId,
+            api,
+            store,
+            signal: context.signal,
+            keep: 0,
+          });
+          await store.delete(context.hostId);
+          await bb.storage.kv.delete(`resource/${context.hostId}`);
+          return { status: "removed" as const };
+        });
       },
     });
   };

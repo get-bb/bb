@@ -1,3 +1,11 @@
+import {
+  createConnection,
+  migrate,
+  getPluginKvValue,
+  setPluginKvValue,
+  deletePluginKvValue,
+  listPluginKvKeys,
+} from "@bb/db";
 import type { JsonValue } from "@get-bb/plugin-sdk";
 import { createFakePluginHost } from "@get-bb/plugin-sdk/testing";
 import { describe, expect, it, vi } from "vitest";
@@ -21,18 +29,39 @@ const droplet = (): Droplet => ({
   status: "active",
 });
 
-async function setup() {
+async function setup(now: () => number = Date.now) {
   let allocated: Droplet | null = null;
+  const snapshots: import("./vendor.js").Snapshot[] = [];
   const api = {
+    snapshots: vi.fn(async () => snapshots),
+    snapshot: vi.fn(async (_id: number, name: string) => {
+      snapshots.push({
+        id: String(snapshots.length + 1),
+        name,
+        size_gigabytes: 1,
+        created_at: new Date().toISOString(),
+        resource_id: "42",
+      });
+    }),
+    deleteSnapshot: vi.fn(async (id: string) => {
+      const index = snapshots.findIndex((item) => item.id === id);
+      if (index >= 0) snapshots.splice(index, 1);
+    }),
+    inventory: vi.fn(async () => ({
+      droplet: null,
+      sizes: [],
+      snapshots,
+      reservedIps: [],
+    })),
     find: vi.fn(async () => allocated),
     get: vi.fn(async () => allocated),
     create: vi.fn(async () => {
       allocated = droplet();
       return allocated;
     }),
-    power: vi.fn(async (_id: number, action: "power_off" | "power_on") => {
+    power: vi.fn(async (_id: number, action: "shutdown" | "power_on") => {
       if (allocated)
-        allocated.status = action === "power_off" ? "off" : "active";
+        allocated.status = action === "shutdown" ? "off" : "active";
     }),
     destroy: vi.fn(async () => {
       allocated = null;
@@ -41,6 +70,26 @@ async function setup() {
   const fake = createFakePluginHost({
     pluginId: "machine-digitalocean",
     settings: { DIGITALOCEAN_TOKEN: "token-secret" },
+  });
+  const db = createConnection(":memory:");
+  migrate(db);
+  Object.assign(fake.bb.storage.kv, {
+    async get(key: string) {
+      const value = getPluginKvValue(db, "digitalocean", key);
+      return value === undefined ? undefined : JSON.parse(value);
+    },
+    async set(key: string, value: unknown) {
+      setPluginKvValue(db, "digitalocean", key, JSON.stringify(value));
+    },
+    async delete(key: string) {
+      deletePluginKvValue(db, "digitalocean", key);
+    },
+    async list(prefix?: string) {
+      return listPluginKvKeys(db, "digitalocean", prefix);
+    },
+  });
+  fake.bb.onDispose(() => {
+    db.$client.close();
   });
   const prepare = vi.fn(async (_request: { key: string }) => ({
     id: "enrollment-1",
@@ -58,7 +107,7 @@ async function setup() {
     installerCommand,
   });
   const sleep = vi.fn(async (_signal: AbortSignal) => {});
-  await createDigitalOceanPlugin({ vendor: () => api, sleep })(fake.bb);
+  await createDigitalOceanPlugin({ vendor: () => api, sleep, now })(fake.bb);
   const provider =
     fake.harness.registrations.machineProviders.get("digitalocean");
   if (!provider) throw new Error("missing provider");
@@ -218,7 +267,7 @@ describe("DigitalOcean machine provider", () => {
     await test.provider.suspend?.(lifecycle);
     await test.provider.resume?.(lifecycle);
     expect(test.api.power.mock.calls.map((call) => call[1])).toEqual([
-      "power_off",
+      "shutdown",
       "power_on",
     ]);
     expect(test.waitForConnection).toHaveBeenCalledTimes(2);
@@ -273,5 +322,78 @@ it("reconciles uncertain tag allocations without create or enrollment", async ()
   expect(test.prepare).not.toHaveBeenCalled();
   expect(test.installerCommand).not.toHaveBeenCalled();
   expect(test.waitForConnection).not.toHaveBeenCalled();
+  await test.harness.lifecycle.dispose();
+});
+
+it("runs durable scheduled sleep and wake through core and retries a busy sleep", async () => {
+  let time = Date.parse("2026-09-07T18:59:00Z");
+  const test = await setup(() => time);
+  const result = await test.provider.create(context());
+  if (result.status !== "created") throw new Error("creation failed");
+  let phase: "active" | "suspended" = "active";
+  test.harness.sdk.stub("hosts.get", async () => ({
+    id: "host-1",
+    name: "Devbox",
+    status: "connected",
+    machineProviderId: "digitalocean",
+    machineProviderSelection: { inputs: {} },
+    maxPermissionMode: "full",
+    lastSeenAt: time,
+    lastRejectedProtocolVersion: null,
+    createdAt: time,
+    updatedAt: time,
+    connectMachineId: null,
+    lifecycle: {
+      phase,
+      suspendedAt: null,
+      retireAt: null,
+      progress: null,
+      teardown: null,
+    },
+  }));
+  const suspend = vi.fn(async () => {
+    phase = "suspended";
+    return { ok: true as const };
+  });
+  const resume = vi.fn(async () => {
+    phase = "active";
+    return { ok: true as const };
+  });
+  test.harness.sdk.stub("hosts.suspend", suspend);
+  test.harness.sdk.stub("hosts.resume", resume);
+  await test.harness.behavior.callRpc("configure", {
+    hostId: "host-1",
+    config: {
+      idleMinutes: 5,
+      retention: 2,
+      schedule: {
+        weekdays: [1],
+        sleep: "19:00",
+        wake: "19:02",
+        timezone: "UTC",
+      },
+    },
+  });
+  expect(
+    await test.provider.experimental_idleSuspendMs?.({
+      hostId: "host-1",
+      resource: result.resource,
+    }),
+  ).toBe(300_000);
+  time += 60_000;
+  suspend.mockRejectedValueOnce(new Error("machine busy"));
+  await test.harness.behavior.runSchedule("devbox-schedules");
+  expect(phase).toBe("active");
+  time += 60_000;
+  await test.harness.behavior.runSchedule("devbox-schedules");
+  expect(suspend).toHaveBeenCalledTimes(2);
+  expect(phase).toBe("suspended");
+  await test.harness.behavior.runSchedule("devbox-schedules");
+  expect(suspend).toHaveBeenCalledTimes(2);
+  time += 60_000;
+  await test.harness.behavior.runSchedule("devbox-schedules");
+  expect(resume).toHaveBeenCalledOnce();
+  expect(phase).toBe("active");
+  expect(test.api.power).not.toHaveBeenCalled();
   await test.harness.lifecycle.dispose();
 });
