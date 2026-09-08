@@ -3529,3 +3529,62 @@ it("wakes persisted offline queue intent after a suspended machine is reconciled
     expect(getHost(h.db, host.id)?.phase).toBe("active");
     expect(getMachineLifecycle(h.deps, host.id)?.observedState).toBe("running");
   }));
+
+it("settles an abandoned maintenance lease after persisted suspension and admits the saved machine", async () =>
+  withTestHarness(async (h) => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(100_000);
+    const { host } = seedHostSession(h.deps, { id: "abandoned-maintenance" });
+    adoptMachine(h, host.id, { snapshot: "durable" });
+    updateHost(h.db, h.hub, host.id, {
+      phase: "suspended",
+      suspendedAt: 40_000,
+    });
+    const observe = vi.fn<
+      NonNullable<PluginMachineProviderDeclaration["experimental_observe"]>
+    >(async ({ resource }) => ({
+      state: "suspended" as const,
+      expiresAt: null,
+      resource,
+    }));
+    installMachineProvider(
+      machineDeclaration(host.id, {
+        experimental_observe: observe,
+        experimental_policy: async () => ({
+          idleSuspendMs: 900_000,
+          retireAfterMs: 2592000000,
+          deadlineLeadMs: 900_000,
+        }),
+        suspend: async ({ resource }) => ({ resource }),
+        resume: async ({ resource }) => ({ resource }),
+      }),
+    );
+    h.db
+      .insert(machineLifecycles)
+      .values({
+        hostId: host.id,
+        observedState: "suspended",
+        observedAt: 40_000,
+        recoveryState: "saving",
+        lastSnapshotAt: 40_000,
+        leaseId: "previous-process",
+        leaseUntil: 70_000,
+      })
+      .run();
+    expect(() => assertMachineLifecycleAdmission(h.deps, host.id)).toThrow(
+      "preserving",
+    );
+    await sweepProviderMachine(h.deps, host.id);
+    expect(observe).toHaveBeenCalledTimes(1);
+    expect(getMachineLifecycle(h.deps, host.id)).toMatchObject({
+      leaseId: null,
+      leaseUntil: null,
+      recoveryState: "saved",
+      observedState: "suspended",
+      lastSnapshotAt: 40_000,
+    });
+    expect(getHost(h.db, host.id)?.resource).toEqual({ snapshot: "durable" });
+    expect(() =>
+      assertMachineLifecycleAdmission(h.deps, host.id),
+    ).not.toThrow();
+  }));

@@ -135,6 +135,7 @@ export async function observeMachineLifecycle(
       current === null ||
       current.destroyedAt !== null ||
       current.machineOperationId !== host.machineOperationId ||
+      state?.leaseId !== previous?.leaseId ||
       JSON.stringify(current.resource) !== JSON.stringify(host.resource) ||
       (state?.leaseUntil != null && state.leaseUntil > Date.now())
     )
@@ -151,6 +152,27 @@ export async function observeMachineLifecycle(
         : unusedSince + effective.retireAfterMs;
     const lost =
       observation.state === "missing" && current.suspendedAt === null;
+    const abandoned =
+      state?.leaseId != null &&
+      (state.leaseUntil === null || state.leaseUntil <= now);
+    const saved =
+      current.suspendedAt !== null &&
+      state?.lastSnapshotAt != null &&
+      observation.state === "suspended";
+    const reconciled =
+      abandoned && observation.state !== "unknown"
+        ? {
+            leaseId: null,
+            leaseUntil: null,
+            recoveryState: saved
+              ? ("saved" as const)
+              : ("recoverable" as const),
+            retryAt: saved ? null : now,
+            message: saved
+              ? null
+              : "Interrupted preservation requires recovery; the last successful save remains the recovery point.",
+          }
+        : {};
     const values = {
       observedState: observation.state,
       observedAt: now,
@@ -162,6 +184,7 @@ export async function observeMachineLifecycle(
       ...effective,
       unusedSince,
       retentionAt,
+      ...reconciled,
       ...(lost
         ? {
             recoveryState: "lost-since-last-snapshot" as const,
