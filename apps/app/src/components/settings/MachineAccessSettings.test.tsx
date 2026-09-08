@@ -68,6 +68,10 @@ it("shows the URL input only for Manual", () => {
 it("retains diagnostics for paired Connect without showing setup", () => {
   show("connect", true);
   expect(screen.getByText("Connected")).toBeTruthy();
+  expect(screen.getByText("Ready to add machines.")).toBeTruthy();
+  expect(
+    screen.getByRole("link", { name: "Manage" }).getAttribute("href"),
+  ).toBe("/settings/plugins/connect");
   expect(screen.getByRole("status").textContent).toBe(
     "bb connect: 2 legacy access records need attention",
   );

@@ -102,7 +102,13 @@ export function MachineAccessSettings() {
       {selected === "connect" && (
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="min-w-0 space-y-1">
-            <p className="text-sm font-medium">
+            <p className="flex items-center gap-2 text-sm font-medium">
+              {effective?.availability.status === "available" && (
+                <span
+                  className="size-2 shrink-0 rounded-full bg-success"
+                  aria-hidden="true"
+                />
+              )}
               {effective?.availability.status === "available"
                 ? "Connected"
                 : effective?.availability.status === "unavailable"
@@ -111,21 +117,19 @@ export function MachineAccessSettings() {
             </p>
             <p className="text-xs text-subtle-foreground">
               {effective?.availability.status === "available"
-                ? "New machines can reach the server through bb connect."
+                ? "Ready to add machines."
                 : effective?.availability.status === "unavailable"
                   ? effective.availability.message
                   : "Connect your getbb.app account to add machines."}
             </p>
           </div>
-          {effective?.availability.status !== "available" && (
-            <Button variant="outline" size="sm" asChild>
-              <Link
-                to={getPluginConfigurationRoutePath({ pluginId: "connect" })}
-              >
-                Set up bb connect
-              </Link>
-            </Button>
-          )}
+          <Button variant="outline" size="sm" asChild>
+            <Link to={getPluginConfigurationRoutePath({ pluginId: "connect" })}>
+              {effective?.availability.status === "available"
+                ? "Manage"
+                : "Set up bb connect"}
+            </Link>
+          </Button>
         </div>
       )}
       {selected !== "connect" && selected !== "direct" && (
