@@ -1,3 +1,8 @@
+import { registerMachineLifecycleCommands } from "./machine-lifecycle.js";
+import {
+  enrollMachine,
+  type MachineEnrollmentOptions,
+} from "./machine-enrollment.js";
 import { Command } from "commander";
 import type { Host } from "@bb/domain";
 import { action } from "../action.js";
@@ -125,6 +130,23 @@ export function registerMachineCommands(
   const machine = program
     .command("machine")
     .description("Inspect execution machines");
+
+  registerMachineLifecycleCommands(machine);
+
+  machine
+    .command("enroll")
+    .description("Enroll this machine using a private bootstrap bundle")
+    .option("--bootstrap-file <path>", "Read the bootstrap bundle from a file")
+    .option(
+      "--bootstrap-env <name>",
+      "Consume the bootstrap bundle from an environment variable",
+    )
+    .action(
+      action(async (options: MachineEnrollmentOptions) => {
+        const result = await enrollMachine(options);
+        console.log(`Machine ${result.hostId} enrolled`);
+      }),
+    );
 
   machine
     .command("providers")

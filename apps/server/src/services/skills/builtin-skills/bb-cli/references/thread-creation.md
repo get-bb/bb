@@ -178,3 +178,6 @@ installation. Optional `--server-url` and `--data-dir` assert its identity and
 installation location; BB_DATA_DIR is also an assertion, never permission to
 remove another installation. Uninstall checks ownership before stopping its
 service, releasing its port reservation and deleting its private files.
+### Private machine enrollment
+
+Use `bb machine enroll --bootstrap-file <path>` or `--bootstrap-env <NAME>` on a machine that already has the CLI. Core prepares the versioned bundle; transport it through a private file or environment/stdin, never command arguments, logs, resource JSON, or a transcript. Enrollment refuses a different existing host/server identity and succeeds without another exchange when the same identity is already enrolled. The installer accepts `--bootstrap-env <NAME>` and invokes this command after installing bb. Machine state defaults to `~/.bb-machines/<server-host>`; an explicit `BB_DATA_DIR` must be isolated from the default BB instance. For remote non-login commands, discover `bb` on PATH and fall back to `~/.local/bin/bb`.

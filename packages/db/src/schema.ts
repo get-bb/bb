@@ -125,6 +125,27 @@ export const hosts = sqliteTable(
   (table) => [index("hosts_last_seen_idx").on(table.lastSeenAt)],
 );
 
+export const machineEnrollments = sqliteTable(
+  "machine_enrollments",
+  {
+    id: text("id").primaryKey(),
+    owner: text("owner").notNull(),
+    key: text("key").notNull(),
+    hostId: text("host_id").notNull(),
+    state: text("state")
+      .$type<"pending" | "enrolled" | "cancelled">()
+      .notNull(),
+    encryptedBootstrap: text("encrypted_bootstrap"),
+    expiresAt: integer("expires_at"),
+    createdAt: integer("created_at").notNull(),
+    updatedAt: integer("updated_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("machine_enrollments_owner_key_idx").on(table.owner, table.key),
+    uniqueIndex("machine_enrollments_host_id_idx").on(table.hostId),
+  ],
+);
+
 export const projects = sqliteTable(
   "projects",
   {

@@ -119,3 +119,10 @@ owned local installation. Optional `--server-url <url>` and `--data-dir <path>`
 assert the expected installation. BB_DATA_DIR is treated as an assertion too.
 An identity mismatch refuses the operation. These commands are local machine
 primitives; `bb machine remove` asks the server to remove the provider resource.
+## Enroll a preinstalled machine
+
+`bb machine enroll --bootstrap-file <path>` or `bb machine enroll --bootstrap-env <NAME>` consumes a versioned private enrollment bundle prepared by core. Supply exactly one source. The environment source is removed from the CLI process environment after reading it; files remain under the caller's ownership. Neither command prints the bundle or credentials.
+
+The CLI refuses another host or server identity in the selected machine directory. Repeating enrollment with the same persisted identity succeeds without exchanging the credential again, including when the original bundle expired. Machine data defaults to `~/.bb-machines/<server-host>`; `BB_DATA_DIR` can select another isolated machine directory, but enrollment refuses the default `~/.bb` directory.
+
+The installer accepts `--bootstrap-env <NAME>` and uses the same enrollment command. It installs a private CLI and supplies `~/.local/bin/bb` when no executable already occupies that path. Non-login transports can use `command -v bb` with `~/.local/bin/bb` as a fallback. Linux machines without a systemd user session run a detached daemon; systemd and launchd machines receive a persistent service.

@@ -1,3 +1,4 @@
+import type { MachineBootstrapApi } from "../machine-bootstrap.js";
 import { createHash } from "node:crypto";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -486,6 +487,7 @@ export interface FakePluginHarness
 }
 
 export interface CreateFakePluginHostOptions {
+  machineBootstrap?: MachineBootstrapApi;
   /** Defaults to "test-plugin". */
   pluginId?: string;
   /**
@@ -2142,7 +2144,23 @@ function createFakePluginHostInternal(
     },
   };
 
+  const unavailableMachineBootstrap = (): never => {
+    throw new Error(
+      "Configure machineBootstrap in createFakePluginHost to exercise machine enrollment",
+    );
+  };
   const experimental_machines: PluginMachines = {
+    ...(options.machineBootstrap ?? {
+      enrollments: {
+        prepare: unavailableMachineBootstrap,
+        waitForConnection: unavailableMachineBootstrap,
+        cancel: unavailableMachineBootstrap,
+      },
+      prepareEnrollment: unavailableMachineBootstrap,
+      waitForConnection: unavailableMachineBootstrap,
+      installerCommand: unavailableMachineBootstrap,
+      bootstrap: unavailableMachineBootstrap,
+    }),
     register(declaration) {
       assertLive();
       const target = validatePluginMachineProviderDeclaration(declaration);

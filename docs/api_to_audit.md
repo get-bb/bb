@@ -2612,3 +2612,10 @@ credential privacy and revocation, explicit and automatic defaults, expired
 codes, removal while a provider is unavailable, and both enrolment and runtime
 traffic with independent direct and Connect consumers. Availability does not
 prove reachability from a remote machine.
+## Machine enrollment and bootstrap
+
+`bb.experimental_machines.enrollments` exposes `prepare`, `waitForConnection`, and `cancel`; `prepareEnrollment` and `waitForConnection` also compose with `installerCommand` and `bootstrap`. Enrollment keys are scoped to the calling plugin and permanently retain their host identity. Pending credentials are single-use, short-lived, and encrypted at rest with a private server key; preparation after expiry reissues them, while an unexpired bundle survives a server restart. A successful exchange is recovered as `enrolled` after a server crash. Cancelling an enrolled identity preserves its durable credentials and runtime access.
+
+`MachineExecutor` carries argv, stdin, a timeout, and an abort signal. `installerCommand` returns argv plus private stdin; callers must transport stdin without logging or persisting it in machine resources. `bootstrap` ignores remote output and reports fixed progress messages. It starts enrolled machines again so snapshot restores can reuse their identity. Preinstalled mode requires a compatible `bb` and `bb-app`; install mode requires Node, npm, and curl and installs no OS packages.
+
+Stabilization requires independent Modal and SSH consumers, failure verification for expired credentials, concurrent retries, interrupted exchange, cancellation, identity mismatch, and restored snapshots, plus an audit that credentials never enter resource data or logs. Migration and live vendor verification remain part of the integration release gate.

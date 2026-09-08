@@ -317,6 +317,56 @@ describe("machine install script", () => {
     expect(result.stderr).not.toContain("TypeError");
   });
 
+  it("enrolls bootstrap bundles through the CLI without credential argv or output", () => {
+    const fixture = createFixture();
+    writeCurlArtifactMock(fixture, 404);
+    writeEnrollingBbApp(
+      fixture,
+      join(fixture.dataDir, "daemon-invocation"),
+      "host-test",
+    );
+    writeExecutable(
+      join(fixture.binDir, "bb"),
+      `#!/usr/bin/env node
+const fs = require("node:fs");
+const path = require("node:path");
+const bundle = JSON.parse(process.env.BB_ENROLLMENT);
+fs.writeFileSync(path.join(process.env.BB_DATA_DIR, "enrollment-argv"), JSON.stringify(process.argv.slice(2)));
+fs.writeFileSync(path.join(process.env.BB_DATA_DIR, "auth.json"), JSON.stringify({hostId: bundle.hostId, hostKey: "durable-test"}));
+fs.writeFileSync(path.join(process.env.BB_DATA_DIR, "config.json"), JSON.stringify({serverUrl: bundle.serverUrl}));
+`,
+    );
+    const result = runScript(["--bootstrap-env", "TEST_BUNDLE"], fixture, {
+      BB_INSTALL_SKIP_SERVICE: "1",
+      TEST_BUNDLE: JSON.stringify({
+        version: 1,
+        hostId: "host-test",
+        serverUrl: "https://machine.getbb.app",
+        client: { kind: "direct" },
+        credential: "private-bootstrap-test",
+        expiresAt: Date.now() + 60_000,
+      }),
+    });
+    const pidPath = join(fixture.dataDir, "install-daemon.pid");
+    try {
+      expect(result.status, result.stderr).toBe(0);
+      expect(
+        JSON.parse(
+          readFileSync(join(fixture.dataDir, "enrollment-argv"), "utf8"),
+        ),
+      ).toEqual(["machine", "enroll", "--bootstrap-env", "BB_ENROLLMENT"]);
+      expect(result.stdout + result.stderr).not.toContain(
+        "private-bootstrap-test",
+      );
+      expect(
+        spawnSync("sh", ["-n", join(fixture.homeDir, ".local/bin/bb")]).status,
+      ).toBe(0);
+    } finally {
+      if (existsSync(pidPath))
+        process.kill(Number(readFileSync(pidPath, "utf8")), "SIGTERM");
+    }
+  });
+
   it("uses bb-app from PATH and passes the launcher join flags verbatim", () => {
     const fixture = createFixture();
     const invocationPath = join(fixture.dataDir, "invocation");

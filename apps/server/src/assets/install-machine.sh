@@ -5,6 +5,7 @@ set -eu
 usage() {
   cat >&2 <<'EOF'
 Usage: install.sh --join-code <code> --host-id <host-id> --server <url> [--machine-code <code>] [--host-daemon-port <port>]
+       install.sh --bootstrap-env <NAME>
 
 The first three options are required. --machine-code is required through bb connect.
 By default, the installer assigns this enrolled daemon its own local API port.
@@ -12,6 +13,7 @@ EOF
   exit 2
 }
 
+bootstrap_env=
 join_code=
 host_id=
 server_url=
@@ -98,10 +100,11 @@ ready_row() {
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
-    --join-code|--host-id|--server|--machine-code|--host-daemon-port)
+    --bootstrap-env|--join-code|--host-id|--server|--machine-code|--host-daemon-port)
       [ "$#" -ge 2 ] || usage
       [ -n "$2" ] || usage
       case "$1" in
+        --bootstrap-env) bootstrap_env=$2 ;;
         --join-code) join_code=$2 ;;
         --host-id) host_id=$2 ;;
         --server) server_url=$2 ;;
@@ -118,7 +121,30 @@ while [ "$#" -gt 0 ]; do
   esac
 done
 
-[ -n "$join_code" ] || usage
+if [ -n "$bootstrap_env" ]; then
+  if [ -n "$join_code$host_id$server_url$machine_code" ]; then usage; fi
+  host_id=$(node -e '
+    const name = process.argv[1];
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/u.test(name)) process.exit(2);
+    try {
+      const bundle = JSON.parse(process.env[name]);
+      if (bundle.version !== 1 || typeof bundle.hostId !== "string" || !bundle.hostId) process.exit(2);
+      process.stdout.write(bundle.hostId);
+    } catch { process.exit(2); }
+  ' "$bootstrap_env") || usage
+  server_url=$(node -e '
+    try {
+      const bundle = JSON.parse(process.env[process.argv[1]]);
+      const url = new URL(bundle.serverUrl);
+      if (!["http:", "https:"].includes(url.protocol) || url.username || url.password || url.search || url.hash) process.exit(2);
+      process.stdout.write(url.href.replace(/\/$/u, ""));
+    } catch { process.exit(2); }
+  ' "$bootstrap_env") || usage
+  bootstrap_payload=$(node -e 'process.stdout.write(process.env[process.argv[1]])' "$bootstrap_env")
+  unset "$bootstrap_env"
+else
+  [ -n "$join_code" ] || usage
+fi
 [ -n "$host_id" ] || usage
 [ -n "$server_url" ] || usage
 printf '\n  %s\n\n' "$(bold "bb machine setup")"
@@ -509,6 +535,34 @@ if [ -n "$bb_app_npm_prefix" ]; then
   fi
 fi
 
+bb_cli="${bb_app%/*}/bb"
+if [ ! -x "$bb_cli" ]; then bb_cli=$(command -v bb || true); fi
+if [ -n "$bootstrap_env" ]; then
+  if [ -z "$bb_cli" ]; then
+    fail_step "The installed build does not provide the machine enrollment CLI."
+    exit 1
+  fi
+  BB_ENROLLMENT="$bootstrap_payload" BB_DATA_DIR="$data_dir" "$bb_cli" machine enroll --bootstrap-env BB_ENROLLMENT
+  bootstrap_payload=
+fi
+if [ -n "$bb_cli" ]; then
+  mkdir -p "$HOME/.local/bin"
+  if [ ! -e "$HOME/.local/bin/bb" ] && [ ! -L "$HOME/.local/bin/bb" ]; then
+    node_path_quoted=$(printf '%s' "${node_bin%/*}" | sed "s/'/'\\''/g")
+    printf '#!/bin/sh\nPATH=\047%s\047:"$PATH"\nexport PATH\n' "$node_path_quoted" > "$HOME/.local/bin/bb"
+    cat >> "$HOME/.local/bin/bb" <<'BB_MACHINE_CLI'
+unset BB_DATA_DIR
+for candidate in "$HOME"/.bb-machines/*/npm/bin/bb; do
+  if [ -x "$candidate" ]; then exec "$candidate" "$@"; fi
+done
+if [ "${1:-}" = machine ] && [ "${2:-}" = uninstall ]; then exit 0; fi
+printf '%s\n' 'No installed bb machine CLI is available.' >&2
+exit 1
+BB_MACHINE_CLI
+    chmod 755 "$HOME/.local/bin/bb"
+  fi
+fi
+
 if [ -n "$machine_code" ]; then
   connect_apex=$(node -e '
     const url = new URL(process.argv[1]);
@@ -641,6 +695,10 @@ fi
 
 # Tests and source-development smoke runs can leave the enrolled daemon in the
 # foreground-supervised process without modifying the user's service manager.
+if [ -n "$bootstrap_env" ] && [ "$platform" = linux ] && ! systemctl --user show-environment >/dev/null 2>&1; then
+  BB_INSTALL_SKIP_SERVICE=1
+fi
+
 if [ "${BB_INSTALL_SKIP_SERVICE:-0}" = 1 ]; then
   if [ -z "$join_pid" ] && ! daemon_status_matches "$host_daemon_port" no; then
     daemon_log="$data_dir/install-daemon.log"

@@ -1,3 +1,4 @@
+import type { MachineBootstrapApi } from "./machine-bootstrap.js";
 import type Database from "better-sqlite3";
 import type { Context } from "hono";
 import type * as z from "zod";
@@ -448,7 +449,9 @@ export interface ServerAccessProviderDeclaration {
   displayName: string;
   availability():
     | import("./machine-provider.js").PluginMachineProviderAvailability
-    | Promise<import("./machine-provider.js").PluginMachineProviderAvailability>;
+    | Promise<
+        import("./machine-provider.js").PluginMachineProviderAvailability
+      >;
   acquire(context: {
     key: string;
     hostId: string;
@@ -461,7 +464,7 @@ export interface PluginServerAccess {
   register(declaration: ServerAccessProviderDeclaration): void;
 }
 
-export interface PluginMachines {
+export interface PluginMachines extends MachineBootstrapApi {
   register<
     const Requires extends PluginMachineProviderRequirements,
     const Inputs extends

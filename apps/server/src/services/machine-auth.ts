@@ -103,6 +103,7 @@ export interface MachineAuthService {
   ): Promise<IssueHostEnrollKeyResult>;
   pruneExpiredKeys(): Promise<void>;
   revokeHostAuthKeys(args: RevokeHostAuthKeysArgs): Promise<void>;
+  revokeHostEnrollKeys(args: RevokeHostAuthKeysArgs): Promise<void>;
   verifyDaemonHostKey(token: string): Promise<VerifyMachineKeyResult | null>;
 }
 
@@ -167,6 +168,20 @@ export async function createMachineAuthService(
   });
 
   let readyPromise: Promise<void> | null = null;
+  const hostOperations = new Map<string, Promise<unknown>>();
+  async function forHost<T>(
+    hostId: string,
+    operation: () => Promise<T>,
+  ): Promise<T> {
+    const previous = hostOperations.get(hostId) ?? Promise.resolve();
+    const current = previous.catch(() => {}).then(operation);
+    hostOperations.set(hostId, current);
+    try {
+      return await current;
+    } finally {
+      if (hostOperations.get(hostId) === current) hostOperations.delete(hostId);
+    }
+  }
 
   async function ensureSystemUser(): Promise<void> {
     const now = new Date();
@@ -335,36 +350,38 @@ export async function createMachineAuthService(
       hostId,
       token,
     }: EnrollHostArgs): Promise<EnrollHostResult | null> {
-      const verified = await verifyKey({
-        configId: DAEMON_ENROLL_CONFIG_ID,
-        token,
+      return forHost(hostId, async () => {
+        const verified = await verifyKey({
+          configId: DAEMON_ENROLL_CONFIG_ID,
+          token,
+        });
+        if (!verified) {
+          return null;
+        }
+        if (verified.metadata.hostId !== hostId) {
+          return null;
+        }
+        if (
+          verified.metadata.enrollSource === "public-multi-machine" &&
+          !allowPublicEnrollment
+        ) {
+          return null;
+        }
+
+        const hostMetadata: MachineCredentialMetadata = {
+          hostId: verified.metadata.hostId,
+        };
+
+        const hostKey = await createDaemonHostKey(hostMetadata);
+        await disableOtherActiveDaemonHostKeysForHost(
+          hostMetadata,
+          hostKey.keyId,
+        );
+        return {
+          hostKey: hostKey.key,
+          metadata: hostMetadata,
+        };
       });
-      if (!verified) {
-        return null;
-      }
-      if (verified.metadata.hostId !== hostId) {
-        return null;
-      }
-      if (
-        verified.metadata.enrollSource === "public-multi-machine" &&
-        !allowPublicEnrollment
-      ) {
-        return null;
-      }
-
-      const hostMetadata: MachineCredentialMetadata = {
-        hostId: verified.metadata.hostId,
-      };
-
-      const hostKey = await createDaemonHostKey(hostMetadata);
-      await disableOtherActiveDaemonHostKeysForHost(
-        hostMetadata,
-        hostKey.keyId,
-      );
-      return {
-        hostKey: hostKey.key,
-        metadata: hostMetadata,
-      };
     },
     async issueDaemonHostKey({
       hostId,
@@ -376,34 +393,41 @@ export async function createMachineAuthService(
       enrollSource,
       hostId,
     }: IssueHostEnrollKeyArgs): Promise<IssueHostEnrollKeyResult> {
-      await ensureReady();
-      const metadata = {
-        enrollSource,
-        hostId,
-      };
-      await disableActiveEnrollKeysForHost(metadata);
+      return forHost(hostId, async () => {
+        await ensureReady();
+        const metadata = {
+          enrollSource,
+          hostId,
+        };
+        await disableActiveEnrollKeysForHost(metadata);
 
-      const created = await auth.api.createApiKey({
-        body: {
-          configId: DAEMON_ENROLL_CONFIG_ID,
-          metadata,
-          remaining: 1,
-          rateLimitEnabled: false,
-          userId: MACHINE_AUTH_SYSTEM_USER_ID,
-        },
+        const created = await auth.api.createApiKey({
+          body: {
+            configId: DAEMON_ENROLL_CONFIG_ID,
+            metadata,
+            remaining: 1,
+            rateLimitEnabled: false,
+            userId: MACHINE_AUTH_SYSTEM_USER_ID,
+          },
+        });
+
+        if (!created.expiresAt) {
+          throw new Error("Machine enroll key is missing an expiration time");
+        }
+
+        return {
+          expiresAt: created.expiresAt.getTime(),
+          key: created.key,
+        };
       });
-
-      if (!created.expiresAt) {
-        throw new Error("Machine enroll key is missing an expiration time");
-      }
-
-      return {
-        expiresAt: created.expiresAt.getTime(),
-        key: created.key,
-      };
     },
     async pruneExpiredKeys(): Promise<void> {
       await pruneExpiredKeys();
+    },
+    async revokeHostEnrollKeys({
+      hostId,
+    }: RevokeHostAuthKeysArgs): Promise<void> {
+      await forHost(hostId, () => disableActiveEnrollKeysForHost({ hostId }));
     },
     async revokeHostAuthKeys({
       hostId,
