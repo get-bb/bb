@@ -69,6 +69,7 @@ interface HubOptions {
   accounts: AccountStore;
   quotas: QuotaStore;
   affinity: PoolAffinityStore;
+  maxAffinityBindings: number;
   hubTokens: HubTokenStore;
   getSettings: () => HubSettings;
   adapters: ReadonlyMap<PoolProvider, ProviderAdapter>;
@@ -747,7 +748,7 @@ export class AccountPoolHub {
         this.affinityBindings.set(affinityKey, binding);
       }
     }
-    while (this.affinityBindings.size > MAX_AFFINITY_BINDINGS) {
+    while (this.affinityBindings.size > this.options.maxAffinityBindings) {
       const oldest = this.affinityBindings.keys().next();
       if (!oldest.done) {
         this.affinityBindings.delete(oldest.value);
@@ -1139,6 +1140,7 @@ export function createHub(options: {
   profileUrl?: string;
   usageRefreshIntervalMs?: number;
   drainTimeoutMs?: number;
+  maxAffinityBindings?: number;
   onAccountsChanged?: () => void;
   onUpstreamError?: (provider: PoolProvider, error: unknown) => void;
 }): AccountPoolHub {
@@ -1165,6 +1167,7 @@ export function createHub(options: {
     accounts: options.accounts,
     quotas: options.quotas,
     affinity: options.affinity,
+    maxAffinityBindings: options.maxAffinityBindings ?? MAX_AFFINITY_BINDINGS,
     hubTokens: options.hubTokens,
     getSettings: options.getSettings,
     adapters,

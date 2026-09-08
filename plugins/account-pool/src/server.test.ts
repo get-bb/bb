@@ -4800,7 +4800,7 @@ describe("Account Pool plugin", () => {
       }
     });
 
-    it("evicts the least recently used binding after 4096 sessions", async () => {
+    it("evicts the least recently used binding at capacity", async () => {
       let lastKey: string | null = null;
       let attempts = 0;
       const fixture = await createFixture({
@@ -4808,6 +4808,7 @@ describe("Account Pool plugin", () => {
         apiKey: "sk-first",
         options: {
           now: () => 1_800_000_000_000,
+          maxAffinityBindings: 4,
           fetch: async (_input, init) => {
             lastKey = new Headers(init?.headers).get("x-api-key");
             attempts += 1;
@@ -4838,7 +4839,7 @@ describe("Account Pool plugin", () => {
       );
       try {
         await movePoolToOtherAccount(fixture, "claude");
-        for (let index = 1; index < 4096; index += 1)
+        for (let index = 1; index < 4; index += 1)
           await send(`session-${index}`);
         const touched = await send("oldest");
         await send("newest");
@@ -4856,7 +4857,7 @@ describe("Account Pool plugin", () => {
       } finally {
         if (!held.bodyUsed) await held.body?.cancel();
       }
-    }, 60_000);
+    });
   });
 
   it("serializes refresh, writes new tokens with 0600 mode, and uses them", async () => {

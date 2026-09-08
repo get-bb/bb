@@ -42,6 +42,7 @@ export interface AccountPoolPluginOptions {
   usageUrl?: string;
   usageRefreshIntervalMs?: number;
   drainTimeoutMs?: number;
+  maxAffinityBindings?: number;
   disposeTimeoutMs?: number;
   importCredentials?: () => Promise<ImportedClaudeCredentials>;
   importCodexCredentials?: () => Promise<ImportedCodexCredentials>;
@@ -117,6 +118,7 @@ export function createAccountPoolPlugin(
       importCodexCredentials: options.importCodexCredentials,
       usageRefreshIntervalMs: options.usageRefreshIntervalMs,
       drainTimeoutMs: options.drainTimeoutMs,
+      maxAffinityBindings: options.maxAffinityBindings,
       onUpstreamError: (provider, error) =>
         bb.log.warn(
           `Account Pooler ${provider} transport failed: ${transportErrorCode(error)}.`,
