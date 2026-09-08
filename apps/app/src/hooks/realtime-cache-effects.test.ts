@@ -1162,7 +1162,7 @@ describe("createRealtimeCacheEffects", () => {
     effects.dispose();
   });
 
-  it("refetches the active diff TOC and work-status queries but evicts the observer-less patch cache for work-status changes", async () => {
+  it("refetches the active diff TOC and work-status queries while retaining rendered patch cache for work-status changes", async () => {
     vi.useFakeTimers();
     const { effects, queryClient } = createRealtimeEffectsTestContext();
     const diffFilesKey = environmentDiffFilesQueryKey("env-1", "all", "main");
@@ -1217,7 +1217,11 @@ describe("createRealtimeCacheEffects", () => {
 
     expect(diffFilesQueryFn).toHaveBeenCalledTimes(1);
     expect(workStatusQueryFn).toHaveBeenCalledTimes(1);
-    expect(queryClient.getQueryData(diffPatchKey)).toBeUndefined();
+    expect(queryClient.getQueryData(diffPatchKey)).toEqual({
+      path: "file.ts",
+      patch: "diff --git a/file.ts b/file.ts\n",
+      truncated: false,
+    });
 
     unsubscribeDiffFiles();
     unsubscribeWorkStatus();
