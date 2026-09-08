@@ -28,7 +28,7 @@ import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { workflowRow } from "@/test/fixtures/thread-timeline-rows";
 import { THREAD_HANDOFF_CREATE_SEED_LOCATION_STATE_KEY } from "@bb/client-core";
-import { BbHttpError } from "@/lib/sdk";
+import { BbHttpError, sdk } from "@/lib/sdk";
 import type { PluginComposerHost } from "@/components/plugin/plugin-composer-host";
 import { setComposerTextEffect } from "@/lib/composer-text-effects";
 import {
@@ -797,6 +797,52 @@ describe("environment follow-up summary", () => {
 });
 
 describe("ThreadDetailPromptArea", () => {
+  it("shows the transient command while a new manual machine keeps its thread starting", async () => {
+    const readCommand = vi
+      .spyOn(sdk.hosts, "experimental_enrollmentCommand")
+      .mockResolvedValue({
+        command: "bb machine enroll --bootstrap-env PRIVATE_MANUAL_BUNDLE",
+      });
+    try {
+      const thread = makeThread({
+        environmentId: null,
+        status: "starting",
+        runtime: {
+          displayStatus: "starting",
+          hostReconnectGraceExpiresAt: null,
+        },
+      });
+      const view = renderPromptArea({ thread });
+      expect(
+        await screen.findByText(
+          "bb machine enroll --bootstrap-env PRIVATE_MANUAL_BUNDLE",
+        ),
+      ).toBeTruthy();
+      expect(readCommand).toHaveBeenCalledWith({
+        id: thread.id,
+        signal: expect.any(AbortSignal),
+      });
+      view.rerender(
+        buildPromptAreaElement({
+          thread: makeThread({
+            status: "idle",
+            runtime: {
+              displayStatus: "idle",
+              hostReconnectGraceExpiresAt: null,
+            },
+          }),
+        }),
+      );
+      expect(
+        screen.queryByText(
+          "bb machine enroll --bootstrap-env PRIVATE_MANUAL_BUNDLE",
+        ),
+      ).toBeNull();
+    } finally {
+      readCommand.mockRestore();
+    }
+  });
+
   it("shows queued work while its message details are loading", () => {
     mocks.queuedMessages = undefined;
 
