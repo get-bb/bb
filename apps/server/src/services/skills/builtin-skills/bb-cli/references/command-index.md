@@ -64,6 +64,10 @@ This index lists every command path that the core CLI registers. Read the task-s
 - `bb machine`
 - `bb machine providers`
 - `bb machine enroll`
+- `bb machine env`
+- `bb machine env list`
+- `bb machine env set`
+- `bb machine env unset`
 - `bb machine start`
 - `bb machine stop`
 - `bb machine uninstall`
@@ -284,3 +288,6 @@ environment. Add `--environment-provider <id>` when the machine provider has no
 - `bb browser watch`
 
 Machine creation is durable: `create --no-wait` returns the launch ID, `status <launch-id>` polls it, and `cancel <launch-id>` explicitly cancels it. SIGINT only stops following. Following continues through retryable failures until ready or terminal failure; launch status exposes `terminal`.
+
+Machine environment: `bb machine env list`, `bb machine env set NAME --secret`
+(value from stdin), and `bb machine env unset NAME`; all accept `--json`.

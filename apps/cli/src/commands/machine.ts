@@ -1,3 +1,4 @@
+import { registerMachineEnvironmentCommands } from "./machine-environment.js";
 import { registerMachineLifecycleCommands } from "./machine-lifecycle.js";
 import {
   enrollMachine,
@@ -139,6 +140,7 @@ export function registerMachineCommands(
     .description("Inspect execution machines");
 
   registerMachineLifecycleCommands(machine);
+  registerMachineEnvironmentCommands(machine, getUrl);
 
   machine
     .command("enroll")

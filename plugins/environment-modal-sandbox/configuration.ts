@@ -1,5 +1,3 @@
-import { z } from "zod";
-
 export const SETTING_DESCRIPTORS = {
   tokenId: {
     type: "string",
@@ -26,13 +24,6 @@ export const SETTING_DESCRIPTORS = {
     description:
       "Registry tag for the sandbox image. It needs Node 22.19+, npm, git, curl and build tools.",
     default: "node:22-bookworm",
-  },
-  environmentVariables: {
-    type: "string",
-    label: "Sandbox environment variables (optional)",
-    secret: true,
-    description:
-      "A JSON object of environment variables injected into each sandbox.",
   },
   timeoutMinutes: {
     type: "string",
@@ -84,7 +75,6 @@ export interface RawSettings {
   tokenSecret: string | undefined;
   appName: string;
   image: string;
-  environmentVariables: string | undefined;
   timeoutMinutes: string;
   idleMinutes: string;
   cpu: string;
@@ -93,38 +83,6 @@ export interface RawSettings {
 
 const MAX_TIMEOUT_MINUTES = 24 * 60;
 const MAX_IDLE_MINUTES = 24 * 60;
-const MAX_ENVIRONMENT_VARIABLES = 64;
-const environmentVariablesSchema = z.record(
-  z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/u),
-  z.string(),
-);
-
-function parseEnvironmentVariables(
-  raw: string | undefined,
-):
-  | { ok: true; value: Readonly<Record<string, string>> }
-  | { ok: false; message: string } {
-  const trimmed = (raw ?? "").trim();
-  if (trimmed.length === 0) return { ok: true, value: {} };
-  let parsed: z.infer<typeof environmentVariablesSchema>;
-  try {
-    parsed = environmentVariablesSchema.parse(JSON.parse(trimmed));
-  } catch {
-    return {
-      ok: false,
-      message:
-        "Modal sandbox environmentVariables must be a JSON object whose keys are environment variable names and whose values are strings.",
-    };
-  }
-  if (Object.keys(parsed).length > MAX_ENVIRONMENT_VARIABLES) {
-    return {
-      ok: false,
-      message: `Modal sandbox environmentVariables may contain at most ${MAX_ENVIRONMENT_VARIABLES} entries.`,
-    };
-  }
-  return { ok: true, value: parsed };
-}
-
 function parseNumber(raw: string): number | null {
   const trimmed = raw.trim();
   if (trimmed.length === 0) return null;
@@ -152,10 +110,6 @@ export function resolveSettings(raw: RawSettings): SettingsResolution {
   if (image.length === 0) {
     return { ok: false, message: "Modal sandbox image must not be blank." };
   }
-  const environmentVariables = parseEnvironmentVariables(
-    raw.environmentVariables,
-  );
-  if (!environmentVariables.ok) return environmentVariables;
   const timeoutMinutes = Number(raw.timeoutMinutes.trim());
   if (
     !Number.isInteger(timeoutMinutes) ||
@@ -199,7 +153,7 @@ export function resolveSettings(raw: RawSettings): SettingsResolution {
       tokenSecret,
       appName,
       image,
-      environmentVariables: environmentVariables.value,
+      environmentVariables: {},
       timeoutMs: timeoutMinutes * 60_000,
       idleMs: idleMinutes === 0 ? null : idleMinutes * 60_000,
       cpu,

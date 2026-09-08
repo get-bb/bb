@@ -234,3 +234,23 @@ Manual machines never idle-suspend or automatically retire and do not expose
 suspend/resume. Removing one revokes its server access without executing on the
 machine. Run `bb machine uninstall --host-id <host-id>` on that box, with its
 original `BB_DATA_DIR` if explicitly configured, to remove its installation.
+
+## Machine environment
+
+`bb machine env list --json` lists global machine variables and built-in GitHub
+health. `bb machine env set NAME [--secret] [--note text] --json` reads its value
+from stdin, removing one trailing newline; values are never accepted in argv.
+`bb machine env unset NAME --json` removes an override. GH_TOKEN is always secret.
+Secret values use private files and are never returned by list or set.
+
+Settings → General → Machine environment has the same controls. User variables
+override built-in values for all enrolled machine hosts, excluding local hosts.
+Agent-provider variables win over these host values for agent turns. Changes
+apply to the next turn, setup operation, or newly opened BB terminal; existing
+terminals retain their launch environment.
+
+The server's gh login provides GitHub credentials, a Git environment-only HTTPS
+helper and SSH rewrites, and commit identity. The built-in row reports logged in,
+not logged in, or overridden. No credentials are installed in images or global
+Git config. SDK: system.machineEnvironment(), system.setMachineEnvironment({
+name, value, secret, note }), and system.unsetMachineEnvironment(name).

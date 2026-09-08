@@ -964,7 +964,7 @@ const CONTRIBUTED_ENV = [
 
 describe("host-daemon command schemas", () => {
   it("uses the current host-daemon protocol version", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(190);
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(191);
     expect(HOST_ARTIFACT_MAX_BYTES).toBe(256 * 1024 * 1024);
   });
 
@@ -3693,6 +3693,7 @@ describe("host-daemon session schemas", () => {
     expect(
       hostDaemonServerWsMessageSchema.safeParse({
         type: "terminal.open",
+        contributedEnv: [],
         requestId: "request-1",
         terminalId: "term_123",
         threadId: "thr_123",

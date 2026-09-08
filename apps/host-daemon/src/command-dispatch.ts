@@ -1,3 +1,4 @@
+import { operationEnvironment } from "./operation-environment.js";
 import {
   providerCliInstallEventSchema,
   type HostDaemonCommand,
@@ -463,6 +464,11 @@ const commandHandlers: CommandHandlerMap = {
     cloneProject({
       dataDir: options.dataDir,
       projectSlug: command.projectSlug,
+      env: operationEnvironment(command.contributedEnv, {
+        ...process.env,
+        ...options.runtimeManager.getShellEnv(),
+      }),
+      contributedEnv: command.contributedEnv,
       remoteUrl: command.remoteUrl,
       ...userExecutableProcessOptions(options.runtimeManager.getShellEnv()),
       ...(command.targetPath !== undefined

@@ -30,7 +30,10 @@ export function buildThreadShellEnvironment(
 
 export interface ResolvedThreadEnvironmentEntry {
   name: string;
-  source: "shell" | { plugin: string };
+  source:
+    | "shell"
+    | { plugin: string }
+    | { core: "machine-git" | "machine-environment" };
   value: string | { masked: true };
   reason?: string;
 }
@@ -70,7 +73,10 @@ export function resolveThreadEnvironment(args: ResolveThreadEnvironmentArgs): {
         });
         droppedContributions.push({
           name: contribution.name,
-          plugin: contribution.source.plugin,
+          plugin:
+            "plugin" in contribution.source
+              ? contribution.source.plugin
+              : contribution.source.core,
         });
         continue;
       }

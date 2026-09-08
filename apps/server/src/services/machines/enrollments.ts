@@ -421,7 +421,19 @@ export function createMachineEnrollmentService(
           const row = rowForId(enrollmentId);
           if (row.state === "cancelled")
             throw new Error("Machine enrollment was cancelled");
-          if (deps.isConnected(row.hostId)) return { hostId: row.hostId };
+          if (deps.isConnected(row.hostId)) {
+            deps.db
+              .update(machineEnrollments)
+              .set({
+                state: "enrolled",
+                encryptedBootstrap: null,
+                expiresAt: null,
+                updatedAt: Date.now(),
+              })
+              .where(eq(machineEnrollments.id, row.id))
+              .run();
+            return { hostId: row.hostId };
+          }
           const remaining = deadline - Date.now();
           if (remaining <= 0)
             throw new Error("Timed out waiting for machine connection");

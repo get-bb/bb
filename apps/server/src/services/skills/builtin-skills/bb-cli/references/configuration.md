@@ -82,3 +82,18 @@ thread-creation.md and docs/configuration.md for the directory constraints.
 Machine enrollment v2 stores private `serverHeaders` in machine `config.json`.
 The launcher transports these through `BB_SERVER_HEADERS` (JSON string map) for
 all server requests. Do not print these headers; they can contain access tokens.
+
+## Machine environment
+
+Use `bb machine env list --json` for variables and built-in gh health.
+`bb machine env set NAME [--secret] [--note text] --json` reads the value from
+stdin and removes one trailing newline; never pass secrets in argv or print
+them. `bb machine env unset NAME --json` removes an override. GH_TOKEN is always
+secret and all secret values are omitted from responses.
+
+These settings apply globally to enrolled machines, not local hosts, on each
+agent turn, setup command, and new BB terminal. User values override built-ins;
+agent-provider entries override host values. Reopen existing terminals after a
+change. The server gh login provides GitHub Git/gh authentication and commit
+identity by default; a user GH_TOKEN replaces it. See Settings → General →
+Machine environment, and `bb settings show --json` for machineGit readiness.

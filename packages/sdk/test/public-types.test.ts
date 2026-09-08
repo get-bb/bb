@@ -345,6 +345,9 @@ type ExpectedProvidersKey = "list" | "models";
 type ExpectedStatusKey = "get";
 
 type ExpectedSystemKey =
+  | "machineEnvironment"
+  | "setMachineEnvironment"
+  | "unsetMachineEnvironment"
   | "attention"
   | "cliSkillsStatus"
   | "config"

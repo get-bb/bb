@@ -7,7 +7,6 @@ function settings(overrides: Partial<RawSettings> = {}): RawSettings {
     tokenSecret: "token-secret",
     appName: "bb-sandboxes",
     image: "node:22-bookworm",
-    environmentVariables: undefined,
     timeoutMinutes: "60",
     idleMinutes: "15",
     cpu: "",
@@ -16,41 +15,42 @@ function settings(overrides: Partial<RawSettings> = {}): RawSettings {
   };
 }
 
-describe("sandbox environment variables", () => {
-  it("parses a JSON object without exposing it elsewhere in the settings", () => {
-    const result = resolveSettings(
-      settings({
-        environmentVariables: JSON.stringify({
-          WORKLOAD_TOKEN: "sk-secret",
-          LOWER_CASE_VALUE: "allowed",
-        }),
+describe("sandbox environment", () => {
+  it("keeps legacy JSON variables out of image and sandbox settings", () => {
+    const legacySettings = {
+      ...settings(),
+      environmentVariables: JSON.stringify({
+        WORKLOAD_TOKEN: "sk-secret",
+        LOWER_CASE_VALUE: "allowed",
       }),
-    );
-
+    };
+    const result = resolveSettings(legacySettings);
     expect(result).toMatchObject({
       ok: true,
-      settings: {
-        environmentVariables: {
-          WORKLOAD_TOKEN: "sk-secret",
-          LOWER_CASE_VALUE: "allowed",
-        },
-      },
+      settings: { environmentVariables: {} },
     });
+    expect(JSON.stringify(result)).not.toContain("sk-secret");
+    expect(JSON.stringify(result)).not.toContain("LOWER_CASE_VALUE");
   });
 
-  it("rejects malformed names and values without repeating a secret", () => {
-    const result = resolveSettings(
-      settings({
-        environmentVariables: '{"BAD-NAME":"do-not-repeat","PORT":22}',
-      }),
-    );
-
-    expect(result).toEqual({
-      ok: false,
-      message:
-        "Modal sandbox environmentVariables must be a JSON object whose keys are environment variable names and whose values are strings.",
+  it("discards malformed legacy names and values without repeating a secret", () => {
+    const legacySettings = {
+      ...settings(),
+      environmentVariables: '{"BAD-NAME":"do-not-repeat","PORT":22}',
+    };
+    const result = resolveSettings(legacySettings);
+    expect(result).toMatchObject({
+      ok: true,
+      settings: { environmentVariables: {} },
     });
-    if (!result.ok) expect(result.message).not.toContain("do-not-repeat");
+    expect(JSON.stringify(result)).not.toContain("do-not-repeat");
+  });
+
+  it("leaves runtime environment contributions out of image and sandbox settings", () => {
+    expect(resolveSettings(settings())).toMatchObject({
+      ok: true,
+      settings: { environmentVariables: {} },
+    });
   });
 });
 

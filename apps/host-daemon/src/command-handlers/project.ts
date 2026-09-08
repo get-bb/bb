@@ -1,3 +1,8 @@
+import {
+  operationSecrets,
+  redactOperationSecrets,
+} from "../operation-environment.js";
+import type { HostDaemonContributedEnvEntry } from "@bb/host-daemon-contract";
 import fs from "node:fs/promises";
 import path from "node:path";
 import {
@@ -71,6 +76,8 @@ export async function cloneProject(args: {
   dataDir: string;
   projectSlug: string;
   remoteUrl: string;
+  env?: NodeJS.ProcessEnv;
+  contributedEnv?: readonly HostDaemonContributedEnvEntry[];
   targetPath?: string;
   shellPath?: string;
 }): Promise<{ path: string; gitRemoteUrl: string | null }> {
@@ -83,12 +90,19 @@ export async function cloneProject(args: {
   try {
     await runGit(["clone", args.remoteUrl, targetPath], {
       cwd: path.dirname(targetPath),
+      env: args.env,
       ...(args.shellPath !== undefined ? { shellPath: args.shellPath } : {}),
       timeoutMs: PROJECT_CLONE_TIMEOUT_MS,
     });
   } catch (error) {
     if (error instanceof WorkspaceError) {
-      throw new ExpectedCommandDispatchError(error.code, error.message);
+      throw new ExpectedCommandDispatchError(
+        error.code,
+        redactOperationSecrets(
+          error.message,
+          operationSecrets(args.contributedEnv ?? []),
+        ),
+      );
     }
     throw error;
   }

@@ -1583,6 +1583,7 @@ describe("machine and environment provider composition", () => {
           expect(clone.row.hostId).toBe(host.id);
           expect(clone.command).toEqual({
             type: "project.clone",
+            contributedEnv: [],
             remoteUrl,
             projectSlug: project.name,
             targetPath: WORKSPACE_PATH,
@@ -1948,7 +1949,9 @@ describe("a provider-produced environment over its life", () => {
                 retire: { after: "never" },
                 removeRetryMs: 30_000,
               },
-              experimental_reconcileCleanup: async () => ({ status: "removed" }),
+              experimental_reconcileCleanup: async () => ({
+                status: "removed",
+              }),
               create: async ({ key }) => {
                 machineKeys.push(key);
                 return {

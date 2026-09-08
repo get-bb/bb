@@ -1,3 +1,4 @@
+import { resolveHostEnvironment } from "../hosts/host-environment.js";
 import {
   createProjectSource,
   getProjectSourceByHost,
@@ -81,6 +82,10 @@ export async function cloneProjectSourceOnHost(
     timeoutMs: 20 * 60 * 1000,
     command: {
       type: "project.clone",
+      contributedEnv: await resolveHostEnvironment(deps, {
+        hostId: args.hostId,
+        projectId: args.projectId,
+      }),
       remoteUrl: args.remoteUrl,
       projectSlug: args.projectName,
       ...(args.targetPath !== undefined ? { targetPath: args.targetPath } : {}),

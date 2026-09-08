@@ -270,8 +270,22 @@ describe("machine enrollments", () => {
     expect(await h.api.waitForConnection(request)).toEqual({
       hostId: prepared.hostId,
     });
-    await h.api.cancel({ enrollmentId: prepared.id });
-    await expect(h.api.waitForConnection(request)).rejects.toThrow("cancelled");
+    expect(
+      h.db
+        .select()
+        .from(machineEnrollments)
+        .where(eq(machineEnrollments.id, prepared.id))
+        .get(),
+    ).toMatchObject({
+      state: "enrolled",
+      encryptedBootstrap: null,
+      expiresAt: null,
+    });
+    const cancelled = await h.api.prepare({ key: "cancelled" });
+    await h.api.cancel({ enrollmentId: cancelled.id });
+    await expect(
+      h.api.waitForConnection({ ...request, enrollmentId: cancelled.id }),
+    ).rejects.toThrow("cancelled");
   });
 });
 
