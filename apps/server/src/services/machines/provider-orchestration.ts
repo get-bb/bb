@@ -868,6 +868,16 @@ async function suspendMachine(deps: Deps, hostId: string): Promise<void> {
   if (row.resource === null) {
     throw new Error(`Machine "${hostId}" has no provider resource`);
   }
+  if (
+    machineIdleSince(deps.db, hostId) === null ||
+    machineHasOpenTerminal(deps.db, hostId)
+  ) {
+    throw new ApiError(
+      409,
+      "machine_busy",
+      "Wait for live threads to become idle and close terminals before sleeping.",
+    );
+  }
   const suspend = record.provider.suspend;
   const resource = row.resource;
   const operation = runTrackedOperation({
@@ -1278,18 +1288,29 @@ export async function sweepProviderMachine(
       if (row === null) return;
     }
   }
+  const idleSuspendMs =
+    record.provider.experimental_idleSuspendMs !== null && row.resource !== null
+      ? z
+          .number()
+          .int()
+          .nonnegative()
+          .nullable()
+          .parse(
+            await record.provider.experimental_idleSuspendMs({
+              hostId,
+              resource: row.resource,
+            }),
+          )
+      : record.provider.policy.idleSuspendMs;
+  const idleSince =
+    row.phase === "active" ? machineIdleSince(deps.db, hostId) : null;
   if (
     row.phase === "active" &&
-    hasLiveThreads &&
-    record.provider.policy.idleSuspendMs !== null &&
+    idleSuspendMs !== null &&
     record.provider.suspend !== null &&
     !machineHasOpenTerminal(deps.db, hostId)
   ) {
-    const idleSince = machineIdleSince(deps.db, hostId);
-    if (
-      idleSince !== null &&
-      now >= idleSince + record.provider.policy.idleSuspendMs
-    ) {
+    if (idleSince !== null && now >= idleSince + idleSuspendMs) {
       await suspendMachine(deps, hostId);
       return;
     }
@@ -1426,4 +1447,29 @@ export async function sweepMachineLifecycles(deps: Deps): Promise<void> {
     }
   }
   await Promise.all(pending);
+}
+
+export async function getMachineProviderDetails(
+  deps: Deps,
+  hostId: string,
+  signal: AbortSignal,
+) {
+  const row = getHost(deps.db, hostId);
+  if (row === null || row.destroyedAt !== null)
+    throw new ApiError(404, "host_not_found", "Host not found");
+  const provider =
+    row.machineProviderId === null
+      ? null
+      : getMachineProvider(row.machineProviderId)?.provider;
+  if (!provider?.experimental_details || row.resource === null) return null;
+  return z
+    .object({ summary: z.string().max(2000), values: jsonValueSchema })
+    .strict()
+    .parse(
+      await provider.experimental_details({
+        hostId,
+        resource: row.resource,
+        signal,
+      }),
+    );
 }

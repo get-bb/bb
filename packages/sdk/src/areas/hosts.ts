@@ -1,5 +1,5 @@
 import { hostProviderCliInstallEventSchema } from "@bb/server-contract";
-import type { Host } from "@bb/domain";
+import type { Host, JsonValue } from "@bb/domain";
 import type {
   CreateHostJoinCodeResponse,
   CreateMachineRequest,
@@ -95,6 +95,9 @@ export type HostUpdateResult = Host;
 export type MachineProviderListResult = SystemMachineProvider[];
 
 export interface HostsArea {
+  experimental_providerDetails(
+    args: HostGetArgs,
+  ): Promise<{ summary: string; values: JsonValue } | null>;
   create(args: MachineCreateArgs): Promise<Host>;
   createJoinCode(): Promise<HostCreateJoinCodeResult>;
   delete(args: HostDeleteArgs): Promise<HostDeleteResult>;
@@ -123,6 +126,14 @@ export interface HostsArea {
 export function createHostsArea(args: CreateSdkAreaArgs): HostsArea {
   const { transport } = args;
   return {
+    async experimental_providerDetails(input) {
+      return transport.readJson(
+        transport.api.v1.hosts[":id"]["provider-details"].$get(
+          { param: { id: input.hostId } },
+          ...signalRequestArgs(input.signal),
+        ),
+      );
+    },
     async create(input) {
       return transport.readJson(
         transport.api.v1.hosts.$post(

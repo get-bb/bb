@@ -117,3 +117,8 @@ plugins; do not add plugin command manuals here.
 ## Built-in browser control
 
 Use `bb browser instances --host <host-id> --json` to discover a desktop. Commands `tabs`, `create`, `acquire`, `connection`, `release`, `reveal`, `capture`, `close`, and `watch` require explicit `--host`, `--instance`, `--generation`, and `--thread`. See `bb guide browser` and `bb browser --help` for flags. New tabs use separate automation profiles; personal-tab control needs an explicit handoff. Connection credentials are written with `connection --output <new-file>` and work only on the browser host; keep them out of chat and public port shares.
+
+`bb machine show <id-or-name> --json` includes provider-owned inventory and
+estimates in `providerDetails` when available. Provider inventory failures are
+reported; this is not billing/invoice data. Suspension requires idle live threads
+and no open terminals; empty machines can use an opted-in provider idle policy.

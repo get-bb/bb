@@ -210,6 +210,9 @@ export function updateHost(
         ? { machineProviderSelection: input.machineProviderSelection }
         : {}),
       ...(input.phase !== undefined ? { phase: input.phase } : {}),
+      ...(input.phase === "active" && existing.phase !== "active"
+        ? { idleSince: now }
+        : {}),
       ...(input.resource !== undefined ? { resource: input.resource } : {}),
       ...(input.removalStartedAt !== undefined
         ? { removalStartedAt: input.removalStartedAt }

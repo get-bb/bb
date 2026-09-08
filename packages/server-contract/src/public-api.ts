@@ -1,3 +1,4 @@
+import type { JsonValue } from "@bb/domain";
 import {
   desktopBrowserHostRequestSchema,
   desktopBrowserScopeSchema,
@@ -757,6 +758,12 @@ export const publicApiRoutes = {
       method: "post",
       request: noRequest<PathId>(),
       response: jsonResponse<HostRetryUpdateResponse>(),
+    }),
+    experimental_providerDetails: defineRoute({
+      path: "/hosts/:id/provider-details",
+      method: "get",
+      request: noRequest<PathId>(),
+      response: jsonResponse<{ summary: string; values: JsonValue } | null>(),
     }),
     suspend: defineRoute({
       path: "/hosts/:id/suspend",

@@ -1077,6 +1077,39 @@ describe("core machine provider orchestration", () => {
       });
     }));
 
+  it("starts a durable idle baseline for a box with zero threads and honors its per-machine override", async () =>
+    withTestHarness(async (harness) => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(10_000);
+      const { host } = seedHostSession(harness.deps, { id: "host_empty_idle" });
+      const suspend = vi.fn(async ({ resource }: { resource: JsonValue }) => ({
+        resource,
+      }));
+      installMachineProvider(
+        machineDeclaration(host.id, {
+          policy: {
+            idleSuspendMs: null,
+            retire: { after: "never" },
+            removeRetryMs: 10,
+          },
+          experimental_idleSuspendMs: async () => 5_000,
+          suspend,
+          resume: async ({ resource }) => ({ resource }),
+        }),
+      );
+      adoptMachine(harness, host.id);
+      await sweepProviderMachine(harness.deps, host.id);
+      expect(getHost(harness.db, host.id)?.idleSince).toBe(10_000);
+      expect(suspend).not.toHaveBeenCalled();
+      vi.setSystemTime(14_999);
+      await sweepProviderMachine(harness.deps, host.id);
+      expect(suspend).not.toHaveBeenCalled();
+      vi.setSystemTime(15_000);
+      await sweepProviderMachine(harness.deps, host.id);
+      expect(suspend).toHaveBeenCalledOnce();
+      expect(getHost(harness.db, host.id)?.phase).toBe("suspended");
+    }));
+
   it("suspends after every live thread has been idle for the policy delay", async () =>
     withTestHarness(async (harness) => {
       vi.useFakeTimers({ toFake: ["Date"] });

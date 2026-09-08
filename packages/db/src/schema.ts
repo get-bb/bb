@@ -106,6 +106,7 @@ export const hosts = sqliteTable(
       .notNull()
       .default("active"),
     suspendedAt: integer("suspended_at"),
+    idleSince: integer("idle_since"),
     removalStartedAt: integer("removal_started_at"),
     retireAt: integer("retire_at"),
     teardownAttempt: integer("teardown_attempt").notNull().default(0),
