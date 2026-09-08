@@ -101,8 +101,25 @@ describe("ConversationMessageContent streaming split", () => {
     expect(markdownRenders).toEqual(["Second paragraph.\n\n`live code grows`"]);
   });
 
+  it("repairs unfinished formatting after ordinary double-colon text", () => {
+    const source = "Call Namespace::Method, then **live bold";
+    const { view, update } = renderAssistantMessage(source, true);
+    expect(documents(view.container)).toEqual([
+      "Call Namespace::Method, then **live bold**",
+    ]);
+
+    update(`Settled.\n\nSecond paragraph.\n\n${source}`, true);
+    expect(documents(view.container)).toEqual([
+      "Settled.\n\n",
+      `Second paragraph.\n\n${source}**`,
+    ]);
+  });
+
   it.each([
     "::inline-vis[label",
+    "  ::inline-vis[label",
+    "> ::inline-vis[label",
+    "- ::inline-vis[label",
     '::inline-vis{file="[draft.html"}',
     '::inline-vis{file="a__b.html"}',
     '::unknown{title="**source"}',
