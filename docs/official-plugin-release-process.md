@@ -15,6 +15,11 @@ the install policy. `autoInstall` in the registry does: `BUILTIN_PLUGINS`
 entries reconcile automatically, and `OFFICIAL_PLUGINS` entries stay store-only
 until a user installs them.
 
+When adding a bundled plugin, add its workspace dependency to
+`packages/bundled-plugins/package.json` and give the plugin the same
+`build:bundled` script as the other bundled plugins. Assembly rejects a mismatch
+between these dependencies and the generated marketplace.
+
 The official plugins are:
 
 | Directory                    | Package name                   | Store entry          | Plugin id            |

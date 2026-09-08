@@ -1529,6 +1529,15 @@ importers:
       bb-plugin-custom-instructions:
         specifier: workspace:*
         version: link:../../plugins/custom-instructions
+      bb-plugin-environment-git-worktree:
+        specifier: workspace:*
+        version: link:../../plugins/environment-git-worktree
+      bb-plugin-environment-personal-workspace:
+        specifier: workspace:*
+        version: link:../../plugins/environment-personal-workspace
+      bb-plugin-environment-project-checkout:
+        specifier: workspace:*
+        version: link:../../plugins/environment-project-checkout
       bb-plugin-github:
         specifier: workspace:*
         version: link:../../plugins/github
@@ -3362,6 +3371,9 @@ importers:
         specifier: 4.3.6
         version: 4.3.6
     devDependencies:
+      '@bb/plugin-build':
+        specifier: workspace:*
+        version: link:../../packages/plugin-build
       '@get-bb/plugin-sdk':
         specifier: workspace:*
         version: link:../../packages/plugin-sdk
@@ -3396,6 +3408,9 @@ importers:
         specifier: 4.3.6
         version: 4.3.6
     devDependencies:
+      '@bb/plugin-build':
+        specifier: workspace:*
+        version: link:../../packages/plugin-build
       '@get-bb/plugin-sdk':
         specifier: workspace:*
         version: link:../../packages/plugin-sdk
@@ -3421,6 +3436,9 @@ importers:
         specifier: 4.3.6
         version: 4.3.6
     devDependencies:
+      '@bb/plugin-build':
+        specifier: workspace:*
+        version: link:../../packages/plugin-build
       '@get-bb/plugin-sdk':
         specifier: workspace:*
         version: link:../../packages/plugin-sdk

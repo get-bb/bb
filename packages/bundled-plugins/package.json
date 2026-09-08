@@ -39,7 +39,10 @@
     "bb-plugin-account-pool": "workspace:*",
     "bb-plugin-provider-pi": "workspace:*",
     "bb-plugin-monaco-editor": "workspace:*",
-    "zod": "^4.3.6"
+    "zod": "^4.3.6",
+    "bb-plugin-environment-git-worktree": "workspace:*",
+    "bb-plugin-environment-personal-workspace": "workspace:*",
+    "bb-plugin-environment-project-checkout": "workspace:*"
   },
   "devDependencies": {
     "@bb/tsconfig": "workspace:*",
