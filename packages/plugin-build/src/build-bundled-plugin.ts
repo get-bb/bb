@@ -35,9 +35,10 @@ try {
   await mkdir(path.join(sourceRoot, "dist"), { recursive: true });
   await create(
     {
-      file: path.join(sourceRoot, "dist/bundled-plugin.tar"),
+      file: path.join(sourceRoot, "dist/bundled-plugin.tgz"),
       cwd: path.join(staging, "plugin"),
       portable: true,
+      gzip: { level: 1 },
       mtime: new Date(0),
     },
     ["."],

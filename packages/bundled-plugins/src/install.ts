@@ -25,7 +25,7 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
   if (flag !== "--target" || !target || extra.length > 0)
     throw new Error("Usage: install.ts --target <directory>");
   await installBundledPlugins(
-    path.resolve(import.meta.dirname, "../dist/bundled-plugins.tar"),
+    path.resolve(import.meta.dirname, "../dist/bundled-plugins.tgz"),
     path.resolve(target),
   );
 }

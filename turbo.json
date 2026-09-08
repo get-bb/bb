@@ -107,14 +107,14 @@
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/packages/bb-app/package.json"
       ],
-      "outputs": ["dist/bundled-plugin.tar"]
+      "outputs": ["dist/bundled-plugin.tgz"]
     },
     "@bb/bundled-plugins#build": {
       "dependsOn": [
         "^build:bundled",
         "@bb/server#generate:bb-official-marketplace"
       ],
-      "outputs": ["dist/bundled-plugins.tar"]
+      "outputs": ["dist/bundled-plugins.tgz"]
     },
     "@bb/sdk#test": {
       "dependsOn": ["//#ensure-native-modules", "topo"],
