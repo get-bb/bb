@@ -1,3 +1,4 @@
+import { getMachineEnrollmentService } from "./services/machines/machine-services.js";
 import { registerDesktopBrowserRoutes } from "./routes/desktop-browsers.js";
 import { createNodeWebSocket } from "@hono/node-ws";
 import { createHash } from "node:crypto";
@@ -557,6 +558,7 @@ export function createApp(
     return next();
   });
   const pluginService = createPluginService({
+    machineEnrollments: getMachineEnrollmentService(deps),
     db: deps.db,
     hub: deps.hub,
     logger: deps.logger,

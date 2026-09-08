@@ -199,6 +199,31 @@ legacy_service_slug=$(printf '%s' "$server_host" | tr '.' '-')
 # Each server gets its own data dir and daemon instance, so one machine can
 # serve several bb servers and a full local bb install keeps ~/.bb to itself.
 data_dir=${BB_DATA_DIR:-"$HOME/.bb-machines/$server_host"}
+mkdir -p "$HOME/.local/bin"
+if [ ! -e "$HOME/.local/bin/bb" ] && [ ! -L "$HOME/.local/bin/bb" ]; then
+  shim_file=$(mktemp "$HOME/.local/bin/.bb-machine.XXXXXX")
+  node_path_quoted=$(printf '%s' "${node_bin%/*}" | sed "s/'/'\\''/g")
+  printf '#!/bin/sh\nPATH=\047%s\047:"$PATH"\nexport PATH\n' "$node_path_quoted" > "$shim_file"
+  cat >> "$shim_file" <<'BB_MACHINE_CLI'
+unset BB_DATA_DIR
+for candidate in "$HOME"/.bb-machines/*/npm/bin/bb; do
+  if [ -x "$candidate" ]; then exec "$candidate" "$@"; fi
+done
+if [ "${1:-}" = machine ] && [ "${2:-}" = uninstall ]; then exit 0; fi
+printf '%s\n' 'No installed bb machine CLI is available.' >&2
+exit 1
+BB_MACHINE_CLI
+  chmod 755 "$shim_file"
+  if ! ln "$shim_file" "$HOME/.local/bin/bb" 2>/dev/null; then
+    if [ ! -e "$HOME/.local/bin/bb" ] && [ ! -L "$HOME/.local/bin/bb" ]; then
+      rm -f "$shim_file"
+      fail_step "Could not publish the machine CLI shim."
+      exit 1
+    fi
+  fi
+  rm -f "$shim_file"
+fi
+
 mkdir -p "$data_dir"
 mkdir -p "$data_dir/logs"
 canonical_data_dir=$(node -e '
@@ -544,23 +569,6 @@ if [ -n "$bootstrap_env" ]; then
   fi
   BB_ENROLLMENT="$bootstrap_payload" BB_DATA_DIR="$data_dir" "$bb_cli" machine enroll --bootstrap-env BB_ENROLLMENT
   bootstrap_payload=
-fi
-if [ -n "$bb_cli" ]; then
-  mkdir -p "$HOME/.local/bin"
-  if [ ! -e "$HOME/.local/bin/bb" ] && [ ! -L "$HOME/.local/bin/bb" ]; then
-    node_path_quoted=$(printf '%s' "${node_bin%/*}" | sed "s/'/'\\''/g")
-    printf '#!/bin/sh\nPATH=\047%s\047:"$PATH"\nexport PATH\n' "$node_path_quoted" > "$HOME/.local/bin/bb"
-    cat >> "$HOME/.local/bin/bb" <<'BB_MACHINE_CLI'
-unset BB_DATA_DIR
-for candidate in "$HOME"/.bb-machines/*/npm/bin/bb; do
-  if [ -x "$candidate" ]; then exec "$candidate" "$@"; fi
-done
-if [ "${1:-}" = machine ] && [ "${2:-}" = uninstall ]; then exit 0; fi
-printf '%s\n' 'No installed bb machine CLI is available.' >&2
-exit 1
-BB_MACHINE_CLI
-    chmod 755 "$HOME/.local/bin/bb"
-  fi
 fi
 
 if [ -n "$machine_code" ]; then

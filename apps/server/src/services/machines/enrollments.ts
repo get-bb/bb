@@ -1,3 +1,4 @@
+import { getMachineProvider } from "../plugins/plugin-machine-provider-registry.js";
 import { z } from "zod";
 import { readOrCreateSecretFile } from "@bb/secret-storage";
 import {
@@ -13,6 +14,7 @@ import {
   createHostId,
   hosts,
   machineEnrollments,
+  machineLaunches,
   type DbConnection,
 } from "@bb/db";
 import type {
@@ -170,34 +172,67 @@ export function createMachineEnrollmentService(
         const lockKey = JSON.stringify([owner, request.key]);
         return serialized(lockKey, async () => {
           const now = Date.now();
-          deps.db
-            .insert(machineEnrollments)
-            .values({
-              id: randomUUID(),
-              owner,
-              key: request.key,
-              hostId: createHostId(),
-              state: "pending",
-              createdAt: now,
-              updatedAt: now,
-            })
-            .onConflictDoNothing()
-            .run();
-          const row = deps.db
-            .select()
-            .from(machineEnrollments)
-            .where(
-              and(
-                eq(machineEnrollments.owner, owner),
-                eq(machineEnrollments.key, request.key),
-              ),
+          const row = deps.db.transaction((tx) => {
+            const launch = tx
+              .select({
+                providerId: machineLaunches.providerId,
+                hostId: machineLaunches.hostId,
+                attempt: machineLaunches.attempt,
+              })
+              .from(machineLaunches)
+              .where(eq(machineLaunches.key, request.key))
+              .get();
+            if (
+              launch &&
+              getMachineProvider(launch.providerId)?.pluginId !== owner
             )
-            .get();
-          if (!row) throw new Error("Machine enrollment could not be prepared");
+              throw new Error("Machine launch belongs to a different plugin");
+            tx.insert(machineEnrollments)
+              .values({
+                id: randomUUID(),
+                owner,
+                key: request.key,
+                hostId: launch?.hostId ?? createHostId(),
+                state: "pending",
+                createdAt: now,
+                updatedAt: now,
+              })
+              .onConflictDoNothing()
+              .run();
+            const enrollment = tx
+              .select()
+              .from(machineEnrollments)
+              .where(
+                and(
+                  eq(machineEnrollments.owner, owner),
+                  eq(machineEnrollments.key, request.key),
+                ),
+              )
+              .get();
+            if (!enrollment)
+              throw new Error("Machine enrollment could not be prepared");
+            if (launch) {
+              if (launch.hostId !== null && launch.hostId !== enrollment.hostId)
+                throw new Error(
+                  "Machine launch already has a different host identity",
+                );
+              tx.update(machineLaunches)
+                .set({ hostId: enrollment.hostId })
+                .where(
+                  and(
+                    eq(machineLaunches.key, request.key),
+                    eq(machineLaunches.providerId, launch.providerId),
+                    eq(machineLaunches.attempt, launch.attempt),
+                  ),
+                )
+                .run();
+            }
+            return enrollment;
+          });
           const host = deps.db
             .select({
               phase: hosts.phase,
-              accessProviderId: sql<string | null>`server_access_provider_id`,
+              accessProviderId: hosts.serverAccessProviderId,
             })
             .from(hosts)
             .where(eq(hosts.id, row.hostId))

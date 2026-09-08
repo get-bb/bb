@@ -1,3 +1,5 @@
+import { createMachineBootstrapApi } from "../machines/bootstrap.js";
+import type { MachineEnrollments } from "@get-bb/plugin-sdk";
 import { listServerAccessProviders } from "./plugin-server-access-registry.js";
 import { createHash } from "node:crypto";
 import { mkdirSync } from "node:fs";
@@ -432,6 +434,7 @@ export function createPluginApi(options: {
   db: DbConnection;
   dataDir: string;
   getSdk: () => BbSdk | undefined;
+  getMachineEnrollments: () => MachineEnrollments;
   getAppUrl: () => string | null;
   getLoopbackBaseUrl: () => string | undefined;
   publishSignal: (channel: string, payload: unknown) => void;
@@ -1588,7 +1591,22 @@ export function createPluginApi(options: {
       },
     };
 
+  const enrollmentApi: MachineEnrollments = {
+    prepare(request) {
+      assertLive();
+      return options.getMachineEnrollments().prepare(request);
+    },
+    waitForConnection(request) {
+      assertLive();
+      return options.getMachineEnrollments().waitForConnection(request);
+    },
+    cancel(request) {
+      assertLive();
+      return options.getMachineEnrollments().cancel(request);
+    },
+  };
   const experimental_machines: PluginMachines = {
+    ...createMachineBootstrapApi(enrollmentApi),
     register(declaration) {
       assertLive();
       const provider = validatePluginMachineProviderDeclaration(declaration);

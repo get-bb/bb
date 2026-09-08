@@ -1,4 +1,4 @@
-import { getAppSettings, getHost, hosts } from "@bb/db";
+import { getAppSettings, getHost, hosts, machineEnrollments } from "@bb/db";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
 import type {
@@ -189,6 +189,14 @@ async function release(
   deps: Dependencies,
   args: { key: string; hostId: string },
 ) {
+  const enrollment = deps.db
+    .select({ owner: machineEnrollments.owner, key: machineEnrollments.key })
+    .from(machineEnrollments)
+    .where(eq(machineEnrollments.hostId, args.hostId))
+    .get();
+  const acquisitionKey = enrollment
+    ? JSON.stringify([enrollment.owner, enrollment.key])
+    : args.key;
   const host = getHost(deps.db, args.hostId);
   if (!host?.serverAccessProviderId || !host.serverAccessGrantId) return;
   if (host.serverAccessProviderId !== "direct") {
@@ -199,7 +207,7 @@ async function release(
       throw new Error("Server access provider is unavailable for cleanup");
     await invokeServerAccessProvider(record, () =>
       record.provider.release({
-        key: args.key,
+        key: acquisitionKey,
         grantId: host.serverAccessGrantId!,
       }),
     );

@@ -941,6 +941,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     withPluginOperationLock,
   } = createPluginRuntime({
     deps,
+    machineEnrollments: deps.machineEnrollments ?? null,
     nextCronRunAt,
     settingsChanged: notifyPluginsChanged,
     settledWithin,

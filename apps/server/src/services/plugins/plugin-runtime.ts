@@ -1,3 +1,4 @@
+import type { MachineEnrollmentService } from "../machines/machine-services.js";
 import { AsyncLocalStorage } from "node:async_hooks";
 import {
   assertAiServiceRegistrable,
@@ -274,6 +275,7 @@ interface ServiceInstance {
 }
 
 interface PluginRuntimeContext {
+  machineEnrollments: MachineEnrollmentService | null;
   deps: PluginServiceDeps;
   settingsChanged?: () => void;
   nextCronRunAt: (cron: string, now: number) => number;
@@ -1381,6 +1383,13 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
       db: deps.db,
       dataDir: deps.dataDir,
       getSdk: () => boundSdk,
+      getMachineEnrollments: () => {
+        if (!context.machineEnrollments)
+          throw new Error(
+            "Machine enrollment is unavailable in this plugin host",
+          );
+        return context.machineEnrollments.forOwner(row.id);
+      },
       getAppUrl: deps.getAppUrl ?? (() => null),
       getLoopbackBaseUrl: () => boundLoopbackBaseUrl,
       publishSignal: (channel, payload) => {

@@ -317,6 +317,27 @@ describe("machine install script", () => {
     expect(result.stderr).not.toContain("TypeError");
   });
 
+  it("publishes cleanup before package installation can fail", () => {
+    const fixture = createFixture();
+    writeServerInstallTools(fixture, 200);
+    writeExecutable(join(fixture.binDir, "npm"), "#!/bin/sh\nexit 19\n");
+    const result = runScript(JOIN_ARGS, fixture, {
+      BB_INSTALL_SKIP_SERVICE: "1",
+    });
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("Could not install bb-app");
+    const shim = join(fixture.homeDir, ".local", "bin", "bb");
+    expect(existsSync(shim)).toBe(true);
+    const cleanup = spawnSync(
+      shim,
+      ["machine", "uninstall", "--host-id", "host-test"],
+      { env: createScriptEnv(fixture, {}), encoding: "utf8" },
+    );
+    expect(cleanup.status, cleanup.stderr).toBe(0);
+    expect(existsSync(join(fixture.dataDir, "auth.json"))).toBe(false);
+    expect(existsSync(join(fixture.dataDir, "install-daemon.pid"))).toBe(false);
+  });
+
   it("enrolls bootstrap bundles through the CLI without credential argv or output", () => {
     const fixture = createFixture();
     writeCurlArtifactMock(fixture, 404);
