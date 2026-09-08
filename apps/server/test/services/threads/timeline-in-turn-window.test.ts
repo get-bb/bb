@@ -1972,6 +1972,28 @@ describe("turn details for an item that finishes in a later turn", () => {
         sourceSeqEnd: firstSequence + 5,
       }),
     ]);
+    const older = buildPage(
+      db,
+      thread,
+      LARGE_BUDGET,
+      latest.timelinePage.olderCursor!,
+      1,
+    ).response;
+    const olderTurn = older.rows.find(
+      (row) => row.kind === "turn" && row.turnId === turnId,
+    );
+    expect(olderTurn).toBeDefined();
+    if (!olderTurn || olderTurn.kind !== "turn") {
+      throw new Error("Expected the older turn summary");
+    }
+    expect(
+      buildTimelineTurnSummaryDetails(db, thread, {
+        includeDiagnosticOperations: false,
+        sourceSeqEnd: olderTurn.sourceSeqEnd,
+        sourceSeqStart: olderTurn.sourceSeqStart,
+        turnId,
+      }).rows,
+    ).toEqual(after?.details);
     expect(collectTurnDetailsAndChildren(db, thread).get(turnId)).toEqual(
       after,
     );

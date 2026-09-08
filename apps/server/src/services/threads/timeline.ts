@@ -41,6 +41,7 @@ import {
   listRecentStoredEventRows,
   listStoredConversationOutlineEventRows,
   listStoredClientTurnRequestIdsInRange,
+  listStoredEventRows,
   listStoredEventRowsByParentToolCallIds,
   isTimelineCursorSequencePresent,
   listItemEventSpansByItems,
@@ -1458,6 +1459,17 @@ function selectStandardTimelineEventRows(
           threadId: thread.id,
           rows: selectedRowsWithParentedTurnStarts,
         });
+  const nextPageBoundaryRows =
+    page.kind === "older" &&
+    !window.requiresWholeItemClosure &&
+    beforeSequence !== undefined
+      ? listStoredEventRows(db, {
+          afterSequence: beforeSequence - 1,
+          beforeSequence: beforeSequence + 1,
+          threadId: thread.id,
+          types: ["client/turn/requested"],
+        })
+      : [];
 
   return {
     byteWindowSequenceEnd:
@@ -1481,9 +1493,12 @@ function selectStandardTimelineEventRows(
           },
     responsePageKind: page.kind,
     oversizedEventPlaceholder: window.oversizedEventPlaceholder,
-    rows: selectedRowsWithParentedTurnLifecycle.filter(
-      (row) => row.sequence >= epochSequenceStart,
-    ),
+    rows: mergeStoredEventRowsById([
+      ...selectedRowsWithParentedTurnLifecycle.filter(
+        (row) => row.sequence >= epochSequenceStart,
+      ),
+      ...nextPageBoundaryRows,
+    ]),
     strategy:
       sequenceStart === 0 && beforeSequence === undefined
         ? "full"
@@ -1729,8 +1744,18 @@ function buildThreadTimelineInternal(
         },
       }),
   );
+  const projectionBoundarySequence =
+    options.page.kind === "older" &&
+    readSequenceCursor(options.page.beforeCursor, thread.id) === null
+      ? options.page.beforeCursor.anchorSeq
+      : null;
   const projectedTimelineRows = applyRetainedOutputPreviews(
-    buildSequencePageTimelineRows(timeline.rows, eventSelection),
+    buildSequencePageTimelineRows(
+      timeline.rows.filter(
+        (row) => row.sourceSeqStart !== projectionBoundarySequence,
+      ),
+      eventSelection,
+    ),
     decodedRawEvents,
     "available",
   );
