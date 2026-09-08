@@ -68,10 +68,7 @@ export function MachineEnvironmentSettings() {
         <SettingsWithControl
           key={row.name}
           label={row.name}
-          description={
-            row.note ??
-            (row.secret ? "Secret value configured" : (row.value ?? ""))
-          }
+          description={`${row.secret ? "Secret value configured" : (row.value ?? "")}${row.note ? ` · ${row.note}` : ""}`}
         >
           <div className="flex gap-2">
             <Button
