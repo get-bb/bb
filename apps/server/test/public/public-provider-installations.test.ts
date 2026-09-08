@@ -8,7 +8,10 @@ import { validatePluginProviderDeclaration } from "@get-bb/plugin-sdk/internal/h
 import { describe, expect, it, vi } from "vitest";
 import { COMMAND_TIMEOUT_MS } from "../../src/constants.js";
 import { buildPluginProviderRegistration } from "../../src/services/providers/plugin-provider-registration.js";
-import { HostOnlineRpcTimeoutError } from "../../src/ws/hub.js";
+import {
+  aggregateProviderInstallations,
+  PROVIDER_INSTALLATION_STATUS_TIMEOUT_MS,
+} from "../../src/services/system/provider-installations.js";
 import { registerHostRpcResponder } from "../helpers/host-rpc.js";
 import { readJson } from "../helpers/json.js";
 import { seedHostSession } from "../helpers/seed.js";
@@ -261,69 +264,67 @@ describe("public provider installation routes", () => {
   });
 
   it("finishes stalled provider aggregation before the SDK request timeout", async () => {
-    await withTestHarness(async (harness) => {
-      registerInstallationProviders(
-        harness,
-        Array.from(
-          { length: 7 },
-          (_, index) => `stalled-installation-${index + 1}`,
-        ),
-      );
-      const { host, session } = seedHostSession(harness.deps, {
-        id: "provider-installation-deadline-host",
+    const statusRequestBatchSize = 3;
+    const expectedStatusRequestCount = 9;
+    const providers = Array.from({ length: 11 }, (_, index) => ({
+      id: `stalled-installation-${index + 1}`,
+      displayName: `Stalled installation ${index + 1}`,
+    }));
+    const statusTimeouts: number[] = [];
+    const deadlineExceededProviderIds: string[] = [];
+    const pendingStatusRequests: Array<{
+      resolve: (value: null) => void;
+      timeoutMs: number;
+    }> = [];
+    let now = 0;
+    let resolveStatusRequestBatch: (() => void) | null = null;
+    const waitForStatusRequestBatch = async (): Promise<void> => {
+      if (pendingStatusRequests.length === statusRequestBatchSize) return;
+      await new Promise<void>((resolve) => {
+        resolveStatusRequestBatch = resolve;
       });
-      registerHostRpcResponder(harness, {
-        hostId: host.id,
-        sessionId: session.id,
-        handle: handleProviderInstallationRpc,
-      });
-      const requestHostOnlineRpc = harness.hub.requestHostOnlineRpc.bind(
-        harness.hub,
-      );
-      const statusTimeouts: number[] = [];
-      vi.spyOn(harness.hub, "requestHostOnlineRpc").mockImplementation(
-        async (args) => {
-          if (args.message.command.type !== "provider.installation.status") {
-            return requestHostOnlineRpc(args);
+    };
+    const responsePromise = aggregateProviderInstallations(providers, {
+      deadlineMs: PROVIDER_INSTALLATION_STATUS_TIMEOUT_MS,
+      now: () => now,
+      onDeadlineExceeded: (provider) => {
+        deadlineExceededProviderIds.push(provider.id);
+      },
+      prepare: () => async (timeoutMs) => {
+        statusTimeouts.push(timeoutMs);
+        return new Promise<null>((resolve) => {
+          pendingStatusRequests.push({ resolve, timeoutMs });
+          if (pendingStatusRequests.length === statusRequestBatchSize) {
+            resolveStatusRequestBatch?.();
+            resolveStatusRequestBatch = null;
           }
-          statusTimeouts.push(args.timeoutMs);
-          return new Promise((_, reject) => {
-            setTimeout(
-              () => reject(new HostOnlineRpcTimeoutError()),
-              args.timeoutMs,
-            );
-          });
-        },
-      );
-
-      vi.useFakeTimers();
-      try {
-        const startedAt = Date.now();
-        let resolvedAt: number | null = null;
-        const responsePromise = Promise.resolve(
-          harness.app.request(`${API}/hosts/${host.id}/provider-clis/status`),
-        ).then((response) => {
-          resolvedAt = Date.now();
-          return response;
         });
-
-        await vi.advanceTimersByTimeAsync(150_000);
-        const response = await responsePromise;
-
-        expect(response.status).toBe(200);
-        expect(await readJson(response)).toEqual({});
-        expect(resolvedAt).not.toBeNull();
-        expect(resolvedAt! - startedAt).toBeLessThan(
-          DEFAULT_BB_REQUEST_TIMEOUT_MS,
-        );
-        expect(statusTimeouts).toHaveLength(18);
-        expect(
-          statusTimeouts.some((timeout) => timeout < COMMAND_TIMEOUT_MS),
-        ).toBe(true);
-      } finally {
-        vi.useRealTimers();
-      }
+      },
     });
+
+    for (
+      let completedRequests = 0;
+      completedRequests < expectedStatusRequestCount;
+      completedRequests += statusRequestBatchSize
+    ) {
+      await waitForStatusRequestBatch();
+      const batch = pendingStatusRequests.splice(0, statusRequestBatchSize);
+      now += Math.max(...batch.map(({ timeoutMs }) => timeoutMs));
+      for (const { resolve } of batch) resolve(null);
+    }
+
+    await expect(responsePromise).resolves.toEqual({});
+    expect(now).toBe(PROVIDER_INSTALLATION_STATUS_TIMEOUT_MS);
+    expect(now).toBeLessThan(DEFAULT_BB_REQUEST_TIMEOUT_MS);
+    expect(statusTimeouts).toHaveLength(expectedStatusRequestCount);
+    expect(statusTimeouts.some((timeout) => timeout < COMMAND_TIMEOUT_MS)).toBe(
+      true,
+    );
+    expect(deadlineExceededProviderIds).toEqual([
+      "stalled-installation-10",
+      "stalled-installation-11",
+    ]);
+    expect(pendingStatusRequests).toEqual([]);
   });
 
   it("dispatches install/update by registered provider id", async () => {
