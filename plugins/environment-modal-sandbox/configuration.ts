@@ -24,7 +24,7 @@ export const SETTING_DESCRIPTORS = {
     type: "string",
     label: "Container image",
     description:
-      "Registry tag for the sandbox image. It needs Node 22 or newer, npm, git and curl.",
+      "Registry tag for the sandbox image. It needs Node 22.19+, npm, git, curl and build tools.",
     default: "node:22-bookworm",
   },
   environmentVariables: {
@@ -32,7 +32,7 @@ export const SETTING_DESCRIPTORS = {
     label: "Sandbox environment variables (optional)",
     secret: true,
     description:
-      "A JSON object of environment variables injected into each sandbox. For Codex, set OPENAI_API_KEY or CODEX_ACCESS_TOKEN so the plugin can authenticate the installed CLI.",
+      "A JSON object of environment variables injected into each sandbox.",
   },
   timeoutMinutes: {
     type: "string",

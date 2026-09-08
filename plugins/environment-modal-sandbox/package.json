@@ -23,7 +23,6 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "bb-environment-provider-host": "workspace:*",
     "modal": "^0.10.0",
     "zod": "^4.3.6"
   },

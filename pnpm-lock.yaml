@@ -3244,9 +3244,6 @@ importers:
 
   plugins/environment-modal-sandbox:
     dependencies:
-      bb-environment-provider-host:
-        specifier: workspace:*
-        version: link:../../packages/environment-provider-host
       modal:
         specifier: ^0.10.0
         version: 0.10.0

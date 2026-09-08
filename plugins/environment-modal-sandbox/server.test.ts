@@ -66,7 +66,6 @@ interface FakeSandboxState {
 function createBackend(
   options: {
     crashAfterTerminateOnce?: boolean;
-    failClone?: boolean;
     failSnapshotOnce?: boolean;
   } = {},
 ) {
@@ -84,14 +83,8 @@ function createBackend(
       async exec(command) {
         const script = command.at(-1) ?? "";
         if (command[0] === "bootstrap-test") state.connected = true;
-        if (script.includes("machine stop --host-id")) state.connected = false;
-        if (options.failClone && script.includes("git clone --progress")) {
-          return {
-            exitCode: 128,
-            stdout: "",
-            stderr: "Host key verification failed.",
-          };
-        }
+        if (command.join(" ").includes("machine stop --host-id"))
+          state.connected = false;
         return { exitCode: 0, stdout: "ok", stderr: "" };
       },
       async terminate() {
@@ -101,9 +94,6 @@ function createBackend(
           crashAfterTerminate = false;
           throw new Error("server crashed after sandbox termination");
         }
-      },
-      async poll() {
-        return state.terminated ? 0 : null;
       },
       async snapshotFilesystem() {
         if (state.connected)
@@ -162,34 +152,15 @@ async function setup(
   settings: Record<string, string> = SETTINGS,
   options: {
     crashAfterTerminateOnce?: boolean;
-    failClone?: boolean;
     failSnapshotOnce?: boolean;
   } = {},
 ) {
   const backend = createBackend(options);
-  const sources: Array<{
-    id: string;
-    projectId: string;
-    hostId: string;
-    path: string;
-    type: "local_path";
-    isDefault: boolean;
-    createdAt: number;
-    updatedAt: number;
-  }> = [];
-  const deletedSources: string[] = [];
-  const deletedHosts: string[] = [];
-  const providerCliInstalls: string[] = [];
-  let codexInstalled = false;
   const fake = createFakePluginHost({
     pluginId: PLUGIN_ID,
     settings,
     sdk: {
       hosts: {
-        delete: async ({ hostId }) => {
-          deletedHosts.push(hostId);
-          return { ok: true as const };
-        },
         list: async () => [
           host(
             backend.states.some((state) => state.connected && !state.terminated)
@@ -197,66 +168,6 @@ async function setup(
               : "disconnected",
           ),
         ],
-        providerCliStatus: async () => ({
-          codex: {
-            displayName: "Codex",
-            installAction: codexInstalled
-              ? null
-              : {
-                  kind: "install" as const,
-                  label: "Install" as const,
-                  command: "npm install -g @openai/codex",
-                },
-          },
-        }),
-        installProviderCli: async ({ provider }) => {
-          providerCliInstalls.push(provider);
-          codexInstalled = true;
-          return [
-            {
-              type: "completed" as const,
-              provider,
-              success: true,
-            },
-          ];
-        },
-      },
-      projects: {
-        get: async () => ({ ...PROJECT, sources }),
-        sources: {
-          add: async (args) => {
-            if (args.type !== "local_path") {
-              throw new Error("expected a local path source");
-            }
-            const source = {
-              id: `src_${sources.length + 1}`,
-              projectId: args.projectId,
-              hostId: args.hostId,
-              path: args.path,
-              type: "local_path" as const,
-              isDefault: sources.length === 0,
-              createdAt: 1,
-              updatedAt: 1,
-            };
-            sources.push(source);
-            return source;
-          },
-          delete: async ({ sourceId }) => {
-            deletedSources.push(sourceId);
-            return { ok: true as const };
-          },
-        },
-      },
-      system: {
-        providerStates: async () => ({
-          providers: [
-            {
-              providerId: "codex",
-              displayName: "Codex",
-              status: "ready" as const,
-            },
-          ],
-        }),
       },
     },
   });
@@ -306,10 +217,6 @@ async function setup(
     ...fake,
     provider,
     backend,
-    sources,
-    deletedSources,
-    deletedHosts,
-    providerCliInstalls,
     bootstrap,
     prepareEnrollment,
   };
@@ -367,14 +274,13 @@ describe("Modal machine provider", () => {
     ).resolves.toMatchObject({ status: "setup-required" });
   });
 
-  it("creates once by key, enrols the checkout, and recovers the same host", async () => {
+  it("creates once by key and recovers the same host", async () => {
     const harness = await setup();
     const first = await harness.provider.create(createContext());
     const second = await harness.provider.create(createContext());
     expect(first).toMatchObject({ status: "created", hostId: HOST_ID });
     expect(second).toEqual(first);
     expect(harness.backend.creates).toHaveLength(1);
-    expect(harness.sources).toHaveLength(1);
     expect(harness.bootstrap).toHaveBeenCalledTimes(2);
     expect(harness.bootstrap).toHaveBeenLastCalledWith({
       key: "modal-machine-key",
@@ -383,7 +289,6 @@ describe("Modal machine provider", () => {
       report,
       signal: expect.any(AbortSignal),
     });
-    expect(harness.providerCliInstalls).toEqual(["codex"]);
   });
 
   it("reuses vendor allocation after bootstrap fails and passes cancellation through", async () => {
@@ -478,8 +383,6 @@ describe("Modal machine provider", () => {
         sandboxId: "sandbox-1",
         snapshotImageId: null,
         pendingSnapshotImageIds: [],
-        projectId: PROJECT.id,
-        sourceId: null,
       });
       expect(test.bootstrap).not.toHaveBeenCalled();
       expect(test.prepareEnrollment.mock.invocationCallOrder[0]).toBeLessThan(
@@ -522,16 +425,6 @@ describe("Modal machine provider", () => {
       gitRemote: null,
     });
     expect(result).toMatchObject({ status: "created", hostId: HOST_ID });
-    expect(harness.sources).toHaveLength(0);
-  });
-
-  it("leaves checkpointed vendor compute and identity for core cleanup after a terminal create failure", async () => {
-    const harness = await setup(SETTINGS, { failClone: true });
-    await expect(
-      harness.provider.create(createContext()),
-    ).resolves.toMatchObject({ status: "failed", failure: "terminal" });
-    expect(harness.backend.states[0]?.terminated).toBe(false);
-    expect(harness.deletedHosts).toEqual([]);
   });
 
   it("suspends to a snapshot, resumes, and removes the machine resource", async () => {
@@ -573,7 +466,6 @@ describe("Modal machine provider", () => {
         resource: resumed.resource,
       }),
     ).resolves.toEqual({ status: "removed" });
-    expect(harness.deletedSources).toEqual(["src_1"]);
     expect(harness.backend.deletedSnapshots).toEqual(["image-1"]);
   });
 

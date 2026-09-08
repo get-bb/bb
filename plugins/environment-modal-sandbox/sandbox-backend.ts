@@ -13,7 +13,6 @@ export interface SandboxHandle {
     options: { timeoutMs: number; signal: AbortSignal; stdin?: string },
   ): Promise<SandboxExecResult>;
   terminate(): Promise<void>;
-  poll(): Promise<number | null>;
   snapshotFilesystem(options: {
     timeoutMs: number;
     ttlMs: number | null;
@@ -108,9 +107,6 @@ function wrapSandbox(sandbox: Sandbox): SandboxHandle {
     async terminate() {
       await sandbox.terminate();
     },
-    poll() {
-      return sandbox.poll();
-    },
     async snapshotFilesystem(options) {
       const image = await sandbox.snapshotFilesystem(options);
       return image.imageId;
@@ -152,7 +148,8 @@ export const createModalBackend: SandboxBackendFactory = (credentials) => {
     },
     async fromId(sandboxId) {
       try {
-        return wrapSandbox(await client.sandboxes.fromId(sandboxId));
+        const sandbox = await client.sandboxes.fromId(sandboxId);
+        return (await sandbox.poll()) === null ? wrapSandbox(sandbox) : null;
       } catch (error) {
         if (error instanceof NotFoundError) return null;
         throw error;

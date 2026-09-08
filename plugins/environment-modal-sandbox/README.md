@@ -5,7 +5,7 @@ an official catalog plugin, not installed by default. Installing it adds the
 `modal-sandbox` machine provider; it does not add an environment provider.
 
 Choose Modal sandbox in a project's environment picker to create a machine,
-clone and register that project's checkout, and run the thread there through
+have core clone and register that project's checkout, and run the thread through
 the Project checkout provider. The machine remains a normal bb execution
 target, so later threads can create Git worktrees or use other environment
 providers on the same sandbox. You can also create a projectless sandbox from
@@ -15,13 +15,9 @@ Creation prepares enrollment before vendor allocation and awaits a core resource
 checkpoint as soon as the allocation ID is known. The checkpoint contains no
 bootstrap credentials. Core can remove a cancelled allocation directly from
 that checkpoint without rerunning creation, enrollment, or bootstrap.
-The plugin also checkpoints the project source ID once registration completes;
-core owns teardown after creation failures.
-
-Core now sets up a missing project checkout after a new machine connects when
-the selected environment provider requires it. Modal retains its existing clone
-and source-registration path for this release; core reuses that registered
-source. New machine plugins can rely on core setup and need no clone logic.
+Core owns project checkout setup and source registration after the machine
+connects, using the `project-checkout` environment row. Agent-provider
+installation and login are configured independently of the machine provider.
 
 ## Lifecycle
 
@@ -42,13 +38,9 @@ server or plugin crash.
 
 - A Modal API token. Set its two halves in the plugin's `tokenId` and
   `tokenSecret` settings.
-- A git remote when creating through the project picker, because the sandbox
-  clones and registers that project. Standalone machine creation does not need
-  a project.
-- Codex credentials. Put `OPENAI_API_KEY` or `CODEX_ACCESS_TOKEN` in the
-  plugin's `environmentVariables` setting, or bake a valid root-user login
-  into a custom image. The plugin installs or updates Codex and authenticates
-  it while creating the machine.
+- A git remote when creating through the project picker, because core clones
+  and registers that project. Standalone machine creation does not need a
+  project.
 - A URL the sandbox can reach this bb at.
 
 ## How the sandbox reaches this bb
@@ -65,10 +57,6 @@ including when a previous attempt left the sandbox running. Core reuses the
 identity and restarts the daemon when needed. The plugin has no `serverUrl`
 setting; configure access centrally.
 
-After the machine connects, the plugin installs or updates Codex, applies
-configured credentials, and verifies provider readiness. Private repositories
-need credentials in the image or injected environment.
-
 The exec adapter stops waiting when cancellation is requested. Modal does not
 expose per-exec cancellation, so a command already submitted may continue until
 its process timeout. Retries reuse the named sandbox and the bootstrap key.
@@ -80,7 +68,7 @@ its process timeout. Retries reuse the named sandbox and the bootstrap key.
 | `tokenId`              | yes      | The token id half of a Modal API token.                                       |
 | `tokenSecret`          | yes      | The token secret half of the same token.                                      |
 | `appName`              | no       | The Modal app for sandboxes. Defaults to `bb-sandboxes`.                      |
-| `image`                | no       | Registry tag with Node 22+, npm, git, and curl.                               |
+| `image`                | no       | Registry tag with Node 22.19+, npm, git, curl, and build tools.               |
 | `environmentVariables` | no       | Secret JSON object injected into the sandbox.                                 |
 | `timeoutMinutes`       | no       | Modal sandbox timeout, 1–1440 minutes.                                        |
 | `idleMinutes`          | no       | Snapshot after this many idle minutes. Defaults to 15; 0 disables suspension. |

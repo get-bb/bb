@@ -4,12 +4,16 @@ import {
   createSandboxExecutor,
 } from "./sandbox-backend.js";
 
-const vendor = vi.hoisted(() => ({ exec: vi.fn() }));
+const vendor = vi.hoisted(() => ({ exec: vi.fn(), poll: vi.fn() }));
 vi.mock("modal", () => ({
   NotFoundError: class extends Error {},
   ModalClient: class {
     sandboxes = {
-      fromId: async () => ({ sandboxId: "sandbox-1", exec: vendor.exec }),
+      fromId: async () => ({
+        sandboxId: "sandbox-1",
+        exec: vendor.exec,
+        poll: vendor.poll,
+      }),
     };
   },
 }));
@@ -35,9 +39,21 @@ function processResult() {
   };
 }
 
-beforeEach(() => vendor.exec.mockReset());
+beforeEach(() => {
+  vendor.exec.mockReset();
+  vendor.poll.mockReset().mockResolvedValue(null);
+});
 
 describe("Modal bootstrap executor", () => {
+  it("treats terminated allocations as absent so a checkpoint can restore its snapshot", async () => {
+    vendor.poll.mockResolvedValue(0);
+    await expect(
+      createModalBackend({ tokenId: "id", tokenSecret: "secret" }).fromId(
+        "sandbox-1",
+      ),
+    ).resolves.toBeNull();
+  });
+
   it("delivers stdin without putting credentials into command arguments and closes input", async () => {
     const process = processResult();
     vendor.exec.mockResolvedValue(process);

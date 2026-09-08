@@ -21,7 +21,7 @@ describe("sandbox environment variables", () => {
     const result = resolveSettings(
       settings({
         environmentVariables: JSON.stringify({
-          OPENAI_API_KEY: "sk-secret",
+          WORKLOAD_TOKEN: "sk-secret",
           LOWER_CASE_VALUE: "allowed",
         }),
       }),
@@ -31,7 +31,7 @@ describe("sandbox environment variables", () => {
       ok: true,
       settings: {
         environmentVariables: {
-          OPENAI_API_KEY: "sk-secret",
+          WORKLOAD_TOKEN: "sk-secret",
           LOWER_CASE_VALUE: "allowed",
         },
       },
