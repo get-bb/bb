@@ -5,7 +5,7 @@ import {
   noopNotifier,
   getHost,
 } from "@bb/db";
-import { mkdtemp, writeFile, mkdir, rm } from "node:fs/promises";
+import { mkdtemp, writeFile, mkdir, rm, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, it, vi } from "vitest";
@@ -20,7 +20,13 @@ it("gives backfilled manual machines user and gh environment without enrollment 
     upsertHost(db, noopNotifier, { id: "legacy-remote", name: "Remote" });
     upsertHost(db, noopNotifier, { id: "local-daemon", name: "Local" });
     db.$client.exec(
-      "DELETE FROM __drizzle_migrations WHERE created_at = (SELECT MAX(created_at) FROM __drizzle_migrations)",
+      await readFile(
+        new URL(
+          "../../../../../packages/db/drizzle/0119_manual-machines.sql",
+          import.meta.url,
+        ),
+        "utf8",
+      ),
     );
     migrate(db);
     await writeFile(join(dataDir, "host-id"), "local-daemon");

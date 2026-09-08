@@ -2827,4 +2827,4 @@ coverage, vendor deadline reconciliation, snapshot-before-terminate evidence, an
 review of recoverable failures and account changes. Planned rotation cannot protect
 against a server outage spanning vendor expiry without independent storage/watchdogs.
 
-Restore setup hooks use the same recorded core hook path as creation and receive the shared core machine environment contributions. Hook output redacts contributed secrets across stream boundaries. Daemon protocol 194 includes these contributions in the hook RPC; enrolled machines update before use. Failed restore hooks block readiness.
+Restore setup hooks use the same recorded core hook path as creation and receive the shared core machine environment contributions. Hook output redacts contributed secrets across stream boundaries. PR 2 protocol 193 supplies the shared hook environment and stream redaction. Modal uses protocol 194 because it adds `workspace.readiness.inspect` and `host.readiness.probe` requests and responses; a protocol 193 daemon cannot execute those readiness commands. Enrolled machines update before use. Failed restore hooks block readiness.
