@@ -9,7 +9,10 @@ provider or copy a project checkout.
 Set the secret plugin setting `DIGITALOCEAN_TOKEN`. The token needs Droplet read,
 create, update and delete permissions, image read, and tag creation. Each launch
 accepts nonsecret `region` and `size` inputs, defaulting to `nyc3` and
-`s-2vcpu-4gb`. The image is `ubuntu-24-04-x64`. Configure the instance's default
+`s-2vcpu-4gb`. The Machines-page create picker exposes editable Region and Size
+fields with those same defaults. Enter DigitalOcean region and size slugs using
+lowercase letters, numbers, and hyphens. Invalid input blocks creation until
+corrected. The image is `ubuntu-24-04-x64`. Configure the instance's default
 server-access provider before creating machines.
 
 The plugin prepares core enrollment, obtains the public installer command, and

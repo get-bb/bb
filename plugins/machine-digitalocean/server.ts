@@ -2,6 +2,7 @@ import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import { setTimeout } from "node:timers/promises";
 import { z } from "zod";
 import { cloudInit } from "./cloud-init.js";
+import { inputsSchema } from "./inputs.js";
 import {
   allocationName,
   createVendor,
@@ -10,16 +11,6 @@ import {
   type Vendor,
 } from "./vendor.js";
 
-export const inputsSchema = z.object({
-  region: z
-    .string()
-    .regex(/^[a-z0-9-]+$/)
-    .default("nyc3"),
-  size: z
-    .string()
-    .regex(/^[a-z0-9-]+$/)
-    .default("s-2vcpu-4gb"),
-});
 const resourceSchema = z
   .object({
     version: z.literal(1),
