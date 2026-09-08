@@ -183,4 +183,6 @@ idempotent retries. Creation does not create an environment or a thread.
 `bb.sdk.hosts.suspend({ hostId })` and `resume({ hostId })` require the provider's
 paired suspend/resume operations. `retryCleanup({ hostId })` retries failed
 provider teardown. `get({ hostId })` additionally returns nullable
-`connectMachineId` for access revocation; Host lists do not expose that detail.
+`connectMachineId` from trusted gate metadata for legacy access revocation;
+Connect now persists its revocation identity during acquire, before enrollment.
+Host lists do not expose that detail.

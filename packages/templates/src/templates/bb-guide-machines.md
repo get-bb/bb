@@ -72,7 +72,7 @@ Standalone create does not create a thread or workspace. Without `--project`,
 creation is global; project selectors accept an exact name or ID. Omitted inputs
 are null; supply JSON when the provider schema requires it. Omit `--key` to let
 the server generate one, or supply a stable key for retries. Creation is durable:
-`--no-wait` returns the launch ID immediately; otherwise the CLI follows progress.
+`--no-wait` returns the launch ID immediately; otherwise the CLI follows progress through server retries until ready or a terminal failure. Launch status includes `terminal` to distinguish retryable failures.
 SIGINT stops following and exits 130 while creation continues. Use
 `bb machine status <launch-id>` to poll and `bb machine cancel <launch-id>`
 to explicitly cancel and clean up, including retrying cleanup after automatic
@@ -174,3 +174,9 @@ refuse the default BB data directory. Stopping a daemon is distinct from
 The CLI refuses another host or server identity in the selected machine directory. Repeating enrollment with the same persisted identity succeeds without exchanging the credential again, including when the original bundle expired. Machine data defaults to `~/.bb-machines/<server-host>`; `BB_DATA_DIR` can select another isolated machine directory, but enrollment refuses the default `~/.bb` directory.
 
 The installer accepts `--bootstrap-env <NAME>` and uses the same enrollment command. It installs a private CLI and supplies `~/.local/bin/bb` without replacing an existing path. Non-login transports can use `command -v bb` with `~/.local/bin/bb` as a fallback. Linux machines without a systemd user session run a detached daemon; systemd and launchd machines receive a persistent service.
+
+Machine bootstrap v2 supplies optional server request headers. `bb machine enroll`
+persists them privately as `serverHeaders`; the launcher passes `BB_SERVER_HEADERS`
+to the daemon for enrollment, connection and runtime requests. Server-access
+plugins redeem provider codes on the server. Pending encrypted v1 bundles are
+upgraded by the server when prepared again.

@@ -1176,6 +1176,13 @@ machineServerUrl <url-or-null>` and `bb settings general defaultMachineAccess
 <provider-id-or-null>`. `bb settings show --json` reports the effective access
 selection. Access grants serve ongoing runtime requests as well as enrolment.
 
+Bootstrap v2 carries optional provider headers. The machine persists them as
+`serverHeaders` in its private `config.json`; the launcher supplies them to the
+daemon through `BB_SERVER_HEADERS` as a JSON string map. These headers are private
+credentials and cover enrollment, HTTP, WebSocket, and runtime proxy requests.
+Direct grants omit headers. Legacy `machineCredential` configuration is translated
+into the corresponding request header when loading an existing machine.
+
 For machine enrollment, `BB_DATA_DIR` selects isolated machine state instead of
 `~/.bb-machines/<server-host>`. `bb machine enroll` refuses the default `~/.bb`
 directory and a conflicting host or server identity. Local `bb machine

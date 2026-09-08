@@ -23,8 +23,7 @@ interface CreateWebSocketFixtureArgs {
 
 interface ConnectionFixtureArgs extends CreateServerClientFixtureArgs {
   autoReconnect?: boolean;
-  connectMachineId?: string;
-  machineCredential?: string;
+  serverHeaders?: Record<string, string>;
   protocolSelfUpdater?: ProtocolSelfUpdater;
   onSelfUpdateInstalled?: () => void | Promise<void>;
   startupTimeoutMs?: number;
@@ -173,11 +172,8 @@ function createConnectionFixture(args: ConnectionFixtureArgs = {}) {
     instanceId: "instance-server-connection-test",
     localApiPort: 38_887,
     logger,
-    ...(args.machineCredential !== undefined
-      ? { machineCredential: args.machineCredential }
-      : {}),
-    ...(args.connectMachineId !== undefined
-      ? { connectMachineId: args.connectMachineId }
+    ...(args.serverHeaders !== undefined
+      ? { serverHeaders: args.serverHeaders }
       : {}),
     serverClient: serverClient.serverClient,
     serverUrl: "http://127.0.0.1:3334",
@@ -279,7 +275,10 @@ describe("ServerConnection", () => {
 
   it("adds the machine credential to WS dial headers only when configured", async () => {
     const configured = createConnectionFixture({
-      machineCredential: "bbcm_machine",
+      serverHeaders: {
+        "x-bb-connect-machine": "bbcm_machine",
+        "x-test-access": "opaque",
+      },
     });
     const plain = createConnectionFixture();
     try {
@@ -288,6 +287,7 @@ describe("ServerConnection", () => {
       expect(configured.webSocket.headers[0]).toEqual({
         authorization: "Bearer host-key-server-connection-test",
         "x-bb-connect-machine": "bbcm_machine",
+        "x-test-access": "opaque",
       });
       expect(plain.webSocket.headers[0]).toEqual({
         authorization: "Bearer host-key-server-connection-test",
@@ -295,23 +295,6 @@ describe("ServerConnection", () => {
     } finally {
       await configured.connection.shutdown();
       await plain.connection.shutdown();
-    }
-  });
-
-  it("reports the connect machine id when opening a session", async () => {
-    const fixture = createConnectionFixture({
-      connectMachineId: "machine-cloud-1",
-    });
-    try {
-      await fixture.connection.start();
-      expect(fixture.openSession).toHaveBeenCalledWith(
-        expect.objectContaining({
-          connectMachineId: "machine-cloud-1",
-          localApiPort: 38_887,
-        }),
-      );
-    } finally {
-      await fixture.connection.shutdown();
     }
   });
 

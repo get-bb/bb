@@ -89,7 +89,7 @@ export function registerAccess(bb: BbPluginApi, client: TailscaleClient) {
       const serverUrl = await inspect(saved.port, signal);
       if (serverUrl !== saved.serverUrl)
         throw new Error("The Tailscale server identity changed.");
-      return { id: hostId, serverUrl, client: { kind: "direct" } };
+      return { id: hostId, serverUrl };
     },
     release: async () => {},
   });

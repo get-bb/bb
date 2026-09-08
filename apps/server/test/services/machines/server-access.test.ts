@@ -31,11 +31,7 @@ function provider(): ServerAccessProviderDeclaration {
     acquire: async ({ hostId }) => ({
       id: hostId,
       serverUrl: "https://bb.example.com",
-      client: {
-        kind: "connect",
-        machineCode: "secret-code",
-        expiresAt: Date.now() + 60_000,
-      },
+      headers: { "x-access-token": "secret-header" },
     }),
     release: async () => {},
   };
@@ -65,6 +61,23 @@ describe("machine server access", () => {
     });
   });
 
+  it("returns direct access without headers", async () => {
+    await withTestHarness(async ({ deps }) => {
+      vi.stubEnv("BB_EXTERNAL_URL", "https://direct.example.com");
+      const host = upsertHost(deps.db, deps.hub, { name: "direct" })!;
+      const grant = await serverAccess.resolve(deps, {
+        key: "direct",
+        hostId: host.id,
+        access: { providerId: "direct" },
+        signal,
+      });
+      expect(grant).toEqual({
+        id: host.id,
+        serverUrl: "https://direct.example.com",
+      });
+    });
+  });
+
   it("stores grant identity without its code and retains provider on retry", async () => {
     await withTestHarness(async ({ deps }) => {
       installProvider(provider());
@@ -74,11 +87,11 @@ describe("machine server access", () => {
         hostId: host.id,
         signal,
       });
-      expect(grant.client.kind).toBe("connect");
+      expect(grant.headers).toEqual({ "x-access-token": "secret-header" });
       const row = getHost(deps.db, host.id)!;
       expect(row.serverAccessProviderId).toBe("connect");
       expect(row.serverAccessGrantId).toBe(host.id);
-      expect(JSON.stringify(row)).not.toContain("secret-code");
+      expect(JSON.stringify(row)).not.toContain("secret-header");
       await expect(
         serverAccess.resolve(deps, {
           key: "k",
@@ -107,7 +120,6 @@ describe("machine server access", () => {
         acquire: async () => ({
           id: "id",
           serverUrl: "https://secret:secret@example.com",
-          client: { kind: "direct" },
         }),
       });
       await expect(

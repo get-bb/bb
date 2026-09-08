@@ -13,10 +13,9 @@ afterEach(async () => {
   );
 });
 const bundle = () => ({
-  version: 1,
+  version: 2,
   hostId: "host_test",
   serverUrl: "https://server.example",
-  client: { kind: "direct" },
   credential: "private-bootstrap",
   expiresAt: Date.now() + 60_000,
 });
@@ -51,8 +50,13 @@ describe("machine enroll", () => {
     const h = await harness();
     h.fetchFn.mockRejectedValueOnce(new Error("Response lost"));
     await expect(h.run()).rejects.toThrow("Could not exchange");
-    await expect(readFile(join(h.dir, "auth.json"))).rejects.toMatchObject({ code: "ENOENT" });
-    h.env.BB_ENROLLMENT = JSON.stringify({ ...bundle(), credential: "replacement-bootstrap" });
+    await expect(readFile(join(h.dir, "auth.json"))).rejects.toMatchObject({
+      code: "ENOENT",
+    });
+    h.env.BB_ENROLLMENT = JSON.stringify({
+      ...bundle(),
+      credential: "replacement-bootstrap",
+    });
     await expect(h.run()).resolves.toEqual({ hostId: "host_test" });
     expect(h.fetchFn).toHaveBeenCalledTimes(2);
     expect(h.fetchFn.mock.calls[1]?.[1]?.headers).toMatchObject({
@@ -119,25 +123,18 @@ describe("machine enroll", () => {
     await expect(h.run()).resolves.toEqual({ hostId: "host_test" });
   });
 
-  it("checks Connect server identity before persisting or exchanging", async () => {
+  it("persists provider headers and sends them directly on enrollment without redemption", async () => {
     const h = await harness();
-    h.env.BB_ENROLLMENT = JSON.stringify({
-      ...bundle(),
-      serverUrl: "https://machine.connect.example",
-      client: {
-        kind: "connect",
-        machineCode: "private-code",
-        expiresAt: Date.now() + 60_000,
-      },
-    });
-    h.fetchFn.mockResolvedValueOnce(
-      Response.json({
-        credential: "private-connect",
-        machineId: "machine",
-        serverUrl: "https://other.connect.example",
-      }),
-    );
-    await expect(h.run()).rejects.toThrow("different server identity");
+    const headers = { "x-access-token": "private-provider-header" };
+    h.env.BB_ENROLLMENT = JSON.stringify({ ...bundle(), headers });
+    await h.run();
     expect(h.fetchFn).toHaveBeenCalledOnce();
+    expect(String(h.fetchFn.mock.calls[0]?.[0])).toBe(
+      "https://server.example/internal/hosts/enroll",
+    );
+    expect(h.fetchFn.mock.calls[0]?.[1]?.headers).toMatchObject(headers);
+    expect(
+      JSON.parse(await readFile(join(h.dir, "config.json"), "utf8")),
+    ).toMatchObject({ serverHeaders: headers });
   });
 });

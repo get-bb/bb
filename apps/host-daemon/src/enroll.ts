@@ -4,8 +4,7 @@ interface EnrollHostArgs {
   fetchFn?: typeof fetch;
   hostId: string;
   hostName: string;
-  connectMachineId?: string;
-  machineCredential?: string;
+  serverHeaders?: Record<string, string>;
   serverUrl: string;
   token: string;
 }
@@ -36,16 +35,11 @@ export async function enrollDaemonHost(
     headers: {
       authorization: `Bearer ${args.token}`,
       "content-type": "application/json",
-      ...(args.machineCredential !== undefined
-        ? { "x-bb-connect-machine": args.machineCredential }
-        : {}),
+      ...args.serverHeaders,
     },
     body: JSON.stringify({
       hostId: args.hostId,
       hostName: args.hostName,
-      ...(args.connectMachineId !== undefined
-        ? { connectMachineId: args.connectMachineId }
-        : {}),
     }),
   });
 

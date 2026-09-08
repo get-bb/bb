@@ -383,7 +383,6 @@ describe("Tailscale lifecycle and access", () => {
     expect(grant).toEqual({
       id: "host_test",
       serverUrl: "https://server.example.ts.net:8443",
-      client: { kind: "direct" },
     });
     await f.access.release({ key: "launch", grantId: grant.id });
     expect(await f.access.availability()).toEqual({ status: "available" });

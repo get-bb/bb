@@ -161,7 +161,7 @@ export function createHostsArea(args: CreateSdkAreaArgs): HostsArea {
         input.onProgress?.(status);
         if (status.phase === "ready" && status.hostId !== null)
           return this.get({ hostId: status.hostId, signal: input.signal });
-        if (status.phase === "failed" || status.phase === "cancelled")
+        if (status.terminal)
           throw new Error(status.message ?? "Machine creation cancelled");
         await new Promise<void>((resolve) => setTimeout(resolve, 1000));
       }

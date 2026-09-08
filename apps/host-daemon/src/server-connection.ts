@@ -342,7 +342,6 @@ export class ServerConnection {
         hostId: this.options.hostId,
         instanceId: this.options.instanceId,
         hostName: this.options.hostName,
-        connectMachineId: this.options.connectMachineId,
         dataDir: this.options.dataDir,
         localApiPort: this.options.localApiPort,
         activeThreads: this.options.getActiveThreads?.() ?? [],
@@ -419,11 +418,7 @@ export class ServerConnection {
           authorization: buildHostDaemonWebSocketAuthorizationHeader(
             this.options.hostKey,
           ),
-          ...(this.options.machineCredential !== undefined
-            ? {
-                "x-bb-connect-machine": this.options.machineCredential,
-              }
-            : {}),
+          ...this.options.serverHeaders,
         },
         maxRetries: Number.POSITIVE_INFINITY,
         protocols: buildHostDaemonWebSocketProtocols(),

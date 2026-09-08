@@ -6,10 +6,9 @@ import type {
 import { createMachineBootstrapApi } from "./bootstrap.js";
 
 const bootstrap: EnrollmentBootstrap = {
-  version: 1,
+  version: 2,
   hostId: "host_1",
   serverUrl: "https://server.example",
-  client: { kind: "direct" },
   credential: "private-credential",
   expiresAt: Date.now() + 60_000,
 };

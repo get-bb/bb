@@ -831,6 +831,9 @@ export async function cancelMachineLaunch(
       updateMachineLaunchAttempt(deps.db, {
         ...current,
         cleanupRetryAt:
+          current.resource === null &&
+          !current.cleanupResourceRemoved &&
+          current.hostId === null &&
           Date.now() - current.startedAt >= 30 * 60_000
             ? Number.MAX_SAFE_INTEGER
             : Date.now() + record.provider.policy.removeRetryMs,
@@ -859,6 +862,12 @@ export function machineLaunchStatus(
     log: row.pendingLog,
     message: row.message,
     cancelPending: row.cancelPending,
+    terminal:
+      row.phase === "ready" ||
+      row.phase === "cancelled" ||
+      (row.phase === "failed" &&
+        (row.failure === "terminal" ||
+          row.transientFailures > TRANSIENT_RETRY_LIMIT)),
   };
 }
 
@@ -899,7 +908,7 @@ export async function createMachine(
       const host = getHost(deps.db, status.hostId);
       if (host !== null) return machineHostResponse(host, deps);
     }
-    if (status.phase === "failed" || status.phase === "cancelled") {
+    if (status.terminal) {
       throw new ApiError(
         409,
         "machine_provider_rejected",
@@ -1382,6 +1391,7 @@ export async function sweepProviderMachine(
     }
     return;
   }
+  if (operations(resumeOperations, deps.db).has(hostId)) return;
   const hasLiveThreads = machineHasLiveThreads(deps.db, hostId);
   if (
     row.phase === "retiring" &&

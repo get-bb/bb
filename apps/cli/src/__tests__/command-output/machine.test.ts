@@ -21,6 +21,7 @@ const launch = {
   log: "",
   message: null,
   cancelPending: false,
+  terminal: true,
 };
 
 const hosts: Host[] = [
@@ -111,6 +112,29 @@ describe("bb machine command output", () => {
     expect(JSON.parse(collectLogPayloads(vi.mocked(console.log))[0])).toEqual(
       hosts[1],
     );
+  });
+
+  it("follows transient launch failures until the server reaches ready", async () => {
+    const poll = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ...launch,
+        phase: "failed",
+        hostId: null,
+        terminal: false,
+        message: "temporary vendor failure",
+      })
+      .mockResolvedValueOnce(launch);
+    stubServerApi({
+      "v1.hosts.launches.:id.$get": poll,
+      "v1.hosts.:id.$get": vi.fn(async () => hosts[1]),
+      "v1.hosts.$post": vi.fn(async () => launch),
+    });
+    await runCommand(["machine", "create", "--provider", "ssh"], register);
+    expect(poll).toHaveBeenCalledTimes(2);
+    expect(collectLogPayloads(vi.mocked(console.log))).toEqual([
+      "Machine host-remote created",
+    ]);
   });
 
   it("creates globally with absent inputs and lets the server choose the key", async () => {

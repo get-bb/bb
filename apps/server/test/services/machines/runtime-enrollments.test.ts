@@ -155,7 +155,6 @@ describe("production machine enrollment wiring", () => {
       const acquire = vi.fn(async ({ hostId }: { hostId: string }) => ({
         id: "runtime-grant",
         serverUrl: "https://machine.example.test",
-        client: { kind: "direct" as const },
       }));
       api.experimental_serverAccess.register({
         id: "runtime-access",

@@ -78,3 +78,7 @@ with `bb settings show --json` and change them with `bb settings general`.
 `BB_DATA_DIR` selects isolated enrollment state. Local machine lifecycle commands
 treat it as an ownership assertion and refuse the default BB installation; see
 thread-creation.md and docs/configuration.md for the directory constraints.
+
+Machine enrollment v2 stores private `serverHeaders` in machine `config.json`.
+The launcher transports these through `BB_SERVER_HEADERS` (JSON string map) for
+all server requests. Do not print these headers; they can contain access tokens.

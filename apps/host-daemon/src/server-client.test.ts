@@ -78,11 +78,14 @@ describe("createServerClient", () => {
   });
 
   it.each([
-    { machineCredential: "bbcm_machine", hasMachineCredential: true },
-    { machineCredential: undefined, hasMachineCredential: false },
+    {
+      serverHeaders: { "x-bb-connect-machine": "bbcm_machine" },
+      hasMachineCredential: true,
+    },
+    { serverHeaders: undefined, hasMachineCredential: false },
   ])(
     "reports live machine-credential capability as $hasMachineCredential",
-    async ({ machineCredential, hasMachineCredential }) => {
+    async ({ serverHeaders, hasMachineCredential }) => {
       const fetchFn = vi.fn<FetchFn>(async (_input, init) => {
         expect(JSON.parse(String(init?.body))).toMatchObject({
           hasMachineCredential,
@@ -102,7 +105,7 @@ describe("createServerClient", () => {
         getSessionId: () => "session-1",
         hostKey: "host-key",
         logger: createLogger(),
-        ...(machineCredential !== undefined ? { machineCredential } : {}),
+        ...(serverHeaders !== undefined ? { serverHeaders } : {}),
         serverUrl: "https://bb.example.test",
       });
 
@@ -290,7 +293,7 @@ describe("createServerClient", () => {
       getSessionId: () => "session-1",
       hostKey: "host-key",
       logger: createLogger(),
-      machineCredential: "bbcm_machine",
+      serverHeaders: { "x-bb-connect-machine": "bbcm_machine" },
       serverUrl: "https://bb.example.test",
     });
 

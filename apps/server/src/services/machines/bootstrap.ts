@@ -13,7 +13,7 @@ export BB_ENROLLMENT
 installer_url=$1
 installer_file=$(mktemp)
 trap 'rm -f "$installer_file"' EXIT HUP INT TERM
-curl --fail --silent --show-error --location --connect-timeout 10 --max-time 60 "$installer_url" > "$installer_file"
+node -e 'for (const [name,value] of Object.entries(JSON.parse(process.env.BB_ENROLLMENT).headers ?? {})) console.log("header = " + JSON.stringify(name + ": " + value))' | curl --config - --fail --silent --show-error --location --connect-timeout 10 --max-time 60 "$installer_url" > "$installer_file"
 sh "$installer_file" --bootstrap-env BB_ENROLLMENT
 `;
 

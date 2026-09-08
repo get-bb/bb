@@ -913,13 +913,15 @@ function applyManagedConfigEnv(
 ): NodeJS.ProcessEnv {
   return {
     ...args.env,
-    ...(args.config.machineCredential !== undefined
+    ...(args.config.serverHeaders !== undefined ||
+    args.config.machineCredential !== undefined
       ? {
-          BB_CONNECT_MACHINE_CREDENTIAL: args.config.machineCredential,
+          BB_SERVER_HEADERS: JSON.stringify(
+            args.config.serverHeaders ?? {
+              "x-bb-connect-machine": args.config.machineCredential,
+            },
+          ),
         }
-      : {}),
-    ...(args.config.connectMachineId !== undefined
-      ? { BB_CONNECT_MACHINE_ID: args.config.connectMachineId }
       : {}),
     ...args.config.config,
     ...args.envFile.env,

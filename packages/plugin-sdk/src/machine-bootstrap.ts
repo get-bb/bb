@@ -5,10 +5,10 @@ import type {
 import type { PluginMachineProviderProgress } from "./machine-provider.js";
 
 export interface EnrollmentBootstrap {
-  version: 1;
+  version: 2;
   hostId: string;
   serverUrl: string;
-  client: ServerAccessGrant["client"];
+  headers?: ServerAccessGrant["headers"];
   credential: string;
   expiresAt: number;
 }

@@ -28,16 +28,7 @@ const grantSchema: z.ZodType<ServerAccessGrant> = z
   .object({
     id: z.string().min(1),
     serverUrl: reachableUrlSchema,
-    client: z.discriminatedUnion("kind", [
-      z.object({ kind: z.literal("direct") }).strict(),
-      z
-        .object({
-          kind: z.literal("connect"),
-          machineCode: z.string().min(1),
-          expiresAt: z.number().int().positive(),
-        })
-        .strict(),
-    ]),
+    headers: z.record(z.string(), z.string()).optional(),
   })
   .strict();
 const availabilitySchema = z.discriminatedUnion("status", [
@@ -156,7 +147,7 @@ async function resolve(
     const serverUrl = status.effectiveUrl;
     if (serverUrl === null)
       throw new Error("Set a server URL reachable by machines");
-    grant = { id: args.hostId, serverUrl, client: { kind: "direct" } };
+    grant = { id: args.hostId, serverUrl };
   } else {
     const record = listServerAccessProviders().find(
       (entry) => entry.provider.id === providerId,
@@ -170,7 +161,6 @@ async function resolve(
       throw new Error("Server access provider returned an invalid grant");
     grant = parsed.data;
   }
-  args.signal.throwIfAborted();
   if (
     host.serverAccessGrantId !== null &&
     host.serverAccessGrantId !== grant.id
@@ -182,6 +172,7 @@ async function resolve(
     .set({ serverAccessProviderId: providerId, serverAccessGrantId: grant.id })
     .where(eq(hosts.id, args.hostId))
     .run();
+  args.signal.throwIfAborted();
   return grant;
 }
 

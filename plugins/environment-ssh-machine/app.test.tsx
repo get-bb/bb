@@ -51,10 +51,10 @@ describe("SSH machine inputs control", () => {
         "value",
         "buildbox",
       );
-    });
-    expect(onChange).toHaveBeenLastCalledWith({
-      status: "ready",
-      value: { target: "buildbox" },
+      expect(onChange).toHaveBeenLastCalledWith({
+        status: "ready",
+        value: { target: "buildbox" },
+      });
     });
   });
 

@@ -430,14 +430,10 @@ export type PluginMachineProviderDeclaration<
   Inputs
 >;
 
-export type ServerAccessClient =
-  | { kind: "direct" }
-  | { kind: "connect"; machineCode: string; expiresAt: number };
-
 export interface ServerAccessGrant {
   id: string;
   serverUrl: string;
-  client: ServerAccessClient;
+  headers?: Record<string, string>;
 }
 
 export interface ServerAccessSelection {

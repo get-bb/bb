@@ -76,7 +76,6 @@ Read the installed declarations for exact current signatures.
 - `PluginServerAccess` — `bb.experimental_serverAccess.register`
 - `ServerAccessProviderDeclaration`
 - `ServerAccessGrant`
-- `ServerAccessClient`
 - `ServerAccessSelection`
 - `PluginMachines` — `bb.experimental_machines.register` and enrollment/bootstrap helpers (see backend-machines.md)
 - `EnrollmentBootstrap` — private versioned enrollment bundle

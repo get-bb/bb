@@ -168,9 +168,10 @@ describe("public host management", () => {
           headers: {
             authorization: `Bearer ${issued.joinCode}`,
             "content-type": "application/json",
+            "x-bb-gate-auth": "machine",
+            "x-bb-gate-machine-id": "machine-cloud-1",
           },
           body: JSON.stringify({
-            connectMachineId: "machine-cloud-1",
             hostId: issued.hostId,
             hostName: "Build Machine",
           }),
@@ -205,10 +206,11 @@ describe("public host management", () => {
           headers: {
             authorization: `Bearer ${enrolled.hostKey}`,
             "content-type": "application/json",
+            "x-bb-gate-auth": "machine",
+            "x-bb-gate-machine-id": "machine-cloud-2",
           },
           body: JSON.stringify({
             activeThreads: [],
-            connectMachineId: "machine-cloud-2",
             dataDir: "/tmp/remote-bb",
             hasMachineCredential: true,
             hostId: issued.hostId,
@@ -261,9 +263,9 @@ describe("public host management", () => {
           hostName: "Forged Machine",
         }),
       });
-      expect(response.status).toBe(403);
+      expect(response.status).toBe(400);
       expect(await readJson(response)).toMatchObject({
-        code: "connect_machine_id_mismatch",
+        code: "invalid_request",
       });
       expect(getHost(harness.db, issued.hostId)).toBeNull();
     });

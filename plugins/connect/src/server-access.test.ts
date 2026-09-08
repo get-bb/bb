@@ -19,147 +19,119 @@ const request = {
   hostId: "host-pending",
   signal: new AbortController().signal,
 };
-const expiryKey = "server-access-expiry:host-pending";
+const key = "server-access-grant:host-pending";
 const hosts: FakePluginHost[] = [];
-
-function setup(connectMachineId: string | null = null) {
+function setup() {
   const host = createFakePluginHost({
     pluginId: "connect",
-    sdk: { hosts: { get: async () => ({ connectMachineId }) } },
+    sdk: { hosts: { get: async () => ({ connectMachineId: null }) } },
   });
   hosts.push(host);
   registerServerAccess(host.bb, tunnel);
   return host;
 }
-
 function provider(host: FakePluginHost) {
-  const result =
-    host.harness.registrations.serverAccessProviders.get("connect");
-  if (!result) throw new Error("Connect access provider was not registered");
-  return result;
+  const p = host.harness.registrations.serverAccessProviders.get("connect");
+  if (!p) throw new Error("Missing provider");
+  return p;
 }
-
-function codeResponse() {
-  return Response.json({
-    code: "PRIVATE-CODE",
-    expiresInMs: 600_000,
-    serverUrl: credential.serverUrl,
-  });
+function cloud() {
+  let active = false;
+  let failRevoke = false;
+  const fetchMock = vi.fn(
+    async (input: RequestInfo | URL, init?: RequestInit) => {
+      const path = String(input);
+      if (path.endsWith("/machine-code"))
+        return Response.json({
+          code: "PRIVATE-CODE",
+          expiresInMs: 600000,
+          serverUrl: credential.serverUrl,
+        });
+      if (path.endsWith("/redeem-machine")) {
+        expect(JSON.parse(String(init?.body))).toEqual({
+          code: "PRIVATE-CODE",
+        });
+        active = true;
+        return Response.json({
+          credential: "bbcm_private",
+          machineId: "cloud-id",
+          serverUrl: credential.serverUrl,
+        });
+      }
+      expect(path).toBe("https://getbb.app/api/connect/revoke-machine");
+      expect(JSON.parse(String(init?.body))).toEqual({ machineId: "cloud-id" });
+      if (failRevoke) return new Response(null, { status: 503 });
+      active = false;
+      return Response.json({ ok: true });
+    },
+  );
+  vi.stubGlobal("fetch", fetchMock);
+  return {
+    fetchMock,
+    active: () => active,
+    failRevoke: (value: boolean) => {
+      failRevoke = value;
+    },
+  };
 }
-
 afterEach(async () => {
   for (const host of hosts.splice(0)) await host.harness.lifecycle.dispose();
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
 });
-
-describe("Connect machine access release", () => {
-  it("warns after restart when redemption happened before enrollment and cannot be revoked", async () => {
-    const now = 1_800_000_000_000;
-    vi.spyOn(Date, "now").mockReturnValue(now);
-    let redeemedCredentialActive = false;
-    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
-      if (String(input).endsWith("/machine-code")) return codeResponse();
-      if (String(input).endsWith("/redeem-machine")) {
-        redeemedCredentialActive = true;
-        return Response.json({
-          credential: "bbcm_private",
-          machineId: "cloud-id",
-        });
-      }
-      throw new Error("Unexpected Cloud request");
-    });
-    vi.stubGlobal("fetch", fetchMock);
+describe("Connect server-owned machine access", () => {
+  it("persists redemption before enrollment and revokes after restart", async () => {
+    const api = cloud();
     const original = setup();
     const grant = await provider(original).acquire(request);
-    const expiry = await original.bb.storage.kv.get(expiryKey);
-    expect(expiry).toEqual({ expiresAt: expect.any(Number) });
-    expect(JSON.stringify(expiry)).not.toContain("PRIVATE-CODE");
-    await fetch("https://getbb.app/api/connect/redeem-machine");
-    const restarted = await original.harness.lifecycle.reload((bb) => {
-      registerServerAccess(bb, tunnel);
+    expect(grant).toEqual({
+      id: request.hostId,
+      serverUrl: credential.serverUrl,
+      headers: { "x-bb-connect-machine": "bbcm_private" },
     });
+    expect(await original.bb.storage.kv.get(key)).toMatchObject({
+      connectMachineId: "cloud-id",
+    });
+    const restarted = await original.harness.lifecycle.reload((bb) =>
+      registerServerAccess(bb, tunnel),
+    );
     hosts.push(restarted);
+    expect(await provider(restarted).acquire(request)).toEqual(grant);
+    expect(api.fetchMock).toHaveBeenCalledTimes(2);
     await provider(restarted).release({ key: request.key, grantId: grant.id });
-    expect(redeemedCredentialActive).toBe(true);
-    expect(fetchMock).toHaveBeenCalledTimes(2);
-    expect(restarted.harness.logEntries).toEqual([
-      {
-        level: "warn",
-        message: expect.stringContaining(
-          "Code expiry does not revoke a credential already redeemed",
-        ),
-      },
-    ]);
-    expect(restarted.harness.logEntries[0]?.message).toContain(
-      `Any unredeemed code expires by ${new Date(now + 600_000).toISOString()}`,
-    );
-    expect(JSON.stringify(restarted.harness.logEntries)).not.toMatch(
-      /PRIVATE-CODE|bbcred_private|bbcm_private/,
-    );
-    expect(await restarted.bb.storage.kv.get(expiryKey)).toBeUndefined();
+    expect(api.active()).toBe(false);
+    expect(await restarted.bb.storage.kv.get(key)).toBeUndefined();
   });
-
-  it("retains known-machine revocation failures across restart and retries them", async () => {
-    let failRevoke = true;
-    const fetchMock = vi.fn(
-      async (input: RequestInfo | URL, init?: RequestInit) => {
-        if (String(input).endsWith("/machine-code")) return codeResponse();
-        expect(String(input)).toBe(
-          "https://getbb.app/api/connect/revoke-machine",
-        );
-        expect(JSON.parse(String(init?.body))).toEqual({
-          machineId: "cloud-id",
-        });
-        return failRevoke
-          ? new Response(null, { status: 503 })
-          : Response.json({ ok: true });
-      },
-    );
-    vi.stubGlobal("fetch", fetchMock);
-    const original = setup("cloud-id");
+  it("retains the device ID on revoke failure and retries after restart", async () => {
+    const api = cloud();
+    const original = setup();
     await provider(original).acquire(request);
+    api.failRevoke(true);
     await expect(
       provider(original).release({ key: request.key, grantId: request.hostId }),
     ).rejects.toThrow("503");
-    expect(await original.bb.storage.kv.get(expiryKey)).toBeDefined();
-    const restarted = await original.harness.lifecycle.reload((bb) => {
-      registerServerAccess(bb, tunnel);
-    });
+    const restarted = await original.harness.lifecycle.reload((bb) =>
+      registerServerAccess(bb, tunnel),
+    );
     hosts.push(restarted);
-    failRevoke = false;
+    api.failRevoke(false);
     await provider(restarted).release({
       key: request.key,
       grantId: request.hostId,
     });
-    expect(fetchMock).toHaveBeenCalledTimes(3);
-    expect(await restarted.bb.storage.kv.get(expiryKey)).toBeUndefined();
-    expect(restarted.harness.logEntries).toEqual([]);
+    expect(api.active()).toBe(false);
+    expect(await restarted.bb.storage.kv.get(key)).toBeUndefined();
   });
-
-  it("does not downgrade known-machine revocation when pairing is missing", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => codeResponse()),
-    );
-    const host = setup("cloud-id");
+  it("retains the device ID when pairing is unavailable", async () => {
+    cloud();
+    const host = setup();
     await provider(host).acquire(request);
     registerServerAccess(host.bb, { ...tunnel, getCredential: () => null });
     await expect(
       provider(host).release({ key: request.key, grantId: request.hostId }),
     ).rejects.toThrow("Pair this bb instance");
-    expect(await host.bb.storage.kv.get(expiryKey)).toBeDefined();
-    expect(host.harness.logEntries).toEqual([]);
-  });
-
-  it("warns with unknown expiry for legacy grants without minting another code", async () => {
-    const fetchMock = vi.fn();
-    vi.stubGlobal("fetch", fetchMock);
-    const host = setup();
-    await provider(host).release({ key: request.key, grantId: request.hostId });
-    expect(fetchMock).not.toHaveBeenCalled();
-    expect(host.harness.logEntries[0]?.message).toContain(
-      "expiry of this grant's unredeemed code is unavailable",
-    );
+    expect(await host.bb.storage.kv.get(key)).toMatchObject({
+      connectMachineId: "cloud-id",
+    });
   });
 });

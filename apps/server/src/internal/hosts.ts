@@ -31,11 +31,10 @@ function assertLoopbackRequest(remoteAddress: string | undefined): void {
 
 export function resolveReportedConnectMachineId(
   context: GateAuthHeaderReader,
-  reportedMachineId: string | undefined,
 ): string | undefined {
-  if (getGateAuthKind(context) !== "machine") return reportedMachineId;
+  if (getGateAuthKind(context) !== "machine") return undefined;
   const gateMachineId = getGateMachineId(context);
-  if (gateMachineId === null || reportedMachineId !== gateMachineId) {
+  if (gateMachineId === null) {
     throw new ApiError(
       403,
       "connect_machine_id_mismatch",
@@ -83,10 +82,7 @@ export function registerInternalHostRoutes(app: Hono, deps: AppDeps): void {
     "/hosts/enroll",
     hostDaemonEnrollRequestSchema,
     async (context, payload) => {
-      const connectMachineId = resolveReportedConnectMachineId(
-        context,
-        payload.connectMachineId,
-      );
+      const connectMachineId = resolveReportedConnectMachineId(context);
       const token = requireBearerToken(context.req.header("authorization"));
       const enrollment = await deps.machineAuth.enrollHost({
         allowPublicEnrollment: true,

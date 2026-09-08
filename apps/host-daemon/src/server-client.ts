@@ -155,14 +155,13 @@ interface CreateServerClientOptions {
   serverUrl: string;
   hostKey: string;
   logger: HostDaemonLogger;
-  machineCredential?: string;
+  serverHeaders?: Record<string, string>;
   getSessionId: () => string;
   beforeInteractiveRequestRegistrationAttempt?: () => Promise<void>;
   fetchFn?: FetchFn;
 }
 
 interface OpenSessionArgs {
-  connectMachineId?: string;
   hostId: string;
   hostName: string;
   dataDir: string;
@@ -393,9 +392,7 @@ export function createServerClient(
     return {
       authorization: `Bearer ${options.hostKey}`,
       "content-type": "application/json",
-      ...(options.machineCredential !== undefined
-        ? { "x-bb-connect-machine": options.machineCredential }
-        : {}),
+      ...options.serverHeaders,
     };
   }
 
@@ -438,12 +435,9 @@ export function createServerClient(
         hostId: args.hostId,
         instanceId: args.instanceId,
         hostName: args.hostName,
-        ...(args.connectMachineId !== undefined
-          ? { connectMachineId: args.connectMachineId }
-          : {}),
-        hasMachineCredential:
-          options.machineCredential !== undefined &&
-          options.machineCredential.trim().length > 0,
+        hasMachineCredential: Boolean(
+          options.serverHeaders?.["x-bb-connect-machine"]?.trim(),
+        ),
         platform: resolveHostPlatform(),
         dataDir: args.dataDir,
         localApiPort: args.localApiPort,

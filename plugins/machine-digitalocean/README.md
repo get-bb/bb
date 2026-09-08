@@ -108,3 +108,11 @@ and require express permission for logo use except as authorized by those
 guidelines. The mark identifies the service this plugin integrates with; it is
 not covered by bb's code license. This product is not affiliated with or
 endorsed by DigitalOcean, LLC.
+
+## Local verification
+
+From a fresh checkout, run `pnpm install --frozen-lockfile` at the repository
+root before `pnpm exec turbo run test --filter=bb-plugin-machine-digitalocean`.
+The workspace install links this plugin's declared Zod, Plugin SDK/testing,
+and React testing dependencies; running Vitest directly before installation
+cannot resolve those local dependencies.

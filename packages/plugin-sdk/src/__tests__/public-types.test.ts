@@ -124,7 +124,6 @@ const EXPECTED_BACKEND_ROOT_TYPE_EXPORTS = [
   "PluginTurnFailedEvent",
   "PluginUi",
   "PluginServerAccess",
-  "ServerAccessClient",
   "ServerAccessGrant",
   "ServerAccessProviderDeclaration",
   "ServerAccessSelection",

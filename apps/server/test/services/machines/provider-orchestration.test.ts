@@ -1,3 +1,5 @@
+import { createBbSdk } from "@bb/sdk/core";
+import { createHttpTransport } from "@bb/sdk";
 import { archiveThreadAndHiddenSourceForks } from "../../../src/services/threads/thread-archive.js";
 import { cancelAbandonedProviderLaunches } from "../../../src/services/threads/thread-environment-providers.js";
 import { serverAccess } from "../../../src/services/machines/server-access.js";
@@ -2778,3 +2780,154 @@ it.each(["owner", "operation", "phase"])(
       });
     }),
 );
+
+it.each(["SDK follow", "server create"])(
+  "%s survives a server-owned transient retry",
+  async (client) =>
+    withTestHarness(async (h) => {
+      const { host } = seedHostSession(h.deps, { id: "review-follow" });
+      let creates = 0;
+      installMachineProvider(
+        machineDeclaration(host.id, {
+          create: async () => {
+            if (++creates === 1)
+              return {
+                status: "failed",
+                failure: "transient",
+                message: "temporary vendor failure",
+              };
+            return {
+              status: "created",
+              hostId: host.id,
+              resource: { id: "allocated" },
+            };
+          },
+        }),
+      );
+      const sdk = createBbSdk({
+        transport: createHttpTransport({
+          runtime: "node",
+          baseUrl: "http://bb.test",
+          fetch: async (input, init) => h.app.request(input, init),
+        }),
+      });
+      const launch = await sdk.hosts.submit({
+        key: "review-follow",
+        machineProviderId: "test-machine",
+        projectId: null,
+        inputs: null,
+      });
+      await expect
+        .poll(() => getMachineLaunch(h.db, launch.id)?.phase)
+        .toBe("failed");
+      expect(await sdk.hosts.launch({ id: launch.id })).toMatchObject({
+        phase: "failed",
+        terminal: false,
+      });
+      const following = (
+        client === "SDK follow"
+          ? sdk.hosts.follow({ id: launch.id })
+          : createMachine(h.deps, {
+              key: launch.id,
+              machineProviderId: "test-machine",
+              projectId: null,
+              inputs: null,
+            })
+      ).then(
+        (value) => ({ ok: true, value }),
+        (error) => ({ ok: false, error: String(error) }),
+      );
+      await new Promise((resolve) => setTimeout(resolve, 25));
+      updateMachineLaunchAttempt(h.db, {
+        key: launch.id,
+        attempt: 1,
+        failedAt: Date.now() - 31000,
+      });
+      await sweepMachineLifecycles(h.deps);
+      await expect
+        .poll(() => getMachineLaunch(h.db, launch.id)?.phase)
+        .toBe("ready");
+      const result = await following;
+      expect(result.ok).toBe(true);
+    }),
+);
+
+it("known allocated resource keeps retrying removal after the launch window", async () =>
+  withTestHarness(async (h) => {
+    const { host } = seedHostSession(h.deps, { id: "review-removal-window" });
+    let removes = 0;
+    installMachineProvider(
+      machineDeclaration(host.id, {
+        policy: {
+          idleSuspendMs: null,
+          retire: { after: "never" },
+          removeRetryMs: 10,
+        },
+        remove: async () =>
+          ++removes === 1
+            ? { status: "failed", message: "vendor unavailable" }
+            : { status: "removed" },
+      }),
+    );
+    seedReadyLaunch(h, { key: "review-removal-window", hostId: host.id });
+    updateMachineLaunchAttempt(h.db, {
+      key: "review-removal-window",
+      attempt: 1,
+      phase: "cancelled",
+      cancelPending: true,
+      cleanupResourceRemoved: false,
+      startedAt: Date.now() - 31 * 60000,
+    });
+    await expect(
+      cancelMachineLaunch(h.deps, "review-removal-window"),
+    ).rejects.toThrow("vendor unavailable");
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    await sweepMachineLifecycles(h.deps);
+    expect(removes).toBe(2);
+    expect(getMachineLaunch(h.db, "review-removal-window")).toMatchObject({
+      cancelPending: false,
+      resource: null,
+      cleanupRetryAt: null,
+    });
+  }));
+
+it("periodic retirement does not invalidate an in-flight resume allocation", async () =>
+  withTestHarness(async (h) => {
+    const { host } = seedHostSession(h.deps, { id: "review-resume-retire" });
+    adoptMachine(h, host.id, { snapshot: "image" });
+    updateHost(h.db, h.hub, host.id, {
+      phase: "suspended",
+      suspendedAt: Date.now(),
+    });
+    const allocated = createDeferredPromise<void>();
+    const proceed = createDeferredPromise<void>();
+    installMachineProvider(
+      machineDeclaration(host.id, {
+        policy: {
+          idleSuspendMs: 60000,
+          retire: { after: "last-thread", graceMs: 30 * 24 * 60 * 60000 },
+          removeRetryMs: 10,
+        },
+        suspend: async ({ resource }) => ({ resource }),
+        resume: async ({ checkpoint }) => {
+          allocated.resolve();
+          await proceed.promise;
+          await checkpoint({ snapshot: "image", sandbox: "new-sandbox" });
+          return { resource: { snapshot: "image", sandbox: "new-sandbox" } };
+        },
+      }),
+    );
+    const resuming = resumeMachine(h.deps, host.id).then(
+      () => ({ ok: true }),
+      (error) => ({ ok: false, error: String(error) }),
+    );
+    await allocated.promise;
+    await sweepProviderMachine(h.deps, host.id);
+    proceed.resolve();
+    expect(await resuming).toEqual({ ok: true });
+    expect(getHost(h.db, host.id)?.resource).toMatchObject({
+      sandbox: "new-sandbox",
+    });
+    await sweepProviderMachine(h.deps, host.id);
+    expect(getHost(h.db, host.id)?.phase).toBe("retiring");
+  }));

@@ -393,10 +393,9 @@ fs.writeFileSync(path.join(process.env.BB_DATA_DIR, "config.json"), JSON.stringi
     const result = runScript(["--bootstrap-env", "TEST_BUNDLE"], fixture, {
       BB_INSTALL_SKIP_SERVICE: container ? "0" : "1",
       TEST_BUNDLE: JSON.stringify({
-        version: 1,
+        version: 2,
         hostId: "host-test",
         serverUrl: "https://machine.getbb.app",
-        client: { kind: "direct" },
         credential: "private-bootstrap-test",
         expiresAt: Date.now() + 60_000,
       }),

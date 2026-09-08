@@ -3,13 +3,19 @@ import { z } from "zod";
 import type { ConnectTunnel } from "./tunnel.js";
 import { fetchMachineCode } from "./machine-code.js";
 import { revokeMachine } from "./revoke-machine.js";
+import { redeemMachineCode } from "./redeem.js";
 
-const expirySchema = z.object({
-  expiresAt: z.number().int().positive().max(8_640_000_000_000_000),
+const grantSchema = z.object({
+  connectMachineId: z.string().min(1),
+  grant: z.object({
+    id: z.string().min(1),
+    serverUrl: z.string().url(),
+    headers: z.record(z.string(), z.string()),
+  }),
 });
 
-function expiryKey(hostId: string): string {
-  return `server-access-expiry:${hostId}`;
+function grantKey(hostId: string): string {
+  return `server-access-grant:${hostId}`;
 }
 
 export function registerServerAccess(
@@ -19,7 +25,6 @@ export function registerServerAccess(
     status(): { paired: boolean };
   },
 ) {
-  const pending = new Map<string, ServerAccessGrant>();
   bb.experimental_serverAccess.register({
     id: "connect",
     displayName: "bb Cloud",
@@ -32,58 +37,50 @@ export function registerServerAccess(
           },
     async acquire({ hostId, signal }) {
       signal.throwIfAborted();
-      const existing = pending.get(hostId);
-      if (
-        existing?.client.kind === "connect" &&
-        existing.client.expiresAt > Date.now()
-      )
-        return existing;
+      const existing = grantSchema.safeParse(
+        await bb.storage.kv.get(grantKey(hostId)),
+      );
+      if (existing.success) return existing.data.grant;
       const credential = tunnel.getCredential();
       if (!credential) throw new Error("Pair this bb instance with bb Cloud");
       const code = await fetchMachineCode(credential);
-      const previous = expirySchema.safeParse(
-        await bb.storage.kv.get(expiryKey(hostId)),
-      );
-      await bb.storage.kv.set(expiryKey(hostId), {
-        expiresAt: Math.max(
-          code.expiresAt,
-          previous.success ? previous.data.expiresAt : 0,
-        ),
+      const redeemed = await redeemMachineCode({
+        code: code.code,
+        serverUrl: code.serverUrl,
       });
       const grant: ServerAccessGrant = {
         id: hostId,
-        serverUrl: code.serverUrl,
-        client: {
-          kind: "connect",
-          machineCode: code.code,
-          expiresAt: code.expiresAt,
-        },
+        serverUrl: redeemed.serverUrl,
+        headers: { "x-bb-connect-machine": redeemed.credential },
       };
-      pending.set(hostId, grant);
+      try {
+        await bb.storage.kv.set(grantKey(hostId), {
+          connectMachineId: redeemed.machineId,
+          grant,
+        });
+      } catch (error) {
+        await revokeMachine(credential, redeemed.machineId);
+        throw error;
+      }
       return grant;
     },
     async release({ grantId }) {
-      const host = await bb.sdk.hosts.get({ hostId: grantId });
-      if (host.connectMachineId) {
+      const stored = grantSchema.safeParse(
+        await bb.storage.kv.get(grantKey(grantId)),
+      );
+      const connectMachineId = stored.success
+        ? stored.data.connectMachineId
+        : (await bb.sdk.hosts.get({ hostId: grantId })).connectMachineId;
+      if (connectMachineId) {
         const credential = tunnel.getCredential();
         if (!credential)
           throw new Error(
             "Pair this bb instance with bb Cloud to revoke machine access",
           );
-        await revokeMachine(credential, host.connectMachineId);
-      } else {
-        const expiry = expirySchema.safeParse(
-          await bb.storage.kv.get(expiryKey(grantId)),
-        );
-        const expiryMessage = expiry.success
-          ? `Any unredeemed code expires by ${new Date(expiry.data.expiresAt).toISOString()}.`
-          : "The expiry of this grant's unredeemed code is unavailable.";
-        bb.log.warn(
-          `Machine ${grantId}: Connect access release is best-effort because enrollment did not report a Cloud machine ID. ${expiryMessage} Code expiry does not revoke a credential already redeemed before enrollment. The current Cloud API cannot revoke that credential by grant; revoke it manually from the getbb.app dashboard if it was redeemed.`,
-        );
+        await revokeMachine(credential, connectMachineId);
       }
-      await bb.storage.kv.delete(expiryKey(grantId));
-      pending.delete(grantId);
+      await bb.storage.kv.delete(grantKey(grantId));
+      await bb.storage.kv.delete(`server-access-expiry:${grantId}`);
     },
   });
 }

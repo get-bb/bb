@@ -111,9 +111,11 @@ failures persist and retry after `removeRetryMs`.
 
 `bb.experimental_serverAccess.register` declares id, displayName,
 availability, acquire({ key, hostId, signal }) returning a ServerAccessGrant,
-and release({ key, grantId }). Acquire is idempotent by key. Return a direct
-client or a Connect machine code; the grant serves runtime requests as well
-as enrolment. Host metadata stores the provider id and grant id; pending
+and release({ key, grantId }). Acquire is idempotent by key. Return `{ id, serverUrl, headers?: Record<string, string> }`; the grant serves runtime requests as well
+as enrolment. Acquire must redeem provider-specific codes server-side and persist
+the revocation identity before returning, so release works before enrolment.
+Direct grants omit headers. Bootstrap v2 carries the headers; pending encrypted
+v1 bundles are upgraded server-side on preparation. Host metadata stores the provider id and grant id; pending
 bootstrap credentials are encrypted separately by core.
 General settings select the default. Plugins can pass ServerAccessSelection
 to the machine enrolment/bootstrap APIs. The direct provider reads

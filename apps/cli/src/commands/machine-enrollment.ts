@@ -30,33 +30,20 @@ const serverUrlSchema = z
     );
   });
 const bootstrapSchema = z.strictObject({
-  version: z.literal(1),
+  version: z.literal(2),
   hostId: z.string().min(1),
   serverUrl: serverUrlSchema,
-  client: z.discriminatedUnion("kind", [
-    z.strictObject({ kind: z.literal("direct") }),
-    z.strictObject({
-      kind: z.literal("connect"),
-      machineCode: z.string().min(1),
-      expiresAt: z.number().finite().positive(),
-    }),
-  ]),
+  headers: z.record(z.string(), z.string()).optional(),
   credential: z.string().min(1),
   expiresAt: z.number().finite().positive(),
 });
 const configSchema = z.looseObject({
   serverUrl: serverUrlSchema.optional(),
-  machineCredential: z.string().min(1).optional(),
-  connectMachineId: z.string().min(1).optional(),
+  serverHeaders: z.record(z.string(), z.string()).optional(),
 });
 const authSchema = z.object({
   hostId: z.string().min(1),
   hostKey: z.string().min(1),
-});
-const redeemSchema = z.object({
-  credential: z.string().min(1),
-  machineId: z.string().min(1),
-  serverUrl: serverUrlSchema,
 });
 
 function normalizeUrl(value: string): string {
@@ -302,41 +289,7 @@ export async function enrollMachine(
       throw new Error("Machine enrollment bootstrap has expired");
     const fetchFn = runtime.fetchFn ?? fetch;
     const signal = AbortSignal.timeout(60_000);
-    if (bootstrap.client.kind === "connect" && !config.machineCredential) {
-      if (bootstrap.client.expiresAt <= Date.now())
-        throw new Error("Machine server access has expired");
-      const apex = new URL(serverUrl);
-      const labels = apex.hostname.split(".");
-      if (labels.length < 3)
-        throw new Error("Invalid Connect machine server URL");
-      apex.hostname = labels.slice(1).join(".");
-      apex.pathname = "/api/connect/redeem-machine";
-      let redeemed: z.infer<typeof redeemSchema>;
-      try {
-        const response = await fetchFn(apex, {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ code: bootstrap.client.machineCode }),
-          signal,
-        });
-        if (!response.ok) throw new Error();
-        redeemed = redeemSchema.parse(await response.json());
-      } catch {
-        throw new Error("Could not redeem machine server access");
-      }
-      if (normalizeUrl(redeemed.serverUrl) !== serverUrl)
-        throw new Error(
-          "Machine server access returned a different server identity",
-        );
-      config = {
-        ...config,
-        serverUrl,
-        machineCredential: redeemed.credential,
-        connectMachineId: redeemed.machineId,
-      };
-    } else {
-      config = { ...config, serverUrl };
-    }
+    config = { ...config, serverUrl, serverHeaders: bootstrap.headers };
     await atomicWrite(
       join(dataDir, "config.json"),
       `${JSON.stringify(config)}\n`,
@@ -352,16 +305,11 @@ export async function enrollMachine(
           headers: {
             "content-type": "application/json",
             authorization: `Bearer ${bootstrap.credential}`,
-            ...(config.machineCredential
-              ? { "x-bb-connect-machine": config.machineCredential }
-              : {}),
+            ...config.serverHeaders,
           },
           body: JSON.stringify({
             hostId: bootstrap.hostId,
             hostName: hostname(),
-            ...(config.connectMachineId
-              ? { connectMachineId: config.connectMachineId }
-              : {}),
           }),
           signal,
         },

@@ -109,10 +109,7 @@ export function registerInternalSessionRoutes(
     const previousSession = getLatestSessionForHost(deps.db, {
       hostId: daemon.hostId,
     });
-    const connectMachineId = resolveReportedConnectMachineId(
-      context,
-      payload.connectMachineId,
-    );
+    const connectMachineId = resolveReportedConnectMachineId(context);
     upsertHost(deps.db, deps.hub, {
       ...(connectMachineId !== undefined ? { connectMachineId } : {}),
       id: daemon.hostId,

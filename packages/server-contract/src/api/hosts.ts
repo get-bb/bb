@@ -67,6 +67,7 @@ export interface MachineLaunchStatus {
   log: string;
   message: string | null;
   cancelPending: boolean;
+  terminal: boolean;
 }
 
 export const createHostJoinCodeResponseSchema = z.object({

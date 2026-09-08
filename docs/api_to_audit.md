@@ -2639,16 +2639,17 @@ first-party environment host module consumes them for checkout and worktree.
 
 `PluginServerAccess` registers server access through `ServerAccessProviderDeclaration`: id,
 displayName, availability, acquire({ key, hostId, signal }) and
-release({ key, grantId }). `ServerAccessGrant` carries an id, serverUrl and
-`ServerAccessClient` (direct or Connect machine code with expiry).
+release({ key, grantId }). `ServerAccessGrant` carries `{ id, serverUrl, headers?: Record<string, string> }`.
+Machines attach these optional headers to enrollment, HTTP, WebSocket and runtime
+requests. A direct grant omits headers; access providers own credential redemption.
 `ServerAccessSelection` selects a provider explicitly. Core persists only
 provider id and grant id per host; credentials travel in bootstrap delivery.
 Direct access reads General's machineServerUrl with BB_EXTERNAL_URL fallback.
 General's defaultMachineAccess selects a provider; automatic prefers paired
 Connect, then an available direct URL. Access covers account-pool and other
-runtime requests after enrolment. Host detail includes connectMachineId so
-Connect can revoke its credential by grant host identity without core knowing
-how the provider revokes access.
+runtime requests after enrolment. Connect redeems Cloud codes server-side and persists connectMachineId with the
+grant before returning it, allowing release to revoke even before enrollment.
+Host detail retains connectMachineId from trusted gate metadata for legacy grants.
 
 Before stabilization, prove retry-safe acquire/release across process death,
 credential privacy and revocation, explicit and automatic defaults, expired
@@ -2658,7 +2659,7 @@ prove reachability from a remote machine.
 
 ## Machine enrollment and bootstrap
 
-`bb.experimental_machines.enrollments` exposes `prepare`, `waitForConnection`, and `cancel`; `prepareEnrollment` and `waitForConnection` also compose with `installerCommand` and `bootstrap`. Enrollment keys are scoped to the calling plugin and permanently retain their host identity. Pending credentials are single-use, short-lived, and encrypted at rest with a private server key; preparation after expiry reissues them, while an unexpired bundle survives a server restart. A successful exchange is recovered as `enrolled` after a server crash. Cancelling an enrolled identity preserves its durable credentials and runtime access.
+`bb.experimental_machines.enrollments` exposes `prepare`, `waitForConnection`, and `cancel`; `prepareEnrollment` and `waitForConnection` also compose with `installerCommand` and `bootstrap`. Enrollment keys are scoped to the calling plugin and permanently retain their host identity. Pending credentials are single-use, short-lived, and encrypted at rest with a private server key; preparation after expiry reissues them, while an unexpired bundle survives a server restart. Bootstrap v2 replaces `client` with optional `headers`. Pending encrypted v1 bundles are upgraded on preparation by reacquiring access, retaining the host and unspent enrollment credential, then persisting v2. A successful exchange is recovered as `enrolled` after a server crash. Cancelling an enrolled identity preserves its durable credentials and runtime access.
 
 `MachineExecutor` carries argv, stdin, a timeout, and an abort signal. `installerCommand` returns argv plus private stdin; callers must transport stdin without logging or persisting it in machine resources. `bootstrap` ignores remote output and reports fixed progress messages. It starts enrolled machines again so snapshot restores can reuse their identity. Preinstalled mode requires a compatible `bb` and `bb-app`; install mode requires Node, npm, and curl and installs no OS packages.
 

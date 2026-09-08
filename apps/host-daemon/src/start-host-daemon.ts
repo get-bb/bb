@@ -36,8 +36,7 @@ interface StartHostDaemonOptions {
   hostName?: string;
   bbExecutableDirectory?: string;
   bridgeBundleDir?: string;
-  machineCredential?: string;
-  connectMachineId?: string;
+  serverHeaders?: Record<string, string>;
   autoUpdate?: boolean;
 }
 
@@ -98,9 +97,8 @@ export async function startHostDaemon(
         await enrollDaemonHost({
           hostId: identity.hostId,
           hostName: identity.hostName,
-          connectMachineId: options.connectMachineId,
           serverUrl,
-          machineCredential: options.machineCredential,
+          serverHeaders: options.serverHeaders,
           token:
             options.enrollKey ??
             (() => {
@@ -134,9 +132,9 @@ export async function startHostDaemon(
       transportMode: "worker",
     });
     lockDiagnosticsLogger = logger;
-    if (options.machineCredential !== undefined) {
+    if (options.serverHeaders !== undefined) {
       machineAuthProxy = await startMachineAuthProxy({
-        machineCredential: options.machineCredential,
+        serverHeaders: options.serverHeaders,
         serverUrl,
       });
     }
@@ -169,8 +167,7 @@ export async function startHostDaemon(
       dataDir,
       serverUrl,
       hostKey,
-      machineCredential: options.machineCredential,
-      connectMachineId: options.connectMachineId,
+      serverHeaders: options.serverHeaders,
       autoUpdate: options.autoUpdate,
       bridgeBundleDir: options.bridgeBundleDir,
       hostId: identity.hostId,

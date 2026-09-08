@@ -1,3 +1,5 @@
+import { createCipheriv, randomBytes } from "node:crypto";
+import { readFile } from "node:fs/promises";
 import { eq } from "drizzle-orm";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -29,7 +31,6 @@ async function harness() {
     resolve: vi.fn(async () => ({
       id: "grant",
       serverUrl: "https://server.example",
-      client: { kind: "direct" as const },
     })),
     release: vi.fn(async () => {}),
   };
@@ -273,3 +274,70 @@ describe("machine enrollments", () => {
     await expect(h.api.waitForConnection(request)).rejects.toThrow("cancelled");
   });
 });
+
+it("enrollment cancellation retries a failed access release", async () => {
+  const h = await harness();
+  const e = await h.api.prepare({ key: "release-retry" });
+  h.serverAccess.release.mockRejectedValueOnce(
+    new Error("temporary access outage"),
+  );
+  await expect(h.api.cancel({ enrollmentId: e.id })).rejects.toThrow(
+    "temporary access outage",
+  );
+  await h.create().forOwner("plugin-a").cancel({ enrollmentId: e.id });
+  expect(h.serverAccess.release).toHaveBeenCalledTimes(2);
+});
+
+it.each(["direct", "connect"])(
+  "upgrades an encrypted pending v1 %s bundle on restart",
+  async (kind) => {
+    const h = await harness();
+    const first = await h.api.prepare({ key: "legacy" });
+    if (first.state !== "pending") throw new Error("Expected pending");
+    const legacy = {
+      ...first.bootstrap,
+      version: 1,
+      client:
+        kind === "direct"
+          ? { kind }
+          : { kind, machineCode: "legacy-code", expiresAt: first.expiresAt },
+    };
+    const key = Buffer.from(
+      (
+        await readFile(join(h.dataDir, "machine-enrollment-secret"), "utf8")
+      ).trim(),
+      "hex",
+    );
+    const iv = randomBytes(12);
+    const cipher = createCipheriv("aes-256-gcm", key, iv);
+    cipher.setAAD(Buffer.from(first.id));
+    const encrypted = Buffer.concat([
+      cipher.update(JSON.stringify(legacy)),
+      cipher.final(),
+    ]);
+    h.db
+      .update(machineEnrollments)
+      .set({
+        encryptedBootstrap: Buffer.concat([
+          iv,
+          cipher.getAuthTag(),
+          encrypted,
+        ]).toString("base64"),
+      })
+      .where(eq(machineEnrollments.id, first.id))
+      .run();
+    const second = await h
+      .create()
+      .forOwner("plugin-a")
+      .prepare({ key: "legacy" });
+    expect(second).toMatchObject({
+      id: first.id,
+      hostId: first.hostId,
+      bootstrap: { version: 2, credential: first.bootstrap.credential },
+    });
+    expect(JSON.stringify(second)).not.toContain("client");
+    expect(h.serverAccess.resolve).toHaveBeenCalledTimes(2);
+    await h.create().forOwner("plugin-a").prepare({ key: "legacy" });
+    expect(h.serverAccess.resolve).toHaveBeenCalledTimes(2);
+  },
+);

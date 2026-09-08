@@ -250,7 +250,6 @@ describe("surface card copy", () => {
         "PluginServerAccess",
         "ServerAccessProviderDeclaration",
         "ServerAccessGrant",
-        "ServerAccessClient",
         "ServerAccessSelection",
       ]),
     );

@@ -128,7 +128,7 @@ if [ -n "$bootstrap_env" ]; then
     if (!/^[A-Za-z_][A-Za-z0-9_]*$/u.test(name)) process.exit(2);
     try {
       const bundle = JSON.parse(process.env[name]);
-      if (bundle.version !== 1 || typeof bundle.hostId !== "string" || !bundle.hostId) process.exit(2);
+      if (bundle.version !== 2 || typeof bundle.hostId !== "string" || !bundle.hostId) process.exit(2);
       process.stdout.write(bundle.hostId);
     } catch { process.exit(2); }
   ' "$bootstrap_env") || usage
@@ -432,6 +432,12 @@ complete_step "Using local host-daemon port $host_daemon_port"
 package_url="${server_url%/}/install/bb-app.tgz"
 package_dir=$(mktemp -d "${TMPDIR:-/tmp}/bb-app.XXXXXX")
 package_file="$package_dir/bb-app.tgz"
+access_config="$package_dir/access.curl"
+: > "$access_config"
+chmod 600 "$access_config"
+if [ -n "$bootstrap_env" ]; then
+  BB_ENROLLMENT="$bootstrap_payload" node -e 'for (const [name,value] of Object.entries(JSON.parse(process.env.BB_ENROLLMENT).headers ?? {})) console.log("header = " + JSON.stringify(name + ": " + value))' > "$access_config"
+fi
 package_headers="$package_dir/headers"
 host_artifact_digest_file="$data_dir/host-artifact.sha256"
 installed_artifact_digest=
@@ -454,7 +460,7 @@ if [ ! -t 2 ]; then
 fi
 active_step "Downloading the server's bb-app package (timeout: 5 minutes)"
 if [ -n "$installed_artifact_digest" ]; then
-  package_status=$(curl "$curl_output_mode" --show-error --location \
+  package_status=$(curl --config "$access_config" "$curl_output_mode" --show-error --location \
     --connect-timeout "$CURL_CONNECT_TIMEOUT_SECONDS" \
     --max-time "$PACKAGE_DOWNLOAD_TIMEOUT_SECONDS" \
     --header "If-None-Match: \"sha256-$installed_artifact_digest\"" \
@@ -463,7 +469,7 @@ if [ -n "$installed_artifact_digest" ]; then
     --write-out '%{http_code}' \
     "$package_url") || package_status=000
 else
-  package_status=$(curl "$curl_output_mode" --show-error --location \
+  package_status=$(curl --config "$access_config" "$curl_output_mode" --show-error --location \
     --connect-timeout "$CURL_CONNECT_TIMEOUT_SECONDS" \
     --max-time "$PACKAGE_DOWNLOAD_TIMEOUT_SECONDS" \
     --dump-header "$package_headers" \
