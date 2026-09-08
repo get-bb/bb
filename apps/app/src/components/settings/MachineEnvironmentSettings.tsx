@@ -270,7 +270,7 @@ export function MachineEnvironmentSettings() {
         </div>
       )}
       {rows.map((row, index) => (
-        <div key={row.id} className="space-y-2 border-t border-border pt-3">
+        <div key={row.id} className="space-y-2">
           <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
             <Input
               className="col-span-2 font-mono sm:col-span-1"
