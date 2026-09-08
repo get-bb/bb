@@ -372,6 +372,8 @@ export function useEnvironmentDiffPatches(
 
   const loadPath = useCallback(
     (path: string) => {
+      const currentFreshnessGeneration =
+        getDiffPatchFreshnessGeneration(environmentId);
       if (
         readDiffPatchEntry({ queryClient, identity, path }) !== undefined &&
         isDiffPatchEntryFresh({ queryClient, identity, path })
@@ -382,9 +384,10 @@ export function useEnvironmentDiffPatches(
         isLoadingForCurrentGeneration(
           inFlightRef.current.loading,
           path,
-          getDiffPatchFreshnessGeneration(environmentId),
+          currentFreshnessGeneration,
         ) ||
-        inFlightRef.current.errors.has(path)
+        inFlightRef.current.errors.get(path)?.generation ===
+          currentFreshnessGeneration
       ) {
         return;
       }

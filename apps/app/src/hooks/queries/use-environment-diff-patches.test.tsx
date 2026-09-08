@@ -360,6 +360,44 @@ describe("useEnvironmentDiffPatches", () => {
     );
   });
 
+  it("loads on demand after a failed generation becomes stale", async () => {
+    const { wrapper } = createQueryClientTestHarness();
+    const patch: DiffPatchEntry = {
+      path: PATH,
+      patch: "fresh",
+      truncated: false,
+    };
+    vi.mocked(sdk.environments.diffPatch)
+      .mockRejectedValueOnce(new Error("Failed to fetch"))
+      .mockResolvedValueOnce(availableResponse(patch));
+    const { result } = renderHook(
+      () => useEnvironmentDiffPatches(ENVIRONMENT_ID, { target: TARGET }),
+      { wrapper },
+    );
+
+    act(() => result.current.loadPath(PATH));
+    await waitFor(() =>
+      expect(result.current.getPatchState(PATH)).toMatchObject({
+        status: "error",
+        error: "Failed to fetch",
+      }),
+    );
+
+    act(() => bumpDiffPatchFreshnessGeneration(ENVIRONMENT_ID));
+    expect(result.current.getPatchState(PATH).status).toBe("idle");
+    act(() => result.current.loadPath(PATH));
+
+    await waitFor(() =>
+      expect(sdk.environments.diffPatch).toHaveBeenCalledTimes(2),
+    );
+    await waitFor(() =>
+      expect(result.current.getPatchState(PATH)).toMatchObject({
+        status: "loaded",
+        patch: patch.patch,
+      }),
+    );
+  });
+
   it("rejects an older response and starts a newer request after a freshness change", async () => {
     const { wrapper, queryClient } = createQueryClientTestHarness();
     const staleRequest = createDeferredPromise<EnvironmentDiffPatchResponse>();
