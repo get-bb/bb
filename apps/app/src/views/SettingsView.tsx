@@ -1,3 +1,4 @@
+import { MachineAccessSettings } from "@/components/settings/MachineAccessSettings";
 import { useMemo, useState, type ReactNode } from "react";
 import {
   Navigate,
@@ -1223,6 +1224,7 @@ export function SettingsView() {
   } else {
     content = (
       <>
+        <MachineAccessSettings />
         <GeneralSettingsSection
           desktopBrowserAvailable={desktopBrowserAvailable}
           managedBranchPrefix={generalSettings.managedBranchPrefix}

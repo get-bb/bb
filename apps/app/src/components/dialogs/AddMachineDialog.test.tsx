@@ -197,6 +197,8 @@ describe("AddMachineDialog", () => {
 
     await waitFor(() => {
       expect(sdk.hosts.create).toHaveBeenCalledWith({
+        key: expect.any(String),
+        signal: expect.any(AbortSignal),
         machineProviderId: "modal-sandbox",
         projectId: null,
         inputs: null,

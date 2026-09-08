@@ -168,3 +168,13 @@ validation to perform, and what to report back. Ask for outcome, changed files
 or artifacts, validation performed, and blockers.
 
 `bb environment show <id>` includes the core-owned lifecycle phase, retirement deadline, and teardown status/attempt/message. Archive or delete the last live thread to begin its provider's retirement grace; unarchive cancels pending retirement. Teardown failures retry automatically. Checkout policy keeps its directory indefinitely.
+
+`bb machine enroll --bootstrap-file <path>` or `--bootstrap-env <NAME>`
+exchanges a versioned, one-time machine bootstrap bundle. A preinstalled image
+can invoke it directly. It refuses a different enrolled identity and is a no-op
+for an existing matching identity. Keep the bundle out of logs and transcripts.
+`bb machine start|stop|uninstall --host-id <id>` operates on that machine's local
+installation. Optional `--server-url` and `--data-dir` assert its identity and
+installation location; BB_DATA_DIR is also an assertion, never permission to
+remove another installation. Uninstall checks ownership before stopping its
+service, releasing its port reservation and deleting its private files.

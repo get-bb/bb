@@ -736,7 +736,7 @@ export const publicApiRoutes = {
       path: "/hosts/:id",
       method: "get",
       request: noRequest<PathId>(),
-      response: jsonResponse<Host>(),
+      response: jsonResponse<Host & { connectMachineId: string | null }>(),
     }),
     update: defineRoute({
       path: "/hosts/:id",

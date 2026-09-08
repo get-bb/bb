@@ -73,6 +73,11 @@ Read the installed declarations for exact current signatures.
 - `PluginDispatchExecutionSources`
 - `PluginEnvironments` — `bb.experimental_environments`: `register` +
   `recheck` (see backend-events.md, environment providers)
+- `PluginServerAccess` — `bb.experimental_serverAccess.register`
+- `ServerAccessProviderDeclaration`
+- `ServerAccessGrant`
+- `ServerAccessClient`
+- `ServerAccessSelection`
 - `PluginMachines` — `bb.experimental_machines.register` (see
   backend-events.md, machine providers)
 - `PluginMachineProviderDeclaration`

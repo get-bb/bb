@@ -124,3 +124,11 @@ every window and client sees the same value.
 - Enable it with `bb settings experiment timelineWindowing true`.
 - It keeps stable timeline wrappers while mounting only rows near the active
   main or nested detail scrollport.
+
+Machine access: `bb settings general machineServerUrl https://bb.example.com`
+sets the server URL reachable by machines. Set `null` to use BB_EXTERNAL_URL.
+`bb settings general defaultMachineAccess direct` selects direct access;
+`connect` selects bb Cloud; `null` selects paired Connect, otherwise direct
+when a URL exists. `bb settings show --json` includes serverAccess with the
+effective URL, its source and provider availability. These grants carry runtime
+requests, including account-pool traffic, after enrolment.

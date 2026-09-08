@@ -167,6 +167,7 @@ const BB_PLUGIN_API_KEYS = [
   "experimental_hooks",
   "experimental_environments",
   "experimental_machines",
+  "experimental_serverAccess",
   "sdk",
   "onDispose",
 ] as const satisfies readonly (keyof BbPluginApi)[];

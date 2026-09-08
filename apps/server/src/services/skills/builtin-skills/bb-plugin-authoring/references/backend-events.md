@@ -482,3 +482,15 @@ Legacy environments resolve their canonical identity on first path lookup.
 Scoped discovery omits providers whose requirements are unmet; availability rows
 are only returned for eligible providers. Without a machine scope, discovery
 includes providers eligible on any persistent machine.
+
+## Server access
+
+`bb.experimental_serverAccess.register` declares id, displayName,
+availability, acquire({ key, hostId, signal }) returning a ServerAccessGrant,
+and release({ key, grantId }). Acquire is idempotent by key. Return a direct
+client or a Connect machine code; the grant serves runtime requests as well
+as enrolment. Core stores the provider id and grant id, never credentials.
+General settings select the default. Plugins can pass ServerAccessSelection
+to the machine enrolment/bootstrap APIs. The direct provider reads
+machineServerUrl, falling back to BB_EXTERNAL_URL. Declaring a URL does not
+prove reachability from a sandbox.

@@ -2896,7 +2896,7 @@ describe("host-daemon session schemas", () => {
       hostDaemonEnrollRequestSchema.safeParse({
         hostId: "host_123",
         hostName: "test-host",
-        hostType: "ephemeral",
+        hostType: "persistent",
       }).success,
     ).toBe(false);
     expect(
@@ -2904,7 +2904,7 @@ describe("host-daemon session schemas", () => {
         hostId: "host_123",
         instanceId: "instance_1",
         hostName: "test-host",
-        hostType: "ephemeral",
+        hostType: "persistent",
         hasMachineCredential: true,
         platform: "linux",
         dataDir: "/tmp/bb-data",

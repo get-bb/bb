@@ -123,7 +123,26 @@ export const systemAiServicesSchema = z.object({
 });
 export type SystemAiServices = z.infer<typeof systemAiServicesSchema>;
 
+export const serverAccessStatusSchema = z.object({
+  providers: z.array(
+    z.object({
+      id: z.string(),
+      displayName: z.string(),
+      availability: z.discriminatedUnion("status", [
+        z.object({ status: z.literal("available") }),
+        z.object({ status: z.literal("setup-required"), message: z.string() }),
+        z.object({ status: z.literal("unavailable"), message: z.string() }),
+      ]),
+    }),
+  ),
+  defaultProviderId: z.string().nullable(),
+  effectiveUrl: z.string().nullable(),
+  urlSource: z.enum(["setting", "BB_EXTERNAL_URL"]).nullable(),
+});
+export type ServerAccessStatus = z.infer<typeof serverAccessStatusSchema>;
+
 export const systemConfigResponseSchema = z.object({
+  serverAccess: serverAccessStatusSchema,
   generalSettings: appSettingsSchema,
   keybindings: appKeybindingsSchema,
   defaultKeybindings: appDefaultKeybindingsSchema,

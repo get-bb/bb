@@ -21,7 +21,7 @@ describe("internal session protocol version", () => {
       const daemonClient = createHostDaemonClient(server.baseUrl, hostKey);
       const staleProtocolVersion = HOST_DAEMON_PROTOCOL_VERSION - 1;
 
-      const protocol186Response = await fetch(
+      const priorProtocolResponse = await fetch(
         `${server.baseUrl}/internal/session/open`,
         {
           method: "POST",
@@ -31,21 +31,21 @@ describe("internal session protocol version", () => {
           },
           body: JSON.stringify({
             hostId: "host-protocol",
-            instanceId: "instance-protocol-186",
+            instanceId: "instance-protocol-pr1",
             hostName: "Protocol Host",
             hostType: "persistent",
             hasMachineCredential: false,
             platform: "darwin",
             dataDir: "/tmp/host-protocol-data",
             localApiPort: 38_888,
-            protocolVersion: 186,
+            protocolVersion: 187,
             activeThreads: [],
             loadedEnvironments: [],
           }),
         },
       );
-      expect(protocol186Response.status).toBe(400);
-      expect(await protocol186Response.json()).toMatchObject({
+      expect(priorProtocolResponse.status).toBe(400);
+      expect(await priorProtocolResponse.json()).toMatchObject({
         code: "protocol_version_mismatch",
         details: {
           retryUpdate: false,

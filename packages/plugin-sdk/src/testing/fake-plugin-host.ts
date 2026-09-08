@@ -292,6 +292,10 @@ export interface FakePluginRegistrations {
     NormalizedPluginEnvironmentProvider
   >;
   machineProviders: ReadonlyMap<string, NormalizedPluginMachineProvider>;
+  serverAccessProviders: ReadonlyMap<
+    string,
+    import("../backend-contract.js").ServerAccessProviderDeclaration
+  >;
   mentionProviders: FakeMentionProviderRecord[];
   /** Live provider registrations from `bb.providers.register`
    * (normalized declarations, registration order; dispose removes). */
@@ -1806,6 +1810,10 @@ function createFakePluginHostInternal(
     NormalizedPluginEnvironmentProvider
   >();
   const machineProviders = new Map<string, NormalizedPluginMachineProvider>();
+  const serverAccessProviders = new Map<
+    string,
+    import("../backend-contract.js").ServerAccessProviderDeclaration
+  >();
   const disposeHooks: Array<() => void | Promise<void>> = [];
   const serviceControllers: AbortController[] = [];
   let nextInteractionId = 1;
@@ -2166,6 +2174,12 @@ function createFakePluginHostInternal(
     experimental_hooks,
     experimental_environments,
     experimental_machines,
+    experimental_serverAccess: {
+      register(declaration) {
+        assertLive();
+        serverAccessProviders.set(declaration.id, declaration);
+      },
+    },
     status,
     server,
     hosts,
@@ -2278,6 +2292,9 @@ function createFakePluginHostInternal(
       },
       get environmentProviders() {
         return new Map(environmentProviders);
+      },
+      get serverAccessProviders() {
+        return new Map(serverAccessProviders);
       },
       get machineProviders() {
         return new Map(machineProviders);

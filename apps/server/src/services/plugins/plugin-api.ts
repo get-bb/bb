@@ -1,3 +1,4 @@
+import { listServerAccessProviders } from "./plugin-server-access-registry.js";
 import { createHash } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
@@ -254,6 +255,10 @@ export interface PluginApiHandle {
   hooks: PluginHookRecords;
   environmentProviders: Map<string, NormalizedPluginEnvironmentProvider>;
   machineProviders: Map<string, NormalizedPluginMachineProvider>;
+  serverAccessProviders: Map<
+    string,
+    import("@get-bb/plugin-sdk").ServerAccessProviderDeclaration
+  >;
   /** HTTP routes recorded by `bb.http.route`; dropped with the handle. */
   httpRoutes: PluginHttpRouteRecord[];
   websocketRoutes: PluginWebSocketRouteRecord[];
@@ -555,6 +560,10 @@ export function createPluginApi(options: {
     NormalizedPluginEnvironmentProvider
   >();
   const machineProviders = new Map<string, NormalizedPluginMachineProvider>();
+  const serverAccessProviders = new Map<
+    string,
+    import("@get-bb/plugin-sdk").ServerAccessProviderDeclaration
+  >();
   const httpRoutes: PluginHttpRouteRecord[] = [];
   const websocketRoutes: PluginWebSocketRouteRecord[] = [];
   const rpcHandlers = new Map<string, PluginRpcHandler>();
@@ -1545,6 +1554,40 @@ export function createPluginApi(options: {
     },
   };
 
+  const experimental_serverAccess: import("@get-bb/plugin-sdk").PluginServerAccess =
+    {
+      register(declaration) {
+        assertLive();
+        if (
+          !/^[a-z][a-z0-9-]*$/u.test(declaration.id) ||
+          declaration.id === "direct"
+        ) {
+          throw new Error("Invalid or reserved server access provider id");
+        }
+        if (
+          !declaration.displayName.trim() ||
+          typeof declaration.availability !== "function" ||
+          typeof declaration.acquire !== "function" ||
+          typeof declaration.release !== "function"
+        ) {
+          throw new Error("Invalid server access provider declaration");
+        }
+        if (
+          serverAccessProviders.has(declaration.id) ||
+          listServerAccessProviders().some(
+            (entry) =>
+              entry.provider.id === declaration.id &&
+              entry.pluginId !== pluginId,
+          )
+        ) {
+          throw new Error(
+            `Server access provider "${declaration.id}" is already registered`,
+          );
+        }
+        serverAccessProviders.set(declaration.id, declaration);
+      },
+    };
+
   const experimental_machines: PluginMachines = {
     register(declaration) {
       assertLive();
@@ -1597,6 +1640,7 @@ export function createPluginApi(options: {
     experimental_hooks,
     experimental_environments,
     experimental_machines,
+    experimental_serverAccess,
     status,
     server,
     hosts,
@@ -1628,6 +1672,7 @@ export function createPluginApi(options: {
     hooks,
     environmentProviders,
     machineProviders,
+    serverAccessProviders,
     httpRoutes,
     websocketRoutes,
     rpcHandlers,

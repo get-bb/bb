@@ -1,3 +1,4 @@
+import { serverAccess } from "./server-access.js";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import {
@@ -650,6 +651,7 @@ export async function cancelMachineLaunch(
         removedHostId = recovered.hostId;
       }
       if (removedHostId !== null) {
+        await serverAccess.release(deps, { key, hostId: removedHostId });
         deleteMachineProjectSources(deps, removedHostId);
         await deps.machineAuth.revokeHostAuthKeys({ hostId: removedHostId });
         const host = getHost(deps.db, removedHostId);
@@ -1062,6 +1064,7 @@ async function removeMachine(deps: Deps, hostId: string): Promise<void> {
           resource,
           signal,
         });
+        await serverAccess.release(deps, { key: hostId, hostId });
         deleteMachineProjectSources(deps, hostId);
         await deps.machineAuth.revokeHostAuthKeys({ hostId });
         updateHost(deps.db, deps.hub, hostId, {

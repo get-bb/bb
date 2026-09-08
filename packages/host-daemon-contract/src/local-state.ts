@@ -24,7 +24,7 @@ const legacyHostAuthStateSchema = z
   .object({
     hostId: z.string().min(1),
     hostKey: nonEmptyTrimmedStringSchema,
-    hostType: z.enum(["persistent", "ephemeral"]).optional(),
+    hostType: z.literal("persistent").optional(),
     serverUrl: z.unknown().optional(),
   })
   .strict()

@@ -660,6 +660,15 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     );
   }
 
+  function listPluginServerAccessProviders() {
+    return [...loaded].flatMap(([pluginId, plugin]) =>
+      [...plugin.handle.serverAccessProviders.values()].map((provider) => ({
+        pluginId,
+        provider,
+      })),
+    );
+  }
+
   function listPluginMachineProviders(): PluginMachineProviderRecord[] {
     const records: PluginMachineProviderRecord[] = [];
     const seen = new Set<string>();
@@ -1817,6 +1826,7 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     listPluginEnvironmentProviders,
     getPluginEnvironmentProvider,
     listPluginMachineProviders,
+    listPluginServerAccessProviders,
     getPluginMachineProvider,
     identities,
     isPackagedBuiltinEntry,

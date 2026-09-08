@@ -109,12 +109,11 @@ export function AddMachineDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
-        {open ? (
-          <AddMachineDialogContent
-            onOpenChange={onOpenChange}
-            serverUrl={serverUrl}
-          />
-        ) : null}
+        <AddMachineDialogContent
+          open={open}
+          onOpenChange={onOpenChange}
+          serverUrl={serverUrl}
+        />
       </DialogContent>
     </Dialog>
   );
@@ -199,12 +198,23 @@ function UnreachableServerNotice({
 }
 
 function AddMachineDialogContent({
+  open,
   onOpenChange,
   serverUrl,
 }: {
+  open: boolean;
   onOpenChange: (open: boolean) => void;
   serverUrl: string | null;
 }) {
+  const createController = useRef<AbortController | null>(null);
+  const createKey = useRef<string | null>(null);
+  useEffect(() => {
+    if (!open) {
+      createController.current?.abort();
+      createKey.current = null;
+    }
+  }, [open]);
+  useEffect(() => () => createController.current?.abort(), []);
   const hostsQuery = useHosts();
   const { providers: machineProviders } = useSystemMachineProviders();
   const machineProviderInputsSlots = usePluginSlots().machineProviderInputs;
@@ -224,6 +234,7 @@ function AddMachineDialogContent({
         );
   const MachineInputsComponent = machineInputsRegistration?.component;
   const selectMachineProvider = (provider: SystemMachineProvider): void => {
+    createKey.current = null;
     setSelectedMachineProvider(provider);
     setMachineInputs(
       provider.inputs === null ? null : provider.acceptsEmptyInputs ? {} : null,
@@ -233,6 +244,7 @@ function AddMachineDialogContent({
   const handleMachineInputsChange = (
     next: PluginMachineProviderInputsChange,
   ): void => {
+    createKey.current = null;
     if (next.status === "blocked") {
       setMachineInputsBlocked(next.reason);
       return;
@@ -245,11 +257,21 @@ function AddMachineDialogContent({
       if (selectedMachineProvider === null) {
         throw new Error("Select a machine provider.");
       }
-      return sdk.hosts.create({
-        machineProviderId: selectedMachineProvider.id,
-        projectId: null,
-        inputs: machineInputs,
-      });
+      const controller = new AbortController();
+      createController.current = controller;
+      createKey.current ??= crypto.randomUUID();
+      try {
+        return await sdk.hosts.create({
+          key: createKey.current,
+          machineProviderId: selectedMachineProvider.id,
+          projectId: null,
+          inputs: machineInputs,
+          signal: controller.signal,
+        });
+      } finally {
+        if (createController.current === controller)
+          createController.current = null;
+      }
     },
     onSuccess: async () => {
       await hostsQuery.refetch();

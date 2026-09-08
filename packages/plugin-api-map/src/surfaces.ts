@@ -826,6 +826,29 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         experimental: true,
       },
       {
+        id: "server-access",
+        tagline: "Connect machines to their server",
+        title: "Machine server access",
+        summary:
+          "Register a server access provider for enrolment and ongoing machine runtime requests.",
+        bullets: [
+          "Register bb.experimental_serverAccess with availability, idempotent acquire and release",
+          "Return a direct URL or a bb Cloud machine code; never persist credentials in machine resources",
+          "Choose a General default or override access for a machine; automatic selection prefers paired bb Cloud then a configured direct URL",
+          "Use the Server URL reachable by machines setting or BB_EXTERNAL_URL fallback; the URL is not a reachability guarantee",
+          "Keep only the provider id and grant id on the host, and release access when removing the machine",
+        ],
+        apiSymbols: [
+          "PluginServerAccess",
+          "ServerAccessProviderDeclaration",
+          "ServerAccessGrant",
+          "ServerAccessClient",
+          "ServerAccessSelection",
+        ],
+        firstParty: ["Connect"],
+        experimental: true,
+      },
+      {
         id: "host-workers",
         tagline: "Run code on enrolled machines",
         title: "Host workers",

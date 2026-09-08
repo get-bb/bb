@@ -1,0 +1,137 @@
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { getHost, setAppSettings, upsertHost } from "@bb/db";
+import { defaultAppSettings } from "@bb/domain";
+import type { ServerAccessProviderDeclaration } from "@get-bb/plugin-sdk";
+import {
+  serverAccess,
+  serverAccessStatus,
+} from "../../../src/services/machines/server-access.js";
+import { setServerAccessBridge } from "../../../src/services/plugins/plugin-server-access-registry.js";
+import { withTestHarness } from "../../helpers/test-app.js";
+
+const signal = new AbortController().signal;
+
+afterEach(() => {
+  setServerAccessBridge(undefined);
+  vi.unstubAllEnvs();
+});
+
+function installProvider(provider: ServerAccessProviderDeclaration) {
+  setServerAccessBridge({
+    list: () => [{ pluginId: "access-plugin", provider }],
+    invoke: async (_id, run) => run(),
+  });
+}
+
+function provider(): ServerAccessProviderDeclaration {
+  return {
+    id: "connect",
+    displayName: "bb Cloud",
+    availability: () => ({ status: "available" }),
+    acquire: async ({ hostId }) => ({
+      id: hostId,
+      serverUrl: "https://bb.example.com",
+      client: {
+        kind: "connect",
+        machineCode: "secret-code",
+        expiresAt: Date.now() + 60_000,
+      },
+    }),
+    release: async () => {},
+  };
+}
+
+describe("machine server access", () => {
+  it("prefers paired Connect and respects an explicit direct default", async () => {
+    await withTestHarness(async ({ deps }) => {
+      vi.stubEnv("BB_EXTERNAL_URL", "https://direct.example.com");
+      installProvider(provider());
+      expect((await serverAccessStatus(deps)).defaultProviderId).toBe(
+        "connect",
+      );
+      setAppSettings(deps.db, {
+        ...defaultAppSettings,
+        defaultMachineAccess: "direct",
+      });
+      expect((await serverAccessStatus(deps)).defaultProviderId).toBe("direct");
+      setAppSettings(deps.db, {
+        ...defaultAppSettings,
+        defaultMachineAccess: "missing",
+      });
+      const host = upsertHost(deps.db, deps.hub, { name: "test" })!;
+      await expect(
+        serverAccess.resolve(deps, { key: "k", hostId: host.id, signal }),
+      ).rejects.toThrow("Configure");
+    });
+  });
+
+  it("stores grant identity without its code and retains provider on retry", async () => {
+    await withTestHarness(async ({ deps }) => {
+      installProvider(provider());
+      const host = upsertHost(deps.db, deps.hub, { name: "test" })!;
+      const grant = await serverAccess.resolve(deps, {
+        key: "k",
+        hostId: host.id,
+        signal,
+      });
+      expect(grant.client.kind).toBe("connect");
+      const row = getHost(deps.db, host.id)!;
+      expect(row.serverAccessProviderId).toBe("connect");
+      expect(row.serverAccessGrantId).toBe(host.id);
+      expect(JSON.stringify(row)).not.toContain("secret-code");
+      await expect(
+        serverAccess.resolve(deps, {
+          key: "k",
+          hostId: host.id,
+          access: { providerId: "direct" },
+          signal,
+        }),
+      ).rejects.toThrow("different");
+      await serverAccess.release(deps, { key: "k", hostId: host.id });
+      expect(getHost(deps.db, host.id)?.serverAccessGrantId).toBeNull();
+    });
+  });
+
+  it("keeps failed release retryable and refuses invalid grant output without echoing it", async () => {
+    await withTestHarness(async ({ deps }) => {
+      const release = vi.fn().mockRejectedValueOnce(new Error("retry"));
+      installProvider({ ...provider(), release });
+      const host = upsertHost(deps.db, deps.hub, { name: "test" })!;
+      await serverAccess.resolve(deps, { key: "k", hostId: host.id, signal });
+      await expect(
+        serverAccess.release(deps, { key: "k", hostId: host.id }),
+      ).rejects.toThrow("retry");
+      expect(getHost(deps.db, host.id)?.serverAccessGrantId).toBe(host.id);
+      installProvider({
+        ...provider(),
+        acquire: async () => ({
+          id: "id",
+          serverUrl: "https://secret:secret@example.com",
+          client: { kind: "direct" },
+        }),
+      });
+      await expect(
+        serverAccess.resolve(deps, { key: "k", hostId: host.id, signal }),
+      ).rejects.toThrow("invalid grant");
+    });
+  });
+
+  it("uses the explicit machine URL before the environment fallback", async () => {
+    vi.stubEnv("BB_EXTERNAL_URL", "https://fallback.example.com");
+    await withTestHarness(async ({ deps }) => {
+      setAppSettings(deps.db, {
+        ...defaultAppSettings,
+        machineServerUrl: "https://configured.example.com",
+      });
+      expect(await serverAccessStatus(deps)).toMatchObject({
+        effectiveUrl: "https://configured.example.com",
+        urlSource: "setting",
+      });
+      setAppSettings(deps.db, defaultAppSettings);
+      expect(await serverAccessStatus(deps)).toMatchObject({
+        effectiveUrl: "https://fallback.example.com",
+        urlSource: "BB_EXTERNAL_URL",
+      });
+    });
+  });
+});

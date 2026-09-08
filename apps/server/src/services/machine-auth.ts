@@ -31,7 +31,7 @@ const currentMachineCredentialMetadataSchema = z
 const legacyMachineCredentialMetadataSchema = z
   .object({
     hostId: z.string().min(1),
-    hostType: z.enum(["persistent", "ephemeral"]),
+    hostType: z.literal("persistent"),
     enrollSource: z.enum(["loopback", "public-multi-machine"]).optional(),
   })
   .strict()

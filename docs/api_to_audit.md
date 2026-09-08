@@ -2591,3 +2591,24 @@ first-party environment host module consumes them for checkout and worktree.
   is released by attachment or completed cancellation cleanup,
   including after failure. Stabilize after restart, cancellation,
   competing checkout, and path-normalization behavior has been audited.
+
+## `bb.experimental_serverAccess.register`
+
+Registers server access through `ServerAccessProviderDeclaration`: id,
+displayName, availability, acquire({ key, hostId, signal }) and
+release({ key, grantId }). `ServerAccessGrant` carries an id, serverUrl and
+`ServerAccessClient` (direct or Connect machine code with expiry).
+`ServerAccessSelection` selects a provider explicitly. Core persists only
+provider id and grant id per host; credentials travel in bootstrap delivery.
+Direct access reads General's machineServerUrl with BB_EXTERNAL_URL fallback.
+General's defaultMachineAccess selects a provider; automatic prefers paired
+Connect, then an available direct URL. Access covers account-pool and other
+runtime requests after enrolment. Host detail includes connectMachineId so
+Connect can revoke its credential by grant host identity without core knowing
+how the provider revokes access.
+
+Before stabilization, prove retry-safe acquire/release across process death,
+credential privacy and revocation, explicit and automatic defaults, expired
+codes, removal while a provider is unavailable, and both enrolment and runtime
+traffic with independent direct and Connect consumers. Availability does not
+prove reachability from a remote machine.

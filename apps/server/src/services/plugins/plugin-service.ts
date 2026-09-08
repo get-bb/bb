@@ -188,6 +188,7 @@ export interface PluginService {
   hooks: PluginHookProvider;
   environmentProviders: PluginEnvironmentProviderBridge;
   machineProviders: PluginMachineProviderBridge;
+  serverAccessProviders: import("./plugin-server-access-registry.js").ServerAccessBridge;
   /**
    * Bind the in-process BB SDK to the running server. Call once the HTTP
    * listener is up, before start(): bb.sdk throws until this runs.
@@ -921,6 +922,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     listPluginEnvironmentProviders,
     getPluginEnvironmentProvider,
     listPluginMachineProviders,
+    listPluginServerAccessProviders,
     getPluginMachineProvider,
     isPackagedBuiltinEntry,
     loadAll,
@@ -1619,6 +1621,15 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
           : { ok: false, error: outcome.error };
       },
       decisionTimeoutMs: pluginHookTimeoutMs,
+    },
+
+    serverAccessProviders: {
+      list: listPluginServerAccessProviders,
+      invoke: async (pluginId, run) => {
+        const outcome = await invokeWrapped(pluginId, "server access", run);
+        if (!outcome.ok) throw new Error("Server access provider failed");
+        return outcome.value;
+      },
     },
 
     machineProviders: {

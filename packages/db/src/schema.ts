@@ -95,6 +95,8 @@ export const hosts = sqliteTable(
     name: text("name").notNull(),
     connectMachineId: text("connect_machine_id"),
     machineProviderId: text("machine_provider_id"),
+    serverAccessProviderId: text("server_access_provider_id"),
+    serverAccessGrantId: text("server_access_grant_id"),
     resource: text("resource", { mode: "json" }).$type<JsonValue>(),
     machineProviderSelection: text("machine_provider_selection", {
       mode: "json",

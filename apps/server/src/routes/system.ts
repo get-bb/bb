@@ -1,3 +1,4 @@
+import { serverAccessStatus } from "../services/machines/server-access.js";
 import {
   getAppSettings,
   getAppKeybindingOverrides,
@@ -177,6 +178,7 @@ export function registerSystemRoutes(
     ];
     return {
       generalSettings: getAppSettings(deps.db),
+      serverAccess: await serverAccessStatus(deps),
       keybindings: applyAppKeybindingOverrides(
         DEFAULT_APP_KEYBINDINGS,
         keybindingOverrides,

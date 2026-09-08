@@ -101,3 +101,21 @@ selected connected machine. Omit the selector to keep the existing local CLI
 machine fallback (normally the primary machine). Pass `--clone` to source add
 instead of `--path` to clone the project's Git remote there; `--remote-url` and
 `--target-path` optionally override the clone inputs.
+
+## Server access
+
+Set General → Server URL reachable by machines, or run `bb settings general
+machineServerUrl https://bb.example.com`. An unset value uses BB_EXTERNAL_URL.
+General shows the effective URL and source. Set Default machine access with
+`bb settings general defaultMachineAccess direct` or `connect`; `null` uses
+paired Connect first, then direct when a URL exists. `bb settings show --json`
+includes provider availability and the effective selection. Machines use this
+access for ongoing runtime requests, including account-pool endpoints.
+
+## Local daemon lifecycle
+
+`bb machine start|stop|uninstall --host-id <id>` starts, stops or removes an
+owned local installation. Optional `--server-url <url>` and `--data-dir <path>`
+assert the expected installation. BB_DATA_DIR is treated as an assertion too.
+An identity mismatch refuses the operation. These commands are local machine
+primitives; `bb machine remove` asks the server to remove the provider resource.

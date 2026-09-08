@@ -1,3 +1,4 @@
+import { serverAccess } from "../services/machines/server-access.js";
 import { getNonDestroyedHost, updateHost } from "@bb/db";
 import {
   publicApiRoutes,
@@ -132,9 +133,11 @@ export function registerHostRoutes(
   get(routes.list, (context) => context.json(listPublicHostsWithStatus(deps)));
 
   get(routes.get, (context) =>
-    context.json(
-      requireNonDestroyedHostWithStatus(deps, context.req.param("id")),
-    ),
+    context.json({
+      ...requireNonDestroyedHostWithStatus(deps, context.req.param("id")),
+      connectMachineId: requireMutableHost(deps, context.req.param("id"))
+        .connectMachineId,
+    }),
   );
 
   patch(routes.update, (context, payload) => {
@@ -229,6 +232,7 @@ export function registerHostRoutes(
       return context.json({ ok: true });
     }
 
+    await serverAccess.release(deps, { key: hostId, hostId });
     await deps.machineAuth.revokeHostAuthKeys({
       hostId,
     });
