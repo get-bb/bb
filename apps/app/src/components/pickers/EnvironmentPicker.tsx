@@ -241,13 +241,14 @@ export function EnvironmentPickerUI({
   );
 
   const selected = useMemo((): SelectedEnvironment => {
-    if (
-      selectedMachineProvider !== undefined &&
-      selectedMachineProvider.environmentRow !== null
-    ) {
+    if (selectedMachineProvider !== undefined) {
       return {
-        modeLabel: selectedMachineProvider.environmentRow.displayName,
-        compactModeLabel: selectedMachineProvider.environmentRow.displayName,
+        modeLabel:
+          selectedMachineProvider.environmentRow?.displayName ??
+          selectedMachineProvider.displayName,
+        compactModeLabel:
+          selectedMachineProvider.environmentRow?.displayName ??
+          selectedMachineProvider.displayName,
         icon: pluginIconName(selectedMachineProvider.icon),
       };
     }
@@ -406,7 +407,7 @@ function MachineProviderEnvironmentOptions({
   inputsControlProviderIds: ReadonlySet<string>;
   onSelect: (provider: SystemMachineProvider) => void;
 }) {
-  const rows = providers.filter((provider) => provider.environmentRow !== null);
+  const rows = providers;
   if (rows.length === 0) return null;
   return (
     <>

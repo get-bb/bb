@@ -746,22 +746,34 @@ export function NewThreadComposer({
   );
   const handleSelectMachineProvider = useCallback(
     (provider: SystemMachineProvider) => {
-      if (provider.environmentRow === null) return;
-      changeEnvironment(
-        encodeProviderValue(provider.environmentRow.environmentProviderId),
-        {
-          type: "new",
-          machineProviderId: provider.id,
-          inputs:
-            provider.inputs === null
-              ? null
-              : provider.acceptsEmptyInputs
-                ? {}
-                : null,
-        },
-      );
+      const current = parseEnvironmentValue(environmentSelectionValue);
+      const environmentProviderId =
+        provider.environmentRow?.environmentProviderId ??
+        (current?.type === "provider"
+          ? current.environmentProviderId
+          : environmentProviders?.find((entry) =>
+              isProjectless
+                ? entry.requires.projectless
+                : entry.id === PROJECT_CHECKOUT_ENVIRONMENT_PROVIDER_ID,
+            )?.id);
+      if (environmentProviderId === undefined) return;
+      changeEnvironment(encodeProviderValue(environmentProviderId), {
+        type: "new",
+        machineProviderId: provider.id,
+        inputs:
+          provider.inputs === null
+            ? null
+            : provider.acceptsEmptyInputs
+              ? {}
+              : null,
+      });
     },
-    [changeEnvironment],
+    [
+      changeEnvironment,
+      environmentSelectionValue,
+      environmentProviders,
+      isProjectless,
+    ],
   );
   const effectiveEnvironmentValue = useMemo(
     () =>
@@ -1018,10 +1030,7 @@ export function NewThreadComposer({
     );
   }, [machineProviderInputsSlots, machineProviders]);
   const machineProviderInputsRegistration = useMemo(() => {
-    if (
-      selectedMachineProvider === undefined ||
-      selectedMachineProvider.inputs === null
-    ) {
+    if (selectedMachineProvider === undefined) {
       return undefined;
     }
     return machineProviderInputsSlots.find(

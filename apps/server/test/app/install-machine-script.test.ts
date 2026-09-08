@@ -14,7 +14,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { createServer as createNetServer } from "node:net";
-import { delimiter, join } from "node:path";
+import { delimiter, dirname, join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 const SCRIPT_PATH = new URL(
@@ -341,6 +341,43 @@ exec '${process.execPath}' "$@"
       "  ✗  Could not parse the server URL not-a-url.",
     );
     expect(result.stderr).not.toContain("TypeError");
+  });
+
+  it("prefers the newly installed CLI and honors an explicit machine directory", () => {
+    const fixture = createFixture();
+    writeServerInstallTools(fixture, 200);
+    writeExecutable(join(fixture.binDir, "npm"), "#!/bin/sh\nexit 19\n");
+    runScript(JOIN_ARGS, fixture, { BB_INSTALL_SKIP_SERVICE: "1" });
+    const olderCli = join(
+      fixture.homeDir,
+      ".bb-machines",
+      "older",
+      "npm",
+      "bin",
+      "bb",
+    );
+    mkdirSync(dirname(olderCli), { recursive: true });
+    writeExecutable(olderCli, "#!/bin/sh\necho wrong-installation\n");
+    const installedCli = join(fixture.dataDir, "npm", "bin", "bb");
+    mkdirSync(dirname(installedCli), { recursive: true });
+    writeExecutable(installedCli, '#!/bin/sh\nprintf "%s" "$BB_DATA_DIR"\n');
+    const shim = join(fixture.homeDir, ".local", "bin", "bb");
+    const explicit = spawnSync(
+      shim,
+      ["machine", "uninstall", "--host-id", "host-test"],
+      { env: createScriptEnv(fixture, {}), encoding: "utf8" },
+    );
+    expect(explicit.status).toBe(0);
+    expect(explicit.stdout).toBe(fixture.dataDir);
+    writeExecutable(installedCli, "#!/bin/sh\necho current-installation\n");
+    const env = createScriptEnv(fixture, {});
+    delete env.BB_DATA_DIR;
+    const selected = spawnSync(shim, ["machine", "enroll"], {
+      env,
+      encoding: "utf8",
+    });
+    expect(selected.status).toBe(0);
+    expect(selected.stdout.trim()).toBe("current-installation");
   });
 
   it("publishes cleanup before package installation can fail", () => {

@@ -23,19 +23,11 @@
     "lint": "oxlint .",
     "typecheck": "tsc --noEmit"
   },
-  "dependencies": {
-    "zod": "^4.3.6"
-  },
   "devDependencies": {
     "@get-bb/plugin-sdk": "workspace:*",
-    "@testing-library/react": "^16.3.2",
     "@types/node": "^22.0.0",
     "@types/react": "^19.0.0",
-    "jsdom": "^29.0.1",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0",
-    "typescript": "npm:@typescript/typescript6@^6.0.2",
-    "vitest": "^4.1.1",
-    "@bb/db": "workspace:*"
+    "typescript": "npm:@typescript/typescript6@^6.0.2"
   }
 }

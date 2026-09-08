@@ -4,7 +4,7 @@ export function ManualMachineInputs() {
   return (
     <div className="space-y-2 text-sm text-muted-foreground">
       <p>
-        Run the enrollment command on an existing machine ; bb is installed if
+        Run the enrollment command on an existing machine; bb is installed if
         needed. Keep this window open while it connects.
       </p>
       <p>

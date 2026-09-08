@@ -212,17 +212,26 @@ async function release(
     ? JSON.stringify([enrollment.owner, enrollment.key])
     : args.key;
   const host = getHost(deps.db, args.hostId);
-  if (!host?.serverAccessProviderId) return;
-  if (host.serverAccessProviderId !== "direct") {
+  if (!host) return;
+  const providerId =
+    host.serverAccessProviderId ??
+    (host.machineProviderId === "manual" && host.connectMachineId !== null
+      ? "connect"
+      : null);
+  const grantId =
+    host.serverAccessGrantId ??
+    (host.connectMachineId === null ? null : host.id);
+  if (providerId === null) return;
+  if (providerId !== "direct") {
     const record = listServerAccessProviders().find(
-      (entry) => entry.provider.id === host.serverAccessProviderId,
+      (entry) => entry.provider.id === providerId,
     );
     if (!record)
       throw new Error("Server access provider is unavailable for cleanup");
     await invokeServerAccessProvider(record, () =>
       record.provider.release({
         key: acquisitionKey,
-        grantId: host.serverAccessGrantId,
+        grantId,
         hostId: args.hostId,
       }),
     );

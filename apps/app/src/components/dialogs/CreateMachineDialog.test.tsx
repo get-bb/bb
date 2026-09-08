@@ -65,6 +65,7 @@ it("lists manual alongside other providers and never mints a legacy join code", 
     message: null,
     log: "",
     cancelPending: false,
+    terminal: false,
   };
   vi.mocked(sdk.hosts.submit).mockResolvedValue(launch);
   vi.mocked(sdk.hosts.follow).mockImplementation(async (args) => {

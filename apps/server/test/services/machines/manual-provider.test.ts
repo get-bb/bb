@@ -5,6 +5,7 @@ import {
   getMachineLaunch,
   machineEnrollments,
   setAppSettings,
+  hosts,
 } from "@bb/db";
 import { withTestHarness } from "../../helpers/test-app.js";
 import {
@@ -103,5 +104,42 @@ it("creates, cancels, and removes manual machines through the production lifecyc
     } finally {
       release.mockRestore();
     }
+  });
+});
+
+it("releases legacy Connect access when removing a backfilled manual host", async () => {
+  await withTestHarness(async (h) => {
+    await h.pluginService.install("builtin:machine-manual", { kind: "root" });
+    const api = h.pluginService.getApi("machine-manual");
+    if (!api) throw new Error("Manual provider did not load");
+    const release = vi.fn(async () => {});
+    api.experimental_serverAccess.register({
+      id: "connect",
+      displayName: "Legacy access",
+      availability: () => ({ status: "available" }),
+      acquire: async () => {
+        throw new Error("Must not acquire during removal");
+      },
+      release,
+    });
+    h.db
+      .insert(hosts)
+      .values({
+        id: "legacy-manual",
+        name: "Legacy",
+        connectMachineId: "legacy-cloud-machine",
+        machineProviderId: "manual",
+        resource: { version: 1, hostId: "legacy-manual" },
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      })
+      .run();
+    expect(requestMachineRemoval(h.deps, "legacy-manual")).toBe(true);
+    await sweepProviderMachine(h.deps, "legacy-manual");
+    expect(release).toHaveBeenCalledWith({
+      key: "legacy-manual",
+      grantId: "legacy-manual",
+    });
+    expect(getHost(h.db, "legacy-manual")?.phase).toBe("destroyed");
   });
 });
