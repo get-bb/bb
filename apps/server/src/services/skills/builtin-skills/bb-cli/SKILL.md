@@ -69,7 +69,8 @@ BB_HOST_DAEMON_PORT only for an intentional non-default target.
   `bb machine start|stop|uninstall --host-id <id>` for an owned installation;
   see references/thread-creation.md for isolation and ownership checks.
 - Use `bb machine suspend|resume <id-or-name>` only for providers that expose
-  suspend and resume. Use `bb machine retry-cleanup <id-or-name>` to retry a
+  suspend and resume. Resume waits for pending suspension and is a no-op
+  when already active. Use `bb machine retry-cleanup <id-or-name>` to retry a
   failed provider teardown immediately.
 - `bb environment providers` lists Project checkout, Worktree, then other
   installed providers by display name. Read or set `managedBranchPrefix`
@@ -117,3 +118,8 @@ plugins; do not add plugin command manuals here.
 ## Built-in browser control
 
 Use `bb browser instances --host <host-id> --json` to discover a desktop. Commands `tabs`, `create`, `acquire`, `connection`, `release`, `reveal`, `capture`, `close`, and `watch` require explicit `--host`, `--instance`, `--generation`, and `--thread`. See `bb guide browser` and `bb browser --help` for flags. New tabs use separate automation profiles; personal-tab control needs an explicit handoff. Connection credentials are written with `connection --output <new-file>` and work only on the browser host; keep them out of chat and public port shares.
+
+`bb machine show <id-or-name> --json` includes provider-owned inventory and
+estimates in `providerDetails` when available. Provider inventory failures are
+reported; this is not billing/invoice data. Suspension requires idle live threads
+and no open terminals; empty machines can use an opted-in provider idle policy.

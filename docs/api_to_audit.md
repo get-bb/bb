@@ -2721,3 +2721,18 @@ unresolved cleanup remains recorded. Known resources and access release keep
 retrying at removeRetryMs indefinitely. An explicit cancel retries cleanup even
 after automatic retries are exhausted. Stabilization requires distinguishing
 definitive vendor rejection from transport timeouts and ambiguous submissions.
+## Machine dev-box policy and inventory
+
+`PluginMachineProviderDefinition.experimental_idleSuspendMs({hostId, resource})`
+resolves a nullable per-machine timeout. Core retains dispatch exclusion, busy
+thread/terminal checks, a durable idle baseline (including empty machines), and
+retirement policy. Stabilize after testing provider reloads, empty boxes, terminals,
+and wake-on-dispatch across providers.
+
+`PluginMachineProviderDefinition.experimental_details({hostId, resource, signal})`
+returns `{summary, values}` inventory for machine rows/details and
+`bb.sdk.hosts.experimental_providerDetails({hostId, signal})`. The server parses
+JSON at the provider boundary; the callback must honor cancellation and avoid
+secrets. `bb machine show --json` includes `providerDetails`. Stabilize after
+reviewing cost freshness, unavailable providers and bounded output on large
+accounts. No daemon wire fields change.

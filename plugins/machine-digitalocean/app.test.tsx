@@ -39,7 +39,7 @@ describe("DigitalOcean machine inputs", () => {
     );
   });
   it("restores a saved machine selection", async () => {
-    const value = { region: "ams3", size: "s-4vcpu-8gb" };
+    const value = { region: "ams3", size: "s-4vcpu-8gb", idleMinutes: null };
     const { slot, onChange } = renderInputs(value);
     expect(slot.getByLabelText("Region")).toHaveProperty("value", value.region);
     expect(slot.getByLabelText("Size")).toHaveProperty("value", value.size);
@@ -55,7 +55,7 @@ describe("DigitalOcean machine inputs", () => {
     await waitFor(() =>
       expect(onChange).toHaveBeenLastCalledWith({
         status: "ready",
-        value: { region: "sfo3", size: "s-2vcpu-4gb" },
+        value: { region: "sfo3", size: "s-2vcpu-4gb", idleMinutes: null },
       }),
     );
     fireEvent.change(slot.getByLabelText("Size"), {
@@ -64,7 +64,7 @@ describe("DigitalOcean machine inputs", () => {
     await waitFor(() =>
       expect(onChange).toHaveBeenLastCalledWith({
         status: "ready",
-        value: { region: "sfo3", size: "s-4vcpu-8gb" },
+        value: { region: "sfo3", size: "s-4vcpu-8gb", idleMinutes: null },
       }),
     );
   });

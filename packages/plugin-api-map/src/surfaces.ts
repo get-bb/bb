@@ -804,6 +804,8 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Checkpoint a recoverable private resource during suspend before destructive cleanup",
           "Await resume.checkpoint(resource) before bootstrap; core fences provider ownership, phase and operation and recovers the same enrollment after restart",
           "Allocation checkpoints are recovery records, not filesystem saves; daemon-connected does not mean agent-ready",
+          "Resolve per-machine idle timeouts with experimental_idleSuspendMs; core checks activity and terminals and persists the empty-machine idle baseline",
+          "Publish inventory and estimates through experimental_details; read them with bb.sdk.hosts.experimental_providerDetails, machine rows/details and bb machine show --json",
           "Optionally declare suspend and resume together; core suspends after idle and resumes on the next send",
           "Choose last-thread plus grace retirement with environment-removal cascade, or never retirement with explicit user removal",
           "Return an opaque private JSON resource that core persists and passes back to lifecycle operations",

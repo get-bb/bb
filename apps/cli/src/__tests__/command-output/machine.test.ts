@@ -137,7 +137,10 @@ describe("bb machine command output", () => {
     ]);
   });
 
-  it("creates globally with absent inputs and lets the server choose the key", async () => {
+  it.each([
+    { provider: "ssh", inputs: null, argv: [] },
+    { provider: "digitalocean", inputs: {}, argv: ["--inputs", "{}"] },
+  ])("creates $provider globally without a project and lets the server choose the key", async ({ provider, inputs, argv }) => {
     const create = vi.fn(async () => launch);
     stubServerApi({
       "v1.hosts.launches.:id.$get": vi.fn(async () => launch),
@@ -145,11 +148,11 @@ describe("bb machine command output", () => {
       "v1.hosts.$post": create,
     });
 
-    await runCommand(["machine", "create", "--provider", "ssh"], register);
+    await runCommand(["machine", "create", "--provider", provider, ...argv], register);
 
     expect(create).toHaveBeenCalledWith(
       {
-        json: { machineProviderId: "ssh", projectId: null, inputs: null },
+        json: { machineProviderId: provider, projectId: null, inputs },
       },
       { init: { signal: expect.any(AbortSignal) } },
     );

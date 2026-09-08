@@ -6,15 +6,25 @@ machines SDK using this provider. Configure project sources and agent credential
 on the resulting machine separately. The plugin does not create an environment
 provider or copy a project checkout.
 
-For a project with a Git remote, the DigitalOcean environment-picker row creates
-a machine and selects Project checkout. Core clones/registers the project source
-before creating the environment. This shortcut uses the same Region and Size
-inputs as standalone creation. Without a project Git remote the checkout shortcut
-is hidden; standalone creation and an explicit Personal workspace selection
-remain available because the machine provider itself requires no project.
+Create the dev box from Settings → Machines. Once enrolled, it appears as a
+machine section in the composer picker, like SSH/Tailscale machines. DigitalOcean
+does not declare a new-machine/project-checkout shortcut in that picker.
+Standalone CLI and SDK creation require no project:
+
+```sh
+bb machine create --provider digitalocean --inputs '{}' --json
+```
+
+```ts
+await bb.sdk.hosts.create({ machineProviderId: "digitalocean", projectId: null, inputs: {} });
+```
+
+Core requires an inputs object for providers with an input schema; an empty
+object selects the DigitalOcean defaults. Configure project sources or select
+Personal workspace on the enrolled machine separately.
 
 Set the secret plugin setting `DIGITALOCEAN_TOKEN`. The token needs Droplet read,
-create, update and delete permissions, image read, and tag creation. Each launch
+create, update and delete permissions, image/snapshot read and delete, snapshot creation, reserved-IP read, and tag creation. Each launch
 accepts nonsecret `region` and `size` inputs, defaulting to `nyc3` and
 `s-2vcpu-4gb`. The Machines-page create picker exposes editable Region and Size
 fields with those same defaults. Enter DigitalOcean region and size slugs using
@@ -38,11 +48,77 @@ resource records, allocation intents, and command arguments. DigitalOcean and
 root on the Droplet can access user data; the enrollment credential is one-time
 and short-lived.
 
-Machines have no idle suspension or automatic retirement. Suspend uses the
-DigitalOcean `power_off` action (a hard power-off); resume uses `power_on` and
-waits for the existing machine connection. Removal deletes the Droplet. No
-filesystem snapshots, copied enrollment code, or plugin daemon supervisor are
-involved.
+## Long-lived dev boxes
+
+Every sleep now quiesces through core, gracefully shuts down (`shutdown`), confirms
+off, snapshots the disk and remains off. Busy threads and open terminals prevent
+sleep; finish work and close terminals first. Snapshot names encode host identity
+and UTC time. Metadata (ID, size and creation time) is durable before pruning.
+Snapshot intent belongs to a shutdown generation. After any wake, the next sleep
+creates a fresh backup; only retries within the same shutdown reconcile an
+uncertain submission. If backup fails after shutdown, status reads **off, backup failed**, the machine
+remains suspended and prior backups survive. Retry after waking. Snapshot now
+also sleeps the machine; it requires an active machine. This is disk backup,
+not a memory checkpoint. Attached volumes need separate protection.
+
+Retention defaults to 2; the plugin setting `snapshotRetention` (1–100) supplies
+new-machine defaults. Each box can override `retention`. Only snapshots with the
+plugin's host-specific ownership name and matching Droplet resource ID are
+pruned. Remove deletes the Droplet and all its plugin-owned snapshots; manual
+snapshots and other machines' snapshots survive. Cleanup failures remain retryable.
+
+Idle stop is opt-in: creation accepts `idleMinutes` (null by default), including
+in Add machine. Core's policy checks live thread activity and open terminals,
+including machines with no threads, and wakes on dispatch. Automatic retirement
+remains **never**. Plugin settings expose a machine selector, idle duration,
+retention, weekday sleep/wake times, timezone and immediate snapshot/wake/cost.
+
+**Powered-off droplets still bill; snapshot storage bills per GB.** See official
+[Droplet pricing](https://docs.digitalocean.com/products/droplets/details/pricing/),
+[snapshot pricing](https://docs.digitalocean.com/products/snapshots/details/pricing/)
+and [reserved IP pricing](https://docs.digitalocean.com/products/networking/reserved-ips/details/pricing/).
+Cost is labelled an estimate: live `/v2/sizes` rates, running/off observations,
+actual snapshot GB × $0.06/month and account-wide unassigned reserved IPv4 at
+$5/month are shown separately. Assigned IPs are free. Machine rows/details,
+`bb machine show --json`, and the plugin status/cost commands expose estimates.
+Account-wide rates, snapshots and reserved IPs are shared across callers for
+30 seconds; concurrent reads coalesce and mutations invalidate the cache.
+Sleep JSON always includes saved power/backup status and snapshot ID. Optional
+`details.values.cost` is null with `inventoryError` when inventory is unavailable;
+status and the UI also retain saved backup state during vendor outages.
+Tax, bandwidth, volumes and credits are excluded; this is not an invoice.
+
+### Configure from a local thread
+
+```sh
+bb digitalocean configure <host-id> '{"idleMinutes":60,"retention":2,"schedule":{"weekdays":[1,2,3,4,5],"sleep":"19:00","wake":"08:00","timezone":"America/Los_Angeles"}}' --json
+bb digitalocean snapshot-now <host-id> --json
+bb digitalocean sleep <host-id> --json
+bb digitalocean wake <host-id> --json
+bb digitalocean status <host-id> --json
+bb digitalocean cost <host-id> --json
+bb machine show <host-id> --json
+bb digitalocean configure <host-id> '{"idleMinutes":null,"retention":2,"schedule":null}' --json
+```
+
+Configuration replaces all three fields; omitted fields get their documented
+defaults. Saving resets the schedule cursor to now and invalidates previously selected
+runs. A run already dispatched through core may finish, but cannot overwrite
+the replacement configuration cursor. Commands are backed by the
+plugin RPC contract (`configure`, `configuration`, `machines`, `status`, `sleep`,
+`wake`) through `bb.sdk.plugins.callRpc`; `snapshot-now` aliases core-backed sleep.
+Core lifecycle SDK parity is `bb.sdk.hosts.suspend/resume`, and inventory is
+`bb.sdk.hosts.experimental_providerDetails({hostId})`.
+
+The SDK's durable minute cron runs on the **always-on BB server**, never on the
+sleeping box. Weekdays use Sunday=0 through Saturday=6. Schedule times require an
+IANA timezone. On a missed run or restart, only the latest action in the past
+eight days runs; completed cursors are durable. Busy/failed actions retry next
+minute until superseded by a newer action. A wake waits for an in-progress
+suspension; skipped transitional states remain pending. Waking an active box
+is a no-op. Nonexistent spring-DST times are
+skipped; repeated autumn times may run twice (already-off/on operations are
+skipped). Vendor lifecycle operations always route through core suspend/resume.
 
 Creation prepares enrollment before vendor allocation and awaits a core resource
 checkpoint as soon as the allocation ID is known. The checkpoint contains no

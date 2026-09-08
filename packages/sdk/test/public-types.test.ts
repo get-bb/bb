@@ -277,6 +277,7 @@ type ExpectedHostsKey =
   | "launch"
   | "follow"
   | "cancel"
+  | "experimental_providerDetails"
   | "cloneDefaultPath"
   | "create"
   | "createJoinCode"

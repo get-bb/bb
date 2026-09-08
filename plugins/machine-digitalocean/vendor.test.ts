@@ -78,7 +78,7 @@ describe("DigitalOcean REST adapter", () => {
         response({ action: { id: 10, status: "errored" } }, 201),
       );
     const api = createVendor("secret", request);
-    const pending = api.power(42, "power_off", signal());
+    const pending = api.power(42, "shutdown", signal());
     await pending;
     expect(request.mock.calls[1]?.[0]).toBe(
       "https://api.digitalocean.com/v2/droplets/42/actions/9",
@@ -89,7 +89,7 @@ describe("DigitalOcean REST adapter", () => {
   });
 
   it.each([
-    { type: "power_off", stale: "active", desired: "off" },
+    { type: "shutdown", stale: "active", desired: "off" },
     { type: "power_on", stale: "off", desired: "active" },
   ] as const)(
     "waits for $desired after the $type action completes",
@@ -120,7 +120,7 @@ describe("DigitalOcean REST adapter", () => {
       return response({ droplet });
     });
     await expect(
-      createVendor("secret", request).power(42, "power_off", controller.signal),
+      createVendor("secret", request).power(42, "shutdown", controller.signal),
     ).rejects.toThrow();
     expect(request).toHaveBeenCalledTimes(2);
   });
@@ -132,7 +132,7 @@ describe("DigitalOcean REST adapter", () => {
       return response({ action: { id: 9, status: "in-progress" } }, 201);
     });
     await expect(
-      createVendor("secret", request).power(42, "power_off", controller.signal),
+      createVendor("secret", request).power(42, "shutdown", controller.signal),
     ).rejects.toThrow();
     expect(request).toHaveBeenCalledOnce();
   });
@@ -158,4 +158,70 @@ describe("DigitalOcean REST adapter", () => {
     ).rejects.toThrow(/^DigitalOcean API returned HTTP 401\.$/);
     await expect(api.destroy(42, signal())).resolves.toBeUndefined();
   });
+});
+
+it("shares account inventory across concurrent hosts, expires after 30 seconds and invalidates every mutation", async () => {
+  let time = 0;
+  let status = "active";
+  const request = vi.fn<VendorFetch>(async (url, options) => {
+    const path = new URL(String(url)).pathname;
+    if (options?.method === "DELETE")
+      return new Response(null, { status: 204 });
+    if (path.endsWith("/actions")) {
+      const body = JSON.parse(String(options?.body));
+      if (body.type === "shutdown") status = "off";
+      if (body.type === "power_on") status = "active";
+      return response({ action: { id: 1, status: "completed" } });
+    }
+    if (path === "/v2/sizes")
+      return response({
+        sizes: [{ slug: "small", price_hourly: 0.006, price_monthly: 4 }],
+      });
+    if (path === "/v2/snapshots") return response({ snapshots: [] });
+    if (path === "/v2/reserved_ips") return response({ reserved_ips: [] });
+    return response({
+      droplet: {
+        ...droplet,
+        status,
+        created_at: "2026-09-07T00:00:00Z",
+        size_slug: "small",
+      },
+    });
+  });
+  const api = createVendor("secret", request, () => time);
+  const read = () => api.inventory(42, signal());
+  const count = (path: string) =>
+    request.mock.calls.filter(([url]) => new URL(String(url)).pathname === path)
+      .length;
+  await Promise.all(
+    Array.from({ length: 10 }, (_, i) => api.inventory(42 + i, signal())),
+  );
+  for (const path of ["/v2/sizes", "/v2/snapshots", "/v2/reserved_ips"])
+    expect(count(path)).toBe(1);
+  await read();
+  expect(count("/v2/sizes")).toBe(1);
+  time = 30_001;
+  await read();
+  expect(count("/v2/sizes")).toBe(2);
+  const mutations = [
+    () => api.snapshot(42, "backup", signal()),
+    () => api.deleteSnapshot("backup", signal()),
+    () => api.power(42, "shutdown", signal()),
+    () => api.destroy(42, signal()),
+    () =>
+      api.create(
+        { name, region: "nyc3", size: "small", userData: "" },
+        signal(),
+      ),
+  ];
+  for (const [index, mutate] of mutations.entries()) {
+    await mutate();
+    await read();
+    expect(count("/v2/sizes")).toBe(3 + index);
+  }
+  await createVendor("other-token", request, () => time).inventory(
+    42,
+    signal(),
+  );
+  expect(count("/v2/sizes")).toBe(8);
 });

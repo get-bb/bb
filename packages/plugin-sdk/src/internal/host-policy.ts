@@ -2445,6 +2445,12 @@ export interface NormalizedPluginMachineProvider {
     | import("../machine-provider.js").PluginMachineProviderEnvironmentRow
     | null;
   policy: import("../machine-provider.js").PluginMachineProviderPolicy;
+  experimental_idleSuspendMs: NonNullable<
+    PluginMachineProviderDeclaration["experimental_idleSuspendMs"]
+  > | null;
+  experimental_details: NonNullable<
+    PluginMachineProviderDeclaration["experimental_details"]
+  > | null;
   experimental_reconcileCleanup: PluginMachineProviderDeclaration["experimental_reconcileCleanup"];
   create: PluginMachineProviderDeclaration["create"];
   suspend: NonNullable<PluginMachineProviderDeclaration["suspend"]> | null;
@@ -2553,6 +2559,22 @@ export function validatePluginMachineProviderDeclaration(
           })
           .strict()
           .parse(declaration.environmentRow);
+  for (const key of [
+    "experimental_idleSuspendMs",
+    "experimental_details",
+  ] as const) {
+    if (
+      declaration[key] !== undefined &&
+      typeof declaration[key] !== "function"
+    )
+      throw new Error(
+        `machine provider "${id}" declares ${key} that is not a function`,
+      );
+  }
+  if (!hasSuspend && declaration.experimental_idleSuspendMs !== undefined)
+    throw new Error(
+      `machine provider "${id}" must declare suspend and resume with experimental_idleSuspendMs`,
+    );
   const policy = machineProviderPolicySchema.parse(declaration.policy);
   if (!hasSuspend && policy.idleSuspendMs !== null) {
     throw new Error(
@@ -2570,6 +2592,8 @@ export function validatePluginMachineProviderDeclaration(
     validate: declaration.validate ?? null,
     environmentRow,
     policy,
+    experimental_idleSuspendMs: declaration.experimental_idleSuspendMs ?? null,
+    experimental_details: declaration.experimental_details ?? null,
     experimental_reconcileCleanup: declaration.experimental_reconcileCleanup,
     create: declaration.create,
     suspend: declaration.suspend ?? null,

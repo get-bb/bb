@@ -51,7 +51,7 @@ unless you pass `--auto-update` explicitly.
   bb machine rename <id-or-name> <name>   Rename a machine
   bb machine retry-update <id-or-name>    Retry a pending daemon update now
   bb machine suspend <id-or-name>         Suspend a provider-managed machine
-  bb machine resume <id-or-name>          Resume a suspended machine
+  bb machine resume <id-or-name>          Resume a machine (already active is a no-op)
   bb machine retry-cleanup <id-or-name>   Retry failed teardown now
   bb machine remove <id-or-name> [--yes]  Revoke and remove a machine
   bb machine provider-cli status <machine>
@@ -182,3 +182,33 @@ plugins redeem provider codes on the server. Pending encrypted v1 bundles are
 upgraded by the server when prepared again.
 
 Delivered enrollment bundles from v1 remain valid until their expiry. The CLI accepts both file and environment forms, upgrades the bundle to v2 headers locally, and persists legacy Connect redemption before enrollment so a retry reuses it. The installer upgrades v1 environment bundles before authenticated artifact downloads.
+## DigitalOcean dev boxes
+
+`bb digitalocean configure <host-id> '<config-json>'` sets `idleMinutes` (null
+turns idle stop off), `retention` (default 2), and `schedule` (null disables;
+otherwise `weekdays` 0–6, `sleep`/`wake` HH:mm, and explicit IANA `timezone`).
+`bb digitalocean snapshot-now <host-id>` drains through core, gracefully shuts
+down, confirms off, snapshots and remains off. `sleep` does the same; `wake`
+resumes through core. Busy threads and open terminals prevent sleep. Core also
+wakes on dispatch. Empty boxes participate in opt-in idle stop; retirement stays
+never. `status` and `cost` show live inventory and estimates; all accept `--json`.
+`bb machine show <host-id> --json` includes provider inventory in `providerDetails`.
+
+Powered-off droplets still bill; snapshot storage bills per GB. See
+https://docs.digitalocean.com/products/droplets/details/pricing/ and
+https://docs.digitalocean.com/products/snapshots/details/pricing/ . Configure a
+weekday schedule from the plugin settings or CLI on an always-on BB server.
+The latest missed action within eight days runs after recovery; busy sleep
+retries each minute until superseded. See the plugin skill for DST and cleanup.
+
+Resume waits for any in-progress suspension before waking; an already-active
+machine is left active. DigitalOcean sleep JSON retains saved power/backup
+status if inventory is unavailable (`details.values.cost: null` and
+`inventoryError`). Shared inventory reads cache for 30 seconds and invalidate
+on mutations. Schedule changes invalidate selected, undispatched runs.
+
+Create DigitalOcean dev boxes from Settings → Machines or
+`bb machine create --provider digitalocean --inputs '{}' --json`, without a
+project. SDK creation uses `machineProviderId: "digitalocean", projectId: null,
+inputs: {}`. Enrolled boxes appear as machine sections in the composer picker;
+DigitalOcean contributes no new-machine/project-checkout shortcut row.

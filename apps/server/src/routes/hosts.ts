@@ -36,6 +36,7 @@ import {
   submitMachine,
   machineLaunchStatus,
   cancelMachineLaunch,
+  getMachineProviderDetails,
   requestMachineResume,
   requestMachineRemoval,
   requestMachineSuspension,
@@ -200,6 +201,16 @@ export function registerHostRoutes(
     }
     deps.hub.requestHostProtocolUpdateRetry(hostId);
     return context.json({ ok: true as const });
+  });
+
+  get(routes.experimental_providerDetails, async (context) => {
+    return context.json(
+      await getMachineProviderDetails(
+        deps,
+        context.req.param("id"),
+        context.req.raw.signal,
+      ),
+    );
   });
 
   post(routes.suspend, async (context) => {

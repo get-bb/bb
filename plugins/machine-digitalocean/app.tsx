@@ -1,3 +1,4 @@
+import { DevboxSettings } from "./settings.js";
 import { useEffect, useRef, useState } from "react";
 import { Input } from "@bb/shared-ui/input";
 import {
@@ -12,6 +13,8 @@ function initialInputs(value: JsonValue | null) {
   if (typeof value !== "object" || value === null || Array.isArray(value))
     return defaults;
   return {
+    idleMinutes:
+      typeof value.idleMinutes === "number" ? value.idleMinutes : null,
     region: typeof value.region === "string" ? value.region : defaults.region,
     size: typeof value.size === "string" ? value.size : defaults.size,
   };
@@ -23,7 +26,9 @@ function DigitalOceanInputs({
 }: PluginMachineProviderInputsProps) {
   const [inputs, setInputs] = useState(() => initialInputs(value));
   const onChangeRef = useRef(onChange);
-  onChangeRef.current = onChange;
+  useEffect(() => {
+    onChangeRef.current = onChange;
+  }, [onChange]);
   const validation = inputsSchema.safeParse(inputs);
   const error = validation.success
     ? null
@@ -63,6 +68,40 @@ function DigitalOceanInputs({
           }
         />
       </label>
+      <label className="flex flex-col gap-1.5">
+        <span>Idle stop after minutes (empty disables)</span>
+        <Input
+          aria-label="Idle stop minutes"
+          type="number"
+          min={1}
+          value={inputs.idleMinutes ?? ""}
+          onChange={(event) =>
+            setInputs((current) => ({
+              ...current,
+              idleMinutes:
+                event.target.value === "" ? null : Number(event.target.value),
+            }))
+          }
+        />
+      </label>
+      <p>
+        Powered-off droplets still bill; snapshot storage bills per GB.{" "}
+        <a
+          href="https://docs.digitalocean.com/products/droplets/details/pricing/"
+          target="_blank"
+          rel="noreferrer"
+        >
+          Droplet pricing
+        </a>{" "}
+        ·{" "}
+        <a
+          href="https://docs.digitalocean.com/products/snapshots/details/pricing/"
+          target="_blank"
+          rel="noreferrer"
+        >
+          Snapshot pricing
+        </a>
+      </p>
       {error !== null && (
         <span role="alert" className="text-xs text-destructive">
           {error}
@@ -73,6 +112,7 @@ function DigitalOceanInputs({
 }
 
 export default definePluginApp((app) => {
+  app.slots.settingsSection({ id: "devboxes", component: DevboxSettings });
   app.slots.experimental_machineProviderInputs({
     machineProviderId: "digitalocean",
     component: DigitalOceanInputs,

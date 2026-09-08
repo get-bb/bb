@@ -173,12 +173,19 @@ or artifacts, validation performed, and blockers.
 ### Standalone machine creation
 
 `bb machine create --provider <id> [--key <idempotency-key>] [--inputs <JSON>]
-[--project <id-or-name>] [--json]` creates a machine without a thread. Omit project
+[--project <id-or-name>] [--no-wait] [--json]` creates a machine without a thread. Omit project
 for global creation; an explicit project accepts its exact name or ID. Omitted
 inputs are null and must satisfy the provider schema; omitted key is generated
 by the server. Supply a stable key to recover the same creation across retries.
-SIGINT aborts the request and exits with status 130. Provider cancellation cleanup
-uses any resource checkpointed before bootstrap succeeded.
+Creation is durable. `--no-wait` returns the launch ID; `bb machine status
+<launch-id>` inspects it and `bb machine cancel <launch-id>` explicitly cancels
+it. SIGINT stops following and exits with status 130 while creation continues.
+Following tolerates retryable failures until ready or terminal failure.
+
+`bb machine show <id-or-name> --json` includes `providerDetails` inventory and
+estimates when available. Suspend requires idle threads and no open terminals;
+empty machines use the provider’s opt-in idle timeout. Resume waits for pending
+suspension and leaves an already-active machine active.
 
 ### Local machine lifecycle
 

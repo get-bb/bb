@@ -810,6 +810,7 @@ function rewindEnvironmentProvidersMigration(db: DbConnection): void {
     "machine_provider_selection",
     "phase",
     "suspended_at",
+    "idle_since",
     "removal_started_at",
     "retire_at",
     "teardown_attempt",

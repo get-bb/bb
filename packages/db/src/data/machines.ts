@@ -48,10 +48,33 @@ export function machineIdleSince(
       ),
     )
     .all();
-  if (rows.length === 0 || rows.some((row) => row.status !== "idle")) {
+  const host = db
+    .select({ idleSince: hosts.idleSince })
+    .from(hosts)
+    .where(eq(hosts.id, hostId))
+    .get();
+  if (host === undefined) return null;
+  if (
+    rows.some((row) => row.status !== "idle") ||
+    machineHasOpenTerminal(db, hostId)
+  ) {
+    db.update(hosts)
+      .set({ idleSince: Date.now() })
+      .where(eq(hosts.id, hostId))
+      .run();
     return null;
   }
-  return Math.max(...rows.map((row) => row.updatedAt));
+  const latestThreadActivity = rows.length === 0
+    ? null
+    : Math.max(...rows.map((row) => row.updatedAt));
+  const baseline = host.idleSince ?? latestThreadActivity ?? Date.now();
+  if (host.idleSince === null) {
+    db.update(hosts)
+      .set({ idleSince: baseline })
+      .where(eq(hosts.id, hostId))
+      .run();
+  }
+  return Math.max(baseline, latestThreadActivity ?? baseline);
 }
 
 export function machineHasOpenTerminal(

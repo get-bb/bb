@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 export const inputsSchema = z.object({
+  idleMinutes: z.number().int().min(1).max(43_200).nullable().default(null),
   region: z
     .string()
     .regex(

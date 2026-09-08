@@ -123,6 +123,18 @@ export interface PluginMachineProviderDefinition<
   ): PluginMachineValidateDecision | Promise<PluginMachineValidateDecision>;
   environmentRow?: PluginMachineProviderEnvironmentRow;
   policy: PluginMachineProviderPolicy;
+  /** Resolve a per-machine idle timeout; core retains activity checks and retirement policy. */
+  experimental_idleSuspendMs?(context: {
+    hostId: string;
+    resource: JsonValue;
+  }): Promise<number | null>;
+  /** Return provider-owned inventory and estimated costs for machine details. */
+  experimental_details?(context: {
+    hostId: string;
+    resource: JsonValue;
+    signal: AbortSignal;
+  }): Promise<{ summary: string; values: JsonValue }>;
+
   create(
     context: PluginMachineProviderCreateContext<R, S>,
   ): Promise<PluginMachineProviderCreateResult>;

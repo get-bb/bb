@@ -321,7 +321,12 @@ export function registerMachineCommands(
       action(async (target: string, opts: MachineListCommandOptions) => {
         const sdk = createCliBbSdk(getUrl());
         const hostId = resolveMachineId(await sdk.hosts.list(), target);
-        const host = await sdk.hosts.get({ hostId });
+        const host = {
+          ...(await sdk.hosts.get({ hostId })),
+          providerDetails: await sdk.hosts.experimental_providerDetails({
+            hostId,
+          }),
+        };
         if (outputJson(opts, host)) return;
         console.log(JSON.stringify(host, null, 2));
       }),
