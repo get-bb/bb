@@ -21,3 +21,4 @@ export {
 } from "./svg-asset.js";
 
 export { resolveManifestPath } from "./plugin-manifest.js";
+export { copyBuiltinPlugin } from "./copy-builtin-plugin.js";

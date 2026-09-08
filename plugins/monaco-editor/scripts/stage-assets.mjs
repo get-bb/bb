@@ -13,10 +13,6 @@
  * the language services this plugin does not use are dropped by construction
  * — 3.3 MB against 24 MB for the AMD tree — with no risk that something we
  * pruned is requested later at runtime.
- *
- * Packaging ships only a builtin's `dist/` and `skills/`
- * (`apps/server/scripts/copy-builtin-plugins.ts`, which runs this), so
- * `dist/` is the only place these files can live.
  */
 import { mkdir, readFile, rm } from "node:fs/promises";
 import { createRequire } from "node:module";

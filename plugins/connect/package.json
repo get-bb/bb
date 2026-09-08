@@ -3,14 +3,14 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Remote access via getbb.app — this bb becomes reachable at https://<handle>.getbb.app. Disable to cut off all remote access.",
+  "description": "Remote access via getbb.app \u2014 this bb becomes reachable at https://<handle>.getbb.app. Disable to cut off all remote access.",
   "engines": {
     "bb": ">=0.0",
     "bbPluginSdk": ">=0.4.10"
   },
   "bb": {
     "name": "Remote access",
-    "description": "Remote access via getbb.app — this bb becomes reachable at https://<handle>.getbb.app. Disable to cut off all remote access.",
+    "description": "Remote access via getbb.app \u2014 this bb becomes reachable at https://<handle>.getbb.app. Disable to cut off all remote access.",
     "branding": {
       "icon": "Smartphone"
     },
@@ -22,7 +22,8 @@
   ],
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test": "vitest run --config vitest.config.ts"
+    "test": "vitest run --config vitest.config.ts",
+    "build:bundled": "node ../../packages/plugin-build/scripts/build-bundled-plugin.mjs"
   },
   "dependencies": {
     "@bb/connect-client": "workspace:*",
@@ -50,6 +51,7 @@
     "typescript": "npm:@typescript/typescript6@^6.0.2",
     "typescript-7": "npm:typescript@^7.0.2",
     "vaul": "^1.1.2",
-    "vitest": "^4.1.1"
+    "vitest": "^4.1.1",
+    "@bb/plugin-build": "workspace:*"
   }
 }

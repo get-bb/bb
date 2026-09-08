@@ -24,7 +24,8 @@
   ],
   "scripts": {
     "test": "vitest run --config vitest.config.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "build:bundled": "node ../../packages/plugin-build/scripts/build-bundled-plugin.mjs"
   },
   "dependencies": {
     "@bb/shared-ui": "workspace:*",
@@ -40,6 +41,7 @@
     "react-dom": "^19.0.0",
     "typescript": "npm:@typescript/typescript6@^6.0.2",
     "typescript-7": "npm:typescript@^7.0.2",
-    "vitest": "^4.1.1"
+    "vitest": "^4.1.1",
+    "@bb/plugin-build": "workspace:*"
   }
 }

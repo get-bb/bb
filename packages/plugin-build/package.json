@@ -20,7 +20,9 @@
     "@bb/domain": "workspace:*",
     "@bb/process-utils": "workspace:*",
     "@get-bb/plugin-sdk": "workspace:*",
-    "saxes": "^6.0.0"
+    "saxes": "^6.0.0",
+    "tar": "7.5.22",
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "@bb/tsconfig": "workspace:*",

@@ -43,7 +43,8 @@
   "scripts": {
     "build": "node --conditions=source --import tsx ../../scripts/build-official-plugins.mjs tasks",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run --config vitest.config.ts"
+    "test": "vitest run --config vitest.config.ts",
+    "build:bundled": "node ../../packages/plugin-build/scripts/build-bundled-plugin.mjs"
   },
   "devDependencies": {
     "@bb/plugin-build": "workspace:*",

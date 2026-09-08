@@ -1,10 +1,12 @@
 # Releasing BB Official plugins
 
 Official plugins ship **bundled inside the BB app**. There is no separate
-publish pipeline: at packaging time, `apps/server/scripts/copy-builtin-plugins.ts`
-builds every plugin declared in `BUNDLED_PLUGINS`
-(`apps/server/src/services/plugins/builtin-registry.ts`) and copies each
-prebuilt runtime layout into `<server dist>/builtin-plugins/<name>`. The app in
+publish pipeline: Turbo builds each plugin's `build:bundled` task, then
+`@bb/bundled-plugins` assembles their cached archives. The server registry
+(`apps/server/src/services/plugins/builtin-registry.ts`) declares the bundled
+selection through the generated marketplace.
+Startup and release packaging install that collection into
+`<server dist>/builtin-plugins/<name>`. The app in
 Extensions → Plugins → Browse installs official plugins from that local bundled
 copy; no network is involved.
 

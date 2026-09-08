@@ -64,7 +64,7 @@ async function buildRuntimeArtifacts() {
       turboEntrypoint,
       "run",
       "build",
-      "build:plugins",
+      "--filter=@bb/bundled-plugins",
       "--filter=@get-bb/plugin-sdk",
       "--filter=@bb/app",
       "--filter=@bb/server",
@@ -80,6 +80,22 @@ async function buildRuntimeArtifacts() {
     env: process.env,
   });
   if (result.code === 0) {
+    const installResult = await runBuildProcess({
+      command: process.execPath,
+      args: [
+        "--import",
+        "tsx",
+        "packages/bundled-plugins/src/install.ts",
+        "--target",
+        "apps/server/dist/builtin-plugins",
+      ],
+      cwd: repoRoot,
+      env: process.env,
+    });
+    if (installResult.code !== 0)
+      throw new Error(
+        `Plugin installation failed: ${installResult.signal ?? installResult.code}`,
+      );
     return;
   }
   if (result.signal !== null) {

@@ -1,0 +1,50 @@
+{
+  "name": "@bb/bundled-plugins",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node --conditions=source --import tsx src/build.ts",
+    "test": "vitest run --config vitest.config.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "tar": "7.5.22",
+    "bb-plugin-theme-preview": "workspace:*",
+    "bb-plugin-tasks": "workspace:*",
+    "bb-plugin-memory": "workspace:*",
+    "bb-plugin-side-chat": "workspace:*",
+    "bb-plugin-pdf-preview": "workspace:*",
+    "bb-plugin-scheduled-send": "workspace:*",
+    "bb-plugin-provider-retry": "workspace:*",
+    "bb-plugin-secrets": "workspace:*",
+    "bb-plugin-ask-user-question": "workspace:*",
+    "bb-plugin-provider-codex": "workspace:*",
+    "bb-plugin-provider-claude-code": "workspace:*",
+    "bb-plugin-concurrency-limit": "workspace:*",
+    "bb-plugin-workflows": "workspace:*",
+    "bb-plugin-provider-usage": "workspace:*",
+    "bb-plugin-simple-notes": "workspace:*",
+    "bb-plugin-github": "workspace:*",
+    "bb-plugin-push-notifications": "workspace:*",
+    "bb-plugin-inline-vis": "workspace:*",
+    "bb-plugin-provider-acp": "workspace:*",
+    "bb-plugin-custom-instructions": "workspace:*",
+    "bb-plugin-plugin-api-docs": "workspace:*",
+    "bb-plugin-keep-awake": "workspace:*",
+    "bb-plugin-automations": "workspace:*",
+    "bb-plugin-plugin-api-tester": "workspace:*",
+    "bb-plugin-connect": "workspace:*",
+    "bb-plugin-browser-automation": "workspace:*",
+    "bb-plugin-account-pool": "workspace:*",
+    "bb-plugin-provider-pi": "workspace:*",
+    "bb-plugin-monaco-editor": "workspace:*",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@bb/tsconfig": "workspace:*",
+    "@types/node": "^22.0.0",
+    "typescript": "npm:@typescript/typescript6@^6.0.2",
+    "vitest": "^4.1.1"
+  }
+}

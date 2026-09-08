@@ -101,21 +101,20 @@
       ],
       "outputs": ["dist/**"]
     },
-    "@bb/server#clean:plugins": {
-      "dependsOn": ["@bb/server#build"],
-      "cache": false,
-      "outputs": []
-    },
-    "@bb/server#build:plugins": {
-      "dependsOn": ["@bb/server#clean:plugins", "@get-bb/plugin-sdk#build"],
+    "build:bundled": {
+      "dependsOn": ["topo", "@get-bb/plugin-sdk#build"],
       "inputs": [
         "$TURBO_DEFAULT$",
-        "$TURBO_ROOT$/packages/bb-app/package.json",
-        "$TURBO_ROOT$/plugins/**",
-        "!$TURBO_ROOT$/plugins/*/dist/**",
-        "!$TURBO_ROOT$/plugins/*/node_modules/**"
+        "$TURBO_ROOT$/packages/bb-app/package.json"
       ],
-      "outputs": ["dist/builtin-plugins/**"]
+      "outputs": ["dist/bundled-plugin.tar"]
+    },
+    "@bb/bundled-plugins#build": {
+      "dependsOn": [
+        "^build:bundled",
+        "@bb/server#generate:bb-official-marketplace"
+      ],
+      "outputs": ["dist/bundled-plugins.tar"]
     },
     "@bb/sdk#test": {
       "dependsOn": ["//#ensure-native-modules", "topo"],
@@ -141,16 +140,14 @@
       ]
     },
     "bb-app#build": {
-      // copy-builtin-plugins bundles every plugin in BUNDLED_PLUGINS; the
-      // tasks plugin's app bundle imports the @get-bb/plugin-sdk root at runtime
-      // (shared RPC contract), so the SDK dist must exist first.
       "dependsOn": [
         "@bb/app#build",
         "@bb/server#build",
         "@bb/host-daemon#build",
         "@bb/cli#build",
         "@bb/sdk#build",
-        "@get-bb/plugin-sdk#build"
+        "@get-bb/plugin-sdk#build",
+        "@bb/bundled-plugins#build"
       ],
       "inputs": [
         "$TURBO_DEFAULT$",
@@ -499,8 +496,6 @@
         "$TURBO_ROOT$/.github/APPROVED_CONTRIBUTORS",
         "$TURBO_ROOT$/.github/workflows/approve-contributor.yml",
         "$TURBO_ROOT$/.github/workflows/pr-gate.yml",
-        "$TURBO_ROOT$/apps/server/package.json",
-        "$TURBO_ROOT$/apps/server/turbo.json",
         "$TURBO_ROOT$/package.json",
         "$TURBO_ROOT$/scripts/start-bb.mjs",
         "$TURBO_ROOT$/turbo.json",

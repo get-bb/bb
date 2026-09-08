@@ -1500,6 +1500,115 @@ importers:
         specifier: ^4.1.1
         version: 4.1.1(@opentelemetry/api@1.9.1)(@types/node@22.19.10)(jsdom@29.0.1(@noble/hashes@2.4.0))(msw@2.12.14(@types/node@22.19.10)(@typescript/typescript6@6.0.2))(vite@8.0.12(@types/node@22.19.10)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.50.0)(tsx@4.23.1)(yaml@2.9.0))
 
+  packages/bundled-plugins:
+    dependencies:
+      bb-plugin-account-pool:
+        specifier: workspace:*
+        version: link:../../plugins/account-pool
+      bb-plugin-ask-user-question:
+        specifier: workspace:*
+        version: link:../../plugins/ask-user-question
+      bb-plugin-automations:
+        specifier: workspace:*
+        version: link:../../plugins/automations
+      bb-plugin-browser-automation:
+        specifier: workspace:*
+        version: link:../../plugins/browser-automation
+      bb-plugin-concurrency-limit:
+        specifier: workspace:*
+        version: link:../../plugins/concurrency-limit
+      bb-plugin-connect:
+        specifier: workspace:*
+        version: link:../../plugins/connect
+      bb-plugin-custom-instructions:
+        specifier: workspace:*
+        version: link:../../plugins/custom-instructions
+      bb-plugin-github:
+        specifier: workspace:*
+        version: link:../../plugins/github
+      bb-plugin-inline-vis:
+        specifier: workspace:*
+        version: link:../../plugins/inline-vis
+      bb-plugin-keep-awake:
+        specifier: workspace:*
+        version: link:../../plugins/keep-awake
+      bb-plugin-memory:
+        specifier: workspace:*
+        version: link:../../plugins/memory
+      bb-plugin-monaco-editor:
+        specifier: workspace:*
+        version: link:../../plugins/monaco-editor
+      bb-plugin-pdf-preview:
+        specifier: workspace:*
+        version: link:../../plugins/pdf-preview
+      bb-plugin-plugin-api-docs:
+        specifier: workspace:*
+        version: link:../../plugins/plugin-api-docs
+      bb-plugin-plugin-api-tester:
+        specifier: workspace:*
+        version: link:../../plugins/plugin-api-tester
+      bb-plugin-provider-acp:
+        specifier: workspace:*
+        version: link:../../plugins/provider-acp
+      bb-plugin-provider-claude-code:
+        specifier: workspace:*
+        version: link:../../plugins/provider-claude-code
+      bb-plugin-provider-codex:
+        specifier: workspace:*
+        version: link:../../plugins/provider-codex
+      bb-plugin-provider-pi:
+        specifier: workspace:*
+        version: link:../../plugins/provider-pi
+      bb-plugin-provider-retry:
+        specifier: workspace:*
+        version: link:../../plugins/provider-retry
+      bb-plugin-provider-usage:
+        specifier: workspace:*
+        version: link:../../plugins/provider-usage
+      bb-plugin-push-notifications:
+        specifier: workspace:*
+        version: link:../../plugins/push-notifications
+      bb-plugin-scheduled-send:
+        specifier: workspace:*
+        version: link:../../plugins/scheduled-send
+      bb-plugin-secrets:
+        specifier: workspace:*
+        version: link:../../plugins/secrets
+      bb-plugin-side-chat:
+        specifier: workspace:*
+        version: link:../../plugins/side-chat
+      bb-plugin-simple-notes:
+        specifier: workspace:*
+        version: link:../../plugins/docs
+      bb-plugin-tasks:
+        specifier: workspace:*
+        version: link:../../plugins/tasks
+      bb-plugin-theme-preview:
+        specifier: workspace:*
+        version: link:../../plugins/theme-preview
+      bb-plugin-workflows:
+        specifier: workspace:*
+        version: link:../../plugins/workflows
+      tar:
+        specifier: 7.5.22
+        version: 7.5.22
+      zod:
+        specifier: 4.3.6
+        version: 4.3.6
+    devDependencies:
+      '@bb/tsconfig':
+        specifier: workspace:*
+        version: link:../tsconfig
+      '@types/node':
+        specifier: ^22.0.0
+        version: 22.19.10
+      typescript:
+        specifier: npm:@typescript/typescript6@^6.0.2
+        version: '@typescript/typescript6@6.0.2'
+      vitest:
+        specifier: ^4.1.1
+        version: 4.1.1(@opentelemetry/api@1.9.1)(@types/node@22.19.10)(jsdom@29.0.1(@noble/hashes@2.4.0))(msw@2.12.14(@types/node@22.19.10)(@typescript/typescript6@6.0.2))(vite@8.0.12(@types/node@22.19.10)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.50.0)(tsx@4.23.1)(yaml@2.9.0))
+
   packages/client-core:
     dependencies:
       '@bb/core-ui':
@@ -1963,6 +2072,12 @@ importers:
       saxes:
         specifier: ^6.0.0
         version: 6.0.0
+      tar:
+        specifier: 7.5.22
+        version: 7.5.22
+      zod:
+        specifier: 4.3.6
+        version: 4.3.6
     devDependencies:
       '@bb/tsconfig':
         specifier: workspace:*
@@ -2773,6 +2888,9 @@ importers:
         specifier: 4.3.6
         version: 4.3.6
     devDependencies:
+      '@bb/plugin-build':
+        specifier: workspace:*
+        version: link:../../packages/plugin-build
       '@get-bb/plugin-sdk':
         specifier: workspace:*
         version: link:../../packages/plugin-sdk
@@ -2822,6 +2940,9 @@ importers:
         specifier: 4.3.6
         version: 4.3.6
     devDependencies:
+      '@bb/plugin-build':
+        specifier: workspace:*
+        version: link:../../packages/plugin-build
       '@get-bb/plugin-sdk':
         specifier: workspace:*
         version: link:../../packages/plugin-sdk
@@ -2871,6 +2992,9 @@ importers:
         specifier: 4.3.6
         version: 4.3.6
     devDependencies:
+      '@bb/plugin-build':
+        specifier: workspace:*
+        version: link:../../packages/plugin-build
       '@get-bb/plugin-sdk':
         specifier: workspace:*
         version: link:../../packages/plugin-sdk
@@ -2926,6 +3050,9 @@ importers:
         specifier: 4.3.6
         version: 4.3.6
     devDependencies:
+      '@bb/plugin-build':
+        specifier: workspace:*
+        version: link:../../packages/plugin-build
       '@get-bb/plugin-sdk':
         specifier: workspace:*
         version: link:../../packages/plugin-sdk
@@ -2951,6 +3078,9 @@ importers:
         specifier: 4.3.6
         version: 4.3.6
     devDependencies:
+      '@bb/plugin-build':
+        specifier: workspace:*
+        version: link:../../packages/plugin-build
       '@get-bb/plugin-sdk':
         specifier: workspace:*
         version: link:../../packages/plugin-sdk
@@ -3006,6 +3136,9 @@ importers:
         specifier: 4.3.6
         version: 4.3.6
     devDependencies:
+      '@bb/plugin-build':
+        specifier: workspace:*
+        version: link:../../packages/plugin-build
       '@get-bb/plugin-sdk':
         specifier: workspace:*
         version: link:../../packages/plugin-sdk
@@ -3061,6 +3194,9 @@ importers:
         specifier: 4.3.6
         version: 4.3.6
     devDependencies:
+      '@bb/plugin-build':
+        specifier: workspace:*
+        version: link:../../packages/plugin-build
       '@get-bb/plugin-sdk':
         specifier: workspace:*
         version: link:../../packages/plugin-sdk
@@ -3143,6 +3279,9 @@ importers:
         specifier: 4.3.6
         version: 4.3.6
     devDependencies:
+      '@bb/plugin-build':
+        specifier: workspace:*
+        version: link:../../packages/plugin-build
       '@get-bb/plugin-sdk':
         specifier: workspace:*
         version: link:../../packages/plugin-sdk
@@ -3195,6 +3334,9 @@ importers:
         specifier: 4.3.6
         version: 4.3.6
     devDependencies:
+      '@bb/plugin-build':
+        specifier: workspace:*
+        version: link:../../packages/plugin-build
       '@get-bb/plugin-sdk':
         specifier: workspace:*
         version: link:../../packages/plugin-sdk
@@ -3244,6 +3386,9 @@ importers:
         specifier: 4.3.6
         version: 4.3.6
     devDependencies:
+      '@bb/plugin-build':
+        specifier: workspace:*
+        version: link:../../packages/plugin-build
       '@get-bb/plugin-sdk':
         specifier: workspace:*
         version: link:../../packages/plugin-sdk
@@ -3284,6 +3429,9 @@ importers:
         specifier: 4.3.6
         version: 4.3.6
     devDependencies:
+      '@bb/plugin-build':
+        specifier: workspace:*
+        version: link:../../packages/plugin-build
       '@get-bb/plugin-sdk':
         specifier: workspace:*
         version: link:../../packages/plugin-sdk
@@ -3324,6 +3472,9 @@ importers:
         specifier: 4.3.6
         version: 4.3.6
     devDependencies:
+      '@bb/plugin-build':
+        specifier: workspace:*
+        version: link:../../packages/plugin-build
       '@get-bb/plugin-sdk':
         specifier: workspace:*
         version: link:../../packages/plugin-sdk
@@ -3379,6 +3530,9 @@ importers:
         specifier: 4.3.6
         version: 4.3.6
     devDependencies:
+      '@bb/plugin-build':
+        specifier: workspace:*
+        version: link:../../packages/plugin-build
       '@get-bb/plugin-sdk':
         specifier: workspace:*
         version: link:../../packages/plugin-sdk
@@ -3421,6 +3575,9 @@ importers:
 
   plugins/pdf-preview:
     devDependencies:
+      '@bb/plugin-build':
+        specifier: workspace:*
+        version: link:../../packages/plugin-build
       '@get-bb/plugin-sdk':
         specifier: workspace:*
         version: link:../../packages/plugin-sdk
@@ -3458,6 +3615,9 @@ importers:
         specifier: workspace:*
         version: link:../../packages/plugin-api-map
     devDependencies:
+      '@bb/plugin-build':
+        specifier: workspace:*
+        version: link:../../packages/plugin-build
       '@get-bb/plugin-sdk':
         specifier: workspace:*
         version: link:../../packages/plugin-sdk
@@ -3476,6 +3636,9 @@ importers:
 
   plugins/plugin-api-tester:
     devDependencies:
+      '@bb/plugin-build':
+        specifier: workspace:*
+        version: link:../../packages/plugin-build
       '@get-bb/plugin-sdk':
         specifier: workspace:*
         version: link:../../packages/plugin-sdk
@@ -3522,6 +3685,9 @@ importers:
         specifier: 4.3.6
         version: 4.3.6
     devDependencies:
+      '@bb/plugin-build':
+        specifier: workspace:*
+        version: link:../../packages/plugin-build
       '@modelcontextprotocol/sdk':
         specifier: ^1.29.0
         version: 1.29.0(zod@4.3.6)
@@ -3556,6 +3722,9 @@ importers:
       '@bb/domain':
         specifier: workspace:*
         version: link:../../packages/domain
+      '@bb/plugin-build':
+        specifier: workspace:*
+        version: link:../../packages/plugin-build
       '@bb/provider-bridge-protocol':
         specifier: workspace:*
         version: link:../../packages/provider-bridge-protocol
@@ -3584,6 +3753,9 @@ importers:
       '@bb/domain':
         specifier: workspace:*
         version: link:../../packages/domain
+      '@bb/plugin-build':
+        specifier: workspace:*
+        version: link:../../packages/plugin-build
       '@bb/process-utils':
         specifier: workspace:*
         version: link:../../packages/process-utils
@@ -3615,6 +3787,9 @@ importers:
       '@bb/domain':
         specifier: workspace:*
         version: link:../../packages/domain
+      '@bb/plugin-build':
+        specifier: workspace:*
+        version: link:../../packages/plugin-build
       '@bb/provider-bridge-protocol':
         specifier: workspace:*
         version: link:../../packages/provider-bridge-protocol
@@ -3646,6 +3821,9 @@ importers:
         specifier: 4.3.6
         version: 4.3.6
     devDependencies:
+      '@bb/plugin-build':
+        specifier: workspace:*
+        version: link:../../packages/plugin-build
       '@get-bb/plugin-sdk':
         specifier: workspace:*
         version: link:../../packages/plugin-sdk
@@ -3671,6 +3849,9 @@ importers:
         specifier: 4.3.6
         version: 4.3.6
     devDependencies:
+      '@bb/plugin-build':
+        specifier: workspace:*
+        version: link:../../packages/plugin-build
       '@get-bb/plugin-sdk':
         specifier: workspace:*
         version: link:../../packages/plugin-sdk
@@ -3711,6 +3892,9 @@ importers:
         specifier: 4.3.6
         version: 4.3.6
     devDependencies:
+      '@bb/plugin-build':
+        specifier: workspace:*
+        version: link:../../packages/plugin-build
       '@get-bb/plugin-sdk':
         specifier: workspace:*
         version: link:../../packages/plugin-sdk
@@ -3748,6 +3932,9 @@ importers:
         specifier: workspace:*
         version: link:../../packages/shared-ui
     devDependencies:
+      '@bb/plugin-build':
+        specifier: workspace:*
+        version: link:../../packages/plugin-build
       '@get-bb/plugin-sdk':
         specifier: workspace:*
         version: link:../../packages/plugin-sdk
@@ -3797,6 +3984,9 @@ importers:
         specifier: 4.3.6
         version: 4.3.6
     devDependencies:
+      '@bb/plugin-build':
+        specifier: workspace:*
+        version: link:../../packages/plugin-build
       '@get-bb/plugin-sdk':
         specifier: workspace:*
         version: link:../../packages/plugin-sdk
@@ -3828,6 +4018,9 @@ importers:
         specifier: 4.3.6
         version: 4.3.6
     devDependencies:
+      '@bb/plugin-build':
+        specifier: workspace:*
+        version: link:../../packages/plugin-build
       '@get-bb/plugin-sdk':
         specifier: workspace:*
         version: link:../../packages/plugin-sdk
@@ -3989,6 +4182,9 @@ importers:
         specifier: 4.3.6
         version: 4.3.6
     devDependencies:
+      '@bb/plugin-build':
+        specifier: workspace:*
+        version: link:../../packages/plugin-build
       '@get-bb/plugin-sdk':
         specifier: workspace:*
         version: link:../../packages/plugin-sdk
@@ -4059,6 +4255,9 @@ importers:
         specifier: 4.3.6
         version: 4.3.6
     devDependencies:
+      '@bb/plugin-build':
+        specifier: workspace:*
+        version: link:../../packages/plugin-build
       '@get-bb/plugin-sdk':
         specifier: workspace:*
         version: link:../../packages/plugin-sdk
