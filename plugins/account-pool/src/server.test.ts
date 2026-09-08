@@ -4509,6 +4509,88 @@ describe("Account Pool plugin", () => {
       }
     });
 
+    it.each(["empty", "omitted", "populated"])(
+      "preserves streamed Codex answers when completion output is %s",
+      async (completionOutput) => {
+        const seen: string[] = [];
+        const output = [
+          {
+            type: "reasoning",
+            id: "reasoning-one",
+            encrypted_content: "opaque",
+          },
+          {
+            type: "message",
+            id: "answer-one",
+            role: "assistant",
+            phase: "final_answer",
+            content: [{ type: "output_text", text: "The retry was broken." }],
+          },
+        ];
+        const fixture = await affinityFixture("codex", async (_input, init) => {
+          seen.push(
+            new TextDecoder().decode(
+              init?.body instanceof ArrayBuffer
+                ? init.body
+                : new ArrayBuffer(0),
+            ),
+          );
+          const events = [
+            ...output.map((item, output_index) => ({
+              type: "response.output_item.done",
+              output_index,
+              item,
+            })),
+            {
+              type: "response.completed",
+              response: {
+                id: `response-${seen.length}`,
+                ...(completionOutput === "omitted"
+                  ? {}
+                  : { output: completionOutput === "empty" ? [] : output }),
+              },
+            },
+          ];
+          return new Response(
+            events
+              .map((event) => `data: ${JSON.stringify(event)}\n\n`)
+              .join(""),
+            { headers: { "content-type": "text/event-stream" } },
+          );
+        });
+        const socket = await fixture.host.harness.experimental_openWebSocket(
+          "/v1/responses",
+          { headers: authHeaders(fixture.key) },
+        );
+        try {
+          const question = {
+            role: "user",
+            content: "Is the bug deterministic?",
+          };
+          const followup = { role: "user", content: "Please put up a PR" };
+          await socket.receive(
+            JSON.stringify({ type: "response.create", input: [question] }),
+          );
+          await vi.waitFor(() => expect(socket.sent).toHaveLength(3));
+          await socket.receive(
+            JSON.stringify({
+              type: "response.create",
+              previous_response_id: "response-1",
+              input: [followup],
+            }),
+          );
+          await vi.waitFor(() => expect(socket.sent).toHaveLength(6));
+          expect(JSON.parse(seen[1] ?? "{}").input).toEqual([
+            question,
+            ...output,
+            followup,
+          ]);
+        } finally {
+          await socket.close(1000, "done");
+        }
+      },
+    );
+
     it("keeps native Codex HTTP and WebSocket compaction continuations on the same account", async () => {
       const seen: Array<{ headers: Headers; body: string }> = [];
       const compacted = {

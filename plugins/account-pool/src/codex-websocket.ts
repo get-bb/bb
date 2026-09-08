@@ -22,6 +22,10 @@ const completedSchema = z
       .passthrough(),
   })
   .passthrough();
+const outputItemDoneSchema = z.object({
+  type: z.literal("response.output_item.done"),
+  item: z.json(),
+});
 
 interface SocketLog {
   debug(message: string): void;
@@ -150,6 +154,7 @@ export function createCodexWebSocketHandlers(
     const decoder = new TextDecoder();
     let buffered = "";
     let reachedEof = false;
+    const streamedOutput: z.infer<typeof envelopeSchema>["input"] = [];
     const emit = (block: string) => {
       const data = block
         .split(/\r?\n/u)
@@ -158,10 +163,15 @@ export function createCodexWebSocketHandlers(
         .join("\n");
       if (data.length === 0 || data === "[DONE]") return;
       const event = JSON.parse(data);
+      const outputItem = outputItemDoneSchema.safeParse(event);
+      if (outputItem.success) streamedOutput.push(outputItem.data.item);
       const completed = completedSchema.safeParse(event);
       if (completed.success) {
         lastId = completed.data.response.id;
-        lastOutput = completed.data.response.output;
+        lastOutput =
+          streamedOutput.length > 0
+            ? streamedOutput
+            : completed.data.response.output;
       }
       send(socket, JSON.stringify(event));
     };
