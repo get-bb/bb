@@ -1,6 +1,8 @@
 import { and, eq } from "drizzle-orm";
 import { hostDaemonSessions } from "@bb/db";
 import { handleHostRemoved } from "../../internal/session-owner-side-effects.js";
+import { runMachineRestoreSetup } from "./restore-setup.js";
+import type { WorkSessionDeps } from "../../types.js";
 import { machineLifecycles } from "@bb/db";
 import {
   getMachineLifecycle,
@@ -1182,7 +1184,7 @@ export async function requestMachineResume(
 }
 
 export async function resumeMachine(
-  deps: MachineLifecycleDeps,
+  deps: WorkSessionDeps,
   hostId: string,
 ): Promise<void> {
   const removing = operations(removeOperations, deps.db).get(hostId);
@@ -1198,7 +1200,7 @@ export async function resumeMachine(
 }
 
 async function resumeMachineWithIntent(
-  deps: MachineLifecycleDeps,
+  deps: WorkSessionDeps,
   hostId: string,
   preserveRetirement: boolean,
 ): Promise<void> {
@@ -1284,6 +1286,11 @@ async function resumeMachineWithIntent(
       }
       const keepRetiring =
         current.phase === "retiring" && !machineHasLiveThreads(deps.db, hostId);
+      deps.db
+        .update(machineLifecycles)
+        .set({ restoreOperationId: operationId })
+        .where(eq(machineLifecycles.hostId, hostId))
+        .run();
       updateHost(deps.db, deps.hub, hostId, {
         phase: keepRetiring ? "retiring" : "active",
         resource: result.resource,
@@ -1308,6 +1315,7 @@ async function resumeMachineWithIntent(
         .where(eq(machineLifecycles.hostId, hostId))
         .run();
       await observeMachineLifecycle(deps, hostId);
+      await runMachineRestoreSetup(deps, hostId);
     }
   } catch (error) {
     deps.db
@@ -1323,7 +1331,7 @@ async function resumeMachineWithIntent(
 }
 
 async function resumeRetiringMachine(
-  deps: MachineLifecycleDeps,
+  deps: WorkSessionDeps,
   hostId: string,
 ): Promise<void> {
   await resumeMachineWithIntent(deps, hostId, true);

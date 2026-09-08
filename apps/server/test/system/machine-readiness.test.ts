@@ -1,6 +1,13 @@
 import { expect, it } from "vitest";
 import { eq } from "drizzle-orm";
-import { hosts, projectSources, environmentSetupOutcomes } from "@bb/db";
+import {
+  hosts,
+  projectSources,
+  environmentSetupOutcomes,
+  createEnvironment,
+  machineLifecycles,
+  environmentHookOperations,
+} from "@bb/db";
 import {
   beginEnvironmentSetupOutcome,
   finishEnvironmentSetupOutcome,
@@ -9,7 +16,10 @@ import { ensureHostReady } from "../../src/services/machines/readiness.js";
 import { setPluginAgentContributions } from "../../src/services/plugins/plugin-agent-contributions.js";
 import { withTestHarness } from "../helpers/test-app.js";
 import { seedHostSession, seedProjectWithSource } from "../helpers/seed.js";
-import { registerHostRpcResponder } from "../helpers/host-rpc.js";
+import {
+  registerHostRpcResponder,
+  type HostRpcHandlerResult,
+} from "../helpers/host-rpc.js";
 
 it("serializes CLI installation and reads fenced core hook outcomes across lockfile, ABI and auth changes", async () => {
   await withTestHarness(async (harness) => {
@@ -23,6 +33,8 @@ it("serializes CLI installation and reads fenced core hook outcomes across lockf
       .where(eq(hosts.id, host.id))
       .run();
     let installed = false;
+    let hookRuns = 0;
+    let hookFails = false;
     let installCount = 0;
     let lock = "a";
     let abi = "linux/x64/node-127";
@@ -59,8 +71,19 @@ it("serializes CLI installation and reads fenced core hook outcomes across lockf
     registerHostRpcResponder(harness, {
       hostId: host.id,
       sessionId: session.id,
-      handle: async ({ command }) => {
+      handle: async ({ command }): Promise<HostRpcHandlerResult> => {
         switch (command.type) {
+          case "environment.hook.run":
+            hookRuns++;
+            return hookFails
+              ? {
+                  ok: false,
+                  errorCode: "setup_failed",
+                  errorMessage: "Service failed to start",
+                }
+              : { ok: true, result: {} };
+          case "environment.hook.cancel":
+            return { ok: true, result: { status: "terminated" } };
           case "provider.installation.status":
             return {
               ok: true,
@@ -240,6 +263,49 @@ it("serializes CLI installation and reads fenced core hook outcomes across lockf
       });
       route = true;
       reachable = true;
+      createEnvironment(harness.db, harness.hub, {
+        projectId: project.id,
+        hostId: host.id,
+        path: args.path,
+        providerOwnsPath: true,
+        status: "ready",
+        environmentProvider: null,
+      });
+      harness.db
+        .insert(machineLifecycles)
+        .values({
+          hostId: host.id,
+          observedState: "running",
+          observedAt: Date.now(),
+          recoveryState: "healthy",
+          restoreOperationId: "restored-once",
+        })
+        .run();
+      expect(
+        (await Promise.all([ready(), ready()])).map((x) => x.status),
+      ).toEqual(["ready", "ready"]);
+      expect(hookRuns).toBe(1);
+      expect((await ready()).status).toBe("ready");
+      expect(hookRuns).toBe(1);
+      hookFails = true;
+      harness.db
+        .update(machineLifecycles)
+        .set({ restoreOperationId: "restored-again" })
+        .where(eq(machineLifecycles.hostId, host.id))
+        .run();
+      expect(await ready()).toMatchObject({
+        status: "blocked",
+        code: "setup_failed",
+      });
+      expect(hookRuns).toBe(2);
+      expect(
+        harness.db.select().from(environmentHookOperations).all(),
+      ).toHaveLength(2);
+      expect(await ready()).toMatchObject({
+        status: "blocked",
+        code: "setup_failed",
+      });
+      expect(hookRuns).toBe(2);
       expect(
         await ensureHostReady(harness.deps, {
           ...args,

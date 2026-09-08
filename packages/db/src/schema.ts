@@ -1197,6 +1197,7 @@ export const machineLifecycles = sqliteTable("machine_lifecycles", {
   expiresAt: integer("expires_at"),
   maintenanceAt: integer("maintenance_at"),
   lastSnapshotAt: integer("last_snapshot_at"),
+  restoreOperationId: text("restore_operation_id"),
   recoveryState: text("recovery_state", {
     enum: [
       "healthy",

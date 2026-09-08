@@ -1,3 +1,4 @@
+import { runMachineRestoreSetup } from "./restore-setup.js";
 import { and, eq } from "drizzle-orm";
 import {
   getHost,
@@ -119,6 +120,7 @@ export async function ensureHostReady(
         );
     }
     stage = "workspace";
+    await runMachineRestoreSetup(deps, args.hostId);
     const path =
       args.path ??
       getProjectSourceByHost(deps.db, args.projectId, args.hostId)?.path;
