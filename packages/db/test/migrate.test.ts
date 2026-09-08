@@ -473,7 +473,7 @@ const retainedEventOutputsMigrationPath = resolve(
   __dirname,
   "..",
   "drizzle",
-  "0113_solid_night_thrasher.sql",
+  "0114_public_iron_lad.sql",
 );
 const providerSettingsToPluginsMigrationPath = resolve(
   __dirname,
