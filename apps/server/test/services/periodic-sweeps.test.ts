@@ -20,6 +20,7 @@ import {
 } from "../../src/services/system/event-loop-work.js";
 import {
   type PeriodicSweepJob,
+  runDestroyedEnvironmentPruneSweep,
   runPeriodicSweepJobs,
   runPeriodicSweeps,
 } from "../../src/services/system/periodic-sweeps.js";
@@ -384,7 +385,7 @@ describe("runPeriodicSweeps", () => {
       };
       resetEventLoopWorkForTests();
       try {
-        await runPeriodicSweeps(deps);
+        await runDestroyedEnvironmentPruneSweep(deps, Date.now());
         expect(takeEventLoopWorkWindowSnapshot().slowestWork).toBe(
           "sweep:destroyed-environment-prune:advance",
         );

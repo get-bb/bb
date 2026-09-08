@@ -66,6 +66,11 @@ interface TruncateCompletedEventItemOutputPathArgs
   extends CompletedEventOutputPathTarget,
     TruncateCompletedEventItemOutputsArgs {}
 
+interface TruncateCompletedEventItemOutputPathResult {
+  hasMoreCandidates: boolean;
+  truncated: number;
+}
+
 interface UpdateCompletedEventOutputScanRowsArgs
   extends CompletedEventOutputPathTarget {
   rows: CompletedEventOutputScanRow[];
@@ -106,6 +111,7 @@ export interface TruncateCompletedEventItemOutputsArgs {
 
 export interface TruncateCompletedEventItemOutputsResult {
   commandExecutionOutputs: number;
+  hasMoreCandidates: boolean;
   toolCallResults: number;
   webFetchResultTexts: number;
   webSearchResultTexts: number;
@@ -288,7 +294,7 @@ function advanceCompletedEventOutputScanCursor(
 function truncateCompletedEventItemOutputPath(
   db: DbConnection,
   args: TruncateCompletedEventItemOutputPathArgs,
-): number {
+): TruncateCompletedEventItemOutputPathResult {
   const rows = listCompletedEventOutputScanRows(db, args);
   const truncated = updateCompletedEventOutputScanRows(db, {
     itemKind: args.itemKind,
@@ -306,34 +312,46 @@ function truncateCompletedEventItemOutputPath(
       updatedAt: args.truncatedAt,
     });
   }
-  return truncated;
+  return {
+    hasMoreCandidates: args.limit > 0 && rows.length === args.limit,
+    truncated,
+  };
 }
 
 export function truncateCompletedEventItemOutputs(
   db: DbConnection,
   args: TruncateCompletedEventItemOutputsArgs,
 ): TruncateCompletedEventItemOutputsResult {
+  const commandExecution = truncateCompletedEventItemOutputPath(db, {
+    ...args,
+    itemKind: "commandExecution",
+    outputPath: "aggregatedOutput",
+  });
+  const toolCall = truncateCompletedEventItemOutputPath(db, {
+    ...args,
+    itemKind: "toolCall",
+    outputPath: "result",
+  });
+  const webFetch = truncateCompletedEventItemOutputPath(db, {
+    ...args,
+    itemKind: "webFetch",
+    outputPath: "resultText",
+  });
+  const webSearch = truncateCompletedEventItemOutputPath(db, {
+    ...args,
+    itemKind: "webSearch",
+    outputPath: "resultText",
+  });
   return {
-    commandExecutionOutputs: truncateCompletedEventItemOutputPath(db, {
-      ...args,
-      itemKind: "commandExecution",
-      outputPath: "aggregatedOutput",
-    }),
-    toolCallResults: truncateCompletedEventItemOutputPath(db, {
-      ...args,
-      itemKind: "toolCall",
-      outputPath: "result",
-    }),
-    webFetchResultTexts: truncateCompletedEventItemOutputPath(db, {
-      ...args,
-      itemKind: "webFetch",
-      outputPath: "resultText",
-    }),
-    webSearchResultTexts: truncateCompletedEventItemOutputPath(db, {
-      ...args,
-      itemKind: "webSearch",
-      outputPath: "resultText",
-    }),
+    commandExecutionOutputs: commandExecution.truncated,
+    hasMoreCandidates:
+      commandExecution.hasMoreCandidates ||
+      toolCall.hasMoreCandidates ||
+      webFetch.hasMoreCandidates ||
+      webSearch.hasMoreCandidates,
+    toolCallResults: toolCall.truncated,
+    webFetchResultTexts: webFetch.truncated,
+    webSearchResultTexts: webSearch.truncated,
   };
 }
 

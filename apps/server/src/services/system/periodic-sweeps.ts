@@ -70,6 +70,7 @@ type PeriodicSweepDeps = LoggedPendingInteractionWorkSessionDeps & {
 };
 
 const DATABASE_MAINTENANCE_CHECK_INTERVAL_MS = 60 * 60_000;
+const COMPLETED_EVENT_OUTPUT_TRUNCATION_STEP_SIZE = 10;
 const MANAGED_ENVIRONMENT_ARCHIVE_CLEANUP_RECOVERY_INTERVAL_MS = 15 * 60_000;
 const ORPHANED_ENVIRONMENT_DESTROY_RECOVERY_DELAY_MS =
   LIVE_DAEMON_COMMAND_TIMEOUT_MS;
@@ -469,15 +470,33 @@ async function runMachineAuthPruneSweep(
   await deps.machineAuth.pruneExpiredKeys();
 }
 
-function runCompletedEventOutputTruncationSweep(
+async function runCompletedEventOutputTruncationSweep(
   deps: LoggedPendingInteractionWorkSessionDeps,
   now: number,
-): void {
-  truncateCompletedEventItemOutputs(deps.db, {
-    createdBefore: now - COMPLETED_EVENT_OUTPUT_RETENTION_MS,
-    limit: DEFAULT_COMPLETED_EVENT_OUTPUT_TRUNCATION_BATCH_SIZE,
-    truncatedAt: now,
-  });
+): Promise<void> {
+  for (
+    let scanned = 0;
+    scanned < DEFAULT_COMPLETED_EVENT_OUTPUT_TRUNCATION_BATCH_SIZE;
+    scanned += COMPLETED_EVENT_OUTPUT_TRUNCATION_STEP_SIZE
+  ) {
+    const limit = Math.min(
+      COMPLETED_EVENT_OUTPUT_TRUNCATION_STEP_SIZE,
+      DEFAULT_COMPLETED_EVENT_OUTPUT_TRUNCATION_BATCH_SIZE - scanned,
+    );
+    const result = runEventLoopWorkSync(
+      "sweep:completed-event-output-truncation:advance",
+      () =>
+        truncateCompletedEventItemOutputs(deps.db, {
+          createdBefore: now - COMPLETED_EVENT_OUTPUT_RETENTION_MS,
+          limit,
+          truncatedAt: now,
+        }),
+    );
+    if (!result.hasMoreCandidates) {
+      break;
+    }
+    await new Promise<void>((resolve) => setImmediate(resolve));
+  }
 }
 
 function runClosedSessionPruneSweep(
@@ -490,7 +509,7 @@ function runClosedSessionPruneSweep(
   });
 }
 
-async function runDestroyedEnvironmentPruneSweep(
+export async function runDestroyedEnvironmentPruneSweep(
   deps: LoggedPendingInteractionWorkSessionDeps,
   now: number,
 ): Promise<void> {

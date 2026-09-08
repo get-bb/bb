@@ -219,6 +219,7 @@ describe("truncateCompletedEventItemOutputs", () => {
 
     expect(result).toEqual({
       commandExecutionOutputs: 1,
+      hasMoreCandidates: false,
       toolCallResults: 1,
       webFetchResultTexts: 1,
       webSearchResultTexts: 1,
@@ -330,6 +331,7 @@ describe("truncateCompletedEventItemOutputs", () => {
       }),
     ).toEqual({
       commandExecutionOutputs: 0,
+      hasMoreCandidates: false,
       toolCallResults: 0,
       webFetchResultTexts: 0,
       webSearchResultTexts: 0,
