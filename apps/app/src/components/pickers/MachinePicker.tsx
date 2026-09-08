@@ -1,4 +1,3 @@
-import { MachineStatusDot } from "@/components/machines/MachineStatusDot";
 import { useMemo } from "react";
 import type { Host } from "@bb/domain";
 import { Icon } from "@bb/shared-ui/icon";
@@ -15,10 +14,8 @@ import {
   COARSE_POINTER_ICON_SIZE_CLASS,
 } from "@bb/shared-ui/coarse-pointer-sizing";
 import { LIST_HOVER_TRANSITION } from "@bb/shared-ui/motion";
-import {
-  selectPersistentHosts,
-  selectPrimaryHost,
-} from "@/hooks/queries/host-queries";
+import { MachineStatusDot } from "@/components/machines/MachineStatusDot";
+import { selectHosts, selectPrimaryHost } from "@/hooks/queries/host-queries";
 import { formatRelativeTime } from "@/lib/relative-time";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { formatHostUpdateStatus } from "@/lib/host-update-status";
@@ -56,7 +53,7 @@ export function MachinePickerUI({
   className,
   modal,
 }: MachinePickerUIProps) {
-  const availableHosts = useMemo(() => selectPersistentHosts(hosts), [hosts]);
+  const availableHosts = useMemo(() => selectHosts(hosts), [hosts]);
   const selectedHost = useMemo(
     () =>
       availableHosts.find((host) => host.id === selectedHostId) ??

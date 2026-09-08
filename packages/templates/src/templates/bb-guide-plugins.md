@@ -900,3 +900,15 @@ bot), agent-enrichment (agent surfaces), and composer-customization (all
 composer regions). Thread Hover
 Cards installs from the BB Community marketplace (source: the bb-plugins
 repo).
+
+Modal image setup uses `bb modal project inspect`, `recipe put/show/list`,
+`context upload`, `image build/logs/status/cancel/list/gc`, and
+`project configure/show`. Every command supports `--json`. Read the Modal
+plugin's command reference for required arguments, reviewed dirty contexts,
+revision CAS, explicit rebuilds, and garbage collection grace periods.
+
+Contributed commands may accept `--stdin`: the calling CLI transfers up to
+256 KiB of multiline text as `--input-text`, without reading server-local files.
+The existing `--<flag>-stdin` form still accepts one line. A plugin can follow
+long-running jobs with bounded `experimental_continue` response pages; stopping
+the CLI stops the reader, not the job.

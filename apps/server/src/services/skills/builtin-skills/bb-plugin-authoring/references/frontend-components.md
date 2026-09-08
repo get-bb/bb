@@ -228,6 +228,19 @@ className?, draftKey? }` — the `default*` props are SEEDS, not controlled
   provider's control owns the base branch, and the checkout provider's owns
   the directory and the branch to switch to.
 
+  A machine provider may contribute an `environmentRow`; choosing it creates a
+  new machine and then runs the row's environment provider on that machine.
+  A machine provider may omit `icon`; Add machine and the Machines page then
+  render no provider logo or provider badge, matching a manually enrolled
+  machine.
+  Machine-provider inputs use
+  `app.slots.experimental_machineProviderInputs({ machineProviderId,
+component })`. The component receives `{ projectId, value, onChange }` and
+  reports ready JSON or a blocked reason. The same control appears in the
+  picker sugar row and Settings → Machines → Add machine. Inputs are persisted
+  and readable by every plugin, so never put secrets in them; store credentials
+  in plugin settings and emit only non-secret configuration or references.
+
   Store-then-restore: the request's selection fields map to the `default*`
   seed props. The host composer creates `input` and `executionInputSources`
   from its draft and selection provenance. A plugin can re-open a saved

@@ -166,7 +166,7 @@ export function handleDaemonSocketClosed(
 }
 
 export function handleHostRemoved(
-  deps: DaemonSocketClosedDeps,
+  deps: Omit<DaemonSocketClosedDeps, "sharedPorts">,
   args: HandleHostRemovedArgs,
 ): void {
   const session = deps.db

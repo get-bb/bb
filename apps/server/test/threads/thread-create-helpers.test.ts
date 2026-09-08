@@ -114,7 +114,6 @@ describe("createThreadRecord", () => {
       const deps = { db, hub: noopNotifier };
       const host = upsertHost(db, noopNotifier, {
         name: "Test Host",
-        type: "persistent",
       });
       const { project } = createProject(db, noopNotifier, {
         name: "Test Project",

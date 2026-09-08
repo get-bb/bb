@@ -273,17 +273,30 @@ type ExpectedFilesKey =
 type ExpectedGuideKey = "render";
 
 type ExpectedHostsKey =
+  | "experimental_enrollmentCommand"
+  | "experimental_lifecycle"
+  | "experimental_ensureReady"
+  | "submit"
+  | "launch"
+  | "follow"
+  | "cancel"
+  | "experimental_providerDetails"
   | "cloneDefaultPath"
+  | "create"
   | "createJoinCode"
   | "delete"
   | "directory"
   | "get"
   | "installProviderCli"
   | "list"
+  | "listProviders"
   | "pathsExist"
   | "pickFolder"
   | "providerCliStatus"
+  | "resume"
+  | "retryCleanup"
   | "retryUpdate"
+  | "suspend"
   | "update";
 
 type ExpectedPluginsKey =
@@ -334,6 +347,9 @@ type ExpectedProvidersKey = "list" | "models";
 type ExpectedStatusKey = "get";
 
 type ExpectedSystemKey =
+  | "machineEnvironment"
+  | "setMachineEnvironment"
+  | "unsetMachineEnvironment"
   | "attention"
   | "cliSkillsStatus"
   | "config"

@@ -1,3 +1,4 @@
+import type { MachineBootstrapApi } from "./machine-bootstrap.js";
 import type Database from "better-sqlite3";
 import type { Context } from "hono";
 import type * as z from "zod";
@@ -410,6 +411,74 @@ export interface PluginEnvironments {
   recheck(): Promise<void>;
 }
 
+export interface PluginMachineProviderRequirements {
+  gitRemote?: boolean;
+}
+
+export type PluginMachineValidateDecision =
+  | { action: "accept" }
+  | { action: "refuse"; message: string };
+
+export type PluginMachineProviderDeclaration<
+  Requires extends PluginMachineProviderRequirements =
+    PluginMachineProviderRequirements,
+  Inputs extends
+    import("./machine-provider.js").PluginMachineProviderInputsSchema =
+    import("./machine-provider.js").PluginMachineProviderInputsSchema,
+> = import("./machine-provider.js").PluginMachineProviderDefinition<
+  Requires,
+  Inputs
+>;
+
+export interface ServerAccessGrant {
+  id: string;
+  serverUrl: string;
+  headers?: Record<string, string>;
+}
+
+export interface ServerAccessSelection {
+  providerId: string;
+}
+
+export interface ServerAccessProviderDeclaration {
+  /** A deliberate user-safe diagnostic shown in General settings without changing availability. Return null when no attention is needed. */
+  experimental_attention?(): string | null | Promise<string | null>;
+  id: string;
+  displayName: string;
+  availability():
+    | import("./machine-provider.js").PluginMachineProviderAvailability
+    | Promise<
+        import("./machine-provider.js").PluginMachineProviderAvailability
+      >;
+  /** Throw an Error named experimental_ServerAccessRecoveryError to expose a deliberate user-safe recovery message. Ordinary failures are redacted. */
+  acquire(context: {
+    key: string;
+    hostId: string;
+    signal: AbortSignal;
+  }): Promise<ServerAccessGrant>;
+  release(context: {
+    key: string;
+    hostId: string;
+    /** Null when acquisition was interrupted before a grant was returned. Reconcile using key and hostId. */
+    grantId: string | null;
+  }): Promise<void>;
+}
+
+export interface PluginServerAccess {
+  register(declaration: ServerAccessProviderDeclaration): void;
+}
+
+export interface PluginMachines extends MachineBootstrapApi {
+  register<
+    const Requires extends PluginMachineProviderRequirements,
+    const Inputs extends
+      import("./machine-provider.js").PluginMachineProviderInputsSchema =
+      undefined,
+  >(
+    declaration: PluginMachineProviderDeclaration<Requires, Inputs>,
+  ): void;
+}
+
 /**
  * Where a thread is going to run, as far as core knows at the checkpoint.
  * Before provisioning attaches an environment this is the start intent the
@@ -421,7 +490,13 @@ export type PluginDispatchEnvironmentIntent =
   | {
       kind: "provider";
       environmentProviderId: string;
-      machine: { type: "existing"; hostId: string };
+      machine:
+        | { type: "existing"; hostId: string }
+        | {
+            type: "new";
+            machineProviderId: string;
+            inputs: JsonValue | null;
+          };
       inputs: JsonValue | null;
     };
 
@@ -817,7 +892,14 @@ export interface PluginInteractionRequest {
   timeoutMs?: number;
 }
 
+export interface experimental_PluginCliContinuation {
+  argv: string[];
+  delayMs: number;
+}
+
 export interface PluginCliResult {
+  /** Print this page, then request the next page until interrupted. */
+  experimental_continue?: experimental_PluginCliContinuation;
   exitCode: number;
   stdout?: string;
   stderr?: string;
@@ -840,6 +922,7 @@ export interface PluginCliOutputLimitError {
 
 /** Normalized host result returned by the plugin CLI HTTP/testing boundary. */
 export interface PluginCliExecutionResult {
+  experimental_continue?: experimental_PluginCliContinuation;
   exitCode: number;
   stdout: string;
   stderr: string;
@@ -1531,9 +1614,11 @@ export interface ExperimentalPluginProviderEnvEntry {
 
 export interface ExperimentalPluginProviderEnvHealthContext {
   hostId: string;
+  experimental_readiness?: { threadId: string | null };
 }
 
 export interface ExperimentalPluginProviderEnvHealth {
+  experimental_probe?: { serverPath: string; headers: Record<string, string> };
   label: string;
   statusMessage: string;
 }
@@ -1796,6 +1881,9 @@ export interface BbPluginApi {
    * docs/api_to_audit.md.
    */
   readonly experimental_environments: PluginEnvironments;
+  /** Machine providers provision execution machines. Experimental: see docs/api_to_audit.md. */
+  readonly experimental_machines: PluginMachines;
+  readonly experimental_serverAccess: PluginServerAccess;
   /** Plugin-reported status (needs-configuration). */
   readonly status: PluginStatusApi;
   /** Read-only facts about the running server (loopback base URL). */

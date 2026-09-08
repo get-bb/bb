@@ -156,6 +156,17 @@ describe("Codex credential health and usage", () => {
     );
   });
 
+  it("recognizes environment API-key authentication without an on-disk login", async () => {
+    vi.stubEnv("OPENAI_API_KEY", "synthetic-environment-key");
+    await expect(getCodexProviderHealth()).resolves.toMatchObject({
+      health: { status: "ready" },
+    });
+    vi.stubEnv("OPENAI_API_KEY", "");
+    await expect(getCodexProviderHealth()).resolves.toMatchObject({
+      health: { status: "unauthenticated" },
+    });
+  });
+
   it("reports unauthenticated when auth.json is missing", async () => {
     await expect(getCodexProviderHealth()).resolves.toEqual({
       supported: true,

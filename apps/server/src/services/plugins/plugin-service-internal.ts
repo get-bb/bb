@@ -1,3 +1,4 @@
+import type { MachineEnrollmentService } from "../machines/machine-services.js";
 import type { AiServiceRegistry } from "../ai/ai-service-registry.js";
 import type { DbConnection } from "@bb/db";
 import type {
@@ -65,6 +66,7 @@ export interface PluginHostArtifactSnapshot {
 }
 
 export interface PluginServiceDeps {
+  machineEnrollments?: MachineEnrollmentService;
   db: DbConnection;
   sharedPorts?: Pick<
     HostSharedPortCoordinator,
@@ -176,6 +178,7 @@ export interface PluginResolvedProviderEnv {
 }
 
 export interface PluginResolvedProviderEnvHealth {
+  experimental_probe?: { serverPath: string; headers: Record<string, string> };
   label: string;
   statusMessage: string;
 }

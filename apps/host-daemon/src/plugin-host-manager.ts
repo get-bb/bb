@@ -1,3 +1,9 @@
+import {
+  operationEnvironment,
+  operationSecrets,
+  redactOperationSecrets,
+  redactOperationContent,
+} from "./operation-environment.js";
 import { fork, type ChildProcess } from "node:child_process";
 import { existsSync } from "node:fs";
 import { rm } from "node:fs/promises";
@@ -5,6 +11,7 @@ import { isAbsolute } from "node:path";
 import { performance } from "node:perf_hooks";
 import { fileURLToPath } from "node:url";
 import type { Readable } from "node:stream";
+import { StringDecoder } from "node:string_decoder";
 import type {
   HostDaemonOnlineRpcCommand,
   HostDaemonOnlineRpcResult,
@@ -13,6 +20,7 @@ import type { HostPathWatchChange, HostWatcher } from "@bb/host-watcher";
 import { jsonValueSchema, type JsonValue } from "@bb/domain";
 import {
   createPluginProcessTempDir,
+  createSecretStreamRedactor,
   ensurePluginProcessDataDir,
   sanitizeInheritedChildProcessEnv,
 } from "@bb/process-utils";
@@ -60,6 +68,7 @@ interface WorkerState {
   retainedLeaseIds: Set<string>;
   idleTimer: NodeJS.Timeout | null;
   watches: Map<string, WorkerWatchState>;
+  secrets: Set<string>;
 }
 
 interface WorkerWatchState {
@@ -169,7 +178,10 @@ function errorMessage(error: unknown): string {
 function observeBoundedStderr(
   source: Readable,
   onLine: (line: string) => void,
+  getSecrets: () => readonly string[],
 ): void {
+  const decoder = new StringDecoder("utf8");
+  const redactor = createSecretStreamRedactor(getSecrets);
   let tail = Buffer.alloc(0);
   let emittedLines = 0;
   let truncated = false;
@@ -198,7 +210,7 @@ function observeBoundedStderr(
     onLine(tail.toString("utf8").replace(/\r$/u, ""));
     tail = Buffer.alloc(0);
   };
-  source.on("data", (chunk: Buffer) => {
+  const consume = (chunk: Buffer): void => {
     if (truncated) return;
     let remaining = chunk;
     while (remaining.length > 0 && !truncated) {
@@ -211,8 +223,14 @@ function observeBoundedStderr(
       emit();
       remaining = remaining.subarray(newline + 1);
     }
+  };
+  source.on("data", (chunk: Buffer) => {
+    consume(Buffer.from(redactor.push(decoder.write(chunk))));
   });
-  source.on("end", emit);
+  source.once("end", () => {
+    consume(Buffer.from(redactor.push(decoder.end()) + redactor.flush()));
+    emit();
+  });
 }
 
 function sendToWorker(child: ChildProcess, message: object): boolean {
@@ -270,6 +288,8 @@ export class PluginHostManager {
           `host plugin ${command.pluginId} has too many pending calls`,
         );
       }
+      for (const secret of operationSecrets(command.contributedEnv))
+        worker.secrets.add(secret);
       return await new Promise<PluginHostCallResult>((resolve, reject) => {
         const deadlineTimer = setTimeout(
           () =>
@@ -296,6 +316,10 @@ export class PluginHostManager {
             callId: command.callId,
             method: command.method,
             input: command.input,
+            envVars: operationEnvironment(
+              command.contributedEnv,
+              this.options.shellEnv?.() ?? {},
+            ),
           })
         ) {
           worker.pending.delete(command.callId);
@@ -506,6 +530,7 @@ export class PluginHostManager {
       retainedLeaseIds: new Set(),
       idleTimer: null,
       watches: new Map(),
+      secrets: new Set(),
     };
     let unexpectedExitReported = false;
     const failWorker = (
@@ -541,12 +566,20 @@ export class PluginHostManager {
     }, START_TIMEOUT_MS);
     startTimer.unref?.();
     if (child.stderr !== null) {
-      observeBoundedStderr(child.stderr, (line) => {
-        this.options.logger.warn(
-          { pluginId: worker.pluginId, origin: "host", stderr: line },
-          "Host plugin stderr",
-        );
-      });
+      observeBoundedStderr(
+        child.stderr,
+        (line) => {
+          this.options.logger.warn(
+            {
+              pluginId: worker.pluginId,
+              origin: "host",
+              stderr: line,
+            },
+            "Host plugin stderr",
+          );
+        },
+        () => [...worker.secrets],
+      );
     }
     child.once("error", (error) => {
       clearTimeout(startTimer);
@@ -583,7 +616,7 @@ export class PluginHostManager {
       }
       if (record.type === "startup-error" && typeof record.error === "string") {
         clearTimeout(startTimer);
-        failWorker(record.error);
+        failWorker(redactOperationSecrets(record.error, [...worker.secrets]));
         return;
       }
       if (
@@ -601,7 +634,7 @@ export class PluginHostManager {
           pluginId: worker.pluginId,
           generation: worker.generation,
           signal: record.signal,
-          payload: payload.data,
+          payload: redactOperationContent(payload.data, [...worker.secrets]),
         });
         return;
       }
@@ -925,13 +958,16 @@ export class PluginHostManager {
       pending.reject(pending.cancellationError);
     } else if (result.ok) {
       const output = jsonValueSchema.safeParse(result.output);
-      if (output.success) pending.resolve({ output: output.data });
+      if (output.success)
+        pending.resolve({
+          output: redactOperationContent(output.data, [...worker.secrets]),
+        });
       else pending.reject(new Error("host handler returned invalid JSON"));
     } else {
       pending.reject(
         new Error(
           typeof result.error === "string"
-            ? result.error
+            ? redactOperationSecrets(result.error, [...worker.secrets])
             : "host handler failed",
         ),
       );

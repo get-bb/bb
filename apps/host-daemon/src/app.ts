@@ -47,11 +47,7 @@ import { runtimeErrorLogFields, summarizeError } from "./error-utils.js";
 import { ensureThreadStorageRoot } from "./thread-storage-root.js";
 import type { AgentRuntimeOptions } from "@bb/agent-runtime";
 import { createProtocolSelfUpdater } from "./protocol-self-update.js";
-import {
-  type HostType,
-  type ToolCallRequest,
-  type ToolCallResponse,
-} from "@bb/domain";
+import { type ToolCallRequest, type ToolCallResponse } from "@bb/domain";
 import {
   disposeParcelWatcherBackend,
   type HostWatcher,
@@ -106,15 +102,13 @@ interface CreateHostDaemonAppOptions {
   serverUrl: string;
   hostKey: string;
   bridgeBundleDir?: string;
-  hostType: HostType;
   hostId: string;
   hostName: string;
   instanceId: string;
   appUrl?: string;
   devAppPort?: number;
   logger: HostDaemonLogger;
-  machineCredential?: string;
-  connectMachineId?: string;
+  serverHeaders?: Record<string, string>;
   autoUpdate?: boolean;
   releaseLock: () => Promise<void>;
   localApiConfig: HostDaemonLocalApiConfig | null;
@@ -288,7 +282,7 @@ export async function createHostDaemonApp(
     serverUrl: options.serverUrl,
     hostKey: options.hostKey,
     logger: options.logger,
-    machineCredential: options.machineCredential,
+    serverHeaders: options.serverHeaders,
     getSessionId: () => {
       if (!sessionState.value) {
         throw new Error("Server session is not open");
@@ -467,7 +461,7 @@ export async function createHostDaemonApp(
   const connectTunnel = new ConnectTunnelClient({
     serverUrl: options.serverUrl,
     hostName: options.hostName,
-    machineCredential: options.machineCredential,
+    machineCredential: options.serverHeaders?.["x-bb-connect-machine"],
     fetchFn: options.fetchFn,
     logger: options.logger,
     onIdentity: (identity) => {
@@ -767,7 +761,7 @@ export async function createHostDaemonApp(
     providerHealth: async (args) => {
       await refreshRuntimeShellEnv();
       return runtimeManager.withProviderMaintenanceRuntime(
-        { dataDir: options.dataDir },
+        { dataDir: options.dataDir, contributedEnv: args.contributedEnv },
         (runtime) => runtime.providerHealth(args),
       );
     },
@@ -814,13 +808,11 @@ export async function createHostDaemonApp(
     hostKey: options.hostKey,
     hostId: options.hostId,
     hostName: options.hostName,
-    hostType: options.hostType,
     dataDir: options.dataDir,
     instanceId: options.instanceId,
     localApiPort: options.localApiConfig?.port ?? null,
     logger: options.logger,
-    machineCredential: options.machineCredential,
-    connectMachineId: options.connectMachineId,
+    serverHeaders: options.serverHeaders,
     serverClient,
     protocolSelfUpdater: createProtocolSelfUpdater({
       dataDir: options.dataDir,

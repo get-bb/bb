@@ -1,10 +1,10 @@
+import { hostDaemonContributedEnvEntrySchema } from "./commands.js";
 import { desktopBrowserChangedSchema } from "./desktop-browser.js";
 import type { Hono } from "hono";
 import { hc } from "hono/client";
 import {
   discoveredWorkspacePropertiesSchema,
   ENVIRONMENT_CHANGE_KINDS,
-  hostTypeSchema,
   jsonValueSchema,
   pendingInteractionCreateSchema,
   pendingInteractionStatusSchema,
@@ -94,20 +94,20 @@ const hostDaemonPluginHostGenerationSchema = z
   })
   .strict();
 
-export const hostDaemonSessionOpenRequestSchema = z.object({
-  hostId: z.string().min(1),
-  instanceId: z.string().min(1),
-  hostName: z.string().min(1),
-  hostType: hostTypeSchema,
-  connectMachineId: z.string().min(1).optional(),
-  hasMachineCredential: z.boolean(),
-  platform: hostPlatformSchema,
-  dataDir: z.string().min(1),
-  localApiPort: z.number().int().min(1).max(65_535).nullable().default(null),
-  protocolVersion: z.number().int().positive(),
-  activeThreads: z.array(hostDaemonActiveThreadSchema),
-  loadedEnvironments: z.array(hostDaemonLoadedEnvironmentSchema).default([]),
-});
+export const hostDaemonSessionOpenRequestSchema = z
+  .object({
+    hostId: z.string().min(1),
+    instanceId: z.string().min(1),
+    hostName: z.string().min(1),
+    hasMachineCredential: z.boolean(),
+    platform: hostPlatformSchema,
+    dataDir: z.string().min(1),
+    localApiPort: z.number().int().min(1).max(65_535).nullable().default(null),
+    protocolVersion: z.number().int().positive(),
+    activeThreads: z.array(hostDaemonActiveThreadSchema),
+    loadedEnvironments: z.array(hostDaemonLoadedEnvironmentSchema).default([]),
+  })
+  .strict();
 export type HostDaemonSessionOpenRequest = z.output<
   typeof hostDaemonSessionOpenRequestSchema
 >;
@@ -116,8 +116,6 @@ export const hostDaemonEnrollRequestSchema = z
   .object({
     hostId: z.string().min(1),
     hostName: z.string().min(1),
-    hostType: hostTypeSchema,
-    connectMachineId: z.string().min(1).optional(),
   })
   .strict();
 export type HostDaemonEnrollRequest = z.infer<
@@ -433,6 +431,8 @@ const hostDaemonOnlineRpcResponseSuccessSchema = z.discriminatedUnion(
     onlineRpcResponseSuccessSchemaFor("host.write_file"),
     onlineRpcResponseSuccessSchemaFor("provider.list_models"),
     onlineRpcResponseSuccessSchemaFor("provider.health"),
+    onlineRpcResponseSuccessSchemaFor("workspace.readiness.inspect"),
+    onlineRpcResponseSuccessSchemaFor("host.readiness.probe"),
     onlineRpcResponseSuccessSchemaFor("provider.installation.status"),
     onlineRpcResponseSuccessSchemaFor("provider.installation.run"),
     onlineRpcResponseSuccessSchemaFor("provider.usage"),
@@ -509,6 +509,7 @@ const hostDaemonTerminalOpenTargetSchema = z.discriminatedUnion("kind", [
 const hostDaemonTerminalOpenMessageSchema = z
   .object({
     type: z.literal("terminal.open"),
+    contributedEnv: z.array(hostDaemonContributedEnvEntrySchema).default([]),
     requestId: terminalRequestIdSchema,
     terminalId: terminalIdSchema,
     threadId: z.string().min(1).optional(),

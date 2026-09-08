@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { permissionModeSchema } from "@bb/domain";
+import { jsonValueSchema, permissionModeSchema } from "@bb/domain";
 import {
   pathsExistRequestSchema,
   providerCliInstallEventSchema,
@@ -49,6 +49,27 @@ export type CreateHostJoinCodeRequest = z.infer<
   typeof createHostJoinCodeRequestSchema
 >;
 
+export const createMachineRequestSchema = z
+  .object({
+    machineProviderId: z.string().min(1),
+    projectId: z.string().min(1).nullable(),
+    inputs: jsonValueSchema.nullable(),
+    key: z.string().min(1).optional(),
+  })
+  .strict();
+export type CreateMachineRequest = z.infer<typeof createMachineRequestSchema>;
+
+export interface MachineLaunchStatus {
+  id: string;
+  phase: "creating" | "ready" | "failed" | "cancelled";
+  hostId: string | null;
+  step: string;
+  log: string;
+  message: string | null;
+  cancelPending: boolean;
+  terminal: boolean;
+}
+
 export const createHostJoinCodeResponseSchema = z.object({
   joinCode: z.string().min(1),
   hostId: z.string().min(1),
@@ -74,9 +95,12 @@ export type UpdateHostPermissionCeilingRequest = z.infer<
   typeof updateHostPermissionCeilingRequestSchema
 >;
 
-export const hostRetryUpdateResponseSchema = z
+export const hostActionResponseSchema = z
   .object({ ok: z.literal(true) })
   .strict();
+export type HostActionResponse = z.infer<typeof hostActionResponseSchema>;
+
+export const hostRetryUpdateResponseSchema = hostActionResponseSchema;
 export type HostRetryUpdateResponse = z.infer<
   typeof hostRetryUpdateResponseSchema
 >;
@@ -103,3 +127,78 @@ export type HostProviderCliInstallRequest = ProviderCliInstallRequest;
 
 export const hostProviderCliInstallEventSchema = providerCliInstallEventSchema;
 export type HostProviderCliInstallEvent = ProviderCliInstallEvent;
+
+export const machineEnrollmentCommandQuerySchema = z.object({
+  scope: z.enum(["launch", "thread"]).default("launch"),
+});
+export type MachineEnrollmentCommandQuery = z.input<
+  typeof machineEnrollmentCommandQuerySchema
+>;
+export const experimental_hostReadinessRequestSchema = z
+  .object({
+    providerId: z.string().min(1),
+    projectId: z.string().min(1),
+  })
+  .strict();
+export type experimental_HostReadinessRequest = z.infer<
+  typeof experimental_hostReadinessRequestSchema
+>;
+export const experimental_hostReadinessResponseSchema = z.discriminatedUnion(
+  "status",
+  [
+    z
+      .object({
+        status: z.literal("ready"),
+        checks: z.array(
+          z
+            .object({
+              kind: z.enum(["cli", "auth", "workspace"]),
+              status: z.literal("passed"),
+            })
+            .strict(),
+        ),
+      })
+      .strict(),
+    z
+      .object({
+        status: z.literal("blocked"),
+        code: z.string(),
+        stage: z.enum(["cli", "auth", "workspace"]),
+        message: z.string(),
+        retryable: z.boolean(),
+      })
+      .strict(),
+  ],
+);
+export type experimental_HostReadinessResponse = z.infer<
+  typeof experimental_hostReadinessResponseSchema
+>;
+
+export const experimental_hostLifecycleRequestSchema = z
+  .object({ keep: z.boolean().optional() })
+  .strict();
+export type experimental_HostLifecycleRequest = z.infer<
+  typeof experimental_hostLifecycleRequestSchema
+>;
+export const experimental_hostLifecycleResponseSchema = z
+  .object({
+    phase: z.string(),
+    expiresAt: z.number().nullable(),
+    maintenanceAt: z.number().nullable(),
+    lastSnapshotAt: z.number().nullable(),
+    recoveryState: z.enum([
+      "healthy",
+      "draining",
+      "saving",
+      "saved",
+      "recoverable",
+      "lost-since-last-snapshot",
+    ]),
+    message: z.string().nullable(),
+    retentionAt: z.number().nullable(),
+    keep: z.boolean(),
+  })
+  .strict();
+export type experimental_HostLifecycleResponse = z.infer<
+  typeof experimental_hostLifecycleResponseSchema
+>;

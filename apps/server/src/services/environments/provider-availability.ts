@@ -1,4 +1,4 @@
-import { getProjectSourceByHost } from "@bb/db";
+import { getProjectSourceByHost, projectSourceOwnsPath } from "@bb/db";
 import { isLocalPathProjectSource, PERSONAL_PROJECT_ID } from "@bb/domain";
 import { z } from "zod";
 import type { SystemEnvironmentProvider } from "@bb/server-contract";
@@ -85,9 +85,7 @@ export function resolveEnvironmentProviderAvailability(
 ): Promise<Availability | null> {
   if (query.hostId !== undefined)
     return resolveAvailability(deps, record, query);
-  const hosts = listPublicHostsWithStatus(deps).filter(
-    (host) => host.type === "persistent",
-  );
+  const hosts = listPublicHostsWithStatus(deps);
   return Promise.all(
     hosts.map((host) =>
       resolveAvailability(deps, record, { ...query, hostId: host.id }),
@@ -226,7 +224,7 @@ async function resolveAvailability(
     query.hostId === undefined
       ? null
       : getNonDestroyedHostWithStatus(deps, query.hostId);
-  if (host === null || host.type !== "persistent") return null;
+  if (host === null) return null;
   const requires = record.provider.requires;
   if (requires.projectless !== (project.id === PERSONAL_PROJECT_ID))
     return null;
@@ -234,7 +232,15 @@ async function resolveAvailability(
     host === null ? null : getProjectSourceByHost(deps.db, project.id, host.id);
   const projectCheckout =
     source !== null && isLocalPathProjectSource(source)
-      ? { path: source.path }
+      ? {
+          path: source.path,
+          experimental_ownsPath: projectSourceOwnsPath(
+            deps.db,
+            project.id,
+            host.id,
+            source.path,
+          ),
+        }
       : null;
   if (requires.projectCheckout && projectCheckout === null) return null;
   if (requires.gitCheckout) {

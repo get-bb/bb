@@ -1,0 +1,36 @@
+import { z } from "zod";
+
+export const readinessInspectCommandSchema = z
+  .object({
+    type: z.literal("workspace.readiness.inspect"),
+    path: z.string().min(1),
+  })
+  .strict();
+const checkoutReadinessResultSchema = z
+  .object({
+    commit: z.string(),
+    dirty: z.array(z.string()),
+    files: z.array(z.object({ path: z.string(), sha256: z.string() }).strict()),
+    abi: z.string(),
+  })
+  .strict();
+export const readinessInspectResultSchema = z.union([
+  checkoutReadinessResultSchema,
+  z
+    .object({
+      kind: z.literal("directory"),
+      path: z.string().min(1),
+      hookSha256: z.string().nullable(),
+    })
+    .strict(),
+]);
+export const readinessProbeCommandSchema = z
+  .object({
+    type: z.literal("host.readiness.probe"),
+    serverPath: z.string().startsWith("/"),
+    headers: z.record(z.string(), z.string()),
+  })
+  .strict();
+export const readinessProbeResultSchema = z
+  .object({ reachable: z.boolean(), status: z.number().int().nullable() })
+  .strict();

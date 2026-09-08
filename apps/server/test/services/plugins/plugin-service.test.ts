@@ -1315,7 +1315,6 @@ function seedEnvironmentAtPath(
   },
 ): void {
   const host = upsertHost(db, noopNotifier, {
-    type: "persistent",
     name: "Test host",
   });
   const { project } = createProject(db, noopNotifier, {

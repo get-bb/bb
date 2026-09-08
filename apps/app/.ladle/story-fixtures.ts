@@ -13,6 +13,7 @@ import type {
 import type {
   ProjectResponse,
   SystemEnvironmentProvider,
+  SystemMachineProvider,
 } from "@bb/server-contract";
 import { EMPTY_ORDERED_MENTION_SUGGESTIONS } from "@bb/client-core";
 import {
@@ -338,6 +339,30 @@ export const STORY_ENVIRONMENT_PROVIDERS: readonly SystemEnvironmentProvider[] =
       inputs: null,
     },
   ];
+
+export const STORY_MACHINE_PROVIDERS: readonly SystemMachineProvider[] = [
+  {
+    id: "modal-sandbox",
+    displayName: "Modal sandbox",
+    icon: "Box",
+    logoUrl: null,
+    pluginId: "environment-modal-sandbox",
+    requires: { gitRemote: true },
+    inputs: null,
+    acceptsEmptyInputs: true,
+    supportsSuspend: true,
+    environmentRow: {
+      displayName: "Modal sandbox",
+      environmentProviderId: "project-checkout",
+    },
+    policy: {
+      idleSuspendMs: 15 * 60_000,
+      retire: { after: "last-thread", graceMs: 30 * 24 * 60 * 60_000 },
+      removeRetryMs: 60_000,
+    },
+    availability: null,
+  },
+];
 
 export const STORY_PROJECTS: readonly ProjectSelectorOption[] = [
   { id: PROJECT_IDS.bb, name: PROJECT_NAMES.bb },

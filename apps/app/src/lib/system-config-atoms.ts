@@ -18,6 +18,16 @@ import {
 import { wsManager } from "./ws";
 
 const unavailableSystemConfig: SystemConfigResponse = {
+  machineGit: {
+    status: "not configured",
+    statusMessage: "Server is unavailable",
+  },
+  serverAccess: {
+    providers: [],
+    defaultProviderId: null,
+    effectiveUrl: null,
+    urlSource: null,
+  },
   generalSettings: defaultAppSettings,
   keybindings: [],
   defaultKeybindings: [],

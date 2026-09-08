@@ -65,7 +65,10 @@ export function newThreadEnvironmentArgsToSeed(
     return {
       selectionValue: encodeProviderValue(environment.environmentProviderId),
       providerMachine: environment.machine,
-      providerHostId: environment.machine.hostId,
+      providerHostId:
+        environment.machine.type === "existing"
+          ? environment.machine.hostId
+          : null,
       providerInputs: environment.inputs,
     };
   }

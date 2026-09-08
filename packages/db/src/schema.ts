@@ -18,7 +18,7 @@ import type {
   JsonValue,
   EnvironmentStatus,
   FaviconColorPreference,
-  HostType,
+  MachineProviderSelection,
   PendingInteractionStatus,
   PermissionMode,
   PromptHistoryScope,
@@ -93,8 +93,28 @@ export const hosts = sqliteTable(
   {
     id: text("id").primaryKey(),
     name: text("name").notNull(),
-    type: text("type").$type<HostType>().notNull(),
     connectMachineId: text("connect_machine_id"),
+    machineProviderId: text("machine_provider_id"),
+    machineOperationId: text("machine_operation_id"),
+    serverAccessProviderId: text("server_access_provider_id"),
+    serverAccessGrantId: text("server_access_grant_id"),
+    resource: text("resource", { mode: "json" }).$type<JsonValue>(),
+    machineProviderSelection: text("machine_provider_selection", {
+      mode: "json",
+    }).$type<MachineProviderSelection>(),
+    phase: text("phase")
+      .$type<"active" | "suspending" | "suspended" | "retiring" | "destroyed">()
+      .notNull()
+      .default("active"),
+    suspendedAt: integer("suspended_at"),
+    idleSince: integer("idle_since"),
+    removalStartedAt: integer("removal_started_at"),
+    retireAt: integer("retire_at"),
+    teardownAttempt: integer("teardown_attempt").notNull().default(0),
+    teardownStatus: text("teardown_status").$type<
+      "running" | "failed" | "removed"
+    >(),
+    teardownMessage: text("teardown_message"),
     maxPermissionMode: text("max_permission_mode")
       .$type<PermissionMode>()
       .notNull()
@@ -106,6 +126,27 @@ export const hosts = sqliteTable(
     updatedAt: integer("updated_at").notNull(),
   },
   (table) => [index("hosts_last_seen_idx").on(table.lastSeenAt)],
+);
+
+export const machineEnrollments = sqliteTable(
+  "machine_enrollments",
+  {
+    id: text("id").primaryKey(),
+    owner: text("owner").notNull(),
+    key: text("key").notNull(),
+    hostId: text("host_id").notNull(),
+    state: text("state")
+      .$type<"pending" | "enrolled" | "cancelled">()
+      .notNull(),
+    encryptedBootstrap: text("encrypted_bootstrap"),
+    expiresAt: integer("expires_at"),
+    createdAt: integer("created_at").notNull(),
+    updatedAt: integer("updated_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("machine_enrollments_owner_key_idx").on(table.owner, table.key),
+    uniqueIndex("machine_enrollments_host_id_idx").on(table.hostId),
+  ],
 );
 
 export const projects = sqliteTable(
@@ -410,6 +451,9 @@ export const projectSources = sqliteTable(
     type: text("type").$type<ProjectSourceType>().notNull(),
     hostId: text("host_id").references(() => hosts.id, { onDelete: "cascade" }),
     path: text("path"),
+    ownsPath: integer("owns_path", { mode: "boolean" })
+      .notNull()
+      .default(false),
     isDefault: integer("is_default", { mode: "boolean" })
       .notNull()
       .default(false),
@@ -917,7 +961,6 @@ export const hostDaemonSessions = sqliteTable(
       .references(() => hosts.id, { onDelete: "cascade" }),
     instanceId: text("instance_id").notNull(),
     hostName: text("host_name").notNull(),
-    hostType: text("host_type").$type<HostType>().notNull(),
     dataDir: text("data_dir").notNull(),
     protocolVersion: integer("protocol_version").notNull(),
     heartbeatIntervalMs: integer("heartbeat_interval_ms").notNull(),
@@ -1090,3 +1133,103 @@ export const environmentLaunches = sqliteTable(
       ),
   ],
 );
+
+export const machineLaunches = sqliteTable(
+  "machine_launches",
+  {
+    key: text("key").primaryKey(),
+    providerId: text("provider_id").notNull(),
+    projectId: text("project_id"),
+    inputs: text("inputs", { mode: "json" }).$type<JsonValue>(),
+    attempt: integer("attempt").notNull(),
+    phase: text("phase")
+      .$type<"creating" | "ready" | "failed" | "cancelled">()
+      .notNull(),
+    startedAt: integer("started_at").notNull(),
+    failedAt: integer("failed_at"),
+    failure: text("failure").$type<"terminal" | "transient">(),
+    message: text("message"),
+    transientFailures: integer("transient_failures").notNull(),
+    hostId: text("host_id"),
+    resource: text("resource", { mode: "json" }).$type<JsonValue>(),
+    stepText: text("step_text").notNull(),
+    pendingLog: text("pending_log").notNull(),
+    cleanupRetryAt: integer("cleanup_retry_at"),
+    cleanupResourceRemoved: integer("cleanup_resource_removed", {
+      mode: "boolean",
+    })
+      .notNull()
+      .default(false),
+    cancelPending: integer("cancel_pending", { mode: "boolean" }).notNull(),
+  },
+  (table) => [
+    index("machine_launches_phase_idx").on(table.phase),
+    index("machine_launches_host_id_idx").on(table.hostId),
+  ],
+);
+
+export const environmentHookOperations = sqliteTable(
+  "environment_hook_operations",
+  {
+    id: text("id").primaryKey(),
+    operationId: text("operation_id").notNull(),
+    hostId: text("host_id").notNull(),
+    path: text("path").notNull(),
+    kind: text("kind").$type<"setup" | "teardown">().notNull(),
+    startedAt: integer("started_at").notNull(),
+    finishedAt: integer("finished_at"),
+    error: text("error"),
+  },
+);
+
+export const environmentSetupOutcomes = sqliteTable(
+  "environment_setup_outcomes",
+  {
+    hostId: text("host_id")
+      .notNull()
+      .references(() => hosts.id, { onDelete: "cascade" }),
+    path: text("path").notNull(),
+    operationId: text("operation_id").notNull(),
+    state: text("state", { enum: ["running", "passed", "failed"] }).notNull(),
+    inputHash: text("input_hash"),
+    updatedAt: integer("updated_at").notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.hostId, table.path] })],
+);
+
+export const machineLifecycles = sqliteTable("machine_lifecycles", {
+  hostId: text("host_id")
+    .primaryKey()
+    .references(() => hosts.id, { onDelete: "cascade" }),
+  observedState: text("observed_state", {
+    enum: ["running", "suspended", "missing", "unknown"],
+  }).notNull(),
+  observedAt: integer("observed_at").notNull(),
+  expiresAt: integer("expires_at"),
+  maintenanceAt: integer("maintenance_at"),
+  lastSnapshotAt: integer("last_snapshot_at"),
+  restoreOperationId: text("restore_operation_id"),
+  restoreCheckouts: text("restore_checkouts", { mode: "json" }).$type<
+    Array<{ id: string; path: string }>
+  >(),
+  recoveryState: text("recovery_state", {
+    enum: [
+      "healthy",
+      "draining",
+      "saving",
+      "saved",
+      "recoverable",
+      "lost-since-last-snapshot",
+    ],
+  }).notNull(),
+  message: text("message"),
+  leaseId: text("lease_id"),
+  leaseUntil: integer("lease_until"),
+  retryAt: integer("retry_at"),
+  idleSuspendMs: integer("idle_suspend_ms"),
+  retireAfterMs: integer("retire_after_ms"),
+  deadlineLeadMs: integer("deadline_lead_ms"),
+  unusedSince: integer("unused_since"),
+  retentionAt: integer("retention_at"),
+  keep: integer("keep", { mode: "boolean" }).notNull().default(false),
+});

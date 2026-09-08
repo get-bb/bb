@@ -1,15 +1,10 @@
-import {
-  hostDaemonEnrollResponseSchema,
-  type HostDaemonEnrollRequest,
-} from "@bb/host-daemon-contract";
+import { hostDaemonEnrollResponseSchema } from "@bb/host-daemon-contract";
 
 interface EnrollHostArgs {
   fetchFn?: typeof fetch;
   hostId: string;
   hostName: string;
-  hostType: HostDaemonEnrollRequest["hostType"];
-  connectMachineId?: string;
-  machineCredential?: string;
+  serverHeaders?: Record<string, string>;
   serverUrl: string;
   token: string;
 }
@@ -40,17 +35,11 @@ export async function enrollDaemonHost(
     headers: {
       authorization: `Bearer ${args.token}`,
       "content-type": "application/json",
-      ...(args.machineCredential !== undefined
-        ? { "x-bb-connect-machine": args.machineCredential }
-        : {}),
+      ...args.serverHeaders,
     },
     body: JSON.stringify({
       hostId: args.hostId,
       hostName: args.hostName,
-      hostType: args.hostType,
-      ...(args.connectMachineId !== undefined
-        ? { connectMachineId: args.connectMachineId }
-        : {}),
     }),
   });
 

@@ -290,6 +290,24 @@ async function materializeStdinFlag(
   argv: readonly string[],
   input: PluginCliInputStream,
 ): Promise<string[]> {
+  if (argv.includes("--stdin")) {
+    if (input.isTTY === true) throw new Error("--stdin requires piped input.");
+    if (argv.includes("--input-text"))
+      throw new Error("Choose --stdin or --input-text.");
+    const chunks: Buffer[] = [];
+    let bytes = 0;
+    for await (const chunk of input) {
+      const data = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+      bytes += data.length;
+      if (bytes > 256 * 1024) throw new Error("--stdin exceeds 256 KiB.");
+      chunks.push(data);
+    }
+    return argv.flatMap((value) =>
+      value === "--stdin"
+        ? ["--input-text", Buffer.concat(chunks).toString("utf8")]
+        : [value],
+    );
+  }
   const matches = argv.flatMap((flag, index) => {
     const match = PLUGIN_CLI_STDIN_FLAG.exec(flag);
     const name = match?.[1];
@@ -373,42 +391,65 @@ export async function runPluginCliCommand(
     );
     return 1;
   }
-  const threadId = resolveContextThreadId();
-  const projectId = resolveContextProjectId();
-  const response = await cliFetch(
-    `${baseUrl}/api/v1/plugins/${encodeURIComponent(pluginId)}/cli`,
-    {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        argv: resolvedArgv,
-        cwd: process.cwd(),
-        ...(threadId ? { threadId } : {}),
-        ...(projectId ? { projectId } : {}),
-      }),
-      dispatcher: getPluginCliDispatcher(),
-    },
-  );
-  const result = (await response.json().catch(() => null)) as {
-    exitCode?: unknown;
-    stdout?: unknown;
-    stderr?: unknown;
-    error?: unknown;
-  } | null;
-  if (result === null || typeof result.exitCode !== "number") {
-    await writePluginCliOutput(
-      streams.stderr,
-      typeof result?.error === "string"
-        ? result.error
-        : `Unexpected response from the plugin CLI endpoint (HTTP ${response.status})`,
+  for (;;) {
+    const threadId = resolveContextThreadId();
+    const projectId = resolveContextProjectId();
+    const response = await cliFetch(
+      `${baseUrl}/api/v1/plugins/${encodeURIComponent(pluginId)}/cli`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          argv: resolvedArgv,
+          cwd: process.cwd(),
+          ...(threadId ? { threadId } : {}),
+          ...(projectId ? { projectId } : {}),
+        }),
+        dispatcher: getPluginCliDispatcher(),
+      },
     );
-    return 1;
+    const result = (await response.json().catch(() => null)) as {
+      experimental_continue?: unknown;
+      exitCode?: unknown;
+      stdout?: unknown;
+      stderr?: unknown;
+      error?: unknown;
+    } | null;
+    if (result === null || typeof result.exitCode !== "number") {
+      await writePluginCliOutput(
+        streams.stderr,
+        typeof result?.error === "string"
+          ? result.error
+          : `Unexpected response from the plugin CLI endpoint (HTTP ${response.status})`,
+      );
+      return 1;
+    }
+    if (typeof result.stdout === "string" && result.stdout.length > 0) {
+      await writePluginCliOutput(streams.stdout, result.stdout);
+    }
+    if (typeof result.stderr === "string" && result.stderr.length > 0) {
+      await writePluginCliOutput(streams.stderr, result.stderr);
+    }
+    if (result.exitCode !== 0 || result.experimental_continue === undefined)
+      return result.exitCode;
+    const continuation = result.experimental_continue;
+    if (
+      typeof continuation !== "object" ||
+      continuation === null ||
+      !("argv" in continuation) ||
+      !Array.isArray(continuation.argv) ||
+      !continuation.argv.every(
+        (value): value is string => typeof value === "string",
+      ) ||
+      !("delayMs" in continuation) ||
+      typeof continuation.delayMs !== "number" ||
+      !Number.isFinite(continuation.delayMs) ||
+      continuation.delayMs < 0 ||
+      continuation.delayMs > 60000
+    )
+      throw new Error("Invalid plugin CLI continuation");
+    resolvedArgv = continuation.argv;
+    const delayMs = continuation.delayMs;
+    await new Promise<void>((resolve) => setTimeout(resolve, delayMs));
   }
-  if (typeof result.stdout === "string" && result.stdout.length > 0) {
-    await writePluginCliOutput(streams.stdout, result.stdout);
-  }
-  if (typeof result.stderr === "string" && result.stderr.length > 0) {
-    await writePluginCliOutput(streams.stderr, result.stderr);
-  }
-  return result.exitCode;
 }

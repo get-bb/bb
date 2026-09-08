@@ -1,8 +1,13 @@
+import { projectSourceOwnsPath } from "@bb/db";
 import {
   askProviderLaunch,
   cancelProviderLaunch,
   persistPendingProviderRequest,
 } from "../environments/provider-orchestration.js";
+import {
+  cancelMachineLaunch,
+  resolveThreadMachineLaunchKey,
+} from "../machines/provider-orchestration.js";
 import {
   getAppSettings,
   getEnvironment,
@@ -50,6 +55,9 @@ import { advanceThreadProvisioning } from "./thread-provisioning.js";
 import { toThreadResponseFromThread } from "./thread-runtime-display.js";
 import { toEnvironmentResponse } from "../environments/environment-response.js";
 import type { ThreadProvisioningDeps } from "./thread-provisioning-environment.js";
+import { askMachineLaunch } from "../machines/provider-orchestration.js";
+import { getMachineProvider } from "../plugins/plugin-machine-provider-registry.js";
+import { ensureProjectSourceOnHost } from "../projects/project-source-setup.js";
 
 const PROVIDER_UNAVAILABLE_RETRY_MS = 30_000;
 
@@ -175,6 +183,12 @@ export function cancelAbandonedProviderLaunches(
 ): void {
   void cancelProviderLaunch(deps, threadId).catch((error) =>
     deps.logger.warn({ threadId, error }, "Environment cancellation failed"),
+  );
+  void cancelMachineLaunch(
+    deps,
+    resolveThreadMachineLaunchKey(deps, threadId),
+  ).catch((error) =>
+    deps.logger.warn({ threadId, error }, "Machine cancellation failed"),
   );
 }
 
@@ -350,8 +364,48 @@ export async function resolveEnvironmentProvider(
       error instanceof Error ? error.message : String(error),
     );
   }
-  const host = getNonDestroyedHostWithStatus(deps, selection.machine.hostId);
+  let machineLog = "";
+  const machine = selection.machine;
+  const host =
+    machine.type === "existing"
+      ? getNonDestroyedHostWithStatus(deps, machine.hostId)
+      : await (async () => {
+          const machineRecord = getMachineProvider(machine.machineProviderId);
+          if (machineRecord === undefined) {
+            throw providerFailure(
+              intent.environmentProviderId,
+              record.pluginId,
+              `needs the "${machine.machineProviderId}" machine provider, which is not registered`,
+            );
+          }
+          const machineDecision = askMachineLaunch(deps, {
+            key: resolveThreadMachineLaunchKey(deps, thread.id),
+            record: machineRecord,
+            projectId: thread.projectId,
+            inputs: machine.inputs,
+          });
+          if (machineDecision.action === "reject") {
+            throw new ApiError(
+              409,
+              "machine_provider_rejected",
+              machineDecision.message,
+            );
+          }
+          if (machineDecision.action === "wait") {
+            recordWait(deps, {
+              context,
+              log: machineDecision.log,
+              reason: machineDecision.reason,
+              sendAt: machineDecision.sendAt,
+              thread,
+            });
+            return null;
+          }
+          machineLog = machineDecision.log;
+          return machineDecision.host;
+        })();
   if (host === null) {
+    if (selection.machine.type === "new") return { kind: "waiting" };
     throw providerFailure(
       intent.environmentProviderId,
       record.pluginId,
@@ -367,10 +421,41 @@ export async function resolveEnvironmentProvider(
       { details: { environmentProviderId: intent.environmentProviderId } },
     );
   }
-  const checkout = getProjectSourceByHost(deps.db, thread.projectId, host.id);
+  let checkout = getProjectSourceByHost(deps.db, thread.projectId, host.id);
+  if (machine.type === "new" && requires.projectCheckout && checkout === null) {
+    appendThreadProvisioningEvent(deps, {
+      threadId: thread.id,
+      environmentId: null,
+      provisioningId: context.state.provisioningId,
+      status: "active",
+      entries: launchEntries({
+        ask,
+        log: undefined,
+        now: Date.now(),
+        step: { text: "Setting up project on machine", status: "started" },
+      }),
+    });
+    checkout = await ensureProjectSourceOnHost(deps, {
+      projectId: project.id,
+      projectName: project.name,
+      hostId: host.id,
+      remoteUrl: project.gitRemoteUrl,
+    });
+    if (getThread(deps.db, thread.id)?.status !== "starting") {
+      throw new Error("Thread provisioning context is no longer active");
+    }
+  }
   const projectCheckout =
     checkout !== null && isLocalPathProjectSource(checkout)
-      ? { path: checkout.path }
+      ? {
+          path: checkout.path,
+          experimental_ownsPath: projectSourceOwnsPath(
+            deps.db,
+            project.id,
+            host.id,
+            checkout.path,
+          ),
+        }
       : null;
   if (requires.projectCheckout && projectCheckout === null) {
     throw providerFailure(
@@ -425,7 +510,7 @@ export async function resolveEnvironmentProvider(
   if (decision.action === "wait") {
     recordWait(deps, {
       context,
-      log: decision.log,
+      log: machineLog + decision.log,
       reason: decision.reason,
       sendAt: decision.sendAt ?? null,
       thread,
@@ -438,7 +523,7 @@ export async function resolveEnvironmentProvider(
   }
   const entries = launchEntries({
     ask,
-    log: decision.log,
+    log: machineLog + decision.log,
     now: Date.now(),
     step:
       ask.lastStep === null

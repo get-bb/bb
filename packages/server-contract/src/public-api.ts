@@ -1,3 +1,17 @@
+import type { JsonValue } from "@bb/domain";
+import {
+  machineEnvironmentSetSchema,
+  type MachineEnvironmentSet,
+  type MachineEnvironmentList,
+} from "./api/machine-environment.js";
+import {
+  experimental_hostLifecycleRequestSchema,
+  type experimental_HostLifecycleRequest,
+  type experimental_HostLifecycleResponse,
+  experimental_hostReadinessRequestSchema,
+  type experimental_HostReadinessRequest,
+  type experimental_HostReadinessResponse,
+} from "./api/hosts.js";
 import {
   desktopBrowserHostRequestSchema,
   desktopBrowserScopeSchema,
@@ -69,6 +83,7 @@ import type {
   CopyProjectAttachmentsRequest,
   CreateHostJoinCodeRequest,
   CreateHostJoinCodeResponse,
+  CreateMachineRequest,
   CreateTerminalRequest,
   CreateProjectRequest,
   CreateProjectSourceRequest,
@@ -100,6 +115,8 @@ import type {
   EnvironmentStatusResponse,
   HostDirectoryListing,
   HostDirectoryQuery,
+  MachineEnrollmentCommandQuery,
+  HostActionResponse,
   HostCloneDefaultPathQuery,
   HostCloneDefaultPathResponse,
   HostFileListRequest,
@@ -174,6 +191,8 @@ import type {
   SystemExecutionOptionsResponse,
   SystemEnvironmentProvidersQuery,
   SystemEnvironmentProvidersResponse,
+  SystemMachineProvidersQuery,
+  SystemMachineProvidersResponse,
   SystemProviderInfo,
   SystemProvidersQuery,
   SystemProviderStatesResponse,
@@ -255,6 +274,8 @@ import {
   restartTerminalRequestSchema,
   createProjectRequestSchema,
   createHostJoinCodeRequestSchema,
+  createMachineRequestSchema,
+  type MachineLaunchStatus,
   createProjectSourceRequestSchema,
   createQueuedMessageRequestSchema,
   queuedMessageListQuerySchema,
@@ -270,6 +291,7 @@ import {
   environmentPathsQuerySchema,
   environmentStatusQuerySchema,
   hostDirectoryQuerySchema,
+  machineEnrollmentCommandQuerySchema,
   hostCloneDefaultPathQuerySchema,
   hostFileListRequestSchema,
   hostFileReadRequestSchema,
@@ -308,6 +330,7 @@ import {
   sendQueuedMessageRequestSchema,
   systemExecutionOptionsQuerySchema,
   systemEnvironmentProvidersQuerySchema,
+  systemMachineProvidersQuerySchema,
   systemProvidersQuerySchema,
   systemUsageLimitsQuerySchema,
   systemVersionQuerySchema,
@@ -705,6 +728,34 @@ export const publicApiRoutes = {
   },
 
   hosts: {
+    create: defineRoute({
+      path: "/hosts",
+      method: "post",
+      request: jsonRequest<EmptyInput, CreateMachineRequest>(
+        createMachineRequestSchema,
+      ),
+      response: jsonResponse<MachineLaunchStatus>({ status: 201 }),
+    }),
+    launch: defineRoute({
+      path: "/hosts/launches/:id",
+      method: "get",
+      request: noRequest<PathId>(),
+      response: jsonResponse<MachineLaunchStatus>(),
+    }),
+    experimental_enrollmentCommand: defineRoute({
+      path: "/hosts/launches/:id/enrollment-command",
+      method: "get",
+      request: optionalQueryRequest<PathId, MachineEnrollmentCommandQuery>(
+        machineEnrollmentCommandQuerySchema,
+      ),
+      response: jsonResponse<{ command: string | null }>(),
+    }),
+    cancelLaunch: defineRoute({
+      path: "/hosts/launches/:id/cancel",
+      method: "post",
+      request: noRequest<PathId>(),
+      response: jsonResponse<MachineLaunchStatus>(),
+    }),
     createJoinCode: defineRoute({
       path: "/hosts/join-codes",
       method: "post",
@@ -723,7 +774,7 @@ export const publicApiRoutes = {
       path: "/hosts/:id",
       method: "get",
       request: noRequest<PathId>(),
-      response: jsonResponse<Host>(),
+      response: jsonResponse<Host & { connectMachineId: string | null }>(),
     }),
     update: defineRoute({
       path: "/hosts/:id",
@@ -744,6 +795,30 @@ export const publicApiRoutes = {
       method: "post",
       request: noRequest<PathId>(),
       response: jsonResponse<HostRetryUpdateResponse>(),
+    }),
+    experimental_providerDetails: defineRoute({
+      path: "/hosts/:id/provider-details",
+      method: "get",
+      request: noRequest<PathId>(),
+      response: jsonResponse<{ summary: string; values: JsonValue } | null>(),
+    }),
+    suspend: defineRoute({
+      path: "/hosts/:id/suspend",
+      method: "post",
+      request: noRequest<PathId>(),
+      response: jsonResponse<HostActionResponse>(),
+    }),
+    resume: defineRoute({
+      path: "/hosts/:id/resume",
+      method: "post",
+      request: noRequest<PathId>(),
+      response: jsonResponse<HostActionResponse>(),
+    }),
+    retryCleanup: defineRoute({
+      path: "/hosts/:id/retry-cleanup",
+      method: "post",
+      request: noRequest<PathId>(),
+      response: jsonResponse<HostActionResponse>(),
     }),
     delete: defineRoute({
       path: "/hosts/:id",
@@ -782,6 +857,22 @@ export const publicApiRoutes = {
         hostPickFolderRequestSchema,
       ),
       response: jsonResponse<HostPickFolderResponse>(),
+    }),
+    experimental_lifecycle: defineRoute({
+      path: "/hosts/:id/lifecycle",
+      method: "post",
+      request: jsonRequest<PathId, experimental_HostLifecycleRequest>(
+        experimental_hostLifecycleRequestSchema,
+      ),
+      response: jsonResponse<experimental_HostLifecycleResponse>(),
+    }),
+    experimental_ensureReady: defineRoute({
+      path: "/hosts/:id/ready",
+      method: "post",
+      request: jsonRequest<PathId, experimental_HostReadinessRequest>(
+        experimental_hostReadinessRequestSchema,
+      ),
+      response: jsonResponse<experimental_HostReadinessResponse>(),
     }),
     providerCliStatus: defineRoute({
       path: "/hosts/:id/provider-clis/status",
@@ -1493,6 +1584,26 @@ export const publicApiRoutes = {
   },
 
   system: {
+    machineEnvironment: defineRoute({
+      path: "/settings/machine-environment",
+      method: "get",
+      request: noRequest(),
+      response: jsonResponse<MachineEnvironmentList>(),
+    }),
+    setMachineEnvironment: defineRoute({
+      path: "/settings/machine-environment",
+      method: "put",
+      request: jsonRequest<EmptyInput, MachineEnvironmentSet>(
+        machineEnvironmentSetSchema,
+      ),
+      response: jsonResponse<MachineEnvironmentList>(),
+    }),
+    unsetMachineEnvironment: defineRoute({
+      path: "/settings/machine-environment/:name",
+      method: "delete",
+      request: noRequest<{ param: { name: string } }>(),
+      response: jsonResponse<MachineEnvironmentList>(),
+    }),
     attention: defineRoute({
       path: "/system/attention",
       method: "get",
@@ -1593,6 +1704,14 @@ export const publicApiRoutes = {
         SystemEnvironmentProvidersQuery
       >(systemEnvironmentProvidersQuerySchema),
       response: jsonResponse<SystemEnvironmentProvidersResponse>(),
+    }),
+    machineProviders: defineRoute({
+      path: "/system/machine-providers",
+      method: "get",
+      request: optionalQueryRequest<EmptyInput, SystemMachineProvidersQuery>(
+        systemMachineProvidersQuerySchema,
+      ),
+      response: jsonResponse<SystemMachineProvidersResponse>(),
     }),
     providers: defineRoute({
       path: "/system/providers",

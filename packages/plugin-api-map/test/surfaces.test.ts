@@ -208,6 +208,53 @@ describe("surface card copy", () => {
     expect(eventCopy).toContain("cancelled before dispatch");
   });
 
+  it("documents durable machine suspension checkpoints", () => {
+    const machineProviders = SURFACES_BY_ID.get("machine-providers");
+    expect(machineProviders?.apiSymbols).toContain(
+      "PluginMachineProviderSuspendContext",
+    );
+    expect(machineProviders?.bullets.join(" ")).toContain(
+      "Checkpoint a recoverable private resource during suspend",
+    );
+  });
+
+  it("maps enrollment helpers and checkpointed allocation to the machine surface", () => {
+    const machines = SURFACES_BY_ID.get("machine-providers");
+    expect(machines?.apiSymbols).toEqual(
+      expect.arrayContaining([
+        "EnrollmentBootstrap",
+        "MachineEnrollment",
+        "MachineExecutorRequest",
+        "MachineExecutor",
+        "MachineEnrollmentRequest",
+        "MachineConnectionRequest",
+        "MachineEnrollments",
+        "MachineBootstrapRequest",
+        "MachineInstallerCommand",
+        "MachineBootstrapApi",
+        "PluginMachineProviderCreateContext",
+        "PluginMachineProviderInputsProps",
+        "PluginMachineProviderInputsChange",
+        "PluginMachineProviderInputsRegistration",
+      ]),
+    );
+    expect(machines?.bullets.join(" ")).toContain(
+      "await create.checkpoint(resource)",
+    );
+    expect(machines?.bullets.join(" ")).toContain(
+      "never checkpoint the bootstrap bundle",
+    );
+    expect(machines?.bullets.join(" ")).toContain("--environment-provider");
+    expect(SURFACES_BY_ID.get("server-access")?.apiSymbols).toEqual(
+      expect.arrayContaining([
+        "PluginServerAccess",
+        "ServerAccessProviderDeclaration",
+        "ServerAccessGrant",
+        "ServerAccessSelection",
+      ]),
+    );
+  });
+
   it("follows the lead-then-bullets template", () => {
     for (const group of SURFACE_GROUPS) {
       for (const surface of group.surfaces) {

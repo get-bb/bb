@@ -60,7 +60,7 @@ interface ProviderOperationContext {
   project: Project;
   host: Host;
   machine: EnvironmentMachineSelection;
-  projectCheckout: { path: string } | null;
+  projectCheckout: { path: string; experimental_ownsPath?: boolean } | null;
   gitRemote: string | null;
   inputs: JsonValue | null;
   suggestedBranchName: string;
@@ -1079,7 +1079,7 @@ export function persistPendingProviderRequest(
     message: null,
     transientFailures: 0,
     pathKey: threadId,
-    hostId: intent.machine.hostId,
+    hostId: intent.machine.type === "existing" ? intent.machine.hostId : null,
     path: null,
     claimPath: null,
     ownsPath: false,

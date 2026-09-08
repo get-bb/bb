@@ -270,10 +270,7 @@ export function requestThreadTargetReprovision(
     environmentIntent: {
       type: "provider",
       environmentProviderId: args.provider.environmentProviderId,
-      machine: {
-        type: "existing",
-        hostId: args.environment.hostId,
-      },
+      machine: args.provider.selection.machine,
       inputs: args.provider.selection.inputs,
       selectionResolved: true,
       produced: null,

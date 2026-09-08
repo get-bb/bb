@@ -10,19 +10,53 @@ import {
 } from "../helpers/test-app.js";
 
 describe("internal session protocol version", () => {
+  it("requires a PR-1 version 191 daemon to upgrade before accepting its session", async () => {
+    const server = await startTestServer();
+    try {
+      const hostId = "host-pr2-only";
+      upsertHost(server.db, server.hub, { id: hostId, name: "PR 2 daemon" });
+      const daemon = createHostDaemonClient(
+        server.baseUrl,
+        createTestDaemonHostKey({ hostId }),
+      );
+      const response = await daemon.session.open.$post({
+        json: {
+          hostId,
+          instanceId: "instance-pr2",
+          hostName: "PR 2 daemon",
+          hasMachineCredential: true,
+          platform: "linux",
+          dataDir: "/tmp/pr2-machine",
+          localApiPort: 38888,
+          protocolVersion: 191,
+          activeThreads: [],
+          loadedEnvironments: [],
+        },
+      });
+      expect(response.status).toBe(400);
+      expect(await response.json()).toMatchObject({
+        code: "protocol_version_mismatch",
+        details: { serverProtocolVersion: HOST_DAEMON_PROTOCOL_VERSION },
+        message: `Daemon protocol version 191 does not match server protocol version ${HOST_DAEMON_PROTOCOL_VERSION}`,
+      });
+      expect(getHost(server.db, hostId)?.lastRejectedProtocolVersion).toBe(191);
+    } finally {
+      await server.close();
+    }
+  });
+
   it("rejects a session open whose protocol version does not match the server", async () => {
     const server = await startTestServer();
     try {
       const hostKey = createTestDaemonHostKey({ hostId: "host-protocol" });
       upsertHost(server.db, server.hub, {
-        type: "persistent",
         id: "host-protocol",
         name: "Protocol Host",
       });
       const daemonClient = createHostDaemonClient(server.baseUrl, hostKey);
       const staleProtocolVersion = HOST_DAEMON_PROTOCOL_VERSION - 1;
 
-      const protocol186Response = await fetch(
+      const priorProtocolResponse = await fetch(
         `${server.baseUrl}/internal/session/open`,
         {
           method: "POST",
@@ -32,31 +66,31 @@ describe("internal session protocol version", () => {
           },
           body: JSON.stringify({
             hostId: "host-protocol",
-            instanceId: "instance-protocol-186",
+            instanceId: "instance-protocol-pr1",
             hostName: "Protocol Host",
             hostType: "persistent",
             hasMachineCredential: false,
             platform: "darwin",
             dataDir: "/tmp/host-protocol-data",
             localApiPort: 38_888,
-            protocolVersion: 186,
+            protocolVersion: 188,
             activeThreads: [],
             loadedEnvironments: [],
           }),
         },
       );
-      expect(protocol186Response.status).toBe(400);
-      expect(await protocol186Response.json()).toMatchObject({
+      expect(priorProtocolResponse.status).toBe(400);
+      expect(await priorProtocolResponse.json()).toMatchObject({
         code: "protocol_version_mismatch",
         details: {
           retryUpdate: false,
           serverProtocolVersion: HOST_DAEMON_PROTOCOL_VERSION,
         },
-        message: `Daemon protocol version 186 does not match server protocol version ${HOST_DAEMON_PROTOCOL_VERSION}`,
+        message: `Daemon protocol version 188 does not match server protocol version ${HOST_DAEMON_PROTOCOL_VERSION}`,
       });
       expect(
         getHost(server.db, "host-protocol")?.lastRejectedProtocolVersion,
-      ).toBe(186);
+      ).toBe(188);
 
       const preLocalApiPortProtocolVersion = 139;
       const oldDaemonResponse = await fetch(
@@ -71,7 +105,6 @@ describe("internal session protocol version", () => {
             hostId: "host-protocol",
             instanceId: "instance-pre-local-api-port",
             hostName: "Protocol Host",
-            hostType: "persistent",
             hasMachineCredential: false,
             platform: "darwin",
             dataDir: "/tmp/host-protocol-data",
@@ -99,7 +132,6 @@ describe("internal session protocol version", () => {
           hostId: "host-protocol",
           instanceId: "instance-1",
           hostName: "Protocol Host",
-          hostType: "persistent",
           hasMachineCredential: false,
           platform: "darwin",
           dataDir: "/tmp/host-protocol-data",
@@ -136,7 +168,6 @@ describe("internal session protocol version", () => {
           hostId: "host-protocol",
           instanceId: "instance-retry",
           hostName: "Protocol Host",
-          hostType: "persistent",
           hasMachineCredential: false,
           platform: "darwin",
           dataDir: "/tmp/host-protocol-data",
@@ -155,7 +186,6 @@ describe("internal session protocol version", () => {
           hostId: "host-protocol",
           instanceId: "instance-retry-consumed",
           hostName: "Protocol Host",
-          hostType: "persistent",
           hasMachineCredential: false,
           platform: "darwin",
           dataDir: "/tmp/host-protocol-data",
@@ -174,7 +204,6 @@ describe("internal session protocol version", () => {
           hostId: "host-protocol",
           instanceId: "instance-2",
           hostName: "Protocol Host",
-          hostType: "persistent",
           hasMachineCredential: false,
           platform: "darwin",
           dataDir: "/tmp/host-protocol-data",

@@ -30,6 +30,7 @@ import type {
 import type { SystemEnvironmentProvider } from "@bb/server-contract";
 import {
   NewThreadComposer,
+  resolveSubmittedExecutionSources,
   type NewThreadComposerState,
 } from "@/components/promptbox/NewThreadComposer";
 import {
@@ -79,6 +80,10 @@ vi.mock("@/hooks/queries/environment-provider-queries", () => ({
     _projectId: string,
     hostIds: readonly string[],
   ) => new Map(hostIds.map((hostId) => [hostId, mocks.environmentProviders])),
+}));
+
+vi.mock("@/hooks/queries/machine-provider-queries", () => ({
+  useSystemMachineProviders: () => ({ providers: [] }),
 }));
 
 vi.mock("@/lib/sdk", () => ({
@@ -152,7 +157,7 @@ vi.mock("@/hooks/queries/host-queries", () => ({
   useHosts: () => ({
     data: [{ id: "host_1", name: "Machine" }],
   }),
-  selectPersistentHosts: <T,>(hosts: T[] | undefined) => hosts ?? [],
+  selectHosts: <T,>(hosts: T[] | undefined) => hosts ?? [],
   selectPrimaryHost: (
     hosts: Array<{ id: string }> | undefined,
     primaryHostId: string | null,
@@ -1811,4 +1816,33 @@ describe("NewThreadComposer environment providers", () => {
       inputs: null,
     });
   });
+});
+
+it("submits the visible model explicitly when a new machine cannot resolve a catalog default", () => {
+  expect(
+    resolveSubmittedExecutionSources(
+      {
+        type: "provider",
+        environmentProviderId: "project-checkout",
+        inputs: null,
+        machine: {
+          type: "new",
+          machineProviderId: "modal-sandbox",
+          inputs: null,
+        },
+      },
+      {},
+    ),
+  ).toEqual({ model: "explicit" });
+  expect(
+    resolveSubmittedExecutionSources(
+      {
+        type: "provider",
+        environmentProviderId: "project-checkout",
+        inputs: null,
+        machine: { type: "existing", hostId: "host_1" },
+      },
+      {},
+    ),
+  ).toEqual({});
 });

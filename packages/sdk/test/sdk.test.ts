@@ -106,6 +106,141 @@ function createFetchQueue(
 }
 
 describe("@bb/sdk", () => {
+  it("creates a DigitalOcean machine through the SDK without a project", async () => {
+    const host = {
+      id: "host_do",
+      name: "Dev box",
+      status: "connected",
+      machineProviderId: "digitalocean",
+      machineProviderSelection: { inputs: {} },
+      lifecycle: {
+        phase: "active",
+        suspendedAt: null,
+        retireAt: null,
+        progress: null,
+        teardown: null,
+      },
+      maxPermissionMode: "full",
+      lastSeenAt: 1,
+      lastRejectedProtocolVersion: null,
+      createdAt: 1,
+      updatedAt: 1,
+    };
+    const launch = {
+      id: "launch_do",
+      phase: "ready",
+      hostId: host.id,
+      step: "Ready",
+      log: "",
+      message: null,
+      cancelPending: false,
+      terminal: true,
+    };
+    const queue = createFetchQueue([
+      { body: { ...launch, phase: "creating", hostId: null, terminal: false } },
+      { body: launch },
+      { body: host },
+    ]);
+    const sdk = createBbSdk({
+      transport: createHttpTransport({
+        baseUrl: "http://bb.test",
+        fetch: queue.fetch,
+        runtime: "node",
+      }),
+    });
+    expect(
+      await sdk.hosts.create({
+        machineProviderId: "digitalocean",
+        projectId: null,
+        inputs: {},
+      }),
+    ).toEqual(host);
+    expect(queue.requests).toEqual([
+      {
+        bodyText: JSON.stringify({
+          machineProviderId: "digitalocean",
+          projectId: null,
+          inputs: {},
+        }),
+        method: "POST",
+        url: "http://bb.test/api/v1/hosts",
+      },
+      {
+        bodyText: undefined,
+        method: "GET",
+        url: "http://bb.test/api/v1/hosts/launches/launch_do",
+      },
+      {
+        bodyText: undefined,
+        method: "GET",
+        url: "http://bb.test/api/v1/hosts/host_do",
+      },
+    ]);
+  });
+
+  it("requests a machine join code without a host type", async () => {
+    const queue = createFetchQueue([
+      { body: { joinCode: "one", hostId: "host_1", expiresAt: 1 } },
+    ]);
+    const sdk = createBbSdk({
+      transport: createHttpTransport({
+        baseUrl: "http://bb.test",
+        fetch: queue.fetch,
+        runtime: "node",
+      }),
+    });
+
+    await sdk.hosts.createJoinCode();
+
+    expect(queue.requests).toEqual([
+      {
+        bodyText: JSON.stringify({}),
+        method: "POST",
+        url: "http://bb.test/api/v1/hosts/join-codes",
+      },
+    ]);
+  });
+
+  it("reads provider installation events through the response instance", async () => {
+    const events = [
+      {
+        type: "started",
+        provider: "codex",
+        command: "npm install --global @openai/codex",
+      },
+      {
+        type: "completed",
+        provider: "codex",
+        exitCode: 0,
+        signal: null,
+        success: true,
+      },
+    ];
+    const response = new Response(null, {
+      status: 200,
+      headers: { "content-type": "application/x-ndjson" },
+    });
+    Object.defineProperty(response, "text", {
+      value: async () =>
+        events.map((event) => JSON.stringify(event)).join("\n"),
+    });
+    const sdk = createBbSdk({
+      transport: createHttpTransport({
+        baseUrl: "http://bb.test",
+        fetch: async () => response,
+        runtime: "node",
+      }),
+    });
+
+    await expect(
+      sdk.hosts.installProviderCli({
+        hostId: "host_test",
+        provider: "codex",
+        actionKind: "install",
+      }),
+    ).resolves.toEqual(events);
+  });
+
   it("sends thread pane presentation actions through the typed transport", async () => {
     const queue = createFetchQueue([{ body: { delivered: 3 } }]);
     const sdk = createBbSdk({

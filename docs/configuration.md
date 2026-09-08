@@ -555,8 +555,15 @@ compatibility roots follow the related config and environment switches.
 
 ## Multi-machine
 
-Settings → Machines can enroll,
-rename, and remove machines; project settings can add a path or clone source on
+Settings → Machines offers Existing machine (the built-in `manual` provider)
+alongside installed cloud, SSH and Tailscale providers. Existing machine prints
+a private enrollment command and waits for the daemon. `bb machine create
+--provider manual` follows the same lifecycle; `--no-wait` returns the launch ID
+and command. Manual machines never suspend or retire automatically. Removal
+revokes access; run `bb machine uninstall --host-id <id>` on that machine to
+uninstall its daemon. The local host remains provider-less.
+
+Settings → Machines can also rename and remove machines; project settings can add a path or clone source on
 each machine; and thread creation can target any enrolled machine with a usable
 source. The CLI equivalents are `bb machine list`, `bb project create
 --machine <id-or-name> ...`, `bb project source add --machine <id-or-name>
@@ -1167,3 +1174,77 @@ The Browser Automation plugin supports desktop attachment and headless Chrome on
 On each selected browser host, the plugin's host worker installs that release automatically on first use under `<plugin host dataDir>/runtime/npm/`, using the host's `npm` with scripts disabled, verifying the registry signature and SLSA provenance, downloading the matching GitHub release binary, and checking its digest before launch. Later sessions reuse the verified install without network access. Headless mode discovers installed Chrome/Chromium or uses `<plugin host dataDir>/runtime/chrome`. These files belong to the plugin host storage directory; they are not paths on the server or invoking agent host, and the user's global npm installation is never modified. No runtime sandbox-disabling setting is provided.
 
 For isolated development smoke tests only, `DEV_BROWSER_SMOKE_BINARY` selects the absolute binary path for the runtime smoke, `DEV_BROWSER_SMOKE_CHROME` selects the absolute Chrome path, and `DEV_BROWSER_SMOKE_NO_SANDBOX=1` enables the fixture's no-sandbox wrapper where the test host requires it. The `smoke:install` task performs a real install of the pinned release into a disposable directory. These variables do not change normal plugin runtime behavior.
+
+### Machine server access
+
+General settings expose **Server URL reachable by machines** (`machineServerUrl`)
+and **Default machine access** (`defaultMachineAccess`). The URL must be HTTP
+or HTTPS without embedded credentials. An unset URL falls back to
+`BB_EXTERNAL_URL`. General displays the effective URL and its source; it does
+not claim the remote machine can reach it. An unset access provider selects
+paired Connect, otherwise direct when a URL exists. An explicit provider must
+be installed and available. Configure these with `bb settings general
+machineServerUrl <url-or-null>` and `bb settings general defaultMachineAccess
+<provider-id-or-null>`. `bb settings show --json` reports the effective access
+selection. Access grants serve ongoing runtime requests as well as enrolment.
+
+Bootstrap v2 carries optional provider headers. The machine persists them as
+`serverHeaders` in its private `config.json`; the launcher supplies them to the
+daemon through `BB_SERVER_HEADERS` as a JSON string map. These headers are private
+credentials and cover enrollment, HTTP, WebSocket, and runtime proxy requests.
+Direct grants omit headers. Legacy `machineCredential` configuration is translated
+into the corresponding request header when loading an existing machine.
+
+For machine enrollment, `BB_DATA_DIR` selects isolated machine state instead of
+`~/.bb-machines/<server-host>`. `bb machine enroll` refuses the default `~/.bb`
+directory and a conflicting host or server identity. Local `bb machine
+start|stop|uninstall --host-id <id>` treats `BB_DATA_DIR` (or `--data-dir`) as an
+ownership assertion, not permission to act on arbitrary files: lifecycle commands
+require a canonical installer-owned directory under `~/.bb-machines` and verify
+identity and service/process ownership. Optional `--server-url` asserts the server.
+Without an explicit directory, lifecycle commands locate the unique matching host.
+
+### Machine environment
+
+Core resolves machine contributions through
+`apps/server/src/services/hosts/host-environment.ts` before dispatching setup and
+teardown hooks. The `environment.hook.run` command carries `contributedEnv`;
+the daemon applies them to the hook child process and redacts secrets from
+progress and errors. Machine selection and precedence stay in the server
+resolver, which returns no contributions for the local host.
+
+Settings → General → Machine environment defines variables for all enrolled
+machine hosts. Local hosts do not receive them. Add plain values or mark a value
+secret; secrets use core's 0600 secret files and are never returned by settings
+reads. `GH_TOKEN` is always secret. Notes are public metadata.
+
+Core resolves the environment for each agent turn, project-source clone, host
+setup call, and new BB terminal. User variables override built-ins; agent-provider
+contributions override host variables for agent turns. Existing terminals keep
+the environment they started with: open a new terminal after a change. Agent
+turns receive refreshed values on their next turn and after resume. Codex rebuilds
+its loaded session from the existing conversation when the environment changes.
+
+Machine environment commands require host-daemon protocol 192, covering machine
+lifecycle and contribution fields for core hooks, host plugins, and terminals.
+
+The built-in GitHub row uses `gh auth token --hostname github.com` and `gh api
+--hostname github.com user` on the server host. It supplies `GH_TOKEN`, Git's
+`GIT_CONFIG_*` environment entries for an HTTPS credential helper and SSH URL
+rewrites for github.com, and author/committer identity. The helper expands
+`GH_TOKEN` when Git calls it; no helper file, global Git config, or credential
+store is installed. Private email uses `<id>+<login>@users.noreply.github.com`.
+A user `GH_TOKEN` overrides the built-in token, and the row shows overridden.
+Tokens obtained from gh are never persisted by the server. Image construction
+and Modal filesystem snapshot settings do not receive these contributions.
+
+Use `bb machine env list --json`, `bb machine env set NAME [--secret] [--note
+text] --json`, and `bb machine env unset NAME --json`. Set reads its value from
+stdin, removes one trailing newline, and never accepts a value in argv. For
+example, `printf '%s' staging | bb machine env set DEPLOY_REGION`. Pipe secrets
+from a secure source instead of putting them in shell history.
+
+SDK parity: `sdk.system.machineEnvironment()`,
+`sdk.system.setMachineEnvironment({ name, value, secret, note })`, and
+`sdk.system.unsetMachineEnvironment(name)`. Secret list rows have `value: null`.
+`bb settings show --json` exposes the built-in readiness as `machineGit`.

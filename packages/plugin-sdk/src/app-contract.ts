@@ -1411,7 +1411,8 @@ export interface PluginEnvironmentProviderInputsProps {
   /** Project selected in the composer; null in projectless compose. */
   projectId: string | null;
   /**
-   * The enrolled machine the selection names; null before one is picked.
+   * The machine the selection names, for a provider that requires `host`;
+   * null before one is picked or for a provider that runs without one.
    */
   hostId: string | null;
   /**
@@ -1445,6 +1446,37 @@ export interface PluginEnvironmentProviderInputsRegistration {
   /** The environment provider id this control supplies inputs for. */
   environmentProviderId: string;
   component: ComponentType<PluginEnvironmentProviderInputsProps>;
+}
+
+/**
+ * Props passed to an `experimental_machineProviderInputs` component. Machine
+ * inputs are persisted and readable by every plugin, so they must contain only
+ * non-secret configuration and references to credentials held in plugin
+ * settings.
+ */
+export interface PluginMachineProviderInputsProps {
+  /** Selected composer agent, or null outside a composer; older hosts may omit this field. */
+  experimental_agentProviderId?: string | null;
+  /** Project selected in the composer; null outside a project. */
+  projectId: string | null;
+  /** The value persisted with the machine selection. */
+  value: JsonValue | null;
+  /** Replace the submitted value or block submission with a visible reason. */
+  onChange(next: PluginMachineProviderInputsChange): void;
+}
+
+export type PluginMachineProviderInputsChange =
+  | { status: "ready"; value: JsonValue }
+  | { status: "blocked"; reason: string };
+
+/**
+ * Supply the inputs control for one machine provider registered server-side
+ * through `bb.experimental_machines.register`.
+ */
+export interface PluginMachineProviderInputsRegistration {
+  /** The machine provider id this control supplies inputs for. */
+  machineProviderId: string;
+  component: ComponentType<PluginMachineProviderInputsProps>;
 }
 
 // ---------------------------------------------------------------------------
@@ -1523,7 +1555,7 @@ export interface PluginAppSlots {
     registration: PluginCommandPaletteActionRegistration,
   ): void;
   /**
-   * Draw one agent or environment provider's icon with an inline
+   * Draw one agent, environment, or machine provider's icon with an inline
    * React component instead of its `<img>`-rendered logo file (see
    * {@link PluginProviderIconRegistration}). Experimental: see
    * docs/api_to_audit.md.
@@ -1546,6 +1578,14 @@ export interface PluginAppSlots {
    */
   experimental_environmentProviderInputs(
     registration: PluginEnvironmentProviderInputsRegistration,
+  ): void;
+  /**
+   * Supply the non-secret machine inputs control rendered by machine creation
+   * surfaces (see {@link PluginMachineProviderInputsRegistration}).
+   * Experimental: see docs/api_to_audit.md.
+   */
+  experimental_machineProviderInputs(
+    registration: PluginMachineProviderInputsRegistration,
   ): void;
 }
 
@@ -2003,7 +2043,7 @@ export interface ExperimentalProviderModelPickerProps {
  * The host owns fetching, searching, and refreshing the branch list; the
  * caller owns only the selection.
  */
-export interface BranchPickerProps {
+export interface ExperimentalBranchPickerProps {
   /**
    * The enrolled machine whose project checkout supplies the branch list.
    * Null renders the picker disabled with no options.
@@ -2499,11 +2539,11 @@ export interface PluginSdkApp {
   experimental_PermissionModePicker: ComponentType<ExperimentalPermissionModePickerProps>;
   /**
    * BB's branch picker with its branch-options loading for one host and
-   * project (see {@link BranchPickerProps}) — the same control
+   * project (see {@link ExperimentalBranchPickerProps}) — the same control
    * the New Thread composer renders as "Branch from". Experimental: see
    * docs/api_to_audit.md.
    */
-  experimental_BranchPicker: ComponentType<BranchPickerProps>;
+  experimental_BranchPicker: ComponentType<ExperimentalBranchPickerProps>;
   /**
    * Search and refresh the branch list for one project source. Experimental:
    * see docs/api_to_audit.md.

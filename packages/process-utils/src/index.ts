@@ -621,3 +621,5 @@ export function installSafeProcessDiagnostics(
     process.off("uncaughtExceptionMonitor", handleUncaughtExceptionMonitor);
   };
 }
+
+export { createSecretStreamRedactor } from "./secret-redaction.js";

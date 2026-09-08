@@ -20,6 +20,13 @@
   `--environment-inputs <json>` only when the provider's schema does not accept
   an empty object; otherwise the CLI supplies `{}` when the flag is omitted.
   `--machine` picks the existing machine.
+- List machine providers with `bb machine providers [--project <id>]`. Create a
+  new provider machine and its advertised environment row with
+  `bb thread spawn --new-machine <provider-id>`. Pass
+  `--environment-provider <id>` when the machine provider has no environmentRow,
+  including SSH. Pass `--machine-inputs <json>` when required. These inputs are persisted and
+  readable by plugins, so keep credentials in plugin settings and send only
+  non-secret configuration or references.
 - Omit `--base-branch` for bb's default. Explicit values are exact; use
   `origin/<branch>` for a remote ref. It applies to `--new-environment
 worktree` only; a provider takes its branch through `--environment-inputs`.
@@ -79,8 +86,8 @@ worktree` only; a provider takes its branch through `--environment-inputs`.
   surface that sets it, and machine credentials are refused — so read it from
   `bb machine list --json` or `bb machine show` and ask the user to change it
   in the app.
-- `bb machine list`, `show`, `join-code`, `rename`, `retry-update`,
-  and `remove` cover the Settings →
+- `bb machine providers`, `show`, `join-code`, `rename`, `retry-update`,
+  `suspend`, `resume`, `retry-cleanup`, and `remove` cover the Settings →
   Machines lifecycle. Use `bb machine provider-cli status|install` to inspect
   or install provider CLIs on a selected machine.
 - `bb updates` runs the default `bb updates status` action. It aggregates BB and provider
@@ -163,9 +170,57 @@ or artifacts, validation performed, and blockers.
 
 `bb environment show <id>` includes the core-owned lifecycle phase, retirement deadline, and teardown status/attempt/message. Archive or delete the last live thread to begin its provider's retirement grace; unarchive cancels pending retirement. Teardown failures retry automatically. Checkout policy keeps its directory indefinitely.
 
+### Standalone machine creation
+
+`bb machine create --provider <id> [--key <idempotency-key>] [--inputs <JSON>]
+[--project <id-or-name>] [--no-wait] [--json]` creates a machine without a thread. Omit project
+for global creation; an explicit project accepts its exact name or ID. Omitted
+inputs are null and must satisfy the provider schema; omitted key is generated
+by the server. Supply a stable key to recover the same creation across retries.
+Creation is durable. `--no-wait` returns the launch ID; `bb machine status
+<launch-id>` inspects it and `bb machine cancel <launch-id>` explicitly cancels
+it. SIGINT stops following and exits with status 130 while creation continues.
+Following tolerates retryable failures until ready or terminal failure.
+
+`bb machine show <id-or-name> --json` includes `providerDetails` inventory and
+estimates when available. Suspend requires idle threads and no open terminals;
+empty machines use the provider’s opt-in idle timeout. Resume waits for pending
+suspension and leaves an already-active machine active.
+
+### Local machine lifecycle
+
+`bb machine start|stop|uninstall --host-id <id>` operates on that machine's local
+installation. Optional `--server-url` and `--data-dir` assert its identity and
+installation location; BB_DATA_DIR is also an assertion, never permission to
+remove another installation. Uninstall checks ownership before stopping its
+service, releasing its port reservation and deleting its private files.
+
+### Private machine enrollment
+
+Use `bb machine enroll --bootstrap-file <path>` or `--bootstrap-env <NAME>` on a machine that already has the CLI. Core prepares the versioned bundle; transport it through a private file or environment/stdin, never command arguments, logs, resource JSON, or a transcript. Enrollment refuses a different existing host/server identity and succeeds without another exchange when the same identity is already enrolled. The installer accepts `--bootstrap-env <NAME>` and invokes this command after installing bb. Machine state defaults to `~/.bb-machines/<server-host>`; an explicit `BB_DATA_DIR` must be isolated from the default BB instance. For remote non-login commands, discover `bb` on PATH and fall back to `~/.local/bin/bb`.
+
+
+Delivered enrollment bundles from v1 remain valid until their expiry. The CLI accepts both file and environment forms, upgrades the bundle to v2 headers locally, and persists legacy Connect redemption before enrollment so a retry reuses it. The installer upgrades v1 environment bundles before authenticated artifact downloads.
+
+The built-in `manual` provider appears as Existing machine. `bb machine create --provider manual` prints the enrollment command and follows; `--no-wait` returns the launch ID and a transient `command` field, separate from credential-free durable progress. Commands are no longer available after enrollment or cancellation. Manual machines never suspend or retire automatically. Removal revokes access; run `bb machine uninstall --host-id <id>` on the target using its original data directory.
+
 For paths a provider owns, bb runs `.bb-env-setup.sh` after create and
 `.bb-env-teardown.sh` before remove on that machine, with separate 15-minute
 timeouts. Setup failure fails the launch with output in provisioning progress;
-teardown script failure is logged and removal continues. Attaching a project
-checkout or personal workspace skips both hooks. Providers do not run these
+teardown script failure is logged and removal continues. Attaching a user-maintained project checkout or personal workspace skips both
+hooks. A fresh core clone on a new machine is owned and runs the hooks. Providers do not run these
 core hooks themselves.
+Use `bb machine ready MACHINE --provider PROVIDER --project PROJECT_ID --json`
+to check CLI installation, credential-route reachability and checkout setup before
+a turn. A blocked result names cli/auth/workspace and the actionable failure.
+Provider-created machine turns run these checks automatically. A connected daemon
+alone does not establish agent readiness.
+
+
+`bb machine lifecycle MACHINE --json` shows the vendor expiry, planned maintenance,
+last successful snapshot, recovery state and automatic retention removal deadline.
+Use `--keep` to prevent automatic retention removal, or `--no-keep` to restore it.
+Maintenance interrupts active turns and closes terminals before saving. Submit a
+new continuation turn after restore; interrupted turns are never reported successful.
+
+`bb machine lifecycle MACHINE --remove --yes --json` removes retained compute and snapshots through the normal machine removal path. `--keep` prevents automatic retention deletion; `--no-keep` restores it. After filesystem restore, core reruns the owned checkout’s idempotent setup hook to restart services; hook failure blocks readiness.

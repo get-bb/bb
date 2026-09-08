@@ -885,7 +885,6 @@ describe("bb thread spawn command output", () => {
         {
           id: "host-remote",
           name: "builder",
-          type: "persistent",
           status: "connected",
           lastSeenAt: 1,
           createdAt: 1,
@@ -934,7 +933,6 @@ describe("bb thread spawn command output", () => {
         {
           id: "host-remote",
           name: "builder",
-          type: "persistent",
           status: "connected",
           lastSeenAt: 1,
           createdAt: 1,
@@ -984,7 +982,6 @@ describe("bb thread spawn command output", () => {
         {
           id: "host-remote",
           name: "builder",
-          type: "persistent",
           status: "connected",
           lastSeenAt: 1,
           createdAt: 1,
@@ -1281,6 +1278,98 @@ describe("bb thread spawn command output", () => {
 
       expect(console.error).toHaveBeenCalledWith(error);
       expect(post).not.toHaveBeenCalled();
+    });
+  });
+
+  it("creates a provider machine and its picker-sugar environment", async () => {
+    const post = vi.fn(async () =>
+      fixtures.makeThread({
+        id: "thread-new-machine",
+        projectId: "proj-1",
+        providerId: "codex",
+      }),
+    );
+    stubServerApi({
+      "v1.threads.$post": post,
+      "v1.system.machine-providers.$get": vi.fn(async () => ({
+        providers: [
+          {
+            id: "test-machine",
+            displayName: "Test machine",
+            icon: null,
+            logoUrl: null,
+            pluginId: "test-machine-provider",
+            requires: { gitRemote: false },
+            inputs: {
+              type: "object",
+              properties: { target: { type: "string" } },
+              required: ["target"],
+            },
+            acceptsEmptyInputs: false,
+            environmentRow: {
+              displayName: "Test machine",
+              environmentProviderId: "project-checkout",
+            },
+            policy: {
+              idleSuspendMs: null,
+              retire: { after: "never" },
+              removeRetryMs: 30_000,
+            },
+            availability: null,
+          },
+        ],
+      })),
+      "v1.system.environment-providers.$get": vi.fn(async () => ({
+        providers: [
+          {
+            id: "project-checkout",
+            displayName: "Project checkout",
+            icon: null,
+            logoUrl: null,
+            pluginId: "environment-project-checkout",
+            acceptsEmptyInputs: true,
+            availability: null,
+            requires: {
+              projectCheckout: true,
+              gitCheckout: true,
+              gitRemote: false,
+              projectless: false,
+            },
+            inputs: null,
+          },
+        ],
+      })),
+    });
+
+    await runCommand(
+      [
+        "thread",
+        "spawn",
+        "--project",
+        "proj-1",
+        "--prompt",
+        "hello",
+        "--new-machine",
+        "test-machine",
+        "--machine-inputs",
+        '{"target":"buildbox"}',
+      ],
+      register,
+    );
+
+    expect(post).toHaveBeenCalledWith({
+      json: expect.objectContaining({
+        environment: {
+          type: "provider",
+          environmentProviderId: "project-checkout",
+          machine: {
+            type: "new",
+            machineProviderId: "test-machine",
+            inputs: { target: "buildbox" },
+          },
+          inputs: null,
+        },
+      }),
     });
   });
 });

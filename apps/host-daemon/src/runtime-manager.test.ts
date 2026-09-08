@@ -1085,6 +1085,51 @@ describe("RuntimeManager", () => {
     );
   });
 
+  it("isolates contributed authentication environments from shared maintenance and other checks", async () => {
+    const dataDir = await makeTempDir("bb-auth-readiness-");
+    const runtimes = [
+      createFakeRuntime(),
+      createFakeRuntime(),
+      createFakeRuntime(),
+    ];
+    const createRuntime = vi
+      .fn()
+      .mockReturnValueOnce(runtimes[0])
+      .mockReturnValueOnce(runtimes[1])
+      .mockReturnValueOnce(runtimes[2]);
+    const manager = new RuntimeManager({
+      createRuntime,
+      shellEnv: { PATH: "/bin", OPENAI_API_KEY: "shell-key" },
+    });
+    await manager.ensureProviderMaintenanceRuntime({ dataDir });
+    for (const value of ["first", "rotated"]) {
+      await manager.withProviderMaintenanceRuntime(
+        {
+          dataDir,
+          contributedEnv: [
+            {
+              name: "OPENAI_API_KEY",
+              value,
+              secret: true,
+              reason: "Fixture",
+              source: { core: "machine-environment" },
+            },
+          ],
+        },
+        async () => undefined,
+      );
+    }
+    expect(createRuntime.mock.calls[0]?.[0].env).not.toHaveProperty(
+      "OPENAI_API_KEY",
+    );
+    expect(createRuntime.mock.calls[1]?.[0].env.OPENAI_API_KEY).toBe("first");
+    expect(createRuntime.mock.calls[2]?.[0].env.OPENAI_API_KEY).toBe("rotated");
+    expect(runtimes[0]?.shutdown).not.toHaveBeenCalled();
+    expect(runtimes[1]?.shutdown).toHaveBeenCalledTimes(1);
+    expect(runtimes[2]?.shutdown).toHaveBeenCalledTimes(1);
+    await manager.shutdownAll();
+  });
+
   it("recreates the provider maintenance runtime after base shell env changes", async () => {
     const dataDir = await makeTempDir("bb-provider-maintenance-");
     const firstRuntime = createFakeRuntime();

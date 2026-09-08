@@ -57,18 +57,20 @@ export function ConfirmDeleteDialogContent({
 }
 
 interface ConfirmDeleteDialogProps {
+  modal?: boolean;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   children: ReactNode;
 }
 
 export function ConfirmDeleteDialog({
+  modal = true,
   open,
   onOpenChange,
   children,
 }: ConfirmDeleteDialogProps) {
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={onOpenChange} modal={modal}>
       <DialogContent>{open ? children : null}</DialogContent>
     </Dialog>
   );

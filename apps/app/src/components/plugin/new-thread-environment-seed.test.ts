@@ -224,6 +224,20 @@ describe("newThreadEnvironmentArgsToSeed round trip", () => {
     expect(roundTrip(environment)).toEqual(environment);
   });
 
+  it("a provider on a new machine keeps its inputs verbatim", () => {
+    const environment: CreateThreadEnvironmentArgs = {
+      type: "provider",
+      environmentProviderId: "container",
+      machine: {
+        type: "new",
+        machineProviderId: "container-machine",
+        inputs: { target: "primary" },
+      },
+      inputs: { image: "custom:latest" },
+    };
+    expect(roundTrip(environment)).toEqual(environment);
+  });
+
   it("an unregistered provider resolves to no environment", () => {
     const seed = newThreadEnvironmentArgsToSeed({
       type: "provider",

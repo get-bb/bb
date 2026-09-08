@@ -404,6 +404,7 @@ function describeCodexLaunchError(error: unknown): string {
 
 interface CodexSessionConstruction {
   cwd: string;
+  envVars: Record<string, string>;
   instructionMode: "append" | "replace";
   dynamicTools: DynamicTool[] | undefined;
 }
@@ -512,8 +513,6 @@ function constructionSignature(
   sessionOptions: CodexSessionOptions,
 ): string {
   const permissionSettings = toCodexThreadPermissionSettings(sessionOptions);
-  const poolBaseUrl = sessionOptions.envVars?.[CODEX_POOL_BASE_URL_ENV];
-  const poolToken = sessionOptions.envVars?.[CODEX_POOL_AUTH_TOKEN_ENV];
   return JSON.stringify({
     cwd,
     reasoningLevel: sessionOptions.reasoningLevel ?? null,
@@ -522,13 +521,15 @@ function constructionSignature(
     approvalPolicy: permissionSettings.approvalPolicy,
     approvalsReviewer: permissionSettings.approvalsReviewer,
     sandbox: permissionSettings.sandbox,
-    poolRoute:
-      poolBaseUrl === undefined || poolToken === undefined
-        ? null
-        : {
-            baseUrl: poolBaseUrl,
-            tokenHash: createHash("sha256").update(poolToken).digest("hex"),
-          },
+    environmentHash: createHash("sha256")
+      .update(
+        JSON.stringify(
+          Object.entries(sessionOptions.envVars ?? {}).sort(([a], [b]) =>
+            a.localeCompare(b),
+          ),
+        ),
+      )
+      .digest("hex"),
   });
 }
 
@@ -944,6 +945,7 @@ async function constructThreadSession(
     translator,
     construction: {
       cwd: args.cwd,
+      envVars: decoded.sessionOptions.envVars ?? {},
       instructionMode: args.instructionMode,
       dynamicTools: args.dynamicTools,
     },
@@ -1358,26 +1360,30 @@ async function requireLiveSessionForTurn(
   }
 
   const decoded = decodeCodexOptions(params.options);
-  const signature = constructionSignature(
-    session.construction.cwd,
-    decoded.sessionOptions,
-  );
+  const options = {
+    ...params.options,
+    envVars: decoded.sessionOptions.envVars ?? session.construction.envVars,
+  };
+  const signature = constructionSignature(session.construction.cwd, {
+    ...decoded.sessionOptions,
+    envVars: options.envVars,
+  });
   if (session.connection === null || session.connection.exited) {
     session = await rebuildThreadSession(
       session,
-      params.options,
+      options,
       "codex app-server exited; the session was restored from its rollout.",
     );
   } else if (session.rebuildBeforeNextTurnReason !== null) {
     session = await rebuildThreadSession(
       session,
-      params.options,
+      options,
       session.rebuildBeforeNextTurnReason,
     );
   } else if (signature !== session.constructionSignature) {
     session = await rebuildThreadSession(
       session,
-      params.options,
+      options,
       "Execution settings changed; the codex session was rebuilt to apply them.",
     );
   }

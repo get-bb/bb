@@ -1,6 +1,9 @@
+import { MachineLifecycleNotice } from "@/components/machines/MachineLifecycleNotice";
+import { MachineProviderDetails } from "@/components/machines/MachineProviderDetails";
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import type { Host, PermissionMode } from "@bb/domain";
+import type { SystemMachineProvider } from "@bb/server-contract";
 import { RETRY_ACTION_ICON } from "@bb/domain/update-state";
 import type { HostPlatform } from "@bb/host-daemon-contract";
 import { Button } from "@bb/shared-ui/button";
@@ -25,11 +28,13 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@bb/shared-ui/tooltip";
-import { AddMachineDialog } from "@/components/dialogs/AddMachineDialog";
+import { CreateMachineDialog } from "@/components/dialogs/CreateMachineDialog";
 import { ConfirmDeleteDialog } from "@/components/dialogs/ConfirmDeleteDialog";
 import { appToast } from "@/components/ui/app-toast";
 import { MachineStatusDot } from "@/components/machines/MachineStatusDot";
+import { MachinePhaseBadge } from "@/components/machines/MachinePhaseBadge";
 import { MachineRenameDialog } from "@/components/settings/MachineRenameDialog";
+import { MachineProviderIcon } from "@/components/plugin/MachineProviderIcon";
 import {
   SettingsBadge,
   SettingsRow,
@@ -39,9 +44,13 @@ import {
 import {
   useRemoveHost,
   useRenameHost,
+  useResumeHost,
+  useRetryHostCleanup,
   useRetryHostUpdate,
+  useSuspendHost,
 } from "@/hooks/mutations/host-mutations";
 import { useHosts } from "@/hooks/queries/host-queries";
+import { useSystemMachineProviders } from "@/hooks/queries/machine-provider-queries";
 import { useSidebarNavigation } from "@/hooks/queries/sidebar-navigation-query";
 import { useSystemConfig } from "@/hooks/queries/system-queries";
 import { useHostDaemon } from "@/hooks/useHostDaemon";
@@ -86,7 +95,13 @@ interface MachineRowProps {
   onRename: () => void;
   onRemove: () => void;
   onRetryUpdate: () => void;
+  onSuspend: () => void;
+  onResume: () => void;
+  onRetryCleanup: () => void;
+  lifecycleActionPending: boolean;
   retryUpdatePending: boolean;
+  machineProvider: SystemMachineProvider | null;
+  gitStatus: "ready" | "not configured" | null;
 }
 
 function MachineRow({
@@ -100,16 +115,23 @@ function MachineRow({
   onRename,
   onRemove,
   onRetryUpdate,
+  onSuspend,
+  onResume,
+  onRetryCleanup,
+  lifecycleActionPending,
   retryUpdatePending,
+  machineProvider,
+  gitStatus,
 }: MachineRowProps) {
   const permission = PERMISSION_MODE_PRESENTATION[host.maxPermissionMode];
   const projectLabel = `${projectCount} ${projectCount === 1 ? "project" : "projects"}`;
   const connectionLabel =
-    host.status === "connected"
+    host.lifecycle.progress ??
+    (host.status === "connected"
       ? "Online"
       : host.lastSeenAt === null
         ? "Offline"
-        : `Offline · last seen ${formatRelativeTime({ timestamp: host.lastSeenAt, now })}`;
+        : `Offline · last seen ${formatRelativeTime({ timestamp: host.lastSeenAt, now })}`);
   const updateStatus = formatHostUpdateStatus(host);
   const removeItem = (
     <DropdownMenuItem
@@ -134,98 +156,156 @@ function MachineRow({
 
   return (
     <SettingsRow>
-      <div
-        data-machine-row
-        className="group group/machine -mx-2 flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-2 transition-colors hover:bg-state-hover focus-within:bg-state-hover"
-      >
-        <Link
-          to={getSettingsMachineRoutePath(host.id)}
-          aria-label={`Open ${host.name}`}
-          className="flex min-w-0 flex-1 items-center rounded-md outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      <div className="flex min-w-0 flex-1 flex-col gap-2">
+        <div
+          data-machine-row
+          className="group group/machine -mx-2 flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-2 transition-colors hover:bg-state-hover focus-within:bg-state-hover"
         >
-          <div className="min-w-0 flex-1 space-y-1">
-            <div className="flex min-w-0 items-center gap-1.5">
-              <span className="min-w-0 truncate text-sm font-medium text-foreground">
-                {host.name}
-              </span>
-              {isThisMachine ? (
-                <SettingsBadge>this machine</SettingsBadge>
-              ) : null}
-              {showPrimaryBadge ? <SettingsBadge>primary</SettingsBadge> : null}
-            </div>
-            <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-subtle-foreground/75">
-              <span className="inline-flex shrink-0 items-center gap-1.5">
-                <MachineStatusDot connected={host.status === "connected"} />
-                {connectionLabel}
-              </span>
-              {platformLabel === null ? null : (
-                <span className="truncate">{platformLabel}</span>
-              )}
-              <span className="shrink-0">{projectLabel}</span>
-              <span
-                className={cn(
-                  "shrink-0",
-                  permission.tone === "warning" && "text-warning-text",
-                )}
-              >
-                {permission.label}
-              </span>
-              {updateStatus === null ? null : (
-                <span className="min-w-0 text-warning-text">
-                  {updateStatus}
+          <Link
+            to={getSettingsMachineRoutePath(host.id)}
+            aria-label={`Open ${host.name}`}
+            className="flex min-w-0 flex-1 items-center rounded-md outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <div className="min-w-0 flex-1 space-y-1">
+              <div className="flex min-w-0 items-center gap-1.5">
+                <span className="min-w-0 truncate text-sm font-medium text-foreground">
+                  {host.name}
                 </span>
-              )}
+                {isThisMachine ? (
+                  <SettingsBadge>this machine</SettingsBadge>
+                ) : null}
+                {showPrimaryBadge ? (
+                  <SettingsBadge>primary</SettingsBadge>
+                ) : null}
+                <MachinePhaseBadge lifecycle={host.lifecycle} />
+                {machineProvider?.icon == null ? null : (
+                  <SettingsBadge>
+                    <span className="inline-flex items-center gap-1">
+                      <MachineProviderIcon
+                        provider={machineProvider}
+                        className="size-2.5"
+                      />
+                      {machineProvider.displayName}
+                    </span>
+                  </SettingsBadge>
+                )}
+              </div>
+              <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-subtle-foreground/75">
+                <span className="inline-flex shrink-0 items-center gap-1.5">
+                  <MachineStatusDot connected={host.status === "connected"} />
+                  {connectionLabel}
+                </span>
+                {platformLabel === null ? null : (
+                  <span className="truncate">{platformLabel}</span>
+                )}
+                <span className="shrink-0">{projectLabel}</span>
+                {gitStatus === null ? null : <span>git: {gitStatus}</span>}
+                <span
+                  className={cn(
+                    "shrink-0",
+                    permission.tone === "warning" && "text-warning-text",
+                  )}
+                >
+                  {permission.label}
+                </span>
+                {updateStatus === null ? null : (
+                  <span className="min-w-0 text-warning-text">
+                    {updateStatus}
+                  </span>
+                )}
+              </div>
+              {host.machineProviderId ? (
+                <MachineProviderDetails hostId={host.id} />
+              ) : null}
             </div>
-          </div>
-        </Link>
-        <div className="flex shrink-0 items-center gap-1">
-          <TooltipProvider delayDuration={250}>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-7 w-7 shrink-0 data-[state=open]:bg-state-active data-[state=open]:text-foreground"
-                  aria-label={`${host.name} actions`}
-                >
-                  <Icon name="MoreHorizontal" className="size-4" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-max min-w-0">
-                <DropdownMenuItem
-                  className={MACHINE_MENU_ITEM_CLASS}
-                  onSelect={onRename}
-                >
-                  <Icon name="Edit" aria-hidden />
-                  <span className="min-w-0 truncate">Rename</span>
-                </DropdownMenuItem>
-                {hostCanRetryUpdate(host) ? (
+          </Link>
+          <div className="flex shrink-0 items-center gap-1">
+            <TooltipProvider delayDuration={250}>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7 shrink-0 data-[state=open]:bg-state-active data-[state=open]:text-foreground"
+                    aria-label={`${host.name} actions`}
+                  >
+                    <Icon name="MoreHorizontal" className="size-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-max min-w-0">
                   <DropdownMenuItem
                     className={MACHINE_MENU_ITEM_CLASS}
-                    disabled={retryUpdatePending}
-                    onSelect={onRetryUpdate}
+                    onSelect={onRename}
                   >
-                    <Icon name={RETRY_ACTION_ICON} aria-hidden />
-                    <span className="min-w-0 truncate">
-                      {retryUpdatePending ? "Retrying update…" : "Retry update"}
-                    </span>
+                    <Icon name="Edit" aria-hidden />
+                    <span className="min-w-0 truncate">Rename</span>
                   </DropdownMenuItem>
-                ) : null}
-                {isPrimary ? (
-                  <Tooltip>
-                    <TooltipTrigger asChild>{removeItem}</TooltipTrigger>
-                    <TooltipContent side="left">
-                      {PRIMARY_REMOVE_DISABLED_REASON}
-                    </TooltipContent>
-                  </Tooltip>
-                ) : (
-                  removeItem
-                )}
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </TooltipProvider>
-          <ResourceRowDetailChevron />
+                  {hostCanRetryUpdate(host) ? (
+                    <DropdownMenuItem
+                      className={MACHINE_MENU_ITEM_CLASS}
+                      disabled={retryUpdatePending}
+                      onSelect={onRetryUpdate}
+                    >
+                      <Icon name={RETRY_ACTION_ICON} aria-hidden />
+                      <span className="min-w-0 truncate">
+                        {retryUpdatePending
+                          ? "Retrying update…"
+                          : "Retry update"}
+                      </span>
+                    </DropdownMenuItem>
+                  ) : null}
+                  {machineProvider?.supportsSuspend &&
+                  host.lifecycle.phase === "active" ? (
+                    <DropdownMenuItem
+                      className={MACHINE_MENU_ITEM_CLASS}
+                      disabled={lifecycleActionPending}
+                      onSelect={onSuspend}
+                    >
+                      <Icon name="Pause" aria-hidden />
+                      <span className="min-w-0 truncate">Suspend</span>
+                    </DropdownMenuItem>
+                  ) : null}
+                  {machineProvider?.supportsSuspend &&
+                  host.lifecycle.phase === "suspended" ? (
+                    <DropdownMenuItem
+                      className={MACHINE_MENU_ITEM_CLASS}
+                      disabled={lifecycleActionPending}
+                      onSelect={onResume}
+                    >
+                      <Icon name="Play" aria-hidden />
+                      <span className="min-w-0 truncate">Resume</span>
+                    </DropdownMenuItem>
+                  ) : null}
+                  {host.lifecycle.phase === "retiring" &&
+                  host.lifecycle.teardown?.status === "failed" ? (
+                    <DropdownMenuItem
+                      className={MACHINE_MENU_ITEM_CLASS}
+                      disabled={lifecycleActionPending}
+                      onSelect={onRetryCleanup}
+                    >
+                      <Icon name="RotateCcw" aria-hidden />
+                      <span className="min-w-0 truncate">Retry cleanup</span>
+                    </DropdownMenuItem>
+                  ) : null}
+                  {isPrimary ? (
+                    <Tooltip>
+                      <TooltipTrigger asChild>{removeItem}</TooltipTrigger>
+                      <TooltipContent side="left">
+                        {PRIMARY_REMOVE_DISABLED_REASON}
+                      </TooltipContent>
+                    </Tooltip>
+                  ) : (
+                    removeItem
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </TooltipProvider>
+            <ResourceRowDetailChevron />
+          </div>
         </div>
+        {host.machineProviderId !== null && (
+          <MachineLifecycleNotice hostId={host.id} onRemove={onRemove} />
+        )}
       </div>
     </SettingsRow>
   );
@@ -234,11 +314,15 @@ function MachineRow({
 export function MachinesSettingsSection() {
   const systemConfig = useSystemConfig();
   const hostsQuery = useHosts();
+  const { providers: machineProviders } = useSystemMachineProviders();
   const { localDaemonHostId, platform: localDaemonPlatform } = useHostDaemon();
   const sidebarNavigationQuery = useSidebarNavigation();
   const renameHost = useRenameHost();
   const removeHost = useRemoveHost();
   const retryHostUpdate = useRetryHostUpdate();
+  const suspendHost = useSuspendHost();
+  const resumeHost = useResumeHost();
+  const retryHostCleanup = useRetryHostCleanup();
   const [addDialogOpen, setAddDialogOpen] = useState(false);
   const [renameTarget, setRenameTarget] = useState<Host | null>(null);
   const [removeTarget, setRemoveTarget] = useState<Host | null>(null);
@@ -260,6 +344,13 @@ export function MachinesSettingsSection() {
   const now = Date.now();
   const primaryHostPlatform = systemConfig.data?.primaryHostPlatform ?? null;
   const showMachineIdentityBadges = (hosts?.length ?? 0) > 1;
+  const machineProviderById = useMemo(
+    () =>
+      new Map(
+        (machineProviders ?? []).map((provider) => [provider.id, provider]),
+      ),
+    [machineProviders],
+  );
 
   return (
     <>
@@ -287,6 +378,11 @@ export function MachinesSettingsSection() {
               <MachineRow
                 key={host.id}
                 host={host}
+                gitStatus={
+                  host.machineProviderId === null
+                    ? null
+                    : (systemConfig.data?.machineGit.status ?? "not configured")
+                }
                 isPrimary={host.id === serverPrimaryHostId}
                 isThisMachine={
                   showMachineIdentityBadges && host.id === localDaemonHostId
@@ -325,16 +421,43 @@ export function MachinesSettingsSection() {
                   retryHostUpdate.isPending &&
                   retryHostUpdate.variables === host.id
                 }
+                onSuspend={() =>
+                  suspendHost.mutate(host.id, {
+                    onSuccess: () => appToast.success(`${host.name} suspended`),
+                  })
+                }
+                onResume={() =>
+                  resumeHost.mutate(host.id, {
+                    onSuccess: () => appToast.success(`${host.name} resumed`),
+                  })
+                }
+                onRetryCleanup={() =>
+                  retryHostCleanup.mutate(host.id, {
+                    onSuccess: () =>
+                      appToast.success(`Cleanup retried for ${host.name}`),
+                  })
+                }
+                lifecycleActionPending={
+                  (suspendHost.isPending &&
+                    suspendHost.variables === host.id) ||
+                  (resumeHost.isPending && resumeHost.variables === host.id) ||
+                  (retryHostCleanup.isPending &&
+                    retryHostCleanup.variables === host.id)
+                }
+                machineProvider={
+                  host.machineProviderId === null
+                    ? null
+                    : (machineProviderById.get(host.machineProviderId) ?? null)
+                }
               />
             ))}
           </SettingsRowList>
         )}
       </SettingsSection>
 
-      <AddMachineDialog
+      <CreateMachineDialog
         open={addDialogOpen}
         onOpenChange={setAddDialogOpen}
-        serverUrl={systemConfig.data?.serverUrl ?? null}
       />
 
       <MachineRenameDialog
@@ -360,6 +483,7 @@ export function MachinesSettingsSection() {
       />
 
       <ConfirmDeleteDialog
+        modal={false}
         open={removeTarget !== null}
         onOpenChange={(open) => {
           if (!open && !removeHost.isPending) setRemoveTarget(null);
@@ -371,9 +495,18 @@ export function MachinesSettingsSection() {
               <DialogTitle>Remove {removeTarget.name}?</DialogTitle>
               <DialogDescription>
                 This revokes {removeTarget.name}'s access to this server.
-                Project checkouts stay on its disk, but its environments become
-                read-only history and it can't run new work until it's paired
-                again.
+                {removeTarget.machineProviderId === "manual" ? (
+                  <span className="block mt-2">
+                    Uninstall manually on the machine:{" "}
+                    <code>
+                      bb machine uninstall --host-id {removeTarget.id}
+                    </code>
+                  </span>
+                ) : null}
+                {removeTarget.machineProviderId !== null &&
+                removeTarget.machineProviderId !== "manual"
+                  ? "This deletes the managed compute and saved snapshots. Its environments remain as read-only history."
+                  : "Project checkouts stay on its disk, but its environments become read-only history and it cannot run new work until paired again."}
               </DialogDescription>
             </DialogHeader>
             {removeHost.isError ? (

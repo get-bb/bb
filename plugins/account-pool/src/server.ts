@@ -203,15 +203,32 @@ export function createAccountPoolPlugin(
         },
       ];
     });
-    bb.providers.experimental_contributeEnvHealth("claude-code", async () =>
-      (await operations.isRoutingEnabled("claude")) &&
-      (await operations.hasUsableEnabledAccount("claude"))
-        ? {
-            label: "Proxied",
-            statusMessage:
-              "Credentials are provided by the Account Pooler hub.",
-          }
-        : null,
+    bb.providers.experimental_contributeEnvHealth(
+      "claude-code",
+      async (context) => {
+        if (
+          !(await operations.isRoutingEnabled("claude")) ||
+          !(await operations.hasUsableEnabledAccount("claude")) ||
+          (context.experimental_readiness?.threadId &&
+            (await routing.isBypassed(context.experimental_readiness.threadId)))
+        )
+          return null;
+        return {
+          label: "Proxied",
+          statusMessage: "Credentials are provided by the Account Pooler hub.",
+          ...(context.experimental_readiness
+            ? {
+                experimental_probe: {
+                  serverPath:
+                    "/api/v1/plugins/account-pool/http/readiness/claude",
+                  headers: {
+                    authorization: `Bearer ${await hubTokens.forHost(context.hostId)}`,
+                  },
+                },
+              }
+            : {}),
+        };
+      },
     );
     bb.providers.experimental_contributeEnv("codex", async (context) => {
       if (
@@ -239,16 +256,29 @@ export function createAccountPoolPlugin(
         },
       ];
     });
-    bb.providers.experimental_contributeEnvHealth("codex", async () =>
-      (await operations.isRoutingEnabled("codex")) &&
-      (await operations.hasUsableEnabledAccount("codex"))
-        ? {
-            label: "Proxied",
-            statusMessage:
-              "Credentials are provided by the Account Pooler hub.",
-          }
-        : null,
-    );
+    bb.providers.experimental_contributeEnvHealth("codex", async (context) => {
+      if (
+        !(await operations.isRoutingEnabled("codex")) ||
+        !(await operations.hasUsableEnabledAccount("codex")) ||
+        (context.experimental_readiness?.threadId &&
+          (await routing.isBypassed(context.experimental_readiness.threadId)))
+      )
+        return null;
+      return {
+        label: "Proxied",
+        statusMessage: "Credentials are provided by the Account Pooler hub.",
+        ...(context.experimental_readiness
+          ? {
+              experimental_probe: {
+                serverPath: "/api/v1/plugins/account-pool/http/readiness/codex",
+                headers: {
+                  authorization: `Bearer ${await hubTokens.forHost(context.hostId)}`,
+                },
+              },
+            }
+          : {}),
+      };
+    });
     bb.onDispose(async () => {
       codexLogin.dispose();
       let timer: ReturnType<typeof setTimeout> | null = null;
@@ -306,6 +336,24 @@ export function createAccountPoolPlugin(
       (context) => createCodexWebSocketHandlers(context, hub, bb.log),
       { auth: "none" },
     );
+    for (const family of ["claude", "codex"] as const) {
+      bb.http.route(
+        "GET",
+        `/readiness/${family}`,
+        async (context) => {
+          const token =
+            context.req.header("authorization")?.replace(/^Bearer /, "") ??
+            null;
+          const hostId = await hubTokens.authenticate(token);
+          const ready =
+            hostId !== null &&
+            (await operations.isRoutingEnabled(family)) &&
+            (await operations.hasUsableEnabledAccount(family));
+          return context.json({ ready }, ready ? 200 : 401);
+        },
+        { auth: "none" },
+      );
+    }
     bb.http.route("HEAD", "/api/hello", () => helloResponse(), {
       auth: "none",
     });
