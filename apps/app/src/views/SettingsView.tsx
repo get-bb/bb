@@ -543,8 +543,7 @@ const REWRITE_LOCALHOST_LINKS_SETTING_LABEL = "Rewrite localhost links";
 const NAVIGATE_TO_THREAD_AFTER_CREATE_SETTING_LABEL =
   "Navigate to threads on creation";
 const RICH_TEXT_EDITING_SETTING_LABEL = "Markdown formatting in prompt box";
-const UNHANDLED_PROVIDER_EVENTS_SETTING_LABEL =
-  "Show unhandled provider events";
+const DIAGNOSTIC_EVENTS_SETTING_LABEL = "Show diagnostic events";
 const FOLLOW_UP_BEHAVIOR_SETTING_LABEL = "Default thread followup behavior";
 const FOLLOW_UP_BEHAVIOR_OPTIONS = [
   {
@@ -937,14 +936,14 @@ export function DebugSettingsSection({
   return (
     <SettingsSection title="Debug">
       <SettingsWithControl
-        label={UNHANDLED_PROVIDER_EVENTS_SETTING_LABEL}
-        description="Show raw provider events bb does not recognize. Development builds always show these events."
+        label={DIAGNOSTIC_EVENTS_SETTING_LABEL}
+        description="Show provider environment resolution and unhandled provider events for troubleshooting."
       >
         <Switch
           checked={enabled}
           disabled={disabled}
           onCheckedChange={onEnabledChange}
-          aria-label={UNHANDLED_PROVIDER_EVENTS_SETTING_LABEL}
+          aria-label={DIAGNOSTIC_EVENTS_SETTING_LABEL}
         />
       </SettingsWithControl>
     </SettingsSection>
@@ -1270,7 +1269,7 @@ export function SettingsView() {
         <CliSkillsSettingsSection />
         <VoiceInputSettingsSection />
         <DebugSettingsSection
-          enabled={generalSettings.showUnhandledProviderEvents}
+          enabled={generalSettings.showDiagnosticEvents}
           disabled={
             systemConfigQuery.data === undefined ||
             updateGeneralSettingsMutation.isPending
@@ -1278,7 +1277,7 @@ export function SettingsView() {
           onEnabledChange={(enabled) =>
             updateGeneralSettingsMutation.mutate({
               ...generalSettings,
-              showUnhandledProviderEvents: enabled,
+              showDiagnosticEvents: enabled,
             })
           }
         />

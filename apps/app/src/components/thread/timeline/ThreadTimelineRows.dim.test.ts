@@ -52,6 +52,20 @@ describe("pastRowDimClassName", () => {
     );
   });
 
+  it.each(["reasoning", "warning", "deprecation"] as const)(
+    "keeps completed %s rows readable",
+    (operationKind) => {
+      const row = viewRow([
+        systemRow({
+          systemKind: "operation",
+          operationKind,
+          status: "completed",
+        }),
+      ]);
+      expect(pastRowDimClassName({ ...inactiveScope, row })).toBeUndefined();
+    },
+  );
+
   it("keeps a still-running system row at full strength", () => {
     const row = viewRow([systemRow({ status: "pending" })]);
     expect(pastRowDimClassName({ ...inactiveScope, row })).toBeUndefined();

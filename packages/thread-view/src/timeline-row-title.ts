@@ -1555,13 +1555,22 @@ function mapSystemTitle(row: TimelineSystemViewRow): TimelineTitle {
   if (row.systemKind === "operation" && row.operationKind === "parent-change") {
     return mapParentChangeSystemTitle(row);
   }
+  const isReasoning =
+    row.systemKind === "operation" && row.operationKind === "reasoning";
   const isCompaction =
     row.systemKind === "operation" && row.operationKind === "compaction";
-  const titleText =
-    isCompaction && row.status === "pending" ? `${row.title}…` : row.title;
+  const titleText = isReasoning
+    ? row.status === "pending"
+      ? "Thinking…"
+      : "Thought"
+    : isCompaction && row.status === "pending"
+      ? `${row.title}…`
+      : row.title;
   const decorations: TimelineTitleDecoration[] = hasError
     ? [statusDecoration("error", null, { emphasis: true })]
-    : isCompaction && (row.status === "pending" || row.status === "completed")
+    : isReasoning ||
+        (isCompaction &&
+          (row.status === "pending" || row.status === "completed"))
       ? filterNull([durationDecoration(row.startedAt, row.completedAt)])
       : [];
   const shimmer = row.status === "pending";

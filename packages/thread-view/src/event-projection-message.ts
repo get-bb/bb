@@ -284,6 +284,7 @@ export interface EventProjectionFileEditMessage
 }
 
 const eventProjectionOperationTypeValues = [
+  "reasoning",
   "provider-unhandled",
   "provider-environment",
   "warning",
@@ -474,7 +475,7 @@ export type EventProjectionMessage =
   | EventProjectionErrorMessage;
 
 export interface BuildEventProjectionMessagesOptions {
-  includeProviderUnhandledOperations?: boolean;
+  includeDiagnosticOperations?: boolean;
   threadStatus?: Thread["status"];
   threadName: string;
   providerDisplayName?: string;

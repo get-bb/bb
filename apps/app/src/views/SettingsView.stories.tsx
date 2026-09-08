@@ -202,8 +202,7 @@ function useSettingsStoryState() {
   const [managedBranchPrefix, setManagedBranchPrefix] = useState(
     defaultAppSettings.managedBranchPrefix,
   );
-  const [showUnhandledProviderEvents, setShowUnhandledProviderEvents] =
-    useState(false);
+  const [showDiagnosticEvents, setShowDiagnosticEvents] = useState(false);
   const [preferredAudioInputDeviceId, setPreferredAudioInputDeviceId] =
     useState<PreferredAudioInputDeviceId>("studio-mic");
   const [directoryTargetId, setDirectoryTargetId] =
@@ -226,7 +225,7 @@ function useSettingsStoryState() {
     richTextEditing,
     steerActiveThreadOnEnter,
     streamerMode,
-    showUnhandledProviderEvents,
+    showDiagnosticEvents,
     setAppearance,
     setDirectoryTargetId,
     setExperiments,
@@ -239,7 +238,7 @@ function useSettingsStoryState() {
     setRichTextEditing,
     setSteerActiveThreadOnEnter,
     setStreamerMode,
-    setShowUnhandledProviderEvents,
+    setShowDiagnosticEvents,
     setThemePreference,
     themePreference,
   };
@@ -294,8 +293,8 @@ function GeneralSettingsStory({
       />
       <DebugSettingsSection
         disabled={false}
-        enabled={state.showUnhandledProviderEvents}
-        onEnabledChange={state.setShowUnhandledProviderEvents}
+        enabled={state.showDiagnosticEvents}
+        onEnabledChange={state.setShowDiagnosticEvents}
       />
     </>
   );

@@ -1600,7 +1600,7 @@ describe("migrate", () => {
       expect(getAppSettings(db)).toEqual({
         showKeyboardHints: false,
         steerActiveThreadOnEnter: true,
-        showUnhandledProviderEvents: true,
+        showDiagnosticEvents: true,
         providerOrder: [],
         defaultProviderId: null,
         streamerMode: false,

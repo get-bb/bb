@@ -13,6 +13,7 @@ const appSettingsKeySchema = appSettingsSchema.keyof();
 const appSettingsKeys = appSettingsKeySchema.options;
 
 const KEYBINDING_OVERRIDES_KEY = "keybindingOverrides";
+const LEGACY_DIAGNOSTIC_EVENTS_KEY = "showUnhandledProviderEvents";
 
 function parseStoredValue(text: string): unknown {
   try {
@@ -43,8 +44,23 @@ export function getAppSettings(db: DbConnection): AppSettings {
   const rows = db
     .select({ key: appSettingsValues.key, value: appSettingsValues.value })
     .from(appSettingsValues)
-    .where(inArray(appSettingsValues.key, [...appSettingsKeys]))
+    .where(
+      inArray(appSettingsValues.key, [
+        ...appSettingsKeys,
+        LEGACY_DIAGNOSTIC_EVENTS_KEY,
+      ]),
+    )
     .all();
+
+  const legacyDiagnosticEvents = rows.find(
+    (row) => row.key === LEGACY_DIAGNOSTIC_EVENTS_KEY,
+  );
+  if (legacyDiagnosticEvents) {
+    const parsed = appSettingsSchema.shape.showDiagnosticEvents.safeParse(
+      parseStoredValue(legacyDiagnosticEvents.value),
+    );
+    if (parsed.success) values.showDiagnosticEvents = parsed.data;
+  }
 
   for (const row of rows) {
     const key = appSettingsKeySchema.safeParse(row.key);
@@ -64,6 +80,10 @@ export function setAppSettings(db: DbConnection, settings: AppSettings): void {
     for (const key of appSettingsKeys) {
       writeValue(transaction, key, settings[key], updatedAt);
     }
+    transaction
+      .delete(appSettingsValues)
+      .where(eq(appSettingsValues.key, LEGACY_DIAGNOSTIC_EVENTS_KEY))
+      .run();
   });
 }
 

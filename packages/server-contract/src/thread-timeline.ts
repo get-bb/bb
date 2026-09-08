@@ -142,6 +142,7 @@ export type TimelineConversationRow = z.infer<
 
 export const timelineSystemOperationKindValues = [
   "generic",
+  "reasoning",
   "compaction",
   "context-clear",
   "parent-change",
@@ -159,6 +160,7 @@ export type TimelineSystemOperationKind = z.infer<
 >;
 const timelineGenericSystemOperationKindSchema = z.enum([
   "generic",
+  "reasoning",
   "compaction",
   "context-clear",
   "thread-provisioning",

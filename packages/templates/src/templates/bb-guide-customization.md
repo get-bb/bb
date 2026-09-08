@@ -83,9 +83,11 @@ Turn it off to hide the delayed shortcut badges shown while holding Command or
 Control on macOS, or Control on Windows/Linux. Shortcut commands continue to
 work.
 
-Settings → General includes `showUnhandledProviderEvents`, which defaults to
-false in packaged builds. Turn it on to show raw provider events bb does not yet
-understand; development builds always show these diagnostic rows.
+Settings → General includes `showDiagnosticEvents`, which defaults to false
+in all builds. Turn it on to show provider environment resolution and unhandled
+provider events. Warnings, errors, and model fallback stay visible. Existing
+unhandled-event preferences are preserved. Set it with
+`bb settings general showDiagnosticEvents <true|false>`.
 
 Settings → General also includes `steerActiveThreadOnEnter`, which defaults to
 true for a new install. An earlier install with saved settings or work keeps

@@ -63,7 +63,7 @@ export interface ThreadTimelineCacheKeyArgs {
   page: ThreadTimelinePageRequest;
   includeNestedRows: boolean;
   summaryOnly: boolean;
-  includeProviderUnhandledOperations: boolean;
+  includeDiagnosticOperations: boolean;
 }
 
 function pageKeyPart(page: ThreadTimelinePageRequest): string {
@@ -83,7 +83,7 @@ export function buildThreadTimelineParamsKey(
     pageKeyPart(args.page),
     args.includeNestedRows ? "1" : "0",
     args.summaryOnly ? "1" : "0",
-    args.includeProviderUnhandledOperations ? "1" : "0",
+    args.includeDiagnosticOperations ? "1" : "0",
   ].join("|");
 }
 

@@ -74,7 +74,7 @@ type ThreadTimelineTurnMessageDetail = "summary" | "full";
 
 interface ThreadTimelineFromEventsBaseOptions {
   contextOnlyToolCallIds?: ReadonlySet<string>;
-  includeProviderUnhandledOperations: boolean;
+  includeDiagnosticOperations: boolean;
   isLatestPage: boolean;
   providerId?: string;
   providerDisplayName?: string;
@@ -114,7 +114,7 @@ interface ThreadTimelineSourceSeqRange {
 }
 
 interface BuildThreadTimelineTurnDetailsFromEventsOptions extends ThreadTimelineSourceSeqRange {
-  includeProviderUnhandledOperations: boolean;
+  includeDiagnosticOperations: boolean;
   providerDisplayName?: string;
   threadStatus: Thread["status"];
   threadName: string;
@@ -213,6 +213,7 @@ function operationKindForMessage(
   parentChange: TimelineParentChange | null,
 ): TimelineSystemOperationKind {
   switch (message.opType) {
+    case "reasoning":
     case "compaction":
     case "context-clear":
     case "thread-provisioning":
@@ -1338,8 +1339,7 @@ export function buildThreadTimelineFromEvents(
 ): ThreadTimelineFromEventsResult {
   const projectionOptions = {
     acceptedClientRequestContext: args.acceptedClientRequestContext,
-    includeProviderUnhandledOperations:
-      args.options.includeProviderUnhandledOperations,
+    includeDiagnosticOperations: args.options.includeDiagnosticOperations,
     contextOnlyToolCallIds: args.options.contextOnlyToolCallIds,
     providerDisplayName: args.options.providerDisplayName,
     threadStatus: args.options.threadStatus,
@@ -1404,8 +1404,7 @@ export function buildThreadTimelineTurnDetailsFromEvents(
   args: BuildThreadTimelineTurnDetailsFromEventsArgs,
 ): ThreadTimelineTurnDetailsFromEventsResult {
   const projection = buildEventProjectionEntries(args.events, {
-    includeProviderUnhandledOperations:
-      args.options.includeProviderUnhandledOperations,
+    includeDiagnosticOperations: args.options.includeDiagnosticOperations,
     providerDisplayName: args.options.providerDisplayName,
     threadStatus: args.options.threadStatus,
     threadName: args.options.threadName,

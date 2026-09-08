@@ -170,7 +170,7 @@ export function buildRouteTimelinePage(
     args.thread,
     {
       eventBudget: defaultFeatureFlags.timelineWindowEventBudget,
-      includeProviderUnhandledOperations: true,
+      includeDiagnosticOperations: true,
       includeNestedRows,
       maxInlineOutputChars: DEFAULT_MAX_INLINE_OUTPUT_CHARS,
       maxSeq,

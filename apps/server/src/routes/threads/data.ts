@@ -318,9 +318,9 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
       deps,
       thread.providerId,
     );
-    const includeProviderUnhandledOperations =
-      deps.config.isDevelopment ||
-      getAppSettings(deps.db).showUnhandledProviderEvents;
+    const includeDiagnosticOperations = getAppSettings(
+      deps.db,
+    ).showDiagnosticEvents;
     const eventBudget = deps.config.featureFlags.timelineWindowEventBudget;
     const keyArgs = {
       threadId: thread.id,
@@ -330,7 +330,7 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
       page,
       includeNestedRows,
       summaryOnly,
-      includeProviderUnhandledOperations,
+      includeDiagnosticOperations,
     };
     const full = timelineCache.getOrBuild(
       buildThreadTimelineCacheKey({ ...keyArgs, maxSeq }),
@@ -340,7 +340,7 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
           thread,
           {
             eventBudget,
-            includeProviderUnhandledOperations,
+            includeDiagnosticOperations,
             includeNestedRows,
             maxInlineOutputChars: DEFAULT_MAX_INLINE_OUTPUT_CHARS,
             maxSeq,
@@ -429,12 +429,12 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
 
   get(routes.timelineTurnSummaryDetails, (context, query) => {
     const thread = requirePublicThread(deps.db, context.req.param("id"));
-    const includeProviderUnhandledOperations =
-      deps.config.isDevelopment ||
-      getAppSettings(deps.db).showUnhandledProviderEvents;
+    const includeDiagnosticOperations = getAppSettings(
+      deps.db,
+    ).showDiagnosticEvents;
     return context.json(
       buildTimelineTurnSummaryDetails(deps.db, thread, {
-        includeProviderUnhandledOperations,
+        includeDiagnosticOperations,
         providerDisplayName: resolveThreadProviderDisplayName(
           deps,
           thread.providerId,

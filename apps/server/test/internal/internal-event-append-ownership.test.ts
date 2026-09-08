@@ -108,7 +108,7 @@ describe("internal event append ownership", () => {
       expect(
         buildThreadTimeline(harness.db, thread, {
           eventBudget: 1_000_000,
-          includeProviderUnhandledOperations: true,
+          includeDiagnosticOperations: true,
           maxInlineOutputChars: null,
           maxSeq: 1,
           page: {
@@ -1036,7 +1036,7 @@ describe("interaction lifecycle records from the daemon", () => {
       );
       const questionRows = buildThreadTimeline(harness.db, thread, {
         eventBudget: 1_000_000,
-        includeProviderUnhandledOperations: true,
+        includeDiagnosticOperations: true,
         maxInlineOutputChars: null,
         maxSeq,
         page: { kind: "latest", segmentLimit: Number.MAX_SAFE_INTEGER },

@@ -681,7 +681,7 @@ function buildContextWindowUsage(
     events: [],
     options: {
       includeNestedRows: false,
-      includeProviderUnhandledOperations: false,
+      includeDiagnosticOperations: false,
       isLatestPage: true,
       threadStatus: "idle",
       threadName: "",
@@ -702,7 +702,7 @@ function buildTimelineRows(
     events,
     options: {
       includeNestedRows: true,
-      includeProviderUnhandledOperations: false,
+      includeDiagnosticOperations: false,
       isLatestPage: true,
       threadStatus,
       threadName: "",
@@ -725,7 +725,7 @@ function buildTimelineRowsWithAcceptedContext(
     events,
     options: {
       includeNestedRows: true,
-      includeProviderUnhandledOperations: false,
+      includeDiagnosticOperations: false,
       isLatestPage: true,
       threadStatus: "idle",
       threadName: "",
@@ -748,7 +748,7 @@ function buildTimelineRowsWithRejectedContext(
     events,
     options: {
       includeNestedRows: true,
-      includeProviderUnhandledOperations: false,
+      includeDiagnosticOperations: false,
       isLatestPage: true,
       threadStatus: "idle",
       threadName: "",
@@ -1106,7 +1106,7 @@ describe("buildThreadTimelineFromEvents", () => {
       ]),
       options: {
         includeNestedRows: true,
-        includeProviderUnhandledOperations: false,
+        includeDiagnosticOperations: false,
         isLatestPage: true,
         planCommand: { trigger: "/", name: "plan" },
         providerId: "claude-code",
@@ -1142,7 +1142,7 @@ describe("buildThreadTimelineFromEvents", () => {
       ]),
       options: {
         includeNestedRows: true,
-        includeProviderUnhandledOperations: false,
+        includeDiagnosticOperations: false,
         isLatestPage: true,
         planCommand: { trigger: "/", name: "plan" },
         providerId: "codex",
@@ -1177,7 +1177,7 @@ describe("buildThreadTimelineFromEvents", () => {
       ]),
       options: {
         includeNestedRows: true,
-        includeProviderUnhandledOperations: false,
+        includeDiagnosticOperations: false,
         isLatestPage: true,
         planCommand: { trigger: "/", name: "plan" },
         providerId: "claude-code",
@@ -1210,7 +1210,7 @@ describe("buildThreadTimelineFromEvents", () => {
       ]),
       options: {
         includeNestedRows: true,
-        includeProviderUnhandledOperations: false,
+        includeDiagnosticOperations: false,
         isLatestPage: true,
         planCommand: { trigger: "/", name: "plan" },
         providerId: "claude-code",
@@ -1524,7 +1524,7 @@ describe("buildThreadTimelineFromEvents", () => {
       events,
       options: {
         includeNestedRows: true,
-        includeProviderUnhandledOperations: false,
+        includeDiagnosticOperations: false,
         isLatestPage: true,
         planCommand: { trigger: "/", name: "plan" },
         providerId: "claude-code",

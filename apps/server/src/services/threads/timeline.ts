@@ -122,7 +122,7 @@ interface ResolveTurnSummaryDetailsSourceRangeArgs {
 
 interface BuildThreadTimelineOptions {
   eventBudget: number;
-  includeProviderUnhandledOperations: boolean;
+  includeDiagnosticOperations: boolean;
   includeNestedRows?: boolean;
   maxInlineOutputChars: InlineOutputCharLimit;
   maxSeq: number;
@@ -133,7 +133,7 @@ interface BuildThreadTimelineOptions {
 }
 
 interface BuildTimelineTurnSummaryDetailsOptions extends TimelineTurnSummarySelection {
-  includeProviderUnhandledOperations: boolean;
+  includeDiagnosticOperations: boolean;
   providerDisplayName?: string;
 }
 
@@ -1485,8 +1485,7 @@ function buildThreadTimelineInternal(
     ? createThreadTimelineBuildProfileAccumulator()
     : null;
   const includeNestedRows = options.includeNestedRows ?? false;
-  const includeProviderUnhandledOperations =
-    options.includeProviderUnhandledOperations;
+  const includeDiagnosticOperations = options.includeDiagnosticOperations;
   const contextBoundarySeq = getLatestCompletedThreadContextClearSequence(db, {
     atOrBeforeSequence: options.maxSeq,
     threadId: thread.id,
@@ -1551,7 +1550,7 @@ function buildThreadTimelineInternal(
     profile.contextWindowEventRowCount = contextWindowUsageRows.length;
   }
   const commonProjectionOptions = {
-    includeProviderUnhandledOperations,
+    includeDiagnosticOperations,
     isLatestPage: options.page.kind === "latest",
     providerDisplayName: options.providerDisplayName,
     planCommand: options.planCommand,
@@ -1759,7 +1758,7 @@ export function buildThreadConversationOutline(
       events: decodedEvents,
       options: {
         includeNestedRows: false,
-        includeProviderUnhandledOperations: false,
+        includeDiagnosticOperations: false,
         isLatestPage: true,
         providerDisplayName: options.providerDisplayName,
         providerId: thread.providerId,
@@ -1862,8 +1861,7 @@ export function buildTimelineTurnSummaryDetails(
     );
   }
 
-  const includeProviderUnhandledOperations =
-    options.includeProviderUnhandledOperations;
+  const includeDiagnosticOperations = options.includeDiagnosticOperations;
   const detailsWindow = {
     beforeSequence: options.sourceSeqEnd + 1,
     excludedTypes: THREAD_TIMELINE_EXCLUDED_EVENT_TYPES,
@@ -2005,7 +2003,7 @@ export function buildTimelineTurnSummaryDetails(
       toThreadEventWithMeta(row),
     ),
     options: {
-      includeProviderUnhandledOperations,
+      includeDiagnosticOperations,
       sourceSeqEnd: sourceRange.sourceSeqEnd,
       sourceSeqStart: projectionSourceSeqStart,
       providerDisplayName: options.providerDisplayName,

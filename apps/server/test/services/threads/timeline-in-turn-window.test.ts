@@ -403,7 +403,7 @@ function buildPage(
 ) {
   return buildThreadTimelineWithProfile(db, thread, {
     eventBudget,
-    includeProviderUnhandledOperations: false,
+    includeDiagnosticOperations: false,
     includeNestedRows: false,
     maxInlineOutputChars: 32_000,
     maxSeq: 0,
@@ -421,7 +421,7 @@ function buildNestedPage(
 ) {
   return buildThreadTimelineWithProfile(db, thread, {
     eventBudget,
-    includeProviderUnhandledOperations: false,
+    includeDiagnosticOperations: false,
     includeNestedRows: true,
     maxInlineOutputChars: 32_000,
     maxSeq: 0,
@@ -671,7 +671,7 @@ describe("in-turn timeline windows", () => {
     });
 
     const details = buildTimelineTurnSummaryDetails(db, thread, {
-      includeProviderUnhandledOperations: false,
+      includeDiagnosticOperations: false,
       sourceSeqEnd: turnRow.sourceSeqEnd,
       sourceSeqStart: turnRow.sourceSeqStart,
       turnId: turnRow.turnId,
@@ -805,7 +805,7 @@ describe("in-turn timeline windows", () => {
         expect(turnRowIds.has(row.id)).toBe(false);
         turnRowIds.add(row.id);
         const details = buildTimelineTurnSummaryDetails(db, thread, {
-          includeProviderUnhandledOperations: false,
+          includeDiagnosticOperations: false,
           sourceSeqEnd: row.sourceSeqEnd,
           sourceSeqStart: row.sourceSeqStart,
           turnId: row.turnId,
@@ -906,7 +906,7 @@ describe("in-turn timeline windows", () => {
       throw new Error("expected a turn row");
     }
     const details = buildTimelineTurnSummaryDetails(db, thread, {
-      includeProviderUnhandledOperations: false,
+      includeDiagnosticOperations: false,
       sourceSeqEnd: turnRow.sourceSeqEnd,
       sourceSeqStart: turnRow.sourceSeqStart,
       turnId: turnRow.turnId,
@@ -950,7 +950,7 @@ describe("in-turn timeline windows", () => {
           expect(row.sourceSeqStart).toBeGreaterThan(4);
         }
         const details = buildTimelineTurnSummaryDetails(db, thread, {
-          includeProviderUnhandledOperations: false,
+          includeDiagnosticOperations: false,
           sourceSeqEnd: row.sourceSeqEnd,
           sourceSeqStart: row.sourceSeqStart,
           turnId: row.turnId,
@@ -1066,7 +1066,7 @@ describe("in-turn timeline windows", () => {
           continue;
         }
         const details = buildTimelineTurnSummaryDetails(db, thread, {
-          includeProviderUnhandledOperations: false,
+          includeDiagnosticOperations: false,
           sourceSeqEnd: row.sourceSeqEnd,
           sourceSeqStart: row.sourceSeqStart,
           turnId: row.turnId,
@@ -1393,7 +1393,7 @@ describe("timeline inline output reads", () => {
 
     const capped = buildThreadTimeline(db, thread, {
       eventBudget: LARGE_BUDGET,
-      includeProviderUnhandledOperations: false,
+      includeDiagnosticOperations: false,
       includeNestedRows: false,
       maxInlineOutputChars: 32_000,
       maxSeq: 0,
@@ -1401,7 +1401,7 @@ describe("timeline inline output reads", () => {
     });
     const uncapped = buildThreadTimeline(db, thread, {
       eventBudget: LARGE_BUDGET,
-      includeProviderUnhandledOperations: false,
+      includeDiagnosticOperations: false,
       includeNestedRows: false,
       maxInlineOutputChars: null,
       maxSeq: 0,
@@ -1699,7 +1699,7 @@ function collectTurnDetailsAndChildren(
     byTurnId.set(row.turnId, {
       children: row.children ?? [],
       details: buildTimelineTurnSummaryDetails(db, thread, {
-        includeProviderUnhandledOperations: false,
+        includeDiagnosticOperations: false,
         sourceSeqEnd: row.sourceSeqEnd,
         sourceSeqStart: row.sourceSeqStart,
         turnId: row.turnId,

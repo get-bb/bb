@@ -25,12 +25,12 @@ describe("bb settings commands", () => {
     });
 
     await runCommand(
-      ["settings", "general", "showUnhandledProviderEvents", "true"],
+      ["settings", "general", "showDiagnosticEvents", "true"],
       register,
     );
 
     expect(put).toHaveBeenCalledWith({
-      json: { ...defaultAppSettings, showUnhandledProviderEvents: true },
+      json: { ...defaultAppSettings, showDiagnosticEvents: true },
     });
   });
 

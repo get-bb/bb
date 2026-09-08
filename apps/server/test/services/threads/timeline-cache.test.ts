@@ -55,7 +55,7 @@ const baseKeyArgs: ThreadTimelineCacheKeyArgs = {
   page: latestPage,
   includeNestedRows: false,
   summaryOnly: false,
-  includeProviderUnhandledOperations: false,
+  includeDiagnosticOperations: false,
 };
 
 describe("createThreadTimelineCache", () => {
@@ -118,7 +118,7 @@ describe("buildThreadTimelineCacheKey", () => {
       { ...baseKeyArgs, environmentId: "env_1" },
       { ...baseKeyArgs, includeNestedRows: true },
       { ...baseKeyArgs, summaryOnly: true },
-      { ...baseKeyArgs, includeProviderUnhandledOperations: true },
+      { ...baseKeyArgs, includeDiagnosticOperations: true },
       {
         ...baseKeyArgs,
         page: {

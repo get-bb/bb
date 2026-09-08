@@ -19,7 +19,6 @@ import {
 } from "./buffered-text-identity.js";
 
 interface ActiveThinkingLifecycle {
-  itemId: string;
   messageKey: string;
   parentToolCallId: string | null;
   sourceSeqStart: number;
@@ -150,7 +149,11 @@ export function buildProjectionActiveThinking(
   }
 
   return {
-    id: latestLifecycle.itemId,
+    id: messageId(
+      latestLifecycle.threadId,
+      "op",
+      `reasoning:${latestLifecycle.messageKey}`,
+    ),
     text: getActiveThinkingText(state, latestLifecycle.messageKey),
     startedAt: latestLifecycle.startedAt,
     updatedAt: latestLifecycle.updatedAt,
@@ -183,7 +186,6 @@ export function upsertReasoningLifecycle(
   }
 
   args.state.openReasoningLifecyclesByKey.set(messageKey, {
-    itemId: args.identity.itemId,
     messageKey,
     parentToolCallId: args.parentToolCallId ?? null,
     sourceSeqStart: args.meta.seq,
@@ -231,7 +233,7 @@ function finalizeReasoningLifecycleByKey(
     ...(lifecycle.parentToolCallId
       ? { parentToolCallId: lifecycle.parentToolCallId }
       : {}),
-    opType: "operation",
+    opType: "reasoning",
     title: `Thought for ${durationToCompactString(
       args.meta.createdAt - lifecycle.startedAt,
     )}`,
