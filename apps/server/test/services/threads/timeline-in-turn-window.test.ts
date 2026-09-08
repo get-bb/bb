@@ -1754,7 +1754,6 @@ describe("turn details for an item that finishes in a later turn", () => {
       data: JSON.stringify({ reason: "manual-stop" }),
     });
     insertEvents(db, noopNotifier, events);
-
     const storedCount = events.length;
     push({
       ...base,
