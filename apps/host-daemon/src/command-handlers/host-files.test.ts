@@ -10,7 +10,6 @@ import {
   isExpectedCommandDispatchError,
 } from "../command-dispatch-support.js";
 import {
-  canonicalHostPath,
   browseHostDirectory,
   readHostFile,
   readHostFileMetadata,
@@ -428,43 +427,5 @@ describe("readHostFile (with ref — git history read)", () => {
     });
 
     expect(result.content).toBe("first\n");
-  });
-});
-
-describe("canonical host paths", () => {
-  it("resolves symlinks, trailing separators, dot segments and missing descendants", async () => {
-    const root = await makeTempDir("bb-canonical-path-");
-    const actual = path.join(root, "ReportedCase");
-    const alias = path.join(root, "alias");
-    await fs.mkdir(actual);
-    await fs.symlink(actual, alias);
-    const canonical = await fs.realpath(actual);
-    for (const spelling of [actual + "/", alias, alias + "/./"]) {
-      expect(
-        await canonicalHostPath({
-          type: "host.canonical_path",
-          path: spelling,
-        }),
-      ).toEqual({ path: canonical });
-    }
-    expect(
-      await canonicalHostPath({
-        type: "host.canonical_path",
-        path: alias + "/missing/child/",
-      }),
-    ).toEqual({ path: path.join(canonical, "missing/child") });
-    if (
-      await fs.stat(actual.toLowerCase()).then(
-        () => true,
-        () => false,
-      )
-    ) {
-      expect(
-        await canonicalHostPath({
-          type: "host.canonical_path",
-          path: actual.toLowerCase(),
-        }),
-      ).toEqual({ path: canonical });
-    }
   });
 });

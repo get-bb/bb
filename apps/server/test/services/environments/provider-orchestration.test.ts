@@ -254,40 +254,6 @@ describe("core environment orchestration", () => {
       expect(fixture.row().cancelPending).toBe(false);
     }));
 
-  it("binds setup, attachment and removal to the canonical path", async () =>
-    withTestHarness(async (harness) => {
-      let destination = "/tmp/real-workspace";
-      const hooks: string[] = [];
-      const remove = vi.fn(async () => ({ status: "removed" as const }));
-      const fixture = setup(harness, {
-        policy: { retireGraceMs: 0 },
-        create: async () => ({
-          status: "created",
-          path: "/tmp/alias",
-          ownsPath: true,
-        }),
-        remove,
-      });
-      registerTestHostRpcCapture(harness.deps, {
-        hostId: fixture.host.id,
-        sessionId: fixture.session.id,
-        canonicalPath: (path) => (path === "/tmp/alias" ? destination : path),
-        onEnvironmentHook: async (command) => {
-          hooks.push(command.path);
-        },
-      });
-      fixture.ask();
-      await fixture.settled();
-      expect(fixture.row().path).toBe("/tmp/real-workspace");
-      const environmentId = fixture.attach();
-      destination = "/tmp/other-workspace";
-      await sweepProviderEnvironment(harness.deps, environmentId);
-      expect(hooks).toEqual(["/tmp/real-workspace", "/tmp/real-workspace"]);
-      expect(remove).toHaveBeenCalledWith(
-        expect.objectContaining({ path: "/tmp/real-workspace" }),
-      );
-    }));
-
   it.each(["launch", "environment"])(
     "preserves the original plugin owner of a %s",
     async (kind) =>
@@ -667,7 +633,7 @@ describe("core environment orchestration", () => {
       ).toBe(true);
     }));
 
-  it("does not replace the canonical claim with a provider's trailing slash result", async () =>
+  it("normalizes trailing slashes on claimed paths", async () =>
     withTestHarness(async (harness) => {
       const fixture = setup(harness, {
         create: async (context) => {
@@ -691,7 +657,7 @@ describe("core environment orchestration", () => {
       expect(fixture.row().path).toBe("/tmp/project");
     }));
 
-  it("preserves canonical identity after attachment for live checkout exclusion", async () =>
+  it("preserves the attached path for live checkout exclusion", async () =>
     withTestHarness(async (harness) => {
       const fixture = setup(harness, {
         id: "project-checkout",
@@ -711,7 +677,7 @@ describe("core environment orchestration", () => {
         .set({ status: "active" })
         .where(eq(threads.id, fixture.thread.id))
         .run();
-      expect(getEnvironment(harness.db, environmentId)?.canonicalPath).toBe(
+      expect(getEnvironment(harness.db, environmentId)?.path).toBe(
         "/tmp/project",
       );
       const response = await harness.app.request(
@@ -898,7 +864,7 @@ describe("core environment orchestration", () => {
       const target = createEnvironment(harness.db, harness.hub, {
         projectId: fixture.context.project.id,
         hostId: fixture.host.id,
-        path: "/tmp/same-project-worktree/",
+        path: "/tmp/same-project-worktree",
         status: "ready",
         providerOwnsPath: true,
         environmentProvider: {

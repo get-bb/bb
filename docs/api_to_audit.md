@@ -423,7 +423,7 @@ Core invokes `create` and `remove` and records results directly. Policy drives
 retries, cancellation and retirement; providers return resource-operation
 results. Created directories include explicit ownsPath. The core lifecycle
 table owns attempt identity and private resources. Core admits and claims the
-canonical returned path before lifecycle hooks and uses that path for execution.
+returned path before lifecycle hooks and uses that path for execution.
 Rejected foreign paths are never passed to lifecycle hooks or provider removal.
 Cleanup permits four operations globally and one per host. Progress remains
 durable before reporting returns, but wakes only its launch without invalidating
@@ -2518,12 +2518,8 @@ and portable output handling for host-local plugin commands on every supported O
 
 - `PluginEnvironmentProviderCreateContext.experimental_claimPath(path)`: durable,
   asynchronous atomic host/path reservation on the launch row before provider
-  mutation; resolves false for competing claims or stale attempts. Core resolves
-  the canonical path on the selected host and stores it separately from the
-  display path. Attachment persists that identity on the environment row.
-  SDK environment path filters resolve aliases on the selected host and compare
-  the persisted identity, including for live-thread exclusion and foreign-path
-  refusal. Legacy rows resolve their identity on first path lookup. The claim
+  mutation; resolves false for competing claims or stale attempts. Claims use
+  the supplied host/path, with trailing slashes normalized. The claim
   is released by attachment or completed cancellation cleanup,
   including after failure. Stabilize after restart, cancellation,
-  competing checkout, and path-normalization behavior has been audited.
+  competing checkout, and path-reservation behavior has been audited.

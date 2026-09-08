@@ -254,7 +254,6 @@ Providers must not call these hooks themselves. Attached paths (`ownsPath: false
 never run them. Provider-specific preparation runs inside `create` first (for
 example, Worktree copies `.worktreeinclude` files).
 
-
 ### bb.http — HTTP routes
 
 `bb.http.route(method, path, handler, { auth? })` mounts an exact-match route
@@ -413,14 +412,10 @@ unattached launch holds the host/path, this attempt is no longer creating, or
 this attempt already reserved another path. Repeating the same claim succeeds.
 Core retains the durable claim through attachment or completed cancellation
 cleanup, including after failed creation. Check existing attached threads after
-claiming and before mutating a shared checkout. Core resolves symlinks and filesystem case on the selected host, normalizes
-trailing slashes and stores the canonical claim separately from the returned
-display path. Reuse, directory switching and restored dispatch enforce claims;
-only the owning launch is exempt. Attachment preserves the canonical identity on
-the environment row. `bb.sdk.environments.list({ hostId, path })` resolves the
-requested path on that host and matches canonical identity, so live-thread and
-foreign-environment checks also cover trailing slashes and symlink aliases.
-Legacy environments resolve their canonical identity on first path lookup.
+claiming and before mutating a shared checkout. Core normalizes trailing slashes
+on claims. Reuse, directory switching and restored dispatch enforce claims;
+only the owning launch is exempt. `bb.sdk.environments.list({ hostId, path })`
+compares stored paths in the database and does not contact hosts.
 Scoped discovery omits providers whose requirements are unmet; availability rows
 are only returned for eligible providers. Without a machine scope, discovery
 includes providers eligible on any persistent machine.

@@ -1705,26 +1705,6 @@ export const hostDaemonCommandRegistry = {
     flushEventsBeforeResult: false,
     envLane: null,
   }),
-  "host.canonical_path": defineHostDaemonCommandDescriptor({
-    type: "host.canonical_path",
-    schema: z
-      .object({
-        type: z.literal("host.canonical_path"),
-        path: z
-          .string()
-          .min(1)
-          .startsWith("/")
-          .refine((value) => !value.includes("\0")),
-      })
-      .strict(),
-    resultSchema: z
-      .object({ path: z.string().min(1).startsWith("/") })
-      .strict(),
-    transport: "onlineRpc",
-    retryable: true,
-    flushEventsBeforeResult: false,
-    envLane: null,
-  }),
   "host.file_metadata": defineHostDaemonCommandDescriptor({
     type: "host.file_metadata",
     schema: hostFileMetadataCommandSchema,

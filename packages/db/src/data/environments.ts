@@ -81,8 +81,6 @@ export function getEnvironment(db: EnvironmentReadConnection, id: string) {
   );
 }
 
-const environmentPathIdentity = sql<string>`CASE WHEN ${environments.path} IS NOT NULL THEN coalesce(${environments.canonicalPath}, nullif(rtrim(${environments.path}, '/'), ''), '/') END`;
-
 export function findProjectEnvironmentByHostPath(
   db: DbConnection,
   projectId: string,
@@ -97,7 +95,7 @@ export function findProjectEnvironmentByHostPath(
         and(
           eq(environments.projectId, projectId),
           eq(environments.hostId, hostId),
-          eq(environmentPathIdentity, path),
+          eq(environments.path, path),
         ),
       )
       .get() ?? null
@@ -121,8 +119,8 @@ export function findProviderEnvironmentContainingPath(
       .where(
         and(
           or(
-            eq(environmentPathIdentity, path),
-            sql`${path} LIKE ${environmentPathIdentity} || '/%'`,
+            eq(environments.path, path),
+            sql`${path} LIKE ${environments.path} || '/%'`,
           ),
           eq(environments.providerOwnsPath, true),
           ne(environments.status, "destroyed"),
@@ -144,8 +142,8 @@ export function findForeignManagedEnvironmentAtHostPath(
         and(
           eq(environments.hostId, args.hostId),
           or(
-            eq(environmentPathIdentity, args.path),
-            sql`${args.path} LIKE ${environmentPathIdentity} || '/%'`,
+            eq(environments.path, args.path),
+            sql`${args.path} LIKE ${environments.path} || '/%'`,
           ),
           eq(environments.providerOwnsPath, true),
           ne(environments.projectId, args.projectId),
@@ -157,7 +155,6 @@ export function findForeignManagedEnvironmentAtHostPath(
 }
 
 export interface ListEnvironmentsFilters {
-  hostPaths?: readonly { hostId: string; path: string }[];
   environmentProviderId?: string;
   hostId?: string;
   instanceKey?: string;
@@ -173,13 +170,6 @@ export function listEnvironments(
   filters: ListEnvironmentsFilters = {},
 ) {
   const conditions = [
-    filters.hostPaths === undefined
-      ? undefined
-      : filters.hostPaths.length === 0
-        ? sql`false`
-        : or(...filters.hostPaths.map(({ hostId, path }) =>
-            and(eq(environments.hostId, hostId), eq(environmentPathIdentity, path)),
-          )),
     filters.projectId === undefined
       ? undefined
       : eq(environments.projectId, filters.projectId),
@@ -194,7 +184,7 @@ export function listEnvironments(
       : eq(environments.environmentProviderInstanceKey, filters.instanceKey),
     filters.path === undefined
       ? undefined
-      : eq(environmentPathIdentity, filters.path),
+      : eq(environments.path, filters.path),
     filters.statuses === undefined
       ? undefined
       : inArray(environments.status, [...filters.statuses]),
@@ -323,9 +313,6 @@ function updateEnvironmentMetadataRecord(
     .update(environments)
     .set({
       ...metadata,
-      ...(metadata.path === undefined || metadata.path === existing.path || existing.path === null
-        ? {}
-        : { canonicalPath: null }),
       updatedAt: Date.now(),
     })
     .where(eq(environments.id, id))
@@ -508,7 +495,6 @@ export function applyEnvironmentLifecycleEventInTransaction(
   };
   if (evaluation.to === "destroyed") {
     set.path = null;
-    set.canonicalPath = null;
   }
 
   const conditions = [

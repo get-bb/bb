@@ -35,7 +35,7 @@ Making your repo work with bb:
   variable are removed, and bb does not inject BB_PROJECT_ID, BB_ENVIRONMENT_ID,
   or BB_SOURCE_PATH.
 
-  Core admits and claims the canonical path before hooks, and runs hooks only
+  Core admits and claims the path before hooks, and runs hooks only
   after create confirms ownsPath: true. Attached project
   checkouts and personal workspaces never run hooks. Setup identity and state
   persist per launch attempt; server restart reconciles the same daemon

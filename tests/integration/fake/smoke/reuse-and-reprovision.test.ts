@@ -207,7 +207,7 @@ describe.sequential("fake provider smoke reuse integration", () => {
         "ready",
         TURN_TIMEOUT_MS,
       );
-      expect(reattached.path).toBe(await fs.realpath(harness.repoDir));
+      expect(reattached.path).toBe(harness.repoDir);
       expect(reattached.environmentProviderId).toBe("project-checkout");
     }));
 });

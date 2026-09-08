@@ -333,7 +333,6 @@ const ONLINE_RPC_RESPONSE_RESULT_FIXTURES: OnlineRpcResponseResultFixtures = {
       kind: "local",
     },
   },
-  "host.canonical_path": { path: "/tmp/project" },
   "host.file_metadata": {
     path: "/tmp/report.html",
     modifiedAtMs: 1234,
@@ -966,7 +965,7 @@ const CONTRIBUTED_ENV = [
 
 describe("host-daemon command schemas", () => {
   it("uses the current host-daemon protocol version", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(191);
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(192);
     expect(HOST_ARTIFACT_MAX_BYTES).toBe(256 * 1024 * 1024);
   });
 

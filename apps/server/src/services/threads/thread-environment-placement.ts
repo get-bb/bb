@@ -1,8 +1,4 @@
 import {
-  canonicalEnvironmentPath,
-  resolveEnvironmentPathIdentity,
-} from "../environments/path-admission.js";
-import {
   findProjectEnvironmentByHostPath,
   getProjectSourceByHost,
   type EnvironmentRow,
@@ -410,15 +406,10 @@ async function hostPathPlacement(
   const dataDir = (
     await ensureHostSessionReadyForWork(deps, { hostId: args.hostId })
   ).dataDir;
-  const canonicalPath = await resolveEnvironmentPathIdentity(
-    deps,
-    args.hostId,
-    args.path,
-  );
   const refusal = foreignProviderOwnedPathRefusal(deps.db, {
-    dataDir: await canonicalEnvironmentPath(deps, args.hostId, dataDir),
+    dataDir,
     hostId: args.hostId,
-    path: canonicalPath,
+    path: args.path,
     projectId: args.projectId,
   });
   if (refusal !== null) {
@@ -429,7 +420,7 @@ async function hostPathPlacement(
     {
       environmentProviderId: args.environmentProviderId,
       hostId: args.hostId,
-      path: canonicalPath,
+      path: args.path,
       projectId: args.projectId,
     },
   );
@@ -446,7 +437,7 @@ async function hostPathPlacement(
       selectionResolved: true,
       produced: {
         hostId: args.hostId,
-        path: canonicalPath,
+        path: args.path,
         mergeBaseBranch: args.mergeBaseBranch,
         ownsPath: args.ownsPath,
       },
@@ -569,17 +560,9 @@ export async function resolveThreadEnvironmentPlacement(
         })
       ).dataDir;
       const refusal = foreignProviderOwnedPathRefusal(deps.db, {
-        dataDir: await canonicalEnvironmentPath(
-          deps,
-          resolvedEnvironment.hostId,
-          dataDir,
-        ),
+        dataDir,
         hostId: resolvedEnvironment.hostId,
-        path: await resolveEnvironmentPathIdentity(
-          deps,
-          resolvedEnvironment.hostId,
-          resolvedEnvironment.unmanagedPath,
-        ),
+        path: resolvedEnvironment.unmanagedPath,
         projectId: args.projectId,
       });
       if (refusal !== null) {

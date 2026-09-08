@@ -5,7 +5,6 @@ import {
   cancelPendingEnvironmentHook,
   runEnvironmentHook,
 } from "./environment-hooks.js";
-import { canonicalEnvironmentPath } from "./path-admission.js";
 import {
   createMetadataPendingContext,
   threadProvisionCommonPayloadSchema,
@@ -263,13 +262,12 @@ async function runCreate(
                   .startsWith("/")
                   .refine((path) => !path.includes("\0"))
                   .parse(value);
-                const canonical = await canonicalEnvironmentPath(
-                  deps,
-                  context.host.id,
-                  path,
-                );
                 if (controller.signal.aborted) return false;
-                return claimEnvironmentLaunchPath(deps.db, launch, canonical);
+                return claimEnvironmentLaunchPath(
+                  deps.db,
+                  launch,
+                  path.replace(/\/+$/u, "") || "/",
+                );
               },
               previous:
                 previous === null
@@ -289,11 +287,7 @@ async function runCreate(
           );
     if (result.status === "created") {
       try {
-        const canonical = await canonicalEnvironmentPath(
-          deps,
-          context.host.id,
-          result.path,
-        );
+        const producedPath = result.path.replace(/\/+$/u, "") || "/";
         await resolveProducedEnvironmentPlacement(deps, {
           environmentProviderId: record.provider.id,
           inputs: context.inputs,
@@ -301,7 +295,7 @@ async function runCreate(
             type: "host",
             hostId: context.host.id,
             ...result,
-            path: canonical,
+            path: producedPath,
           },
           projectId: context.project.id,
         });
@@ -310,14 +304,14 @@ async function runCreate(
             const refusal = foreignProviderOwnedPathRefusal(deps.db, {
               dataDir: null,
               hostId: context.host.id,
-              path: canonical,
+              path: producedPath,
               projectId: context.project.id,
             });
             if (refusal !== null) throw new Error(refusal);
             const claimed = claimEnvironmentLaunchPath(
               deps.db,
               launch,
-              canonical,
+              producedPath,
               true,
             );
             if (!claimed)
@@ -328,7 +322,7 @@ async function runCreate(
               deps.db,
               context.project.id,
               context.host.id,
-              canonical,
+              producedPath,
             );
             if (
               existing !== null &&
@@ -343,7 +337,7 @@ async function runCreate(
           },
           { behavior: "immediate" },
         );
-        result = { ...result, path: canonical };
+        result = { ...result, path: producedPath };
       } catch (error) {
         mutateLaunch(deps, launch, ["creating", "cancelled"], (row) => {
           row.pathRejected = true;
@@ -641,7 +635,6 @@ export function attachProviderLaunch(
       environmentProviderPluginId: row.providerPluginId,
       ...(row.path === null ? {} : { path: row.path }),
       retireAt: null,
-      ...(row.claimPath === null ? {} : { canonicalPath: row.claimPath }),
     })
     .where(eq(environments.id, environmentId))
     .run();

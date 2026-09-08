@@ -1,10 +1,7 @@
-import { and, eq, inArray, isNotNull } from "drizzle-orm";
-import { resolveEnvironmentPathIdentity } from "../services/environments/path-admission.js";
 import { parseOptionalInteger } from "../services/lib/validation.js";
 import path from "node:path";
 import {
   countLiveThreadsInEnvironment,
-  environments,
   listEnvironments,
   updateEnvironmentMetadata,
 } from "@bb/db";
@@ -257,40 +254,6 @@ export function registerEnvironmentRoutes(app: Hono, deps: AppDeps): void {
     if (offset !== undefined && offset < 0) {
       throw new ApiError(400, "invalid_request", "offset must be non-negative");
     }
-    const requestedPath = query?.path;
-    const hostPaths =
-      requestedPath === undefined
-        ? undefined
-        : await Promise.all(
-            (query?.hostId
-              ? [{ hostId: query.hostId }]
-              : deps.db
-                  .selectDistinct({ hostId: environments.hostId })
-                  .from(environments)
-                  .where(
-                    and(
-                      isNotNull(environments.path),
-                      inArray(
-                        environments.status,
-                        query?.status
-                          ? [query.status]
-                          : [...LISTED_ENVIRONMENT_STATUSES],
-                      ),
-                      query?.projectId
-                        ? eq(environments.projectId, query.projectId)
-                        : undefined,
-                    ),
-                  )
-                  .all()
-            ).map(async ({ hostId }) => ({
-              hostId,
-              path: await resolveEnvironmentPathIdentity(
-                deps,
-                hostId,
-                requestedPath,
-              ),
-            })),
-          );
     return context.json(
       listEnvironments(deps.db, {
         ...(query?.projectId ? { projectId: query.projectId } : {}),
@@ -299,7 +262,7 @@ export function registerEnvironmentRoutes(app: Hono, deps: AppDeps): void {
           ? { environmentProviderId: query.environmentProviderId }
           : {}),
         ...(query?.instanceKey ? { instanceKey: query.instanceKey } : {}),
-        ...(hostPaths === undefined ? {} : { hostPaths }),
+        ...(query?.path === undefined ? {} : { path: query.path }),
         ...(limit === undefined ? {} : { limit }),
         ...(offset === undefined ? {} : { offset }),
         statuses: query?.status ? [query.status] : LISTED_ENVIRONMENT_STATUSES,

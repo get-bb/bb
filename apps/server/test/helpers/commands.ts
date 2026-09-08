@@ -104,7 +104,6 @@ interface RegisterTestHostRpcCaptureArgs {
   hostId: string;
   sessionId: string;
   queueBranchOptions?: boolean;
-  canonicalPath?: (path: string) => string;
   onEnvironmentHook?: (
     command: Extract<HostDaemonRpcCommand, { type: "environment.hook.run" }>,
   ) => Promise<void>;
@@ -416,23 +415,6 @@ export function registerTestHostRpcCapture(
                 sessionId: args.sessionId,
               }),
           );
-        return;
-      }
-      if (command.type === "host.canonical_path") {
-        deps.hub.recordHostOnlineRpcResponse({
-          message: hostDaemonOnlineRpcResponseMessageSchema.parse({
-            type: "host-rpc.response",
-            requestId: message.requestId,
-            commandType: command.type,
-            ok: true,
-            result: {
-              path:
-                args.canonicalPath?.(command.path) ??
-                path.resolve(command.path),
-            },
-          }),
-          sessionId: args.sessionId,
-        });
         return;
       }
       if (respondToRuntimeWorkspaceFileCommand(deps, args, message)) {
