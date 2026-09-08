@@ -34,29 +34,4 @@ export function redactOperationSecrets(
   return text;
 }
 
-export function createSecretStreamRedactor(secrets: readonly string[]) {
-  let pending = "";
-  return {
-    push(chunk: string): string {
-      const text = redactOperationSecrets(pending + chunk, secrets);
-      let retained = 0;
-      for (const secret of secrets) {
-        for (
-          let length = 1;
-          length < secret.length && length <= text.length;
-          length += 1
-        ) {
-          if (text.endsWith(secret.slice(0, length)))
-            retained = Math.max(retained, length);
-        }
-      }
-      pending = retained ? text.slice(-retained) : "";
-      return retained ? text.slice(0, -retained) : text;
-    },
-    flush(): string {
-      const text = pending ? "[redacted]" : "";
-      pending = "";
-      return text;
-    },
-  };
-}
+export { createSecretStreamRedactor } from "@bb/process-utils";

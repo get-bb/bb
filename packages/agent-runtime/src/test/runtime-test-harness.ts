@@ -68,6 +68,8 @@ export interface ScriptedEchoLaunchScript {
   recoveryThreadIdHint?: string;
   approvalEnforcedBy?: "runtime" | "provider";
   identifyProcess?: boolean;
+  textDeltaChunkSize?: number;
+  stderrChunksOnTurn?: string[];
   failStopForThreadIds?: string[];
   emitIdentityOnSigterm?: boolean;
 }

@@ -1,11 +1,12 @@
 import path from "node:path";
 import { z } from "zod";
+import { createSecretStreamRedactor } from "@bb/process-utils";
 import {
   normalizeProviderThreadNameEvent,
-  threadEventSchema,
   toProviderExternalThreadName,
 } from "@bb/domain";
 import type { DynamicTool, InstructionMode, ThreadEvent } from "@bb/domain";
+import { createThreadEventStreamRedactor } from "./thread-event-stream-redaction.js";
 import type { AdapterCommand } from "./provider-adapter.js";
 import {
   BRIDGE_JSON_RPC_ERRORS,
@@ -250,18 +251,19 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
   let nextRequestId = 1;
   const threadIdentityRegistry = new RuntimeThreadIdentityRegistry();
   const threadRuntimeConfigs = new Map<string, ThreadRuntimeConfig>();
-  function redactSecrets(text: string, serialized = false): string {
-    for (const config of threadRuntimeConfigs.values()) {
-      for (const entry of config.contributedEnv) {
-        if (!entry.secret || typeof entry.value !== "string" || !entry.value)
-          continue;
-        const secret = serialized
-          ? JSON.stringify(entry.value).slice(1, -1)
-          : entry.value;
-        text = text.replaceAll(secret, "[redacted]");
-      }
-    }
-    return text;
+  function getSecrets(): string[] {
+    return [...threadRuntimeConfigs.values()].flatMap((config) =>
+      config.contributedEnv.flatMap((entry) =>
+        entry.secret && typeof entry.value === "string" && entry.value
+          ? [entry.value]
+          : [],
+      ),
+    );
+  }
+  const eventRedactor = createThreadEventStreamRedactor(getSecrets);
+  function redactSecrets(text: string): string {
+    const redactor = createSecretStreamRedactor(getSecrets);
+    return redactor.push(text) + redactor.flush();
   }
   function reportStderr(
     ...[text, context]: Parameters<NonNullable<AgentRuntimeOptions["onStderr"]>>
@@ -331,6 +333,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
       threadIdentityRegistry.createProviderState({ providerId }),
     env: options.env,
     getNextRequestId: () => nextRequestId++,
+    getSecrets,
     handleStdoutLine: (args) =>
       handleStdoutLine(args.line, args.providerProcess),
     onProcessExit: options.onProcessExit,
@@ -714,6 +717,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
   }
 
   function clearThreadRuntimeConfig(threadId: string): void {
+    for (const event of eventRedactor.flush(threadId)) options.onEvent(event);
     threadsAwaitingBridgeRestart.delete(threadId);
     threadsRetryingBridgeRestartOnIdle.delete(threadId);
     idleProviderSessionSinceMsByThreadId.delete(threadId);
@@ -1261,19 +1265,25 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
         continue;
       }
 
-      const normalizedEvent = threadEventSchema.parse(
-        JSON.parse(
-          redactSecrets(
-            JSON.stringify(normalizeProviderThreadNameEvent(stampedEvent)),
-            true,
-          ),
-        ),
-      );
-      turnState.observe(normalizedEvent);
-      backgroundWorkState.observe(normalizedEvent);
-      observeProviderSessionIdleState(normalizedEvent);
-      options.onEvent(normalizedEvent);
-      threadGoalState.observe(normalizedEvent);
+      let redactedEvents: ThreadEvent[];
+      try {
+        redactedEvents = eventRedactor.push(
+          normalizeProviderThreadNameEvent(stampedEvent),
+        );
+      } catch {
+        reportStderr(
+          "Provider event redaction failed; event was dropped.",
+          targetThreadId,
+        );
+        continue;
+      }
+      for (const normalizedEvent of redactedEvents) {
+        turnState.observe(normalizedEvent);
+        backgroundWorkState.observe(normalizedEvent);
+        observeProviderSessionIdleState(normalizedEvent);
+        options.onEvent(normalizedEvent);
+        threadGoalState.observe(normalizedEvent);
+      }
     }
   }
 
