@@ -528,12 +528,12 @@ describe("Account Pool plugin", () => {
         `event: response.created\ndata: ${JSON.stringify({
           type: "response.created",
           response: { id },
+        })}\n\nevent: response.output_item.done\ndata: ${JSON.stringify({
+          type: "response.output_item.done",
+          item: { type: "message", id: `message-${responseNumber}` },
         })}\n\nevent: response.completed\ndata: ${JSON.stringify({
           type: "response.completed",
-          response: {
-            id,
-            output: [{ type: "message", id: `message-${responseNumber}` }],
-          },
+          response: { id, output: [] },
         })}\n\ndata: [DONE]\n\n`,
       );
     });
@@ -677,11 +677,12 @@ describe("Account Pool plugin", () => {
         input: [{ type: "message", id: "delta-one" }],
       }),
     );
-    await vi.waitFor(() => expect(socket.sent).toHaveLength(3));
+    await vi.waitFor(() => expect(socket.sent).toHaveLength(4));
     expect(JSON.parse(String(socket.sent[1]))).toMatchObject({
       type: "response.created",
     });
-    const first = completedResponse(socket.sent[2]);
+    const first = completedResponse(socket.sent[3]);
+    expect(first.response.output).toEqual([]);
     await socket.receive(
       JSON.stringify({
         type: "response.create",
@@ -690,12 +691,14 @@ describe("Account Pool plugin", () => {
         input: [{ type: "message", id: "delta-two" }],
       }),
     );
-    await vi.waitFor(() => expect(socket.sent).toHaveLength(5));
+    await vi.waitFor(() => expect(socket.sent).toHaveLength(7));
     expect(socket.sent.map((frame) => JSON.parse(String(frame)).type)).toEqual([
       "response.completed",
       "response.created",
+      "response.output_item.done",
       "response.completed",
       "response.created",
+      "response.output_item.done",
       "response.completed",
     ]);
     expect(seen[1]?.accountId).not.toBe(seen[2]?.accountId);
