@@ -289,6 +289,7 @@ function makeProjectProvider(id: string): SystemEnvironmentProvider {
     icon: null,
     logoUrl: null,
     pluginId: id,
+    presentation: null,
     acceptsEmptyInputs: true,
     availability: null,
     requires: {
@@ -311,6 +312,7 @@ function makeProjectlessProvider(
     icon: null,
     logoUrl: null,
     pluginId: id,
+    presentation: null,
     acceptsEmptyInputs: true,
     availability: null,
     requires: {

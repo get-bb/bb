@@ -110,6 +110,7 @@ describe("bb environment command output", () => {
             displayName: "Worktree",
             icon: null,
             pluginId: "environment-git-worktree",
+            presentation: null,
             acceptsEmptyInputs: false,
             availability: { status: "available" },
             requires: {
@@ -129,6 +130,7 @@ describe("bb environment command output", () => {
             displayName: "Modal sandbox",
             icon: null,
             pluginId: "environment-modal-sandbox",
+            presentation: null,
             acceptsEmptyInputs: true,
             availability: {
               status: "setup-required",

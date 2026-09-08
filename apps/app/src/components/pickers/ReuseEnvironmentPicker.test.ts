@@ -11,6 +11,7 @@ const provider: SystemEnvironmentProvider = {
   icon: "Laptop",
   logoUrl: null,
   pluginId: "environment-project-checkout",
+  presentation: null,
   acceptsEmptyInputs: true,
   availability: null,
   requires: {

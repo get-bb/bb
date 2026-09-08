@@ -1,0 +1,42 @@
+{
+  "name": "bb-plugin-environment-rift",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Create copy-on-write workspaces with Rift",
+  "engines": {
+    "bb": ">=0.0"
+  },
+  "bb": {
+    "name": "Rift workspace",
+    "description": "Create copy-on-write workspaces with Rift",
+    "branding": {
+      "icon": "Copy"
+    },
+    "server": "./server.ts",
+    "host": "./host.ts",
+    "app": "./app.tsx"
+  },
+  "keywords": [
+    "bb-plugin"
+  ],
+  "scripts": {
+    "test": "vitest run --config vitest.config.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "bb-environment-provider-host": "workspace:*",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@get-bb/plugin-sdk": "workspace:*",
+    "@testing-library/react": "^16.3.2",
+    "@types/node": "^22.0.0",
+    "@types/react": "^19.0.0",
+    "jsdom": "^29.0.1",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "typescript": "npm:@typescript/typescript6@^6.0.2",
+    "vitest": "^4.1.1"
+  }
+}

@@ -174,6 +174,7 @@ export function makeThreadListEntry(
     environmentPath: null,
     environmentProviderId: null,
     environmentIsWorktree: null,
+    environmentGroupsThreads: false,
     environmentWorkspaceDisplayKind: "other",
     queuedWork: "none",
   };

@@ -457,9 +457,9 @@ function bucketEnvironmentThreadGroups(
   const nodesByEnvironmentId = new Map<string, ProjectThreadNode[]>();
   const providerIdByEnvironmentId = new Map<string, string | null>();
   for (const node of nodes) {
-    const { environmentId, environmentIsWorktree, environmentProviderId } =
+    const { environmentId, environmentGroupsThreads, environmentProviderId } =
       node.thread;
-    if (environmentId === null || environmentIsWorktree !== true) continue;
+    if (environmentId === null || !environmentGroupsThreads) continue;
     providerIdByEnvironmentId.set(environmentId, environmentProviderId);
     const bucket = nodesByEnvironmentId.get(environmentId);
     if (bucket) {

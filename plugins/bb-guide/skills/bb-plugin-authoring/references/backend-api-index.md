@@ -376,3 +376,5 @@ Read the installed declarations for exact current signatures.
 - `ExperimentalCreateHostEntryHarnessOptions`
 - `ExperimentalHostEntryHarness`
 - `ExperimentalHostHarnessSignal`
+
+Environment declarations accept optional `presentation: { groupsThreads: boolean; kindLabel?: string }`. Omitted presentation uses `isWorktree` for grouping. Kind labels affect the info tab, never ownership or Git operations.

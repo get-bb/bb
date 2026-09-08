@@ -589,6 +589,7 @@ export function optimisticallyInsertThread(
     environmentPath: null,
     environmentProviderId: null,
     environmentIsWorktree: null,
+    environmentGroupsThreads: false,
     environmentWorkspaceDisplayKind: "other",
     runtime: thread.runtime,
     hasPendingInteraction: false,

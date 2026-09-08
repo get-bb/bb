@@ -236,6 +236,7 @@ describe("buildProjectThreadGroups", () => {
         environmentId: "env_sandbox",
         environmentProviderId: "modal-sandbox",
         environmentIsWorktree: false,
+        environmentGroupsThreads: false,
         createdAt: 10,
       }),
       createThread({
@@ -243,6 +244,7 @@ describe("buildProjectThreadGroups", () => {
         environmentId: "env_sandbox",
         environmentProviderId: "modal-sandbox",
         environmentIsWorktree: false,
+        environmentGroupsThreads: false,
         createdAt: 20,
       }),
     ]);
@@ -257,6 +259,7 @@ describe("buildProjectThreadGroups", () => {
         environmentId: "env_checkout",
         environmentProviderId: "project-checkout",
         environmentIsWorktree: true,
+        environmentGroupsThreads: true,
         createdAt: 10,
       }),
       createThread({
@@ -264,6 +267,7 @@ describe("buildProjectThreadGroups", () => {
         environmentId: "env_checkout",
         environmentProviderId: "project-checkout",
         environmentIsWorktree: true,
+        environmentGroupsThreads: true,
         createdAt: 20,
       }),
     ]);
@@ -284,6 +288,7 @@ describe("buildProjectThreadGroups", () => {
         environmentId: "env_checkout",
         environmentProviderId: "project-checkout",
         environmentIsWorktree: false,
+        environmentGroupsThreads: false,
         createdAt: 10,
       }),
       createThread({
@@ -291,6 +296,7 @@ describe("buildProjectThreadGroups", () => {
         environmentId: "env_checkout",
         environmentProviderId: "project-checkout",
         environmentIsWorktree: false,
+        environmentGroupsThreads: false,
         createdAt: 20,
       }),
     ]);
@@ -311,6 +317,7 @@ describe("buildProjectThreadGroups", () => {
         environmentId: "env_other",
         environmentProviderId: "git-worktree",
         environmentIsWorktree: true,
+        environmentGroupsThreads: true,
         createdAt: 20,
       }),
     ]);
@@ -325,6 +332,7 @@ describe("buildProjectThreadGroups", () => {
         environmentId: "env_notes",
         environmentProviderId: "personal-workspace",
         environmentIsWorktree: false,
+        environmentGroupsThreads: false,
         createdAt: 10,
       }),
       createThread({
@@ -332,6 +340,7 @@ describe("buildProjectThreadGroups", () => {
         environmentId: "env_errands",
         environmentProviderId: "personal-workspace",
         environmentIsWorktree: false,
+        environmentGroupsThreads: false,
         createdAt: 20,
       }),
       createThread({
@@ -339,6 +348,7 @@ describe("buildProjectThreadGroups", () => {
         environmentId: "env_reading",
         environmentProviderId: "personal-workspace",
         environmentIsWorktree: false,
+        environmentGroupsThreads: false,
         createdAt: 30,
       }),
     ]);
@@ -346,50 +356,58 @@ describe("buildProjectThreadGroups", () => {
     expect(summarizeItems(rootItems)).toEqual(["reading", "errands", "notes"]);
   });
 
-  it("groups shared environments at nested sibling levels", () => {
-    const rootItems = buildProjectThreadGroups([
-      createThread({
-        id: "parent",
-        createdAt: 100,
-      }),
-      createThread({
-        id: "worktree-a",
-        parentThreadId: "parent",
-        environmentId: "env_shared",
-        queuedWork: "none",
-        environmentProviderId: "git-worktree",
-        environmentIsWorktree: true,
-        createdAt: 10,
-        latestAttentionAt: 100,
-      }),
-      createThread({
-        id: "worktree-b",
-        parentThreadId: "parent",
-        environmentId: "env_shared",
-        queuedWork: "none",
-        environmentProviderId: "git-worktree",
-        environmentIsWorktree: true,
-        createdAt: 20,
-        latestAttentionAt: 200,
-      }),
-      createThread({
-        id: "loose-child",
-        parentThreadId: "parent",
-        createdAt: 5,
-        latestAttentionAt: 50,
-      }),
-    ]);
+  it.each([
+    ["git-worktree", true],
+    ["rift", false],
+  ] as const)(
+    "groups shared %s environments at nested sibling levels",
+    (providerId, isWorktree) => {
+      const rootItems = buildProjectThreadGroups([
+        createThread({
+          id: "parent",
+          createdAt: 100,
+        }),
+        createThread({
+          id: "worktree-a",
+          parentThreadId: "parent",
+          environmentId: "env_shared",
+          queuedWork: "none",
+          environmentProviderId: providerId,
+          environmentIsWorktree: isWorktree,
+          environmentGroupsThreads: true,
+          createdAt: 10,
+          latestAttentionAt: 100,
+        }),
+        createThread({
+          id: "worktree-b",
+          parentThreadId: "parent",
+          environmentId: "env_shared",
+          queuedWork: "none",
+          environmentProviderId: providerId,
+          environmentIsWorktree: isWorktree,
+          environmentGroupsThreads: true,
+          createdAt: 20,
+          latestAttentionAt: 200,
+        }),
+        createThread({
+          id: "loose-child",
+          parentThreadId: "parent",
+          createdAt: 5,
+          latestAttentionAt: 50,
+        }),
+      ]);
 
-    expect(summarizeItems(rootItems)).toEqual([
-      {
-        id: "parent",
-        children: [
-          { env: "env_shared", threads: ["worktree-b", "worktree-a"] },
-          "loose-child",
-        ],
-      },
-    ]);
-  });
+      expect(summarizeItems(rootItems)).toEqual([
+        {
+          id: "parent",
+          children: [
+            { env: "env_shared", threads: ["worktree-b", "worktree-a"] },
+            "loose-child",
+          ],
+        },
+      ]);
+    },
+  );
 
   it("sorts siblings with active rows first, then inactive attention recency", () => {
     const rootItems = buildProjectThreadGroups([

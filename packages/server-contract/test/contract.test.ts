@@ -928,6 +928,7 @@ describe("server-contract canonical schemas", () => {
           environmentPath: null,
           environmentProviderId: "git-worktree",
           environmentIsWorktree: true,
+          environmentGroupsThreads: true,
           environmentWorkspaceDisplayKind: "managed-worktree",
           queuedWork: "none",
         },
@@ -942,6 +943,7 @@ describe("server-contract canonical schemas", () => {
         environmentPath: null,
         environmentProviderId: "git-worktree",
         environmentIsWorktree: true,
+        environmentGroupsThreads: true,
         environmentWorkspaceDisplayKind: "managed-worktree",
         queuedWork: "none",
       },
@@ -1912,6 +1914,7 @@ describe("environment provider contracts", () => {
       icon: null,
       logoUrl: null,
       pluginId: "sandbox",
+      presentation: null,
       acceptsEmptyInputs: false,
       availability: {
         status: "setup-required" as const,

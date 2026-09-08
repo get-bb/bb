@@ -185,6 +185,7 @@ describe("ProjectRow interactions", () => {
             environmentBranchName: "feat/menu-close",
             environmentProviderId: "git-worktree",
             environmentIsWorktree: true,
+            environmentGroupsThreads: true,
             queuedWork: "none",
             activity: {
               activeWorkflowCount: 1,
@@ -205,6 +206,7 @@ describe("ProjectRow interactions", () => {
             environmentBranchName: "feat/menu-close",
             environmentProviderId: "git-worktree",
             environmentIsWorktree: true,
+            environmentGroupsThreads: true,
             queuedWork: "none",
           }),
         ],
@@ -236,6 +238,7 @@ describe("ProjectRow interactions", () => {
             queuedWork: "none",
             environmentProviderId: "git-worktree",
             environmentIsWorktree: true,
+            environmentGroupsThreads: true,
             activity: {
               activeWorkflowCount: 0,
               activeBackgroundAgentCount: 0,
@@ -251,6 +254,7 @@ describe("ProjectRow interactions", () => {
             queuedWork: "none",
             environmentProviderId: "git-worktree",
             environmentIsWorktree: true,
+            environmentGroupsThreads: true,
           }),
         ],
       },
@@ -476,6 +480,7 @@ describe("ProjectRow interactions", () => {
           environmentBranchName: "feat/menu-close",
           environmentProviderId: "git-worktree",
           environmentIsWorktree: true,
+          environmentGroupsThreads: true,
           queuedWork: "none",
         }),
         makeThread({
@@ -485,6 +490,7 @@ describe("ProjectRow interactions", () => {
           environmentBranchName: "feat/menu-close",
           environmentProviderId: "git-worktree",
           environmentIsWorktree: true,
+          environmentGroupsThreads: true,
           queuedWork: "none",
         }),
       ],
@@ -546,6 +552,7 @@ describe("ProjectRow interactions", () => {
           environmentBranchName: "main",
           environmentProviderId: "personal-workspace",
           environmentIsWorktree: true,
+          environmentGroupsThreads: true,
           queuedWork: "none",
         }),
         makeThread({
@@ -554,6 +561,7 @@ describe("ProjectRow interactions", () => {
           environmentBranchName: "main",
           environmentProviderId: "personal-workspace",
           environmentIsWorktree: true,
+          environmentGroupsThreads: true,
           queuedWork: "none",
         }),
       ],

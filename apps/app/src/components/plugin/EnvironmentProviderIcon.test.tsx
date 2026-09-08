@@ -13,6 +13,7 @@ import { EnvironmentProviderIcon } from "./EnvironmentProviderIcon";
 const provider: SystemEnvironmentProvider = {
   id: "git-worktree",
   pluginId: "environment-git-worktree",
+  presentation: null,
   acceptsEmptyInputs: true,
   availability: null,
   displayName: "Worktree",

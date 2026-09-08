@@ -11,6 +11,7 @@ const environmentProviders: SystemEnvironmentProvider[] = [
     icon: "GitBranch",
     logoUrl: null,
     pluginId: "branchy",
+    presentation: null,
     acceptsEmptyInputs: false,
     availability: null,
     requires: {
@@ -31,6 +32,7 @@ const environmentProviders: SystemEnvironmentProvider[] = [
     icon: "Server",
     logoUrl: null,
     pluginId: "hosted",
+    presentation: null,
     acceptsEmptyInputs: true,
     availability: null,
     requires: {

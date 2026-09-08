@@ -442,6 +442,7 @@ export const threadListEntrySchema = threadWithRuntimeSchema.extend({
   environmentPath: z.string().nullable(),
   environmentProviderId: z.string().nullable(),
   environmentIsWorktree: z.boolean().nullable(),
+  environmentGroupsThreads: z.boolean(),
   environmentWorkspaceDisplayKind: environmentWorkspaceDisplayKindSchema,
 });
 export type ThreadListEntry = z.infer<typeof threadListEntrySchema>;

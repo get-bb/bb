@@ -113,6 +113,8 @@ export interface PluginEnvironmentProviderDefinition<
   displayName: string;
   /** Host glyph, plugin-relative icon path, or this plugin’s declared namespaced icon. */
   icon?: string;
+  /** Experimental UI hints; absent grouping follows the environment’s isWorktree fact. */
+  presentation?: { groupsThreads: boolean; kindLabel?: string };
   requires?: R;
   inputs?: S;
   policy?: Partial<PluginEnvironmentProviderPolicy>;

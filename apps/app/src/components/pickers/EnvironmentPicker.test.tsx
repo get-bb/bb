@@ -17,6 +17,7 @@ const checkoutProvider: SystemEnvironmentProvider = {
   icon: "Laptop",
   logoUrl: null,
   pluginId: "environment-project-checkout",
+  presentation: null,
   acceptsEmptyInputs: true,
   availability: null,
   requires: {
@@ -34,6 +35,7 @@ const branchProvider: SystemEnvironmentProvider = {
   icon: "GitBranch",
   logoUrl: null,
   pluginId: "branchy",
+  presentation: null,
   acceptsEmptyInputs: true,
   availability: null,
   requires: {
@@ -51,6 +53,7 @@ const sandboxProvider: SystemEnvironmentProvider = {
   icon: "Container",
   logoUrl: null,
   pluginId: "docker-sandbox",
+  presentation: null,
   acceptsEmptyInputs: false,
   availability: null,
   requires: {
@@ -72,6 +75,7 @@ const optionalInputsProvider: SystemEnvironmentProvider = {
   icon: "Container",
   logoUrl: null,
   pluginId: "optional-sandbox",
+  presentation: null,
   acceptsEmptyInputs: true,
   availability: null,
   requires: {
@@ -251,6 +255,7 @@ describe("EnvironmentPickerUI", () => {
     const onSelectProvider = vi.fn();
     const setupRequiredProvider: SystemEnvironmentProvider = {
       ...sandboxProvider,
+      presentation: null,
       acceptsEmptyInputs: true,
       inputs: null,
       availability: {

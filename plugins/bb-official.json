@@ -137,5 +137,9 @@
   "bb-guide": {
     "category": "memory-and-context",
     "screenshots": []
+  },
+  "environment-rift": {
+    "category": "environments",
+    "screenshots": []
   }
 }

@@ -81,6 +81,7 @@ export function threadListEntry(
     environmentPath: null,
     environmentProviderId: null,
     environmentIsWorktree: null,
+    environmentGroupsThreads: false,
     environmentWorkspaceDisplayKind: "other",
     queuedWork: "none",
   };

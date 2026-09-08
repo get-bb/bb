@@ -18,6 +18,7 @@ const WORKTREE_PROVIDER: SystemEnvironmentProvider = {
   icon: "GitBranch",
   logoUrl: null,
   pluginId: "environment-git-worktree",
+  presentation: null,
   acceptsEmptyInputs: true,
   availability: null,
   requires: {

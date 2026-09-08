@@ -21,6 +21,7 @@ const personalProvider: SystemEnvironmentProvider = {
   icon: "Folder",
   logoUrl: null,
   pluginId: "environment-personal-workspace",
+  presentation: null,
   acceptsEmptyInputs: true,
   availability: null,
   requires: {

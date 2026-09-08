@@ -21,6 +21,7 @@ const ENVIRONMENT_PROVIDERS: SystemEnvironmentProvider[] = [
     icon: "GitBranch",
     logoUrl: null,
     pluginId: "branchy",
+    presentation: null,
     acceptsEmptyInputs: false,
     availability: null,
     requires: {
@@ -37,6 +38,7 @@ const ENVIRONMENT_PROVIDERS: SystemEnvironmentProvider[] = [
     icon: "Laptop",
     logoUrl: null,
     pluginId: "environment-project-checkout",
+    presentation: null,
     acceptsEmptyInputs: true,
     availability: null,
     requires: {
@@ -56,6 +58,7 @@ const ENVIRONMENT_PROVIDERS: SystemEnvironmentProvider[] = [
     icon: "GitBranch",
     logoUrl: null,
     pluginId: "environment-git-worktree",
+    presentation: null,
     acceptsEmptyInputs: false,
     availability: null,
     requires: {
@@ -72,6 +75,7 @@ const ENVIRONMENT_PROVIDERS: SystemEnvironmentProvider[] = [
     icon: "Folder",
     logoUrl: null,
     pluginId: "environment-personal-workspace",
+    presentation: null,
     acceptsEmptyInputs: true,
     availability: null,
     requires: {
@@ -88,6 +92,7 @@ const ENVIRONMENT_PROVIDERS: SystemEnvironmentProvider[] = [
     icon: "Container",
     logoUrl: null,
     pluginId: "docker-sandbox",
+    presentation: null,
     acceptsEmptyInputs: false,
     availability: null,
     requires: {

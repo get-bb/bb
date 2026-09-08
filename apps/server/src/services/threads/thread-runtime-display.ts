@@ -1,3 +1,4 @@
+import { getEnvironmentProvider } from "../plugins/plugin-environment-provider-registry.js";
 import {
   getEnvironment,
   getLatestSessionForHost,
@@ -598,6 +599,12 @@ function toThreadListEntryResponseFromLatestSession(
     environmentPath: args.thread.environmentPath,
     environmentProviderId: args.thread.environmentProviderId,
     environmentIsWorktree: args.thread.environmentIsWorktree,
+    environmentGroupsThreads:
+      (args.thread.environmentProviderId === null
+        ? null
+        : getEnvironmentProvider(args.thread.environmentProviderId)?.provider
+            .presentation?.groupsThreads) ??
+      args.thread.environmentIsWorktree === true,
     environmentWorkspaceDisplayKind: resolveEnvironmentWorkspaceDisplayKind({
       environmentProviderId: args.thread.environmentProviderId,
       isWorktree: args.thread.environmentIsWorktree,

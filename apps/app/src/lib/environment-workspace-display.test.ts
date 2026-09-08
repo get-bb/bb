@@ -22,6 +22,7 @@ const worktreeProvider: SystemEnvironmentProvider = {
   icon: "FolderGit",
   logoUrl: null,
   pluginId: "environment-git-worktree",
+  presentation: null,
   acceptsEmptyInputs: true,
   availability: null,
   requires: {
@@ -39,6 +40,7 @@ const personalProvider: SystemEnvironmentProvider = {
   icon: "Folder",
   logoUrl: null,
   pluginId: "environment-personal-workspace",
+  presentation: null,
   acceptsEmptyInputs: true,
   availability: null,
   requires: {
@@ -56,6 +58,7 @@ const machineContainerProvider: SystemEnvironmentProvider = {
   icon: "Box",
   logoUrl: null,
   pluginId: "containers",
+  presentation: null,
   acceptsEmptyInputs: false,
   availability: null,
   requires: {

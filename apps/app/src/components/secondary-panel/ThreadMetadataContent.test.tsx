@@ -56,6 +56,7 @@ const worktreeProvider: SystemEnvironmentProvider = {
   icon: "GitBranch",
   logoUrl: null,
   pluginId: "environment-git-worktree",
+  presentation: null,
   acceptsEmptyInputs: true,
   availability: null,
   requires: {
@@ -73,6 +74,7 @@ const modalProvider: SystemEnvironmentProvider = {
   icon: "Cloud",
   logoUrl: null,
   pluginId: "environment-modal-sandbox",
+  presentation: null,
   acceptsEmptyInputs: true,
   availability: null,
   requires: {
@@ -90,6 +92,7 @@ const personalProvider: SystemEnvironmentProvider = {
   icon: "Folder",
   logoUrl: null,
   pluginId: "environment-personal-workspace",
+  presentation: null,
   acceptsEmptyInputs: true,
   availability: null,
   requires: {
