@@ -73,5 +73,11 @@ and cancellation attempt to kill the command and disconnect its stream.
 - [Official Node Bookworm image](https://github.com/nodejs/docker-node/blob/main/22/bookworm/Dockerfile)
 
 Focused tests cover retries, ambiguous allocation, cancellation, lifecycle,
-argv/stdin handling, and nonzero command results. No live E2B calls or template
-builds have been run.
+argv/stdin handling, and nonzero command results. Live verification includes template construction, enrollment, Git worktree
+threads, pause/resume, cancellation, server-crash recovery with the same
+allocation, and vendor-confirmed cleanup.
+
+The daemon installer does not install an agent CLI. Preinstall the chosen agent
+in the image/template, or run `bb machine provider-cli install <host-id> codex`
+and retry the thread. Account Pooler can supply runtime authentication through
+the selected server-access grant.

@@ -78,6 +78,11 @@ reference and OpenAPI specification:
 - [Action status](https://github.com/digitalocean/openapi/blob/main/specification/resources/droplets/dropletActions_get.yml)
 - [Delete a Droplet](https://github.com/digitalocean/openapi/blob/main/specification/resources/droplets/droplets_destroy.yml)
 
-No live DigitalOcean validation has been performed.
+Live verification includes core enrollment, project checkout and Git worktree threads, allocation cancellation, and vendor-confirmed cleanup.
 
 Node runtime checksum: [official Node 22.23.2 SHA-256 manifest](https://nodejs.org/dist/v22.23.2/SHASUMS256.txt).
+
+The daemon installer does not install an agent CLI. Preinstall the chosen agent
+in the image/template, or run `bb machine provider-cli install <host-id> codex`
+and retry the thread. Account Pooler can supply runtime authentication through
+the selected server-access grant.
