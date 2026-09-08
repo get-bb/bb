@@ -1,3 +1,7 @@
+import { execFile } from "node:child_process";
+import { createRequire } from "node:module";
+import { promisify } from "node:util";
+import { pathToFileURL } from "node:url";
 import {
   mkdtemp,
   mkdir,
@@ -147,9 +151,54 @@ it("tracks imported dependency content, linked package replacement, and lockfile
   expect((await ensurePluginArtifacts(request)).rebuilt).toEqual([]);
   await writeFile(join(dependency, "index.js"), "exports.answer = 2;\n");
   expect((await ensurePluginArtifacts(request)).rebuilt).toEqual(["server"]);
+  const replacement = await mkdtemp(join(tmpdir(), "bb-plugin-replacement-"));
+  roots.push(replacement);
+  await writeFile(
+    join(replacement, "package.json"),
+    JSON.stringify({
+      name: "fixture-dependency",
+      version: "1.0.0",
+      main: "index.js",
+    }),
+  );
+  await writeFile(join(replacement, "index.js"), "exports.answer = 3;\n");
+  await rm(join(root, "node_modules/fixture-dependency"));
+  await symlink(replacement, join(root, "node_modules/fixture-dependency"));
+  expect((await ensurePluginArtifacts(request)).rebuilt).toEqual(["server"]);
   await writeFile(join(root, "package-lock.json"), "{}\n");
   expect((await ensurePluginArtifacts(request)).rebuilt).toEqual(["server"]);
   expect(
     (await ensurePluginArtifacts({ ...request, bbVersion: "0.2.0" })).rebuilt,
   ).toEqual(["server"]);
 });
+
+it("shares successful builds between separate CLI and server processes", async () => {
+  const { args } = await fixture();
+  const workerRoot = await mkdtemp(join(tmpdir(), "bb-plugin-build-worker-"));
+  roots.push(workerRoot);
+  const worker = join(workerRoot, "build.mjs");
+  const helper = pathToFileURL(
+    join(import.meta.dirname, "ensure-plugin-artifacts.ts"),
+  ).href;
+  await writeFile(
+    worker,
+    `import { ensurePluginArtifacts } from ${JSON.stringify(helper)};
+console.log(JSON.stringify(await ensurePluginArtifacts(${JSON.stringify({ ...args, targets: ["host"] })})));
+`,
+  );
+  const exec = promisify(execFile);
+  const run = () =>
+    exec(process.execPath, [
+      "--conditions=source",
+      "--import",
+      createRequire(import.meta.url).resolve("tsx"),
+      worker,
+    ]);
+  const runs = await Promise.all([run(), run()]);
+  expect(runs.map(({ stdout }) => JSON.parse(stdout).rebuilt).flat()).toEqual([
+    "host",
+  ]);
+  expect(
+    (await ensurePluginArtifacts({ ...args, targets: ["host"] })).rebuilt,
+  ).toEqual([]);
+}, 30_000);
