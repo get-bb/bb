@@ -1192,6 +1192,40 @@ require a canonical installer-owned directory under `~/.bb-machines` and verify
 identity and service/process ownership. Optional `--server-url` asserts the server.
 Without an explicit directory, lifecycle commands locate the unique matching host.
 
+### Machine environment
+
+Settings → General → Machine environment defines variables for all enrolled
+machine hosts. Local hosts do not receive them. Add plain values or mark a value
+secret; secrets use core's 0600 secret files and are never returned by settings
+reads. `GH_TOKEN` is always secret. Notes are public metadata.
+
+Core resolves the environment for each agent turn, project-source clone, host
+setup call, and new BB terminal. User variables override built-ins; agent-provider
+contributions override host variables for agent turns. Existing terminals keep
+the environment they started with: open a new terminal after a change. Agent
+turns receive refreshed values on their next turn and after resume.
+
+The built-in GitHub row uses `gh auth token --hostname github.com` and `gh api
+--hostname github.com user` on the server host. It supplies `GH_TOKEN`, Git's
+`GIT_CONFIG_*` environment entries for an HTTPS credential helper and SSH URL
+rewrites for github.com, and author/committer identity. The helper expands
+`GH_TOKEN` when Git calls it; no helper file, global Git config, or credential
+store is installed. Private email uses `<id>+<login>@users.noreply.github.com`.
+A user `GH_TOKEN` overrides the built-in token, and the row shows overridden.
+Tokens obtained from gh are never persisted by the server. Image construction
+and Modal filesystem snapshot settings do not receive these contributions.
+
+Use `bb machine env list --json`, `bb machine env set NAME [--secret] [--note
+text] --json`, and `bb machine env unset NAME --json`. Set reads its value from
+stdin, removes one trailing newline, and never accepts a value in argv. For
+example, `printf '%s' staging | bb machine env set DEPLOY_REGION`. Pipe secrets
+from a secure source instead of putting them in shell history.
+
+SDK parity: `sdk.system.machineEnvironment()`,
+`sdk.system.setMachineEnvironment({ name, value, secret, note })`, and
+`sdk.system.unsetMachineEnvironment(name)`. Secret list rows have `value: null`.
+`bb settings show --json` exposes the built-in readiness as `machineGit`.
+
 ## Tailscale machine access
 
 The `machine-tailscale` plugin validates a dedicated HTTPS Tailscale Serve

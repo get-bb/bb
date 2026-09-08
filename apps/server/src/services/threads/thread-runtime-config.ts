@@ -1,3 +1,7 @@
+import {
+  resolveHostEnvironment,
+  mergeHostAndProviderEnvironment,
+} from "../hosts/host-environment.js";
 import { getEnvironment, getHost, getProject } from "@bb/db";
 import type {
   DynamicTool,
@@ -228,14 +232,20 @@ export async function resolveThreadRuntimeCommandConfig(
     },
     skillIdsByPlugin,
   });
-  const contributedEnv = await resolvePluginProviderEnv({
-    providerId: args.thread.providerId,
-    context: {
-      threadId: args.thread.id,
-      projectId: project.id,
+  const contributedEnv = mergeHostAndProviderEnvironment(
+    await resolveHostEnvironment(deps, {
       hostId: host.id,
-    },
-  });
+      projectId: project.id,
+    }),
+    await resolvePluginProviderEnv({
+      providerId: args.thread.providerId,
+      context: {
+        threadId: args.thread.id,
+        projectId: project.id,
+        hostId: host.id,
+      },
+    }),
+  );
   const injectedSkillSources = resolveSkillCatalog(deps, {
     projectSkillSources,
     sharedSkillSources: sharedSkills.runtimeSources,

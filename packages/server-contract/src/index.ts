@@ -62,3 +62,5 @@ export type {
   UnsubscribeMessage,
   JsonValue,
 } from "@bb/domain";
+
+export * from "./api/machine-environment.js";

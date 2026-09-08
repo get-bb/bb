@@ -1,4 +1,9 @@
 import {
+  machineEnvironmentSetSchema,
+  type MachineEnvironmentSet,
+  type MachineEnvironmentList,
+} from "./api/machine-environment.js";
+import {
   desktopBrowserHostRequestSchema,
   desktopBrowserScopeSchema,
   desktopBrowserCreateRequestSchema,
@@ -1537,6 +1542,26 @@ export const publicApiRoutes = {
   },
 
   system: {
+    machineEnvironment: defineRoute({
+      path: "/settings/machine-environment",
+      method: "get",
+      request: noRequest(),
+      response: jsonResponse<MachineEnvironmentList>(),
+    }),
+    setMachineEnvironment: defineRoute({
+      path: "/settings/machine-environment",
+      method: "put",
+      request: jsonRequest<EmptyInput, MachineEnvironmentSet>(
+        machineEnvironmentSetSchema,
+      ),
+      response: jsonResponse<MachineEnvironmentList>(),
+    }),
+    unsetMachineEnvironment: defineRoute({
+      path: "/settings/machine-environment/:name",
+      method: "delete",
+      request: noRequest<{ param: { name: string } }>(),
+      response: jsonResponse<MachineEnvironmentList>(),
+    }),
     attention: defineRoute({
       path: "/system/attention",
       method: "get",

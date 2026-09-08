@@ -117,6 +117,14 @@ export function MachineAccessSettings() {
           </DropdownMenuContent>
         </DropdownMenu>
       </SettingsWithControl>
+      <SettingsWithControl
+        label="Machine Git credentials"
+        description={
+          config.data?.machineGit.statusMessage ?? "Checking server gh login"
+        }
+      >
+        <span>git: {config.data?.machineGit.status ?? "not configured"}</span>
+      </SettingsWithControl>
     </SettingsSection>
   );
 }
