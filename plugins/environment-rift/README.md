@@ -10,7 +10,7 @@ Rift makes copy-on-write copies of a standalone Git checkout using APFS clonefil
 
 The plugin initializes the checkout with `rift init --here`, then runs `rift create --copy-all --into <attempt-directory> --name workspace`. Filtered mode omits `--copy-all` (the current CLI has no `--filtered` flag), excluding Rift's regenerable dependency/build artifacts. Filesystem support and same-filesystem copy constraints come from Rift.
 
-Rift runs `.rift.toml` precreate and postcreate hooks. The copy starts detached; BB creates its suggested prefixed branch, or the exact named input branch, from the copied HEAD. A same-named inherited branch is replaced only in the copy. BB then runs `.bb-env-setup.sh`. Hooks must tolerate retry after an interrupted attempt. A completion record and branch check preserve a completed copy on replay; incomplete or mismatched copies are removed and recreated.
+Rift runs `.rift.toml` precreate and postcreate hooks. The copy starts detached; BB creates its suggested prefixed branch, or the exact named input branch, from the copied HEAD. A same-named inherited branch is replaced only in the copy. BB then runs `.bb-env-setup.sh`. BB reserves the canonical attempt path before creating or recovering a copy. Refused admission leaves the path untouched; failed creation retains its claim until cleanup succeeds. Hooks must tolerate retry after an interrupted attempt. A completion record and branch check preserve a completed copy on replay; incomplete or mismatched copies are removed and recreated.
 
 ```sh
 bb thread spawn --project <project-id> --environment-provider rift \

@@ -814,6 +814,9 @@
     "bb-plugin-environment-git-worktree#typecheck": {
       "dependsOn": ["@get-bb/plugin-sdk#build:types", "topo"]
     },
+    "bb-plugin-environment-rift#topo": {
+      "dependsOn": ["^topo", "@get-bb/plugin-sdk#build:types"]
+    },
     "bb-plugin-environment-personal-workspace#typecheck": {
       "dependsOn": ["@get-bb/plugin-sdk#build:types", "topo"]
     },

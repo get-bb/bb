@@ -170,6 +170,12 @@ export function createRiftHostEntry(runner: Runner = run) {
           return { status: "refuse", message: String(error) } as const;
         }
       },
+      async resolvePath(input, context) {
+        const dataDir = await realpath(context.experimental_paths.dataDir);
+        const target = targetFor(dataDir, input.pathKey);
+        await checkManaged(target, dataDir, input.pathKey);
+        return { path: target };
+      },
       async create(input, context) {
         const dataDir = await realpath(context.experimental_paths.dataDir);
         const target = targetFor(dataDir, input.pathKey);

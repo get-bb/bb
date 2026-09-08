@@ -75,6 +75,18 @@ export default async function riftPlugin(bb: BbPluginApi): Promise<void> {
       const operationId = `create#${context.pathKey}#${context.attempt}`;
       reports.set(operationId, context.report);
       try {
+        const resolved = await host.call(
+          "resolvePath",
+          { pathKey: context.pathKey },
+          { hostId, signal: context.signal },
+        );
+        if (!(await context.experimental_claimPath(resolved.path))) {
+          return {
+            status: "failed",
+            failure: "terminal",
+            message: "The Rift workspace path is already in use",
+          };
+        }
         const result = await host.call(
           "create",
           {
@@ -97,13 +109,6 @@ export default async function riftPlugin(bb: BbPluginApi): Promise<void> {
             message: result.message,
           };
         }
-        if (!(await context.experimental_claimPath(result.path))) {
-          return {
-            status: "failed",
-            failure: "terminal",
-            message: "The Rift workspace path is already in use",
-          };
-        }
         return {
           status: "created",
           path: result.path,
@@ -122,6 +127,7 @@ export default async function riftPlugin(bb: BbPluginApi): Promise<void> {
       }
     },
     async remove(context) {
+      if (context.path === null) return { status: "removed" };
       if (context.environment?.managed === false) return { status: "removed" };
       if (context.hostId === null) {
         return { status: "failed", message: "The rift machine is unknown" };

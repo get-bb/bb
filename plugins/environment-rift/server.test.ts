@@ -44,6 +44,7 @@ const PROJECT: Project = {
 
 async function setup(
   callHost: (call: HostRpcCall) => Promise<unknown> | unknown = (call) => {
+    if (call.method === "resolvePath") return { path: RIFT_PATH };
     if (call.method === "create") {
       return {
         status: "created",
@@ -104,7 +105,7 @@ describe("Rift provider", () => {
       ownsPath: true,
       mergeBaseBranch: "main",
     });
-    expect(f.harness.experimental_hostRpcCalls[0]).toMatchObject({
+    expect(f.harness.experimental_hostRpcCalls[1]).toMatchObject({
       hostId: HOST_ID,
       method: "create",
       input: { copy: "all", branchName: "bb/test", pathKey: THREAD_ID },
@@ -118,7 +119,11 @@ describe("Rift provider", () => {
     };
     await f.provider.create(context);
     await f.provider.create(context);
-    expect(f.harness.experimental_hostRpcCalls.map((c) => c.input)).toEqual([
+    expect(
+      f.harness.experimental_hostRpcCalls
+        .filter((c) => c.method === "create")
+        .map((c) => c.input),
+    ).toEqual([
       expect.objectContaining({
         branchName: "feature",
         copy: "filtered",
@@ -131,7 +136,7 @@ describe("Rift provider", () => {
       }),
     ]);
   });
-  it("retries the canonical path claim after recovering a completed copy", async () => {
+  it("retries admission before invoking host creation", async () => {
     const f = await setup();
     const claim = vi
       .fn()
@@ -147,7 +152,7 @@ describe("Rift provider", () => {
     });
     expect(claim.mock.calls).toEqual([[RIFT_PATH], [RIFT_PATH]]);
   });
-  it("refuses a completed copy whose path claim is held elsewhere", async () => {
+  it("refuses creation when the path claim is held elsewhere", async () => {
     const f = await setup();
     expect(
       await f.provider.create({
@@ -159,6 +164,9 @@ describe("Rift provider", () => {
       failure: "terminal",
       message: "The Rift workspace path is already in use",
     });
+    expect(
+      f.harness.experimental_hostRpcCalls.map((call) => call.method),
+    ).toEqual(["resolvePath"]);
   });
   it.each([true, false])(
     "checks host CLI availability: %s",
@@ -182,7 +190,7 @@ describe("Rift provider", () => {
       );
     },
   );
-  it("removes by path key even before an environment row exists", async () => {
+  it("does not remove a path that was never admitted", async () => {
     const f = await setup();
     expect(
       await f.provider.remove({
@@ -196,9 +204,6 @@ describe("Rift provider", () => {
         signal: f.signal,
       }),
     ).toEqual({ status: "removed" });
-    expect(f.harness.experimental_hostRpcCalls[0]).toMatchObject({
-      method: "remove",
-      input: { path: null, pathKey: THREAD_ID },
-    });
+    expect(f.harness.experimental_hostRpcCalls).toEqual([]);
   });
 });

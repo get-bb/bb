@@ -19,6 +19,10 @@ export const riftHostContract = defineRpcContract({
       z.object({ status: z.literal("refuse"), message: z.string() }).strict(),
     ]),
   },
+  resolvePath: {
+    input: z.object({ pathKey: z.string().min(1) }).strict(),
+    output: z.object({ path: z.string().min(1) }).strict(),
+  },
   create: {
     input: z
       .object({
