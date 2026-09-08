@@ -413,16 +413,18 @@ export function registerFileRoutes(app: Hono, deps: AppDeps): void {
         rootPath: lease.rootPath,
       },
       (result) => {
-        const headers = new Headers({
-          "cache-control": "no-store",
-          "x-content-type-options": "nosniff",
-        });
-        if (isHtmlMimeType(result.mimeType)) {
+        const headers = new Headers({ "x-content-type-options": "nosniff" });
+        const isHtml = isHtmlMimeType(result.mimeType);
+        if (isHtml) {
           assertRawFilesystemHtmlPreviewResult(result);
+          headers.set("cache-control", "no-store");
           headers.set("content-security-policy", HTML_PREVIEW_CSP);
           headers.set("content-type", HTML_PREVIEW_CONTENT_TYPE);
         }
-        return createDaemonFileContentResponse(result, { headers });
+        return createDaemonFileContentResponse(result, {
+          headers,
+          ifNoneMatch: isHtml ? undefined : context.req.header("if-none-match"),
+        });
       },
     );
   });
