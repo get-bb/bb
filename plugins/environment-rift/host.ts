@@ -11,6 +11,7 @@ import {
   mkdir,
   readFile,
   realpath,
+  rename,
   rm,
   writeFile,
 } from "node:fs/promises";
@@ -190,6 +191,12 @@ export function createRiftHostEntry(runner: Runner = run) {
               if ((await exists(target)) && (await exists(completed))) {
                 try {
                   const mergeBaseBranch = await readFile(completed, "utf8");
+                  if (!/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/.test(mergeBaseBranch))
+                    throw new Error("Invalid Rift completion record");
+                  await git(
+                    ["cat-file", "-e", `${mergeBaseBranch}^{commit}`],
+                    target,
+                  );
                   if (
                     (await git(["branch", "--show-current"], target)) ===
                       input.branchName &&
@@ -236,23 +243,23 @@ export function createRiftHostEntry(runner: Runner = run) {
                 context.signal,
               );
               const mergeBaseBranch = await git(["rev-parse", "HEAD"], target);
-              try {
-                await git(
-                  ["show-ref", "--verify", `refs/heads/${input.branchName}`],
-                  target,
-                );
-                await git(["branch", "-D", input.branchName], target);
-              } catch {
-                context.signal.throwIfAborted();
-              }
-              await git(["checkout", "-b", input.branchName], target);
+              await git(
+                ["checkout", "-B", input.branchName, mergeBaseBranch],
+                target,
+              );
               await runSetupScript({
                 workspacePath: target,
                 timeoutMs: input.setupTimeoutMs,
                 onProgress: progress,
                 signal: context.signal,
               });
-              await writeFile(completed, mergeBaseBranch);
+              const temporary = `${completed}.tmp`;
+              try {
+                await writeFile(temporary, mergeBaseBranch);
+                await rename(temporary, completed);
+              } finally {
+                await rm(temporary, { force: true });
+              }
               return {
                 status: "created",
                 path: target,

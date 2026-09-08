@@ -20,7 +20,7 @@ bb thread spawn --project <project-id> --environment-provider rift \
 
 Inputs: `branch: { kind: "default" } | { kind: "named", name: string }`; `copy: "all" | "filtered"`, default `all`. The same selection is available through the SDK and New Thread picker.
 
-The provider owns its attempt directory, uses per-attempt path keys and the standard five-minute retirement after the last thread is archived. Removal runs BB's teardown script and `rift remove`; if Rift fails, direct deletion is confined to that exact managed attempt. Rift normally moves removed copies into adjacent trash; run `rift gc` to reclaim that storage. Source initialization remains after retirement.
+The provider owns its attempt directory, uses per-attempt path keys and the standard five-minute retirement after the last thread is archived. Removal runs BB's teardown script and `rift remove`; if Rift fails, direct deletion is confined to that exact managed attempt. Rift normally moves removed copies into adjacent `.trash`, so removal does not reclaim disk space. Run `rift gc` manually to reclaim that storage, following upstream Rift semantics; BB does not run garbage collection automatically. Source initialization remains after retirement.
 
 `presentation: { groupsThreads: true, kindLabel: "Rift workspace" }` groups threads sharing a copy and labels its info tab. This changes presentation only; the environment's real `isWorktree` remains false.
 

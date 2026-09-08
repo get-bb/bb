@@ -183,6 +183,91 @@ describe("Rift host entry", () => {
       }
     },
   );
+  it.runIf(spawnSync("rift", ["--help"]).status === 0).each([
+    { name: "empty completion", record: "", hook: "true" },
+    { name: "bogus completion", record: "0".repeat(40), hook: "true" },
+    {
+      name: "postcreate selects requested branch",
+      record: null,
+      hook: "git checkout main",
+    },
+  ])(
+    "repairs $name and preserves index and working tree",
+    async ({ record, hook }) => {
+      const root = await realpath(
+        await mkdtemp(join(tmpdir(), "bb-rift-repair-")),
+      );
+      const source = join(root, "repo");
+      const dataDir = join(root, "data");
+      await mkdir(source);
+      await mkdir(dataDir);
+      const git = async (cwd: string, ...args: string[]) =>
+        (await exec("git", args, { cwd })).stdout.trim();
+      const harness = experimental_createHostEntryHarness(
+        createRiftHostEntry(),
+        {
+          experimental_paths: { dataDir, tempDir: join(root, "temp") },
+        },
+      );
+      const input = {
+        operationId: "repair",
+        sourcePath: source,
+        pathKey: "repair",
+        branchName: "main",
+        copy: "all" as const,
+        setupTimeoutMs: 30_000,
+      };
+      try {
+        await git(source, "init", "-b", "main");
+        await writeFile(join(source, "tracked"), "base\n");
+        await git(source, "add", "tracked");
+        await git(
+          source,
+          "-c",
+          "user.name=BB",
+          "-c",
+          "user.email=bb@example.com",
+          "commit",
+          "-m",
+          "initial",
+        );
+        const head = await git(source, "rev-parse", "HEAD");
+        await writeFile(join(source, "tracked"), "staged\n");
+        await git(source, "add", "tracked");
+        await writeFile(join(source, "tracked"), "unstaged\n");
+        await writeFile(
+          join(source, ".rift.toml"),
+          `version = 1\n[[hooks.postcreate]]\nrun = "${hook}"\n`,
+        );
+        const first = await harness.experimental_call("create", input);
+        expect(first.status).toBe("created");
+        if (first.status !== "created") throw new Error(first.message);
+        if (record !== null) {
+          await writeFile(`${first.path}.completed`, record);
+          await writeFile(join(first.path, "incomplete-only"), "discard");
+          expect(await harness.experimental_call("create", input)).toEqual(
+            first,
+          );
+          await expect(
+            access(join(first.path, "incomplete-only")),
+          ).rejects.toThrow();
+        }
+        expect(first.mergeBaseBranch).toBe(head);
+        expect(await readFile(`${first.path}.completed`, "utf8")).toBe(head);
+        expect(await git(first.path, "branch", "--show-current")).toBe("main");
+        expect(await git(first.path, "rev-parse", "HEAD")).toBe(head);
+        expect(await git(first.path, "show", ":tracked")).toBe("staged");
+        expect(await readFile(join(first.path, "tracked"), "utf8")).toBe(
+          "unstaged\n",
+        );
+        expect(await git(source, "rev-parse", "HEAD")).toBe(head);
+      } finally {
+        await exec("rift", ["remove", "-f", source]).catch(() => {});
+        await harness.experimental_dispose();
+        await rm(root, { recursive: true, force: true });
+      }
+    },
+  );
   it("reports a missing CLI without crashing the host entry", async () => {
     const harness = experimental_createHostEntryHarness(
       createRiftHostEntry(async () => {
