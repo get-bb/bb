@@ -96,6 +96,7 @@ export function MachineEnvironmentSettings() {
   };
   const hasOverride = rows.some((row) => row.name === "GH_TOKEN");
   const git = query.data?.builtInGit;
+  const gitDisabled = settings?.machineGitCredentialsEnabled === false;
   const gitMissing = git?.status === "not logged in";
   return (
     <SettingsSection
@@ -198,13 +199,13 @@ export function MachineEnvironmentSettings() {
         <div className="space-y-2">
           <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
             <Input
-              className="col-span-2 font-mono sm:col-span-1"
+              className={`col-span-2 font-mono sm:col-span-1 ${gitDisabled ? "opacity-50" : ""}`}
               aria-label="Automatic variable name"
               value="GH_TOKEN"
               readOnly
             />
             <Input
-              className="font-mono"
+              className={`font-mono ${gitDisabled ? "opacity-50" : ""}`}
               aria-label="Automatic GH_TOKEN value"
               value={git?.status === "logged in" ? "••••••••" : ""}
               placeholder={
@@ -234,7 +235,9 @@ export function MachineEnvironmentSettings() {
               />
             </div>
           </div>
-          <div className="flex flex-wrap items-center gap-2 text-xs">
+          <div
+            className={`flex flex-wrap items-center gap-2 text-xs ${gitDisabled ? "opacity-50" : ""}`}
+          >
             <SettingsBadge>Automatic</SettingsBadge>
             <span
               role={gitMissing ? "alert" : "status"}
