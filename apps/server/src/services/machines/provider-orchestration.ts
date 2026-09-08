@@ -163,7 +163,7 @@ function launchReporter(
   return {
     step: (text) =>
       update((row) => {
-        row.stepText = text.slice(0, 200);
+        row.stepText = text.slice(0, 16_384);
       }),
     log: (text) =>
       update((row) => {

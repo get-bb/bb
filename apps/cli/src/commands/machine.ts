@@ -206,7 +206,7 @@ export function registerMachineCommands(
             projectId = matches[0].id;
           }
           controller.signal.throwIfAborted();
-          const launch = await sdk.hosts.submit({
+          let launch = await sdk.hosts.submit({
             machineProviderId,
             projectId,
             inputs,
@@ -214,7 +214,21 @@ export function registerMachineCommands(
             signal: controller.signal,
           });
           if (!opts.wait) {
-            if (!outputJson(opts, launch)) console.log(launch.id);
+            if (machineProviderId === "manual") {
+              while (
+                launch.phase === "creating" &&
+                !launch.step.startsWith("Run on the target machine:")
+              ) {
+                controller.signal.throwIfAborted();
+                await new Promise<void>((resolve) => setTimeout(resolve, 100));
+                launch = await sdk.hosts.launch({
+                  id: launch.id,
+                  signal: controller.signal,
+                });
+              }
+            }
+            if (!outputJson(opts, launch))
+              console.log(`${launch.id}\n${launch.step}`);
             return;
           }
           console.error(`Following machine launch ${launch.id}`);
@@ -367,7 +381,8 @@ export function registerMachineCommands(
     .action(
       action(async (target: string, opts: MachineMutationCommandOptions) => {
         const sdk = createCliBbSdk(getUrl());
-        const hostId = resolveMachineId(await sdk.hosts.list(), target);
+        const hosts = await sdk.hosts.list();
+        const hostId = resolveMachineId(hosts, target);
         if (
           !opts.yes &&
           !(await confirmDestructiveAction(`Remove machine ${hostId}?`))
@@ -376,6 +391,13 @@ export function registerMachineCommands(
         const result = await sdk.hosts.delete({ hostId });
         if (outputJson(opts, result)) return;
         console.log(`Machine ${hostId} removed`);
+        if (
+          hosts.find((host) => host.id === hostId)?.machineProviderId ===
+          "manual"
+        )
+          console.log(
+            `Uninstall manually on the machine: bb machine uninstall --host-id ${hostId}`,
+          );
       }),
     );
 

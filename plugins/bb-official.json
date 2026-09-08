@@ -149,5 +149,9 @@
   "machine-tailscale": {
     "category": "environments",
     "screenshots": []
+  },
+  "machine-manual": {
+    "category": "environments",
+    "screenshots": []
   }
 }
