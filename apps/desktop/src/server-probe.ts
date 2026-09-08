@@ -49,6 +49,7 @@ interface ProbeBbServerArgs {
 }
 
 interface WaitForCompatibleServerArgs {
+  fetchImpl?: ServerProbeFetch;
   intervalMs: number;
   serverUrl: string;
   timeoutMs: number;
@@ -197,6 +198,14 @@ export async function probeBbServer(
     url: endpointUrl(args.serverUrl, "/api/v1/system/config"),
   });
 
+  if (configResult.kind === "network-error") {
+    return {
+      kind: "unavailable",
+      reason: `/api/v1/system/config returned ${formatFetchFailure(configResult)}`,
+      serverUrl: args.serverUrl,
+    };
+  }
+
   if (configResult.kind !== "success") {
     return {
       kind: "incompatible",
@@ -224,6 +233,7 @@ export async function waitForCompatibleServer(
 
   while (Date.now() <= deadline) {
     lastResult = await probeBbServer({
+      ...(args.fetchImpl === undefined ? {} : { fetchImpl: args.fetchImpl }),
       serverUrl: args.serverUrl,
       timeoutMs: Math.min(args.intervalMs, 1_000),
     });
