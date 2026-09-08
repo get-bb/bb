@@ -2552,4 +2552,4 @@ describing it as merely too large.
 
 ### Environment provider presentation
 
-`PluginEnvironmentProviderDefinition.presentation` (SDK 0.4.56) optionally declares `{ groupsThreads: boolean; kindLabel?: string }`. Sidebar grouping defaults to the real `isWorktree` fact when absent; kindLabel changes the info label. This does not change Git semantics or ownership. Audit third-party copy providers and fallback behavior before stabilization.
+`PluginEnvironmentProviderDefinition.presentation` (SDK 0.4.60) optionally declares `{ groupsThreads: boolean; kindLabel?: string }`. Sidebar grouping defaults to the real `isWorktree` fact when absent; kindLabel changes the info label. This does not change Git semantics or ownership. Audit third-party copy providers and fallback behavior before stabilization.

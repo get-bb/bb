@@ -28,11 +28,6 @@
       "source": "./src/transcript.ts",
       "types": "./src/transcript.ts",
       "default": "./src/transcript.ts"
-    },
-    "./setup-script": {
-      "source": "./src/setup-script.ts",
-      "types": "./src/setup-script.ts",
-      "default": "./src/setup-script.ts"
     }
   },
   "scripts": {

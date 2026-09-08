@@ -1,6 +1,5 @@
 import { defineRpcContract } from "@get-bb/plugin-sdk";
 import { z } from "zod";
-import { environmentHostProgressSchema } from "bb-environment-provider-host/progress";
 
 export const riftBranchSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("named"), name: z.string().min(1) }).strict(),
@@ -26,12 +25,10 @@ export const riftHostContract = defineRpcContract({
   create: {
     input: z
       .object({
-        operationId: z.string().min(1),
         sourcePath: z.string().min(1),
         pathKey: z.string().min(1),
         branchName: z.string().min(1),
         copy: z.enum(["all", "filtered"]),
-        setupTimeoutMs: z.number().int().positive(),
       })
       .strict(),
     output: z.discriminatedUnion("status", [
@@ -50,10 +47,8 @@ export const riftHostContract = defineRpcContract({
   remove: {
     input: z
       .object({
-        operationId: z.string().min(1),
         pathKey: z.string().min(1),
         path: z.string().min(1).nullable(),
-        teardownTimeoutMs: z.number().int().positive(),
       })
       .strict(),
     output: z.discriminatedUnion("status", [
@@ -64,9 +59,3 @@ export const riftHostContract = defineRpcContract({
     ]),
   },
 });
-
-export const riftHostSignals = {
-  progress: {
-    payload: environmentHostProgressSchema,
-  },
-} as const;

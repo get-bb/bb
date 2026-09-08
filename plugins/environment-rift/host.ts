@@ -1,8 +1,6 @@
 import {
   experimental_defineHostEntry,
   experimental_spawnPortableOutputProcess as spawnPortableOutputProcess,
-  experimental_killProcessGroup as killProcessGroup,
-  experimental_supportsProcessGroups as supportsProcessGroups,
   experimental_sanitizeInheritedChildProcessEnv as sanitizeInheritedChildProcessEnv,
 } from "@get-bb/plugin-sdk/host";
 import {
@@ -17,12 +15,7 @@ import {
 } from "node:fs/promises";
 import path from "node:path";
 import { withProcessLocalQueuedLocks } from "bb-environment-provider-host/locks";
-import { createHostProgress } from "bb-environment-provider-host/progress";
-import {
-  runSetupScript,
-  runTeardownScript,
-} from "bb-environment-provider-host/setup-script";
-import { riftHostContract, riftHostSignals } from "./contract.js";
+import { riftHostContract } from "./contract.js";
 
 type Runner = (
   command: string,
@@ -36,7 +29,7 @@ const run: Runner = async (command, args, cwd, signal) => {
     command,
     args,
     cwd,
-    detached: supportsProcessGroups(),
+    detached: process.platform !== "win32",
     env: sanitizeInheritedChildProcessEnv({ env: process.env }),
   });
   let output = "";
@@ -44,7 +37,18 @@ const run: Runner = async (command, args, cwd, signal) => {
   let failure: Error | null = null;
   const stop = (error: Error) => {
     failure ??= error;
-    killProcessGroup({ child, signal: "SIGKILL" });
+    if (process.platform === "win32" || child.pid === undefined) {
+      child.kill("SIGKILL");
+      return;
+    }
+    try {
+      process.kill(-child.pid, "SIGKILL");
+    } catch (error) {
+      if (
+        !(error instanceof Error && "code" in error && error.code === "ESRCH")
+      )
+        throw error;
+    }
   };
   const abort = () => stop(new Error("Rift operation cancelled"));
   const timer = setTimeout(
@@ -127,7 +131,6 @@ export function createRiftHostEntry(runner: Runner = run) {
   };
   return experimental_defineHostEntry({
     contract: riftHostContract,
-    experimental_signals: riftHostSignals,
     handlers: {
       async availability(_input, context) {
         try {
@@ -180,11 +183,6 @@ export function createRiftHostEntry(runner: Runner = run) {
         const dataDir = await realpath(context.experimental_paths.dataDir);
         const target = targetFor(dataDir, input.pathKey);
         const completed = `${target}.completed`;
-        const progress = createHostProgress({
-          operationId: input.operationId,
-          emit: (payload) =>
-            context.experimental_emitSignal("progress", payload),
-        });
         try {
           return await withProcessLocalQueuedLocks({
             locks: [{ key: target }],
@@ -253,12 +251,6 @@ export function createRiftHostEntry(runner: Runner = run) {
                 ["checkout", "-B", input.branchName, mergeBaseBranch],
                 target,
               );
-              await runSetupScript({
-                workspacePath: target,
-                timeoutMs: input.setupTimeoutMs,
-                onProgress: progress,
-                signal: context.signal,
-              });
               const temporary = `${completed}.tmp`;
               try {
                 await writeFile(temporary, mergeBaseBranch);
@@ -288,11 +280,6 @@ export function createRiftHostEntry(runner: Runner = run) {
             work: async () => {
               await checkManaged(target, dataDir, input.pathKey);
               if (await exists(target)) {
-                await runTeardownScript({
-                  workspacePath: target,
-                  timeoutMs: input.teardownTimeoutMs,
-                  signal: context.signal,
-                });
                 try {
                   await runner(
                     "rift",

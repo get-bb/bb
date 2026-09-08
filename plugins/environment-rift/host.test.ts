@@ -20,7 +20,7 @@ const exec = promisify(execFile);
 
 describe("Rift host entry", () => {
   it.runIf(spawnSync("rift", ["--help"]).status === 0)(
-    "creates a real copy, preserves dirty files, runs hooks, replays, repairs and removes",
+    "creates a real copy, runs only Rift hooks, replays, repairs and removes",
     async () => {
       const root = await realpath(await mkdtemp(join(tmpdir(), "bb-rift-")));
       const source = join(root, "repo");
@@ -36,12 +36,10 @@ describe("Rift host entry", () => {
         },
       );
       const input = {
-        operationId: "create",
         sourcePath: source,
         pathKey: "attempt-1",
         branchName: "bb/rift-test",
         copy: "all" as const,
-        setupTimeoutMs: 30_000,
       };
       try {
         await git("init", "-b", "main");
@@ -80,7 +78,7 @@ describe("Rift host entry", () => {
         expect(result.status).toBe("created");
         if (result.status !== "created") throw new Error(result.message);
         expect(await readFile(join(result.path, "hook-order"), "utf8")).toBe(
-          "rift\nbb\n",
+          "rift\n",
         );
         expect(await readFile(join(result.path, "dirty.txt"), "utf8")).toBe(
           "dirty",
@@ -99,30 +97,29 @@ describe("Rift host entry", () => {
         await expect(
           access(join(result.path, "keep-on-replay")),
         ).rejects.toThrow();
+        await writeFile(
+          join(result.path, ".bb-env-teardown.sh"),
+          `echo unexpected > ${join(root, "provider-teardown")}\n`,
+        );
         expect(
           await harness.experimental_call("remove", {
-            operationId: "remove",
             pathKey: input.pathKey,
             path: result.path,
-            teardownTimeoutMs: 30_000,
           }),
         ).toEqual({ status: "removed" });
         await expect(access(result.path)).rejects.toThrow();
+        await expect(access(join(root, "provider-teardown"))).rejects.toThrow();
         expect(
           await harness.experimental_call("remove", {
-            operationId: "remove",
             pathKey: input.pathKey,
             path: null,
-            teardownTimeoutMs: 30_000,
           }),
         ).toEqual({ status: "removed" });
         expect(
           (
             await harness.experimental_call("remove", {
-              operationId: "remove",
               pathKey: input.pathKey,
               path: source,
-              teardownTimeoutMs: 30_000,
             })
           ).status,
         ).toBe("failed");
@@ -210,12 +207,10 @@ describe("Rift host entry", () => {
         },
       );
       const input = {
-        operationId: "repair",
         sourcePath: source,
         pathKey: "repair",
         branchName: "main",
         copy: "all" as const,
-        setupTimeoutMs: 30_000,
       };
       try {
         await git(source, "init", "-b", "main");
