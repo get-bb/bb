@@ -1,3 +1,4 @@
+import { acceptChunk, contextFiles } from "./context.js";
 import { afterEach, expect, it, vi } from "vitest";
 import {
   createFakePluginHost,
@@ -13,7 +14,7 @@ const disposals: Array<() => Promise<void>> = [];
 afterEach(async () => {
   await Promise.all(disposals.splice(0).map((dispose) => dispose()));
 });
-async function fixture() {
+async function fixture(now = Date.now) {
   const project = {
     id: "project",
     kind: "standard" as const,
@@ -54,7 +55,7 @@ async function fixture() {
       memoryMiB: 4096,
     }),
     () => backend,
-    Date.now,
+    now,
     async () => ({
       metadata: {
         sha256: hash("fixture"),
@@ -479,4 +480,81 @@ it("preflights the selected agent without allocation and never returns account s
   const failed = await test.service.handlers["account.inspect"]({});
   expect(failed.available).toBe(false);
   expect(JSON.stringify(failed)).not.toContain("private-value");
+});
+
+it("retries identical build content using the newly uploaded context after expired chunks are collected", async () => {
+  let now = 1000;
+  const test = await fixture(() => now);
+  const recipe = await test.service.handlers["recipe.put"]({
+    projectId: "project",
+    expectedRevision: 1,
+    dockerfileText: "COPY package-lock.json /tmp/package-lock.json",
+    contextRules: { include: ["package-lock.json"], exclude: [] },
+    smoke: { commands: ["true"], timeoutSeconds: 120 },
+  });
+  const manifest = {
+    recipeId: recipe.recipeId,
+    revision: recipe.revision,
+    source: {
+      hostId: "local",
+      path: "/fixture",
+      commit: "a".repeat(40),
+      dirty: [],
+      submodules: [],
+      lfs: [],
+    },
+    reviewedDirty: [],
+    files: [
+      {
+        path: "package-lock.json",
+        bytes: 2,
+        sha256: hash("{}"),
+        mode: "100644" as const,
+      },
+    ],
+  };
+  const upload = () => {
+    const context = test.service.store.putContext("project", manifest);
+    test.service.store.db
+      .prepare("INSERT INTO context_uploads VALUES (?,?,?)")
+      .run(context.contextId, hash("fixture-token"), "local");
+    acceptChunk(test.service.store, "fixture-token", {
+      contextId: context.contextId,
+      path: "package-lock.json",
+      offset: 0,
+      data: "e30=",
+    });
+    test.service.store.completeContext(context.contextId);
+    return context;
+  };
+  const old = upload();
+  vi.mocked(test.backend.build).mockRejectedValueOnce(
+    new Error("Build syntax failure"),
+  );
+  const input = {
+    ...test.input,
+    revision: recipe.revision,
+    contextId: old.contextId,
+  };
+  const first = await test.service.handlers["build.start"](input);
+  await test.service.sweep();
+  expect(test.service.store.build(first.buildId).state).toBe("failed");
+  now += 86400001;
+  await test.service.sweep();
+  expect(() => contextFiles(test.service.store, old.contextId)).toThrow(
+    "Archive hash/size mismatch",
+  );
+  const fresh = upload();
+  const retry = await test.service.handlers["build.start"]({
+    ...input,
+    key: "retry-fresh-context",
+    contextId: fresh.contextId,
+  });
+  expect(retry.buildId).toBe(first.buildId);
+  expect(test.service.store.build(retry.buildId).contextId).toBe(
+    fresh.contextId,
+  );
+  expect(contextFiles(test.service.store, fresh.contextId).size).toBe(1);
+  await test.service.sweep();
+  expect(test.service.store.build(retry.buildId).state).toBe("ready");
 });

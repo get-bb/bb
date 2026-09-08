@@ -242,6 +242,7 @@ export class Catalogue {
           if (["failed", "cancelled", "reconciling"].includes(build.state)) {
             build = {
               ...build,
+              contextId: context.contextId,
               state: "queued",
               failure: null,
               cancelRequested: false,
