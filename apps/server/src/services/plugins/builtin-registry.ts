@@ -160,6 +160,11 @@ export const BUILTIN_PLUGINS = [
 
 export const OFFICIAL_PLUGINS = [
   {
+    name: "machine-digitalocean",
+    pluginId: "machine-digitalocean",
+    defaultEnabled: true,
+  },
+  {
     name: "browser-automation",
     pluginId: "browser-automation",
     defaultEnabled: false,

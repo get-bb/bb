@@ -1248,3 +1248,17 @@ SDK parity: `sdk.system.machineEnvironment()`,
 `sdk.system.setMachineEnvironment({ name, value, secret, note })`, and
 `sdk.system.unsetMachineEnvironment(name)`. Secret list rows have `value: null`.
 `bb settings show --json` exposes the built-in readiness as `machineGit`.
+
+### DigitalOcean dev boxes
+
+The `machine-digitalocean` plugin's `DIGITALOCEAN_TOKEN` is a secret setting.
+`snapshotRetention` defaults to 2 (valid range 1–100) for newly created boxes.
+Machine creation inputs accept `idleMinutes` (1–43200, null disables, default
+null). Existing boxes use `bb digitalocean configure <host-id> '<config-json>'`
+or the plugin's Dev boxes settings. Configuration contains `idleMinutes`,
+`retention`, and `schedule` (null or weekdays 0–6, sleep/wake HH:mm and IANA
+timezone). Saving replaces configuration and resets the schedule cursor to now.
+Core owns idle/dispatch/retirement; DigitalOcean retirement remains never.
+Powered-off droplets still bill; snapshot storage bills per GB. Official pricing:
+https://docs.digitalocean.com/products/droplets/details/pricing/ and
+https://docs.digitalocean.com/products/snapshots/details/pricing/ .

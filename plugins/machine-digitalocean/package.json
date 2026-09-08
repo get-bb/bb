@@ -1,0 +1,46 @@
+{
+  "name": "bb-plugin-machine-digitalocean",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Run persistent bb machines on DigitalOcean Droplets",
+  "engines": {
+    "bb": ">=0.0"
+  },
+  "bb": {
+    "name": "DigitalOcean",
+    "description": "Run persistent bb machines on DigitalOcean Droplets",
+    "server": "./server.ts",
+    "app": "./app.tsx",
+    "branding": {
+      "icon": "./digitalocean-logo.svg"
+    },
+    "skills": [
+      "skills"
+    ]
+  },
+  "keywords": [
+    "bb-plugin"
+  ],
+  "scripts": {
+    "lint": "oxlint .",
+    "test": "vitest run --config vitest.config.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "zod": "^4.3.6",
+    "@bb/shared-ui": "workspace:*"
+  },
+  "devDependencies": {
+    "@get-bb/plugin-sdk": "workspace:*",
+    "@types/node": "^22.0.0",
+    "typescript": "npm:@typescript/typescript6@^6.0.2",
+    "vitest": "^4.1.1",
+    "@testing-library/react": "^16.3.2",
+    "@types/react": "^19.0.0",
+    "jsdom": "^29.0.1",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "@bb/db": "workspace:*"
+  }
+}
