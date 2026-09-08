@@ -17,7 +17,9 @@ export function TailscaleInputs({
   onChange,
 }: PluginMachineProviderInputsProps) {
   const onChangeRef = useRef(onChange);
-  onChangeRef.current = onChange;
+  useEffect(() => {
+    onChangeRef.current = onChange;
+  }, [onChange]);
   const rpc = useRpc<typeof tailscaleContract>();
   const initial = inputsSchema.safeParse(value);
   const [deviceId, setDeviceId] = useState(
