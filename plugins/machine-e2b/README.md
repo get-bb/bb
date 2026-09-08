@@ -4,7 +4,12 @@ Catalog plugin providing the `e2b` machine provider through the official E2B
 JavaScript SDK. Create a machine from Settings → Machines or the public machines
 SDK / `bb machine create`. Configure project sources and agent credentials on
 that machine separately. This plugin intentionally registers no environment
-provider, picker shortcut, or icon.
+provider, picker shortcut, or provider icon.
+
+Creation prepares enrollment before vendor allocation and awaits a core resource
+checkpoint as soon as the allocation ID is known. The checkpoint contains no
+bootstrap credentials. Core can remove a cancelled allocation directly from
+that checkpoint without rerunning creation, enrollment, or bootstrap.
 
 ## Settings and template
 

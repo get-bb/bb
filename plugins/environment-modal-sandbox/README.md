@@ -11,6 +11,13 @@ target, so later threads can create Git worktrees or use other environment
 providers on the same sandbox. You can also create a projectless sandbox from
 Settings → Machines → Add machine and configure project sources later.
 
+Creation prepares enrollment before vendor allocation and awaits a core resource
+checkpoint as soon as the allocation ID is known. The checkpoint contains no
+bootstrap credentials. Core can remove a cancelled allocation directly from
+that checkpoint without rerunning creation, enrollment, or bootstrap.
+The plugin also checkpoints the project source ID once registration completes;
+core owns teardown after creation failures.
+
 ## Lifecycle
 
 Core owns the machine lifecycle. After every live thread on the machine has

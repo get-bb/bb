@@ -108,6 +108,9 @@ export function createDigitalOceanPlugin(deps: {
             AbortSignal.timeout(WAIT_MS),
           ]);
           signal.throwIfAborted();
+          const enrollment = await bb.experimental_machines.enrollments.prepare(
+            { key: context.key },
+          );
           let droplet = intent?.dropletId
             ? await owned(api, intent.dropletId, context.key, signal)
             : await api.find(name, signal);
@@ -128,9 +131,6 @@ export function createDigitalOceanPlugin(deps: {
               );
             }
           }
-          const enrollment = await bb.experimental_machines.enrollments.prepare(
-            { key: context.key },
-          );
           if (droplet === null) {
             if (enrollment.state !== "pending")
               throw new AllocationError(
@@ -147,9 +147,16 @@ export function createDigitalOceanPlugin(deps: {
               { name, ...inputsSchema.parse(context.inputs), userData },
               signal,
             );
-            await bb.storage.kv.set(intentKey, { dropletId: droplet.id });
-            signal.throwIfAborted();
           }
+          const resource = {
+            version: 1,
+            key: context.key,
+            dropletId: droplet.id,
+            enrollmentId: enrollment.id,
+          };
+          await context.checkpoint(resource);
+          await bb.storage.kv.set(intentKey, { dropletId: droplet.id });
+          signal.throwIfAborted();
           await active(api, droplet, signal);
           context.report.step("Waiting for the machine to connect…");
           await bb.experimental_machines.enrollments.waitForConnection({
@@ -160,12 +167,7 @@ export function createDigitalOceanPlugin(deps: {
           return {
             status: "created",
             hostId: enrollment.hostId,
-            resource: {
-              version: 1,
-              key: context.key,
-              dropletId: droplet.id,
-              enrollmentId: enrollment.id,
-            },
+            resource,
           };
         } catch (error) {
           context.signal.throwIfAborted();

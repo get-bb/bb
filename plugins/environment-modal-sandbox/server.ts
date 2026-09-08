@@ -319,10 +319,11 @@ export function createModalSandboxPlugin(
         };
       }
       const backend = backendFor(resolved.settings);
-      let sandbox: SandboxHandle | null = null;
       try {
         guard(context.signal);
-        sandbox = await backend.fromName(
+        await bb.experimental_machines.prepareEnrollment({ key: context.key });
+        guard(context.signal);
+        let sandbox = await backend.fromName(
           resolved.settings.appName,
           context.key,
         );
@@ -345,6 +346,16 @@ export function createModalSandboxPlugin(
                   },
           });
         }
+        const allocation: ModalMachineResource = {
+          version: 3,
+          key: context.key,
+          sandboxId: sandbox.sandboxId,
+          snapshotImageId: null,
+          pendingSnapshotImageIds: [],
+          projectId: context.project?.id ?? null,
+          sourceId: null,
+        };
+        await context.checkpoint(allocation);
         guard(context.signal);
         context.report.step("Installing prerequisites…");
         await run({
@@ -380,20 +391,10 @@ export function createModalSandboxPlugin(
                 report: context.report,
                 signal: context.signal,
               });
+        const resource = { ...allocation, sourceId };
+        if (sourceId !== null) await context.checkpoint(resource);
         guard(context.signal);
-        return {
-          status: "created",
-          hostId,
-          resource: {
-            version: 3,
-            key: context.key,
-            sandboxId: sandbox.sandboxId,
-            snapshotImageId: null,
-            pendingSnapshotImageIds: [],
-            projectId: context.project?.id ?? null,
-            sourceId,
-          },
-        };
+        return { status: "created", hostId, resource };
       } catch (error) {
         if (context.signal.aborted || error instanceof LaunchAbortedError) {
           throw error;
@@ -402,9 +403,6 @@ export function createModalSandboxPlugin(
         const terminal =
           error instanceof LaunchTerminalError ||
           TERMINAL_LAUNCH_FAILURE_PATTERN.test(message);
-        if (terminal) {
-          await sandbox?.terminate().catch(() => {});
-        }
         return {
           status: "failed",
           failure: terminal ? "terminal" : "transient",

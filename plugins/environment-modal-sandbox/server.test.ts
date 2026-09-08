@@ -284,7 +284,16 @@ async function setup(
       return { hostId: HOST_ID };
     },
   );
-  Object.assign(fake.bb.experimental_machines, { bootstrap });
+  const prepareEnrollment = vi.fn(async () => ({
+    id: "enrollment-1",
+    hostId: HOST_ID,
+    state: "pending",
+    bootstrap: { credential: "bootstrap-secret" },
+  }));
+  Object.assign(fake.bb.experimental_machines, {
+    bootstrap,
+    prepareEnrollment,
+  });
   await createModalSandboxPlugin({
     backendFactory: () => backend.backend,
     now: () => Date.now(),
@@ -302,6 +311,7 @@ async function setup(
     deletedHosts,
     providerCliInstalls,
     bootstrap,
+    prepareEnrollment,
   };
 }
 
@@ -316,6 +326,7 @@ function createContext(
     attempt: 1,
     report,
     signal: new AbortController().signal,
+    checkpoint: vi.fn(async (_resource: JsonValue) => {}),
   };
 }
 
@@ -423,6 +434,86 @@ describe("Modal machine provider", () => {
     expect(harness.backend.creates).toHaveLength(2);
   });
 
+  it.each(["create", "lookup"])(
+    "checkpoints a %s result despite cancellation so core can remove without bootstrap",
+    async (phase) => {
+      const test = await setup();
+      if (phase === "lookup") {
+        await test.provider.create(createContext());
+        test.bootstrap.mockClear();
+        test.prepareEnrollment.mockClear();
+      }
+      const controller = new AbortController();
+      if (phase === "create") {
+        const create = test.backend.backend.create;
+        vi.spyOn(test.backend.backend, "create").mockImplementationOnce(
+          async (request) => {
+            const sandbox = await create(request);
+            controller.abort(new Error("cancelled"));
+            return sandbox;
+          },
+        );
+      } else {
+        const fromName = test.backend.backend.fromName;
+        vi.spyOn(test.backend.backend, "fromName").mockImplementationOnce(
+          async (appName, name) => {
+            const sandbox = await fromName(appName, name);
+            controller.abort(new Error("cancelled"));
+            return sandbox;
+          },
+        );
+      }
+      const checkpoint = vi.fn(async (_resource: JsonValue) => {});
+      await expect(
+        test.provider.create({
+          ...createContext(),
+          signal: controller.signal,
+          checkpoint,
+        }),
+      ).rejects.toThrow("cancelled");
+      const resource = checkpoint.mock.calls[0]?.[0];
+      expect(resource).toEqual({
+        version: 3,
+        key: "modal-machine-key",
+        sandboxId: "sandbox-1",
+        snapshotImageId: null,
+        pendingSnapshotImageIds: [],
+        projectId: PROJECT.id,
+        sourceId: null,
+      });
+      expect(test.bootstrap).not.toHaveBeenCalled();
+      expect(test.prepareEnrollment.mock.invocationCallOrder[0]).toBeLessThan(
+        checkpoint.mock.invocationCallOrder[0]!,
+      );
+      expect(test.backend.states[0]?.terminated).toBe(false);
+      if (resource === undefined) throw new Error("missing checkpoint");
+      await test.provider.remove({
+        hostId: HOST_ID,
+        resource,
+        report,
+        signal: new AbortController().signal,
+      });
+      expect(test.backend.states[0]?.terminated).toBe(true);
+      expect(test.prepareEnrollment).toHaveBeenCalledOnce();
+    },
+  );
+
+  it("does not bootstrap or tear down when checkpoint persistence fails", async () => {
+    const test = await setup();
+    const checkpoint = vi.fn(async (_resource: JsonValue) => {
+      throw new Error("checkpoint failed");
+    });
+    expect(
+      await test.provider.create({ ...createContext(), checkpoint }),
+    ).toMatchObject({ status: "failed", failure: "transient" });
+    expect(test.bootstrap).not.toHaveBeenCalled();
+    expect(test.backend.states[0]?.terminated).toBe(false);
+    expect(await test.provider.create(createContext())).toMatchObject({
+      status: "created",
+    });
+    expect(test.backend.creates).toHaveLength(1);
+  });
+
   it("creates a projectless machine without assuming a checkout", async () => {
     const harness = await setup();
     const result = await harness.provider.create({
@@ -434,12 +525,12 @@ describe("Modal machine provider", () => {
     expect(harness.sources).toHaveLength(0);
   });
 
-  it("cleans up vendor compute but leaves core-owned identity after a terminal create failure", async () => {
+  it("leaves checkpointed vendor compute and identity for core cleanup after a terminal create failure", async () => {
     const harness = await setup(SETTINGS, { failClone: true });
     await expect(
       harness.provider.create(createContext()),
     ).resolves.toMatchObject({ status: "failed", failure: "terminal" });
-    expect(harness.backend.states[0]?.terminated).toBe(true);
+    expect(harness.backend.states[0]?.terminated).toBe(false);
     expect(harness.deletedHosts).toEqual([]);
   });
 

@@ -10,7 +10,10 @@
   "bb": {
     "name": "E2B",
     "description": "Run resumable bb machines in E2B sandboxes",
-    "server": "./server.ts"
+    "server": "./server.ts",
+    "branding": {
+      "icon": "Box"
+    }
   },
   "keywords": [
     "bb-plugin"

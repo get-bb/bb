@@ -84,6 +84,9 @@ export function createE2BPlugin(deps: {
           context.signal,
           AbortSignal.timeout(600_000),
         ]);
+        signal.throwIfAborted();
+        await bb.experimental_machines.prepareEnrollment({ key: context.key });
+        signal.throwIfAborted();
         const intentKey = `allocation/${context.key}`;
         const stored = await bb.storage.kv.get<unknown>(intentKey);
         const intent =
@@ -121,15 +124,17 @@ export function createE2BPlugin(deps: {
             configuredValues.timeoutMs,
             signal,
           );
-          await bb.storage.kv.set(intentKey, { sandboxId: sandbox.sandboxId });
-          signal.throwIfAborted();
-        } else {
-          sandbox = await api.connect(
-            sandboxId,
-            configuredValues.timeoutMs,
-            signal,
-          );
+          sandboxId = sandbox.sandboxId;
         }
+        const resource = { version: 1, key: context.key, sandboxId };
+        await context.checkpoint(resource);
+        await bb.storage.kv.set(intentKey, { sandboxId });
+        signal.throwIfAborted();
+        sandbox ??= await api.connect(
+          sandboxId,
+          configuredValues.timeoutMs,
+          signal,
+        );
         const { hostId } = await bb.experimental_machines.bootstrap({
           key: context.key,
           executor: sandbox.executor,
@@ -140,11 +145,7 @@ export function createE2BPlugin(deps: {
         return {
           status: "created",
           hostId,
-          resource: {
-            version: 1,
-            key: context.key,
-            sandboxId: sandbox.sandboxId,
-          },
+          resource,
         };
       },
       async suspend(context) {

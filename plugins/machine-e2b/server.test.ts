@@ -1,3 +1,4 @@
+import type { JsonValue } from "@get-bb/plugin-sdk";
 import { createFakePluginHost } from "@get-bb/plugin-sdk/testing";
 import { describe, expect, it, vi } from "vitest";
 import { createE2BPlugin } from "./server.js";
@@ -11,6 +12,7 @@ const context = () => ({
   inputs: null,
   report: { step: vi.fn(), log: vi.fn() },
   signal: new AbortController().signal,
+  checkpoint: vi.fn(async (_resource: JsonValue) => {}),
 });
 async function setup() {
   const handle = {
@@ -31,12 +33,29 @@ async function setup() {
     settings: { E2B_API_KEY: "api-secret", template: "bb-node22" },
   });
   const bootstrap = vi.fn(async () => ({ hostId: "host-1" }));
-  Object.assign(fake.bb.experimental_machines, { bootstrap });
+  const prepareEnrollment = vi.fn(async () => ({
+    id: "enrollment-1",
+    hostId: "host-1",
+    state: "pending",
+    bootstrap: { credential: "bootstrap-secret" },
+  }));
+  Object.assign(fake.bb.experimental_machines, {
+    bootstrap,
+    prepareEnrollment,
+  });
   const sleep = vi.fn(async (_signal: AbortSignal) => {});
   await createE2BPlugin({ vendor: () => api, sleep })(fake.bb);
   const provider = fake.harness.registrations.machineProviders.get("e2b");
   if (!provider) throw new Error("missing provider");
-  return { ...fake, api, provider, handle, bootstrap, sleep };
+  return {
+    ...fake,
+    api,
+    provider,
+    handle,
+    bootstrap,
+    prepareEnrollment,
+    sleep,
+  };
 }
 
 describe("E2B machine provider", () => {
@@ -77,19 +96,54 @@ describe("E2B machine provider", () => {
     expect(test.api.connect).toHaveBeenCalledOnce();
     await test.harness.lifecycle.dispose();
   });
-  it("retains the allocation handle when cancellation races the create response", async () => {
+  it.each(["create", "lookup"])(
+    "checkpoints a %s result despite cancellation so core can remove without reconnecting",
+    async (phase) => {
+      const test = await setup();
+      const controller = new AbortController();
+      if (phase === "create")
+        test.api.create.mockImplementationOnce(async () => {
+          controller.abort(new Error("cancelled"));
+          return test.handle;
+        });
+      else
+        test.api.find.mockImplementationOnce(async () => {
+          controller.abort(new Error("cancelled"));
+          return test.handle.sandboxId;
+        });
+      const request = { ...context(), signal: controller.signal };
+      await expect(test.provider.create(request)).rejects.toThrow("cancelled");
+      const resource = request.checkpoint.mock.calls[0]?.[0];
+      expect(resource).toEqual({
+        version: 1,
+        key: request.key,
+        sandboxId: "sandbox-1",
+      });
+      expect(test.bootstrap).not.toHaveBeenCalled();
+      expect(test.api.connect).not.toHaveBeenCalled();
+      expect(test.prepareEnrollment.mock.invocationCallOrder[0]).toBeLessThan(
+        test.api.find.mock.invocationCallOrder[0]!,
+      );
+      if (resource === undefined) throw new Error("missing checkpoint");
+      await test.provider.remove({ ...context(), hostId: "host-1", resource });
+      expect(test.api.kill).toHaveBeenCalledWith(
+        "sandbox-1",
+        expect.any(AbortSignal),
+      );
+      expect(test.prepareEnrollment).toHaveBeenCalledOnce();
+      await test.harness.lifecycle.dispose();
+    },
+  );
+  it("stops before bootstrap when checkpoint persistence fails and retains allocation for retry", async () => {
     const test = await setup();
-    const controller = new AbortController();
-    test.api.create.mockImplementationOnce(async () => {
-      controller.abort(new Error("cancelled"));
-      return test.handle;
-    });
-    await expect(
-      test.provider.create({ ...context(), signal: controller.signal }),
-    ).rejects.toThrow("cancelled");
-    expect(await test.bb.storage.kv.get("allocation/key-1")).toEqual({
-      sandboxId: "sandbox-1",
-    });
+    const request = context();
+    request.checkpoint.mockRejectedValueOnce(new Error("checkpoint failed"));
+    await expect(test.provider.create(request)).rejects.toThrow(
+      "checkpoint failed",
+    );
+    expect(test.bootstrap).not.toHaveBeenCalled();
+    expect(test.api.kill).not.toHaveBeenCalled();
+    test.api.find.mockResolvedValue("sandbox-1");
     expect(await test.provider.create(context())).toMatchObject({
       status: "created",
     });

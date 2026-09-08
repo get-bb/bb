@@ -1,3 +1,4 @@
+import type { JsonValue } from "@get-bb/plugin-sdk";
 import { createFakePluginHost } from "@get-bb/plugin-sdk/testing";
 import { describe, expect, it, vi } from "vitest";
 import { createDigitalOceanPlugin } from "./server.js";
@@ -11,6 +12,7 @@ const context = () => ({
   inputs: { region: "nyc3", size: "s-2vcpu-4gb" },
   report: { step: vi.fn(), log: vi.fn() },
   signal: new AbortController().signal,
+  checkpoint: vi.fn(async (_resource: JsonValue) => {}),
 });
 const droplet = (): Droplet => ({
   id: 42,
@@ -99,32 +101,56 @@ describe("DigitalOcean machine provider", () => {
     await test.harness.lifecycle.dispose();
   });
 
-  it("retains a returned droplet ID when cancellation races the create response", async () => {
+  it.each(["create", "lookup"])(
+    "checkpoints a %s result despite cancellation so core can remove without enrollment",
+    async (phase) => {
+      const test = await setup();
+      const controller = new AbortController();
+      const allocate = async () => {
+        controller.abort(new Error("cancelled"));
+        return droplet();
+      };
+      if (phase === "create") test.api.create.mockImplementationOnce(allocate);
+      else test.api.find.mockImplementationOnce(allocate);
+      const request = { ...context(), signal: controller.signal };
+      await expect(test.provider.create(request)).rejects.toThrow("cancelled");
+      const resource = request.checkpoint.mock.calls[0]?.[0];
+      expect(resource).toEqual({
+        version: 1,
+        key: request.key,
+        dropletId: 42,
+        enrollmentId: "enrollment-1",
+      });
+      expect(test.waitForConnection).not.toHaveBeenCalled();
+      expect(test.prepare.mock.invocationCallOrder[0]).toBeLessThan(
+        test.api.find.mock.invocationCallOrder[0]!,
+      );
+      if (resource === undefined) throw new Error("missing checkpoint");
+      test.api.get.mockResolvedValue(droplet());
+      await test.provider.remove({ ...context(), hostId: "host-1", resource });
+      expect(test.api.destroy).toHaveBeenCalledWith(
+        42,
+        expect.any(AbortSignal),
+      );
+      expect(test.prepare).toHaveBeenCalledOnce();
+      await test.harness.lifecycle.dispose();
+    },
+  );
+
+  it("does not wait for enrollment when checkpoint persistence fails", async () => {
     const test = await setup();
-    const controller = new AbortController();
-    test.api.create.mockImplementationOnce(async () => {
-      controller.abort(new Error("cancelled"));
-      return droplet();
+    const request = context();
+    request.checkpoint.mockRejectedValueOnce(new Error("checkpoint failed"));
+    expect(await test.provider.create(request)).toMatchObject({
+      status: "failed",
+      failure: "transient",
     });
-    await expect(
-      test.provider.create({ ...context(), signal: controller.signal }),
-    ).rejects.toThrow("cancelled");
-    expect(
-      await test.bb.storage.kv.get(
-        `allocation/${allocationName("creation-key")}`,
-      ),
-    ).toEqual({ dropletId: 42 });
-    test.api.get.mockResolvedValue(droplet());
-    const recovered = await test.provider.create(context());
-    expect(recovered).toMatchObject({ status: "created" });
+    expect(test.waitForConnection).not.toHaveBeenCalled();
+    expect(test.api.destroy).not.toHaveBeenCalled();
+    expect(await test.provider.create(context())).toMatchObject({
+      status: "created",
+    });
     expect(test.api.create).toHaveBeenCalledOnce();
-    if (recovered.status !== "created") throw new Error("recovery failed");
-    await test.provider.remove({
-      ...context(),
-      hostId: recovered.hostId,
-      resource: recovered.resource,
-    });
-    expect(test.api.destroy).toHaveBeenCalledWith(42, expect.any(AbortSignal));
     await test.harness.lifecycle.dispose();
   });
 

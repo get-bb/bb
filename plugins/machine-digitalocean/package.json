@@ -11,7 +11,8 @@
     "name": "DigitalOcean",
     "description": "Run persistent bb machines on DigitalOcean Droplets",
     "server": "./server.ts",
-    "app": "./app.tsx"
+    "app": "./app.tsx",
+    "branding": { "icon": "Cloud" }
   },
   "keywords": [
     "bb-plugin"

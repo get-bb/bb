@@ -32,6 +32,11 @@ waits for the existing machine connection. Removal deletes the Droplet. No
 filesystem snapshots, copied enrollment code, or plugin daemon supervisor are
 involved.
 
+Creation prepares enrollment before vendor allocation and awaits a core resource
+checkpoint as soon as the allocation ID is known. The checkpoint contains no
+bootstrap credentials. Core can remove a cancelled allocation directly from
+that checkpoint without rerunning creation, enrollment, or bootstrap.
+
 ## Retry and cancellation
 
 The vendor name and tag are a deterministic hash of core's creation key. Before
