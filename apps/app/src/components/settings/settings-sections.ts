@@ -8,6 +8,7 @@ export const SETTINGS_NAV_SECTIONS = [
   { icon: "SlidersHorizontal", id: "keyboard", label: "Keyboard" },
   { icon: "ChartColumn", id: "usage", label: "Usage limits" },
   { icon: "File", id: "files", label: "Files" },
+  { icon: "FolderGit", id: "projects", label: "Projects" },
   { icon: "Laptop", id: "machines", label: "Machines" },
   { icon: "PackageReceive", id: "updates", label: "Updates" },
   { icon: "ElectricPlugs", id: "plugins", label: "Installed plugins" },

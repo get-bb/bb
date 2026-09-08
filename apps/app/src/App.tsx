@@ -39,6 +39,7 @@ import {
   SETTINGS_PLUGIN_ROUTE_PATH,
   SETTINGS_PLUGINS_ROUTE_PATH,
   SETTINGS_MACHINE_ROUTE_PATH,
+  SETTINGS_PROJECT_ROUTE_PATH,
   SETTINGS_ROUTE_PATH,
   SETTINGS_SECTION_ROUTE_PATH,
   SKILLS_ROUTE_PATH,
@@ -66,6 +67,11 @@ const SettingsView = lazy(() =>
 const ToolsView = lazy(() =>
   import("./views/ToolsView").then((m) => ({
     default: m.ToolsView,
+  })),
+);
+const ProjectDetailSettingsView = lazy(() =>
+  import("./views/ProjectDetailSettingsView").then((m) => ({
+    default: m.ProjectDetailSettingsView,
   })),
 );
 const MachineSettingsView = lazy(() =>
@@ -220,6 +226,10 @@ function AppRoutes() {
           <Route
             path={SETTINGS_MACHINE_ROUTE_PATH}
             element={<MachineSettingsView />}
+          />
+          <Route
+            path={SETTINGS_PROJECT_ROUTE_PATH}
+            element={<ProjectDetailSettingsView />}
           />
           <Route
             path={PROJECT_SETTINGS_ROUTE_PATH}
