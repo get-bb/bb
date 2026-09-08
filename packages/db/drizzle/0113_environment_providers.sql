@@ -1,3 +1,14 @@
+CREATE TABLE `environment_hook_operations` (
+	`id` text PRIMARY KEY NOT NULL,
+	`operation_id` text NOT NULL,
+	`host_id` text NOT NULL,
+	`path` text NOT NULL,
+	`kind` text NOT NULL,
+	`started_at` integer NOT NULL,
+	`finished_at` integer,
+	`error` text
+);
+--> statement-breakpoint
 CREATE TABLE `environment_launches` (
 	`thread_id` text PRIMARY KEY NOT NULL,
 	`provider_id` text NOT NULL,
@@ -12,7 +23,7 @@ CREATE TABLE `environment_launches` (
 	`host_id` text,
 	`path` text,
 	`claim_path` text,
-	`owns_path` integer NOT NULL,
+	`owns_path` integer DEFAULT false NOT NULL,
 	`merge_base_branch` text,
 	`resource` text,
 	`step_text` text NOT NULL,

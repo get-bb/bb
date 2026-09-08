@@ -50,7 +50,8 @@ Making your repo work with bb:
   signal reports failure in the destroy transcript, but bb removes the
   worktree after script termination. If transport fails, bb cancels the hook
   and confirms its process group has stopped before releasing the workspace.
-  An unreachable daemon or unknown operation leaves cleanup pending for retry.
+  An unreachable daemon leaves cleanup pending for retry. Durable daemon
+  cancellation records resolve never-started operations and prevent delayed execution.
   Teardown only runs for paths whose ownership was confirmed by create.
 
   New worktrees do not contain untracked files such as .env.local. To copy

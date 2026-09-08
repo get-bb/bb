@@ -1589,7 +1589,9 @@ export const hostDaemonCommandRegistry = {
   "environment.hook.cancel": defineHostDaemonCommandDescriptor({
     type: "environment.hook.cancel",
     schema: environmentHookCancelCommandSchema,
-    resultSchema: emptyCommandResultSchema,
+    resultSchema: z
+      .object({ status: z.enum(["never-started", "terminated"]) })
+      .strict(),
     transport: "onlineRpc",
     retryable: true,
     flushEventsBeforeResult: false,

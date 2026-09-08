@@ -174,7 +174,7 @@ const WORKSPACE_DIFF_AVAILABLE_RESULT: JsonObject = {
 
 const ONLINE_RPC_RESPONSE_RESULT_FIXTURES: OnlineRpcResponseResultFixtures = {
   "environment.hook.run": {},
-  "environment.hook.cancel": {},
+  "environment.hook.cancel": { status: "terminated" },
   "desktop.browser.list_instances": { instances: [] },
   "desktop.browser.list_tabs": { tabs: [] },
   "desktop.browser.create_tab": {
@@ -966,7 +966,7 @@ const CONTRIBUTED_ENV = [
 
 describe("host-daemon command schemas", () => {
   it("uses the current host-daemon protocol version", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(190);
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(191);
     expect(HOST_ARTIFACT_MAX_BYTES).toBe(256 * 1024 * 1024);
   });
 

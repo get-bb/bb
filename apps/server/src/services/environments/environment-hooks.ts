@@ -130,7 +130,7 @@ export async function cancelPendingEnvironmentHook(
     .where(eq(environmentHookOperations.id, id))
     .get();
   if (operation === undefined || operation.finishedAt !== null) return;
-  await callHostOnlineRpc(deps, {
+  const result = await callHostOnlineRpc(deps, {
     hostId: operation.hostId,
     timeoutMs: TRANSPORT_GRACE_MS,
     command: {
@@ -140,7 +140,13 @@ export async function cancelPendingEnvironmentHook(
   });
   deps.db
     .update(environmentHookOperations)
-    .set({ finishedAt: Date.now(), error: "Environment hook cancelled" })
+    .set({
+      finishedAt: Date.now(),
+      error:
+        result.status === "never-started"
+          ? "Environment hook never started"
+          : "Environment hook cancelled",
+    })
     .where(eq(environmentHookOperations.id, id))
     .run();
 }
