@@ -225,25 +225,26 @@ export function MachineEnvironmentSettings() {
               }
               readOnly
             />
-            <span aria-hidden="true" className="size-8" />
+            <div className="flex size-8 items-center justify-center">
+              <Switch
+                aria-label="Automatic GH_TOKEN"
+                checked={settings?.machineGitCredentialsEnabled ?? true}
+                disabled={!settings || updateSettings.isPending}
+                onCheckedChange={(enabled) =>
+                  updateSettings.mutate(
+                    { ...settings!, machineGitCredentialsEnabled: enabled },
+                    {
+                      onSuccess: () => {
+                        void query.refetch();
+                      },
+                    },
+                  )
+                }
+              />
+            </div>
           </div>
           <div className="flex flex-wrap items-center gap-2 text-xs">
             <SettingsBadge>Automatic</SettingsBadge>
-            <Switch
-              aria-label="Automatic GH_TOKEN"
-              checked={settings?.machineGitCredentialsEnabled ?? true}
-              disabled={!settings || updateSettings.isPending}
-              onCheckedChange={(enabled) =>
-                updateSettings.mutate(
-                  { ...settings!, machineGitCredentialsEnabled: enabled },
-                  {
-                    onSuccess: () => {
-                      void query.refetch();
-                    },
-                  },
-                )
-              }
-            />
             <span
               role={gitMissing ? "alert" : "status"}
               className={
