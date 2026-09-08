@@ -3588,3 +3588,62 @@ it("settles an abandoned maintenance lease after persisted suspension and admits
       assertMachineLifecycleAdmission(h.deps, host.id),
     ).not.toThrow();
   }));
+
+it("discards an older observation failure after a newer observation confirms preservation", async () =>
+  withTestHarness(async (h) => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(100_000);
+    const { host } = seedHostSession(h.deps, { id: "observation-race" });
+    adoptMachine(h, host.id, { snapshot: "durable" });
+    updateHost(h.db, h.hub, host.id, {
+      phase: "suspended",
+      suspendedAt: 40_000,
+    });
+    const entered = createDeferredPromise<void>();
+    const older = createDeferredPromise<void>();
+    let calls = 0;
+    installMachineProvider(
+      machineDeclaration(host.id, {
+        experimental_observe: async ({ resource }) => {
+          if (++calls === 1) {
+            entered.resolve();
+            await older.promise;
+          }
+          return { state: "suspended", expiresAt: null, resource };
+        },
+        experimental_policy: async () => ({
+          idleSuspendMs: 900_000,
+          retireAfterMs: 2592000000,
+          deadlineLeadMs: 900_000,
+        }),
+      }),
+    );
+    h.db
+      .insert(machineLifecycles)
+      .values({
+        hostId: host.id,
+        observedState: "running",
+        observedAt: 40_000,
+        expiresAt: 99_000,
+        recoveryState: "saving",
+        lastSnapshotAt: 40_000,
+        leaseId: "previous-process",
+        leaseUntil: 70_000,
+      })
+      .run();
+    const pending = observeMachineLifecycle(h.deps, host.id);
+    await entered.promise;
+    await observeMachineLifecycle(h.deps, host.id);
+    const saved = getMachineLifecycle(h.deps, host.id);
+    expect(saved).toMatchObject({
+      recoveryState: "saved",
+      leaseId: null,
+      expiresAt: null,
+      observedState: "suspended",
+    });
+    expect(() => assertMachineLifecycleAdmission(h.deps, host.id)).not.toThrow();
+    older.reject(new Error("observation transport timeout"));
+    await expect(pending).resolves.toBeUndefined();
+    expect(getMachineLifecycle(h.deps, host.id)).toEqual(saved);
+    expect(() => assertMachineLifecycleAdmission(h.deps, host.id)).not.toThrow();
+  }));

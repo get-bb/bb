@@ -105,26 +105,7 @@ export async function observeMachineLifecycle(
       policy: policySchema.parse(await policy({ hostId, resource })),
     }),
   );
-  if (!result.ok) {
-    if (previous !== undefined)
-      deps.db
-        .update(machineLifecycles)
-        .set({
-          message:
-            previous.expiresAt !== null && previous.expiresAt <= Date.now()
-              ? `Vendor expiry passed while observation failed: ${result.error}. Changes since the last successful snapshot may be lost.`
-              : result.error,
-          observedState: "unknown",
-          ...(previous.expiresAt !== null && previous.expiresAt <= Date.now()
-            ? { recoveryState: "lost-since-last-snapshot" as const }
-            : {}),
-        })
-        .where(eq(machineLifecycles.hostId, hostId))
-        .run();
-    throw new ApiError(409, "machine_observation_failed", result.error);
-  }
-  const { observation, policy: effective } = result.value;
-  deps.db.transaction((tx) => {
+  const failed = deps.db.transaction((tx) => {
     const current = getHost(tx, hostId);
     const state = tx
       .select()
@@ -140,6 +121,24 @@ export async function observeMachineLifecycle(
       (state?.leaseUntil != null && state.leaseUntil > Date.now())
     )
       return;
+    if (!result.ok) {
+      if (previous !== undefined)
+        tx.update(machineLifecycles)
+          .set({
+            message:
+              previous.expiresAt !== null && previous.expiresAt <= Date.now()
+                ? `Vendor expiry passed while observation failed: ${result.error}. Changes since the last successful snapshot may be lost.`
+                : result.error,
+            observedState: "unknown",
+            ...(previous.expiresAt !== null && previous.expiresAt <= Date.now()
+              ? { recoveryState: "lost-since-last-snapshot" as const }
+              : {}),
+          })
+          .where(eq(machineLifecycles.hostId, hostId))
+          .run();
+      return true;
+    }
+    const { observation, policy: effective } = result.value;
     const now = Date.now();
     const unusedSince = machineHasLiveThreads(tx, hostId)
       ? null
@@ -202,6 +201,8 @@ export async function observeMachineLifecycle(
       .where(eq(hosts.id, hostId))
       .run();
   });
+  if (failed && !result.ok)
+    throw new ApiError(409, "machine_observation_failed", result.error);
 }
 
 export function machineLifecycleStatus(
