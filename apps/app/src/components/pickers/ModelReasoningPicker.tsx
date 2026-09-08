@@ -941,22 +941,21 @@ export function ModelReasoningPicker({
 
         <MenuHoverProvider>
           <div
+            key={activeProviderId || "no-provider"}
+            ref={isCompactViewport ? undefined : listRef}
             className={cn(
               !isCompactViewport &&
-                "min-h-0 flex flex-1 flex-col overflow-hidden",
+                "min-h-0 flex flex-1 flex-col overflow-y-auto overscroll-contain",
             )}
           >
             <div
-              ref={listRef}
-              key={activeProviderId || "no-provider"}
+              ref={isCompactViewport ? listRef : undefined}
               role={showSearchInput ? "listbox" : undefined}
               id={showSearchInput ? listboxId : undefined}
               aria-label={showSearchInput ? "Models" : undefined}
               className={cn(
                 "px-1 pb-1 pt-0",
-                isCompactViewport
-                  ? "overflow-y-auto"
-                  : "min-h-0 max-h-64 flex-1 overflow-y-auto overscroll-contain",
+                isCompactViewport ? "overflow-y-auto" : "shrink-0",
               )}
             >
               {isShowingModelError ? null : (

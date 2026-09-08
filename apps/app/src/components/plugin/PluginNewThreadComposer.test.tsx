@@ -991,6 +991,19 @@ describe("PluginNewThreadComposer seeding", () => {
       ),
     ).toBe(false);
     expect(latestPromptBoxProps().attachments.items).toEqual([]);
+    await act(async () => {
+      latestPromptBoxProps().execution.model.onChange("gpt-5.6-sol");
+    });
+    expect(latestPromptBoxProps().execution.model.selected).toBe("gpt-5.6-sol");
+    expect(latestPromptBoxProps().value).toBe(
+      "Continue from @thread:thr_source",
+    );
+    await act(async () => {
+      latestPromptBoxProps().execution.provider.onChange("claude-code");
+    });
+    expect(latestPromptBoxProps().execution.provider.selectedId).toBe(
+      "claude-code",
+    );
   });
 
   it("applies a replacing initial prompt from location state exactly once", async () => {

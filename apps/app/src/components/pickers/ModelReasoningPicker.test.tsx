@@ -503,7 +503,7 @@ describe("ModelReasoningPicker", () => {
     ).toBe("");
   });
 
-  it("caps the desktop picker and scrolls only the model list", () => {
+  it("keeps desktop models from collapsing and lets all controls scroll", () => {
     renderPicker({ modelOptions: manyCodexModels });
 
     fireEvent.click(
@@ -521,11 +521,13 @@ describe("ModelReasoningPicker", () => {
       ...menu.querySelectorAll<HTMLElement>("[class*='overflow-y-auto']"),
     ];
     expect(scrollers).toHaveLength(1);
+    expect(scrollers[0].contains(screen.getByText("High"))).toBe(true);
 
     const models = screen.getByRole("listbox", { name: "Models" });
-    expect(scrollers[0]).toBe(models);
-    expect(models.className).toContain("overscroll-contain");
-    expect(models.className).toContain("max-h-64");
+    expect(scrollers[0].contains(models)).toBe(true);
+    expect(models.className).toContain("shrink-0");
+    expect(scrollers[0].className).toContain("overscroll-contain");
+    expect(models.className).not.toContain("max-h-");
     expect(models.contains(screen.getByText("High"))).toBe(false);
   });
 
@@ -673,11 +675,13 @@ describe("ModelReasoningPicker", () => {
 
     const search = screen.getByPlaceholderText("Search models");
     const list = screen.getByRole("listbox", { name: "Models" });
-    list.scrollTop = 120;
+    const viewport = list.parentElement;
+    if (!viewport) throw new Error("Missing model picker scroll viewport");
+    viewport.scrollTop = 120;
 
     fireEvent.change(search, { target: { value: "o4" } });
 
-    expect(list.scrollTop).toBe(0);
+    expect(viewport.scrollTop).toBe(0);
   });
 
   it("resets retained mobile browse state after the drawer closes", () => {
