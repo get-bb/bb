@@ -64,7 +64,7 @@ export function createWorktreeHostEntry() {
             branchName: input.branchName,
             baseBranch,
             branchMode: input.branchMode,
-            timeoutMs: input.setupTimeoutMs,
+            timeoutMs: input.timeoutMs,
             onProgress: createHostProgress({
               operationId: input.operationId,
               emit: (payload) =>
@@ -96,7 +96,7 @@ export function createWorktreeHostEntry() {
             await rm(completionPathForWorktree(path), { force: true });
             await removeWorktree({
               path,
-              timeoutMs: input.teardownTimeoutMs,
+              timeoutMs: input.timeoutMs,
               force: true,
               pruneEmptyParent: true,
               onProgress: createHostProgress({

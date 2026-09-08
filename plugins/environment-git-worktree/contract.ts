@@ -17,7 +17,7 @@ export const worktreeHostContract = defineRpcContract({
         branchName: z.string().min(1),
         baseBranch: worktreeBaseBranchSchema,
         branchMode: z.enum(["reset", "reuse-existing"]),
-        setupTimeoutMs: z.number().int().positive(),
+        timeoutMs: z.number().int().positive(),
       })
       .strict(),
     output: z.discriminatedUnion("status", [
@@ -39,7 +39,7 @@ export const worktreeHostContract = defineRpcContract({
         operationId: z.string().min(1),
         pathKey: z.string().min(1),
         path: z.string().min(1).nullable(),
-        teardownTimeoutMs: z.number().int().positive(),
+        timeoutMs: z.number().int().positive(),
       })
       .strict(),
     output: z.discriminatedUnion("status", [

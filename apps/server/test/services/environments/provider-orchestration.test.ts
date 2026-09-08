@@ -1,3 +1,5 @@
+import { registerTestHostRpcCapture } from "../../helpers/commands.js";
+import { reportEnvironmentHookProgress } from "../../../src/services/environments/environment-hooks.js";
 import { recordProvisionedEnvironmentWorkspace } from "@bb/db/internal-environment-lifecycle";
 import { createThreadFromRequest } from "../../../src/services/threads/thread-create.js";
 import { encodeClientTurnRequestIdNumber } from "@bb/domain";
@@ -62,7 +64,7 @@ function setup(
   harness: TestAppHarness,
   overrides: Partial<PluginEnvironmentProviderDeclaration> = {},
 ) {
-  const { host } = seedHostSession(harness.deps, { id: "host_test" });
+  const { host, session } = seedHostSession(harness.deps, { id: "host_test" });
   const { project, source } = seedProjectWithSource(harness.deps, {
     hostId: host.id,
     path: "/tmp/project",
@@ -146,7 +148,18 @@ function setup(
     );
     return environment.id;
   };
-  return { ask, attach, context, host, record, row, settled, source, thread };
+  return {
+    ask,
+    attach,
+    context,
+    host,
+    session,
+    record,
+    row,
+    settled,
+    source,
+    thread,
+  };
 }
 
 function pendingUntilAbort(signal: AbortSignal): Promise<never> {
@@ -165,6 +178,140 @@ afterEach(() => {
 });
 
 describe("core environment orchestration", () => {
+  it.each([true, false])(
+    "runs core hooks only for ownsPath=%s, in provider order",
+    async (ownsPath) =>
+      withTestHarness(async (harness) => {
+        const order: string[] = [];
+        const fixture = setup(harness, {
+          policy: { retireGraceMs: 0 },
+          create: async () => {
+            order.push("create");
+            return { status: "created", path: "/tmp/hooks", ownsPath };
+          },
+          remove: async () => {
+            order.push("remove");
+            return { status: "removed" };
+          },
+        });
+        registerTestHostRpcCapture(harness.deps, {
+          hostId: fixture.host.id,
+          sessionId: fixture.session.id,
+          onEnvironmentHook: async (command) => {
+            expect(command.timeoutMs).toBe(15 * 60 * 1000);
+            expect(command.path).toBe("/tmp/hooks");
+            order.push(command.kind);
+            reportEnvironmentHookProgress(harness.deps, fixture.host.id, {
+              type: "environment.hook.progress",
+              operationId: command.operationId,
+              entry: {
+                type: "step",
+                text: "Running setup…",
+                status: "started",
+              },
+            });
+            if (command.kind === "setup")
+              expect(fixture.row().stepText).toBe("Running setup…");
+          },
+        });
+        fixture.ask();
+        await fixture.settled();
+        expect(fixture.row().phase).toBe("ready");
+        const environmentId = fixture.attach();
+        await sweepProviderEnvironment(harness.deps, environmentId);
+        expect(getEnvironment(harness.db, environmentId)?.teardownStatus).toBe(
+          "removed",
+        );
+        expect(order).toEqual(
+          ownsPath
+            ? ["create", "setup", "teardown", "remove"]
+            : ["create", "remove"],
+        );
+      }),
+  );
+
+  it("fails setup with its output and retains the path claim through cleanup", async () =>
+    withTestHarness(async (harness) => {
+      const order: string[] = [];
+      const fixture = setup(harness, {
+        create: async (context) => {
+          expect(await context.experimental_claimPath("/tmp/hooks")).toBe(true);
+          return {
+            status: "created",
+            path: "/tmp/hooks",
+            ownsPath: true,
+            resource: { token: "cleanup" },
+          };
+        },
+        remove: async (context) => {
+          order.push("remove");
+          expect(context.path).toBe("/tmp/hooks");
+          expect(context.resource).toEqual({ token: "cleanup" });
+          expect(fixture.row().claimPath).toBe("/tmp/hooks");
+          return { status: "removed" };
+        },
+      });
+      registerTestHostRpcCapture(harness.deps, {
+        hostId: fixture.host.id,
+        sessionId: fixture.session.id,
+        onEnvironmentHook: async (command) => {
+          order.push(command.kind);
+          reportEnvironmentHookProgress(harness.deps, fixture.host.id, {
+            type: "environment.hook.progress",
+            operationId: command.operationId,
+            entry: { type: "output", text: "script diagnostic", status: null },
+          });
+          throw new Error(`${command.kind} failed`);
+        },
+      });
+      fixture.ask();
+      await fixture.settled();
+      expect(fixture.row()).toMatchObject({
+        phase: "failed",
+        failure: "terminal",
+        claimPath: "/tmp/hooks",
+      });
+      expect(fixture.ask()).toMatchObject({
+        action: "reject",
+        message: expect.stringContaining("setup failed"),
+        log: expect.stringContaining("script diagnostic"),
+      });
+      await cancelProviderLaunch(harness.deps, fixture.thread.id);
+      expect(order).toEqual(["setup", "teardown", "remove"]);
+      expect(fixture.row()).toMatchObject({
+        claimPath: null,
+        cancelPending: false,
+      });
+    }));
+
+  it("reports teardown transport failure and still removes the environment", async () =>
+    withTestHarness(async (harness) => {
+      const remove = vi.fn(async () => ({ status: "removed" as const }));
+      const fixture = setup(harness, { policy: { retireGraceMs: 0 }, remove });
+      registerTestHostRpcCapture(harness.deps, {
+        hostId: fixture.host.id,
+        sessionId: fixture.session.id,
+        onEnvironmentHook: async (command) => {
+          if (command.kind === "teardown")
+            throw new Error("teardown unavailable");
+        },
+      });
+      const warn = vi.fn();
+      harness.deps.logger = { ...harness.deps.logger, warn };
+      fixture.ask();
+      await fixture.settled();
+      const environmentId = fixture.attach();
+      await sweepProviderEnvironment(harness.deps, environmentId);
+      expect(remove).toHaveBeenCalledOnce();
+      expect(getEnvironment(harness.db, environmentId)?.teardownStatus).toBe(
+        "removed",
+      );
+      expect(warn).toHaveBeenCalledWith(
+        expect.objectContaining({ error: "teardown unavailable" }),
+        "Environment teardown hook failed; continuing removal",
+      );
+    }));
+
   it.each(["new reuse", "reuse", "directory", "restored dispatch"])(
     "refuses %s admission while another launch owns the checkout",
     async (admission) =>

@@ -9,8 +9,8 @@ import {
 } from "./contract.js";
 import { GIT_WORKTREE_ENVIRONMENT_PROVIDER_ID } from "./provider-id.js";
 
-const SETUP_TIMEOUT_MS = 15 * 60 * 1000;
-const TEARDOWN_TIMEOUT_MS = 15 * 60 * 1000;
+const CREATE_TIMEOUT_MS = 15 * 60 * 1000;
+const REMOVE_TIMEOUT_MS = 15 * 60 * 1000;
 
 export const worktreeInputsSchema = z
   .object({
@@ -59,9 +59,9 @@ export default async function worktreePlugin(bb: BbPluginApi): Promise<void> {
               : context.suggestedBranchName,
             baseBranch: context.inputs.branch,
             branchMode: context.rebuild ? "reuse-existing" : "reset",
-            setupTimeoutMs: SETUP_TIMEOUT_MS,
+            timeoutMs: CREATE_TIMEOUT_MS,
           },
-          { hostId, signal: context.signal, timeoutMs: SETUP_TIMEOUT_MS },
+          { hostId, signal: context.signal, timeoutMs: CREATE_TIMEOUT_MS },
         );
         if (result.status === "failed") {
           return {
@@ -102,12 +102,12 @@ export default async function worktreePlugin(bb: BbPluginApi): Promise<void> {
             operationId,
             pathKey: context.pathKey,
             path: context.path,
-            teardownTimeoutMs: TEARDOWN_TIMEOUT_MS,
+            timeoutMs: REMOVE_TIMEOUT_MS,
           },
           {
             hostId: context.hostId,
             signal: context.signal,
-            timeoutMs: TEARDOWN_TIMEOUT_MS,
+            timeoutMs: REMOVE_TIMEOUT_MS,
           },
         );
         return result;

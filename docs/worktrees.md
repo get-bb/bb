@@ -88,8 +88,11 @@ Contract:
 ## Run setup with `.bb-env-setup.sh`
 
 Drop a file named `.bb-env-setup.sh` at the root of your project. If bb finds
-one when it creates a worktree, it runs the script inside the new worktree
-before handing the thread to the agent.
+one after an environment provider creates a path it owns (`ownsPath: true`), bb
+runs the script inside that path before handing the thread to the agent. Core
+owns this policy for every provider. Attaching a project checkout or personal
+workspace (`ownsPath: false`) does not run either hook. Provider-specific
+preparation, including `.worktreeinclude` copying, finishes before setup starts.
 
 Use it for anything the agent will need in a fresh checkout — install
 dependencies, sync local state, generate tokens, etc. To bring local files in
@@ -110,7 +113,7 @@ Contract:
 - A non-zero exit, a signal, or a timeout (15 minutes) fails provisioning and
   the thread doesn't start.
 - POSIX only — supported on macOS, Linux, and WSL2. Native Windows isn't
-  supported.
+  supported; bb reports that POSIX shell scripts are unsupported on Windows.
 
 ## Cleanup
 
@@ -148,17 +151,17 @@ docker rm -f "my-project-${USER}"
 
 Contract:
 
-- bb runs the script only when it destroys a managed worktree.
+- bb runs the script before calling a provider to remove a path it owns,
+  including cleanup after failed setup. Attached paths do not run it.
 - bb runs `env bash .bb-env-teardown.sh` from the worktree before it removes
   the worktree, so the script can read tracked and generated files.
-- stdin is closed. bb records stdout and stderr in the environment destroy
-  transcript.
+- stdin is closed. bb records stdout and stderr in the server lifecycle logs.
 - The script gets a separate 15-minute timeout.
 - A non-zero exit, a signal, or a timeout reports a failure. It never stops bb
   from removing the worktree.
 - The script receives the same sanitized environment as the setup script.
 - POSIX only — supported on macOS, Linux, and WSL2. Native Windows isn't
-  supported.
+  supported; bb reports that POSIX shell scripts are unsupported on Windows.
 
 ## If something isn't working
 

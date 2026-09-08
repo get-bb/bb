@@ -1,9 +1,9 @@
 import {
-  experimental_killProcessGroup as killProcessGroup,
-  experimental_sanitizeInheritedChildProcessEnv as sanitizeInheritedChildProcessEnv,
-  experimental_spawnPortableOutputProcess as spawnPortableOutputProcess,
-  experimental_supportsProcessGroups as supportsProcessGroups,
-} from "@get-bb/plugin-sdk/host";
+  killProcessGroup,
+  sanitizeInheritedChildProcessEnv,
+  spawnPortableOutputProcess,
+  supportsProcessGroups,
+} from "@bb/process-utils";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { WorkspaceError } from "bb-environment-provider-host/git";

@@ -1,4 +1,8 @@
 import {
+  runEnvironmentHook,
+  cancelEnvironmentHook,
+} from "./command-handlers/environment-hook.js";
+import {
   providerCliInstallEventSchema,
   type HostDaemonCommand,
   type HostDaemonCommandResult,
@@ -526,6 +530,8 @@ const commandHandlers: CommandHandlerMap = {
 };
 
 const onlineRpcHandlers: OnlineRpcHandlerMap = {
+  "environment.hook.run": runEnvironmentHook,
+  "environment.hook.cancel": cancelEnvironmentHook,
   "desktop.browser.list_instances": async (command, options) => {
     if (!options.desktopBrowserBroker)
       throw new Error("Desktop browser broker unavailable");

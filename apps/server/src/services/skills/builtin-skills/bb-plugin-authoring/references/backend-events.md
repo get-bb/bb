@@ -246,6 +246,14 @@ fresh path keys. Retirement starts after the last live thread archives or is del
 A per-environment lock serializes removal; failures persist and retry.
 Environment responses expose only the read-only lifecycle projection:
 phase, retireAt, and teardown status/attempt/message.
+Core runs `.bb-env-setup.sh` on the environment's host after `create` returns
+`ownsPath: true`, and `.bb-env-teardown.sh` before `remove`. Each has a separate
+15-minute timeout. Setup failure fails the launch and core cleans up; teardown
+failure is reported and removal continues. Hook output uses the launch report.
+Providers must not call these hooks themselves. Attached paths (`ownsPath: false`)
+never run them. Provider-specific preparation runs inside `create` first (for
+example, Worktree copies `.worktreeinclude` files).
+
 
 ### bb.http — HTTP routes
 

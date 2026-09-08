@@ -162,3 +162,10 @@ validation to perform, and what to report back. Ask for outcome, changed files
 or artifacts, validation performed, and blockers.
 
 `bb environment show <id>` includes the core-owned lifecycle phase, retirement deadline, and teardown status/attempt/message. Archive or delete the last live thread to begin its provider's retirement grace; unarchive cancels pending retirement. Teardown failures retry automatically. Checkout policy keeps its directory indefinitely.
+
+For paths a provider owns, bb runs `.bb-env-setup.sh` after create and
+`.bb-env-teardown.sh` before remove on that machine, with separate 15-minute
+timeouts. Setup failure fails the launch with output in provisioning progress;
+teardown script failure is logged and removal continues. Attaching a project
+checkout or personal workspace skips both hooks. Providers do not run these
+core hooks themselves.
