@@ -1,12 +1,22 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { defaultAppTheme } from "@bb/domain";
+import { CompactViewportOverrideProvider } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { AppearanceSettingsSection } from "./SettingsView";
 
 afterEach(cleanup);
 
-function renderSection() {
+function CompactViewport({ children }: { children: ReactNode }) {
+  return (
+    <CompactViewportOverrideProvider isCompactViewport>
+      {children}
+    </CompactViewportOverrideProvider>
+  );
+}
+
+function renderSection({ compact = false } = {}) {
   const onAppearanceThemeChange = vi.fn();
   const onAppearanceThemePrefetch = vi.fn();
   const onAppearanceThemePreview = vi.fn();
@@ -32,6 +42,7 @@ function renderSection() {
       onThemePreferenceChange={vi.fn()}
       themePreference="system"
     />,
+    compact ? { wrapper: CompactViewport } : undefined,
   );
   return {
     onAppearanceThemeChange,
@@ -82,6 +93,23 @@ describe("palette hover preview", () => {
     expect(onAppearanceThemePreview).toHaveBeenLastCalledWith(
       "plugin:pack:ocean",
     );
+  });
+
+  it("previews compact keyboard focus and clears it on blur or cancel", async () => {
+    const { onAppearanceThemePreview } = renderSection({ compact: true });
+    fireEvent.click(screen.getByRole("button", { name: "Palette" }));
+
+    const item = await screen.findByRole("menuitem", { name: /Nord/u });
+    fireEvent.focus(item);
+    expect(onAppearanceThemePreview).toHaveBeenLastCalledWith("nord");
+
+    fireEvent.blur(item);
+    expect(onAppearanceThemePreview).toHaveBeenLastCalledWith(null);
+
+    fireEvent.focus(item);
+    onAppearanceThemePreview.mockClear();
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(onAppearanceThemePreview).toHaveBeenCalledWith(null);
   });
 
   it("clears the preview when the menu closes without a selection", async () => {
