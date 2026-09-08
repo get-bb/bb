@@ -236,7 +236,19 @@ async function invokeCreate(
     }),
   );
   if (!invocation.ok) throw new Error(invocation.error);
-  return createResultSchema.parse(invocation.value);
+  const result = createResultSchema.parse(invocation.value);
+  const reservedHostId =
+    getMachineLaunch(deps.db, launch.key)?.hostId ?? launch.hostId;
+  if (
+    result.status === "created" &&
+    reservedHostId !== null &&
+    result.hostId !== reservedHostId
+  ) {
+    throw new Error(
+      `Machine provider "${record.provider.id}" returned host "${result.hostId}" instead of reserved host "${reservedHostId}"`,
+    );
+  }
+  return result;
 }
 
 async function removeResource(

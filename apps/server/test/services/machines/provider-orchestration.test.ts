@@ -396,6 +396,136 @@ describe("core machine provider orchestration", () => {
       revoke.mockRestore();
     }));
 
+  it.each(["normal", "cancelled", "recovery"])(
+    "rejects a reserved-host mismatch during %s creation and cleans only the checkpoint",
+    async (scenario) =>
+      withTestHarness(async (harness) => {
+        const { host: reserved } = seedHostSession(harness.deps, {
+          id: "host_reserved",
+        });
+        const { host: foreign } = seedHostSession(harness.deps, {
+          id: "host_foreign",
+        });
+        const foreignBefore = getHost(harness.db, foreign.id);
+        const key = `host-mismatch-${scenario}`;
+        const resource = { allocation: "reserved-allocation" };
+        const checkpointed = createDeferredPromise<void>();
+        const complete = createDeferredPromise<void>();
+        const create = vi.fn(
+          async (
+            context: Parameters<PluginMachineProviderDeclaration["create"]>[0],
+          ) => {
+            const row = getMachineLaunch(harness.db, context.key);
+            if (row === null) throw new Error("Missing launch");
+            updateMachineLaunchAttempt(harness.db, {
+              ...row,
+              hostId: reserved.id,
+            });
+            await context.checkpoint(resource);
+            checkpointed.resolve();
+            if (scenario === "cancelled") await complete.promise;
+            return {
+              status: "created" as const,
+              hostId: foreign.id,
+              resource: { allocation: "foreign-allocation" },
+            };
+          },
+        );
+        const remove = vi.fn(async () => {
+          expect(getMachineLaunch(harness.db, key)).toMatchObject({
+            hostId: reserved.id,
+            resource,
+          });
+          return { status: "removed" as const };
+        });
+        const record = installMachineProvider(
+          machineDeclaration(foreign.id, { create, remove }),
+        );
+        const release = vi.spyOn(serverAccess, "release");
+        const revokeEnroll = vi.spyOn(
+          harness.deps.machineAuth,
+          "revokeHostEnrollKeys",
+        );
+        const revokeAuth = vi.spyOn(
+          harness.deps.machineAuth,
+          "revokeHostAuthKeys",
+        );
+        try {
+          if (scenario === "recovery") {
+            seedReadyLaunch(harness, { key, hostId: reserved.id });
+            const row = getMachineLaunch(harness.db, key);
+            if (row === null) throw new Error("Missing launch");
+            updateMachineLaunchAttempt(harness.db, {
+              ...row,
+              phase: "cancelled",
+              cancelPending: true,
+              resource: null,
+            });
+            await expect(
+              cancelMachineLaunch(harness.deps, key),
+            ).rejects.toThrow("instead of reserved host");
+            expect(getMachineLaunch(harness.db, key)).toMatchObject({
+              hostId: reserved.id,
+              resource,
+              cancelPending: true,
+            });
+            expect(remove).not.toHaveBeenCalled();
+            expect(release).not.toHaveBeenCalled();
+            expect(revokeEnroll).not.toHaveBeenCalled();
+            expect(revokeAuth).not.toHaveBeenCalled();
+            await cancelMachineLaunch(harness.deps, key);
+          } else {
+            askMachineLaunch(harness.deps, {
+              key,
+              record,
+              projectId: null,
+              inputs: null,
+            });
+            await checkpointed.promise;
+            if (scenario === "normal") {
+              await vi.waitFor(() => {
+                expect(getMachineLaunch(harness.db, key)).toMatchObject({
+                  phase: "failed",
+                  failure: "terminal",
+                  hostId: reserved.id,
+                  resource,
+                  message: expect.stringContaining("instead of reserved host"),
+                });
+              });
+            }
+            const cancellation = cancelMachineLaunch(harness.deps, key);
+            complete.resolve();
+            await cancellation;
+          }
+          expect(create).toHaveBeenCalledOnce();
+          expect(remove).toHaveBeenCalledExactlyOnceWith(
+            expect.objectContaining({ hostId: reserved.id, resource }),
+          );
+          expect(release).toHaveBeenCalledExactlyOnceWith(harness.deps, {
+            key,
+            hostId: reserved.id,
+          });
+          expect(revokeEnroll).toHaveBeenCalledExactlyOnceWith({
+            hostId: reserved.id,
+          });
+          expect(revokeAuth).toHaveBeenCalledExactlyOnceWith({
+            hostId: reserved.id,
+          });
+          expect(getMachineLaunch(harness.db, key)).toMatchObject({
+            hostId: reserved.id,
+            cancelPending: false,
+            cleanupResourceRemoved: true,
+          });
+          expect(getHost(harness.db, reserved.id)?.phase).toBe("destroyed");
+          expect(getHost(harness.db, foreign.id)).toEqual(foreignBefore);
+        } finally {
+          release.mockRestore();
+          revokeEnroll.mockRestore();
+          revokeAuth.mockRestore();
+        }
+      }),
+  );
+
   it("finalizes host cleanup when creation succeeds after cancellation", async () =>
     withTestHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps, {
