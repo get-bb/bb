@@ -1,6 +1,7 @@
 import * as gitCredentials from "../../../src/services/machines/git-credentials.js";
 import {
   createTerminalSession,
+  createQueuedThreadMessage,
   terminalSessions,
   events,
   getThread,
@@ -3214,7 +3215,16 @@ describe("finite machine lifecycle", () => {
       expect(machineLifecycleStatus(h.deps, host.id, {}).retentionAt).toBe(
         210_000,
       );
-      machineLifecycleStatus(h.deps, host.id, { keep: true });
+      const sdk = createBbSdk({
+        transport: createHttpTransport({
+          runtime: "node",
+          baseUrl: "http://bb.test",
+          fetch: async (input, init) => h.app.request(input, init),
+        }),
+      });
+      expect(
+        await sdk.hosts.experimental_lifecycle({ hostId: host.id, keep: true }),
+      ).toMatchObject({ keep: true, retentionAt: null });
       vi.setSystemTime(15_000);
       idleSuspendMs = 1_000;
       retireAfterMs = 1_000;
@@ -3372,3 +3382,150 @@ it.each([false, true])(
       ).toBe(true);
     }),
 );
+
+it("concurrent dispatch shares one observed restore and records an expired image failure", async () =>
+  withTestHarness(async (h) => {
+    const { host } = seedHostSession(h.deps, { id: "host_observed_restore" });
+    adoptMachine(h, host.id, { snapshot: "saved-image" });
+    updateHost(h.db, h.hub, host.id, {
+      phase: "suspended",
+      suspendedAt: Date.now(),
+    });
+    const restoring = createDeferredPromise<void>();
+    const proceed = createDeferredPromise<void>();
+    let running = false;
+    let expired = false;
+    let resumes = 0;
+    installMachineProvider(
+      machineDeclaration(host.id, {
+        experimental_observe: async ({ resource }) => ({
+          state: running ? "running" : "suspended",
+          expiresAt: running ? Date.now() + 86_400_000 : null,
+          resource,
+        }),
+        experimental_policy: async () => ({
+          idleSuspendMs: 900_000,
+          retireAfterMs: 30 * 86_400_000,
+          deadlineLeadMs: 900_000,
+        }),
+        suspend: async ({ resource }) => ({ resource }),
+        resume: async ({ resource, checkpoint }) => {
+          resumes += 1;
+          restoring.resolve();
+          await proceed.promise;
+          if (expired) throw new Error("Snapshot image no longer exists");
+          await checkpoint({
+            snapshot: "saved-image",
+            sandbox: "restored-once",
+          });
+          running = true;
+          return { resource };
+        },
+      }),
+    );
+    const first = ensureHostSessionReadyForWork(h.deps, { hostId: host.id });
+    await restoring.promise;
+    const second = ensureHostSessionReadyForWork(h.deps, { hostId: host.id });
+    proceed.resolve();
+    await Promise.all([first, second]);
+    expect(resumes).toBe(1);
+    expect(getMachineLifecycle(h.deps, host.id)).toMatchObject({
+      recoveryState: "healthy",
+      observedState: "running",
+    });
+    running = false;
+    expired = true;
+    updateHost(h.db, h.hub, host.id, {
+      phase: "suspended",
+      suspendedAt: Date.now(),
+    });
+    await expect(
+      ensureHostSessionReadyForWork(h.deps, { hostId: host.id }),
+    ).rejects.toThrow("Snapshot image no longer exists");
+    expect(machineLifecycleStatus(h.deps, host.id, {})).toMatchObject({
+      recoveryState: "recoverable",
+      message: expect.stringContaining("Snapshot image no longer exists"),
+    });
+    expect(getHost(h.db, host.id)?.phase).toBe("suspended");
+  }));
+
+it("wakes persisted offline queue intent after a suspended machine is reconciled", async () =>
+  withTestHarness(async (h) => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(10_000);
+    const { host } = seedHostSession(h.deps, { id: "host_queued_wake" });
+    adoptMachine(h, host.id, { snapshot: "saved-image" });
+    updateHost(h.db, h.hub, host.id, {
+      phase: "suspended",
+      suspendedAt: Date.now(),
+    });
+    const { project } = seedProjectWithSource(h.deps, {
+      hostId: host.id,
+      path: "/tmp/queued-wake",
+    });
+    const environment = createEnvironment(h.db, h.hub, {
+      projectId: project.id,
+      hostId: host.id,
+      path: "/tmp/queued-wake",
+      providerOwnsPath: false,
+      status: "ready",
+      environmentProvider: null,
+    });
+    const thread = seedThread(h.deps, {
+      projectId: project.id,
+      environmentId: environment.id,
+      status: "idle",
+    });
+    let running = false;
+    let resumes = 0;
+    let suspends = 0;
+    let observations = 0;
+    installMachineProvider(
+      machineDeclaration(host.id, {
+        experimental_observe: async ({ resource }) => {
+          observations += 1;
+          return {
+            state: running ? "running" : "suspended",
+            expiresAt: null,
+            resource,
+          };
+        },
+        experimental_policy: async () => ({
+          idleSuspendMs: 1_000,
+          retireAfterMs: 30 * 86_400_000,
+          deadlineLeadMs: 900_000,
+        }),
+        suspend: async ({ resource }) => {
+          suspends += 1;
+          return { resource };
+        },
+        resume: async ({ resource }) => {
+          expect(observations).toBeGreaterThan(0);
+          resumes += 1;
+          running = true;
+          return { resource };
+        },
+      }),
+    );
+    await sweepProviderMachine(h.deps, host.id);
+    expect(resumes).toBe(0);
+    vi.setSystemTime(20_000);
+    createQueuedThreadMessage(h.db, h.hub, {
+      threadId: thread.id,
+      content: [{ type: "text", text: "continue after restart", mentions: [] }],
+      model: "gpt-5",
+      reasoningLevel: "medium",
+      permissionMode: "auto",
+      serviceTier: "default",
+      waitingOn: { kind: "host-offline", hostName: "previous host name" },
+      sendAt: null,
+      payload: { kind: "inline" },
+      systemNotice: null,
+    });
+    await sweepProviderMachine(h.deps, host.id);
+    expect(resumes).toBe(1);
+    await sweepProviderMachine(h.deps, host.id);
+    expect(suspends).toBe(0);
+    expect(getHost(h.db, host.id)?.phase).toBe("active");
+    expect(getMachineLifecycle(h.deps, host.id)?.observedState).toBe("running");
+  }));

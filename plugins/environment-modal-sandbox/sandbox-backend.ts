@@ -85,7 +85,10 @@ function wrapSandbox(sandbox: Sandbox): SandboxHandle {
               mode: "text",
               stdout: "pipe",
               stderr: "pipe",
-              timeoutMs: options.timeoutMs,
+              timeoutMs: Math.max(
+                1000,
+                Math.floor(options.timeoutMs / 1000) * 1000,
+              ),
             });
             const input = async () => {
               try {
@@ -114,7 +117,10 @@ function wrapSandbox(sandbox: Sandbox): SandboxHandle {
       await sandbox.terminate();
     },
     async snapshotFilesystem(options) {
-      const image = await sandbox.snapshotFilesystem(options);
+      const image = await sandbox.snapshotFilesystem({
+        ...options,
+        timeoutMs: Math.max(1000, Math.floor(options.timeoutMs / 1000) * 1000),
+      });
       return image.imageId;
     },
   };
@@ -139,7 +145,9 @@ export const createModalBackend: SandboxBackendFactory = (credentials) => {
         (candidate) => candidate.id === request.sandboxId,
       );
       if (sandbox === undefined) return { running: false, expiresAt: null };
-      const expiresAt = (sandbox.createdAt + sandbox.timeoutSecs) * 1000;
+      const expiresAt = Math.floor(
+        (sandbox.createdAt + sandbox.timeoutSecs) * 1000,
+      );
       if (!Number.isFinite(expiresAt) || sandbox.timeoutSecs <= 0)
         throw new Error("Modal did not report a finite sandbox deadline");
       return { running: true, expiresAt };

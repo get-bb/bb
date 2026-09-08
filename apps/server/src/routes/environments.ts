@@ -1,3 +1,4 @@
+import { getMachineLifecycle } from "../services/machines/lifecycle.js";
 import { and, eq, inArray, isNotNull } from "drizzle-orm";
 import { resolveEnvironmentPathIdentity } from "../services/environments/path-admission.js";
 import { parseOptionalInteger } from "../services/lib/validation.js";
@@ -143,6 +144,12 @@ async function getPullRequestForWorkspaceTarget(
   deps: AppDeps,
   target: ReturnType<typeof requireWorkspaceCommandTarget>,
 ): Promise<ThreadPullRequest | null> {
+  const lifecycle = getMachineLifecycle(deps, target.hostId);
+  if (
+    lifecycle !== undefined &&
+    (lifecycle.observedState !== "running" || lifecycle.leaseId !== null)
+  )
+    return null;
   const result = await callHostRetryableOnlineRpc(deps, {
     hostId: target.hostId,
     timeoutMs: COMMAND_TIMEOUT_MS,

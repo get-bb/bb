@@ -216,8 +216,13 @@ async function setup(
   });
   await createModalSandboxPlugin({
     backendFactory: () => backend.backend,
-    imageBackendFactory: () => ({
-      accountIdentity: async () => hash("modal-account"),
+    imageBackendFactory: (credentials) => ({
+      accountIdentity: async () =>
+        hash(
+          credentials.tokenId === SETTINGS.tokenId
+            ? "modal-account"
+            : "changed-account",
+        ),
       build: async () => "im-built",
       reconcile: async () => "im-built",
       resolve: async (id) => id,
@@ -275,6 +280,7 @@ async function setup(
   return {
     ...fake,
     provider,
+    store,
     backend,
     bootstrap,
     prepareEnrollment,
@@ -779,4 +785,57 @@ it("does not retain an image when enrollment preparation fails before allocation
   } finally {
     await test.harness.lifecycle.dispose();
   }
+});
+
+it("observes vendor deadlines and updates pinned project policy without plugin reload", async () => {
+  const harness = await setup();
+  const created = await harness.provider.create(createContext());
+  if (created.status !== "created") throw new Error("creation failed");
+  const context = {
+    hostId: HOST_ID,
+    resource: created.resource,
+    signal: new AbortController().signal,
+  };
+  expect(await harness.provider.experimental_observe?.(context)).toMatchObject({
+    state: "running",
+    expiresAt: 24 * 60 * 60_000,
+  });
+  harness.store.configure({
+    projectId: PROJECT.id,
+    expectedRevision: 0,
+    resources: { cpuCores: 1, memoryMiB: 4096 },
+    policy: { idleMinutes: 2, lifetimeMinutes: 4, retentionDays: 7 },
+  });
+  expect(await harness.provider.experimental_policy?.(context)).toEqual({
+    idleSuspendMs: 120_000,
+    retireAfterMs: 7 * 86400_000,
+    deadlineLeadMs: 120_000,
+  });
+  expect(await harness.provider.experimental_observe?.(context)).toMatchObject({
+    resource: {
+      policyRevision: 1,
+      policy: { idleMinutes: 2, lifetimeMinutes: 4, retentionDays: 7 },
+    },
+  });
+});
+
+it("blocks observation and resume after the configured account identity changes", async () => {
+  const harness = await setup();
+  const created = await harness.provider.create(createContext());
+  if (created.status !== "created") throw new Error("creation failed");
+  await harness.harness.setSettings({ tokenId: "different-account" });
+  const context = {
+    hostId: HOST_ID,
+    resource: created.resource,
+    signal: new AbortController().signal,
+    report,
+    checkpoint: async () => {},
+  };
+  await expect(
+    harness.provider.experimental_observe?.(context),
+  ).rejects.toThrow("pinned Modal account");
+  await expect(harness.provider.resume?.(context)).rejects.toThrow(
+    "pinned Modal account",
+  );
+  expect(harness.backend.creates).toHaveLength(1);
 });

@@ -471,6 +471,14 @@ export function createModalSandboxPlugin(
             ),
           };
         }
+        const remainingMs = () =>
+          resource.version === 4 && resource.expiresAt !== null
+            ? Math.max(1, Math.floor(resource.expiresAt - deps.now()))
+            : SNAPSHOT_TIMEOUT_MS + DAEMON_STOP_TIMEOUT_MS;
+        const preservationSignal = AbortSignal.any([
+          context.signal,
+          AbortSignal.timeout(remainingMs()),
+        ]);
         context.report.step("Stopping the bb machine…");
         const stopped = await sandbox.exec(
           [
@@ -480,18 +488,35 @@ export function createModalSandboxPlugin(
             "sh",
             context.hostId,
           ],
-          { timeoutMs: DAEMON_STOP_TIMEOUT_MS, signal: context.signal },
+          {
+            timeoutMs: Math.min(
+              DAEMON_STOP_TIMEOUT_MS,
+              Math.max(1, Math.floor(remainingMs() / 3)),
+            ),
+            signal: preservationSignal,
+          },
         );
         if (stopped.exitCode !== 0)
           throw new Error(
             `Stopping the bb machine exited ${stopped.exitCode}: ${stopped.stderr}`,
           );
-        await waitForHostDisconnection(context.hostId, context.signal);
+        await waitForHostDisconnection(context.hostId, preservationSignal);
         context.report.step("Saving the Modal filesystem…");
+        const snapshotStartedAt = deps.now();
         const snapshotImageId = await sandbox.snapshotFilesystem({
-          timeoutMs: SNAPSHOT_TIMEOUT_MS,
+          timeoutMs: Math.min(
+            SNAPSHOT_TIMEOUT_MS,
+            Math.max(1, remainingMs() - 10_000),
+          ),
           ttlMs: null,
         });
+        context.report.log(
+          JSON.stringify({
+            phase: "snapshot",
+            imageId: snapshotImageId,
+            elapsedMs: deps.now() - snapshotStartedAt,
+          }),
+        );
         const checkpoint = {
           ...resource,
           snapshotImageId,
@@ -507,6 +532,9 @@ export function createModalSandboxPlugin(
         } satisfies ModalMachineResource;
         context.checkpoint(checkpoint, deps.now());
         await sandbox.terminate();
+        context.report.log(
+          `Terminated Modal sandbox ${sandbox.sandboxId} after its durable filesystem checkpoint`,
+        );
         const suspended = { ...checkpoint, sandboxId: null };
         context.checkpoint(suspended);
         return {

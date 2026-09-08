@@ -79,7 +79,7 @@ describe("Modal bootstrap executor", () => {
       mode: "text",
       stdout: "pipe",
       stderr: "pipe",
-      timeoutMs: 1234,
+      timeoutMs: 1000,
     });
     expect(process.stdin.writeText).toHaveBeenCalledWith("credential-secret");
     expect(process.stdin.close).toHaveBeenCalledOnce();
@@ -134,7 +134,7 @@ describe("Modal bootstrap executor", () => {
 
 it("uses the vendor start and timeout for expiry and scopes inventory to the owned key", async () => {
   vendor.list.mockResolvedValue({
-    sandboxes: [{ id: "sandbox-1", createdAt: 100, timeoutSecs: 60 }],
+    sandboxes: [{ id: "sandbox-1", createdAt: 100.123456, timeoutSecs: 60 }],
   });
   const backend = createModalBackend({ tokenId: "id", tokenSecret: "secret" });
   expect(
@@ -143,7 +143,7 @@ it("uses the vendor start and timeout for expiry and scopes inventory to the own
       appName: "app",
       key: "owned-key",
     }),
-  ).toEqual({ running: true, expiresAt: 160_000 });
+  ).toEqual({ running: true, expiresAt: 160_123 });
   expect(vendor.list).toHaveBeenCalledWith(
     expect.objectContaining({
       appId: "app-owned",

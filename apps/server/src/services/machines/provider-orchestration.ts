@@ -20,6 +20,7 @@ import {
   listMachineLaunchesByPhase,
   listProjectSourcesByHost,
   listProviderMachines,
+  listThreadIdsWithHostOfflineQueueWaits,
   machineHasLiveThreads,
   machineHasOpenTerminal,
   machineIdleSince,
@@ -114,6 +115,10 @@ const cancelOperations = new WeakMap<object, Map<string, ActiveOperation>>();
 const suspendOperations = new WeakMap<object, Map<string, ActiveOperation>>();
 const resumeOperations = new WeakMap<object, Map<string, ActiveOperation>>();
 const removeOperations = new WeakMap<object, Map<string, ActiveOperation>>();
+const deadlineSweepOperations = new WeakMap<
+  object,
+  Map<string, ActiveOperation>
+>();
 
 function operations(
   registry: WeakMap<object, Map<string, ActiveOperation>>,
@@ -1062,6 +1067,10 @@ async function suspendMachine(deps: Deps, hostId: string): Promise<void> {
                   .set({ lastSnapshotAt: savedAt })
                   .where(eq(machineLifecycles.hostId, hostId))
                   .run();
+                deps.logger.info(
+                  { hostId, operationId, savedAt },
+                  "Machine filesystem checkpoint persisted",
+                );
               }
             },
           }),
@@ -1123,6 +1132,7 @@ export async function requestMachineSuspension(
   hostId: string,
 ): Promise<void> {
   const row = requireSuspendableMachine(deps, hostId);
+  await observeMachineLifecycle(deps, hostId);
   if (row.phase !== "active" && row.phase !== "suspending") {
     throw new ApiError(
       409,
@@ -1505,12 +1515,19 @@ export async function sweepProviderMachine(
       return;
     row = getHost(deps.db, hostId);
     if (row === null) return;
+    const hasQueuedWake =
+      listThreadIdsWithHostOfflineQueueWaits(deps.db, hostId).length > 0;
+    if (row.suspendedAt !== null && hasQueuedWake) {
+      await resumeMachine(deps, hostId);
+      return;
+    }
     const idleSince =
       machineIdleSince(deps.db, hostId) ??
       (!machineHasLiveThreads(deps.db, hostId) ? lifecycle.unusedSince : null);
     const due =
       lifecycle.maintenanceAt !== null && lifecycle.maintenanceAt <= Date.now();
     const idle =
+      !hasQueuedWake &&
       lifecycle.idleSuspendMs !== null &&
       idleSince !== null &&
       Date.now() >= idleSince + lifecycle.idleSuspendMs &&
@@ -1675,7 +1692,10 @@ export async function sweepProviderMachine(
   await removeMachine(deps, hostId);
 }
 
-export async function sweepMachineLifecycles(deps: Deps): Promise<void> {
+export async function sweepMachineLifecycles(
+  deps: Deps,
+  options?: { backgroundDeadlines: true },
+): Promise<void> {
   for (const launch of listMachineLaunchesByPhase(deps.db, "creating")) {
     const record = getMachineProvider(launch.providerId);
     if (record !== undefined) startCreate(deps, record, launch);
@@ -1735,27 +1755,38 @@ export async function sweepMachineLifecycles(deps: Deps): Promise<void> {
   }
   for (const record of listMachineProviders()) {
     for (const machine of listProviderMachines(deps.db, record.provider.id)) {
-      pending.push(
-        sweepProviderMachine(deps, machine.id).catch((error: unknown) => {
-          const current = getHost(deps.db, machine.id);
-          if (current !== null && current.destroyedAt === null) {
-            updateHost(deps.db, deps.hub, machine.id, {
-              teardownAttempt: current.teardownAttempt + 1,
-              teardownStatus: "failed",
-              teardownMessage: errorMessage(error),
-              ...(current.phase === "retiring"
-                ? {
-                    retireAt: Date.now() + record.provider.policy.removeRetryMs,
-                  }
-                : {}),
-            });
-          }
-          deps.logger.warn(
-            { hostId: machine.id, error: errorMessage(error) },
-            "Machine lifecycle sweep will retry",
-          );
-        }),
-      );
+      const sweeping =
+        record.provider.experimental_observe === undefined
+          ? sweepProviderMachine(deps, machine.id)
+          : runTrackedOperation({
+              map: operations(deadlineSweepOperations, deps.db),
+              key: machine.id,
+              run: async () => sweepProviderMachine(deps, machine.id),
+            }).done;
+      const settled = sweeping.catch((error: unknown) => {
+        const current = getHost(deps.db, machine.id);
+        if (current !== null && current.destroyedAt === null) {
+          updateHost(deps.db, deps.hub, machine.id, {
+            teardownAttempt: current.teardownAttempt + 1,
+            teardownStatus: "failed",
+            teardownMessage: errorMessage(error),
+            ...(current.phase === "retiring"
+              ? {
+                  retireAt: Date.now() + record.provider.policy.removeRetryMs,
+                }
+              : {}),
+          });
+        }
+        deps.logger.warn(
+          { hostId: machine.id, error: errorMessage(error) },
+          "Machine lifecycle sweep will retry",
+        );
+      });
+      if (
+        record.provider.experimental_observe === undefined ||
+        options?.backgroundDeadlines !== true
+      )
+        pending.push(settled);
     }
   }
   await Promise.all(pending);

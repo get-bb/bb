@@ -35,7 +35,10 @@ const observationSchema = z
   .object({
     state: z.enum(["running", "suspended", "missing", "unknown"]),
     expiresAt: z.number().finite().nullable(),
-    resource: jsonValueSchema,
+    resource: jsonValueSchema.refine(
+      (value) => Buffer.byteLength(JSON.stringify(value)) <= 16_384,
+      "Resource exceeds 16 KiB",
+    ),
   })
   .strict();
 const durationSchema = z.number().int().nonnegative().nullable();
@@ -106,7 +109,16 @@ export async function observeMachineLifecycle(
     if (previous !== undefined)
       deps.db
         .update(machineLifecycles)
-        .set({ message: result.error, observedState: "unknown" })
+        .set({
+          message:
+            previous.expiresAt !== null && previous.expiresAt <= Date.now()
+              ? `Vendor expiry passed while observation failed: ${result.error}. Changes since the last successful snapshot may be lost.`
+              : result.error,
+          observedState: "unknown",
+          ...(previous.expiresAt !== null && previous.expiresAt <= Date.now()
+            ? { recoveryState: "lost-since-last-snapshot" as const }
+            : {}),
+        })
         .where(eq(machineLifecycles.hostId, hostId))
         .run();
     throw new ApiError(409, "machine_observation_failed", result.error);
@@ -427,7 +439,7 @@ export async function maintainMachine(
       .where(owned)
       .run();
     const host = getHost(deps.db, hostId);
-    if (host?.phase === "suspending")
+    if (state?.leaseId === leaseId && host?.phase === "suspending")
       updateHost(deps.db, deps.hub, hostId, {
         phase: host.retireAt === null ? "active" : "retiring",
       });

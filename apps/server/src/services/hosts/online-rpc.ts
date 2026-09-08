@@ -136,7 +136,9 @@ async function callHostOnlineRpcWithRetry(
       (args.command.type === "thread.start" ||
         args.command.type === "turn.submit") &&
       getMachineLifecycle(deps, args.hostId) !== undefined &&
-      getThread(deps.db, args.command.threadId)?.status !== "active"
+      !["active", "starting"].includes(
+        getThread(deps.db, args.command.threadId)?.status ?? "",
+      )
     ) {
       throw new ApiError(
         409,

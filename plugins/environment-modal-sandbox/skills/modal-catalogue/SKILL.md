@@ -65,7 +65,7 @@ to promote only a successfully verified build for that agent. Promotion updates
 the Modal image pointer and never changes project environment defaults.
 New launches may omit buildId to select that pointer. Optional accountRef (default),
 appName, resources and policy are validated and pinned at launch; appName must match
-the build. Deadline/retention enforcement and the Settings editor remain later work.
+the build. The Settings editor remains later work.
 
 SDK callers import `modalRpcContract` from the plugin and call
 `bb.sdk.plugins.callRpc({pluginId:"environment-modal-sandbox", method:"build.get",
@@ -87,3 +87,16 @@ source checkout on that host. Supply local files and secrets through core Machin
 environment settings, and keep reusable images credential-free.
 
 Clear the selected image before GC with `project configure --project X --expected-revision N --json-input '{"usableBuildId":null}' --json`. This clears availability for future launches; existing machines and their references remain pinned.
+
+Inspect preservation and retention with `bb machine lifecycle MACHINE --json`.
+Defaults are 15-minute idle pause, 24-hour lifetime and 30 days after the last
+thread before warned automatic removal. `--keep` prevents automatic removal;
+`--no-keep` restores it. Deadline maintenance interrupts active turns and closes
+terminals before saving a private no-expiry snapshot and stopping compute. Submit
+a new continuation turn after restore; never replay an interrupted external side
+effect automatically. Project policy edits take effect without plugin reload.
+
+A failed snapshot retains compute and reports the last successful save. Planned
+rotation does not cover a server outage spanning Modal expiry. Lost-since-last-snapshot
+blocks dispatch; explain the loss risk before explicitly requesting `bb machine resume`
+to recover the last save. Missing snapshot images never become empty checkouts.

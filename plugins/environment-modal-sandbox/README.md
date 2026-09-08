@@ -64,22 +64,35 @@ Core runs `.bb-env-teardown.sh` before removing an owned environment with a sepa
 15-minute timeout. Teardown failure is reported and does not block removal.
 `.worktreeinclude` does not apply to fresh machine clones. Use core Machine
 environment settings for local files and secrets on machines.
-Deadline maintenance and the settings editor follow in parts C and D.
+The settings editor follows in part D.
 
 ## Lifecycle
 
-Core owns the machine lifecycle. After every live thread on the machine has
-been idle for `idleMinutes` and no terminal is open, core asks the plugin to
-stop the bb daemon, snapshot the Modal filesystem, and terminate the compute.
-A later send restores compute from that snapshot and reconnects the same bb
-machine before work continues.
+Core observes Modal's running state and vendor deadline. Defaults are a 15-minute
+idle pause, 24-hour compute lifetime and 30-day retention after the last thread.
+Zero-thread machines also pause while retained. Open terminals prevent idle pause.
+Project policy changes apply to existing machines on the next observation.
 
-Archiving or deleting the last thread starts a 30-day retirement grace period.
-When it expires, core removes the machine's environments through their own
-providers first, then asks this plugin to terminate the sandbox and delete its
-snapshot. Explicit machine removal follows the same cascade. Creation is
-idempotent by core's durable key, including when the sandbox enrolled before a
-server or plugin crash.
+Maintenance starts 15 minutes before expiry, or halfway through shorter configured
+lifetimes. Core excludes new work, interrupts active turns, closes terminals and
+bounds drain to five minutes. The daemon stops its managed runtimes before the
+plugin saves a private filesystem snapshot with no expiry. A durable checkpoint
+precedes compute termination. Dispatch then restores the same host identity;
+provider credentials are supplied again by core on the new continuation turn.
+An interrupted turn is never reported as a successful completion or replayed.
+
+`bb machine lifecycle MACHINE --json` shows expiry, maintenance, the last successful
+save, recovery state and the separate automatic removal deadline. Use `--keep` to
+retain a machine, or `--no-keep` to restore automatic retention removal. Removal
+cascades through owned environments and deletes private snapshots. It remains
+available explicitly even when keep is enabled.
+
+Failed saves keep old compute and retry inside the remaining margin. Failed restore
+or account changes remain visible and never substitute a fresh empty checkout.
+Preservation covers planned rotation only: a server outage spanning vendor expiry
+can lose changes since the last snapshot. A missing running sandbox is marked
+lost-since-last-snapshot and blocks automatic dispatch. `bb machine resume MACHINE`
+is an explicit request to recover that last snapshot with the disclosed loss risk.
 
 ## What it needs
 

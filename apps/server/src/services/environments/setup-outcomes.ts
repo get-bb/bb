@@ -71,12 +71,18 @@ export async function finishEnvironmentSetupOutcome(
   deps: WorkSessionDeps,
   args: SetupIdentity & { succeeded: boolean },
 ): Promise<void> {
-  const facts = args.succeeded ? await inspect(deps, args) : null;
   const key = and(
     eq(environmentSetupOutcomes.hostId, args.hostId),
     eq(environmentSetupOutcomes.path, args.path),
     eq(environmentSetupOutcomes.operationId, args.operationId),
+    eq(environmentSetupOutcomes.state, "running"),
   );
+  if (
+    deps.db.select().from(environmentSetupOutcomes).where(key).get() ===
+    undefined
+  )
+    return;
+  const facts = args.succeeded ? await inspect(deps, args) : null;
   const inputHash = facts === null ? null : environmentSetupInputHash(facts);
   deps.db.transaction((tx) => {
     const row = tx.select().from(environmentSetupOutcomes).where(key).get();

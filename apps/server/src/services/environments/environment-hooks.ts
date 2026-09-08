@@ -1,5 +1,5 @@
 import { resolveHostEnvironment } from "../hosts/host-environment.js";
-import { environmentHookOperations } from "@bb/db";
+import { environmentHookOperations, machineLifecycles } from "@bb/db";
 import { eq } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
 import type { EnvironmentHookProgressMessage } from "@bb/host-daemon-contract";
@@ -75,6 +75,37 @@ export async function runEnvironmentHook(
     return;
   }
   const operationId = existing?.operationId ?? randomUUID();
+  const missingFilesystem =
+    args.kind === "teardown" &&
+    deps.db
+      .select({ state: machineLifecycles.observedState })
+      .from(machineLifecycles)
+      .where(eq(machineLifecycles.hostId, args.hostId))
+      .get()?.state === "missing";
+  if (missingFilesystem) {
+    const error =
+      "Teardown could not run: the machine provider confirmed that its filesystem no longer exists.";
+    deps.db
+      .insert(environmentHookOperations)
+      .values({
+        id: args.id,
+        operationId,
+        hostId: args.hostId,
+        path: args.path,
+        kind: args.kind,
+        startedAt: Date.now(),
+        finishedAt: Date.now(),
+        error,
+      })
+      .onConflictDoUpdate({
+        target: environmentHookOperations.id,
+        set: { finishedAt: Date.now(), error },
+      })
+      .run();
+    args.report.log(error);
+    deps.logger.warn({ hostId: args.hostId, path: args.path }, error);
+    return;
+  }
   if (existing === undefined)
     deps.db
       .insert(environmentHookOperations)

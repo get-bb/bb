@@ -367,7 +367,7 @@ export function registerHostRoutes(
   post(routes.experimental_lifecycle, async (context, payload) => {
     const hostId = context.req.param("id");
     assertUsableHostId(deps, { hostId });
-    await observeMachineLifecycle(deps, hostId);
+    await observeMachineLifecycle(deps, hostId).catch(() => {});
     return context.json(machineLifecycleStatus(deps, hostId, payload));
   });
 
