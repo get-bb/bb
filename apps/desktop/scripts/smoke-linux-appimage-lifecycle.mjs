@@ -561,6 +561,7 @@ async function smokeLinuxAppImageLifecycle() {
           );
         }
         if (!(await processIsLive(runtime.pid))) {
+          await sleep(outputFlushTimeoutMs);
           throw new Error(
             `The owned runtime exited before bb became ready.\n${formatProcessOutput(
               { stdout, stderr },
