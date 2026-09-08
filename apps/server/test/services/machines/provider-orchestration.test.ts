@@ -1,3 +1,5 @@
+import { archiveThreadAndHiddenSourceForks } from "../../../src/services/threads/thread-archive.js";
+import { cancelAbandonedProviderLaunches } from "../../../src/services/threads/thread-environment-providers.js";
 import { serverAccess } from "../../../src/services/machines/server-access.js";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { eq } from "drizzle-orm";
@@ -31,6 +33,7 @@ import {
   createMachine,
   prepareMachineProviderSelection,
   requestMachineRemoval,
+  resolveThreadMachineLaunchKey,
   sweepMachineLifecycles,
   sweepProviderMachine,
 } from "../../../src/services/machines/provider-orchestration.js";
@@ -125,6 +128,30 @@ afterEach(() => {
   setPluginMachineProviderBridge(undefined);
   setPluginEnvironmentProviderBridge(undefined);
 });
+
+function seedReadyLaunch(
+  harness: TestAppHarness,
+  args: { key: string; hostId: string; projectId?: string },
+) {
+  upsertMachineLaunch(harness.db, {
+    key: args.key,
+    providerId: "test-machine",
+    projectId: args.projectId ?? null,
+    inputs: null,
+    attempt: 1,
+    phase: "ready",
+    startedAt: Date.now(),
+    failedAt: null,
+    failure: null,
+    message: null,
+    transientFailures: 0,
+    hostId: args.hostId,
+    resource: { key: args.key },
+    stepText: "Ready",
+    pendingLog: "",
+    cancelPending: false,
+  });
+}
 
 describe("core machine provider orchestration", () => {
   it("restarts a persisted create with the same idempotency key after a server crash", async () =>
@@ -533,7 +560,7 @@ describe("core machine provider orchestration", () => {
       });
     }));
 
-  it("starts a new attempt when a ready launch points to a destroyed machine", async () =>
+  it("rejects reuse of an API key whose ready machine was destroyed", async () =>
     withTestHarness(async (harness) => {
       const { host: destroyedHost } = seedHostSession(harness.deps, {
         id: "host_destroyed_launch",
@@ -584,18 +611,272 @@ describe("core machine provider orchestration", () => {
           projectId: null,
           inputs: null,
         }).action,
-      ).toBe("wait");
-      await vi.waitFor(() => {
-        expect(calls).toEqual([2]);
-        expect(
-          getMachineLaunch(harness.db, "ready-destroyed-key"),
-        ).toMatchObject({
+      ).toBe("reject");
+      await expect(
+        createMachine(harness.deps, {
+          key: "ready-destroyed-key",
+          machineProviderId: record.provider.id,
+          projectId: null,
+          inputs: null,
+        }),
+      ).rejects.toMatchObject({
+        status: 409,
+        message: expect.stringContaining("destroyed machine"),
+      });
+      expect(calls).toEqual([]);
+      expect(getMachineLaunch(harness.db, "ready-destroyed-key")).toMatchObject(
+        {
           phase: "ready",
-          attempt: 2,
-          hostId: replacementHost.id,
-        });
+          attempt: 1,
+          hostId: destroyedHost.id,
+          resource: { key: "ready-destroyed-key" },
+        },
+      );
+    }));
+
+  it("walks destroyed generations and keeps a replacement key stable across transient retries", async () =>
+    withTestHarness(async (harness) => {
+      const first = seedHostSession(harness.deps, {
+        id: "generation-first",
+      }).host;
+      const second = seedHostSession(harness.deps, {
+        id: "generation-second",
+      }).host;
+      const third = seedHostSession(harness.deps, {
+        id: "generation-third",
+      }).host;
+      const base = "thread-generations";
+      seedReadyLaunch(harness, { key: base, hostId: first.id });
+      updateHost(harness.db, harness.hub, first.id, {
+        destroyedAt: Date.now(),
+        phase: "destroyed",
+      });
+      const replacementKey = `${base}:replacement:${first.id}`;
+      expect(resolveThreadMachineLaunchKey(harness.deps, base)).toBe(
+        replacementKey,
+      );
+      const create = vi.fn(
+        async ({ key, attempt }: { key: string; attempt: number }) =>
+          attempt === 1
+            ? {
+                status: "failed" as const,
+                failure: "transient" as const,
+                message: "try again",
+              }
+            : {
+                status: "created" as const,
+                hostId: second.id,
+                resource: { key },
+              },
+      );
+      const record = installMachineProvider(
+        machineDeclaration(second.id, { create }),
+      );
+      const request = {
+        record,
+        key: replacementKey,
+        projectId: null,
+        inputs: null,
+      };
+      expect(askMachineLaunch(harness.deps, request).action).toBe("wait");
+      await vi.waitFor(() =>
+        expect(getMachineLaunch(harness.db, replacementKey)?.phase).toBe(
+          "failed",
+        ),
+      );
+      expect(resolveThreadMachineLaunchKey(harness.deps, base)).toBe(
+        replacementKey,
+      );
+      updateMachineLaunchAttempt(harness.db, {
+        key: replacementKey,
+        attempt: 1,
+        failedAt: Date.now() - 30_001,
+      });
+      expect(askMachineLaunch(harness.deps, request).action).toBe("wait");
+      await vi.waitFor(() =>
+        expect(getMachineLaunch(harness.db, replacementKey)?.phase).toBe(
+          "ready",
+        ),
+      );
+      expect(
+        create.mock.calls.map(([request]) => [request.key, request.attempt]),
+      ).toEqual([
+        [replacementKey, 1],
+        [replacementKey, 2],
+      ]);
+      expect(getMachineLaunch(harness.db, base)).toMatchObject({
+        attempt: 1,
+        phase: "ready",
+        hostId: first.id,
+      });
+      expect(resolveThreadMachineLaunchKey(harness.deps, base)).toBe(
+        replacementKey,
+      );
+      updateHost(harness.db, harness.hub, second.id, {
+        destroyedAt: Date.now(),
+        phase: "destroyed",
+      });
+      const nextKey = `${base}:replacement:${second.id}`;
+      expect(resolveThreadMachineLaunchKey(harness.deps, base)).toBe(nextKey);
+      seedReadyLaunch(harness, { key: nextKey, hostId: third.id });
+      expect(resolveThreadMachineLaunchKey(harness.deps, base)).toBe(nextKey);
+    }));
+
+  it("keeps late cleanup from an old attempt on its old host and resource", async () =>
+    withTestHarness(async (harness) => {
+      const oldHost = seedHostSession(harness.deps, {
+        id: "generation-old-late",
+      }).host;
+      const newHost = seedHostSession(harness.deps, {
+        id: "generation-new-live",
+      }).host;
+      const oldResult = createDeferredPromise<{
+        status: "created";
+        hostId: string;
+        resource: { key: string };
+      }>();
+      const remove = vi.fn(async () => ({ status: "removed" as const }));
+      const base = "thread-late-generation";
+      const record = installMachineProvider(
+        machineDeclaration(newHost.id, {
+          create: ({ key }) =>
+            key === base
+              ? oldResult.promise
+              : Promise.resolve({
+                  status: "created",
+                  hostId: newHost.id,
+                  resource: { key },
+                }),
+          remove,
+        }),
+      );
+      askMachineLaunch(harness.deps, {
+        key: base,
+        record,
+        projectId: null,
+        inputs: null,
+      });
+      seedReadyLaunch(harness, { key: base, hostId: oldHost.id });
+      updateHost(harness.db, harness.hub, oldHost.id, {
+        destroyedAt: Date.now(),
+        phase: "destroyed",
+      });
+      const key = resolveThreadMachineLaunchKey(harness.deps, base);
+      askMachineLaunch(harness.deps, {
+        key,
+        record,
+        projectId: null,
+        inputs: null,
+      });
+      await vi.waitFor(() =>
+        expect(getMachineLaunch(harness.db, key)?.phase).toBe("ready"),
+      );
+      oldResult.resolve({
+        status: "created",
+        hostId: oldHost.id,
+        resource: { key: base },
+      });
+      await vi.waitFor(() => expect(remove).toHaveBeenCalledOnce());
+      expect(remove).toHaveBeenCalledWith(
+        expect.objectContaining({
+          hostId: oldHost.id,
+          resource: { key: base },
+        }),
+      );
+      await cancelMachineLaunch(harness.deps, base);
+      expect(getHost(harness.db, newHost.id)).toMatchObject({
+        destroyedAt: null,
+        phase: "active",
+        resource: { key },
+      });
+      expect(getMachineLaunch(harness.db, key)).toMatchObject({
+        phase: "ready",
+        hostId: newHost.id,
+        resource: { key },
       });
     }));
+
+  it.each(["archive", "abandon"] as const)(
+    "cancels only the current generation on thread %s",
+    async (action) =>
+      withTestHarness(async (harness) => {
+        const oldHost = seedHostSession(harness.deps, {
+          id: "generation-cancel-old",
+        }).host;
+        const newHost = seedHostSession(harness.deps, {
+          id: "generation-cancel-new",
+        }).host;
+        const { project } = seedProjectWithSource(harness.deps, {
+          hostId: oldHost.id,
+        });
+        const thread = seedThread(harness.deps, {
+          projectId: project.id,
+          environmentId: null,
+          status: "starting",
+        });
+        seedReadyLaunch(harness, {
+          key: thread.id,
+          hostId: oldHost.id,
+          projectId: project.id,
+        });
+        updateHost(harness.db, harness.hub, oldHost.id, {
+          destroyedAt: Date.now(),
+          phase: "destroyed",
+        });
+        const key = resolveThreadMachineLaunchKey(harness.deps, thread.id);
+        const remove = vi.fn(async () => ({ status: "removed" as const }));
+        const create = vi.fn(
+          ({ signal, key }: { signal: AbortSignal; key: string }) =>
+            new Promise<{
+              status: "created";
+              hostId: string;
+              resource: { key: string };
+            }>((resolve) => {
+              signal.addEventListener(
+                "abort",
+                () =>
+                  resolve({
+                    status: "created",
+                    hostId: newHost.id,
+                    resource: { key },
+                  }),
+                { once: true },
+              );
+            }),
+        );
+        const record = installMachineProvider(
+          machineDeclaration(newHost.id, { create, remove }),
+        );
+        askMachineLaunch(harness.deps, {
+          key,
+          record,
+          projectId: project.id,
+          inputs: null,
+        });
+        await vi.waitFor(() => expect(create).toHaveBeenCalledOnce());
+        if (action === "archive")
+          archiveThreadAndHiddenSourceForks(harness.deps, {
+            thread,
+            environment: null,
+          });
+        else cancelAbandonedProviderLaunches(harness.deps, thread.id);
+        await vi.waitFor(() =>
+          expect(getMachineLaunch(harness.db, key)).toMatchObject({
+            phase: "cancelled",
+            cancelPending: false,
+          }),
+        );
+        expect(remove).toHaveBeenCalledWith(
+          expect.objectContaining({ hostId: newHost.id, resource: { key } }),
+        );
+        expect(getMachineLaunch(harness.db, thread.id)).toMatchObject({
+          phase: "ready",
+          hostId: oldHost.id,
+        });
+        expect(getHost(harness.db, newHost.id)?.phase).toBe("destroyed");
+        expect(create).toHaveBeenCalledOnce();
+      }),
+  );
 
   it("cancels a pending machine creation when its thread is deleted", async () =>
     withTestHarness(async (harness) => {

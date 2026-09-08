@@ -12,6 +12,8 @@ import {
   getEnvironment,
   getHost,
   getMachineLaunch,
+  upsertMachineLaunch,
+  updateHost,
   getDefaultProjectSource,
   getProjectSourceByHost,
   setProjectGitRemoteUrlIfMissing,
@@ -1914,78 +1916,172 @@ describe("a provider-produced environment over its life", () => {
     });
   });
 
-  it("asks the provider again, with the old environment, when a send finds it destroyed", async () => {
-    await withTestHarness(async (harness) => {
-      const asks: TestEnvironmentProviderContext[] = [];
-      const { host, project } = seedTargetFixture(harness, "host-target-reask");
-      const replacement = seedEnvironment(harness.deps, {
-        environmentProviderId: PROVIDER_ID,
-        hostId: host.id,
-        path: "/tmp/environment-providers-replacement",
-        projectId: project.id,
-      });
-      const gone = createEnvironment(harness.db, harness.hub, {
-        providerOwnsPath: false,
-        hostId: host.id,
-        projectId: project.id,
-        path: "/tmp/environment-providers-gone",
-        status: "destroyed",
-        environmentProvider: {
-          environmentProviderId: PROVIDER_ID,
-          instanceKey: null,
-          selection: {
-            machine: { type: "existing", hostId: host.id },
-            inputs: { image: "img", cpus: 2 },
-          },
-        },
-      });
-      const thread = seedThread(harness.deps, {
-        environmentId: gone.id,
-        projectId: project.id,
-        status: "idle",
-      });
-      seedThreadRuntimeState(harness.deps, {
-        environmentId: gone.id,
-        providerThreadId: "provider-reask",
-        threadId: thread.id,
-      });
-      installTarget({
-        inputs: CONTAINER_INPUTS,
-        provision: (context) => {
-          asks.push(context);
-          return {
-            action: "ready",
-            environment: {
-              type: "host",
-              hostId: replacement.hostId,
-              path: replacement.path!,
-            },
-          };
-        },
-      });
-
-      const outcome = await attemptDispatch(harness.deps, {
-        thread,
-        payload: { input: textInput("Keep going"), mode: "start" },
-        source: { kind: "inline" },
-        queuePayload: { kind: "inline" },
-        origin: null,
-        originPluginId: null,
-        startedOnBehalfOf: null,
-        trigger: "user",
-      });
-      expect(outcome.kind).toBe("dispatched");
-      await vi.waitFor(() => {
-        expect(getThread(harness.db, thread.id)?.environmentId).toBe(
-          replacement.id,
+  it.each(["existing", "new"] as const)(
+    "reprovisions a destroyed environment using its %s machine selection",
+    async (machineType) => {
+      await withTestHarness(async (harness) => {
+        const asks: TestEnvironmentProviderContext[] = [];
+        const { host, project } = seedTargetFixture(
+          harness,
+          "host-target-reask",
         );
+        const replacementHost =
+          machineType === "new"
+            ? seedHostSession(harness.deps, {
+                id: "host-target-new-generation",
+              }).host
+            : host;
+        const machineKeys: string[] = [];
+        if (machineType === "new") {
+          updateHost(harness.db, harness.hub, host.id, {
+            destroyedAt: Date.now(),
+            phase: "destroyed",
+          });
+          const machineRecord = {
+            pluginId: "replacement-machine",
+            provider: validatePluginMachineProviderDeclaration({
+              id: "replacement-machine",
+              displayName: "Replacement machine",
+              policy: {
+                idleSuspendMs: null,
+                retire: { after: "never" },
+                removeRetryMs: 30_000,
+              },
+              create: async ({ key }) => {
+                machineKeys.push(key);
+                return {
+                  status: "created",
+                  hostId: replacementHost.id,
+                  resource: { key },
+                };
+              },
+              remove: async () => ({ status: "removed" }),
+            }),
+          };
+          setPluginMachineProviderBridge({
+            listMachineProviders: () => [machineRecord],
+            getMachineProvider: (id) =>
+              id === "replacement-machine" ? machineRecord : undefined,
+            invokeProvider: async (_pluginId, _label, run) => ({
+              ok: true,
+              value: await run(),
+            }),
+            decisionTimeoutMs: 10_000,
+          });
+        }
+        const replacement = seedEnvironment(harness.deps, {
+          environmentProviderId: PROVIDER_ID,
+          hostId: replacementHost.id,
+          path: "/tmp/environment-providers-replacement",
+          projectId: project.id,
+        });
+        const gone = createEnvironment(harness.db, harness.hub, {
+          providerOwnsPath: false,
+          hostId: host.id,
+          projectId: project.id,
+          path: "/tmp/environment-providers-gone",
+          status: "destroyed",
+          environmentProvider: {
+            environmentProviderId: PROVIDER_ID,
+            instanceKey: null,
+            selection: {
+              machine:
+                machineType === "new"
+                  ? {
+                      type: "new",
+                      machineProviderId: "replacement-machine",
+                      inputs: null,
+                    }
+                  : { type: "existing", hostId: host.id },
+              inputs: { image: "img", cpus: 2 },
+            },
+          },
+        });
+        const thread = seedThread(harness.deps, {
+          environmentId: gone.id,
+          projectId: project.id,
+          status: "idle",
+        });
+        if (machineType === "new") {
+          upsertMachineLaunch(harness.db, {
+            key: thread.id,
+            providerId: "replacement-machine",
+            projectId: project.id,
+            inputs: null,
+            attempt: 1,
+            phase: "ready",
+            startedAt: Date.now(),
+            failedAt: null,
+            failure: null,
+            message: null,
+            transientFailures: 0,
+            hostId: host.id,
+            resource: { key: thread.id },
+            stepText: "Ready",
+            pendingLog: "",
+            cancelPending: false,
+          });
+        }
+        seedThreadRuntimeState(harness.deps, {
+          environmentId: gone.id,
+          providerThreadId: "provider-reask",
+          threadId: thread.id,
+        });
+        installTarget({
+          inputs: CONTAINER_INPUTS,
+          provision: (context) => {
+            asks.push(context);
+            return {
+              action: "ready",
+              environment: {
+                type: "host",
+                hostId: replacement.hostId,
+                path: replacement.path!,
+              },
+            };
+          },
+        });
+
+        const outcome = await attemptDispatch(harness.deps, {
+          thread,
+          payload: { input: textInput("Keep going"), mode: "start" },
+          source: { kind: "inline" },
+          queuePayload: { kind: "inline" },
+          origin: null,
+          originPluginId: null,
+          startedOnBehalfOf: null,
+          trigger: "user",
+        });
+        expect(outcome.kind).toBe("dispatched");
+        await vi.waitFor(
+          () => {
+            expect(getThread(harness.db, thread.id)?.environmentId).toBe(
+              replacement.id,
+            );
+          },
+          { timeout: 3_000 },
+        );
+        if (machineType === "new") {
+          const replacementKey = `${thread.id}:replacement:${host.id}`;
+          expect(machineKeys).toEqual([replacementKey]);
+          expect(getMachineLaunch(harness.db, thread.id)).toMatchObject({
+            phase: "ready",
+            hostId: host.id,
+            attempt: 1,
+          });
+          expect(getMachineLaunch(harness.db, replacementKey)).toMatchObject({
+            phase: "ready",
+            hostId: replacementHost.id,
+            attempt: 1,
+          });
+        }
+        expect(asks).toHaveLength(1);
+        expect(asks[0]?.environment?.id).toBe(gone.id);
+        expect(asks[0]?.inputs).toEqual({ image: "img", cpus: 2 });
+        expect(getThread(harness.db, thread.id)?.status).toBe("starting");
       });
-      expect(asks).toHaveLength(1);
-      expect(asks[0]?.environment?.id).toBe(gone.id);
-      expect(asks[0]?.inputs).toEqual({ image: "img", cpus: 2 });
-      expect(getThread(harness.db, thread.id)?.status).toBe("starting");
-    });
-  });
+    },
+  );
 
   it("aborts create and asks the provider to remove by path key when stopped", async () => {
     await withTestHarness(async (harness) => {

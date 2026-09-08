@@ -504,6 +504,24 @@ export type MachineLaunchDecision =
   | { action: "reject"; message: string }
   | { action: "ready"; host: Host; log: string };
 
+export function resolveThreadMachineLaunchKey(
+  deps: Pick<Deps, "db">,
+  threadId: string,
+): string {
+  let key = threadId;
+  const visited = new Set<string>();
+  for (;;) {
+    if (visited.has(key))
+      throw new Error("Machine replacement history contains a cycle");
+    visited.add(key);
+    const launch = getMachineLaunch(deps.db, key);
+    if (launch?.phase !== "ready" || launch.hostId === null) return key;
+    const host = getHost(deps.db, launch.hostId);
+    if (host !== null && host.destroyedAt === null) return key;
+    key = `${threadId}:replacement:${launch.hostId}`;
+  }
+}
+
 export function askMachineLaunch(
   deps: Deps,
   args: {
@@ -527,7 +545,6 @@ export function askMachineLaunch(
       `Machine launch key "${args.key}" is already in use`,
     );
   }
-  let readyHostIsGone = false;
   if (row?.phase === "ready") {
     const host = row.hostId === null ? null : getHost(deps.db, row.hostId);
     if (host !== null && host.destroyedAt === null) {
@@ -537,7 +554,10 @@ export function askMachineLaunch(
         log: takeLaunchLog(deps, row),
       };
     }
-    readyHostIsGone = true;
+    return {
+      action: "reject",
+      message: `Machine launch key "${args.key}" belongs to a destroyed machine; use a new key to create a replacement`,
+    };
   }
   if (row?.phase === "failed") {
     if (
@@ -559,7 +579,7 @@ export function askMachineLaunch(
       };
     }
   }
-  if (row === null || row.phase === "failed" || readyHostIsGone) {
+  if (row === null || row.phase === "failed") {
     const attempt = (row?.attempt ?? 0) + 1;
     row = {
       key: args.key,

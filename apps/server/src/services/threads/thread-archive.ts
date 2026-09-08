@@ -4,6 +4,7 @@ import {
 } from "../environments/provider-orchestration.js";
 import {
   cancelMachineLaunch,
+  resolveThreadMachineLaunchKey,
   sweepProviderMachine,
 } from "../machines/provider-orchestration.js";
 import {
@@ -108,7 +109,10 @@ function archiveThreadWithLifecycleEffects(
   void cancelProviderLaunch(deps, archivedThread.id).catch((error) =>
     deps.logger.warn({ error }, "Environment launch cancellation failed"),
   );
-  void cancelMachineLaunch(deps, archivedThread.id).catch((error) =>
+  void cancelMachineLaunch(
+    deps,
+    resolveThreadMachineLaunchKey(deps, archivedThread.id),
+  ).catch((error) =>
     deps.logger.warn({ error }, "Machine launch cancellation failed"),
   );
   if (archivedThread.environmentId !== null)
