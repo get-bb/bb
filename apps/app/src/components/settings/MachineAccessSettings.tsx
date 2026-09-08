@@ -7,7 +7,6 @@ import { OptionPicker } from "@/components/pickers/OptionPicker";
 import { useSystemConfig } from "@/hooks/queries/system-queries";
 import { useUpdateGeneralSettings } from "@/hooks/mutations/settings-mutations";
 import {
-  SettingsBadge,
   SettingsSection,
   SettingsWithControl,
 } from "@/components/ui/settings-section";
@@ -49,20 +48,7 @@ export function MachineAccessSettings() {
     <SettingsSection
       title="Machine access"
       description="Choose how new machines connect to the server."
-      bodyClassName="space-y-4"
-    >
-      {access?.providers.map((provider) =>
-        provider.attention ? (
-          <p
-            key={provider.id}
-            role="status"
-            className="rounded-md bg-muted/40 px-3 py-2 text-xs text-destructive-text"
-          >
-            {provider.displayName}: {provider.attention}
-          </p>
-        ) : null,
-      )}
-      <SettingsWithControl label="Connection method">
+      action={
         <OptionPicker
           label="Connection method"
           value={selected}
@@ -99,52 +85,59 @@ export function MachineAccessSettings() {
               });
           }}
         />
-      </SettingsWithControl>
-      {selected === "connect" && (
-        <div className="space-y-3 rounded-md bg-muted/30 p-3">
-          <p className="text-xs leading-relaxed text-subtle-foreground">
-            bb connect gives this server a private getbb.app address that your
-            other machines can reach.
+      }
+      bodyClassName="space-y-3"
+    >
+      {access?.providers.map((provider) =>
+        provider.attention ? (
+          <p
+            key={provider.id}
+            role="status"
+            className="rounded-md bg-muted/40 px-3 py-2 text-xs text-destructive-text"
+          >
+            {provider.displayName}: {provider.attention}
           </p>
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="min-w-0 space-y-1">
-              <SettingsBadge>
-                {effective?.availability.status === "available"
-                  ? "Connected"
-                  : effective?.availability.status === "unavailable"
-                    ? "Unavailable"
-                    : "Not connected"}
-              </SettingsBadge>
-              <p className="text-xs text-subtle-foreground">
-                {effective?.availability.status === "available"
-                  ? "Ready to add machines."
-                  : effective?.availability.status === "unavailable"
-                    ? effective.availability.message
-                    : "Link this server to your getbb.app account to get started."}
-              </p>
-            </div>
-            {effective?.availability.status !== "available" && (
-              <Button variant="outline" size="sm" asChild>
-                <Link
-                  to={getPluginConfigurationRoutePath({ pluginId: "connect" })}
-                >
-                  Set up bb connect
-                </Link>
-              </Button>
-            )}
+        ) : null,
+      )}
+      {selected === "connect" && (
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="min-w-0 space-y-1">
+            <p className="text-sm font-medium">
+              {effective?.availability.status === "available"
+                ? "Connected"
+                : effective?.availability.status === "unavailable"
+                  ? "Unavailable"
+                  : "Not connected"}
+            </p>
+            <p className="text-xs text-subtle-foreground">
+              {effective?.availability.status === "available"
+                ? "New machines can reach the server through bb connect."
+                : effective?.availability.status === "unavailable"
+                  ? effective.availability.message
+                  : "Connect your getbb.app account to add machines."}
+            </p>
           </div>
+          {effective?.availability.status !== "available" && (
+            <Button variant="outline" size="sm" asChild>
+              <Link
+                to={getPluginConfigurationRoutePath({ pluginId: "connect" })}
+              >
+                Set up bb connect
+              </Link>
+            </Button>
+          )}
         </div>
       )}
-      {selected !== "connect" &&
-        selected !== "direct" &&
-        effective?.availability.status !== "available" && (
-          <p className="text-xs text-subtle-foreground">
-            {effective?.availability.message ??
-              "This connection method is not installed."}
-          </p>
-        )}
+      {selected !== "connect" && selected !== "direct" && (
+        <p className="text-xs text-subtle-foreground">
+          {effective?.availability.status === "available"
+            ? "Ready to connect new machines."
+            : (effective?.availability.message ??
+              "This connection method is not installed.")}
+        </p>
+      )}
       {selected === "direct" && (
-        <div className="space-y-3 rounded-md bg-muted/30 p-3">
+        <div className="space-y-3">
           <SettingsWithControl
             label="Server address"
             description={
@@ -169,10 +162,6 @@ export function MachineAccessSettings() {
           </SettingsWithControl>
         </div>
       )}
-      <p className="text-xs text-subtle-foreground">
-        Changing this affects new machines only. Existing machines keep their
-        current connection.
-      </p>
     </SettingsSection>
   );
 }
