@@ -146,11 +146,18 @@ it("tracks imported dependency content, linked package replacement, and lockfile
     join(root, "server.ts"),
     'export { answer } from "fixture-dependency";\n',
   );
-  const request = { ...args, targets: ["server"] as const };
+  await writeFile(
+    join(root, "app.ts"),
+    'export { answer } from "fixture-dependency";\n',
+  );
+  const request = { ...args, targets: ["server", "app"] as const };
   await ensurePluginArtifacts(request);
   expect((await ensurePluginArtifacts(request)).rebuilt).toEqual([]);
   await writeFile(join(dependency, "index.js"), "exports.answer = 2;\n");
-  expect((await ensurePluginArtifacts(request)).rebuilt).toEqual(["server"]);
+  expect((await ensurePluginArtifacts(request)).rebuilt).toEqual([
+    "server",
+    "app",
+  ]);
   const replacement = await mkdtemp(join(tmpdir(), "bb-plugin-replacement-"));
   roots.push(replacement);
   await writeFile(
@@ -164,12 +171,18 @@ it("tracks imported dependency content, linked package replacement, and lockfile
   await writeFile(join(replacement, "index.js"), "exports.answer = 3;\n");
   await rm(join(root, "node_modules/fixture-dependency"));
   await symlink(replacement, join(root, "node_modules/fixture-dependency"));
-  expect((await ensurePluginArtifacts(request)).rebuilt).toEqual(["server"]);
+  expect((await ensurePluginArtifacts(request)).rebuilt).toEqual([
+    "server",
+    "app",
+  ]);
   await writeFile(join(root, "package-lock.json"), "{}\n");
-  expect((await ensurePluginArtifacts(request)).rebuilt).toEqual(["server"]);
+  expect((await ensurePluginArtifacts(request)).rebuilt).toEqual([
+    "server",
+    "app",
+  ]);
   expect(
     (await ensurePluginArtifacts({ ...request, bbVersion: "0.2.0" })).rebuilt,
-  ).toEqual(["server"]);
+  ).toEqual(["server", "app"]);
 });
 
 it("shares successful builds between separate CLI and server processes", async () => {

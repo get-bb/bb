@@ -290,6 +290,7 @@ export async function ensurePluginArtifacts(args: {
               ? await buildPluginHost(root, args.bbVersion, args.toolchain)
               : await buildPluginApp(root, args.bbVersion, args.toolchain, {
                   minify,
+                  collectInputs: true,
                 });
         const after = await fingerprint(root, priorInputs, settings);
         if (before === after) {

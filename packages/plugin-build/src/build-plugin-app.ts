@@ -399,6 +399,7 @@ interface PluginAppBuildResult {
 
 interface PluginAppBuildOptions {
   minify: boolean;
+  collectInputs?: boolean;
 }
 
 export async function buildPluginApp(
@@ -432,7 +433,8 @@ export async function buildPluginApp(
       outfile: stagedJsPath,
       absWorkingDir: rootDir,
       bundle: true,
-      metafile: true,
+      metafile:
+        (options.collectInputs ?? false) || dependencySources.length > 0,
       format: "esm",
       platform: "browser",
       target: "es2022",
@@ -448,7 +450,8 @@ export async function buildPluginApp(
       plugins: [runtimeShimPlugin()],
     });
 
-    inputPaths = pluginBuildInputPaths(bundle.metafile, rootDir);
+    if (bundle.metafile !== undefined)
+      inputPaths = pluginBuildInputPaths(bundle.metafile, rootDir);
     let authoredCss = "";
     try {
       authoredCss = await readFile(stagedCssPath, "utf8");
