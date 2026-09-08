@@ -1058,7 +1058,25 @@ function createFakePluginHostInternal(
   // like the host's handles over one on-disk file. Like the host, a handle
   // the plugin closed itself is replaced on the next call.
   let databaseHandle: Database.Database | undefined;
+  const secretKey = (key: string) => {
+    assertLive();
+    if (!/^[A-Za-z0-9_-]{1,128}$/u.test(key))
+      throw new Error("Invalid plugin secret key");
+    return key;
+  };
   const storage: PluginStorage = {
+    experimental_secrets: {
+      async get(key) {
+        const value = persistentState.storedSettings.get(secretKey(key));
+        return typeof value === "string" ? value : undefined;
+      },
+      async set(key, value) {
+        persistentState.storedSettings.set(secretKey(key), value);
+      },
+      async delete(key) {
+        persistentState.storedSettings.delete(secretKey(key));
+      },
+    },
     kv,
     database() {
       assertLive();
@@ -1084,9 +1102,10 @@ function createFakePluginHostInternal(
         );
       }
       const rows = database
-        .prepare<[], { id: number; statement_hash: string | null }>(
-          "SELECT id, statement_hash FROM _bb_migrations ORDER BY id",
-        )
+        .prepare<
+          [],
+          { id: number; statement_hash: string | null }
+        >("SELECT id, statement_hash FROM _bb_migrations ORDER BY id")
         .all();
       const applied = new Map<number, string | null>();
       for (const row of rows) applied.set(row.id, row.statement_hash);

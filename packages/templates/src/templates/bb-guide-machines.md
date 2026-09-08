@@ -276,3 +276,10 @@ Maintenance interrupts active turns and closes terminals before saving. Submit a
 new continuation turn after restore; interrupted turns are never reported successful.
 
 `bb machine lifecycle MACHINE --remove --yes --json` removes retained compute and snapshots through the normal machine removal path. `--keep` prevents automatic retention deletion; `--no-keep` restores it. After filesystem restore, core reruns the owned checkout’s idempotent setup hook to restart services; hook failure blocks readiness.
+
+Automatic machine GitHub credentials are enabled by default. Use
+`bb settings general machineGitCredentialsEnabled false` to stop forwarding the
+server gh credentials to machines; `true` enables them again. In Machines →
+Advanced settings, the automatic GH_TOKEN switch controls the same setting.
+This does not log the server out or suppress an explicit custom GH_TOKEN.
+Changes apply to new turns, setup commands and terminals.

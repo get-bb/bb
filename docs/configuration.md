@@ -1265,3 +1265,10 @@ SDK parity: `sdk.system.machineEnvironment()`,
 `sdk.system.setMachineEnvironment({ name, value, secret, note })`, and
 `sdk.system.unsetMachineEnvironment(name)`. Secret list rows have `value: null`.
 `bb settings show --json` exposes the built-in readiness as `machineGit`.
+
+Automatic machine GitHub credentials are enabled by default. Use
+`bb settings general machineGitCredentialsEnabled false` to stop forwarding the
+server gh credentials to machines; `true` enables them again. In Machines →
+Advanced settings, the automatic GH_TOKEN switch controls the same setting.
+This does not log the server out or suppress an explicit custom GH_TOKEN.
+Changes apply to new turns, setup commands and terminals.

@@ -1,3 +1,5 @@
+import { useSystemConfig } from "@/hooks/queries/system-queries";
+import { isLocalOnlyUrl } from "@/lib/loopback-hostname";
 import { MachineEnrollmentCommand } from "./MachineEnrollmentCommand";
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
@@ -36,7 +38,9 @@ export function CreateMachineDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange} modal={false}>
       <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto">
-        <CreateMachineContent open={open} onOpenChange={onOpenChange} />
+        {open && (
+          <CreateMachineContent open={open} onOpenChange={onOpenChange} />
+        )}
       </DialogContent>
     </Dialog>
   );
@@ -49,6 +53,19 @@ function CreateMachineContent({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
+  const config = useSystemConfig();
+  const [otherOptions, setOtherOptions] = useState(false);
+  const autoStarted = useRef(false);
+  const access = config.data?.serverAccess;
+  const accessProvider = access?.providers.find(
+    (provider) => provider.id === access.defaultProviderId,
+  );
+  const localUrl =
+    access?.defaultProviderId === "direct" &&
+    access.effectiveUrl !== null &&
+    isLocalOnlyUrl(access.effectiveUrl);
+  const accessReady =
+    accessProvider?.availability.status === "available" && !localUrl;
   const createController = useRef<AbortController | null>(null);
   const createKey = useRef<string | null>(null);
   const [progress, setProgress] = useState("");
@@ -126,7 +143,10 @@ function CreateMachineContent({
         return await sdk.hosts.follow({
           id: launch.id,
           signal: controller.signal,
-          onProgress: (status) => setProgress(status.step),
+          onProgress: (status) => {
+            setProgress(status.step);
+            if (status.terminal) createKey.current = null;
+          },
         });
       } finally {
         if (createController.current === controller)
@@ -139,14 +159,100 @@ function CreateMachineContent({
     },
   });
 
+  useEffect(() => {
+    if (!otherOptions && selectedMachineProvider === null) {
+      const manual = machineProviders?.find(
+        (provider) => provider.id === "manual",
+      );
+      if (manual) selectMachineProvider(manual);
+    }
+  }, [machineProviders, otherOptions, selectedMachineProvider]);
+  useEffect(() => {
+    if (
+      !otherOptions &&
+      accessReady &&
+      selectedMachineProvider?.id === "manual" &&
+      selectedMachineProvider.availability?.status !== "unavailable" &&
+      !autoStarted.current
+    ) {
+      autoStarted.current = true;
+      createMachine.mutate();
+    }
+  }, [otherOptions, accessReady, selectedMachineProvider, createMachine]);
+
   return (
     <>
       <DialogHeader>
         <DialogTitle>Add a machine</DialogTitle>
-        <DialogDescription>Choose how to add your machine.</DialogDescription>
+        <DialogDescription>
+          {otherOptions
+            ? "Choose how to add your machine."
+            : "Run a command on another computer to connect it to bb."}
+        </DialogDescription>
       </DialogHeader>
       <div className="space-y-3">
-        {(machineProviders?.length ?? 0) > 0 ? (
+        {!otherOptions && !accessReady && (
+          <div
+            role="status"
+            className="space-y-3 rounded-md border border-border bg-muted/30 p-3"
+          >
+            <p className="text-sm font-medium">
+              {localUrl
+                ? "Another machine cannot use this address."
+                : "Set up machine access first."}
+            </p>
+            <p className="text-xs text-subtle-foreground">
+              {localUrl
+                ? `The server URL ${access?.effectiveUrl} points to the machine that runs the command. Choose an address other machines can reach.`
+                : access?.defaultProviderId === "connect"
+                  ? "Connect this server with bb connect, then come back here to copy the enrollment command."
+                  : accessProvider?.availability.status !== "available"
+                    ? (accessProvider?.availability.message ??
+                      "Choose how machines can reach the server in Advanced settings.")
+                    : "Checking machine access…"}
+            </p>
+            <Button asChild size="sm" variant="outline">
+              <Link
+                onClick={() => onOpenChange(false)}
+                to={
+                  access?.defaultProviderId === "connect"
+                    ? getPluginConfigurationRoutePath({ pluginId: "connect" })
+                    : "/settings/machines#advanced-machine-settings"
+                }
+              >
+                {access?.defaultProviderId === "connect"
+                  ? "Set up remote access"
+                  : "Configure machine access"}
+              </Link>
+            </Button>
+          </div>
+        )}
+        {!otherOptions && createMachine.isError && (
+          <div className="space-y-2">
+            <p role="alert" className="text-xs text-destructive-text">
+              {getMutationErrorMessage({
+                error: createMachine.error,
+                fallbackMessage: "Couldn't prepare an enrollment command.",
+              })}
+            </p>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => createMachine.mutate()}
+            >
+              Try again
+            </Button>
+          </div>
+        )}
+        {!otherOptions &&
+          accessReady &&
+          !createMachine.isError &&
+          !launchId && (
+            <p role="status" className="text-sm text-subtle-foreground">
+              Preparing enrollment command…
+            </p>
+          )}
+        {otherOptions && (machineProviders?.length ?? 0) > 0 ? (
           <div className="space-y-2">
             <div className="space-y-1 rounded-md border border-border p-1">
               {machineProviders?.map((provider) => {
@@ -303,6 +409,23 @@ function CreateMachineContent({
         <MachineEnrollmentCommand id={launchId} scope="launch" />
       ) : null}
       <DialogFooter>
+        {!otherOptions && (
+          <Button
+            variant="ghost"
+            onClick={async () => {
+              if (launchId && createMachine.isPending)
+                await sdk.hosts.cancel({ id: launchId });
+              createController.current?.abort();
+              setOtherOptions(true);
+              setSelectedMachineProvider(null);
+              setLaunchId(null);
+              createKey.current = null;
+              createMachine.reset();
+            }}
+          >
+            Other options
+          </Button>
+        )}
         {createMachine.isPending && launchId ? (
           <Button
             variant="outline"

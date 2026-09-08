@@ -171,6 +171,12 @@ export interface PluginKvStorage {
 }
 
 export interface PluginStorage {
+  /** Private per-plugin strings in 0600 files, absent from configuration UI and database. Keys use letters, digits, underscores or hyphens. Existing secret-setting keys retain their files. */
+  experimental_secrets: {
+    get(key: string): Promise<string | undefined>;
+    set(key: string, value: string): Promise<void>;
+    delete(key: string): Promise<void>;
+  };
   /** Namespaced JSON key-value rows in bb.db; values ≤256KB each. */
   kv: PluginKvStorage;
   /**

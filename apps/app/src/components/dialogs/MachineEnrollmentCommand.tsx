@@ -1,3 +1,4 @@
+import { useClipboardCopy } from "@/lib/clipboard";
 import { useEffect, useState } from "react";
 import { Button } from "@bb/shared-ui/button";
 import { sdk } from "@/lib/sdk";
@@ -10,6 +11,7 @@ export function MachineEnrollmentCommand({
   scope: "launch" | "thread";
 }) {
   const [command, setCommand] = useState<string | null>(null);
+  const { copy, copied } = useClipboardCopy({ text: command ?? "" });
   useEffect(() => {
     const controller = new AbortController();
     let timer: ReturnType<typeof setTimeout>;
@@ -41,12 +43,8 @@ export function MachineEnrollmentCommand({
       <pre className="whitespace-pre-wrap break-all rounded-md border border-border p-3 font-mono text-xs">
         {command}
       </pre>
-      <Button
-        variant="outline"
-        size="sm"
-        onClick={() => void navigator.clipboard.writeText(command)}
-      >
-        Copy command
+      <Button variant="outline" size="sm" onClick={() => void copy()}>
+        {copied ? "Copied" : "Copy command"}
       </Button>
     </div>
   );

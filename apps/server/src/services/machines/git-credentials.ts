@@ -1,7 +1,7 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { and, eq } from "drizzle-orm";
-import { machineEnrollments, type DbConnection } from "@bb/db";
+import { machineEnrollments, getAppSettings, type DbConnection } from "@bb/db";
 import type { HostDaemonContributedEnvEntry } from "@bb/host-daemon-contract";
 import { z } from "zod";
 
@@ -105,7 +105,10 @@ export async function resolveMachineGitEnv(
   hostId: string,
   run = runGh,
 ): Promise<HostDaemonContributedEnvEntry[]> {
-  return isEnrolledMachine(db, hostId) ? resolveGitCredentials(run) : [];
+  return isEnrolledMachine(db, hostId) &&
+    getAppSettings(db).machineGitCredentialsEnabled
+    ? resolveGitCredentials(run)
+    : [];
 }
 
 export async function machineGitHealth(run = runGh) {
@@ -113,7 +116,7 @@ export async function machineGitHealth(run = runGh) {
   return {
     status: entries.length ? ("ready" as const) : ("not configured" as const),
     statusMessage: entries.length
-      ? "GitHub credentials are provided by the server gh login."
+      ? "Generated using gh auth token --hostname github.com."
       : "gh is not logged in on the server",
   };
 }

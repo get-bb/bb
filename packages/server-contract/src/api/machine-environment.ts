@@ -32,7 +32,7 @@ export type MachineEnvironmentVariable = z.infer<
 >;
 export const machineEnvironmentListSchema = z.object({
   builtInGit: z.object({
-    status: z.enum(["logged in", "not logged in", "overridden"]),
+    status: z.enum(["logged in", "not logged in", "overridden", "disabled"]),
     statusMessage: z.string(),
   }),
   variables: z.array(machineEnvironmentVariableSchema),

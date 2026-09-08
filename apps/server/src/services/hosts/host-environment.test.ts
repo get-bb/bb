@@ -1,9 +1,11 @@
+import { defaultAppSettings } from "@bb/domain";
 import {
   createConnection,
   migrate,
   upsertHost,
   noopNotifier,
   getHost,
+  setAppSettings,
 } from "@bb/db";
 import { mkdtemp, writeFile, mkdir, rm, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -19,10 +21,17 @@ it("gives backfilled manual machines user and gh environment without enrollment 
     migrate(db);
     upsertHost(db, noopNotifier, { id: "legacy-remote", name: "Remote" });
     upsertHost(db, noopNotifier, { id: "local-daemon", name: "Local" });
-    const sql = (await readFile(
-      new URL("../../../../../packages/db/drizzle/0114_machine_providers.sql", import.meta.url),
-      "utf8",
-    )).split("--> statement-breakpoint").find((statement) => statement.includes("UPDATE hosts"));
+    const sql = (
+      await readFile(
+        new URL(
+          "../../../../../packages/db/drizzle/0114_machine_providers.sql",
+          import.meta.url,
+        ),
+        "utf8",
+      )
+    )
+      .split("--> statement-breakpoint")
+      .find((statement) => statement.includes("UPDATE hosts"));
     if (sql === undefined) throw new Error("Missing manual machine backfill");
     db.$client.exec(sql);
     migrate(db);
@@ -66,6 +75,29 @@ if [ "$1" = auth ]; then printf 'test-gh-secret\\n'; else printf '{"login":"octo
         projectId: null,
       }),
     ).toEqual([]);
+    setAppSettings(db, {
+      ...defaultAppSettings,
+      machineGitCredentialsEnabled: false,
+    });
+    const disabled = await resolveHostEnvironment(deps, {
+      hostId: "legacy-remote",
+      projectId: null,
+    });
+    expect(disabled.some((row) => row.name === "GH_TOKEN")).toBe(false);
+    expect(disabled.some((row) => row.name === "MACHINE_VALUE")).toBe(true);
+    await updateMachineEnvironment(db, dataDir, "GH_TOKEN", {
+      name: "GH_TOKEN",
+      value: "custom-token",
+      secret: true,
+      note: null,
+    });
+    const overridden = await resolveHostEnvironment(deps, {
+      hostId: "legacy-remote",
+      projectId: null,
+    });
+    expect(overridden.find((row) => row.name === "GH_TOKEN")?.value).toBe(
+      "custom-token",
+    );
     expect(
       db.$client.prepare("SELECT COUNT(*) AS n FROM machine_enrollments").get(),
     ).toEqual({ n: 0 });

@@ -2,7 +2,7 @@ import { machineGitHealth } from "./git-credentials.js";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { eq, like } from "drizzle-orm";
-import { appSettingsValues, type DbConnection } from "@bb/db";
+import { appSettingsValues, getAppSettings, type DbConnection } from "@bb/db";
 import { deleteSecretFile, writeSecretFile } from "@bb/secret-storage";
 import {
   machineEnvironmentNameSchema,
@@ -123,22 +123,29 @@ export async function resolveUserMachineEnvironment(
 export async function machineEnvironmentView(db: DbConnection) {
   const variables = listMachineEnvironment(db);
   const overridden = variables.some((row) => row.name === "GH_TOKEN");
-  const health = overridden
-    ? {
-        status: "ready",
-        statusMessage:
-          "The built-in gh token is overridden by Machine environment.",
-      }
-    : await machineGitHealth();
+  const enabled = getAppSettings(db).machineGitCredentialsEnabled;
+  const health =
+    overridden || !enabled
+      ? {
+          status: "ready",
+          statusMessage:
+            "The built-in gh token is overridden by Machine environment.",
+        }
+      : await machineGitHealth();
   return {
     variables,
     builtInGit: {
       status: overridden
         ? ("overridden" as const)
-        : health.status === "ready"
-          ? ("logged in" as const)
-          : ("not logged in" as const),
-      statusMessage: health.statusMessage,
+        : !enabled
+          ? ("disabled" as const)
+          : health.status === "ready"
+            ? ("logged in" as const)
+            : ("not logged in" as const),
+      statusMessage:
+        !enabled && !overridden
+          ? "Automatic GitHub credentials are disabled."
+          : health.statusMessage,
     },
   };
 }
@@ -146,10 +153,9 @@ export async function machineEnvironmentView(db: DbConnection) {
 export async function effectiveMachineGitHealth(db: DbConnection) {
   const view = await machineEnvironmentView(db);
   return {
-    status:
-      view.builtInGit.status === "not logged in"
-        ? ("not configured" as const)
-        : ("ready" as const),
+    status: ["not logged in", "disabled"].includes(view.builtInGit.status)
+      ? ("not configured" as const)
+      : ("ready" as const),
     statusMessage: view.builtInGit.statusMessage,
   };
 }

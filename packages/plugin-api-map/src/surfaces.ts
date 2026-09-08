@@ -929,6 +929,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Stores the plugin's data on the bb server. With this, a plugin can:",
         bullets: [
           "Get a key-value store for small values such as flags and cursors",
+          "Keep internal credentials in private files with experimental_secrets, without exposing settings fields",
           "Get its own SQLite database, with migrations, for larger or relational data",
           "Reject a changed or reused migration number before it can hide a schema change",
           "Read and write only its own namespace; other plugins cannot see it",

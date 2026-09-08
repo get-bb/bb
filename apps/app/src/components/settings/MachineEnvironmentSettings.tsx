@@ -1,4 +1,7 @@
 import { useState } from "react";
+import { Switch } from "@bb/shared-ui/switch";
+import { useSystemConfig } from "@/hooks/queries/system-queries";
+import { useUpdateGeneralSettings } from "@/hooks/mutations/settings-mutations";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   machineEnvironmentSetSchema,
@@ -19,6 +22,8 @@ type DraftRow = MachineEnvironmentVariable & { id: string; existing: boolean };
 
 export function MachineEnvironmentSettings() {
   const queryClient = useQueryClient();
+  const settings = useSystemConfig().data?.generalSettings;
+  const updateSettings = useUpdateGeneralSettings();
   const query = useQuery({
     queryKey,
     queryFn: () => sdk.system.machineEnvironment(),
@@ -206,25 +211,53 @@ export function MachineEnvironmentSettings() {
               className="font-mono"
               aria-label="Automatic GH_TOKEN value"
               value={git?.status === "logged in" ? "••••••••" : ""}
-              placeholder={gitMissing ? "Not available" : "Checking…"}
+              placeholder={
+                git?.status === "disabled"
+                  ? "Disabled"
+                  : gitMissing
+                    ? "Not available"
+                    : "Checking…"
+              }
               readOnly
             />
           </div>
           <div className="flex flex-wrap items-center gap-2 text-xs">
             <SettingsBadge>Automatic</SettingsBadge>
+            <Switch
+              aria-label="Automatic GH_TOKEN"
+              checked={settings?.machineGitCredentialsEnabled ?? true}
+              disabled={!settings || updateSettings.isPending}
+              onCheckedChange={(enabled) =>
+                updateSettings.mutate(
+                  { ...settings!, machineGitCredentialsEnabled: enabled },
+                  {
+                    onSuccess: () => {
+                      void query.refetch();
+                    },
+                  },
+                )
+              }
+            />
             <span
               role={gitMissing ? "alert" : "status"}
               className={
                 gitMissing ? "text-destructive-text" : "text-subtle-foreground"
               }
             >
-              {gitMissing
-                ? "GitHub is not logged in. Run gh auth login on the server, or add your own GH_TOKEN."
-                : git?.status === "logged in"
-                  ? "Provided by the server’s GitHub login."
-                  : git?.status === "overridden"
-                    ? "The server’s GitHub login will be used after saving."
-                    : "Checking the server’s GitHub login…"}
+              {gitMissing ? (
+                "GitHub is not logged in. Run gh auth login on the server, or add your own GH_TOKEN."
+              ) : git?.status === "logged in" ? (
+                <>
+                  Generated using{" "}
+                  <code>gh auth token --hostname github.com</code>.
+                </>
+              ) : git?.status === "disabled" ? (
+                "Disabled — no automatic GitHub credentials are sent to machines."
+              ) : git?.status === "overridden" ? (
+                "The server’s GitHub login will be used after saving."
+              ) : (
+                "Checking the server’s GitHub login…"
+              )}
             </span>
           </div>
         </div>

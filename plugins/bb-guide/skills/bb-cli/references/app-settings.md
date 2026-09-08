@@ -131,3 +131,10 @@ sets the server URL reachable by machines. Set `null` to use BB_EXTERNAL_URL.
 when a URL exists. `bb settings show --json` includes serverAccess with the
 effective URL, its source and provider availability. These grants carry runtime
 requests, including account-pool traffic, after enrolment.
+
+Automatic machine GitHub credentials are enabled by default. Use
+`bb settings general machineGitCredentialsEnabled false` to stop forwarding the
+server gh credentials to machines; `true` enables them again. In Machines →
+Advanced settings, the automatic GH_TOKEN switch controls the same setting.
+This does not log the server out or suppress an explicit custom GH_TOKEN.
+Changes apply to new turns, setup commands and terminals.

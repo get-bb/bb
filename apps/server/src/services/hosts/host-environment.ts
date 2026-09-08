@@ -1,4 +1,4 @@
-import { getHost } from "@bb/db";
+import { getAppSettings, getHost } from "@bb/db";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { HOST_ID_FILE_NAME } from "@bb/host-daemon-contract";
@@ -35,9 +35,9 @@ export async function resolveHostEnvironment(
     )
       return [];
   } catch {}
-  const resolved = await Promise.all(
-    contributors.map((resolve) => resolve(context)),
-  );
+  const resolved = getAppSettings(deps.db).machineGitCredentialsEnabled
+    ? await Promise.all(contributors.map((resolve) => resolve(context)))
+    : [];
   const builtIn = resolved.flat();
   const user = await resolveUserMachineEnvironment(
     deps.db,

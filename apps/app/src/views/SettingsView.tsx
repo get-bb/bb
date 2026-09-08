@@ -1220,8 +1220,17 @@ export function SettingsView() {
     content = (
       <>
         <MachinesSettingsSection />
-        <MachineAccessSettings />
-        <MachineEnvironmentSettings />
+        <details
+          id="advanced-machine-settings"
+          open={location.hash === "#advanced-machine-settings" || undefined}
+          className="group space-y-6"
+        >
+          <summary className="cursor-pointer text-sm font-medium text-subtle-foreground">
+            Advanced settings
+          </summary>
+          <MachineAccessSettings />
+          <MachineEnvironmentSettings />
+        </details>
       </>
     );
   } else if (activeSection === "updates") {

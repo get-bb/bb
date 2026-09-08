@@ -107,6 +107,42 @@ describe("plugin settings + storage", () => {
     await rm(workDir, { recursive: true, force: true });
   });
 
+  it("keeps internal secrets private, reads existing setting files and rejects escaped paths", async () => {
+    const root = await writePlugin(workDir, {
+      name: "bb-plugin-private-secrets",
+      serverSource: "export default function plugin() {}",
+    });
+    await service.installPath(root);
+    const api = service.getApi("private-secrets")!;
+    const secrets = api.storage.experimental_secrets;
+    const file = join(
+      dataDir,
+      "plugins",
+      "private-secrets",
+      "secrets",
+      "credential",
+    );
+    await mkdir(join(dataDir, "plugins", "private-secrets", "secrets"), {
+      recursive: true,
+    });
+    await writeFile(file, "legacy-credential", { mode: 0o600 });
+    expect(await secrets.get("credential")).toBe("legacy-credential");
+    await secrets.set("credential", "updated-credential");
+    expect((await stat(file)).mode & 0o777).toBe(0o600);
+    expect(await api.storage.kv.get("credential")).toBeUndefined();
+    await expect(secrets.get("../credential")).rejects.toThrow("Invalid");
+    await expect(secrets.set("../credential", "bad")).rejects.toThrow(
+      "Invalid",
+    );
+    await service.reload("private-secrets");
+    const restarted =
+      service.getApi("private-secrets")!.storage.experimental_secrets;
+    expect(await restarted.get("credential")).toBe("updated-credential");
+    await expect(secrets.get("credential")).rejects.toThrow();
+    await restarted.delete("credential");
+    expect(await restarted.get("credential")).toBeUndefined();
+  });
+
   describe("settings", () => {
     async function installConfigurable(): Promise<void> {
       const rootDir = await writePlugin(workDir, {

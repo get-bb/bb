@@ -13,6 +13,26 @@ import { sdk } from "@/lib/sdk";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { CreateMachineDialog } from "./CreateMachineDialog";
 
+const accessState = vi.hoisted(() => ({ ready: false }));
+vi.mock("@/hooks/queries/system-queries", () => ({
+  useSystemConfig: () => ({
+    data: {
+      serverAccess: {
+        defaultProviderId: "connect",
+        effectiveUrl: null,
+        providers: [
+          {
+            id: "connect",
+            displayName: "bb connect",
+            availability: accessState.ready
+              ? { status: "available" }
+              : { status: "setup-required", message: "Pair bb connect" },
+          },
+        ],
+      },
+    },
+  }),
+}));
 vi.mock("@/lib/sdk", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/sdk")>()),
   sdk: {
@@ -98,6 +118,9 @@ it("lists manual alongside other providers and never mints a legacy join code", 
     </MemoryRouter>,
     { wrapper },
   );
+  expect(await screen.findByText("Set up machine access first.")).toBeTruthy();
+  expect(sdk.hosts.submit).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole("button", { name: "Other options" }));
   fireEvent.click(
     await screen.findByRole("button", { name: "Existing machine" }),
   );
@@ -129,4 +152,26 @@ it("lists manual alongside other providers and never mints a legacy join code", 
     expect.objectContaining({ projectId: "project-fixture" }),
   );
   expect(sdk.hosts.createJoinCode).not.toHaveBeenCalled();
+});
+
+it("prepares the manual command immediately when access is ready", async () => {
+  accessState.ready = true;
+  const { wrapper } = createQueryClientTestHarness();
+  try {
+    render(
+      <MemoryRouter>
+        <CreateMachineDialog open onOpenChange={() => {}} />
+      </MemoryRouter>,
+      { wrapper },
+    );
+    await screen.findByRole("button", { name: "Copy command" });
+    expect(sdk.hosts.submit).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ machineProviderId: "manual", projectId: null }),
+    );
+    expect(
+      screen.queryByRole("combobox", { name: "Machine project" }),
+    ).toBeNull();
+  } finally {
+    accessState.ready = false;
+  }
 });

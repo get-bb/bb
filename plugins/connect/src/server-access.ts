@@ -43,13 +43,7 @@ export async function registerServerAccess(
     status(): { paired: boolean };
   },
 ) {
-  const secrets = bb.settings.define({
-    machineAccessSecrets: {
-      type: "string",
-      label: "Machine access credentials",
-      secret: true,
-    },
-  });
+  const secrets = bb.storage.experimental_secrets;
   const intentSchema = z.object({
     key: z.string(),
     hostId: z.string(),
@@ -74,7 +68,7 @@ export async function registerServerAccess(
     return result;
   }
   async function readState() {
-    const raw = (await secrets.get()).machineAccessSecrets;
+    const raw = await secrets.get("machineAccessSecrets");
     try {
       return stateSchema.parse(raw ? JSON.parse(raw) : {});
     } catch {
@@ -82,9 +76,7 @@ export async function registerServerAccess(
     }
   }
   async function storeState(state: z.infer<typeof stateSchema>) {
-    await secrets.experimental_set({
-      machineAccessSecrets: JSON.stringify(state),
-    });
+    await secrets.set("machineAccessSecrets", JSON.stringify(state));
   }
   async function load(hostId: string) {
     const state = await readState();

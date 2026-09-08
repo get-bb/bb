@@ -187,8 +187,11 @@ describe("Connect server-owned machine access", () => {
   });
 });
 
-it("moves plaintext grants into secret settings before replacing SQLite metadata", async () => {
+it("moves plaintext grants into private secret storage before replacing SQLite metadata", async () => {
   const host = await setup();
+  expect(host.harness.registrations.settingsDescriptors).not.toHaveProperty(
+    "machineAccessSecrets",
+  );
   cloud();
   const grant = {
     id: request.hostId,
@@ -381,14 +384,8 @@ it("leaves plaintext intact after a failed secret migration and retries next ini
           headers: { authorization: "old-private" },
         },
       });
-      const define = host.bb.settings.define.bind(host.bb.settings);
-      vi.spyOn(host.bb.settings, "define").mockImplementation(
-        (descriptors) => ({
-          ...define(descriptors),
-          experimental_set: async () => {
-            throw new Error("Secret write failed");
-          },
-        }),
+      vi.spyOn(host.bb.storage.experimental_secrets, "set").mockRejectedValue(
+        new Error("Secret write failed"),
       );
     }),
   ).rejects.toThrow("Secret write failed");

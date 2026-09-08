@@ -33,6 +33,7 @@ export const appSettingsSchema = z
         );
       })
       .nullable(),
+    machineGitCredentialsEnabled: z.boolean(),
     defaultMachineAccess: z.string().min(1).nullable(),
   })
   .strict();
@@ -48,6 +49,7 @@ export const defaultAppSettings: AppSettings = {
   managedBranchPrefix: DEFAULT_MANAGED_BRANCH_PREFIX,
   machineServerUrl: null,
   defaultMachineAccess: null,
+  machineGitCredentialsEnabled: true,
 };
 
 export const appSettingsUpdateSchema = z.union([

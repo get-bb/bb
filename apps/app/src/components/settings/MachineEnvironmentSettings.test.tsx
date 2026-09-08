@@ -16,6 +16,14 @@ const mocks = vi.hoisted(() => ({
   set: vi.fn(),
   unset: vi.fn(),
 }));
+vi.mock("@/hooks/queries/system-queries", () => ({
+  useSystemConfig: () => ({
+    data: { generalSettings: { machineGitCredentialsEnabled: true } },
+  }),
+}));
+vi.mock("@/hooks/mutations/settings-mutations", () => ({
+  useUpdateGeneralSettings: () => ({ isPending: false, mutate: vi.fn() }),
+}));
 vi.mock("@/lib/sdk", () => ({
   sdk: {
     system: {

@@ -2865,3 +2865,11 @@ against a server outage spanning vendor expiry without independent storage/watch
 Restore setup hooks use the same recorded core hook path as creation and receive the shared core machine environment contributions. Hook output redacts contributed secrets across stream boundaries. PR 2 protocol 193 supplies the shared hook environment and stream redaction. Modal introduced protocol 194 because it adds `workspace.readiness.inspect` and `host.readiness.probe` requests and responses; a protocol 193 daemon cannot execute those readiness commands. Enrolled machines update before use. Failed restore hooks block readiness.
 
 Machine readiness now uses protocol 195: `workspace.readiness.inspect` also returns non-Git directory fingerprints (canonical path and setup-hook content hash), and `provider.health` optionally receives the effective turn environment. Health checks with contributions run in disposable isolated provider processes; rotated credentials do not reuse a prior maintenance process. Successful legacy core hooks are reconciled by two stable, clean inspections without executing setup again.
+
+## PluginStorage.experimental_secrets
+
+Per-plugin get/set/delete for string credentials in private 0600 files, excluded
+from database KV and settings descriptors. Reuses secret-setting file keys for
+compatible migration without copying credentials. Validate bounded keys and
+plugin lifetime. Stabilize after auditing isolation, file permissions, restart
+persistence, deletion and existing secret-setting migration.
