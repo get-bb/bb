@@ -33,6 +33,7 @@ CREATE TABLE `machine_launches` (
 );
 --> statement-breakpoint
 CREATE INDEX `machine_launches_phase_idx` ON `machine_launches` (`phase`);--> statement-breakpoint
+CREATE INDEX `machine_launches_host_id_idx` ON `machine_launches` (`host_id`);--> statement-breakpoint
 ALTER TABLE `hosts` ADD `machine_provider_id` text;--> statement-breakpoint
 ALTER TABLE `hosts` ADD `server_access_provider_id` text;--> statement-breakpoint
 ALTER TABLE `hosts` ADD `server_access_grant_id` text;--> statement-breakpoint

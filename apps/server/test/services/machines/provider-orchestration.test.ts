@@ -408,6 +408,67 @@ describe("core machine provider orchestration", () => {
       });
     }));
 
+  it.each(["terminal", "exhausted", "retry"])(
+    "retains checkpoints through %s failure handling",
+    async (scenario) =>
+      withTestHarness(async (harness) => {
+        const { host } = seedHostSession(harness.deps, {
+          id: `host_failure_${scenario}`,
+        });
+        const resource = { allocation: `allocated-${scenario}` };
+        const create = vi.fn(async () => ({
+          status: "failed" as const,
+          failure: "terminal" as const,
+          message: "access unavailable",
+        }));
+        const remove = vi.fn(async () => ({ status: "removed" as const }));
+        const record = installMachineProvider(
+          machineDeclaration(host.id, { create, remove }),
+        );
+        const key = `failure-${scenario}`;
+        upsertMachineLaunch(harness.db, {
+          key,
+          providerId: record.provider.id,
+          projectId: null,
+          inputs: null,
+          attempt: 1,
+          phase: "failed",
+          startedAt: Date.now() - 60000,
+          failedAt: Date.now() - 60000,
+          failure: scenario === "terminal" ? "terminal" : "transient",
+          message: "bootstrap failed",
+          transientFailures: scenario === "exhausted" ? 4 : 1,
+          hostId: host.id,
+          resource,
+          stepText: "Bootstrap failed",
+          pendingLog: "",
+          cancelPending: false,
+        });
+        if (scenario === "retry") {
+          askMachineLaunch(harness.deps, {
+            key,
+            record,
+            projectId: null,
+            inputs: null,
+          });
+          expect(getMachineLaunch(harness.db, key)).toMatchObject({
+            hostId: host.id,
+            resource,
+            attempt: 2,
+          });
+          await cancelMachineLaunch(harness.deps, key);
+          expect(create).toHaveBeenCalledOnce();
+        } else {
+          await sweepMachineLifecycles(harness.deps);
+          expect(create).not.toHaveBeenCalled();
+        }
+        expect(remove).toHaveBeenCalledWith(
+          expect.objectContaining({ hostId: host.id, resource }),
+        );
+        expect(getHost(harness.db, host.id)?.phase).toBe("destroyed");
+      }),
+  );
+
   it("keeps cancellation pending after a transient recovery failure and retries on the next sweep", async () =>
     withTestHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps, {
@@ -602,13 +663,15 @@ describe("core machine provider orchestration", () => {
           `remove:{\"key\":\"${thread.id}\"}`,
         ]);
       });
-      expect(getMachineLaunch(harness.db, thread.id)).toMatchObject({
-        phase: "cancelled",
-        cancelPending: false,
-      });
-      expect(getHost(harness.db, host.id)).toMatchObject({
-        destroyedAt: expect.any(Number),
-        phase: "destroyed",
+      await vi.waitFor(() => {
+        expect(getMachineLaunch(harness.db, thread.id)).toMatchObject({
+          phase: "cancelled",
+          cancelPending: false,
+        });
+        expect(getHost(harness.db, host.id)).toMatchObject({
+          destroyedAt: expect.any(Number),
+          phase: "destroyed",
+        });
       });
     }));
 

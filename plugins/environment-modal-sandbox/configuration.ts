@@ -3,6 +3,7 @@ import { z } from "zod";
 export const SETTING_DESCRIPTORS = {
   tokenId: {
     type: "string",
+    secret: true,
     label: "Modal token id",
     description:
       "The token id half of a Modal API token (modal token new writes one to ~/.modal.toml).",

@@ -1,4 +1,4 @@
-import { and, eq, inArray, isNull } from "drizzle-orm";
+import { and, eq, inArray, isNull, isNotNull, notExists, ne, or } from "drizzle-orm";
 import type {
   HostChangeKind,
   JsonValue,
@@ -7,7 +7,7 @@ import type {
 } from "@bb/domain";
 import type { DbConnection, DbTransaction } from "../connection.js";
 import type { DbNotifier } from "../notifier.js";
-import { hosts } from "../schema.js";
+import { hosts, machineEnrollments, machineLaunches } from "../schema.js";
 import { createHostId } from "../ids.js";
 
 type HostWriteConnection = DbConnection | DbTransaction;
@@ -156,7 +156,11 @@ export function listHosts(db: DbConnection) {
 }
 
 export function listPublicHosts(db: DbConnection) {
-  return db.select().from(hosts).where(isNull(hosts.destroyedAt)).all();
+  return db.select().from(hosts).where(and(
+    isNull(hosts.destroyedAt),
+    or(isNotNull(hosts.lastSeenAt), notExists(db.select({ id: machineEnrollments.id }).from(machineEnrollments).where(eq(machineEnrollments.hostId, hosts.id)))),
+    notExists(db.select({ key: machineLaunches.key }).from(machineLaunches).where(and(eq(machineLaunches.hostId, hosts.id), ne(machineLaunches.phase, "ready")))),
+  )).all();
 }
 
 export function listNonDestroyedHostsByIds(

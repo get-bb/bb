@@ -85,9 +85,7 @@ export function resolveEnvironmentProviderAvailability(
 ): Promise<Availability | null> {
   if (query.hostId !== undefined)
     return resolveAvailability(deps, record, query);
-  const hosts = listPublicHostsWithStatus(deps).filter(
-    (host) => host.type === "persistent",
-  );
+  const hosts = listPublicHostsWithStatus(deps);
   return Promise.all(
     hosts.map((host) =>
       resolveAvailability(deps, record, { ...query, hostId: host.id }),
@@ -202,7 +200,7 @@ async function resolveAvailability(
     query.hostId === undefined
       ? null
       : getNonDestroyedHostWithStatus(deps, query.hostId);
-  if (host === null || host.type !== "persistent") return null;
+  if (host === null) return null;
   const requires = record.provider.requires;
   if (requires.projectless !== (project.id === PERSONAL_PROJECT_ID))
     return null;

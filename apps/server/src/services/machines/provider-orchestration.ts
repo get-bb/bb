@@ -216,7 +216,7 @@ async function invokeCreate(
         const updated = mutateLaunch(
           deps,
           launch,
-          ["creating", "cancelled"],
+          ["creating", "cancelled", "failed"],
           (row) => {
             if (row.hostId === null)
               throw new Error(
@@ -573,8 +573,8 @@ export function askMachineLaunch(
       failure: null,
       message: null,
       transientFailures: row?.transientFailures ?? 0,
-      hostId: null,
-      resource: null,
+      hostId: row?.hostId ?? null,
+      resource: row?.resource ?? null,
       stepText: `Creating ${args.record.provider.displayName}…`,
       pendingLog: "",
       cancelPending: false,
@@ -640,11 +640,16 @@ function machineHostResponse(
 export async function cancelMachineLaunch(
   deps: Deps,
   key: string,
+  preserveFailure = false,
 ): Promise<void> {
   let row = getMachineLaunch(deps.db, key);
   if (row === null || row.phase === "ready") return;
   if (row.phase !== "cancelled") {
-    row = { ...row, phase: "cancelled", cancelPending: true };
+    row = {
+      ...row,
+      phase: preserveFailure ? "failed" : "cancelled",
+      cancelPending: true,
+    };
     updateMachineLaunchAttempt(deps.db, row);
   }
   const create = operations(createOperations, deps.db).get(
@@ -744,6 +749,14 @@ export async function createMachine(
     });
     if (decision.action === "ready") return decision.host;
     if (decision.action === "reject") {
+      try {
+        await cancelMachineLaunch(deps, key, true);
+      } catch (error) {
+        deps.logger.warn(
+          { key, error: errorMessage(error) },
+          "Machine creation cleanup will retry",
+        );
+      }
       throw new ApiError(409, "machine_provider_rejected", decision.message);
     }
     await new Promise<void>((resolve) => {
@@ -1260,6 +1273,31 @@ export async function sweepMachineLifecycles(deps: Deps): Promise<void> {
     if (record !== undefined) startCreate(deps, record, launch);
   }
   const pending: Promise<void>[] = [];
+  for (const launch of listMachineLaunchesByPhase(deps.db, "failed")) {
+    if (
+      (launch.failure === "terminal" ||
+        launch.transientFailures > TRANSIENT_RETRY_LIMIT) &&
+      !launch.cleanupResourceRemoved
+    ) {
+      pending.push(
+        cancelMachineLaunch(deps, launch.key, true).catch((error: unknown) => {
+          deps.logger.warn(
+            { key: launch.key, error: errorMessage(error) },
+            "Failed machine launch cleanup will retry",
+          );
+        }),
+      );
+    } else if (launch.cancelPending) {
+      pending.push(
+        cancelMachineLaunch(deps, launch.key, true).catch((error: unknown) => {
+          deps.logger.warn(
+            { key: launch.key, error: errorMessage(error) },
+            "Failed machine access cleanup will retry",
+          );
+        }),
+      );
+    }
+  }
   for (const launch of listMachineLaunchesByPhase(deps.db, "cancelled")) {
     if (launch.cancelPending) {
       pending.push(

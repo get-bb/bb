@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "bb18284e-55ca-4d9b-8d24-7f3bee79975a",
+  "id": "89da8091-09f9-4ee9-90cb-1b8bf3ceca73",
   "prevId": "0b0b3298-0afd-4466-99ff-c2360d426e74",
   "tables": {
     "app_settings": {
@@ -1933,6 +1933,13 @@
           "name": "machine_launches_phase_idx",
           "columns": [
             "phase"
+          ],
+          "isUnique": false
+        },
+        "machine_launches_host_id_idx": {
+          "name": "machine_launches_host_id_idx",
+          "columns": [
+            "host_id"
           ],
           "isUnique": false
         }

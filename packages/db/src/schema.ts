@@ -1142,5 +1142,8 @@ export const machineLaunches = sqliteTable(
       .default(false),
     cancelPending: integer("cancel_pending", { mode: "boolean" }).notNull(),
   },
-  (table) => [index("machine_launches_phase_idx").on(table.phase)],
+  (table) => [
+    index("machine_launches_phase_idx").on(table.phase),
+    index("machine_launches_host_id_idx").on(table.hostId),
+  ],
 );
