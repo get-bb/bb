@@ -1,7 +1,17 @@
+import { resolveHostEnvironment } from "../hosts/host-environment.js";
+import { environmentHookOperations, machineLifecycles } from "@bb/db";
+import { eq } from "drizzle-orm";
 import type { EnvironmentHookProgressMessage } from "@bb/host-daemon-contract";
 import type { PluginEnvironmentProviderProgress } from "@get-bb/plugin-sdk/environment-provider";
 import type { WorkSessionDeps } from "../../types.js";
-import { callHostOnlineRpc } from "../hosts/online-rpc.js";
+import {
+  callHostOnlineRpc,
+  callHostOnlineRpcWithoutAdmission,
+} from "../hosts/online-rpc.js";
+import {
+  beginEnvironmentSetupOutcome,
+  finishEnvironmentSetupOutcome,
+} from "./setup-outcomes.js";
 
 const HOOK_TIMEOUT_MS = 15 * 60 * 1000;
 const TRANSPORT_GRACE_MS = 6_000;
@@ -47,10 +57,70 @@ export async function runEnvironmentHook(
     active = new Map();
     reports.set(deps.db, active);
   }
+  const existing = deps.db
+    .select()
+    .from(environmentHookOperations)
+    .where(eq(environmentHookOperations.id, args.id))
+    .get();
+  if (existing?.finishedAt != null) {
+    if (existing.error !== null && args.kind === "setup")
+      throw new Error(existing.error);
+    if (args.kind === "setup")
+      await finishEnvironmentSetupOutcome(deps, {
+        hostId: args.hostId,
+        path: args.path,
+        operationId: existing.operationId,
+        succeeded: true,
+      });
+    return;
+  }
   const operationId = args.id;
+  const missingFilesystem =
+    args.kind === "teardown" &&
+    deps.db
+      .select({ state: machineLifecycles.observedState })
+      .from(machineLifecycles)
+      .where(eq(machineLifecycles.hostId, args.hostId))
+      .get()?.state === "missing";
+  if (missingFilesystem) {
+    const error =
+      "Teardown could not run: the machine provider confirmed that its filesystem no longer exists.";
+    deps.db
+      .insert(environmentHookOperations)
+      .values({
+        id: args.id,
+        operationId,
+        hostId: args.hostId,
+        path: args.path,
+        kind: args.kind,
+        startedAt: Date.now(),
+        finishedAt: Date.now(),
+        error,
+      })
+      .onConflictDoUpdate({
+        target: environmentHookOperations.id,
+        set: { finishedAt: Date.now(), error },
+      })
+      .run();
+    args.report.log(error);
+    deps.logger.warn({ hostId: args.hostId, path: args.path }, error);
+    return;
+  }
+  if (existing === undefined)
+    deps.db
+      .insert(environmentHookOperations)
+      .values({
+        id: args.id,
+        operationId,
+        hostId: args.hostId,
+        path: args.path,
+        kind: args.kind,
+        startedAt: Date.now(),
+      })
+      .run();
   active.set(operationId, { hostId: args.hostId, report: args.report });
   const abort = (): void => {
-    void callHostOnlineRpc(deps, {
+    void callHostOnlineRpcWithoutAdmission(deps, {
       hostId: args.hostId,
       timeoutMs: TRANSPORT_GRACE_MS,
       command: { type: "environment.hook.cancel", operationId },
@@ -62,26 +132,50 @@ export async function runEnvironmentHook(
     );
   };
   args.signal.addEventListener("abort", abort, { once: true });
+  const identity = { hostId: args.hostId, path: args.path, operationId };
   try {
+    if (args.kind === "setup" && existing === undefined)
+      await beginEnvironmentSetupOutcome(deps, identity);
+    args.signal.throwIfAborted();
     await callHostOnlineRpc(deps, {
       hostId: args.hostId,
       timeoutMs: HOOK_TIMEOUT_MS + TRANSPORT_GRACE_MS,
       command: {
         type: "environment.hook.run",
-        resumeOnly: args.resumeOnly,
+        contributedEnv: await resolveHostEnvironment(deps, {
+          hostId: args.hostId,
+          projectId: null,
+        }),
+        resumeOnly: args.resumeOnly || existing !== undefined,
         operationId,
         path: args.path,
         kind: args.kind,
         timeoutMs: HOOK_TIMEOUT_MS,
       },
     });
+    deps.db
+      .update(environmentHookOperations)
+      .set({ finishedAt: Date.now() })
+      .where(eq(environmentHookOperations.id, args.id))
+      .run();
     args.signal.throwIfAborted();
+    if (args.kind === "setup")
+      await finishEnvironmentSetupOutcome(deps, {
+        ...identity,
+        succeeded: true,
+      });
   } catch (error) {
     await cancelPendingEnvironmentHook(deps, {
       id: args.id,
       hostId: args.hostId,
     });
-    if (args.kind === "setup") throw error;
+    if (args.kind === "setup") {
+      await finishEnvironmentSetupOutcome(deps, {
+        ...identity,
+        succeeded: false,
+      });
+      throw error;
+    }
     const text = error instanceof Error ? error.message : String(error);
     args.report.log(text);
     deps.logger.warn(
@@ -98,13 +192,31 @@ export async function cancelPendingEnvironmentHook(
   deps: WorkSessionDeps,
   args: { id: string; hostId: string },
 ): Promise<void> {
-  const result = await callHostOnlineRpc(deps, {
+  const id = args.id;
+  const operation = deps.db
+    .select()
+    .from(environmentHookOperations)
+    .where(eq(environmentHookOperations.id, id))
+    .get();
+  if (operation?.finishedAt != null) return;
+  const result = await callHostOnlineRpcWithoutAdmission(deps, {
     hostId: args.hostId,
     timeoutMs: TRANSPORT_GRACE_MS,
-    command: { type: "environment.hook.cancel", operationId: args.id },
+    command: {
+      type: "environment.hook.cancel",
+      operationId: args.id,
+    },
   });
   if (result.status === "unknown")
     throw new Error(
       "Environment hook outcome is unknown after interruption. Automatic cleanup is blocked; inspect the workspace before recovering it.",
     );
+  deps.db
+    .update(environmentHookOperations)
+    .set({
+      finishedAt: Date.now(),
+      error: "Environment hook cancelled",
+    })
+    .where(eq(environmentHookOperations.id, id))
+    .run();
 }

@@ -1,6 +1,12 @@
+import { registerMachineEnvironmentCommands } from "./machine-environment.js";
+import { registerMachineLifecycleCommands } from "./machine-lifecycle.js";
+import {
+  enrollMachine,
+  type MachineEnrollmentOptions,
+} from "./machine-enrollment.js";
 import { Command } from "commander";
-import type { Host } from "@bb/domain";
-import { action } from "../action.js";
+import { jsonValueSchema, type Host, type JsonValue } from "@bb/domain";
+import { action, CliExitError } from "../action.js";
 import { createCliBbSdk } from "../client.js";
 import { renderBorderlessTable } from "../table.js";
 import { outputJson } from "./helpers.js";
@@ -8,6 +14,14 @@ import { confirmDestructiveAction } from "./helpers.js";
 
 interface MachineListCommandOptions {
   json?: boolean;
+  project?: string;
+}
+
+interface MachineCreateCommandOptions extends MachineListCommandOptions {
+  provider: string;
+  wait: boolean;
+  key?: string;
+  inputs?: string;
 }
 
 interface MachineMutationCommandOptions extends MachineListCommandOptions {
@@ -125,6 +139,272 @@ export function registerMachineCommands(
     .command("machine")
     .description("Inspect execution machines");
 
+  registerMachineLifecycleCommands(machine);
+  registerMachineEnvironmentCommands(machine, getUrl);
+
+  machine
+    .command("enroll")
+    .description("Enroll this machine using a private bootstrap bundle")
+    .option("--bootstrap-file <path>", "Read the bootstrap bundle from a file")
+    .option(
+      "--bootstrap-env <name>",
+      "Consume the bootstrap bundle from an environment variable",
+    )
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(async (options: MachineEnrollmentOptions & { json?: boolean }) => {
+        const result = await enrollMachine(options);
+        if (!outputJson(options, result))
+          console.log(`Machine ${result.hostId} enrolled`);
+      }),
+    );
+
+  machine
+    .command("create")
+    .description("Create a machine using an installed provider")
+    .option("--no-wait", "Return the durable launch ID immediately")
+    .requiredOption("--provider <id>", "Machine provider ID")
+    .option(
+      "--key <idempotency-key>",
+      "Reuse a stable key when retrying creation",
+    )
+    .option("--inputs <JSON>", "Provider inputs as JSON")
+    .option("--project <id/name>", "Project ID or exact project name")
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(async (opts: MachineCreateCommandOptions) => {
+        const machineProviderId = parseProviderCliKey(opts.provider);
+        const key = opts.key?.trim();
+        if (key === "") throw new Error("Creation key must not be empty.");
+        let inputs: JsonValue = null;
+        if (opts.inputs !== undefined) {
+          try {
+            inputs = jsonValueSchema.parse(JSON.parse(opts.inputs));
+          } catch {
+            throw new Error("--inputs must be valid JSON.");
+          }
+        }
+        const controller = new AbortController();
+        const cancel = () => controller.abort();
+        process.once("SIGINT", cancel);
+        try {
+          const sdk = createCliBbSdk(getUrl());
+          let projectId: string | null = null;
+          if (opts.project !== undefined) {
+            const target = opts.project.trim();
+            if (!target) throw new Error("Project must not be empty.");
+            const projects = await sdk.projects.list({
+              includePersonal: true,
+              signal: controller.signal,
+            });
+            const byId = projects.find((project) => project.id === target);
+            const matches = byId
+              ? [byId]
+              : projects.filter((project) => project.name === target);
+            if (matches.length === 0) throw new Error("Project was not found.");
+            if (matches.length > 1) {
+              throw new Error("Project name is ambiguous; use its ID.");
+            }
+            projectId = matches[0].id;
+          }
+          controller.signal.throwIfAborted();
+          let launch = await sdk.hosts.submit({
+            machineProviderId,
+            projectId,
+            inputs,
+            ...(key === undefined ? {} : { key }),
+            signal: controller.signal,
+          });
+          let command: string | null = null;
+          if (machineProviderId === "manual") {
+            while (launch.phase === "creating" && command === null) {
+              controller.signal.throwIfAborted();
+              command = (
+                await sdk.hosts.experimental_enrollmentCommand({
+                  id: launch.id,
+                  signal: controller.signal,
+                })
+              ).command;
+              if (command !== null) break;
+              await new Promise<void>((resolve) => setTimeout(resolve, 100));
+              launch = await sdk.hosts.launch({
+                id: launch.id,
+                signal: controller.signal,
+              });
+            }
+          }
+          if (!opts.wait) {
+            if (
+              !outputJson(
+                opts,
+                machineProviderId === "manual"
+                  ? { ...launch, command }
+                  : launch,
+              )
+            )
+              console.log([launch.id, command ?? launch.step].join("\n"));
+            return;
+          }
+          if (command !== null) console.error(command);
+          console.error(`Following machine launch ${launch.id}`);
+          let step = "";
+          const host = await sdk.hosts.follow({
+            id: launch.id,
+            signal: controller.signal,
+            onProgress: (status) => {
+              if (status.step !== step) {
+                step = status.step;
+                console.error(step);
+              }
+            },
+          });
+          if (!outputJson(opts, host))
+            console.log(`Machine ${host.id} created`);
+        } catch (error) {
+          if (controller.signal.aborted) {
+            throw new CliExitError(
+              "Stopped following; creation continues. Use bb machine cancel <launch-id> to cancel.",
+              130,
+            );
+          }
+          throw error;
+        } finally {
+          process.off("SIGINT", cancel);
+        }
+      }),
+    );
+
+  machine
+    .command("cancel <launch-id>")
+    .description("Explicitly cancel a durable machine launch")
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(async (id: string, opts: MachineListCommandOptions) => {
+        const result = await createCliBbSdk(getUrl()).hosts.cancel({ id });
+        if (!outputJson(opts, result))
+          console.log(`${result.id}: ${result.phase}`);
+      }),
+    );
+
+  machine
+    .command("status <launch-id>")
+    .description("Show durable machine launch progress")
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(async (id: string, opts: MachineListCommandOptions) => {
+        const result = await createCliBbSdk(getUrl()).hosts.launch({ id });
+        if (!outputJson(opts, result))
+          console.log(
+            `${result.id}: ${result.phase} — ${result.message ?? result.step}`,
+          );
+      }),
+    );
+
+  machine
+    .command("lifecycle <machine>")
+    .description("Show deadline, preservation and retention state")
+    .option("--keep", "Keep this machine past automatic retention deletion")
+    .option("--no-keep", "Restore automatic retention deletion")
+    .option("--remove", "Remove the machine and its retained snapshots")
+    .option("--yes", "Skip removal confirmation")
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(
+        async (
+          target: string,
+          opts: {
+            keep?: boolean;
+            remove?: boolean;
+            yes?: boolean;
+            json?: boolean;
+          },
+        ) => {
+          const sdk = createCliBbSdk(getUrl());
+          const hostId = resolveMachineId(await sdk.hosts.list(), target);
+          if (opts.remove) {
+            if (opts.keep !== undefined)
+              throw new Error("Cannot combine --remove and --keep/--no-keep");
+            if (
+              !opts.yes &&
+              !(await confirmDestructiveAction(
+                `Remove machine ${hostId} and its snapshots?`,
+              ))
+            )
+              return;
+            const removed = await sdk.hosts.delete({ hostId });
+            if (!outputJson(opts, removed))
+              console.log(`Machine ${hostId} removed`);
+            return;
+          }
+          const result = await sdk.hosts.experimental_lifecycle({
+            hostId,
+            keep: opts.keep,
+          });
+          if (!outputJson(opts, result))
+            console.log(
+              `${result.phase}: ${result.recoveryState}${result.message === null ? "" : ` — ${result.message}`}\nMaintenance: ${result.maintenanceAt === null ? "none" : new Date(result.maintenanceAt).toISOString()}\nExpiry: ${result.expiresAt === null ? "none" : new Date(result.expiresAt).toISOString()}\nAutomatic deletion: ${result.keep ? "disabled (kept)" : result.retentionAt === null ? "not scheduled" : new Date(result.retentionAt).toISOString()}\nControls: --keep, --no-keep, --remove --yes`,
+            );
+        },
+      ),
+    );
+
+  machine
+    .command("ready <machine>")
+    .description("Check CLI, authentication and project workspace readiness")
+    .requiredOption("--provider <id>", "Agent provider")
+    .requiredOption("--project <id>", "Project ID")
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(
+        async (
+          target: string,
+          opts: { provider: string; project: string; json?: boolean },
+        ) => {
+          const sdk = createCliBbSdk(getUrl());
+          const hostId = resolveMachineId(await sdk.hosts.list(), target);
+          const result = await sdk.hosts.experimental_ensureReady({
+            hostId,
+            projectId: opts.project,
+            providerId: opts.provider,
+          });
+          if (!outputJson(opts, result))
+            console.log(
+              result.status === "ready"
+                ? "Machine is ready"
+                : `${result.stage}: ${result.message}`,
+            );
+          if (result.status === "blocked")
+            throw new CliExitError("Machine readiness is blocked", 1);
+        },
+      ),
+    );
+
+  machine
+    .command("providers")
+    .description("List installed machine providers")
+    .option("--project <id>", "Evaluate availability for a project")
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(async (opts: MachineListCommandOptions) => {
+        const providers = await createCliBbSdk(getUrl()).hosts.listProviders({
+          ...(opts.project === undefined ? {} : { projectId: opts.project }),
+        });
+        if (outputJson(opts, providers)) return;
+        if (providers.length === 0) {
+          console.log("No machine providers found");
+          return;
+        }
+        console.log(
+          providers
+            .map(
+              (provider) =>
+                `${provider.id}  ${provider.displayName}  ${provider.availability?.status ?? "available"}`,
+            )
+            .join("\n"),
+        );
+      }),
+    );
+
   machine
     .command("list")
     .description("List execution machines")
@@ -149,7 +429,12 @@ export function registerMachineCommands(
       action(async (target: string, opts: MachineListCommandOptions) => {
         const sdk = createCliBbSdk(getUrl());
         const hostId = resolveMachineId(await sdk.hosts.list(), target);
-        const host = await sdk.hosts.get({ hostId });
+        const host = {
+          ...(await sdk.hosts.get({ hostId })),
+          providerDetails: await sdk.hosts.experimental_providerDetails({
+            hostId,
+          }),
+        };
         if (outputJson(opts, host)) return;
         console.log(JSON.stringify(host, null, 2));
       }),
@@ -195,7 +480,8 @@ export function registerMachineCommands(
     .action(
       action(async (target: string, opts: MachineMutationCommandOptions) => {
         const sdk = createCliBbSdk(getUrl());
-        const hostId = resolveMachineId(await sdk.hosts.list(), target);
+        const hosts = await sdk.hosts.list();
+        const hostId = resolveMachineId(hosts, target);
         if (
           !opts.yes &&
           !(await confirmDestructiveAction(`Remove machine ${hostId}?`))
@@ -204,6 +490,13 @@ export function registerMachineCommands(
         const result = await sdk.hosts.delete({ hostId });
         if (outputJson(opts, result)) return;
         console.log(`Machine ${hostId} removed`);
+        if (
+          hosts.find((host) => host.id === hostId)?.machineProviderId ===
+          "manual"
+        )
+          console.log(
+            `Uninstall manually on the machine: bb machine uninstall --host-id ${hostId}`,
+          );
       }),
     );
 
@@ -218,6 +511,48 @@ export function registerMachineCommands(
         const result = await sdk.hosts.retryUpdate({ hostId });
         if (outputJson(opts, result)) return;
         console.log(`Machine ${hostId} update retry requested`);
+      }),
+    );
+
+  machine
+    .command("suspend <id-or-name>")
+    .description("Suspend a provider-managed execution machine")
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(async (target: string, opts: MachineListCommandOptions) => {
+        const sdk = createCliBbSdk(getUrl());
+        const hostId = resolveMachineId(await sdk.hosts.list(), target);
+        const result = await sdk.hosts.suspend({ hostId });
+        if (outputJson(opts, result)) return;
+        console.log(`Machine ${hostId} suspended`);
+      }),
+    );
+
+  machine
+    .command("resume <id-or-name>")
+    .description("Resume a suspended provider-managed execution machine")
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(async (target: string, opts: MachineListCommandOptions) => {
+        const sdk = createCliBbSdk(getUrl());
+        const hostId = resolveMachineId(await sdk.hosts.list(), target);
+        const result = await sdk.hosts.resume({ hostId });
+        if (outputJson(opts, result)) return;
+        console.log(`Machine ${hostId} resumed`);
+      }),
+    );
+
+  machine
+    .command("retry-cleanup <id-or-name>")
+    .description("Retry a failed provider teardown immediately")
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(async (target: string, opts: MachineListCommandOptions) => {
+        const sdk = createCliBbSdk(getUrl());
+        const hostId = resolveMachineId(await sdk.hosts.list(), target);
+        const result = await sdk.hosts.retryCleanup({ hostId });
+        if (outputJson(opts, result)) return;
+        console.log(`Machine ${hostId} cleanup retried`);
       }),
     );
 
@@ -272,19 +607,21 @@ function printMachineTable(hosts: Host[]): void {
     host.name,
     host.id,
     host.status,
+    host.machineProviderId ?? "user-enrolled",
     formatMachineLastSeen(host.lastSeenAt, now),
   ]);
   const widths = [
     Math.max(4, ...rows.map((row) => row[0].length)),
     Math.max(2, ...rows.map((row) => row[1].length)),
     Math.max(6, ...rows.map((row) => row[2].length)),
-    Math.max(9, ...rows.map((row) => row[3].length)),
+    Math.max(8, ...rows.map((row) => row[3].length)),
+    Math.max(9, ...rows.map((row) => row[4].length)),
   ];
   console.log("");
   console.log(
     renderBorderlessTable(
       {
-        head: ["Name", "ID", "Status", "Last seen"],
+        head: ["Name", "ID", "Status", "Provider", "Last seen"],
         colWidths: widths,
         trimTrailingWhitespace: true,
       },

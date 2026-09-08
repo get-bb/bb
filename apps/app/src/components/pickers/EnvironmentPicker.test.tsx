@@ -4,7 +4,10 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import type { Host, ProjectSource } from "@bb/domain";
 import { makeHost } from "@bb/test-helpers/domain-fixtures";
 import { HOST_DAEMON_PROTOCOL_VERSION } from "@bb/host-daemon-contract";
-import type { SystemEnvironmentProvider } from "@bb/server-contract";
+import type {
+  SystemEnvironmentProvider,
+  SystemMachineProvider,
+} from "@bb/server-contract";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   EnvironmentPickerUI,
@@ -84,6 +87,28 @@ const optionalInputsProvider: SystemEnvironmentProvider = {
     type: "object",
     properties: { image: { type: "string" } },
   },
+};
+
+const modalMachineProvider: SystemMachineProvider = {
+  id: "modal-sandbox",
+  displayName: "Modal sandbox",
+  icon: "Box",
+  logoUrl: null,
+  pluginId: "environment-modal-sandbox",
+  requires: { gitRemote: true },
+  inputs: null,
+  acceptsEmptyInputs: true,
+  supportsSuspend: true,
+  environmentRow: {
+    displayName: "Modal sandbox",
+    environmentProviderId: checkoutProvider.id,
+  },
+  policy: {
+    idleSuspendMs: 60_000,
+    retire: { after: "last-thread", graceMs: 60_000 },
+    removeRetryMs: 60_000,
+  },
+  availability: null,
 };
 
 const host = makeHost({
@@ -359,6 +384,85 @@ describe("EnvironmentPickerUI", () => {
       host.id,
     );
   });
+
+  it("offers Existing machine alongside opted-in shortcuts without a DigitalOcean shortcut", () => {
+    const providers = [
+      "manual",
+      "ssh",
+      "modal",
+      "digitalocean",
+      "tailscale",
+    ].map((id) => ({
+      ...modalMachineProvider,
+      id,
+      displayName: id === "manual" ? "Existing machine" : id,
+      requires: { gitRemote: false },
+      supportsSuspend: false,
+      environmentRow:
+        id === "manual" || id === "digitalocean"
+          ? null
+          : { displayName: id, environmentProviderId: "project-checkout" },
+    }));
+    const onSelect = vi.fn();
+    render(
+      <EnvironmentPickerUI
+        value="provider:project-checkout"
+        sources={sources}
+        host={host}
+        isLocal
+        providers={[checkoutProvider]}
+        selectedProviderHostId={host.id}
+        onSelectProvider={vi.fn()}
+        machineProviders={providers}
+        onSelectMachineProvider={onSelect}
+        modal={false}
+      />,
+    );
+    fireEvent.pointerDown(screen.getByRole("button", { name: "Environment" }), {
+      button: 0,
+    });
+    for (const name of ["Existing machine", "ssh", "modal", "tailscale"])
+      expect(
+        screen.getByRole("menuitem", { name: new RegExp(name, "u") }),
+      ).toBeDefined();
+    expect(
+      screen.queryByRole("menuitem", { name: /digitalocean/u }),
+    ).toBeNull();
+    fireEvent.click(
+      screen.getByRole("menuitem", { name: /Existing machine/u }),
+    );
+    expect(onSelect).toHaveBeenCalledWith(providers[0]);
+  });
+
+  it("puts machine-provider rows last after a separator", () => {
+    render(
+      <EnvironmentPickerUI
+        value="provider:project-checkout"
+        sources={sources}
+        host={host}
+        isLocal
+        providers={[checkoutProvider, branchProvider]}
+        selectedProviderHostId={host.id}
+        onSelectProvider={vi.fn()}
+        machineProviders={[modalMachineProvider]}
+        onSelectMachineProvider={vi.fn()}
+        modal={false}
+      />,
+    );
+
+    fireEvent.pointerDown(screen.getByRole("button", { name: "Environment" }), {
+      button: 0,
+    });
+
+    const menuItems = screen.getAllByRole("menuitem");
+    const modalItem = screen.getByRole("menuitem", {
+      name: /Modal sandbox/u,
+    });
+    const modalGroup = modalItem.closest('[role="group"]');
+    const separator = screen.getByRole("separator");
+    expect(menuItems.at(-1)).toBe(modalItem);
+    expect(modalGroup?.previousElementSibling).toBe(separator);
+  });
 });
 
 describe("EnvironmentPickerUI multi-machine menu", () => {
@@ -434,6 +538,38 @@ describe("EnvironmentPickerUI multi-machine menu", () => {
     expect(checkoutItems).toHaveLength(3);
     fireEvent.click(checkoutItems[1]!);
     expect(onSelectProvider).toHaveBeenCalledWith(checkoutProvider, studio.id);
+  });
+
+  it("includes provider-made hosts in environment picker machine sections", () => {
+    const providerHost = makeHost({
+      id: "host_modal",
+      name: "Modal sandbox 3f9a",
+      machineProviderId: "modal-sandbox",
+    });
+    render(
+      <EnvironmentPickerUI
+        value="provider:project-checkout"
+        sources={machineSources}
+        host={thisMachine}
+        isLocal
+        machines={{
+          hosts: [thisMachine, studio, providerHost],
+          localDaemonHostId: thisMachine.id,
+          primaryHostId: thisMachine.id,
+        }}
+        providers={[checkoutProvider]}
+        selectedProviderHostId={thisMachine.id}
+        onSelectProvider={vi.fn()}
+        modal={false}
+      />,
+    );
+
+    fireEvent.pointerDown(screen.getByRole("button", { name: "Environment" }), {
+      button: 0,
+    });
+
+    expect(screen.getByText("Mac Studio")).toBeTruthy();
+    expect(screen.getByText("Modal sandbox 3f9a")).toBeTruthy();
   });
 
   it("does not show project checkout paths in machine headers", () => {

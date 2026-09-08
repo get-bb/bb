@@ -1,4 +1,5 @@
 import { recheckEnvironmentLaunch } from "./services/threads/thread-environment-providers.js";
+import { getMachineEnrollmentService } from "./services/machines/machine-services.js";
 import { registerDesktopBrowserRoutes } from "./routes/desktop-browsers.js";
 import { createNodeWebSocket } from "@hono/node-ws";
 import { createHash } from "node:crypto";
@@ -36,6 +37,8 @@ import {
   setEnvironmentLaunchRecheckHandler,
   setPluginEnvironmentProviderBridge,
 } from "./services/plugins/plugin-environment-provider-registry.js";
+import { setServerAccessBridge } from "./services/plugins/plugin-server-access-registry.js";
+import { setPluginMachineProviderBridge } from "./services/plugins/plugin-machine-provider-registry.js";
 import { recheckEnvironmentProviderLaunches } from "./services/threads/thread-environment-providers.js";
 import { invalidateEnvironmentProviderAvailability } from "./services/environments/provider-availability.js";
 import { requestQueuedMessageDispatch } from "./services/threads/queued-message-dispatch.js";
@@ -557,6 +560,7 @@ export function createApp(
     return next();
   });
   const pluginService = createPluginService({
+    machineEnrollments: getMachineEnrollmentService(deps),
     db: deps.db,
     hub: deps.hub,
     logger: deps.logger,
@@ -616,6 +620,8 @@ export function createApp(
   setEnvironmentLaunchRecheckHandler((threadId) =>
     recheckEnvironmentLaunch(deps, threadId),
   );
+  setPluginMachineProviderBridge(pluginService.machineProviders);
+  setServerAccessBridge(pluginService.serverAccessProviders);
   setEnvironmentProviderRecheckHandler((pluginId) => {
     invalidateEnvironmentProviderAvailability();
     deps.hub.notifySystem(["config-changed"]);

@@ -258,3 +258,5 @@ projectId, experimental_hostId? }` (nullable fields). The optional host ID
   always use the built-in preview, and a removed/disabled opener degrades
   back to it. Pair with `bb.sdk.files` (rpc from your server) to load and
   CAS-save the content.
+
+Machine input controls receive `experimental_agentProviderId` for the selected composer agent (null outside a composer; older hosts may omit it). Recheck image verification when it changes, and report blocked until the selected project/image is usable. Launch values must contain only non-secret configuration.

@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { z } from "zod";
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { isAbsolute, join, resolve } from "node:path";
 import {
@@ -75,6 +76,7 @@ export function resolveReplayProfile(
     return {
       dialect: "json-rpc",
       bridgeFamily: "codex",
+      rewriteRuntimeLine: rewriteLegacyCodexTurnEnvironment,
       env: ({ replayCommand }) => ({
         BB_CODEX_BRIDGE_APP_SERVER_COMMAND: replayCommand[0],
         BB_CODEX_BRIDGE_APP_SERVER_ARGS: JSON.stringify(replayCommand.slice(1)),
@@ -114,6 +116,31 @@ export function resolveReplayProfile(
     };
   }
   throw new UnreplayableProviderError(providerId, "no replay profile");
+}
+
+const legacyCodexTurnSchema = z
+  .object({
+    method: z.literal("turn/start"),
+    params: z
+      .object({
+        options: z.object({ envVars: z.object({}).strict() }).passthrough(),
+      })
+      .passthrough(),
+  })
+  .passthrough();
+
+function rewriteLegacyCodexTurnEnvironment(line: string): string {
+  try {
+    const parsed = legacyCodexTurnSchema.safeParse(JSON.parse(line));
+    if (!parsed.success) return line;
+    const { envVars: _envVars, ...options } = parsed.data.params.options;
+    return JSON.stringify({
+      ...parsed.data,
+      params: { ...parsed.data.params, options },
+    });
+  } catch {
+    return line;
+  }
 }
 
 function claudeConfigDir(stateDir: string): string {

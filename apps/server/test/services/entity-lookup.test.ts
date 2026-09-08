@@ -39,7 +39,6 @@ function setup(): SetupResult {
   const hostRow = upsertHost(db, noopNotifier, {
     id: "host_entity_lookup",
     name: "Entity Lookup Host",
-    type: "persistent",
   });
   const { project } = createProject(db, noopNotifier, {
     name: "Entity Lookup Project",

@@ -12,7 +12,7 @@ import {
   hostDaemonServerWsMessageSchema,
   parseHostDaemonRpcResultForCommand,
 } from "@bb/host-daemon-contract";
-import { type HostType, type ThreadEvent } from "@bb/domain";
+import { type ThreadEvent } from "@bb/domain";
 import type {
   HostDaemonCommand,
   HostDaemonEventEnvelope,
@@ -300,12 +300,11 @@ export function createTestDaemonEventEnvelope(
 
 export function internalAuthHeaders(
   harness: TestAppHarness,
-  args: { hostId?: string; hostType?: HostType } = {},
+  args: { hostId?: string } = {},
 ): HeadersInit {
   const activeSessions = harness.db
     .select({
       hostId: hostDaemonSessions.hostId,
-      hostType: hostDaemonSessions.hostType,
     })
     .from(hostDaemonSessions)
     .where(eq(hostDaemonSessions.status, "active"))
@@ -316,7 +315,6 @@ export function internalAuthHeaders(
   return {
     authorization: `Bearer ${createTestDaemonHostKey({
       hostId: args.hostId ?? inferredHost?.hostId ?? "host-1",
-      hostType: args.hostType ?? inferredHost?.hostType ?? "persistent",
     })}`,
     "content-type": "application/json",
   };
@@ -371,6 +369,24 @@ export function registerTestHostRpcCapture(
               command.type === "plugin.host.dispose"
                 ? { disposed: true }
                 : { cancelled: true },
+          }),
+          sessionId: args.sessionId,
+        });
+        return;
+      }
+      if (command.type === "workspace.readiness.inspect") {
+        deps.hub.recordHostOnlineRpcResponse({
+          message: hostDaemonOnlineRpcResponseMessageSchema.parse({
+            type: "host-rpc.response",
+            requestId: message.requestId,
+            commandType: command.type,
+            ok: true,
+            result: {
+              commit: "fixture-commit",
+              dirty: [],
+              files: [],
+              abi: "linux/x64/node-127",
+            },
           }),
           sessionId: args.sessionId,
         });
@@ -554,7 +570,7 @@ export async function reportQueuedCommandSuccess<
   harness: TestAppHarness,
   queued: QueuedCommand<TCommand>,
   result: QueuedCommandResult<TCommand>,
-  args: { hostId?: string; hostType?: HostType } = {},
+  args: { hostId?: string } = {},
 ): Promise<Response> {
   const sessionId = queued.row.sessionId;
   if (!sessionId) {
@@ -587,7 +603,7 @@ export async function reportQueuedCommandError(
   harness: TestAppHarness,
   queued: QueuedCommand,
   args: { errorCode: string; errorMessage: string },
-  auth: { hostId?: string; hostType?: HostType } = {},
+  auth: { hostId?: string } = {},
 ): Promise<Response> {
   const sessionId = queued.row.sessionId;
   if (!sessionId) {

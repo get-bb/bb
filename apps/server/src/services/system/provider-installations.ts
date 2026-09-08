@@ -4,11 +4,13 @@ import type {
 } from "@bb/host-daemon-contract";
 import type { ProviderInfo } from "@bb/domain";
 import { ZodError } from "zod";
-import type { AppDeps } from "../../types.js";
+import type { WorkSessionDeps } from "../../types.js";
 import { COMMAND_TIMEOUT_MS } from "../../constants.js";
 import { ApiError } from "../../errors.js";
 import {
+  callHostRetryableOnlineRpcWithoutAdmission,
   callHostRetryableOnlineRpc,
+  callHostOnlineRpc,
   isHostUnavailableApiError,
 } from "../hosts/online-rpc.js";
 import { listSystemProviderInfos } from "./execution-options.js";
@@ -69,7 +71,7 @@ export async function aggregateProviderInstallations(
 }
 
 export async function getProviderInstallations(
-  deps: AppDeps,
+  deps: WorkSessionDeps,
   args: { hostId: string },
 ): Promise<ProviderCliStatusResponse> {
   const deadline = Date.now() + PROVIDER_INSTALLATION_STATUS_TIMEOUT_MS;
@@ -105,7 +107,7 @@ export async function getProviderInstallations(
       }
       return async (timeoutMs) => {
         try {
-          return await callHostRetryableOnlineRpc(deps, {
+          return await callHostRetryableOnlineRpcWithoutAdmission(deps, {
             hostId: args.hostId,
             timeoutMs,
             command: {
@@ -130,5 +132,92 @@ export async function getProviderInstallations(
         }
       };
     },
+  });
+}
+
+const installationTails = new WeakMap<object, Map<string, Promise<void>>>();
+export async function serializeProviderInstallation<T>(
+  deps: WorkSessionDeps,
+  hostId: string,
+  run: () => Promise<T>,
+): Promise<T> {
+  let hosts = installationTails.get(deps.db);
+  if (!hosts) {
+    hosts = new Map();
+    installationTails.set(deps.db, hosts);
+  }
+  const previous = hosts.get(hostId) ?? Promise.resolve();
+  let release: () => void = () => {};
+  const tail = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  hosts.set(hostId, tail);
+  await previous;
+  try {
+    return await run();
+  } finally {
+    release();
+    if (hosts.get(hostId) === tail) hosts.delete(hostId);
+  }
+}
+
+export async function ensureProviderInstallation(
+  deps: WorkSessionDeps,
+  args: { hostId: string; providerId: string },
+): Promise<{ ready: boolean; message: string }> {
+  return serializeProviderInstallation(deps, args.hostId, async () => {
+    await deps.providerRegistry.whenProviderRegistered(args.providerId);
+    const registration = deps.providerRegistry.get(args.providerId);
+    const bridgeLaunch = resolveBridgeLaunchForProviderId(
+      deps,
+      args.providerId,
+    );
+    if (!registration?.info.maintenance.installation || !bridgeLaunch)
+      return {
+        ready: false,
+        message: "This provider has no registered CLI installer",
+      };
+    const status = () =>
+      callHostRetryableOnlineRpc(deps, {
+        hostId: args.hostId,
+        timeoutMs: COMMAND_TIMEOUT_MS,
+        command: {
+          type: "provider.installation.status",
+          providerId: args.providerId,
+          bridgeLaunch,
+        },
+      });
+    let installed = await status();
+    if (installed.installed && !installed.versionUnsupported)
+      return {
+        ready: true,
+        message: "Compatible provider CLI already installed",
+      };
+    if (!installed.installAction)
+      return {
+        ready: false,
+        message: "The provider cannot install a compatible CLI on this host",
+      };
+    const result = await callHostOnlineRpc(deps, {
+      hostId: args.hostId,
+      timeoutMs: 10 * 60 * 1000,
+      command: {
+        type: "provider.installation.run",
+        providerId: args.providerId,
+        action: installed.installAction.kind,
+        bridgeLaunch,
+      },
+    });
+    deps.providerRegistry.forgetInstalledKey(args);
+    installed = await status();
+    return {
+      ready:
+        result.events.some(
+          (event) => event.type === "completed" && event.success,
+        ) &&
+        installed.installed &&
+        !installed.versionUnsupported,
+      message: "Provider CLI installation completed",
+    };
   });
 }

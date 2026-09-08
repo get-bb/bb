@@ -10,6 +10,8 @@ type ExpectedBbPluginApiKey =
   | "experimental_aiServices"
   | "experimental_environments"
   | "experimental_hooks"
+  | "experimental_machines"
+  | "experimental_serverAccess"
   | "hosts"
   | "http"
   | "log"
@@ -27,6 +29,7 @@ type ExpectedBbPluginApiKey =
 
 const EXPECTED_BACKEND_ROOT_TYPE_EXPORTS = [
   "BbPluginApi",
+  "experimental_PluginCliContinuation",
   "MessageDispatchHookContext",
   "MessageDispatchHookDecision",
   "PluginAgents",
@@ -77,6 +80,10 @@ const EXPECTED_BACKEND_ROOT_TYPE_EXPORTS = [
   "PluginInteractionResult",
   "PluginKvStorage",
   "PluginLogger",
+  "PluginMachineProviderDeclaration",
+  "PluginMachineProviderRequirements",
+  "PluginMachineValidateDecision",
+  "PluginMachines",
   "PluginMentionItem",
   "PluginMentionProviderRegistration",
   "PluginMentionSearchContext",
@@ -117,6 +124,10 @@ const EXPECTED_BACKEND_ROOT_TYPE_EXPORTS = [
   "PluginThreadEventPayloads",
   "PluginTurnFailedEvent",
   "PluginUi",
+  "PluginServerAccess",
+  "ServerAccessGrant",
+  "ServerAccessProviderDeclaration",
+  "ServerAccessSelection",
 ] as const;
 
 const EXPECTED_BACKEND_ROOT_VALUE_EXPORTS = [
@@ -140,7 +151,10 @@ const EXPECTED_RPC_ROOT_TYPE_EXPORTS = [
   "StandardSchemaV1Result",
 ] as const;
 
-const EXPECTED_RPC_ROOT_VALUE_EXPORTS = ["defineRpcContract"] as const;
+const EXPECTED_RPC_ROOT_VALUE_EXPORTS = [
+  "defineRpcContract",
+  "experimental_PluginRpcConflict",
+] as const;
 
 const EXPECTED_HOST_ROOT_TYPE_EXPORTS = [
   "ExperimentalHostCallOptions",

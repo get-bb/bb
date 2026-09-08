@@ -455,6 +455,57 @@ describe("runPluginCliCommand", () => {
     vi.unstubAllGlobals();
   });
 
+  it("transfers multiline stdin and prints each continuation page before requesting the next", async () => {
+    const requests: string[][] = [];
+    const writes: string[] = [];
+    const output = {
+      write(value: string, callback: (error?: Error | null) => void) {
+        writes.push(value);
+        callback();
+        return true;
+      },
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url, init: RequestInit | undefined) => {
+        requests.push(JSON.parse(String(init?.body)).argv);
+        if (requests.length === 1)
+          return new Response(
+            JSON.stringify({
+              exitCode: 0,
+              stdout: "page 1",
+              experimental_continue: {
+                argv: ["logs", "--cursor", "12"],
+                delayMs: 0,
+              },
+            }),
+          );
+        expect(writes).toEqual(["page 1\n"]);
+        return new Response(JSON.stringify({ exitCode: 0, stdout: "page 2" }));
+      }),
+    );
+    const input = {
+      isTTY: false,
+      async *[Symbol.asyncIterator]() {
+        yield "RUN echo one\nRUN echo two\n";
+      },
+    };
+    expect(
+      await runPluginCliCommand(
+        "http://localhost",
+        "fixture",
+        ["put", "--stdin"],
+        { stdout: output, stderr: output },
+        input,
+      ),
+    ).toBe(0);
+    expect(requests).toEqual([
+      ["put", "--input-text", "RUN echo one\nRUN echo two\n"],
+      ["logs", "--cursor", "12"],
+    ]);
+    expect(writes).toEqual(["page 1\n", "page 2\n"]);
+  });
+
   it("waits for output larger than 64 KiB to flush before returning", async () => {
     const stdout = "x".repeat(1024 * 1024);
     vi.stubGlobal(

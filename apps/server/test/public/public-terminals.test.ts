@@ -1,3 +1,6 @@
+import { updateMachineEnvironment } from "../../src/services/machines/environment-settings.js";
+import * as gitCredentials from "../../src/services/machines/git-credentials.js";
+import { machineEnrollments, updateHost } from "@bb/db";
 import {
   createTerminalSession,
   getTerminalSession,
@@ -382,6 +385,78 @@ describe("public terminal routes", () => {
   afterEach(async () => {
     for (const harness of harnesses) {
       await harness.cleanup();
+    }
+  });
+
+  it("resolves host credentials for machine terminals and excludes local terminals", async () => {
+    const resolve = vi
+      .spyOn(gitCredentials, "resolveGitCredentials")
+      .mockResolvedValue([
+        {
+          name: "GH_TOKEN",
+          value: "terminal-secret",
+          source: { core: "machine-git" },
+          reason: "Server gh login",
+          secret: true,
+        },
+      ]);
+    try {
+      for (const enrolled of [false, true]) {
+        const fixture = await createTerminalRouteFixture();
+        harnesses.push(fixture.harness);
+        if (enrolled)
+          updateHost(fixture.harness.db, fixture.harness.hub, fixture.host.id, {
+            machineProviderId: "manual",
+          });
+        if (enrolled)
+          fixture.harness.db
+            .insert(machineEnrollments)
+            .values({
+              id: "machine",
+              owner: "do",
+              key: "machine",
+              hostId: fixture.host.id,
+              state: "enrolled",
+              createdAt: 1,
+              updatedAt: 1,
+            })
+            .run();
+        await updateMachineEnvironment(
+          fixture.harness.db,
+          fixture.harness.config.dataDir,
+          "CUSTOM_TERMINAL",
+          {
+            name: "CUSTOM_TERMINAL",
+            value: "terminal-value",
+            secret: false,
+            note: null,
+          },
+        );
+        const pending = await startPendingTerminalOpen(fixture);
+        expect(pending.openMessage.contributedEnv).toEqual(
+          enrolled
+            ? [
+                ...(await resolve()),
+                expect.objectContaining({
+                  name: "CUSTOM_TERMINAL",
+                  value: "terminal-value",
+                }),
+              ]
+            : [],
+        );
+        acknowledgeTerminalOpen(fixture, pending.openMessage);
+        expect((await pending.responsePromise).status).toBe(201);
+        expect(
+          JSON.stringify(
+            listTerminalSessions(fixture.harness.db, {
+              scope: { threadId: fixture.thread.id, kind: "thread" },
+              visible: true,
+            }),
+          ),
+        ).not.toContain("terminal-secret");
+      }
+    } finally {
+      resolve.mockRestore();
     }
   });
 

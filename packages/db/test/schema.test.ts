@@ -158,7 +158,6 @@ describe("db rebuild schema", () => {
       .values({
         id: hostId,
         name: "Local host",
-        type: "persistent",
         lastSeenAt: now,
         createdAt: now,
         updatedAt: now,
@@ -225,7 +224,6 @@ describe("db rebuild schema", () => {
         hostId,
         instanceId: "instance-1",
         hostName: "Local host",
-        hostType: "persistent",
         dataDir: "/tmp/test-data",
         protocolVersion: 1,
         heartbeatIntervalMs: 10_000,
@@ -312,7 +310,6 @@ describe("db rebuild schema", () => {
       .values({
         id: hostId,
         name: "Local host",
-        type: "persistent",
         lastSeenAt: now,
         createdAt: now,
         updatedAt: now,
@@ -359,7 +356,6 @@ describe("db rebuild schema", () => {
       .values({
         id: hostId,
         name: "Local host",
-        type: "persistent",
         lastSeenAt: now,
         createdAt: now,
         updatedAt: now,
@@ -419,7 +415,6 @@ describe("db rebuild schema", () => {
       .values({
         id: hostId,
         name: "Local host",
-        type: "persistent",
         lastSeenAt: now,
         createdAt: now,
         updatedAt: now,
@@ -479,7 +474,6 @@ describe("db rebuild schema", () => {
       .values({
         id: hostId,
         name: "Local host",
-        type: "persistent",
         lastSeenAt: now,
         createdAt: now,
         updatedAt: now,
@@ -512,7 +506,6 @@ describe("db rebuild schema", () => {
         hostId,
         instanceId: "instance-1",
         hostName: "Local host",
-        hostType: "persistent",
         dataDir: "/tmp/test-data",
         protocolVersion: 1,
         heartbeatIntervalMs: 10_000,
@@ -545,7 +538,6 @@ describe("db rebuild schema", () => {
       .values({
         id: hostId,
         name: "Local host",
-        type: "persistent",
         lastSeenAt: now,
         createdAt: now,
         updatedAt: now,
@@ -756,7 +748,6 @@ describe("db rebuild schema", () => {
       .values({
         id: hostId,
         name: "host",
-        type: "persistent",
         lastSeenAt: now,
         createdAt: now,
         updatedAt: now,
@@ -770,7 +761,6 @@ describe("db rebuild schema", () => {
           hostId,
           instanceId: "instance",
           hostName: "host",
-          hostType: "persistent",
           protocolVersion: 1,
           heartbeatIntervalMs: 1_000,
           leaseTimeoutMs: 10_000,

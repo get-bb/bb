@@ -1,3 +1,5 @@
+import { MachineLifecycleNotice } from "@/components/machines/MachineLifecycleNotice";
+import { MachineProviderDetails } from "@/components/machines/MachineProviderDetails";
 import { useMemo, useState, type ReactNode } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import type { Host, PermissionMode } from "@bb/domain";
@@ -11,6 +13,8 @@ import { Pill } from "@bb/shared-ui/pill";
 import { ResourceOverflowMenu } from "@bb/shared-ui/resource-list";
 import { ConfirmDeleteDialog } from "@/components/dialogs/ConfirmDeleteDialog";
 import { MachineStatusDot } from "@/components/machines/MachineStatusDot";
+import { MachinePhaseBadge } from "@/components/machines/MachinePhaseBadge";
+import { MachineProviderIcon } from "@/components/plugin/MachineProviderIcon";
 import { PageShell } from "@/components/ui/page-shell.js";
 import {
   SettingsBadge,
@@ -23,10 +27,14 @@ import { MachineRenameDialog } from "@/components/settings/MachineRenameDialog";
 import {
   useRemoveHost,
   useRenameHost,
+  useResumeHost,
+  useRetryHostCleanup,
   useRetryHostUpdate,
+  useSuspendHost,
   useUpdateHostPermissionCeiling,
 } from "@/hooks/mutations/host-mutations";
 import { useHosts } from "@/hooks/queries/host-queries";
+import { useSystemMachineProviders } from "@/hooks/queries/machine-provider-queries";
 import { useSidebarNavigation } from "@/hooks/queries/sidebar-navigation-query";
 import {
   useSystemConfig,
@@ -75,6 +83,7 @@ function headerMeta({
   platformLabel: string | null;
   now: number;
 }): string {
+  if (host.lifecycle.progress !== null) return host.lifecycle.progress;
   const parts: string[] = [host.status === "connected" ? "Online" : "Offline"];
   if (host.status !== "connected" && host.lastSeenAt !== null) {
     parts.push(
@@ -168,6 +177,7 @@ export function MachineSettingsView() {
   const { hostId } = useParams<{ hostId: string }>();
   const navigate = useNavigate();
   const hostsQuery = useHosts();
+  const { providers: machineProviders } = useSystemMachineProviders();
   const systemConfig = useSystemConfig();
   const { localDaemonHostId, platform: localDaemonPlatform } = useHostDaemon();
   const sidebarNavigationQuery = useSidebarNavigation();
@@ -175,6 +185,9 @@ export function MachineSettingsView() {
   const renameHost = useRenameHost();
   const removeHost = useRemoveHost();
   const retryHostUpdate = useRetryHostUpdate();
+  const suspendHost = useSuspendHost();
+  const resumeHost = useResumeHost();
+  const retryHostCleanup = useRetryHostCleanup();
   const updatePermissionCeiling = useUpdateHostPermissionCeiling();
   const [renameOpen, setRenameOpen] = useState(false);
   const [removeOpen, setRemoveOpen] = useState(false);
@@ -186,6 +199,12 @@ export function MachineSettingsView() {
   const showMachineIdentityBadges = (hosts?.length ?? 0) > 1;
   const isThisMachine =
     showMachineIdentityBadges && host !== null && host.id === localDaemonHostId;
+  const machineProvider =
+    host?.machineProviderId === null || host?.machineProviderId === undefined
+      ? null
+      : (machineProviders?.find(
+          (provider) => provider.id === host.machineProviderId,
+        ) ?? null);
 
   const projects: MachineProject[] = useMemo(() => {
     const navigation = sidebarNavigationQuery.data?.projects ?? [];
@@ -286,6 +305,18 @@ export function MachineSettingsView() {
                 {showMachineIdentityBadges && isPrimary ? (
                   <SettingsBadge>Primary</SettingsBadge>
                 ) : null}
+                <MachinePhaseBadge lifecycle={host.lifecycle} />
+                {machineProvider?.icon == null ? null : (
+                  <SettingsBadge>
+                    <span className="inline-flex items-center gap-1">
+                      <MachineProviderIcon
+                        provider={machineProvider}
+                        className="size-2.5"
+                      />
+                      {machineProvider.displayName}
+                    </span>
+                  </SettingsBadge>
+                )}
               </div>
               <div className="mt-1 flex min-w-0 items-center gap-2">
                 <MachineStatusDot connected={host.status === "connected"} />
@@ -294,19 +325,60 @@ export function MachineSettingsView() {
                 </p>
               </div>
             </div>
-            <ResourceOverflowMenu
-              label={`${host.name} actions`}
-              items={[
-                {
-                  label: "Rename",
-                  icon: "Edit",
-                  onSelect: () => {
-                    renameHost.reset();
-                    setRenameOpen(true);
+            <div className="flex shrink-0 items-center gap-2">
+              {machineProvider?.supportsSuspend &&
+              host.lifecycle.phase === "active" ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={suspendHost.isPending}
+                  onClick={() => suspendHost.mutate(host.id)}
+                >
+                  <Icon name="Pause" className="size-3.5" aria-hidden />
+                  Suspend
+                </Button>
+              ) : null}
+              {machineProvider?.supportsSuspend &&
+              host.lifecycle.phase === "suspended" ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={resumeHost.isPending}
+                  onClick={() => resumeHost.mutate(host.id)}
+                >
+                  <Icon name="Play" className="size-3.5" aria-hidden />
+                  Resume
+                </Button>
+              ) : null}
+              {host.lifecycle.phase === "retiring" &&
+              host.lifecycle.teardown?.status === "failed" ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={retryHostCleanup.isPending}
+                  onClick={() => retryHostCleanup.mutate(host.id)}
+                >
+                  <Icon name="RotateCcw" className="size-3.5" aria-hidden />
+                  Retry cleanup
+                </Button>
+              ) : null}
+              <ResourceOverflowMenu
+                label={`${host.name} actions`}
+                items={[
+                  {
+                    label: "Rename",
+                    icon: "Edit",
+                    onSelect: () => {
+                      renameHost.reset();
+                      setRenameOpen(true);
+                    },
                   },
-                },
-              ]}
-            />
+                ]}
+              />
+            </div>
           </div>
         </div>
 
@@ -400,6 +472,15 @@ export function MachineSettingsView() {
           </SettingsRowList>
         </SettingsSection>
 
+        {host.machineProviderId ? (
+          <>
+            <MachineProviderDetails hostId={host.id} expanded />
+            <MachineLifecycleNotice
+              hostId={host.id}
+              onRemove={() => setRemoveOpen(true)}
+            />
+          </>
+        ) : null}
         <SettingsSection title="Machine information">
           <SettingsRowList>
             <DetailRow label="Projects">
@@ -497,6 +578,7 @@ export function MachineSettingsView() {
       />
 
       <ConfirmDeleteDialog
+        modal={false}
         open={removeOpen}
         onOpenChange={(open) => {
           if (!open && !removeHost.isPending) setRemoveOpen(false);
@@ -505,9 +587,11 @@ export function MachineSettingsView() {
         <DialogHeader>
           <DialogTitle>Remove {host.name}?</DialogTitle>
           <DialogDescription>
-            This revokes {host.name}'s access to this server. Project checkouts
-            stay on its disk, but its environments become read-only history and
-            it can't run new work until it's paired again.
+            This revokes {host.name}'s access to this server.
+            {host.machineProviderId !== null &&
+            host.machineProviderId !== "manual"
+              ? "This deletes the managed compute and saved snapshots. Its environments remain as read-only history."
+              : "Project checkouts stay on its disk, but its environments become read-only history and it cannot run new work until paired again."}
           </DialogDescription>
         </DialogHeader>
         {removeHost.isError ? (

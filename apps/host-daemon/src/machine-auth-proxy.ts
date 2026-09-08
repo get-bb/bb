@@ -8,10 +8,9 @@ import type { AddressInfo, Socket } from "node:net";
 import type { Duplex } from "node:stream";
 
 const LOOPBACK_HOST = "127.0.0.1";
-const MACHINE_HEADER = "x-bb-connect-machine";
 
 interface StartMachineAuthProxyOptions {
-  machineCredential: string;
+  serverHeaders: Record<string, string>;
   serverUrl: string;
   port?: number;
 }
@@ -93,18 +92,18 @@ function writeRejectedSocket(
 function upstreamHeaders(
   headers: IncomingHttpHeaders,
   target: URL,
-  machineCredential: string,
+  serverHeaders: Record<string, string>,
 ): IncomingHttpHeaders {
   return {
     ...headers,
     host: target.host,
-    [MACHINE_HEADER]: machineCredential,
+    ...serverHeaders,
   };
 }
 
 function proxyRequest(args: {
   boundPort: number | null;
-  machineCredential: string;
+  serverHeaders: Record<string, string>;
   request: IncomingMessage;
   response: ServerResponse;
   target: URL;
@@ -134,7 +133,7 @@ function proxyRequest(args: {
       headers: upstreamHeaders(
         args.request.headers,
         args.target,
-        args.machineCredential,
+        args.serverHeaders,
       ),
     },
     (upstreamResponse) => {
@@ -159,7 +158,7 @@ function proxyUpgrade(args: {
   boundPort: number | null;
   clientSocket: Duplex;
   head: Buffer;
-  machineCredential: string;
+  serverHeaders: Record<string, string>;
   request: IncomingMessage;
   target: URL;
 }): void {
@@ -187,7 +186,7 @@ function proxyUpgrade(args: {
     headers: upstreamHeaders(
       args.request.headers,
       args.target,
-      args.machineCredential,
+      args.serverHeaders,
     ),
   });
   upstreamRequest.on("upgrade", (response, upstreamSocket, upstreamHead) => {
@@ -234,7 +233,7 @@ export async function startMachineAuthProxy(
   const server = http.createServer((request, response) =>
     proxyRequest({
       boundPort,
-      machineCredential: options.machineCredential,
+      serverHeaders: options.serverHeaders,
       request,
       response,
       target,
@@ -246,7 +245,7 @@ export async function startMachineAuthProxy(
       boundPort,
       clientSocket: socket,
       head,
-      machineCredential: options.machineCredential,
+      serverHeaders: options.serverHeaders,
       request,
       target,
     }),

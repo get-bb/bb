@@ -115,7 +115,7 @@ export function hostIdForEnvironmentIntent(
   if (intent.type === "reuse") {
     return getEnvironment(deps.db, intent.environmentId)?.hostId ?? null;
   }
-  return intent.machine.hostId;
+  return intent.machine.type === "existing" ? intent.machine.hostId : null;
 }
 
 function toPluginEnvironmentIntent(

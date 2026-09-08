@@ -14,13 +14,14 @@ const BASE = "http://127.0.0.1:3334";
 const EVIL_ORIGIN = "https://evil.example";
 
 const WIRE_SOURCE = `
-  import { defineRpcContract } from "@get-bb/plugin-sdk";
+  import { defineRpcContract, experimental_PluginRpcConflict } from "@get-bb/plugin-sdk";
   import { z } from "zod";
   const rpcContract = defineRpcContract({
     echo: {
       input: z.object({ x: z.number().optional(), kept: z.boolean().optional() }),
       output: z.object({ echoed: z.unknown() }),
     },
+    conflict: { input: z.null(), output: z.null() },
     boom: { input: z.record(z.string(), z.unknown()), output: z.null() },
     publish: {
       input: z.object({ channel: z.string(), payload: z.unknown() }),
@@ -119,6 +120,7 @@ const WIRE_SOURCE = `
       },
     }), { auth: "none" });
     bb.rpc.register(rpcContract, {
+      conflict: () => { throw new experimental_PluginRpcConflict("Revision changed", 3); },
       echo: async (input: any) => ({ echoed: input }),
       boom: async () => {
         throw new Error("rpc boom");
@@ -566,6 +568,19 @@ describe("plugin wire surfaces (http/rpc dispatcher + realtime)", () => {
     ).toMatchObject({
       status: "running",
       statusDetail: expect.stringContaining("reload failed: candidate failed"),
+    });
+  });
+
+  it("rpc returns HTTP 409 and the latest revision for an explicit conflict", async () => {
+    const response = await rpc(harness, "conflict", null);
+    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual({
+      ok: false,
+      error: {
+        code: "conflict",
+        message: "Revision changed",
+        latestRevision: 3,
+      },
     });
   });
 

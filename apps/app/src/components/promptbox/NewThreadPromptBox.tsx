@@ -56,7 +56,7 @@ import {
   type ReuseThreadOption,
 } from "@/components/pickers/ReuseEnvironmentPicker";
 import {
-  selectPersistentHosts,
+  selectHosts,
   selectPrimaryHost,
   useHosts,
 } from "@/hooks/queries/host-queries";
@@ -87,6 +87,10 @@ export interface NewThreadEnvironmentConfig {
   selectedProviderHostId?: string | null;
   inputsControlProviderIds?: ReadonlySet<string>;
   onSelectProvider?: EnvironmentPickerUIProps["onSelectProvider"];
+  machineProviders?: EnvironmentPickerUIProps["machineProviders"];
+  selectedMachineProviderId?: string | null;
+  machineInputsControlProviderIds?: ReadonlySet<string>;
+  onSelectMachineProvider?: EnvironmentPickerUIProps["onSelectMachineProvider"];
 }
 
 export interface NewThreadWorktreeConfig {
@@ -112,6 +116,7 @@ export interface NewThreadModeConfig {
   worktree: NewThreadWorktreeConfig;
   permission: ExecutionPermissionConfig;
   environmentProviderInputsSlot?: ReactNode;
+  machineProviderInputsSlot?: ReactNode;
   banner?: ReactNode;
   header?: ReactNode;
 }
@@ -375,6 +380,7 @@ const DefaultNewThreadComposer = memo(function DefaultNewThreadComposer({
               environmentProviderInputsSlot={
                 modeConfig.environmentProviderInputsSlot
               }
+              machineProviderInputsSlot={modeConfig.machineProviderInputsSlot}
             />
           ) : (
             <ProjectlessEnvSlot
@@ -383,6 +389,7 @@ const DefaultNewThreadComposer = memo(function DefaultNewThreadComposer({
               environmentProviderInputsSlot={
                 modeConfig.environmentProviderInputsSlot
               }
+              machineProviderInputsSlot={modeConfig.machineProviderInputsSlot}
             />
           )}
         </div>
@@ -406,12 +413,14 @@ interface ThreadEnvSlotProps {
   environment: NewThreadEnvironmentConfig;
   worktree: NewThreadWorktreeConfig;
   environmentProviderInputsSlot?: ReactNode;
+  machineProviderInputsSlot?: ReactNode;
 }
 
 export function ThreadEnvSlot({
   environment,
   worktree,
   environmentProviderInputsSlot,
+  machineProviderInputsSlot,
 }: ThreadEnvSlotProps) {
   const parsedEnvironment = useMemo(
     () => parseEnvironmentValue(environment.value),
@@ -443,6 +452,12 @@ export function ThreadEnvSlot({
         selectedProviderHostId={environment.selectedProviderHostId}
         inputsControlProviderIds={environment.inputsControlProviderIds}
         onSelectProvider={environment.onSelectProvider}
+        machineProviders={environment.machineProviders}
+        selectedMachineProviderId={environment.selectedMachineProviderId}
+        machineInputsControlProviderIds={
+          environment.machineInputsControlProviderIds
+        }
+        onSelectMachineProvider={environment.onSelectMachineProvider}
         className="shrink-0"
         muted
       />
@@ -458,6 +473,10 @@ export function ThreadEnvSlot({
       {selectedProvider !== undefined && selectedProvider.inputs !== null
         ? environmentProviderInputsSlot
         : null}
+      {environment.selectedMachineProviderId === undefined ||
+      environment.selectedMachineProviderId === null
+        ? null
+        : machineProviderInputsSlot}
     </>
   );
 }
@@ -466,12 +485,14 @@ interface ProjectlessEnvSlotProps {
   environment: NewThreadEnvironmentConfig;
   worktree: NewThreadWorktreeConfig;
   environmentProviderInputsSlot?: ReactNode;
+  machineProviderInputsSlot?: ReactNode;
 }
 
 export function ProjectlessEnvSlot({
   environment,
   worktree,
   environmentProviderInputsSlot,
+  machineProviderInputsSlot,
 }: ProjectlessEnvSlotProps) {
   const providers = (environment.providers ?? []).filter(
     (provider) => provider.requires.projectless,
@@ -487,7 +508,15 @@ export function ProjectlessEnvSlot({
         )
       : undefined;
   const showReuseEnvironmentPicker = parsedEnvironment?.type === "reuse";
-  if (providers.length <= 1 && !showReuseEnvironmentPicker) {
+  const hasMachineProviderEnvironmentOptions =
+    environment.onSelectMachineProvider !== undefined &&
+    (environment.machineProviders?.length ?? 0) > 0;
+
+  if (
+    providers.length <= 1 &&
+    !showReuseEnvironmentPicker &&
+    !hasMachineProviderEnvironmentOptions
+  ) {
     return <ProjectlessMachineSlot environment={environment} />;
   }
 
@@ -506,6 +535,12 @@ export function ProjectlessEnvSlot({
         selectedProviderHostId={environment.selectedProviderHostId}
         inputsControlProviderIds={environment.inputsControlProviderIds}
         onSelectProvider={environment.onSelectProvider}
+        machineProviders={environment.machineProviders}
+        selectedMachineProviderId={environment.selectedMachineProviderId}
+        machineInputsControlProviderIds={
+          environment.machineInputsControlProviderIds
+        }
+        onSelectMachineProvider={environment.onSelectMachineProvider}
         className="shrink-0"
         muted
       />
@@ -521,6 +556,10 @@ export function ProjectlessEnvSlot({
       {selectedProvider !== undefined && selectedProvider.inputs !== null
         ? environmentProviderInputsSlot
         : null}
+      {environment.selectedMachineProviderId === undefined ||
+      environment.selectedMachineProviderId === null
+        ? null
+        : machineProviderInputsSlot}
     </>
   );
 }
@@ -534,7 +573,7 @@ export function ProjectlessMachineSlot({
 }: ProjectlessMachineSlotProps) {
   const machines = environment.machines ?? null;
   const availableHosts = useMemo(
-    () => selectPersistentHosts(machines?.hosts),
+    () => selectHosts(machines?.hosts),
     [machines?.hosts],
   );
   const parsedEnvironment = useMemo(
@@ -590,6 +629,7 @@ interface NewThreadConnectedModeConfig {
   worktree: NewThreadWorktreeConfig;
   permission: ExecutionPermissionConfig;
   environmentProviderInputsSlot?: ReactNode;
+  machineProviderInputsSlot?: ReactNode;
   banner?: ReactNode;
   header?: ReactNode;
 }
@@ -608,7 +648,7 @@ export function NewThreadPromptBox({
   const { data: hosts } = useHosts();
   const systemConfigQuery = useSystemConfig();
   const primaryHostId = systemConfigQuery.data?.primaryHostId ?? null;
-  const availableHosts = useMemo(() => selectPersistentHosts(hosts), [hosts]);
+  const availableHosts = useMemo(() => selectHosts(hosts), [hosts]);
   const primaryHost = useMemo(
     () => selectPrimaryHost(availableHosts, primaryHostId),
     [availableHosts, primaryHostId],
@@ -654,6 +694,7 @@ export function NewThreadPromptBox({
         permission: threadConfig.permission,
         environmentProviderInputsSlot:
           threadConfig.environmentProviderInputsSlot,
+        machineProviderInputsSlot: threadConfig.machineProviderInputsSlot,
         banner: threadConfig.banner,
         header: threadConfig.header,
       }}

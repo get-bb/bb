@@ -13,6 +13,7 @@ export interface CreateLocalPathProjectSourceInput {
   hostId: string;
   path: string;
   isDefault?: boolean;
+  ownsPath?: boolean;
 }
 
 export type CreateProjectSourceInput = CreateLocalPathProjectSourceInput;
@@ -65,6 +66,7 @@ export function createProjectSource(
         hostId: input.hostId,
         path: input.path,
         isDefault: shouldBeDefault,
+        ownsPath: input.ownsPath ?? false,
         createdAt: now,
         updatedAt: now,
       })
@@ -285,4 +287,11 @@ export function deleteProjectSource(
 
   notifier.notifyProject(deleted, ["project-sources-changed"]);
   return true;
+}
+
+
+export function projectSourceOwnsPath(db: DbConnection, projectId: string, hostId: string, path: string): boolean {
+  return db.select({ ownsPath: projectSources.ownsPath }).from(projectSources).where(and(
+    eq(projectSources.projectId, projectId), eq(projectSources.hostId, hostId), eq(projectSources.path, path),
+  )).get()?.ownsPath ?? false;
 }

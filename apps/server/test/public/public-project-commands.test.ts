@@ -317,6 +317,7 @@ describe("public project command typeahead route", () => {
       expect(stub.resolveRequests.map((request) => request.command)).toEqual([
         expect.objectContaining({
           type: "plugin.host.call",
+          contributedEnv: [],
           pluginId: provider.pluginId,
           method: "resolveNativeRoots",
           input: { providerId: "resolving", cwd: "/tmp/resolving-project" },

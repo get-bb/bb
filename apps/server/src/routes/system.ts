@@ -1,4 +1,11 @@
 import {
+  effectiveMachineGitHealth,
+  machineEnvironmentView,
+  updateMachineEnvironment,
+} from "../services/machines/environment-settings.js";
+import { getGateAuthKind } from "../request-context.js";
+import { serverAccessStatus } from "../services/machines/server-access.js";
+import {
   getAppSettings,
   getAppKeybindingOverrides,
   getExperiments,
@@ -31,6 +38,10 @@ import {
   getEnvironmentProvider,
   listEnvironmentProviders,
 } from "../services/plugins/plugin-environment-provider-registry.js";
+import {
+  getMachineProvider,
+  listMachineProviders,
+} from "../services/plugins/plugin-machine-provider-registry.js";
 import type { ServerAppDeps, ServerRuntimeConfig } from "../types.js";
 import type { PluginService } from "../services/plugins/plugin-service.js";
 import { ApiError } from "../errors.js";
@@ -62,6 +73,11 @@ import {
   environmentProviderAcceptsEmptyInputs,
   resolveEnvironmentProviderAvailability,
 } from "../services/environments/provider-availability.js";
+import {
+  machineProviderAcceptsEmptyInputs,
+  resolveMachineProviderAvailability,
+  resolveMachineProviderEnvironmentRow,
+} from "../services/machines/provider-availability.js";
 import { requirePublicProject } from "../services/lib/entity-lookup.js";
 
 const LEADING_ENVIRONMENT_PROVIDER_IDS: readonly string[] = [
@@ -117,7 +133,7 @@ export function registerSystemRoutes(
   deps: ServerAppDeps,
   pluginService: PluginService,
 ): void {
-  const { get, post, put } = typedRoutes<PublicApiSchema>(app, {
+  const { get, post, put, del } = typedRoutes<PublicApiSchema>(app, {
     onValidationError: (msg) => new ApiError(400, "invalid_request", msg),
   });
   const routes = publicApiRoutes.system;
@@ -170,6 +186,8 @@ export function registerSystemRoutes(
     ];
     return {
       generalSettings: compatibleGeneralSettings(),
+      serverAccess: await serverAccessStatus(deps),
+      machineGit: await effectiveMachineGitHealth(deps.db),
       keybindings: applyAppKeybindingOverrides(
         DEFAULT_APP_KEYBINDINGS,
         keybindingOverrides,
@@ -220,6 +238,41 @@ export function registerSystemRoutes(
       showUnhandledProviderEvents: settings.showDiagnosticEvents,
     };
   }
+  get(routes.machineEnvironment, async (context) =>
+    context.json(await machineEnvironmentView(deps.db)),
+  );
+  put(routes.setMachineEnvironment, async (context, payload) => {
+    if (getGateAuthKind(context) === "machine")
+      throw new ApiError(
+        403,
+        "forbidden",
+        "Machine credentials cannot change global environment settings",
+      );
+    await updateMachineEnvironment(
+      deps.db,
+      deps.config.dataDir,
+      payload.name,
+      payload,
+    );
+    deps.hub.notifySystem(["config-changed"]);
+    return context.json(await machineEnvironmentView(deps.db));
+  });
+  del(routes.unsetMachineEnvironment, async (context) => {
+    if (getGateAuthKind(context) === "machine")
+      throw new ApiError(
+        403,
+        "forbidden",
+        "Machine credentials cannot change global environment settings",
+      );
+    await updateMachineEnvironment(
+      deps.db,
+      deps.config.dataDir,
+      context.req.param("name"),
+      null,
+    );
+    deps.hub.notifySystem(["config-changed"]);
+    return context.json(await machineEnvironmentView(deps.db));
+  });
 
   put(routes.generalSettings, (context, payload) => {
     const { showUnhandledProviderEvents, ...settings } = payload;
@@ -394,6 +447,38 @@ export function registerSystemRoutes(
     });
   });
 
+  get(routes.machineProviders, async (context, query) => {
+    return context.json({
+      providers: await Promise.all(
+        listMachineProviders().map(async (record) => ({
+          id: record.provider.id,
+          displayName: record.provider.displayName,
+          icon: record.provider.icon,
+          logoUrl:
+            record.icon === undefined
+              ? null
+              : `/api/v1/system/providers/${encodeURIComponent(`machine:${record.provider.id}`)}/logo?h=${record.icon.hash}`,
+          pluginId: record.pluginId,
+          requires: record.provider.requires,
+          inputs: record.provider.inputsJsonSchema,
+          acceptsEmptyInputs: await machineProviderAcceptsEmptyInputs(record),
+          supportsSuspend: record.provider.suspend !== null,
+          environmentRow: resolveMachineProviderEnvironmentRow(
+            deps,
+            record,
+            query,
+          ),
+          policy: record.provider.policy,
+          availability: await resolveMachineProviderAvailability(
+            deps,
+            record,
+            query,
+          ),
+        })),
+      ),
+    });
+  });
+
   get(routes.providers, async (context, query) =>
     context.json(await listSystemProviderInfos(deps, query)),
   );
@@ -402,7 +487,9 @@ export function registerSystemRoutes(
     const providerId = context.req.param("id");
     const registration = providerId.startsWith("environment:")
       ? getEnvironmentProvider(providerId.slice("environment:".length))
-      : deps.providerRegistry.get(providerId);
+      : providerId.startsWith("machine:")
+        ? getMachineProvider(providerId.slice("machine:".length))
+        : deps.providerRegistry.get(providerId);
     if (registration?.icon !== undefined) {
       return pluginImageResponse(
         context,

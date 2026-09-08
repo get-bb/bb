@@ -1,3 +1,6 @@
+import { createMachineBootstrapApi } from "../machines/bootstrap.js";
+import type { MachineEnrollments } from "@get-bb/plugin-sdk";
+import { listServerAccessProviders } from "./plugin-server-access-registry.js";
 import { createHash } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
@@ -42,6 +45,7 @@ import type {
   PluginMentionItem,
   PluginMentionSearchContext,
   PluginMentionTrigger,
+  PluginMachines,
   PluginAiServiceDeclaration,
   PluginAiServices,
   PluginProviderDeclaration,
@@ -92,6 +96,7 @@ import {
   pluginHookAlreadyRegisteredMessage,
   storePluginHook,
   validatePluginEnvironmentProviderDeclaration,
+  validatePluginMachineProviderDeclaration,
   providerAlreadyRegisteredMessage,
   providerIconRefusalMessage,
   undeclaredIconProblem,
@@ -103,6 +108,7 @@ import {
 import type {
   AiServiceHostBinding,
   NormalizedPluginEnvironmentProvider,
+  NormalizedPluginMachineProvider,
   NormalizedPluginProviderDeclaration,
 } from "@get-bb/plugin-sdk/internal/host-policy";
 import type { BbSdk, ThreadForkArgs, ThreadSpawnArgs } from "@bb/sdk";
@@ -250,6 +256,11 @@ export interface PluginApiHandle {
   /** Hook handlers recorded by `bb.experimental_hooks.on`. */
   hooks: PluginHookRecords;
   environmentProviders: Map<string, NormalizedPluginEnvironmentProvider>;
+  machineProviders: Map<string, NormalizedPluginMachineProvider>;
+  serverAccessProviders: Map<
+    string,
+    import("@get-bb/plugin-sdk").ServerAccessProviderDeclaration
+  >;
   /** HTTP routes recorded by `bb.http.route`; dropped with the handle. */
   httpRoutes: PluginHttpRouteRecord[];
   websocketRoutes: PluginWebSocketRouteRecord[];
@@ -423,6 +434,7 @@ export function createPluginApi(options: {
   db: DbConnection;
   dataDir: string;
   getSdk: () => BbSdk | undefined;
+  getMachineEnrollments: () => MachineEnrollments;
   getAppUrl: () => string | null;
   getLoopbackBaseUrl: () => string | undefined;
   publishSignal: (channel: string, payload: unknown) => void;
@@ -430,6 +442,7 @@ export function createPluginApi(options: {
   reportNeedsConfiguration: (message: string) => void;
   isAgentToolNameTaken: (name: string) => string | undefined;
   isEnvironmentProviderIdTaken: (id: string) => string | undefined;
+  isMachineProviderIdTaken: (id: string) => string | undefined;
   reportAgentToolProblem: (message: string) => void;
   /**
    * Schedules a re-attempt of every plugin-queued row
@@ -548,6 +561,11 @@ export function createPluginApi(options: {
   const environmentProviders = new Map<
     string,
     NormalizedPluginEnvironmentProvider
+  >();
+  const machineProviders = new Map<string, NormalizedPluginMachineProvider>();
+  const serverAccessProviders = new Map<
+    string,
+    import("@get-bb/plugin-sdk").ServerAccessProviderDeclaration
   >();
   const httpRoutes: PluginHttpRouteRecord[] = [];
   const websocketRoutes: PluginWebSocketRouteRecord[] = [];
@@ -1539,6 +1557,76 @@ export function createPluginApi(options: {
     },
   };
 
+  const experimental_serverAccess: import("@get-bb/plugin-sdk").PluginServerAccess =
+    {
+      register(declaration) {
+        assertLive();
+        if (
+          !/^[a-z][a-z0-9-]*$/u.test(declaration.id) ||
+          declaration.id === "direct"
+        ) {
+          throw new Error("Invalid or reserved server access provider id");
+        }
+        if (
+          !declaration.displayName.trim() ||
+          typeof declaration.availability !== "function" ||
+          typeof declaration.acquire !== "function" ||
+          typeof declaration.release !== "function"
+        ) {
+          throw new Error("Invalid server access provider declaration");
+        }
+        if (
+          serverAccessProviders.has(declaration.id) ||
+          listServerAccessProviders().some(
+            (entry) =>
+              entry.provider.id === declaration.id &&
+              entry.pluginId !== pluginId,
+          )
+        ) {
+          throw new Error(
+            `Server access provider "${declaration.id}" is already registered`,
+          );
+        }
+        serverAccessProviders.set(declaration.id, declaration);
+      },
+    };
+
+  const enrollmentApi: MachineEnrollments = {
+    prepare(request) {
+      assertLive();
+      return options.getMachineEnrollments().prepare(request);
+    },
+    waitForConnection(request) {
+      assertLive();
+      return options.getMachineEnrollments().waitForConnection(request);
+    },
+    cancel(request) {
+      assertLive();
+      return options.getMachineEnrollments().cancel(request);
+    },
+  };
+  const experimental_machines: PluginMachines = {
+    ...createMachineBootstrapApi(enrollmentApi),
+    register(declaration) {
+      assertLive();
+      const provider = validatePluginMachineProviderDeclaration(declaration);
+      const problem =
+        provider.icon === null
+          ? null
+          : undeclaredIconProblem(pluginId, declaredIconNames, provider.icon);
+      if (problem !== null) {
+        throw new Error(providerIconRefusalMessage(provider.id, problem));
+      }
+      const owner = options.isMachineProviderIdTaken(provider.id);
+      if (owner !== undefined) {
+        throw new Error(
+          `machine provider "${provider.id}" is already registered by plugin "${owner}"`,
+        );
+      }
+      machineProviders.set(provider.id, provider);
+    },
+  };
+
   const aiServiceRegistrations = createStagedRegistrations({
     validate: validatePluginAiServiceDeclaration,
     bind: assertAiServiceRegistrable,
@@ -1569,6 +1657,8 @@ export function createPluginApi(options: {
     events,
     experimental_hooks,
     experimental_environments,
+    experimental_machines,
+    experimental_serverAccess,
     status,
     server,
     hosts,
@@ -1599,6 +1689,8 @@ export function createPluginApi(options: {
     threadEventHandlers,
     hooks,
     environmentProviders,
+    machineProviders,
+    serverAccessProviders,
     httpRoutes,
     websocketRoutes,
     rpcHandlers,

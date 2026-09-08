@@ -5,6 +5,7 @@ import {
   existsSync,
   mkdtempSync,
   mkdirSync,
+  readdirSync,
   readFileSync,
   realpathSync,
   rmSync,
@@ -13,7 +14,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { createServer as createNetServer } from "node:net";
-import { delimiter, join } from "node:path";
+import { delimiter, dirname, join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 const SCRIPT_PATH = new URL(
@@ -48,7 +49,7 @@ type Fixture = ReturnType<typeof createFixture>;
 
 function createScriptEnv(
   fixture: Fixture,
-  env: Record<string, string>,
+  env: Record<string, string | undefined>,
 ): NodeJS.ProcessEnv {
   return {
     ...process.env,
@@ -62,7 +63,7 @@ function createScriptEnv(
 function runScript(
   args: string[],
   fixture: Fixture,
-  env: Record<string, string> = {},
+  env: Record<string, string | undefined> = {},
 ) {
   return spawnSync("sh", [SCRIPT_PATH.pathname, ...args], {
     encoding: "utf8",
@@ -73,7 +74,7 @@ function runScript(
 async function runScriptAsync(
   args: string[],
   fixture: Fixture,
-  env: Record<string, string> = {},
+  env: Record<string, string | undefined> = {},
 ): Promise<{ status: number | null; stderr: string; stdout: string }> {
   const child = spawn("sh", [SCRIPT_PATH.pathname, ...args], {
     env: createScriptEnv(fixture, env),
@@ -145,7 +146,7 @@ const serverUrl = option("--server-url");
 const statusServerUrl = ${JSON.stringify(args.statusServerUrl)} ?? serverUrl;
 fs.writeFileSync(
   path.join(dataDir, "auth.json"),
-  JSON.stringify({ hostId, hostKey: "secret", hostType: "persistent" }) + "\\n",
+  JSON.stringify({ hostId, hostKey: "secret" }) + "\\n",
 );
 const configPath = path.join(dataDir, "config.json");
 if (!fs.existsSync(configPath)) {
@@ -272,6 +273,32 @@ afterEach(() => {
 });
 
 describe("machine install script", () => {
+  it.each([
+    { uid: 0, unset: true },
+    { uid: 501, unset: true },
+    { uid: 501, unset: false },
+  ])("resolves an unset HOME and preserves explicit HOME: %j", ({ uid, unset }) => {
+    const fixture = createFixture();
+    const homeScript = 'const home = require("node:os").homedir(); if (!require("node:path").isAbsolute(home)) process.exit(1); process.stdout.write(home);';
+    rmSync(join(fixture.binDir, "node"));
+    writeExecutable(join(fixture.binDir, "node"), `#!/bin/sh
+if [ "$1" = -e ] && [ "$2" = '${homeScript}' ]; then
+  : >'${join(fixture.dataDir, "resolved-home")}'
+  printf '%s' '${fixture.homeDir}'
+  exit 0
+fi
+exec '${process.execPath}' "$@"
+`);
+    writeExecutable(join(fixture.binDir, "id"), `#!/bin/sh\necho ${uid}\n`);
+    writeCurlArtifactMock(fixture, 404);
+    const result = runScript(JOIN_ARGS, fixture, { HOME: unset ? undefined : fixture.homeDir });
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).not.toContain("HOME");
+    expect(existsSync(join(fixture.dataDir, "resolved-home"))).toBe(unset);
+    expect(existsSync(join(fixture.homeDir, ".local/bin/bb"))).toBe(true);
+    expect(existsSync(join(fixture.dataDir, "auth.json"))).toBe(false);
+  });
+
   it("rejects missing required flags with usage", () => {
     const fixture = createFixture();
     const result = runScript(["--join-code", "code-only"], fixture);
@@ -316,6 +343,126 @@ describe("machine install script", () => {
     expect(result.stderr).not.toContain("TypeError");
   });
 
+  it("prefers the newly installed CLI and honors an explicit machine directory", () => {
+    const fixture = createFixture();
+    writeServerInstallTools(fixture, 200);
+    writeExecutable(join(fixture.binDir, "npm"), "#!/bin/sh\nexit 19\n");
+    runScript(JOIN_ARGS, fixture, { BB_INSTALL_SKIP_SERVICE: "1" });
+    const olderCli = join(
+      fixture.homeDir,
+      ".bb-machines",
+      "older",
+      "npm",
+      "bin",
+      "bb",
+    );
+    mkdirSync(dirname(olderCli), { recursive: true });
+    writeExecutable(olderCli, "#!/bin/sh\necho wrong-installation\n");
+    const installedCli = join(fixture.dataDir, "npm", "bin", "bb");
+    mkdirSync(dirname(installedCli), { recursive: true });
+    writeExecutable(installedCli, '#!/bin/sh\nprintf "%s" "$BB_DATA_DIR"\n');
+    const shim = join(fixture.homeDir, ".local", "bin", "bb");
+    const explicit = spawnSync(
+      shim,
+      ["machine", "uninstall", "--host-id", "host-test"],
+      { env: createScriptEnv(fixture, {}), encoding: "utf8" },
+    );
+    expect(explicit.status).toBe(0);
+    expect(explicit.stdout).toBe(fixture.dataDir);
+    writeExecutable(installedCli, "#!/bin/sh\necho current-installation\n");
+    const env = createScriptEnv(fixture, {});
+    delete env.BB_DATA_DIR;
+    const selected = spawnSync(shim, ["machine", "enroll"], {
+      env,
+      encoding: "utf8",
+    });
+    expect(selected.status).toBe(0);
+    expect(selected.stdout.trim()).toBe("current-installation");
+  });
+
+  it("publishes cleanup before package installation can fail", () => {
+    const fixture = createFixture();
+    writeServerInstallTools(fixture, 200);
+    writeExecutable(join(fixture.binDir, "npm"), "#!/bin/sh\nexit 19\n");
+    const result = runScript(JOIN_ARGS, fixture, {
+      BB_INSTALL_SKIP_SERVICE: "1",
+    });
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("Could not install bb-app");
+    const shim = join(fixture.homeDir, ".local", "bin", "bb");
+    expect(existsSync(shim)).toBe(true);
+    const cleanup = spawnSync(
+      shim,
+      ["machine", "uninstall", "--host-id", "host-test"],
+      { env: createScriptEnv(fixture, {}), encoding: "utf8" },
+    );
+    expect(cleanup.status, cleanup.stderr).toBe(0);
+    expect(existsSync(join(fixture.dataDir, "auth.json"))).toBe(false);
+    expect(existsSync(join(fixture.dataDir, "install-daemon.pid"))).toBe(false);
+  });
+
+  it.each([{ container: false, version: 1 }, { container: false, version: 2 }, { container: true, version: 1 }, { container: true, version: 2 }])("enrolls privately with portable service selection (%j)", ({ container, version }) => {
+    const fixture = createFixture();
+    writeCurlArtifactMock(fixture, 404);
+    writeEnrollingBbApp(
+      fixture,
+      join(fixture.dataDir, "daemon-invocation"),
+      "host-test",
+    );
+    writeExecutable(
+      join(fixture.binDir, "bb"),
+      `#!/usr/bin/env node
+const fs = require("node:fs");
+const path = require("node:path");
+const bundle = JSON.parse(process.env.BB_ENROLLMENT);
+fs.writeFileSync(path.join(process.env.BB_DATA_DIR, "enrollment-argv"), JSON.stringify(process.argv.slice(2)));
+fs.writeFileSync(path.join(process.env.BB_DATA_DIR, "auth.json"), JSON.stringify({hostId: bundle.hostId, hostKey: "durable-test"}));
+fs.writeFileSync(path.join(process.env.BB_DATA_DIR, "config.json"), JSON.stringify({serverUrl: bundle.serverUrl}));
+`,
+    );
+    if (container) {
+      writeExecutable(join(fixture.binDir, "uname"), "#!/bin/sh\necho Linux\n");
+      writeExecutable(join(fixture.binDir, "id"), "#!/bin/sh\necho 0\n");
+      writeExecutable(join(fixture.binDir, "ps"), "#!/bin/sh\necho systemd\n");
+      writeExecutable(join(fixture.binDir, "systemd-detect-virt"), "#!/bin/sh\nexit 0\n");
+      writeExecutable(join(fixture.binDir, "systemctl"), "#!/bin/sh\nexit 1\n");
+    }
+    const result = runScript(["--bootstrap-env", "TEST_BUNDLE"], fixture, {
+      BB_INSTALL_SKIP_SERVICE: container ? "0" : "1",
+      TEST_BUNDLE: JSON.stringify({
+        version,
+        ...(version === 1 ? { client: { kind: "direct" } } : {}),
+        hostId: "host-test",
+        serverUrl: "https://machine.getbb.app",
+        credential: "private-bootstrap-test",
+        expiresAt: Date.now() + 60_000,
+      }),
+    });
+    const pidPath = join(fixture.dataDir, "install-daemon.pid");
+    try {
+      expect(result.status, result.stderr).toBe(0);
+      expect(
+        JSON.parse(
+          readFileSync(join(fixture.dataDir, "enrollment-argv"), "utf8"),
+        ),
+      ).toEqual(["machine", "enroll", "--bootstrap-env", "BB_ENROLLMENT"]);
+      expect(result.stdout + result.stderr).not.toContain(
+        "private-bootstrap-test",
+      );
+      expect(
+        spawnSync("sh", ["-n", join(fixture.homeDir, ".local/bin/bb")]).status,
+      ).toBe(0);
+    } finally {
+      if (existsSync(pidPath)) {
+        try {
+          process.kill(Number(readFileSync(pidPath, "utf8")), "SIGTERM");
+        } catch (error) {
+          if (!(error instanceof Error && "code" in error && error.code === "ESRCH")) throw error;
+        }
+      }
+    }
+  });
+
   it("uses bb-app from PATH and passes the launcher join flags verbatim", () => {
     const fixture = createFixture();
     const invocationPath = join(fixture.dataDir, "invocation");
@@ -346,6 +493,9 @@ describe("machine install script", () => {
       "--server-url",
       "https://machine.getbb.app",
     ]);
+    expect(
+      JSON.parse(readFileSync(join(fixture.dataDir, "auth.json"), "utf8")),
+    ).toEqual({ hostId: "host-test", hostKey: "secret" });
     const daemonPid = Number(
       readFileSync(join(fixture.dataDir, "install-daemon.pid"), "utf8"),
     );
@@ -832,18 +982,18 @@ fi
       "service " +
         join(
           fixture.homeDir,
-          "Library/LaunchAgents/app.getbb.host-daemon.machine-getbb-app.plist",
+          "Library/LaunchAgents/app.getbb.host-daemon.machine-getbb-app-host-test.plist",
         ),
     );
     const plist = readFileSync(
       join(
         fixture.homeDir,
-        "Library/LaunchAgents/app.getbb.host-daemon.machine-getbb-app.plist",
+        "Library/LaunchAgents/app.getbb.host-daemon.machine-getbb-app-host-test.plist",
       ),
       "utf8",
     );
     expect(plist).toContain(
-      "<string>app.getbb.host-daemon.machine-getbb-app</string>",
+      "<string>app.getbb.host-daemon.machine-getbb-app-host-test</string>",
     );
     expect(plist).toContain("<key>RunAtLoad</key><true/>");
     expect(plist).toContain("<key>KeepAlive</key><true/>");
@@ -862,7 +1012,7 @@ fi
     );
     const serviceFile = join(
       fixture.homeDir,
-      "Library/LaunchAgents/app.getbb.host-daemon.machine-getbb-app.plist",
+      "Library/LaunchAgents/app.getbb.host-daemon.machine-getbb-app-host-test.plist",
     );
     const domain = `gui/${process.getuid?.()}`;
     expect(readFileSync(join(fixture.dataDir, "launchctl.log"), "utf8")).toBe(
@@ -871,6 +1021,54 @@ fi
     expect(
       readFileSync(join(fixture.dataDir, "launchctl-starts.log"), "utf8"),
     ).toBe("start\nstart\n");
+  });
+
+  it("replaces a matching legacy macOS launch agent with exactly one host service", () => {
+    const fixture = createFixture();
+    writeJoinedState(fixture);
+    writeServerInstallTools(fixture, 200);
+    writeExecutable(join(fixture.binDir, "uname"), "#!/bin/sh\necho Darwin\n");
+    const serviceDir = join(fixture.homeDir, "Library/LaunchAgents");
+    mkdirSync(serviceDir, { recursive: true });
+    const legacyServiceFile = join(
+      serviceDir,
+      "app.getbb.host-daemon.machine-getbb-app.plist",
+    );
+    writeFileSync(join(fixture.dataDir, "host-daemon-port"), "45123\n");
+    writeFileSync(
+      legacyServiceFile,
+      `<plist><dict>
+<key>ProgramArguments</key><array><string>host-daemon</string><string>--host-daemon-port</string><string>45123</string></array>
+<key>EnvironmentVariables</key><dict><key>BB_DATA_DIR</key><string>${fixture.dataDir}</string></dict>
+</dict></plist>
+`,
+    );
+    writeExecutable(
+      join(fixture.binDir, "launchctl"),
+      `#!/bin/sh
+printf '%s\n' "$*" >>"${join(fixture.dataDir, "launchctl.log")}"
+if [ "$1" = bootstrap ]; then
+  BB_DATA_DIR="${fixture.dataDir}" "${join(fixture.dataDir, "npm/bin/bb-app")}" host-daemon --host-daemon-port 45123 --server-url https://machine.getbb.app >/dev/null 2>&1 &
+  echo $! >"${join(fixture.dataDir, "service-daemon.pid")}"
+fi
+`,
+    );
+
+    const result = runScript(JOIN_ARGS, fixture);
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(existsSync(legacyServiceFile)).toBe(false);
+    expect(
+      readdirSync(serviceDir).filter((file) => file.endsWith(".plist")),
+    ).toEqual(["app.getbb.host-daemon.machine-getbb-app-host-test.plist"]);
+    const serviceFile = join(
+      serviceDir,
+      "app.getbb.host-daemon.machine-getbb-app-host-test.plist",
+    );
+    const domain = `gui/${process.getuid?.()}`;
+    expect(readFileSync(join(fixture.dataDir, "launchctl.log"), "utf8")).toBe(
+      `bootout ${domain} ${legacyServiceFile}\nbootout ${domain} ${serviceFile}\nbootstrap ${domain} ${serviceFile}\n`,
+    );
   });
 
   it("reports launchctl bootstrap failures", () => {
@@ -893,7 +1091,7 @@ fi
 
     expect(result.status).toBe(1);
     expect(result.stderr).toContain(
-      "Could not register the bb host-daemon launch agent app.getbb.host-daemon.machine-getbb-app.",
+      "Could not register the bb host-daemon launch agent app.getbb.host-daemon.machine-getbb-app-host-test.",
     );
     expect(result.stderr).toContain("launchctl: fixture bootstrap failure");
   });
@@ -934,7 +1132,7 @@ printf '%s\n' "$*" >>"${join(fixture.dataDir, "launchctl.log")}"
       join(fixture.binDir, "systemctl"),
       `#!/bin/sh
 printf '%s\n' "$*" >>"${join(fixture.dataDir, "systemctl.log")}"
-if [ "$*" = "--user restart bb-host-daemon-machine-getbb-app.service" ]; then
+if [ "$*" = "--user restart bb-host-daemon-machine-getbb-app-host-test.service" ]; then
   port=$(sed -n '1p' "${join(fixture.dataDir, "host-daemon-port")}")
   BB_DATA_DIR="${fixture.dataDir}" "${join(fixture.dataDir, "npm/bin/bb-app")}" host-daemon --host-daemon-port "$port" --server-url https://machine.getbb.app >/dev/null 2>&1 &
   echo $! >"${join(fixture.dataDir, "service-daemon.pid")}"
@@ -962,7 +1160,7 @@ fi
     const unit = readFileSync(
       join(
         fixture.homeDir,
-        ".config/systemd/user/bb-host-daemon-machine-getbb-app.service",
+        ".config/systemd/user/bb-host-daemon-machine-getbb-app-host-test.service",
       ),
       "utf8",
     );
@@ -977,7 +1175,176 @@ fi
       `Environment="BB_APP_NPM_PREFIX=${realpathSync(fixture.dataDir)}/npm"`,
     );
     expect(readFileSync(join(fixture.dataDir, "systemctl.log"), "utf8")).toBe(
-      "--user daemon-reload\n--user enable bb-host-daemon-machine-getbb-app.service\n--user restart bb-host-daemon-machine-getbb-app.service\n",
+      "--user daemon-reload\n--user enable bb-host-daemon-machine-getbb-app-host-test.service\n--user restart bb-host-daemon-machine-getbb-app-host-test.service\n",
+    );
+  });
+
+  it.each([false, true])("installs a persistent root system unit (container=%s)", (container) => {
+    const fixture = createFixture();
+    writeJoinedState(fixture);
+    writeServerInstallTools(fixture, 200);
+    writeExecutable(join(fixture.binDir, "uname"), "#!/bin/sh\necho Linux\n");
+    writeExecutable(join(fixture.binDir, "id"), "#!/bin/sh\necho 0\n");
+    writeExecutable(join(fixture.binDir, "ps"), "#!/bin/sh\necho systemd\n");
+    writeExecutable(join(fixture.binDir, "systemd-detect-virt"), `#!/bin/sh\nexit ${container ? 0 : 1}\n`);
+    const scope = container ? "--user" : "--system";
+    writeExecutable(
+      join(fixture.binDir, "systemctl"),
+      `#!/bin/sh
+printf '%s\n' "$*" >>"${join(fixture.dataDir, "systemctl.log")}"
+if [ "$*" = "${scope} restart bb-host-daemon-machine-getbb-app-host-test.service" ]; then
+  port=$(sed -n '1p' "${join(fixture.dataDir, "host-daemon-port")}")
+  BB_DATA_DIR="${fixture.dataDir}" "${join(fixture.dataDir, "npm/bin/bb-app")}" host-daemon --host-daemon-port "$port" --server-url https://machine.getbb.app >/dev/null 2>&1 &
+  echo $! >"${join(fixture.dataDir, "service-daemon.pid")}"
+fi
+`,
+    );
+
+    const result = runScript(
+      [
+        "--join-code",
+        "unused-fresh-code",
+        "--host-id",
+        "host-test",
+        "--server",
+        "https://machine.getbb.app",
+      ],
+      fixture,
+    );
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toContain("already joined");
+    expect(result.stdout).toContain(
+      "Waiting for the systemd service to connect",
+    );
+    const unit = readFileSync(
+      container
+        ? join(fixture.homeDir, ".config/systemd/user/bb-host-daemon-machine-getbb-app-host-test.service")
+        : join(fixture.dataDir, "systemd/bb-host-daemon-machine-getbb-app-host-test.service"),
+      "utf8",
+    );
+    const selectedPort = readFileSync(
+      join(fixture.dataDir, "host-daemon-port"),
+      "utf8",
+    ).trim();
+    expect(unit).toContain(
+      `host-daemon --auto-update --host-daemon-port "${selectedPort}" --server-url "https://machine.getbb.app"`,
+    );
+    expect(unit).toContain(
+      `Environment="BB_APP_NPM_PREFIX=${realpathSync(fixture.dataDir)}/npm"`,
+    );
+    expect(unit).toContain(container ? "WantedBy=default.target" : "WantedBy=multi-user.target");
+    const enableUnit = container
+      ? "bb-host-daemon-machine-getbb-app-host-test.service"
+      : join(realpathSync(fixture.dataDir), "systemd/bb-host-daemon-machine-getbb-app-host-test.service");
+    expect(readFileSync(join(fixture.dataDir, "systemctl.log"), "utf8")).toBe(
+      `${scope} daemon-reload\n${scope} enable ${enableUnit}\n${scope} restart bb-host-daemon-machine-getbb-app-host-test.service\n`,
+    );
+  });
+
+  it("replaces a matching legacy systemd unit with exactly one host service", () => {
+    const fixture = createFixture();
+    writeJoinedState(fixture);
+    writeServerInstallTools(fixture, 200);
+    writeExecutable(join(fixture.binDir, "uname"), "#!/bin/sh\necho Linux\n");
+    const serviceDir = join(fixture.homeDir, ".config/systemd/user");
+    mkdirSync(serviceDir, { recursive: true });
+    const legacyServiceFile = join(
+      serviceDir,
+      "bb-host-daemon-machine-getbb-app.service",
+    );
+    writeFileSync(join(fixture.dataDir, "host-daemon-port"), "45123\n");
+    writeFileSync(
+      legacyServiceFile,
+      `[Service]
+ExecStart="node" "bb-app" host-daemon --auto-update --host-daemon-port "45123" --server-url "https://machine.getbb.app"
+Environment="BB_DATA_DIR=${fixture.dataDir}"
+`,
+    );
+    writeExecutable(
+      join(fixture.binDir, "systemctl"),
+      `#!/bin/sh
+printf '%s\n' "$*" >>"${join(fixture.dataDir, "systemctl.log")}"
+if [ "$*" = "--user restart bb-host-daemon-machine-getbb-app-host-test.service" ]; then
+  BB_DATA_DIR="${fixture.dataDir}" "${join(fixture.dataDir, "npm/bin/bb-app")}" host-daemon --host-daemon-port 45123 --server-url https://machine.getbb.app >/dev/null 2>&1 &
+  echo $! >"${join(fixture.dataDir, "service-daemon.pid")}"
+fi
+`,
+    );
+
+    const result = runScript(JOIN_ARGS, fixture);
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(existsSync(legacyServiceFile)).toBe(false);
+    expect(
+      readdirSync(serviceDir).filter((file) => file.endsWith(".service")),
+    ).toEqual(["bb-host-daemon-machine-getbb-app-host-test.service"]);
+    expect(readFileSync(join(fixture.dataDir, "systemctl.log"), "utf8")).toBe(
+      "--user disable --now bb-host-daemon-machine-getbb-app.service\n--user daemon-reload\n--user enable bb-host-daemon-machine-getbb-app-host-test.service\n--user restart bb-host-daemon-machine-getbb-app-host-test.service\n",
     );
   });
 });
+
+it.each([1, 2])(
+  "upgrades installer v%s direct and Connect payloads before artifact download",
+  (version) => {
+    for (const kind of ["direct", "connect"]) {
+      const fixture = createFixture();
+      const source = readFileSync(SCRIPT_PATH, "utf8");
+      const program = source.split("<<'NODE'\n")[1]?.split("\nNODE")[0];
+      expect(program).toBeTruthy();
+      const path = join(fixture.dataDir, "bootstrap.json");
+      const payload = {
+        version,
+        hostId: "host-test",
+        serverUrl: "https://test.getbb.app",
+        credential: "bootstrap",
+        expiresAt: Date.now() + 60000,
+        ...(version === 1
+          ? {
+              client:
+                kind === "direct"
+                  ? { kind }
+                  : {
+                      kind,
+                      machineCode: "legacy",
+                      expiresAt: Date.now() + 60000,
+                    },
+            }
+          : kind === "connect"
+            ? { headers: { "x-bb-connect-machine": "private" } }
+            : {}),
+      };
+      const fetch = `globalThis.fetch = async (url, init) => { if (String(url) !== "https://getbb.app/api/connect/redeem-machine" || JSON.parse(init.body).code !== "legacy") throw new Error("Unexpected redemption"); return Response.json({ credential: "private", serverUrl: "https://test.getbb.app" }); };\n`;
+      const result = spawnSync(
+        process.execPath,
+        ["--input-type=module", "-", path],
+        {
+          input: fetch + program,
+          encoding: "utf8",
+          env: { ...process.env, BB_ENROLLMENT: JSON.stringify(payload) },
+        },
+      );
+      expect(result.status, result.stderr).toBe(0);
+      expect(JSON.parse(result.stdout)).toMatchObject({ version: 2 });
+      expect(JSON.parse(result.stdout).headers).toEqual(
+        kind === "connect" ? { "x-bb-connect-machine": "private" } : undefined,
+      );
+      writeFileSync(join(fixture.dataDir, "config.json"), JSON.stringify({ serverUrl: payload.serverUrl, serverHeaders: JSON.parse(result.stdout).headers }));
+      writeFileSync(join(fixture.dataDir, "host-id"), payload.hostId);
+      rmSync(path);
+      const retry = spawnSync(
+        process.execPath,
+        ["--input-type=module", "-", path],
+        {
+          input:
+            `globalThis.fetch = () => { throw new Error("Redeemed twice"); };\n` +
+            program,
+          encoding: "utf8",
+          env: { ...process.env, BB_ENROLLMENT: JSON.stringify(payload) },
+        },
+      );
+      expect(retry.status, retry.stderr).toBe(0);
+    }
+  },
+);

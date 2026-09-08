@@ -9,6 +9,7 @@ Read the installed declarations for exact current signatures.
 - `PLUGIN_CLI_OUTPUT_MAX_BYTES`
 - `defineRpcContract`
 - `experimental_defineHostEntry`
+- `experimental_PluginRpcConflict`
 - `BbContext`
 - `BbNavigate`
 - `BbPluginApi`
@@ -73,6 +74,24 @@ Read the installed declarations for exact current signatures.
 - `PluginDispatchExecutionSources`
 - `PluginEnvironments` — `bb.experimental_environments`: `register` +
   `recheck` (see backend-events.md, environment providers)
+- `PluginServerAccess` — `bb.experimental_serverAccess.register`
+- `ServerAccessProviderDeclaration`
+- `ServerAccessGrant`
+- `ServerAccessSelection`
+- `PluginMachines` — `bb.experimental_machines.register` and enrollment/bootstrap helpers (see backend-machines.md)
+- `EnrollmentBootstrap` — private versioned enrollment bundle
+- `MachineEnrollment` — pending bundle or enrolled host identity
+- `MachineExecutorRequest` — argv, timeout, signal, optional private stdin
+- `MachineExecutor` — transport exec and optional writeFile
+- `MachineEnrollmentRequest` — durable key and optional access selection
+- `MachineConnectionRequest` — enrollmentId, timeoutMs, signal
+- `MachineEnrollments` — prepare, waitForConnection, cancel
+- `MachineBootstrapRequest` — enrollment request, executor, daemon mode, report, signal
+- `MachineInstallerCommand` — command argv and private stdin
+- `MachineBootstrapApi` — enrollments, prepareEnrollment, waitForConnection, installerCommand, bootstrap
+- `PluginMachineProviderDeclaration`
+- `PluginMachineProviderRequirements` — optional `gitRemote`
+- `PluginMachineValidateDecision`
 - `PluginEnvironmentProviderDeclaration`
 - `PluginEnvironmentProviderRequirements` — `requires`, e.g.
   `{ gitCheckout: true }`; also `projectCheckout`, `gitRemote` and `projectless`.
@@ -113,6 +132,7 @@ Read the installed declarations for exact current signatures.
 - `PluginCliOutputLimitError`
 - `PluginCliRegistration`
 - `PluginCliResult`
+- `experimental_PluginCliContinuation`
 - `PluginCodeThemeData`
 - `PluginCodeThemeState`
 - `PluginCodeThemeTokenRule`
@@ -279,6 +299,27 @@ Read the installed declarations for exact current signatures.
   `resource` returned by the launch that made the environment
 - `PluginEnvironmentProviderRemoveResult`
 
+## `@get-bb/plugin-sdk/machine-provider`
+
+- `PluginMachineProviderDefinition` — id, display, optional icon, inputs, availability,
+  validation, optional picker sugar, policy, create, optional paired
+  suspend/resume, and remove
+- `PluginMachineProviderInputsSchema`
+- `PluginMachineProviderPolicy` — idle suspension, retirement, and removal retry
+- `PluginMachineProviderEnvironmentRow`
+- `PluginMachineProviderAvailabilityContext`
+- `PluginMachineProviderAvailability`
+- `PluginMachineProviderValidateContext`
+- `PluginMachineProviderCreateContext` — async `checkpoint(resource)` after
+  preparing enrollment and allocating, before bootstrap; never bundle credentials
+- `PluginMachineProviderCreateResult`
+- `PluginMachineProviderLifecycleContext`
+- `PluginMachineProviderSuspendContext` — suspend context with a durable
+  `checkpoint` resource callback
+- `PluginMachineProviderProgress`
+- `PluginMachineProviderResourceResult`
+- `PluginMachineProviderRemoveResult`
+
 ## `@get-bb/plugin-sdk/ai-services`
 
 - `experimental_aiInferenceCompleteInputSchema`
@@ -297,6 +338,7 @@ Read the installed declarations for exact current signatures.
 ## `@get-bb/plugin-sdk/host`
 
 - `experimental_defineHostEntry`
+- `experimental_PluginRpcConflict`
 - `experimental_filterResolvedNativeRoots`
 - `experimental_killProcessesWithCwdUnder` — reap processes whose cwd is under a
   workspace a provider is tearing down, before removing the directory

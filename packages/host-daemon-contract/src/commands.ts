@@ -1,4 +1,10 @@
 import {
+  readinessInspectCommandSchema,
+  readinessInspectResultSchema,
+  readinessProbeCommandSchema,
+  readinessProbeResultSchema,
+} from "./readiness.js";
+import {
   desktopBrowserCommandSchemas,
   desktopBrowserResultSchemas,
 } from "./desktop-browser.js";
@@ -186,7 +192,12 @@ export const hostDaemonContributedEnvEntrySchema = z
       z.string(),
       z.object({ serverPath: z.string().startsWith("/") }).strict(),
     ]),
-    source: z.object({ plugin: z.string().min(1) }).strict(),
+    source: z.union([
+      z.object({ plugin: z.string().min(1) }).strict(),
+      z
+        .object({ core: z.enum(["machine-git", "machine-environment"]) })
+        .strict(),
+    ]),
     reason: z.string(),
     secret: z.boolean(),
   })
@@ -562,6 +573,7 @@ const projectCloneDefaultPathCommandSchema = z
 const projectCloneCommandSchema = z
   .object({
     type: z.literal("project.clone"),
+    contributedEnv: z.array(hostDaemonContributedEnvEntrySchema).default([]),
     remoteUrl: z.string().min(1),
     projectSlug: z.string().min(1),
     targetPath: z.string().min(1).optional(),
@@ -586,7 +598,8 @@ const MAX_NODE_TIMER_DELAY_MS = 2_147_483_647;
 const environmentHookRunCommandSchema = z
   .object({
     type: z.literal("environment.hook.run"),
-    resumeOnly: z.boolean(),
+    contributedEnv: z.array(hostDaemonContributedEnvEntrySchema).default([]),
+    resumeOnly: z.boolean().default(false),
     operationId: z.string().min(1),
     path: z.string().min(1),
     kind: z.enum(["setup", "teardown"]),
@@ -604,6 +617,7 @@ const environmentHookCancelCommandSchema = z
 const pluginHostCallCommandSchema = z
   .object({
     type: z.literal("plugin.host.call"),
+    contributedEnv: z.array(hostDaemonContributedEnvEntrySchema).default([]),
     pluginId: z.string().min(1),
     generation: z.string().min(1),
     artifact: pluginHostArtifactSchema,
@@ -828,6 +842,7 @@ const providerHealthCommandSchema = z
     type: z.literal("provider.health"),
     providerId: z.string().min(1),
     bridgeLaunch: hostDaemonBridgeLaunchSchema,
+    contributedEnv: z.array(hostDaemonContributedEnvEntrySchema).optional(),
     cwd: z.string().min(1).optional(),
   })
   .strict();
@@ -1777,6 +1792,24 @@ export const hostDaemonCommandRegistry = {
     type: "provider.health",
     schema: providerHealthCommandSchema,
     resultSchema: providerHealthResultSchema,
+    transport: "onlineRpc",
+    retryable: true,
+    flushEventsBeforeResult: false,
+    envLane: null,
+  }),
+  "workspace.readiness.inspect": defineHostDaemonCommandDescriptor({
+    type: "workspace.readiness.inspect",
+    schema: readinessInspectCommandSchema,
+    resultSchema: readinessInspectResultSchema,
+    transport: "onlineRpc",
+    retryable: true,
+    flushEventsBeforeResult: false,
+    envLane: null,
+  }),
+  "host.readiness.probe": defineHostDaemonCommandDescriptor({
+    type: "host.readiness.probe",
+    schema: readinessProbeCommandSchema,
+    resultSchema: readinessProbeResultSchema,
     transport: "onlineRpc",
     retryable: true,
     flushEventsBeforeResult: false,

@@ -1,7 +1,9 @@
+import { StringDecoder } from "node:string_decoder";
 import type { ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import {
+  createSecretStreamRedactor,
   sanitizeInheritedChildProcessEnv,
   killProcessGroup,
   spawnPortablePipedProcess,
@@ -62,6 +64,7 @@ interface RuntimeProviderProcessManagerArgs {
   ) => RuntimeProviderIdentityState;
   env: Record<string, string> | undefined;
   getNextRequestId: () => number;
+  getSecrets?: () => readonly string[];
   handleStdoutLine: (args: RuntimeProviderProcessLineArgs) => void;
   onProcessExit: AgentRuntimeOptions["onProcessExit"];
   onProviderThreadDetached: (threadId: string) => void;
@@ -429,6 +432,10 @@ export class RuntimeProviderProcessManager {
       },
     });
 
+    const stderrRedactor = createSecretStreamRedactor(
+      this.args.getSecrets ?? [],
+    );
+    const stderrDecoder = new StringDecoder("utf8");
     child.stderr.on("data", (chunk: Buffer) => {
       if (
         this.shuttingDown ||
@@ -437,12 +444,19 @@ export class RuntimeProviderProcessManager {
         return;
       }
       consumeProviderStderrChunk({
-        chunk,
+        chunk: Buffer.from(stderrRedactor.push(stderrDecoder.write(chunk))),
         onLine: this.args.onStderr,
         providerProcess,
       });
     });
     child.stderr.on("end", () => {
+      consumeProviderStderrChunk({
+        chunk: Buffer.from(
+          stderrRedactor.push(stderrDecoder.end()) + stderrRedactor.flush(),
+        ),
+        onLine: this.args.onStderr,
+        providerProcess,
+      });
       if (
         this.shuttingDown ||
         !this.isCurrentProviderProcess({ providerProcess }) ||

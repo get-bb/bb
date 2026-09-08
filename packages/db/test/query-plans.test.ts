@@ -133,7 +133,6 @@ function setup(): TestDb {
   migrate(db);
   const host = upsertHost(db, noopNotifier, {
     name: "query-plan-host",
-    type: "persistent",
   });
   const { project } = createProject(db, noopNotifier, {
     name: "query-plan-project",
@@ -661,7 +660,6 @@ describe("slow query index plans", () => {
       hostId: host.id,
       instanceId: "closed-prune-query-plan",
       hostName: "query-plan-host",
-      hostType: "persistent",
       dataDir: "/tmp/query-plan-host-data",
       protocolVersion: 1,
       heartbeatIntervalMs: 10_000,

@@ -1,4 +1,3 @@
-import { MachineStatusDot } from "@/components/machines/MachineStatusDot";
 import { useEffect, useId, useState, type FormEvent } from "react";
 import {
   DropdownMenu,
@@ -26,8 +25,9 @@ import {
 import { Input } from "@bb/shared-ui/input";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { RemotePathBrowser } from "@/components/dialogs/RemotePathBrowser";
+import { MachineStatusDot } from "@/components/machines/MachineStatusDot";
 import { usePointerCoarse } from "@bb/shared-ui/hooks/use-pointer-coarse";
-import { selectPersistentHosts } from "@/hooks/queries/host-queries";
+import { selectHosts } from "@/hooks/queries/host-queries";
 
 export type ProjectPathDialogTarget =
   | {
@@ -159,7 +159,7 @@ export function ProjectPathDialogContent({
   const inputId = useId();
   const isPointerCoarse = usePointerCoarse();
   const machineOptions =
-    target.kind === "create" ? selectPersistentHosts(hosts) : undefined;
+    target.kind === "create" ? selectHosts(hosts) : undefined;
   const firstConnectedHostId = machineOptions?.find(
     (host) => host.status === "connected",
   )?.id;

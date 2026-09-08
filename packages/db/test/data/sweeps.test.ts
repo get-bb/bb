@@ -32,7 +32,6 @@ function setup() {
   const db = createMigratedConnection();
   const host = upsertHost(db, noopNotifier, {
     name: "test-host",
-    type: "persistent",
   });
   const { project } = createProject(db, noopNotifier, {
     name: "test-project",
@@ -52,7 +51,6 @@ describe("pruneClosedSessions", () => {
       hostId: args.hostId,
       instanceId: args.instanceId,
       hostName: "test-host",
-      hostType: "persistent",
       dataDir: "/tmp/test-host-data",
       protocolVersion: 1,
       heartbeatIntervalMs: 10_000,
@@ -91,7 +89,6 @@ describe("pruneClosedSessions", () => {
       hostId: host.id,
       instanceId: "inst-active",
       hostName: "test-host",
-      hostType: "persistent",
       dataDir: "/tmp/test-host-data",
       protocolVersion: 1,
       heartbeatIntervalMs: 10_000,
@@ -130,7 +127,6 @@ describe("pruneClosedSessions", () => {
       hostId: host.id,
       instanceId: "inst-active",
       hostName: "test-host",
-      hostType: "persistent",
       dataDir: "/tmp/test-host-data",
       protocolVersion: 1,
       heartbeatIntervalMs: 10_000,

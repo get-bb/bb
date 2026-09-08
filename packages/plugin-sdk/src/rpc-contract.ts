@@ -12,12 +12,14 @@ export type PluginRpcErrorCode =
   | "invalid_json"
   | "invalid_input"
   | "handler_error"
+  | "conflict"
   | "invalid_output"
   | "non_json_result"
   | "unknown_method";
 
 /** Structured RPC failure returned as `{ ok: false, error }`. */
 export interface PluginRpcError {
+  latestRevision?: number | null;
   code: PluginRpcErrorCode;
   message: string;
   issues?: PluginRpcValidationIssue[];
@@ -98,3 +100,14 @@ export type PluginRpcCallArgs<Method extends PluginRpcMethodContract> =
 
 export type PluginRpcResult<Method extends PluginRpcMethodContract> =
   StandardSchemaV1InferOutput<Method["output"]>;
+
+/** A handler rejects a stale revision or conflicting idempotency key with HTTP 409. */
+export class experimental_PluginRpcConflict extends Error {
+  constructor(
+    message: string,
+    public readonly latestRevision: number | null,
+  ) {
+    super(message);
+    this.name = "experimental_PluginRpcConflict";
+  }
+}

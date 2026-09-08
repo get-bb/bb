@@ -50,11 +50,28 @@ import {
 
 const SYSTEM_CONFIG = systemConfigResponseSchema.parse({
   ...configFixture,
+  machineGit: {
+    status: "not configured",
+    statusMessage: "gh is not logged in on the server",
+  },
   generalSettings: defaultAppSettings,
   experiments: { ...defaultExperiments, mobileApp: true },
   appearance: defaultAppTheme,
   featureFlags: defaultFeatureFlags,
   serverUrl: "https://demo.invalid",
+  serverAccess: {
+    effectiveUrl: "https://demo.invalid",
+    urlSource: "setting",
+    defaultProviderId: "direct",
+    providers: [
+      {
+        id: "direct",
+        displayName: "Direct URL",
+        attention: null,
+        availability: { status: "available" },
+      },
+    ],
+  },
   aiServices: {
     inference: "codex/gpt-5.5",
     inferenceFallback: "codex/gpt-5.5",

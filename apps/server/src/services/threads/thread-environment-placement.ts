@@ -1,6 +1,7 @@
 import {
   findProjectEnvironmentByHostPath,
   getProjectSourceByHost,
+  projectSourceOwnsPath,
   type EnvironmentRow,
 } from "@bb/db";
 import { z } from "zod";
@@ -10,6 +11,7 @@ import {
   PERSONAL_PROJECT_ID,
   isLocalPathProjectSource,
   type GitBranchSelection,
+  type EnvironmentMachineSelection,
   type JsonValue,
 } from "@bb/domain";
 import type {
@@ -44,6 +46,7 @@ import {
   resolveStableThreadRequestEnvironment,
 } from "./thread-request-eligibility.js";
 import type { ThreadProvisionEnvironmentIntent } from "./thread-provisioning-context.js";
+import { prepareMachineProviderSelection } from "../machines/provider-orchestration.js";
 
 type PlacementDeps = LoggedPendingInteractionWorkSessionDeps;
 
@@ -149,10 +152,23 @@ export async function completeProviderSelection(
 ): Promise<ProviderSelection> {
   const environmentProviderId = record.provider.id;
   const requires = record.provider.requires;
-  const machine = selection.machine;
-  requireNonDestroyedHostWithStatus(deps, machine.hostId);
-  if (requires.projectCheckout) {
-    requireSourceForHost(deps, projectId, machine.hostId);
+  let machine: EnvironmentMachineSelection;
+  if (selection.machine.type === "existing") {
+    requireNonDestroyedHostWithStatus(deps, selection.machine.hostId);
+    if (requires.projectCheckout) {
+      requireSourceForHost(deps, projectId, selection.machine.hostId);
+    }
+    machine = selection.machine;
+  } else {
+    const prepared = await prepareMachineProviderSelection(deps, {
+      machineProviderId: selection.machine.machineProviderId,
+      projectId,
+      inputs: selection.machine.inputs,
+    });
+    machine = {
+      ...selection.machine,
+      inputs: prepared.inputs,
+    };
   }
   if (requires.projectless && projectId !== PERSONAL_PROJECT_ID) {
     refuseProviderSelection(
@@ -230,7 +246,15 @@ export async function validateProviderSelection(
       : getProjectSourceByHost(deps.db, args.projectId, host.id);
   const projectCheckout =
     checkout !== null && isLocalPathProjectSource(checkout)
-      ? { path: checkout.path }
+      ? {
+          path: checkout.path,
+          experimental_ownsPath: projectSourceOwnsPath(
+            deps.db,
+            args.projectId,
+            host.id,
+            checkout.path,
+          ),
+        }
       : null;
   if (requires.gitRemote && project.gitRemoteUrl === null) {
     throw new ApiError(

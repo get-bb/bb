@@ -1,3 +1,7 @@
+import {
+  operationSecrets,
+  redactOperationSecrets,
+} from "../operation-environment.js";
 import type {
   CommandDispatchOptions,
   CommandOf,
@@ -33,6 +37,7 @@ export async function runEnvironmentHook(
   command: CommandOf<"environment.hook.run">,
   options: CommandDispatchOptions,
 ): Promise<Record<string, never>> {
+  const secrets = operationSecrets(command.contributedEnv);
   const active = controllers(options);
   const existing = active.get(command.operationId);
   if (existing === "cancelled")
@@ -48,22 +53,33 @@ export async function runEnvironmentHook(
   const done = Promise.resolve().then(
     async (): Promise<Record<string, never>> => {
       const run = command.kind === "setup" ? runSetupScript : runTeardownScript;
-      await run({
-        workspacePath: command.path,
-        timeoutMs: command.timeoutMs,
-        shellPath: options.runtimeManager.getShellEnv().PATH,
-        signal: controller.signal,
-        onProgress: (entry) =>
-          options.emitEnvironmentHookProgress?.({
-            type: "environment.hook.progress",
-            operationId: command.operationId,
-            entry: {
-              type: entry.type,
-              text: entry.text,
-              status: entry.status ?? null,
-            },
-          }),
-      });
+      try {
+        await run({
+          workspacePath: command.path,
+          contributedEnv: command.contributedEnv,
+          env: { ...process.env, ...options.runtimeManager.getShellEnv() },
+          timeoutMs: command.timeoutMs,
+          shellPath: options.runtimeManager.getShellEnv().PATH,
+          signal: controller.signal,
+          onProgress: (entry) =>
+            options.emitEnvironmentHookProgress?.({
+              type: "environment.hook.progress",
+              operationId: command.operationId,
+              entry: {
+                type: entry.type,
+                text: redactOperationSecrets(entry.text, secrets),
+                status: entry.status ?? null,
+              },
+            }),
+        });
+      } catch (error) {
+        throw new Error(
+          redactOperationSecrets(
+            error instanceof Error ? error.message : String(error),
+            secrets,
+          ),
+        );
+      }
       return {};
     },
   );

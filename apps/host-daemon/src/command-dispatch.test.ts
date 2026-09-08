@@ -823,7 +823,8 @@ describe("dispatchCommand", () => {
       .mockReturnValueOnce(newRuntime);
     const manager = new RuntimeManager({
       createRuntime: createRuntimeSpy,
-      provisionWorkspace: async (args) => createWorkspace(args.path),
+      provisionWorkspace: async (args) =>
+        createWorkspace(args.path),
     });
     await manager.ensureEnvironment({
       environmentId: "env-old",
@@ -1148,7 +1149,8 @@ describe("dispatchCommand", () => {
       .mockReturnValueOnce(newRuntime);
     const manager = new RuntimeManager({
       createRuntime: createRuntimeSpy,
-      provisionWorkspace: async (args) => createWorkspace(args.path),
+      provisionWorkspace: async (args) =>
+        createWorkspace(args.path),
     });
     await manager.ensureEnvironment({
       environmentId: "env-old",
@@ -1198,7 +1200,8 @@ describe("dispatchCommand", () => {
       .mockReturnValueOnce(newRuntime);
     const manager = new RuntimeManager({
       createRuntime: createRuntimeSpy,
-      provisionWorkspace: async (args) => createWorkspace(args.path),
+      provisionWorkspace: async (args) =>
+        createWorkspace(args.path),
     });
     await manager.ensureEnvironment({
       environmentId: "env-old",

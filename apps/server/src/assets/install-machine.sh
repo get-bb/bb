@@ -5,6 +5,7 @@ set -eu
 usage() {
   cat >&2 <<'EOF'
 Usage: install.sh --join-code <code> --host-id <host-id> --server <url> [--machine-code <code>] [--host-daemon-port <port>]
+       install.sh --bootstrap-env <NAME>
 
 The first three options are required. --machine-code is required through bb connect.
 By default, the installer assigns this enrolled daemon its own local API port.
@@ -12,6 +13,7 @@ EOF
   exit 2
 }
 
+bootstrap_env=
 join_code=
 host_id=
 server_url=
@@ -98,10 +100,11 @@ ready_row() {
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
-    --join-code|--host-id|--server|--machine-code|--host-daemon-port)
+    --bootstrap-env|--join-code|--host-id|--server|--machine-code|--host-daemon-port)
       [ "$#" -ge 2 ] || usage
       [ -n "$2" ] || usage
       case "$1" in
+        --bootstrap-env) bootstrap_env=$2 ;;
         --join-code) join_code=$2 ;;
         --host-id) host_id=$2 ;;
         --server) server_url=$2 ;;
@@ -118,10 +121,32 @@ while [ "$#" -gt 0 ]; do
   esac
 done
 
-[ -n "$join_code" ] || usage
+if [ -n "$bootstrap_env" ]; then
+  if [ -n "$join_code$host_id$server_url$machine_code" ]; then usage; fi
+  host_id=$(node -e '
+    const name = process.argv[1];
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/u.test(name)) process.exit(2);
+    try {
+      const bundle = JSON.parse(process.env[name]);
+      if (![1, 2].includes(bundle.version) || typeof bundle.hostId !== "string" || !bundle.hostId) process.exit(2);
+      process.stdout.write(bundle.hostId);
+    } catch { process.exit(2); }
+  ' "$bootstrap_env") || usage
+  server_url=$(node -e '
+    try {
+      const bundle = JSON.parse(process.env[process.argv[1]]);
+      const url = new URL(bundle.serverUrl);
+      if (!["http:", "https:"].includes(url.protocol) || url.username || url.password || url.search || url.hash) process.exit(2);
+      process.stdout.write(url.href.replace(/\/$/u, ""));
+    } catch { process.exit(2); }
+  ' "$bootstrap_env") || usage
+  bootstrap_payload=$(node -e 'process.stdout.write(process.env[process.argv[1]])' "$bootstrap_env")
+  unset "$bootstrap_env"
+else
+  [ -n "$join_code" ] || usage
+fi
 [ -n "$host_id" ] || usage
 [ -n "$server_url" ] || usage
-
 printf '\n  %s\n\n' "$(bold "bb machine setup")"
 active_step "Setting up this machine as $host_id for $server_url"
 
@@ -153,6 +178,11 @@ if [ "$node_supported" != yes ]; then
 fi
 node_bin=$(command -v node)
 
+if [ -z "${HOME:-}" ]; then
+  HOME=$(node -e 'const home = require("node:os").homedir(); if (!require("node:path").isAbsolute(home)) process.exit(1); process.stdout.write(home);')
+  export HOME
+fi
+
 require_npm() {
   if ! command -v npm >/dev/null 2>&1; then
     fail_step "bb-app installation requires npm."
@@ -167,11 +197,45 @@ server_host=$(node -e '
   fail_step "Could not parse the server URL $server_url."
   exit 1
 }
-service_slug=$(printf '%s' "$server_host" | tr '.' '-')
+host_slug=$(printf '%s' "$host_id" | tr -c 'a-zA-Z0-9_.-' '-')
+service_slug=$(printf '%s-%s' "$server_host" "$host_slug" | tr '.' '-')
+legacy_service_slug=$(printf '%s' "$server_host" | tr '.' '-')
 
 # Each server gets its own data dir and daemon instance, so one machine can
 # serve several bb servers and a full local bb install keeps ~/.bb to itself.
 data_dir=${BB_DATA_DIR:-"$HOME/.bb-machines/$server_host"}
+mkdir -p "$HOME/.local/bin"
+if [ ! -e "$HOME/.local/bin/bb" ] && [ ! -L "$HOME/.local/bin/bb" ]; then
+  shim_file=$(mktemp "$HOME/.local/bin/.bb-machine.XXXXXX")
+  node_path_quoted=$(printf '%s' "${node_bin%/*}" | sed "s/'/'\\''/g")
+  printf '#!/bin/sh\nPATH=\047%s\047:"$PATH"\nexport PATH\n' "$node_path_quoted" > "$shim_file"
+  cli_path_quoted=$(printf '%s' "$data_dir/npm/bin/bb" | sed "s/'/'\\''/g")
+  cat >> "$shim_file" <<'BB_MACHINE_EXPLICIT_DATA'
+if [ -n "${BB_DATA_DIR:-}" ] && [ -x "$BB_DATA_DIR/npm/bin/bb" ]; then
+  exec "$BB_DATA_DIR/npm/bin/bb" "$@"
+fi
+BB_MACHINE_EXPLICIT_DATA
+  printf 'if [ -x \047%s\047 ]; then exec \047%s\047 "$@"; fi\n' "$cli_path_quoted" "$cli_path_quoted" >> "$shim_file"
+  cat >> "$shim_file" <<'BB_MACHINE_CLI'
+unset BB_DATA_DIR
+for candidate in "$HOME"/.bb-machines/*/npm/bin/bb; do
+  if [ -x "$candidate" ]; then exec "$candidate" "$@"; fi
+done
+if [ "${1:-}" = machine ] && [ "${2:-}" = uninstall ]; then exit 0; fi
+printf '%s\n' 'No installed bb machine CLI is available.' >&2
+exit 1
+BB_MACHINE_CLI
+  chmod 755 "$shim_file"
+  if ! ln "$shim_file" "$HOME/.local/bin/bb" 2>/dev/null; then
+    if [ ! -e "$HOME/.local/bin/bb" ] && [ ! -L "$HOME/.local/bin/bb" ]; then
+      rm -f "$shim_file"
+      fail_step "Could not publish the machine CLI shim."
+      exit 1
+    fi
+  fi
+  rm -f "$shim_file"
+fi
+
 mkdir -p "$data_dir"
 mkdir -p "$data_dir/logs"
 canonical_data_dir=$(node -e '
@@ -375,6 +439,58 @@ complete_step "Using local host-daemon port $host_daemon_port"
 package_url="${server_url%/}/install/bb-app.tgz"
 package_dir=$(mktemp -d "${TMPDIR:-/tmp}/bb-app.XXXXXX")
 package_file="$package_dir/bb-app.tgz"
+if [ -n "$bootstrap_env" ]; then
+  bootstrap_payload=$(BB_ENROLLMENT="$bootstrap_payload" node --input-type=module - "$data_dir/enrollment-bootstrap.json" <<'NODE'
+import { readFile, writeFile, rename } from "node:fs/promises";
+import { dirname, join } from "node:path";
+const path = process.argv[2];
+let bundle = JSON.parse(process.env.BB_ENROLLMENT);
+if (bundle.version === 1) {
+  if (bundle.expiresAt <= Date.now()) throw new Error("Machine enrollment bootstrap has expired");
+  let previous;
+  try { previous = JSON.parse(await readFile(path, "utf8")); } catch {}
+  if (!previous) {
+    try {
+      const config = JSON.parse(await readFile(join(dirname(path), "config.json"), "utf8"));
+      const hostId = (await readFile(join(dirname(path), "host-id"), "utf8")).trim();
+      if (hostId === bundle.hostId && new URL(config.serverUrl).href === new URL(bundle.serverUrl).href && config.serverHeaders?.["x-bb-connect-machine"]) {
+        previous = { ...bundle, version: 2, headers: config.serverHeaders };
+      }
+    } catch {}
+  }
+  let headers;
+  if (bundle.client?.kind === "connect") {
+    if (previous?.version === 2 && previous.hostId === bundle.hostId && previous.serverUrl === bundle.serverUrl && previous.credential === bundle.credential) {
+      headers = previous.headers;
+    } else {
+      if (bundle.client.expiresAt <= Date.now()) throw new Error("Machine access code has expired");
+      const base = new URL(bundle.serverUrl);
+      base.hostname = base.hostname.split(".").slice(1).join(".");
+      const response = await fetch(new URL("/api/connect/redeem-machine", base), {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ code: bundle.client.machineCode }), signal: AbortSignal.timeout(60000),
+      });
+      if (!response.ok) throw new Error(`Machine redeem failed (${response.status})`);
+      const result = await response.json();
+      if (typeof result.credential !== "string" || !result.credential || new URL(result.serverUrl).href !== new URL(bundle.serverUrl).href) throw new Error("Invalid machine access response");
+      headers = { "x-bb-connect-machine": result.credential };
+    }
+  } else if (bundle.client?.kind !== "direct") throw new Error("Invalid machine enrollment bootstrap");
+  const { client, ...fields } = bundle;
+  bundle = { ...fields, version: 2, ...(headers ? { headers } : {}) };
+}
+await writeFile(`${path}.tmp`, JSON.stringify(bundle), { mode: 0o600 });
+await rename(`${path}.tmp`, path);
+process.stdout.write(JSON.stringify(bundle));
+NODE
+  ) || exit 1
+fi
+access_config="$package_dir/access.curl"
+: > "$access_config"
+chmod 600 "$access_config"
+if [ -n "$bootstrap_env" ]; then
+  BB_ENROLLMENT="$bootstrap_payload" node -e 'for (const [name,value] of Object.entries(JSON.parse(process.env.BB_ENROLLMENT).headers ?? {})) console.log("header = " + JSON.stringify(name + ": " + value))' > "$access_config"
+fi
 package_headers="$package_dir/headers"
 host_artifact_digest_file="$data_dir/host-artifact.sha256"
 installed_artifact_digest=
@@ -397,7 +513,7 @@ if [ ! -t 2 ]; then
 fi
 active_step "Downloading the server's bb-app package (timeout: 5 minutes)"
 if [ -n "$installed_artifact_digest" ]; then
-  package_status=$(curl "$curl_output_mode" --show-error --location \
+  package_status=$(curl --config "$access_config" "$curl_output_mode" --show-error --location \
     --connect-timeout "$CURL_CONNECT_TIMEOUT_SECONDS" \
     --max-time "$PACKAGE_DOWNLOAD_TIMEOUT_SECONDS" \
     --header "If-None-Match: \"sha256-$installed_artifact_digest\"" \
@@ -406,7 +522,7 @@ if [ -n "$installed_artifact_digest" ]; then
     --write-out '%{http_code}' \
     "$package_url") || package_status=000
 else
-  package_status=$(curl "$curl_output_mode" --show-error --location \
+  package_status=$(curl --config "$access_config" "$curl_output_mode" --show-error --location \
     --connect-timeout "$CURL_CONNECT_TIMEOUT_SECONDS" \
     --max-time "$PACKAGE_DOWNLOAD_TIMEOUT_SECONDS" \
     --dump-header "$package_headers" \
@@ -506,6 +622,18 @@ if [ -n "$bb_app_npm_prefix" ]; then
     (umask 077 && printf '%s\n' "$package_digest" >"$host_artifact_digest_temp")
     mv "$host_artifact_digest_temp" "$host_artifact_digest_file"
   fi
+fi
+
+bb_cli="${bb_app%/*}/bb"
+if [ ! -x "$bb_cli" ]; then bb_cli=$(command -v bb || true); fi
+if [ -n "$bootstrap_env" ]; then
+  if [ -z "$bb_cli" ]; then
+    fail_step "The installed build does not provide the machine enrollment CLI."
+    exit 1
+  fi
+  BB_ENROLLMENT="$bootstrap_payload" BB_DATA_DIR="$data_dir" "$bb_cli" machine enroll --bootstrap-env BB_ENROLLMENT
+  bootstrap_payload=
+  rm -f "$data_dir/enrollment-bootstrap.json"
 fi
 
 if [ -n "$machine_code" ]; then
@@ -638,8 +766,17 @@ if [ "$already_joined" = no ]; then
   complete_step "Joined successfully"
 fi
 
-# Tests and source-development smoke runs can leave the enrolled daemon in the
-# foreground-supervised process without modifying the user's service manager.
+systemd_scope=--user
+if [ "$platform" = linux ] && [ "$(id -u)" = 0 ] &&
+   [ "$(ps -p 1 -o comm= | tr -d '[:space:]')" = systemd ] &&
+   ! systemd-detect-virt --container --quiet >/dev/null 2>&1; then
+  systemd_scope=--system
+fi
+if [ -n "$bootstrap_env" ] && [ "$platform" = linux ] &&
+   [ "$systemd_scope" = --user ] && ! systemctl --user show-environment >/dev/null 2>&1; then
+  BB_INSTALL_SKIP_SERVICE=1
+fi
+
 if [ "${BB_INSTALL_SKIP_SERVICE:-0}" = 1 ]; then
   if [ -z "$join_pid" ] && ! daemon_status_matches "$host_daemon_port" no; then
     daemon_log="$data_dir/install-daemon.log"
@@ -699,6 +836,14 @@ if [ "$platform" = darwin ]; then
   escaped_bb_app_npm_prefix=$(xml_escape "$bb_app_npm_prefix")
   escaped_server=$(xml_escape "$server_url")
   escaped_data_dir=$(xml_escape "$data_dir")
+  legacy_service_file="$service_dir/app.getbb.host-daemon.$legacy_service_slug.plist"
+  if [ -f "$legacy_service_file" ] && \
+     grep -F -- '<string>--host-daemon-port</string>' "$legacy_service_file" >/dev/null 2>&1 && \
+     grep -F -- "<string>$host_daemon_port</string>" "$legacy_service_file" >/dev/null 2>&1 && \
+     grep -F -- "<key>BB_DATA_DIR</key><string>$escaped_data_dir</string>" "$legacy_service_file" >/dev/null 2>&1; then
+    launchctl bootout "gui/$(id -u)" "$legacy_service_file" >/dev/null 2>&1 || true
+    rm -f "$legacy_service_file"
+  fi
   cat >"$service_file" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -751,6 +896,17 @@ EOF
   detail "Uninstall: launchctl bootout gui/$(id -u) '$service_file' && rm '$service_file'"
 else
   service_dir="$HOME/.config/systemd/user"
+  service_target=default.target
+  if [ "$systemd_scope" = --system ]; then
+    service_dir="$canonical_data_dir/systemd"
+    service_target=multi-user.target
+    owned_launcher="$canonical_data_dir/npm/bin/bb-app"
+    if [ "$bb_app" != "$owned_launcher" ]; then
+      mkdir -p "$data_dir/npm/bin"
+      ln -sf "$bb_app" "$owned_launcher"
+      bb_app="$owned_launcher"
+    fi
+  fi
   service_name="bb-host-daemon-$service_slug"
   service_file="$service_dir/$service_name.service"
   mkdir -p "$service_dir"
@@ -759,6 +915,14 @@ else
   escaped_bb_app_npm_prefix=$(systemd_escape "$bb_app_npm_prefix")
   escaped_server=$(systemd_escape "$server_url")
   escaped_data_dir=$(systemd_escape "$data_dir")
+  legacy_service_name="bb-host-daemon-$legacy_service_slug"
+  legacy_service_file="$service_dir/$legacy_service_name.service"
+  if [ -f "$legacy_service_file" ] && \
+     grep -F -- "--host-daemon-port \"$host_daemon_port\"" "$legacy_service_file" >/dev/null 2>&1 && \
+     grep -F -- "Environment=\"BB_DATA_DIR=$escaped_data_dir\"" "$legacy_service_file" >/dev/null 2>&1; then
+    systemctl "$systemd_scope" disable --now "$legacy_service_name.service" >/dev/null 2>&1 || true
+    rm -f "$legacy_service_file"
+  fi
   cat >"$service_file" <<EOF
 [Unit]
 Description=bb host daemon for $server_host
@@ -773,27 +937,29 @@ Restart=always
 RestartSec=2
 
 [Install]
-WantedBy=default.target
+WantedBy=$service_target
 EOF
-  systemctl --user daemon-reload
-  if ! systemctl_error=$(systemctl --user enable "$service_name.service" 2>&1); then
+  systemctl "$systemd_scope" daemon-reload
+  enable_unit="$service_name.service"
+  if [ "$systemd_scope" = --system ]; then enable_unit="$service_file"; fi
+  if ! systemctl_error=$(systemctl "$systemd_scope" enable "$enable_unit" 2>&1); then
     fail_step "The bb host-daemon systemd service could not be enabled."
     [ -z "$systemctl_error" ] || detail "systemctl: $systemctl_error" >&2
-    detail "Inspect it with: journalctl --user -u $service_name.service" >&2
+    detail "Inspect it with: journalctl $systemd_scope -u $service_name.service" >&2
     exit 1
   fi
-  if ! systemctl_error=$(systemctl --user restart "$service_name.service" 2>&1); then
+  if ! systemctl_error=$(systemctl "$systemd_scope" restart "$service_name.service" 2>&1); then
     fail_step "The bb host-daemon systemd service was enabled, but it could not be restarted."
     [ -z "$systemctl_error" ] || detail "systemctl: $systemctl_error" >&2
-    detail "Inspect it with: journalctl --user -u $service_name.service" >&2
+    detail "Inspect it with: journalctl $systemd_scope -u $service_name.service" >&2
     exit 1
   fi
   if ! wait_for_daemon_connection "the systemd service"; then
     fail_step "The bb host-daemon systemd service started but did not connect to $server_url."
-    detail "Inspect it with: journalctl --user -u $service_name.service" >&2
+    detail "Inspect it with: journalctl $systemd_scope -u $service_name.service" >&2
     exit 1
   fi
-  complete_step "Installed and started the systemd user service"
+  complete_step "Installed and started the systemd service ($systemd_scope)"
   printf '\n'
   log "$(green "●")" "$(bold "bb machine is ready")"
   printf '\n'
@@ -802,6 +968,10 @@ EOF
   ready_row "data" "$data_dir"
   ready_row "service" "$service_file"
   printf '\n'
-  detail "Starts with your systemd user session."
-  detail "Uninstall: systemctl --user disable --now $service_name.service && rm '$service_file' && systemctl --user daemon-reload"
+  if [ "$systemd_scope" = --system ]; then
+    detail "Starts automatically when this machine boots."
+  else
+    detail "Starts with your systemd user session."
+  fi
+  detail "Uninstall: systemctl $systemd_scope disable --now $service_name.service && rm '$service_file' && systemctl $systemd_scope daemon-reload"
 fi

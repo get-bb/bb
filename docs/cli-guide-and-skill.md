@@ -14,3 +14,5 @@ keeps cleanup pending until the daemon confirms hook termination. Hook identity
 and completion persist across server restarts. Attached checkout and
 personal-workspace paths skip both hooks. These semantics apply equally to CLI,
 SDK, and app launches; see [worktrees.md](worktrees.md).
+
+The Machines settings creation drawer lets users select a project before reviewing provider inputs; the selected project is passed to the same `hosts.submit`/`bb machine create --project` launch surface.

@@ -1,3 +1,4 @@
+import type { MachineBootstrapApi } from "../machine-bootstrap.js";
 import { createHash } from "node:crypto";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -21,7 +22,9 @@ import {
   isZodSchemaLike,
   storePluginHook,
   validatePluginEnvironmentProviderDeclaration,
+  validatePluginMachineProviderDeclaration,
   type NormalizedPluginEnvironmentProvider,
+  type NormalizedPluginMachineProvider,
   KV_VALUE_MAX_BYTES,
   MENTION_PROVIDER_ID_PATTERN,
   normalizeMentionProviderTriggers,
@@ -65,6 +68,7 @@ import type {
   PluginCliResult,
   PluginHookHandler,
   PluginEnvironments,
+  PluginMachines,
   PluginHookName,
   PluginHooks,
   PluginEvents,
@@ -288,6 +292,11 @@ export interface FakePluginRegistrations {
     string,
     NormalizedPluginEnvironmentProvider
   >;
+  machineProviders: ReadonlyMap<string, NormalizedPluginMachineProvider>;
+  serverAccessProviders: ReadonlyMap<
+    string,
+    import("../backend-contract.js").ServerAccessProviderDeclaration
+  >;
   mentionProviders: FakeMentionProviderRecord[];
   /** Live provider registrations from `bb.providers.register`
    * (normalized declarations, registration order; dispose removes). */
@@ -478,6 +487,7 @@ export interface FakePluginHarness
 }
 
 export interface CreateFakePluginHostOptions {
+  machineBootstrap?: MachineBootstrapApi;
   /** Defaults to "test-plugin". */
   pluginId?: string;
   /**
@@ -1801,6 +1811,11 @@ function createFakePluginHostInternal(
     string,
     NormalizedPluginEnvironmentProvider
   >();
+  const machineProviders = new Map<string, NormalizedPluginMachineProvider>();
+  const serverAccessProviders = new Map<
+    string,
+    import("../backend-contract.js").ServerAccessProviderDeclaration
+  >();
   const disposeHooks: Array<() => void | Promise<void>> = [];
   const serviceControllers: AbortController[] = [];
   let nextInteractionId = 1;
@@ -2129,6 +2144,37 @@ function createFakePluginHostInternal(
     },
   };
 
+  const unavailableMachineBootstrap = (): never => {
+    throw new Error(
+      "Configure machineBootstrap in createFakePluginHost to exercise machine enrollment",
+    );
+  };
+  const experimental_machines: PluginMachines = {
+    ...(options.machineBootstrap ?? {
+      enrollments: {
+        prepare: unavailableMachineBootstrap,
+        waitForConnection: unavailableMachineBootstrap,
+        cancel: unavailableMachineBootstrap,
+      },
+      prepareEnrollment: unavailableMachineBootstrap,
+      waitForConnection: unavailableMachineBootstrap,
+      installerCommand: unavailableMachineBootstrap,
+      bootstrap: unavailableMachineBootstrap,
+    }),
+    register(declaration) {
+      assertLive();
+      const target = validatePluginMachineProviderDeclaration(declaration);
+      const problem =
+        target.icon === null
+          ? null
+          : undeclaredIconProblem(pluginId, declaredIconNames, target.icon);
+      if (problem !== null) {
+        throw new Error(providerIconRefusalMessage(target.id, problem));
+      }
+      machineProviders.set(target.id, target);
+    },
+  };
+
   const bb: BbPluginApi = {
     pluginId,
     log,
@@ -2145,6 +2191,13 @@ function createFakePluginHostInternal(
     events,
     experimental_hooks,
     experimental_environments,
+    experimental_machines,
+    experimental_serverAccess: {
+      register(declaration) {
+        assertLive();
+        serverAccessProviders.set(declaration.id, declaration);
+      },
+    },
     status,
     server,
     hosts,
@@ -2258,7 +2311,12 @@ function createFakePluginHostInternal(
       get environmentProviders() {
         return new Map(environmentProviders);
       },
-
+      get serverAccessProviders() {
+        return new Map(serverAccessProviders);
+      },
+      get machineProviders() {
+        return new Map(machineProviders);
+      },
       mentionProviders,
       providerRegistrations,
       providerEnvResolvers,
@@ -2377,6 +2435,20 @@ function createFakePluginHostInternal(
       try {
         result = await record.handler(validatedInput as never);
       } catch (error) {
+        if (
+          error instanceof Error &&
+          error.name === "experimental_PluginRpcConflict" &&
+          "latestRevision" in error &&
+          (error.latestRevision === null ||
+            (typeof error.latestRevision === "number" &&
+              Number.isSafeInteger(error.latestRevision) &&
+              error.latestRevision >= 0))
+        )
+          return throwRpcError({
+            code: "conflict",
+            message: error.message,
+            latestRevision: error.latestRevision,
+          });
         return throwRpcError({
           code: "handler_error",
           message: errorMessage(error),
@@ -2405,6 +2477,9 @@ function createFakePluginHostInternal(
         return enforcePluginCliOutputLimit(
           {
             exitCode: result.exitCode,
+            ...(result.experimental_continue
+              ? { experimental_continue: result.experimental_continue }
+              : {}),
             stdout: typeof result.stdout === "string" ? result.stdout : "",
             stderr: typeof result.stderr === "string" ? result.stderr : "",
           },

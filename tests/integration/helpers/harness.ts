@@ -382,7 +382,6 @@ async function startHarnessDaemon(
     const identity = await loadHostIdentity({ dataDir });
     const hostKey = await server.machineAuth.issueDaemonHostKey({
       hostId: identity.hostId,
-      hostType: "persistent",
     });
     await persistHostId({ dataDir, hostId: identity.hostId });
     const daemonApp = await createHostDaemonApp({
@@ -390,7 +389,6 @@ async function startHarnessDaemon(
       hostKey,
       hostId: identity.hostId,
       hostName: identity.hostName,
-      hostType: "persistent",
       instanceId: randomUUID(),
       localApiConfig: null,
       logger: testLogger,

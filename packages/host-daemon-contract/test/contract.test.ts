@@ -442,6 +442,13 @@ const ONLINE_RPC_RESPONSE_RESULT_FIXTURES: OnlineRpcResponseResultFixtures = {
       },
     ],
   },
+  "workspace.readiness.inspect": {
+    commit: "abc",
+    dirty: [],
+    files: [],
+    abi: "linux/x64/node-127",
+  },
+  "host.readiness.probe": { reachable: true, status: 200 },
   "workspace.status": WORKSPACE_UNAVAILABLE_RESULT,
   "workspace.diff": WORKSPACE_UNAVAILABLE_RESULT,
   "workspace.diffFiles": WORKSPACE_UNAVAILABLE_RESULT,
@@ -683,6 +690,8 @@ const INTENTIONAL_OPTIONAL_HOST_DAEMON_FIELDS: Record<string, string> = {
     "a tool_use approval's presentation carries a tint only when the bridge wants an accent colour; absence means the neutral row tint, which is not a colour value.",
   "hostDaemonInteractiveRequestSchema.interaction.payload.subject.presentation.title":
     "a tool_use approval's presentation has a title only when the call has a headline (a path, a query); absence means the label stands alone.",
+  "hostDaemonOnlineRpcCommandSchema.contributedEnv":
+    "Provider health may use an isolated effective turn environment; absence retains shared maintenance behavior.",
   "hostDaemonOnlineRpcCommandSchema.cwd":
     "provider.list_models may omit cwd when only user-level provider configuration applies.",
   "hostDaemonOnlineRpcCommandSchema.query":
@@ -1084,11 +1093,9 @@ describe("host-daemon command schemas", () => {
       hostDaemonEnrollRequestSchema.parse({
         hostId: "host_123",
         hostName: "test-host",
-        hostType: "persistent",
       }),
     ).toMatchObject({
       hostId: "host_123",
-      hostType: "persistent",
     });
 
     expect(
@@ -2936,7 +2943,7 @@ describe("host-daemon session schemas", () => {
       hostDaemonEnrollRequestSchema.safeParse({
         hostId: "host_123",
         hostName: "test-host",
-        hostType: "ephemeral",
+        hostType: "persistent",
       }).success,
     ).toBe(false);
     expect(
@@ -2944,7 +2951,7 @@ describe("host-daemon session schemas", () => {
         hostId: "host_123",
         instanceId: "instance_1",
         hostName: "test-host",
-        hostType: "ephemeral",
+        hostType: "persistent",
         hasMachineCredential: true,
         platform: "linux",
         dataDir: "/tmp/bb-data",
@@ -2960,7 +2967,6 @@ describe("host-daemon session schemas", () => {
       hostDaemonSessionOpenRequestSchema.parse({
         hostId: "host_123",
         instanceId: "instance_1",
-        hostType: "persistent",
         hostName: "Michael's MacBook",
         hasMachineCredential: true,
         platform: "darwin",
@@ -2975,7 +2981,6 @@ describe("host-daemon session schemas", () => {
       }),
     ).toMatchObject({
       hostId: "host_123",
-      hostType: "persistent",
       hasMachineCredential: true,
       loadedEnvironments: [],
     });
@@ -2985,7 +2990,6 @@ describe("host-daemon session schemas", () => {
         hostId: "host_123",
         instanceId: "instance_1",
         hostName: "Michael's MacBook",
-        hostType: "persistent",
         hasMachineCredential: false,
         platform: "darwin",
         dataDir: "/tmp/bb-data",
@@ -3011,7 +3015,6 @@ describe("host-daemon session schemas", () => {
         hostId: "host_123",
         instanceId: "instance_1",
         hostName: "Michael's MacBook",
-        hostType: "persistent",
         hasMachineCredential: true,
         platform: "darwin",
         dataDir: "/tmp/bb-data",
@@ -3030,7 +3033,6 @@ describe("host-daemon session schemas", () => {
         hostId: "host_123",
         instanceId: "instance_1",
         hostName: "Michael's MacBook",
-        hostType: "persistent",
         hasMachineCredential: true,
         platform: "darwin",
         dataDir: "/tmp/bb-data",
@@ -3047,7 +3049,6 @@ describe("host-daemon session schemas", () => {
         hostId: "host_123",
         instanceId: "instance_1",
         hostName: "Michael's MacBook",
-        hostType: "persistent",
         hasMachineCredential: true,
         platform: "darwin",
         dataDir: "/tmp/bb-data",
@@ -3739,6 +3740,7 @@ describe("host-daemon session schemas", () => {
     expect(
       hostDaemonServerWsMessageSchema.safeParse({
         type: "terminal.open",
+        contributedEnv: [],
         requestId: "request-1",
         terminalId: "term_123",
         threadId: "thr_123",

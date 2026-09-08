@@ -156,6 +156,7 @@ import type {
   PluginResolvedProviderEnv,
   PluginResolvedProviderEnvHealth,
 } from "./plugin-service-internal.js";
+import type { PluginMachineProviderBridge } from "./plugin-machine-provider-registry.js";
 export type {
   PluginAgentToolContribution,
   PluginMentionResolveResult,
@@ -186,6 +187,8 @@ export interface PluginService {
   /** The hook chain the dispatch pipeline consults; registered in createApp. */
   hooks: PluginHookProvider;
   environmentProviders: PluginEnvironmentProviderBridge;
+  machineProviders: PluginMachineProviderBridge;
+  serverAccessProviders: import("./plugin-server-access-registry.js").ServerAccessBridge;
   /**
    * Bind the in-process BB SDK to the running server. Call once the HTTP
    * listener is up, before start(): bb.sdk throws until this runs.
@@ -918,6 +921,9 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     listPluginHooks,
     listPluginEnvironmentProviders,
     getPluginEnvironmentProvider,
+    listPluginMachineProviders,
+    listPluginServerAccessProviders,
+    getPluginMachineProvider,
     isPackagedBuiltinEntry,
     loadAll,
     loaded,
@@ -935,6 +941,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     withPluginOperationLock,
   } = createPluginRuntime({
     deps,
+    machineEnrollments: deps.machineEnrollments ?? null,
     nextCronRunAt,
     settingsChanged: notifyPluginsChanged,
     settledWithin,
@@ -1617,6 +1624,44 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       decisionTimeoutMs: pluginHookTimeoutMs,
     },
 
+    serverAccessProviders: {
+      list: listPluginServerAccessProviders,
+      invoke: async (pluginId, run) => {
+        let recoveryMessage: string | null = null;
+        const outcome = await invokeWrapped(
+          pluginId,
+          "server access",
+          async () => {
+            try {
+              return await run();
+            } catch (error) {
+              if (
+                error instanceof Error &&
+                error.name === "experimental_ServerAccessRecoveryError"
+              )
+                recoveryMessage = error.message;
+              throw error;
+            }
+          },
+        );
+        if (!outcome.ok)
+          throw new Error(recoveryMessage ?? "Server access provider failed");
+        return outcome.value;
+      },
+    },
+
+    machineProviders: {
+      listMachineProviders: listPluginMachineProviders,
+      getMachineProvider: getPluginMachineProvider,
+      invokeProvider: async (pluginId, label, run) => {
+        const outcome = await invokeWrapped(pluginId, label, run);
+        return outcome.ok
+          ? { ok: true, value: outcome.value }
+          : { ok: false, error: outcome.error };
+      },
+      decisionTimeoutMs: pluginHookTimeoutMs,
+    },
+
     bindSdk: bindRuntimeSdk,
 
     async start() {
@@ -2170,6 +2215,24 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
         return normalizeRpcJsonResult(parsedOutput);
       });
       if (outcome.ok) return { ok: true, result: outcome.value };
+      if (
+        outcome.cause instanceof Error &&
+        outcome.cause.name === "experimental_PluginRpcConflict" &&
+        "latestRevision" in outcome.cause &&
+        (outcome.cause.latestRevision === null ||
+          (typeof outcome.cause.latestRevision === "number" &&
+            Number.isSafeInteger(outcome.cause.latestRevision) &&
+            outcome.cause.latestRevision >= 0))
+      ) {
+        return {
+          ok: false,
+          error: {
+            code: "conflict",
+            message: outcome.cause.message,
+            latestRevision: outcome.cause.latestRevision,
+          },
+        };
+      }
       if (outcome.cause instanceof PluginRpcBoundaryError) {
         return { ok: false, error: outcome.cause.rpcError };
       }
@@ -2231,6 +2294,9 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
           return enforcePluginCliOutputLimit(
             {
               exitCode: result.exitCode,
+              ...(result.experimental_continue
+                ? { experimental_continue: result.experimental_continue }
+                : {}),
               stdout: typeof result.stdout === "string" ? result.stdout : "",
               stderr: typeof result.stderr === "string" ? result.stderr : "",
             },

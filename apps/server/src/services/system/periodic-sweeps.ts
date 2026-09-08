@@ -1,4 +1,5 @@
 import { sweepProviderLifecycles } from "../environments/provider-orchestration.js";
+import { sweepMachineLifecycles } from "../machines/provider-orchestration.js";
 import { and, eq, isNull } from "drizzle-orm";
 import {
   CLOSED_SESSION_ROW_RETENTION_MS,
@@ -345,6 +346,7 @@ export async function runThreadLifecycleSweep(
 ): Promise<void> {
   await runThreadProvisioningOrphanCleanupSweep(deps);
   await sweepProviderLifecycles(deps);
+  await sweepMachineLifecycles(deps);
 }
 
 async function runMachineAuthPruneSweep(
@@ -480,6 +482,12 @@ const PERIODIC_SWEEP_JOBS: PeriodicSweepJob[] = [
     category: "durable-intent-retry",
     name: "environment-provider-lifecycle",
     run: sweepProviderLifecycles,
+  },
+  {
+    cadenceMs: 0,
+    category: "durable-intent-retry",
+    name: "machine-provider-lifecycle",
+    run: (deps) => sweepMachineLifecycles(deps, { backgroundDeadlines: true }),
   },
   {
     cadenceMs: 0,
