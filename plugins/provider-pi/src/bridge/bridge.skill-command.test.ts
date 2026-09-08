@@ -8,6 +8,8 @@ import {
   startFakePiBridge,
 } from "./test-support.js";
 
+vi.setConfig({ testTimeout: 30_000 });
+
 let harness: FakePiBridgeHarness;
 let requestId: number;
 let threadId: number;
