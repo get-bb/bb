@@ -2239,6 +2239,52 @@ describe("Account Pool plugin", () => {
     });
   });
 
+  it("rotates when a same-account retry reveals a family limit", async () => {
+    const keys: string[] = [];
+    const fixture = await createFixture({
+      upstreamUrl: "https://upstream.example",
+      apiKey: "sk-one",
+      options: {
+        fetch: async (_input, init) => {
+          keys.push(new Headers(init?.headers).get("x-api-key") ?? "");
+          if (keys.length === 1) {
+            return Response.json(
+              { minute: true },
+              { status: 429, headers: { "retry-after": "0" } },
+            );
+          }
+          if (keys.length === 2) {
+            return Response.json(
+              { family: true },
+              {
+                status: 429,
+                headers: {
+                  "anthropic-ratelimit-unified-5h-status": "allowed",
+                  "anthropic-ratelimit-unified-7d-status": "allowed",
+                  "anthropic-ratelimit-unified-7d_oi-reset": "4102452000",
+                  "anthropic-ratelimit-unified-7d_oi-status": "rejected",
+                },
+              },
+            );
+          }
+          return Response.json({ rotated: true });
+        },
+      },
+    });
+    await addApiAccount(fixture, "sk-two");
+    const response = await fixture.host.harness.behavior.fetchHttp(
+      "POST",
+      "/v1/messages",
+      {
+        headers: authHeaders(fixture.key),
+        body: JSON.stringify({ model: "claude-fable-5" }),
+      },
+    );
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ rotated: true });
+    expect(keys).toEqual(["sk-one", "sk-one", "sk-two"]);
+  });
+
   it("refreshes usage on import and routes from its family observations", async () => {
     const authorizations: Array<string | undefined> = [];
     const usageCalls = new Map<string, number>();
