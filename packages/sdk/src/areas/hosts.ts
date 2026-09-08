@@ -104,6 +104,7 @@ export interface HostsArea {
   }): Promise<MachineLaunchStatus>;
   experimental_enrollmentCommand(args: {
     id: string;
+    scope?: "launch" | "thread";
     signal?: AbortSignal;
   }): Promise<{ command: string | null }>;
   cancel(args: { id: string }): Promise<MachineLaunchStatus>;
@@ -154,7 +155,7 @@ export function createHostsArea(args: CreateSdkAreaArgs): HostsArea {
     async experimental_enrollmentCommand(input) {
       return transport.readJson(
         transport.api.v1.hosts.launches[":id"]["enrollment-command"].$get(
-          { param: { id: input.id } },
+          { param: { id: input.id }, query: { scope: input.scope } },
           ...signalRequestArgs(input.signal),
         ),
       );

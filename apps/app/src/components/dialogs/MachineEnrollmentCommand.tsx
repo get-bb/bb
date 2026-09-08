@@ -2,7 +2,13 @@ import { useEffect, useState } from "react";
 import { Button } from "@bb/shared-ui/button";
 import { sdk } from "@/lib/sdk";
 
-export function MachineEnrollmentCommand({ launchId }: { launchId: string }) {
+export function MachineEnrollmentCommand({
+  id,
+  scope,
+}: {
+  id: string;
+  scope: "launch" | "thread";
+}) {
   const [command, setCommand] = useState<string | null>(null);
   useEffect(() => {
     const controller = new AbortController();
@@ -11,7 +17,8 @@ export function MachineEnrollmentCommand({ launchId }: { launchId: string }) {
     const poll = async () => {
       try {
         const result = await sdk.hosts.experimental_enrollmentCommand({
-          id: launchId,
+          id,
+          scope,
           signal: controller.signal,
         });
         if (!controller.signal.aborted) setCommand(result.command);
@@ -26,7 +33,7 @@ export function MachineEnrollmentCommand({ launchId }: { launchId: string }) {
       controller.abort();
       clearTimeout(timer);
     };
-  }, [launchId]);
+  }, [id, scope]);
   if (command === null) return null;
   return (
     <div className="space-y-2 p-3">

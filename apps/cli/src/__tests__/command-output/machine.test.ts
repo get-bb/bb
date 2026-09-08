@@ -201,7 +201,7 @@ describe("bb machine command output", () => {
         register,
       );
       expect(readCommand).toHaveBeenCalledWith(
-        { param: { id: launch.id } },
+        { param: { id: launch.id }, query: { scope: undefined } },
         { init: { signal: expect.any(AbortSignal) } },
       );
       if (noWait) {

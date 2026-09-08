@@ -19,7 +19,7 @@ it("discards the private command when the server settles enrollment", async () =
       command: "bb machine enroll --bootstrap-env PRIVATE_BUNDLE",
     })
     .mockResolvedValue({ command: null });
-  render(<MachineEnrollmentCommand launchId="manual-launch" />);
+  render(<MachineEnrollmentCommand id="manual-launch" scope="launch" />);
   expect(
     await screen.findByText("bb machine enroll --bootstrap-env PRIVATE_BUNDLE"),
   ).toBeTruthy();
@@ -41,7 +41,9 @@ it("aborts retrieval when the follower closes", async () => {
       return new Promise(() => {});
     },
   );
-  const view = render(<MachineEnrollmentCommand launchId="manual-launch" />);
+  const view = render(
+    <MachineEnrollmentCommand id="manual-launch" scope="launch" />,
+  );
   expect(signal?.aborted).toBe(false);
   view.unmount();
   expect(signal?.aborted).toBe(true);

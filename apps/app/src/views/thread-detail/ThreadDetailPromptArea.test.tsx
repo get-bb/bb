@@ -820,6 +820,7 @@ describe("ThreadDetailPromptArea", () => {
       ).toBeTruthy();
       expect(readCommand).toHaveBeenCalledWith({
         id: thread.id,
+        scope: "thread",
         signal: expect.any(AbortSignal),
       });
       view.rerender(

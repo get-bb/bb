@@ -262,7 +262,7 @@ function CreateMachineContent({
         ) : null}
       </div>
       {open && createMachine.isPending && launchId ? (
-        <MachineEnrollmentCommand launchId={launchId} />
+        <MachineEnrollmentCommand id={launchId} scope="launch" />
       ) : null}
       <DialogFooter>
         {createMachine.isPending && launchId ? (

@@ -1727,7 +1727,7 @@ export function ThreadDetailPromptArea({
       {(runtimeDisplayStatus === "provisioning" ||
         runtimeDisplayStatus === "starting") &&
       thread.archivedAt === null ? (
-        <MachineEnrollmentCommand launchId={thread.id} />
+        <MachineEnrollmentCommand id={thread.id} scope="thread" />
       ) : null}
       {sentMessageEditorPortal}
       {bottomContent}

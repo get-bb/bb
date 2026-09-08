@@ -36,6 +36,7 @@ import {
 import { handleHostRemoved } from "../internal/session-owner-side-effects.js";
 import {
   submitMachine,
+  resolveThreadMachineLaunchKey,
   machineLaunchStatus,
   cancelMachineLaunch,
   requestMachineResume,
@@ -121,12 +122,16 @@ export function registerHostRoutes(
     return context.json(machineLaunchStatus(deps, context.req.param("id")));
   });
 
-  get(routes.experimental_enrollmentCommand, async (context) => {
+  get(routes.experimental_enrollmentCommand, async (context, query) => {
     assertHostManagementAllowed(context);
     context.header("Cache-Control", "no-store");
-    const bootstrap = await getMachineEnrollmentService(
-      deps,
-    ).pendingBootstrapForLaunch(context.req.param("id"));
+    const id = context.req.param("id");
+    const launchId =
+      query.scope === "thread" ? resolveThreadMachineLaunchKey(deps, id) : id;
+    const bootstrap =
+      await getMachineEnrollmentService(deps).pendingBootstrapForLaunch(
+        launchId,
+      );
     return context.json({
       command: bootstrap === null ? null : manualEnrollmentCommand(bootstrap),
     });

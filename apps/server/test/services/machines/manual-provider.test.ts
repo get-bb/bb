@@ -233,6 +233,7 @@ it("releases legacy Connect access when removing a backfilled manual host", asyn
     expect(release).toHaveBeenCalledWith({
       key: "legacy-manual",
       grantId: "legacy-manual",
+      hostId: "legacy-manual",
     });
     expect(getHost(h.db, "legacy-manual")?.phase).toBe("destroyed");
   });

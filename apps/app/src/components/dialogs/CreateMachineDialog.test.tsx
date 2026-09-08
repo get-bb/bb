@@ -102,6 +102,7 @@ it("lists manual alongside other providers and never mints a legacy join code", 
   ).toBeTruthy();
   expect(sdk.hosts.experimental_enrollmentCommand).toHaveBeenCalledWith({
     id: "launch-manual",
+    scope: "launch",
     signal: expect.any(AbortSignal),
   });
   fireEvent.click(screen.getByRole("button", { name: "Cancel enrollment" }));
