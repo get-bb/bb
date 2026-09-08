@@ -214,10 +214,26 @@ export async function runMachineLifecycle(
     deps.platform === "darwin"
       ? `app.getbb.host-daemon.${slug}`
       : `bb-host-daemon-${slug}.service`;
-  const servicePath =
+  let servicePath =
     deps.platform === "darwin"
       ? join(deps.homeDir, "Library", "LaunchAgents", `${serviceName}.plist`)
       : join(deps.homeDir, ".config", "systemd", "user", serviceName);
+  let systemdScope = "--user";
+  const systemServicePath = join(dataDir, "systemd", serviceName);
+  if (
+    deps.platform === "linux" &&
+    (await optionalText(systemServicePath)) !== null
+  ) {
+    if (deps.uid !== 0) throw new Error("Machine system service requires root.");
+    if ((await optionalText(servicePath)) !== null)
+      throw new Error("Machine has both user and system services.");
+    if (
+      (await realpath(dirname(systemServicePath))) !== dirname(systemServicePath)
+    )
+      throw new Error("Refusing a symlinked machine system service directory.");
+    servicePath = systemServicePath;
+    systemdScope = "--system";
+  }
   const service = await optionalText(servicePath);
   if (service !== null) {
     const expected =
@@ -229,6 +245,24 @@ export async function runMachineLifecycle(
       (await lstat(servicePath)).isSymbolicLink()
     )
       throw new Error("Machine service belongs to another installation.");
+  }
+  if (service !== null && systemdScope === "--system") {
+    const expectedCommand = `host-daemon --auto-update --host-daemon-port "${port}" --server-url "${systemdEscape(serverUrl)}"`;
+    const expectedLauncher = `"${systemdEscape(join(dataDir, "npm", "bin", "bb-app"))}"`;
+    if (!service.includes(expectedCommand) || !service.includes(expectedLauncher)) {
+      throw new Error(
+        "Machine system service command belongs to another installation.",
+      );
+    }
+  }
+  let serviceRegistered = true;
+  if (service !== null && systemdScope === "--system") {
+    const loadedPath = (await deps.run("systemctl", [
+      "--system", "show", "--property=FragmentPath", "--value", serviceName,
+    ])).trim();
+    serviceRegistered = loadedPath.length > 0;
+    if (loadedPath && (await realpath(loadedPath)) !== (await realpath(servicePath)))
+      throw new Error("Systemd loaded another machine service.");
   }
   async function connected() {
     const raw = await deps.status(port);
@@ -290,7 +324,11 @@ export async function runMachineLifecycle(
           `gui/${deps.uid}`,
           servicePath,
         ]);
-      else await deps.run("systemctl", ["--user", "start", serviceName]);
+      else {
+        if (!serviceRegistered)
+          await deps.run("systemctl", [systemdScope, "enable", servicePath]);
+        await deps.run("systemctl", [systemdScope, "start", serviceName]);
+      }
     } else if (!livePid) {
       const newPid = await deps.start(
         launcher,
@@ -312,7 +350,7 @@ export async function runMachineLifecycle(
     }
     throw new Error("Machine daemon did not start within 20 seconds.");
   }
-  if (service !== null) {
+  if (service !== null && serviceRegistered) {
     if (deps.platform === "darwin") {
       let loaded = true;
       try {
@@ -331,7 +369,7 @@ export async function runMachineLifecycle(
         ]);
     } else
       await deps.run("systemctl", [
-        "--user",
+        systemdScope,
         operation === "uninstall" ? "disable" : "stop",
         ...(operation === "uninstall" ? ["--now"] : []),
         serviceName,
@@ -349,7 +387,7 @@ export async function runMachineLifecycle(
   if (service !== null) {
     await rm(servicePath);
     if (deps.platform === "linux")
-      await deps.run("systemctl", ["--user", "daemon-reload"]);
+      await deps.run("systemctl", [systemdScope, "daemon-reload"]);
   }
   if (reservationOwner === dataDir) {
     if ((await realpath(reservation)) !== reservation)

@@ -178,6 +178,11 @@ if [ "$node_supported" != yes ]; then
 fi
 node_bin=$(command -v node)
 
+if [ -z "${HOME:-}" ]; then
+  HOME=$(node -e 'const home = require("node:os").homedir(); if (!require("node:path").isAbsolute(home)) process.exit(1); process.stdout.write(home);')
+  export HOME
+fi
+
 require_npm() {
   if ! command -v npm >/dev/null 2>&1; then
     fail_step "bb-app installation requires npm."
@@ -701,9 +706,14 @@ if [ "$already_joined" = no ]; then
   complete_step "Joined successfully"
 fi
 
-# Tests and source-development smoke runs can leave the enrolled daemon in the
-# foreground-supervised process without modifying the user's service manager.
-if [ -n "$bootstrap_env" ] && [ "$platform" = linux ] && ! systemctl --user show-environment >/dev/null 2>&1; then
+systemd_scope=--user
+if [ "$platform" = linux ] && [ "$(id -u)" = 0 ] &&
+   [ "$(ps -p 1 -o comm= | tr -d '[:space:]')" = systemd ] &&
+   ! systemd-detect-virt --container --quiet >/dev/null 2>&1; then
+  systemd_scope=--system
+fi
+if [ -n "$bootstrap_env" ] && [ "$platform" = linux ] &&
+   [ "$systemd_scope" = --user ] && ! systemctl --user show-environment >/dev/null 2>&1; then
   BB_INSTALL_SKIP_SERVICE=1
 fi
 
@@ -826,6 +836,17 @@ EOF
   detail "Uninstall: launchctl bootout gui/$(id -u) '$service_file' && rm '$service_file'"
 else
   service_dir="$HOME/.config/systemd/user"
+  service_target=default.target
+  if [ "$systemd_scope" = --system ]; then
+    service_dir="$canonical_data_dir/systemd"
+    service_target=multi-user.target
+    owned_launcher="$canonical_data_dir/npm/bin/bb-app"
+    if [ "$bb_app" != "$owned_launcher" ]; then
+      mkdir -p "$data_dir/npm/bin"
+      ln -sf "$bb_app" "$owned_launcher"
+      bb_app="$owned_launcher"
+    fi
+  fi
   service_name="bb-host-daemon-$service_slug"
   service_file="$service_dir/$service_name.service"
   mkdir -p "$service_dir"
@@ -839,7 +860,7 @@ else
   if [ -f "$legacy_service_file" ] && \
      grep -F -- "--host-daemon-port \"$host_daemon_port\"" "$legacy_service_file" >/dev/null 2>&1 && \
      grep -F -- "Environment=\"BB_DATA_DIR=$escaped_data_dir\"" "$legacy_service_file" >/dev/null 2>&1; then
-    systemctl --user disable --now "$legacy_service_name.service" >/dev/null 2>&1 || true
+    systemctl "$systemd_scope" disable --now "$legacy_service_name.service" >/dev/null 2>&1 || true
     rm -f "$legacy_service_file"
   fi
   cat >"$service_file" <<EOF
@@ -856,27 +877,29 @@ Restart=always
 RestartSec=2
 
 [Install]
-WantedBy=default.target
+WantedBy=$service_target
 EOF
-  systemctl --user daemon-reload
-  if ! systemctl_error=$(systemctl --user enable "$service_name.service" 2>&1); then
+  systemctl "$systemd_scope" daemon-reload
+  enable_unit="$service_name.service"
+  if [ "$systemd_scope" = --system ]; then enable_unit="$service_file"; fi
+  if ! systemctl_error=$(systemctl "$systemd_scope" enable "$enable_unit" 2>&1); then
     fail_step "The bb host-daemon systemd service could not be enabled."
     [ -z "$systemctl_error" ] || detail "systemctl: $systemctl_error" >&2
-    detail "Inspect it with: journalctl --user -u $service_name.service" >&2
+    detail "Inspect it with: journalctl $systemd_scope -u $service_name.service" >&2
     exit 1
   fi
-  if ! systemctl_error=$(systemctl --user restart "$service_name.service" 2>&1); then
+  if ! systemctl_error=$(systemctl "$systemd_scope" restart "$service_name.service" 2>&1); then
     fail_step "The bb host-daemon systemd service was enabled, but it could not be restarted."
     [ -z "$systemctl_error" ] || detail "systemctl: $systemctl_error" >&2
-    detail "Inspect it with: journalctl --user -u $service_name.service" >&2
+    detail "Inspect it with: journalctl $systemd_scope -u $service_name.service" >&2
     exit 1
   fi
   if ! wait_for_daemon_connection "the systemd service"; then
     fail_step "The bb host-daemon systemd service started but did not connect to $server_url."
-    detail "Inspect it with: journalctl --user -u $service_name.service" >&2
+    detail "Inspect it with: journalctl $systemd_scope -u $service_name.service" >&2
     exit 1
   fi
-  complete_step "Installed and started the systemd user service"
+  complete_step "Installed and started the systemd service ($systemd_scope)"
   printf '\n'
   log "$(green "●")" "$(bold "bb machine is ready")"
   printf '\n'
@@ -885,6 +908,10 @@ EOF
   ready_row "data" "$data_dir"
   ready_row "service" "$service_file"
   printf '\n'
-  detail "Starts with your systemd user session."
-  detail "Uninstall: systemctl --user disable --now $service_name.service && rm '$service_file' && systemctl --user daemon-reload"
+  if [ "$systemd_scope" = --system ]; then
+    detail "Starts automatically when this machine boots."
+  else
+    detail "Starts with your systemd user session."
+  fi
+  detail "Uninstall: systemctl $systemd_scope disable --now $service_name.service && rm '$service_file' && systemctl $systemd_scope daemon-reload"
 fi

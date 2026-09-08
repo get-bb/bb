@@ -21,6 +21,7 @@ afterEach(async () => {
 async function fixture(
   platform: NodeJS.Platform = "linux",
   withService = true,
+  system = false,
 ) {
   await mkdir("/tmp/pr2", { recursive: true });
   const homeDir = await realpath(await mkdtemp("/tmp/pr2/machine-lifecycle-"));
@@ -46,7 +47,7 @@ async function fixture(
           "LaunchAgents",
           "app.getbb.host-daemon.bb-example-host_one.plist",
         )
-      : join(
+      : system ? join(dataDir, "systemd", "bb-host-daemon-bb-example-host_one.service") : join(
           homeDir,
           ".config",
           "systemd",
@@ -59,7 +60,7 @@ async function fixture(
       servicePath,
       platform === "darwin"
         ? `<key>BB_DATA_DIR</key><string>${dataDir}</string>`
-        : `Environment="BB_DATA_DIR=${dataDir}"`,
+        : `Environment="BB_DATA_DIR=${dataDir}"\nExecStart="/usr/bin/node" "${launcher}" host-daemon --auto-update --host-daemon-port "44001" --server-url "https://bb.example"`,
     );
   const reservation = join(
     homeDir,
@@ -82,10 +83,11 @@ async function fixture(
   const deps: NonNullable<Parameters<typeof runMachineLifecycle>[2]> = {
     homeDir,
     platform,
-    uid: 501,
+    uid: system ? 0 : 501,
     async run(command, args) {
       calls.push([command, ...args].join(" "));
       if (command === "ps") return state.process;
+      if (args.includes("--property=FragmentPath")) return servicePath;
       if (
         args.includes("stop") ||
         args.includes("disable") ||
@@ -117,6 +119,54 @@ async function fixture(
 
 const options = { hostId: "host_one" };
 describe("owned local machine lifecycle", () => {
+  it("starts after reboot, stops, and uninstalls an owned system unit", async () => {
+    const f = await fixture("linux", true, true);
+    f.state.active = false;
+    await runMachineLifecycle("start", options, f.deps);
+    expect(f.calls).toContain("systemctl --system start bb-host-daemon-bb-example-host_one.service");
+    await runMachineLifecycle("stop", options, f.deps);
+    expect(f.calls).toContain("systemctl --system stop bb-host-daemon-bb-example-host_one.service");
+    expect(await readFile(f.servicePath, "utf8")).toContain("BB_DATA_DIR");
+    await runMachineLifecycle("start", options, f.deps);
+    await runMachineLifecycle("uninstall", options, f.deps);
+    expect(f.calls).toContain("systemctl --system disable --now bb-host-daemon-bb-example-host_one.service");
+    expect(f.calls).toContain("systemctl --system daemon-reload");
+    await expect(readFile(f.servicePath)).rejects.toMatchObject({ code: "ENOENT" });
+  });
+  it("refuses a system service with another server command before stopping it", async () => {
+    const f = await fixture("linux", true, true);
+    const text = await readFile(f.servicePath, "utf8");
+    await writeFile(f.servicePath, text.replace("https://bb.example", "https://other.example"));
+    await expect(runMachineLifecycle("uninstall", options, f.deps)).rejects.toThrow("command belongs");
+    expect(f.calls).toEqual([]);
+  });
+  it("refuses a system manager unit loaded from another path", async () => {
+    const f = await fixture("linux", true, true);
+    const other = join(f.homeDir, "another.service");
+    await writeFile(other, "unrelated");
+    const run = f.deps.run;
+    f.deps.run = async (command, args) =>
+      args.includes("--property=FragmentPath") ? other : run(command, args);
+    await expect(runMachineLifecycle("uninstall", options, f.deps)).rejects.toThrow("loaded another");
+    expect(f.calls).toEqual([]);
+  });
+  it("cleans a system unit left before enable without touching another service", async () => {
+    const f = await fixture("linux", true, true);
+    f.state.active = false;
+    const run = f.deps.run;
+    f.deps.run = async (command, args) =>
+      args.includes("--property=FragmentPath") ? "" : run(command, args);
+    await runMachineLifecycle("uninstall", options, f.deps);
+    expect(f.calls).toEqual(["systemctl --system daemon-reload"]);
+    await expect(readFile(f.servicePath)).rejects.toMatchObject({ code: "ENOENT" });
+  });
+  it("refuses system service control without root", async () => {
+    const f = await fixture("linux", true, true);
+    f.deps.uid = 501;
+    await expect(runMachineLifecycle("stop", options, f.deps)).rejects.toThrow("requires root");
+    expect(f.calls).toEqual([]);
+  });
+
   it.each(["linux", "darwin"] as const)(
     "uninstalls only the host-specific %s service",
     async (platform) => {
