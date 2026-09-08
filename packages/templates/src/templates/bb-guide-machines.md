@@ -186,3 +186,9 @@ machine is left active. DigitalOcean sleep JSON retains saved power/backup
 status if inventory is unavailable (`details.values.cost: null` and
 `inventoryError`). Shared inventory reads cache for 30 seconds and invalidate
 on mutations. Schedule changes invalidate selected, undispatched runs.
+
+Create DigitalOcean dev boxes from Settings → Machines or
+`bb machine create --provider digitalocean --inputs '{}' --json`, without a
+project. SDK creation uses `machineProviderId: "digitalocean", projectId: null,
+inputs: {}`. Enrolled boxes appear as machine sections in the composer picker;
+DigitalOcean contributes no new-machine/project-checkout shortcut row.

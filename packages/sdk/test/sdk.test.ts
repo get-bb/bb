@@ -106,6 +106,25 @@ function createFetchQueue(
 }
 
 describe("@bb/sdk", () => {
+  it("creates a DigitalOcean machine through the SDK without a project", async () => {
+    const host = {
+      id: "host_do", name: "Dev box", status: "connected",
+      machineProviderId: "digitalocean", machineProviderSelection: { inputs: {} },
+      lifecycle: { phase: "active", suspendedAt: null, retireAt: null, progress: null, teardown: null },
+      maxPermissionMode: "full", lastSeenAt: 1, lastRejectedProtocolVersion: null,
+      createdAt: 1, updatedAt: 1,
+    };
+    const queue = createFetchQueue([{ body: host }]);
+    const sdk = createBbSdk({ transport: createHttpTransport({
+      baseUrl: "http://bb.test", fetch: queue.fetch, runtime: "node",
+    }) });
+    expect(await sdk.hosts.create({ machineProviderId: "digitalocean", projectId: null, inputs: {} })).toEqual(host);
+    expect(queue.requests).toEqual([{
+      bodyText: JSON.stringify({ machineProviderId: "digitalocean", projectId: null, inputs: {} }),
+      method: "POST", url: "http://bb.test/api/v1/hosts",
+    }]);
+  });
+
   it("requests a machine join code without a host type", async () => {
     const queue = createFetchQueue([
       { body: { joinCode: "one", hostId: "host_1", expiresAt: 1 } },

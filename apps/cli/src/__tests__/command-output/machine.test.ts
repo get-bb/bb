@@ -79,14 +79,17 @@ describe("bb machine command output", () => {
     expect(JSON.parse(collectLogPayloads(vi.mocked(console.log))[0])).toEqual(hosts[1]);
   });
 
-  it("creates globally with absent inputs and lets the server choose the key", async () => {
+  it.each([
+    { provider: "ssh", inputs: null, argv: [] },
+    { provider: "digitalocean", inputs: {}, argv: ["--inputs", "{}"] },
+  ])("creates $provider globally without a project", async ({ provider, inputs, argv }) => {
     const create = vi.fn(async () => hosts[1]);
     stubServerApi({ "v1.hosts.$post": create });
 
-    await runCommand(["machine", "create", "--provider", "ssh"], register);
+    await runCommand(["machine", "create", "--provider", provider, ...argv], register);
 
     expect(create).toHaveBeenCalledWith({
-      json: { machineProviderId: "ssh", projectId: null, inputs: null },
+      json: { machineProviderId: provider, projectId: null, inputs },
     }, { init: { signal: expect.any(AbortSignal) } });
     expect(collectLogPayloads(vi.mocked(console.log))).toEqual(["Machine host-remote created"]);
   });
