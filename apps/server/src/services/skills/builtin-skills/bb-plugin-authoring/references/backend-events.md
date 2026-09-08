@@ -272,19 +272,23 @@ bb.experimental_machines.register({
     retire: { after: "never" },
     removeRetryMs: 60_000,
   },
-  async create({ project, inputs, key, attempt, report, signal }) {
-    report.step(`Connecting to ${inputs.target}`);
-    const hostId = await ensureEnrolledHost({
-      project,
-      target: inputs.target,
+  async create({ inputs, key, checkpoint, report, signal }) {
+    const enrollment = await bb.experimental_machines.prepareEnrollment({ key });
+    const target = await allocateTarget({ target: inputs.target, key, signal });
+    const resource = { target: target.id, hostId: enrollment.hostId };
+    await checkpoint(resource);
+    const { hostId } = await bb.experimental_machines.bootstrap({
       key,
-      attempt,
+      executor: target.executor,
+      daemon: { kind: "install" },
+      report,
       signal,
     });
-    return { status: "created", hostId, resource: { target: inputs.target } };
+    return { status: "created", hostId, resource };
   },
   async remove({ resource }) {
-    await disconnectTarget(resource.target);
+    const owned = z.object({ target: z.string(), hostId: z.string() }).parse(resource);
+    await disconnectTarget(owned.target);
     return { status: "removed" };
   },
 });
@@ -300,7 +304,17 @@ Create receives a nullable project, nullable gitRemote, parsed inputs, a stable
 key, monotonic attempt, durable progress reporter, and abort signal. It must be
 idempotent by key: if enrolment completed before the server crashed, the next
 call returns the already-enrolled host instead of creating another resource.
-Return the host id plus a private JSON resource for later lifecycle operations.
+Prepare enrollment before calling `await checkpoint(resource)` after durable
+allocation and before bootstrap. Create's checkpoint is asynchronous and makes
+partial allocation recoverable even if enrollment never succeeds. Never put the
+bootstrap bundle in resource JSON. Return the host id plus a private JSON resource
+for later lifecycle operations. `allocateTarget` and `disconnectTarget` above
+stand for provider-owned allocation, transport, and idempotent cleanup; removal
+must handle a checkpointed target whose daemon was never installed or enrolled.
+Core owns enrollment, identity files, and daemon installation internals.
+
+An `environmentRow` is optional. Providers without one, such as SSH, require
+`--environment-provider <id>` alongside `bb thread spawn --new-machine <id>`.
 
 Suspend and resume are optional but must be declared together. Without them,
 `policy.idleSuspendMs` must be null. With them, core suspends only after every
@@ -489,8 +503,40 @@ includes providers eligible on any persistent machine.
 availability, acquire({ key, hostId, signal }) returning a ServerAccessGrant,
 and release({ key, grantId }). Acquire is idempotent by key. Return a direct
 client or a Connect machine code; the grant serves runtime requests as well
-as enrolment. Core stores the provider id and grant id, never credentials.
+as enrolment. Host metadata stores the provider id and grant id; pending
+bootstrap credentials are encrypted separately by core.
 General settings select the default. Plugins can pass ServerAccessSelection
 to the machine enrolment/bootstrap APIs. The direct provider reads
 machineServerUrl, falling back to BB_EXTERNAL_URL. Declaring a URL does not
 prove reachability from a sandbox.
+
+### Machine enrollment and bootstrap
+
+`bb.experimental_machines` implements `MachineBootstrapApi` alongside register:
+
+- `enrollments.prepare({ key, access? })` and `prepareEnrollment` return a
+  `MachineEnrollment`: pending with a private `EnrollmentBootstrap` and expiry,
+  or enrolled with the stable hostId. Keys are scoped to the calling plugin.
+- `enrollments.waitForConnection({ enrollmentId, timeoutMs, signal })` and
+  `waitForConnection` return `{ hostId }` after the daemon connects.
+- `enrollments.cancel({ enrollmentId })` cancels pending enrollment and releases
+  its access; an already-enrolled identity retains its credentials and access.
+  This does not replace provider cleanup of an allocated resource.
+- `installerCommand(bootstrap)` synchronously returns `MachineInstallerCommand`
+  `{ command: string[], stdin: string }`. Pass stdin privately; never place the
+  bundle in argv, logs, progress, or persisted machine resources.
+- `bootstrap({ key, executor, access?, daemon, report, signal })` prepares or
+  recovers enrollment, installs or enrolls, starts the daemon, waits for its
+  connection, and returns `{ hostId }`. Reuse the same key and access selection
+  used before the create checkpoint. `daemon` is `{ kind: "install" }` or
+  `{ kind: "preinstalled" }`; the latter needs compatible `bb` and `bb-app`.
+  Install needs Node, npm, and curl; the helper does not install OS packages.
+
+A `MachineExecutor` implements `exec({ command, timeoutMs, signal, stdin? })`
+returning `{ exitCode, stdout, stderr }`. Execute argv through the provider's
+transport, honor timeout and cancellation, and keep stdin private. Optional
+`writeFile(path, contents, mode?)` is available to callers; bootstrap uses exec.
+The helper suppresses remote output and reports fixed progress messages. It
+restarts enrolled identities, including a restored preinstalled snapshot.
+Create's awaited checkpoint precedes bootstrap; suspend's synchronous checkpoint
+persists a recovery artifact before destructive cleanup.

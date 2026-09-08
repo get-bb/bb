@@ -135,3 +135,15 @@ providerId }`) and `Original`, the host's declarative base for the body —
   One registration per provider id per plugin; if two plugins claim one
   provider id the host keeps the first by plugin id and warns. See the
   `app.tsx` example in `references/providers.md`.
+
+## Machine provider inputs
+
+Register `app.slots.experimental_machineProviderInputs({ machineProviderId,
+component })` for machine providers in Add machine and the new-thread picker.
+`PluginMachineProviderInputsRegistration` associates the slot with the backend
+provider. `PluginMachineProviderInputsProps` supplies nullable `projectId`,
+`value`, and `onChange`. Emit a `PluginMachineProviderInputsChange` of
+`{ status: "ready", value }` when valid or `{ status: "blocked", reason }` to
+prevent submission. Core validates the value against the provider's inputs
+schema. Inputs are persisted and visible to every plugin: never collect secrets
+here. Use shared components and typography; keep vendor logic in the backend.

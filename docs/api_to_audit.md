@@ -587,6 +587,24 @@ and whether policies need per-machine overrides before dropping the prefix.
 create with project/gitRemote/inputs/key/attempt/checkpoint/report/signal, optional paired
 suspend/resume, remove, environment-row sugar, and retirement policy.
 
+Supporting root exports `PluginMachineProviderDeclaration`,
+`PluginMachineProviderRequirements`, and `PluginMachineValidateDecision` are
+covered by this audit alongside these machine-provider subpath exports:
+`PluginMachineProviderDefinition`,
+`PluginMachineProviderInputsSchema`,
+`PluginMachineProviderPolicy`,
+`PluginMachineProviderEnvironmentRow`,
+`PluginMachineProviderAvailabilityContext`,
+`PluginMachineProviderAvailability`,
+`PluginMachineProviderValidateContext`,
+`PluginMachineProviderCreateContext`,
+`PluginMachineProviderCreateResult`,
+`PluginMachineProviderLifecycleContext`,
+`PluginMachineProviderSuspendContext`,
+`PluginMachineProviderProgress`,
+`PluginMachineProviderResourceResult`,
+`PluginMachineProviderRemoveResult`.
+
 **Audit before stabilizing.** Audit the same lifecycle, retry, privacy, and
 composition questions as `bb.experimental_machines`, whether an omitted icon
 should continue to suppress provider branding, plus whether suspend and
@@ -597,6 +615,9 @@ enrollment, a crash after allocation, same-key recovery without duplicate
 resources, and access-revocation retries after successful vendor removal.
 
 ## `app.slots.experimental_machineProviderInputs` (`@get-bb/plugin-sdk/app`)
+
+Supporting app exports are `PluginMachineProviderInputsRegistration`,
+`PluginMachineProviderInputsProps`, and `PluginMachineProviderInputsChange`.
 
 **What it does.** Registers the app control for one machine provider's inputs
 with `{ machineProviderId, component }`. The component receives
@@ -2600,7 +2621,7 @@ first-party environment host module consumes them for checkout and worktree.
 
 ## `bb.experimental_serverAccess.register`
 
-Registers server access through `ServerAccessProviderDeclaration`: id,
+`PluginServerAccess` registers server access through `ServerAccessProviderDeclaration`: id,
 displayName, availability, acquire({ key, hostId, signal }) and
 release({ key, grantId }). `ServerAccessGrant` carries an id, serverUrl and
 `ServerAccessClient` (direct or Connect machine code with expiry).
@@ -2626,3 +2647,15 @@ prove reachability from a remote machine.
 `MachineExecutor` carries argv, stdin, a timeout, and an abort signal. `installerCommand` returns argv plus private stdin; callers must transport stdin without logging or persisting it in machine resources. `bootstrap` ignores remote output and reports fixed progress messages. It starts enrolled machines again so snapshot restores can reuse their identity. Preinstalled mode requires a compatible `bb` and `bb-app`; install mode requires Node, npm, and curl and installs no OS packages.
 
 Stabilization requires independent Modal and SSH consumers, failure verification for expired credentials, concurrent retries, interrupted exchange, cancellation, identity mismatch, and restored snapshots, plus an audit that credentials never enter resource data or logs. Migration and live vendor verification remain part of the integration release gate.
+
+The bootstrap surface's supporting exports are `EnrollmentBootstrap`,
+`MachineEnrollment`, `MachineExecutorRequest`, `MachineExecutor`,
+`MachineEnrollmentRequest`, `MachineConnectionRequest`, `MachineEnrollments`,
+`MachineBootstrapRequest`, `MachineInstallerCommand`, and `MachineBootstrapApi`.
+They belong to experimental `PluginMachines`; their unprefixed names do not
+indicate stabilization. `installerCommand` is synchronous. Executor `writeFile`
+is optional; bootstrap uses `exec`. Create must prepare enrollment, persist an
+allocated resource with `await checkpoint(resource)`, then bootstrap with the
+same key. Never checkpoint a bootstrap bundle. Stabilization must verify cleanup
+of checkpointed allocation before successful enrollment, including safe no-op
+uninstall when installation never began, and retry after partial installation.

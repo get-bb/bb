@@ -10,9 +10,10 @@ Machine commands
 A machine is a host daemon that can run thread environments. Add remote or
 plugin-provisioned machines under Settings → Machines.
 
-The server listens on loopback by default. Remote execution machines need the
-account-gated bb connect route or a private Tailscale Serve URL; generate their
-installer while using that reachable server URL.
+The server listens on loopback by default. Remote execution machines need
+a server access provider: paired bb Connect, or a configured direct URL reachable
+from the target, such as a private Tailscale Serve URL. A configured URL alone
+does not prove reachability.
 
 The Settings installer first uses the exact `bb-app` tarball served by that bb
 server at `/install/bb-app.tgz`; only servers that do not implement the route
@@ -35,6 +36,16 @@ unless you pass `--auto-update` explicitly.
     --json                                Print the raw host list
   bb machine providers [--project <id>]   List installed machine providers
     --json                                Include inputs schemas and policy
+  bb machine create --provider <id>       Create a standalone machine
+    --key <idempotency-key>                Reuse this creation on retries
+    --inputs <JSON>                       Non-secret provider inputs
+    --project <id-or-name>                 Optional project context
+    --json                                Print the created machine as JSON
+  bb machine enroll --bootstrap-file <path>
+    --bootstrap-env <NAME>                Alternative private bundle source
+  bb machine start --host-id <id>         Start an owned local daemon
+  bb machine stop --host-id <id>          Stop an owned local daemon
+  bb machine uninstall --host-id <id>     Remove an owned local installation
   bb machine show <id-or-name>            Show machine details
   bb machine join-code                    Create a machine pairing code
   bb machine rename <id-or-name> <name>   Rename a machine
@@ -56,6 +67,12 @@ and rename/remove. There is no CLI or SDK command to set it, and a paired
 machine cannot set it for any machine, so a sandbox machine can stay at Full
 Access while your laptop stays lower. `bb machine list --json` and `bb machine
 show` report the current limit.
+
+Standalone create does not create a thread or workspace. Without `--project`,
+creation is global; project selectors accept an exact name or ID. Omitted inputs
+are null; supply JSON when the provider schema requires it. Omit `--key` to let
+the server generate one, or supply a stable key for retries. SIGINT aborts create
+and exits 130; core cleans up any checkpointed allocation.
 
 Suspend and resume are available only when the machine provider implements
 both operations. Retry cleanup is accepted only for a retiring machine whose
@@ -92,8 +109,10 @@ For thread spawning, machine targeting works with an unmanaged workspace path,
 a new managed worktree, or the personal workspace. Do not combine it with an
 existing environment ID: the reused environment already selects its machine.
 `--new-machine` creates through a machine provider and uses its advertised
-environment row. Machine inputs are persisted and readable by plugins; never
-put secrets there. Store credentials in plugin settings and pass only
+environment row when declared. Otherwise add `--environment-provider <id>`
+(required for SSH). Use `--environment-inputs <json>` for workspace configuration,
+separately from `--machine-inputs <json>`. Machine inputs are persisted and
+readable by plugins; never put secrets there. Store credentials in plugin settings and pass only
 non-secret configuration or references.
 
 For project creation and sources, `--root`/`--path` refers to a path on the
@@ -119,10 +138,16 @@ owned local installation. Optional `--server-url <url>` and `--data-dir <path>`
 assert the expected installation. BB_DATA_DIR is treated as an assertion too.
 An identity mismatch refuses the operation. These commands are local machine
 primitives; `bb machine remove` asks the server to remove the provider resource.
+They verify the canonical installer-owned directory, enrolled identity, and
+service or process ownership before acting. Stop and uninstall safely succeed
+when no matching installation exists; start requires an installation. They
+refuse the default BB data directory. Stopping a daemon is distinct from
+`bb machine suspend`, which invokes provider suspension and updates server state.
+
 ## Enroll a preinstalled machine
 
 `bb machine enroll --bootstrap-file <path>` or `bb machine enroll --bootstrap-env <NAME>` consumes a versioned private enrollment bundle prepared by core. Supply exactly one source. The environment source is removed from the CLI process environment after reading it; files remain under the caller's ownership. Neither command prints the bundle or credentials.
 
 The CLI refuses another host or server identity in the selected machine directory. Repeating enrollment with the same persisted identity succeeds without exchanging the credential again, including when the original bundle expired. Machine data defaults to `~/.bb-machines/<server-host>`; `BB_DATA_DIR` can select another isolated machine directory, but enrollment refuses the default `~/.bb` directory.
 
-The installer accepts `--bootstrap-env <NAME>` and uses the same enrollment command. It installs a private CLI and supplies `~/.local/bin/bb` when no executable already occupies that path. Non-login transports can use `command -v bb` with `~/.local/bin/bb` as a fallback. Linux machines without a systemd user session run a detached daemon; systemd and launchd machines receive a persistent service.
+The installer accepts `--bootstrap-env <NAME>` and uses the same enrollment command. It installs a private CLI and supplies `~/.local/bin/bb` without replacing an existing path. Non-login transports can use `command -v bb` with `~/.local/bin/bb` as a fallback. Linux machines without a systemd user session run a detached daemon; systemd and launchd machines receive a persistent service.

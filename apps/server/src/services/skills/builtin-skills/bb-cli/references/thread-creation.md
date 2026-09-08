@@ -23,7 +23,8 @@
 - List machine providers with `bb machine providers [--project <id>]`. Create a
   new provider machine and its advertised environment row with
   `bb thread spawn --new-machine <provider-id>`. Pass
-  `--machine-inputs <json>` when required. These inputs are persisted and
+  `--environment-provider <id>` when the machine provider has no environmentRow,
+  including SSH. Pass `--machine-inputs <json>` when required. These inputs are persisted and
   readable by plugins, so keep credentials in plugin settings and send only
   non-secret configuration or references.
 - Omit `--base-branch` for bb's default. Explicit values are exact; use
@@ -169,15 +170,24 @@ or artifacts, validation performed, and blockers.
 
 `bb environment show <id>` includes the core-owned lifecycle phase, retirement deadline, and teardown status/attempt/message. Archive or delete the last live thread to begin its provider's retirement grace; unarchive cancels pending retirement. Teardown failures retry automatically. Checkout policy keeps its directory indefinitely.
 
-`bb machine enroll --bootstrap-file <path>` or `--bootstrap-env <NAME>`
-exchanges a versioned, one-time machine bootstrap bundle. A preinstalled image
-can invoke it directly. It refuses a different enrolled identity and is a no-op
-for an existing matching identity. Keep the bundle out of logs and transcripts.
+### Standalone machine creation
+
+`bb machine create --provider <id> [--key <idempotency-key>] [--inputs <JSON>]
+[--project <id-or-name>] [--json]` creates a machine without a thread. Omit project
+for global creation; an explicit project accepts its exact name or ID. Omitted
+inputs are null and must satisfy the provider schema; omitted key is generated
+by the server. Supply a stable key to recover the same creation across retries.
+SIGINT aborts the request and exits with status 130. Provider cancellation cleanup
+uses any resource checkpointed before bootstrap succeeded.
+
+### Local machine lifecycle
+
 `bb machine start|stop|uninstall --host-id <id>` operates on that machine's local
 installation. Optional `--server-url` and `--data-dir` assert its identity and
 installation location; BB_DATA_DIR is also an assertion, never permission to
 remove another installation. Uninstall checks ownership before stopping its
 service, releasing its port reservation and deleting its private files.
+
 ### Private machine enrollment
 
 Use `bb machine enroll --bootstrap-file <path>` or `--bootstrap-env <NAME>` on a machine that already has the CLI. Core prepares the versioned bundle; transport it through a private file or environment/stdin, never command arguments, logs, resource JSON, or a transcript. Enrollment refuses a different existing host/server identity and succeeds without another exchange when the same identity is already enrolled. The installer accepts `--bootstrap-env <NAME>` and invokes this command after installing bb. Machine state defaults to `~/.bb-machines/<server-host>`; an explicit `BB_DATA_DIR` must be isolated from the default BB instance. For remote non-login commands, discover `bb` on PATH and fall back to `~/.local/bin/bb`.

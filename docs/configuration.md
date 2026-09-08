@@ -1176,7 +1176,11 @@ machineServerUrl <url-or-null>` and `bb settings general defaultMachineAccess
 <provider-id-or-null>`. `bb settings show --json` reports the effective access
 selection. Access grants serve ongoing runtime requests as well as enrolment.
 
-Machine lifecycle commands `bb machine start`, `stop` and `uninstall` require
-`--host-id`. `--data-dir` or BB_DATA_DIR and optional `--server-url` assert the
-installation to operate on. They do not authorize overwriting or uninstalling
-an installation belonging to another host or server.
+For machine enrollment, `BB_DATA_DIR` selects isolated machine state instead of
+`~/.bb-machines/<server-host>`. `bb machine enroll` refuses the default `~/.bb`
+directory and a conflicting host or server identity. Local `bb machine
+start|stop|uninstall --host-id <id>` treats `BB_DATA_DIR` (or `--data-dir`) as an
+ownership assertion, not permission to act on arbitrary files: lifecycle commands
+require a canonical installer-owned directory under `~/.bb-machines` and verify
+identity and service/process ownership. Optional `--server-url` asserts the server.
+Without an explicit directory, lifecycle commands locate the unique matching host.

@@ -78,8 +78,17 @@ Read the installed declarations for exact current signatures.
 - `ServerAccessGrant`
 - `ServerAccessClient`
 - `ServerAccessSelection`
-- `PluginMachines` — `bb.experimental_machines.register` (see
-  backend-events.md, machine providers)
+- `PluginMachines` — `bb.experimental_machines.register` and enrollment/bootstrap helpers (see backend-events.md, machine providers)
+- `EnrollmentBootstrap` — private versioned enrollment bundle
+- `MachineEnrollment` — pending bundle or enrolled host identity
+- `MachineExecutorRequest` — argv, timeout, signal, optional private stdin
+- `MachineExecutor` — transport exec and optional writeFile
+- `MachineEnrollmentRequest` — durable key and optional access selection
+- `MachineConnectionRequest` — enrollmentId, timeoutMs, signal
+- `MachineEnrollments` — prepare, waitForConnection, cancel
+- `MachineBootstrapRequest` — enrollment request, executor, daemon mode, report, signal
+- `MachineInstallerCommand` — command argv and private stdin
+- `MachineBootstrapApi` — enrollments, prepareEnrollment, waitForConnection, installerCommand, bootstrap
 - `PluginMachineProviderDeclaration`
 - `PluginMachineProviderRequirements` — optional `gitRemote`
 - `PluginMachineValidateDecision`
@@ -301,7 +310,8 @@ Read the installed declarations for exact current signatures.
 - `PluginMachineProviderAvailabilityContext`
 - `PluginMachineProviderAvailability`
 - `PluginMachineProviderValidateContext`
-- `PluginMachineProviderCreateContext`
+- `PluginMachineProviderCreateContext` — async `checkpoint(resource)` after
+  preparing enrollment and allocating, before bootstrap; never bundle credentials
 - `PluginMachineProviderCreateResult`
 - `PluginMachineProviderLifecycleContext`
 - `PluginMachineProviderSuspendContext` — suspend context with a durable

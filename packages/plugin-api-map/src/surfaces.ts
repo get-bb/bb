@@ -790,11 +790,11 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Register bb.experimental_machines with a display name and an optional glyph, plugin-relative SVG, declared icon, or React icon; omit it to make created machines look like ordinary enrolled machines",
           "Declare a git-remote requirement, Standard Schema inputs, availability and validation; core parses and persists inputs before create",
           "Keep secrets in plugin settings because persisted machine inputs are readable by every plugin; pass only non-secret configuration or references",
-          "Expose picker sugar that creates the machine and then asks one environment provider for the checkout",
+          "Expose optional picker sugar that creates the machine and then asks one environment provider for the checkout; without environmentRow, thread --new-machine requires --environment-provider",
           "Create standalone machines with a nullable project for the Machines page and bb SDK, without promising that a project source was enrolled",
           "Make create idempotent by its durable key so a restart after enrolment recovers the same machine",
           "Prepare versioned single-use enrollment bundles with enrollments.prepare (also prepareEnrollment), waitForConnection and cancel; keys retain host identity across retries",
-          "Compose installerCommand argv plus private stdin, or bootstrap over a MachineExecutor; never put credentials in resource JSON or output",
+          "Compose synchronous installerCommand argv plus private stdin, or bootstrap over a MachineExecutor; never put credentials in resource JSON or output",
           "Bootstrap preinstalled or installed daemons and restart an enrolled identity after snapshot restore",
           "Stream progress and honor abort signals for create, suspend, resume and remove",
           "Prepare enrollment, then await create.checkpoint(resource) immediately after allocation so cancellation can remove it without waiting for bootstrap; never checkpoint the bootstrap bundle",
@@ -845,7 +845,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         tagline: "Connect machines to their server",
         title: "Machine server access",
         summary:
-          "Register a server access provider for enrolment and ongoing machine runtime requests.",
+          "Registers server access for enrolment and ongoing machine runtime requests. With this, a plugin can:",
         bullets: [
           "Register bb.experimental_serverAccess with availability, idempotent acquire and release",
           "Return a direct URL or a bb Cloud machine code; never persist credentials in machine resources",

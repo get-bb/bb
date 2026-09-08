@@ -218,6 +218,44 @@ describe("surface card copy", () => {
     );
   });
 
+  it("maps enrollment helpers and checkpointed allocation to the machine surface", () => {
+    const machines = SURFACES_BY_ID.get("machine-providers");
+    expect(machines?.apiSymbols).toEqual(
+      expect.arrayContaining([
+        "EnrollmentBootstrap",
+        "MachineEnrollment",
+        "MachineExecutorRequest",
+        "MachineExecutor",
+        "MachineEnrollmentRequest",
+        "MachineConnectionRequest",
+        "MachineEnrollments",
+        "MachineBootstrapRequest",
+        "MachineInstallerCommand",
+        "MachineBootstrapApi",
+        "PluginMachineProviderCreateContext",
+        "PluginMachineProviderInputsProps",
+        "PluginMachineProviderInputsChange",
+        "PluginMachineProviderInputsRegistration",
+      ]),
+    );
+    expect(machines?.bullets.join(" ")).toContain(
+      "await create.checkpoint(resource)",
+    );
+    expect(machines?.bullets.join(" ")).toContain(
+      "never checkpoint the bootstrap bundle",
+    );
+    expect(machines?.bullets.join(" ")).toContain("--environment-provider");
+    expect(SURFACES_BY_ID.get("server-access")?.apiSymbols).toEqual(
+      expect.arrayContaining([
+        "PluginServerAccess",
+        "ServerAccessProviderDeclaration",
+        "ServerAccessGrant",
+        "ServerAccessClient",
+        "ServerAccessSelection",
+      ]),
+    );
+  });
+
   it("follows the lead-then-bullets template", () => {
     for (const group of SURFACE_GROUPS) {
       for (const surface of group.surfaces) {

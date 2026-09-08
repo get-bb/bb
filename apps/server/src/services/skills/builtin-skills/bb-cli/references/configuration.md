@@ -68,3 +68,13 @@
   machines only when more than one is enrolled.
 - `bb skill cli-skills-status` reports per machine whether the installed copy is
   `installed`, `outdated`, `missing`, or `unknown` (disconnected or unreachable).
+
+## Machine access and isolated data
+
+General `machineServerUrl` is the URL reachable by machines; unset uses
+`BB_EXTERNAL_URL`. `defaultMachineAccess` selects an access provider; unset
+prefers paired Connect, then direct when a URL exists. Inspect effective values
+with `bb settings show --json` and change them with `bb settings general`.
+`BB_DATA_DIR` selects isolated enrollment state. Local machine lifecycle commands
+treat it as an ownership assertion and refuse the default BB installation; see
+thread-creation.md and docs/configuration.md for the directory constraints.

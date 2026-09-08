@@ -512,14 +512,22 @@ describe("bb-plugin-authoring skill", () => {
   const skillEntry = readFileSync(SKILL_PATH, "utf8");
   const skill = readSkillTree();
 
-  it("does not advertise unshipped machine providers", () => {
-    for (const doc of [
-      skillEntry,
-      readReference("frontend-renderer-slots.md"),
-      readReference("backend-events.md"),
-    ]) {
-      expect(doc).not.toMatch(/machine providers?|custom-machine/);
-    }
+  it("documents machine creation checkpoints and private bootstrap delivery", () => {
+    expect(skillEntry).toContain("machine providers");
+    const backend = readReference("backend-events.md");
+    expect(backend).toContain("prepareEnrollment({ key })");
+    expect(backend).toContain("await checkpoint(resource)");
+    expect(backend).toContain("bb.experimental_machines.bootstrap({");
+    expect(backend).toMatch(/Never put the\s+bootstrap bundle in resource JSON/);
+    expect(backend.indexOf("prepareEnrollment({ key })")).toBeLessThan(
+      backend.indexOf("await checkpoint(resource)"),
+    );
+    expect(backend.indexOf("await checkpoint(resource)")).toBeLessThan(
+      backend.indexOf("bb.experimental_machines.bootstrap({"),
+    );
+    expect(readReference("frontend-renderer-slots.md")).toContain(
+      "app.slots.experimental_machineProviderInputs",
+    );
   });
 
   it("has frontmatter naming the skill after its directory", () => {

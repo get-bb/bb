@@ -172,3 +172,15 @@ path-shaped `baseUrl`. Append individually encoded relative path segments to
 serve browser assets from that confined host root. This is the preferred
 transport for plugin images and sandboxed HTML with sibling-relative assets;
 preview URLs expire and never reveal the host id or absolute root.
+
+## Standalone machines
+
+`bb.sdk.hosts.listProviders({ projectId? })` discovers machine providers and their
+input schemas. `bb.sdk.hosts.create({ machineProviderId, projectId, inputs, key?,
+signal? })` returns a public Host; use `projectId: null` for a global machine and
+`inputs: null` only when the provider accepts no inputs. Supply a stable key for
+idempotent retries. Creation does not create an environment or a thread.
+`bb.sdk.hosts.suspend({ hostId })` and `resume({ hostId })` require the provider's
+paired suspend/resume operations. `retryCleanup({ hostId })` retries failed
+provider teardown. `get({ hostId })` additionally returns nullable
+`connectMachineId` for access revocation; Host lists do not expose that detail.

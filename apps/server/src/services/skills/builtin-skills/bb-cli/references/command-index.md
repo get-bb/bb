@@ -62,7 +62,12 @@ This index lists every command path that the core CLI registers. Read the task-s
 ## machine
 
 - `bb machine`
-- `bb machine providers`
+- `bb machine providers [--project <id>] [--json]`
+- `bb machine enroll --bootstrap-file <path>` or `--bootstrap-env <NAME>`
+- `bb machine start --host-id <id> [--server-url <url>] [--data-dir <path>]`
+- `bb machine stop --host-id <id> [--server-url <url>] [--data-dir <path>]`
+- `bb machine uninstall --host-id <id> [--server-url <url>] [--data-dir <path>]`
+- `bb machine create --provider <id> [--key <idempotency-key>] [--inputs <JSON>] [--project <id-or-name>] [--json]`
 - `bb machine list`
 - `bb machine show`
 - `bb machine join-code`
@@ -75,6 +80,11 @@ This index lists every command path that the core CLI registers. Read the task-s
 - `bb machine provider-cli`
 - `bb machine provider-cli status`
 - `bb machine provider-cli install`
+
+`bb thread spawn --new-machine <provider-id>` creates a machine for a new
+environment. Add `--environment-provider <id>` when the machine provider has no
+`environmentRow` (including SSH). `--machine-inputs <json>` configures the machine;
+`--environment-inputs <json>` configures the workspace. Neither carries secrets.
 
 ## updates
 
