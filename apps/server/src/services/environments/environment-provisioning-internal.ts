@@ -8,6 +8,7 @@ import {
   getAppSettings,
   getEnvironment,
   getThread,
+  isSqliteUniqueConstraintOnColumns,
   listStoredThreadProvisioningRowsByProvisioningId,
   threads,
 } from "@bb/db";
@@ -586,19 +587,37 @@ export function settleEnvironmentProvisionCommandResult(
     .all();
 
   if (args.report.ok) {
-    recordProvisionedEnvironmentWorkspace(
-      args.deps.db,
-      args.deps.hub,
-      args.command.environmentId,
-      {
-        path: args.report.result.path,
-        isGitRepo: args.report.result.isGitRepo,
-        isWorktree: args.report.result.isWorktree,
-        branchName: args.report.result.branchName,
-        defaultBranch: args.report.result.defaultBranch,
-        ...resolveProvisionedEnvironmentBranchMetadata(args.command),
-      },
-    );
+    try {
+      recordProvisionedEnvironmentWorkspace(
+        args.deps.db,
+        args.deps.hub,
+        args.command.environmentId,
+        {
+          path: args.report.result.path,
+          isGitRepo: args.report.result.isGitRepo,
+          isWorktree: args.report.result.isWorktree,
+          branchName: args.report.result.branchName,
+          defaultBranch: args.report.result.defaultBranch,
+          ...resolveProvisionedEnvironmentBranchMetadata(args.command),
+        },
+      );
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        isSqliteUniqueConstraintOnColumns(error, {
+          columnNames: ["project_id", "host_id", "path"],
+          indexName: "environments_project_host_path_idx",
+          tableName: "environments",
+        })
+      ) {
+        throw new ApiError(
+          409,
+          "invalid_request",
+          "Workspace path is already attached to another environment",
+        );
+      }
+      throw error;
+    }
     const provisionedOutcome =
       applyLoggedEnvironmentLifecycleEventInTransaction(args.deps, {
         environmentId: args.command.environmentId,
