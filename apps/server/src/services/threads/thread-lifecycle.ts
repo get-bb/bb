@@ -270,6 +270,7 @@ interface InterruptActiveThreadsResult {
 interface ReconcileDaemonReportedThreadsArgs {
   activeThreadIds: readonly string[];
   hostId: string;
+  sameDaemonInstance: boolean;
 }
 
 interface DispatchSettledArchivedThreadProviderArchiveCommandArgs {
@@ -1868,6 +1869,7 @@ export async function reconcileDaemonReportedThreads(
       threadId: thread.id,
     })),
     reason: "host-daemon-restarted",
+    cause: args.sameDaemonInstance ? "host-connection-lost" : undefined,
   });
 
   if (args.activeThreadIds.length === 0) {
