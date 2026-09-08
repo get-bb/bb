@@ -163,6 +163,12 @@ Contract:
 - POSIX only — supported on macOS, Linux, and WSL2. Native Windows isn't
   supported; bb reports that POSIX shell scripts are unsupported on Windows.
 
+Hook operation IDs and their started/finished state are saved per launch attempt.
+After a server restart, bb reconciles the original daemon operation instead of
+starting setup again. If an RPC disconnects, cleanup cancels the operation and
+waits for its process group to terminate before releasing the path. An
+unreachable daemon or unknown operation leaves cleanup pending for retry.
+
 ## If something isn't working
 
 A few quick checks:

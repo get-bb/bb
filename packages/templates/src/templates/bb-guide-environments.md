@@ -29,9 +29,10 @@ Making your repo work with bb:
   variable are removed, and bb does not inject BB_PROJECT_ID, BB_ENVIRONMENT_ID,
   or BB_SOURCE_PATH.
 
-  The hook runs only for newly-created managed worktree environments. It does
-  not run for direct/project-checkout environments, personal scratch workspaces,
-  or reconnecting an existing managed worktree.
+  Core runs hooks only after create confirms ownsPath: true. Attached project
+  checkouts and personal workspaces never run hooks. Setup identity and state
+  persist per launch attempt; server restart reconciles the same daemon
+  operation instead of executing setup twice.
 
   A non-zero exit, timeout, signal, or cancellation fails provisioning and bb
   removes the new worktree. Keep optional setup steps non-fatal inside the
@@ -47,8 +48,10 @@ Making your repo work with bb:
 
   Teardown has a separate 15-minute timeout. A non-zero exit, timeout, or
   signal reports failure in the destroy transcript, but bb removes the
-  worktree regardless. The teardown hook runs only when bb destroys managed
-  worktrees. It does not run for unmanaged or personal environments.
+  worktree after script termination. If transport fails, bb cancels the hook
+  and confirms its process group has stopped before releasing the workspace.
+  An unreachable daemon or unknown operation leaves cleanup pending for retry.
+  Teardown only runs for paths whose ownership was confirmed by create.
 
   New worktrees do not contain untracked files such as .env.local. To copy
   them from the source checkout, commit a .worktreeinclude file at the repo

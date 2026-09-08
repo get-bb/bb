@@ -1,4 +1,7 @@
-import { runEnvironmentHook } from "./environment-hooks.js";
+import {
+  cancelPendingEnvironmentHook,
+  runEnvironmentHook,
+} from "./environment-hooks.js";
 import { canonicalEnvironmentPath } from "./path-admission.js";
 import {
   createMetadataPendingContext,
@@ -74,7 +77,7 @@ const createResultSchema = z.discriminatedUnion("status", [
   z.object({
     status: z.literal("created"),
     path: z.string().min(1),
-    ownsPath: z.boolean(),
+    ownsPath: z.boolean().default(false),
     mergeBaseBranch: z.string().min(1).optional(),
     resource: resourceSchema.optional(),
   }),
@@ -225,50 +228,59 @@ async function runCreate(
       context.environment === null
         ? null
         : getEnvironment(deps.db, context.environment.id);
-    const result = await invokeCreate(
-      record,
-      {
-        thread: context.thread,
-        project: context.project,
-        host: context.host,
-        projectCheckout: context.projectCheckout,
-        gitRemote: context.gitRemote,
-        inputs: context.inputs,
-        suggestedBranchName: context.suggestedBranchName,
-        pathKey: launch.pathKey,
-        attempt: launch.attempt,
-        rebuild: previous !== null,
-        experimental_claimPath: async (value) => {
-          const path = z
-            .string()
-            .min(1)
-            .startsWith("/")
-            .refine((path) => !path.includes("\0"))
-            .parse(value);
-          const canonical = await canonicalEnvironmentPath(
-            deps,
-            context.host.id,
-            path,
-          );
-          if (controller.signal.aborted) return false;
-          return claimEnvironmentLaunchPath(deps.db, launch, canonical);
-        },
-        previous:
-          previous === null
-            ? null
-            : {
-                environment: toEnvironmentResponse(previous),
-                resource:
-                  previous.teardownStatus === "removed"
-                    ? null
-                    : previous.resource,
+    const result =
+      launch.ownsPath && launch.path !== null
+        ? {
+            status: "created" as const,
+            path: launch.path,
+            ownsPath: true,
+            mergeBaseBranch: launch.mergeBaseBranch ?? undefined,
+            resource: launch.resource ?? undefined,
+          }
+        : await invokeCreate(
+            record,
+            {
+              thread: context.thread,
+              project: context.project,
+              host: context.host,
+              projectCheckout: context.projectCheckout,
+              gitRemote: context.gitRemote,
+              inputs: context.inputs,
+              suggestedBranchName: context.suggestedBranchName,
+              pathKey: launch.pathKey,
+              attempt: launch.attempt,
+              rebuild: previous !== null,
+              experimental_claimPath: async (value) => {
+                const path = z
+                  .string()
+                  .min(1)
+                  .startsWith("/")
+                  .refine((path) => !path.includes("\0"))
+                  .parse(value);
+                const canonical = await canonicalEnvironmentPath(
+                  deps,
+                  context.host.id,
+                  path,
+                );
+                if (controller.signal.aborted) return false;
+                return claimEnvironmentLaunchPath(deps.db, launch, canonical);
               },
-        report: launchReporter(deps, record, launch),
-        signal: controller.signal,
-      },
-      record.provider.policy.createTimeoutMs,
-      controller,
-    );
+              previous:
+                previous === null
+                  ? null
+                  : {
+                      environment: toEnvironmentResponse(previous),
+                      resource:
+                        previous.teardownStatus === "removed"
+                          ? null
+                          : previous.resource,
+                    },
+              report: launchReporter(deps, record, launch),
+              signal: controller.signal,
+            },
+            record.provider.policy.createTimeoutMs,
+            controller,
+          );
     if (result.status === "created") {
       mutateLaunch(deps, launch, ["creating", "cancelled"], (row) => {
         row.hostId = context.host.id;
@@ -280,6 +292,7 @@ async function runCreate(
       controller.signal.throwIfAborted();
       if (result.ownsPath) {
         await runEnvironmentHook(deps, {
+          id: `launch:${launch.threadId}:${launch.attempt}:setup`,
           hostId: context.host.id,
           path: result.path,
           kind: "setup",
@@ -474,7 +487,7 @@ export function askProviderLaunch(
       hostId: context.host.id,
       path: null,
       claimPath: null,
-      ownsPath: true,
+      ownsPath: false,
       mergeBaseBranch: null,
       resource: null,
       stepText: `${context.environment === null ? "Preparing" : "Restoring"} ${record.provider.displayName}…`,
@@ -557,8 +570,13 @@ async function runCancel(
     throw new Error(
       `Environment provider "${launch.providerId}" is unavailable.`,
     );
+  await cancelPendingEnvironmentHook(
+    deps,
+    `launch:${launch.threadId}:${launch.attempt}:setup`,
+  );
   if (launch.ownsPath && launch.hostId !== null && launch.path !== null) {
     await runEnvironmentHook(deps, {
+      id: `launch:${launch.threadId}:${launch.attempt}:teardown`,
       hostId: launch.hostId,
       path: launch.path,
       kind: "teardown",
@@ -691,6 +709,7 @@ async function runRemove(
   try {
     if (row.providerOwnsPath && row.hostId !== null && row.path !== null) {
       await runEnvironmentHook(deps, {
+        id: `environment:${environmentId}:${row.environmentProviderInstanceKey}:teardown`,
         hostId: row.hostId,
         path: row.path,
         kind: "teardown",
@@ -962,7 +981,7 @@ export function persistPendingProviderRequest(
     hostId: intent.machine.hostId,
     path: null,
     claimPath: null,
-    ownsPath: true,
+    ownsPath: false,
     mergeBaseBranch: null,
     resource: null,
     stepText: "Waiting for the environment provider",

@@ -1,10 +1,12 @@
 import {
+  isProcessGroupAlive,
   killProcessGroup,
   sanitizeInheritedChildProcessEnv,
   spawnPortableOutputProcess,
   supportsProcessGroups,
 } from "@bb/process-utils";
 import fs from "node:fs/promises";
+import { setTimeout as delay } from "node:timers/promises";
 import path from "node:path";
 import { WorkspaceError } from "bb-environment-provider-host/git";
 import { createTerminalOutputLineReader } from "bb-environment-provider-host/terminal-output";
@@ -18,8 +20,6 @@ import {
 
 export const DEFAULT_ENV_SETUP_SCRIPT_NAME = ".bb-env-setup.sh";
 export const DEFAULT_ENV_TEARDOWN_SCRIPT_NAME = ".bb-env-teardown.sh";
-
-const SETUP_SCRIPT_ABORT_KILL_GRACE_MS = 2_000;
 
 export interface RunSetupScriptArgs {
   workspacePath: string;
@@ -136,7 +136,6 @@ async function runLifecycleScript(
   const outputChunks: string[] = [];
   const outputLineReader = createTerminalOutputLineReader();
   let outputIndex = 0;
-  let abortKillTimeout: ReturnType<typeof setTimeout> | undefined;
   let abortRequested = false;
   let timedOut = false;
 
@@ -165,10 +164,7 @@ async function runLifecycleScript(
       return;
     }
     abortRequested = true;
-    killProcessGroup({ child, signal: "SIGTERM" });
-    abortKillTimeout = setTimeout(() => {
-      killProcessGroup({ child, signal: "SIGKILL" });
-    }, SETUP_SCRIPT_ABORT_KILL_GRACE_MS);
+    killProcessGroup({ child, signal: "SIGKILL" });
   };
   args.signal?.addEventListener("abort", abortLifecycleScript, {
     once: true,
@@ -185,6 +181,9 @@ async function runLifecycleScript(
       child.on("error", reject);
       child.on("close", (exitCode, signal) => resolve({ exitCode, signal }));
     });
+
+    if (abortRequested || timedOut)
+      while (isProcessGroupAlive(child)) await delay(25);
 
     const output = outputChunks.join("");
     emitScriptOutputLines(outputLineReader.flush());
@@ -257,9 +256,6 @@ async function runLifecycleScript(
     return { ran: true, exitCode: result.exitCode ?? 0, output };
   } finally {
     clearTimeout(timeout);
-    if (abortKillTimeout) {
-      clearTimeout(abortKillTimeout);
-    }
     args.signal?.removeEventListener("abort", abortLifecycleScript);
   }
 }

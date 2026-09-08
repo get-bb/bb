@@ -107,6 +107,7 @@ interface RegisterTestHostRpcCaptureArgs {
   onEnvironmentHook?: (
     command: Extract<HostDaemonRpcCommand, { type: "environment.hook.run" }>,
   ) => Promise<void>;
+  onEnvironmentHookCancel?: (operationId: string) => Promise<void>;
   gitBranchOptionsResult?: HostDaemonOnlineRpcResult<"host.list_branch_options">;
   onListBranchOptions?: (
     command: Extract<
@@ -381,7 +382,7 @@ export function registerTestHostRpcCapture(
           .then(() =>
             command.type === "environment.hook.run"
               ? args.onEnvironmentHook?.(command)
-              : undefined,
+              : args.onEnvironmentHookCancel?.(command.operationId),
           )
           .then(
             () =>
