@@ -34,3 +34,16 @@ pnpm exec turbo run typecheck test --filter=bb-plugin-environment-ssh-machine
 ```
 
 The plugin depends on the public bootstrap helper and the core installer-provided `~/.local/bin/bb` lifecycle entrypoint. Its tests use a fake public plugin host, a fake SSH executable, and temporary files; they do not contact SSH targets or external vendors.
+
+## Icon
+
+SSH has no vendor logo. The provider and plugin catalog use the app's existing
+`Terminal` named glyph, which the shared icon map resolves to Hugeicons'
+`ComputerTerminal01Icon` from `@hugeicons/core-free-icons`.
+[Official icon](https://hugeicons.com/icon/computer-terminal-01-stroke-rounded)
+and [official package](https://www.npmjs.com/package/@hugeicons/core-free-icons).
+Its square 24 × 24 viewBox and `currentColor` strokes render in both themes
+through the host's named-icon support, with no additional SVG asset or CSS
+to scope. The installed official package (4.1.3) declares the MIT license;
+Hugeicons retains its copyright. This plugin reuses the host dependency and
+does not redistribute a separate copy of the glyph.

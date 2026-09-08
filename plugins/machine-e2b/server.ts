@@ -60,6 +60,7 @@ export function createE2BPlugin(deps: {
     bb.experimental_machines.register({
       id: "e2b",
       displayName: "E2B",
+      icon: "./e2b-logo.svg",
       environmentRow: {
         displayName: "E2B",
         environmentProviderId: "project-checkout",

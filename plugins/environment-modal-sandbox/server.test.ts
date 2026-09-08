@@ -81,7 +81,6 @@ function createBackend(
     return {
       sandboxId: state.id,
       async exec(command) {
-        const script = command.at(-1) ?? "";
         if (command[0] === "bootstrap-test") state.connected = true;
         if (command.join(" ").includes("machine stop --host-id"))
           state.connected = false;

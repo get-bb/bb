@@ -43,6 +43,7 @@ export function createSshMachinePlugin(deps: {
     bb.experimental_machines.register({
       id: SSH_MACHINE_PROVIDER_ID,
       displayName: "SSH machine",
+      icon: "Terminal",
       inputs: sshMachineInputsSchema,
       policy: {
         idleSuspendMs: null,

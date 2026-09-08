@@ -12,13 +12,14 @@
     "description": "Run resumable bb machines in E2B sandboxes",
     "server": "./server.ts",
     "branding": {
-      "icon": "PackageReceive"
+      "icon": "./e2b-logo.svg"
     }
   },
   "keywords": [
     "bb-plugin"
   ],
   "scripts": {
+    "lint": "oxlint .",
     "test": "vitest run --config vitest.config.ts",
     "typecheck": "tsc --noEmit"
   },

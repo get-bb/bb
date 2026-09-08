@@ -86,3 +86,20 @@ The daemon installer does not install an agent CLI. Preinstall the chosen agent
 in the image/template, or run `bb machine provider-cli install <host-id> codex`
 and retry the thread. Account Pooler can supply runtime authentication through
 the selected server-access grant.
+
+## Logo and trademark
+
+`digitalocean-logo.svg` uses the official DO icon from
+[DigitalOcean's press page](https://www.digitalocean.com/press), specifically
+`DO Logo Assets/SVG/DO_Logo_icon_black.svg` in its
+[logo archive](https://web-platforms.sfo2.cdn.digitaloceanspaces.com/DO%20Logo%20Assets.zip).
+The geometry and square viewBox are preserved; editor metadata and redundant
+groups are removed, and the single fill inherits `currentColor` for both themes.
+
+The archive contains no separate logo license. DigitalOcean's
+[Trademark Usage Guidelines](https://www.digitalocean.com/legal/trademark-usage-guidelines)
+reserve the marks, require accurate identification without implied endorsement,
+and require express permission for logo use except as authorized by those
+guidelines. The mark identifies the service this plugin integrates with; it is
+not covered by bb's code license. This product is not affiliated with or
+endorsed by DigitalOcean, LLC.

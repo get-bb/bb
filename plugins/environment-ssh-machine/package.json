@@ -11,7 +11,7 @@
     "name": "SSH machine",
     "description": "Add machines from the bb server's SSH config",
     "branding": {
-      "icon": "Laptop"
+      "icon": "Terminal"
     },
     "server": "./server.ts",
     "app": "./app.tsx"
@@ -20,6 +20,7 @@
     "bb-plugin"
   ],
   "scripts": {
+    "lint": "oxlint .",
     "test": "vitest run --config vitest.config.ts",
     "typecheck": "tsc --noEmit"
   },

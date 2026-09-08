@@ -81,3 +81,22 @@ The daemon installer does not install an agent CLI. Preinstall the chosen agent
 in the image/template, or run `bb machine provider-cli install <host-id> codex`
 and retry the thread. Account Pooler can supply runtime authentication through
 the selected server-access grant.
+
+## Logo and trademark
+
+`e2b-logo.svg` is E2B's official E mark, as used by the
+[E2B GitHub organization](https://github.com/e2b-dev)
+([avatar source](https://avatars.githubusercontent.com/u/129434473?v=4)).
+The vector geometry is the matching E path from the inline logo on
+[E2B's official website](https://e2b.dev/), centered in a square viewBox with a
+single `currentColor` fill. No raster tracing or editor metadata is included.
+The website's “Download logo (SVG/PNG)” link points to this
+[brand-kit folder](https://drive.google.com/drive/folders/1g2qqdm65_Dqp-OWF5apKBrCiS__lbtK0),
+which returned 404 when checked on 2026-09-07; the official organization avatar
+is the source for the standalone mark choice.
+
+No separate logo license accompanies the avatar or inline SVG. E2B's
+[terms, Intellectual Property](https://e2b.dev/terms) reserve its logos and
+trademarks; the repository's code license is not a trademark license. The mark
+is included only to identify the integrated service, remains E2B's property,
+and does not imply E2B's endorsement or grant separate reuse rights.

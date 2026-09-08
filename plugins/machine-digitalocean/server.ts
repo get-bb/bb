@@ -81,6 +81,7 @@ export function createDigitalOceanPlugin(deps: {
     bb.experimental_machines.register({
       id: "digitalocean",
       displayName: "DigitalOcean",
+      icon: "./digitalocean-logo.svg",
       environmentRow: {
         displayName: "DigitalOcean",
         environmentProviderId: "project-checkout",

@@ -293,7 +293,7 @@ describe("SSH machine provider", () => {
     ).toEqual({ status: "available" });
     expect(await f.harness.behavior.callRpc("listTargets", null)).toEqual([]);
     expect(f.provider.policy.retire).toEqual({ after: "never" });
-    expect(f.provider.icon).toBeNull();
+    expect(f.provider.icon).toBe("Terminal");
     expect(f.provider.environmentRow).toBeNull();
     expect(f.provider.suspend).toBeNull();
   });
