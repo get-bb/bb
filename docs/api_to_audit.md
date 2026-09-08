@@ -2754,3 +2754,15 @@ launch. With `scope: "thread"`, `id` identifies a thread and the server resolves
 its current launch through the machine replacement history on every request.
 Consumed original launches remain unavailable through launch scope. The thread
 picker uses thread scope; machine creation and CLI follow use launch scope.
+## `PluginCliResult.experimental_continue` and `experimental_PluginRpcConflict`
+
+`experimental_continue: {argv, delayMs}` asks the invoking CLI to print the
+current bounded response and request the next page, waiting at most 60 seconds.
+Interrupting the client stops reading without cancelling a durable job.
+`experimental_PluginRpcConflict(message, latestRevision)` returns a typed
+`conflict` error and HTTP 409; `latestRevision` is null for a key conflict.
+
+Before stabilization, verify interruption and reconnect behavior across remote
+CLIs, validate continuation bounds at both boundaries, and confirm revision and
+idempotency conflicts need the same error shape. These surfaces do not add
+server/daemon wire fields.

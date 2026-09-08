@@ -2215,6 +2215,24 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
         return normalizeRpcJsonResult(parsedOutput);
       });
       if (outcome.ok) return { ok: true, result: outcome.value };
+      if (
+        outcome.cause instanceof Error &&
+        outcome.cause.name === "experimental_PluginRpcConflict" &&
+        "latestRevision" in outcome.cause &&
+        (outcome.cause.latestRevision === null ||
+          (typeof outcome.cause.latestRevision === "number" &&
+            Number.isSafeInteger(outcome.cause.latestRevision) &&
+            outcome.cause.latestRevision >= 0))
+      ) {
+        return {
+          ok: false,
+          error: {
+            code: "conflict",
+            message: outcome.cause.message,
+            latestRevision: outcome.cause.latestRevision,
+          },
+        };
+      }
       if (outcome.cause instanceof PluginRpcBoundaryError) {
         return { ok: false, error: outcome.cause.rpcError };
       }
@@ -2276,6 +2294,9 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
           return enforcePluginCliOutputLimit(
             {
               exitCode: result.exitCode,
+              ...(result.experimental_continue
+                ? { experimental_continue: result.experimental_continue }
+                : {}),
               stdout: typeof result.stdout === "string" ? result.stdout : "",
               stderr: typeof result.stderr === "string" ? result.stderr : "",
             },

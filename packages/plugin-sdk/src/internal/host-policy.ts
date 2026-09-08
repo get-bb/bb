@@ -2043,6 +2043,14 @@ export function enforcePluginCliOutputLimit(
   result: Omit<PluginCliExecutionResult, "error">,
   jsonOutput: boolean,
 ): PluginCliExecutionResult {
+  if (result.experimental_continue !== undefined) {
+    z.object({
+      argv: z.array(z.string().max(262144)).max(100),
+      delayMs: z.number().int().min(0).max(60000),
+    })
+      .strict()
+      .parse(result.experimental_continue);
+  }
   const stdoutBytes = Buffer.byteLength(result.stdout, "utf8");
   const stderrBytes = Buffer.byteLength(result.stderr, "utf8");
   const totalBytes = stdoutBytes + stderrBytes;

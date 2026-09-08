@@ -3267,7 +3267,7 @@ importers:
   plugins/environment-modal-sandbox:
     dependencies:
       modal:
-        specifier: ^0.10.0
+        specifier: 0.10.0
         version: 0.10.0
       zod:
         specifier: 4.3.6
@@ -3279,6 +3279,9 @@ importers:
       '@types/node':
         specifier: ^22.0.0
         version: 22.19.10
+      better-sqlite3:
+        specifier: ^12.6.2
+        version: 12.10.0
       typescript:
         specifier: npm:@typescript/typescript6@^6.0.2
         version: '@typescript/typescript6@6.0.2'

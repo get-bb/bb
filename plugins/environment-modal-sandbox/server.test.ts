@@ -1,3 +1,5 @@
+import { Catalogue } from "./catalogue/store.js";
+import { hash, recipeInputSchema } from "./catalogue/model.js";
 import type { BbPluginApi, JsonValue } from "@get-bb/plugin-sdk";
 import type {
   PluginMachineProviderCreateContext,
@@ -206,9 +208,59 @@ async function setup(
   });
   await createModalSandboxPlugin({
     backendFactory: () => backend.backend,
+    imageBackendFactory: () => ({
+      accountIdentity: async () => hash("modal-account"),
+      build: async () => "im-built",
+      reconcile: async () => "im-built",
+      resolve: async (id) => id,
+      delete: async () => {},
+    }),
     now: () => Date.now(),
     sleep: async () => {},
   })(fake.bb);
+  const store = new Catalogue(fake.bb.storage.database(), fake.bb.storage);
+  const recipe = store.putRecipe(
+    recipeInputSchema.parse({
+      projectId: PROJECT.id,
+      expectedRevision: 0,
+      dockerfileText: "RUN true",
+    }),
+  );
+  const context = store.putContext(PROJECT.id, {
+    recipeId: recipe.recipeId,
+    revision: 1,
+    source: {
+      hostId: "local",
+      path: "/project",
+      commit: "a".repeat(40),
+      dirty: [],
+      submodules: [],
+      lfs: [],
+    },
+    reviewedDirty: [],
+    files: [],
+  });
+  store.completeContext(context.contextId);
+  const { build } = store.start(
+    {
+      projectId: PROJECT.id,
+      recipeId: recipe.recipeId,
+      revision: 1,
+      contextId: context.contextId,
+      key: "test",
+    },
+    hash("modal-account"),
+    "bb-sandboxes",
+  );
+  store.db
+    .prepare("DELETE FROM build_requests WHERE build_id=?")
+    .run(build.buildId);
+  store.db
+    .prepare(
+      "UPDATE builds SET id=?,data=json_set(data,'$.buildId',?) WHERE id=?",
+    )
+    .run("test-build", "test-build", build.buildId);
+  store.ready("test-build", "im-built", {});
   const provider = fake.harness.registrations.machineProviders.get(PROVIDER_ID);
   if (provider === undefined)
     throw new Error("machine provider not registered");
@@ -227,7 +279,7 @@ function createContext(
   return {
     project: PROJECT,
     gitRemote: null,
-    inputs: null,
+    inputs: { buildId: "test-build" },
     key,
     attempt: 1,
     report,
@@ -284,7 +336,7 @@ describe("Modal machine provider", () => {
     expect(harness.bootstrap).toHaveBeenLastCalledWith({
       key: "modal-machine-key",
       executor: { exec: expect.any(Function) },
-      daemon: { kind: "install" },
+      daemon: { kind: "preinstalled" },
       report,
       signal: expect.any(AbortSignal),
     });
@@ -376,8 +428,8 @@ describe("Modal machine provider", () => {
         }),
       ).rejects.toThrow("cancelled");
       const resource = checkpoint.mock.calls[0]?.[0];
-      expect(resource).toEqual({
-        version: 3,
+      expect(resource).toMatchObject({
+        version: 4,
         key: "modal-machine-key",
         sandboxId: "sandbox-1",
         snapshotImageId: null,
@@ -416,14 +468,18 @@ describe("Modal machine provider", () => {
     expect(test.backend.creates).toHaveLength(1);
   });
 
-  it("creates a projectless machine without assuming a checkout", async () => {
+  it("rejects projectless image launches before allocating", async () => {
     const harness = await setup();
     const result = await harness.provider.create({
       ...createContext(),
       project: null,
       gitRemote: null,
     });
-    expect(result).toMatchObject({ status: "created", hostId: HOST_ID });
+    expect(result).toMatchObject({
+      status: "failed",
+      message: "Modal image launches require a project",
+    });
+    expect(harness.backend.creates).toHaveLength(0);
   });
 
   it("suspends to a snapshot, resumes, and removes the machine resource", async () => {

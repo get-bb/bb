@@ -1267,3 +1267,12 @@ Core owns idle/dispatch/retirement; DigitalOcean retirement remains never.
 Powered-off droplets still bill; snapshot storage bills per GB. Official pricing:
 https://docs.digitalocean.com/products/droplets/details/pricing/ and
 https://docs.digitalocean.com/products/snapshots/details/pricing/ .
+
+## Modal project image configuration
+
+`bb modal project configure --project X --expected-revision N --json-input JSON`
+stores project CPU cores, memory MiB, and idle/lifetime/retention policy with CAS.
+Defaults are 1 core, 4096 MiB, 15 idle minutes, 1440 lifetime minutes, and 30
+retention days. The resource records preserve these values for later lifecycle
+policy enforcement. Recipes and uploaded build inputs belong to plugin storage,
+not repository files. See the Modal catalogue skill for the command contract.

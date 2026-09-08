@@ -1,6 +1,7 @@
 import { z } from "zod";
+import { policySchema, resourcesSchema } from "./catalogue/model.js";
 
-export const modalMachineResourceSchema = z
+const legacyResourceSchema = z
   .object({
     version: z.literal(3),
     key: z.string().min(1),
@@ -9,9 +10,24 @@ export const modalMachineResourceSchema = z
     pendingSnapshotImageIds: z.array(z.string().min(1)),
   })
   .strict();
-
+export const pinnedResourceSchema = legacyResourceSchema
+  .extend({
+    version: z.literal(4),
+    buildId: z.string().min(1),
+    imageId: z.string().min(1),
+    accountRef: z.literal("default"),
+    accountIdentity: z.string().min(1),
+    appName: z.string().min(1),
+    resources: resourcesSchema,
+    policy: policySchema,
+    expiresAt: z.number().nullable(),
+  })
+  .strict();
+export const modalMachineResourceSchema = z.union([
+  pinnedResourceSchema,
+  legacyResourceSchema,
+]);
 export type ModalMachineResource = z.infer<typeof modalMachineResourceSchema>;
-
 export function readModalMachineResource(value: unknown): ModalMachineResource {
   return modalMachineResourceSchema.parse(value);
 }

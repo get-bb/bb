@@ -13,7 +13,11 @@
     "branding": {
       "icon": "./modal-logo.svg"
     },
-    "server": "./server.ts"
+    "server": "./server.ts",
+    "host": "./host.ts",
+    "skills": [
+      "skills"
+    ]
   },
   "keywords": [
     "bb-plugin"
@@ -24,13 +28,14 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "modal": "^0.10.0",
+    "modal": "0.10.0",
     "zod": "^4.3.6"
   },
   "devDependencies": {
     "@get-bb/plugin-sdk": "workspace:*",
     "@types/node": "^22.0.0",
     "typescript": "npm:@typescript/typescript6@^6.0.2",
-    "vitest": "^4.1.1"
+    "vitest": "^4.1.1",
+    "better-sqlite3": "^12.6.2"
   }
 }

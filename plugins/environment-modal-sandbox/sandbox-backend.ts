@@ -32,7 +32,8 @@ export function createSandboxExecutor(sandbox: SandboxHandle) {
 
 export type SandboxImage =
   | { type: "registry"; reference: string }
-  | { type: "snapshot"; imageId: string };
+  | { type: "snapshot"; imageId: string }
+  | { type: "image"; imageId: string };
 
 export interface SandboxCreateRequest {
   appName: string;

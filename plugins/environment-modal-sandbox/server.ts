@@ -1,3 +1,11 @@
+import { createWorkerImageBackend } from "./catalogue/worker.js";
+export { runImageBuildWorker } from "./catalogue/worker.js";
+import type { ImageBackendFactory } from "./catalogue/backend.js";
+import {
+  createCatalogueService,
+  accountIdentity,
+} from "./catalogue/service.js";
+import { registerCatalogueCli } from "./catalogue/cli.js";
 import { z } from "zod";
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import type {
@@ -18,6 +26,7 @@ import {
 } from "./sandbox-backend.js";
 import {
   readModalMachineResource,
+  pinnedResourceSchema,
   type ModalMachineResource,
 } from "./lifecycle.js";
 
@@ -27,6 +36,8 @@ const allocationSchema = z
   .object({
     appName: z.string().min(1),
     sandboxId: z.string().min(1).nullable(),
+    resource: pinnedResourceSchema.nullable().default(null),
+    accountIdentity: z.string().nullable().default(null),
   })
   .strict();
 
@@ -43,6 +54,7 @@ function errorMessage(error: unknown): string {
 
 export interface ModalSandboxDeps {
   backendFactory: SandboxBackendFactory;
+  imageBackendFactory?: ImageBackendFactory;
   now: () => number;
   sleep: (delayMs: number) => Promise<void>;
 }
@@ -59,6 +71,18 @@ export function createModalSandboxPlugin(
     > {
       return resolveSettings(await settings.get());
     }
+
+    const catalogue = createCatalogueService(
+      bb,
+      async () => {
+        const resolved = await currentSettings();
+        if (!resolved.ok) throw new Error(resolved.message);
+        return resolved.settings;
+      },
+      deps.imageBackendFactory ?? createWorkerImageBackend(import.meta.url),
+      deps.now,
+    );
+    registerCatalogueCli(bb, catalogue);
 
     function backendFor(resolved: ResolvedSettings): SandboxBackend {
       const token = `${resolved.tokenId}:${resolved.tokenSecret}`;
@@ -102,17 +126,52 @@ export function createModalSandboxPlugin(
       }
       const backend = backendFor(resolved.settings);
       try {
+        if (!context.project)
+          throw new Error("Modal image launches require a project");
+        const { buildId } = z
+          .object({ buildId: z.string().min(1) })
+          .strict()
+          .parse(context.inputs);
+        const build = catalogue.store.build(buildId);
+        if (
+          build.projectId !== context.project.id ||
+          build.state !== "ready" ||
+          !build.imageId
+        )
+          throw new Error("Choose a ready build for this project");
+        if (
+          build.accountIdentity !==
+          (await accountIdentity(resolved.settings, catalogue.backendFactory))
+        )
+          throw new Error(
+            "Build belongs to a different Modal account; restore its account configuration",
+          );
+        if (
+          !(await catalogue
+            .backendFactory(resolved.settings)
+            .resolve(build.imageId))
+        )
+          throw new Error(
+            "Selected Modal image is missing; explicitly rebuild before launch",
+          );
+        const project = catalogue.store.project(context.project.id);
+        catalogue.store.reference(buildId, "allocation", context.key);
         context.signal.throwIfAborted();
         await bb.experimental_machines.prepareEnrollment({ key: context.key });
         context.signal.throwIfAborted();
-        let sandbox = await backend.fromName(
-          resolved.settings.appName,
-          context.key,
-        );
+        let sandbox = await backend.fromName(build.appName, context.key);
         const intentKey = `allocation/${context.key}`;
         const stored = await bb.storage.kv.get<unknown>(intentKey);
+        const intent =
+          stored === undefined ? null : allocationSchema.parse(stored);
+        if (
+          intent?.accountIdentity &&
+          intent.accountIdentity !== build.accountIdentity
+        )
+          throw new Error("Allocation account differs from the pinned account");
+        if (intent?.resource && intent.resource.buildId !== buildId)
+          throw new Error("Allocation key belongs to a different image build");
         if (sandbox === null && stored !== undefined) {
-          allocationSchema.parse(stored);
           return {
             status: "failed",
             failure: "transient",
@@ -123,23 +182,33 @@ export function createModalSandboxPlugin(
         if (sandbox === null) {
           context.signal.throwIfAborted();
           await bb.storage.kv.set(intentKey, {
-            appName: resolved.settings.appName,
+            appName: build.appName,
             sandboxId: null,
+            resource: null,
+            accountIdentity: build.accountIdentity,
           });
           context.report.step("Creating the Modal sandbox…");
           sandbox = await backend.create({
-            appName: resolved.settings.appName,
+            appName: build.appName,
             name: context.key,
-            image: { type: "registry", reference: resolved.settings.image },
+            image: { type: "image", imageId: build.imageId },
             environmentVariables: resolved.settings.environmentVariables,
-            timeoutMs: resolved.settings.timeoutMs,
-            cpu: resolved.settings.cpu,
-            memoryMiB: resolved.settings.memoryMiB,
+            timeoutMs: project.policy.lifetimeMinutes * 60000,
+            cpu: project.resources.cpuCores,
+            memoryMiB: project.resources.memoryMiB,
             tags: { bbMachineKey: context.key },
           });
         }
-        const allocation: ModalMachineResource = {
-          version: 3,
+        const allocation: ModalMachineResource = intent?.resource ?? {
+          version: 4,
+          buildId,
+          imageId: build.imageId,
+          accountRef: "default",
+          accountIdentity: build.accountIdentity,
+          appName: build.appName,
+          resources: project.resources,
+          policy: project.policy,
+          expiresAt: deps.now() + project.policy.lifetimeMinutes * 60000,
           key: context.key,
           sandboxId: sandbox.sandboxId,
           snapshotImageId: null,
@@ -147,14 +216,16 @@ export function createModalSandboxPlugin(
         };
         await context.checkpoint(allocation);
         await bb.storage.kv.set(intentKey, {
-          appName: resolved.settings.appName,
+          appName: build.appName,
           sandboxId: sandbox.sandboxId,
+          resource: allocation,
+          accountIdentity: build.accountIdentity,
         });
         context.signal.throwIfAborted();
         const { hostId } = await bb.experimental_machines.bootstrap({
           key: context.key,
           executor: createSandboxExecutor(sandbox),
-          daemon: { kind: "install" },
+          daemon: { kind: "preinstalled" },
           report: context.report,
           signal: context.signal,
         });
@@ -174,11 +245,22 @@ export function createModalSandboxPlugin(
       resource: ModalMachineResource,
       resolved: ResolvedSettings,
     ): Promise<SandboxHandle | null> {
+      if (
+        resource.version === 4 &&
+        resource.accountIdentity !==
+          (await accountIdentity(resolved, catalogue.backendFactory))
+      )
+        throw new Error(
+          "Restore the machine’s pinned Modal account before lifecycle operations",
+        );
       if (resource.sandboxId !== null) {
         const byId = await backendFor(resolved).fromId(resource.sandboxId);
         if (byId !== null) return byId;
       }
-      return backendFor(resolved).fromName(resolved.appName, resource.key);
+      return backendFor(resolved).fromName(
+        resource.version === 4 ? resource.appName : resolved.appName,
+        resource.key,
+      );
     }
 
     async function deletePendingSnapshots(
@@ -186,6 +268,14 @@ export function createModalSandboxPlugin(
       resolved: ResolvedSettings,
       checkpoint?: (resource: ModalMachineResource) => void,
     ): Promise<ModalMachineResource> {
+      if (
+        resource.version === 4 &&
+        resource.accountIdentity !==
+          (await accountIdentity(resolved, catalogue.backendFactory))
+      )
+        throw new Error(
+          "Restore the machine’s pinned Modal account before snapshot cleanup",
+        );
       let current = resource;
       for (const imageId of resource.pendingSnapshotImageIds) {
         if (imageId === resource.snapshotImageId) continue;
@@ -223,6 +313,7 @@ export function createModalSandboxPlugin(
           ? { status: "available" }
           : { status: "setup-required", message: resolved.message };
       },
+      inputs: z.object({ buildId: z.string().min(1) }).strict(),
       create: launch,
       async experimental_reconcileCleanup(context) {
         const stored = await bb.storage.kv.get<unknown>(
@@ -234,6 +325,15 @@ export function createModalSandboxPlugin(
         if (!resolved.ok)
           return { status: "failed", message: resolved.message };
         context.signal.throwIfAborted();
+        if (
+          intent.accountIdentity &&
+          intent.accountIdentity !==
+            (await accountIdentity(resolved.settings, catalogue.backendFactory))
+        )
+          return {
+            status: "failed",
+            message: "Restore the allocation’s pinned account before cleanup",
+          };
         const backend = backendFor(resolved.settings);
         const sandbox =
           intent.sandboxId === null
@@ -252,6 +352,7 @@ export function createModalSandboxPlugin(
           });
           await sandbox.terminate();
         }
+        catalogue.store.release("allocation", context.key);
         return { status: "removed" };
       },
       async suspend(context) {
@@ -329,16 +430,28 @@ export function createModalSandboxPlugin(
           }
           context.report.step("Restoring the Modal sandbox…");
           sandbox = await backendFor(resolved.settings).create({
-            appName: resolved.settings.appName,
+            appName:
+              resource.version === 4
+                ? resource.appName
+                : resolved.settings.appName,
             name: resource.key,
             image: {
               type: "snapshot",
               imageId: resource.snapshotImageId,
             },
             environmentVariables: resolved.settings.environmentVariables,
-            timeoutMs: resolved.settings.timeoutMs,
-            cpu: resolved.settings.cpu,
-            memoryMiB: resolved.settings.memoryMiB,
+            timeoutMs:
+              resource.version === 4
+                ? resource.policy.lifetimeMinutes * 60000
+                : resolved.settings.timeoutMs,
+            cpu:
+              resource.version === 4
+                ? resource.resources.cpuCores
+                : resolved.settings.cpu,
+            memoryMiB:
+              resource.version === 4
+                ? resource.resources.memoryMiB
+                : resolved.settings.memoryMiB,
             tags: { bbMachineKey: resource.key },
           });
         }
@@ -375,6 +488,7 @@ export function createModalSandboxPlugin(
           for (const imageId of snapshots) {
             await backendFor(resolved.settings).deleteSnapshot(imageId);
           }
+          catalogue.store.release("allocation", resource.key);
           return { status: "removed" };
         } catch (error) {
           return { status: "failed", message: errorMessage(error) };

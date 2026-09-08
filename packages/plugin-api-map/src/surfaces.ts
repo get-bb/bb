@@ -583,8 +583,15 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Be invoked the same way by a person at a terminal and by an agent mid-task",
           "Receive the thread and project it was invoked from, when bb knows them",
           "Make the plugin usable from scripts and automations, not only from the UI",
+          "Stream bounded pages with experimental_continue; disconnecting a reader leaves durable jobs running",
+          "Reject stale RPC revisions with experimental_PluginRpcConflict and HTTP 409",
         ],
-        apiSymbols: ["PluginCli"],
+        apiSymbols: [
+          "PluginCli",
+          "PluginCliResult",
+          "ExperimentalPluginCliContinuation",
+          "experimental_PluginRpcConflict",
+        ],
         firstParty: [
           "Automations",
           "Custom instructions",
