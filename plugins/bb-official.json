@@ -133,5 +133,9 @@
   "environment-personal-workspace": {
     "category": "environments",
     "screenshots": []
+  },
+  "environment-ssh-machine": {
+    "category": "environments",
+    "screenshots": []
   }
 }

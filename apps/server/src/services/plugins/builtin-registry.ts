@@ -160,6 +160,11 @@ export const BUILTIN_PLUGINS = [
 
 export const OFFICIAL_PLUGINS = [
   {
+    name: "environment-ssh-machine",
+    pluginId: "environment-ssh-machine",
+    defaultEnabled: true,
+  },
+  {
     name: "browser-automation",
     pluginId: "browser-automation",
     defaultEnabled: false,
