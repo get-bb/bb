@@ -345,3 +345,45 @@ it("replays a completed request after staging expires and resets GC state after 
   expect(store.images("p", null, 50)).toHaveLength(1);
   expect(store.protected(build.buildId)).toBe(true);
 });
+
+it("migrates stored recipe setup text away and rejects the removed input", async () => {
+  const { migrations } = await import("./migrations.js");
+  const host = createFakePluginHost({ pluginId: "environment-modal-sandbox" });
+  disposals.push(() => host.harness.lifecycle.dispose());
+  const db = host.bb.storage.database();
+  host.bb.storage.migrate(db, migrations.slice(0, -1));
+  db.prepare("INSERT INTO catalogue_owner VALUES ('owner', 'user')").run();
+  const legacy = {
+    projectId: "project",
+    recipeId: "recipe",
+    revision: 1,
+    dockerfileText: "RUN true",
+    setupScriptText: "legacy-private-setup",
+    contextRules: { include: [], exclude: [] },
+    smoke: { commands: [], timeoutSeconds: 120 },
+    recipeHash: hash("legacy"),
+    baseDigest: hash("base"),
+    createdAt: 1,
+  };
+  db.prepare("INSERT INTO recipes VALUES (?,?,?,?,?,?)").run(
+    "user",
+    "project",
+    "recipe",
+    1,
+    legacy.recipeHash,
+    JSON.stringify(legacy),
+  );
+  const store = new Catalogue(db, host.bb.storage);
+  expect(store.recipe("project")).not.toHaveProperty("setupScriptText");
+  expect(
+    JSON.stringify(db.prepare("SELECT data FROM recipes").all()),
+  ).not.toContain("legacy-private-setup");
+  expect(() =>
+    recipeInputSchema.parse({
+      projectId: "project",
+      expectedRevision: 1,
+      dockerfileText: "RUN true",
+      setupScriptText: "ignored",
+    }),
+  ).toThrow();
+});

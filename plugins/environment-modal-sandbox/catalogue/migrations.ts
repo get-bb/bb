@@ -20,4 +20,5 @@ export const migrations = [
   `CREATE TABLE base_artifacts (hash TEXT PRIMARY KEY, metadata_json TEXT NOT NULL CHECK(json_valid(metadata_json)), data BLOB NOT NULL)`,
   `CREATE INDEX contexts_expiry ON contexts(user_id,expiry)`,
   `CREATE TABLE verification_requests (user_id TEXT NOT NULL, key TEXT NOT NULL, payload_hash TEXT NOT NULL, verification_id TEXT NOT NULL REFERENCES verifications(id), PRIMARY KEY(user_id,key))`,
+  `UPDATE recipes SET data=json_remove(data, '$.setupScriptText')`,
 ];

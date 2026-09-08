@@ -71,6 +71,8 @@ export function registerCatalogueCli(
             );
         }
         const expectsBuild = [
+          "image verify",
+          "image use",
           "image logs",
           "image status",
           "image cancel",

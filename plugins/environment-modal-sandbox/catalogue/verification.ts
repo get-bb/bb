@@ -184,7 +184,8 @@ export function createVerificationService(bb: BbPluginApi, store: Catalogue) {
             provider.status === "ready",
         )
       )
-        throw new Error(
+        throw new CatalogueError(
+          409,
           "Configure a usable provider credential route before verification",
         );
       record.state = "allocating";
@@ -197,10 +198,32 @@ export function createVerificationService(bb: BbPluginApi, store: Catalogue) {
         inputs: { buildId: build.buildId, policy: { idleMinutes: 0 } },
         key: `modal-${record.verificationId}`,
       });
-      if (launch.phase === "failed" || launch.phase === "cancelled")
-        throw new Error("Verification machine allocation failed");
+      if (launch.phase === "cancelled")
+        throw new CatalogueError(
+          409,
+          "Verification machine allocation was cancelled",
+        );
+      if (launch.phase === "failed") {
+        record.failure =
+          "Machine allocation has failed; awaiting core reconciliation or explicit cancellation";
+        save(record);
+        return;
+      }
       if (launch.phase !== "ready" || !launch.hostId) return;
+      record.failure = null;
       record.hostId = launch.hostId;
+      record.state = "preparing";
+      save(record);
+    }
+    if (record.state === "preparing" && record.hostId) {
+      const project = await bb.sdk.projects.get({ projectId: build.projectId });
+      if (!project.sources.some((source) => source.hostId === record.hostId)) {
+        await bb.sdk.projects.sources.add({
+          projectId: build.projectId,
+          type: "clone",
+          hostId: record.hostId,
+        });
+      }
       record.state = "starting";
       save(record);
       const recipe = store.recipe(build.projectId, build.revision);
@@ -255,12 +278,16 @@ export function createVerificationService(bb: BbPluginApi, store: Catalogue) {
       const completed = events[0];
       if (completed?.type !== "turn/completed") {
         if (thread.status === "error")
-          throw new Error("Smoke thread failed before a completed agent turn");
+          throw new CatalogueError(
+            409,
+            "Smoke thread failed before a completed agent turn",
+          );
         save(record);
         return;
       }
       if (completed.data.status !== "completed")
-        throw new Error(
+        throw new CatalogueError(
+          409,
           "The real agent smoke turn did not complete successfully",
         );
       record.completedTurnSeq = completed.seq;
@@ -272,7 +299,7 @@ export function createVerificationService(bb: BbPluginApi, store: Catalogue) {
         environmentId: record.environmentId,
       });
       if (!environment.path || environment.hostId !== record.hostId)
-        throw new Error("Verification checkout is unavailable");
+        throw new CatalogueError(409, "Verification checkout is unavailable");
       const recipe = store.recipe(build.projectId, build.revision);
       const result = await hosts.call(
         "smoke",
@@ -286,7 +313,7 @@ export function createVerificationService(bb: BbPluginApi, store: Catalogue) {
       );
       record.checks = result.results;
       if (record.checks.some((check) => check.exitCode !== 0))
-        throw new Error("Independent smoke command failed");
+        throw new CatalogueError(409, "Independent smoke command failed");
       const sentinel = await hosts.call(
         "smoke",
         {
@@ -300,7 +327,10 @@ export function createVerificationService(bb: BbPluginApi, store: Catalogue) {
         { hostId: record.hostId },
       );
       if (sentinel.results.some((check) => check.exitCode !== 0))
-        throw new Error("Cannot persist the verification sentinel");
+        throw new CatalogueError(
+          409,
+          "Cannot persist the verification sentinel",
+        );
       record.state = "suspending";
       save(record);
     }
@@ -329,12 +359,15 @@ export function createVerificationService(bb: BbPluginApi, store: Catalogue) {
         providerId: record.agentProviderId,
       });
       if (ready.status !== "ready")
-        throw new Error("Restored machine readiness failed");
+        throw new CatalogueError(409, "Restored machine readiness failed");
       const environment = await bb.sdk.environments.get({
         environmentId: record.environmentId,
       });
       if (!environment.path || environment.hostId !== record.hostId)
-        throw new Error("Restored verification checkout is unavailable");
+        throw new CatalogueError(
+          409,
+          "Restored verification checkout is unavailable",
+        );
       const recipe = store.recipe(build.projectId, build.revision);
       const result = await hosts.call(
         "smoke",
@@ -350,7 +383,8 @@ export function createVerificationService(bb: BbPluginApi, store: Catalogue) {
         { hostId: record.hostId },
       );
       if (result.results.some((check) => check.exitCode !== 0))
-        throw new Error(
+        throw new CatalogueError(
+          409,
           "Restored sentinel or independent smoke command failed",
         );
       record.checks = result.results.slice(1);
@@ -381,13 +415,44 @@ export function createVerificationService(bb: BbPluginApi, store: Catalogue) {
       );
       try {
         if (store.now() - record.createdAt > 30 * 60 * 1000)
-          throw new Error(
+          throw new CatalogueError(
+            409,
             "Verification timed out; inspect the retained machine and thread",
           );
         await advance(record);
       } catch (error) {
+        const expired = store.now() - record.createdAt > 30 * 60 * 1000;
+        if (record.state === "allocating" && expired) {
+          try {
+            const cancelled = await bb.sdk.hosts.cancel({
+              id: `modal-${record.verificationId}`,
+            });
+            if (cancelled.cancelPending) continue;
+          } catch {
+            record.failure =
+              "Verification timed out; allocation cancellation is pending";
+            save(record);
+            continue;
+          }
+        }
+        if (
+          !expired &&
+          [
+            "queued",
+            "allocating",
+            "suspending",
+            "resuming",
+            "retaining",
+          ].includes(record.state) &&
+          !(error instanceof CatalogueError)
+        ) {
+          record.failure = `Verification ${record.state} is awaiting reconciliation`;
+          save(record);
+          continue;
+        }
         if (
           record.state === "starting" &&
+          !(error instanceof CatalogueError) &&
           store.now() - record.createdAt <= 30 * 60 * 1000
         ) {
           record.failure =
@@ -395,11 +460,11 @@ export function createVerificationService(bb: BbPluginApi, store: Catalogue) {
           save(record);
           continue;
         }
-        record.state = "failed";
         record.failure =
           error instanceof CatalogueError
             ? error.message
-            : "Verification failed; inspect machine readiness and the retained smoke thread";
+            : `Verification failed during ${record.state}; inspect machine launch modal-${record.verificationId} and the retained smoke thread`;
+        record.state = "failed";
         save(record);
         store.release("verification", record.verificationId);
       }

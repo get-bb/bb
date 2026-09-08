@@ -122,6 +122,7 @@ export const modalRpcContract = defineRpcContract({
   },
   "project.configure": {
     input: project.extend({
+      usableBuildId: z.null().optional(),
       resources: resourcesSchema,
       policy: policySchema,
       expectedRevision: z.number().int().nonnegative(),

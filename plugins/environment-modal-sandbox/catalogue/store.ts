@@ -488,6 +488,7 @@ export class Catalogue {
   }
   configure(input: {
     projectId: string;
+    usableBuildId?: null;
     expectedRevision: number;
     resources: Project["resources"];
     policy: Project["policy"];
@@ -503,18 +504,20 @@ export class Catalogue {
           );
         const next = {
           ...previous,
+          usableBuildId:
+            input.usableBuildId === null ? null : previous.usableBuildId,
           resources: input.resources,
           policy: input.policy,
           revision: previous.revision + 1,
         };
         this.db
           .prepare(
-            "INSERT INTO project_images VALUES (?,?,?,?,?) ON CONFLICT(user_id,project_id) DO UPDATE SET revision=excluded.revision,data=excluded.data",
+            "INSERT INTO project_images VALUES (?,?,?,?,?) ON CONFLICT(user_id,project_id) DO UPDATE SET usable_build_id=excluded.usable_build_id,revision=excluded.revision,data=excluded.data",
           )
           .run(
             this.owner,
             input.projectId,
-            previous.usableBuildId,
+            next.usableBuildId,
             next.revision,
             JSON.stringify(next),
           );

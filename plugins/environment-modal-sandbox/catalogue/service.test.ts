@@ -1,8 +1,12 @@
 import { afterEach, expect, it, vi } from "vitest";
-import { createFakePluginHost } from "@get-bb/plugin-sdk/testing";
+import {
+  createFakePluginHost,
+  makeThreadResponse,
+} from "@get-bb/plugin-sdk/testing";
 import { createCatalogueService } from "./service.js";
 import { registerCatalogueCli } from "./cli.js";
 import { hash } from "./model.js";
+import { createVerificationService } from "./verification.js";
 import type { ImageBackend } from "./backend.js";
 
 const disposals: Array<() => Promise<void>> = [];
@@ -17,6 +21,7 @@ async function fixture() {
     gitRemoteUrl: null,
     createdAt: 1,
     updatedAt: 1,
+    sources: [],
   };
   const host = createFakePluginHost({
     pluginId: "environment-modal-sandbox",
@@ -64,7 +69,6 @@ async function fixture() {
     projectId: project.id,
     expectedRevision: 0,
     dockerfileText: "RUN true",
-    setupScriptText: "",
     contextRules: { include: [], exclude: [] },
     smoke: { commands: ["node --version"], timeoutSeconds: 120 },
   });
@@ -250,6 +254,18 @@ it("rejects failed smoke and incomplete proof, then promotes the selected agent 
       key: "verify",
     }),
   ).rejects.toThrow(/different payload/);
+  const verifiedCli = await test.harness.behavior.runCli([
+    "image",
+    "verify",
+    build.buildId,
+    "--provider",
+    "codex",
+    "--key",
+    "verify",
+    "--json",
+  ]);
+  expect(verifiedCli.exitCode).toBe(0);
+  expect(JSON.parse(verifiedCli.stdout)).toEqual(job);
   const use = {
     projectId: "project",
     buildId: build.buildId,
@@ -299,4 +315,138 @@ it("rejects failed smoke and incomplete proof, then promotes the selected agent 
   });
   expect(() => test.service.verifications.promote(use)).toThrow(/revision/);
   expect(test.service.store.protected(build.buildId)).toBe(true);
+  const project = test.service.store.project("project");
+  expect(() =>
+    test.service.store.configure({
+      ...project,
+      usableBuildId: null,
+      expectedRevision: 0,
+    }),
+  ).toThrow(/revision/);
+  expect(test.service.store.project("project").usableBuildId).toBe(
+    build.buildId,
+  );
+  expect(
+    test.service.store.configure({
+      ...project,
+      usableBuildId: null,
+      expectedRevision: 1,
+    }).usableBuildId,
+  ).toBeNull();
+});
+
+it("keeps failed allocation reconcilable and retains the machine when preparation blocks", async () => {
+  const test = await fixture();
+  const build = await test.service.handlers["build.start"](test.input);
+  await test.service.sweep();
+  test.harness.sdk.stub("system.providerStates", async () => ({
+    providers: [
+      {
+        providerId: "codex",
+        displayName: "Codex",
+        status: "ready",
+        statusMessage: null,
+        accountEmail: null,
+        planLabel: null,
+        installedVersion: "1.0.0",
+        minimumSupportedVersion: "1.0.0",
+        canInstall: true,
+        canUpdate: false,
+        loginCommand: null,
+      },
+    ],
+  }));
+  const submit = vi.fn<typeof test.bb.sdk.hosts.submit>().mockResolvedValue({
+    id: "launch",
+    phase: "failed",
+    hostId: null,
+    step: "bootstrap",
+    log: "",
+    message: "Retryable transport failure",
+    cancelPending: false,
+  });
+  test.harness.sdk.stub("hosts.submit", submit);
+  const job = await test.service.verifications.start({
+    buildId: build.buildId,
+    agentProviderId: "codex",
+    key: "durable",
+  });
+  await test.service.verifications.sweep();
+  expect(test.service.verifications.get(job.verificationId)).toMatchObject({
+    state: "allocating",
+  });
+  expect(test.service.store.protected(build.buildId)).toBe(true);
+  submit.mockResolvedValue({
+    id: "launch",
+    phase: "ready",
+    hostId: "machine",
+    step: "ready",
+    log: "",
+    message: null,
+    cancelPending: false,
+  });
+  test.harness.sdk.stub("projects.sources.add", async () => {
+    throw new Error("Repository access denied");
+  });
+  await test.service.verifications.sweep();
+  expect(test.service.verifications.get(job.verificationId)).toMatchObject({
+    state: "failed",
+    hostId: "machine",
+    threadId: null,
+    failure: expect.stringContaining("preparing"),
+  });
+  expect(submit.mock.calls.map(([input]) => input.key)).toEqual([
+    `modal-${job.verificationId}`,
+    `modal-${job.verificationId}`,
+  ]);
+});
+
+it("reconciles a failed smoke turn after restart and refuses promotion", async () => {
+  const test = await fixture();
+  const build = await test.service.handlers["build.start"](test.input);
+  await test.service.sweep();
+  const job = await test.service.verifications.start({
+    buildId: build.buildId,
+    agentProviderId: "codex",
+    key: "failed-turn",
+  });
+  test.service.store.db
+    .prepare("UPDATE verifications SET state=?,data=? WHERE id=?")
+    .run(
+      "running",
+      JSON.stringify({
+        ...job,
+        state: "running",
+        hostId: "machine",
+        threadId: "smoke-thread",
+      }),
+      job.verificationId,
+    );
+  test.harness.sdk.stub("threads.get", async () =>
+    makeThreadResponse({
+      id: "smoke-thread",
+      projectId: "project",
+      environmentId: "checkout",
+      status: "error",
+    }),
+  );
+  test.harness.sdk.stub("threads.events.list", async () => []);
+  const restarted = createVerificationService(test.bb, test.service.store);
+  await restarted.sweep();
+  expect(restarted.get(job.verificationId)).toMatchObject({
+    state: "failed",
+    hostId: "machine",
+    threadId: "smoke-thread",
+    environmentId: "checkout",
+    completedTurnSeq: null,
+    failure: "Smoke thread failed before a completed agent turn",
+  });
+  expect(() =>
+    restarted.promote({
+      projectId: "project",
+      buildId: build.buildId,
+      agentProviderId: "codex",
+      expectedRevision: 0,
+    }),
+  ).toThrow(/successful verification/);
 });

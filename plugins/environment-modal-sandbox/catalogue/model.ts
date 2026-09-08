@@ -25,10 +25,6 @@ export const recipeInputSchema = z
     projectId: idSchema,
     expectedRevision: z.number().int().nonnegative(),
     dockerfileText: z.string().max(256 * 1024),
-    setupScriptText: z
-      .string()
-      .max(64 * 1024)
-      .default(""),
     contextRules: z
       .object({
         include: z.array(z.string()).max(1000),
@@ -154,6 +150,7 @@ export const verificationSchema = z.object({
   state: z.enum([
     "queued",
     "allocating",
+    "preparing",
     "starting",
     "running",
     "checking",

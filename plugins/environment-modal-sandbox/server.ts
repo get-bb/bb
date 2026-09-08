@@ -494,26 +494,6 @@ export function createModalSandboxPlugin(
           resource: { ...resource, sandboxId: sandbox.sandboxId },
         };
       },
-      async experimental_workspaceSetup(context) {
-        const resource = readModalMachineResource(context.resource);
-        if (resource.version !== 4) return null;
-        const build = catalogue.store.build(resource.buildId);
-        if (build.projectId !== context.projectId)
-          throw new Error(
-            "This image was built for a different project; create a compatible sandbox",
-          );
-        const recipe = catalogue.store.recipe(build.projectId, build.revision);
-        return {
-          scriptText: recipe.setupScriptText,
-          scriptHash: hash(recipe.setupScriptText),
-          cacheManifest: {
-            buildId: build.buildId,
-            baseArtifact: build.baseArtifact,
-            contextHash: catalogue.store.context(build.contextId).manifestHash,
-          },
-          checks: recipe.smoke.commands,
-        };
-      },
       async remove(context) {
         const resource = readModalMachineResource(context.resource);
         const resolved = await currentSettings();

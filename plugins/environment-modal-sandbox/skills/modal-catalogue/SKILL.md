@@ -5,14 +5,19 @@ description: Inspect project inputs, store Dockerfile recipes, and explicitly bu
 
 # Modal recipe catalogue
 
-Recipes are stored per server owner/project in plugin SQLite, never in the repo.
+Dockerfile recipes are stored per server owner/project in plugin SQLite.
+Runtime setup has one repo-owned entry point: `.bb-env-setup.sh`. Inspect the
+existing hook and write or update it in the repository when the project needs
+one. It should use the image's warm dependency cache, validate its own inputs and
+essential outputs, and take a no-op path when nothing changed. Never store a
+second setup script in the image recipe.
 All commands accept `--json`; CLI and SDK use the typed `modalRpcContract` in
 `catalogue/contract.ts` through the existing plugin RPC transport.
 
 - `bb modal project inspect --project X --environment E --json` reads facts,
   lockfiles and hooks without running project scripts.
 - `bb modal recipe put --project X --stdin --expected-revision N --json` reads
-  a literal Dockerfile or a JSON envelope with `dockerfileText`, `setupScriptText`,
+  a literal Dockerfile or a JSON envelope with `dockerfileText`,
   `contextRules:{include:[],exclude:[]}`, and `smoke:{commands:[],timeoutSeconds:120}`.
   Start at revision 0. Save conflicts report HTTP 409 and the latest revision.
 - `bb modal recipe show --project X --json`; `recipe list --cursor ID --limit 50 --json`.
@@ -69,3 +74,16 @@ The RPC method names are `project.inspect`, `recipe.put/get/list`,
 `context.prepare/upload/complete`, `build.start/events/get/cancel`, `image.list/gc`,
 `verification.start/get`, and `project.configure/show/useImage`. Context upload tokens are scoped transport credentials
 and never part of reusable image provenance.
+
+Core runs `.bb-env-setup.sh` after materialising an owned environment and
+`.bb-env-teardown.sh` before removing it, including fresh project clones on new
+machines. Setup failure blocks readiness. Teardown has a separate 15-minute
+timeout; failure is reported without blocking removal. Attaching a user-maintained
+local checkout runs neither hook. Readiness checks core's recorded hook outcome
+for the checkout's commit and lockfile inputs; it never runs setup itself.
+
+`.worktreeinclude` does not apply to a fresh clone on a new machine: there is no
+source checkout on that host. Supply local files and secrets through core Machine
+environment settings, and keep reusable images credential-free.
+
+Clear the selected image before GC with `project configure --project X --expected-revision N --json-input '{"usableBuildId":null}' --json`. This clears availability for future launches; existing machines and their references remain pinned.

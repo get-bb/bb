@@ -53,10 +53,17 @@ retains a suspended machine; failed machines remain available for inspection.
 requires successful verification for that agent. It changes only the project's
 Modal image pointer, leaving environment preferences and existing machines alone.
 `bb machine ready MACHINE --provider codex --project PROJECT --json` exposes the
-same generic readiness checks used before agent dispatch. The recipe's runtime
-setup script runs when lockfiles, manifests, ABI or setup inputs change, or when
-its smoke checks find missing dependency outputs. Unchanged inputs reuse the
-setup stamp. Changed inputs in a dirty tracked checkout block setup for review.
+same generic readiness checks used before agent dispatch. Core runs the repo's `.bb-env-setup.sh` after an environment provider creates a
+checkout it owns, including a fresh clone on a new machine. The script owns cache
+validation and its unchanged-input no-op path. Readiness requires a successful
+core hook outcome for this checkout's commit and lockfile inputs; it does not run
+another script. Attaching a user-maintained checkout runs neither setup nor
+teardown. Dockerfile recipes remain in plugin storage; setup hooks live in Git.
+
+Core runs `.bb-env-teardown.sh` before removing an owned environment with a separate
+15-minute timeout. Teardown failure is reported and does not block removal.
+`.worktreeinclude` does not apply to fresh machine clones. Use core Machine
+environment settings for local files and secrets on machines.
 Deadline maintenance and the settings editor follow in parts C and D.
 
 ## Lifecycle
