@@ -28,6 +28,7 @@ interface EventProjectionState {
 export interface BuildEventProjectionOptions extends BuildEventProjectionMessagesOptions {
   acceptedClientRequestContext?: AcceptedClientRequestContext;
   contextOnlyToolCallIds?: ReadonlySet<string>;
+  foldTerminalMessageTurnIds?: ReadonlySet<string>;
   turnMessageDetail: EventProjectionTurnMessageDetail;
 }
 
@@ -54,6 +55,7 @@ export interface EventProjectionTurn {
   createdAt: number;
   completedAt: number | null;
   status: EventProjectionTurnStatus;
+  hasAcceptedInput: boolean;
   summaryCount: number;
   externalUserBoundarySeqs?: number[];
   terminalMessage?: EventProjectionMessage;

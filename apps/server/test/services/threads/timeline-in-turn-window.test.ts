@@ -699,6 +699,136 @@ describe("in-turn timeline windows", () => {
     expectSteerDetailsOwnership("rejected");
   });
 
+  it("includes folded status messages in automatic continuation details", () => {
+    const { db, thread } = setup();
+    const initialRequestId = requestId(1);
+    const events: EventInput[] = [];
+    const push = (event: Omit<EventInput, "sequence" | "threadId">): void => {
+      events.push({
+        ...event,
+        sequence: events.length + 1,
+        threadId: thread.id,
+      });
+    };
+    const pushTurnEvent = (
+      turnId: string,
+      type: "turn/started" | "turn/completed",
+    ): void => {
+      push({
+        type,
+        scope: turnScope(turnId),
+        providerThreadId,
+        itemId: null,
+        itemKind: null,
+        parentToolCallId: null,
+        data: JSON.stringify(
+          type === "turn/completed" ? { status: "completed" } : {},
+        ),
+      });
+    };
+    const pushAssistant = (turnId: string, itemId: string, text: string) => {
+      push({
+        type: "item/completed",
+        scope: turnScope(turnId),
+        providerThreadId,
+        itemId,
+        itemKind: "agentMessage",
+        parentToolCallId: null,
+        data: JSON.stringify({
+          item: { type: "agentMessage", id: itemId, text },
+        }),
+      });
+    };
+
+    push({
+      type: "client/turn/requested",
+      scope: threadScope(),
+      itemId: null,
+      itemKind: null,
+      parentToolCallId: null,
+      data: JSON.stringify({
+        direction: "outbound",
+        source: "tell",
+        initiator: "user",
+        request: { method: "turn/start", params: {} },
+        requestId: initialRequestId,
+        senderThreadId: null,
+        input: [{ type: "text", text: "Finish verification", mentions: [] }],
+        target: { kind: "thread-start" },
+        execution,
+      }),
+    });
+    pushTurnEvent("turn-1", "turn/started");
+    push({
+      type: "turn/input/accepted",
+      scope: turnScope("turn-1"),
+      providerThreadId,
+      itemId: null,
+      itemKind: null,
+      parentToolCallId: null,
+      data: JSON.stringify({ clientRequestId: initialRequestId }),
+    });
+    pushAssistant("turn-1", "assistant-1", "The lease is still booting.");
+    pushTurnEvent("turn-1", "turn/completed");
+    pushTurnEvent("turn-2", "turn/started");
+    push({
+      type: "item/completed",
+      scope: turnScope("turn-2"),
+      providerThreadId,
+      itemId: "command-2",
+      itemKind: "commandExecution",
+      parentToolCallId: null,
+      data: JSON.stringify({
+        item: {
+          type: "commandExecution",
+          id: "command-2",
+          command: "wait for database restore",
+          cwd: "/tmp/test",
+          status: "completed",
+          approvalStatus: null,
+        },
+      }),
+    });
+    const intermediateStatus = "The lease database is restoring from backup.";
+    pushAssistant("turn-2", "assistant-2", intermediateStatus);
+    pushTurnEvent("turn-2", "turn/completed");
+    pushTurnEvent("turn-3", "turn/started");
+    pushAssistant("turn-3", "assistant-3", "Verification passed.");
+    pushTurnEvent("turn-3", "turn/completed");
+    insertEvents(db, noopNotifier, events);
+
+    const timeline = buildPage(db, thread, LARGE_BUDGET, null).response;
+    expect(
+      timeline.rows.flatMap((row) =>
+        row.kind === "conversation" && row.role === "assistant"
+          ? [row.text]
+          : [],
+      ),
+    ).toEqual(["Verification passed."]);
+    const turnRow = timeline.rows.find(
+      (row): row is Extract<TimelineRow, { kind: "turn" }> =>
+        row.kind === "turn" && row.turnId === "turn-2",
+    );
+    expect(turnRow).toBeDefined();
+    if (!turnRow) {
+      throw new Error("expected the automatic continuation summary");
+    }
+
+    const details = buildTimelineTurnSummaryDetails(db, thread, {
+      includeProviderUnhandledOperations: false,
+      sourceSeqEnd: turnRow.sourceSeqEnd,
+      sourceSeqStart: turnRow.sourceSeqStart,
+      turnId: turnRow.turnId,
+    });
+    expect(
+      details.rows.flatMap((row) =>
+        row.kind === "conversation" && row.role === "assistant"
+          ? [row.text]
+          : [],
+      ),
+    ).toEqual([intermediateStatus]);
+  });
+
   it("bounds a running turn that is larger than the whole budget", () => {
     const { db, thread } = setup();
     seedTurns(db, thread, { completeLastTurn: false, itemsPerTurn: [300] });
@@ -1813,6 +1943,11 @@ describe("turn details for an item that finishes in a later turn", () => {
         sourceSeqEnd: 6,
         status: "completed",
       }),
+      expect.objectContaining({
+        kind: "conversation",
+        role: "assistant",
+        text: "Dev server is starting.",
+      }),
     ]);
     expect(turn1!.details).toEqual(turn1!.children);
   });
@@ -1824,13 +1959,24 @@ describe("turn details for an item that finishes in a later turn", () => {
     const turns = collectTurnDetailsAndChildren(db, thread);
     expect([...turns.keys()]).toEqual(["turn-1", "turn-2"]);
     for (const [turnId, { children, details }] of turns) {
-      expect(children, turnId).toEqual([
+      expect(children[0], turnId).toEqual(
         expect.objectContaining({
           callId: "call-1",
           output: turnId === "turn-1" ? "first run" : "second run",
           status: "completed",
         }),
-      ]);
+      );
+      expect(children.slice(1), turnId).toEqual(
+        turnId === "turn-1"
+          ? [
+              expect.objectContaining({
+                kind: "conversation",
+                role: "assistant",
+                text: "Dev server is starting.",
+              }),
+            ]
+          : [],
+      );
       expect(details, turnId).toEqual(children);
     }
   });

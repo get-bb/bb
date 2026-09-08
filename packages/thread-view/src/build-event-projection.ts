@@ -122,6 +122,7 @@ interface BuildDetailedProjectionArgs {
   activeBackgroundCommands: EventProjectionWorkflowMessage[];
   contextOnlyToolCallIds?: ReadonlySet<string>;
   events: ThreadEventWithMeta[];
+  foldTerminalMessageTurnIds?: ReadonlySet<string>;
   messages: EventProjectionMessage[];
   turnMessageDetail: BuildEventProjectionOptions["turnMessageDetail"];
 }
@@ -1007,6 +1008,7 @@ function buildDetailedProjection(
   return applyProjectionTurnMessageDetail(
     semanticProjection,
     args.turnMessageDetail,
+    args.foldTerminalMessageTurnIds,
   );
 }
 
@@ -1028,6 +1030,7 @@ function buildFullEventProjection(
     activeBackgroundCommands: flatProjection.activeBackgroundCommands,
     contextOnlyToolCallIds: options.contextOnlyToolCallIds,
     events,
+    foldTerminalMessageTurnIds: options.foldTerminalMessageTurnIds,
     messages: flatProjection.messages,
     turnMessageDetail: options.turnMessageDetail,
   });
@@ -1063,6 +1066,7 @@ export function buildEventProjectionEntries(
     activeBackgroundCommands: flatProjection.activeBackgroundCommands,
     contextOnlyToolCallIds: options.contextOnlyToolCallIds,
     events: orderedEvents,
+    foldTerminalMessageTurnIds: options.foldTerminalMessageTurnIds,
     messages: flatProjection.messages,
     turnMessageDetail: options.turnMessageDetail,
   });

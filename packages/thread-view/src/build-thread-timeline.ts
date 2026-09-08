@@ -114,6 +114,7 @@ interface ThreadTimelineSourceSeqRange {
 }
 
 interface BuildThreadTimelineTurnDetailsFromEventsOptions extends ThreadTimelineSourceSeqRange {
+  foldTerminalMessageTurnId: string | null;
   includeProviderUnhandledOperations: boolean;
   providerDisplayName?: string;
   threadStatus: Thread["status"];
@@ -1404,6 +1405,13 @@ export function buildThreadTimelineTurnDetailsFromEvents(
   args: BuildThreadTimelineTurnDetailsFromEventsArgs,
 ): ThreadTimelineTurnDetailsFromEventsResult {
   const projection = buildEventProjectionEntries(args.events, {
+    ...(args.options.foldTerminalMessageTurnId
+      ? {
+          foldTerminalMessageTurnIds: new Set([
+            args.options.foldTerminalMessageTurnId,
+          ]),
+        }
+      : {}),
     includeProviderUnhandledOperations:
       args.options.includeProviderUnhandledOperations,
     providerDisplayName: args.options.providerDisplayName,

@@ -346,6 +346,90 @@ describe("completed turn summary rendering", () => {
     ).toEqual([["work:command"], ["work:file-change"], ["work:command"]]);
   });
 
+  it("folds assistant status messages before automatic continuation turns", () => {
+    const event = createTimelineEventFactory({ threadId: "thread-1" });
+    const request = event.clientTurnRequested({
+      target: { kind: "new-turn" },
+      text: "Wait for the environment and finish verification",
+    });
+    const firstStatus = "The lease is still booting.";
+    const secondStatus = "The lease database is restoring from backup.";
+    const finalAnswer = "Verification passed.";
+
+    const timeline = renderCompletedTimeline({
+      events: [
+        request,
+        event.turnStarted({ turnId: "turn-1" }),
+        event.inputAccepted({
+          clientRequestId: request.data.requestId,
+          turnId: "turn-1",
+        }),
+        event.commandCompleted({
+          command: "wait for lease readiness",
+          itemId: "tool-1",
+          turnId: "turn-1",
+        }),
+        event.assistantCompleted({
+          itemId: "assistant-1",
+          text: firstStatus,
+          turnId: "turn-1",
+        }),
+        event.turnCompleted({ turnId: "turn-1" }),
+        event.turnStarted({ turnId: "turn-2" }),
+        event.commandCompleted({
+          command: "wait for database restore",
+          itemId: "tool-2",
+          turnId: "turn-2",
+        }),
+        event.assistantCompleted({
+          itemId: "assistant-2",
+          text: secondStatus,
+          turnId: "turn-2",
+        }),
+        event.turnCompleted({ turnId: "turn-2" }),
+        event.turnStarted({ turnId: "turn-3" }),
+        event.commandCompleted({
+          command: "run verification",
+          itemId: "tool-3",
+          turnId: "turn-3",
+        }),
+        event.assistantCompleted({
+          itemId: "assistant-3",
+          text: finalAnswer,
+          turnId: "turn-3",
+        }),
+        event.turnCompleted({ turnId: "turn-3" }),
+      ],
+    });
+
+    expect(
+      timeline.rows.flatMap((row) =>
+        row.kind === "conversation" && row.role === "assistant"
+          ? [row.text]
+          : [],
+      ),
+    ).toEqual([finalAnswer]);
+    expect(turnRows(timeline.rows).map((row) => row.summaryCount)).toEqual([
+      2, 2, 1,
+    ]);
+    expect(
+      turnRows(timeline.rows).map((row) => rowSignatures(row.children ?? [])),
+    ).toEqual([
+      ["work:command", "conversation:assistant"],
+      ["work:command", "conversation:assistant"],
+      ["work:command"],
+    ]);
+    expect(
+      turnRows(timeline.rows).flatMap((row) =>
+        (row.children ?? []).flatMap((child) =>
+          child.kind === "conversation" && child.role === "assistant"
+            ? [child.text]
+            : [],
+        ),
+      ),
+    ).toEqual([firstStatus, secondStatus]);
+  });
+
   it("keeps summary rows on both sides of an accepted in-turn steer", () => {
     const event = createTimelineEventFactory({ threadId: "thread-1" });
     const events: TimelineFixtureEvent[] = [

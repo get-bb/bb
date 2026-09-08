@@ -1078,6 +1078,11 @@ export interface FindLastRootStoredTurnStartedArgs {
   threadId: string;
 }
 
+export interface FindNextRootStoredTurnStartedArgs {
+  afterSequence: number;
+  threadId: string;
+}
+
 export interface StoredTurnStartedKey {
   sequence: number;
   turnId: string;
@@ -1100,6 +1105,11 @@ export interface GetLatestThreadInterruptedReasonArgs {
 
 export interface ListStoredTurnStartedRowsByTurnIdsUpToSequenceArgs {
   sequenceCutoff: number;
+  threadId: string;
+  turnIds: readonly string[];
+}
+
+export interface ListStoredTurnInputBoundaryRowsByTurnIdsArgs {
   threadId: string;
   turnIds: readonly string[];
 }
@@ -1956,6 +1966,34 @@ export function listStoredTurnInputAcceptedRowsByClientRequestIds(
     .all();
 }
 
+export function listStoredTurnInputBoundaryRowsByTurnIds(
+  db: DbConnection,
+  args: ListStoredTurnInputBoundaryRowsByTurnIdsArgs,
+): StoredEventRow[] {
+  if (args.turnIds.length === 0) {
+    return [];
+  }
+
+  return db
+    .select(storedEventRowFields)
+    .from(events)
+    .where(
+      and(
+        eq(events.threadId, args.threadId),
+        inArray(events.turnId, [...args.turnIds]),
+        or(
+          eq(events.type, "turn/input/accepted"),
+          and(
+            eq(events.type, "item/completed"),
+            eq(events.itemKind, "userMessage"),
+          ),
+        ),
+      ),
+    )
+    .orderBy(events.sequence)
+    .all();
+}
+
 export function listStoredTurnRejectedRowsByClientRequestIds(
   db: DbConnection,
   args: ListStoredTurnRejectedRowsByClientRequestIdsArgs,
@@ -2460,6 +2498,27 @@ export function findLastRootStoredTurnStarted(
       ),
     )
     .orderBy(desc(events.sequence))
+    .limit(1)
+    .get();
+  return row?.turnId ? { sequence: row.sequence, turnId: row.turnId } : null;
+}
+
+export function findNextRootStoredTurnStarted(
+  db: DbQueryConnection,
+  args: FindNextRootStoredTurnStartedArgs,
+): StoredTurnStartedKey | null {
+  const row = db
+    .select({ sequence: events.sequence, turnId: events.turnId })
+    .from(events)
+    .where(
+      and(
+        eq(events.threadId, args.threadId),
+        eq(events.type, "turn/started"),
+        isRootTurnStartedEventData,
+        gt(events.sequence, args.afterSequence),
+      ),
+    )
+    .orderBy(events.sequence)
     .limit(1)
     .get();
   return row?.turnId ? { sequence: row.sequence, turnId: row.turnId } : null;

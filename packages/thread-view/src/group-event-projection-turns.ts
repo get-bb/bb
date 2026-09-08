@@ -106,6 +106,7 @@ function createProjectionTurn(
       createdAt: meta.createdAt,
       completedAt: null,
       status: "pending",
+      hasAcceptedInput: false,
       summaryCount: 0,
     },
   };
@@ -286,6 +287,7 @@ export function groupEventProjectionTurns(
           `Timeline projection found turn/input/accepted without turn/started for ${turnId}`,
         );
       }
+      existing.turn.hasAcceptedInput = true;
       const clientRequestMeta = clientRequestMetaById.get(
         event.clientRequestId,
       );

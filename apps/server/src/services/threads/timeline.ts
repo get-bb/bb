@@ -26,6 +26,7 @@ import type {
 import { threadConversationOutlineItemSchema } from "@bb/server-contract";
 import {
   findStoredTimelineWindowByteBudgetFloor,
+  findNextRootStoredTurnStarted,
   findTimelineWindowBudgetFloorSequence,
   getStoredEventRowsByParentToolCallIdsDataBytes,
   getEnvironment,
@@ -51,6 +52,7 @@ import {
   listStoredDelegatingItemRowsByItemIds,
   listStoredTurnCompletedRowsByTurnIds,
   listStoredTurnInputAcceptedRowsByClientRequestIds,
+  listStoredTurnInputBoundaryRowsByTurnIds,
   listStoredTurnRejectedRowsByClientRequestIds,
   listStoredTurnStartedRowsByTurnIdsUpToSequence,
   listTimelineSegmentAnchorsDescending,
@@ -1993,6 +1995,27 @@ export function buildTimelineTurnSummaryDetails(
       threadId: thread.id,
       rows: eventRowsWithTurnStarts,
     });
+  const requestedTurnStartedSequence = eventRowsWithTurnStarts.find(
+    (row) =>
+      row.type === "turn/started" &&
+      row.turnId === options.turnId &&
+      row.parentToolCallId === null,
+  )?.sequence;
+  if (requestedTurnStartedSequence === undefined) {
+    throw new Error(
+      `Timeline turn summary details could not resolve the root start for ${options.turnId}`,
+    );
+  }
+  const nextRootTurnStarted = findNextRootStoredTurnStarted(db, {
+    afterSequence: requestedTurnStartedSequence,
+    threadId: thread.id,
+  });
+  const nextRootTurnInputRows = nextRootTurnStarted
+    ? listStoredTurnInputBoundaryRowsByTurnIds(db, {
+        threadId: thread.id,
+        turnIds: [nextRootTurnStarted.turnId],
+      })
+    : [];
   const projectionSourceSeqStart = eventRowsWithTurnStarts.reduce(
     (sourceSeqStart, row) =>
       row.type === "turn/started" && row.turnId === options.turnId
@@ -2005,6 +2028,10 @@ export function buildTimelineTurnSummaryDetails(
       toThreadEventWithMeta(row),
     ),
     options: {
+      foldTerminalMessageTurnId:
+        nextRootTurnStarted && nextRootTurnInputRows.length === 0
+          ? options.turnId
+          : null,
       includeProviderUnhandledOperations,
       sourceSeqEnd: sourceRange.sourceSeqEnd,
       sourceSeqStart: projectionSourceSeqStart,

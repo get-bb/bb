@@ -94,11 +94,14 @@ function withChildProjectionDetail(
 function applyTurnMessageDetail(
   turn: EventProjectionTurn,
   turnMessageDetail: EventProjectionTurnMessageDetail,
+  foldTerminalMessage: boolean,
 ): EventProjectionTurn {
   const messages = (turn.messages ?? []).map((message) =>
     withChildProjectionDetail(message),
   );
-  const terminalMessage = findLastTerminalTimelineMessage(messages);
+  const terminalMessage = foldTerminalMessage
+    ? undefined
+    : findLastTerminalTimelineMessage(messages);
   const summaryMessages = terminalMessage
     ? messages.slice(0, messages.indexOf(terminalMessage))
     : messages;
@@ -119,6 +122,7 @@ function applyTurnMessageDetail(
     createdAt: turn.createdAt,
     completedAt: turn.completedAt,
     status: turn.status,
+    hasAcceptedInput: turn.hasAcceptedInput,
     summaryCount,
     ...(turn.externalUserBoundarySeqs
       ? { externalUserBoundarySeqs: turn.externalUserBoundarySeqs }
@@ -134,10 +138,51 @@ function applyTurnMessageDetail(
   return detailedTurn;
 }
 
+function findTurnsWithFoldedTerminalMessages(
+  projection: EventProjection,
+  forcedTurnIds: ReadonlySet<string>,
+): Set<string> {
+  const foldedTurnIds = new Set(
+    projection.entries.flatMap((entry) =>
+      entry.kind === "turn" &&
+      forcedTurnIds.has(entry.turn.turnId) &&
+      entry.turn.status === "completed" &&
+      entry.turn.terminalMessage?.kind === "assistant-text"
+        ? [entry.turn.turnId]
+        : [],
+    ),
+  );
+  let previousTurn: EventProjectionTurn | undefined;
+  for (const entry of projection.entries) {
+    if (entry.kind === "projected-message") {
+      if (entry.message.kind === "user") {
+        previousTurn = undefined;
+      }
+      continue;
+    }
+
+    if (
+      !entry.turn.hasAcceptedInput &&
+      !entry.turn.messages?.some((message) => message.kind === "user") &&
+      previousTurn?.status === "completed" &&
+      previousTurn.terminalMessage?.kind === "assistant-text"
+    ) {
+      foldedTurnIds.add(previousTurn.turnId);
+    }
+    previousTurn = entry.turn;
+  }
+  return foldedTurnIds;
+}
+
 export function applyProjectionTurnMessageDetail(
   projection: EventProjection,
   turnMessageDetail: EventProjectionTurnMessageDetail,
+  forcedFoldedTurnIds: ReadonlySet<string> = new Set(),
 ): EventProjection {
+  const foldedTurnIds = findTurnsWithFoldedTerminalMessages(
+    projection,
+    forcedFoldedTurnIds,
+  );
   return {
     state: projection.state,
     entries: projection.entries.map((entry) => {
@@ -149,7 +194,11 @@ export function applyProjectionTurnMessageDetail(
       }
       return {
         kind: "turn",
-        turn: applyTurnMessageDetail(entry.turn, turnMessageDetail),
+        turn: applyTurnMessageDetail(
+          entry.turn,
+          turnMessageDetail,
+          foldedTurnIds.has(entry.turn.turnId),
+        ),
       };
     }),
   };

@@ -17,6 +17,7 @@ import {
   appendStoredThreadEventInTransaction,
   appendStoredThreadEventsInTransaction,
   findStoredEventRow,
+  findNextRootStoredTurnStarted,
   findStoredTimelineWindowByteBudgetFloor,
   findTimelineWindowBudgetFloorSequence,
   getActiveStoredTurnId,
@@ -46,6 +47,7 @@ import {
   hasParentedEventCrossingSequence,
   listStoredTimelineWindowEventRows,
   listStoredTurnInputAcceptedRowsByClientRequestIds,
+  listStoredTurnInputBoundaryRowsByTurnIds,
   listStoredTurnRejectedRowsByClientRequestIds,
   MissingStoredTurnStartedError,
   listActiveBackgroundTaskCountsByThreadIds,
@@ -1872,6 +1874,21 @@ describe("events", () => {
           clientRequestId: "creq_23456789ac",
         }),
       },
+      {
+        threadId: thread.id,
+        sequence: 6,
+        type: "item/completed",
+        ...createTurnEventFields({ turnId: "turn-4" }),
+        itemId: "user-message-1",
+        itemKind: "userMessage",
+        data: JSON.stringify({
+          item: {
+            type: "userMessage",
+            id: "user-message-1",
+            content: [{ type: "text", text: "system input" }],
+          },
+        }),
+      },
     ]);
 
     expect(
@@ -1881,6 +1898,70 @@ describe("events", () => {
         clientRequestIds: ["creq_23456789ab", "creq_23456789ac"],
       }).map((row) => row.sequence),
     ).toEqual([3, 5]);
+    expect(
+      listStoredTurnInputBoundaryRowsByTurnIds(db, {
+        threadId: thread.id,
+        turnIds: ["turn-1", "turn-3", "turn-4"],
+      }).map((row) => row.sequence),
+    ).toEqual([3, 5, 6]);
+  });
+
+  it("finds the next root turn start after a sequence", () => {
+    const { db, thread } = setup();
+
+    insertEvents(db, noopNotifier, [
+      {
+        threadId: thread.id,
+        sequence: 2,
+        type: "turn/started",
+        ...createTurnEventFields({ turnId: "turn-1" }),
+        data: JSON.stringify({ turnId: "turn-1" }),
+      },
+      {
+        threadId: thread.id,
+        sequence: 4,
+        type: "turn/started",
+        ...createTurnEventFields({ turnId: "nested-turn" }),
+        parentToolCallId: "delegation-1",
+        data: JSON.stringify({
+          parentToolCallId: "delegation-1",
+          turnId: "nested-turn",
+        }),
+      },
+      {
+        threadId: thread.id,
+        sequence: 6,
+        type: "turn/started",
+        ...createTurnEventFields({ turnId: "turn-2" }),
+        data: JSON.stringify({ turnId: "turn-2" }),
+      },
+      {
+        threadId: thread.id,
+        sequence: 8,
+        type: "turn/started",
+        ...createTurnEventFields({ turnId: "turn-3" }),
+        data: JSON.stringify({ turnId: "turn-3" }),
+      },
+    ]);
+
+    expect(
+      findNextRootStoredTurnStarted(db, {
+        afterSequence: 2,
+        threadId: thread.id,
+      }),
+    ).toEqual({ sequence: 6, turnId: "turn-2" });
+    expect(
+      findNextRootStoredTurnStarted(db, {
+        afterSequence: 6,
+        threadId: thread.id,
+      }),
+    ).toEqual({ sequence: 8, turnId: "turn-3" });
+    expect(
+      findNextRootStoredTurnStarted(db, {
+        afterSequence: 8,
+        threadId: thread.id,
+      }),
+    ).toBeNull();
   });
 
   it("lists rejected rows for requested client turn sequences", () => {

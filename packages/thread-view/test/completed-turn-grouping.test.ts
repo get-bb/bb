@@ -129,6 +129,7 @@ function completedTurn(
     createdAt: messages.length,
     completedAt: messages.length,
     status: "completed",
+    hasAcceptedInput: true,
     summaryCount,
     messages,
     ...(terminalMessage ? { terminalMessage } : {}),
