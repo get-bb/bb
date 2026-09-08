@@ -4,6 +4,7 @@ import {
   hasTimelineExplorationIntent,
   type ThreadTimelineViewRow,
   type TimelineViewWorkRow,
+  type TimelineWorkSummaryChild,
 } from "@bb/thread-view";
 
 interface CollectTimelineAutoExpansionRowIdsArgs {
@@ -76,11 +77,10 @@ export function isRowExpandable(row: ThreadTimelineViewRow): boolean {
 }
 
 export function isNonExpandableSummary(
-  children: readonly TimelineViewWorkRow[],
+  children: readonly TimelineWorkSummaryChild[],
 ): boolean {
   return (
-    children.length > 0 &&
-    children.every((child) => !isWorkRowExpandable(child))
+    children.length > 0 && children.every((child) => !isRowExpandable(child))
   );
 }
 

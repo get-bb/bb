@@ -310,6 +310,10 @@ function formatWorkSummaryDetails(
   const lines: string[] = [];
   const childContext = nestedContext(context, null);
   for (const child of row.children) {
+    if (child.kind === "system") {
+      lines.push(formatRow(child, childContext));
+      continue;
+    }
     if (
       (child.workKind === "command" ||
         child.workKind === "file-read" ||

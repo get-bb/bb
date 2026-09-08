@@ -3,7 +3,7 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router-dom";
-import { systemRow } from "@/test/fixtures/thread-timeline-rows";
+import { systemRow, fileReadRow } from "@/test/fixtures/thread-timeline-rows";
 import { ThreadTimelineRows } from "./ThreadTimelineRows";
 import { TimelineReasoningExpansionProvider } from "./TimelineReasoningExpansion";
 import { TimelineWorkingIndicator } from "./TimelineWorkingIndicator";
@@ -102,4 +102,28 @@ describe("reasoning disclosure lifecycle", () => {
         .getAttribute("aria-expanded"),
     ).toBe("false");
   });
+});
+
+it("reveals interleaved reasoning inside an exploration group", () => {
+  render(
+    <QueryClientProvider client={client}>
+      <MemoryRouter>
+        <TimelineReasoningExpansionProvider>
+          <ThreadTimelineRows
+            timelineRows={[
+              fileReadRow({ id: "read-a", path: "a.ts", seq: 1 }),
+              thought,
+              fileReadRow({ id: "read-b", path: "b.ts", seq: 3 }),
+            ]}
+            threadRuntimeDisplayStatus="idle"
+            workspaceRootPath={undefined}
+          />
+        </TimelineReasoningExpansionProvider>
+      </MemoryRouter>
+    </QueryClientProvider>,
+  );
+  expect(screen.queryByRole("button", { name: /Thought.*12s/ })).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: /Explored 2 files/ }));
+  fireEvent.click(screen.getByRole("button", { name: /Thought.*12s/ }));
+  expect(screen.getByText("Compare both render paths.")).toBeTruthy();
 });

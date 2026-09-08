@@ -2373,10 +2373,10 @@ describe("timeline CLI rendering snapshots", () => {
     expect(reloadedTimeline.text).toBe(timeline.text);
     expect(timeline.text).toMatchInlineSnapshot(`
       "── Worked for (7s) ─────────────────────────────────────────
-        ── Thought for 3s
-          I should inspect the projection seam first.
-
-        ── Ran tool exec_command { cmd: sed -n '1,80p' packages/core-ui/src/i... }
+        ── Ran 1 tool
+          ── Thought for 3s
+            I should inspect the projection seam first.
+          ── Ran tool exec_command { cmd: sed -n '1,80p' packages/core-ui/src/i... }
 
       ── Assistant ───────────────────────────────────────────────
       The extension point is the timeline row builder."

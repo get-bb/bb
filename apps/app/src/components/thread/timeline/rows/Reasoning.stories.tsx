@@ -1,6 +1,11 @@
 import { useState } from "react";
 import { Button } from "@bb/shared-ui/button";
-import { systemRow } from "@/test/fixtures/thread-timeline-rows";
+import {
+  systemRow,
+  fileReadRow,
+  fileChangeRow,
+  conversationRow,
+} from "@/test/fixtures/thread-timeline-rows";
 import { ThreadTimelineRows } from "../ThreadTimelineRows";
 import { TimelineReasoningExpansionProvider } from "../TimelineReasoningExpansion";
 import { TimelineWorkingIndicator } from "../TimelineWorkingIndicator";
@@ -96,6 +101,46 @@ export function Completed() {
           { ...thought, id: "interrupted", status: "interrupted" },
         ]}
       />
+    </div>
+  );
+}
+
+export function Grouped() {
+  const [closed, setClosed] = useState(false);
+  const rows = [
+    { ...thought, id: "before", detail: "Inspect the implementation first." },
+    fileReadRow({ id: "read-a", path: "src/app.ts", seq: 2 }),
+    { ...thought, id: "between", detail: "Check the helper before editing." },
+    fileReadRow({ id: "read-b", path: "src/helper.ts", seq: 4 }),
+    {
+      ...thought,
+      id: "before-edit",
+      detail: "Keep the existing public contract.",
+    },
+    fileChangeRow({ id: "edit", path: "src/app.ts", seq: 6 }),
+  ];
+  return (
+    <div className="mx-auto max-w-2xl p-8 space-y-6">
+      <Button onClick={() => setClosed(!closed)}>
+        {closed ? "Show running turn" : "Complete step"}
+      </Button>
+      <TimelineReasoningExpansionProvider>
+        <ThreadTimelineRows
+          {...baseProps}
+          timelineRows={
+            closed
+              ? [
+                  ...rows,
+                  conversationRow({
+                    role: "assistant",
+                    text: "Updated the implementation.",
+                    seq: 7,
+                  }),
+                ]
+              : rows
+          }
+        />
+      </TimelineReasoningExpansionProvider>
     </div>
   );
 }
