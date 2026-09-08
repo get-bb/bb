@@ -485,9 +485,6 @@ export function BranchPicker({
     emphasizeTriggerValue &&
     triggerLabelOverride === undefined &&
     value !== null;
-  const hasBranchOptions =
-    branchOptionGroups.local.length > 0 || branchOptionGroups.remote.length > 0;
-  const hasOptionsSection = loading || hasBranchOptions;
   const updateOpen = (nextOpen: boolean) => {
     if (!nextOpen) {
       blurActiveKeyboardInputWithin(inputRef.current);
@@ -609,7 +606,7 @@ export function BranchPicker({
             {menuCopy.title ? (
               <BranchPickerSectionHeader label={menuCopy.title} />
             ) : null}
-            {hasOptionsSection && menuCopy.optionsSectionLabel ? (
+            {menuCopy.optionsSectionLabel ? (
               <BranchPickerSectionHeader label={menuCopy.optionsSectionLabel} />
             ) : null}
             <BranchPickerBranchOptions
@@ -618,9 +615,7 @@ export function BranchPicker({
               onSelect={selectBranchAndClose}
             />
             {filteredBranchOptions.length === 0 ? (
-              <p
-                className="px-2 py-3 text-center text-xs text-muted-foreground"
-              >
+              <p className="px-2 py-3 text-center text-xs text-muted-foreground">
                 {loading ? "Loading branches..." : "No branches found."}
               </p>
             ) : null}
