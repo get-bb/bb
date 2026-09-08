@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
-import { and, eq } from "drizzle-orm";
-import { environmentSetupOutcomes } from "@bb/db";
+import { and, eq, desc } from "drizzle-orm";
+import { environmentSetupOutcomes, environmentHookOperations } from "@bb/db";
 import type { HostDaemonOnlineRpcResult } from "@bb/host-daemon-contract";
 import type { WorkSessionDeps } from "../../types.js";
 import { callHostRetryableOnlineRpc } from "../hosts/online-rpc.js";
@@ -12,11 +12,15 @@ export function environmentSetupInputHash(
 ): string {
   return createHash("sha256")
     .update(
-      JSON.stringify({
-        commit: facts.commit,
-        files: facts.files,
-        abi: facts.abi,
-      }),
+      JSON.stringify(
+        "kind" in facts
+          ? facts
+          : {
+              commit: facts.commit,
+              files: facts.files,
+              abi: facts.abi,
+            },
+      ),
     )
     .digest("hex");
 }
@@ -71,6 +75,7 @@ export async function finishEnvironmentSetupOutcome(
   deps: WorkSessionDeps,
   args: SetupIdentity & { succeeded: boolean },
 ): Promise<void> {
+  if (args.succeeded) await reconcileLegacyEnvironmentSetupOutcome(deps, args);
   const key = and(
     eq(environmentSetupOutcomes.hostId, args.hostId),
     eq(environmentSetupOutcomes.path, args.path),
@@ -96,6 +101,65 @@ export async function finishEnvironmentSetupOutcome(
         updatedAt: Date.now(),
       })
       .where(key)
+      .run();
+  });
+}
+
+export async function reconcileLegacyEnvironmentSetupOutcome(
+  deps: WorkSessionDeps,
+  args: { hostId: string; path: string },
+): Promise<void> {
+  const key = and(
+    eq(environmentSetupOutcomes.hostId, args.hostId),
+    eq(environmentSetupOutcomes.path, args.path),
+  );
+  if (deps.db.select().from(environmentSetupOutcomes).where(key).get()) return;
+  const hookKey = and(
+    eq(environmentHookOperations.hostId, args.hostId),
+    eq(environmentHookOperations.path, args.path),
+    eq(environmentHookOperations.kind, "setup"),
+  );
+  const hook = deps.db
+    .select()
+    .from(environmentHookOperations)
+    .where(hookKey)
+    .orderBy(desc(environmentHookOperations.startedAt))
+    .limit(1)
+    .get();
+  if (!hook || hook.finishedAt === null || hook.error !== null) return;
+  const identity = { ...args, operationId: hook.operationId };
+  const facts = await inspect(deps, identity);
+  if (facts === null || ("dirty" in facts && facts.dirty.length > 0)) return;
+  const inputHash = environmentSetupInputHash(facts);
+  const checked = await inspect(deps, identity);
+  if (
+    checked === null ||
+    environmentSetupInputHash(checked) !== inputHash ||
+    ("dirty" in checked && checked.dirty.length > 0)
+  )
+    return;
+  deps.db.transaction((tx) => {
+    const latest = tx
+      .select()
+      .from(environmentHookOperations)
+      .where(hookKey)
+      .orderBy(desc(environmentHookOperations.startedAt))
+      .limit(1)
+      .get();
+    if (
+      latest?.operationId !== hook.operationId ||
+      latest.finishedAt === null ||
+      latest.error !== null
+    )
+      return;
+    tx.insert(environmentSetupOutcomes)
+      .values({
+        ...identity,
+        state: "passed",
+        inputHash,
+        updatedAt: Date.now(),
+      })
+      .onConflictDoNothing()
       .run();
   });
 }

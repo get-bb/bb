@@ -761,7 +761,7 @@ export async function createHostDaemonApp(
     providerHealth: async (args) => {
       await refreshRuntimeShellEnv();
       return runtimeManager.withProviderMaintenanceRuntime(
-        { dataDir: options.dataDir },
+        { dataDir: options.dataDir, contributedEnv: args.contributedEnv },
         (runtime) => runtime.providerHealth(args),
       );
     },

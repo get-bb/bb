@@ -1,12 +1,17 @@
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
-import { lstat, readFile } from "node:fs/promises";
+import { lstat, readFile, realpath } from "node:fs/promises";
 import { join } from "node:path";
 import { promisify } from "node:util";
-import type { HostDaemonOnlineRpcCommand } from "@bb/host-daemon-contract";
+import type {
+  HostDaemonOnlineRpcCommand,
+  HostDaemonOnlineRpcResult,
+} from "@bb/host-daemon-contract";
 
 const exec = promisify(execFile);
-export async function inspectReadiness(path: string) {
+export async function inspectReadiness(
+  path: string,
+): Promise<HostDaemonOnlineRpcResult<"workspace.readiness.inspect">> {
   const git = async (...args: string[]) =>
     (
       await exec("git", ["-C", path, ...args], {
@@ -14,6 +19,36 @@ export async function inspectReadiness(path: string) {
         timeout: 30000,
       })
     ).stdout;
+  const directory = await realpath(path);
+  const inside = await git("rev-parse", "--is-inside-work-tree").catch(
+    (error: unknown) => {
+      if (
+        error instanceof Error &&
+        error.message.includes("not a git repository")
+      )
+        return "false";
+      throw error;
+    },
+  );
+  if (inside.trim() !== "true") {
+    const hook = join(directory, ".bb-env-setup.sh");
+    const stat = await lstat(hook).catch((error: unknown) => {
+      if (error instanceof Error && "code" in error && error.code === "ENOENT")
+        return null;
+      throw error;
+    });
+    if (stat && (!stat.isFile() || stat.size > 16 * 1024 * 1024))
+      throw new Error("Unsupported readiness input file");
+    return {
+      kind: "directory" as const,
+      path: directory,
+      hookSha256: stat
+        ? createHash("sha256")
+            .update(await readFile(hook))
+            .digest("hex")
+        : null,
+    };
+  }
   const [tracked, dirty, commit] = await Promise.all([
     git("ls-files", "-z"),
     git("status", "--porcelain=v1", "-z", "--untracked-files=no"),

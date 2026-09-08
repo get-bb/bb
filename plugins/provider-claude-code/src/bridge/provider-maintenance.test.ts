@@ -1,5 +1,8 @@
-import { describe, expect, it } from "vitest";
-import { __testing } from "./provider-maintenance.js";
+import { mkdtemp, writeFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { describe, expect, it, vi } from "vitest";
+import { __testing, getClaudeProviderHealth } from "./provider-maintenance.js";
 
 function missingInstallationStatus() {
   return {
@@ -80,4 +83,20 @@ describe("Claude Code provider maintenance", () => {
       "https://claude.ai/install.sh",
     );
   });
+});
+
+it("recognizes environment API-key authentication without a credential file", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "claude-env-health-"));
+  try {
+    const executable = join(directory, "claude");
+    await writeFile(executable, "#!/bin/sh\necho 2.1.0\n", { mode: 0o700 });
+    vi.stubEnv("BB_CLAUDE_CODE_EXECUTABLE", executable);
+    vi.stubEnv("ANTHROPIC_API_KEY", "synthetic-environment-key");
+    await expect(getClaudeProviderHealth()).resolves.toMatchObject({
+      health: { status: "ready" },
+    });
+  } finally {
+    vi.unstubAllEnvs();
+    await rm(directory, { recursive: true, force: true });
+  }
 });

@@ -1,5 +1,9 @@
+import { jsonValueSchema } from "@bb/domain";
+import { providerHealthResultSchema } from "@bb/provider-bridge-protocol";
 import {
   operationEnvironment,
+  operationSecrets,
+  redactOperationContent,
   daemonPrivateEnvironmentValues,
 } from "./operation-environment.js";
 import {
@@ -659,11 +663,20 @@ const onlineRpcHandlers: OnlineRpcHandlerMap = {
       command.bridgeLaunch,
       options,
     );
-    return options.providerHealth({
+    const result = await options.providerHealth({
       providerId: command.providerId,
+      ...(command.contributedEnv !== undefined
+        ? { contributedEnv: command.contributedEnv }
+        : {}),
       ...(command.cwd !== undefined ? { cwd: command.cwd } : {}),
       bridgeLaunch,
     });
+    return providerHealthResultSchema.parse(
+      redactOperationContent(
+        jsonValueSchema.parse(result),
+        operationSecrets(command.contributedEnv ?? []),
+      ),
+    );
   },
   "provider.usage": async (command, options) => {
     const bridgeLaunch = await resolveRuntimeBridgeLaunch(

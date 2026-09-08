@@ -677,6 +677,8 @@ const INTENTIONAL_OPTIONAL_HOST_DAEMON_FIELDS: Record<string, string> = {
     "a tool_use approval's presentation carries a tint only when the bridge wants an accent colour; absence means the neutral row tint, which is not a colour value.",
   "hostDaemonInteractiveRequestSchema.interaction.payload.subject.presentation.title":
     "a tool_use approval's presentation has a title only when the call has a headline (a path, a query); absence means the label stands alone.",
+  "hostDaemonOnlineRpcCommandSchema.contributedEnv":
+    "Provider health may use an isolated effective turn environment; absence retains shared maintenance behavior.",
   "hostDaemonOnlineRpcCommandSchema.cwd":
     "provider.list_models may omit cwd when only user-level provider configuration applies.",
   "hostDaemonOnlineRpcCommandSchema.query":
@@ -973,7 +975,7 @@ const CONTRIBUTED_ENV = [
 
 describe("host-daemon command schemas", () => {
   it("uses the current host-daemon protocol version", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(194);
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(195);
     expect(HOST_ARTIFACT_MAX_BYTES).toBe(256 * 1024 * 1024);
   });
 

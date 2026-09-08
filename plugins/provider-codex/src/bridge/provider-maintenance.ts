@@ -210,6 +210,8 @@ export async function getCodexProviderHealth(): Promise<ProviderHealthResult> {
   ) {
     return healthResult("unsupported_version", { installedVersion: version });
   }
+  if (process.env.OPENAI_API_KEY?.trim())
+    return healthResult("ready", { installedVersion: version });
   try {
     const credentials = await readCredentials();
     if (credentials === null) {

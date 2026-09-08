@@ -6,7 +6,7 @@ export const readinessInspectCommandSchema = z
     path: z.string().min(1),
   })
   .strict();
-export const readinessInspectResultSchema = z
+const checkoutReadinessResultSchema = z
   .object({
     commit: z.string(),
     dirty: z.array(z.string()),
@@ -14,6 +14,16 @@ export const readinessInspectResultSchema = z
     abi: z.string(),
   })
   .strict();
+export const readinessInspectResultSchema = z.union([
+  checkoutReadinessResultSchema,
+  z
+    .object({
+      kind: z.literal("directory"),
+      path: z.string().min(1),
+      hookSha256: z.string().nullable(),
+    })
+    .strict(),
+]);
 export const readinessProbeCommandSchema = z
   .object({
     type: z.literal("host.readiness.probe"),

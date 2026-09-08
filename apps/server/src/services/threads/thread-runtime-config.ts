@@ -249,6 +249,7 @@ export async function resolveThreadRuntimeCommandConfig(
   );
   if (host.machineProviderId !== null) {
     const readiness = await ensureHostReady(deps, {
+      contributedEnv,
       hostId: host.id,
       providerId: args.thread.providerId,
       projectId: project.id,

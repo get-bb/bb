@@ -203,3 +203,5 @@ environment settings. Keep the repo hook's cache/no-op logic in the repository;
 Modal's stored Dockerfile recipe contains image-build instructions only.
 
 After a provider restores a machine filesystem, core reruns `.bb-env-setup.sh` for each owned checkout using the recorded hook path. Make the hook idempotent and use it to restart project services; processes are not restored with filesystem snapshots. A failed hook blocks readiness. Fresh machine clones do not apply `.worktreeinclude`; supply local files and secrets through Machine environment settings.
+
+On machines, readiness revalidates successful setup records after an upgrade without executing the setup hook again. Git checkouts use commit, lockfile, hook and ABI fingerprints; owned Personal directories use their canonical path and setup-hook content hash. A dirty legacy checkout requires review before readiness can adopt its earlier successful hook.

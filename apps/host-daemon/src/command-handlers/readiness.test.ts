@@ -27,6 +27,7 @@ it("fingerprints tracked checkout inputs without executing the repository hook",
       "Fixture",
     );
     const first = await inspectReadiness(path);
+    if ("kind" in first) throw new Error("Expected checkout");
     expect(first.dirty).toEqual([]);
     expect(first.files.map((file) => file.path)).toEqual([
       ".bb-env-setup.sh",
@@ -38,6 +39,7 @@ it("fingerprints tracked checkout inputs without executing the repository hook",
     await writeFile(join(path, "untracked-lock.json"), "ignored");
     await writeFile(join(path, "package-lock.json"), "second");
     const changed = await inspectReadiness(path);
+    if ("kind" in changed) throw new Error("Expected checkout");
     expect(changed.commit).toBe(first.commit);
     expect(changed.files).toHaveLength(2);
     expect(changed.files[1]?.sha256).not.toBe(first.files[1]?.sha256);

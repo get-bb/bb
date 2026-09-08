@@ -5,6 +5,7 @@ import type { EventSinkInput } from "./event-sink.js";
 import type {
   EnvironmentHookProgressMessage,
   HostDaemonCommand,
+  HostDaemonContributedEnvEntry,
   ProviderHealthResult,
   ProviderUsageResult,
   HostDaemonBridgeLaunch,
@@ -71,6 +72,7 @@ export interface CommandDispatchOptions {
   providerHealth: (args: {
     providerId: string;
     bridgeLaunch: AgentRuntimeBridgeLaunch;
+    contributedEnv?: HostDaemonContributedEnvEntry[];
     cwd?: string;
   }) => Promise<ProviderHealthResult>;
   providerUsage: (args: {

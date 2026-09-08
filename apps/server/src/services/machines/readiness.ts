@@ -1,3 +1,8 @@
+import type { HostDaemonContributedEnvEntry } from "@bb/host-daemon-contract";
+import {
+  resolveHostEnvironment,
+  mergeHostAndProviderEnvironment,
+} from "../hosts/host-environment.js";
 import { runMachineRestoreSetup } from "./restore-setup.js";
 import { and, eq } from "drizzle-orm";
 import {
@@ -17,7 +22,10 @@ import {
   resolvePluginProviderEnv,
   resolvePluginProviderEnvHealth,
 } from "../plugins/plugin-agent-contributions.js";
-import { environmentSetupInputHash } from "../environments/setup-outcomes.js";
+import {
+  environmentSetupInputHash,
+  reconcileLegacyEnvironmentSetupOutcome,
+} from "../environments/setup-outcomes.js";
 
 const probeSchema = z
   .object({
@@ -33,6 +41,7 @@ export async function ensureHostReady(
     projectId: string;
     threadId: string | null;
     path: string | null;
+    contributedEnv?: HostDaemonContributedEnvEntry[];
   },
 ): Promise<experimental_HostReadinessResponse> {
   let stage: "cli" | "auth" | "workspace" = "cli";
@@ -103,11 +112,27 @@ export async function ensureHostReady(
           "Provider authentication cannot be checked",
           false,
         );
+      const contributedEnv =
+        args.contributedEnv ??
+        mergeHostAndProviderEnvironment(
+          await resolveHostEnvironment(deps, args),
+          args.threadId === null
+            ? []
+            : await resolvePluginProviderEnv({
+                providerId: args.providerId,
+                context: {
+                  threadId: args.threadId,
+                  projectId: args.projectId,
+                  hostId: args.hostId,
+                },
+              }),
+        );
       const result = await callHostRetryableOnlineRpc(deps, {
         hostId: args.hostId,
         timeoutMs: 60000,
         command: {
           type: "provider.health",
+          contributedEnv,
           providerId: args.providerId,
           bridgeLaunch,
         },
@@ -147,6 +172,10 @@ export async function ensureHostReady(
       environment?.ownsPath ??
       projectSourceOwnsPath(deps.db, args.projectId, args.hostId, path);
     if (ownsPath) {
+      await reconcileLegacyEnvironmentSetupOutcome(deps, {
+        hostId: args.hostId,
+        path,
+      });
       const outcome = deps.db
         .select()
         .from(environmentSetupOutcomes)
@@ -174,7 +203,9 @@ export async function ensureHostReady(
       });
       if (environmentSetupInputHash(facts) !== outcome.inputHash)
         return blocked(
-          facts.dirty.length ? "dirty_checkout" : "setup_stale",
+          "dirty" in facts && facts.dirty.length
+            ? "dirty_checkout"
+            : "setup_stale",
           "Checkout commit, lockfiles, setup hook or ABI changed since core setup succeeded; review the checkout and recreate its owned environment",
           false,
         );
