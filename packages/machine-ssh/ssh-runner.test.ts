@@ -41,7 +41,9 @@ describe("plain SSH executor", () => {
     });
     const received = JSON.parse(result.stdout);
     expect(received.input).toBe("credential");
-    expect(received.args.at(-1)).toMatch(/^exec "\$\{SHELL:-\/bin\/sh\}" -lc /u);
+    expect(received.args.at(-1)).toMatch(
+      /^exec "\$\{SHELL:-\/bin\/sh\}" -lc /u,
+    );
     expect(received.args).toEqual(
       expect.arrayContaining([
         "-T",
@@ -67,7 +69,7 @@ describe("plain SSH executor", () => {
       child.stderr.pipe(process.stderr);
       child.on("close", code => process.exit(code ?? 1));
     `);
-    const argument = "a'b $(printf INJECTED)\nnext; \"quoted\"";
+    const argument = 'a\'b $(printf INJECTED)\nnext; "quoted"';
     const result = await runner.exec("box", {
       ...request(),
       command: [

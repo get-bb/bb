@@ -55,7 +55,9 @@ export function MachineAccessSettings() {
           error ??
           (access?.effectiveUrl
             ? `${access.effectiveUrl} · ${access.urlSource === "setting" ? "General setting" : "BB_EXTERNAL_URL"}`
-            : "Set the URL machines use to reach this bb server.")
+            : access?.defaultProviderId && access.defaultProviderId !== "direct"
+              ? "Only used by Direct URL. The selected access provider supplies its own endpoint."
+              : "Set the URL machines use with Direct URL access.")
         }
         controlPlacement="below"
       >

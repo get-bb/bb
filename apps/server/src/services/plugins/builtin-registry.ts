@@ -165,6 +165,11 @@ export const OFFICIAL_PLUGINS = [
     defaultEnabled: true,
   },
   {
+    name: "machine-tailscale",
+    pluginId: "machine-tailscale",
+    defaultEnabled: true,
+  },
+  {
     name: "machine-digitalocean",
     pluginId: "machine-digitalocean",
     defaultEnabled: true,

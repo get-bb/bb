@@ -4,8 +4,8 @@ import type { JsonValue } from "@get-bb/plugin-sdk";
 import type { PluginMachineProviderCreateContext } from "@get-bb/plugin-sdk/machine-provider";
 import { createSshMachinePlugin } from "./server.js";
 import { sshMachineInputsSchema } from "./configuration.js";
-import type { SshExecRequest } from "./ssh-runner.js";
-import { uninstallCommand } from "./uninstall.js";
+import type { SshExecRequest } from "bb-machine-ssh/ssh-runner";
+import { uninstallCommand } from "bb-machine-ssh/uninstall";
 
 const dispose: Array<() => Promise<void>> = [];
 afterEach(async () => {

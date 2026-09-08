@@ -5,7 +5,7 @@ import {
   type JsonValue,
   type PluginMachineProviderInputsProps,
 } from "@get-bb/plugin-sdk/app";
-import { sshDestinationSchema } from "./configuration.js";
+import { sshDestinationSchema } from "bb-machine-ssh/configuration";
 import { sshMachineRpcContract } from "./contract.js";
 import { SSH_MACHINE_PROVIDER_ID } from "./provider-id.js";
 

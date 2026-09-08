@@ -544,6 +544,12 @@ and owns the existing/new selection, labels, blocker copy, and emitted inputs.
 
 ## `bb.experimental_machines` (`register`)
 
+**Additional consumer (PR 2a).** Tailscale adopts existing devices through
+`create`, the input slot/RPC and the enrolment/bootstrap helpers; it also
+registers private direct server-access grants. It adds no public SDK member
+or daemon wire field. Generic discover/adopt ownership and endpoint migration
+remain open; the additional consumer does not stabilize these APIs.
+
 **What it does.** Lets a plugin create and own execution machines. A machine
 provider declares its id, display name, optional icon, optional git-remote requirement,
 optional Standard Schema inputs, availability, validation, optional picker

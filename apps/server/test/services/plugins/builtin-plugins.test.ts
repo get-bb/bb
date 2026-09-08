@@ -210,6 +210,7 @@ describe("builtin plugin reconciliation", () => {
     const optionalNames = OFFICIAL_PLUGINS.map((plugin) => plugin.name);
     expect(optionalNames).toEqual([
       "environment-ssh-machine",
+      "machine-tailscale",
       "machine-digitalocean",
       "browser-automation",
       "environment-modal-sandbox",

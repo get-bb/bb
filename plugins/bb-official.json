@@ -145,5 +145,9 @@
   "machine-digitalocean": {
     "category": "environments",
     "screenshots": []
+  },
+  "machine-tailscale": {
+    "category": "environments",
+    "screenshots": []
   }
 }

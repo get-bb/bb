@@ -1,7 +1,7 @@
 import { readFile, readdir } from "node:fs/promises";
 import { homedir } from "node:os";
 import { isAbsolute, join, resolve } from "node:path";
-import { isSafeSshDestination } from "./configuration.js";
+import { isSafeSshDestination } from "bb-machine-ssh/configuration";
 
 export interface SshConfigFileSystem {
   homeDir: string;

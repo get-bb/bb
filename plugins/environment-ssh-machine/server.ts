@@ -1,18 +1,16 @@
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import { z } from "zod";
-import {
-  sshDestinationSchema,
-  sshMachineInputsSchema,
-} from "./configuration.js";
+import { sshDestinationSchema } from "bb-machine-ssh/configuration";
+import { sshMachineInputsSchema } from "./configuration.js";
 import { sshMachineRpcContract } from "./contract.js";
 import { SSH_MACHINE_PROVIDER_ID } from "./provider-id.js";
 import { readSshHostAliases } from "./ssh-config.js";
-import { uninstallCommand } from "./uninstall.js";
+import { uninstallCommand } from "bb-machine-ssh/uninstall";
 import {
   openSshRunner,
   type SshExecRequest,
   type SshRunner,
-} from "./ssh-runner.js";
+} from "bb-machine-ssh/ssh-runner";
 
 const resourceSchema = z
   .object({
